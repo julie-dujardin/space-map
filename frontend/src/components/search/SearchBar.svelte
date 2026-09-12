@@ -14,7 +14,11 @@
 		catalogFacets,
 		fetchObjectNames,
 		isSearchEnabled,
+		ARRAY_FACETS,
+		BOOL_FACETS,
 		MAX_TOTAL_HITS,
+		type ArrayFacet,
+		type BoolFacet,
 		type SearchHit,
 		type GroupHit,
 		type FacetDistribution,
@@ -215,10 +219,9 @@
 	// Ids the scene can't name, gathered from every facet that labels by body.
 	let unnamedBodyIds = $derived.by(() => {
 		const dist = model.hasResults ? model.facets : facetUniverse;
-		const ids = [
-			...Object.keys(dist['object.moon_host'] ?? {}),
-			...Object.keys(dist['feature.body_id'] ?? {})
-		];
+		const ids = (['moonHost', 'featureBody'] as ArrayFacet[]).flatMap((facet) =>
+			Object.keys(dist[ARRAY_FACETS[facet].attr] ?? {})
+		);
 		return ids.filter((id) => !ctx.getBody(id) && !catalogNames.has(id));
 	});
 	$effect(() => {
@@ -290,14 +293,18 @@
 		// node lists its full value set with idle counts.
 		const small = model.hasResults ? model.facets : facetUniverse;
 		const locale = getLocale();
-		const typeDist = small['object.type'] ?? {};
-		const groupDist = small['object.groups'] ?? {};
-		const featDist = small['feature.type'] ?? {};
-		const featBodyDist = small['feature.body_id'] ?? {};
-		const gtypeDist = small['group.type'] ?? {};
-		const kindDist = small['kind'] ?? {};
-		const neoCount = small['object.neo']?.['true'] ?? 0;
-		const phaCount = small['object.pha']?.['true'] ?? 0;
+		// Counts arrive keyed by Meili attribute; the facet table is the only
+		// place that says which attribute a facet is.
+		const dist = (facet: ArrayFacet) => small[ARRAY_FACETS[facet].attr] ?? {};
+		const flagCount = (facet: BoolFacet) => small[BOOL_FACETS[facet].attr]?.['true'] ?? 0;
+		const typeDist = dist('type');
+		const groupDist = dist('groups');
+		const featDist = dist('featureType');
+		const featBodyDist = dist('featureBody');
+		const gtypeDist = dist('groupType');
+		const kindDist = dist('kind');
+		const neoCount = flagCount('neo');
+		const phaCount = flagCount('pha');
 		const selGroups = new Set(model.filters.groups ?? []);
 
 		const sumType = (keys: string[]) => keys.reduce((n, k) => n + (typeDist[k] ?? 0), 0);
@@ -358,8 +365,8 @@
 		// holds even where the host body itself isn't in the catalog.
 		{
 			const cnt = sumType(['moon']);
-			const hostDist = small['object.moon_host'] ?? {};
-			const classDist = small['object.moon_class'] ?? {};
+			const hostDist = dist('moonHost');
+			const classDist = dist('moonClass');
 			const hosts = Object.keys(hostDist)
 				.map((id) => ({ id, label: bodyName(id), count: hostDist[id] ?? 0 }))
 				.filter((h) => h.count > 0 || (model.filters.moonHost ?? []).includes(h.id))
@@ -387,7 +394,7 @@
 						count: classDist[c] ?? 0
 					})
 				);
-			const namedCount = small['object.iau_named']?.['true'] ?? 0;
+			const namedCount = flagCount('named');
 			children.push({
 				id: 'moon',
 				label: typeLabelPlural('moon'),

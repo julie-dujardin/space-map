@@ -12,7 +12,18 @@
  *  The `f` grammar is `;`-separated facets, each `token:val,val`, a range
  *  `token:lo..hi`, or a bare `neo`/`pha` flag. Values are ascii, round-tripped raw. */
 
-import { hasBound, type CatalogFilters, type RangeFacet, type SortId } from './client';
+import {
+	ARRAY_FACETS,
+	ARRAY_FACET_KEYS,
+	BOOL_FACETS,
+	BOOL_FACET_KEYS,
+	hasBound,
+	type ArrayFacet,
+	type BoolFacet,
+	type CatalogFilters,
+	type RangeFacet,
+	type SortId
+} from './client';
 
 export interface SearchUrlState {
 	query: string;
@@ -22,20 +33,12 @@ export interface SearchUrlState {
 	page: number;
 }
 
-// Array-facet CatalogFilters key ↔ short URL token; this order is the `f=`
-// segment order. The two boolean flags (neo/pha) serialize as bare tokens.
-const ARRAY_FACETS: [keyof CatalogFilters, string][] = [
-	['kind', 'kind'],
-	['type', 'type'],
-	['groups', 'groups'],
-	['moonHost', 'mhost'],
-	['moonClass', 'mclass'],
-	['featureType', 'ftype'],
-	['featureBody', 'fbody'],
-	['featureQuad', 'fquad'],
-	['groupType', 'gtype']
-];
-const TOKEN_TO_KEY = new Map(ARRAY_FACETS.map(([k, t]) => [t, k]));
+const TOKEN_TO_KEY = new Map<string, ArrayFacet>(
+	ARRAY_FACET_KEYS.map((k) => [ARRAY_FACETS[k].token, k])
+);
+const TOKEN_TO_FLAG = new Map<string, BoolFacet>(
+	BOOL_FACET_KEYS.map((k) => [BOOL_FACETS[k].token, k])
+);
 
 // Numeric range facet ↔ short URL token; serialized as `token:lo..hi` (either
 // bound may be empty: `mag:..15`, `date:1990..`). Values are display units.
@@ -60,22 +63,9 @@ function num(s: string): number | undefined {
 export function searchActive(s: SearchUrlState): boolean {
 	if (s.query.trim()) return true;
 	const f = s.filters;
-	const hasRange = Object.values(f.ranges ?? {}).some(hasBound);
-	return Boolean(
-		f.kind?.length ||
-		f.type?.length ||
-		f.groups?.length ||
-		f.moonHost?.length ||
-		f.moonClass?.length ||
-		f.featureType?.length ||
-		f.featureBody?.length ||
-		f.featureQuad?.length ||
-		f.groupType?.length ||
-		f.named ||
-		f.neo ||
-		f.pha ||
-		hasRange
-	);
+	if (ARRAY_FACET_KEYS.some((k) => f[k]?.length)) return true;
+	if (BOOL_FACET_KEYS.some((k) => f[k])) return true;
+	return Object.values(f.ranges ?? {}).some(hasBound);
 }
 
 /** The `&q=…&f=…` query-string suffix to append after the view's `?at=…` block,
@@ -89,18 +79,17 @@ export function serializeSearchSuffix(s: SearchUrlState | null | undefined): str
 	if (q) parts.push(`q=${encodeURIComponent(q)}`);
 
 	const seg: string[] = [];
-	for (const [key, token] of ARRAY_FACETS) {
-		const vals = s.filters[key] as string[] | undefined;
-		if (vals && vals.length) seg.push(`${token}:${vals.map(encodeURIComponent).join(',')}`);
+	for (const key of ARRAY_FACET_KEYS) {
+		const vals = s.filters[key];
+		if (vals?.length)
+			seg.push(`${ARRAY_FACETS[key].token}:${vals.map(encodeURIComponent).join(',')}`);
 	}
 	for (const [facet, token] of RANGE_FACETS) {
 		const b = s.filters.ranges?.[facet];
 		if (!hasBound(b)) continue;
 		seg.push(`${token}:${b!.min ?? ''}..${b!.max ?? ''}`);
 	}
-	if (s.filters.named) seg.push('named');
-	if (s.filters.neo) seg.push('neo');
-	if (s.filters.pha) seg.push('pha');
+	for (const key of BOOL_FACET_KEYS) if (s.filters[key]) seg.push(BOOL_FACETS[key].token);
 	if (seg.length) parts.push(`f=${seg.join(';')}`);
 
 	if (s.sort !== 'relevance') {
@@ -121,16 +110,9 @@ export function parseSearchSuffix(params: URLSearchParams): SearchUrlState | nul
 		for (const segRaw of f.split(';')) {
 			const seg = segRaw.trim();
 			if (!seg) continue;
-			if (seg === 'named') {
-				filters.named = true;
-				continue;
-			}
-			if (seg === 'neo') {
-				filters.neo = true;
-				continue;
-			}
-			if (seg === 'pha') {
-				filters.pha = true;
+			const flag = TOKEN_TO_FLAG.get(seg);
+			if (flag) {
+				filters[flag] = true;
 				continue;
 			}
 			const colon = seg.indexOf(':');
@@ -151,7 +133,7 @@ export function parseSearchSuffix(params: URLSearchParams): SearchUrlState | nul
 			const key = TOKEN_TO_KEY.get(name);
 			if (!key) continue;
 			const vals = rawVal.split(',').map(decodeURIComponent).filter(Boolean);
-			if (vals.length) (filters as Record<string, string[]>)[key] = vals;
+			if (vals.length) filters[key] = vals;
 		}
 	}
 

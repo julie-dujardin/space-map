@@ -4,6 +4,10 @@
 import {
 	searchCatalog,
 	hasBound,
+	ARRAY_FACET_KEYS,
+	BOOL_FACET_KEYS,
+	type ArrayFacet,
+	type BoolFacet,
 	type CatalogFilters,
 	type FacetDistribution,
 	type RangeBound,
@@ -25,18 +29,8 @@ export interface FilterToken {
 	label: string;
 }
 
-export type ArrayFacet =
-	| 'kind'
-	| 'type'
-	| 'groups'
-	| 'moonHost'
-	| 'moonClass'
-	| 'featureType'
-	| 'featureBody'
-	| 'featureQuad'
-	| 'groupType';
-export type BoolFacet = 'neo' | 'pha' | 'named';
-export type { RangeFacet };
+// The facet vocabulary itself lives beside the queries it builds.
+export type { ArrayFacet, BoolFacet, RangeFacet };
 
 /** Sort options in menu order; labels resolve via `search_sort_*` messages. */
 export const SORTS: { id: SortId; key: string }[] = [
@@ -57,19 +51,9 @@ interface Snapshot {
 }
 
 function countActive(f: CatalogFilters): number {
-	let n =
-		(f.kind?.length ?? 0) +
-		(f.type?.length ?? 0) +
-		(f.groups?.length ?? 0) +
-		(f.moonHost?.length ?? 0) +
-		(f.moonClass?.length ?? 0) +
-		(f.featureType?.length ?? 0) +
-		(f.featureBody?.length ?? 0) +
-		(f.featureQuad?.length ?? 0) +
-		(f.groupType?.length ?? 0);
-	if (f.named) n++;
-	if (f.neo) n++;
-	if (f.pha) n++;
+	let n = 0;
+	for (const key of ARRAY_FACET_KEYS) n += f[key]?.length ?? 0;
+	for (const key of BOOL_FACET_KEYS) if (f[key]) n++;
 	for (const b of Object.values(f.ranges ?? {})) if (hasBound(b)) n++;
 	return n;
 }
@@ -252,7 +236,8 @@ export class SearchModel {
 	}
 
 	removeToken(t: FilterToken): void {
-		if (t.key === 'neo' || t.key === 'pha' || t.key === 'named') this.toggleBool(t.key);
+		const flag = BOOL_FACET_KEYS.find((k) => k === t.key);
+		if (flag) this.toggleBool(flag);
 		else if (t.key === 'ranges' && t.value != null) this.clearRange(t.value as RangeFacet);
 		else if (t.value != null) this.toggleValues(t.key as ArrayFacet, [t.value]);
 		this.page = 1;

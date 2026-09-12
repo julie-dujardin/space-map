@@ -269,6 +269,30 @@ function applyAtParam(defaults: MapViewState): MapViewState {
 	return { ...defaults, date, isNow, latitude, longitude, zoom, framed: true };
 }
 
+/** Depth reached inside a drawer tab: a member page, a quadrangle or ring
+ *  drill, an open picture. It belongs to the tab holding it, so any move that
+ *  leaves that tab drops the lot. */
+const CLEAR_TAB_SCOPE = {
+	imageIndex: null,
+	gallery: null,
+	memberPage: null,
+	quad: null,
+	featureType: null,
+	ring: null
+} as const;
+
+/** The trip on screen, whole: both ends, the place each stands on, and the
+ *  terms it is flown on. Leaving the planner leaves no half of one behind. */
+const CLEAR_NAV_SCOPE = {
+	navFrom: null,
+	navTo: null,
+	navFromFeature: null,
+	navToFeature: null,
+	navFromPlace: null,
+	navToPlace: null,
+	trip: DEFAULT_TRIP
+} as const;
+
 /** Next view when focusing a body. Mirrors AppState.setFocus's merge so link
  *  hrefs and the committed state stay in lockstep. */
 export function applyFocus(
@@ -286,23 +310,18 @@ export function applyFocus(
 ): MapViewState {
 	return {
 		...current,
+		...CLEAR_TAB_SCOPE,
+		...CLEAR_NAV_SCOPE,
 		...focus,
-		imageIndex: null,
-		gallery: null,
 		featureId: null,
 		groupSlug: null,
 		// Land on a requested tab (e.g. a moon→planet link opening the Moons tab);
 		// overview otherwise. Falls back to overview client-side if the tab is absent.
 		tab: focus.tab ?? null,
-		memberPage: null,
+		// A quadrangle or feature type the link asks for outlives the tab scope:
+		// it is what the link is for.
 		quad: focus.quad ?? null,
-		featureType: focus.featureType ?? null,
-		ring: null,
-		navFrom: null,
-		navTo: null,
-		navFromFeature: null,
-		navToFeature: null,
-		trip: DEFAULT_TRIP
+		featureType: focus.featureType ?? null
 	};
 }
 
@@ -362,25 +381,22 @@ export function applyNav(
 	const destination = to === null ? null : navEnd(to);
 	return {
 		...current,
+		...CLEAR_TAB_SCOPE,
 		type: UrlType.Nav,
 		id: destination?.id ?? departure?.id ?? current.id,
 		name: '',
 		trip: terms ? { ...current.trip, ...terms } : current.trip,
+		// The planner sets its ends rather than clearing them, so it takes no
+		// nav scope of its own.
 		navFrom: departure?.id ?? null,
 		navTo: destination?.id ?? null,
 		navFromFeature: departure?.featureId ?? null,
 		navToFeature: destination?.featureId ?? null,
 		navFromPlace: departure?.place ?? null,
 		navToPlace: destination?.place ?? null,
-		imageIndex: null,
-		gallery: null,
 		featureId: null,
 		groupSlug: null,
-		tab: null,
-		memberPage: null,
-		quad: null,
-		featureType: null,
-		ring: null
+		tab: null
 	};
 }
 
@@ -389,16 +405,8 @@ export function applyNav(
  *  so it clears. The viewer indexes into a shelf that is about to close, so
  *  leaving it open would re-point it at whatever shelf leads instead. */
 export function applyTab(current: MapViewState, tab: DrawerTab): MapViewState {
-	return {
-		...current,
-		tab: tab === 'overview' ? null : tab,
-		imageIndex: null,
-		gallery: null,
-		memberPage: null,
-		quad: null,
-		featureType: null,
-		ring: null
-	};
+	// Switching tabs stays on the same subject, so the trip is not its business.
+	return { ...current, ...CLEAR_TAB_SCOPE, tab: tab === 'overview' ? null : tab };
 }
 
 /** Next view when selecting the Surface tab's quadrangle (null = all of them).
@@ -430,24 +438,15 @@ export function applyGroup(current: MapViewState, slug: string, name: string): M
 	const anchor = groupAnchor(slug);
 	return {
 		...current,
+		...CLEAR_TAB_SCOPE,
+		...CLEAR_NAV_SCOPE,
 		type: UrlType.Group,
 		id: anchor.id,
 		zoom: anchor.zoom,
 		groupSlug: slug,
 		name,
-		imageIndex: null,
-		gallery: null,
 		featureId: null,
-		tab: null,
-		memberPage: null,
-		quad: null,
-		featureType: null,
-		ring: null,
-		navFrom: null,
-		navTo: null,
-		navFromFeature: null,
-		navToFeature: null,
-		trip: DEFAULT_TRIP
+		tab: null
 	};
 }
 
@@ -458,6 +457,8 @@ export function applyFeature(
 ): MapViewState {
 	return {
 		...current,
+		...CLEAR_TAB_SCOPE,
+		...CLEAR_NAV_SCOPE,
 		type: UrlType.Feature,
 		id: focus.bodyId,
 		name: focus.featureName,
@@ -465,18 +466,7 @@ export function applyFeature(
 		// Opening a feature from a collection page (ft-*) leaves that page —
 		// a lingering slug would keep the group route winning over the feature.
 		groupSlug: null,
-		imageIndex: null,
-		gallery: null,
-		tab: null,
-		memberPage: null,
-		quad: null,
-		featureType: null,
-		ring: null,
-		navFrom: null,
-		navTo: null,
-		navFromFeature: null,
-		navToFeature: null,
-		trip: DEFAULT_TRIP
+		tab: null
 	};
 }
 

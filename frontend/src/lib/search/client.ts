@@ -4,6 +4,7 @@
 
 import type { Meilisearch } from 'meilisearch';
 import { env } from '$env/dynamic/public';
+import type { Locale } from '$lib/paraglide/runtime.js';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 import {
 	CLASS_SLUG_PREFIX,
@@ -16,35 +17,30 @@ import {
  *  a size here, the dropdown always wants the smallest available. */
 export type SearchThumbnail = PickedThumbnail;
 
-export interface FeatureHit {
-	kind: 'feature';
+/** The per-locale name and description the indexer writes beside the canonical
+ *  ones. Every locale the project declares, so a reader of any of them type-
+ *  checks the same way. */
+type LocalizedHitFields = Partial<Record<`name_${Locale}` | `description_${Locale}`, string>>;
+
+/** What every catalog hit carries, whatever its kind. */
+interface BaseHit extends LocalizedHitFields {
 	id: string;
+	name: string;
+	thumbnail?: SearchThumbnail;
+}
+
+export interface FeatureHit extends BaseHit {
+	kind: 'feature';
 	feature_id: number;
 	body_id: string;
-	name: string;
 	feature_type: string;
 	center_lat: number;
 	center_lon: number;
 	diameter_km?: number;
-	name_en?: string;
-	name_fr?: string;
-	name_ja?: string;
-	name_zh?: string;
-	name_ar?: string;
-	name_ru?: string;
-	description_en?: string;
-	description_fr?: string;
-	description_ja?: string;
-	description_zh?: string;
-	description_ar?: string;
-	description_ru?: string;
-	thumbnail?: SearchThumbnail;
 }
 
-export interface ObjectHit {
+export interface ObjectHit extends BaseHit {
 	kind: 'object';
-	id: string;
-	name: string;
 	type: string;
 	parent_id?: string;
 	priority?: number;
@@ -60,45 +56,19 @@ export interface ObjectHit {
 	magnitude?: number;
 	/** Sortable YYYYMMDD int: discovery/launch/inception. */
 	inception?: number;
-	name_en?: string;
-	name_fr?: string;
-	name_ja?: string;
-	name_zh?: string;
-	name_ar?: string;
-	name_ru?: string;
-	description_en?: string;
-	description_fr?: string;
-	description_ja?: string;
-	description_zh?: string;
-	description_ar?: string;
-	description_ru?: string;
-	thumbnail?: SearchThumbnail;
 }
 
 /** Constellation / organization / asteroid-class collection. The Meili primary
  *  key is ``slug``; we mirror it into ``id`` so the rest of the search UI
  *  can treat all hit kinds uniformly. */
-export interface GroupHit {
+export interface GroupHit extends BaseHit {
 	kind: 'group';
-	id: string; // = slug
+	/** Mirrors `slug`. */
+	id: string;
 	slug: string;
-	name: string;
 	type: string;
 	applies_to: string;
 	member_count: number;
-	name_en?: string;
-	name_fr?: string;
-	name_ja?: string;
-	name_zh?: string;
-	name_ar?: string;
-	name_ru?: string;
-	description_en?: string;
-	description_fr?: string;
-	description_ja?: string;
-	description_zh?: string;
-	description_ar?: string;
-	description_ru?: string;
-	thumbnail?: SearchThumbnail;
 }
 
 /**
@@ -106,13 +76,12 @@ export interface GroupHit {
  * the hit carries where it is and which collection page it belongs to, and
  * nothing else — there is no pad page to send a reader to.
  */
-export interface PadHit {
+export interface PadHit extends BaseHit {
 	kind: 'pad';
-	id: string;
-	/** GCAT launch-point code, unique within its site. */
-	code: string;
 	/** The pad's own name, with the place it sits in trimmed off. */
 	name: string;
+	/** GCAT launch-point code, unique within its site. */
+	code: string;
 	/** The `site-` collection holding it, and what that place is called. */
 	site_slug: string;
 	site_name: string;
@@ -120,13 +89,6 @@ export interface PadHit {
 	lon: number;
 	/** Distinct launches flown from it. Zero is common and real. */
 	launches: number;
-	description_en?: string;
-	description_fr?: string;
-	description_ja?: string;
-	description_zh?: string;
-	description_ar?: string;
-	description_ru?: string;
-	thumbnail?: SearchThumbnail;
 }
 
 export type SearchHit = FeatureHit | ObjectHit | GroupHit | PadHit;
@@ -428,24 +390,61 @@ export function hasBound(b: RangeBound | undefined): boolean {
 	return b != null && (b.min != null || b.max != null);
 }
 
-/** Selected facet values. Array facets are OR within / AND across; the two
- *  small-body flags are plain booleans; ranges AND a min/max on a numeric field. */
-export interface CatalogFilters {
-	kind?: string[]; // object | feature | group
-	type?: string[]; // object.type
-	groups?: string[]; // object.groups slugs (orbit class, constellation, …)
-	moonHost?: string[]; // object.moon_host — the body a moon orbits
-	moonClass?: string[]; // object.moon_class — planetary | minor_planet
-	featureType?: string[]; // feature.type codes
-	featureBody?: string[]; // feature.body_id — the body a surface feature sits on
-	featureQuad?: string[]; // feature.quad — IAU quadrangle code, scoped to one body
-	groupType?: string[]; // group.type names (collection kinds)
-	neo?: boolean;
-	pha?: boolean;
-	/** Moons only: carries an IAU name rather than a provisional designation. */
-	named?: boolean;
-	ranges?: Partial<Record<RangeFacet, RangeBound>>;
+/** One facet row: the Meili attribute it filters on, the short `f=` URL token
+ *  it serializes as, and whether the index faceting covers it — a filterable
+ *  attribute with no facet distribution has nothing to recount. */
+interface FacetSpec {
+	attr: string;
+	token: string;
+	faceted: boolean;
 }
+
+/**
+ * Multi-value facets, keyed by their `CatalogFilters` field. Values OR within
+ * one facet and AND across facets.
+ *
+ * This order is the `f=` segment order, so a shared link keeps its shape.
+ */
+export const ARRAY_FACETS = {
+	/** object | feature | group */
+	kind: { attr: 'kind', token: 'kind', faceted: true },
+	type: { attr: 'object.type', token: 'type', faceted: true },
+	/** Group slugs: orbit class, constellation, country, … */
+	groups: { attr: 'object.groups', token: 'groups', faceted: true },
+	/** The body a moon orbits. */
+	moonHost: { attr: 'object.moon_host', token: 'mhost', faceted: true },
+	/** planetary | minor_planet */
+	moonClass: { attr: 'object.moon_class', token: 'mclass', faceted: true },
+	/** IAU feature-type codes. */
+	featureType: { attr: 'feature.type', token: 'ftype', faceted: true },
+	/** The body a surface feature sits on. */
+	featureBody: { attr: 'feature.body_id', token: 'fbody', faceted: true },
+	/** IAU quadrangle code, scoped to one body. Not faceted: the Surface tab's
+	 *  hero gets its per-cell counts from the exported quadrangle index. */
+	featureQuad: { attr: 'feature.quad', token: 'fquad', faceted: false },
+	/** Collection kinds. */
+	groupType: { attr: 'group.type', token: 'gtype', faceted: true }
+} as const satisfies Record<string, FacetSpec>;
+
+/** Boolean flags, serialized as a bare `f=` token. */
+export const BOOL_FACETS = {
+	/** Moons only: carries an IAU name rather than a provisional designation. */
+	named: { attr: 'object.iau_named', token: 'named', faceted: true },
+	neo: { attr: 'object.neo', token: 'neo', faceted: true },
+	pha: { attr: 'object.pha', token: 'pha', faceted: true }
+} as const satisfies Record<string, FacetSpec>;
+
+export type ArrayFacet = keyof typeof ARRAY_FACETS;
+export type BoolFacet = keyof typeof BOOL_FACETS;
+
+export const ARRAY_FACET_KEYS = Object.keys(ARRAY_FACETS) as ArrayFacet[];
+export const BOOL_FACET_KEYS = Object.keys(BOOL_FACETS) as BoolFacet[];
+
+/** Selected facet values; ranges AND a min/max on a numeric field. */
+export type CatalogFilters = Partial<Record<ArrayFacet, string[]>> &
+	Partial<Record<BoolFacet, boolean>> & {
+		ranges?: Partial<Record<RangeFacet, RangeBound>>;
+	};
 
 /** A range facet's Meili attribute, plus how a display value maps onto it. */
 interface RangeTarget {
@@ -476,21 +475,14 @@ export interface CatalogResult {
 	facets: FacetDistribution;
 }
 
-const FACETS = [
-	'kind',
-	'object.type',
-	'object.groups',
-	'object.neo',
-	'object.pha',
-	'object.moon_host',
-	'object.moon_class',
-	'object.iau_named',
-	'group.type',
-	'feature.type',
-	'feature.body_id'
-	// `feature.quad` is filterable but not faceted — the Surface tab's hero
-	// gets its per-cell counts from the exported quadrangle index instead.
-];
+/** The attributes the index facets, which is what a distribution can be asked
+ *  for. Order carries no meaning. */
+const FACETED_ATTRS = new Set<string>(
+	[...Object.values(ARRAY_FACETS), ...Object.values(BOOL_FACETS)]
+		.filter((f) => f.faceted)
+		.map((f) => f.attr)
+);
+const FACETS = [...FACETED_ATTRS];
 
 // Sortable attribute + its "natural" first direction (reversed by the toggle).
 const SORT_FIELD: Record<Exclude<SortId, 'relevance'>, [string, boolean]> = {
@@ -522,27 +514,15 @@ function orClause(field: string, vals: string[] | undefined): string | null {
  *  facet's own clause can be dropped for its disjunctive recount. */
 function filterClauses(f: CatalogFilters): Map<string, string> {
 	const out = new Map<string, string>();
-	const kind = orClause('kind', f.kind);
-	if (kind) out.set('kind', kind);
-	const type = orClause('object.type', f.type);
-	if (type) out.set('object.type', type);
-	const groups = orClause('object.groups', f.groups);
-	if (groups) out.set('object.groups', groups);
-	const moonHost = orClause('object.moon_host', f.moonHost);
-	if (moonHost) out.set('object.moon_host', moonHost);
-	const moonClass = orClause('object.moon_class', f.moonClass);
-	if (moonClass) out.set('object.moon_class', moonClass);
-	const featureType = orClause('feature.type', f.featureType);
-	if (featureType) out.set('feature.type', featureType);
-	const featureBody = orClause('feature.body_id', f.featureBody);
-	if (featureBody) out.set('feature.body_id', featureBody);
-	const featureQuad = orClause('feature.quad', f.featureQuad);
-	if (featureQuad) out.set('feature.quad', featureQuad);
-	const groupType = orClause('group.type', f.groupType);
-	if (groupType) out.set('group.type', groupType);
-	if (f.named) out.set('object.iau_named', 'object.iau_named = true');
-	if (f.neo) out.set('object.neo', 'object.neo = true');
-	if (f.pha) out.set('object.pha', 'object.pha = true');
+	for (const key of ARRAY_FACET_KEYS) {
+		const { attr } = ARRAY_FACETS[key];
+		const clause = orClause(attr, f[key]);
+		if (clause) out.set(attr, clause);
+	}
+	for (const key of BOOL_FACET_KEYS) {
+		const { attr } = BOOL_FACETS[key];
+		if (f[key]) out.set(attr, `${attr} = true`);
+	}
 	return out;
 }
 
@@ -576,8 +556,8 @@ function joinClauses(
 /** One page of the faceted catalog: ranked hits, a facet distribution (drives
  *  counts + the filter tree), and the capped total.
  *
- *  Facets are disjunctive: each facet that has an active selection gets its
- *  distribution recomputed with its own clause dropped, so its sibling values
+ *  Facets are disjunctive: each faceted attribute with an active selection gets
+ *  its distribution recomputed with its own clause dropped, so its sibling values
  *  keep the true counts you'd get by OR-ing them in — instead of collapsing to
  *  the one selected value. Facets with no selection use the main distribution. */
 export async function searchCatalog(opts: {
@@ -597,7 +577,9 @@ export async function searchCatalog(opts: {
 	const sort = buildSort(opts.sort, opts.reverse);
 	const clauses = filterClauses(opts.filters);
 	const ranges = rangeClauses(opts.filters);
-	const active = [...clauses.keys()];
+	// Only a faceted attribute has a distribution to recount; a filter-only one
+	// (feature.quad) would spend a query on a facet the index doesn't keep.
+	const active = [...clauses.keys()].filter((attr) => FACETED_ATTRS.has(attr));
 
 	// Hits-only fast path: one plain search, no facet recount fan-out.
 	if (opts.facets === false) {
@@ -761,23 +743,26 @@ export async function fetchObjectNames(
 	return out;
 }
 
+/** One localized field, or undefined when the hit has nothing for that locale.
+ *  `locale` is a plain string: it arrives from the page, not from the union. */
+function localizedField(
+	hit: SearchHit,
+	prefix: 'name' | 'description',
+	locale: string
+): string | undefined {
+	const v = hit[`${prefix}_${locale}` as keyof LocalizedHitFields];
+	return typeof v === 'string' && v ? v : undefined;
+}
+
 /** Display name for a hit in the active locale, falling back to canonical. */
 export function localizedName(hit: SearchHit, locale: string): string {
-	const field = `name_${locale}` as keyof SearchHit;
-	const v = hit[field as keyof typeof hit];
-	if (typeof v === 'string' && v) return v;
-	return hit.name;
+	return localizedField(hit, 'name', locale) ?? hit.name;
 }
 
 /** Localized Wikidata description for a hit, or undefined. Falls back to
  *  English when the active locale has no description. */
 export function localizedDescription(hit: SearchHit, locale: string): string | undefined {
-	const field = `description_${locale}` as keyof typeof hit;
-	const v = hit[field];
-	if (typeof v === 'string' && v) return v;
-	const en = hit.description_en;
-	if (typeof en === 'string' && en) return en;
-	return undefined;
+	return localizedField(hit, 'description', locale) ?? localizedField(hit, 'description', 'en');
 }
 
 /** URL for the dropdown thumbnail, or undefined when the hit has no image. */

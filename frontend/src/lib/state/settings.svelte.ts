@@ -27,30 +27,82 @@ export type DateFormatChoice = 'auto' | 'iso';
 export type LanguageChoice = 'auto' | Locale;
 export type ViewMode = 'map' | 'immersive';
 
-interface Persisted {
-	theme?: Theme;
-	clock?: Clock;
-	reducedMotion?: ReducedMotion;
-	dateFormat?: DateFormatChoice;
-	language?: LanguageChoice;
-	showDebugInfo?: boolean;
-	showSkyboxAlign?: boolean;
-	showHaloDebug?: boolean;
-	showLightingTuner?: boolean;
-	showClouds?: boolean;
-	showAtmospheres?: boolean;
-	atmosphereQuality?: AtmosphereQualityTier;
-	atmosphereAutoTier?: ResolvedAtmosphereTier;
-	atmosphereCalibration?: AtmosphereCalibration;
-	highAmbient?: boolean;
-	realisticLighting?: boolean;
-	showShapeMesh?: boolean;
-	showSurfaceTexture?: boolean;
-	showDisplacement?: boolean;
-	showSelfShadow?: boolean;
-	viewMode?: ViewMode;
-	maxPartsPerZone?: number;
+/** Every display setting, and what its value is. */
+interface SettingValues {
+	theme: Theme;
+	clock: Clock;
+	reducedMotion: ReducedMotion;
+	dateFormat: DateFormatChoice;
+	language: LanguageChoice;
+	showDebugInfo: boolean;
+	showSkyboxAlign: boolean;
+	showHaloDebug: boolean;
+	showLightingTuner: boolean;
+	showClouds: boolean;
+	showAtmospheres: boolean;
+	atmosphereQuality: AtmosphereQualityTier;
+	atmosphereAutoTier: ResolvedAtmosphereTier | null;
+	atmosphereCalibration: AtmosphereCalibration | null;
+	atmoQualityOverrides: Partial<AtmosphereQualityConfig>;
+	highAmbient: boolean;
+	realisticLighting: boolean;
+	overexposeRings: boolean;
+	showShapeMesh: boolean;
+	showSurfaceTexture: boolean;
+	showDisplacement: boolean;
+	showSelfShadow: boolean;
+	viewMode: ViewMode;
+	maxPartsPerZone: number;
 }
+
+export type SettingKey = keyof SettingValues;
+
+interface SettingSpec<K extends SettingKey> {
+	default: SettingValues[K];
+	/** False for a session-only knob — it never reaches localStorage. */
+	persist: boolean;
+}
+
+/**
+ * The one place a setting is declared: its default and whether it survives a
+ * reload. The $state fields, hydration and `persist()` all read this table, so
+ * adding a setting is one row plus its field.
+ */
+const SETTING_SPEC = {
+	theme: { default: 'auto', persist: true },
+	clock: { default: 'auto', persist: true },
+	reducedMotion: { default: 'auto', persist: true },
+	dateFormat: { default: 'auto', persist: true },
+	language: { default: 'auto', persist: true },
+	showDebugInfo: { default: false, persist: true },
+	showSkyboxAlign: { default: false, persist: true },
+	showHaloDebug: { default: false, persist: true },
+	showLightingTuner: { default: false, persist: true },
+	showClouds: { default: true, persist: true },
+	showAtmospheres: { default: true, persist: true },
+	atmosphereQuality: { default: 'auto', persist: true },
+	atmosphereAutoTier: { default: null, persist: true },
+	atmosphereCalibration: { default: null, persist: true },
+	// A debug layer on top of the tier preset: the map opens on the preset.
+	atmoQualityOverrides: { default: {}, persist: false },
+	highAmbient: { default: false, persist: true },
+	realisticLighting: { default: false, persist: true },
+	// The physical picture is the one the map opens on.
+	overexposeRings: { default: false, persist: false },
+	showShapeMesh: { default: true, persist: true },
+	showSurfaceTexture: { default: true, persist: true },
+	showDisplacement: { default: true, persist: true },
+	showSelfShadow: { default: true, persist: true },
+	viewMode: { default: 'map', persist: true },
+	maxPartsPerZone: { default: 0, persist: true }
+} as const satisfies { [K in SettingKey]: SettingSpec<K> };
+
+type PersistedKey = {
+	[K in SettingKey]: (typeof SETTING_SPEC)[K]['persist'] extends true ? K : never;
+}[SettingKey];
+
+/** What localStorage holds. A setting sitting at null is simply absent. */
+type Persisted = { [K in PersistedKey]?: NonNullable<SettingValues[K]> };
 
 function readPersisted(): Persisted {
 	if (typeof localStorage === 'undefined') return {};
@@ -74,76 +126,72 @@ function localeUses12h(locale: string): boolean {
 	return uses12h;
 }
 
-class SettingsState implements SceneSettings {
-	theme = $state<Theme>('auto');
-	clock = $state<Clock>('auto');
-	reducedMotion = $state<ReducedMotion>('auto');
-	dateFormat = $state<DateFormatChoice>('auto');
-	language = $state<LanguageChoice>('auto');
-	showDebugInfo = $state(false);
-	showSkyboxAlign = $state(false);
-	showHaloDebug = $state(false);
-	showLightingTuner = $state(false);
-	showClouds = $state(true);
+const SPEC_ENTRIES = Object.entries(SETTING_SPEC) as [
+	SettingKey,
+	{ default: unknown; persist: boolean }
+][];
+
+// `implements SettingValues` ties the fields to the table: a key the spec
+// declares and the class misses (or types differently) fails to compile.
+class SettingsState implements SceneSettings, SettingValues {
+	// Declared one by one: a $state field cannot be generated in a loop. Only the
+	// metadata behind them comes from the table.
+	theme = $state<Theme>(SETTING_SPEC.theme.default);
+	clock = $state<Clock>(SETTING_SPEC.clock.default);
+	reducedMotion = $state<ReducedMotion>(SETTING_SPEC.reducedMotion.default);
+	dateFormat = $state<DateFormatChoice>(SETTING_SPEC.dateFormat.default);
+	language = $state<LanguageChoice>(SETTING_SPEC.language.default);
+	showDebugInfo = $state<boolean>(SETTING_SPEC.showDebugInfo.default);
+	showSkyboxAlign = $state<boolean>(SETTING_SPEC.showSkyboxAlign.default);
+	showHaloDebug = $state<boolean>(SETTING_SPEC.showHaloDebug.default);
+	showLightingTuner = $state<boolean>(SETTING_SPEC.showLightingTuner.default);
+	showClouds = $state<boolean>(SETTING_SPEC.showClouds.default);
 	/** Per-body atmospheric-scattering shells (sky glow, sunset limb). */
-	showAtmospheres = $state(true);
+	showAtmospheres = $state<boolean>(SETTING_SPEC.showAtmospheres.default);
 	/** Shell quality tier; 'auto' resolves from device capability. */
-	atmosphereQuality = $state<AtmosphereQualityTier>('auto');
+	atmosphereQuality = $state<AtmosphereQualityTier>(SETTING_SPEC.atmosphereQuality.default);
 	/** Tier the perf governor settled on for this device (auto mode only);
 	 *  null until a downgrade has ever triggered. */
-	atmosphereAutoTier = $state<ResolvedAtmosphereTier | null>(null);
+	atmosphereAutoTier = $state<ResolvedAtmosphereTier | null>(
+		SETTING_SPEC.atmosphereAutoTier.default
+	);
 	/** Boot benchmark result; null until the first calibration completes. */
-	atmosphereCalibration = $state<AtmosphereCalibration | null>(null);
-	/** Session-only debug knob overrides on top of the tier preset — not
-	 *  persisted, and cleared when the tier is changed. */
-	atmoQualityOverrides = $state<Partial<AtmosphereQualityConfig>>({});
+	atmosphereCalibration = $state<AtmosphereCalibration | null>(
+		SETTING_SPEC.atmosphereCalibration.default
+	);
+	/** Debug knob overrides on top of the tier preset, cleared when the tier
+	 *  changes. */
+	atmoQualityOverrides = $state<Partial<AtmosphereQualityConfig>>(
+		SETTING_SPEC.atmoQualityOverrides.default
+	);
 	/** Flood the scene with flat ambient fill so night sides are fully lit. */
-	highAmbient = $state(false);
+	highAmbient = $state<boolean>(SETTING_SPEC.highAmbient.default);
 	/** Scale sunlight with the true inverse-square distance from the Sun instead
 	 *  of lighting every body as if it sat at 1 AU. Debug menu only. */
-	realisticLighting = $state(false);
+	realisticLighting = $state<boolean>(SETTING_SPEC.realisticLighting.default);
 	/** Render ring systems at their full stored dynamic range instead of the
 	 *  physical intensity scale — Jupiter/Uranus/Neptune's rings are otherwise
-	 *  (correctly) near-invisible. Session-only: the physical picture is the one
-	 *  the map opens on. */
-	overexposeRings = $state(false);
+	 *  (correctly) near-invisible. */
+	overexposeRings = $state<boolean>(SETTING_SPEC.overexposeRings.default);
 	/** Debug body-layer toggles: peel back the focused body's render stack to
 	 *  isolate a layer (e.g. shape mesh off → textured triaxial sphere). */
-	showShapeMesh = $state(true);
-	showSurfaceTexture = $state(true);
-	showDisplacement = $state(true);
-	showSelfShadow = $state(true);
-	viewMode = $state<ViewMode>('map');
+	showShapeMesh = $state<boolean>(SETTING_SPEC.showShapeMesh.default);
+	showSurfaceTexture = $state<boolean>(SETTING_SPEC.showSurfaceTexture.default);
+	showDisplacement = $state<boolean>(SETTING_SPEC.showDisplacement.default);
+	showSelfShadow = $state<boolean>(SETTING_SPEC.showSelfShadow.default);
+	viewMode = $state<ViewMode>(SETTING_SPEC.viewMode.default);
 	/** Debug cap on parts loaded per zone. 0 = unlimited. Only takes effect on
 	 *  the next page load — already-resident chunks aren't unloaded. */
-	maxPartsPerZone = $state(0);
+	maxPartsPerZone = $state<number>(SETTING_SPEC.maxPartsPerZone.default);
 	#systemDark = $state(false);
 	#systemReducedMotion = $state(false);
 
 	constructor() {
-		const stored = readPersisted();
-		this.theme = stored.theme ?? 'auto';
-		this.clock = stored.clock ?? 'auto';
-		this.reducedMotion = stored.reducedMotion ?? 'auto';
-		this.dateFormat = stored.dateFormat ?? 'auto';
-		this.language = stored.language ?? 'auto';
-		this.showDebugInfo = stored.showDebugInfo ?? false;
-		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
-		this.showHaloDebug = stored.showHaloDebug ?? false;
-		this.showLightingTuner = stored.showLightingTuner ?? false;
-		this.showClouds = stored.showClouds ?? true;
-		this.showAtmospheres = stored.showAtmospheres ?? true;
-		this.atmosphereQuality = stored.atmosphereQuality ?? 'auto';
-		this.atmosphereAutoTier = stored.atmosphereAutoTier ?? null;
-		this.atmosphereCalibration = stored.atmosphereCalibration ?? null;
-		this.highAmbient = stored.highAmbient ?? false;
-		this.realisticLighting = stored.realisticLighting ?? false;
-		this.showShapeMesh = stored.showShapeMesh ?? true;
-		this.showSurfaceTexture = stored.showSurfaceTexture ?? true;
-		this.showDisplacement = stored.showDisplacement ?? true;
-		this.showSelfShadow = stored.showSelfShadow ?? true;
-		this.viewMode = stored.viewMode ?? 'map';
-		this.maxPartsPerZone = stored.maxPartsPerZone ?? 0;
+		const stored = readPersisted() as Record<string, unknown>;
+		const fields = this as unknown as Record<string, unknown>;
+		for (const [key, spec] of SPEC_ENTRIES) {
+			if (spec.persist) fields[key] = stored[key] ?? spec.default;
+		}
 
 		if (typeof window !== 'undefined' && window.matchMedia) {
 			const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -156,125 +204,114 @@ class SettingsState implements SceneSettings {
 		}
 	}
 
+	/** Write one setting, persisting it when the spec says it survives a reload. */
+	set<K extends SettingKey>(key: K, value: SettingValues[K]): void {
+		(this as unknown as Record<string, unknown>)[key] = value;
+		if (SETTING_SPEC[key].persist) this.persist();
+	}
+
+	// Named setters are the call surface the menus use; each is a thin wrapper
+	// over `set`, bar the three that do something else besides.
+
 	setTheme(v: Theme) {
-		this.theme = v;
-		this.persist();
+		this.set('theme', v);
 	}
 
 	setClock(v: Clock) {
-		this.clock = v;
-		this.persist();
+		this.set('clock', v);
 	}
 
 	setReducedMotion(v: ReducedMotion) {
-		this.reducedMotion = v;
-		this.persist();
+		this.set('reducedMotion', v);
 	}
 
 	setDateFormat(v: DateFormatChoice) {
-		this.dateFormat = v;
-		this.persist();
+		this.set('dateFormat', v);
 	}
 
 	setShowDebugInfo(v: boolean) {
-		this.showDebugInfo = v;
-		this.persist();
+		this.set('showDebugInfo', v);
 	}
 
 	setShowSkyboxAlign(v: boolean) {
-		this.showSkyboxAlign = v;
-		this.persist();
+		this.set('showSkyboxAlign', v);
 	}
 
 	setShowHaloDebug(v: boolean) {
-		this.showHaloDebug = v;
-		this.persist();
+		this.set('showHaloDebug', v);
 	}
 
 	setShowLightingTuner(v: boolean) {
-		this.showLightingTuner = v;
-		this.persist();
+		this.set('showLightingTuner', v);
 	}
 
 	setShowClouds(v: boolean) {
-		this.showClouds = v;
-		this.persist();
+		this.set('showClouds', v);
 	}
 
 	setShowAtmospheres(v: boolean) {
-		this.showAtmospheres = v;
-		this.persist();
+		this.set('showAtmospheres', v);
 	}
 
+	/** A new tier is a new preset, so the knobs layered on the old one drop. */
 	setAtmosphereQuality(v: AtmosphereQualityTier) {
-		this.atmosphereQuality = v;
 		this.atmoQualityOverrides = {};
-		this.persist();
+		this.set('atmosphereQuality', v);
 	}
 
 	setAtmosphereAutoTier(v: ResolvedAtmosphereTier | null) {
-		this.atmosphereAutoTier = v;
-		this.persist();
+		this.set('atmosphereAutoTier', v);
 	}
 
 	setAtmosphereCalibration(v: AtmosphereCalibration | null) {
-		this.atmosphereCalibration = v;
-		this.persist();
+		this.set('atmosphereCalibration', v);
 	}
 
-	/** Merge debug knob overrides onto the current tier preset (session-only). */
+	/** Merge debug knob overrides onto the current tier preset. */
 	setAtmoQualityOverrides(patch: Partial<AtmosphereQualityConfig>) {
-		this.atmoQualityOverrides = { ...this.atmoQualityOverrides, ...patch };
+		this.set('atmoQualityOverrides', { ...this.atmoQualityOverrides, ...patch });
 	}
 
 	setHighAmbient(v: boolean) {
-		this.highAmbient = v;
-		this.persist();
+		this.set('highAmbient', v);
 	}
 
 	setRealisticLighting(v: boolean) {
-		this.realisticLighting = v;
-		this.persist();
+		this.set('realisticLighting', v);
 	}
 
 	setOverexposeRings(v: boolean) {
-		this.overexposeRings = v;
+		this.set('overexposeRings', v);
 	}
 
 	setShowShapeMesh(v: boolean) {
-		this.showShapeMesh = v;
-		this.persist();
+		this.set('showShapeMesh', v);
 	}
 
 	setShowSurfaceTexture(v: boolean) {
-		this.showSurfaceTexture = v;
-		this.persist();
+		this.set('showSurfaceTexture', v);
 	}
 
 	setShowDisplacement(v: boolean) {
-		this.showDisplacement = v;
-		this.persist();
+		this.set('showDisplacement', v);
 	}
 
 	setShowSelfShadow(v: boolean) {
-		this.showSelfShadow = v;
-		this.persist();
+		this.set('showSelfShadow', v);
 	}
 
 	setViewMode(v: ViewMode) {
-		this.viewMode = v;
-		this.persist();
+		this.set('viewMode', v);
 	}
 
+	/** A cap, so a fractional or negative request lands on the nearest real one. */
 	setMaxPartsPerZone(v: number) {
-		this.maxPartsPerZone = Math.max(0, Math.floor(v));
-		this.persist();
+		this.set('maxPartsPerZone', Math.max(0, Math.floor(v)));
 	}
 
 	/** The stored choice only; `switchLanguage` reloads the page into it. */
 	setLanguage(v: LanguageChoice) {
-		this.language = v;
-		this.persist();
+		this.set('language', v);
 	}
 
 	/** Resolved theme — never 'auto'. */
@@ -310,30 +347,11 @@ class SettingsState implements SceneSettings {
 	private persist() {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			const data: Persisted = {
-				theme: this.theme,
-				clock: this.clock,
-				reducedMotion: this.reducedMotion,
-				dateFormat: this.dateFormat,
-				language: this.language,
-				showDebugInfo: this.showDebugInfo,
-				showSkyboxAlign: this.showSkyboxAlign,
-				showHaloDebug: this.showHaloDebug,
-				showLightingTuner: this.showLightingTuner,
-				showClouds: this.showClouds,
-				showAtmospheres: this.showAtmospheres,
-				atmosphereQuality: this.atmosphereQuality,
-				atmosphereAutoTier: this.atmosphereAutoTier ?? undefined,
-				atmosphereCalibration: this.atmosphereCalibration ?? undefined,
-				highAmbient: this.highAmbient,
-				realisticLighting: this.realisticLighting,
-				showShapeMesh: this.showShapeMesh,
-				showSurfaceTexture: this.showSurfaceTexture,
-				showDisplacement: this.showDisplacement,
-				showSelfShadow: this.showSelfShadow,
-				viewMode: this.viewMode,
-				maxPartsPerZone: this.maxPartsPerZone
-			};
+			const fields = this as unknown as Record<string, unknown>;
+			const data: Record<string, unknown> = {};
+			for (const [key, spec] of SPEC_ENTRIES) {
+				if (spec.persist && fields[key] !== null) data[key] = fields[key];
+			}
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 		} catch {
 			// localStorage can throw in private-mode Safari — drop silently.
