@@ -109,18 +109,8 @@ export async function loadSystemData(
 
 	const promises: Promise<void>[] = [];
 	for (const [bodyId, bodyMeta] of Object.entries(meta)) {
-		if (ctx && bodyMeta.texture) {
-			ctx.credits.registerTexture({
-				bodyId,
-				systemId: barycenterId,
-				source: bodyMeta.texture.source,
-				organisation: bodyMeta.texture.organisation,
-				license: bodyMeta.texture.license,
-				type: bodyMeta.texture.type,
-				attribution: bodyMeta.texture.attribution,
-				description: bodyMeta.texture.description
-			});
-		}
+		if (bodyMeta.texture)
+			ctx?.credits.registerImagery('surface', bodyId, barycenterId, bodyMeta.texture);
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
 
@@ -168,17 +158,7 @@ export async function loadSystemData(
 		// `bo.specularMap` so reloads don't refetch.
 		if (bodyMeta.specular && !bo.specularMap && bo.mesh) {
 			const specMeta = bodyMeta.specular;
-			if (ctx) {
-				ctx.credits.registerSpecular({
-					bodyId,
-					systemId: barycenterId,
-					source: specMeta.source,
-					organisation: specMeta.organisation,
-					license: specMeta.license,
-					attribution: specMeta.attribution,
-					description: specMeta.description
-				});
-			}
+			ctx?.credits.registerImagery('specular', bodyId, barycenterId, specMeta);
 			const material = bo.mesh.material as MeshStandardMaterial;
 			promises.push(
 				attachSpecularMap(material, specMeta, 'low', textureLoader).then((tex) => {
@@ -197,17 +177,7 @@ export async function loadSystemData(
 		// Reuses the eclipse-shadow uniforms for sun direction.
 		if (bodyMeta.night && !bo.emissiveMap && bo.mesh) {
 			const nightMeta = bodyMeta.night;
-			if (ctx) {
-				ctx.credits.registerNight({
-					bodyId,
-					systemId: barycenterId,
-					source: nightMeta.source,
-					organisation: nightMeta.organisation,
-					license: nightMeta.license,
-					attribution: nightMeta.attribution,
-					description: nightMeta.description
-				});
-			}
+			ctx?.credits.registerImagery('night', bodyId, barycenterId, nightMeta);
 			const material = bo.mesh.material as MeshStandardMaterial;
 			promises.push(
 				attachNightLights(material, nightMeta, 'low', textureLoader).then((tex) => {
@@ -228,17 +198,7 @@ export async function loadSystemData(
 			console.info(`Low-end device: skipping DEM relief for ${bodyId}`);
 		} else if (bodyMeta.displacement && !bo.displacementMap && bo.mesh) {
 			const dispMeta = bodyMeta.displacement;
-			if (ctx) {
-				ctx.credits.registerDisplacement({
-					bodyId,
-					systemId: barycenterId,
-					source: dispMeta.source,
-					organisation: dispMeta.organisation,
-					license: dispMeta.license,
-					attribution: dispMeta.attribution,
-					description: dispMeta.description
-				});
-			}
+			ctx?.credits.registerImagery('topography', bodyId, barycenterId, dispMeta);
 			const material = bo.mesh.material as MeshStandardMaterial;
 			promises.push(
 				attachDisplacementMap(material, dispMeta, 'low', textureLoader, bo.radiusScene).then(
@@ -261,17 +221,7 @@ export async function loadSystemData(
 
 		// Cloud overlay: second sphere parented to the body's mesh. Idempotent via `bo.clouds`.
 		if (bodyMeta.clouds && !bo.clouds && bo.mesh) {
-			if (ctx) {
-				ctx.credits.registerCloud({
-					bodyId,
-					systemId: barycenterId,
-					source: bodyMeta.clouds.source,
-					organisation: bodyMeta.clouds.organisation,
-					license: bodyMeta.clouds.license,
-					attribution: bodyMeta.clouds.attribution,
-					description: bodyMeta.clouds.description
-				});
-			}
+			ctx?.credits.registerImagery('clouds', bodyId, barycenterId, bodyMeta.clouds);
 			const cloudMeta = bodyMeta.clouds;
 			const parentMesh = bo.mesh;
 			const initialFrame = cloudFrameForJd(currentJd, cloudMeta.frames, cloudMeta.coverage);

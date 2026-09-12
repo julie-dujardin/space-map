@@ -45,17 +45,11 @@ export function attachRingBundles(
 		if (ctx) {
 			// A bundle mixes works (Saturn: Björn Jónsson's photometry, NSSDCA's
 			// vertical extents) — credit each for its own part.
-			for (const src of ringMeta.sources) {
-				ctx.credits.registerRing({
-					bodyId,
-					systemId,
-					source: src.source,
-					organisation: src.organisation,
-					license: src.license,
-					attribution: src.attribution,
+			for (const src of ringMeta.sources)
+				ctx.credits.registerImagery('rings', bodyId, systemId, {
+					...src,
 					description: ringMeta.description
 				});
-			}
 		}
 		promises.push(
 			loadRingNode(bodyId, ringMeta, maxTextureSize).then((node) => {

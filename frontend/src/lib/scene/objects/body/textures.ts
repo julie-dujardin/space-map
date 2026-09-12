@@ -198,15 +198,7 @@ export async function loadBodyTexture(
 		// Standalones aren't tied to a system barycenter; key the credit on the
 		// body itself so it matches the focused body id.
 		const bodyId = bo.body.data.id;
-		ctx.credits.registerTexture({
-			bodyId,
-			systemId: bodyId,
-			source: detail.global.texture.source,
-			organisation: detail.global.texture.organisation,
-			type: detail.global.texture.type,
-			attribution: detail.global.texture.attribution,
-			description: detail.global.texture.description
-		});
+		ctx.credits.registerImagery('surface', bodyId, bodyId, detail.global.texture);
 	}
 	// DEM sibling — standalones load it here since they skip the per-system
 	// path (same shape as system.ts's branch). Low-end clients keep the flat
@@ -220,16 +212,7 @@ export async function loadBodyTexture(
 		sceneSettings().showDisplacement
 	) {
 		const dispMeta = detail.global.displacement;
-		if (ctx) {
-			ctx.credits.registerDisplacement({
-				bodyId: bo.body.data.id,
-				systemId: bo.body.data.id,
-				source: dispMeta.source,
-				organisation: dispMeta.organisation,
-				attribution: dispMeta.attribution,
-				description: dispMeta.description
-			});
-		}
+		ctx?.credits.registerImagery('topography', bo.body.data.id, bo.body.data.id, dispMeta);
 		const material = bo.mesh.material as MeshStandardMaterial;
 		const tex = await attachDisplacementMap(
 			material,

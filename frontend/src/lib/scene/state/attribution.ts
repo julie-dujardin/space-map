@@ -57,10 +57,7 @@ export function attributionChips(
 	labels: OrbitSourceLabels = DEFAULT_ORBIT_LABELS
 ): AttributionChips {
 	const credits = ctx.credits;
-	void credits.textureVersion;
-	void credits.ringVersion;
-	void credits.cloudVersion;
-	void credits.displacementVersion;
+	void credits.imageryVersion;
 	void credits.modelVersion;
 
 	const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
@@ -78,11 +75,9 @@ export function attributionChips(
 	const systemId = ctx.visibility.focusedSystemId;
 	const bodyId = ctx.visibility.focusedBodyId;
 	const organisations = new Set<string>();
-	for (const store of [credits.texture, credits.ring, credits.cloud, credits.displacement]) {
-		for (const credit of store.values()) {
-			if (credit.bodyId === bodyId || (systemId && credit.systemId === systemId)) {
-				organisations.add(credit.organisation);
-			}
+	for (const credit of credits.imagery.values()) {
+		if (credit.bodyId === bodyId || (systemId && credit.systemId === systemId)) {
+			organisations.add(credit.organisation);
 		}
 	}
 	// Models are body-scoped: a probe's model credit doesn't bleed into the

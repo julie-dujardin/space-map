@@ -1,78 +1,14 @@
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { OrientationReference, OrientationSource } from '$lib/credits/orientation-sources';
+import type { CreditFields, ImageryLayer } from '$lib/credits/imagery-layers';
 import type { PositionedBody } from '$lib/types/objects';
 
-/** Per-body texture attribution, recorded when system metadata loads.
+/** One credited work behind a body's imagery, recorded as the layer attaches.
  *  `systemId` scopes the bar to the focused system; the popover shows all. */
-export interface TextureCredit {
+export interface ImageryCredit extends CreditFields {
+	layer: ImageryLayer;
 	bodyId: string;
 	systemId: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	type: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Ring attribution, sibling to {@link TextureCredit} (same scoping). No
- *  `type` field — ring profiles are radial-only, unlike texture projections. */
-export interface RingCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Cloud-overlay attribution, sibling to {@link TextureCredit}. Earth-only
- *  today; surfaced under "Clouds" on the credits page. */
-export interface CloudCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Night-lights attribution, sibling to {@link CloudCredit}. Earth-only
- *  today; surfaced under "Night lights". */
-export interface NightCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Specular-mask attribution, sibling to {@link NightCredit} — Earth's water,
- *  Titan's hydrocarbon seas. Credit is mandatory for Earth's: the mask is built
- *  from ODbL coastlines, unlike the public-domain imagery around it. */
-export interface SpecularCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Topography attribution, sibling to {@link NightCredit}; surfaced under "Topography". */
-export interface DisplacementCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
 }
 
 /** Rotational-elements attribution, recorded when the scene adopts a body's
@@ -108,20 +44,10 @@ export interface SkyboxCredit {
 
 /** Attribution state for the credits bar, popover, and page. Each map pairs
  *  with a version counter bumped on first insertion so `$derived` consumers
- *  re-read; idempotent by `bodyId` so revisiting a system doesn't rebump. */
+ *  re-read; registration is idempotent, so revisiting a system doesn't rebump. */
 export class CreditsStore {
-	texture = new Map<string, TextureCredit>();
-	textureVersion = $state(0);
-	ring = new Map<string, RingCredit>();
-	ringVersion = $state(0);
-	cloud = new Map<string, CloudCredit>();
-	cloudVersion = $state(0);
-	night = new Map<string, NightCredit>();
-	nightVersion = $state(0);
-	specular = new Map<string, SpecularCredit>();
-	specularVersion = $state(0);
-	displacement = new Map<string, DisplacementCredit>();
-	displacementVersion = $state(0);
+	imagery = new Map<string, ImageryCredit>();
+	imageryVersion = $state(0);
 	model = new Map<string, ModelCredit>();
 	modelVersion = $state(0);
 	orientation = new Map<string, OrientationCredit>();
@@ -132,42 +58,31 @@ export class CreditsStore {
 	 *  chunks stay silent rather than showing a misleading label. */
 	orbitSources = $state(new Set<OrbitalSource>());
 
-	registerTexture(credit: TextureCredit): void {
-		if (this.texture.has(credit.bodyId)) return;
-		this.texture.set(credit.bodyId, credit);
-		this.textureVersion++;
+	/** Rings key on the source too: one bundle cites several works (Saturn).
+	 *  Every other layer keeps one credit per body, so whichever path attaches
+	 *  it first — per-system or standalone — wins. */
+	registerImagery(layer: ImageryLayer, bodyId: string, systemId: string, meta: CreditFields): void {
+		const sep = '\u0000';
+		const key =
+			layer === 'rings' ? `${layer}${sep}${bodyId}${sep}${meta.source}` : `${layer}${sep}${bodyId}`;
+		if (this.imagery.has(key)) return;
+		const { source, organisation, license, attribution, description } = meta;
+		this.imagery.set(key, {
+			layer,
+			bodyId,
+			systemId,
+			source,
+			organisation,
+			license,
+			attribution,
+			description
+		});
+		this.imageryVersion++;
 	}
 
-	registerRing(credit: RingCredit): void {
-		// Keyed by body + source: ring bundles cite several works (e.g. Saturn).
-		const key = `${credit.bodyId}\u0000${credit.source}`;
-		if (this.ring.has(key)) return;
-		this.ring.set(key, credit);
-		this.ringVersion++;
-	}
-
-	registerCloud(credit: CloudCredit): void {
-		if (this.cloud.has(credit.bodyId)) return;
-		this.cloud.set(credit.bodyId, credit);
-		this.cloudVersion++;
-	}
-
-	registerNight(credit: NightCredit): void {
-		if (this.night.has(credit.bodyId)) return;
-		this.night.set(credit.bodyId, credit);
-		this.nightVersion++;
-	}
-
-	registerSpecular(credit: SpecularCredit): void {
-		if (this.specular.has(credit.bodyId)) return;
-		this.specular.set(credit.bodyId, credit);
-		this.specularVersion++;
-	}
-
-	registerDisplacement(credit: DisplacementCredit): void {
-		if (this.displacement.has(credit.bodyId)) return;
-		this.displacement.set(credit.bodyId, credit);
-		this.displacementVersion++;
+	/** Credits of one layer, in insertion order. */
+	imageryOf(layer: ImageryLayer): ImageryCredit[] {
+		return [...this.imagery.values()].filter((c) => c.layer === layer);
 	}
 
 	registerOrientation(credit: OrientationCredit): void {

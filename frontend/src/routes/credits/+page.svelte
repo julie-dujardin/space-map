@@ -4,7 +4,8 @@
 	import { archiveLabel, archiveRole } from '$lib/credits/archive-labels';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import { GITHUB_REPO_URL } from '$lib/constants';
-	import type { Credits } from './+page';
+	import type { BodyCredit, Credits } from './+page';
+	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 
 	interface Props {
 		data: { credits: Credits };
@@ -13,10 +14,8 @@
 	let { data }: Props = $props();
 	const credits = $derived(data.credits);
 
-	// Merged imagery: one section per system, one row per body+type. A type
-	// qualifier only appears when a body contributes more than one kind.
-	type ImageryTypeKey = 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings';
-
+	// Merged imagery: one section per system, one row per body+layer. A layer
+	// qualifier only appears when a body contributes more than one.
 	interface ImageryRow {
 		key: string;
 		name: string;
@@ -33,76 +32,43 @@
 		rows: ImageryRow[];
 	}
 
-	function typeLabel(k: ImageryTypeKey): string {
-		if (k === 'surface') return m.attribution_type_surface();
-		if (k === 'clouds') return m.attribution_type_clouds();
-		if (k === 'night') return m.attribution_type_night();
-		if (k === 'specular') return m.attribution_type_specular();
-		if (k === 'topography') return m.attribution_type_topography();
-		return m.attribution_type_rings();
-	}
+	const collator = new Intl.Collator();
 
 	const imagerySystems = $derived.by<ImagerySystem[]>(() => {
-		interface Interim {
-			body_id: string;
-			name: string;
-			typeKey: ImageryTypeKey;
-			source: string;
-			organisation: string;
-			license?: string;
-			attribution?: string;
-		}
-		// Per-body ordering within the list: surface → clouds → night → specular → topography → rings.
-		type CreditLike = {
-			body_id: string;
-			name: string;
-			source: string;
-			organisation: string;
-			license?: string;
-			attribution?: string;
-		};
 		const out: ImagerySystem[] = [];
 		for (const group of credits.systems) {
-			const order: Array<[ImageryTypeKey, CreditLike[]]> = [
-				['surface', group.textures ?? []],
-				['clouds', group.clouds ?? []],
-				['night', group.night ?? []],
-				['specular', group.specular ?? []],
-				['topography', group.displacement ?? []],
-				['rings', group.rings ?? []]
-			];
-			const byBody = new Map<string, Interim[]>();
-			for (const [typeKey, list] of order) {
-				for (const c of list) {
-					const arr = byBody.get(c.body_id) ?? [];
-					arr.push({
-						body_id: c.body_id,
-						name: c.name,
-						typeKey,
-						source: c.source,
-						organisation: c.organisation,
-						license: c.license,
-						attribution: c.attribution
-					});
-					byBody.set(c.body_id, arr);
-				}
-			}
+			// Keyed by the export's array names; IMAGERY_LAYERS fixes the row order.
+			const lists: Record<ImageryLayer, BodyCredit[] | undefined> = {
+				surface: group.textures,
+				clouds: group.clouds,
+				night: group.night,
+				specular: group.specular,
+				topography: group.displacement,
+				rings: group.rings
+			};
+			const byBody = new Map<string, Array<{ layer: ImageryLayer; credit: BodyCredit }>>();
+			for (const layer of IMAGERY_LAYERS)
+				for (const credit of lists[layer] ?? [])
+					byBody.set(credit.body_id, [...(byBody.get(credit.body_id) ?? []), { layer, credit }]);
+
 			if (byBody.size === 0) continue;
 			const rows: ImageryRow[] = [];
-			const bodies = [...byBody.values()].sort((a, b) => a[0].name.localeCompare(b[0].name));
+			const bodies = [...byBody.values()].sort((a, b) =>
+				collator.compare(a[0].credit.name, b[0].credit.name)
+			);
 			for (const items of bodies) {
 				const multi = items.length > 1;
-				for (const [i, it] of items.entries()) {
+				for (const [i, { layer, credit }] of items.entries()) {
 					rows.push({
-						// Body + type isn't unique: one body can credit several sources
-						// for the same imagery kind (e.g. Saturn's ring bundles).
-						key: `${it.body_id}-${it.typeKey}-${i}`,
-						name: it.name,
-						qualifier: multi ? typeLabel(it.typeKey) : undefined,
-						source: it.source,
-						organisation: it.organisation,
-						license: it.license,
-						attribution: it.attribution
+						// Body + layer isn't unique: one body can credit several sources
+						// for the same layer (e.g. Saturn's ring bundles).
+						key: `${credit.body_id}-${layer}-${i}`,
+						name: credit.name,
+						qualifier: multi ? layerLabel(layer) : undefined,
+						source: credit.source,
+						organisation: credit.organisation,
+						license: credit.license,
+						attribution: credit.attribution
 					});
 				}
 			}

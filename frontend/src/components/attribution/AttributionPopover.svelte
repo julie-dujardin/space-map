@@ -2,7 +2,8 @@
 	import { getContext } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-	import type { ModelCredit } from '$lib/scene/state/credits.svelte';
+	import type { ImageryCredit, ModelCredit } from '$lib/scene/state/credits.svelte';
+	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { orientationCredits } from '$lib/credits/orientation-sources';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -62,6 +63,8 @@
 		).map(({ entry }) => entry());
 	});
 
+	const collator = new Intl.Collator();
+
 	// Scoped to the focused system + focused body (covers standalones like
 	// Bennu/Ceres that are credited body-by-body, not system-by-system).
 	function scopedCredits<T extends { bodyId: string; systemId?: string | null }>(
@@ -69,13 +72,11 @@
 	): T[] {
 		const sysId = ctx.visibility.focusedSystemId;
 		const bodyId = ctx.visibility.focusedBodyId;
-		return [...all]
-			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
-			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
+		return [...all].filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId));
 	}
 
-	// Merged imagery rows: skybox + per-body texture/cloud/night/specular/ring credits.
-	// A body contributing more than one kind gets a type qualifier per row.
+	// Merged imagery rows: skybox + every per-body imagery layer. A body
+	// contributing more than one layer gets a qualifier per row.
 	interface ImageryRow {
 		key: string;
 		label: string;
@@ -86,57 +87,12 @@
 	}
 
 	const imageryRows = $derived.by<ImageryRow[]>(() => {
-		void ctx.credits.textureVersion;
-		void ctx.credits.cloudVersion;
-		void ctx.credits.nightVersion;
-		void ctx.credits.specularVersion;
-		void ctx.credits.displacementVersion;
-		void ctx.credits.ringVersion;
+		void ctx.credits.imageryVersion;
 
-		// Per-body ordering within the imagery list: surface → clouds → night → specular → topography → rings.
-		const byBody = new Map<
-			string,
-			Array<{
-				typeKey: 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings';
-				source: string;
-				organisation: string;
-				license?: string;
-			}>
-		>();
-		const push = (
-			bodyId: string,
-			typeKey: 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings',
-			source: string,
-			organisation: string,
-			license?: string
-		) => {
-			const arr = byBody.get(bodyId) ?? [];
-			arr.push({ typeKey, source, organisation, license });
-			byBody.set(bodyId, arr);
-		};
-		for (const c of scopedCredits(ctx.credits.texture.values()))
-			push(c.bodyId, 'surface', c.source, c.organisation, c.license);
-		for (const c of scopedCredits(ctx.credits.cloud.values()))
-			push(c.bodyId, 'clouds', c.source, c.organisation, c.license);
-		for (const c of scopedCredits(ctx.credits.night.values()))
-			push(c.bodyId, 'night', c.source, c.organisation, c.license);
-		for (const c of scopedCredits(ctx.credits.specular.values()))
-			push(c.bodyId, 'specular', c.source, c.organisation, c.license);
-		for (const c of scopedCredits(ctx.credits.displacement.values()))
-			push(c.bodyId, 'topography', c.source, c.organisation, c.license);
-		for (const c of scopedCredits(ctx.credits.ring.values()))
-			push(c.bodyId, 'rings', c.source, c.organisation, c.license);
-
-		const typeLabel = (
-			k: 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings'
-		): string => {
-			if (k === 'surface') return m.attribution_type_surface();
-			if (k === 'clouds') return m.attribution_type_clouds();
-			if (k === 'night') return m.attribution_type_night();
-			if (k === 'specular') return m.attribution_type_specular();
-			if (k === 'topography') return m.attribution_type_topography();
-			return m.attribution_type_rings();
-		};
+		const byBody = new Map<string, ImageryCredit[]>();
+		for (const layer of IMAGERY_LAYERS)
+			for (const c of scopedCredits(ctx.credits.imageryOf(layer)))
+				byBody.set(c.bodyId, [...(byBody.get(c.bodyId) ?? []), c]);
 
 		const rows: ImageryRow[] = [];
 		if (ctx.credits.skybox) {
@@ -148,25 +104,21 @@
 				license: ctx.credits.skybox.license
 			});
 		}
-		const bodies = [...byBody.keys()].sort((a, b) => bodyName(a).localeCompare(bodyName(b)));
+		const bodies = [...byBody.keys()].sort((a, b) => collator.compare(bodyName(a), bodyName(b)));
 		for (const bodyId of bodies) {
 			const items = byBody.get(bodyId)!;
-			// One line per kind of imagery even when several works contributed;
-			// the popover is a glance, /credits carries per-source detail.
-			const byType = new Map<string, typeof items>();
-			for (const it of items) {
-				const arr = byType.get(it.typeKey) ?? [];
-				arr.push(it);
-				byType.set(it.typeKey, arr);
-			}
-			const multi = byType.size > 1;
-			for (const [typeKey, group] of byType) {
+			// One line per layer even when several works contributed; the popover
+			// is a glance, /credits carries per-source detail.
+			const byLayer = new Map<ImageryLayer, ImageryCredit[]>();
+			for (const it of items) byLayer.set(it.layer, [...(byLayer.get(it.layer) ?? []), it]);
+			const multi = byLayer.size > 1;
+			for (const [layer, group] of byLayer) {
 				const orgs = [...new Set(group.map((g) => g.organisation))];
 				const licenses = new Set(group.map((g) => g.license));
 				rows.push({
-					key: `${bodyId}-${typeKey}`,
+					key: `${bodyId}-${layer}`,
 					label: bodyName(bodyId),
-					qualifier: multi ? typeLabel(group[0].typeKey) : undefined,
+					qualifier: multi ? layerLabel(layer) : undefined,
 					source: group[0].source,
 					organisation: orgs.join(' & '),
 					// Only meaningful when every work shares it.

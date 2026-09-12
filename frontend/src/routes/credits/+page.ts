@@ -9,63 +9,9 @@ import { dataBase } from '$lib/fetch/data-base';
 // [type]/[id] route under SSR), so this stays client-rendered.
 export const ssr = false;
 
-export interface TextureCredit {
-	body_id: string;
-	name: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	type: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Per-body ring credit; same shape as {@link TextureCredit} minus `type` (ring profiles are radial-only). */
-export interface RingCredit {
-	body_id: string;
-	name: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Per-body cloud-overlay credit; array name disambiguates it from surface imagery. */
-export interface CloudCredit {
-	body_id: string;
-	name: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Per-body night-lights credit; array name disambiguates it from surface imagery. */
-export interface NightCredit {
-	body_id: string;
-	name: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Per-body specular-mask credit; array name disambiguates it from surface imagery. */
-export interface SpecularCredit {
-	body_id: string;
-	name: string;
-	source: string;
-	organisation: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
-
-/** Per-body displacement/topography credit; array name disambiguates it from surface imagery. */
-export interface DisplacementCredit {
+/** One credited work behind a body's imagery. The layer it belongs to is the
+ *  array it sits in — `textures`, `rings`, … — matching `export/credits.py`. */
+export interface BodyCredit {
 	body_id: string;
 	name: string;
 	source: string;
@@ -82,12 +28,12 @@ export interface DisplacementCredit {
 export interface SystemGroup {
 	id: string | null;
 	name: string | null;
-	textures?: TextureCredit[];
-	rings?: RingCredit[];
-	clouds?: CloudCredit[];
-	night?: NightCredit[];
-	specular?: SpecularCredit[];
-	displacement?: DisplacementCredit[];
+	textures?: BodyCredit[];
+	rings?: BodyCredit[];
+	clouds?: BodyCredit[];
+	night?: BodyCredit[];
+	specular?: BodyCredit[];
+	displacement?: BodyCredit[];
 }
 
 /** Whole-sky cubemap backdrop credit; sits alongside `systems` since it has no host body. */
