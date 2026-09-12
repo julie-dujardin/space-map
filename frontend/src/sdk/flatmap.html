@@ -205,7 +205,7 @@
 
 			let map;
 			try {
-				map = await createFlatMap($('map'), options);
+				map = await createFlatMap({ container: $('map'), ...options });
 			} catch (e) {
 				fail(e);
 				throw e;

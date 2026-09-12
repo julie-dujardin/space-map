@@ -208,7 +208,7 @@
 			const log = (line) => {
 				$('log').textContent = [line, ...$('log').textContent.split('\n')].slice(0, 12).join('\n');
 			};
-			const name = (body) => body?.data.name ?? body?.data.id ?? '?';
+			const name = (body) => body?.name ?? body?.id ?? '?';
 
 			// The boot screen runs off the map's own progress: listeners passed
 			// to createMap are attached before the first load starts.
@@ -220,7 +220,7 @@
 
 			let map;
 			try {
-				map = await createMap($('map'), options);
+				map = await createMap({ container: $('map'), ...options });
 			} catch (e) {
 				$('status').textContent = 'Failed to start';
 				$('error').textContent = String(e?.message ?? e);
@@ -270,34 +270,34 @@
 				);
 				const select = $('children');
 				select.replaceChildren(new Option(`— ${name(body)} —`, ''));
-				for (const id of map.getChildren(body.data.id)) {
+				for (const id of map.getChildren(body.id)) {
 					const child = map.getBody(id);
 					if (child) select.add(new Option(name(child), id));
 				}
-				$('parent').disabled = !map.getBody(body.data.parentId);
+				$('parent').disabled = !map.getBody(body.parentId);
 			});
-			map.on('camera', ({ latitude, longitude, zoom }) => {
+			map.on('camera', ({ lat, lon, distanceKm }) => {
 				$('camera').textContent =
-					`camera lat ${latitude.toFixed(1)}° lon ${longitude.toFixed(1)}° zoom ${zoom.toFixed(2)}`;
+					`camera lat ${lat.toFixed(1)}° lon ${lon.toFixed(1)}° ${Math.round(distanceKm).toLocaleString()} km`;
 			});
 			map.on('featureselect', (e) => {
 				log(`featureselect ${e.featureId} on ${e.bodyId}`);
-				map.focusOnFeature(e.bodyId, e.featureId, e.lat, e.lon, e.diameterM, null, 'pan');
+				map.panTo({ body: e.bodyId, feature: e });
 			});
 			map.on('contextlost', () => log('contextlost'));
 			map.on('contextrestored', () => log('contextrestored'));
 
 			$('children').addEventListener('change', (e) => {
-				if (e.target.value) map.focusOnBody(e.target.value);
+				if (e.target.value) map.flyTo({ body: e.target.value });
 			});
 			$('go').addEventListener('submit', (e) => {
 				e.preventDefault();
 				const id = $('target').value.trim();
-				if (id) map.focusOnBody(id);
+				if (id) map.flyTo({ body: id });
 			});
 			$('parent').addEventListener('click', () => {
-				const parent = map.focusedBody?.data.parentId;
-				if (parent) map.focusOnBody(parent);
+				const parent = map.getFocusedBody()?.parentId;
+				if (parent) map.flyTo({ body: parent });
 			});
 			$('play').addEventListener('click', () => {
 				if (map.clock.playing) map.clock.pause();
@@ -308,7 +308,7 @@
 			// is an offset in kilometres on ecliptic axes.
 			const marks = [];
 			$('mark').addEventListener('click', () => {
-				const body = map.focusedBody;
+				const body = map.getFocusedBody();
 				if (!body) return;
 				const latitude = Math.round((Math.random() * 120 - 60) * 10) / 10;
 				const longitude = Math.round((Math.random() * 360 - 180) * 10) / 10;
@@ -316,7 +316,7 @@
 				el.className = 'demo-pin';
 				el.textContent = `${name(body)} ${latitude}°, ${longitude}°`;
 				const marker = map.addMarker({
-					anchor: { body: body.data.id, latitude, longitude, altitudeKm: 0 },
+					anchor: { body: body.id, latitude, longitude, altitudeKm: 0 },
 					element: el,
 					align: [0.5, 1],
 					occlude: true
@@ -336,9 +336,9 @@
 			// the ring travels with the body it is drawn around.
 			const lines = [];
 			$('ring').addEventListener('click', () => {
-				const body = map.focusedBody;
+				const body = map.getFocusedBody();
 				if (!body) return;
-				const radius = Math.max((body.data.radiusKm ?? 1000) * 2.5, 500);
+				const radius = Math.max((body.radiusKm ?? 1000) * 2.5, 500);
 				const points = [];
 				for (let i = 0; i < 128; i++) {
 					const a = (i / 128) * 2 * Math.PI;
@@ -346,7 +346,7 @@
 				}
 				lines.push(
 					map.addPolyline({
-						anchor: { body: body.data.id },
+						anchor: { body: body.id },
 						points,
 						color: '#66aaff',
 						widthPx: 2,
@@ -372,11 +372,11 @@
 				$('orbit').disabled = false;
 			};
 			$('orbit').addEventListener('click', () => {
-				const body = map.focusedBody;
+				const body = map.getFocusedBody();
 				if (!body || hold) return;
-				const id = body.data.id;
+				const id = body.id;
 				// Start where the camera already is, so the circle has its radius.
-				const from = map.getCamera();
+				const from = map.getPose();
 				const [x, y] = from?.position.offsetKm ?? [200000, 0, 0];
 				const radius = Math.hypot(x, y) || 200000;
 				const start = performance.now();

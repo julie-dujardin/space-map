@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount, getContext, untrack } from 'svelte';
 	import type { SceneRenderer } from '$lib/scene/renderer';
-	import type { MapController } from '$lib/scene/map-controller.svelte';
+	import type { SpaceMap } from '$lib/scene/space-map.svelte';
 	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
+	import { kmToScene } from '$lib/math/units';
 	import { navEndOf, parseUrl, urlTypeFromId } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -43,7 +44,7 @@
 	/** The map itself lives in the controller; this component gives it a box,
 	 *  keeps the URL in step with it, and draws the panels over it. */
 	interface Props {
-		map: MapController;
+		map: SpaceMap;
 		northRefId?: string | null;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
 		onUserPromotedChange?: (count: number) => void;
@@ -84,8 +85,9 @@
 			map.on('focuschange', ({ body, initial, feature }) => {
 				// The camera orbits the synthetic feature body, but the app focuses its
 				// host — the URL/drawer are set by the setFeature caller, so just report
-				// the host upward and skip the generic body auto-setFocus below.
-				onFocusChange?.(body);
+				// the host upward and skip the generic body auto-setFocus below. The
+				// map reports its own view of a body; the app works on the scene's.
+				onFocusChange?.(body && ctx.getBody(body.id));
 				if (feature || initial || isNavigatingBack || !body) return;
 				// Skip the auto-setFocus when the URL already names this body:
 				// programmatic navigators (search, deep links) push their target
@@ -93,32 +95,35 @@
 				// out by setFocus the moment the camera lands. Also skip when a
 				// group is focused and the clicked body is a member — clicking
 				// within a group should keep the group view, only the camera moves.
-				if (body.data.id === appState.view.id) return;
+				if (body.id === appState.view.id) return;
 				// A trip stays a trip: settling on a body inside one moves where the
 				// trip goes, since that is the question the page is asking.
 				if (appState.view.type === UrlType.Nav) {
 					// Where you set out from is not somewhere to go — that click just
 					// moves the camera, as the endpoint search declines to offer it.
-					if (body.data.id !== appState.view.navFrom) {
-						appState.setNav(navEndOf(appState.view, 'from'), body.data.id);
+					if (body.id !== appState.view.navFrom) {
+						appState.setNav(navEndOf(appState.view, 'from'), body.id);
 					}
 					return;
 				}
 				const inActiveGroup =
 					appState.view.type === UrlType.Group &&
 					appState.view.groupSlug !== null &&
-					ctx.isMemberOfActiveGroup(body.data.id);
+					ctx.isMemberOfActiveGroup(body.id);
 				if (!inActiveGroup) {
 					appState.setFocus({
-						type: urlTypeFromId(body.data.id),
-						id: body.data.id,
+						type: urlTypeFromId(body.id),
+						id: body.id,
 						// Drawer fills the localized name via replaceFocusName once the detail bundle resolves.
-						name: body.data.name ?? ''
+						name: body.name ?? ''
 					});
 				}
 			}),
-			map.on('camera', (view) => {
-				if (map.focusedBody) appState.setCamera(view);
+			map.on('camera', ({ lat, lon, distanceKm }) => {
+				// The URL carries scene units, which is what a shared link has always
+				// meant by zoom; the map reports kilometres.
+				if (map.focusedBody)
+					appState.setCamera({ latitude: lat, longitude: lon, zoom: kmToScene(distanceKm) });
 			}),
 			map.on('userpromoted', (count) => onUserPromotedChange?.(count)),
 			map.on('featureselect', ({ bodyId, featureId, lat, lon, diameterM }) =>

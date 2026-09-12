@@ -338,7 +338,13 @@ export class SceneRenderer {
 	private readonly shadowLight: DirectionalLight;
 	/** Both scenes' ambient fills; driven together by the high-ambient toggle. */
 	private readonly ambientLights: AmbientLight[];
-	private sunPointLight: PointLight | undefined;
+	/** The Sun's own light, looked up rather than kept: a host builds the map
+	 *  before its first load, when the scene has no Sun in it yet. */
+	private get sunPointLight(): PointLight | undefined {
+		return this.bodyObjects
+			.get(SUN_ID)
+			?.extraObjects.find((o): o is PointLight => o instanceof PointLight);
+	}
 	/** Tight-far regime active (see TIGHT_FAR_ENGAGE / updateDepthFar). */
 	private tightFar = false;
 	/** Current proxy-Sun scale factor; 1 = Sun rendered at its true position. */
@@ -558,9 +564,6 @@ export class SceneRenderer {
 		callbacks.onFocusChange(focusBody);
 
 		this.buildScene();
-
-		const sunBo = this.bodyObjects.get(SUN_ID);
-		this.sunPointLight = sunBo?.extraObjects.find((o): o is PointLight => o instanceof PointLight);
 
 		if (focusBody) this.focusController.promotion.ensureBodyObjects(focusBody);
 
@@ -1570,7 +1573,8 @@ export class SceneRenderer {
 		};
 	}
 
-	private getCameraState() {
+	/** @internal Where the camera is around the focused body, in scene units. */
+	getCameraState() {
 		const cam = this.camera.position;
 		return cartesianToSpherical(
 			[cam.x, cam.y, cam.z],

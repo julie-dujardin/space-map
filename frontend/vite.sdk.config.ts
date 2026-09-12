@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Extractor, ExtractorConfig, ExtractorLogLevel } from '@microsoft/api-extractor';
@@ -74,6 +75,7 @@ function singleFile(): Plugin {
 function bundledTypes(outDir: string): Plugin {
 	const tsconfigPath = here('./tsconfig.json');
 	const scratch = `${outDir}/types`;
+	const reportFolder = here('./etc');
 	const entry = `${scratch}/sdk/index.d.ts`;
 	// The project's own globals: Intl.DurationFormat, which TypeScript's lib lacks.
 	const ambient = here('./src/lib/types/intl-duration.d.ts');
@@ -81,6 +83,7 @@ function bundledTypes(outDir: string): Plugin {
 	return {
 		name: 'sdk-bundled-types',
 		closeBundle() {
+			mkdirSync(reportFolder, { recursive: true });
 			const tsconfig = ts.readConfigFile(tsconfigPath, ts.sys.readFile).config;
 			const parsed = ts.parseJsonConfigFileContent(
 				{ ...tsconfig, files: ['src/sdk/index.ts', ambient], include: [] },
@@ -132,7 +135,14 @@ function bundledTypes(outDir: string): Plugin {
 							}
 						},
 						dtsRollup: { enabled: true, publicTrimmedFilePath: `${outDir}/index.d.ts` },
-						apiReport: { enabled: false },
+						// Written, not compared: the committed report is what a review
+						// reads, so an unintended widening of the API shows up as a diff.
+						apiReport: {
+							enabled: true,
+							reportFolder,
+							reportFileName: 'spacemap.api.md',
+							reportTempFolder: `${outDir}/api-report-temp`
+						},
 						docModel: { enabled: false },
 						tsdocMetadata: { enabled: false },
 						messages: {
@@ -150,8 +160,74 @@ function bundledTypes(outDir: string): Plugin {
 				}),
 				{ localBuild: true }
 			);
+			if (!result.succeeded) {
+				rmSync(scratch, { recursive: true });
+				this.error(`api-extractor reported ${result.errorCount} errors`);
+			}
+			// A trimmed rollup still declares every internal type the untrimmed
+			// analysis walked through, unreferenced. Rolling the trimmed file up
+			// again drops them: nothing left in it reaches them.
+			const trimmed = `${scratch}/trimmed.d.ts`;
+			renameSync(`${outDir}/index.d.ts`, trimmed);
+			const pruned = Extractor.invoke(
+				ExtractorConfig.prepare({
+					configObject: {
+						projectFolder: here('.'),
+						mainEntryPointFilePath: trimmed,
+						newlineKind: 'lf',
+						compiler: {
+							overrideTsconfig: {
+								compilerOptions: {
+									...shared,
+									target: 'esnext',
+									module: 'esnext',
+									moduleResolution: 'bundler',
+									lib: ['esnext', 'DOM', 'DOM.Iterable'],
+									strict: true,
+									skipLibCheck: true
+								},
+								files: [trimmed, ambient],
+								include: []
+							}
+						},
+						dtsRollup: { enabled: true, untrimmedFilePath: `${outDir}/index.d.ts` },
+						apiReport: { enabled: false },
+						docModel: { enabled: false },
+						tsdocMetadata: { enabled: false },
+						messages: {
+							extractorMessageReporting: {
+								'ae-forgotten-export': { logLevel: ExtractorLogLevel.None },
+								'ae-missing-release-tag': { logLevel: ExtractorLogLevel.None },
+								'ae-unresolved-link': { logLevel: ExtractorLogLevel.None }
+							},
+							tsdocMessageReporting: { default: { logLevel: ExtractorLogLevel.None } }
+						}
+					},
+					configObjectFullPath: undefined,
+					packageJsonFullPath: here('./package.json')
+				}),
+				{ localBuild: true }
+			);
 			rmSync(scratch, { recursive: true });
-			if (!result.succeeded) this.error(`api-extractor reported ${result.errorCount} errors`);
+			if (!pruned.succeeded) this.error(`api-extractor reported ${pruned.errorCount} errors`);
+		}
+	};
+}
+
+/** What the CDN copy may weigh, gzipped, since that is what a page downloads.
+ *  A budget rather than a target: the map carries a renderer and an ephemeris,
+ *  and the number is here to catch a dependency landing in it by accident. */
+const MAX_GZIP_BYTES = 400 * 1024;
+
+function sizeBudget(outDir: string, file: string): Plugin {
+	return {
+		name: 'sdk-size-budget',
+		closeBundle() {
+			const bytes = gzipSync(readFileSync(`${outDir}/${file}`)).length;
+			const kb = (n: number) => `${(n / 1024).toFixed(1)} kB`;
+			if (bytes > MAX_GZIP_BYTES)
+				this.error(`${file} is ${kb(bytes)} gzipped, over the ${kb(MAX_GZIP_BYTES)} budget`);
+			this.info(`${file}: ${kb(bytes)} gzipped, of ${kb(MAX_GZIP_BYTES)}`);
 		}
 	};
 }
@@ -179,9 +255,12 @@ export default defineConfig(({ mode }) => {
 						bundledTypes(here('./dist/sdk-npm')),
 						copied(readdirSync(here('./src/sdk/npm')).map((file) => here(`./src/sdk/npm/${file}`)))
 					]
-				: // The demos ship next to the CDN bundle, so `vite preview` serves them
-					// from an origin that is neither the app's nor the data's.
-					copied([here('./src/sdk/demo.html'), here('./src/sdk/flatmap.html')])
+				: [
+						// The demos ship next to the CDN bundle, so `vite preview` serves
+						// them from an origin that is neither the app's nor the data's.
+						copied([here('./src/sdk/demo.html'), here('./src/sdk/flatmap.html')]),
+						sizeBudget(here('./dist/sdk'), 'spacemap.iife.js')
+					]
 		],
 		resolve: {
 			alias: {

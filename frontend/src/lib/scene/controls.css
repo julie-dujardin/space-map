@@ -1,0 +1,39 @@
+/* The four corners a map hangs its controls in. */
+.sm-ctrl {
+	position: absolute;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-width: 100%;
+	padding: 6px;
+	pointer-events: none;
+}
+
+.sm-ctrl > * {
+	pointer-events: auto;
+}
+
+.sm-ctrl--top-left {
+	top: 0;
+	left: 0;
+	align-items: flex-start;
+}
+
+.sm-ctrl--top-right {
+	top: 0;
+	right: 0;
+	align-items: flex-end;
+}
+
+.sm-ctrl--bottom-left {
+	bottom: 0;
+	left: 0;
+	align-items: flex-start;
+}
+
+.sm-ctrl--bottom-right {
+	right: 0;
+	bottom: 0;
+	align-items: flex-end;
+}

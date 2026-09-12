@@ -1,7 +1,10 @@
 /**
- * One map: its data ({@link ContextManager}), clock, renderer and the DOM
- * they live in, behind a plain API and events. Knows nothing of routes or
- * the page around it — the app's `Scene.svelte` and the SDK both drive it.
+ * One map: its data, clock, renderer and the DOM they live in, behind a plain
+ * API and events. Knows nothing of routes or the page around it — the app's
+ * `Scene.svelte` and the SDK both drive it.
+ *
+ * Every distance a host gives or is given is in kilometres. The scene's own
+ * unit stops at this class.
  */
 
 import { ContextManager } from './state/context-manager.svelte';
@@ -30,38 +33,88 @@ import {
 	type FeatureAnchor,
 	type PositionedBody
 } from '$lib/types/objects';
-import { kmToScene } from '$lib/math/units';
+import { kmToScene, sceneToKm } from '$lib/math/units';
+import { minCameraDistance } from './visibility/camera-limits';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 import { host } from '$lib/host';
 import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 import type { LabelledHazard } from '$lib/travel/hazards';
+import { bodyView, type Body } from './body-view';
+import { ControlHost, type Control, type ControlPosition } from './controls';
 import './map.css';
 
-export interface MapControllerOptions {
+export interface SpaceMapOptions {
 	/** Display settings for the page; defaults suit a bare embed. */
 	settings?: SceneSettings;
 	/** Simulation start, wall-clock time when omitted. `live` keeps the clock
 	 *  on wall-clock time; defaults to true only when no date is given. */
 	date?: Date;
 	live?: boolean;
-	/** The body to open on, and the camera around it. */
-	view?: Partial<InitialView>;
+	/** Where the map opens. */
+	view?: CameraOptions;
+}
+
+/** Where the camera sits: over a place on a body, at a distance from it. */
+export interface CameraOptions {
+	/** The body the camera orbits, by export id — `"naif-499"` for Mars. */
+	body?: string;
+	/** The place on it the camera looks down at, in degrees. */
+	lat?: number;
+	lon?: number;
+	/** How far the camera is from the body's centre, in kilometres. */
+	distanceKm?: number;
+}
+
+/** The camera as it stands. `body` is what it orbits, which is also what the
+ *  map draws in most detail. */
+export interface CameraState {
+	body: string;
+	lat: number;
+	lon: number;
+	distanceKm: number;
+}
+
+/** A named surface feature, as a `featureselect` event carries it. */
+export interface FeatureRef {
+	featureId: number;
+	/** Planetographic degrees, IAU convention. */
+	lat: number;
+	lon: number;
+	diameterM: number;
+}
+
+/** Somewhere to move the camera to. What is left out is left as it is. */
+export interface CameraTarget extends CameraOptions {
+	/** A feature on `body` to look at, rather than the body as a whole. Its
+	 *  size frames the view, so `distanceKm` is not needed. */
+	feature?: FeatureRef;
+}
+
+/** A move onto a named feature, which is the one thing the camera can turn to
+ *  without travelling. */
+export interface FeatureTarget extends CameraTarget {
+	feature: FeatureRef;
+}
+
+/** The same, for a move that does not animate: framing a body against another
+ *  one only makes sense as a placement, never as a flight. */
+export interface JumpTarget extends CameraTarget {
+	/** Put this other body — the Sun, usually — behind the one being framed. */
+	facing?: string;
+	/** How far above the ecliptic to look from, in degrees. */
+	elevationDeg?: number;
 }
 
 export interface FocusChange {
-	body: PositionedBody | undefined;
+	body: Body | undefined;
 	/** The first settle after boot. */
 	initial: boolean;
 	/** The camera orbits a surface feature; `body` is its host. */
 	feature: boolean;
 }
 
-export interface FeatureSelect {
+export interface FeatureSelect extends FeatureRef {
 	bodyId: string;
-	featureId: number;
-	lat: number;
-	lon: number;
-	diameterM: number;
 }
 
 /** The clock as the host sees it, sent whenever any of it changes. */
@@ -80,7 +133,7 @@ export interface ClockState {
 export interface MapEvents {
 	focuschange: (e: FocusChange) => void;
 	/** The camera came to rest around the focused body. */
-	camera: (view: CameraView) => void;
+	camera: (view: CameraState) => void;
 	/** A nomenclature label was clicked; carries what a fly-to needs. */
 	featureselect: (e: FeatureSelect) => void;
 	/** User-promoted bodies that can be cleared (the focused one excluded). */
@@ -134,7 +187,10 @@ const CONTEXT_LOST_PANEL_DELAY_MS = 2000;
  *  worker's pong can be slow; a false negative costs a full belt repack. */
 const RESTORE_PING_TIMEOUT_MS = 4000;
 
-export class MapController {
+/** The listener each `once` wrapper stands in for, so `off` can find it. */
+const onceTarget = new WeakMap<object, unknown>();
+
+export class SpaceMap {
 	/** @internal The map's data layer: the app drives it directly, a host
 	 *  reaches it through {@link getBody}, {@link getChildren} and events. */
 	readonly ctx = new ContextManager();
@@ -144,19 +200,22 @@ export class MapController {
 	/** @internal Null until {@link mount} builds it, and again after
 	 *  {@link unmount}; reactive so the app's debug overlays can wait on it. */
 	renderer = $state.raw<SceneRenderer | null>(null);
-	/** WebGL could not start: show a panel, not a black canvas. */
+	/** @internal WebGL could not start: show a panel, not a black canvas. */
 	webglError = $state(false);
-	/** The GPU context dropped mid-session (common on mobile) and has not come back. */
+	/** @internal The GPU context dropped mid-session (common on mobile) and has
+	 *  not come back. */
 	contextLost = $state(false);
-	/** What the renderer last settled on, a surface feature included. `.raw`:
-	 *  the renderer mutates position/satrec internals every frame. */
+	/** @internal What the renderer last settled on, a surface feature included.
+	 *  `.raw`: the renderer mutates position/satrec internals every frame. */
 	focusedBody = $state.raw<PositionedBody | undefined>();
+	/** @internal The credit line, which no host may take back off. */
+	attribution: Control<SpaceMap> | null = null;
 
 	private container: HTMLElement | null = null;
 	private canvas: HTMLCanvasElement | null = null;
 	private labelLayer: HTMLDivElement | null = null;
 	private stopWatching: (() => void) | null = null;
-	private readonly controls: (() => void)[] = [];
+	private controls: ControlHost<SpaceMap> | null = null;
 	private lostPanelTimer: ReturnType<typeof setTimeout> | undefined;
 	private initialFocusPending = true;
 	private pendingFocusId: string | null = null;
@@ -180,18 +239,18 @@ export class MapController {
 		frame: new Set()
 	};
 
-	constructor(options: MapControllerOptions = {}) {
+	constructor(options: SpaceMapOptions = {}) {
 		if (options.settings) setSceneSettings(options.settings);
 		this.clock = new SimClock(
 			dateToJD(options.date ?? new Date()),
 			options.live ?? options.date === undefined
 		);
+		const view = options.view ?? {};
 		this.initialView = {
-			id: DEFAULT_FOCUS_ID,
-			latitude: DEFAULT_FRAMING_LAT,
-			longitude: DEFAULT_FRAMING_LON,
-			zoom: DEFAULT_ZOOM,
-			...options.view
+			id: view.body ?? DEFAULT_FOCUS_ID,
+			latitude: view.lat ?? DEFAULT_FRAMING_LAT,
+			longitude: view.lon ?? DEFAULT_FRAMING_LON,
+			zoom: view.distanceKm === undefined ? DEFAULT_ZOOM : kmToScene(view.distanceKm)
 		};
 		this.ctx.onDataStale = () => this.emit('datastale');
 		// Starts now so the bench overlaps the whole boot — clock snapping and
@@ -200,9 +259,29 @@ export class MapController {
 		scheduleAtmosphereCalibration();
 	}
 
+	/** Listen for `event`. The returned function stops listening, which is the
+	 *  same thing {@link off} does. */
 	on<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): () => void {
 		this.listeners[event].add(listener);
 		return () => this.listeners[event].delete(listener);
+	}
+
+	/** Listen for the next `event` only. */
+	once<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): () => void {
+		const wrapped = ((...args: Parameters<MapEvents[K]>) => {
+			off();
+			(listener as (...a: Parameters<MapEvents[K]>) => void)(...args);
+		}) as MapEvents[K];
+		onceTarget.set(wrapped, listener);
+		const off = this.on(event, wrapped);
+		return off;
+	}
+
+	off<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): void {
+		const set = this.listeners[event];
+		set.delete(listener);
+		// A `once` listener is held as its wrapper, which the host never sees.
+		for (const held of set) if (onceTarget.get(held) === listener) set.delete(held);
 	}
 
 	private emit<K extends keyof MapEvents>(event: K, ...args: Parameters<MapEvents[K]>): void {
@@ -211,9 +290,21 @@ export class MapController {
 		}
 	}
 
-	/** A loaded object by id, with its current position. */
-	getBody(id: string): PositionedBody | undefined {
-		return this.ctx.getBody(id);
+	/** What the map knows about an object it has loaded; undefined for one it
+	 *  has not, which for a small body may simply mean not yet. */
+	getBody(id: string): Body | undefined {
+		const body = this.ctx.getBody(id);
+		return body && bodyView(body);
+	}
+
+	/** The object the camera orbits. A surface feature reports its host body. */
+	getFocusedBody(): Body | undefined {
+		const focused = this.focusedBody;
+		if (!focused) return undefined;
+		const body = isSurfaceFeature(focused)
+			? this.ctx.getBody(focused.featureAnchor!.hostId)
+			: focused;
+		return body && bodyView(body);
 	}
 
 	/** Ids of the objects orbiting `id` that this map has loaded. Loading is
@@ -222,7 +313,7 @@ export class MapController {
 		return [...(this.ctx.bodies.getChildren(id) ?? [])];
 	}
 
-	/** Fetch the scene's data for the clock's date. Resolves when all of it is
+	/** @internal Fetch the scene's data for the clock's date. Resolves when all of it is
 	 *  in, small bodies included, which is well after there is something to
 	 *  look at — {@link open} is what a caller opening a map wants. */
 	load(targetId: string = this.initialView.id): Promise<void> {
@@ -230,6 +321,7 @@ export class MapController {
 	}
 
 	/**
+	 * @internal
 	 * Load the scene and resolve as soon as it is worth looking at: the opening
 	 * body placed, with a renderer to draw it. That is the end of the load's
 	 * first phase; the small bodies behind it go on streaming for a second or
@@ -265,7 +357,7 @@ export class MapController {
 		}
 	}
 
-	/** Settle the camera on the opening view. The renderer could not do it when
+	/** @internal Settle the camera on the opening view. The renderer could not do it when
 	 *  it was built: no data had loaded yet, so it framed nothing and reported
 	 *  no focus. Call it once {@link open} resolves. */
 	applyInitialView(): void {
@@ -274,11 +366,13 @@ export class MapController {
 		this.renderer?.snapToBody(id, latitude, longitude, zoom);
 	}
 
-	/** Build the canvas and label layer inside `container` and start rendering. */
+	/** @internal Build the canvas and label layer inside `container` and start
+	 *  rendering. {@link createMap} does this; a host never has to. */
 	mount(container: HTMLElement): void {
-		if (this.container) throw new Error('MapController is already mounted');
+		if (this.container) throw new Error('SpaceMap is already mounted');
 		this.container = container;
 		container.classList.add('sm-map');
+		this.controls = new ControlHost(this, container);
 
 		const canvas = document.createElement('canvas');
 		canvas.className = 'sm-map__canvas';
@@ -335,18 +429,35 @@ export class MapController {
 		};
 	}
 
-	/** @internal Attach a control to the mounted map's container; its teardown
-	 *  runs with {@link unmount}. */
-	addControl(mount: (container: HTMLElement) => () => void): void {
-		if (!this.container) throw new Error('MapController is not mounted');
-		this.controls.push(mount(this.container));
+	/** Hang a control in one of the map's corners; top-right unless the control
+	 *  or the caller names another. Adding the same control twice does nothing. */
+	addControl(control: Control<SpaceMap>, position?: ControlPosition): this {
+		if (!this.controls) throw new Error('spacemap: the map is not mounted');
+		this.controls.add(control, position);
+		return this;
 	}
 
-	/** Stop rendering and take the map's DOM back out of the container. */
+	/** Take a control back off. The credit line is not one a host may remove —
+	 *  the imagery terms the map draws under require it. */
+	removeControl(control: Control<SpaceMap>): this {
+		if (control === this.attribution)
+			throw new Error('spacemap: the attribution control cannot be removed');
+		this.controls?.remove(control);
+		return this;
+	}
+
+	/** Stop rendering and take the map's DOM back out of the container. The map
+	 *  is finished afterwards; open another with {@link createMap}. */
+	remove(): void {
+		this.unmount();
+	}
+
+	/** @internal What {@link remove} does; the app drives the map's DOM itself. */
 	unmount(): void {
 		const { container, canvas } = this;
 		if (!container || !canvas) return;
-		for (const teardown of this.controls.splice(0)) teardown();
+		this.controls?.clear();
+		this.controls = null;
 		this.stopWatching?.();
 		this.stopWatching = null;
 		clearTimeout(this.lostPanelTimer);
@@ -405,7 +516,7 @@ export class MapController {
 		});
 	}
 
-	/** Re-read the settings into the renderer. The effects above do this on
+	/** @internal Re-read the settings into the renderer. The effects above do this on
 	 *  their own for a reactive settings object; a plain one calls it after
 	 *  each change. */
 	applySettings(): void {
@@ -426,17 +537,18 @@ export class MapController {
 				this.initialFocusPending = false;
 				this.focusedBody = body;
 				const feature = body !== undefined && isSurfaceFeature(body);
-				this.emit('focuschange', {
-					body: feature ? this.ctx.getBody(body.featureAnchor!.hostId) : body,
-					initial,
-					feature
-				});
+				this.emit('focuschange', { body: this.getFocusedBody(), initial, feature });
 			},
 			onFrame: (jd, dtMs) => {
 				if (this.listeners.frame.size > 0) this.emit('frame', { jd, dtMs });
 			},
-			onCameraPosition: (latitude, longitude, zoom) =>
-				this.emit('camera', { latitude, longitude, zoom }),
+			onCameraPosition: (latitude, longitude, zoom) => {
+				const body = this.focusedBody?.data.id;
+				// Nothing focused means nothing to measure the camera against, and
+				// the renderer reports one such settle while the scene is still empty.
+				if (body === undefined) return;
+				this.emit('camera', { body, lat: latitude, lon: longitude, distanceKm: sceneToKm(zoom) });
+			},
 			onUserPromotedChange: (count) => this.emit('userpromoted', count),
 			onFeatureSelect: (bodyId, featureId, lat, lon, diameterM) =>
 				this.emit('featureselect', { bodyId, featureId, lat, lon, diameterM })
@@ -508,6 +620,96 @@ export class MapController {
 		void this.renderer?.recoverWorkersIfDead();
 	};
 
+	/**
+	 * Fly the camera to a body, or to a named feature on one. Resolves when the
+	 * flight lands. Whatever the target leaves out the map frames itself, so
+	 * `{ body }` alone is the ordinary way to move.
+	 */
+	flyTo(target: CameraTarget): Promise<void> {
+		const body = this.targetBody(target);
+		if (target.feature) return this.toFeature(body, target.feature, 'frame');
+		// Always with a distance: told to fly to a body and nothing more, the
+		// focus controller re-aims without approaching, and the host asked to be
+		// taken there.
+		return this.settled(this.focusOnBody(body, this.framing(target, body), target.lat, target.lon));
+	}
+
+	/** Turn to a feature on the body already framed, without travelling to it —
+	 *  the move a click on its label makes. Resolves when the camera comes
+	 *  round. */
+	panTo(target: FeatureTarget): Promise<void> {
+		return this.toFeature(this.targetBody(target), target.feature, 'pan');
+	}
+
+	/** Put the camera somewhere at once, with no flight: what a page restoring a
+	 *  stored view wants, where a flight from nowhere would read as a lurch. */
+	jumpTo(target: JumpTarget): this {
+		const body = this.targetBody(target);
+		if (target.facing !== undefined) {
+			this.snapToBodyFacing(
+				body,
+				target.facing,
+				target.elevationDeg ?? 0,
+				this.framing(target, body)
+			);
+			return this;
+		}
+		if (target.feature) {
+			const { featureId, lat, lon, diameterM } = target.feature;
+			this.focusOnFeature(body, featureId, lat, lon, diameterM, null, 'snap');
+			return this;
+		}
+		const camera = this.getCamera();
+		this.snapToBody(
+			body,
+			target.lat ?? camera?.lat ?? DEFAULT_FRAMING_LAT,
+			target.lon ?? camera?.lon ?? DEFAULT_FRAMING_LON,
+			this.framing(target, body)
+		);
+		return this;
+	}
+
+	/** Where the camera is now. Null before the first frame, and while nothing
+	 *  is focused. */
+	getCamera(): CameraState | null {
+		const renderer = this.renderer;
+		const body = this.focusedBody?.data.id;
+		if (!renderer || body === undefined) return null;
+		const { latitude, longitude, distance } = renderer.getCameraState();
+		return { body, lat: latitude, lon: longitude, distanceKm: sceneToKm(distance) };
+	}
+
+	private toFeature(body: string, feature: FeatureRef, mode: 'frame' | 'pan'): Promise<void> {
+		const { featureId, lat, lon, diameterM } = feature;
+		return this.settled(this.focusOnFeature(body, featureId, lat, lon, diameterM, null, mode));
+	}
+
+	/** The focus controller reports how long its move takes. One frame past
+	 *  that: the camera is placed during the render after the move ends, so a
+	 *  host reading it the moment the flight is over would be a frame behind. */
+	private settled(ms: number): Promise<void> {
+		return new Promise((resolve) => {
+			setTimeout(() => requestAnimationFrame(() => resolve()), ms);
+		});
+	}
+
+	/** A move with no body named moves around the one already focused. */
+	private targetBody(target: CameraTarget): string {
+		const body = target.body ?? this.focusedBody?.data.id;
+		if (body === undefined) throw new Error('spacemap: no body to move to, and none focused');
+		return body;
+	}
+
+	/** Camera distance in scene units: what was asked for, else a distance that
+	 *  frames the body, else where the camera already is. */
+	private framing(target: CameraTarget, id: string): number {
+		if (target.distanceKm !== undefined) return kmToScene(target.distanceKm);
+		const body = this.ctx.getBody(id);
+		if (body && body.data.radiusKm > 0) return minCameraDistance(body) * 5;
+		return this.renderer?.getCameraState().distance ?? DEFAULT_ZOOM;
+	}
+
+	/** @internal */
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
 		// A deep link on a body the renderer will not settle on itself (an
 		// unplaceable one) can ask for focus while the scene is still mounting;
@@ -519,18 +721,19 @@ export class MapController {
 		return this.renderer.focusOnBody(id, zoom, latitude, longitude);
 	}
 
-	/** Instantly focus + frame a body (no fly) — for deep links whose target
-	 *  loaded after the initial render settled on the placeholder parent. */
+	/** @internal Instantly focus + frame a body (no fly) — for deep links whose
+	 *  target loaded after the initial render settled on the placeholder parent. */
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
 		this.renderer?.snapToBody(id, latitude, longitude, zoom);
 	}
 
-	/** Snap focus onto a body, framed looking toward another body (e.g. the Sun) above the ecliptic. */
+	/** @internal Snap focus onto a body, framed looking toward another body (e.g.
+	 *  the Sun) above the ecliptic. */
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
 		this.renderer?.snapToBodyFacing(id, towardId, elevationDeg, distance);
 	}
 
-	/** Focus a surface feature as a real orbitable body seated on its host.
+	/** @internal Focus a surface feature as a real orbitable body seated on its host.
 	 *  Standoff scales with feature size, floored and capped so it never
 	 *  collapses or overshoots.
 	 *
@@ -565,7 +768,7 @@ export class MapController {
 	/** Where the camera is and what it orbits, as anchors a host can store,
 	 *  change and hand back to {@link holdCamera}. Null before the first frame
 	 *  or while nothing is focused. */
-	getCamera(): CameraPose | null {
+	getPose(): CameraPose | null {
 		const renderer = this.renderer;
 		const focused = this.focusedBody;
 		if (!renderer || !focused) return null;
@@ -581,7 +784,7 @@ export class MapController {
 	 *  the same body when you move in close. */
 	holdCamera(): CameraHold {
 		const renderer = this.renderer;
-		if (!renderer) throw new Error('MapController is not mounted');
+		if (!renderer) throw new Error('SpaceMap is not mounted');
 		// Two things cannot drive one camera, so taking the hold again retires
 		// the one before it: that handle reports it no longer has the camera and
 		// stops writing poses nothing would apply. The renderer is already
@@ -615,7 +818,7 @@ export class MapController {
 	addMarker(options: MarkerOptions): Marker {
 		const renderer = this.renderer;
 		const canvas = this.canvas;
-		if (!renderer || !canvas) throw new Error('MapController is not mounted');
+		if (!renderer || !canvas) throw new Error('SpaceMap is not mounted');
 		const marker = new MarkerExtension(options, canvas);
 		marker.bind(() => renderer.extensions.remove(marker));
 		renderer.extensions.add(marker);
@@ -626,7 +829,7 @@ export class MapController {
 	 *  line round a body travels with it. */
 	addPolyline(options: PolylineOptions): Polyline {
 		const renderer = this.renderer;
-		if (!renderer) throw new Error('MapController is not mounted');
+		if (!renderer) throw new Error('SpaceMap is not mounted');
 		const line = new PolylineExtension(options);
 		line.bind(() => renderer.extensions.remove(line));
 		renderer.extensions.add(line);

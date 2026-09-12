@@ -7,59 +7,70 @@
  * projection of the host's choosing, with layers it can switch and drawings of
  * its own on top. The classes, the host seam and the clock's date helpers are
  * exported for hosts that drive them directly.
+ *
+ * Distances are kilometres and angles are degrees throughout.
  */
 
 import { configureHost, type CoreMessages, type HostOverrides } from '$lib/host';
-import {
-	MapController,
-	type MapControllerOptions,
-	type MapEvents
-} from '$lib/scene/map-controller.svelte';
+import type { Control } from '$lib/scene/controls';
+import { SpaceMap, type SpaceMapOptions, type MapEvents } from '$lib/scene/space-map.svelte';
 import { atmosphereBootSettled } from '$lib/scene/perf/atmosphere-calibration';
 import { defaultSceneSettings } from '$lib/scene/settings.svelte';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 import { FlatMap, type FlatMapEvents, type FlatMapOptions } from '$lib/flatmap/flat-map';
-import { mountAttribution } from './controls/attribution.svelte';
-import { mountFlatAttribution } from './controls/flat-attribution';
+import { AttributionControl } from './controls/attribution.svelte';
+import { FlatAttributionControl } from './controls/flat-attribution';
 
-export interface MapOptions extends MapControllerOptions {
+/** What both maps take: where to put it, where its data comes from, and what
+ *  language to read it in. */
+interface CommonOptions {
+	/** The element to build the map in, or a selector that finds one. */
+	container: HTMLElement | string;
 	/** Root of the data export; the production CDN when omitted. Page-wide,
 	 *  like everything on the host: the last map created sets it, and data
-	 *  already fetched keeps the origin it came from. Images keep their own
-	 *  origin, since the production data origin does not serve them; a mirror
-	 *  that serves both sets `imagesUrl` through {@link configureHost}. */
+	 *  already fetched keeps the origin it came from. */
 	dataUrl?: string;
+	/** Root of the image export. Its own origin in production, since the data
+	 *  origin does not serve pictures; a mirror that serves both sets this to
+	 *  the same place as `dataUrl`. */
+	imagesUrl?: string;
 	/** BCP-47 tag that picks localized names; English when omitted. */
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
 	messages?: Partial<CoreMessages>;
+}
+
+export interface MapOptions extends CommonOptions, SpaceMapOptions {
+	/** Controls to hang on the map, each in the corner it asks for. The credit
+	 *  line is always there and is not one of them. */
+	controls?: Control<SpaceMap>[];
 	/** Listeners attached before the first load, so the boot's `progress`,
 	 *  `loading` and `error` events are observable while it runs. Later ones go
-	 *  through {@link MapController.on}. */
+	 *  through {@link SpaceMap.on}. */
 	events?: { [K in keyof MapEvents]?: MapEvents[K] };
 }
 
-/** Mount a map in `container` and resolve once it is worth looking at: the
- *  opening body placed, and the one-off quality benchmark done — that measures
- *  the GPU, so it must not run while the reader is already moving the camera.
- *  The small bodies go on streaming in behind the map this returns.
+export interface FlatMapCreateOptions extends CommonOptions, FlatMapOptions {
+	controls?: Control<FlatMap>[];
+	/** Listeners attached before the first load, so a slow or failed load is
+	 *  observable while it runs. Later ones go through {@link FlatMap.on}. */
+	events?: { [K in keyof FlatMapEvents]?: FlatMapEvents[K] };
+}
+
+/** Mount a map and resolve once it is worth looking at: the opening body
+ *  placed, and the one-off quality benchmark done — that measures the GPU, so
+ *  it must not run while the reader is already moving the camera. The small
+ *  bodies go on streaming in behind the map this returns.
  *
  *  Rejects when WebGL is unavailable, or when the data fails before there is
  *  anything to look at; a failure past that point arrives as an `error` event. */
-export async function createMap(
-	container: HTMLElement,
-	options: MapOptions = {}
-): Promise<MapController> {
-	const { dataUrl, locale, messages, events, ...controller } = options;
-	const overrides: HostOverrides = {};
-	// The trailing slash is trimmed by configureHost, for every host alike.
-	if (dataUrl !== undefined) overrides.dataUrl = dataUrl;
-	if (locale !== undefined) overrides.locale = () => locale;
-	if (messages !== undefined) overrides.messages = messages;
-	configureHost(overrides);
+export async function createMap(options: MapOptions): Promise<SpaceMap> {
+	const { container, dataUrl, imagesUrl, locale, messages, controls, events, ...rest } = options;
+	const element = resolveContainer(container);
+	applyHost({ dataUrl, imagesUrl, locale, messages });
 
-	const map = new MapController(controller);
-	map.mount(container);
+	const map = new SpaceMap(rest);
+	map.mount(element);
 	if (map.webglError) {
 		map.unmount();
 		throw new Error('spacemap: WebGL is not available');
@@ -67,64 +78,88 @@ export async function createMap(
 	for (const [event, listener] of Object.entries(events ?? {})) {
 		map.on(event as keyof MapEvents, listener as MapEvents[keyof MapEvents]);
 	}
-	map.addControl((element) => mountAttribution(map, element));
+	map.attribution = new AttributionControl();
+	map.addControl(map.attribution);
+	for (const control of controls ?? []) map.addControl(control);
 	await map.open();
 	map.applyInitialView();
 	await atmosphereBootSettled();
 	return map;
 }
 
-export interface FlatMapCreateOptions extends FlatMapOptions {
-	/** Root of the data export; the production CDN when omitted. Page-wide, as
-	 *  on {@link createMap} — the last map created sets it. */
-	dataUrl?: string;
-	/** BCP-47 tag that picks localized names; English when omitted. */
-	locale?: string;
-	/** Replaces the English wording the map renders itself, one key at a time. */
-	messages?: Partial<CoreMessages>;
-	/** Listeners attached before the first load, so a slow or failed load is
-	 *  observable while it runs. Later ones go through {@link FlatMap.on}. */
-	events?: { [K in keyof FlatMapEvents]?: FlatMapEvents[K] };
-}
+/** Mount a flat map of one body's surface and resolve once its first picture
+ *  is loaded. Rejects when the body has no map texture or the data does not
+ *  load. */
+export async function createFlatMap(options: FlatMapCreateOptions): Promise<FlatMap> {
+	const { container, dataUrl, imagesUrl, locale, messages, controls, events, ...rest } = options;
+	const element = resolveContainer(container);
+	applyHost({ dataUrl, imagesUrl, locale, messages });
 
-/** Mount a flat map of one body's surface in `container` and resolve once its
- *  first picture is loaded. Rejects when the body has no map texture or the
- *  data does not load. */
-export async function createFlatMap(
-	container: HTMLElement,
-	options: FlatMapCreateOptions = {}
-): Promise<FlatMap> {
-	const { dataUrl, locale, messages, events, ...flat } = options;
-	const overrides: HostOverrides = {};
-	if (dataUrl !== undefined) overrides.dataUrl = dataUrl;
-	if (locale !== undefined) overrides.locale = () => locale;
-	if (messages !== undefined) overrides.messages = messages;
-	configureHost(overrides);
-
-	const map = new FlatMap(flat);
-	map.mount(container);
+	const map = new FlatMap(rest);
+	map.mount(element);
 	for (const [event, listener] of Object.entries(events ?? {})) {
 		map.on(event as keyof FlatMapEvents, listener as FlatMapEvents[keyof FlatMapEvents]);
 	}
-	map.addControl((root) => mountFlatAttribution(map, root));
+	map.attribution = new FlatAttributionControl();
+	map.addControl(map.attribution);
+	for (const control of controls ?? []) map.addControl(control);
 	await map.load();
 	return map;
 }
 
-export { configureHost, MapController, FlatMap, defaultSceneSettings, dateToJD, jdToDate };
+function resolveContainer(container: HTMLElement | string): HTMLElement {
+	if (typeof container !== 'string') return container;
+	const element = document.querySelector(container);
+	if (!(element instanceof HTMLElement))
+		throw new Error(`spacemap: no element matches ${container}`);
+	return element;
+}
+
+/** What a map leaves out goes back to its default, so a second map on the page
+ *  does not inherit the first one's origins. */
+function applyHost(options: Pick<CommonOptions, 'dataUrl' | 'imagesUrl' | 'locale' | 'messages'>) {
+	const overrides: HostOverrides = {};
+	// The trailing slash is trimmed by configureHost, for every host alike.
+	if (options.dataUrl !== undefined) overrides.dataUrl = options.dataUrl;
+	if (options.imagesUrl !== undefined) overrides.imagesUrl = options.imagesUrl;
+	if (options.locale !== undefined) overrides.locale = () => options.locale as string;
+	if (options.messages !== undefined) overrides.messages = options.messages;
+	configureHost(overrides);
+}
+
+export {
+	AttributionControl,
+	configureHost,
+	dateToJD,
+	defaultSceneSettings,
+	FlatAttributionControl,
+	FlatMap,
+	jdToDate,
+	SpaceMap
+};
+
+// -- the Solar System map -----------------------------------------------------
 export type {
+	CameraOptions,
+	CameraState,
+	CameraTarget,
 	ClockState,
+	FeatureRef,
 	FeatureSelect,
+	FeatureTarget,
 	FocusChange,
-	MapControllerOptions,
-	MapEvents
-} from '$lib/scene/map-controller.svelte';
-export type { CameraView, InitialView } from '$lib/scene/types';
+	JumpTarget,
+	MapEvents,
+	SpaceMapOptions
+} from '$lib/scene/space-map.svelte';
+export type { Body, BodyType, OrbitClass } from '$lib/scene/body-view';
+export type { SimClock } from '$lib/scene/state/clock.svelte';
+export type { Control, ControlPosition } from '$lib/scene/controls';
+export type { SceneSettings } from '$lib/scene/settings.svelte';
 export type { Anchor, InertialAnchor, OffsetKm, SurfaceAnchor } from '$lib/scene/extensions/anchor';
 export type { Marker, MarkerOptions } from '$lib/scene/extensions/marker';
 export type { CameraHold, CameraPose } from '$lib/scene/extensions/camera';
 export type { Polyline, PolylineOptions } from '$lib/scene/extensions/polyline';
-export type { SceneSettings } from '$lib/scene/settings.svelte';
 export type {
 	CoverageEdge,
 	CoveragePauseNotice,
@@ -132,6 +167,8 @@ export type {
 	NoticeTopic,
 	OutOfRangeNotice
 } from '$lib/scene/notice';
+
+// -- the flat map -------------------------------------------------------------
 export type { FlatMapEvents, FlatMapOptions, FlatViewState } from '$lib/flatmap/flat-map';
 export type { Extent, Projection, ProjectionId, ProjectionOptions } from '$lib/flatmap/projection';
 export { createProjection, PROJECTION_IDS, projectionAspect } from '$lib/flatmap/projection';
@@ -153,5 +190,6 @@ export type {
 	PolylineOptions as FlatPolylineOptions,
 	ShapeStyle
 } from '$lib/flatmap/overlay';
+
+// -- the host seam ------------------------------------------------------------
 export type { CoreMessages, Host, HostOverrides } from '$lib/host';
-export type { PositionedBody } from '$lib/types/objects';

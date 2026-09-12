@@ -6,56 +6,50 @@
  */
 
 import { host } from '$lib/host';
-import type { MapController } from '$lib/scene/map-controller.svelte';
+import type { Control, ControlPosition } from '$lib/scene/controls';
+import type { SpaceMap } from '$lib/scene/space-map.svelte';
 import { attributionChips } from '$lib/scene/state/attribution';
+import { bar, group, link, CREDITS_URL, HOME_URL } from './attribution-bar';
 import './attribution.css';
 
-const HOME_URL = 'https://spacemap.co';
-const CREDITS_URL = 'https://spacemap.co/credits';
+export class AttributionControl implements Control<SpaceMap> {
+	private stop: (() => void) | null = null;
 
-function link(href: string, text: string, className?: string): HTMLAnchorElement {
-	const a = document.createElement('a');
-	a.href = href;
-	a.target = '_blank';
-	a.rel = 'noopener noreferrer';
-	a.textContent = text;
-	if (className) a.className = className;
-	return a;
+	onAdd(map: SpaceMap): HTMLElement {
+		const root = bar();
+		const orbits = group();
+		const imagery = group();
+		root.append(
+			link(HOME_URL, 'spacemap', 'sm-attribution__home'),
+			orbits,
+			imagery,
+			link(CREDITS_URL, host().messages.credits_see_all())
+		);
+		this.stop = $effect.root(() => {
+			$effect(() => {
+				const chips = attributionChips(map.ctx);
+				fill(orbits, host().messages.attribution_orbits(), chips.orbits);
+				fill(imagery, host().messages.attribution_imagery(), chips.imagery);
+			});
+		});
+		return root;
+	}
+
+	onRemove(): void {
+		this.stop?.();
+		this.stop = null;
+	}
+
+	getDefaultPosition(): ControlPosition {
+		return 'bottom-right';
+	}
 }
 
-/** Adds the control to `container` and keeps it in step with the map.
- *  Returns the teardown. */
-export function mountAttribution(map: MapController, container: HTMLElement): () => void {
-	const bar = document.createElement('div');
-	bar.className = 'sm-attribution';
-	const home = link(HOME_URL, 'spacemap', 'sm-attribution__home');
-	const orbits = document.createElement('span');
-	orbits.className = 'sm-attribution__group';
-	const imagery = document.createElement('span');
-	imagery.className = 'sm-attribution__group';
-	bar.append(home, orbits, imagery, link(CREDITS_URL, host().messages.credits_see_all()));
-	container.append(bar);
-
-	const fill = (el: HTMLElement, label: string, names: string[]): void => {
-		el.hidden = names.length === 0;
-		if (el.hidden) return;
-		el.replaceChildren();
-		const tag = document.createElement('span');
-		tag.className = 'sm-attribution__label';
-		tag.textContent = `${label}:`;
-		el.append(tag, ` ${names.join(' · ')}`);
-	};
-
-	const stop = $effect.root(() => {
-		$effect(() => {
-			const chips = attributionChips(map.ctx);
-			fill(orbits, host().messages.attribution_orbits(), chips.orbits);
-			fill(imagery, host().messages.attribution_imagery(), chips.imagery);
-		});
-	});
-
-	return () => {
-		stop();
-		bar.remove();
-	};
+function fill(el: HTMLElement, label: string, names: string[]): void {
+	el.hidden = names.length === 0;
+	if (el.hidden) return;
+	const tag = document.createElement('span');
+	tag.className = 'sm-attribution__label';
+	tag.textContent = `${label}:`;
+	el.replaceChildren(tag, ` ${names.join(' · ')}`);
 }

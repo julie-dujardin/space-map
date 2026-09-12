@@ -24,7 +24,16 @@ import {
 	type RasterLayer,
 	type VectorLayer
 } from './layers';
-import { Overlay, type FlatMarker, type FlatShape } from './overlay';
+import {
+	Overlay,
+	type BoxOptions,
+	type CircleOptions,
+	type FlatMarker,
+	type FlatShape,
+	type MarkerOptions,
+	type PolygonOptions,
+	type PolylineOptions
+} from './overlay';
 import {
 	createProjection,
 	PROJECTION_IDS,
@@ -41,6 +50,7 @@ import {
 } from './raster';
 import { bestTier, bundleUrl, loadBodySources, type BodySources } from './sources';
 import { clampView, Viewport, type ViewState } from './view';
+import { ControlHost, type Control, type ControlPosition } from '$lib/scene/controls';
 import type { LonLat } from './geometry';
 import './flat-map.css';
 
@@ -129,6 +139,9 @@ function isRaster(layer: Layer): layer is RasterLayer {
 	return layer.kind === 'raster';
 }
 
+/** The listener each `once` wrapper stands in for, so `off` can find it. */
+const onceTarget = new WeakMap<object, unknown>();
+
 export class FlatMap {
 	private container: HTMLElement | null = null;
 	private readonly root = document.createElement('div');
@@ -139,6 +152,7 @@ export class FlatMap {
 	private readonly markerLayer = document.createElement('div');
 	private readonly ctx: CanvasRenderingContext2D | null;
 
+	/** @internal The drawings, which the map's own add/clear methods drive. */
 	readonly overlay: Overlay;
 
 	private bodyId: string;
@@ -165,7 +179,9 @@ export class FlatMap {
 	 *  one being left can tell that it is no longer wanted. */
 	private generation = 0;
 	/** Teardowns for controls mounted inside the map's box. */
-	private readonly controls: (() => void)[] = [];
+	private controls: ControlHost<FlatMap> | null = null;
+	/** @internal The credit line, which no host may take back off. */
+	attribution: Control<FlatMap> | null = null;
 
 	private lookup: InverseLookup | null = null;
 	private lookupKey = '';
@@ -220,24 +236,45 @@ export class FlatMap {
 
 	// -- lifecycle ------------------------------------------------------------
 
+	/** @internal Put the map's own box inside `container`. {@link createFlatMap}
+	 *  does this; a host never has to. */
 	mount(container: HTMLElement): void {
 		this.container = container;
 		container.append(this.root);
+		this.controls = new ControlHost(this, this.root);
 		this.resizeObserver = new ResizeObserver(() => this.renderMoving());
 		this.resizeObserver.observe(this.root);
 		this.attachInteraction();
 	}
 
-	/** @internal Attach a control inside the map's own box — which is the
-	 *  positioned element the container need not be — and tear it down with
-	 *  {@link unmount}. */
-	addControl(mount: (root: HTMLElement) => () => void): void {
-		this.controls.push(mount(this.root));
+	/** Hang a control in one of the map's corners; top-right unless the control
+	 *  or the caller names another. Adding the same control twice does nothing. */
+	addControl(control: Control<FlatMap>, position?: ControlPosition): this {
+		if (!this.controls) throw new Error('spacemap: the map is not mounted');
+		this.controls.add(control, position);
+		return this;
 	}
 
+	/** Take a control back off. The credit line is not one a host may remove —
+	 *  the imagery terms the pictures are published under require it. */
+	removeControl(control: Control<FlatMap>): this {
+		if (control === this.attribution)
+			throw new Error('spacemap: the attribution control cannot be removed');
+		this.controls?.remove(control);
+		return this;
+	}
+
+	/** Take the map back out of its container. It is finished afterwards; open
+	 *  another with {@link createFlatMap}. */
+	remove(): void {
+		this.unmount();
+	}
+
+	/** @internal What {@link remove} does; the app drives the map's DOM itself. */
 	unmount(): void {
 		this.disposed = true;
-		for (const teardown of this.controls.splice(0)) teardown();
+		this.controls?.clear();
+		this.controls = null;
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		cancelAnimationFrame(this.frame);
@@ -251,8 +288,9 @@ export class FlatMap {
 		this.container = null;
 	}
 
-	/** Find the body's pictures and get the first one on screen. Resolves once
-	 *  there is something to look at, or rejects when the body has no map. */
+	/** @internal Find the body's pictures and get the first one on screen.
+	 *  Resolves once there is something to look at, or rejects when the body has
+	 *  no map. */
 	async load(): Promise<void> {
 		await this.adopt(this.bodyId);
 	}
@@ -527,31 +565,31 @@ export class FlatMap {
 
 	// -- drawing --------------------------------------------------------------
 
-	addPolyline(options: Parameters<Overlay['addPolyline']>[0]): FlatShape {
+	addPolyline(options: PolylineOptions): FlatShape {
 		const shape = this.overlay.addPolyline(options);
 		this.render();
 		return shape;
 	}
 
-	addPolygon(options: Parameters<Overlay['addPolygon']>[0]): FlatShape {
+	addPolygon(options: PolygonOptions): FlatShape {
 		const shape = this.overlay.addPolygon(options);
 		this.render();
 		return shape;
 	}
 
-	addBox(options: Parameters<Overlay['addBox']>[0]): FlatShape {
+	addBox(options: BoxOptions): FlatShape {
 		const shape = this.overlay.addBox(options);
 		this.render();
 		return shape;
 	}
 
-	addCircle(options: Parameters<Overlay['addCircle']>[0]): FlatShape {
+	addCircle(options: CircleOptions): FlatShape {
 		const shape = this.overlay.addCircle(options);
 		this.render();
 		return shape;
 	}
 
-	addMarker(options: Parameters<Overlay['addMarker']>[0]): FlatMarker {
+	addMarker(options: MarkerOptions): FlatMarker {
 		const marker = this.overlay.addMarker(options);
 		this.render();
 		return marker;
@@ -565,6 +603,8 @@ export class FlatMap {
 
 	// -- events ---------------------------------------------------------------
 
+	/** Listen for `event`. The returned function stops listening, which is the
+	 *  same thing {@link off} does. */
 	on<K extends keyof FlatMapEvents>(event: K, listener: FlatMapEvents[K]): () => void {
 		let set = this.listeners.get(event);
 		if (!set) {
@@ -573,6 +613,25 @@ export class FlatMap {
 		}
 		set.add(listener as (...args: never[]) => void);
 		return () => set.delete(listener as (...args: never[]) => void);
+	}
+
+	/** Listen for the next `event` only. */
+	once<K extends keyof FlatMapEvents>(event: K, listener: FlatMapEvents[K]): () => void {
+		const wrapped = ((...args: Parameters<FlatMapEvents[K]>) => {
+			off();
+			(listener as (...a: Parameters<FlatMapEvents[K]>) => void)(...args);
+		}) as FlatMapEvents[K];
+		onceTarget.set(wrapped, listener);
+		const off = this.on(event, wrapped);
+		return off;
+	}
+
+	off<K extends keyof FlatMapEvents>(event: K, listener: FlatMapEvents[K]): void {
+		const set = this.listeners.get(event);
+		if (!set) return;
+		set.delete(listener as (...args: never[]) => void);
+		// A `once` listener is held as its wrapper, which the host never sees.
+		for (const held of set) if (onceTarget.get(held) === listener) set.delete(held);
 	}
 
 	private emit<K extends keyof FlatMapEvents>(

@@ -1,4 +1,4 @@
-import { dateToJD, MS_PER_DAY } from '$lib/time/jd';
+import { dateToJD, jdToDate, MS_PER_DAY } from '$lib/time/jd';
 
 /** How long a scrub has to hold still to count as come to rest. */
 const SETTLE_MS = 400;
@@ -19,13 +19,14 @@ export class SimClock {
 	jd = $state(0);
 	timeScale = $state(1);
 	direction = $state<1 | -1>(1);
-	/** Set by {@link setJD}; the renderer reads and clears it to tell a deliberate
-	 *  date jump from playback. */
+	/** @internal Set by {@link setJD}; the renderer reads and clears it to tell a
+	 *  deliberate date jump from playback. */
 	seeked = false;
-	/** Bumped by {@link jumpTo} only — a one-off jump the URL should reflect at
-	 *  once. Scrubs stay on {@link setJD} so a drag doesn't spam history. */
+	/** @internal Bumped by {@link jumpTo} only — a one-off jump the URL should
+	 *  reflect at once. Scrubs stay on {@link setJD} so a drag doesn't spam
+	 *  history. */
 	jumps = $state(0);
-	/** The date for readers that can't afford a per-frame one — a whole porkchop
+	/** @internal The date for readers that can't afford a per-frame one — a whole porkchop
 	 *  grid, say. Playback leaves it behind and it catches up once the clock comes
 	 *  to rest, at once on a jump or a pause since those are the reader's own doing. */
 	settledJd = $state(0);
@@ -46,7 +47,8 @@ export class SimClock {
 		this.lastRealMs = performance.now();
 	}
 
-	/** Advance jd by real elapsed time. Clamps to an armed boundary stop and pauses. */
+	/** @internal Advance jd by real elapsed time. Clamps to an armed boundary
+	 *  stop and pauses. */
 	tick(nowMs: number): void {
 		const dt = nowMs - this.lastRealMs;
 		this.lastRealMs = nowMs;
@@ -80,7 +82,8 @@ export class SimClock {
 		this.jd = proposed;
 	}
 
-	/** Arm or replace the boundary stops consulted by {@link tick}; `null` clears. */
+	/** @internal Arm or replace the boundary stops consulted by {@link tick};
+	 *  `null` clears. */
 	setBoundaryStops(stops: BoundaryStops | null): void {
 		this.stops = stops;
 	}
@@ -103,6 +106,8 @@ export class SimClock {
 		this.lastRealMs = performance.now();
 	}
 
+	/** @internal Seek without marking the move as a jump — for a dragged slider,
+	 *  which would otherwise fill the history with every frame of the drag. */
 	setJD(jd: number): void {
 		this.jd = jd;
 		this.seeked = true;
@@ -135,7 +140,7 @@ export class SimClock {
 		this.settleTimer = setTimeout(() => this.settle(), SETTLE_MS);
 	}
 
-	/** Move the clock like playback, one frame at a time, rather than jumping.
+	/** @internal Move the clock like playback, one frame at a time, rather than jumping.
 	 *  Deliberately doesn't set {@link seeked} — that flag re-anchors the focus,
 	 *  and firing it every sweep frame would drag the camera off its target. */
 	sweepTo(jd: number): void {
@@ -167,5 +172,15 @@ export class SimClock {
 
 	get playing(): boolean {
 		return this.timeScale !== 0;
+	}
+
+	/** The moment the map is showing. */
+	get date(): Date {
+		return jdToDate(this.jd);
+	}
+
+	/** Show another moment, as one deliberate move. */
+	setDate(date: Date): void {
+		this.jumpTo(dateToJD(date));
 	}
 }

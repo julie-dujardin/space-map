@@ -1,4 +1,4 @@
-/* The map's own DOM — a canvas under the label layer — as MapController builds it. */
+/* The map's own DOM — a canvas under the label layer — as SpaceMap builds it. */
 .sm-map {
 	position: relative;
 	width: 100%;

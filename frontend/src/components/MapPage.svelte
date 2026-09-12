@@ -2,7 +2,7 @@
 	import { onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
-	import { MapController } from '$lib/scene/map-controller.svelte';
+	import { SpaceMap } from '$lib/scene/space-map.svelte';
 	import { formatJulianDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
@@ -100,6 +100,7 @@
 	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import LoadingBar from './LoadingBar.svelte';
 	import { startPageReload } from '$lib/reload';
+	import { sceneToKm } from '$lib/math/units';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { jdToDate } from '$lib/time/jd';
 
@@ -110,14 +111,14 @@
 
 	const appState = createAppState();
 	setContext('appState', appState);
-	const map = new MapController({
+	const map = new SpaceMap({
 		date: appState.view.date,
 		live: appState.view.isNow,
 		view: {
-			id: appState.view.id,
-			latitude: appState.view.latitude,
-			longitude: appState.view.longitude,
-			zoom: appState.view.zoom
+			body: appState.view.id,
+			lat: appState.view.latitude,
+			lon: appState.view.longitude,
+			distanceKm: sceneToKm(appState.view.zoom)
 		}
 	});
 	const ctx = map.ctx;
@@ -250,7 +251,7 @@
 		map.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
 	}
 
-	// `.raw`: see MapController's `focusedBody` (avoids deep proxying of
+	// `.raw`: see SpaceMap's `focusedBody` (avoids deep proxying of
 	// position/satrec, which the renderer and SGP4 mutate).
 	let selectedBody = $state.raw<PositionedBody | undefined>();
 	/**
