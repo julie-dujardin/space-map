@@ -16,8 +16,16 @@ import {
 	type RefineEnd,
 	type SolveRequest
 } from './panel.svelte';
-import { DEFAULT_TRIP } from './trip';
+import { DEFAULT_TRIP, type EndpointMode, type TripState } from './trip';
 import type { TransferFrame } from './travel-body';
+
+/** A trip leaving one named way, every other term at its default. */
+function departingFrom(mode: EndpointMode): TripState {
+	return {
+		...DEFAULT_TRIP,
+		ends: { ...DEFAULT_TRIP.ends, origin: { ...DEFAULT_TRIP.ends.origin, mode } }
+	};
+}
 
 /** A trip as the component puts it: the two ends and the frame from the page,
  *  every other term read off the panel itself. */
@@ -45,13 +53,13 @@ function solveTrip(
 describe('TravelPanelState arrival mode', () => {
 	it('maps each destination mode onto the kernel case it means', () => {
 		const panel = new TravelPanelState();
-		panel.targetMode = 'surface';
+		panel.ends.target.mode = 'surface';
 		expect(panel.arrivalMode).toBe('landing');
-		panel.targetMode = 'low-orbit';
+		panel.ends.target.mode = 'low-orbit';
 		expect(panel.arrivalMode).toBe('low-orbit');
-		panel.targetMode = 'elliptical';
+		panel.ends.target.mode = 'elliptical';
 		expect(panel.arrivalMode).toBe('capture');
-		panel.targetMode = 'flyby';
+		panel.ends.target.mode = 'flyby';
 		expect(panel.arrivalMode).toBe('flyby');
 	});
 
@@ -59,8 +67,8 @@ describe('TravelPanelState arrival mode', () => {
 	// stale — a crater can only be landed in.
 	it('lands on a surface feature whatever the picker last held', () => {
 		const panel = new TravelPanelState();
-		panel.targetMode = 'flyby';
-		panel.targetAtSite = true;
+		panel.ends.target.mode = 'flyby';
+		panel.ends.target.atSite = true;
 		expect(panel.arrivalMode).toBe('landing');
 	});
 });
@@ -68,16 +76,16 @@ describe('TravelPanelState arrival mode', () => {
 describe('TravelPanelState departure mode', () => {
 	it('leaves from the ground or from a parking orbit', () => {
 		const panel = new TravelPanelState();
-		panel.originMode = 'surface';
+		panel.ends.origin.mode = 'surface';
 		expect(panel.departureMode).toBe('surface');
-		panel.originMode = 'low-orbit';
+		panel.ends.origin.mode = 'low-orbit';
 		expect(panel.departureMode).toBe('orbit');
 	});
 
 	it('launches from the ground when the departure is a place on one', () => {
 		const panel = new TravelPanelState();
-		panel.originMode = 'low-orbit';
-		panel.originAtSite = true;
+		panel.ends.origin.mode = 'low-orbit';
+		panel.ends.origin.atSite = true;
 		expect(panel.departureMode).toBe('surface');
 	});
 });
@@ -118,7 +126,7 @@ describe('TravelPanelState hand-picked windows', () => {
 		panel.pickCustom(depart, tof);
 		const fromOrbit = panel.custom!.totalDvKms;
 
-		panel.originMode = 'low-orbit';
+		panel.ends.origin.mode = 'low-orbit';
 		await solveTrip(panel, EARTH, MARS, J2000);
 
 		expect(panel.offered.at(-1)?.profile).toBe('custom');
@@ -459,7 +467,7 @@ describe('TravelPanelState drawing what it priced', () => {
 
 	async function solvedToHalo(): Promise<TravelPanelState> {
 		const panel = new TravelPanelState();
-		panel.targetMode = 'low-orbit';
+		panel.ends.target.mode = 'low-orbit';
 		await solveTrip(
 			panel,
 			EARTH,
@@ -563,7 +571,7 @@ describe('TravelPanelState arrival deadline', () => {
 				timeMode: 'arrive',
 				pickedJd: deadlineJd
 			});
-			panel.targetMode = 'low-orbit';
+			panel.ends.target.mode = 'low-orbit';
 			await solveTrip(panel, EARTH, MARS, J2000);
 			return panel;
 		}
@@ -598,13 +606,13 @@ describe('TravelPanelState arrival deadline', () => {
 		it('drops the campaign the moment the arrival stops being a low orbit', async () => {
 			const crossing = 91;
 			const panel = await aerobraked(J2000 + crossing + 20);
-			panel.targetMode = 'surface';
+			panel.ends.target.mode = 'surface';
 			expect(panel.effectiveAero).toBe('none');
 			await solveTrip(panel, EARTH, MARS, J2000);
 
 			expect(panel.routes.length).toBeGreaterThan(0);
 			// And back: returning to a low orbit gets the held choice back.
-			panel.targetMode = 'low-orbit';
+			panel.ends.target.mode = 'low-orbit';
 			expect(panel.effectiveAero).toBe('aerobraking');
 		});
 	});
@@ -627,7 +635,7 @@ describe('TravelPanelState spiral', () => {
 	} as unknown as Vehicle;
 
 	async function chosen(): Promise<TravelPanelState> {
-		const panel = new TravelPanelState({ ...DEFAULT_TRIP, originMode: 'low-orbit' });
+		const panel = new TravelPanelState(departingFrom('low-orbit'));
 		panel.acceptVehicles([DAWN]);
 		await solveTrip(panel, EARTH, MARS, J2000);
 		panel.selectVehicle('dawn');
@@ -674,8 +682,7 @@ describe('TravelPanelState spiral', () => {
 	// must not read as "this craft flies no spiral" and drop the link's own choice.
 	it('keeps a spiral a trip arrived selecting, across the wait for the catalogue', async () => {
 		const panel = new TravelPanelState({
-			...DEFAULT_TRIP,
-			originMode: 'low-orbit',
+			...departingFrom('low-orbit'),
 			vehicleId: 'dawn',
 			profile: 'low-thrust'
 		});
@@ -693,14 +700,14 @@ describe('TravelPanelState spiral', () => {
 	// Nothing at 76 µm/s² leaves a pad, so the trip that starts on one has no
 	// spiral to offer and the list is the solver's own again.
 	it('offers none from a surface', async () => {
-		const panel = new TravelPanelState({ ...DEFAULT_TRIP, originMode: 'surface' });
+		const panel = new TravelPanelState(departingFrom('surface'));
 		panel.acceptVehicles([DAWN]);
 		await solveTrip(panel, EARTH, MARS, J2000);
 		panel.selectVehicle('dawn');
 		// Choosing it moved the origin off the ground, since Dawn departs from
 		// orbit; the trip that insists is the one with no spiral to offer.
-		expect(panel.originMode).toBe('low-orbit');
-		panel.originMode = 'surface';
+		expect(panel.ends.origin.mode).toBe('low-orbit');
+		panel.ends.origin.mode = 'surface';
 		panel.updateSpiral(EARTH, MARS, J2000);
 		expect(panel.spiral).toBeNull();
 	});
@@ -710,8 +717,10 @@ describe('TravelPanelState trip terms', () => {
 	it('opens on the terms it was handed', () => {
 		const trip = {
 			...DEFAULT_TRIP,
-			originMode: 'low-orbit' as const,
-			targetMode: 'flyby' as const,
+			ends: {
+				origin: { ...DEFAULT_TRIP.ends.origin, mode: 'low-orbit' as const },
+				target: { ...DEFAULT_TRIP.ends.target, mode: 'flyby' as const }
+			},
 			timeMode: 'depart' as const,
 			pickedJd: J2000 + 100,
 			vehicleId: 'starship',
@@ -723,18 +732,22 @@ describe('TravelPanelState trip terms', () => {
 
 	it('reports what the panel has been set to', () => {
 		const panel = new TravelPanelState();
-		panel.targetMode = 'elliptical';
+		panel.ends.target.mode = 'elliptical';
 		panel.payloadKg = 250;
-		expect(panel.trip).toMatchObject({ targetMode: 'elliptical', payloadKg: 250 });
+		expect(panel.trip.ends.target.mode).toBe('elliptical');
+		expect(panel.trip.payloadKg).toBe(250);
 	});
 
 	// Which end is a named place comes from the path, so it is not a term the
 	// panel can be handed — and taking terms must not clear it.
 	it('leaves the feature flags to the route', () => {
 		const panel = new TravelPanelState();
-		panel.targetAtSite = true;
-		panel.applyTrip({ ...DEFAULT_TRIP, targetMode: 'flyby' });
-		expect(panel.targetAtSite).toBe(true);
+		panel.ends.target.atSite = true;
+		panel.applyTrip({
+			...DEFAULT_TRIP,
+			ends: { ...DEFAULT_TRIP.ends, target: { ...DEFAULT_TRIP.ends.target, mode: 'flyby' } }
+		});
+		expect(panel.ends.target.atSite).toBe(true);
 		expect(panel.arrivalMode).toBe('landing');
 	});
 });
@@ -805,7 +818,7 @@ describe('TravelPanelState swing-by route', () => {
 	/** A solved trip with whatever swing-by the search found standing beside it. */
 	async function withAssist(): Promise<TravelPanelState> {
 		const panel = new TravelPanelState();
-		panel.targetMode = 'low-orbit';
+		panel.ends.target.mode = 'low-orbit';
 		await solveTrip(panel, EARTH, SATURN, NOW);
 		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
 		return panel;
@@ -868,7 +881,7 @@ describe('TravelPanelState swing-by route', () => {
 		const panel = await withAssist();
 		panel.assist = { ...panel.assist!, totalDvKms: 999 };
 		// A flyby asks for a different arrival, so the answer is a different route.
-		panel.targetMode = 'flyby';
+		panel.ends.target.mode = 'flyby';
 		await panel.updateAssist(EARTH, SATURN, [JUPITER], NOW);
 		expect(panel.assist!.totalDvKms).not.toBe(999);
 		expect(panel.assist!.arrivalMode).toBe('flyby');
@@ -1001,9 +1014,9 @@ describe('TravelPanelState request key', () => {
 		const panel = new TravelPanelState();
 		const base = ask(panel);
 
-		panel.targetMode = 'flyby';
+		panel.ends.target.mode = 'flyby';
 		expect(ask(panel)).not.toBe(base);
-		panel.targetMode = DEFAULT_TRIP.targetMode;
+		panel.ends.target.mode = DEFAULT_TRIP.ends.target.mode;
 
 		panel.aero = 'none';
 		expect(ask(panel)).not.toBe(base);
@@ -1015,11 +1028,11 @@ describe('TravelPanelState request key', () => {
 		panel.timeMode = DEFAULT_TRIP.timeMode;
 		panel.pickedJd = DEFAULT_TRIP.pickedJd;
 
-		panel.originAtSite = true;
-		panel.originSiteLatDeg = 28.5;
+		panel.ends.origin.atSite = true;
+		panel.ends.origin.siteLatDeg = 28.5;
 		expect(ask(panel)).not.toBe(base);
-		panel.originAtSite = false;
-		panel.originSiteLatDeg = null;
+		panel.ends.origin.atSite = false;
+		panel.ends.origin.siteLatDeg = null;
 
 		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 4000 });
 		expect(ask(panel)).not.toBe(base);
@@ -1044,11 +1057,11 @@ describe('TravelPanelState request key', () => {
 	it('keeps the orbit it holds when an equal one is handed over', () => {
 		const panel = new TravelPanelState();
 		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 4000 });
-		const held = panel.targetOrbit;
+		const held = panel.ends.target.orbit;
 		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 4000 });
-		expect(panel.targetOrbit).toBe(held);
+		expect(panel.ends.target.orbit).toBe(held);
 		panel.setEndOrbit('target', { rPeriKm: 4000, rApoKm: 9000 });
-		expect(panel.targetOrbit).not.toBe(held);
+		expect(panel.ends.target.orbit).not.toBe(held);
 	});
 });
 

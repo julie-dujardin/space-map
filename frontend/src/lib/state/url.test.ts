@@ -464,7 +464,12 @@ describe('serializeUrl on a trip', () => {
 	it('carries the terms the trip is flown on', () => {
 		const url = serializeUrl({
 			...applyNav(baseView, 'naif-399', 'naif-499'),
-			trip: { ...DEFAULT_TRIP, targetMode: 'flyby', vehicleId: 'starship', passengers: 6 }
+			trip: {
+				...DEFAULT_TRIP,
+				ends: { ...DEFAULT_TRIP.ends, target: { ...DEFAULT_TRIP.ends.target, mode: 'flyby' } },
+				vehicleId: 'starship',
+				passengers: 6
+			}
 		});
 		expect(url).toContain('&tm=flyby');
 		expect(url).toContain('&craft=starship');

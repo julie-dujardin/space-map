@@ -646,39 +646,49 @@
 	<div class={contentClass}>
 		{#if origin || fromId === null || resolvedOnce}
 			<TravelPanel
-				{origin}
-				{target}
 				{isMobile}
-				originName={fromId === null
-					? null
-					: origin
-						? endpointName(origin, fromId, fromFeatureId, fromPlace, originPad)
-						: (originDetail?.name ?? fromId)}
-				targetName={toId === null
-					? null
-					: target
-						? endpointName(target, toId, toFeatureId, toPlace, targetPad)
-						: // Named but unplaceable: the bundle still knows what it is called, and
-							// a destination that reads as empty would look like nothing was chosen.
-							(targetDetail?.name ?? toId)}
-				{originSite}
-				{targetSite}
-				{originPads}
-				{targetPads}
-				originPadCode={originPad?.code ?? null}
-				targetPadCode={targetPad?.code ?? null}
-				onOriginPadPick={(pad: LaunchPad) => moveNav(padEnd(fromId, fromPlace, pad), 'from')}
-				onTargetPadPick={(pad: LaunchPad) => moveNav(padEnd(toId, toPlace, pad), 'to')}
+				ends={{
+					origin: {
+						body: origin,
+						name:
+							fromId === null
+								? null
+								: origin
+									? endpointName(origin, fromId, fromFeatureId, fromPlace, originPad)
+									: (originDetail?.name ?? fromId),
+						site: originSite,
+						pads: originPads,
+						padCode: originPad?.code ?? null,
+						onPadPick: (pad: LaunchPad) => moveNav(padEnd(fromId, fromPlace, pad), 'from'),
+						picked: fromId !== null,
+						exclude: excludeForOrigin,
+						detail: originDetail,
+						onChange: (pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'from')
+					},
+					target: {
+						body: target,
+						name:
+							toId === null
+								? null
+								: target
+									? endpointName(target, toId, toFeatureId, toPlace, targetPad)
+									: // Named but unplaceable: the bundle still knows what it is called, and
+										// a destination that reads as empty would look like nothing was chosen.
+										(targetDetail?.name ?? toId),
+						site: targetSite,
+						pads: targetPads,
+						padCode: targetPad?.code ?? null,
+						onPadPick: (pad: LaunchPad) => moveNav(padEnd(toId, toPlace, pad), 'to'),
+						picked: toId !== null,
+						exclude: excludeForTarget,
+						detail: targetDetail,
+						onChange: (pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'to')
+					}
+				}}
 				{refineBody}
 				{sampleEnd}
-				originPicked={fromId !== null}
-				targetPicked={toId !== null}
 				{nowJd}
-				{excludeForOrigin}
-				{excludeForTarget}
 				bodiesById={tripBodies}
-				{originDetail}
-				{targetDetail}
 				{trip}
 				{viewFrame}
 				{onPathChange}
@@ -689,8 +699,6 @@
 				{onOrbitPreview}
 				resolveBodyName={(id) => names[id] ?? ctx?.getBody(id)?.data.name ?? id}
 				onTripChange={(next) => appState?.setTrip(next)}
-				onOriginChange={(pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'from')}
-				onTargetChange={(pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'to')}
 				onSwap={() => {
 					if (!appState) return;
 					appState.setNav(navEndOf(appState.view, 'to'), navEndOf(appState.view, 'from'));

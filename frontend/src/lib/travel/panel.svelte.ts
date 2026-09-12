@@ -49,7 +49,9 @@ import {
 	type EndpointMode,
 	type RouteOption,
 	type TimeMode,
+	type TripEnd,
 	type TripPick,
+	type TripRole,
 	type TripState
 } from './trip';
 import type { TransferFrame } from './travel-body';
@@ -93,7 +95,7 @@ export type BlockReason =
  * probe will be, nowhere near where it will. This is how the search asks
  * again at the dates its own answer names.
  */
-export type RefineEnd = (role: 'origin' | 'target', jd: number) => Promise<TravelBody | null>;
+export type RefineEnd = (role: TripRole, jd: number) => Promise<TravelBody | null>;
 
 /** How many times a search may be re-run against elements read at its own
  *  answer's dates. A pass is a whole porkchop, the ceiling on what a
@@ -228,25 +230,30 @@ function moved(a: TripDates, b: TripDates): number {
 	return Math.max(Math.abs(a.departJd - b.departJd), Math.abs(a.arriveJd - b.arriveJd));
 }
 
-export class TravelPanelState {
-	originMode = $state<EndpointMode>(DEFAULT_TRIP.originMode);
-	targetMode = $state<EndpointMode>(DEFAULT_TRIP.targetMode);
-	originAltKm = $state(DEFAULT_TRIP.originAltKm);
-	targetAltKm = $state(DEFAULT_TRIP.targetAltKm);
+/**
+ * One end of the trip as the panel holds it.
+ *
+ * The terms a link carries, and three facts that come from what the end
+ * resolved to rather than from the trip: the orbit the component picks out of
+ * the list only it can build, whether the end is a place on a surface, and
+ * where that place is.
+ */
+export class EndState {
+	// The terms are handed over by the constructor; these initializers are only
+	// what a `$state` field needs to be declared with.
+	mode = $state<EndpointMode>('surface');
+	altKm = $state(0);
 	/** Far end of the same orbit, km. Equal to the near one is circular. */
-	originApoAltKm = $state(DEFAULT_TRIP.originApoAltKm);
-	targetApoAltKm = $state(DEFAULT_TRIP.targetApoAltKm);
-	/** Plane each end is met in, degrees to its equator; null leaves it free.
+	apoAltKm = $state(0);
+	/** Plane this end is met in, degrees to its equator; null leaves it free.
 	 *  Held here rather than on the orbit because it outlives the choice of
 	 *  orbit — the component puts it onto whichever one is picked. */
-	originIncDeg = $state<number | null>(DEFAULT_TRIP.originIncDeg);
-	targetIncDeg = $state<number | null>(DEFAULT_TRIP.targetIncDeg);
+	incDeg = $state<number | null>(null);
 	/** Where periapsis sits on that orbit, degrees round from the equator
 	 *  crossing; null leaves it free. Held here for the same reason the plane is. */
-	originArgPeriDeg = $state<number | null>(DEFAULT_TRIP.originArgPeriDeg);
-	targetArgPeriDeg = $state<number | null>(DEFAULT_TRIP.targetArgPeriDeg);
+	argPeriDeg = $state<number | null>(null);
 	/**
-	 * The orbit each end is met in, km from the centre.
+	 * The orbit this end is met in, km from the centre.
 	 *
 	 * Set by the component: which orbits a body can hold takes its spin and Hill
 	 * radius, neither of which the kernel's `TravelBody` carries. Absent means
@@ -257,24 +264,54 @@ export class TravelPanelState {
 	 * would fail with a `DataCloneError`. Replaced wholesale rather than written
 	 * into, so there's nothing for the proxy to have earned.
 	 */
-	originOrbit = $state.raw<EndOrbit | undefined>(undefined);
-	targetOrbit = $state.raw<EndOrbit | undefined>(undefined);
+	orbit = $state.raw<EndOrbit | undefined>(undefined);
+	/** Set when the end is a place on a surface — a named feature, or a probe
+	 *  parked on one. There is only one way to arrive at a place, so the mode is
+	 *  fixed and its picker is skipped. Comes from what the end resolves to
+	 *  rather than from the trip's terms, so it is not part of `terms`. */
+	atSite = $state(false);
+	/** Latitude of that place, degrees, once it has been looked up — what the
+	 *  ascent or the descent is charged against. Null while it is still coming,
+	 *  which prices the end as the equatorial launch the estimates are fitted on. */
+	siteLatDeg = $state<number | null>(null);
+
+	constructor(terms: TripEnd) {
+		this.apply(terms);
+	}
+
+	/** Take the terms as given. */
+	apply(terms: TripEnd): void {
+		this.mode = terms.mode;
+		this.altKm = terms.altKm;
+		this.apoAltKm = terms.apoAltKm;
+		this.incDeg = terms.incDeg;
+		this.argPeriDeg = terms.argPeriDeg;
+	}
+
+	/** The terms as the URL carries them. */
+	get terms(): TripEnd {
+		return {
+			mode: this.mode,
+			altKm: this.altKm,
+			apoAltKm: this.apoAltKm,
+			incDeg: this.incDeg,
+			argPeriDeg: this.argPeriDeg
+		};
+	}
+}
+
+export class TravelPanelState {
+	/** Both ends, each holding its own terms. Instantiated one by one: a `$state`
+	 *  field cannot be declared in a loop. */
+	readonly ends: Record<TripRole, EndState> = {
+		origin: new EndState(DEFAULT_TRIP.ends.origin),
+		target: new EndState(DEFAULT_TRIP.ends.target)
+	};
 	/** What to ask of the destination's atmosphere. Held whatever the destination
 	 *  is — the kernel ignores it where there is no atmosphere — so that moving
 	 *  the trip to an airless body and back does not lose the choice. Pricing
 	 *  reads `effectiveAero`, which is this choice as the arrival can honour it. */
 	aero = $state<AeroAssist>(DEFAULT_TRIP.aero);
-	/** Set when an end is a place on a surface — a named feature, or a probe
-	 *  parked on one. There is only one way to arrive at a place, so the mode is
-	 *  fixed and its picker is skipped. Comes from what the end resolves to
-	 *  rather than from the trip's terms, so it is not part of `trip`. */
-	originAtSite = $state(false);
-	targetAtSite = $state(false);
-	/** Latitude of that place, degrees, once it has been looked up — what the
-	 *  ascent or the descent is charged against. Null while it is still coming,
-	 *  which prices the end as the equatorial launch the estimates are fitted on. */
-	originSiteLatDeg = $state<number | null>(null);
-	targetSiteLatDeg = $state<number | null>(null);
 	timeMode = $state<TimeMode>(DEFAULT_TRIP.timeMode);
 	/** Departure or arrival date behind the non-'now' time modes, as a JD. */
 	pickedJd = $state<number | null>(DEFAULT_TRIP.pickedJd);
@@ -343,7 +380,7 @@ export class TravelPanelState {
 	 *  the grid it was read off was. Reactive because the ends in it are also
 	 *  what the trajectory is drawn from — see {@link pricedEnds}.
 	 *
-	 *  Raw for the reason {@link originOrbit} is: the ends in here ride back into
+	 *  Raw for the reason an end's orbit is: the ends in here ride back into
 	 *  the worker on the swing-by hunt, and a deep `$state` proxy cannot be
 	 *  structured-cloned. Replaced wholesale, never written into. */
 	#pricing = $state.raw<{ origin: TravelBody; target: TravelBody; options: RouteOptions } | null>(
@@ -401,16 +438,7 @@ export class TravelPanelState {
 	 *  solve has priced it, or a link would drop its own pick on the way in. */
 	get trip(): TripState {
 		return {
-			originMode: this.originMode,
-			targetMode: this.targetMode,
-			originAltKm: this.originAltKm,
-			targetAltKm: this.targetAltKm,
-			originApoAltKm: this.originApoAltKm,
-			targetApoAltKm: this.targetApoAltKm,
-			originIncDeg: this.originIncDeg,
-			targetIncDeg: this.targetIncDeg,
-			originArgPeriDeg: this.originArgPeriDeg,
-			targetArgPeriDeg: this.targetArgPeriDeg,
+			ends: { origin: this.ends.origin.terms, target: this.ends.target.terms },
 			aero: this.aero,
 			timeMode: this.timeMode,
 			pickedJd: this.pickedJd,
@@ -430,16 +458,8 @@ export class TravelPanelState {
 	/** Take a trip's terms as given — a fresh load, or browser-back onto one.
 	 *  Which end is a named place isn't among them: that comes from the path. */
 	applyTrip(trip: TripState): void {
-		this.originMode = trip.originMode;
-		this.targetMode = trip.targetMode;
-		this.originAltKm = trip.originAltKm;
-		this.targetAltKm = trip.targetAltKm;
-		this.originApoAltKm = trip.originApoAltKm;
-		this.targetApoAltKm = trip.targetApoAltKm;
-		this.originIncDeg = trip.originIncDeg;
-		this.targetIncDeg = trip.targetIncDeg;
-		this.originArgPeriDeg = trip.originArgPeriDeg;
-		this.targetArgPeriDeg = trip.targetArgPeriDeg;
+		this.ends.origin.apply(trip.ends.origin);
+		this.ends.target.apply(trip.ends.target);
 		this.aero = trip.aero;
 		this.timeMode = trip.timeMode;
 		this.pickedJd = trip.pickedJd;
@@ -517,7 +537,7 @@ export class TravelPanelState {
 	 *  orbit into a tight one, so only a low-orbit arrival has one to walk. A
 	 *  site is a landing whatever the picker last held. */
 	get aerobrakingApplies(): boolean {
-		return this.targetMode === 'low-orbit' && !this.targetAtSite;
+		return this.ends.target.mode === 'low-orbit' && !this.ends.target.atSite;
 	}
 
 	/** The braking the trip is actually priced with. `aero` is the choice as
@@ -533,14 +553,15 @@ export class TravelPanelState {
 	/** Arrival mode the kernel should price, from what the destination box says.
 	 *  Landing on a site is still a landing, whatever the box last held. */
 	get arrivalMode(): ArrivalMode {
-		if (this.targetAtSite) return 'landing';
-		if (this.targetMode === 'flyby') return 'flyby';
-		if (this.targetMode === 'rendezvous') return 'rendezvous';
-		if (this.targetMode === 'surface') return 'landing';
-		// The remaining case no longer sets the orbit — `targetOrbit` does — but
+		const mode = this.ends.target.mode;
+		if (this.ends.target.atSite) return 'landing';
+		if (mode === 'flyby') return 'flyby';
+		if (mode === 'rendezvous') return 'rendezvous';
+		if (mode === 'surface') return 'landing';
+		// The remaining case no longer sets the orbit — the end's own does — but
 		// still decides what an aerobraking campaign starts from, and a loose
 		// ellipse has nothing to walk down.
-		return this.targetMode === 'elliptical' ? 'capture' : 'low-orbit';
+		return mode === 'elliptical' ? 'capture' : 'low-orbit';
 	}
 
 	/** What each end of the trip is, as route options: the orbit it's met in,
@@ -553,17 +574,17 @@ export class TravelPanelState {
 			departureOrbit:
 				this.departureMode === 'surface' || this.departureMode === 'rendezvous'
 					? undefined
-					: this.originOrbit,
+					: this.ends.origin.orbit,
 			targetOrbit:
 				this.arrivalMode === 'landing' ||
 				this.arrivalMode === 'flyby' ||
 				this.arrivalMode === 'rendezvous'
 					? undefined
-					: this.targetOrbit,
+					: this.ends.target.orbit,
 			departureSiteLatDeg:
-				this.departureMode === 'surface' ? (this.originSiteLatDeg ?? undefined) : undefined,
+				this.departureMode === 'surface' ? (this.ends.origin.siteLatDeg ?? undefined) : undefined,
 			targetSiteLatDeg:
-				this.arrivalMode === 'landing' ? (this.targetSiteLatDeg ?? undefined) : undefined
+				this.arrivalMode === 'landing' ? (this.ends.target.siteLatDeg ?? undefined) : undefined
 		};
 	}
 
@@ -576,15 +597,15 @@ export class TravelPanelState {
 	 * rebuild makes fresh objects. Assigning those straight would dirty every
 	 * reader — the search among them — on a choice nobody changed.
 	 */
-	setEndOrbit(role: 'origin' | 'target', orbit: EndOrbit | undefined): void {
-		const key = role === 'origin' ? 'originOrbit' : 'targetOrbit';
+	setEndOrbit(role: TripRole, orbit: EndOrbit | undefined): void {
+		const end = this.ends[role];
 		if (
 			!sameOrbit(
-				untrack(() => this[key]),
+				untrack(() => end.orbit),
 				orbit
 			)
 		)
-			this[key] = orbit;
+			end.orbit = orbit;
 	}
 
 	/** Everything a search turns on that the panel owns. The two ends and the
@@ -607,9 +628,10 @@ export class TravelPanelState {
 	}
 
 	get departureMode(): DepartureMode {
-		if (this.originAtSite) return 'surface';
-		if (this.originMode === 'rendezvous') return 'rendezvous';
-		return this.originMode === 'surface' ? 'surface' : 'orbit';
+		const mode = this.ends.origin.mode;
+		if (this.ends.origin.atSite) return 'surface';
+		if (mode === 'rendezvous') return 'rendezvous';
+		return mode === 'surface' ? 'surface' : 'orbit';
 	}
 
 	/**
@@ -755,10 +777,10 @@ export class TravelPanelState {
 	selectVehicle(id: string | null): void {
 		this.vehicleId = this.vehicleId === id ? null : id;
 		const vehicle = this.vehicle;
-		if (!vehicle || this.originAtSite) return;
+		if (!vehicle || this.ends.origin.atSite) return;
 		if (canDepartFrom(vehicle, this.departureMode)) return;
-		if (canDepartFrom(vehicle, 'surface')) this.originMode = 'surface';
-		else if (canDepartFrom(vehicle, 'orbit')) this.originMode = 'low-orbit';
+		if (canDepartFrom(vehicle, 'surface')) this.ends.origin.mode = 'surface';
+		else if (canDepartFrom(vehicle, 'orbit')) this.ends.origin.mode = 'low-orbit';
 	}
 
 	get manifest(): Manifest {

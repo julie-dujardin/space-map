@@ -112,29 +112,31 @@ export interface TripPick {
 	tofDays: number;
 }
 
-export interface TripState {
-	originMode: EndpointMode;
-	targetMode: EndpointMode;
-	/** Periapsis altitude of the `custom` orbit at each end, km. Carried whatever
-	 *  the mode is, so switching away and back does not lose what was set. */
-	originAltKm: number;
-	targetAltKm: number;
+/** Which end of the trip is being asked about. */
+export type TripRole = 'origin' | 'target';
+
+/** How the trip meets one of its ends. Every term is carried whatever the mode
+ *  is, so switching away and back does not lose what was set. */
+export interface TripEnd {
+	mode: EndpointMode;
+	/** Periapsis altitude of the `custom` orbit, km. */
+	altKm: number;
 	/** Apoapsis altitude of the same orbit, km. Equal to the periapsis is the
 	 *  circular orbit the custom end was before it had two ends. */
-	originApoAltKm: number;
-	targetApoAltKm: number;
-	/** Where periapsis sits on the `custom` orbit at each end, degrees round from
-	 *  the equator crossing. Null leaves it free, which lets the trip put the
-	 *  crossing at the high point, the cheapest place to turn. Means nothing on a
-	 *  circle or in an unnamed plane, and is not offered there. */
-	originArgPeriDeg: number | null;
-	targetArgPeriDeg: number | null;
-	/** Plane the `custom` orbit is flown in at each end, degrees to that body's
-	 *  equator, above 90 for a retrograde one. Null leaves the plane free, which
-	 *  prices the trip as one that never named a plane. Carried whatever the mode
-	 *  is, like the altitude beside it. */
-	originIncDeg: number | null;
-	targetIncDeg: number | null;
+	apoAltKm: number;
+	/** Plane the `custom` orbit is flown in, degrees to that body's equator,
+	 *  above 90 for a retrograde one. Null leaves the plane free, which prices the
+	 *  trip as one that never named a plane. */
+	incDeg: number | null;
+	/** Where periapsis sits on the `custom` orbit, degrees round from the equator
+	 *  crossing. Null leaves it free, which lets the trip put the crossing at the
+	 *  high point, the cheapest place to turn. Means nothing on a circle or in an
+	 *  unnamed plane, and is not offered there. */
+	argPeriDeg: number | null;
+}
+
+export interface TripState {
+	ends: Record<TripRole, TripEnd>;
 	aero: AeroAssist;
 	timeMode: TimeMode;
 	/** The date behind the two non-'now' modes, as a JD; null under 'now', which
@@ -158,17 +160,19 @@ export interface TripState {
  *  visibly a choice rather than the parking orbit under another name. */
 export const DEFAULT_CUSTOM_ALT_KM = 1000;
 
+/** The orbit terms an untouched end carries, whichever end it is. */
+const DEFAULT_SHAPE = {
+	altKm: DEFAULT_CUSTOM_ALT_KM,
+	apoAltKm: DEFAULT_CUSTOM_ALT_KM,
+	incDeg: null,
+	argPeriDeg: null
+} as const;
+
 export const DEFAULT_TRIP: TripState = {
-	originMode: 'surface',
-	targetMode: 'low-orbit',
-	originAltKm: DEFAULT_CUSTOM_ALT_KM,
-	targetAltKm: DEFAULT_CUSTOM_ALT_KM,
-	originApoAltKm: DEFAULT_CUSTOM_ALT_KM,
-	targetApoAltKm: DEFAULT_CUSTOM_ALT_KM,
-	originIncDeg: null,
-	targetIncDeg: null,
-	originArgPeriDeg: null,
-	targetArgPeriDeg: null,
+	ends: {
+		origin: { mode: 'surface', ...DEFAULT_SHAPE },
+		target: { mode: 'low-orbit', ...DEFAULT_SHAPE }
+	},
 	// Somewhere with air is somewhere you use the air: arriving at Mars on the
 	// engine alone is the unusual choice, and the one worth having to make.
 	aero: 'aerocapture',
@@ -185,12 +189,8 @@ export const DEFAULT_TRIP: TripState = {
 /** Whether an end's argument of periapsis says anything: it is an angle round
  *  from the equator crossing, so it needs a plane to be measured from and two
  *  ends set apart to be an angle on. */
-export function argPeriMeans(trip: TripState, end: 'origin' | 'target'): boolean {
-	const arg = end === 'origin' ? trip.originArgPeriDeg : trip.targetArgPeriDeg;
-	const inc = end === 'origin' ? trip.originIncDeg : trip.targetIncDeg;
-	const alt = end === 'origin' ? trip.originAltKm : trip.targetAltKm;
-	const apo = end === 'origin' ? trip.originApoAltKm : trip.targetApoAltKm;
-	return arg !== null && inc !== null && apo > alt;
+export function argPeriMeans(end: TripEnd): boolean {
+	return end.argPeriDeg !== null && end.incDeg !== null && end.apoAltKm > end.altKm;
 }
 
 /** Trailing zeros carry no meaning and make a shared trip harder to read. */
@@ -203,35 +203,34 @@ function trim(value: number, digits: number): string {
  *  `?at=`), so it's safe to concatenate. */
 export function serializeTripSuffix(trip: TripState): string {
 	const parts: string[] = [];
+	const { origin: from, target: to } = trip.ends;
 
-	if (trip.originMode !== DEFAULT_TRIP.originMode) parts.push(`fm=${trip.originMode}`);
-	if (trip.targetMode !== DEFAULT_TRIP.targetMode) parts.push(`tm=${trip.targetMode}`);
+	// Both ends of a term are written one after the other, and every key is spelled
+	// out: the order and the spellings are what a shared link promises.
+	if (from.mode !== DEFAULT_TRIP.ends.origin.mode) parts.push(`fm=${from.mode}`);
+	if (to.mode !== DEFAULT_TRIP.ends.target.mode) parts.push(`tm=${to.mode}`);
 	// Only carried by the mode that means anything by it.
-	if (trip.originMode === 'custom') parts.push(`falt=${trim(trip.originAltKm, 1)}`);
-	if (trip.targetMode === 'custom') parts.push(`talt=${trim(trip.targetAltKm, 1)}`);
+	if (from.mode === 'custom') parts.push(`falt=${trim(from.altKm, 1)}`);
+	if (to.mode === 'custom') parts.push(`talt=${trim(to.altKm, 1)}`);
 	// Only the ellipse writes its far end, and only where it is above the near one:
 	// a circular orbit is the one the link already says, which is what every link
 	// written before the orbit had two ends says, and a far end under the near one
 	// is not an orbit the link may name.
-	if (trip.originMode === 'custom' && trip.originApoAltKm > trip.originAltKm) {
-		parts.push(`fapo=${trim(trip.originApoAltKm, 1)}`);
+	if (from.mode === 'custom' && from.apoAltKm > from.altKm) {
+		parts.push(`fapo=${trim(from.apoAltKm, 1)}`);
 	}
-	if (trip.targetMode === 'custom' && trip.targetApoAltKm > trip.targetAltKm) {
-		parts.push(`tapo=${trim(trip.targetApoAltKm, 1)}`);
+	if (to.mode === 'custom' && to.apoAltKm > to.altKm) {
+		parts.push(`tapo=${trim(to.apoAltKm, 1)}`);
 	}
-	if (trip.originMode === 'custom' && trip.originIncDeg !== null) {
-		parts.push(`finc=${trim(trip.originIncDeg, 1)}`);
-	}
-	if (trip.targetMode === 'custom' && trip.targetIncDeg !== null) {
-		parts.push(`tinc=${trim(trip.targetIncDeg, 1)}`);
-	}
+	if (from.mode === 'custom' && from.incDeg !== null) parts.push(`finc=${trim(from.incDeg, 1)}`);
+	if (to.mode === 'custom' && to.incDeg !== null) parts.push(`tinc=${trim(to.incDeg, 1)}`);
 	// Only alongside the plane it is measured from, and the ellipse it is an angle
 	// on: on a circle or in a free plane it names nothing.
-	if (trip.originMode === 'custom' && argPeriMeans(trip, 'origin')) {
-		parts.push(`fargp=${trim(trip.originArgPeriDeg!, 1)}`);
+	if (from.mode === 'custom' && argPeriMeans(from)) {
+		parts.push(`fargp=${trim(from.argPeriDeg!, 1)}`);
 	}
-	if (trip.targetMode === 'custom' && argPeriMeans(trip, 'target')) {
-		parts.push(`targp=${trim(trip.targetArgPeriDeg!, 1)}`);
+	if (to.mode === 'custom' && argPeriMeans(to)) {
+		parts.push(`targp=${trim(to.argPeriDeg!, 1)}`);
 	}
 	if (trip.aero !== DEFAULT_TRIP.aero) parts.push(`aero=${trip.aero}`);
 	// The date is what the mode means; a mode without one searches the same span
@@ -287,12 +286,35 @@ function parseAltitude(raw: string | null, fallback = DEFAULT_CUSTOM_ALT_KM): nu
 	return raw !== null && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-/** The two ends of a custom orbit, near one first. Sorted rather than taken as
- *  written: the link names an orbit, not the order its ends were typed in. */
-function parseShape(params: URLSearchParams, alt: string, apo: string): [number, number] {
-	const near = parseAltitude(params.get(alt));
-	const far = parseAltitude(params.get(apo), near);
-	return [Math.min(near, far), Math.max(near, far)];
+/** The query keys one end's terms ride under, in the order the link writes
+ *  them. Spelled out at the call site, like the serializer's own keys. */
+interface EndKeys {
+	mode: string;
+	alt: string;
+	apo: string;
+	inc: string;
+	argp: string;
+}
+
+/** One end as a link names it. */
+function parseEnd(
+	params: URLSearchParams,
+	keys: EndKeys,
+	allowed: readonly EndpointMode[],
+	fallback: EndpointMode
+): TripEnd {
+	const near = parseAltitude(params.get(keys.alt));
+	const far = parseAltitude(params.get(keys.apo), near);
+	return {
+		mode: parseMode(params.get(keys.mode), allowed, fallback),
+		// The two ends of the orbit come back near one first, sorted rather than
+		// taken as written: the link names an orbit, not the order its ends were
+		// typed in.
+		altKm: Math.min(near, far),
+		apoAltKm: Math.max(near, far),
+		incDeg: parseInclination(params.get(keys.inc)),
+		argPeriDeg: parseArgPeri(params.get(keys.argp))
+	};
 }
 
 /** An angle round the orbit from the equator crossing. Wrapped rather than
@@ -346,19 +368,21 @@ function parseFraction(raw: string | null): number {
 export function parseTrip(params: URLSearchParams): TripState {
 	const profile = params.get('route') as RouteOption | null;
 	const aero = params.get('aero') as AeroAssist | null;
-	const [originAltKm, originApoAltKm] = parseShape(params, 'falt', 'fapo');
-	const [targetAltKm, targetApoAltKm] = parseShape(params, 'talt', 'tapo');
 	return {
-		originMode: parseMode(params.get('fm'), ORIGIN_MODES, DEFAULT_TRIP.originMode),
-		targetMode: parseMode(params.get('tm'), TARGET_MODES, DEFAULT_TRIP.targetMode),
-		originAltKm,
-		targetAltKm,
-		originApoAltKm,
-		targetApoAltKm,
-		originIncDeg: parseInclination(params.get('finc')),
-		targetIncDeg: parseInclination(params.get('tinc')),
-		originArgPeriDeg: parseArgPeri(params.get('fargp')),
-		targetArgPeriDeg: parseArgPeri(params.get('targp')),
+		ends: {
+			origin: parseEnd(
+				params,
+				{ mode: 'fm', alt: 'falt', apo: 'fapo', inc: 'finc', argp: 'fargp' },
+				ORIGIN_MODES,
+				DEFAULT_TRIP.ends.origin.mode
+			),
+			target: parseEnd(
+				params,
+				{ mode: 'tm', alt: 'talt', apo: 'tapo', inc: 'tinc', argp: 'targp' },
+				TARGET_MODES,
+				DEFAULT_TRIP.ends.target.mode
+			)
+		},
 		aero: aero !== null && AERO_ASSISTS.includes(aero) ? aero : DEFAULT_TRIP.aero,
 		...parseWhen(params.get('when')),
 		vehicleId: params.get('craft') || null,

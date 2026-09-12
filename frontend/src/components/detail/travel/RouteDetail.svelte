@@ -201,7 +201,7 @@
 			state.vehicle.kind !== 'launcher' &&
 			state.vehicle.dvKms === undefined
 	);
-	let returnCost = $derived(returnDvKms(target, route, state.targetOrbit));
+	let returnCost = $derived(returnDvKms(target, route, state.ends.target.orbit));
 
 	/** A row of the itinerary: what happens, what it costs, and whatever the
 	 *  figure on the right cannot say on its own. */

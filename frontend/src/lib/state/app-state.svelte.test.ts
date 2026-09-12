@@ -343,7 +343,10 @@ describe('AppState.setTrip', () => {
 	// not undo one field of it.
 	it('replaces rather than pushing', () => {
 		const s = onNav();
-		s.setTrip({ ...DEFAULT_TRIP, targetMode: 'flyby' });
+		s.setTrip({
+			...DEFAULT_TRIP,
+			ends: { ...DEFAULT_TRIP.ends, target: { ...DEFAULT_TRIP.ends.target, mode: 'flyby' } }
+		});
 		expect(pushStateSpy).not.toHaveBeenCalled();
 		expect(replaceStateSpy.mock.calls[0][0]).toContain('&tm=flyby');
 	});

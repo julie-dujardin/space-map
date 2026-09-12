@@ -246,6 +246,13 @@
 		onCustomAlt(km);
 	}
 
+	/** Both angle sliders keep a step below their own range for "leave it free",
+	 *  since neither angle means anything until the orbit gives it something to be
+	 *  measured against. */
+	function nullableDeg(onChange: (deg: number | null) => void): (raw: number) => void {
+		return (raw) => onChange(raw < 0 ? null : raw);
+	}
+
 	function choose(choice: OrbitChoice) {
 		onModeChange(choice.kind);
 		// A slider still being dragged is not a decision made.
@@ -275,24 +282,35 @@
 	<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
 {/snippet}
 
-<!-- Captions rather than a label column: the popover is too narrow to give up a
-     third of the slider to one. -->
-{#snippet altitude(caption: string, km: number, minKm: number, onChange: (km: number) => void)}
+<!-- One labelled slider, for every term of the custom orbit.
+
+     Captions rather than a label column: the popover is too narrow to give up a
+     third of the slider to one. `readout` and `ariaText` are separate because
+     the plane names itself in full to a screen reader and shows the bare angle. -->
+{#snippet slider(
+	caption: string,
+	min: number,
+	max: number,
+	value: number,
+	onInput: (raw: number) => void,
+	readout: string,
+	ariaText: string
+)}
 	<label class="flex flex-col gap-0.5">
 		<span class="text-muted-foreground text-[10px] tracking-wide uppercase">{caption}</span>
 		<span class="flex items-center gap-2">
 			<input
 				type="range"
-				min={sliderPosition(minKm)}
-				max={SLIDER_STEPS}
+				{min}
+				{max}
 				step={1}
-				value={sliderPosition(km)}
-				oninput={(e) => onChange(sliderAltitude(Number(e.currentTarget.value)))}
+				{value}
+				oninput={(e) => onInput(Number(e.currentTarget.value))}
 				class="accent-primary h-1 flex-1"
-				aria-valuetext={formatKm(km)}
+				aria-valuetext={ariaText}
 			/>
 			<span class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums">
-				{formatKm(km)}
+				{readout}
 			</span>
 		</span>
 	</label>
@@ -427,77 +445,54 @@
 
 							{#if active && choice.kind === 'custom'}
 								<div class="flex flex-col gap-1.5 px-2 pt-1 pb-2">
-									<!-- A circular orbit has one height rather than two the same, so the
-									     near end is only named as one once the far end has left it. -->
-									{@render altitude(
+									<!-- The two heights are dragged in kilometres and stepped
+									     geometrically, so each maps through the slider's own scale. A
+									     circular orbit has one height rather than two the same, so the near
+									     end is only named as one once the far end has left it. -->
+									{@render slider(
 										circular ? m.travel_orbit_altitude() : m.travel_orbit_periapsis(),
-										customAltShown,
-										1,
-										setPeriapsis
+										sliderPosition(1),
+										SLIDER_STEPS,
+										sliderPosition(customAltShown),
+										(raw) => setPeriapsis(sliderAltitude(raw)),
+										formatKm(customAltShown),
+										formatKm(customAltShown)
 									)}
-									{@render altitude(
+									{@render slider(
 										m.travel_orbit_apoapsis(),
-										customApoShown,
-										customAltShown,
-										onCustomApoAlt
+										sliderPosition(customAltShown),
+										SLIDER_STEPS,
+										sliderPosition(customApoShown),
+										(raw) => onCustomApoAlt(sliderAltitude(raw)),
+										formatKm(customApoShown),
+										formatKm(customApoShown)
 									)}
 									{#if hasArgPeri}
 										<!-- Reads as a compass round the orbit rather than a lean: a quarter
 										     turn on hangs the high point over one pole. -->
-										<label class="flex flex-col gap-0.5">
-											<span class="text-muted-foreground text-[10px] tracking-wide uppercase">
-												{m.travel_orbit_arg_peri()}
-											</span>
-											<span class="flex items-center gap-2">
-												<input
-													type="range"
-													min={-1}
-													max={359}
-													step={1}
-													value={argPeriDeg ?? -1}
-													oninput={(e) => {
-														const deg = Number(e.currentTarget.value);
-														onArgPeriChange(deg < 0 ? null : deg);
-													}}
-													class="accent-primary h-1 flex-1"
-													aria-valuetext={argPeriReadout(argPeriDeg)}
-												/>
-												<span
-													class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums"
-												>
-													{argPeriReadout(argPeriDeg)}
-												</span>
-											</span>
-										</label>
+										{@render slider(
+											m.travel_orbit_arg_peri(),
+											-1,
+											359,
+											argPeriDeg ?? -1,
+											nullableDeg(onArgPeriChange),
+											argPeriReadout(argPeriDeg),
+											argPeriReadout(argPeriDeg)
+										)}
 									{/if}
 									<!-- A free plane is the step below the equator rather than a control of
 									     its own: it is the least a trip can ask of its plane, not a different
-									     kind of answer. -->
-									<label class="flex flex-col gap-0.5">
-										<span class="text-muted-foreground text-[10px] tracking-wide uppercase">
-											{m.travel_orbit_plane()}
-										</span>
-										<span class="flex items-center gap-2">
-											<input
-												type="range"
-												min={-1}
-												max={180}
-												step={1}
-												value={incDeg ?? -1}
-												oninput={(e) => {
-													const deg = Number(e.currentTarget.value);
-													onIncChange(deg < 0 ? null : deg);
-												}}
-												class="accent-primary h-1 flex-1"
-												aria-valuetext={planeLabel(incDeg)}
-											/>
-											<span
-												class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums"
-											>
-												{planeReadout(incDeg)}
-											</span>
-										</span>
-									</label>
+									     kind of answer. The phrase is for the screen reader, which has no
+									     control to look at; the column beside it has room for the angle only. -->
+									{@render slider(
+										m.travel_orbit_plane(),
+										-1,
+										180,
+										incDeg ?? -1,
+										nullableDeg(onIncChange),
+										planeReadout(incDeg),
+										planeLabel(incDeg)
+									)}
 								</div>
 							{/if}
 						{/each}

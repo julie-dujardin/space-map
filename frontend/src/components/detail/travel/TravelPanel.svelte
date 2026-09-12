@@ -65,6 +65,7 @@
 		type EndpointMode,
 		type RouteOption,
 		type TimeMode,
+		type TripRole,
 		type TripState
 	} from '$lib/travel/trip';
 	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
@@ -96,46 +97,46 @@
 	import { endpointModeLabel, groundLabel } from './endpoint-labels';
 	import { hazardKey, routeKey, timelineKey } from './route-keys';
 
+	/** One end of the trip as the page describes it. Everything here comes from
+	 *  the URL and the catalogue; how the end is *met* is the panel's own. */
+	interface EndProps {
+		/** The body this end is; null until one is chosen. */
+		body: BodyData | null;
+		/** Its localized label. */
+		name: string | null;
+		/** Where on its body the end sits, when it sits somewhere: a named feature,
+		 *  or a probe parked on the surface. */
+		site: EndSite | null;
+		/** The pads an end standing on a launch range could stand on instead,
+		 *  busiest first, and which one it stands on now. Empty for every other
+		 *  kind of end. */
+		pads: readonly LaunchPad[];
+		padCode: string | null;
+		onPadPick?: (pad: LaunchPad) => void;
+		/** Whether the URL names this end at all. Tells the two silences apart:
+		 *  nothing chosen yet, versus somewhere with no orbit to meet. */
+		picked: boolean;
+		/** Bodies it may not be — the other end, plus anything the kernel cannot
+		 *  solve a transfer against it. */
+		exclude: ReadonlySet<string>;
+		/** Its detail bundle; null until it lands. Only the atmosphere is read, so
+		 *  a route just prices airless until then. */
+		detail: GlobalObjectData | null;
+		/** Move it. The URL owns the ends, so the panel asks. */
+		onChange: (pick: TravelEndpointPick) => void;
+	}
+
 	interface Props {
 		/** Whether the panel is in the phone layout. Its pickers take the whole
 		 *  screen there rather than opening a popover over a drawer's width. */
 		isMobile?: boolean;
-		/** Where the trip starts; null until one is chosen. */
-		origin: BodyData | null;
-		/** Where it ends; null until one is chosen. */
-		target: BodyData | null;
-		/** Localized labels for the two ends. */
-		originName: string | null;
-		targetName: string | null;
-		/** Where on its body an end sits, when it sits somewhere: a named feature,
-		 *  or a probe parked on the surface. */
-		originSite: EndSite | null;
-		targetSite: EndSite | null;
-		/** The pads an end standing on a launch range could stand on instead,
-		 *  busiest first, and which one it stands on now. Empty for every other
-		 *  kind of end. */
-		originPads?: readonly LaunchPad[];
-		targetPads?: readonly LaunchPad[];
-		originPadCode?: string | null;
-		targetPadCode?: string | null;
-		onOriginPadPick?: (pad: LaunchPad) => void;
-		onTargetPadPick?: (pad: LaunchPad) => void;
-		/** Whether the URL names each end at all. Tells the two silences apart:
-		 *  nothing chosen yet, versus somewhere with no orbit to meet. */
-		originPicked: boolean;
-		targetPicked: boolean;
+		/** The trip's two ends. Both are described the same way, so everything
+		 *  below reads one of them by role rather than by name. */
+		ends: Record<TripRole, EndProps>;
 		/** The two ends and their chains up to the Sun, for resolving primaries. */
 		bodiesById: Map<string, BodyData>;
 		/** Now, on the app's clock, as a Julian Date. */
 		nowJd: number;
-		/** Bodies each end may not be — the other end, plus anything the kernel
-		 *  cannot solve a transfer against it. */
-		excludeForOrigin: ReadonlySet<string>;
-		excludeForTarget: ReadonlySet<string>;
-		/** Detail bundles for the two ends; null until they land. Only the
-		 *  atmosphere is read, so a route just prices airless until then. */
-		originDetail?: GlobalObjectData | null;
-		targetDetail?: GlobalObjectData | null;
 		/** The trip's terms as the URL has them — what the panel opens on, and what
 		 *  browser-back restores it to. */
 		trip: TripState;
@@ -146,9 +147,6 @@
 		 * distances from the Sun, the one frame they mean anything in.
 		 */
 		viewFrame: TrajectoryFrame;
-		/** Move either end. The URL owns them, so the panel asks. */
-		onOriginChange: (pick: TravelEndpointPick) => void;
-		onTargetChange: (pick: TravelEndpointPick) => void;
 		/** Exchange the two ends. */
 		onSwap: () => void;
 		/** Hand the terms back out after any change, for the URL to mirror. */
@@ -191,30 +189,11 @@
 	}
 	let {
 		isMobile = false,
-		origin,
-		target,
-		originName,
-		targetName,
-		originSite,
-		targetSite,
-		originPads = [],
-		targetPads = [],
-		originPadCode = null,
-		targetPadCode = null,
-		onOriginPadPick,
-		onTargetPadPick,
-		originPicked,
-		targetPicked,
+		ends,
 		bodiesById,
 		nowJd,
-		excludeForOrigin,
-		excludeForTarget,
-		originDetail = null,
-		targetDetail = null,
 		trip,
 		viewFrame,
-		onOriginChange,
-		onTargetChange,
 		onSwap,
 		onTripChange,
 		onPathChange,
@@ -251,91 +230,74 @@
 			}
 		});
 	});
-	let openField = $state<'origin' | 'target' | 'craft' | null>(null);
+	let openField = $state<TripRole | 'craft' | null>(null);
 
 	/**
 	 * Only one box is open at a time, and the one closing may not be the one that
 	 * just opened: clicking the other box opens it and *then* tells this one it
 	 * closed, so an unguarded assignment shuts the box the click was for.
 	 */
-	function setOpenField(field: 'origin' | 'target' | 'craft', open: boolean) {
+	function setOpenField(field: TripRole | 'craft', open: boolean) {
 		if (open) openField = field;
 		else if (openField === field) openField = null;
 	}
 	// Whether each end is a place rather than a whole body; the panel state mirrors
 	// it so the mode getters and the field's own rendering agree.
 	$effect(() => {
-		panel.originAtSite = originSite !== null;
-		panel.targetAtSite = targetSite !== null;
+		panel.ends.origin.atSite = ends.origin.site !== null;
+		panel.ends.target.atSite = ends.target.site !== null;
 	});
 
 	// Where each end sits on its globe, so the drawn trajectory can reach the spot
 	// rather than the body. A probe or a pad brings its own coordinates; a feature
 	// is named and has to be looked up, so it arrives late like the names do and
 	// the geometry key carries it.
-	let originSitePlace = $state<{ lat: number; lon: number } | null>(null);
-	let targetSitePlace = $state<{ lat: number; lon: number } | null>(null);
-	function loadSitePlace(
-		bodyId: string | undefined,
-		site: EndSite | null,
-		set: (place: { lat: number; lon: number } | null) => void,
-		still: () => boolean
-	) {
-		set(null);
+	let sitePlaces = $state<Record<TripRole, { lat: number; lon: number } | null>>({
+		origin: null,
+		target: null
+	});
+	function loadSitePlace(role: TripRole, bodyId: string | undefined, site: EndSite | null) {
+		sitePlaces[role] = null;
 		if (!bodyId || !site) return;
 		if (site.kind === 'point') {
-			set({ lat: site.latDeg, lon: site.lonDeg });
+			sitePlaces[role] = { lat: site.latDeg, lon: site.lonDeg };
 			return;
 		}
 		const featureId = site.featureId;
 		fetchBodyNomenclature(bodyId)
 			.then((features) => {
 				const found = features.find((f) => f.featureId === featureId);
-				if (found && still()) set({ lat: found.lat, lon: found.lon });
+				// Still the end it was asked for: a fetch outlives the pick that
+				// started it.
+				const still = ends[role].body?.id === bodyId && ends[role].site === site;
+				if (found && still) sitePlaces[role] = { lat: found.lat, lon: found.lon };
 			})
 			.catch((e) => console.warn(`[travel] could not place feature ${featureId} on ${bodyId}:`, e));
 	}
+	// One effect each: a lookup is a fetch, and moving one end must not re-run the
+	// other's.
 	$effect(() => {
-		const bodyId = origin?.id;
-		const site = originSite;
-		untrack(() =>
-			loadSitePlace(
-				bodyId,
-				site,
-				(place) => (originSitePlace = place),
-				() => origin?.id === bodyId && originSite === site
-			)
-		);
+		const { body, site } = ends.origin;
+		untrack(() => loadSitePlace('origin', body?.id, site));
 	});
 	$effect(() => {
-		const bodyId = target?.id;
-		const site = targetSite;
-		untrack(() =>
-			loadSitePlace(
-				bodyId,
-				site,
-				(place) => (targetSitePlace = place),
-				() => target?.id === bodyId && targetSite === site
-			)
-		);
+		const { body, site } = ends.target;
+		untrack(() => loadSitePlace('target', body?.id, site));
 	});
 	// The same coordinates price the trip: where a launch leaves from decides how
 	// much of the body's spin it keeps, and a landing pays the same in reverse.
 	$effect(() => {
-		panel.originSiteLatDeg = originSitePlace?.lat ?? null;
-		panel.targetSiteLatDeg = targetSitePlace?.lat ?? null;
+		panel.ends.origin.siteLatDeg = sitePlaces.origin?.lat ?? null;
+		panel.ends.target.siteLatDeg = sitePlaces.target?.lat ?? null;
 	});
 
-	let originSiteAt = $derived(
-		origin && originSitePlace
-			? surfaceSiteAt(origin, originDetail, originSitePlace.lat, originSitePlace.lon)
-			: null
-	);
-	let targetSiteAt = $derived(
-		target && targetSitePlace
-			? surfaceSiteAt(target, targetDetail, targetSitePlace.lat, targetSitePlace.lon)
-			: null
-	);
+	/** Where an end stands, as the kernel reads a spot on a surface. */
+	function siteAtOf(role: TripRole) {
+		const { body, detail } = ends[role];
+		const place = sitePlaces[role];
+		return body && place ? surfaceSiteAt(body, detail, place.lat, place.lon) : null;
+	}
+	let siteAt = $derived.by(() => ({ origin: siteAtOf('origin'), target: siteAtOf('target') }));
 
 	// The trajectory under the pointer, wherever the pointer is: its mark on the
 	// launch-window field, or one of its labels out on the map. Both write here and
@@ -376,7 +338,9 @@
 	// each end is described by and what the arc goes round.
 	let lookup = $derived(lookupIn(bodiesById));
 	let plan = $derived<TransferPlan | null>(
-		origin && target ? transferPlan(origin, target, lookup) : null
+		ends.origin.body && ends.target.body
+			? transferPlan(ends.origin.body, ends.target.body, lookup)
+			: null
 	);
 	let frame = $derived(transferFrame(plan));
 
@@ -391,8 +355,8 @@
 	let measuredKey = $derived.by(() => {
 		const primary = frame.systemPrimary;
 		if (!primary) return null;
-		const satellite = primary === 'departure' ? target : origin;
-		const centre = primary === 'departure' ? origin : target;
+		const satellite = primary === 'departure' ? ends.target.body : ends.origin.body;
+		const centre = primary === 'departure' ? ends.origin.body : ends.target.body;
 		if (!satellite?.id.startsWith('probe-') || !centre) return null;
 		return `${satellite.id}|${centre.id}`;
 	});
@@ -418,74 +382,81 @@
 		return { ...body, samples: samples.samples };
 	}
 
-	// The kernel's view of each end, rebuilt whenever either body or its detail
-	// changes.
-	let originTravel = $derived<TravelBody | null>(
-		measured(origin ? toTravelBody(origin, lookup, originDetail, frame.orbit) : null)
-	);
-	let targetTravel = $derived<TravelBody | null>(
-		measured(target ? toTravelBody(target, lookup, targetDetail, frame.orbit) : null)
-	);
+	/** The kernel's view of one end, rebuilt whenever its body or its detail
+	 *  changes. */
+	function travelOf(role: TripRole): TravelBody | null {
+		const { body, detail } = ends[role];
+		return measured(body ? toTravelBody(body, lookup, detail, frame.orbit) : null);
+	}
+	let travel = $derived.by(() => ({ origin: travelOf('origin'), target: travelOf('target') }));
 
 	// The same two ends the routes were priced against. A body that does not
 	// keep still is re-described at the trip's own dates, so anything read back
 	// off a route has to ask the same body — drawing against the ends as they
 	// stand now put a system transfer's satellite out of its own cruise reach.
+	// One each rather than a pair in a wrapper: everything below reads both, and a
+	// fresh wrapper would re-run the arc builders after every solve that described
+	// the same two bodies.
 	let solved = $derived(panel.pricedEnds);
-	let pathOrigin = $derived(solved?.origin ?? originTravel);
-	let pathTarget = $derived(solved?.target ?? targetTravel);
+	let pathOrigin = $derived(solved?.origin ?? travel.origin);
+	let pathTarget = $derived(solved?.target ?? travel.target);
 
-	// Only a body with a surface can be landed on or left from the ground.
-	let originHasGround = $derived(originTravel ? hasGround(originTravel) : true);
-	let targetHasGround = $derived(targetTravel ? hasGround(targetTravel) : true);
+	/** Only a body with a surface can be landed on or left from the ground. */
+	function hasGroundAt(role: TripRole): boolean {
+		const body = travel[role];
+		return body ? hasGround(body) : true;
+	}
 
-	// What each body contributes to which orbits it can hold: its spin, from the
-	// detail bundle, and how much room it has, from the orbit it is itself on.
-	let originFacts = $derived(
-		origin && originTravel ? orbitFacts(origin, originTravel, originDetail) : null
-	);
-	let targetFacts = $derived(
-		target && targetTravel ? orbitFacts(target, targetTravel, targetDetail) : null
-	);
-	// A named place on a surface has already answered how it is met, so its box
-	// offers nothing — which is what an empty list means to `EndpointField`.
-	let originChoices = $derived<OrbitChoice[]>(
-		originTravel && originFacts && !panel.originAtSite
-			? orbitChoices(originTravel, originFacts, 'origin', {
-					hasSurface: originHasGround,
-					customAltKm: panel.originAltKm,
-					customApoAltKm: panel.originApoAltKm,
-					incDeg: panel.originIncDeg,
-					argPeriDeg: panel.originArgPeriDeg
-				})
-			: []
-	);
-	let targetChoices = $derived.by<OrbitChoice[]>(() => {
-		const all =
-			targetTravel && targetFacts && !panel.targetAtSite
-				? orbitChoices(targetTravel, targetFacts, 'target', {
-						hasSurface: targetHasGround,
-						customAltKm: panel.targetAltKm,
-						customApoAltKm: panel.targetApoAltKm,
-						incDeg: panel.targetIncDeg,
-						argPeriDeg: panel.targetArgPeriDeg
-					})
-				: [];
-		// Where the trip already is is not somewhere to go: on a same-body trip the
-		// departure's own orbit drops out of the arrivals, along with the two that
-		// mean nothing at home — flying past where you are, and landing back on the
-		// ground you lifted off.
-		if (!frame.orbitChange) return all;
-		const from = panel.originOrbit;
-		return all.filter((choice) => {
-			if (choice.kind === 'flyby') return false;
-			if (choice.kind === 'surface') return panel.departureMode !== 'surface';
-			if (!from || !choice.orbit) return true;
-			return (
-				Math.abs(choice.orbit.rPeriKm - from.rPeriKm) > SAME_RADIUS_KM ||
-				Math.abs(choice.orbit.rApoKm - from.rApoKm) > SAME_RADIUS_KM
-			);
+	/** What a body contributes to which orbits it can hold: its spin, from the
+	 *  detail bundle, and how much room it has, from the orbit it is itself on. */
+	function factsOf(role: TripRole) {
+		const { body, detail } = ends[role];
+		const known = travel[role];
+		return body && known ? orbitFacts(body, known, detail) : null;
+	}
+	let facts = $derived.by(() => ({ origin: factsOf('origin'), target: factsOf('target') }));
+
+	/** Every way one end can be met. A named place on a surface has already
+	 *  answered how it is met, so its box offers nothing — which is what an empty
+	 *  list means to `EndpointField`. */
+	function choicesOf(role: TripRole): OrbitChoice[] {
+		const body = travel[role];
+		const known = facts[role];
+		const end = panel.ends[role];
+		if (!body || !known || end.atSite) return [];
+		return orbitChoices(body, known, role, {
+			hasSurface: hasGroundAt(role),
+			customAltKm: end.altKm,
+			customApoAltKm: end.apoAltKm,
+			incDeg: end.incDeg,
+			argPeriDeg: end.argPeriDeg
 		});
+	}
+
+	/** Whether an arrival is somewhere other than where the trip already is.
+	 *  Asked of the destination alone: the departure is where you are, and a
+	 *  departure list that dropped it would drop the only end it has. */
+	function awayFromHere(choice: OrbitChoice): boolean {
+		if (choice.kind === 'flyby') return false;
+		if (choice.kind === 'surface') return panel.departureMode !== 'surface';
+		const from = panel.ends.origin.orbit;
+		if (!from || !choice.orbit) return true;
+		return (
+			Math.abs(choice.orbit.rPeriKm - from.rPeriKm) > SAME_RADIUS_KM ||
+			Math.abs(choice.orbit.rApoKm - from.rApoKm) > SAME_RADIUS_KM
+		);
+	}
+
+	let choices = $derived.by<Record<TripRole, OrbitChoice[]>>(() => {
+		const arrivals = choicesOf('target');
+		return {
+			origin: choicesOf('origin'),
+			// Where the trip already is is not somewhere to go: on a same-body trip the
+			// departure's own orbit drops out of the arrivals, along with the two that
+			// mean nothing at home — flying past where you are, and landing back on the
+			// ground you lifted off.
+			target: frame.orbitChange ? arrivals.filter(awayFromHere) : arrivals
+		};
 	});
 
 	/**
@@ -497,88 +468,93 @@
 	 * named orbit is missing — an unguarded check would read that as "no
 	 * geostationary orbit" and rewrite a shared link's mode on the way in.
 	 */
-	$effect(() => {
-		if (!originDetail || !originChoices.length) return;
-		if (originChoices.some((c) => c.kind === panel.originMode)) return;
+	function settleMode(role: TripRole) {
+		const list = choices[role];
+		if (!ends[role].detail || !list.length) return;
+		const end = panel.ends[role];
+		if (list.some((c) => c.kind === end.mode)) return;
 		// The low orbit wherever it is offered, and otherwise whatever is — a craft
-		// holds none, and is cast off from instead.
-		panel.originMode =
-			originChoices.find((c) => c.kind === 'low-orbit')?.kind ?? originChoices[0].kind;
+		// holds none and is cast off from instead, and on a same-body trip the low
+		// orbit is sometimes the end the craft is already at.
+		end.mode = list.find((c) => c.kind === 'low-orbit')?.kind ?? list[0].kind;
+	}
+	// One effect each, so neither end's list can retire the other's mode.
+	$effect(() => {
+		settleMode('origin');
 	});
 	$effect(() => {
-		if (!targetDetail || !targetChoices.length) return;
-		if (targetChoices.some((c) => c.kind === panel.targetMode)) return;
-		// The low orbit wherever it is offered, and otherwise whatever is — on a
-		// same-body trip the low orbit is sometimes the end the craft is already at.
-		panel.targetMode =
-			targetChoices.find((c) => c.kind === 'low-orbit')?.kind ?? targetChoices[0].kind;
+		settleMode('target');
 	});
 
-	/** Which pad each end stands on, when it stands on one — the row the box
-	 *  shows as pressed, and the line under the body's name. */
-	let originPad = $derived(originPads.find((p) => p.code === originPadCode) ?? null);
-	let targetPad = $derived(targetPads.find((p) => p.code === targetPadCode) ?? null);
-	let originGroundLine = $derived(groundLabel('origin', originPad, originSitePlace));
-	let targetGroundLine = $derived(groundLabel('target', targetPad, targetSitePlace));
+	/** Which pad an end stands on, when it stands on one — the row the box shows
+	 *  as pressed, and the line under the body's name. */
+	function padOf(role: TripRole) {
+		const { pads, padCode } = ends[role];
+		return pads.find((p) => p.code === padCode) ?? null;
+	}
+	let standingPad = $derived.by(() => ({ origin: padOf('origin'), target: padOf('target') }));
+	let groundLines = $derived.by(() => ({
+		origin: groundLabel('origin', standingPad.origin, sitePlaces.origin),
+		target: groundLabel('target', standingPad.target, sitePlaces.target)
+	}));
 
-	/** Null if there was no choice: a named place, or a body with no data. */
-	function endLabel(
-		role: 'origin' | 'target',
-		isFeature: boolean,
-		mode: EndpointMode,
-		choices: OrbitChoice[]
-	): string | null {
+	/** How an end is met, in words. Null if there was no choice: a named place,
+	 *  or a body with no data. */
+	function endLabel(role: TripRole): string | null {
+		const list = choices[role];
+		const { mode, atSite } = panel.ends[role];
 		// A place answered "how" by being where it is. The trajectory line names
 		// the place and stops there — which pad of a range, or which corner of a
 		// crater, is the picker's business and would treble the line's height.
-		if (isFeature || choices.length === 0) return null;
+		if (atSite || list.length === 0) return null;
 		// Use the priced shape. A body has a maximum orbit height, and both ends of
 		// a custom orbit come off it.
-		const priced = choices.find((c) => c.kind === mode);
+		const priced = list.find((c) => c.kind === mode);
 		return endpointModeLabel(mode, role, priced?.periAltKm ?? null, priced?.apoAltKm ?? null);
 	}
-	let originModeLabel = $derived(
-		endLabel('origin', panel.originAtSite, panel.originMode, originChoices)
-	);
-	let targetModeLabel = $derived(
-		endLabel('target', panel.targetAtSite, panel.targetMode, targetChoices)
-	);
+	let modeLabels = $derived.by(() => ({ origin: endLabel('origin'), target: endLabel('target') }));
 
 	// The orbit each end is met in, handed to the panel so every builder prices
 	// the same one. A mode with no orbit of its own — a landing, a flyby — leaves
 	// it unset and the kernel falls back to its parking orbit.
+	function handOverOrbit(role: TripRole) {
+		const end = panel.ends[role];
+		panel.setEndOrbit(role, choices[role].find((c) => c.kind === end.mode)?.orbit);
+	}
 	$effect(() => {
-		panel.setEndOrbit('origin', originChoices.find((c) => c.kind === panel.originMode)?.orbit);
+		handOverOrbit('origin');
 	});
 	$effect(() => {
-		panel.setEndOrbit('target', targetChoices.find((c) => c.kind === panel.targetMode)?.orbit);
+		handOverOrbit('target');
 	});
 
-	/**
-	 * What each orbit would cost at this end, on the trajectory being read.
-	 * Priced from the chosen route's excess speed, so the figures move with the
-	 * trajectory rather than standing for a trip nobody picked — and there are
-	 * none before the first solve, since "how much is a stationary orbit" has no
-	 * answer without an arc.
-	 */
 	/** What each endpoint's list is showing, reported by the field: null while
-	 *  the list is closed, a null orbit for an open list on a row naming none. */
-	let originList = $state.raw<{ orbit: EndOrbit | null } | null>(null);
-	let targetList = $state.raw<{ orbit: EndOrbit | null } | null>(null);
+	 *  the list is closed, a null orbit for an open list on a row naming none.
+	 *  Replaced wholesale rather than written into, the way the orbits it carries
+	 *  are. */
+	let openLists = $state.raw<Record<TripRole, { orbit: EndOrbit | null } | null>>({
+		origin: null,
+		target: null
+	});
+	function showList(role: TripRole, shown: { orbit: EndOrbit | null } | null) {
+		const next = { ...openLists };
+		next[role] = shown;
+		openLists = next;
+	}
 
 	/** An end's orbit as a ring round its live body: the row its open list is
 	 *  showing, else the picked one. The ring is the picked shape in the picked
 	 *  plane — the flown plane waits for a solve, and the settled trajectory
 	 *  draws that itself. */
-	function endRing(role: 'origin' | 'target'): OrbitPreview | null {
-		const list = role === 'origin' ? originList : targetList;
-		const body = role === 'origin' ? origin : target;
-		const travel = role === 'origin' ? originTravel : targetTravel;
-		const orbit = list ? list.orbit : role === 'origin' ? panel.originOrbit : panel.targetOrbit;
-		if (!orbit || !body || !travel) return null;
+	function endRing(role: TripRole): OrbitPreview | null {
+		const list = openLists[role];
+		const body = ends[role].body;
+		const known = travel[role];
+		const orbit = list ? list.orbit : panel.ends[role].orbit;
+		if (!orbit || !body || !known) return null;
 		return {
 			bodyId: body.id,
-			pointsKm: endOrbitPreviewRing(orbit, travel.poleEcliptic),
+			pointsKm: endOrbitPreviewRing(orbit, known.poleEcliptic),
 			radiusKm: orbit.rApoKm
 		};
 	}
@@ -598,14 +574,22 @@
 			const ring = endRing(role);
 			if (!ring) continue;
 			rings.push(ring);
-			const list = role === 'origin' ? originList : targetList;
-			if (list && openField === role) frame = { bodyId: ring.bodyId, radiusKm: ring.radiusKm };
+			if (openLists[role] && openField === role) {
+				frame = { bodyId: ring.bodyId, radiusKm: ring.radiusKm };
+			}
 		}
 		onOrbitPreview(rings, frame);
 	});
 	$effect(() => () => onOrbitPreview?.([], null));
 
-	function priceEnd(role: 'origin' | 'target', choice: OrbitChoice): number | null {
+	/**
+	 * What one orbit would cost at this end, on the trajectory being read.
+	 * Priced from the chosen route's excess speed, so the figures move with the
+	 * trajectory rather than standing for a trip nobody picked — and there are
+	 * none before the first solve, since "how much is a stationary orbit" has no
+	 * answer without an arc.
+	 */
+	function priceEnd(role: TripRole, choice: OrbitChoice): number | null {
 		// Before a trajectory is chosen the balanced one stands in for the trip:
 		// which orbit is cheap depends on how fast the arc is going when it gets
 		// there, and the fast route's excess speed would price every choice as
@@ -615,7 +599,7 @@
 			panel.offered.find((o) => o.profile === 'balanced')?.route ??
 			panel.offered[0]?.route ??
 			null;
-		const body = role === 'origin' ? originTravel : targetTravel;
+		const body = travel[role];
 		if (!route || !body) return null;
 		// Meeting a craft is cancelling the speed you close on it with, which no
 		// orbit enters into — so it is priced from the arc alone.
@@ -636,14 +620,14 @@
 	// A flyby never slows down, so there is nothing for an atmosphere to do. A
 	// destination whose envelope the kernel would ignore must not show the
 	// control either — the same gate `canAeroBrake` applies. Asked of the detail
-	// bundle rather than `targetTravel`, which is rebuilt from the scene's body
+	// bundle rather than the kernel's own view of it, which is rebuilt from the scene's body
 	// index and briefly resolves to nothing; a control that vanishes and comes
 	// back between a press and its release swallows the click.
 	let targetHasAir = $derived(
-		(aeroPressurePa(targetDetail) ?? 0) >= travelConstants.AERO_MIN_PRESSURE_PA
+		(aeroPressurePa(ends.target.detail) ?? 0) >= travelConstants.AERO_MIN_PRESSURE_PA
 	);
-	let isLanding = $derived(panel.targetAtSite || panel.targetMode === 'surface');
-	let showAero = $derived(targetHasAir && panel.targetMode !== 'flyby');
+	let isLanding = $derived(panel.ends.target.atSite || panel.ends.target.mode === 'surface');
+	let showAero = $derived(targetHasAir && panel.ends.target.mode !== 'flyby');
 	// Ordered by how much of the arrival is still flown on the engine: all of it,
 	// then the capture burn only, then none of it. Aerobraking walks a loose orbit
 	// down into a tight one, so it is only on offer when a tight one is what was
@@ -691,8 +675,8 @@
 	// two points on the ground, which is a hop rather than an orbit change.
 	let samePlace = $derived(
 		plan?.kind === 'orbit-change' &&
-			originTravel !== null &&
-			orbitChangeEnds(originTravel, {
+			travel.origin !== null &&
+			orbitChangeEnds(travel.origin, {
 				departureMode: panel.departureMode,
 				arrivalMode: panel.arrivalMode,
 				...panel.endTerms
@@ -707,9 +691,9 @@
 	// answer, and a departure with nowhere to go prices nothing.
 	let block = $derived<BlockReason | null>(
 		plan === null
-			? !targetPicked
+			? !ends.target.picked
 				? 'no-target'
-				: !originPicked
+				: !ends.origin.picked
 					? 'no-origin'
 					: 'unknown-orbit'
 			: samePlace
@@ -727,42 +711,42 @@
 	let nextWindowJd = $derived.by(() => {
 		// A trip between two orbits about one body waits for nothing either: the
 		// pair of burns is there on every revolution.
-		if (!originTravel || !targetTravel || block || frame.systemPrimary || frame.orbitChange) {
-			return null;
-		}
-		const windows = nextTransferWindows(originTravel, targetTravel, nowJd, 1, frame.centralMu);
+		const { origin, target } = travel;
+		if (!origin || !target || block || frame.systemPrimary || frame.orbitChange) return null;
+		const windows = nextTransferWindows(origin, target, nowJd, 1, frame.centralMu);
 		return windows.length > 0 ? windows[0] : null;
 	});
 
 	// A deadline in the present admits nothing, so "arrive by" opens one slowest
 	// transfer out — the earliest date the trip could plausibly be held to.
 	function defaultPickedJd(mode: TimeMode): number {
-		if (mode !== 'arrive' || !originTravel || !targetTravel) return nowJd;
+		const { origin, target } = travel;
+		if (mode !== 'arrive' || !origin || !target) return nowJd;
 		if (frame.orbitChange) {
 			// The half-ellipse between the two orbits is the slowest crossing here,
 			// and the only one a deadline has to admit.
-			const ends = orbitChangeEnds(originTravel, {
+			const arc = orbitChangeEnds(origin, {
 				departureMode: panel.departureMode,
 				arrivalMode: panel.arrivalMode,
 				...panel.endTerms
 			});
-			if (!ends || ends.singleBurn) return nowJd;
+			if (!arc || arc.singleBurn) return nowJd;
 			return (
 				nowJd +
 				hohmannArcDays(
-					originTravel.mu,
-					Math.min(ends.rFromKm, ends.rToKm),
-					Math.max(ends.rFromKm, ends.rToKm)
+					origin.mu,
+					Math.min(arc.rFromKm, arc.rToKm),
+					Math.max(arc.rFromKm, arc.rToKm)
 				)
 			);
 		}
 		const slowest = frame.systemPrimary
 			? (systemArcBounds(
-					frame.systemPrimary === 'departure' ? originTravel : targetTravel,
-					frame.systemPrimary === 'departure' ? targetTravel : originTravel,
+					frame.systemPrimary === 'departure' ? origin : target,
+					frame.systemPrimary === 'departure' ? target : origin,
 					nowJd
 				)?.slowestDays ?? null)
-			: (transferScale(originTravel, targetTravel, nowJd, frame.centralMu)?.days ?? null);
+			: (transferScale(origin, target, nowJd, frame.centralMu)?.days ?? null);
 		return nowJd + (slowest ?? 0);
 	}
 
@@ -771,16 +755,14 @@
 	// where the origin is when it leaves and where the destination is when it
 	// gets there, and for anything that does not keep still those are described
 	// by different elements.
-	async function refineEnd(role: 'origin' | 'target', jd: number): Promise<TravelBody | null> {
-		const body = role === 'origin' ? origin : target;
+	async function refineEnd(role: TripRole, jd: number): Promise<TravelBody | null> {
+		const { body, detail } = ends[role];
 		if (!body || !refineBody) return null;
 		const fresh = await refineBody(body.id, jd);
 		if (!fresh) return null;
 		// Measured positions outrank any re-description of the elements, and the
 		// pass they are handed to prices the whole crossing against them.
-		return measured(
-			toTravelBody(fresh, lookup, role === 'origin' ? originDetail : targetDetail, frame.orbit)
-		);
+		return measured(toTravelBody(fresh, lookup, detail, frame.orbit));
 	}
 
 	/** What to put to the panel: one whole question, or the reason there isn't
@@ -788,11 +770,11 @@
 	let job = $derived<{ block: BlockReason } | { request: SolveRequest }>(
 		block
 			? { block }
-			: originTravel && targetTravel
+			: travel.origin && travel.target
 				? {
 						request: {
-							origin: originTravel,
-							target: targetTravel,
+							origin: travel.origin,
+							target: travel.target,
 							nowJd,
 							frame,
 							terms: panel.solveTerms
@@ -823,7 +805,7 @@
 		const from = pathOrigin;
 		const to = pathTarget;
 		const payloadKg = panel.payloadKg;
-		const siteLats = [panel.originSiteLatDeg, panel.targetSiteLatDeg];
+		const siteLats = [panel.ends.origin.siteLatDeg, panel.ends.target.siteLatDeg];
 		void payloadKg;
 		void siteLats;
 		if (block || !from || !to) {
@@ -858,12 +840,12 @@
 		const from = pathOrigin;
 		const to = pathTarget;
 		const vias = assistBodies;
-		const departure = panel.originMode;
-		const arrival = panel.targetMode;
+		const departure = panel.ends.origin.mode;
+		const arrival = panel.ends.target.mode;
 		// Braking is among them: the hunt is judged against the direct routes, and
 		// they are priced with it.
 		const braking = panel.effectiveAero;
-		const siteLats = [panel.originSiteLatDeg, panel.targetSiteLatDeg];
+		const siteLats = [panel.ends.origin.siteLatDeg, panel.ends.target.siteLatDeg];
 		void departure;
 		void arrival;
 		void braking;
@@ -883,7 +865,9 @@
 	// The frame every drawn arc is measured from — which is not the body the
 	// pricing calls the centre, but the one the elements are referenced to.
 	let centerId = $derived(
-		plan && origin && target ? transferCenterId(plan, origin, target, lookup) : null
+		plan && ends.origin.body && ends.target.body
+			? transferCenterId(plan, ends.origin.body, ends.target.body, lookup)
+			: null
 	);
 
 	/** A route as the map takes it: geometry, plus what to write at each end.
@@ -897,8 +881,8 @@
 		return {
 			id,
 			path,
-			departure: { name: originName ?? '', when: formatJulianDate(route.departJd) },
-			arrival: { name: targetName ?? '', when: formatJulianDate(route.arriveJd) },
+			departure: { name: ends.origin.name ?? '', when: formatJulianDate(route.departJd) },
+			arrival: { name: ends.target.name ?? '', when: formatJulianDate(route.arriveJd) },
 			...offer
 		};
 	}
@@ -920,23 +904,23 @@
 			// is, so the geometry needs the same candidates the search had.
 			vias: assistBodies,
 			surfaceSites: {
-				departure: originSiteAt ?? undefined,
-				arrival: targetSiteAt ?? undefined
+				departure: siteAt.origin ?? undefined,
+				arrival: siteAt.target ?? undefined
 			}
 		});
 	}
 
 	// The site coordinates land after the geometry is first drawn, the way the
 	// names land after the labels; their arrival has to re-aim the ground leg.
-	let sitesKey = $derived((originSiteAt ? 'o' : '') + (targetSiteAt ? 't' : ''));
+	let sitesKey = $derived((siteAt.origin ? 'o' : '') + (siteAt.target ? 't' : ''));
 
 	let pathKey = $derived.by(() => {
 		const route = panel.selectedRoute;
 		if (!route || !centerId) return null;
 		// The end names are on the labels, and they land after the geometry does.
 		return [
-			originName ?? '',
-			targetName ?? '',
+			ends.origin.name ?? '',
+			ends.target.name ?? '',
 			viewFrame,
 			sitesKey,
 			panel.pricedRevision,
@@ -1002,7 +986,13 @@
 		const keys = alternatives.map((choice) => routeKey(choice.route, centerId, frame));
 		// The end names are on the labels, and they land after the geometry does.
 		return keys.length > 0
-			? [originName ?? '', targetName ?? '', sitesKey, panel.pricedRevision, ...keys].join(';')
+			? [
+					ends.origin.name ?? '',
+					ends.target.name ?? '',
+					sitesKey,
+					panel.pricedRevision,
+					...keys
+				].join(';')
 			: null;
 	});
 
@@ -1086,7 +1076,7 @@
 	let selectedTimelineKey = $derived.by(() => {
 		const route = panel.selectedRoute;
 		if (!route) return null;
-		return timelineKey(route, originName, targetName, timelineBodies, planDrawn);
+		return timelineKey(route, ends.origin.name, ends.target.name, timelineBodies, planDrawn);
 	});
 
 	/** The two ends as the kernel knows them, once both are known. What the orbit
@@ -1107,8 +1097,10 @@
 				buildTimeline(
 					route,
 					(bodyId) => {
-						if (bodyId === origin?.id && originName) return originName;
-						if (bodyId === target?.id && targetName) return targetName;
+						for (const role of ['origin', 'target'] as const) {
+							const end = ends[role];
+							if (bodyId === end.body?.id && end.name) return end.name;
+						}
 						return resolveBodyName(bodyId);
 					},
 					timelineBodies,
@@ -1126,7 +1118,7 @@
 
 	// One end is enough: exchanging it with an empty one turns "going to Mars"
 	// into "leaving Mars", which is how half a trip gets turned round.
-	let anyEnd = $derived(originPicked || targetPicked);
+	let anyEnd = $derived(ends.origin.picked || ends.target.picked);
 
 	// Which of the two steps is showing. A trajectory is chosen or it is not, and
 	// that is the whole of it — there is no third state where the form and the
@@ -1149,26 +1141,18 @@
 	});
 
 	function swap() {
-		// Modes ride along with their end, and every departure mode is also an
-		// arrival one — so only the mode coming back needs a fallback, for the
-		// three a departure cannot be: a flyby, a capture ellipse, a transfer orbit.
-		const previousOriginMode = panel.originMode;
-		const previousOriginAlt = panel.originAltKm;
-		const previousOriginApo = panel.originApoAltKm;
-		const previousOriginInc = panel.originIncDeg;
-		const previousOriginArg = panel.originArgPeriDeg;
-		panel.originMode = ORIGIN_MODES.includes(panel.targetMode) ? panel.targetMode : 'low-orbit';
-		panel.targetMode = previousOriginMode;
-		panel.originAltKm = panel.targetAltKm;
-		panel.targetAltKm = previousOriginAlt;
-		panel.originApoAltKm = panel.targetApoAltKm;
-		panel.targetApoAltKm = previousOriginApo;
-		// A plane is measured against its own body's equator, so it rides with the
-		// end it belongs to rather than staying put.
-		panel.originIncDeg = panel.targetIncDeg;
-		panel.targetIncDeg = previousOriginInc;
-		panel.originArgPeriDeg = panel.targetArgPeriDeg;
-		panel.targetArgPeriDeg = previousOriginArg;
+		// Every term rides along with the end it belongs to — a plane is measured
+		// against its own body's equator, and an altitude against its own surface.
+		const departing = panel.ends.origin.terms;
+		const arriving = panel.ends.target.terms;
+		// Every departure mode is also an arrival one, so only the mode coming back
+		// needs a fallback, for the three a departure cannot be: a flyby, a capture
+		// ellipse, a transfer orbit.
+		panel.ends.origin.apply({
+			...arriving,
+			mode: ORIGIN_MODES.includes(arriving.mode) ? arriving.mode : 'low-orbit'
+		});
+		panel.ends.target.apply(departing);
 		onSwap();
 	}
 </script>
@@ -1191,28 +1175,70 @@
 	/>
 {/snippet}
 
+<!-- One endpoint box, rendered once for each end: the two differ in what they
+     are, not in how they are described. -->
+{#snippet endpointBox(role: TripRole)}
+	{@const end = ends[role]}
+	{@const terms = panel.ends[role]}
+	{@const known = travel[role]}
+	{@const room = facts[role]}
+	<EndpointField
+		{role}
+		fullscreen={isMobile}
+		bodyName={end.name}
+		placeholder={role === 'origin' ? m.travel_choose_origin() : m.travel_choose_target()}
+		isFeature={terms.atSite}
+		mode={terms.mode}
+		onModeChange={(mode: EndpointMode) => (terms.mode = mode)}
+		choices={choices[role]}
+		customAltKm={terms.altKm}
+		customApoAltKm={terms.apoAltKm}
+		maxAltKm={known && room ? maxCustomAltitudeKm(known, room) : 0}
+		onCustomAlt={(km: number) => (terms.altKm = km)}
+		onCustomApoAlt={(km: number) => (terms.apoAltKm = km)}
+		incDeg={terms.incDeg}
+		onIncChange={(deg: number | null) => (terms.incDeg = deg)}
+		onPreview={(shown) => showList(role, shown)}
+		argPeriDeg={terms.argPeriDeg}
+		onArgPeriChange={(deg: number | null) => (terms.argPeriDeg = deg)}
+		priceKms={(choice: OrbitChoice) => priceEnd(role, choice)}
+		open={openField === role}
+		onOpenChange={(next: boolean) => setOpenField(role, next)}
+		excludeIds={end.exclude}
+		pads={end.pads}
+		padCode={end.padCode}
+		groundLine={groundLines[role]}
+		onPadPick={end.onPadPick}
+		onPick={(pick) => {
+			end.onChange(pick);
+			// A feature has already answered "how"; anything else moves on to it.
+			if (pick.featureId !== null) openField = null;
+		}}
+	/>
+{/snippet}
+
 <div class="flex flex-col gap-5">
 	{#if chosen}
 		{@const pass = chosen.route.flybys?.[0] ?? null}
 		<!-- The title above names the trajectory. This line gives the two ends, their
 		     modes and the dates. The picker is not on the screen in this step. -->
 		<div class="flex flex-col gap-0.5">
-			{#if originName && targetName}
+			{#if ends.origin.name && ends.target.name}
 				<!-- Each end is one block: a line too long for the drawer breaks
 				     between them rather than mid-name, and both ends named in full
 				     beats one of them cut off. -->
 				<p class="text-sm">
 					<span class="inline-block"
-						>{originName}{#if originModeLabel}<span class="text-muted-foreground ms-1.5 text-xs"
-								>{originModeLabel}</span
+						>{ends.origin.name}{#if modeLabels.origin}<span
+								class="text-muted-foreground ms-1.5 text-xs">{modeLabels.origin}</span
 							>{/if}</span
 					>
 					<span class="inline-block"
 						><MoveRightIcon
 							class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
 							aria-hidden="true"
-						/>&nbsp;{targetName}{#if targetModeLabel}<span
-								class="text-muted-foreground ms-1.5 text-xs">{targetModeLabel}</span
+						/>&nbsp;{ends.target.name}{#if modeLabels.target}<span
+								class="text-muted-foreground ms-1.5 text-xs">{modeLabels.target}</span
 							>{/if}{#if chosen.route.constantThrust}<span
 								class="text-muted-foreground ms-1.5 text-xs tabular-nums"
 								>{formatAcceleration(chosen.route.constantThrust)}</span
@@ -1232,14 +1258,14 @@
 			</p>
 		</div>
 
-		{#if originTravel && targetTravel}
+		{#if travel.origin && travel.target}
 			<RouteDetail
 				route={chosen.route}
-				origin={originTravel}
-				target={targetTravel}
+				origin={travel.origin}
+				target={travel.target}
 				state={panel}
 				nameOf={resolveBodyName}
-				{originName}
+				originName={ends.origin.name}
 				hazards={selectedHazards}
 			/>
 		{/if}
@@ -1252,41 +1278,7 @@
 	     the join between them, and stays centred however tall either box grows. -->
 			<div class="grid grid-cols-[1fr_2rem] gap-x-2 gap-y-1.5">
 				<div class="col-start-1 row-start-1 min-w-0">
-					<EndpointField
-						role="origin"
-						fullscreen={isMobile}
-						bodyName={originName}
-						placeholder={m.travel_choose_origin()}
-						isFeature={panel.originAtSite}
-						mode={panel.originMode}
-						onModeChange={(mode: EndpointMode) => (panel.originMode = mode)}
-						choices={originChoices}
-						customAltKm={panel.originAltKm}
-						customApoAltKm={panel.originApoAltKm}
-						maxAltKm={originTravel && originFacts
-							? maxCustomAltitudeKm(originTravel, originFacts)
-							: 0}
-						onCustomAlt={(km: number) => (panel.originAltKm = km)}
-						onCustomApoAlt={(km: number) => (panel.originApoAltKm = km)}
-						incDeg={panel.originIncDeg}
-						onIncChange={(deg: number | null) => (panel.originIncDeg = deg)}
-						onPreview={(state) => (originList = state)}
-						argPeriDeg={panel.originArgPeriDeg}
-						onArgPeriChange={(deg: number | null) => (panel.originArgPeriDeg = deg)}
-						priceKms={(choice: OrbitChoice) => priceEnd('origin', choice)}
-						open={openField === 'origin'}
-						onOpenChange={(next: boolean) => setOpenField('origin', next)}
-						excludeIds={excludeForOrigin}
-						pads={originPads}
-						padCode={originPadCode}
-						groundLine={originGroundLine}
-						onPadPick={onOriginPadPick}
-						onPick={(pick) => {
-							onOriginChange(pick);
-							// A feature has already answered "how"; anything else moves on to it.
-							if (pick.featureId !== null) openField = null;
-						}}
-					/>
+					{@render endpointBox('origin')}
 				</div>
 
 				<div class="col-start-1 row-start-2">
@@ -1296,40 +1288,7 @@
 				</div>
 
 				<div class="col-start-1 row-start-3 min-w-0">
-					<EndpointField
-						role="target"
-						fullscreen={isMobile}
-						bodyName={targetName}
-						placeholder={m.travel_choose_target()}
-						isFeature={panel.targetAtSite}
-						mode={panel.targetMode}
-						onModeChange={(mode: EndpointMode) => (panel.targetMode = mode)}
-						choices={targetChoices}
-						customAltKm={panel.targetAltKm}
-						customApoAltKm={panel.targetApoAltKm}
-						maxAltKm={targetTravel && targetFacts
-							? maxCustomAltitudeKm(targetTravel, targetFacts)
-							: 0}
-						onCustomAlt={(km: number) => (panel.targetAltKm = km)}
-						onCustomApoAlt={(km: number) => (panel.targetApoAltKm = km)}
-						incDeg={panel.targetIncDeg}
-						onIncChange={(deg: number | null) => (panel.targetIncDeg = deg)}
-						onPreview={(state) => (targetList = state)}
-						argPeriDeg={panel.targetArgPeriDeg}
-						onArgPeriChange={(deg: number | null) => (panel.targetArgPeriDeg = deg)}
-						priceKms={(choice: OrbitChoice) => priceEnd('target', choice)}
-						open={openField === 'target'}
-						onOpenChange={(next: boolean) => setOpenField('target', next)}
-						excludeIds={excludeForTarget}
-						pads={targetPads}
-						padCode={targetPadCode}
-						groundLine={targetGroundLine}
-						onPadPick={onTargetPadPick}
-						onPick={(pick) => {
-							onTargetChange(pick);
-							if (pick.featureId !== null) openField = null;
-						}}
-					/>
+					{@render endpointBox('target')}
 				</div>
 
 				<div class="col-start-2 row-span-3 row-start-1 flex items-center justify-end">
