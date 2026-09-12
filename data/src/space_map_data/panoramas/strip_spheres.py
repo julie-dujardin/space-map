@@ -8,35 +8,17 @@ import numpy as np
 from PIL import Image
 
 from .pipeline import write_json
-from .releases import refresh_catalog
 
-# These horizons are visual estimates, not camera calibration or true north.
-STRIPS = {
-    "curiosity-pia20840": (
-        360,
-        0.27,
-        "https://science.nasa.gov/photojournal/rovers-panorama-taken-amid-murray-buttes-on-mars/",
-    ),
-    "curiosity-pia23623": (
-        360,
-        0.20,
-        "https://science.nasa.gov/photojournal/curiositys-18-billion-pixel-panorama/",
-    ),
-    "curiosity-pia26696": (
-        360,
-        0.30,
-        "https://science.nasa.gov/photojournal/curiosity-captures-a-360-degree-view-at-nevado-sajama/",
-    ),
-    "insight-pia23140": (
-        290,
-        0.22,
-        "https://science.nasa.gov/photojournal/insight-sol-14-panorama-2/",
-    ),
-}
+# Bind visual estimates to reviewed masters so changed sources require review.
+STRIPS = json.loads(Path(__file__).with_name("curated_strips.json").read_text())
 
 
-def project_strip(source, horizontal, horizon, width=4096):
-    if not 0 < horizontal <= 360 or not 0 <= horizon <= 1:
+def project_strip(source, horizontal, horizon, width=4096, *, start_azimuth=0):
+    if (
+        not np.isfinite(start_azimuth)
+        or not 0 < horizontal <= 360
+        or not 0 <= horizon <= 1
+    ):
         raise ValueError("Invalid strip bounds")
     if width < 256 or width % 2:
         raise ValueError("Sphere width must be even and at least 256")
@@ -46,7 +28,8 @@ def project_strip(source, horizontal, horizon, width=4096):
     elevation = np.pi / 2 - (np.arange(width // 2) + 0.5) * 2 * np.pi / width
     # A cylindrical approximation preserves the strip's horizontal sweep.
     sy = horizon * height - scale * np.tan(elevation)
-    sx = (np.arange(width) + 0.5) / width * 360 / horizontal * columns
+    azimuth = ((np.arange(width) + 0.5) / width * 360 - start_azimuth) % 360
+    sx = azimuth / horizontal * columns
     valid = (sy[:, None] >= 0) & (sy[:, None] < height) & (sx[None, :] < columns)
     rgb = pixels[
         np.clip(sy, 0, height - 1).astype(int)[:, None],
@@ -59,53 +42,99 @@ def project_strip(source, horizontal, horizon, width=4096):
     return Image.fromarray(rgba), fraction * 100
 
 
-def process(directory):
+def render_curated(target, metadata, spec, *, width=4096):
+    if metadata.get("source_sha256") != spec["source_sha256"]:
+        raise ValueError(
+            f"Curated geometry needs review for changed source: {spec['id']}"
+        )
+    horizontal = spec["horizontal_degrees"]
+    heading = spec["start_azimuth_deg"]
+    with Image.open(target / metadata["preview"]) as source:
+        source_size = source.size
+        sphere, percent = project_strip(
+            source,
+            horizontal,
+            spec["horizon_fraction"],
+            width,
+            start_azimuth=heading or 0,
+        )
+    sphere.save(target / "sphere.webp", lossless=True)
+    metadata.update(
+        {
+            "image": "sphere.webp",
+            "projection": "equirectangular",
+            "width": width,
+            "height": width // 2,
+            "hfov_deg": 360,
+            "vfov_deg": 180,
+            "geometry_status": "estimated",
+            "north_azimuth_offset_deg": 0 if heading is not None else None,
+            "orientation_status": "caption-aligned"
+            if heading is not None
+            else "unknown",
+            "capture_time": spec["capture_time"],
+            "capture_stop_time": spec["capture_stop_time"],
+            "capture_precision": "day",
+            "capture_date_source_url": spec.get(
+                "capture_date_source_url", spec["source_url"]
+            ),
+            "render_status": "approximate immersive preview; not calibrated",
+            "projection_bounds": {
+                "start_azimuth_deg": heading,
+                "horizontal_degrees": horizontal,
+            },
+            "geometry_evidence": {
+                "source_url": spec["source_url"],
+                "horizontal": "reviewed product caption or instrument gallery",
+                "horizontal_source_url": spec.get(
+                    "horizontal_source_url", spec["source_url"]
+                ),
+                "vertical": "assumed cylindrical scale; visually estimated horizon",
+                "horizon_fraction": spec["horizon_fraction"],
+                "heading": "published cardinal direction"
+                if heading is not None
+                else "unknown",
+                "source_rendition": "flat preview, not full-resolution master",
+                "source_width": source_size[0],
+                "source_height": source_size[1],
+                "source_sha256": spec["source_sha256"],
+            },
+            "coverage": {
+                "horizontal_degrees": horizontal,
+                "horizontal_percent": horizontal / 360 * 100,
+                "sphere_percent": None,
+                "estimated_sphere_percent": percent,
+                "method": "published sweep; approximate cylindrical mapping and near-black missing-pixel mask",
+            },
+            "geometry_note": "Visually estimated horizon and cylindrical scale; source seams/blended sky retained. Near-black masking can remove real shadows.",
+        }
+    )
+    metadata.pop("north_azimuth_offset", None)
+    return metadata
+
+
+def process(directory, *, collections=None, width=4096):
+    from .releases import refresh_catalog
+
     count = 0
-    for identity, (horizontal, horizon, evidence) in STRIPS.items():
-        collection = identity.split("-", 1)[0]
-        target = directory / collection / identity
-        path = target / "metadata.json"
-        if not path.exists():
+    for collection in sorted({s["collection"] for s in STRIPS}):
+        if collections is not None and collection not in collections:
             continue
-        metadata = json.loads(path.read_text())
-        with Image.open(target / metadata["preview"]) as source:
-            sphere, percent = project_strip(source, horizontal, horizon)
-        sphere.save(target / "sphere.webp", lossless=True)
-        metadata.update(
-            {
-                "image": "sphere.webp",
-                "projection": "equirectangular",
-                "geometry_status": "estimated",
-                "north_azimuth_offset": None,
-                "orientation_status": "unknown",
-                "render_status": "approximate immersive preview; not calibrated",
-                "projection_bounds": {
-                    "start_azimuth_deg": 0,
-                    "horizontal_degrees": horizontal,
-                },
-                "geometry_evidence": {
-                    "source_url": evidence,
-                    "horizontal": "published caption",
-                    "vertical": "assumed cylindrical scale; visually estimated horizon",
-                    "horizon_fraction": horizon,
-                    "source_rendition": "2048-pixel flat preview, not full-resolution master",
-                },
-                "coverage": {
-                    "horizontal_degrees": horizontal,
-                    "horizontal_percent": horizontal / 360 * 100,
-                    "sphere_percent": None,
-                    "estimated_sphere_percent": percent,
-                    "method": "published sweep; approximate cylindrical mapping and near-black missing-pixel mask",
-                },
-            }
-        )
-        write_json(path, metadata)
+        catalog_path = directory / collection / "catalog.json"
+        if not catalog_path.exists():
+            continue
+        active = {e["id"] for e in json.loads(catalog_path.read_text())["panoramas"]}
+        for spec in STRIPS:
+            if spec["collection"] != collection or spec["id"] not in active:
+                continue
+            target = directory / collection / spec["id"]
+            path = target / "metadata.json"
+            metadata = render_curated(
+                target, json.loads(path.read_text()), spec, width=width
+            )
+            write_json(path, metadata)
+            count += 1
         refresh_catalog(directory, collection)
-        count += 1
-        print(
-            f"{identity}: {horizontal} degrees; estimated {percent:.1f}% sphere",
-            flush=True,
-        )
     return count
 
 
@@ -113,7 +142,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, required=True)
     args = parser.parse_args()
-    process(args.directory)
+    print(f"Rendered {process(args.directory)} curated spheres")
 
 
 if __name__ == "__main__":

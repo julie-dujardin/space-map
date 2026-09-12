@@ -57,7 +57,7 @@
     const $ = (id) => document.getElementById(id);
     const canvas = $('view'), status = $('status');
     let yaw = 0, pitch = -12, fov = 75, entries = [], request = 0, texture = null, orientationKnown = true;
-    for (const [value, label] of [['curiosity-navcam', 'Curiosity · Navcam grayscale'], ['moon', 'Moon · Apollo panoramas'], ['venus', 'Venus · Venera grayscale'], ['titan', 'Titan · Huygens descent']]) $('mission').add(new Option(label, value));
+    for (const [value, label] of [['curiosity-navcam', 'Curiosity · Navcam grayscale'], ['moon', 'Moon · Apollo panoramas'], ['venus', 'Venus · Venera grayscale'], ['titan', 'Titan · Huygens descent'], ['67p', 'Comet 67P · Philae surface']]) $('mission').add(new Option(label, value));
     const initial = new URLSearchParams(location.search);
     if ([...$('mission').options].some(option => option.value === initial.get('collection'))) $('mission').value = initial.get('collection');
     const radians = Math.PI / 180;

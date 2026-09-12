@@ -263,3 +263,42 @@ def test_exact_observation_frame_localization():
             {(3, 376), (3, 999)},
             {(3, 376): location, (3, 999): {**location, "latitude": 19}},
         )
+
+
+def test_release_reprocessing_retains_curated_sphere(tmp_path, monkeypatch):
+    from PIL import Image
+    from space_map_data.panoramas import strip_spheres
+    from space_map_data.panoramas.pipeline import sha256, write_json
+    from space_map_data.panoramas.releases import process_releases
+
+    root, output = tmp_path / "sources", tmp_path / "derived"
+    source = root / "pancam" / "image.png"
+    source.parent.mkdir(parents=True)
+    Image.new("RGB", (360, 60), (180, 90, 30)).save(source)
+    spec = dict(strip_spheres.STRIPS[-1], id="test", source_sha256=sha256(source))
+    monkeypatch.setattr(strip_spheres, "STRIPS", [spec])
+    write_json(
+        source.parent / "inventory.json",
+        {"products": [{"id": "test", "sol": 21, "title": "Horizon"}]},
+    )
+    write_json(
+        source.parent / "downloads.json",
+        {
+            "products": {
+                "test": {
+                    "status": "downloaded",
+                    "path": "image.png",
+                    "sha256": sha256(source),
+                    "width": 360,
+                    "height": 60,
+                }
+            }
+        },
+    )
+    for _ in range(2):
+        process_releases(root, output, "pancam")
+        metadata = json.loads((output / "pancam/test/metadata.json").read_text())
+        assert metadata["image"] == "sphere.webp"
+        assert metadata["capture_time"] == spec["capture_time"]
+        assert metadata["orientation_status"] == "unknown"
+        assert (output / "pancam/test/sphere.webp").is_file()

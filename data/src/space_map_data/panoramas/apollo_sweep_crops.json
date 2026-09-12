@@ -1,0 +1,198 @@
+{
+  "apollo11-landing": {
+    "source_sha256": "a742d6a3e79d26f8d653f8bef90914c50e5fdf1652be50ff6603fac291700a69",
+    "source_size": [
+      16245,
+      1293
+    ],
+    "bounds_px": [
+      290,
+      0,
+      15690,
+      1293
+    ],
+    "estimated_original_horizontal_degrees": 379.75,
+    "matched_features": 81,
+    "matched_points_px": [
+      [
+        28.19,
+        1156.94,
+        15455.26,
+        1078.32
+      ],
+      [
+        86.41,
+        1202.63,
+        15501.62,
+        1131.13
+      ],
+      [
+        286.49,
+        1181.26,
+        15680.27,
+        1151.92
+      ],
+      [
+        564.67,
+        942.75,
+        15961.03,
+        977.92
+      ],
+      [
+        625.17,
+        992.89,
+        16016.25,
+        1038.38
+      ]
+    ],
+    "method": "SIFT edge-region matches, descriptor ratio < 0.8, RANSAC similarity fit at 10000-pixel working width; visually reviewed repeated terrain. Rounded one-turn span from median horizontal displacement. Seam placed near the matched terrain; no extrapolation to the middle of the overlap.",
+    "limitations": "Approximate single-turn crop; source stitching scale, roll and vertical seam differences remain. North unverified."
+  },
+  "apollo12-landing": {
+    "source_sha256": "5837b0a59c9c8371b67d701d4a2cbc6e67c189dcb643f81dad9056b543b34afd",
+    "source_size": [
+      16335,
+      1946
+    ],
+    "bounds_px": [
+      260,
+      0,
+      16190,
+      1946
+    ],
+    "estimated_original_horizontal_degrees": 369.15,
+    "matched_features": 51,
+    "matched_points_px": [
+      [
+        216.36,
+        1655.53,
+        16185.06,
+        1642.47
+      ],
+      [
+        249.31,
+        1560.96,
+        16202.63,
+        1556.78
+      ],
+      [
+        284.78,
+        1303.5,
+        16197.73,
+        1308.01
+      ],
+      [
+        277.08,
+        1350.87,
+        16196.52,
+        1354.04
+      ],
+      [
+        216.56,
+        1710.94,
+        16195.83,
+        1697.94
+      ]
+    ],
+    "method": "SIFT edge-region matches, descriptor ratio < 0.8, RANSAC similarity fit at 10000-pixel working width; visually reviewed repeated terrain. Rounded one-turn span from median horizontal displacement. Seam placed near the matched terrain; no extrapolation to the middle of the overlap.",
+    "limitations": "Approximate single-turn crop; source stitching scale, roll and vertical seam differences remain. North unverified."
+  },
+  "apollo15-station9a": {
+    "source_sha256": "b434ac1fe61ecd1bfbf502fcb113aed701b3b637b061ad3db852e4dd23126fb4",
+    "source_size": [
+      15822,
+      1897
+    ],
+    "bounds_px": [
+      170,
+      0,
+      15240,
+      1897
+    ],
+    "estimated_original_horizontal_degrees": 377.96,
+    "matched_features": 29,
+    "matched_points_px": [
+      [
+        6.0,
+        958.01,
+        15083.25,
+        850.66
+      ],
+      [
+        120.48,
+        866.8,
+        15193.51,
+        768.14
+      ],
+      [
+        167.14,
+        806.82,
+        15241.81,
+        712.06
+      ],
+      [
+        189.83,
+        827.13,
+        15261.97,
+        731.86
+      ],
+      [
+        361.86,
+        1018.13,
+        15417.7,
+        927.2
+      ]
+    ],
+    "method": "SIFT edge-region matches, descriptor ratio < 0.8, RANSAC similarity fit at 10000-pixel working width; visually reviewed repeated terrain. Rounded one-turn span from median horizontal displacement. Seam placed near the matched terrain; no extrapolation to the middle of the overlap.",
+    "limitations": "Approximate single-turn crop; source stitching scale, roll and vertical seam differences remain. North unverified."
+  },
+  "apollo17-landing": {
+    "source_sha256": "9fa387f296d1d1b4320a83c17d9232ffb38180560136e38731e2f774aeef8eae",
+    "source_size": [
+      16955,
+      2055
+    ],
+    "bounds_px": [
+      55,
+      0,
+      15235,
+      2055
+    ],
+    "estimated_original_horizontal_degrees": 402.09,
+    "matched_features": 54,
+    "matched_points_px": [
+      [
+        10.2,
+        1203.87,
+        15298.43,
+        1099.94
+      ],
+      [
+        29.54,
+        1907.23,
+        15212.46,
+        1789.81
+      ],
+      [
+        54.12,
+        1903.41,
+        15234.9,
+        1790.77
+      ],
+      [
+        74.39,
+        1904.94,
+        15253.39,
+        1796.05
+      ],
+      [
+        134.98,
+        1824.17,
+        15320.21,
+        1725.99
+      ]
+    ],
+    "method": "SIFT edge-region matches, descriptor ratio < 0.8, RANSAC similarity fit at 10000-pixel working width; visually reviewed repeated terrain. Rounded one-turn span from median horizontal displacement. Seam placed near the matched terrain; no extrapolation to the middle of the overlap.",
+    "limitations": "Approximate single-turn crop; source stitching scale, roll and vertical seam differences remain. North unverified."
+  }
+}

@@ -43,6 +43,22 @@ def audit(directory):
                 "instrument": instrument,
                 "products": len(rows),
                 "spherical_renditions": sum(bool(m.get("image")) for m in rows),
+                "dated_spherical_renditions": sum(
+                    bool(
+                        m.get("image")
+                        and (m.get("capture_time") or m.get("start_time"))
+                    )
+                    for m in rows
+                ),
+                "dated_north_aligned_spherical_renditions": sum(
+                    bool(
+                        m.get("image")
+                        and (m.get("capture_time") or m.get("start_time"))
+                        and m.get("north_azimuth_offset_deg") is not None
+                        and m.get("orientation_status") != "unknown"
+                    )
+                    for m in rows
+                ),
                 "estimated_geometry": sum(
                     m.get("grid_geometry_status") == "estimated"
                     or m.get("geometry_status") == "estimated"

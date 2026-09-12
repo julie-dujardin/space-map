@@ -3,7 +3,8 @@
 This is a local data/download/processing pipeline, not an app export. It prioritizes
 official preprocessed color imagery, includes partial panoramas, and retains source
 files, credits, capture information, coverage, and localization evidence. No sky or
-ground is synthesized. Everything runs in the `mars-panoramas` worktree.
+ground is synthesized. The ignored imagery cache lives at `.panorama-data/` in
+the main checkout.
 
 ## Collections and completeness
 
@@ -230,12 +231,12 @@ The NASA originals retain their existing source credits and reuse provenance.
 These renditions use the 2048-pixel flat previews, not the gigapixel masters.
 
 Vertical geometry assumes a cylindrical strip with a visually estimated horizon;
-neither that geometry nor true north has been calibrated. `sphere_percent` stays
+vertical geometry remains uncalibrated. Murray Buttes is aligned using the caption’s north-at-both-ends statement; other headings remain unknown unless explicitly recorded. `sphere_percent` stays
 null; `estimated_sphere_percent` reports masked solid angle under that assumption.
 Near-black source holes and unsurveyed directions remain transparent; the mask
 can also remove dark real terrain. No sky or ground is synthesized.
 These products are explicitly excluded from `map_ready`.
-Rerun this command after rebuilding release metadata.
+Release processing now reapplies curated strip fits automatically. The standalone command also updates existing active catalogs without rereading the masters.
 
 Open `http://localhost:8765/?collection=curiosity&panorama=curiosity-pia20840`
 or `http://localhost:8765/?collection=insight&panorama=insight-pia23140`.
@@ -251,3 +252,47 @@ Tests cover real PDS labels, partial-sphere geometry, seam wrapping, solid-angle
 coverage, discovery pagination, color/variant selection, timeline endpoints/events,
 mission-name ambiguity, coordinate joins, cache integrity, and printed-grid fitting.
 Live source completeness and visual validation are separate from the unit tests.
+
+### Dated Spirit and Opportunity spheres
+
+The versioned `data/src/space_map_data/panoramas/curated_strips.json` manifest
+adds 17 reviewed Pancam panoramas: 13 full sweeps and four partial sweeps
+(Summit 130°, Columbia Hills 120°, Viking Crater 136°, Horizon Strip 150°).
+Capture dates span 2004–2009. Multi-day acquisitions retain both endpoints,
+with day precision and no assumed UTC exposure time. Sources are the linked
+product captions and the [Pancam full-panorama gallery](https://pancam.sese.asu.edu/panoramas.html).
+
+[Santorini](https://pancam.sese.asu.edu/Santorini.html) states that north is at
+its center; the renderer rotates that point to the sphere seam. The existing
+[Murray Buttes](https://science.nasa.gov/photojournal/rovers-panorama-taken-amid-murray-buttes-on-mars/)
+fit now has its September 4, 2016 capture date and published north alignment.
+Other new headings remain unknown. All new vertical fits remain approximate,
+with transparent gaps and no local fill. Published mosaics can already contain
+blended sky. These are immersive previews, not calibrated map-ready products.
+
+Product-specific captions take precedence over gallery summaries: Thanksgiving
+starts November 24, 2004, and Legacy ends March 5, 2004. Bonneville is excluded
+because the page describes a 180° product under a 360° gallery entry. Home Plate
+South is excluded because its colored missing-area fill needs a dedicated mask.
+Outcrop-only views without a defensible horizon estimate remain flat.
+
+Fits are bound to master SHA-256 hashes and restricted to active catalog IDs.
+Changed masters require another geometry review. Credits and original files
+are retained. To update the existing cache from the main checkout:
+
+```sh
+PYTHONPATH=data/src data/.venv/bin/python -m space_map_data.panoramas.strip_spheres \
+  --directory .panorama-data/derived
+PYTHONPATH=data/src data/.venv/bin/python -m space_map_data.panoramas.audit \
+  --directory .panorama-data/derived
+```
+
+The audit reports dated spherical renditions and dated renditions with known
+north alignment separately. Estimated geometry is still counted explicitly;
+these counts describe products, not unique observing locations.
+
+Validated cache result: 527 → 544 spherical renditions, including 10 new Spirit
+and seven new Opportunity products. All 17 additions have capture dates; the
+asset audit reports no missing references. Reprojection and release-regeneration
+tests cover partial gaps, seam wrapping, caption heading, dates, changed-source
+rejection, and active-catalog filtering.

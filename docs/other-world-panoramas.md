@@ -1,4 +1,4 @@
-# Moon, Venus, and Titan sphere previews
+# Moon, Venus, Titan, and comet sphere previews
 
 Run from the panorama worktree, using the data environment:
 
@@ -9,7 +9,7 @@ PYTHONPATH=data/src python -m space_map_data.panoramas.other_worlds --source-dir
 Add `--offline` to rebuild from cached originals. Originals are retained with
 SHA-256 recorded in each product's metadata. Rendering uses an at-most-8192-pixel
 working image and outputs 4096×2048 transparent WebP spheres. Existing unrelated
-entries in the Moon/Titan catalogs are preserved. No application/map integration.
+entries in each catalog are preserved. No application/map integration.
 
 | Collection | Product | Source | Geometry |
 | --- | --- | --- | --- |
@@ -26,8 +26,8 @@ directly measured: published mosaics can contain blended/interpolated regions.
 
 Apollo near-black pixels are made transparent, including removed sky but possibly
 also real shadows. NASA's assembly already removed sky and lens flares and blended
-seams. No local sky/ground synthesis or recoloring is performed. The two Apollo
-capture dates are left unknown pending frame-level verification.
+seams. No local sky/ground synthesis or recoloring is performed. Apollo capture dates are resolved to UTC calendar days using the source frame
+sequences and activity times in the Apollo Lunar Surface Journal.
 
 Titan is an **aerial descent mosaic from approximately 10 km altitude**, not a
 ground panorama. The annotated PIA08113 figure has South labels inset from both
@@ -59,3 +59,88 @@ Color rights remain unresolved: the [LPI color release](https://www.lpi.usra.edu
 
 Tests cover Mercator inversion, transparent sky, preservation of dark Titan
 terrain, invalid dimensions, missing offline inputs, and idempotent catalog builds.
+
+## Beyond-Mars expansion
+
+The `panoramas-beyond-mars` worktree adds five lunar panoramas and one comet
+camera view. The two existing Apollo products now also have capture dates.
+The Moon collection includes all six Apollo landing missions:
+
+| Product | Capture date (UTC day) | Source master |
+| --- | --- | --- |
+| Apollo 11 landing site | 1969-07-21 | [JSC2007e045375](https://www.lpi.usra.edu/resources/apollopanoramas/pans/?pan=JSC2007e045375) |
+| Apollo 12 landing site | 1969-11-19 | [JSC2007e045376](https://www.lpi.usra.edu/resources/apollopanoramas/pans/?pan=JSC2007e045376) |
+| Apollo 14 landing site | 1971-02-05 | [JSC2007e045377](https://www.lpi.usra.edu/resources/apollopanoramas/pans/?pan=JSC2007e045377) |
+| Apollo 15 Station 9A | 1971-08-02 | [JSC2007e045378](https://www.lpi.usra.edu/resources/apollopanoramas/pans/?pan=JSC2007e045378) |
+| Apollo 15 landing site, EVA 2 | 1971-08-01 | [JSC2007e045379](https://www.lpi.usra.edu/resources/apollopanoramas/pans/?pan=JSC2007e045379) |
+| Apollo 16 Station 1 | 1972-04-21 | [JSC2012e052598](https://www.lpi.usra.edu/resources/apollopanoramas/pans/?pan=JSC2012e052598) |
+| Apollo 17 landing site, EVA 1 | 1972-12-12 | [JSC2007e045384](https://www.lpi.usra.edu/resources/apollopanoramas/pans/?pan=JSC2007e045384) |
+
+Each product records its constituent frame range, journal activity time (MET),
+and capture-date source. Activity timestamps identify the sequence, not exact
+shutter times. UTC dates can differ from dates in US-local mission captions.
+The [Apollo Lunar Surface Journal](https://apollojournals.org/alsj/) is now hosted
+at the site [linked by NASA](https://www.nasa.gov/history/alsj-and-afj/).
+These are approximate 360° cylindrical fits; horizontal bounds, horizon heights,
+and north remain uncalibrated. Source shadows, seams, and lens flares are retained,
+except near-black pixels removed by the existing mask.
+
+### Comet 67P: Philae at Abydos
+
+[ESA's CIVA camera 4 release](https://www.esa.int/ESA_Multimedia/Images/2015/07/CIVA_camera_4_view)
+identifies capture on November 13, 2014. The
+[instrument team](https://www.ias.u-psud.fr/en/content/first-image-comet-churyumov-gerasimenko-civa-camera-rosettas-philae-lander)
+specifies a nominal 60° field of view for each CIVA camera. The 1024×1024 frame
+is projected as an approximate rectilinear camera onto a transparent sphere,
+covering about 8% of its area. This is a single partial view, not the full CIVA
+panorama. Camera tilt, north, and lens distortion remain uncalibrated. Black
+pixels are retained as shadows; only directions outside the camera are transparent.
+
+Credit ESA/Rosetta/Philae/CIVA. The ESA Standard Licence permits educational,
+editorial, and informational use; this is not marked generally commercially
+reusable. Preview: <http://localhost:8765/?collection=67p&panorama=philae-civa4>.
+
+From the main checkout, reuse the existing cache:
+
+```sh
+PYTHONPATH=data/src /var/home/julie/code/git/personal/space-map/data/.venv/bin/python \
+  -m space_map_data.panoramas.other_worlds --offline \
+  --source-dir .panorama-data/other-worlds \
+  --output-dir .panorama-data/derived
+```
+
+### Remaining candidates
+
+- [Philae's complete CIVA panorama](https://blogs.esa.int/rosetta/2014/11/13/comet-with-a-view/): recover camera-by-camera placement and lander attitude; the presentation collage cannot be treated as a cylindrical strip.
+- [Surveyor panoramas](https://www.nasa.gov/history/55-years-ago-surveyor-1-makes-a-soft-landing-on-the-moon/): identify original scan geometry and capture intervals before adding a rendition.
+- [Additional Huygens descent mosaics](https://www.jpl.nasa.gov/images/pia06438-titans-surface/): some are overhead ground maps assembled during descent; they need their published projection inverted and must remain labeled aerial observations.
+- Venera color products: reuse attribution is still unresolved; the existing grayscale scan remains available.
+
+## Repeated terrain at lunar panorama ends
+
+Four source mosaics extend beyond one complete turn. Reviewed terrain-feature
+matches establish approximate one-turn crops in `apollo_sweep_crops.json`:
+
+| Panorama | Original width | Retained x interval (pixels, right exclusive) | Estimated original sweep |
+| --- | ---: | ---: | ---: |
+| Apollo 11 landing site | 16245 | 290–15690 | 379.8° |
+| Apollo 12 landing site | 16335 | 260–16190 | 369.2° |
+| Apollo 15 Station 9A | 15822 | 170–15240 | 378.0° |
+| Apollo 17 landing site | 16955 | 55–15235 | 402.1° |
+
+Crops are applied to the full-resolution source before resizing and projection.
+The original files and dimensions remain intact; metadata records crop bounds,
+source checksum, matched terrain points, and the cropped rendition dimensions.
+The angular pixel scale is computed from the retained turn, not the oversized
+original. A changed source fails validation and requires another crop review.
+
+All seven Apollo panoramas were checked. Apollo 14, Apollo 15's landing-site
+view, and Apollo 16 had no sufficiently consistent repeated-terrain matches and
+are left uncropped. This does not establish calibrated 360° coverage for them.
+The overlap checks use SIFT matches with RANSAC and visual review; normal
+processing only needs the checked-in crop manifest, not OpenCV. Source scale,
+roll, lighting, and vertical seam differences remain; this is not a seamless
+photogrammetric reconstruction or a north calibration.
+
+Rebuild just the Moon collection with `other_worlds --offline --collections moon`
+using the source/output paths above. Reload the preview page after rebuilding.

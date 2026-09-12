@@ -341,6 +341,9 @@ def refresh_catalog(output, collection):
 
 
 def process_releases(root, output, collection):
+    from .strip_spheres import STRIPS, render_curated
+
+    curated = {s["id"]: s for s in STRIPS if s["collection"] == collection}
     directory = root / collection
     inventory = json.loads((directory / "inventory.json").read_text())
     state = json.loads((directory / "downloads.json").read_text())
@@ -391,6 +394,8 @@ def process_releases(root, output, collection):
             "render_status": "flat-preview-only; angular bounds unverified",
             "chromatic_fraction": chromatic,
         }
+        if product["id"] in curated:
+            render_curated(target, metadata, curated[product["id"]])
         write_json(target / "metadata.json", metadata)
         entries.append(
             {
