@@ -30,6 +30,11 @@
 	cursor: grab;
 }
 
+/* One finger is the page's to scroll with, so the browser gets it back. */
+.sm-flat--cooperative {
+	touch-action: pan-x pan-y;
+}
+
 .sm-flat--dragging {
 	cursor: grabbing;
 }

@@ -37,6 +37,13 @@
 				margin: 0 0 4px;
 				font-size: 16px;
 			}
+			h2 {
+				margin: 12px 0 0;
+				font-size: 13px;
+				color: #9aa;
+				text-transform: uppercase;
+				letter-spacing: 0.06em;
+			}
 			h1 small {
 				font-weight: normal;
 				color: #9aa;
@@ -186,6 +193,28 @@
 					<option value="604800">1 week/s</option>
 				</select>
 			</div>
+			<h2>Restrictions</h2>
+			<div id="gestures"></div>
+			<div class="row">
+				<input id="mindist" placeholder="min km" />
+				<input id="maxdist" placeholder="max km" />
+			</div>
+			<div class="row">
+				<input id="minlat" placeholder="min lat" />
+				<input id="maxlat" placeholder="max lat" />
+			</div>
+			<div class="row">
+				<input id="minlon" placeholder="min lon" />
+				<input id="maxlon" placeholder="max lon" />
+			</div>
+			<div class="row">
+				<input id="onlybodies" placeholder="focusable ids, comma-separated" />
+			</div>
+			<div class="row">
+				<button id="applylimits" type="button">Apply limits</button>
+				<button id="clearlimits" type="button">Clear limits</button>
+			</div>
+			<p><code id="limits"></code></p>
 			<p><code id="clock"></code></p>
 			<p><code id="camera"></code></p>
 			<p><code id="frames"></code></p>
@@ -406,6 +435,68 @@
 			setInterval(() => {
 				$('frames').textContent = `${frames} frames drawn`;
 			}, 1000);
+
+			// Restrictions. Each gesture is a handler with enable/disable/isEnabled;
+			// the limits are one set, replaced whole, and they gate reader input
+			// only — the flyTo below ignores them on purpose.
+			for (const name of [
+				'dragRotate',
+				'scrollZoom',
+				'keyboard',
+				'bodySelect',
+				'featureSelect',
+				'cooperativeGestures'
+			]) {
+				const box = document.createElement('input');
+				box.type = 'checkbox';
+				box.checked = map[name].isEnabled();
+				box.onchange = () => {
+					if (box.checked) map[name].enable();
+					else map[name].disable();
+					log(`${name} ${box.checked ? 'enabled' : 'disabled'}`);
+				};
+				const label = document.createElement('label');
+				label.append(box, ` ${name}`);
+				$('gestures').append(label);
+			}
+
+			const showLimits = () => {
+				const limits = map.getLimits();
+				$('limits').textContent = Object.keys(limits).length
+					? `limits ${JSON.stringify(limits)}`
+					: 'no limits';
+			};
+			showLimits();
+			const number = (id) => {
+				const value = $(id).value.trim();
+				return value === '' ? undefined : Number(value);
+			};
+			$('applylimits').addEventListener('click', () => {
+				const ids = $('onlybodies')
+					.value.split(',')
+					.map((id) => id.trim())
+					.filter(Boolean);
+				const limits = {
+					minDistanceKm: number('mindist'),
+					maxDistanceKm: number('maxdist'),
+					minLat: number('minlat'),
+					maxLat: number('maxlat'),
+					minLon: number('minlon'),
+					maxLon: number('maxlon'),
+					bodies: ids.length ? ids : undefined
+				};
+				for (const key of Object.keys(limits)) {
+					if (limits[key] === undefined) delete limits[key];
+				}
+				map.setLimits(limits);
+				showLimits();
+				log(`limits ${JSON.stringify(limits)}`);
+			});
+			$('clearlimits').addEventListener('click', () => {
+				map.setLimits({});
+				showLimits();
+				log('limits cleared');
+			});
 
 			$('speed').addEventListener('change', (e) => map.clock.setTimeScale(Number(e.target.value)));
 			map.on('clock', ({ date, playing }) => {

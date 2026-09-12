@@ -140,6 +140,7 @@ export {
 
 // -- the Solar System map -----------------------------------------------------
 export type {
+	CameraLimits,
 	CameraOptions,
 	CameraState,
 	CameraTarget,
@@ -150,8 +151,10 @@ export type {
 	FocusChange,
 	JumpTarget,
 	MapEvents,
+	MapGesture,
 	SpaceMapOptions
 } from '$lib/scene/space-map.svelte';
+export { GestureHandler } from '$lib/interaction/gesture';
 export type { Body, BodyType, OrbitClass } from '$lib/scene/body-view';
 export type { SimClock } from '$lib/scene/state/clock.svelte';
 export type { Control, ControlPosition } from '$lib/scene/controls';
@@ -169,13 +172,18 @@ export type {
 } from '$lib/scene/notice';
 
 // -- the flat map -------------------------------------------------------------
-export type { FlatMapEvents, FlatMapOptions, FlatViewState } from '$lib/flatmap/flat-map';
+export type {
+	FlatMapEvents,
+	FlatMapGesture,
+	FlatMapOptions,
+	FlatViewState
+} from '$lib/flatmap/flat-map';
 export type { Extent, Projection, ProjectionId, ProjectionOptions } from '$lib/flatmap/projection';
 export { createProjection, PROJECTION_IDS, projectionAspect } from '$lib/flatmap/projection';
 export type { Interpolation, LonLat } from '$lib/flatmap/geometry';
 export { boxRing, graticule, pathFor, smallCircle } from '$lib/flatmap/geometry';
 export { Viewport } from '$lib/flatmap/view';
-export type { ViewState } from '$lib/flatmap/view';
+export type { FlatMapLimits, ViewState } from '$lib/flatmap/view';
 export type { Layer, LayerCredit, LayerInfo, VectorLayer } from '$lib/flatmap/layers';
 // The flat map's shapes are named apart from the scene's: a host can hold both
 // maps on one page, and `Marker` there is an element pinned in three

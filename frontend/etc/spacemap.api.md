@@ -72,6 +72,21 @@ export interface CameraHold {
 }
 
 // @public
+export interface CameraLimits {
+	bodies?: string[];
+	// (undocumented)
+	maxDistanceKm?: number;
+	// (undocumented)
+	maxLat?: number;
+	// (undocumented)
+	maxLon?: number;
+	minDistanceKm?: number;
+	minLat?: number;
+	// (undocumented)
+	minLon?: number;
+}
+
+// @public
 export interface CameraOptions {
 	body?: string;
 	distanceKm?: number;
@@ -152,6 +167,12 @@ export interface CoreMessages {
 	body_note_no_radius: () => string;
 	// (undocumented)
 	carried_by_scene_label: (inputs: { carrier: string }) => string;
+	// (undocumented)
+	cooperative_touch: () => string;
+	// (undocumented)
+	cooperative_wheel: () => string;
+	// (undocumented)
+	cooperative_wheel_mac: () => string;
 	// (undocumented)
 	credits_see_all: () => string;
 	// (undocumented)
@@ -283,7 +304,10 @@ export class FlatMap {
 	attribution: Control<FlatMap> | null;
 	bodyRadiusKm: number | null;
 	clearDrawings(): void;
+	readonly cooperativeGestures: GestureHandler;
 	get credits(): LayerCredit[];
+	readonly dragPan: GestureHandler;
+	getLimits(): FlatMapLimits;
 	// (undocumented)
 	get layers(): LayerInfo[];
 	// @internal
@@ -304,14 +328,14 @@ export class FlatMap {
 	remove(): void;
 	removeControl(control: Control<FlatMap>): this;
 	render(): void;
+	readonly scrollZoom: GestureHandler;
 	// (undocumented)
 	setBody(bodyId: string): Promise<void>;
-	// (undocumented)
-	setInteractive(interactive: boolean): void;
 	// (undocumented)
 	setLayerOpacity(id: string, opacity: number): void;
 	// (undocumented)
 	setLayerVisible(id: string, visible: boolean): void;
+	setLimits(limits: FlatMapLimits): this;
 	// (undocumented)
 	setProjection(id: ProjectionId, options?: ProjectionOptions): void;
 	setTime(jd: number): void;
@@ -346,6 +370,23 @@ export interface FlatMapEvents {
 	viewchange: (view: FlatViewState) => void;
 }
 
+// @public
+export type FlatMapGesture = 'dragPan' | 'scrollZoom';
+
+// @public
+export interface FlatMapLimits {
+	// (undocumented)
+	maxLat?: number;
+	// (undocumented)
+	maxLon?: number;
+	// (undocumented)
+	maxZoom?: number;
+	// (undocumented)
+	minLat?: number;
+	minLon?: number;
+	minZoom?: number;
+}
+
 // @public (undocumented)
 export interface FlatMapOptions {
 	body?: string;
@@ -353,11 +394,12 @@ export interface FlatMapOptions {
 	centerLat?: number;
 	centerLon?: number;
 	clipAngle?: number;
+	cooperativeGestures?: boolean;
+	interactions?: Partial<Record<FlatMapGesture, boolean>>;
 	interactive?: boolean;
 	jd?: number;
 	layers?: Record<string, boolean>;
-	// (undocumented)
-	maxZoom?: number;
+	limits?: FlatMapLimits;
 	// (undocumented)
 	projection?: ProjectionId;
 	zoom?: number;
@@ -428,6 +470,18 @@ export interface FocusChange {
 	body: Body_2 | undefined;
 	feature: boolean;
 	initial: boolean;
+}
+
+// @public
+export class GestureHandler {
+	// @internal
+	constructor(enabled: boolean, apply?: (enabled: boolean) => void);
+	// (undocumented)
+	disable(): void;
+	// (undocumented)
+	enable(): void;
+	// (undocumented)
+	isEnabled(): boolean;
 }
 
 // @public
@@ -529,6 +583,9 @@ export interface MapEvents {
 	progress: (fraction: number) => void;
 	userpromoted: (count: number) => void;
 }
+
+// @public
+export type MapGesture = 'dragRotate' | 'scrollZoom' | 'keyboard' | 'bodySelect' | 'featureSelect';
 
 // @public (undocumented)
 export interface MapOptions extends CommonOptions, SpaceMapOptions {
@@ -773,14 +830,18 @@ export class SpaceMap {
 	applySettings(): void;
 	// @internal
 	attribution: Control<SpaceMap> | null;
+	readonly bodySelect: GestureHandler;
 	// (undocumented)
 	clearUserPromoted(): void;
 	// (undocumented)
 	readonly clock: SimClock;
 	// @internal
 	contextLost: boolean;
+	readonly cooperativeGestures: GestureHandler;
 	// @internal
 	readonly ctx: ContextManager;
+	readonly dragRotate: GestureHandler;
+	readonly featureSelect: GestureHandler;
 	flyTo(target: CameraTarget): Promise<void>;
 	// @internal
 	focusedBody: PositionedBody | undefined;
@@ -803,11 +864,13 @@ export class SpaceMap {
 	getCamera(): CameraState | null;
 	getChildren(id: string): string[];
 	getFocusedBody(): Body_2 | undefined;
+	getLimits(): CameraLimits;
 	getPose(): CameraPose | null;
 	holdCamera(): CameraHold;
 	// @internal (undocumented)
 	readonly initialView: InitialView;
 	jumpTo(target: JumpTarget): this;
+	readonly keyboard: GestureHandler;
 	// @internal
 	load(targetId?: string): Promise<void>;
 	// @internal
@@ -823,9 +886,11 @@ export class SpaceMap {
 	removeControl(control: Control<SpaceMap>): this;
 	// @internal
 	renderer: SceneRenderer | null;
+	readonly scrollZoom: GestureHandler;
 	setCovered(covered: boolean): void;
 	// @internal
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void;
+	setLimits(limits: CameraLimits): this;
 	// (undocumented)
 	setNorthReference(id: string | null): void;
 	// @internal
@@ -863,7 +928,11 @@ export class SpaceMap {
 
 // @public (undocumented)
 export interface SpaceMapOptions {
+	cooperativeGestures?: boolean;
 	date?: Date;
+	interactions?: Partial<Record<MapGesture, boolean>>;
+	interactive?: boolean;
+	limits?: CameraLimits;
 	// (undocumented)
 	live?: boolean;
 	settings?: SceneSettings;

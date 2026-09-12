@@ -34,7 +34,9 @@ import {
 	type PositionedBody
 } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
-import { minCameraDistance } from './visibility/camera-limits';
+import { minCameraDistance, type CameraBand } from './visibility/camera-limits';
+import { GestureHandler, gestureStart } from '$lib/interaction/gesture';
+import { CooperativeGestures } from '$lib/interaction/cooperative';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 import { host } from '$lib/host';
 import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
@@ -52,6 +54,49 @@ export interface SpaceMapOptions {
 	live?: boolean;
 	/** Where the map opens. */
 	view?: CameraOptions;
+	/** Whether the reader may move the map at all. True unless it is said
+	 *  otherwise; false switches every gesture off. */
+	interactive?: boolean;
+	/** Gestures to start on or off one at a time, over whatever `interactive`
+	 *  said. Each is a handler on the map afterwards. */
+	interactions?: Partial<Record<MapGesture, boolean>>;
+	/** The map inside a page the reader scrolls past: the wheel scrolls the page
+	 *  unless ctrl (⌘ on a Mac) is held, and one finger drags the page rather
+	 *  than the map. A hint says so whenever the plain gesture is tried. */
+	cooperativeGestures?: boolean;
+	/** Where the reader may take the camera. Reader input only — see
+	 *  {@link SpaceMap.setLimits}. */
+	limits?: CameraLimits;
+}
+
+/** The gestures the map hangs a handler off for. */
+export type MapGesture = 'dragRotate' | 'scrollZoom' | 'keyboard' | 'bodySelect' | 'featureSelect';
+
+/**
+ * How far the reader may take the camera, and which objects they may put it
+ * around. Everything left out is unrestricted.
+ *
+ * These gate reader input and nothing else. {@link SpaceMap.flyTo},
+ * {@link SpaceMap.jumpTo}, {@link SpaceMap.panTo} and a held camera go where
+ * they are told, outside the limits included; the reader's next gesture brings
+ * the camera back inside. That is a deliberate departure from Mapbox, where
+ * `maxBounds` holds the map wherever the move came from.
+ */
+export interface CameraLimits {
+	/** How close and how far the reader may get to the focused body's centre. */
+	minDistanceKm?: number;
+	maxDistanceKm?: number;
+	/** The band of the focused body the reader may look down from, in the same
+	 *  body-fixed degrees {@link SpaceMap.getCamera} reports. A longitude band
+	 *  may run through the antimeridian: 170 to −170 is the twenty degrees
+	 *  across it. One edge alone leaves the other at the antimeridian. */
+	minLat?: number;
+	maxLat?: number;
+	minLon?: number;
+	maxLon?: number;
+	/** Export ids of the only objects a reader click may focus. Any of them when
+	 *  left out. */
+	bodies?: string[];
 }
 
 /** Where the camera sits: over a place on a body, at a distance from it. */
@@ -211,12 +256,30 @@ export class SpaceMap {
 	/** @internal The credit line, which no host may take back off. */
 	attribution: Control<SpaceMap> | null = null;
 
+	/** Dragging to turn the camera round the focused body. A two-finger drag and
+	 *  a right-drag go with it: they are the same gesture to a reader told the
+	 *  camera does not move. */
+	readonly dragRotate: GestureHandler;
+	/** The wheel and the pinch. */
+	readonly scrollZoom: GestureHandler;
+	/** Arrow keys to turn, +/− to zoom, on the focused canvas. */
+	readonly keyboard: GestureHandler;
+	/** Clicking an object to focus it. */
+	readonly bodySelect: GestureHandler;
+	/** Clicking a named surface feature, which the map reports as a
+	 *  `featureselect` event. */
+	readonly featureSelect: GestureHandler;
+	/** The wheel and one finger belong to the page, not the map. */
+	readonly cooperativeGestures: GestureHandler;
+
 	private container: HTMLElement | null = null;
 	private canvas: HTMLCanvasElement | null = null;
 	private labelLayer: HTMLDivElement | null = null;
 	private stopWatching: (() => void) | null = null;
 	private controls: ControlHost<SpaceMap> | null = null;
 	private lostPanelTimer: ReturnType<typeof setTimeout> | undefined;
+	private cooperative: CooperativeGestures | null = null;
+	private limits: CameraLimits = {};
 	private initialFocusPending = true;
 	private pendingFocusId: string | null = null;
 	/** Retires the host's hold on the camera. Kept so that a second hold, or
@@ -252,6 +315,19 @@ export class SpaceMap {
 			longitude: view.lon ?? DEFAULT_FRAMING_LON,
 			zoom: view.distanceKm === undefined ? DEFAULT_ZOOM : kmToScene(view.distanceKm)
 		};
+		const on = (gesture: MapGesture) =>
+			new GestureHandler(gestureStart(options.interactions?.[gesture], options.interactive), () =>
+				this.applyGestures()
+			);
+		this.dragRotate = on('dragRotate');
+		this.scrollZoom = on('scrollZoom');
+		this.keyboard = on('keyboard');
+		this.bodySelect = on('bodySelect');
+		this.featureSelect = on('featureSelect');
+		this.cooperativeGestures = new GestureHandler(options.cooperativeGestures ?? false, () =>
+			this.applyGestures()
+		);
+		if (options.limits) this.limits = { ...options.limits };
 		this.ctx.onDataStale = () => this.emit('datastale');
 		// Starts now so the bench overlaps the whole boot — clock snapping and
 		// data loads included — behind the host's loading screen, never the
@@ -386,7 +462,12 @@ export class SpaceMap {
 		this.canvas = canvas;
 		this.labelLayer = labels;
 
+		this.cooperative = new CooperativeGestures(container, this.cooperativeGestures.isEnabled());
 		canvas.addEventListener('keydown', this.onKeyDown);
+		canvas.addEventListener('touchmove', this.onTouchMove, { passive: true });
+		// On the container, so it runs before the orbit controls' own listener on
+		// the canvas and can keep the event from ever reaching them.
+		container.addEventListener('wheel', this.onWheelCapture, { capture: true, passive: true });
 		canvas.addEventListener('webglcontextlost', this.onContextLost, false);
 		canvas.addEventListener('webglcontextrestored', this.onContextRestored, false);
 		document.addEventListener('visibilitychange', this.onVisibility);
@@ -407,6 +488,8 @@ export class SpaceMap {
 			return;
 		}
 		this.renderer = renderer;
+		this.applyGestures();
+		this.applyLimits();
 		if (this.pendingFocusId !== null) {
 			renderer.focusOnBody(this.pendingFocusId);
 			this.pendingFocusId = null;
@@ -462,6 +545,10 @@ export class SpaceMap {
 		this.stopWatching = null;
 		clearTimeout(this.lostPanelTimer);
 		canvas.removeEventListener('keydown', this.onKeyDown);
+		canvas.removeEventListener('touchmove', this.onTouchMove);
+		container.removeEventListener('wheel', this.onWheelCapture, { capture: true });
+		this.cooperative?.dispose();
+		this.cooperative = null;
 		canvas.removeEventListener('webglcontextlost', this.onContextLost);
 		canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
 		document.removeEventListener('visibilitychange', this.onVisibility);
@@ -556,6 +643,7 @@ export class SpaceMap {
 	}
 
 	private readonly onKeyDown = (e: KeyboardEvent): void => {
+		if (!this.keyboard.isEnabled()) return;
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		const step = (e.shiftKey ? 4 : 1) * KEY_ROTATE_RAD;
 		let azimuth = 0;
@@ -678,6 +766,66 @@ export class SpaceMap {
 		const { latitude, longitude, distance } = renderer.getCameraState();
 		return { body, lat: latitude, lon: longitude, distanceKm: sceneToKm(distance) };
 	}
+
+	// -- what the reader may do -------------------------------------------------
+
+	/**
+	 * Replace the reader's limits, whole. What the new set leaves out is
+	 * unrestricted again, so `setLimits({})` lifts them all.
+	 *
+	 * Limits gate reader input only: a flight or a jump lands where it was told
+	 * to, and the reader's next gesture brings the camera back inside.
+	 */
+	setLimits(limits: CameraLimits): this {
+		this.limits = { ...limits };
+		this.applyLimits();
+		return this;
+	}
+
+	/** The limits as they stand. */
+	getLimits(): CameraLimits {
+		return { ...this.limits };
+	}
+
+	private applyLimits(): void {
+		const l = this.limits;
+		const band: CameraBand = {};
+		if (l.minDistanceKm !== undefined) band.minDistance = kmToScene(l.minDistanceKm);
+		if (l.maxDistanceKm !== undefined) band.maxDistance = kmToScene(l.maxDistanceKm);
+		if (l.minLat !== undefined) band.minLat = l.minLat;
+		if (l.maxLat !== undefined) band.maxLat = l.maxLat;
+		if (l.minLon !== undefined) band.minLon = l.minLon;
+		if (l.maxLon !== undefined) band.maxLon = l.maxLon;
+		const restricted = Object.keys(band).length > 0;
+		this.renderer?.setCameraLimits(restricted ? band : null, l.bodies ?? null);
+	}
+
+	private applyGestures(): void {
+		const cooperative = this.cooperativeGestures.isEnabled();
+		this.cooperative?.setEnabled(cooperative);
+		const renderer = this.renderer;
+		if (!renderer) return;
+		renderer.setDragEnabled(this.dragRotate.isEnabled());
+		renderer.setZoomEnabled(this.scrollZoom.isEnabled());
+		renderer.setBodySelectEnabled(this.bodySelect.isEnabled());
+		renderer.setFeatureSelectEnabled(this.featureSelect.isEnabled());
+		renderer.setCooperativeTouch(cooperative);
+	}
+
+	/** A wheel the page is to keep never reaches the orbit controls. It is not
+	 *  cancelled, so the page scrolls as it would over any other element. */
+	private readonly onWheelCapture = (e: WheelEvent): void => {
+		// With zoom off the wheel is the page's anyway; a hint to hold ctrl would
+		// promise a zoom that never comes.
+		if (!this.scrollZoom.isEnabled()) return;
+		if (this.cooperative && !this.cooperative.allowsWheel(e)) e.stopPropagation();
+	};
+
+	/** One finger is the page's; the orbit controls already ignore it, so this
+	 *  is only here to say why nothing moved. */
+	private readonly onTouchMove = (e: TouchEvent): void => {
+		this.cooperative?.allowsTouchDrag(e.touches.length);
+	};
 
 	private toFeature(body: string, feature: FeatureRef, mode: 'frame' | 'pan'): Promise<void> {
 		const { featureId, lat, lon, diameterM } = feature;

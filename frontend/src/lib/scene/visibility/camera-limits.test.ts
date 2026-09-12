@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { kmToScene } from '$lib/math/units';
+import { kmToScene, sceneToKm } from '$lib/math/units';
 import { barycenterPrimaryId, collisionParentId } from '$lib/scene/state/bodies.svelte';
+import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import {
 	clampCameraOutsideBody,
+	clampCameraToLimits,
 	LANDED_KEEP_AWAY_KM,
 	type SurfaceClampContext
 } from './camera-limits';
@@ -285,5 +287,94 @@ describe('barycenterPrimaryId', () => {
 
 	it('is null for a physical body', () => {
 		expect(barycenterPrimaryId('naif-699')).toBeNull();
+	});
+});
+
+/** The band the reader is held inside. The camera sits at the focused body's
+ *  own origin, so a position reads straight off as lat, lon and distance. */
+describe('clampCameraToLimits', () => {
+	/** Camera placed at a body-fixed lat/lon, `km` from the centre. */
+	function at(lat: number, lon: number, km: number, quat?: [number, number, number, number]) {
+		const cam = new PerspectiveCamera();
+		const [x, y, z] = sphericalToCartesian([0, 0, 0], lat, lon, kmToScene(km), quat);
+		cam.position.set(x, y, z);
+		return cam;
+	}
+
+	function reads(cam: PerspectiveCamera, quat?: [number, number, number, number]) {
+		const { latitude, longitude, distance } = cartesianToSpherical(
+			[cam.position.x, cam.position.y, cam.position.z],
+			[0, 0, 0],
+			quat
+		);
+		return { lat: latitude, lon: longitude, km: sceneToKm(distance) };
+	}
+
+	it('leaves a camera inside the band where it is', () => {
+		const cam = at(20, 30, 50_000);
+		const before = cam.position.clone();
+		clampCameraToLimits(cam, {
+			minDistance: kmToScene(10_000),
+			maxDistance: kmToScene(100_000),
+			minLat: -40,
+			maxLat: 40
+		});
+		expect(cam.position.distanceTo(before)).toBeCloseTo(0, 12);
+	});
+
+	it('holds the camera between the two distances', () => {
+		const near = at(0, 0, 500);
+		clampCameraToLimits(near, { minDistance: kmToScene(10_000) });
+		expect(reads(near).km).toBeCloseTo(10_000, 6);
+
+		const far = at(0, 0, 5e6);
+		clampCameraToLimits(far, { maxDistance: kmToScene(1e6) });
+		expect(reads(far).km).toBeCloseTo(1e6, 4);
+	});
+
+	it('holds latitude inside its band without moving the rest', () => {
+		const cam = at(80, 45, 20_000);
+		clampCameraToLimits(cam, { minLat: -30, maxLat: 30 });
+		const out = reads(cam);
+		expect(out.lat).toBeCloseTo(30, 9);
+		expect(out.lon).toBeCloseTo(45, 9);
+		expect(out.km).toBeCloseTo(20_000, 6);
+	});
+
+	it('holds longitude inside a band that runs through the antimeridian', () => {
+		// 170 east to 170 west is the twenty degrees across the antimeridian.
+		const inside = at(0, 178, 20_000);
+		clampCameraToLimits(inside, { minLon: 170, maxLon: -170 });
+		expect(reads(inside).lon).toBeCloseTo(178, 9);
+
+		const outside = at(0, 100, 20_000);
+		clampCameraToLimits(outside, { minLon: 170, maxLon: -170 });
+		expect(reads(outside).lon).toBeCloseTo(170, 9);
+	});
+
+	it('takes the nearer edge of a longitude band the short way round', () => {
+		const cam = at(0, -100, 20_000);
+		clampCameraToLimits(cam, { minLon: 170, maxLon: -170 });
+		expect(reads(cam).lon).toBeCloseTo(-170, 9);
+	});
+
+	it('reads the band in body-fixed degrees, so a turned body turns it too', () => {
+		// A quarter turn about the pole: the same place in the sky is another
+		// longitude on the body.
+		const quat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2);
+		const q: [number, number, number, number] = [quat.x, quat.y, quat.z, quat.w];
+		const cam = at(0, 90, 20_000, q);
+		clampCameraToLimits(cam, { minLon: -20, maxLon: 20 }, q);
+		expect(reads(cam, q).lon).toBeCloseTo(20, 9);
+		// Unrotated, the very same position reads elsewhere and is untouched by
+		// the scene-frame reading.
+		expect(reads(cam).lon).not.toBeCloseTo(20, 3);
+	});
+
+	it('does nothing at all when the band names nothing', () => {
+		const cam = at(70, 120, 3);
+		const before = cam.position.clone();
+		clampCameraToLimits(cam, {});
+		expect(cam.position.distanceTo(before)).toBe(0);
 	});
 });

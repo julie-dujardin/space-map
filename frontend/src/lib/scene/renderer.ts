@@ -18,6 +18,7 @@ import {
 	Sprite,
 	SpriteMaterial,
 	TextureLoader,
+	TOUCH,
 	Vector2,
 	Quaternion,
 	Vector3,
@@ -137,6 +138,8 @@ import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import {
 	minCameraDistance,
 	clampCameraOutsideBody,
+	clampCameraToLimits,
+	type CameraBand,
 	type SurfaceClampContext
 } from './visibility/camera-limits';
 import { cameraMotionScale, type MotionScale } from './camera/motion-scale';
@@ -147,6 +150,11 @@ import { createUserLocationMarker, removeUserLocationMarker } from './user-locat
 import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { jdToDate } from '$lib/time/jd';
+
+/** OrbitControls acts on `touches.ONE` only where it names a one-finger
+ *  gesture; anything else leaves the state alone, which is how one finger comes
+ *  to do nothing at all. */
+const NO_TOUCH_GESTURE = -1 as TOUCH;
 
 /** OrbitControls inertia. The reduced-motion factor is far higher so the camera
  *  stops promptly on release instead of coasting (three's default is 0.05). */
@@ -228,6 +236,18 @@ export class SceneRenderer {
 	private cameraHold: CameraPose | null = null;
 	private holdingCamera = false;
 	private readonly _tmpV3 = new Vector3();
+
+	/** Where the reader may take the camera. Null is unrestricted, which is what
+	 *  the app runs on. */
+	private cameraBand: CameraBand | null = null;
+	/** Bodies a reader click may focus; null lets it focus anything. */
+	private focusableBodies: ReadonlySet<string> | null = null;
+	/** The camera has been moved by the reader since the last programmatic
+	 *  placement, so the band applies to it. A flight, a jump or a held camera is
+	 *  the host's own move and is never pulled back inside. */
+	private limitsArmed = false;
+	private bodySelectEnabled = true;
+	private featureSelectEnabled = true;
 
 	/**
 	 * Isolated overlay scene for spacecraft 3D models. Main scene's log depth
@@ -483,6 +503,7 @@ export class SceneRenderer {
 		this.controls.update();
 		this.controls.addEventListener('end', this.onControlsEnd);
 		this.controls.addEventListener('start', this.invalidate);
+		this.controls.addEventListener('start', this.armLimits);
 		this.controls.addEventListener('end', this.invalidate);
 		for (const type of SceneRenderer.INPUT_EVENTS) {
 			canvas.addEventListener(type, this.invalidate, { passive: true });
@@ -577,6 +598,8 @@ export class SceneRenderer {
 
 		if (focusBody) this.maybeLoadTexture(focusBody);
 		this.systemData.syncToFocus();
+
+		this.focusController.readerFocusFilter = this.readerMayFocus;
 
 		this.gpuPick = new GpuPickPass(this.renderer, this.camera);
 		this.pointerInteraction = new PointerInteraction(
@@ -726,6 +749,7 @@ export class SceneRenderer {
 	 *  — mid-cruise belongs to no body. Only re-aims, holding the vantage the
 	 *  reader already chose rather than closing in on every timeline touch. */
 	focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
+		this.disarmLimits();
 		const center = this.ctx.getBody(centerId);
 		if (!center) return;
 		const [x, y, z] = eclipticToScene(rKm);
@@ -924,8 +948,10 @@ export class SceneRenderer {
 		this.clock.tick(performance.now());
 		if (!this.shouldRender(nowMs)) {
 			// Damping keeps stepping: a camera still moving fires 'change' and
-			// wakes the loop on the next frame.
+			// wakes the loop on the next frame. The band holds here too, or a
+			// camera resting against an edge would drift off it unwatched.
 			this.controls.update();
+			this.applyReaderLimits(nowMs);
 			return;
 		}
 		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
@@ -961,6 +987,8 @@ export class SceneRenderer {
 					() => this.repositionAll(),
 					() => this.pointClouds.rebuildBasis()
 				);
+
+		this.applyReaderLimits(nowMs);
 
 		// Keep the camera from tunnelling into the focused object's parent (e.g.
 		// Earth while focused on the ISS): minDistance only guards the focused body
@@ -1583,6 +1611,78 @@ export class SceneRenderer {
 		);
 	}
 
+	// -- what the reader may do -------------------------------------------------
+
+	/** @internal Turn dragging the camera round the focused body on or off. Pan
+	 *  goes with it: a two-finger drag and a right-drag are the same gesture to
+	 *  a reader told the map does not move. */
+	setDragEnabled(enabled: boolean): void {
+		this.controls.enableRotate = enabled;
+		this.controls.enablePan = enabled;
+	}
+
+	/** @internal */
+	setZoomEnabled(enabled: boolean): void {
+		this.controls.enableZoom = enabled;
+	}
+
+	/** @internal Whether a click on a body, a dot or a scene label takes the
+	 *  focus. */
+	setBodySelectEnabled(enabled: boolean): void {
+		this.bodySelectEnabled = enabled;
+	}
+
+	/** @internal Whether a click on a nomenclature label is reported. */
+	setFeatureSelectEnabled(enabled: boolean): void {
+		this.featureSelectEnabled = enabled;
+	}
+
+	/** Every way a reader takes the focus runs through the focus controller, so
+	 *  the gesture and the host's list of focusable bodies are answered there. */
+	private readonly readerMayFocus = (body: PositionedBody): boolean =>
+		this.bodySelectEnabled && (this.focusableBodies?.has(body.data.id) ?? true);
+
+	/** @internal One finger drags the page instead of the map: the camera answers
+	 *  to two fingers only, and the canvas lets the browser scroll on one. */
+	setCooperativeTouch(cooperative: boolean): void {
+		this.controls.touches.ONE = cooperative ? NO_TOUCH_GESTURE : TOUCH.ROTATE;
+		this.canvas.style.touchAction = cooperative ? 'pan-x pan-y' : 'none';
+	}
+
+	/** @internal Where the reader may take the camera; null lifts every limit.
+	 *  `bodies` names the ids a reader click may focus. */
+	setCameraLimits(band: CameraBand | null, bodies: readonly string[] | null): void {
+		this.cameraBand = band;
+		this.focusableBodies = bodies ? new Set(bodies) : null;
+	}
+
+	/** The reader has taken the camera, so the band applies to where it goes
+	 *  next. Fired by the orbit controls and by the keyboard step. */
+	private armLimits = (): void => {
+		this.limitsArmed = true;
+	};
+
+	/** @internal A move the host asked for. It lands wherever it was told to,
+	 *  band or no band, and the limits pick up again on the reader's next move. */
+	disarmLimits(): void {
+		this.limitsArmed = false;
+	}
+
+	/**
+	 * Hold the camera inside the host's band, if this frame's move was the
+	 * reader's to hold: a flight is the host's, and so is a held camera.
+	 *
+	 * Ahead of the surface clamps, which only push the camera out along its own
+	 * radial and so leave the lat and lon this settles on untouched. The band is
+	 * read on the body's own frame, so a turning body carries a camera resting
+	 * against an edge round with it.
+	 */
+	private applyReaderLimits(nowMs: number): void {
+		if (!this.limitsArmed || !this.cameraBand || this.holdingCamera) return;
+		if (nowMs - this.focus.focusStartTime < this.focus.focusDurationMs) return;
+		clampCameraToLimits(this.camera, this.cameraBand, this.focusController.focusedBodyQuat());
+	}
+
 	private static readonly INPUT_EVENTS = [
 		'pointerdown',
 		'pointermove',
@@ -1625,6 +1725,7 @@ export class SceneRenderer {
 	 *  is dropped: two things cannot drive one camera. */
 	holdCamera(): void {
 		if (this.holdingCamera) return;
+		this.disarmLimits();
 		this.holdingCamera = true;
 		this.controls.enabled = false;
 		this.focus.camOriginWorld = null;
@@ -1718,6 +1819,7 @@ export class SceneRenderer {
 	 *  min/maxDistance clamping apply, but fires no 'end' event — sync the URL
 	 *  here like a pointer drag would. */
 	nudgeCamera(azimuth: number, polar: number, dolly: number): void {
+		this.armLimits();
 		// These bypass rotateSpeed/zoomSpeed, so they take the ground-relative
 		// scale themselves — an arrow key over a surface must step as small as a
 		// drag does. Raising the dolly factor to it keeps the step multiplicative.
@@ -1764,9 +1866,10 @@ export class SceneRenderer {
 				if (this.focusController.current?.data.id === bo.body.data.id) {
 					this.controls.minDistance = minCameraDistance(bo.body, modelMinRadiusKm(bo));
 				}
-				return attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) =>
-					this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM)
-				);
+				return attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) => {
+					if (!this.featureSelectEnabled) return;
+					this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM);
+				});
 			})
 			.then(() => {
 				if (this.selectedFeatureId !== null) setActiveFeatureLabel(bo, this.selectedFeatureId);
@@ -1958,6 +2061,7 @@ export class SceneRenderer {
 	}
 
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
+		this.disarmLimits();
 		// Settle a pending time jump first so the fly starts from the focus's
 		// new-time position, not its pre-jump one (else it swoops the orbital arc).
 		this.applyJdUpdate();
@@ -1980,6 +2084,7 @@ export class SceneRenderer {
 		mode: 'pan' | 'frame' | 'snap' = 'frame',
 		view?: CameraView | null
 	): number {
+		this.disarmLimits();
 		this.applyJdUpdate();
 		this.focusWasOutOfRange = false;
 		const host = this.ctx.getBody(anchor.hostId);
@@ -2146,14 +2251,17 @@ export class SceneRenderer {
 	}
 
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
+		this.disarmLimits();
 		this.focusController.snapToBodyFacing(id, towardId, elevationDeg, distance);
 	}
 
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
+		this.disarmLimits();
 		this.focusController.snapToBody(id, latitude, longitude, zoom);
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
+		this.disarmLimits();
 		this.applyJdUpdate();
 		this.focusWasOutOfRange = false;
 		this.focusController.setFocusTarget(body, camPos);
@@ -2409,6 +2517,7 @@ export class SceneRenderer {
 		this.gpuPick.dispose();
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.removeEventListener('start', this.invalidate);
+		this.controls.removeEventListener('start', this.armLimits);
 		this.controls.removeEventListener('end', this.invalidate);
 		for (const type of SceneRenderer.INPUT_EVENTS)
 			this.canvas.removeEventListener(type, this.invalidate);

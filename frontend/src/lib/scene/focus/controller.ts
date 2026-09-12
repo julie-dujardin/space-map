@@ -54,6 +54,9 @@ export interface FocusDeps {
  *  initial-view replay. Delegates promote/teardown to {@link PromotionRegistry}. */
 export class FocusController {
 	readonly promotion: PromotionRegistry;
+	/** Answers whether a reader click may take the focus. Null until the
+	 *  renderer sets it, which is before there is anything to click. */
+	readerFocusFilter: ((body: PositionedBody) => boolean) | null = null;
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
 	/** Initial lat/lon/zoom stashed until orientation loads and the camera can be
@@ -231,8 +234,11 @@ export class FocusController {
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 	}
 
-	/** Click → emit + fly. Re-clicking the focused body re-emits without moving the camera. */
+	/** Click → emit + fly. Re-clicking the focused body re-emits without moving the camera.
+	 *  The only way a reader changes focus, so it is where a host's restriction on
+	 *  what may be focused is applied; the programmatic moves go round it. */
 	handleFocus(body: PositionedBody): void {
+		if (this.readerFocusFilter && !this.readerFocusFilter(body)) return;
 		if (this.focusedBody?.data.id === body.data.id) {
 			this.deps.callbacks.onFocusChange(body);
 			return;

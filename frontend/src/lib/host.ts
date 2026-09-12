@@ -22,6 +22,9 @@ export interface CoreMessages {
 	layer_night: () => string;
 	layer_graticule: () => string;
 	layer_nomenclature: () => string;
+	cooperative_wheel: () => string;
+	cooperative_wheel_mac: () => string;
+	cooperative_touch: () => string;
 }
 
 export interface Host {
@@ -55,7 +58,10 @@ const DEFAULT_HOST: Host = {
 		layer_clouds: () => 'Clouds',
 		layer_night: () => 'Night lights',
 		layer_graticule: () => 'Grid',
-		layer_nomenclature: () => 'Named features'
+		layer_nomenclature: () => 'Named features',
+		cooperative_wheel: () => 'Use ctrl + scroll to zoom the map',
+		cooperative_wheel_mac: () => 'Use ⌘ + scroll to zoom the map',
+		cooperative_touch: () => 'Use two fingers to move the map'
 	},
 	// A bare embed has no pages to link to, so labels stay put.
 	bodyHref: () => ''

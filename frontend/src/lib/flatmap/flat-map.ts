@@ -49,8 +49,17 @@ import {
 	type RasterImage
 } from './raster';
 import { bestTier, bundleUrl, loadBodySources, type BodySources } from './sources';
-import { clampView, Viewport, type ViewState } from './view';
+import {
+	clampToBand,
+	clampView,
+	DEFAULT_MAX_ZOOM,
+	Viewport,
+	type FlatMapLimits,
+	type ViewState
+} from './view';
 import { ControlHost, type Control, type ControlPosition } from '$lib/scene/controls';
+import { CooperativeGestures } from '$lib/interaction/cooperative';
+import { GestureHandler, gestureStart } from '$lib/interaction/gesture';
 import type { LonLat } from './geometry';
 import './flat-map.css';
 
@@ -72,10 +81,23 @@ export interface FlatMapOptions {
 	jd?: number;
 	/** Which layers start switched on, by id. The surface always is. */
 	layers?: Record<string, boolean>;
-	/** Let the reader pan and zoom. On by default. */
+	/** Whether the reader may move the map at all. True unless it is said
+	 *  otherwise; false switches every gesture off. */
 	interactive?: boolean;
-	maxZoom?: number;
+	/** Gestures to start on or off one at a time, over whatever `interactive`
+	 *  said. Each is a handler on the map afterwards. */
+	interactions?: Partial<Record<FlatMapGesture, boolean>>;
+	/** The map inside a page the reader scrolls past: the wheel scrolls the page
+	 *  unless ctrl (⌘ on a Mac) is held, and one finger drags the page rather
+	 *  than the map. A hint says so whenever the plain gesture is tried. */
+	cooperativeGestures?: boolean;
+	/** How far the reader may take the view. Reader input only — see
+	 *  {@link FlatMap.setLimits}. */
+	limits?: FlatMapLimits;
 }
+
+/** The gestures the flat map hangs a handler off for. */
+export type FlatMapGesture = 'dragPan' | 'scrollZoom';
 
 export interface FlatViewState {
 	projection: ProjectionId;
@@ -162,9 +184,12 @@ export class FlatMap {
 	private projectionId: ProjectionId;
 	private projectionOptions: ProjectionOptions;
 	private view: ViewState;
-	private readonly maxZoom: number;
+	private limits: FlatMapLimits;
+	/** The reader has moved the view since the last programmatic one, so the
+	 *  limits apply to it. A {@link setView} lands where it was told. */
+	private limitsArmed = false;
 	private jd: number;
-	private interactive: boolean;
+	private cooperative: CooperativeGestures | null = null;
 	/** The body's mean radius, so a circle can be drawn in kilometres. */
 	bodyRadiusKm: number | null = null;
 
@@ -182,6 +207,13 @@ export class FlatMap {
 	private controls: ControlHost<FlatMap> | null = null;
 	/** @internal The credit line, which no host may take back off. */
 	attribution: Control<FlatMap> | null = null;
+
+	/** Dragging the map about — a globe turns, a rectangle slides. */
+	readonly dragPan: GestureHandler;
+	/** The wheel. */
+	readonly scrollZoom: GestureHandler;
+	/** The wheel and one finger belong to the page, not the map. */
+	readonly cooperativeGestures: GestureHandler;
 
 	private lookup: InverseLookup | null = null;
 	private lookupKey = '';
@@ -215,10 +247,19 @@ export class FlatMap {
 			clipAngle: options.clipAngle
 		};
 		this.projection = createProjection(this.projectionId, this.projectionOptions);
-		this.maxZoom = options.maxZoom ?? 16;
+		this.limits = { maxZoom: DEFAULT_MAX_ZOOM, ...options.limits };
 		this.view = { zoom: options.zoom ?? 1, centerX: 0, centerY: 0 };
 		this.jd = options.jd ?? dateToJD(new Date());
-		this.interactive = options.interactive ?? true;
+		this.dragPan = new GestureHandler(
+			gestureStart(options.interactions?.dragPan, options.interactive),
+			(enabled) => this.root.classList.toggle('sm-flat--interactive', enabled)
+		);
+		this.scrollZoom = new GestureHandler(
+			gestureStart(options.interactions?.scrollZoom, options.interactive)
+		);
+		this.cooperativeGestures = new GestureHandler(options.cooperativeGestures ?? false, (enabled) =>
+			this.applyCooperative(enabled)
+		);
 
 		this.root.className = 'sm-flat';
 		this.canvas.className = 'sm-flat__raster';
@@ -228,7 +269,8 @@ export class FlatMap {
 		this.root.append(this.canvas, this.svg, this.markerLayer);
 		this.ctx = this.canvas.getContext('2d');
 		this.overlay = new Overlay(this.shapeGroup, this.markerLayer, () => this.render());
-		this.setInteractive(this.interactive);
+		this.root.classList.toggle('sm-flat--interactive', this.dragPan.isEnabled());
+		this.applyCooperative(this.cooperativeGestures.isEnabled());
 		for (const [id, visible] of Object.entries(options.layers ?? {})) {
 			this.chosenVisibility.set(id, visible);
 		}
@@ -242,6 +284,7 @@ export class FlatMap {
 		this.container = container;
 		container.append(this.root);
 		this.controls = new ControlHost(this, this.root);
+		this.cooperative = new CooperativeGestures(this.root, this.cooperativeGestures.isEnabled());
 		this.resizeObserver = new ResizeObserver(() => this.renderMoving());
 		this.resizeObserver.observe(this.root);
 		this.attachInteraction();
@@ -275,6 +318,8 @@ export class FlatMap {
 		this.disposed = true;
 		this.controls?.clear();
 		this.controls = null;
+		this.cooperative?.dispose();
+		this.cooperative = null;
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		cancelAnimationFrame(this.frame);
@@ -492,6 +537,7 @@ export class FlatMap {
 	}
 
 	setProjection(id: ProjectionId, options: ProjectionOptions = {}): void {
+		this.limitsArmed = false;
 		this.projectionId = id;
 		this.projectionOptions = { ...this.projectionOptions, ...options };
 		this.projection = createProjection(id, this.projectionOptions);
@@ -520,6 +566,7 @@ export class FlatMap {
 		if (view.projection && view.projection !== this.projectionId) {
 			this.setProjection(view.projection);
 		}
+		this.limitsArmed = false;
 		if (view.zoom !== undefined) this.view = { ...this.view, zoom: view.zoom };
 		if (view.centerLon !== undefined || view.centerLat !== undefined) {
 			const current = this.viewState;
@@ -540,6 +587,24 @@ export class FlatMap {
 		this.emit('viewchange', this.viewState);
 	}
 
+	/**
+	 * Replace the reader's limits, whole. What the new set leaves out is
+	 * unrestricted again, except `maxZoom`, which goes back to 16.
+	 *
+	 * Limits gate reader input only: {@link setView} lands where it was told,
+	 * and the reader's next gesture brings the view back inside.
+	 */
+	setLimits(limits: FlatMapLimits): this {
+		this.limits = { maxZoom: DEFAULT_MAX_ZOOM, ...limits };
+		this.render();
+		return this;
+	}
+
+	/** The limits as they stand. */
+	getLimits(): FlatMapLimits {
+		return { ...this.limits };
+	}
+
 	/** The moment the map is of. Moves the clouds and, on Earth, the season. */
 	setTime(jd: number): void {
 		this.jd = jd;
@@ -549,6 +614,7 @@ export class FlatMap {
 
 	async setBody(bodyId: string): Promise<void> {
 		if (bodyId === this.bodyId) return;
+		this.limitsArmed = false;
 		await this.adopt(bodyId);
 	}
 
@@ -718,7 +784,7 @@ export class FlatMap {
 	private viewport(width?: number, height?: number): Viewport {
 		const w = width ?? this.root.clientWidth ?? 1;
 		const h = height ?? this.root.clientHeight ?? 1;
-		this.view = clampView(this.view, this.projection, w, h, this.maxZoom);
+		this.view = clampView(this.view, this.projection, w, h, this.limitsArmed ? this.limits : {});
 		return new Viewport(this.projection, Math.max(1, w), Math.max(1, h), this.view);
 	}
 
@@ -879,9 +945,10 @@ export class FlatMap {
 
 	// -- interaction ----------------------------------------------------------
 
-	setInteractive(interactive: boolean): void {
-		this.interactive = interactive;
-		this.root.classList.toggle('sm-flat--interactive', interactive);
+	/** One finger drags the page, so the browser needs it back. */
+	private applyCooperative(enabled: boolean): void {
+		this.root.classList.toggle('sm-flat--cooperative', enabled);
+		this.cooperative?.setEnabled(enabled);
 	}
 
 	private attachInteraction(): void {
@@ -889,6 +956,13 @@ export class FlatMap {
 		let lastX = 0;
 		let lastY = 0;
 		let moved = false;
+		/** The gesture is the page's: a tap on it still reports a click, but the
+		 *  map does not move under it. */
+		let blocked = false;
+		const touches = new Set<number>();
+		/** The one pointer the drag follows: with two fingers down, reading both
+		 *  would jump the map by the gap between them on every move. */
+		let pointer = -1;
 
 		const localPoint = (event: PointerEvent | WheelEvent): [number, number] => {
 			const box = this.root.getBoundingClientRect();
@@ -896,13 +970,17 @@ export class FlatMap {
 		};
 
 		this.root.addEventListener('pointerdown', (event) => {
-			if (!this.interactive || event.button !== 0) return;
+			if (event.pointerType === 'touch') touches.add(event.pointerId);
+			if (event.button !== 0) return;
+			pointer = event.pointerId;
 			dragging = true;
 			moved = false;
+			// The hint waits for the drag itself, so a tap does not raise it.
+			blocked = event.pointerType === 'touch' && this.cooperative!.isEnabled() && touches.size < 2;
+			this.root.setPointerCapture(event.pointerId);
 			lastX = event.clientX;
 			lastY = event.clientY;
-			this.root.setPointerCapture(event.pointerId);
-			this.root.classList.add('sm-flat--dragging');
+			if (!blocked && this.dragPan.isEnabled()) this.root.classList.add('sm-flat--dragging');
 		});
 
 		this.root.addEventListener('pointermove', (event) => {
@@ -911,16 +989,22 @@ export class FlatMap {
 				this.emit('pointermove', this.unproject(px, py), event);
 				return;
 			}
+			if (event.pointerId !== pointer) return;
 			const dx = event.clientX - lastX;
 			const dy = event.clientY - lastY;
 			lastX = event.clientX;
 			lastY = event.clientY;
 			if (Math.abs(dx) > 1 || Math.abs(dy) > 1) moved = true;
-			this.drag(dx, dy);
+			if (blocked) {
+				if (moved) this.cooperative!.allowsTouchDrag(touches.size);
+				return;
+			}
+			if (this.dragPan.isEnabled()) this.drag(dx, dy);
 		});
 
 		const end = (event: PointerEvent) => {
-			if (!dragging) return;
+			touches.delete(event.pointerId);
+			if (!dragging || event.pointerId !== pointer) return;
 			dragging = false;
 			this.root.releasePointerCapture?.(event.pointerId);
 			this.root.classList.remove('sm-flat--dragging');
@@ -935,7 +1019,9 @@ export class FlatMap {
 		this.root.addEventListener(
 			'wheel',
 			(event) => {
-				if (!this.interactive) return;
+				if (!this.scrollZoom.isEnabled()) return;
+				// Not cancelled when the page is to keep it, or the page cannot scroll.
+				if (!this.cooperative!.allowsWheel(event)) return;
 				event.preventDefault();
 				const [px, py] = localPoint(event);
 				this.zoomBy(Math.exp(-event.deltaY / 400), px, py);
@@ -950,14 +1036,17 @@ export class FlatMap {
 	 * moving the map rather than moving a camera.
 	 */
 	private drag(dx: number, dy: number): void {
+		this.limitsArmed = true;
 		const viewport = this.viewport();
 		if (this.projection.azimuthal) {
 			const perRadian = viewport.scale;
 			const degrees = (v: number) => (v / perRadian) * (180 / Math.PI);
-			const centerLon = (this.projectionOptions.centerLon ?? 0) - degrees(dx);
-			const centerLat = Math.max(
-				-90,
-				Math.min(90, (this.projectionOptions.centerLat ?? 0) + degrees(dy))
+			// A globe is turned rather than slid, so its centre lives in the
+			// projection and the band has to be applied to it here.
+			const [centerLon, centerLat] = clampToBand(
+				(this.projectionOptions.centerLon ?? 0) - degrees(dx),
+				Math.max(-90, Math.min(90, (this.projectionOptions.centerLat ?? 0) + degrees(dy))),
+				this.limits
 			);
 			this.projectionOptions = { ...this.projectionOptions, centerLon, centerLat };
 			this.projection = createProjection(this.projectionId, this.projectionOptions);
@@ -974,9 +1063,13 @@ export class FlatMap {
 
 	/** Zoom about a point, so what is under the pointer stays under it. */
 	private zoomBy(factor: number, px: number, py: number): void {
+		this.limitsArmed = true;
 		const before = this.viewport();
 		const anchor = before.fromScreen(px, py);
-		const zoom = Math.min(this.maxZoom, Math.max(1, this.view.zoom * factor));
+		const zoom = Math.min(
+			this.limits.maxZoom ?? Number.POSITIVE_INFINITY,
+			Math.max(1, this.limits.minZoom ?? 1, this.view.zoom * factor)
+		);
 		if (zoom === this.view.zoom) return;
 		this.view = { ...this.view, zoom };
 		const after = this.viewport();

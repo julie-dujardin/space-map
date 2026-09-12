@@ -5,6 +5,7 @@
  * watch a mutable transform.
  */
 
+import { clampLongitude } from '$lib/math/spherical';
 import type { Extent, Projection } from './projection';
 
 export interface ViewState {
@@ -16,6 +17,44 @@ export interface ViewState {
 }
 
 export const DEFAULT_VIEW: ViewState = { zoom: 1, centerX: 0, centerY: 0 };
+
+/**
+ * How far the reader may take the view. Everything left out is unrestricted,
+ * beyond the two things the map holds to whatever it is told: the whole world
+ * is the furthest out it goes, and the frame is never let off the map.
+ *
+ * These gate reader input and nothing else. {@link FlatMap.setView} goes where
+ * it is told, outside the limits included; the reader's next gesture brings the
+ * view back inside.
+ */
+export interface FlatMapLimits {
+	/** 1 is the whole world; the reader may not go under it either way. */
+	minZoom?: number;
+	maxZoom?: number;
+	/** The band of the surface the middle of the frame may sit in. A longitude
+	 *  band may run through the antimeridian: 170 to −170 is the twenty degrees
+	 *  across it. One edge alone leaves the other at the antimeridian. */
+	minLon?: number;
+	maxLon?: number;
+	minLat?: number;
+	maxLat?: number;
+}
+
+/** Far enough in that the picture is a handful of pixels across, which is as
+ *  much as an equirectangular texture holds. */
+export const DEFAULT_MAX_ZOOM = 16;
+
+/** A place held inside the band a host allows the reader. */
+export function clampToBand(
+	lon: number,
+	lat: number,
+	limits: FlatMapLimits
+): [lon: number, lat: number] {
+	return [
+		clampLongitude(lon, limits.minLon, limits.maxLon),
+		Math.min(Math.max(lat, limits.minLat ?? -90), limits.maxLat ?? 90)
+	];
+}
 
 /** Plane point a screen pixel would fall on, and back again. */
 export class Viewport {
@@ -98,9 +137,13 @@ export function clampView(
 	projection: Projection,
 	width: number,
 	height: number,
-	maxZoom: number
+	limits: FlatMapLimits
 ): ViewState {
-	const zoom = Math.min(Math.max(view.zoom, 1), maxZoom);
+	const zoom = Math.min(
+		Math.max(view.zoom, 1, limits.minZoom ?? 1),
+		limits.maxZoom ?? Number.POSITIVE_INFINITY
+	);
+	const centred = centreInBand(view, projection, limits);
 	const extent: Extent = projection.extent;
 	const worldW = extent.maxX - extent.minX;
 	const worldH = extent.maxY - extent.minY;
@@ -123,7 +166,32 @@ export function clampView(
 	const centerX =
 		projection.cyclic && coversFrame(worldW * scale, width)
 			? // Wrapped, not clamped: panning east past the seam comes round again.
-				((((view.centerX - extent.minX) % worldW) + worldW) % worldW) + extent.minX
-			: axis(view.centerX, midX, halfW, worldW);
-	return { zoom, centerX, centerY: axis(view.centerY, midY, halfH, worldH) };
+				((((centred.centerX - extent.minX) % worldW) + worldW) % worldW) + extent.minX
+			: axis(centred.centerX, midX, halfW, worldW);
+	return { zoom, centerX, centerY: axis(centred.centerY, midY, halfH, worldH) };
+}
+
+/**
+ * The middle of the frame brought inside the host's band of places, said in
+ * plane coordinates. Only for a projection the map slides: a globe is turned
+ * instead, and its centre is a property of the projection rather than of the
+ * view, so {@link FlatMap} holds that one in the band itself.
+ */
+function centreInBand(
+	view: ViewState,
+	projection: Projection,
+	limits: FlatMapLimits
+): { centerX: number; centerY: number } {
+	const banded =
+		limits.minLon !== undefined ||
+		limits.maxLon !== undefined ||
+		limits.minLat !== undefined ||
+		limits.maxLat !== undefined;
+	if (!banded || projection.azimuthal) return view;
+	const place = projection.inverse(view.centerX, view.centerY);
+	if (!place) return view;
+	const [lon, lat] = clampToBand(place[0], place[1], limits);
+	if (lon === place[0] && lat === place[1]) return view;
+	const plane = projection.forward(lon, lat);
+	return plane ? { centerX: plane[0], centerY: plane[1] } : view;
 }

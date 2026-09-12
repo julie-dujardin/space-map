@@ -163,6 +163,26 @@
 				<button id="clear" type="button">Clear drawings</button>
 			</div>
 
+			<h2>Restrictions</h2>
+			<div id="gestures"></div>
+			<div class="row">
+				<input id="minzoom" placeholder="min zoom" />
+				<input id="maxzoom" placeholder="max zoom" />
+			</div>
+			<div class="row">
+				<input id="minlon" placeholder="min lon" />
+				<input id="maxlon" placeholder="max lon" />
+			</div>
+			<div class="row">
+				<input id="minlat" placeholder="min lat" />
+				<input id="maxlat" placeholder="max lat" />
+			</div>
+			<div class="row">
+				<button id="applylimits" type="button">Apply limits</button>
+				<button id="clearlimits" type="button">Clear limits</button>
+			</div>
+			<p><code id="limits"></code></p>
+
 			<h2>Pointer</h2>
 			<p id="readout">move over the map</p>
 		</aside>
@@ -287,6 +307,47 @@
 				map.addMarker({ at: { lon: 12.5, lat: 41.9 }, element, align: [0.5, 1] });
 			};
 			$('clear').onclick = () => map.clearDrawings();
+
+			// Restrictions. Each gesture is a handler with enable/disable/isEnabled;
+			// the limits are one set, replaced whole, and they gate reader input
+			// only — setView goes where it is told.
+			for (const name of ['dragPan', 'scrollZoom', 'cooperativeGestures']) {
+				const box = document.createElement('input');
+				box.type = 'checkbox';
+				box.checked = map[name].isEnabled();
+				box.onchange = () => (box.checked ? map[name].enable() : map[name].disable());
+				const label = document.createElement('label');
+				label.append(box, ` ${name}`);
+				$('gestures').append(label);
+			}
+
+			const showLimits = () => {
+				$('limits').textContent = `limits ${JSON.stringify(map.getLimits())}`;
+			};
+			showLimits();
+			const number = (id) => {
+				const value = $(id).value.trim();
+				return value === '' ? undefined : Number(value);
+			};
+			$('applylimits').onclick = () => {
+				const limits = {
+					minZoom: number('minzoom'),
+					maxZoom: number('maxzoom'),
+					minLon: number('minlon'),
+					maxLon: number('maxlon'),
+					minLat: number('minlat'),
+					maxLat: number('maxlat')
+				};
+				for (const key of Object.keys(limits)) {
+					if (limits[key] === undefined) delete limits[key];
+				}
+				map.setLimits(limits);
+				showLimits();
+			};
+			$('clearlimits').onclick = () => {
+				map.setLimits({});
+				showLimits();
+			};
 
 			const fmt = (v, pos, neg) => `${Math.abs(v).toFixed(2)}°${v >= 0 ? pos : neg}`;
 			map.on('pointermove', (at) => {

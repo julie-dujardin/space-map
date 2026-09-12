@@ -154,6 +154,83 @@ flat.addCircle({ at: { lon: 12.5, lat: 41.9 }, radiusDeg: 5, stroke: '#f80' });
 flat.on('click', (at) => at && console.log(at.lon, at.lat));
 ```
 
+## Restricting the map
+
+Both maps take restrictions on what the reader may do. Each gesture is a
+handler of its own, the way Mapbox has them:
+
+```js
+map.scrollZoom.disable();
+map.scrollZoom.isEnabled(); // false
+map.dragRotate.enable();
+```
+
+The Solar System map has `dragRotate`, `scrollZoom`, `keyboard`, `bodySelect`
+and `featureSelect`; the flat map has `dragPan` and `scrollZoom`. They can be
+set as the map opens, either one at a time or all at once:
+
+```js
+createMap({ container: '#map', interactive: false }); // every gesture off
+createMap({ container: '#map', interactions: { scrollZoom: false } }); // one
+```
+
+`limits` says how far the reader may go. On the Solar System map that is a
+distance from the focused body, a band of it to look down from, and the objects
+a click may focus:
+
+```js
+const map = await createMap({
+	container: '#map',
+	limits: {
+		minDistanceKm: 8000,
+		maxDistanceKm: 400000,
+		minLat: -40,
+		maxLat: 40,
+		minLon: -60,
+		maxLon: 60,
+		bodies: ['naif-399', 'naif-301']
+	}
+});
+
+map.setLimits({ maxDistanceKm: 1e6 }); // replaced whole, not merged
+map.getLimits();
+```
+
+On the flat map it is a zoom range and a band the middle of the frame stays in:
+
+```js
+flat.setLimits({ minZoom: 2, maxZoom: 8, minLon: -30, maxLon: 30 });
+flat.getLimits();
+```
+
+**Limits gate reader input and nothing else.** `flyTo`, `jumpTo`, `panTo`,
+`setView` and a held camera go where they are told, outside the limits
+included; the reader's next gesture brings the map back inside. This is a
+deliberate departure from Mapbox, where `maxBounds` holds the map whatever
+moved it. Restrict what the reader may reach, and drive the map yourself to
+anywhere you like.
+
+A longitude band may run through the antimeridian: 170 to −170 is the twenty
+degrees across it. One edge alone leaves the other at the antimeridian.
+
+`setLimits` replaces the whole set, so `setLimits({})` lifts the restrictions
+again. Angles are degrees and distances kilometres, as everywhere else.
+
+### Cooperative gestures
+
+A map inside a page the reader scrolls past can hand the plain gestures back to
+the page:
+
+```js
+createMap({ container: '#map', cooperativeGestures: true });
+```
+
+The wheel then scrolls the page unless ctrl (⌘ on a Mac) is held, and one
+finger drags the page rather than the map — two fingers still move it. A hint
+says so whenever the plain gesture is tried; `messages` rewords it through
+`cooperative_wheel`, `cooperative_wheel_mac` and `cooperative_touch`. The
+handler is `map.cooperativeGestures`, on and off like any other.
+
 ## Controls
 
 A control is anything that builds an element when it is added:

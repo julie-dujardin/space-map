@@ -3,6 +3,7 @@ import { kmToScene } from '$lib/math/units';
 import type { PerspectiveCamera, Quaternion } from 'three';
 import { Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
+import { cartesianToSpherical, clampLongitude, sphericalToCartesian } from '$lib/math/spherical';
 
 /** Default surface clearance in km, by object type. */
 const SURFACE_CLEARANCE_KM: Partial<Record<ObjectType, number>> = {
@@ -184,4 +185,51 @@ export function clampCameraOutsideBody(
 		dz *= k;
 	}
 	camera.position.set(cx + dx, cy + dy, cz + dz);
+}
+
+/**
+ * The band of sky the reader may look from, in the frame {@link
+ * clampCameraToLimits} works in: scene units for the distance, body-fixed
+ * degrees for the angles — the same degrees the camera reports back.
+ */
+export interface CameraBand {
+	minDistance?: number;
+	maxDistance?: number;
+	minLat?: number;
+	maxLat?: number;
+	minLon?: number;
+	maxLon?: number;
+}
+
+/**
+ * Hold the camera inside the band the host allows the reader. The camera sits
+ * at the origin's body, so its position reads straight off as the lat, lon and
+ * distance {@link SpaceMap.getCamera} reports, and goes back the same way.
+ *
+ * Reader input only: the caller decides when a move is the reader's, and a
+ * programmatic flight is never clamped. Run it before the surface clamps —
+ * those push the camera out along its own radial and so leave lat and lon as
+ * this left them, where the other order would let a limit push the camera
+ * through the ground.
+ */
+export function clampCameraToLimits(
+	camera: PerspectiveCamera,
+	band: CameraBand,
+	bodyQuat?: [number, number, number, number]
+): void {
+	const cam = camera.position;
+	const { latitude, longitude, distance } = cartesianToSpherical(
+		[cam.x, cam.y, cam.z],
+		[0, 0, 0],
+		bodyQuat
+	);
+	const lat = Math.min(Math.max(latitude, band.minLat ?? -90), band.maxLat ?? 90);
+	const lon = clampLongitude(longitude, band.minLon, band.maxLon);
+	const dist = Math.min(
+		Math.max(distance, band.minDistance ?? 0),
+		band.maxDistance ?? Number.POSITIVE_INFINITY
+	);
+	if (lat === latitude && lon === longitude && dist === distance) return;
+	const [x, y, z] = sphericalToCartesian([0, 0, 0], lat, lon, dist, bodyQuat);
+	cam.set(x, y, z);
 }

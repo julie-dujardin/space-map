@@ -107,3 +107,28 @@ export function offsetFacing(
 	const c = cos(e);
 	return [distance * c * hx, distance * sin(e), distance * c * hz];
 }
+
+/** Longitude folded into the range the map reports, (−180°, 180°]. */
+export function wrapLongitude(deg: number): number {
+	const wrapped = ((deg + 180) % 360) - 180;
+	return wrapped <= -180 ? wrapped + 360 : wrapped;
+}
+
+/**
+ * A longitude held inside a band, which may run through the antimeridian: 170°
+ * to −170° is the twenty degrees across it, not the three hundred and forty the
+ * other way. Outside the band the nearer edge wins. One edge alone leaves the
+ * other at the antimeridian, so `max` of 30° is the band −180° to 30°.
+ */
+export function clampLongitude(lon: number, min?: number, max?: number): number {
+	if (min === undefined && max === undefined) return lon;
+	// A western edge on the antimeridian is −180, or −180 to 180 would fold to
+	// the one meridian at 180 and pin every place to it.
+	const wrappedMin = min === undefined ? -180 : wrapLongitude(min);
+	const west = wrappedMin === 180 ? -180 : wrappedMin;
+	const east = max === undefined ? 180 : wrapLongitude(max);
+	const inside = west <= east ? lon >= west && lon <= east : lon >= west || lon <= east;
+	if (inside) return lon;
+	const gap = (a: number, b: number) => Math.abs(wrapLongitude(a - b));
+	return gap(lon, west) <= gap(lon, east) ? west : east;
+}
