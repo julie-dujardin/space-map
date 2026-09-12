@@ -87,6 +87,9 @@ export interface Projection {
 /** Longitude folded into −180…180, so a difference across the seam is the short
  *  way round rather than the long one. */
 export function wrapLon(lon: number): number {
+	// Already in range is by far the common case, and a modulo is not cheap
+	// when it runs once per pixel of a globe.
+	if (lon >= -180 && lon < 180) return lon;
 	const wrapped = (((lon + 180) % 360) + 360) % 360;
 	return wrapped - 180;
 }
@@ -415,20 +418,23 @@ function clamp1(v: number): number {
  * the centre it lies. Orthographic and stereographic differ only in the
  * relation between that distance and the angle, so they share this.
  */
+/**
+ * Back from the plane, given the angular distance `c` from the centre as its
+ * cosine and as `sin c / rho`. Both come without trigonometry for the
+ * projections here, and the ratio is finite at the centre, so the walk over
+ * every pixel of a globe spends its time on one asin and one atan2.
+ */
 function azimuthalInverse(
 	x: number,
 	y: number,
-	rho: number,
-	c: number,
+	cosC: number,
+	k: number,
 	lon0: number,
-	phi0: number
+	sinPhi0: number,
+	cosPhi0: number
 ): [number, number] {
-	if (rho < 1e-12) return [lon0, phi0 * RAD];
-	const sinC = Math.sin(c);
-	const cosC = Math.cos(c);
-	const lat = Math.asin(clamp1(cosC * Math.sin(phi0) + (y * sinC * Math.cos(phi0)) / rho));
-	const lon =
-		lon0 + Math.atan2(x * sinC, rho * cosC * Math.cos(phi0) - y * sinC * Math.sin(phi0)) * RAD;
+	const lat = Math.asin(clamp1(cosC * sinPhi0 + y * k * cosPhi0));
+	const lon = lon0 + Math.atan2(x * k, cosC * cosPhi0 - y * k * sinPhi0) * RAD;
 	return [wrapLon(lon), lat * RAD];
 }
 
@@ -461,6 +467,8 @@ function orthographic(options: ProjectionOptions): Projection {
 	const clip = Math.min(options.clipAngle ?? 90, 90) * DEG;
 	const cosClip = Math.cos(clip);
 	const radius = Math.sin(clip);
+	const sinPhi0 = Math.sin(phi0);
+	const cosPhi0 = Math.cos(phi0);
 	return {
 		id: 'orthographic',
 		centerLon: lon0,
@@ -476,9 +484,10 @@ function orthographic(options: ProjectionOptions): Projection {
 			return azimuthalDirection(lon, lat, lon0, phi0);
 		},
 		inverse: (x, y) => {
-			const rho = Math.hypot(x, y);
-			if (rho > radius) return null;
-			return azimuthalInverse(x, y, rho, Math.asin(clamp1(rho)), lon0, phi0);
+			const rho2 = x * x + y * y;
+			if (rho2 > radius * radius) return null;
+			// rho is sin c itself.
+			return azimuthalInverse(x, y, Math.sqrt(1 - rho2), 1, lon0, sinPhi0, cosPhi0);
 		}
 	};
 }
@@ -497,6 +506,8 @@ function stereographic(options: ProjectionOptions): Projection {
 	const clip = Math.min(options.clipAngle ?? STEREOGRAPHIC_CLIP, 170) * DEG;
 	const cosClip = Math.cos(clip);
 	const radius = 2 * Math.tan(clip / 2);
+	const sinPhi0 = Math.sin(phi0);
+	const cosPhi0 = Math.cos(phi0);
 	return {
 		id: 'stereographic',
 		centerLon: lon0,
@@ -514,9 +525,11 @@ function stereographic(options: ProjectionOptions): Projection {
 			return [k * x, k * y];
 		},
 		inverse: (x, y) => {
-			const rho = Math.hypot(x, y);
-			if (rho > radius) return null;
-			return azimuthalInverse(x, y, rho, 2 * Math.atan(rho / 2), lon0, phi0);
+			const rho2 = x * x + y * y;
+			if (rho2 > radius * radius) return null;
+			// c = 2 atan(rho / 2), whose sine and cosine are rational in rho.
+			const k = 4 / (4 + rho2);
+			return azimuthalInverse(x, y, (4 - rho2) * k * 0.25, k, lon0, sinPhi0, cosPhi0);
 		}
 	};
 }

@@ -846,6 +846,7 @@ export class FlatMap {
 
 		const cssViewport = this.viewport(cssWidth, cssHeight);
 		const deviceViewport = new Viewport(this.projection, width, height, this.view);
+		this.clipToDisc(cssViewport);
 		this.drawRaster(deviceViewport, width, height);
 		this.drawVector(cssViewport);
 
@@ -880,6 +881,19 @@ export class FlatMap {
 		const scale = Math.sqrt(MOVING_BUDGET_MS / this.msPerPixel / full);
 		if (scale > WORTH_COARSENING) return 1;
 		return Math.max(MIN_INTERACTION_SCALE, scale);
+	}
+
+	/** The rim of a globe is cut by the compositor rather than left to the
+	 *  raster, whose staircase would show whenever it is drawn coarsely. */
+	private clipToDisc(viewport: Viewport): void {
+		const { projection } = viewport;
+		if (!projection.azimuthal) {
+			this.canvas.style.clipPath = '';
+			return;
+		}
+		const [cx, cy] = viewport.toScreen(0, 0);
+		const radius = projection.extent.maxX * viewport.scale;
+		this.canvas.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
 	}
 
 	private drawRaster(viewport: Viewport, width: number, height: number): void {
