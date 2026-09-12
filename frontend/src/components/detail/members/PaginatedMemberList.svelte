@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
 	import MemberRow, { memberFigures } from './MemberRow.svelte';
-	import { memberClick, memberHref } from './member-link';
+	import { targetClick, targetHref } from '$lib/state/focus-link';
+
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
@@ -249,8 +250,8 @@
 			<MemberRow
 				name={row.name}
 				thumbnail={row.thumbnail}
-				href={memberHref(appState, row, row.name)}
-				onclick={memberClick(nav, row, row.name)}
+				href={targetHref(appState, row, row.name)}
+				onclick={targetClick(nav, row, row.name)}
 				onmouseenter={() => onHoverFeature?.(row.feature_id ?? null)}
 				onmouseleave={() => onHoverFeature?.(null)}
 				onfocus={() => onHoverFeature?.(row.feature_id ?? null)}

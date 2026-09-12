@@ -5,10 +5,11 @@
 	import type { ImageryCredit, ModelCredit } from '$lib/scene/state/credits.svelte';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { orientationCredits } from '$lib/credits/orientation-sources';
+	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
+	import { creditedOrbitSources, scopedCredits } from '$lib/scene/state/attribution';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
-	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -16,64 +17,21 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
-	interface SourceEntry {
-		name: string;
-		url: string;
-	}
-
-	// Only entries whose source has actually contributed are rendered.
-	const ORBIT_ENTRIES: Array<{ source: OrbitalSource; entry: () => SourceEntry }> = [
-		{
-			source: OrbitalSource.HORIZONS,
-			entry: () => ({ name: m.source_horizons_name(), url: 'https://ssd.jpl.nasa.gov/horizons/' })
-		},
-		{
-			source: OrbitalSource.SBDB,
-			entry: () => ({
-				name: m.source_sbdb_name(),
-				url: 'https://ssd.jpl.nasa.gov/tools/sbdb_query.html'
-			})
-		},
-		{
-			source: OrbitalSource.SPICE,
-			entry: () => ({
-				name: m.source_spice_ephemeris_name(),
-				url: 'https://naif.jpl.nasa.gov/naif/'
-			})
-		},
-		{
-			source: OrbitalSource.CELESTRAK,
-			entry: () => ({ name: m.source_celestrak_name(), url: 'https://celestrak.org/' })
-		},
-		{
-			source: OrbitalSource.SPACETRACK,
-			entry: () => ({ name: m.source_spacetrack_name(), url: 'https://www.space-track.org/' })
-		}
-	];
-
-	// Earth-satellite sources are only relevant inside the Earth-Moon system.
-	const EARTH_SAT_SOURCES = new Set([OrbitalSource.CELESTRAK, OrbitalSource.SPACETRACK]);
-
+	// One row per contributing archive — the citation /credits and the Orbital
+	// section quote it by. Several sources share an archive (SBDB serves both
+	// the small bodies and their moons), so the rows dedupe on it.
 	const orbitEntries = $derived.by(() => {
-		// Mirrors AttributionBar: suppress Earth-sat credits outside the Earth-Moon system.
-		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
-		return ORBIT_ENTRIES.filter(
-			({ source }) =>
-				ctx.credits.orbitSources.has(source) && (!EARTH_SAT_SOURCES.has(source) || inEarthSystem)
-		).map(({ entry }) => entry());
+		const archives = [...new Set(creditedOrbitSources(ctx).map(({ info }) => info.archive))];
+		const rows: Array<{ archive: string; name: string; url: string }> = [];
+		for (const archive of archives) {
+			const name = archiveLabel(archive);
+			const url = archiveUrl(archive);
+			if (name && url) rows.push({ archive, name, url });
+		}
+		return rows;
 	});
 
 	const collator = new Intl.Collator();
-
-	// Scoped to the focused system + focused body (covers standalones like
-	// Bennu/Ceres that are credited body-by-body, not system-by-system).
-	function scopedCredits<T extends { bodyId: string; systemId?: string | null }>(
-		all: Iterable<T>
-	): T[] {
-		const sysId = ctx.visibility.focusedSystemId;
-		const bodyId = ctx.visibility.focusedBodyId;
-		return [...all].filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId));
-	}
 
 	// Merged imagery rows: skybox + every per-body imagery layer. A body
 	// contributing more than one layer gets a qualifier per row.
@@ -91,7 +49,7 @@
 
 		const byBody = new Map<string, ImageryCredit[]>();
 		for (const layer of IMAGERY_LAYERS)
-			for (const c of scopedCredits(ctx.credits.imageryOf(layer)))
+			for (const c of scopedCredits(ctx, ctx.credits.imageryOf(layer)))
 				byBody.set(c.bodyId, [...(byBody.get(c.bodyId) ?? []), c]);
 
 		const rows: ImageryRow[] = [];
@@ -207,7 +165,7 @@
 		<section class="space-y-1">
 			{@render sectionHeader(m.attribution_section_orbits())}
 			<ul class="space-y-0.5">
-				{#each orbitEntries as e (e.url)}
+				{#each orbitEntries as e (e.archive)}
 					<li>{@render link(e.url, e.name)}</li>
 				{/each}
 			</ul>

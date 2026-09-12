@@ -3,6 +3,7 @@ import {
 	aeroPassRadiusKm,
 	arrivalCampaignDays,
 	arrivalCost,
+	arrivalCostFromSpeed,
 	ascentDv,
 	endArrivalOrbit,
 	asymptoteTurnDeg,
@@ -27,7 +28,11 @@ import {
 } from './maneuvers';
 import type { TravelBody } from './body';
 import { EARTH, JUPITER, MARS, MOON, SATURN, VENUS } from './test-fixtures';
+
 import { dot, type Vec3 } from './vec3';
+
+/** Speed at which a body's gravity is exactly escaped, km/s. */
+const escapeSpeedAt = (mu: number, rKm: number) => Math.sqrt((2 * mu) / rKm);
 
 // Whether these figures match Earth, Apollo and Mars ascents is asserted in
 // benchmarks.test.ts, which owns every published number and its tolerance.
@@ -297,6 +302,28 @@ describe('arrivalCost', () => {
 		expect(aero.entrySpeedKms!).toBeGreaterThan(
 			periapsisSpeed(MARS.mu, parkingRadiusKm(MARS), 2.65)
 		);
+	});
+
+	/**
+	 * A craft that spiralled down is bound and near-circular, so it meets the air
+	 * a little faster than the local circular speed — not at escape speed, which
+	 * is what quoting the arrival as "no excess" used to produce. At Earth that
+	 * is the difference between orbital entry and a lunar return.
+	 */
+	it('meets the air at circular speed off a spiral, not at escape', () => {
+		for (const body of [EARTH, MARS, VENUS]) {
+			const rPark = parkingRadiusKm(body);
+			const rEntry = aeroPassRadiusKm(body);
+			const spiral = arrivalCostFromSpeed(
+				body,
+				circularSpeed(body.mu, rPark),
+				'landing',
+				'aerocapture'
+			).entrySpeedKms!;
+
+			expect(spiral).toBeGreaterThan(circularSpeed(body.mu, rEntry));
+			expect(spiral).toBeLessThan(escapeSpeedAt(body.mu, rEntry));
+		}
 	});
 
 	it('prices aerobraking as an insertion burn plus months of passes', () => {

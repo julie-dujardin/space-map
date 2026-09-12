@@ -32,7 +32,7 @@ import { AU_KM } from '$lib/math/units';
 import type { TravelBody } from './body';
 import { CAPTURE_APOAPSIS_RADII, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import {
-	arrivalCost,
+	arrivalCostFromSpeed,
 	circularSpeed,
 	parkingRadiusKm,
 	surfaceSite,
@@ -507,11 +507,14 @@ export function buildLowThrustRoute(
 	// said, since it is a fact about the craft rather than about the route.
 	let entrySpeedKms: number | undefined;
 	if (arrivalMode === 'landing') {
-		// A spiral hands the descent over in the plane it has been walking round,
-		// so the landing owes only what the site's own latitude denies it.
-		const arr = arrivalCost(
+		// Priced from the speed the spiral actually carries — circular at the
+		// parking radius — rather than from an excess it never had: quoting no
+		// excess makes the approach parabolic and the entry √2 too fast. A spiral
+		// also hands the descent over in the plane it has been walking round, so
+		// the landing owes only what the site's own latitude denies it.
+		const arr = arrivalCostFromSpeed(
 			target,
-			0,
+			circularSpeed(target.mu, parkingRadiusKm(target)),
 			'landing',
 			aero,
 			undefined,

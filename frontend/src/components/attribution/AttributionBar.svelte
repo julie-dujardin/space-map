@@ -11,7 +11,8 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 
-	// NASA-produced sources collapse to a single "NASA" chip; the shared
+	// The translated half of `ORBIT_SOURCES`, which carries everything else about
+	// a source. NASA-produced ones collapse to a single "NASA" chip; the shared
 	// derivation dedups on the label, so the translation decides.
 	const labels: OrbitSourceLabels = $derived({
 		[OrbitalSource.HORIZONS]: m.provider_nasa(),

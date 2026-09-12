@@ -9,7 +9,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import { memberEntryKey, type NotableMemberEntry } from '$lib/fetch/objects/object-data';
-	import { memberClick, memberDisplayName, memberHref } from './member-link';
+	import { memberDisplayName } from './member-link';
+	import { targetClick, targetHref } from '$lib/state/focus-link';
 	import { pickedThumbnailUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
@@ -80,8 +81,8 @@
 		{#each shown as member (memberEntryKey(member))}
 			{@const name = memberDisplayName(member, localizedNames)}
 			<a
-				href={memberHref(appState, member, name)}
-				onclick={memberClick(nav, member, name)}
+				href={targetHref(appState, member, name)}
+				onclick={targetClick(nav, member, name)}
 				class="pointer-events-auto group flex min-w-0 flex-col items-center gap-1"
 			>
 				{#if member.thumbnail}

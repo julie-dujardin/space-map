@@ -4,10 +4,8 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { applyFeature, applyFocus, serializeUrl } from '$lib/state/url';
-	import { groupClick, groupHref } from '$lib/state/focus-link';
-	import { isModifiedClick } from '$lib/modified-click';
-	import { UrlType } from '$lib/state/view';
+	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
+	import { targetClick, targetHref, type LinkTarget } from '$lib/state/focus-link';
 
 	interface Props {
 		entities: EntityRef[];
@@ -15,51 +13,22 @@
 
 	let { entities }: Props = $props();
 	const appState = getContext<AppState | undefined>('appState');
+	const focusObject = getContext<FocusObject | undefined>('focusObject');
+	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
+	let nav = $derived({ appState, focusObject, focusFeature });
 	let truncated = $state<Record<string, boolean>>({});
 	let shortened = $state<Record<string, boolean>>({});
 
-	function focusEntity(ref: EntityRef) {
-		if (!appState || !ref.primary_id || !ref.primary_type) return;
-		const bodyId = `${ref.primary_type}-${ref.primary_id}`;
+	/** A ref carries its id split in two; the shared router wants it whole. Which
+	 *  prefix it is stays the id's business, so no type is named here. */
+	function entityTarget(ref: EntityRef): LinkTarget {
+		if (!ref.primary_id || !ref.primary_type) return {};
+		if (ref.primary_type === 'group') return { group: ref.primary_id };
+		const id = `${ref.primary_type}-${ref.primary_id}`;
 		if (ref.secondary_type === 'feature' && ref.secondary_id) {
-			appState.setFeature({
-				bodyId,
-				featureId: parseInt(ref.secondary_id, 10),
-				featureName: ref.name
-			});
-		} else {
-			const urlType = ref.primary_type === 'spkid' ? UrlType.SmallBody : UrlType.Body;
-			appState.setFocus({ type: urlType, id: bodyId, name: ref.name });
+			return { id, feature_id: parseInt(ref.secondary_id, 10) };
 		}
-	}
-
-	function entityHref(ref: EntityRef): string | undefined {
-		if (!appState || !ref.primary_id || !ref.primary_type) return undefined;
-		if (ref.primary_type === 'group') return groupHref(appState, ref.primary_id, ref.name);
-		const bodyId = `${ref.primary_type}-${ref.primary_id}`;
-		if (ref.secondary_type === 'feature' && ref.secondary_id) {
-			return serializeUrl(
-				applyFeature(appState.view, {
-					bodyId,
-					featureId: parseInt(ref.secondary_id, 10),
-					featureName: ref.name
-				})
-			);
-		}
-		const urlType = ref.primary_type === 'spkid' ? UrlType.SmallBody : UrlType.Body;
-		return serializeUrl(applyFocus(appState.view, { type: urlType, id: bodyId, name: ref.name }));
-	}
-
-	/** A group ref goes through the shared handler; a body or feature one has no
-	 *  `focusObject` here, so it rewrites the URL and lets the drawer follow. */
-	function entityClick(ref: EntityRef): (e: MouseEvent) => void {
-		if (ref.primary_type === 'group' && ref.primary_id)
-			return groupClick(appState, ref.primary_id, ref.name);
-		return (e) => {
-			if (isModifiedClick(e)) return;
-			e.preventDefault();
-			focusEntity(ref);
-		};
+		return { id };
 	}
 
 	function detectTruncation(node: HTMLElement, name: string) {
@@ -98,8 +67,8 @@
 					<span class="min-w-0 max-w-full" use:detectTruncation={entity.name} {...props}>
 						{#if entity.primary_id && appState}
 							<Link
-								href={entityHref(entity)}
-								onclick={entityClick(entity)}
+								href={targetHref(appState, entityTarget(entity), entity.name)}
+								onclick={targetClick(nav, entityTarget(entity), entity.name)}
 								class="inline-flex max-w-full items-center gap-1 align-bottom"
 								><span class="truncate">{display}</span></Link
 							>

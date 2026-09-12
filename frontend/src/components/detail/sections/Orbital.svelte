@@ -3,6 +3,7 @@
 	import Link from './kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
+	import { orbitSourceInfo } from '$lib/scene/state/orbit-sources';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import {
@@ -45,27 +46,10 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 
-	// Fallback when the global JSON predates `ephemeris_source`.
-	const ORBIT_SOURCE_LABEL: Partial<Record<OrbitalSource, () => string>> = {
-		[OrbitalSource.HORIZONS]: m.source_horizons_name,
-		[OrbitalSource.SBDB]: m.source_sbdb_name,
-		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
-		[OrbitalSource.SPICE]: m.source_spice_ephemeris_name,
-		[OrbitalSource.SBDB_MOON]: m.source_sbdb_name,
-		[OrbitalSource.ASTERSAT]: m.source_nsdb_name,
-		[OrbitalSource.SPICE_PROBE]: m.source_spice_ephemeris_name
-	};
-
-	// Archive ids feeding archiveUrl(); used when only the enum source is known.
-	const ORBIT_SOURCE_ARCHIVE: Partial<Record<OrbitalSource, string>> = {
-		[OrbitalSource.HORIZONS]: 'horizons',
-		[OrbitalSource.SBDB]: 'sbdb',
-		[OrbitalSource.CELESTRAK]: 'celestrak',
-		[OrbitalSource.SPICE]: 'naif',
-		[OrbitalSource.SBDB_MOON]: 'sbdb',
-		[OrbitalSource.ASTERSAT]: 'nsdb',
-		[OrbitalSource.SPICE_PROBE]: 'naif'
-	};
+	// Fallback when the global JSON predates `ephemeris_source`: the archive the
+	// source is cited by carries both its name and its home page.
+	const sourceArchive = (s: OrbitalSource | undefined) =>
+		s === undefined ? undefined : orbitSourceInfo(s)?.archive;
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -208,12 +192,12 @@
 		// UNKNOWN is the legit "no provenance shipped" sentinel (hand-authored
 		// elements, or files pre-dating the source byte) — show nothing, no warn.
 		if (src == null || src === OrbitalSource.UNKNOWN) return null;
-		const label = ORBIT_SOURCE_LABEL[src];
+		const label = archiveLabel(sourceArchive(src));
 		if (!label) {
 			console.warn(`[Orbital] body ${body?.data.id} has UNKNOWN orbital source`);
 			return null;
 		}
-		return label();
+		return label;
 	});
 
 	// Present only on trajectories we derived from published elements, so its
@@ -229,8 +213,7 @@
 	let dataSourceUrl = $derived.by(() => {
 		const archive = global?.ephemeris_source;
 		if (archive) return archiveUrl(archive);
-		const src = body?.data.orbitalSource;
-		return src != null ? archiveUrl(ORBIT_SOURCE_ARCHIVE[src]) : null;
+		return archiveUrl(sourceArchive(body?.data.orbitalSource));
 	});
 
 	// Mirrors the renderer's dispatch order (renderer.ts:computePosition):

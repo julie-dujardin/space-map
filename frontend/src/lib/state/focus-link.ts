@@ -10,9 +10,10 @@
 import type { RouteOption, TripState } from '$lib/travel/trip';
 import { isModifiedClick } from '$lib/modified-click';
 import type { AppState } from './app-state.svelte';
-import type { FocusObject } from './focusable';
+import type { FocusFeature, FocusObject } from './focusable';
 import type { DrawerTab } from './view';
 import {
+	applyFeature,
 	applyFocus,
 	applyGallery,
 	applyGroup,
@@ -136,4 +137,66 @@ export function groupClick(
 		e.preventDefault();
 		appState.setGroup(slug, name);
 	};
+}
+
+/** The three kinds of thing a link in the drawer can point at. Member rows and
+ *  the entity chips both carry all three, so routing takes the smallest shape
+ *  that tells them apart rather than either side's exported entry. */
+export interface LinkTarget {
+	/** Object id, or the host body of a feature row. */
+	id?: string;
+	/** Group slug; set → the link opens `/g/<slug>` instead of focusing. */
+	group?: string;
+	/** IAU feature id; set → the link opens that feature on `id`. */
+	feature_id?: number;
+}
+
+/** What a link needs from context to open in-session. */
+export interface LinkNav {
+	appState: AppState | undefined;
+	focusObject: FocusObject | undefined;
+	focusFeature: FocusFeature | undefined;
+	/** Fragment lists pass false: select the piece without flying to its mesh. */
+	moveCamera?: boolean;
+}
+
+export function targetHref(
+	appState: AppState | undefined,
+	target: LinkTarget,
+	name: string
+): string | undefined {
+	if (target.group) return groupHref(appState, target.group, name);
+	if (!target.id) return undefined;
+	if (target.feature_id != null && appState) {
+		return serializeUrl(
+			applyFeature(appState.view, {
+				bodyId: target.id,
+				featureId: target.feature_id,
+				featureName: name
+			})
+		);
+	}
+	return focusHref(appState, target.id, name);
+}
+
+/** Plain left-click opens the target in-session; anything else is the browser's,
+ *  and so is a click with nothing in context to open it with. */
+export function targetClick(
+	nav: LinkNav,
+	target: LinkTarget,
+	name: string
+): (e: MouseEvent) => void {
+	if (target.group) return groupClick(nav.appState, target.group, name);
+	const id = target.id;
+	if (!id) return () => {};
+	const featureId = target.feature_id;
+	// A feature is streamed in and framed on its host body.
+	if (featureId != null) {
+		return (e) => {
+			if (isModifiedClick(e) || !nav.focusFeature) return;
+			e.preventDefault();
+			nav.focusFeature(id, featureId, name);
+		};
+	}
+	return focusClick(nav.focusObject, id, name, { moveCamera: nav.moveCamera });
 }

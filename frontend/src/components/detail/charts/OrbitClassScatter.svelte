@@ -30,6 +30,7 @@
 	} from '$lib/charts/orbit-zones';
 	import { pointInZone, polyPath, zonePopulation } from '$lib/charts/zone-geometry';
 	import { createScrub } from '$lib/charts/scrub';
+	import { scatterTooltipLeft, SCATTER_TOOLTIP_MAX_W } from '$lib/charts/scatter-tooltip';
 	import ScatterAxes from './ScatterAxes.svelte';
 
 	interface Props {
@@ -445,9 +446,9 @@
 	{#if tip}
 		<div
 			class="bg-foreground text-background pointer-events-none absolute z-50 -translate-y-full rounded-md px-2 py-1 text-xs shadow-md"
-			style:left="{Math.min(mouse.x + 10, width - 180)}px"
+			style:left="{scatterTooltipLeft(mouse.x, width)}px"
 			style:top="{mouse.y - 10}px"
-			style:max-width="240px"
+			style:max-width="{SCATTER_TOOLTIP_MAX_W}px"
 		>
 			{#if tip.kind === 'zone'}
 				<div class="font-semibold">{zoneClassLabel(tip.zone)}</div>

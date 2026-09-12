@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import MemberRow, { memberFigures } from './MemberRow.svelte';
-	import { memberClick, memberDisplayName, memberHref } from './member-link';
+	import { memberDisplayName } from './member-link';
+	import { targetClick, targetHref } from '$lib/state/focus-link';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
 	import {
@@ -62,8 +63,8 @@
 			<MemberRow
 				{name}
 				thumbnail={member.thumbnail}
-				href={memberHref(appState, member, name)}
-				onclick={memberClick(nav, member, name)}
+				href={targetHref(appState, member, name)}
+				onclick={targetClick(nav, member, name)}
 				valuesClass="tabular-nums"
 				valuesWrap={member.visits !== undefined}
 			>
