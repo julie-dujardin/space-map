@@ -16,9 +16,10 @@
 
 import { SECONDS_PER_DAY } from '$lib/format/duration';
 import type { LegKind, Route, TravelBody } from '$lib/math/travel';
-// Deep import, not the kernel's index: this module is on the map's own chunk,
+// Deep imports, not the kernel's index: this module is on the map's own chunk,
 // and the index carries Lambert, the porkchop and the vehicle catalogue.
 import { endArrivalOrbit, endDepartureOrbit, type EndOrbit } from '$lib/math/travel/maneuvers';
+import { LEG_END } from '$lib/math/travel/route';
 
 /** What a step of the trip is: the legs of the route, plus the two ends that
  *  aren't legs at all — the orbit flown out of, and the one left in. Nothing
@@ -138,20 +139,14 @@ export function buildTimeline(
 	let cruiseTaken = false;
 
 	for (const [index, leg] of route.legs.entries()) {
-		// Which end of the trip a leg happens at. A coast is at neither — that's
-		// the whole of what a cruise is. Aerobraking counts as the arrival end:
-		// months of passes through the destination's own atmosphere.
+		// The body a leg happens at is the end of the trip it is spent at. A leg at
+		// neither end is out in the crossing, where the only body is a swing-by's.
 		const flyby = leg.kind === 'assist' ? flybys.shift() : undefined;
+		const end = LEG_END[leg.kind];
 		const bodyId =
-			leg.kind === 'ascent' || leg.kind === 'injection' || leg.kind === 'spiral-out'
+			end === 'departure'
 				? route.departureId
-				: leg.kind === 'capture' ||
-					  leg.kind === 'rendezvous' ||
-					  leg.kind === 'aero-pass' ||
-					  leg.kind === 'aerobrake' ||
-					  leg.kind === 'raise' ||
-					  leg.kind === 'descent' ||
-					  leg.kind === 'spiral-in'
+				: end === 'arrival'
 					? route.targetId
 					: (flyby?.bodyId ?? null);
 

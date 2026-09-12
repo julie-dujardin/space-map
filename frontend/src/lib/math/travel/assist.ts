@@ -40,7 +40,7 @@ import {
 	type EndOrbit
 } from './maneuvers';
 import type { DeadlineOptions } from './porkchop';
-import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
+import { arrivalLegs, finishRoute, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { norm, sub, type Vec3 } from './vec3';
 import { nextTransferWindows, synodicPeriodDays, transferScale } from './windows';
@@ -123,9 +123,6 @@ export function buildAssistRoute(
 	legs.push({ kind: 'cruise', dvKms: 0, days: tof2Days });
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
-	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
-	if (!isFinite(totalDvKms)) return null;
-
 	const flyby: FlybyPass = {
 		bodyId: via.id,
 		jd: flybyJd,
@@ -136,26 +133,27 @@ export function buildAssistRoute(
 		vInfOutKms: norm(vInfOut)
 	};
 
-	return {
-		departureId: departure.id,
-		targetId: target.id,
-		departJd,
-		arriveJd,
-		tofDays: tof1Days + tof2Days,
-		legs,
-		totalDvKms,
-		inSpaceDvKms: totalDvKms - dep.ascentKms,
-		c3Km2S2: characteristicEnergy(vInfDep),
-		vInfDepKms: vInfDep,
-		vInfArrKms: vInfArr,
-		departureMode,
-		arrivalMode,
-		departureOrbit: options.departureOrbit,
-		targetOrbit: options.targetOrbit,
-		aero,
-		entrySpeedKms: arr.entrySpeedKms,
-		flybys: [flyby]
-	};
+	return finishRoute(
+		{
+			departureId: departure.id,
+			targetId: target.id,
+			departJd,
+			arriveJd,
+			tofDays: tof1Days + tof2Days,
+			ascentKms: dep.ascentKms,
+			c3Km2S2: characteristicEnergy(vInfDep),
+			vInfDepKms: vInfDep,
+			vInfArrKms: vInfArr,
+			departureMode,
+			arrivalMode,
+			departureOrbit: options.departureOrbit,
+			targetOrbit: options.targetOrbit,
+			aero,
+			entrySpeedKms: arr.entrySpeedKms,
+			flybys: [flyby]
+		},
+		legs
+	);
 }
 
 export interface AssistSearchOptions extends RouteOptions {

@@ -21,19 +21,6 @@ export type ProjectionId =
 	| 'orthographic'
 	| 'stereographic';
 
-/** Offered in this order: the texture's own space first, then the three that
- *  keep area honest, then the one that trades a little of everything for a
- *  familiar shape, then the two that show a globe rather than a rectangle. */
-export const PROJECTION_IDS: readonly ProjectionId[] = [
-	'equirectangular',
-	'equalEarth',
-	'mollweide',
-	'sinusoidal',
-	'robinson',
-	'orthographic',
-	'stereographic'
-];
-
 export interface ProjectionOptions {
 	/** Meridian down the middle of the map. */
 	centerLon?: number;
@@ -98,6 +85,26 @@ export function wrapLon(lon: number): number {
 	return wrapped - 180;
 }
 
+/**
+ * The point-by-point inverse a row inverse already answers. Where a row is one
+ * parallel with the meridians evenly spread along it, the two are the same
+ * question asked twice, so the row is the only place the algebra is written.
+ *
+ * The edge of a row is taken generously: a pixel that lands on it by a rounding
+ * error still belongs to the map, and the raster walk holds the strict bound.
+ */
+function rowToInverse(
+	row: NonNullable<Projection['rowInverse']>,
+	lon0: number
+): Projection['inverse'] {
+	return (x, y) => {
+		const line = row(y);
+		if (!line) return null;
+		if (Math.abs(x) > line.maxAbsX + 1e-9) return null;
+		return [wrapLon(x * line.lonPerX + lon0), line.lat];
+	};
+}
+
 /** Width over height of the whole world, for sizing a frame that holds it. */
 export function projectionAspect(projection: Projection): number {
 	const { minX, maxX, minY, maxY } = projection.extent;
@@ -135,6 +142,12 @@ function sampledExtent(forward: Projection['forward']): Extent {
 
 function equirectangular(options: ProjectionOptions): Projection {
 	const lon0 = options.centerLon ?? 0;
+	const rowInverse = (y: number): ProjectionRow | null => {
+		if (Math.abs(y) > Math.PI / 2) return null;
+		// Bounded east–west as well: past the seam the plane is off the world,
+		// not round it again, or a click beside the map would report a place.
+		return { lat: y * RAD, lonPerX: RAD, maxAbsX: Math.PI };
+	};
 	return {
 		id: 'equirectangular',
 		centerLon: lon0,
@@ -142,16 +155,8 @@ function equirectangular(options: ProjectionOptions): Projection {
 		azimuthal: false,
 		extent: { minX: -Math.PI, minY: -Math.PI / 2, maxX: Math.PI, maxY: Math.PI / 2 },
 		forward: (lon, lat) => [wrapLon(lon - lon0) * DEG, lat * DEG],
-		inverse: (x, y) => {
-			// Bounded on both axes: past the seam the plane is off the world, not
-			// round it again, or a click beside the map would report a place.
-			if (Math.abs(y) > Math.PI / 2 || Math.abs(x) > Math.PI) return null;
-			return [wrapLon(x * RAD + lon0), y * RAD];
-		},
-		rowInverse: (y) => {
-			if (Math.abs(y) > Math.PI / 2) return null;
-			return { lat: y * RAD, lonPerX: RAD, maxAbsX: Math.PI };
-		}
+		rowInverse,
+		inverse: rowToInverse(rowInverse, lon0)
 	};
 }
 
@@ -188,6 +193,13 @@ function equalEarth(options: ProjectionOptions): Projection {
 		}
 		return theta;
 	};
+	const rowInverse = (y: number): ProjectionRow | null => {
+		const theta = thetaFor(y);
+		const sinLat = (2 / EE_SQRT3) * Math.sin(theta);
+		if (Math.abs(sinLat) > 1) return null;
+		const lonPerX = ((3 * eeDy(theta)) / (2 * EE_SQRT3 * Math.cos(theta))) * RAD;
+		return { lat: Math.asin(sinLat) * RAD, lonPerX, maxAbsX: 180 / lonPerX };
+	};
 	return {
 		id: 'equalEarth',
 		centerLon: lon0,
@@ -195,21 +207,8 @@ function equalEarth(options: ProjectionOptions): Projection {
 		azimuthal: false,
 		extent: sampledExtent(forward),
 		forward,
-		rowInverse: (y) => {
-			const theta = thetaFor(y);
-			const sinLat = (2 / EE_SQRT3) * Math.sin(theta);
-			if (Math.abs(sinLat) > 1) return null;
-			const lonPerX = ((3 * eeDy(theta)) / (2 * EE_SQRT3 * Math.cos(theta))) * RAD;
-			return { lat: Math.asin(sinLat) * RAD, lonPerX, maxAbsX: 180 / lonPerX };
-		},
-		inverse: (x, y) => {
-			const theta = thetaFor(y);
-			const sinLat = (2 / EE_SQRT3) * Math.sin(theta);
-			if (Math.abs(sinLat) > 1) return null;
-			const dl = (3 * eeDy(theta) * x) / (2 * EE_SQRT3 * Math.cos(theta));
-			if (Math.abs(dl) > Math.PI) return null;
-			return [wrapLon(dl * RAD + lon0), Math.asin(sinLat) * RAD];
-		}
+		rowInverse,
+		inverse: rowToInverse(rowInverse, lon0)
 	};
 }
 
@@ -217,6 +216,19 @@ const MW_SQRT2 = Math.SQRT2;
 
 function mollweide(options: ProjectionOptions): Projection {
 	const lon0 = options.centerLon ?? 0;
+	const rowInverse = (y: number): ProjectionRow | null => {
+		const sinTheta = y / MW_SQRT2;
+		if (Math.abs(sinTheta) > 1) return null;
+		const theta = Math.asin(sinTheta);
+		const sinLat = (2 * theta + Math.sin(2 * theta)) / Math.PI;
+		if (Math.abs(sinLat) > 1) return null;
+		const cosTheta = Math.cos(theta);
+		// The ellipse closes to a point at the poles: the row is one place wide,
+		// and every longitude meets there.
+		if (cosTheta < 1e-12) return { lat: Math.sign(y) * 90, lonPerX: 0, maxAbsX: 0 };
+		const lonPerX = (Math.PI / (2 * MW_SQRT2 * cosTheta)) * RAD;
+		return { lat: Math.asin(sinLat) * RAD, lonPerX, maxAbsX: 180 / lonPerX };
+	};
 	return {
 		id: 'mollweide',
 		centerLon: lon0,
@@ -241,38 +253,21 @@ function mollweide(options: ProjectionOptions): Projection {
 			const dl = wrapLon(lon - lon0) * DEG;
 			return [((2 * MW_SQRT2) / Math.PI) * dl * Math.cos(theta), MW_SQRT2 * Math.sin(theta)];
 		},
-		rowInverse: (y) => {
-			const sinTheta = y / MW_SQRT2;
-			if (Math.abs(sinTheta) > 1) return null;
-			const theta = Math.asin(sinTheta);
-			const sinLat = (2 * theta + Math.sin(2 * theta)) / Math.PI;
-			if (Math.abs(sinLat) > 1) return null;
-			const cosTheta = Math.cos(theta);
-			// The ellipse closes to a point at the poles: the row is one place
-			// wide, and every longitude meets there.
-			if (cosTheta < 1e-12) return { lat: Math.sign(y) * 90, lonPerX: 0, maxAbsX: 0 };
-			const lonPerX = (Math.PI / (2 * MW_SQRT2 * cosTheta)) * RAD;
-			return { lat: Math.asin(sinLat) * RAD, lonPerX, maxAbsX: 180 / lonPerX };
-		},
-		inverse: (x, y) => {
-			const sinTheta = y / MW_SQRT2;
-			if (Math.abs(sinTheta) > 1) return null;
-			const theta = Math.asin(sinTheta);
-			const sinLat = (2 * theta + Math.sin(2 * theta)) / Math.PI;
-			if (Math.abs(sinLat) > 1) return null;
-			const cosTheta = Math.cos(theta);
-			// The ellipse closes to a point at the poles; every x but zero is
-			// outside it there.
-			if (cosTheta < 1e-12) return Math.abs(x) < 1e-9 ? [lon0, Math.sign(y) * 90] : null;
-			const dl = (Math.PI * x) / (2 * MW_SQRT2 * cosTheta);
-			if (Math.abs(dl) > Math.PI) return null;
-			return [wrapLon(dl * RAD + lon0), Math.asin(sinLat) * RAD];
-		}
+		rowInverse,
+		inverse: rowToInverse(rowInverse, lon0)
 	};
 }
 
 function sinusoidal(options: ProjectionOptions): Projection {
 	const lon0 = options.centerLon ?? 0;
+	const rowInverse = (y: number): ProjectionRow | null => {
+		if (Math.abs(y) > Math.PI / 2) return null;
+		const cosLat = Math.cos(y);
+		// The lens closes to a point at the poles: the row is one place wide,
+		// and every longitude meets there.
+		if (cosLat < 1e-12) return { lat: Math.sign(y) * 90, lonPerX: 0, maxAbsX: 0 };
+		return { lat: y * RAD, lonPerX: RAD / cosLat, maxAbsX: Math.PI * cosLat };
+	};
 	return {
 		id: 'sinusoidal',
 		centerLon: lon0,
@@ -283,22 +278,8 @@ function sinusoidal(options: ProjectionOptions): Projection {
 			const phi = lat * DEG;
 			return [wrapLon(lon - lon0) * DEG * Math.cos(phi), phi];
 		},
-		rowInverse: (y) => {
-			if (Math.abs(y) > Math.PI / 2) return null;
-			const cosLat = Math.cos(y);
-			// The lens closes to a point at the poles: the row is one place wide,
-			// and every longitude meets there.
-			if (cosLat < 1e-12) return { lat: Math.sign(y) * 90, lonPerX: 0, maxAbsX: 0 };
-			return { lat: y * RAD, lonPerX: RAD / cosLat, maxAbsX: Math.PI * cosLat };
-		},
-		inverse: (x, y) => {
-			if (Math.abs(y) > Math.PI / 2) return null;
-			const cosLat = Math.cos(y);
-			if (cosLat < 1e-12) return Math.abs(x) < 1e-9 ? [lon0, Math.sign(y) * 90] : null;
-			const dl = (x * RAD) / cosLat;
-			if (Math.abs(dl) > 180) return null;
-			return [wrapLon(dl + lon0), y * RAD];
-		}
+		rowInverse,
+		inverse: rowToInverse(rowInverse, lon0)
 	};
 }
 
@@ -380,6 +361,13 @@ function robinsonHeightToT(h: number): number {
 
 function robinson(options: ProjectionOptions): Projection {
 	const lon0 = options.centerLon ?? 0;
+	const rowInverse = (y: number): ProjectionRow | null => {
+		const h = Math.abs(y) / ROBINSON_KY;
+		if (h > 1) return null;
+		const t = robinsonHeightToT(h);
+		const maxAbsX = robinsonHalfWidth(t);
+		return { lat: Math.sign(y) * t * ROBINSON_STEP, lonPerX: 180 / maxAbsX, maxAbsX };
+	};
 	return {
 		id: 'robinson',
 		centerLon: lon0,
@@ -400,21 +388,8 @@ function robinson(options: ProjectionOptions): Projection {
 				ROBINSON_KY * height * Math.sign(lat)
 			];
 		},
-		rowInverse: (y) => {
-			const h = Math.abs(y) / ROBINSON_KY;
-			if (h > 1) return null;
-			const t = robinsonHeightToT(h);
-			const maxAbsX = robinsonHalfWidth(t);
-			return { lat: Math.sign(y) * t * ROBINSON_STEP, lonPerX: 180 / maxAbsX, maxAbsX };
-		},
-		inverse: (x, y) => {
-			const h = Math.abs(y) / ROBINSON_KY;
-			if (h > 1) return null;
-			const t = robinsonHeightToT(h);
-			const dl = (x * 180) / robinsonHalfWidth(t);
-			if (Math.abs(dl) > 180) return null;
-			return [wrapLon(dl + lon0), Math.sign(y) * t * ROBINSON_STEP];
-		}
+		rowInverse,
+		inverse: rowToInverse(rowInverse, lon0)
 	};
 }
 
@@ -521,6 +496,12 @@ function stereographic(options: ProjectionOptions): Projection {
 	};
 }
 
+/**
+ * Every projection there is — the type forces this to be complete — written in
+ * the order they are offered: the texture's own space first, then the three
+ * that keep area honest, then the one that trades a little of everything for a
+ * familiar shape, then the two that show a globe rather than a rectangle.
+ */
 const BUILDERS: Record<ProjectionId, (options: ProjectionOptions) => Projection> = {
 	equirectangular,
 	equalEarth,
@@ -530,6 +511,10 @@ const BUILDERS: Record<ProjectionId, (options: ProjectionOptions) => Projection>
 	orthographic,
 	stereographic
 };
+
+/** The ids, in the order above. Read off the builders so a projection cannot be
+ *  added and then go unoffered and untested. */
+export const PROJECTION_IDS: readonly ProjectionId[] = Object.keys(BUILDERS) as ProjectionId[];
 
 /** Build a projection. The result is immutable — turning the globe or moving
  *  the central meridian means building another one, which costs nothing but

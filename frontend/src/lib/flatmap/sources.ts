@@ -26,15 +26,18 @@ export interface BundleMeta {
 	description?: string;
 }
 
-/** The bundles behind one body's flat map, in the order they are drawn. */
-export interface BodySources {
-	surface?: BundleMeta & { monthlyFrames?: number };
-	clouds?: BundleMeta;
-	night?: BundleMeta;
+/** The kinds of picture a body's surface is exported as, each its own bundle. */
+export type BundleKind = 'surface' | 'clouds' | 'night';
+
+/** The bundles behind one body's flat map. `monthlyFrames` only ever arrives on
+ *  a seasonal surface, but the kinds are otherwise one shape. */
+export type BodySources = {
+	[K in BundleKind]?: BundleMeta & { monthlyFrames?: number };
+} & {
 	/** Mean radius in kilometres, where the export states the body's figure.
 	 *  Lets a distance along the surface be turned into an angle. */
 	radiusKm?: number;
-}
+};
 
 /**
  * Barycenter whose system file describes a body, or null when it has none.
@@ -48,6 +51,9 @@ export function systemIdFor(bodyId: string): string | null {
 	return match ? `naif-${match[1]}` : null;
 }
 
+/** One body as the export's system file writes it, which is not quite how the
+ *  flat map wants it: the surface bundle is called `texture` and counts its
+ *  frames rather than naming them, so that one is mapped across by hand. */
 interface SystemEntry {
 	tiers?: string[];
 	/** Triaxial radii in kilometres, along the body-fixed axes. */

@@ -10,7 +10,7 @@
  * place is.
  */
 
-import { host } from '$lib/host';
+import { host, type CoreMessages } from '$lib/host';
 import { dateToJD } from '$lib/time/jd';
 import {
 	creditOf,
@@ -48,7 +48,7 @@ import {
 	InverseLookup,
 	type RasterImage
 } from './raster';
-import { bestTier, bundleUrl, loadBodySources, type BodySources } from './sources';
+import { bestTier, bundleUrl, loadBodySources, type BodySources, type BundleKind } from './sources';
 import {
 	clampToBand,
 	clampView,
@@ -156,6 +156,37 @@ const WORTH_COARSENING = 0.8;
 const SETTLE_MS = 140;
 
 const DEFAULT_BODY = 'naif-399';
+
+/**
+ * The body's own picture layers. The order is load-bearing: `drawRaster`
+ * composites the first at the bottom, so the surface has to come before what
+ * covers it.
+ */
+const RASTER_LAYERS: readonly {
+	kind: BundleKind;
+	label: (messages: CoreMessages) => string;
+	visible: boolean;
+	opacity: number;
+	blend: 'normal' | 'add';
+}[] = [
+	{
+		kind: 'surface',
+		label: (m) => m.layer_surface(),
+		visible: true,
+		opacity: 1,
+		blend: 'normal'
+	},
+	{ kind: 'clouds', label: (m) => m.layer_clouds(), visible: true, opacity: 1, blend: 'normal' },
+	{
+		kind: 'night',
+		label: (m) => m.layer_night(),
+		// Lights only ever add to what is under them; drawn as a normal layer they
+		// would black out the daylit surface. Off until the reader asks for them.
+		visible: false,
+		opacity: 0.85,
+		blend: 'add'
+	}
+];
 
 function isRaster(layer: Layer): layer is RasterLayer {
 	return layer.kind === 'raster';
@@ -383,46 +414,19 @@ export class FlatMap {
 	private buildLayers(): void {
 		const { messages } = host();
 		const layers: Layer[] = [];
-		const { surface, clouds, night } = this.sources;
-		if (surface) {
+		for (const spec of RASTER_LAYERS) {
+			const bundle = this.sources[spec.kind];
+			if (!bundle) continue;
 			layers.push({
 				kind: 'raster',
-				id: 'surface',
-				label: messages.layer_surface(),
-				visible: true,
-				opacity: 1,
-				blend: 'normal',
-				credit: creditOf(surface),
-				tiers: surface.tiers,
-				url: (jd, tier) => bundleUrl(surface, tier, jd)
-			});
-		}
-		if (clouds) {
-			layers.push({
-				kind: 'raster',
-				id: 'clouds',
-				label: messages.layer_clouds(),
-				visible: true,
-				opacity: 1,
-				blend: 'normal',
-				credit: creditOf(clouds),
-				tiers: clouds.tiers,
-				url: (jd, tier) => bundleUrl(clouds, tier, jd)
-			});
-		}
-		if (night) {
-			layers.push({
-				kind: 'raster',
-				id: 'night',
-				label: messages.layer_night(),
-				visible: false,
-				// Lights only ever add to what is under them; drawn as a normal
-				// layer they would black out the daylit surface.
-				opacity: 0.85,
-				blend: 'add',
-				credit: creditOf(night),
-				tiers: night.tiers,
-				url: (jd, tier) => bundleUrl(night, tier, jd)
+				id: spec.kind,
+				label: spec.label(messages),
+				visible: spec.visible,
+				opacity: spec.opacity,
+				blend: spec.blend,
+				credit: creditOf(bundle),
+				tiers: bundle.tiers,
+				url: (jd, tier) => bundleUrl(bundle, tier, jd)
 			});
 		}
 		layers.push(graticuleLayer(messages.layer_graticule()));

@@ -115,8 +115,9 @@ describe.each(PROJECTION_IDS)('%s row inverse', (id: ProjectionId) => {
 			const row = projection.rowInverse(y);
 			for (let ix = 0; ix <= 40; ix++) {
 				const x = minX + ((maxX - minX) * ix) / 40;
-				// The very edge of the row is a tie the two can break differently by
-				// a single ulp, so the agreement is asserted either side of it.
+				// The very edge of the row is where the two are deliberately allowed to
+				// disagree: the raster walk holds the strict bound while the inverse
+				// takes a rounding error's worth of slack. Asserted either side of it.
 				if (row && Math.abs(Math.abs(x) - row.maxAbsX) < 1e-6 * Math.max(1, row.maxAbsX)) {
 					continue;
 				}

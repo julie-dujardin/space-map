@@ -9,21 +9,18 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import { dataBase } from '$lib/fetch/data-base';
 import type { ProbeAttitude } from '$lib/fetch/objects/object-data';
+import { equatorialToScene } from '$lib/math/units';
 import { parseAttitudeChunk, type AttitudeChunk } from './parse';
 
 const SECONDS_PER_DAY = 86400;
-const DEG2RAD = Math.PI / 180;
-const OBLIQUITY_RAD = 23.4392911 * DEG2RAD;
-const COS_OBL = Math.cos(OBLIQUITY_RAD);
-const SIN_OBL = Math.sin(OBLIQUITY_RAD);
 
-/** Equatorial-J2000 → scene rotation; basis columns are the scene images of the
- *  eq axes, matching `equatorialToThreeJS` in `$lib/math/orientation`. */
+/** Equatorial-J2000 → scene rotation; the basis columns are the scene images of
+ *  the equatorial axes. */
 const EQ_TO_SCENE = new Quaternion().setFromRotationMatrix(
 	new Matrix4().makeBasis(
-		new Vector3(1, 0, 0),
-		new Vector3(0, -SIN_OBL, -COS_OBL),
-		new Vector3(0, COS_OBL, -SIN_OBL)
+		equatorialToScene(1, 0, 0, new Vector3()),
+		equatorialToScene(0, 1, 0, new Vector3()),
+		equatorialToScene(0, 0, 1, new Vector3())
 	)
 );
 

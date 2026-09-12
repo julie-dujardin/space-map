@@ -28,7 +28,7 @@ import {
 } from './maneuvers';
 import { namesArgPeri, passageNode, planeAboutNode } from './passage-node';
 import { propagateState } from './propagate';
-import { routeDurationDays, type Route, type RouteLeg, type RouteOptions } from './route';
+import { LEG_END, routeDurationDays, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc, type RadialArc } from './system-transfer';
 import {
@@ -300,9 +300,9 @@ export interface PathOptions extends RouteOptions {
 
 const DEFAULT_SAMPLES = 180;
 
-/** Δv of every leg of `kinds`, km/s. */
-function dvOf(route: Route, kinds: readonly string[]): number {
-	return route.legs.reduce((sum, leg) => (kinds.includes(leg.kind) ? sum + leg.dvKms : sum), 0);
+/** Δv charged at one end of the trip, km/s — what the dot drawn there is worth. */
+function dvAt(route: Route, end: 'departure' | 'arrival'): number {
+	return route.legs.reduce((sum, leg) => (LEG_END[leg.kind] === end ? sum + leg.dvKms : sum), 0);
 }
 
 /**
@@ -465,14 +465,14 @@ function buildCrossing(
 		jd: route.departJd,
 		r: from.r,
 		bodyId: departure.id,
-		dvKms: dvOf(route, ['ascent', 'injection'])
+		dvKms: dvAt(route, 'departure')
 	};
 	const arrivalStop: PathStop = {
 		kind: 'arrival',
 		jd: route.arriveJd,
 		r: to.r,
 		bodyId: target.id,
-		dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
+		dvKms: dvAt(route, 'arrival')
 	};
 	const meeting = { bodyId: target.id, jd: route.arriveJd, r: to.r };
 
@@ -2594,14 +2594,14 @@ function spiralPath(
 				jd: route.departJd,
 				r: arcs[0].points[0],
 				bodyId: departure.id,
-				dvKms: dvOf(route, ['spiral-out'])
+				dvKms: dvAt(route, 'departure')
 			},
 			{
 				kind: 'arrival',
 				jd: route.arriveJd,
 				r: to.r,
 				bodyId: target.id,
-				dvKms: dvOf(route, ['spiral-in', 'descent'])
+				dvKms: dvAt(route, 'arrival')
 			}
 		],
 		meeting: { bodyId: target.id, jd: route.arriveJd, r: to.r }
@@ -2654,14 +2654,14 @@ function flownCrossing(
 				jd: route.departJd,
 				r: startR,
 				bodyId: departureId,
-				dvKms: dvOf(route, ['ascent', 'injection'])
+				dvKms: dvAt(route, 'departure')
 			},
 			{
 				kind: 'arrival',
 				jd: route.arriveJd,
 				r: endR,
 				bodyId: targetId,
-				dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
+				dvKms: dvAt(route, 'arrival')
 			}
 		],
 		meeting: { bodyId: targetId, jd: route.arriveJd, r: endR }
@@ -2789,14 +2789,14 @@ function straightCrossing(
 				jd: route.departJd,
 				r: start,
 				bodyId: departureId,
-				dvKms: dvOf(route, ['ascent', 'injection'])
+				dvKms: dvAt(route, 'departure')
 			},
 			{
 				kind: 'arrival',
 				jd: route.arriveJd,
 				r: end,
 				bodyId: targetId,
-				dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
+				dvKms: dvAt(route, 'arrival')
 			}
 		],
 		meeting: { bodyId: targetId, jd: route.arriveJd, r: end }
@@ -2840,14 +2840,14 @@ function systemPath(
 		jd: route.departJd,
 		r: outbound ? scale(normalize(state.r), rNear) : state.r,
 		bodyId: departure.id,
-		dvKms: dvOf(route, ['ascent', 'injection'])
+		dvKms: dvAt(route, 'departure')
 	};
 	const arrivalStop: PathStop = {
 		kind: 'arrival',
 		jd: route.arriveJd,
 		r: outbound ? state.r : scale(normalize(state.r), rNear),
 		bodyId: target.id,
-		dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
+		dvKms: dvAt(route, 'arrival')
 	};
 
 	if (route.constantThrust != null) {
@@ -3010,14 +3010,14 @@ function orbitChangePath(
 			jd: route.departJd,
 			r: points[0],
 			bodyId: body.id,
-			dvKms: dvOf(route, ['ascent', 'injection'])
+			dvKms: dvAt(route, 'departure')
 		},
 		{
 			kind: 'arrival',
 			jd: route.arriveJd,
 			r: points[points.length - 1],
 			bodyId: body.id,
-			dvKms: dvOf(route, ['capture', 'rendezvous', 'raise', 'descent'])
+			dvKms: dvAt(route, 'arrival')
 		}
 	];
 	return {

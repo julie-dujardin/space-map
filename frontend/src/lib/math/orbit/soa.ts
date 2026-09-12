@@ -79,11 +79,36 @@ export interface OrbitColumns {
 }
 
 /**
- * Pack an AoS PositionedBody list into SoA columns for worker consumption.
- * IDs in `skip` and degenerate Keplerian entries (a=0, no q/tp) get KIND_SKIP.
- * Columns are sized and ordered to match `bodies` for index-based mapping;
- * `applyFlagFilter` opts the group into the per-tick NEO/PHA mask.
+ * Write the columns every kind shares into row `outIdx`. `visibleFromDays` is
+ * not one of them: the AoS pack path has no origin date to write and leans on
+ * the allocator's NaN (= always visible), so its callers opt in themselves.
  */
+export function writeCommonRow(
+	out: OrbitColumns,
+	outIdx: number,
+	a: number,
+	e: number,
+	i: number,
+	om: number,
+	w: number,
+	ma: number,
+	n: number,
+	epoch: number,
+	equatorial: boolean | undefined,
+	flags: number
+): void {
+	out.a[outIdx] = a;
+	out.e[outIdx] = e;
+	out.i[outIdx] = i;
+	out.om[outIdx] = om;
+	out.w[outIdx] = w;
+	out.ma[outIdx] = ma;
+	out.n[outIdx] = n;
+	out.epoch[outIdx] = epoch;
+	out.equatorial[outIdx] = equatorial ? 1 : 0;
+	out.flags[outIdx] = flags;
+}
+
 /** Pack one body into row `idx` of `cols`. Returns false for KIND_SKIP rows
  *  (skipped / degenerate) so callers can exclude them from validity widening. */
 function packRowInto(
@@ -116,46 +141,31 @@ function packRowInto(
 		cols.kind[idx] = KIND_SKIP;
 		return false;
 	}
-	cols.a[idx] = d.a;
-	cols.e[idx] = d.e;
-	cols.i[idx] = d.i;
-	cols.om[idx] = d.om;
-	cols.w[idx] = d.w;
-	cols.ma[idx] = d.ma;
-	cols.n[idx] = d.n;
-	cols.epoch[idx] = d.epoch;
-	cols.equatorial[idx] = d.equatorial ? 1 : 0;
-	cols.flags[idx] = d.flags ?? 0;
+	writeCommonRow(
+		cols,
+		idx,
+		d.a,
+		d.e,
+		d.i,
+		d.om,
+		d.w,
+		d.ma,
+		d.n,
+		d.epoch,
+		d.equatorial,
+		d.flags ?? 0
+	);
 	return true;
 }
 
-export function packBodies(
-	bodies: PositionedBody[],
-	skip?: Set<string>,
-	applyFlagFilter: boolean = false
-): OrbitColumns {
-	const count = bodies.length;
-	const cols = allocColumns(count);
-	cols.applyFlagFilter = applyFlagFilter;
-	// Widen the group's validity window to the union of all bodies' windows.
-	// In practice all bodies in one pool group share a single chunk window, so
-	// min/max collapses to that shared value — but the widening keeps us safe
-	// if a caller ever mixes chunks with differing windows into one group.
-	let start = Infinity;
-	let end = -Infinity;
-	for (let idx = 0; idx < count; idx++) {
-		if (!packRowInto(cols, idx, bodies[idx], skip)) continue;
-		const d = bodies[idx].data;
-		if (d.validityStart < start) start = d.validityStart;
-		if (d.validityEnd > end) end = d.validityEnd;
-	}
-	cols.validityStart = start === Infinity ? -Infinity : start;
-	cols.validityEnd = end === -Infinity ? Infinity : end;
-	return cols;
-}
-
-/** Time-budgeted {@link packBodies}: yields to the event loop every ~6ms so a
- *  large zone (main belt is >1M rows) doesn't stall input for its whole pack. */
+/**
+ * Pack an AoS PositionedBody list into SoA columns for worker consumption.
+ * IDs in `skip` and degenerate Keplerian entries (a=0, no q/tp) get KIND_SKIP.
+ * Columns are sized and ordered to match `bodies` for index-based mapping;
+ * `applyFlagFilter` opts the group into the per-tick NEO/PHA mask. Yields to
+ * the event loop every ~6ms so a large zone (main belt is >1M rows) doesn't
+ * stall input for its whole pack.
+ */
 export async function packBodiesSliced(
 	bodies: PositionedBody[],
 	skip?: Set<string>,
@@ -164,6 +174,9 @@ export async function packBodiesSliced(
 	const count = bodies.length;
 	const cols = allocColumns(count);
 	cols.applyFlagFilter = applyFlagFilter;
+	// Union of the bodies' validity windows. One pool group comes from a single
+	// chunk in practice, so min/max collapses to that shared window — the
+	// widening only guards a caller that mixes chunks into one group.
 	let start = Infinity;
 	let end = -Infinity;
 	let sliceStart = performance.now();
@@ -182,58 +195,61 @@ export async function packBodiesSliced(
 	return cols;
 }
 
+type OrbitColumn = Uint8Array | Int32Array | Float32Array | Float64Array | (SatRec | null)[];
+
+/**
+ * Every per-row column of {@link OrbitColumns}. `allocColumns` and
+ * `columnsTransferList` both walk this list, so the order of its transferable
+ * entries is the worker-transfer contract.
+ */
+const COLUMNS: readonly {
+	name: keyof OrbitColumns;
+	make: (count: number) => OrbitColumn;
+	/** False for a column with no buffer to hand a worker. */
+	transferable?: false;
+}[] = [
+	{ name: 'kind', make: (c) => new Uint8Array(c) },
+	{ name: 'equatorial', make: (c) => new Uint8Array(c) },
+	{ name: 'a', make: (c) => new Float64Array(c) },
+	{ name: 'e', make: (c) => new Float64Array(c) },
+	{ name: 'i', make: (c) => new Float64Array(c) },
+	{ name: 'om', make: (c) => new Float64Array(c) },
+	{ name: 'w', make: (c) => new Float64Array(c) },
+	{ name: 'ma', make: (c) => new Float64Array(c) },
+	{ name: 'n', make: (c) => new Float64Array(c) },
+	{ name: 'epoch', make: (c) => new Float64Array(c) },
+	{ name: 'q', make: (c) => new Float64Array(c) },
+	{ name: 'tp', make: (c) => new Float64Array(c) },
+	{ name: 'flags', make: (c) => new Uint8Array(c) },
+	// NaN default = always visible; rows with an origin date overwrite per row.
+	{ name: 'visibleFromDays', make: (c) => new Float32Array(c).fill(NaN) },
+	{ name: 'satnum', make: (c) => new Int32Array(c) },
+	{ name: 'bstar', make: (c) => new Float64Array(c) },
+	{ name: 'ndot', make: (c) => new Float64Array(c) },
+	{ name: 'nddot', make: (c) => new Float64Array(c) },
+	{ name: 'satrec', make: (c) => new Array<SatRec | null>(c).fill(null), transferable: false }
+];
+
 /** Buffers of OrbitColumns as a transferable list. Used when posting to a worker. */
 export function columnsTransferList(cols: OrbitColumns): Transferable[] {
-	return [
-		cols.kind.buffer,
-		cols.equatorial.buffer,
-		cols.a.buffer,
-		cols.e.buffer,
-		cols.i.buffer,
-		cols.om.buffer,
-		cols.w.buffer,
-		cols.ma.buffer,
-		cols.n.buffer,
-		cols.epoch.buffer,
-		cols.q.buffer,
-		cols.tp.buffer,
-		cols.flags.buffer,
-		cols.visibleFromDays.buffer,
-		cols.satnum.buffer,
-		cols.bstar.buffer,
-		cols.ndot.buffer,
-		cols.nddot.buffer
-	] as Transferable[];
+	const list: Transferable[] = [];
+	for (const col of COLUMNS) {
+		if (col.transferable === false) continue;
+		list.push((cols[col.name] as ArrayBufferView).buffer as Transferable);
+	}
+	return list;
 }
 
 export function allocColumns(count: number): OrbitColumns {
-	return {
+	const cols: Record<string, unknown> = {
 		count,
-		kind: new Uint8Array(count),
-		equatorial: new Uint8Array(count),
-		a: new Float64Array(count),
-		e: new Float64Array(count),
-		i: new Float64Array(count),
-		om: new Float64Array(count),
-		w: new Float64Array(count),
-		ma: new Float64Array(count),
-		n: new Float64Array(count),
-		epoch: new Float64Array(count),
-		q: new Float64Array(count),
-		tp: new Float64Array(count),
-		satrec: new Array<SatRec | null>(count).fill(null),
-		satnum: new Int32Array(count),
-		bstar: new Float64Array(count),
-		ndot: new Float64Array(count),
-		nddot: new Float64Array(count),
-		flags: new Uint8Array(count),
-		// NaN default = always visible; rows with an origin date overwrite per row.
-		visibleFromDays: new Float32Array(count).fill(NaN),
 		applyFlagFilter: false,
 		validityStart: -Infinity,
 		validityEnd: Infinity,
 		pickBase: 0
 	};
+	for (const col of COLUMNS) cols[col.name] = col.make(count);
+	return cols as unknown as OrbitColumns;
 }
 
 /**

@@ -39,7 +39,7 @@ import {
 	type ArrivalMode,
 	type EndOrbit
 } from './maneuvers';
-import type { Route, RouteLeg, RouteOptions } from './route';
+import { finishRoute, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { relativeState } from './system-transfer';
 import { cross, dot, norm, normalize, type Vec3 } from './vec3';
@@ -500,49 +500,54 @@ export function buildLowThrustRoute(
 	if (shape.captureKms > 0) {
 		legs.push({ kind: 'spiral-in', dvKms: shape.captureKms, days: captureDays });
 	}
-	// Only the descent is taken from the shared arrival model: a spiral arrives
-	// with no excess speed to capture from and never meets the atmosphere, so the
-	// rest of what that model prices did not happen. The landing itself is the one
+	// Only the descent and the entry speed are taken from the shared arrival
+	// model: a spiral arrives with no excess speed to capture from, so the rest
+	// of what that model prices did not happen. The landing itself is the one
 	// burn here an ion drive could not fly — `checkFeasibility` is where that is
 	// said, since it is a fact about the craft rather than about the route.
+	let entrySpeedKms: number | undefined;
 	if (arrivalMode === 'landing') {
 		// A spiral hands the descent over in the plane it has been walking round,
 		// so the landing owes only what the site's own latitude denies it.
-		const descentKms = arrivalCost(
+		const arr = arrivalCost(
 			target,
 			0,
 			'landing',
 			aero,
 			undefined,
 			surfaceSite(target, options.targetSiteLatDeg, null)
-		).descentKms;
-		if (descentKms > 0) legs.push({ kind: 'descent', dvKms: descentKms, days: 0 });
+		);
+		if (arr.descentKms > 0) legs.push({ kind: 'descent', dvKms: arr.descentKms, days: 0 });
+		// The craft still falls through the air it is set down through, so a spiral
+		// landing has a heat shield to be rated against like any other.
+		entrySpeedKms = arr.entrySpeedKms;
 	}
 
-	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
-	if (!isFinite(totalDvKms) || !isFinite(arriveJd)) return null;
+	if (!isFinite(arriveJd)) return null;
 
-	return {
-		departureId: departure.id,
-		targetId: target.id,
-		departJd,
-		arriveJd,
-		tofDays,
-		legs,
-		totalDvKms,
-		// Nothing is thrown, so nothing was launched: every kilometre per second
-		// here is the craft's own, whatever it started from.
-		inSpaceDvKms: totalDvKms,
-		c3Km2S2: 0,
-		vInfDepKms: 0,
-		vInfArrKms: 0,
-		departureMode,
-		arrivalMode,
-		departureOrbit: options.departureOrbit,
-		targetOrbit: options.targetOrbit,
-		aero,
-		lowThrust: { accelMs2: drive.accelMs2, veKms: drive.veKms }
-	};
+	return finishRoute(
+		{
+			departureId: departure.id,
+			targetId: target.id,
+			departJd,
+			arriveJd,
+			tofDays,
+			// Nothing is thrown, so nothing was launched: every kilometre per second
+			// here is the craft's own, whatever it started from.
+			ascentKms: 0,
+			c3Km2S2: 0,
+			vInfDepKms: 0,
+			vInfArrKms: 0,
+			departureMode,
+			arrivalMode,
+			departureOrbit: options.departureOrbit,
+			targetOrbit: options.targetOrbit,
+			aero,
+			entrySpeedKms,
+			lowThrust: { accelMs2: drive.accelMs2, veKms: drive.veKms }
+		},
+		legs
+	);
 }
 
 /**

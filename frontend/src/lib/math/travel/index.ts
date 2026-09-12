@@ -66,10 +66,12 @@ export {
 	speedAtRadius
 } from './maneuvers';
 
-export type { OrbitChangeEnds, Route, RouteLeg, RouteOptions, LegKind } from './route';
+export type { OrbitChangeEnds, Route, RouteBase, RouteLeg, RouteOptions, LegKind } from './route';
 export {
 	arrivalLegs,
 	buildRoute,
+	finishRoute,
+	LEG_END,
 	orbitChangeEnds,
 	routeDurationDays,
 	routeEndJd,

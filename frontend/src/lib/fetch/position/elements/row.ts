@@ -25,6 +25,7 @@ import {
 	KIND_PARABOLIC,
 	KIND_SGP4,
 	KIND_SKIP,
+	writeCommonRow,
 	type OrbitColumns
 } from '$lib/math/orbit/soa';
 
@@ -263,16 +264,20 @@ export function fillOrbitColumnRow(
 		out.kind[outIdx] = KIND_PARABOLIC;
 		out.q[outIdx] = q;
 		out.tp[outIdx] = tp;
-		out.a[outIdx] = 0;
-		out.e[outIdx] = cols.e[idx];
-		out.i[outIdx] = cols.i[idx];
-		out.om[outIdx] = cols.om[idx];
-		out.w[outIdx] = cols.w[idx];
-		out.ma[outIdx] = 0;
-		out.n[outIdx] = 0;
-		out.epoch[outIdx] = cols.epochJd[idx];
-		out.equatorial[outIdx] = 0;
-		out.flags[outIdx] = cols.flags[idx];
+		writeCommonRow(
+			out,
+			outIdx,
+			0,
+			cols.e[idx],
+			cols.i[idx],
+			cols.om[idx],
+			cols.w[idx],
+			0,
+			0,
+			cols.epochJd[idx],
+			false,
+			cols.flags[idx]
+		);
 		out.visibleFromDays[outIdx] = cols.visibleFromDays[idx];
 		return true;
 	}
@@ -284,16 +289,20 @@ export function fillOrbitColumnRow(
 		out.bstar[outIdx] = cols.bstar[idx];
 		out.ndot[outIdx] = cols.meanMotionDot[idx];
 		out.nddot[outIdx] = cols.meanMotionDdot[idx];
-		out.a[outIdx] = cols.a[idx] / AU_KM;
-		out.e[outIdx] = cols.e[idx];
-		out.i[outIdx] = cols.i[idx];
-		out.om[outIdx] = cols.om[idx];
-		out.w[outIdx] = cols.w[idx];
-		out.ma[outIdx] = cols.ma[idx];
-		out.n[outIdx] = cols.n[idx] * 360;
-		out.epoch[outIdx] = cols.epochJd[idx];
-		out.equatorial[outIdx] = 1;
-		out.flags[outIdx] = cols.flags[idx];
+		writeCommonRow(
+			out,
+			outIdx,
+			cols.a[idx] / AU_KM,
+			cols.e[idx],
+			cols.i[idx],
+			cols.om[idx],
+			cols.w[idx],
+			cols.ma[idx],
+			cols.n[idx] * 360,
+			cols.epochJd[idx],
+			true,
+			cols.flags[idx]
+		);
 		out.visibleFromDays[outIdx] = cols.visibleFromDays[idx];
 		return true;
 	}
@@ -305,16 +314,20 @@ export function fillOrbitColumnRow(
 		return false;
 	}
 	out.kind[outIdx] = KIND_KEPLER;
-	out.a[outIdx] = a;
-	out.e[outIdx] = cols.e[idx];
-	out.i[outIdx] = cols.i[idx];
-	out.om[outIdx] = cols.om[idx];
-	out.w[outIdx] = cols.w[idx];
-	out.ma[outIdx] = cols.ma[idx];
-	out.n[outIdx] = isPlanetScale ? cols.n[idx] * 360 : cols.n[idx];
-	out.epoch[outIdx] = cols.epochJd[idx];
-	out.equatorial[outIdx] = isPlanetScale ? 1 : 0;
-	out.flags[outIdx] = cols.flags[idx];
+	writeCommonRow(
+		out,
+		outIdx,
+		a,
+		cols.e[idx],
+		cols.i[idx],
+		cols.om[idx],
+		cols.w[idx],
+		cols.ma[idx],
+		isPlanetScale ? cols.n[idx] * 360 : cols.n[idx],
+		cols.epochJd[idx],
+		isPlanetScale,
+		cols.flags[idx]
+	);
 	out.visibleFromDays[outIdx] = cols.visibleFromDays[idx];
 	return true;
 }

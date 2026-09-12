@@ -1,13 +1,8 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import type { Object3D } from 'three';
+import { equatorialToScene } from '$lib/math/units';
 
 const DEG2RAD = Math.PI / 180;
-
-/** Obliquity of the ecliptic at J2000 epoch (degrees). */
-const OBLIQUITY_DEG = 23.4392911;
-const OBLIQUITY_RAD = OBLIQUITY_DEG * DEG2RAD;
-const COS_OBL = Math.cos(OBLIQUITY_RAD);
-const SIN_OBL = Math.sin(OBLIQUITY_RAD);
 
 /** J2000 epoch as Julian Date. */
 const J2000_JD = 2451545.0;
@@ -49,18 +44,6 @@ export interface NutPrec {
 }
 
 /**
- * Equatorial J2000 unit vector → three.js scene frame (ecliptic X→scene X,
- * north Z→scene Y, Y→scene −Z). The Y→−Z flip keeps it a proper rotation
- * (det +1) so chiral quantities like spin axes survive intact.
- */
-function equatorialToThreeJS(xEq: number, yEq: number, zEq: number): Vector3 {
-	const xEcl = xEq;
-	const yEcl = yEq * COS_OBL + zEq * SIN_OBL;
-	const zEcl = -yEq * SIN_OBL + zEq * COS_OBL;
-	return new Vector3(xEcl, zEcl, -yEcl);
-}
-
-/**
  * Body-fixed quaternion (axial tilt + spin) at a Julian date, scene frame.
  * Local +Y is the body's north pole; local +X is the IAU ascending node Q,
  * rotated by W (prime meridian) along the equator per IAU convention — this
@@ -94,14 +77,15 @@ export function bodyQuaternion(
 	const dec = decDeg * DEG2RAD;
 	const cosDec = Math.cos(dec);
 
-	const pole = equatorialToThreeJS(
+	const pole = equatorialToScene(
 		cosDec * Math.cos(ra),
 		cosDec * Math.sin(ra),
-		Math.sin(dec)
+		Math.sin(dec),
+		new Vector3()
 	).normalize();
 
 	// Ascending node in equatorial J2000: Q = (K × P) / |K × P| = (−sin α, cos α, 0).
-	const node = equatorialToThreeJS(-Math.sin(ra), Math.cos(ra), 0).normalize();
+	const node = equatorialToScene(-Math.sin(ra), Math.cos(ra), 0, new Vector3()).normalize();
 
 	// Right-handed basis: local +X → Q, local +Y → P, local +Z → Q × P.
 	const third = new Vector3().crossVectors(node, pole).normalize();

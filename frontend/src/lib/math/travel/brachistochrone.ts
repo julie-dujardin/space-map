@@ -33,7 +33,7 @@ import {
 	type HeldDriveProblem
 } from './held-drive';
 import { arrivalCost, departureCost, surfaceSite } from './maneuvers';
-import { arrivalLegs, type Route, type RouteLeg, type RouteOptions } from './route';
+import { arrivalLegs, finishRoute, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState, type StateVector } from './state';
 import { relativeState } from './system-transfer';
 import { add, norm, normalize, scale, sub } from './vec3';
@@ -399,33 +399,31 @@ export function buildConstantThrustRoute(
 	if (arc.flips) legs.push({ kind: 'brake', dvKms: burnDvKms, days: burnDays });
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
-	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
-	if (!isFinite(totalDvKms)) return null;
-
-	return {
-		departureId: departure.id,
-		targetId: target.id,
-		departJd,
-		arriveJd,
-		tofDays,
-		legs,
-		totalDvKms,
-		inSpaceDvKms: totalDvKms - dep.ascentKms,
-		// Leaving at exactly escape speed and no more, which is what C3 measures.
-		c3Km2S2: 0,
-		vInfDepKms: 0,
-		vInfArrKms,
-		departureMode,
-		arrivalMode,
-		departureOrbit: options.departureOrbit,
-		targetOrbit: options.targetOrbit,
-		aero,
-		entrySpeedKms: arr.entrySpeedKms,
-		constantThrust: accelMs2,
-		peakSpeedKms: arc.peakSpeedKms,
-		// Recorded as it was applied, not as it was asked for, so that two routes
-		// built from requests the clamp made identical are identical.
-		coastFraction: Math.min(Math.max(options.coastFraction ?? 0, 0), 1),
-		thrustDir: arc.thrustDir
-	};
+	return finishRoute(
+		{
+			departureId: departure.id,
+			targetId: target.id,
+			departJd,
+			arriveJd,
+			tofDays,
+			ascentKms: dep.ascentKms,
+			// Leaving at exactly escape speed and no more, which is what C3 measures.
+			c3Km2S2: 0,
+			vInfDepKms: 0,
+			vInfArrKms,
+			departureMode,
+			arrivalMode,
+			departureOrbit: options.departureOrbit,
+			targetOrbit: options.targetOrbit,
+			aero,
+			entrySpeedKms: arr.entrySpeedKms,
+			constantThrust: accelMs2,
+			peakSpeedKms: arc.peakSpeedKms,
+			// Recorded as it was applied, not as it was asked for, so that two routes
+			// built from requests the clamp made identical are identical.
+			coastFraction: Math.min(Math.max(options.coastFraction ?? 0, 0), 1),
+			thrustDir: arc.thrustDir
+		},
+		legs
+	);
 }

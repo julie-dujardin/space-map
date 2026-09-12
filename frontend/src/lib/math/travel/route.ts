@@ -73,6 +73,32 @@ export type LegKind =
 	| 'raise'
 	| 'descent';
 
+/**
+ * Which end of the trip each kind of leg is spent at, or null for the ones
+ * spent between the two. A `Record` rather than a list per caller so that
+ * adding a leg kind fails to compile until it says where it belongs.
+ *
+ * An assist is null because its Δv is charged at the swing-by itself, which is
+ * neither end.
+ */
+export const LEG_END: Record<LegKind, 'departure' | 'arrival' | null> = {
+	ascent: 'departure',
+	injection: 'departure',
+	'spiral-out': 'departure',
+	cruise: null,
+	boost: null,
+	brake: null,
+	'powered-cruise': null,
+	assist: null,
+	capture: 'arrival',
+	rendezvous: 'arrival',
+	'aero-pass': 'arrival',
+	aerobrake: 'arrival',
+	raise: 'arrival',
+	descent: 'arrival',
+	'spiral-in': 'arrival'
+};
+
 export interface RouteLeg {
 	kind: LegKind;
 	/** Δv this leg costs, km/s. Zero for a coast. */
@@ -242,6 +268,30 @@ export function arrivalLegs(cost: ArrivalCost, mode: ArrivalMode): RouteLeg[] {
 }
 
 /**
+ * A route without the three figures its legs decide. Everything else is the
+ * builder's own: the dates, the two excess speeds, the energy, and whatever
+ * tail its kind of trip carries.
+ */
+export type RouteBase = Omit<Route, 'legs' | 'totalDvKms' | 'inSpaceDvKms'> & {
+	/** Δv spent climbing off the ground, km/s — what `inSpaceDvKms` takes off.
+	 *  Zero where the trip starts in orbit, and on a spiral, where nothing is
+	 *  thrown and so nothing was launched. */
+	ascentKms: number;
+};
+
+/**
+ * Close a route off: add up what its legs cost and refuse the ones that price
+ * to infinity. Every builder ends here so that none of them can disagree about
+ * what a total is, or about a route that has no answer being no route.
+ */
+export function finishRoute(base: RouteBase, legs: RouteLeg[]): Route | null {
+	const { ascentKms, ...rest } = base;
+	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
+	if (!isFinite(totalDvKms)) return null;
+	return { ...rest, legs, totalDvKms, inSpaceDvKms: totalDvKms - ascentKms };
+}
+
+/**
  * Everything the trip takes end to end, days — the crossing plus any campaign
  * flown after it. Every leg's duration, which is the cruise alone on the routes
  * that have nothing after arrival.
@@ -362,27 +412,26 @@ export function buildRoute(
 	legs.push({ kind: 'cruise', dvKms: 0, days: tofDays });
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
-	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
-
-	return {
-		departureId: departure.id,
-		targetId: target.id,
-		departJd,
-		arriveJd,
-		tofDays,
-		legs,
-		totalDvKms,
-		inSpaceDvKms: totalDvKms - dep.ascentKms,
-		c3Km2S2: characteristicEnergy(vInfDep),
-		vInfDepKms: vInfDep,
-		vInfArrKms: vInfArr,
-		departureMode,
-		arrivalMode,
-		departureOrbit,
-		targetOrbit,
-		aero,
-		entrySpeedKms: arr.entrySpeedKms
-	};
+	return finishRoute(
+		{
+			departureId: departure.id,
+			targetId: target.id,
+			departJd,
+			arriveJd,
+			tofDays,
+			ascentKms: dep.ascentKms,
+			c3Km2S2: characteristicEnergy(vInfDep),
+			vInfDepKms: vInfDep,
+			vInfArrKms: vInfArr,
+			departureMode,
+			arrivalMode,
+			departureOrbit,
+			targetOrbit,
+			aero,
+			entrySpeedKms: arr.entrySpeedKms
+		},
+		legs
+	);
 }
 
 interface SystemRouteOptions {
@@ -498,30 +547,28 @@ function buildSystemRoute(
 			});
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
-	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
-	if (!isFinite(totalDvKms)) return null;
-
-	return {
-		departureId: departure.id,
-		targetId: target.id,
-		departJd,
-		arriveJd,
-		tofDays,
-		legs,
-		totalDvKms,
-		inSpaceDvKms: totalDvKms - ascentKms,
-		// The arc stays bound to the primary, so its C3 is negative — which is what
-		// a launch to the Moon is quoted at, and what separates it from an escape.
-		c3Km2S2: outbound ? -primary.mu * arc.inverseAKm : characteristicEnergy(vInf),
-		vInfDepKms: outbound ? 0 : vInf,
-		vInfArrKms: outbound ? vInf : 0,
-		departureMode,
-		arrivalMode,
-		departureOrbit,
-		targetOrbit,
-		aero,
-		entrySpeedKms: arr.entrySpeedKms
-	};
+	return finishRoute(
+		{
+			departureId: departure.id,
+			targetId: target.id,
+			departJd,
+			arriveJd,
+			tofDays,
+			ascentKms,
+			// The arc stays bound to the primary, so its C3 is negative — which is what
+			// a launch to the Moon is quoted at, and what separates it from an escape.
+			c3Km2S2: outbound ? -primary.mu * arc.inverseAKm : characteristicEnergy(vInf),
+			vInfDepKms: outbound ? 0 : vInf,
+			vInfArrKms: outbound ? vInf : 0,
+			departureMode,
+			arrivalMode,
+			departureOrbit,
+			targetOrbit,
+			aero,
+			entrySpeedKms: arr.entrySpeedKms
+		},
+		legs
+	);
 }
 
 interface OrbitChangeOptions {
@@ -734,29 +781,29 @@ function buildOrbitChangeRoute(
 	legs.push({ kind: 'cruise', dvKms: 0, days: cruiseDays });
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
-	const totalDvKms = legs.reduce((sum, leg) => sum + leg.dvKms, 0);
-	if (!isFinite(totalDvKms)) return null;
-
-	return {
-		departureId: body.id,
-		targetId: body.id,
-		departJd,
-		arriveJd: departJd + cruiseDays,
-		tofDays: cruiseDays,
-		legs,
-		totalDvKms,
-		inSpaceDvKms: totalDvKms - ascentKms,
-		// Bound to the body throughout, so the energy is negative: nothing here is
-		// a launch to anywhere a vehicle is rated against.
-		c3Km2S2: -body.mu * inverseAKm,
-		vInfDepKms: 0,
-		vInfArrKms: 0,
-		departureMode,
-		arrivalMode,
-		departureOrbit,
-		targetOrbit,
-		orbitChange: ends,
-		aero,
-		entrySpeedKms: arr.entrySpeedKms
-	};
+	return finishRoute(
+		{
+			departureId: body.id,
+			targetId: body.id,
+			departJd,
+			arriveJd: departJd + cruiseDays,
+			// The crossing takes as long as the arc does, which on a single burn is
+			// half a revolution of the orbit it is made from, not the time asked for.
+			tofDays: cruiseDays,
+			ascentKms,
+			// Bound to the body throughout, so the energy is negative: nothing here is
+			// a launch to anywhere a vehicle is rated against.
+			c3Km2S2: -body.mu * inverseAKm,
+			vInfDepKms: 0,
+			vInfArrKms: 0,
+			departureMode,
+			arrivalMode,
+			departureOrbit,
+			targetOrbit,
+			orbitChange: ends,
+			aero,
+			entrySpeedKms: arr.entrySpeedKms
+		},
+		legs
+	);
 }
