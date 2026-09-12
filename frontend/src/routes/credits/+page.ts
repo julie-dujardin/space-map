@@ -3,6 +3,7 @@
  * this route stays a plain static page (crawlable, shareable), independent of the 3D map.
  */
 
+import * as m from '$lib/paraglide/messages.js';
 import { dataBase } from '$lib/fetch/data-base';
 
 // No SEO value, and its loader fetches `/data` (which collides with the
@@ -69,16 +70,33 @@ export interface Reference {
 	contribution: string;
 }
 
-export interface Credits {
+/** Wire field names of the reference bundles, as `export/credits.py` writes them. */
+export type ReferenceSection =
+	| 'atmosphere_references'
+	| 'ring_references'
+	| 'interior_references'
+	| 'activity_references'
+	| 'temperature_references'
+	| 'radiation_references'
+	| 'spacecraft_references';
+
+/**
+ * The reference sections, declared once: array order is render order on
+ * /credits, so a new bundle needs an entry here and nothing in the template.
+ */
+export const REFERENCE_SECTIONS = [
+	{ key: 'atmosphere_references', label: m.attribution_section_atmospheres },
+	{ key: 'ring_references', label: m.attribution_section_rings },
+	{ key: 'interior_references', label: m.attribution_section_interiors },
+	{ key: 'activity_references', label: m.attribution_section_activity },
+	{ key: 'temperature_references', label: m.attribution_section_temperatures },
+	{ key: 'radiation_references', label: m.attribution_section_radiation },
+	{ key: 'spacecraft_references', label: m.attribution_section_spacecraft }
+] as const satisfies readonly { key: ReferenceSection; label: () => string }[];
+
+export interface Credits extends Partial<Record<ReferenceSection, Reference[]>> {
 	systems: SystemGroup[];
 	ephemeris_archives: EphemerisArchive[];
-	atmosphere_references?: Reference[];
-	ring_references?: Reference[];
-	temperature_references?: Reference[];
-	interior_references?: Reference[];
-	activity_references?: Reference[];
-	radiation_references?: Reference[];
-	spacecraft_references?: Reference[];
 	models?: ModelCatalog[];
 	skybox?: SkyboxCredit;
 }

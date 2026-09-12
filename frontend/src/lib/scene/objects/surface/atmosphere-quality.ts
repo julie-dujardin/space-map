@@ -29,6 +29,92 @@ export interface AtmosphereQualityConfig {
 	refraction: boolean;
 }
 
+/** The boolean members of {@link AtmosphereQualityConfig}; the step counts are numbers. */
+export type AtmosphereQualityFlag = {
+	[K in keyof AtmosphereQualityConfig]: AtmosphereQualityConfig[K] extends boolean ? K : never;
+}[keyof AtmosphereQualityConfig];
+
+/**
+ * How a flag change reaches the shell: 'quality' recompiles the defines,
+ * 'params' re-derives the uniforms, 'none' needs neither because the frame
+ * loop reads the flag itself.
+ */
+export type AtmosphereQualityPush = 'quality' | 'params' | 'none';
+
+export interface AtmosphereQualityFlagSpec {
+	key: AtmosphereQualityFlag;
+	/** Tuner URL parameter. Saved tuner links depend on it — never rename one. */
+	param: string;
+	push: AtmosphereQualityPush;
+	label: string;
+	/** Tuner tooltip. */
+	title: string;
+	/** Parenthetical suffix in the in-app override panel. */
+	hint?: string;
+}
+
+/** Every flag in panel order, so the tuner page and the in-app overrides offer the same list. */
+export const QUALITY_FLAGS: readonly AtmosphereQualityFlagSpec[] = [
+	{
+		key: 'eclipseShadows',
+		param: 'qec',
+		push: 'quality',
+		label: 'Eclipse shadows',
+		title: 'No occluders in this scene — affects compile cost only'
+	},
+	{
+		key: 'ringShadows',
+		param: 'qrs',
+		push: 'quality',
+		label: 'Ring shadows',
+		title: 'No rings in this scene — affects compile cost only'
+	},
+	{
+		key: 'insideView',
+		param: 'qiv',
+		push: 'quality',
+		label: 'Inside view',
+		title: 'Off: the shell vanishes once the camera enters it',
+		hint: '(sky + depth prepass)'
+	},
+	{
+		key: 'sunTint',
+		param: 'qst',
+		push: 'quality',
+		label: 'Sun tint',
+		title: 'Off: untinted sun and white direct light (low/medium default)',
+		hint: '(sunset light + disc chroma)'
+	},
+	{
+		key: 'layeredDensity',
+		param: 'qld',
+		push: 'quality',
+		label: 'Layered density',
+		title: 'Piecewise Mie density profiles (Venus decks, Titan detached haze) — high/ultra default'
+	},
+	{
+		key: 'groundAlbedo',
+		param: 'qga',
+		push: 'params',
+		label: 'Ground albedo',
+		title: 'Ground-bounce boost on the multiple-scatter ambient'
+	},
+	{
+		key: 'seasonal',
+		param: 'qss',
+		push: 'params',
+		label: 'Seasonal (Mars)',
+		title: 'Mars dust/pressure cycle at the L_s slider below'
+	},
+	{
+		key: 'refraction',
+		param: 'qrf',
+		push: 'none',
+		label: 'Refraction',
+		title: 'Refraction lift of the sun disc seen from inside the shell'
+	}
+];
+
 export type ResolvedAtmosphereTier = 'low' | 'medium' | 'high' | 'ultra';
 export type AtmosphereQualityTier = 'auto' | ResolvedAtmosphereTier;
 

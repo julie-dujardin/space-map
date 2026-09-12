@@ -4,7 +4,7 @@
 	import { archiveLabel, archiveRole } from '$lib/credits/archive-labels';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import { GITHUB_REPO_URL } from '$lib/constants';
-	import type { BodyCredit, Credits } from './+page';
+	import { REFERENCE_SECTIONS, type BodyCredit, type Credits } from './+page';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 
 	interface Props {
@@ -288,81 +288,18 @@
 			</section>
 		{/if}
 
-		{#if credits.atmosphere_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_atmospheres())}
-				<ul class="space-y-1">
-					{#each credits.atmosphere_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
-		{#if credits.ring_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_rings())}
-				<ul class="space-y-1">
-					{#each credits.ring_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
-		{#if credits.interior_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_interiors())}
-				<ul class="space-y-1">
-					{#each credits.interior_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
-		{#if credits.activity_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_activity())}
-				<ul class="space-y-1">
-					{#each credits.activity_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
-		{#if credits.temperature_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_temperatures())}
-				<ul class="space-y-1">
-					{#each credits.temperature_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
-		{#if credits.radiation_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_radiation())}
-				<ul class="space-y-1">
-					{#each credits.radiation_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
-		{#if credits.spacecraft_references?.length}
-			<section>
-				{@render sectionHeader(m.attribution_section_spacecraft())}
-				<ul class="space-y-1">
-					{#each credits.spacecraft_references as ref (ref.url)}
-						<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
+		{#each REFERENCE_SECTIONS as section (section.key)}
+			{@const refs = credits[section.key]}
+			{#if refs?.length}
+				<section>
+					{@render sectionHeader(section.label())}
+					<ul class="space-y-1">
+						{#each refs as ref (ref.url)}
+							<li>{@render link(ref.url, ref.title, ref.contribution)}</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+		{/each}
 	</div>
 </main>

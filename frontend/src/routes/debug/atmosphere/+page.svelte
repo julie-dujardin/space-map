@@ -41,8 +41,10 @@
 	import { getAtmosphereParams, loadAtmospheres } from '$lib/fetch/atmospheres';
 	import {
 		ATMOSPHERE_QUALITY_PRESETS,
+		QUALITY_FLAGS,
 		resolveAtmosphereTier,
 		type AtmosphereQualityConfig,
+		type AtmosphereQualityPush,
 		type ResolvedAtmosphereTier
 	} from '$lib/scene/objects/surface/atmosphere-quality';
 	import {
@@ -168,53 +170,25 @@
 	const QUALITY_TIERS: ResolvedAtmosphereTier[] = ['low', 'medium', 'high', 'ultra'];
 	const initTier = resolveAtmosphereTier(getSettings().atmosphereQuality);
 	let qTier = $state<ResolvedAtmosphereTier>(initTier);
-	let qPrimarySteps = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].primarySteps);
-	let qLightSteps = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].lightSteps);
-	let qEclipse = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].eclipseShadows);
-	let qRings = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].ringShadows);
-	let qInside = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].insideView);
-	let qSunTint = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].sunTint);
-	let qLayered = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].layeredDensity);
-	let qGroundAlbedo = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].groundAlbedo);
-	let qSeasonal = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].seasonal);
-	let qRefraction = $state(ATMOSPHERE_QUALITY_PRESETS[initTier].refraction);
+	let quality = $state<AtmosphereQualityConfig>({ ...ATMOSPHERE_QUALITY_PRESETS[initTier] });
 	// Mars solar longitude the seasonal toggle renders; starts at today's.
 	let lsDeg = $state(
 		Math.round(marsSolarLongitudeDeg(Date.now() / 86400000 + 2440587.5) * 10) / 10
 	);
 
-	function qualityConfig(): AtmosphereQualityConfig {
-		return {
-			primarySteps: qPrimarySteps,
-			lightSteps: qLightSteps,
-			eclipseShadows: qEclipse,
-			ringShadows: qRings,
-			insideView: qInside,
-			sunTint: qSunTint,
-			layeredDensity: qLayered,
-			groundAlbedo: qGroundAlbedo,
-			seasonal: qSeasonal,
-			refraction: qRefraction
-		};
+	function pushQuality(): void {
+		if (atmoNode) applyAtmosphereQuality(atmoNode, quality);
 	}
 
-	function pushQuality(): void {
-		if (atmoNode) applyAtmosphereQuality(atmoNode, qualityConfig());
+	// A flag reaches the shell by one of three routes; see AtmosphereQualityPush.
+	function pushFlag(route: AtmosphereQualityPush): void {
+		if (route === 'quality') pushQuality();
+		else if (route === 'params') push();
 	}
 
 	function loadTierPreset(t: ResolvedAtmosphereTier): void {
 		qTier = t;
-		const p = ATMOSPHERE_QUALITY_PRESETS[t];
-		qPrimarySteps = p.primarySteps;
-		qLightSteps = p.lightSteps;
-		qEclipse = p.eclipseShadows;
-		qRings = p.ringShadows;
-		qInside = p.insideView;
-		qSunTint = p.sunTint;
-		qLayered = p.layeredDensity;
-		qGroundAlbedo = p.groundAlbedo;
-		qSeasonal = p.seasonal;
-		qRefraction = p.refraction;
+		quality = { ...ATMOSPHERE_QUALITY_PRESETS[t] };
 	}
 
 	function setTier(t: ResolvedAtmosphereTier): void {
@@ -299,7 +273,7 @@
 	// Swatch readout: the production sunTint chroma (camera→sun-centre ray);
 	// the disc itself shades per fragment.
 	const sunTint = $derived.by(() => {
-		if (!qSunTint) return [1, 1, 1];
+		if (!quality.sunTint) return [1, 1, 1];
 		const latR = camLat * DEG;
 		const lonR = camLon * DEG;
 		tintCam
@@ -347,7 +321,7 @@
 
 	function resolved(): AtmosphereParams {
 		// Season first (its factors are part of the baseline), sliders on top.
-		const base = qSeasonal ? seasonalAtmosphereParams(shipped(), lsDeg) : shipped();
+		const base = quality.seasonal ? seasonalAtmosphereParams(shipped(), lsDeg) : shipped();
 		const scale3 = (v: [number, number, number], f: number): [number, number, number] => [
 			v[0] * f,
 			v[1] * f,
@@ -367,7 +341,7 @@
 			sunIntensity,
 			// The albedo toggle is uniform-level in production; here the zeroed
 			// param flows through applyAtmosphereParams to the same uniform.
-			groundAlbedo: qGroundAlbedo ? shipped().groundAlbedo : 0
+			groundAlbedo: quality.groundAlbedo ? shipped().groundAlbedo : 0
 		};
 	}
 
@@ -562,16 +536,9 @@
 		p.set('rayH', r(rayleighHX));
 		p.set('mieH', r(mieHX));
 		p.set('q', qTier);
-		p.set('qps', String(qPrimarySteps));
-		p.set('qls', String(qLightSteps));
-		p.set('qec', qEclipse ? '1' : '0');
-		p.set('qrs', qRings ? '1' : '0');
-		p.set('qiv', qInside ? '1' : '0');
-		p.set('qst', qSunTint ? '1' : '0');
-		p.set('qld', qLayered ? '1' : '0');
-		p.set('qga', qGroundAlbedo ? '1' : '0');
-		p.set('qss', qSeasonal ? '1' : '0');
-		p.set('qrf', qRefraction ? '1' : '0');
+		p.set('qps', String(quality.primarySteps));
+		p.set('qls', String(quality.lightSteps));
+		for (const f of QUALITY_FLAGS) p.set(f.param, quality[f.key] ? '1' : '0');
 		p.set('mls', r(lsDeg));
 		return p.toString();
 	}
@@ -604,16 +571,11 @@
 		mieHX = num('mieH', mieHX);
 		const qt = p.get('q') as ResolvedAtmosphereTier | null;
 		if (qt && QUALITY_TIERS.includes(qt)) loadTierPreset(qt);
-		qPrimarySteps = num('qps', qPrimarySteps);
-		qLightSteps = num('qls', qLightSteps);
-		if (p.has('qec')) qEclipse = p.get('qec') === '1';
-		if (p.has('qrs')) qRings = p.get('qrs') === '1';
-		if (p.has('qiv')) qInside = p.get('qiv') === '1';
-		if (p.has('qst')) qSunTint = p.get('qst') === '1';
-		if (p.has('qld')) qLayered = p.get('qld') === '1';
-		if (p.has('qga')) qGroundAlbedo = p.get('qga') === '1';
-		if (p.has('qss')) qSeasonal = p.get('qss') === '1';
-		if (p.has('qrf')) qRefraction = p.get('qrf') === '1';
+		quality.primarySteps = num('qps', quality.primarySteps);
+		quality.lightSteps = num('qls', quality.lightSteps);
+		for (const f of QUALITY_FLAGS) {
+			if (p.has(f.param)) quality[f.key] = p.get(f.param) === '1';
+		}
 		lsDeg = num('mls', lsDeg);
 		positionCamera();
 		push();
@@ -695,7 +657,7 @@
 		atmoNode = buildAtmosphereNode(resolved(), RADIUS_SCENE, currentBody.radiusKm);
 		// The builder compiles against the app-wide config; re-apply the bench's
 		// own quality state (no-op when they match).
-		applyAtmosphereQuality(atmoNode, qualityConfig());
+		applyAtmosphereQuality(atmoNode, quality);
 		scene.add(atmoNode.mesh);
 
 		// First body frames itself; later switches keep the current camera and
@@ -744,8 +706,8 @@
 		eclipse.uSunDir.value.copy(sd);
 		eclipse.uSunAngularRadius.value = 0;
 		eclipse.uOccluderCount.value = 0;
-		setSunTransmittanceEnabled(qSunTint);
-		if (discTintUniforms) discTintUniforms.uAtmoTEnable.value = qSunTint ? 1 : 0;
+		setSunTransmittanceEnabled(quality.sunTint);
+		if (discTintUniforms) discTintUniforms.uAtmoTEnable.value = quality.sunTint ? 1 : 0;
 
 		pointLight.position.copy(sd).multiplyScalar(50);
 		pointLight.intensity = SUN_LIGHT_INTENSITY * sunScale;
@@ -754,7 +716,7 @@
 		// don't vanish below the rasteriser. Direction carries the in-atmosphere
 		// refraction lift (production: updateSunProxy).
 		refrSd.copy(sd);
-		if (qRefraction) {
+		if (quality.refraction) {
 			const p = resolved();
 			const altKm = Math.max(altRadii, 0) * currentBody.radiusKm;
 			if (p.refractivity && altKm < p.topAltitudeKm) {
@@ -789,7 +751,7 @@
 			// Camera-side state mirrors production: BackSide inside the shell, the
 			// deep-column sky under a deck body's render level.
 			const shellR = atmoNode.geometryRadiusScene * atmoNode.mesh.scale.x;
-			const inside = qInside && camera.position.lengthSq() < shellR * shellR;
+			const inside = quality.insideView && camera.position.lengthSq() < shellR * shellR;
 			const referenceR = (RADIUS_SCENE * atmoNode.planetRadiusKm) / atmoNode.surfaceRadiusKm;
 			const altKm =
 				((camera.position.length() - referenceR) / referenceR) * atmoNode.planetRadiusKm;
@@ -804,7 +766,7 @@
 		}
 		// Production dims the star map only via the inside-shell path; the
 		// readout still shows the would-be factor when the toggle is off.
-		scene.backgroundIntensity = qInside ? skyDim : 1;
+		scene.backgroundIntensity = quality.insideView ? skyDim : 1;
 
 		composer.render();
 	}
@@ -1049,13 +1011,13 @@
 					min="4"
 					max="64"
 					step="1"
-					value={qPrimarySteps}
+					value={quality.primarySteps}
 					oninput={(e) => {
-						qPrimarySteps = Number(e.currentTarget.value);
+						quality.primarySteps = Number(e.currentTarget.value);
 						pushQuality();
 					}}
 				/>
-				<span class="val">{qPrimarySteps}</span>
+				<span class="val">{quality.primarySteps}</span>
 
 				<span class="lbl">Sun steps</span>
 				<input
@@ -1063,98 +1025,27 @@
 					min="1"
 					max="16"
 					step="1"
-					value={qLightSteps}
+					value={quality.lightSteps}
 					oninput={(e) => {
-						qLightSteps = Number(e.currentTarget.value);
+						quality.lightSteps = Number(e.currentTarget.value);
 						pushQuality();
 					}}
 				/>
-				<span class="val">{qLightSteps}</span>
+				<span class="val">{quality.lightSteps}</span>
 			</div>
-			<label class="toggle" title="No occluders in this scene — affects compile cost only">
-				<input
-					type="checkbox"
-					checked={qEclipse}
-					onchange={(e) => {
-						qEclipse = e.currentTarget.checked;
-						pushQuality();
-					}}
-				/>
-				<span>Eclipse shadows</span>
-			</label>
-			<label class="toggle" title="No rings in this scene — affects compile cost only">
-				<input
-					type="checkbox"
-					checked={qRings}
-					onchange={(e) => {
-						qRings = e.currentTarget.checked;
-						pushQuality();
-					}}
-				/>
-				<span>Ring shadows</span>
-			</label>
-			<label class="toggle" title="Off: the shell vanishes once the camera enters it">
-				<input
-					type="checkbox"
-					checked={qInside}
-					onchange={(e) => {
-						qInside = e.currentTarget.checked;
-						pushQuality();
-					}}
-				/>
-				<span>Inside view</span>
-			</label>
-			<label class="toggle" title="Off: untinted sun and white direct light (low/medium default)">
-				<input
-					type="checkbox"
-					checked={qSunTint}
-					onchange={(e) => {
-						qSunTint = e.currentTarget.checked;
-						pushQuality();
-					}}
-				/>
-				<span>Sun tint</span>
-			</label>
-			<label
-				class="toggle"
-				title="Piecewise Mie density profiles (Venus decks, Titan detached haze) — high/ultra default"
-			>
-				<input
-					type="checkbox"
-					checked={qLayered}
-					onchange={(e) => {
-						qLayered = e.currentTarget.checked;
-						pushQuality();
-					}}
-				/>
-				<span>Layered density</span>
-			</label>
-			<label class="toggle" title="Ground-bounce boost on the multiple-scatter ambient">
-				<input
-					type="checkbox"
-					checked={qGroundAlbedo}
-					onchange={(e) => {
-						qGroundAlbedo = e.currentTarget.checked;
-						push();
-					}}
-				/>
-				<span>Ground albedo</span>
-			</label>
-			<label class="toggle" title="Mars dust/pressure cycle at the L_s slider below">
-				<input
-					type="checkbox"
-					checked={qSeasonal}
-					onchange={(e) => {
-						qSeasonal = e.currentTarget.checked;
-						push();
-					}}
-				/>
-				<span>Seasonal (Mars)</span>
-			</label>
-			<label class="toggle" title="Refraction lift of the sun disc seen from inside the shell">
-				<input type="checkbox" bind:checked={qRefraction} />
-				<span>Refraction</span>
-			</label>
+			{#each QUALITY_FLAGS as f (f.key)}
+				<label class="toggle" title={f.title}>
+					<input
+						type="checkbox"
+						checked={quality[f.key]}
+						onchange={(e) => {
+							quality[f.key] = e.currentTarget.checked;
+							pushFlag(f.push);
+						}}
+					/>
+					<span>{f.label}</span>
+				</label>
+			{/each}
 
 			<div class="section">
 				<span>Atmosphere</span>
@@ -1216,7 +1107,7 @@
 						max="360"
 						step="1"
 						value={lsDeg}
-						disabled={!qSeasonal}
+						disabled={!quality.seasonal}
 						oninput={(e) => {
 							lsDeg = Number(e.currentTarget.value);
 							push();

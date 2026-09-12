@@ -7,7 +7,10 @@
 	import { getSettings } from '$lib/state/settings.svelte';
 	import {
 		currentAtmosphereConfig,
-		resolveAtmosphereTier
+		QUALITY_FLAGS,
+		resolveAtmosphereTier,
+		type AtmosphereQualityConfig,
+		type AtmosphereQualityFlag
 	} from '$lib/scene/objects/surface/atmosphere-quality';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { PointingAxis, PointingSpec, PointingTarget } from '$lib/math/orientation';
@@ -175,7 +178,93 @@
 	// the tier preset and session overrides.
 	let atmoTier = $derived(resolveAtmosphereTier(settings.atmosphereQuality));
 	let atmoCfg = $derived(currentAtmosphereConfig());
+
+	interface ToggleRow {
+		label: string;
+		get: () => boolean;
+		set: (v: boolean) => void;
+		/** Dimmed suffix after the label. */
+		hint?: string;
+	}
+
+	const SCENE_TOGGLES: ToggleRow[] = [
+		{
+			label: 'Skybox alignment tool',
+			get: () => settings.showSkyboxAlign,
+			set: (v) => settings.setShowSkyboxAlign(v)
+		},
+		{
+			label: 'Label halo overlay',
+			get: () => settings.showHaloDebug,
+			set: (v) => settings.setShowHaloDebug(v)
+		},
+		{
+			label: 'Lighting tuner',
+			get: () => settings.showLightingTuner,
+			set: (v) => settings.setShowLightingTuner(v)
+		},
+		{
+			label: 'Realistic lighting',
+			hint: '(inverse-square sunlight)',
+			get: () => settings.realisticLighting,
+			set: (v) => settings.setRealisticLighting(v)
+		},
+		{
+			label: 'Overexpose rings',
+			hint: '(full stored dynamic range)',
+			get: () => settings.overexposeRings,
+			set: (v) => settings.setOverexposeRings(v)
+		}
+	];
+
+	const LAYER_TOGGLES: ToggleRow[] = [
+		{
+			label: 'Shape mesh',
+			hint: '(off → triaxial sphere)',
+			get: () => settings.showShapeMesh,
+			set: (v) => settings.setShowShapeMesh(v)
+		},
+		{
+			label: 'Surface texture',
+			get: () => settings.showSurfaceTexture,
+			set: (v) => settings.setShowSurfaceTexture(v)
+		},
+		{
+			label: 'Displacement (DEM)',
+			get: () => settings.showDisplacement,
+			set: (v) => settings.setShowDisplacement(v)
+		},
+		{
+			label: 'Self-shadow',
+			get: () => settings.showSelfShadow,
+			set: (v) => settings.setShowSelfShadow(v)
+		}
+	];
+
+	// One patch key at a time, so the untouched flags keep the tier preset.
+	function setAtmoFlag(key: AtmosphereQualityFlag, v: boolean): void {
+		const patch: Partial<AtmosphereQualityConfig> = {};
+		patch[key] = v;
+		settings.setAtmoQualityOverrides(patch);
+	}
+
+	const ATMO_TOGGLES: ToggleRow[] = QUALITY_FLAGS.map((f) => ({
+		label: f.label,
+		hint: f.hint,
+		get: () => atmoCfg[f.key],
+		set: (v: boolean) => setAtmoFlag(f.key, v)
+	}));
 </script>
+
+{#snippet toggleRow(row: ToggleRow)}
+	<label class="flex items-center gap-2 cursor-pointer">
+		<input type="checkbox" checked={row.get()} onchange={(e) => row.set(e.currentTarget.checked)} />
+		<span>
+			{row.label}
+			{#if row.hint}<span class="text-muted-foreground">{row.hint}</span>{/if}
+		</span>
+	</label>
+{/snippet}
 
 <div
 	class="absolute top-16 start-4 z-10 pointer-events-auto
@@ -265,52 +354,9 @@
 	</div>
 
 	<div class="mt-2 pt-2 border-t border-border/40 space-y-1">
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.showSkyboxAlign}
-				onchange={(e) => settings.setShowSkyboxAlign(e.currentTarget.checked)}
-			/>
-			<span>Skybox alignment tool</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.showHaloDebug}
-				onchange={(e) => settings.setShowHaloDebug(e.currentTarget.checked)}
-			/>
-			<span>Label halo overlay</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.showLightingTuner}
-				onchange={(e) => settings.setShowLightingTuner(e.currentTarget.checked)}
-			/>
-			<span>Lighting tuner</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.realisticLighting}
-				onchange={(e) => settings.setRealisticLighting(e.currentTarget.checked)}
-			/>
-			<span>
-				Realistic lighting
-				<span class="text-muted-foreground">(inverse-square sunlight)</span>
-			</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.overexposeRings}
-				onchange={(e) => settings.setOverexposeRings(e.currentTarget.checked)}
-			/>
-			<span>
-				Overexpose rings
-				<span class="text-muted-foreground">(full stored dynamic range)</span>
-			</span>
-		</label>
+		{#each SCENE_TOGGLES as row (row.label)}
+			{@render toggleRow(row)}
+		{/each}
 		<label class="flex items-center gap-2">
 			<span>Max parts/zone</span>
 			<input
@@ -327,38 +373,9 @@
 
 	<div class="mt-2 pt-2 border-t border-border/40 space-y-1">
 		<div class="text-muted-foreground">Focused body layers</div>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.showShapeMesh}
-				onchange={(e) => settings.setShowShapeMesh(e.currentTarget.checked)}
-			/>
-			<span>Shape mesh <span class="text-muted-foreground">(off → triaxial sphere)</span></span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.showSurfaceTexture}
-				onchange={(e) => settings.setShowSurfaceTexture(e.currentTarget.checked)}
-			/>
-			<span>Surface texture</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.showDisplacement}
-				onchange={(e) => settings.setShowDisplacement(e.currentTarget.checked)}
-			/>
-			<span>Displacement (DEM)</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={settings.showSelfShadow}
-				onchange={(e) => settings.setShowSelfShadow(e.currentTarget.checked)}
-			/>
-			<span>Self-shadow</span>
-		</label>
+		{#each LAYER_TOGGLES as row (row.label)}
+			{@render toggleRow(row)}
+		{/each}
 	</div>
 
 	<div class="mt-2 pt-2 border-t border-border/40 space-y-1">
@@ -411,39 +428,9 @@
 					})}
 			/>
 		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={atmoCfg.eclipseShadows}
-				onchange={(e) =>
-					settings.setAtmoQualityOverrides({ eclipseShadows: e.currentTarget.checked })}
-			/>
-			<span>Eclipse shadows</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={atmoCfg.ringShadows}
-				onchange={(e) => settings.setAtmoQualityOverrides({ ringShadows: e.currentTarget.checked })}
-			/>
-			<span>Ring shadows</span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={atmoCfg.insideView}
-				onchange={(e) => settings.setAtmoQualityOverrides({ insideView: e.currentTarget.checked })}
-			/>
-			<span>Inside view <span class="text-muted-foreground">(sky + depth prepass)</span></span>
-		</label>
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input
-				type="checkbox"
-				checked={atmoCfg.sunTint}
-				onchange={(e) => settings.setAtmoQualityOverrides({ sunTint: e.currentTarget.checked })}
-			/>
-			<span>Sun tint <span class="text-muted-foreground">(sunset light + disc chroma)</span></span>
-		</label>
+		{#each ATMO_TOGGLES as row (row.label)}
+			{@render toggleRow(row)}
+		{/each}
 	</div>
 
 	{#if pointingSupported}

@@ -1,19 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { browser } from '$app/environment';
-import { FEATURE_ROUTE_TYPES } from '$lib/state/view';
+import { FEATURE_ROUTE_TYPES, urlTypeToIdPrefix } from '$lib/state/view';
 import { loadFeatureSeo, minimalSeo } from '$lib/seo/meta';
 import type { PageLoad } from './$types';
-
-// URL type segment → object id prefix, for the body a feature hangs off.
-// Mirrors urlTypeToIdPrefix in url.ts (not imported: that module pulls in
-// client-only $app/state).
-const TYPE_TO_PREFIX: Record<string, string> = {
-	b: 'naif',
-	s: 'spkid',
-	e: 'norad_satcat',
-	p: 'probe',
-	u: 'extra'
-};
 
 export const load: PageLoad = async ({ params, url }) => {
 	// Features hang off a body — 404 any non-body type segment.
@@ -27,12 +16,11 @@ export const load: PageLoad = async ({ params, url }) => {
 	const name = params.name ? decodeURIComponent(params.name) : '';
 	const fallback = () => minimalSeo(name, url.origin, url.pathname);
 
-	const prefix = TYPE_TO_PREFIX[params.type];
 	const featureId = Number(params.featureId);
-	if (!prefix || !Number.isFinite(featureId)) return { seo: fallback() };
+	if (!Number.isFinite(featureId)) return { seo: fallback() };
 
 	const seo = await loadFeatureSeo(
-		`${prefix}-${params.id}`,
+		`${urlTypeToIdPrefix(params.type)}-${params.id}`,
 		featureId,
 		name,
 		url.origin,
