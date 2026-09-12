@@ -4,6 +4,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import { named } from '$lib/charts/vocabulary';
 
 const LAYER_NAME: Record<string, () => string> = {
 	boundary_layer: m.atmosphere_layer_boundary_layer,
@@ -49,12 +50,7 @@ const TYPE_NAME: Record<string, () => string> = {
  *  which is at least readable — the classification is the section's first row
  *  and an empty one reads as missing data. */
 export function atmosphereTypeName(type: string): string {
-	const fn = TYPE_NAME[type];
-	if (!fn) {
-		console.warn(`Missing atmosphere type: ${type}`);
-		return type;
-	}
-	return fn();
+	return named(TYPE_NAME, type, 'atmosphere type', type);
 }
 
 // What keeps this atmosphere the way it is — the half the classification
@@ -86,12 +82,7 @@ const DATUM_NOTES = new Set(['photosphere']);
 
 export function atmosphereNote(note: string | undefined): string | null {
 	if (!note || SILENT_NOTES.has(note)) return null;
-	const fn = NOTE[note];
-	if (!fn) {
-		console.warn(`Missing atmosphere note: ${note}`);
-		return null;
-	}
-	return fn();
+	return named(NOTE, note, 'atmosphere note', null);
 }
 
 /** The same note, for the cross-section, which says the datum ones itself. */
@@ -101,21 +92,11 @@ export function atmosphereNoteBesideChart(note: string | undefined): string | nu
 }
 
 export function atmosphereLayerName(role: string): string {
-	const fn = LAYER_NAME[role];
-	if (!fn) {
-		console.warn(`Missing atmosphere layer name: ${role}`);
-		return role;
-	}
-	return fn();
+	return named(LAYER_NAME, role, 'atmosphere layer name', role);
 }
 
 /** Falls back to nothing rather than to the key — a layer reads fine without
  *  its footnote, and a raw `diffuse_top` under one reads as a bug. */
 export function atmosphereLayerNote(note: string): string {
-	const fn = LAYER_NOTE[note];
-	if (!fn) {
-		console.warn(`Missing atmosphere layer note: ${note}`);
-		return '';
-	}
-	return fn();
+	return named(LAYER_NOTE, note, 'atmosphere layer note', '');
 }

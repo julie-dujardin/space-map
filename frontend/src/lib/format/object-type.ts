@@ -1,36 +1,26 @@
 import * as m from '$lib/paraglide/messages.js';
 
+// The asteroid zones all collapse to one label: the zone is shown elsewhere.
+const TYPE_NAME: Record<string, () => string> = {
+	barycenter: m.type_barycenter,
+	lagrange_point: m.type_lagrange_point,
+	star: m.type_star,
+	planet: m.type_planet,
+	dwarf_planet: m.type_dwarf_planet,
+	moon: m.type_moon,
+	asteroid: m.type_asteroid,
+	asteroid_inner: m.type_asteroid,
+	asteroid_main_belt: m.type_asteroid,
+	asteroid_trojan: m.type_asteroid,
+	asteroid_centaur: m.type_asteroid,
+	asteroid_tno: m.type_asteroid,
+	comet: m.type_comet,
+	spacecraft: m.type_spacecraft,
+	debris: m.type_debris,
+	undocumented: m.type_undocumented
+};
+
 /** Localized label for an export `global.type` string (lowercase, e.g. "moon"). */
 export function objectTypeLabel(type: string): string {
-	switch (type) {
-		case 'barycenter':
-			return m.type_barycenter();
-		case 'lagrange_point':
-			return m.type_lagrange_point();
-		case 'star':
-			return m.type_star();
-		case 'planet':
-			return m.type_planet();
-		case 'dwarf_planet':
-			return m.type_dwarf_planet();
-		case 'moon':
-			return m.type_moon();
-		case 'asteroid':
-		case 'asteroid_inner':
-		case 'asteroid_main_belt':
-		case 'asteroid_trojan':
-		case 'asteroid_centaur':
-		case 'asteroid_tno':
-			return m.type_asteroid();
-		case 'comet':
-			return m.type_comet();
-		case 'spacecraft':
-			return m.type_spacecraft();
-		case 'debris':
-			return m.type_debris();
-		case 'undocumented':
-			return m.type_undocumented();
-		default:
-			return m.object();
-	}
+	return TYPE_NAME[type]?.() ?? m.object();
 }

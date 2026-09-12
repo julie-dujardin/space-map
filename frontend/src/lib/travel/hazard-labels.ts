@@ -23,25 +23,6 @@ import type { AdjustedHazard, Hazard, HazardKind, LabelledHazard } from './hazar
 import { equilibriumTempK } from './sunlight';
 import { formatDv, formatDvBrief, formatGray, formatSievert } from './format';
 
-export function hazardName(kind: HazardKind): string {
-	switch (kind) {
-		case 'solar-heat':
-			return m.travel_hazard_heat();
-		case 'solar-power':
-			return m.travel_hazard_power();
-		case 'conjunction':
-			return m.travel_hazard_conjunction();
-		case 'signal-lag':
-			return m.travel_hazard_lag();
-		case 'aeroassist':
-			return m.travel_hazard_aero();
-		case 'radiation':
-			return m.travel_hazard_radiation();
-		case 'belt-crossing':
-			return m.travel_hazard_belt();
-	}
-}
-
 /** Two significant figures, which is more than any of these are known to. */
 function significant(value: number): string {
 	return Number(value.toPrecision(2)).toString();
@@ -64,84 +45,86 @@ function roundLag(seconds: number): number {
 	return seconds >= 60 ? Math.round(seconds / 60) * 60 : seconds;
 }
 
+/** The four texts a hazard needs: its name, the chip beside the arc, the figure
+ *  on a detail row, and the sentence under it. */
+interface HazardText {
+	name(): string;
+	chip(hazard: Hazard): string;
+	value(hazard: Hazard): string;
+	detail(hazard: Hazard, originName: string, bodyName: string): string;
+}
+
 /**
- * The shortest form: what fits on a row of trajectories, and on a chip beside
- * the arc. A figure where the figure is the point, a phrase where it is not.
+ * Every wording of a hazard together, so the four are read and edited as one.
+ *
+ * The icons stay in `hazard-style.ts`: they pull in the icon library, and this
+ * file is on the map's chunk.
  */
-export function hazardChip(hazard: Hazard): string {
-	switch (hazard.kind) {
-		case 'solar-heat':
-			return m.travel_hazard_heat_chip({ value: significant(hazard.peak) });
-		case 'solar-power':
-			return m.travel_hazard_power_chip({ value: percent(hazard.peak) });
-		case 'conjunction':
-			return m.travel_hazard_conjunction_chip();
-		case 'signal-lag':
-			return m.travel_hazard_lag_chip({ value: lag(hazard.peak) });
-		case 'aeroassist':
-			return m.travel_hazard_aero_chip({ value: formatDvBrief(hazard.peak) });
-		case 'radiation':
-			return formatSievert(hazard.peak);
-		case 'belt-crossing':
-			return hazard.unpriced ? m.travel_hazard_belt_unpriced_chip() : formatGray(hazard.peak);
-	}
-}
-
-/** The figure that sits on the right of a detail row. */
-export function hazardValue(hazard: Hazard): string {
-	switch (hazard.kind) {
-		case 'solar-heat':
-			return m.travel_hazard_heat_value({ value: significant(hazard.peak) });
-		case 'solar-power':
-			return m.travel_hazard_power_value({ value: percent(hazard.peak) });
-		case 'conjunction':
-			return m.travel_hazard_conjunction_value({ value: hazard.peak.toFixed(1) });
-		case 'signal-lag':
-			return m.travel_hazard_lag_value({ value: lag(hazard.peak) });
-		case 'aeroassist':
-			return formatDv(hazard.peak);
-		case 'radiation':
-			return formatSievert(hazard.peak);
-		case 'belt-crossing':
-			return hazard.unpriced ? m.travel_hazard_belt_unpriced_value() : formatGray(hazard.peak);
-	}
-}
-
-/** What it means for the craft, in a sentence. `originName` is read only by
- *  the conjunction, defined against the place the trip left; `bodyName` only
- *  by a belt crossing, defined against a body the trip merely passes. */
-export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''): string {
-	switch (hazard.kind) {
-		case 'solar-heat':
-			return m.travel_hazard_heat_detail({
+const HAZARD_TEXT: Record<HazardKind, HazardText> = {
+	'solar-heat': {
+		name: m.travel_hazard_heat,
+		chip: (hazard) => m.travel_hazard_heat_chip({ value: significant(hazard.peak) }),
+		value: (hazard) => m.travel_hazard_heat_value({ value: significant(hazard.peak) }),
+		detail: (hazard) =>
+			m.travel_hazard_heat_detail({
 				au: ltrIsolate((hazard.auAtPeak ?? 0).toFixed(2)),
 				temp: formatKelvin(equilibriumTempK(hazard.auAtPeak ?? 1))
-			});
-		case 'solar-power':
-			return m.travel_hazard_power_detail({
+			})
+	},
+	'solar-power': {
+		name: m.travel_hazard_power,
+		chip: (hazard) => m.travel_hazard_power_chip({ value: percent(hazard.peak) }),
+		value: (hazard) => m.travel_hazard_power_value({ value: percent(hazard.peak) }),
+		detail: (hazard) =>
+			m.travel_hazard_power_detail({
 				au: ltrIsolate((hazard.auAtPeak ?? 0).toFixed(1)),
 				value: ltrIsolate(percent(hazard.peak))
-			});
-		case 'conjunction':
-			return m.travel_hazard_conjunction_detail({ origin: originName });
-		case 'signal-lag':
-			// Round trip, not the one-way figure beside it. Doubled after rounding,
-			// so it cannot read as an odd multiple of the figure above it.
-			return m.travel_hazard_lag_detail({
+			})
+	},
+	conjunction: {
+		name: m.travel_hazard_conjunction,
+		chip: () => m.travel_hazard_conjunction_chip(),
+		value: (hazard) => m.travel_hazard_conjunction_value({ value: hazard.peak.toFixed(1) }),
+		detail: (_hazard, originName) => m.travel_hazard_conjunction_detail({ origin: originName })
+	},
+	'signal-lag': {
+		name: m.travel_hazard_lag,
+		chip: (hazard) => m.travel_hazard_lag_chip({ value: lag(hazard.peak) }),
+		value: (hazard) => m.travel_hazard_lag_value({ value: lag(hazard.peak) }),
+		// Round trip, not the one-way figure beside it. Doubled after rounding,
+		// so it cannot read as an odd multiple of the figure above it.
+		detail: (hazard) =>
+			m.travel_hazard_lag_detail({
 				value: ltrIsolate(formatDurationNarrow((roundLag(hazard.peak) * 2) / SECONDS_PER_DAY))
-			});
-		case 'aeroassist':
-			return m.travel_hazard_aero_detail({ value: formatDv(hazard.peak) });
-		case 'radiation':
-			// Rate as well as total: a sievert over nine years to Neptune is a
-			// different problem from the same sievert in eight months to Mars. The
-			// reference dose already carries a spacecraft's aluminium — the lunar
-			// surface check says that is worth under 10%.
-			return m.travel_hazard_radiation_detail({
+			})
+	},
+	aeroassist: {
+		name: m.travel_hazard_aero,
+		chip: (hazard) => m.travel_hazard_aero_chip({ value: formatDvBrief(hazard.peak) }),
+		value: (hazard) => formatDv(hazard.peak),
+		detail: (hazard) => m.travel_hazard_aero_detail({ value: formatDv(hazard.peak) })
+	},
+	radiation: {
+		name: m.travel_hazard_radiation,
+		chip: (hazard) => formatSievert(hazard.peak),
+		value: (hazard) => formatSievert(hazard.peak),
+		// Rate as well as total: a sievert over nine years to Neptune is a
+		// different problem from the same sievert in eight months to Mars. The
+		// reference dose already carries a spacecraft's aluminium — the lunar
+		// surface check says that is worth under 10%.
+		detail: (hazard) =>
+			m.travel_hazard_radiation_detail({
 				value: ltrIsolate(formatSievert(hazard.rateAtPeak ?? 0)),
 				risk: ltrIsolate(formatPercent(cancerRiskFraction(hazard.peak)))
-			});
-		case 'belt-crossing': {
+			})
+	},
+	'belt-crossing': {
+		name: m.travel_hazard_belt,
+		chip: (hazard) =>
+			hazard.unpriced ? m.travel_hazard_belt_unpriced_chip() : formatGray(hazard.peak),
+		value: (hazard) =>
+			hazard.unpriced ? m.travel_hazard_belt_unpriced_value() : formatGray(hazard.peak),
+		detail: (hazard, _originName, bodyName) => {
 			if (hazard.unpriced) return m.travel_hazard_belt_unpriced_detail({ body: bodyName });
 			const dose = lethalDoseFraction(hazard.peak);
 			const span = spanFields(
@@ -156,6 +139,30 @@ export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''):
 			});
 		}
 	}
+};
+
+export function hazardName(kind: HazardKind): string {
+	return HAZARD_TEXT[kind].name();
+}
+
+/**
+ * The shortest form: what fits on a row of trajectories, and on a chip beside
+ * the arc. A figure where the figure is the point, a phrase where it is not.
+ */
+export function hazardChip(hazard: Hazard): string {
+	return HAZARD_TEXT[hazard.kind].chip(hazard);
+}
+
+/** The figure that sits on the right of a detail row. */
+export function hazardValue(hazard: Hazard): string {
+	return HAZARD_TEXT[hazard.kind].value(hazard);
+}
+
+/** What it means for the craft, in a sentence. `originName` is read only by
+ *  the conjunction, defined against the place the trip left; `bodyName` only
+ *  by a belt crossing, defined against a body the trip merely passes. */
+export function hazardDetail(hazard: Hazard, originName: string, bodyName = ''): string {
+	return HAZARD_TEXT[hazard.kind].detail(hazard, originName, bodyName);
 }
 
 /** The extra line a craft adds to a hazard, or null when it has nothing to say. */

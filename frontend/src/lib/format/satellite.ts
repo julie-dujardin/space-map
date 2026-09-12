@@ -1,68 +1,57 @@
+import type { SatelliteCategory } from '$lib/fetch/groups/registry';
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 
 // OpsStatus enum values from data/.../constants/earth_sats/satcat.py
+const OPS_STATUS_NAME: Record<string, () => string> = {
+	operational: m.ops_status_operational,
+	nonoperational: m.ops_status_nonoperational,
+	partial: m.ops_status_partial,
+	backup: m.ops_status_backup,
+	spare: m.ops_status_spare,
+	extended_mission: m.ops_status_extended,
+	decayed: m.ops_status_decayed
+};
+
 export function formatOpsStatus(value: string): string {
-	switch (value) {
-		case 'operational':
-			return m.ops_status_operational();
-		case 'nonoperational':
-			return m.ops_status_nonoperational();
-		case 'partial':
-			return m.ops_status_partial();
-		case 'backup':
-			return m.ops_status_backup();
-		case 'spare':
-			return m.ops_status_spare();
-		case 'extended_mission':
-			return m.ops_status_extended();
-		case 'decayed':
-			return m.ops_status_decayed();
-		default:
-			return m.unknown();
-	}
+	return OPS_STATUS_NAME[value]?.() ?? m.unknown();
 }
 
 // SatcatObjectType enum values
+const OBJECT_TYPE_NAME: Record<string, () => string> = {
+	payload: m.object_type_payload,
+	rocket_body: m.object_type_rocket_body,
+	debris: m.object_type_debris
+};
+
 export function formatObjectType(value: string): string {
-	switch (value) {
-		case 'payload':
-			return m.object_type_payload();
-		case 'rocket_body':
-			return m.object_type_rocket_body();
-		case 'debris':
-			return m.object_type_debris();
-		default:
-			return m.unknown();
-	}
+	return OBJECT_TYPE_NAME[value]?.() ?? m.unknown();
 }
 
-// SatelliteCategory enum values from data/.../constants/earth_sats/constellations.py
+/** Object-chip wording, longer than the `satellite_category_*` group-badge
+ *  namespace. Keyed on the whole union so a new member cannot fall through to
+ *  the raw slug. */
+const CATEGORY_NAME: Record<SatelliteCategory, () => string> = {
+	communications: m.category_communications,
+	navigation: m.category_navigation,
+	weather: m.category_weather,
+	observation: m.category_observation,
+	science: m.category_science,
+	military: m.category_military,
+	'disaster-sar': m.category_disaster_sar,
+	debris: m.category_debris,
+	station: m.category_station,
+	manned_capsule: m.category_manned_capsule,
+	unmanned_cargo: m.category_unmanned_cargo,
+	space_tug: m.category_space_tug,
+	rocket: m.category_rocket,
+	upper_stage: m.category_upper_stage,
+	miscellaneous: m.category_miscellaneous
+};
+
+/** The slug comes straight from the export, so an unknown one is possible. */
 export function formatCategory(slug: string): string {
-	switch (slug) {
-		case 'communications':
-			return m.category_communications();
-		case 'navigation':
-			return m.category_navigation();
-		case 'weather':
-			return m.category_weather();
-		case 'observation':
-			return m.category_observation();
-		case 'science':
-			return m.category_science();
-		case 'military':
-			return m.category_military();
-		case 'disaster-sar':
-			return m.category_disaster_sar();
-		case 'debris':
-			return m.category_debris();
-		case 'station':
-			return m.category_station();
-		case 'miscellaneous':
-			return m.category_miscellaneous();
-		default:
-			return slug;
-	}
+	return CATEGORY_NAME[slug as SatelliteCategory]?.() ?? slug;
 }
 
 /** States that no longer exist, which the browser resolves to their successor:

@@ -8,8 +8,8 @@
  * violet on Jupiter and on Saturn.
  */
 
-import * as m from '$lib/paraglide/messages.js';
 import type { CompositionEntry } from '$lib/charts/composition-bar';
+import { named, namedByKey } from '$lib/charts/vocabulary';
 
 /**
  * Every gas the composition data can name. Each has its own `--gas-<formula>`
@@ -78,22 +78,18 @@ export function speciesEntries(species: SpeciesShare[]): CompositionEntry[] {
 /** Localized gas name for the hover label, e.g. "SO2" → "sulphur dioxide".
  *  Falls back to the formula for a species with no message yet. */
 export function speciesName(formula: string): string {
-	const key = `gas_name_${formula.toLowerCase().replace('-', '_')}`;
-	const fn = (m as unknown as Record<string, (() => string) | undefined>)[key];
-	if (!fn) {
-		console.warn(`Missing gas name: ${key}`);
-		return formatFormula(formula);
-	}
-	return fn();
+	return namedByKey('gas_name_', formula, 'gas name', formatFormula(formula));
 }
 
 /** A gas with no colour of its own would draw as nothing at all. */
 function gasColor(formula: string): string {
-	if (!KNOWN_GASES.has(formula)) {
-		console.warn(`Missing gas colour: ${formula}`);
-		return 'var(--muted-foreground)';
-	}
-	return `var(--gas-${formula.toLowerCase()})`;
+	return named(
+		KNOWN_GASES,
+		formula,
+		'gas colour',
+		'var(--muted-foreground)',
+		`var(--gas-${formula.toLowerCase()})`
+	);
 }
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉';

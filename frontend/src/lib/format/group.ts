@@ -25,72 +25,36 @@ import {
 	type SatelliteCategory
 } from '$lib/fetch/groups/registry';
 
+/** Singular and plural label per group type. `one` sometimes points at an
+ *  object-detail field/link key instead of a `group_type_*` one, so badge and
+ *  detail row cannot drift apart. The count sits in its own column, so `many`
+ *  is an invariant plural. */
+const GROUP_TYPE_NAME: Record<GroupType, { one: () => string; many: () => string }> = {
+	constellation: { one: m.group_type_constellation, many: m.group_type_plural_constellation },
+	launch_vehicle: { one: m.launch_vehicle, many: m.group_type_plural_launch_vehicle },
+	organization: { one: m.group_type_organization, many: m.group_type_plural_organization },
+	launch_site: { one: m.launch_site, many: m.group_type_plural_launch_site },
+	bus: { one: m.group_type_bus, many: m.group_type_plural_bus },
+	country: { one: m.group_label_country, many: m.group_type_plural_country },
+	orbit_class: { one: m.orbit_class, many: m.group_type_plural_orbit_class },
+	earth_orbit_class: {
+		one: m.group_type_earth_orbit_class,
+		many: m.group_type_plural_earth_orbit_class
+	},
+	small_body_flag: { one: m.group_type_small_body_flag, many: m.group_type_plural_small_body_flag },
+	category: { one: m.group_type_category, many: m.group_type_plural_category },
+	split_comet: { one: m.group_type_split_comet, many: m.group_type_plural_split_comet },
+	mission: { one: m.mission, many: m.group_type_plural_mission },
+	feature_type: { one: m.group_type_feature_type, many: m.group_type_plural_feature_type }
+};
+
 export function groupTypeLabel(type: GroupType): string {
-	// Several types share the exact label of an object-detail field/link, so they
-	// reuse that single message key rather than a duplicate group_type_* one —
-	// one string to translate, no drift between badge and detail row.
-	switch (type) {
-		case 'constellation':
-			return m.group_type_constellation();
-		case 'launch_vehicle':
-			return m.launch_vehicle();
-		case 'organization':
-			return m.group_type_organization();
-		case 'launch_site':
-			return m.launch_site();
-		case 'bus':
-			return m.group_type_bus();
-		case 'country':
-			return m.group_label_country();
-		case 'orbit_class':
-			return m.orbit_class();
-		case 'earth_orbit_class':
-			return m.group_type_earth_orbit_class();
-		case 'small_body_flag':
-			return m.group_type_small_body_flag();
-		case 'category':
-			return m.group_type_category();
-		case 'split_comet':
-			return m.group_type_split_comet();
-		case 'mission':
-			return m.mission();
-		case 'feature_type':
-			return m.group_type_feature_type();
-	}
+	return GROUP_TYPE_NAME[type].one();
 }
 
-/** Plural group-type label, for headers over a list of groups ("Constellations",
- *  "Launch sites"). The numeric count sits in its own column, so these are
- *  invariant plurals — `group_type_*` stays singular for badges/inline use. */
+/** For headers over a list of groups ("Constellations", "Launch sites"). */
 export function groupTypeLabelPlural(type: GroupType): string {
-	switch (type) {
-		case 'constellation':
-			return m.group_type_plural_constellation();
-		case 'launch_vehicle':
-			return m.group_type_plural_launch_vehicle();
-		case 'organization':
-			return m.group_type_plural_organization();
-		case 'launch_site':
-			return m.group_type_plural_launch_site();
-		case 'bus':
-			return m.group_type_plural_bus();
-		case 'country':
-			return m.group_type_plural_country();
-		case 'orbit_class':
-			return m.group_type_plural_orbit_class();
-		case 'earth_orbit_class':
-			return m.group_type_plural_earth_orbit_class();
-		case 'small_body_flag':
-			return m.group_type_plural_small_body_flag();
-		case 'category':
-			return m.group_type_plural_category();
-		case 'split_comet':
-			return m.group_type_plural_split_comet();
-		case 'mission':
-			return m.group_type_plural_mission();
-		case 'feature_type':
-			return m.group_type_plural_feature_type();
-	}
+	return GROUP_TYPE_NAME[type].many();
 }
 
 /** Badge label for an organization's operator/manufacturer role tag. */
@@ -98,39 +62,27 @@ export function organizationRoleLabel(role: OrganizationRole): string {
 	return role === 'operator' ? m.group_type_operator() : m.group_type_manufacturer();
 }
 
+/** Group-badge wording, shorter than the `category_*` object-chip namespace. */
+const SATELLITE_CATEGORY_NAME: Record<SatelliteCategory, () => string> = {
+	'disaster-sar': m.satellite_category_disaster_sar,
+	weather: m.satellite_category_weather,
+	observation: m.satellite_category_observation,
+	communications: m.satellite_category_communications,
+	navigation: m.satellite_category_navigation,
+	science: m.satellite_category_science,
+	military: m.satellite_category_military,
+	debris: m.satellite_category_debris,
+	station: m.satellite_category_station,
+	manned_capsule: m.satellite_category_manned_capsule,
+	unmanned_cargo: m.satellite_category_unmanned_cargo,
+	space_tug: m.satellite_category_space_tug,
+	rocket: m.satellite_category_rocket,
+	upper_stage: m.satellite_category_upper_stage,
+	miscellaneous: m.satellite_category_miscellaneous
+};
+
 export function satelliteCategoryLabel(cat: SatelliteCategory): string {
-	switch (cat) {
-		case 'disaster-sar':
-			return m.satellite_category_disaster_sar();
-		case 'weather':
-			return m.satellite_category_weather();
-		case 'observation':
-			return m.satellite_category_observation();
-		case 'communications':
-			return m.satellite_category_communications();
-		case 'navigation':
-			return m.satellite_category_navigation();
-		case 'science':
-			return m.satellite_category_science();
-		case 'military':
-			return m.satellite_category_military();
-		case 'debris':
-			return m.satellite_category_debris();
-		case 'station':
-			return m.satellite_category_station();
-		case 'manned_capsule':
-			return m.satellite_category_manned_capsule();
-		case 'unmanned_cargo':
-			return m.satellite_category_unmanned_cargo();
-		case 'space_tug':
-			return m.satellite_category_space_tug();
-		case 'rocket':
-			return m.satellite_category_rocket();
-		case 'upper_stage':
-			return m.satellite_category_upper_stage();
-		case 'miscellaneous':
-			return m.satellite_category_miscellaneous();
-	}
+	return SATELLITE_CATEGORY_NAME[cat]();
 }
 
 /** Plural category headers, not the singular Wikidata label. */

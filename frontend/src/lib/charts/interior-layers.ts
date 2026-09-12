@@ -8,6 +8,7 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import { ltrIsolate } from '$lib/format/bidi';
+import { named } from '$lib/charts/vocabulary';
 
 const LAYER_NAME: Record<string, () => string> = {
 	crust: m.interior_layer_crust,
@@ -63,14 +64,9 @@ const NAME_BY_NOTE: Record<string, () => string> = {
 };
 
 export function layerName(role: string, note?: string): string {
-	const named = note ? NAME_BY_NOTE[note] : undefined;
-	if (named) return named();
-	const fn = LAYER_NAME[role];
-	if (!fn) {
-		console.warn(`Missing interior layer name: ${role}`);
-		return role;
-	}
-	return fn();
+	const byNote = note ? NAME_BY_NOTE[note] : undefined;
+	if (byNote) return byNote();
+	return named(LAYER_NAME, role, 'interior layer name', role);
 }
 
 /** Null where the phase is one we have no name for, so the caller can fall back
@@ -87,21 +83,11 @@ export function phaseName(phase: string): string | null {
 /** Null for a rock we have no name for, so the caller falls back to the state
  *  rather than printing a key — the vocabulary grows as the curation does. */
 export function rockName(rock: string): string | null {
-	const fn = ROCK_NAME[rock];
-	if (!fn) {
-		console.warn(`Missing interior rock name: ${rock}`);
-		return null;
-	}
-	return fn();
+	return named(ROCK_NAME, rock, 'interior rock name', null);
 }
 
 export function stateName(state: string): string {
-	const fn = STATE_NAME[state];
-	if (!fn) {
-		console.warn(`Missing interior state name: ${state}`);
-		return state;
-	}
-	return fn();
+	return named(STATE_NAME, state, 'interior state name', state);
 }
 
 /** What found the layer. Separate from `standing` on purpose: the two answer
@@ -130,19 +116,9 @@ const STANDING_NAME: Record<string, () => string> = {
 /** Null for a vocabulary we have no name for yet, so a new pipeline key is a
  *  missing clause rather than a raw slug on the card. */
 export function evidenceName(evidence: string): string | null {
-	const fn = EVIDENCE_NAME[evidence];
-	if (!fn) {
-		console.warn(`Missing interior evidence name: ${evidence}`);
-		return null;
-	}
-	return fn();
+	return named(EVIDENCE_NAME, evidence, 'interior evidence name', null);
 }
 
 export function standingName(standing: string): string | null {
-	const fn = STANDING_NAME[standing];
-	if (!fn) {
-		console.warn(`Missing interior standing name: ${standing}`);
-		return null;
-	}
-	return fn();
+	return named(STANDING_NAME, standing, 'interior standing name', null);
 }

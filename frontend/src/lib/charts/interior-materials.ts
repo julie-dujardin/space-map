@@ -11,6 +11,7 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import { formatFormula } from '$lib/charts/atmosphere-species';
+import { named, namedByKey } from '$lib/charts/vocabulary';
 import type { CompositionEntry } from '$lib/charts/composition-bar';
 
 /** Every material the pipeline can emit; see `constants/interior/schema.py`. */
@@ -91,21 +92,18 @@ export function detailEntries(
 /** Localized material name, e.g. "silicate" → "rock". Falls back to the key
  *  for a material with no message yet. */
 export function materialName(material: string): string {
-	const fn = MATERIAL_NAME[material];
-	if (!fn) {
-		console.warn(`Missing material name: ${material}`);
-		return material;
-	}
-	return fn();
+	return named(MATERIAL_NAME, material, 'material name', material);
 }
 
 /** A material with no colour of its own would draw as nothing at all. */
 function materialColor(material: string): string {
-	if (!KNOWN_MATERIALS.has(material)) {
-		console.warn(`Missing material colour: ${material}`);
-		return 'var(--muted-foreground)';
-	}
-	return `var(--material-${material.replace('_', '-')})`;
+	return named(
+		KNOWN_MATERIALS,
+		material,
+		'material colour',
+		'var(--muted-foreground)',
+		`var(--material-${material.replace('_', '-')})`
+	);
 }
 
 /**
@@ -156,20 +154,16 @@ const KNOWN_SPECIES = new Set([
 /** Localized species name for the hover label, e.g. "SiO2" → "silicon
  *  dioxide". Falls back to the formula for a species with no message yet. */
 export function detailSpeciesName(species: string): string {
-	const key = `species_name_${species.toLowerCase().replace('-', '_')}`;
-	const fn = (m as unknown as Record<string, (() => string) | undefined>)[key];
-	if (!fn) {
-		console.warn(`Missing species name: ${key}`);
-		return formatFormula(species);
-	}
-	return fn();
+	return namedByKey('species_name_', species, 'species name', formatFormula(species));
 }
 
 /** A species with no colour of its own would draw as nothing at all. */
 export function detailSpeciesColor(species: string): string {
-	if (!KNOWN_SPECIES.has(species)) {
-		console.warn(`Missing species colour: ${species}`);
-		return 'var(--muted-foreground)';
-	}
-	return `var(--species-${species.toLowerCase()})`;
+	return named(
+		KNOWN_SPECIES,
+		species,
+		'species colour',
+		'var(--muted-foreground)',
+		`var(--species-${species.toLowerCase()})`
+	);
 }
