@@ -5,7 +5,10 @@ RUN corepack enable pnpm
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+# The overrides and the patched dependency are declared in pnpm-workspace.yaml,
+# and a frozen install refuses to run without them — patch file included.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches/ ./patches/
 RUN pnpm install --frozen-lockfile
 
 COPY . .

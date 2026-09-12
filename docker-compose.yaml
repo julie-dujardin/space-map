@@ -33,5 +33,25 @@ services:
       - data-server
       - meili
 
+  # The SDK demo pages (`/demo.html`, `/flatmap.html`), served from an origin
+  # that is neither the app's nor the data's — which is how a host page sees
+  # them. The bundle is built at start rather than watched: the demo exercises
+  # the shipped script, not a dev server's module graph.
+  #
+  # The pages fetch from the data server through the host's published port, so
+  # the browser reaches it at :8080 while the app in `frontend` uses the
+  # internal name.
+  sdk-demo:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    command: sh -c "pnpm build:sdk && pnpm preview:sdk --port 4173"
+    ports:
+      - "4173:4173"
+    volumes:
+      - ./frontend/src:/app/src
+    depends_on:
+      - data-server
+
 volumes:
   meili-dev-data:
