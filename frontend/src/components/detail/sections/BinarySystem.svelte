@@ -1,4 +1,4 @@
-<script lang="ts">
+<script module lang="ts">
 	/**
 	 * What makes a pair a pair: how far apart, how alike in size, how tightly
 	 * bound. Johnston's Archive compiles these per system from the discovery
@@ -11,22 +11,10 @@
 	 * thirteen primary radii out and a fortieth of the way to escaping.
 	 */
 	import * as m from '$lib/paraglide/messages.js';
-	import Link from './kit/Link.svelte';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatKm } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
-	import Section from './kit/Section.svelte';
-	import Row from './kit/Row.svelte';
-
-	interface Props {
-		global: GlobalObjectData | null;
-	}
-
-	let { global }: Props = $props();
-
-	let johnston = $derived(global?.johnston);
-	let astersat = $derived(global?.astersat);
 
 	const CONFIDENCE_LABEL: Record<string, () => string> = {
 		permanent: m.binary_confidence_permanent,
@@ -50,110 +38,146 @@
 		return sigma != null ? `${formatNumber(value)} ± ${formatNumber(sigma)}` : formatNumber(value);
 	}
 
-	// The system mass is the pair's together — AsterSat derives it from the
-	// fitted orbit, Johnston takes it from whichever paper published one.
-	let systemMass = $derived(astersat?.system_mass ?? johnston?.mass);
+	interface BinaryRow {
+		label: () => string;
+		/** What the quantity is — the same definition on every pair that has it. */
+		tooltip: () => string;
+		/** The published field, so the table is also the section's emptiness
+		 *  test: a figure the panel cannot label is still a figure the archive
+		 *  has, and the section stands. */
+		get: (g: GlobalObjectData) => unknown;
+		/** The figure, formatted; undefined leaves the row out. */
+		value: (g: GlobalObjectData) => string | undefined;
+	}
 
-	let hasContent = $derived(
-		!!(
-			johnston?.binary_type ||
-			johnston?.confidence ||
-			johnston?.diameter_ratio != null ||
-			johnston?.mag_difference != null ||
-			johnston?.a_over_primary_radius != null ||
-			johnston?.a_over_hill_radius != null ||
-			johnston?.hill_radius_km != null ||
-			johnston?.normalised_ang_mom != null ||
-			johnston?.rotation_h != null ||
-			johnston?.per_d != null ||
-			johnston?.page ||
-			systemMass
+	function row<T>(
+		label: () => string,
+		tooltip: () => string,
+		get: (g: GlobalObjectData) => T | null | undefined,
+		format: (published: T, g: GlobalObjectData) => string | undefined
+	): BinaryRow {
+		return {
+			label,
+			tooltip,
+			get,
+			value: (g) => {
+				const published = get(g);
+				return published == null ? undefined : format(published, g);
+			}
+		};
+	}
+
+	const ROWS: BinaryRow[] = [
+		row(
+			m.binary_class,
+			m.tooltip_binary_class,
+			(g) => g.johnston?.binary_type,
+			(type) => BINARY_TYPE_LABEL[type]?.()
+		),
+		row(
+			m.binary_confidence,
+			m.tooltip_binary_confidence,
+			(g) => g.johnston?.confidence,
+			(confidence) => CONFIDENCE_LABEL[confidence]?.()
+		),
+		row(
+			m.binary_size_ratio,
+			m.tooltip_binary_size_ratio,
+			(g) => g.johnston?.diameter_ratio,
+			(ratio, g) => withSigma(ratio, g.johnston?.diameter_ratio_sigma)
+		),
+		row(
+			m.binary_magnitude_difference,
+			m.tooltip_binary_magnitude_difference,
+			(g) => g.johnston?.mag_difference,
+			formatNumber
+		),
+		row(
+			m.binary_mutual_period,
+			m.tooltip_binary_mutual_period,
+			(g) => g.johnston?.per_d,
+			formatDuration
+		),
+		row(
+			m.binary_separation_primary_radii,
+			m.tooltip_binary_separation_primary_radii,
+			(g) => g.johnston?.a_over_primary_radius,
+			formatNumber
+		),
+		row(
+			m.binary_separation_hill,
+			m.tooltip_binary_separation_hill,
+			(g) => g.johnston?.a_over_hill_radius,
+			formatNumber
+		),
+		row(
+			m.binary_hill_radius,
+			m.tooltip_binary_hill_radius,
+			(g) => g.johnston?.hill_radius_km,
+			formatKm
+		),
+		row(
+			m.binary_angular_momentum,
+			m.tooltip_binary_angular_momentum,
+			(g) => g.johnston?.normalised_ang_mom,
+			formatNumber
+		),
+		row(
+			m.binary_secondary_rotation,
+			m.tooltip_binary_secondary_rotation,
+			(g) => g.johnston?.rotation_h,
+			(hours) => formatDuration(hours / 24)
+		),
+		// The system mass is the pair's together — AsterSat derives it from the
+		// fitted orbit, Johnston takes it from whichever paper published one.
+		row(
+			m.binary_system_mass,
+			m.tooltip_binary_system_mass,
+			(g) => g.astersat?.system_mass ?? g.johnston?.mass,
+			(mass) => formatQuantity(mass)
 		)
-	);
+	];
+</script>
+
+<script lang="ts">
+	import Link from './kit/Link.svelte';
+	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
+
+	interface Props {
+		global: GlobalObjectData | null;
+	}
+
+	let { global }: Props = $props();
+
+	// The catalogue page is content of its own: a pair with only that still has
+	// somewhere to send the reader.
+	let page = $derived(global?.johnston?.page);
+
+	let rows = $derived.by(() => {
+		const g = global;
+		if (!g) return [];
+		return ROWS.map((entry) => ({ entry, value: entry.value(g) })).filter(
+			(rendered) => rendered.value !== undefined
+		);
+	});
+
+	let hasContent = $derived.by(() => {
+		const g = global;
+		if (!g) return false;
+		if (page) return true;
+		return ROWS.some((entry) => !!entry.get(g));
+	});
 </script>
 
 {#if hasContent}
 	<Section title={m.binary_system()}>
-		{#if johnston?.binary_type && BINARY_TYPE_LABEL[johnston.binary_type]}
-			<Row
-				label={m.binary_class()}
-				value={BINARY_TYPE_LABEL[johnston.binary_type]()}
-				tooltip={m.tooltip_binary_class()}
-			/>
-		{/if}
-		{#if johnston?.confidence && CONFIDENCE_LABEL[johnston.confidence]}
-			<Row
-				label={m.binary_confidence()}
-				value={CONFIDENCE_LABEL[johnston.confidence]()}
-				tooltip={m.tooltip_binary_confidence()}
-			/>
-		{/if}
-		{#if johnston?.diameter_ratio != null}
-			<Row
-				label={m.binary_size_ratio()}
-				value={withSigma(johnston.diameter_ratio, johnston.diameter_ratio_sigma)}
-				tooltip={m.tooltip_binary_size_ratio()}
-			/>
-		{/if}
-		{#if johnston?.mag_difference != null}
-			<Row
-				label={m.binary_magnitude_difference()}
-				value={formatNumber(johnston.mag_difference)}
-				tooltip={m.tooltip_binary_magnitude_difference()}
-			/>
-		{/if}
-		{#if johnston?.per_d != null}
-			<Row
-				label={m.binary_mutual_period()}
-				value={formatDuration(johnston.per_d)}
-				tooltip={m.tooltip_binary_mutual_period()}
-			/>
-		{/if}
-		{#if johnston?.a_over_primary_radius != null}
-			<Row
-				label={m.binary_separation_primary_radii()}
-				value={formatNumber(johnston.a_over_primary_radius)}
-				tooltip={m.tooltip_binary_separation_primary_radii()}
-			/>
-		{/if}
-		{#if johnston?.a_over_hill_radius != null}
-			<Row
-				label={m.binary_separation_hill()}
-				value={formatNumber(johnston.a_over_hill_radius)}
-				tooltip={m.tooltip_binary_separation_hill()}
-			/>
-		{/if}
-		{#if johnston?.hill_radius_km != null}
-			<Row
-				label={m.binary_hill_radius()}
-				value={formatKm(johnston.hill_radius_km)}
-				tooltip={m.tooltip_binary_hill_radius()}
-			/>
-		{/if}
-		{#if johnston?.normalised_ang_mom != null}
-			<Row
-				label={m.binary_angular_momentum()}
-				value={formatNumber(johnston.normalised_ang_mom)}
-				tooltip={m.tooltip_binary_angular_momentum()}
-			/>
-		{/if}
-		{#if johnston?.rotation_h != null}
-			<Row
-				label={m.binary_secondary_rotation()}
-				value={formatDuration(johnston.rotation_h / 24)}
-				tooltip={m.tooltip_binary_secondary_rotation()}
-			/>
-		{/if}
-		{#if systemMass}
-			<Row
-				label={m.binary_system_mass()}
-				value={formatQuantity(systemMass)}
-				tooltip={m.tooltip_binary_system_mass()}
-			/>
-		{/if}
-		{#if johnston?.page}
+		{#each rows as { entry, value }, i (i)}
+			<Row label={entry.label()} tooltip={entry.tooltip()} {value} />
+		{/each}
+		{#if page}
 			<Row label={m.binary_catalogue_entry()}>
-				<Link href={johnston.page} external>{m.source_johnston_name()}</Link>
+				<Link href={page} external>{m.source_johnston_name()}</Link>
 			</Row>
 		{/if}
 	</Section>

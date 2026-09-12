@@ -13,7 +13,9 @@
 	import { featureTypeSlug } from '$lib/fetch/groups/registry';
 	import { featureTypeDescription, featureTypeLabel } from '$lib/format/feature-type';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { groupClick, groupHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -87,16 +89,8 @@
 	// code stands in for the moment before it lands.
 	let typeLabel = $derived(featureTypeLabel(typeSlug) ?? feature.typeCode);
 	let typeDescription = $derived(featureTypeDescription(typeSlug) ?? null);
-	let typeHref = $derived(
-		typeSlug && appState ? serializeUrl(applyGroup(appState.view, typeSlug, typeLabel)) : undefined
-	);
-
-	function openType(e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState || !typeSlug) return;
-		e.preventDefault();
-		appState.setGroup(typeSlug, typeLabel);
-	}
+	let typeHref = $derived(typeSlug ? groupHref(appState, typeSlug, typeLabel) : undefined);
+	let openType = $derived(typeSlug ? groupClick(appState, typeSlug, typeLabel) : undefined);
 
 	// The quadrangle row targets the host body's Surface tab, zoomed onto that
 	// chart. The code rides in `short_name` (see the nomenclature writer).
@@ -117,9 +111,10 @@
 		};
 	});
 
+	// `focusHref`/`focusClick` carry no quadrangle, so this one keeps its own
+	// URL and goes through `setFocus`.
 	function openQuad(e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState || !hostId || !quadTarget) return;
+		if (isModifiedClick(e) || !appState || !hostId || !quadTarget) return;
 		e.preventDefault();
 		appState.setFocus({
 			type: urlTypeFromId(hostId),

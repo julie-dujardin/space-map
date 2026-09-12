@@ -55,7 +55,7 @@
 	import MemberList from './members/MemberList.svelte';
 	import TopicSummary from './sections/kit/TopicSummary.svelte';
 	import SourcesFooter from './sections/SourcesFooter.svelte';
-	import { promoteTabs, type TabItem } from './tab-visibility';
+	import { promoteTabs, tabList, type TabTable } from './tab-visibility';
 	import * as m from '$lib/paraglide/messages.js';
 	import { categoryConfig } from '$lib/state/category-config';
 	import { LineupHero } from './charts/lineup-hero.svelte';
@@ -292,38 +292,54 @@
 	let ringFeatures = $derived(isGroupMode ? undefined : data?.global?.ring_features);
 	let showRingsTab = $derived(Object.values(ringFeatures ?? {}).some((f) => !f.parent));
 
-	let tabPresent = $derived<Record<DrawerTab, boolean>>({
-		overview: true,
-		targets: members.targetVisits.length > 0,
-		images: gallery.hasImages,
-		features: surface.showFeaturesTab,
-		structure: showStructureTab,
-		rings: showRingsTab,
-		members: members.showMembersTab,
-		fragments: members.showFragmentsTab,
-		probes: members.showProbesTab
+	// One tab table, keyed by tab: the bar's triggers, the gallery's shelf links,
+	// the panels and a promoted tab's header all read off it, so none of them can
+	// diverge. Features, rings and members carry no count — five figures of
+	// nomenclature (or a collection's 1.38M) would crowd the bar past four tabs,
+	// and the page states each of those totals anyway: the members total on a
+	// stat card, the others in their own panel.
+	let tabTable = $derived<TabTable>({
+		overview: { label: m.tab_overview(), present: true, panel: overviewPanel },
+		targets: {
+			label: m.tab_targets(),
+			count: members.targetVisits.length,
+			present: members.targetVisits.length > 0,
+			panel: targetsPanel
+		},
+		images: {
+			label: m.tab_images(),
+			count: gallery.imageTotal,
+			present: gallery.hasImages,
+			panel: imagesPanel
+		},
+		features: { label: m.tab_features(), present: surface.showFeaturesTab, panel: featuresPanel },
+		structure: { label: m.tab_structure(), present: showStructureTab, panel: structurePanel },
+		rings: { label: m.tab_rings(), present: showRingsTab, panel: ringsPanel },
+		members: {
+			label: members.membersTabLabel,
+			present: members.showMembersTab,
+			panel: membersPanel
+		},
+		fragments: {
+			label: m.tab_fragments(),
+			count: members.fragmentTotal,
+			present: members.showFragmentsTab,
+			panel: fragmentsPanel
+		},
+		probes: {
+			label: m.tab_probes(),
+			count: members.probeTotal,
+			present: members.showProbesTab,
+			panel: probesPanel
+		}
 	});
-	let tabCount = $derived(Object.values(tabPresent).filter(Boolean).length);
-
-	// One ordered tab table: the bar renders it and the gallery's shelf links
-	// read their labels off it, so the two can't diverge. Features, rings and
-	// members carry no count — five figures of nomenclature (or a collection's
-	// 1.38M) would crowd the bar past four tabs, and the page states each of
-	// those totals anyway: the members total on a stat card, the others in
-	// their own panel.
-	let tabItems = $derived<TabItem[]>([
-		{ tab: 'overview', label: m.tab_overview() },
-		{ tab: 'targets', label: m.tab_targets(), count: members.targetVisits.length },
-		{ tab: 'images', label: m.tab_images(), count: gallery.imageTotal },
-		{ tab: 'features', label: m.tab_features() },
-		{ tab: 'structure', label: m.tab_structure() },
-		{ tab: 'rings', label: m.tab_rings() },
-		{ tab: 'members', label: members.membersTabLabel },
-		{ tab: 'fragments', label: m.tab_fragments(), count: members.fragmentTotal },
-		{ tab: 'probes', label: m.tab_probes(), count: members.probeTotal }
-	]);
+	let tabItems = $derived(tabList(tabTable));
+	let tabPresent = $derived(
+		Object.fromEntries(tabItems.map((t) => [t.tab, t.present])) as Record<DrawerTab, boolean>
+	);
+	let tabCount = $derived(tabItems.filter((t) => t.present).length);
 	let tabLabels = $derived(
-		Object.fromEntries(tabItems.map((t) => [t.tab, t.label])) as Partial<Record<DrawerTab, string>>
+		Object.fromEntries(tabItems.map((t) => [t.tab, t.label])) as Record<DrawerTab, string>
 	);
 
 	/** The body the ring-plane backdrop is drawn from — this page's own. */
@@ -374,19 +390,13 @@
 	let soloGallery = $derived(soloTab === 'images' ? activeGallery : undefined);
 	let soloCrumb = $derived<Crumb | null>(
 		soloGallery
-			? { label: m.tab_images(), target: { kind: 'tab', tab: 'images' } }
+			? { label: tabLabels.images, target: { kind: 'tab', tab: 'images' } }
 			: soloTab
 				? { label: displayName, target: { kind: 'tab', tab: 'overview' } }
 				: null
 	);
 	let soloTitle = $derived(
-		soloGallery
-			? soloGallery.title
-			: soloTab === 'images'
-				? m.tab_images()
-				: soloTab === 'probes'
-					? m.tab_probes()
-					: displayName
+		soloGallery ? soloGallery.title : soloTab ? tabLabels[soloTab] : displayName
 	);
 	let barTabCount = $derived(tabCount - promotedTabs.size);
 
@@ -464,6 +474,27 @@
 	<SurfaceMapBar bodyId={surfaceMapId ?? ''} />
 {/snippet}
 
+{#snippet overviewPanel()}
+	<OverviewPanel
+		{body}
+		{feature}
+		{isGroupMode}
+		{groupSlug}
+		{cat}
+		{clock}
+		{load}
+		{members}
+		{surface}
+		{lineup}
+		{parentBody}
+		{planetarySystem}
+	/>
+{/snippet}
+
+{#snippet targetsPanel()}
+	<TargetsPanel visits={members.targetVisits} />
+{/snippet}
+
 {#snippet imagesPanel()}
 	<ImagesPanel
 		galleries={gallery.galleries}
@@ -474,6 +505,22 @@
 		shelfLink={gallery.shelfLink}
 		titles={isGroupMode ? groupDetail?.localized?.image_titles : data?.localized?.image_titles}
 	/>
+{/snippet}
+
+{#snippet featuresPanel()}
+	<FeaturesPanel {body} {surface} {appState} />
+{/snippet}
+
+{#snippet structurePanel()}
+	<StructurePanel {data} isBody={focusable.kind === 'body'} />
+{/snippet}
+
+{#snippet ringsPanel()}
+	<RingsPanel {ringFeatures} {data} {body} {parentBody} {clock} {planetarySystem} />
+{/snippet}
+
+{#snippet membersPanel()}
+	<MembersPanel {isGroupMode} {groupDetail} {body} {members} {lineup} />
 {/snippet}
 
 {#snippet fragmentsPanel()}
@@ -543,58 +590,22 @@
 
 <!-- A promoted tab's panel, rendered outside Tabs.Root: with no trigger left in
      the bar there is nothing for a tabpanel to be labelled by, so it stops being
-     one and becomes the drawer's only content. -->
+     one and becomes the drawer's only content. Same panel body as under the bar,
+     different wrapper. -->
 {#snippet soloPanel(contentClass: string)}
 	<div class={contentClass}>
-		{#if soloTab === 'images'}
-			{@render imagesPanel()}
-		{:else if soloTab === 'probes'}
-			{@render probesPanel()}
+		{#if soloTab}
+			{@render tabTable[soloTab].panel()}
 		{/if}
 	</div>
 {/snippet}
 
 {#snippet tabPanels(contentClass: string | undefined)}
-	<Tabs.Content value="overview" class={contentClass}>
-		<OverviewPanel
-			{body}
-			{feature}
-			{isGroupMode}
-			{groupSlug}
-			{cat}
-			{clock}
-			{load}
-			{members}
-			{surface}
-			{lineup}
-			{parentBody}
-			{planetarySystem}
-		/>
-	</Tabs.Content>
-	<Tabs.Content value="targets" class={contentClass}>
-		<TargetsPanel visits={members.targetVisits} />
-	</Tabs.Content>
-	<Tabs.Content value="images" class={contentClass}>
-		{@render imagesPanel()}
-	</Tabs.Content>
-	<Tabs.Content value="members" class={contentClass}>
-		<MembersPanel {isGroupMode} {groupDetail} {body} {members} {lineup} />
-	</Tabs.Content>
-	<Tabs.Content value="features" class={contentClass}>
-		<FeaturesPanel {body} {surface} {appState} />
-	</Tabs.Content>
-	<Tabs.Content value="rings" class={contentClass}>
-		<RingsPanel {ringFeatures} {data} {body} {parentBody} {clock} {planetarySystem} />
-	</Tabs.Content>
-	<Tabs.Content value="structure" class={contentClass}>
-		<StructurePanel {data} isBody={focusable.kind === 'body'} />
-	</Tabs.Content>
-	<Tabs.Content value="fragments" class={contentClass}>
-		{@render fragmentsPanel()}
-	</Tabs.Content>
-	<Tabs.Content value="probes" class={contentClass}>
-		{@render probesPanel()}
-	</Tabs.Content>
+	{#each tabItems as item (item.tab)}
+		<Tabs.Content value={item.tab} class={contentClass}>
+			{@render item.panel()}
+		</Tabs.Content>
+	{/each}
 {/snippet}
 
 {#if isMobile}

@@ -9,16 +9,10 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import { memberEntryKey, type NotableMemberEntry } from '$lib/fetch/objects/object-data';
+	import { memberClick, memberDisplayName, memberHref } from './member-link';
 	import { pickedThumbnailUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
-	import {
-		applyFeature,
-		applyFocus,
-		applyGroup,
-		serializeUrl,
-		urlTypeFromId
-	} from '$lib/state/url';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { formatCompactNumber } from '$lib/format/quantities';
 
@@ -63,51 +57,7 @@
 	let shown = $derived(members.slice(0, hasOverflow ? STRIP_CAPACITY - 1 : STRIP_CAPACITY));
 	let moreCount = $derived(hasOverflow ? totalCount - shown.length : 0);
 
-	function displayName(member: NotableMemberEntry): string {
-		return localizedNames?.[memberEntryKey(member)] ?? member.name;
-	}
-
-	function memberHref(member: NotableMemberEntry): string | undefined {
-		if (!appState) return undefined;
-		const name = displayName(member);
-		if (member.group) return serializeUrl(applyGroup(appState.view, member.group, name));
-		if (!member.id) return undefined;
-		if (member.feature_id != null) {
-			return serializeUrl(
-				applyFeature(appState.view, {
-					bodyId: member.id,
-					featureId: member.feature_id,
-					featureName: name
-				})
-			);
-		}
-		return serializeUrl(
-			applyFocus(appState.view, { type: urlTypeFromId(member.id), id: member.id, name })
-		);
-	}
-
-	function focusMember(e: MouseEvent, member: NotableMemberEntry) {
-		if (isModifiedClick(e)) return;
-		const name = displayName(member);
-		// Group entry → open the group; otherwise focus the object. With no
-		// appState/focusObject in context, let the href do a full-page nav.
-		if (member.group) {
-			if (!appState) return;
-			e.preventDefault();
-			appState.setGroup(member.group, name);
-			return;
-		}
-		// A surface feature is streamed in + framed on its host body.
-		if (member.feature_id != null && member.id) {
-			if (!focusFeature) return;
-			e.preventDefault();
-			focusFeature(member.id, member.feature_id, name);
-			return;
-		}
-		if (!focusObject || !member.id) return;
-		e.preventDefault();
-		focusObject(member.id, name, { moveCamera: focusMovesCamera });
-	}
+	let nav = $derived({ appState, focusObject, focusFeature, moveCamera: focusMovesCamera });
 </script>
 
 <div class="flex flex-col gap-1">
@@ -128,9 +78,10 @@
 	<div class="border-border/60 border-t"></div>
 	<div class="grid grid-cols-5 gap-2 pt-1">
 		{#each shown as member (memberEntryKey(member))}
+			{@const name = memberDisplayName(member, localizedNames)}
 			<a
-				href={memberHref(member)}
-				onclick={(e) => focusMember(e, member)}
+				href={memberHref(appState, member, name)}
+				onclick={memberClick(nav, member, name)}
 				class="pointer-events-auto group flex min-w-0 flex-col items-center gap-1"
 			>
 				{#if member.thumbnail}
@@ -145,13 +96,13 @@
 					<div
 						class="bg-muted text-muted-foreground flex aspect-square w-full items-center justify-center rounded-lg text-lg font-medium"
 					>
-						{displayName(member).charAt(0)}
+						{name.charAt(0)}
 					</div>
 				{/if}
 				<span
 					class="text-muted-foreground group-hover:text-foreground w-full truncate text-center text-xs"
 				>
-					{displayName(member)}
+					{name}
 				</span>
 			</a>
 		{/each}

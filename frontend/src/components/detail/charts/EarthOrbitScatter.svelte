@@ -9,9 +9,11 @@
 		classNameFromSlug,
 		orbitClassLabel,
 		type EarthOrbitSample,
-		type OrbitZone,
-		type ZonePoint
+		type OrbitZone
 	} from '$lib/charts/orbit-zones';
+	import { pointInZone, polyPath, zonePopulation } from '$lib/charts/zone-geometry';
+	import { createScrub } from '$lib/charts/scrub';
+	import ScatterAxes from './ScatterAxes.svelte';
 
 	interface Props {
 		samples: EarthOrbitSample[];
@@ -48,15 +50,6 @@
 			.range([innerH, 0])
 			.clamp(true)
 	);
-
-	function polyPath(poly: ZonePoint[]): string {
-		if (poly.length === 0) return '';
-		return (
-			poly
-				.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(p.x).toFixed(2)},${yScale(p.y).toFixed(2)}`)
-				.join(' ') + 'Z'
-		);
-	}
 
 	function isFocused(s: EarthOrbitSample): boolean {
 		if (focusedClass == null) return false;
@@ -102,33 +95,8 @@
 		mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 	}
 
-	function zonePopulation(className: string): number {
-		return populationBySlug[`${CLASS_SLUG_PREFIX}${className}`] ?? 0;
-	}
-
 	let focusedIsIncOnly = $derived(focusedZone != null && focusedZone.polygon.length === 0);
 	const focusedColor = FOCUS_COLORS['peri-apo'];
-
-	// Touch: drag-to-scrub previews the zone tooltip (a tap still navigates),
-	// mirroring SolarSystemMap. Mouse hover stays on the per-element handlers; we
-	// only take over once a touch drag passes DRAG_SLOP, so a tap stays a tap.
-	const DRAG_SLOP = 8;
-	let downX: number | null = null;
-	let downY = 0;
-	let scrubbing = false;
-
-	/** Point-in-polygon (ray cast) in screen px against a zone outline. */
-	function pointInZone(px: number, py: number, poly: ZonePoint[]): boolean {
-		let inside = false;
-		for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-			const xi = xScale(poly[i].x);
-			const yi = yScale(poly[i].y);
-			const xj = xScale(poly[j].x);
-			const yj = yScale(poly[j].y);
-			if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
-		}
-		return inside;
-	}
 
 	function scrubAt(clientX: number, clientY: number) {
 		if (!containerEl) return;
@@ -137,7 +105,7 @@
 		const x = mouse.x - M.left; // into the inner plot (after the g translate)
 		const y = mouse.y - M.top;
 		for (const z of plotZones) {
-			if (pointInZone(x, y, z.polygon)) {
+			if (pointInZone(x, y, z.polygon, xScale, yScale)) {
 				tip = { kind: 'zone', zone: z };
 				return;
 			}
@@ -145,25 +113,7 @@
 		tip = null;
 	}
 
-	function onScrubDown(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return;
-		downX = e.clientX;
-		downY = e.clientY;
-		scrubbing = false;
-	}
-
-	function onScrubMove(e: PointerEvent) {
-		if (e.pointerType === 'mouse' || downX === null) return;
-		if (!scrubbing && Math.hypot(e.clientX - downX, e.clientY - downY) < DRAG_SLOP) return;
-		scrubbing = true;
-		scrubAt(e.clientX, e.clientY);
-	}
-
-	function endScrub() {
-		if (scrubbing) tip = null;
-		downX = null;
-		scrubbing = false;
-	}
+	const scrub = createScrub({ onScrub: scrubAt, onEnd: () => (tip = null) });
 </script>
 
 <div
@@ -173,11 +123,7 @@
 	style:height="{height}px"
 	onmousemove={handleMove}
 	onmouseleave={() => (tip = null)}
-	onpointerdown={onScrubDown}
-	onpointermove={onScrubMove}
-	onpointerup={endScrub}
-	onpointercancel={endScrub}
-	onpointerleave={endScrub}
+	{...scrub}
 	data-vaul-no-drag
 	role="group"
 	aria-label={m.scatter_membership_title()}
@@ -225,7 +171,7 @@
 						role="button"
 						tabindex="0"
 						aria-label={z.className}
-						d={polyPath(z.polygon)}
+						d={polyPath(z.polygon, xScale, yScale)}
 						class="cursor-pointer transition-opacity focus:outline-none focus-visible:stroke-2"
 						fill={focused ? focusedColor : 'transparent'}
 						fill-opacity={focused ? 0.22 : 0}
@@ -258,53 +204,19 @@
 				<!-- Border on top — masks zone strokes at the chart edges. -->
 				<rect width={innerW} height={innerH} fill="none" class="stroke-border" stroke-width="1" />
 
-				<g transform="translate(0,{innerH})">
-					<line x2={innerW} class="stroke-muted-foreground/60" />
-					{#each TICKS as t (t)}
-						{@const tx = xScale(t)}
-						<g transform="translate({tx},0)">
-							<line y2={3} class="stroke-muted-foreground/60" />
-							<text y={12} text-anchor="middle" class="fill-muted-foreground" style:font-size="9px">
-								{formatTick(t)}
-							</text>
-						</g>
-					{/each}
-					<text
-						x={innerW / 2}
-						y={M.bottom - 4}
-						text-anchor="middle"
-						class="fill-muted-foreground"
-						style:font-size="9px"
-					>
-						{m.scatter_axis_perigee()}
-					</text>
-				</g>
-				<g>
-					<line y2={innerH} class="stroke-muted-foreground/60" />
-					{#each TICKS as t (t)}
-						{@const ty = yScale(t)}
-						<g transform="translate(0,{ty})">
-							<line x2={-3} class="stroke-muted-foreground/60" />
-							<text
-								x={-5}
-								dy={3}
-								text-anchor="end"
-								class="fill-muted-foreground"
-								style:font-size="9px"
-							>
-								{formatTick(t)}
-							</text>
-						</g>
-					{/each}
-					<text
-						transform="translate({-M.left + 10},{innerH / 2}) rotate(-90)"
-						text-anchor="middle"
-						class="fill-muted-foreground"
-						style:font-size="9px"
-					>
-						{m.scatter_axis_apogee()}
-					</text>
-				</g>
+				<ScatterAxes
+					{innerW}
+					{innerH}
+					marginLeft={M.left}
+					marginBottom={M.bottom}
+					{xScale}
+					{yScale}
+					xTicks={TICKS}
+					yTicks={TICKS}
+					{formatTick}
+					xLabel={m.scatter_axis_perigee()}
+					yLabel={m.scatter_axis_apogee()}
+				/>
 			</g>
 		</svg>
 	{/if}
@@ -331,7 +243,9 @@
 				{tip.zone.tooltipDefinition()}
 			</div>
 			<div class="text-background/70 mt-0.5 tabular-nums">
-				{m.scatter_tooltip_population({ count: zonePopulation(tip.zone.className) })}
+				{m.scatter_tooltip_population({
+					count: zonePopulation(populationBySlug, tip.zone.className)
+				})}
 			</div>
 		</div>
 	{/if}

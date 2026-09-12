@@ -18,6 +18,20 @@ import { ucfirst } from '$lib/format/quantities';
 import { oceanVolume } from '../../charts/OceanVolumeChart.svelte';
 import * as m from '$lib/paraglide/messages.js';
 
+/** What each page reads off a member's activity. Keyed by property so a new
+ *  collection has to name its own figure instead of falling through blank; the
+ *  three pages handled above read the member's own fields, not its activity. */
+const ACTIVITY_FIGURE: Record<PropertyKind, (activity: MemberActivity) => string | undefined> = {
+	atmospheres: () => undefined,
+	oceans: () => undefined,
+	radiation: () => undefined,
+	volcanism: (activity) =>
+		activity.volcanism ? ucfirst(volcanismLabel(activity.volcanism)) : undefined,
+	tectonics: (activity) => tectonics(activity.tectonics),
+	'magnetic-fields': (activity) => magnetism(activity.magnetism),
+	'tidal-heating': (activity) => tide(activity.tidal)
+};
+
 export function propertyFigure(
 	member: NotableMemberEntry,
 	property: PropertyKind | null
@@ -26,19 +40,8 @@ export function propertyFigure(
 	if (member.atmosphere_pressure) return formatPressure(member.atmosphere_pressure.pa);
 	if (property === 'radiation') return radiation(member.radiation);
 	const activity = member.activity;
-	if (!activity) return undefined;
-	switch (property) {
-		case 'volcanism':
-			return activity.volcanism ? ucfirst(volcanismLabel(activity.volcanism)) : undefined;
-		case 'tectonics':
-			return tectonics(activity.tectonics);
-		case 'magnetic-fields':
-			return magnetism(activity.magnetism);
-		case 'tidal-heating':
-			return tide(activity.tidal);
-		default:
-			return undefined;
-	}
+	if (!activity || !property) return undefined;
+	return ACTIVITY_FIGURE[property](activity);
 }
 
 /** The field a reader could stand on the body and measure, or — where nobody

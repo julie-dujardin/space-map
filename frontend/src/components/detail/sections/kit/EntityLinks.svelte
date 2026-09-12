@@ -4,7 +4,9 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { applyFeature, applyFocus, applyGroup, serializeUrl } from '$lib/state/url';
+	import { applyFeature, applyFocus, serializeUrl } from '$lib/state/url';
+	import { groupClick, groupHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { UrlType } from '$lib/state/view';
 
 	interface Props {
@@ -18,10 +20,6 @@
 
 	function focusEntity(ref: EntityRef) {
 		if (!appState || !ref.primary_id || !ref.primary_type) return;
-		if (ref.primary_type === 'group') {
-			appState.setGroup(ref.primary_id, ref.name);
-			return;
-		}
 		const bodyId = `${ref.primary_type}-${ref.primary_id}`;
 		if (ref.secondary_type === 'feature' && ref.secondary_id) {
 			appState.setFeature({
@@ -37,9 +35,7 @@
 
 	function entityHref(ref: EntityRef): string | undefined {
 		if (!appState || !ref.primary_id || !ref.primary_type) return undefined;
-		if (ref.primary_type === 'group') {
-			return serializeUrl(applyGroup(appState.view, ref.primary_id, ref.name));
-		}
+		if (ref.primary_type === 'group') return groupHref(appState, ref.primary_id, ref.name);
 		const bodyId = `${ref.primary_type}-${ref.primary_id}`;
 		if (ref.secondary_type === 'feature' && ref.secondary_id) {
 			return serializeUrl(
@@ -54,13 +50,16 @@
 		return serializeUrl(applyFocus(appState.view, { type: urlType, id: bodyId, name: ref.name }));
 	}
 
-	// Let middle-click / cmd-click / ctrl-click / shift-click / alt-click fall
-	// through to the browser so "open in new tab" etc. work natively. Only the
-	// plain left-click takes the in-memory fast path.
-	function handleEntityClick(e: MouseEvent, ref: EntityRef) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		e.preventDefault();
-		focusEntity(ref);
+	/** A group ref goes through the shared handler; a body or feature one has no
+	 *  `focusObject` here, so it rewrites the URL and lets the drawer follow. */
+	function entityClick(ref: EntityRef): (e: MouseEvent) => void {
+		if (ref.primary_type === 'group' && ref.primary_id)
+			return groupClick(appState, ref.primary_id, ref.name);
+		return (e) => {
+			if (isModifiedClick(e)) return;
+			e.preventDefault();
+			focusEntity(ref);
+		};
 	}
 
 	function detectTruncation(node: HTMLElement, name: string) {
@@ -100,7 +99,7 @@
 						{#if entity.primary_id && appState}
 							<Link
 								href={entityHref(entity)}
-								onclick={(e) => handleEntityClick(e, entity)}
+								onclick={entityClick(entity)}
 								class="inline-flex max-w-full items-center gap-1 align-bottom"
 								><span class="truncate">{display}</span></Link
 							>

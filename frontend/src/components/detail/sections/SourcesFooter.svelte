@@ -1,6 +1,76 @@
+<script module lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
+
+	interface Provider {
+		/** The provider's general link. A page that knows a more exact one — an
+		 *  object's own catalogue entry — passes it to `addProvider` instead. */
+		url?: string;
+		name: () => string;
+		/** What this provider contributed. Not derivable from the key: the
+		 *  surface colour is credited for the colour, not for the tool. */
+		role: () => string;
+	}
+
+	type ProviderKey =
+		| 'celestrak'
+		| 'iau-naming'
+		| 'johnston'
+		| 'jonathan'
+		| 'jpl-satellite-discovery'
+		| 'mpc'
+		| 'sbdb'
+		| 'truecolortools'
+		| 'wikidata';
+
+	const PROVIDERS: Record<ProviderKey, Provider> = {
+		wikidata: {
+			url: 'https://www.wikidata.org/',
+			name: m.source_wikidata_name,
+			role: m.source_wikidata_role
+		},
+		sbdb: {
+			url: 'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html',
+			name: m.source_sbdb_name,
+			role: m.source_sbdb_role
+		},
+		truecolortools: {
+			url: 'https://github.com/Askaniy/TrueColorTools',
+			name: m.source_truecolortools_name,
+			role: m.source_surface_colour_role
+		},
+		'jpl-satellite-discovery': {
+			url: 'https://ssd.jpl.nasa.gov/sats/discovery.html',
+			name: m.source_jpl_satellite_discovery_name,
+			role: m.source_jpl_satellite_discovery_role
+		},
+		johnston: {
+			url: 'https://www.johnstonsarchive.net/astro/asteroidmoons.html',
+			name: m.source_johnston_name,
+			role: m.source_johnston_role
+		},
+		// The link is built from the designation, so there is no index to fall
+		// back to.
+		mpc: { name: m.source_mpc_name, role: m.source_mpc_role },
+		'iau-naming': {
+			url: 'https://planetarynames.wr.usgs.gov/',
+			name: m.source_iau_naming_name,
+			role: m.source_iau_naming_role
+		},
+		celestrak: {
+			url: 'https://celestrak.org/satcat/',
+			name: m.source_celestrak_name,
+			role: m.source_celestrak_role
+		},
+		jonathan: {
+			url: 'https://planet4589.org/space/',
+			name: m.source_jonathan_space_report_name,
+			role: m.source_jonathan_space_report_role
+		}
+	};
+</script>
+
 <script lang="ts">
 	import Link from './kit/Link.svelte';
-	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveRole, archiveUrl } from '$lib/credits/archive-labels';
 	import {
 		orientationCredits,
@@ -71,6 +141,10 @@
 			// (NAIF)" — would stack a second parenthetical, so it goes bare.
 			out.push({ key, label, url, note: label.endsWith(')') ? undefined : note });
 		};
+		const addProvider = (key: ProviderKey, url?: string) => {
+			const provider = PROVIDERS[key];
+			add(key, provider.name(), url ?? provider.url, provider.role());
+		};
 		// A cited work keeps its note: the parenthetical its title ends in is the
 		// journal, which says nothing about what this body took from the paper.
 		const addWork = (work: CitedWork) => {
@@ -93,74 +167,36 @@
 		if (eph) add(eph, archiveLabel(eph) ?? eph, archiveUrl(eph), archiveRole(eph) ?? undefined);
 
 		const qid = global?.cross_refs?.wikidata_qid;
-		if (qid)
-			add(
-				'wikidata',
-				m.source_wikidata_name(),
-				`https://www.wikidata.org/wiki/${qid}`,
-				m.source_wikidata_role()
-			);
+		if (qid) addProvider('wikidata', `https://www.wikidata.org/wiki/${qid}`);
 		// Wikidata values on a page carrying no QID of its own: the lineup's radius
 		// fallback (P2120), and the spacecraft whose figures were ingested from an
 		// item the bundle never named. Deduped against the QID link above by key.
-		else if (wikidata || global?.wikidata)
-			add(
-				'wikidata',
-				m.source_wikidata_name(),
-				'https://www.wikidata.org/',
-				m.source_wikidata_role()
-			);
+		else if (wikidata || global?.wikidata) addProvider('wikidata');
 
 		// Collection-page lineup geometry/metadata, derived from the members shown.
-		if (sbdb)
-			add(
-				'sbdb',
-				m.source_sbdb_name(),
-				'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html',
-				m.source_sbdb_role()
-			);
+		if (sbdb) addProvider('sbdb');
 		if (pck) addPck();
 
 		// The surface-colour swatch, whichever tier produced it — a measured
 		// spectrum, colour indices, a taxonomic chroma or a bare albedo grey all
 		// come out of the same TrueColorTools run.
-		if (global?.color || global?.sbdb?.color)
-			add(
-				'truecolortools',
-				m.source_truecolortools_name(),
-				'https://github.com/Askaniy/TrueColorTools',
-				m.source_surface_colour_role()
-			);
+		if (global?.color || global?.sbdb?.color) addProvider('truecolortools');
 
 		// A moon's discovery year is JPL's, not Wikidata's — the table is what the
 		// date is taken from, and for most moons no Wikidata item confirms it.
-		if (global?.discovery_year != null)
-			add(
-				'jpl-satellite-discovery',
-				m.source_jpl_satellite_discovery_name(),
-				'https://ssd.jpl.nasa.gov/sats/discovery.html',
-				m.source_jpl_satellite_discovery_role()
-			);
+		if (global?.discovery_year != null) addProvider('jpl-satellite-discovery');
 
 		// Component sizes, system mass, the binary class and the discovery
 		// record of an asteroid moon are Johnston's compilation of the
 		// literature. The block carries its own system page — the exact entry
 		// the numbers were read off, so link that rather than the index.
-		if (global?.johnston)
-			add(
-				'johnston',
-				m.source_johnston_name(),
-				global.johnston.page ?? 'https://www.johnstonsarchive.net/astro/asteroidmoons.html',
-				m.source_johnston_role()
-			);
+		if (global?.johnston) addProvider('johnston', global.johnston.page);
 
 		const mpc = global?.cross_refs?.mpc_designation;
 		if (mpc)
-			add(
+			addProvider(
 				'mpc',
-				m.source_mpc_name(),
-				`https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(mpc)}`,
-				m.source_mpc_role()
+				`https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(mpc)}`
 			);
 
 		// Rotational elements. The orientation table merges three disjoint sets,
@@ -211,26 +247,11 @@
 
 		// Surface-feature names come from the IAU gazetteer (hosted by USGS).
 		if (nomenclature || global?.type === 'feature' || global?.has_nomenclature)
-			add(
-				'iau-naming',
-				m.source_iau_naming_name(),
-				'https://planetarynames.wr.usgs.gov/',
-				m.source_iau_naming_role()
-			);
+			addProvider('iau-naming');
 
 		if (earthSat) {
-			add(
-				'celestrak',
-				m.source_celestrak_name(),
-				'https://celestrak.org/satcat/',
-				m.source_celestrak_role()
-			);
-			add(
-				'jonathan',
-				m.source_jonathan_space_report_name(),
-				'https://planet4589.org/space/',
-				m.source_jonathan_space_report_role()
-			);
+			addProvider('celestrak');
+			addProvider('jonathan');
 		}
 
 		return out;

@@ -12,7 +12,7 @@
 	import { countryFlag, formatCountry, formatOpsStatus } from '$lib/format/satellite';
 	import { sameRef } from '$lib/format/entity-refs';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { groupClick, groupHref } from '$lib/state/focus-link';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import EntityLinks from './kit/EntityLinks.svelte';
@@ -82,16 +82,8 @@
 	);
 	let hasContent = $derived(isSpacecraft && hasFields);
 
-	function countryGroupHref(cc: string, name: string): string | undefined {
-		if (!appState) return undefined;
-		return serializeUrl(applyGroup(appState.view, `country-${cc.toLowerCase()}`, name));
-	}
-
-	function handleCountryClick(e: MouseEvent, cc: string, name: string) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState) return;
-		e.preventDefault();
-		appState.setGroup(`country-${cc.toLowerCase()}`, name);
+	function countrySlug(cc: string): string {
+		return `country-${cc.toLowerCase()}`;
 	}
 </script>
 
@@ -177,12 +169,13 @@
 				<span class="flex flex-wrap justify-end gap-1.5">
 					{#each countries as cc (cc)}
 						{@const name = formatCountry(cc)}
+						{@const slug = countrySlug(cc)}
 						<span title={cc}
 							>{countryFlag(cc)}
 							{#if appState}
 								<Link
-									href={countryGroupHref(cc, name)}
-									onclick={(e) => handleCountryClick(e, cc, name)}>{name}</Link
+									href={groupHref(appState, slug, name)}
+									onclick={groupClick(appState, slug, name)}>{name}</Link
 								>
 							{:else}
 								{name}

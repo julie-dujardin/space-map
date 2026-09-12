@@ -1,4 +1,4 @@
-<script lang="ts">
+<script module lang="ts">
 	/**
 	 * One list rather than four tables, since volcanism/tectonics/tidal/
 	 * magnetism are four views of one question — is there heat left inside,
@@ -32,6 +32,139 @@
 	} from '$lib/format/activity';
 	import { formatKm } from '$lib/format/distance';
 	import { ltrIsolate } from '$lib/format/bidi';
+
+	interface ActivityRow {
+		/** Reads the whole block, so a row that names its own subject can decide
+		 *  from the same source it states. */
+		label: (a: ActivityBlock) => string;
+		/** The figure, formatted; undefined leaves the row out. */
+		value?: (a: ActivityBlock) => string | undefined;
+		/** What this particular figure is: its qualifier, what it comes to
+		 *  against Earth, how long ago it is in words. */
+		note?: (a: ActivityBlock) => string | undefined;
+		/** The one row whose value is another body, rendered as a link to it. */
+		ref?: (a: ActivityBlock) => string | undefined;
+	}
+
+	// Digits, brackets and a Latin unit symbol reorder inside Arabic or Hebrew
+	// text unless the run is isolated — the same treatment the layer cards give
+	// their depths.
+	const num = (value: Measurement, parts?: PartsOf) => ltrIsolate(measurement(value, parts));
+
+	/** A row stating one published measurement. */
+	function measured(
+		label: () => string,
+		get: (a: ActivityBlock) => Measurement | undefined,
+		parts?: PartsOf,
+		note: (value: Measurement) => string | undefined = qualifier
+	): ActivityRow {
+		return {
+			label,
+			value: (a) => {
+				const value = get(a);
+				return value ? num(value, parts) : undefined;
+			},
+			note: (a) => {
+				const value = get(a);
+				return value ? note(value) : undefined;
+			}
+		};
+	}
+
+	// Io and Enceladus publish the same watts as tidal power and as heat leaving
+	// the body, because on those two the observed loss *is* taken as the
+	// production. The exporter resolves that into one flag, so the panel draws
+	// one row under the tidal label rather than two identical ones.
+	const heat = (a: ActivityBlock) => a.volcanism?.endogenic_power_w ?? a.tidal?.power_w;
+	const allTidal = (a: ActivityBlock) => a.tidal?.explains_heat_output === true;
+
+	// Only a measured tide gets a row of its own. `role` is the same quantity at
+	// five-rung resolution, and "Minor" with nothing to be minor against said
+	// less than nothing; a tide that has stopped is in the Activity line
+	// instead, where it explains why the rest of that line is past tense.
+	function measuredTide(a: ActivityBlock): Measurement | undefined {
+		if (allTidal(a)) return undefined;
+		return a.volcanism?.endogenic_power_w ? a.tidal?.power_w : undefined;
+	}
+
+	const ROWS: ActivityRow[] = [
+		measured(m.activity_volcanic_centres, (a) => a.volcanism?.known_centres),
+		measured(m.activity_eruptions_per_year, (a) => a.volcanism?.eruptions_per_year),
+		measured(
+			m.activity_erupted_volume,
+			(a) => a.volcanism?.erupted_volume_km3_per_year,
+			volumeRateParts
+		),
+		measured(m.activity_plumes, (a) => a.volcanism?.plumes),
+		measured(m.activity_plume_mass, (a) => a.volcanism?.plume_mass_kg_per_s, massRateParts),
+		measured(
+			m.activity_youngest_activity,
+			(a) => a.volcanism?.youngest_activity_years,
+			ageParts,
+			(value) => spellAge(value.value)
+		),
+		measured(
+			m.activity_surface_age,
+			(a) => a.volcanism?.surface_age_years,
+			ageParts,
+			(value) => spellAge(value.value)
+		),
+		// Kilometres of lost radius, not a rate — the only row the measurement
+		// formatter has nothing to add to.
+		{
+			label: m.activity_radial_contraction,
+			value: (a) => {
+				const value = a.tectonics?.radial_contraction_km;
+				return value ? ltrIsolate(formatKm(value.value)) : undefined;
+			},
+			note: (a) => {
+				const value = a.tectonics?.radial_contraction_km;
+				return value ? qualifier(value) : undefined;
+			}
+		},
+		// Named for what it is where the two are the same number: on Io and
+		// Enceladus the row *is* the tidal heating, so the label says so and there
+		// is nothing left for a tooltip to explain.
+		{
+			label: (a) => (allTidal(a) ? m.activity_tidal_power() : m.activity_heat_output()),
+			value: (a) => {
+				const value = heat(a);
+				return value ? num(value, powerParts) : undefined;
+			},
+			note: (a) => {
+				const value = heat(a);
+				return value && !allTidal(a) ? qualifier(value) : undefined;
+			}
+		},
+		{ label: m.activity_raised_by, ref: (a) => a.tidal?.raised_by },
+		measured(m.activity_tidal_power, measuredTide, powerParts),
+		{
+			label: m.activity_magnetic_field,
+			value: (a) => (a.magnetism ? fieldKindLabel(a.magnetism.kind) : undefined)
+		},
+		measured(
+			m.activity_surface_field,
+			(a) => a.magnetism?.surface_field_t,
+			fieldParts,
+			fieldStrengthNote
+		),
+		measured(
+			m.activity_dipole_moment,
+			(a) => a.magnetism?.dipole_moment_a_m2,
+			momentParts,
+			dipoleMomentNote
+		),
+		measured(m.activity_dipole_tilt, (a) => a.magnetism?.dipole_tilt_deg, degreeParts),
+		measured(
+			m.activity_dynamo_ended,
+			(a) => a.magnetism?.dynamo_ended_years,
+			ageParts,
+			(value) => spellAge(value.value)
+		)
+	];
+</script>
+
+<script lang="ts">
 	import Row from './kit/Row.svelte';
 	import BodyRefLink from './kit/BodyRefLink.svelte';
 
@@ -41,153 +174,23 @@
 
 	let { activity }: Props = $props();
 
-	// Digits, brackets and a Latin unit symbol reorder inside Arabic or Hebrew
-	// text unless the run is isolated — the same treatment the layer cards give
-	// their depths.
-	const num = (value: Measurement, parts?: PartsOf) => ltrIsolate(measurement(value, parts));
-
 	// Named styles included, unlike the Overview's line: this row is the whole
 	// of what the volcanism and tectonics tables have to say about most bodies.
 	let summary = $derived(activitySummary(activity, { everyStyle: true }));
-
-	let volcanism = $derived(activity.volcanism);
-	let tectonics = $derived(activity.tectonics);
-	let tidal = $derived(activity.tidal);
-	let magnetism = $derived(activity.magnetism);
-
-	// Io and Enceladus publish the same watts as tidal power and as heat
-	// leaving the body, because on those two the observed loss *is* taken as
-	// the production. The exporter resolves that into one flag, so the panel
-	// draws one row under the tidal label rather than two identical ones.
-	let heat = $derived(volcanism?.endogenic_power_w ?? tidal?.power_w);
-	let allTidal = $derived(tidal?.explains_heat_output === true);
-
-	// Only a measured tide gets a row. `role` is the same quantity at five-rung
-	// resolution, and "Minor" with nothing to be minor against said less than
-	// nothing; a tide that has stopped is in the Activity line instead, where it
-	// explains why the rest of that line is past tense.
-	let measuredTide = $derived(
-		!allTidal && volcanism?.endogenic_power_w ? tidal?.power_w : undefined
-	);
 </script>
 
 {#if summary}
 	<Row label={m.activity()} value={summary} />
 {/if}
 
-{#if volcanism}
-	{#if volcanism.known_centres}
-		<Row
-			label={m.activity_volcanic_centres()}
-			valueTooltip={qualifier(volcanism.known_centres)}
-			value={num(volcanism.known_centres)}
-		/>
+{#each ROWS as row, i (i)}
+	{@const ref = row.ref?.(activity)}
+	{@const value = row.value?.(activity)}
+	{#if ref !== undefined}
+		<Row label={row.label(activity)}>
+			<BodyRefLink id={ref} />
+		</Row>
+	{:else if value !== undefined}
+		<Row label={row.label(activity)} valueTooltip={row.note?.(activity)} {value} />
 	{/if}
-	{#if volcanism.eruptions_per_year}
-		<Row
-			label={m.activity_eruptions_per_year()}
-			valueTooltip={qualifier(volcanism.eruptions_per_year)}
-			value={num(volcanism.eruptions_per_year)}
-		/>
-	{/if}
-	{#if volcanism.erupted_volume_km3_per_year}
-		<Row
-			label={m.activity_erupted_volume()}
-			valueTooltip={qualifier(volcanism.erupted_volume_km3_per_year)}
-			value={num(volcanism.erupted_volume_km3_per_year, volumeRateParts)}
-		/>
-	{/if}
-	{#if volcanism.plumes}
-		<Row
-			label={m.activity_plumes()}
-			valueTooltip={qualifier(volcanism.plumes)}
-			value={num(volcanism.plumes)}
-		/>
-	{/if}
-	{#if volcanism.plume_mass_kg_per_s}
-		<Row
-			label={m.activity_plume_mass()}
-			valueTooltip={qualifier(volcanism.plume_mass_kg_per_s)}
-			value={num(volcanism.plume_mass_kg_per_s, massRateParts)}
-		/>
-	{/if}
-	{#if volcanism.youngest_activity_years}
-		<Row
-			label={m.activity_youngest_activity()}
-			valueTooltip={spellAge(volcanism.youngest_activity_years.value)}
-			value={num(volcanism.youngest_activity_years, ageParts)}
-		/>
-	{/if}
-	{#if volcanism.surface_age_years}
-		<Row
-			label={m.activity_surface_age()}
-			valueTooltip={spellAge(volcanism.surface_age_years.value)}
-			value={num(volcanism.surface_age_years, ageParts)}
-		/>
-	{/if}
-{/if}
-
-{#if tectonics}
-	{#if tectonics.radial_contraction_km}
-		<Row
-			label={m.activity_radial_contraction()}
-			valueTooltip={qualifier(tectonics.radial_contraction_km)}
-			value={ltrIsolate(formatKm(tectonics.radial_contraction_km.value))}
-		/>
-	{/if}
-{/if}
-
-{#if heat}
-	<!-- Named for what it is where the two are the same number: on Io and
-	     Enceladus the row *is* the tidal heating, so the label says so and there
-	     is nothing left for a tooltip to explain. -->
-	<Row
-		label={allTidal ? m.activity_tidal_power() : m.activity_heat_output()}
-		valueTooltip={allTidal ? undefined : qualifier(heat)}
-		value={num(heat, powerParts)}
-	/>
-{/if}
-{#if tidal}
-	<Row label={m.activity_raised_by()}>
-		<BodyRefLink id={tidal.raised_by} />
-	</Row>
-	{#if measuredTide}
-		<Row
-			label={m.activity_tidal_power()}
-			valueTooltip={qualifier(measuredTide)}
-			value={num(measuredTide, powerParts)}
-		/>
-	{/if}
-{/if}
-
-{#if magnetism}
-	<Row label={m.activity_magnetic_field()} value={fieldKindLabel(magnetism.kind)} />
-	{#if magnetism.surface_field_t}
-		<Row
-			label={m.activity_surface_field()}
-			valueTooltip={fieldStrengthNote(magnetism.surface_field_t)}
-			value={num(magnetism.surface_field_t, fieldParts)}
-		/>
-	{/if}
-	{#if magnetism.dipole_moment_a_m2}
-		<Row
-			label={m.activity_dipole_moment()}
-			valueTooltip={dipoleMomentNote(magnetism.dipole_moment_a_m2)}
-			value={num(magnetism.dipole_moment_a_m2, momentParts)}
-		/>
-	{/if}
-	{#if magnetism.dipole_tilt_deg}
-		<Row
-			label={m.activity_dipole_tilt()}
-			valueTooltip={qualifier(magnetism.dipole_tilt_deg)}
-			value={num(magnetism.dipole_tilt_deg, degreeParts)}
-		/>
-	{/if}
-	{#if magnetism.dynamo_ended_years}
-		<Row
-			label={m.activity_dynamo_ended()}
-			valueTooltip={spellAge(magnetism.dynamo_ended_years.value)}
-			value={num(magnetism.dynamo_ended_years, ageParts)}
-		/>
-	{/if}
-{/if}
+{/each}

@@ -123,6 +123,11 @@ const CONFIG_BY_SLUG = new Map<string, CategoryConfig>(
  * Where each page's subject happens: the melt comes out of the mantle, the
  * dynamo runs in the core, and the tide is dissipated in the soft middle.
  * Atmospheres have no interior layer to lift — their members draw a limb.
+ *
+ * The chart and the per-member figure each page carries are keyed the same way,
+ * beside the panel that renders them: `panels/overview/property-charts.ts` and
+ * `group-figures.ts`. Components stay out of this module — the breadcrumb and
+ * its test import it.
  */
 export const PROPERTY_ACCENT: Record<PropertyKind, ReadonlySet<string> | undefined> = {
 	atmospheres: undefined,

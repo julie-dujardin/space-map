@@ -35,8 +35,6 @@
 
 	const CLOUD_R = 1.2;
 
-	const DRAG_SLOP = 8;
-
 	const BAND_TONE = {
 		muted: { pattern: 'text-muted-foreground', label: 'fill-muted-foreground' },
 		sky: { pattern: 'text-sky-400/70', label: 'fill-sky-400' },
@@ -53,6 +51,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusHref, focusClick } from '$lib/state/focus-link';
+	import { createScrub } from '$lib/charts/scrub';
 	import type { MapBand, MapBody, MapSatellite, SystemMapModel } from './system-map';
 
 	interface Props {
@@ -250,14 +249,7 @@
 		return null;
 	});
 
-	// Touch: drag-to-scrub previews tooltips (a tap still navigates/focuses),
-	// mirroring BodyLineup. Mouse hover stays on the per-element pointerenter
-	// handlers; we only take over once a touch drag passes DRAG_SLOP, so a tap
-	// stays a tap.
 	let svgEl = $state<SVGSVGElement | null>(null);
-	let downX: number | null = null;
-	let downY = 0;
-	let scrubbing = false;
 
 	function clearHover() {
 		hoveredId = null;
@@ -304,25 +296,7 @@
 		if (Math.hypot(vx - primaryCx, vy - CY) <= primaryR) hoveredId = model.primary.id;
 	}
 
-	function onScrubDown(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return;
-		downX = e.clientX;
-		downY = e.clientY;
-		scrubbing = false;
-	}
-
-	function onScrubMove(e: PointerEvent) {
-		if (e.pointerType === 'mouse' || downX === null) return;
-		if (!scrubbing && Math.hypot(e.clientX - downX, e.clientY - downY) < DRAG_SLOP) return;
-		scrubbing = true;
-		scrubAt(e.clientX, e.clientY);
-	}
-
-	function endScrub() {
-		if (scrubbing) clearHover();
-		downX = null;
-		scrubbing = false;
-	}
+	const scrub = createScrub({ onScrub: scrubAt, onEnd: clearHover });
 </script>
 
 <div
@@ -346,11 +320,7 @@
 		class="text-muted-foreground block w-full touch-pan-y {isBackground ? 'h-full' : 'h-auto'}"
 		role="group"
 		aria-label={ariaLabel}
-		onpointerdown={onScrubDown}
-		onpointermove={onScrubMove}
-		onpointerup={endScrub}
-		onpointercancel={endScrub}
-		onpointerleave={endScrub}
+		{...scrub}
 		data-vaul-no-drag
 	>
 		<defs>

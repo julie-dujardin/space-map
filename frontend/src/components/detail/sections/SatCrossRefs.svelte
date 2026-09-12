@@ -11,9 +11,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { OrbitalSource } from '$lib/fetch/position/format';
-	import { applyGroup, serializeUrl } from '$lib/state/url';
-	import { focusClick, focusHref } from '$lib/state/focus-link';
-	import { isModifiedClick } from '$lib/modified-click';
+	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
 	import {
 		CLASS_SLUG_PREFIX,
 		classifyEarthOrbit,
@@ -231,18 +229,16 @@
 		// Every tile but `carried_by` points at a group; that one names a craft.
 		return ref.primary_type === 'object'
 			? focusHref(appState, ref.primary_id, ref.name)
-			: serializeUrl(applyGroup(appState.view, ref.primary_id, ref.name));
+			: groupHref(appState, ref.primary_id, ref.name);
 	}
 
 	function open(e: MouseEvent, ref: EntityRef) {
-		if (!appState || !ref.primary_id) return;
-		if (ref.primary_type === 'object') {
-			focusClick(focusObject, ref.primary_id, ref.name)(e);
-			return;
-		}
-		if (isModifiedClick(e)) return;
-		e.preventDefault();
-		appState.setGroup(ref.primary_id, ref.name);
+		if (!ref.primary_id) return;
+		const click =
+			ref.primary_type === 'object'
+				? focusClick(focusObject, ref.primary_id, ref.name)
+				: groupClick(appState, ref.primary_id, ref.name);
+		click(e);
 	}
 </script>
 

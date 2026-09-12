@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
-	import MemberRow from './MemberRow.svelte';
+	import MemberRow, { memberFigures } from './MemberRow.svelte';
+	import { memberClick, memberHref } from './member-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
@@ -17,15 +18,6 @@
 	} from '$lib/search/client';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
-	import { isModifiedClick } from '$lib/modified-click';
-	import {
-		applyFeature,
-		applyFocus,
-		applyGroup,
-		serializeUrl,
-		urlTypeFromId
-	} from '$lib/state/url';
-	import { formatQuantity } from '$lib/format/quantities';
 
 	/** A group's members (by slug), or a body's moons / surface features (by id). */
 	type MemberSource =
@@ -47,6 +39,7 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
+	const nav = { appState, focusObject, focusFeature };
 
 	const PAGE_SIZE = 30;
 	// Meili caps results at maxTotalHits (1000); never page past it.
@@ -62,7 +55,7 @@
 		/** Group slug; set → the row routes to /g/<slug> instead of focusing. */
 		group?: string;
 		/** IAU feature id; set → the row opens that feature on its host body. */
-		featureId?: number;
+		feature_id?: number;
 		name: string;
 		thumbnail?: PickedThumbnail;
 		diameter_km?: number;
@@ -104,7 +97,7 @@
 				return {
 					id: e.id,
 					group: e.group,
-					featureId: e.feature_id,
+					feature_id: e.feature_id,
 					name: localizedNames?.[key] ?? e.name,
 					thumbnail: e.thumbnail,
 					diameter_km: e.diameter_km,
@@ -122,7 +115,7 @@
 		if (hit.kind === 'feature') {
 			return {
 				id: hit.body_id,
-				featureId: hit.feature_id,
+				feature_id: hit.feature_id,
 				name,
 				thumbnail: hit.thumbnail,
 				diameter_km: hit.diameter_km
@@ -238,55 +231,6 @@
 		io.observe(el);
 		return () => io.disconnect();
 	});
-
-	function rowKey(row: Row): string {
-		return memberEntryKey({
-			name: row.name,
-			id: row.id,
-			group: row.group,
-			feature_id: row.featureId
-		});
-	}
-
-	function rowHref(row: Row): string | undefined {
-		if (!appState) return undefined;
-		if (row.group) return serializeUrl(applyGroup(appState.view, row.group, row.name));
-		if (!row.id) return undefined;
-		if (row.featureId != null) {
-			return serializeUrl(
-				applyFeature(appState.view, {
-					bodyId: row.id,
-					featureId: row.featureId,
-					featureName: row.name
-				})
-			);
-		}
-		return serializeUrl(
-			applyFocus(appState.view, { type: urlTypeFromId(row.id), id: row.id, name: row.name })
-		);
-	}
-
-	function focusRow(e: MouseEvent, row: Row) {
-		if (isModifiedClick(e)) return;
-		// A constellation row opens its group page; an object focuses its mesh.
-		if (row.group) {
-			if (!appState) return;
-			e.preventDefault();
-			appState.setGroup(row.group, row.name);
-			return;
-		}
-		// A feature row hands off to the map, which streams in the host body and
-		// frames the feature on it.
-		if (row.featureId != null && row.id) {
-			if (!focusFeature) return;
-			e.preventDefault();
-			focusFeature(row.id, row.featureId, row.name);
-			return;
-		}
-		if (!focusObject || !row.id) return;
-		e.preventDefault();
-		focusObject(row.id, row.name, { moveCamera: true });
-	}
 </script>
 
 <div class="flex flex-col gap-1">
@@ -301,27 +245,19 @@
 		</div>
 	{/if}
 	<ul class="flex flex-col">
-		{#each rows as row (rowKey(row))}
+		{#each rows as row (memberEntryKey(row))}
 			<MemberRow
 				name={row.name}
 				thumbnail={row.thumbnail}
-				href={rowHref(row)}
-				onclick={(e) => focusRow(e, row)}
-				onmouseenter={() => onHoverFeature?.(row.featureId ?? null)}
+				href={memberHref(appState, row, row.name)}
+				onclick={memberClick(nav, row, row.name)}
+				onmouseenter={() => onHoverFeature?.(row.feature_id ?? null)}
 				onmouseleave={() => onHoverFeature?.(null)}
-				onfocus={() => onHoverFeature?.(row.featureId ?? null)}
+				onfocus={() => onHoverFeature?.(row.feature_id ?? null)}
 				onblur={() => onHoverFeature?.(null)}
 				valuesClass="tabular-nums"
 			>
-				{#if row.diameter_km != null}
-					<span>{formatQuantity({ value: row.diameter_km, unit: 'kilometre' }, true)}</span>
-				{/if}
-				{#if row.year}
-					<span class="text-muted-foreground">{row.year}</span>
-				{/if}
-				{#if row.diameter_km == null && !row.year}
-					<span class="text-muted-foreground">–</span>
-				{/if}
+				{@render memberFigures(row)}
 			</MemberRow>
 		{/each}
 	</ul>

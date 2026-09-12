@@ -12,14 +12,9 @@
 	import CountPerBodyChart from '../../charts/CountPerBodyChart.svelte';
 	import PlanetMassChart from '../../charts/PlanetMassChart.svelte';
 	import RingMassChart from '../../charts/RingMassChart.svelte';
-	import OceanVolumeChart from '../../charts/OceanVolumeChart.svelte';
-	import AtmospherePressureChart from '../../charts/AtmospherePressureChart.svelte';
-	import ValuePerBodyChart from '../../charts/ValuePerBodyChart.svelte';
-	import RadiationDoseChart from '../../charts/RadiationDoseChart.svelte';
-	import TectonicStyleChart from '../../charts/TectonicStyleChart.svelte';
-	import VolcanismStatusChart from '../../charts/VolcanismStatusChart.svelte';
 	import SolarSystemMassChart from '../../charts/SolarSystemMassChart.svelte';
 	import { propertyFigure } from './group-figures';
+	import { PROPERTY_CHART } from './property-charts';
 	import {
 		categoryPlotType,
 		classNameFromSlug,
@@ -28,7 +23,6 @@
 	} from '$lib/charts/orbit-zones';
 	import { CAT_STRUCTURE_ACTIVITY } from '$lib/fetch/groups/registry';
 	import { PROPERTY_ACCENT, type CategoryConfig } from '$lib/state/category-config';
-	import { fieldParts, powerParts } from '$lib/format/activity';
 	import type { GroupDetailData } from '$lib/fetch/groups/details';
 	import type { MembersState } from '../../state/members-state.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -99,42 +93,14 @@
 	<RingMassChart members={notableMembers} localizedNames={memberNames} />
 {/if}
 {#if cat.property && notableMembers && notableMembers.length > 0}
+	{@const chart = PROPERTY_CHART[cat.property]}
 	<PropertyMemberList
 		members={notableMembers}
 		names={memberNames}
 		accent={PROPERTY_ACCENT[cat.property]}
 		figure={(mm) => propertyFigure(mm, cat.property)}
 	/>
-	{#if cat.property === 'oceans'}
-		<OceanVolumeChart members={notableMembers} localizedNames={memberNames} />
-	{:else if cat.property === 'atmospheres'}
-		<AtmospherePressureChart members={notableMembers} localizedNames={memberNames} />
-	{:else if cat.property === 'volcanism'}
-		<VolcanismStatusChart members={notableMembers} />
-	{:else if cat.property === 'tectonics'}
-		<TectonicStyleChart members={notableMembers} />
-	{:else if cat.property === 'magnetic-fields'}
-		<ValuePerBodyChart
-			members={notableMembers}
-			localizedNames={memberNames}
-			title={m.group_magnetic_field_title()}
-			value={(e) =>
-				e.activity?.magnetism?.surface_field_t_upper_limit
-					? undefined
-					: e.activity?.magnetism?.surface_field_t}
-			text={(v) => `${fieldParts(v).value} ${fieldParts(v).unit}`}
-		/>
-	{:else if cat.property === 'tidal-heating'}
-		<ValuePerBodyChart
-			members={notableMembers}
-			localizedNames={memberNames}
-			title={m.group_tidal_power_title()}
-			value={(e) => e.activity?.tidal?.power_w}
-			text={(v) => `${powerParts(v).value} ${powerParts(v).unit}`}
-		/>
-	{:else if cat.property === 'radiation'}
-		<RadiationDoseChart members={notableMembers} localizedNames={memberNames} />
-	{/if}
+	<chart.component members={notableMembers} localizedNames={memberNames} {...chart.extra?.()} />
 {/if}
 {#if cat.planets && notableMembers && notableMembers.length > 0}
 	<PlanetMassChart members={notableMembers} localizedNames={memberNames} />

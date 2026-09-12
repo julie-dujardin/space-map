@@ -13,6 +13,36 @@
 			desc: () => m.layers_view_immersive_desc()
 		}
 	];
+
+	const layerToggles: {
+		id: string;
+		label: () => string;
+		desc: () => string;
+		checked: () => boolean;
+		set: (on: boolean) => void;
+	}[] = [
+		{
+			id: 'clouds',
+			label: () => m.layers_clouds(),
+			desc: () => m.layers_clouds_desc(),
+			checked: () => settings.showClouds,
+			set: (on) => settings.setShowClouds(on)
+		},
+		{
+			id: 'atmosphere',
+			label: () => m.layers_atmosphere(),
+			desc: () => m.layers_atmosphere_desc(),
+			checked: () => settings.showAtmospheres,
+			set: (on) => settings.setShowAtmospheres(on)
+		},
+		{
+			id: 'high-ambient',
+			label: () => m.layers_high_ambient(),
+			desc: () => m.layers_high_ambient_desc(),
+			checked: () => settings.highAmbient,
+			set: (on) => settings.setHighAmbient(on)
+		}
+	];
 </script>
 
 <div class="flex flex-col">
@@ -52,33 +82,15 @@
 			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 				{m.layers_section_layers()}
 			</h3>
-			<label class="flex items-center justify-between gap-3 cursor-pointer">
-				<div class="flex flex-col min-w-0">
-					<span class="text-sm font-medium">{m.layers_clouds()}</span>
-					<span class="text-xs text-muted-foreground">{m.layers_clouds_desc()}</span>
-				</div>
-				<Switch checked={settings.showClouds} onCheckedChange={(v) => settings.setShowClouds(v)} />
-			</label>
-			<label class="flex items-center justify-between gap-3 cursor-pointer">
-				<div class="flex flex-col min-w-0">
-					<span class="text-sm font-medium">{m.layers_atmosphere()}</span>
-					<span class="text-xs text-muted-foreground">{m.layers_atmosphere_desc()}</span>
-				</div>
-				<Switch
-					checked={settings.showAtmospheres}
-					onCheckedChange={(v) => settings.setShowAtmospheres(v)}
-				/>
-			</label>
-			<label class="flex items-center justify-between gap-3 cursor-pointer">
-				<div class="flex flex-col min-w-0">
-					<span class="text-sm font-medium">{m.layers_high_ambient()}</span>
-					<span class="text-xs text-muted-foreground">{m.layers_high_ambient_desc()}</span>
-				</div>
-				<Switch
-					checked={settings.highAmbient}
-					onCheckedChange={(v) => settings.setHighAmbient(v)}
-				/>
-			</label>
+			{#each layerToggles as toggle (toggle.id)}
+				<label class="flex items-center justify-between gap-3 cursor-pointer">
+					<div class="flex flex-col min-w-0">
+						<span class="text-sm font-medium">{toggle.label()}</span>
+						<span class="text-xs text-muted-foreground">{toggle.desc()}</span>
+					</div>
+					<Switch checked={toggle.checked()} onCheckedChange={toggle.set} />
+				</label>
+			{/each}
 		</section>
 	</div>
 </div>

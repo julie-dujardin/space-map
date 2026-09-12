@@ -3,6 +3,12 @@
   column supplied by the caller. Shared by the member lists and the probe
   target list so the row look lives in one place.
 -->
+<script module lang="ts">
+	import { formatQuantity } from '$lib/format/quantities';
+
+	export { memberFigures };
+</script>
+
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { HTMLAttributes } from 'svelte/elements';
@@ -32,6 +38,20 @@
 		...rest
 	}: Props = $props();
 </script>
+
+<!-- The plain member row's right-hand column. A row with neither figure keeps
+     the dash, so the column reads as a column rather than a gap. -->
+{#snippet memberFigures(row: { diameter_km?: number; year?: string })}
+	{#if row.diameter_km != null}
+		<span>{formatQuantity({ value: row.diameter_km, unit: 'kilometre' }, true)}</span>
+	{/if}
+	{#if row.year}
+		<span class="text-muted-foreground">{row.year}</span>
+	{/if}
+	{#if row.diameter_km == null && !row.year}
+		<span class="text-muted-foreground">–</span>
+	{/if}
+{/snippet}
 
 {#snippet content()}
 	{#if thumbnail}

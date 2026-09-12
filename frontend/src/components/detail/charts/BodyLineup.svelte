@@ -95,6 +95,7 @@
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
+	import { createScrub } from '$lib/charts/scrub';
 	import { formatQuantity } from '$lib/format/quantities';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -197,13 +198,6 @@
 		mq.addEventListener('change', update);
 		return () => mq.removeEventListener('change', update);
 	});
-
-	// Touch scrub: distinguish a tap (focuses, via native button click) from a
-	// drag (previews). We only start previewing past DRAG_SLOP so a tap stays a tap.
-	const DRAG_SLOP = 8;
-	let downX: number | null = null;
-	let downY = 0;
-	let scrubbing = false;
 
 	interface LaidOut extends Body {
 		pr: number; // sphere pixel radius
@@ -320,30 +314,20 @@
 		focusBody(hoveredId);
 	}
 
-	// Mouse: hover tracks the pointer directly. Touch/pen: preview only once a
-	// drag passes DRAG_SLOP, so a tap (which fires the button's click → focus)
-	// never flashes the spread/glow.
+	const scrub = createScrub({
+		onScrub: (clientX, clientY) => (hoveredId = pickAt(clientX, clientY)),
+		onEnd: () => (hoveredId = null)
+	});
+
+	// Mouse hover tracks the pointer directly; touch/pen goes through the scrub
+	// gesture so a tap (which fires the button's click → focus) never flashes the
+	// spread/glow.
 	function onPointerMove(e: PointerEvent) {
 		if (e.pointerType === 'mouse') {
 			hoveredId = pickAt(e.clientX, e.clientY);
 			return;
 		}
-		if (downX === null) return;
-		if (!scrubbing && Math.hypot(e.clientX - downX, e.clientY - downY) < DRAG_SLOP) return;
-		scrubbing = true;
-		hoveredId = pickAt(e.clientX, e.clientY);
-	}
-
-	function onPointerDown(e: PointerEvent) {
-		downX = e.clientX;
-		downY = e.clientY;
-		scrubbing = false;
-	}
-
-	function endScrub() {
-		if (scrubbing) hoveredId = null;
-		downX = null;
-		scrubbing = false;
+		scrub.onpointermove(e);
 	}
 
 	// --- Three.js: a flat, orthographic, pixel-space lineup of textured spheres.
@@ -840,13 +824,13 @@
 	<div
 		bind:this={containerEl}
 		bind:clientWidth={width}
-		onpointerdown={onPointerDown}
+		onpointerdown={scrub.onpointerdown}
 		onpointermove={onPointerMove}
-		onpointerup={endScrub}
-		onpointercancel={endScrub}
+		onpointerup={scrub.onpointerup}
+		onpointercancel={scrub.onpointercancel}
 		onpointerleave={() => {
 			hoveredId = null;
-			endScrub();
+			scrub.onpointerleave();
 		}}
 		class="bg-muted/30 relative w-full touch-pan-y overflow-hidden rounded-md"
 		style="height: {HEIGHT}px"

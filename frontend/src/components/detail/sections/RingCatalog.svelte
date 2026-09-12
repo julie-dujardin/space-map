@@ -24,7 +24,9 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { serializeUrl } from '$lib/state/url';
+	import { focusClick, focusHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { resolveBodyColor } from '$lib/body-color';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import ObjectDescription from './ObjectDescription.svelte';
@@ -51,24 +53,6 @@
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 	const ctx = getContext<ContextManager | undefined>('ctx');
 
-	function moonHref(moon: { name: string; id?: string }): string | undefined {
-		if (!appState || !moon.id) return undefined;
-		return serializeUrl(
-			applyFocus(appState.view, {
-				type: urlTypeFromId(moon.id),
-				id: moon.id,
-				name: moon.name
-			})
-		);
-	}
-
-	function focusMoon(e: MouseEvent, moon: { name: string; id?: string }) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!focusObject || !moon.id) return;
-		e.preventDefault();
-		focusObject(moon.id, moon.name);
-	}
-
 	/** Deep link to a level of the catalogue; null is the system itself. A
 	 *  cluster gets none — the URL has no name for a row the scale invented. */
 	function ringHref(entry: Level | null): string | undefined {
@@ -79,7 +63,7 @@
 	/** Drill in place on a plain click, leaving modified ones to the browser —
 	 *  the href is a real page, so ⌘-click opens the section in a new tab. */
 	function openLevel(e: MouseEvent, next: Level[]) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (isModifiedClick(e)) return;
 		e.preventDefault();
 		path = next;
 	}
@@ -868,7 +852,7 @@
 			style="width: {moonDots.width}px; height: {chartHeight + 8}px"
 		>
 			{#each moonDots.dots as dot (dot.name)}
-				{@const href = moonHref(dot)}
+				{@const href = focusHref(appState, dot.id, dot.name)}
 				{@const dotClass = 'absolute rounded-full ring-1 ring-black/50'}
 				{@const dotStyle = `top: ${dot.top + 4 - dot.size / 2}px; left: ${dot.left}px; width: ${dot.size}px; height: ${dot.size}px; background-color: ${dot.color}`}
 				<Tooltip.Root>
@@ -878,7 +862,7 @@
 								<a
 									{...props}
 									{href}
-									onclick={(e) => focusMoon(e, dot)}
+									onclick={focusClick(focusObject, dot.id, dot.name)}
 									class="{dotClass} hover:ring-foreground"
 									style={dotStyle}
 									aria-label={dot.name}

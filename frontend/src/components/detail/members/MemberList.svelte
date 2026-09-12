@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import MemberRow from './MemberRow.svelte';
-	import type { NotableMemberEntry } from '$lib/fetch/groups/details';
+	import MemberRow, { memberFigures } from './MemberRow.svelte';
+	import { memberClick, memberDisplayName, memberHref } from './member-link';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import type { FocusObject } from '$lib/state/focusable';
-	import { isModifiedClick } from '$lib/modified-click';
-	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
-	import { formatQuantity } from '$lib/format/quantities';
+	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
+	import {
+		memberEntryKey,
+		type NotableMemberEntry,
+		type ProbeVisitKind
+	} from '$lib/fetch/objects/object-data';
 	import { m } from '$lib/paraglide/messages';
-	import type { ProbeVisitKind } from '$lib/fetch/objects/object-data';
 
 	interface Props {
 		members: NotableMemberEntry[];
@@ -22,34 +23,9 @@
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
+	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
 
-	function displayName(member: NotableMemberEntry): string {
-		return localizedNames?.[member.id ?? member.group ?? ''] ?? member.name;
-	}
-
-	function memberHref(member: NotableMemberEntry): string | undefined {
-		if (!appState) return undefined;
-		const name = displayName(member);
-		if (member.group) return serializeUrl(applyGroup(appState.view, member.group, name));
-		if (!member.id) return undefined;
-		return serializeUrl(
-			applyFocus(appState.view, { type: urlTypeFromId(member.id), id: member.id, name })
-		);
-	}
-
-	function focusMember(e: MouseEvent, member: NotableMemberEntry) {
-		if (isModifiedClick(e)) return;
-		const name = displayName(member);
-		if (member.group) {
-			if (!appState) return;
-			e.preventDefault();
-			appState.setGroup(member.group, name);
-			return;
-		}
-		if (!focusObject || !member.id) return;
-		e.preventDefault();
-		focusObject(member.id, name, { moveCamera: focusMovesCamera });
-	}
+	let nav = $derived({ appState, focusObject, focusFeature, moveCamera: focusMovesCamera });
 
 	/** Discovery year from the first_obs proxy (YYYY-MM-DD or YYYY). */
 	function discoveryYear(member: NotableMemberEntry): string | undefined {
@@ -80,13 +56,14 @@
 
 <div class="flex flex-col gap-1">
 	<ul class="flex flex-col">
-		{#each members as member (member.id ?? member.group)}
+		{#each members as member (memberEntryKey(member))}
 			{@const year = discoveryYear(member)}
+			{@const name = memberDisplayName(member, localizedNames)}
 			<MemberRow
-				name={displayName(member)}
+				{name}
 				thumbnail={member.thumbnail}
-				href={memberHref(member)}
-				onclick={(e) => focusMember(e, member)}
+				href={memberHref(appState, member, name)}
+				onclick={memberClick(nav, member, name)}
 				valuesClass="tabular-nums"
 				valuesWrap={member.visits !== undefined}
 			>
@@ -101,15 +78,7 @@
 					<span>{KIND_LABEL[member.visit.kind]()}</span>
 					<span class="text-muted-foreground">{visitYears(member.visit)}</span>
 				{:else}
-					{#if member.diameter_km != null}
-						<span>{formatQuantity({ value: member.diameter_km, unit: 'kilometre' }, true)}</span>
-					{/if}
-					{#if year}
-						<span class="text-muted-foreground">{year}</span>
-					{/if}
-					{#if member.diameter_km == null && !year}
-						<span class="text-muted-foreground">–</span>
-					{/if}
+					{@render memberFigures({ diameter_km: member.diameter_km, year })}
 				{/if}
 			</MemberRow>
 		{/each}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, type Snippet } from 'svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { groupClick, groupHref } from '$lib/state/focus-link';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import { heroImage } from '$lib/fetch/objects/galleries';
@@ -31,13 +31,8 @@
 		const img = heroImage(detail.global);
 		return img ? pickImageUrl(img, 300) : undefined;
 	});
-	let href = $derived(appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined);
-	function open(e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState) return;
-		e.preventDefault();
-		appState.setGroup(slug, name);
-	}
+	let href = $derived(groupHref(appState, slug, name));
+	let open = $derived(groupClick(appState, slug, name));
 </script>
 
 <CrossRefCard

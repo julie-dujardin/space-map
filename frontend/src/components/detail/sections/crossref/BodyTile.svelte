@@ -3,7 +3,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import type { DrawerTab } from '$lib/state/view';
-	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { focusClick, focusHref } from '$lib/state/focus-link';
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import { objectTypeLabel } from '$lib/format/object-type';
@@ -62,19 +62,8 @@
 	let resolvedName = $derived(name ?? fetched?.name ?? '');
 	let resolvedLabel = $derived(label ?? fetched?.label ?? '');
 
-	let href = $derived(
-		appState
-			? serializeUrl(
-					applyFocus(appState.view, { type: urlTypeFromId(id), id, name: resolvedName, tab })
-				)
-			: undefined
-	);
-	function open(e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!focusObject) return; // fall back to the href's native navigation
-		e.preventDefault();
-		focusObject(id, resolvedName, { tab });
-	}
+	let href = $derived(focusHref(appState, id, resolvedName, tab));
+	let open = $derived(focusClick(focusObject, id, resolvedName, { tab }));
 </script>
 
 <CrossRefCard

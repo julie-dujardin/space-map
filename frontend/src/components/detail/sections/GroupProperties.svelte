@@ -8,7 +8,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
-	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { groupClick, groupHref } from '$lib/state/focus-link';
 	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
 	import { featureTypeDescription } from '$lib/format/feature-type';
 	import { namingOriginLabel } from '$lib/format/naming-origin';
@@ -194,18 +194,6 @@
 			live = false;
 		};
 	});
-
-	function groupHref(slug: string, name: string): string | undefined {
-		if (!appState) return undefined;
-		return serializeUrl(applyGroup(appState.view, slug, name));
-	}
-
-	function handleGroupClick(e: MouseEvent, slug: string, name: string) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState) return;
-		e.preventDefault();
-		appState.setGroup(slug, name);
-	}
 </script>
 
 <GroupOrbitMap {global} />
@@ -356,8 +344,8 @@
 		{@const slug = e.primary_id}
 		{@const name = e.name}
 		<Link
-			href={groupHref(slug, name)}
-			onclick={(ev) => handleGroupClick(ev, slug, name)}
+			href={groupHref(appState, slug, name)}
+			onclick={groupClick(appState, slug, name)}
 			class="inline-flex min-w-0 items-center gap-1 truncate"
 			><span class="truncate">{e.name}</span></Link
 		>

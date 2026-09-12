@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { groupClick, groupHref } from '$lib/state/focus-link';
 	import { formatCompactNumber } from '$lib/format/quantities';
 
 	interface Props {
@@ -15,15 +15,8 @@
 
 	const appState = getContext<AppState | undefined>('appState');
 
-	let href = $derived(appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined);
-
-	// Plain left-click swaps in-app; modifier-clicks fall through to the browser.
-	function onClick(e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState) return;
-		e.preventDefault();
-		appState.setGroup(slug, name);
-	}
+	let href = $derived(groupHref(appState, slug, name));
+	let onClick = $derived(groupClick(appState, slug, name));
 </script>
 
 <a

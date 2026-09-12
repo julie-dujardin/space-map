@@ -25,13 +25,9 @@
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
-	import {
-		applyFeature,
-		applyFocus,
-		applyGroup,
-		serializeUrl,
-		urlTypeFromId
-	} from '$lib/state/url';
+	import { applyFeature, serializeUrl } from '$lib/state/url';
+	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { formatDistance } from '$lib/format/distance';
 	import { EARTH_ID } from '$lib/constants';
 	import { earthOceans, oceanVolume } from '../charts/OceanVolumeChart.svelte';
@@ -63,26 +59,10 @@
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 	const focusFeature = getContext<FocusFeature | undefined>('focusFeature');
 
-	function focusBody(id: string, name: string, e: MouseEvent, tab?: 'rings' | 'structure') {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		// No focusObject in context — let the href do a full-page navigation.
-		if (!focusObject) return;
-		e.preventDefault();
-		focusObject(id, name, { tab });
-	}
-
 	function openFeature(bodyId: string, featureId: number, name: string, e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!focusFeature) return;
+		if (isModifiedClick(e) || !focusFeature) return;
 		e.preventDefault();
 		focusFeature(bodyId, featureId, name);
-	}
-
-	function focusGroup(slug: string, name: string, e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState) return;
-		e.preventDefault();
-		appState.setGroup(slug, name);
 	}
 
 	function ofTotal(n: number, total: number): string | undefined {
@@ -145,14 +125,8 @@
 			label: m.group_stat_largest(),
 			value: formatQuantity({ value: largest.diameter_km, unit: 'kilometre' }, true),
 			tooltip: largest.name,
-			href: serializeUrl(
-				applyFocus(appState.view, {
-					type: urlTypeFromId(bodyId),
-					id: bodyId,
-					name: largest.name
-				})
-			),
-			onClick: (e) => focusBody(bodyId, largest.name, e)
+			href: focusHref(appState, bodyId, largest.name),
+			onClick: focusClick(focusObject, bodyId, largest.name)
 		};
 	}
 
@@ -168,15 +142,8 @@
 				unit: formatUnit('kilometre', true)
 			}),
 			tooltip: `${m.tooltip_group_stat_widest()} — ${widest.name}`,
-			href: serializeUrl(
-				applyFocus(appState.view, {
-					type: urlTypeFromId(widest.primary_id),
-					id: widest.primary_id,
-					name: widest.name,
-					tab: 'rings'
-				})
-			),
-			onClick: (e) => focusBody(widest.primary_id, widest.name, e, 'rings')
+			href: focusHref(appState, widest.primary_id, widest.name, 'rings'),
+			onClick: focusClick(focusObject, widest.primary_id, widest.name, { tab: 'rings' })
 		};
 	}
 
@@ -194,15 +161,8 @@
 			label,
 			value,
 			tooltip: lead ? `${lead} — ${ref.name}` : ref.name,
-			href: serializeUrl(
-				applyFocus(appState.view, {
-					type: urlTypeFromId(ref.primary_id),
-					id: ref.primary_id,
-					name: ref.name,
-					tab
-				})
-			),
-			onClick: (e) => focusBody(ref.primary_id, ref.name, e, tab)
+			href: focusHref(appState, ref.primary_id, ref.name, tab),
+			onClick: focusClick(focusObject, ref.primary_id, ref.name, { tab })
 		};
 	}
 
@@ -341,8 +301,8 @@
 			tooltip: ofTotal(pha.n, g.member_count),
 			share: g.member_count ? pha.n / g.member_count : undefined,
 			dot: 'bg-rose-400',
-			href: serializeUrl(applyGroup(appState.view, pha.primary_id, label)),
-			onClick: (e) => focusGroup(pha.primary_id, label, e)
+			href: groupHref(appState, pha.primary_id, label),
+			onClick: groupClick(appState, pha.primary_id, label)
 		};
 	}
 

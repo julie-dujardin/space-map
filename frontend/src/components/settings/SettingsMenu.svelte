@@ -1,10 +1,12 @@
 <script lang="ts">
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import type { Snippet } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale, locales, type Locale } from '$lib/paraglide/runtime.js';
 	import {
 		getSettings,
 		type Clock,
+		type DateFormatChoice,
 		type ReducedMotion,
 		type Theme
 	} from '$lib/state/settings.svelte';
@@ -16,6 +18,13 @@
 	import { switchLanguage } from '$lib/state/language';
 
 	const settings = getSettings();
+
+	/** Every segmented row selects one of these. */
+	type SegmentedValue = Theme | Clock | ReducedMotion | DateFormatChoice;
+	interface SegmentedOption {
+		value: SegmentedValue;
+		label: () => string;
+	}
 
 	let recalibrating = $state(false);
 
@@ -109,6 +118,68 @@
 	let effectiveClock = $derived<Clock>(clockLocked ? '24h' : settings.clock);
 </script>
 
+<!-- `locked` given at all marks the row as lockable: only those animate their
+     opacity and carry a `disabled` state. -->
+{#snippet segmented(
+	label: string,
+	options: SegmentedOption[],
+	value: SegmentedValue,
+	set: (value: SegmentedValue) => void,
+	locked?: boolean
+)}
+	<div class="flex items-center justify-between gap-3">
+		<div class="min-w-0">
+			<div class="text-sm font-medium">{label}</div>
+		</div>
+		<div
+			class="inline-flex shrink-0 rounded-md bg-muted p-0.5 {locked === undefined
+				? ''
+				: 'transition-opacity'} {locked ? 'opacity-60' : ''}"
+			role="radiogroup"
+			aria-label={label}
+		>
+			{#each options as opt (opt.value)}
+				{@const active = value === opt.value}
+				<button
+					type="button"
+					role="radio"
+					aria-checked={active}
+					disabled={locked}
+					class="px-2.5 py-1 text-xs font-medium rounded transition-colors
+						{locked ? 'cursor-not-allowed' : 'cursor-pointer'}
+						{active
+						? 'bg-background text-foreground shadow-sm'
+						: 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => set(opt.value)}
+				>
+					{opt.label()}
+				</button>
+			{/each}
+		</div>
+	</div>
+{/snippet}
+
+{#snippet autoSource(value: string, source: string, trailing?: Snippet)}
+	<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+		<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
+		<span>{m.settings_auto_source({ value, source })}</span>
+		{@render trailing?.()}
+	</div>
+{/snippet}
+
+{#snippet recalibrateButton()}
+	<button
+		type="button"
+		class="ms-auto shrink-0 underline underline-offset-2 hover:text-foreground
+			disabled:opacity-60 disabled:no-underline transition-colors
+			focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+		disabled={recalibrating}
+		onclick={rerunBenchmark}
+	>
+		{recalibrating ? m.settings_recalibrate_running() : m.settings_recalibrate()}
+	</button>
+{/snippet}
+
 <div class="flex flex-col">
 	<header class="px-5 pt-5 pb-3">
 		<h2 class="text-base font-semibold">{m.settings_title()}</h2>
@@ -151,95 +222,31 @@
 					</div>
 				</div>
 				{#if settings.language === 'auto'}
-					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
-						<span
-							>{m.settings_auto_source({
-								value: localeLabel(getLocale()),
-								source: m.settings_source_browser({ tag: settings.browserLanguage })
-							})}</span
-						>
-					</div>
+					{@render autoSource(
+						localeLabel(getLocale()),
+						m.settings_source_browser({ tag: settings.browserLanguage })
+					)}
 				{/if}
 			</div>
 
 			<div class="flex flex-col gap-2">
-				<div class="flex items-center justify-between gap-3">
-					<div class="min-w-0">
-						<div class="text-sm font-medium">{m.settings_theme()}</div>
-					</div>
-					<div
-						class="inline-flex shrink-0 rounded-md bg-muted p-0.5"
-						role="radiogroup"
-						aria-label={m.settings_theme()}
-					>
-						{#each themeOptions as opt (opt.value)}
-							{@const active = settings.theme === opt.value}
-							<button
-								type="button"
-								role="radio"
-								aria-checked={active}
-								class="px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer
-									{active
-									? 'bg-background text-foreground shadow-sm'
-									: 'text-muted-foreground hover:text-foreground'}"
-								onclick={() => settings.setTheme(opt.value)}
-							>
-								{opt.label()}
-							</button>
-						{/each}
-					</div>
-				</div>
+				{@render segmented(m.settings_theme(), themeOptions, settings.theme, (v) =>
+					settings.setTheme(v as Theme)
+				)}
 				{#if settings.theme === 'auto'}
-					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
-						<span
-							>{m.settings_auto_source({
-								value: resolvedThemeLabel,
-								source: m.settings_source_system()
-							})}</span
-						>
-					</div>
+					{@render autoSource(resolvedThemeLabel, m.settings_source_system())}
 				{/if}
 			</div>
 
 			<div class="flex flex-col gap-2">
-				<div class="flex items-center justify-between gap-3">
-					<div class="min-w-0">
-						<div class="text-sm font-medium">{m.settings_reduced_motion()}</div>
-					</div>
-					<div
-						class="inline-flex shrink-0 rounded-md bg-muted p-0.5"
-						role="radiogroup"
-						aria-label={m.settings_reduced_motion()}
-					>
-						{#each reducedMotionOptions as opt (opt.value)}
-							{@const active = settings.reducedMotion === opt.value}
-							<button
-								type="button"
-								role="radio"
-								aria-checked={active}
-								class="px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer
-									{active
-									? 'bg-background text-foreground shadow-sm'
-									: 'text-muted-foreground hover:text-foreground'}"
-								onclick={() => settings.setReducedMotion(opt.value)}
-							>
-								{opt.label()}
-							</button>
-						{/each}
-					</div>
-				</div>
+				{@render segmented(
+					m.settings_reduced_motion(),
+					reducedMotionOptions,
+					settings.reducedMotion,
+					(v) => settings.setReducedMotion(v as ReducedMotion)
+				)}
 				{#if settings.reducedMotion === 'auto'}
-					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
-						<span
-							>{m.settings_auto_source({
-								value: resolvedReducedMotionLabel,
-								source: m.settings_source_system()
-							})}</span
-						>
-					</div>
+					{@render autoSource(resolvedReducedMotionLabel, m.settings_source_system())}
 				{/if}
 			</div>
 		</section>
@@ -249,84 +256,22 @@
 				{m.settings_section_time()}
 			</h3>
 
-			<div class="flex items-center justify-between gap-3">
-				<div class="min-w-0">
-					<div class="text-sm font-medium">{m.settings_dateformat()}</div>
-				</div>
-				<div
-					class="inline-flex shrink-0 rounded-md bg-muted p-0.5"
-					role="radiogroup"
-					aria-label={m.settings_dateformat()}
-				>
-					{#each dateFormatOptions as opt (opt.value)}
-						{@const active = settings.dateFormat === opt.value}
-						<button
-							type="button"
-							role="radio"
-							aria-checked={active}
-							class="px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer
-								{active
-								? 'bg-background text-foreground shadow-sm'
-								: 'text-muted-foreground hover:text-foreground'}"
-							onclick={() => settings.setDateFormat(opt.value)}
-						>
-							{opt.label()}
-						</button>
-					{/each}
-				</div>
-			</div>
+			{@render segmented(m.settings_dateformat(), dateFormatOptions, settings.dateFormat, (v) =>
+				settings.setDateFormat(v as DateFormatChoice)
+			)}
 
 			<div class="flex flex-col gap-2">
-				<div class="flex items-center justify-between gap-3">
-					<div class="min-w-0">
-						<div class="text-sm font-medium">{m.settings_clock()}</div>
-					</div>
-					<div
-						class="inline-flex shrink-0 rounded-md bg-muted p-0.5 transition-opacity {clockLocked
-							? 'opacity-60'
-							: ''}"
-						role="radiogroup"
-						aria-label={m.settings_clock()}
-					>
-						{#each clockOptions as opt (opt.value)}
-							{@const active = effectiveClock === opt.value}
-							<button
-								type="button"
-								role="radio"
-								aria-checked={active}
-								disabled={clockLocked}
-								class="px-2.5 py-1 text-xs font-medium rounded transition-colors
-									{clockLocked ? 'cursor-not-allowed' : 'cursor-pointer'}
-									{active
-									? 'bg-background text-foreground shadow-sm'
-									: 'text-muted-foreground hover:text-foreground'}"
-								onclick={() => settings.setClock(opt.value)}
-							>
-								{opt.label()}
-							</button>
-						{/each}
-					</div>
-				</div>
+				{@render segmented(
+					m.settings_clock(),
+					clockOptions,
+					effectiveClock,
+					(v) => settings.setClock(v as Clock),
+					clockLocked
+				)}
 				{#if clockLocked}
-					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
-						<span
-							>{m.settings_auto_source({
-								value: m.settings_clock_24h(),
-								source: m.settings_source_iso()
-							})}</span
-						>
-					</div>
+					{@render autoSource(m.settings_clock_24h(), m.settings_source_iso())}
 				{:else if settings.clock === 'auto'}
-					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
-						<span
-							>{m.settings_auto_source({
-								value: resolvedClockLabel,
-								source: m.settings_source_locale()
-							})}</span
-						>
-					</div>
+					{@render autoSource(resolvedClockLabel, m.settings_source_locale())}
 				{/if}
 			</div>
 		</section>
@@ -365,29 +310,15 @@
 					</div>
 				</div>
 				{#if settings.atmosphereQuality === 'auto'}
-					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
-						<span
-							>{m.settings_auto_source({
-								value: resolvedAtmoQualityLabel,
-								source: settings.atmosphereAutoTier
-									? m.settings_source_perf()
-									: settings.atmosphereCalibration
-										? m.settings_source_benchmark()
-										: m.settings_source_device()
-							})}</span
-						>
-						<button
-							type="button"
-							class="ms-auto shrink-0 underline underline-offset-2 hover:text-foreground
-								disabled:opacity-60 disabled:no-underline transition-colors
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-							disabled={recalibrating}
-							onclick={rerunBenchmark}
-						>
-							{recalibrating ? m.settings_recalibrate_running() : m.settings_recalibrate()}
-						</button>
-					</div>
+					{@render autoSource(
+						resolvedAtmoQualityLabel,
+						settings.atmosphereAutoTier
+							? m.settings_source_perf()
+							: settings.atmosphereCalibration
+								? m.settings_source_benchmark()
+								: m.settings_source_device(),
+						recalibrateButton
+					)}
 				{/if}
 			</div>
 		</section>

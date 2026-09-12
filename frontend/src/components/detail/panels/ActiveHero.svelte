@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The active tab's hero, rendered above the tab bar in both frames, so the
 	// tabs read as sub-navigation under it.
-	import { getContext } from 'svelte';
+	import { getContext, type Snippet } from 'svelte';
 	import HeroSkeleton from '../frame/skeleton/HeroSkeleton.svelte';
 	import ObjectHeader from '../frame/ObjectHeader.svelte';
 	import SurfaceHero from '../sections/SurfaceHero.svelte';
@@ -62,6 +62,27 @@
 		for (const c of g.categories ?? []) out.push(satelliteCategoryLabel(c));
 		return out;
 	});
+
+	// One hero per tab, keyed so a new tab has to say whether it has one.
+	// Undefined where this object gives the tab nothing to draw. Overview's
+	// loading skeleton stands outside the table: it replaces the hero rather
+	// than being one.
+	let heroes = $derived<Record<DrawerTab, Snippet | undefined>>({
+		overview: load.loadError ? undefined : objectHeaderHero,
+		targets: undefined,
+		images: undefined,
+		features: body && surface.showSurfaceHero ? surfaceQuadHero : undefined,
+		structure: gallery.atmosphereGallery ? atmosphereHero : undefined,
+		rings: ringImages?.length ? ringGalleryHero : undefined,
+		members: lineup.isMoonLineup
+			? lineupHeroSnippet
+			: lineup.membersLineup
+				? membersLineupHero
+				: undefined,
+		fragments: undefined,
+		probes: lineup.probeLineup ? probeLineupHero : undefined
+	});
+	let hero = $derived(heroes[activeTab]);
 </script>
 
 {#snippet lineupHeroSnippet()}
@@ -84,92 +105,90 @@
 	{/if}
 {/snippet}
 
-{#if activeTab === 'overview'}
-	{#if load.loading}
-		<HeroSkeleton />
-	{:else if !load.loadError}
-		<div class="px-4 pt-1 pb-3">
-			<ObjectHeader
-				global={data?.global ?? null}
-				localized={data?.localized ?? null}
-				{fallbackName}
-				leadingBadges={groupHeaderBadges ??
-					(planetarySystem.isSystemPage ? [m.satellite_system_badge()] : undefined)}
-				hero={cat.solarSystem
-					? solarSystemMapSnippet
-					: planetarySystem.isSystemPage && planetarySystem.system
-						? planetarySystemMapSnippet
-						: lineup.hero && !lineup.isMoonLineup
-							? lineupHeroSnippet
-							: undefined}
-				galleryHref={imageHref(appState, 0, MAIN_GALLERY)}
-				onShowGallery={() => appState.setImage(0, MAIN_GALLERY)}
-				listHref={tabHref(appState, 'images')}
-				onShowList={() => appState.setTab('images')}
-				imageCount={gallery.imageTotal}
-			/>
-		</div>
+{#snippet objectHeaderHero()}
+	<ObjectHeader
+		global={data?.global ?? null}
+		localized={data?.localized ?? null}
+		{fallbackName}
+		leadingBadges={groupHeaderBadges ??
+			(planetarySystem.isSystemPage ? [m.satellite_system_badge()] : undefined)}
+		hero={cat.solarSystem
+			? solarSystemMapSnippet
+			: planetarySystem.isSystemPage && planetarySystem.system
+				? planetarySystemMapSnippet
+				: lineup.hero && !lineup.isMoonLineup
+					? lineupHeroSnippet
+					: undefined}
+		galleryHref={imageHref(appState, 0, MAIN_GALLERY)}
+		onShowGallery={() => appState.setImage(0, MAIN_GALLERY)}
+		listHref={tabHref(appState, 'images')}
+		onShowList={() => appState.setTab('images')}
+		imageCount={gallery.imageTotal}
+	/>
+{/snippet}
+
+<!-- The quadrangle map is the Features tab's hero: picking a chart filters the
+     list below it. -->
+{#snippet surfaceQuadHero()}
+	{#if body}
+		<SurfaceHero
+			bodyId={body.data.id}
+			quads={surface.quadrangles ?? []}
+			selected={surface.selectedQuad}
+			onselect={(code) => appState.setQuad(code)}
+			markedFeatureId={surface.hoveredFeatureId}
+		/>
 	{/if}
-{:else if activeTab === 'features'}
-	<!-- The quadrangle map is this tab's hero: picking a chart filters the
-	     list below it. -->
-	{#if body && surface.showSurfaceHero}
-		<div class="px-4 pt-1 pb-3">
-			<SurfaceHero
-				bodyId={body.data.id}
-				quads={surface.quadrangles ?? []}
-				selected={surface.selectedQuad}
-				onselect={(code) => appState.setQuad(code)}
-				markedFeatureId={surface.hoveredFeatureId}
-			/>
-		</div>
-	{/if}
-{:else if activeTab === 'rings'}
-	<!-- One picture of the system, above the chart that anatomises it. -->
+{/snippet}
+
+<!-- One picture of the ring system, above the chart that anatomises it. -->
+{#snippet ringGalleryHero()}
 	{#if ringImages?.length}
-		<div class="px-4 pt-1 pb-3">
-			<GalleryHero
-				images={ringImages}
-				alt={data?.localized?.ring_system?.name ?? m.tab_rings()}
-				gallery={RINGS_GALLERY}
-			/>
-		</div>
+		<GalleryHero
+			images={ringImages}
+			alt={data?.localized?.ring_system?.name ?? m.tab_rings()}
+			gallery={RINGS_GALLERY}
+		/>
 	{/if}
-{:else if activeTab === 'structure'}
-	<!-- The atmosphere as photographed, above the same atmosphere as a profile. -->
+{/snippet}
+
+<!-- The atmosphere as photographed, above the same atmosphere as a profile. -->
+{#snippet atmosphereHero()}
 	{#if gallery.atmosphereGallery}
-		<div class="px-4 pt-1 pb-3">
-			<GalleryHero
-				images={gallery.atmosphereGallery.images}
-				alt={m.atmosphere()}
-				gallery={ATMOSPHERE_GALLERY}
-			/>
-		</div>
+		<GalleryHero
+			images={gallery.atmosphereGallery.images}
+			alt={m.atmosphere()}
+			gallery={ATMOSPHERE_GALLERY}
+		/>
 	{/if}
-{:else if activeTab === 'probes'}
-	<!-- The craft that went there, to scale against each other, above the list
-	     that dates each visit. -->
+{/snippet}
+
+<!-- The craft that went there, to scale against each other, above the list
+     that dates each visit. -->
+{#snippet probeLineupHero()}
 	{#if lineup.probeLineup}
-		<div class="px-4 pt-1 pb-3">
-			<BodyLineup
-				bodies={lineup.probeLineup.bodies}
-				ariaLabel={lineup.probeLineup.ariaLabel}
-				perPage={lineup.probeLineup.perPage}
-			/>
-		</div>
+		<BodyLineup
+			bodies={lineup.probeLineup.bodies}
+			ariaLabel={lineup.probeLineup.ariaLabel}
+			perPage={lineup.probeLineup.perPage}
+		/>
 	{/if}
-{:else if activeTab === 'members'}
-	<!-- The members drawn to scale, above the list that names them. Its
-	     imagery/size credits ride at the foot of the panel, where they render. -->
-	{#if lineup.isMoonLineup}
-		<div class="px-4 pt-1 pb-3">{@render lineupHeroSnippet()}</div>
-	{:else if lineup.membersLineup}
-		<div class="px-4 pt-1 pb-3">
-			<BodyLineup
-				bodies={lineup.membersLineup.bodies}
-				ariaLabel={lineup.membersLineup.ariaLabel}
-				perPage={lineup.membersLineup.perPage}
-			/>
-		</div>
+{/snippet}
+
+<!-- The members drawn to scale, above the list that names them. Its
+     imagery/size credits ride at the foot of the panel, where they render. -->
+{#snippet membersLineupHero()}
+	{#if lineup.membersLineup}
+		<BodyLineup
+			bodies={lineup.membersLineup.bodies}
+			ariaLabel={lineup.membersLineup.ariaLabel}
+			perPage={lineup.membersLineup.perPage}
+		/>
 	{/if}
+{/snippet}
+
+{#if activeTab === 'overview' && load.loading}
+	<HeroSkeleton />
+{:else if hero}
+	<div class="px-4 pt-1 pb-3">{@render hero()}</div>
 {/if}
