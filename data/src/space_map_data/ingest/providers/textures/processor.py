@@ -815,7 +815,7 @@ class TextureProcessor:
                 # any frame we actually encode (they share dims, so tiers
                 # match), or the post-loop fallback below.
                 continue
-            img = open_image(src)
+            img = open_image(src, keep_alpha=True)
             exports = self._export(img, object_id, out_dir, suffix)
             if not tiers:
                 tiers = sorted(exports.keys())
@@ -901,7 +901,7 @@ class TextureProcessor:
             return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        img = open_image(src)
+        img = open_image(src, keep_alpha=True)
         source_dims = [img.width, img.height]
         exports = self._export(img, object_id, out_dir, filename_suffix="_static")
         tiers = sorted(exports.keys())

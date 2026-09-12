@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from space_map_data.ingest.providers.textures import (
@@ -382,7 +383,9 @@ class TestProcessClouds:
         return proc, src_dir
 
     @staticmethod
-    def _seed_snapshot(clouds_dir, when: tuple[int, int, int, int]) -> str:
+    def _seed_snapshot(
+        clouds_dir, when: tuple[int, int, int, int], mode: str = "RGBA"
+    ) -> str:
         year, month, day, hour = when
         path = (
             clouds_dir
@@ -392,7 +395,10 @@ class TestProcessClouds:
             / f"{hour:02d}.png"
         )
         path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGBA", (256, 128), color=(255, 255, 255, 128)).save(path)
+        # Upstream serves greyscale+alpha as well as RGBA; the mask is in alpha
+        # either way.
+        color = (255, 128) if mode == "LA" else (255, 255, 255, 128)
+        Image.new(mode, (256, 128), color=color).save(path)
         return path.relative_to(clouds_dir).as_posix()
 
     @staticmethod
@@ -428,6 +434,20 @@ class TestProcessClouds:
         # Each frame has at least the low tier on disk.
         for fid in meta["frames"]:
             assert (out_dir / f"low_{fid}.webp").exists()
+
+    @pytest.mark.parametrize("mode", ["RGBA", "LA"])
+    def test_keeps_the_coverage_mask_in_alpha(self, tmp_path, monkeypatch, mode):
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 0), mode=mode)
+
+        proc._process_clouds()
+
+        out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
+        exported = Image.open(out_dir / "low_2026050500.webp")
+        assert exported.mode == "RGBA"
+        # A flattened export would be alpha 255 everywhere, hiding the surface.
+        assert np.asarray(exported)[..., 3].max() < 255
 
     def test_incrementally_adds_new_snapshot(self, tmp_path, monkeypatch):
         proc, src_dir = self._make_processor(monkeypatch, tmp_path)

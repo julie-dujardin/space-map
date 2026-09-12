@@ -31,7 +31,16 @@ _DISPLACEMENT_BAND_OUT_ROWS = 256
 _GAP_REPAIR_PASSES = 4
 
 
-def open_image(path: Path) -> Image.Image:
+def _has_alpha(img: Image.Image) -> bool:
+    return "A" in img.getbands() or "transparency" in img.info
+
+
+def open_image(path: Path, keep_alpha: bool = False) -> Image.Image:
+    """Open an image as RGB, or as RGBA when ``keep_alpha`` and the source has one.
+
+    Cloud overlays carry their coverage mask in alpha, so flattening them to
+    RGB renders the whole planet under an opaque sheet.
+    """
     try:
         img = Image.open(path)
     except Exception:
@@ -39,9 +48,10 @@ def open_image(path: Path) -> Image.Image:
             "PIL could not open %s, falling back to tifffile", path.name, exc_info=True
         )
     else:
-        if img.mode != "RGB":
-            log.info("converting %s from %s to RGB", path.name, img.mode)
-            img = img.convert("RGB")
+        target = "RGBA" if keep_alpha and _has_alpha(img) else "RGB"
+        if img.mode != target:
+            log.info("converting %s from %s to %s", path.name, img.mode, target)
+            img = img.convert(target)
         return img
 
     arr = tifffile.imread(str(path))
