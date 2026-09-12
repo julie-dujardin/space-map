@@ -1,5 +1,6 @@
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
-import type { MinorBucket } from '$lib/fetch/position/minor-columns';
+import { MinorBucket } from '$lib/fetch/position/minor-columns';
+import type { LabelMap } from '$lib/fetch/position/labels';
 import { EARTH_ID, SSB_ID, SUN_ID } from '$lib/constants';
 
 /** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
@@ -134,6 +135,32 @@ export class BodyIndex {
 			}
 		}
 		if (added) this.notifyBodiesAdded();
+	}
+
+	/** Zone bucket for asteroids/comets, created on demand. Ingest adds in place;
+	 *  the outer Map is re-wrapped by {@link flushMinor} for reactivity. */
+	asteroidBucket(zone: string, labels: LabelMap): MinorBucket {
+		let bucket = this.asteroidBodiesByZone.get(zone);
+		if (!bucket) this.asteroidBodiesByZone.set(zone, (bucket = new MinorBucket(labels)));
+		return bucket;
+	}
+
+	/** Spacecraft bucket for a parent id, created on demand — Earth sats/debris
+	 *  stay on this AoS per-id path. */
+	spacecraftBucket(key: string): Map<string, PositionedBody> {
+		let bucket = this.spacecraftByParent.get(key);
+		if (!bucket) this.spacecraftByParent.set(key, (bucket = new Map()));
+		return bucket;
+	}
+
+	/** Publish minor-body ingest: re-wrap the outer Maps so reactive observers
+	 *  see a new ref (inner bucket refs stay stable), then announce additions so
+	 *  the promotion registry gives the new bodies a visual. */
+	flushMinor(addedAny: boolean): void {
+		this.asteroidBodiesByZone = new Map(this.asteroidBodiesByZone);
+		this.spacecraftByParent = new Map(this.spacecraftByParent);
+		this.minorBodyVersion++;
+		if (addedAny) this.notifyBodiesAdded();
 	}
 
 	/** Children of `parentId` (object ids), or undefined if none registered. */

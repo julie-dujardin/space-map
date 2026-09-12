@@ -14,7 +14,7 @@
 
 import { type MeshStandardMaterial, type Texture, Vector2 } from 'three';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
-import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
+import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
 /** Self-shadow march sample count. */
 const STEPS = 32;
@@ -73,9 +73,7 @@ export function attachSelfShadowToBody(
 	material.userData.selfShadow = uniforms;
 	const sun = getEclipseSceneUniforms().uSunDir;
 
-	const prev = material.onBeforeCompile;
-	material.onBeforeCompile = (shader, renderer) => {
-		prev?.(shader, renderer);
+	chainShaderHook(material, 'selfShadow', (shader) => {
 		// Unique name: the chained eclipse shader already declares uSunDir.
 		Object.assign(shader.uniforms, uniforms, { uSelfSunDir: sun });
 
@@ -217,9 +215,7 @@ export function attachSelfShadowToBody(
 					reflectedLight.directSpecular *= shadow;
 				}`
 			);
-	};
-	tagShaderModifier(material, 'selfShadow');
-	material.needsUpdate = true;
+	});
 	return uniforms;
 }
 

@@ -27,6 +27,12 @@ import { drawnSpacecraft } from '$lib/scene/layers';
 
 const REBASE_THRESHOLD_AU = 0.01;
 
+/** The cloud kinds whose Kepler solves run in the orbit worker pool. Moons are
+ *  deliberately absent: they solve on the main thread and own no worker group,
+ *  subpixel gate or pick range. */
+type WorkerCloudKind = 'asteroid' | 'spacecraft';
+const WORKER_CLOUD_KINDS: readonly WorkerCloudKind[] = ['asteroid', 'spacecraft'];
+
 /** Sun GM as the Gaussian constant k² (AU³/day²) — heliocentric vis-viva. */
 const MU_SUN_AU3_DAY2 = 2.959122082855911e-4;
 /** Skip a group's per-frame solve below this predicted on-screen drift (CSS px):
@@ -136,8 +142,13 @@ export class PointCloudSystem {
 	/** Maps a GPU pick-pass hit back to a body id. Populated per group at wire
 	 *  time; consumed by the pointer's pick pass. */
 	readonly pickRegistry = new PickRegistry();
-	private asteroidPoints = new Map<string, Points>();
-	private spacecraftPoints = new Map<string, Points>();
+	/** Worker-solved clouds by kind, sub-key (`<bucket>#<i>`) → Points. Each
+	 *  Points carries its own `groupId` and `parentBodyId` in userData, so the
+	 *  per-frame passes iterate this without a kind branch. */
+	private workerPoints: Record<WorkerCloudKind, Map<string, Points>> = {
+		asteroid: new Map(),
+		spacecraft: new Map()
+	};
 	private moonPoints = new Map<string, Points>();
 	/** Points drawn at once over the visible asteroid and spacecraft clouds. */
 	private pointBudget = Infinity;
@@ -208,17 +219,16 @@ export class PointCloudSystem {
 	/** Size the drawn prefix of every cloud so the visible ones fit the budget. */
 	applyPointBudget(): void {
 		let total = 0;
-		for (const pts of this.asteroidPoints.values()) {
-			if (pts.visible) total += (pts.userData.solvedCount as number | undefined) ?? 0;
-		}
-		for (const pts of this.spacecraftPoints.values()) {
-			if (pts.visible) total += (pts.userData.solvedCount as number | undefined) ?? 0;
+		for (const kind of WORKER_CLOUD_KINDS) {
+			for (const pts of this.workerPoints[kind].values()) {
+				if (pts.visible) total += (pts.userData.solvedCount as number | undefined) ?? 0;
+			}
 		}
 		const fraction = total > this.pointBudget ? this.pointBudget / total : 1;
 		if (fraction === this.drawFraction) return;
 		this.drawFraction = fraction;
-		for (const map of [this.asteroidPoints, this.spacecraftPoints]) {
-			for (const pts of map.values()) {
+		for (const kind of WORKER_CLOUD_KINDS) {
+			for (const pts of this.workerPoints[kind].values()) {
 				const n = pts.userData.solvedCount as number | undefined;
 				if (n !== undefined) pts.geometry.setDrawRange(0, Math.ceil(n * fraction));
 			}
@@ -231,7 +241,7 @@ export class PointCloudSystem {
 	 *  alpha + brightness; stage 2 (500 → 50) raises size. */
 	setEarthSatEmphasis(count: number | null): void {
 		this.earthSatEmphasis = this.computeEarthSatEmphasis(count);
-		for (const [key, pts] of this.spacecraftPoints) {
+		for (const [key, pts] of this.workerPoints.spacecraft) {
 			if (parentIdFromSubkey(key) !== EARTH_ID) continue;
 			this.applyEarthSatEmphasis(pts);
 		}
@@ -267,14 +277,14 @@ export class PointCloudSystem {
 		this.emphasizedSmallBodyZone = zone;
 		this.smallBodyEmphasis = this.computeSmallBodyEmphasis(zone === null ? null : count);
 		if (prev !== null && prev !== zone) {
-			for (const [key, pts] of this.asteroidPoints) {
+			for (const [key, pts] of this.workerPoints.asteroid) {
 				if (matchesEmphasizedZone(parentIdFromSubkey(key), prev)) {
 					this.resetSmallBodyEmphasis(pts);
 				}
 			}
 		}
 		if (zone !== null) {
-			for (const [key, pts] of this.asteroidPoints) {
+			for (const [key, pts] of this.workerPoints.asteroid) {
 				if (matchesEmphasizedZone(parentIdFromSubkey(key), zone)) {
 					this.applySmallBodyEmphasis(pts);
 				}
@@ -333,22 +343,17 @@ export class PointCloudSystem {
 			promotedIds,
 			this.orbitPool.workerCount
 		);
-		this.asteroidPoints = pts.asteroidPoints;
-		this.spacecraftPoints = pts.spacecraftPoints;
+		this.workerPoints.asteroid = pts.asteroidPoints;
+		this.workerPoints.spacecraft = pts.spacecraftPoints;
 		this.moonPoints = pts.moonPoints;
-		// PromotionRegistry stores emphasis before this build runs, so re-apply
-		// to the freshly-created earth sub-clouds.
-		for (const [key, p] of this.spacecraftPoints) {
-			if (parentIdFromSubkey(key) === EARTH_ID) this.applyEarthSatEmphasis(p);
-		}
-		// Same for small-body focus: a deep-linked /g/class-* page may have set the
-		// emphasis before the initial build ran.
-		if (this.emphasizedSmallBodyZone !== null) {
-			const target = this.emphasizedSmallBodyZone;
-			for (const [key, p] of this.asteroidPoints) {
-				if (matchesEmphasizedZone(parentIdFromSubkey(key), target)) {
-					this.applySmallBodyEmphasis(p);
-				}
+		// Emphasis can be set before this build runs — PromotionRegistry stores it,
+		// and a deep-linked /g/class-* page applies it — so re-apply to the fresh
+		// clouds. The same pass stamps the solve centre the per-frame passes read.
+		for (const kind of WORKER_CLOUD_KINDS) {
+			for (const [key, p] of this.workerPoints[kind]) {
+				const bucketKey = parentIdFromSubkey(key);
+				p.userData.parentBodyId = this.cloudParentId(kind, bucketKey);
+				this.emphasiseNewCloud(kind, bucketKey, p);
 			}
 		}
 		this.assignMapLayer();
@@ -356,9 +361,28 @@ export class PointCloudSystem {
 
 	/** Re-tag every current cloud with the immersive-mode map layer. */
 	assignMapLayer(): void {
-		for (const pts of this.asteroidPoints.values()) pts.layers.set(this.mapLayer);
-		for (const pts of this.spacecraftPoints.values()) pts.layers.set(this.mapLayer);
+		for (const kind of WORKER_CLOUD_KINDS) {
+			for (const pts of this.workerPoints[kind].values()) pts.layers.set(this.mapLayer);
+		}
 		for (const pts of this.moonPoints.values()) pts.layers.set(this.mapLayer);
+	}
+
+	/** Body a kind's solve is centred on: the Sun for a heliocentric asteroid
+	 *  zone, the group's own parent for spacecraft — whose bucket key IS that id. */
+	private cloudParentId(kind: WorkerCloudKind, bucketKey: string): string {
+		return kind === 'asteroid' ? SUN_ID : bucketKey;
+	}
+
+	/** Apply the standing emphasis to a cloud built after it was set. */
+	private emphasiseNewCloud(kind: WorkerCloudKind, bucketKey: string, pts: Points): void {
+		if (kind === 'spacecraft') {
+			if (bucketKey === EARTH_ID) this.applyEarthSatEmphasis(pts);
+			return;
+		}
+		const target = this.emphasizedSmallBodyZone;
+		if (target !== null && matchesEmphasizedZone(bucketKey, target)) {
+			this.applySmallBodyEmphasis(pts);
+		}
 	}
 
 	/** Serialization for {@link rebuildMinor}'s async passes: one pass at a
@@ -468,51 +492,31 @@ export class PointCloudSystem {
 				const groupId = `asteroid:${key}`;
 				const group = i < groups.length ? groups[i] : null;
 				if (!group || group.cols.count === 0) {
-					this.orbitPool.unwireOne(groupId);
-					this.forgetGroupGate(groupId);
-					this.pickRegistry.release(groupId);
-					const stale = this.asteroidPoints.get(key);
-					if (stale) {
-						this.scene.remove(stale);
-						this.asteroidPoints.delete(key);
-					}
+					this.unwireGroup('asteroid', key, groupId);
 					continue;
 				}
-				// Compute the gate's kinematics before rewireOneCols — it transfers the
-				// column buffers to the worker, detaching them on this thread.
-				this.groupKinematics.set(groupId, kinematicsFromColumns(group.cols));
-				// A repack grows the buffer (streaming chunks); force one solve so the
-				// new points get positions and drawRange expands instead of being gated.
-				this.lastSolvedJd.delete(groupId);
+				// Arm the gate before rewireOneCols — it transfers the column buffers
+				// to the worker, detaching them on this thread.
+				this.armGroupGate(groupId, kinematicsFromColumns(group.cols));
 				// Assign this group's GPU pick-id range before wiring — the worker
 				// writes `pickBase + row` per survivor for the pick pass to decode.
 				group.cols.pickBase = this.pickRegistry.allocate(groupId, group.keys);
 				this.orbitPool.rewireOneCols(groupId, group.cols, (baseWorker + i) % k);
-				const existing = this.asteroidPoints.get(key);
+				const existing = this.workerPoints.asteroid.get(key);
 				if (existing) {
 					this.resizeGeometryToCount(existing.geometry, group.cols.count, null);
-				} else {
-					// Positions start empty (drawRange 0) — the first worker tick
-					// fills them and expands the draw range; no origin flash.
-					const pts = makePointCloudFromBuffer(
-						new Float32Array(group.cols.count * 3),
-						0,
-						this.circleTexture,
-						cloudColor,
-						asteroidPointSize()
-					);
-					pts.userData.frontBasis = seedBasis;
-					pts.userData.groupId = groupId;
-					pts.userData.parentVec = [0, 0, 0] as Vec3;
-					if (
-						this.emphasizedSmallBodyZone !== null &&
-						matchesEmphasizedZone(zone, this.emphasizedSmallBodyZone)
-					) {
-						this.applySmallBodyEmphasis(pts);
-					}
-					this.asteroidPoints.set(key, pts);
-					this.pendingSceneAdds.push(pts);
+					continue;
 				}
+				// Positions start empty (drawRange 0) — the first worker tick
+				// fills them and expands the draw range; no origin flash.
+				const pts = makePointCloudFromBuffer(
+					new Float32Array(group.cols.count * 3),
+					0,
+					this.circleTexture,
+					cloudColor,
+					asteroidPointSize()
+				);
+				this.adoptCloud('asteroid', key, groupId, pts, seedBasis);
 			}
 		}
 
@@ -538,14 +542,7 @@ export class PointCloudSystem {
 				const groupId = `spacecraft:${key}`;
 				const bodies = i < buckets.length ? buckets[i] : [];
 				if (bodies.length === 0) {
-					this.orbitPool.unwireOne(groupId);
-					this.forgetGroupGate(groupId);
-					this.pickRegistry.release(groupId);
-					const stale = this.spacecraftPoints.get(key);
-					if (stale) {
-						this.scene.remove(stale);
-						this.spacecraftPoints.delete(key);
-					}
+					this.unwireGroup('spacecraft', key, groupId);
 					continue;
 				}
 				// packBodiesSliced fills rows in `bodies` order, so ids line up with
@@ -562,38 +559,30 @@ export class PointCloudSystem {
 					false,
 					pickBase
 				);
-				this.groupKinematics.set(groupId, {
+				this.armGroupGate(groupId, {
 					maxSpeedScene: SPACECRAFT_MAX_SPEED_SCENE,
 					alwaysSolve: false
 				});
-				// Force one solve after a repack so newly-added members get positions.
-				this.lastSolvedJd.delete(groupId);
-				const existing = this.spacecraftPoints.get(key);
+				const existing = this.workerPoints.spacecraft.get(key);
 				if (existing) {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
-				} else {
-					const arr = new Float32Array(bodies.length * 3);
-					const colors = new Float32Array(bodies.length * 3);
-					this.seedGeometryArray(arr, bodies, colors);
-					// Spacecraft buckets mix SPACECRAFT + DEBRIS under the same
-					// parentId — per-vertex colors keep each dot honest instead of
-					// painting the whole sub-cloud from bodies[0]'s type.
-					const pts = makePointCloudFromBuffer(
-						arr,
-						bodies.length,
-						this.circleTexture,
-						'#ffffff',
-						undefined,
-						colors
-					);
-					pts.userData.frontBasis = seedBasis;
-					pts.userData.groupId = groupId;
-					pts.userData.parentBodyId = gid;
-					pts.userData.parentVec = [0, 0, 0] as Vec3;
-					if (gid === EARTH_ID) this.applyEarthSatEmphasis(pts);
-					this.spacecraftPoints.set(key, pts);
-					this.pendingSceneAdds.push(pts);
+					continue;
 				}
+				const arr = new Float32Array(bodies.length * 3);
+				const colors = new Float32Array(bodies.length * 3);
+				this.seedGeometryArray(arr, bodies, colors);
+				// Spacecraft buckets mix SPACECRAFT + DEBRIS under the same parentId —
+				// per-vertex colors keep each dot honest instead of painting the whole
+				// sub-cloud from bodies[0]'s type.
+				const pts = makePointCloudFromBuffer(
+					arr,
+					bodies.length,
+					this.circleTexture,
+					'#ffffff',
+					undefined,
+					colors
+				);
+				this.adoptCloud('spacecraft', key, groupId, pts, seedBasis);
 			}
 		}
 
@@ -603,6 +592,48 @@ export class PointCloudSystem {
 			this.lastPackedSize.clear();
 			this.rebuildQueued = true;
 		}
+	}
+
+	/** Drop every trace of a group whose worker slot came back empty (bucket
+	 *  emptied, or the bucket shrank below the split threshold): pool wiring,
+	 *  gate, pick range and the Points itself. */
+	private unwireGroup(kind: WorkerCloudKind, key: string, groupId: string): void {
+		this.orbitPool.unwireOne(groupId);
+		this.forgetGroupGate(groupId);
+		this.pickRegistry.release(groupId);
+		const stale = this.workerPoints[kind].get(key);
+		if (stale) {
+			this.scene.remove(stale);
+			this.workerPoints[kind].delete(key);
+		}
+	}
+
+	/** Arm a freshly-packed group's subpixel gate: its speed bound, plus a forced
+	 *  next solve so rows the repack added get positions and drawRange expands
+	 *  instead of being gated out. */
+	private armGroupGate(groupId: string, kinematics: GroupKinematics): void {
+		this.groupKinematics.set(groupId, kinematics);
+		this.lastSolvedJd.delete(groupId);
+	}
+
+	/** Take ownership of a newly built cloud: the per-group userData the frame
+	 *  passes read, the standing emphasis, and a deferred scene add so the GPU
+	 *  upload lands on a later frame. */
+	private adoptCloud(
+		kind: WorkerCloudKind,
+		key: string,
+		groupId: string,
+		pts: Points,
+		seedBasis: Vec3
+	): void {
+		const bucketKey = parentIdFromSubkey(key);
+		pts.userData.frontBasis = seedBasis;
+		pts.userData.groupId = groupId;
+		pts.userData.parentBodyId = this.cloudParentId(kind, bucketKey);
+		pts.userData.parentVec = [0, 0, 0] as Vec3;
+		this.emphasiseNewCloud(kind, bucketKey, pts);
+		this.workerPoints[kind].set(key, pts);
+		this.pendingSceneAdds.push(pts);
 	}
 
 	/** Streaming-phase repack throttle. Returns true when `key`'s group should
@@ -702,8 +733,8 @@ export class PointCloudSystem {
 		jd: number,
 		pickIds: Uint8Array
 	): void => {
-		const [kind, key] = groupId.split(':') as ['asteroid' | 'spacecraft', string];
-		const pts = kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
+		const [kind, key] = groupId.split(':') as [WorkerCloudKind, string];
+		const pts = this.workerPoints[kind].get(key);
 		if (!pts) return;
 		const posAttr = pts.geometry.getAttribute('position') as BufferAttribute;
 		const arr = posAttr.array as Float32Array;
@@ -735,8 +766,7 @@ export class PointCloudSystem {
 		// Per-frame reposition only runs on jd-change, so without this a worker
 		// result arriving while paused would render the cloud at a stale offset.
 		const [fx, fy, fz] = this.focus.focusTruePos;
-		const parentNowId = kind === 'asteroid' ? SUN_ID : parentIdFromSubkey(key);
-		const parentNow = this.ctx.getBody(parentNowId)?.position;
+		const parentNow = this.ctx.getBody(pts.userData.parentBodyId as string)?.position;
 		const sx = parentNow ? parentNow[0] - parentUsed[0] : 0;
 		const sy = parentNow ? parentNow[1] - parentUsed[1] : 0;
 		const sz = parentNow ? parentNow[2] - parentUsed[2] : 0;
@@ -767,15 +797,15 @@ export class PointCloudSystem {
 	reposition(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const currentBasis = this.basisPos;
-		for (const [key, pts] of this.asteroidPoints) {
-			const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
-			const [sx, sy, sz] = this.parentShift(`asteroid:${key}`, SUN_ID);
-			pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
-		}
-		for (const [key, pts] of this.spacecraftPoints) {
-			const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
-			const [sx, sy, sz] = this.parentShift(`spacecraft:${key}`, parentIdFromSubkey(key));
-			pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
+		for (const kind of WORKER_CLOUD_KINDS) {
+			for (const pts of this.workerPoints[kind].values()) {
+				const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
+				const [sx, sy, sz] = this.parentShift(
+					pts.userData.groupId as string,
+					pts.userData.parentBodyId as string
+				);
+				pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
+			}
 		}
 		const [bx, by, bz] = currentBasis;
 		const dx = bx - fx;
@@ -828,7 +858,7 @@ export class PointCloudSystem {
 		// Only visible clouds go in the map; orbitPool.tick solves exactly these,
 		// so zooming into a system drops the hidden zones' Kepler solves.
 		// groupId/parentVec are cached on userData and mutated in place — no realloc.
-		for (const [key, pts] of this.asteroidPoints) {
+		for (const [key, pts] of this.workerPoints.asteroid) {
 			if (!this.ctx.visibility.isAsteroidGroupVisible(parentIdFromSubkey(key))) continue;
 			const groupId = pts.userData.groupId as string;
 			if (!this.shouldSolveGroup(groupId, sunPos, jd, view)) continue;
@@ -838,7 +868,7 @@ export class PointCloudSystem {
 			v[2] = sunPos[2];
 			parents.set(groupId, v);
 		}
-		for (const [key, pts] of this.spacecraftPoints) {
+		for (const [key, pts] of this.workerPoints.spacecraft) {
 			if (!this.ctx.visibility.isSpacecraftGroupVisible(parentIdFromSubkey(key))) continue;
 			const groupId = pts.userData.groupId as string;
 			const pp = this.ctx.getBody(pts.userData.parentBodyId as string)?.position;
@@ -961,10 +991,10 @@ export class PointCloudSystem {
 	}
 
 	asteroids(): Map<string, Points> {
-		return this.asteroidPoints;
+		return this.workerPoints.asteroid;
 	}
 	spacecraft(): Map<string, Points> {
-		return this.spacecraftPoints;
+		return this.workerPoints.spacecraft;
 	}
 	moons(): Map<string, Points> {
 		return this.moonPoints;
@@ -975,18 +1005,21 @@ export class PointCloudSystem {
 	dispose(): void {
 		this.orbitPool.destroy();
 		this.pickRegistry.clear();
-		for (const map of [this.asteroidPoints, this.spacecraftPoints, this.moonPoints]) {
-			for (const pts of map.values()) {
-				this.scene.remove(pts);
-				pts.geometry.dispose();
-				(pts.material as PointsMaterial).dispose();
-			}
-			map.clear();
-		}
+		for (const kind of WORKER_CLOUD_KINDS) this.disposeClouds(this.workerPoints[kind]);
+		this.disposeClouds(this.moonPoints);
 		for (const pts of this.pendingSceneAdds) {
 			pts.geometry.dispose();
 			(pts.material as PointsMaterial).dispose();
 		}
 		this.pendingSceneAdds.length = 0;
+	}
+
+	private disposeClouds(map: Map<string, Points>): void {
+		for (const pts of map.values()) {
+			this.scene.remove(pts);
+			pts.geometry.dispose();
+			(pts.material as PointsMaterial).dispose();
+		}
+		map.clear();
 	}
 }

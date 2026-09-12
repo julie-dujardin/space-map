@@ -76,6 +76,43 @@ const LANDMARKS: SkyLandmark[] = [
 	{ id: 'sirius', label: 'Sirius', raDeg: 101.2872, decDeg: -16.7161, color: '#ffffff' }
 ];
 
+/** Galactic North Pole (RA, Dec, J2000) — defines galactic↔equatorial rotation. */
+const GAL_NP_RA = 192.85948;
+const GAL_NP_DEC = 27.12825;
+/** RA, Dec of the galactic center (l=0, b=0) — Sgr A* region. */
+const GAL_CENTER_RA = 266.40499;
+const GAL_CENTER_DEC = -28.93617;
+
+/** Segments per reference circle — enough that a great circle reads as one. */
+const CIRCLE_SEGMENTS = 256;
+
+/**
+ * The reference great circles, each by its "0°" longitude-origin axis and its
+ * pole axis in scene coordinates. Axes rather than (RA, Dec): the ecliptic is
+ * the scene's own XZ plane by construction and never goes through the
+ * equatorial transform.
+ */
+const REFERENCE_CIRCLES: { name: string; zero: Vector3; pole: Vector3; color: number }[] = [
+	{
+		name: 'galactic-plane',
+		zero: eqToScene(GAL_CENTER_RA, GAL_CENTER_DEC, new Vector3()).normalize(),
+		pole: eqToScene(GAL_NP_RA, GAL_NP_DEC, new Vector3()).normalize(),
+		color: 0xff6b35
+	},
+	{
+		name: 'ecliptic-plane',
+		zero: new Vector3(1, 0, 0),
+		pole: new Vector3(0, 1, 0),
+		color: 0x4dd0ff
+	},
+	{
+		name: 'celestial-equator',
+		zero: eqToScene(0, 0, new Vector3()).normalize(),
+		pole: eqToScene(0, 90, new Vector3()).normalize(),
+		color: 0x9d8cff
+	}
+];
+
 /**
  * (RA, Dec) J2000 equatorial → Three.js scene frame. Identical to
  * `equatorialToThreeJS` in `lib/math/orientation.ts`, inlined here to avoid
@@ -140,13 +177,6 @@ function buildLabelElement(landmark: SkyLandmark): HTMLDivElement {
 	return wrap;
 }
 
-/** Galactic North Pole (RA, Dec, J2000) — defines galactic↔equatorial rotation. */
-const GAL_NP_RA = 192.85948;
-const GAL_NP_DEC = 27.12825;
-/** RA, Dec of the galactic center (l=0, b=0) — Sgr A* region. */
-const GAL_CENTER_RA = 266.40499;
-const GAL_CENTER_DEC = -28.93617;
-
 /**
  * A `LineLoop` tracing one great circle, given the "0°" longitude-origin axis
  * and the pole axis in scene coordinates.
@@ -179,40 +209,6 @@ function buildGreatCircle(
 }
 
 /**
- * Galactic plane (b=0) great circle at the marker radius. Inset slightly so
- * it doesn't z-fight with the marker dots.
- */
-function buildGalacticPlane(): LineLoop {
-	const zero = new Vector3();
-	eqToScene(GAL_CENTER_RA, GAL_CENTER_DEC, zero).normalize();
-	const pole = new Vector3();
-	eqToScene(GAL_NP_RA, GAL_NP_DEC, pole).normalize();
-	const loop = buildGreatCircle(zero, pole, SKY_MARKER_RADIUS * 0.999, 0xff6b35, 256);
-	loop.name = 'galactic-plane';
-	return loop;
-}
-
-/** Ecliptic plane (b=0) — by construction sits on the scene XZ plane. */
-function buildEclipticPlane(): LineLoop {
-	const zero = new Vector3(1, 0, 0);
-	const pole = new Vector3(0, 1, 0);
-	const loop = buildGreatCircle(zero, pole, SKY_MARKER_RADIUS * 0.999, 0x4dd0ff, 256);
-	loop.name = 'ecliptic-plane';
-	return loop;
-}
-
-/** Celestial equator (declination 0) — same as RA=anything, dec=0 transformed. */
-function buildCelestialEquator(): LineLoop {
-	const zero = new Vector3();
-	eqToScene(0, 0, zero).normalize();
-	const pole = new Vector3();
-	eqToScene(0, 90, pole).normalize();
-	const loop = buildGreatCircle(zero, pole, SKY_MARKER_RADIUS * 0.999, 0x9d8cff, 256);
-	loop.name = 'celestial-equator';
-	return loop;
-}
-
-/**
  * A Group of CSS2D landmark markers + great-circle reference lines (galactic,
  * ecliptic, celestial-equator), all at `SKY_MARKER_RADIUS`. Starts hidden;
  * caller toggles `group.visible` behind the debug flag.
@@ -229,9 +225,18 @@ export function createSkyDebugMarkers(): Group {
 		css.position.copy(dir);
 		group.add(css);
 	}
-	group.add(buildGalacticPlane());
-	group.add(buildEclipticPlane());
-	group.add(buildCelestialEquator());
+	for (const circle of REFERENCE_CIRCLES) {
+		// Inset a touch so the circles don't z-fight with the marker reticles.
+		const loop = buildGreatCircle(
+			circle.zero,
+			circle.pole,
+			SKY_MARKER_RADIUS * 0.999,
+			circle.color,
+			CIRCLE_SEGMENTS
+		);
+		loop.name = circle.name;
+		group.add(loop);
+	}
 	return group;
 }
 

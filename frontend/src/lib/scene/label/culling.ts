@@ -3,6 +3,8 @@ import { ObjectType } from '$lib/types/objects';
 import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { VISIBILITY } from '$lib/scene/visibility/thresholds';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { poolSlot } from '../pool';
+import type { Vec3 } from '../animation/math';
 import {
 	HIDE_LABEL_BODY_HALO_FACTOR,
 	HALO_RADIUS_PX,
@@ -47,6 +49,34 @@ export type ScreenOccluder = {
 	ccy: number;
 	ccz: number;
 };
+
+/** Zeroed occluder for a pool slot. Callers overwrite every field through
+ *  `setSphereOccluder` / `setEllipsoidOccluder` before use. */
+export function makeScreenOccluder(): ScreenOccluder {
+	return {
+		cx0: 0,
+		cy0: 0,
+		f: 0,
+		gxx: 0,
+		gxy: 0,
+		gxz: 0,
+		gyx: 0,
+		gyy: 0,
+		gyz: 0,
+		gzx: 0,
+		gzy: 0,
+		gzz: 0,
+		cpx: 0,
+		cpy: 0,
+		cpz: 0,
+		K: 0,
+		id: '',
+		dist: 0,
+		ccx: 0,
+		ccy: 0,
+		ccz: 0
+	};
+}
 
 /** Last dim/restore state written to each halo, so the cull skips repeat
  *  writes. Keyed on the halo: the name span and note stack follow it. */
@@ -209,10 +239,7 @@ type Candidate = {
 	isMinor: boolean;
 	isFocused: boolean;
 	isSelected: boolean;
-	screenX: number;
-	screenY: number;
-	labelLeft: number;
-	labelRight: number;
+	rect: LabelScreenRect;
 	dist: number;
 };
 
@@ -220,6 +247,53 @@ type Candidate = {
  *  vertical extent in px (body labels and nomenclature labels have different
  *  text heights — the overlap check averages the two to test box overlap). */
 export type AcceptedRect = { left: number; right: number; y: number; h: number };
+
+/** An accepted rect plus the projected anchor it came from: the occlusion and
+ *  minor-halo tests key off the anchor, not the rect. */
+export type LabelScreenRect = AcceptedRect & { x: number };
+
+/** Field-wise copy — rect pools are mutated in place, never replaced. */
+function copyRect(dst: AcceptedRect, src: AcceptedRect): void {
+	dst.left = src.left;
+	dst.right = src.right;
+	dst.y = src.y;
+	dst.h = src.h;
+}
+
+/**
+ * Projects a body's label anchor to screen pixels and derives the label's
+ * overlap rect — the one place the label DOM geometry (32px halo box, 40px
+ * gap before the name, measured text width) is encoded. Returns whether the
+ * anchor is within the depth range; `out` is written either way, so callers
+ * that draw regardless can ignore the answer.
+ */
+export function labelScreenRect(
+	bo: BodyObjects,
+	camera: PerspectiveCamera,
+	focusTruePos: Vec3,
+	screenW: number,
+	screenH: number,
+	out: LabelScreenRect
+): boolean {
+	const label = bo.label!;
+	// label.position carries the silhouette offset (set in updateBodyVisibility),
+	// and the focus-relative origin matches the camera's coordinate space.
+	const [bx, by, bz] = bo.body.position;
+	const lp = label.position;
+	_tmpProj.set(
+		bx - focusTruePos[0] + lp.x,
+		by - focusTruePos[1] + lp.y,
+		bz - focusTruePos[2] + lp.z
+	);
+	_tmpProj.project(camera);
+	out.x = (_tmpProj.x * 0.5 + 0.5) * screenW;
+	out.y = (-_tmpProj.y * 0.5 + 0.5) * screenH;
+	const rootLeft = out.x - label.center.x * 32;
+	out.left = rootLeft;
+	out.right = rootLeft + 40 + (bo.labelTextWidth || 50);
+	out.h = LH;
+	return ndcZVisible(_tmpProj.z);
+}
 
 // Pool of Candidate / Accepted slots that grows on demand and never shrinks.
 // Per-frame work mutates slots in place rather than allocating fresh objects —
@@ -247,68 +321,43 @@ export const acceptedBodyLabelRects = {
 	}
 };
 
-function ensureCandidate(idx: number): Candidate {
-	let c = _candidates[idx];
-	if (!c) {
-		c = {
-			bodyId: '',
-			bo: null,
-			body: null,
-			label: null,
-			labelHalo: null,
-			isCapped: false,
-			isMinor: false,
-			isFocused: false,
-			isSelected: false,
-			screenX: 0,
-			screenY: 0,
-			labelLeft: 0,
-			labelRight: 0,
-			dist: 0
-		};
-		_candidates[idx] = c;
-	}
-	return c;
+function makeCandidate(): Candidate {
+	return {
+		bodyId: '',
+		bo: null,
+		body: null,
+		label: null,
+		labelHalo: null,
+		isCapped: false,
+		isMinor: false,
+		isFocused: false,
+		isSelected: false,
+		rect: { x: 0, left: 0, right: 0, y: 0, h: 0 },
+		dist: 0
+	};
 }
 
-function ensureAccepted(idx: number): AcceptedRect {
-	let a = _accepted[idx];
-	if (!a) {
-		a = { left: 0, right: 0, y: 0, h: 0 };
-		_accepted[idx] = a;
-	}
-	return a;
+function makeRect(): AcceptedRect {
+	return { left: 0, right: 0, y: 0, h: 0 };
 }
+
+/** Scratch rect for a projection whose slot is only claimed once it passes. */
+const _projRect: LabelScreenRect = { x: 0, left: 0, right: 0, y: 0, h: 0 };
 
 /** Hold `count` rects out of every cull this frame; 0 releases them. Called
  *  before the culls run, by whatever owns labels that outrank the scene's own. */
 export function reserveLabelRects(rects: readonly AcceptedRect[], count: number): void {
-	_reservedActive = 0;
 	for (let i = 0; i < count; i++) {
-		const r = rects[i];
-		let a = _reserved[i];
-		if (!a) {
-			a = { left: 0, right: 0, y: 0, h: 0 };
-			_reserved[i] = a;
-		}
-		a.left = r.left;
-		a.right = r.right;
-		a.y = r.y;
-		a.h = r.h;
-		_reservedActive++;
+		copyRect(poolSlot(_reserved, i, makeRect), rects[i]);
 	}
+	_reservedActive = count;
 }
 
 /** Open an accepted set with the reserved rects already in it, and answer how
  *  many slots that used. */
 function seedAccepted(): number {
 	for (let i = 0; i < _reservedActive; i++) {
-		const r = _reserved[i];
-		const a = ensureAccepted(i);
-		a.left = r.left;
-		a.right = r.right;
-		a.y = r.y;
-		a.h = r.h;
+		copyRect(poolSlot(_accepted, i, makeRect), _reserved[i]);
 	}
 	return _reservedActive;
 }
@@ -339,26 +388,12 @@ export function cullOverlappingLabels(
 			const span = labelHalo.nextElementSibling as HTMLElement | null;
 			if (span && span.offsetWidth > 0) bo.labelTextWidth = span.offsetWidth;
 		}
-		// Focus-relative position for projection (matches camera's coordinate space).
-		// label.position carries the silhouette offset (set in updateBodyVisibility)
-		// so this projects to where the label actually renders on screen.
-		const [bx, by, bz] = body.position;
-		const lp = label.position;
-		_tmpProj.set(
-			bx - focusTruePos[0] + lp.x,
-			by - focusTruePos[1] + lp.y,
-			bz - focusTruePos[2] + lp.z
-		);
-		_tmpProj.project(camera);
-		if (!ndcZVisible(_tmpProj.z)) continue;
+		if (!labelScreenRect(bo, camera, focusTruePos, screenWidth, screenHeight, _projRect)) continue;
 		const isFocused = body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(body.data.id);
-		const screenX = (_tmpProj.x * 0.5 + 0.5) * screenWidth;
-		const screenY = (-_tmpProj.y * 0.5 + 0.5) * screenHeight;
-		// Compute actual screen AABB accounting for center.x offset
-		const rootLeft = screenX - label.center.x * 32;
-		const textWidth = bo.labelTextWidth || 50;
-		const c = ensureCandidate(_candidatesActive++);
+		const c = poolSlot(_candidates, _candidatesActive++, makeCandidate);
+		copyRect(c.rect, _projRect);
+		c.rect.x = _projRect.x;
 		c.bodyId = body.data.id;
 		c.bo = bo;
 		c.body = body;
@@ -371,10 +406,6 @@ export function cullOverlappingLabels(
 		c.isMinor = bo.isMinor;
 		c.isFocused = isFocused;
 		c.isSelected = isFocused || isHovered;
-		c.screenX = screenX;
-		c.screenY = screenY;
-		c.labelLeft = rootLeft;
-		c.labelRight = rootLeft + 40 + textWidth;
 		c.dist = bo.cachedDist;
 	}
 
@@ -402,10 +433,7 @@ export function cullOverlappingLabels(
 			continue;
 		}
 		// Check if behind a screen occluder (body large enough to hide labels behind it)
-		if (
-			!c.isSelected &&
-			isScreenOccluded(c.screenX, c.screenY, c.dist, c.bodyId, screenOccluders)
-		) {
+		if (!c.isSelected && isScreenOccluded(c.rect.x, c.rect.y, c.dist, c.bodyId, screenOccluders)) {
 			c.label!.visible = false;
 			c.bo!.labelMaximized = false;
 			continue;
@@ -422,9 +450,9 @@ export function cullOverlappingLabels(
 			for (let j = 0; j < _acceptedActive; j++) {
 				const a = _accepted[j];
 				if (
-					c.screenX - minorRadius < a.right &&
-					c.screenX + minorRadius > a.left &&
-					Math.abs(c.screenY - a.y) < LH
+					c.rect.x - minorRadius < a.right &&
+					c.rect.x + minorRadius > a.left &&
+					Math.abs(c.rect.y - a.y) < LH
 				) {
 					minorOverlaps = true;
 					break;
@@ -437,17 +465,13 @@ export function cullOverlappingLabels(
 		let overlaps = false;
 		for (let j = 0; j < _acceptedActive; j++) {
 			const a = _accepted[j];
-			if (c.labelLeft < a.right && c.labelRight > a.left && Math.abs(c.screenY - a.y) < LH) {
+			if (c.rect.left < a.right && c.rect.right > a.left && Math.abs(c.rect.y - a.y) < LH) {
 				overlaps = true;
 				break;
 			}
 		}
 		if (!overlaps) {
-			const a = ensureAccepted(_acceptedActive++);
-			a.left = c.labelLeft;
-			a.right = c.labelRight;
-			a.y = c.screenY;
-			a.h = LH;
+			copyRect(poolSlot(_accepted, _acceptedActive++, makeRect), c.rect);
 			restoreLabel(
 				labelHalo,
 				nameSpan,
@@ -489,29 +513,12 @@ export function refreshVisibleBodyLabelRects(
 ): void {
 	_acceptedActive = seedAccepted();
 	for (const bo of bodyObjects.values()) {
-		const { body, label } = bo;
-		if (!label?.visible) continue;
+		if (!bo.label?.visible) continue;
 		// `labelMaximized === false` only after the body cull explicitly dimmed
 		// the label; undefined (never culled) is treated as maximized so freshly
 		// appeared labels still cull features behind them.
 		if (bo.labelMaximized === false) continue;
-		const [bx, by, bz] = body.position;
-		const lp = label.position;
-		_tmpProj.set(
-			bx - focusTruePos[0] + lp.x,
-			by - focusTruePos[1] + lp.y,
-			bz - focusTruePos[2] + lp.z
-		);
-		_tmpProj.project(camera);
-		if (!ndcZVisible(_tmpProj.z)) continue;
-		const screenX = (_tmpProj.x * 0.5 + 0.5) * screenWidth;
-		const screenY = (-_tmpProj.y * 0.5 + 0.5) * screenHeight;
-		const rootLeft = screenX - label.center.x * 32;
-		const textWidth = bo.labelTextWidth || 50;
-		const a = ensureAccepted(_acceptedActive++);
-		a.left = rootLeft;
-		a.right = rootLeft + 40 + textWidth;
-		a.y = screenY;
-		a.h = LH;
+		if (!labelScreenRect(bo, camera, focusTruePos, screenWidth, screenHeight, _projRect)) continue;
+		copyRect(poolSlot(_accepted, _acceptedActive++, makeRect), _projRect);
 	}
 }

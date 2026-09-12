@@ -11,25 +11,17 @@ import {
 import { versionedUrl } from '$lib/fetch/data-base';
 import { kmToScene } from '$lib/math/units';
 import { attachSelfShadowToBody } from './self-shadow';
-import type { BodyObjects } from '$lib/scene/types';
+import type { BodyObjects, TextureBundleMeta } from '$lib/scene/types';
 
 /**
  * Per-body displacement metadata. `scale_km`/`bias_km` map each texel to
  * `km = bias_km + scale_km * texel`. When `absolute_radius`, that value is
  * radius-from-centre, not elevation — see {@link attachDisplacementMap}.
  */
-export interface DisplacementMeta {
-	id: string;
-	tiers: string[];
+export interface DisplacementMeta extends TextureBundleMeta {
 	scale_km: number;
 	bias_km: number;
 	absolute_radius: boolean;
-	source: string;
-	organisation: string;
-	license?: string;
-	type: string;
-	attribution?: string;
-	description?: string;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { Group, Line, Mesh, Object3D, Points, Sprite, Texture } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import type { CreditFields } from '$lib/credits/imagery-layers';
 import type { LabelAnnotation } from './label/annotations';
 import type { RingNode } from './objects/surface/rings';
 import type { CloudNode } from './objects/surface/clouds';
@@ -19,6 +20,17 @@ import type { NoticeSink } from './notice';
 export const HIDE_LABEL_BODY_HALO_FACTOR = 20;
 /** Halo indicator radius — diameter is 32px. */
 export const HALO_RADIUS_PX = 16;
+
+/**
+ * A texture bundle shipped beside a body's surface map, served from
+ * `/v1/textures/{id}/{tier}.webp`. Layers with a payload (height scale, cloud
+ * frames) extend it; specular and night-lights carry nothing else.
+ */
+export interface TextureBundleMeta extends CreditFields {
+	id: string;
+	tiers: string[];
+	type: string;
+}
 
 export function typePriority(type: ObjectType): number {
 	switch (type) {

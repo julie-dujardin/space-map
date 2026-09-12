@@ -7,6 +7,7 @@ import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } f
 
 import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/time/jd';
+import type { TextureBundleMeta } from '$lib/scene/types';
 
 /**
  * Runs of real coverage as `[firstSlot, lastSlot]` ids. Between two runs the
@@ -15,19 +16,11 @@ import { jdToDate } from '$lib/time/jd';
 export type CloudCoverage = [string, string][];
 
 /** Per-body cloud-overlay metadata — matches `clouds_block` in export/systems.py. */
-export interface CloudMeta {
-	id: string;
-	tiers: string[];
+export interface CloudMeta extends TextureBundleMeta {
 	/** Sortable `YYYYMMDDHH` ids, ascending — only snapshots that differ from the one
 	 *  before, so each is the start of the span it covers. Empty means none are available. */
 	frames: string[];
 	coverage?: CloudCoverage;
-	source: string;
-	organisation: string;
-	license?: string;
-	type: string;
-	attribution?: string;
-	description?: string;
 }
 
 export interface CloudNode {

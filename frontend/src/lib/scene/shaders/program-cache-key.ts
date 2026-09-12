@@ -23,3 +23,22 @@ export function tagShaderModifier(material: Material, mod: string): void {
 	mods.push(mod);
 	material.customProgramCacheKey = () => mods.join('|');
 }
+
+/**
+ * Chain `patch` onto `material.onBeforeCompile`, tag the stack and request a
+ * recompile. Every modifier goes through here so the cache key can never miss
+ * one — the collision {@link tagShaderModifier} describes is silent.
+ */
+export function chainShaderHook(
+	material: Material,
+	mod: string,
+	patch: Material['onBeforeCompile']
+): void {
+	const prev = material.onBeforeCompile;
+	material.onBeforeCompile = (shader, renderer) => {
+		prev?.(shader, renderer);
+		patch(shader, renderer);
+	};
+	tagShaderModifier(material, mod);
+	material.needsUpdate = true;
+}

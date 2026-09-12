@@ -113,19 +113,7 @@ export class ThrottledCSS2DRenderer {
 			const layerOk = object.layers.test(camera.layers);
 			const visible = inFrustum && layerOk;
 
-			let cache = this._cache.get(element);
-			if (!cache) {
-				cache = {
-					tx: SENTINEL,
-					ty: SENTINEL,
-					cx: SENTINEL,
-					cy: SENTINEL,
-					display: '__init__',
-					zIndex: SENTINEL,
-					dist2: 0
-				};
-				this._cache.set(element, cache);
-			}
+			const cache = this.cacheFor(element);
 
 			const targetDisplay = visible ? '' : 'none';
 			if (cache.display !== targetDisplay) {
@@ -165,22 +153,29 @@ export class ThrottledCSS2DRenderer {
 		}
 	}
 
+	/** Cache entry for an element, seeded with sentinels so the first compare
+	 *  against any real style value misses. */
+	private cacheFor(element: HTMLElement): CacheEntry {
+		let cache = this._cache.get(element);
+		if (!cache) {
+			cache = {
+				tx: SENTINEL,
+				ty: SENTINEL,
+				cx: SENTINEL,
+				cy: SENTINEL,
+				display: '__init__',
+				zIndex: SENTINEL,
+				dist2: 0
+			};
+			this._cache.set(element, cache);
+		}
+		return cache;
+	}
+
 	private hideObject(object: Object3D): void {
 		if (isCSS2D(object)) {
 			const element = object.element;
-			let cache = this._cache.get(element);
-			if (!cache) {
-				cache = {
-					tx: SENTINEL,
-					ty: SENTINEL,
-					cx: SENTINEL,
-					cy: SENTINEL,
-					display: '__init__',
-					zIndex: SENTINEL,
-					dist2: 0
-				};
-				this._cache.set(element, cache);
-			}
+			const cache = this.cacheFor(element);
 			if (cache.display !== 'none') {
 				element.style.display = 'none';
 				cache.display = 'none';

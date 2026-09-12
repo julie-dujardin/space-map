@@ -1,10 +1,4 @@
-import {
-	isAsteroid,
-	ObjectType,
-	sbdbOrbitClass,
-	ZONE_A_RANGE,
-	type PositionedBody
-} from '$lib/types/objects';
+import { isAsteroid, ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_KM, AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
@@ -14,6 +8,10 @@ import { hillRadiusAU } from '$lib/scene/visibility/hill';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { smallBodyCategory, type SmallBodyFilter } from '$lib/fetch/groups/registry';
 import { LayerSet } from '$lib/scene/layers';
+import {
+	matchesSmallBodyFilter,
+	SMALL_BODY_ZONE_PREFIX
+} from '$lib/scene/visibility/small-body-filter';
 import {
 	VISIBILITY,
 	REFERENCE_VIEWPORT_HEIGHT,
@@ -26,8 +24,6 @@ import {
 	MOONLESS_SYSTEM_HILL_FRACTION,
 	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
-
-const SMALL_BODY_ZONE_PREFIX = 'small_bodies/';
 
 /** What a controller built without a map draws: everything. */
 const ALL_LAYERS = new LayerSet();
@@ -535,46 +531,12 @@ export class VisibilityController {
 	}
 
 	/** True when no small-body filter is active or the body satisfies it.
-	 *  Unresolved bodies don't match, so off-class promoted bodies stay hidden.
 	 *  Asteroid moons are gated via parent-id lookup in getMoonVisibility. */
 	private matchesSmallBodyClass(id: string): boolean {
 		const filter = this.getSmallBodyFilter();
+		// Nothing filtered: every body is on-class.
 		if (filter === null) return true;
-		if (filter.kind === 'class' || filter.kind === 'category') {
-			const className = this.resolveSmallBodyClass(id);
-			if (className === null) return false;
-			return filter.kind === 'class'
-				? className === filter.className
-				: smallBodyCategory(className) === filter.category;
-		}
-		// Promoted small bodies live in `asteroidBodiesByZone`, not
-		// `bodiesById` — go through getBody so flags resolve.
-		const body = this.bodies.getBody(id);
-		if (body === undefined) return false;
-		return ((body.data.flags ?? 0) & filter.mask) === filter.mask;
-	}
-
-	/** SBDB orbit-class name for a small body: its zone suffix, or — for
-	 *  un-zoned dwarf planets — derived from heliocentric (a, e) since AMO/MCA/APO
-	 *  overlap the main belt's `a` band. Walks one level up for Pluto, whose
-	 *  `data.a` is around its barycenter. Null when the class can't be resolved. */
-	private resolveSmallBodyClass(id: string): string | null {
-		const zone = this.bodies.findAsteroidZone(id);
-		if (zone && zone.startsWith(SMALL_BODY_ZONE_PREFIX)) {
-			return zone.slice(SMALL_BODY_ZONE_PREFIX.length);
-		}
-		const body = this.bodies.bodiesById.get(id);
-		if (body?.data.objectType !== ObjectType.DWARF_PLANET) return null;
-		let a = body.data.a;
-		let e = body.data.e;
-		if (!isTopLevelParent(body.data.parentId)) {
-			const parent = this.bodies.bodiesById.get(body.data.parentId);
-			if (parent?.data.a) {
-				a = parent.data.a;
-				e = parent.data.e;
-			}
-		}
-		return sbdbOrbitClass(a, e);
+		return matchesSmallBodyFilter(this.bodies, id, filter);
 	}
 
 	/**

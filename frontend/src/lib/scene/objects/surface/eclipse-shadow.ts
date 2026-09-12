@@ -13,7 +13,7 @@
  */
 
 import { type MeshStandardMaterial, Vector3, Vector4 } from 'three';
-import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
+import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
 /** Hard cap on simultaneously-tracked occluders. The shader loops up to
  *  {@link EclipseSceneUniforms.uOccluderCount} so unused slots cost
@@ -259,9 +259,7 @@ export function attachEclipseShadowToBody(
 	selfUniforms?: EclipseSelfUniforms
 ): EclipseSelfUniforms {
 	const self = selfUniforms ?? makeEclipseSelfUniforms();
-	const prev = material.onBeforeCompile;
-	material.onBeforeCompile = (shader, renderer) => {
-		prev?.(shader, renderer);
+	chainShaderHook(material, 'eclipse', (shader) => {
 		// `self` last: its occluder list shadows the scene-wide one.
 		Object.assign(shader.uniforms, SHARED, self);
 
@@ -292,8 +290,6 @@ export function attachEclipseShadowToBody(
 				reflectedLight.directDiffuse *= eclipseShadow;
 				reflectedLight.directSpecular *= eclipseShadow;`
 			);
-	};
-	tagShaderModifier(material, 'eclipse');
-	material.needsUpdate = true;
+	});
 	return self;
 }

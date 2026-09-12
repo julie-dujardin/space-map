@@ -2,19 +2,8 @@ import { Color, type MeshStandardMaterial, type Texture, type TextureLoader } fr
 import { SRGBColorSpace } from 'three';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
-import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
-
-/** Per-body night-lights metadata: single-frame emissive sibling of the surface texture, served from `{night.id}/{tier}.webp`. */
-export interface NightMeta {
-	id: string;
-	tiers: string[];
-	source: string;
-	organisation: string;
-	license?: string;
-	type: string;
-	attribution?: string;
-	description?: string;
-}
+import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
+import type { TextureBundleMeta } from '$lib/scene/types';
 
 /** Brightness multiplier on unlit-side emissive: Black Marble is bright enough that cities would read as a second lit hemisphere at 1.0. */
 const NIGHT_INTENSITY = 0.2;
@@ -40,7 +29,7 @@ type PatchedMaterial = MeshStandardMaterial & { [NIGHT_HOOK]?: true };
  */
 export async function attachNightLights(
 	material: MeshStandardMaterial,
-	nightMeta: NightMeta,
+	nightMeta: TextureBundleMeta,
 	tier: string,
 	textureLoader: TextureLoader
 ): Promise<Texture | null> {
@@ -73,9 +62,7 @@ export function attachNightTexture(material: MeshStandardMaterial, texture: Text
 	if (!patched[NIGHT_HOOK]) {
 		patched[NIGHT_HOOK] = true;
 		const sunUniforms = getEclipseSceneUniforms();
-		const prev = material.onBeforeCompile;
-		material.onBeforeCompile = (shader, renderer) => {
-			prev?.(shader, renderer);
+		chainShaderHook(material, 'nightLights', (shader) => {
 			// Shared uSunDir reference keeps a single source of truth for the sun direction.
 			shader.uniforms.uSunDir = sunUniforms.uSunDir;
 			shader.uniforms.uNightIntensity = { value: NIGHT_INTENSITY };
@@ -108,9 +95,8 @@ export function attachNightTexture(material: MeshStandardMaterial, texture: Text
 						totalEmissiveRadiance *= nightFactor * uNightIntensity;
 					#endif`
 				);
-		};
+		});
 	}
-	tagShaderModifier(material, 'nightLights');
 	material.needsUpdate = true;
 }
 

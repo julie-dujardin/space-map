@@ -327,11 +327,7 @@ export class ZoneRefresher {
 
 			// Reconcile to this snapshot's membership
 			for (const [key, freshBodies] of newBuckets) {
-				let bucket = this.ctx.bodies.spacecraftByParent.get(key);
-				if (!bucket) {
-					bucket = new Map();
-					this.ctx.bodies.spacecraftByParent.set(key, bucket);
-				}
+				const bucket = this.ctx.bodies.spacecraftBucket(key);
 				// Keep mesh-promoted ids: their PositionedBody is shared with the
 				// mesh, so dropping the entry would orphan it on reappearance.
 				for (const id of bucket.keys()) {

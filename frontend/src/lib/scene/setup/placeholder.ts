@@ -3,8 +3,7 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { bodyDataFromGlobal, unplacedBodyDataFromGlobal } from '$lib/fetch/objects/global-body';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
-import { fetchLabels } from '$lib/fetch/position/labels';
-import { MinorBucket } from '$lib/fetch/position/minor-columns';
+import { fetchLabels, type LabelMap } from '$lib/fetch/position/labels';
 import type { ChunkLoader } from '$lib/fetch/position/chunk';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { dateToJD } from '$lib/time/jd';
@@ -105,6 +104,61 @@ export async function createPlaceholderBody(
 	return ancestors;
 }
 
+/**
+ * Route placeholders into the same per-zone store their real chunk will land
+ * in, so a later stream reconciles them in place. Returns how many bodies were
+ * routed into a bucket; the caller owns the flush.
+ *
+ * `onPlaceholder` fires per routed spacecraft placeholder, for a caller that
+ * has a later chunk stream to reconcile against — only the boot pass does.
+ */
+export function routePlaceholders(
+	ctx: ContextManager,
+	placeholders: Array<{ body: PositionedBody; zone: string | null }>,
+	labels: LabelMap,
+	opts?: { onPlaceholder?: (body: PositionedBody) => void }
+): number {
+	let added = 0;
+	for (let i = 0; i < placeholders.length; i++) {
+		const { body, zone } = placeholders[i];
+		if (ctx.getBody(body.data.id)) continue;
+		const type = body.data.objectType;
+		if (body.data.unplaceable) {
+			// Nowhere to route it: the zone buckets and spacecraft groups are
+			// keyed by a place this body doesn't have.
+			ctx.bodies.addBodies([body]);
+			added++;
+		} else {
+			const parentEntry = i > 0 ? placeholders[i - 1] : null;
+			// Asteroid-moon placeholders steer into `small_body_moons` so they
+			// reconcile via the auto-promote path into `bodyObjects` — not
+			// `bodiesById`, where the moon `inSystem` filter would freeze them
+			// once focus moves off.
+			const resolvedZone =
+				type === ObjectType.MOON && parentEntry && isAsteroid(parentEntry.body.data.objectType)
+					? 'small_body_moons'
+					: zone;
+			if (type === ObjectType.SPACECRAFT || type === ObjectType.DEBRIS) {
+				const key = body.data.parentId;
+				ctx.bodies.spacecraftBucket(key).set(body.data.id, body);
+				opts?.onPlaceholder?.(body);
+				ctx.bodies.dirtySpacecraftGroups.add(key);
+				added++;
+			} else if (resolvedZone) {
+				ctx.bodies.asteroidBucket(resolvedZone, labels).addPlaceholder(body);
+				ctx.bodies.dirtyAsteroidZones.add(resolvedZone);
+				added++;
+			} else {
+				// Major / undocumented / wikidata-only — no zone to route into,
+				// fall back to bodiesById so getBody() still finds it.
+				ctx.bodies.addBodies([body]);
+			}
+		}
+		ctx.credits.recordOrbitSources([body]);
+	}
+	return added;
+}
+
 /** Stream a single target into the running scene if absent — the in-session
  *  equivalent of {@link loadScene}'s URL-target placeholder pass (no reload). */
 export async function ensureTargetStreamed(
@@ -116,55 +170,7 @@ export async function ensureTargetStreamed(
 	if (ctx.getBody(targetId)) return;
 	const placeholders = await createPlaceholderBody(targetId, date, loader);
 	if (placeholders.length === 0) return;
-
 	const labels = await fetchLabels();
-	const asteroidBucket = (zone: string): MinorBucket => {
-		let b = ctx.bodies.asteroidBodiesByZone.get(zone);
-		if (!b) ctx.bodies.asteroidBodiesByZone.set(zone, (b = new MinorBucket(labels)));
-		return b;
-	};
-	const spacecraftBucket = (key: string): Map<string, PositionedBody> => {
-		let b = ctx.bodies.spacecraftByParent.get(key);
-		if (!b) ctx.bodies.spacecraftByParent.set(key, (b = new Map()));
-		return b;
-	};
-	const added: string[] = [];
-
-	for (let i = 0; i < placeholders.length; i++) {
-		const { body, zone } = placeholders[i];
-		if (ctx.getBody(body.data.id)) continue;
-		const type = body.data.objectType;
-		if (body.data.unplaceable) {
-			// Nowhere to route it: the zone buckets and spacecraft groups are
-			// keyed by a place this body doesn't have.
-			ctx.bodies.addBodies([body]);
-			added.push(body.data.id);
-			continue;
-		}
-		const parentEntry = i > 0 ? placeholders[i - 1] : null;
-		const resolvedZone =
-			type === ObjectType.MOON && parentEntry && isAsteroid(parentEntry.body.data.objectType)
-				? 'small_body_moons'
-				: zone;
-		if (type === ObjectType.SPACECRAFT || type === ObjectType.DEBRIS) {
-			const key = body.data.parentId;
-			spacecraftBucket(key).set(body.data.id, body);
-			ctx.bodies.dirtySpacecraftGroups.add(key);
-			added.push(body.data.id);
-		} else if (resolvedZone) {
-			asteroidBucket(resolvedZone).addPlaceholder(body);
-			ctx.bodies.dirtyAsteroidZones.add(resolvedZone);
-			added.push(body.data.id);
-		} else {
-			ctx.bodies.addBodies([body]);
-		}
-		ctx.credits.recordOrbitSources([body]);
-	}
-
-	// Re-wrap the outer Maps so reactive observers see a new ref, then notify the
-	// promotion registry so the freshly-added bodies get a visual representation.
-	ctx.bodies.asteroidBodiesByZone = new Map(ctx.bodies.asteroidBodiesByZone);
-	ctx.bodies.spacecraftByParent = new Map(ctx.bodies.spacecraftByParent);
-	ctx.bodies.minorBodyVersion++;
-	if (added.length > 0) ctx.bodies.notifyBodiesAdded();
+	const added = routePlaceholders(ctx, placeholders, labels);
+	ctx.bodies.flushMinor(added > 0);
 }

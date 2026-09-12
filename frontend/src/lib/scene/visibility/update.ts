@@ -17,9 +17,13 @@ import {
 	applyLabelDisplay,
 	isScreenOccluded,
 	cullOverlappingLabels,
+	labelScreenRect,
+	makeScreenOccluder,
 	refreshVisibleBodyLabelRects,
+	type LabelScreenRect,
 	type ScreenOccluder
 } from '../label/culling';
+import { poolSlot } from '../pool';
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
 import {
@@ -29,7 +33,6 @@ import {
 } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
 import { AU_SCALE } from '$lib/math/units';
-import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
 import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import {
@@ -61,35 +64,11 @@ const _occluderPool: ScreenOccluder[] = [];
  *  earlier in the frame sees the previous frame's — off by one frame at most. */
 export const liveScreenOccluders: readonly ScreenOccluder[] = _occluderPool;
 function ensureOccluder(idx: number): ScreenOccluder {
-	let o = _occluderPool[idx];
-	if (!o) {
-		o = {
-			cx0: 0,
-			cy0: 0,
-			f: 0,
-			gxx: 0,
-			gxy: 0,
-			gxz: 0,
-			gyx: 0,
-			gyy: 0,
-			gyz: 0,
-			gzx: 0,
-			gzy: 0,
-			gzz: 0,
-			cpx: 0,
-			cpy: 0,
-			cpz: 0,
-			K: 0,
-			id: '',
-			dist: 0,
-			ccx: 0,
-			ccy: 0,
-			ccz: 0
-		};
-		_occluderPool[idx] = o;
-	}
-	return o;
+	return poolSlot(_occluderPool, idx, makeScreenOccluder);
 }
+
+// Scratch for the occlusion test's projected label anchor.
+const _occlusionRect: LabelScreenRect = { x: 0, y: 0, left: 0, right: 0, h: 0 };
 
 // Scratch for reading a mesh's world orientation when building ellipsoid occluders.
 const _meshQuat = new Quaternion();
@@ -537,15 +516,11 @@ export function updateBodyVisibility(
 	if (screenOccluders.length > 0) {
 		for (const bo of bodyObjects.values()) {
 			if (!bo.label?.visible) continue;
-			const [bx, by, bz] = bo.body.position;
-			const lp = bo.label.position;
-			tmpV3.set(bx - fp[0] + lp.x, by - fp[1] + lp.y, bz - fp[2] + lp.z);
-			tmpV3.project(camera);
-			if (!ndcZVisible(tmpV3.z)) continue;
+			if (!labelScreenRect(bo, camera, fp, screenW, screenH, _occlusionRect)) continue;
 			if (
 				isScreenOccluded(
-					(tmpV3.x * 0.5 + 0.5) * screenW,
-					(-tmpV3.y * 0.5 + 0.5) * screenH,
+					_occlusionRect.x,
+					_occlusionRect.y,
 					bo.cachedDist,
 					bo.body.data.id,
 					screenOccluders

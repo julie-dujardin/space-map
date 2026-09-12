@@ -57,7 +57,7 @@ import {
 	type AtmosphereQualityConfig
 } from './atmosphere-quality';
 import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms, MAX_OCCLUDERS } from './eclipse-shadow';
-import type { PlanetRingShadowUniforms } from './rings';
+import { RING_SHADOW_GLSL, type PlanetRingShadowUniforms } from './rings';
 
 /** Rendered terrain can dip this far below the analytic ellipsoid (Gale crater
  *  sits at −4.5 km); the shell keeps marching down to it. Only applied with
@@ -376,16 +376,6 @@ const FRAGMENT_SHADER = `
 	uniform float uBakedComp;        // 0..1, vertical column already in the texture
 	uniform float uSunIntensity;
 	uniform vec3 uSunColor;
-	// Ring shadow on the air column — same analytic ray-plane march as
-	// attachRingShadowToPlanet, shared value-refs once rings load.
-	uniform sampler2D uRingShadowTransparency;
-	uniform float uRingShadowInnerScene;
-	uniform float uRingShadowOuterScene; // 0 = no rings
-	uniform float uRingShadowIntensity;
-	uniform float uRingShadowSunAngularRadius;
-	uniform vec3 uRingShadowSunDir;
-	uniform vec3 uRingShadowPoleDir;
-	uniform vec3 uRingShadowCenter;
 	// Opaque-scene depth, sampled only when the camera is inside the shell (the
 	// far-hemisphere pass runs with depthTest off so the sky renders, which
 	// would otherwise paint over foreground terrain). uUseDepth gates it; the
@@ -419,6 +409,10 @@ const FRAGMENT_SHADER = `
 	varying vec3 vPlanetCenter;
 
 	${ECLIPSE_FACTOR_GLSL}
+
+	// Ring shadow on the air column: the same uniforms the planet surface
+	// marches, shared by value-ref once rings load.
+	${RING_SHADOW_GLSL}
 
 	// PRIMARY_STEPS / LIGHT_STEPS and the ATMO_ECLIPSE / ATMO_RING_SHADOW /
 	// ATMO_INSIDE feature flags come from material.defines — quality tiers
@@ -564,46 +558,6 @@ const FRAGMENT_SHADER = `
 			mie,
 			max(0.0, 1.0 - abs(hc - uAbsorptionCenter) / uAbsorptionWidth)
 		);
-	}
-
-	// Physical (× intensity) ring transmittance at u; outside the annulus is
-	// empty space.
-	float ringShadowTrans(float u) {
-		if (u < 0.0 || u > 1.0) return 1.0;
-		return 1.0 - clamp(
-			(1.0 - texture2D(uRingShadowTransparency, vec2(u, 0.5)).r)
-				* uRingShadowIntensity,
-			0.0, 1.0);
-	}
-
-	// Ring transmittance toward the sun from a world-space point: intersect the
-	// ring plane, box-average the transparency profile over the sun disc's
-	// penumbra, Beer–Lambert with slant correction. Mirrors
-	// attachRingShadowToPlanet so the shadow the rings cast on the surface
-	// continues up through the air above it.
-	float ringShadowAt(vec3 worldPos) {
-		// Second test: zeroed for a bundle too faint to darken anything.
-		if (uRingShadowOuterScene <= 0.0 || uRingShadowIntensity <= 0.0) return 1.0;
-		float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
-		if (abs(denom) < 1e-6) return 1.0;
-		vec3 rel = worldPos - uRingShadowCenter;
-		float t = -dot(rel, uRingShadowPoleDir) / denom;
-		if (t < 0.0) return 1.0;
-		vec3 hit = rel + t * uRingShadowSunDir;
-		vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
-		float r = length(hitPerp);
-		float penumbra = t * uRingShadowSunAngularRadius;
-		if (r < uRingShadowInnerScene - penumbra || r > uRingShadowOuterScene + penumbra)
-			return 1.0;
-		float uSpan = uRingShadowOuterScene - uRingShadowInnerScene;
-		float u = (r - uRingShadowInnerScene) / uSpan;
-		float pu = penumbra / uSpan;
-		float trans = (
-			ringShadowTrans(u - pu) + ringShadowTrans(u - 0.5 * pu) +
-			ringShadowTrans(u) +
-			ringShadowTrans(u + 0.5 * pu) + ringShadowTrans(u + pu)
-		) / 5.0;
-		return pow(max(trans, 1e-4), 1.0 / max(abs(denom), 0.02));
 	}
 
 	// Optical depth (Rayleigh, Mie, absorber), in planet-radius units, from p

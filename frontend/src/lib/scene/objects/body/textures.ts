@@ -5,17 +5,15 @@ import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { sceneSettings } from '$lib/scene/settings.svelte';
-import { isLowEndDevice } from '$lib/device';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
-import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
-import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { syncAtmosphereEllipsoid } from '../surface/atmosphere';
 import { attachRingBundles } from '../surface/ring-attach';
 import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import type { BodyObjects } from '../../types';
 import { applyBodyOrientation } from './orientation-apply';
+import { loadSiblingLayer, unloadSiblingLayer } from './sibling-layers';
 import { jdToDate } from '$lib/time/jd';
 
 /** Ordered tier names: lower → higher resolution. Index = rank. */
@@ -197,43 +195,18 @@ export async function loadBodyTexture(
 	}
 
 	if (!detail.global.map_texture_available) return;
+	// Standalones aren't tied to a system barycenter; key credits on the body
+	// itself so they match the focused body id.
+	const bodyId = bo.body.data.id;
 	if (ctx && detail.global.texture) {
-		// Standalones aren't tied to a system barycenter; key the credit on the
-		// body itself so it matches the focused body id.
-		const bodyId = bo.body.data.id;
 		ctx.credits.registerImagery('surface', bodyId, bodyId, detail.global.texture);
 	}
-	// DEM sibling — standalones load it here since they skip the per-system
-	// path (same shape as system.ts's branch). Low-end clients keep the flat
-	// textured sphere: the DEM relief is the heaviest per-body asset.
-	if (detail.global.displacement && !bo.displacementMap && bo.mesh && isLowEndDevice()) {
-		console.info(`Low-end device: skipping DEM relief for ${bo.body.data.id}`);
-	} else if (
-		detail.global.displacement &&
-		!bo.displacementMap &&
-		bo.mesh &&
-		sceneSettings().showDisplacement
-	) {
-		const dispMeta = detail.global.displacement;
-		ctx?.credits.registerImagery('topography', bo.body.data.id, bo.body.data.id, dispMeta);
-		const material = bo.mesh.material as MeshStandardMaterial;
-		const tex = await attachDisplacementMap(
-			material,
-			dispMeta,
-			'low',
-			textureLoader,
-			bo.radiusScene
-		);
-		if (tex) {
-			bo.displacementMap = tex;
-			bo.displacementMeta = dispMeta;
-			bo.displacementTier = 'low';
-			// Debug: self-shadow off → relief without in-shader cast shadows.
-			bo.selfShadow = sceneSettings().showSelfShadow
-				? attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km))
-				: null;
-		}
-	}
+	// DEM sibling — standalones load it here since they skip the per-system path.
+	await loadSiblingLayer('topography', bodyId, bodyId, detail.global, bo, {
+		textureLoader,
+		currentJd,
+		ctx
+	});
 
 	if (bo.textureTier || bo.textureLoading) return;
 	// Debug: surface texture off → the sphere shows its flat base tint only.
@@ -269,13 +242,7 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	// Invalidate any in-flight swap so it won't re-attach after we tear down.
 	bo.textureLoadGen = (bo.textureLoadGen ?? 0) + 1;
 	const material = bo.mesh.material as MeshStandardMaterial;
-	if (bo.displacementMap) {
-		disposeDisplacementFromMaterial(material);
-		bo.displacementMap = null;
-		bo.displacementTier = undefined;
-		detachSelfShadow(bo.selfShadow);
-		bo.selfShadow = null;
-	}
+	unloadSiblingLayer('topography', bo);
 	if (!material.map) return;
 	material.map.dispose();
 	material.map = null;

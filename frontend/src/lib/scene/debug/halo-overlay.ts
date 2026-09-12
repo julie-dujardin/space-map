@@ -1,11 +1,18 @@
 import { Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
-import { isScreenOccluded, type ScreenOccluder } from '../label/culling';
+import {
+	isScreenOccluded,
+	labelScreenRect,
+	makeScreenOccluder,
+	type LabelScreenRect,
+	type ScreenOccluder
+} from '../label/culling';
 import {
 	ellipsoidCameraAxes,
 	setSphereOccluder,
 	setEllipsoidOccluder
 } from '../visibility/ellipsoid';
+import { poolSlot } from '../pool';
 import type { Vec3 } from '../animation/math';
 
 /**
@@ -24,6 +31,8 @@ export class HaloDebugOverlay {
 	private readonly items: HaloItem[] = [];
 	// Scratch single-occluder array so Pass 2 can reuse the production cone test.
 	private readonly one: ScreenOccluder[] = [];
+	// Scratch for the production label-anchor projection.
+	private readonly labelRect: LabelScreenRect = { x: 0, left: 0, right: 0, y: 0, h: 0 };
 
 	constructor(private readonly anchor: HTMLCanvasElement) {}
 
@@ -97,7 +106,7 @@ export class HaloDebugOverlay {
 			const d2 = camX * camX + camY * camY + camZ * camZ;
 			if (d2 <= r * r) continue; // camera inside the bounding sphere
 
-			const it = this.ensureItem(n++);
+			const it = poolSlot(this.items, n++, makeHaloItem);
 
 			// Camera-space principal axes + semi-axes (sphere = camera axes, r).
 			const isEllipsoid = !!(bo.semiAxesScene && bo.mesh);
@@ -152,14 +161,15 @@ export class HaloDebugOverlay {
 			const bMinor = degenerate ? 0 : (r * projScale) / Math.sqrt(denom);
 			const isOcc = degenerate || bMinor >= HALO_RADIUS_PX;
 
-			// Raw projected center + label anchor (visibility pass's silhouette offset).
+			// Raw projected center, then the label anchor through the production
+			// projection. Its depth-range answer is ignored: the overlay annotates
+			// every projected mesh, so a label the cull would drop still shows.
 			this.tmp.set(bx - fx, by - fy, bz - fz).project(camera);
 			it.cx = (this.tmp.x * 0.5 + 0.5) * screenW;
 			it.cy = (-this.tmp.y * 0.5 + 0.5) * screenH;
-			const lp = label.position;
-			this.tmp.set(bx - fx + lp.x, by - fy + lp.y, bz - fz + lp.z).project(camera);
-			it.hx = (this.tmp.x * 0.5 + 0.5) * screenW;
-			it.hy = (-this.tmp.y * 0.5 + 0.5) * screenH;
+			labelScreenRect(bo, camera, focusTruePos, screenW, screenH, this.labelRect);
+			it.hx = this.labelRect.x;
+			it.hy = this.labelRect.y;
 
 			it.id = bo.body.data.id;
 			it.camX = camX;
@@ -345,61 +355,6 @@ export class HaloDebugOverlay {
 		return true;
 	}
 
-	private ensureItem(idx: number): HaloItem {
-		let it = this.items[idx];
-		if (!it) {
-			it = {
-				id: '',
-				camX: 0,
-				camY: 0,
-				camZ: 0,
-				worldR: 0,
-				e0: new Vector3(),
-				e1: new Vector3(),
-				e2: new Vector3(),
-				sa: [0, 0, 0],
-				occ: {
-					cx0: 0,
-					cy0: 0,
-					f: 0,
-					gxx: 0,
-					gxy: 0,
-					gxz: 0,
-					gyx: 0,
-					gyy: 0,
-					gyz: 0,
-					gzx: 0,
-					gzy: 0,
-					gzz: 0,
-					cpx: 0,
-					cpy: 0,
-					cpz: 0,
-					K: 0,
-					id: '',
-					dist: 0,
-					ccx: 0,
-					ccy: 0,
-					ccz: 0
-				},
-				cx: 0,
-				cy: 0,
-				hx: 0,
-				hy: 0,
-				dist: 0,
-				isEllipsoid: false,
-				isOccluder: false,
-				degenerate: false,
-				meshHidden: false,
-				labelVisible: false,
-				maximized: false,
-				focused: false,
-				occludedBy: -1
-			};
-			this.items[idx] = it;
-		}
-		return it;
-	}
-
 	dispose(): void {
 		this.setVisible(false);
 	}
@@ -437,6 +392,34 @@ type HaloItem = {
 	/** Index into `items` of the occluder hiding this label, or -1. */
 	occludedBy: number;
 };
+
+function makeHaloItem(): HaloItem {
+	return {
+		id: '',
+		camX: 0,
+		camY: 0,
+		camZ: 0,
+		worldR: 0,
+		e0: new Vector3(),
+		e1: new Vector3(),
+		e2: new Vector3(),
+		sa: [0, 0, 0],
+		occ: makeScreenOccluder(),
+		cx: 0,
+		cy: 0,
+		hx: 0,
+		hy: 0,
+		dist: 0,
+		isEllipsoid: false,
+		isOccluder: false,
+		degenerate: false,
+		meshHidden: false,
+		labelVisible: false,
+		maximized: false,
+		focused: false,
+		occludedBy: -1
+	};
+}
 
 const LEGEND: [string, string][] = [
 	['#1ae5ff', 'label shown'],

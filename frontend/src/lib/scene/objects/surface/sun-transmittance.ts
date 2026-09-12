@@ -33,7 +33,7 @@ import {
 	TERRAIN_DIP_KM
 } from './atmosphere';
 import { type EclipseSelfUniforms, getEclipseSceneUniforms } from './eclipse-shadow';
-import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
+import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
 /** Kept under the shell's LIGHT_STEPS — the surface patch runs over full-screen landed terrain. */
 const FRAGMENT_STEPS = 6;
@@ -409,9 +409,7 @@ export function attachSunTransmittanceToBody(
 		uniforms.uAtmoTStretch = shell.material.uniforms.uStretch as { value: number };
 	}
 	syncSunTransmittanceUniforms(uniforms, params, planetRadiusScene, planetRadiusKm);
-	const prev = material.onBeforeCompile;
-	material.onBeforeCompile = (shader, renderer) => {
-		prev?.(shader, renderer);
+	chainShaderHook(material, 'sunTint', (shader) => {
 		Object.assign(shader.uniforms, uniforms);
 		shader.fragmentShader = shader.fragmentShader
 			.replace('#include <common>', `#include <common>\n${SUN_TINT_GLSL}`)
@@ -425,9 +423,7 @@ export function attachSunTransmittanceToBody(
 					atmoDeepSkyLight(vEclipseWorldPos, inverseTransformDirection(normal, viewMatrix)) *
 					BRDF_Lambert(diffuseColor.rgb);`
 			);
-	};
-	tagShaderModifier(material, 'sunTint');
-	material.needsUpdate = true;
+	});
 	return uniforms;
 }
 
@@ -438,9 +434,7 @@ export function attachSunTransmittanceToBody(
  */
 export function attachViewTintToMaterial(material: Material): ViewTintUniforms {
 	const uniforms = makeViewTintUniforms();
-	const prev = material.onBeforeCompile;
-	material.onBeforeCompile = (shader, renderer) => {
-		prev?.(shader, renderer);
+	chainShaderHook(material, 'viewTint', (shader) => {
 		Object.assign(shader.uniforms, uniforms);
 		shader.vertexShader = shader.vertexShader
 			.replace('#include <common>', '#include <common>\nvarying vec3 vAtmoTWorldPos;')
@@ -457,9 +451,7 @@ export function attachViewTintToMaterial(material: Material): ViewTintUniforms {
 				'#include <color_fragment>',
 				'#include <color_fragment>\ndiffuseColor.rgb *= atmoViewTint(vAtmoTWorldPos);'
 			);
-	};
-	tagShaderModifier(material, 'viewTint');
-	material.needsUpdate = true;
+	});
 	return uniforms;
 }
 

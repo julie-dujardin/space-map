@@ -27,6 +27,7 @@ import { bodyFixedUnit, displacementsKmAt } from '$lib/scene/position/rendered-s
 import { kmToScene } from '$lib/math/units';
 import { acceptedBodyLabelRects } from '$lib/scene/label/culling';
 import { castModelRadius, modelUnitScene } from '../body/model';
+import { onTapNotDrag } from '../tap-not-drag';
 import type { BodyObjects } from '$lib/scene/types';
 
 /** Effective focus for surface labels: a landed probe or a focused surface
@@ -189,22 +190,7 @@ export async function attachNomenclatureLabels(
 		attachCanvasForwarders(el, canvas);
 
 		if (onFeatureSelect) {
-			// Click-vs-drag guard mirroring the body-label pattern in
-			// label/factory.ts:127–150. Without this, dragging the camera while
-			// the pointer happens to start on a label would register as a click.
-			let downX = 0;
-			let downY = 0;
-			el.addEventListener('pointerdown', (e: PointerEvent) => {
-				downX = e.clientX;
-				downY = e.clientY;
-			});
-			el.addEventListener('click', (e: MouseEvent) => {
-				e.stopPropagation();
-				const dx = e.clientX - downX;
-				const dy = e.clientY - downY;
-				if (dx * dx + dy * dy > 9) return;
-				onFeatureSelect(feature.featureId, feature.lat, feature.lon, effDiam);
-			});
+			onTapNotDrag(el, () => onFeatureSelect(feature.featureId, feature.lat, feature.lon, effDiam));
 		}
 
 		const [ux, uy, uz] = bodyFixedUnit(feature.lat * DEG2RAD, feature.lon * DEG2RAD);

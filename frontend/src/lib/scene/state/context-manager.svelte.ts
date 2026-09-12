@@ -2,6 +2,7 @@ import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { CreditsStore } from '$lib/scene/state/credits.svelte';
 import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import { VisibilityController } from '$lib/scene/visibility/controller.svelte';
+import { matchesSmallBodyFilter } from '$lib/scene/visibility/small-body-filter';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
@@ -18,7 +19,6 @@ import {
 	SMALL_BODY_FLAG_MASK,
 	SMALL_BODY_FLAG_SLUG_PREFIX,
 	fetchGroupIndex,
-	smallBodyCategory,
 	smallBodyFiltersEqual,
 	type GroupCategory,
 	type SmallBodyFilter,
@@ -152,17 +152,9 @@ export class ContextManager {
 			if (type !== undefined && types.has(type)) return true;
 		}
 		const f = this.smallBodyFilter;
+		// No small-body group active: nothing is a member through this path.
 		if (f === null) return false;
-		if (f.kind === 'class' || f.kind === 'category') {
-			const zone = this.bodies.findAsteroidZone(bodyId);
-			if (zone?.startsWith('small_bodies/') !== true) return false;
-			const className = zone.slice('small_bodies/'.length);
-			return f.kind === 'class'
-				? className === f.className
-				: smallBodyCategory(className) === f.category;
-		}
-		const body = this.bodies.getBody(bodyId);
-		return ((body?.data.flags ?? 0) & f.mask) === f.mask;
+		return matchesSmallBodyFilter(this.bodies, bodyId, f);
 	}
 
 	async load(date: Date, targetId?: string): Promise<void> {

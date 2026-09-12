@@ -27,6 +27,7 @@ import {
 } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
+import { onTapNotDrag } from '$lib/scene/objects/tap-not-drag';
 import { isScreenOccluded, reserveLabelRects, type AcceptedRect } from '$lib/scene/label/culling';
 import { liveScreenOccluders } from '$lib/scene/visibility/update';
 import { ndcZVisible } from '$lib/scene/setup/depth-mode';
@@ -274,61 +275,62 @@ interface DrawnLabel {
 }
 
 /**
- * The label an end of a trajectory wears: the halo every body wears, in the
- * colour of the arc it caps, with place and date beside it.
+ * The label an end of a trajectory or a step of the trip wears: name and date
+ * beside a halo slot, anchored on the point.
  *
- * With `onSelect` it's a button that takes the trajectory, and gestures
- * forward to the canvas so grabbing it still drags the camera — same
- * treatment as body/feature labels. Without one it's just a caption, and
- * lets every gesture through.
+ * An end's halo is the ring every body wears, in the colour of the arc it
+ * caps. A step's is an invisible hit area over its dot — the dot itself is the
+ * marker — so a dimmed step is still pressable at the point.
+ *
+ * With `onSelect` it's a button, and gestures forward to the canvas so
+ * grabbing it still drags the camera — the same treatment body and feature
+ * labels get. Without one it's just a caption, and lets every gesture through.
  */
-function makeEndLabel(
-	end: PathEndLabel,
-	color: string,
-	trajectory: Pick<LabelledPath, 'onSelect' | 'onHover'>,
-	canvas: HTMLCanvasElement
+function makePathLabel(
+	kind: 'end' | 'step',
+	name: string,
+	when: string,
+	opts: {
+		canvas: HTMLCanvasElement;
+		/** The capped arc's colour. Absent for a step, whose halo is invisible. */
+		color?: string;
+		onSelect?: () => void;
+		onHover?: (hovered: boolean) => void;
+	}
 ): CSS2DObject {
-	const { onSelect, onHover } = trajectory;
+	const { canvas, color, onSelect, onHover } = opts;
 	const el = document.createElement(onSelect ? 'button' : 'div');
 	if (el instanceof HTMLButtonElement) el.type = 'button';
-	el.className = `scene-path-label${onSelect ? '' : ' scene-path-label--static'}`;
-	el.setAttribute('aria-label', `${end.name} \u2014 ${end.when}`);
+	el.className =
+		kind === 'step'
+			? 'scene-path-label scene-path-label--step'
+			: `scene-path-label${onSelect ? '' : ' scene-path-label--static'}`;
+	el.setAttribute('aria-label', `${name} \u2014 ${when}`);
 
 	const halo = document.createElement('span');
 	halo.className = 'scene-path-label__halo';
-	halo.style.border = `2px solid ${color}`;
-	halo.style.background = `${color}22`;
+	if (color) {
+		halo.style.border = `2px solid ${color}`;
+		halo.style.background = `${color}22`;
+	}
 	const text = document.createElement('span');
 	text.className = 'scene-path-label__text';
 	const nameEl = document.createElement('span');
 	nameEl.className = 'scene-path-label__name';
 	nameEl.dir = 'auto';
-	nameEl.textContent = end.name;
+	nameEl.textContent = name;
 	const whenEl = document.createElement('span');
 	whenEl.className = 'scene-path-label__when';
 	whenEl.dir = 'auto';
-	whenEl.textContent = end.when;
+	whenEl.textContent = when;
 	text.append(nameEl, whenEl);
 	el.append(halo, text);
 
+	// Only a pressable label takes the canvas gestures over; a static caption
+	// lets them all through.
 	if (onSelect) {
 		attachCanvasForwarders(el, canvas);
-		// Click-vs-drag, the same guard the body and feature labels carry: a camera
-		// drag that happens to start on a label must not read as a press on it.
-		let downX = 0;
-		let downY = 0;
-		el.addEventListener('pointerdown', (event) => {
-			const e = event as PointerEvent;
-			downX = e.clientX;
-			downY = e.clientY;
-		});
-		el.addEventListener('click', (event) => {
-			const e = event as MouseEvent;
-			e.stopPropagation();
-			const dx = e.clientX - downX;
-			const dy = e.clientY - downY;
-			if (dx * dx + dy * dy <= 9) onSelect();
-		});
+		onTapNotDrag(el, onSelect);
 	}
 	if (onHover) {
 		el.addEventListener('mouseenter', () => onHover(true));
@@ -338,54 +340,6 @@ function makeEndLabel(
 	const object = new CSS2DObject(el);
 	// Anchored by the point, with the halo pulled back over it by its own radius,
 	// so the ring straddles the place and the text runs off to the side.
-	object.center.set(0, 0.5);
-	return object;
-}
-
-/**
- * The label a step of the trip wears: name and date beside its dot. The halo
- * slot is an invisible hit area over the dot — the dot itself is the marker —
- * so a dimmed step is still pressable at the point. Same drag guard as the
- * end labels: a camera drag starting on it must not read as a press.
- */
-function makeStepLabel(step: PathStep, canvas: HTMLCanvasElement): CSS2DObject {
-	const el = document.createElement('button');
-	el.type = 'button';
-	el.className = 'scene-path-label scene-path-label--step';
-	el.setAttribute('aria-label', `${step.name} — ${step.when}`);
-
-	const hit = document.createElement('span');
-	hit.className = 'scene-path-label__halo';
-	const text = document.createElement('span');
-	text.className = 'scene-path-label__text';
-	const nameEl = document.createElement('span');
-	nameEl.className = 'scene-path-label__name';
-	nameEl.dir = 'auto';
-	nameEl.textContent = step.name;
-	const whenEl = document.createElement('span');
-	whenEl.className = 'scene-path-label__when';
-	whenEl.dir = 'auto';
-	whenEl.textContent = step.when;
-	text.append(nameEl, whenEl);
-	el.append(hit, text);
-
-	attachCanvasForwarders(el, canvas);
-	let downX = 0;
-	let downY = 0;
-	el.addEventListener('pointerdown', (event) => {
-		const e = event as PointerEvent;
-		downX = e.clientX;
-		downY = e.clientY;
-	});
-	el.addEventListener('click', (event) => {
-		const e = event as MouseEvent;
-		e.stopPropagation();
-		const dx = e.clientX - downX;
-		const dy = e.clientY - downY;
-		if (dx * dx + dy * dy <= 9) step.onPick();
-	});
-
-	const object = new CSS2DObject(el);
 	object.center.set(0, 0.5);
 	return object;
 }
@@ -517,10 +471,16 @@ export class TravelPathOverlay {
 			// a part of it, and says so by giving the map nothing to draw.
 			for (const band of hazard.bands) {
 				path.arcs.forEach((arc, index) => {
-					this.addBand(
+					// No owner: a band belongs to the plan, which the hover link does not
+					// pick out. A band only ever lies on the crossing, so it takes the
+					// centre's frame whichever frame the ends are drawn in.
+					this.addLine(
 						spanPoints(arc, band.startJd, band.endJd, crossingWindow(path, index)),
 						HAZARD_COLORS[band.severity],
-						HAZARD_RENDER_ORDER[band.severity]
+						HAZARD_LINE_WIDTH,
+						HAZARD_BRIGHTNESS,
+						null,
+						{ renderOrder: HAZARD_RENDER_ORDER[band.severity] }
 					);
 				});
 			}
@@ -605,49 +565,6 @@ export class TravelPathOverlay {
 		return true;
 	}
 
-	/** One coloured band along a stretch of a drawn arc, under the line it names. */
-	private addBand(points: readonly TravelVec3[], color: string, renderOrder: number): void {
-		const count = points.length;
-		if (count < 2) return;
-		const local = new Float64Array(count * 3);
-		for (let i = 0; i < count; i++) {
-			const [x, y, z] = eclipticToScene(points[i]);
-			local[i * 3] = x;
-			local[i * 3 + 1] = y;
-			local[i * 3 + 2] = z;
-		}
-		const positions = new Float32Array(count * 3);
-		const alphas = new Float32Array(count).fill(1);
-		const line = buildFatLineFromThin(
-			count,
-			positions,
-			alphas,
-			alphas,
-			count,
-			color,
-			HAZARD_LINE_WIDTH,
-			HAZARD_BRIGHTNESS
-		);
-		line.frustumCulled = false;
-		line.renderOrder = renderOrder;
-		this.group.add(line);
-		this.arcs.push({
-			line,
-			// No owner: a band belongs to the plan, which is not something the hover
-			// link picks out. A band only ever lies on the crossing, which is the
-			// centre's whichever frame the ends are drawn in.
-			owner: null,
-			anchorId: null,
-			color,
-			brightness: HAZARD_BRIGHTNESS,
-			width: HAZARD_LINE_WIDTH,
-			local,
-			positions,
-			alphas,
-			count
-		});
-	}
-
 	/** The chosen trajectory: its arcs at full strength, its steps as pressable
 	 *  dots, and the dot that rides it. No end labels of its own — the first and
 	 *  last steps are the ends, named and dated by the timeline. */
@@ -681,7 +598,10 @@ export class TravelPathOverlay {
 			const anchorId = at.centerId === path.centerId ? null : at.centerId;
 			const sprite = makeSprite(dotTexture(CRAFT_COLOR), STEP_SIZE);
 			this.markers.push({ sprite, local, anchorId });
-			const object = makeStepLabel(step, this.canvas);
+			const object = makePathLabel('step', step.name, step.when, {
+				canvas: this.canvas,
+				onSelect: step.onPick
+			});
 			this.group.add(object);
 			this.labels.push({
 				object,
@@ -733,7 +653,12 @@ export class TravelPathOverlay {
 		}
 		for (const { local, end, color } of ends) {
 			if (!end.name) continue;
-			const object = makeEndLabel(end, color, trajectory, this.canvas);
+			const object = makePathLabel('end', end.name, end.when, {
+				canvas: this.canvas,
+				color,
+				onSelect,
+				onHover: trajectory.onHover
+			});
 			if (faint) object.element.classList.add('scene-path-label--faint');
 			this.group.add(object);
 			this.labels.push({
@@ -912,7 +837,8 @@ export class TravelPathOverlay {
 		return orbit.anchorId === path.centerId ? null : orbit.anchorId;
 	}
 
-	/** One line of the plan, anchor-relative and unplaced. */
+	/** One line of the overlay — an arc, an end orbit, a hazard band —
+	 *  anchor-relative and unplaced. */
 	private addLine(
 		points: readonly TravelVec3[],
 		color: string,

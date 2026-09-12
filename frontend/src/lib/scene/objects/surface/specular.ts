@@ -1,18 +1,7 @@
 import { type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
 import { versionedUrl } from '$lib/fetch/data-base';
-import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
-
-/** Per-body specular-map metadata: single-frame sibling of the surface texture, served from `{specular.id}/{tier}.webp`. */
-export interface SpecularMeta {
-	id: string;
-	tiers: string[];
-	source: string;
-	organisation: string;
-	type: string;
-	license?: string;
-	attribution?: string;
-	description?: string;
-}
+import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
+import type { TextureBundleMeta } from '$lib/scene/types';
 
 /**
  * Roughness target over open water.
@@ -33,7 +22,7 @@ type PatchedMaterial = MeshStandardMaterial & { [SPECULAR_HOOK]?: true };
  */
 export async function attachSpecularMap(
 	material: MeshStandardMaterial,
-	specMeta: SpecularMeta,
+	specMeta: TextureBundleMeta,
 	tier: string,
 	textureLoader: TextureLoader
 ): Promise<Texture | null> {
@@ -53,9 +42,7 @@ export async function attachSpecularMap(
 	const patched = material as PatchedMaterial;
 	if (!patched[SPECULAR_HOOK]) {
 		patched[SPECULAR_HOOK] = true;
-		const prev = material.onBeforeCompile;
-		material.onBeforeCompile = (shader, renderer) => {
-			prev?.(shader, renderer);
+		chainShaderHook(material, 'specular', (shader) => {
 			shader.uniforms.uOceanRoughness = { value: OCEAN_ROUGHNESS };
 			shader.fragmentShader = shader.fragmentShader
 				.replace('#include <common>', '#include <common>\nuniform float uOceanRoughness;')
@@ -71,9 +58,8 @@ export async function attachSpecularMap(
 						roughnessFactor = mix(roughness, uOceanRoughness, texelRoughness.g);
 					#endif`
 				);
-		};
+		});
 	}
-	tagShaderModifier(material, 'specular');
 	material.needsUpdate = true;
 	return texture;
 }

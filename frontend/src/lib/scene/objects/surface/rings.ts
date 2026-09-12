@@ -463,11 +463,75 @@ interface RingShadowCarrier {
 }
 
 /**
- * Attach an analytical ring-shadow ray-march to the planet's standard
- * material: trace from the lit fragment toward the sun, intersect the ring
- * plane, and apply Beer–Lambert (slant-corrected) at the sampled radius.
- * Beats a shadow-map cast for transparent profiles — no rasterization
- * resolution, partial transparency falls out of `pow(transparency, 1/sinB)`.
+ * Analytical ring-shadow march at a world-space point: intersect the ring
+ * plane along the sun direction, box-average the transparency profile over the
+ * sun disc's penumbra, apply Beer–Lambert with slant correction. Beats a
+ * shadow-map cast for transparent profiles — no rasterization resolution,
+ * partial transparency falls out of `pow(transparency, 1/sinB)`.
+ *
+ * Shared by the planet surface and the atmosphere shell, so the shadow
+ * continues up through the air above the ground it darkens. Self-contained
+ * (uniforms included, no varying) — the shell carries no world-position
+ * varying of its own.
+ */
+export const RING_SHADOW_GLSL = `
+	uniform sampler2D uRingShadowTransparency;
+	uniform float uRingShadowInnerScene;
+	uniform float uRingShadowOuterScene; // 0 = no rings
+	uniform float uRingShadowIntensity;
+	uniform float uRingShadowSunAngularRadius;
+	uniform vec3 uRingShadowSunDir;
+	uniform vec3 uRingShadowPoleDir;
+	uniform vec3 uRingShadowCenter;
+
+	// Physical (× intensity) transmittance of the ring profile at u; outside the
+	// annulus is empty space.
+	float ringShadowTrans(float u) {
+		if (u < 0.0 || u > 1.0) return 1.0;
+		return 1.0 - clamp(
+			(1.0 - texture2D(uRingShadowTransparency, vec2(u, 0.5)).r)
+				* uRingShadowIntensity,
+			0.0, 1.0);
+	}
+
+	float ringShadowAt(vec3 worldPos) {
+		// Outer radius 0 is a body with no rings at all; intensity 0 a bundle too
+		// faint to darken anything, and how the shadow is switched off on exit.
+		if (uRingShadowOuterScene <= 0.0 || uRingShadowIntensity <= 0.0) return 1.0;
+		// Ray-plane intersect: march from the lit point along the sun direction;
+		// the ring plane passes through the planet's center with normal = pole.
+		float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
+		if (abs(denom) < 1e-6) return 1.0; // sun grazing the ring plane
+		vec3 rel = worldPos - uRingShadowCenter;
+		float t = -dot(rel, uRingShadowPoleDir) / denom;
+		if (t < 0.0) return 1.0; // ring is behind the sun from this point
+		vec3 hit = rel + t * uRingShadowSunDir;
+		vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
+		float r = length(hitPerp);
+		// Reject only when the penumbra-widened band misses the annulus.
+		float penumbra = t * uRingShadowSunAngularRadius;
+		if (r < uRingShadowInnerScene - penumbra || r > uRingShadowOuterScene + penumbra)
+			return 1.0;
+		float uSpan = uRingShadowOuterScene - uRingShadowInnerScene;
+		float u = (r - uRingShadowInnerScene) / uSpan;
+		// 5-tap box over the penumbra: averages the profile the sun disc spans,
+		// softening shadow edges physically.
+		float pu = penumbra / uSpan;
+		float trans = (
+			ringShadowTrans(u - pu) + ringShadowTrans(u - 0.5 * pu) +
+			ringShadowTrans(u) +
+			ringShadowTrans(u + 0.5 * pu) + ringShadowTrans(u + pu)
+		) / 5.0;
+		// Beer–Lambert, slant-corrected: the ray traverses 1/sin(B) times normal
+		// optical depth (B = sun elevation above the ring plane). sinB is clamped
+		// to avoid blow-up near grazing incidence.
+		return pow(max(trans, 1e-4), 1.0 / max(abs(denom), 0.02));
+	}
+`;
+
+/**
+ * Attach {@link RING_SHADOW_GLSL} to the planet's standard material, marching
+ * from each lit fragment.
  *
  * The hook and uniforms are installed once and kept for the material's
  * lifetime; `disable` zeroes intensity on system exit and re-entry re-points
@@ -527,63 +591,13 @@ export function attachRingShadowToPlanet(
 			.replace(
 				'#include <common>',
 				`#include <common>
-				uniform sampler2D uRingShadowTransparency;
-				uniform float uRingShadowInnerScene;
-				uniform float uRingShadowOuterScene;
-				uniform float uRingShadowIntensity;
-				uniform float uRingShadowSunAngularRadius;
-				uniform vec3 uRingShadowSunDir;
-				uniform vec3 uRingShadowPoleDir;
-				uniform vec3 uRingShadowCenter;
 				varying vec3 vRingShadowWorldPos;
-
-				// Transmittance of the ring profile at u; outside the annulus is empty space.
-				float ringShadowTrans(float u) {
-					if (u < 0.0 || u > 1.0) return 1.0;
-					return 1.0 - clamp(
-						(1.0 - texture2D(uRingShadowTransparency, vec2(u, 0.5)).r)
-							* uRingShadowIntensity,
-						0.0, 1.0);
-				}
-
-				float ringShadowFactor() {
-					if (uRingShadowIntensity <= 0.0) return 1.0;
-					// Ray-plane intersect: march from the lit surface along the
-					// sun direction; the ring plane passes through the planet's
-					// center with normal = pole direction.
-					float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
-					if (abs(denom) < 1e-6) return 1.0; // sun grazing the ring plane
-					vec3 rel = vRingShadowWorldPos - uRingShadowCenter;
-					float t = -dot(rel, uRingShadowPoleDir) / denom;
-					if (t < 0.0) return 1.0; // ring is behind the sun from this surface point
-					vec3 hit = rel + t * uRingShadowSunDir;
-					vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
-					float r = length(hitPerp);
-					// Reject only when the penumbra-widened band misses the annulus.
-					float penumbra = t * uRingShadowSunAngularRadius;
-					if (r < uRingShadowInnerScene - penumbra || r > uRingShadowOuterScene + penumbra)
-						return 1.0;
-					float uSpan = uRingShadowOuterScene - uRingShadowInnerScene;
-					float u = (r - uRingShadowInnerScene) / uSpan;
-					// 5-tap box over the penumbra: averages the profile the sun
-					// disc spans, softening shadow edges physically.
-					float pu = penumbra / uSpan;
-					float trans = (
-						ringShadowTrans(u - pu) + ringShadowTrans(u - 0.5 * pu) +
-						ringShadowTrans(u) +
-						ringShadowTrans(u + 0.5 * pu) + ringShadowTrans(u + pu)
-					) / 5.0;
-					// Beer–Lambert, slant-corrected: ray traverses 1/sin(B) times
-					// normal optical depth (B = sun elevation above ring plane).
-					// Clamp sinB to avoid blow-up near grazing incidence.
-					float sinB = abs(denom);
-					return pow(max(trans, 1e-4), 1.0 / max(sinB, 0.02));
-				}`
+				${RING_SHADOW_GLSL}`
 			)
 			.replace(
 				'#include <lights_fragment_end>',
 				`#include <lights_fragment_end>
-				float ringShadow = ringShadowFactor();
+				float ringShadow = ringShadowAt(vRingShadowWorldPos);
 				reflectedLight.directDiffuse *= ringShadow;
 				reflectedLight.directSpecular *= ringShadow;`
 			);
