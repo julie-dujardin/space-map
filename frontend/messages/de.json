@@ -1204,6 +1204,7 @@
 	"attribution_type_surface": "Oberfläche",
 	"attribution_type_clouds": "Wolken",
 	"attribution_type_night": "Nacht",
+	"attribution_type_specular": "Reflexionen",
 	"attribution_type_topography": "Topografie",
 	"attribution_type_rings": "Ringe",
 	"source_sbdb_name": "NASA JPL Small-Body Database",

@@ -1204,6 +1204,7 @@
 	"attribution_type_surface": "表面",
 	"attribution_type_clouds": "云层",
 	"attribution_type_night": "夜景",
+	"attribution_type_specular": "反射",
 	"attribution_type_topography": "地形",
 	"attribution_type_rings": "环",
 	"source_sbdb_name": "NASA JPL 小天体数据库",

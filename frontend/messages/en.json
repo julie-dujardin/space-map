@@ -1354,6 +1354,7 @@
 	"attribution_type_surface": "surface",
 	"attribution_type_clouds": "clouds",
 	"attribution_type_night": "night",
+	"attribution_type_specular": "reflections",
 	"attribution_type_topography": "topography",
 	"attribution_type_rings": "rings",
 	"source_horizons_name": "NASA JPL Horizons",

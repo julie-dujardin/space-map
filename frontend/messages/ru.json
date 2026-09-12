@@ -1242,6 +1242,7 @@
 	"attribution_type_surface": "поверхность",
 	"attribution_type_clouds": "облака",
 	"attribution_type_night": "ночь",
+	"attribution_type_specular": "отражения",
 	"attribution_type_topography": "топография",
 	"attribution_type_rings": "кольца",
 	"source_sbdb_name": "NASA JPL База данных малых тел",

@@ -51,6 +51,19 @@ export interface NightCredit {
 	description?: string;
 }
 
+/** Specular-mask attribution, sibling to {@link NightCredit} — Earth's water,
+ *  Titan's hydrocarbon seas. Credit is mandatory for Earth's: the mask is built
+ *  from ODbL coastlines, unlike the public-domain imagery around it. */
+export interface SpecularCredit {
+	bodyId: string;
+	systemId: string;
+	source: string;
+	organisation: string;
+	license?: string;
+	attribution?: string;
+	description?: string;
+}
+
 /** Topography attribution, sibling to {@link NightCredit}; surfaced under "Topography". */
 export interface DisplacementCredit {
 	bodyId: string;
@@ -105,6 +118,8 @@ export class CreditsStore {
 	cloudVersion = $state(0);
 	night = new Map<string, NightCredit>();
 	nightVersion = $state(0);
+	specular = new Map<string, SpecularCredit>();
+	specularVersion = $state(0);
 	displacement = new Map<string, DisplacementCredit>();
 	displacementVersion = $state(0);
 	model = new Map<string, ModelCredit>();
@@ -141,6 +156,12 @@ export class CreditsStore {
 		if (this.night.has(credit.bodyId)) return;
 		this.night.set(credit.bodyId, credit);
 		this.nightVersion++;
+	}
+
+	registerSpecular(credit: SpecularCredit): void {
+		if (this.specular.has(credit.bodyId)) return;
+		this.specular.set(credit.bodyId, credit);
+		this.specularVersion++;
 	}
 
 	registerDisplacement(credit: DisplacementCredit): void {

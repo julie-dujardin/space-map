@@ -41,6 +41,9 @@ from space_map_data.download.providers.images.commons import CommonsDownloader
 from space_map_data.download.providers.images.earth_clouds import (
     EarthCloudsDownloader,
 )
+from space_map_data.download.providers.images.earth_water import (
+    EarthWaterDownloader,
+)
 from space_map_data.download.providers.metadata.texture_sources import (
     TextureSourcesDownloader,
 )
@@ -81,6 +84,7 @@ PROVIDERS_CLASSES = [
     WikipediaDownloader,
     CommonsDownloader,
     EarthCloudsDownloader,
+    EarthWaterDownloader,
     IAUNomenclatureDownloader,
     TextureSourcesDownloader,
     BJJRingsDownloader,

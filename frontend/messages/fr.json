@@ -1298,6 +1298,7 @@
 	"attribution_type_surface": "surface",
 	"attribution_type_clouds": "nuages",
 	"attribution_type_night": "nuit",
+	"attribution_type_specular": "reflets",
 	"attribution_type_topography": "topographie",
 	"attribution_type_rings": "anneaux",
 	"source_sbdb_name": "NASA JPL Small-Body Database",

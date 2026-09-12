@@ -74,7 +74,7 @@
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	}
 
-	// Merged imagery rows: skybox + per-body texture/cloud/night/ring credits.
+	// Merged imagery rows: skybox + per-body texture/cloud/night/specular/ring credits.
 	// A body contributing more than one kind gets a type qualifier per row.
 	interface ImageryRow {
 		key: string;
@@ -89,14 +89,15 @@
 		void ctx.credits.textureVersion;
 		void ctx.credits.cloudVersion;
 		void ctx.credits.nightVersion;
+		void ctx.credits.specularVersion;
 		void ctx.credits.displacementVersion;
 		void ctx.credits.ringVersion;
 
-		// Per-body ordering within the imagery list: surface → clouds → night → topography → rings.
+		// Per-body ordering within the imagery list: surface → clouds → night → specular → topography → rings.
 		const byBody = new Map<
 			string,
 			Array<{
-				typeKey: 'surface' | 'clouds' | 'night' | 'topography' | 'rings';
+				typeKey: 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings';
 				source: string;
 				organisation: string;
 				license?: string;
@@ -104,7 +105,7 @@
 		>();
 		const push = (
 			bodyId: string,
-			typeKey: 'surface' | 'clouds' | 'night' | 'topography' | 'rings',
+			typeKey: 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings',
 			source: string,
 			organisation: string,
 			license?: string
@@ -119,15 +120,20 @@
 			push(c.bodyId, 'clouds', c.source, c.organisation, c.license);
 		for (const c of scopedCredits(ctx.credits.night.values()))
 			push(c.bodyId, 'night', c.source, c.organisation, c.license);
+		for (const c of scopedCredits(ctx.credits.specular.values()))
+			push(c.bodyId, 'specular', c.source, c.organisation, c.license);
 		for (const c of scopedCredits(ctx.credits.displacement.values()))
 			push(c.bodyId, 'topography', c.source, c.organisation, c.license);
 		for (const c of scopedCredits(ctx.credits.ring.values()))
 			push(c.bodyId, 'rings', c.source, c.organisation, c.license);
 
-		const typeLabel = (k: 'surface' | 'clouds' | 'night' | 'topography' | 'rings'): string => {
+		const typeLabel = (
+			k: 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings'
+		): string => {
 			if (k === 'surface') return m.attribution_type_surface();
 			if (k === 'clouds') return m.attribution_type_clouds();
 			if (k === 'night') return m.attribution_type_night();
+			if (k === 'specular') return m.attribution_type_specular();
 			if (k === 'topography') return m.attribution_type_topography();
 			return m.attribution_type_rings();
 		};

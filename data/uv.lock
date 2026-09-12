@@ -846,6 +846,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyshp"
+version = "3.1.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/68/6e/f6f241fcb57f09c856ae78249d70cf31c576840218226ba7d88eda5ceab8/pyshp-3.1.6.tar.gz", hash = "sha256:4c4b5a4138815c93defd6ebe50bae885b7e58984f431cdb7bb5d00718ac71daf", size = 2227945, upload-time = "2026-07-25T16:53:12.324Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/72/1f79dab76eb7651b5e3622a46b18a7f93f57c3a1317b712986c58810895e/pyshp-3.1.6-py3-none-any.whl", hash = "sha256:be8cd9436dcbde477c63ea789f7dcdea3af19f17ea84f2744bfc12efe9145d1e", size = 73744, upload-time = "2026-07-25T16:53:10.889Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1026,6 +1035,7 @@ dependencies = [
     { name = "pillow" },
     { name = "py360convert" },
     { name = "pyarrow" },
+    { name = "pyshp" },
     { name = "pyyaml" },
     { name = "ruamel-yaml" },
     { name = "spiceypy" },
@@ -1056,6 +1066,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "py360convert", specifier = ">=1.0.4" },
     { name = "pyarrow", specifier = ">=25.0.0" },
+    { name = "pyshp", specifier = ">=2.4.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruamel-yaml", specifier = ">=0.19.1" },
     { name = "spiceypy", specifier = ">=8.1.0" },

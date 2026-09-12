@@ -53,6 +53,17 @@ export interface NightCredit {
 	description?: string;
 }
 
+/** Per-body specular-mask credit; array name disambiguates it from surface imagery. */
+export interface SpecularCredit {
+	body_id: string;
+	name: string;
+	source: string;
+	organisation: string;
+	license?: string;
+	attribution?: string;
+	description?: string;
+}
+
 /** Per-body displacement/topography credit; array name disambiguates it from surface imagery. */
 export interface DisplacementCredit {
 	body_id: string;
@@ -75,6 +86,7 @@ export interface SystemGroup {
 	rings?: RingCredit[];
 	clouds?: CloudCredit[];
 	night?: NightCredit[];
+	specular?: SpecularCredit[];
 	displacement?: DisplacementCredit[];
 }
 

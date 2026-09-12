@@ -168,6 +168,17 @@ export async function loadSystemData(
 		// `bo.specularMap` so reloads don't refetch.
 		if (bodyMeta.specular && !bo.specularMap && bo.mesh) {
 			const specMeta = bodyMeta.specular;
+			if (ctx) {
+				ctx.credits.registerSpecular({
+					bodyId,
+					systemId: barycenterId,
+					source: specMeta.source,
+					organisation: specMeta.organisation,
+					license: specMeta.license,
+					attribution: specMeta.attribution,
+					description: specMeta.description
+				});
+			}
 			const material = bo.mesh.material as MeshStandardMaterial;
 			promises.push(
 				attachSpecularMap(material, specMeta, 'low', textureLoader).then((tex) => {

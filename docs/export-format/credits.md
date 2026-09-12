@@ -38,7 +38,13 @@ interface Credits {
       attribution?: string;
       description?: string;
     }>;
+    night?: Array<SiblingCredit>;        // night-lights overlay ("_night" bundle)
+    specular?: Array<SiblingCredit>;     // specular/roughness mask ("_specular" bundle)
+    displacement?: Array<SiblingCredit>; // height map ("_displacement" bundle)
   }>;
+  // `night`, `specular` and `displacement` share the `clouds` shape: the host
+  // body's real id, its English name, and the credit fields from the sibling
+  // bundle's metadata.json.
   atmosphere_references: Array<{ // literature behind the derived scattering params
     title: string;               // "Fulchignoni et al. 2005 (Nature 438)"
     url: string;                 // DOI or stable publisher/archive link

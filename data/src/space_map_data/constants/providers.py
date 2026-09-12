@@ -23,6 +23,7 @@ class PROVIDERS(StrEnum):
     WIKIPEDIA = "wikipedia"
     COMMONS = "commons"
     EARTH_CLOUDS = "earth_clouds"
+    EARTH_WATER = "earth_water"
     IAU_NOMENCLATURE = "iau_nomenclature"
     GVP = "gvp"
     TEXTURE_SOURCES = "texture_sources"

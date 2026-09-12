@@ -15,7 +15,7 @@
 
 	// Merged imagery: one section per system, one row per body+type. A type
 	// qualifier only appears when a body contributes more than one kind.
-	type ImageryTypeKey = 'surface' | 'clouds' | 'night' | 'topography' | 'rings';
+	type ImageryTypeKey = 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings';
 
 	interface ImageryRow {
 		key: string;
@@ -37,6 +37,7 @@
 		if (k === 'surface') return m.attribution_type_surface();
 		if (k === 'clouds') return m.attribution_type_clouds();
 		if (k === 'night') return m.attribution_type_night();
+		if (k === 'specular') return m.attribution_type_specular();
 		if (k === 'topography') return m.attribution_type_topography();
 		return m.attribution_type_rings();
 	}
@@ -51,7 +52,7 @@
 			license?: string;
 			attribution?: string;
 		}
-		// Per-body ordering within the list: surface → clouds → night → topography → rings.
+		// Per-body ordering within the list: surface → clouds → night → specular → topography → rings.
 		type CreditLike = {
 			body_id: string;
 			name: string;
@@ -66,6 +67,7 @@
 				['surface', group.textures ?? []],
 				['clouds', group.clouds ?? []],
 				['night', group.night ?? []],
+				['specular', group.specular ?? []],
 				['topography', group.displacement ?? []],
 				['rings', group.rings ?? []]
 			];

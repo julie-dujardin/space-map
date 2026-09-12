@@ -22,7 +22,6 @@ from .encoding import resize, save_webp, size_target, tier_for_size
 from .image_io import (
     open_displacement_source,
     open_image,
-    open_premade_specular_source,
     open_specular_source,
 )
 from .metadata import (
@@ -313,9 +312,8 @@ class TextureProcessor:
 
         Output goes to ``{body}_specular/`` — a sibling of the surface texture
         and ``_clouds`` bundle; the renderer routes it into whichever material
-        slot (roughness, specular intensity) it sees fit. A bathymetry source
-        is thresholded into a binary ocean mask (land=0, ocean=255); an entry
-        with ``premade: true`` carries a ready-made grayscale map used as-is.
+        slot (roughness, specular intensity) it sees fit. The source is a
+        ready-made grayscale mask, used as-is.
         """
         src = entry["_source_dir"] / entry["file"]
         if not src.exists():
@@ -338,11 +336,7 @@ class TextureProcessor:
             return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        img = (
-            open_premade_specular_source(src)
-            if entry.get("premade")
-            else open_specular_source(src)
-        )
+        img = open_specular_source(src)
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
         exports = self._export(img, object_id, out_dir)

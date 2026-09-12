@@ -1220,6 +1220,7 @@
 	"attribution_type_surface": "powierzchnia",
 	"attribution_type_clouds": "chmury",
 	"attribution_type_night": "noc",
+	"attribution_type_specular": "odbicia",
 	"attribution_type_topography": "topografia",
 	"attribution_type_rings": "pierścienie",
 	"source_sbdb_name": "Baza małych ciał NASA JPL",

@@ -9,12 +9,13 @@ export interface SpecularMeta {
 	source: string;
 	organisation: string;
 	type: string;
+	license?: string;
 	attribution?: string;
 	description?: string;
 }
 
 /**
- * Roughness target over open water (mask is binary: land=0, ocean=255).
+ * Roughness target over open water.
  * Physically realistic open water is ~0.2–0.4; tuned rougher to keep the sun glint from dominating the view.
  */
 const OCEAN_ROUGHNESS = 0.55;
@@ -25,7 +26,7 @@ type PatchedMaterial = MeshStandardMaterial & { [SPECULAR_HOOK]?: true };
 
 /**
  * Load a body's specular mask as a roughness map, with a shader patch that
- * inverts the sampled value: white (ocean) lowers roughness, black (land)
+ * inverts the sampled value: white (water) lowers roughness, black (land)
  * keeps base roughness. Chains onto `onBeforeCompile` so eclipse/ring-shadow
  * patches keep working. Idempotent: the hook installs at most once per
  * material; later calls just swap the texture.
@@ -62,7 +63,10 @@ export async function attachSpecularMap(
 					'#include <roughnessmap_fragment>',
 					`float roughnessFactor = roughness;
 					#ifdef USE_ROUGHNESSMAP
-						// Mask: ocean=1.0, land=0.0. Green channel matches three.js' default roughnessmap sample.
+						// Mask carries the fraction of the texel under water, so a
+						// coastline or a river narrower than a texel lands between the
+						// two roughnesses. Green channel matches three.js' default
+						// roughnessmap sample.
 						vec4 texelRoughness = texture2D(roughnessMap, vRoughnessMapUv);
 						roughnessFactor = mix(roughness, uOceanRoughness, texelRoughness.g);
 					#endif`

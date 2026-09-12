@@ -311,6 +311,7 @@ def write_credits(
     ring_metadata: dict[str, list[dict]],
     clouds_metadata: dict[str, dict],
     night_metadata: dict[str, dict],
+    specular_metadata: dict[str, dict],
     displacement_metadata: dict[str, dict],
     skybox_metadata: dict | None,
     model_metadata: dict[str, dict],
@@ -330,6 +331,7 @@ def write_credits(
         | set(RING_CATALOGS)
         | set(clouds_metadata)
         | set(night_metadata)
+        | set(specular_metadata)
         | set(displacement_metadata)
     )
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
@@ -408,6 +410,20 @@ def write_credits(
             _sibling_credit_entry(body_id, _body_name(obj), meta)
         )
 
+    specular_grouped: dict[str | None, list[dict]] = {}
+    for body_id, meta in specular_metadata.items():
+        obj = by_id.get(body_id)
+        if obj is None:
+            logger.warning(
+                "Specular metadata for %s has no matching Object row; skipping",
+                body_id,
+            )
+            continue
+        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
+        specular_grouped.setdefault(sys_id, []).append(
+            _sibling_credit_entry(body_id, _body_name(obj), meta)
+        )
+
     displacement_grouped: dict[str | None, list[dict]] = {}
     for body_id, meta in displacement_metadata.items():
         obj = by_id.get(body_id)
@@ -430,6 +446,8 @@ def write_credits(
         entries.sort(key=lambda e: e["name"].lower())
     for entries in night_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())
+    for entries in specular_grouped.values():
+        entries.sort(key=lambda e: e["name"].lower())
     for entries in displacement_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())
 
@@ -439,6 +457,7 @@ def write_credits(
         | set(rings_grouped)
         | set(clouds_grouped)
         | set(night_grouped)
+        | set(specular_grouped)
         | set(displacement_grouped)
     )
     systems_out: list[dict] = []
@@ -458,6 +477,8 @@ def write_credits(
             bucket["clouds"] = clouds_grouped[sys_id]
         if sys_id in night_grouped:
             bucket["night"] = night_grouped[sys_id]
+        if sys_id in specular_grouped:
+            bucket["specular"] = specular_grouped[sys_id]
         if sys_id in displacement_grouped:
             bucket["displacement"] = displacement_grouped[sys_id]
         systems_out.append(bucket)
@@ -471,6 +492,8 @@ def write_credits(
             bucket["clouds"] = clouds_grouped[None]
         if None in night_grouped:
             bucket["night"] = night_grouped[None]
+        if None in specular_grouped:
+            bucket["specular"] = specular_grouped[None]
         if None in displacement_grouped:
             bucket["displacement"] = displacement_grouped[None]
         systems_out.append(bucket)

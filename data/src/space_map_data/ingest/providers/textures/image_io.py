@@ -361,29 +361,11 @@ def _bake_displacement(
     return Image.fromarray(gray, mode="L").convert("RGB"), lo, hi
 
 
-def open_premade_specular_source(src: Path) -> Image.Image:
-    """Load a ready-made specular/roughness map as-is (grayscale → RGB).
+def open_specular_source(src: Path) -> Image.Image:
+    """Load a specular/roughness mask as-is (grayscale → RGB).
 
-    Unlike open_specular_source, no thresholding: the source is already a mask
-    where bright = specular (e.g. Titan's hydrocarbon seas), so it feeds the
-    renderer's roughness slot directly.
+    The source is already a mask where bright = specular — Earth's rendered
+    water mask, Titan's hydrocarbon seas — so it feeds the renderer's
+    roughness slot directly.
     """
     return Image.open(src).convert("L").convert("RGB")
-
-
-def open_specular_source(src: Path) -> Image.Image:
-    """Derive a binary ocean mask from a bathymetry TIFF.
-
-    GEBCO's bathymetry stores land as 255 (the nodata mask) and ocean as
-    grayscale by depth. The output is a single-channel mask with land at 0
-    (matte) and ocean at 255 (full specular). Any pixel within a couple of
-    levels of pure white is treated as land so antialiased coastlines don't
-    leak into the ocean mask.
-    """
-    img = Image.open(src).convert("L")
-    arr = np.asarray(img)
-    mask = np.where(arr >= 254, 0, 255).astype(np.uint8)
-    # WebP saves don't support single-channel mode in Pillow; promote to RGB.
-    # The triplicated payload still compresses to near-zero (the mask is flat
-    # binary), so the size growth is negligible.
-    return Image.fromarray(mask, mode="L").convert("RGB")

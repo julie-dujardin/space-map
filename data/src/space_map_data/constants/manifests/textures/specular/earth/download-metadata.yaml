@@ -1,0 +1,14 @@
+# Manifest for the water mask rendered by the earth_water downloader from
+# OpenStreetMap coastlines and the HydroSHEDS lake/river vectors. The file is
+# built locally rather than fetched, so its credit lives here; TextureProcessor
+# merges every misc/*/download-metadata.yaml into the main one at startup.
+bodies:
+- body: naif-399
+  body_name: earth
+  source: https://osmdata.openstreetmap.de/data/water-polygons.html
+  organisation: OpenStreetMap contributors, HydroSHEDS
+  license: ODbL 1.0 (coastlines), CC BY 4.0 (lakes and rivers)
+  attribution: "Coastline water polygons © OpenStreetMap contributors, available under the Open Database License. Lakes and rivers from HydroLAKES and HydroRIVERS (HydroSHEDS v1.0)."
+  description: "Water mask built from OpenStreetMap coastlines, HydroLAKES and HydroRIVERS — bright over water, matte over land, with partial values where water covers part of a texel."
+  file: water-mask.png
+  type: cylindrical_specular

@@ -1204,6 +1204,7 @@
 	"attribution_type_surface": "superfície",
 	"attribution_type_clouds": "nuvens",
 	"attribution_type_night": "noturno",
+	"attribution_type_specular": "reflexos",
 	"attribution_type_topography": "topografia",
 	"attribution_type_rings": "anéis",
 	"source_sbdb_name": "Base de Dados de Corpos Menores da NASA JPL",

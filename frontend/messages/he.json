@@ -1204,6 +1204,7 @@
 	"attribution_type_surface": "פני שטח",
 	"attribution_type_clouds": "עננים",
 	"attribution_type_night": "לילה",
+	"attribution_type_specular": "השתקפויות",
 	"attribution_type_topography": "טופוגרפיה",
 	"attribution_type_rings": "טבעות",
 	"source_sbdb_name": "NASA JPL Small-Body Database",

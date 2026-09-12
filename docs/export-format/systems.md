@@ -57,10 +57,11 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "specular": {
       "id": "naif-399_specular",
       "tiers": ["low", "medium", "high"],
-      "source": "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/topography-bathymetry-maps/",
-      "organisation": "NASA",
+      "source": "https://osmdata.openstreetmap.de/data/water-polygons.html",
+      "organisation": "OpenStreetMap contributors, HydroSHEDS",
       "type": "cylindrical_specular",
-      "attribution": "NASA Earth Observatory — Blue Marble: Next Generation topography/bathymetry maps. Bathymetry derived from GEBCO."
+      "license": "ODbL 1.0 (coastlines), CC BY 4.0 (lakes and rivers)",
+      "attribution": "Coastline water polygons © OpenStreetMap contributors, available under the Open Database License. Lakes and rivers from HydroLAKES and HydroRIVERS (HydroSHEDS v1.0)."
     },
     "orientation": {
       "pole_ra_0": 0.0, "pole_ra_1": -0.641,

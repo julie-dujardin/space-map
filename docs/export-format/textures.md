@@ -21,7 +21,7 @@ The `type` field in the metadata (and mirrored to `systems/{bary}.json` / `credi
 - **`cylindrical`** — single equirectangular frame; one `{tier}.webp` per tier.
 - **`cylindrical_monthly`** — twelve-frame seasonal cycle. Files are suffixed with the 1-based month (`{tier}_{NN}.webp`, `NN` = `01`..`frames`); the metadata's `exports` map is nested `{frame: {tier: rec}}`. Earth ships under this type; the renderer picks the frame by calendar month of the simulation date.
 - **`clouds_overlay`** — multi-frame cloud-cover overlay, ingested as a separate bundle from the surface texture and refreshed from a real-time source (Earth's case: EUMETSAT-derived snapshot, 3h cadence). Every snapshot the downloader has on disk is exported; files carry a sortable `YYYYMMDDHH` frame suffix (`{tier}_{frame}.webp`). The bundle lives at `textures/{host_id}_clouds/` so it can be served and credited independently; the renderer composites it on top of the surface texture and picks a frame by simulation time. The `_clouds` directory-name suffix is the export-tree convention — in the systems/credits/object payloads the bundle is exposed under its own `clouds` key on the host body (`naif-399`), keyed by host id rather than the suffixed export id.
-- **`cylindrical_specular`** — single-frame specular/roughness mask for the host body, derived from a bathymetry or land/water source (Earth's case: GEBCO bathymetry → binary ocean mask, land=0 / ocean=255). Ships as a sibling bundle at `textures/{host_id}_specular/{tier}.webp` so it can be served and credited independently from the surface texture; the renderer routes it into whichever material slot (roughness, specular intensity) it sees fit. In the systems payload it surfaces as a `specular` key on the host body, keyed by host id.
+- **`cylindrical_specular`** — single-frame specular/roughness mask for the host body, derived from a land/water source (Earth's case: OpenStreetMap coastlines plus HydroLAKES and HydroRIVERS, rasterised to the fraction of each texel under water, land=0 / open water=255). Ships as a sibling bundle at `textures/{host_id}_specular/{tier}.webp` so it can be served and credited independently from the surface texture; the renderer routes it into whichever material slot (roughness, specular intensity) it sees fit. In the systems payload it surfaces as a `specular` key on the host body, keyed by host id.
 - **`cylindrical_displacement`** — single-frame height map for the host body, derived from a topography source (the Moon's case: LRO LOLA, signed half-metres relative to a 1737.4 km reference sphere). The source elevation is stretched to an 8-bit grayscale tile; the km that pixel 0 and 255 reconstruct to are recorded as `displacement_bias_km` / `displacement_scale_km` so the renderer can drive `material.displacementMap` at true physical scale. Ships as a sibling bundle at `textures/{host_id}_displacement/{tier}.webp`, exposed under a `displacement` key on the host body, keyed by host id.
 
 ## Texture metadata (`textures/{id}/metadata.json`)
@@ -96,18 +96,19 @@ Specular (`type: cylindrical_specular`): single-frame mask sibling to the surfac
 ```json
 {
   "id": "naif-399_specular",
-  "source": "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/topography-bathymetry-maps/",
-  "organisation": "NASA",
-  "attribution": "NASA Earth Observatory — Blue Marble: Next Generation topography/bathymetry maps. Bathymetry derived from GEBCO.",
-  "description": "Ocean specular mask derived from GEBCO bathymetry — bright over water, matte over land.",
+  "source": "https://osmdata.openstreetmap.de/data/water-polygons.html",
+  "organisation": "OpenStreetMap contributors, HydroSHEDS",
+  "license": "ODbL 1.0 (coastlines), CC BY 4.0 (lakes and rivers)",
+  "attribution": "Coastline water polygons © OpenStreetMap contributors, available under the Open Database License. Lakes and rivers from HydroLAKES and HydroRIVERS (HydroSHEDS v1.0).",
+  "description": "Water mask built from OpenStreetMap coastlines, HydroLAKES and HydroRIVERS — bright over water, matte over land, with partial values where water covers part of a texel.",
   "type": "cylindrical_specular",
-  "source_file": "gebco_08_rev_bath_21600x10800.tif",
+  "source_file": "water-mask.png",
   "source_dimensions": [21600, 10800],
   "processed_at": "2026-05-12T00:00:00+00:00",
   "exports": {
-    "low":    { "file": "low.webp",    "width": 2048,  "height": 1024, "size_bytes": 10000,  "lossless": false },
-    "medium": { "file": "medium.webp", "width": 8192,  "height": 4096, "size_bytes": 80000,  "lossless": false },
-    "high":   { "file": "high.webp",   "width": 16383, "height": 8191, "size_bytes": 250000, "lossless": false }
+    "low":    { "file": "low.webp",    "width": 2048,  "height": 1024, "size_bytes": 110000,  "lossless": false },
+    "medium": { "file": "medium.webp", "width": 8192,  "height": 4096, "size_bytes": 1170000, "lossless": false },
+    "high":   { "file": "high.webp",   "width": 16383, "height": 8191, "size_bytes": 3930000, "lossless": false }
   }
 }
 ```
@@ -128,9 +129,9 @@ Displacement (`type: cylindrical_displacement`): single-frame height map sibling
   "source_dimensions": [23040, 11520],
   "processed_at": "2026-06-29T00:00:00+00:00",
   "exports": {
-    "low":    { "file": "low.webp",    "width": 2048,  "height": 1024, "size_bytes": 10000,  "lossless": false },
-    "medium": { "file": "medium.webp", "width": 8192,  "height": 4096, "size_bytes": 80000,  "lossless": false },
-    "high":   { "file": "high.webp",   "width": 16383, "height": 8191, "size_bytes": 250000, "lossless": false }
+    "low":    { "file": "low.webp",    "width": 2048,  "height": 1024, "size_bytes": 110000,  "lossless": false },
+    "medium": { "file": "medium.webp", "width": 8192,  "height": 4096, "size_bytes": 1170000, "lossless": false },
+    "high":   { "file": "high.webp",   "width": 16383, "height": 8191, "size_bytes": 3930000, "lossless": false }
   }
 }
 ```

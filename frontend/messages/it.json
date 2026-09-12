@@ -1204,6 +1204,7 @@
 	"attribution_type_surface": "superficie",
 	"attribution_type_clouds": "nuvole",
 	"attribution_type_night": "notte",
+	"attribution_type_specular": "riflessi",
 	"attribution_type_topography": "topografia",
 	"attribution_type_rings": "anelli",
 	"source_sbdb_name": "NASA JPL Small-Body Database",
