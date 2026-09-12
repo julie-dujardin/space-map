@@ -24,6 +24,7 @@ import {
 	type SmallBodyFilter,
 	type SmallBodyFlagName
 } from '$lib/fetch/groups/registry';
+import { LayerSet } from '$lib/scene/layers';
 import { EARTH_ID } from '$lib/constants';
 
 export type { SmallBodyFilter } from '$lib/fetch/groups/registry';
@@ -43,13 +44,19 @@ export class ContextManager {
 
 	credits = new CreditsStore();
 
+	/** Which layers this map draws, and which it never downloaded. The map
+	 *  replaces it from its options before `load()`; this default draws
+	 *  everything, which is what the app asks for. */
+	layers = new LayerSet();
+
 	/** Focus state + per-frame visibility decisions, read by `visibility/update.ts`
 	 *  to apply VISIBILITY values to Three.js objects. */
 	visibility = new VisibilityController(
 		this.bodies,
 		() => this.probeStore,
 		() => this.earthSatFilter,
-		() => this.smallBodyFilter
+		() => this.smallBodyFilter,
+		() => this.layers
 	);
 
 	loading = $state(true);

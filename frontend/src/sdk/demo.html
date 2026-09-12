@@ -86,6 +86,16 @@
 			#children {
 				width: 100%;
 			}
+			#layers {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+			}
+			#layers label {
+				display: flex;
+				gap: 4px;
+				align-items: center;
+				margin: 2px 0;
+			}
 			code {
 				color: #bcd;
 			}
@@ -193,6 +203,12 @@
 					<option value="604800">1 week/s</option>
 				</select>
 			</div>
+			<h2>Layers</h2>
+			<p>
+				Switched here, a layer is hidden and nothing is fetched. Open the page with
+				<code>?off=asteroids,comets</code> to leave those out of the download instead.
+			</p>
+			<div id="layers"></div>
 			<h2>Restrictions</h2>
 			<div id="gestures"></div>
 			<div class="row">
@@ -229,6 +245,9 @@
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
 			const options = {};
+			// ?off=<layer ids> leaves those layers out of the download entirely.
+			const skipped = (params.get('off') ?? '').split(',').filter(Boolean);
+			if (skipped.length) options.layers = Object.fromEntries(skipped.map((id) => [id, false]));
 			if (dataUrl) options.dataUrl = dataUrl;
 			if (params.has('lang')) options.locale = params.get('lang');
 			if (params.has('body')) options.view = { id: params.get('body') };
@@ -435,6 +454,27 @@
 			setInterval(() => {
 				$('frames').textContent = `${frames} frames drawn`;
 			}, 1000);
+
+			// Layers: a checkbox per id, so the switcher never spells them out.
+			// `layerschange` keeps them right when something else does the
+			// switching — the built-in control below, for one.
+			const boxes = new Map();
+			for (const id of map.getLayers()) {
+				const box = document.createElement('input');
+				box.type = 'checkbox';
+				box.checked = map.isLayerVisible(id);
+				box.onchange = () => {
+					map.setLayerVisible(id, box.checked);
+					log(`${id} ${box.checked ? 'shown' : 'hidden'}`);
+				};
+				boxes.set(id, box);
+				const label = document.createElement('label');
+				label.append(box, ` ${id}${skipped.includes(id) ? ' (not downloaded)' : ''}`);
+				$('layers').append(label);
+			}
+			map.on('layerschange', (visible) => {
+				for (const [id, box] of boxes) box.checked = visible.includes(id);
+			});
 
 			// Restrictions. Each gesture is a handler with enable/disable/isEnabled;
 			// the limits are one set, replaced whole, and they gate reader input

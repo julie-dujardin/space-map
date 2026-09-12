@@ -92,6 +92,7 @@ hold.release();
 | `loading` / `progress`            | data is coming in                                  |
 | `error`                           | the data could not be loaded                       |
 | `notice` / `noticedismiss`        | a condition worth telling the reader about         |
+| `layerschange`                    | a layer was switched                               |
 | `frame`                           | once per drawn frame                               |
 | `contextlost` / `contextrestored` | the GPU context dropped and came back              |
 | `datastale`                       | the export was republished while this map was open |
@@ -132,6 +133,66 @@ map.addPolyline({
 	widthPx: 2,
 	closed: true
 });
+```
+
+### Layers
+
+What the map draws is a set of layers, each switched by id — the kinds of
+object first, then the chrome drawn around them:
+
+`planets`, `dwarfPlanets`, `moons`, `asteroids`, `comets`, `spacecraft`,
+`satellites` (the ones round Earth), `debris`, `orbits`, `labels` (the names of
+objects), `nomenclature` (the names of places on them) and `stars` (the sky
+behind everything).
+
+```js
+const map = await createMap({
+	container: '#map',
+	layers: { asteroids: false, comets: false, debris: false }
+});
+
+map.setLayerVisible('moons', false);
+map.isLayerVisible('moons'); // false
+map.getLayers(); // every id, so a switcher need not spell them out
+```
+
+**A layer switched off in the options is never downloaded; a layer switched off
+later is only hidden.** The two are different asks and the map answers them
+differently on purpose. `layers` at open time is what an embed about Mars
+wants: the belts, the comets and the thirty thousand Earth satellites are not
+fetched at all, and the map opens on a fraction of the data. `setLayerVisible`
+is what a reader's checkbox wants: it lands on the next frame and never asks
+the network for anything, whichever way it is switched.
+
+The corollary is worth saying plainly: **switching on a layer that was off at
+open time shows nothing**, because there is nothing to show. Switch off in the
+options what the map is not for; switch at runtime what the reader is to have a
+say in.
+
+Two groups are hidden rather than skipped. `planets` and `dwarfPlanets` share
+one file with the Sun, so leaving them out saves no download. `satellites` and
+`debris` share one file with each other, so the download is only skipped when
+neither is wanted.
+
+The asteroids are one layer, not five. The export files them by orbit class,
+and those classes do not divide cleanly into the dynamical families
+`Body.orbitClass` reports — two of them belong to no family at all — so a
+family switch would leave objects answering to nothing. Read `orbitClass` off a
+body to tell the families apart.
+
+Hiding is a drawing decision and nothing else. The Sun lights the scene
+whatever is off, `flyTo` reaches a hidden body, and `getBody` still knows it.
+
+The flat map has layers too, of its own: the pictures wrapped round a body and
+the lines drawn over them. Those depend on the body on screen and carry their
+own names, so it reads them out whole:
+
+```js
+flat.getLayers(); // ['surface', 'clouds', 'night', 'graticule', 'nomenclature']
+flat.layers; // the same, with a label, a kind and a credit each
+flat.setLayerVisible('clouds', false);
+flat.isLayerVisible('clouds');
+flat.on('layerschange', (layers) => redraw(layers));
 ```
 
 ## The flat map
@@ -252,6 +313,12 @@ map.addControl(
 Corners are `top-left`, `top-right`, `bottom-left` and `bottom-right`;
 top-right unless the control or the caller names another. `removeControl` takes
 one back off — except the credit line, which throws.
+
+The credit line is the only control the SDK ships. Zoom buttons, a layer
+switcher or a clock are the page's to build, in its own look, from the calls
+this document describes: `flyTo` and `jumpTo`, `getLayers` and
+`setLayerVisible` with the `layerschange` event, and `map.clock` with the
+`clock` event.
 
 ## Where the data comes from
 

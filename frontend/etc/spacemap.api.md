@@ -307,8 +307,10 @@ export class FlatMap {
 	readonly cooperativeGestures: GestureHandler;
 	get credits(): LayerCredit[];
 	readonly dragPan: GestureHandler;
+	getLayers(): string[];
 	getLimits(): FlatMapLimits;
 	// (undocumented)
+	isLayerVisible(id: string): boolean;
 	get layers(): LayerInfo[];
 	// @internal
 	load(): Promise<void>;
@@ -563,6 +565,22 @@ export interface LonLat {
 	lon: number;
 }
 
+// @public
+export const MAP_LAYERS: readonly [
+	'planets',
+	'dwarfPlanets',
+	'moons',
+	'asteroids',
+	'comets',
+	'spacecraft',
+	'satellites',
+	'debris',
+	'orbits',
+	'labels',
+	'nomenclature',
+	'stars'
+];
+
 // @public (undocumented)
 export interface MapEvents {
 	camera: (view: CameraState) => void;
@@ -577,6 +595,7 @@ export interface MapEvents {
 	// (undocumented)
 	focuschange: (e: FocusChange) => void;
 	frame: (e: { jd: number; dtMs: number }) => void;
+	layerschange: (visible: MapLayerId[]) => void;
 	loading: (loading: boolean) => void;
 	notice: (notice: Notice) => void;
 	noticedismiss: (topic: NoticeTopic) => void;
@@ -586,6 +605,9 @@ export interface MapEvents {
 
 // @public
 export type MapGesture = 'dragRotate' | 'scrollZoom' | 'keyboard' | 'bodySelect' | 'featureSelect';
+
+// @public (undocumented)
+export type MapLayerId = (typeof MAP_LAYERS)[number];
 
 // @public (undocumented)
 export interface MapOptions extends CommonOptions, SpaceMapOptions {
@@ -864,11 +886,14 @@ export class SpaceMap {
 	getCamera(): CameraState | null;
 	getChildren(id: string): string[];
 	getFocusedBody(): Body_2 | undefined;
+	getLayers(): MapLayerId[];
 	getLimits(): CameraLimits;
 	getPose(): CameraPose | null;
 	holdCamera(): CameraHold;
 	// @internal (undocumented)
 	readonly initialView: InitialView;
+	// (undocumented)
+	isLayerVisible(id: MapLayerId): boolean;
 	jumpTo(target: JumpTarget): this;
 	readonly keyboard: GestureHandler;
 	// @internal
@@ -890,6 +915,7 @@ export class SpaceMap {
 	setCovered(covered: boolean): void;
 	// @internal
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void;
+	setLayerVisible(id: MapLayerId, visible: boolean): this;
 	setLimits(limits: CameraLimits): this;
 	// (undocumented)
 	setNorthReference(id: string | null): void;
@@ -932,6 +958,7 @@ export interface SpaceMapOptions {
 	date?: Date;
 	interactions?: Partial<Record<MapGesture, boolean>>;
 	interactive?: boolean;
+	layers?: Partial<Record<MapLayerId, boolean>>;
 	limits?: CameraLimits;
 	// (undocumented)
 	live?: boolean;

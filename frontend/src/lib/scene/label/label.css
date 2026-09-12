@@ -280,3 +280,10 @@
 	transform: scale(0.75);
 	opacity: 1;
 }
+
+/* The `labels` layer, off: the name goes, the ring that marks a body too far
+ * to have a disc of its own stays. */
+.scene-overlay--no-names .scene-label__name,
+.scene-overlay--no-names .scene-label__annotations {
+	display: none;
+}

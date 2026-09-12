@@ -120,6 +120,9 @@ export function updateBodyVisibility(
 	forceCull: boolean,
 	suppressHeliocentricTrails: boolean
 ): number {
+	const layers = ctx.layers;
+	const hideOrbits = !layers.isVisible('orbits');
+	const showNomenclature = layers.isVisible('nomenclature');
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenW = renderer.domElement.clientWidth;
 	const screenH = renderer.domElement.clientHeight;
@@ -474,6 +477,12 @@ export function updateBodyVisibility(
 			}
 		}
 
+		// The `orbits` layer, last so nothing above can put a line back on. A
+		// hidden one also stops paying for its per-frame upload, which reads
+		// `visible` rather than the camera's layers. The `labels` layer is DOM
+		// and hides in the renderer instead.
+		if (hideOrbits && trail) trail.visible = false;
+
 		// A hidden group has nothing to draw, so three's per-frame matrix walk
 		// skips it; the flag turning back on refreshes it on the next render.
 		group.matrixWorldAutoUpdate = group.visible;
@@ -508,7 +517,7 @@ export function updateBodyVisibility(
 		}
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
-		const isNomFocused = body.data.id === nomFocusedBodyId;
+		const isNomFocused = showNomenclature && body.data.id === nomFocusedBodyId;
 		updateNomenclatureVisibility(bo, isNomFocused, nomScreenR, camera, screenW, screenH);
 	}
 

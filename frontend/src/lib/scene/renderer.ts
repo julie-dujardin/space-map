@@ -354,6 +354,9 @@ export class SceneRenderer {
 	private static readonly FPS_SAMPLE_FRAMES = 30;
 	private fpsSamples: number[] = [];
 	private fpsSampleHead = 0;
+	/** The sky while the `stars` layer is off. */
+	private stashedSky: Scene['background'] = null;
+	private namesShown = true;
 	private readonly textureLoader = new TextureLoader();
 	private readonly shadowLight: DirectionalLight;
 	/** Both scenes' ambient fills; driven together by the high-ambient toggle. */
@@ -1118,6 +1121,7 @@ export class SceneRenderer {
 		// Inside a shell, stars dim by the extinction of the air above the
 		// camera plus a daylight-aware exposure compensation (skyboxDimFactor).
 		this.scene.backgroundIntensity = atmoState.skyboxIntensity;
+		this.applyLayerChrome();
 		// Corona/star-point chroma through nearby air; the disc's per-fragment
 		// tint is aimed inside updateAtmosphereShaders.
 		const sunBo = this.bodyObjects.get(SUN_ID);
@@ -1866,6 +1870,7 @@ export class SceneRenderer {
 				if (this.focusController.current?.data.id === bo.body.data.id) {
 					this.controls.minDistance = minCameraDistance(bo.body, modelMinRadiusKm(bo));
 				}
+				if (this.ctx.layers.skipped.has('nomenclature')) return;
 				return attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) => {
 					if (!this.featureSelectEnabled) return;
 					this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM);
@@ -2411,6 +2416,32 @@ export class SceneRenderer {
 
 	setSkyDebugMarkersVisible(visible: boolean): void {
 		this.skyDebugMarkers.setVisible(visible);
+	}
+
+	/**
+	 * The two layers that are not objects in the scene. The sky is a texture on
+	 * it, so `stars` swaps that out and keeps it aside — the cube stays
+	 * uploaded, and switching back on costs nothing. Names are DOM, so `labels`
+	 * is a class on the layer they live in; the ring that marks a body too far
+	 * to have a disc is not a name and stays.
+	 *
+	 * Run per frame, since the sky lands well after the map opens.
+	 */
+	private applyLayerChrome(): void {
+		if (this.ctx.layers.isVisible('stars')) {
+			if (this.stashedSky) {
+				this.scene.background = this.stashedSky;
+				this.stashedSky = null;
+			}
+		} else if (this.scene.background) {
+			this.stashedSky = this.scene.background;
+			this.scene.background = null;
+		}
+		const names = this.ctx.layers.isVisible('labels');
+		if (names !== this.namesShown) {
+			this.namesShown = names;
+			this.labelContainer.classList.toggle('scene-overlay--no-names', !names);
+		}
 	}
 
 	/** Toggle the virtual-halo debug overlay (label-anchor silhouette discs). */

@@ -9,6 +9,7 @@ import { asteroidPointSize, makePointCloud } from '../pointcloud';
 import { makeTrail } from '../trail/builder';
 import { isMeshUpgradable } from './lifecycle';
 import { partitionForWorkers } from '$lib/math/orbit/partition';
+import { drawnSpacecraft } from '$lib/scene/layers';
 
 function excludePromoted(
 	bodies: Iterable<PositionedBody>,
@@ -115,7 +116,11 @@ export function buildPointClouds(
 	// Same hash-partition as asteroids. Per-vertex colors so DEBRIS + SPACECRAFT
 	// mixed under one parentId don't all paint as bodies[0]'s type.
 	for (const [groupParentId, byId] of ctx.bodies.spacecraftByParent.entries()) {
-		const filtered = excludePromoted(byId.values(), promotedIds);
+		const filtered = drawnSpacecraft(
+			ctx.layers,
+			groupParentId,
+			excludePromoted(byId.values(), promotedIds)
+		);
 		if (filtered.length === 0) continue;
 		const { buckets } = partitionForWorkers(groupParentId, filtered, workerCount);
 		for (let i = 0; i < buckets.length; i++) {

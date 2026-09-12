@@ -102,6 +102,7 @@ export class ZoneRefresher {
 		const cap = sceneSettings().maxPartsPerZone;
 		for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 			// zoneLayers yields nothing for probe zones — they load via ProbeStore.
+			if (ctx.layers.skipsZone(zone)) continue;
 			const parentIdType = zoneData.parent_id_type ?? 'naif';
 			for (const { zoom, data: zoomData } of zoneLayers(zoneData)) {
 				// Chebyshev zones (`shape: chunked`) are driven by the

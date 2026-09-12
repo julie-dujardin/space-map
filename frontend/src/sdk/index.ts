@@ -155,6 +155,8 @@ export type {
 	SpaceMapOptions
 } from '$lib/scene/space-map.svelte';
 export { GestureHandler } from '$lib/interaction/gesture';
+export { MAP_LAYERS } from '$lib/scene/layers';
+export type { MapLayerId } from '$lib/scene/layers';
 export type { Body, BodyType, OrbitClass } from '$lib/scene/body-view';
 export type { SimClock } from '$lib/scene/state/clock.svelte';
 export type { Control, ControlPosition } from '$lib/scene/controls';

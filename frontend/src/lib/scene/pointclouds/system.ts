@@ -23,6 +23,7 @@ import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/
 import { resolveBodyColor } from '$lib/body-color';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { PickRegistry } from '$lib/scene/interaction/pick-registry';
+import { drawnSpacecraft } from '$lib/scene/layers';
 
 const REBASE_THRESHOLD_AU = 0.01;
 
@@ -523,7 +524,11 @@ export class PointCloudSystem {
 			if (this.deferPackWhileStreaming(`spacecraft:${gid}`, bucket?.size ?? 0)) continue;
 			this.ctx.bodies.dirtySpacecraftGroups.delete(gid);
 			drainedGroups.push(gid);
-			const allBodies = bucket ? Array.from(bucket.values()) : [];
+			const allBodies = drawnSpacecraft(
+				this.ctx.layers,
+				gid,
+				bucket ? Array.from(bucket.values()) : []
+			);
 			const { buckets, baseWorker } = await partitionForWorkersSliced(gid, allBodies, k);
 			// Capture after the partition await so group promotion (which runs on a
 			// chunk flush, possibly between this pass starting and here) is reflected.

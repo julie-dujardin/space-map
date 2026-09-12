@@ -439,8 +439,21 @@ export class FlatMap {
 
 	// -- layers ---------------------------------------------------------------
 
+	/** Every layer of the body on screen, in drawing order, with the label and
+	 *  the credit each carries. */
 	get layers(): LayerInfo[] {
 		return this.layerList.map(layerInfo);
+	}
+
+	/** The layer ids alone, so a switcher can be built the same way on either
+	 *  map. Which ids there are depends on the body: not every one has clouds
+	 *  or a night side. */
+	getLayers(): string[] {
+		return this.layerList.map((layer) => layer.id);
+	}
+
+	isLayerVisible(id: string): boolean {
+		return this.layerList.find((layer) => layer.id === id)?.visible ?? false;
 	}
 
 	/** Credits for everything currently drawn — what the embed has to show. */

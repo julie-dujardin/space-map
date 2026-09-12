@@ -13,6 +13,7 @@ import { f64dist } from '$lib/scene/animation/math';
 import { hillRadiusAU } from '$lib/scene/visibility/hill';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { smallBodyCategory, type SmallBodyFilter } from '$lib/fetch/groups/registry';
+import { LayerSet } from '$lib/scene/layers';
 import {
 	VISIBILITY,
 	REFERENCE_VIEWPORT_HEIGHT,
@@ -27,6 +28,9 @@ import {
 } from '$lib/scene/visibility/thresholds';
 
 const SMALL_BODY_ZONE_PREFIX = 'small_bodies/';
+
+/** What a controller built without a map draws: everything. */
+const ALL_LAYERS = new LayerSet();
 
 /** NAIF id of the Earth-Moon barycenter, returned by `containingSystemAt` for
  *  any probe inside the Earth system zone (Earth orbiters, lunar orbiters,
@@ -85,7 +89,8 @@ export class VisibilityController {
 		private readonly bodies: BodyIndex,
 		private readonly getProbeStore: () => ProbeStore | null = () => null,
 		private readonly getEarthSatGroupFilter: () => ReadonlySet<string> | null = () => null,
-		private readonly getSmallBodyFilter: () => SmallBodyFilter | null = () => null
+		private readonly getSmallBodyFilter: () => SmallBodyFilter | null = () => null,
+		private readonly getLayers: () => LayerSet = () => ALL_LAYERS
 	) {}
 
 	/** Per-tick mask read by the orbit worker pool to hide non-matching small
@@ -227,6 +232,9 @@ export class VisibilityController {
 	 *  ungated moon pops in whenever the camera zooms close to anything.
 	 *  Asteroid moons skip the crowding cap (sparse per parent). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
+		if (this.getLayers().hidesBody(moon.data.objectType, moon.data.parentId)) {
+			return VISIBILITY.HIDE;
+		}
 		const cached = this.moonVisibilityCache.get(moon.data.id);
 		if (cached !== undefined) return cached;
 		let vis: VISIBILITY;
@@ -269,6 +277,9 @@ export class VisibilityController {
 	 *  parent, or planet-relative `a`); sun-orbiting bodies use the solar-orbit
 	 *  semi-major axis ratio. */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
+		if (this.getLayers().hidesBody(body.data.objectType, body.data.parentId)) {
+			return VISIBILITY.HIDE;
+		}
 		// Check SPICE_PROBE before isSystemBody — Mars-zone probes carry parentId=naif-499,
 		// which would otherwise satisfy isSystemBody and short-circuit to FULL.
 		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
@@ -420,6 +431,7 @@ export class VisibilityController {
 	 * Gated on the focused system and ratio to outermost moon (no zoom threshold).
 	 */
 	isMoonGroupVisible(parentId: string): boolean {
+		if (!this.getLayers().isVisible('moons')) return false;
 		if (!this.isInFocusedSystem(parentId)) return false;
 		const maxA = this.bodies.maxMoonA(parentId);
 		if (!maxA) return false;
@@ -433,6 +445,7 @@ export class VisibilityController {
 	 * Planet-orbiting groups are only visible when in the active system.
 	 */
 	isSpacecraftGroupVisible(groupParentId: string): boolean {
+		if (this.getLayers().hidesSpacecraftGroup(groupParentId)) return false;
 		const sysId = this.activeSystemId;
 		if (isTopLevelParent(groupParentId)) return !sysId;
 		const parent = this.bodies.bodiesById.get(groupParentId);
@@ -447,6 +460,7 @@ export class VisibilityController {
 	 *  hides non-matching zones here; a `flag` filter (NEO/PHA) leaves every
 	 *  zone visible and masks points via `requiredFlags` in the worker instead. */
 	isAsteroidGroupVisible(zone: string): boolean {
+		if (this.getLayers().hidesZone(zone)) return false;
 		if (this.activeSystemId) return false;
 		const filter = this.getSmallBodyFilter();
 		if (filter && zone.startsWith(SMALL_BODY_ZONE_PREFIX)) {

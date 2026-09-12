@@ -31,6 +31,7 @@ import { isLowEndDevice } from '$lib/device';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import { passengerFor, type PassengerGraft } from '$lib/fetch/position/probes/passenger';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { LayerSet } from '$lib/scene/layers';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 import { dateToJD } from '$lib/time/jd';
@@ -55,11 +56,13 @@ const EAGER_ZOOM1_PARTS = 13;
  * Phase-2 chunk-fetch plan: eager wave (named + a representative sample of
  * unnamed) plus a deferred wave (the unnamed long tail). No prefetch warming
  * — firing every part up front would starve the phase-1 critical path on
- * bandwidth-bound links. Skips `major`/`moons` (phase 1), probe zones, chebyshev.
+ * bandwidth-bound links. Skips `major`/`moons` (phase 1), probe zones, chebyshev,
+ * and every zone whose layer the host switched off before the map opened.
  */
 function planMinorChunks(
 	metadata: Metadata,
-	date: Date
+	date: Date,
+	layers: LayerSet
 ): { eager: MinorChunkArg[]; deferred: MinorChunkArg[] } {
 	const cap = sceneSettings().maxPartsPerZone;
 	const eager: MinorChunkArg[] = [];
@@ -68,6 +71,7 @@ function planMinorChunks(
 		if (zone === 'major' || zone === 'moons') continue;
 		if (zone === 'spacecraft') continue;
 		if (isProbeZone(zoneData)) continue;
+		if (layers.skipsZone(zone)) continue;
 		const parentIdType = zoneData.parent_id_type ?? 'naif';
 		for (const { zoom, data: zoomData } of zoneLayers(zoneData)) {
 			if (zoomData.shape === 'chunked') continue;
@@ -90,8 +94,13 @@ function planMinorChunks(
 }
 
 /** Build the probe ephemeris store from metadata, or null when no probe zones ship. */
-async function buildProbeStore(metadata: Metadata, jd: number): Promise<ProbeStore | null> {
+async function buildProbeStore(
+	metadata: Metadata,
+	jd: number,
+	layers: LayerSet
+): Promise<ProbeStore | null> {
 	const params = probeZoneParams(metadata);
+	for (const zone of params.keys()) if (layers.skipsZone(zone)) params.delete(zone);
 	if (params.size === 0) return null;
 	console.log(
 		`ProbeStore: ${params.size} zone(s) from metadata:\n` +
@@ -152,7 +161,7 @@ async function loadMajorBodies(
 			}
 		}
 	}
-	const moonsZone = metadata.position.zones.moons;
+	const moonsZone = ctx.layers.skipsZone('moons') ? undefined : metadata.position.zones.moons;
 	const moonsZoom = moonsZone ? flatZoom(moonsZone) : undefined;
 	const moonsTime =
 		moonsZoom && isChunkIndexed(moonsZoom) ? String(chunkIndexForJd(moonsZoom, jd)) : null;
@@ -214,7 +223,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// chunk index) is handled here as a one-shot HTTP warm.
 	metadataPromise.then((metadata) => {
 		const moons = metadata.position.zones.moons;
-		if (!moons) return;
+		if (!moons || ctx.layers.skipsZone('moons')) return;
 		const moonsZoom = flatZoom(moons);
 		if (moonsZoom && isParted(moonsZoom)) {
 			ChunkLoader.prefetch('moons', null, 0, null);
@@ -224,22 +233,27 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// Start fetching+decoding the skybox low tier as soon as the tier list is
 	// known, rather than waiting for renderer init.
 	metadataPromise.then((metadata) => {
-		if (metadata.skybox) prefetchSkyboxTiers(metadata.skybox);
+		if (metadata.skybox && !ctx.layers.skipped.has('stars')) prefetchSkyboxTiers(metadata.skybox);
 	});
 
-	const minorChunkArgsPromise = metadataPromise.then((metadata) => planMinorChunks(metadata, date));
+	const minorChunkArgsPromise = metadataPromise.then((metadata) =>
+		planMinorChunks(metadata, date, ctx.layers)
+	);
 
 	// Chebyshev must be ready before major/moons — it supplies the only
 	// positions for the bodies it covers, no fallback. Probes lag chebyshev
 	// too: fit-center positions must be in `loader.positions` first.
 	const chebPromise = metadataPromise.then(async (metadata) => {
 		const params = chebyshevZoneParams(metadata);
+		for (const zone of params.keys()) if (ctx.layers.skipsZone(zone)) params.delete(zone);
 		if (params.size === 0) return null;
 		const store = new ChebyshevStore(params);
 		await store.ensure(jd).done;
 		return store;
 	});
-	const probePromise = metadataPromise.then((metadata) => buildProbeStore(metadata, jd));
+	const probePromise = metadataPromise.then((metadata) =>
+		buildProbeStore(metadata, jd, ctx.layers)
+	);
 	// A craft still bolted to another has no record of its own to find. Started
 	// here rather than at the probe pass so its bundle rides along with the
 	// metadata and ephemeris fetches instead of adding a round trip to boot.

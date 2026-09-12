@@ -42,6 +42,7 @@ import { host } from '$lib/host';
 import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 import type { LabelledHazard } from '$lib/travel/hazards';
 import { bodyView, type Body } from './body-view';
+import { LayerSet, MAP_LAYERS, type MapLayerId } from './layers';
 import { ControlHost, type Control, type ControlPosition } from './controls';
 import './map.css';
 
@@ -67,6 +68,10 @@ export interface SpaceMapOptions {
 	/** Where the reader may take the camera. Reader input only — see
 	 *  {@link SpaceMap.setLimits}. */
 	limits?: CameraLimits;
+	/** Which layers the map draws, by id; everything left out is drawn. A layer
+	 *  switched off here is never fetched — see {@link SpaceMap.setLayerVisible}
+	 *  for what that costs later. */
+	layers?: Partial<Record<MapLayerId, boolean>>;
 }
 
 /** The gestures the map hangs a handler off for. */
@@ -201,6 +206,9 @@ export interface MapEvents {
 	notice: (notice: Notice) => void;
 	/** That topic's condition cleared. */
 	noticedismiss: (topic: NoticeTopic) => void;
+	/** A layer was switched, by the host or by a control on the map. Carries
+	 *  the ids left visible, which is what a switcher redraws from. */
+	layerschange: (visible: MapLayerId[]) => void;
 	/** Once per drawn frame, with the bodies at that frame's positions and the
 	 *  camera not yet moved. `dtMs` is 0 after a skipped frame. */
 	frame: (e: { jd: number; dtMs: number }) => void;
@@ -299,6 +307,7 @@ export class SpaceMap {
 		datastale: new Set(),
 		notice: new Set(),
 		noticedismiss: new Set(),
+		layerschange: new Set(),
 		frame: new Set()
 	};
 
@@ -328,6 +337,8 @@ export class SpaceMap {
 			this.applyGestures()
 		);
 		if (options.limits) this.limits = { ...options.limits };
+		this.ctx.layers = new LayerSet(options.layers);
+		this.ctx.layers.onChange = () => this.onLayerChange();
 		this.ctx.onDataStale = () => this.emit('datastale');
 		// Starts now so the bench overlaps the whole boot — clock snapping and
 		// data loads included — behind the host's loading screen, never the
@@ -765,6 +776,44 @@ export class SpaceMap {
 		if (!renderer || body === undefined) return null;
 		const { latitude, longitude, distance } = renderer.getCameraState();
 		return { body, lat: latitude, lon: longitude, distanceKm: sceneToKm(distance) };
+	}
+
+	// -- what is drawn ----------------------------------------------------------
+
+	/**
+	 * Switch a layer on or off. The change is a drawing decision and lands on
+	 * the next frame: nothing is fetched, whatever is switched on.
+	 *
+	 * That is the other half of the `layers` option, which is a downloading
+	 * decision — a layer switched off there is never fetched, so switching it
+	 * back on here shows nothing. Switch off at open time what the map is not
+	 * for, and switch here what the reader is to have a say in.
+	 */
+	setLayerVisible(id: MapLayerId, visible: boolean): this {
+		this.ctx.layers.setVisible(id, visible);
+		return this;
+	}
+
+	isLayerVisible(id: MapLayerId): boolean {
+		return this.ctx.layers.isVisible(id);
+	}
+
+	/** Every layer id, so a switcher can be built without spelling them out. */
+	getLayers(): MapLayerId[] {
+		return [...MAP_LAYERS];
+	}
+
+	/** Earth's satellites and its debris ride one point cloud, so leaving one
+	 *  kind out means repacking it. Everything else is decided per frame. */
+	private onLayerChange(): void {
+		for (const parentId of this.ctx.bodies.spacecraftByParent.keys()) {
+			this.ctx.bodies.dirtySpacecraftGroups.add(parentId);
+		}
+		this.ctx.bodies.minorBodyVersion++;
+		this.emit(
+			'layerschange',
+			MAP_LAYERS.filter((id) => this.ctx.layers.isVisible(id))
+		);
 	}
 
 	// -- what the reader may do -------------------------------------------------

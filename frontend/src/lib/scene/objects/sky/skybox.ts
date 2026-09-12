@@ -218,6 +218,9 @@ export async function loadSkybox(
 	renderer: WebGLRenderer,
 	ctx?: ContextManager
 ): Promise<void> {
+	// Switched off before the map opened: the six faces are never fetched, so
+	// there is nothing to switch back on.
+	if (ctx?.layers.skipped.has('stars')) return;
 	try {
 		const meta = await fetchMetadata();
 		if (!meta.skybox) return;
