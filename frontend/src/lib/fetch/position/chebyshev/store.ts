@@ -5,9 +5,8 @@
  * cadence and Pluto's ~730-day cadence coexist with no global tier metadata;
  * chunk index for a JD is `floor((jd - start_jd) / chunk_days)`.
  *
- * Loads the chunk containing the current JD and warms its two neighbors in
- * the background — scrubbing advances one chunk at a time, so ±1 avoids a
- * fetch stall at boundaries. Bodies are keyed by full object id
+ * Chunk loading is the shared {@link ChunkWindow}; this adds the query surface
+ * over the resident chunks. Bodies are keyed by full object id
  * (`<prefix>-<numeric>`).
  */
 
@@ -15,6 +14,7 @@ import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/position/cheby
 import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import { chunkIndexForJd } from '$lib/fetch/metadata';
+import { ChunkWindow } from '$lib/fetch/position/chunk-window';
 
 /** Walk the chunk for jd in every loaded zone and yield each body alongside
  *  the chunk's validity window (used by callers that build PositionedBody).
@@ -37,123 +37,31 @@ export interface ChebyshevZoneParams {
 	end_jd: number;
 }
 
-const NEIGHBOR_WINDOW = 1;
-
 interface BodyLocation {
 	zone: string;
 	chunkIdx: number;
 	body: ChebyshevBody;
 }
 
-export class ChebyshevStore {
-	/** `zone → tier params`, populated at construction from the per-zone manifest. */
-	private readonly zoneParams: Map<string, ChebyshevZoneParams>;
-	/** `zone → chunkIdx → parsed chunk`. */
-	private readonly chunks = new Map<string, Map<number, FetchedChebyshev>>();
-	/** `objectId → zone` so getPosition can route without scanning zones. */
+export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneParams> {
+	/** `objectId → zone` so a position query routes without scanning zones. */
 	private readonly idToZone = new Map<string, string>();
-	/** In-flight `loadChunk` promises keyed by `zone:chunkIdx`, so concurrent
-	 * `ensure()` calls (e.g. per-frame) don't kick off duplicate fetches. */
-	private readonly inflight = new Map<string, Promise<void>>();
-	/** Last jd passed to `ensure()` — skips a full pass when nothing changed. */
-	private lastEnsuredJd: number = NaN;
 
-	constructor(zoneParams: Map<string, ChebyshevZoneParams>) {
-		this.zoneParams = zoneParams;
-	}
-
-	zones(): string[] {
-		return Array.from(this.zoneParams.keys());
-	}
-
-	/**
-	 * Load the chunks covering `jd` (and ±NEIGHBOR_WINDOW neighbors) for every
-	 * zone in the manifest. Idempotent, safe to call every frame.
-	 *
-	 * Returns `true` if every zone's current-chunk is already loaded (so the
-	 * caller can rely on position queries right away), `false` if a fetch was
-	 * kicked off (position queries may return `null` until it resolves).
-	 * `done` waits for the current chunks only: the neighbors are a warm-up
-	 * and must not hold the first frame.
-	 */
-	ensure(jd: number): { ready: boolean; done: Promise<void> } {
-		// Cheap skip: same jd as last call → caller already kicked ensures and
-		// the async fetches (if any) are still resolving.
-		if (jd === this.lastEnsuredJd) {
-			return { ready: this.allCurrentChunksLoaded(jd), done: Promise.resolve() };
-		}
-		this.lastEnsuredJd = jd;
-		const jobs: Promise<void>[] = [];
-		const neighbors: [zone: string, idx: number][] = [];
-		let ready = true;
-		for (const [zone, params] of this.zoneParams) {
-			const center = chunkIndexForJd(params, jd);
-			const zoneMap = this.chunks.get(zone);
-			if (!zoneMap?.has(center)) {
-				ready = false;
-				const job = this.loadChunk(zone, center, 'high');
-				if (job) jobs.push(job);
-			}
-			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
-				const idx = center + d;
-				if (d !== 0 && idx >= 0 && idx < params.chunks) neighbors.push([zone, idx]);
-			}
-			// Evict chunks outside the window so long scrubbing doesn't grow
-			// unbounded — each chunk holds parsed coeff buffers.
-			if (zoneMap) {
-				for (const idx of zoneMap.keys()) {
-					if (idx < center - NEIGHBOR_WINDOW || idx > center + NEIGHBOR_WINDOW) zoneMap.delete(idx);
-				}
-			}
-		}
-		const done = jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : Promise.resolve();
-		// Neighbors start once the current chunks are in: launched together they
-		// share the link, and a boot on a slow one waits for the whole set.
-		void done
-			.catch(() => {})
-			.then(() => {
-				for (const [zone, idx] of neighbors) this.loadChunk(zone, idx, 'low')?.catch(() => {});
-			});
-		return { ready, done };
-	}
-
-	/** True when every zone's chunk for `jd` is resident in memory. */
-	private allCurrentChunksLoaded(jd: number): boolean {
-		for (const [zone, params] of this.zoneParams) {
-			const center = chunkIndexForJd(params, jd);
-			if (!this.chunks.get(zone)?.has(center)) return false;
-		}
+	/** Every chunk of a chebyshev zone ships. */
+	protected isLoadable(): boolean {
 		return true;
 	}
 
-	private loadChunk(
+	protected fetchChunk(
 		zone: string,
+		params: ChebyshevZoneParams,
 		chunkIdx: number,
 		priority: RequestPriority
-	): Promise<void> | null {
-		const zoneMap = this.chunks.get(zone);
-		if (zoneMap?.has(chunkIdx)) return null;
-		const key = `${zone}:${chunkIdx}`;
-		const existing = this.inflight.get(key);
-		if (existing) return existing;
-		const job = this.fetchAndStore(zone, chunkIdx, priority);
-		this.inflight.set(key, job);
-		job.finally(() => this.inflight.delete(key));
-		return job;
+	): Promise<FetchedChebyshev> {
+		return fetchChebyshev(zone, params.zoom, chunkIdx, priority);
 	}
 
-	private async fetchAndStore(
-		zone: string,
-		chunkIdx: number,
-		priority: RequestPriority
-	): Promise<void> {
-		let zoneMap = this.chunks.get(zone);
-		if (!zoneMap) {
-			zoneMap = new Map();
-			this.chunks.set(zone, zoneMap);
-		}
-		const chunk = await fetchChebyshev(zone, this.zoneParams.get(zone)!.zoom, chunkIdx, priority);
-		zoneMap.set(chunkIdx, chunk);
+	protected afterStore(zone: string, chunk: FetchedChebyshev): void {
 		for (const id of chunk.byId.keys()) {
 			// Multiple chunks list the same body; zone assignment is stable across
 			// chunks by construction (same writer partitions). First write wins.

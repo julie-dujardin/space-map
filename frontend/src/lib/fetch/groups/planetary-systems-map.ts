@@ -5,6 +5,7 @@
  */
 
 import { dataBase } from '$lib/fetch/data-base';
+import { memoizedGzJson } from '$lib/fetch/gz';
 
 export interface PlanetarySystemsMapMoon {
 	id: string;
@@ -27,15 +28,7 @@ export interface PlanetarySystemsMapEntry {
 /** Keyed by barycenter id. */
 export type PlanetarySystemsMapFile = Record<string, PlanetarySystemsMapEntry>;
 
-let pending: Promise<PlanetarySystemsMapFile> | null = null;
-
-export function fetchPlanetarySystemsMap(): Promise<PlanetarySystemsMapFile> {
-	if (pending) return pending;
-	pending = (async () => {
-		const res = await fetch(`${dataBase()}/v1/groups/__planetary_systems_map__.json.gz`);
-		if (!res.ok) throw new Error(`Failed to fetch planetary systems map: ${res.status}`);
-		const ds = new DecompressionStream('gzip');
-		return (await new Response(res.body!.pipeThrough(ds)).json()) as PlanetarySystemsMapFile;
-	})();
-	return pending;
-}
+export const fetchPlanetarySystemsMap = memoizedGzJson<PlanetarySystemsMapFile>(
+	() => `${dataBase()}/v1/groups/__planetary_systems_map__.json.gz`,
+	{ error: (res) => `Failed to fetch planetary systems map: ${res.status}` }
+);

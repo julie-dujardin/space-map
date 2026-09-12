@@ -4,9 +4,7 @@
  */
 
 import { getLocale } from '$lib/host';
-import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
-import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
-import { dataBase } from '$lib/fetch/data-base';
+import { fetchBundlePair, GROUP_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
 import type {
 	CitedWork,
 	EntityRef,
@@ -358,35 +356,8 @@ export interface LocalizedGroupData {
 	body_names?: Record<string, string>;
 }
 
-export interface GroupDetailData {
-	global: GlobalGroupData | null;
-	localized: LocalizedGroupData | null;
-}
+export type GroupDetailData = BundlePair<GlobalGroupData, LocalizedGroupData>;
 
-export async function fetchGroupDetail(slug: string, lang = getLocale()): Promise<GroupDetailData> {
-	const meta = await fetchMetadata();
-	const bundles = meta.group_bundles;
-	if (!bundles || !bundles.global) return { global: null, localized: null };
-
-	const nLocalized = bundles[lang] ?? 0;
-	const [globalBucket, localizedBucket] = await Promise.all([
-		hashBucket(slug, bundles.global),
-		nLocalized ? hashBucket(slug, nLocalized) : Promise.resolve(-1)
-	]);
-
-	const globalPromise = fetchGzipBundle<GlobalGroupData>(
-		`${dataBase()}/v1/groups/__global__/${globalBucket}.json.gz`
-	);
-	const localizedPromise: Promise<LocalizedGroupData | undefined> =
-		nLocalized > 0 && localizedBucket >= 0
-			? fetchGzipBundle<LocalizedGroupData>(
-					`${dataBase()}/v1/groups/${lang}/${localizedBucket}.json.gz`
-				).then((b) => b[slug])
-			: Promise.resolve(undefined);
-
-	const [globalBundle, localized] = await Promise.all([globalPromise, localizedPromise]);
-	return {
-		global: globalBundle[slug] ?? null,
-		localized: localized ?? null
-	};
+export function fetchGroupDetail(slug: string, lang = getLocale()): Promise<GroupDetailData> {
+	return fetchBundlePair<GlobalGroupData, LocalizedGroupData>(GROUP_BUNDLES, slug, lang);
 }

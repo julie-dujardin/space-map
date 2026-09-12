@@ -60,6 +60,11 @@ export function fetchBodyNomenclature(
 			}));
 		})();
 		cache.set(key, p);
+		// Evict on rejection so a transient failure doesn't leave the body's
+		// features missing for the session.
+		p.catch(() => {
+			if (cache.get(key) === p) cache.delete(key);
+		});
 	}
 	return p;
 }

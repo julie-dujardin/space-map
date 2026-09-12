@@ -2,9 +2,9 @@
  * Server-side SEO meta for a content page.
  *
  * Runs only during SSR (crawlers, first paint) — see the `browser` guard in the
- * page loads. Deliberately self-contained rather than reusing the client fetch
- * layer: that layer leans on module-singleton caches, unsuited to a per-request
- * server load, and touches no shared state here.
+ * page loads. Shares the bundle-pair descriptors and loader with the client but
+ * injects its own fetcher: the client fetch layer leans on module-singleton
+ * caches, unsuited to a per-request server load.
  *
  * Fetches use the global `fetch` against an absolute URL, NOT the load's
  * `event.fetch`: in dev the data path (`/data/...`) collides with the
@@ -16,7 +16,15 @@
 import * as m from '$lib/paraglide/messages.js';
 import { dataBase, imagesBase } from '$lib/fetch/data-base';
 import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/objects/images';
-import { hashBucket } from '$lib/fetch/metadata';
+import {
+	FEATURE_BUNDLES,
+	GROUP_BUNDLES,
+	loadBundlePair,
+	OBJECT_BUNDLES,
+	type BundleMetadata,
+	type BundlePair,
+	type BundlePairDescriptor
+} from '$lib/fetch/bundle-pair';
 import { heroImage } from '$lib/fetch/objects/galleries';
 import { diameterKmFromH } from '$lib/math/h-magnitude';
 import { formatQuantity } from '$lib/format/quantities';
@@ -26,7 +34,11 @@ import type {
 	ObjectImage
 } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
-import type { FeatureGlobalData, FeatureLocalizedData } from '$lib/fetch/nomenclature/details';
+import {
+	featureBucketKey,
+	type FeatureGlobalData,
+	type FeatureLocalizedData
+} from '$lib/fetch/nomenclature/details';
 
 /** Localized shapes share this description source (object + group bundles).
  *  `description` is the CC0 Wikidata short description — the Wikipedia extract
@@ -124,8 +136,8 @@ function buildCredit(meta: {
 /** Fetch the chosen image's metadata and build its credit line.
  *
  * Metadata is embedded in the variants' EXIF; the imported helpers are pure
- * functions, so the self-containment note above still holds. The sidecar
- * fallback covers bundles that couldn't embed. */
+ * functions, so no client cache is touched. The sidecar fallback covers bundles
+ * that couldn't embed. */
 async function fetchImageCredit(
 	image: ObjectImage,
 	origin: string,
@@ -374,6 +386,28 @@ export function minimalSeo(name: string, origin: string, path: string): SeoMeta 
 	};
 }
 
+/** Load a bundle pair per request: absolute origin, English, no shared cache.
+ *  Null when metadata is unreachable. */
+async function loadSeoPair<G, L>(
+	desc: BundlePairDescriptor,
+	key: string,
+	origin: string
+): Promise<{ pair: BundlePair<G, L>; imagesToken?: string } | null> {
+	const base = absolutize(dataBase(), origin);
+	const metaRes = await fetch(`${base}/v1/metadata.json`);
+	if (!metaRes.ok) return null;
+	const meta = (await metaRes.json()) as BundleMetadata;
+	const pair = await loadBundlePair<G, L>(desc, key, {
+		meta,
+		lang: SSR_LANG,
+		fetchBundle: (path, versionClass) =>
+			fetchJsonGz(
+				versioned(`${base}${path}`, versionClass ? meta.versions?.[versionClass] : undefined)
+			)
+	});
+	return { pair, imagesToken: meta.versions?.images };
+}
+
 /** Fetch one object's global + localized bundles server-side and build its meta.
  *  Returns null when the object isn't found so the caller can fall back. */
 export async function loadObjectSeo(
@@ -381,39 +415,23 @@ export async function loadObjectSeo(
 	origin: string,
 	path: string
 ): Promise<SeoMeta | null> {
-	const base = absolutize(dataBase(), origin);
-	const metaRes = await fetch(`${base}/v1/metadata.json`);
-	if (!metaRes.ok) return null;
-	const meta = (await metaRes.json()) as {
-		object_bundles: Record<string, number>;
-		versions?: Record<string, string>;
-	};
-	const token = meta.versions?.objects;
-
-	const nGlobal = meta.object_bundles.global;
-	const nLocalized = meta.object_bundles[SSR_LANG] ?? 0;
-	const [gBucket, lBucket] = await Promise.all([
-		hashBucket(fileId, nGlobal),
-		nLocalized ? hashBucket(fileId, nLocalized) : Promise.resolve(-1)
-	]);
-
-	const [gBundle, lBundle] = await Promise.all([
-		fetchJsonGz(versioned(`${base}/v1/objects/__global__/${gBucket}.json.gz`, token)),
-		lBucket >= 0
-			? fetchJsonGz(versioned(`${base}/v1/objects/${SSR_LANG}/${lBucket}.json.gz`, token))
-			: Promise.resolve(null)
-	]);
-
-	const global = (gBundle?.[fileId] as GlobalObjectData | undefined) ?? null;
+	const loaded = await loadSeoPair<GlobalObjectData, LocalizedObjectData>(
+		OBJECT_BUNDLES,
+		fileId,
+		origin
+	);
+	if (!loaded) return null;
+	const { global, localized } = loaded.pair;
+	// An object with no global entry is unknown, whatever a stray localized
+	// entry says; the caller falls back to minimal meta.
 	if (!global) return null;
-	const localized = (lBundle?.[fileId] as LocalizedObjectData | undefined) ?? null;
 
 	const name = localized?.name || global.name || '';
 	const card = await resolveOgCard(
 		global.images,
 		describeObject(name, global, localized),
 		origin,
-		meta.versions?.images
+		loaded.imagesToken
 	);
 	return {
 		title: pageTitle(name),
@@ -437,40 +455,13 @@ export async function loadFeatureSeo(
 	origin: string,
 	path: string
 ): Promise<SeoMeta | null> {
-	const base = absolutize(dataBase(), origin);
-	const metaRes = await fetch(`${base}/v1/metadata.json`);
-	if (!metaRes.ok) return null;
-	const meta = (await metaRes.json()) as {
-		feature_bundles?: Record<string, number>;
-		versions?: Record<string, string>;
-	};
-	const bundles = meta.feature_bundles;
-	if (!bundles) return null;
-	const token = meta.versions?.nomenclature;
-
-	const key = `${bodyId}:${featureId}`;
-	const nGlobal = bundles.global ?? 0;
-	const nLocalized = bundles[SSR_LANG] ?? 0;
-	const [gBucket, lBucket] = await Promise.all([
-		nGlobal ? hashBucket(key, nGlobal) : Promise.resolve(-1),
-		nLocalized ? hashBucket(key, nLocalized) : Promise.resolve(-1)
-	]);
-
-	const [gBundle, lBundle] = await Promise.all([
-		gBucket >= 0
-			? fetchJsonGz(
-					versioned(`${base}/v1/nomenclature/details/__global__/${gBucket}.json.gz`, token)
-				)
-			: Promise.resolve(null),
-		lBucket >= 0
-			? fetchJsonGz(
-					versioned(`${base}/v1/nomenclature/details/${SSR_LANG}/${lBucket}.json.gz`, token)
-				)
-			: Promise.resolve(null)
-	]);
-
-	const global = (gBundle?.[key] as FeatureGlobalData | undefined) ?? null;
-	const localized = (lBundle?.[key] as FeatureLocalizedData | undefined) ?? null;
+	const loaded = await loadSeoPair<FeatureGlobalData, FeatureLocalizedData>(
+		FEATURE_BUNDLES,
+		featureBucketKey(bodyId, featureId),
+		origin
+	);
+	if (!loaded) return null;
+	const { global, localized } = loaded.pair;
 	if (!global && !localized) return null;
 
 	const description = localized?.description
@@ -478,7 +469,7 @@ export async function loadFeatureSeo(
 		: global?.origin
 			? cleanDescription(ucfirst(global.origin.replace(/\.?$/, '.')))
 			: genericDescription(name);
-	const card = await resolveOgCard(global?.images, description, origin, meta.versions?.images);
+	const card = await resolveOgCard(global?.images, description, origin, loaded.imagesToken);
 	return {
 		title: pageTitle(name),
 		description: card.description,
@@ -514,30 +505,13 @@ export async function loadGroupSeo(
 	origin: string,
 	path: string
 ): Promise<SeoMeta | null> {
-	const base = absolutize(dataBase(), origin);
-	const metaRes = await fetch(`${base}/v1/metadata.json`);
-	if (!metaRes.ok) return null;
-	const meta = (await metaRes.json()) as {
-		group_bundles: Record<string, number>;
-		versions?: Record<string, string>;
-	};
-
-	const nGlobal = meta.group_bundles.global;
-	const nLocalized = meta.group_bundles[SSR_LANG] ?? 0;
-	const [gBucket, lBucket] = await Promise.all([
-		hashBucket(slug, nGlobal),
-		nLocalized ? hashBucket(slug, nLocalized) : Promise.resolve(-1)
-	]);
-
-	const [gBundle, lBundle] = await Promise.all([
-		fetchJsonGz(`${base}/v1/groups/__global__/${gBucket}.json.gz`),
-		lBucket >= 0
-			? fetchJsonGz(`${base}/v1/groups/${SSR_LANG}/${lBucket}.json.gz`)
-			: Promise.resolve(null)
-	]);
-
-	const global = (gBundle?.[slug] as GlobalGroupData | undefined) ?? null;
-	const localized = (lBundle?.[slug] as LocalizedGroupData | undefined) ?? null;
+	const loaded = await loadSeoPair<GlobalGroupData, LocalizedGroupData>(
+		GROUP_BUNDLES,
+		slug,
+		origin
+	);
+	if (!loaded) return null;
+	const { global, localized } = loaded.pair;
 	if (!global && !localized) return null;
 
 	const name = localized?.name || prettifySlug(slug);
@@ -546,7 +520,7 @@ export async function loadGroupSeo(
 		lead ? [lead] : undefined,
 		describe(name, localized),
 		origin,
-		meta.versions?.images
+		loaded.imagesToken
 	);
 	return {
 		title: pageTitle(name),

@@ -6,6 +6,7 @@
  * was the largest steady heap growth in the app.
  */
 import { fetchWithTimeout } from './fetch-timeout';
+import { gunzipJson } from './gz';
 
 const MAX_BUNDLES = 24;
 const cache = new Map<string, Promise<Record<string, unknown>>>();
@@ -26,8 +27,7 @@ export function fetchGzipBundle<T>(url: string): Promise<Record<string, T>> {
 				if (res.status === 404) return {};
 				throw new Error(`fetchGzipBundle: ${url} returned ${res.status} ${res.statusText}`);
 			}
-			const ds = new DecompressionStream('gzip');
-			return (await new Response(res.body!.pipeThrough(ds)).json()) as Record<string, unknown>;
+			return gunzipJson<Record<string, unknown>>(res);
 		})();
 		cache.set(url, p);
 		p.catch(() => {

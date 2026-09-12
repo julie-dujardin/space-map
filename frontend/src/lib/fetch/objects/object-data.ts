@@ -1,7 +1,6 @@
 import { getLocale } from '$lib/host';
-import { fetchMetadata, hashBucket, type ProbeCoverage } from '$lib/fetch/metadata';
-import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
-import { versionedUrl } from '$lib/fetch/data-base';
+import type { ProbeCoverage } from '$lib/fetch/metadata';
+import { fetchBundlePair, OBJECT_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
 import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
@@ -1291,44 +1290,22 @@ export interface TopicPage {
 
 // --- Fetching ---
 
-export interface ObjectDetailData {
-	global: GlobalObjectData | null;
-	localized: LocalizedObjectData | null;
-}
+export type ObjectDetailData = BundlePair<GlobalObjectData, LocalizedObjectData>;
 
 /**
  * Fetch the global + (optionally) localized detail bundles for `fileId`.
- * Bundles are hash-bucketed via `metadata.json → object_bundles` and cached.
  * Pass `body.data.hasLocalized` for `fetchLocalized` to skip the localized
  * fetch on bodies with no Wikidata (avoids a guaranteed 404).
  */
-export async function fetchObjectDetail(
+export function fetchObjectDetail(
 	fileId: string,
 	fetchLocalized = true,
 	lang = getLocale()
 ): Promise<ObjectDetailData> {
-	const meta = await fetchMetadata();
-
-	const nLocalized = fetchLocalized ? meta.object_bundles[lang] : 0;
-
-	const [globalBucket, localizedBucket] = await Promise.all([
-		hashBucket(fileId, meta.object_bundles.global),
-		nLocalized ? hashBucket(fileId, nLocalized) : Promise.resolve(-1)
-	]);
-
-	const globalPromise = fetchGzipBundle<GlobalObjectData>(
-		versionedUrl(`/v1/objects/__global__/${globalBucket}.json.gz`, 'objects')
+	return fetchBundlePair<GlobalObjectData, LocalizedObjectData>(
+		OBJECT_BUNDLES,
+		fileId,
+		lang,
+		fetchLocalized
 	);
-	const localizedPromise: Promise<LocalizedObjectData | undefined> =
-		fetchLocalized && localizedBucket >= 0
-			? fetchGzipBundle<LocalizedObjectData>(
-					versionedUrl(`/v1/objects/${lang}/${localizedBucket}.json.gz`, 'objects')
-				).then((b) => b[fileId])
-			: Promise.resolve(undefined);
-
-	const [globalBundle, localized] = await Promise.all([globalPromise, localizedPromise]);
-	return {
-		global: globalBundle[fileId] ?? null,
-		localized: localized ?? null
-	};
 }

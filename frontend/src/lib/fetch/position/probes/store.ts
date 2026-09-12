@@ -9,8 +9,8 @@
  * `isPreferred` predicate picks the caller's zone, falling back to metadata
  * order (interplanetary first) when nothing matches.
  *
- * Eager-loads the chunk containing the current JD plus its two neighbors
- * across every zone (same policy as `ChebyshevStore`).
+ * Chunk loading is the shared {@link ChunkWindow}, plus a second cache for
+ * dates away from the clock — see {@link ProbeStore.warmAt}.
  */
 
 import { fetchProbes, type FetchedProbes } from '$lib/fetch/position/probes/fetch';
@@ -23,8 +23,7 @@ import {
 import type { Probe } from '$lib/fetch/position/probes/parse';
 import { chunkIndexForJd } from '$lib/fetch/metadata';
 import type { PassengerGraft } from '$lib/fetch/position/probes/passenger';
-
-const NEIGHBOR_WINDOW = 1;
+import { ChunkWindow, chunkKey } from '$lib/fetch/position/chunk-window';
 
 /** How many off-clock chunks to keep. A trip refines against two or three dates
  *  and each may pull one chunk per zone, so this holds a whole refinement. */
@@ -97,7 +96,7 @@ interface ProbeLocation {
 	params: ProbeZoneParams;
 }
 
-export class ProbeStore {
+export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 	/** Whether a record's stamped fit-center body can currently be composed
 	 *  against (chebyshev-tracked or live in the scene). Records whose fit
 	 *  center fails this are skipped by `resolve`/`probesAt` — their offsets
@@ -107,16 +106,9 @@ export class ProbeStore {
 	 *  probe falls through to its interplanetary fit. Unset = no gating. */
 	fitCenterUsable: ((id: string) => boolean) | null = null;
 
-	private readonly zoneParams: Map<string, ProbeZoneParams>;
-	/** `zone → chunkIdx → parsed chunk`. */
-	private readonly chunks = new Map<string, Map<number, FetchedProbes>>();
-	/** Chunks held for dates away from the clock, keyed `zone:chunkIdx` — see
-	 *  {@link warmAt}. */
+	/** Chunks held for dates away from the clock, keyed by {@link chunkKey} —
+	 *  see {@link warmAt}. */
 	private readonly warmed = new Map<string, FetchedProbes>();
-	/** In-flight `loadChunk` promises keyed by `zone:chunkIdx` — concurrent
-	 *  `ensure()` calls don't kick off duplicate fetches. */
-	private readonly inflight = new Map<string, Promise<void>>();
-	private lastEnsuredJd: number = NaN;
 	/** Passenger object id → the ride it is on. See {@link registerCarried}. */
 	private readonly carried = new Map<string, PassengerGraft>();
 	/** Bumped per stored chunk. The renderer watches it so a paused clock still
@@ -127,76 +119,27 @@ export class ProbeStore {
 		return this._version;
 	}
 
-	constructor(zoneParams: Map<string, ProbeZoneParams>) {
-		this.zoneParams = zoneParams;
-	}
-
-	zones(): string[] {
-		return Array.from(this.zoneParams.keys());
-	}
-
 	zoneCenter(zone: string): number | undefined {
 		return this.zoneParams.get(zone)?.fit_center_naif_id;
 	}
 
-	/**
-	 * Warm the chunks covering `jd` (and ±NEIGHBOR_WINDOW neighbors) for every
-	 * probe zone. Idempotent, safe to call every frame. Returns whether every
-	 * current-jd chunk is resident now, plus a promise that resolves when the
-	 * current-jd fetches land — neighbors warm in the background and never
-	 * hold the first frame.
-	 */
-	ensure(jd: number): { ready: boolean; done: Promise<void> } {
-		if (jd === this.lastEnsuredJd) {
-			// Same jd doesn't mean loaded: the first caller's fetches may still be
-			// in flight, and a second awaiter (ensureBody grafting a probe) must
-			// not proceed against absent chunks.
-			const pending: Promise<void>[] = [];
-			for (const [zone, params] of this.zoneParams) {
-				const job = this.inflight.get(`${zone}:${chunkIndexForJd(params, jd)}`);
-				if (job) pending.push(job);
-			}
-			return {
-				ready: this.allCurrentChunksLoaded(jd),
-				done: pending.length > 0 ? Promise.all(pending).then(() => undefined) : Promise.resolve()
-			};
-		}
-		this.lastEnsuredJd = jd;
-		const jobs: Promise<void>[] = [];
-		const neighbors: [zone: string, idx: number, params: ProbeZoneParams][] = [];
-		let ready = true;
-		for (const [zone, params] of this.zoneParams) {
-			const center = chunkIndexForJd(params, jd);
-			if (isPresent(params.present, center) && !this.isResident(zone, center)) {
-				ready = false;
-				const job = this.loadChunk(zone, center, params, 'high');
-				if (job) jobs.push(job);
-			}
-			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
-				const idx = center + d;
-				if (d === 0 || idx < 0 || idx >= params.chunks) continue;
-				if (isPresent(params.present, idx)) neighbors.push([zone, idx, params]);
-			}
-			// Evict chunks outside the window so scrubbing a long mission timeline
-			// doesn't accumulate every visited chunk.
-			const zoneMap = this.chunks.get(zone);
-			if (zoneMap) {
-				for (const idx of zoneMap.keys()) {
-					if (idx < center - NEIGHBOR_WINDOW || idx > center + NEIGHBOR_WINDOW) zoneMap.delete(idx);
-				}
-			}
-		}
-		const done = jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : Promise.resolve();
-		// Neighbors start once the current chunks are in: launched together they
-		// share the link, and a boot on a slow one waits for the whole set.
-		void done
-			.catch(() => {})
-			.then(() => {
-				for (const [zone, idx, params] of neighbors) {
-					this.loadChunk(zone, idx, params, 'low')?.catch(() => {});
-				}
-			});
-		return { ready, done };
+	/** Probe zones are sparse — Pluto is one New Horizons flyby chunk — so the
+	 *  manifest's `present` ranges decide before any GET. */
+	protected isLoadable(params: ProbeZoneParams, chunkIdx: number): boolean {
+		return isPresent(params.present, chunkIdx);
+	}
+
+	protected fetchChunk(
+		zone: string,
+		params: ProbeZoneParams,
+		chunkIdx: number,
+		priority: RequestPriority
+	): Promise<FetchedProbes> {
+		return fetchProbes(zone, chunkIdx, params.float64_coeffs, priority);
+	}
+
+	protected afterStore(): void {
+		this._version++;
 	}
 
 	/** Load whatever covers `jd` for the trip planner, off to one side. The
@@ -210,7 +153,7 @@ export class ProbeStore {
 			if (idx < 0 || idx >= params.chunks) continue;
 			if (!isPresent(params.present, idx)) continue;
 			if (this.isResident(zone, idx)) continue;
-			const key = `${zone}:${idx}`;
+			const key = chunkKey(zone, idx);
 			if (this.warmed.has(key)) continue;
 			const existing = this.inflight.get(key);
 			if (existing) {
@@ -242,55 +185,10 @@ export class ProbeStore {
 		}
 	}
 
-	private isResident(zone: string, chunkIdx: number): boolean {
-		return this.chunks.get(zone)?.has(chunkIdx) ?? false;
-	}
-
 	private fitCenterCovered(probe: Probe): boolean {
 		const fc = probe.fitCenter;
 		if (!fc || !this.fitCenterUsable) return true;
 		return this.fitCenterUsable(fc.id);
-	}
-
-	private allCurrentChunksLoaded(jd: number): boolean {
-		for (const [zone, params] of this.zoneParams) {
-			const center = chunkIndexForJd(params, jd);
-			if (!isPresent(params.present, center)) continue;
-			if (!this.isResident(zone, center)) return false;
-		}
-		return true;
-	}
-
-	private loadChunk(
-		zone: string,
-		chunkIdx: number,
-		params: ProbeZoneParams,
-		priority: RequestPriority
-	): Promise<void> | null {
-		if (this.isResident(zone, chunkIdx)) return null;
-		const key = `${zone}:${chunkIdx}`;
-		const existing = this.inflight.get(key);
-		if (existing) return existing;
-		const job = this.fetchAndStore(zone, chunkIdx, params, priority);
-		this.inflight.set(key, job);
-		job.finally(() => this.inflight.delete(key));
-		return job;
-	}
-
-	private async fetchAndStore(
-		zone: string,
-		chunkIdx: number,
-		params: ProbeZoneParams,
-		priority: RequestPriority
-	): Promise<void> {
-		let zoneMap = this.chunks.get(zone);
-		if (!zoneMap) {
-			zoneMap = new Map();
-			this.chunks.set(zone, zoneMap);
-		}
-		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs, priority);
-		zoneMap.set(chunkIdx, chunk);
-		this._version++;
 	}
 
 	/** Iterate every probe whose chunk for `jd` is loaded, deduped to one entry
@@ -305,7 +203,8 @@ export class ProbeStore {
 		const preferred = new Set<string>();
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
-			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
+			const chunk =
+				this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(chunkKey(zone, chunkIdx));
 			if (!chunk) continue;
 			const zonePreferred = isPreferred?.(params.fit_center_naif_id) ?? false;
 			for (let i = 0; i < chunk.probes.length; i++) {
@@ -432,7 +331,8 @@ export class ProbeStore {
 		let firstMatch: ProbeLocation | null = null;
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
-			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
+			const chunk =
+				this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(chunkKey(zone, chunkIdx));
 			if (!chunk) continue;
 			for (const i of rowsFor(chunk, objectId)) {
 				const probe = chunk.probes[i];
@@ -467,7 +367,8 @@ export class ProbeStore {
 		const et = jdToEt(jd);
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
-			const chunk = this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(`${zone}:${chunkIdx}`);
+			const chunk =
+				this.chunks.get(zone)?.get(chunkIdx) ?? this.warmed.get(chunkKey(zone, chunkIdx));
 			if (!chunk) continue;
 			for (const i of rowsFor(chunk, objectId)) {
 				const probe = chunk.probes[i];

@@ -5,28 +5,24 @@
  */
 
 import { versionedUrl } from '$lib/fetch/data-base';
+import { memoizedGzJson } from '$lib/fetch/gz';
 import { fetchMetadata } from '$lib/fetch/metadata';
 
 export type EarthMembership = Record<string, string[]>;
 
-let pending: Promise<EarthMembership> | null = null;
-
-export function fetchEarthMembership(): Promise<EarthMembership> {
-	if (pending) return pending;
-	pending = (async () => {
+export const fetchEarthMembership = memoizedGzJson<EarthMembership>(
+	async () => {
 		// The version token comes from metadata; a group page can ask before
 		// any other fetch has awaited it.
 		await fetchMetadata();
-		const res = await fetch(versionedUrl('/v1/membership/earth.json.gz', 'membership'));
-		if (!res.ok) {
-			if (res.status === 404) return {};
-			throw new Error(`fetchEarthMembership: ${res.status} ${res.statusText}`);
-		}
-		const ds = new DecompressionStream('gzip');
-		return (await new Response(res.body!.pipeThrough(ds)).json()) as EarthMembership;
-	})();
-	return pending;
-}
+		return versionedUrl('/v1/membership/earth.json.gz', 'membership');
+	},
+	{
+		// No file ⇒ no members, not an error: the export may predate the index.
+		onMissing: () => ({}),
+		error: (res) => `fetchEarthMembership: ${res.status} ${res.statusText}`
+	}
+);
 
 /** Resolve a slug to the set of member object ids (empty set if unknown). */
 export async function fetchEarthGroupMembers(slug: string): Promise<Set<string>> {

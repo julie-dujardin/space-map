@@ -6,6 +6,7 @@
  */
 
 import { dataBase } from '$lib/fetch/data-base';
+import { memoizedGzJson } from '$lib/fetch/gz';
 
 export interface SolarSystemMapObject {
 	/** Object.id — routing/focus id and localized-name key. */
@@ -45,15 +46,7 @@ export interface SolarSystemMapFile {
 	belts: SolarSystemMapBelt[];
 }
 
-let pending: Promise<SolarSystemMapFile> | null = null;
-
-export function fetchSolarSystemMap(): Promise<SolarSystemMapFile> {
-	if (pending) return pending;
-	pending = (async () => {
-		const res = await fetch(`${dataBase()}/v1/groups/__solar_system_map__.json.gz`);
-		if (!res.ok) throw new Error(`Failed to fetch solar system map: ${res.status}`);
-		const ds = new DecompressionStream('gzip');
-		return (await new Response(res.body!.pipeThrough(ds)).json()) as SolarSystemMapFile;
-	})();
-	return pending;
-}
+export const fetchSolarSystemMap = memoizedGzJson<SolarSystemMapFile>(
+	() => `${dataBase()}/v1/groups/__solar_system_map__.json.gz`,
+	{ error: (res) => `Failed to fetch solar system map: ${res.status}` }
+);

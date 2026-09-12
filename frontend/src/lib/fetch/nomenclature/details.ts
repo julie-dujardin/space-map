@@ -7,9 +7,7 @@
  */
 
 import { getLocale } from '$lib/host';
-import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
-import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
-import { versionedUrl } from '$lib/fetch/data-base';
+import { fetchBundlePair, FEATURE_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
 import type {
 	CurrencyQuantity,
 	EntityRef,
@@ -69,59 +67,22 @@ export interface FeatureLocalizedData {
 	image_titles?: Record<string, string>;
 }
 
-export interface FeatureDetailData {
-	global: FeatureGlobalData | null;
-	localized: FeatureLocalizedData | null;
-}
+export type FeatureDetailData = BundlePair<FeatureGlobalData, FeatureLocalizedData>;
 
 /** Bucket id = key under which the writer stored the per-feature entry. */
 export function featureBucketKey(bodyId: string, featureId: number): string {
 	return `${bodyId}:${featureId}`;
 }
 
-/**
- * Fetch the global + localized detail bundles for one IAU feature. Mirrors
- * `fetchObjectDetail`. Returns `{global: null, localized: null}` when the
- * metadata predates feature bundles or no bucket holds this feature.
- */
-export async function fetchFeatureDetail(
+/** Fetch the global + localized detail bundles for one IAU feature. */
+export function fetchFeatureDetail(
 	bodyId: string,
 	featureId: number,
 	lang = getLocale()
 ): Promise<FeatureDetailData> {
-	const meta = await fetchMetadata();
-	const bundles = meta.feature_bundles;
-	if (!bundles) return { global: null, localized: null };
-
-	const key = featureBucketKey(bodyId, featureId);
-	const nGlobal = bundles.global;
-	const nLocalized = bundles[lang] ?? 0;
-
-	const [globalBucket, localizedBucket] = await Promise.all([
-		nGlobal ? hashBucket(key, nGlobal) : Promise.resolve(-1),
-		nLocalized ? hashBucket(key, nLocalized) : Promise.resolve(-1)
-	]);
-
-	const globalPromise: Promise<FeatureGlobalData | undefined> =
-		globalBucket >= 0
-			? fetchGzipBundle<FeatureGlobalData>(
-					versionedUrl(
-						`/v1/nomenclature/details/__global__/${globalBucket}.json.gz`,
-						'nomenclature'
-					)
-				).then((b) => b[key])
-			: Promise.resolve(undefined);
-
-	const localizedPromise: Promise<FeatureLocalizedData | undefined> =
-		localizedBucket >= 0
-			? fetchGzipBundle<FeatureLocalizedData>(
-					versionedUrl(
-						`/v1/nomenclature/details/${lang}/${localizedBucket}.json.gz`,
-						'nomenclature'
-					)
-				).then((b) => b[key])
-			: Promise.resolve(undefined);
-
-	const [global, localized] = await Promise.all([globalPromise, localizedPromise]);
-	return { global: global ?? null, localized: localized ?? null };
+	return fetchBundlePair<FeatureGlobalData, FeatureLocalizedData>(
+		FEATURE_BUNDLES,
+		featureBucketKey(bodyId, featureId),
+		lang
+	);
 }

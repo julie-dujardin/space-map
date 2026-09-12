@@ -130,6 +130,9 @@ async function loadCatalogue(): Promise<void> {
 	}
 	const raw = (await r.json()) as SpacecraftFile;
 	for (const [key, citation] of Object.entries(raw.sources)) citations.set(key, citation);
+	// Replace, not append: a retry after a failed load must not list every
+	// vehicle twice. `allVehicles` hands out this array, so keep its identity.
+	vehicles.length = 0;
 	vehicles.push(...raw.vehicles.map(toVehicle));
 }
 
@@ -149,6 +152,11 @@ export function loadSpacecraft(): Promise<void> {
 	// In parallel, and the names are allowed to fail on their own: a picker
 	// listing every vehicle by slug still beats one listing none.
 	const p = Promise.all([loadCatalogue(), loadNames(getLocale())]).then(() => undefined);
+	// Evict on rejection so a boot-time blip doesn't leave the travel panel
+	// without vehicles all session.
+	p.catch(() => {
+		if (loadPromise === p) loadPromise = null;
+	});
 	loadPromise = p;
 	return p;
 }
