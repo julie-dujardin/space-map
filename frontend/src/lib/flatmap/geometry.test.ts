@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	angularDistance,
+	areaFor,
 	boxRing,
 	densify,
 	graticule,
@@ -174,6 +175,23 @@ describe('projectSegments', () => {
 		expect(segments).toHaveLength(0);
 	});
 
+	it('carries a line right up to the limb', () => {
+		const globe = new Viewport(createProjection('orthographic', { centerLon: 0 }), 400, 400, {
+			zoom: 1,
+			centerX: 0,
+			centerY: 0
+		});
+		// Sampled every 10°, the last point before the limb at 90° E is 80° E,
+		// a long way short of the edge of the disc.
+		const coarse = Array.from({ length: 18 }, (_, i) => ({ lon: i * 10, lat: 0 }));
+		const [run] = projectSegments(coarse, globe);
+		const end = run.at(-1)!;
+		expect(Math.hypot(end[0] - 200, end[1] - 200)).toBeCloseTo(200, 2);
+		// And one coming back into sight starts there too.
+		const [back] = projectSegments([...coarse].reverse(), globe);
+		expect(Math.hypot(back[0][0] - 200, back[0][1] - 200)).toBeCloseTo(200, 2);
+	});
+
 	it('keeps the visible half of a line that goes round the limb', () => {
 		const segments = projectSegments(
 			densify([
@@ -192,6 +210,93 @@ describe('projectSegments', () => {
 });
 
 describe('pathFor', () => {
+	const globe = (centerLon: number) =>
+		new Viewport(createProjection('orthographic', { centerLon }), 400, 400, {
+			zoom: 1,
+			centerX: 0,
+			centerY: 0
+		});
+	const box = boxRing(-20, 20, 60, 60);
+
+	it('leaves what the limb of a globe cuts open', () => {
+		// There the shape really does carry on out of sight, so joining the loose
+		// ends would draw an edge it does not have — even when what survives is
+		// one run, which it is for a ring that starts out of sight.
+		expect(pathFor(box, globe(0), { closed: true })).not.toContain('Z');
+		expect(pathFor(boxRing(-20, 20, 100, 60), globe(30), { closed: true })).not.toContain('Z');
+	});
+
+	it('still closes a ring drawn again beside the seam', () => {
+		const seam = new Viewport(createProjection('equirectangular'), 800, 400, {
+			zoom: 1,
+			centerX: Math.PI,
+			centerY: 0
+		});
+		const d = pathFor(boxRing(-10, 10, -170, 20), seam, { closed: true });
+		expect(d.match(/Z/g)).toHaveLength(2);
+	});
+
+	it('fills a shape that runs past the limb up to the edge of the disc', () => {
+		const d = areaFor(box, globe(0));
+		// One ring, closed, with every point on or inside the disc.
+		expect(d.match(/M/g)).toHaveLength(1);
+		expect(d.endsWith('Z')).toBe(true);
+		const radius = 200;
+		for (const [, x, y] of d.matchAll(/([\d.-]+) ([\d.-]+)/g)) {
+			expect(Math.hypot(Number(x) - 200, Number(y) - 200)).toBeLessThanOrEqual(radius + 0.01);
+		}
+		// Some of it lies on the rim: the part that is out of sight.
+		const onRim = [...d.matchAll(/([\d.-]+) ([\d.-]+)/g)].filter(
+			([, x, y]) => Math.abs(Math.hypot(Number(x) - 200, Number(y) - 200) - radius) < 0.01
+		);
+		expect(onRim.length).toBeGreaterThan(0);
+	});
+
+	it('fills only what is in sight of a shape that reaches round the far side', () => {
+		// A polar stereographic map hides a cap 60° round its antipode. Tipped so
+		// the antipode sits just inside one corner of the box with the opposite
+		// corner still in sight, the fill must stay in that corner rather than
+		// sweep round the rim after the hidden points.
+		const tipped = new Viewport(
+			createProjection('stereographic', { centerLon: 162, centerLat: -2 }),
+			400,
+			400,
+			{ zoom: 1, centerX: 0, centerY: 0 }
+		);
+		const ring = boxRing(0, 30, -20, 60);
+		const d = areaFor(ring, tipped);
+		expect(d).not.toBe('');
+		const onRim = [...d.matchAll(/([\d.-]+) ([\d.-]+)/g)].filter(
+			([, x, y]) => Math.abs(Math.hypot(Number(x) - 200, Number(y) - 200) - 200) < 0.5
+		);
+		// The rim points span a short arc, not the way round.
+		const angles = onRim.map(([, x, y]) => Math.atan2(Number(y) - 200, Number(x) - 200));
+		const spread = Math.max(...angles) - Math.min(...angles);
+		expect(spread).toBeLessThan(Math.PI / 2);
+	});
+
+	it('never cuts a shape on a globe, which has no seam', () => {
+		// Turned to look at the shape from the meridian opposite the one it sits
+		// on: a flat map would cut it there, and a globe must not.
+		const turned = new Viewport(createProjection('stereographic', { centerLon: 180 }), 400, 400, {
+			zoom: 1,
+			centerX: 0,
+			centerY: 0
+		});
+		const ring = boxRing(-10, 10, -10, 20);
+		expect(pathFor(ring, turned, { closed: true }).match(/M/g)).toHaveLength(1);
+		expect(areaFor(ring, turned).match(/M/g)).toHaveLength(1);
+	});
+
+	it('fills nothing for a shape wholly behind the globe', () => {
+		expect(areaFor(box, globe(-90))).toBe('');
+	});
+
+	it('fills a shape on a flat map as its own outline', () => {
+		const ring = boxRing(-10, 10, -10, 20);
+		expect(areaFor(ring, viewport())).toBe(pathFor(ring, viewport(), { closed: true }));
+	});
+
 	it('is empty for nothing to draw', () => {
 		expect(pathFor([], viewport())).toBe('');
 		expect(pathFor([{ lon: 0, lat: 0 }], viewport())).toBe('');
@@ -244,18 +349,6 @@ describe('pathFor', () => {
 		expect(pathFor(boxRing(-10, 10, -100, 20), turned, { closed: true }).match(/M/g)).toHaveLength(
 			2
 		);
-	});
-
-	it('leaves what the limb of a globe cuts open', () => {
-		// There the shape really does carry on out of sight, so joining the loose
-		// ends would draw an edge it does not have.
-		const globe = new Viewport(createProjection('orthographic'), 800, 800, {
-			zoom: 1,
-			centerX: 0,
-			centerY: 0
-		});
-		const d = pathFor(boxRing(-10, 10, 60, 60), globe, { closed: true });
-		expect(d).not.toContain('Z');
 	});
 });
 

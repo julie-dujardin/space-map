@@ -488,7 +488,7 @@ export interface FlatPolylineOptions extends FlatShapeStyle {
 
 // @public
 export interface FlatShape {
-	readonly node: SVGPathElement;
+	readonly node: SVGGElement;
 	// (undocumented)
 	remove(): void;
 	setPoints(points: readonly LonLat[]): void;
@@ -1267,6 +1267,7 @@ export class Viewport {
 	project(lon: number, lat: number): [number, number] | null;
 	// (undocumented)
 	readonly projection: Projection;
+	get repeatShifts(): number[];
 	get repeatsHorizontally(): boolean;
 	readonly scale: number;
 	// (undocumented)

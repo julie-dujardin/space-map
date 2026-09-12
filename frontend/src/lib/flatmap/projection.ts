@@ -437,6 +437,23 @@ function discExtent(r: number): Extent {
 	return { minX: -r, minY: -r, maxX: r, maxY: r };
 }
 
+/** Which way round the disc a place lies, as the plane direction from its
+ *  centre. The same for every azimuthal projection, which only differ in how
+ *  far out along it a place is put. */
+function azimuthalDirection(
+	lon: number,
+	lat: number,
+	lon0: number,
+	phi0: number
+): [number, number] {
+	const dl = wrapLon(lon - lon0) * DEG;
+	const phi = lat * DEG;
+	return [
+		Math.cos(phi) * Math.sin(dl),
+		Math.cos(phi0) * Math.sin(phi) - Math.sin(phi0) * Math.cos(phi) * Math.cos(dl)
+	];
+}
+
 function orthographic(options: ProjectionOptions): Projection {
 	const lon0 = options.centerLon ?? 0;
 	const phi0 = (options.centerLat ?? 0) * DEG;
@@ -456,10 +473,7 @@ function orthographic(options: ProjectionOptions): Projection {
 			const phi = lat * DEG;
 			const cosC = Math.sin(phi0) * Math.sin(phi) + Math.cos(phi0) * Math.cos(phi) * Math.cos(dl);
 			if (cosC < cosClip) return null;
-			return [
-				Math.cos(phi) * Math.sin(dl),
-				Math.cos(phi0) * Math.sin(phi) - Math.sin(phi0) * Math.cos(phi) * Math.cos(dl)
-			];
+			return azimuthalDirection(lon, lat, lon0, phi0);
 		},
 		inverse: (x, y) => {
 			const rho = Math.hypot(x, y);
@@ -496,10 +510,8 @@ function stereographic(options: ProjectionOptions): Projection {
 			const cosC = Math.sin(phi0) * Math.sin(phi) + Math.cos(phi0) * Math.cos(phi) * Math.cos(dl);
 			if (cosC < cosClip) return null;
 			const k = 2 / (1 + cosC);
-			return [
-				k * Math.cos(phi) * Math.sin(dl),
-				k * (Math.cos(phi0) * Math.sin(phi) - Math.sin(phi0) * Math.cos(phi) * Math.cos(dl))
-			];
+			const [x, y] = azimuthalDirection(lon, lat, lon0, phi0);
+			return [k * x, k * y];
 		},
 		inverse: (x, y) => {
 			const rho = Math.hypot(x, y);

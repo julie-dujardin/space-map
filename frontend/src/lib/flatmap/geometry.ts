@@ -11,7 +11,7 @@
  * pieces rather than striking across the frame.
  */
 
-import { wrapLon } from './projection';
+import { wrapLon, type Projection } from './projection';
 import type { Viewport } from './view';
 
 /** A place. Longitude east-positive, latitude north-positive, both degrees. */
@@ -39,6 +39,9 @@ export interface PathOptions {
 }
 
 const DEG = Math.PI / 180;
+const TAU = 2 * Math.PI;
+/** How finely the rim of a globe is followed round. */
+const RIM_STEP = 2 * DEG;
 const RAD = 180 / Math.PI;
 
 /** Beyond this many steps a single segment is not getting any smoother, only
@@ -108,37 +111,81 @@ export function densify(points: readonly LonLat[], options: PathOptions = {}): L
 }
 
 /**
- * Screen points for a run of places, broken wherever the line leaves the map.
- * A break is either a point the projection refuses — the far side of a globe —
- * or a jump wide enough to only be the seam of a world map wrapping round.
+ * Screen points for a run of places, broken wherever the line leaves the map,
+ * and drawn again on every copy of the world in the frame.
  */
 export function projectSegments(
 	points: readonly LonLat[],
 	viewport: Viewport
 ): [number, number][][] {
+	return repeated(projectRuns(points, viewport).runs, viewport);
+}
+
+/**
+ * Where a step off the edge of a globe crosses it: the place along the step
+ * from `shown` to `hidden` that is still just on the map, found by halving.
+ * A step is short, so moving evenly in both coordinates is as good as any way
+ * along it.
+ */
+function limbCrossing(shown: LonLat, hidden: LonLat, projection: Projection): LonLat {
+	let lo = 0;
+	let hi = 1;
+	for (let i = 0; i < 20; i++) {
+		const mid = (lo + hi) / 2;
+		const at = lerp(shown, hidden, mid);
+		if (projection.forward(at.lon, at.lat)) lo = mid;
+		else hi = mid;
+	}
+	return lerp(shown, hidden, lo);
+}
+
+/**
+ * The runs of a line that are on the map, on the map's own copy of the world.
+ * A break is either a point the projection refuses — the far side of a globe —
+ * or a jump wide enough to only be the seam of a world map wrapping round.
+ * `whole` says nothing was lost: one run, holding every point given.
+ */
+function projectRuns(
+	points: readonly LonLat[],
+	viewport: Viewport
+): { runs: [number, number][][]; whole: boolean } {
 	// More than half the world in one step is the seam, not a real move: no
 	// densified step is ever that long.
 	const seam = viewport.projection.cyclic ? viewport.worldWidthPx / 2 : Infinity;
+	const { projection } = viewport;
 	const segments: [number, number][][] = [];
 	let run: [number, number][] = [];
 	let previous: [number, number] | null = null;
-	for (const point of points) {
+	let lost = 0;
+	for (let i = 0; i < points.length; i++) {
+		const point = points[i];
 		const screen = viewport.project(point.lon, point.lat);
 		if (!screen) {
+			// The run is carried right up to the edge before it stops.
+			if (run.length && i > 0) {
+				const edge = limbCrossing(points[i - 1], point, projection);
+				run.push(viewport.project(edge.lon, edge.lat)!);
+			}
 			if (run.length > 1) segments.push(run);
 			run = [];
 			previous = null;
+			lost++;
 			continue;
 		}
 		if (previous && Math.abs(screen[0] - previous[0]) > seam) {
 			if (run.length > 1) segments.push(run);
 			run = [];
 		}
+		// And a run coming back into sight starts at the edge, not a step in.
+		if (!run.length && i > 0 && !viewport.project(points[i - 1].lon, points[i - 1].lat)) {
+			const edge = limbCrossing(point, points[i - 1], projection);
+			run.push(viewport.project(edge.lon, edge.lat)!);
+		}
 		run.push(screen);
 		previous = screen;
 	}
 	if (run.length > 1) segments.push(run);
-	return repeated(segments, viewport);
+	return { runs: segments, whole: segments.length === 1 && lost === 0 };
 }
 
 /** The segments again at every copy of the world in the frame, leaving out a
@@ -227,9 +274,11 @@ export function splitRing(ring: readonly LonLat[], centerLon: number): LonLat[][
  * caller can render the result straight into `d` either way.
  *
  * A closed shape is cut at the seam first, so each piece of it is a shape in
- * its own right and can be filled. What the limb of a globe cuts is left open
+ * its own right and can be filled. A globe has no seam, only a limb, and its
+ * shapes are never cut on the far side. What the limb of a globe cuts is left open
  * instead: there the shape really does carry on out of sight, and joining the
- * loose ends would draw an edge it does not have.
+ * loose ends would draw an edge it does not have. The area inside such a
+ * shape is {@link areaFor}.
  */
 export function pathFor(
 	points: readonly LonLat[],
@@ -237,17 +286,126 @@ export function pathFor(
 	options: PathOptions = {}
 ): string {
 	if (points.length < 2) return '';
-	const rings = options.closed
-		? splitRing(points, viewport.projection.centerLon)
-		: [points as readonly LonLat[]];
+	const { projection } = viewport;
+	const rings =
+		options.closed && projection.cyclic
+			? splitRing(points, projection.centerLon)
+			: [points as readonly LonLat[]];
 	return rings
 		.map((ring) => {
-			const segments = projectSegments(densify(ring, options), viewport);
-			if (segments.length === 0) return '';
-			const whole = segments.length === 1;
-			return segments.map((s) => formatSegment(s, Boolean(options.closed) && whole)).join('');
+			const { runs, whole } = projectRuns(densify(ring, options), viewport);
+			const close = Boolean(options.closed) && whole;
+			return repeated(runs, viewport)
+				.map((s) => formatSegment(s, close))
+				.join('');
 		})
 		.join('');
+}
+
+/**
+ * A closed shape as a fill: its outline, finished along the edge of the disc
+ * where a globe hides part of it.
+ *
+ * The hidden part is not drawn where it would fall; the fill follows the rim
+ * from where the ring goes out of sight to where it comes back, keeping its
+ * inside on the inside. Put on the rim point by point instead, a ring that
+ * reaches round the far side would be dragged right across the disc.
+ */
+export function areaFor(
+	points: readonly LonLat[],
+	viewport: Viewport,
+	options: Omit<PathOptions, 'closed'> = {}
+): string {
+	const { projection } = viewport;
+	if (!projection.azimuthal) return pathFor(points, viewport, { ...options, closed: true });
+	if (points.length < 2) return '';
+	const ring = densify(points, { ...options, closed: true });
+	const loop = points.length > 2 ? ring.slice(0, -1) : ring;
+	const planes = loop.map((at) => projection.forward(at.lon, at.lat));
+	const toScreen = ([x, y]: [number, number]) => viewport.toScreen(x, y);
+	const shown = planes.filter(Boolean).length;
+	if (shown === 0) return '';
+	if (shown === loop.length)
+		return formatSegment(
+			planes.map((plane) => toScreen(plane!)),
+			true
+		);
+
+	// The visible runs, each carried to the rim at both ends, walked from the
+	// first point back in sight so that no run is split over the join.
+	const n = loop.length;
+	let first = 0;
+	while (!planes[first] || planes[(first + n - 1) % n]) first++;
+	const runs: [number, number][][] = [];
+	let run: [number, number][] | null = null;
+	for (let k = 0; k < n; k++) {
+		const i = (first + k) % n;
+		const previous = (i + n - 1) % n;
+		const plane = planes[i];
+		if (plane) {
+			if (!run) {
+				const edge = limbCrossing(loop[i], loop[previous], projection);
+				run = [projection.forward(edge.lon, edge.lat)!];
+			}
+			run.push(plane);
+		} else if (run) {
+			const edge = limbCrossing(loop[previous], loop[i], projection);
+			run.push(projection.forward(edge.lon, edge.lat)!);
+			runs.push(run);
+			run = null;
+		}
+	}
+
+	// Leaving the disc, the fill goes on round the rim to the next place the
+	// ring comes back in — with the inside kept on the same hand as it was on
+	// the sphere, which the projection preserves.
+	const ccw = turnsLeft(loop);
+	const angle = ([x, y]: [number, number]) => Math.atan2(y, x);
+	const radius = Math.hypot(...runs[0][0]);
+	const polygons: [number, number][][] = [];
+	const done = new Set<number>();
+	for (let start = 0; start < runs.length; start++) {
+		if (done.has(start)) continue;
+		const polygon: [number, number][] = [];
+		let current = start;
+		do {
+			done.add(current);
+			polygon.push(...runs[current]);
+			const from = angle(runs[current][runs[current].length - 1]);
+			let next = start;
+			let sweep = Infinity;
+			for (let r = 0; r < runs.length; r++) {
+				const to = angle(runs[r][0]);
+				const turn = (((ccw ? to - from : from - to) % TAU) + TAU) % TAU;
+				if (turn < sweep) {
+					sweep = turn;
+					next = r;
+				}
+			}
+			const steps = Math.ceil(sweep / RIM_STEP);
+			for (let s = 1; s < steps; s++) {
+				const a = from + ((ccw ? 1 : -1) * sweep * s) / steps;
+				polygon.push([radius * Math.cos(a), radius * Math.sin(a)]);
+			}
+			current = next;
+		} while (current !== start && !done.has(current));
+		polygons.push(polygon);
+	}
+	return polygons.map((polygon) => formatSegment(polygon.map(toScreen), true)).join('');
+}
+
+/** Whether a ring keeps its inside on the left as it is walked, the inside
+ *  being the smaller of the two regions it cuts the sphere into. */
+function turnsLeft(loop: readonly LonLat[]): boolean {
+	let sum = 0;
+	for (let i = 0; i < loop.length; i++) {
+		const a = loop[i];
+		const b = loop[(i + 1) % loop.length];
+		sum += wrapLon(b.lon - a.lon) * DEG * (2 + Math.sin(a.lat * DEG) + Math.sin(b.lat * DEG));
+	}
+	// Signed area in steradians, positive for a ring turning left.
+	const area = -sum / 2;
+	return area > 0 ? area < TAU : area < -TAU;
 }
 
 /**

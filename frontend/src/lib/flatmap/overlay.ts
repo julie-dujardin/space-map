@@ -9,7 +9,14 @@
  * elements, placed over the map and left otherwise alone.
  */
 
-import { boxRing, pathFor, smallCircle, type Interpolation, type LonLat } from './geometry';
+import {
+	areaFor,
+	boxRing,
+	pathFor,
+	smallCircle,
+	type Interpolation,
+	type LonLat
+} from './geometry';
 import { SVG_NS } from './layers';
 import type { Viewport } from './view';
 
@@ -69,8 +76,11 @@ export interface CircleOptions extends ShapeStyle {
 
 /** A drawing on the map, for as long as the host keeps it. */
 export interface FlatShape {
-	/** The element itself, for a host that wants to style or animate it. */
-	readonly node: SVGPathElement;
+	/** The element itself, for a host that wants to style or animate it: a
+	 *  group holding the shape's outline and, for an area, its fill, drawn
+	 *  apart so the fill can stop at the limb of a globe where the outline
+	 *  goes out of sight. */
+	readonly node: SVGGElement;
 	/** Replace the geometry, keeping the styling. */
 	setPoints(points: readonly LonLat[]): void;
 	setVisible(visible: boolean): void;
@@ -104,7 +114,7 @@ interface Drawing {
 	detach(): void;
 }
 
-function applyStyle(node: SVGPathElement, style: ShapeStyle): void {
+function applyStyle(node: SVGElement, style: ShapeStyle): void {
 	node.setAttribute('fill', style.fill ?? 'none');
 	if (style.fill && style.fillOpacity !== undefined) {
 		node.setAttribute('fill-opacity', String(style.fillOpacity));
@@ -136,7 +146,10 @@ function bindEvents(node: SVGElement, style: ShapeStyle): void {
 }
 
 class PathDrawing implements Drawing, FlatShape {
-	readonly node: SVGPathElement;
+	readonly node: SVGGElement;
+	/** The fill, present for a closed shape only. */
+	private readonly area: SVGPathElement | null;
+	private readonly edge: SVGPathElement;
 	private points: readonly LonLat[];
 	private visible = true;
 
@@ -149,17 +162,22 @@ class PathDrawing implements Drawing, FlatShape {
 		private readonly onChange: () => void
 	) {
 		this.points = points;
-		this.node = document.createElementNS(SVG_NS, 'path');
+		this.node = document.createElementNS(SVG_NS, 'g');
 		applyStyle(this.node, style);
 		bindEvents(this.node, style);
+		this.area = closed ? document.createElementNS(SVG_NS, 'path') : null;
+		this.area?.setAttribute('stroke', 'none');
+		this.edge = document.createElementNS(SVG_NS, 'path');
+		this.edge.setAttribute('fill', 'none');
+		if (this.area) this.node.append(this.area);
+		this.node.append(this.edge);
 	}
 
 	redraw(viewport: Viewport): void {
 		if (!this.visible) return;
-		this.node.setAttribute(
-			'd',
-			pathFor(this.points, viewport, { closed: this.closed, interpolate: this.interpolate })
-		);
+		const options = { closed: this.closed, interpolate: this.interpolate };
+		this.edge.setAttribute('d', pathFor(this.points, viewport, options));
+		this.area?.setAttribute('d', areaFor(this.points, viewport, options));
 	}
 
 	setPoints(points: readonly LonLat[]): void {
