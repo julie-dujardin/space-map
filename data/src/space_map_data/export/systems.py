@@ -212,16 +212,19 @@ def clouds_block(meta: dict) -> dict:
     so each is the start of the span it covers. ``coverage`` gives the
     ``[first, last]`` slot of every run where snapshots exist at all — between
     those runs there is no data, and no frame should be held across the gap.
+    A static bundle is one frame with no runs, and carries no ``coverage``.
     """
     block: dict = {
         "id": meta["id"],
         "tiers": _tiers_from_meta(meta),
         "frames": list(meta.get("frames") or []),
-        "coverage": [list(span) for span in meta.get("coverage") or []],
         "source": meta["source"],
         "organisation": meta["organisation"],
         "type": meta["type"],
     }
+    coverage = [list(span) for span in meta.get("coverage") or []]
+    if coverage:
+        block["coverage"] = coverage
     if meta.get("license") is not None:
         block["license"] = meta["license"]
     if meta.get("attribution") is not None:

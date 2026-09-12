@@ -52,4 +52,13 @@ describe('cloudFrameForJd', () => {
 	it('has no answer without frames', () => {
 		expect(cloudFrameForJd(jd('2026-05-05T00:00:00Z'), [])).toBeUndefined();
 	});
+
+	// Venus ships one frame and no runs, so the export omits `coverage`.
+	it('resolves a static bundle that ships no coverage', () => {
+		expect(cloudFrameForJd(jd('2026-09-12T12:00:00Z'), ['static'])).toBe('static');
+	});
+
+	it('resolves a static bundle given an empty coverage list', () => {
+		expect(cloudFrameForJd(jd('2026-09-12T12:00:00Z'), ['static'], [])).toBe('static');
+	});
 });

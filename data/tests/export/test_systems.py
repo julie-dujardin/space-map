@@ -83,7 +83,8 @@ class TestTiersFromMeta:
 
 
 class TestCloudsBlock:
-    """clouds_block carries the export id, tiers, and attribution fields."""
+    """clouds_block carries the export id, tiers, coverage runs, and
+    attribution fields."""
 
     def test_carries_export_id_tiers_frames_and_required_fields(self):
         meta = {
@@ -119,6 +120,40 @@ class TestCloudsBlock:
         )
         assert block["attribution"] == "Contains modified EUMETSAT data"
         assert block["description"] == "3-hour cadence overlay."
+
+    def test_carries_coverage_runs_when_present(self):
+        block = clouds_block(
+            {
+                "id": "naif-399_clouds",
+                "source": "https://example.com",
+                "organisation": "EUMETSAT",
+                "type": "clouds_overlay",
+                "tiers": ["low"],
+                "frames": ["2026050100", "2026050512"],
+                "coverage": [
+                    ["2026050100", "2026050121"],
+                    ["2026050512", "2026050512"],
+                ],
+            }
+        )
+        assert block["coverage"] == [
+            ["2026050100", "2026050121"],
+            ["2026050512", "2026050512"],
+        ]
+
+    def test_omits_coverage_for_a_static_bundle(self):
+        # Venus has one frame and no runs, so the key would carry an empty list.
+        block = clouds_block(
+            {
+                "id": "naif-299_clouds",
+                "source": "https://example.com",
+                "organisation": "Björn Jónsson",
+                "type": "clouds_overlay",
+                "tiers": ["low"],
+                "frames": ["static"],
+            }
+        )
+        assert "coverage" not in block
 
 
 class TestLoadCloudsMetadata:
