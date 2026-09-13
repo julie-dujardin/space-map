@@ -41,6 +41,10 @@ DERIVED_POSITION_DIR = DERIVED_DIR / "position"
 DERIVED_TEXTURES_DIR = DERIVED_DIR / "textures"
 DERIVED_MODELS_DIR = DERIVED_DIR / "models"
 
+# Sphere textures and metadata built by `space_map_data.panoramas`; kept in the
+# main checkout, outside git, like the downloads.
+PANORAMA_DERIVED_DIR = PROJECT_ROOT / ".panorama-data" / "derived"
+
 EXPORT_DIR = PROJECT_ROOT.parent / "space-map-export"
 # Build-only sidecar metadata (incremental sidecars, texture/ring metadata.json)
 # is mirrored here so EXPORT_DIR can be served as-is to Cloudflare Pages, which

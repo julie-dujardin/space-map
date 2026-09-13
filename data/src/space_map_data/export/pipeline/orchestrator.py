@@ -113,6 +113,7 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import log_color_stats
 from space_map_data.export.atmospheres import write_atmospheres
 from space_map_data.export.spacecraft import write_spacecraft
+from space_map_data.export.panoramas import write_panorama_assets
 from space_map_data.export.systems import (
     load_clouds_metadata,
     load_displacement_metadata,
@@ -831,6 +832,7 @@ VERSIONED_CLASSES = (
     "models",
     "images",
     "membership",
+    "panoramas",
 )
 
 
@@ -1118,6 +1120,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     write_systems_global(out_dir, gms, nut_prec_angles)
     write_atmospheres(out_dir)
     write_spacecraft(out_dir, wikidata_entities)
+    write_panorama_assets(out_dir)
 
     # CelesTrak CSV parsing is deferred: when both earth zooms skip via their
     # zone meta, the ~120 MB of day CSVs are never read. The historical

@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest';
+import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
+import {
+	bearingDeg,
+	findPanorama,
+	groundDistanceM,
+	initialHeadingDeg,
+	neighboursOf,
+	panoramaAt
+} from './traverse';
+
+const MARS_RADIUS_KM = 3389.5;
+
+function entry(over: Partial<PanoramaEntry>): PanoramaEntry {
+	return { id: 'x', time: '2021-02-20T00:00:00Z', lat: 0, lon: 0, north_offset_deg: 0, ...over };
+}
+
+describe('panoramaAt', () => {
+	it('round-trips through findPanorama', () => {
+		const e = entry({ id: 'a', lat: 18.444627146, lon: 77.450885729 });
+		expect(findPanorama([entry({ id: 'b', lat: 1 }), e], panoramaAt(e))).toBe(e);
+		expect(findPanorama([e], null)).toBeNull();
+	});
+});
+
+describe('ground geometry', () => {
+	it('measures a step north and its bearing', () => {
+		const a = entry({ lat: 18, lon: 77 });
+		const b = entry({ lat: 18.001, lon: 77 });
+		expect(groundDistanceM(a, b, MARS_RADIUS_KM)).toBeCloseTo(59.16, 1);
+		expect(bearingDeg(a, b)).toBeCloseTo(0, 5);
+		expect(bearingDeg(b, a)).toBeCloseTo(180, 5);
+	});
+
+	it('bears east for a step in longitude', () => {
+		expect(bearingDeg(entry({ lat: 0, lon: 10 }), entry({ lat: 0, lon: 11 }))).toBeCloseTo(90, 5);
+	});
+});
+
+describe('neighboursOf', () => {
+	it('steps only within the mission', () => {
+		const c = entry({ id: 'c', mission: 'curiosity' });
+		const p1 = entry({ id: 'p1', mission: 'perseverance', lat: 18, lon: 77 });
+		const p2 = entry({ id: 'p2', mission: 'perseverance', lat: 18.001, lon: 77 });
+		const list = [c, p1, p2];
+		expect(neighboursOf(list, p1, MARS_RADIUS_KM).previous).toBeNull();
+		expect(neighboursOf(list, p1, MARS_RADIUS_KM).next?.entry).toBe(p2);
+		expect(neighboursOf(list, p2, MARS_RADIUS_KM).next).toBeNull();
+		expect(neighboursOf(list, p2, MARS_RADIUS_KM).previous?.bearingDeg).toBeCloseTo(180, 5);
+	});
+});
+
+describe('initialHeadingDeg', () => {
+	it('faces the middle of a partial sweep and north otherwise', () => {
+		expect(initialHeadingDeg(entry({ azimuth_start_deg: 200, hfov_deg: 60 }))).toBe(230);
+		expect(initialHeadingDeg(entry({ azimuth_start_deg: 67, hfov_deg: 353 }))).toBe(0);
+		expect(initialHeadingDeg(entry({}))).toBe(0);
+	});
+});

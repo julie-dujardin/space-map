@@ -76,6 +76,7 @@ from space_map_data.export.systems import (
     ring_block,
     texture_attribution,
 )
+from space_map_data.export.panoramas import panoramas_block
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
@@ -658,6 +659,11 @@ def _build_global(
             data["ring_stats"] = ring_stats
         if ring_images := ring_images_block(obj.id):
             data["ring_images"] = ring_images
+
+    # Ground-level sphere textures placed on this body, in traverse order.
+    panoramas = panoramas_block(obj.id)
+    if panoramas:
+        data["panoramas"] = panoramas
 
     # SBDB extras
     if sbdb is not None:

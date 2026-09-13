@@ -54,6 +54,8 @@ v1/
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   models/{slug}/{tier}.glb                        tier = low | high — Meshopt geometry + WebP textures
   models/{slug}/metadata.json                     model kind + missions + per-tier exports (incl. credit)
+  panoramas/{id}.webp                             equirectangular surface panorama; left edge north, transparent where unobserved
+  panoramas/{id}-preview.webp                     the observed strip at thumbnail size
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
   systems/{barycenter_id}.json                    per-system body metadata, loaded on system entry
   atmospheres.json                                (not gzipped) always-loaded: per-body scattering params + shared aerosol phase LUTs

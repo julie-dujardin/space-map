@@ -1,0 +1,93 @@
+/**
+ * Where a panorama sits on its traverse: the `?at=` key that names it, the
+ * neighbours it steps to, and the ground-track bearing and distance to each.
+ */
+
+import { resolve } from '$app/paths';
+import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
+import { urlTypeFromId, urlTypeToIdPrefix } from '$lib/state/view';
+
+/** `?at=<time>,<lat>,<lon>`: the same triple the export lists, so the key
+ *  round-trips without a lookup table. */
+export function panoramaAt(entry: PanoramaEntry): string {
+	return `${entry.time},${entry.lat},${entry.lon}`;
+}
+
+export function findPanorama(entries: PanoramaEntry[], at: string | null): PanoramaEntry | null {
+	if (!at) return null;
+	return entries.find((e) => panoramaAt(e) === at) ?? null;
+}
+
+/** `/view/<type>/<id>` for the body, plus the panorama when one is named. */
+export function panoramaHref(bodyId: string, entry?: PanoramaEntry): string {
+	const type = urlTypeFromId(bodyId);
+	const numericId = bodyId.slice(`${urlTypeToIdPrefix(type)}-`.length);
+	const path = resolve('/view/[type]/[id]', { type, id: numericId });
+	return entry ? `${path}?at=${encodeURIComponent(panoramaAt(entry))}` : path;
+}
+
+export interface Neighbour {
+	entry: PanoramaEntry;
+	/** Ground distance from the current panorama, metres. */
+	distanceM: number;
+	/** Initial bearing to it, degrees clockwise from north. */
+	bearingDeg: number;
+}
+
+export interface Neighbours {
+	previous: Neighbour | null;
+	next: Neighbour | null;
+}
+
+/** The entries before and after `current` on the same mission's traverse.
+ *  The list is already mission-then-time ordered, so neighbours are adjacent
+ *  rows until the mission changes. */
+export function neighboursOf(
+	entries: PanoramaEntry[],
+	current: PanoramaEntry,
+	radiusKm: number
+): Neighbours {
+	const i = entries.indexOf(current);
+	const sameMission = (e: PanoramaEntry | undefined) => e && e.mission === current.mission;
+	const toNeighbour = (e: PanoramaEntry | undefined): Neighbour | null =>
+		sameMission(e)
+			? {
+					entry: e!,
+					distanceM: groundDistanceM(current, e!, radiusKm),
+					bearingDeg: bearingDeg(current, e!)
+				}
+			: null;
+	return { previous: toNeighbour(entries[i - 1]), next: toNeighbour(entries[i + 1]) };
+}
+
+const DEG = Math.PI / 180;
+
+/** Great-circle distance on a sphere of `radiusKm`, in metres. Rover steps
+ *  are metres on a body thousands of kilometres across, so the ellipsoid's
+ *  flattening changes nothing a reader would see. */
+export function groundDistanceM(a: PanoramaEntry, b: PanoramaEntry, radiusKm: number): number {
+	const dLat = (b.lat - a.lat) * DEG;
+	const dLon = (b.lon - a.lon) * DEG;
+	const h =
+		Math.sin(dLat / 2) ** 2 +
+		Math.cos(a.lat * DEG) * Math.cos(b.lat * DEG) * Math.sin(dLon / 2) ** 2;
+	return 2 * radiusKm * 1000 * Math.asin(Math.sqrt(h));
+}
+
+/** Initial great-circle bearing from `a` to `b`, degrees clockwise from
+ *  north; east-positive longitudes as the export lists them. */
+export function bearingDeg(a: PanoramaEntry, b: PanoramaEntry): number {
+	const lat1 = a.lat * DEG;
+	const lat2 = b.lat * DEG;
+	const dLon = (b.lon - a.lon) * DEG;
+	const y = Math.sin(dLon) * Math.cos(lat2);
+	const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+	return (((Math.atan2(y, x) / DEG) % 360) + 360) % 360;
+}
+
+/** Where to look first: the middle of a partial sweep, else north. */
+export function initialHeadingDeg(entry: PanoramaEntry): number {
+	if (entry.azimuth_start_deg === undefined || entry.hfov_deg === undefined || entry.hfov_deg > 300)
+		return 0;
+	return (entry.azimuth_start_deg + entry.hfov_deg / 2 - entry.north_offset_deg + 360) % 360;
+}

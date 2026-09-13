@@ -1,0 +1,211 @@
+"""Surface panoramas: the entries a body's global bundle lists under
+`panoramas`, and the sphere textures they point at under `v1/panoramas/`.
+
+Only products the viewer can place are exported: a rover position, a capture
+time, a known north, and archival (not grid-estimated) sphere geometry. The
+rest of the cache stays local until it earns those fields. Entries sort by
+mission then time, so neighbours in the list are neighbours on the traverse.
+"""
+
+import gzip
+import logging
+import re
+import shutil
+from functools import cache
+from pathlib import Path
+
+import orjson
+
+from space_map_data.export.sidecar_io import write_atomic
+from space_map_data.utils.paths import EXPORT_DIR, PANORAMA_DERIVED_DIR
+
+logger = logging.getLogger(__name__)
+
+ASSET_DIR = "panoramas"
+
+
+def _sphere_geometry_is_archival(meta: dict) -> bool:
+    return (
+        meta.get("grid_geometry_status") != "estimated"
+        and meta.get("geometry_status") != "estimated"
+    )
+
+
+def _skip_reason(meta: dict) -> str | None:
+    if not meta.get("body_id"):
+        return "no body id"
+    if not meta.get("position"):
+        return "no position"
+    if not meta.get("image"):
+        return "no sphere texture"
+    if not _sphere_geometry_is_archival(meta):
+        return "estimated geometry"
+    if meta.get("north_azimuth_offset_deg") is None:
+        return "unknown north"
+    if not (meta.get("start_time") or meta.get("capture_time")):
+        return "undated"
+    return None
+
+
+def _seconds(iso: str | None) -> str | None:
+    """Drop fractional seconds: a mosaic spans minutes, and the viewer keys
+    its URL on this string."""
+    return re.sub(r"\.\d+(?=Z$)", "", iso) if iso else None
+
+
+def _entry(meta: dict) -> dict | None:
+    """The exported shape of one product, or None with the reason logged."""
+    skip = _skip_reason(meta)
+    if skip:
+        logger.info("Panorama %s not exported: %s", meta.get("id"), skip)
+        return None
+    position = meta["position"]
+    coverage = meta.get("coverage") or {}
+    source_coverage = meta.get("source_coverage") or {}
+    sources = meta.get("sources") or {}
+    reuse = meta.get("reuse") or {}
+    entry = {
+        "id": meta["id"],
+        "mission": meta.get("mission"),
+        "instrument": meta.get("instrument"),
+        "sol": meta.get("sol"),
+        "time": _seconds(meta.get("start_time") or meta.get("capture_time")),
+        "time_end": _seconds(meta.get("stop_time")),
+        "lat": position["latitude"],
+        "lon": position["longitude"],
+        "elevation_m": position.get("elevation_m"),
+        "title": meta.get("title"),
+        "north_offset_deg": meta["north_azimuth_offset_deg"],
+        "azimuth_start_deg": source_coverage.get("azimuth_start_deg"),
+        "hfov_deg": coverage.get("horizontal_degrees"),
+        "sphere_percent": coverage.get("sphere_percent"),
+        "color": meta.get("color"),
+        "credit": meta.get("credit"),
+        "credit_url": meta.get("reuse_policy_url") or reuse.get("policy_url"),
+        "source_url": sources.get("label_url") or meta.get("selected_url"),
+    }
+    return {k: v for k, v in entry.items() if v is not None}
+
+
+def load_panoramas(
+    derived_dir: Path = PANORAMA_DERIVED_DIR,
+) -> dict[str, list[tuple[dict, Path]]]:
+    """Exportable products by body id, each with its texture path, in
+    mission-then-time order."""
+    by_body: dict[str, list[tuple[dict, Path]]] = {}
+    if not derived_dir.is_dir():
+        logger.warning("Panorama cache %s missing; exporting none", derived_dir)
+        return by_body
+    for catalog_path in sorted(derived_dir.glob("*/catalog.json")):
+        catalog = orjson.loads(catalog_path.read_bytes())
+        for item in catalog.get("panoramas", []):
+            meta_path = derived_dir / item["metadata"]
+            meta = orjson.loads(meta_path.read_bytes())
+            entry = _entry(meta)
+            if entry is None:
+                continue
+            by_body.setdefault(meta["body_id"], []).append(
+                (entry, meta_path.parent / meta["image"])
+            )
+    for body_id, entries in by_body.items():
+        entries.sort(key=lambda e: (e[0]["mission"] or "", e[0]["time"]))
+        by_body[body_id] = _dedupe(entries)
+    logger.info(
+        "Panoramas: %d exportable across %d bodies",
+        sum(len(v) for v in by_body.values()),
+        len(by_body),
+    )
+    return by_body
+
+
+def _dedupe(entries: list[tuple[dict, Path]]) -> list[tuple[dict, Path]]:
+    """One product per (time, lat, lon): the viewer addresses a panorama by
+    that triple, so a second rendition of the same mosaic is unreachable."""
+    seen: set[tuple] = set()
+    kept = []
+    for entry, image in entries:
+        key = (entry["time"], entry["lat"], entry["lon"])
+        if key in seen:
+            logger.info(
+                "Panorama %s not exported: same time and place as an earlier one",
+                entry["id"],
+            )
+            continue
+        seen.add(key)
+        kept.append((entry, image))
+    return kept
+
+
+@cache
+def _cached() -> dict[str, list[tuple[dict, Path]]]:
+    return load_panoramas()
+
+
+def panoramas_block(object_id: str) -> list[dict] | None:
+    entries = _cached().get(object_id)
+    return [entry for entry, _ in entries] if entries else None
+
+
+def write_panorama_assets(out_dir: Path) -> None:
+    """Copy every exportable sphere texture to `v1/panoramas/<id>.webp`."""
+    asset_dir = out_dir / ASSET_DIR
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    wanted: set[Path] = set()
+    for entries in _cached().values():
+        for entry, image in entries:
+            target = asset_dir / f"{entry['id']}{image.suffix}"
+            wanted.add(target)
+            if target.exists() and target.stat().st_size == image.stat().st_size:
+                continue
+            shutil.copyfile(image, target)
+            copied += 1
+    stale = [p for p in asset_dir.iterdir() if p not in wanted]
+    for path in stale:
+        path.unlink()
+    logger.info(
+        "Panorama assets: %d copied, %d stale removed in %s",
+        copied,
+        len(stale),
+        asset_dir,
+    )
+
+
+def _patch_global_bundles(out_dir: Path) -> None:
+    """Rewrite `panoramas` on each covered body's existing global bundle."""
+    from space_map_data.export.objects.writer import hash_bucket
+
+    metadata_path = out_dir / "metadata.json"
+    metadata = orjson.loads(metadata_path.read_bytes())
+    n_buckets = metadata["object_bundles"]["global"]
+    for body_id, entries in _cached().items():
+        bucket_path = (
+            out_dir
+            / "objects"
+            / "__global__"
+            / f"{hash_bucket(body_id, n_buckets)}.json.gz"
+        )
+        bundle = orjson.loads(gzip.decompress(bucket_path.read_bytes()))
+        if body_id not in bundle:
+            logger.warning("%s not in its global bundle; skipping", body_id)
+            continue
+        bundle[body_id]["panoramas"] = [entry for entry, _ in entries]
+        write_atomic(bucket_path, gzip.compress(orjson.dumps(bundle), mtime=0))
+        logger.info("Patched %s into %s", body_id, bucket_path.name)
+
+
+def export_panoramas_only() -> None:
+    """`space-map-export --only panoramas` — assets plus in-place bundle
+    patches, then fresh cache tokens for both classes."""
+    from space_map_data.export.pipeline.orchestrator import _content_token
+
+    out_dir = EXPORT_DIR / "v1"
+    metadata_path = out_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise SystemExit(f"Export dir {out_dir} missing — run a full export first.")
+    write_panorama_assets(out_dir)
+    _patch_global_bundles(out_dir)
+    metadata = orjson.loads(metadata_path.read_bytes())
+    for cls in ("objects", ASSET_DIR):
+        metadata["versions"][cls] = _content_token(out_dir / cls)
+    metadata_path.write_bytes(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))

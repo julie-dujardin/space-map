@@ -377,6 +377,37 @@ export interface ProbeEvents {
 	items: ProbeEvent[];
 }
 
+/** One ground-level sphere texture placed on a body: `v1/panoramas/{id}.webp`,
+ *  an equirectangular image whose left edge is north and whose azimuth runs
+ *  clockwise. Transparent texels are directions the mosaic never observed. */
+export interface PanoramaEntry {
+	id: string;
+	/** Mission slug the traverse belongs to (`perseverance`, `curiosity`). */
+	mission?: string;
+	instrument?: string;
+	sol?: number;
+	/** Capture start, ISO 8601. Orders the traverse within a mission. */
+	time: string;
+	time_end?: string;
+	/** Planetocentric latitude and east longitude of the rover, degrees. */
+	lat: number;
+	lon: number;
+	elevation_m?: number;
+	title?: string;
+	/** Image azimuth of true north, degrees clockwise from the left edge. */
+	north_offset_deg: number;
+	/** Image azimuth where the observed span begins, with its width; absent
+	 *  when the archive label carried no coverage geometry. */
+	azimuth_start_deg?: number;
+	hfov_deg?: number;
+	/** Solid-angle share of the sphere the mosaic covers, percent. */
+	sphere_percent?: number;
+	color?: string;
+	credit?: string;
+	credit_url?: string;
+	source_url?: string;
+}
+
 export interface GlobalObjectData {
 	id: string;
 	type: string;
@@ -438,6 +469,8 @@ export interface GlobalObjectData {
 	 *  Absent for the bodies whose rings no article illustrates. */
 	ring_images?: ObjectImage[];
 	temperatures?: Temperatures;
+	/** Surface panoramas taken on this body, mission by mission in time order. */
+	panoramas?: PanoramaEntry[];
 	images?: ObjectImage[];
 	galleries?: ImageGalleryData[];
 	sbdb_primary_designation?: string;

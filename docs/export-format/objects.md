@@ -241,6 +241,7 @@ interface GlobalObjectData {
     };
   };
   ring_images?: ObjectImage[];        // pictures of the ring system, same shape as an `images` entry (see below)
+  panoramas?: PanoramaEntry[];        // surface panoramas taken on this body, mission by mission in time order (see `panoramas` below)
   temperatures?: {                    // absent only when even the estimate can't be computed (no heliocentric distance)
     // Flat rather than grouped by part: a body's readings all plot on one bar,
     // and a reading needs its part, its kind and what produced it together.
@@ -851,6 +852,44 @@ shown under `images` or `ring_images` are not repeated, and IAU locator maps
 are dropped: they are outline drawings, not pictures of the feature. Shelf
 sizes are `FEATURE_GALLERY_LIMIT` / `MOON_GALLERY_LIMIT` in
 `export/objects/galleries.py`.
+
+### `panoramas`
+
+Surface panoramas taken on the body, from the `.panorama-data` cache built by
+`space_map_data.panoramas`. Only products the viewer can place ship: a rover
+position, a capture time, a known north and archival sphere geometry. Entries
+sort by mission then time, so neighbours in the list are neighbours on the
+traverse; one entry per `(time, lat, lon)`, since that triple is the viewer's
+URL key. Texture files live under `panoramas/{id}.webp` (equirectangular, left
+edge north, azimuth clockwise, transparent where the mosaic never looked) with
+a `panoramas/{id}-preview.webp` thumbnail of the observed strip.
+
+```ts
+interface PanoramaEntry {
+  id: string;
+  mission?: string;                   // slug of the traverse (`perseverance`, `curiosity`)
+  instrument?: string;
+  sol?: number;
+  time: string;                       // capture start, ISO 8601 to the second
+  time_end?: string;
+  lat: number;                        // planetocentric latitude, degrees
+  lon: number;                        // east longitude, degrees
+  elevation_m?: number;
+  title?: string;
+  north_offset_deg: number;           // image azimuth of true north, degrees clockwise from the left edge
+  azimuth_start_deg?: number;         // image azimuth where the observed span begins …
+  hfov_deg?: number;                  // … and its width; absent without archival coverage geometry
+  sphere_percent?: number;            // share of the sphere the mosaic covers
+  color?: string;                     // `rgb` | `grayscale`
+  credit?: string;
+  credit_url?: string;                // the archive's reuse terms
+  source_url?: string;                // the archive record the product came from
+}
+```
+
+`space-map-export --only panoramas` copies the textures, rewrites `panoramas`
+on every global bundle in place (set where the cache has some, cleared where
+it no longer does) and refreshes the `objects` and `panoramas` version tokens.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

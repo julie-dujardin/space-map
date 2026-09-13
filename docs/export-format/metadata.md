@@ -88,7 +88,8 @@ segment):
   },
   "versions": {
     "position": "a1b2c3d4e5f60718", "objects": "…", "nomenclature": "…",
-    "textures": "…", "rings": "…", "models": "…", "images": "…", "membership": "…"
+    "textures": "…", "rings": "…", "models": "…", "images": "…", "membership": "…",
+    "panoramas": "…"
   },
   "skybox": {
     "id": "stars",
@@ -120,8 +121,8 @@ copy. Because the tokens are content hashes, a deterministic re-export with no
 data change leaves them — and the client's cache — untouched. Nondeterministic
 contents only churn the token (weaker caching), never correctness.
 
-The eight versioned classes — `position`, `objects`, `nomenclature`,
-`textures`, `rings`, `models`, `images`, `membership` — are served under an
+The nine versioned classes — `position`, `objects`, `nomenclature`,
+`textures`, `rings`, `models`, `images`, `membership`, `panoramas` — are served under an
 immutable `Cache-Control` rule (`infrastructure/deploy/_headers`). The
 remaining roots (`metadata.json`, `credits.json`, `labels/`, `systems/`,
 `groups/`, `attitude/`) carry no token and fall through to Cloudflare Pages'
