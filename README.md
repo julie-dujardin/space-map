@@ -29,9 +29,10 @@ Space Map computes positions at any date, using orbital elements from NASA, ESA,
 Each of these is displayed at its current position, and shown at its real size (when known). Click any object to focus it.
 
 - Time control: Speed up or reverse time, go to any date.
-- Collections: See all [Starlink](https://spacemap.co/g/const-starlink), [GPS](https://spacemap.co/g/const-gps), [Geostationary](https://spacemap.co/g/class-GEO) satellites, the [Jupiter Trojan asteroids](https://spacemap.co/g/class-TJN/Jupiter%20Trojan?at=now,34.60900,58.08478,131.68), [hyperbolic comets](https://spacemap.co/g/class-HYP/Hyperbolic%20Comet?at=now,20.47956,140.22461,42.430).
-- Search: Text search & filters, infinite scroll - it's 2026, time to doomscroll [potentially hazardous asteroids](https://spacemap.co/b/399?f=pha).
 - [Navigation to any object](https://spacemap.co/nav/naif-399/naif-499?at=2029-12-20T12:28:52.605Z,53.98086,8.01888,26.955), with transfer windows, gravity assists, and brachistochrone trajectories, real & fictional spacecraft, and [end-to-end directions](https://spacemap.co/nav/naif-399/naif-699?at=2029-12-20T12:28:04.084Z,25.07064,-78.08883,0.050851&tm=custom&talt=221099&tinc=9&route=balanced).
+- Streetview-like [ground level panoramas](https://spacemap.co/view).
+- Search: Text search & filters, infinite scroll - it's 2026, time to doomscroll [potentially hazardous asteroids](https://spacemap.co/b/399?f=pha).
+- Collections: See all [Starlink](https://spacemap.co/g/const-starlink), [GPS](https://spacemap.co/g/const-gps), [Geostationary](https://spacemap.co/g/class-GEO) satellites, the [Jupiter Trojan asteroids](https://spacemap.co/g/class-TJN/Jupiter%20Trojan?at=now,34.60900,58.08478,131.68), [hyperbolic comets](https://spacemap.co/g/class-HYP/Hyperbolic%20Comet?at=now,20.47956,140.22461,42.430).
 
 ### Natural bodies
 
@@ -57,20 +58,18 @@ Each of these is displayed at its current position, and shown at its real size (
 ## Architecture
 
 Space Map's frontend is built with SvelteKit and Three.js (WebGL), and is hosted on Cloudflare Workers.
-Three.js has 32-bit precision for positions. To make a continous solar system work at all scales, the map uses camera-based rendering: the world's origin coordinates is the camera. Objects that are very close to it exist in an area where lots of precision is available, and precision is not wasted on far-off objects. When this goes wrong, the effects are [very visible](https://godotengine.org/article/emulating-double-precision-gpu-render-large-worlds/).
-The positions for most asteroids & comets are computed in web workers: that's what makes real-time positions possible with 1.6m objects.
-`frontend/src/lib/{scene,math,fetch}` is the embeddable core: it reaches the app only through `src/lib/host.ts` (data origins, language, label links, notices), never SvelteKit, the UI stack or the i18n bundles. `pnpm check:core` enforces that transitively. `MapController` (`src/lib/scene/map-controller.svelte.ts`) is one map — data, clock, renderer and their DOM — behind a plain API and events; `MapPage.svelte` puts the site around it, and `frontend/src/sdk/index.ts` is the same map for other sites: `pnpm build:sdk` bundles it with its workers and CSS into `frontend/dist/sdk/` (MPL-2.0, unlike the rest of the repo), `pnpm preview:sdk` serves the demo page next to it, and `pnpm build:sdk:npm` builds the npm package with its types into `frontend/dist/sdk-npm/`, with three.js left to the host.
+
+Three.js has 32-bit precision for positions. To make a continous solar system work at all scales, the map uses camera-based rendering and reverse-z logaritmic depth buffer: the world's origin coordinates is the camera. Objects that are very close to it exist in an area where lots of precision is available, and precision is not wasted on far-off objects. When this goes wrong, the effects are [very visible](https://godotengine.org/article/emulating-double-precision-gpu-render-large-worlds/).
+
+The positions for most asteroids & comets are computed in web workers, and updated only when necessary: that's what makes real-time positions possible with 1.6m objects.
 
 The data pipeline is built in Python. It downloads each dataset, joins them in a SQLite database, and exports them to static files. Those static files are served as static Cloudflare Workers assets: there's no backend for most of the app. This has drawbacks, but allows serving lots of data very fast, at very low cost. In particular, maintenance is very easy: all "endpoints" are served once, so there's no risk of runtime backend errors. The export format is [documented (written by AI)](docs/export-format/README.md). Search is provided by a Meilisearch database running in a VPS.
-
-The offline [Mars panorama pipeline](docs/mars-panoramas.md) prepares official
-Curiosity and Perseverance surface mosaics for a future street-view feature.
 
 ### Positions
 
 The export pipeline compresses orbital elements from ~100GiB down to 1.9GiB, and splits them in chunks so the frontend can propagate the current position quickly. The loss in accuracy is significant, but very small for major objects: [planets, moons, and important small objects](docs/chebyshev-accuracy.md), and [spacecraft](docs/probe-accuracy.md) are typically off by meters to hundreds of meters compared to high-accuracy tracking data.
 
-Sources for these major objects are [spice kernels](https://en.wikipedia.org/wiki/SPICE_(observation_geometry_system)), which can contain tracking data at regular intervals. This is great for irregular orbits, but scales with shorter orbital period. A satellite in low orbit will take a lot of space, but those orbits tend to be stable. The pipeline will convert this heavy format into light keplerian elements, including precession when it results in an accuracy improvement. Those elements do go stale, the pipeline time-chunks elements. The results are very good: the Mars Reconnaissance Orbiter (MRO) goes from 10GiB to ~0.28 MiB, with a P95 accuracy loss of [only 134.4km](docs/probe-accuracy.md) at the edge of chunks (worst case). Not science grade, but good enough for visualization.
+Sources for these major objects are [spice kernels](https://en.wikipedia.org/wiki/SPICE_(observation_geometry_system)), which can contain tracking data at regular intervals. This is great for irregular orbits, but scales with shorter orbital period. A satellite in low orbit will take a lot of space, but those orbits tend to be stable. The pipeline will convert this heavy format into light keplerian elements, including precession when it results in an accuracy improvement. Those elements do go stale, and the pipeline time-chunks elements. The results are very good: the Mars Reconnaissance Orbiter (MRO) goes from 10GiB to ~0.28 MiB, with a P95 accuracy loss of [only 134.4km](docs/probe-accuracy.md) at the edge of chunks (worst case). Not science grade, but good enough for visualization.
 
 Important objects (famous probes, planets, major moons) have a higher size budget, so their positions will be more accurate.
 
