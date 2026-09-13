@@ -30,7 +30,13 @@ export interface MotionScale {
  * `translate` converts pan and zoom from centre-relative to ground-relative:
  * the clearance above the nearest surface over the orbit radius. The surfaces
  * in reach are the focused object's and its collision `parent`'s (skimming
- * Earth while focused on the ISS).
+ * Earth while focused on the ISS) — unless the focus is `seated`. Clearance
+ * drops straight down onto a surface while the orbit radius runs out to the
+ * target, so the two agree only while the target floats clear of that surface.
+ * A landed probe or surface feature sits on it, putting the parent's ground
+ * already at the focus, so the orbit radius is the honest reading; keeping the
+ * parent would substitute the camera's altitude and starve zoom to the floor
+ * anywhere off the local vertical.
  *
  * `rotate` instead pins the drag to the ground 1:1, the way a slippy map moves
  * under the pointer. A drag of `p` px over a viewport `H` px tall turns the
@@ -44,13 +50,14 @@ export interface MotionScale {
  * focus (spacecraft, debris) is left out of them: its radius is a nominal
  * stand-in for a craft with no measured size, and its model renders in the
  * overlay at its own camera's scale — untied to the body's scene radius
- * altogether. A parent underneath still counts.
+ * altogether. A parent underneath still counts unless the focus is seated.
  */
 export function cameraMotionScale(
 	camera: PerspectiveCamera,
 	focusTruePos: Vec3,
 	focused: PositionedBody,
-	parent: PositionedBody | undefined
+	parent: PositionedBody | undefined,
+	seated: boolean
 ): MotionScale {
 	const orbitRadius = camera.position.length();
 	if (!(orbitRadius > 0)) return { rotate: 1, translate: 1 };
@@ -58,7 +65,7 @@ export function cameraMotionScale(
 	const sized = isModelBearing(focused) ? undefined : focused;
 
 	let clearance = orbitRadius;
-	for (const body of [sized, parent]) {
+	for (const body of [sized, seated ? undefined : parent]) {
 		if (!body) continue;
 		const radiusScene = kmToScene(effectiveRadiusKm(body.data));
 		if (!(radiusScene > 0)) continue;

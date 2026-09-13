@@ -1028,7 +1028,9 @@ export class SceneRenderer {
 					this.surfaceClamp(focused, false)
 				);
 			}
-			this.setMotionScale(cameraMotionScale(this.camera, this.focus.focusTruePos, focused, parent));
+			this.setMotionScale(
+				cameraMotionScale(this.camera, this.focus.focusTruePos, focused, parent, seated)
+			);
 		} else {
 			this.setMotionScale({ rotate: 1, translate: 1 });
 		}

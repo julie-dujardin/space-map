@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PerspectiveCamera, Vector3 } from 'three';
+import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { kmToScene } from '$lib/math/units';
@@ -51,6 +51,26 @@ function camAt(km: number): PerspectiveCamera {
 	return cam;
 }
 
+/** A named patch of ground: no measured radius, a metres-scale nominal stand-in. */
+function mkFeature(): PositionedBody {
+	return mkBody(0, [0, 0, 0], 'feature-1', ObjectType.SURFACE_FEATURE);
+}
+
+/** Mars centred a radius below the focus, so the focus sits on its surface. */
+function marsUnderfoot(): PositionedBody {
+	return mkBody(3390, [0, 0, -kmToScene(3390)], 'naif-499');
+}
+
+/** Camera `km` from the focus origin, `deg` off the focus's local vertical (+z). */
+function camOffVertical(km: number, deg: number): PerspectiveCamera {
+	const t = MathUtils.degToRad(deg);
+	const cam = new PerspectiveCamera(FOV, 1, 0.1, 1e9);
+	cam.position.set(kmToScene(km * Math.sin(t)), 0, kmToScene(km * Math.cos(t)));
+	cam.lookAt(0, 0, 0);
+	cam.updateMatrixWorld();
+	return cam;
+}
+
 /** Horizontal screen position (px) of a world point, aspect 1 so width = height. */
 function screenX(point: Vector3, camera: PerspectiveCamera): number {
 	return (point.clone().project(camera).x * VIEWPORT_H) / 2;
@@ -63,7 +83,7 @@ function screenX(point: Vector3, camera: PerspectiveCamera): number {
  */
 function groundTravelPx(dragPx: number, radiusKm: number, altitudeKm: number): number {
 	const camera = camAt(radiusKm + altitudeKm);
-	const { rotate } = cameraMotionScale(camera, FOCUS, mkBody(radiusKm), undefined);
+	const { rotate } = cameraMotionScale(camera, FOCUS, mkBody(radiusKm), undefined, false);
 	const theta = (2 * Math.PI * dragPx * rotate) / VIEWPORT_H;
 
 	const before = new Vector3(0, 0, kmToScene(radiusKm));
@@ -85,12 +105,14 @@ describe('cameraMotionScale rotate', () => {
 	it('hands back the default rate once the body is small on screen', () => {
 		// Past ~7.7 radii the 1:1 ask exceeds three's own rate and is clamped.
 		const far = camAt(3390 * 20);
-		expect(cameraMotionScale(far, FOCUS, mkBody(3390), undefined).rotate).toBe(1);
+		expect(cameraMotionScale(far, FOCUS, mkBody(3390), undefined, false).rotate).toBe(1);
 	});
 
 	it('stays positive with the camera on the surface', () => {
 		const seated = camAt(3390);
-		expect(cameraMotionScale(seated, FOCUS, mkBody(3390), undefined).rotate).toBeGreaterThan(0);
+		expect(cameraMotionScale(seated, FOCUS, mkBody(3390), undefined, false).rotate).toBeGreaterThan(
+			0
+		);
 	});
 });
 
@@ -98,7 +120,7 @@ describe('cameraMotionScale translate', () => {
 	it('is the clearance fraction just above a focused body', () => {
 		// 100 km over a 3390 km body: 100 / 3490.
 		const mars = mkBody(3390);
-		expect(cameraMotionScale(camAt(3490), FOCUS, mars, undefined).translate).toBeCloseTo(
+		expect(cameraMotionScale(camAt(3490), FOCUS, mars, undefined, false).translate).toBeCloseTo(
 			100 / 3490,
 			10
 		);
@@ -106,19 +128,21 @@ describe('cameraMotionScale translate', () => {
 
 	it('leaves the speeds alone far from everything', () => {
 		const mars = mkBody(3390);
-		expect(cameraMotionScale(camAt(1e7), FOCUS, mars, undefined).translate).toBeGreaterThan(0.999);
+		expect(cameraMotionScale(camAt(1e7), FOCUS, mars, undefined, false).translate).toBeGreaterThan(
+			0.999
+		);
 	});
 
 	it('floors instead of freezing on the surface', () => {
 		const mars = mkBody(3390);
-		expect(cameraMotionScale(camAt(3390), FOCUS, mars, undefined).translate).toBe(0.02);
+		expect(cameraMotionScale(camAt(3390), FOCUS, mars, undefined, false).translate).toBe(0.02);
 	});
 
 	it('follows the parent when it is the nearer surface', () => {
 		// Focused on a 400 km orbiter, camera 350 km down its Earthward radial:
 		// 50 km of real clearance over a 350 km lever arm.
 		const earth = mkBody(6371, [0, 0, kmToScene(6771)], 'naif-399');
-		expect(cameraMotionScale(camAt(350), FOCUS, mkCraft(), earth).translate).toBeCloseTo(
+		expect(cameraMotionScale(camAt(350), FOCUS, mkCraft(), earth, false).translate).toBeCloseTo(
 			50 / 350,
 			10
 		);
@@ -128,12 +152,57 @@ describe('cameraMotionScale translate', () => {
 describe('cameraMotionScale on a model-bearing focus', () => {
 	it('leaves the rotation at the default rate', () => {
 		// 5 m nominal would otherwise read as a body filling the view at 20 m out.
-		expect(cameraMotionScale(camAt(0.02), FOCUS, mkCraft(), undefined).rotate).toBe(1);
+		expect(cameraMotionScale(camAt(0.02), FOCUS, mkCraft(), undefined, false).rotate).toBe(1);
 	});
 
 	it('leaves pan and zoom at the default rate', () => {
-		expect(cameraMotionScale(camAt(0.02), FOCUS, mkCraft(), undefined).translate).toBe(1);
+		expect(cameraMotionScale(camAt(0.02), FOCUS, mkCraft(), undefined, false).translate).toBe(1);
 	});
 
 	// A parent underneath is still a real surface: covered by the parent case above.
+});
+
+describe('cameraMotionScale on a seated focus', () => {
+	// The parent's ground is already at the focus, so the orbit radius measures
+	// the clearance over it and needs no correction — at any viewing angle.
+	it('keeps the full rate for a landed probe off the local vertical', () => {
+		const scale = cameraMotionScale(
+			camOffVertical(100, 90),
+			FOCUS,
+			mkCraft(),
+			marsUnderfoot(),
+			true
+		);
+		expect(scale.translate).toBe(1);
+	});
+
+	it('keeps the full rate for a surface feature off the local vertical', () => {
+		const scale = cameraMotionScale(
+			camOffVertical(100, 90),
+			FOCUS,
+			mkFeature(),
+			marsUnderfoot(),
+			true
+		);
+		// Only the feature's own metres-scale stand-in is subtracted.
+		expect(scale.translate).toBeGreaterThan(0.999);
+	});
+
+	it('holds the rate overhead too, where the old reading happened to agree', () => {
+		const scale = cameraMotionScale(camAt(100), FOCUS, mkCraft(), marsUnderfoot(), true);
+		expect(scale.translate).toBe(1);
+	});
+
+	it('would otherwise read the camera altitude and hit the floor', () => {
+		// 100 km from the probe but 1.5 km over the ground at 90 degrees off:
+		// the regression this flag fixes.
+		const scale = cameraMotionScale(
+			camOffVertical(100, 90),
+			FOCUS,
+			mkCraft(),
+			marsUnderfoot(),
+			false
+		);
+		expect(scale.translate).toBe(0.02);
+	});
 });
