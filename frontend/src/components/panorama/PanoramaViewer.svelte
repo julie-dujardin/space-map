@@ -44,6 +44,7 @@
 	import PanoramaTimeline from './PanoramaTimeline.svelte';
 	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
 	import SettingsButton from '../settings/SettingsButton.svelte';
+	import SitePage from '../nav/SitePage.svelte';
 	import PanoramaLayersButton from './PanoramaLayersButton.svelte';
 	import type { LayerCredit } from '$lib/flatmap/layers';
 
@@ -251,8 +252,6 @@
 			: bodyHref(bodyId, bodyName)
 	);
 
-	const glassButton = `flex size-10 items-center justify-center rounded-full bg-black/40
-		backdrop-blur-md transition-colors hover:bg-black/55 md:size-8`;
 	const inBoxButton = `flex size-9 items-center justify-center rounded-md text-white/70
 		transition-colors hover:bg-white/10 hover:text-white md:size-7`;
 </script>
@@ -261,25 +260,25 @@
 	<title>{pageTitle}</title>
 </svelte:head>
 
-<!-- Share then close, the order the detail drawer's button row uses. -->
-{#snippet shareAndClose(buttonClass: string, iconClass: string)}
-	<button
-		type="button"
-		onclick={() => shareUrl(pageTitle)}
-		class="cursor-pointer {buttonClass}"
-		aria-label={m.share()}
-		title={m.share()}
-	>
-		<Share2Icon class={iconClass} />
-	</button>
-	<a href={closeHref} class={buttonClass} aria-label={m.close()} title={m.close()}>
-		<XIcon class={iconClass} />
-	</a>
-{/snippet}
+{#if current}
+	<!-- Share then close, the order the detail drawer's button row uses. -->
+	{#snippet shareAndClose()}
+		<button
+			type="button"
+			onclick={() => shareUrl(pageTitle)}
+			class="cursor-pointer {inBoxButton}"
+			aria-label={m.share()}
+			title={m.share()}
+		>
+			<Share2Icon class="size-5 md:size-4" />
+		</button>
+		<a href={closeHref} class={inBoxButton} aria-label={m.close()} title={m.close()}>
+			<XIcon class="size-5 md:size-4" />
+		</a>
+	{/snippet}
 
-<Tooltip.Provider delayDuration={300}>
-	<div class="fixed inset-0 bg-[#0b0d12] text-white">
-		{#if current}
+	<Tooltip.Provider delayDuration={300}>
+		<div class="fixed inset-0 bg-[#0b0d12] text-white">
 			<div bind:this={container} class="absolute inset-0 cursor-grab active:cursor-grabbing"></div>
 
 			{#if navigationVisible}
@@ -327,7 +326,7 @@
 						{/if}
 					</div>
 					<div class="-mt-1 -me-1 flex shrink-0 items-center gap-0.5">
-						{@render shareAndClose(inBoxButton, 'size-5 md:size-4')}
+						{@render shareAndClose()}
 					</div>
 				</div>
 				<dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
@@ -387,64 +386,69 @@
 			<div class="absolute bottom-[var(--safe-bottom)] end-[var(--safe-end)]">
 				<PanoramaCreditBar entry={current} {mapCredits} />
 			</div>
-		{:else}
-			<!-- html/body lock overflow for the 3D app, so the list owns its scroll. -->
-			<main class="absolute inset-0 overflow-y-auto">
-				<div class="mx-auto max-w-2xl px-4 py-[calc(var(--safe-top)_+_1rem)]">
-					<a href={bodyHref(bodyId, bodyName)} class="text-xs text-white/60 hover:text-white">
-						{bodyName}
-					</a>
-					<h1 class="mb-4 text-xl font-semibold">{m.panorama_index_title()}</h1>
-					{#if detailError}
-						<p class="text-sm text-white/70">{m.panorama_error()}</p>
-					{:else if !detail}
-						<p class="text-sm text-white/70">{m.loading()}</p>
-					{:else if at}
-						<p class="mb-4 text-sm text-white/70">{m.panorama_not_found()}</p>
-					{/if}
-					{#each byMission as [mission, list] (mission)}
-						<h2 class="mt-4 mb-1 text-sm font-medium text-white/80">
-							{capitalize(mission)}
-							<span class="text-white/50">({formatNumber(list.length)})</span>
-						</h2>
-						<ul class="divide-y divide-white/10 text-sm">
-							{#each list as e (e.id)}
-								<li>
-									<a
-										href={panoramaHref(bodyId, e)}
-										class="flex items-baseline justify-between gap-3 py-1.5 hover:text-white text-white/85"
-									>
-										<span>
-											{#if e.sol !== undefined}{m.panorama_sol({ sol: e.sol })}{/if}
-											{#if e.title}<span class="text-white/60"> · {e.title}</span>{/if}
-										</span>
-										<span class="shrink-0 text-xs text-white/55">{formatIsoDate(e.time)}</span>
-									</a>
-								</li>
-							{/each}
-						</ul>
-					{/each}
-				</div>
-			</main>
-		{/if}
 
-		<!-- Menus. Close and share sit in the info box instead, which the list has
-		     no equivalent of. -->
-		<div
-			class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
-		>
-			{#if !current}
-				{@render shareAndClose(glassButton, 'size-5 md:size-4')}
-			{/if}
-			<SettingsButton scope="panorama" />
-			{#if current}
+			<!-- Menus. Close and share sit in the info box instead. -->
+			<div
+				class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
+			>
+				<SettingsButton scope="panorama" />
 				<PanoramaLayersButton
 					angleGrid={angleGridVisible}
 					navigation={navigationVisible}
 					onAngleGridChange={(visible) => (angleGridVisible = visible)}
 					onNavigationChange={(visible) => (navigationVisible = visible)}
 				/>
-			{/if}
+			</div>
 		</div>
-	</div>
-</Tooltip.Provider>
+	</Tooltip.Provider>
+{:else}
+	<!-- The list is a document page, not a view of the body: it carries the same
+	     frame as the gallery it came from, and the map is one tab away. -->
+	<SitePage current="panoramas" title={m.panorama_index_title()}>
+		<!-- The body sits where the gallery puts it: a section heading under the
+		     title, not a breadcrumb over it. -->
+		<h2 class="mb-3 text-lg font-medium">
+			<a class="hover:underline" href={bodyHref(bodyId, bodyName)}>{bodyName}</a>
+		</h2>
+
+		{#if detailError}
+			<p class="text-sm text-muted-foreground">{m.panorama_error()}</p>
+		{:else if !detail}
+			<p class="text-sm text-muted-foreground">{m.loading()}</p>
+		{:else if at}
+			<p class="mb-4 text-sm text-muted-foreground">{m.panorama_not_found()}</p>
+		{/if}
+
+		{#each byMission as [mission, list] (mission)}
+			<section class="mb-8">
+				<div class="mb-1 flex items-baseline justify-between gap-3">
+					<h3 class="text-sm font-medium">{capitalize(mission)}</h3>
+					<span class="text-xs text-muted-foreground">
+						{m.panorama_gallery_count({ count: list.length })}
+					</span>
+				</div>
+				<ul class="divide-y divide-border text-sm">
+					{#each list as e (e.id)}
+						<li>
+							<a
+								href={panoramaHref(bodyId, e)}
+								class="flex items-baseline justify-between gap-3 py-1.5 text-foreground/85 hover:text-foreground"
+							>
+								<span>
+									{#if e.sol !== undefined}{m.panorama_sol({ sol: e.sol })}{/if}
+									{#if e.title}
+										<span class="text-muted-foreground">
+											{#if e.sol !== undefined}·
+											{/if}{e.title}
+										</span>
+									{/if}
+								</span>
+								<span class="shrink-0 text-xs text-muted-foreground">{formatIsoDate(e.time)}</span>
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/each}
+	</SitePage>
+{/if}
