@@ -538,6 +538,21 @@
 	"panorama_error": "Не удалось загрузить панораму.",
 	"panorama_not_found": "В этом месте панорама не зарегистрирована.",
 	"panorama_index_title": "Панорамы поверхности",
+	"panorama_gallery_all": "Все панорамы",
+	"panorama_gallery_empty": "Панорамы не зарегистрированы.",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} панорама",
+				"countPlural=few": "{count} панорамы",
+				"countPlural=many": "{count} панорам",
+				"countPlural=other": "{count} панорамы"
+			}
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "Дата",
 	"panorama_instrument": "Инструмент",
 	"panorama_elevation": "Высота",

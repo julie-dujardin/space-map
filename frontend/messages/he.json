@@ -586,6 +586,16 @@
 	"panorama_error": "לא ניתן היה לטעון את הפנורמה.",
 	"panorama_not_found": "לא רשומה פנורמה במיקום זה.",
 	"panorama_index_title": "פנורמות של פני השטח",
+	"panorama_gallery_all": "כל הפנורמות",
+	"panorama_gallery_empty": "אין פנורמות רשומות.",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "פנורמה {count}", "countPlural=other": "{count} פנורמות" }
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "תאריך",
 	"panorama_instrument": "מכשיר",
 	"panorama_elevation": "גובה",

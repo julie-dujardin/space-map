@@ -622,6 +622,16 @@
 	"panorama_error": "パノラマを読み込めませんでした。",
 	"panorama_not_found": "この地点にはパノラマが記録されていません。",
 	"panorama_index_title": "地表パノラマ",
+	"panorama_gallery_all": "すべてのパノラマ",
+	"panorama_gallery_empty": "記録されたパノラマはありません。",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "{count} 件", "countPlural=other": "{count} 件" }
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "日付",
 	"panorama_instrument": "観測機器",
 	"panorama_elevation": "標高",

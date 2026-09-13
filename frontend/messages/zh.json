@@ -520,6 +520,16 @@
 	"panorama_error": "无法加载全景。",
 	"panorama_not_found": "此位置没有记录全景。",
 	"panorama_index_title": "地表全景",
+	"panorama_gallery_all": "全部全景图",
+	"panorama_gallery_empty": "没有已记录的全景图。",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "{count} 张全景图", "countPlural=other": "{count} 张全景图" }
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "日期",
 	"panorama_instrument": "仪器",
 	"panorama_elevation": "海拔",

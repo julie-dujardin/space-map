@@ -614,6 +614,16 @@
 	"panorama_error": "Le panorama n'a pas pu être chargé.",
 	"panorama_not_found": "Aucun panorama n'est enregistré à cet endroit.",
 	"panorama_index_title": "Panoramas de surface",
+	"panorama_gallery_all": "Tous les panoramas",
+	"panorama_gallery_empty": "Aucun panorama enregistré.",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "{count} panorama", "countPlural=other": "{count} panoramas" }
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "Date",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Altitude",

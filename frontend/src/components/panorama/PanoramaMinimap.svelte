@@ -4,7 +4,7 @@
   Small by default; the expand button grows it and opens the timeline.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
 	import Minimize2Icon from '@lucide/svelte/icons/minimize-2';
@@ -20,32 +20,38 @@
 		bodyId: string;
 		/** The mission's panoramas in traverse order. */
 		entries: readonly PanoramaEntry[];
-		current: PanoramaEntry;
+		/** Where the reader stands. Without one the map is just the traverse:
+		 *  no wedge, no marker. */
+		current?: PanoramaEntry | null;
 		/** Mean radius of the body, kilometres; sizes the scale bar. */
 		radiusKm: number;
-		/** The clock the path is split at. */
-		jd: number;
-		headingDeg: number;
-		fovDeg: number;
-		expanded: boolean;
+		/** The clock the path is split at. Everything is driven by default. */
+		jd?: number;
+		headingDeg?: number;
+		fovDeg?: number;
+		expanded?: boolean;
 		/** Height to grow to when expanded, pixels; the box animates to it. */
-		height: number | null;
-		onToggle: () => void;
+		height?: number | null;
+		/** Fill whatever box the caller gives, rather than sizing itself. The
+		 *  scale bar comes along, the expand button does not. */
+		fill?: boolean;
+		onToggle?: () => void;
 		/** Who the map's layers are credited to, whenever that changes. */
-		onCredits: (credits: LayerCredit[]) => void;
-		onPick: (entry: PanoramaEntry) => void;
+		onCredits?: (credits: LayerCredit[]) => void;
+		onPick?: (entry: PanoramaEntry) => void;
 	}
 
 	let {
 		bodyId,
 		entries,
-		current,
+		current = null,
 		radiusKm,
-		jd,
-		headingDeg,
-		fovDeg,
-		expanded,
-		height,
+		jd = Infinity,
+		headingDeg = 0,
+		fovDeg = 0,
+		expanded = false,
+		height = null,
+		fill = false,
 		onToggle,
 		onCredits,
 		onPick
@@ -62,8 +68,8 @@
 	let drawn = $state.raw<{
 		past: FlatShape;
 		future: FlatShape;
-		wedge: FlatShape;
-		here: FlatMarker;
+		wedge?: FlatShape;
+		here?: FlatMarker;
 	} | null>(null);
 	let scale = $state<{ px: number; label: string } | null>(null);
 
@@ -76,7 +82,7 @@
 		});
 		flat.mount(container);
 		flat.on('click', (at) => {
-			if (!at) return;
+			if (!at || !(onPick || onToggle)) return;
 			const here = flat.project(at.lon, at.lat);
 			if (!here) return;
 			let best: PanoramaEntry | null = null;
@@ -90,14 +96,14 @@
 					bestPx = d;
 				}
 			}
-			if (best) onPick(best);
-			else onToggle();
+			if (best) onPick?.(best);
+			else onToggle?.();
 		});
 		flat.once('ready', () => {
 			map = flat;
-			onCredits(flat.credits);
+			onCredits?.(flat.credits);
 		});
-		flat.on('layerschange', () => onCredits(flat.credits));
+		flat.on('layerschange', () => onCredits?.(flat.credits));
 		flat.on('error', (error) => console.warn('Minimap:', error));
 		void flat.load();
 		// The box changes shape as the timeline opens and closes; the frame
@@ -141,18 +147,23 @@
 
 	$effect(() => {
 		if (!map) return;
+		const here = untrack(() => current);
 		const d = {
 			future: map.addPolyline({ points: [], color: '#9ca3af', widthPx: 2, opacity: 0.9 }),
 			past: map.addPolyline({ points: [], color: '#ffffff', widthPx: 2 }),
-			wedge: map.addPolygon({
-				points: [],
-				color: '#facc15',
-				widthPx: 1,
-				opacity: 0.9,
-				fill: '#facc15',
-				fillOpacity: 0.3
-			}),
-			here: map.addMarker({ at: lonLatOf(current), className: 'panorama-minimap-here' })
+			...(here
+				? {
+						wedge: map.addPolygon({
+							points: [],
+							color: '#facc15',
+							widthPx: 1,
+							opacity: 0.9,
+							fill: '#facc15',
+							fillOpacity: 0.3
+						}),
+						here: map.addMarker({ at: lonLatOf(here), className: 'panorama-minimap-here' })
+					}
+				: {})
 		};
 		drawn = d;
 		return () => {
@@ -173,28 +184,33 @@
 	const reach = $derived(traverseFrame(entries, MIN_SPAN_DEG).latSpan * 0.2);
 
 	$effect(() => {
-		drawn?.wedge.setPoints(viewWedge(current, headingDeg, fovDeg, reach));
+		if (current) drawn?.wedge?.setPoints(viewWedge(current, headingDeg, fovDeg, reach));
 	});
 
 	$effect(() => {
-		drawn?.here.setPosition(lonLatOf(current));
+		if (current) drawn?.here?.setPosition(lonLatOf(current));
 	});
 </script>
 
 <div
-	class="relative overflow-hidden rounded-md bg-black/40 backdrop-blur-sm transition-[width,height] duration-250 ease-out motion-reduce:transition-none"
-	style="width: {expanded ? '20rem' : '11rem'}; height: {expanded && height
-		? `${height}px`
-		: '7rem'}"
+	class="relative overflow-hidden bg-black/40 backdrop-blur-sm {fill
+		? 'size-full'
+		: 'rounded-md transition-[width,height] duration-250 ease-out motion-reduce:transition-none'}"
+	style={fill
+		? undefined
+		: `width: ${expanded ? '20rem' : '11rem'}; height: ${expanded && height ? `${height}px` : '7rem'}`}
 	role="img"
 	aria-label={m.panorama_map_label()}
 >
-	<div bind:this={container} class="absolute inset-0 cursor-pointer"></div>
+	<div
+		bind:this={container}
+		class="absolute inset-0 {onPick || onToggle ? 'cursor-pointer' : 'pointer-events-none'}"
+	></div>
 	<span
 		class="pointer-events-none absolute top-1 start-1.5 text-[10px] font-semibold text-white/70"
 		aria-hidden="true">N ↑</span
 	>
-	{#if expanded && scale}
+	{#if (expanded || fill) && scale}
 		<div
 			class="pointer-events-none absolute bottom-1.5 start-1.5 text-[10px] leading-tight text-white/80"
 			aria-hidden="true"
@@ -204,20 +220,22 @@
 			{scale.label}
 		</div>
 	{/if}
-	<button
-		type="button"
-		onclick={onToggle}
-		class="absolute top-1 end-1 hidden size-6 cursor-pointer items-center justify-center rounded bg-black/50 text-white hover:bg-black/70 md:flex"
-		aria-label={expanded ? m.panorama_map_collapse() : m.panorama_map_expand()}
-		title={expanded ? m.panorama_map_collapse() : m.panorama_map_expand()}
-		aria-expanded={expanded}
-	>
-		{#if expanded}
-			<Minimize2Icon class="size-3.5" />
-		{:else}
-			<Maximize2Icon class="size-3.5" />
-		{/if}
-	</button>
+	{#if onToggle}
+		<button
+			type="button"
+			onclick={onToggle}
+			class="absolute top-1 end-1 hidden size-6 cursor-pointer items-center justify-center rounded bg-black/50 text-white hover:bg-black/70 md:flex"
+			aria-label={expanded ? m.panorama_map_collapse() : m.panorama_map_expand()}
+			title={expanded ? m.panorama_map_collapse() : m.panorama_map_expand()}
+			aria-expanded={expanded}
+		>
+			{#if expanded}
+				<Minimize2Icon class="size-3.5" />
+			{:else}
+				<Maximize2Icon class="size-3.5" />
+			{/if}
+		</button>
+	{/if}
 </div>
 
 <style>

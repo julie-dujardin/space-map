@@ -236,3 +236,61 @@ class TestAdditiveRun:
         panoramas._patch_global_bundles(out_dir)
         bundle = orjson.loads(gzip.decompress(bundle_path.read_bytes()))
         assert "panoramas" not in bundle[MARS]
+
+
+class TestIndex:
+    """`v1/panoramas.json`, which the gallery reads to know what exists."""
+
+    def test_missions_carry_their_span(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        cache = tmp_path / "derived"
+        _write_cache(
+            cache,
+            "mars",
+            [
+                _product(id="early", start_time="2021-02-20T21:48:15Z"),
+                _product(
+                    id="late",
+                    start_time="2022-12-26T20:56:23Z",
+                    position={"latitude": 18.5, "longitude": 77.5},
+                ),
+                _product(
+                    id="other",
+                    mission="curiosity",
+                    start_time="2012-08-16T09:20:32Z",
+                    position={"latitude": -4.5, "longitude": 137.4},
+                ),
+            ],
+        )
+        monkeypatch.setattr(
+            panoramas, "_cached", lambda: panoramas.load_panoramas(cache)
+        )
+        out_dir = tmp_path / "v1"
+        panoramas.write_panorama_index(out_dir)
+
+        index = orjson.loads((out_dir / "panoramas.json").read_bytes())
+        [body] = index["bodies"]
+        assert body["id"] == MARS
+        assert body["missions"] == [
+            {
+                "mission": "curiosity",
+                "count": 1,
+                "first_time": "2012-08-16T09:20:32Z",
+                "last_time": "2012-08-16T09:20:32Z",
+            },
+            {
+                "mission": "perseverance",
+                "count": 2,
+                "first_time": "2021-02-20T21:48:15Z",
+                "last_time": "2022-12-26T20:56:23Z",
+            },
+        ]
+
+    def test_no_coverage_writes_an_empty_index(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(panoramas, "_cached", dict)
+        out_dir = tmp_path / "v1"
+        panoramas.write_panorama_index(out_dir)
+        assert orjson.loads((out_dir / "panoramas.json").read_bytes()) == {"bodies": []}

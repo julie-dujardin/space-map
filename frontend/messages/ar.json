@@ -549,6 +549,23 @@
 	"panorama_error": "تعذّر تحميل البانوراما.",
 	"panorama_not_found": "لا توجد بانوراما مسجّلة في هذا الموقع.",
 	"panorama_index_title": "بانوراما السطح",
+	"panorama_gallery_all": "كل البانوراما",
+	"panorama_gallery_empty": "لا توجد بانوراما مسجَّلة.",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا بانوراما",
+				"countPlural=one": "بانوراما واحدة",
+				"countPlural=two": "بانوراماتان",
+				"countPlural=few": "{count} بانورامات",
+				"countPlural=many": "{count} بانوراما",
+				"countPlural=other": "{count} بانوراما"
+			}
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "التاريخ",
 	"panorama_instrument": "الأداة",
 	"panorama_elevation": "الارتفاع",

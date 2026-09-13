@@ -586,6 +586,16 @@
 	"panorama_error": "Nie udało się wczytać panoramy.",
 	"panorama_not_found": "W tym miejscu nie zarejestrowano żadnej panoramy.",
 	"panorama_index_title": "Panoramy powierzchni",
+	"panorama_gallery_all": "Wszystkie panoramy",
+	"panorama_gallery_empty": "Brak zarejestrowanych panoram.",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "{count} panorama", "countPlural=other": "{count} panoram" }
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "Data",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Wysokość",

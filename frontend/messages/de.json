@@ -586,6 +586,16 @@
 	"panorama_error": "Das Panorama konnte nicht geladen werden.",
 	"panorama_not_found": "An diesem Ort ist kein Panorama verzeichnet.",
 	"panorama_index_title": "Oberflächenpanoramen",
+	"panorama_gallery_all": "Alle Panoramen",
+	"panorama_gallery_empty": "Keine Panoramen verzeichnet.",
+	"panorama_gallery_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "{count} Panorama", "countPlural=other": "{count} Panoramen" }
+		}
+	],
+	"panorama_gallery_years": "{start}–{end}",
 	"panorama_date": "Datum",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Höhe",
