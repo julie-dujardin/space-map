@@ -9,10 +9,12 @@
 	interface Props {
 		title: string;
 		Icon: Component<{ class?: string }>;
+		/** Overrides the map's glass trigger for chrome on a light surface. */
+		triggerClass?: string;
 		children: Snippet;
 	}
 
-	let { title, Icon, children }: Props = $props();
+	let { title, Icon, triggerClass, children }: Props = $props();
 
 	let open = $state(false);
 	let isMobile = $state(false);
@@ -33,10 +35,12 @@
 		return mobile && shown;
 	});
 
-	const buttonClass = `pointer-events-auto flex items-center justify-center
+	const mapGlass = `pointer-events-auto flex items-center justify-center
 		w-10 h-10 md:w-8 md:h-8 rounded-full
 		bg-black/40 backdrop-blur-md hover:bg-black/55
 		text-white transition-colors cursor-pointer`;
+
+	const buttonClass = $derived(triggerClass ?? mapGlass);
 </script>
 
 {#if isMobile}

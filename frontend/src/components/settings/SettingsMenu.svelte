@@ -17,6 +17,17 @@
 	import { recalibrateAtmosphere } from '$lib/scene/perf/atmosphere-calibration';
 	import { switchLanguage } from '$lib/state/language';
 
+	interface Props {
+		/** Time, graphics and the debug overlay only change what the scene draws:
+		 *  the date formatters are reached from the map and its panels alone. The
+		 *  document pages carry the display settings and nothing else. */
+		scope?: 'map' | 'page';
+	}
+
+	let { scope = 'map' }: Props = $props();
+
+	const onMap = $derived(scope === 'map');
+
 	const settings = getSettings();
 
 	/** Every segmented row selects one of these. */
@@ -251,104 +262,106 @@
 			</div>
 		</section>
 
-		<section class="flex flex-col gap-4">
-			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-				{m.settings_section_time()}
-			</h3>
+		{#if onMap}
+			<section class="flex flex-col gap-4">
+				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+					{m.settings_section_time()}
+				</h3>
 
-			{@render segmented(m.settings_dateformat(), dateFormatOptions, settings.dateFormat, (v) =>
-				settings.setDateFormat(v as DateFormatChoice)
-			)}
-
-			<div class="flex flex-col gap-2">
-				{@render segmented(
-					m.settings_clock(),
-					clockOptions,
-					effectiveClock,
-					(v) => settings.setClock(v as Clock),
-					clockLocked
+				{@render segmented(m.settings_dateformat(), dateFormatOptions, settings.dateFormat, (v) =>
+					settings.setDateFormat(v as DateFormatChoice)
 				)}
-				{#if clockLocked}
-					{@render autoSource(m.settings_clock_24h(), m.settings_source_iso())}
-				{:else if settings.clock === 'auto'}
-					{@render autoSource(resolvedClockLabel, m.settings_source_locale())}
-				{/if}
-			</div>
-		</section>
 
-		<section class="flex flex-col gap-4">
-			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-				{m.settings_section_graphics()}
-			</h3>
+				<div class="flex flex-col gap-2">
+					{@render segmented(
+						m.settings_clock(),
+						clockOptions,
+						effectiveClock,
+						(v) => settings.setClock(v as Clock),
+						clockLocked
+					)}
+					{#if clockLocked}
+						{@render autoSource(m.settings_clock_24h(), m.settings_source_iso())}
+					{:else if settings.clock === 'auto'}
+						{@render autoSource(resolvedClockLabel, m.settings_source_locale())}
+					{/if}
+				</div>
+			</section>
 
-			<div class="flex flex-col gap-2">
-				<div class="flex items-center justify-between gap-3">
-					<div class="min-w-0">
-						<div id="settings-atmo-quality-label" class="text-sm font-medium">
-							{m.settings_atmosphere_quality()}
+			<section class="flex flex-col gap-4">
+				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+					{m.settings_section_graphics()}
+				</h3>
+
+				<div class="flex flex-col gap-2">
+					<div class="flex items-center justify-between gap-3">
+						<div class="min-w-0">
+							<div id="settings-atmo-quality-label" class="text-sm font-medium">
+								{m.settings_atmosphere_quality()}
+							</div>
+						</div>
+						<div class="relative shrink-0">
+							<select
+								class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
+										cursor-pointer hover:bg-accent transition-colors
+										focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								aria-labelledby="settings-atmo-quality-label"
+								value={settings.atmosphereQuality}
+								onchange={(e) =>
+									settings.setAtmosphereQuality(
+										(e.currentTarget as HTMLSelectElement).value as AtmosphereQualityTier
+									)}
+							>
+								{#each atmoQualityOptions as opt (opt.value)}
+									<option value={opt.value}>{opt.label()}</option>
+								{/each}
+							</select>
+							<ChevronDownIcon
+								class="absolute end-1.5 top-1/2 -translate-y-1/2 size-3.5 opacity-50 pointer-events-none"
+							/>
 						</div>
 					</div>
-					<div class="relative shrink-0">
-						<select
-							class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
-								cursor-pointer hover:bg-accent transition-colors
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							aria-labelledby="settings-atmo-quality-label"
-							value={settings.atmosphereQuality}
-							onchange={(e) =>
-								settings.setAtmosphereQuality(
-									(e.currentTarget as HTMLSelectElement).value as AtmosphereQualityTier
-								)}
-						>
-							{#each atmoQualityOptions as opt (opt.value)}
-								<option value={opt.value}>{opt.label()}</option>
-							{/each}
-						</select>
-						<ChevronDownIcon
-							class="absolute end-1.5 top-1/2 -translate-y-1/2 size-3.5 opacity-50 pointer-events-none"
-						/>
+					{#if settings.atmosphereQuality === 'auto'}
+						{@render autoSource(
+							resolvedAtmoQualityLabel,
+							settings.atmosphereAutoTier
+								? m.settings_source_perf()
+								: settings.atmosphereCalibration
+									? m.settings_source_benchmark()
+									: m.settings_source_device(),
+							recalibrateButton
+						)}
+					{/if}
+				</div>
+			</section>
+
+			<section class="flex flex-col gap-4">
+				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+					{m.settings_section_developer()}
+				</h3>
+
+				<label class="flex items-center justify-between gap-3 cursor-pointer">
+					<div class="min-w-0">
+						<div class="text-sm font-medium">{m.settings_debug_info()}</div>
+						<div class="text-xs text-muted-foreground mt-0.5">{m.settings_debug_info_desc()}</div>
 					</div>
-				</div>
-				{#if settings.atmosphereQuality === 'auto'}
-					{@render autoSource(
-						resolvedAtmoQualityLabel,
-						settings.atmosphereAutoTier
-							? m.settings_source_perf()
-							: settings.atmosphereCalibration
-								? m.settings_source_benchmark()
-								: m.settings_source_device(),
-						recalibrateButton
-					)}
-				{/if}
-			</div>
-		</section>
-
-		<section class="flex flex-col gap-4">
-			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-				{m.settings_section_developer()}
-			</h3>
-
-			<label class="flex items-center justify-between gap-3 cursor-pointer">
-				<div class="min-w-0">
-					<div class="text-sm font-medium">{m.settings_debug_info()}</div>
-					<div class="text-xs text-muted-foreground mt-0.5">{m.settings_debug_info_desc()}</div>
-				</div>
-				<button
-					type="button"
-					role="switch"
-					aria-checked={settings.showDebugInfo}
-					aria-label={m.settings_debug_info()}
-					class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
-						focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-						{settings.showDebugInfo ? 'bg-primary' : 'bg-muted'}"
-					onclick={() => settings.setShowDebugInfo(!settings.showDebugInfo)}
-				>
-					<span
-						class="inline-block size-4 rounded-full bg-background shadow transition-transform
-							{settings.showDebugInfo ? 'translate-x-4' : 'translate-x-0.5'}"
-					></span>
-				</button>
-			</label>
-		</section>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={settings.showDebugInfo}
+						aria-label={m.settings_debug_info()}
+						class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+								{settings.showDebugInfo ? 'bg-primary' : 'bg-muted'}"
+						onclick={() => settings.setShowDebugInfo(!settings.showDebugInfo)}
+					>
+						<span
+							class="inline-block size-4 rounded-full bg-background shadow transition-transform
+									{settings.showDebugInfo ? 'translate-x-4' : 'translate-x-0.5'}"
+						></span>
+					</button>
+				</label>
+			</section>
+		{/if}
 	</div>
 </div>
