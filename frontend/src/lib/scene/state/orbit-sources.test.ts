@@ -23,8 +23,13 @@ describe('the orbit source table', () => {
 		}
 	});
 
-	it('holds back only the Earth-satellite providers', () => {
-		const held = ORBIT_SOURCE_ORDER.filter((s) => ORBIT_SOURCES[s].earthSatOnly);
-		expect(held).toEqual([OrbitalSource.CELESTRAK, OrbitalSource.SPACETRACK]);
+	it('scopes the satellite providers to the system they feed', () => {
+		const scoped = ORBIT_SOURCE_ORDER.filter((s) => ORBIT_SOURCES[s].scoped);
+		expect(scoped).toEqual([
+			OrbitalSource.SBDB_MOON,
+			OrbitalSource.ASTERSAT,
+			OrbitalSource.CELESTRAK,
+			OrbitalSource.SPACETRACK
+		]);
 	});
 });

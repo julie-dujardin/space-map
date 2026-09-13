@@ -21,14 +21,24 @@ export const DEFAULT_ORBIT_LABELS: OrbitSourceLabels = Object.fromEntries(
 	ORBIT_SOURCE_ORDER.map((s) => [s, ORBIT_SOURCES[s].label])
 ) as OrbitSourceLabels;
 
+/** True while the camera sits in a system this scoped source fed. A source
+ *  recorded without parents came off the chunk-level path, where crediting it
+ *  everywhere beats dropping the citation. */
+function feedsFocusedSystem(ctx: ContextManager, source: NamedOrbitSource): boolean {
+	const parents = ctx.credits.orbitSourceParents.get(source);
+	if (!parents) return true;
+	const sysId = ctx.visibility.focusedSystemId;
+	for (const parent of parents) if (ctx.bodies.isInSystem(parent, sysId)) return true;
+	return false;
+}
+
 /** Which sources belong in the credits right now: everything that contributed,
- *  less the Earth-satellite providers when the camera is elsewhere. */
+ *  less the system-scoped providers while the camera is elsewhere. */
 export function creditedOrbitSources(
 	ctx: ContextManager
 ): Array<{ source: NamedOrbitSource; info: OrbitSourceInfo }> {
-	const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 	return ORBIT_SOURCE_ORDER.filter((s) => ctx.credits.orbitSources.has(s))
-		.filter((s) => inEarthSystem || !ORBIT_SOURCES[s].earthSatOnly)
+		.filter((s) => !ORBIT_SOURCES[s].scoped || feedsFocusedSystem(ctx, s))
 		.map((source) => ({ source, info: ORBIT_SOURCES[source] }));
 }
 

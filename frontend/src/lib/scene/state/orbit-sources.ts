@@ -17,8 +17,9 @@ export interface OrbitSourceInfo {
 	archive: string;
 	/** Organisation as it is cited. NASA-produced sources share one chip. */
 	label: string;
-	/** Only Earth satellites come from it, so it stays out of the bar elsewhere. */
-	earthSatOnly?: boolean;
+	/** Its bodies hang off one system at a time — Earth's satellites, a binary
+	 *  asteroid's moons — so it is credited only while the camera is there. */
+	scoped?: boolean;
 }
 
 /** `Record` rather than a lookup: a new source fails to compile until it says
@@ -27,15 +28,15 @@ export const ORBIT_SOURCES: Record<NamedOrbitSource, OrbitSourceInfo> = {
 	[OrbitalSource.HORIZONS]: { archive: 'horizons', label: 'NASA' },
 	[OrbitalSource.SBDB]: { archive: 'sbdb', label: 'NASA' },
 	[OrbitalSource.SPICE]: { archive: 'naif', label: 'NASA' },
-	[OrbitalSource.SBDB_MOON]: { archive: 'sbdb', label: 'NASA' },
-	[OrbitalSource.ASTERSAT]: { archive: 'nsdb', label: 'Natural Satellites Data Base' },
+	[OrbitalSource.SBDB_MOON]: { archive: 'sbdb', label: 'NASA', scoped: true },
+	[OrbitalSource.ASTERSAT]: {
+		archive: 'nsdb',
+		label: 'Natural Satellites Data Base',
+		scoped: true
+	},
 	[OrbitalSource.SPICE_PROBE]: { archive: 'naif', label: 'NASA' },
-	[OrbitalSource.CELESTRAK]: { archive: 'celestrak', label: 'CelesTrak', earthSatOnly: true },
-	[OrbitalSource.SPACETRACK]: {
-		archive: 'spacetrack',
-		label: 'Space-Track.org',
-		earthSatOnly: true
-	}
+	[OrbitalSource.CELESTRAK]: { archive: 'celestrak', label: 'CelesTrak', scoped: true },
+	[OrbitalSource.SPACETRACK]: { archive: 'spacetrack', label: 'Space-Track.org', scoped: true }
 };
 
 /** Display order wherever sources are listed together. Explicit because the

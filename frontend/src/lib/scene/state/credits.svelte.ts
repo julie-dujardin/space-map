@@ -1,4 +1,5 @@
 import { OrbitalSource } from '$lib/fetch/position/format';
+import { orbitSourceInfo, type NamedOrbitSource } from './orbit-sources';
 import type { OrientationReference, OrientationSource } from '$lib/credits/orientation-sources';
 import type { CreditFields, ImageryLayer } from '$lib/credits/imagery-layers';
 import type { PositionedBody } from '$lib/types/objects';
@@ -57,6 +58,9 @@ export class CreditsStore {
 	 *  `$derived` bar consumers recompute. `UNKNOWN` is never added — pre-v3
 	 *  chunks stay silent rather than showing a misleading label. */
 	orbitSources = $state(new Set<OrbitalSource>());
+	/** Parent each scoped source's bodies hang off, so the bar can ask whether
+	 *  the focused system is one the source fed. Reassigned like `orbitSources`. */
+	orbitSourceParents = $state(new Map<NamedOrbitSource, Set<string>>());
 
 	/** Rings key on the source too: one bundle cites several works (Saturn).
 	 *  Every other layer keeps one credit per body, so whichever path attaches
@@ -97,21 +101,34 @@ export class CreditsStore {
 		this.modelVersion++;
 	}
 
-	/** Fold each body's `orbitalSource` into the reactive set; no-op when the
-	 *  batch is already known (keeps chunk flushes cheap). */
+	/** Fold each body's `orbitalSource` into the reactive set, plus the parent it
+	 *  orbits for the sources scoped to a system. */
 	recordOrbitSources(bodies: PositionedBody[]): void {
 		let added = false;
+		let scoped = false;
 		for (const b of bodies) {
 			const src = b.data.orbitalSource;
-			if (src === OrbitalSource.UNKNOWN || this.orbitSources.has(src)) continue;
-			this.orbitSources.add(src);
-			added = true;
+			if (src === OrbitalSource.UNKNOWN) continue;
+			if (!this.orbitSources.has(src)) {
+				this.orbitSources.add(src);
+				added = true;
+			}
+			if (!orbitSourceInfo(src)?.scoped) continue;
+			let parents = this.orbitSourceParents.get(src as NamedOrbitSource);
+			if (!parents) {
+				parents = new Set();
+				this.orbitSourceParents.set(src as NamedOrbitSource, parents);
+			}
+			if (parents.has(b.data.parentId)) continue;
+			parents.add(b.data.parentId);
+			scoped = true;
 		}
 		if (added) this.orbitSources = new Set(this.orbitSources);
+		if (scoped) this.orbitSourceParents = new Map(this.orbitSourceParents);
 	}
 
 	/** Record one chunk-level orbit source — minor chunks carry a single
-	 *  provider byte for the whole file. */
+	 *  provider byte for the whole file, and no parent to scope it by. */
 	recordOrbitSource(src: OrbitalSource): void {
 		if (src === OrbitalSource.UNKNOWN || this.orbitSources.has(src)) return;
 		this.orbitSources.add(src);

@@ -516,16 +516,6 @@ export class VisibilityController {
 		return body.data.id === sysId || this.bodies.isInSystem(body.data.parentId, sysId);
 	}
 
-	/**
-	 * True when focused somewhere in the Earth-Moon system (barycenter, Earth,
-	 * Moon, an Earth satellite, or a lunar orbiter — setFocused resolves all of
-	 * these to naif-3). Used to gate CelesTrak attribution, which is only
-	 * relevant when Earth satellites are actually on screen.
-	 */
-	isFocusedOnEarthSystem(): boolean {
-		return this.focusedSystemId === 'naif-3';
-	}
-
 	private isInFocusedSystem(parentId: string): boolean {
 		return this.bodies.isInSystem(parentId, this.focusedSystemIdPlain);
 	}
