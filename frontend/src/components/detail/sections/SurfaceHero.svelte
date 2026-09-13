@@ -20,7 +20,7 @@
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { Quadrangle } from '$lib/fetch/nomenclature/quadrangles';
-	import { boxRing, densify, pathFor } from '$lib/flatmap/geometry';
+	import { boxOutline, boxRing, densify, pathFor, splitRing } from '$lib/flatmap/geometry';
 	import { createProjection, projectionAspect, type ProjectionId } from '$lib/flatmap/projection';
 	import { drawStill } from '$lib/flatmap/raster';
 	import { Viewport } from '$lib/flatmap/view';
@@ -70,9 +70,10 @@
 	);
 
 	interface Cell extends Quadrangle {
-		/** The cell's outline in overlay coordinates, already broken where it
-		 *  crosses the seam or leaves the map. */
+		/** Closed footprint used for selection shading and pointer input. */
 		d: string;
+		/** Border path, which omits projection cuts through polar cells. */
+		outline: string;
 		/** Where the cell sits, for framing it when it is picked. */
 		box: { x: number; y: number; w: number; h: number } | null;
 	}
@@ -80,26 +81,31 @@
 	let cells = $derived(
 		quads.map((q): Cell => {
 			const ring = boxRing(q.lat_min, q.lat_max, q.lon_min, q.lon_span);
-			// The framing box comes from the projected outline, not the degrees:
-			// a cell is a different shape in every projection, and on a globe part
-			// of it may not be on the map at all.
+			const framingRings = projected.cyclic ? splitRing(ring, projected.centerLon) : [ring];
 			let minX = Infinity;
 			let minY = Infinity;
 			let maxX = -Infinity;
 			let maxY = -Infinity;
-			for (const point of densify(ring, { closed: true })) {
-				const at = viewport.project(point.lon, point.lat);
-				if (!at) continue;
-				minX = Math.min(minX, at[0]);
-				maxX = Math.max(maxX, at[0]);
-				minY = Math.min(minY, at[1]);
-				maxY = Math.max(maxY, at[1]);
+			for (const framingRing of framingRings) {
+				for (const point of densify(framingRing, { closed: true })) {
+					const at = viewport.project(point.lon, point.lat);
+					if (!at) continue;
+					minX = Math.min(minX, at[0]);
+					maxX = Math.max(maxX, at[0]);
+					minY = Math.min(minY, at[1]);
+					maxY = Math.max(maxY, at[1]);
+				}
 			}
 			const box =
 				minX === Infinity
 					? null
 					: { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
-			return { ...q, d: pathFor(ring, viewport, { closed: true }), box };
+			return {
+				...q,
+				d: pathFor(ring, viewport, { closed: true }),
+				outline: boxOutline(q.lat_min, q.lat_max, q.lon_min, q.lon_span, viewport),
+				box
+			};
 		})
 	);
 
@@ -268,17 +274,20 @@
 						onmouseenter={() => (hovered = cell.code)}
 						onmouseleave={() => (hovered = null)}
 					>
-						<!-- `non-scaling-stroke` cancels the viewBox scale but not the CSS
-						     transform above it, so the zoom is divided back out to keep the
-						     borders a constant width. -->
 						<path
 							d={cell.d}
-							vector-effect="non-scaling-stroke"
 							class="transition-colors {on
-								? 'fill-transparent stroke-primary'
+								? 'fill-transparent'
 								: selected
-									? 'fill-black/45 stroke-white/20 hover:fill-black/25'
-									: 'fill-transparent stroke-white/25 hover:fill-white/15'}"
+									? 'fill-black/45 hover:fill-black/25'
+									: 'fill-transparent hover:fill-white/15'}"
+						/>
+						<!-- The CSS zoom is divided out to keep borders a constant width. -->
+						<path
+							d={cell.outline}
+							vector-effect="non-scaling-stroke"
+							pointer-events="none"
+							class={on ? 'fill-none stroke-primary' : 'fill-none stroke-white/25'}
 							stroke-width={(on ? 2.5 : 1) / view.scale}
 						/>
 					</g>

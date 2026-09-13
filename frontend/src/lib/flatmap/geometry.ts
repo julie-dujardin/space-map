@@ -262,7 +262,9 @@ export function splitRing(ring: readonly LonLat[], centerLon: number): LonLat[][
 		}
 		if (i < n - 1) piece.push({ lon: inset(lon), lat: to.lat });
 	}
-	if (pieces.length === 0) return [ring as LonLat[]];
+	if (pieces.length === 0) {
+		return [piece.map((at) => ({ lon: at.lon + centerLon, lat: at.lat }))];
+	}
 	// The piece left over runs into the one the walk started with: they are the
 	// two ends of a ring that was cut somewhere in the middle.
 	pieces[0] = piece.concat(pieces[0]);
@@ -452,6 +454,29 @@ export function boxRing(latMin: number, latMax: number, lonMin: number, lonSpan:
 	edge(latMin, lonMin, lonMax);
 	edge(latMax, lonMax, lonMin);
 	return ring;
+}
+
+/** The visible border of a box, without false cut lines through full-width bands. */
+export function boxOutline(
+	latMin: number,
+	latMax: number,
+	lonMin: number,
+	lonSpan: number,
+	viewport: Viewport
+): string {
+	if (lonSpan < 360)
+		return pathFor(boxRing(latMin, latMax, lonMin, lonSpan), viewport, { closed: true });
+
+	const edge = (lat: number): LonLat[] => {
+		const from = viewport.projection.centerLon - SEAM_EDGE;
+		const to = viewport.projection.centerLon + SEAM_EDGE;
+		const steps = Math.ceil((to - from) / 5);
+		return Array.from({ length: steps + 1 }, (_, i) => ({
+			lon: from + ((to - from) * i) / steps,
+			lat
+		}));
+	};
+	return pathFor(edge(latMin), viewport) + pathFor(edge(latMax), viewport);
 }
 
 /**

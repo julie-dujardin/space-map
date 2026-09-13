@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	angularDistance,
 	areaFor,
+	boxOutline,
 	boxRing,
 	densify,
 	graticule,
@@ -321,6 +322,15 @@ describe('pathFor', () => {
 		expect(d).toContain('M0.00 ');
 	});
 
+	it('keeps a ring ending at the seam on that edge', () => {
+		const d = pathFor(boxRing(-10, 10, 90, 90), viewport(), { closed: true });
+		expect(d.match(/M/g)).toHaveLength(1);
+		expect(d.match(/Z/g)).toHaveLength(1);
+		const xs = [...d.matchAll(/[ML](-?[\d.]+)/g)].map((m) => Number(m[1]));
+		expect(Math.min(...xs)).toBeCloseTo(600, 1);
+		expect(Math.max(...xs)).toBeCloseTo(800, 1);
+	});
+
 	it('cuts a cap covering every longitude into the two halves it has to be', () => {
 		// Every gridded body has one of these at each pole — a row of a single
 		// full-longitude cell.
@@ -333,6 +343,12 @@ describe('pathFor', () => {
 		const xs = [...d.matchAll(/[ML](-?[\d.]+)/g)].map((m) => Number(m[1]));
 		expect(Math.min(...xs)).toBeCloseTo(0, 1);
 		expect(Math.max(...xs)).toBeCloseTo(view.width, 1);
+	});
+
+	it('outlines a full-width band without stroking its cuts', () => {
+		const d = boxOutline(80, 90, 0, 360, viewport());
+		expect(d).not.toContain('Z');
+		expect(d.match(/M/g)).toHaveLength(2);
 	});
 
 	it('cuts at the seam the projection actually has, not at 180°', () => {
