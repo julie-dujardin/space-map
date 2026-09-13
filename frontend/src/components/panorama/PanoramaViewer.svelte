@@ -43,6 +43,7 @@
 	import PanoramaMinimap from './PanoramaMinimap.svelte';
 	import PanoramaTimeline from './PanoramaTimeline.svelte';
 	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
+	import SettingsButton from '../settings/SettingsButton.svelte';
 	import PanoramaLayersButton from './PanoramaLayersButton.svelte';
 	import type { LayerCredit } from '$lib/flatmap/layers';
 
@@ -219,10 +220,6 @@
 					percent: formatNumber(Math.round(current.sphere_percent))
 				})
 			});
-		if (current.color === 'grayscale')
-			out.push({ label: m.panorama_imagery(), value: m.panorama_color_grayscale() });
-		else if (current.color === 'rgb')
-			out.push({ label: m.panorama_imagery(), value: m.panorama_color_rgb() });
 		return out;
 	});
 
@@ -251,11 +248,32 @@
 				})
 			: bodyHref(bodyId, bodyName)
 	);
+
+	const glassButton = `flex size-10 items-center justify-center rounded-full bg-black/40
+		backdrop-blur-md transition-colors hover:bg-black/55 md:size-8`;
+	const inBoxButton = `flex size-9 items-center justify-center rounded-md text-white/70
+		transition-colors hover:bg-white/10 hover:text-white md:size-7`;
 </script>
 
 <svelte:head>
 	<title>{pageTitle}</title>
 </svelte:head>
+
+<!-- Share then close, the order the detail drawer's button row uses. -->
+{#snippet shareAndClose(buttonClass: string, iconClass: string)}
+	<button
+		type="button"
+		onclick={() => shareUrl(pageTitle)}
+		class="cursor-pointer {buttonClass}"
+		aria-label={m.share()}
+		title={m.share()}
+	>
+		<Share2Icon class={iconClass} />
+	</button>
+	<a href={closeHref} class={buttonClass} aria-label={m.close()} title={m.close()}>
+		<XIcon class={iconClass} />
+	</a>
+{/snippet}
 
 <Tooltip.Provider delayDuration={300}>
 	<div class="fixed inset-0 bg-[#0b0d12] text-white">
@@ -291,18 +309,25 @@
 			<div
 				class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] w-[min(20rem,calc(100vw-7.5rem))] rounded-md bg-black/40 p-3 text-sm backdrop-blur-sm"
 			>
-				<a href={bodyHref(bodyId, bodyName)} class="text-xs text-white/60 hover:text-white">
-					{bodyName}
-				</a>
-				<h1 class="text-base font-semibold leading-tight">
-					{capitalize(current.mission ?? '')}
-					{#if current.sol !== undefined}
-						<span class="text-white/80">· {m.panorama_sol({ sol: current.sol })}</span>
-					{/if}
-				</h1>
-				{#if current.title}
-					<p class="text-xs text-white/70">{current.title}</p>
-				{/if}
+				<div class="flex items-start gap-2">
+					<div class="min-w-0 flex-1">
+						<a href={bodyHref(bodyId, bodyName)} class="text-xs text-white/60 hover:text-white">
+							{bodyName}
+						</a>
+						<h1 class="text-base font-semibold leading-tight">
+							{capitalize(current.mission ?? '')}
+							{#if current.sol !== undefined}
+								<span class="text-white/80">· {m.panorama_sol({ sol: current.sol })}</span>
+							{/if}
+						</h1>
+						{#if current.title}
+							<p class="text-xs text-white/70">{current.title}</p>
+						{/if}
+					</div>
+					<div class="-mt-1 -me-1 flex shrink-0 items-center gap-0.5">
+						{@render shareAndClose(inBoxButton, 'size-5 md:size-4')}
+					</div>
+				</div>
 				<dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
 					{#each rows as row (row.label)}
 						<dt class="text-white/55">{row.label}</dt>
@@ -401,27 +426,15 @@
 			</main>
 		{/if}
 
-		<!-- Close and share -->
+		<!-- Menus. Close and share sit in the info box instead, which the list has
+		     no equivalent of. -->
 		<div
 			class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
 		>
-			<a
-				href={closeHref}
-				class="flex size-10 items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
-				aria-label={m.close()}
-				title={m.close()}
-			>
-				<XIcon class="size-5 md:size-4" />
-			</a>
-			<button
-				type="button"
-				onclick={() => shareUrl(pageTitle)}
-				class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
-				aria-label={m.share()}
-				title={m.share()}
-			>
-				<Share2Icon class="size-5 md:size-4" />
-			</button>
+			{#if !current}
+				{@render shareAndClose(glassButton, 'size-5 md:size-4')}
+			{/if}
+			<SettingsButton scope="panorama" />
 			{#if current}
 				<PanoramaLayersButton
 					angleGrid={angleGridVisible}

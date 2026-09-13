@@ -17,16 +17,20 @@
 	import { recalibrateAtmosphere } from '$lib/scene/perf/atmosphere-calibration';
 	import { switchLanguage } from '$lib/state/language';
 
+	/** Graphics and the debug overlay only change what the 3D scene draws, so the
+	 *  map alone carries them; the date formatters are reached from anything that
+	 *  dates what it shows. The document pages carry the display settings and
+	 *  nothing else. */
+	export type SettingsScope = 'map' | 'panorama' | 'page';
+
 	interface Props {
-		/** Time, graphics and the debug overlay only change what the scene draws:
-		 *  the date formatters are reached from the map and its panels alone. The
-		 *  document pages carry the display settings and nothing else. */
-		scope?: 'map' | 'page';
+		scope?: SettingsScope;
 	}
 
 	let { scope = 'map' }: Props = $props();
 
-	const onMap = $derived(scope === 'map');
+	const showTime = $derived(scope !== 'page');
+	const showScene = $derived(scope === 'map');
 
 	const settings = getSettings();
 
@@ -262,7 +266,7 @@
 			</div>
 		</section>
 
-		{#if onMap}
+		{#if showTime}
 			<section class="flex flex-col gap-4">
 				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 					{m.settings_section_time()}
@@ -287,7 +291,9 @@
 					{/if}
 				</div>
 			</section>
+		{/if}
 
+		{#if showScene}
 			<section class="flex flex-col gap-4">
 				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 					{m.settings_section_graphics()}
