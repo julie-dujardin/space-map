@@ -1,8 +1,9 @@
 /**
  * A rover's traverse drawn on the ground of the 3D map, after Google Earth: a
  * ribbon lying in the ground's own plane, a fixed width on screen, with a
- * round dot at every place so its joints are round and the whole traverse
- * still reads as a dot from orbit. Its depth is nudged toward the camera so
+ * round dot at every place so its joints are round. It draws only once the
+ * body fills enough of the screen for its surface features to be named, so a
+ * distant disc is not marked up. Its depth is nudged toward the camera so
  * the ground it lies on never cuts it, while a hill in front of it still
  * does; the far side of the body hides it by fading the vertices past the
  * horizon, where no depth remains to tell.
@@ -27,6 +28,7 @@ import { bodyQuaternion } from '$lib/math/orientation';
 import { kmToScene } from '$lib/math/units';
 import { rotateByQuaternion, surfaceDirection } from '$lib/scene/extensions/anchor';
 import type { Extension, ExtensionFrame } from '$lib/scene/extensions/registry';
+import { MIN_BODY_SCREEN_RADIUS_PX } from '$lib/scene/objects/surface/nomenclature';
 import { effectiveRadiusKm } from '$lib/types/objects';
 
 /** Height above the body's mean radius, km, under a place. */
@@ -216,6 +218,14 @@ export class TraverseTrace implements Extension {
 		const perPx = (2 * Math.tan((camera.fov * Math.PI) / 360)) / viewportPx;
 		const width = viewportPx * camera.aspect;
 		const cam = camera.position;
+
+		// Nothing while the body is still a disc: the traverse comes in with the
+		// surface feature labels, at the same body screen radius.
+		if (kmToScene(radiusKm) / (this.centre.distanceTo(cam) * perPx) < MIN_BODY_SCREEN_RADIUS_PX) {
+			this.object.visible = false;
+			this.facing.fill(0);
+			return;
+		}
 
 		let at = 0;
 		for (const run of this.runs) {

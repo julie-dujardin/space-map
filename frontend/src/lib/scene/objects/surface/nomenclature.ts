@@ -46,8 +46,9 @@ export function nomenclatureBodyId(
 const DEG2RAD = Math.PI / 180;
 
 /** Body screen radius (px) below which we skip feature labels entirely. Cheap
- *  early-out before the per-feature projection loop. */
-const MIN_BODY_SCREEN_RADIUS_PX = 128;
+ *  early-out before the per-feature projection loop. Shared with the other
+ *  ground drawings, so the surface comes into its own all at once. */
+export const MIN_BODY_SCREEN_RADIUS_PX = 128;
 
 /** Fraction of the focused body's disc radius within which labels render. The
  *  outer ring is dropped because occlusion at grazing angles is noisy. */
