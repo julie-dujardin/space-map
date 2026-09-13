@@ -963,10 +963,16 @@
 				liftoffJd: departureEnd?.surfaceJd,
 				touchdownJd: arrivalEnd?.surfaceJd,
 				cruiseJd: departureEnd?.jds.at(-1),
+				turnOutJd: departureEnd?.turnJd,
 				captureJd: arrivalEnd?.periJd,
 				// The line's last date is the raise only while the trip ends in
-				// orbit; a landing's runs on to the ground.
-				raiseJd: arrivalEnd?.surfaceJd === undefined ? arrivalEnd?.jds.at(-1) : undefined
+				// orbit and turns no plane; a landing's runs on to the ground, and a
+				// plane change coasts on past the raise to the node it is made at.
+				raiseJd:
+					arrivalEnd?.surfaceJd === undefined
+						? (arrivalEnd?.turnBurnJd ?? arrivalEnd?.jds.at(-1))
+						: undefined,
+				turnInJd: arrivalEnd?.surfaceJd === undefined ? arrivalEnd?.turnJd : undefined
 			};
 			onPathChange(labelled(panel.selectedProfile ?? 'plan', route, path));
 		});

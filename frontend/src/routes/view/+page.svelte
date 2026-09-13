@@ -9,7 +9,6 @@
 	import SiteNav from '../../components/nav/SiteNav.svelte';
 	import { bodyHref } from '$lib/state/url';
 	import { panoramaHref } from '$lib/state/panorama-link';
-	import { capitalize } from '$lib/search/format';
 
 	let { data } = $props();
 
@@ -71,7 +70,7 @@
 										/>
 									</div>
 									<div class="flex items-baseline justify-between gap-3 px-3 py-2.5">
-										<span class="font-medium">{capitalize(traverse.mission)}</span>
+										<span class="font-medium">{traverse.name}</span>
 										<span class="text-xs text-muted-foreground">
 											{m.panorama_gallery_count({ count: traverse.entries.length })}
 											· {years(traverse.entries)}

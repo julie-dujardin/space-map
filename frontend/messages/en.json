@@ -85,6 +85,8 @@
 	"travel_drive_accel": "Acceleration",
 	"symbol_standard_gravity": "g",
 	"travel_leg_powered_cruise": "Powered cruise",
+	"travel_leg_lower": "Periapsis drop",
+	"travel_leg_plane_change": "Plane change",
 	"travel_leg_raise": "Periapsis raise",
 	"travel_leg_spiral_in": "Spiral into orbit",
 	"travel_leg_spiral_out": "Spiral to escape",

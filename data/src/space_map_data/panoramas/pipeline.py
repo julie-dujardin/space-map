@@ -21,7 +21,14 @@ from .labels import Mosaic, attached_constants, read_pds3, read_pds4
 logger = logging.getLogger(__name__)
 ARCHIVE = "https://planetarydata.jpl.nasa.gov/img/data/"
 MSL = ARCHIVE + "msl/msl_navcam_mosaic/DATA/"
-M20 = ARCHIVE + "mars2020/mars2020_navcam_ops_mosaic/data/sol/"
+# The Imaging Node's browsable mirror froze the Mars 2020 ops mosaics at sol 658.
+# The release buckets behind the PDS Image Atlas carry the whole mission instead:
+# each release directory holds only what that release delivered, and everything
+# before release 8 sits under `cumulative`.
+M20 = "https://d1ejlg980osaur.cloudfront.net/m20/"
+M20_MOSAIC = "mars2020_navcam_ops_mosaic/"
+M20_INVENTORY = M20_MOSAIC + "data/collection_data_inventory.csv"
+M20_RELEASE_GAP = 8
 PLACES = ARCHIVE + "msl/msl_places/data_localizations/localized_interp.csv"
 WAYPOINTS = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json"
 M20_PLACES = "https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_rover_places/data_localizations/best_interp.csv"
@@ -117,29 +124,60 @@ def positions(mission: str, path: Path) -> dict:
     return result
 
 
-def mosaic_listings(client, root, mission, *, start_sol, end_sol, refresh):
-    if mission == "perseverance":
-        url = (
-            ARCHIVE
-            + "mars2020/mars2020_navcam_ops_mosaic/data/collection_data_inventory.csv"
+def m20_releases(client, root, *, refresh):
+    """Every published release directory, oldest first, with its inventory text.
+
+    A release inventory lists the collection as of that release, so the first
+    directory a product appears in is the one that stores it.
+    """
+    directories = ["cumulative"]
+    release, misses = 1, 0
+    while misses < M20_RELEASE_GAP:
+        name = f"r{release}"
+        if client.head(M20 + name + "/" + M20_INVENTORY).status_code == 200:
+            directories.append(name)
+            misses = 0
+        else:
+            misses += 1
+        release += 1
+    for name in directories:
+        yield (
+            name,
+            fetch(
+                client,
+                M20 + name + "/" + M20_INVENTORY,
+                root / "inventories" / f"{name}.csv",
+                refresh=refresh,
+            ).read_text(),
         )
-        inventory = fetch(
-            client, url, root / "inventory.csv", refresh=refresh
-        ).read_text()
-        groups = {}
+
+
+def m20_mosaic_listings(client, root, *, refresh):
+    """Cylindrical Navcam mosaics by sol, each with the release URL that serves it."""
+    groups: dict[int, list[tuple[str, str]]] = {}
+    placed = set()
+    for directory, inventory in m20_releases(client, root, refresh=refresh):
+        url = M20 + directory + "/" + M20_MOSAIC + "data/sol/"
         for row in csv.reader(io.StringIO(inventory)):
             if len(row) != 2 or ":data:" not in row[1]:
                 continue
             identifier, version = row[1].split(":data:")[1].split("::")
             match = re.fullmatch(r"n_lrgb_(\d+)[x_]rzs_\d+_cyl_[ls]_\w+", identifier)
-            if not match:
+            if not match or identifier in placed:
                 continue
             sol = int(match[1])
             name = identifier.upper() + f"{int(version.split('.')[0]):02}.xml"
-            groups.setdefault(sol, []).append(name)
-        for sol, names in sorted(groups.items()):
+            groups.setdefault(sol, []).append((url + f"{sol:05}/ids/rdr/mosaic/", name))
+            placed.add(identifier)
+    return groups
+
+
+def mosaic_listings(client, root, mission, *, start_sol, end_sol, refresh):
+    if mission == "perseverance":
+        groups = m20_mosaic_listings(client, root, refresh=refresh)
+        for sol, products in sorted(groups.items()):
             if sol >= start_sol and (end_sol is None or sol <= end_sol):
-                yield sol, M20 + f"{sol:05}/ids/rdr/mosaic/", names
+                yield sol, products
         return
     for directory in links(client, MSL, root / "sols.html", refresh):
         match = re.fullmatch(r"SOL(\d{5})/", directory)
@@ -151,8 +189,12 @@ def mosaic_listings(client, root, mission, *, start_sol, end_sol, refresh):
         url = MSL + directory
         yield (
             sol,
-            url,
-            links(client, url, root / "listings" / f"{sol:05}.html", refresh),
+            [
+                (url, name)
+                for name in links(
+                    client, url, root / "listings" / f"{sol:05}.html", refresh
+                )
+            ],
         )
 
 
@@ -179,7 +221,7 @@ def download(
     lookup = positions(mission, position_path)
     accepted, rejected, seen = [], [], set()
     previous_sol = None
-    for sol, url, names in mosaic_listings(
+    for sol, products in mosaic_listings(
         client, root, mission, start_sol=start_sol, end_sol=end_sol, refresh=refresh
     ):
         # Thinning by sol spreads a bounded download over the whole mission.
@@ -192,8 +234,10 @@ def download(
             else r"N_LRGB_\d+[X_]RZS_\d+_CYL_[LS]_\w+\.xml"
         )
         # Revisions must not crowd out separate sweeps at the same stopping point.
-        for name in sorted(
-            (n for n in names if re.fullmatch(pattern, n)), reverse=True
+        for url, name in sorted(
+            ((u, n) for u, n in products if re.fullmatch(pattern, n)),
+            key=lambda product: product[1],
+            reverse=True,
         ):
             label = fetch(client, url + name, root / "labels" / name, refresh=refresh)
             try:

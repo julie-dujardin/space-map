@@ -1662,6 +1662,8 @@
 	"travel_leg_final_orbit": "最终轨道",
 	"travel_leg_injection": "出发点火",
 	"travel_leg_powered_cruise": "持续推进巡航",
+	"travel_leg_lower": "降低近拱点",
+	"travel_leg_plane_change": "轨道面变更",
 	"travel_leg_raise": "抬升近拱点",
 	"travel_leg_spiral_in": "入轨螺旋",
 	"travel_leg_spiral_out": "逃逸螺旋",

@@ -160,7 +160,10 @@ const BENCHMARKS: Benchmark[] = [
 				departureOrbit: gto,
 				targetOrbit: geo
 			});
-			return route?.legs.find((leg) => leg.kind === 'capture')?.dvKms ?? NaN;
+			// The two steps of the one apogee burn: circularising, and the turn out
+			// of the launch plane that rides it.
+			const dv = (kind: string) => route?.legs.find((leg) => leg.kind === kind)?.dvKms ?? NaN;
+			return dv('capture') + dv('turn-in');
 		}
 	},
 	{

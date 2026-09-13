@@ -1668,6 +1668,8 @@
 	"travel_leg_final_orbit": "המסלול הסופי",
 	"travel_leg_injection": "הבערת יציאה",
 	"travel_leg_powered_cruise": "שיוט במנוע",
+	"travel_leg_lower": "הנמכת נקודת הקרבה",
+	"travel_leg_plane_change": "שינוי מישור המסלול",
 	"travel_leg_raise": "העלאת נקודת הקרבה",
 	"travel_leg_spiral_in": "ספירלה למסלול",
 	"travel_leg_spiral_out": "ספירלת מילוט",

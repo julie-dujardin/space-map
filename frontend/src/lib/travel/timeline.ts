@@ -49,6 +49,8 @@ export interface TimelineEntry {
 	aerobraked?: boolean;
 	/** Δv the atmosphere removed on this leg, km/s — the aero legs only. */
 	absorbedKms?: number;
+	/** How far the plane turns, degrees — the turn legs only. */
+	turnDeg?: number;
 	/** The orbit an end of the trip is, carried with the radius of the body it
 	 *  goes round so an altitude can be read off it. The two orbit entries only. */
 	orbit?: { shape: EndOrbit; bodyRadiusKm: number };
@@ -81,6 +83,10 @@ export interface DrawnDates {
 	captureJd?: number;
 	/** The engine's raise, at the drawn apoapsis after the atmosphere's part. */
 	raiseJd?: number;
+	/** The nodes the plane is turned at, at either end — a coast away from the
+	 *  burn the turn is charged with, and a step of its own on the map. */
+	turnOutJd?: number;
+	turnInJd?: number;
 }
 
 /** Half a revolution of `orbit`, days — how far outside the trip its two
@@ -99,6 +105,14 @@ export function buildTimeline(
 	const entries: TimelineEntry[] = [];
 	const flybys = [...(route.flybys ?? [])];
 	let jd = route.departJd;
+	// A campaign's turn is made before it, at the loose apoapsis it is charged
+	// at, so only a turn after the last of them is the node the drawing coasts
+	// to. Every other turn is drawn where the burn it rides is.
+	const lastCampaign = route.legs.findLastIndex((leg) => leg.kind === 'aerobrake');
+	const turnJd = (index: number, drawnEntries: TimelineEntry[]): number =>
+		(index > lastCampaign ? drawn?.turnInJd : undefined) ??
+		drawnEntries[drawnEntries.length - 1]?.startJd ??
+		jd;
 
 	/** An end of the trip: a place, not something that happens, so it costs
 	 *  nothing and takes no time. */
@@ -167,7 +181,11 @@ export function buildTimeline(
 							? drawn.captureJd
 							: leg.kind === 'raise' && drawn?.raiseJd !== undefined
 								? drawn.raiseJd
-								: jd;
+								: leg.kind === 'turn-in'
+									? turnJd(index, entries)
+									: leg.kind === 'turn-out' && drawn?.turnOutJd !== undefined
+										? drawn.turnOutJd
+										: jd;
 		entries.push({
 			id: `${index}:${leg.kind}`,
 			kind: leg.kind,
@@ -182,7 +200,8 @@ export function buildTimeline(
 			dvKms: leg.dvKms,
 			altitudeKm: flyby?.altitudeKm,
 			aerobraked: leg.aerobraked,
-			absorbedKms: leg.absorbedKms
+			absorbedKms: leg.absorbedKms,
+			turnDeg: leg.turnDeg
 		});
 		jd += leg.days;
 	}
@@ -192,7 +211,7 @@ export function buildTimeline(
 	// that entered it — settled in the orbit, a moment of its own.
 	const final = bodies && endArrivalOrbit(bodies.target, route.arrivalMode, route.targetOrbit);
 	if (bodies && final) {
-		const entered = drawn?.raiseJd ?? drawn?.captureJd ?? jd;
+		const entered = drawn?.turnInJd ?? drawn?.raiseJd ?? drawn?.captureJd ?? jd;
 		entries.push(
 			endEntry(
 				'final-orbit',

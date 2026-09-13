@@ -449,13 +449,15 @@ describe('a turn between two planes', () => {
 	it('makes the turn at the far end of the arc, where it is cheapest', () => {
 		const turned = route({ ...LOW, incDeg: 0 }, { ...GEO, incDeg: 28.6 })!;
 		const flat = route({ ...LOW, incDeg: 0 }, { ...GEO, incDeg: 0 })!;
-		// The climb out is the same arc either way; the far burn absorbs the turn.
+		// The climb out is the same arc either way; the far burn absorbs the turn,
+		// which is listed as the step of its own that it is.
 		expect(dvOf(turned, 'injection')).toBeCloseTo(dvOf(flat, 'injection'), 12);
-		expect(dvOf(turned, 'capture')).toBeGreaterThan(dvOf(flat, 'capture'));
+		expect(dvOf(turned, 'capture')).toBeCloseTo(dvOf(flat, 'capture'), 12);
+		expect(dvOf(turned, 'turn-in')).toBeGreaterThan(0);
 		// The arc tops out slower than the ring by exactly the flat burn, so the
 		// turned burn is the law of cosines between those two speeds.
 		const vGeo = circularSpeed(EARTH.mu, GEO_RADIUS_KM);
-		expect(dvOf(turned, 'capture')).toBeCloseTo(
+		expect(dvOf(turned, 'capture') + dvOf(turned, 'turn-in')).toBeCloseTo(
 			combinedBurn(vGeo - dvOf(flat, 'capture'), vGeo, 28.6),
 			3
 		);
@@ -475,7 +477,10 @@ describe('a turn between two planes', () => {
 		// the split every geostationary mission flies.
 		const cape = geo(0, 28.6);
 		expect(dvOf(cape, 'ascent')).toBeCloseTo(dvOf(geo(undefined, 28.6), 'ascent'), 12);
-		expect(dvOf(cape, 'capture')).toBeGreaterThan(dvOf(geo(0, 0), 'capture'));
+		expect(dvOf(cape, 'turn-in')).toBeGreaterThan(0);
+		expect(dvOf(cape, 'capture') + dvOf(cape, 'turn-in')).toBeGreaterThan(
+			dvOf(geo(0, 0), 'capture')
+		);
 		// A polar target instead costs its spin on the way up, not a turn later.
 		const polar = geo(90, 28.6);
 		expect(dvOf(polar, 'ascent')).toBeGreaterThan(dvOf(cape, 'ascent'));

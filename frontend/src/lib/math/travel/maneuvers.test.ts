@@ -16,6 +16,7 @@ import {
 	injectionDv,
 	orbitPeriapsisSpeed,
 	orbitSpeedAtRadius,
+	burnTotalKms,
 	periapsisBurnWithTurn,
 	periapsisSpeed,
 	parkingOrbit,
@@ -86,13 +87,13 @@ describe('an argument of periapsis', () => {
 	// The whole of what it costs: the same turn, made lower down and faster.
 	it('makes a named plane dearer to turn into', () => {
 		const speed = periapsisSpeed(EARTH.mu, MOL().rPeriKm, 1);
-		const free = periapsisBurnWithTurn(EARTH.mu, MOL(), speed, { deg: 63.4 });
-		const held = periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 63.4 });
+		const free = burnTotalKms(periapsisBurnWithTurn(EARTH.mu, MOL(), speed, { deg: 63.4 }));
+		const held = burnTotalKms(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 63.4 }));
 		expect(held).toBeGreaterThan(free);
 		// And with no turn owed it changes nothing at all: an orbit is not dearer
 		// to enter for knowing where its own low point is.
-		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 0 })).toBeCloseTo(
-			periapsisBurnWithTurn(EARTH.mu, MOL(), speed, { deg: 0 }),
+		expect(burnTotalKms(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 0 }))).toBeCloseTo(
+			burnTotalKms(periapsisBurnWithTurn(EARTH.mu, MOL(), speed, { deg: 0 })),
 			12
 		);
 	});
@@ -102,7 +103,9 @@ describe('an argument of periapsis', () => {
 	it('cannot fold the turn into a burn made off the node', () => {
 		const speed = periapsisSpeed(EARTH.mu, MOL().rPeriKm, 3);
 		const plain = Math.max(0, speed - orbitPeriapsisSpeed(EARTH.mu, MOL(270)));
-		expect(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 63.4 })).toBeCloseTo(
+		expect(
+			burnTotalKms(periapsisBurnWithTurn(EARTH.mu, MOL(270), speed, { deg: 63.4 }))
+		).toBeCloseTo(
 			plain +
 				planeChangeDv(orbitSpeedAtRadius(EARTH.mu, MOL(270), planeTurnRadiusKm(MOL(270))), 63.4),
 			12
@@ -560,11 +563,11 @@ describe('a named plane', () => {
 	it('makes the turn wherever it is cheaper: in the burn, or out at apoapsis', () => {
 		const loose = { rPeriKm: parkingRadiusKm(EARTH), rApoKm: 20 * EARTH.radiusKm };
 		const vBurn = periapsisSpeed(EARTH.mu, loose.rPeriKm, 3);
-		const plain = periapsisBurnWithTurn(EARTH.mu, loose, vBurn, { deg: 0 });
+		const plain = burnTotalKms(periapsisBurnWithTurn(EARTH.mu, loose, vBurn, { deg: 0 }));
 		const vApo = orbitSpeedAtRadius(EARTH.mu, loose, loose.rApoKm);
 		// A wide turn walks out to the slow apoapsis; folding it into a burn made
 		// at periapsis speed would cost several times as much.
-		expect(periapsisBurnWithTurn(EARTH.mu, loose, vBurn, { deg: 40 })).toBeCloseTo(
+		expect(burnTotalKms(periapsisBurnWithTurn(EARTH.mu, loose, vBurn, { deg: 40 }))).toBeCloseTo(
 			plain + planeChangeDv(vApo, 40),
 			12
 		);
@@ -572,18 +575,22 @@ describe('a named plane', () => {
 		// second-order small — cheaper than even the slowest separate burn.
 		const leo = parkingOrbit(EARTH);
 		const vLeo = periapsisSpeed(EARTH.mu, leo.rPeriKm, 3);
-		const plainLeo = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, { deg: 0 });
-		const sliver = periapsisBurnWithTurn(EARTH.mu, leo, vLeo, { deg: 1 });
+		const plainLeo = burnTotalKms(periapsisBurnWithTurn(EARTH.mu, leo, vLeo, { deg: 0 }));
+		const sliver = burnTotalKms(periapsisBurnWithTurn(EARTH.mu, leo, vLeo, { deg: 1 }));
 		expect(sliver).toBeLessThan(plainLeo + planeChangeDv(circularSpeed(EARTH.mu, leo.rPeriKm), 1));
 		expect(sliver - plainLeo).toBeLessThan(0.02);
 	});
 
 	it('prices the turn into the injection, except for a launch, which picks its plane', () => {
-		const inOrbit = (turn: number) =>
-			departureCost(EARTH, 3, 'orbit', LEO, undefined, { deg: turn }).injectionKms;
+		const inOrbit = (turn: number) => {
+			const cost = departureCost(EARTH, 3, 'orbit', LEO, undefined, { deg: turn });
+			return cost.injectionKms + cost.turnKms;
+		};
 		expect(inOrbit(30)).toBeGreaterThan(inOrbit(0));
-		const launch = (turn: number) =>
-			departureCost(EARTH, 3, 'surface', LEO, undefined, { deg: turn }).injectionKms;
+		const launch = (turn: number) => {
+			const cost = departureCost(EARTH, 3, 'surface', LEO, undefined, { deg: turn });
+			return cost.injectionKms + cost.turnKms;
+		};
 		expect(launch(30)).toBeCloseTo(launch(0), 12);
 	});
 

@@ -1748,6 +1748,8 @@
 	"travel_leg_final_orbit": "المدار النهائي",
 	"travel_leg_injection": "حرق المغادرة",
 	"travel_leg_powered_cruise": "إبحار بالدفع",
+	"travel_leg_lower": "خفض الحضيض المداري",
+	"travel_leg_plane_change": "تغيير المستوى المداري",
 	"travel_leg_raise": "رفع الحضيض المداري",
 	"travel_leg_spiral_in": "لولب الدخول إلى المدار",
 	"travel_leg_spiral_out": "لولب الإفلات",

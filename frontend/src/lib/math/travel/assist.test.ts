@@ -47,6 +47,23 @@ describe('buildAssistRoute', () => {
 		expect(route.legs.reduce((sum, leg) => sum + leg.days, 0)).toBeCloseTo(route.tofDays, 9);
 	});
 
+	it('charges the departure plane a turn of its own, and counts it', () => {
+		const leave = (incDeg?: number) =>
+			buildAssistRoute(EARTH, JUPITER, SATURN, NOW, 900, 1400, {
+				departureMode: 'orbit',
+				departureOrbit: { rPeriKm: EARTH.radiusKm + 300, rApoKm: EARTH.radiusKm + 300, incDeg }
+			})!;
+		const turned = leave(5);
+		const free = leave();
+		const turn = turned.legs.find((leg) => leg.kind === 'turn-out')!;
+		expect(turn.dvKms).toBeGreaterThan(0);
+		expect(free.legs.some((leg) => leg.kind === 'turn-out')).toBe(false);
+		// The turn is spent as well as listed: a swing-by route that drops it from
+		// its total is cheaper on paper than any route the trip could fly.
+		expect(turned.totalDvKms).toBeCloseTo(free.totalDvKms + turn.dvKms, 9);
+		expect(turned.legs.reduce((sum, leg) => sum + leg.dvKms, 0)).toBeCloseTo(turned.totalDvKms, 9);
+	});
+
 	it('reports the pass it flew', () => {
 		const route = buildAssistRoute(EARTH, JUPITER, SATURN, NOW, 900, 1400, {
 			departureMode: 'orbit'

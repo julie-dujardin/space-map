@@ -38,6 +38,11 @@ export function legLabel(kind: TimelineKind): string {
 			return m.travel_leg_aerobrake();
 		case 'raise':
 			return m.travel_leg_raise();
+		case 'lower':
+			return m.travel_leg_lower();
+		case 'turn-out':
+		case 'turn-in':
+			return m.travel_leg_plane_change();
 		case 'descent':
 			return m.travel_leg_descent();
 	}

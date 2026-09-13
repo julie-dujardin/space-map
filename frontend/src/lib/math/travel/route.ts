@@ -71,6 +71,14 @@ export type LegKind =
 	/** The engine burn after the atmosphere's part: lifting periapsis clear of
 	 *  the air, into the orbit that was asked for. */
 	| 'raise'
+	/** The burn that drops periapsis into the air, out at the loose apoapsis the
+	 *  insertion left the craft on — where an aerobraking campaign begins. */
+	| 'lower'
+	/** Turning the plane, at whichever end owes the turn. The engine often makes
+	 *  it as one burn with the injection or the insertion it sits at, but it is a
+	 *  manoeuvre of its own and priced as one: what the turn adds to that burn. */
+	| 'turn-out'
+	| 'turn-in'
 	| 'descent';
 
 /**
@@ -90,11 +98,14 @@ export const LEG_END: Record<LegKind, 'departure' | 'arrival' | null> = {
 	brake: null,
 	'powered-cruise': null,
 	assist: null,
+	'turn-out': 'departure',
+	'turn-in': 'arrival',
 	capture: 'arrival',
 	rendezvous: 'arrival',
 	'aero-pass': 'arrival',
 	aerobrake: 'arrival',
 	raise: 'arrival',
+	lower: 'arrival',
 	descent: 'arrival',
 	'spiral-in': 'arrival'
 };
@@ -107,6 +118,8 @@ export interface RouteLeg {
 	days: number;
 	/** Set when an atmosphere absorbed part of the leg rather than propellant. */
 	aerobraked?: boolean;
+	/** How far the plane turns, degrees — the turn legs only. */
+	turnDeg?: number;
 	/** Δv the atmosphere removed on this leg, km/s — the aero legs only. */
 	absorbedKms?: number;
 }
@@ -223,6 +236,13 @@ export interface RouteOptions {
 	orbitChange?: boolean;
 }
 
+/** The turn a departure owes, as its own leg — the plane is turned into the one
+ *  the trip leaves in before anything is thrown out of it. */
+export function departureTurnLegs(turn: { turnKms: number; turnDeg: number }): RouteLeg[] {
+	if (!(turn.turnKms > 0)) return [];
+	return [{ kind: 'turn-out', dvKms: turn.turnKms, days: 0, turnDeg: turn.turnDeg }];
+}
+
 /**
  * The legs an arrival adds, in the order they are flown. Shared by all three
  * builders because the arrival doesn't care how the craft got there — a
@@ -245,10 +265,29 @@ export function arrivalLegs(cost: ArrivalCost, mode: ArrivalMode): RouteLeg[] {
 			absorbedKms: cost.absorbedKms
 		});
 	}
-	const engine = cost.captureKms - cost.raiseKms;
-	if (mode !== 'flyby' && engine > 0) {
+	// What the insertion itself cost: the arrival less the burns named apart from
+	// it. Compared against a share of the total rather than against zero, since
+	// an arrival the atmosphere flew whole leaves a rounding crumb behind here,
+	// and a crumb is not a burn.
+	const engine = cost.captureKms - cost.raiseKms - cost.lowerKms - cost.turnKms;
+	const insertion = mode !== 'flyby' && engine > 1e-9 * cost.captureKms;
+	if (insertion) {
 		legs.push({ kind: mode === 'rendezvous' ? 'rendezvous' : 'capture', dvKms: engine, days: 0 });
 	}
+	if (cost.lowerKms > 0) {
+		legs.push({ kind: 'lower', dvKms: cost.lowerKms, days: 0 });
+	}
+	// The turn rides the burn that makes it, so it is listed against that burn:
+	// the insertion where the engine flew the arrival, and the raise where the
+	// atmosphere did and left no other burn to ride.
+	const turnLeg = (): RouteLeg => ({
+		kind: 'turn-in',
+		dvKms: cost.turnKms,
+		days: 0,
+		turnDeg: cost.turnDeg
+	});
+	const turnsAtInsertion = insertion || cost.lowerKms > 0;
+	if (cost.turnKms > 0 && turnsAtInsertion) legs.push(turnLeg());
 	if (cost.aerobrakeDays > 0) {
 		legs.push({
 			kind: 'aerobrake',
@@ -261,6 +300,7 @@ export function arrivalLegs(cost: ArrivalCost, mode: ArrivalMode): RouteLeg[] {
 	if (cost.raiseKms > 0) {
 		legs.push({ kind: 'raise', dvKms: cost.raiseKms, days: 0 });
 	}
+	if (cost.turnKms > 0 && !turnsAtInsertion) legs.push(turnLeg());
 	if (cost.descentKms > 0) {
 		legs.push({ kind: 'descent', dvKms: cost.descentKms, days: 0, aerobraked: cost.aerobraked });
 	}
@@ -408,6 +448,7 @@ export function buildRoute(
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
+	legs.push(...departureTurnLegs(dep));
 	legs.push({ kind: 'injection', dvKms: dep.injectionKms, days: 0 });
 	legs.push({ kind: 'cruise', dvKms: 0, days: tofDays });
 	legs.push(...arrivalLegs(arr, arrivalMode));
@@ -531,13 +572,17 @@ function buildSystemRoute(
 		ascentKms = ascentDv(departure, departureSite);
 		legs.push({ kind: 'ascent', dvKms: ascentKms, days: 0 });
 	}
-	legs.push({
-		kind: 'injection',
-		dvKms: outbound
-			? primaryBurn
-			: departureCost(satellite, vInf, departureMode, satelliteOrbit, departureSite).injectionKms,
-		days: 0
-	});
+	// At the primary the burn is already split; at the satellite's end it is the
+	// ordinary departure, which splits itself.
+	const departureBurn = outbound
+		? {
+				injectionKms: primaryBurn.plainKms,
+				turnKms: primaryBurn.turnKms,
+				turnDeg: primaryBurn.turnDeg
+			}
+		: departureCost(satellite, vInf, departureMode, satelliteOrbit, departureSite);
+	legs.push(...departureTurnLegs(departureBurn));
+	legs.push({ kind: 'injection', dvKms: departureBurn.injectionKms, days: 0 });
 	legs.push({ kind: 'cruise', dvKms: 0, days: tofDays });
 
 	const arr = outbound
@@ -737,6 +782,9 @@ function buildOrbitChangeRoute(
 	let injectionKms: number;
 	let arr: ArrivalCost;
 	let inverseAKm: number;
+	// What the turn adds to whichever burn is made at the far end, and so is
+	// listed as a step of its own there.
+	let turnKms = 0;
 
 	if (singleBurn) {
 		// One burn where the two orbits already cross. What takes time is reaching
@@ -769,13 +817,20 @@ function buildOrbitChangeRoute(
 			);
 		if (climb) {
 			injectionKms = Math.abs(arc.vNearKms - orbitSpeedAtRadius(body.mu, from, rNear));
-			arr = { ...NO_ARRIVAL_COST, captureKms: farBurn(to, turnDeg) };
+			const plainKms = farBurn(to, 0);
+			turnKms = farBurn(to, turnDeg) - plainKms;
+			arr = { ...NO_ARRIVAL_COST, captureKms: plainKms + turnKms, turnKms, turnDeg };
 		} else {
-			injectionKms = farBurn(from, turnDeg);
+			const plainKms = farBurn(from, 0);
+			turnKms = farBurn(from, turnDeg) - plainKms;
+			injectionKms = plainKms;
 			arr = arrivalCostFromSpeed(body, arc.vNearKms, arrivalMode, aero, to, targetSite);
 		}
 	}
 
+	if (turnKms > 0 && !climb) {
+		legs.push({ kind: 'turn-out', dvKms: turnKms, days: 0, turnDeg });
+	}
 	legs.push({ kind: 'injection', dvKms: injectionKms, days: 0 });
 	const cruiseDays = singleBurn ? orbitPeriodHours(body.mu, from) / 48 : tofDays;
 	legs.push({ kind: 'cruise', dvKms: 0, days: cruiseDays });

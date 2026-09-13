@@ -320,4 +320,17 @@ describe('an orbit whose plane cannot hold the asymptote', () => {
 		expect(mars('targetOrbit', 0).totalDvKms).toBeGreaterThan(mars('targetOrbit').totalDvKms);
 		expect(mars('targetOrbit', 90).totalDvKms).toBeCloseTo(mars('targetOrbit').totalDvKms, 12);
 	});
+
+	// The pass is the whole insertion, so the raise is the only burn there is —
+	// and the turn rides it, after it, with no crumb of an insertion between.
+	it('lists an aerocaptured turn after the raise, and no insertion at all', () => {
+		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+			departureMode: 'surface',
+			arrivalMode: 'low-orbit',
+			aero: 'aerocapture',
+			targetOrbit: { ...parkingOrbit(MARS), incDeg: 0 }
+		})!;
+		expect(route.legs.slice(-3).map((leg) => leg.kind)).toEqual(['aero-pass', 'raise', 'turn-in']);
+		expect(route.legs.reduce((sum, leg) => sum + leg.dvKms, 0)).toBeCloseTo(route.totalDvKms, 12);
+	});
 });

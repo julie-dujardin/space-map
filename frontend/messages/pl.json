@@ -1684,6 +1684,8 @@
 	"travel_leg_final_orbit": "Orbita końcowa",
 	"travel_leg_injection": "Odpalenie odlotowe",
 	"travel_leg_powered_cruise": "Rejs pod ciągiem",
+	"travel_leg_lower": "Obniżenie perycentrum",
+	"travel_leg_plane_change": "Zmiana płaszczyzny",
 	"travel_leg_raise": "Podniesienie perycentrum",
 	"travel_leg_spiral_in": "Spirala na orbitę",
 	"travel_leg_spiral_out": "Spirala do ucieczki",

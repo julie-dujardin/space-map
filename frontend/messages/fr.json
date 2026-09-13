@@ -1666,6 +1666,8 @@
 	"travel_leg_final_orbit": "Orbite finale",
 	"travel_leg_injection": "Poussée de départ",
 	"travel_leg_powered_cruise": "Croisière propulsée",
+	"travel_leg_lower": "Abaissement du périastre",
+	"travel_leg_plane_change": "Changement de plan",
 	"travel_leg_raise": "Remontée du périastre",
 	"travel_leg_spiral_in": "Spirale de mise en orbite",
 	"travel_leg_spiral_out": "Spirale d'échappement",

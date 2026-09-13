@@ -199,6 +199,26 @@ describe('buildTimeline', () => {
 			expect(new Set(dates).size).toBe(dates.length);
 		});
 
+		it('coasts the plane change on to the node it is drawn at', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				arrivalMode: 'low-orbit',
+				aero: 'aerocapture',
+				targetOrbit: { rPeriKm: MARS.radiusKm + 400, rApoKm: MARS.radiusKm + 400, incDeg: 5 }
+			})!;
+			const drawn = {
+				captureJd: route.arriveJd - 0.1,
+				raiseJd: route.arriveJd + 0.05,
+				turnInJd: route.arriveJd + 0.3
+			};
+			const entries = buildTimeline(route, idAsName, ENDS, drawn);
+			const at = (kind: string) => entries.find((e) => e.kind === kind)!;
+			// The turn is a manoeuvre of its own, hours from the raise it is
+			// charged with — and the orbit is entered at it, not at the raise.
+			expect(at('raise').startJd).toBe(drawn.raiseJd);
+			expect(at('turn-in').startJd).toBe(drawn.turnInJd);
+			expect(at('final-orbit').startJd).toBeGreaterThan(drawn.turnInJd);
+		});
+
 		it('carries the shape of the orbit and the body it goes round', () => {
 			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
 				departureMode: 'orbit',

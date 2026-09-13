@@ -5,6 +5,7 @@ import { ltrIsolate } from '$lib/format/bidi';
 import { formatKm } from '$lib/format/distance';
 import { formatDurationNarrow } from '$lib/format/duration';
 import * as m from '$lib/paraglide/messages.js';
+import { formatDegrees } from '$lib/format/quantities';
 import { formatDv, formatEndOrbit } from '$lib/travel/format';
 import type { TimelineEntry } from '$lib/travel/timeline';
 
@@ -18,6 +19,7 @@ export function entryDetail(entry: TimelineEntry): string {
 		parts.push(ltrIsolate(formatEndOrbit(entry.orbit.shape, entry.orbit.bodyRadiusKm)));
 	}
 	if (entry.altitudeKm !== undefined) parts.push(ltrIsolate(formatKm(entry.altitudeKm)));
+	if (entry.turnDeg) parts.push(ltrIsolate(formatDegrees(entry.turnDeg)));
 	if (entry.dvKms > 0) parts.push(ltrIsolate(formatDv(entry.dvKms)));
 	if (entry.absorbedKms) parts.push(ltrIsolate(formatDv(entry.absorbedKms)));
 	if (entry.days > 0) parts.push(ltrIsolate(formatDurationNarrow(entry.days)));

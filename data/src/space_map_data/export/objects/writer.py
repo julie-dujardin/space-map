@@ -18,6 +18,7 @@ import orjson
 import logging
 from pathlib import Path
 
+from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.occultation_shapes import occultation_radii
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.ephemeris import (
@@ -746,7 +747,8 @@ def _build_localized(
 
     if wd:
         # No obj.name fallback: that's already in the global file.
-        if name := entity_label(wd, lang):
+        named_by = wikidata_entities.get_referenced(NAME_ENTITIES.get(obj.id)) or wd
+        if name := entity_label(named_by, lang):
             data["name"] = name
 
         desc = wd["descriptions"].get(lang)

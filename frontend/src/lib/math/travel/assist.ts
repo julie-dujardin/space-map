@@ -40,7 +40,14 @@ import {
 	type EndOrbit
 } from './maneuvers';
 import type { DeadlineOptions } from './porkchop';
-import { arrivalLegs, finishRoute, type Route, type RouteLeg, type RouteOptions } from './route';
+import {
+	arrivalLegs,
+	departureTurnLegs,
+	finishRoute,
+	type Route,
+	type RouteLeg,
+	type RouteOptions
+} from './route';
 import { elementsToState, type StateVector } from './state';
 import { norm, sub, type Vec3 } from './vec3';
 import { nextTransferWindows, synodicPeriodDays, transferScale } from './windows';
@@ -117,6 +124,7 @@ export function buildAssistRoute(
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
+	legs.push(...departureTurnLegs(dep));
 	legs.push({ kind: 'injection', dvKms: dep.injectionKms, days: 0 });
 	legs.push({ kind: 'cruise', dvKms: 0, days: tof1Days });
 	legs.push({ kind: 'assist', dvKms: pass.dvKms, days: 0 });
@@ -231,7 +239,7 @@ function approach(
 		vInfInKms: norm(vInfIn),
 		vInfDepKms,
 		ascentKms: dep.ascentKms,
-		headKms: dep.ascentKms + dep.injectionKms
+		headKms: dep.ascentKms + dep.injectionKms + dep.turnKms
 	};
 }
 

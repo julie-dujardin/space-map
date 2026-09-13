@@ -19,6 +19,7 @@
 	import TornadoIcon from '@lucide/svelte/icons/tornado';
 	import ShellIcon from '@lucide/svelte/icons/shell';
 	import CircleDashedIcon from '@lucide/svelte/icons/circle-dashed';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import {
 		endArrivalOrbit,
 		endDepartureOrbit,
@@ -42,7 +43,7 @@
 		formatSpeed,
 		lightPercent
 	} from '$lib/travel/format';
-	import { formatNumber } from '$lib/format/quantities';
+	import { formatDegrees, formatNumber } from '$lib/format/quantities';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
 	import { adjustForVehicle, type Hazard } from '$lib/travel/hazards';
 	import {
@@ -117,6 +118,9 @@
 		'aero-pass': FlameIcon,
 		aerobrake: WindIcon,
 		raise: OrbitIcon,
+		lower: OrbitIcon,
+		'turn-out': RotateCcwIcon,
+		'turn-in': RotateCcwIcon,
 		descent: ArrowDownIcon
 	};
 
@@ -246,6 +250,9 @@
 			// The aero steps say what they are in their own names; the note that a
 			// leg was aerobraked belongs only on the one still wearing an engine
 			// name — the direct entry's descent.
+			// A turn says how far it goes: the figure on the right is what it cost,
+			// which on its own never says what the step was for.
+			if (leg.turnDeg) notes.push(formatDegrees(leg.turnDeg));
 			if (leg.kind === 'aerobrake') notes.push(m.travel_aero_campaign());
 			else if (leg.kind === 'aero-pass') notes.push(m.travel_aero_absorbed());
 			else if (leg.aerobraked) {

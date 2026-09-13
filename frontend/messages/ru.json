@@ -1714,6 +1714,8 @@
 	"travel_leg_final_orbit": "Конечная орбита",
 	"travel_leg_injection": "Отлётный импульс",
 	"travel_leg_powered_cruise": "Перелёт с тягой",
+	"travel_leg_lower": "Понижение перицентра",
+	"travel_leg_plane_change": "Смена плоскости",
 	"travel_leg_raise": "Подъём перицентра",
 	"travel_leg_spiral_in": "Спираль на орбиту",
 	"travel_leg_spiral_out": "Спираль до отлёта",

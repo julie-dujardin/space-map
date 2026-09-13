@@ -1666,6 +1666,8 @@
 	"travel_leg_final_orbit": "Órbita final",
 	"travel_leg_injection": "Ignição de partida",
 	"travel_leg_powered_cruise": "Cruzeiro propulsado",
+	"travel_leg_lower": "Rebaixamento do periastro",
+	"travel_leg_plane_change": "Mudança de plano",
 	"travel_leg_raise": "Elevação do periastro",
 	"travel_leg_spiral_in": "Espiral até a órbita",
 	"travel_leg_spiral_out": "Espiral de escape",

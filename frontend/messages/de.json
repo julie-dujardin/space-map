@@ -1664,6 +1664,8 @@
 	"travel_leg_final_orbit": "Zielorbit",
 	"travel_leg_injection": "Abflugmanöver",
 	"travel_leg_powered_cruise": "Angetriebener Reiseflug",
+	"travel_leg_lower": "Absenken der Periapsis",
+	"travel_leg_plane_change": "Bahnebenenwechsel",
 	"travel_leg_raise": "Anheben der Periapsis",
 	"travel_leg_spiral_in": "Spirale in den Orbit",
 	"travel_leg_spiral_out": "Spirale bis zur Fluchtbahn",

@@ -438,20 +438,32 @@
 
 	/** The trip's instant steps, as the map draws them: dots on the arc that
 	 *  press their own timeline card. The end orbits stay off it — they are
-	 *  places the trip is bracketed by, not things that happen on it. */
+	 *  places the trip is bracketed by, not things that happen on it.
+	 *
+	 *  Steps at one instant and one body are one burn the engine made as one —
+	 *  a plane change and the insertion or raise it rides — so they share a dot
+	 *  named for both rather than stacking two labels on the same point. */
 	function travelSteps(): PathStep[] {
 		if (!travelPlan) return [];
-		return (timelineEntries ?? [])
-			.filter((e) => !e.isPhase && e.kind !== 'start-orbit' && e.kind !== 'final-orbit')
-			.map((e) => ({
-				id: e.id,
-				kind: e.kind,
-				bodyId: e.bodyId,
-				jd: e.startJd,
-				name: legLabel(e.kind),
-				when: formatJulianDate(e.startJd),
-				onPick: () => pickStep(e)
-			}));
+		const steps: PathStep[] = [];
+		for (const entry of timelineEntries ?? []) {
+			if (entry.isPhase || entry.kind === 'start-orbit' || entry.kind === 'final-orbit') continue;
+			const together = steps[steps.length - 1];
+			if (together && together.jd === entry.startJd && together.bodyId === entry.bodyId) {
+				together.name += m.travel_list_separator() + legLabel(entry.kind);
+				continue;
+			}
+			steps.push({
+				id: entry.id,
+				kind: entry.kind,
+				bodyId: entry.bodyId,
+				jd: entry.startJd,
+				name: legLabel(entry.kind),
+				when: formatJulianDate(entry.startJd),
+				onPick: () => pickStep(entry)
+			});
+		}
+		return steps;
 	}
 
 	/** What pressing a step dot does: the timeline's own pick when it is up,

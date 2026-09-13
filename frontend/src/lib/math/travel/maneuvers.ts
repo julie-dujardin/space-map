@@ -349,16 +349,36 @@ function turnedBurn(burn: {
 	v1: number;
 	v2: number;
 	turn: EndTurn;
-}): number {
+}): TurnedBurn {
 	const { mu, flown, rBurnKm, plainKms, v1, v2, turn } = burn;
-	if (!(turn.deg > 0)) return plainKms;
+	if (!(turn.deg > 0)) return { plainKms, turnKms: 0, turnDeg: 0 };
 	const rNodeKm = turn.radiusKm ?? planeTurnRadiusKm(flown);
-	const apart = plainKms + planeChangeDv(orbitSpeedAtRadius(mu, flown, rNodeKm), turn.deg);
+	const apartTurnKms = planeChangeDv(orbitSpeedAtRadius(mu, flown, rNodeKm), turn.deg);
 	const foldable =
 		turn.radiusKm === undefined
 			? apsidesAreNodes(flown)
 			: Math.abs(rNodeKm - rBurnKm) <= 1e-9 * rBurnKm;
-	return foldable ? Math.min(combinedBurn(v1, v2, turn.deg), apart) : apart;
+	const folded = combinedBurn(v1, v2, turn.deg);
+	const turnKms = foldable && folded < plainKms + apartTurnKms ? folded - plainKms : apartTurnKms;
+	return { plainKms, turnKms, turnDeg: turn.deg };
+}
+
+/**
+ * What a burn costs before any plane change, and what the turn adds on top —
+ * the two named apart so a trip can list them apart, since a turn is a
+ * different manoeuvre from the one it rides even where the engine makes them
+ * as one.
+ */
+export interface TurnedBurn {
+	plainKms: number;
+	turnKms: number;
+	/** How far the plane turns, degrees. Zero when it doesn't. */
+	turnDeg: number;
+}
+
+/** Everything the burn costs, turn included, km/s. */
+export function burnTotalKms(burn: TurnedBurn): number {
+	return burn.plainKms + burn.turnKms;
 }
 
 /** Δv joining an orbit's periapsis to speed `vKms` there while the plane also
@@ -368,7 +388,7 @@ export function periapsisBurnWithTurn(
 	orbit: EndOrbit,
 	vKms: number,
 	turn: EndTurn = NO_TURN
-): number {
+): TurnedBurn {
 	const flown = sane(orbit);
 	const settled = boundSpeed(mu, flown.rPeriKm, flown.rApoKm);
 	return turnedBurn({
@@ -393,7 +413,7 @@ export function apoapsisBurnWithTurn(
 	v1: number,
 	v2: number,
 	turn: EndTurn = NO_TURN
-): number {
+): TurnedBurn {
 	return turnedBurn({
 		mu,
 		flown,
@@ -623,6 +643,14 @@ export interface ArrivalCost {
 	 *  periapsis raise that lifts the orbit clear of the air, km/s. Zero when
 	 *  the whole capture is one engine burn. */
 	raiseKms: number;
+	/** The slice of `captureKms` that drops periapsis into the air before an
+	 *  aerobraking campaign, km/s. Zero on every other arrival. */
+	lowerKms: number;
+	/** The slice of `captureKms` the plane change costs, km/s — what turning to
+	 *  the orbit's own plane adds to the burn it is made with. */
+	turnKms: number;
+	/** How far that turn goes, degrees. */
+	turnDeg: number;
 	/** Δv drag removed instead of the engine, km/s. */
 	absorbedKms: number;
 	/** How long it took to remove it, days. Zero for a single pass. */
@@ -637,9 +665,23 @@ export const NO_ARRIVAL_COST: ArrivalCost = {
 	descentKms: 0,
 	aerobraked: false,
 	raiseKms: 0,
+	lowerKms: 0,
+	turnKms: 0,
+	turnDeg: 0,
 	absorbedKms: 0,
 	aerobrakeDays: 0
 };
+
+/** An arrival flown as one burn at periapsis, the plane change riding it. */
+function periapsisArrival(burn: TurnedBurn, descentKms: number): ArrivalCost {
+	return {
+		...NO_ARRIVAL_COST,
+		captureKms: burnTotalKms(burn),
+		turnKms: burn.turnKms,
+		turnDeg: burn.turnDeg,
+		descentKms
+	};
+}
 
 /**
  * Δv to arrive at `body` in the requested way, given the hyperbolic excess
@@ -729,22 +771,14 @@ export function arrivalCostFromSpeed(
 					planeTiltPenaltyKms(body, site);
 
 	if (!assisted) {
-		return {
-			...NO_ARRIVAL_COST,
-			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, owed),
-			descentKms: descent
-		};
+		return periapsisArrival(periapsisBurnWithTurn(mu, priced, vPeriKms, owed), descent);
 	}
 
 	const rEntry = aeroPassRadiusKm(body);
 	// Below the pass altitude there is no arrival to model: the approach is
 	// already inside the atmosphere, or the body is smaller than the allowance.
 	if (!(rEntry < rPeri)) {
-		return {
-			...NO_ARRIVAL_COST,
-			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, owed),
-			descentKms: descent
-		};
+		return periapsisArrival(periapsisBurnWithTurn(mu, priced, vPeriKms, owed), descent);
 	}
 
 	const vEntry = speedAtRadius(mu, vPeriKms, rPeri, rEntry);
@@ -755,12 +789,10 @@ export function arrivalCostFromSpeed(
 		// every Mars lander since arrived this way.
 		if (mode === 'landing') {
 			return {
-				captureKms: 0,
-				raiseKms: 0,
+				...NO_ARRIVAL_COST,
 				descentKms: descent,
 				aerobraked: true,
 				absorbedKms: vEntry,
-				aerobrakeDays: 0,
 				entrySpeedKms: vEntry
 			};
 		}
@@ -769,21 +801,23 @@ export function arrivalCostFromSpeed(
 		// which is also where a plane the pass could not fly is cheapest to turn
 		// to — unless the orbit has named where its high point sits, and so moved
 		// its crossings off the top.
-		const raise =
-			apoapsisBurnWithTurn(
-				mu,
-				priced,
-				apoapsisSpeed(mu, rEntry, rApo),
-				apoapsisSpeed(mu, rPeri, rApo),
-				owed
-			) + AEROCAPTURE_TRIM_KMS;
+		const raise = apoapsisBurnWithTurn(
+			mu,
+			priced,
+			apoapsisSpeed(mu, rEntry, rApo),
+			apoapsisSpeed(mu, rPeri, rApo),
+			owed
+		);
+		const raiseKms = raise.plainKms + AEROCAPTURE_TRIM_KMS;
 		return {
-			captureKms: raise,
-			raiseKms: raise,
+			...NO_ARRIVAL_COST,
+			captureKms: raiseKms + raise.turnKms,
+			raiseKms,
+			turnKms: raise.turnKms,
+			turnDeg: raise.turnDeg,
 			descentKms: descent,
 			aerobraked: true,
 			absorbedKms: Math.max(0, vEntry - boundSpeed(mu, rEntry, rApo)),
-			aerobrakeDays: 0,
 			entrySpeedKms: vEntry
 		};
 	}
@@ -795,11 +829,7 @@ export function arrivalCostFromSpeed(
 	// Asking to aerobrake into the ellipse the engine captures into anyway is
 	// asking for a campaign with nothing to do, so it is priced as the burn alone.
 	if (!(rApoLoose > rApo)) {
-		return {
-			...NO_ARRIVAL_COST,
-			captureKms: periapsisBurnWithTurn(mu, priced, vPeriKms, owed),
-			descentKms: descent
-		};
+		return periapsisArrival(periapsisBurnWithTurn(mu, priced, vPeriKms, owed), descent);
 	}
 	const insertion = Math.max(0, vPeriKms - boundSpeed(mu, rPeri, rApoLoose));
 	// The burn that drops periapsis into the air sits at the loose apoapsis, the
@@ -825,8 +855,12 @@ export function arrivalCostFromSpeed(
 	const absorbed = Math.max(0, boundSpeed(mu, rEntry, rApoLoose) - boundSpeed(mu, rEntry, rApo));
 
 	return {
-		captureKms: insertion + walkIn + walkOut,
+		...NO_ARRIVAL_COST,
+		captureKms: insertion + burnTotalKms(walkIn) + walkOut,
 		raiseKms: walkOut,
+		lowerKms: walkIn.plainKms,
+		turnKms: walkIn.turnKms,
+		turnDeg: walkIn.turnDeg,
 		descentKms: descent,
 		aerobraked: true,
 		absorbedKms: absorbed,
@@ -884,6 +918,15 @@ export function endArrivalOrbit(
 	return pricedArrivalOrbit(body, mode, orbit);
 }
 
+/** What leaving costs: the climb off the ground, the burn onto the transfer,
+ *  and the plane change that burn carries where the orbit named a plane. */
+export interface DepartureCost {
+	ascentKms: number;
+	injectionKms: number;
+	turnKms: number;
+	turnDeg: number;
+}
+
 /**
  * Δv to get from `body` onto a transfer needing excess speed `vInfKms`,
  * starting either from the ground or from an existing parking orbit.
@@ -895,26 +938,31 @@ export function departureCost(
 	orbit?: EndOrbit,
 	site?: SurfaceSite,
 	turn: EndTurn = NO_TURN
-): { ascentKms: number; injectionKms: number } {
+): DepartureCost {
 	// An ascent goes to the parking orbit and leaves from there: which orbit the
 	// craft would otherwise have been sitting in is not a question a launch asks
 	// — and its plane is the ascent's to pick, so a launch owes no turn either.
 	// Casting off from another craft is the arrival run backwards: the burn is
 	// the whole of the excess speed, since the hull it leaves has no well to
 	// help and no orbit to leave from.
-	if (mode === 'rendezvous') return { ascentKms: 0, injectionKms: Math.max(0, vInfKms) };
+	if (mode === 'rendezvous') {
+		return { ascentKms: 0, injectionKms: Math.max(0, vInfKms), turnKms: 0, turnDeg: 0 };
+	}
 	const from = mode === 'surface' || !orbit ? parkingOrbit(body) : sane(orbit);
+	// Spent at periapsis, where the Oberth effect is largest — and where an
+	// elliptical parking orbit is already moving faster than a circular one, so
+	// leaving from one is cheaper still.
+	const injection = periapsisBurnWithTurn(
+		body.mu,
+		from,
+		periapsisSpeed(body.mu, from.rPeriKm, vInfKms),
+		mode === 'surface' ? NO_TURN : turn
+	);
 	return {
 		ascentKms: mode === 'surface' ? ascentDv(body, site) : 0,
-		// Spent at periapsis, where the Oberth effect is largest — and where an
-		// elliptical parking orbit is already moving faster than a circular one, so
-		// leaving from one is cheaper still.
-		injectionKms: periapsisBurnWithTurn(
-			body.mu,
-			from,
-			periapsisSpeed(body.mu, from.rPeriKm, vInfKms),
-			mode === 'surface' ? NO_TURN : turn
-		)
+		injectionKms: injection.plainKms,
+		turnKms: injection.turnKms,
+		turnDeg: injection.turnDeg
 	};
 }
 

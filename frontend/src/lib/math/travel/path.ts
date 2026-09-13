@@ -178,6 +178,13 @@ export interface EndOrbitPath {
 	 *  waiting on the node the plane is turned at. It belongs to the orbit rather
 	 *  than to the trip, and is drawn as one. */
 	turn?: { from: number; to: number };
+	/** When the plane is turned: the node that coast ends at, or sets out from at
+	 *  a departure. Absent where no plane is turned. */
+	turnJd?: number;
+	/** When the burn at the other end of that coast is made — the insertion or
+	 *  the raise at an arrival, the injection at a departure. The turn is a
+	 *  manoeuvre of its own, hours from the burn it is charged with. */
+	turnBurnJd?: number;
 }
 
 export interface TrajectoryPath {
@@ -1220,7 +1227,9 @@ function endOrbitPath(end: {
 		radiusKm: orbit.rApoKm,
 		surfaceJd: ground?.groundJd,
 		ground: airRanges.length > 0 ? airRanges : undefined,
-		turn: coastRange.to > coastRange.from ? coastRange : undefined
+		turn: coastRange.to > coastRange.from ? coastRange : undefined,
+		turnJd: turned ? (outward ? turned.coast?.jds[0] : turned.coast?.jds.at(-1)) : undefined,
+		turnBurnJd: turned ? (outward ? turned.coast?.jds.at(-1) : turned.coast?.jds[0]) : undefined
 	};
 }
 
