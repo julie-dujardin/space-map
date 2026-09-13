@@ -536,8 +536,10 @@
 		origin: null,
 		target: null
 	});
+	// Untracked: the field posts from an effect of its own, and reading the pair
+	// to replace it there would make that effect its own dependency.
 	function showList(role: TripRole, shown: { orbit: EndOrbit | null } | null) {
-		const next = { ...openLists };
+		const next = { ...untrack(() => openLists) };
 		next[role] = shown;
 		openLists = next;
 	}
