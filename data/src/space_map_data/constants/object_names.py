@@ -4,8 +4,9 @@ A localized name is the label of the item the probe inventory registers, so a
 craft filed against its mission reads as the mission in all twelve languages.
 The item named here supplies the label instead, leaving every other claim —
 mass, launch, sitelinks — on the registered item, which is what the inventory
-means it to be. The substitutes are already pulled in as referenced entities,
-so nothing extra is downloaded.
+means it to be. The Wikidata downloader seeds these items into ``referenced/``,
+since an item only reachable through a claim on the entity it replaces would
+lose the name the moment that claim moved.
 """
 
 # Object.id -> the Wikidata item whose label the object is named by.

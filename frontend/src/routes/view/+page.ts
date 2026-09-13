@@ -44,17 +44,18 @@ export const load: PageLoad = async ({ fetch }) => {
 	const summaries = await fetchPanoramaIndex(fetch).catch(() => null);
 	if (!summaries) return { bodies: [], failed: true };
 
-	// Mission slug -> the craft that drove it, so a card can borrow its name.
+	// The craft that drove each traverse, so a card can borrow its name. Keyed
+	// the way traverses are grouped — by body and mission both, since a slug is
+	// only unique within the body it was recorded on.
 	const probes = new Map<string, string>();
 	for (const body of summaries)
 		for (const summary of body.missions)
-			if (summary.probe) probes.set(summary.mission, summary.probe);
+			if (summary.probe) probes.set(`${body.id}/${summary.mission}`, summary.probe);
 	const [details, named] = await Promise.all([
 		Promise.all(summaries.map((summary) => fetchObjectDetail(summary.id).catch(() => null))),
 		Promise.all(
 			[...probes].map(
-				async ([mission, probe]) =>
-					[mission, await fetchObjectDetail(probe).catch(() => null)] as const
+				async ([key, probe]) => [key, await fetchObjectDetail(probe).catch(() => null)] as const
 			)
 		).then((pairs) => new Map(pairs))
 	]);
@@ -71,7 +72,7 @@ export const load: PageLoad = async ({ fetch }) => {
 			radiusKm: meanRadiusKm(global) ?? 0,
 			traverses: [...byMission].map(([mission, entries]) => ({
 				mission,
-				name: probeName(named.get(mission)) ?? capitalize(mission),
+				name: probeName(named.get(`${global.id}/${mission}`)) ?? capitalize(mission),
 				entries
 			}))
 		});

@@ -402,8 +402,9 @@ export interface PanoramaEntry {
 	north_offset_deg: number;
 	/** How north was established, absent where the archive itself states it.
 	 *  `unknown` means the sphere sits at an arbitrary azimuth, so nothing
-	 *  may be drawn or written as a heading. */
-	orientation?: 'unknown' | string;
+	 *  may be drawn or written as a heading. The full set `export/panoramas.py`
+	 *  writes — a wider union would erase the literals and stop checking. */
+	orientation?: 'unknown' | 'caption-aligned' | 'matched to an archival sphere';
 	/** `estimated` where the sphere's angular bounds were fitted to a
 	 *  published flat image rather than read from an archive label. */
 	geometry?: 'estimated';

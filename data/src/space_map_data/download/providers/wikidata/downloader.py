@@ -12,6 +12,7 @@ from tqdm import tqdm
 from space_map_data.constants.categories import CATEGORIES
 from space_map_data.constants.countries import COUNTRIES
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
+from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_VARIANTS
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.earth_sats.reusable_vehicles import REUSABLE_VEHICLE_QIDS
@@ -177,6 +178,15 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="probe missions",
+        )
+        # The items that name an object whose own entity names something else
+        # (a rover filed against its mission). Q48485 happens to arrive as a
+        # claim on Q48496 today, which is a coupling, not a guarantee.
+        self._fetch_entities(
+            set(NAME_ENTITIES.values()),
+            referenced_dir,
+            limit=None,
+            fetch_desc="object names",
         )
         # Launch-vehicle variant QIDs. GCAT-only variants (never a payload's
         # P375) aren't reached otherwise — seed so the breakdown gets a sitelink.

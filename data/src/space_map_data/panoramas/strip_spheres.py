@@ -21,10 +21,21 @@ ORIENTATION = {
 
 
 def orientation_status(spec):
-    """What the viewer may claim about which way a strip faces."""
+    """What the viewer may claim about which way a strip faces.
+
+    A basis outside the table is a mistake in the hand-edited manifest, not an
+    unoriented strip: silently reading it as unknown would drop a heading that
+    was measured, and nothing downstream would say so.
+    """
     if spec["start_azimuth_deg"] is None:
         return "unknown"
-    return ORIENTATION.get(spec.get("start_azimuth_basis", ""), "unknown")
+    basis = spec.get("start_azimuth_basis", "")
+    if basis not in ORIENTATION:
+        raise ValueError(
+            f"{spec['id']}: start_azimuth_deg is set but its basis "
+            f"{basis!r} is not one of {sorted(ORIENTATION)}"
+        )
+    return ORIENTATION[basis]
 
 
 def project_strip(source, horizontal, horizon, width=4096, *, start_azimuth=0):

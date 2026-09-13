@@ -100,17 +100,26 @@ def position_of(row: dict, spread: float, table_sha: str) -> dict:
     }
 
 
+CAPTION = "NASA caption"
+
+
 def capture_sol(metadata: dict) -> tuple[int | None, str]:
     """The sol a product was captured on, and where that came from.
 
     A reviewed sol on the product wins: it is checked in against the source,
-    whereas the caption is re-read from NASA on every refresh.
+    whereas the caption is re-read from NASA on every refresh. A sol this pass
+    wrote is not reviewed, so it is derived again — otherwise the first run
+    freezes the answer and a corrected caption can never land.
     """
-    if metadata.get("sol"):
-        return metadata["sol"], metadata.get("sol_basis", "reviewed product record")
+    stored, basis = metadata.get("sol"), metadata.get("sol_basis")
+    if stored and basis != CAPTION:
+        return stored, basis or "reviewed product record"
     stated = caption_sol(metadata.get("description", ""))
     if stated:
-        return stated, "NASA caption"
+        return stated, CAPTION
+    # The caption stopped stating one; the sol it used to state still holds.
+    if stored:
+        return stored, basis or "reviewed product record"
     return None, "no capture sol stated"
 
 
@@ -136,6 +145,7 @@ def apply(derived_dir: Path, positions_path: Path, collection="curiosity") -> in
         metadata.update(
             {
                 "sol": sol,
+                "sol_basis": basis,
                 "body": "mars",
                 "body_id": "naif-499",
                 "site": row["site"],
