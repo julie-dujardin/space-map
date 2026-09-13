@@ -6,7 +6,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from space_map_data.utils.paths import DERIVED_DIR
+from space_map_data.utils.paths import PANORAMA_DERIVED_DIR
 
 
 class PreviewHandler(SimpleHTTPRequestHandler):
@@ -26,7 +26,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Preview processed planetary panoramas locally"
     )
-    parser.add_argument("--directory", type=Path, default=DERIVED_DIR / "panoramas")
+    parser.add_argument("--directory", type=Path, default=PANORAMA_DERIVED_DIR)
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     directory = args.directory.resolve()

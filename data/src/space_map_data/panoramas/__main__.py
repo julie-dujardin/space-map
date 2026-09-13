@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 
-from space_map_data.utils.paths import SOURCES_IMAGES_DIR, DERIVED_DIR
+from space_map_data.utils.paths import PANORAMA_SOURCES_DIR, PANORAMA_DERIVED_DIR
 from .pipeline import download, process
 
 
@@ -21,10 +21,8 @@ def cli():
         choices=["curiosity", "perseverance"],
         default=["perseverance"],
     )
-    parser.add_argument(
-        "--source-dir", type=Path, default=SOURCES_IMAGES_DIR / "panoramas"
-    )
-    parser.add_argument("--output-dir", type=Path, default=DERIVED_DIR / "panoramas")
+    parser.add_argument("--source-dir", type=Path, default=PANORAMA_SOURCES_DIR)
+    parser.add_argument("--output-dir", type=Path, default=PANORAMA_DERIVED_DIR)
     parser.add_argument("--start-sol", type=int, default=0)
     parser.add_argument("--end-sol", type=int)
     parser.add_argument(

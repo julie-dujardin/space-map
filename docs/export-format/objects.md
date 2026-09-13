@@ -855,7 +855,7 @@ sizes are `FEATURE_GALLERY_LIMIT` / `MOON_GALLERY_LIMIT` in
 
 ### `panoramas`
 
-Surface panoramas taken on the body, from the `.panorama-data` cache built by
+Surface panoramas taken on the body, from the `space-map-downloads/derived/panoramas` cache built by
 `space_map_data.panoramas`. Only products the viewer can place ship: a rover
 position, a capture time, a known north and archival sphere geometry. Entries
 sort by mission then time, so neighbours in the list are neighbours on the

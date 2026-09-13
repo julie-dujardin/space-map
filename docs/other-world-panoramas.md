@@ -3,7 +3,7 @@
 Run from the panorama worktree, using the data environment:
 
 ```sh
-PYTHONPATH=data/src python -m space_map_data.panoramas.other_worlds --source-dir .panorama-data/other-worlds --output-dir .panorama-data/derived
+PYTHONPATH=data/src python -m space_map_data.panoramas.other_worlds --source-dir ../space-map-downloads/sources/images/panoramas/other-worlds --output-dir ../space-map-downloads/derived/panoramas
 ```
 
 Add `--offline` to rebuild from cached originals. Originals are retained with
@@ -48,7 +48,7 @@ The user has approved grayscale. The [LPI CC BY 2.0 source](https://www.flickr.c
 The label and print borders are cropped at source coordinates (76, 94)–(1975, 478).
 [Garvin, Helfenstein and Zuber (1983)](https://www.lpi.usra.edu/meetings/lpsc1983/pdf/1123.pdf) describe a nominal 180° scan, 40° vertical field, and 50° inclination. We invert a 50° downward rotation and sample the angular scan, retaining black terrain. This gives approximately 17.1% sphere area. Horizontal coverage is calculated from occupied longitude columns, not equated with the tilted scanner's 180° sweep. Print registration, exact angular bounds and north remain uncalibrated. Unsampled regions are transparent; no terrain or sky is invented.
 
-Color rights remain unresolved: the [LPI color release](https://www.lpi.usra.edu/publications/slidesets/venus/slide_3.html) and [ESA release](https://www.esa.int/ESA_Multimedia/Images/2007/11/Surface_of_Venus_by_Venera_13) credit separate rights holders. Candidates/status remain in `.panorama-data/other-worlds/review.json`.
+Color rights remain unresolved: the [LPI color release](https://www.lpi.usra.edu/publications/slidesets/venus/slide_3.html) and [ESA release](https://www.esa.int/ESA_Multimedia/Images/2007/11/Surface_of_Venus_by_Venera_13) credit separate rights holders. Candidates/status remain in `../space-map-downloads/sources/images/panoramas/other-worlds/review.json`.
 
 ## Preview
 
@@ -105,8 +105,8 @@ From the main checkout, reuse the existing cache:
 ```sh
 PYTHONPATH=data/src /var/home/julie/code/git/personal/space-map/data/.venv/bin/python \
   -m space_map_data.panoramas.other_worlds --offline \
-  --source-dir .panorama-data/other-worlds \
-  --output-dir .panorama-data/derived
+  --source-dir ../space-map-downloads/sources/images/panoramas/other-worlds \
+  --output-dir ../space-map-downloads/derived/panoramas
 ```
 
 ### Remaining candidates

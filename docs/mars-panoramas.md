@@ -3,8 +3,8 @@
 This is a local data/download/processing pipeline, not an app export. It prioritizes
 official preprocessed color imagery, includes partial panoramas, and retains source
 files, credits, capture information, coverage, and localization evidence. No sky or
-ground is synthesized. The ignored imagery cache lives at `.panorama-data/` in
-the main checkout.
+ground is synthesized. The imagery cache lives in the sibling `space-map-downloads/`
+checkout, under `sources/images/panoramas/` and `derived/panoramas/`.
 
 ## Collections and completeness
 
@@ -40,13 +40,13 @@ From `data/`, using the project's installed Python environment:
 
 ```sh
 uv run python -m space_map_data.panoramas.releases all \
-  --source-dir ../.panorama-data/releases \
-  --output-dir ../.panorama-data/derived \
+  --source-dir ../../space-map-downloads/sources/images/panoramas/releases \
+  --output-dir ../../space-map-downloads/derived/panoramas \
   --collections mastcamz pancam curiosity spirit opportunity insight phoenix pathfinder
 
 uv run space-map-panoramas all \
-  --source-dir ../.panorama-data/sources \
-  --output-dir ../.panorama-data/derived \
+  --source-dir ../../space-map-downloads/sources/images/panoramas \
+  --output-dir ../../space-map-downloads/derived/panoramas \
   --missions perseverance
 ```
 
@@ -102,7 +102,7 @@ executable and runs offline after previews have been generated:
 
 ```sh
 uv run python -m space_map_data.panoramas.grid_geometry \
-  --directory ../.panorama-data/derived/mastcamz
+  --directory ../../space-map-downloads/derived/panoramas/mastcamz
 ```
 
 It fits both grid axes, checks label agreement, spatial span, angular bounds, and
@@ -126,8 +126,8 @@ longitude, and MOLA-areoid elevation.
 
 ```sh
 uv run python -m space_map_data.panoramas.localize \
-  --source-dir ../.panorama-data/releases \
-  --output-dir ../.panorama-data/derived
+  --source-dir ../../space-map-downloads/sources/images/panoramas/releases \
+  --output-dir ../../space-map-downloads/derived/panoramas
 ```
 
 Mastcam-Z observation sol/sequence IDs are matched against all corresponding
@@ -159,7 +159,7 @@ stills/selfies, not asserted to be spherical panoramas.
 
 ```sh
 uv run python -m space_map_data.panoramas.preview \
-  --directory ../.panorama-data/derived
+  --directory ../../space-map-downloads/derived/panoramas
 ```
 
 Open http://localhost:8765. The collection picker includes color rover images and
@@ -170,7 +170,7 @@ dimensions, coverage, and missing-location/approximate-geometry warnings are sho
 Generate a current count/readiness report and check catalog asset references:
 
 ```sh
-uv run python -m space_map_data.panoramas.audit --directory ../.panorama-data/derived
+uv run python -m space_map_data.panoramas.audit --directory ../../space-map-downloads/derived/panoramas
 ```
 
 This writes `audit.json` in the derived directory. Counts use active catalogs,
@@ -178,7 +178,7 @@ not superseded metadata directories or rejected originals retained in the cache.
 
 ## Provenance and reuse
 
-Originals, source metadata, and generated assets live in ignored `.panorama-data/`.
+Originals, source metadata, and generated assets live in `space-map-downloads/`.
 Nothing is published, added to the app export, or included in the software license.
 
 - [Mastcam-Z landscape collection](https://mastcamz.asu.edu/mastcam-zs-landscape-mosaic-collection/)
@@ -211,7 +211,7 @@ catalog. These official PDS cylindrical mosaics use label-derived sphere geometr
 and an exact site/drive localization join, not an assumed strip projection.
 
 ```sh
-PYTHONPATH=data/src python -m space_map_data.panoramas all --missions curiosity --include-monochrome --sol-step 20 --source-dir .panorama-data/sources --output-dir .panorama-data/derived
+PYTHONPATH=data/src python -m space_map_data.panoramas all --missions curiosity --include-monochrome --sol-step 20 --source-dir ../space-map-downloads/sources/images/panoramas --output-dir ../space-map-downloads/derived/panoramas
 ```
 
 This covers sols 2 to the end of the archive and includes full and partial
@@ -233,7 +233,7 @@ ended in 2012.
 After processing the `curiosity` and `insight` releases, run:
 
 ```sh
-PYTHONPATH=data/src python -m space_map_data.panoramas.strip_spheres --directory .panorama-data/derived
+PYTHONPATH=data/src python -m space_map_data.panoramas.strip_spheres --directory ../space-map-downloads/derived/panoramas
 ```
 
 This adds approximate immersive renditions for 21 Curiosity Mastcam releases and
@@ -313,9 +313,9 @@ are retained. To update the existing cache from the main checkout:
 
 ```sh
 PYTHONPATH=data/src data/.venv/bin/python -m space_map_data.panoramas.strip_spheres \
-  --directory .panorama-data/derived
+  --directory ../space-map-downloads/derived/panoramas
 PYTHONPATH=data/src data/.venv/bin/python -m space_map_data.panoramas.audit \
-  --directory .panorama-data/derived
+  --directory ../space-map-downloads/derived/panoramas
 ```
 
 The audit reports dated spherical renditions and dated renditions with known
