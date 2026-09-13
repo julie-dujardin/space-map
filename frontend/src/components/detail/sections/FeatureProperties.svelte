@@ -16,7 +16,6 @@
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { groupClick, groupHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -191,19 +190,13 @@
 	{#if loc?.quadrangle}
 		<Row label={m.feature_quadrangle()}>
 			{#if quadTarget}
-				<span class="text-muted-foreground flex min-w-0 items-center justify-end gap-1.5">
+				<!-- The Surface tab this opens carries the quadrangle's Wikipedia
+				     extract and its source link, so the row stays one plain
+				     in-app link. -->
+				<span class="text-muted-foreground flex min-w-0 items-center justify-end">
 					<Link href={quadTarget.href} onclick={openQuad} class="truncate"
 						>{loc.quadrangle.name}</Link
 					>
-					{#if loc.quadrangle.wikipedia}
-						<a
-							href={loc.quadrangle.wikipedia}
-							target="_blank"
-							rel="noopener"
-							class="hover:text-foreground pointer-events-auto shrink-0"
-							aria-label={m.source_wikipedia_name()}><ExternalLinkIcon class="size-3" /></a
-						>
-					{/if}
 				</span>
 			{:else}
 				<EntityLinks entities={[loc.quadrangle]} />
