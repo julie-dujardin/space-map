@@ -311,14 +311,16 @@
 				</dl>
 			</div>
 
-			<!-- One row, so the minimap stretches to the timeline's height. -->
+			<!-- One row, so the minimap grows to the timeline's height. Nothing in
+			     it stretches: the strip's measured height sets the minimap's, so a
+			     stretched strip would measure its own output and ratchet up. -->
 			{#if view && missionEntries.length}
 				<div
-					class="absolute bottom-[calc(var(--safe-bottom)_+_1.5rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex items-stretch gap-2 {timelineOpen
+					class="absolute bottom-[calc(var(--safe-bottom)_+_1.5rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex items-end gap-2 {timelineOpen
 						? ''
 						: 'pointer-events-none'}"
 				>
-					<div class="pointer-events-auto shrink-0 self-end">
+					<div class="pointer-events-auto shrink-0">
 						<PanoramaMinimap
 							{bodyId}
 							entries={missionEntries}

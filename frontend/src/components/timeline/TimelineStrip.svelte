@@ -11,9 +11,9 @@
 	import type { Snippet } from 'svelte';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import Minimize2Icon from '@lucide/svelte/icons/minimize-2';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import SquareIcon from '@lucide/svelte/icons/square';
+	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -205,7 +205,7 @@
 					aria-label={closeLabel}
 					title={closeLabel}
 				>
-					<Minimize2Icon class="size-4" />
+					<XIcon class="size-4" />
 				</button>
 			{/if}
 		</div>
@@ -232,11 +232,14 @@
 										{active ? 'border-border bg-muted' : 'hover:bg-muted/50 border-transparent'}"
 								>
 									{#if item.image}
+										<!-- `w-0 min-w-full`: the row is sized to its content, so a
+										     loaded image's natural width would widen every card and,
+										     through the aspect box, grow the whole strip. -->
 										<img
 											src={item.image}
 											alt=""
 											loading="lazy"
-											class="mb-1 aspect-[3/1] w-full rounded object-cover"
+											class="mb-1 aspect-[3/1] w-0 min-w-full rounded object-cover"
 										/>
 									{/if}
 									<span class="flex w-full min-w-0 items-center gap-1.5">
