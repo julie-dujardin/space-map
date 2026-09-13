@@ -7,6 +7,7 @@ import httpx
 import numpy as np
 import pytest
 
+from space_map_data.panoramas import pipeline
 from space_map_data.panoramas.labels import (
     Mosaic,
     attached_constants,
@@ -24,6 +25,10 @@ from space_map_data.panoramas.pipeline import (
     remove_coordinate_label_borders,
     sphere_texture,
     coverage,
+    m20_mosaic_listings,
+    m20_version,
+    M20,
+    M20_INVENTORY,
     MSL,
     PLACES,
 )
@@ -409,3 +414,88 @@ def test_sol_step_spreads_a_bounded_selection(tmp_path):
     ) as client:
         products = download(client, tmp_path / "sources", "curiosity", sol_step=20)
     assert [product["mosaic"]["sol"] for product in products] == [24, 44]
+
+
+def m20_inventory(*identifiers):
+    return "".join(
+        f"P,urn:nasa:pds:mars2020_navcam_ops_mosaic:data:{identifier}::1.0\n"
+        for identifier in identifiers
+    )
+
+
+def test_perseverance_products_come_from_the_release_that_delivered_them(tmp_path):
+    """A product is served by the first release directory that lists it."""
+    early = "n_lrgb_0413_rzs_0220532_cyl_l_autogenj"
+    late = "n_lrgb_1859_rzs_0880844_cyl_l_autogenj"
+    published = {
+        "cumulative": m20_inventory(early),
+        # Releases 1-7 were folded into `cumulative`; the gap must not end discovery.
+        "r8": m20_inventory(early),
+        "r16": m20_inventory(early, late),
+    }
+
+    def respond(request):
+        directory = str(request.url).removeprefix(M20).removesuffix("/" + M20_INVENTORY)
+        if directory not in published:
+            return httpx.Response(404)
+        return httpx.Response(200, content=published[directory])
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        groups = m20_mosaic_listings(client, tmp_path, refresh=False)
+    assert groups[413] == [
+        (
+            M20
+            + "cumulative/mars2020_navcam_ops_mosaic/data/sol/00413/ids/rdr/mosaic/",
+            early.upper() + "01.xml",
+        )
+    ]
+    assert groups[1859] == [
+        (
+            M20 + "r16/mars2020_navcam_ops_mosaic/data/sol/01859/ids/rdr/mosaic/",
+            late.upper() + "01.xml",
+        )
+    ]
+
+
+def test_perseverance_release_probe_retries_a_flaky_mirror(tmp_path, monkeypatch):
+    """A 503 on the first release must not hand its products to a later one."""
+    monkeypatch.setattr(pipeline.time, "sleep", lambda _: None)
+    early = "n_lrgb_0413_rzs_0220532_cyl_l_autogenj"
+    published = {"cumulative": m20_inventory(), "r8": m20_inventory(early)}
+    seen: list[str] = []
+
+    def respond(request):
+        directory = str(request.url).removeprefix(M20).removesuffix("/" + M20_INVENTORY)
+        seen.append(directory)
+        if directory == "r8" and seen.count("r8") == 1:
+            return httpx.Response(503)
+        if directory not in published:
+            return httpx.Response(404)
+        return httpx.Response(200, content=published[directory])
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        groups = m20_mosaic_listings(client, tmp_path, refresh=False)
+    assert groups[413][0][0].startswith(M20 + "r8/")
+
+
+def test_perseverance_release_probe_gives_up_loudly(tmp_path, monkeypatch):
+    """An unreadable release stops the download rather than skipping a release."""
+    monkeypatch.setattr(pipeline.time, "sleep", lambda _: None)
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(503))
+    ) as client:
+        with pytest.raises(httpx.HTTPError):
+            m20_mosaic_listings(client, tmp_path, refresh=False)
+
+
+def test_perseverance_version_field_carries_on_in_base_36():
+    """Above 99 the two-character version field continues from A0, not 100."""
+    assert m20_version("1.0") == "01"
+    assert m20_version("99.0") == "99"
+    assert m20_version("100.0") == "A0"
+    # The three products the archive actually holds above 99.
+    assert m20_version("212.0") == "D4"
+    assert m20_version("269.0") == "EP"
+    assert m20_version("280.0") == "F0"
+    with pytest.raises(ValueError, match="two-character field"):
+        m20_version("1036.0")

@@ -22,12 +22,15 @@ logger = logging.getLogger(__name__)
 ARCHIVE = "https://planetarydata.jpl.nasa.gov/img/data/"
 MSL = ARCHIVE + "msl/msl_navcam_mosaic/DATA/"
 # The Imaging Node's browsable mirror froze the Mars 2020 ops mosaics at sol 658.
-# The release buckets behind the PDS Image Atlas carry the whole mission instead:
-# each release directory holds only what that release delivered, and everything
-# before release 8 sits under `cumulative`.
+# The release buckets behind the PDS Image Atlas carry the whole mission instead.
+# A release inventory lists the whole collection as of that release, but the
+# directory beside it serves only what that release delivered — so a product has
+# to be fetched from the first release that listed it, and releases before 8 are
+# served from `cumulative`.
 M20 = "https://d1ejlg980osaur.cloudfront.net/m20/"
 M20_MOSAIC = "mars2020_navcam_ops_mosaic/"
 M20_INVENTORY = M20_MOSAIC + "data/collection_data_inventory.csv"
+M20_FIRST_RELEASE = 8
 M20_RELEASE_GAP = 8
 PLACES = ARCHIVE + "msl/msl_places/data_localizations/localized_interp.csv"
 WAYPOINTS = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json"
@@ -124,22 +127,40 @@ def positions(mission: str, path: Path) -> dict:
     return result
 
 
+def m20_published(client, name) -> bool:
+    """Whether a release directory exists, against a mirror that also answers
+    502 and 503. Absence has to be the archive's answer and not the network's:
+    a release read as absent hands its products to the next one, whose
+    directory does not serve them, and the download dies there."""
+    for attempt in range(5):
+        status = client.head(M20 + name + "/" + M20_INVENTORY).status_code
+        if status not in {429, 502, 503, 504}:
+            return status == 200
+        delay = 2 ** (attempt + 1)
+        logger.warning("HTTP %s; retrying in %ss: %s release", status, delay, name)
+        time.sleep(delay)
+    raise httpx.HTTPError(f"Mars 2020 release {name} unreadable after 5 attempts")
+
+
 def m20_releases(client, root, *, refresh):
     """Every published release directory, oldest first, with its inventory text.
 
-    A release inventory lists the collection as of that release, so the first
-    directory a product appears in is the one that stores it.
+    Releases are numbered, not listed, so the end of the sequence is found by
+    running off it. Counting starts at the first published release: the empty
+    numbers below it are the archive's own history, not a gap, and letting them
+    spend the tolerance leaves none for the live releases.
     """
     directories = ["cumulative"]
-    release, misses = 1, 0
+    release, misses = M20_FIRST_RELEASE, 0
     while misses < M20_RELEASE_GAP:
         name = f"r{release}"
-        if client.head(M20 + name + "/" + M20_INVENTORY).status_code == 200:
+        if m20_published(client, name):
             directories.append(name)
             misses = 0
         else:
             misses += 1
         release += 1
+    logger.info("Mars 2020 releases: %s", ", ".join(directories))
     for name in directories:
         yield (
             name,
@@ -150,6 +171,24 @@ def m20_releases(client, root, *, refresh):
                 refresh=refresh,
             ).read_text(),
         )
+
+
+def m20_version(version: str) -> str:
+    """The two-character version field a Mars 2020 product name ends with.
+
+    It counts 01 to 99 and then carries on in base 36 from A0, so the inventory's
+    decimal version has to be re-encoded above 99. The archive holds three such
+    products — versions 212, 269 and 280, named D4, EP and F0 — and no counter
+    has reached ZZ, which would be 1035.
+    """
+    number = int(version.split(".")[0])
+    if number <= 99:
+        return f"{number:02}"
+    number += 260
+    digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if number >= len(digits) ** 2:
+        raise ValueError(f"Version {version} exceeds the two-character field")
+    return digits[number // len(digits)] + digits[number % len(digits)]
 
 
 def m20_mosaic_listings(client, root, *, refresh):
@@ -166,7 +205,7 @@ def m20_mosaic_listings(client, root, *, refresh):
             if not match or identifier in placed:
                 continue
             sol = int(match[1])
-            name = identifier.upper() + f"{int(version.split('.')[0]):02}.xml"
+            name = identifier.upper() + m20_version(version) + ".xml"
             groups.setdefault(sol, []).append((url + f"{sol:05}/ids/rdr/mosaic/", name))
             placed.add(identifier)
     return groups
@@ -239,8 +278,12 @@ def download(
             key=lambda product: product[1],
             reverse=True,
         ):
-            label = fetch(client, url + name, root / "labels" / name, refresh=refresh)
             try:
+                # A name the archive does not serve is one bad product, not a
+                # reason to abandon a mission-long run.
+                label = fetch(
+                    client, url + name, root / "labels" / name, refresh=refresh
+                )
                 mosaic = (read_pds3 if mission == "curiosity" else read_pds4)(
                     label.read_text()
                 )
@@ -252,7 +295,7 @@ def download(
                     continue
                 if mosaic.sol != sol or mosaic.product_id != Path(name).stem:
                     raise ValueError("Product identity mismatch")
-            except ValueError as error:
+            except (ValueError, httpx.HTTPStatusError) as error:
                 rejected.append({"label_url": url + name, "reason": str(error)})
                 continue
             image_url = urljoin(url, mosaic.product_id + ".IMG")

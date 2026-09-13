@@ -15,7 +15,7 @@ checkout, under `sources/images/panoramas/` and `derived/panoramas/`.
 | `curiosity`, `spirit`, `opportunity` | All pages of NASA image-library panorama/mosaic/360 searches | Screened official color releases, including crops |
 | `insight` | Curated first surface image, first/dusty/final selfies, late surface image | Five timeline frames; last exposure not claimed verified |
 | `phoenix`, `pathfinder` | Official PIA13804 / PIA01466 hero panoramas | One preprocessed lander panorama each |
-| Perseverance Navcam | Complete PDS collection inventory, supported RGB cylindrical products | Localized, north-aligned sphere textures; the archive ends at sol 658 |
+| Perseverance Navcam | Every PDS release inventory, supported RGB cylindrical products | Localized, north-aligned sphere textures |
 | `curiosity-navcam` | Every PDS sol directory, thinned to one stopping point per 20 sols | Grayscale full/partial sphere textures with localization and north alignment |
 
 “Complete discovery” means traversing the specified source, **not** an exhaustive
@@ -68,6 +68,26 @@ Do not run two writers against the same collection concurrently.
 - HTTP 429/502/503/504 responses receive bounded retries/backoff.
 - PDS `--width` sets sphere texture width, even values 256–8192; default 4096.
 - Curiosity Navcam requires `--missions curiosity --include-monochrome` explicitly.
+
+### Where the Perseverance mosaics live
+
+The Imaging Node's browsable mirror at `planetarydata.jpl.nasa.gov` still serves
+the release-7 delivery of `mars2020_navcam_ops_mosaic`, which stops at sol 658 in
+December 2022. Its `data/sol/` directories, its collection inventory, and the
+`M20_waypoints.json` panorama references on `mars.nasa.gov` all end there or
+resolve to files that are no longer public.
+
+The live archive is the bucket behind the PDS Image Atlas,
+`https://d1ejlg980osaur.cloudfront.net/m20/`. One directory per release holds
+only what that release delivered — `cumulative` for everything up to release 7,
+then `r8` upward — and each release inventory lists the collection as of that
+release. Discovery walks the release directories in order, so the first one that
+lists a product is the one that stores it. The bucket denies listing and
+CloudFront drops query strings, so release numbers are probed rather than
+enumerated: probing starts at release 8 and stops after eight consecutive
+missing directories. A release probe that answers 429 or 5xx is retried and, if
+it keeps failing, aborts the run — reading a live release as missing would hand
+its products to the next release, which does not serve them.
 
 ## Coverage metadata
 
@@ -192,7 +212,7 @@ Nothing is published, added to the app export, or included in the software licen
   NASA library releases require a recognized institutional credit; unfamiliar
   credits remain in the review queue. Direct policy caching can return 403; the
   browser-verified policy review is recorded separately in that case.
-- [Perseverance Navcam PDS](https://planetarydata.jpl.nasa.gov/img/data/mars2020/mars2020_navcam_ops_mosaic/):
+- [Perseverance Navcam PDS](https://pds-imaging.jpl.nasa.gov/beta/archive-explorer?mission=mars_2020&bundle=mars2020_navcam_ops_mosaic):
   RGB intensity mosaics and PDS4 geometry. Optional grayscale data uses
   [Curiosity Navcam PDS](https://planetarydata.jpl.nasa.gov/img/data/msl/msl_navcam_mosaic/)
   and its PLACES table.
@@ -260,8 +280,8 @@ Immersive products appear before flat-only products in each collection.
 ### Dated Mastcam-Z 360 spheres
 
 The manifest also fits all 53 panoramas of ASU's Mastcam-Z 360 collection, sols 3
-to 1879. These are the only color Perseverance panoramas after sol 658, where the
-PDS `mars2020_navcam_ops_mosaic` archive ends. The published 360° extent comes
+to 1879. They are ASU's curated Mastcam-Z releases, at a longer focal length than
+the Navcam mosaics that now cover the same sols. The published 360° extent comes
 from the collection page; the horizon is visually estimated like every other
 curated strip, and no heading is recorded.
 
