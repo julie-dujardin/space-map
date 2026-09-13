@@ -26,6 +26,8 @@ PLACES = ARCHIVE + "msl/msl_places/data_localizations/localized_interp.csv"
 WAYPOINTS = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json"
 M20_PLACES = "https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_rover_places/data_localizations/best_interp.csv"
 POLICY = "https://www.jpl.nasa.gov/jpl-image-use-policy/"
+# The frontend redraws the archive's coordinate underlay as a separate layer.
+COORDINATE_GRID_DN = 4096
 
 
 def write_json(path: Path, data):
@@ -294,6 +296,7 @@ def read_pixels(path: Path, mosaic: Mosaic):
     valid = np.all(np.isfinite(pixels), axis=2)
     for missing in mosaic.missing:
         valid &= np.all(pixels != missing, axis=2)
+    valid &= ~np.all(pixels == COORDINATE_GRID_DN, axis=2)
     if not valid.any():
         raise ValueError("Mosaic has no valid pixels")
     low, high = np.percentile(pixels[valid], [0.5, 99.5])
@@ -346,7 +349,6 @@ def coverage(texture: Image.Image, mosaic: Mosaic) -> dict:
         "sphere_percent": float(np.sum(alpha.mean(axis=1) * weights) * 50),
         "canvas_percent": float(alpha.mean() * 100),
         "method": "solid-angle-weighted alpha mask at output resolution",
-        "includes_source_grid": True,
     }
 
 
@@ -412,7 +414,7 @@ def process(source_dir: Path, output_dir: Path, mission: str, *, width=4096):
             "coverage_fraction": float(
                 np.count_nonzero(np.asarray(texture)[:, :, 3]) / (width * (width // 2))
             ),
-            "coverage": coverage(texture, mosaic),
+            "coverage": {**coverage(texture, mosaic), "includes_source_grid": False},
             "color": "rgb" if mosaic.bands == 3 else "grayscale",
             "source_width": mosaic.width,
             "source_height": mosaic.height,
@@ -420,7 +422,7 @@ def process(source_dir: Path, output_dir: Path, mission: str, *, width=4096):
             "preview": "preview.webp",
             "tone_mapping": tone,
             "quality_notes": [
-                "Archived coordinate grid underlays may remain in gaps; coverage includes these pixels.",
+                "The archived coordinate underlay is excluded; the viewer draws its own angular grid.",
                 "Mosaic seams and near-rover parallax are retained.",
             ],
             "credit": "Courtesy NASA/JPL-Caltech",

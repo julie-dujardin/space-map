@@ -45,6 +45,8 @@ const MAX_FOV = 110;
 const ARROW_PITCH_DEG = -22;
 const ARROW_DISTANCE = 9;
 const CLICK_SLOP_PX = 6;
+const ANGLE_STEP_DEG = 10;
+const ANGLE_SAMPLE_STEP_DEG = 1;
 
 /** Unit vector for a compass heading and pitch: north is -Z, east +X, up +Y. */
 function direction(headingDeg: number, pitchDeg: number, out = new Vector3()): Vector3 {
@@ -77,6 +79,8 @@ export class PanoramaScene {
 	private readonly scene = new Scene();
 	private readonly camera: PerspectiveCamera;
 	private readonly sphere: Mesh<SphereGeometry, MeshBasicMaterial>;
+	private readonly angleCanvas = document.createElement('canvas');
+	private readonly angleContext = this.angleCanvas.getContext('2d')!;
 	private readonly arrows = new Group();
 	private readonly arrowGeometry = new ShapeGeometry(arrowShape());
 	private readonly raycaster = new Raycaster();
@@ -91,6 +95,8 @@ export class PanoramaScene {
 	private hovered: ArrowKey | null = null;
 	private readonly lookAt = new Vector3();
 	private readonly ndc = new Vector3();
+	private readonly gridPoint = new Vector3();
+	private readonly viewDirection = new Vector3();
 
 	constructor(
 		private readonly container: HTMLElement,
@@ -101,20 +107,26 @@ export class PanoramaScene {
 		this.renderer.domElement.classList.add('block', 'h-full', 'w-full', 'touch-none');
 		this.renderer.domElement.tabIndex = 0;
 		container.appendChild(this.renderer.domElement);
+		this.angleCanvas.classList.add(
+			'pointer-events-none',
+			'absolute',
+			'inset-0',
+			'block',
+			'h-full',
+			'w-full'
+		);
+		this.angleCanvas.setAttribute('aria-hidden', 'true');
+		container.appendChild(this.angleCanvas);
 
 		this.scene.background = new Color('#0b0d12');
 		this.camera = new PerspectiveCamera(this.fov, 1, 0.1, 1000);
 
-		// Inside-out sphere: the geometry itself is mirrored on X so the faces
-		// turn inward and the texture reads correctly from within. Mirroring the
-		// mesh instead would keep the outside as the front face and cull it all.
+		// Mirrored geometry exposes the textured face from inside the sphere.
 		this.sphere = new Mesh(
 			new SphereGeometry(500, 96, 48).scale(-1, 1, 1),
 			new MeshBasicMaterial({ transparent: true, visible: false, depthWrite: false })
 		);
-		// Centred on the camera, the sphere sorts as the nearest transparent
-		// object and would paint over the arrows; pin it underneath.
-		this.sphere.renderOrder = -1;
+		this.sphere.renderOrder = -2;
 		this.scene.add(this.sphere, this.arrows);
 
 		this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -231,6 +243,7 @@ export class PanoramaScene {
 		this.sphere.material.dispose();
 		this.arrowGeometry.dispose();
 		this.renderer.dispose();
+		this.angleCanvas.remove();
 		el.remove();
 	}
 
@@ -246,6 +259,10 @@ export class PanoramaScene {
 		const { clientWidth: w, clientHeight: h } = this.container;
 		if (!w || !h) return;
 		this.renderer.setSize(w, h, false);
+		const pixelRatio = Math.min(window.devicePixelRatio, 2);
+		this.angleCanvas.width = Math.round(w * pixelRatio);
+		this.angleCanvas.height = Math.round(h * pixelRatio);
+		this.angleContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 		this.camera.aspect = w / h;
 		this.camera.updateProjectionMatrix();
 		this.invalidate();
@@ -259,6 +276,7 @@ export class PanoramaScene {
 
 		const anchors: Partial<Record<ArrowKey, ScreenAnchor>> = {};
 		const { clientWidth: w, clientHeight: h } = this.container;
+		this.drawAngleGrid(w, h);
 		for (const group of this.arrows.children) {
 			this.ndc.copy(group.position).project(this.camera);
 			anchors[group.name as ArrowKey] = {
@@ -268,6 +286,99 @@ export class PanoramaScene {
 			};
 		}
 		this.anchors = anchors;
+	}
+
+	/** Draw after projection so grid weight and type stay constant across the view. */
+	private drawAngleGrid(w: number, h: number): void {
+		const ctx = this.angleContext;
+		ctx.clearRect(0, 0, w, h);
+		this.camera.getWorldDirection(this.viewDirection);
+
+		ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		for (let heading = 0; heading < 360; heading += ANGLE_STEP_DEG) {
+			this.traceAngleLine(ctx, w, h, heading, true);
+		}
+		for (let elevation = -80; elevation <= 80; elevation += ANGLE_STEP_DEG) {
+			this.traceAngleLine(ctx, w, h, elevation, false);
+		}
+		ctx.stroke();
+
+		ctx.font = '12px system-ui, sans-serif';
+		ctx.lineWidth = 3;
+		ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'bottom';
+		for (let heading = 0; heading < 360; heading += ANGLE_STEP_DEG) {
+			if (!this.projectAngle(heading, 0, w, h, true)) continue;
+			const label = `${heading}°`;
+			ctx.strokeText(label, this.gridPoint.x, this.gridPoint.y - 3);
+			ctx.fillText(label, this.gridPoint.x, this.gridPoint.y - 3);
+		}
+
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'middle';
+		for (const heading of [0, 90, 180, 270]) {
+			for (let elevation = -80; elevation <= 80; elevation += ANGLE_STEP_DEG) {
+				if (elevation === 0 || !this.projectAngle(heading, elevation, w, h, true)) continue;
+				const label = `${elevation > 0 ? '+' : ''}${elevation}°`;
+				ctx.strokeText(label, this.gridPoint.x + 4, this.gridPoint.y);
+				ctx.fillText(label, this.gridPoint.x + 4, this.gridPoint.y);
+			}
+		}
+	}
+
+	private traceAngleLine(
+		ctx: CanvasRenderingContext2D,
+		w: number,
+		h: number,
+		fixedAngle: number,
+		meridian: boolean
+	): void {
+		let drawing = false;
+		let previousX = 0;
+		let previousY = 0;
+		const maxJump = Math.max(w, h) * 2;
+		const from = meridian ? -90 : 0;
+		const to = meridian ? 90 : 360;
+		for (let angle = from; angle <= to; angle += ANGLE_SAMPLE_STEP_DEG) {
+			const heading = meridian ? fixedAngle : angle;
+			const elevation = meridian ? angle : fixedAngle;
+			if (!this.projectAngle(heading, elevation, w, h)) {
+				drawing = false;
+				continue;
+			}
+			const { x, y } = this.gridPoint;
+			if (!drawing || Math.hypot(x - previousX, y - previousY) > maxJump) ctx.moveTo(x, y);
+			else ctx.lineTo(x, y);
+			drawing = true;
+			previousX = x;
+			previousY = y;
+		}
+	}
+
+	private projectAngle(
+		heading: number,
+		elevation: number,
+		w: number,
+		h: number,
+		insideViewport = false
+	): boolean {
+		direction(heading, elevation, this.gridPoint);
+		if (this.gridPoint.dot(this.viewDirection) <= 0.001) return false;
+		this.gridPoint.project(this.camera);
+		if (!Number.isFinite(this.gridPoint.x) || !Number.isFinite(this.gridPoint.y)) return false;
+		if (
+			insideViewport &&
+			(Math.abs(this.gridPoint.x) >= 0.98 || Math.abs(this.gridPoint.y) >= 0.98)
+		)
+			return false;
+		if (Math.abs(this.gridPoint.x) > 4 || Math.abs(this.gridPoint.y) > 4) return false;
+		this.gridPoint.x = ((this.gridPoint.x + 1) / 2) * w;
+		this.gridPoint.y = ((1 - this.gridPoint.y) / 2) * h;
+		return true;
 	}
 
 	/** Degrees of view per pixel dragged, so a drag follows the finger at any zoom. */

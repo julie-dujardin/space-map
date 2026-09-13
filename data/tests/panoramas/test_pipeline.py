@@ -114,6 +114,19 @@ def test_big_endian_offset_and_missing_mask(tmp_path):
         read_pixels(path, mosaic(height=3, offset=6))
 
 
+def test_coordinate_grid_is_excluded_from_image(tmp_path):
+    path = tmp_path / "test.img"
+    pixels = (np.arange(3 * 360) % 2000 + 1000).astype(">i2").reshape(1, 3, 360)
+    pixels[0, 1, 90:270] = 4096
+    path.write_bytes(pixels.tobytes())
+
+    rgba, _ = read_pixels(path, mosaic(height=3, offset=0))
+
+    assert not rgba[1, 90:270, 3].any()
+    assert rgba[1, :90, 3].all()
+    assert rgba[1, 270:, 3].all()
+
+
 def test_ambiguous_localizations_are_excluded(tmp_path):
     path = tmp_path / "positions.json"
     rows = [
