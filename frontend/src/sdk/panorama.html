@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>spacemap SDK — panorama demo</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #05070e;
+				color: #e6e6e6;
+				font:
+					14px/1.45 system-ui,
+					sans-serif;
+			}
+			#panorama {
+				position: fixed;
+				inset: 0;
+			}
+			#panel {
+				position: fixed;
+				top: 12px;
+				left: 12px;
+				width: 290px;
+				max-height: calc(100% - 24px);
+				overflow: auto;
+				box-sizing: border-box;
+				padding: 12px 14px;
+				background: rgba(12, 14, 20, 0.86);
+				border: 1px solid #2c2f3a;
+				border-radius: 10px;
+				backdrop-filter: blur(8px);
+			}
+			h1 {
+				margin: 0 0 4px;
+				font-size: 16px;
+			}
+			h1 small {
+				font-weight: normal;
+				color: #9aa;
+			}
+			h2 {
+				margin: 14px 0 4px;
+				font-size: 12px;
+				text-transform: uppercase;
+				letter-spacing: 0.06em;
+				color: #8b93a7;
+			}
+			p {
+				margin: 6px 0;
+			}
+			select,
+			button {
+				font: inherit;
+				color: inherit;
+				background: #171a24;
+				border: 1px solid #3a3e4d;
+				border-radius: 6px;
+				padding: 4px 8px;
+				min-width: 0;
+			}
+			button {
+				cursor: pointer;
+			}
+			.row {
+				display: flex;
+				gap: 6px;
+				margin: 8px 0;
+			}
+			.row > * {
+				flex: 1 1 0;
+			}
+			#list {
+				width: 100%;
+			}
+			#readout,
+			#place {
+				font:
+					12px/1.5 ui-monospace,
+					monospace;
+				color: #9fb0c9;
+			}
+			#error {
+				color: #f88;
+			}
+			/* A label the page hangs beside each arrow, from the `arrows` event. */
+			.demo-arrow {
+				position: fixed;
+				transform: translate(-50%, calc(-100% - 26px));
+				padding: 2px 8px;
+				border-radius: 10px;
+				background: rgba(10, 20, 40, 0.85);
+				border: 1px solid #6af;
+				color: #cfe6ff;
+				font-size: 12px;
+				white-space: nowrap;
+				pointer-events: none;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="panorama"></div>
+		<aside id="panel">
+			<h1>spacemap panorama <small>demo</small></h1>
+			<p id="error" hidden></p>
+
+			<h2>Panorama</h2>
+			<select id="list"></select>
+			<div class="row">
+				<button id="previous" type="button">Previous</button>
+				<button id="next" type="button">Next</button>
+			</div>
+			<p id="place"></p>
+
+			<h2>View</h2>
+			<div class="row">
+				<button id="north" type="button">Face north</button>
+				<button id="wide" type="button">Wide</button>
+			</div>
+			<p id="readout"></p>
+
+			<h2>Limits</h2>
+			<label><input id="arrows" type="checkbox" checked /> Arrows</label>
+			<div class="row">
+				<button id="limit" type="button">Keep near this view</button>
+				<button id="free" type="button">Free</button>
+			</div>
+			<p id="limits"></p>
+		</aside>
+
+		<script type="module">
+			import { createPanorama } from './spacemap.js';
+
+			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?at=<panorama id or key>
+			// ?arrows=0 ?heading=<from,to> ?pitch=<min,max> ?fov=<min,max>
+			const params = new URLSearchParams(location.search);
+			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
+
+			const $ = (id) => document.getElementById(id);
+			const fail = (e) => {
+				$('error').textContent = String(e?.message ?? e);
+				$('error').hidden = false;
+			};
+
+			const options = { body: params.get('body') ?? 'naif-499' };
+			if (dataUrl) options.dataUrl = dataUrl;
+			if (params.has('lang')) options.locale = params.get('lang');
+			if (params.has('at')) options.at = params.get('at');
+			if (params.get('arrows') === '0') options.arrows = false;
+			const pair = (key) => params.get(key)?.split(',').map(Number);
+			options.limits = { heading: pair('heading'), pitch: pair('pitch'), fov: pair('fov') };
+			options.events = { error: fail };
+
+			let view;
+			try {
+				view = await createPanorama({ container: $('panorama'), ...options });
+			} catch (e) {
+				fail(e);
+				throw e;
+			}
+			// The view, for poking at from the console.
+			globalThis.view = view;
+
+			const name = (entry) =>
+				`${entry.mission ?? ''} · sol ${entry.sol ?? '?'} · ${entry.time.slice(0, 10)}`;
+			for (const entry of view.getPanoramas()) {
+				const option = document.createElement('option');
+				option.value = entry.id;
+				option.textContent = name(entry);
+				$('list').append(option);
+			}
+			$('list').onchange = () => view.open($('list').value).catch(fail);
+			$('previous').onclick = () => view.step('previous');
+			$('next').onclick = () => view.step('next');
+			$('north').onclick = () => view.setView({ heading: 0, pitch: 0 });
+			$('wide').onclick = () => view.setView({ fov: 110 });
+
+			$('arrows').checked = options.arrows !== false;
+			$('arrows').onchange = () => view.setArrowsVisible($('arrows').checked);
+			const showLimits = () => {
+				const { heading, pitch, fov } = view.getLimits();
+				const range = (name, pair) => pair && `${name} ${pair[0]}…${pair[1]}°`;
+				$('limits').textContent =
+					[range('heading', heading), range('pitch', pitch), range('fov', fov)]
+						.filter(Boolean)
+						.join('  ') || 'none';
+			};
+			// A window of one field of view around where the reader looks now.
+			$('limit').onclick = () => {
+				const { heading, pitch, fov } = view.getView();
+				const h = fov / 2;
+				view.setLimits({
+					heading: [heading - h, heading + h],
+					pitch: [pitch - h, pitch + h],
+					fov: [fov * 0.75, fov]
+				});
+				showLimits();
+			};
+			$('free').onclick = () => {
+				view.setLimits({});
+				showLimits();
+			};
+			showLimits();
+
+			const showPlace = (entry) => {
+				$('list').value = entry.id;
+				const n = view.getNeighbours();
+				$('previous').disabled = !n?.previous;
+				$('next').disabled = !n?.next;
+				$('place').textContent =
+					`${entry.lat.toFixed(5)}°, ${entry.lon.toFixed(5)}°` +
+					(entry.hfov_deg ? ` · ${Math.round(entry.hfov_deg)}° of horizon` : '');
+			};
+			showPlace(view.getCurrent());
+			view.on('load', showPlace);
+
+			const showView = ({ heading, pitch, fov }) => {
+				$('readout').textContent =
+					`heading ${heading.toFixed(0)}°  pitch ${pitch.toFixed(0)}°  fov ${fov.toFixed(0)}°`;
+			};
+			showView(view.getView());
+			view.on('viewchange', showView);
+
+			// Labels beside the arrows, placed from where the view says they are.
+			const labels = {};
+			view.on('arrows', (anchors) => {
+				for (const key of ['previous', 'next']) {
+					const anchor = anchors[key];
+					const n = view.getNeighbours()?.[key];
+					let label = labels[key];
+					if (!anchor?.visible || !n) {
+						label?.remove();
+						delete labels[key];
+						continue;
+					}
+					if (!label) {
+						label = document.createElement('div');
+						label.className = 'demo-arrow';
+						document.body.append(label);
+						labels[key] = label;
+					}
+					label.style.left = `${anchor.x}px`;
+					label.style.top = `${anchor.y}px`;
+					label.textContent = `sol ${n.entry.sol} · ${n.distanceM.toFixed(1)} m`;
+				}
+			});
+		</script>
+	</body>
+</html>

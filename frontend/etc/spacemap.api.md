@@ -13,6 +13,9 @@ import { Quaternion } from 'three';
 export type Anchor = InertialAnchor | SurfaceAnchor;
 
 // @public (undocumented)
+export type ArrowKey = 'previous' | 'next';
+
+// @public (undocumented)
 export class AttributionControl implements Control<SpaceMap> {
 	// (undocumented)
 	getDefaultPosition(): ControlPosition;
@@ -21,6 +24,9 @@ export class AttributionControl implements Control<SpaceMap> {
 	// (undocumented)
 	onRemove(): void;
 }
+
+// @public
+export function bearingDeg(a: PanoramaEntry, b: PanoramaEntry): number;
 
 // @public (undocumented)
 interface Body_2 {
@@ -227,6 +233,9 @@ export function createFlatMap(options: FlatMapCreateOptions): Promise<FlatMap>;
 export function createMap(options: MapOptions): Promise<SpaceMap>;
 
 // @public
+export function createPanorama(options: PanoramaCreateOptions): Promise<PanoramaView>;
+
+// @public
 export function createProjection(id: ProjectionId, options?: ProjectionOptions): Projection;
 
 // @public
@@ -278,6 +287,9 @@ export interface FeatureTarget extends CameraTarget {
 	// (undocumented)
 	feature: FeatureRef;
 }
+
+// @public (undocumented)
+export function findPanorama(entries: PanoramaEntry[], at: string | null): PanoramaEntry | null;
 
 // @public
 export function fixed(place: Anchor): Anchor;
@@ -551,6 +563,9 @@ export class GestureHandler {
 // @public
 export function graticule(stepDeg?: number): LonLat[][];
 
+// @public
+export function groundDistanceM(a: PanoramaEntry, b: PanoramaEntry, radiusKm: number): number;
+
 // @public (undocumented)
 export interface Host {
 	bodyHref: (id: string, name: string) => string;
@@ -789,6 +804,29 @@ export interface MarkerOptions {
 }
 
 // @public (undocumented)
+export interface Neighbour {
+	bearingDeg: number;
+	distanceM: number;
+	// (undocumented)
+	entry: PanoramaEntry;
+}
+
+// @public (undocumented)
+export interface Neighbours {
+	// (undocumented)
+	next: Neighbour | null;
+	// (undocumented)
+	previous: Neighbour | null;
+}
+
+// @public
+export function neighboursOf(
+	entries: PanoramaEntry[],
+	current: PanoramaEntry,
+	radiusKm: number
+): Neighbours;
+
+// @public (undocumented)
 export type Notice = OutOfRangeNotice | CoveragePauseNotice;
 
 // @public (undocumented)
@@ -850,6 +888,139 @@ export interface OutOfRangeNotice {
 		| null;
 	// (undocumented)
 	topic: 'out-of-range';
+}
+
+// @public
+export function panoramaAt(entry: PanoramaEntry): string;
+
+// @public (undocumented)
+export class PanoramaAttributionControl implements Control<PanoramaView> {
+	// (undocumented)
+	getDefaultPosition(): ControlPosition;
+	// (undocumented)
+	onAdd(view: PanoramaView): HTMLElement;
+	// (undocumented)
+	onRemove(): void;
+}
+
+// @public (undocumented)
+export interface PanoramaCreateOptions extends CommonOptions, PanoramaViewOptions {
+	controls?: Control<PanoramaView>[];
+	events?: {
+		[K in keyof PanoramaViewEvents]?: PanoramaViewEvents[K];
+	};
+}
+
+// @public
+export interface PanoramaEntry {
+	azimuth_start_deg?: number;
+	// (undocumented)
+	color?: string;
+	// (undocumented)
+	credit?: string;
+	// (undocumented)
+	credit_url?: string;
+	// (undocumented)
+	elevation_m?: number;
+	// (undocumented)
+	hfov_deg?: number;
+	// (undocumented)
+	id: string;
+	// (undocumented)
+	instrument?: string;
+	lat: number;
+	// (undocumented)
+	lon: number;
+	mission?: string;
+	north_offset_deg: number;
+	// (undocumented)
+	sol?: number;
+	// (undocumented)
+	source_url?: string;
+	sphere_percent?: number;
+	time: string;
+	// (undocumented)
+	time_end?: string;
+	// (undocumented)
+	title?: string;
+}
+
+// @public (undocumented)
+export class PanoramaView {
+	constructor(options: PanoramaViewOptions);
+	// (undocumented)
+	addControl(control: Control<PanoramaView>, position?: ControlPosition): this;
+	// @internal
+	attribution: Control<PanoramaView> | null;
+	// (undocumented)
+	getCurrent(): PanoramaEntry | null;
+	// (undocumented)
+	getLimits(): PanoramaViewLimits;
+	getNeighbours(): Neighbours | null;
+	getPanoramas(): readonly PanoramaEntry[];
+	// (undocumented)
+	getView(): PanoramaViewState;
+	load(): Promise<void>;
+	mount(container: HTMLElement): void;
+	// (undocumented)
+	off<K extends keyof PanoramaViewEvents>(event: K, listener: PanoramaViewEvents[K]): void;
+	// (undocumented)
+	on<K extends keyof PanoramaViewEvents>(event: K, listener: PanoramaViewEvents[K]): () => void;
+	// (undocumented)
+	once<K extends keyof PanoramaViewEvents>(event: K, listener: PanoramaViewEvents[K]): () => void;
+	open(target: PanoramaEntry | string): Promise<void>;
+	remove(): void;
+	// (undocumented)
+	removeControl(control: Control<PanoramaView>): this;
+	setAngleGridVisible(visible: boolean): void;
+	setArrowsVisible(visible: boolean): void;
+	setLimits(limits: PanoramaViewLimits): void;
+	setView(view: Partial<PanoramaViewState>): void;
+	step(key: ArrowKey): Promise<void>;
+}
+
+// @public (undocumented)
+export interface PanoramaViewEvents {
+	arrows: (anchors: Partial<Record<ArrowKey, ScreenAnchor>>) => void;
+	// (undocumented)
+	error: (error: Error) => void;
+	load: (entry: PanoramaEntry) => void;
+	ready: () => void;
+	step: (target: { key: ArrowKey; entry: PanoramaEntry }) => void;
+	// (undocumented)
+	viewchange: (view: PanoramaViewState) => void;
+}
+
+// @public
+export interface PanoramaViewLimits {
+	// (undocumented)
+	fov?: [min: number, max: number];
+	// (undocumented)
+	heading?: [from: number, to: number];
+	// (undocumented)
+	pitch?: [min: number, max: number];
+}
+
+// @public (undocumented)
+export interface PanoramaViewOptions {
+	arrows?: boolean;
+	at?: string;
+	body: string;
+	followArrows?: boolean;
+	// (undocumented)
+	fov?: number;
+	heading?: number;
+	interactive?: boolean;
+	limits?: PanoramaViewLimits;
+	// (undocumented)
+	pitch?: number;
+}
+
+// @public (undocumented)
+export interface PanoramaViewState {
+	fov: number;
+	heading: number;
+	pitch: number;
 }
 
 // @public
@@ -980,6 +1151,15 @@ export interface SceneSettings {
 	showSurfaceTexture: boolean;
 	// (undocumented)
 	viewMode: 'map' | 'immersive';
+}
+
+// @public
+export interface ScreenAnchor {
+	visible: boolean;
+	// (undocumented)
+	x: number;
+	// (undocumented)
+	y: number;
 }
 
 // @public

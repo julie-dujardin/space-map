@@ -53,6 +53,15 @@ export interface PanoramaViewState {
 	fov: number;
 }
 
+/** How far the reader may look and zoom. Headings run clockwise from the
+ *  first to the second, so `[300, 60]` is the arc across north; a pair of
+ *  equal values locks that axis. Each pair sits inside the view's own range. */
+export interface PanoramaViewLimits {
+	heading?: [from: number, to: number];
+	pitch?: [min: number, max: number];
+	fov?: [min: number, max: number];
+}
+
 export interface PanoramaViewOptions {
 	/** Body whose panoramas to show, by export id — `"naif-499"` for Mars. */
 	body: string;
@@ -67,6 +76,8 @@ export interface PanoramaViewOptions {
 	/** Whether the reader may turn the view: drag, pinch, wheel and the arrow
 	 *  keys. True unless said otherwise. */
 	interactive?: boolean;
+	/** Bounds on the view; none unless said otherwise. */
+	limits?: PanoramaViewLimits;
 	/** Draw the arrows to the previous and next panorama. True unless said
 	 *  otherwise. */
 	arrows?: boolean;
@@ -92,6 +103,7 @@ export interface PanoramaViewEvents {
 const DEG = Math.PI / 180;
 const MIN_FOV = 30;
 const MAX_FOV = 110;
+const MAX_PITCH = 85;
 const DEFAULT_FOV = 75;
 /** Arrows lie this far below the horizon, at this distance: near enough to
  *  parallax against the sphere as the view turns, like a step to take. */
@@ -103,6 +115,23 @@ const ANGLE_SAMPLE_STEP_DEG = 1;
 /** A neighbour closer than this stands on the same spot; there is no
  *  direction to point an arrow in. */
 const MIN_ARROW_DISTANCE_M = 1;
+
+function wrapHeading(deg: number): number {
+	return ((deg % 360) + 360) % 360;
+}
+
+/** @internal The heading itself when it lies on the clockwise arc from `from` to `to`,
+ *  else the arc's nearer end. */
+export function clampHeading(deg: number, [from, to]: [number, number]): number {
+	const span = wrapHeading(to - from);
+	const offset = wrapHeading(deg - from);
+	if (offset <= span) return wrapHeading(deg);
+	return offset - span < 360 - offset ? wrapHeading(to) : wrapHeading(from);
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(max, value));
+}
 
 /** Unit vector for a compass heading and pitch: north is -Z, east +X, up +Y. */
 function direction(headingDeg: number, pitchDeg: number, out = new Vector3()): Vector3 {
@@ -131,6 +160,11 @@ export class PanoramaView {
 	private openingView: Pick<PanoramaViewOptions, 'heading' | 'pitch'> | null;
 	private readonly interactive: boolean;
 	private readonly followArrows: boolean;
+	private limits: PanoramaViewLimits = {};
+
+	/** @internal The credit line, which the archives' terms keep on screen;
+	 *  set by the host that adds it. */
+	attribution: Control<PanoramaView> | null = null;
 
 	private container: HTMLElement | null = null;
 	private readonly root = document.createElement('div');
@@ -193,6 +227,7 @@ export class PanoramaView {
 			pitch: options.pitch ?? 0,
 			fov: options.fov ?? DEFAULT_FOV
 		};
+		if (options.limits) this.setLimits(options.limits);
 
 		this.root.className = 'sm-panorama';
 		this.root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden';
@@ -266,6 +301,8 @@ export class PanoramaView {
 	}
 
 	removeControl(control: Control<PanoramaView>): this {
+		if (control === this.attribution)
+			throw new Error('spacemap: the attribution control cannot be removed');
 		this.controls?.remove(control);
 		return this;
 	}
@@ -362,17 +399,36 @@ export class PanoramaView {
 		return { ...this.view };
 	}
 
+	/** Turn or zoom the view, within its limits. */
 	setView(view: Partial<PanoramaViewState>): void {
 		const heading = view.heading ?? this.view.heading;
 		const pitch = view.pitch ?? this.view.pitch;
 		const fov = view.fov ?? this.view.fov;
+		const { limits } = this;
 		this.view = {
-			heading: ((heading % 360) + 360) % 360,
-			pitch: Math.max(-85, Math.min(85, pitch)),
-			fov: Math.max(MIN_FOV, Math.min(MAX_FOV, fov))
+			heading: limits.heading ? clampHeading(heading, limits.heading) : wrapHeading(heading),
+			pitch: clamp(pitch, limits.pitch?.[0] ?? -MAX_PITCH, limits.pitch?.[1] ?? MAX_PITCH),
+			fov: clamp(fov, limits.fov?.[0] ?? MIN_FOV, limits.fov?.[1] ?? MAX_FOV)
 		};
 		this.invalidate();
 		this.emit('viewchange', this.getView());
+	}
+
+	getLimits(): PanoramaViewLimits {
+		return structuredClone(this.limits);
+	}
+
+	/** Bound the view; the current one moves inside the bounds at once. An
+	 *  empty object frees it. */
+	setLimits(limits: PanoramaViewLimits): void {
+		const within = (pair: [number, number] | undefined, min: number, max: number) =>
+			pair && ([clamp(pair[0], min, max), clamp(pair[1], min, max)] as [number, number]);
+		this.limits = {
+			heading: limits.heading && [wrapHeading(limits.heading[0]), wrapHeading(limits.heading[1])],
+			pitch: within(limits.pitch, -MAX_PITCH, MAX_PITCH),
+			fov: within(limits.fov, MIN_FOV, MAX_FOV)
+		};
+		this.setView({});
 	}
 
 	// -- events ---------------------------------------------------------------

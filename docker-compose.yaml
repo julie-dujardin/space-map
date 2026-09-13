@@ -33,7 +33,7 @@ services:
       - data-server
       - meili
 
-  # The SDK demo pages (`/demo.html`, `/flatmap.html`), served from an origin
+  # The SDK demo pages (`/demo.html`, `/flatmap.html`, `/panorama.html`), served from an origin
   # that is neither the app's nor the data's — which is how a host page sees
   # them. The bundle is built at start rather than watched: the demo exercises
   # the shipped script, not a dev server's module graph.

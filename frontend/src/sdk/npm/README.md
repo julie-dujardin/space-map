@@ -429,6 +429,45 @@ flat.addCircle({ at: { lon: 12.5, lat: 41.9 }, radiusDeg: 5, stroke: '#f80' });
 flat.on('click', (at) => at && console.log(at.lon, at.lat));
 ```
 
+## Panoramas
+
+A rover's panorama from the inside, with arrows along its traverse. The
+three-dimensional part is all the SDK draws; the date, the place, a list to
+pick from or a map of the traverse are the page's to build.
+
+```js
+const view = await createPanorama({
+	container: '#panorama',
+	body: 'naif-499',
+	// A panorama's id, or its `time,lat,lon` key; the body's first when omitted.
+	at: 'curiosity-n_l000_0016_edr003cyltsm0078_drivem3'
+});
+
+view.getPanoramas(); // every panorama of the body, mission by mission in time order
+view.getNeighbours(); // the previous and next one on this traverse, with bearing and distance
+view.on('load', (entry) => console.log(entry.sol, entry.time, entry.lat, entry.lon));
+view.on('viewchange', ({ heading, pitch, fov }) => {});
+view.setView({ heading: 90 });
+await view.open(view.getPanoramas()[3]);
+await view.step('next');
+```
+
+Pressing an arrow opens the panorama it points at, unless `followArrows` is
+false: then only the `step` event fires, for a page that keeps the panorama in
+its own URL. The `arrows` event says where each arrow landed on screen, for a
+label beside it. `interactive: false` turns the drag, pinch, wheel and arrow
+keys off; `arrows: false` and `setArrowsVisible` hide the arrows.
+
+Limits keep the reader inside part of the sweep, or at one zoom. Headings run
+clockwise from the first to the second, so `[300, 60]` is the arc across
+north; a pair of equal values locks that axis.
+
+```js
+createPanorama({ container: '#panorama', body: 'naif-499', limits: { pitch: [-20, 20] } });
+view.setLimits({ heading: [300, 60], fov: [60, 60] }); // ±60° of north, no zoom
+view.setLimits({}); // free again
+```
+
 ## Restricting the map
 
 Both maps take restrictions on what the reader may do. Each gesture is a
@@ -528,7 +567,7 @@ Corners are `top-left`, `top-right`, `bottom-left` and `bottom-right`;
 top-right unless the control or the caller names another. `removeControl` takes
 one back off — except the credit line, which throws.
 
-The credit line is the only control the SDK ships. Zoom buttons, a layer
+The panorama view takes controls the same way. The credit line is the only control the SDK ships. Zoom buttons, a layer
 switcher or a clock are the page's to build, in its own look, from the calls
 this document describes: `flyTo` and `jumpTo`, `getLayers` and
 `setLayerVisible` with the `layerschange` event, and `map.clock` with the

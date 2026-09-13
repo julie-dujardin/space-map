@@ -1,12 +1,14 @@
 /**
  * The map for pages outside spacemap.co, as one script.
  *
- * There are two of them. {@link createMap} puts the Solar System in a
+ * There are three of them. {@link createMap} puts the Solar System in a
  * container — bodies and spacecraft in three dimensions, over time.
  * {@link createFlatMap} puts one body's surface there instead, drawn flat in a
  * projection of the host's choosing, with layers it can switch and drawings of
- * its own on top. The classes, the host seam and the clock's date helpers are
- * exported for hosts that drive them directly.
+ * its own on top. {@link createPanorama} stands the reader on that surface,
+ * inside a rover's panorama, with arrows along its traverse. The classes, the
+ * host seam and the clock's date helpers are exported for hosts that drive
+ * them directly.
  *
  * Distances are kilometres and angles are degrees throughout.
  */
@@ -18,8 +20,14 @@ import { atmosphereBootSettled } from '$lib/scene/perf/atmosphere-calibration';
 import { defaultSceneSettings } from '$lib/scene/settings.svelte';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 import { FlatMap, type FlatMapEvents, type FlatMapOptions } from '$lib/flatmap/flat-map';
+import {
+	PanoramaView,
+	type PanoramaViewEvents,
+	type PanoramaViewOptions
+} from '$lib/panorama/view';
 import { AttributionControl } from './controls/attribution.svelte';
 import { FlatAttributionControl } from './controls/flat-attribution';
+import { PanoramaAttributionControl } from './controls/panorama-attribution';
 
 /** What both maps take: where to put it, where its data comes from, and what
  *  language to read it in. */
@@ -55,6 +63,15 @@ export interface FlatMapCreateOptions extends CommonOptions, FlatMapOptions {
 	/** Listeners attached before the first load, so a slow or failed load is
 	 *  observable while it runs. Later ones go through {@link FlatMap.on}. */
 	events?: { [K in keyof FlatMapEvents]?: FlatMapEvents[K] };
+}
+
+export interface PanoramaCreateOptions extends CommonOptions, PanoramaViewOptions {
+	/** Controls to hang on the view, each in the corner it asks for. The credit
+	 *  line is always there and is not one of them. */
+	controls?: Control<PanoramaView>[];
+	/** Listeners attached before the first load, so a slow or failed load is
+	 *  observable while it runs. Later ones go through {@link PanoramaView.on}. */
+	events?: { [K in keyof PanoramaViewEvents]?: PanoramaViewEvents[K] };
 }
 
 /** Mount a map and resolve once it is worth looking at: the opening body
@@ -107,6 +124,35 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
 	return map;
 }
 
+/** Stand inside a panorama and resolve once the first one is on screen. The
+ *  three-dimensional part is all there is: the picture, the arrows to the
+ *  neighbours on the traverse, and the credit line. What a page shows around
+ *  it — the panorama's date and place, a list to pick from, a map of the
+ *  traverse — is its own to build from {@link PanoramaView.getPanoramas},
+ *  {@link PanoramaView.getNeighbours} and the `load` and `viewchange` events.
+ *
+ *  Rejects when the body has no panoramas, or the one asked for is not among
+ *  them; a failure past that point arrives as an `error` event. */
+export async function createPanorama(options: PanoramaCreateOptions): Promise<PanoramaView> {
+	const { container, dataUrl, imagesUrl, locale, messages, controls, events, ...rest } = options;
+	const element = resolveContainer(container);
+	applyHost({ dataUrl, imagesUrl, locale, messages });
+
+	const view = new PanoramaView(rest);
+	view.mount(element);
+	for (const [event, listener] of Object.entries(events ?? {})) {
+		view.on(
+			event as keyof PanoramaViewEvents,
+			listener as PanoramaViewEvents[keyof PanoramaViewEvents]
+		);
+	}
+	view.attribution = new PanoramaAttributionControl();
+	view.addControl(view.attribution);
+	for (const control of controls ?? []) view.addControl(control);
+	await view.load();
+	return view;
+}
+
 function resolveContainer(container: HTMLElement | string): HTMLElement {
 	if (typeof container !== 'string') return container;
 	const element = document.querySelector(container);
@@ -135,6 +181,8 @@ export {
 	FlatAttributionControl,
 	FlatMap,
 	jdToDate,
+	PanoramaAttributionControl,
+	PanoramaView,
 	SpaceMap
 };
 
@@ -229,6 +277,25 @@ export type {
 	PolylineOptions as FlatPolylineOptions,
 	ShapeStyle as FlatShapeStyle
 } from '$lib/flatmap/overlay';
+
+// -- the panoramas ------------------------------------------------------------
+export type {
+	ArrowKey,
+	PanoramaViewEvents,
+	PanoramaViewLimits,
+	PanoramaViewOptions,
+	PanoramaViewState,
+	ScreenAnchor
+} from '$lib/panorama/view';
+export type { PanoramaEntry } from '$lib/fetch/objects/object-data';
+export type { Neighbour, Neighbours } from '$lib/panorama/traverse';
+export {
+	bearingDeg,
+	findPanorama,
+	groundDistanceM,
+	neighboursOf,
+	panoramaAt
+} from '$lib/panorama/traverse';
 
 // -- the host seam ------------------------------------------------------------
 export type { CoreMessages, Host, HostOverrides } from '$lib/host';

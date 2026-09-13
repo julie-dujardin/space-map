@@ -264,6 +264,7 @@ export default defineConfig(({ mode }) => {
 						copied([
 							here('./src/sdk/demo.html'),
 							here('./src/sdk/flatmap.html'),
+							here('./src/sdk/panorama.html'),
 							here('./node_modules/three/build/three.module.min.js'),
 							here('./node_modules/three/build/three.core.min.js')
 						]),
