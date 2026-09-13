@@ -26,8 +26,11 @@ PLACES = ARCHIVE + "msl/msl_places/data_localizations/localized_interp.csv"
 WAYPOINTS = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json"
 M20_PLACES = "https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_rover_places/data_localizations/best_interp.csv"
 POLICY = "https://www.jpl.nasa.gov/jpl-image-use-policy/"
-# The frontend redraws the archive's coordinate underlay as a separate layer.
-COORDINATE_GRID_DN = 4096
+# VICAR declares the white DN but renders black grid annotations as DN 1.
+GRID_BLACK_DN = 1
+GRID_LABEL_VERTICAL_MARGIN = 32
+GRID_LABEL_SIDE_MARGIN = 48
+GRID_SEAM_MARGIN = 8
 
 
 def write_json(path: Path, data):
@@ -284,6 +287,75 @@ def read_header(path: Path, mosaic: Mosaic) -> str:
         return stream.read(mosaic.offset).decode("latin-1")
 
 
+def coordinate_grid_dn(header: str) -> float | None:
+    """Return the declared grid value so annotations never enter exported imagery."""
+    if not re.search(r"\bGRID\s*=\s*['\"]?GRID_OVERLAY['\"]?", header):
+        return None
+    match = re.search(r"\bGRID_DN\s*=\s*([-+\d.eE]+)", header)
+    if match is None:
+        raise ValueError("Grid overlay has no declared DN")
+    return float(match.group(1))
+
+
+def remove_coordinate_grid(pixels, valid, grid_dn):
+    """Reconstruct grid-covered image samples without extending into empty canvas."""
+    annotation = np.all(pixels == grid_dn, axis=2) | np.all(
+        pixels == GRID_BLACK_DN, axis=2
+    )
+    valid &= ~annotation
+    height, width = valid.shape
+    padded_pixels = np.pad(pixels, ((1, 1), (1, 1), (0, 0)))
+    padded_valid = np.pad(valid, 1)
+    total = np.zeros_like(pixels)
+    count = np.zeros_like(valid, dtype=np.uint8)
+    for dy, dx in (
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+    ):
+        neighbor_valid = padded_valid[1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width]
+        neighbor_pixels = padded_pixels[
+            1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width
+        ]
+        total += neighbor_pixels * neighbor_valid[:, :, None]
+        count += neighbor_valid
+    fill = annotation & (count > 0)
+    pixels[fill] = total[fill] / count[fill, None]
+    valid |= fill
+    return pixels, valid
+
+
+def remove_coordinate_label_borders(pixels, valid, mosaic: Mosaic):
+    """Drop overwritten borders; only a full panorama may bridge its wrapped seam."""
+    height, width = valid.shape
+    if height >= GRID_LABEL_VERTICAL_MARGIN * 4:
+        valid[:GRID_LABEL_VERTICAL_MARGIN] = False
+        valid[-GRID_LABEL_VERTICAL_MARGIN:] = False
+    full = abs(width / mosaic.scale_x - 360) <= 2 / mosaic.scale_x
+    if not full:
+        if width >= GRID_LABEL_SIDE_MARGIN * 4:
+            valid[:, :GRID_LABEL_SIDE_MARGIN] = False
+            valid[:, -GRID_LABEL_SIDE_MARGIN:] = False
+        return pixels, valid
+    if width < GRID_SEAM_MARGIN * 4:
+        return pixels, valid
+    rows = valid[:, GRID_SEAM_MARGIN] & valid[:, -GRID_SEAM_MARGIN - 1]
+    left = pixels[rows, GRID_SEAM_MARGIN]
+    right = pixels[rows, -GRID_SEAM_MARGIN - 1]
+    amount = np.linspace(0, 1, GRID_SEAM_MARGIN * 2 + 2, dtype=np.float32)[1:-1, None]
+    bridge = right[:, None] * (1 - amount) + left[:, None] * amount
+    pixels[rows, -GRID_SEAM_MARGIN:] = bridge[:, :GRID_SEAM_MARGIN]
+    pixels[rows, :GRID_SEAM_MARGIN] = bridge[:, GRID_SEAM_MARGIN:]
+    valid[rows, -GRID_SEAM_MARGIN:] = True
+    valid[rows, :GRID_SEAM_MARGIN] = True
+    return pixels, valid
+
+
 def read_pixels(path: Path, mosaic: Mosaic):
     raster = np.memmap(
         path,
@@ -296,7 +368,10 @@ def read_pixels(path: Path, mosaic: Mosaic):
     valid = np.all(np.isfinite(pixels), axis=2)
     for missing in mosaic.missing:
         valid &= np.all(pixels != missing, axis=2)
-    valid &= ~np.all(pixels == COORDINATE_GRID_DN, axis=2)
+    grid_dn = coordinate_grid_dn(read_header(path, mosaic))
+    if grid_dn is not None:
+        pixels, valid = remove_coordinate_grid(pixels, valid, grid_dn)
+        pixels, valid = remove_coordinate_label_borders(pixels, valid, mosaic)
     if not valid.any():
         raise ValueError("Mosaic has no valid pixels")
     low, high = np.percentile(pixels[valid], [0.5, 99.5])

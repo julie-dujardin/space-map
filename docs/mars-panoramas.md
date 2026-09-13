@@ -90,8 +90,9 @@ fraction and remains only for compatibility.
 
 Unknown bounds or masks produce `null`, never invented percentages. Published
 full-360 coverage can establish the horizontal fields while sphere coverage remains
-unknown. The PDS Navcam coordinate underlay uses DN 4096; processing makes those
-pixels transparent and the frontend redraws the angular grid independently.
+unknown. Processing reads the PDS Navcam coordinate underlay's declared DN,
+reconstructs covered mosaic samples, and discards borders overwritten by labels.
+Angular grids and labels are rendered only by the frontend.
 
 ## Approximate printed-grid geometry
 

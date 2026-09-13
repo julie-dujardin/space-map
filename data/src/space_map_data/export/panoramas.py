@@ -48,6 +48,8 @@ def _skip_reason(meta: dict) -> str | None:
         return "no position"
     if not meta.get("image"):
         return "no sphere texture"
+    if (meta.get("coverage") or {}).get("includes_source_grid"):
+        return "source grid remains"
     if not _sphere_geometry_is_archival(meta):
         return "estimated geometry"
     if meta.get("north_azimuth_offset_deg") is None:

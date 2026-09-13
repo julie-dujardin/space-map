@@ -14,11 +14,14 @@ from space_map_data.panoramas.labels import (
     read_pds4,
 )
 from space_map_data.panoramas.pipeline import (
+    coordinate_grid_dn,
     download,
     fetch,
     positions,
     process,
     read_pixels,
+    remove_coordinate_grid,
+    remove_coordinate_label_borders,
     sphere_texture,
     coverage,
     MSL,
@@ -116,15 +119,67 @@ def test_big_endian_offset_and_missing_mask(tmp_path):
 
 def test_coordinate_grid_is_excluded_from_image(tmp_path):
     path = tmp_path / "test.img"
+    header = b"GRID='GRID_OVERLAY' GRID_DN=10000.0"
     pixels = (np.arange(3 * 360) % 2000 + 1000).astype(">i2").reshape(1, 3, 360)
-    pixels[0, 1, 90:270] = 4096
-    path.write_bytes(pixels.tobytes())
+    pixels[0, 1, 90:270] = 10000
+    pixels[0, 0, 0] = 4096
+    path.write_bytes(header + pixels.tobytes())
 
-    rgba, _ = read_pixels(path, mosaic(height=3, offset=0))
+    rgba, _ = read_pixels(path, mosaic(height=3, offset=len(header)))
 
-    assert not rgba[1, 90:270, 3].any()
+    assert rgba[1, 90:270, 3].all()
+    assert not np.all(rgba[1, 90:270, :3] == 255)
     assert rgba[1, :90, 3].all()
     assert rgba[1, 270:, 3].all()
+    assert rgba[0, 0, 3] == 255
+
+
+def test_coordinate_grid_declaration_requires_value():
+    assert coordinate_grid_dn("GRID='NOGRID'") is None
+    with pytest.raises(ValueError, match="no declared DN"):
+        coordinate_grid_dn("GRID='GRID_OVERLAY'")
+
+
+def test_coordinate_grid_does_not_extend_into_missing_canvas():
+    pixels = np.zeros((5, 5, 1), dtype=np.float32)
+    pixels[0, 0] = 2000
+    pixels[2, 2] = 10000
+    valid = np.any(pixels != 0, axis=2)
+
+    _, valid = remove_coordinate_grid(pixels, valid, 10000)
+
+    assert valid[0, 0]
+    assert not valid[2, 2]
+
+
+def test_coordinate_label_borders_are_not_exported():
+    pixels = np.full((200, 200, 1), 2000, dtype=np.float32)
+    valid = np.ones((200, 200), dtype=bool)
+
+    _, valid = remove_coordinate_label_borders(
+        pixels, valid, mosaic(width=200, height=200)
+    )
+
+    assert not valid[:32].any()
+    assert not valid[-32:].any()
+    assert not valid[:, :48].any()
+    assert not valid[:, -48:].any()
+    assert valid[32:-32, 48:-48].all()
+
+
+def test_full_panorama_bridges_only_its_labelled_seam():
+    pixels = np.full((200, 360, 1), 2000, dtype=np.float32)
+    valid = np.ones((200, 360), dtype=bool)
+    valid[:, :8] = False
+    valid[:, -8:] = False
+
+    _, valid = remove_coordinate_label_borders(
+        pixels, valid, mosaic(width=360, height=200)
+    )
+
+    assert valid[32:-32].all()
+    assert not valid[:32].any()
+    assert not valid[-32:].any()
 
 
 def test_ambiguous_localizations_are_excluded(tmp_path):
