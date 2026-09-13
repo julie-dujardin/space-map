@@ -617,6 +617,7 @@
 	"panorama_sol": "ソル {sol}",
 	"panorama_previous": "前のパノラマ",
 	"panorama_next": "次のパノラマ",
+	"panorama_navigation_arrows": "ナビゲーション矢印",
 	"panorama_loading": "パノラマを読み込み中…",
 	"panorama_error": "パノラマを読み込めませんでした。",
 	"panorama_not_found": "この地点にはパノラマが記録されていません。",

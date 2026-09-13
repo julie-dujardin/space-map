@@ -533,6 +533,7 @@
 	"panorama_sol": "Сол {sol}",
 	"panorama_previous": "Предыдущая панорама",
 	"panorama_next": "Следующая панорама",
+	"panorama_navigation_arrows": "Навигационные стрелки",
 	"panorama_loading": "Загрузка панорамы…",
 	"panorama_error": "Не удалось загрузить панораму.",
 	"panorama_not_found": "В этом месте панорама не зарегистрирована.",

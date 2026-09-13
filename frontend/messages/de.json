@@ -581,6 +581,7 @@
 	"panorama_sol": "Sol {sol}",
 	"panorama_previous": "Vorheriges Panorama",
 	"panorama_next": "Nächstes Panorama",
+	"panorama_navigation_arrows": "Navigationspfeile",
 	"panorama_loading": "Panorama wird geladen…",
 	"panorama_error": "Das Panorama konnte nicht geladen werden.",
 	"panorama_not_found": "An diesem Ort ist kein Panorama verzeichnet.",

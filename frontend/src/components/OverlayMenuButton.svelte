@@ -1,7 +1,7 @@
 <script lang="ts">
 	import XIcon from '@lucide/svelte/icons/x';
 	import { Dialog } from 'bits-ui';
-	import { getContext, type Component, type Snippet } from 'svelte';
+	import { getContext, hasContext, type Component, type Snippet } from 'svelte';
 	import type { MapCover } from '$lib/state/map-cover.svelte';
 	import * as Popover from '$lib/components/ui/popover';
 	import * as m from '$lib/paraglide/messages.js';
@@ -25,8 +25,9 @@
 		return () => mq.removeEventListener('change', onChange);
 	});
 
-	// The mobile panel is opaque and fullscreen, so the map under it can stop drawing.
-	getContext<MapCover>('mapCover').hold(() => {
+	// A fullscreen panel can pause the map it covers.
+	const mapCover = hasContext('mapCover') ? getContext<MapCover>('mapCover') : null;
+	mapCover?.hold(() => {
 		const mobile = isMobile;
 		const shown = open;
 		return mobile && shown;

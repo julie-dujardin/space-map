@@ -515,6 +515,7 @@
 	"panorama_sol": "Sol {sol}",
 	"panorama_previous": "上一幅全景",
 	"panorama_next": "下一幅全景",
+	"panorama_navigation_arrows": "导航箭头",
 	"panorama_loading": "正在加载全景…",
 	"panorama_error": "无法加载全景。",
 	"panorama_not_found": "此位置没有记录全景。",

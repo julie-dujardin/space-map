@@ -581,6 +581,7 @@
 	"panorama_sol": "Sol {sol}",
 	"panorama_previous": "Panorama anterior",
 	"panorama_next": "Panorama seguinte",
+	"panorama_navigation_arrows": "Setas de navegação",
 	"panorama_loading": "A carregar o panorama…",
 	"panorama_error": "Não foi possível carregar o panorama.",
 	"panorama_not_found": "Não há nenhum panorama registado neste local.",

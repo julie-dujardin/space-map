@@ -609,6 +609,7 @@
 	"panorama_sol": "Sol {sol}",
 	"panorama_previous": "Panorama précédent",
 	"panorama_next": "Panorama suivant",
+	"panorama_navigation_arrows": "Flèches de navigation",
 	"panorama_loading": "Chargement du panorama…",
 	"panorama_error": "Le panorama n'a pas pu être chargé.",
 	"panorama_not_found": "Aucun panorama n'est enregistré à cet endroit.",

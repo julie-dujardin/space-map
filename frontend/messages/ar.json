@@ -544,6 +544,7 @@
 	"panorama_sol": "سول {sol}",
 	"panorama_previous": "البانوراما السابقة",
 	"panorama_next": "البانوراما التالية",
+	"panorama_navigation_arrows": "أسهم التنقل",
 	"panorama_loading": "جارٍ تحميل البانوراما…",
 	"panorama_error": "تعذّر تحميل البانوراما.",
 	"panorama_not_found": "لا توجد بانوراما مسجّلة في هذا الموقع.",

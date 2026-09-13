@@ -39,6 +39,7 @@
 	import PanoramaMinimap from './PanoramaMinimap.svelte';
 	import PanoramaTimeline from './PanoramaTimeline.svelte';
 	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
+	import PanoramaLayersButton from './PanoramaLayersButton.svelte';
 	import type { LayerCredit } from '$lib/flatmap/layers';
 
 	interface Props {
@@ -52,6 +53,8 @@
 	let textureState = $state<'loading' | 'ready' | 'error'>('loading');
 	let container = $state<HTMLElement | null>(null);
 	let scene = $state<PanoramaScene | null>(null);
+	let angleGridVisible = $state(false);
+	let navigationVisible = $state(true);
 	let timelineOpen = $state(false);
 	let mapCredits = $state<LayerCredit[]>([]);
 	/** The strip's height, which the map beside it grows to. Kept from the last
@@ -135,6 +138,14 @@
 
 	$effect(() => {
 		scene?.setArrows(arrowTargets.map(({ key, n }) => ({ key, bearingDeg: n.bearingDeg })));
+	});
+
+	$effect(() => {
+		scene?.setAngleGridVisible(angleGridVisible);
+	});
+
+	$effect(() => {
+		scene?.setArrowsVisible(navigationVisible);
 	});
 
 	onDestroy(() => scene?.dispose());
@@ -232,20 +243,22 @@
 		{#if current}
 			<div bind:this={container} class="absolute inset-0 cursor-grab active:cursor-grabbing"></div>
 
-			{#each arrowTargets as { key, n } (key)}
-				{@const anchor = scene?.anchors[key]}
-				{#if anchor?.visible}
-					<a
-						href={panoramaHref(bodyId, n.entry)}
-						onclick={(e) => follow(e, n.entry)}
-						class="absolute -translate-x-1/2 -translate-y-[calc(100%+1.6rem)] rounded-full bg-black/55 px-2.5 py-1 text-xs whitespace-nowrap backdrop-blur-sm hover:bg-black/75"
-						style="left:{anchor.x}px; top:{anchor.y}px"
-						aria-label={key === 'previous' ? m.panorama_previous() : m.panorama_next()}
-					>
-						{stepLabel(n)}
-					</a>
-				{/if}
-			{/each}
+			{#if navigationVisible}
+				{#each arrowTargets as { key, n } (key)}
+					{@const anchor = scene?.anchors[key]}
+					{#if anchor?.visible}
+						<a
+							href={panoramaHref(bodyId, n.entry)}
+							onclick={(e) => follow(e, n.entry)}
+							class="absolute -translate-x-1/2 -translate-y-[calc(100%+1.6rem)] rounded-full bg-black/55 px-2.5 py-1 text-xs whitespace-nowrap backdrop-blur-sm hover:bg-black/75"
+							style="left:{anchor.x}px; top:{anchor.y}px"
+							aria-label={key === 'previous' ? m.panorama_previous() : m.panorama_next()}
+						>
+							{stepLabel(n)}
+						</a>
+					{/if}
+				{/each}
+			{/if}
 
 			{#if textureState !== 'ready'}
 				<div
@@ -391,6 +404,14 @@
 			>
 				<Share2Icon class="size-5 md:size-4" />
 			</button>
+			{#if current}
+				<PanoramaLayersButton
+					angleGrid={angleGridVisible}
+					navigation={navigationVisible}
+					onAngleGridChange={(visible) => (angleGridVisible = visible)}
+					onNavigationChange={(visible) => (navigationVisible = visible)}
+				/>
+			{/if}
 		</div>
 	</div>
 </Tooltip.Provider>

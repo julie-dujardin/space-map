@@ -581,6 +581,7 @@
 	"panorama_sol": "סול {sol}",
 	"panorama_previous": "הפנורמה הקודמת",
 	"panorama_next": "הפנורמה הבאה",
+	"panorama_navigation_arrows": "חיצי ניווט",
 	"panorama_loading": "הפנורמה נטענת…",
 	"panorama_error": "לא ניתן היה לטעון את הפנורמה.",
 	"panorama_not_found": "לא רשומה פנורמה במיקום זה.",

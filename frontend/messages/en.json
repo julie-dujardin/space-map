@@ -613,6 +613,7 @@
 	"panorama_sol": "Sol {sol}",
 	"panorama_previous": "Previous panorama",
 	"panorama_next": "Next panorama",
+	"panorama_navigation_arrows": "Navigation arrows",
 	"panorama_loading": "Loading panorama…",
 	"panorama_error": "The panorama could not be loaded.",
 	"panorama_not_found": "No panorama is recorded at this location.",

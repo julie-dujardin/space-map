@@ -89,6 +89,7 @@ export class PanoramaScene {
 	private texture: Texture | null = null;
 	private loadToken = 0;
 	private frame = 0;
+	private angleGridVisible = false;
 	private readonly pointers = new Map<number, { x: number; y: number }>();
 	private pinchDistance = 0;
 	private dragStart: { x: number; y: number } | null = null;
@@ -116,6 +117,7 @@ export class PanoramaScene {
 			'w-full'
 		);
 		this.angleCanvas.setAttribute('aria-hidden', 'true');
+		this.angleCanvas.hidden = true;
 		container.appendChild(this.angleCanvas);
 
 		this.scene.background = new Color('#0b0d12');
@@ -220,6 +222,23 @@ export class PanoramaScene {
 		this.invalidate();
 	}
 
+	setAngleGridVisible(visible: boolean): void {
+		if (visible === this.angleGridVisible) return;
+		this.angleGridVisible = visible;
+		this.angleCanvas.hidden = !visible;
+		this.invalidate();
+	}
+
+	setArrowsVisible(visible: boolean): void {
+		if (visible === this.arrows.visible) return;
+		this.arrows.visible = visible;
+		if (!visible) {
+			this.hovered = null;
+			this.renderer.domElement.style.cursor = '';
+		}
+		this.invalidate();
+	}
+
 	setView(headingDeg: number, pitchDeg = 0): void {
 		this.heading = ((headingDeg % 360) + 360) % 360;
 		this.pitch = Math.max(-85, Math.min(85, pitchDeg));
@@ -292,6 +311,7 @@ export class PanoramaScene {
 	private drawAngleGrid(w: number, h: number): void {
 		const ctx = this.angleContext;
 		ctx.clearRect(0, 0, w, h);
+		if (!this.angleGridVisible) return;
 		this.camera.getWorldDirection(this.viewDirection);
 
 		ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
@@ -387,6 +407,7 @@ export class PanoramaScene {
 	}
 
 	private arrowAt(x: number, y: number): ArrowKey | null {
+		if (!this.arrows.visible) return null;
 		const rect = this.renderer.domElement.getBoundingClientRect();
 		const point = new Vector2(
 			((x - rect.left) / rect.width) * 2 - 1,
