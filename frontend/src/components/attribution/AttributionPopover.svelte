@@ -1,3 +1,16 @@
+<script module lang="ts">
+	/** One credited source: a link, what it is, and who it is from. */
+	export interface CreditRow {
+		href: string;
+		label: string;
+		sub?: string;
+	}
+	export interface CreditSection {
+		title: string;
+		rows: CreditRow[];
+	}
+</script>
+
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
@@ -12,6 +25,14 @@
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
+
+	interface Props {
+		/** Given by a page whose credits are not the scene's: these sections
+		 *  replace the ones read off the map's context. */
+		sections?: CreditSection[];
+	}
+
+	let { sections }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
@@ -161,103 +182,116 @@
 <div class="flex max-h-[70dvh] w-72 flex-col gap-3 overflow-y-auto text-xs">
 	<h2 class="text-sm font-semibold">{m.attribution_title()}</h2>
 
-	{#if orbitEntries.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_orbits())}
-			<ul class="space-y-0.5">
-				{#each orbitEntries as e (e.archive)}
-					<li>{@render link(e.url, e.name)}</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
+	{#if sections}
+		{#each sections as section (section.title)}
+			<section class="space-y-1">
+				{@render sectionHeader(section.title)}
+				<ul class="space-y-0.5">
+					{#each section.rows as row (row.href)}
+						<li>{@render link(row.href, row.label, row.sub)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/each}
+	{:else}
+		{#if orbitEntries.length > 0}
+			<section class="space-y-1">
+				{@render sectionHeader(m.attribution_section_orbits())}
+				<ul class="space-y-0.5">
+					{#each orbitEntries as e (e.archive)}
+						<li>{@render link(e.url, e.name)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 
-	{#if rotationRows.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_rotation())}
-			<ul class="space-y-0.5">
-				{#each rotationRows as row (row.key)}
-					<li>{@render link(row.url, row.label)}</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
+		{#if rotationRows.length > 0}
+			<section class="space-y-1">
+				{@render sectionHeader(m.attribution_section_rotation())}
+				<ul class="space-y-0.5">
+					{#each rotationRows as row (row.key)}
+						<li>{@render link(row.url, row.label)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 
-	{#if imageryRows.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_imagery_all())}
-			<ul class="space-y-0.5">
-				{#each imageryRows as r (r.key)}
+		{#if imageryRows.length > 0}
+			<section class="space-y-1">
+				{@render sectionHeader(m.attribution_section_imagery_all())}
+				<ul class="space-y-0.5">
+					{#each imageryRows as r (r.key)}
+						<li>
+							{@render link(
+								r.source,
+								r.qualifier ? `${r.label} (${r.qualifier})` : r.label,
+								r.organisation
+							)}
+							{#if r.license}<span class="text-muted-foreground"> · {r.license}</span>{/if}
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
+		{#if focusedModel}
+			<section class="space-y-1">
+				{@render sectionHeader(m.attribution_section_models())}
+				<ul class="space-y-0.5">
 					<li>
 						{@render link(
-							r.source,
-							r.qualifier ? `${r.label} (${r.qualifier})` : r.label,
-							r.organisation
+							focusedModel.source,
+							bodyName(focusedModel.bodyId),
+							focusedModel.organisation
 						)}
-						{#if r.license}<span class="text-muted-foreground"> · {r.license}</span>{/if}
+						{#if focusedModel.license}<span class="text-muted-foreground">
+								· {focusedModel.license}</span
+							>{/if}
 					</li>
-				{/each}
+					{#if provenanceLabel(focusedModel)}
+						<li class="text-muted-foreground">
+							{provenanceLabel(focusedModel)}
+							{#if focusedModel.mission}
+								· <a
+									href={missionHref(focusedModel.mission.id)}
+									onclick={(e) =>
+										openMission(e, focusedModel.mission!.id, focusedModel.mission!.name)}
+									class="text-foreground hover:underline underline-offset-2"
+									>{focusedModel.mission.name}</a
+								>
+							{/if}
+							{#if focusedModel.archive}
+								· {#if focusedModel.archiveUrl}{@render link(
+										focusedModel.archiveUrl,
+										focusedModel.archive
+									)}{:else}{focusedModel.archive}{/if}
+							{/if}
+						</li>
+					{/if}
+				</ul>
+			</section>
+		{/if}
+
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_metadata())}
+			<ul class="space-y-0.5">
+				<li>{@render link('https://www.wikidata.org/', m.source_wikidata_name())}</li>
+				<li>{@render link('https://www.wikipedia.org/', m.source_wikipedia_name())}</li>
+				<li>
+					{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
+				</li>
 			</ul>
 		</section>
-	{/if}
 
-	{#if focusedModel}
 		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_models())}
+			{@render sectionHeader(m.attribution_section_images())}
 			<ul class="space-y-0.5">
 				<li>
-					{@render link(
-						focusedModel.source,
-						bodyName(focusedModel.bodyId),
-						focusedModel.organisation
-					)}
-					{#if focusedModel.license}<span class="text-muted-foreground">
-							· {focusedModel.license}</span
-						>{/if}
+					{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
 				</li>
-				{#if provenanceLabel(focusedModel)}
-					<li class="text-muted-foreground">
-						{provenanceLabel(focusedModel)}
-						{#if focusedModel.mission}
-							· <a
-								href={missionHref(focusedModel.mission.id)}
-								onclick={(e) =>
-									openMission(e, focusedModel.mission!.id, focusedModel.mission!.name)}
-								class="text-foreground hover:underline underline-offset-2"
-								>{focusedModel.mission.name}</a
-							>
-						{/if}
-						{#if focusedModel.archive}
-							· {#if focusedModel.archiveUrl}{@render link(
-									focusedModel.archiveUrl,
-									focusedModel.archive
-								)}{:else}{focusedModel.archive}{/if}
-						{/if}
-					</li>
-				{/if}
 			</ul>
 		</section>
 	{/if}
-
-	<section class="space-y-1">
-		{@render sectionHeader(m.attribution_section_metadata())}
-		<ul class="space-y-0.5">
-			<li>{@render link('https://www.wikidata.org/', m.source_wikidata_name())}</li>
-			<li>{@render link('https://www.wikipedia.org/', m.source_wikipedia_name())}</li>
-			<li>
-				{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
-			</li>
-		</ul>
-	</section>
-
-	<section class="space-y-1">
-		{@render sectionHeader(m.attribution_section_images())}
-		<ul class="space-y-0.5">
-			<li>
-				{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
-			</li>
-		</ul>
-	</section>
 
 	<section class="space-y-1">
 		{@render sectionHeader(m.attribution_section_source())}

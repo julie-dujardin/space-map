@@ -13,8 +13,10 @@ import re
 import shutil
 from functools import cache
 from pathlib import Path
+from typing import NamedTuple
 
 import orjson
+from PIL import Image
 
 from space_map_data.export.sidecar_io import write_atomic
 from space_map_data.utils.paths import EXPORT_DIR, PANORAMA_DERIVED_DIR
@@ -22,6 +24,14 @@ from space_map_data.utils.paths import EXPORT_DIR, PANORAMA_DERIVED_DIR
 logger = logging.getLogger(__name__)
 
 ASSET_DIR = "panoramas"
+# Timeline cards show the observed strip at thumbnail size.
+PREVIEW_WIDTH = 512
+
+
+class Product(NamedTuple):
+    entry: dict
+    image: Path
+    preview: Path | None
 
 
 def _sphere_geometry_is_archival(meta: dict) -> bool:
@@ -89,10 +99,10 @@ def _entry(meta: dict) -> dict | None:
 
 def load_panoramas(
     derived_dir: Path = PANORAMA_DERIVED_DIR,
-) -> dict[str, list[tuple[dict, Path]]]:
+) -> dict[str, list[Product]]:
     """Exportable products by body id, each with its texture path, in
     mission-then-time order."""
-    by_body: dict[str, list[tuple[dict, Path]]] = {}
+    by_body: dict[str, list[Product]] = {}
     if not derived_dir.is_dir():
         logger.warning("Panorama cache %s missing; exporting none", derived_dir)
         return by_body
@@ -104,11 +114,13 @@ def load_panoramas(
             entry = _entry(meta)
             if entry is None:
                 continue
+            folder = meta_path.parent
+            preview = folder / meta["preview"] if meta.get("preview") else None
             by_body.setdefault(meta["body_id"], []).append(
-                (entry, meta_path.parent / meta["image"])
+                Product(entry, folder / meta["image"], preview)
             )
     for body_id, entries in by_body.items():
-        entries.sort(key=lambda e: (e[0]["mission"] or "", e[0]["time"]))
+        entries.sort(key=lambda p: (p.entry.get("mission", ""), p.entry["time"]))
         by_body[body_id] = _dedupe(entries)
     logger.info(
         "Panoramas: %d exportable across %d bodies",
@@ -118,12 +130,13 @@ def load_panoramas(
     return by_body
 
 
-def _dedupe(entries: list[tuple[dict, Path]]) -> list[tuple[dict, Path]]:
+def _dedupe(entries: list[Product]) -> list[Product]:
     """One product per (time, lat, lon): the viewer addresses a panorama by
     that triple, so a second rendition of the same mosaic is unreachable."""
     seen: set[tuple] = set()
     kept = []
-    for entry, image in entries:
+    for product in entries:
+        entry = product.entry
         key = (entry["time"], entry["lat"], entry["lon"])
         if key in seen:
             logger.info(
@@ -132,34 +145,47 @@ def _dedupe(entries: list[tuple[dict, Path]]) -> list[tuple[dict, Path]]:
             )
             continue
         seen.add(key)
-        kept.append((entry, image))
+        kept.append(product)
     return kept
 
 
 @cache
-def _cached() -> dict[str, list[tuple[dict, Path]]]:
+def _cached() -> dict[str, list[Product]]:
     return load_panoramas()
 
 
 def panoramas_block(object_id: str) -> list[dict] | None:
     entries = _cached().get(object_id)
-    return [entry for entry, _ in entries] if entries else None
+    return [p.entry for p in entries] if entries else None
+
+
+def _write_preview(source: Path, target: Path) -> None:
+    with Image.open(source) as im:
+        im.thumbnail((PREVIEW_WIDTH, PREVIEW_WIDTH))
+        im.save(target, "WEBP", quality=80)
 
 
 def write_panorama_assets(out_dir: Path) -> None:
-    """Copy every exportable sphere texture to `v1/panoramas/<id>.webp`."""
+    """Copy every exportable sphere texture to `v1/panoramas/<id>.webp`, with
+    a `<id>-preview.webp` thumbnail beside it."""
     asset_dir = out_dir / ASSET_DIR
     asset_dir.mkdir(parents=True, exist_ok=True)
     copied = 0
     wanted: set[Path] = set()
     for entries in _cached().values():
-        for entry, image in entries:
+        for entry, image, preview in entries:
             target = asset_dir / f"{entry['id']}{image.suffix}"
             wanted.add(target)
-            if target.exists() and target.stat().st_size == image.stat().st_size:
+            if not (target.exists() and target.stat().st_size == image.stat().st_size):
+                shutil.copyfile(image, target)
+                copied += 1
+            if preview is None:
                 continue
-            shutil.copyfile(image, target)
-            copied += 1
+            thumb = asset_dir / f"{entry['id']}-preview.webp"
+            wanted.add(thumb)
+            if not thumb.exists() or thumb.stat().st_mtime < preview.stat().st_mtime:
+                _write_preview(preview, thumb)
+                copied += 1
     stale = [p for p in asset_dir.iterdir() if p not in wanted]
     for path in stale:
         path.unlink()
@@ -172,26 +198,27 @@ def write_panorama_assets(out_dir: Path) -> None:
 
 
 def _patch_global_bundles(out_dir: Path) -> None:
-    """Rewrite `panoramas` on each covered body's existing global bundle."""
-    from space_map_data.export.objects.writer import hash_bucket
-
-    metadata_path = out_dir / "metadata.json"
-    metadata = orjson.loads(metadata_path.read_bytes())
-    n_buckets = metadata["object_bundles"]["global"]
-    for body_id, entries in _cached().items():
-        bucket_path = (
-            out_dir
-            / "objects"
-            / "__global__"
-            / f"{hash_bucket(body_id, n_buckets)}.json.gz"
-        )
+    """Rewrite `panoramas` on every global bundle: set on the bodies that have
+    some, cleared on the ones that no longer do."""
+    by_body = _cached()
+    seen: set[str] = set()
+    for bucket_path in sorted((out_dir / "objects" / "__global__").glob("*.json.gz")):
         bundle = orjson.loads(gzip.decompress(bucket_path.read_bytes()))
-        if body_id not in bundle:
-            logger.warning("%s not in its global bundle; skipping", body_id)
-            continue
-        bundle[body_id]["panoramas"] = [entry for entry, _ in entries]
-        write_atomic(bucket_path, gzip.compress(orjson.dumps(bundle), mtime=0))
-        logger.info("Patched %s into %s", body_id, bucket_path.name)
+        changed = False
+        for body_id, data in bundle.items():
+            if body_id in by_body:
+                data["panoramas"] = [p.entry for p in by_body[body_id]]
+                seen.add(body_id)
+                changed = True
+            elif data.pop("panoramas", None) is not None:
+                logger.info("Panoramas: %s has none any more", body_id)
+                changed = True
+        if changed:
+            write_atomic(bucket_path, gzip.compress(orjson.dumps(bundle), mtime=0))
+    for body_id in sorted(set(by_body) - seen):
+        logger.warning(
+            "%s not in any global bundle; its panoramas are unreachable", body_id
+        )
 
 
 def export_panoramas_only() -> None:

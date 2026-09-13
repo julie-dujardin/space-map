@@ -11,6 +11,7 @@
 	import type { Snippet } from 'svelte';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import Minimize2Icon from '@lucide/svelte/icons/minimize-2';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import SquareIcon from '@lucide/svelte/icons/square';
 	import * as m from '$lib/paraglide/messages.js';
@@ -41,6 +42,12 @@
 		onStep: (delta: number) => void;
 		/** Stretches the map has nothing to draw at; greyed out on the axis. */
 		gaps?: readonly TimelineSpan[];
+		/** Where the strip sits; the map page's slot above the time bar unless
+		 *  the host says otherwise. */
+		positionClass?: string;
+		/** Puts a button at the end of the header that takes the strip away. */
+		onClose?: () => void;
+		closeLabel?: string;
 	}
 
 	let {
@@ -53,7 +60,10 @@
 		onTogglePlay,
 		playLabel,
 		onStep,
-		gaps = []
+		gaps = [],
+		onClose,
+		closeLabel,
+		positionClass = 'fixed bottom-[calc(var(--safe-bottom)_+_4.75rem)] end-[calc(var(--safe-end)_+_4.5rem)] start-[calc(var(--safe-start)_+_var(--detail-panel)_+_1rem)]'
 	}: Props = $props();
 
 	let startJd = $derived(items[0]?.startJd ?? 0);
@@ -147,9 +157,8 @@
 </script>
 
 <div
-	class="border-border/60 bg-background/90 pointer-events-auto fixed bottom-[calc(var(--safe-bottom)_+_4.75rem)] z-10 hidden
-		flex-col gap-2.5 rounded-xl border p-3 shadow-lg backdrop-blur
-		end-[calc(var(--safe-end)_+_4.5rem)] start-[calc(var(--safe-start)_+_var(--detail-panel)_+_1rem)] md:flex"
+	class="border-border/60 bg-background/90 pointer-events-auto z-10 hidden
+		flex-col gap-2.5 rounded-xl border p-3 shadow-lg backdrop-blur md:flex {positionClass}"
 >
 	<div class="flex items-center justify-between gap-3">
 		<h2 class="min-w-0 truncate text-sm font-medium">{@render title()}</h2>
@@ -188,6 +197,17 @@
 			>
 				<ChevronRightIcon class="size-4 rtl:rotate-180" />
 			</button>
+			{#if onClose}
+				<button
+					type="button"
+					class="hover:bg-muted ms-1 inline-flex size-7 items-center justify-center rounded-md transition-colors"
+					onclick={onClose}
+					aria-label={closeLabel}
+					title={closeLabel}
+				>
+					<Minimize2Icon class="size-4" />
+				</button>
+			{/if}
 		</div>
 	</div>
 
@@ -209,6 +229,14 @@
 									class="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-lg border px-2.5 py-2 text-start transition-colors
 										{active ? 'border-border bg-muted' : 'hover:bg-muted/50 border-transparent'}"
 								>
+									{#if item.image}
+										<img
+											src={item.image}
+											alt=""
+											loading="lazy"
+											class="mb-1 aspect-[3/1] w-full rounded object-cover"
+										/>
+									{/if}
 									<span class="flex w-full min-w-0 items-center gap-1.5">
 										<!-- A phase is a stretch of the bar below and wears its colour; a
 										     moment is a point on it and has none of its own. -->

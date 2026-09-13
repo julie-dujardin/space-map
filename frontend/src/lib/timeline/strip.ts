@@ -24,4 +24,6 @@ export interface StripItem extends TimelineSpan {
 	/** Says why this one is marked out — the strip shows it as a hint on the
 	 *  card and dims the mark on the bar. */
 	note?: string;
+	/** A picture of the moment, drawn across the top of its card. */
+	image?: string;
 }

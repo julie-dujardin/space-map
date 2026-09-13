@@ -2,10 +2,12 @@
 
 import gzip
 import json
+import os
 from pathlib import Path
 
 import orjson
 import pytest
+from PIL import Image
 
 from space_map_data.export import panoramas
 from space_map_data.export.objects.writer import hash_bucket
@@ -24,6 +26,7 @@ def _product(**overrides) -> dict:
         "stop_time": "2021-02-20T22:06:31.743Z",
         "position": {"latitude": 18.44, "longitude": 77.45, "elevation_m": -2569.9},
         "image": "panorama.webp",
+        "preview": "preview.webp",
         "north_azimuth_offset_deg": 0,
         "source_coverage": {"azimuth_start_deg": 67.2},
         "coverage": {"horizontal_degrees": 352.9, "sphere_percent": 15.7},
@@ -42,6 +45,7 @@ def _write_cache(root: Path, collection: str, products: list[dict]) -> None:
         folder.mkdir(parents=True)
         (folder / "metadata.json").write_text(json.dumps(product))
         (folder / "panorama.webp").write_bytes(b"webp" + product["id"].encode())
+        Image.new("RGBA", (1536, 396)).save(folder / "preview.webp")
         items.append(
             {
                 "id": product["id"],
@@ -56,8 +60,8 @@ class TestSelection:
 
     def test_complete_product_exports(self, tmp_path: Path):
         _write_cache(tmp_path, "perseverance", [_product()])
-        [(entry, image)] = panoramas.load_panoramas(tmp_path)[MARS]
-        assert entry == {
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry == {
             "id": "perseverance-sol2",
             "mission": "perseverance",
             "instrument": "Navcam",
@@ -76,9 +80,9 @@ class TestSelection:
             "credit_url": "https://www.jpl.nasa.gov/jpl-image-use-policy/",
             "source_url": "https://example.test/label.xml",
         }
-        assert (
-            image == tmp_path / "perseverance" / "perseverance-sol2" / "panorama.webp"
-        )
+        folder = tmp_path / "perseverance" / "perseverance-sol2"
+        assert product.image == folder / "panorama.webp"
+        assert product.preview == folder / "preview.webp"
 
     @pytest.mark.parametrize(
         "overrides",
@@ -111,9 +115,9 @@ class TestSelection:
             "moon",
             [_product(start_time=None, stop_time=None, capture_time="1969-07-21")],
         )
-        [(entry, _)] = panoramas.load_panoramas(tmp_path)[MARS]
-        assert entry["time"] == "1969-07-21"
-        assert "time_end" not in entry
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["time"] == "1969-07-21"
+        assert "time_end" not in product.entry
 
     def test_missing_cache_exports_none(self, tmp_path: Path):
         assert panoramas.load_panoramas(tmp_path / "absent") == {}
@@ -124,8 +128,8 @@ class TestDedupe:
 
     def test_same_time_and_place_kept_once(self, tmp_path: Path):
         _write_cache(tmp_path, "p", [_product(id="left"), _product(id="right")])
-        [(entry, _)] = panoramas.load_panoramas(tmp_path)[MARS]
-        assert entry["id"] == "left"
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["id"] == "left"
 
 
 class TestOrder:
@@ -144,7 +148,20 @@ class TestOrder:
             ],
         )
         entries = panoramas.load_panoramas(tmp_path)[MARS]
-        assert [e["id"] for e, _ in entries] == ["c-any", "p-early", "p-late"]
+        assert [p.entry["id"] for p in entries] == ["c-any", "p-early", "p-late"]
+
+    def test_no_mission_sorts_first(self, tmp_path: Path):
+        _write_cache(
+            tmp_path,
+            "loose",
+            [
+                _product(id="p"),
+                _product(id="lone", mission=None, start_time="2021-03-01T00:00:00Z"),
+            ],
+        )
+        entries = panoramas.load_panoramas(tmp_path)[MARS]
+        assert [p.entry["id"] for p in entries] == ["lone", "p"]
+        assert "mission" not in entries[0].entry
 
 
 class TestAdditiveRun:
@@ -180,6 +197,40 @@ class TestAdditiveRun:
         assert (
             out_dir / "panoramas" / "perseverance-sol2.webp"
         ).read_bytes() == b"webpperseverance-sol2"
+        with Image.open(out_dir / "panoramas" / "perseverance-sol2-preview.webp") as im:
+            assert im.size == (512, 132)
         bundle = orjson.loads(gzip.decompress(bundle_path.read_bytes()))
         assert bundle[MARS]["name"] == "Mars"
         assert [p["id"] for p in bundle[MARS]["panoramas"]] == ["perseverance-sol2"]
+
+    def test_regenerated_preview_replaces_thumbnail(self, tmp_path: Path, monkeypatch):
+        cache = tmp_path / "derived"
+        _write_cache(cache, "perseverance", [_product()])
+        monkeypatch.setattr(
+            panoramas, "_cached", lambda: panoramas.load_panoramas(cache)
+        )
+        out_dir = tmp_path / "v1"
+        panoramas.write_panorama_assets(out_dir)
+        thumb = out_dir / "panoramas" / "perseverance-sol2-preview.webp"
+        before = thumb.stat().st_mtime
+
+        source = cache / "perseverance" / "perseverance-sol2" / "preview.webp"
+        Image.new("RGBA", (1024, 396)).save(source)
+        os.utime(source, (before + 60, before + 60))
+        panoramas.write_panorama_assets(out_dir)
+        with Image.open(thumb) as im:
+            assert im.size == (512, 198)
+
+    def test_body_that_lost_its_panoramas_is_cleared(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr(panoramas, "_cached", dict)
+        out_dir = tmp_path / "v1"
+        bundle_path = out_dir / "objects" / "__global__" / "0.json.gz"
+        bundle_path.parent.mkdir(parents=True)
+        bundle_path.write_bytes(
+            gzip.compress(
+                orjson.dumps({MARS: {"id": MARS, "panoramas": [{"id": "x"}]}})
+            )
+        )
+        panoramas._patch_global_bundles(out_dir)
+        bundle = orjson.loads(gzip.decompress(bundle_path.read_bytes()))
+        assert "panoramas" not in bundle[MARS]

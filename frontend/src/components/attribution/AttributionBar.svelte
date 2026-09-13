@@ -7,9 +7,23 @@
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Popover from '$lib/components/ui/popover';
-	import AttributionPopover from './AttributionPopover.svelte';
+	import AttributionPopover, { type CreditSection } from './AttributionPopover.svelte';
 
-	const ctx = getContext<ContextManager>('ctx');
+	export interface AttributionChip {
+		label: string;
+		names: string[];
+	}
+
+	interface Props {
+		/** Given by a page whose credits are not the scene's: what the bar
+		 *  says, and what the popover behind it lists. */
+		chips?: AttributionChip[];
+		sections?: CreditSection[];
+	}
+
+	let { chips: givenChips, sections }: Props = $props();
+
+	const ctx = getContext<ContextManager | undefined>('ctx');
 
 	// The translated half of `ORBIT_SOURCES`, which carries everything else about
 	// a source. NASA-produced ones collapse to a single "NASA" chip; the shared
@@ -25,9 +39,16 @@
 		[OrbitalSource.SPACETRACK]: m.source_spacetrack_name()
 	});
 
-	const chips = $derived(attributionChips(ctx, labels));
-	const orbitLabels = $derived(chips.orbits);
-	const textureOrgs = $derived(chips.imagery);
+	const shown = $derived.by<AttributionChip[]>(() => {
+		if (givenChips) return givenChips;
+		if (!ctx) return [];
+		const chips = attributionChips(ctx, labels);
+		return [
+			{ label: m.attribution_orbits(), names: chips.orbits },
+			{ label: m.attribution_imagery(), names: chips.imagery }
+		];
+	});
+	const anyChip = $derived(shown.some((chip) => chip.names.length > 0));
 </script>
 
 <div
@@ -40,24 +61,20 @@
 				hover:text-white transition-colors"
 			aria-label={m.attribution_title()}
 		>
-			{#if orbitLabels.length > 0}
-				<span class="inline-block max-w-[50vw] truncate align-bottom">
-					<span class="text-white/50">{m.attribution_orbits()}:</span>
-					{orbitLabels.join(' · ')}
-				</span>
-			{/if}
-			{#if textureOrgs.length > 0}
-				<span class="inline-block max-w-[50vw] truncate align-bottom">
-					<span class="text-white/50">{m.attribution_imagery()}:</span>
-					{textureOrgs.join(' · ')}
-				</span>
-			{/if}
+			{#each shown as chip (chip.label)}
+				{#if chip.names.length > 0}
+					<span class="inline-block max-w-[50vw] truncate align-bottom">
+						<span class="text-white/50">{chip.label}:</span>
+						{chip.names.join(' · ')}
+					</span>
+				{/if}
+			{/each}
 		</Popover.Trigger>
 		<Popover.Content align="end" side="top" sideOffset={8} class="w-auto">
-			<AttributionPopover />
+			<AttributionPopover {sections} />
 		</Popover.Content>
 	</Popover.Root>
-	{#if orbitLabels.length > 0 || textureOrgs.length > 0}
+	{#if anyChip}
 		<span class="text-white/40" aria-hidden="true">·</span>
 	{/if}
 	<a

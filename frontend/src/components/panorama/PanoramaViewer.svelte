@@ -10,12 +10,8 @@
 	import { toast } from 'svelte-sonner';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
-	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
-	import { siGithub } from 'simple-icons';
 	import * as m from '$lib/paraglide/messages.js';
-	import { GITHUB_REPO_URL } from '$lib/constants';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import {
 		fetchObjectDetail,
 		type ObjectDetailData,
@@ -35,9 +31,15 @@
 		type Neighbour
 	} from '$lib/panorama/traverse';
 	import { bodyHref } from '$lib/state/url';
-	import { safeHttpUrl } from '$lib/utils';
+	import { SimClock } from '$lib/scene/state/clock.svelte';
+	import { fly } from 'svelte/transition';
+	import { getSettings } from '$lib/state/settings.svelte';
+	import { entryJd } from '$lib/panorama/minimap';
 	import { PanoramaScene, type ArrowKey } from './panorama-scene.svelte';
-	import PanoramaCompass from './PanoramaCompass.svelte';
+	import PanoramaMinimap from './PanoramaMinimap.svelte';
+	import PanoramaTimeline from './PanoramaTimeline.svelte';
+	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
+	import type { LayerCredit } from '$lib/flatmap/layers';
 
 	interface Props {
 		bodyId: string;
@@ -50,6 +52,16 @@
 	let textureState = $state<'loading' | 'ready' | 'error'>('loading');
 	let container = $state<HTMLElement | null>(null);
 	let scene = $state<PanoramaScene | null>(null);
+	let timelineOpen = $state(false);
+	let mapCredits = $state<LayerCredit[]>([]);
+	/** The strip's height, which the map beside it grows to. Kept from the last
+	 *  opening so the next one animates straight to size. */
+	let stripHeight = $state(208);
+	const motionMs = $derived(getSettings().resolvedReducedMotion ? 0 : 250);
+
+	// The viewer's own clock: it stands on the panorama being looked at, and the
+	// timeline scrubs it from there.
+	const clock = new SimClock(0);
 
 	const at = $derived(page.url.searchParams.get('at'));
 	const entries = $derived(detail?.global?.panoramas ?? []);
@@ -100,6 +112,15 @@
 			scene = null;
 		};
 	});
+
+	$effect(() => {
+		if (current) clock.setJD(entryJd(current));
+	});
+
+	/** The traverse the current panorama belongs to. */
+	const missionEntries = $derived(
+		current ? entries.filter((e) => e.mission === current.mission) : []
+	);
 
 	$effect(() => {
 		if (!scene || !current) return;
@@ -169,21 +190,6 @@
 			: `${m.panorama_index_title()} · ${bodyName}`
 	);
 
-	const sweep = $derived(
-		current && current.azimuth_start_deg !== undefined && current.hfov_deg !== undefined
-			? {
-					startDeg: current.azimuth_start_deg - current.north_offset_deg,
-					widthDeg: current.hfov_deg
-				}
-			: null
-	);
-	const compassTicks = $derived(
-		arrowTargets.map(({ key, n }) => ({
-			bearingDeg: n.bearingDeg,
-			label: `${key === 'previous' ? m.panorama_previous() : m.panorama_next()} · ${stepLabel(n)}`
-		}))
-	);
-
 	/** Rows of the info box, in reading order. */
 	const rows = $derived.by(() => {
 		if (!current) return [];
@@ -215,218 +221,176 @@
 			groups.set(e.mission ?? '', [...(groups.get(e.mission ?? '') ?? []), e]);
 		return [...groups.entries()];
 	});
-
-	const sourceUrl = $derived(safeHttpUrl(current?.source_url));
-	const creditUrl = $derived(safeHttpUrl(current?.credit_url));
 </script>
 
 <svelte:head>
 	<title>{pageTitle}</title>
 </svelte:head>
 
-<div class="fixed inset-0 bg-[#0b0d12] text-white">
-	{#if current}
-		<div bind:this={container} class="absolute inset-0 cursor-grab active:cursor-grabbing"></div>
+<Tooltip.Provider delayDuration={300}>
+	<div class="fixed inset-0 bg-[#0b0d12] text-white">
+		{#if current}
+			<div bind:this={container} class="absolute inset-0 cursor-grab active:cursor-grabbing"></div>
 
-		{#each arrowTargets as { key, n } (key)}
-			{@const anchor = scene?.anchors[key]}
-			{#if anchor?.visible}
-				<a
-					href={panoramaHref(bodyId, n.entry)}
-					onclick={(e) => follow(e, n.entry)}
-					class="absolute -translate-x-1/2 -translate-y-[calc(100%+1.6rem)] rounded-full bg-black/55 px-2.5 py-1 text-xs whitespace-nowrap backdrop-blur-sm hover:bg-black/75"
-					style="left:{anchor.x}px; top:{anchor.y}px"
-					aria-label={key === 'previous' ? m.panorama_previous() : m.panorama_next()}
-				>
-					{stepLabel(n)}
-				</a>
-			{/if}
-		{/each}
-
-		{#if textureState !== 'ready'}
-			<div
-				class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-white/70"
-				aria-live="polite"
-			>
-				{textureState === 'loading' ? m.panorama_loading() : m.panorama_error()}
-			</div>
-		{/if}
-
-		<!-- Info box -->
-		<div
-			class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] w-[min(20rem,calc(100vw-7.5rem))] rounded-md bg-black/40 p-3 text-sm backdrop-blur-sm"
-		>
-			<a href={bodyHref(bodyId, bodyName)} class="text-xs text-white/60 hover:text-white">
-				{bodyName}
-			</a>
-			<h1 class="text-base font-semibold leading-tight">
-				{missionName(current.mission)}
-				{#if current.sol !== undefined}
-					<span class="text-white/80">· {m.panorama_sol({ sol: current.sol })}</span>
+			{#each arrowTargets as { key, n } (key)}
+				{@const anchor = scene?.anchors[key]}
+				{#if anchor?.visible}
+					<a
+						href={panoramaHref(bodyId, n.entry)}
+						onclick={(e) => follow(e, n.entry)}
+						class="absolute -translate-x-1/2 -translate-y-[calc(100%+1.6rem)] rounded-full bg-black/55 px-2.5 py-1 text-xs whitespace-nowrap backdrop-blur-sm hover:bg-black/75"
+						style="left:{anchor.x}px; top:{anchor.y}px"
+						aria-label={key === 'previous' ? m.panorama_previous() : m.panorama_next()}
+					>
+						{stepLabel(n)}
+					</a>
 				{/if}
-			</h1>
-			{#if current.title}
-				<p class="text-xs text-white/70">{current.title}</p>
-			{/if}
-			<dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-				{#each rows as row (row.label)}
-					<dt class="text-white/55">{row.label}</dt>
-					<dd>{row.value}</dd>
-				{/each}
-				{#if sourceUrl}
-					<dt class="text-white/55">{m.panorama_source()}</dt>
-					<dd>
-						<a
-							href={sourceUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							class="inline-flex items-center gap-1 underline decoration-white/30 hover:decoration-white"
-						>
-							{current.id}
-							<ExternalLinkIcon class="size-3" />
-						</a>
-					</dd>
-				{/if}
-			</dl>
-			{#if neighbours}
-				<nav class="mt-3 flex items-center justify-between gap-2 text-xs">
-					{#if neighbours.previous}
-						<a
-							href={panoramaHref(bodyId, neighbours.previous.entry)}
-							onclick={(e) => follow(e, neighbours!.previous!.entry)}
-							class="inline-flex items-center gap-0.5 rounded px-1.5 py-1 hover:bg-white/10"
-							aria-label={m.panorama_previous()}
-						>
-							<ChevronLeftIcon class="size-3.5" />
-							{stepLabel(neighbours.previous)}
-						</a>
-					{:else}
-						<span></span>
-					{/if}
-					{#if neighbours.next}
-						<a
-							href={panoramaHref(bodyId, neighbours.next.entry)}
-							onclick={(e) => follow(e, neighbours!.next!.entry)}
-							class="inline-flex items-center gap-0.5 rounded px-1.5 py-1 hover:bg-white/10"
-							aria-label={m.panorama_next()}
-						>
-							{stepLabel(neighbours.next)}
-							<ChevronRightIcon class="size-3.5" />
-						</a>
-					{/if}
-				</nav>
-			{/if}
-		</div>
+			{/each}
 
-		<!-- Compass -->
-		{#if scene}
-			<div
-				class="absolute bottom-[calc(var(--safe-bottom)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)]"
-			>
-				<PanoramaCompass heading={scene.heading} fov={scene.fov} {sweep} ticks={compassTicks} />
-			</div>
-		{/if}
-
-		<!-- Credit bar -->
-		<div
-			class="absolute bottom-[calc(var(--safe-bottom))] end-[var(--safe-end)] flex items-center rounded-s-sm bg-black/40 text-[11px] leading-tight text-white/75 backdrop-blur-sm whitespace-nowrap"
-		>
-			{#if current.credit}
-				<span class="inline-block max-w-[60vw] truncate px-1 py-0 align-bottom">
-					<span class="text-white/50">{m.attribution_imagery()}:</span>
-					{#if creditUrl}
-						<a
-							href={creditUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							class="hover:text-white transition-colors">{current.credit}</a
-						>
-					{:else}
-						{current.credit}
-					{/if}
-				</span>
-				<span class="text-white/40" aria-hidden="true">·</span>
-			{/if}
-			<a
-				href={GITHUB_REPO_URL}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="flex items-center px-1 py-0 hover:text-white transition-colors"
-				aria-label="GitHub"
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 24 24"
-					fill="currentColor"
-					class="h-3.5 w-3.5"
-					aria-hidden="true"
+			{#if textureState !== 'ready'}
+				<div
+					class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-white/70"
+					aria-live="polite"
 				>
-					<path d={siGithub.path} />
-				</svg>
-			</a>
-		</div>
-	{:else}
-		<!-- html/body lock overflow for the 3D app, so the list owns its scroll. -->
-		<main class="absolute inset-0 overflow-y-auto">
-			<div class="mx-auto max-w-2xl px-4 py-[calc(var(--safe-top)_+_1rem)]">
+					{textureState === 'loading' ? m.panorama_loading() : m.panorama_error()}
+				</div>
+			{/if}
+
+			<!-- Info box -->
+			<div
+				class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] w-[min(20rem,calc(100vw-7.5rem))] rounded-md bg-black/40 p-3 text-sm backdrop-blur-sm"
+			>
 				<a href={bodyHref(bodyId, bodyName)} class="text-xs text-white/60 hover:text-white">
 					{bodyName}
 				</a>
-				<h1 class="mb-4 text-xl font-semibold">{m.panorama_index_title()}</h1>
-				{#if detailError}
-					<p class="text-sm text-white/70">{m.panorama_error()}</p>
-				{:else if !detail}
-					<p class="text-sm text-white/70">{m.loading()}</p>
-				{:else if at}
-					<p class="mb-4 text-sm text-white/70">{m.panorama_not_found()}</p>
+				<h1 class="text-base font-semibold leading-tight">
+					{missionName(current.mission)}
+					{#if current.sol !== undefined}
+						<span class="text-white/80">· {m.panorama_sol({ sol: current.sol })}</span>
+					{/if}
+				</h1>
+				{#if current.title}
+					<p class="text-xs text-white/70">{current.title}</p>
 				{/if}
-				{#each byMission as [mission, list] (mission)}
-					<h2 class="mt-4 mb-1 text-sm font-medium text-white/80">
-						{missionName(mission)}
-						<span class="text-white/50">({formatNumber(list.length)})</span>
-					</h2>
-					<ul class="divide-y divide-white/10 text-sm">
-						{#each list as e (e.id)}
-							<li>
-								<a
-									href={panoramaHref(bodyId, e)}
-									onclick={(ev) => follow(ev, e)}
-									class="flex items-baseline justify-between gap-3 py-1.5 hover:text-white text-white/85"
-								>
-									<span>
-										{#if e.sol !== undefined}{m.panorama_sol({ sol: e.sol })}{/if}
-										{#if e.title}<span class="text-white/60"> · {e.title}</span>{/if}
-									</span>
-									<span class="shrink-0 text-xs text-white/55">{formatIsoDate(e.time)}</span>
-								</a>
-							</li>
-						{/each}
-					</ul>
-				{/each}
+				<dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+					{#each rows as row (row.label)}
+						<dt class="text-white/55">{row.label}</dt>
+						<dd>{row.value}</dd>
+					{/each}
+				</dl>
 			</div>
-		</main>
-	{/if}
 
-	<!-- Close and share -->
-	<div
-		class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
-	>
-		<a
-			href={bodyHref(bodyId, bodyName)}
-			class="flex size-10 items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
-			aria-label={m.close()}
-			title={m.close()}
+			<!-- Traverse minimap and, when opened, the timeline beside it. One row,
+			     so the two share a height: the strip's content sets it and the
+			     map stretches to match. -->
+			{#if scene && missionEntries.length}
+				<div
+					class="absolute bottom-[calc(var(--safe-bottom)_+_1.5rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex items-stretch gap-2 {timelineOpen
+						? ''
+						: 'pointer-events-none'}"
+				>
+					<div class="pointer-events-auto shrink-0 self-end">
+						<PanoramaMinimap
+							{bodyId}
+							entries={missionEntries}
+							{current}
+							{radiusKm}
+							jd={clock.jd}
+							headingDeg={scene.heading}
+							fovDeg={scene.fov}
+							expanded={timelineOpen}
+							height={timelineOpen ? stripHeight : null}
+							onToggle={() => (timelineOpen = !timelineOpen)}
+							onCredits={(credits) => (mapCredits = credits)}
+							onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
+						/>
+					</div>
+					{#if timelineOpen}
+						<div
+							class="min-w-0 flex-1"
+							bind:clientHeight={stripHeight}
+							transition:fly={{ y: 12, duration: motionMs }}
+						>
+							<PanoramaTimeline
+								missionName={missionName(current.mission)}
+								entries={missionEntries}
+								{clock}
+								onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
+								onClose={() => (timelineOpen = false)}
+								positionClass="relative"
+							/>
+						</div>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Credit bar -->
+			<div class="absolute bottom-[var(--safe-bottom)] end-[var(--safe-end)]">
+				<PanoramaCreditBar entry={current} {mapCredits} />
+			</div>
+		{:else}
+			<!-- html/body lock overflow for the 3D app, so the list owns its scroll. -->
+			<main class="absolute inset-0 overflow-y-auto">
+				<div class="mx-auto max-w-2xl px-4 py-[calc(var(--safe-top)_+_1rem)]">
+					<a href={bodyHref(bodyId, bodyName)} class="text-xs text-white/60 hover:text-white">
+						{bodyName}
+					</a>
+					<h1 class="mb-4 text-xl font-semibold">{m.panorama_index_title()}</h1>
+					{#if detailError}
+						<p class="text-sm text-white/70">{m.panorama_error()}</p>
+					{:else if !detail}
+						<p class="text-sm text-white/70">{m.loading()}</p>
+					{:else if at}
+						<p class="mb-4 text-sm text-white/70">{m.panorama_not_found()}</p>
+					{/if}
+					{#each byMission as [mission, list] (mission)}
+						<h2 class="mt-4 mb-1 text-sm font-medium text-white/80">
+							{missionName(mission)}
+							<span class="text-white/50">({formatNumber(list.length)})</span>
+						</h2>
+						<ul class="divide-y divide-white/10 text-sm">
+							{#each list as e (e.id)}
+								<li>
+									<a
+										href={panoramaHref(bodyId, e)}
+										onclick={(ev) => follow(ev, e)}
+										class="flex items-baseline justify-between gap-3 py-1.5 hover:text-white text-white/85"
+									>
+										<span>
+											{#if e.sol !== undefined}{m.panorama_sol({ sol: e.sol })}{/if}
+											{#if e.title}<span class="text-white/60"> · {e.title}</span>{/if}
+										</span>
+										<span class="shrink-0 text-xs text-white/55">{formatIsoDate(e.time)}</span>
+									</a>
+								</li>
+							{/each}
+						</ul>
+					{/each}
+				</div>
+			</main>
+		{/if}
+
+		<!-- Close and share -->
+		<div
+			class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
 		>
-			<XIcon class="size-5 md:size-4" />
-		</a>
-		<button
-			type="button"
-			onclick={share}
-			class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
-			aria-label={m.share()}
-			title={m.share()}
-		>
-			<Share2Icon class="size-5 md:size-4" />
-		</button>
+			<a
+				href={bodyHref(bodyId, bodyName)}
+				class="flex size-10 items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
+				aria-label={m.close()}
+				title={m.close()}
+			>
+				<XIcon class="size-5 md:size-4" />
+			</a>
+			<button
+				type="button"
+				onclick={share}
+				class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
+				aria-label={m.share()}
+				title={m.share()}
+			>
+				<Share2Icon class="size-5 md:size-4" />
+			</button>
+		</div>
 	</div>
-</div>
+</Tooltip.Provider>
