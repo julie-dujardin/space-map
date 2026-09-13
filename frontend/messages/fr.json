@@ -629,6 +629,8 @@
 	"panorama_map_label": "Carte du parcours",
 	"panorama_map_expand": "Afficher la chronologie",
 	"panorama_map_collapse": "Masquer la chronologie",
+	"panorama_entry_show": "Afficher les panoramas de surface",
+	"panorama_entry_hide": "Masquer les panoramas de surface",
 	"image_view_on_commons": "Voir sur Commons",
 	"image_open_viewer": "Ouvrir l'image en taille réelle",
 	"image_previous": "Image précédente",

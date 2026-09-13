@@ -633,6 +633,8 @@
 	"panorama_map_label": "Map of the traverse",
 	"panorama_map_expand": "Show the timeline",
 	"panorama_map_collapse": "Hide the timeline",
+	"panorama_entry_show": "Show surface panoramas",
+	"panorama_entry_hide": "Hide surface panoramas",
 	"image_view_on_commons": "View on Commons",
 	"image_open_viewer": "Open full-size image",
 	"image_previous": "Previous image",

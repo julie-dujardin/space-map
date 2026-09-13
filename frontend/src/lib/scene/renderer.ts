@@ -40,6 +40,7 @@ import {
 	DEFAULT_ZOOM
 } from './framing';
 import {
+	effectiveRadiusKm,
 	isSurfaceFeature,
 	ObjectType,
 	type FeatureAnchor,
@@ -144,7 +145,11 @@ import {
 	type SurfaceClampContext
 } from './visibility/camera-limits';
 import { cameraMotionScale, type MotionScale } from './camera/motion-scale';
-import { renderedSurfaceRadialKm, surfaceDataEpoch } from './position/rendered-surface';
+import {
+	bodyFixedUnit,
+	renderedSurfaceRadialKm,
+	surfaceDataEpoch
+} from './position/rendered-surface';
 import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
@@ -518,7 +523,7 @@ export class SceneRenderer {
 		this.unsubscribeBodiesAdded = ctx.bodies.onBodiesAdded(this.invalidate);
 
 		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx, (id) =>
-			Boolean(this.bodyObjects.get(id)?.isLanded)
+			this.isLanded(id)
 		);
 
 		this.systemData = new SystemDataLoader(
@@ -1355,6 +1360,27 @@ export class SceneRenderer {
 		this.controls.rotateSpeed = scale.rotate;
 		this.controls.panSpeed = scale.translate;
 		this.controls.zoomSpeed = scale.translate;
+	}
+
+	/** @internal Whether the probe stands on a body at the clock's date, as the
+	 *  last frame drew it; its parent is then the body it stands on. */
+	isLanded(id: string): boolean {
+		return Boolean(this.bodyObjects.get(id)?.isLanded);
+	}
+
+	/** @internal Distance from `bodyId`'s centre to the surface as it is drawn
+	 *  this frame, in km, under a body-fixed place; null while its terrain or
+	 *  radii are still loading. What a shape laid on the ground follows. */
+	surfaceRadialKm(bodyId: string, latitude: number, longitude: number): number | null {
+		const body = this.ctx.getBody(bodyId);
+		if (!body) return null;
+		const dir = bodyFixedUnit((latitude * Math.PI) / 180, (longitude * Math.PI) / 180);
+		return renderedSurfaceRadialKm(
+			this.bodyObjects.get(bodyId),
+			bodyId,
+			effectiveRadiusKm(body.data),
+			dir
+		);
 	}
 
 	/** How to sample the camera floor under `body`: its shape model when one is

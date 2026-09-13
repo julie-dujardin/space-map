@@ -30,7 +30,10 @@
 		panoramaHref,
 		type Neighbour
 	} from '$lib/panorama/traverse';
-	import { bodyHref } from '$lib/state/url';
+	import { bodyHref, serializeUrl } from '$lib/state/url';
+	import { DEFAULT_VIEW } from '$lib/state/view';
+	import { urlTypeFromId } from '$lib/state/view';
+	import { kmToScene } from '$lib/math/units';
 	import { SimClock } from '$lib/scene/state/clock.svelte';
 	import { fly } from 'svelte/transition';
 	import { getSettings } from '$lib/state/settings.svelte';
@@ -232,6 +235,25 @@
 			groups.set(e.mission ?? '', [...(groups.get(e.mission ?? '') ?? []), e]);
 		return [...groups.entries()];
 	});
+
+	/** Back to the map, standing over this panorama at its date; the body page
+	 *  unframed when no panorama is open. */
+	const closeHref = $derived(
+		current && radiusKm
+			? serializeUrl({
+					...DEFAULT_VIEW,
+					type: urlTypeFromId(bodyId),
+					id: bodyId,
+					name: bodyName,
+					date: new Date(current.time),
+					isNow: false,
+					latitude: current.lat,
+					longitude: current.lon,
+					zoom: kmToScene(radiusKm) * 1.05,
+					framed: true
+				})
+			: bodyHref(bodyId, bodyName)
+	);
 </script>
 
 <svelte:head>
@@ -388,7 +410,7 @@
 			class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
 		>
 			<a
-				href={bodyHref(bodyId, bodyName)}
+				href={closeHref}
 				class="flex size-10 items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
 				aria-label={m.close()}
 				title={m.close()}

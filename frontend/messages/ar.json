@@ -564,6 +564,8 @@
 	"panorama_map_label": "خريطة المسار",
 	"panorama_map_expand": "إظهار الخط الزمني",
 	"panorama_map_collapse": "إخفاء الخط الزمني",
+	"panorama_entry_show": "إظهار بانوراما السطح",
+	"panorama_entry_hide": "إخفاء بانوراما السطح",
 	"image_view_on_commons": "عرض في كومنز",
 	"image_open_viewer": "فتح الصورة بالحجم الكامل",
 	"image_previous": "الصورة السابقة",

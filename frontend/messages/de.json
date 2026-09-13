@@ -601,6 +601,8 @@
 	"panorama_map_label": "Karte der Fahrtroute",
 	"panorama_map_expand": "Zeitleiste anzeigen",
 	"panorama_map_collapse": "Zeitleiste ausblenden",
+	"panorama_entry_show": "Oberflächenpanoramen anzeigen",
+	"panorama_entry_hide": "Oberflächenpanoramen ausblenden",
 	"image_view_on_commons": "Auf Commons ansehen",
 	"image_open_viewer": "Bild in voller Größe öffnen",
 	"image_previous": "Vorheriges Bild",

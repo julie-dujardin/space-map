@@ -535,6 +535,8 @@
 	"panorama_map_label": "行进路线地图",
 	"panorama_map_expand": "显示时间线",
 	"panorama_map_collapse": "隐藏时间线",
+	"panorama_entry_show": "显示地表全景",
+	"panorama_entry_hide": "隐藏地表全景",
 	"image_view_on_commons": "在 Commons 查看",
 	"image_open_viewer": "打开原图",
 	"image_previous": "上一张图片",

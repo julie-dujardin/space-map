@@ -83,6 +83,7 @@
 	import TimeMenuButton from './time/TimeMenuButton.svelte';
 	import SettingsButton from './settings/SettingsButton.svelte';
 	import LayersButton from './layers/LayersButton.svelte';
+	import PanoramaTraces from './panorama/PanoramaTraces.svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import SearchBar from './search/SearchBar.svelte';
 	import FeaturedBar from './search/FeaturedBar.svelte';
@@ -1015,6 +1016,7 @@
 			>
 				<SettingsButton />
 				<LayersButton />
+				<PanoramaTraces {map} focused={selectedBody ?? null} />
 			</div>
 			{#if isNav && TravelDrawer}
 				<TravelDrawer

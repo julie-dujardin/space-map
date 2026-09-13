@@ -637,6 +637,8 @@
 	"panorama_map_label": "走行経路の地図",
 	"panorama_map_expand": "タイムラインを表示",
 	"panorama_map_collapse": "タイムラインを隠す",
+	"panorama_entry_show": "地表パノラマを表示",
+	"panorama_entry_hide": "地表パノラマを隠す",
 	"image_view_on_commons": "Commons で表示",
 	"image_open_viewer": "原寸画像を開く",
 	"image_previous": "前の画像",

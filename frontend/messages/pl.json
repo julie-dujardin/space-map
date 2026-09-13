@@ -601,6 +601,8 @@
 	"panorama_map_label": "Mapa trasy",
 	"panorama_map_expand": "Pokaż oś czasu",
 	"panorama_map_collapse": "Ukryj oś czasu",
+	"panorama_entry_show": "Pokaż panoramy powierzchni",
+	"panorama_entry_hide": "Ukryj panoramy powierzchni",
 	"image_view_on_commons": "Zobacz na Commons",
 	"image_open_viewer": "Otwórz obraz w pełnym rozmiarze",
 	"image_previous": "Poprzedni obraz",

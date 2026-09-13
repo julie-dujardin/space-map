@@ -553,6 +553,8 @@
 	"panorama_map_label": "Карта маршрута",
 	"panorama_map_expand": "Показать хронологию",
 	"panorama_map_collapse": "Скрыть хронологию",
+	"panorama_entry_show": "Показать панорамы поверхности",
+	"panorama_entry_hide": "Скрыть панорамы поверхности",
 	"image_view_on_commons": "Открыть в Commons",
 	"image_open_viewer": "Открыть в полном размере",
 	"image_previous": "Предыдущее изображение",

@@ -601,6 +601,8 @@
 	"panorama_map_label": "Mapa del recorrido",
 	"panorama_map_expand": "Mostrar la cronología",
 	"panorama_map_collapse": "Ocultar la cronología",
+	"panorama_entry_show": "Mostrar los panoramas de superficie",
+	"panorama_entry_hide": "Ocultar los panoramas de superficie",
 	"image_view_on_commons": "Ver en Commons",
 	"image_open_viewer": "Abrir imagen a tamaño completo",
 	"image_previous": "Imagen anterior",
