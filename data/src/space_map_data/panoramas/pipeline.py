@@ -16,7 +16,7 @@ import httpx
 import numpy as np
 from PIL import Image
 
-from .labels import Mosaic, read_pds3, read_pds4
+from .labels import Mosaic, attached_constants, read_pds3, read_pds4
 
 logger = logging.getLogger(__name__)
 ARCHIVE = "https://planetarydata.jpl.nasa.gov/img/data/"
@@ -159,6 +159,7 @@ def download(
     start_sol=0,
     end_sol=None,
     limit=None,
+    sol_step=1,
     refresh=False,
 ):
     root = source_dir / mission
@@ -172,9 +173,14 @@ def download(
     )
     lookup = positions(mission, position_path)
     accepted, rejected, seen = [], [], set()
+    previous_sol = None
     for sol, url, names in mosaic_listings(
         client, root, mission, start_sol=start_sol, end_sol=end_sol, refresh=refresh
     ):
+        # Thinning by sol spreads a bounded download over the whole mission.
+        if previous_sol is not None and sol - previous_sol < sol_step:
+            continue
+        taken = len(accepted)
         pattern = (
             r"N_L\w+CYL\w+\.LBL"
             if mission == "curiosity"
@@ -210,6 +216,12 @@ def download(
             expected = mosaic.offset + mosaic.width * mosaic.height * mosaic.bands * 2
             if image.stat().st_size < expected:
                 raise ValueError(f"Truncated image: {image}")
+            if not mosaic.missing:
+                try:
+                    mosaic.missing = attached_constants(read_header(image, mosaic))
+                except ValueError as error:
+                    rejected.append({"label_url": url + name, "reason": str(error)})
+                    continue
             accepted.append(
                 {
                     "id": f"{mission}-{mosaic.product_id.lower()}",
@@ -240,6 +252,8 @@ def download(
             )
             if limit is not None and len(accepted) >= limit:
                 break
+        if len(accepted) > taken:
+            previous_sol = sol
         if limit is not None and len(accepted) >= limit:
             break
     if not accepted:
@@ -251,10 +265,21 @@ def download(
             "schema_version": 1,
             "products": accepted,
             "rejected": rejected,
-            "selection": {"start_sol": start_sol, "end_sol": end_sol, "limit": limit},
+            "selection": {
+                "start_sol": start_sol,
+                "end_sol": end_sol,
+                "limit": limit,
+                "sol_step": sol_step,
+            },
         },
     )
     return accepted
+
+
+def read_header(path: Path, mosaic: Mosaic) -> str:
+    """Everything before the raster: the attached label and its VICAR image header."""
+    with path.open("rb") as stream:
+        return stream.read(mosaic.offset).decode("latin-1")
 
 
 def read_pixels(path: Path, mosaic: Mosaic):

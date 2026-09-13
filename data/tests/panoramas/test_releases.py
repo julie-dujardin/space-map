@@ -275,7 +275,8 @@ def test_release_reprocessing_retains_curated_sphere(tmp_path, monkeypatch):
     source = root / "pancam" / "image.png"
     source.parent.mkdir(parents=True)
     Image.new("RGB", (360, 60), (180, 90, 30)).save(source)
-    spec = dict(strip_spheres.STRIPS[-1], id="test", source_sha256=sha256(source))
+    curated = next(s for s in strip_spheres.STRIPS if s["collection"] == "pancam")
+    spec = dict(curated, id="test", source_sha256=sha256(source))
     monkeypatch.setattr(strip_spheres, "STRIPS", [spec])
     write_json(
         source.parent / "inventory.json",

@@ -7,7 +7,12 @@ import httpx
 import numpy as np
 import pytest
 
-from space_map_data.panoramas.labels import Mosaic, read_pds3, read_pds4
+from space_map_data.panoramas.labels import (
+    Mosaic,
+    attached_constants,
+    read_pds3,
+    read_pds4,
+)
 from space_map_data.panoramas.pipeline import (
     download,
     fetch,
@@ -245,3 +250,94 @@ def test_download_to_offline_catalog(tmp_path):
     )
     with pytest.raises(ValueError, match="checksum"):
         process(tmp_path / "sources", output, "curiosity", width=256)
+
+
+def strip_constants(label: str) -> str:
+    return re.sub(r"^\s*(?:INVALID|MISSING)_CONSTANT.*\n", "", label, flags=re.M)
+
+
+def test_constants_fall_back_to_attached_header():
+    label = (FIXTURES / "curiosity.lbl").read_text()
+    assert read_pds3(label).missing == (0.0, 0.0)
+    assert read_pds3(strip_constants(label)).missing == ()
+    assert attached_constants(
+        "NL=1 MISSING_CONSTANT=0.0 INVALID_CONSTANT=-1.5 NS=2"
+    ) == (
+        0.0,
+        -1.5,
+    )
+    with pytest.raises(ValueError, match="attached header"):
+        attached_constants("NL=1 PDS_MISSING_CONSTANT=0.0 INVALID_CONSTANT=0.0")
+
+
+def offline_navcam(sols, label_text, payload_prefix=b""):
+    """Serve one cylindrical Curiosity mosaic per requested sol."""
+    metadata = read_pds3(label_text)
+    name = metadata.product_id
+    payload = (
+        payload_prefix.ljust(metadata.offset, b"\0")
+        + np.arange(360 * 90, dtype=">i2").reshape(90, 360).tobytes()
+    )
+    responses: dict[str, str | bytes] = {
+        MSL: "".join(f'<a href="SOL{sol:05}/">sol</a>' for sol in sols),
+        PLACES: "frame,site,drive,planetocentric_latitude,longitude,elevation\n"
+        "ROVER,3,372,-4.5,137.4,-4500\n",
+    }
+    for sol in sols:
+        label = label_text.replace(
+            "PLANET_DAY_NUMBER               = 24",
+            f"PLANET_DAY_NUMBER               = {sol}",
+        )
+        product = name.replace("_0024_", f"_{sol:04}_")
+        label = label.replace(name, product)
+        responses[MSL + f"SOL{sol:05}/"] = f'<a href="{product}.LBL">label</a>'
+        responses[MSL + f"SOL{sol:05}/{product}.LBL"] = label
+        responses[MSL + f"SOL{sol:05}/{product}.IMG"] = payload
+    return responses
+
+
+def test_attached_constants_admit_later_navcam_mosaics(tmp_path):
+    label = (FIXTURES / "curiosity.lbl").read_text()
+    label = label.replace("7703", "360").replace("977", "90")
+    label = (
+        label.replace("15406", "720")
+        .replace("21.3979", "1.0")
+        .replace("132.629", "46.0")
+    )
+    responses = offline_navcam(
+        [24], strip_constants(label), b"MISSING_CONSTANT=0.0 INVALID_CONSTANT=0.0 "
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, content=responses[str(req.url)])
+        )
+    ) as client:
+        products = download(client, tmp_path / "sources", "curiosity")
+    assert products[0]["mosaic"]["missing"] == (0.0, 0.0)
+
+    bare = offline_navcam([24], strip_constants(label))
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, content=bare[str(req.url)])
+        )
+    ) as client:
+        with pytest.raises(ValueError, match="No supported"):
+            download(client, tmp_path / "bare", "curiosity")
+
+
+def test_sol_step_spreads_a_bounded_selection(tmp_path):
+    label = (FIXTURES / "curiosity.lbl").read_text()
+    label = label.replace("7703", "360").replace("977", "90")
+    label = (
+        label.replace("15406", "720")
+        .replace("21.3979", "1.0")
+        .replace("132.629", "46.0")
+    )
+    responses = offline_navcam([24, 30, 44], label)
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, content=responses[str(req.url)])
+        )
+    ) as client:
+        products = download(client, tmp_path / "sources", "curiosity", sol_step=20)
+    assert [product["mosaic"]["sol"] for product in products] == [24, 44]

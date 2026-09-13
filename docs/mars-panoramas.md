@@ -15,8 +15,8 @@ the main checkout.
 | `curiosity`, `spirit`, `opportunity` | All pages of NASA image-library panorama/mosaic/360 searches | Screened official color releases, including crops |
 | `insight` | Curated first surface image, first/dusty/final selfies, late surface image | Five timeline frames; last exposure not claimed verified |
 | `phoenix`, `pathfinder` | Official PIA13804 / PIA01466 hero panoramas | One preprocessed lander panorama each |
-| Perseverance Navcam | Complete PDS collection inventory, supported RGB cylindrical products | Localized, north-aligned sphere textures |
-| `curiosity-navcam` | Bounded initial PDS batch: 50 mosaics, sols 16–131 | Grayscale full/partial sphere textures with localization and north alignment |
+| Perseverance Navcam | Complete PDS collection inventory, supported RGB cylindrical products | Localized, north-aligned sphere textures; the archive ends at sol 658 |
+| `curiosity-navcam` | Every PDS sol directory, thinned to one stopping point per 20 sols | Grayscale full/partial sphere textures with localization and north alignment |
 
 “Complete discovery” means traversing the specified source, **not** an exhaustive
 inventory of every image ever released by a mission. Unsupported names, monochrome
@@ -58,6 +58,9 @@ Do not run two writers against the same collection concurrently.
 - Release `--limit N` bounds **new download attempts**, not inventory discovery.
 - PDS supports `download`, `process`, and `all`; its optional `--limit N` bounds
   selected products. `--start-sol` defaults to zero; `--end-sol` is optional.
+- PDS `--sol-step N` skips sols within N sols of the last selected stopping point.
+  `--limit` truncates at the earliest sols, so a bounded run needs the step to
+  reach the end of a mission.
 - Completed downloads are reused by URL and SHA-256. Interrupted individual files
   restart; `.part` files are not accepted as completed images.
 - `--refresh` refreshes discovery metadata. Re-running downloads retries failures
@@ -207,14 +210,22 @@ catalog. These official PDS cylindrical mosaics use label-derived sphere geometr
 and an exact site/drive localization join, not an assumed strip projection.
 
 ```sh
-PYTHONPATH=data/src python -m space_map_data.panoramas all --missions curiosity --include-monochrome --source-dir .panorama-data/sources --output-dir .panorama-data/derived --limit 50
+PYTHONPATH=data/src python -m space_map_data.panoramas all --missions curiosity --include-monochrome --sol-step 20 --source-dir .panorama-data/sources --output-dir .panorama-data/derived
 ```
 
-This bounded starter batch includes full and partial sweeps. Omit `--limit` for
-all supported localized products; budget disk space before doing so. Other Mars
-grayscale instruments are not yet automatically ingested by this command.
-Color collections remain available separately and are not replaced by grayscale.
+This covers sols 2 to the end of the archive and includes full and partial
+sweeps. The archive holds more than 14,000 cylindrical candidates, so an
+unthinned run needs tens of gigabytes; `--sol-step 20` keeps a mission-long
+spread inside about 8 GB. Other Mars grayscale instruments are not yet
+automatically ingested by this command. Color collections remain available
+separately and are not replaced by grayscale.
 Preview: <http://localhost:8765/?collection=curiosity-navcam>.
+
+From about sol 360 onward the detached PDS3 labels stop declaring
+`MISSING_CONSTANT` and `INVALID_CONSTANT`. The VICAR image header attached to
+the `.IMG` still declares both, so the reader takes them from there and rejects
+only products where neither source declares them. Without this the collection
+ended in 2012.
 
 ### Curiosity and InSight immersive strip previews
 
@@ -224,9 +235,12 @@ After processing the `curiosity` and `insight` releases, run:
 PYTHONPATH=data/src python -m space_map_data.panoramas.strip_spheres --directory .panorama-data/derived
 ```
 
-This adds approximate immersive renditions for Curiosity PIA20840 (Murray Buttes),
-PIA23623, PIA26696 (Nevado Sajama), and InSight PIA23140 (sol 14).
-Curiosity's published sweeps are 360°; InSight's is 290°, not a full circle.
+This adds approximate immersive renditions for 21 Curiosity Mastcam releases and
+InSight PIA23140 (sol 14). Every Curiosity fit is a published full circle, from
+the first color panorama of August 2012 (PIA16029) to Nevado Sajama in November
+2025 (PIA26696); InSight's sweep is 290°, not a full circle. PIA11241 (Ogunquit
+Beach) and PIA21719 (Nathan Bridges Dune) state northwest at both ends, so their
+seams are rotated to that heading.
 The NASA originals retain their existing source credits and reuse provenance.
 These renditions use the 2048-pixel flat previews, not the gigapixel masters.
 
@@ -241,6 +255,22 @@ Release processing now reapplies curated strip fits automatically. The standalon
 Open `http://localhost:8765/?collection=curiosity&panorama=curiosity-pia20840`
 or `http://localhost:8765/?collection=insight&panorama=insight-pia23140`.
 Immersive products appear before flat-only products in each collection.
+
+### Dated Mastcam-Z 360 spheres
+
+The manifest also fits all 53 panoramas of ASU's Mastcam-Z 360 collection, sols 3
+to 1879. These are the only color Perseverance panoramas after sol 658, where the
+PDS `mars2020_navcam_ops_mosaic` archive ends. The published 360° extent comes
+from the collection page; the horizon is visually estimated like every other
+curated strip, and no heading is recorded.
+
+The gallery names a sol, not an Earth date. Each capture interval therefore comes
+from the Mars 2020 raw-image feed: the UTC dates of the frames returned for the
+first and last sol of the sequence. A sol spans two UTC dates, so a single-sol
+panorama can still carry a two-day interval. Sol 840 has no Mastcam-Z frames in
+that feed; its date comes from the other instruments on the same sol.
+
+Preview: <http://localhost:8765/?collection=mastcamz>.
 
 ```sh
 uv run pytest -q tests/panoramas
@@ -296,3 +326,19 @@ and seven new Opportunity products. All 17 additions have capture dates; the
 asset audit reports no missing references. Reprojection and release-regeneration
 tests cover partial gaps, seam wrapping, caption heading, dates, changed-source
 rejection, and active-catalog filtering.
+
+### Validated temporal coverage
+
+Cache result after the attached-constant fallback, the sampled Curiosity Navcam
+run, and the new curated fits: 544 → 960 spherical renditions, 767 of them dated,
+with no missing asset references.
+
+| Collection | Spherical | Dated | Span |
+|---|---:|---:|---|
+| `curiosity-navcam` | 389 | 389 | 2012–2025, at least 20 per year after 2012 |
+| `curiosity` (Mastcam color) | 21 | 21 | 2012–2025; no official full-circle release exists for 2013, 2014 or 2020 |
+| `mastcamz` (Mastcam-Z color) | 246 | 53 | 2021–2026 for the dated 360 collection; the other 193 are printed-grid estimates without dates |
+| `perseverance` (Navcam) | 276 | 276 | 2021–2022, the full extent of the PDS delivery |
+
+The MSL archive's last sol directory trails the current sol by several months, so
+`curiosity-navcam` ends earlier than Mastcam-Z does.

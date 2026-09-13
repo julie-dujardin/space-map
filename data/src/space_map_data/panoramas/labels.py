@@ -44,15 +44,40 @@ class Mosaic:
             raise ValueError("Horizontal coverage exceeds one revolution")
 
 
-def value(text: str, key: str) -> str:
+def optional(text: str, key: str) -> str | None:
     match = re.search(
         rf"^\s*{re.escape(key)}\s*=\s*(\([^)]*\)|\"[^\"]*\"|[^\r\n]+)",
         text,
         re.M,
     )
-    if not match:
+    return match[1].strip().strip('"') if match else None
+
+
+def value(text: str, key: str) -> str:
+    found = optional(text, key)
+    if found is None:
         raise ValueError(f"Missing PDS field: {key}")
-    return match[1].strip().strip('"')
+    return found
+
+
+SPECIAL_CONSTANTS = ("MISSING_CONSTANT", "INVALID_CONSTANT")
+
+
+def detached_constants(text: str) -> tuple[float, ...]:
+    """Empty when the detached label declares no special values; never a partial pair."""
+    found = [optional(text, key) for key in SPECIAL_CONSTANTS]
+    return tuple(float(v) for v in found if v is not None) if None not in found else ()
+
+
+def attached_constants(header: str) -> tuple[float, ...]:
+    """MSL detached labels stopped declaring the special values the VICAR header keeps."""
+    found = []
+    for key in SPECIAL_CONSTANTS:
+        match = re.search(rf"(?<![A-Z_]){key}\s*=\s*([-+\d.eE]+)", header)
+        if match is None:
+            raise ValueError(f"Missing attached header field: {key}")
+        found.append(float(match[1]))
+    return tuple(found)
 
 
 def numbers(text: str) -> list[float]:
@@ -116,10 +141,7 @@ def read_pds3(text: str) -> Mosaic:
         sy,
         float(value(projection, "ZERO_ELEVATION_LINE")),
         value(projection, "REFERENCE_COORD_SYSTEM_NAME"),
-        (
-            float(value(text, "MISSING_CONSTANT")),
-            float(value(text, "INVALID_CONSTANT")),
-        ),
+        detached_constants(text),
     )
     result.validate()
     return result
