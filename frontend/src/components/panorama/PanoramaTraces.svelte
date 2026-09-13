@@ -20,7 +20,7 @@
 	import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { TraverseTrace } from '$lib/panorama/trace';
-	import { panoramaHref } from '$lib/panorama/traverse';
+	import { panoramaHref } from '$lib/state/panorama-link';
 
 	interface Props {
 		map: SpaceMap;

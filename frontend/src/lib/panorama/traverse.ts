@@ -1,13 +1,13 @@
 /**
- * Where a panorama sits on its traverse: the `?at=` key that names it, the
- * neighbours it steps to, and the ground-track bearing and distance to each.
+ * Where a panorama sits on its traverse: the `time,lat,lon` key that names
+ * it, the neighbours it steps to, and the ground-track bearing and distance
+ * to each.
  */
 
-import { resolve } from '$app/paths';
 import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
-import { urlTypeFromId, urlTypeToIdPrefix } from '$lib/state/view';
+import { angularDistance } from '$lib/flatmap/geometry';
 
-/** `?at=<time>,<lat>,<lon>`: the same triple the export lists, so the key
+/** `<time>,<lat>,<lon>`: the same triple the export lists, so the key
  *  round-trips without a lookup table. */
 export function panoramaAt(entry: PanoramaEntry): string {
 	return `${entry.time},${entry.lat},${entry.lon}`;
@@ -16,14 +16,6 @@ export function panoramaAt(entry: PanoramaEntry): string {
 export function findPanorama(entries: PanoramaEntry[], at: string | null): PanoramaEntry | null {
 	if (!at) return null;
 	return entries.find((e) => panoramaAt(e) === at) ?? null;
-}
-
-/** `/view/<type>/<id>` for the body, plus the panorama when one is named. */
-export function panoramaHref(bodyId: string, entry?: PanoramaEntry): string {
-	const type = urlTypeFromId(bodyId);
-	const numericId = bodyId.slice(`${urlTypeToIdPrefix(type)}-`.length);
-	const path = resolve('/view/[type]/[id]', { type, id: numericId });
-	return entry ? `${path}?at=${encodeURIComponent(panoramaAt(entry))}` : path;
 }
 
 export interface Neighbour {
@@ -47,7 +39,7 @@ export function neighboursOf(
 	current: PanoramaEntry,
 	radiusKm: number
 ): Neighbours {
-	const i = entries.indexOf(current);
+	const i = entries.findIndex((e) => e.id === current.id);
 	const sameMission = (e: PanoramaEntry | undefined) => e && e.mission === current.mission;
 	const toNeighbour = (e: PanoramaEntry | undefined): Neighbour | null =>
 		sameMission(e)
@@ -66,12 +58,7 @@ const DEG = Math.PI / 180;
  *  are metres on a body thousands of kilometres across, so the ellipsoid's
  *  flattening changes nothing a reader would see. */
 export function groundDistanceM(a: PanoramaEntry, b: PanoramaEntry, radiusKm: number): number {
-	const dLat = (b.lat - a.lat) * DEG;
-	const dLon = (b.lon - a.lon) * DEG;
-	const h =
-		Math.sin(dLat / 2) ** 2 +
-		Math.cos(a.lat * DEG) * Math.cos(b.lat * DEG) * Math.sin(dLon / 2) ** 2;
-	return 2 * radiusKm * 1000 * Math.asin(Math.sqrt(h));
+	return angularDistance(a, b) * DEG * radiusKm * 1000;
 }
 
 /** Initial great-circle bearing from `a` to `b`, degrees clockwise from

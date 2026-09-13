@@ -4,10 +4,10 @@
   panorama the body has.
 -->
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { untrack } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import * as m from '$lib/paraglide/messages.js';
@@ -17,19 +17,20 @@
 		type ObjectDetailData,
 		type PanoramaEntry
 	} from '$lib/fetch/objects/object-data';
-	import { versionedUrl } from '$lib/fetch/data-base';
+	import { meanRadiusKm } from '$lib/fetch/objects/physical';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatKm } from '$lib/format/distance';
 	import { formatNumber } from '$lib/format/quantities';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import { isModifiedClick } from '$lib/modified-click';
 	import {
 		findPanorama,
-		initialHeadingDeg,
-		neighboursOf,
-		panoramaHref,
-		type Neighbour
+		panoramaAt,
+		type Neighbour,
+		type Neighbours
 	} from '$lib/panorama/traverse';
+	import { capitalize } from '$lib/search/format';
+	import { shareUrl } from '$lib/share';
+	import { panoramaHref } from '$lib/state/panorama-link';
 	import { bodyHref, serializeUrl } from '$lib/state/url';
 	import { DEFAULT_VIEW } from '$lib/state/view';
 	import { urlTypeFromId } from '$lib/state/view';
@@ -38,7 +39,7 @@
 	import { fly } from 'svelte/transition';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { entryJd } from '$lib/panorama/minimap';
-	import { PanoramaScene, type ArrowKey } from './panorama-scene.svelte';
+	import { PanoramaView, type ArrowKey, type ScreenAnchor } from '$lib/panorama/view';
 	import PanoramaMinimap from './PanoramaMinimap.svelte';
 	import PanoramaTimeline from './PanoramaTimeline.svelte';
 	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
@@ -55,10 +56,18 @@
 	let detailError = $state(false);
 	let textureState = $state<'loading' | 'ready' | 'error'>('loading');
 	let container = $state<HTMLElement | null>(null);
-	let scene = $state<PanoramaScene | null>(null);
+	/** The view once its first panorama is on screen. */
+	let view = $state<PanoramaView | null>(null);
+	// The view's own state, mirrored so the chrome can follow it.
+	let heading = $state(0);
+	let fov = $state(75);
+	let anchors = $state<Partial<Record<ArrowKey, ScreenAnchor>>>({});
 	let angleGridVisible = $state(false);
 	let navigationVisible = $state(true);
+	let neighbours = $state.raw<Neighbours | null>(null);
 	let timelineOpen = $state(false);
+	/** The timeline strip only lays out beside the minimap from `md` up. */
+	const wide = new MediaQuery('(min-width: 768px)');
 	let mapCredits = $state<LayerCredit[]>([]);
 	/** The strip's height, which the map beside it grows to. Kept from the last
 	 *  opening so the next one animates straight to size. */
@@ -73,19 +82,13 @@
 	const entries = $derived(detail?.global?.panoramas ?? []);
 	const bodyName = $derived(detail?.localized?.name ?? detail?.global?.name ?? bodyId);
 	const current = $derived(findPanorama(entries, at));
-	const radiusKm = $derived.by(() => {
-		const r = detail?.global?.radii;
-		return r ? (r.a + r.b + r.c) / 3 : 0;
-	});
-	const neighbours = $derived(
-		current && radiusKm ? neighboursOf(entries, current, radiusKm) : null
-	);
-	/** Neighbours far enough to walk toward; a repeat at the same spot has no
-	 *  bearing and is reached from the info box instead. */
+	const radiusKm = $derived(meanRadiusKm(detail?.global ?? null) ?? 0);
+	/** The arrows the view drew, each with the neighbour it points at. */
 	const arrowTargets = $derived(
-		(['previous', 'next'] as const)
-			.map((key) => ({ key, n: neighbours?.[key] ?? null }))
-			.filter((a): a is { key: ArrowKey; n: Neighbour } => !!a.n && a.n.distanceM >= 1)
+		(['previous', 'next'] as const).flatMap((key) => {
+			const n = neighbours?.[key];
+			return n && anchors[key] ? [{ key, n }] : [];
+		})
 	);
 
 	$effect(() => {
@@ -106,17 +109,57 @@
 		};
 	});
 
+	// One view per body. The panorama on screen follows the URL: the view
+	// never steps on its own, it reports the arrow and the page navigates.
 	$effect(() => {
-		if (!container || !current) return;
-		const s = new PanoramaScene(container, (key) => {
-			const n = neighbours?.[key];
-			if (n) void goto(panoramaHref(bodyId, n.entry));
+		const opening = untrack(() => current);
+		if (!container || !opening) return;
+		const v = new PanoramaView({ body: bodyId, at: panoramaAt(opening), followArrows: false });
+		v.mount(container);
+		v.on('viewchange', (s) => {
+			heading = s.heading;
+			fov = s.fov;
 		});
-		scene = s;
+		v.on('arrows', (a) => (anchors = a));
+		v.on('step', ({ entry }) => void goto(panoramaHref(bodyId, entry)));
+		v.on('load', () => {
+			textureState = 'ready';
+			neighbours = v.getNeighbours();
+		});
+		v.on('error', (error) => {
+			textureState = 'error';
+			console.warn('Panorama:', error);
+		});
+		textureState = 'loading';
+		let live = true;
+		// Failures arrive on the error listener; the view opens `?at=` changes
+		// only once it stands on its first panorama.
+		v.load().then(
+			() => {
+				if (live) view = v;
+			},
+			() => {}
+		);
 		return () => {
-			s.dispose();
-			scene = null;
+			live = false;
+			v.remove();
+			view = null;
+			neighbours = null;
 		};
+	});
+
+	$effect(() => {
+		if (!view || !current) return;
+		const v = view;
+		const entry = current;
+		if (v.getCurrent()?.id === entry.id) return;
+		textureState = 'loading';
+		v.open(entry).catch(() => {});
+		neighbours = v.getNeighbours();
+	});
+
+	$effect(() => {
+		if (!wide.current) timelineOpen = false;
 	});
 
 	$effect(() => {
@@ -129,73 +172,27 @@
 	);
 
 	$effect(() => {
-		if (!scene || !current) return;
-		const s = scene;
-		const entry = current;
-		textureState = 'loading';
-		s.setView(initialHeadingDeg(entry), 0);
-		s.load(versionedUrl(`/v1/panoramas/${entry.id}.webp`, 'panoramas'), entry.north_offset_deg)
-			.then(() => (textureState = 'ready'))
-			.catch(() => (textureState = 'error'));
+		view?.setAngleGridVisible(angleGridVisible);
 	});
 
 	$effect(() => {
-		scene?.setArrows(arrowTargets.map(({ key, n }) => ({ key, bearingDeg: n.bearingDeg })));
+		view?.setArrowsVisible(navigationVisible);
 	});
-
-	$effect(() => {
-		scene?.setAngleGridVisible(angleGridVisible);
-	});
-
-	$effect(() => {
-		scene?.setArrowsVisible(navigationVisible);
-	});
-
-	onDestroy(() => scene?.dispose());
-
-	async function share() {
-		const url = window.location.href;
-		if (navigator.share) {
-			try {
-				await navigator.share({ url, title: pageTitle });
-				return;
-			} catch (err) {
-				if ((err as DOMException).name === 'AbortError') return;
-			}
-		}
-		try {
-			await navigator.clipboard.writeText(url);
-			toast.success(m.link_copied());
-		} catch (err) {
-			console.warn('Share failed:', err);
-		}
-	}
 
 	/** A rover position to the metre, which three significant figures are not. */
 	function formatCoordinate(deg: number): string {
 		return `${deg.toLocaleString(getLocale(), { maximumFractionDigits: 5 })}${m.symbol_degree()}`;
 	}
 
-	function missionName(slug: string | undefined): string {
-		return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : '';
-	}
-
 	function stepLabel(n: Neighbour): string {
 		const sol = n.entry.sol !== undefined ? m.panorama_sol({ sol: n.entry.sol }) : '';
-		const dist = n.distanceM >= 1 ? formatKm(n.distanceM / 1000) : m.panorama_same_spot();
-		return [sol, dist].filter(Boolean).join(' · ');
-	}
-
-	function follow(e: MouseEvent, entry: PanoramaEntry) {
-		if (isModifiedClick(e)) return;
-		e.preventDefault();
-		void goto(panoramaHref(bodyId, entry));
+		return [sol, formatKm(n.distanceM / 1000)].filter(Boolean).join(' · ');
 	}
 
 	const pageTitle = $derived(
 		current
 			? [
-					missionName(current.mission),
+					capitalize(current.mission ?? ''),
 					current.sol !== undefined ? m.panorama_sol({ sol: current.sol }) : '',
 					bodyName
 				]
@@ -267,11 +264,10 @@
 
 			{#if navigationVisible}
 				{#each arrowTargets as { key, n } (key)}
-					{@const anchor = scene?.anchors[key]}
+					{@const anchor = anchors[key]}
 					{#if anchor?.visible}
 						<a
 							href={panoramaHref(bodyId, n.entry)}
-							onclick={(e) => follow(e, n.entry)}
 							class="absolute -translate-x-1/2 -translate-y-[calc(100%+1.6rem)] rounded-full bg-black/55 px-2.5 py-1 text-xs whitespace-nowrap backdrop-blur-sm hover:bg-black/75"
 							style="left:{anchor.x}px; top:{anchor.y}px"
 							aria-label={key === 'previous' ? m.panorama_previous() : m.panorama_next()}
@@ -299,7 +295,7 @@
 					{bodyName}
 				</a>
 				<h1 class="text-base font-semibold leading-tight">
-					{missionName(current.mission)}
+					{capitalize(current.mission ?? '')}
 					{#if current.sol !== undefined}
 						<span class="text-white/80">· {m.panorama_sol({ sol: current.sol })}</span>
 					{/if}
@@ -315,10 +311,8 @@
 				</dl>
 			</div>
 
-			<!-- Traverse minimap and, when opened, the timeline beside it. One row,
-			     so the two share a height: the strip's content sets it and the
-			     map stretches to match. -->
-			{#if scene && missionEntries.length}
+			<!-- One row, so the minimap stretches to the timeline's height. -->
+			{#if view && missionEntries.length}
 				<div
 					class="absolute bottom-[calc(var(--safe-bottom)_+_1.5rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex items-stretch gap-2 {timelineOpen
 						? ''
@@ -331,11 +325,11 @@
 							{current}
 							{radiusKm}
 							jd={clock.jd}
-							headingDeg={scene.heading}
-							fovDeg={scene.fov}
+							headingDeg={heading}
+							fovDeg={fov}
 							expanded={timelineOpen}
 							height={timelineOpen ? stripHeight : null}
-							onToggle={() => (timelineOpen = !timelineOpen)}
+							onToggle={() => (timelineOpen = wide.current && !timelineOpen)}
 							onCredits={(credits) => (mapCredits = credits)}
 							onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
 						/>
@@ -347,9 +341,10 @@
 							transition:fly={{ y: 12, duration: motionMs }}
 						>
 							<PanoramaTimeline
-								missionName={missionName(current.mission)}
+								missionName={capitalize(current.mission ?? '')}
 								entries={missionEntries}
 								{clock}
+								href={(entry) => panoramaHref(bodyId, entry)}
 								onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
 								onClose={() => (timelineOpen = false)}
 								positionClass="relative"
@@ -380,7 +375,7 @@
 					{/if}
 					{#each byMission as [mission, list] (mission)}
 						<h2 class="mt-4 mb-1 text-sm font-medium text-white/80">
-							{missionName(mission)}
+							{capitalize(mission)}
 							<span class="text-white/50">({formatNumber(list.length)})</span>
 						</h2>
 						<ul class="divide-y divide-white/10 text-sm">
@@ -388,7 +383,6 @@
 								<li>
 									<a
 										href={panoramaHref(bodyId, e)}
-										onclick={(ev) => follow(ev, e)}
 										class="flex items-baseline justify-between gap-3 py-1.5 hover:text-white text-white/85"
 									>
 										<span>
@@ -419,7 +413,7 @@
 			</a>
 			<button
 				type="button"
-				onclick={share}
+				onclick={() => shareUrl(pageTitle)}
 				class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/55 md:size-8"
 				aria-label={m.share()}
 				title={m.share()}

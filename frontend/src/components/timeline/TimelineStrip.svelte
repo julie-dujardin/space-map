@@ -221,8 +221,10 @@
 					<Tooltip.Root disabled={!item.note}>
 						<Tooltip.Trigger>
 							{#snippet child({ props })}
-								<button
-									type="button"
+								<svelte:element
+									this={item.href ? 'a' : 'button'}
+									href={item.href}
+									type={item.href ? undefined : 'button'}
 									{...props}
 									onclick={() => onPick(index)}
 									aria-current={active ? 'true' : undefined}
@@ -256,7 +258,7 @@
 											{item.detail}
 										</span>
 									{/if}
-								</button>
+								</svelte:element>
 							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>{item.note}</Tooltip.Content>

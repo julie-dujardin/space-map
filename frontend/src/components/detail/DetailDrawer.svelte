@@ -7,7 +7,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import { ZoomInIcon, ZoomOutIcon } from '@lucide/svelte';
-	import { toast } from 'svelte-sonner';
+	import { shareUrl } from '$lib/share';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
@@ -209,24 +209,8 @@
 	);
 	let showCameraButtons = $derived(!isFeatureMode && !isGroupMode);
 
-	async function handleShare() {
-		const url = window.location.href;
-		if (navigator.share) {
-			try {
-				await navigator.share({ url, title: displayName });
-				return;
-			} catch (err) {
-				// User dismissed the native share sheet — nothing to do.
-				if ((err as DOMException).name === 'AbortError') return;
-				// Other failures fall through to the clipboard fallback below.
-			}
-		}
-		try {
-			await navigator.clipboard.writeText(url);
-			toast.success(m.link_copied());
-		} catch (err) {
-			console.warn('Share failed:', err);
-		}
+	function handleShare() {
+		void shareUrl(displayName);
 	}
 
 	// Members model: the shared members tab, fragments, mission craft and the

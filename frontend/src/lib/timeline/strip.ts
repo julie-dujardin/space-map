@@ -26,4 +26,7 @@ export interface StripItem extends TimelineSpan {
 	note?: string;
 	/** A picture of the moment, drawn across the top of its card. */
 	image?: string;
+	/** Where its card goes: the card is a link when this is set, a button
+	 *  otherwise. `onPick` fires either way. */
+	href?: string;
 }

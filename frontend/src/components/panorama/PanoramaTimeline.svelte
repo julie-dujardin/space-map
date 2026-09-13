@@ -18,12 +18,15 @@
 		missionName: string;
 		entries: readonly PanoramaEntry[];
 		clock: SimClock;
+		/** The card of each panorama is a link there. */
+		href: (entry: PanoramaEntry) => string;
+		/** Opens a panorama the reader did not click: a step or playback. */
 		onPick: (entry: PanoramaEntry) => void;
 		onClose: () => void;
 		positionClass: string;
 	}
 
-	let { missionName, entries, clock, onPick, onClose, positionClass }: Props = $props();
+	let { missionName, entries, clock, href, onPick, onClose, positionClass }: Props = $props();
 
 	type Item = StripItem & { entry: PanoramaEntry };
 
@@ -39,7 +42,8 @@
 				isPhase: false,
 				startJd: jd,
 				endJd: jd,
-				image: versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas')
+				image: versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas'),
+				href: href(entry)
 			};
 		})
 	);
@@ -53,9 +57,9 @@
 	});
 	$effect(() => () => player.dispose());
 
-	function pick(index: number): void {
+	function step(delta: number): void {
 		player.stop();
-		const item = items[index];
+		const item = items[stepEntryIndex(items, clock.jd, delta)];
 		if (item) onPick(item.entry);
 	}
 </script>
@@ -72,7 +76,7 @@
 	{positionClass}
 	{onClose}
 	closeLabel={m.panorama_map_collapse()}
-	onPick={pick}
+	onPick={() => player.stop()}
 	onScrub={(jd) => {
 		player.stop();
 		clock.setJD(jd);
@@ -80,5 +84,5 @@
 	playing={player.playing}
 	onTogglePlay={() => player.toggle()}
 	playLabel={m.panorama_traverse_play()}
-	onStep={(delta) => pick(stepEntryIndex(items, clock.jd, delta))}
+	onStep={step}
 />
