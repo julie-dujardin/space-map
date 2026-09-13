@@ -4,7 +4,7 @@
 	import { archiveLabel, archiveRole } from '$lib/credits/archive-labels';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import { GITHUB_REPO_URL } from '$lib/constants';
-	import { REFERENCE_SECTIONS, type BodyCredit, type Credits } from './+page';
+	import { REFERENCE_SECTIONS, type BodyCredit, type Credits } from '$lib/credits/credits-payload';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 
 	interface Props {
