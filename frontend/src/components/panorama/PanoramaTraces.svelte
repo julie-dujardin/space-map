@@ -160,9 +160,10 @@
 			const target = e.target as Element | null;
 			// Resting on the card is staying with it.
 			if (target?.closest('.panorama-trace-preview')) return;
-			const container = target?.closest('.sm-map');
-			canvas = container?.querySelector('canvas') ?? null;
-			if (!canvas) return hide();
+			// Only through open ground: a label, halo or marker over the line takes
+			// the pointer for itself, so the line must not answer from under it.
+			if (!target?.matches('.sm-map__canvas')) return hide();
+			canvas = target as HTMLCanvasElement;
 			const rect = canvas.getBoundingClientRect();
 			const i = trace.nearest(e.clientX - rect.left, e.clientY - rect.top, REACH_PX);
 			if (i < 0) return hide();
