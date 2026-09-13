@@ -5,6 +5,7 @@
 	import HeroSkeleton from '../frame/skeleton/HeroSkeleton.svelte';
 	import ObjectHeader from '../frame/ObjectHeader.svelte';
 	import SurfaceHero from '../sections/SurfaceHero.svelte';
+	import PanoramaMinimap from '../../panorama/PanoramaMinimap.svelte';
 	import GalleryHero from '../sections/GalleryHero.svelte';
 	import BodyLineup from '../charts/BodyLineup.svelte';
 	import SolarSystemMap from '../charts/SolarSystemMap.svelte';
@@ -19,6 +20,7 @@
 	import type { DetailLoad } from '../state/detail-load.svelte';
 	import type { GalleryState } from '../state/gallery-state.svelte';
 	import type { SurfaceState } from '../state/surface-state.svelte';
+	import type { TraverseState } from '../state/traverse-state.svelte';
 	import type { MembersState } from '../state/members-state.svelte';
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
 	import type { PlanetarySystemState } from '../charts/planetary-system.svelte';
@@ -32,6 +34,7 @@
 		load: DetailLoad;
 		gallery: GalleryState;
 		surface: SurfaceState;
+		traverse: TraverseState;
 		members: MembersState;
 		lineup: LineupHero;
 		planetarySystem: PlanetarySystemState;
@@ -45,6 +48,7 @@
 		load,
 		gallery,
 		surface,
+		traverse,
 		members,
 		lineup,
 		planetarySystem
@@ -70,6 +74,7 @@
 	let heroes = $derived<Record<DrawerTab, Snippet | undefined>>({
 		overview: load.loadError ? undefined : objectHeaderHero,
 		targets: undefined,
+		traverse: traverse.traverse ? traverseHero : undefined,
 		images: undefined,
 		features: body && surface.showSurfaceHero ? surfaceQuadHero : undefined,
 		structure: gallery.atmosphereGallery ? atmosphereHero : undefined,
@@ -125,6 +130,21 @@
 		onShowList={() => appState.setTab('images')}
 		imageCount={gallery.imageTotal}
 	/>
+{/snippet}
+
+<!-- The whole ground track on a map of the body, above the panoramas picked
+     off it. No marker: the tab is the traverse, not a place on it. -->
+{#snippet traverseHero()}
+	{#if traverse.traverse}
+		<div class="relative aspect-[16/9] w-full overflow-hidden rounded-lg">
+			<PanoramaMinimap
+				fill
+				bodyId={traverse.traverse.bodyId}
+				entries={traverse.traverse.entries}
+				radiusKm={traverse.traverse.radiusKm}
+			/>
+		</div>
+	{/if}
 {/snippet}
 
 <!-- The quadrangle map is the Features tab's hero: picking a chart filters the

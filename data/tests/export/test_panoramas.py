@@ -275,12 +275,14 @@ class TestIndex:
         assert body["missions"] == [
             {
                 "mission": "curiosity",
+                "probe": "probe-100265984",
                 "count": 1,
                 "first_time": "2012-08-16T09:20:32Z",
                 "last_time": "2012-08-16T09:20:32Z",
             },
             {
                 "mission": "perseverance",
+                "probe": "probe-113246208",
                 "count": 2,
                 "first_time": "2021-02-20T21:48:15Z",
                 "last_time": "2022-12-26T20:56:23Z",

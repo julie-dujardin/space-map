@@ -88,6 +88,7 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "probe-84353024",  # Mars Odyssey (mission M01, naif -53)
         "probe-90857472",  # MRO         (mission MRO, naif -74)
         "probe-100265984",  # MSL Curiosity (mission MSL, naif -76)
+        "probe-113246208",  # Perseverance (mission MARS2020, naif -168)
         "probe-109281280",  # ExoMars 2016 TGO (mission EXOMARS2016, naif -143)
         "probe-109899776",  # InSight     (mission INSIGHT, naif -189)
         "probe-107151360",  # Tianwen-1   (mission HORIZONS-SYNTH, naif -86)

@@ -12,6 +12,9 @@ import { fetchWithTimeout } from './fetch-timeout';
 /** One probe's coverage on a body, as `export/panoramas.py` writes it. */
 export interface PanoramaMissionSummary {
 	mission: string;
+	/** `probe-<id>` of the craft that drove this traverse; absent where the
+	 *  spacecraft table does not describe it. */
+	probe?: string;
 	count: number;
 	first_time: string;
 	last_time: string;

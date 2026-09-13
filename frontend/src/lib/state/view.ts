@@ -70,6 +70,7 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
 export const DRAWER_TABS = [
 	'overview',
 	'targets',
+	'traverse',
 	'images',
 	'features',
 	'structure',

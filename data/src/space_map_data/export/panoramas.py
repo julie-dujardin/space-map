@@ -19,6 +19,7 @@ import orjson
 from PIL import Image
 
 from space_map_data.export.sidecar_io import write_atomic
+from space_map_data.panoramas.missions import probe_id
 from space_map_data.utils.paths import EXPORT_DIR, PANORAMA_DERIVED_DIR
 
 logger = logging.getLogger(__name__)
@@ -166,8 +167,8 @@ def panoramas_block(object_id: str) -> list[dict] | None:
 
 def write_panorama_index(out_dir: Path) -> None:
     """Write `v1/panoramas.json`: every traverse that has coverage, as body
-    plus mission with its span. The points themselves stay in the body
-    bundle."""
+    plus mission with its span and the probe that drove it. The points
+    themselves stay in the body bundle."""
     bodies = []
     for body_id, products in sorted(_cached().items()):
         missions: dict[str, list[dict]] = {}
@@ -175,20 +176,17 @@ def write_panorama_index(out_dir: Path) -> None:
             missions.setdefault(product.entry.get("mission") or "", []).append(
                 product.entry
             )
-        bodies.append(
-            {
-                "id": body_id,
-                "missions": [
-                    {
-                        "mission": mission,
-                        "count": len(entries),
-                        "first_time": entries[0]["time"],
-                        "last_time": entries[-1]["time"],
-                    }
-                    for mission, entries in sorted(missions.items())
-                ],
+        summaries = []
+        for mission, entries in sorted(missions.items()):
+            summary = {
+                "mission": mission,
+                "probe": probe_id(mission),
+                "count": len(entries),
+                "first_time": entries[0]["time"],
+                "last_time": entries[-1]["time"],
             }
-        )
+            summaries.append({k: v for k, v in summary.items() if v is not None})
+        bodies.append({"id": body_id, "missions": summaries})
     path = out_dir / INDEX_FILE
     write_atomic(path, orjson.dumps({"bodies": bodies}, option=orjson.OPT_INDENT_2))
     logger.info("Panorama index: %d bodies in %s", len(bodies), path)

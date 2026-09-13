@@ -21,6 +21,7 @@
 	import TabsBar from './frame/TabsBar.svelte';
 	import ActiveHero from './panels/ActiveHero.svelte';
 	import { SurfaceState } from './state/surface-state.svelte';
+	import { TraverseState } from './state/traverse-state.svelte';
 	import { GalleryState } from './state/gallery-state.svelte';
 	import OverviewPanel from './panels/OverviewPanel.svelte';
 	import MembersPanel from './panels/MembersPanel.svelte';
@@ -28,6 +29,7 @@
 	import RingsPanel from './panels/RingsPanel.svelte';
 	import StructurePanel from './panels/StructurePanel.svelte';
 	import TargetsPanel from './panels/TargetsPanel.svelte';
+	import TraversePanel from './panels/TraversePanel.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
 	import {
@@ -137,6 +139,12 @@
 		data: () => data,
 		appState: () => appState
 	});
+	// The traverse this probe drove, where it drove one: its panoramas live on
+	// the body's bundle, so the tab resolves the link itself.
+	const traverse = new TraverseState({
+		probeId: () => (body?.data.id.startsWith('probe-') ? body.data.id : undefined)
+	});
+
 	// Read up front, not on the first effect: the two frames differ by the whole
 	// width of the panel, and starting on the wrong one reflows the page.
 	let isMobile = $state(typeof window !== 'undefined' && window.matchMedia(DRAWER_MQ).matches);
@@ -290,6 +298,11 @@
 			present: members.targetVisits.length > 0,
 			panel: targetsPanel
 		},
+		traverse: {
+			label: m.tab_features(),
+			present: !!traverse.traverse,
+			panel: traversePanel
+		},
 		images: {
 			label: m.tab_images(),
 			count: gallery.imageTotal,
@@ -403,7 +416,7 @@
 	// while showMembersTab is still false.
 	$effect(() => {
 		const settled = viewFocusKey === focusableId;
-		if (settled && !loading && appState.view.tab && activeTab === 'overview') {
+		if (settled && !loading && !traverse.loading && appState.view.tab && activeTab === 'overview') {
 			untrack(() => appState.setTab('overview'));
 		}
 	});
@@ -434,6 +447,7 @@
 		{members}
 		{lineup}
 		{planetarySystem}
+		{traverse}
 	/>
 {/snippet}
 
@@ -477,6 +491,12 @@
 
 {#snippet targetsPanel()}
 	<TargetsPanel visits={members.targetVisits} />
+{/snippet}
+
+{#snippet traversePanel()}
+	{#if traverse.traverse}
+		<TraversePanel traverse={traverse.traverse} />
+	{/if}
 {/snippet}
 
 {#snippet imagesPanel()}
