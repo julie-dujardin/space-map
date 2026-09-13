@@ -8,7 +8,8 @@
     "source_sha256": "7994766d8fdf18fb57ffda50cf5ef8de81b31da3e59b29e97cf141d6e0092ec1",
     "capture_time": "2017-03-24",
     "capture_stop_time": "2017-03-25",
-    "start_azimuth_deg": 315
+    "start_azimuth_deg": 315,
+    "start_azimuth_basis": "published cardinal direction"
   },
   {
     "id": "curiosity-pia16029",
@@ -19,7 +20,9 @@
     "source_sha256": "07dc8d8ae2fc60c886bd632c8775d61632bc90574c747fda37073a738f7e599c",
     "capture_time": "2012-08-08",
     "capture_stop_time": "2012-08-09",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": null,
+    "capture_sol": 2,
+    "capture_sol_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=msl&feedtype=json&sol=3"
   },
   {
     "id": "curiosity-pia20284",
@@ -52,7 +55,8 @@
     "source_sha256": "0c5b479e7f40001853e802fa378044de828194a2c696f91e39fefd554a30812c",
     "capture_time": "2016-09-04",
     "capture_stop_time": "2016-09-04",
-    "start_azimuth_deg": 0
+    "start_azimuth_deg": 0,
+    "start_azimuth_basis": "published cardinal direction"
   },
   {
     "id": "curiosity-pia21719",
@@ -63,7 +67,8 @@
     "source_sha256": "5f5298e4eb93e95d4879b3f6b5f3424a97e03998171f4dcd9dec804d6e90747f",
     "capture_time": "2017-02-05",
     "capture_stop_time": "2017-02-05",
-    "start_azimuth_deg": 292.5
+    "start_azimuth_deg": 292.5,
+    "start_azimuth_basis": "published cardinal direction"
   },
   {
     "id": "curiosity-pia22545",
@@ -74,7 +79,14 @@
     "source_sha256": "51d61dcd166b82cb4b1678171afdc1bf58a11e839fccaa6587e95d418930715d",
     "capture_time": "2018-08-09",
     "capture_stop_time": "2018-08-09",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 243.11,
+    "start_azimuth_basis": "skyline match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j2146xilt072cyl_s_1316_p1240m2",
+      "reference_sol": 2146,
+      "distance_m": 0.0,
+      "score": 0.908
+    }
   },
   {
     "id": "curiosity-pia23042",
@@ -107,7 +119,9 @@
     "source_sha256": "aa0cb3fd18fd3297331a749cdcbd1a166fcdf2e253bfacfcac80831f7aa322ed",
     "capture_time": "2019-11-24",
     "capture_stop_time": "2019-12-01",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": null,
+    "capture_sol": 2595,
+    "capture_sol_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=msl&feedtype=json&sol=2595"
   },
   {
     "id": "curiosity-pia24269",
@@ -118,7 +132,14 @@
     "source_sha256": "c3f69db51ea5cff30965de96a5ab5487e793819c1194e8f4514a221fbdeb2cab",
     "capture_time": "2021-03-03",
     "capture_stop_time": "2021-03-03",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 290.83,
+    "start_azimuth_basis": "skyline match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j3059xilt087cyl_s_0792_a1619m1",
+      "reference_sol": 3059,
+      "distance_m": 31.1,
+      "score": 0.846
+    }
   },
   {
     "id": "curiosity-pia25176",
@@ -129,7 +150,14 @@
     "source_sha256": "a5c522413db864d71ba04d4a163076fbe649c257cb23033ff9094ccbaa4977ae",
     "capture_time": "2022-03-23",
     "capture_stop_time": "2022-03-23",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 326.87,
+    "start_azimuth_basis": "skyline match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j3434xilt094cyl_s_0000_a1548m2",
+      "reference_sol": 3434,
+      "distance_m": 7.7,
+      "score": 0.788
+    }
   },
   {
     "id": "curiosity-pia25407",
@@ -195,7 +223,14 @@
     "source_sha256": "a9920f1d337c4990427aed2700bb53aff9b42dde94ffd369dd21de8dd21d14e8",
     "capture_time": "2024-06-19",
     "capture_stop_time": "2024-06-19",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 209.27,
+    "start_azimuth_basis": "skyline match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j4240xilt107cyl_s_2610_p2249m1",
+      "reference_sol": 4240,
+      "distance_m": 10.0,
+      "score": 0.835
+    }
   },
   {
     "id": "curiosity-pia26554",
@@ -228,7 +263,14 @@
     "source_sha256": "a4d7a9cfb5cc251a5360709484ac7f89195bf92e282daade676bb26fef747cad",
     "capture_time": "2025-11-09",
     "capture_stop_time": "2025-12-07",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 325.72,
+    "start_azimuth_basis": "skyline match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j4701xilt119cyl_s_1722_a1543m1",
+      "reference_sol": 4701,
+      "distance_m": 10.1,
+      "score": 0.791
+    }
   },
   {
     "id": "insight-pia23140",
@@ -373,7 +415,8 @@
     "capture_time": "2008-11-21",
     "capture_stop_time": "2008-11-24",
     "start_azimuth_deg": 180,
-    "capture_date_source_url": "https://pancam.sese.asu.edu/Santorini.html"
+    "capture_date_source_url": "https://pancam.sese.asu.edu/Santorini.html",
+    "start_azimuth_basis": "published cardinal direction"
   },
   {
     "id": "opportunity-pancam-lion_king",

@@ -18,6 +18,49 @@ ESA_TERMS = (
     "https://www.esa.int/ESA_Multimedia/"
     "Terms_and_conditions_of_use_of_images_and_videos_available_on_the_esa_website"
 )
+ALSJ_COORDS = "https://apollojournals.org/alsj/alsjcoords.html"
+BODY_IDS = {
+    "moon": "naif-301",
+    "venus": "naif-299",
+    "titan": "naif-606",
+    "67p": "spkid-1000012",
+}
+# Where each panorama was taken. An Apollo pan shot away from the lander is
+# placed at the lander with the traverse distance as its uncertainty: the
+# journal maps the stations against local landmarks, not against coordinates.
+SITES: dict[str, dict[str, Any]] = {
+    "apollo11-landing": {"latitude": 0.67409, "longitude": 23.47298},
+    "apollo12-landing": {"latitude": -3.01381, "longitude": 336.58070},
+    "apollo14-landing": {"latitude": -3.64544, "longitude": 342.52861},
+    "apollo15-landing": {"latitude": 26.13224, "longitude": 3.63400},
+    "apollo15-station9a": {
+        "latitude": 26.13224,
+        "longitude": 3.63400,
+        "uncertainty_m": 3500,
+        "note": "Lunar Module; Station 9A is along Hadley Rille, not at the lander",
+    },
+    "apollo16-station1": {
+        "latitude": -8.97341,
+        "longitude": 15.49859,
+        "uncertainty_m": 1400,
+        "note": "Lunar Module; Station 1 is at Flag Crater, not at the lander",
+    },
+    "apollo17-landing": {"latitude": 20.18809, "longitude": 30.77475},
+    "venera13-lpi": {
+        "latitude": -7.5,
+        "longitude": 303.0,
+        "uncertainty_m": None,
+        "source_url": None,
+        "method": "published landing site, as the probe's own landing record carries it",
+    },
+    "huygens-pia08113": {
+        "latitude": -10.25,
+        "longitude": 167.68,
+        "uncertainty_m": None,
+        "source_url": "https://science.nasa.gov/mission/cassini/huygens-probe/",
+        "method": "published landing site; the mosaic was taken from about 10 km above it during descent",
+    },
+}
 PRODUCTS: list[dict[str, Any]] = [
     {
         "id": "venera13-lpi",
@@ -216,6 +259,28 @@ PRODUCTS.append(
 )
 
 
+def site_position(identity: str) -> dict | None:
+    """The product's map position in the export's own shape, or None."""
+    site = SITES.get(identity)
+    if site is None:
+        return None
+    return {
+        "latitude": site["latitude"],
+        "longitude": site["longitude"] % 360,
+        "elevation_m": None,
+        "latitude_type": "planetocentric",
+        "longitude_direction": "east",
+        "longitude_range": [0, 360],
+        "reference_point": "landing site",
+        "uncertainty_m": site.get("uncertainty_m"),
+        "method": site.get(
+            "method", "Apollo Lunar Surface Journal landing coordinates"
+        ),
+        "source_url": site.get("source_url", ALSJ_COORDS),
+        "note": site.get("note"),
+    }
+
+
 def project_perspective(source, horizontal=60, width=4096):
     """Place a rectilinear camera frame on a sphere without inventing surroundings."""
     if width < 256 or width % 2 or not 0 < horizontal < 180:
@@ -369,7 +434,11 @@ def process(root, output, *, offline=False, collections=None):
                 "north_azimuth_offset_deg": None,
                 "width": sphere.width,
                 "height": sphere.height,
-                "position": None,
+                "body_id": BODY_IDS.get(collection),
+                "position": site_position(identity),
+                "position_status": "published landing site"
+                if identity in SITES
+                else "no published surface coordinates",
                 "color": product.get("color", "source-processed color; not recolored"),
                 "render_status": "approximate immersive preview; not calibrated",
                 "processing": "Downsampled, optionally cropped, reprojected; no synthetic fill. Apollo near-black pixels masked (may also remove shadows).",

@@ -144,3 +144,31 @@ photogrammetric reconstruction or a north calibration.
 
 Rebuild just the Moon collection with `other_worlds --offline --collections moon`
 using the source/output paths above. Reload the preview page after rebuilding.
+
+## Map positions
+
+Nine of the ten non-Mars products now export. Each carries a published landing
+site as its position, `geometry: "estimated"` and `orientation: "unknown"` —
+none of these sweeps has a calibrated north, so the viewer shows where they were
+taken without claiming which way they face.
+
+| Product | Position | Source |
+|---|---|---|
+| Apollo 11, 12, 14, 15, 17 landing sites | Lunar Module coordinates | [ALSJ landing site coordinates](https://apollojournals.org/alsj/alsjcoords.html) |
+| Apollo 15 Station 9A | Lunar Module, `uncertainty_m` 3500 | as above |
+| Apollo 16 Station 1 | Lunar Module, `uncertainty_m` 1400 | as above |
+| Venera 13 | 7.5°S, 303°E | the probe's own landing record |
+| Huygens | 10.25°S, 167.68°E | [NASA Huygens probe page](https://science.nasa.gov/mission/cassini/huygens-probe/) |
+
+The two station panoramas are placed at their lander because the journal maps
+the traverse stations against local landmarks rather than coordinates; the
+uncertainty is the traverse distance, so both currently sit on top of their
+landing-site panorama. Station coordinates would be a worthwhile refinement.
+
+Huygens is placed at the landing site although the mosaic was taken from about
+10 km above it during descent, and stays labelled as a descent view rather than
+a surface panorama.
+
+**Philae is still not exported.** No published Abydos coordinates were found on
+the ESA or NASA mission pages; without them the CIVA frame has no position. The
+Rosetta imaging papers that fix the site are the place to look next.

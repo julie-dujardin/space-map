@@ -631,6 +631,7 @@
 	"panorama_date": "Date",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Elevation",
+	"panorama_altitude": "Altitude above surface",
 	"panorama_coverage": "Coverage",
 	"panorama_coverage_value": "{degrees}° of the horizon, {percent}% of the sphere",
 	"panorama_source": "Archive record",

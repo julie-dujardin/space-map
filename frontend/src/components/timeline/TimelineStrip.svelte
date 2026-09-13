@@ -233,13 +233,16 @@
 								>
 									{#if item.image}
 										<!-- `w-0 min-w-full`: the row is sized to its content, so a
-										     loaded image's natural width would widen every card and,
-										     through the aspect box, grow the whole strip. -->
+										     loaded image's natural width would widen every card and
+										     grow the whole strip. The height is the 3:1 box at the
+										     card's minimum width rather than an aspect ratio, so a
+										     record of one card stretched across the viewer stays as
+										     tall as a record of fifty. -->
 										<img
 											src={item.image}
 											alt=""
 											loading="lazy"
-											class="mb-1 aspect-[3/1] w-0 min-w-full rounded object-cover"
+											class="mb-1 h-[calc(8rem/3)] w-0 min-w-full rounded object-cover"
 										/>
 									{/if}
 									<span class="flex w-full min-w-0 items-center gap-1.5">

@@ -343,3 +343,55 @@ with no missing asset references.
 
 The MSL archive's last sol directory trails the current sol by several months, so
 `curiosity-navcam` ends earlier than Mastcam-Z does.
+
+## Placing the Curiosity colour releases
+
+All 21 Mastcam colour panoramas now export. The two things they lacked were a
+position and a north.
+
+**Position.** A colour release carries a caption, not a PDS label, so it has no
+site and drive to join on. Eighteen captions state the capture sol outright;
+PIA16029 (sol 2) and PIA23623 (sol 2595) are reviewed entries in
+`curated_strips.json`, each dated by the sol the NASA raw-image archive gives
+the same UTC day. `msl_localize` joins that sol to the PLACES stopping point the
+rover ended it on:
+
+```sh
+PYTHONPATH=data/src python -m space_map_data.panoramas.msl_localize \
+  --directory ../space-map-downloads/derived/panoramas \
+  --positions ../space-map-downloads/sources/images/panoramas/curiosity/positions.csv
+```
+
+Sixteen fall on sols the rover never drove, so the fix is exact. The other five
+record the sol's drive length as `uncertainty_m` — 1.9 m at Ubajara up to 42.9 m
+on sol 3871 — because the panorama could have been shot anywhere along it.
+
+**North.** Three captions state a cardinal direction. For the rest,
+`orientation` matches the release's skyline against the north-referenced Navcam
+spheres from the same stopping point, and reports a score per reference:
+
+```sh
+PYTHONPATH=data/src python -m space_map_data.panoramas.orientation \
+  --directory ../space-map-downloads/derived/panoramas \
+  --collection curiosity --references curiosity-navcam --output proposals.json
+```
+
+Blind-tested on 400 Navcam pairs with a randomised true north, the matcher lands
+within 5° for 86–100% of pairs scoring 0.85 or better, and is no better than a
+coin flip below that. PIA11241, whose caption gives the answer independently,
+comes back 0.6° out at 0.90. Cross-instrument matches score lower than
+Navcam-against-Navcam ones, so the accepted five were each reviewed against the
+reference skyline rather than taken on score alone; the eight remaining stay
+`orientation_status: unknown`.
+
+| Heading | Panoramas |
+|---|---|
+| Published cardinal direction | PIA11241, PIA20840, PIA21719 |
+| Skyline match to an archival sphere | PIA22545, PIA24269, PIA25176, PIA26363, PIA26696 |
+| Unknown | the other 13 |
+
+An unknown north is exported as `orientation: "unknown"` with a zero offset. The
+viewer then draws no field-of-view wedge on the minimap and no traverse arrows
+in the scene, because both would point at ground the sphere cannot vouch for.
+Every one of these products also carries `geometry: "estimated"`: the sphere is
+fitted to a published flat image, not read off an archive label.

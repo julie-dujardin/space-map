@@ -599,6 +599,7 @@
 	"panorama_date": "תאריך",
 	"panorama_instrument": "מכשיר",
 	"panorama_elevation": "גובה",
+	"panorama_altitude": "גובה מעל פני השטח",
 	"panorama_coverage": "כיסוי",
 	"panorama_coverage_value": "{degrees}° מהאופק, {percent}% מהכדור",
 	"panorama_source": "רשומת ארכיון",

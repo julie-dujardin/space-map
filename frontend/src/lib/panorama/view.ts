@@ -32,6 +32,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 import { fetchObjectDetail, type PanoramaEntry } from '$lib/fetch/objects/object-data';
 import { meanRadiusKm } from '$lib/fetch/objects/physical';
 import { ControlHost, type Control, type ControlPosition } from '$lib/scene/controls';
+import { hasHeading } from './minimap';
 import { findPanorama, initialHeadingDeg, neighboursOf, type Neighbours } from './traverse';
 
 export type ArrowKey = 'previous' | 'next';
@@ -368,8 +369,10 @@ export class PanoramaView {
 			pitch: this.openingView?.pitch ?? 0
 		});
 		this.openingView = null;
+		// An arrow sits at the neighbour's true bearing, which only lands on the
+		// right piece of ground once the sphere knows where north is.
 		this.setArrowTargets(
-			this.neighbours
+			this.neighbours && hasHeading(entry)
 				? (['previous', 'next'] as const)
 						.map((key) => ({ key, n: this.neighbours?.[key] ?? null }))
 						.filter((a) => a.n && a.n.distanceM >= MIN_ARROW_DISTANCE_M)

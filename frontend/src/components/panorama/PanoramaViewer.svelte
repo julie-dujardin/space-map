@@ -212,6 +212,8 @@
 		out.push({ label: m.longitude(), value: formatCoordinate(current.lon) });
 		if (current.elevation_m !== undefined)
 			out.push({ label: m.panorama_elevation(), value: formatKm(current.elevation_m / 1000) });
+		if (current.altitude_m !== undefined)
+			out.push({ label: m.panorama_altitude(), value: formatKm(current.altitude_m / 1000) });
 		if (current.hfov_deg !== undefined && current.sphere_percent !== undefined)
 			out.push({
 				label: m.panorama_coverage(),

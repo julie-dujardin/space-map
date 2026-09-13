@@ -599,6 +599,7 @@
 	"panorama_date": "Datum",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Höhe",
+	"panorama_altitude": "Höhe über Grund",
 	"panorama_coverage": "Abdeckung",
 	"panorama_coverage_value": "{degrees}° des Horizonts, {percent} % der Sphäre",
 	"panorama_source": "Archiveintrag",

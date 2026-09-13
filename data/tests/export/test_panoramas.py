@@ -56,7 +56,8 @@ def _write_cache(root: Path, collection: str, products: list[dict]) -> None:
 
 
 class TestSelection:
-    """A product exports only when the viewer can place and orient it."""
+    """A product exports once it can be placed and dated; how well its
+    geometry and north are known travels with it."""
 
     def test_complete_product_exports(self, tmp_path: Path):
         _write_cache(tmp_path, "perseverance", [_product()])
@@ -91,9 +92,6 @@ class TestSelection:
             {"position": None},
             {"image": None},
             {"coverage": {"includes_source_grid": True}},
-            {"grid_geometry_status": "estimated"},
-            {"geometry_status": "estimated"},
-            {"north_azimuth_offset_deg": None},
             {"start_time": "", "capture_time": None},
         ],
         ids=[
@@ -101,15 +99,53 @@ class TestSelection:
             "no position",
             "flat only",
             "source grid",
-            "grid fit",
-            "strip fit",
-            "no north",
             "undated",
         ],
     )
-    def test_incomplete_product_stays_local(self, tmp_path: Path, overrides: dict):
+    def test_unplaceable_product_stays_local(self, tmp_path: Path, overrides: dict):
         _write_cache(tmp_path, "perseverance", [_product(**overrides)])
         assert panoramas.load_panoramas(tmp_path) == {}
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [{"grid_geometry_status": "estimated"}, {"geometry_status": "estimated"}],
+        ids=["grid fit", "strip fit"],
+    )
+    def test_fitted_geometry_exports_marked(self, tmp_path: Path, overrides: dict):
+        _write_cache(tmp_path, "perseverance", [_product(**overrides)])
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["geometry"] == "estimated"
+
+    def test_unknown_north_exports_without_a_heading(self, tmp_path: Path):
+        _write_cache(
+            tmp_path,
+            "perseverance",
+            [_product(north_azimuth_offset_deg=None, orientation_status="unknown")],
+        )
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["orientation"] == "unknown"
+        assert product.entry["north_offset_deg"] == 0
+
+    def test_established_north_records_how(self, tmp_path: Path):
+        _write_cache(
+            tmp_path,
+            "perseverance",
+            [_product(orientation_status="matched to an archival sphere")],
+        )
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["orientation"] == "matched to an archival sphere"
+
+    def test_a_view_from_the_air_reports_its_altitude(self, tmp_path: Path):
+        _write_cache(tmp_path, "perseverance", [_product(observer_altitude_m=10000)])
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["altitude_m"] == 10000
+
+    def test_archival_geometry_and_north_say_nothing(self, tmp_path: Path):
+        _write_cache(tmp_path, "perseverance", [_product()])
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert "orientation" not in product.entry
+        assert "geometry" not in product.entry
+        assert "altitude_m" not in product.entry
 
     def test_capture_time_stands_in_for_start_time(self, tmp_path: Path):
         _write_cache(

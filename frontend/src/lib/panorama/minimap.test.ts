@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
-import { entryJd, scaleBar, splitPath, traverseFrame, viewWedge } from './minimap';
+import {
+	entryJd,
+	hasExtent,
+	hasHeading,
+	scaleBar,
+	splitPath,
+	traverseFrame,
+	viewWedge
+} from './minimap';
 
 function entry(id: string, time: string, lat = 0, lon = 0): PanoramaEntry {
 	return { id, time, lat, lon, north_offset_deg: 0 };
@@ -58,5 +66,33 @@ describe('scaleBar', () => {
 		expect(scaleBar(1, 99)).toEqual({ metres: 50, px: 50 });
 		expect(scaleBar(0.5, 100)).toEqual({ metres: 50, px: 100 });
 		expect(scaleBar(3, 100)).toEqual({ metres: 200, px: 200 / 3 });
+	});
+});
+
+describe('hasHeading', () => {
+	it('is false only where the sphere sits at an unknown azimuth', () => {
+		expect(hasHeading(entry('a', '2021-01-01T00:00:00Z'))).toBe(true);
+		expect(
+			hasHeading({ ...entry('a', '2021-01-01T00:00:00Z'), orientation: 'caption-aligned' })
+		).toBe(true);
+		expect(hasHeading({ ...entry('a', '2021-01-01T00:00:00Z'), orientation: 'unknown' })).toBe(
+			false
+		);
+	});
+});
+
+describe('hasExtent', () => {
+	it('is true for a traverse that covered ground', () => {
+		expect(hasExtent(run)).toBe(true);
+	});
+
+	it('is false for a lander that shot everything from one spot', () => {
+		const spot = [
+			entry('a', '1971-08-01T00:00:00Z', 26.13, 3.63),
+			entry('b', '1971-08-02T00:00:00Z', 26.13, 3.63)
+		];
+		expect(hasExtent(spot)).toBe(false);
+		expect(hasExtent([spot[0]])).toBe(false);
+		expect(hasExtent([])).toBe(false);
 	});
 });

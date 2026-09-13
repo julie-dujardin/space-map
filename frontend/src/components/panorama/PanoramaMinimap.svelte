@@ -14,7 +14,15 @@
 	import type { FlatMarker, FlatShape } from '$lib/flatmap/overlay';
 	import type { LayerCredit } from '$lib/flatmap/layers';
 	import { formatKm } from '$lib/format/distance';
-	import { lonLatOf, scaleBar, splitPath, traverseFrame, viewWedge } from '$lib/panorama/minimap';
+	import {
+		hasExtent,
+		hasHeading,
+		lonLatOf,
+		scaleBar,
+		splitPath,
+		traverseFrame,
+		viewWedge
+	} from '$lib/panorama/minimap';
 
 	interface Props {
 		bodyId: string;
@@ -59,8 +67,16 @@
 
 	/** A traverse of a few hundred metres still gets a frame this wide. */
 	const MIN_SPAN_DEG = 0.02;
+	/** A record that never moved has no path to frame, and a rover-sized box
+	 *  round it is far closer than a basemap resolves — sampling is capped at
+	 *  4096 px of texture, so a tighter frame only magnifies the same pixels.
+	 *  This is about where craters and mare edges come back. */
+	const POINT_SPAN_DEG = 8;
 	/** How close a click must land to a panorama, in screen pixels. */
 	const PICK_PX = 14;
+
+	const stationary = $derived(!hasExtent(entries));
+	const spanDeg = $derived(stationary ? POINT_SPAN_DEG : MIN_SPAN_DEG);
 
 	let container: HTMLElement;
 	let map = $state<FlatMap | null>(null);
@@ -70,6 +86,7 @@
 		future: FlatShape;
 		wedge?: FlatShape;
 		here?: FlatMarker;
+		place?: FlatMarker;
 	} | null>(null);
 	let scale = $state<{ px: number; label: string } | null>(null);
 
@@ -120,7 +137,7 @@
 	/** Hold the whole traverse in the box, whatever the projection. */
 	function frame(): void {
 		if (!map) return;
-		const box = traverseFrame(entries, MIN_SPAN_DEG);
+		const box = traverseFrame(entries, spanDeg);
 		map.setView({ zoom: 1, centerLon: box.centerLon, centerLat: box.centerLat });
 		const a = map.project(box.centerLon - box.lonSpan / 2, box.centerLat - box.latSpan / 2);
 		const b = map.project(box.centerLon + box.lonSpan / 2, box.centerLat + box.latSpan / 2);
@@ -163,6 +180,16 @@
 						}),
 						here: map.addMarker({ at: lonLatOf(here), className: 'panorama-minimap-here' })
 					}
+				: {}),
+			// A stationary record draws no path, so without this its map would
+			// be empty wherever there is no reader standing on it.
+			...(!here && stationary && entries.length
+				? {
+						place: map.addMarker({
+							at: lonLatOf(entries[0]),
+							className: 'panorama-minimap-here'
+						})
+					}
 				: {})
 		};
 		drawn = d;
@@ -181,10 +208,13 @@
 
 	/** How far the wedge reaches, in degrees of latitude: far past what a
 	 *  camera sees, so it still reads at the scale of the whole traverse. */
-	const reach = $derived(traverseFrame(entries, MIN_SPAN_DEG).latSpan * 0.2);
+	const reach = $derived(traverseFrame(entries, spanDeg).latSpan * 0.2);
 
 	$effect(() => {
-		if (current) drawn?.wedge?.setPoints(viewWedge(current, headingDeg, fovDeg, reach));
+		if (!current) return;
+		drawn?.wedge?.setPoints(
+			hasHeading(current) ? viewWedge(current, headingDeg, fovDeg, reach) : []
+		);
 	});
 
 	$effect(() => {

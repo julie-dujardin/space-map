@@ -31,6 +31,13 @@ export function splitPath(
 	return { past, future: last < 0 ? entries.map(lonLatOf) : future };
 }
 
+/** Whether a panorama knows which way it faces. A sphere built from a
+ *  published flat image can sit at any azimuth, so nothing about where it
+ *  looks may be drawn for one that does not. */
+export function hasHeading(entry: PanoramaEntry): boolean {
+	return entry.orientation !== 'unknown';
+}
+
 /** A wedge from the rover across the ground it is looking at. `reachDeg` is
  *  how far it is drawn in degrees of latitude, far past what a camera sees,
  *  so it still reads at the scale of a whole traverse. */
@@ -51,6 +58,13 @@ export function viewWedge(
 		});
 	}
 	return points;
+}
+
+/** Whether the record covers any ground. A lander took every one of its
+ *  panoramas from the same spot, so there is no path to frame — only a place. */
+export function hasExtent(entries: readonly PanoramaEntry[]): boolean {
+	const first = entries[0];
+	return entries.some((e) => e.lat !== first?.lat || e.lon !== first?.lon);
 }
 
 export interface Frame {

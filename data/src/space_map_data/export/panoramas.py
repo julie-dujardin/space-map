@@ -1,10 +1,17 @@
 """Surface panoramas: the entries a body's global bundle lists under
 `panoramas`, and the sphere textures they point at under `v1/panoramas/`.
 
-Only products the viewer can place are exported: a rover position, a capture
-time, a known north, and archival (not grid-estimated) sphere geometry. The
-rest of the cache stays local until it earns those fields. Entries sort by
-mission then time, so neighbours in the list are neighbours on the traverse.
+A product is exported once it can be placed and dated — a position, a capture
+time and a sphere texture. How well it is known travels with it rather than
+keeping it out: `geometry` says whether the sphere's angular bounds are
+archival or fitted by eye, and `orientation` says how north was established.
+A panorama whose north is unknown is still worth showing where it was taken,
+so it exports with no offset and the viewer declines to draw a heading for it.
+`altitude_m` marks the views taken above the surface rather than standing on
+it, which `lat`/`lon` alone would not distinguish.
+
+Entries sort by mission then time, so neighbours in the list are neighbours on
+the traverse.
 """
 
 import gzip
@@ -45,6 +52,14 @@ def _sphere_geometry_is_archival(meta: dict) -> bool:
     )
 
 
+def _orientation(meta: dict) -> str | None:
+    """How north was established, or None where the archive itself states it."""
+    if meta.get("north_azimuth_offset_deg") is None:
+        return "unknown"
+    status = meta.get("orientation_status")
+    return status if status and status != "archival" else None
+
+
 def _skip_reason(meta: dict) -> str | None:
     if not meta.get("body_id"):
         return "no body id"
@@ -54,10 +69,6 @@ def _skip_reason(meta: dict) -> str | None:
         return "no sphere texture"
     if (meta.get("coverage") or {}).get("includes_source_grid"):
         return "source grid remains"
-    if not _sphere_geometry_is_archival(meta):
-        return "estimated geometry"
-    if meta.get("north_azimuth_offset_deg") is None:
-        return "unknown north"
     if not (meta.get("start_time") or meta.get("capture_time")):
         return "undated"
     return None
@@ -90,8 +101,15 @@ def _entry(meta: dict) -> dict | None:
         "lat": position["latitude"],
         "lon": position["longitude"],
         "elevation_m": position.get("elevation_m"),
+        # Set only where the camera was not on the ground, so the viewer can
+        # say so rather than let a descent view pass for a surface one.
+        "altitude_m": meta.get("observer_altitude_m"),
         "title": meta.get("title"),
-        "north_offset_deg": meta["north_azimuth_offset_deg"],
+        # An unknown north leaves the sphere as rendered; the viewer reads
+        # `orientation` and draws no heading rather than a wrong one.
+        "north_offset_deg": meta.get("north_azimuth_offset_deg") or 0,
+        "orientation": _orientation(meta),
+        "geometry": None if _sphere_geometry_is_archival(meta) else "estimated",
         "azimuth_start_deg": source_coverage.get("azimuth_start_deg"),
         "hfov_deg": coverage.get("horizontal_degrees"),
         "sphere_percent": coverage.get("sphere_percent"),

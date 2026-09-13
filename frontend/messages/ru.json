@@ -556,6 +556,7 @@
 	"panorama_date": "Дата",
 	"panorama_instrument": "Инструмент",
 	"panorama_elevation": "Высота",
+	"panorama_altitude": "Высота над поверхностью",
 	"panorama_coverage": "Охват",
 	"panorama_coverage_value": "{degrees}° горизонта, {percent} % сферы",
 	"panorama_source": "Архивная запись",

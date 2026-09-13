@@ -12,6 +12,20 @@ from .pipeline import write_json
 # Bind visual estimates to reviewed masters so changed sources require review.
 STRIPS = json.loads(Path(__file__).with_name("curated_strips.json").read_text())
 
+# How a strip's heading was established, for the viewer to label and for
+# `export/panoramas.py` to decide whether a field of view can be drawn.
+ORIENTATION = {
+    "published cardinal direction": "caption-aligned",
+    "skyline match": "matched to an archival sphere",
+}
+
+
+def orientation_status(spec):
+    """What the viewer may claim about which way a strip faces."""
+    if spec["start_azimuth_deg"] is None:
+        return "unknown"
+    return ORIENTATION.get(spec.get("start_azimuth_basis", ""), "unknown")
+
 
 def project_strip(source, horizontal, horizon, width=4096, *, start_azimuth=0):
     if (
@@ -68,13 +82,24 @@ def render_curated(target, metadata, spec, *, width=4096):
             "hfov_deg": 360,
             "vfov_deg": 180,
             "geometry_status": "estimated",
+            # The sphere is rendered north-first, so a known heading leaves
+            # nothing for the viewer to correct.
             "north_azimuth_offset_deg": 0 if heading is not None else None,
-            "orientation_status": "caption-aligned"
-            if heading is not None
-            else "unknown",
+            "orientation_status": orientation_status(spec),
             "capture_time": spec["capture_time"],
             "capture_stop_time": spec["capture_stop_time"],
             "capture_precision": "day",
+            # Only where the caption omits it; the localizer prefers this.
+            **(
+                {
+                    "sol": spec["capture_sol"],
+                    "sol_basis": "reviewed; capture date matched to the sol the "
+                    "NASA raw-image archive dates the same way",
+                    "sol_source_url": spec["capture_sol_source_url"],
+                }
+                if spec.get("capture_sol")
+                else {}
+            ),
             "capture_date_source_url": spec.get(
                 "capture_date_source_url", spec["source_url"]
             ),
@@ -91,9 +116,10 @@ def render_curated(target, metadata, spec, *, width=4096):
                 ),
                 "vertical": "assumed cylindrical scale; visually estimated horizon",
                 "horizon_fraction": spec["horizon_fraction"],
-                "heading": "published cardinal direction"
+                "heading": spec.get("start_azimuth_basis", "unknown")
                 if heading is not None
                 else "unknown",
+                "heading_evidence": spec.get("start_azimuth_evidence"),
                 "source_rendition": "flat preview, not full-resolution master",
                 "source_width": source_size[0],
                 "source_height": source_size[1],
@@ -141,8 +167,10 @@ def process(directory, *, collections=None, width=4096):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--collections", nargs="+")
     args = parser.parse_args()
-    print(f"Rendered {process(args.directory)} curated spheres")
+    count = process(args.directory, collections=args.collections)
+    print(f"Rendered {count} curated spheres")
 
 
 if __name__ == "__main__":

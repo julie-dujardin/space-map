@@ -569,6 +569,7 @@
 	"panorama_date": "التاريخ",
 	"panorama_instrument": "الأداة",
 	"panorama_elevation": "الارتفاع",
+	"panorama_altitude": "الارتفاع فوق السطح",
 	"panorama_coverage": "التغطية",
 	"panorama_coverage_value": "{degrees}° من الأفق، {percent}٪ من الكرة",
 	"panorama_source": "سجل الأرشيف",

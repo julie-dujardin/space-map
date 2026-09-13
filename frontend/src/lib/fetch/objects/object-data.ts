@@ -393,9 +393,20 @@ export interface PanoramaEntry {
 	lat: number;
 	lon: number;
 	elevation_m?: number;
+	/** Height of the camera above the surface, metres. Present only where the
+	 *  view was taken from the air, as Huygens' descent mosaic was. */
+	altitude_m?: number;
 	title?: string;
-	/** Image azimuth of true north, degrees clockwise from the left edge. */
+	/** Image azimuth of true north, degrees clockwise from the left edge.
+	 *  Zero, and meaningless, where `orientation` is `unknown`. */
 	north_offset_deg: number;
+	/** How north was established, absent where the archive itself states it.
+	 *  `unknown` means the sphere sits at an arbitrary azimuth, so nothing
+	 *  may be drawn or written as a heading. */
+	orientation?: 'unknown' | string;
+	/** `estimated` where the sphere's angular bounds were fitted to a
+	 *  published flat image rather than read from an archive label. */
+	geometry?: 'estimated';
 	/** Image azimuth where the observed span begins, with its width; absent
 	 *  when the archive label carried no coverage geometry. */
 	azimuth_start_deg?: number;

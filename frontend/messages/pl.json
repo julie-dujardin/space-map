@@ -599,6 +599,7 @@
 	"panorama_date": "Data",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Wysokość",
+	"panorama_altitude": "Wysokość nad powierzchnią",
 	"panorama_coverage": "Pokrycie",
 	"panorama_coverage_value": "{degrees}° horyzontu, {percent}% sfery",
 	"panorama_source": "Rekord archiwalny",

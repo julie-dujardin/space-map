@@ -533,6 +533,7 @@
 	"panorama_date": "日期",
 	"panorama_instrument": "仪器",
 	"panorama_elevation": "海拔",
+	"panorama_altitude": "距地表高度",
 	"panorama_coverage": "覆盖范围",
 	"panorama_coverage_value": "地平线的 {degrees}°，天球的 {percent}%",
 	"panorama_source": "档案记录",
