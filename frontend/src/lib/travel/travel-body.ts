@@ -102,12 +102,7 @@ const SURFACE_LEVELS: ReadonlySet<string> = new Set(['surface', 'sea_level', 'ar
 function surfacePressureBar(detail: GlobalObjectData | null): number | undefined {
 	const pressure = detail?.atmosphere?.pressure;
 	if (!pressure) return undefined;
-	if (!SURFACE_LEVELS.has(pressure.level)) {
-		console.debug(
-			`[travel] ${detail?.id}: pressure quoted at "${pressure.level}", not a surface — no ground to ascend from or land on.`
-		);
-		return undefined;
-	}
+	if (!SURFACE_LEVELS.has(pressure.level)) return undefined;
 	if (!Number.isFinite(pressure.pa) || pressure.pa <= 0) return undefined;
 	return pressure.pa / 1e5;
 }

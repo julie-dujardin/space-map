@@ -161,12 +161,19 @@ export function pickTier(report: BenchmarkReport, budgetMs: number): ResolvedAtm
 	return pick;
 }
 
-/** Unmasked GPU string where the browser exposes it — the persistence key for
- *  calibration results (a swapped GPU must invalidate old numbers). */
+/** Strings a browser reports instead of the GPU when it masks `RENDERER`. */
+const MASKED_RENDERERS = new Set(['WebKit WebGL', 'Mozilla', '']);
+
+/** GPU string the browser reports — the persistence key for calibration
+ *  results (a swapped GPU must invalidate old numbers). Firefox deprecates
+ *  `WEBGL_debug_renderer_info` now that it unmasks `RENDERER`, so ask for the
+ *  extension only where the plain parameter says nothing. */
 export function gpuLabel(renderer: WebGLRenderer): string {
 	const gl = renderer.getContext();
+	const plain = String(gl.getParameter(gl.RENDERER) ?? '');
+	if (!MASKED_RENDERERS.has(plain)) return plain;
 	const ext = gl.getExtension('WEBGL_debug_renderer_info');
-	return String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+	return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : plain;
 }
 
 interface MeasureOptions {

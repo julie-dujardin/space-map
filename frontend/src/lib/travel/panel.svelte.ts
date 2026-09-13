@@ -1165,14 +1165,7 @@ export class TravelPanelState {
 			if (!dates) return;
 			// How far a pass moves the dates is how wrong its given elements
 			// were. Once that's under a day, another pass answers the same thing.
-			if (previous) {
-				const movedDays = moved(previous, dates);
-				console.debug(
-					`[travel] ${from.id} → ${to.id} re-solved at its own dates: they moved ` +
-						`${movedDays.toFixed(1)} d.`
-				);
-				if (movedDays < REFINE_SETTLED_DAYS) return;
-			}
+			if (previous && moved(previous, dates) < REFINE_SETTLED_DAYS) return;
 			previous = dates;
 			if (!refine || pass >= MAX_REFINE_PASSES) return;
 
