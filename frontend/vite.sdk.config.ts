@@ -232,13 +232,19 @@ function sizeBudget(outDir: string, file: string): Plugin {
 	};
 }
 
-/** Files that ship next to the bundle as they are. */
+/** Files that ship next to the bundle as they are. A `.template` infix is
+ *  dropped on the way in: the package manifest is named that at rest so the
+ *  source directory is not itself publishable. */
 function copied(files: string[]): Plugin {
 	return {
 		name: 'sdk-copied-files',
 		generateBundle() {
 			for (const file of files)
-				this.emitFile({ type: 'asset', fileName: basename(file), source: readFileSync(file) });
+				this.emitFile({
+					type: 'asset',
+					fileName: basename(file).replace('.template', ''),
+					source: readFileSync(file)
+				});
 		}
 	};
 }
