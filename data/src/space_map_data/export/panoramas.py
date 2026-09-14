@@ -65,10 +65,17 @@ def _orientation(meta: dict) -> str | None:
 # reuse is treated as it always was.
 REUSE_WITHHELD = "permission-pending"
 
+# Reuse is a property of the release, not of each file, so the missions whose
+# terms are unsettled are named here too. A product written before the terms
+# were recorded carries no reuse field, and must not publish on that silence.
+WITHHELD_MISSIONS = frozenset({"zhurong", "yutu-2"})
+
 
 def _skip_reason(meta: dict) -> str | None:
     if (meta.get("reuse") or {}).get("status") == REUSE_WITHHELD:
         return "reuse permission pending"
+    if meta.get("mission") in WITHHELD_MISSIONS:
+        return "reuse permission pending for the release"
     if not meta.get("body_id"):
         return "no body id"
     if not meta.get("position"):

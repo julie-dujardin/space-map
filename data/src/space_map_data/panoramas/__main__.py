@@ -49,6 +49,12 @@ def cli():
         action="store_true",
         help="Refresh source metadata and selected images",
     )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild every panorama, discarding what is already on disk; by "
+        "default a run keeps the products the current recipe would repeat",
+    )
     args = parser.parse_args()
     if (
         (args.limit is not None and args.limit < 1)
@@ -89,7 +95,13 @@ def cli():
                 )
     if args.stage in {"process", "all"}:
         for mission in args.missions:
-            process(args.source_dir, args.output_dir, mission, width=args.width)
+            process(
+                args.source_dir,
+                args.output_dir,
+                mission,
+                width=args.width,
+                rebuild=args.rebuild,
+            )
 
 
 if __name__ == "__main__":

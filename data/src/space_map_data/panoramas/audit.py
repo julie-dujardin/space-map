@@ -9,6 +9,13 @@ from pathlib import Path
 from .pipeline import write_json
 
 
+def _source_size(metadata):
+    """A panorama mosaicked from single frames has no one source raster."""
+    if metadata.get("source_width"):
+        return metadata["source_width"], metadata["source_height"]
+    return metadata["width"], metadata["height"]
+
+
 def audit(directory):
     groups = defaultdict(list)
     errors = []
@@ -35,7 +42,7 @@ def audit(directory):
                 errors.append(f"{identity}: {error}")
     summaries = []
     for (collection, mission, instrument), rows in groups.items():
-        largest = max(rows, key=lambda m: m["source_width"] * m["source_height"])
+        largest = max(rows, key=lambda m: _source_size(m)[0] * _source_size(m)[1])
         summaries.append(
             {
                 "collection": collection,
@@ -75,8 +82,8 @@ def audit(directory):
                 ),
                 "largest_source": {
                     "id": largest["id"],
-                    "width": largest["source_width"],
-                    "height": largest["source_height"],
+                    "width": _source_size(largest)[0],
+                    "height": _source_size(largest)[1],
                 },
             }
         )

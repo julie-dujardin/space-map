@@ -8,6 +8,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import shutil
 import time
 from urllib.parse import urljoin
 
@@ -726,126 +727,180 @@ def coverage(texture: Image.Image, mosaic: Mosaic) -> dict:
     }
 
 
-def process(source_dir: Path, output_dir: Path, mission: str, *, width=4096):
+# Identifies the recipe that produced a sphere. Bump it whenever a change would
+# make a texture or its metadata come out different, so a resumed run discards
+# what the old recipe built instead of keeping a mix of both.
+BUILD_VERSION = 1
+
+
+def reusable(metadata: dict, width: int) -> bool:
+    """Whether a product on disk is what this run would build anyway."""
+    return (
+        metadata.get("build_version") == BUILD_VERSION
+        and metadata.get("width") == width
+    )
+
+
+def catalog_entry(metadata: dict, directory: Path, output_dir: Path) -> dict:
+    """The index entry for a product, however it came to be on disk."""
+    return {
+        "id": metadata["id"],
+        "sol": metadata.get("sol"),
+        "sphere_ready": True,
+        "map_ready": True,
+        "color": metadata["color"],
+        "position": metadata["position"],
+        "metadata": str((directory / "metadata.json").relative_to(output_dir)),
+    }
+
+
+def build_product(root, output_dir, collection, mission, product, width):
+    """Render one mosaic to a sphere and write its metadata."""
+    mosaic = Mosaic(**product["mosaic"])
+    mosaic.validate()
+    rgba, tone = read_pixels(root / product["image"], mosaic)
+    texture = sphere_texture(rgba, mosaic, width)
+    directory = output_dir / collection / product["id"]
+    directory.mkdir(parents=True, exist_ok=True)
+    texture.save(directory / "panorama.webp", quality=90, method=4)
+    preview = Image.fromarray(rgba)
+    preview.thumbnail((1536, 768), Image.Resampling.LANCZOS)
+    preview.save(directory / "preview.webp", quality=85)
+    metadata = {
+        "schema_version": 1,
+        "build_version": BUILD_VERSION,
+        "id": product["id"],
+        "body": "mars",
+        "body_id": "naif-499",
+        "mission": mission,
+        "instrument": (
+            mer.instrument(mosaic.product_id)
+            if mission in mer.VOLUMES
+            else "IDC"
+            if mission == "insight"
+            else "Navcam"
+        ),
+        "sol": mosaic.sol,
+        "start_time": mosaic.start_time,
+        "stop_time": mosaic.stop_time,
+        "site": mosaic.site,
+        "drive": mosaic.drive,
+        "position": {
+            "latitude_type": "planetocentric",
+            "longitude_direction": "east",
+            "longitude_range": [0, 360],
+            "elevation_datum": "source Mars geoid",
+            "method": "exact site/drive join",
+            "reference_point": "rover localization",
+            "uncertainty_m": None,
+            "source_url": product["position_source_url"],
+            **product["position"],
+        },
+        "projection": "equirectangular",
+        "width": width,
+        "height": width // 2,
+        "hfov_deg": 360,
+        "vfov_deg": 180,
+        # A site frame is referenced to north, so the sphere is already
+        # aligned. A lander frame is referenced to the lander, and nothing
+        # in the label ties it to north, so no heading may be claimed.
+        "north_azimuth_offset_deg": None if mosaic.frame == "LANDER_FRAME" else 0,
+        "pixel_convention": (
+            "pixel centers; left edge is the frame's zero azimuth; clockwise; "
+            "top edge +90 degrees"
+            if mosaic.frame == "LANDER_FRAME"
+            else "pixel centers; left edge north; clockwise; top edge +90 degrees"
+        ),
+        "source_coverage": {
+            "hfov_deg": min(360, mosaic.width / mosaic.scale_x),
+            "azimuth_start_deg": mosaic.azimuth,
+            "elevation_max_deg": (mosaic.zero_line - 0.5) / mosaic.scale_y,
+            "elevation_min_deg": (mosaic.zero_line - mosaic.height - 0.5)
+            / mosaic.scale_y,
+            "frame": mosaic.frame,
+            "frame_is_north_referenced": mosaic.frame != "LANDER_FRAME",
+            "holes": "alpha=0; no synthetic sky or ground",
+        },
+        "coverage_fraction": float(
+            np.count_nonzero(np.asarray(texture)[:, :, 3]) / (width * (width // 2))
+        ),
+        "coverage": {
+            **coverage(texture, mosaic),
+            "includes_source_grid": coordinate_grid_remains(
+                read_header(root / product["image"], mosaic)
+            ),
+        },
+        "color": "rgb" if mosaic.bands == 3 else "grayscale",
+        "source_width": mosaic.width,
+        "source_height": mosaic.height,
+        "image": "panorama.webp",
+        "preview": "preview.webp",
+        "tone_mapping": tone,
+        "quality_notes": [
+            "The archived coordinate underlay is excluded; the viewer draws its own angular grid.",
+            "Mosaic seams and near-rover parallax are retained.",
+        ],
+        "credit": "Courtesy NASA/JPL-Caltech",
+        "reuse_policy_url": POLICY,
+        "sources": {
+            k: v for k, v in product.items() if k.endswith(("_url", "_sha256"))
+        },
+        "output_sha256": sha256(directory / "panorama.webp"),
+    }
+    write_json(directory / "metadata.json", metadata)
+    logger.info(
+        "Processed %s (%.1f%% sphere coverage)",
+        product["id"],
+        metadata["coverage"]["sphere_percent"],
+    )
+    return catalog_entry(metadata, directory, output_dir)
+
+
+def process(
+    source_dir: Path, output_dir: Path, mission: str, *, width=4096, rebuild=False
+):
     root = source_dir / mission
     # Keep an archive's mosaics separate from the curated galleries of the same
     # rover, so rebuilding one cannot replace the other.
     collection = MOSAIC_COLLECTIONS.get(mission, mission)
     selection = json.loads((root / "selection.json").read_text())
-    entries = []
+    entries, rejected, kept = [], [], 0
     for product in selection["products"]:
-        mosaic = Mosaic(**product["mosaic"])
-        mosaic.validate()
+        # A corrupted cache is an integrity fault, not an unusable mosaic, so it
+        # stays fatal rather than being recorded as one product's rejection.
         for key in ("label", "image"):
             if sha256(root / product[key]) != product[key + "_sha256"]:
                 raise ValueError(f"Cached {key} checksum mismatch: {product['id']}")
-        rgba, tone = read_pixels(root / product["image"], mosaic)
-        texture = sphere_texture(rgba, mosaic, width)
         directory = output_dir / collection / product["id"]
-        directory.mkdir(parents=True, exist_ok=True)
-        texture.save(directory / "panorama.webp", quality=90, method=4)
-        preview = Image.fromarray(rgba)
-        preview.thumbnail((1536, 768), Image.Resampling.LANCZOS)
-        preview.save(directory / "preview.webp", quality=85)
-        metadata = {
-            "schema_version": 1,
-            "id": product["id"],
-            "body": "mars",
-            "body_id": "naif-499",
-            "mission": mission,
-            "instrument": (
-                mer.instrument(mosaic.product_id)
-                if mission in mer.VOLUMES
-                else "IDC"
-                if mission == "insight"
-                else "Navcam"
-            ),
-            "sol": mosaic.sol,
-            "start_time": mosaic.start_time,
-            "stop_time": mosaic.stop_time,
-            "site": mosaic.site,
-            "drive": mosaic.drive,
-            "position": {
-                "latitude_type": "planetocentric",
-                "longitude_direction": "east",
-                "longitude_range": [0, 360],
-                "elevation_datum": "source Mars geoid",
-                "method": "exact site/drive join",
-                "reference_point": "rover localization",
-                "uncertainty_m": None,
-                "source_url": product["position_source_url"],
-                **product["position"],
-            },
-            "projection": "equirectangular",
-            "width": width,
-            "height": width // 2,
-            "hfov_deg": 360,
-            "vfov_deg": 180,
-            # A site frame is referenced to north, so the sphere is already
-            # aligned. A lander frame is referenced to the lander, and nothing
-            # in the label ties it to north, so no heading may be claimed.
-            "north_azimuth_offset_deg": None if mosaic.frame == "LANDER_FRAME" else 0,
-            "pixel_convention": (
-                "pixel centers; left edge is the frame's zero azimuth; clockwise; "
-                "top edge +90 degrees"
-                if mosaic.frame == "LANDER_FRAME"
-                else "pixel centers; left edge north; clockwise; top edge +90 degrees"
-            ),
-            "source_coverage": {
-                "hfov_deg": min(360, mosaic.width / mosaic.scale_x),
-                "azimuth_start_deg": mosaic.azimuth,
-                "elevation_max_deg": (mosaic.zero_line - 0.5) / mosaic.scale_y,
-                "elevation_min_deg": (mosaic.zero_line - mosaic.height - 0.5)
-                / mosaic.scale_y,
-                "frame": mosaic.frame,
-                "frame_is_north_referenced": mosaic.frame != "LANDER_FRAME",
-                "holes": "alpha=0; no synthetic sky or ground",
-            },
-            "coverage_fraction": float(
-                np.count_nonzero(np.asarray(texture)[:, :, 3]) / (width * (width // 2))
-            ),
-            "coverage": {
-                **coverage(texture, mosaic),
-                "includes_source_grid": coordinate_grid_remains(
-                    read_header(root / product["image"], mosaic)
-                ),
-            },
-            "color": "rgb" if mosaic.bands == 3 else "grayscale",
-            "source_width": mosaic.width,
-            "source_height": mosaic.height,
-            "image": "panorama.webp",
-            "preview": "preview.webp",
-            "tone_mapping": tone,
-            "quality_notes": [
-                "The archived coordinate underlay is excluded; the viewer draws its own angular grid.",
-                "Mosaic seams and near-rover parallax are retained.",
-            ],
-            "credit": "Courtesy NASA/JPL-Caltech",
-            "reuse_policy_url": POLICY,
-            "sources": {
-                k: v for k, v in product.items() if k.endswith(("_url", "_sha256"))
-            },
-            "output_sha256": sha256(directory / "panorama.webp"),
-        }
-        write_json(directory / "metadata.json", metadata)
-        entries.append(
-            {
-                "id": product["id"],
-                "sol": mosaic.sol,
-                "sphere_ready": True,
-                "map_ready": True,
-                "color": metadata["color"],
-                "position": metadata["position"],
-                "metadata": str((directory / "metadata.json").relative_to(output_dir)),
-            }
-        )
-        logger.info(
-            "Processed %s (%.1f%% sphere coverage)",
-            product["id"],
-            metadata["coverage"]["sphere_percent"],
-        )
+        built = directory / "metadata.json"
+        if built.is_file():
+            metadata = json.loads(built.read_text())
+            if not rebuild and reusable(metadata, width):
+                entries.append(catalog_entry(metadata, directory, output_dir))
+                kept += 1
+                continue
+            # Built by a recipe this run no longer agrees with, so it goes
+            # rather than leaving the collection half one recipe, half another.
+            shutil.rmtree(directory)
+        try:
+            entries.append(
+                build_product(root, output_dir, collection, mission, product, width)
+            )
+        except (ValueError, KeyError, OSError) as error:
+            # One unusable mosaic must not cost the run every other product,
+            # which a raise here would, by skipping the catalog write below.
+            rejected.append({"id": product["id"], "reason": str(error)})
+            logger.warning("Rejected %s: %s", product["id"], error)
     write_json(
         output_dir / collection / "catalog.json",
         {"schema_version": 1, "body": "mars", "panoramas": entries},
+    )
+    write_json(output_dir / collection / "processing-rejected.json", rejected)
+    logger.info(
+        "%s: %s panoramas (%s already built), %s rejected",
+        mission,
+        len(entries),
+        kept,
+        len(rejected),
     )
     return entries

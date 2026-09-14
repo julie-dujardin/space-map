@@ -541,3 +541,116 @@ def test_perseverance_version_field_carries_on_in_base_36():
     assert m20_version("280.0") == "F0"
     with pytest.raises(ValueError, match="two-character field"):
         m20_version("1036.0")
+
+
+def test_one_unusable_mosaic_does_not_discard_the_run(tmp_path, monkeypatch):
+    """A run writes its catalog only after its last product, so letting a bad
+    mosaic raise would lose every good product with it."""
+    import space_map_data.panoramas.pipeline as module
+
+    real = module.read_pixels
+
+    def explode(path, mosaic):
+        raise ValueError("Mosaic has no displayable dynamic range")
+
+    entries, name = _offline_curiosity(tmp_path)
+    assert entries, "fixture must produce a product to then reject"
+
+    monkeypatch.setattr(module, "read_pixels", explode)
+    rebuilt = process(
+        tmp_path / "sources", tmp_path / "derived", "curiosity", width=256, rebuild=True
+    )
+
+    assert rebuilt == []
+    rejected = json.loads(
+        (
+            tmp_path / "derived" / "curiosity-navcam" / "processing-rejected.json"
+        ).read_text()
+    )
+    assert [row["id"] for row in rejected] == [entries[0]["id"]]
+    assert "dynamic range" in rejected[0]["reason"]
+    monkeypatch.setattr(module, "read_pixels", real)
+
+
+def test_catalog_rebuild_recovers_products_an_interrupted_run_left(tmp_path):
+    """The export reads the index, so a product missing from it is invisible
+    however complete it is on disk."""
+    from space_map_data.panoramas.catalog import rebuild
+
+    entries, _ = _offline_curiosity(tmp_path)
+    derived = tmp_path / "derived"
+    catalog = derived / "curiosity-navcam" / "catalog.json"
+    truncated = json.loads(catalog.read_text())
+    truncated["panoramas"] = []
+    catalog.write_text(json.dumps(truncated))
+
+    added, total = rebuild(derived, "curiosity-navcam")
+
+    assert (added, total) == (len(entries), len(entries))
+    recovered = json.loads(catalog.read_text())["panoramas"]
+    assert {row["id"] for row in recovered} == {row["id"] for row in entries}
+    assert all(row["sphere_ready"] for row in recovered)
+    assert (derived / recovered[0]["metadata"]).is_file()
+
+
+def test_a_second_run_keeps_what_it_would_only_rebuild(tmp_path, monkeypatch):
+    """Reprocessing a whole mission to reach the products it has not built yet
+    costs hours, so a resumed run repeats nothing."""
+    import space_map_data.panoramas.pipeline as module
+
+    entries, _ = _offline_curiosity(tmp_path)
+    texture = (
+        tmp_path / "derived" / "curiosity-navcam" / entries[0]["id"] / "panorama.webp"
+    )
+    stamp = texture.stat().st_mtime_ns
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("an already-built panorama must not be built again")
+
+    monkeypatch.setattr(module, "read_pixels", refuse)
+    again = process(tmp_path / "sources", tmp_path / "derived", "curiosity", width=256)
+
+    assert [row["id"] for row in again] == [row["id"] for row in entries]
+    assert texture.stat().st_mtime_ns == stamp
+
+
+def test_a_changed_recipe_discards_what_the_old_one_built(tmp_path, monkeypatch):
+    """Half one recipe and half another is worse than rebuilding: the run must
+    not leave textures its own metadata no longer describes."""
+    import space_map_data.panoramas.pipeline as module
+
+    entries, _ = _offline_curiosity(tmp_path)
+    built = tmp_path / "derived" / "curiosity-navcam" / entries[0]["id"]
+    (built / "stale-from-the-old-recipe.webp").write_bytes(b"stale")
+    monkeypatch.setattr(module, "BUILD_VERSION", module.BUILD_VERSION + 1)
+
+    again = process(tmp_path / "sources", tmp_path / "derived", "curiosity", width=256)
+
+    assert [row["id"] for row in again] == [row["id"] for row in entries]
+    assert not (built / "stale-from-the-old-recipe.webp").exists()
+    rebuilt = json.loads((built / "metadata.json").read_text())
+    assert rebuilt["build_version"] == module.BUILD_VERSION
+
+
+def test_a_different_width_is_a_different_product(tmp_path):
+    """The texture width is baked into the sphere, so a run asking for another
+    one must not be handed the old size."""
+    entries, _ = _offline_curiosity(tmp_path)
+    built = tmp_path / "derived" / "curiosity-navcam" / entries[0]["id"]
+
+    process(tmp_path / "sources", tmp_path / "derived", "curiosity", width=512)
+
+    assert json.loads((built / "metadata.json").read_text())["width"] == 512
+
+
+def test_rebuild_forces_a_fresh_build(tmp_path):
+    """The escape hatch for a change the build version did not capture."""
+    entries, _ = _offline_curiosity(tmp_path)
+    built = tmp_path / "derived" / "curiosity-navcam" / entries[0]["id"]
+    (built / "panorama.webp").write_bytes(b"clobbered")
+
+    process(
+        tmp_path / "sources", tmp_path / "derived", "curiosity", width=256, rebuild=True
+    )
+
+    assert (built / "panorama.webp").read_bytes() != b"clobbered"

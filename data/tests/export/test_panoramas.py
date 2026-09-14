@@ -130,6 +130,16 @@ class TestSelection:
         _write_cache(tmp_path, "perseverance", [_product(reuse=None)])
         assert panoramas.load_panoramas(tmp_path)["naif-499"]
 
+    def test_a_withheld_release_stays_local_without_a_reuse_field(self, tmp_path: Path):
+        """Reuse belongs to the release, so a product written before the terms
+        were recorded must not publish on its own silence."""
+        _write_cache(
+            tmp_path,
+            "yutu-2",
+            [_product(id="yutu-2-sol1", mission="yutu-2", reuse=None)],
+        )
+        assert panoramas.load_panoramas(tmp_path) == {}
+
     def test_a_clean_texture_is_not_marked(self, tmp_path: Path):
         _write_cache(tmp_path, "perseverance", [_product()])
         (entry,) = panoramas.load_panoramas(tmp_path)["naif-499"]
