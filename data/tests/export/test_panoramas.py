@@ -197,8 +197,16 @@ class TestSelection:
         assert product.entry["time"] == "1969-07-21"
         assert "time_end" not in product.entry
 
-    def test_missing_cache_exports_none(self, tmp_path: Path):
-        assert panoramas.load_panoramas(tmp_path / "absent") == {}
+    def test_a_missing_cache_refuses_rather_than_publishing_none(self, tmp_path: Path):
+        """The cache lives on a mount, so absence means unmounted far more often
+        than emptied on purpose, and publishing none deletes every panorama."""
+        with pytest.raises(FileNotFoundError, match="would delete"):
+            panoramas.load_panoramas(tmp_path / "absent")
+
+    def test_an_empty_cache_still_publishes_none(self, tmp_path: Path):
+        """Deleting every panorama stays possible, but has to be asked for."""
+        (tmp_path / "empty").mkdir()
+        assert panoramas.load_panoramas(tmp_path / "empty") == {}
 
 
 class TestDedupe:

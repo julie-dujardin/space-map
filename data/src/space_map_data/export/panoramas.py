@@ -144,8 +144,14 @@ def load_panoramas(
     mission-then-time order."""
     by_body: dict[str, list[Product]] = {}
     if not derived_dir.is_dir():
-        logger.warning("Panorama cache %s missing; exporting none", derived_dir)
-        return by_body
+        # An absent cache is indistinguishable from one holding nothing, and the
+        # export treats nothing as "delete what was published". The cache lives
+        # on a mount, so absence usually means unmounted, not emptied on purpose.
+        raise FileNotFoundError(
+            f"Panorama cache {derived_dir} is missing. Exporting now would delete"
+            " every published panorama. Mount the share, or pass an empty"
+            " directory to publish none on purpose."
+        )
     for catalog_path in sorted(derived_dir.glob("*/catalog.json")):
         catalog = orjson.loads(catalog_path.read_bytes())
         for item in catalog.get("panoramas", []):
