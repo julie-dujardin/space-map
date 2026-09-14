@@ -5,6 +5,7 @@ import type { ChebyshevZoneParams } from './position/chebyshev/store';
 import type { ProbeZoneParams } from './position/probes/store';
 import { dataBase, setDataVersions } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
+import { sha256 } from './sha256';
 
 /**
  * Bucket counts for hash-bucketed object detail bundles. `global` counts
@@ -405,6 +406,11 @@ export function probeZoneParams(meta: Metadata): Map<string, ProbeZoneParams> {
  * first-4-bytes-big-endian, same modulo.
  */
 export async function hashBucket(id: string, nBuckets: number): Promise<number> {
-	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id));
+	const bytes = new TextEncoder().encode(id);
+	// `crypto.subtle` is withheld outside a secure origin, which a dev server
+	// reached by LAN address is not.
+	const digest = crypto.subtle
+		? await crypto.subtle.digest('SHA-256', bytes)
+		: sha256(bytes).buffer;
 	return new DataView(digest).getUint32(0, false) % nBuckets;
 }

@@ -12,10 +12,12 @@
 import {
 	Color,
 	DoubleSide,
+	Euler,
 	Group,
 	Mesh,
 	MeshBasicMaterial,
 	PerspectiveCamera,
+	Quaternion,
 	Raycaster,
 	Scene,
 	Shape,
@@ -32,6 +34,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 import { fetchObjectDetail, type PanoramaEntry } from '$lib/fetch/objects/object-data';
 import { meanRadiusKm } from '$lib/fetch/objects/physical';
 import { ControlHost, type Control, type ControlPosition } from '$lib/scene/controls';
+import { gyroAvailability, requestGyroPermission } from './gyro';
 import { hasHeading } from './minimap';
 import { findPanorama, initialHeadingDeg, neighboursOf, type Neighbours } from './traverse';
 
@@ -117,6 +120,11 @@ const ANGLE_SAMPLE_STEP_DEG = 1;
  *  direction to point an arrow in. */
 const MIN_ARROW_DISTANCE_M = 1;
 
+/** The turn from the device frame, whose Z points out of the screen, to the
+ *  camera frame, which looks along -Z. */
+const GYRO_TILT = new Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+const SCREEN_AXIS = new Vector3(0, 0, 1);
+
 function wrapHeading(deg: number): number {
 	return ((deg % 360) + 360) % 360;
 }
@@ -199,6 +207,14 @@ export class PanoramaView {
 	private pinchDistance = 0;
 	private dragStart: { x: number; y: number } | null = null;
 	private hovered: ArrowKey | null = null;
+	private gyroEnabled = false;
+	/** The device heading that stands for the view's own heading; taken from
+	 *  the first reading so switching the sensor on does not spin the view. */
+	private gyroOrigin: number | null = null;
+	private readonly gyroEuler = new Euler();
+	private readonly gyroQuaternion = new Quaternion();
+	private readonly gyroScreen = new Quaternion();
+	private readonly gyroDirection = new Vector3();
 	private readonly lookAt = new Vector3();
 	private readonly ndc = new Vector3();
 	private readonly gridPoint = new Vector3();
@@ -311,6 +327,7 @@ export class PanoramaView {
 	/** Take the view down and let go of everything it holds. */
 	remove(): void {
 		this.disposed = true;
+		void this.setGyroEnabled(false);
 		this.loadToken++;
 		cancelAnimationFrame(this.frame);
 		this.frame = 0;
@@ -433,6 +450,44 @@ export class PanoramaView {
 		};
 		this.setView({});
 	}
+
+	/** Turn the view by moving the device instead of dragging. Resolves with
+	 *  whether the sensor is now driving the view: a device without one, or one
+	 *  that withholds permission, leaves it off. */
+	async setGyroEnabled(enabled: boolean): Promise<boolean> {
+		if (enabled === this.gyroEnabled) return this.gyroEnabled;
+		if (!enabled) {
+			window.removeEventListener('deviceorientation', this.onDeviceOrientation);
+			this.gyroEnabled = false;
+			return false;
+		}
+		if (gyroAvailability() !== 'available' || !(await requestGyroPermission()) || this.disposed)
+			return false;
+		this.gyroOrigin = null;
+		this.gyroEnabled = true;
+		window.addEventListener('deviceorientation', this.onDeviceOrientation);
+		return true;
+	}
+
+	isGyroEnabled(): boolean {
+		return this.gyroEnabled;
+	}
+
+	private readonly onDeviceOrientation = (e: DeviceOrientationEvent): void => {
+		if (e.alpha === null || e.beta === null || e.gamma === null) return;
+		this.gyroEuler.set(e.beta * DEG, e.alpha * DEG, -e.gamma * DEG, 'YXZ');
+		this.gyroQuaternion
+			.setFromEuler(this.gyroEuler)
+			.multiply(GYRO_TILT)
+			.multiply(
+				this.gyroScreen.setFromAxisAngle(SCREEN_AXIS, -(screen.orientation?.angle ?? 0) * DEG)
+			);
+		this.gyroDirection.set(0, 0, -1).applyQuaternion(this.gyroQuaternion);
+		const heading = Math.atan2(this.gyroDirection.x, -this.gyroDirection.z) / DEG;
+		const pitch = Math.asin(clamp(this.gyroDirection.y, -1, 1)) / DEG;
+		if (this.gyroOrigin === null) this.gyroOrigin = wrapHeading(heading - this.view.heading);
+		this.setView({ heading: heading - this.gyroOrigin, pitch });
+	};
 
 	// -- events ---------------------------------------------------------------
 
@@ -752,6 +807,8 @@ export class PanoramaView {
 		const dy = e.clientY - prev.y;
 		this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 		if (this.pointers.size === 1) {
+			// The sensor owns the direction while it is on; pinch still zooms.
+			if (this.gyroEnabled) return;
 			const k = this.degreesPerPixel();
 			this.setView({ heading: this.view.heading - dx * k, pitch: this.view.pitch + dy * k });
 		} else if (this.pointers.size === 2) {

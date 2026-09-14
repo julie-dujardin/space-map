@@ -24,6 +24,8 @@ export type Theme = 'auto' | 'light' | 'dark';
 export type Clock = 'auto' | '12h' | '24h';
 export type ReducedMotion = 'auto' | 'on' | 'off';
 export type DateFormatChoice = 'auto' | 'iso';
+/** 'auto' follows reduced motion: on unless motion is being suppressed. */
+export type PanoramaGyro = 'auto' | 'on' | 'off';
 export type LanguageChoice = 'auto' | Locale;
 export type ViewMode = 'map' | 'immersive';
 
@@ -33,6 +35,7 @@ interface SettingValues {
 	clock: Clock;
 	reducedMotion: ReducedMotion;
 	dateFormat: DateFormatChoice;
+	panoramaGyro: PanoramaGyro;
 	language: LanguageChoice;
 	showDebugInfo: boolean;
 	showSkyboxAlign: boolean;
@@ -73,6 +76,7 @@ const SETTING_SPEC = {
 	clock: { default: 'auto', persist: true },
 	reducedMotion: { default: 'auto', persist: true },
 	dateFormat: { default: 'auto', persist: true },
+	panoramaGyro: { default: 'auto', persist: true },
 	language: { default: 'auto', persist: true },
 	showDebugInfo: { default: false, persist: true },
 	showSkyboxAlign: { default: false, persist: true },
@@ -140,6 +144,8 @@ class SettingsState implements SceneSettings, SettingValues {
 	clock = $state<Clock>(SETTING_SPEC.clock.default);
 	reducedMotion = $state<ReducedMotion>(SETTING_SPEC.reducedMotion.default);
 	dateFormat = $state<DateFormatChoice>(SETTING_SPEC.dateFormat.default);
+	/** Whether the device's orientation sensor turns a panorama. */
+	panoramaGyro = $state<PanoramaGyro>(SETTING_SPEC.panoramaGyro.default);
 	language = $state<LanguageChoice>(SETTING_SPEC.language.default);
 	showDebugInfo = $state<boolean>(SETTING_SPEC.showDebugInfo.default);
 	showSkyboxAlign = $state<boolean>(SETTING_SPEC.showSkyboxAlign.default);
@@ -227,6 +233,10 @@ class SettingsState implements SceneSettings, SettingValues {
 
 	setDateFormat(v: DateFormatChoice) {
 		this.set('dateFormat', v);
+	}
+
+	setPanoramaGyro(v: PanoramaGyro) {
+		this.set('panoramaGyro', v);
 	}
 
 	setShowDebugInfo(v: boolean) {
@@ -324,6 +334,14 @@ class SettingsState implements SceneSettings, SettingValues {
 	get resolvedReducedMotion(): boolean {
 		if (this.reducedMotion === 'auto') return this.#systemReducedMotion;
 		return this.reducedMotion === 'on';
+	}
+
+	/** Whether the orientation sensor should turn a panorama. Motion the reader
+	 *  did not ask for is exactly what reduced motion suppresses, so 'auto'
+	 *  follows it. */
+	get resolvedPanoramaGyro(): boolean {
+		if (this.panoramaGyro === 'auto') return !this.resolvedReducedMotion;
+		return this.panoramaGyro === 'on';
 	}
 
 	/** Resolved hour-cycle preference: true for 12h, false for 24h. */

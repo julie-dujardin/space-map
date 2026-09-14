@@ -8,6 +8,7 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import * as m from '$lib/paraglide/messages.js';
@@ -39,12 +40,14 @@
 	import { fly } from 'svelte/transition';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { entryJd } from '$lib/panorama/minimap';
+	import { gyroAvailability } from '$lib/panorama/gyro';
 	import { PanoramaView, type ArrowKey, type ScreenAnchor } from '$lib/panorama/view';
 	import PanoramaMinimap from './PanoramaMinimap.svelte';
 	import PanoramaTimeline from './PanoramaTimeline.svelte';
 	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
 	import SettingsButton from '../settings/SettingsButton.svelte';
 	import SitePage from '../nav/SitePage.svelte';
+	import PanoramaGyroButton from './PanoramaGyroButton.svelte';
 	import PanoramaLayersButton from './PanoramaLayersButton.svelte';
 	import type { LayerCredit } from '$lib/flatmap/layers';
 
@@ -66,6 +69,16 @@
 	let anchors = $state<Partial<Record<ArrowKey, ScreenAnchor>>>({});
 	let angleGridVisible = $state(false);
 	let navigationVisible = $state(true);
+	/** Whether the sensor is turning the view right now, which is the standing
+	 *  preference except where the device refused it. */
+	let gyroActive = $state(false);
+	const gyroSupported = gyroAvailability() === 'available';
+	let detailsOpen = $state(false);
+	let missionPart = $state<HTMLElement | null>(null);
+	let solPart = $state<HTMLElement | null>(null);
+	/** Whether the sol sits on a line of its own, where a leading separator
+	 *  would read as a stray mark. */
+	let solWrapped = $state(false);
 	let neighbours = $state.raw<Neighbours | null>(null);
 	let timelineOpen = $state(false);
 	/** The timeline strip only lays out beside the minimap from `md` up. */
@@ -179,6 +192,34 @@
 
 	$effect(() => {
 		view?.setArrowsVisible(navigationVisible);
+	});
+
+	// The standing preference, applied to each view as it opens. iOS grants the
+	// sensor only inside the gesture that asks, so this quietly does nothing
+	// there until the button is pressed.
+	$effect(() => {
+		const v = view;
+		const wanted = gyroSupported && getSettings().resolvedPanoramaGyro;
+		if (!v) return;
+		void v.setGyroEnabled(wanted).then((on) => (gyroActive = on));
+	});
+
+	/** The sensor may be refused, so the button follows what the view reports. */
+	async function toggleGyro() {
+		const wanted = !gyroActive;
+		getSettings().setPanoramaGyro(wanted ? 'on' : 'off');
+		gyroActive = (await view?.setGyroEnabled(wanted)) ?? false;
+	}
+
+	$effect(() => {
+		const mission = missionPart;
+		const sol = solPart;
+		if (!mission || !sol) return;
+		const measure = () => (solWrapped = sol.offsetTop > mission.offsetTop);
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(mission.parentElement!);
+		return () => observer.disconnect();
 	});
 
 	/** A rover position to the metre, which three significant figures are not. */
@@ -306,35 +347,64 @@
 				</div>
 			{/if}
 
-			<!-- Info box -->
+			<!-- Info box: the table is a disclosure, so what stands over the
+			     panorama is the name and one row of buttons. -->
 			<div
-				class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] w-[min(20rem,calc(100vw-7.5rem))] rounded-md bg-black/40 p-3 text-sm backdrop-blur-sm"
+				class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] w-[min(18rem,calc(100vw-5.5rem))] rounded-md bg-black/40 px-2.5 py-2 text-sm backdrop-blur-sm"
 			>
-				<div class="flex items-start gap-2">
+				<div class="flex items-center gap-1">
 					<div class="min-w-0 flex-1">
-						<a href={bodyHref(bodyId, bodyName)} class="text-xs text-white/60 hover:text-white">
-							{bodyName}
-						</a>
-						<h1 class="text-base font-semibold leading-tight">
-							{capitalize(current.mission ?? '')}
+						<!-- The separator rides with the mission and keeps its space when
+						     hidden: it can never lead the second line, and dropping it cannot
+						     move the break that hid it. -->
+						<h1 class="text-sm font-semibold leading-tight">
+							<span bind:this={missionPart} class="whitespace-nowrap">
+								{capitalize(current.mission ?? '')}{#if current.sol !== undefined}<span
+										class="ps-1 text-white/80 {solWrapped ? 'invisible' : ''}">·</span
+									>{/if}
+							</span>
 							{#if current.sol !== undefined}
-								<span class="text-white/80">· {m.panorama_sol({ sol: current.sol })}</span>
+								<span bind:this={solPart} class="whitespace-nowrap text-white/80">
+									{m.panorama_sol({ sol: current.sol })}
+								</span>
 							{/if}
 						</h1>
 						{#if current.title}
-							<p class="text-xs text-white/70">{current.title}</p>
+							<p class="truncate text-xs text-white/70">{current.title}</p>
 						{/if}
 					</div>
-					<div class="-mt-1 -me-1 flex shrink-0 items-center gap-0.5">
+					<div class="-me-1 flex shrink-0 items-center gap-0.5">
+						{#if rows.length}
+							<button
+								type="button"
+								onclick={() => (detailsOpen = !detailsOpen)}
+								class="cursor-pointer {inBoxButton}"
+								aria-expanded={detailsOpen}
+								aria-label={m.panorama_details()}
+								title={m.panorama_details()}
+							>
+								<ChevronDownIcon
+									class="size-5 transition-transform md:size-4 {detailsOpen ? 'rotate-180' : ''}"
+								/>
+							</button>
+						{/if}
 						{@render shareAndClose()}
 					</div>
 				</div>
-				<dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-					{#each rows as row (row.label)}
-						<dt class="text-white/55">{row.label}</dt>
-						<dd>{row.value}</dd>
-					{/each}
-				</dl>
+				{#if detailsOpen}
+					<dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+						{#each rows as row (row.label)}
+							<dt class="text-white/55">{row.label}</dt>
+							<dd>{row.value}</dd>
+						{/each}
+					</dl>
+					<a
+						href="/view"
+						class="mt-2 inline-block text-xs text-white/60 hover:text-white hover:underline"
+					>
+						{m.panorama_index_all()}
+					</a>
+				{/if}
 			</div>
 
 			<!-- One row, so the minimap grows to the timeline's height. Nothing in
@@ -398,6 +468,9 @@
 					onAngleGridChange={(visible) => (angleGridVisible = visible)}
 					onNavigationChange={(visible) => (navigationVisible = visible)}
 				/>
+				{#if gyroSupported}
+					<PanoramaGyroButton active={gyroActive} onToggle={() => void toggleGyro()} />
+				{/if}
 			</div>
 		</div>
 	</Tooltip.Provider>

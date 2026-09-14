@@ -7,9 +7,11 @@
 		getSettings,
 		type Clock,
 		type DateFormatChoice,
+		type PanoramaGyro,
 		type ReducedMotion,
 		type Theme
 	} from '$lib/state/settings.svelte';
+	import { gyroAvailability } from '$lib/panorama/gyro';
 	import {
 		resolveAtmosphereTier,
 		type AtmosphereQualityTier
@@ -35,7 +37,7 @@
 	const settings = getSettings();
 
 	/** Every segmented row selects one of these. */
-	type SegmentedValue = Theme | Clock | ReducedMotion | DateFormatChoice;
+	type SegmentedValue = Theme | Clock | ReducedMotion | DateFormatChoice | PanoramaGyro;
 	interface SegmentedOption {
 		value: SegmentedValue;
 		label: () => string;
@@ -86,6 +88,43 @@
 		{ value: 'auto' as const, label: () => m.settings_dateformat_locale() },
 		{ value: 'iso' as const, label: () => m.settings_dateformat_iso() }
 	];
+
+	const gyroOptions: { value: PanoramaGyro; label: () => string }[] = [
+		{ value: 'auto', label: () => m.settings_auto() },
+		{ value: 'on', label: () => m.settings_reduced_motion_on() },
+		{ value: 'off', label: () => m.settings_reduced_motion_off() }
+	];
+
+	/** Why the orientation sensor is out of reach, where it is; the row is then
+	 *  shown locked with this under it. */
+	const gyroUnavailable = $derived.by(() => {
+		const availability = gyroAvailability();
+		if (availability === 'available') return undefined;
+		return availability === 'insecure' ? m.panorama_gyro_insecure() : m.panorama_gyro_no_sensor();
+	});
+
+	const fullscreenSupported = typeof document !== 'undefined' && document.fullscreenEnabled;
+	/** The document pages scroll; only the two full-screen views offer it. */
+	const showFullscreen = $derived(scope !== 'page' && fullscreenSupported);
+	let fullscreen = $state(false);
+
+	$effect(() => {
+		const sync = () => (fullscreen = document.fullscreenElement !== null);
+		sync();
+		document.addEventListener('fullscreenchange', sync);
+		return () => document.removeEventListener('fullscreenchange', sync);
+	});
+
+	/** The whole document, so the chrome goes with the view. A refusal leaves
+	 *  the switch where the listener last put it. */
+	async function toggleFullscreen(): Promise<void> {
+		try {
+			if (document.fullscreenElement) await document.exitFullscreen();
+			else await document.documentElement.requestFullscreen();
+		} catch {
+			// Denied or unavailable; `fullscreenchange` never fires.
+		}
+	}
 
 	const reducedMotionOptions: { value: ReducedMotion; label: () => string }[] = [
 		{ value: 'auto', label: () => m.settings_auto() },
@@ -264,6 +303,51 @@
 					{@render autoSource(resolvedReducedMotionLabel, m.settings_source_system())}
 				{/if}
 			</div>
+
+			{#if scope === 'panorama'}
+				<div class="flex flex-col gap-2">
+					{@render segmented(
+						m.panorama_gyro(),
+						gyroOptions,
+						settings.panoramaGyro,
+						(v) => settings.setPanoramaGyro(v as PanoramaGyro),
+						gyroUnavailable !== undefined
+					)}
+					{#if gyroUnavailable}
+						<p class="text-xs text-muted-foreground">{gyroUnavailable}</p>
+					{:else if settings.panoramaGyro === 'auto' && settings.resolvedReducedMotion}
+						{@render autoSource(
+							m.settings_reduced_motion_off(),
+							m.settings_source_reduced_motion()
+						)}
+					{:else}
+						<p class="text-xs text-muted-foreground">{m.panorama_gyro_hint()}</p>
+					{/if}
+				</div>
+			{/if}
+
+			{#if showFullscreen}
+				<label class="flex cursor-pointer items-center justify-between gap-3">
+					<div class="min-w-0">
+						<div class="text-sm font-medium">{m.settings_fullscreen()}</div>
+					</div>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={fullscreen}
+						aria-label={m.settings_fullscreen()}
+						class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+								{fullscreen ? 'bg-primary' : 'bg-muted'}"
+						onclick={() => void toggleFullscreen()}
+					>
+						<span
+							class="inline-block size-4 rounded-full bg-background shadow transition-transform
+									{fullscreen ? 'translate-x-4' : 'translate-x-0.5'}"
+						></span>
+					</button>
+				</label>
+			{/if}
 		</section>
 
 		{#if showTime}
