@@ -1169,6 +1169,7 @@
 	"source_sbdb_role": "尺寸、反照率与光谱型",
 	"source_iau_wgccre_role": "自转与半径",
 	"source_spice_pck_role": "参考内核",
+	"source_shape_role": "大小与形状",
 	"source_spin_pole_role": "自转轴与自转周期",
 	"tooltip_rotation_period": "自转一周所需时间",
 	"tooltip_absolute_magnitude": "天体的固有亮度",

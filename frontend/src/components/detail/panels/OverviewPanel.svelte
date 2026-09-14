@@ -129,6 +129,8 @@
 			label: s.title,
 			url: s.url
 		}));
+		// Lineup members whose ellipsoid was fitted rather than tabulated.
+		out.push(...lineup.overviewCredits.shapeWorks);
 		if (cat.solarSystem)
 			out.push({
 				key: MASS_INVENTORY_URL,

@@ -73,7 +73,9 @@
 	import Link from './kit/Link.svelte';
 	import { archiveLabel, archiveRole, archiveUrl } from '$lib/credits/archive-labels';
 	import {
+		measuredShapeCredit,
 		orientationCredits,
+		type OrientationCreditEntry,
 		type OrientationReference,
 		type OrientationSource
 	} from '$lib/credits/orientation-sources';
@@ -153,12 +155,12 @@
 			out.push({ key: work.url, label: work.title, url: work.url, note: work.note });
 		};
 		// A spin pole comes from the PCK (planets, moons, the handful of visited
-		// asteroids), from DAMIT's lightcurve inversion, or — for the ringed small
-		// bodies, which no kernel covers — from an occultation paper. Shared with
-		// the scene's attribution popover, which credits the same elements.
+		// asteroids), from DAMIT's lightcurve inversion, or — for the small bodies
+		// no kernel covers — from the paper the record names. Shared with the
+		// scene's attribution popover, which credits the same elements.
+		const creditArgs = (c: OrientationCreditEntry) => [c.key, c.short, c.url, c.role] as const;
 		const addPole = (source: OrientationSource | undefined, reference?: OrientationReference) => {
-			for (const credit of orientationCredits(source, reference))
-				add(credit.key, credit.short, credit.url, credit.role);
+			for (const credit of orientationCredits(source, reference)) add(...creditArgs(credit));
 		};
 		// The lineup's radii/mass come from the same kernels as a PCK pole.
 		const addPck = () => addPole(undefined);
@@ -199,18 +201,27 @@
 				`https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(mpc)}`
 			);
 
-		// Rotational elements. The orientation table merges three disjoint sets,
+		// Rotational elements. The orientation table merges four disjoint sets,
 		// so the pole is credited to whichever published it — most asteroids on
 		// the map spin on a DAMIT lightcurve pole the IAU never tabulated.
 		const orientation = global?.orientation;
 		if (orientation) addPole(orientation.source, orientation.reference);
 		if (lightcurvePole) addPole('lightcurve');
 
-		// The size rows are the PCK's whoever published the pole — a lightcurve
-		// pole says nothing about a body's radii. The occultation four take both
-		// from the one paper, already credited above; bundles predating
-		// `radii_source` are read off the pole, which agrees for all four.
-		if (global?.radii && (global.radii_source ?? orientation?.source) !== 'occultation') addPck();
+		// The size rows are the PCK's whoever published the pole — a DAMIT pole
+		// says nothing about a body's radii. Only a measured ellipsoid displaces
+		// the kernel, and it names the work that fitted it, which is often not
+		// the one the pole came from; where it is the same work, the pole credit
+		// above already covers it and dedup drops this one. Bundles predating
+		// `radii_source` are read off the pole, which agrees for every body that
+		// had one then.
+		const radiiSource = global?.radii_source ?? orientation?.source;
+		const measuredShape = radiiSource === 'occultation' || radiiSource === 'photometry';
+		if (global?.radii) {
+			if (!measuredShape) addPck();
+			else if (global.radii_reference)
+				add(...creditArgs(measuredShapeCredit(global.radii_reference)));
+		}
 
 		// Named works the panel cites outright, like the blocks below rather
 		// than the inferred credits above — their note survives a parenthesised

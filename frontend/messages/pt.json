@@ -1281,6 +1281,7 @@
 	"source_sbdb_role": "tamanhos, albedos e tipos espetrais",
 	"source_iau_wgccre_role": "rotação e raios",
 	"source_spice_pck_role": "núcleos de referência",
+	"source_shape_role": "tamanho e forma",
 	"source_spin_pole_role": "eixo de rotação e período",
 	"metadata_sources_prefix": "Metadados:",
 	"source_wikimedia_commons_name": "Wikimedia Commons",

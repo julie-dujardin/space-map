@@ -1297,6 +1297,7 @@
 	"source_sbdb_role": "rozmiary, albeda i typy widmowe",
 	"source_iau_wgccre_role": "rotacja i promienie",
 	"source_spice_pck_role": "jądra referencyjne",
+	"source_shape_role": "rozmiar i kształt",
 	"source_spin_pole_role": "oś obrotu i okres rotacji",
 	"metadata_sources_prefix": "Metadane:",
 	"source_wikimedia_commons_name": "Wikimedia Commons",

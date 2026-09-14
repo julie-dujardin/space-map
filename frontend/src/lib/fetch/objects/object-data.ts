@@ -5,6 +5,11 @@ import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
 import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
 import type { RingMeta } from '$lib/scene/objects/surface/rings';
+import type {
+	MeasuredShapeSource,
+	OrientationReference,
+	OrientationSource
+} from '$lib/credits/orientation-sources';
 
 // --- Global object data (non-localized) ---
 
@@ -146,15 +151,23 @@ export interface NotableMemberEntry {
 	diameter_km?: number;
 	/** Body mass (kg) from PCK GM; major bodies only. Drives the planets mass chart. */
 	mass_kg?: number;
-	/** SPICE PCK triaxial radii (km); the render shape for major bodies + Ceres/Pluto. */
-	radii?: { a: number; b: number; c: number };
+	/** Triaxial radii (km); the render shape for major bodies + Ceres/Pluto.
+	 *  `source` names the fit when the body appears in no kernel, so the footer
+	 *  credits the paper rather than the PCK. */
+	radii?: {
+		a: number;
+		b: number;
+		c: number;
+		source?: MeasuredShapeSource;
+		reference?: OrientationReference;
+	};
 	/** Scalar render radius (km) from the Wikidata radius — the render-size
 	 *  fallback for bodies with no PCK radii or SBDB diameter (most TNO dwarfs). */
 	radius_km?: number;
 	/** IAU J2000 pole RA/Dec (deg); the lineup's true axial tilt. `source` names
 	 *  the publisher when it isn't the PCK — small-body members tilt on DAMIT
 	 *  lightcurve poles, which the footer credits separately. */
-	pole?: { ra: number; dec: number; source?: 'lightcurve' | 'occultation' };
+	pole?: { ra: number; dec: number; source?: OrientationSource };
 	/** SBDB geometric albedo (small bodies only). */
 	albedo?: number;
 	/** SBDB taxonomic type — SMASS else Tholen (small bodies only). */
@@ -559,14 +572,16 @@ export interface GlobalObjectData {
 	/** Refit-from-CK attitude stream (probes with NAIF CK kernels). Loaded
 	 *  lazily on focus; supersedes `pointing` over its coverage window. */
 	attitude?: ProbeAttitude;
-	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis).
-	 *  When present, this is the shape the 3D scene renders — supersedes the
+	/** Triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis). When
+	 *  present, this is the shape the 3D scene renders — supersedes the
 	 *  Wikidata radius and SBDB diameter as the authoritative size. */
 	radii?: { a: number; b: number; c: number };
-	/** Which table the radii were read off: the PCK, or the occultation fits of
-	 *  the four ringed small bodies no kernel covers. Decides who the sidebar
-	 *  credits for the size. */
-	radii_source?: 'pck' | 'occultation';
+	/** Which table the radii were read off: the PCK, or a published fit for a
+	 *  body no kernel covers. Decides who the sidebar credits for the size. */
+	radii_source?: 'pck' | MeasuredShapeSource;
+	/** The work that fitted the ellipsoid, present with a measured
+	 *  `radii_source`. Often not the paper the pole came from. */
+	radii_reference?: OrientationReference;
 	sbdb?: {
 		neo?: boolean;
 		pha?: boolean;

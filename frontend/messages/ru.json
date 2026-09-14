@@ -1212,6 +1212,7 @@
 	"source_sbdb_role": "размеры, альбедо и спектральные типы",
 	"source_iau_wgccre_role": "вращение и радиусы",
 	"source_spice_pck_role": "опорные ядра",
+	"source_shape_role": "размер и форма",
 	"source_spin_pole_role": "ось вращения и период",
 	"tooltip_rotation_period": "Время одного полного оборота вокруг оси",
 	"tooltip_absolute_magnitude": "Собственная яркость объекта",

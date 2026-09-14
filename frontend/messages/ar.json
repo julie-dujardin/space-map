@@ -1241,6 +1241,7 @@
 	"source_sbdb_role": "الأحجام والبياض والأنواع الطيفية",
 	"source_iau_wgccre_role": "الدوران وأنصاف الأقطار",
 	"source_spice_pck_role": "نوى مرجعية",
+	"source_shape_role": "الحجم والشكل",
 	"source_spin_pole_role": "محور الدوران وفترة الدوران",
 	"tooltip_rotation_period": "الزمن اللازم لدورة كاملة حول محوره",
 	"tooltip_absolute_magnitude": "السطوع الذاتي للجرم",

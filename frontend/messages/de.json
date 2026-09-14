@@ -1281,6 +1281,7 @@
 	"source_sbdb_role": "Größen, Albedos & Spektraltypen",
 	"source_iau_wgccre_role": "Rotation & Radien",
 	"source_spice_pck_role": "Referenzkernel",
+	"source_shape_role": "Größe & Form",
 	"source_spin_pole_role": "Rotationsachse & Rotationsperiode",
 	"metadata_sources_prefix": "Metadaten:",
 	"source_wikimedia_commons_name": "Wikimedia Commons",

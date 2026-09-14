@@ -38,6 +38,7 @@
 		<SourcesFooter
 			global={null}
 			pck={lineup.pck}
+			works={lineup.shapeWorks}
 			lightcurvePole={lineup.lightcurvePole}
 			wikidata={lineup.wikidata}
 			sbdb={lineup.sbdb}

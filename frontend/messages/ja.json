@@ -1271,6 +1271,7 @@
 	"source_sbdb_role": "サイズ・アルベド・スペクトル型",
 	"source_iau_wgccre_role": "自転と半径",
 	"source_spice_pck_role": "基準カーネル",
+	"source_shape_role": "大きさと形状",
 	"source_spin_pole_role": "自転軸と自転周期",
 	"tooltip_rotation_period": "自転軸の周りを1回転するのに要する時間",
 	"tooltip_absolute_magnitude": "天体固有の明るさ",

@@ -19,7 +19,7 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.object_names import NAME_ENTITIES
-from space_map_data.constants.occultation_shapes import occultation_radii
+from space_map_data.constants.measured_shapes import measured_shape_references
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.ephemeris import (
     ephemeris_accuracy_for,
@@ -107,14 +107,19 @@ K_LOCALIZED = 5500
 
 _QID_CURRENCY = "Q8142"
 
-# The radii table is SPICE PCK except for these, fitted from occultation chords.
-_OCCULTATION_RADII_IDS = frozenset(occultation_radii())
+# The radii table is SPICE PCK except for these, each fitted by a named work.
+_MEASURED_SHAPE_REFERENCES = measured_shape_references()
 
 
-def radii_source(naif_id: int) -> str:
+def radii_block(naif_id: int) -> dict:
     """Who measured this body's ellipsoid — the sidebar credits them for the
-    size rows, which a spin pole says nothing about."""
-    return "occultation" if naif_id in _OCCULTATION_RADII_IDS else "pck"
+    size rows, which a spin pole says nothing about. A measured shape names its
+    own work, because that is often not the paper the pole came from."""
+    measured = _MEASURED_SHAPE_REFERENCES.get(naif_id)
+    if measured is None:
+        return {"radii_source": "pck"}
+    source, reference = measured
+    return {"radii_source": source, "radii_reference": dict(reference._asdict())}
 
 
 def hash_bucket(obj_id: str, n_buckets: int) -> int:
@@ -611,11 +616,11 @@ def _build_global(
         data["nut_prec"] = nut_prec[obj.naif_id]
 
     # Triaxial radii (km, along body-fixed X, Y, Z). The table is PCK except for
-    # the four ringed small bodies fitted from occultation chords, and the
-    # sidebar credits a different work for each, so the shape says which.
+    # the small bodies no kernel covers, and the sidebar credits a different
+    # work for each, so the shape carries its own citation.
     if obj.naif_id is not None and obj.naif_id in radii:
         data["radii"] = radii[obj.naif_id]
-        data["radii_source"] = radii_source(obj.naif_id)
+        data.update(radii_block(obj.naif_id))
 
     # Gravitational parameter (km^3/s^2) from SPICE PCK
     if obj.naif_id is not None and obj.naif_id in gms:

@@ -13,10 +13,11 @@ vi.mock('$lib/paraglide/messages.js', () => ({
 	source_spice_pck_name: () => 'NASA SPICE PCK kernels (NAIF)',
 	source_spice_pck_role: () => 'reference kernels',
 	source_damit_name: () => 'DAMIT',
-	source_spin_pole_role: () => 'spin pole & rotation period'
+	source_spin_pole_role: () => 'spin pole & rotation period',
+	source_shape_role: () => 'size & shape'
 }));
 
-import { orientationCredits } from './orientation-sources';
+import { measuredShapeCredit, orientationCredits } from './orientation-sources';
 
 const MORGADO = {
 	title: 'Morgado et al. 2021 (A&A 652, A141)',
@@ -49,9 +50,24 @@ describe('orientationCredits', () => {
 		expect(orientationCredits('occultation')).toEqual([]);
 	});
 
+	it('credits the paper a photometric pole was fitted in', () => {
+		// Varuna's pole comes from 19 years of light-curve amplitude, not DAMIT.
+		const [credit] = orientationCredits('photometry', MORGADO);
+		expect(credit.key).toBe(MORGADO.url);
+	});
+
 	it('gives both surfaces a label: compact for the sidebar, full for the popover', () => {
 		const [iau] = orientationCredits('pck');
 		expect(iau.short).toBe('IAU WGCCRE');
 		expect(iau.long.length).toBeGreaterThan(iau.short.length);
+	});
+});
+
+describe('measuredShapeCredit', () => {
+	it('credits the size rows separately from the pole', () => {
+		// Bienor's ellipsoid and its pole are seven years and two papers apart.
+		const credit = measuredShapeCredit(MORGADO);
+		expect(credit.key).toBe(MORGADO.url);
+		expect(credit.role).toBe('size & shape');
 	});
 });

@@ -12,7 +12,7 @@ from space_map_data.export.objects.writer import (
     _iso_currency_code,
     build_model_sources,
     hash_bucket,
-    radii_source,
+    radii_block,
     render_quality,
     write_object_bundles,
 )
@@ -301,12 +301,24 @@ class TestBuildModelSources:
         assert out == {}
 
 
-class TestRadiiSource:
+class TestRadiiBlock:
     """Which table a body's ellipsoid was read off, so the sidebar credits it."""
 
     def test_kernel_body_is_pck(self):
-        assert radii_source(599) == "pck"
+        assert radii_block(599) == {"radii_source": "pck"}
+
+    def test_kernel_body_cites_no_paper(self):
+        assert "radii_reference" not in radii_block(599)
 
     def test_ringed_small_body_is_its_occultation_fit(self):
         # Chariklo — no PCK covers it; the chords give pole and limb together.
-        assert radii_source(2010199) == "occultation"
+        assert radii_block(2010199)["radii_source"] == "occultation"
+
+    def test_photometric_shape_is_not_called_an_occultation(self):
+        # Varuna's axes come from 19 years of light-curve amplitude, no chords.
+        assert radii_block(2020000)["radii_source"] == "photometry"
+
+    def test_measured_shape_cites_the_work_that_fitted_it(self):
+        # Bienor's pole is a 2017 paper, its ellipsoid a 2024 one — the size
+        # rows must credit the latter.
+        assert radii_block(2054598)["radii_reference"]["url"].endswith("202450833")

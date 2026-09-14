@@ -20,6 +20,7 @@ import {
 import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 import type { CategoryConfig } from '$lib/state/category-config';
+import type { Source as CitedSource } from '../sections/SourcesFooter.svelte';
 import * as m from '$lib/paraglide/messages.js';
 
 // A small-body zone earns a sphere lineup once enough members carry a measured
@@ -27,12 +28,25 @@ import * as m from '$lib/paraglide/messages.js';
 const SMALL_BODY_LINEUP_FLOOR = 3;
 
 // Only a PCK pole is the IAU's to credit; an asteroid lineup's poles come from
-// DAMIT lightcurve inversions instead. Named, not inlined — boolean groups
-// inside `$derived` lose their parens through the .svelte.ts transform.
+// DAMIT lightcurve inversions instead, and a centaur's ellipsoid from the paper
+// that fitted it. Named, not inlined — boolean groups inside `$derived` lose
+// their parens through the .svelte.ts transform.
 const hasPckPole = (mm: NotableMemberEntry) => !!mm.pole && !mm.pole.source;
+const hasPckRadii = (mm: NotableMemberEntry) => !!mm.radii && !mm.radii.source;
 const hasLightcurvePole = (mm: NotableMemberEntry) => mm.pole?.source === 'lightcurve';
 const hasPckGeometry = (mm: NotableMemberEntry) =>
-	!!mm.radii || mm.mass_kg != null || hasPckPole(mm);
+	hasPckRadii(mm) || mm.mass_kg != null || hasPckPole(mm);
+
+/** The distinct works behind the lineup's measured ellipsoids, deduped by URL —
+ *  one paper usually shapes several members of a small-body lineup. */
+function measuredShapeWorks(members: NotableMemberEntry[] | undefined): CitedSource[] {
+	const byUrl = new Map<string, CitedSource>();
+	for (const mm of members ?? []) {
+		const ref = mm.radii?.reference;
+		if (ref) byUrl.set(ref.url, { key: ref.url, label: ref.title, url: ref.url });
+	}
+	return [...byUrl.values()];
+}
 
 export interface LineupHeroDeps {
 	isGroupMode: () => boolean;
@@ -84,6 +98,9 @@ export class LineupHero {
 	readonly lightcurvePole: boolean;
 	readonly wikidata: boolean;
 	readonly sbdb: boolean;
+	// Papers behind the members whose ellipsoid no kernel holds — the lineup
+	// draws Bienor and Haumea on a fit, not on a PCK constant.
+	readonly shapeWorks: CitedSource[];
 	// The moon-lineup hero moves its credits to the members tab where the spheres
 	// render, so the overview footer drops them.
 	readonly overviewCredits: {
@@ -91,6 +108,7 @@ export class LineupHero {
 		lightcurvePole: boolean;
 		wikidata: boolean;
 		sbdb: boolean;
+		shapeWorks: CitedSource[];
 		imagery: ImageryCredit[];
 	};
 
@@ -249,6 +267,7 @@ export class LineupHero {
 			hasLineup && (d.notableMembers() ?? []).some((mm) => mm.radius_km != null)
 		);
 		this.sbdb = $derived(hasLineup && isSmallBodyLineup);
+		this.shapeWorks = $derived(hasLineup ? measuredShapeWorks(d.notableMembers()) : []);
 
 		// A lineup drawn only in the members tab leaves the overview footer with
 		// nothing to credit — the spheres it credits are a tab away. A page whose
@@ -256,12 +275,20 @@ export class LineupHero {
 		const lineupInMembersTab = $derived(this.isMoonLineup || (!this.hero && !!this.membersLineup));
 		this.overviewCredits = $derived(
 			lineupInMembersTab
-				? { pck: false, lightcurvePole: false, wikidata: false, sbdb: false, imagery: [] }
+				? {
+						pck: false,
+						lightcurvePole: false,
+						wikidata: false,
+						sbdb: false,
+						shapeWorks: [],
+						imagery: []
+					}
 				: {
 						pck: this.pck,
 						lightcurvePole: this.lightcurvePole,
 						wikidata: this.wikidata,
 						sbdb: this.sbdb,
+						shapeWorks: this.shapeWorks,
 						imagery: this.imagery
 					}
 		);

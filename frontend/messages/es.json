@@ -1281,6 +1281,7 @@
 	"source_sbdb_role": "tamaños, albedos y tipos espectrales",
 	"source_iau_wgccre_role": "rotación y radios",
 	"source_spice_pck_role": "núcleos de referencia",
+	"source_shape_role": "tamaño y forma",
 	"source_spin_pole_role": "eje de rotación y periodo",
 	"metadata_sources_prefix": "Metadatos:",
 	"source_wikimedia_commons_name": "Wikimedia Commons",

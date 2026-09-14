@@ -1263,6 +1263,7 @@
 	"source_sbdb_role": "tailles, albédos et types spectraux",
 	"source_iau_wgccre_role": "rotation et rayons",
 	"source_spice_pck_role": "noyaux de référence",
+	"source_shape_role": "taille et forme",
 	"source_spin_pole_role": "axe de rotation et période",
 	"tooltip_rotation_period": "Durée d'une rotation complète autour de son axe",
 	"tooltip_absolute_magnitude": "Luminosité intrinsèque de l'objet",

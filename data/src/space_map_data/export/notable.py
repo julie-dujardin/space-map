@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.measured_shapes import measured_shape_references
 from space_map_data.constants.orientation import ORIENTATION_SOURCE_PCK
 from space_map_data.export.images import (
     collect_feature_images,
@@ -54,7 +55,8 @@ class NotableObject:
     # bodies rather than the kind of call — one probe rarely did the same
     # thing at all of them.
     visits: list[dict] | None = None
-    radii: dict | None = None  # triaxial PCK radii {a, b, c} km; major bodies only
+    # Triaxial radii {a, b, c} km; a measured ellipsoid adds source + reference.
+    radii: dict | None = None
     radius_km: float | None = None  # Wikidata P2120 fallback when no radii/diameter
     pole: dict | None = None  # IAU J2000 pole {ra, dec} deg, for the lineup's true tilt
     albedo: float | None = None  # SBDB geometric albedo; small bodies only
@@ -78,6 +80,13 @@ class NotableObject:
     )
 
 
+# Bodies whose ellipsoid is a published fit rather than a kernel constant.
+_MEASURED_SHAPES = {
+    naif_id: {"source": source, "reference": dict(reference._asdict())}
+    for naif_id, (source, reference) in measured_shape_references().items()
+}
+
+
 def render_size(
     naif_id: int | None,
     qid: str | None,
@@ -89,8 +98,14 @@ def render_size(
 
     PCK triaxial radii take precedence; else the Wikidata radius (P2120), used
     for bodies with no SBDB diameter (most trans-Neptunian dwarfs).
+
+    A measured ellipsoid carries its ``source`` and the work that fitted it, the
+    way the pole carries its own: a lineup of small bodies must not credit the
+    PCK for a shape read off occultation chords.
     """
     if naif_id is not None and (pck := radii.get(naif_id)) is not None:
+        if (measured := _MEASURED_SHAPES.get(naif_id)) is not None:
+            return {**pck, **measured}, None
         return pck, None
     if units is not None and wikidata_entities is not None and qid is not None:
         wd = wikidata_entities.get_entity(qid)

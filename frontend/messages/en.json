@@ -1447,6 +1447,7 @@
 	"source_iau_wgccre_role": "rotation & radii",
 	"source_spice_pck_role": "reference kernels",
 	"source_damit_name": "DAMIT",
+	"source_shape_role": "size & shape",
 	"source_spin_pole_role": "spin pole & rotation period",
 	"metadata_sources_prefix": "Metadata:",
 	"source_wikimedia_commons_name": "Wikimedia Commons",

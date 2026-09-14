@@ -1281,6 +1281,7 @@
 	"source_sbdb_role": "dimensioni, albedi e tipi spettrali",
 	"source_iau_wgccre_role": "rotazione e raggi",
 	"source_spice_pck_role": "kernel di riferimento",
+	"source_shape_role": "dimensioni e forma",
 	"source_spin_pole_role": "asse di rotazione e periodo",
 	"metadata_sources_prefix": "Metadati:",
 	"source_wikimedia_commons_name": "Wikimedia Commons",

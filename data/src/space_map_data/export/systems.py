@@ -12,9 +12,9 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.occultation_shapes import (
-    occultation_orientations,
-    occultation_radii,
+from space_map_data.constants.measured_shapes import (
+    measured_orientations,
+    measured_radii,
 )
 from space_map_data.constants.orientation import (
     ORIENTATION_SOURCE_LIGHTCURVE,
@@ -68,8 +68,9 @@ def _read_orientation_csv(csv_path: Path, source: str) -> dict[int, dict]:
 
 def load_orientation(download_dir: Path) -> dict[int, dict]:
     """Orientation polynomials: SPICE PCK merged with DAMIT lightcurve spin and
-    occultation-derived poles of the ringed small bodies. PCK wins where both
-    exist; each record names its own ``source`` so the frontend credits it right.
+    the published poles of the small bodies no kernel covers. PCK wins where
+    both exist; each record names its own ``source`` so the frontend credits it
+    right.
     """
     tables = download_dir / "derived" / "position" / "tables"
     csv_path = tables / "orientation.csv"
@@ -86,10 +87,10 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
         result = {**damit, **result}  # PCK entries override DAMIT
         logger.info("Merged %d DAMIT spin-orientation records", added)
 
-    occultation = occultation_orientations()
-    added = sum(1 for naif in occultation if naif not in result)
-    result = {**occultation, **result}
-    logger.info("Merged %d occultation spin-orientation records", added)
+    measured = measured_orientations()
+    added = sum(1 for naif in measured if naif not in result)
+    result = {**measured, **result}
+    logger.info("Merged %d published spin-orientation records", added)
 
     by_source = Counter(record["source"] for record in result.values())
     logger.info("Loaded %d orientation records %s", len(result), dict(by_source))
@@ -465,8 +466,8 @@ def ring_block(meta: dict) -> dict:
 
 
 def load_radii(download_dir: Path) -> dict[int, dict]:
-    """Load triaxial radii, SPICE radii.csv merged with the occultation-fitted
-    ellipsoids of the ringed small bodies.
+    """Load triaxial radii, SPICE radii.csv merged with the measured ellipsoids
+    of the small bodies no kernel covers.
 
     Returns {naif_id: {a, b, c}} in km along body-fixed X, Y, Z. PCK radii win
     where both exist.
@@ -474,8 +475,8 @@ def load_radii(download_dir: Path) -> dict[int, dict]:
     csv_path = download_dir / "derived" / "position" / "tables" / "radii.csv"
     if not csv_path.exists():
         logger.warning("No radii CSV at %s", csv_path)
-        return dict(occultation_radii())
-    result: dict[int, dict] = dict(occultation_radii())
+        return dict(measured_radii())
+    result: dict[int, dict] = dict(measured_radii())
     with csv_path.open(newline="") as f:
         for row in csv.DictReader(f):
             naif_id = int(row["naif_id"])

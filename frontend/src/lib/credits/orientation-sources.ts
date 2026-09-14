@@ -1,10 +1,11 @@
 /**
- * Who published a body's rotational elements.
+ * Who published a body's rotational elements, and who measured its shape.
  *
- * The export merges three disjoint sets into one orientation table — the
+ * The export merges four disjoint sets into one orientation table — the
  * IAU/NAIF PCK constants, poles converted from DAMIT's lightcurve inversions,
- * and the occultation fits of the four ringed small bodies — and tags each
- * record with its `source` (see `load_orientation` in export/systems.py).
+ * and the occultation and photometric fits of the small bodies no kernel
+ * covers — and tags each record with its `source` (see `load_orientation` in
+ * export/systems.py). The last two name their own paper on the record.
  *
  * Single source of truth for both surfaces that credit a pole: the detail
  * sidebar, which quotes the rotation period as a value, and the scene's
@@ -12,7 +13,11 @@
  */
 import * as m from '$lib/paraglide/messages.js';
 
-export type OrientationSource = 'pck' | 'lightcurve' | 'occultation';
+/** A fit published as a named work, so the record carries its own citation.
+ *  Tags a pole and, separately, an ellipsoid — often from different papers. */
+export type MeasuredShapeSource = 'occultation' | 'photometry';
+
+export type OrientationSource = 'pck' | 'lightcurve' | MeasuredShapeSource;
 
 export interface OrientationReference {
 	title: string;
@@ -54,20 +59,10 @@ export function orientationCredits(
 				role: m.source_spin_pole_role()
 			}
 		];
-	// The ringed small bodies appear in no kernel; their pole comes from the
-	// occultation paper the record names, so there is nothing generic to credit.
-	if (source === 'occultation')
-		return reference
-			? [
-					{
-						key: reference.url,
-						short: reference.title,
-						long: reference.title,
-						url: reference.url,
-						role: m.source_spin_pole_role()
-					}
-				]
-			: [];
+	// These bodies appear in no kernel; their pole comes from the paper the
+	// record names, so there is nothing generic to credit.
+	if (source === 'occultation' || source === 'photometry')
+		return reference ? [namedWorkCredit(reference, m.source_spin_pole_role())] : [];
 	// The IAU working group sets the elements, NAIF is where we read them.
 	return [
 		{
@@ -85,4 +80,21 @@ export function orientationCredits(
 			role: m.source_spice_pck_role()
 		}
 	];
+}
+
+/** Credit for the work that fitted a body's ellipsoid. Separate from the pole:
+ *  a shape measured off occultation chords and a pole from years of photometry
+ *  are routinely two different papers. */
+export function measuredShapeCredit(reference: OrientationReference): OrientationCreditEntry {
+	return namedWorkCredit(reference, m.source_shape_role());
+}
+
+function namedWorkCredit(reference: OrientationReference, role: string): OrientationCreditEntry {
+	return {
+		key: reference.url,
+		short: reference.title,
+		long: reference.title,
+		url: reference.url,
+		role
+	};
 }
