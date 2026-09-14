@@ -598,7 +598,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "{count} Panorama", "countPlural=other": "{count} Panoramen" }
+			"match": {
+				"countPlural=one": "{count} Panorama",
+				"countPlural=other": "{count} Panoramen"
+			}
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",

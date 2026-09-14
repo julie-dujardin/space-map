@@ -634,7 +634,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "{count} 件", "countPlural=other": "{count} 件" }
+			"match": {
+				"countPlural=one": "{count} 件",
+				"countPlural=other": "{count} 件"
+			}
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",

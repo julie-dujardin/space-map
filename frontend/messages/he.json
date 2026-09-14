@@ -598,7 +598,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "פנורמה {count}", "countPlural=other": "{count} פנורמות" }
+			"match": {
+				"countPlural=one": "פנורמה {count}",
+				"countPlural=other": "{count} פנורמות"
+			}
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",

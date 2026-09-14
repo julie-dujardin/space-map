@@ -532,7 +532,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "{count} 张全景图", "countPlural=other": "{count} 张全景图" }
+			"match": {
+				"countPlural=one": "{count} 张全景图",
+				"countPlural=other": "{count} 张全景图"
+			}
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
