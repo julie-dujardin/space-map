@@ -16,6 +16,7 @@ the traverse.
 
 import gzip
 import logging
+from collections import Counter
 import re
 import shutil
 from functools import cache
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import orjson
+from tqdm import tqdm
 from PIL import Image
 
 from space_map_data.export.sidecar_io import write_atomic
@@ -93,12 +95,8 @@ def _seconds(iso: str | None) -> str | None:
     return re.sub(r"\.\d+(?=Z$)", "", iso) if iso else None
 
 
-def _entry(meta: dict) -> dict | None:
-    """The exported shape of one product, or None with the reason logged."""
-    skip = _skip_reason(meta)
-    if skip:
-        logger.info("Panorama %s not exported: %s", meta.get("id"), skip)
-        return None
+def _entry(meta: dict) -> dict:
+    """The exported shape of one product the caller has found exportable."""
     position = meta["position"]
     coverage = meta.get("coverage") or {}
     source_coverage = meta.get("source_coverage") or {}
@@ -152,31 +150,43 @@ def load_panoramas(
             " every published panorama. Mount the share, or pass an empty"
             " directory to publish none on purpose."
         )
-    for catalog_path in sorted(derived_dir.glob("*/catalog.json")):
-        catalog = orjson.loads(catalog_path.read_bytes())
-        for item in catalog.get("panoramas", []):
-            meta_path = derived_dir / item["metadata"]
-            meta = orjson.loads(meta_path.read_bytes())
-            entry = _entry(meta)
-            if entry is None:
-                continue
-            folder = meta_path.parent
-            preview = folder / meta["preview"] if meta.get("preview") else None
-            by_body.setdefault(meta["body_id"], []).append(
-                Product(entry, folder / meta["image"], preview)
-            )
+    catalogs = [
+        (path, orjson.loads(path.read_bytes()).get("panoramas", []))
+        for path in sorted(derived_dir.glob("*/catalog.json"))
+    ]
+    skipped: Counter[str] = Counter()
+    total = sum(len(items) for _, items in catalogs)
+    with tqdm(total=total, desc="Panoramas", unit="pano") as progress:
+        for _, items in catalogs:
+            for item in items:
+                progress.update(1)
+                meta_path = derived_dir / item["metadata"]
+                meta = orjson.loads(meta_path.read_bytes())
+                reason = _skip_reason(meta)
+                if reason:
+                    skipped[reason] += 1
+                    logger.debug("Panorama %s not exported: %s", meta.get("id"), reason)
+                    continue
+                folder = meta_path.parent
+                preview = folder / meta["preview"] if meta.get("preview") else None
+                by_body.setdefault(meta["body_id"], []).append(
+                    Product(_entry(meta), folder / meta["image"], preview)
+                )
     for body_id, entries in by_body.items():
         entries.sort(key=lambda p: (p.entry.get("mission", ""), p.entry["time"]))
-        by_body[body_id] = _dedupe(entries)
+        by_body[body_id], repeats = _dedupe(entries)
+        if repeats:
+            skipped["repeats an earlier time and place"] += repeats
+    exported = sum(len(v) for v in by_body.values())
     logger.info(
-        "Panoramas: %d exportable across %d bodies",
-        sum(len(v) for v in by_body.values()),
-        len(by_body),
+        "Panoramas: %d of %d exported across %d bodies", exported, total, len(by_body)
     )
+    for reason, count in skipped.most_common():
+        logger.info("  %6d skipped: %s", count, reason)
     return by_body
 
 
-def _dedupe(entries: list[Product]) -> list[Product]:
+def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
     """One product per (time, lat, lon): the viewer addresses a panorama by
     that triple, so a second rendition of the same mosaic is unreachable."""
     seen: set[tuple] = set()
@@ -185,14 +195,11 @@ def _dedupe(entries: list[Product]) -> list[Product]:
         entry = product.entry
         key = (entry["time"], entry["lat"], entry["lon"])
         if key in seen:
-            logger.info(
-                "Panorama %s not exported: same time and place as an earlier one",
-                entry["id"],
-            )
+            logger.debug("Panorama %s repeats an earlier time and place", entry["id"])
             continue
         seen.add(key)
         kept.append(product)
-    return kept
+    return kept, len(entries) - len(kept)
 
 
 @cache
