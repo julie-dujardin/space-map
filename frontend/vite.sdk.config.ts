@@ -141,7 +141,7 @@ function bundledTypes(outDir: string): Plugin {
 							enabled: true,
 							reportFolder,
 							reportFileName: 'spacemap.api.md',
-							reportTempFolder: `${outDir}/api-report-temp`
+							reportTempFolder: `${scratch}/api-report-temp`
 						},
 						docModel: { enabled: false },
 						tsdocMetadata: { enabled: false },
@@ -281,7 +281,9 @@ export default defineConfig(({ mode }) => {
 		worker: { format: 'es' },
 		build: {
 			outDir: npm ? 'dist/sdk-npm' : 'dist/sdk',
-			sourcemap: true,
+			// The package would carry more sourcemap than code, and the source it
+			// maps to is on GitHub; the CDN copy keeps one, having no other.
+			sourcemap: !npm,
 			lib: {
 				entry: here('./src/sdk/index.ts'),
 				name: 'spacemap',

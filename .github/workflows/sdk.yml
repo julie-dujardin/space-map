@@ -1,0 +1,91 @@
+name: sdk
+
+# Standalone check on PRs; a tag is what publishes.
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - frontend/**
+      - .github/workflows/sdk.yml
+  push:
+    tags:
+      - sdk-v*
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.node-version
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: cd frontend && pnpm install --frozen-lockfile
+
+      # src/lib/fetch/position/labels.ts reads the compiled messages, and they
+      # are generated rather than committed.
+      - name: Compile paraglide messages
+        run: cd frontend && npx paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide
+
+      # The CDN copy first: only that build carries the gzip budget.
+      - name: Build the CDN bundle
+        run: cd frontend && pnpm build:sdk
+
+      - name: Build and check the package
+        run: cd frontend && pnpm test:sdk
+
+  publish:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/sdk-v')
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      # Trusted publishing: npm takes an OIDC token instead of a secret.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.node-version
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # Trusted publishing needs npm 11.5.1 or newer, whatever Node ships with.
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: cd frontend && pnpm install --frozen-lockfile
+
+      - name: Compile paraglide messages
+        run: cd frontend && npx paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide
+
+      - name: Build and check the package
+        run: cd frontend && pnpm test:sdk
+
+      # A tag that disagrees with the manifest would publish a version nobody
+      # can find from the repo, and the number cannot be reused.
+      - name: Check the tag matches the version
+        run: |
+          version=$(node -p "require('./frontend/dist/sdk-npm/package.json').version")
+          tagged="${GITHUB_REF_NAME#sdk-v}"
+          [[ "$version" == "$tagged" ]] \
+            || { echo "ERROR: tag $GITHUB_REF_NAME does not match version $version" >&2; exit 1; }
+
+      - name: Publish
+        run: cd frontend/dist/sdk-npm && npm publish --access public

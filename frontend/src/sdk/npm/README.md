@@ -1,15 +1,15 @@
 # spacemap
 
-The map of the Solar System from [spacemap.co](https://spacemap.co), for other
-pages: bodies, spacecraft and their orbits over time, in a container of your
-own. There is a flat map too, of one body's surface, in a projection of your
-choosing.
+The map of the Solar System from [spacemap.co](https://spacemap.co), on your
+website! There are flat maps too, and 360 panoramas from the surface.
 
 Distances are kilometres and angles are degrees throughout. Objects are named
-by their export id — `naif-399` for Earth, `naif-499` for Mars.
+by their export id — `naif-399` for Earth, `spkid-20000004` for Vesta,
+`norad_satcat-25544` for the ISS.
 
-Licensed MPL-2.0. No key, no quota. The credit line the map draws is not
-removable: the imagery it shows is published on those terms.
+Licensed MPL-2.0. No key, no quota for now. The credit line the map draws is
+not removable: the imagery it shows requires attribution. Some body textures
+are licensed for non-commercial use only.
 
 ## Getting it
 
