@@ -1,10 +1,16 @@
-# Mars surface imagery
+# Surface imagery
 
 This is a local data/download/processing pipeline, not an app export. It prioritizes
 official preprocessed color imagery, includes partial panoramas, and retains source
 files, credits, capture information, coverage, and localization evidence. No sky or
 ground is synthesized. The imagery cache lives in the sibling `space-map-downloads/`
 checkout, under `sources/images/panoramas/` and `derived/panoramas/`.
+
+It covers the missions whose archives publish enough to place a panorama without
+being asked twice: the Mars rovers and landers, and the Chang'e surface missions
+on the Moon. The handful of curated sphere previews fitted by hand to published
+flat imagery — Apollo, Venera, Huygens, Philae — are in
+[other-world-panoramas.md](other-world-panoramas.md) instead.
 
 ## Collections and completeness
 
@@ -17,6 +23,9 @@ checkout, under `sources/images/panoramas/` and `derived/panoramas/`.
 | `phoenix`, `pathfinder` | Official PIA13804 / PIA01466 hero panoramas | One preprocessed lander panorama each |
 | Perseverance Navcam | Every PDS release inventory, supported RGB cylindrical products | Localized, north-aligned sphere textures |
 | `curiosity-navcam` | Every PDS sol directory, thinned to one stopping point per 20 sols | Grayscale full/partial sphere textures with localization and north alignment |
+| `spirit-mosaic`, `opportunity-mosaic` | The whole-mission mosaic index of each PDS operations volume, cylindrical Navcam and Pancam | Grayscale sphere textures, placed on the corrected traverse |
+| `zhurong` | Every released NaTeCam frame, one eye of the stereo pair | Spheres mosaicked from the frames of each stop |
+| `yutu-2` | Every released panoramic camera frame of Chang'e 4's rover, one eye | Lunar far-side spheres mosaicked the same way |
 
 “Complete discovery” means traversing the specified source, **not** an exhaustive
 inventory of every image ever released by a mission. Unsupported names, monochrome
@@ -29,8 +38,11 @@ These bypass the image library's smaller versions. A changed master checksum
 invalidates its preview. Mastcam color is checked in the raster; the caption need
 not literally contain the word “color.”
 
-Curiosity Navcam grayscale is included in the preview as a separate collection;
-the download CLI uses an explicit `--include-monochrome` flag. Viking and raw-frame stitching are not yet
+Grayscale mosaics — Curiosity Navcam and both Mars Exploration Rover cameras —
+are separate collections, and the download CLI needs an explicit
+`--include-monochrome` flag for them. A Pancam mosaic covers one filter, so the
+colour these rovers are famous for would have to be composited from three
+products at a stop; that is not implemented. Viking and raw-frame stitching are not yet
 implemented. The lander timeline framework is available, but other missions' true
 first/last exposures still need a dedicated audit.
 
@@ -48,6 +60,11 @@ uv run space-map-panoramas all \
   --source-dir ../../space-map-downloads/sources/images/panoramas \
   --output-dir ../../space-map-downloads/derived/panoramas \
   --missions perseverance
+
+uv run python -m space_map_data.panoramas.clpds all \
+  --source-dir ../../space-map-downloads/sources/images/panoramas \
+  --output-dir ../../space-map-downloads/derived/panoramas \
+  --missions zhurong yutu-2
 ```
 
 There is no default sample limit. Full-resolution originals can consume hundreds
@@ -68,6 +85,98 @@ Do not run two writers against the same collection concurrently.
 - HTTP 429/502/503/504 responses receive bounded retries/backoff.
 - PDS `--width` sets sphere texture width, even values 256–8192; default 4096.
 - Curiosity Navcam requires `--missions curiosity --include-monochrome` explicitly.
+- The release-system missions support `download`, `process`, and `all`, and take
+  the same `--width` and `--limit`. They mosaic frames rather than fetch mosaics,
+  so a bounded run truncates the sweeps it has not finished collecting.
+
+### Mosaicking the frames China releases
+
+China's Lunar and Planetary Data Release System publishes no mosaics for any of
+its surface missions, only single frames, so the panoramas are built here. The
+web portal is a script application but the API behind it is open, and a record's
+download resolves to a direct URL on a second host.
+
+What makes building them defensible is that each frame's PDS4 label states where
+the craft stood and gives unit vectors for the four image corners and the centre.
+Nothing is estimated: the frames of a stop are grouped by the sequence they were
+taken in and where the craft was, and each is projected through its own camera
+model. Position needs no traverse table at all.
+
+Two conventions the archive never writes down had to be established, and both
+are checked rather than assumed:
+
+- **The pixel sign convention.** A rigid fit of the camera model onto the five
+  stated directions settles it, and lands within 0.04° — under two pixels. A
+  fit that misses by more than a pixel raises, because the alternative is a
+  smeared sphere that still looks plausible.
+- **The frame the vectors are in.** They are tagged as rover coordinates but
+  are east-north-up. Reading them north-east-up mirrors every panorama about
+  the meridian and still stitches seamlessly, so it cannot be caught by eye.
+  Zhurong's stated yaw against the bearing it actually drove settles it, and
+  the lunar labels settle it outright: they state the same position twice, once
+  as latitude and longitude and once as metres from the lander, which agree to
+  2 m over a kilometre. Any frame carrying both is checked on the way in.
+
+Confirmation comes from a source never used to build the sphere: on Mars the
+brightest horizon sky falls within 1-10° of the solar azimuth the label states,
+wherever the sun is inside a sweep.
+
+Three surface missions the release covers are left out. Chang'e 3 publishes its
+frames with no label at all, so nothing states where Yutu stood or looked. The
+Chang'e 5 and 6 landers aim their panoramic camera at the sampling area and at
+themselves, a dozen frames deep on ground a metre away; those stitch, but a
+camera that turns about its mast rather than its lens sees near ground from a
+different place in each frame, and the result pictures the lander's own deck
+rather than a view from it.
+
+Where frames do overlap, each is weighted by how squarely it looks at the point,
+so the best-centred one dominates instead of a dozen being averaged into a blur.
+The seams, the exposure steps between frames, and near-camera parallax are all
+kept. A panoramic camera is a stereo pair and one eye covers the sphere, so only
+one is read.
+
+### Where the Spirit and Opportunity mosaics live
+
+Both rovers have the same operations mosaic volume the later missions have:
+`mer2om_0xxx` for Spirit and `mer1om_0xxx` for Opportunity, under
+`planetarydata.jpl.nasa.gov/img/data/mer/`. Each indexes its whole mission in one
+`index/rdrindex.tab`, so there are no sol directories to crawl, and the
+cylindrical Navcam and Pancam entries are the same angular projection the later
+Navcam mosaics use.
+
+Three things differ from the later archives:
+
+- The label is attached to the front of the raster rather than delivered beside
+  it, and a whole mosaic can reach tens of megabytes. Only the first 64 KiB is
+  read to decide whether a product is usable.
+- The label states the site its projection is referenced to but never the drive.
+  Three things can supply it, in order: the `.nav` pointing-correction file,
+  which states the rover position outright; the `.lis` input list, whose source
+  frame names each carry their own site and drive; and failing both, a sol the
+  rover held one stop for. About half the mosaics have no pointing file, so the
+  input list carries most of them.
+- A Pancam mosaic covers a single filter, so a colour sweep appears as two or
+  three separate grayscale products at one stop.
+
+### Where the Perseverance mosaics live
+
+The Imaging Node's browsable mirror at `planetarydata.jpl.nasa.gov` still serves
+the release-7 delivery of `mars2020_navcam_ops_mosaic`, which stops at sol 658 in
+December 2022. Its `data/sol/` directories, its collection inventory, and the
+`M20_waypoints.json` panorama references on `mars.nasa.gov` all end there or
+resolve to files that are no longer public.
+
+The live archive is the bucket behind the PDS Image Atlas,
+`https://d1ejlg980osaur.cloudfront.net/m20/`. One directory per release holds
+only what that release delivered — `cumulative` for everything up to release 7,
+then `r8` upward — and each release inventory lists the collection as of that
+release. Discovery walks the release directories in order, so the first one that
+lists a product is the one that stores it. The bucket denies listing and
+CloudFront drops query strings, so release numbers are probed rather than
+enumerated: probing starts at release 8 and stops after eight consecutive
+missing directories. A release probe that answers 429 or 5xx is retried and, if
+it keeps failing, aborts the run — reading a live release as missing would hand
+its products to the next release, which does not serve them.
 
 ### Where the Perseverance mosaics live
 
@@ -101,6 +210,7 @@ horizon strip covers 100% of horizontal directions but only part of the sphere.
 | `observed_horizontal_percent` | Fraction of output columns with nontransparent pixels, when a mask exists |
 | `sphere_percent` | Nontransparent area weighted by solid angle, when geometry and a mask exist |
 | `canvas_percent` | Unweighted nontransparent texture area; **not** sphere coverage |
+| `includes_source_grid` | The archive's own coordinate overlay is still drawn on the texture |
 | `method` | How these measurements were obtained |
 
 Sphere area uses latitude-band weights `sin(top elevation) - sin(bottom elevation)`.
@@ -152,15 +262,63 @@ uv run python -m space_map_data.panoramas.localize \
 
 Mastcam-Z observation sol/sequence IDs are matched against all corresponding
 calibrated-frame gallery pages. Source frame site/drive counters must resolve to
-one identical PLACES location. A multi-sol hero panorama can be associated only
-when every sol in its capture interval is represented and all associated rover
-positions are identical. Missing or conflicting evidence leaves `position: null`.
-There is no nearest-sol or nearest-waypoint fallback.
+one identical PLACES location. Missing or conflicting evidence leaves
+`position: null`. There is no nearest-sol or nearest-waypoint fallback.
+
+A multi-sol hero panorama names no sequence, so it is placed by its capture
+interval instead. PLACES records one row per drive step: a sol with no row is a
+sol the rover did not move on, which makes it the clearest case rather than an
+unknown one. Such a panorama is placed when the position the rover already stood
+at, together with every drive step inside the interval, is one position.
 
 Results and query hashes are stored in `localizations.json`. After regenerating
 previews, reapply them offline with the same command plus `--apply-only`.
 Positions refer to the rover, not the exact camera center; `uncertainty_m: null`
-means unspecified, not zero. Curiosity/MER release localization remains pending.
+means unspecified, not zero.
+
+### The Spirit and Opportunity traverse
+
+The PDS Rover Motion Counter bundle carries only wheel odometry, which drifts
+over a mission-long drive; the science team corrected both traverses against
+orbital imagery, and the Analyst's Notebook publishes the result as
+[MERA_traverse.csv](https://an.rsl.wustl.edu/merb/merxbrowser/meri/MER/traverse/MERA_traverse.csv)
+and [MERB_traverse_5130.csv](https://an.rsl.wustl.edu/merb/merxbrowser/meri/MER/traverse/MERB_traverse_5130.csv),
+one row per drive with its site, drive, sol interval and corrected easting and
+northing.
+
+Spirit's corrected columns are metres in an equirectangular projection and
+Opportunity's are metres from its lander, so both are read as a displacement
+from the landing site rather than as absolute coordinates. The landing sites are
+the map-tied ones the MER
+[mission catalog](https://planetarydata.jpl.nasa.gov/img/data/mer/mer1om_0xxx/catalog/mission.cat)
+states: 14.5692°S, 175.4729°E for Spirit and 1.9462°S, 354.4734°E for
+Opportunity, in the MOLA IAU 2000 cartographic frame. Anchoring this way keeps
+the two rovers on one footing and avoids depending on an undocumented datum tie;
+it agrees with the archive to within a few hundred metres over the landing site
+and reproduces Opportunity's published 45.16 km odometry to 45.10 km. The table
+records no elevation, so `elevation_m` is null rather than guessed.
+
+### Placing the galleries the mosaic pipeline does not read
+
+```sh
+uv run python -m space_map_data.panoramas.place \
+  --source-dir ../../space-map-downloads/sources/images/panoramas/releases \
+  --output-dir ../../space-map-downloads/derived/panoramas
+```
+
+Most catalogued panoramas were kept off the map by a missing body and position,
+not by a missing sphere. `place` fills both in, and never overwrites a position
+an exact association already established.
+
+A lander has one published place for its whole mission: InSight from
+[Golombek et al. 2020](https://doi.org/10.1029/2020EA001248), Phoenix from the
+[Analyst's Notebook landing site page](https://an.rsl.wustl.edu/phx2008/help/landing_site.htm),
+Pathfinder from its own [PDS mission catalog](https://planetarydata.jpl.nasa.gov/img/data/mpf/imp/mpim_0001/catalog/mission.cat).
+
+Spirit and Opportunity gallery panoramas are placed by sol against the same
+corrected traverse the mosaics use, and only for a sol the rover spent standing
+in one place. A sol it drove on covers several stops and none of them is the one
+a panorama was taken from, so those stay unplaced.
 
 ## Stationary timelines
 

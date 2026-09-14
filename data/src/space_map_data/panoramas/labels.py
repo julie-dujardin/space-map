@@ -27,7 +27,7 @@ class Mosaic:
     missing: tuple[float, ...]
 
     def validate(self):
-        if self.frame not in {"SITE_FRAME", "LOCAL_LEVEL_FRAME"}:
+        if self.frame not in {"SITE_FRAME", "LOCAL_LEVEL_FRAME", "LANDER_FRAME"}:
             raise ValueError(f"Unsupported orientation frame: {self.frame}")
         if self.bands not in (1, 3) or min(self.width, self.height) < 1:
             raise ValueError("Expected a mono or RGB image")
@@ -100,7 +100,8 @@ def block(text: str, kind: str, name: str) -> str:
     return match[1]
 
 
-def read_pds3(text: str) -> Mosaic:
+def cylindrical_blocks(text: str) -> tuple[str, str]:
+    """The projection and raster blocks, once the mosaic is known to be supported."""
     projection = block(text, "GROUP", "SURFACE_PROJECTION_PARMS")
     raster = block(text, "OBJECT", "IMAGE")
     if value(projection, "MAP_PROJECTION_TYPE") != "CYLINDRICAL":
@@ -112,17 +113,12 @@ def read_pds3(text: str) -> Mosaic:
         or value(raster, "SAMPLE_BITS") != "16"
     ):
         raise ValueError("Unsupported PDS3 sample type")
-    sources = value(text, "SOURCE_PRODUCT_ID")
-    counters = set(re.findall(r"_F(\d{3})(\d{4})", sources))
-    if len(counters) != 1:
-        raise ValueError("Source frames span multiple or unknown rover positions")
-    site, drive = map(int, counters.pop())
-    if site != int(value(projection, "REFERENCE_COORD_SYSTEM_INDEX")):
-        raise ValueError("Source and projection site mismatch")
-    pointer = value(text, "^IMAGE")
-    match = re.fullmatch(r'\("([^"/]+)"\s*,\s*(\d+)\)', pointer)
-    if not match or match[1] != value(text, "PRODUCT_ID") + ".IMG":
-        raise ValueError("Unsupported image pointer")
+    return projection, raster
+
+
+def pds3_mosaic(text, projection, raster, *, site, drive, offset) -> Mosaic:
+    """A validated mosaic, given the rover position and raster offset its
+    archive states in its own way."""
     sx, sy = numbers(value(projection, "MAP_RESOLUTION"))
     result = Mosaic(
         value(text, "PRODUCT_ID"),
@@ -135,16 +131,158 @@ def read_pds3(text: str) -> Mosaic:
         int(value(raster, "LINES")),
         int(value(raster, "BANDS")),
         ">i2",
-        (int(match[2]) - 1) * int(value(text, "RECORD_BYTES")),
+        offset,
         numbers(value(projection, "START_AZIMUTH"))[0],
         sx,
         sy,
-        float(value(projection, "ZERO_ELEVATION_LINE")),
+        numbers(value(projection, "ZERO_ELEVATION_LINE"))[0],
         value(projection, "REFERENCE_COORD_SYSTEM_NAME"),
         detached_constants(text),
     )
     result.validate()
     return result
+
+
+def read_pds3(text: str) -> Mosaic:
+    projection, raster = cylindrical_blocks(text)
+    sources = value(text, "SOURCE_PRODUCT_ID")
+    counters = set(re.findall(r"_F(\d{3})(\d{4})", sources))
+    if len(counters) != 1:
+        raise ValueError("Source frames span multiple or unknown rover positions")
+    site, drive = map(int, counters.pop())
+    if site != int(value(projection, "REFERENCE_COORD_SYSTEM_INDEX")):
+        raise ValueError("Source and projection site mismatch")
+    pointer = value(text, "^IMAGE")
+    match = re.fullmatch(r'\("([^"/]+)"\s*,\s*(\d+)\)', pointer)
+    if not match or match[1] != value(text, "PRODUCT_ID") + ".IMG":
+        raise ValueError("Unsupported image pointer")
+    return pds3_mosaic(
+        text,
+        projection,
+        raster,
+        site=site,
+        drive=drive,
+        offset=(int(match[2]) - 1) * int(value(text, "RECORD_BYTES")),
+    )
+
+
+def read_mer_pds3(text: str, drive: int) -> Mosaic:
+    """A Mars Exploration Rover mosaic, whose label is attached to its raster.
+
+    The label states the site its projection is referenced to but not the drive
+    within it, which only the pointing-correction file beside it records.
+    """
+    projection, raster = cylindrical_blocks(text)
+    pointer = value(text, "^IMAGE")
+    if not re.fullmatch(r"\d+", pointer):
+        raise ValueError("Unsupported image pointer")
+    return pds3_mosaic(
+        text,
+        projection,
+        raster,
+        site=int(value(projection, "REFERENCE_COORD_SYSTEM_INDEX")),
+        drive=drive,
+        offset=(int(pointer) - 1) * int(value(text, "RECORD_BYTES")),
+    )
+
+
+def pds4_field(node, path):
+    found = node.find(path)
+    if found is None or found.text is None:
+        raise ValueError(f"Missing PDS4 field: {path}")
+    return found.text.strip()
+
+
+# Every sample type the supported PDS4 mosaics are stored in.
+PDS4_SAMPLES = {
+    "UnsignedByte": "|u1",
+    "SignedLSB2": "<i2",
+    "SignedMSB2": ">i2",
+    "UnsignedLSB2": "<u2",
+    "UnsignedMSB2": ">u2",
+}
+
+
+def pds4_raster(root, get, samples: dict[str, str]):
+    """The raster a PDS4 mosaic points at, once its samples are supported."""
+    raster = root.find(".//Array_3D_Image")
+    if raster is None or get(raster, "axis_index_order") != "Last Index Fastest":
+        raise ValueError("Unsupported raster layout")
+    axes = sorted(
+        raster.findall("Axis_Array"), key=lambda n: int(get(n, "sequence_number"))
+    )
+    if [get(n, "axis_name") for n in axes] != ["Band", "Line", "Sample"]:
+        raise ValueError("Unsupported raster axes")
+    sample = get(raster, "Element_Array/data_type")
+    if sample not in samples:
+        raise ValueError(f"Unsupported PDS4 sample type: {sample}")
+    return raster, [int(get(n, "elements")) for n in axes], samples[sample]
+
+
+def pds4_mosaic(root, get, projection, raster, shape, *, site, drive, dtype) -> Mosaic:
+    bands, height, width = shape
+    result = Mosaic(
+        get(root, ".//alternate_id"),
+        int(get(root, ".//start_sol_number")),
+        site,
+        drive,
+        get(root, ".//start_date_time"),
+        get(root, ".//stop_date_time"),
+        width,
+        height,
+        bands,
+        dtype,
+        int(get(raster, "offset")),
+        float(get(projection, ".//start_azimuth")),
+        float(get(projection, ".//pixel_scale_x")),
+        float(get(projection, ".//pixel_scale_y")),
+        float(get(projection, ".//zero_elevation_line")),
+        get(projection, ".//coordinate_space_frame_type"),
+        tuple(
+            float(get(raster, f"Special_Constants/{k}"))
+            for k in ("missing_constant", "invalid_constant")
+        ),
+    )
+    result.validate()
+    return result
+
+
+def read_insight_pds4(text: str) -> Mosaic:
+    """An InSight mosaic, which never moved and says so.
+
+    The lander's projection is the one Perseverance uses, referenced to a frame
+    that cannot travel: its site and drive are fixed, and its place is the
+    landing site rather than anything a localization states.
+    """
+    root = ET.fromstring(text)
+    for node in root.iter():
+        node.tag = node.tag.split("}")[-1]
+    get = pds4_field
+    projection = root.find(".//Map_Projection_Lander")
+    if (
+        projection is None
+        or get(projection, "lander_map_projection_name") != "Cylindrical"
+    ):
+        raise ValueError("Only angular cylindrical mosaics are supported")
+    if "CYL" not in get(root, ".//alternate_id"):
+        raise ValueError("Unsupported InSight product identity")
+    if get(root, ".//derived_image_type_name") != "IMAGE":
+        raise ValueError("Not an intensity product")
+    indices = {
+        get(n, "index_id"): int(get(n, "index_value_number"))
+        for n in projection.findall(".//Coordinate_Space_Index")
+    }
+    raster, shape, dtype = pds4_raster(root, get, PDS4_SAMPLES)
+    return pds4_mosaic(
+        root,
+        get,
+        projection,
+        raster,
+        shape,
+        site=indices.get("SITE", 0),
+        drive=indices.get("DRIVE", 0),
+        dtype=dtype,
+    )
 
 
 def read_pds4(text: str) -> Mosaic:
@@ -211,38 +349,7 @@ def read_pds4(text: str) -> Mosaic:
             raise ValueError("Local-level frame is not aligned to site north")
     if get(root, ".//derived_image_type_name") != "IMAGE":
         raise ValueError("Not an intensity product")
-    raster = root.find(".//Array_3D_Image")
-    if raster is None or get(raster, "axis_index_order") != "Last Index Fastest":
-        raise ValueError("Unsupported raster layout")
-    axes = sorted(
-        raster.findall("Axis_Array"), key=lambda n: int(get(n, "sequence_number"))
+    raster, shape, dtype = pds4_raster(root, get, {"SignedMSB2": ">i2"})
+    return pds4_mosaic(
+        root, get, projection, raster, shape, site=site, drive=drive, dtype=dtype
     )
-    if [get(n, "axis_name") for n in axes] != ["Band", "Line", "Sample"]:
-        raise ValueError("Unsupported raster axes")
-    bands, height, width = [int(get(n, "elements")) for n in axes]
-    if get(raster, "Element_Array/data_type") != "SignedMSB2":
-        raise ValueError("Unsupported PDS4 sample type")
-    result = Mosaic(
-        product_id,
-        int(get(root, ".//start_sol_number")),
-        site,
-        drive,
-        get(root, ".//start_date_time"),
-        get(root, ".//stop_date_time"),
-        width,
-        height,
-        bands,
-        ">i2",
-        int(get(raster, "offset")),
-        float(get(projection, ".//start_azimuth")),
-        float(get(projection, ".//pixel_scale_x")),
-        float(get(projection, ".//pixel_scale_y")),
-        float(get(projection, ".//zero_elevation_line")),
-        frame,
-        tuple(
-            float(get(raster, f"Special_Constants/{k}"))
-            for k in ("missing_constant", "invalid_constant")
-        ),
-    )
-    result.validate()
-    return result

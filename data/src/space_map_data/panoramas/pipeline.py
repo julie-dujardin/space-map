@@ -16,7 +16,16 @@ import httpx
 import numpy as np
 from PIL import Image
 
-from .labels import Mosaic, attached_constants, read_pds3, read_pds4
+from . import mer
+from .labels import (
+    Mosaic,
+    attached_constants,
+    read_insight_pds4,
+    read_mer_pds3,
+    read_pds3,
+    read_pds4,
+)
+from .missions import lander_position
 
 logger = logging.getLogger(__name__)
 ARCHIVE = "https://planetarydata.jpl.nasa.gov/img/data/"
@@ -32,15 +41,29 @@ M20_MOSAIC = "mars2020_navcam_ops_mosaic/"
 M20_INVENTORY = M20_MOSAIC + "data/collection_data_inventory.csv"
 M20_FIRST_RELEASE = 8
 M20_RELEASE_GAP = 8
+INSIGHT = ARCHIVE + "nsyt/insight_cameras/data/sol/"
+MER = ARCHIVE + "mer/"
+MOSAIC_COLLECTIONS = {
+    "curiosity": "curiosity-navcam",
+    "insight": "insight-mosaic",
+    "spirit": "spirit-mosaic",
+    "opportunity": "opportunity-mosaic",
+}
+MER_CAMERAS = ("NAVCAM", "PANCAM")
 PLACES = ARCHIVE + "msl/msl_places/data_localizations/localized_interp.csv"
 WAYPOINTS = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json"
 M20_PLACES = "https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_rover_places/data_localizations/best_interp.csv"
 POLICY = "https://www.jpl.nasa.gov/jpl-image-use-policy/"
 # VICAR declares the white DN but renders black grid annotations as DN 1.
 GRID_BLACK_DN = 1
+# Every overlay the supported archives draw. `GRID` is the Mars Exploration
+# Rover spelling of `GRID_OVERLAY`; `GRID_LABELS` omits the lines.
+GRID_MODES = {"GRID", "GRID_OVERLAY", "GRID_LABELS"}
 GRID_LABEL_VERTICAL_MARGIN = 32
 GRID_LABEL_SIDE_MARGIN = 48
 GRID_SEAM_MARGIN = 8
+# Enough of a raster to hold the label attached to its front.
+LABEL_PREFIX_BYTES = 1 << 16
 
 
 def write_json(path: Path, data):
@@ -81,6 +104,25 @@ def fetch(client: httpx.Client, url: str, path: Path, *, refresh=False) -> Path:
     return path
 
 
+def ranged_label(client: httpx.Client, url: str) -> str:
+    """The label of a raster it is attached to, without the megabytes after it.
+
+    An archive that attaches labels this way would otherwise charge a whole
+    image for every product that turns out to be unreadable.
+    """
+    headers = {"Range": f"bytes=0-{LABEL_PREFIX_BYTES - 1}"}
+    with client.stream("GET", url, headers=headers) as response:
+        if response.is_error:
+            response.read()
+        response.raise_for_status()
+        raw = bytearray()
+        for chunk in response.iter_bytes():
+            raw += chunk
+            if len(raw) >= LABEL_PREFIX_BYTES:
+                break
+    return label_text(bytes(raw).decode("latin-1"))
+
+
 def links(client, url, path, refresh=False):
     html = fetch(client, url, path, refresh=refresh).read_text()
     return sorted(
@@ -94,6 +136,8 @@ def links(client, url, path, refresh=False):
 
 
 def positions(mission: str, path: Path) -> dict:
+    if mission in mer.VOLUMES:
+        return mer.traverse_positions(mission, path)
     result = {}
     ambiguous = set()
     if mission == "curiosity" or path.suffix == ".csv":
@@ -211,9 +255,69 @@ def m20_mosaic_listings(client, root, *, refresh):
     return groups
 
 
+def insight_mosaic_listings(client, root, *, refresh):
+    """Every cylindrical mosaic InSight left, by the sol it was taken on.
+
+    The bundle files its products under one directory per sol, and only some
+    sols carry a mosaic at all, so the sols are walked rather than guessed.
+    """
+    groups: dict[int, list[tuple[str, str]]] = {}
+    for directory in links(client, INSIGHT, root / "sols.html", refresh):
+        match = re.fullmatch(r"(\d{4})/", directory)
+        if not match:
+            continue
+        url = f"{INSIGHT}{match[1]}/mipl/rdr/mosaic/"
+        try:
+            names = links(client, url, root / "listings" / f"{match[1]}.html", refresh)
+        except httpx.HTTPStatusError as error:
+            # Most sols have no mosaic directory at all.
+            if error.response.status_code != 404:
+                raise
+            continue
+        found = [(url, name) for name in names if re.fullmatch(r"\w*CYL\w*\.xml", name)]
+        if found:
+            groups[int(match[1])] = found
+    logger.info(
+        "InSight cylindrical mosaics: %s across %s sols",
+        sum(len(v) for v in groups.values()),
+        len(groups),
+    )
+    return groups
+
+
+def mer_mosaic_listings(client, root, mission, *, refresh):
+    volume = mer.VOLUMES[mission]
+    index = MER + volume + "/index/rdrindex."
+    groups = mer.mosaic_listings(
+        fetch(
+            client, index + "tab", root / "rdrindex.tab", refresh=refresh
+        ).read_text(),
+        fetch(
+            client, index + "lbl", root / "rdrindex.lbl", refresh=refresh
+        ).read_text(),
+        MER,
+        MER_CAMERAS,
+    )
+    if groups:
+        logger.info(
+            "%s cylindrical mosaics: %s across sols %s-%s",
+            mission,
+            sum(len(v) for v in groups.values()),
+            min(groups),
+            max(groups),
+        )
+    return groups
+
+
 def mosaic_listings(client, root, mission, *, start_sol, end_sol, refresh):
-    if mission == "perseverance":
-        groups = m20_mosaic_listings(client, root, refresh=refresh)
+    if mission in mer.VOLUMES or mission in {"perseverance", "insight"}:
+        groups = (
+            mer_mosaic_listings(client, root, mission, refresh=refresh)
+            if mission in mer.VOLUMES
+            else insight_mosaic_listings(client, root, refresh=refresh)
+            if mission == "insight"
+            else m20_mosaic_listings(client, root, refresh=refresh)
+        )
         for sol, products in sorted(groups.items()):
             if sol >= start_sol and (end_sol is None or sol <= end_sol):
                 yield sol, products
@@ -250,14 +354,29 @@ def download(
 ):
     root = source_dir / mission
     root.mkdir(parents=True, exist_ok=True)
-    position_url = PLACES if mission == "curiosity" else M20_PLACES
-    position_path = fetch(
-        client,
-        position_url,
-        root / "positions.csv",
-        refresh=refresh,
-    )
-    lookup = positions(mission, position_path)
+    # A lander saw everything from one published place; a rover needs a table.
+    fixed = lander_position(mission)
+    position_path = None
+    lookup: dict = {}
+    # Half the Mars Exploration Rover mosaics have no pointing file to name the
+    # drive; a sol the rover held one stop for names it just as exactly.
+    drives: dict = {}
+    if fixed:
+        position_url = fixed["source_url"]
+    else:
+        position_url = (
+            mer.TRAVERSE + mer.TRAVERSE_TABLES[mission]
+            if mission in mer.VOLUMES
+            else PLACES
+            if mission == "curiosity"
+            else M20_PLACES
+        )
+        position_path = fetch(
+            client, position_url, root / "positions.csv", refresh=refresh
+        )
+        lookup = positions(mission, position_path)
+        if mission in mer.VOLUMES:
+            drives = mer.traverse_drives(mission, position_path)
     accepted, rejected, seen = [], [], set()
     previous_sol = None
     for sol, products in mosaic_listings(
@@ -268,7 +387,13 @@ def download(
             continue
         taken = len(accepted)
         pattern = (
-            r"N_L\w+CYL\w+\.LBL"
+            # The Mars Exploration Rover index has already named the cylindrical
+            # mosaics of the cameras that map the ground.
+            r".+\.img"
+            if mission in mer.VOLUMES
+            else r"\w*CYL\w*\.xml"
+            if mission == "insight"
+            else r"N_L\w+CYL\w+\.LBL"
             if mission == "curiosity"
             else r"N_LRGB_\d+[X_]RZS_\d+_CYL_[LS]_\w+\.xml"
         )
@@ -281,31 +406,91 @@ def download(
             try:
                 # A name the archive does not serve is one bad product, not a
                 # reason to abandon a mission-long run.
-                label = fetch(
-                    client, url + name, root / "labels" / name, refresh=refresh
-                )
-                mosaic = (read_pds3 if mission == "curiosity" else read_pds4)(
-                    label.read_text()
-                )
-                if (mosaic.site, mosaic.drive) not in lookup:
+                if mission in mer.VOLUMES:
+                    # The raster is attached to its label, so the pointing file
+                    # decides whether the megabytes are worth fetching at all.
+                    stem = name.removesuffix(".img")
+                    stated = {}
+                    for kind, folder in (("nav", "pointing"), ("lis", "sources")):
+                        try:
+                            stated[kind] = fetch(
+                                client,
+                                f"{url}{stem}.{kind}",
+                                root / folder / f"{stem}.{kind}",
+                                refresh=refresh,
+                            ).read_text()
+                        except httpx.HTTPStatusError as error:
+                            if error.response.status_code != 404:
+                                raise
+                    counter = mer.mosaic_counter(
+                        stated.get("nav"), stated.get("lis"), url, sol, drives
+                    )
+                    if counter not in lookup:
+                        raise ValueError("No exact site/drive localization")
+                    image_url = url + name
+                    mosaic = read_mer_pds3(ranged_label(client, image_url), counter[1])
+                else:
+                    label = fetch(
+                        client, url + name, root / "labels" / name, refresh=refresh
+                    )
+                    read = (
+                        read_pds3
+                        if mission == "curiosity"
+                        else read_insight_pds4
+                        if mission == "insight"
+                        else read_pds4
+                    )
+                    mosaic = read(label.read_text())
+                if not fixed and (mosaic.site, mosaic.drive) not in lookup:
                     raise ValueError("No exact site/drive localization")
                 # Keep separate sweeps at the same stop, but not processing revisions.
-                revision_key = re.sub(r"\d{2}$", "", mosaic.product_id)
+                revision_key = (
+                    mosaic.product_id[:-1]
+                    if mission in mer.VOLUMES
+                    else re.sub(r"\d{2}$", "", mosaic.product_id)
+                )
                 if revision_key in seen:
                     continue
-                if mosaic.sol != sol or mosaic.product_id != Path(name).stem:
+                # InSight labels keep only the last three digits of the sol;
+                # the directory a product is filed under holds the whole number.
+                if mission == "insight" and mosaic.sol == sol % 1000:
+                    mosaic.sol = sol
+                if mosaic.sol != sol or mosaic.product_id != (
+                    Path(name).stem.upper()
+                    if mission in mer.VOLUMES
+                    else Path(name).stem
+                ):
                     raise ValueError("Product identity mismatch")
             except (ValueError, httpx.HTTPStatusError) as error:
                 rejected.append({"label_url": url + name, "reason": str(error)})
                 continue
-            image_url = urljoin(url, mosaic.product_id + ".IMG")
-            image = fetch(
-                client,
-                image_url,
-                root / "images" / (mosaic.product_id + ".IMG"),
-                refresh=refresh,
+            if mission in mer.VOLUMES:
+                label = image = fetch(
+                    client, image_url, root / "images" / name, refresh=refresh
+                )
+            elif mission == "insight":
+                image_url = urljoin(url, mosaic.product_id + ".VIC")
+                image = fetch(
+                    client,
+                    image_url,
+                    root / "images" / (mosaic.product_id + ".VIC"),
+                    refresh=refresh,
+                )
+            else:
+                image_url = urljoin(url, mosaic.product_id + ".IMG")
+                image = fetch(
+                    client,
+                    image_url,
+                    root / "images" / (mosaic.product_id + ".IMG"),
+                    refresh=refresh,
+                )
+            expected = (
+                mosaic.offset
+                + mosaic.width
+                * mosaic.height
+                * mosaic.bands
+                * np.dtype(mosaic.dtype).itemsize
             )
-            expected = mosaic.offset + mosaic.width * mosaic.height * mosaic.bands * 2
             if image.stat().st_size < expected:
                 raise ValueError(f"Truncated image: {image}")
             if not mosaic.missing:
@@ -319,7 +504,7 @@ def download(
                     "id": f"{mission}-{mosaic.product_id.lower()}",
                     "mission": mission,
                     "mosaic": asdict(mosaic),
-                    "position": lookup[(mosaic.site, mosaic.drive)],
+                    "position": fixed or lookup[(mosaic.site, mosaic.drive)],
                     "label": str(label.relative_to(root)),
                     "image": str(image.relative_to(root)),
                     "label_url": url + name,
@@ -327,7 +512,7 @@ def download(
                     "label_sha256": sha256(label),
                     "image_sha256": sha256(image),
                     "position_source_url": position_url,
-                    "position_sha256": sha256(position_path),
+                    "position_sha256": sha256(position_path) if position_path else None,
                 }
             )
             seen.add(revision_key)
@@ -368,6 +553,14 @@ def download(
     return accepted
 
 
+def label_text(raw: str) -> str:
+    """The label an archive attaches to the front of its raster."""
+    end = re.search(r"^END\s*$", raw, re.M)
+    if end is None:
+        raise ValueError("No attached PDS label")
+    return raw[: end.end()]
+
+
 def read_header(path: Path, mosaic: Mosaic) -> str:
     """Everything before the raster: the attached label and its VICAR image header."""
     with path.open("rb") as stream:
@@ -375,13 +568,32 @@ def read_header(path: Path, mosaic: Mosaic) -> str:
 
 
 def coordinate_grid_dn(header: str) -> float | None:
-    """Return the declared grid value so annotations never enter exported imagery."""
-    if not re.search(r"\bGRID\s*=\s*['\"]?GRID_OVERLAY['\"]?", header):
+    """The value an archive drew its coordinate overlay in, if it drew one.
+
+    A mosaic carries the whole overlay, its labels alone, or neither. Only the
+    overlay declares a value; labels are drawn black, which the removal treats
+    as annotation whatever else it is given.
+    """
+    match = re.search(r"\bGRID\s*=\s*'?([A-Z_]+)'?", header)
+    if match is None or match[1] == "NOGRID":
         return None
-    match = re.search(r"\bGRID_DN\s*=\s*([-+\d.eE]+)", header)
-    if match is None:
-        raise ValueError("Grid overlay has no declared DN")
-    return float(match.group(1))
+    if match[1] not in GRID_MODES:
+        raise ValueError(f"Unrecognized coordinate overlay: {match[1]}")
+    if match[1] == "GRID_LABELS":
+        return GRID_BLACK_DN
+    declared = re.search(r"\bGRID_DN\s*=\s*([-+\d.eE]+)", header)
+    # An overlay whose value the header never states can only have its black
+    # labels taken out; the lines stay, and the product is marked as keeping
+    # them rather than passed off as clean.
+    return GRID_BLACK_DN if declared is None else float(declared[1])
+
+
+def coordinate_grid_remains(header: str) -> bool:
+    """Whether an overlay was drawn that cannot be taken out completely."""
+    match = re.search(r"\bGRID\s*=\s*'?([A-Z_]+)'?", header)
+    if match is None or match[1] in {"NOGRID", "GRID_LABELS"}:
+        return False
+    return re.search(r"\bGRID_DN\s*=\s*([-+\d.eE]+)", header) is None
 
 
 def remove_coordinate_grid(pixels, valid, grid_dn):
@@ -516,8 +728,9 @@ def coverage(texture: Image.Image, mosaic: Mosaic) -> dict:
 
 def process(source_dir: Path, output_dir: Path, mission: str, *, width=4096):
     root = source_dir / mission
-    # Keep grayscale Navcam separate so rebuilding it cannot replace color Mastcam.
-    collection = "curiosity-navcam" if mission == "curiosity" else mission
+    # Keep an archive's mosaics separate from the curated galleries of the same
+    # rover, so rebuilding one cannot replace the other.
+    collection = MOSAIC_COLLECTIONS.get(mission, mission)
     selection = json.loads((root / "selection.json").read_text())
     entries = []
     for product in selection["products"]:
@@ -540,14 +753,19 @@ def process(source_dir: Path, output_dir: Path, mission: str, *, width=4096):
             "body": "mars",
             "body_id": "naif-499",
             "mission": mission,
-            "instrument": "Navcam",
+            "instrument": (
+                mer.instrument(mosaic.product_id)
+                if mission in mer.VOLUMES
+                else "IDC"
+                if mission == "insight"
+                else "Navcam"
+            ),
             "sol": mosaic.sol,
             "start_time": mosaic.start_time,
             "stop_time": mosaic.stop_time,
             "site": mosaic.site,
             "drive": mosaic.drive,
             "position": {
-                **product["position"],
                 "latitude_type": "planetocentric",
                 "longitude_direction": "east",
                 "longitude_range": [0, 360],
@@ -556,14 +774,23 @@ def process(source_dir: Path, output_dir: Path, mission: str, *, width=4096):
                 "reference_point": "rover localization",
                 "uncertainty_m": None,
                 "source_url": product["position_source_url"],
+                **product["position"],
             },
             "projection": "equirectangular",
             "width": width,
             "height": width // 2,
             "hfov_deg": 360,
             "vfov_deg": 180,
-            "north_azimuth_offset_deg": 0,
-            "pixel_convention": "pixel centers; left edge north; clockwise; top edge +90 degrees",
+            # A site frame is referenced to north, so the sphere is already
+            # aligned. A lander frame is referenced to the lander, and nothing
+            # in the label ties it to north, so no heading may be claimed.
+            "north_azimuth_offset_deg": None if mosaic.frame == "LANDER_FRAME" else 0,
+            "pixel_convention": (
+                "pixel centers; left edge is the frame's zero azimuth; clockwise; "
+                "top edge +90 degrees"
+                if mosaic.frame == "LANDER_FRAME"
+                else "pixel centers; left edge north; clockwise; top edge +90 degrees"
+            ),
             "source_coverage": {
                 "hfov_deg": min(360, mosaic.width / mosaic.scale_x),
                 "azimuth_start_deg": mosaic.azimuth,
@@ -571,12 +798,18 @@ def process(source_dir: Path, output_dir: Path, mission: str, *, width=4096):
                 "elevation_min_deg": (mosaic.zero_line - mosaic.height - 0.5)
                 / mosaic.scale_y,
                 "frame": mosaic.frame,
+                "frame_is_north_referenced": mosaic.frame != "LANDER_FRAME",
                 "holes": "alpha=0; no synthetic sky or ground",
             },
             "coverage_fraction": float(
                 np.count_nonzero(np.asarray(texture)[:, :, 3]) / (width * (width // 2))
             ),
-            "coverage": {**coverage(texture, mosaic), "includes_source_grid": False},
+            "coverage": {
+                **coverage(texture, mosaic),
+                "includes_source_grid": coordinate_grid_remains(
+                    read_header(root / product["image"], mosaic)
+                ),
+            },
             "color": "rgb" if mosaic.bands == 3 else "grayscale",
             "source_width": mosaic.width,
             "source_height": mosaic.height,

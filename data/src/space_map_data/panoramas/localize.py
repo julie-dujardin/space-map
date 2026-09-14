@@ -45,13 +45,25 @@ def localize(client, source_dir):
     fetch(client, M20_PLACES + ".xml", cache / "best_interp.csv.xml")
     lookup = positions("perseverance", table)
     table_hash = sha256(table)
+    # PLACES records one row per drive step, so a sol with no row is a sol the
+    # rover did not move on: it stood where the last earlier row left it.
+    timeline = []
     sol_counters = {}
     with table.open() as stream:
         for row in csv.DictReader(stream):
             if row["frame"] == "ROVER":
-                sol_counters.setdefault(int(row["sol"]), set()).add(
-                    (int(row["site"]), int(row["drive"]))
-                )
+                counter = (int(row["site"]), int(row["drive"]))
+                timeline.append((int(row["sol"]), counter))
+                sol_counters.setdefault(int(row["sol"]), set()).add(counter)
+
+    # PLACES is written in sol order, but sorting says so rather than trusting it.
+    timeline.sort(key=lambda row: row[0])
+
+    def standing_at(sol):
+        """Where the rover already was when a sol began."""
+        found = [counter for known, counter in timeline if known < sol]
+        return found[-1] if found else None
+
     inventory = json.loads((directory / "inventory.json").read_text())
     path = directory / "localizations.json"
     results = json.loads(path.read_text()) if path.exists() else {}
@@ -73,10 +85,16 @@ def localize(client, source_dir):
                 counters = set().union(
                     *(sol_counters.get(sol, set()) for sol in range(start, stop + 1))
                 )
+                # Only a sol with no row of its own needs the position the
+                # rover already stood at; adding it to an interval PLACES
+                # covers would invent a second position the rover never held.
                 if any(sol not in sol_counters for sol in range(start, stop + 1)):
-                    raise ValueError(
-                        "Capture interval is not fully represented in PLACES"
-                    )
+                    standing = standing_at(start)
+                    if standing is None and not counters:
+                        raise ValueError("Capture interval precedes the PLACES record")
+                    counters.add(standing or next(iter(counters)))
+                elif not counters:
+                    raise ValueError("Capture interval precedes the PLACES record")
                 method = (
                     "one identical PLACES position throughout published sol interval"
                 )

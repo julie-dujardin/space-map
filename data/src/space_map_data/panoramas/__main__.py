@@ -18,7 +18,7 @@ def cli():
     parser.add_argument(
         "--missions",
         nargs="+",
-        choices=["curiosity", "perseverance"],
+        choices=["curiosity", "perseverance", "spirit", "opportunity", "insight"],
         default=["perseverance"],
     )
     parser.add_argument("--source-dir", type=Path, default=PANORAMA_SOURCES_DIR)
@@ -59,9 +59,11 @@ def cli():
         parser.error(
             "Require positive limit and sol step, and an ordered, nonnegative sol range"
         )
-    if "curiosity" in args.missions and not args.include_monochrome:
+    monochrome = {"curiosity", "spirit", "opportunity"} & set(args.missions)
+    if monochrome and not args.include_monochrome:
         parser.error(
-            "Curiosity Navcam is monochrome; use color releases or explicitly opt in with --include-monochrome"
+            f"{', '.join(sorted(monochrome))} publish monochrome mosaics; use color "
+            "releases or explicitly opt in with --include-monochrome"
         )
     if args.width % 2 or not 256 <= args.width <= 8192:
         parser.error("Width must be even and between 256 and 8192")

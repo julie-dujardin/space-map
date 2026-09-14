@@ -141,8 +141,24 @@ def test_coordinate_grid_is_excluded_from_image(tmp_path):
 
 def test_coordinate_grid_declaration_requires_value():
     assert coordinate_grid_dn("GRID='NOGRID'") is None
-    with pytest.raises(ValueError, match="no declared DN"):
-        coordinate_grid_dn("GRID='GRID_OVERLAY'")
+    assert coordinate_grid_dn("") is None
+    assert coordinate_grid_dn("GRID='GRID_OVERLAY'") == pipeline.GRID_BLACK_DN
+
+
+def test_an_overlay_without_a_value_is_declared_to_remain():
+    """Only its black labels come out, so the product must not read as clean."""
+    assert pipeline.coordinate_grid_remains("GRID='GRID_OVERLAY'")
+    assert not pipeline.coordinate_grid_remains("GRID='GRID'  GRID_DN=15000")
+    assert not pipeline.coordinate_grid_remains("GRID='GRID_LABELS'")
+    assert not pipeline.coordinate_grid_remains("GRID='NOGRID'")
+
+
+def test_every_archive_spelling_of_the_overlay_is_removed():
+    """Mars Exploration Rover mosaics call it GRID, and may draw labels alone."""
+    assert coordinate_grid_dn("GRID='GRID'  GRID_DN=15000") == 15000
+    assert coordinate_grid_dn("GRID='GRID_LABELS'") == pipeline.GRID_BLACK_DN
+    with pytest.raises(ValueError, match="Unrecognized coordinate overlay"):
+        coordinate_grid_dn("GRID='HALFGRID'")
 
 
 def test_coordinate_grid_does_not_extend_into_missing_canvas():
@@ -277,7 +293,8 @@ def test_pds4_rejects_moving_sources():
         read_pds4(label.replace("_n0030110ncam", "_n0030111ncam", 1))
 
 
-def test_download_to_offline_catalog(tmp_path):
+def _offline_curiosity(tmp_path):
+    """Download and process one small Curiosity mosaic from a mock archive."""
     label = (FIXTURES / "curiosity.lbl").read_text()
     label = label.replace("7703", "360").replace("977", "90")
     label = (
@@ -306,7 +323,13 @@ def test_download_to_offline_catalog(tmp_path):
     color_catalog = output / "curiosity" / "catalog.json"
     color_catalog.parent.mkdir(parents=True)
     color_catalog.write_text('{"panoramas": [{"id": "color-mastcam"}]}')
-    entries = process(tmp_path / "sources", output, "curiosity", width=256)
+    return process(tmp_path / "sources", output, "curiosity", width=256), name
+
+
+def test_download_to_offline_catalog(tmp_path):
+    entries, name = _offline_curiosity(tmp_path)
+    output = tmp_path / "derived"
+    color_catalog = output / "curiosity" / "catalog.json"
     assert len(entries) == 1
     assert entries[0]["metadata"].startswith("curiosity-navcam/")
     assert entries[0]["sphere_ready"]
@@ -318,11 +341,30 @@ def test_download_to_offline_catalog(tmp_path):
     assert generated["north_azimuth_offset_deg"] == 0
     assert 0.4 < generated["coverage_fraction"] < 0.6
     assert generated["sources"]["image_sha256"]
+    assert generated["source_coverage"]["frame_is_north_referenced"]
     (tmp_path / "sources" / "curiosity" / "images" / (name + ".IMG")).write_bytes(
         b"corrupt"
     )
     with pytest.raises(ValueError, match="checksum"):
         process(tmp_path / "sources", output, "curiosity", width=256)
+
+
+def test_a_lander_frame_sphere_claims_no_heading(tmp_path, monkeypatch):
+    """A site frame is referenced to north, so the sphere is already aligned. A
+    lander frame is referenced to the lander, and no label ties it to north, so
+    the export must be left to report the heading as unknown."""
+    import space_map_data.panoramas.pipeline as module
+
+    real = module.read_pds3
+    monkeypatch.setattr(
+        module, "read_pds3", lambda text: replace(real(text), frame="LANDER_FRAME")
+    )
+    entries, _ = _offline_curiosity(tmp_path)
+    generated = json.loads((tmp_path / "derived" / entries[0]["metadata"]).read_text())
+
+    assert generated["north_azimuth_offset_deg"] is None
+    assert not generated["source_coverage"]["frame_is_north_referenced"]
+    assert "north" not in generated["pixel_convention"]
 
 
 def strip_constants(label: str) -> str:

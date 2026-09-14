@@ -91,20 +91,50 @@ class TestSelection:
             {"body_id": None},
             {"position": None},
             {"image": None},
-            {"coverage": {"includes_source_grid": True}},
             {"start_time": "", "capture_time": None},
         ],
         ids=[
             "no body",
             "no position",
             "flat only",
-            "source grid",
             "undated",
         ],
     )
     def test_unplaceable_product_stays_local(self, tmp_path: Path, overrides: dict):
         _write_cache(tmp_path, "perseverance", [_product(**overrides)])
         assert panoramas.load_panoramas(tmp_path) == {}
+
+    def test_a_texture_keeping_its_coordinate_grid_is_exported_and_marked(
+        self, tmp_path: Path
+    ):
+        """Lower quality is worth having on the map, but must stay tellable."""
+        _write_cache(
+            tmp_path,
+            "perseverance",
+            [_product(coverage={"includes_source_grid": True})],
+        )
+        (entry,) = panoramas.load_panoramas(tmp_path)["naif-499"]
+
+        assert entry.entry["source_grid"] is True
+
+    def test_a_source_awaiting_reuse_permission_stays_local(self, tmp_path: Path):
+        """Processed and kept, but never published until the terms are settled."""
+        _write_cache(
+            tmp_path,
+            "perseverance",
+            [_product(reuse={"status": panoramas.REUSE_WITHHELD})],
+        )
+        assert panoramas.load_panoramas(tmp_path) == {}
+
+    def test_a_product_stating_nothing_about_reuse_is_unaffected(self, tmp_path: Path):
+        _write_cache(tmp_path, "perseverance", [_product(reuse=None)])
+        assert panoramas.load_panoramas(tmp_path)["naif-499"]
+
+    def test_a_clean_texture_is_not_marked(self, tmp_path: Path):
+        _write_cache(tmp_path, "perseverance", [_product()])
+        (entry,) = panoramas.load_panoramas(tmp_path)["naif-499"]
+
+        assert "source_grid" not in entry.entry
 
     @pytest.mark.parametrize(
         "overrides",

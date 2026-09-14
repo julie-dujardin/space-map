@@ -1,5 +1,9 @@
 # Moon, Venus, Titan, and comet sphere previews
 
+Curated one-off previews, each fitted by hand to a published flat image. The
+mission archives that state their own geometry are in
+[surface-panoramas.md](surface-panoramas.md) instead.
+
 Run from the panorama worktree, using the data environment:
 
 ```sh

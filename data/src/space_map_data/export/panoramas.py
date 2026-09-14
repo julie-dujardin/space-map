@@ -60,15 +60,21 @@ def _orientation(meta: dict) -> str | None:
     return status if status and status != "archival" else None
 
 
+# A source whose reuse terms are unsettled is processed and kept locally, but
+# never published. Withholding is explicit: a product that states nothing about
+# reuse is treated as it always was.
+REUSE_WITHHELD = "permission-pending"
+
+
 def _skip_reason(meta: dict) -> str | None:
+    if (meta.get("reuse") or {}).get("status") == REUSE_WITHHELD:
+        return "reuse permission pending"
     if not meta.get("body_id"):
         return "no body id"
     if not meta.get("position"):
         return "no position"
     if not meta.get("image"):
         return "no sphere texture"
-    if (meta.get("coverage") or {}).get("includes_source_grid"):
-        return "source grid remains"
     if not (meta.get("start_time") or meta.get("capture_time")):
         return "undated"
     return None
@@ -110,6 +116,9 @@ def _entry(meta: dict) -> dict | None:
         "north_offset_deg": meta.get("north_azimuth_offset_deg") or 0,
         "orientation": _orientation(meta),
         "geometry": None if _sphere_geometry_is_archival(meta) else "estimated",
+        # The archive's own coordinate overlay is still drawn on this texture.
+        # Recorded so the imagery can be told apart and replaced, not shown.
+        "source_grid": coverage.get("includes_source_grid") or None,
         "azimuth_start_deg": source_coverage.get("azimuth_start_deg"),
         "hfov_deg": coverage.get("horizontal_degrees"),
         "sphere_percent": coverage.get("sphere_percent"),

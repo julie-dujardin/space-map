@@ -421,6 +421,10 @@ export interface PanoramaEntry {
 	/** `estimated` where the sphere's angular bounds were fitted to a
 	 *  published flat image rather than read from an archive label. */
 	geometry?: 'estimated';
+	/** True where the archive's own coordinate overlay is still drawn on the
+	 *  texture, which makes it lower quality than the rest. Recorded so such
+	 *  imagery can be found and replaced; nothing renders it. */
+	source_grid?: boolean;
 	/** Image azimuth where the observed span begins, with its width; absent
 	 *  when the archive label carried no coverage geometry. */
 	azimuth_start_deg?: number;
