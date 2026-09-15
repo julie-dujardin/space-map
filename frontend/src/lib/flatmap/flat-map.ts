@@ -41,14 +41,24 @@ import {
 	type ProjectionId,
 	type ProjectionOptions
 } from './projection';
+import { compositeLayers, drawEquirect, InverseLookup, type RasterImage } from './raster';
 import {
-	compositeLayers,
-	drawEquirect,
-	imageToRaster,
-	InverseLookup,
-	type RasterImage
-} from './raster';
-import { bestTier, bundleUrl, loadBodySources, type BodySources, type BundleKind } from './sources';
+	bestTier,
+	bundleUrl,
+	loadBodySources,
+	lowerTier,
+	tierForWidth,
+	TIER_WIDTH,
+	type BodySources,
+	type BundleKind
+} from './sources';
+import {
+	acquireBitmap,
+	acquireRaster,
+	releaseBitmap,
+	releaseRaster,
+	textureKey
+} from './texture-cache';
 import {
 	clampToBand,
 	clampView,
@@ -224,9 +234,10 @@ export class FlatMap {
 	/** The body's mean radius, so a circle can be drawn in kilometres. */
 	bodyRadiusKm: number | null = null;
 
-	/** Decoded pictures by URL, and the readable copies the resampler needs. */
-	private readonly bitmaps = new Map<string, ImageBitmap>();
-	private readonly rasters = new Map<string, RasterImage>();
+	/** The pictures this map draws, by URL, with the key of its claim on the
+	 *  shared store. Other maps of the same body claim the same pictures. */
+	private readonly bitmaps = new Map<string, { key: string; bitmap: ImageBitmap }>();
+	private readonly rasters = new Map<string, { key: string; raster: RasterImage }>();
 	private readonly pending = new Set<string>();
 	/** Pictures the export does not have. Remembered, or every pan would ask
 	 *  for them again and report the same failure. */
@@ -256,6 +267,8 @@ export class FlatMap {
 	private disposed = false;
 	/** Set while a gesture is in flight, to draw coarsely until it stops. */
 	private moving = false;
+	/** The width of a settled frame, in device pixels. */
+	private sharpWidth = 0;
 	/** Running cost of one drawn pixel, which sets the resolution of a moving
 	 *  frame. Zero until the first draw has been timed. */
 	private msPerPixel = 0;
@@ -357,9 +370,7 @@ export class FlatMap {
 		clearTimeout(this.settleTimer);
 		for (const layer of this.layerList) if (!isRaster(layer)) layer.dispose?.();
 		this.overlay.clear();
-		for (const bitmap of this.bitmaps.values()) bitmap.close();
-		this.bitmaps.clear();
-		this.rasters.clear();
+		this.dropTextures();
 		this.root.remove();
 		this.container = null;
 	}
@@ -402,9 +413,7 @@ export class FlatMap {
 	 *  drops what it decodes instead of holding it for nothing. */
 	private release(): void {
 		this.generation++;
-		for (const bitmap of this.bitmaps.values()) bitmap.close();
-		this.bitmaps.clear();
-		this.rasters.clear();
+		this.dropTextures();
 		this.missing.clear();
 		for (const layer of this.layerList) {
 			if (!isRaster(layer) && !this.customLayers.includes(layer)) layer.dispose?.();
@@ -730,18 +739,57 @@ export class FlatMap {
 
 	private tier(tiers: readonly string[]): string {
 		const wanted = TIER_BY_ZOOM.find(([zoom]) => this.view.zoom >= zoom)?.[1] ?? 'low';
-		return bestTier(tiers, wanted);
+		return bestTier(tiers, lowerTier(wanted, tierForWidth(this.usableSourceWidth())));
 	}
 
-	private urlsInUse(): string[] {
+	/**
+	 * How many pixels across the world this view can show.
+	 *
+	 * An equirectangular map draws the picture at the width of the world. Every
+	 * other projection samples a readable copy, which has a maximum width. A
+	 * finer tier than this shows nothing more. It only costs a larger decode,
+	 * which is hundreds of megabytes for a 16k picture.
+	 */
+	private usableSourceWidth(): number {
+		return this.projectionId === 'equirectangular'
+			? this.deviceWidth() * this.view.zoom
+			: this.workingWidth();
+	}
+
+	/** The width of a settled frame, in device pixels. A gesture makes the
+	 *  canvas coarse, but the picture copy stays at this width. */
+	private deviceWidth(): number {
+		return this.sharpWidth || Math.max(1, this.root.clientWidth);
+	}
+
+	/** The width of the readable copy. It holds about two times the detail the
+	 *  view shows. The power of two lets a zoom gesture reuse one copy. */
+	private workingWidth(): number {
+		const wanted = this.deviceWidth() * 2 * this.view.zoom;
+		return Math.min(MAX_WORKING_WIDTH, 2 ** Math.ceil(Math.log2(Math.max(256, wanted))));
+	}
+
+	/** The width a picture is decoded at. The resampler reads no more than its
+	 *  working width, and no tier holds more than its own. An equirectangular
+	 *  map draws the picture whole. */
+	private decodeWidth(tier: string): number | null {
+		if (this.projectionId === 'equirectangular') return null;
+		return Math.min(this.workingWidth(), TIER_WIDTH[tier] ?? MAX_WORKING_WIDTH);
+	}
+
+	/** The pictures the view needs, each with the tier it is taken from. */
+	private picturesInUse(): { url: string; tier: string }[] {
 		return this.layerList
 			.filter((l): l is RasterLayer => isRaster(l) && l.visible)
-			.map((layer) => layer.url(this.jd, this.tier(layer.tiers)));
+			.map((layer) => {
+				const tier = this.tier(layer.tiers);
+				return { url: layer.url(this.jd, tier), tier };
+			});
 	}
 
 	/** Fetch and decode whatever the current view needs but has not got. */
 	private async loadVisible(): Promise<void> {
-		const wanted = this.urlsInUse();
+		const wanted = this.picturesInUse();
 		const prepares = this.layerList
 			.filter((l): l is VectorLayer => !isRaster(l) && l.visible && Boolean(l.prepare))
 			.map((layer) =>
@@ -753,19 +801,21 @@ export class FlatMap {
 				)
 			);
 		const fetches = wanted
-			.filter((url) => !this.bitmaps.has(url) && !this.pending.has(url) && !this.missing.has(url))
-			.map(async (url) => {
+			.filter(
+				({ url, tier }) => this.bitmaps.get(url)?.key !== textureKey(url, this.decodeWidth(tier))
+			)
+			.filter(({ url }) => !this.pending.has(url) && !this.missing.has(url))
+			.map(async ({ url, tier }) => {
 				this.pending.add(url);
 				const generation = this.generation;
 				try {
-					const response = await fetch(url);
-					if (!response.ok) throw new Error(`HTTP ${response.status}`);
-					const bitmap = await createImageBitmap(await response.blob());
+					const held = await acquireBitmap(url, this.decodeWidth(tier));
+					if (!held) return;
 					if (this.disposed || generation !== this.generation) {
-						bitmap.close();
+						releaseBitmap(held.key);
 						return;
 					}
-					this.bitmaps.set(url, bitmap);
+					this.hold(this.bitmaps, url, held, releaseBitmap);
 					this.render();
 				} catch (cause) {
 					if (generation !== this.generation) return;
@@ -776,24 +826,56 @@ export class FlatMap {
 				}
 			});
 		await Promise.all([...prepares, ...fetches]);
+		// Read again, because the view can move while the pictures load.
+		this.dropUnused(new Set(this.picturesInUse().map(({ url }) => url)));
 	}
 
-	/** The readable copy the resampler samples, shrunk to about what the view
-	 *  can show. Cached per size so panning does not rebuild it. */
-	private rasterFor(url: string, workingWidth: number): RasterImage | null {
-		const key = `${url}@${workingWidth}`;
-		const cached = this.rasters.get(key);
-		if (cached) return cached;
-		const bitmap = this.bitmaps.get(url);
-		if (!bitmap) return null;
-		const raster = imageToRaster(bitmap, workingWidth);
-		if (!raster) return null;
-		// One size per picture is enough; a new zoom replaces the old.
-		for (const existing of this.rasters.keys()) {
-			if (existing.startsWith(`${url}@`)) this.rasters.delete(existing);
+	/** Release the pictures of a tier the view has left behind. */
+	private dropUnused(wanted: Set<string>): void {
+		for (const [url, held] of this.bitmaps) {
+			if (wanted.has(url)) continue;
+			releaseBitmap(held.key);
+			this.bitmaps.delete(url);
 		}
-		this.rasters.set(key, raster);
-		return raster;
+		for (const [url, held] of this.rasters) {
+			if (wanted.has(url)) continue;
+			releaseRaster(held.key);
+			this.rasters.delete(url);
+		}
+	}
+
+	/** Hold a picture for a URL and release the one held before. A map draws
+	 *  one size of a picture at a time. */
+	private hold<T extends { key: string }>(
+		held: Map<string, T>,
+		url: string,
+		next: T,
+		release: (key: string) => void
+	): void {
+		const previous = held.get(url);
+		if (previous?.key === next.key) return;
+		if (previous) release(previous.key);
+		held.set(url, next);
+	}
+
+	/** The readable copy the resampler samples, from the shared store. */
+	private rasterFor(url: string, workingWidth: number): RasterImage | null {
+		const held = this.rasters.get(url);
+		if (held?.key === textureKey(url, workingWidth)) return held.raster;
+		const bitmap = this.bitmaps.get(url)?.bitmap;
+		if (!bitmap) return null;
+		const made = acquireRaster(url, workingWidth, bitmap);
+		if (!made) return null;
+		this.hold(this.rasters, url, made, releaseRaster);
+		return made.raster;
+	}
+
+	/** Release every claim this map holds on the shared pictures. */
+	private dropTextures(): void {
+		for (const held of this.bitmaps.values()) releaseBitmap(held.key);
+		for (const held of this.rasters.values()) releaseRaster(held.key);
+		this.bitmaps.clear();
+		this.rasters.clear();
 	}
 
 	// -- rendering ------------------------------------------------------------
@@ -833,6 +915,12 @@ export class FlatMap {
 		const dpr = Math.min(window.devicePixelRatio || 1, 2);
 		const budget = Math.sqrt(MAX_RASTER_PIXELS / (cssWidth * cssHeight * dpr * dpr));
 		const sharp = dpr * Math.min(1, budget);
+		const sharpWidth = Math.max(1, Math.round(cssWidth * sharp));
+		if (sharpWidth !== this.sharpWidth) {
+			// A box of a new size can need a different tier.
+			this.sharpWidth = sharpWidth;
+			void this.loadVisible();
+		}
 		const full = cssWidth * sharp * cssHeight * sharp;
 		const ratio = sharp * (this.moving ? this.interactionScale(full) : 1);
 		const width = Math.max(1, Math.round(cssWidth * ratio));
@@ -907,7 +995,7 @@ export class FlatMap {
 			// does the whole job — sharper than resampling, and much faster.
 			const drawable = layers
 				.map((layer) => ({
-					image: this.bitmaps.get(layer.url(this.jd, this.tier(layer.tiers))),
+					image: this.bitmaps.get(layer.url(this.jd, this.tier(layer.tiers)))?.bitmap,
 					opacity: layer.opacity,
 					blend: layer.blend
 				}))
@@ -918,13 +1006,7 @@ export class FlatMap {
 			return;
 		}
 
-		// About twice the detail the view can show, rounded to a power of two so
-		// a zoom gesture reuses one working copy rather than rebuilding per step.
-		const wanted = width * 2 * this.view.zoom;
-		const workingWidth = Math.min(
-			MAX_WORKING_WIDTH,
-			2 ** Math.ceil(Math.log2(Math.max(256, wanted)))
-		);
+		const workingWidth = this.workingWidth();
 
 		// The pictures are read back first and left out of the timing below. A
 		// readback is a texture's own one-off cost, tens of milliseconds of it,

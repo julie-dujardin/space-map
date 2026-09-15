@@ -26,6 +26,9 @@ export interface BundleMeta {
 	description?: string;
 }
 
+/** Resolution tiers, coarsest first. */
+const TIER_ORDER = ['low', 'medium', 'high'];
+
 /** The kinds of picture a body's surface is exported as, each its own bundle. */
 export type BundleKind = 'surface' | 'clouds' | 'night';
 
@@ -118,13 +121,27 @@ export async function loadBodySources(bodyId: string): Promise<BodySources> {
 	};
 }
 
+/** The maximum width of each tier. The export makes a picture smaller when it
+ *  does not compress to the file size limit. No file is wider than its tier. */
+export const TIER_WIDTH: Record<string, number> = { low: 2048, medium: 8192, high: 16383 };
+
+/** The smallest tier with `width` pixels across the world, or the largest
+ *  tier. A larger tier than the view can draw only costs memory. */
+export function tierForWidth(width: number): string {
+	return TIER_ORDER.find((tier) => TIER_WIDTH[tier] >= width) ?? TIER_ORDER[TIER_ORDER.length - 1];
+}
+
+/** The lesser of two tiers. */
+export function lowerTier(a: string, b: string): string {
+	return TIER_ORDER.indexOf(a) <= TIER_ORDER.indexOf(b) ? a : b;
+}
+
 /** The best tier a bundle ships at or below `wanted`, so a request never asks
  *  for a file that was never written. */
 export function bestTier(tiers: readonly string[], wanted: string): string {
-	const order = ['low', 'medium', 'high'];
-	const cap = order.indexOf(wanted);
-	for (let i = cap < 0 ? order.length - 1 : cap; i >= 0; i--) {
-		if (tiers.includes(order[i])) return order[i];
+	const cap = TIER_ORDER.indexOf(wanted);
+	for (let i = cap < 0 ? TIER_ORDER.length - 1 : cap; i >= 0; i--) {
+		if (tiers.includes(TIER_ORDER[i])) return TIER_ORDER[i];
 	}
 	return tiers[0] ?? 'low';
 }
