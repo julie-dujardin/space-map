@@ -67,17 +67,15 @@ uv run python -m space_map_data.panoramas.clpds all \
   --missions zhurong yutu-2
 ```
 
-There is no default sample limit. Full-resolution originals can consume hundreds
-of GB. Release downloads stop starting new files when less than 20 GiB remains.
-Do not run two writers against the same collection concurrently.
+A run takes everything the archive offers. Full-resolution originals can consume
+hundreds of GB. Release downloads stop starting new files when less than 20 GiB
+remains. Do not run two writers against the same collection concurrently.
 
 - Releases support `discover`, `download`, `process`, and `all`.
-- Release `--limit N` bounds **new download attempts**, not inventory discovery.
-- PDS supports `download`, `process`, and `all`; its optional `--limit N` bounds
-  selected products. `--start-sol` defaults to zero; `--end-sol` is optional.
-- PDS `--sol-step N` skips sols within N sols of the last selected stopping point.
-  `--limit` truncates at the earliest sols, so a bounded run needs the step to
-  reach the end of a mission.
+- PDS supports `download`, `process`, and `all`. `--start-sol` defaults to zero;
+  `--end-sol` is optional. The range bounds what a run examines again, not what
+  the selection holds: sols outside it keep the products an earlier run found
+  there, so a targeted re-run cannot truncate the mission.
 - Completed downloads are reused by URL and SHA-256. Interrupted individual files
   restart; `.part` files are not accepted as completed images.
 - `--refresh` refreshes discovery metadata. Re-running downloads retries failures
@@ -86,8 +84,7 @@ Do not run two writers against the same collection concurrently.
 - PDS `--width` sets sphere texture width, even values 256–8192; default 4096.
 - Curiosity Navcam requires `--missions curiosity --include-monochrome` explicitly.
 - The release-system missions support `download`, `process`, and `all`, and take
-  the same `--width` and `--limit`. They mosaic frames rather than fetch mosaics,
-  so a bounded run truncates the sweeps it has not finished collecting.
+  the same `--width`. They mosaic frames rather than fetch mosaics.
 
 ### Mosaicking the frames China releases
 
@@ -396,14 +393,13 @@ catalog. These official PDS cylindrical mosaics use label-derived sphere geometr
 and an exact site/drive localization join, not an assumed strip projection.
 
 ```sh
-PYTHONPATH=data/src python -m space_map_data.panoramas all --missions curiosity --include-monochrome --sol-step 20 --source-dir ../space-map-downloads/sources/images/panoramas --output-dir ../space-map-downloads/derived/panoramas
+PYTHONPATH=data/src python -m space_map_data.panoramas all --missions curiosity --include-monochrome --source-dir ../space-map-downloads/sources/images/panoramas --output-dir ../space-map-downloads/derived/panoramas
 ```
 
 This covers sols 2 to the end of the archive and includes full and partial
-sweeps. The archive holds more than 14,000 cylindrical candidates, so an
-unthinned run needs tens of gigabytes; `--sol-step 20` keeps a mission-long
-spread inside about 8 GB. Other Mars grayscale instruments are not yet
-automatically ingested by this command. Color collections remain available
+sweeps. The archive holds more than 14,000 cylindrical candidates, so the run
+needs tens of gigabytes and several hours. Other Mars grayscale instruments are
+not yet automatically ingested by this command. Color collections remain available
 separately and are not replaced by grayscale.
 Preview: <http://localhost:8765/?collection=curiosity-navcam>.
 
