@@ -167,6 +167,8 @@ map.addSurfaceCircle({ body: 'naif-499', center: { lon: 77.5, lat: 18.4 }, radiu
 
 `boxRing`, `smallCircle` and `graticule`, the flat map's helpers, make point
 lists these take; `circlePoints` does the same for a circle in space.
+`groundDistanceM` and `bearingDeg` measure between any two places on a body,
+given its radius.
 
 Every drawing answers `remove()` and `setVisible()`, a shape answers
 `setAnchor()` and `setPoints()`, and `map.clearDrawings()` takes them all away
@@ -434,6 +436,19 @@ flat.on('click', (at) => at && console.log(at.lon, at.lat));
 A rover's panorama from the inside, with arrows along its traverse. The
 three-dimensional part is all the SDK draws; the date, the place, a list to
 pick from or a map of the traverse are the page's to build.
+
+Which bodies have panoramas, and where each one stands, can be read before a
+view exists — what a page picking one for the reader needs, since `createPanorama`
+opens the body's first unless told which:
+
+```js
+import { fetchPanoramaIndex, fetchPanoramas } from 'spacemap';
+
+await fetchPanoramaIndex(); // every body with coverage, and the missions on it
+const entries = await fetchPanoramas('naif-499'); // every panorama on Mars
+const pick = entries[(Math.random() * entries.length) | 0];
+const view = await createPanorama({ container: '#panorama', body: 'naif-499', at: pick.id });
+```
 
 ```js
 const view = await createPanorama({

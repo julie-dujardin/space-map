@@ -1,13 +1,16 @@
 /**
- * Which traverses have panorama coverage, from `/data/v1/panoramas.json`.
+ * What panorama coverage exists: which traverses, from
+ * `/data/v1/panoramas.json`, and the ground points themselves, from the
+ * body's own bundle.
  *
- * The index carries no ground points: a body's bundle already holds every
- * entry, so the gallery reads the summary to know which bodies to fetch and
- * takes the traverses from there.
+ * The index carries no ground points on purpose — a body's bundle already
+ * holds every entry — so a reader picking a body takes the summary and one
+ * picking a place takes the list.
  */
 
 import { dataBase } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
+import { fetchObjectDetail, type PanoramaEntry } from './objects/object-data';
 
 /** One probe's coverage on a body, as `export/panoramas.py` writes it. */
 export interface PanoramaMissionSummary {
@@ -37,4 +40,12 @@ export async function fetchPanoramaIndex(
 	if (!res.ok) throw new Error(`Failed to load panoramas.json: ${res.status}`);
 	const index = (await res.json()) as { bodies?: PanoramaBodySummary[] };
 	return index.bodies ?? [];
+}
+
+/** Every panorama taken on a body, mission by mission in time order. The view
+ *  reads the same list when it opens; a page that decides which panorama to
+ *  open reads it first. Empty when the body has none. */
+export async function fetchPanoramas(bodyId: string): Promise<PanoramaEntry[]> {
+	const detail = await fetchObjectDetail(bodyId, false);
+	return detail.global?.panoramas ?? [];
 }

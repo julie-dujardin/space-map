@@ -288,6 +288,8 @@ export type {
 	ScreenAnchor
 } from '$lib/panorama/view';
 export type { PanoramaEntry } from '$lib/fetch/objects/object-data';
+export { fetchPanoramaIndex, fetchPanoramas } from '$lib/fetch/panoramas';
+export type { PanoramaBodySummary, PanoramaMissionSummary } from '$lib/fetch/panoramas';
 export type { Neighbour, Neighbours } from '$lib/panorama/traverse';
 export {
 	bearingDeg,

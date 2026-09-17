@@ -4,7 +4,7 @@
  */
 
 import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
-import { angularDistance } from '$lib/flatmap/geometry';
+import { angularDistance, type LonLat } from '$lib/flatmap/geometry';
 
 /** The product id, which names one panorama and no other. A stop held for
  *  days leaves several mosaics sharing a time and a place, so the time and
@@ -63,14 +63,15 @@ const DEG = Math.PI / 180;
 
 /** Great-circle distance on a sphere of `radiusKm`, in metres. Rover steps
  *  are metres on a body thousands of kilometres across, so the ellipsoid's
- *  flattening changes nothing a reader would see. */
-export function groundDistanceM(a: PanoramaEntry, b: PanoramaEntry, radiusKm: number): number {
+ *  flattening changes nothing a reader would see. Any two places will do: a
+ *  panorama is one, and so is a point a reader named. */
+export function groundDistanceM(a: LonLat, b: LonLat, radiusKm: number): number {
 	return angularDistance(a, b) * DEG * radiusKm * 1000;
 }
 
 /** Initial great-circle bearing from `a` to `b`, degrees clockwise from
  *  north; east-positive longitudes as the export lists them. */
-export function bearingDeg(a: PanoramaEntry, b: PanoramaEntry): number {
+export function bearingDeg(a: LonLat, b: LonLat): number {
 	const lat1 = a.lat * DEG;
 	const lat2 = b.lat * DEG;
 	const dLon = (b.lon - a.lon) * DEG;

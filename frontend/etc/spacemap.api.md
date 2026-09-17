@@ -26,7 +26,7 @@ export class AttributionControl implements Control<SpaceMap> {
 }
 
 // @public
-export function bearingDeg(a: PanoramaEntry, b: PanoramaEntry): number;
+export function bearingDeg(a: LonLat, b: LonLat): number;
 
 // @public (undocumented)
 interface Body_2 {
@@ -287,6 +287,14 @@ export interface FeatureTarget extends CameraTarget {
 	// (undocumented)
 	feature: FeatureRef;
 }
+
+// @public
+export function fetchPanoramaIndex(
+	fetcher?: (url: string) => Promise<Response>
+): Promise<PanoramaBodySummary[]>;
+
+// @public
+export function fetchPanoramas(bodyId: string): Promise<PanoramaEntry[]>;
 
 // @public (undocumented)
 export function findPanorama(entries: PanoramaEntry[], at: string | null): PanoramaEntry | null;
@@ -564,7 +572,7 @@ export class GestureHandler {
 export function graticule(stepDeg?: number): LonLat[][];
 
 // @public
-export function groundDistanceM(a: PanoramaEntry, b: PanoramaEntry, radiusKm: number): number;
+export function groundDistanceM(a: LonLat, b: LonLat, radiusKm: number): number;
 
 // @public (undocumented)
 export interface Host {
@@ -904,6 +912,14 @@ export class PanoramaAttributionControl implements Control<PanoramaView> {
 }
 
 // @public (undocumented)
+export interface PanoramaBodySummary {
+	// (undocumented)
+	id: string;
+	// (undocumented)
+	missions: PanoramaMissionSummary[];
+}
+
+// @public (undocumented)
 export interface PanoramaCreateOptions extends CommonOptions, PanoramaViewOptions {
 	controls?: Control<PanoramaView>[];
 	events?: {
@@ -913,6 +929,7 @@ export interface PanoramaCreateOptions extends CommonOptions, PanoramaViewOption
 
 // @public
 export interface PanoramaEntry {
+	altitude_m?: number;
 	azimuth_start_deg?: number;
 	// (undocumented)
 	color?: string;
@@ -922,6 +939,7 @@ export interface PanoramaEntry {
 	credit_url?: string;
 	// (undocumented)
 	elevation_m?: number;
+	geometry?: 'estimated';
 	// (undocumented)
 	hfov_deg?: number;
 	// (undocumented)
@@ -933,6 +951,7 @@ export interface PanoramaEntry {
 	lon: number;
 	mission?: string;
 	north_offset_deg: number;
+	orientation?: 'unknown' | 'caption-aligned' | 'matched to an archival sphere';
 	// (undocumented)
 	sol?: number;
 	// (undocumented)
@@ -943,6 +962,19 @@ export interface PanoramaEntry {
 	time_end?: string;
 	// (undocumented)
 	title?: string;
+}
+
+// @public
+export interface PanoramaMissionSummary {
+	// (undocumented)
+	count: number;
+	// (undocumented)
+	first_time: string;
+	// (undocumented)
+	last_time: string;
+	// (undocumented)
+	mission: string;
+	probe?: string;
 }
 
 // @public (undocumented)
