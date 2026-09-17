@@ -88,3 +88,59 @@ def test_curated_processing_is_dated_idempotent_and_ignores_inactive(tmp_path):
     path.write_text(json.dumps(result))
     with pytest.raises(ValueError, match="changed source"):
         process(tmp_path, width=360)
+
+
+class TestHowAStripSaysItsGeometryWasFound:
+    """A horizon solved against an archive must not read as one eyeballed."""
+
+    def render(self, tmp_path, spec):
+        from space_map_data.panoramas.strip_spheres import render_curated
+
+        target = tmp_path / spec["id"]
+        target.mkdir(parents=True)
+        Image.new("RGB", (360, 60), (140, 90, 40)).save(target / "preview.webp")
+        metadata = {
+            "id": spec["id"],
+            "preview": "preview.webp",
+            "source_sha256": spec["source_sha256"],
+        }
+        return render_curated(target, metadata, spec, width=360)
+
+    def solved(self):
+        from space_map_data.panoramas.strip_spheres import STRIPS
+
+        return next(s for s in STRIPS if s.get("horizon_evidence"))
+
+    def test_a_solved_horizon_states_what_it_was_solved_against(self, tmp_path):
+        spec = self.solved()
+
+        result = self.render(tmp_path, spec)
+
+        evidence = result["geometry_evidence"]
+        assert evidence["vertical"] == spec["horizon_basis"]
+        assert evidence["horizon_evidence"]["matched_products"]
+        assert "solved against archival spheres" in result["geometry_note"]
+
+    def test_an_eyeballed_horizon_still_says_so(self, tmp_path):
+        from space_map_data.panoramas.strip_spheres import STRIPS
+
+        spec = next(s for s in STRIPS if not s.get("horizon_evidence"))
+
+        result = self.render(tmp_path, spec)
+
+        assert "visually estimated horizon" in result["geometry_evidence"]["vertical"]
+        assert result["geometry_evidence"]["horizon_evidence"] is None
+        assert "Visually estimated horizon" in result["geometry_note"]
+
+    def test_a_sol_the_gallery_states_is_not_credited_to_the_raw_archive(
+        self, tmp_path
+    ):
+        from space_map_data.panoramas.strip_spheres import STRIPS
+
+        spec = next(s for s in STRIPS if s.get("capture_sol_basis"))
+
+        result = self.render(tmp_path, spec)
+
+        assert result["sol"] == spec["capture_sol"]
+        assert result["sol_basis"] == spec["capture_sol_basis"]
+        assert "raw-image archive" not in result["sol_basis"]

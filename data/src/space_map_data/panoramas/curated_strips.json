@@ -1126,5 +1126,103 @@
     "capture_stop_time": "2026-06-03",
     "start_azimuth_deg": null,
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1879:sol:gte&condition_3=1879:sol:lte"
+  },
+  {
+    "id": "spirit-pancam-bonestell",
+    "collection": "pancam",
+    "horizontal_degrees": 360,
+    "horizon_fraction": 0.245,
+    "source_url": "https://pancam.sese.asu.edu/Bonestell.html",
+    "source_sha256": "65945007086468a1b50e140c57b68bdc597a7995e008b0a6dc3346ddd91302e8",
+    "capture_time": "2008-02-28",
+    "capture_stop_time": "2008-10-10",
+    "start_azimuth_deg": 359.0,
+    "start_azimuth_basis": "skyline match",
+    "horizon_basis": "solved against archival spheres of the same stop; the horizon is where their stated elevations put it, not where it looks to be",
+    "horizon_evidence": {
+      "matched_products": [
+        "spirit-2nne43ilfaxcyl16p0705l000m1",
+        "spirit-2nne70ilfaycyl00p1615l000m2"
+      ],
+      "horizon_fraction_range": 0.01,
+      "azimuth_agreement_deg": 1.0,
+      "stop_separation_m": 0.4
+    },
+    "horizontal_basis": "published caption, confirmed by the sweep closing on itself"
+  },
+  {
+    "id": "spirit-pancam-calypso",
+    "collection": "pancam",
+    "horizontal_degrees": 360,
+    "horizon_fraction": 0.162,
+    "source_url": "https://pancam.sese.asu.edu/Calypso.html",
+    "source_sha256": "1ccc36fb3ef5639a33a3f344812e31d1f9934db14039fdbc4b039b9a48f0abc0",
+    "capture_time": "2009-05-14",
+    "capture_stop_time": "2009-06-20",
+    "start_azimuth_deg": 175.3,
+    "start_azimuth_basis": "skyline match",
+    "horizon_basis": "solved against archival spheres of the same stop; the horizon is where their stated elevations put it, not where it looks to be",
+    "horizon_evidence": {
+      "matched_products": [
+        "spirit-2nni91ilfb1cyl00p1600l000m1",
+        "spirit-2nnj07ilfb1cyldnp1902l000m1",
+        "spirit-2nnj33ilfb1cyle5p1600l000m1"
+      ],
+      "matched_count": 5,
+      "horizon_fraction_range": 0.02,
+      "azimuth_agreement_deg": 5.2
+    },
+    "horizontal_basis": "published caption, confirmed by the sweep closing on itself"
+  },
+  {
+    "id": "spirit-pancam-mcmurdo_merged_cyl",
+    "collection": "pancam",
+    "horizontal_degrees": 360,
+    "horizon_fraction": 0.133,
+    "source_url": "https://pancam.sese.asu.edu/mcmurdo_v2.html",
+    "source_sha256": "dcc1f4aecb6f8ee6b908251283161960ea9bebdc0771b6b6366ab54656b695b5",
+    "capture_time": "2006-04-18",
+    "capture_stop_time": "2006-08-17",
+    "capture_sol": 814,
+    "capture_sol_basis": "stated by the instrument gallery caption for this mosaic",
+    "capture_sol_source_url": "https://pancam.sese.asu.edu/mcmurdo_v2.html",
+    "start_azimuth_deg": 3.0,
+    "start_azimuth_basis": "skyline match",
+    "horizon_basis": "solved against archival spheres of the same stop; the horizon is where their stated elevations put it, not where it looks to be",
+    "horizon_evidence": {
+      "matched_products": [
+        "spirit-2nn799ilfarcyl00p1986l000m1",
+        "spirit-2nn805ilfarcyl00p1986l000m1",
+        "spirit-2nn855ilfascyl00p1986l000m1"
+      ],
+      "matched_count": 4,
+      "horizon_fraction_range": 0.005,
+      "azimuth_agreement_deg": 0.5
+    },
+    "horizontal_basis": "published caption, confirmed by the sweep closing on itself"
+  },
+  {
+    "id": "opportunity-pancam-greeley_pan_wdeck",
+    "collection": "pancam",
+    "horizontal_degrees": 360,
+    "horizon_fraction": 0.323,
+    "source_url": "https://pancam.sese.asu.edu/greeley_pan.html",
+    "source_sha256": "b1c3ad5b2d85e7cbd5b54bf2cd90704af2bdd0c4f120568b56e7b22c0da5c2a3",
+    "capture_time": "2011-12-21",
+    "capture_stop_time": "2012-05-08",
+    "start_azimuth_deg": 174.9,
+    "start_azimuth_basis": "skyline match",
+    "horizon_basis": "solved against archival spheres of the same stop; the horizon is where their stated elevations put it, not where it looks to be",
+    "horizon_evidence": {
+      "matched_products": [
+        "opportunity-1nns04ilfbrcyl08p1961l000m1",
+        "opportunity-1nns20ilfbrcyl43p1670l000m2",
+        "opportunity-1nnt15ilfbrcyl51p1670l000m1"
+      ],
+      "matched_count": 4,
+      "horizon_fraction_range": 0.005,
+      "azimuth_agreement_deg": 3.1
+    },
+    "horizontal_basis": "published caption, confirmed by the sweep closing on itself"
   }
 ]

@@ -244,7 +244,7 @@ def timeline_select(products, *, years=2):
     return sorted(chosen.values(), key=lambda p: (p["capture_time"], p["id"])), undated
 
 
-def download_releases(client, root, collection, *, limit=None):
+def download_releases(client, root, collection):
     directory = root / collection
     inventory = json.loads((directory / "inventory.json").read_text())
     state_path = directory / "downloads.json"
@@ -256,8 +256,6 @@ def download_releases(client, root, collection, *, limit=None):
     count = 0
     by_url = {row["url"]: row for row in state["products"].values()}
     for product in inventory["products"]:
-        if limit is not None and count >= limit:
-            break
         identity = product["id"]
         previous = state["products"].get(
             identity, by_url.get(product["selected_url"], {})
@@ -422,11 +420,6 @@ def cli():
     parser.add_argument("stage", choices=["discover", "download", "process", "all"])
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument(
-        "--limit",
-        type=int,
-        help="Optional new download attempts per invocation; discovery is always complete",
-    )
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument(
         "--collections",
@@ -444,8 +437,6 @@ def cli():
         default=["mastcamz"],
     )
     args = parser.parse_args()
-    if args.limit is not None and args.limit < 1:
-        parser.error("Limit must be positive")
     if args.stage in {"process", "all"} and args.output_dir is None:
         parser.error("--output-dir is required for processing")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -470,7 +461,7 @@ def cli():
                         client, args.source_dir, collection, refresh=args.refresh
                     )
             if args.stage in {"download", "all"}:
-                download_releases(client, args.source_dir, collection, limit=args.limit)
+                download_releases(client, args.source_dir, collection)
             if args.stage in {"process", "all"}:
                 process_releases(args.source_dir, args.output_dir, collection)
 

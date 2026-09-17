@@ -459,7 +459,7 @@ def sweeps(frames):
     return {k: v for k, v in sorted(groups.items()) if len(v) >= MINIMUM_FRAMES}
 
 
-def download(client, source_dir: Path, slug: str, *, limit=None, refresh=False):
+def download(client, source_dir: Path, slug: str, *, refresh=False):
     release = RELEASES[slug]
     root = source_dir / slug
     accepted, rejected = [], []
@@ -498,8 +498,6 @@ def download(client, source_dir: Path, slug: str, *, limit=None, refresh=False):
         )
         if len(accepted) % 50 == 0:
             logger.info("%s: %s frames held", slug, len(accepted))
-        if limit is not None and len(accepted) >= limit:
-            break
     write_json(
         root / "selection.json",
         {"schema_version": 1, "frames": accepted, "rejected": rejected},
@@ -657,7 +655,6 @@ def cli():
     )
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--limit", type=int)
     parser.add_argument("--width", type=int, default=4096)
     parser.add_argument("--refresh", action="store_true")
     args = parser.parse_args()
@@ -675,7 +672,6 @@ def cli():
                     client,
                     args.source_dir,
                     slug,
-                    limit=args.limit,
                     refresh=args.refresh,
                 )
     if args.stage in {"process", "all"}:

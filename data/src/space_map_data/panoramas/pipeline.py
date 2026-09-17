@@ -23,6 +23,7 @@ from . import mer
 from .labels import (
     Mosaic,
     attached_constants,
+    describes_raster,
     read_insight_pds4,
     read_mer_pds3,
     read_pds3,
@@ -462,8 +463,6 @@ def download(
     *,
     start_sol=0,
     end_sol=None,
-    limit=None,
-    sol_step=1,
     refresh=False,
 ):
     root = source_dir / mission
@@ -514,12 +513,7 @@ def download(
             start, end, span, "midpoint of the stops the mosaic was shot across"
         )
 
-    parameters = {
-        "start_sol": start_sol,
-        "end_sol": end_sol,
-        "limit": limit,
-        "sol_step": sol_step,
-    }
+    parameters = {"start_sol": start_sol, "end_sol": end_sol}
     selection_path = root / "selection.json"
     carried = (
         resumable(json.loads(selection_path.read_text()), parameters)
@@ -543,14 +537,9 @@ def download(
             },
         )
 
-    previous_sol = None
     for sol, products in mosaic_listings(
         client, root, mission, start_sol=start_sol, end_sol=end_sol, refresh=refresh
     ):
-        # Thinning by sol spreads a bounded download over the whole mission.
-        if previous_sol is not None and sol - previous_sol < sol_step:
-            continue
-        taken = len(accepted)
         pattern = (
             # The Mars Exploration Rover index has already named the cylindrical
             # mosaics of the cameras that map the ground.
@@ -574,8 +563,6 @@ def download(
             if found is not None:
                 accepted.append(found)
                 seen.add(revision_key(mission, found["mosaic"]["product_id"]))
-                if limit is not None and len(accepted) >= limit:
-                    break
                 continue
             try:
                 # A lander saw everything from the one place it landed.
@@ -614,14 +601,22 @@ def download(
                     label = fetch(
                         client, url + name, root / "labels" / name, refresh=refresh
                     )
-                    read = (
-                        read_pds3
-                        if mission == "curiosity"
-                        else read_insight_pds4
-                        if mission == "insight"
-                        else read_pds4
-                    )
-                    mosaic = read(label.read_text())
+                    text = label.read_text()
+                    if mission == "curiosity":
+                        # From sol 4712 the volume stopped repeating the raster
+                        # description in the detached label, so the only place
+                        # left that states it is the raster's own header.
+                        mosaic = read_pds3(
+                            text,
+                            None
+                            if describes_raster(text)
+                            else ranged_label(
+                                client, urljoin(url, Path(name).stem + ".IMG")
+                            ),
+                        )
+                    else:
+                        read = read_insight_pds4 if mission == "insight" else read_pds4
+                        mosaic = read(text)
                 if not fixed and mission not in mer.VOLUMES:
                     shot_from = place((mosaic.site, mosaic.drive))
                     if shot_from is None:
@@ -715,12 +710,6 @@ def download(
                 mosaic.site,
                 mosaic.drive,
             )
-            if limit is not None and len(accepted) >= limit:
-                break
-        if len(accepted) > taken:
-            previous_sol = sol
-        if limit is not None and len(accepted) >= limit:
-            break
     if not accepted:
         write_json(root / "rejected.json", rejected)
         raise ValueError(f"No supported localized panoramas found for {mission}")

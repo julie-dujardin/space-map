@@ -102,6 +102,27 @@ def traverse_sol_positions(mission: str, path: Path) -> dict[int, dict]:
     return found
 
 
+def traverse_sol_spans(
+    mission: str, path: Path
+) -> dict[int, tuple[tuple[int, int], dict, tuple[int, int], dict]]:
+    """The two stops that bound each sol the rover drove on.
+
+    The traverse is written in the order it was driven, so the first and last
+    stop a sol covers bound everywhere the rover stood that sol. A panorama
+    dated only by its sol was shot from one of them, which is as much as the
+    sol can say.
+    """
+    covered: dict[int, list[tuple[tuple[int, int], dict]]] = {}
+    for counter, sols, position in stops(mission, path):
+        for sol in sols:
+            covered.setdefault(sol, []).append((counter, position))
+    spans = {}
+    for sol, visited in covered.items():
+        (first, start), (last, end) = visited[0], visited[-1]
+        spans[sol] = (first, start, last, end)
+    return spans
+
+
 def path_site(url: str) -> int:
     """The site a mosaic is filed under, which the archive spells in decimal."""
     match = re.search(r"/site(\d+)/?$", url)

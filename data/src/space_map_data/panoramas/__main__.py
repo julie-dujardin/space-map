@@ -26,17 +26,6 @@ def cli():
     parser.add_argument("--start-sol", type=int, default=0)
     parser.add_argument("--end-sol", type=int)
     parser.add_argument(
-        "--limit",
-        type=int,
-        help="Optional maximum panoramas per mission; default: all supported products",
-    )
-    parser.add_argument(
-        "--sol-step",
-        type=int,
-        default=1,
-        help="Minimum sols between selected stopping points; spreads a bounded run over the mission",
-    )
-    parser.add_argument(
         "--include-monochrome",
         action="store_true",
         help="Opt in to Curiosity's grayscale Navcam; color Mastcam is a separate collection",
@@ -56,15 +45,10 @@ def cli():
         "default a run keeps the products the current recipe would repeat",
     )
     args = parser.parse_args()
-    if (
-        (args.limit is not None and args.limit < 1)
-        or args.start_sol < 0
-        or args.sol_step < 1
-        or (args.end_sol is not None and args.end_sol < args.start_sol)
+    if args.start_sol < 0 or (
+        args.end_sol is not None and args.end_sol < args.start_sol
     ):
-        parser.error(
-            "Require positive limit and sol step, and an ordered, nonnegative sol range"
-        )
+        parser.error("Require an ordered, nonnegative sol range")
     monochrome = {"curiosity", "spirit", "opportunity"} & set(args.missions)
     if monochrome and not args.include_monochrome:
         parser.error(
@@ -89,8 +73,6 @@ def cli():
                     mission,
                     start_sol=args.start_sol,
                     end_sol=args.end_sol,
-                    limit=args.limit,
-                    sol_step=args.sol_step,
                     refresh=args.refresh,
                 )
     if args.stage in {"process", "all"}:

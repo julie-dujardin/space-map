@@ -2,8 +2,8 @@
 
 Most catalogued panoramas never reach the map for want of a body and a
 position, not for want of a sphere. A lander has one published place for its
-whole mission; a rover has a published traverse, which answers for every sol it
-spent standing still.
+whole mission; a rover has a published traverse, which answers exactly for a sol
+it spent standing still and within a bound for one it drove on.
 """
 
 import argparse
@@ -16,7 +16,7 @@ import httpx
 
 from . import mer
 from .missions import FRAME, LANDERS, body_id, lander_position
-from .pipeline import fetch, sha256, write_json
+from .pipeline import fetch, midpoint, sha256, write_json
 from .releases import refresh_catalog
 
 logger = logging.getLogger(__name__)
@@ -25,14 +25,25 @@ M20_RAW = "https://mars.nasa.gov/rss/api/"
 
 
 def rover_positions(client, cache: Path, mission: str, *, refresh=False):
-    """Every sol of a corrected traverse that names one place, and its table."""
+    """Every sol of a corrected traverse, the stops each bounds, and the table."""
     table = fetch(
         client,
         mer.TRAVERSE + mer.TRAVERSE_TABLES[mission],
         cache / mer.TRAVERSE_TABLES[mission],
         refresh=refresh,
     )
-    return mer.traverse_sol_positions(mission, table), table
+    return (
+        mer.traverse_sol_positions(mission, table),
+        mer.traverse_sol_spans(mission, table),
+        table,
+    )
+
+
+def traverse_source(mission: str, table: Path) -> dict:
+    return {
+        "source_url": mer.TRAVERSE + mer.TRAVERSE_TABLES[mission],
+        "source_sha256": sha256(table),
+    }
 
 
 def rover_position(sol_positions: dict, sol: int, mission: str, table: Path) -> dict:
@@ -43,8 +54,27 @@ def rover_position(sol_positions: dict, sol: int, mission: str, table: Path) -> 
         "method": "corrected traverse; one stop held for the whole sol",
         "reference_point": "rover localization",
         "uncertainty_m": None,
-        "source_url": mer.TRAVERSE + mer.TRAVERSE_TABLES[mission],
-        "source_sha256": sha256(table),
+        **traverse_source(mission, table),
+    }
+
+
+def driven_position(span: tuple, mission: str, table: Path) -> dict:
+    """Where a panorama dated only by a sol the rover drove on was shot from.
+
+    The sol names every stop between its ends rather than one of them, so the
+    place is their midpoint and the error is half of what they cover.
+    """
+    first, start, last, end = span
+    return {
+        **FRAME,
+        **midpoint(
+            start,
+            end,
+            (first, last),
+            "midpoint of the stops the rover drove between that sol",
+        ),
+        "elevation_datum": None,
+        **traverse_source(mission, table),
     }
 
 
@@ -124,12 +154,20 @@ def place(client, source_dir: Path, output_dir: Path, *, refresh=False):
                 if mission in LANDERS:
                     metadata["position"] = lander_position(mission)
                     metadata["position_status"] = "published landing site"
-                elif mission in traverses and sol in traverses[mission][0]:
-                    sol_positions, table = traverses[mission]
-                    metadata["position"] = rover_position(
-                        sol_positions, sol, mission, table
-                    )
-                    metadata["position_status"] = "corrected traverse sol join"
+                elif mission in traverses:
+                    sol_positions, spans, table = traverses[mission]
+                    if sol in sol_positions:
+                        metadata["position"] = rover_position(
+                            sol_positions, sol, mission, table
+                        )
+                        metadata["position_status"] = "corrected traverse sol join"
+                    elif sol in spans:
+                        metadata["position"] = driven_position(
+                            spans[sol], mission, table
+                        )
+                        metadata["position_status"] = (
+                            "corrected traverse sol join, bounded by the drive"
+                        )
             # Only a sphere that is placed is worth a request to date it.
             if metadata.get("image") and metadata.get("position") and not dated:
                 date_by_sol(client, cache / "sols", metadata, refresh=refresh)

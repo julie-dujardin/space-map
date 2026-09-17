@@ -104,8 +104,11 @@ def render_curated(target, metadata, spec, *, width=4096):
             **(
                 {
                     "sol": spec["capture_sol"],
-                    "sol_basis": "reviewed; capture date matched to the sol the "
-                    "NASA raw-image archive dates the same way",
+                    "sol_basis": spec.get(
+                        "capture_sol_basis",
+                        "reviewed; capture date matched to the sol the "
+                        "NASA raw-image archive dates the same way",
+                    ),
                     "sol_source_url": spec["capture_sol_source_url"],
                 }
                 if spec.get("capture_sol")
@@ -121,11 +124,19 @@ def render_curated(target, metadata, spec, *, width=4096):
             },
             "geometry_evidence": {
                 "source_url": spec["source_url"],
-                "horizontal": "reviewed product caption or instrument gallery",
+                "horizontal": spec.get(
+                    "horizontal_basis", "reviewed product caption or instrument gallery"
+                ),
                 "horizontal_source_url": spec.get(
                     "horizontal_source_url", spec["source_url"]
                 ),
-                "vertical": "assumed cylindrical scale; visually estimated horizon",
+                # A horizon read off the picture is a guess the viewer should be
+                # told about; one solved against a calibrated sphere is not.
+                "vertical": spec.get(
+                    "horizon_basis",
+                    "assumed cylindrical scale; visually estimated horizon",
+                ),
+                "horizon_evidence": spec.get("horizon_evidence"),
                 "horizon_fraction": spec["horizon_fraction"],
                 "heading": spec.get("start_azimuth_basis", "unknown")
                 if heading is not None
@@ -143,7 +154,14 @@ def render_curated(target, metadata, spec, *, width=4096):
                 "estimated_sphere_percent": percent,
                 "method": "published sweep; approximate cylindrical mapping and near-black missing-pixel mask",
             },
-            "geometry_note": "Visually estimated horizon and cylindrical scale; source seams/blended sky retained. Near-black masking can remove real shadows.",
+            "geometry_note": (
+                "Horizon solved against archival spheres of the same stop; "
+                "cylindrical scale assumed."
+                if spec.get("horizon_evidence")
+                else "Visually estimated horizon and cylindrical scale."
+            )
+            + " Source seams/blended sky retained. Near-black masking can"
+            " remove real shadows.",
         }
     )
     metadata.pop("north_azimuth_offset", None)

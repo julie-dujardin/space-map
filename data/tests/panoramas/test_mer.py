@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from space_map_data.panoramas import mer
+from space_map_data.panoramas import mer, place
 from space_map_data.panoramas.labels import read_mer_pds3
 
 TRAVERSE = """SITE,DRIVE,START_SOL,END_SOL,RAW_X,RAW_Y,RAW_Z,CORRECTED_X,CORRECTED_Y
@@ -115,6 +115,24 @@ def test_a_sol_spent_driving_names_no_single_place(tmp_path):
 
     assert sorted(found) == [1, 2, 3, 4, 6, 7]
     assert found[3] == found[1]
+
+
+class TestBoundingASolTheRoverDroveOn:
+    """A sol with no single stop still bounds where the rover can have been."""
+
+    def test_a_driving_sol_names_the_stops_at_either_end(self, tmp_path):
+        spans = mer.traverse_sol_spans("spirit", table(tmp_path))
+
+        first, start, last, end = spans[5]
+        assert (first, last) == ((2, 0), (2, 16))
+        assert end["longitude"] > start["longitude"]
+
+    def test_a_parked_sol_names_one_stop_at_both_ends(self, tmp_path):
+        spans = mer.traverse_sol_spans("spirit", table(tmp_path))
+
+        first, start, last, end = spans[3]
+        assert first == last == (1, 0)
+        assert start == end
 
 
 def test_a_still_sol_names_the_drive_it_was_held_at(tmp_path):
@@ -309,3 +327,39 @@ def test_the_volume_index_supplies_a_sol_the_label_omits():
 
 def test_a_stated_sol_beats_the_index():
     assert read_mer_pds3(LABEL, 7, 412).sol == 1
+
+
+class TestPlacingAPanoramaByADrivingSol:
+    """A gallery panorama dated only by a sol the rover drove on."""
+
+    def table_at(self, tmp_path):
+        path = table(tmp_path)
+        return mer.traverse_sol_spans("spirit", path), path
+
+    def test_the_place_is_the_midpoint_of_what_the_sol_covers(self, tmp_path):
+        spans, path = self.table_at(tmp_path)
+
+        found = place.driven_position(spans[5], "spirit", path)
+
+        start, end = spans[5][1], spans[5][3]
+        assert found["longitude"] == pytest.approx(
+            (start["longitude"] + end["longitude"]) / 2
+        )
+
+    def test_the_error_is_half_of_what_the_rover_covered(self, tmp_path):
+        spans, path = self.table_at(tmp_path)
+
+        found = place.driven_position(spans[5], "spirit", path)
+
+        separation = found["position_bounds"]["separation_m"]
+        assert separation == pytest.approx(500, abs=1)
+        assert found["uncertainty_m"] == pytest.approx(separation / 2, abs=0.1)
+
+    def test_the_stops_it_was_bounded_by_travel_with_it(self, tmp_path):
+        spans, path = self.table_at(tmp_path)
+
+        found = place.driven_position(spans[5], "spirit", path)
+
+        assert found["position_bounds"]["between_site_drive"] == [[2, 0], [2, 16]]
+        assert found["reference_point"] == "rover localization"
+        assert found["source_url"].endswith(mer.TRAVERSE_TABLES["spirit"])

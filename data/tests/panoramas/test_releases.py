@@ -298,7 +298,14 @@ def test_release_reprocessing_retains_curated_sphere(tmp_path, monkeypatch):
     source = root / "pancam" / "image.png"
     source.parent.mkdir(parents=True)
     Image.new("RGB", (360, 60), (180, 90, 30)).save(source)
-    curated = next(s for s in strip_spheres.STRIPS if s["collection"] == "pancam")
+    # An unoriented strip on purpose: this asserts the orientation the renderer
+    # reports for one, so picking whichever comes first would break on a manifest
+    # that gains an oriented entry at the top.
+    curated = next(
+        s
+        for s in strip_spheres.STRIPS
+        if s["collection"] == "pancam" and s["start_azimuth_deg"] is None
+    )
     spec = dict(curated, id="test", source_sha256=sha256(source))
     monkeypatch.setattr(strip_spheres, "STRIPS", [spec])
     write_json(

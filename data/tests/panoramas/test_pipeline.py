@@ -9,6 +9,7 @@ import pytest
 
 from space_map_data.panoramas import pipeline
 from space_map_data.panoramas.labels import (
+    describes_raster,
     Mosaic,
     attached_constants,
     read_pds3,
@@ -323,7 +324,7 @@ def _offline_curiosity(tmp_path):
             lambda req: httpx.Response(200, content=responses[str(req.url)])
         )
     ) as client:
-        download(client, tmp_path / "sources", "curiosity", limit=1)
+        download(client, tmp_path / "sources", "curiosity")
     output = tmp_path / "derived"
     color_catalog = output / "curiosity" / "catalog.json"
     color_catalog.parent.mkdir(parents=True)
@@ -374,7 +375,9 @@ def test_a_lander_frame_sphere_claims_no_heading(tmp_path, monkeypatch):
 
     real = module.read_pds3
     monkeypatch.setattr(
-        module, "read_pds3", lambda text: replace(real(text), frame="LANDER_FRAME")
+        module,
+        "read_pds3",
+        lambda text, attached=None: replace(real(text, attached), frame="LANDER_FRAME"),
     )
     entries, _ = _offline_curiosity(tmp_path)
     generated = json.loads((tmp_path / "derived" / entries[0]["metadata"]).read_text())
@@ -455,24 +458,6 @@ def test_attached_constants_admit_later_navcam_mosaics(tmp_path):
     ) as client:
         with pytest.raises(ValueError, match="No supported"):
             download(client, tmp_path / "bare", "curiosity")
-
-
-def test_sol_step_spreads_a_bounded_selection(tmp_path):
-    label = (FIXTURES / "curiosity.lbl").read_text()
-    label = label.replace("7703", "360").replace("977", "90")
-    label = (
-        label.replace("15406", "720")
-        .replace("21.3979", "1.0")
-        .replace("132.629", "46.0")
-    )
-    responses = offline_navcam([24, 30, 44], label)
-    with httpx.Client(
-        transport=httpx.MockTransport(
-            lambda req: httpx.Response(200, content=responses[str(req.url)])
-        )
-    ) as client:
-        products = download(client, tmp_path / "sources", "curiosity", sol_step=20)
-    assert [product["mosaic"]["sol"] for product in products] == [24, 44]
 
 
 def m20_inventory(*identifiers):
@@ -745,18 +730,18 @@ def test_a_different_selection_is_not_resumed(tmp_path):
         (tmp_path / "sources" / "curiosity" / "selection.json").read_text()
     )
 
-    assert not resumable(selection, {**selection["selection"], "sol_step": 20})
+    assert not resumable(selection, {**selection["selection"], "start_sol": 30})
 
     client, _ = counting_client(responses)
     with client:
-        products = download(client, tmp_path / "sources", "curiosity", sol_step=20)
-    assert [product["mosaic"]["sol"] for product in products] == [24, 44]
+        products = download(client, tmp_path / "sources", "curiosity", start_sol=30)
+    assert [product["mosaic"]["sol"] for product in products] == [30, 44]
 
 
 def test_a_selection_an_older_recipe_chose_is_not_resumed():
     """A recipe that would now accept different products must not inherit the
     products the old one accepted."""
-    chosen = {"start_sol": 0, "end_sol": None, "limit": None, "sol_step": 1}
+    chosen = {"start_sol": 0, "end_sol": None}
     carried = {"label_url": "https://example.invalid/x.LBL"}
 
     assert resumable(
@@ -925,3 +910,44 @@ class TestProductIdentity:
         assert revision_key("spirit", "santa_anita_iff_R7") != revision_key(
             "spirit", "2PP136IFF54CYLCAP2264R222M2"
         )
+
+
+class TestALabelThatOnlyPointsAtItsRaster:
+    """From sol 4712 the Curiosity volume stopped repeating the raster
+    description in the detached label, leaving it only inside the raster."""
+
+    def split(self):
+        label = (FIXTURES / "curiosity.lbl").read_text()
+        raster = re.search(
+            r"^\s*OBJECT\s*=\s*IMAGE\s*$[\s\S]*?^\s*END_OBJECT\s*=\s*IMAGE\s*$",
+            label,
+            re.M,
+        )
+        assert raster
+        return label[: raster.start()] + label[raster.end() :], raster[0]
+
+    def test_a_detached_label_alone_no_longer_describes_the_raster(self):
+        detached, _ = self.split()
+
+        assert not describes_raster(detached)
+        assert describes_raster((FIXTURES / "curiosity.lbl").read_text())
+
+    def test_the_raster_is_read_from_the_label_attached_to_it(self):
+        detached, attached = self.split()
+        whole = read_pds3((FIXTURES / "curiosity.lbl").read_text())
+
+        split = read_pds3(detached, attached)
+
+        assert (split.width, split.height, split.dtype) == (
+            whole.width,
+            whole.height,
+            whole.dtype,
+        )
+        assert split.product_id == whole.product_id
+        assert split.missing == whole.missing
+
+    def test_a_split_label_without_its_raster_half_is_still_refused(self):
+        detached, _ = self.split()
+
+        with pytest.raises(ValueError, match="Missing PDS block: IMAGE"):
+            read_pds3(detached)

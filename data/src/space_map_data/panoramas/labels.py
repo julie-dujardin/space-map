@@ -134,16 +134,31 @@ NON_IMAGE_RASTERS = frozenset(
 )
 
 
-def cylindrical_blocks(text: str) -> tuple[str, str]:
-    """The projection and raster blocks, once the mosaic is known to be supported."""
+def describes_raster(text: str) -> bool:
+    """Whether a label says how its raster is stored, or only points at it."""
+    return re.search(r"^\s*OBJECT\s*=\s*IMAGE\s*$", text, re.M) is not None
+
+
+def cylindrical_blocks(text: str, attached: str | None = None) -> tuple[str, str]:
+    """The projection and raster blocks, once the mosaic is known to be supported.
+
+    `attached` is the label carried by the raster itself, for an archive whose
+    detached label points at a raster it does not describe.
+    """
     projection = block(text, "GROUP", "SURFACE_PROJECTION_PARMS")
-    raster = block(text, "OBJECT", "IMAGE")
+    raster = block(text if attached is None else attached, "OBJECT", "IMAGE")
     if value(projection, "MAP_PROJECTION_TYPE") != "CYLINDRICAL":
         raise ValueError("Only angular cylindrical mosaics are supported")
     if value(raster, "BAND_STORAGE_TYPE") != "BAND_SEQUENTIAL":
         raise ValueError("Unsupported band storage")
-    # Stated in a group of its own, beside the raster rather than inside it.
-    derived = (optional(text, "DERIVED_IMAGE_TYPE") or "").upper()
+    # Stated in a group of its own, beside the raster rather than inside it —
+    # or, where the volume stopped repeating the raster description, only in
+    # the raster's own header, which is where a range map would then say so.
+    derived = (
+        optional(text, "DERIVED_IMAGE_TYPE")
+        or (optional(attached, "DERIVED_IMAGE_TYPE") if attached else None)
+        or ""
+    ).upper()
     if derived in NON_IMAGE_RASTERS:
         raise ValueError(f"Not imagery: {derived}")
     if (value(raster, "SAMPLE_TYPE"), value(raster, "SAMPLE_BITS")) not in PDS3_SAMPLES:
@@ -181,14 +196,17 @@ def pds3_mosaic(text, projection, raster, *, site, drive, offset, sol=None) -> M
         sy,
         numbers(value(projection, "ZERO_ELEVATION_LINE"))[0],
         value(projection, "REFERENCE_COORD_SYSTEM_NAME"),
-        detached_constants(text),
+        # Stated beside the raster, or with it where the two labels are split.
+        detached_constants(text) or detached_constants(raster),
     )
     result.validate()
     return result
 
 
-def read_pds3(text: str) -> Mosaic:
-    projection, raster = cylindrical_blocks(text)
+def read_pds3(text: str, attached: str | None = None) -> Mosaic:
+    """A Curiosity mosaic, from the label beside the raster and, where the
+    archive stopped repeating it there, the one inside the raster."""
+    projection, raster = cylindrical_blocks(text, attached)
     sources = value(text, "SOURCE_PRODUCT_ID")
     counters = set(re.findall(r"_F(\d{3})(\d{4})", sources))
     if len(counters) != 1:
