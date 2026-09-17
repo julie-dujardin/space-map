@@ -1,0 +1,10 @@
+{
+  // Its own project, separate from space-map-static: this tree is rewritten
+  // every few minutes by the tracking poller, while the export changes on a
+  // full pipeline run. A deploy here must not wait on 50k catalogue files.
+  "name": "space-map-live",
+  "compatibility_date": "2026-04-01",
+  "assets": {
+    "directory": "../../../space-map-live"
+  }
+}

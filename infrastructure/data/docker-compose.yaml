@@ -26,9 +26,11 @@ services:
       context: ../..
       dockerfile: infrastructure/data/Dockerfile
     container_name: space-map-tracking
-    command: space-map-tracking
+    command: space-map-tracking run
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     volumes:
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
       - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
+      # What gets published, for the live deployment to upload.
+      - ${LIVE_HOST_DIR:-/srv/space-map/space-map-live}:/space-map-live

@@ -1,0 +1,11 @@
+# Same reasoning as the export: public data, embedded by the SDK from any
+# origin, and static-asset egress is free.
+/*
+  Access-Control-Allow-Origin: *
+
+# No content-addressed URL to hang immutability on — the path is fixed and the
+# body is what changes. A minute of edge cache keeps a busy page off the origin
+# without letting "last active" drift visibly; serving the old copy while
+# revalidating means a slow origin never blocks the answer.
+/v1/activity.json
+  Cache-Control: public, max-age=60, stale-while-revalidate=600

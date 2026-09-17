@@ -53,3 +53,7 @@ EXPORT_DIR = PROJECT_ROOT.parent / "space-map-export"
 # caps a deployment at 20k files. Layout under this dir mirrors EXPORT_DIR
 # exactly; use sidecar_io.mirror_path to translate between the two.
 EXPORT_METADATA_DIR = PROJECT_ROOT.parent / "space-map-export-metadata"
+
+# Frequently-changing data published on its own, away from the export: a
+# re-export is a whole-catalogue rebuild, and this changes every few minutes.
+LIVE_DIR = PROJECT_ROOT.parent / "space-map-live"

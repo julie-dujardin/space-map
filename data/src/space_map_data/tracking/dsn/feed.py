@@ -233,3 +233,18 @@ def _get(client: httpx.Client, url: str) -> str:
     except httpx.HTTPError as e:
         raise FeedError(f"{url}: {type(e).__name__}: {e}") from e
     return response.text
+
+
+def codes_by_name(config: dict[str, SpacecraftInfo]) -> dict[str, tuple[str, ...]]:
+    """Reverse the dictionary, for sources that print the name and not the code.
+
+    Every candidate is returned, never one picked for the caller: half a dozen
+    names belong to two codes each — "Mars Odyssey" is both M01O and M01S —
+    and which one a name meant is the caller's problem to settle.
+    """
+    seen: dict[str, list[str]] = {}
+    for code, info in config.items():
+        for name in (info.friendly_name, info.friendly_acronym):
+            if name:
+                seen.setdefault(name.upper(), []).append(code)
+    return {name: tuple(codes) for name, codes in seen.items()}

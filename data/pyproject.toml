@@ -4,6 +4,7 @@ version = "0.1.6"
 requires-python = ">=3.14"
 dependencies = [
     "beautifulsoup4>=4.14.3",
+    "cbor2>=5.7.0",
     "httpx",
     "jplephem>=2.24",
     "meilisearch>=0.41.0",
