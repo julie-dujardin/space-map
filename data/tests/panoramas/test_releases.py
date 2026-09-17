@@ -255,14 +255,37 @@ def test_exact_observation_frame_localization():
     counters = frame_counters(rows, 15, "ZCAM07000")
     assert counters == {(3, 376)}
     location = {"latitude": 18.4, "longitude": 77.4, "elevation_m": -2500}
-    assert common_position(counters, {(3, 376): location}) == location
-    with pytest.raises(ValueError, match="Missing exact"):
-        common_position(counters, {})
-    with pytest.raises(ValueError, match="multiple"):
-        common_position(
-            {(3, 376), (3, 999)},
-            {(3, 376): location, (3, 999): {**location, "latitude": 19}},
-        )
+    lookup = {(3, 376): location}
+    assert common_position(counters, lookup, sorted(lookup)) == location
+    with pytest.raises(ValueError, match="does not reach"):
+        common_position(counters, {}, [])
+
+
+def test_a_sequence_shot_across_a_drive_is_placed_halfway_along_it():
+    """A sequence the rover moved during was shot from every stop between its
+    ends, so it is placed between them and carries how far apart they are."""
+    from space_map_data.panoramas.localize import common_position
+
+    location = {"latitude": 18.4, "longitude": 77.4, "elevation_m": -2500}
+    lookup = {(3, 376): location, (3, 999): {**location, "latitude": 18.5}}
+    found = common_position({(3, 376), (3, 999)}, lookup, sorted(lookup))
+
+    assert found["latitude"] == pytest.approx(18.45)
+    assert found["uncertainty_m"] == pytest.approx(2964.4, abs=1)
+    assert found["position_bounds"]["between_site_drive"] == [[3, 376], [3, 999]]
+
+
+def test_a_sequence_at_a_drive_places_never_recorded_is_still_placed():
+    """A counter PLACES skips is bracketed by its neighbours, and the bounds
+    that come back must not stop the sequence being compared against others."""
+    from space_map_data.panoramas.localize import common_position
+
+    location = {"latitude": 18.4, "longitude": 77.4, "elevation_m": -2500}
+    lookup = {(3, 376): location, (3, 999): {**location, "latitude": 18.5}}
+    found = common_position({(3, 500)}, lookup, sorted(lookup))
+
+    assert found["latitude"] == pytest.approx(18.45)
+    assert found["position_bounds"]["between_site_drive"] == [[3, 376], [3, 999]]
 
 
 def test_release_reprocessing_retains_curated_sphere(tmp_path, monkeypatch):

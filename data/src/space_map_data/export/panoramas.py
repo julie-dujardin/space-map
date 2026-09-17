@@ -112,6 +112,9 @@ def _entry(meta: dict) -> dict:
         "lat": position["latitude"],
         "lon": position["longitude"],
         "elevation_m": position.get("elevation_m"),
+        # How far the marker can be from where the camera stood. Absent where
+        # the archive states the position outright, which is most of them.
+        "position_uncertainty_m": position.get("uncertainty_m"),
         # Set only where the camera was not on the ground, so the viewer can
         # say so rather than let a descent view pass for a surface one.
         "altitude_m": meta.get("observer_altitude_m"),
@@ -186,19 +189,35 @@ def load_panoramas(
     return by_body
 
 
+def _address(entry: dict) -> tuple:
+    """What the viewer keys a panorama's URL on, and so can only reach one of."""
+    return entry["time"], entry["lat"], entry["lon"]
+
+
 def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
-    """One product per (time, lat, lon): the viewer addresses a panorama by
-    that triple, so a second rendition of the same mosaic is unreachable."""
-    seen: set[tuple] = set()
+    """One product per address, keeping the fullest sphere of each.
+
+    A stop a rover held for days leaves mosaics the archive dates from the same
+    first frame, so they collide here while differing in how much of the sphere
+    they fill. Which one survives is the one that shows the most.
+    """
+    best: dict[tuple, Product] = {}
+    for product in entries:
+        rival = best.get(_address(product.entry))
+        if rival is None or product.entry.get("sphere_percent", 0) > rival.entry.get(
+            "sphere_percent", 0
+        ):
+            best[_address(product.entry)] = product
+    # Walked in the caller's order rather than read off `best`, which holds the
+    # order the collisions happened to resolve in.
     kept = []
     for product in entries:
-        entry = product.entry
-        key = (entry["time"], entry["lat"], entry["lon"])
-        if key in seen:
-            logger.debug("Panorama %s repeats an earlier time and place", entry["id"])
-            continue
-        seen.add(key)
-        kept.append(product)
+        if best[_address(product.entry)] is product:
+            kept.append(product)
+        else:
+            logger.debug(
+                "Panorama %s repeats an earlier time and place", product.entry["id"]
+            )
     return kept, len(entries) - len(kept)
 
 

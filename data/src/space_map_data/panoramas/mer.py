@@ -69,25 +69,19 @@ def traverse_positions(mission: str, path: Path) -> dict[tuple[int, int], dict]:
     return result
 
 
-def traverse_drives(mission: str, path: Path) -> dict[tuple[int, int], int]:
-    """The drive a site and sol name on their own, for mosaics with no
+def traverse_drives(mission: str, path: Path) -> dict[tuple[int, int], tuple[int, int]]:
+    """The first and last drive a site and sol cover, for mosaics with no
     pointing file.
 
-    Only a sol the rover spent standing in one place answers this: where it
-    drove, the same site and sol cover several positions and neither is the
-    one the mosaic was taken from.
+    A sol the rover spent standing in one place names its stop exactly, and the
+    two drives are then the same one. A sol it drove on covers a stretch of the
+    traverse, which bounds where the mosaic was taken rather than naming it.
     """
-    candidates: dict[tuple[int, int], list[tuple[int, tuple]]] = {}
-    for (site, drive), sols, position in stops(mission, path):
+    covered: dict[tuple[int, int], list[int]] = {}
+    for (site, drive), sols, _ in stops(mission, path):
         for sol in sols:
-            candidates.setdefault((site, sol), []).append(
-                (drive, tuple(sorted(position.items(), key=str)))
-            )
-    return {
-        key: found[0][0]
-        for key, found in candidates.items()
-        if len({place for _, place in found}) == 1
-    }
+            covered.setdefault((site, sol), []).append(drive)
+    return {key: (min(drives), max(drives)) for key, drives in covered.items()}
 
 
 def traverse_sol_positions(mission: str, path: Path) -> dict[int, dict]:
@@ -116,12 +110,12 @@ def path_site(url: str) -> int:
     return int(match[1])
 
 
-def nav_counter(text: str) -> tuple[int, int] | None:
-    """The site and drive every frame of a mosaic was taken at, if it says.
+def nav_stops(text: str) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """The first and last stop the frames of a mosaic were shot at, if it says.
 
-    A mosaic assembled across a drive has no single place to stand, so one that
-    spans two is refused rather than placed at either. Some products carry an
-    empty pointing file, which states nothing rather than states a conflict.
+    A mosaic assembled across a drive has no single place to stand, so both ends
+    are returned and the traverse between them bounds it. Some products carry an
+    empty pointing file, which states nothing rather than states a span.
     """
     if not text.strip():
         return None
@@ -132,12 +126,13 @@ def nav_counter(text: str) -> tuple[int, int] | None:
     counters = {(node.get("index1"), node.get("index2")) for node in solutions}
     if not counters:
         return None
-    if len(counters) != 1:
-        raise ValueError("Source frames span multiple or unknown rover positions")
-    site, drive = counters.pop()
-    if site is None or drive is None:
-        raise ValueError("Pointing correction states no rover position")
-    return int(site), int(drive)
+    ordered = []
+    for site, drive in counters:
+        if site is None or drive is None:
+            raise ValueError("Pointing correction states no rover position")
+        ordered.append((int(site), int(drive)))
+    ordered.sort()
+    return ordered[0], ordered[-1]
 
 
 # Two-character counter field: 00 to 99, then on in base 36 from A0. The same
@@ -153,44 +148,43 @@ def counter_field(field: str) -> int:
     return DIGITS.index(field[0]) * len(DIGITS) + DIGITS.index(field[1]) - 260
 
 
-def source_counter(listing: str) -> tuple[int, int] | None:
-    """The site and drive the frames of a mosaic were shot at, if they say.
+def source_stops(listing: str) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """The first and last stop the frames of a mosaic were shot at, if they say.
 
     Every source frame names its own rover position, so the input list answers
     for the mosaics that have no pointing file beside them.
     """
-    counters = {
+    counters = sorted(
         (counter_field(site), counter_field(drive))
         for site, drive in SOURCE_FRAME.findall(listing.upper())
-    }
+    )
     if not counters:
         return None
-    if len(counters) != 1:
-        raise ValueError("Source frames span multiple or unknown rover positions")
-    return counters.pop()
+    return counters[0], counters[-1]
 
 
-def mosaic_counter(
+def mosaic_stops(
     pointing: str | None, listing: str | None, url: str, sol: int, drives
-) -> tuple[int, int]:
-    """Which stop a mosaic belongs to.
+) -> tuple[tuple[int, int], tuple[int, int]]:
+    """The stretch of traverse a mosaic was shot over, as its first and last stop.
 
-    The pointing correction states the rover position outright; failing that
-    the source frames each name their own; failing both, a sol the rover held
-    one stop for names it.
+    The pointing correction states the rover positions outright; failing that
+    the source frames each name their own; failing both, the sol names the
+    stretch it covered. A mosaic shot standing still returns the same stop twice.
     """
     site = path_site(url)
-    counter = nav_counter(pointing) if pointing else None
-    if counter is None and listing:
-        counter = source_counter(listing)
-    if counter is None:
-        drive = drives.get((site, sol))
-        if drive is None:
-            raise ValueError("Nothing states the drive, and the sol spans stops")
-        return site, drive
-    if counter[0] != site:
+    span = nav_stops(pointing) if pointing else None
+    if span is None and listing:
+        span = source_stops(listing)
+    if span is None:
+        drives_that_sol = drives.get((site, sol))
+        if drives_that_sol is None:
+            raise ValueError("The sol names no stop on the traverse")
+        first, last = drives_that_sol
+        return (site, first), (site, last)
+    if any(counter[0] != site for counter in span):
         raise ValueError("Stated and archived rover position disagree on the site")
-    return counter
+    return span
 
 
 def instrument(product_id: str) -> str:

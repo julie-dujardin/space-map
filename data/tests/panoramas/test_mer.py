@@ -118,24 +118,26 @@ def test_a_sol_spent_driving_names_no_single_place(tmp_path):
 
 
 def test_a_still_sol_names_the_drive_it_was_held_at(tmp_path):
+    """A sol spent parked names one drive twice; a driving sol names the stretch."""
     drives = mer.traverse_drives("spirit", table(tmp_path))
 
-    assert drives[(1, 3)] == 0
-    assert (2, 5) not in drives
+    assert drives[(1, 3)] == (0, 0)
+    assert drives[(2, 5)] == (0, 16)
 
 
 def test_pointing_file_states_the_site_and_drive():
-    assert mer.nav_counter(POINTING) == (23, 7)
-    assert mer.nav_counter("   ") is None
+    """A mosaic shot standing still names one stop as both ends of its span."""
+    assert mer.nav_stops(POINTING) == ((23, 7), (23, 7))
+    assert mer.nav_stops("   ") is None
 
 
-def test_a_mosaic_spanning_two_stops_is_refused():
+def test_a_mosaic_spanning_two_stops_carries_both_ends():
+    """A sweep shot while driving is bounded by its ends, not refused."""
     spanning = POINTING.replace(
-        'index1="23" index2="7" index3="0" index4="14"',
-        'index1="23" index2="8" index3="0" index4="14"',
+        '<solution index1="23" index2="7" index3="0" index4="14" index5="0"/>',
+        '<solution index1="23" index2="9" index3="0" index4="14" index5="0"/>',
     )
-    with pytest.raises(ValueError, match="multiple or unknown"):
-        mer.nav_counter(spanning)
+    assert mer.nav_stops(spanning) == ((23, 7), (23, 9))
 
 
 def test_counter_fields_carry_on_in_base_36():
@@ -151,14 +153,13 @@ def test_source_frames_name_the_stop_when_no_pointing_file_does():
         "/home/rgd/sol3/pan/f2/2P126552133ILF0200P2302L2V1.VIC\n"
         "/home/rgd/sol3/pan/f2/2P126552207ILF0200P2302L2V1.VIC\n"
     )
-    assert mer.source_counter(listing) == (2, 0)
-    assert mer.source_counter("nothing here") is None
+    assert mer.source_stops(listing) == ((2, 0), (2, 0))
+    assert mer.source_stops("nothing here") is None
 
 
-def test_source_frames_from_two_stops_are_refused():
+def test_source_frames_from_two_stops_bound_the_sweep():
     listing = "2P126552133ILF0200P2302L2V1.VIC\n2P126552207ILF0201P2302L2V1.VIC\n"
-    with pytest.raises(ValueError, match="multiple or unknown"):
-        mer.source_counter(listing)
+    assert mer.source_stops(listing) == ((2, 0), (2, 1))
 
 
 def test_the_sol_answers_only_when_nothing_else_does(tmp_path):
@@ -166,10 +167,13 @@ def test_the_sol_answers_only_when_nothing_else_does(tmp_path):
     drives = mer.traverse_drives("spirit", table(tmp_path))
     url = "https://example.test/v/data/navcam/site0001/"
 
-    assert mer.mosaic_counter(None, None, url, 3, drives) == (1, 0)
-    with pytest.raises(ValueError, match="sol spans stops"):
-        mer.mosaic_counter(
-            None, None, "https://example.test/v/data/navcam/site0002/", 5, drives
+    assert mer.mosaic_stops(None, None, url, 3, drives) == ((1, 0), (1, 0))
+    assert mer.mosaic_stops(
+        None, None, "https://example.test/v/data/navcam/site0002/", 5, drives
+    ) == ((2, 0), (2, 16))
+    with pytest.raises(ValueError, match="names no stop"):
+        mer.mosaic_stops(
+            None, None, "https://example.test/v/data/navcam/site0009/", 5, drives
         )
 
 
@@ -179,12 +183,12 @@ def test_a_stated_position_beats_the_sol(tmp_path):
     url = "https://example.test/v/data/navcam/site0002/"
     listing = "2P126552133ILF0216P2302L2V1.VIC"
 
-    assert mer.mosaic_counter(None, listing, url, 5, drives) == (2, 16)
+    assert mer.mosaic_stops(None, listing, url, 5, drives) == ((2, 16), (2, 16))
 
 
 def test_a_stated_position_must_agree_with_the_archive_path(tmp_path):
     with pytest.raises(ValueError, match="disagree on the site"):
-        mer.mosaic_counter(
+        mer.mosaic_stops(
             POINTING, None, "https://example.test/v/data/navcam/site0002/", 3, {}
         )
 

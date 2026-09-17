@@ -2,6 +2,8 @@ import json
 
 import pytest
 
+from space_map_data.panoramas import localize
+
 from space_map_data.panoramas import msl_localize
 
 HEADER = (
@@ -134,3 +136,32 @@ class TestApply:
         assert written["position"]["latitude"] == -4.68
         assert written["position"]["uncertainty_m"] is None
         assert written["localization_evidence"]["capture_sol_basis"] == "NASA caption"
+
+
+class TestTheProvenanceOfABoundedFix:
+    """A bounded fix has two halves of provenance and must keep both: how the
+    site/drive counters were found, and how a position was arrived at from
+    counters that name more than one place."""
+
+    def table(self):
+        return {
+            (3, 10): {"latitude": 18.44, "longitude": 77.45, "elevation_m": -2570.0}
+        }
+
+    def test_an_exact_fix_states_the_route_that_found_it(self):
+        lookup = self.table()
+
+        found = localize.common_position({(3, 10)}, lookup, sorted(lookup))
+
+        assert "method" not in found
+
+    def test_a_bounded_fix_states_the_route_and_the_bounding(self):
+        lookup = {
+            (3, 10): {"latitude": 18.44, "longitude": 77.45, "elevation_m": -2570.0},
+            (3, 30): {"latitude": 18.45, "longitude": 77.46, "elevation_m": -2569.0},
+        }
+
+        found = localize.common_position({(3, 10), (3, 30)}, lookup, sorted(lookup))
+
+        assert found["method"] == "midpoint of the stops the sequence was shot across"
+        assert found["uncertainty_m"] > 0

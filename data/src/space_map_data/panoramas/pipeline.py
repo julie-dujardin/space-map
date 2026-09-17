@@ -1,11 +1,13 @@
 """Download official Navcam mosaics and prepare masked sphere textures."""
 
+from bisect import bisect_left
 from dataclasses import asdict
 import csv
 import hashlib
 import io
 import json
 import logging
+import math
 from pathlib import Path
 import re
 import shutil
@@ -170,6 +172,79 @@ def positions(mission: str, path: Path) -> dict:
     for key in ambiguous:
         del result[key]
     return result
+
+
+def metres_apart(first: dict, second: dict) -> float:
+    """How far apart two rover stops are, along the ground."""
+    scale = mer.MARS_RADIUS_M * math.pi / 180
+    east = degrees_east(first["longitude"], second["longitude"])
+    return math.hypot(
+        (second["latitude"] - first["latitude"]) * scale,
+        east * scale * math.cos(math.radians(first["latitude"])),
+    )
+
+
+def degrees_east(first: float, second: float) -> float:
+    """The signed turn from one longitude to another, the short way round.
+
+    Opportunity landed at 354 degrees east and drove past the prime meridian, so
+    two stops metres apart can be written 359 degrees apart.
+    """
+    return (second - first + 180) % 360 - 180
+
+
+def midpoint(start: dict, end: dict, between: tuple, method: str) -> dict:
+    """A place known only to lie between two rover stops, and how wrong it can be."""
+    span = metres_apart(start, end)
+    slack = max(start.get("uncertainty_m") or 0, end.get("uncertainty_m") or 0)
+    elevations = [start["elevation_m"], end["elevation_m"]]
+    return {
+        "latitude": (start["latitude"] + end["latitude"]) / 2,
+        "longitude": (
+            start["longitude"] + degrees_east(start["longitude"], end["longitude"]) / 2
+        )
+        % 360,
+        "elevation_m": None if None in elevations else sum(elevations) / 2,
+        "method": method,
+        "reference_point": "rover localization",
+        # The camera stood somewhere between the two, so the midpoint is wrong
+        # by at most half of what separates them, on top of whatever either end
+        # is itself unsure by: two stops bounded to the same stretch sit at the
+        # same estimate, and nothing separating them does not make them exact.
+        "uncertainty_m": round(span / 2 + slack, 1),
+        "position_bounds": {
+            "between_site_drive": [list(counter) for counter in between],
+            "separation_m": round(span, 1),
+            "endpoints": [
+                {"latitude": stop["latitude"], "longitude": stop["longitude"]}
+                for stop in (start, end)
+            ],
+        },
+    }
+
+
+def bracketed(lookup: dict, order: list, counter: tuple) -> dict | None:
+    """Where a stop the localization table does not record must have been.
+
+    A table records the drives it was corrected for, not every drive the rover
+    made, and the motion counter only ever advances, so counter order is
+    traverse order. A mosaic naming one of the uncorrected drives was still
+    taken between the recorded stops either side of it: a position, and a stated
+    bound on how wrong it can be, rather than no position at all.
+
+    None where the traverse cannot close around the counter, which is only ever
+    before its first recorded stop or after its last.
+    """
+    index = bisect_left(order, counter)
+    if index == 0 or index >= len(order):
+        return None
+    neighbours = (order[index - 1], order[index])
+    return midpoint(
+        lookup[neighbours[0]],
+        lookup[neighbours[1]],
+        neighbours,
+        "midpoint of the recorded stops either side on the traverse",
+    )
 
 
 def m20_published(client, name) -> bool:
@@ -342,6 +417,43 @@ def mosaic_listings(client, root, mission, *, start_sol, end_sol, refresh):
         )
 
 
+# Identifies the recipe that chose and validated a selection. Bump it whenever
+# a change would make a run accept different products, so a resumed run
+# revalidates what the old recipe chose instead of trusting it.
+SELECTION_VERSION = 2
+# The versions whose accepted products this recipe would accept unchanged. A
+# resumed run revalidates only what it might now decide differently, so a
+# purely additive change belongs here rather than costing a checksum over every
+# byte already on disk. Version 1 refused the stops it could only bound; the
+# ones it did accept, it accepted at the same exact position.
+CARRIED_SELECTIONS = {1, 2}
+
+
+def revision_key(mission: str, product_id: str) -> str:
+    """What two processing revisions of one sweep share, and separate sweeps
+    at the same stop do not."""
+    if mission in mer.VOLUMES:
+        return product_id[:-1]
+    return re.sub(r"\d{2}$", "", product_id)
+
+
+def resumable(previous: dict, parameters: dict) -> dict[str, dict]:
+    """The products a previous run of these same parameters already validated,
+    by the label URL that names each one before anything is fetched.
+
+    A run rewrites its selection from the first sol, so one that is interrupted
+    leaves an index naming a fraction of what it downloaded, and the processing
+    stage reads the index. Carrying the validated products costs a dictionary
+    lookup where revalidating costs a request and a checksum over every byte
+    already on disk.
+    """
+    if previous.get("selection_version") not in CARRIED_SELECTIONS:
+        return {}
+    if previous.get("selection") != parameters:
+        return {}
+    return {product["label_url"]: product for product in previous.get("products", [])}
+
+
 def download(
     client,
     source_dir: Path,
@@ -378,7 +490,58 @@ def download(
         lookup = positions(mission, position_path)
         if mission in mer.VOLUMES:
             drives = mer.traverse_drives(mission, position_path)
+    order = sorted(lookup)
+
+    def place(counter: tuple) -> dict | None:
+        """Where a stop was, bounded where the table does not record it."""
+        return lookup.get(counter) or bracketed(lookup, order, counter)
+
+    def place_span(span: tuple) -> dict | None:
+        """Where a mosaic was shot from, across the stops its frames name.
+
+        A sweep the rover drove during was shot from every stop between its
+        ends, so it is placed halfway along and carries the whole stretch as
+        its bound.
+        """
+        first, last = span
+        start, end = place(first), place(last)
+        if start is None or end is None:
+            return None
+        if first == last:
+            return start
+        return midpoint(
+            start, end, span, "midpoint of the stops the mosaic was shot across"
+        )
+
+    parameters = {
+        "start_sol": start_sol,
+        "end_sol": end_sol,
+        "limit": limit,
+        "sol_step": sol_step,
+    }
+    selection_path = root / "selection.json"
+    carried = (
+        resumable(json.loads(selection_path.read_text()), parameters)
+        if selection_path.is_file() and not refresh
+        else {}
+    )
     accepted, rejected, seen = [], [], set()
+
+    def checkpoint(complete: bool):
+        write_json(
+            selection_path,
+            {
+                "schema_version": 1,
+                "selection_version": SELECTION_VERSION,
+                "selection": parameters,
+                # Only a run that reached the last sol has seen everything the
+                # archive offers; an interrupted one is resumed, not trusted.
+                "complete": complete,
+                "products": accepted,
+                "rejected": rejected,
+            },
+        )
+
     previous_sol = None
     for sol, products in mosaic_listings(
         client, root, mission, start_sol=start_sol, end_sol=end_sol, refresh=refresh
@@ -404,7 +567,18 @@ def download(
             key=lambda product: product[1],
             reverse=True,
         ):
+            # Sols are walked in order, so every product carried here is already
+            # in `accepted` before the first new one is written beside it.
+            found = carried.get(url + name)
+            if found is not None:
+                accepted.append(found)
+                seen.add(revision_key(mission, found["mosaic"]["product_id"]))
+                if limit is not None and len(accepted) >= limit:
+                    break
+                continue
             try:
+                # A lander saw everything from the one place it landed.
+                shot_from = fixed
                 # A name the archive does not serve is one bad product, not a
                 # reason to abandon a mission-long run.
                 if mission in mer.VOLUMES:
@@ -423,13 +597,16 @@ def download(
                         except httpx.HTTPStatusError as error:
                             if error.response.status_code != 404:
                                 raise
-                    counter = mer.mosaic_counter(
+                    span = mer.mosaic_stops(
                         stated.get("nav"), stated.get("lis"), url, sol, drives
                     )
-                    if counter not in lookup:
-                        raise ValueError("No exact site/drive localization")
+                    shot_from = place_span(span)
+                    if shot_from is None:
+                        raise ValueError("Traverse does not reach this stop")
                     image_url = url + name
-                    mosaic = read_mer_pds3(ranged_label(client, image_url), counter[1])
+                    # The sweep is filed under the stop it ended at, which is
+                    # also the one its label is referenced to.
+                    mosaic = read_mer_pds3(ranged_label(client, image_url), span[1][1])
                 else:
                     label = fetch(
                         client, url + name, root / "labels" / name, refresh=refresh
@@ -442,15 +619,13 @@ def download(
                         else read_pds4
                     )
                     mosaic = read(label.read_text())
-                if not fixed and (mosaic.site, mosaic.drive) not in lookup:
-                    raise ValueError("No exact site/drive localization")
+                if not fixed and mission not in mer.VOLUMES:
+                    shot_from = place((mosaic.site, mosaic.drive))
+                    if shot_from is None:
+                        raise ValueError("Traverse does not reach this stop")
                 # Keep separate sweeps at the same stop, but not processing revisions.
-                revision_key = (
-                    mosaic.product_id[:-1]
-                    if mission in mer.VOLUMES
-                    else re.sub(r"\d{2}$", "", mosaic.product_id)
-                )
-                if revision_key in seen:
+                revision = revision_key(mission, mosaic.product_id)
+                if revision in seen:
                     continue
                 # InSight labels keep only the last three digits of the sol;
                 # the directory a product is filed under holds the whole number.
@@ -505,7 +680,7 @@ def download(
                     "id": f"{mission}-{mosaic.product_id.lower()}",
                     "mission": mission,
                     "mosaic": asdict(mosaic),
-                    "position": fixed or lookup[(mosaic.site, mosaic.drive)],
+                    "position": shot_from,
                     "label": str(label.relative_to(root)),
                     "image": str(image.relative_to(root)),
                     "label_url": url + name,
@@ -516,11 +691,8 @@ def download(
                     "position_sha256": sha256(position_path) if position_path else None,
                 }
             )
-            seen.add(revision_key)
-            write_json(
-                root / "selection.json",
-                {"schema_version": 1, "products": accepted, "rejected": rejected},
-            )
+            seen.add(revision)
+            checkpoint(False)
             logger.info(
                 "Downloaded %s sol %s site %s drive %s",
                 mission,
@@ -537,19 +709,13 @@ def download(
     if not accepted:
         write_json(root / "rejected.json", rejected)
         raise ValueError(f"No supported localized panoramas found for {mission}")
-    write_json(
-        root / "selection.json",
-        {
-            "schema_version": 1,
-            "products": accepted,
-            "rejected": rejected,
-            "selection": {
-                "start_sol": start_sol,
-                "end_sol": end_sol,
-                "limit": limit,
-                "sol_step": sol_step,
-            },
-        },
+    checkpoint(True)
+    logger.info(
+        "%s: %s products selected (%s carried from an earlier run), %s rejected",
+        mission,
+        len(accepted),
+        sum(1 for product in accepted if product["label_url"] in carried),
+        len(rejected),
     )
     return accepted
 
@@ -733,11 +899,21 @@ def coverage(texture: Image.Image, mosaic: Mosaic) -> dict:
 BUILD_VERSION = 1
 
 
-def reusable(metadata: dict, width: int) -> bool:
-    """Whether a product on disk is what this run would build anyway."""
-    return (
-        metadata.get("build_version") == BUILD_VERSION
-        and metadata.get("width") == width
+def reusable(metadata: dict, width: int, product: dict | None = None) -> bool:
+    """Whether a product on disk is what this run would build anyway.
+
+    `product` is the selection row it would be built from. A download rewrites
+    the selection every run, and a stop the traverse now only bounds is a
+    different answer from the exact one an earlier run wrote, so a build that
+    no longer agrees with its row is rebuilt rather than kept.
+    """
+    if metadata.get("build_version") != BUILD_VERSION or metadata.get("width") != width:
+        return False
+    if product is None:
+        return True
+    position = metadata.get("position") or {}
+    return metadata.get("sol") == product["mosaic"]["sol"] and all(
+        position.get(key) == value for key, value in product["position"].items()
     )
 
 
@@ -866,22 +1042,25 @@ def process(
     selection = json.loads((root / "selection.json").read_text())
     entries, rejected, kept = [], [], 0
     for product in selection["products"]:
-        # A corrupted cache is an integrity fault, not an unusable mosaic, so it
-        # stays fatal rather than being recorded as one product's rejection.
-        for key in ("label", "image"):
-            if sha256(root / product[key]) != product[key + "_sha256"]:
-                raise ValueError(f"Cached {key} checksum mismatch: {product['id']}")
         directory = output_dir / collection / product["id"]
         built = directory / "metadata.json"
         if built.is_file():
             metadata = json.loads(built.read_text())
-            if not rebuild and reusable(metadata, width):
+            if not rebuild and reusable(metadata, width, product):
                 entries.append(catalog_entry(metadata, directory, output_dir))
                 kept += 1
                 continue
             # Built by a recipe this run no longer agrees with, so it goes
             # rather than leaving the collection half one recipe, half another.
             shutil.rmtree(directory)
+        # Only the bytes this run is about to read. A product it reuses was
+        # built from bytes an earlier run checked, and rechecking the whole
+        # cache to skip it costs a resumed run hours of hashing.
+        # A corrupted cache is an integrity fault, not an unusable mosaic, so it
+        # stays fatal rather than being recorded as one product's rejection.
+        for key in ("label", "image"):
+            if sha256(root / product[key]) != product[key + "_sha256"]:
+                raise ValueError(f"Cached {key} checksum mismatch: {product['id']}")
         try:
             entries.append(
                 build_product(root, output_dir, collection, mission, product, width)
@@ -891,16 +1070,26 @@ def process(
             # which a raise here would, by skipping the catalog write below.
             rejected.append({"id": product["id"], "reason": str(error)})
             logger.warning("Rejected %s: %s", product["id"], error)
+    # A download still in progress is a legitimate thing to process, but the
+    # collection it yields is not the whole traverse, and nothing else on disk
+    # says so.
+    complete = bool(selection.get("complete"))
     write_json(
         output_dir / collection / "catalog.json",
-        {"schema_version": 1, "body": "mars", "panoramas": entries},
+        {
+            "schema_version": 1,
+            "body": "mars",
+            "source_complete": complete,
+            "panoramas": entries,
+        },
     )
     write_json(output_dir / collection / "processing-rejected.json", rejected)
     logger.info(
-        "%s: %s panoramas (%s already built), %s rejected",
+        "%s: %s panoramas (%s already built), %s rejected, from %s selection",
         mission,
         len(entries),
         kept,
         len(rejected),
+        "a complete" if complete else "an unfinished",
     )
     return entries

@@ -11,7 +11,15 @@ from urllib.parse import urlencode
 
 import httpx
 
-from .pipeline import M20_PLACES, fetch, positions, sha256, write_json
+from .pipeline import (
+    M20_PLACES,
+    bracketed,
+    fetch,
+    midpoint,
+    positions,
+    sha256,
+    write_json,
+)
 from .releases import API, plain, refresh_catalog
 
 logger = logging.getLogger(__name__)
@@ -29,13 +37,37 @@ def frame_counters(rows, sol, sequence):
     return result
 
 
-def common_position(counters, lookup):
-    if not counters or any(key not in lookup for key in counters):
-        raise ValueError("Missing exact PLACES localization")
-    locations = {tuple(sorted(lookup[key].items())) for key in counters}
-    if len(locations) != 1:
-        raise ValueError("Sequence spans multiple rover positions")
-    return dict(locations.pop())
+def common_position(counters, lookup, order):
+    """Where a sequence was shot from, bounded where it is not one exact place.
+
+    PLACES records the drives it was corrected for, and a sequence can run
+    across several of them, so a counter it skips is placed between its
+    neighbours and a sequence that moved is placed halfway along what it
+    covered. Either way the range travels with the position.
+    """
+    if not counters:
+        raise ValueError("Nothing states the rover position")
+    located: dict[tuple, dict] = {}
+    for key in sorted(counters):
+        found = lookup.get(key) or bracketed(lookup, order, key)
+        if found is None:
+            raise ValueError(f"PLACES does not reach site/drive {key}")
+        located[key] = found
+    ends = sorted(located)
+    # Only the place matters here; two fixes can reach it by different routes
+    # and carry different ranges for having done so.
+    where = {
+        (found["latitude"], found["longitude"], found["elevation_m"])
+        for found in located.values()
+    }
+    if len(where) == 1:
+        return dict(located[ends[0]])
+    return midpoint(
+        located[ends[0]],
+        located[ends[-1]],
+        (ends[0], ends[-1]),
+        "midpoint of the stops the sequence was shot across",
+    )
 
 
 def localize(client, source_dir):
@@ -44,6 +76,7 @@ def localize(client, source_dir):
     table = fetch(client, M20_PLACES, cache / "best_interp.csv")
     fetch(client, M20_PLACES + ".xml", cache / "best_interp.csv.xml")
     lookup = positions("perseverance", table)
+    order = sorted(lookup)
     table_hash = sha256(table)
     # PLACES records one row per drive step, so a sol with no row is a sol the
     # rover did not move on: it stood where the last earlier row left it.
@@ -137,19 +170,26 @@ def localize(client, source_dir):
                         break
                     page += 1
                 method = "exact observation sol/sequence → calibrated-frame site/drive → PLACES"
-            position = common_position(counters, lookup)
-            position.update(
-                {
-                    "latitude_type": "planetocentric",
-                    "longitude_direction": "east",
-                    "longitude_range": [0, 360],
-                    "elevation_datum": "Mars MOLA areoid",
-                    "uncertainty_m": None,
-                    "reference_point": "rover localization",
-                    "method": method,
-                    "source_url": M20_PLACES,
-                }
-            )
+            located = common_position(counters, lookup, order)
+            position = {
+                "latitude_type": "planetocentric",
+                "longitude_direction": "east",
+                "longitude_range": [0, 360],
+                "elevation_datum": "Mars MOLA areoid",
+                "uncertainty_m": None,
+                "reference_point": "rover localization",
+                "source_url": M20_PLACES,
+                # Last, so a fix that is only bounded keeps its own range.
+                **located,
+                # Both halves of the provenance: how the counters were found,
+                # and, where the fix is only bounded, how it was arrived at
+                # from them. Spreading `located` alone would drop the route.
+                "method": (
+                    f"{method}; {located['method']}"
+                    if located.get("method")
+                    else method
+                ),
+            }
             record = {
                 "position": position,
                 "site_drive_counters": sorted(counters),
@@ -190,7 +230,13 @@ def apply_localizations(source_dir, output_dir):
             continue
         metadata["position"] = record["position"]
         metadata["position_status"] = (
-            "exact archive association" if record["position"] else record["reason"]
+            (
+                "archive association bounded to a stretch of traverse"
+                if record["position"].get("position_bounds")
+                else "exact archive association"
+            )
+            if record["position"]
+            else record["reason"]
         )
         metadata["localization_evidence"] = record
         write_json(path, metadata)

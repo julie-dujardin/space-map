@@ -15,11 +15,15 @@ from space_map_data.panoramas.labels import (
     read_pds4,
 )
 from space_map_data.panoramas.pipeline import (
+    bracketed,
     coordinate_grid_dn,
+    degrees_east,
+    metres_apart,
     download,
     fetch,
     positions,
     process,
+    resumable,
     read_pixels,
     remove_coordinate_grid,
     remove_coordinate_label_borders,
@@ -346,7 +350,19 @@ def test_download_to_offline_catalog(tmp_path):
         b"corrupt"
     )
     with pytest.raises(ValueError, match="checksum"):
-        process(tmp_path / "sources", output, "curiosity", width=256)
+        process(tmp_path / "sources", output, "curiosity", width=256, rebuild=True)
+
+
+def test_a_corrupt_source_behind_a_built_product_does_not_stop_a_resumed_run(tmp_path):
+    """Only the bytes a run reads are worth a checksum; hashing the whole cache
+    to skip what is already built costs a resumed run hours."""
+    entries, name = _offline_curiosity(tmp_path)
+    output = tmp_path / "derived"
+    (tmp_path / "sources" / "curiosity" / "images" / (name + ".IMG")).write_bytes(
+        b"corrupt"
+    )
+
+    assert process(tmp_path / "sources", output, "curiosity", width=256) == entries
 
 
 def test_a_lander_frame_sphere_claims_no_heading(tmp_path, monkeypatch):
@@ -654,3 +670,234 @@ def test_rebuild_forces_a_fresh_build(tmp_path):
     )
 
     assert (built / "panorama.webp").read_bytes() != b"clobbered"
+
+
+def navcam_responses():
+    """Three sols of servable Curiosity mosaics, one product each."""
+    label = (FIXTURES / "curiosity.lbl").read_text()
+    label = label.replace("7703", "360").replace("977", "90")
+    label = (
+        label.replace("15406", "720")
+        .replace("21.3979", "1.0")
+        .replace("132.629", "46.0")
+    )
+    return offline_navcam([24, 30, 44], label)
+
+
+def counting_client(responses, fail_on=None):
+    """A client that records every URL it serves, and may refuse one."""
+    served = []
+
+    def handle(request):
+        url = str(request.url)
+        served.append(url)
+        if fail_on is not None and fail_on in url:
+            raise httpx.ConnectError("interrupted")
+        return httpx.Response(200, content=responses[url])
+
+    return httpx.Client(transport=httpx.MockTransport(handle)), served
+
+
+def test_an_interrupted_download_keeps_the_products_it_had_validated(tmp_path):
+    """A run rewrites its selection from the first sol, so one that stops early
+    must not leave an index naming less than it downloaded."""
+    responses = navcam_responses()
+    client, _ = counting_client(responses, fail_on="SOL00044")
+    with client, pytest.raises(httpx.ConnectError):
+        download(client, tmp_path / "sources", "curiosity")
+
+    selection = json.loads(
+        (tmp_path / "sources" / "curiosity" / "selection.json").read_text()
+    )
+
+    assert selection["complete"] is False
+    assert [p["mosaic"]["sol"] for p in selection["products"]] == [24, 30]
+
+
+def test_a_resumed_download_refetches_nothing_it_already_holds(tmp_path):
+    responses = navcam_responses()
+    client, _ = counting_client(responses, fail_on="SOL00044")
+    with client, pytest.raises(httpx.ConnectError):
+        download(client, tmp_path / "sources", "curiosity")
+
+    client, served = counting_client(responses)
+    with client:
+        products = download(client, tmp_path / "sources", "curiosity")
+
+    assert [product["mosaic"]["sol"] for product in products] == [24, 30, 44]
+    # The two sols the first run validated cost nothing the second time round.
+    assert not [url for url in served if "SOL00024" in url or "SOL00030" in url]
+    selection = json.loads(
+        (tmp_path / "sources" / "curiosity" / "selection.json").read_text()
+    )
+    assert selection["complete"] is True
+
+
+def test_a_different_selection_is_not_resumed(tmp_path):
+    """Carrying products chosen under other bounds would answer for a run that
+    never happened."""
+    responses = navcam_responses()
+    client, _ = counting_client(responses)
+    with client:
+        download(client, tmp_path / "sources", "curiosity")
+    selection = json.loads(
+        (tmp_path / "sources" / "curiosity" / "selection.json").read_text()
+    )
+
+    assert not resumable(selection, {**selection["selection"], "sol_step": 20})
+
+    client, _ = counting_client(responses)
+    with client:
+        products = download(client, tmp_path / "sources", "curiosity", sol_step=20)
+    assert [product["mosaic"]["sol"] for product in products] == [24, 44]
+
+
+def test_a_selection_an_older_recipe_chose_is_not_resumed():
+    """A recipe that would now accept different products must not inherit the
+    products the old one accepted."""
+    chosen = {"start_sol": 0, "end_sol": None, "limit": None, "sol_step": 1}
+    carried = {"label_url": "https://example.invalid/x.LBL"}
+
+    assert resumable(
+        {
+            "selection_version": pipeline.SELECTION_VERSION,
+            "selection": chosen,
+            "products": [carried],
+        },
+        chosen,
+    ) == {carried["label_url"]: carried}
+    assert not resumable(
+        {"selection_version": 0, "selection": chosen, "products": [carried]}, chosen
+    )
+    # A selection written before the recipe was versioned states nothing.
+    assert not resumable({"selection": chosen, "products": [carried]}, chosen)
+
+
+def test_refresh_revalidates_rather_than_resuming(tmp_path):
+    responses = navcam_responses()
+    client, _ = counting_client(responses, fail_on="SOL00044")
+    with client, pytest.raises(httpx.ConnectError):
+        download(client, tmp_path / "sources", "curiosity")
+
+    client, _ = counting_client(responses)
+    with client:
+        products = download(client, tmp_path / "sources", "curiosity", refresh=True)
+
+    assert [product["mosaic"]["sol"] for product in products] == [24, 30, 44]
+
+
+class TestBracketedPositions:
+    """A stop the localization table skips still lies between the ones it
+    records, which places the mosaic and states how wrong that can be."""
+
+    LOOKUP = {
+        (2, 4): {"latitude": -1.0, "longitude": 354.0, "elevation_m": -1000.0},
+        (2, 8): {"latitude": -1.0, "longitude": 354.002, "elevation_m": -1010.0},
+        (3, 6): {"latitude": -1.5, "longitude": 355.0, "elevation_m": None},
+    }
+
+    def bracket(self, counter):
+        return bracketed(self.LOOKUP, sorted(self.LOOKUP), counter)
+
+    def test_an_unrecorded_drive_is_placed_between_its_neighbours(self):
+        found = self.bracket((2, 6))
+
+        assert found["latitude"] == pytest.approx(-1.0)
+        assert found["longitude"] == pytest.approx(354.001)
+        assert found["elevation_m"] == pytest.approx(-1005.0)
+
+    def test_the_bound_is_half_what_separates_the_neighbours(self):
+        """The camera stood somewhere between the two, so the midpoint is
+        wrong by at most half their separation."""
+        found = self.bracket((2, 6))
+        span = metres_apart(self.LOOKUP[(2, 4)], self.LOOKUP[(2, 8)])
+
+        assert found["uncertainty_m"] == pytest.approx(round(span / 2, 1))
+        assert found["position_bounds"]["separation_m"] == pytest.approx(round(span, 1))
+        assert found["position_bounds"]["between_site_drive"] == [[2, 4], [2, 8]]
+
+    def test_a_site_change_brackets_across_it(self):
+        """Drive 0 of a new site is the moment the counter reset, which the
+        tables never record and the stops either side still enclose."""
+        found = self.bracket((3, 0))
+
+        assert found["position_bounds"]["between_site_drive"] == [[2, 8], [3, 6]]
+
+    def test_an_unknown_elevation_stays_unknown(self):
+        assert self.bracket((3, 0))["elevation_m"] is None
+
+    def test_a_stop_outside_the_traverse_is_not_placed(self):
+        """Before the first recorded stop or after the last, nothing encloses it."""
+        assert self.bracket((2, 1)) is None
+        assert self.bracket((4, 0)) is None
+
+    def test_a_traverse_across_the_prime_meridian_does_not_go_the_long_way(self):
+        """Opportunity landed at 354 degrees east and drove past zero, so two
+        stops metres apart can be written 359 degrees apart."""
+        lookup = {
+            (1, 0): {"latitude": -2.0, "longitude": 359.999, "elevation_m": None},
+            (1, 4): {"latitude": -2.0, "longitude": 0.001, "elevation_m": None},
+        }
+        found = bracketed(lookup, sorted(lookup), (1, 2))
+
+        assert found is not None
+        assert found["longitude"] == pytest.approx(0.0)
+        assert found["uncertainty_m"] < 60
+        assert degrees_east(359.999, 0.001) == pytest.approx(0.002)
+
+
+class TestPlacingAStopTheTableSkips:
+    """A localization table records the drives it was corrected for, not every
+    drive the rover made, and a mosaic naming one of the others is still on the
+    traverse between the recorded stops either side."""
+
+    def served(self, table_rows):
+        label = (FIXTURES / "curiosity.lbl").read_text()
+        label = label.replace("7703", "360").replace("977", "90")
+        label = (
+            label.replace("15406", "720")
+            .replace("21.3979", "1.0")
+            .replace("132.629", "46.0")
+        )
+        responses = offline_navcam([24], label)
+        responses[PLACES] = (
+            "frame,site,drive,planetocentric_latitude,longitude,elevation\n"
+            + table_rows
+        )
+        return responses
+
+    def download(self, tmp_path, table_rows):
+        responses = self.served(table_rows)
+        with httpx.Client(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(200, content=responses[str(req.url)])
+            )
+        ) as client:
+            return download(client, tmp_path / "sources", "curiosity")
+
+    def test_a_skipped_drive_is_placed_between_the_recorded_stops(self, tmp_path):
+        products = self.download(
+            tmp_path,
+            "ROVER,3,370,-4.5,137.4,-4500\nROVER,3,374,-4.5,137.5,-4600\n",
+        )
+        position = products[0]["position"]
+
+        assert position["latitude"] == pytest.approx(-4.5)
+        assert position["longitude"] == pytest.approx(137.45)
+        assert position["uncertainty_m"] == pytest.approx(2954.6, abs=1)
+        assert position["position_bounds"]["between_site_drive"] == [[3, 370], [3, 374]]
+
+    def test_an_exactly_recorded_stop_states_no_uncertainty(self, tmp_path):
+        products = self.download(tmp_path, "ROVER,3,372,-4.5,137.4,-4500\n")
+
+        assert products[0]["position"] == {
+            "latitude": -4.5,
+            "longitude": 137.4,
+            "elevation_m": -4500.0,
+        }
+
+    def test_a_stop_the_traverse_never_reaches_is_still_refused(self, tmp_path):
+        """Nothing encloses a drive past the last the table records, so there
+        is no range to state and the product is not taken."""
+        with pytest.raises(ValueError, match="No supported localized panoramas"):
+            self.download(tmp_path, "ROVER,3,300,-4.5,137.4,-4500\n")

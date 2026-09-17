@@ -380,3 +380,97 @@ class TestIndex:
         out_dir = tmp_path / "v1"
         panoramas.write_panorama_index(out_dir)
         assert orjson.loads((out_dir / "panoramas.json").read_bytes()) == {"bodies": []}
+
+
+class TestDeduplication:
+    """The viewer addresses a panorama by time and place, so only one product
+    of each address can be reached."""
+
+    def test_the_fullest_sphere_of_an_address_is_the_one_kept(self, tmp_path: Path):
+        """A stop held for days leaves mosaics the archive dates alike; they
+        differ in how much of the sphere they fill."""
+        _write_cache(
+            tmp_path,
+            "curiosity-navcam",
+            [
+                _product(id="thin", coverage={"sphere_percent": 8.1}),
+                _product(id="full", coverage={"sphere_percent": 42.6}),
+                _product(id="middling", coverage={"sphere_percent": 19.0}),
+            ],
+        )
+
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+
+        assert product.entry["id"] == "full"
+
+    def test_a_different_place_at_the_same_time_is_not_a_repeat(self, tmp_path: Path):
+        _write_cache(
+            tmp_path,
+            "curiosity-navcam",
+            [
+                _product(id="here"),
+                _product(
+                    id="there",
+                    position={"latitude": 18.45, "longitude": 77.45},
+                ),
+            ],
+        )
+
+        assert len(panoramas.load_panoramas(tmp_path)[MARS]) == 2
+
+    def test_survivors_keep_mission_then_time_order(self, tmp_path: Path):
+        """Neighbours in the exported list are neighbours on the traverse,
+        whichever rendition of each stop won."""
+        _write_cache(
+            tmp_path,
+            "curiosity-navcam",
+            [
+                _product(
+                    id="late-thin",
+                    start_time="2021-03-01T00:00:00.000Z",
+                    coverage={"sphere_percent": 1.0},
+                ),
+                _product(
+                    id="late-full",
+                    start_time="2021-03-01T00:00:00.000Z",
+                    coverage={"sphere_percent": 90.0},
+                ),
+                _product(id="early"),
+            ],
+        )
+
+        exported = panoramas.load_panoramas(tmp_path)[MARS]
+
+        assert [product.entry["id"] for product in exported] == ["early", "late-full"]
+
+
+class TestApproximatePositions:
+    """A panorama placed only within a range carries that range, so the viewer
+    can say how well the marker is known rather than imply it is exact."""
+
+    def _entries(self, tmp_path, position):
+        _write_cache(tmp_path, "perseverance", [_product(position=position)])
+        return panoramas.load_panoramas(tmp_path)[MARS][0].entry
+
+    def test_a_bounded_position_states_how_far_off_it_can_be(self, tmp_path):
+        entry = self._entries(
+            tmp_path,
+            {
+                "latitude": 18.44,
+                "longitude": 77.45,
+                "elevation_m": -2569.9,
+                "uncertainty_m": 8.4,
+            },
+        )
+
+        assert entry["position_uncertainty_m"] == 8.4
+
+    def test_an_exact_position_states_no_range(self, tmp_path):
+        """Most positions come straight from the archive, and an uncertainty
+        of nothing would read as a measured zero."""
+        entry = self._entries(
+            tmp_path,
+            {"latitude": 18.44, "longitude": 77.45, "elevation_m": -2569.9},
+        )
+
+        assert "position_uncertainty_m" not in entry
