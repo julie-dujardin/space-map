@@ -439,19 +439,17 @@ def revision_key(mission: str, product_id: str) -> str:
     return re.sub(r"\d{2}$", "", product_id)
 
 
-def resumable(previous: dict, parameters: dict) -> dict[str, dict]:
-    """The products a previous run of these same parameters already validated,
-    by the label URL that names each one before anything is fetched.
+def resumable(previous: dict) -> dict[str, dict]:
+    """The products an earlier run already validated, by the label URL that
+    names each one before anything is fetched.
 
-    A run rewrites its selection from the first sol, so one that is interrupted
-    leaves an index naming a fraction of what it downloaded, and the processing
-    stage reads the index. Carrying the validated products costs a dictionary
-    lookup where revalidating costs a request and a checksum over every byte
-    already on disk.
+    Carrying them costs a dictionary lookup where revalidating costs a request
+    and a checksum over every byte already on disk. Only the recipe decides
+    whether they can be carried: a sol range bounds what a run looks at again,
+    not what the index is allowed to hold, so a run over part of the mission
+    resumes the rest rather than discarding it.
     """
     if previous.get("selection_version") not in CARRIED_SELECTIONS:
-        return {}
-    if previous.get("selection") != parameters:
         return {}
     return {product["label_url"]: product for product in previous.get("products", [])}
 
@@ -513,26 +511,55 @@ def download(
             start, end, span, "midpoint of the stops the mosaic was shot across"
         )
 
-    parameters = {"start_sol": start_sol, "end_sol": end_sol}
     selection_path = root / "selection.json"
-    carried = (
-        resumable(json.loads(selection_path.read_text()), parameters)
-        if selection_path.is_file() and not refresh
-        else {}
-    )
+    stored = json.loads(selection_path.read_text()) if selection_path.is_file() else {}
+    # An older recipe's index states nothing this one can use, neither to skip
+    # work nor to speak for the sols this run leaves out.
+    previous = stored if stored.get("selection_version") in CARRIED_SELECTIONS else {}
+    # A refreshed run revalidates every sol it walks, but that says nothing about
+    # the sols it was told not to walk.
+    carried = {} if refresh else resumable(previous)
+    whole_mission = start_sol == 0 and end_sol is None
     accepted, rejected, seen = [], [], set()
 
-    def checkpoint(complete: bool):
+    def outside(product: dict) -> bool:
+        """Whether this run's sol range leaves the product's sol out."""
+        sol = product["mosaic"]["sol"]
+        return sol < start_sol or (end_sol is not None and sol > end_sol)
+
+    def indexed(through: int | None = None) -> list[dict]:
+        """Everything the index should name: what this run walked, and what an
+        earlier one found in the sols this run has not answered for.
+
+        A product the archive has stopped serving is dropped rather than kept,
+        which is why this asks where a sol falls and not whether the run
+        happened to reach it. `through` is the last sol walked, and only a
+        checkpoint sets it: a run stopped halfway must leave the index whole
+        rather than cut down to the part it reached, or the next run resumes
+        from a file that has forgotten the rest of the mission.
+        """
+        kept = [
+            item
+            for item in previous.get("products", [])
+            if outside(item)
+            or (through is not None and item["mosaic"]["sol"] > through)
+        ]
+        # Stable, so the order this run chose between revisions at one stop survives.
+        return sorted(accepted + kept, key=lambda product: product["mosaic"]["sol"])
+
+    def checkpoint(complete: bool, through: int | None = None):
         write_json(
             selection_path,
             {
                 "schema_version": 1,
                 "selection_version": SELECTION_VERSION,
-                "selection": parameters,
+                "selection": {"start_sol": start_sol, "end_sol": end_sol},
                 # Only a run that reached the last sol has seen everything the
-                # archive offers; an interrupted one is resumed, not trusted.
-                "complete": complete,
-                "products": accepted,
+                # archive offers; an interrupted one is resumed, not trusted. A
+                # bounded run inherits the claim, having kept what it skipped.
+                "complete": complete
+                and (whole_mission or bool(previous.get("complete"))),
+                "products": indexed(through),
                 "rejected": rejected,
             },
         )
@@ -702,7 +729,7 @@ def download(
                 }
             )
             seen.add(revision)
-            checkpoint(False)
+            checkpoint(False, sol)
             logger.info(
                 "Downloaded %s sol %s site %s drive %s",
                 mission,
@@ -710,18 +737,20 @@ def download(
                 mosaic.site,
                 mosaic.drive,
             )
-    if not accepted:
+    products = indexed()
+    if not products:
         write_json(root / "rejected.json", rejected)
         raise ValueError(f"No supported localized panoramas found for {mission}")
     checkpoint(True)
     logger.info(
-        "%s: %s products selected (%s carried from an earlier run), %s rejected",
+        "%s: %s products selected (%s walked this run, %s carried), %s rejected",
         mission,
+        len(products),
         len(accepted),
-        sum(1 for product in accepted if product["label_url"] in carried),
+        len(products) - len(accepted),
         len(rejected),
     )
-    return accepted
+    return products
 
 
 def label_text(raw: str) -> str:

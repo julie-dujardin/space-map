@@ -719,44 +719,118 @@ def test_a_resumed_download_refetches_nothing_it_already_holds(tmp_path):
     assert selection["complete"] is True
 
 
-def test_a_different_selection_is_not_resumed(tmp_path):
-    """Carrying products chosen under other bounds would answer for a run that
-    never happened."""
-    responses = navcam_responses()
-    client, _ = counting_client(responses)
-    with client:
-        download(client, tmp_path / "sources", "curiosity")
-    selection = json.loads(
-        (tmp_path / "sources" / "curiosity" / "selection.json").read_text()
-    )
+class TestARunOverPartOfTheMission:
+    """A sol range bounds what a run looks at again, not what the index holds.
 
-    assert not resumable(selection, {**selection["selection"], "start_sol": 30})
+    Curiosity lost four months of coverage to the opposite behaviour: a bounded
+    run rewrote the index to name only its own sols, and the processing stage
+    reads the index.
+    """
 
-    client, _ = counting_client(responses)
-    with client:
-        products = download(client, tmp_path / "sources", "curiosity", start_sol=30)
-    assert [product["mosaic"]["sol"] for product in products] == [30, 44]
+    def full(self, tmp_path):
+        client, _ = counting_client(navcam_responses())
+        with client:
+            download(client, tmp_path / "sources", "curiosity")
+        return tmp_path / "sources" / "curiosity" / "selection.json"
+
+    def test_the_sols_it_never_looked_at_stay_in_the_index(self, tmp_path):
+        self.full(tmp_path)
+
+        client, _ = counting_client(navcam_responses())
+        with client:
+            products = download(client, tmp_path / "sources", "curiosity", start_sol=30)
+
+        assert [product["mosaic"]["sol"] for product in products] == [24, 30, 44]
+
+    def test_it_asks_the_archive_only_about_the_sols_it_bounds(self, tmp_path):
+        self.full(tmp_path)
+
+        client, served = counting_client(navcam_responses())
+        with client:
+            download(client, tmp_path / "sources", "curiosity", start_sol=30)
+
+        assert not [url for url in served if "SOL00024" in url]
+
+    def test_it_inherits_the_completeness_it_did_not_re_establish(self, tmp_path):
+        path = self.full(tmp_path)
+
+        client, _ = counting_client(navcam_responses())
+        with client:
+            download(client, tmp_path / "sources", "curiosity", start_sol=30)
+
+        assert json.loads(path.read_text())["complete"] is True
+
+    def test_a_refreshed_run_still_keeps_the_sols_it_was_bounded_away_from(
+        self, tmp_path
+    ):
+        """Refreshing re-fetches what a run walks; it does not empty the rest."""
+        self.full(tmp_path)
+
+        client, _ = counting_client(navcam_responses())
+        with client:
+            products = download(
+                client,
+                tmp_path / "sources",
+                "curiosity",
+                start_sol=30,
+                refresh=True,
+            )
+
+        assert [product["mosaic"]["sol"] for product in products] == [24, 30, 44]
+
+    def test_a_product_the_archive_drops_inside_the_range_is_not_kept(self, tmp_path):
+        """Only the sols a run is bounded away from speak for themselves. One it
+        walks states what is there now, so a withdrawn product goes.
+
+        Refreshed because the caches would otherwise answer for the archive:
+        the sol index and the label are both already on disk.
+        """
+        self.full(tmp_path)
+        thinner = {
+            url: body
+            for url, body in navcam_responses().items()
+            if "SOL00030" not in url
+        }
+        thinner[MSL] = thinner[MSL].replace('<a href="SOL00030/">sol</a>', "")
+
+        client, _ = counting_client(thinner)
+        with client:
+            products = download(
+                client,
+                tmp_path / "sources",
+                "curiosity",
+                start_sol=30,
+                refresh=True,
+            )
+
+        assert [product["mosaic"]["sol"] for product in products] == [24, 44]
+
+    def test_a_bounded_run_with_nothing_before_it_claims_nothing(self, tmp_path):
+        client, _ = counting_client(navcam_responses())
+        with client:
+            download(client, tmp_path / "sources", "curiosity", start_sol=30)
+
+        selection = json.loads(
+            (tmp_path / "sources" / "curiosity" / "selection.json").read_text()
+        )
+        assert selection["complete"] is False
+        assert [p["mosaic"]["sol"] for p in selection["products"]] == [30, 44]
 
 
 def test_a_selection_an_older_recipe_chose_is_not_resumed():
     """A recipe that would now accept different products must not inherit the
     products the old one accepted."""
-    chosen = {"start_sol": 0, "end_sol": None}
     carried = {"label_url": "https://example.invalid/x.LBL"}
 
     assert resumable(
         {
             "selection_version": pipeline.SELECTION_VERSION,
-            "selection": chosen,
             "products": [carried],
-        },
-        chosen,
+        }
     ) == {carried["label_url"]: carried}
-    assert not resumable(
-        {"selection_version": 0, "selection": chosen, "products": [carried]}, chosen
-    )
+    assert not resumable({"selection_version": 0, "products": [carried]})
     # A selection written before the recipe was versioned states nothing.
-    assert not resumable({"selection": chosen, "products": [carried]}, chosen)
+    assert not resumable({"products": [carried]})
 
 
 def test_refresh_revalidates_rather_than_resuming(tmp_path):
