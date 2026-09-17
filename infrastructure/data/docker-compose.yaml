@@ -17,3 +17,18 @@ services:
     volumes:
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
       - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
+
+  # Separate from the scheduler: the DSN feed keeps no history, so it has to be
+  # sampled every minute, and every scheduler run that does work sends a push.
+  tracking:
+    image: ghcr.io/julie-dujardin/space-map-data:latest
+    build:
+      context: ../..
+      dockerfile: infrastructure/data/Dockerfile
+    container_name: space-map-tracking
+    command: space-map-tracking
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    volumes:
+      - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
+      - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
