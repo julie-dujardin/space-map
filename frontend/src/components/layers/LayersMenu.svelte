@@ -45,12 +45,12 @@
 	];
 </script>
 
-<div class="flex flex-col">
+<div class="flex min-h-0 flex-col">
 	<header class="px-5 pt-5 pb-3">
 		<h2 class="text-base font-semibold">{m.layers_title()}</h2>
 	</header>
 
-	<div class="px-5 pb-5 flex flex-col gap-5 overflow-y-auto">
+	<div class="px-5 pb-5 flex min-h-0 flex-col gap-5 overflow-y-auto">
 		<section class="flex flex-col gap-3">
 			<h3
 				id="layers-view-mode-label"

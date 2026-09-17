@@ -75,7 +75,7 @@
 			side="bottom"
 			align="end"
 			sideOffset={8}
-			class="w-80 max-h-[80vh] overflow-hidden p-0"
+			class="w-80 max-h-[80dvh] overflow-hidden p-0"
 		>
 			{@render children()}
 		</Popover.Content>

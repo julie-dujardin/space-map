@@ -234,13 +234,13 @@
 	</button>
 {/snippet}
 
-<div class="flex flex-col">
+<div class="flex min-h-0 flex-col">
 	<header class="px-5 pt-5 pb-3">
 		<h2 class="text-base font-semibold">{m.settings_title()}</h2>
 		<p class="text-xs text-muted-foreground mt-0.5">{m.settings_stored_locally()}</p>
 	</header>
 
-	<div class="px-5 pb-5 flex flex-col gap-5 overflow-y-auto">
+	<div class="px-5 pb-5 flex min-h-0 flex-col gap-5 overflow-y-auto">
 		<section class="flex flex-col gap-4">
 			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 				{m.settings_section_display()}
