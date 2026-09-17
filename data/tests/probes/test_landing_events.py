@@ -2,13 +2,15 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import ID_TYPE_ORDINAL
-from space_map_data.probes import events, landing_events
+from space_map_data.probes import events, landing_events, probe_id
 from space_map_data.probes.events import event_jd
+from space_map_data.probes.probe_id import load_registry
 from space_map_data.utils.time import jd_to_et
 
 
@@ -386,3 +388,48 @@ def test_spk_covered_probe_is_skipped(
         ],
     )
     assert landing_events.load_phases(_INDEFINITE_END) == []
+
+
+class TestWhichProbesTheKernelsAlreadyFly:
+    """A landed phase here on top of a SPICE trajectory would draw the craft
+    twice, so those probes are left out — but only those."""
+
+    def test_a_probe_with_its_own_kernel_is_left_out(self):
+        registry = [
+            {
+                "probe_id": 1,
+                "cospar_id": "1975-075C",
+                "kernel_sources": [{"mission": "VIKING"}, {"mission": "EVENTS-DB"}],
+            },
+        ]
+        with patch.object(probe_id, "load_registry", return_value=registry):
+            assert landing_events._spk_covered_probe_ids() == {1}
+
+    def test_a_craft_carried_down_by_one_keeps_its_phase(self):
+        """A designator names a launch, not a spacecraft: Ingenuity shares
+        Perseverance's, and has no kernel of its own to be drawn from."""
+        registry = [
+            {
+                "probe_id": 1,
+                "cospar_id": "2020-052A",
+                "kernel_sources": [{"mission": "MARS2020"}],
+            },
+            {
+                "probe_id": 2,
+                "cospar_id": "2020-052A",
+                "kernel_sources": [{"mission": "EVENTS-DB"}],
+            },
+        ]
+        with patch.object(probe_id, "load_registry", return_value=registry):
+            assert landing_events._spk_covered_probe_ids() == {1}
+
+    def test_the_real_registry_leaves_the_carried_craft_in(self):
+        covered = landing_events._spk_covered_probe_ids()
+        carried = {
+            entry["probe_id"]
+            for entry in load_registry()
+            if entry.get("name")
+            in {"Ingenuity", "Sojourner", "LEV-1", "LEV-2 (SORA-Q)"}
+        }
+
+        assert carried and not (carried & covered)

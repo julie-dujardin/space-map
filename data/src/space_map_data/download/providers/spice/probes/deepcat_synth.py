@@ -138,6 +138,51 @@ def _drop_stale(mission_dir: Path, keep: set[str]) -> list[DeepcatSynthResult]:
     return removed
 
 
+def probe_claimants(registry: list[dict]) -> dict[int, list[dict]]:
+    """Every probe that answers to each catalogue number.
+
+    One launch can put several operated craft in the catalogue under a single
+    number — an orbiter and the lander it carried — so this keeps all of them
+    rather than letting registry order decide which one a solved arc lands on.
+    """
+    claimants: dict[int, list[dict]] = collections.defaultdict(list)
+    for entry in registry:
+        if entry.get("norad_cat_id") is not None:
+            claimants[int(entry["norad_cat_id"])].append(entry)
+    return claimants
+
+
+def matching_probe(claimants: dict[int, list[dict]], obj) -> dict | None:
+    """The probe a catalogued object is, where the catalogue says which.
+
+    The international designator separates the craft a shared catalogue number
+    does not: the orbiter of Mars 3 is 1971-049A and the lander it released is
+    1971-049F. Where even that is shared, which craft was tracked is not in the
+    data, and a wrong trajectory is worse than none.
+    """
+    if not obj.norad_id:
+        return None
+    entries = claimants.get(int(obj.norad_id), [])
+    if len(entries) == 1:
+        return entries[0]
+    if not entries:
+        return None
+    designator = (obj.int_des or "").strip().upper()
+    named = [
+        e for e in entries if (e.get("cospar_id") or "").strip().upper() == designator
+    ]
+    if len(named) == 1:
+        return named[0]
+    logger.info(
+        "deepcat: catalogue number %s is claimed by %s and %s does not say "
+        "which was tracked; no kernel",
+        obj.norad_id,
+        ", ".join(sorted(str(e.get("name")) for e in entries)),
+        designator or "no designator",
+    )
+    return None
+
+
 def synthesise_all() -> list[DeepcatSynthResult]:
     """Solve every catalogued deep-space object that joins to a probe with no
     trajectory of its own, and write its arcs.
@@ -152,9 +197,7 @@ def synthesise_all() -> list[DeepcatSynthResult]:
         by_object.setdefault(phase.deep_id, []).append(phase)
 
     registry = load_registry()
-    by_norad = {
-        int(e["norad_cat_id"]): e for e in registry if e.get("norad_cat_id") is not None
-    }
+    claimants = probe_claimants(registry)
     # A hand-written state beats a catalogue solve; skip those probes entirely
     # rather than furnish two predict-tier kernels and let load order decide.
     curated = {p.get("naif_id") for p in from_state_overrides()}
@@ -168,7 +211,7 @@ def synthesise_all() -> list[DeepcatSynthResult]:
     keep: set[str] = set()
     try:
         for deep_id, obj in sorted(objects.items()):
-            entry = by_norad.get(obj.norad_id) if obj.norad_id else None
+            entry = matching_probe(claimants, obj)
             if entry is None:
                 continue
             naif = entry.get("naif_id")

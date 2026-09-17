@@ -16,7 +16,10 @@ from space_map_data.download.providers.spice.probes.deepcat_synth import (
     OPEN_ARC_YEARS,
     _segment_bounds,
     arc_segments,
+    matching_probe,
+    probe_claimants,
 )
+from space_map_data.probes.deepcat import DeepObject
 from space_map_data.download.providers.spice.probes.synthetic_index import write_type5
 from space_map_data.probes.propagation import AU_KM
 from space_map_data.probes.deepcat_arcs import ArcClass, SolvedArc
@@ -112,3 +115,121 @@ class TestArcHash:
         before = deepcat_synth._arc_hash(NAIF, [_arc(ArcClass.TRANSFER, 0.0, 100.0)])
         after = deepcat_synth._arc_hash(NAIF, [_arc(ArcClass.TRANSFER, 0.0, 200.0)])
         assert before != after
+
+
+def probe(name, norad, cospar):
+    return {"name": name, "norad_cat_id": norad, "cospar_id": cospar, "probe_id": 1}
+
+
+def catalogued(norad, int_des, name="thing"):
+    return DeepObject(
+        deep_id="D00001",
+        std_id=f"S{norad:05d}",
+        int_des=int_des,
+        name=name,
+        launch_date="1971 May 28",
+    )
+
+
+class TestResolvingACatalogueNumber:
+    """One launch can put several operated craft in the catalogue under one
+    number, so the number alone cannot say which of them was tracked."""
+
+    ORBITER = probe("Mars 3 Orbiter", 5252, "1971-049A")
+    LANDER = probe("Mars 3 Lander", 5252, "1971-049F")
+
+    def claimants(self, *probes):
+        return probe_claimants(list(probes))
+
+    def test_a_number_only_one_probe_claims_resolves(self):
+        found = matching_probe(
+            self.claimants(self.ORBITER), catalogued(5252, "1971-049A")
+        )
+
+        assert found is self.ORBITER
+
+    def test_the_designator_separates_a_shared_number(self):
+        """Mars 3's orbiter is 1971-049A and the lander it released 1971-049F;
+        both answer to catalogue number 5252."""
+        found = matching_probe(
+            self.claimants(self.ORBITER, self.LANDER), catalogued(5252, "1971-049A")
+        )
+
+        assert found is self.ORBITER
+
+    def test_the_lander_is_reachable_by_its_own_designator(self):
+        found = matching_probe(
+            self.claimants(self.ORBITER, self.LANDER), catalogued(5252, "1971-049F")
+        )
+
+        assert found is self.LANDER
+
+    def test_registry_order_no_longer_decides(self):
+        """Read as a plain mapping the later entry won, which handed the lander
+        every arc the catalogue solved for the orbiter."""
+        forward = matching_probe(
+            self.claimants(self.ORBITER, self.LANDER), catalogued(5252, "1971-049A")
+        )
+        reversed_ = matching_probe(
+            self.claimants(self.LANDER, self.ORBITER), catalogued(5252, "1971-049A")
+        )
+
+        assert forward is reversed_ is self.ORBITER
+
+    def test_a_shared_designator_resolves_to_nothing(self):
+        """Chang'e 5's lander and orbiter share both number and designator, so
+        which one was tracked is not in the data and a wrong trajectory is
+        worse than none."""
+        lander = probe("Chang'e 5 Lander+Ascender", 47097, "2020-087A")
+        orbiter = probe("Chang'e 5 Orbiter-Returner", 47097, "2020-087A")
+
+        assert (
+            matching_probe(
+                self.claimants(lander, orbiter), catalogued(47097, "2020-087A")
+            )
+            is None
+        )
+
+    def test_an_object_with_no_catalogue_number_resolves_to_nothing(self):
+        assert (
+            matching_probe(self.claimants(self.ORBITER), catalogued(0, "1971-049A"))
+            is None
+        )
+
+    def test_a_number_no_probe_claims_resolves_to_nothing(self):
+        assert (
+            matching_probe(self.claimants(self.ORBITER), catalogued(9999, "x")) is None
+        )
+
+
+class TestTheRegistryItself:
+    """The identity fields the joins rely on, checked against the real file."""
+
+    def test_probe_ids_are_unique(self):
+        from space_map_data.probes.probe_id import load_registry
+
+        ids = [entry["probe_id"] for entry in load_registry()]
+
+        assert len(ids) == len(set(ids))
+
+    def test_mission_and_naif_together_name_one_probe(self):
+        """`index_by_source` reads these as a mapping, so a repeated pair would
+        silently drop a probe."""
+        from space_map_data.probes.probe_id import load_registry
+
+        pairs = [
+            (source["mission"], int(source["naif_id"]))
+            for entry in load_registry()
+            for source in entry["kernel_sources"]
+        ]
+
+        assert len(pairs) == len(set(pairs))
+
+    def test_a_naif_id_alone_does_not(self):
+        """Recycled ids are why nothing may key on them; -76 was Mariner 10
+        before Curiosity."""
+        from space_map_data.probes.probe_id import load_registry
+
+        naifs = [e["naif_id"] for e in load_registry() if e.get("naif_id") is not None]
+
+        assert len(naifs) != len(set(naifs))

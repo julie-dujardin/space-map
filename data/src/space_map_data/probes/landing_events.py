@@ -114,23 +114,17 @@ def _spk_covered_probe_ids() -> set[int]:
     """Probe_ids whose craft a SPICE kernel already flies.
 
     The SPICE landed pipeline owns those, and a phase from here as well would
-    double-render the spacecraft. Matched through COSPAR as well as the id
-    itself: Viking 1/2 carry an events-DB row and an SPK row for the same
-    lander, and only the COSPAR joins them.
+    double-render the spacecraft. Only a probe's own kernel counts: a COSPAR
+    designator is shared by everything one launch carried, so matching on it
+    suppressed the rovers and helicopters that rode down with a lander and have
+    no kernel of their own.
     """
     from space_map_data.probes.probe_id import load_registry
 
-    flagged = [
-        (entry, any(s["mission"] != "EVENTS-DB" for s in entry["kernel_sources"]))
-        for entry in load_registry()
-    ]
-    spk_cospars = {
-        e["cospar_id"] for e, has_spk in flagged if has_spk and e.get("cospar_id")
-    }
     return {
-        int(e["probe_id"])
-        for e, has_spk in flagged
-        if has_spk or e.get("cospar_id") in spk_cospars
+        int(entry["probe_id"])
+        for entry in load_registry()
+        if any(s["mission"] != "EVENTS-DB" for s in entry["kernel_sources"])
     }
 
 
