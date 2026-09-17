@@ -252,7 +252,7 @@ export class FlatMap {
 
 	/** Dragging the map about — a globe turns, a rectangle slides. */
 	readonly dragPan: GestureHandler;
-	/** The wheel. */
+	/** The wheel and the pinch. */
 	readonly scrollZoom: GestureHandler;
 	/** The wheel and one finger belong to the page, not the map. */
 	readonly cooperativeGestures: GestureHandler;
@@ -1072,10 +1072,29 @@ export class FlatMap {
 		/** The gesture is the page's: a tap on it still reports a click, but the
 		 *  map does not move under it. */
 		let blocked = false;
-		const touches = new Set<number>();
+		/** Where each finger is, so a pinch can measure the gap between two. */
+		const touches = new Map<number, { x: number; y: number }>();
 		/** The one pointer the drag follows: with two fingers down, reading both
 		 *  would jump the map by the gap between them on every move. */
 		let pointer = -1;
+		/** The gap between two fingers as it was last read, or 0 when fewer than
+		 *  two are down. */
+		let span = 0;
+		/** The point between two fingers as it was last read, so the pair drags
+		 *  the map by however far it travels. */
+		let centre: { gap: number; x: number; y: number } | null = null;
+
+		/** The gap between the first two fingers, and the point between them. */
+		const pinch = (): { gap: number; x: number; y: number } | null => {
+			const [a, b] = [...touches.values()];
+			if (!b) return null;
+			const box = this.root.getBoundingClientRect();
+			return {
+				gap: Math.hypot(a.x - b.x, a.y - b.y),
+				x: (a.x + b.x) / 2 - box.left,
+				y: (a.y + b.y) / 2 - box.top
+			};
+		};
 
 		const localPoint = (event: PointerEvent | WheelEvent): [number, number] => {
 			const box = this.root.getBoundingClientRect();
@@ -1083,7 +1102,10 @@ export class FlatMap {
 		};
 
 		this.root.addEventListener('pointerdown', (event) => {
-			if (event.pointerType === 'touch') touches.add(event.pointerId);
+			if (event.pointerType === 'touch')
+				touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+			centre = pinch();
+			span = centre?.gap ?? 0;
 			if (event.button !== 0) return;
 			pointer = event.pointerId;
 			dragging = true;
@@ -1098,6 +1120,21 @@ export class FlatMap {
 
 		this.root.addEventListener('pointermove', (event) => {
 			const [px, py] = localPoint(event);
+			if (touches.has(event.pointerId))
+				touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+			// Two fingers are one gesture: the point between them drags the map and
+			// the gap between them zooms it. Neither finger drags on its own, which
+			// would slide the map by however unevenly the hand opened.
+			const spread = pinch();
+			if (spread) {
+				moved = true;
+				if (centre && this.dragPan.isEnabled()) this.drag(spread.x - centre.x, spread.y - centre.y);
+				if (span > 0 && this.scrollZoom.isEnabled())
+					this.zoomBy(spread.gap / span, spread.x, spread.y);
+				span = spread.gap;
+				centre = spread;
+				return;
+			}
 			if (!dragging) {
 				this.emit('pointermove', this.unproject(px, py), event);
 				return;
@@ -1117,6 +1154,20 @@ export class FlatMap {
 
 		const end = (event: PointerEvent) => {
 			touches.delete(event.pointerId);
+			span = 0;
+			centre = null;
+			// A pinch that loses a finger becomes a drag by the one left, which
+			// picks up where that finger is rather than where the other one was.
+			const [rest] = [...touches.entries()];
+			if (rest && dragging) {
+				pointer = rest[0];
+				lastX = rest[1].x;
+				lastY = rest[1].y;
+				// One finger is the page's again, whatever gesture it is left over
+				// from; the pinch cleared the block and it has to come back.
+				blocked = this.cooperative!.isEnabled() && touches.size < 2;
+				return;
+			}
 			if (!dragging || event.pointerId !== pointer) return;
 			dragging = false;
 			this.root.releasePointerCapture?.(event.pointerId);
