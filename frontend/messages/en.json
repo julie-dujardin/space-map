@@ -639,6 +639,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "The imagery of this traverse is not published here. Each stop is placed where the archive states the craft stood.",
 	"panorama_date": "Date",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Elevation",

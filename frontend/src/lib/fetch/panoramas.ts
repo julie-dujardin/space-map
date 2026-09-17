@@ -18,6 +18,9 @@ export interface PanoramaMissionSummary {
 	count: number;
 	first_time: string;
 	last_time: string;
+	/** False where no stop on the traverse publishes a sphere: the places are
+	 *  on the map, and there is nothing to open. */
+	imagery?: boolean;
 }
 
 export interface PanoramaBodySummary {

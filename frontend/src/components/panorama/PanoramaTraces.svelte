@@ -11,7 +11,11 @@
 	import { getContext } from 'svelte';
 	import PersonStandingIcon from '@lucide/svelte/icons/person-standing';
 	import * as m from '$lib/paraglide/messages.js';
-	import { fetchObjectDetail, type PanoramaEntry } from '$lib/fetch/objects/object-data';
+	import {
+		fetchObjectDetail,
+		isViewable,
+		type PanoramaEntry
+	} from '$lib/fetch/objects/object-data';
 	import { versionedUrl } from '$lib/fetch/data-base';
 	import { formatIsoDate } from '$lib/format/date';
 	import { capitalize } from '$lib/search/format';
@@ -92,7 +96,8 @@
 
 	/** The card: the panorama's preview over its mission and sol, a link into
 	 *  it, with a hit disc at the place itself so the click lands where the
-	 *  pointer already is. */
+	 *  pointer already is. A stop whose imagery is withheld has neither picture
+	 *  nor anything to open, so its card is the caption alone. */
 	function buildPreview(): {
 		element: HTMLAnchorElement;
 		show: (body: string, entry: PanoramaEntry) => void;
@@ -106,8 +111,11 @@
 		return {
 			element: a,
 			show(body, entry) {
-				a.href = panoramaHref(body, entry);
-				img.src = versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
+				const viewable = isViewable(entry);
+				if (viewable) a.href = panoramaHref(body, entry);
+				else a.removeAttribute('href');
+				a.classList.toggle('panorama-trace-preview--caption-only', !viewable);
+				if (viewable) img.src = versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
 				caption.textContent = `${capitalize(entry.mission ?? '')} · ${
 					entry.sol === undefined ? formatIsoDate(entry.time) : m.panorama_sol({ sol: entry.sol })
 				}`;
@@ -178,7 +186,7 @@
 				altitudeKm: ground(entry)
 			});
 			marker.setVisible(true);
-			canvas.style.cursor = 'pointer';
+			canvas.style.cursor = isViewable(entry) ? 'pointer' : '';
 			renderer.invalidate();
 		};
 		window.addEventListener('pointermove', onPointer);
@@ -232,6 +240,13 @@
 		display: block;
 		width: 100%;
 		border-radius: 6px 6px 0 0;
+	}
+	/* Nothing to picture, so the caption is the whole card. */
+	:global(.panorama-trace-preview--caption-only img) {
+		display: none;
+	}
+	:global(.panorama-trace-preview--caption-only span) {
+		border-radius: 6px;
 	}
 	:global(.panorama-trace-preview span) {
 		display: block;

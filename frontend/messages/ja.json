@@ -641,6 +641,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "この走行経路の画像はここでは公開していません。各停止地点は、アーカイブが記録する探査車の位置に置かれています。",
 	"panorama_date": "日付",
 	"panorama_instrument": "観測機器",
 	"panorama_elevation": "標高",

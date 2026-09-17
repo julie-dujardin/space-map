@@ -605,6 +605,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "Die Bilder dieser Fahrtstrecke werden hier nicht veröffentlicht. Jeder Halt liegt dort, wo das Archiv den Standort des Fahrzeugs angibt.",
 	"panorama_date": "Datum",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Höhe",

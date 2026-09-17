@@ -83,5 +83,5 @@ export function bearingDeg(a: PanoramaEntry, b: PanoramaEntry): number {
 export function initialHeadingDeg(entry: PanoramaEntry): number {
 	if (entry.azimuth_start_deg === undefined || entry.hfov_deg === undefined || entry.hfov_deg > 300)
 		return 0;
-	return (entry.azimuth_start_deg + entry.hfov_deg / 2 - entry.north_offset_deg + 360) % 360;
+	return (entry.azimuth_start_deg + entry.hfov_deg / 2 - (entry.north_offset_deg ?? 0) + 360) % 360;
 }

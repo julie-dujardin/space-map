@@ -2,7 +2,7 @@
  *  it drove on. */
 
 import { fetchPanoramaIndex } from '$lib/fetch/panoramas';
-import { fetchObjectDetail, type PanoramaEntry } from '$lib/fetch/objects/object-data';
+import { fetchObjectDetail, isViewable, type PanoramaEntry } from '$lib/fetch/objects/object-data';
 import { meanRadiusKm } from '$lib/fetch/objects/physical';
 import { panoramaHighlights } from '$lib/panorama/highlights';
 
@@ -15,7 +15,8 @@ export interface Traverse {
 	radiusKm: number;
 	/** The mission's panoramas in time order — the whole ground track. */
 	entries: PanoramaEntry[];
-	/** The ones the panel pictures. */
+	/** The ones the panel pictures. Empty where the traverse publishes as
+	 *  places only, its imagery unreleased. */
 	highlights: PanoramaEntry[];
 }
 
@@ -75,7 +76,7 @@ async function load(probeId: string): Promise<Traverse | null> {
 			bodyName: detail.localized?.name ?? global?.name ?? body.id,
 			radiusKm: (global && meanRadiusKm(global)) ?? 0,
 			entries,
-			highlights: panoramaHighlights(entries, HIGHLIGHT_LIMIT)
+			highlights: panoramaHighlights(entries.filter(isViewable), HIGHLIGHT_LIMIT)
 		};
 	}
 	return null;

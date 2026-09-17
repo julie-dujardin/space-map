@@ -539,6 +539,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "此行驶路线的影像未在此发布。每个停留点按档案记录的探测器位置标注。",
 	"panorama_date": "日期",
 	"panorama_instrument": "仪器",
 	"panorama_elevation": "海拔",

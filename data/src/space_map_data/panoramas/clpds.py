@@ -35,8 +35,9 @@ POSITION_PLACES = 5
 MINIMUM_FRAMES = 3
 CREDIT = "China National Space Administration / Ground Research and Application System"
 POLICY = "https://clpds.bao.ac.cn/"
-# The release states no reuse terms this project can rely on, so its panoramas
-# are built and kept but not published until permission is settled.
+# The release states no reuse terms this project can rely on, so its spheres are
+# built and kept but not published until permission is settled. The export still
+# publishes each stop as a place: see `export/panoramas.py`.
 REUSE = "permission-pending"
 # Tags are matched in lower case: a single label spells `Longitude` next to
 # `latitude`, and the Moon lower-cases the vectors the Mars labels capitalise.

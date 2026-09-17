@@ -605,6 +605,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "Zdjęcia z tej trasy nie są tutaj publikowane. Każdy postój znajduje się w miejscu, które archiwum podaje jako położenie pojazdu.",
 	"panorama_date": "Data",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Wysokość",

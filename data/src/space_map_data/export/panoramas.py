@@ -2,9 +2,12 @@
 `panoramas`, and the sphere textures they point at under `v1/panoramas/`.
 
 A product is exported once it can be placed and dated — a position, a capture
-time and a sphere texture. How well it is known travels with it rather than
-keeping it out: `geometry` says whether the sphere's angular bounds are
-archival or fitted by eye, and `orientation` says how north was established.
+time and a sphere texture. A release whose reuse terms are unsettled keeps its
+texture local and publishes the stop alone, marked `imagery: "withheld"`: where
+a craft stood is measurement its label states. How well a sphere is known
+travels with it rather than keeping it out: `geometry` says whether its angular
+bounds are archival or fitted by eye, and `orientation` says how north was
+established.
 A panorama whose north is unknown is still worth showing where it was taken,
 so it exports with no offset and the viewer declines to draw a heading for it.
 `altitude_m` marks the views taken above the surface rather than standing on
@@ -44,8 +47,25 @@ PREVIEW_WIDTH = 512
 
 class Product(NamedTuple):
     entry: dict
-    image: Path
+    # Absent on a stop whose imagery is withheld: the place publishes, the
+    # sphere does not.
+    image: Path | None
     preview: Path | None
+
+
+# What only a published sphere can be read against.
+SPHERE_FIELDS = frozenset(
+    {
+        "north_offset_deg",
+        "orientation",
+        "geometry",
+        "source_grid",
+        "azimuth_start_deg",
+        "hfov_deg",
+        "sphere_percent",
+        "color",
+    }
+)
 
 
 def _sphere_geometry_is_archival(meta: dict) -> bool:
@@ -63,9 +83,10 @@ def _orientation(meta: dict) -> str | None:
     return status if status and status != "archival" else None
 
 
-# A source whose reuse terms are unsettled is processed and kept locally, but
-# never published. Withholding is explicit: a product that states nothing about
-# reuse is treated as it always was.
+# A source whose reuse terms are unsettled keeps its imagery local. Where the
+# craft stood and when is measurement the label states, not expression, so the
+# stop itself publishes. Withholding is explicit: a product that states nothing
+# about reuse is treated as it always was.
 REUSE_WITHHELD = "permission-pending"
 
 # Reuse is a property of the release, not of each file, so the missions whose
@@ -73,17 +94,22 @@ REUSE_WITHHELD = "permission-pending"
 # were recorded carries no reuse field, and must not publish on that silence.
 WITHHELD_MISSIONS = frozenset({"zhurong", "yutu-2"})
 
+# Stands in for a texture digest where there is none: see `_dedupe`.
+WITHHELD_DIGEST = "withheld"
+
+
+def _imagery_withheld(meta: dict) -> bool:
+    return (meta.get("reuse") or {}).get("status") == REUSE_WITHHELD or meta.get(
+        "mission"
+    ) in WITHHELD_MISSIONS
+
 
 def _skip_reason(meta: dict) -> str | None:
-    if (meta.get("reuse") or {}).get("status") == REUSE_WITHHELD:
-        return "reuse permission pending"
-    if meta.get("mission") in WITHHELD_MISSIONS:
-        return "reuse permission pending for the release"
     if not meta.get("body_id"):
         return "no body id"
     if not meta.get("position"):
         return "no position"
-    if not meta.get("image"):
+    if not meta.get("image") and not _imagery_withheld(meta):
         return "no sphere texture"
     if not (meta.get("start_time") or meta.get("capture_time")):
         return "undated"
@@ -136,6 +162,11 @@ def _entry(meta: dict) -> dict:
         "credit_url": meta.get("reuse_policy_url") or reuse.get("policy_url"),
         "source_url": sources.get("label_url") or meta.get("selected_url"),
     }
+    if _imagery_withheld(meta):
+        # Nothing renders the sphere, so everything that describes it would be
+        # describing a texture the reader cannot fetch.
+        entry = {k: v for k, v in entry.items() if k not in SPHERE_FIELDS}
+        entry["imagery"] = "withheld"
     return {k: v for k, v in entry.items() if v is not None}
 
 
@@ -159,6 +190,7 @@ def load_panoramas(
         for path in sorted(derived_dir.glob("*/catalog.json"))
     ]
     skipped: Counter[str] = Counter()
+    withheld = 0
     total = sum(len(items) for _, items in catalogs)
     with tqdm(total=total, desc="Panoramas", unit="pano") as progress:
         for _, items in catalogs:
@@ -172,9 +204,15 @@ def load_panoramas(
                     logger.debug("Panorama %s not exported: %s", meta.get("id"), reason)
                     continue
                 folder = meta_path.parent
-                preview = folder / meta["preview"] if meta.get("preview") else None
+                entry = _entry(meta)
+                if entry.get("imagery") == "withheld":
+                    image = preview = None
+                    withheld += 1
+                else:
+                    image = folder / meta["image"]
+                    preview = folder / meta["preview"] if meta.get("preview") else None
                 by_body.setdefault(meta["body_id"], []).append(
-                    Product(_entry(meta), folder / meta["image"], preview)
+                    Product(entry, image, preview)
                 )
     for body_id, entries in by_body.items():
         entries.sort(key=lambda p: (p.entry.get("mission", ""), p.entry["time"]))
@@ -183,7 +221,12 @@ def load_panoramas(
             skipped["repeats a sphere already exported"] += repeats
     exported = sum(len(v) for v in by_body.values())
     logger.info(
-        "Panoramas: %d of %d exported across %d bodies", exported, total, len(by_body)
+        "Panoramas: %d of %d exported across %d bodies, %d of them as a place"
+        " only with imagery withheld",
+        exported,
+        total,
+        len(by_body),
+        withheld,
     )
     for reason, count in skipped.most_common():
         logger.info("  %6d skipped: %s", count, reason)
@@ -219,7 +262,13 @@ def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
             kept.append(product)
             continue
         digests = seen.setdefault(address, set())
-        digest = hashlib.sha256(product.image.read_bytes()).hexdigest()
+        # A withheld stop publishes no bytes to tell apart, and the place is
+        # the whole of what it publishes, so one of them stands for all.
+        digest = (
+            hashlib.sha256(product.image.read_bytes()).hexdigest()
+            if product.image
+            else WITHHELD_DIGEST
+        )
         if digest in digests:
             logger.debug(
                 "Panorama %s repeats a sphere already exported",
@@ -244,7 +293,8 @@ def panoramas_block(object_id: str) -> list[dict] | None:
 def write_panorama_index(out_dir: Path) -> None:
     """Write `v1/panoramas.json`: every traverse that has coverage, as body
     plus mission with its span and the probe that drove it. The points
-    themselves stay in the body bundle."""
+    themselves stay in the body bundle. `imagery: false` marks a traverse whose
+    stops publish as places with no sphere to open."""
     bodies = []
     for body_id, products in sorted(_cached().items()):
         missions: dict[str, list[dict]] = {}
@@ -261,6 +311,10 @@ def write_panorama_index(out_dir: Path) -> None:
                 "first_time": entries[0]["time"],
                 "last_time": entries[-1]["time"],
             }
+            # A traverse published as places only has nothing the viewer can
+            # open, so the gallery leaves it out while the probe page keeps it.
+            if all(e.get("imagery") == "withheld" for e in entries):
+                summary["imagery"] = False
             summaries.append({k: v for k, v in summary.items() if v is not None})
         bodies.append({"id": body_id, "missions": summaries})
     path = out_dir / INDEX_FILE
@@ -283,6 +337,8 @@ def write_panorama_assets(out_dir: Path) -> None:
     wanted: set[Path] = set()
     for entries in _cached().values():
         for entry, image, preview in entries:
+            if image is None:
+                continue
             target = asset_dir / f"{entry['id']}{image.suffix}"
             wanted.add(target)
             if not (target.exists() and target.stat().st_size == image.stat().st_size):

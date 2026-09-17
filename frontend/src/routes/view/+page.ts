@@ -7,6 +7,7 @@
 
 import {
 	fetchObjectDetail,
+	isViewable,
 	type ObjectDetailData,
 	type PanoramaEntry
 } from '$lib/fetch/objects/object-data';
@@ -48,9 +49,14 @@ export const load: PageLoad = async ({ fetch }) => {
 	// the way traverses are grouped — by body and mission both, since a slug is
 	// only unique within the body it was recorded on.
 	const probes = new Map<string, string>();
+	// A traverse published as places only has no sphere for a card to open.
+	const viewable = new Set<string>();
 	for (const body of summaries)
-		for (const summary of body.missions)
+		for (const summary of body.missions) {
+			if (summary.imagery === false) continue;
+			viewable.add(`${body.id}/${summary.mission}`);
 			if (summary.probe) probes.set(`${body.id}/${summary.mission}`, summary.probe);
+		}
 	const [details, named] = await Promise.all([
 		Promise.all(summaries.map((summary) => fetchObjectDetail(summary.id).catch(() => null))),
 		Promise.all(
@@ -64,8 +70,14 @@ export const load: PageLoad = async ({ fetch }) => {
 		const global = detail?.global;
 		if (!global?.panoramas?.length) continue;
 		const byMission = new Map<string, PanoramaEntry[]>();
-		for (const entry of global.panoramas)
-			byMission.set(entry.mission ?? '', [...(byMission.get(entry.mission ?? '') ?? []), entry]);
+		for (const entry of global.panoramas) {
+			const mission = entry.mission ?? '';
+			// Withholding is per stop as well as per traverse, so a card that
+			// counted or opened one would name a sphere the viewer cannot fetch.
+			if (!viewable.has(`${global.id}/${mission}`) || !isViewable(entry)) continue;
+			byMission.set(mission, [...(byMission.get(mission) ?? []), entry]);
+		}
+		if (!byMission.size) continue;
 		bodies.push({
 			id: global.id,
 			name: detail?.localized?.name ?? global.name ?? global.id,
@@ -79,5 +91,5 @@ export const load: PageLoad = async ({ fetch }) => {
 	}
 	// A body that answered with no panoramas is data moving on; nothing
 	// answering at all is a failure worth saying out loud.
-	return { bodies, failed: bodies.length === 0 && summaries.length > 0 };
+	return { bodies, failed: bodies.length === 0 && viewable.size > 0 };
 };

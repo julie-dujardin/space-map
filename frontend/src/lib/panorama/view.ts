@@ -31,7 +31,7 @@ import {
 	WebGLRenderer
 } from 'three';
 import { versionedUrl } from '$lib/fetch/data-base';
-import { fetchObjectDetail, type PanoramaEntry } from '$lib/fetch/objects/object-data';
+import { fetchObjectDetail, isViewable, type PanoramaEntry } from '$lib/fetch/objects/object-data';
 import { meanRadiusKm } from '$lib/fetch/objects/physical';
 import { ControlHost, type Control, type ControlPosition } from '$lib/scene/controls';
 import { gyroAvailability, requestGyroPermission } from './gyro';
@@ -296,7 +296,9 @@ export class PanoramaView {
 	async load(): Promise<void> {
 		const detail = await fetchObjectDetail(this.bodyId, false);
 		if (this.disposed) return;
-		this.entries = detail.global?.panoramas ?? [];
+		// A stop whose imagery is withheld has no sphere to open, so it is not
+		// part of the view or of the neighbours the arrows reach.
+		this.entries = (detail.global?.panoramas ?? []).filter(isViewable);
 		this.radiusKm = meanRadiusKm(detail.global) ?? 0;
 		this.emit('ready');
 		const first = this.openAt ? this.byKey(this.openAt) : (this.entries[0] ?? null);
@@ -398,7 +400,7 @@ export class PanoramaView {
 		);
 		await this.loadTexture(
 			versionedUrl(`/v1/panoramas/${entry.id}.webp`, 'panoramas'),
-			entry.north_offset_deg
+			entry.north_offset_deg ?? 0
 		);
 		if (this.current === entry) this.emit('load', entry);
 	}

@@ -35,7 +35,7 @@ export function splitPath(
  *  published flat image can sit at any azimuth, so nothing about where it
  *  looks may be drawn for one that does not. */
 export function hasHeading(entry: PanoramaEntry): boolean {
-	return entry.orientation !== 'unknown';
+	return entry.orientation !== 'unknown' && entry.north_offset_deg !== undefined;
 }
 
 /** A wedge from the rover across the ground it is looking at. `reachDeg` is

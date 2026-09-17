@@ -33,6 +33,10 @@
 		{m.panorama_gallery_count({ count: traverse.entries.length })} · {years}
 	</p>
 
+	{#if traverse.highlights.length === 0}
+		<p class="text-sm text-muted-foreground">{m.panorama_imagery_unreleased()}</p>
+	{/if}
+
 	<ul class="grid gap-3 sm:grid-cols-2">
 		{#each traverse.highlights as entry (entry.id)}
 			<li>

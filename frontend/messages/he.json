@@ -605,6 +605,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "התמונות של מסלול זה אינן מתפרסמות כאן. כל עצירה ממוקמת במקום שבו הארכיון מציין שהרכב עמד.",
 	"panorama_date": "תאריך",
 	"panorama_instrument": "מכשיר",
 	"panorama_elevation": "גובה",

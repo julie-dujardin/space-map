@@ -605,6 +605,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "As imagens deste percurso não são publicadas aqui. Cada paragem é colocada onde o arquivo indica que o veículo esteve.",
 	"panorama_date": "Data",
 	"panorama_instrument": "Instrumento",
 	"panorama_elevation": "Altitude",

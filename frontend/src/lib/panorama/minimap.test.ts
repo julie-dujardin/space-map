@@ -79,6 +79,12 @@ describe('hasHeading', () => {
 			false
 		);
 	});
+
+	it('is false for a stop published without its sphere', () => {
+		const placed: PanoramaEntry = { ...entry('a', '2021-01-01T00:00:00Z'), imagery: 'withheld' };
+		delete placed.north_offset_deg;
+		expect(hasHeading(placed)).toBe(false);
+	});
 });
 
 describe('hasExtent', () => {

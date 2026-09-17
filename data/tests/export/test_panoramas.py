@@ -120,26 +120,59 @@ class TestSelection:
 
         assert entry.entry["source_grid"] is True
 
-    def test_a_source_awaiting_reuse_permission_stays_local(self, tmp_path: Path):
-        """Processed and kept, but never published until the terms are settled."""
+    def test_a_source_awaiting_reuse_permission_publishes_its_place_only(
+        self, tmp_path: Path
+    ):
+        """Where the craft stood is measurement the label states, so the stop
+        publishes while its sphere waits for the terms to be settled."""
         _write_cache(
             tmp_path,
             "perseverance",
             [_product(reuse={"status": panoramas.REUSE_WITHHELD})],
         )
-        assert panoramas.load_panoramas(tmp_path) == {}
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry == {
+            "id": "perseverance-sol2",
+            "mission": "perseverance",
+            "instrument": "Navcam",
+            "sol": 2,
+            "time": "2021-02-20T21:48:15Z",
+            "time_end": "2021-02-20T22:06:31Z",
+            "lat": 18.44,
+            "lon": 77.45,
+            "elevation_m": -2569.9,
+            "credit": "Courtesy NASA/JPL-Caltech",
+            "credit_url": "https://www.jpl.nasa.gov/jpl-image-use-policy/",
+            "source_url": "https://example.test/label.xml",
+            "imagery": "withheld",
+        }
+        assert product.image is None
+        assert product.preview is None
 
     def test_a_product_stating_nothing_about_reuse_is_unaffected(self, tmp_path: Path):
         _write_cache(tmp_path, "perseverance", [_product(reuse=None)])
         assert panoramas.load_panoramas(tmp_path)["naif-499"]
 
-    def test_a_withheld_release_stays_local_without_a_reuse_field(self, tmp_path: Path):
+    def test_a_withheld_release_withholds_imagery_without_a_reuse_field(
+        self, tmp_path: Path
+    ):
         """Reuse belongs to the release, so a product written before the terms
-        were recorded must not publish on its own silence."""
+        were recorded must not publish its sphere on its own silence."""
         _write_cache(
             tmp_path,
             "yutu-2",
             [_product(id="yutu-2-sol1", mission="yutu-2", reuse=None)],
+        )
+        [product] = panoramas.load_panoramas(tmp_path)["naif-499"]
+        assert product.entry["imagery"] == "withheld"
+        assert product.image is None
+
+    def test_a_withheld_stop_that_cannot_be_placed_stays_local(self, tmp_path: Path):
+        """The place is the whole of what it would publish."""
+        _write_cache(
+            tmp_path,
+            "yutu-2",
+            [_product(id="yutu-2-sol1", mission="yutu-2", position=None)],
         )
         assert panoramas.load_panoramas(tmp_path) == {}
 
@@ -224,6 +257,20 @@ class TestDedupe:
         [product] = panoramas.load_panoramas(tmp_path)[MARS]
         assert product.entry["id"] == "left"
 
+    def test_withheld_stops_at_one_address_are_kept_once(self, tmp_path: Path):
+        """They publish no bytes to tell apart, and the place is all they
+        publish, so a second one would be the same dot twice."""
+        _write_cache(
+            tmp_path,
+            "yutu-2",
+            [
+                _product(id="y-left", mission="yutu-2", sphere="one"),
+                _product(id="y-right", mission="yutu-2", sphere="two"),
+            ],
+        )
+        [product] = panoramas.load_panoramas(tmp_path)["naif-499"]
+        assert product.entry["id"] == "y-left"
+
 
 class TestOrder:
     """Entries are grouped by mission and follow the traverse in time."""
@@ -295,6 +342,27 @@ class TestAdditiveRun:
         bundle = orjson.loads(gzip.decompress(bundle_path.read_bytes()))
         assert bundle[MARS]["name"] == "Mars"
         assert [p["id"] for p in bundle[MARS]["panoramas"]] == ["perseverance-sol2"]
+
+    def test_a_withheld_stop_reaches_the_bundle_without_a_texture(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        cache = tmp_path / "derived"
+        _write_cache(cache, "yutu-2", [_product(id="y-1", mission="yutu-2")])
+        monkeypatch.setattr(
+            panoramas, "_cached", lambda: panoramas.load_panoramas(cache)
+        )
+        out_dir = tmp_path / "v1"
+        bucket = hash_bucket(MARS, 3)
+        bundle_path = out_dir / "objects" / "__global__" / f"{bucket}.json.gz"
+        bundle_path.parent.mkdir(parents=True)
+        bundle_path.write_bytes(gzip.compress(orjson.dumps({MARS: {"id": MARS}})))
+
+        panoramas.write_panorama_assets(out_dir)
+        panoramas._patch_global_bundles(out_dir)
+
+        assert list((out_dir / "panoramas").iterdir()) == []
+        bundle = orjson.loads(gzip.decompress(bundle_path.read_bytes()))
+        assert bundle[MARS]["panoramas"][0]["imagery"] == "withheld"
 
     def test_regenerated_preview_replaces_thumbnail(self, tmp_path: Path, monkeypatch):
         cache = tmp_path / "derived"
@@ -379,6 +447,26 @@ class TestIndex:
                 "last_time": "2022-12-26T20:56:23Z",
             },
         ]
+
+    def test_a_traverse_with_no_published_sphere_is_marked(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The gallery opens a sphere, so it needs to know there is none."""
+        cache = tmp_path / "derived"
+        _write_cache(
+            cache,
+            "yutu-2",
+            [_product(id="yutu-2-sol1", mission="yutu-2")],
+        )
+        monkeypatch.setattr(
+            panoramas, "_cached", lambda: panoramas.load_panoramas(cache)
+        )
+        out_dir = tmp_path / "v1"
+        panoramas.write_panorama_index(out_dir)
+
+        index = orjson.loads((out_dir / "panoramas.json").read_bytes())
+        [mission] = index["bodies"][0]["missions"]
+        assert mission["imagery"] is False
 
     def test_no_coverage_writes_an_empty_index(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

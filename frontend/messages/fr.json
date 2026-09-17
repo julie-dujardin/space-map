@@ -633,6 +633,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "Les images de ce parcours ne sont pas publiées ici. Chaque arrêt est placé à l'endroit où l'archive indique que l'engin se trouvait.",
 	"panorama_date": "Date",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Altitude",

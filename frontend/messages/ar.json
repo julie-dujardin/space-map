@@ -572,6 +572,7 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_imagery_unreleased": "لا تُنشر صور هذا المسار هنا. يوضع كل موقف حيث يذكر الأرشيف أن المركبة كانت واقفة.",
 	"panorama_date": "التاريخ",
 	"panorama_instrument": "الأداة",
 	"panorama_elevation": "الارتفاع",

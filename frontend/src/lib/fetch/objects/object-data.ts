@@ -414,8 +414,9 @@ export interface PanoramaEntry {
 	altitude_m?: number;
 	title?: string;
 	/** Image azimuth of true north, degrees clockwise from the left edge.
-	 *  Zero, and meaningless, where `orientation` is `unknown`. */
-	north_offset_deg: number;
+	 *  Zero, and meaningless, where `orientation` is `unknown`; absent with
+	 *  the rest of the sphere's geometry where the imagery is withheld. */
+	north_offset_deg?: number;
 	/** How north was established, absent where the archive itself states it.
 	 *  `unknown` means the sphere sits at an arbitrary azimuth, so nothing
 	 *  may be drawn or written as a heading. The full set `export/panoramas.py`
@@ -438,6 +439,14 @@ export interface PanoramaEntry {
 	credit?: string;
 	credit_url?: string;
 	source_url?: string;
+	/** `withheld` where the release's reuse terms are unsettled: the stop is
+	 *  published as a place and a date, and no texture exists to fetch. */
+	imagery?: 'withheld';
+}
+
+/** Whether a stop has a sphere to open, as against a place on the traverse. */
+export function isViewable(entry: PanoramaEntry): boolean {
+	return entry.imagery !== 'withheld';
 }
 
 export interface GlobalObjectData {
