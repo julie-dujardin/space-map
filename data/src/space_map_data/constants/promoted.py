@@ -63,7 +63,6 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "probe-117612544",  # Euclid      (mission EUCLID, naif -680)
         # Small-body visitors (sample-return / impactor)
         "probe-90976256",  # Hayabusa 1  (mission HAYABUSA, naif -130; visited Itokawa)
-        "probe-89989120",  # Deep Impact (mission DEEPIMPACT, naif -140; visited Tempel 1)
         "probe-115220480",  # DART        (mission DART, naif -135; impacted Didymos)
         # Venus orbiters
         "probe-80683008",  # Magellan    (mission EVENTS-DB, naif -90000036)
@@ -137,7 +136,6 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "probe-41984000",  # Apollo 17
         "probe-41996288",  # Apollo 17
         # Retired
-        "probe-112132096",  # Spitzer Space Telescope (mission SIRTF, naif -79)
         "probe-101912576",  # Dawn (mission DAWN, naif -203)
         # Earth-orbiting, so satellites and not probes — the retired ones
         # included, whose element sets the Space-Track archive still carries.
@@ -160,22 +158,13 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "norad_satcat-39089",  # NEOSSAT
         # TESS reaches a lunar-resonant orbit, so it stays a probe.
         "probe-109834240",  # TESS (mission HORIZONS-SYNTH, naif -95)
-        # Lunar-trajectory attempts. Some cubesats have a registry entry per
+        # Lunar-trajectory attempt. Chang'e 5-T1 has a registry entry per
         # inception_mjd dedup slot; only the manifested one renders, and the
         # rest are inert.
         "probe-104615936",  # Chang'e 5-T1            (lunar free-return test)
         "probe-104615937",  # Chang'e 5-T1
         "probe-104615938",  # Chang'e 5-T1 returner
         "probe-115003392",  # Chang'e 5-T1
-        "probe-116682753",  # OMOTENASHI              (Artemis-1 cubesat)
-        "probe-116686852",  # OMOTENASHI
-        "probe-116682756",  # NEA Scout               (Artemis-1 cubesat)
-        "probe-116686850",  # NEA Scout
-        "probe-116682757",  # BioSentinel             (Artemis-1 cubesat)
-        "probe-116686848",  # BioSentinel
-        "probe-116682758",  # ArgoMoon                (Artemis-1 cubesat)
-        "probe-116682759",  # Lunar IceCube           (Artemis-1 cubesat)
-        "probe-140226560",  # M-MATISSE               (Artemis-1 secondary 2022-156E)
         # Asteroids (visited, hazardous, or otherwise famous)
         "spkid-20000002",  # 2 Pallas
         "spkid-20000003",  # 3 Juno
