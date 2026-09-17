@@ -57,3 +57,5 @@ EXPORT_METADATA_DIR = PROJECT_ROOT.parent / "space-map-export-metadata"
 # Frequently-changing data published on its own, away from the export: a
 # re-export is a whole-catalogue rebuild, and this changes every few minutes.
 LIVE_DIR = PROJECT_ROOT.parent / "space-map-live"
+# Git working tree holding the ground-station archive (see tracking.archive).
+ACTIVITY_ARCHIVE_DIR = PROJECT_ROOT.parent / "space-map-activity"

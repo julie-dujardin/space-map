@@ -32,5 +32,7 @@ services:
     volumes:
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
       - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
-      # What gets published, for the live deployment to upload.
+      # What gets published, and what gets kept. Committing and pushing the
+      # archive stays outside the container, which holds no git identity.
       - ${LIVE_HOST_DIR:-/srv/space-map/space-map-live}:/space-map-live
+      - ${ACTIVITY_HOST_DIR:-/srv/space-map/space-map-activity}:/space-map-activity

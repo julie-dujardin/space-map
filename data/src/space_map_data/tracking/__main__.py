@@ -7,8 +7,8 @@ several hundred pushes a day.
 
 Each task carries its own interval, so the minute-resolution DSN feed and the
 monthly ESTRACK figures share one process without either dictating the other's
-cadence. Publishing is one more task rather than a job of its own: it reads the
-stores this process owns, and writing the file is local.
+cadence. Publishing and archiving are two more tasks rather than jobs of their
+own: both read the stores this process owns, and both are local writes.
 """
 
 import argparse
@@ -24,7 +24,7 @@ from datetime import timedelta
 
 import httpx
 
-from space_map_data.tracking import publish
+from space_map_data.tracking import archive, publish
 from space_map_data.tracking.dsn.feed import (
     FeedError,
     SpacecraftInfo,
@@ -56,6 +56,8 @@ BOT_REFRESH = timedelta(hours=24)
 # The published file only changes when a probe is heard from, which is far
 # rarer than a poll; rebuilding it is a local write, so this is cheap.
 PUBLISH = timedelta(minutes=5)
+# Sealing waits two days for a day to settle, so once a day is often enough.
+ARCHIVE = timedelta(hours=12)
 # Consecutive failures back off to this, so an upstream outage costs a request
 # every few minutes instead of every minute.
 MAX_BACKOFF = timedelta(minutes=10)
@@ -110,8 +112,9 @@ class Task:
 
 
 class Poller:
-    def __init__(self, client: httpx.Client) -> None:
+    def __init__(self, client: httpx.Client, commit: bool = False) -> None:
         self.client = client
+        self.commit = commit
         self.dsn_store = ActivityStore()
         self.estrack_store = EstrackStore()
         self.bot_store = BotStore()
@@ -130,6 +133,9 @@ class Poller:
             len(self.bot_store.codes),
             f", new: {', '.join(new)}" if new else "",
         )
+
+    def archive(self) -> None:
+        archive.run(commit=self.commit)
 
     def dsn_poll(self) -> None:
         snapshot = fetch_feed(self.client)
@@ -175,14 +181,14 @@ class Poller:
         )
 
 
-def run(once: bool, dsn_interval: timedelta) -> None:
+def run(once: bool, dsn_interval: timedelta, commit: bool) -> None:
     with open(CONFIG_FILE, "rb") as f:
         user_agent = tomllib.load(f)["download"]["user_agent"]
 
     with httpx.Client(
         headers={"User-Agent": user_agent}, timeout=30.0, follow_redirects=True
     ) as client:
-        poller = Poller(client)
+        poller = Poller(client, commit=commit)
         tasks = [
             # Ordered so the DSN map and the ESTRACK reference data are in hand
             # before the first poll that needs them to name anything.
@@ -192,6 +198,7 @@ def run(once: bool, dsn_interval: timedelta) -> None:
             Task("dsn-poll", dsn_interval, poller.dsn_poll),
             Task("estrack-live", ESTRACK_LIVE_POLL, poller.estrack_live_poll),
             Task("publish", PUBLISH, poller.publish),
+            Task("archive", ARCHIVE, poller.archive),
         ]
         while True:
             now = time.monotonic()
@@ -222,8 +229,15 @@ def cli():
         action="store_true",
         help="Run every task once and exit (for checking output)",
     )
+    poll.add_argument(
+        "--commit",
+        action="store_true",
+        help="Commit each archive run to the archive repository",
+    )
 
     commands.add_parser("publish", help="Rebuild the published activity file and exit")
+    seal = commands.add_parser("archive", help="Seal settled days into the archive")
+    seal.add_argument("--commit", action="store_true", help="Commit what was sealed")
 
     args = parser.parse_args()
 
@@ -234,8 +248,10 @@ def cli():
     signal.signal(signal.SIGINT, _stop)
     if args.command == "publish":
         publish.write(publish.build(ActivityStore(), EstrackStore(), BotStore()))
+    elif args.command == "archive":
+        archive.run(commit=args.commit)
     else:
-        run(args.once, timedelta(seconds=args.dsn_interval))
+        run(args.once, timedelta(seconds=args.dsn_interval), args.commit)
 
 
 if __name__ == "__main__":
