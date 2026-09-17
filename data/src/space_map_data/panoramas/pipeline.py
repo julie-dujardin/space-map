@@ -420,13 +420,14 @@ def mosaic_listings(client, root, mission, *, start_sol, end_sol, refresh):
 # Identifies the recipe that chose and validated a selection. Bump it whenever
 # a change would make a run accept different products, so a resumed run
 # revalidates what the old recipe chose instead of trusting it.
-SELECTION_VERSION = 2
+SELECTION_VERSION = 4
 # The versions whose accepted products this recipe would accept unchanged. A
 # resumed run revalidates only what it might now decide differently, so a
 # purely additive change belongs here rather than costing a checksum over every
-# byte already on disk. Version 1 refused the stops it could only bound; the
-# ones it did accept, it accepted at the same exact position.
-CARRIED_SELECTIONS = {1, 2}
+# byte already on disk. The earlier versions are not here: they took the range
+# and elevation rasters that share the cylindrical projection for photographs,
+# so what they accepted has to be judged again rather than carried.
+CARRIED_SELECTIONS = {4}
 
 
 def revision_key(mission: str, product_id: str) -> str:
@@ -606,7 +607,9 @@ def download(
                     image_url = url + name
                     # The sweep is filed under the stop it ended at, which is
                     # also the one its label is referenced to.
-                    mosaic = read_mer_pds3(ranged_label(client, image_url), span[1][1])
+                    mosaic = read_mer_pds3(
+                        ranged_label(client, image_url), span[1][1], sol
+                    )
                 else:
                     label = fetch(
                         client, url + name, root / "labels" / name, refresh=refresh
@@ -631,11 +634,23 @@ def download(
                 # the directory a product is filed under holds the whole number.
                 if mission == "insight" and mosaic.sol == sol % 1000:
                     mosaic.sol = sol
-                if mosaic.sol != sol or mosaic.product_id != (
+                # The Mars Exploration Rover volume redelivers a sweep under a
+                # later version than the label inside it was written with, so
+                # only the sweep the two name has to agree.
+                named = (
                     Path(name).stem.upper()
                     if mission in mer.VOLUMES
                     else Path(name).stem
-                ):
+                )
+                served = (
+                    (
+                        revision_key(mission, mosaic.product_id),
+                        revision_key(mission, named),
+                    )
+                    if mission in mer.VOLUMES
+                    else (mosaic.product_id, named)
+                )
+                if mosaic.sol != sol or served[0] != served[1]:
                     raise ValueError("Product identity mismatch")
             except (ValueError, httpx.HTTPStatusError) as error:
                 rejected.append({"label_url": url + name, "reason": str(error)})

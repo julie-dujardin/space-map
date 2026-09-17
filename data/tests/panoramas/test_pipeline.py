@@ -24,6 +24,7 @@ from space_map_data.panoramas.pipeline import (
     positions,
     process,
     resumable,
+    revision_key,
     read_pixels,
     remove_coordinate_grid,
     remove_coordinate_label_borders,
@@ -901,3 +902,26 @@ class TestPlacingAStopTheTableSkips:
         is no range to state and the product is not taken."""
         with pytest.raises(ValueError, match="No supported localized panoramas"):
             self.download(tmp_path, "ROVER,3,300,-4.5,137.4,-4500\n")
+
+
+class TestProductIdentity:
+    """A mosaic must be the one its name promised, but the Mars Exploration
+    Rover volume redelivers a sweep under a later version than the label
+    inside it carries."""
+
+    def test_a_later_delivery_of_the_same_sweep_is_the_same_product(self):
+        assert revision_key(
+            "opportunity", "1PP002IFF02CYL00P2217R777M3"
+        ) == revision_key("opportunity", "1PP002IFF02CYL00P2217R777M1")
+
+    def test_a_different_sweep_is_not(self):
+        assert revision_key(
+            "opportunity", "1PP002IFF02CYL00P2217R777M1"
+        ) != revision_key("opportunity", "1PP002IFF02CYL00P2218R777M1")
+
+    def test_a_label_naming_a_campaign_rather_than_a_product_still_differs(self):
+        """Some labels carry a scene name where the product id belongs, which
+        confirms nothing about what was served."""
+        assert revision_key("spirit", "santa_anita_iff_R7") != revision_key(
+            "spirit", "2PP136IFF54CYLCAP2264R222M2"
+        )

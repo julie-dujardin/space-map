@@ -406,6 +406,9 @@ export interface PanoramaEntry {
 	lat: number;
 	lon: number;
 	elevation_m?: number;
+	/** How far the marker may sit from where the camera stood, metres. Present
+	 *  only where the traverse bounds the position rather than naming it. */
+	position_uncertainty_m?: number;
 	/** Height of the camera above the surface, metres. Present only where the
 	 *  view was taken from the air, as Huygens' descent mosaic was. */
 	altitude_m?: number;

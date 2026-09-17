@@ -15,6 +15,7 @@ the traverse.
 """
 
 import gzip
+import hashlib
 import logging
 from collections import Counter
 import re
@@ -179,7 +180,7 @@ def load_panoramas(
         entries.sort(key=lambda p: (p.entry.get("mission", ""), p.entry["time"]))
         by_body[body_id], repeats = _dedupe(entries)
         if repeats:
-            skipped["repeats an earlier time and place"] += repeats
+            skipped["repeats a sphere already exported"] += repeats
     exported = sum(len(v) for v in by_body.values())
     logger.info(
         "Panoramas: %d of %d exported across %d bodies", exported, total, len(by_body)
@@ -190,34 +191,43 @@ def load_panoramas(
 
 
 def _address(entry: dict) -> tuple:
-    """What the viewer keys a panorama's URL on, and so can only reach one of."""
+    """Where and when a panorama was taken, as the archive states it.
+
+    A stop a rover held for days leaves mosaics the archive dates from the
+    first frame of the campaign, so this is shared by everything shot there
+    rather than unique to one product.
+    """
     return entry["time"], entry["lat"], entry["lon"]
 
 
 def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
-    """One product per address, keeping the fullest sphere of each.
+    """Everything but the products that repeat a texture already kept.
 
-    A stop a rover held for days leaves mosaics the archive dates from the same
-    first frame, so they collide here while differing in how much of the sphere
-    they fill. Which one survives is the one that shows the most.
+    Mosaics shot at one stop share a time and a place, and many are the same
+    sphere delivered twice under different product names. Those are dropped on
+    the bytes rather than on the address, which several genuinely different
+    views of a long stop also share.
     """
-    best: dict[tuple, Product] = {}
-    for product in entries:
-        rival = best.get(_address(product.entry))
-        if rival is None or product.entry.get("sphere_percent", 0) > rival.entry.get(
-            "sphere_percent", 0
-        ):
-            best[_address(product.entry)] = product
-    # Walked in the caller's order rather than read off `best`, which holds the
-    # order the collisions happened to resolve in.
+    crowded = Counter(_address(product.entry) for product in entries)
+    seen: dict[tuple, set[str]] = {}
     kept = []
     for product in entries:
-        if best[_address(product.entry)] is product:
+        address = _address(product.entry)
+        # Nothing shares this time and place, so there is nothing it can repeat
+        # and no reason to read the sphere back off the disk to find out.
+        if crowded[address] == 1:
             kept.append(product)
-        else:
+            continue
+        digests = seen.setdefault(address, set())
+        digest = hashlib.sha256(product.image.read_bytes()).hexdigest()
+        if digest in digests:
             logger.debug(
-                "Panorama %s repeats an earlier time and place", product.entry["id"]
+                "Panorama %s repeats a sphere already exported",
+                product.entry["id"],
             )
+            continue
+        digests.add(digest)
+        kept.append(product)
     return kept, len(entries) - len(kept)
 
 

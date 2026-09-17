@@ -1,21 +1,28 @@
 /**
- * Where a panorama sits on its traverse: the `time,lat,lon` key that names
- * it, the neighbours it steps to, and the ground-track bearing and distance
- * to each.
+ * Where a panorama sits on its traverse: the product id that names it, the
+ * neighbours it steps to, and the ground-track bearing and distance to each.
  */
 
 import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
 import { angularDistance } from '$lib/flatmap/geometry';
 
-/** `<time>,<lat>,<lon>`: the same triple the export lists, so the key
- *  round-trips without a lookup table. */
+/** The product id, which names one panorama and no other. A stop held for
+ *  days leaves several mosaics sharing a time and a place, so the time and
+ *  place together do not. */
 export function panoramaAt(entry: PanoramaEntry): string {
+	return entry.id;
+}
+
+/** `<time>,<lat>,<lon>`, the key links used before product ids named them. */
+function legacyAt(entry: PanoramaEntry): string {
 	return `${entry.time},${entry.lat},${entry.lon}`;
 }
 
 export function findPanorama(entries: PanoramaEntry[], at: string | null): PanoramaEntry | null {
 	if (!at) return null;
-	return entries.find((e) => panoramaAt(e) === at) ?? null;
+	// A shared link outlives the key it was written with, and the old key can
+	// name several panoramas, so it lands on the first of them.
+	return entries.find((e) => panoramaAt(e) === at || legacyAt(e) === at) ?? null;
 }
 
 export interface Neighbour {

@@ -226,3 +226,86 @@ def test_a_detached_image_pointer_is_not_an_attached_raster():
 def test_camera_is_read_from_the_product_name():
     assert mer.instrument("2NN001EDN00CYL00P1501L000M2") == "Navcam"
     assert mer.instrument("2PP762ILFAOCYLDQP2368L777M1") == "Pancam"
+
+
+class TestRasterKinds:
+    """The cylindrical projection carries terrain and mask rasters as well as
+    photographs, and the archives store brightness in more than one layout."""
+
+    def test_radiance_factor_floats_are_read(self):
+        """The Mars Exploration Rover mosaics state reflectance as 32-bit
+        floats and name no derived type at all."""
+        label = LABEL.replace(
+            "SAMPLE_TYPE                     = MSB_INTEGER",
+            "SAMPLE_TYPE                     = IEEE_REAL",
+        ).replace(
+            "SAMPLE_BITS                     = 16",
+            "SAMPLE_BITS                     = 32\n  DERIVED_IMAGE_TYPE              =",
+        )
+
+        assert read_mer_pds3(label, 7).dtype == ">f4"
+
+    def test_eight_bit_counts_are_read(self):
+        label = LABEL.replace(
+            "SAMPLE_TYPE                     = MSB_INTEGER",
+            "SAMPLE_TYPE                     = UNSIGNED_INTEGER",
+        ).replace(
+            "SAMPLE_BITS                     = 16",
+            "SAMPLE_BITS                     = 8",
+        )
+
+        assert read_mer_pds3(label, 7).dtype == "u1"
+
+    @pytest.mark.parametrize("kind", ["RANGE_MAP", "XYZ_MAP", "SLOPE_MAP", "MASK"])
+    def test_a_raster_that_is_not_a_photograph_is_refused(self, kind):
+        """A range or elevation raster has no brightness, so stretching one
+        yields a picture of nothing rather than a view from the rover.
+
+        The archives state the kind in a group beside the raster, not inside
+        it, so reading it from the raster block alone finds nothing and takes
+        every elevation map for a photograph.
+        """
+        label = LABEL.replace(
+            "END_OBJECT                        = IMAGE",
+            "END_OBJECT                        = IMAGE\n"
+            "GROUP                             = DERIVED_IMAGE_PARMS\n"
+            f"  DERIVED_IMAGE_TYPE              = {kind}\n"
+            "END_GROUP                         = DERIVED_IMAGE_PARMS",
+        )
+
+        with pytest.raises(ValueError, match=f"Not imagery: {kind}"):
+            read_mer_pds3(label, 7)
+
+    def test_a_stated_photograph_is_kept(self):
+        label = LABEL.replace(
+            "END_OBJECT                        = IMAGE",
+            "END_OBJECT                        = IMAGE\n"
+            "GROUP                             = DERIVED_IMAGE_PARMS\n"
+            "  DERIVED_IMAGE_TYPE              = IMAGE\n"
+            "END_GROUP                         = DERIVED_IMAGE_PARMS",
+        )
+
+        assert read_mer_pds3(label, 7).dtype == ">i2"
+
+    def test_a_layout_no_archive_delivers_is_still_refused(self):
+        label = LABEL.replace(
+            "SAMPLE_BITS                     = 16",
+            "SAMPLE_BITS                     = 64",
+        )
+
+        with pytest.raises(ValueError, match="Unsupported PDS3 sample type"):
+            read_mer_pds3(label, 7)
+
+
+def test_the_volume_index_supplies_a_sol_the_label_omits():
+    """Some attached labels state no capture sol; the index filed them under
+    one, which is the same archive stating the same field."""
+    label = LABEL.replace(" PLANET_DAY_NUMBER                = 1\n", "")
+
+    assert read_mer_pds3(label, 7, 412).sol == 412
+    with pytest.raises(ValueError, match="PLANET_DAY_NUMBER"):
+        read_mer_pds3(label, 7)
+
+
+def test_a_stated_sol_beats_the_index():
+    assert read_mer_pds3(LABEL, 7, 412).sol == 1

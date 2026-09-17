@@ -21,6 +21,20 @@ describe('panoramaAt', () => {
 		expect(findPanorama([entry({ id: 'b', lat: 1 }), e], panoramaAt(e))).toBe(e);
 		expect(findPanorama([e], null)).toBeNull();
 	});
+
+	it('tells apart two mosaics of one stop', () => {
+		// A stop held for days dates every mosaic from the first frame, so time
+		// and place alone name several panoramas.
+		const first = entry({ id: 'sol59' });
+		const second = entry({ id: 'sol93' });
+		expect(panoramaAt(first)).not.toBe(panoramaAt(second));
+		expect(findPanorama([first, second], panoramaAt(second))).toBe(second);
+	});
+
+	it('still resolves a link written with the old time and place key', () => {
+		const e = entry({ id: 'a', lat: 18.4, lon: 77.4 });
+		expect(findPanorama([e], `${e.time},${e.lat},${e.lon}`)).toBe(e);
+	});
 });
 
 describe('ground geometry', () => {

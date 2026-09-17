@@ -100,6 +100,40 @@ def block(text: str, kind: str, name: str) -> str:
     return match[1]
 
 
+# How a PDS3 raster stores one sample, as numpy spells it. The archives deliver
+# brightness as 16-bit integers, 8-bit counts, or radiance factor as floats.
+PDS3_SAMPLES = {
+    ("MSB_INTEGER", "16"): ">i2",
+    ("UNSIGNED_INTEGER", "8"): "u1",
+    ("IEEE_REAL", "32"): ">f4",
+}
+
+# The same cylindrical projection carries rasters that are not photographs:
+# metres of range, elevation and slope, and validity masks. They have no
+# brightness to stretch, so rendering one produces a picture of nothing.
+# A product stating no type at all is imagery; that is how the Mars Exploration
+# Rover archive labels its radiance-factor mosaics.
+NON_IMAGE_RASTERS = frozenset(
+    {
+        "MASK",
+        "RANGE_MAP",
+        "XYZ_MAP",
+        "X_MAP",
+        "Y_MAP",
+        "Z_MAP",
+        "SLOPE_MAP",
+        "SLOPE_MAGNITUDE_MAP",
+        "SLOPE_HEADING_MAP",
+        "SOLAR_ENERGY_MAP",
+        "ROUGHNESS_MAP",
+        "REACHABILITY_MAP",
+        "ERROR_MAP",
+        "DISPARITY_MAP",
+        "SURFACE_NORMAL_MAP",
+    }
+)
+
+
 def cylindrical_blocks(text: str) -> tuple[str, str]:
     """The projection and raster blocks, once the mosaic is known to be supported."""
     projection = block(text, "GROUP", "SURFACE_PROJECTION_PARMS")
@@ -108,21 +142,31 @@ def cylindrical_blocks(text: str) -> tuple[str, str]:
         raise ValueError("Only angular cylindrical mosaics are supported")
     if value(raster, "BAND_STORAGE_TYPE") != "BAND_SEQUENTIAL":
         raise ValueError("Unsupported band storage")
-    if (
-        value(raster, "SAMPLE_TYPE") != "MSB_INTEGER"
-        or value(raster, "SAMPLE_BITS") != "16"
-    ):
+    # Stated in a group of its own, beside the raster rather than inside it.
+    derived = (optional(text, "DERIVED_IMAGE_TYPE") or "").upper()
+    if derived in NON_IMAGE_RASTERS:
+        raise ValueError(f"Not imagery: {derived}")
+    if (value(raster, "SAMPLE_TYPE"), value(raster, "SAMPLE_BITS")) not in PDS3_SAMPLES:
         raise ValueError("Unsupported PDS3 sample type")
     return projection, raster
 
 
-def pds3_mosaic(text, projection, raster, *, site, drive, offset) -> Mosaic:
+def pds3_mosaic(text, projection, raster, *, site, drive, offset, sol=None) -> Mosaic:
     """A validated mosaic, given the rover position and raster offset its
-    archive states in its own way."""
+    archive states in its own way.
+
+    `sol` stands in for a label that states no capture sol, which the volume
+    index states for it in the same field.
+    """
+    stated = optional(text, "PLANET_DAY_NUMBER")
+    if stated is not None:
+        sol = int(stated)
+    if sol is None:
+        raise ValueError("Missing PDS field: PLANET_DAY_NUMBER")
     sx, sy = numbers(value(projection, "MAP_RESOLUTION"))
     result = Mosaic(
         value(text, "PRODUCT_ID"),
-        int(value(text, "PLANET_DAY_NUMBER")),
+        sol,
         site,
         drive,
         value(text, "START_TIME"),
@@ -130,7 +174,7 @@ def pds3_mosaic(text, projection, raster, *, site, drive, offset) -> Mosaic:
         int(value(raster, "LINE_SAMPLES")),
         int(value(raster, "LINES")),
         int(value(raster, "BANDS")),
-        ">i2",
+        PDS3_SAMPLES[(value(raster, "SAMPLE_TYPE"), value(raster, "SAMPLE_BITS"))],
         offset,
         numbers(value(projection, "START_AZIMUTH"))[0],
         sx,
@@ -166,11 +210,12 @@ def read_pds3(text: str) -> Mosaic:
     )
 
 
-def read_mer_pds3(text: str, drive: int) -> Mosaic:
+def read_mer_pds3(text: str, drive: int, sol: int | None = None) -> Mosaic:
     """A Mars Exploration Rover mosaic, whose label is attached to its raster.
 
     The label states the site its projection is referenced to but not the drive
-    within it, which only the pointing-correction file beside it records.
+    within it, which only the pointing-correction file beside it records. Some
+    labels state no capture sol either; the volume index filed them under one.
     """
     projection, raster = cylindrical_blocks(text)
     pointer = value(text, "^IMAGE")
@@ -183,6 +228,7 @@ def read_mer_pds3(text: str, drive: int) -> Mosaic:
         site=int(value(projection, "REFERENCE_COORD_SYSTEM_INDEX")),
         drive=drive,
         offset=(int(pointer) - 1) * int(value(text, "RECORD_BYTES")),
+        sol=sol,
     )
 
 

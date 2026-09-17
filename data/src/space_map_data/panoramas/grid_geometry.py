@@ -113,6 +113,47 @@ def fit_axis(points, extent, *, circular=False):
     return float(slope), float(intercept), score
 
 
+# The finest elevation grid the archive prints is one degree apart, so two
+# labels placing the horizon further apart than this were not both read right.
+OFFSET_AGREEMENT_DEG = 0.3
+
+
+def fit_offset(points, slope: float) -> tuple[float, float, int]:
+    """Where a grid of known scale starts, from labels too few to fit a line.
+
+    A narrow strip of sky prints only two or three elevations, which is below
+    what fitting a slope and an offset together can be trusted on. The grid is
+    square, though, and the azimuth axis states the same degrees per pixel over
+    a much longer run of labels. That leaves the offset as the only unknown,
+    and the labels having to agree on it is what says they were read correctly.
+
+    One misread digit moves an offset by whole degrees, so the answer is the
+    one most of the labels agree on rather than the average of all of them.
+    """
+    if len({y for y, _ in points}) < 2:
+        raise ValueError("Too few readable grid labels")
+    offsets = [value - y * slope for y, value in points]
+    best: tuple[int, list[float]] | None = None
+    for candidate in offsets:
+        agreed = [
+            offset
+            for offset in offsets
+            if abs(offset - candidate) <= OFFSET_AGREEMENT_DEG
+        ]
+        rows = len(
+            {
+                y
+                for (y, _), offset in zip(points, offsets)
+                if abs(offset - candidate) <= OFFSET_AGREEMENT_DEG
+            }
+        )
+        if rows >= 2 and (best is None or len(agreed) > best[0]):
+            best = len(agreed), agreed
+    if best is None or best[0] < len(offsets) * 0.75:
+        raise ValueError("Printed elevations disagree on where the grid starts")
+    return slope, sum(best[1]) / len(best[1]), best[0]
+
+
 def geometry(words, width, height):
     horizontal = [
         (w["x"], w["value"])
@@ -127,9 +168,19 @@ def geometry(words, width, height):
         if (w["x"] < 30 or w["x"] > width - 35) and -90 <= w["value"] <= 90
     ]
     sx, azimuth, nx = fit_axis(horizontal, width, circular=True)
-    sy, elevation, ny = fit_axis(vertical, height)
-    if not 0.95 < abs(sx / sy) < 1.05:
-        raise ValueError("Grid axes disagree on angular pixel scale")
+    try:
+        sy, elevation, ny = fit_axis(vertical, height)
+    except ValueError:
+        # Borrowing the scale leaves the two axes agreeing by construction, so
+        # the labels agreeing with each other is the only check left.
+        sy, elevation, ny = fit_offset(vertical, -sx)
+        vertical_basis = "offset only; scale taken from the azimuth axis"
+    else:
+        # Raised outside the fit, so a fitted scale that contradicts the azimuth
+        # axis refuses the grid instead of falling through to borrowing it.
+        if not 0.95 < abs(sx / sy) < 1.05:
+            raise ValueError("Grid axes disagree on angular pixel scale")
+        vertical_basis = "fitted from the printed elevations alone"
     if elevation > 90 or elevation + height * sy < -90:
         raise ValueError("Grid extends beyond valid elevations")
     return Mosaic(
@@ -153,6 +204,7 @@ def geometry(words, width, height):
     ), {
         "horizontal_labels": nx,
         "vertical_labels": ny,
+        "vertical_basis": vertical_basis,
         "read_labels": words,
         "minimum_label_agreement": 0.75,
         "minimum_axis_span_fraction": 0.5,

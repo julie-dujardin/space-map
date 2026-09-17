@@ -2,28 +2,31 @@
 
 The mission slug on a panorama entry names a traverse, not an object. A probe
 page needs the link the other way round, so it lives here, next to the slugs the
-pipeline mints — stated as the NAIF spacecraft id, which the probe inventory
-already resolves to an object of its own.
+pipeline mints — stated as the probe id, the one identifier the inventory keeps
+frozen for the life of a spacecraft.
 """
 
 from functools import cache
 
-from space_map_data.probes.probe_id import load_registry
 
-# Panorama mission slug -> NAIF spacecraft id. A mission with no entry simply
-# has no probe page to link, which is the honest answer for one whose craft the
-# probe inventory does not carry.
-MISSION_NAIF: dict[str, int] = {
-    "curiosity": -76,
-    "perseverance": -168,
-    "spirit": -254,
-    "opportunity": -253,
-    "insight": -189,
-    "phoenix": -84,
-    "pathfinder": -530,
-    "zhurong": -90000160,
-    "yutu": -90000058,
-    "yutu-2": -90000064,
+# Panorama mission slug -> probe id. NAIF ids are recycled between missions
+# (-76 was Mariner 10 before Curiosity), so what a traverse is keyed on is the
+# probe registry's own frozen identifier. A mission with no entry simply has no
+# probe page to link, which is the honest answer for one whose craft the probe
+# inventory does not carry.
+MISSION_PROBE: dict[str, int] = {
+    "curiosity": 100265984,
+    "perseverance": 113246208,
+    "spirit": 87605248,
+    "opportunity": 87719936,
+    "insight": 109899776,
+    "phoenix": 93814784,
+    "pathfinder": 78118912,
+    "viking1": 47378432,
+    "viking2": 47562752,
+    "zhurong": 113217538,
+    "yutu": 103280641,
+    "yutu-2": 110784513,
 }
 
 # Which world each traverse is on. The export drops a panorama that names no
@@ -36,6 +39,8 @@ MISSION_BODIES: dict[str, str] = {
     "insight": "naif-499",
     "phoenix": "naif-499",
     "pathfinder": "naif-499",
+    "viking1": "naif-499",
+    "viking2": "naif-499",
     "zhurong": "naif-499",
     "yutu": "naif-301",
     "yutu-2": "naif-301",
@@ -99,15 +104,7 @@ def body_id(mission: str | None) -> str | None:
 
 
 @cache
-def _probes_by_naif() -> dict[int, str]:
-    return {
-        entry["naif_id"]: f"probe-{entry['probe_id']}"
-        for entry in load_registry()
-        if entry.get("naif_id") is not None
-    }
-
-
 def probe_id(mission: str | None) -> str | None:
     """The `probe-<id>` whose traverse this mission is, when one is known."""
-    naif = MISSION_NAIF.get(mission or "")
-    return None if naif is None else _probes_by_naif().get(naif)
+    probe = MISSION_PROBE.get(mission or "")
+    return None if probe is None else f"probe-{probe}"

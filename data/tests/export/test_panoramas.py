@@ -44,7 +44,10 @@ def _write_cache(root: Path, collection: str, products: list[dict]) -> None:
         folder = root / collection / product["id"]
         folder.mkdir(parents=True)
         (folder / "metadata.json").write_text(json.dumps(product))
-        (folder / "panorama.webp").write_bytes(b"webp" + product["id"].encode())
+        # A product may name the sphere it carries, so two of them can be given
+        # the same bytes the way the archive delivers one mosaic twice.
+        sphere = product.get("sphere", product["id"])
+        (folder / "panorama.webp").write_bytes(b"webp" + sphere.encode())
         Image.new("RGBA", (1536, 396)).save(folder / "preview.webp")
         items.append(
             {
@@ -210,10 +213,14 @@ class TestSelection:
 
 
 class TestDedupe:
-    """Two renditions of one mosaic share a URL key; only the first ships."""
+    """One mosaic delivered under two product names ships once."""
 
-    def test_same_time_and_place_kept_once(self, tmp_path: Path):
-        _write_cache(tmp_path, "p", [_product(id="left"), _product(id="right")])
+    def test_the_same_sphere_twice_is_kept_once(self, tmp_path: Path):
+        _write_cache(
+            tmp_path,
+            "p",
+            [_product(id="left", sphere="one"), _product(id="right", sphere="one")],
+        )
         [product] = panoramas.load_panoramas(tmp_path)[MARS]
         assert product.entry["id"] == "left"
 
@@ -383,34 +390,51 @@ class TestIndex:
 
 
 class TestDeduplication:
-    """The viewer addresses a panorama by time and place, so only one product
-    of each address can be reached."""
+    """One mosaic delivered twice is dropped; two different views of one stop
+    both export, though the archive gives them the same time and place."""
 
-    def test_the_fullest_sphere_of_an_address_is_the_one_kept(self, tmp_path: Path):
-        """A stop held for days leaves mosaics the archive dates alike; they
-        differ in how much of the sphere they fill."""
+    def test_a_repeated_sphere_is_exported_once(self, tmp_path: Path):
         _write_cache(
             tmp_path,
             "curiosity-navcam",
             [
-                _product(id="thin", coverage={"sphere_percent": 8.1}),
-                _product(id="full", coverage={"sphere_percent": 42.6}),
-                _product(id="middling", coverage={"sphere_percent": 19.0}),
+                _product(id="first", sphere="same"),
+                _product(id="second", sphere="same"),
             ],
         )
 
         [product] = panoramas.load_panoramas(tmp_path)[MARS]
 
-        assert product.entry["id"] == "full"
+        assert product.entry["id"] == "first"
 
-    def test_a_different_place_at_the_same_time_is_not_a_repeat(self, tmp_path: Path):
+    def test_two_views_of_one_stop_both_export(self, tmp_path: Path):
+        """A stop held for days leaves mosaics the archive dates from the first
+        frame of the campaign, so the time and place they share name several
+        genuinely different spheres."""
         _write_cache(
             tmp_path,
             "curiosity-navcam",
             [
-                _product(id="here"),
+                _product(id="sol59", coverage={"sphere_percent": 36.4}),
+                _product(id="sol93", coverage={"sphere_percent": 74.0}),
+            ],
+        )
+
+        exported = panoramas.load_panoramas(tmp_path)[MARS]
+
+        assert [product.entry["id"] for product in exported] == ["sol59", "sol93"]
+
+    def test_a_repeat_at_a_different_place_is_kept(self, tmp_path: Path):
+        """Two stops can be photographed identically; they are still two
+        places, and dropping one would lose a point on the traverse."""
+        _write_cache(
+            tmp_path,
+            "curiosity-navcam",
+            [
+                _product(id="here", sphere="same"),
                 _product(
                     id="there",
+                    sphere="same",
                     position={"latitude": 18.45, "longitude": 77.45},
                 ),
             ],
@@ -419,29 +443,19 @@ class TestDeduplication:
         assert len(panoramas.load_panoramas(tmp_path)[MARS]) == 2
 
     def test_survivors_keep_mission_then_time_order(self, tmp_path: Path):
-        """Neighbours in the exported list are neighbours on the traverse,
-        whichever rendition of each stop won."""
+        """Neighbours in the exported list are neighbours on the traverse."""
         _write_cache(
             tmp_path,
             "curiosity-navcam",
             [
-                _product(
-                    id="late-thin",
-                    start_time="2021-03-01T00:00:00.000Z",
-                    coverage={"sphere_percent": 1.0},
-                ),
-                _product(
-                    id="late-full",
-                    start_time="2021-03-01T00:00:00.000Z",
-                    coverage={"sphere_percent": 90.0},
-                ),
+                _product(id="late", start_time="2021-03-01T00:00:00.000Z"),
                 _product(id="early"),
             ],
         )
 
         exported = panoramas.load_panoramas(tmp_path)[MARS]
 
-        assert [product.entry["id"] for product in exported] == ["early", "late-full"]
+        assert [product.entry["id"] for product in exported] == ["early", "late"]
 
 
 class TestApproximatePositions:
