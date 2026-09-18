@@ -18,7 +18,7 @@
 	import { cn } from '$lib/utils.js';
 
 	/** A page this row links to; `current` names the one being rendered. */
-	export type NavPage = 'map' | 'panoramas' | 'credits';
+	export type NavPage = 'map' | 'nav' | 'panoramas' | 'credits';
 
 	interface Props {
 		current: NavPage;
@@ -29,6 +29,7 @@
 
 	const pages: { id: NavPage; href: string; label: () => string }[] = [
 		{ id: 'map', href: '/', label: m.nav_map },
+		{ id: 'nav', href: '/nav', label: m.nav_delta_v },
 		{ id: 'panoramas', href: '/view', label: m.nav_panoramas },
 		{ id: 'credits', href: '/credits', label: m.credits_page_title }
 	];

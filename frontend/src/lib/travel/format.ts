@@ -46,6 +46,11 @@ export function dvParts(kms: number): Parts {
 	return dvPartsAt(kms, 1);
 }
 
+/** The figure alone, two decimals — for a diagram that says the unit once. */
+export function formatDvFigure(kms: number): string {
+	return dvPartsAt(kms, 2).value;
+}
+
 /** Δv with two decimals — the precision the estimates actually carry. */
 export function formatDv(kms: number): string {
 	return joinParts(dvPartsAt(kms, 2));
