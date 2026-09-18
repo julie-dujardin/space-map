@@ -185,6 +185,18 @@ export {
 	payloadForC3
 } from './vehicles';
 
+export type {
+	EdgeKind,
+	StationKind,
+	SubwayBodies,
+	SubwayBody,
+	SubwayEdge,
+	SubwayMap,
+	SubwayRoute,
+	SubwayStation
+} from './subway';
+export { buildSubwayMap, stationId } from './subway';
+
 export type { SolveResult } from './solver-client';
 export { TravelSolver } from './solver-client';
 
