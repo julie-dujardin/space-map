@@ -46,6 +46,14 @@ interface CommonOptions {
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
 	messages?: Partial<CoreMessages>;
+	/** Draw the surface maps whose licence forbids commercial reuse — off by
+	 *  default, because only the page knows whether it is a commercial one.
+	 *  Turning it on covers Venus, Io, Ganymede, Enceladus, Uranus and the
+	 *  Uranian moons, which otherwise render in their fallback colour; the page
+	 *  accepts each map's terms by asking for it, and the credit line naming
+	 *  its author is a condition of them, not a courtesy. Some maps are ours
+	 *  for spacemap.co alone and this does not reach them. */
+	includeNonCommercial?: boolean;
 }
 
 export interface MapOptions extends CommonOptions, SpaceMapOptions {
@@ -82,9 +90,19 @@ export interface PanoramaCreateOptions extends CommonOptions, PanoramaViewOption
  *  Rejects when WebGL is unavailable, or when the data fails before there is
  *  anything to look at; a failure past that point arrives as an `error` event. */
 export async function createMap(options: MapOptions): Promise<SpaceMap> {
-	const { container, dataUrl, imagesUrl, locale, messages, controls, events, ...rest } = options;
+	const {
+		container,
+		dataUrl,
+		imagesUrl,
+		locale,
+		messages,
+		includeNonCommercial,
+		controls,
+		events,
+		...rest
+	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, locale, messages });
+	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
 
 	const map = new SpaceMap(rest);
 	map.mount(element);
@@ -108,9 +126,19 @@ export async function createMap(options: MapOptions): Promise<SpaceMap> {
  *  is loaded. Rejects when the body has no map texture or the data does not
  *  load. */
 export async function createFlatMap(options: FlatMapCreateOptions): Promise<FlatMap> {
-	const { container, dataUrl, imagesUrl, locale, messages, controls, events, ...rest } = options;
+	const {
+		container,
+		dataUrl,
+		imagesUrl,
+		locale,
+		messages,
+		includeNonCommercial,
+		controls,
+		events,
+		...rest
+	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, locale, messages });
+	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
 
 	const map = new FlatMap(rest);
 	map.mount(element);
@@ -134,9 +162,19 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
  *  Rejects when the body has no panoramas, or the one asked for is not among
  *  them; a failure past that point arrives as an `error` event. */
 export async function createPanorama(options: PanoramaCreateOptions): Promise<PanoramaView> {
-	const { container, dataUrl, imagesUrl, locale, messages, controls, events, ...rest } = options;
+	const {
+		container,
+		dataUrl,
+		imagesUrl,
+		locale,
+		messages,
+		includeNonCommercial,
+		controls,
+		events,
+		...rest
+	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, locale, messages });
+	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
 
 	const view = new PanoramaView(rest);
 	view.mount(element);
@@ -163,13 +201,20 @@ function resolveContainer(container: HTMLElement | string): HTMLElement {
 
 /** What a map leaves out goes back to its default, so a second map on the page
  *  does not inherit the first one's origins. */
-function applyHost(options: Pick<CommonOptions, 'dataUrl' | 'imagesUrl' | 'locale' | 'messages'>) {
+function applyHost(
+	options: Pick<
+		CommonOptions,
+		'dataUrl' | 'imagesUrl' | 'locale' | 'messages' | 'includeNonCommercial'
+	>
+) {
 	const overrides: HostOverrides = {};
 	// The trailing slash is trimmed by configureHost, for every host alike.
 	if (options.dataUrl !== undefined) overrides.dataUrl = options.dataUrl;
 	if (options.imagesUrl !== undefined) overrides.imagesUrl = options.imagesUrl;
 	if (options.locale !== undefined) overrides.locale = () => options.locale as string;
 	if (options.messages !== undefined) overrides.messages = options.messages;
+	// The site-only tier is never reachable from here — it is not the SDK's to grant.
+	if (options.includeNonCommercial) overrides.textures = 'non-commercial';
 	configureHost(overrides);
 }
 

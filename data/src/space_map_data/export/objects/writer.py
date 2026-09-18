@@ -75,6 +75,7 @@ from space_map_data.export.systems import (
     clouds_block,
     displacement_block,
     ring_block,
+    alternate_blocks,
     texture_attribution,
 )
 from space_map_data.export.panoramas import panoramas_block
@@ -228,6 +229,7 @@ def build_chunk_object_data(
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    alternate_metadata: dict[str, list[dict]],
     clouds_metadata: dict[str, dict],
     displacement_metadata: dict[str, dict],
     model_sources: dict[str, dict],
@@ -275,6 +277,7 @@ def build_chunk_object_data(
             gms,
             nut_prec,
             texture_metadata,
+            alternate_metadata,
             clouds_metadata,
             displacement_metadata,
             model_sources,
@@ -478,6 +481,7 @@ def _build_global(
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    alternate_metadata: dict[str, list[dict]],
     clouds_metadata: dict[str, dict],
     displacement_metadata: dict[str, dict],
     model_sources: dict[str, dict],
@@ -500,6 +504,9 @@ def _build_global(
         meta = texture_metadata.get(obj.id)
         if meta is not None:
             data["texture"] = texture_attribution(meta)
+            alternates = alternate_blocks(alternate_metadata.get(obj.id))
+            if alternates:
+                data["alternates"] = alternates
         else:
             logger.warning(
                 "Texture metadata missing for %s; skipping attribution", obj.id

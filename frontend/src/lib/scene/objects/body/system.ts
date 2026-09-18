@@ -4,6 +4,7 @@ import { effectiveRadiusKm } from '$lib/types/objects';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
 import { dataBase } from '$lib/fetch/data-base';
+import { pickTexture, type TextureDistribution } from '$lib/host';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { disposeRingNode, type RingMeta } from '../surface/rings';
 import { attachRingBundles } from '../surface/ring-attach';
@@ -21,10 +22,15 @@ import {
 interface SystemBodyMeta extends SiblingBundles {
 	tiers?: string[];
 	/** Attribution block — matches `export/systems.py::texture_attribution`. */
+	/** Maps ranked below `texture`, best first — the fallbacks for a viewer
+	 *  that may not serve the best one. Each names its own bundle and tiers. */
+	alternates?: (NonNullable<SystemBodyMeta['texture']> & { id: string; tiers: string[] })[];
 	texture?: {
 		source: string;
 		organisation: string;
 		license?: string;
+		/** Who may serve it; absent where anyone may. */
+		distribution?: TextureDistribution;
 		type: string;
 		attribution?: string;
 		description?: string;
@@ -73,8 +79,14 @@ export async function loadSystemData(
 
 	const promises: Promise<void>[] = [];
 	for (const [bodyId, bodyMeta] of Object.entries(meta)) {
-		if (bodyMeta.texture)
-			ctx?.credits.registerImagery('surface', bodyId, barycenterId, bodyMeta.texture);
+		// The best map this embed may serve, which is not always the best one
+		// there is. Credit follows the picture actually drawn; where none is
+		// reachable the body keeps its fallback colour, as an untextured one does.
+		// The body's own bundle is named by the body; a fallback names itself.
+		// Normalised to one shape so the pick doesn't care which it got.
+		const best = bodyMeta.texture && { ...bodyMeta.texture, id: bodyId, tiers: bodyMeta.tiers };
+		const surface = pickTexture([best, ...(bodyMeta.alternates ?? [])]);
+		if (surface) ctx?.credits.registerImagery('surface', bodyId, barycenterId, surface);
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
 
@@ -108,10 +120,13 @@ export async function loadSystemData(
 		}
 
 		// Load the base tier once; per-frame LOD upgrades from there. Skip if
-		// already loaded so repeat visits don't downgrade high → low.
-		if (bodyMeta.tiers?.length) {
-			bo.availableTiers = bodyMeta.tiers;
-			bo.availableFrames = bodyMeta.texture?.frames;
+		// already loaded so repeat visits don't downgrade high → low. A fallback
+		// map is its own bundle, so the id the tiers hang off is its, not the
+		// body's.
+		if (surface?.tiers?.length) {
+			bo.availableTiers = surface.tiers;
+			bo.availableFrames = surface.frames;
+			bo.textureBundleId = surface.id === bodyId ? undefined : surface.id;
 			if (!bo.textureTier) {
 				const frame = textureFrameForJd(currentJd, bo.availableFrames);
 				promises.push(loadBodyTextureTier(bo, 'low', frame, textureLoader));

@@ -6,12 +6,13 @@ import json
 import logging
 import shutil
 from datetime import UTC, datetime, timedelta
+from functools import cached_property
 from pathlib import Path
 
 import py360convert
 from PIL import Image
 
-from space_map_data.constants.manifests.textures import load_entries
+from space_map_data.constants.manifests.textures import load_entries, rank_by_body
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
@@ -100,6 +101,13 @@ def _refresh_cloud_credits(meta_path: Path, download_meta: dict) -> None:
 class TextureProcessor:
     def __init__(self) -> None:
         self._raw_meta: list[dict] = load_entries(SOURCES_TEXTURES_DIR)
+
+    @cached_property
+    def _bundles(self) -> dict[str, str]:
+        """Where each surface map exports to, once the candidates for a body
+        have been ranked against each other. Derived from the entries rather
+        than set up front, so it holds however the processor was built."""
+        return rank_by_body(self._raw_meta)
 
     def _reset_texture_available(self) -> None:
         session = get_session()
@@ -241,10 +249,14 @@ class TextureProcessor:
         self._mark_texture_available(entry["body"])
         attribution = entry.get("attribution") or scraped_attribution(attribution_file)
         metadata: dict = {
-            "id": entry["body"],
+            # The bundle, not the body: a sibling layer and a body's
+            # second-best map both live beside it under their own name, and
+            # this is what the renderer builds their URLs from.
+            "id": out_dir.name,
             "source": entry["source"],
             "organisation": entry["organisation"],
             "license": entry.get("license"),
+            "distribution": entry.get("distribution"),
             "attribution": attribution,
             "description": entry.get("description"),
             "type": entry["type"],
@@ -318,7 +330,10 @@ class TextureProcessor:
             log.debug("skipping %s (marked skip in the manifest)", src.name)
             return config.PROCESSED_DIR
 
-        object_id = entry["body"]
+        object_id = self._bundles.get(src.name)
+        if object_id is None:
+            log.debug("skipping %s (not a ranked map)", src.name)
+            return config.PROCESSED_DIR
         out_dir = config.PROCESSED_DIR / object_id
 
         if not force and self._try_skip(

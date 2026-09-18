@@ -190,7 +190,7 @@
 		<script type="module">
 			import { createFlatMap, PROJECTION_IDS } from './spacemap.js';
 
-			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?projection=<id>
+			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?projection=<id> ?nc=1
 			const params = new URLSearchParams(location.search);
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
@@ -221,6 +221,8 @@
 			if (dataUrl) options.dataUrl = dataUrl;
 			if (params.has('lang')) options.locale = params.get('lang');
 			if (params.has('projection')) options.projection = params.get('projection');
+			// ?nc=1 accepts the non-commercial maps' terms, as a commercial page could not.
+			if (params.get('nc') === '1') options.includeNonCommercial = true;
 			options.events = { error: (e) => fail(e) };
 
 			let map;

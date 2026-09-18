@@ -3,6 +3,7 @@ import { bodyMeshColor } from '$lib/body-color';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
+import { pickTexture } from '$lib/host';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -72,7 +73,7 @@ async function swapBodyTexture(
 	// A host has said what this body looks like: fetching a tier of the map's
 	// own would only download a picture to be taken straight back off.
 	if (bo.appearance?.surfaceOwned) return;
-	const fileId = bo.body.data.id;
+	const fileId = bo.textureBundleId ?? bo.body.data.id;
 	const gen = (bo.textureLoadGen ??= 0);
 	bo.textureLoading = true;
 	try {
@@ -198,8 +199,16 @@ export async function loadBodyTexture(
 	// Standalones aren't tied to a system barycenter; key credits on the body
 	// itself so they match the focused body id.
 	const bodyId = bo.body.data.id;
-	if (ctx && detail.global.texture) {
-		ctx.credits.registerImagery('surface', bodyId, bodyId, detail.global.texture);
+	// As in the per-system path: the best map this embed may serve, which is
+	// not always the best there is, and credit for the one actually drawn.
+	const best = detail.global.texture && {
+		...detail.global.texture,
+		id: bodyId,
+		tiers: undefined as string[] | undefined
+	};
+	const surface = pickTexture([best, ...(detail.global.alternates ?? [])]);
+	if (ctx && surface) {
+		ctx.credits.registerImagery('surface', bodyId, bodyId, surface);
 	}
 	// DEM sibling — standalones load it here since they skip the per-system path.
 	await loadSiblingLayer('topography', bodyId, bodyId, detail.global, bo, {
@@ -211,8 +220,11 @@ export async function loadBodyTexture(
 	if (bo.textureTier || bo.textureLoading) return;
 	// Debug: surface texture off → the sphere shows its flat base tint only.
 	if (!sceneSettings().showSurfaceTexture) return;
-	bo.availableTiers ??= [...TIER_NAMES];
-	bo.availableFrames = detail.global.texture?.frames;
+	// No map within reach leaves the sphere on its base tint.
+	if (!surface) return;
+	bo.textureBundleId = surface.id === bodyId ? undefined : surface.id;
+	bo.availableTiers ??= surface.tiers ?? [...TIER_NAMES];
+	bo.availableFrames = surface.frames;
 	await swapBodyTexture(bo, 'low', textureFrameForJd(currentJd, bo.availableFrames), textureLoader);
 }
 

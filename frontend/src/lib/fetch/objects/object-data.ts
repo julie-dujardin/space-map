@@ -1,4 +1,4 @@
-import { getLocale } from '$lib/host';
+import { getLocale, type TextureDistribution } from '$lib/host';
 import type { ProbeCoverage } from '$lib/fetch/metadata';
 import { fetchBundlePair, OBJECT_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
@@ -115,6 +115,8 @@ export interface TextureAttribution {
 	source: string;
 	organisation: string;
 	type: string;
+	/** Who may serve it; absent where anyone may. */
+	distribution?: TextureDistribution;
 	attribution?: string;
 	description?: string;
 	/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
@@ -473,6 +475,9 @@ export interface GlobalObjectData {
 	map_texture_available?: boolean;
 	/** Only present when `map_texture_available` — mirrors `texture` in systems/{bary}.json. */
 	texture?: TextureAttribution;
+	/** Maps ranked below `texture`, best first — mirrors `alternates` there.
+	 *  Each names its own bundle, so its URLs are built from that, not the body. */
+	alternates?: (TextureAttribution & { id: string; tiers: string[] })[];
 	/** DEM sibling bundle — mirrors `displacement` in systems/{bary}.json. Carries
 	 *  standalone bodies (Vesta/Ceres) that never load a system file. */
 	displacement?: DisplacementMeta;

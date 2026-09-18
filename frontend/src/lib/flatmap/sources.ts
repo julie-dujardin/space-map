@@ -6,6 +6,7 @@
  */
 
 import { dataBase, versionedUrl } from '$lib/fetch/data-base';
+import { pickTexture, textureAllowed, type TextureDistribution } from '$lib/host';
 import { cloudFrameForJd } from '$lib/scene/objects/surface/clouds';
 import { textureFrameForJd } from '$lib/scene/objects/body/textures';
 
@@ -21,6 +22,8 @@ export interface BundleMeta {
 	source: string;
 	organisation: string;
 	license?: string;
+	/** Who may serve it; absent where anyone may. */
+	distribution?: TextureDistribution;
 	type: string;
 	attribution?: string;
 	description?: string;
@@ -62,6 +65,8 @@ interface SystemEntry {
 	/** Triaxial radii in kilometres, along the body-fixed axes. */
 	radii?: { a: number; b: number; c: number };
 	texture?: Omit<BundleMeta, 'id' | 'tiers'> & { frames?: number };
+	/** Maps ranked below `texture`, best first, each its own bundle. */
+	alternates?: (BundleMeta & { frames?: number })[];
 	clouds?: BundleMeta;
 	night?: BundleMeta;
 }
@@ -83,6 +88,8 @@ async function fromBundle(bodyId: string): Promise<BodySources> {
 		[key: string]: unknown;
 	}>(versionedUrl(`/v1/textures/${bodyId}/metadata.json`, 'textures'));
 	if (!meta) return {};
+	// The standalone path, so it carries the same check the system file gets.
+	if (!textureAllowed(meta.distribution as string | undefined)) return {};
 	const tiers = Object.keys(meta.exports ?? {}).filter((k) =>
 		['low', 'medium', 'high'].includes(k)
 	);
@@ -96,7 +103,8 @@ async function fromBundle(bodyId: string): Promise<BodySources> {
 			type: String(meta.type ?? 'cylindrical'),
 			attribution: meta.attribution as string | undefined,
 			description: meta.description as string | undefined,
-			license: meta.license as string | undefined
+			license: meta.license as string | undefined,
+			distribution: meta.distribution as TextureDistribution | undefined
 		}
 	};
 }
@@ -111,10 +119,15 @@ export async function loadBodySources(bodyId: string): Promise<BodySources> {
 	);
 	const entry = system?.[bodyId];
 	if (!entry?.texture || !entry.tiers?.length) return fromBundle(bodyId);
-	const { frames, ...texture } = entry.texture;
+	// The best map this viewer may serve. The best one there is comes first and
+	// is the body's own bundle; a fallback brings its own id and tiers.
+	const best = { ...entry.texture, id: bodyId, tiers: entry.tiers };
+	const surface = pickTexture([best, ...(entry.alternates ?? [])]);
+	if (!surface) return fromBundle(bodyId);
+	const { frames, ...bundle } = surface;
 	const radii = entry.radii;
 	return {
-		surface: { id: bodyId, tiers: entry.tiers, ...texture, monthlyFrames: frames },
+		surface: { ...bundle, monthlyFrames: frames },
 		clouds: entry.clouds,
 		night: entry.night,
 		radiusKm: radii ? (radii.a + radii.b + radii.c) / 3 : undefined

@@ -37,7 +37,19 @@ export interface Host {
 	messages: CoreMessages;
 	/** Link target of a body's scene label. */
 	bodyHref: (id: string, name: string) => string;
+	/** How far down the `distribution` ladder this embed may draw surface maps
+	 *  (docs/export-format/textures.md). `open` is the maps anyone may serve,
+	 *  `non-commercial` adds those whose licence bars commercial reuse, and
+	 *  `site-only` adds those cleared for spacemap.co alone. A bare embed gets
+	 *  `open`: it cannot accept a licence for the page it sits on. */
+	textures: TextureDistribution;
 }
+
+/** Who may serve a surface map, widest first. A body whose map this embed may
+ *  not draw renders in its fallback colour, as an untextured body does. */
+export type TextureDistribution = 'open' | 'non-commercial' | 'site-only';
+
+const TEXTURE_LADDER: readonly TextureDistribution[] = ['open', 'non-commercial', 'site-only'];
 
 /** Overrides, with messages filled in one key at a time. */
 export type HostOverrides = Partial<Omit<Host, 'messages'>> & { messages?: Partial<CoreMessages> };
@@ -64,7 +76,8 @@ const DEFAULT_HOST: Host = {
 		cooperative_touch: () => 'Use two fingers to move the map'
 	},
 	// A bare embed has no pages to link to, so labels stay put.
-	bodyHref: () => ''
+	bodyHref: () => '',
+	textures: 'open'
 };
 
 let current: Host = DEFAULT_HOST;
@@ -84,6 +97,37 @@ export function configureHost(overrides: HostOverrides): void {
 
 export function host(): Host {
 	return current;
+}
+
+/**
+ * Whether this embed may fetch a surface map whose block carries that
+ * `distribution`. Absent is the common case and always allowed; a tier this
+ * build doesn't know is newer than the build, so it is refused rather than
+ * guessed at.
+ */
+export function textureAllowed(distribution: string | undefined): boolean {
+	if (distribution === undefined) return true;
+	const rank = TEXTURE_LADDER.indexOf(distribution as TextureDistribution);
+	if (rank < 0) return false;
+	return rank <= TEXTURE_LADDER.indexOf(current.textures);
+}
+
+/**
+ * The best map of a body this embed may actually draw.
+ *
+ * The export ranks them by how good the picture is, best first, and says of
+ * each who may serve it. Those are separate judgements, so an embed barred
+ * from the best one walks down the list rather than going without: the reader
+ * gets the second-best map instead of a flat sphere. Undefined when every
+ * candidate is out of reach.
+ */
+export function pickTexture<T extends { distribution?: string }>(
+	candidates: readonly (T | undefined)[]
+): T | undefined {
+	for (const candidate of candidates) {
+		if (candidate && textureAllowed(candidate.distribution)) return candidate;
+	}
+	return undefined;
 }
 
 /** The host's reading language; the hot path in name picks and formatters. */

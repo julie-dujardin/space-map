@@ -24,6 +24,8 @@ MANIFEST_NAME = "download-metadata.yaml"
 # The root manifest's entries are the only ones whose files don't live in the
 # directory the manifest mirrors.
 SURFACES_SUBDIR = "surfaces"
+# The map types where one body can have several candidates worth keeping.
+_RANKED_TYPES = ("cylindrical", "cylindrical_monthly")
 
 
 def load_entries(textures_dir: Path) -> list[dict]:
@@ -56,3 +58,54 @@ def _manifests(textures_dir: Path) -> Iterator[tuple[Path, Path]]:
     )
     for manifest in extra:
         yield manifest, textures_dir / manifest.parent.relative_to(MANIFESTS_DIR)
+
+
+# Suffix marking a bundle that is not its body's best map: `naif-299_alt-usgs`.
+# Parallel to the `_clouds` / `_night` sibling convention, so the loaders that
+# already split siblings off a body's own directory keep working.
+ALT_INFIX = "_alt-"
+
+
+def bundle_id(entry: dict, is_best: bool) -> str | None:
+    """Export directory name for one manifest entry.
+
+    The best map of a body keeps the body's own id, so ranking a new map above
+    an old one doesn't move the old bundle. Anything below it needs a
+    ``variant`` slug to be told apart; without one there is nowhere to put it
+    and the entry is dropped.
+    """
+    body = entry["body"]
+    if is_best:
+        return body
+    variant = entry.get("variant")
+    if not variant:
+        logger.warning(
+            "%s: ranked below the best map of %s but names no variant, dropping",
+            entry.get("file"),
+            body,
+        )
+        return None
+    return f"{body}{ALT_INFIX}{variant}"
+
+
+def rank_by_body(entries: list[dict]) -> dict[str, str]:
+    """``{manifest file: bundle id}`` for every surface entry worth processing.
+
+    Entries are ranked per body by ``preference`` (default 0), highest first;
+    ties keep manifest order. Only plain and monthly cylindrical maps compete —
+    the sibling layers (clouds, night, specular, displacement) are one per body
+    by construction.
+    """
+    by_body: dict[str, list[dict]] = {}
+    for entry in entries:
+        if entry.get("skip") or entry.get("type") not in _RANKED_TYPES:
+            continue
+        by_body.setdefault(entry["body"], []).append(entry)
+    result: dict[str, str] = {}
+    for ranked in by_body.values():
+        ranked.sort(key=lambda e: -(e.get("preference") or 0))
+        for position, entry in enumerate(ranked):
+            name = bundle_id(entry, is_best=position == 0)
+            if name is not None:
+                result[entry["file"]] = name
+    return result

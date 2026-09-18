@@ -582,6 +582,7 @@ export interface Host {
 	locale: () => string;
 	// (undocumented)
 	messages: CoreMessages;
+	textures: TextureDistribution;
 }
 
 // @public
@@ -944,16 +945,19 @@ export interface PanoramaEntry {
 	hfov_deg?: number;
 	// (undocumented)
 	id: string;
+	imagery?: 'withheld';
 	// (undocumented)
 	instrument?: string;
 	lat: number;
 	// (undocumented)
 	lon: number;
 	mission?: string;
-	north_offset_deg: number;
+	north_offset_deg?: number;
 	orientation?: 'unknown' | 'caption-aligned' | 'matched to an archival sphere';
+	position_uncertainty_m?: number;
 	// (undocumented)
 	sol?: number;
+	source_grid?: boolean;
 	// (undocumented)
 	source_url?: string;
 	sphere_percent?: number;
@@ -970,6 +974,7 @@ export interface PanoramaMissionSummary {
 	count: number;
 	// (undocumented)
 	first_time: string;
+	imagery?: boolean;
 	// (undocumented)
 	last_time: string;
 	// (undocumented)
@@ -992,6 +997,8 @@ export class PanoramaView {
 	getPanoramas(): readonly PanoramaEntry[];
 	// (undocumented)
 	getView(): PanoramaViewState;
+	// (undocumented)
+	isGyroEnabled(): boolean;
 	load(): Promise<void>;
 	mount(container: HTMLElement): void;
 	// (undocumented)
@@ -1006,6 +1013,7 @@ export class PanoramaView {
 	removeControl(control: Control<PanoramaView>): this;
 	setAngleGridVisible(visible: boolean): void;
 	setArrowsVisible(visible: boolean): void;
+	setGyroEnabled(enabled: boolean): Promise<boolean>;
 	setLimits(limits: PanoramaViewLimits): void;
 	setView(view: Partial<PanoramaViewState>): void;
 	step(key: ArrowKey): Promise<void>;

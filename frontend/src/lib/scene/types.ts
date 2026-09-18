@@ -95,6 +95,9 @@ export interface BodyObjects {
 	 */
 	outOfRange?: boolean;
 	availableTiers?: string[];
+	/** Bundle the surface map is read from when it is not the body's own —
+	 *  a fallback map this viewer may serve, where the best one it cannot. */
+	textureBundleId?: string;
 	textureTier?: string;
 	/** Frame count for `cylindrical_monthly` textures; undefined for single-frame bodies. */
 	availableFrames?: number;

@@ -61,6 +61,7 @@ def refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) -
         "source": entry["source"],
         "organisation": entry["organisation"],
         "license": entry.get("license"),
+        "distribution": entry.get("distribution"),
         "attribution": attribution,
         "description": entry.get("description"),
         "type": entry["type"],

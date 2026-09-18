@@ -11,6 +11,7 @@ from space_map_data.export.nomenclature.quadrangles import export_quadrangles_on
 from space_map_data.export.panoramas import export_panoramas_only
 from space_map_data.export.pipeline.orchestrator import export
 from space_map_data.export.spacecraft import export_spacecraft_only
+from space_map_data.export.systems import export_systems_only
 from space_map_data.utils.db import engine_scope
 from space_map_data.utils.paths import DATA_DIR
 
@@ -21,7 +22,14 @@ def cli():
     )
     parser.add_argument(
         "--only",
-        choices=("groups", "quadrangles", "atmospheres", "spacecraft", "panoramas"),
+        choices=(
+            "groups",
+            "quadrangles",
+            "atmospheres",
+            "spacecraft",
+            "panoramas",
+            "systems",
+        ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
     )
@@ -45,6 +53,8 @@ def cli():
             export_groups_only(engine)
         elif args.only == "quadrangles":
             export_quadrangles_only(engine)
+        elif args.only == "systems":
+            export_systems_only(engine)
         else:
             export(engine)
 

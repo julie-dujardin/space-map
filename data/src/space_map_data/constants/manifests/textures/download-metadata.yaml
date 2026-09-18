@@ -2,6 +2,19 @@
 # dedupe by exact string — so it names the umbrella body (NASA, ESA) rather than
 # the specific node or collaboration. `attribution` carries the full credit and
 # is what /credits and the popover render.
+#
+# `distribution` says who may serve the map, in three tiers. Absent is the
+# common one: free to publish anywhere, and we credit it either way — whether
+# the licence compels attribution makes no difference to what we render.
+# `non-commercial` is a licence that forbids commercial reuse, so an embed
+# opts into it. `site-only` is cleared for spacemap.co alone and reaches no
+# embed at all, whatever it opts into.
+#
+# `preference` (default 0) ranks the maps of one body by how good they are —
+# a judgement about the picture, never about its rights. The best one exports
+# to `textures/<body>/`; the rest need a `variant` slug and export beside it as
+# `textures/<body>_alt-<variant>/`, so a viewer that may not serve the best one
+# still has a map to draw. `skip: true` is the other thing: never process it.
 bodies:
 - body: naif-199
   body_name: mercury
@@ -24,7 +37,9 @@ bodies:
   source: https://stevealbers.net/albers/sos/sos.html#VENUS
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers from Magellan radar mosaics (NASA, compiled by Emily Lakdawalla / The Planetary Society) overlaid on a global map by Calvin Hamilton."
+  preference: 10
   file: venus4_rgb_cyl_www.tif
   type: cylindrical
 - body: naif-299
@@ -32,9 +47,10 @@ bodies:
   source: https://astrogeology.usgs.gov/search/map/venus_magellan_global_c3_mdir_synthetic_color_mosaic_4641m#open
   organisation: USGS
   license: Public domain
+  preference: 5
+  variant: usgs
   file: Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif
   type: cylindrical
-  skip: true
   # lower coverage:
   # https://www.jpl.nasa.gov/images/pia00256-venus-simple-cylindrical-map-of-surface-eastern-half/
   # https://www.jpl.nasa.gov/images/pia00255-venus-simple-cylindrical-map-of-surface-western-half/
@@ -149,7 +165,9 @@ bodies:
   source: https://stevealbers.net/albers/sos/sos.html#CERES
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers by reprojecting Dawn spacecraft imagery (NASA/JPL-Caltech/UCLA/MPS/DLR/IDA) onto a lower-resolution base map."
+  preference: 10
   file: ceres_rgb_cyl.png
   type: cylindrical
   lon_at_left_deg: 0  # 180° east shift (Albers Ceres convention)
@@ -158,10 +176,12 @@ bodies:
   source: https://astrogeology.usgs.gov/search/map/ceres_dawn_fc_global_mosaic_140m#open
   organisation: USGS
   license: Public domain
+  preference: 5
+  variant: usgs
   file: Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif
   type: cylindrical
   lon_at_left_deg: 0  # 180° vs the Albers map it replaces (user-verified)
-  skip: true
+
 - body: spkid-20000004
   body_name: vesta
   source: https://astrogeology.usgs.gov/search/map/vesta_dawn_fc_hamo_global_mosaic_60m#open
@@ -310,7 +330,9 @@ bodies:
   source: https://stevealbers.net/albers/sos/sos.html#IO
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers from Voyager and Galileo imagery (NASA/JPL), combining mosaics from Celestia developer Laika and the USGS global Io map."
+  preference: 10
   file: io_rgb_cyl.tif
   type: cylindrical
   lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
@@ -319,10 +341,12 @@ bodies:
   source: https://astrogeology.usgs.gov/search/map/io_galileo_ssi_global_color_merge_mosaic_1km#open
   organisation: USGS
   license: Public domain
+  preference: 5
+  variant: usgs
   file: Io_Galileo_SSI_Global_Mosaic_ClrMerge_1km.tif
   type: cylindrical
   lon_at_left_deg: 0  # 180° vs the Albers map it replaces (user-verified)
-  skip: true
+
 - body: naif-502
   body_name: europa
   source: https://www.planetary.org/articles/0218-mapping-europa
@@ -345,16 +369,20 @@ bodies:
   organisation: Björn Jónsson
   license: Free use with attribution
   attribution: "Ganymede global map by Björn Jónsson, from Voyager and Galileo imagery (NASA/JPL)."
+  preference: 5
+  variant: bjj
   file: ganymede-bjj.jpg
   type: cylindrical
   lon_at_left_deg: 0  # BJJ map is east-positive (reprojected for display), 0° at left edge
-  skip: true
+
 - body: naif-503
   body_name: ganymede
   source: https://stevealbers.net/albers/sos/sos.html#GANYMEDE
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers — modified version of a Voyager/Galileo map by Björn Jónsson, with localised blends from the USGS Ganymede map. Source imagery: NASA/JPL."
+  preference: 10
   file: ganymede_4k.jpg
   type: cylindrical
   lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
@@ -432,17 +460,21 @@ bodies:
   organisation: LPI
   license: Public domain
   attribution: "Global map of Enceladus produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
+  preference: 5
+  variant: lpi
   file: Enceladus-esmap-cyl-KH.jpg
   type: cylindrical
   lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive)
   description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18435-color-maps-of-enceladus-2014/
-  skip: true
+
 - body: naif-602
   body_name: enceladus
   source: https://stevealbers.net/albers/sos/sos.html#ENCELADUS
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers from Cassini ISS imagery (NASA/JPL-Caltech/SSI)."
+  preference: 10
   file: enceladus_rgb_cyl_www.png
   type: cylindrical
   lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
@@ -498,6 +530,7 @@ bodies:
   source: https://www.deviantart.com/askaniy/art/Uranus-Texture-Map-763551816
   organisation: Askaniy
   license: CC BY-NC-SA 3.0
+  distribution: non-commercial
   attribution: "Uranus texture map by Askaniy Anpilogov."
   file: uranus_texture_map_by_askaniy_dcmlkco.png
   type: cylindrical
@@ -516,16 +549,20 @@ bodies:
   organisation: NASA
   license: Public domain
   attribution: "NASA 3D Resources — Ariel global map, from Voyager 2 imagery (NASA/JPL)."
+  preference: 5
+  variant: nasa3d
   file: ariel-nasa3d.tif
   type: cylindrical
   lon_at_left_deg: 0  # NASA 3D map is 180° rotated
-  skip: true
+
 - body: naif-701
   body_name: ariel
   source: https://stevealbers.net/albers/sos/sos.html#ARIEL
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers, overlaying reprojected Voyager images by Ted Stryk on the USGS Voyager base map. Source imagery: NASA/JPL (Voyager 2)."
+  preference: 10
   file: ariel_rgb_cyl_www.tif
   type: cylindrical
 - body: naif-702
@@ -543,15 +580,19 @@ bodies:
   organisation: NASA
   license: Public domain
   attribution: "NASA 3D Resources — Titania global map, from Voyager 2 imagery (NASA/JPL)."
+  preference: 5
+  variant: nasa3d
   file: titania-nasa3d.tif
   type: cylindrical
-  skip: true
+
 - body: naif-703
   body_name: titania
   source: https://stevealbers.net/albers/sos/sos.html#TITANIA
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers by combining three Voyager images processed by Ted Stryk, registered against the USGS Voyager map. Source imagery: NASA/JPL (Voyager 2)."
+  preference: 10
   file: titania_rgb_cyl_www.jpg
   type: cylindrical
 - body: naif-704
@@ -560,15 +601,19 @@ bodies:
   organisation: NASA
   license: Public domain
   attribution: "NASA 3D Resources — Oberon global map, from Voyager 2 imagery (NASA/JPL)."
+  preference: 5
+  variant: nasa3d
   file: oberon-nasa3d.tif
   type: cylindrical
-  skip: true
+
 - body: naif-704
   body_name: oberon
   source: https://stevealbers.net/albers/sos/sos.html#OBERON
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers by overlaying Voyager images processed by Ted Stryk onto the USGS Voyager base map. Source imagery: NASA/JPL (Voyager 2)."
+  preference: 10
   file: oberon_rgb_cyl_www.tif
   type: cylindrical
 - body: naif-705
@@ -615,6 +660,7 @@ bodies:
   source: https://stevealbers.net/albers/sos/sos.html#TRITON
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   attribution: "Processed by Steve Albers by merging a JPL Voyager 2 mosaic with a Triton map by William Johnston and A. Tayfun Oner. Source imagery: NASA/JPL (Voyager 2)."
   file: triton_rgb_cyl_www.png
   type: cylindrical
@@ -641,6 +687,7 @@ bodies:
   source: https://stevealbers.net/albers/sos/sos.html#PLUTO
   organisation: Steve Albers
   license: Personal, non-commercial use only
+  distribution: site-only
   file: pluto_rgb_cyl_16k.png
   type: cylindrical
   skip: true

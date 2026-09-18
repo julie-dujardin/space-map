@@ -20,8 +20,10 @@ from space_map_data.constants.orientation import (
     ORIENTATION_SOURCE_LIGHTCURVE,
     ORIENTATION_SOURCE_PCK,
 )
+from space_map_data.constants.manifests.textures import ALT_INFIX
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object, ObjectType
+from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +140,10 @@ def texture_attribution(meta: dict) -> dict:
     }
     if meta.get("license") is not None:
         result["license"] = meta["license"]
+    # Who may serve this map. Absent means anyone; the renderer reads it to
+    # decide whether an embed may ask for the picture at all.
+    if meta.get("distribution") is not None:
+        result["distribution"] = meta["distribution"]
     if meta.get("attribution") is not None:
         result["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -145,6 +151,24 @@ def texture_attribution(meta: dict) -> dict:
     if meta.get("frames") is not None:
         result["frames"] = meta["frames"]
     return result
+
+
+def alternate_blocks(metas: list[dict] | None) -> list[dict]:
+    """The `alternates` array: each map ranked below a body's best, in order.
+
+    Each carries its own bundle id and tiers, since the renderer builds its
+    URLs from those rather than from the body id when it falls back.
+    """
+    blocks = []
+    for meta in metas or []:
+        blocks.append(
+            {
+                "id": meta["id"],
+                "tiers": _tiers_from_meta(meta),
+                **texture_attribution(meta),
+            }
+        )
+    return blocks
 
 
 def _tiers_from_meta(meta: dict) -> list[str]:
@@ -173,14 +197,42 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
     if not textures_dir.exists():
         return result
     for body_dir in textures_dir.iterdir():
-        if not body_dir.is_dir() or body_dir.name.endswith(
-            (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX, _NIGHT_SUFFIX, _DISPLACEMENT_SUFFIX)
+        if (
+            not body_dir.is_dir()
+            or ALT_INFIX in body_dir.name
+            or body_dir.name.endswith(
+                (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX, _NIGHT_SUFFIX, _DISPLACEMENT_SUFFIX)
+            )
         ):
             continue
         meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             result[body_dir.name] = orjson.loads(meta_file.read_bytes())
     logger.info("Loaded texture metadata for %d bodies", len(result))
+    return result
+
+
+def load_alternate_metadata(out_dir: Path) -> dict[str, list[dict]]:
+    """``{body id: [metadata, ...]}`` for the maps ranked below a body's best.
+
+    A viewer that may not serve the best map falls back to these, so they are
+    kept beside it rather than dropped at ingest. Ordering is settled here —
+    the manifest's ranking is already baked into the directory names, so the
+    list is sorted by id for a stable payload.
+    """
+    textures_dir = out_dir / "textures"
+    result: dict[str, list[dict]] = {}
+    if not textures_dir.exists():
+        return result
+    for body_dir in sorted(textures_dir.iterdir()):
+        if not body_dir.is_dir() or ALT_INFIX not in body_dir.name:
+            continue
+        meta_file = mirror_path(body_dir / "metadata.json")
+        if not meta_file.exists():
+            continue
+        body_id = body_dir.name.split(ALT_INFIX)[0]
+        result.setdefault(body_id, []).append(orjson.loads(meta_file.read_bytes()))
+    logger.info("Loaded alternate texture metadata for %d bodies", len(result))
     return result
 
 
@@ -561,6 +613,7 @@ def write_system_metadata(
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    alternate_metadata: dict[str, list[dict]],
     ring_metadata: dict[str, list[dict]],
     clouds_metadata: dict[str, dict],
     specular_metadata: dict[str, dict],
@@ -627,6 +680,9 @@ def write_system_metadata(
                 if meta is not None:
                     entry["tiers"] = _tiers_from_meta(meta)
                     entry["texture"] = texture_attribution(meta)
+                    alternates = alternate_blocks(alternate_metadata.get(obj.id))
+                    if alternates:
+                        entry["alternates"] = alternates
                 else:
                     logger.warning(
                         "Texture metadata missing for %s (system %s), skipping tiers",
@@ -679,3 +735,31 @@ def write_system_metadata(
         if bodies:
             (systems_dir / f"{sys_id}.json").write_bytes(orjson.dumps(bodies))
             logger.info("System metadata %s: %d bodies", sys_id, len(bodies))
+
+
+def export_systems_only(engine) -> None:
+    """`space-map-export --only systems` — rewrites systems/*.json alone.
+
+    The per-system files restate what the texture, ring and overlay bundles
+    already say about themselves, so a credit or rights edit in the manifests
+    reaches the frontend without re-running the whole export.
+    """
+    out_dir = EXPORT_DIR / "v1"
+    with Session(engine) as session:
+        write_system_metadata(
+            session,
+            out_dir,
+            load_orientation(DOWNLOAD_DIR),
+            load_radii(DOWNLOAD_DIR),
+            load_nut_prec(DOWNLOAD_DIR),
+            load_texture_metadata(out_dir),
+            load_alternate_metadata(out_dir),
+            load_ring_metadata(out_dir),
+            load_clouds_metadata(out_dir),
+            load_specular_metadata(out_dir),
+            load_night_metadata(out_dir),
+            load_displacement_metadata(out_dir),
+        )
+        write_systems_global(
+            out_dir, load_gms(DOWNLOAD_DIR), load_nut_prec_angles(DOWNLOAD_DIR)
+        )

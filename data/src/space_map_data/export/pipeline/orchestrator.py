@@ -127,6 +127,7 @@ from space_map_data.export.systems import (
     load_ring_metadata,
     load_skybox_metadata,
     load_specular_metadata,
+    load_alternate_metadata,
     load_texture_metadata,
     skybox_block,
     write_system_metadata,
@@ -1077,6 +1078,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     nut_prec = load_nut_prec(DOWNLOAD_DIR)
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
     texture_metadata = load_texture_metadata(out_dir)
+    alternate_metadata = load_alternate_metadata(out_dir)
     ring_metadata = load_ring_metadata(out_dir)
     clouds_metadata = load_clouds_metadata(out_dir)
     specular_metadata = load_specular_metadata(out_dir)
@@ -1104,6 +1106,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         gms=gms,
         nut_prec=nut_prec,
         texture_metadata=texture_metadata,
+        alternate_metadata=alternate_metadata,
         clouds_metadata=clouds_metadata,
         displacement_metadata=displacement_metadata,
         model_sources=model_sources,
@@ -1176,6 +1179,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             radii,
             nut_prec,
             texture_metadata,
+            alternate_metadata,
             ring_metadata,
             clouds_metadata,
             specular_metadata,

@@ -6,6 +6,7 @@
  * Mirrors the sibling-bundle shape in `data/src/space_map_data/export/credits.py`.
  */
 import * as m from '$lib/paraglide/messages.js';
+import type { TextureDistribution } from '$lib/host';
 
 export type ImageryLayer = 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings';
 
@@ -38,6 +39,9 @@ export interface CreditFields {
 	source: string;
 	organisation: string;
 	license?: string;
+	/** Who may serve this layer, absent where anyone may — see
+	 *  `textureAllowed` in `$lib/host`. Only surface maps carry one today. */
+	distribution?: TextureDistribution;
 	attribution?: string;
 	description?: string;
 }

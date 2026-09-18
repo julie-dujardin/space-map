@@ -291,7 +291,7 @@
 			// mesh brings one of its own.
 			import * as THREE from './three.module.min.js';
 
-			// ?data=<export root> ?lang=<bcp47> ?body=<object id>
+			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?nc=1
 			const params = new URLSearchParams(location.search);
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
@@ -302,6 +302,10 @@
 			if (dataUrl) options.dataUrl = dataUrl;
 			if (params.has('lang')) options.locale = params.get('lang');
 			if (params.has('body')) options.view = { id: params.get('body') };
+			// ?nc=1 accepts the non-commercial maps' terms, as a commercial page
+			// could not: Venus, Io, Ganymede, Enceladus and Uranus get their real
+			// surfaces instead of a flat tint.
+			if (params.get('nc') === '1') options.includeNonCommercial = true;
 
 			const $ = (id) => document.getElementById(id);
 			const log = (line) => {
@@ -329,7 +333,9 @@
 			// The controller, for poking at from the console.
 			window.map = map;
 			$('boot').hidden = true;
-			$('status').textContent = `Data from ${dataUrl ?? 'static.spacemap.co'}`;
+			$('status').textContent = `Data from ${dataUrl ?? 'static.spacemap.co'}${
+				options.includeNonCommercial ? ' · non-commercial maps on' : ''
+			}`;
 
 			map.on('loading', (loading) => log(`loading ${loading}`));
 			map.on('error', (message) => log(`error ${message}`));

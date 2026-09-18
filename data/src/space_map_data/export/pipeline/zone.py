@@ -59,6 +59,7 @@ class ObjectDataContext:
     gms: dict[int, float]
     nut_prec: dict[int, dict[str, list[float]]]
     texture_metadata: dict[str, dict]
+    alternate_metadata: dict[str, list[dict]]
     clouds_metadata: dict[str, dict]
     displacement_metadata: dict[str, dict]
     # shape-model slug -> provenance block (technique/archive/mission link).
@@ -147,6 +148,7 @@ def build_zone_object_data(
         gms=ctx.gms,
         nut_prec=ctx.nut_prec,
         texture_metadata=ctx.texture_metadata,
+        alternate_metadata=ctx.alternate_metadata,
         clouds_metadata=ctx.clouds_metadata,
         displacement_metadata=ctx.displacement_metadata,
         model_sources=ctx.model_sources,

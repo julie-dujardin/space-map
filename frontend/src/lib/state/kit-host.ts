@@ -13,5 +13,7 @@ export const KIT_HOST: HostOverrides = {
 	...(env.PUBLIC_DATA_URL ? { dataUrl: env.PUBLIC_DATA_URL, imagesUrl: env.PUBLIC_DATA_URL } : {}),
 	// Read through the live binding: the client swaps in a cached getLocale.
 	locale: () => getLocale(),
-	messages: m
+	messages: m,
+	// spacemap.co is the site the site-only maps are cleared for.
+	textures: 'site-only'
 };
