@@ -126,11 +126,32 @@ camera that turns about its mast rather than its lens sees near ground from a
 different place in each frame, and the result pictures the lander's own deck
 rather than a view from it.
 
-Where frames do overlap, each is weighted by how squarely it looks at the point,
-so the best-centred one dominates instead of a dozen being averaged into a blur.
-The seams, the exposure steps between frames, and near-camera parallax are all
-kept. A panoramic camera is a stereo pair and one eye covers the sphere, so only
-one is read.
+The stated pointing is where a sweep starts, not where it ends. Neighbouring
+frames of one Zhurong sweep disagree by about a degree where they overlap, and
+the lens stands some 18 cm off the mast axis, so ground a few metres away
+shifts by two degrees from one frame to the next. `registration.py` measures
+the overlaps and solves one small rotation for each frame. The lens positions
+come from the label: they are east-north-up like the pointing vectors, which
+the overlaps confirm — the mirrored reading misses them by half a degree, and
+a lens taken to sit on the axis by a full one. The ground is taken as a level
+plane at the height the label states, so each piece of ground lands at one
+place on the sphere whichever lens saw it. A sweep keeps its stated pointing
+when its overlaps hold too little texture, or when the solution fits them no
+better than the label does; the metadata records which under
+`source_coverage.registration`.
+
+Matches near the horizon carry the solve; the steep near field holds the
+craft's own deck and wheels, which no plane models, and a fit that chased them
+put a step in the horizon. The overlaps cannot see a turn of the whole sweep,
+so that stays as the label states it. The release also files some exposures twice under two frame numbers;
+one exposure counts as one frame.
+
+Each point of the sphere comes from the one frame that looks most squarely at
+it, with a straight edge where the next frame takes over, as in the archives'
+own mosaics. The seams and the exposure steps between frames are kept, and so
+is the parallax of whatever stands above the ground, the rover's own deck first
+of all. A panoramic camera is a stereo pair and one eye covers the sphere, so
+only one is read.
 
 ### Where the Spirit and Opportunity mosaics live
 

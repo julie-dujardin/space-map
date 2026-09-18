@@ -2,9 +2,11 @@
 
 The release carries no mosaics for any of its surface missions, only single
 frames. Each frame states where the craft stood and which way every corner of
-it points, so the frames of one stop can be put on a sphere without estimating
-anything. One geometry serves Mars and the Moon alike; only the naming around
-it differs, and not consistently even within a label.
+it points, so the frames of one stop can be put on a sphere from the label
+alone. The stated pointing is about a degree loose from frame to frame, so the
+overlaps then register the frames against each other: see `registration.py`.
+One geometry serves Mars and the Moon alike; only the naming around it differs,
+and not consistently even within a label.
 """
 
 from dataclasses import dataclass, asdict
@@ -13,6 +15,7 @@ import json
 import logging
 import math
 from pathlib import Path
+import shutil
 import time
 import xml.etree.ElementTree as ET
 
@@ -20,6 +23,7 @@ import httpx
 import numpy as np
 
 from .pipeline import fetch, sha256, write_json
+from .registration import Lens, lens_rays, reduce, register, sample
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +121,9 @@ class Frame:
     principal_mm: tuple[float, ...]
     # Four corners then the centre, as unit vectors the archive states.
     pointing: tuple[tuple[float, ...], ...]
+    # Where the lens stood, in metres: east-north-up like the pointing, with
+    # the ground at zero, whatever frame the label names for it.
+    lens_position_m: tuple[float, ...] | None = None
 
     def validate(self):
         if min(self.width, self.height) < 2:
@@ -209,6 +216,14 @@ def read_label(raw: str, release: Release) -> Frame:
         None,
     )
     confirm_east_north(root, release)
+    position = [
+        n.text
+        for axis in "xyz"
+        for n in [
+            root.find(f".//exterior_orientation_elements/camera_center_position_{axis}")
+        ]
+        if n is not None and n.text
+    ]
     result = Frame(
         text(area, "product_id"),
         int(text(area, "sequence_id")),
@@ -230,6 +245,7 @@ def read_label(raw: str, release: Release) -> Frame:
             tuple(float(text(area, f".//{corner}/{axis}")) for axis in "xyz")
             for corner in CORNERS
         ),
+        tuple(float(p) for p in position) if len(position) == 3 else None,
     )
     result.validate()
     return result
@@ -328,42 +344,45 @@ def frame_window(frame: Frame, width: int):
     return np.arange(low, high + 1), rows
 
 
-def paint(frame: Frame, raster, total, weight, directions):
+def lens(frame: Frame) -> Lens:
+    return Lens(
+        frame.width,
+        frame.height,
+        frame.focal_mm / frame.pixel_mm,
+        frame.width / 2 + frame.principal_mm[0] / frame.pixel_mm,
+        frame.height / 2 + frame.principal_mm[1] / frame.pixel_mm,
+    )
+
+
+def paint(frame: Frame, raster, total, best, directions, found, offset, height_m):
     """Add one frame to the sphere it covers part of."""
-    found = rotation(frame)
     width = total.shape[1]
     columns, rows = frame_window(frame, width)
     if not len(columns) or not len(rows):
         return
     wrapped = columns % width
-    rays = directions[np.ix_(rows, wrapped)] @ found
-    forward = rays[..., 2] > 0
-    scale = frame.focal_mm / frame.pixel_mm
-    centre_x = frame.width / 2 + frame.principal_mm[0] / frame.pixel_mm
-    centre_y = frame.height / 2 + frame.principal_mm[1] / frame.pixel_mm
-    with np.errstate(divide="ignore", invalid="ignore"):
-        x = centre_x + rays[..., 0] / rays[..., 2] * scale
-        y = centre_y + rays[..., 1] / rays[..., 2] * scale
-    inside = (
-        forward & (x >= 0) & (x <= frame.width - 1) & (y >= 0) & (y <= frame.height - 1)
-    )
+    rays = lens_rays(directions[np.ix_(rows, wrapped)], offset, height_m) @ found
+    optics = lens(frame)
+    x, y, inside = optics.pixels(rays)
     if not inside.any():
         return
-    sample_x = np.clip(np.rint(x), 0, frame.width - 1).astype(np.int32)
-    sample_y = np.clip(np.rint(y), 0, frame.height - 1).astype(np.int32)
-    # Weight a frame by how squarely it looks at each point: a dense scan can
-    # stack a dozen frames on one spot, and the camera turns about the mast
-    # rather than its own lens, so averaging them all smears anything close
-    # enough to shift between them. The nearest-centred frame dominates, and
-    # the fall-off still feathers the edges rather than cutting them.
-    offset = np.maximum(
-        np.abs(x / (frame.width - 1) * 2 - 1), np.abs(y / (frame.height - 1) * 2 - 1)
-    )
-    share = np.where(inside, np.clip(1 - offset, 1e-3, 1) ** 3, 0)
-    taken = raster[sample_y, sample_x].astype(np.float32)
+    # A frame holds several samples for each pixel of the sphere, so it is
+    # averaged down first; picking one sample of them would alias.
+    factor = max(1, int(2 * math.pi / width * optics.scale))
+    taken = sample(reduce(raster, factor), factor, x, y)
+    # The frame that looks most squarely at a point paints it, and no other:
+    # a seam is a straight edge, as in the archives' own mosaics, and shows
+    # any misregistration for what it is instead of blurring it away. Adding
+    # the two offsets, rather than taking the larger, keeps the seam between
+    # side-by-side frames upright instead of letting a corner cut in.
+    off_centre = (
+        np.abs(x / (frame.width - 1) * 2 - 1) + np.abs(y / (frame.height - 1) * 2 - 1)
+    ) / 2
+    claim = np.where(inside, 1 - off_centre, 0).astype(np.float32)
     index = np.ix_(rows, wrapped)
-    np.add.at(total, index, taken * share[..., None])
-    np.add.at(weight, index, share)
+    taken_over = claim > best[index]
+    total[index] = np.where(taken_over[..., None], taken, total[index])
+    best[index] = np.maximum(best[index], claim)
 
 
 def read_raster(path: Path, frame: Frame):
@@ -386,14 +405,25 @@ def sweep_sphere(frames, paths, width: int):
     height = width // 2
     bands = max(f.bands for f in frames)
     total = np.zeros((height, width, bands), np.float32)
-    weight = np.zeros((height, width), np.float32)
+    # How squarely the frame that painted each point looked at it.
+    best = np.zeros((height, width), np.float32)
     directions = sphere_directions(width)
-    for frame, path in zip(frames, paths):
-        paint(frame, read_raster(path, frame), total, weight, directions)
-    covered = weight > 0
+    rasters = [read_raster(path, frame) for frame, path in zip(frames, paths)]
+    positions = [f.lens_position_m for f in frames]
+    sweep = register(
+        [lens(f) for f in frames],
+        rasters,
+        [rotation(f) for f in frames],
+        positions if all(p is not None for p in positions) else None,
+    )
+    for frame, raster, found, offset in zip(
+        frames, rasters, sweep.rotations, sweep.offsets
+    ):
+        paint(frame, raster, total, best, directions, found, offset, sweep.height_m)
+    covered = best > 0
     if not covered.any():
         raise ValueError("Sweep covers none of the sphere")
-    value = total[covered] / weight[covered][:, None]
+    value = total[covered]
     if any(np.dtype(f.dtype).itemsize > 1 for f in frames):
         # Sunlit insulation on a lander deck is far brighter than any ground,
         # so a stretch reaching into the top half percent leaves the scene grey.
@@ -405,7 +435,7 @@ def sweep_sphere(frames, paths, width: int):
     rgb[covered] = np.clip(
         value if bands == 3 else np.repeat(value, 3, axis=1), 0, 255
     ).astype(np.uint8)
-    return np.dstack((rgb, covered.astype(np.uint8) * 255)), covered
+    return np.dstack((rgb, covered.astype(np.uint8) * 255)), covered, sweep.report
 
 
 def records(client, root: Path, release: Release, *, refresh=False):
@@ -448,16 +478,24 @@ def file_url(client, row) -> str:
 
 
 def sweeps(frames):
-    """Frames grouped into the stops they were taken from."""
-    groups: dict[tuple, list[Frame]] = {}
-    for frame in frames:
+    """Frames grouped into the stops they were taken from.
+
+    The release files some exposures twice under two frame numbers. One
+    exposure is one frame, whatever it is called.
+    """
+    groups: dict[tuple, dict[str, Frame]] = {}
+    for frame in sorted(frames, key=lambda f: f.product_id):
         key = (
             frame.sequence,
             round(frame.latitude, POSITION_PLACES),
             round(frame.longitude, POSITION_PLACES),
         )
-        groups.setdefault(key, []).append(frame)
-    return {k: v for k, v in sorted(groups.items()) if len(v) >= MINIMUM_FRAMES}
+        groups.setdefault(key, {}).setdefault(frame.start_time, frame)
+    return {
+        k: list(v.values())
+        for k, v in sorted(groups.items())
+        if len(v) >= MINIMUM_FRAMES
+    }
 
 
 def download(client, source_dir: Path, slug: str, *, refresh=False):
@@ -519,7 +557,7 @@ def process(source_dir: Path, output_dir: Path, slug: str, *, width=4096):
     for (sequence, latitude, longitude), group in sweeps(frames).items():
         group.sort(key=lambda f: f.start_time)
         paths = [root / held[f.product_id]["raster"] for f in group]
-        rgba, covered = sweep_sphere(group, paths, width)
+        rgba, covered, registration = sweep_sphere(group, paths, width)
         identity = f"{slug}-{sequence:05}-{group[0].product_id.lower()}"
         directory = output_dir / slug / identity
         directory.mkdir(parents=True, exist_ok=True)
@@ -586,6 +624,8 @@ def process(source_dir: Path, output_dir: Path, slug: str, *, width=4096):
                 # How far the pinhole model missed the pointing the labels
                 # state, over every frame of this sweep.
                 "model_residual_deg": round(max(fit(f)[1] for f in group), 4),
+                # What the overlaps between frames made of that pointing.
+                "registration": registration,
                 "holes": "alpha=0; no synthetic sky or ground",
             },
             "coverage": {
@@ -597,7 +637,7 @@ def process(source_dir: Path, output_dir: Path, slug: str, *, width=4096):
             },
             "color": "rgb" if first_frame.bands == 3 else "grayscale",
             "geometry_status": "archival",
-            "render_status": "mosaicked from single frames; seams, exposure steps and parallax retained",
+            "render_status": "mosaicked from single frames, one frame per point; seams, exposure steps and parallax above the ground retained",
             "credit": CREDIT,
             "reuse": {"status": REUSE, "policy_url": POLICY},
             "reuse_policy_url": POLICY,
@@ -641,6 +681,13 @@ def process(source_dir: Path, output_dir: Path, slug: str, *, width=4096):
             columns,
             sphere_percent,
         )
+    # Whatever an earlier run built under another name or from frames since
+    # rejected is stale, and a catalogue it is not in would only mislead.
+    built = {entry["id"] for entry in entries}
+    for stale in (output_dir / slug).iterdir():
+        if stale.is_dir() and stale.name not in built:
+            logger.info("%s: removing stale %s", slug, stale.name)
+            shutil.rmtree(stale)
     write_json(
         output_dir / slug / "catalog.json",
         {"schema_version": 1, "body": release.body, "panoramas": entries},

@@ -141,7 +141,13 @@ def test_a_window_crossing_north_stays_one_run():
 
 def test_sweeps_group_a_standing_sol_and_drop_the_passing_shot():
     frames = [
-        frame(product_id=f"a{n}", sequence=10, latitude=25.0, longitude=109.0)
+        frame(
+            product_id=f"a{n}",
+            start_time=f"2022-04-12T17:18:0{n}Z",
+            sequence=10,
+            latitude=25.0,
+            longitude=109.0,
+        )
         for n in range(4)
     ] + [frame(product_id="b", sequence=11, latitude=25.1, longitude=109.0)]
 
@@ -149,6 +155,33 @@ def test_sweeps_group_a_standing_sol_and_drop_the_passing_shot():
 
     assert list(found) == [(10, 25.0, 109.0)]
     assert len(found[(10, 25.0, 109.0)]) == 4
+
+
+def test_an_exposure_filed_under_two_frame_numbers_counts_once():
+    frames = [
+        frame(product_id=f"F-00{n}", start_time=f"2021-07-23T15:4{n // 2}:00Z")
+        for n in range(6)
+    ]
+
+    (found,) = clpds.sweeps(frames).values()
+
+    assert [f.product_id for f in found] == ["F-000", "F-002", "F-004"]
+
+
+def test_a_label_may_state_where_the_lens_stood():
+    assert frame().lens_position_m is None
+    stated = LABEL.replace(
+        "</Mission_Area>",
+        """<Exterior_Orientation_Elements>
+      <camera_center_position_x unit="m">0.639341</camera_center_position_x>
+      <camera_center_position_y unit="m">-0.033748</camera_center_position_y>
+      <camera_center_position_z unit="m">1.532830</camera_center_position_z>
+    </Exterior_Orientation_Elements></Mission_Area>""",
+    )
+
+    found = clpds.read_label(stated, clpds.RELEASES["zhurong"])
+
+    assert found.lens_position_m == (0.639341, -0.033748, 1.53283)
 
 
 def test_a_band_sequential_raster_is_refused_rather_than_scrambled():
