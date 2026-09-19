@@ -45,6 +45,8 @@
 	let stageHeight = $state(0);
 	let page = $state(0);
 	let menu = $state<{ id: string; x: number; y: number } | null>(null);
+	/** The strip and the pill on one side are one control: both light together. */
+	let hot = $state<'prev' | 'next' | null>(null);
 	let laid = $state<
 		{ id: string; cx: number; cy: number; pr: number; radiusKm: number; aside?: 'start' | 'end' }[]
 	>([]);
@@ -342,11 +344,13 @@
 						aria-hidden="true"
 						tabindex="-1"
 						onclick={() => turn(-1)}
-						class="group absolute inset-y-0 start-0 z-10 flex items-center justify-end pe-1"
+						onpointerenter={() => (hot = 'prev')}
+						onpointerleave={() => (hot = null)}
+						class="absolute inset-y-0 start-0 z-10 flex items-center justify-end pe-1"
 						style="width: {Math.max(0, ghostAt.cx + ghostAt.pr)}px"
 					>
 						<ChevronLeftIcon
-							class="size-5 text-white/50 transition-colors group-hover:text-white"
+							class="size-5 transition-colors {hot === 'prev' ? 'text-white' : 'text-white/50'}"
 						/>
 					</button>
 				{/if}
@@ -354,13 +358,20 @@
 				<button
 					type="button"
 					onclick={() => turn(-1)}
+					onpointerenter={() => (hot = 'prev')}
+					onpointerleave={() => (hot = null)}
 					aria-label={m.search_prev_page()}
-					class="absolute start-3 z-10 flex items-center gap-1.5 rounded-lg bg-black/55 px-2 py-1 hover:bg-black/80"
-					style="bottom: {LABEL_ROW + 76}px"
+					class="absolute start-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+					'prev'
+						? 'bg-black/80 text-white'
+						: 'bg-black/55 text-white/70'}"
+					style="bottom: {LABEL_ROW + 14}px"
 				>
-					<ChevronLeftIcon class="size-3.5 text-[#c9c4bb]" />
-					<span class="text-[11.5px] text-[#c9c4bb]"
-						>{ghost.name} · {sizeText(ghost)} · {m.compare_page_of({ n: pageIndex })}</span
+					<ChevronLeftIcon class="size-3.5" />
+					<span
+						>{ghost.name} · {narrow ? '' : `${sizeText(ghost)} · `}{m.compare_page_of({
+							n: pageIndex
+						})}</span
 					>
 				</button>
 			{/if}
@@ -373,33 +384,44 @@
 					aria-hidden="true"
 					tabindex="-1"
 					onclick={() => turn(1)}
-					class="group absolute inset-y-0 z-10 flex items-center justify-start ps-1"
+					onpointerenter={() => (hot = 'next')}
+					onpointerleave={() => (hot = null)}
+					class="absolute inset-y-0 z-10 flex items-center justify-start ps-1"
 					style="left: {speckAt.cx - 4}px; width: 44px"
 				>
 					<ChevronRightIcon
-						class="size-5 translate-y-8 text-white/50 transition-colors group-hover:text-white"
+						class="size-5 translate-y-8 transition-colors {hot === 'next'
+							? 'text-white'
+							: 'text-white/50'}"
 					/>
 				</button>
 				{#if !narrow}
 					<button
 						type="button"
 						onclick={() => turn(1)}
+						onpointerenter={() => (hot = 'next')}
+						onpointerleave={() => (hot = null)}
 						aria-label={m.search_next_page()}
-						class="absolute end-5 z-10 flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-black/60"
+						class="absolute end-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						'next'
+							? 'bg-black/80 text-white'
+							: 'bg-black/55 text-white/70'}"
 						style="bottom: {LABEL_ROW + 14}px"
 					>
-						<span class="text-[11px] text-white/50"
-							>{speck.name} · {m.compare_page_of({ n: pageIndex + 2 })}</span
+						<span>{speck.name} · {sizeText(speck)} · {m.compare_page_of({ n: pageIndex + 2 })}</span
 						>
-						<ChevronRightIcon class="size-3.5 text-white/50" />
+						<ChevronRightIcon class="size-3.5" />
 					</button>
 				{/if}
 			{/if}
 
 			{#if scaleBar}
+				<!-- Bottom centre, between the page links; a phone has no room there. -->
 				<div
-					class="pointer-events-none absolute start-5 flex flex-col gap-1.5"
-					style="bottom: {LABEL_ROW + 14}px"
+					class="pointer-events-none absolute flex flex-col gap-1 {narrow
+						? 'start-5 top-5 items-start'
+						: 'left-1/2 -translate-x-1/2 items-center'}"
+					style={narrow ? '' : `bottom: ${LABEL_ROW + 14}px`}
 				>
 					<div
 						class="h-[7px] border-x border-b border-white/40"
@@ -409,53 +431,19 @@
 				</div>
 			{/if}
 
-			{#if bands.length > 1}
-				{#if narrow}
-					<div
-						role="group"
-						aria-label={m.compare_pages_label({ n: pageIndex + 1, total: bands.length })}
-						class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1.5"
-						style="bottom: {LABEL_ROW + 16}px"
-					>
-						{#each bands.map((_, i) => i) as i (i)}
-							<span
-								class="size-[7px] rounded-full {i === pageIndex ? 'bg-white/85' : 'bg-white/30'}"
-							></span>
-						{/each}
-					</div>
-				{:else}
-					<div
-						class="absolute left-1/2 flex h-10 -translate-x-1/2 items-center gap-1 rounded-xl border border-white/15 bg-black/70 px-1 backdrop-blur-sm"
-						style="bottom: {LABEL_ROW + 14}px"
-					>
-						<button
-							type="button"
-							aria-label={m.search_prev_page()}
-							aria-disabled={pageIndex === 0}
-							onclick={() => turn(-1)}
-							class="flex size-8 items-center justify-center rounded-lg {pageIndex === 0
-								? 'text-white/30'
-								: 'text-white hover:bg-white/10'}"
-						>
-							<ChevronLeftIcon class="size-4" />
-						</button>
-						<span class="px-1 text-xs text-white/70 tabular-nums"
-							>{m.compare_pages_label({ n: pageIndex + 1, total: bands.length })}</span
-						>
-						<button
-							type="button"
-							aria-label={m.search_next_page()}
-							aria-disabled={pageIndex === bands.length - 1}
-							onclick={() => turn(1)}
-							class="flex size-8 items-center justify-center rounded-lg {pageIndex ===
-							bands.length - 1
-								? 'text-white/30'
-								: 'text-white hover:bg-white/10'}"
-						>
-							<ChevronRightIcon class="size-4" />
-						</button>
-					</div>
-				{/if}
+			{#if bands.length > 1 && narrow}
+				<!-- The phone has no next-page link, only the strip, so it counts pages. -->
+				<div
+					role="group"
+					aria-label={m.compare_pages_label({ n: pageIndex + 1, total: bands.length })}
+					class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1.5"
+					style="bottom: {LABEL_ROW + 16}px"
+				>
+					{#each bands.map((_, i) => i) as i (i)}
+						<span class="size-[7px] rounded-full {i === pageIndex ? 'bg-white/85' : 'bg-white/30'}"
+						></span>
+					{/each}
+				</div>
 			{/if}
 
 			{#if !railOpen && !narrow}
