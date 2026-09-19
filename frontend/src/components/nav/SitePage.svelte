@@ -5,7 +5,8 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import SiteNav, { SITE_COLUMN, SITE_GUTTER, type NavPage } from './SiteNav.svelte';
+	import SiteNav from './SiteNav.svelte';
+	import { SITE_COLUMN, SITE_GUTTER, type NavPage } from './site';
 
 	interface Props {
 		current: NavPage;

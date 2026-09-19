@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import type { Snippet } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale, locales, type Locale } from '$lib/paraglide/runtime.js';
@@ -27,9 +28,12 @@
 
 	interface Props {
 		scope?: SettingsScope;
+		/** Shown in the heading when the menu sits inside another one and can
+		 *  hand back to it. */
+		onBack?: () => void;
 	}
 
-	let { scope = 'map' }: Props = $props();
+	let { scope = 'map', onBack }: Props = $props();
 
 	const showTime = $derived(scope !== 'page');
 	const showScene = $derived(scope === 'map');
@@ -235,9 +239,22 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-col">
-	<header class="px-5 pt-5 pb-3">
-		<h2 class="text-base font-semibold">{m.settings_title()}</h2>
-		<p class="text-xs text-muted-foreground mt-0.5">{m.settings_stored_locally()}</p>
+	<header class="flex items-center gap-2 pb-3 {onBack ? 'ps-3 pe-5 pt-2' : 'px-5 pt-5'}">
+		{#if onBack}
+			<button
+				type="button"
+				class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg
+					transition-colors hover:bg-accent"
+				aria-label={m.back()}
+				onclick={onBack}
+			>
+				<ChevronLeftIcon class="size-5" />
+			</button>
+		{/if}
+		<div class="min-w-0">
+			<h2 class="text-base font-semibold">{m.settings_title()}</h2>
+			<p class="text-xs text-muted-foreground mt-0.5">{m.settings_stored_locally()}</p>
+		</div>
 	</header>
 
 	<div class="px-5 pb-5 flex min-h-0 flex-col gap-5 overflow-y-auto">

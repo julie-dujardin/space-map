@@ -1,27 +1,19 @@
 <!--
   The row that carries the site between its non-map pages. The map names itself
   through its own chrome, so this is only for the document pages behind it.
+  Phones get the pages and the settings behind one menu button instead of the
+  tab strip.
 -->
-<script module lang="ts">
-	/** The column every page in the site shares — the row and the page body sit
-	 *  on it, so a heading keeps its place from page to page. */
-	export const SITE_COLUMN = 'mx-auto w-full max-w-4xl';
-	/** The column's side gutter, apart from the column itself so a page can put
-	 *  something across the full width and gutter the rest of its content. */
-	export const SITE_GUTTER = 'px-6';
-</script>
-
 <script lang="ts">
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import * as m from '$lib/paraglide/messages.js';
 	import OverlayMenuButton from '../OverlayMenuButton.svelte';
 	import SettingsMenu from '../settings/SettingsMenu.svelte';
 	import SiteMark from './SiteMark.svelte';
+	import SiteMenu from './SiteMenu.svelte';
+	import { SITE_COLUMN, SITE_GUTTER, SITE_PAGES, type NavPage } from './site';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { cn } from '$lib/utils.js';
-
-	/** A page this row links to; `current` names the one being rendered. */
-	export type NavPage = 'map' | 'nav' | 'panoramas' | 'credits';
 
 	interface Props {
 		current: NavPage;
@@ -29,13 +21,6 @@
 	}
 
 	let { current, class: className }: Props = $props();
-
-	const pages: { id: NavPage; href: string; label: () => string }[] = [
-		{ id: 'map', href: '/', label: m.nav_map },
-		{ id: 'nav', href: '/nav', label: m.nav_delta_v },
-		{ id: 'panoramas', href: '/view', label: m.nav_panoramas },
-		{ id: 'credits', href: '/credits', label: m.credits_page_title }
-	];
 </script>
 
 <header
@@ -55,23 +40,19 @@
 			aria-label={m.page_title()}
 		>
 			<SiteMark />
-			<!-- Off the narrowest phones the mark carries it: several locales
-			     translate the name, and the long ones crowd out the tabs. -->
-			<span class="hidden text-[15px] font-semibold tracking-tight sm:inline">
-				{m.page_title()}
-			</span>
+			<span class="text-[15px] font-semibold tracking-tight">{m.page_title()}</span>
 		</a>
 
 		<!-- Scrolls rather than wraps or truncates: the row grows by a page at a
 		     time, and a wrapped second line would double the chrome. -->
 		<ScrollArea
 			orientation="horizontal"
-			class="min-w-0 flex-1"
+			class="hidden min-w-0 flex-1 md:block"
 			viewportClasses="[&>div]:h-full"
 			scrollbarXClasses="h-1"
 		>
 			<ul class="flex h-full w-max min-w-full items-stretch gap-4 md:gap-6">
-				{#each pages as page (page.id)}
+				{#each SITE_PAGES as page (page.id)}
 					{@const active = page.id === current}
 					<li class="flex shrink-0">
 						<a
@@ -88,7 +69,7 @@
 			</ul>
 		</ScrollArea>
 
-		<div class="flex shrink-0 items-center">
+		<div class="hidden shrink-0 items-center md:flex">
 			<OverlayMenuButton
 				title={m.settings_title()}
 				Icon={SettingsIcon}
@@ -98,6 +79,10 @@
 			>
 				<SettingsMenu scope="page" />
 			</OverlayMenuButton>
+		</div>
+
+		<div class="flex flex-1 items-center justify-end md:hidden">
+			<SiteMenu {current} />
 		</div>
 	</nav>
 </header>

@@ -10,7 +10,7 @@
 	import ListIcon from '@lucide/svelte/icons/list';
 	import * as m from '$lib/paraglide/messages.js';
 	import SitePage from '../../components/nav/SitePage.svelte';
-	import { SITE_GUTTER } from '../../components/nav/SiteNav.svelte';
+	import { SITE_GUTTER } from '../../components/nav/site';
 	import SubwayDiagram from '../../components/nav/SubwayDiagram.svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
