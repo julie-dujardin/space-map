@@ -41,6 +41,10 @@
 		/** Whether a `v1/textures/<id>/` surface map exists. Explicit `false`
 		 *  skips the fetch entirely; absent (pre-flag export) probes as before. */
 		texture?: boolean;
+		/** Not a member of the row, but a neighbouring size band's body drawn at
+		 *  the row's own scale against one edge — the step in scale, shown rather
+		 *  than stated. It takes no slot, no name and no hover. */
+		aside?: 'start' | 'end';
 	}
 </script>
 
@@ -94,12 +98,16 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusHref } from '$lib/state/focus-link';
+	import { bodyHref } from '$lib/state/url';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { createScrub } from '$lib/charts/scrub';
 	import { formatQuantity } from '$lib/format/quantities';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import * as m from '$lib/paraglide/messages.js';
+
+	/** The strip height a drawer row uses. */
+	const DEFAULT_HEIGHT = 204;
 
 	interface Props {
 		bodies: LineupBody[];
@@ -108,8 +116,51 @@
 		 *  ordered by size, sliced into pages of `perPage`, each page sized to its
 		 *  own largest body. Omit for a single unpaginated row (e.g. planets). */
 		perPage?: number;
+		/** Canvas height in px. The default suits a row inside the drawer; a page
+		 *  that gives the lineup a stage of its own passes more. */
+		height?: number;
+		/** Give every body its own box, side by side, the way a craft row already
+		 *  lays out. Meshes that overlap read as one object rather than several. */
+		boxed?: boolean;
+		/** Name and size under each body, in place of the hover tooltip — for a
+		 *  lineup that is the page rather than a strip beside its own list. */
+		labels?: boolean;
+		/** Where each body ended up, reported whenever the row is laid out. The
+		 *  scale it is drawn on (px per km) is `pr / radiusKm` on any of them,
+		 *  which is what a scale bar or a body drawn beside the row needs. */
+		onlayout?: (
+			bodies: {
+				id: string;
+				cx: number;
+				cy: number;
+				pr: number;
+				radiusKm: number;
+				aside?: 'start' | 'end';
+			}[]
+		) => void;
+		/** Right click on a body, for a caller that opens its own menu. The
+		 *  default menu is suppressed only when a body is actually under the
+		 *  pointer. */
+		oncontextpick?: (id: string, clientX: number, clientY: number) => void;
+		/** The row's own ground. Defaults to the drawer's faint panel; a page
+		 *  that supplies its own sky passes a colour (or `transparent`). */
+		ground?: string;
+		/** Whether hovering a body pushes its neighbours aside. The drawer's
+		 *  strip needs it to get at a crowded body; a row with room does not. */
+		spread?: boolean;
 	}
-	let { bodies, ariaLabel, perPage }: Props = $props();
+	let {
+		bodies,
+		ariaLabel,
+		perPage,
+		height = DEFAULT_HEIGHT,
+		boxed = false,
+		labels = false,
+		onlayout,
+		oncontextpick,
+		ground,
+		spread = true
+	}: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -156,7 +207,15 @@
 	interface Body extends LineupBody {
 		diameterKm: number;
 	}
-	let items = $derived<Body[]>(bodies.map((b) => ({ ...b, diameterKm: b.radiusKm * 2 })));
+	const sized = (b: LineupBody): Body => ({ ...b, diameterKm: b.radiusKm * 2 });
+	let items = $derived<Body[]>(bodies.filter((b) => !b.aside).map(sized));
+	// A neighbouring band is fitted to its strip by the vertices it draws, and
+	// relief is applied in the shader where that fit cannot see it — so the one
+	// place it is dropped is here, where a few pixels of misfit is the whole
+	// body missing the screen.
+	let asides = $derived<Body[]>(
+		bodies.filter((b) => b.aside).map((b) => sized({ ...b, displacement: undefined }))
+	);
 
 	// Largest → smallest. Pagination slices this, so each page is a size band that
 	// (in `layout`) scales to its own largest body — small worlds aren't dwarfed
@@ -179,7 +238,6 @@
 	// out the key light's shading. Craft rows only — see setRoomEnvironment.
 	const CRAFT_ENV_INTENSITY = 0.45;
 
-	const HEIGHT = 204;
 	// Ortho depth separation between stacked bodies — large enough that their
 	// 3D geometry never intersects, invisible because the projection is ortho.
 	const Z_STEP = 10000;
@@ -205,6 +263,8 @@
 		cy: number; // center y (px, top origin)
 		colLeft: number;
 		colWidth: number;
+		/** Room a name has under the body without reaching its neighbour's. */
+		labelWidth: number;
 	}
 
 	// Layout knobs (tune freely):
@@ -214,6 +274,21 @@
 	// A craft fills its box to the edge, so a paginated row must keep clear of the
 	// page chevrons; spheres taper away from them on their own.
 	const CHEVRON_PAD = 26;
+	// Labels are laid left to right and each takes what the one before it left,
+	// up to the cap; a body with less than the floor goes unnamed rather than
+	// overlapping its neighbour. The caller's own list names every one of them.
+	const LABEL_MIN_WIDTH = 44;
+	const LABEL_MAX_WIDTH = 180;
+	// Edge room for a neighbouring band: the band before it gets this share of
+	// the row, the same on every page so it reads as an edge rather than as a
+	// body of its own; the band after needs only its own width.
+	const LIMB_SHARE = 0.065;
+	const LIMB_MIN = 44;
+	const LIMB_MAX = 120;
+	const ASIDE_END_PAD = 44;
+	const ASIDE_MAX_PR = 20000;
+	/** The strip at the start of the row given to the band before it. */
+	const limbStrip = (w: number) => Math.max(LIMB_MIN, Math.min(LIMB_MAX, w * LIMB_SHARE));
 
 	let layout = $derived.by<LaidOut[]>(() => {
 		if (!width || visibleItems.length === 0) return [];
@@ -222,37 +297,48 @@
 		const raw = ordered.map((p) => p.diameterKm / 2);
 		const n = ordered.length;
 		// Largest fits the height with equal top/bottom padding; true-linear from there.
-		const heightK = (HEIGHT - 2 * VPAD) / 2 / raw[0];
+		const heightK = (height - 2 * VPAD) / 2 / raw[0];
 		// Overlapping discs still read as discs, so spheres take the height and
 		// crowd. A craft's mesh is its own silhouette — two of them overlapping
 		// read as one machine — so the row must fit them side by side as well,
 		// on the one scale that keeps the comparison honest.
-		const craftRow = ordered.some((p) => p.craft);
+		const boxRow = boxed || ordered.some((p) => p.craft);
 		const sidePad = pageCount > 1 ? CHEVRON_PAD : SIDE_PAD;
+		const padStart = asides.some((a) => a.aside === 'start') ? limbStrip(width) : 0;
+		const padEnd = asides.some((a) => a.aside === 'end') ? ASIDE_END_PAD : 0;
 		const boxes = raw.reduce((a, r) => a + 2 * r, 0);
-		const k = craftRow
-			? Math.min(heightK, (width - 2 * sidePad - (n - 1) * CRAFT_GAP) / boxes)
-			: heightK;
+		const boxRun0 = width - 2 * sidePad - padStart - padEnd;
+		const k = boxRow ? Math.min(heightK, (boxRun0 - (n - 1) * CRAFT_GAP) / boxes) : heightK;
 		const prs = raw.map((r) => Math.max(2, r * k)); // floor so tiny worlds stay visible
 		// Craft sit in their own boxes end to end, centred in the row; spheres get
 		// a constant centre-to-centre step, fit so the end ones touch the pads.
-		const step = n > 1 ? (width - prs[0] - prs[n - 1] - 2 * SIDE_PAD) / (n - 1) : 0;
+		const spanLeft = SIDE_PAD + padStart;
+		const spanWidth = width - 2 * SIDE_PAD - padStart - padEnd;
+		const step = n > 1 ? (spanWidth - prs[0] - prs[n - 1]) / (n - 1) : 0;
 		const boxRun = prs.reduce((a, pr) => a + 2 * pr, 0) + (n - 1) * CRAFT_GAP;
-		let boxX = (width - boxRun) / 2;
-		const baseline = HEIGHT - VPAD;
+		let boxX = sidePad + padStart + (boxRun0 - boxRun) / 2;
+		const baseline = height - VPAD;
 		const laid: LaidOut[] = ordered.map((p, i) => {
 			const pr = prs[i];
 			let cx: number;
-			if (craftRow) {
+			if (boxRow) {
 				cx = boxX + pr;
 				boxX += 2 * pr + CRAFT_GAP;
 			} else {
-				cx = SIDE_PAD + prs[0] + i * step;
+				cx = spanLeft + prs[0] + i * step;
 			}
 			// A sphere stands on the row's baseline; a craft has no ground to stand
 			// on, and the width fit leaves it well short of the height, so it reads
 			// better centred than sunk to the floor.
-			return { ...p, pr, cx, cy: craftRow ? HEIGHT / 2 : baseline - pr, colLeft: 0, colWidth: 0 };
+			return {
+				...p,
+				pr,
+				cx,
+				cy: boxRow ? height / 2 : baseline - pr,
+				colLeft: 0,
+				colWidth: 0,
+				labelWidth: 0
+			};
 		});
 		// Hit columns span midpoint-to-midpoint so tiny bodies get a roomy target.
 		for (let i = 0; i < laid.length; i++) {
@@ -261,8 +347,43 @@
 			laid[i].colLeft = left;
 			laid[i].colWidth = right - left;
 		}
+		// Names, left to right: each is centred on its body and takes what the
+		// last one left, so a crowd of small bodies loses its names rather than
+		// piling them on top of each other.
+		let taken = 0;
+		for (const p of laid) {
+			const half = Math.min(LABEL_MAX_WIDTH / 2, p.cx - taken, width - p.cx);
+			if (half * 2 < LABEL_MIN_WIDTH) continue;
+			p.labelWidth = half * 2;
+			taken = p.cx + half;
+		}
 		return laid;
 	});
+
+	/** A neighbouring band's body, on this row's scale: the one before it drawn
+	 *  against the start edge, where only its limb fits, and the one after it as
+	 *  the speck it really is at the end. */
+	let asideLayout = $derived.by<LaidOut[]>(() => {
+		if (!width || layout.length === 0 || asides.length === 0) return [];
+		const k = layout[0].pr / layout[0].radiusKm;
+		return asides.map((b) => {
+			// Past a few screens across, the limb is a straight edge and more size
+			// changes nothing on screen — while the real number runs into the
+			// millions of pixels, where float precision and the frustum give out.
+			const pr = Math.min(ASIDE_MAX_PR, Math.max(2, (b.diameterKm / 2) * k));
+			// The one before runs off the edge, showing whatever limb fits; the one
+			// after sits in the middle of its own gutter, where the caller has room
+			// to mark it — at true size it is a few pixels across.
+			const cx =
+				b.aside === 'start'
+					? Math.min(limbStrip(width) - SIDE_PAD, pr) - pr
+					: width - SIDE_PAD - ASIDE_END_PAD / 2;
+			return { ...b, pr, cx, cy: height / 2, colLeft: 0, colWidth: 0, labelWidth: 0 };
+		});
+	});
+
+	/** Everything with a mesh: the row, plus the bands on either side of it. */
+	let drawn = $derived<Body[]>([...visibleItems, ...asides]);
 
 	let hovered = $derived(layout.find((p) => p.id === hoveredId) ?? null);
 
@@ -314,6 +435,16 @@
 		focusBody(hoveredId);
 	}
 
+	/** How big the body is, in the unit its class is read in: a craft's span in
+	 *  metres, a body's diameter in kilometres. A craft is quoted across the
+	 *  whole mesh, booms included, which is what the row draws — its slot is the
+	 *  narrower body. */
+	function sizeText(b: Body): string {
+		return b.craft
+			? formatQuantity({ value: b.diameterKm * (b.meshSpanRatio ?? 1) * 1000, unit: 'metre' }, true)
+			: formatQuantity({ value: b.diameterKm, unit: 'kilometre' }, true);
+	}
+
 	const scrub = createScrub({
 		onScrub: (clientX, clientY) => (hoveredId = pickAt(clientX, clientY)),
 		onEnd: () => (hoveredId = null)
@@ -345,6 +476,9 @@
 	// scaled px-per-km (pr / radiusKm) to match the spheres' true scale. A build
 	// token discards loads that resolve after a page flip rebuilt the meshes.
 	const modelRoots = new Map<string, Object3D>();
+	/** The pose and place a neighbouring band had to take to show itself; see
+	 *  showAside. */
+	const asideFit = new Map<string, { mark: string; roll: number; dx: number; dy: number }>();
 	let buildToken = 0;
 	const displayObject = (id: string): Object3D | undefined => modelRoots.get(id) ?? meshes.get(id);
 
@@ -407,6 +541,7 @@
 
 	function clearMeshes() {
 		buildToken++; // discard any in-flight model load for the outgoing set
+		asideFit.clear();
 		baseQuats.clear();
 		spinAngles.clear();
 		bodyShift.clear();
@@ -443,9 +578,9 @@
 	function buildMeshes() {
 		if (!scene) return;
 		clearMeshes();
-		setRoomEnvironment(visibleItems.some((b) => b.craft));
+		setRoomEnvironment(drawn.some((b) => b.craft));
 		const loader = new TextureLoader();
-		for (const b of visibleItems) {
+		for (const b of drawn) {
 			// A craft is only ever its mesh: nothing stands in while it loads, and
 			// nothing is left behind if it fails.
 			if (b.craft) {
@@ -590,40 +725,183 @@
 
 	function render() {
 		if (!renderer || !scene || !camera || !width) return;
-		renderer.setSize(width, HEIGHT, false);
+		renderer.setSize(width, height, false);
 		camera.left = 0;
 		camera.right = width;
-		camera.top = HEIGHT;
+		camera.top = height;
 		camera.bottom = 0;
+		// A sphere is as deep as it is wide, and the band before this one can be
+		// drawn thousands of screens across: clip to whatever is actually here,
+		// or it falls outside the frustum and vanishes.
+		const reach = Math.max(
+			1e6,
+			2 *
+				([...layout, ...asideLayout].reduce((a, p) => Math.max(a, p.pr), 0) +
+					layout.length * Z_STEP)
+		);
+		camera.near = -reach;
+		camera.far = reach;
 		camera.updateProjectionMatrix();
 		const n = layout.length;
-		layout.forEach((p, i) => {
-			const obj = displayObject(p.id);
-			if (!obj) return;
-			// Smaller bodies (later in `layout`) sit nearer the camera, so they render
-			// on top of giants they overlap — easier to see and click. Huge depth gaps
-			// avoid any 3D intersection, invisible under the orthographic projection.
-			obj.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
-			const modelRoot = modelRoots.get(p.id);
-			if (modelRoot) {
-				// Uniform px per real unit: a shape model carries true km, a craft's
-				// wrapper is already normalised to the unit radius `pr` measures —
-				// grown back to the mesh's full span, which reaches past the body
-				// the slot was sized on.
-				modelRoot.scale.setScalar(p.craft ? p.pr * (p.meshSpanRatio ?? 1) : p.pr / p.radiusKm);
-			} else {
-				// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
-				// in local space before the tilt quaternion, so it aligns with the pole.
-				// absolute_radius bodies skip it — their displacement carries the shape.
-				const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
-				obj.scale.set(p.pr, p.pr * polarY, p.pr);
-			}
-			applySpin(obj, p.id);
+		// Smaller bodies (later in `layout`) sit nearer the camera, so they render
+		// on top of giants they overlap — easier to see and click. Huge depth gaps
+		// avoid any 3D intersection, invisible under the orthographic projection.
+		layout.forEach((p, i) => place(p, -(n - 1 - i) * Z_STEP, bodyShift.get(p.id) ?? 0));
+		// The neighbouring bands sit behind every one of them.
+		asideLayout.forEach((p) => {
+			place(p, -n * Z_STEP, 0);
+			showAside(p);
 		});
 		updateGlow();
 		animateSpin();
 		animateShift();
-		renderer.render(scene, camera);
+		draw();
+	}
+
+	function draw() {
+		if (renderer && scene && camera) renderer.render(scene, camera);
+	}
+
+	/** Put one body where the layout says, at the given depth and on the row's
+	 *  scale. */
+	function place(p: LaidOut, z: number, shift: number) {
+		const obj = displayObject(p.id);
+		if (!obj) return;
+		obj.position.set(p.cx + shift, height - p.cy, z);
+		const modelRoot = modelRoots.get(p.id);
+		if (modelRoot) {
+			// Uniform px per real unit: a shape model carries true km, a craft's
+			// wrapper is already normalised to the unit radius `pr` measures —
+			// grown back to the mesh's full span, which reaches past the body
+			// the slot was sized on.
+			modelRoot.scale.setScalar(p.craft ? p.pr * (p.meshSpanRatio ?? 1) : p.pr / p.radiusKm);
+		} else {
+			// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
+			// in local space before the tilt quaternion, so it aligns with the pole.
+			// absolute_radius bodies skip it — their displacement carries the shape.
+			const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
+			obj.scale.set(p.pr, p.pr * polarY, p.pr);
+		}
+		applySpin(obj, p.id);
+	}
+
+	/** How much of its own surface a neighbouring band shows, as light: the row
+	 *  is lit from the left, and the band before it is on screen only by the
+	 *  limb turned away from that, which comes out black. */
+	const ASIDE_EMISSIVE = 0.35;
+
+	/** Poses tried for the band before this one, and how many of its own
+	 *  vertices are read to try them. */
+	const LIMB_ROLLS = 12;
+	const LIMB_SAMPLES = 1500;
+	const rollQuat = new Quaternion();
+
+	/** What is drawn, sampled in row pixels about the object's own origin. The
+	 *  projection is orthographic down −z, so x and y are already the screen. */
+	function asideSamples(obj: Object3D): number[] {
+		const pts: number[] = [];
+		obj.updateWorldMatrix(true, true);
+		const v = new Vector3();
+		const { x: ox, y: oy } = obj.position;
+		obj.traverse((o) => {
+			if (!(o instanceof Mesh)) return;
+			const pos = o.geometry?.attributes?.position;
+			if (!pos) return;
+			const stride = Math.max(1, Math.floor(pos.count / LIMB_SAMPLES));
+			for (let i = 0; i < pos.count; i += stride) {
+				v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+				pts.push(v.x - ox, v.y - oy);
+			}
+		});
+		return pts;
+	}
+
+	/**
+	 * The pose that fills the strip: a body meets it edge-on at one roll and
+	 * broadside at another, and only the second says anything about its size.
+	 * Rolled about the view axis, so the face it shows is still its own —
+	 * `strip` is the width it has to fill, `right` where its outermost surface
+	 * goes, both in row pixels about the object's origin.
+	 */
+	function fitLimb(pts: number[], strip: number, right: number) {
+		let best = { roll: 0, dx: 0, dy: 0, shown: -1 };
+		for (let step = 0; step < LIMB_ROLLS; step++) {
+			const roll = (step * Math.PI) / LIMB_ROLLS;
+			const cos = Math.cos(roll);
+			const sin = Math.sin(roll);
+			let far = -Infinity;
+			for (let i = 0; i < pts.length; i += 2) {
+				const x = pts[i] * cos - pts[i + 1] * sin;
+				if (x > far) far = x;
+			}
+			let top = Infinity;
+			let bottom = -Infinity;
+			for (let i = 0; i < pts.length; i += 2) {
+				if (pts[i] * cos - pts[i + 1] * sin < far - strip) continue;
+				const y = pts[i] * sin + pts[i + 1] * cos;
+				if (y < top) top = y;
+				if (y > bottom) bottom = y;
+			}
+			// Past the row's own height there is nothing left to win, so the
+			// squarest pose that fills it wins on the +1 rather than on a sliver.
+			const shown = Math.min(bottom - top, height);
+			if (shown > best.shown + 1) {
+				best = { roll, dx: right - far, dy: -(top + bottom) / 2, shown };
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Place a neighbouring band by what it actually draws, not by the sphere its
+	 * size implies: a shape model's mesh sits where its own origin puts it, and
+	 * presents whatever it happens to present, which for a body drawn as a strip
+	 * at the edge decides whether any of it lands on screen at all. Its surface
+	 * lights itself, at the same time, for the same reason — nothing else here
+	 * can reach it.
+	 */
+	function showAside(p: LaidOut) {
+		const obj = displayObject(p.id);
+		if (!obj) return;
+		// Kept until the scale changes or the mesh itself is swapped in.
+		const mark = `${Math.round(p.cx)}:${Math.round(p.pr)}:${modelRoots.has(p.id) ? 'mesh' : 'sphere'}`;
+		let fit = asideFit.get(p.id);
+		if (fit?.mark !== mark) {
+			if (p.aside === 'start') {
+				const { roll, dx, dy } = fitLimb(asideSamples(obj), p.cx + p.pr, p.pr);
+				fit = { mark, roll, dx, dy };
+			} else {
+				// The band after is a speck: it only has to sit on its mark.
+				const box = new Box3().setFromObject(obj, true);
+				fit = box.isEmpty()
+					? { mark, roll: 0, dx: 0, dy: 0 }
+					: {
+							mark,
+							roll: 0,
+							dx: p.cx - (box.min.x + box.max.x) / 2,
+							dy: height - p.cy - (box.min.y + box.max.y) / 2
+						};
+			}
+			asideFit.set(p.id, fit);
+		}
+		if (fit.roll) obj.quaternion.premultiply(rollQuat.setFromAxisAngle(AXIS_Z, fit.roll));
+		obj.position.x += fit.dx;
+		obj.position.y += fit.dy;
+		obj.traverse((o) => {
+			const mat = (o as Mesh).material as MeshStandardMaterial | undefined;
+			if (!mat?.isMeshStandardMaterial) return;
+			if (mat.emissiveIntensity !== ASIDE_EMISSIVE) {
+				mat.emissive.copy(mat.color);
+				mat.emissiveIntensity = ASIDE_EMISSIVE;
+			}
+			// The surface map arrives later; the glow has to carry it too, or the
+			// body reads as a flat cut-out.
+			if (mat.map && mat.emissiveMap !== mat.map) {
+				mat.emissive.setRGB(1, 1, 1);
+				mat.emissiveMap = mat.map;
+				mat.needsUpdate = true;
+			}
+		});
 	}
 
 	/** base · spin(angle about the pole); identity-cheap at rest. */
@@ -658,7 +936,7 @@
 				if (a !== target) active = true;
 			}
 			updateGlow(); // a spinning model turns its silhouette — re-trace the rim
-			renderer.render(scene, camera);
+			draw();
 			if (active) spinAnimId = requestAnimationFrame(step);
 		};
 		spinAnimId = requestAnimationFrame(step);
@@ -671,7 +949,7 @@
 		const out = new Map<string, number>();
 		for (const p of layout) out.set(p.id, 0);
 		const n = layout.length;
-		const h = hoveredId ? layout.findIndex((p) => p.id === hoveredId) : -1;
+		const h = spread && hoveredId ? layout.findIndex((p) => p.id === hoveredId) : -1;
 		if (h < 0 || n < 2) return out;
 		const cxH = layout[h].cx;
 		const margin = HOVER_MARGIN_BASE + HOVER_MARGIN_FACTOR * layout[h].pr;
@@ -712,7 +990,7 @@
 				if (s !== target) active = true;
 			}
 			updateGlow(); // keep the halo on the hovered body as it eases into place
-			renderer.render(scene, camera);
+			draw();
 			if (active) shiftAnimId = requestAnimationFrame(step);
 		};
 		shiftAnimId = requestAnimationFrame(step);
@@ -751,7 +1029,7 @@
 			glowOpacity += (t - glowOpacity) * 0.25;
 			if (Math.abs(t - glowOpacity) < 0.01) glowOpacity = t;
 			silhouette.setOpacity(glowOpacity);
-			renderer.render(scene, camera);
+			draw();
 			if (glowOpacity !== t) glowAnimId = requestAnimationFrame(step);
 		};
 		glowAnimId = requestAnimationFrame(step);
@@ -768,10 +1046,11 @@
 		renderer.toneMapping = ACESFilmicToneMapping;
 		renderer.toneMappingExposure = 1.0;
 		scene = new Scene();
-		// Frustum is fixed up per-render from `width`; don't read it here, or this
-		// setup effect would re-run and orphan the meshes on every resize. Deep
+		// Frustum is fixed up per-render from `width` and `height`; don't read
+		// either here, or this setup effect would re-run and orphan the meshes on
+		// every resize. Deep
 		// near/far range so the z-separated spheres (see Z_STEP) all stay in view.
-		camera = new OrthographicCamera(0, 1, HEIGHT, 0, -1e6, 1e6);
+		camera = new OrthographicCamera(0, 1, 1, 0, -1e6, 1e6);
 		camera.position.z = 10;
 		const key = new DirectionalLight(0xffffff, 3.1);
 		key.position.set(-0.4, 0.45, 1);
@@ -808,14 +1087,26 @@
 	// so this effect doesn't also subscribe to layout/hover/width — reading
 	// those in render() would rebuild (and reload textures) on hover.
 	$effect(() => {
-		void visibleItems;
+		void drawn;
 		buildMeshes();
 		untrack(() => render());
 	});
 	$effect(() => {
 		void layout;
+		void asideLayout;
 		void hoveredId;
 		render();
+	});
+	$effect(() => {
+		const laid = [...layout, ...asideLayout].map((p) => ({
+			id: p.id,
+			cx: p.cx,
+			cy: p.cy,
+			pr: p.pr,
+			radiusKm: p.radiusKm,
+			aside: p.aside
+		}));
+		untrack(() => onlayout?.(laid));
 	});
 </script>
 
@@ -824,6 +1115,12 @@
 	<div
 		bind:this={containerEl}
 		bind:clientWidth={width}
+		oncontextmenu={(e) => {
+			const id = pickAt(e.clientX, e.clientY);
+			if (!id || !oncontextpick) return;
+			e.preventDefault();
+			oncontextpick(id, e.clientX, e.clientY);
+		}}
 		onpointerdown={scrub.onpointerdown}
 		onpointermove={onPointerMove}
 		onpointerup={scrub.onpointerup}
@@ -832,8 +1129,8 @@
 			hoveredId = null;
 			scrub.onpointerleave();
 		}}
-		class="bg-muted/30 relative w-full touch-pan-y overflow-hidden rounded-md"
-		style="height: {HEIGHT}px"
+		class="relative w-full touch-pan-y overflow-hidden rounded-md {ground ? '' : 'bg-muted/30'}"
+		style="height: {height}px; {ground ? `background: ${ground}` : ''}"
 		role="group"
 		aria-label={ariaLabel}
 	>
@@ -848,7 +1145,7 @@
 		     click. Keyboard focus still mirrors hover, unaffected by the guard. -->
 			{#if hoverCapable}
 				<a
-					href={focusHref(appState, p.id, p.name)}
+					href={focusHref(appState, p.id, p.name) ?? bodyHref(p.id, p.name)}
 					onclick={focusHovered}
 					onmousedown={(e) => e.button === 0 && e.preventDefault()}
 					onfocus={(e) => e.currentTarget.matches(':focus-visible') && (hoveredId = p.id)}
@@ -921,12 +1218,34 @@
 		{/if}
 	</div>
 
-	{#if hovered}
+	{#if labels}
+		<!-- The name sits under the body it belongs to. One left unnamed by the
+		     declutter is still named by hovering it, and by the caller's list. -->
+		<div class="relative h-9" aria-hidden="true">
+			{#each layout as p (p.id)}
+				{#if p.labelWidth >= LABEL_MIN_WIDTH}
+					<div
+						class="absolute top-1.5 -translate-x-1/2 text-center leading-tight"
+						style="left: {p.cx}px; max-width: {p.labelWidth}px"
+					>
+						<div class="truncate text-[11px] font-medium">{p.name}</div>
+						<div class="truncate text-[11px] text-muted-foreground tabular-nums">
+							{sizeText(p)}
+						</div>
+					</div>
+				{/if}
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Named under the row already, unless the crowd left it unnamed — then the
+	     tooltip is the only way to read what it is. -->
+	{#if hovered && !hovered.labelWidth}
 		<!-- Offset below the canvas so it never covers the bodies. -->
 		<div
 			bind:clientWidth={tipWidth}
 			class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-10 w-max -translate-x-1/2 rounded-md border px-2 py-1 text-center shadow-md"
-			style="left: {tipLeft}px; top: {HEIGHT +
+			style="left: {tipLeft}px; top: {height +
 				6}px; max-width: {tipMaxWidth}px; visibility: {tipWidth === 0 ? 'hidden' : 'visible'}"
 		>
 			<div class="text-xs font-medium whitespace-nowrap">{hovered.name}</div>
@@ -934,14 +1253,7 @@
 				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
 			{/if}
 			<div class="text-muted-foreground text-[11px] tabular-nums">
-				{#if hovered.craft}
-					{m.lineup_span()}: {formatQuantity(
-						{ value: hovered.diameterKm * 1000, unit: 'metre' },
-						true
-					)}
-				{:else}
-					{m.diameter()}: {formatQuantity({ value: hovered.diameterKm, unit: 'kilometre' }, true)}
-				{/if}
+				{hovered.craft ? m.lineup_span() : m.diameter()}: {sizeText(hovered)}
 			</div>
 		</div>
 	{/if}
