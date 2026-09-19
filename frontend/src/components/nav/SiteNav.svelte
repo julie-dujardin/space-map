@@ -5,7 +5,10 @@
 <script module lang="ts">
 	/** The column every page in the site shares — the row and the page body sit
 	 *  on it, so a heading keeps its place from page to page. */
-	export const SITE_COLUMN = 'mx-auto w-full max-w-4xl px-6';
+	export const SITE_COLUMN = 'mx-auto w-full max-w-4xl';
+	/** The column's side gutter, apart from the column itself so a page can put
+	 *  something across the full width and gutter the rest of its content. */
+	export const SITE_GUTTER = 'px-6';
 </script>
 
 <script lang="ts">
@@ -44,7 +47,7 @@
 	<!-- -mb-px lifts the border under the active tab's own 2px underline. -->
 	<nav
 		aria-label={m.nav_label()}
-		class="{SITE_COLUMN} -mb-px flex h-14 items-stretch gap-4 md:gap-6"
+		class="{SITE_COLUMN} {SITE_GUTTER} -mb-px flex h-14 items-stretch gap-4 md:gap-6"
 	>
 		<a
 			href="/"

@@ -238,8 +238,9 @@ describe('buildTree', () => {
 		expect(saturn.moons.map((m) => m.name)).toEqual(['Titan']);
 	});
 
-	it('keeps the way out of the Solar System as its own one-stop row', () => {
+	it('ends the trunk at the way out of the Solar System', () => {
 		const withOut: SubwayMap = map();
+		withOut.trunk = [...withOut.trunk, stationId('escape', 'naif-10')];
 		withOut.edges.push({
 			from: stationId('escape', 'naif-399'),
 			to: stationId('escape', 'naif-10'),
@@ -264,12 +265,17 @@ describe('buildTree', () => {
 			transferDays: Infinity
 		});
 		const withOutTree = buildTree(withOut, NAMES, COLORS);
-		// Past Earth's escape the trunk is already in the Sun's well.
-		expect(withOutTree.trunkTailColor).toBe('#fd0');
-		const out = withOutTree.rows.find((r) => r.escape)!;
-		expect(out.depart.dvKms).toBe(5.53);
-		expect(out.stops.map((s) => [s.kind, s.mode])).toEqual([['escape', null]]);
-		expect(out.bound).toBe(false);
+		// It is the trunk's last stop, in the Sun's colour, not a row off it.
+		expect(withOutTree.trunk.map((t) => t.station)).toEqual([
+			stationId('surface', E),
+			stationId('orbit', E),
+			stationId('escape', E),
+			stationId('escape', 'naif-10')
+		]);
+		expect(withOutTree.trunk[3].color).toBe('#fd0');
+		expect(withOutTree.trunkLegs[2].dvKms).toBe(5.53);
+		expect(withOutTree.trunkEnd?.orbitKms).toBe(18.12);
+		expect(withOutTree.rows.some((r) => r.targetId === 'naif-10')).toBe(false);
 	});
 
 	it('draws the stationary orbit as a two-stop row of the origin', () => {

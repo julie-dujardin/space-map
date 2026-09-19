@@ -1286,7 +1286,6 @@
 	"delta_v_hint_capture": "制动进入被束缚的椭圆轨道。",
 	"delta_v_hint_low_orbit": "高度 200 km 的圆轨道，小天体则更低。",
 	"delta_v_reset_targets": "恢复默认目的地",
-	"delta_v_targets_hint": "地图上的天体。取消勾选即可移除。",
 	"delta_v_solar_escape": "逃离太阳系",
 	"nav_label": "站点",
 	"credits_page_title": "鸣谢",

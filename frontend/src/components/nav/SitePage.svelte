@@ -5,15 +5,18 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import SiteNav, { SITE_COLUMN, type NavPage } from './SiteNav.svelte';
+	import SiteNav, { SITE_COLUMN, SITE_GUTTER, type NavPage } from './SiteNav.svelte';
 
 	interface Props {
 		current: NavPage;
 		title: string;
+		/** Hand the children the full column and let them gutter themselves, for
+		 *  a page carrying something that wants every pixel of the width. */
+		bleed?: boolean;
 		children: Snippet;
 	}
 
-	let { current, title, children }: Props = $props();
+	let { current, title, bleed = false, children }: Props = $props();
 </script>
 
 <!-- html/body lock overflow for the 3D map, so the page owns its scroll — and
@@ -24,7 +27,11 @@
 	<SiteNav {current} class="sticky top-0 z-10" />
 
 	<main class="{SITE_COLUMN} pt-10 pb-[calc(2.5rem+var(--safe-bottom))]">
-		<h1 class="mb-8 text-2xl font-semibold">{title}</h1>
-		{@render children()}
+		<h1 class="{SITE_GUTTER} mb-8 text-2xl font-semibold">{title}</h1>
+		{#if bleed}
+			{@render children()}
+		{:else}
+			<div class={SITE_GUTTER}>{@render children()}</div>
+		{/if}
 	</main>
 </div>

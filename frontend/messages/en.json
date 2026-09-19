@@ -1475,7 +1475,6 @@
 	"delta_v_hint_capture": "Braking onto a bound elliptical orbit.",
 	"delta_v_hint_low_orbit": "A circular orbit 200 km above the surface, lower at small bodies.",
 	"delta_v_reset_targets": "Back to the default targets",
-	"delta_v_targets_hint": "The bodies on the map. Untick one to take it off.",
 	"delta_v_solar_escape": "Solar System escape",
 	"nav_label": "Site",
 	"credits_page_title": "Credits",

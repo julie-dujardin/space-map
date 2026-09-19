@@ -44,8 +44,6 @@ export interface TreeRow {
 	trunkIndex: number;
 	/** The origin's own stationary orbit, drawn as a bound row of two stops. */
 	stationary: boolean;
-	/** Out of the root's well: one stop, the last one off the trunk. */
-	escape: boolean;
 	/** The burn that puts the trip on its transfer, from the trunk to the first stop. */
 	depart: TreeLeg;
 	/** The intercept stop first, then the rest of the way in. A row whose own
@@ -66,9 +64,9 @@ export interface Tree {
 	 *  Each stop carries the tint of the body it belongs to, so a trunk out of
 	 *  a moon changes colour where it leaves the moon's well for the planet's. */
 	trunk: TreeStop[];
-	/** The well the trunk is in past its last stop, which no stop stands for:
-	 *  the root's once the last stop is an escape. */
-	trunkTailColor: string;
+	/** What the whole trunk comes to, where its last stop is the way out of the
+	 *  root's well. Null where the origin is the root itself. */
+	trunkEnd: TreeTotals | null;
 	trunkLegs: TreeLeg[];
 	rows: TreeRow[];
 }
@@ -153,7 +151,6 @@ export function buildTree(
 			bound: parseStation(from).kind === 'orbit',
 			trunkIndex: trunkIndexOf(from),
 			stationary: false,
-			escape: false,
 			depart: leg(from, transfer),
 			stops: [stopOf(transfer)],
 			legs: [],
@@ -170,23 +167,11 @@ export function buildTree(
 		aeroSurfaceKms: route.aeroSurfaceKms
 	});
 
+	let trunkEnd: TreeTotals | null = null;
 	for (const route of map.routes) {
+		// Leaving the root's well is the trunk's last stop, not a row off it.
 		if (route.kind === 'escape') {
-			const out = route.path[route.path.length - 1];
-			rows.set(out, {
-				targetId: route.targetId,
-				name: nameOf(route.targetId),
-				color: colorOf(route.targetId),
-				bound: false,
-				trunkIndex: trunkIndexOf(route.path[route.path.length - 2]),
-				stationary: false,
-				escape: true,
-				depart: leg(route.path[route.path.length - 2], out),
-				stops: [{ ...stopOf(out), mode: null }],
-				legs: [],
-				totals: totalsOf(route),
-				moons: []
-			});
+			trunkEnd = totalsOf(route);
 			continue;
 		}
 		const transfer = route.path.find((s) => s.startsWith('transfer:'));
@@ -202,7 +187,6 @@ export function buildTree(
 				bound: true,
 				trunkIndex: trunkIndexOf(`orbit:${originId}`),
 				stationary: true,
-				escape: false,
 				depart: leg(route.path[route.path.indexOf(transfer) - 1], transfer),
 				stops,
 				legs: after.map((s, i) => leg(i === 0 ? transfer : after[i - 1], s)),
@@ -224,7 +208,6 @@ export function buildTree(
 				bound: false,
 				trunkIndex: row.trunkIndex,
 				stationary: false,
-				escape: false,
 				depart: leg(transfer, after[0]),
 				stops: after.map((s) => stopOf(s)),
 				legs: after.slice(1).map((s, i) => leg(after[i], s)),
@@ -234,16 +217,11 @@ export function buildTree(
 		}
 	}
 
-	const tail = trunk[trunk.length - 1];
-	const rootId = map.routes.find((r) => r.kind === 'escape')?.targetId;
 	return {
 		originId,
 		originName: nameOf(originId),
 		trunk,
-		trunkTailColor:
-			tail?.kind === 'escape' && rootId !== undefined
-				? colorOf(rootId)
-				: (tail?.color ?? 'currentColor'),
+		trunkEnd,
 		trunkLegs,
 		rows: [...rows.values()]
 	};

@@ -1309,7 +1309,6 @@
 	"delta_v_hint_capture": "בלימה אל מסלול אליפטי קשור.",
 	"delta_v_hint_low_orbit": "מסלול מעגלי בגובה 200 ק\"מ, נמוך יותר בגופים קטנים.",
 	"delta_v_reset_targets": "חזרה ליעדי ברירת המחדל",
-	"delta_v_targets_hint": "הגופים שבמפה. בטלו סימון כדי להסיר גוף.",
 	"delta_v_solar_escape": "מילוט ממערכת השמש",
 	"nav_label": "אתר",
 	"credits_page_title": "קרדיטים",

@@ -1381,7 +1381,6 @@
 	"delta_v_hint_capture": "Freinage sur une orbite elliptique liée.",
 	"delta_v_hint_low_orbit": "Une orbite circulaire à 200 km d'altitude, plus basse pour les petits corps.",
 	"delta_v_reset_targets": "Revenir aux destinations par défaut",
-	"delta_v_targets_hint": "Les corps présents sur la carte. Décochez-en un pour le retirer.",
 	"delta_v_solar_escape": "Sortie du Système solaire",
 	"nav_label": "Site",
 	"credits_page_title": "Crédits",

@@ -7,14 +7,15 @@
  * top to bottom.
  *
  * Strip: the same tree on its side for a phone — the trunk along the bottom,
- * destinations rising from it, meant to be scrolled sideways.
+ * destinations rising from it, meant to be scrolled sideways. It comes out as
+ * two sheets, since the level names stay put while the map scrolls under them.
  *
  * Only geometry and text come out; the page decides fonts and theme colours,
  * so `currentColor` stands for "the trunk's colour" throughout.
  */
 
 import type { StationKind } from '$lib/math/travel/subway';
-import type { Tree, TreeLeg, TreeRow, TreeStop } from './subway-tree';
+import type { Tree, TreeLeg, TreeRow, TreeStop, TreeTotals } from './subway-tree';
 
 export interface DrawLine {
 	points: string;
@@ -92,10 +93,7 @@ export interface DrawOptions {
  *  x) each one needs. The escape ladder makes this a list rather than the two
  *  fixed stops the map started with. */
 function trunkGroups(tree: Tree): TreeRow[][] {
-	return tree.trunk.map((_, i) => [
-		...tree.rows.filter((r) => r.trunkIndex === i && !r.escape),
-		...tree.rows.filter((r) => r.trunkIndex === i && r.escape)
-	]);
+	return tree.trunk.map((_, i) => tree.rows.filter((r) => r.trunkIndex === i));
 }
 
 /** How much room a row and its moons take along the trunk. */
@@ -103,33 +101,75 @@ function rowSpan(row: TreeRow, pitch: number, moonPitch: number, gap: number): n
 	return pitch + row.moons.length * moonPitch + (row.bound ? 0 : gap);
 }
 
+/** A line while the sheet is still being moved about: points stay numbers
+ *  until the drawing is handed over. */
+interface PendingLine extends Omit<DrawLine, 'points'> {
+	pts: [number, number][];
+}
+
 class Sheet {
-	lines: DrawLine[] = [];
+	lines: PendingLine[] = [];
 	/** Drawn after every other line: the trunk and the drops moons hang from,
 	 *  so a branch never crosses over what it branches from. */
-	over: DrawLine[] = [];
+	over: PendingLine[] = [];
 	stops: DrawStop[] = [];
 	labels: DrawLabel[] = [];
 	aeros: DrawAero[] = [];
 
-	line(points: [number, number][], color: string, width = 6, opacity = 1, over = false): void {
-		(over ? this.over : this.lines).push({
-			points: points.map((p) => p.join(',')).join(' '),
-			color,
-			width,
-			opacity
-		});
+	line(pts: [number, number][], color: string, width = 6, opacity = 1, over = false): void {
+		(over ? this.over : this.lines).push({ pts, color, width, opacity });
 	}
 
 	drawing(width: number, height: number): Drawing {
+		const serialise = (l: PendingLine): DrawLine => ({
+			points: l.pts.map((p) => p.join(',')).join(' '),
+			color: l.color,
+			width: l.width,
+			opacity: l.opacity
+		});
 		return {
 			width,
 			height,
-			lines: [...this.lines, ...this.over],
+			lines: [...this.lines, ...this.over].map(serialise),
 			stops: this.stops,
 			labels: this.labels,
 			aeros: this.aeros
 		};
+	}
+
+	/** How far the sheet could slide up and still begin `pad` above what is
+	 *  drawn. The strip's levels are fixed, so the headroom over the tallest
+	 *  column is dead space the reader would otherwise have to scroll past. */
+	headroom(pad: number, height: number): number {
+		const top = Math.min(
+			height,
+			...this.stops.map((s) => s.y - s.r),
+			...this.labels.map((l) => labelTop(l))
+		);
+		return Math.max(0, Math.floor(top - pad));
+	}
+
+	/** How far right anything on the sheet reaches, labels included: the strip
+	 *  is scrolled to its own edge, so a name overhanging it would be clipped
+	 *  with nothing left to scroll to. */
+	rightEdge(): number {
+		return Math.max(
+			0,
+			...this.stops.map((s) => s.x + s.r),
+			...this.labels.map((l) => labelRight(l)),
+			...this.aeros.map((a) => a.x + AERO_R)
+		);
+	}
+
+	/** Slide everything up by `dy`. The strip's map and its level names are two
+	 *  sheets side by side, so both take the map's headroom to stay level. */
+	shift(dy: number): void {
+		for (const l of [...this.lines, ...this.over]) {
+			l.pts = l.pts.map(([x, y]) => [x, y - dy]);
+		}
+		for (const s of this.stops) s.y -= dy;
+		for (const l of this.labels) l.y -= dy;
+		for (const a of this.aeros) a.y -= dy;
 	}
 
 	stop(
@@ -149,9 +189,9 @@ class Sheet {
 		y: number,
 		text: string,
 		o: Partial<Omit<DrawLabel, 'x' | 'y' | 'text'>> = {}
-	): void {
+	): DrawLabel {
 		// Nothing on the map smaller than 12 px: captions and headings included.
-		this.labels.push({
+		const label: DrawLabel = {
 			x,
 			y,
 			text,
@@ -162,15 +202,52 @@ class Sheet {
 			rotate: o.rotate ?? 0,
 			href: o.href ?? null,
 			title: o.title ?? null
-		});
+		};
+		this.labels.push(label);
+		return label;
 	}
+}
+
+/** Rough width of a label. This module cannot measure a font, so the glyph
+ *  count stands in; the figure only decides how much room to leave, and is
+ *  deliberately generous. Nothing is drawn under 12 px, so neither is it
+ *  measured under 12 px. */
+function labelWidth(text: string, size: number): number {
+	return text.length * Math.max(size, 12) * 0.62;
+}
+
+/** The aerobrake arc's own half-width, and the room it keeps off the figure it
+ *  belongs to. */
+const AERO_R = 6;
+const AERO_GAP = 3;
+
+/** Where the arc marking a braked leg goes: just past the figure, which is
+ *  what it qualifies, so a long figure pushes it out rather than running
+ *  under it. */
+function aeroX(label: DrawLabel): number {
+	return labelRight(label) + AERO_GAP + AERO_R;
+}
+
+/** How far a label reaches to the right of its anchor. Rotation is the rows'
+ *  business and never the strip's, so it is ignored. */
+function labelRight(l: DrawLabel): number {
+	const w = labelWidth(l.text, l.size);
+	if (l.anchor === 'end') return l.x;
+	return l.x + (l.anchor === 'middle' ? w / 2 : w);
+}
+
+/** How far a label reaches above its anchor. */
+function labelTop(l: DrawLabel): number {
+	const half = l.size / 2;
+	if (!l.rotate) return l.y - half;
+	return l.y - half - labelWidth(l.text, l.size) * Math.sin((Math.abs(l.rotate) * Math.PI) / 180);
 }
 
 /** A total as the page prints it beside a row: to orbit, then braked where an
  *  atmosphere can pay for part of it. */
-function totalText(row: TreeRow, fmt: DrawOptions['fmt']): string {
-	if (!row.totals) return '';
-	const { orbitKms, aeroOrbitKms } = row.totals;
+function totalText(totals: TreeTotals | null, fmt: DrawOptions['fmt']): string {
+	if (!totals) return '';
+	const { orbitKms, aeroOrbitKms } = totals;
 	return aeroOrbitKms === null ? fmt(orbitKms) : `${fmt(orbitKms)}  ·  ${fmt(aeroOrbitKms)}`;
 }
 
@@ -203,8 +280,8 @@ export function drawRows(o: DrawOptions): Drawing {
 	if (tree.trunk.length === 0) return S.drawing(ROWS_WIDTH, 0);
 	const dv = (x1: number, x2: number, y: number, leg: TreeLeg, below = false) => {
 		const ly = below ? y + 13 : y - 12;
-		S.text((x1 + x2) / 2, ly, fmt(leg.dvKms), { weight: 600, size: 12 });
-		if (leg.aero) S.aeros.push({ x: (x1 + x2) / 2 + 26, y: ly + 3 });
+		const figure = S.text((x1 + x2) / 2, ly, fmt(leg.dvKms), { weight: 600, size: 12 });
+		if (leg.aero) S.aeros.push({ x: aeroX(figure), y: ly + 3 });
 	};
 
 	const groups = trunkGroups(tree);
@@ -227,20 +304,24 @@ export function drawRows(o: DrawOptions): Drawing {
 			for (const [k, mo] of r.moons.entries()) rowYs.set(mo, rowYs.get(r)! + 42 + k * 34);
 		}
 	}
-	const yEnd = y - 12;
+	const lastTrunk = tree.trunk.length - 1;
+	// The line stops where its last stop is, unless rows still hang under it.
+	const yEnd = groups[lastTrunk].length > 0 ? y - 12 : trunkYs[lastTrunk];
 
-	const trunkLabel = (kind: StationKind) => (kind === 'escape' ? text.escape : text.stop[kind]);
+	// The way out of the root's well ends the trunk and is named as such.
+	const trunkLabel = (i: number) => {
+		if (i === lastTrunk && tree.trunkEnd) return text.rootEscape;
+		const kind = tree.trunk[i].kind;
+		return kind === 'escape' ? text.escape : text.stop[kind];
+	};
 	// One segment per stop, in that stop's colour: out of a moon the trunk
 	// turns the planet's colour where it leaves the moon's well.
-	const lastTrunk = tree.trunk.length - 1;
-	// Past the last stop the trunk is already in the well above it, so the
-	// tail takes that body's colour rather than the origin's.
 	S.line(
 		[
 			[BUS_X, trunkYs[lastTrunk]],
 			[BUS_X, yEnd]
 		],
-		tree.trunkTailColor,
+		tree.trunk[lastTrunk].color,
 		7,
 		1,
 		true
@@ -256,20 +337,29 @@ export function drawRows(o: DrawOptions): Drawing {
 			1,
 			true
 		);
+		const end = i === lastTrunk && tree.trunkEnd !== null;
 		S.stop(
 			BUS_X,
 			trunkYs[i],
 			stop.color,
 			8,
-			false,
-			link(stop, tree.originId),
-			trunkLabel(stop.kind)
+			end,
+			end ? null : link(stop, tree.originId),
+			trunkLabel(i)
 		);
-		S.text(BUS_X + 16, trunkYs[i], `${stop.name} · ${trunkLabel(stop.kind)}`, {
-			size: 11,
-			muted: true,
-			anchor: 'start'
-		});
+		S.text(
+			BUS_X + 16,
+			trunkYs[i],
+			end ? trunkLabel(i) : `${stop.name} · ${trunkLabel(i)}`,
+			end ? { size: 14, weight: 600, anchor: 'start' } : { size: 11, muted: true, anchor: 'start' }
+		);
+		if (end) {
+			S.text(COL_TOTAL, trunkYs[i], totalText(tree.trunkEnd, fmt), {
+				anchor: 'start',
+				size: 12,
+				muted: true
+			});
+		}
 		if (i > 0) {
 			S.text(BUS_X + 16, trunkYs[i] - 26, fmt(tree.trunkLegs[i - 1].dvKms), {
 				weight: 600,
@@ -322,22 +412,6 @@ export function drawRows(o: DrawOptions): Drawing {
 
 	for (const row of tree.rows) {
 		const rowY = rowYs.get(row)!;
-		if (row.escape) {
-			S.line(
-				[
-					[BUS_X, rowY],
-					[COL.transfer, rowY]
-				],
-				row.color,
-				6
-			);
-			dv(BUS_X, COL.transfer, rowY, row.depart, true);
-			S.text(BUS_X + 14, rowY - 13, text.rootEscape, { anchor: 'start', weight: 600, size: 14 });
-			S.stop(COL.transfer, rowY, row.color, 6, true, null, text.rootEscape);
-			if (row.totals)
-				S.text(COL_TOTAL, rowY, totalText(row, fmt), { anchor: 'start', size: 12, muted: true });
-			continue;
-		}
 		S.text(BUS_X + 14, rowY - 13, row.stationary ? text.stop.stationary : row.name, {
 			anchor: 'start',
 			weight: 600,
@@ -346,7 +420,11 @@ export function drawRows(o: DrawOptions): Drawing {
 		});
 		drawStops(row, rowY, BUS_X, false);
 		if (row.totals) {
-			S.text(COL_TOTAL, rowY, totalText(row, fmt), { anchor: 'start', size: 12, muted: true });
+			S.text(COL_TOTAL, rowY, totalText(row.totals, fmt), {
+				anchor: 'start',
+				size: 12,
+				muted: true
+			});
 		}
 		for (const moon of row.moons) {
 			const my = rowYs.get(moon)!;
@@ -367,7 +445,11 @@ export function drawRows(o: DrawOptions): Drawing {
 				href: moon.stops[0] ? link(moon.stops[0], moon.targetId) : null
 			});
 			drawStops(moon, my, COL.transfer, true);
-			S.text(COL_TOTAL, my, totalText(moon, fmt), { anchor: 'start', size: 12, muted: true });
+			S.text(COL_TOTAL, my, totalText(moon.totals, fmt), {
+				anchor: 'start',
+				size: 12,
+				muted: true
+			});
 		}
 	}
 
@@ -376,27 +458,51 @@ export function drawRows(o: DrawOptions): Drawing {
 
 // --------------------------------------------------------------- strip
 
-const STRIP_HEIGHT = 660;
-/** Where each kind of stop sits up the strip. */
+const STRIP_HEIGHT = 646;
+/** Where each kind of stop sits up the strip. A phone is short, so the rungs
+ *  sit only as far apart as one Δv figure between two stops needs. */
 const LEVEL: Record<StationKind, number> = {
-	transfer: 516,
-	escape: 418,
-	orbit: 320,
-	surface: 222,
-	stationary: 418
+	transfer: 534,
+	escape: 460,
+	orbit: 386,
+	surface: 312,
+	stationary: 460
 };
 const Y_TRUNK = 600;
+/** Narrowest a column may be, before its labels ask for more. */
+const ROW_PITCH = 70;
+const MOON_PITCH = 54;
+/** Where the trunk's own stops sit. */
 const X_SURFACE = 40;
 const X_LEO = 120;
 const X_ESCAPE = 330;
+/** Room before the level names, so they are not flush against the screen. */
+const LEVELS_PAD = 5;
+/** Room past the last thing drawn, so it is not flush against the scroll end. */
+const TAIL_PAD = 24;
+const LEVELS: readonly StationKind[] = ['transfer', 'escape', 'orbit', 'surface'];
 
-export function drawStrip(o: DrawOptions): Drawing {
+/** The strip in two pieces: the map, which scrolls, and the level names, which
+ *  do not, so a reader deep in the map still knows what the rungs are. */
+export interface StripDrawing {
+	map: Drawing;
+	legend: Drawing;
+}
+
+export function drawStrip(o: DrawOptions): StripDrawing {
 	const { tree, text, fmt, link } = o;
 	const S = new Sheet();
-	if (tree.trunk.length === 0) return S.drawing(0, STRIP_HEIGHT);
+	const L = new Sheet();
+	if (tree.trunk.length === 0) {
+		return { map: S.drawing(0, STRIP_HEIGHT), legend: L.drawing(0, STRIP_HEIGHT) };
+	}
 	const dv = (x: number, y1: number, y2: number, leg: TreeLeg) => {
-		S.text(x + 9, (y1 + y2) / 2, fmt(leg.dvKms), { weight: 600, size: 11.5, anchor: 'start' });
-		if (leg.aero) S.aeros.push({ x: x + 9 + 34, y: (y1 + y2) / 2 + 3 });
+		const figure = S.text(x + 9, (y1 + y2) / 2, fmt(leg.dvKms), {
+			weight: 600,
+			size: 11.5,
+			anchor: 'start'
+		});
+		if (leg.aero) S.aeros.push({ x: aeroX(figure), y: (y1 + y2) / 2 + 3 });
 	};
 
 	const groups = trunkGroups(tree);
@@ -408,27 +514,50 @@ export function drawStrip(o: DrawOptions): Drawing {
 	if (ground) trunkXs[0] = X_SURFACE;
 	let x = X_LEO;
 	const colXs = new Map<TreeRow, number>();
+	// Names and totals sit level over their column, so the column has to be as
+	// wide as the longer of the two.
+	const colWidth = (row: TreeRow, small: boolean): number => {
+		const name = row.stationary ? text.stop.stationary : row.name;
+		return Math.round(
+			Math.max(
+				small ? MOON_PITCH : ROW_PITCH,
+				labelWidth(name, small ? 12 : 14),
+				labelWidth(totalText(row.totals, fmt), 12)
+			) + 14
+		);
+	};
 	for (let i = orbitIndex; i < tree.trunk.length; i++) {
-		// The first escape stop keeps its old place unless the bound rows push it on.
 		if (i > orbitIndex) x = Math.max(i === orbitIndex + 1 ? X_ESCAPE : 0, x + 10);
 		trunkXs[i] = x;
-		x += 70;
+		x += 24;
 		for (const r of groups[i]) {
-			colXs.set(r, x);
-			for (const [k, mo] of r.moons.entries()) colXs.set(mo, x + 70 + k * 54);
-			x += rowSpan(r, 70, 54, 16);
+			const w = colWidth(r, false);
+			colXs.set(r, x + w / 2);
+			x += w;
+			for (const moon of r.moons) {
+				const mw = colWidth(moon, true);
+				colXs.set(moon, x + mw / 2);
+				x += mw;
+			}
+			x += 16;
 		}
 	}
-	const xEnd = x - 16;
-
-	const trunkLabel = (kind: StationKind) => (kind === 'escape' ? text.escape : text.stop[kind]);
 	const lastTrunk = tree.trunk.length - 1;
+	// The line stops where its last stop is, unless columns still rise past it.
+	const xEnd = groups[lastTrunk].length > 0 ? x - 16 : trunkXs[lastTrunk];
+
+	// The way out of the root's well ends the trunk and is named as such.
+	const trunkLabel = (i: number) => {
+		if (i === lastTrunk && tree.trunkEnd) return text.rootEscape;
+		const kind = tree.trunk[i].kind;
+		return kind === 'escape' ? text.escape : text.stop[kind];
+	};
 	S.line(
 		[
 			[trunkXs[lastTrunk], Y_TRUNK],
 			[xEnd, Y_TRUNK]
 		],
-		tree.trunkTailColor,
+		tree.trunk[lastTrunk].color,
 		7,
 		1,
 		true
@@ -446,25 +575,30 @@ export function drawStrip(o: DrawOptions): Drawing {
 			1,
 			true
 		);
+		const end = i === lastTrunk && tree.trunkEnd !== null;
 		S.stop(
 			trunkXs[i],
 			Y_TRUNK,
 			stop.color,
 			8,
-			false,
-			link(stop, tree.originId),
-			trunkLabel(stop.kind)
+			end,
+			end ? null : link(stop, tree.originId),
+			trunkLabel(i)
 		);
 		// The strip has no room for a name on every stop, but a second escape
 		// stop is another body's and has to say whose.
 		S.text(
 			trunkXs[i],
 			Y_TRUNK + 22,
-			stop.bodyId === tree.originId
-				? trunkLabel(stop.kind)
-				: `${stop.name} · ${trunkLabel(stop.kind)}`,
-			{ size: 10.5, muted: true }
+			end || stop.bodyId === tree.originId ? trunkLabel(i) : `${stop.name} · ${trunkLabel(i)}`,
+			{ size: 10.5, muted: true, weight: end ? 600 : 500 }
 		);
+		if (end) {
+			S.text(trunkXs[i], Y_TRUNK + 38, totalText(tree.trunkEnd, fmt), {
+				size: 10,
+				muted: true
+			});
+		}
 		if (i > 0) {
 			S.text(trunkXs[i] - 22, Y_TRUNK - 14, fmt(tree.trunkLegs[i - 1].dvKms), {
 				weight: 600,
@@ -473,15 +607,15 @@ export function drawStrip(o: DrawOptions): Drawing {
 		}
 	});
 
-	// Level names at the far end.
-	(['transfer', 'escape', 'orbit', 'surface'] as const).forEach((kind) =>
-		S.text(xEnd + 30, LEVEL[kind], text.stop[kind], {
+	// Level names on their own sheet, which the page pins to the left edge.
+	LEVELS.forEach((kind) => {
+		L.text(LEVELS_PAD, LEVEL[kind], text.stop[kind], {
 			size: 10.5,
 			muted: true,
-			anchor: 'start',
-			title: text.hint[kind]
-		})
-	);
+			title: text.hint[kind],
+			anchor: 'start'
+		});
+	});
 
 	const drawStops = (row: TreeRow, cx: number, fromY: number, small: boolean) => {
 		const r = small ? 5 : 6;
@@ -519,40 +653,13 @@ export function drawStrip(o: DrawOptions): Drawing {
 
 	for (const row of tree.rows) {
 		const cx = colXs.get(row)!;
-		if (row.escape) {
-			S.line(
-				[
-					[cx, Y_TRUNK],
-					[cx, LEVEL.transfer]
-				],
-				row.color,
-				6
-			);
-			dv(cx, Y_TRUNK, LEVEL.transfer, row.depart);
-			S.stop(cx, LEVEL.transfer, row.color, 6, true, null, text.rootEscape);
-			S.text(cx - 2, LEVEL.transfer - 20, text.rootEscape, {
-				rotate: -55,
-				anchor: 'start',
-				weight: 600,
-				size: 13
-			});
-			if (row.totals) {
-				S.text(cx + 16, LEVEL.transfer - 20, totalText(row, fmt), {
-					rotate: -55,
-					anchor: 'start',
-					size: 10,
-					muted: true
-				});
-			}
-			continue;
-		}
 		const top = drawStops(row, cx, Y_TRUNK, false);
-		S.text(cx, top - 26, row.stationary ? text.stop.stationary : row.name, {
+		S.text(cx, top - 44, row.stationary ? text.stop.stationary : row.name, {
 			weight: 600,
 			size: 14,
 			href: row.stops[0] ? link(row.stops[0], row.targetId) : null
 		});
-		if (row.totals) S.text(cx, top - 44, totalText(row, fmt), { size: 11, muted: true });
+		if (row.totals) S.text(cx, top - 26, totalText(row.totals, fmt), { size: 11, muted: true });
 		for (const moon of row.moons) {
 			const mx = colXs.get(moon)!;
 			// Across from the shared intercept stop with a bend, then up.
@@ -568,20 +675,23 @@ export function drawStrip(o: DrawOptions): Drawing {
 				true
 			);
 			const mtop = drawStops(moon, mx, LEVEL.transfer - 24, true);
-			S.text(mx - 2, mtop - 20, moon.name, {
-				rotate: -55,
-				anchor: 'start',
+			S.text(mx, mtop - 44, moon.name, {
 				size: 12,
 				href: moon.stops[0] ? link(moon.stops[0], moon.targetId) : null
 			});
-			S.text(mx + 16, mtop - 20, totalText(moon, fmt), {
-				rotate: -55,
-				anchor: 'start',
-				size: 10,
-				muted: true
-			});
+			S.text(mx, mtop - 26, totalText(moon.totals, fmt), { size: 10, muted: true });
 		}
 	}
 
-	return S.drawing(xEnd + 130, STRIP_HEIGHT);
+	// Both sheets slide up by the map's headroom so the names stay level with
+	// the rungs they name.
+	const dy = S.headroom(10, STRIP_HEIGHT);
+	S.shift(dy);
+	L.shift(dy);
+	const height = STRIP_HEIGHT - dy;
+	// The names sit right up against the map: the width below is only an
+	// estimate, and the slack it leaves is gap enough.
+	const legendWidth = Math.round(L.rightEdge());
+	const width = Math.round(Math.max(xEnd, S.rightEdge()) + TAIL_PAD);
+	return { map: S.drawing(width, height), legend: L.drawing(legendWidth, height) };
 }

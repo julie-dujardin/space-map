@@ -1388,7 +1388,6 @@
 	"delta_v_hint_capture": "束縛された楕円軌道への減速。",
 	"delta_v_hint_low_orbit": "高度 200 km の円軌道。小天体ではより低い。",
 	"delta_v_reset_targets": "デフォルトの目的地に戻す",
-	"delta_v_targets_hint": "マップ上の天体。チェックを外すと除外されます。",
 	"delta_v_solar_escape": "太陽系脱出",
 	"nav_label": "サイト",
 	"credits_page_title": "クレジット",

@@ -1309,7 +1309,6 @@
 	"delta_v_hint_capture": "Abbremsen auf eine gebundene elliptische Bahn.",
 	"delta_v_hint_low_orbit": "Eine Kreisbahn 200 km über der Oberfläche, bei kleinen Körpern niedriger.",
 	"delta_v_reset_targets": "Zurück zu den Standardzielen",
-	"delta_v_targets_hint": "Die Körper auf der Karte. Abwählen entfernt einen.",
 	"delta_v_solar_escape": "Flucht aus dem Sonnensystem",
 	"nav_label": "Website",
 	"credits_page_title": "Danksagungen",

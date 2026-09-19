@@ -213,14 +213,19 @@ describe('buildSubwayMap', () => {
 	it('climbs out of Earth on the way from the Moon to Mars', () => {
 		const map = buildSubwayMap(system(), 'naif-301', ['naif-499']);
 		const r = route(map, 'naif-499');
-		// Earth's escape is a stop of its own on the trunk, past the Moon's.
+		// Earth's escape is a stop of its own on the trunk, past the Moon's, and
+		// the Sun's ends the line.
 		expect(map.trunk).toEqual([
 			stationId('surface', 'naif-301'),
 			stationId('orbit', 'naif-301'),
 			stationId('escape', 'naif-301'),
-			stationId('escape', 'naif-399')
+			stationId('escape', 'naif-399'),
+			stationId('escape', 'naif-10')
 		]);
-		expect(r.path.slice(0, 5)).toEqual([...map.trunk, stationId('transfer', 'naif-499')]);
+		expect(r.path.slice(0, 5)).toEqual([
+			...map.trunk.slice(0, 4),
+			stationId('transfer', 'naif-499')
+		]);
 		expect(
 			edge(map, stationId('escape', 'naif-399'), stationId('transfer', 'naif-499')).via
 		).toEqual([]);

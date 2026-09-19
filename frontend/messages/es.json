@@ -1309,7 +1309,6 @@
 	"delta_v_hint_capture": "Frenado hacia una órbita elíptica ligada.",
 	"delta_v_hint_low_orbit": "Una órbita circular a 200 km sobre la superficie, más baja en cuerpos pequeños.",
 	"delta_v_reset_targets": "Volver a los destinos predeterminados",
-	"delta_v_targets_hint": "Los cuerpos del mapa. Desmarca uno para quitarlo.",
 	"delta_v_solar_escape": "Escape del Sistema Solar",
 	"nav_label": "Sitio",
 	"credits_page_title": "Créditos",

@@ -367,9 +367,9 @@ export function buildSubwayMap(
 	};
 	/** The trunk as far as the parking orbit, where a bound route leaves it. */
 	const toOrbit = [...trunk];
-	// Every rung below the root is a trunk stop; the root's is where leaving
-	// the system altogether ends, which is a destination rather than a stop on
-	// the way to one.
+	// Every rung below the root is a trunk stop. The root's is one too, but it
+	// is added with its route below: it ends the trunk rather than carrying
+	// anything further.
 	trunk.push(...ladder(rungs.length - 2));
 
 	// The stationary orbit is the one high orbit of the origin worth a stop:
@@ -477,11 +477,12 @@ export function buildSubwayMap(
 		});
 	}
 
-	// Out of the root's well: the top rung of the ladder, which is a
-	// destination rather than a stop every other route passes.
+	// Out of the root's well: the top rung of the ladder, and the end of the
+	// line. Nothing branches off it, so it is where the trunk stops.
 	const rootId = originChain[originChain.length - 1];
 	if (rootId !== originId) {
 		const path = [...toOrbit, ...ladder(rungs.length - 1)];
+		trunk.push(rungs[rungs.length - 1].station);
 		routes.push({
 			kind: 'escape',
 			targetId: rootId,

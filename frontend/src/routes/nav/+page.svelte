@@ -10,6 +10,7 @@
 	import ListIcon from '@lucide/svelte/icons/list';
 	import * as m from '$lib/paraglide/messages.js';
 	import SitePage from '../../components/nav/SitePage.svelte';
+	import { SITE_GUTTER } from '../../components/nav/SiteNav.svelte';
 	import SubwayDiagram from '../../components/nav/SubwayDiagram.svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -130,11 +131,12 @@
 	<title>{m.nav_delta_v()} - {m.page_title()}</title>
 </svelte:head>
 
-<SitePage current="nav" title={m.nav_delta_v()}>
+<!-- Bleeding, so the strip gets the whole width; everything else guttered. -->
+<SitePage current="nav" title={m.nav_delta_v()} bleed>
 	{#if data.failed}
-		<p class="text-sm text-muted-foreground">{m.delta_v_error()}</p>
+		<p class="{SITE_GUTTER} text-sm text-muted-foreground">{m.delta_v_error()}</p>
 	{:else}
-		<div class="mb-6 flex flex-wrap items-center gap-3">
+		<div class="{SITE_GUTTER} mb-6 flex flex-wrap items-center gap-3">
 			<label class="flex items-center gap-2 text-sm text-muted-foreground">
 				{m.travel_from()}
 				<select
@@ -159,7 +161,6 @@
 				<Sheet.Content side="right" class="overflow-y-auto">
 					<Sheet.Header>
 						<Sheet.Title>{m.tab_targets()}</Sheet.Title>
-						<Sheet.Description>{m.delta_v_targets_hint()}</Sheet.Description>
 					</Sheet.Header>
 					<ul class="flex flex-col px-4">
 						{#each data.systems as system (system.id)}
@@ -233,12 +234,17 @@
 		</div>
 
 		<!-- Rows on a wide screen; on a phone the strip, scrolled sideways. -->
-		<div class="hidden md:block">
+		<div class="{SITE_GUTTER} hidden md:block">
 			<SubwayDiagram drawing={rows} />
 		</div>
-		<div class="md:hidden">
-			<div class="-mx-6 overflow-x-auto px-6">
-				<SubwayDiagram drawing={strip} fixed />
+		<!-- The level names are pinned to the left edge while the map scrolls
+		     under them, so the rungs are always named. -->
+		<div class="flex md:hidden">
+			<div class="shrink-0">
+				<SubwayDiagram drawing={strip.legend} fixed />
+			</div>
+			<div class="overflow-x-auto">
+				<SubwayDiagram drawing={strip.map} fixed />
 			</div>
 		</div>
 	{/if}

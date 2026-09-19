@@ -1309,7 +1309,6 @@
 	"delta_v_hint_capture": "Travagem para uma órbita elíptica ligada.",
 	"delta_v_hint_low_orbit": "Uma órbita circular a 200 km acima da superfície, mais baixa em corpos pequenos.",
 	"delta_v_reset_targets": "Voltar aos destinos predefinidos",
-	"delta_v_targets_hint": "Os corpos no mapa. Desmarque um para o retirar.",
 	"delta_v_solar_escape": "Escape do Sistema Solar",
 	"nav_label": "Site",
 	"credits_page_title": "Créditos",

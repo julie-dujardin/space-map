@@ -1325,7 +1325,6 @@
 	"delta_v_hint_capture": "Hamowanie na związaną orbitę eliptyczną.",
 	"delta_v_hint_low_orbit": "Orbita kołowa 200 km nad powierzchnią, niższa przy małych ciałach.",
 	"delta_v_reset_targets": "Wróć do domyślnych celów",
-	"delta_v_targets_hint": "Ciała na mapie. Odznacz, aby usunąć.",
 	"delta_v_solar_escape": "Ucieczka z Układu Słonecznego",
 	"nav_label": "Witryna",
 	"credits_page_title": "Podziękowania",

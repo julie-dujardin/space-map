@@ -1309,7 +1309,6 @@
 	"delta_v_hint_capture": "Frenata verso un'orbita ellittica legata.",
 	"delta_v_hint_low_orbit": "Un'orbita circolare a 200 km dalla superficie, più bassa sui corpi piccoli.",
 	"delta_v_reset_targets": "Torna alle destinazioni predefinite",
-	"delta_v_targets_hint": "I corpi sulla mappa. Deseleziona uno per toglierlo.",
 	"delta_v_solar_escape": "Fuga dal Sistema solare",
 	"nav_label": "Sito",
 	"credits_page_title": "Crediti",
