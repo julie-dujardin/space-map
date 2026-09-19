@@ -63,7 +63,7 @@ export const load: PageLoad = async ({ url }): Promise<SubwayPageData> => {
 	const catalogue = await fetchSubwayCatalogue([from, ...universe]).catch(() => null);
 	if (!catalogue) {
 		return {
-			map: { originId: from, stations: [], edges: [], routes: [] },
+			map: { originId: from, trunk: [], stations: [], edges: [], routes: [] },
 			names: {},
 			colors: {},
 			systems: [],
@@ -83,7 +83,8 @@ export const load: PageLoad = async ({ url }): Promise<SubwayPageData> => {
 		visible: ordered,
 		hidden,
 		extra,
-		// An origin the catalogue has no orbit for routes nowhere.
-		failed: !catalogue.bodies.has(from)
+		// An origin the catalogue has no orbit for routes nowhere, and so does one
+		// whose primary it could not place: the map then has no trunk to draw.
+		failed: !catalogue.bodies.has(from) || map.trunk.length === 0
 	};
 };

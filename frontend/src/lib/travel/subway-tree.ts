@@ -14,6 +14,9 @@ export interface TreeStop {
 	station: string;
 	kind: StationKind;
 	bodyId: string;
+	/** Name and tint of the body the stop belongs to. */
+	name: string;
+	color: string;
 	/** The planner mode this stop stands for: an arrival mode on a row, a
 	 *  departure mode on the trunk. Null where the planner has no word for it. */
 	mode: EndpointMode | null;
@@ -37,6 +40,8 @@ export interface TreeRow {
 	color: string;
 	/** Leaves the trunk at low orbit rather than at escape. */
 	bound: boolean;
+	/** Which trunk stop it leaves from. */
+	trunkIndex: number;
 	/** The origin's own stationary orbit, drawn as a bound row of two stops. */
 	stationary: boolean;
 	/** Out of the root's well: one stop, the last one off the trunk. */
@@ -56,8 +61,14 @@ export interface TreeRow {
 export interface Tree {
 	originId: string;
 	originName: string;
-	/** Surface where there is ground, then low orbit, then escape where any row leaves from it. */
+	/** Surface where there is ground, then low orbit, then one escape stop per
+	 *  well the origin sits inside — its own, then its primary's, and so on.
+	 *  Each stop carries the tint of the body it belongs to, so a trunk out of
+	 *  a moon changes colour where it leaves the moon's well for the planet's. */
 	trunk: TreeStop[];
+	/** The well the trunk is in past its last stop, which no stop stands for:
+	 *  the root's once the last stop is an escape. */
+	trunkTailColor: string;
 	trunkLegs: TreeLeg[];
 	rows: TreeRow[];
 }
@@ -108,17 +119,23 @@ export function buildTree(
 			station,
 			kind,
 			bodyId,
+			name: nameOf(bodyId),
+			color: colorOf(bodyId),
 			mode: onTrunk ? (DEPARTURE_MODE[kind] ?? null) : ARRIVAL_MODE[kind]
 		};
 	};
 
 	const { originId } = map;
-	const trunkStations = ['surface', 'orbit', 'escape']
-		.map((kind) => `${kind}:${originId}`)
-		.filter((station) => map.stations.some((s) => s.id === station));
+	const trunkStations = map.trunk;
 	const trunk = trunkStations.map((station) => stopOf(station, true));
 	const trunkLegs = trunkStations.slice(1).map((station, i) => leg(trunkStations[i], station));
-	const onTrunk = new Set(trunkStations);
+	// A row always leaves from a trunk stop; a map that says otherwise falls
+	// back to the parking orbit rather than to geometry with no coordinates.
+	const orbitIndex = trunkStations.findIndex((s) => s.startsWith('orbit:'));
+	const trunkIndexOf = (station: string) => {
+		const i = trunkStations.indexOf(station);
+		return i === -1 ? Math.max(0, orbitIndex) : i;
+	};
 
 	// Rows are keyed by the intercept stop they share; the body the stop is
 	// named for owns the row, and every other route through it is a moon.
@@ -133,7 +150,8 @@ export function buildTree(
 			targetId: bodyId,
 			name: nameOf(bodyId),
 			color: colorOf(bodyId),
-			bound: !onTrunk.has(`escape:${originId}`) || from !== `escape:${originId}`,
+			bound: parseStation(from).kind === 'orbit',
+			trunkIndex: trunkIndexOf(from),
 			stationary: false,
 			escape: false,
 			depart: leg(from, transfer),
@@ -160,6 +178,7 @@ export function buildTree(
 				name: nameOf(route.targetId),
 				color: colorOf(route.targetId),
 				bound: false,
+				trunkIndex: trunkIndexOf(route.path[route.path.length - 2]),
 				stationary: false,
 				escape: true,
 				depart: leg(route.path[route.path.length - 2], out),
@@ -181,6 +200,7 @@ export function buildTree(
 				name: nameOf(originId),
 				color: colorOf(originId),
 				bound: true,
+				trunkIndex: trunkIndexOf(`orbit:${originId}`),
 				stationary: true,
 				escape: false,
 				depart: leg(route.path[route.path.indexOf(transfer) - 1], transfer),
@@ -202,6 +222,7 @@ export function buildTree(
 				name: nameOf(route.targetId),
 				color: colorOf(route.targetId),
 				bound: false,
+				trunkIndex: row.trunkIndex,
 				stationary: false,
 				escape: false,
 				depart: leg(transfer, after[0]),
@@ -213,10 +234,16 @@ export function buildTree(
 		}
 	}
 
+	const tail = trunk[trunk.length - 1];
+	const rootId = map.routes.find((r) => r.kind === 'escape')?.targetId;
 	return {
 		originId,
 		originName: nameOf(originId),
 		trunk,
+		trunkTailColor:
+			tail?.kind === 'escape' && rootId !== undefined
+				? colorOf(rootId)
+				: (tail?.color ?? 'currentColor'),
 		trunkLegs,
 		rows: [...rows.values()]
 	};

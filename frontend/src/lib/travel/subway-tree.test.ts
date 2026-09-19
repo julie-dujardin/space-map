@@ -5,9 +5,10 @@ import { buildTree } from './subway-tree';
 /** A map from Earth with the Moon (bound), Jupiter with Europa hanging off
  *  its intercept, a Europa-only trip whose planet is not a target, and the
  *  stationary orbit — enough shapes to exercise the regrouping. */
+const E = 'naif-399';
+const s = (kind: Parameters<typeof stationId>[0], id: string) => stationId(kind, id);
+
 function map(): SubwayMap {
-	const E = 'naif-399';
-	const s = (kind: Parameters<typeof stationId>[0], id: string) => stationId(kind, id);
 	const path = (...ids: string[]) => ids;
 	const edges = [
 		[s('surface', E), s('orbit', E), 'ascent', 9.36, false],
@@ -37,6 +38,7 @@ function map(): SubwayMap {
 	const totals = { orbitKms: 1, surfaceKms: null, aeroOrbitKms: null, aeroSurfaceKms: null };
 	return {
 		originId: E,
+		trunk: [s('surface', E), s('orbit', E), s('escape', E)],
 		stations: [...stations].map((id) => {
 			const [kind, bodyId] = id.split(':');
 			return { id, kind: kind as never, bodyId };
@@ -112,22 +114,99 @@ function map(): SubwayMap {
 	};
 }
 
+/** Placeholder totals: the regrouping copies them across unchanged. */
+function totalsOf() {
+	return { orbitKms: 1, surfaceKms: null, aeroOrbitKms: null, aeroSurfaceKms: null };
+}
+
 const NAMES = {
 	'naif-399': 'Earth',
 	'naif-301': 'Moon',
 	'naif-599': 'Jupiter',
 	'naif-502': 'Europa',
 	'naif-699': 'Saturn',
-	'naif-606': 'Titan'
+	'naif-606': 'Titan',
+	'naif-499': 'Mars'
 };
 
+const COLORS = { 'naif-399': '#36f', 'naif-301': '#bbb', 'naif-599': '#c98', 'naif-10': '#fd0' };
+
 describe('buildTree', () => {
-	const tree = buildTree(map(), NAMES, { 'naif-599': '#c98' });
+	const tree = buildTree(map(), NAMES, COLORS);
 
 	it('lays the trunk as surface, low orbit, escape, with departure modes', () => {
 		expect(tree.trunk.map((s) => s.kind)).toEqual(['surface', 'orbit', 'escape']);
 		expect(tree.trunk.map((s) => s.mode)).toEqual(['surface', 'low-orbit', null]);
 		expect(tree.trunkLegs.map((l) => l.dvKms)).toEqual([9.36, 3.23]);
+		// Every trunk stop is the origin's, so the whole trunk is its colour.
+		expect(tree.trunk.map((s) => s.color)).toEqual(['#36f', '#36f', '#36f']);
+	});
+
+	it('gives a moon origin a planet-coloured last trunk stop its siblings hang off', () => {
+		const M = 'naif-301';
+		const moonMap: SubwayMap = {
+			originId: M,
+			trunk: [s('surface', M), s('orbit', M), s('escape', M), s('escape', E)],
+			stations: [
+				s('surface', M),
+				s('orbit', M),
+				s('escape', M),
+				s('escape', E),
+				s('transfer', E),
+				s('transfer', 'naif-499')
+			].map((id) => {
+				const [kind, bodyId] = id.split(':');
+				return { id, kind: kind as never, bodyId };
+			}),
+			edges: [
+				[s('surface', M), s('orbit', M), 'ascent', 1.89],
+				[s('orbit', M), s('escape', M), 'escape', 0.66],
+				[s('escape', M), s('escape', E), 'escape', 0.41],
+				[s('escape', M), s('transfer', E), 'depart', 0.1],
+				[s('escape', E), s('transfer', 'naif-499'), 'depart', 0.9]
+			].map(([from, to, kind, dvKms]) => ({
+				from: from as string,
+				to: to as string,
+				kind: kind as 'escape',
+				dvKms: dvKms as number,
+				via: [],
+				aero: false
+			})),
+			routes: [
+				{
+					kind: 'body',
+					targetId: E,
+					path: [s('surface', M), s('orbit', M), s('escape', M), s('transfer', E)],
+					...totalsOf(),
+					transferDays: 5
+				},
+				{
+					kind: 'body',
+					targetId: 'naif-499',
+					path: [
+						s('surface', M),
+						s('orbit', M),
+						s('escape', M),
+						s('escape', E),
+						s('transfer', 'naif-499')
+					],
+					...totalsOf(),
+					transferDays: 250
+				}
+			]
+		};
+		const moonTree = buildTree(moonMap, NAMES, COLORS);
+		expect(moonTree.trunk.map((t) => [t.kind, t.color])).toEqual([
+			['surface', '#bbb'],
+			['orbit', '#bbb'],
+			['escape', '#bbb'],
+			['escape', '#36f']
+		]);
+		expect(moonTree.trunkLegs.map((l) => l.dvKms)).toEqual([1.89, 0.66, 0.41]);
+		// Earth leaves the trunk at the Moon's escape; Mars only past Earth's.
+		const byId = Object.fromEntries(moonTree.rows.map((r) => [r.targetId, r]));
+		expect(byId[E].trunkIndex).toBe(2);
+		expect(byId['naif-499'].trunkIndex).toBe(3);
 	});
 
 	it('marks the rows that leave from low orbit as bound', () => {
@@ -184,7 +263,10 @@ describe('buildTree', () => {
 			aeroSurfaceKms: null,
 			transferDays: Infinity
 		});
-		const out = buildTree(withOut, NAMES, {}).rows.find((r) => r.escape)!;
+		const withOutTree = buildTree(withOut, NAMES, COLORS);
+		// Past Earth's escape the trunk is already in the Sun's well.
+		expect(withOutTree.trunkTailColor).toBe('#fd0');
+		const out = withOutTree.rows.find((r) => r.escape)!;
 		expect(out.depart.dvKms).toBe(5.53);
 		expect(out.stops.map((s) => [s.kind, s.mode])).toEqual([['escape', null]]);
 		expect(out.bound).toBe(false);

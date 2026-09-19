@@ -213,8 +213,20 @@ describe('buildSubwayMap', () => {
 	it('climbs out of Earth on the way from the Moon to Mars', () => {
 		const map = buildSubwayMap(system(), 'naif-301', ['naif-499']);
 		const r = route(map, 'naif-499');
-		const depart = edge(map, stationId('escape', 'naif-301'), stationId('transfer', 'naif-499'));
-		expect(depart.via).toEqual(['naif-399']);
+		// Earth's escape is a stop of its own on the trunk, past the Moon's.
+		expect(map.trunk).toEqual([
+			stationId('surface', 'naif-301'),
+			stationId('orbit', 'naif-301'),
+			stationId('escape', 'naif-301'),
+			stationId('escape', 'naif-399')
+		]);
+		expect(r.path.slice(0, 5)).toEqual([...map.trunk, stationId('transfer', 'naif-499')]);
+		expect(
+			edge(map, stationId('escape', 'naif-399'), stationId('transfer', 'naif-499')).via
+		).toEqual([]);
+		// The two rungs together are what leaving used to cost in one step.
+		const climb = edge(map, stationId('escape', 'naif-301'), stationId('escape', 'naif-399'));
+		expect(climb.dvKms).toBeGreaterThan(0);
 		// Cheaper to leave than Earth's own orbit is: the Moon is most of the way up the well.
 		const fromEarth = route(buildSubwayMap(system(), 'naif-399', ['naif-499']), 'naif-499');
 		expect(r.orbitKms).toBeLessThan(fromEarth.orbitKms);
@@ -307,8 +319,18 @@ describe('buildSubwayMap', () => {
 	it('routes the Solar System escape through Earth from the Moon', () => {
 		const map = buildSubwayMap(system(), 'naif-301', []);
 		const r = map.routes.find((x) => x.kind === 'escape')!;
-		expect(edge(map, r.path[r.path.length - 2], r.path[r.path.length - 1]).via).toEqual([
-			'naif-399'
+		// The ladder all the way up: the Moon's well, then Earth's, then the Sun's.
+		expect(r.path).toEqual([
+			stationId('surface', 'naif-301'),
+			stationId('orbit', 'naif-301'),
+			stationId('escape', 'naif-301'),
+			stationId('escape', 'naif-399'),
+			stationId('escape', 'naif-10')
 		]);
+		// Leaving the Solar System costs the same however the climb is split.
+		const oneStep = buildSubwayMap(system(), 'naif-399', []).routes.find(
+			(x) => x.kind === 'escape'
+		)!;
+		expect(r.orbitKms).toBeLessThan(oneStep.orbitKms);
 	});
 });

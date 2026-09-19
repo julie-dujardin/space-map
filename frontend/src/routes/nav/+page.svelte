@@ -14,7 +14,6 @@
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { formatNavEnd } from '$lib/state/nav-end';
-	import { bodyHref } from '$lib/state/url';
 	import { formatDvFigure } from '$lib/travel/format';
 	import { drawRows, drawStrip, type DrawText } from '$lib/travel/subway-draw';
 	import { buildTree, type TreeStop } from '$lib/travel/subway-tree';
@@ -37,6 +36,11 @@
 			orbit: m.travel_mode_low_orbit(),
 			surface: m.delta_v_station_surface(),
 			stationary: m.travel_mode_stationary()
+		},
+		hint: {
+			transfer: m.delta_v_hint_intercept(),
+			escape: m.delta_v_hint_capture(),
+			orbit: m.delta_v_hint_low_orbit()
 		},
 		escape: m.delta_v_station_escape(),
 		gto: m.travel_mode_transfer(),
@@ -143,12 +147,6 @@
 					{/each}
 				</select>
 			</label>
-			<a
-				class="text-sm text-muted-foreground hover:text-foreground"
-				href={bodyHref(map.originId, name(map.originId))}
-			>
-				{name(map.originId)} →
-			</a>
 			<Sheet.Root bind:open={drawerOpen}>
 				<Sheet.Trigger>
 					{#snippet child({ props })}
@@ -239,27 +237,9 @@
 			<SubwayDiagram drawing={rows} />
 		</div>
 		<div class="md:hidden">
-			<p class="mb-2 text-xs text-muted-foreground">{m.delta_v_scroll_hint()}</p>
 			<div class="-mx-6 overflow-x-auto px-6">
 				<SubwayDiagram drawing={strip} fixed />
 			</div>
 		</div>
-
-		<dl class="mt-8 flex flex-col gap-2 text-xs text-muted-foreground">
-			<div class="flex items-center gap-3">
-				<svg width="16" height="16" viewBox="0 0 16 16" class="shrink-0 text-foreground">
-					<circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="3" />
-				</svg>
-				<dd>{m.delta_v_legend_stop()}</dd>
-			</div>
-			<div class="flex items-center gap-3">
-				<svg width="16" height="10" viewBox="0 0 16 10" class="shrink-0">
-					<path d="M2,9 a6,6 0 0 1 12,0" fill="none" stroke-width="2" class="stroke-sky-500" />
-				</svg>
-				<dd>{m.travel_aero_absorbed()}</dd>
-			</div>
-			<dd>{m.travel_total_dv()}: {m.delta_v_to_orbit()} · {m.travel_aerobraked()}</dd>
-			<dd>{m.delta_v_legend_note()}</dd>
-		</dl>
 	{/if}
 </SitePage>

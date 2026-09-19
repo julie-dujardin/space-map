@@ -44,6 +44,8 @@ export interface DrawLabel {
 	anchor: 'start' | 'middle' | 'end';
 	rotate: number;
 	href: string | null;
+	/** Hover text, for the column headings that name a kind of stop. */
+	title: string | null;
 }
 
 export interface DrawAero {
@@ -64,6 +66,8 @@ export interface Drawing {
  *  stop. Passed in so this module carries no message import. */
 export interface DrawText {
 	stop: Record<StationKind, string>;
+	/** What a column heading says on hover, where there is anything to say. */
+	hint: Partial<Record<StationKind, string>>;
 	/** The trunk's escape stop, which is not a capture. */
 	escape: string;
 	/** The origin's own transfer stop: the ellipse up to its stationary orbit. */
@@ -84,7 +88,20 @@ export interface DrawOptions {
 	link: (stop: TreeStop, targetId: string) => string | null;
 }
 
-const TRUNK = 'currentColor';
+/** The trunk stops in order with the rows that leave from each, and the y (or
+ *  x) each one needs. The escape ladder makes this a list rather than the two
+ *  fixed stops the map started with. */
+function trunkGroups(tree: Tree): TreeRow[][] {
+	return tree.trunk.map((_, i) => [
+		...tree.rows.filter((r) => r.trunkIndex === i && !r.escape),
+		...tree.rows.filter((r) => r.trunkIndex === i && r.escape)
+	]);
+}
+
+/** How much room a row and its moons take along the trunk. */
+function rowSpan(row: TreeRow, pitch: number, moonPitch: number, gap: number): number {
+	return pitch + row.moons.length * moonPitch + (row.bound ? 0 : gap);
+}
 
 class Sheet {
 	lines: DrawLine[] = [];
@@ -143,7 +160,8 @@ class Sheet {
 			muted: o.muted ?? false,
 			anchor: o.anchor ?? 'middle',
 			rotate: o.rotate ?? 0,
-			href: o.href ?? null
+			href: o.href ?? null,
+			title: o.title ?? null
 		});
 	}
 }
@@ -181,95 +199,89 @@ const BUS_X = 60;
 export function drawRows(o: DrawOptions): Drawing {
 	const { tree, text, fmt, link } = o;
 	const S = new Sheet();
+	// Nothing to hang the rows off: an origin the catalogue could not place.
+	if (tree.trunk.length === 0) return S.drawing(ROWS_WIDTH, 0);
 	const dv = (x1: number, x2: number, y: number, leg: TreeLeg, below = false) => {
 		const ly = below ? y + 13 : y - 12;
 		S.text((x1 + x2) / 2, ly, fmt(leg.dvKms), { weight: 600, size: 12 });
 		if (leg.aero) S.aeros.push({ x: (x1 + x2) / 2 + 26, y: ly + 3 });
 	};
 
-	const bound = tree.rows.filter((r) => r.bound);
-	const free = tree.rows.filter((r) => !r.bound && !r.escape);
-	const out = tree.rows.find((r) => r.escape) ?? null;
+	const groups = trunkGroups(tree);
 	const ground = tree.trunk[0]?.kind === 'surface';
-	const hasEscape = tree.trunk.some((s) => s.kind === 'escape');
 
-	// Trunk stops, then the bound rows between low orbit and escape, then the rest.
+	// Trunk stops down the left, each followed by the rows that leave from it.
 	const yTop = 40;
-	const yLeo = ground ? 110 : yTop;
-	let y = yLeo + 44;
+	const orbitIndex = ground ? 1 : 0;
+	const trunkYs: number[] = [];
+	if (ground) trunkYs[0] = yTop;
+	let y = ground ? 110 : yTop;
 	const rowYs = new Map<TreeRow, number>();
-	for (const r of bound) {
-		rowYs.set(r, y);
-		y += 42;
-	}
-	const yEsc = hasEscape ? y + 14 : null;
-	if (yEsc !== null) y = yEsc + 44;
-	for (const r of free) {
-		rowYs.set(r, y);
-		y += 42;
-		for (const m of r.moons) {
-			rowYs.set(m, y);
-			y += 34;
+	for (let i = orbitIndex; i < tree.trunk.length; i++) {
+		if (i > orbitIndex) y += 14;
+		trunkYs[i] = y;
+		y += 44;
+		for (const r of groups[i]) {
+			rowYs.set(r, y);
+			y += rowSpan(r, 42, 34, 12);
+			for (const [k, mo] of r.moons.entries()) rowYs.set(mo, rowYs.get(r)! + 42 + k * 34);
 		}
-		y += 12;
-	}
-	if (out) {
-		rowYs.set(out, y);
-		y += 42;
 	}
 	const yEnd = y - 12;
 
-	const trunkStop = (kind: StationKind) => tree.trunk.find((s) => s.kind === kind) ?? null;
-	const trunkHref = (kind: StationKind) => {
-		const s = trunkStop(kind);
-		return s ? link(s, tree.originId) : null;
-	};
+	const trunkLabel = (kind: StationKind) => (kind === 'escape' ? text.escape : text.stop[kind]);
+	// One segment per stop, in that stop's colour: out of a moon the trunk
+	// turns the planet's colour where it leaves the moon's well.
+	const lastTrunk = tree.trunk.length - 1;
+	// Past the last stop the trunk is already in the well above it, so the
+	// tail takes that body's colour rather than the origin's.
 	S.line(
 		[
-			[BUS_X, ground ? yTop : yLeo],
+			[BUS_X, trunkYs[lastTrunk]],
 			[BUS_X, yEnd]
 		],
-		TRUNK,
+		tree.trunkTailColor,
 		7,
 		1,
 		true
 	);
-	if (ground) {
-		S.stop(BUS_X, yTop, TRUNK, 8, false, trunkHref('surface'), text.stop.surface);
-		S.text(BUS_X + 16, yTop, `${tree.originName} · ${text.stop.surface}`, {
+	tree.trunk.forEach((stop, i) => {
+		S.line(
+			[
+				[BUS_X, i === 0 ? trunkYs[0] : trunkYs[i - 1]],
+				[BUS_X, trunkYs[i]]
+			],
+			stop.color,
+			7,
+			1,
+			true
+		);
+		S.stop(
+			BUS_X,
+			trunkYs[i],
+			stop.color,
+			8,
+			false,
+			link(stop, tree.originId),
+			trunkLabel(stop.kind)
+		);
+		S.text(BUS_X + 16, trunkYs[i], `${stop.name} · ${trunkLabel(stop.kind)}`, {
 			size: 11,
 			muted: true,
 			anchor: 'start'
 		});
-		S.text(BUS_X + 16, (yTop + yLeo) / 2, fmt(tree.trunkLegs[0].dvKms), {
-			weight: 600,
-			size: 12,
-			anchor: 'start'
-		});
-	}
-	S.stop(BUS_X, yLeo, TRUNK, 8, false, trunkHref('orbit'), text.stop.orbit);
-	S.text(BUS_X + 16, yLeo, `${tree.originName} · ${text.stop.orbit}`, {
-		size: 11,
-		muted: true,
-		anchor: 'start'
+		if (i > 0) {
+			S.text(BUS_X + 16, trunkYs[i] - 26, fmt(tree.trunkLegs[i - 1].dvKms), {
+				weight: 600,
+				size: 12,
+				anchor: 'start'
+			});
+		}
 	});
-	if (yEsc !== null) {
-		S.stop(BUS_X, yEsc, TRUNK, 8, false, trunkHref('escape'), text.escape);
-		S.text(BUS_X + 16, yEsc, `${tree.originName} · ${text.escape}`, {
-			size: 11,
-			muted: true,
-			anchor: 'start'
-		});
-		S.text(BUS_X + 16, yEsc - 26, fmt(tree.trunkLegs[tree.trunkLegs.length - 1].dvKms), {
-			weight: 600,
-			size: 12,
-			anchor: 'start'
-		});
-	}
 
 	// Column headings.
 	(['transfer', 'escape', 'orbit', 'surface'] as const).forEach((kind) =>
-		S.text(COL[kind], 18, text.stop[kind], { size: 10.5, muted: true })
+		S.text(COL[kind], 18, text.stop[kind], { size: 10.5, muted: true, title: text.hint[kind] })
 	);
 	S.text(COL_TOTAL, 18, text.totals, { size: 10.5, muted: true, anchor: 'start' });
 
@@ -381,83 +393,94 @@ const X_ESCAPE = 330;
 export function drawStrip(o: DrawOptions): Drawing {
 	const { tree, text, fmt, link } = o;
 	const S = new Sheet();
+	if (tree.trunk.length === 0) return S.drawing(0, STRIP_HEIGHT);
 	const dv = (x: number, y1: number, y2: number, leg: TreeLeg) => {
 		S.text(x + 9, (y1 + y2) / 2, fmt(leg.dvKms), { weight: 600, size: 11.5, anchor: 'start' });
 		if (leg.aero) S.aeros.push({ x: x + 9 + 34, y: (y1 + y2) / 2 + 3 });
 	};
 
-	const bound = tree.rows.filter((r) => r.bound);
-	const free = tree.rows.filter((r) => !r.bound && !r.escape);
-	const out = tree.rows.find((r) => r.escape) ?? null;
+	const groups = trunkGroups(tree);
 	const ground = tree.trunk[0]?.kind === 'surface';
-	const hasEscape = tree.trunk.some((s) => s.kind === 'escape');
 
-	// Bound rows rise between the low-orbit and escape stops, the rest beyond.
+	// Trunk stops along the bottom, each followed by the rows that rise from it.
+	const orbitIndex = ground ? 1 : 0;
+	const trunkXs: number[] = [];
+	if (ground) trunkXs[0] = X_SURFACE;
+	let x = X_LEO;
 	const colXs = new Map<TreeRow, number>();
-	let x = X_LEO + 60;
-	for (const r of bound) {
-		colXs.set(r, x);
+	for (let i = orbitIndex; i < tree.trunk.length; i++) {
+		// The first escape stop keeps its old place unless the bound rows push it on.
+		if (i > orbitIndex) x = Math.max(i === orbitIndex + 1 ? X_ESCAPE : 0, x + 10);
+		trunkXs[i] = x;
 		x += 70;
-	}
-	const xEscape = hasEscape ? Math.max(X_ESCAPE, x + 10) : null;
-	x = (xEscape ?? x) + 70;
-	for (const r of free) {
-		colXs.set(r, x);
-		x += 70;
-		for (const m of r.moons) {
-			colXs.set(m, x);
-			x += 54;
+		for (const r of groups[i]) {
+			colXs.set(r, x);
+			for (const [k, mo] of r.moons.entries()) colXs.set(mo, x + 70 + k * 54);
+			x += rowSpan(r, 70, 54, 16);
 		}
-		x += 16;
-	}
-	if (out) {
-		colXs.set(out, x);
-		x += 70;
 	}
 	const xEnd = x - 16;
 
-	const trunkStop = (kind: StationKind) => tree.trunk.find((s) => s.kind === kind) ?? null;
-	const trunkHref = (kind: StationKind) => {
-		const s = trunkStop(kind);
-		return s ? link(s, tree.originId) : null;
-	};
-	const xStart = ground ? X_SURFACE : X_LEO;
+	const trunkLabel = (kind: StationKind) => (kind === 'escape' ? text.escape : text.stop[kind]);
+	const lastTrunk = tree.trunk.length - 1;
 	S.line(
 		[
-			[xStart, Y_TRUNK],
+			[trunkXs[lastTrunk], Y_TRUNK],
 			[xEnd, Y_TRUNK]
 		],
-		TRUNK,
+		tree.trunkTailColor,
 		7,
 		1,
 		true
 	);
-	if (ground) {
-		S.stop(X_SURFACE, Y_TRUNK, TRUNK, 8, false, trunkHref('surface'), text.stop.surface);
-		S.text(X_SURFACE, Y_TRUNK + 22, text.stop.surface, {
-			size: 10.5,
-			muted: true,
-			anchor: 'start'
-		});
-		S.text((X_SURFACE + X_LEO) / 2, Y_TRUNK - 14, fmt(tree.trunkLegs[0].dvKms), {
-			weight: 600,
-			size: 12
-		});
-	}
-	S.stop(X_LEO, Y_TRUNK, TRUNK, 8, false, trunkHref('orbit'), text.stop.orbit);
-	S.text(X_LEO, Y_TRUNK + 22, text.stop.orbit, { size: 10.5, muted: true });
-	if (xEscape !== null) {
-		S.stop(xEscape, Y_TRUNK, TRUNK, 8, false, trunkHref('escape'), text.escape);
-		S.text(xEscape, Y_TRUNK + 22, text.escape, { size: 10.5, muted: true });
-		S.text(xEscape - 22, Y_TRUNK - 14, fmt(tree.trunkLegs[tree.trunkLegs.length - 1].dvKms), {
-			weight: 600,
-			size: 12
-		});
-	}
+	tree.trunk.forEach((stop, i) => {
+		// One segment per stop, in that stop's colour: out of a moon the trunk
+		// turns the planet's colour where it leaves the moon's well.
+		S.line(
+			[
+				[i === 0 ? trunkXs[0] : trunkXs[i - 1], Y_TRUNK],
+				[trunkXs[i], Y_TRUNK]
+			],
+			stop.color,
+			7,
+			1,
+			true
+		);
+		S.stop(
+			trunkXs[i],
+			Y_TRUNK,
+			stop.color,
+			8,
+			false,
+			link(stop, tree.originId),
+			trunkLabel(stop.kind)
+		);
+		// The strip has no room for a name on every stop, but a second escape
+		// stop is another body's and has to say whose.
+		S.text(
+			trunkXs[i],
+			Y_TRUNK + 22,
+			stop.bodyId === tree.originId
+				? trunkLabel(stop.kind)
+				: `${stop.name} · ${trunkLabel(stop.kind)}`,
+			{ size: 10.5, muted: true }
+		);
+		if (i > 0) {
+			S.text(trunkXs[i] - 22, Y_TRUNK - 14, fmt(tree.trunkLegs[i - 1].dvKms), {
+				weight: 600,
+				size: 12
+			});
+		}
+	});
 
 	// Level names at the far end.
 	(['transfer', 'escape', 'orbit', 'surface'] as const).forEach((kind) =>
-		S.text(xEnd + 30, LEVEL[kind], text.stop[kind], { size: 10.5, muted: true, anchor: 'start' })
+		S.text(xEnd + 30, LEVEL[kind], text.stop[kind], {
+			size: 10.5,
+			muted: true,
+			anchor: 'start',
+			title: text.hint[kind]
+		})
 	);
 
 	const drawStops = (row: TreeRow, cx: number, fromY: number, small: boolean) => {
@@ -513,6 +536,14 @@ export function drawStrip(o: DrawOptions): Drawing {
 				weight: 600,
 				size: 13
 			});
+			if (row.totals) {
+				S.text(cx + 16, LEVEL.transfer - 20, totalText(row, fmt), {
+					rotate: -55,
+					anchor: 'start',
+					size: 10,
+					muted: true
+				});
+			}
 			continue;
 		}
 		const top = drawStops(row, cx, Y_TRUNK, false);

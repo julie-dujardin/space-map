@@ -88,6 +88,10 @@ export interface SubwayRoute {
 
 export interface SubwayMap {
 	originId: string;
+	/** The stops every route shares, in travel order: the origin's ground and
+	 *  parking orbit, then one escape stop per well it sits inside — its own
+	 *  first, then its primary's, out to the one below the root. */
+	trunk: string[];
 	stations: SubwayStation[];
 	edges: SubwayEdge[];
 	routes: SubwayRoute[];
@@ -178,11 +182,10 @@ function meet(originChain: readonly string[], targetChain: readonly string[]): M
 /** The stops and burns from one body's parking orbit to another's. */
 interface Crossing {
 	transferId: string;
-	/** Burn out of the origin's parking orbit; bound when the transfer stays
-	 *  about the origin and no escape is crossed. */
-	departKms: number;
-	departBound: boolean;
-	departVia: string[];
+	/** Leaving the origin. A bound transfer stays about it and is one burn;
+	 *  a free one is quoted as the excess speed it has to leave with, which
+	 *  the trunk's escape ladder prices stop by stop. */
+	depart: { bound: true; dvKms: number } | { bound: false; vInfKms: number };
 	/** Burn into the target's parking orbit; bound when the transfer arrives
 	 *  on an ellipse about the target rather than a hyperbola. */
 	arriveKms: number;
@@ -221,9 +224,7 @@ function crossing(
 		const vInf = vInfAlong(bodies, targetSide, vInfTop);
 		return {
 			transferId: top.id,
-			departKms,
-			departBound: true,
-			departVia: [],
+			depart: { bound: true, dvKms: departKms },
 			arriveKms: extraKms(targetTravel, vInf),
 			arriveBound: false,
 			arriveVia: targetSide.slice(0, -1),
@@ -244,9 +245,7 @@ function crossing(
 		const arrivePeriKms = ellipseSpeed(target.mu, rParkT, rParkT, r2);
 		return {
 			transferId: target.id,
-			departKms: extraKms(originTravel, vInf),
-			departBound: false,
-			departVia: originSide.slice(0, -1).reverse(),
+			depart: { bound: false, vInfKms: vInf },
 			arriveKms: Math.abs(arrivePeriKms - circularSpeed(target.mu, rParkT)),
 			arriveBound: true,
 			arriveVia: [],
@@ -267,9 +266,7 @@ function crossing(
 	const vInfT = vInfAlong(bodies, targetSide, vInfB);
 	return {
 		transferId: b.id,
-		departKms: extraKms(originTravel, vInfO),
-		departBound: false,
-		departVia: originSide.slice(0, -1).reverse(),
+		depart: { bound: false, vInfKms: vInfO },
 		arriveKms: extraKms(targetTravel, vInfT),
 		arriveBound: false,
 		arriveVia: targetSide.slice(0, -1),
@@ -321,7 +318,8 @@ export function buildSubwayMap(
 
 	const origin = bodies.get(originId);
 	const originChain = chainOf(bodies, originId);
-	if (!origin?.travel || !originChain) return { originId, stations: [], edges: [], routes: [] };
+	if (!origin?.travel || !originChain)
+		return { originId, trunk: [], stations: [], edges: [], routes: [] };
 
 	// The trunk every route shares.
 	const trunk: string[] = [];
@@ -331,6 +329,48 @@ export function buildSubwayMap(
 		join(trunk[0], originOrbit, 'ascent', ascentDv(origin.travel));
 	}
 	trunk.push(originOrbit);
+
+	// The escape ladder: one rung per well the origin sits inside, its own
+	// first. Climbing it is the same burn from the parking orbit each time,
+	// only aimed higher, so each rung costs what it adds over the one below
+	// and a trip departs from the last rung it has to clear.
+	const rungs = originChain.map((bodyId, i) => {
+		// The excess speed at the origin that reaches this body's escape: none
+		// for its own well, and for a primary the escape excess at the orbit
+		// just below it, carried down the chain to the origin.
+		let vInfKms = 0;
+		if (i > 0) {
+			const well = bodies.get(bodyId)!;
+			const rKm = bodies.get(originChain[i - 1])!.orbitRadiusKm;
+			const top = Math.sqrt((2 * well.mu) / rKm) - circularSpeed(well.mu, rKm);
+			vInfKms = vInfAlong(bodies, originChain.slice(0, i).reverse(), top);
+		}
+		return { bodyId, vInfKms, station: stationId('escape', bodyId) };
+	});
+	const climbKms = (vInfKms: number) =>
+		injectionDv(origin.travel!.mu, parkingRadiusKm(origin.travel!), vInfKms);
+	/** Put the ladder up to and including `rung` on the map, and hand back the
+	 *  stops it adds after the parking orbit. */
+	const ladder = (rung: number): string[] => {
+		const path: string[] = [];
+		for (let i = 0; i <= rung; i++) {
+			const to = stop('escape', rungs[i].bodyId);
+			join(
+				i === 0 ? originOrbit : rungs[i - 1].station,
+				to,
+				'escape',
+				climbKms(rungs[i].vInfKms) - (i === 0 ? 0 : climbKms(rungs[i - 1].vInfKms))
+			);
+			path.push(to);
+		}
+		return path;
+	};
+	/** The trunk as far as the parking orbit, where a bound route leaves it. */
+	const toOrbit = [...trunk];
+	// Every rung below the root is a trunk stop; the root's is where leaving
+	// the system altogether ends, which is a destination rather than a stop on
+	// the way to one.
+	trunk.push(...ladder(rungs.length - 2));
 
 	// The stationary orbit is the one high orbit of the origin worth a stop:
 	// a Hohmann up from parking, circularised at the top.
@@ -344,7 +384,7 @@ export function buildSubwayMap(
 		const circKms = circularSpeed(origin.mu, rSync) - ellipseSpeed(origin.mu, rSync, rPark, rSync);
 		join(originOrbit, gto, 'depart', departKms);
 		join(gto, geo, 'circularize', circKms);
-		const path = [...trunk, gto, geo];
+		const path = [...toOrbit, gto, geo];
 		routes.push({
 			kind: 'stationary',
 			targetId: originId,
@@ -366,16 +406,22 @@ export function buildSubwayMap(
 		if (!meeting) continue;
 
 		const x = crossing(bodies, origin, target, meeting);
-		const path = [...trunk];
+		const path = [...toOrbit];
 		const transfer = stop('transfer', x.transferId);
 
-		if (x.departBound) {
-			join(originOrbit, transfer, 'depart', x.departKms, x.departVia);
+		if (x.depart.bound) {
+			join(originOrbit, transfer, 'depart', x.depart.dvKms);
 		} else {
-			const escape = stop('escape', originId);
-			join(originOrbit, escape, 'escape', escapeKms(origin.travel));
-			join(escape, transfer, 'depart', x.departKms, x.departVia);
-			path.push(escape);
+			// The trip climbs the ladder as far as the well it has to leave, and
+			// pays only what its own excess adds over that rung.
+			const rung = originChain.indexOf(meeting.originSide[0]);
+			path.push(...ladder(rung));
+			join(
+				rungs[rung].station,
+				transfer,
+				'depart',
+				climbKms(x.depart.vInfKms) - climbKms(rungs[rung].vInfKms)
+			);
 		}
 		path.push(transfer);
 
@@ -431,21 +477,11 @@ export function buildSubwayMap(
 		});
 	}
 
-	// Out of the root's well: the excess speed that escapes the root from the
-	// orbit of the origin's outermost ancestor, carried down to the origin.
+	// Out of the root's well: the top rung of the ladder, which is a
+	// destination rather than a stop every other route passes.
 	const rootId = originChain[originChain.length - 1];
 	if (rootId !== originId) {
-		const root = bodies.get(rootId)!;
-		const originSide = originChain.slice(0, -1).reverse();
-		const top = bodies.get(originSide[0])!;
-		const vInfTop =
-			Math.sqrt((2 * root.mu) / top.orbitRadiusKm) - circularSpeed(root.mu, top.orbitRadiusKm);
-		const vInf = vInfAlong(bodies, originSide, vInfTop);
-		const escape = stop('escape', originId);
-		const out = stop('escape', rootId);
-		join(originOrbit, escape, 'escape', escapeKms(origin.travel));
-		join(escape, out, 'depart', extraKms(origin.travel, vInf), originSide.slice(0, -1).reverse());
-		const path = [...trunk, escape, out];
+		const path = [...toOrbit, ...ladder(rungs.length - 1)];
 		routes.push({
 			kind: 'escape',
 			targetId: rootId,
@@ -458,7 +494,13 @@ export function buildSubwayMap(
 		});
 	}
 
-	return { originId, stations: [...stations.values()], edges: [...edges.values()], routes };
+	return {
+		originId,
+		trunk,
+		stations: [...stations.values()],
+		edges: [...edges.values()],
+		routes
+	};
 }
 
 function sumAlong(edges: ReadonlyMap<string, SubwayEdge>, path: readonly string[]): number {

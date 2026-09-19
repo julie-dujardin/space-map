@@ -94,7 +94,11 @@
 				text-anchor={t.anchor}
 				dominant-baseline="central"
 				transform={t.rotate ? `rotate(${t.rotate} ${t.x} ${t.y})` : undefined}
-				class={t.muted ? 'fill-muted-foreground' : 'fill-foreground'}>{t.text}</text
+				class="{t.muted ? 'fill-muted-foreground' : 'fill-foreground'} {t.title
+					? 'cursor-help'
+					: ''}"
+			>
+				{#if t.title}<title>{t.title}</title>{/if}{t.text}</text
 			>
 		{/if}
 	{/each}
