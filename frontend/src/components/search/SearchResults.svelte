@@ -1,16 +1,13 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { thumbnailUrl, type SearchHit } from '$lib/search/client';
 	import { inceptionYear, optionDomId } from '$lib/search/format';
 	import { formatNumber } from '$lib/format/quantities';
 	import { CHUNK, type SearchModel } from '$lib/search/model.svelte';
 	import ResultRow from './ResultRow.svelte';
-
-	// Varied bar widths so skeleton rows read as real text, not a grid.
-	const SKELETON_ROWS = [82, 64, 73, 58, 78, 67, 71, 60];
+	import SearchStatus from './SearchStatus.svelte';
 
 	let {
 		model,
@@ -113,36 +110,11 @@
 </script>
 
 <ScrollArea class="min-h-0 flex-1" bind:viewportRef={scrollEl}>
-	{#if model.error}
-		<div role="alert" class="px-3 py-10 text-center">
-			<div class="mb-1 text-sm text-foreground">{m.search_error()}</div>
-			<div class="text-xs text-muted-foreground">{m.search_error_hint()}</div>
-		</div>
-	{:else if model.loading && model.hits.length === 0}
-		<!-- initial-load skeletons: same metrics as ResultRow so the list doesn't jump -->
-		<ul class="px-2" aria-hidden="true">
-			{#each SKELETON_ROWS as w, i (i)}
-				<li class="flex items-center gap-3 px-4 py-2">
-					<Skeleton class="size-9 shrink-0" style="animation-delay: {i * 80}ms" />
-					<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-						<Skeleton class="h-3 rounded" style="width: {w}%; animation-delay: {i * 80}ms" />
-						<Skeleton
-							class="h-2.5 rounded opacity-70"
-							style="width: {w - 25}%; animation-delay: {i * 80}ms"
-						/>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	{:else if model.hits.length === 0}
-		<div class="px-3 py-10 text-center">
-			<div class="mb-1 text-sm text-foreground">{m.search_no_results()}</div>
-			{#if model.query.trim()}
-				<div class="text-xs text-muted-foreground">
-					{m.search_no_results_for({ query: model.query.trim() })}
-				</div>
-			{/if}
-		</div>
+	{#if model.error || model.hits.length === 0}
+		<SearchStatus
+			status={model.error ? 'error' : model.loading ? 'loading' : 'empty'}
+			query={model.query}
+		/>
 	{:else}
 		<!-- spacer: hits above the window -->
 		<div style="height: {model.firstIndex * ROW_H}px"></div>

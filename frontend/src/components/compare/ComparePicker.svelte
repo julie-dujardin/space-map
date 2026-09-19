@@ -1,7 +1,8 @@
 <!--
-  What goes into a comparison: a ready-made set, or one object out of the whole
-  catalogue. Nothing here says anything about pages — how the row is broken up
-  is settled when it is drawn, not when something is picked.
+  What goes into a comparison: one object out of the whole catalogue, or on a
+  phone a ready-made set as well, since there the list at the side that holds
+  the presets is not drawn. Nothing here says anything about pages — how the
+  row is broken up is settled when it is drawn, not when something is picked.
 -->
 <script lang="ts">
 	import CheckIcon from '@lucide/svelte/icons/check';
@@ -9,44 +10,30 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { search, type ObjectHit } from '$lib/search/client';
+	import { isSearchEnabled, search, type ObjectHit } from '$lib/search/client';
 	import { getLocale } from '$lib/host';
 	import { objectTypeLabel } from '$lib/format/object-type';
 	import { formatQuantity } from '$lib/format/quantities';
 	import { COMPARE_PRESETS, presetOn, type ComparePreset } from '$lib/compare/presets';
+	import SearchStatus from '../search/SearchStatus.svelte';
 
 	interface Props {
 		/** Already in the comparison: those rows are marked and do nothing. */
 		chosen: string[];
 		onadd: (hit: ObjectHit) => void;
-		/** Put the preset up, or take it down: several can be up at once. */
-		onpreset: (preset: ComparePreset) => void;
+		/** Put the preset up, or take it down: several can be up at once. Given
+		 *  only where the page has nowhere else to offer the presets. */
+		onpreset?: (preset: ComparePreset) => void;
 	}
 
 	let { chosen, onadd, onpreset }: Props = $props();
 
-	/** The four families a reader thinks in. A type filter narrows the search to
-	 *  one of them; the catalogue's own type strings are finer than that. */
-	const FAMILIES: { key: string; label: () => string; match: (type: string) => boolean }[] = [
-		{ key: 'all', label: m.compare_family_all, match: () => true },
-		{
-			key: 'planets',
-			label: m.compare_family_planets,
-			match: (t) => t === 'planet' || t === 'dwarf_planet'
-		},
-		{ key: 'moons', label: m.compare_family_moons, match: (t) => t === 'moon' },
-		{
-			key: 'small',
-			label: m.compare_family_small,
-			match: (t) => t.startsWith('asteroid') || t === 'comet'
-		},
-		{ key: 'craft', label: m.compare_family_craft, match: (t) => t === 'spacecraft' }
-	];
+	const enabled = isSearchEnabled();
 
 	let query = $state('');
-	let family = $state('all');
 	let hits = $state<ObjectHit[]>([]);
 	let searching = $state(false);
+	let failed = $state(false);
 
 	/** One request per settled query: typing fires this on every keystroke, and
 	 *  a stale answer must never overwrite a newer one. */
@@ -54,28 +41,29 @@
 	$effect(() => {
 		const q = query.trim();
 		const mine = ++token;
+		hits = [];
+		failed = false;
 		if (!q) {
-			hits = [];
 			searching = false;
 			return;
 		}
 		searching = true;
 		const timer = setTimeout(() => {
-			search(q, getLocale(), 30)
+			search(q, getLocale(), 12)
 				.then((found) => {
 					if (mine !== token) return;
 					hits = found.filter((h): h is ObjectHit => h.kind === 'object');
 					searching = false;
 				})
-				.catch(() => {
-					if (mine === token) searching = false;
+				.catch((err) => {
+					if (mine !== token) return;
+					console.warn('[search] compare query failed:', err);
+					failed = true;
+					searching = false;
 				});
 		}, 180);
 		return () => clearTimeout(timer);
 	});
-
-	const matcher = $derived(FAMILIES.find((f) => f.key === family) ?? FAMILIES[0]);
-	const results = $derived(hits.filter((h) => matcher.match(h.type)).slice(0, 12));
 
 	function sizeText(hit: ObjectHit): string | null {
 		if (!hit.diameter_km) return null;
@@ -92,29 +80,17 @@
 				id="compare-search"
 				type="search"
 				bind:value={query}
+				disabled={!enabled}
 				placeholder={m.compare_search_placeholder()}
-				class="min-w-0 flex-1 bg-transparent text-sm outline-none"
+				class="min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
 			/>
 		</div>
 	</div>
 
-	<div class="flex gap-1 border-b border-border px-3 py-2">
-		{#each FAMILIES as f (f.key)}
-			<button
-				type="button"
-				onclick={() => (family = f.key)}
-				aria-pressed={family === f.key}
-				class="h-7 rounded-lg px-2.5 text-xs transition-colors {family === f.key
-					? 'bg-accent font-medium text-accent-foreground'
-					: 'text-muted-foreground hover:text-foreground'}"
-			>
-				{f.label()}
-			</button>
-		{/each}
-	</div>
-
 	<ScrollArea class="min-h-0 flex-1">
-		{#if !query.trim()}
+		{#if !enabled}
+			<SearchStatus status="unavailable" {query} />
+		{:else if onpreset && !query.trim()}
 			<div class="px-3.5 pt-3 pb-1.5">
 				<span class="text-[11px] font-medium tracking-wider text-muted-foreground uppercase"
 					>{m.compare_presets()}</span
@@ -145,13 +121,11 @@
 					</li>
 				{/each}
 			</ul>
-		{:else if results.length === 0}
-			<p class="px-3.5 py-4 text-sm text-muted-foreground">
-				{searching ? m.compare_searching() : m.compare_no_results()}
-			</p>
+		{:else if hits.length === 0}
+			<SearchStatus status={failed ? 'error' : searching ? 'loading' : 'empty'} {query} />
 		{:else}
 			<ul class="px-1.5 py-2">
-				{#each results as hit (hit.id)}
+				{#each hits as hit (hit.id)}
 					{@const already = chosen.includes(hit.id)}
 					<li>
 						<button

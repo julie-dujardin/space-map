@@ -288,7 +288,7 @@
 								{m.compare_add()}
 							</Popover.Trigger>
 							<Popover.Content side="right" align="start" sideOffset={10} class="w-[380px] p-0">
-								<ComparePicker chosen={selected} onadd={addHit} onpreset={togglePreset} />
+								<ComparePicker chosen={selected} onadd={addHit} />
 							</Popover.Content>
 						</Popover.Root>
 
