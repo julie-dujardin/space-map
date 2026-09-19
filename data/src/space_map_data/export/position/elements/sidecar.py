@@ -16,6 +16,7 @@ data `/objects` already refreshed.
 
 import hashlib
 import json
+from functools import cache
 from pathlib import Path
 
 from space_map_data.export.position.format import VERSION as BINARY_VERSION
@@ -67,10 +68,12 @@ def has_localized_digest(object_ids: list[str], has_localized: dict[str, bool]) 
     return hashlib.sha256(bits).hexdigest()[:16]
 
 
+@cache
 def build_earth_part_signature(day_dir: Path) -> dict:
     """Expected sidecar contents for one Earth (zoom, date, part). Every part
     within a date shares this signature — the CSV inputs drive that day's
-    elements for every satellite."""
+    elements for every satellite. Cached per run: each part of each day
+    would otherwise re-stat the day's CSVs."""
     return {
         "format_version": FORMAT_VERSION,
         "binary_version": BINARY_VERSION,
@@ -93,6 +96,7 @@ def build_earth_archive_part_signature(date_iso: str) -> dict:
     }
 
 
+@cache
 def build_sbdb_part_signature(download_dir: Path) -> dict:
     """Expected sidecar contents for one small_bodies/* part.
 
@@ -100,7 +104,8 @@ def build_sbdb_part_signature(download_dir: Path) -> dict:
     this signature, and any mirror change invalidates all of them at once.
     `downloaded_at` only bumps on an actual row change, so no-op syncs don't
     invalidate parts; `complete` keeps a partial-mirror sidecar from being
-    conflated with a later complete one at the same timestamp.
+    conflated with a later complete one at the same timestamp. Cached per
+    run: every part would otherwise re-read the mirror metadata.
     """
     meta_path = download_dir / "sources" / "position" / "sbdb" / "metadata.json"
     meta = json.loads(meta_path.read_text())

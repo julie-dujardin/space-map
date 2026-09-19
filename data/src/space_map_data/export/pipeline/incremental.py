@@ -15,6 +15,7 @@ A missing or mismatched meta always falls back to doing the work.
 """
 
 import hashlib
+from functools import cache
 import json
 import logging
 import math
@@ -93,8 +94,10 @@ def _tree_digest(root: Path, glob: str = "**/*") -> str:
     return _digest(entries)
 
 
+@cache
 def kernels_digest() -> str:
-    """Fingerprint of the whole SPICE kernel tree (stat-only, ~15k files)."""
+    """Fingerprint of the whole SPICE kernel tree (stat-only, ~15k files).
+    Cached per run; the tier-B and probes gates both ask for it."""
     return _tree_digest(SOURCES_POSITION_DIR / "spice-kernels")
 
 

@@ -23,6 +23,7 @@ from urllib.parse import unquote, urlparse
 import orjson
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.utils.mirror import local
 from space_map_data.utils.paths import SOURCES_IMAGES_DIR, SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -272,7 +273,7 @@ def collect_qid_image_candidates(
 
     photo_from_wikidata: list[str] = []
     aux_from_wikidata: list[str] = []
-    entity_path = wikidata_dir / f"{qid}.json"
+    entity_path = local(wikidata_dir / f"{qid}.json")
     if entity_path.exists():
         try:
             entity = orjson.loads(entity_path.read_bytes())
@@ -285,6 +286,7 @@ def collect_qid_image_candidates(
 
     photo_from_wikipedia: list[str] = []
     pageimage_count: dict[str, int] = {}
+    wiki_dir = local(wiki_dir)
     for lang in LANGUAGES:
         page_path = wiki_dir / lang / f"{qid}.json"
         if not page_path.exists():
@@ -374,16 +376,34 @@ def _license_tag_is_acceptable(short_name: str) -> bool:
     return not any(kw in lower for kw in _DENIED_LICENSE_KEYWORDS)
 
 
+_METADATA_CACHE: dict[Path, dict | None] = {}
+
+
+def clear_metadata_cache() -> None:
+    _METADATA_CACHE.clear()
+
+
 def read_download_metadata(filename: str) -> dict | None:
-    """Read a downloaded image's metadata JSON, or None if missing/corrupt."""
-    path = download_metadata_path(filename)
+    """Read a downloaded image's metadata JSON, or None if missing/corrupt.
+
+    Memoized for the process: the selection and export passes ask for the
+    same file once per object that references it and per derivative-tree
+    walk. Callers must not mutate the result.
+    """
+    path = local(download_metadata_path(filename))
+    if path in _METADATA_CACHE:
+        return _METADATA_CACHE[path]
+    meta: dict | None
     if not path.exists():
-        return None
-    try:
-        return orjson.loads(path.read_bytes())
-    except orjson.JSONDecodeError:
-        logger.warning("Corrupt download metadata: %s", path)
-        return None
+        meta = None
+    else:
+        try:
+            meta = orjson.loads(path.read_bytes())
+        except orjson.JSONDecodeError:
+            logger.warning("Corrupt download metadata: %s", path)
+            meta = None
+    _METADATA_CACHE[path] = meta
+    return meta
 
 
 def read_manual_extras() -> dict[str, list[dict]]:
@@ -394,10 +414,11 @@ def read_manual_extras() -> dict[str, list[dict]]:
     ``{object_id: [{"file": ..., "kind": ...}, ...]}``. Filenames are
     normalised to canonical (underscore) form on read.
     """
-    if not MANUAL_EXTRA_PATH.exists():
+    manual_extra = local(MANUAL_EXTRA_PATH)
+    if not manual_extra.exists():
         return {}
     try:
-        data = orjson.loads(MANUAL_EXTRA_PATH.read_bytes())
+        data = orjson.loads(manual_extra.read_bytes())
     except orjson.JSONDecodeError:
         logger.warning("Corrupt %s; ignoring", MANUAL_EXTRA_PATH)
         return {}
@@ -433,3 +454,4 @@ def write_download_metadata(filename: str, payload: dict) -> None:
     path = download_metadata_path(filename)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+    _METADATA_CACHE.pop(local(path), None)

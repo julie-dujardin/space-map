@@ -18,6 +18,7 @@ from space_map_data.models.object import (
     OrbitalSource,
     SBDB as SBDBRow,
 )
+from space_map_data.models.object.main import partition_hash
 from space_map_data.ingest.convert import (
     bool_or_none,
     float_or_none,
@@ -331,6 +332,7 @@ def _parse_slice(db_path: Path, lo: int, hi: int) -> list[dict]:
                     "mpc_designation": pdes,
                     "orbital_source": OrbitalSource.sbdb.value,
                     "parent_id": _parent_id(naif_id),
+                    "random_int": partition_hash(object_id),
                     # SBDB rows always carry orbital elements (the mirror
                     # is the orbit catalog); condition_code=9 cases
                     # ship as MISSING_FLOAT64 in the binary, not dropped.

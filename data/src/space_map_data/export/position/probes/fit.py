@@ -19,10 +19,13 @@ interplanetary chunks are shared with Voyager 1, Pioneer, etc.
 """
 
 import logging
+import multiprocessing
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import spiceypy
+from tqdm import tqdm
 
 from space_map_data.export.position.probes import fit_cache, sidecar
 from space_map_data.export.position.probes.landed import LandedFit, fit_landed_chunk
@@ -124,9 +127,262 @@ def stale_fits(
     }
 
 
+# (zone, chunk) keys per worker task. Each task re-furnishes the probe's
+# kernels, so batches amortise that; small enough that one slow probe still
+# spreads across the pool.
+_KEYS_PER_TASK = 24
+
+_worker_ctx: dict = {}
+
+
+def _fit_worker_init(
+    lsk_pck_paths: list[str],
+    generic_spk_paths: list[str],
+    start_jd: float,
+    candidates_by_zone: dict[str, list[FitCenterCandidate]],
+) -> None:
+    for p in lsk_pck_paths:
+        spiceypy.furnsh(p)
+    _worker_ctx["generic"] = generic_spk_paths
+    _worker_ctx["start_jd"] = start_jd
+    _worker_ctx["candidates"] = candidates_by_zone
+
+
+def _fit_worker(
+    probe_id: int,
+    plans_for_probe: list[ProbePlan],
+    stale_keys: list[tuple[str, int]],
+) -> tuple[
+    int,
+    dict[tuple[str, int], ChunkProbeRecord],
+    dict[tuple[str, int], list[int]],
+    list[str],
+]:
+    """Fit `stale_keys` for one probe. Returns the per-key records, the
+    indexes (into `plans_for_probe`) of plans that contributed flying data
+    per key, and warnings for the parent to log."""
+    by_chunk, contributing, warnings = _fit_probe_keys(
+        probe_id,
+        plans_for_probe,
+        set(stale_keys),
+        _worker_ctx["generic"],
+        _worker_ctx["start_jd"],
+        _worker_ctx["candidates"],
+    )
+    return probe_id, by_chunk, contributing, warnings
+
+
+def _fit_probe_keys(
+    probe_id: int,
+    plans_for_probe: list[ProbePlan],
+    stale_keys: set[tuple[str, int]],
+    generic_spk_paths: list[str],
+    start_jd: float,
+    candidates_by_zone: dict[str, list[FitCenterCandidate]],
+) -> tuple[
+    dict[tuple[str, int], ChunkProbeRecord],
+    dict[tuple[str, int], list[int]],
+    list[str],
+]:
+    """Fit every contribution of `plans_for_probe` whose key is stale.
+
+    Every piece of cross-plan state here is keyed by (zone, chunk), so a
+    probe's keys can be split across workers without changing the result:
+    the fit center pinned per key, the first plan to claim a key's flying
+    data, and the record the plans merge into.
+    """
+    by_chunk: dict[tuple[str, int], ChunkProbeRecord] = {}
+    # None = small-bodies chunk with no matchable target; skip its
+    # contributions instead of falling back to a Sun-relative fit.
+    fit_center_naif_by_key: dict[tuple[str, int], int | None] = {}
+    # First plan to fit a (zone, chunk) claims it — see build_fits
+    # docstring on multi-source dedupe.
+    flying_owner_by_key: dict[tuple[str, int], int] = {}
+    contributing: dict[tuple[str, int], list[int]] = defaultdict(list)
+    warnings: list[str] = []
+
+    for plan_idx, plan in enumerate(plans_for_probe):
+        for k in plan.kernels:
+            spiceypy.furnsh(str(k))
+        for p in generic_spk_paths:
+            spiceypy.furnsh(p)
+        try:
+            for c in plan.contributions:
+                key = (c.zone_key, c.chunk_idx)
+                if key not in stale_keys:
+                    continue
+                if c.kind == "flying":
+                    owner = flying_owner_by_key.get(key)
+                    if owner is not None and owner != plan_idx:
+                        continue
+                zone = ZONES_BY_KEY[c.zone_key]
+                chunk_start_et = (
+                    jd_to_et(start_jd) + c.chunk_idx * zone.chunk_days * S_PER_DAY
+                )
+                rec = by_chunk.get(key)
+                if c.kind == "flying":
+                    sub_s = zone.kepler_subchunk_days * S_PER_DAY
+                    if key not in fit_center_naif_by_key:
+                        if zone.key == SMALL_BODIES.key:
+                            # Nearest-target attachment, and never the zone
+                            # default: a Sun-relative record in this f32 zone
+                            # would quantize at ~10 km, so a chunk with no
+                            # matchable body is dropped.
+                            chosen = detect_nearest_center(
+                                candidates_by_zone.get(c.zone_key, []),
+                                plan.naif_id,
+                                c.c_start_et,
+                                c.c_end_et,
+                                SMALL_BODY_ZONE_RADIUS_KM,
+                            )
+                            if chosen is None:
+                                warnings.append(
+                                    f"small-bodies chunk {key} for naif="
+                                    f"{plan.naif_id} has no matchable target; dropped"
+                                )
+                        else:
+                            chosen = detect_fit_center(
+                                candidates_by_zone.get(c.zone_key, []),
+                                plan.naif_id,
+                                c.c_start_et,
+                                c.c_end_et,
+                            )
+                        center_naif = (
+                            chosen.naif_id
+                            if chosen is not None
+                            else zone.fit_center_naif_id
+                        )
+                        center_id_value, center_id_type = fit_center_header_fields(
+                            chosen
+                        )
+                        fit_center_naif_by_key[key] = (
+                            None
+                            if chosen is None and zone.key == SMALL_BODIES.key
+                            else center_naif
+                        )
+                        if fit_center_naif_by_key[key] is None:
+                            continue
+                    else:
+                        cached_center = fit_center_naif_by_key[key]
+                        if cached_center is None:
+                            continue
+                        center_naif = cached_center
+                        center_id_value = (
+                            rec.fit_center_id_value if rec else MISSING_INT32
+                        )
+                        center_id_type = (
+                            rec.fit_center_id_type if rec else MISSING_ID_TYPE
+                        )
+                    chunk_sizing = size_chunk(
+                        plan.naif_id,
+                        zone,
+                        c.c_start_et,
+                        c.c_end_et,
+                        fit_center_naif_id=center_naif,
+                    )
+                    if not chunk_sizing.sub_chunks:
+                        continue
+                    first_offset = int(
+                        round(
+                            (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et)
+                            / sub_s
+                        )
+                    )
+                    if rec is None:
+                        rec = ChunkProbeRecord(
+                            probe_id=probe_id,
+                            first_offset=first_offset,
+                            fit_center_id_value=center_id_value,
+                            fit_center_id_type=center_id_type,
+                        )
+                        by_chunk[key] = rec
+                    rec.flying.extend(chunk_sizing.sub_chunks)
+                    flying_owner_by_key.setdefault(key, plan_idx)
+                    if plan_idx not in contributing[key]:
+                        contributing[key].append(plan_idx)
+                elif c.kind == "landed":
+                    assert c.landed_body_id_value is not None
+                    assert c.landed_body_id_type is not None
+                    if c.static_lat_lng is not None:
+                        # Events-driven landing: static lat/lng, no SPICE.
+                        # Probes that move on the surface have SPICE
+                        # coverage instead, via fit_landed_chunk.
+                        lat, lng = c.static_lat_lng
+                        landed_fit = LandedFit(
+                            body_id_value=c.landed_body_id_value,
+                            body_id_type=c.landed_body_id_type,
+                            is_static=True,
+                            start_offset_s=int(round(c.c_start_et - chunk_start_et)),
+                            end_offset_s=int(round(c.c_end_et - chunk_start_et)),
+                            lat_ref_deg=lat,
+                            lng_ref_deg=lng,
+                            alt_ref_m=0.0,
+                            samples=[],
+                            peak_displacement_m=0.0,
+                        )
+                    else:
+                        landed_fit = fit_landed_chunk(
+                            probe_naif_id=plan.naif_id,
+                            body_naif_id=c.landed_body_id_value,
+                            chunk_start_et=chunk_start_et,
+                            c_start_et=c.c_start_et,
+                            c_end_et=c.c_end_et,
+                        )
+                    if landed_fit is None:
+                        continue
+                    if rec is None:
+                        rec = ChunkProbeRecord(probe_id=probe_id, first_offset=0)
+                        by_chunk[key] = rec
+                    rec.landed = landed_fit
+        finally:
+            for p in generic_spk_paths:
+                spiceypy.unload(p)
+            for k in plan.kernels:
+                spiceypy.unload(str(k))
+    return by_chunk, dict(contributing), warnings
+
+
+def _finish_probe(
+    probe_id: int,
+    plans_for_probe: list[ProbePlan],
+    stale_keys: set[tuple[str, int]],
+    by_chunk: dict[tuple[str, int], ChunkProbeRecord],
+    contributing: dict[tuple[str, int], list[int]],
+    start_jd: float,
+    stale_sigs: dict[tuple[int, str, int], dict],
+) -> None:
+    """System intervals (union across the plans that contributed flying
+    data, clipped to the chunk) and the cache write for one probe."""
+    for key, rec in by_chunk.items():
+        zone_key, chunk_idx = key
+        if zone_key != INTERPLANETARY.key:
+            continue
+        plans_here = [plans_for_probe[i] for i in contributing.get(key, [])]
+        if not plans_here:
+            continue
+        intervals = sorted({iv for plan in plans_here for iv in plan.system_intervals})
+        if not intervals:
+            continue
+        zone = ZONES_BY_KEY[zone_key]
+        chunk_start_et = jd_to_et(start_jd) + chunk_idx * zone.chunk_days * S_PER_DAY
+        chunk_end_et = chunk_start_et + zone.chunk_days * S_PER_DAY
+        rec.system_intervals = _clip_system_intervals(
+            intervals, chunk_start_et, chunk_end_et
+        )
+    for key in stale_keys:
+        fit_cache.save(
+            probe_id,
+            key[0],
+            key[1],
+            by_chunk.get(key),
+            stale_sigs[(probe_id, key[0], key[1])],
+        )
+
+
 def build_fits(
     plans: list[ProbePlan],
     stale_sigs: dict[tuple[int, str, int], dict],
+    lsk_pck_paths: list[Path],
     generic_spk_paths: list[Path],
     start_jd: float,
     candidates_by_zone: dict[str, list[FitCenterCandidate]],
@@ -164,6 +420,10 @@ def build_fits(
     the benchmark evaluates the canonical naif, reporting the whole fit as
     a systematic inter-spacecraft offset.
 
+    The fits are CPU-bound and independent per (zone, chunk), so each
+    probe's stale keys are split into batches and spread over a process
+    pool; the parent merges the batches back per probe and writes the cache.
+
     TODO(source-priority-for-glitchy-kernels): the multi-source probes
     can still ship bad data on specific chunks when their primary SPK
     has a brief glitch and the dedupe lets the primary win. INTEGRAL's
@@ -192,213 +452,85 @@ def build_fits(
         len(stale_sigs),
         len(probe_ids),
     )
+    if not probe_ids:
+        return
 
-    for i, probe_id in enumerate(probe_ids, 1):
+    sorted_plans: dict[int, list[ProbePlan]] = {}
+    tasks: list[tuple[int, list[tuple[str, int]]]] = []
+    for probe_id in probe_ids:
         canonical_naif = canonical_naif_by_probe_id.get(probe_id)
-        plans_for_probe = sorted(
+        sorted_plans[probe_id] = sorted(
             plans_by_probe[probe_id],
             key=lambda p: (
                 p.naif_id != canonical_naif,
                 str(p.kernels[0]) if p.kernels else "",
             ),
         )
-        stale_keys = stale_by_probe[probe_id]
-        by_chunk: dict[tuple[str, int], ChunkProbeRecord] = {}
-        # None = small-bodies chunk with no matchable target; skip its
-        # contributions instead of falling back to a Sun-relative fit.
-        fit_center_naif_by_key: dict[tuple[str, int], int | None] = {}
-        # First plan to fit a (zone, chunk) claims it — see build_fits
-        # docstring on multi-source dedupe.
-        flying_owner_by_key: dict[tuple[str, int], int] = {}
-        # Plans that actually contributed flying data per (zone, chunk), so
-        # system_intervals draws only from plans with real coverage there.
-        contributing_plans: dict[tuple[str, int], list[ProbePlan]] = defaultdict(list)
+        keys = sorted(stale_by_probe[probe_id])
+        for i in range(0, len(keys), _KEYS_PER_TASK):
+            tasks.append((probe_id, keys[i : i + _KEYS_PER_TASK]))
 
-        for plan in plans_for_probe:
-            for k in plan.kernels:
-                spiceypy.furnsh(str(k))
-            for p in generic_spk_paths:
-                spiceypy.furnsh(str(p))
-            try:
-                for c in plan.contributions:
-                    key = (c.zone_key, c.chunk_idx)
-                    if key not in stale_keys:
-                        continue
-                    if c.kind == "flying":
-                        owner = flying_owner_by_key.get(key)
-                        if owner is not None and owner != id(plan):
-                            continue
-                    zone = ZONES_BY_KEY[c.zone_key]
-                    chunk_start_et = (
-                        jd_to_et(start_jd) + c.chunk_idx * zone.chunk_days * S_PER_DAY
-                    )
-                    rec = by_chunk.get(key)
-                    if c.kind == "flying":
-                        sub_s = zone.kepler_subchunk_days * S_PER_DAY
-                        if key not in fit_center_naif_by_key:
-                            if zone.key == SMALL_BODIES.key:
-                                # Nearest-target attachment, and never the
-                                # zone default: a Sun-relative record in this
-                                # f32 zone would quantize at ~10 km, so a
-                                # chunk with no matchable body is dropped.
-                                chosen = detect_nearest_center(
-                                    candidates_by_zone.get(c.zone_key, []),
-                                    plan.naif_id,
-                                    c.c_start_et,
-                                    c.c_end_et,
-                                    SMALL_BODY_ZONE_RADIUS_KM,
-                                )
-                                if chosen is None:
-                                    logger.warning(
-                                        "small-bodies chunk %s for naif=%d has "
-                                        "no matchable target; dropped",
-                                        key,
-                                        plan.naif_id,
-                                    )
-                            else:
-                                chosen = detect_fit_center(
-                                    candidates_by_zone.get(c.zone_key, []),
-                                    plan.naif_id,
-                                    c.c_start_et,
-                                    c.c_end_et,
-                                )
-                            center_naif = (
-                                chosen.naif_id
-                                if chosen is not None
-                                else zone.fit_center_naif_id
-                            )
-                            center_id_value, center_id_type = fit_center_header_fields(
-                                chosen
-                            )
-                            fit_center_naif_by_key[key] = (
-                                None
-                                if chosen is None and zone.key == SMALL_BODIES.key
-                                else center_naif
-                            )
-                            if fit_center_naif_by_key[key] is None:
-                                continue
-                        else:
-                            cached_center = fit_center_naif_by_key[key]
-                            if cached_center is None:
-                                continue
-                            center_naif = cached_center
-                            center_id_value = (
-                                rec.fit_center_id_value if rec else MISSING_INT32
-                            )
-                            center_id_type = (
-                                rec.fit_center_id_type if rec else MISSING_ID_TYPE
-                            )
-                        chunk_sizing = size_chunk(
-                            plan.naif_id,
-                            zone,
-                            c.c_start_et,
-                            c.c_end_et,
-                            fit_center_naif_id=center_naif,
-                        )
-                        if not chunk_sizing.sub_chunks:
-                            continue
-                        first_offset = int(
-                            round(
-                                (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et)
-                                / sub_s
-                            )
-                        )
-                        if rec is None:
-                            rec = ChunkProbeRecord(
-                                probe_id=probe_id,
-                                first_offset=first_offset,
-                                fit_center_id_value=center_id_value,
-                                fit_center_id_type=center_id_type,
-                            )
-                            by_chunk[key] = rec
-                        rec.flying.extend(chunk_sizing.sub_chunks)
-                        flying_owner_by_key.setdefault(key, id(plan))
-                        if plan not in contributing_plans[key]:
-                            contributing_plans[key].append(plan)
-                    elif c.kind == "landed":
-                        assert c.landed_body_id_value is not None
-                        assert c.landed_body_id_type is not None
-                        if c.static_lat_lng is not None:
-                            # Events-driven landing: static lat/lng, no SPICE.
-                            # Probes that move on the surface have SPICE
-                            # coverage instead, via fit_landed_chunk.
-                            lat, lng = c.static_lat_lng
-                            landed_fit = LandedFit(
-                                body_id_value=c.landed_body_id_value,
-                                body_id_type=c.landed_body_id_type,
-                                is_static=True,
-                                start_offset_s=int(
-                                    round(c.c_start_et - chunk_start_et)
-                                ),
-                                end_offset_s=int(round(c.c_end_et - chunk_start_et)),
-                                lat_ref_deg=lat,
-                                lng_ref_deg=lng,
-                                alt_ref_m=0.0,
-                                samples=[],
-                                peak_displacement_m=0.0,
-                            )
-                        else:
-                            landed_fit = fit_landed_chunk(
-                                probe_naif_id=plan.naif_id,
-                                body_naif_id=c.landed_body_id_value,
-                                chunk_start_et=chunk_start_et,
-                                c_start_et=c.c_start_et,
-                                c_end_et=c.c_end_et,
-                            )
-                        if landed_fit is None:
-                            continue
-                        if rec is None:
-                            rec = ChunkProbeRecord(probe_id=probe_id, first_offset=0)
-                            by_chunk[key] = rec
-                        rec.landed = landed_fit
-            finally:
-                for p in generic_spk_paths:
-                    spiceypy.unload(str(p))
-                for k in plan.kernels:
-                    spiceypy.unload(str(k))
+    merged_by_probe: dict[int, dict[tuple[str, int], ChunkProbeRecord]] = defaultdict(
+        dict
+    )
+    contributing_by_probe: dict[int, dict[tuple[str, int], list[int]]] = defaultdict(
+        dict
+    )
+    pending_tasks: dict[int, int] = defaultdict(int)
+    for probe_id, _ in tasks:
+        pending_tasks[probe_id] += 1
 
-        # System intervals: union across plans that actually contributed
-        # flying data to this (zone, chunk), then clip + dedupe.
-        for key, rec in by_chunk.items():
-            zone_key, chunk_idx = key
-            if zone_key != INTERPLANETARY.key:
+    n_workers = max(1, min(12, multiprocessing.cpu_count() - 2))
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_fit_worker_init,
+        initargs=(
+            [str(p) for p in lsk_pck_paths],
+            [str(p) for p in generic_spk_paths],
+            start_jd,
+            candidates_by_zone,
+        ),
+    ) as ex:
+        futures = [
+            ex.submit(_fit_worker, probe_id, sorted_plans[probe_id], keys)
+            for probe_id, keys in tasks
+        ]
+        done_probes = 0
+        for fut in tqdm(
+            as_completed(futures),
+            total=len(futures),
+            desc="Fitting probes",
+            unit="task",
+        ):
+            probe_id, by_chunk, contributing, warnings = fut.result()
+            for w in warnings:
+                logger.warning("%s", w)
+            merged_by_probe[probe_id].update(by_chunk)
+            contributing_by_probe[probe_id].update(contributing)
+            pending_tasks[probe_id] -= 1
+            if pending_tasks[probe_id]:
                 continue
-            plans_here = contributing_plans.get(key, [])
-            if not plans_here:
-                continue
-            intervals = sorted(
-                {iv for plan in plans_here for iv in plan.system_intervals}
-            )
-            if not intervals:
-                continue
-            zone = ZONES_BY_KEY[zone_key]
-            chunk_start_et = (
-                jd_to_et(start_jd) + chunk_idx * zone.chunk_days * S_PER_DAY
-            )
-            chunk_end_et = chunk_start_et + zone.chunk_days * S_PER_DAY
-            rec.system_intervals = _clip_system_intervals(
-                intervals, chunk_start_et, chunk_end_et
-            )
-
-        for key in stale_keys:
-            rec = by_chunk.get(key)
-            fit_cache.save(
+            merged = merged_by_probe.pop(probe_id)
+            _finish_probe(
                 probe_id,
-                key[0],
-                key[1],
-                rec,
-                stale_sigs[(probe_id, key[0], key[1])],
+                sorted_plans[probe_id],
+                stale_by_probe[probe_id],
+                merged,
+                contributing_by_probe.pop(probe_id),
+                start_jd,
+                stale_sigs,
             )
-        logger.info(
-            "[%d/%d] fit probe_id=%d (%d plans) → %d/%d stale (zone, chunk) "
-            "entries produced records",
-            i,
-            len(probe_ids),
-            probe_id,
-            len(plans_for_probe),
-            len(by_chunk),
-            len(stale_keys),
-        )
+            done_probes += 1
+            logger.info(
+                "[%d/%d] fit probe_id=%d (%d plans) → %d/%d stale (zone, chunk) "
+                "entries produced records",
+                done_probes,
+                len(probe_ids),
+                probe_id,
+                len(sorted_plans[probe_id]),
+                len(merged),
+                len(stale_by_probe[probe_id]),
+            )
 
 
 def decide_dirty_chunks(

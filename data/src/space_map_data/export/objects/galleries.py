@@ -96,7 +96,8 @@ def attach_galleries(chunk: ChunkObjectData) -> None:
                 galleries.append({"key": key, "images": images})
                 counts[key] += 1
         if galleries:
-            global_data["galleries"] = galleries
+            # `items()` yields copies; write through the map itself.
+            chunk.global_data[object_id]["galleries"] = galleries
             _attach_titles(chunk, object_id, galleries)
     logger.info(
         "Attached pooled image galleries: %s",

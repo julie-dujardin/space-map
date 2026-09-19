@@ -5,7 +5,7 @@ import logging
 import shutil
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, MutableMapping
 from concurrent.futures import (
     FIRST_COMPLETED,
     Future,
@@ -181,8 +181,10 @@ _MAX_ZONE_IN_FLIGHT = 8
 # Streaming a combo in CHUNK_SIZE-aligned batches caps any single work item
 # at this many ORM rows; each batch writes a contiguous part range at its
 # offset so the on-disk output stays identical to a one-shot combo. Must be a
-# multiple of CHUNK_SIZE so batch boundaries land on part boundaries.
-_SBDB_BATCH_ROWS = 50_000
+# multiple of CHUNK_SIZE so batch boundaries land on part boundaries. Eight
+# batches are in flight at once, each holding its Object + SBDB ORM rows
+# (~10 KB a pair), so this is a direct lever on peak memory.
+_SBDB_BATCH_ROWS = 20_000
 assert _SBDB_BATCH_ROWS % CHUNK_SIZE == 0
 
 
@@ -864,7 +866,7 @@ def _content_token(root: Path) -> str:
 
 
 def _inject_probe_coverage(
-    global_data: dict[str, dict],
+    global_data: MutableMapping[str, dict],
     probe_coverage: ProbeCoverageMap,
 ) -> None:
     """Stamp each probe's coverage onto its global bundle entry under
@@ -881,7 +883,7 @@ def _inject_probe_coverage(
 
 
 def _inject_carried_by(
-    global_data: dict[str, dict], obj_id: str, cov: ProbeCoverage
+    global_data: MutableMapping[str, dict], obj_id: str, cov: ProbeCoverage
 ) -> None:
     """Stamp the passenger's `carried_by` cross-ref from its `position_from`.
 

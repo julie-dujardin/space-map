@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -98,6 +100,14 @@ class OrbitalSource(StrEnum):
     spice_probe = PROVIDERS.SPICE_PROBES
 
 
+def partition_hash(object_id: str) -> int:
+    """Signed 64-bit hash of an Object id, stable across runs and processes
+    (unlike `hash()`), so export parts keep the same members between
+    rebuilds and bulk loaders can compute it without the ORM default."""
+    digest = hashlib.blake2b(object_id.encode(), digest_size=8).digest()
+    return int.from_bytes(digest, "little", signed=True)
+
+
 class Object(Base):
     __tablename__ = "objects"
 
@@ -132,9 +142,9 @@ class Object(Base):
         unique=True, default=None, index=True
     )  # SBDB primary SPK-ID
     random_int: Mapped[int] = mapped_column(
-        default=lambda ctx: hash(ctx.get_current_parameters()["id"]),
+        default=lambda ctx: partition_hash(ctx.get_current_parameters()["id"]),
         index=True,
-    )  # Deterministic integer for export partitioning (hash of PK); range: [-(sys.maxsize+1), sys.maxsize], typically [-2^63, 2^63-1] on 64-bit
+    )  # Deterministic integer for export partitioning (hash of PK); range: [-2^63, 2^63-1]
     mpc_designation: Mapped[str | None] = mapped_column(
         unique=False, default=None, index=True
     )  # Minor Planet Center database designation (e.g. 2024 FG9, 1 [ceres]), from JPL SBDB

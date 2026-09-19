@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
+from space_map_data.utils.mirror import local
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -41,10 +42,11 @@ def ingest() -> None:
     for obj_id, qid in tqdm(objects, desc="Counting Wikidata sitelinks", unit="obj"):
         count = qid_counts.get(qid)
         if count is None:
-            count = _count_sitelinks(qid)
-            qid_counts[qid] = count
-            if count == 0 and not (WIKIDATA_OBJECTS_DIR / f"{qid}.json").exists():
+            counted = _count_sitelinks(qid)
+            if counted is None:
                 missing_entities += 1
+                counted = 0
+            count = qid_counts[qid] = counted
         if count:
             ids_by_count[count].append(obj_id)
 
@@ -67,11 +69,12 @@ def ingest() -> None:
     )
 
 
-def _count_sitelinks(qid: str) -> int:
-    """Sitelink count for ``qid``; 0 when the entity JSON is missing or corrupt."""
-    path = WIKIDATA_OBJECTS_DIR / f"{qid}.json"
+def _count_sitelinks(qid: str) -> int | None:
+    """Sitelink count for ``qid``; None when the entity JSON is missing, 0
+    when it is corrupt."""
+    path = local(WIKIDATA_OBJECTS_DIR / f"{qid}.json")
     if not path.exists():
-        return 0
+        return None
     try:
         entity = orjson.loads(path.read_bytes())
     except orjson.JSONDecodeError:

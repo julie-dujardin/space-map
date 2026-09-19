@@ -15,7 +15,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,18 @@ _session: Session | None = None
 
 def _make_engine(db_path: Path) -> Engine:
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    # Per-connection pragmas: the export scans and sorts the 1.6 GB database
+    # whole, so give it a real page cache. Sorts stay in temp files (local
+    # disk) rather than memory: a whole-catalog ORDER BY held in RAM is
+    # gigabytes.
+    @event.listens_for(engine, "connect")
+    def _set_pragmas(dbapi_conn, _record) -> None:
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA cache_size=-262144")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
+
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
         conn.execute(text("PRAGMA synchronous=NORMAL"))

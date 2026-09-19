@@ -7,7 +7,12 @@ CONFIG_FILE = DATA_DIR / "config.toml"
 PROJECT_ROOT = DATA_DIR.parent
 
 DOWNLOAD_DIR = PROJECT_ROOT.parent / "space-map-downloads"
-DB_DIR = DOWNLOAD_DIR / "db"
+
+# Regenerable local state. DOWNLOAD_DIR may sit on a network mount, where
+# SQLite's page-level random I/O is both slow and (WAL over NFS) unsafe, so
+# the ingest database lives here rather than beside the downloads.
+CACHE_DIR = PROJECT_ROOT.parent / "space-map-cache"
+DB_DIR = CACHE_DIR / "db"
 DB_FILE = DB_DIR / "space-map.db"
 
 # Top-level split inside DOWNLOAD_DIR. Sources are raw external downloads,

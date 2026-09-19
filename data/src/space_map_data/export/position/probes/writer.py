@@ -323,6 +323,7 @@ def write_probes(
         build_fits(
             plans,
             stale,
+            lsk_pck_paths,
             generic_spk_paths,
             start_jd,
             candidates_by_zone,

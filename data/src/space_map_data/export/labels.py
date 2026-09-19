@@ -12,6 +12,7 @@ list. The frontend fetches one file at app start and uses its keys as the
 authoritative promoted set.
 """
 
+from collections.abc import MutableMapping
 import gzip
 import logging
 from pathlib import Path
@@ -29,7 +30,7 @@ _US = "\x1f"  # ASCII Unit Separator — delimiter between fields
 
 
 def _promoted_ids(
-    all_global: dict[str, dict],
+    all_global: MutableMapping[str, dict],
     cheb_covered_ids: set[str],
     probe_ids: set[str],
     rendered_ids: set[str],

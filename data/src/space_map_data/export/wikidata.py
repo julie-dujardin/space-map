@@ -3,11 +3,14 @@
 import re
 import orjson
 import logging
+import threading
+from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TypedDict
 
 from space_map_data.models.object import Object
+from space_map_data.utils.mirror import local
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -37,10 +40,16 @@ def load_json_dir(directory: Path, glob: str = "Q*.json") -> Iterator[tuple[str,
         yield path.stem, data
 
 
+# Parsed entities kept resident. Each zone batch touches its own objects a
+# few times in a row, so a bounded LRU serves that locality; keeping every
+# one of the 256k object entities (raw claims included) held ~10 GB.
+_ENTITY_LRU_SIZE = 20_000
+
+
 class WikidataEntityCache:
     """On-demand Wikidata entity loader. Units are preloaded eagerly; entities
-    and referenced entries are loaded on first access and memoized, since
-    uncached re-reads used to dominate export profiles.
+    and referenced entries are loaded on first access into a bounded LRU
+    (the files are on local disk, so a miss is cheap).
     """
 
     def __init__(self) -> None:
@@ -51,8 +60,10 @@ class WikidataEntityCache:
         self._units: dict[str, WikidataEntity] = {}
         self._properties: dict[str, WikidataEntity] = {}
         self._feature_types: dict[str, WikidataEntity] = {}
-        # Benign under threads: a race just loads the same file twice.
-        self._loaded: dict[tuple[str, str], WikidataEntity | None] = {}
+        self._loaded: OrderedDict[tuple[str, str], WikidataEntity | None] = (
+            OrderedDict()
+        )
+        self._lock = threading.Lock()
 
         if not any(
             d.exists()
@@ -120,9 +131,11 @@ class WikidataEntityCache:
 
     def _load(self, qid: str, directory: Path) -> WikidataEntity | None:
         key = (directory.name, qid)
-        if key in self._loaded:
-            return self._loaded[key]
-        path = directory / f"{qid}.json"
+        with self._lock:
+            if key in self._loaded:
+                self._loaded.move_to_end(key)
+                return self._loaded[key]
+        path = local(directory / f"{qid}.json")
         if not path.exists():
             entity = None
         else:
@@ -131,7 +144,10 @@ class WikidataEntityCache:
             except (orjson.JSONDecodeError, OSError) as exc:
                 raise ValueError(f"Failed to load {path}") from exc
             entity = _parse_entity(raw)
-        self._loaded[key] = entity
+        with self._lock:
+            self._loaded[key] = entity
+            if len(self._loaded) > _ENTITY_LRU_SIZE:
+                self._loaded.popitem(last=False)
         return entity
 
 

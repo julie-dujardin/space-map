@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.utils.mirror import local
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class WikipediaSummary:
 
 def load_wikipedia_summaries_for_qid(qid: str) -> dict[str, WikipediaSummary]:
     """Load Wikipedia summaries for a single QID. Returns {lang: WikipediaSummary}."""
-    wiki_dir = SOURCES_METADATA_DIR / "wikipedia"
+    wiki_dir = local(SOURCES_METADATA_DIR / "wikipedia")
     result: dict[str, WikipediaSummary] = {}
     for lang in LANGUAGES:
         path = wiki_dir / lang / f"{qid}.json"
@@ -42,7 +43,7 @@ def load_wikipedia_sections_for_qid(qid: str) -> dict[str, WikipediaSummary]:
     shape as :func:`load_wikipedia_summaries_for_qid` so callers can merge it
     over the (often sparse) Wikidata sitelink summary.
     """
-    sections_dir = SOURCES_METADATA_DIR / "wikipedia_sections"
+    sections_dir = local(SOURCES_METADATA_DIR / "wikipedia_sections")
 
     def _load(lang: str) -> WikipediaSummary | None:
         path = sections_dir / lang / f"{qid}.json"

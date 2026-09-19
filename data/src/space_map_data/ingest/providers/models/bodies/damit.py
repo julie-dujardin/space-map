@@ -121,6 +121,11 @@ class DamitProcessor:
     def __init__(self, session) -> None:
         self._session = session
         self._orientation_rows: dict[int, dict] = {}
+        # Tables and the naif → Object.id map are shared by `wanted_slugs` and
+        # `process`, which otherwise both reload the CSVs and query per model.
+        self._models: list[DamitModel] | None = None
+        self._asteroids: dict[int, dict] | None = None
+        self._object_ids: dict[int, str] | None = None
 
     def available(self) -> bool:
         return config.DAMIT_DIR.exists() and self._tables_dir() is not None
@@ -129,8 +134,8 @@ class DamitProcessor:
         """Slugs for every model that resolves to a DB Object (for pruning)."""
         if not self.available():
             return set()
-        models = self._load_models()
-        asteroids = self._load_asteroids()
+        models = self._models_cached()
+        asteroids = self._asteroids_cached()
         out: set[str] = set()
         for m in models:
             if self._resolve_object_id(m.asteroid_id, asteroids) is not None:
@@ -144,8 +149,8 @@ class DamitProcessor:
                 config.DAMIT_DIR,
             )
             return
-        models = self._load_models()
-        asteroids = self._load_asteroids()
+        models = self._models_cached()
+        asteroids = self._asteroids_cached()
         citations = self._load_citations()
         diameters = self._load_diameters()
 
@@ -243,10 +248,11 @@ class DamitProcessor:
         # Stamp lives outside the export tree: every exported file counts
         # against the CDN's 100k-file cap.
         stamp = _STAMPS_DIR / f"{slug}.json"
-        geometry_fresh, metadata_fresh = _stamp_state(
+        geometry_fresh, metadata_fresh, stamp_current = _stamp_state(
             stamp, out_dir, shape_path, diameter_km
         )
-        if force or not geometry_fresh or not metadata_fresh:
+        rebuild = force or not geometry_fresh or not metadata_fresh
+        if rebuild:
             verts, faces = _parse_shape(shape_path)
             verts = _scale_to_diameter(verts, faces, diameter_km)
             verts = _body_z_up_to_gltf_y_up(verts)
@@ -265,6 +271,7 @@ class DamitProcessor:
                 verts,
                 faces,
             )
+        if rebuild or not stamp_current:
             _write_stamp(stamp, shape_path, diameter_km)
 
         if is_preferred and naif_id is not None:
@@ -486,14 +493,37 @@ class DamitProcessor:
                 out[oid] = (d, "h-magnitude")
         return out
 
+    def _models_cached(self) -> list[DamitModel]:
+        if self._models is None:
+            self._models = self._load_models()
+        return self._models
+
+    def _asteroids_cached(self) -> dict[int, dict]:
+        if self._asteroids is None:
+            self._asteroids = self._load_asteroids()
+        return self._asteroids
+
     def _resolve_object_id(
         self, asteroid_id: int, asteroids: dict[int, dict]
     ) -> str | None:
         naif = self._naif_for(asteroid_id, asteroids)
         if naif is None:
             return None
-        row = self._session.query(Object.id).where(Object.naif_id == naif).first()
-        return row[0] if row else None
+        if self._object_ids is None:
+            wanted = {
+                n
+                for m in self._models_cached()
+                if (n := self._naif_for(m.asteroid_id, asteroids)) is not None
+            }
+            self._object_ids = {}
+            wanted_list = sorted(wanted)
+            for i in range(0, len(wanted_list), 500):
+                chunk = wanted_list[i : i + 500]
+                for oid, n in self._session.query(Object.id, Object.naif_id).where(
+                    Object.naif_id.in_(chunk)
+                ):
+                    self._object_ids.setdefault(n, oid)
+        return self._object_ids.get(naif)
 
     @staticmethod
     def _naif_for(asteroid_id: int, asteroids: dict[int, dict]) -> int | None:
@@ -574,28 +604,44 @@ def _mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
 
 def _stamp_state(
     stamp: Path, out_dir: Path, shape: Path, diameter_km: float
-) -> tuple[bool, bool]:
-    """``(geometry fresh, metadata fresh)`` for an already-converted model.
+) -> tuple[bool, bool, bool]:
+    """``(geometry fresh, metadata fresh, stamp current)`` for an
+    already-converted model.
 
     Split so a metadata-only schema bump rewrites the sidecars without paying
-    to rebuild ~16k GLBs that didn't change.
+    to rebuild ~16k GLBs that didn't change. ``stamp current`` is False for a
+    stamp still keyed on the shape hash, so the caller rewrites it with the
+    stat and the hash is never computed again.
     """
     if not stamp.exists():
-        return False, False
+        return False, False, False
     try:
         data = json.loads(stamp.read_text())
     except OSError, json.JSONDecodeError:
-        return False, False
+        return False, False, False
     geometry = (
         (out_dir / "high.glb").exists()
         and data.get("knobs") == config.DAMIT_KNOBS_VERSION
-        and data.get("shape_sha") == metadata.sha256_file(shape)
+        and _shape_unchanged(data, shape)
         and data.get("diameter_km") == diameter_km
     )
     meta_fresh = (out_dir / "metadata.json").exists() and data.get(
         "metadata"
     ) == _METADATA_VERSION
-    return geometry, meta_fresh
+    return geometry, meta_fresh, "shape_stat" in data
+
+
+def _shape_stat(shape: Path) -> list[int]:
+    st = shape.stat()
+    return [st.st_size, st.st_mtime_ns]
+
+
+def _shape_unchanged(data: dict, shape: Path) -> bool:
+    """Stat-based freshness; a stamp predating `shape_stat` falls back to the
+    content hash once and is rewritten with the stat by the caller."""
+    if "shape_stat" in data:
+        return data["shape_stat"] == _shape_stat(shape)
+    return data.get("shape_sha") == metadata.sha256_file(shape)
 
 
 def _write_stamp(stamp: Path, shape: Path, diameter_km: float) -> None:
@@ -605,7 +651,7 @@ def _write_stamp(stamp: Path, shape: Path, diameter_km: float) -> None:
             {
                 "knobs": config.DAMIT_KNOBS_VERSION,
                 "metadata": _METADATA_VERSION,
-                "shape_sha": metadata.sha256_file(shape),
+                "shape_stat": _shape_stat(shape),
                 "diameter_km": diameter_km,
             }
         )

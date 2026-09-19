@@ -12,6 +12,7 @@ reconstruct a bundle URL from an id alone (needed for deep links).
 """
 
 import gzip
+from collections.abc import Mapping
 import hashlib
 import math
 import orjson
@@ -37,6 +38,7 @@ from space_map_data.export.objects.wikipedia import (
     load_wikipedia_summaries_for_qid,
 )
 from space_map_data.export.images import collect_object_images
+from space_map_data.export.objects.compact import CompactMap
 from space_map_data.export.objects.celestrak import (
     build_satcat_global,
     build_satcat_localized,
@@ -211,9 +213,9 @@ class ChunkObjectData:
     __slots__ = ("global_data", "localized_data", "has_localized")
 
     def __init__(self):
-        self.global_data: dict[str, dict] = {}
-        self.localized_data: dict[str, dict[str, dict]] = {
-            lang: {} for lang in LANGUAGES
+        self.global_data: CompactMap = CompactMap()
+        self.localized_data: dict[str, CompactMap] = {
+            lang: CompactMap() for lang in LANGUAGES
         }
         self.has_localized: dict[str, bool] = {}
 
@@ -309,8 +311,8 @@ def build_chunk_object_data(
 
 def write_object_bundles(
     out_dir: Path,
-    global_data: dict[str, dict],
-    localized_data: dict[str, dict[str, dict]],
+    global_data: Mapping[str, dict],
+    localized_data: Mapping[str, Mapping[str, dict]],
 ) -> dict[str, int]:
     """Hash-bucket per-object dicts and write one gzipped JSON per bucket.
 
@@ -345,16 +347,26 @@ def write_object_bundles(
 
 
 def _write_hashed_bundles(
-    dir_path: Path, by_id: dict[str, dict], n_buckets: int
+    dir_path: Path, by_id: Mapping[str, dict], n_buckets: int
 ) -> None:
-    """Group by `hash(id) % n_buckets` and write one gzipped JSON per bucket."""
-    buckets: dict[int, dict[str, dict]] = {}
-    for obj_id, data in by_id.items():
-        buckets.setdefault(hash_bucket(obj_id, n_buckets), {})[obj_id] = data
+    """Group by `hash(id) % n_buckets` and write one gzipped JSON per bucket.
+
+    Splices the entries' JSON bytes straight into each bucket object so the
+    catalog is never decoded whole.
+    """
+    if not isinstance(by_id, CompactMap):
+        compact = CompactMap()
+        compact.update(by_id)
+        by_id = compact
+    buckets: dict[int, list[bytes]] = {}
+    for obj_id, raw in by_id.raw_items():
+        buckets.setdefault(hash_bucket(obj_id, n_buckets), []).append(
+            orjson.dumps(obj_id) + b":" + raw
+        )
     dir_path.mkdir(parents=True, exist_ok=True)
     for bucket, entries in buckets.items():
         (dir_path / f"{bucket}.json.gz").write_bytes(
-            gzip.compress(orjson.dumps(entries))
+            gzip.compress(b"{" + b",".join(entries) + b"}")
         )
 
 

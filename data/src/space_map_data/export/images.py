@@ -44,6 +44,7 @@ from PIL.ExifTags import Base as ExifBase
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.commons_images import (
+    clear_metadata_cache,
     IMAGES_DIR as DOWNLOADS_IMAGES_DIR,
     canonical_filename,
     is_excluded,
@@ -332,8 +333,23 @@ def pick_thumbnail(images: list[dict] | None) -> dict[str, str] | None:
     return None
 
 
+_ENTRIES: dict[tuple[str, str], dict | None] = {}
+
+
 def _make_entry(filename: str, kind: str) -> dict | None:
-    """Ensure the export bundle exists, then return a global-object-data entry."""
+    """Ensure the export bundle exists, then return a global-object-data entry.
+
+    Memoized per run: an image referenced by many objects is stat'ed, its
+    metadata tree walked, and its bundle checked once. Callers get a copy.
+    """
+    key = (filename, kind)
+    if key not in _ENTRIES:
+        _ENTRIES[key] = _build_entry(filename, kind)
+    entry = _ENTRIES[key]
+    return dict(entry) if entry is not None else None
+
+
+def _build_entry(filename: str, kind: str) -> dict | None:
     if not source_path(filename).exists():
         logger.info("Dropping image (source missing): %s", filename)
         return None
@@ -1081,6 +1097,8 @@ def clear_export_cache() -> None:
     _GROUP_IMAGES_CACHE = None
     _RING_IMAGES_CACHE = None
     _TOPIC_IMAGES_CACHE = None
+    _ENTRIES.clear()
+    clear_metadata_cache()
     with _FILE_LOCKS_GUARD:
         _FILE_LOCKS.clear()
 

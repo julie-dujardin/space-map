@@ -17,6 +17,7 @@ live at `v1/attitude/<probe>/`, outside `position/`, so `remove_old_outputs`
 spares them for reuse.
 """
 
+from collections.abc import MutableMapping
 import json
 import logging
 import multiprocessing
@@ -63,7 +64,9 @@ def _mission_kernel_stamps(mission_dir: Path, index: dict) -> dict[str, dict | N
     return {str(p): _file_stamp(p) for p in paths}
 
 
-def write_attitude(out_dir: Path, global_data: dict[str, dict]) -> dict[str, dict]:
+def write_attitude(
+    out_dir: Path, global_data: MutableMapping[str, dict]
+) -> dict[str, dict]:
     """Extract attitude for every mission with kernels on disk; mutate
     `global_data` to add the manifest entry per probe.
 
@@ -131,7 +134,7 @@ def _plan_probe(
     mission: str,
     index: dict,
     kernel_stamps: dict[str, dict | None],
-    global_data: dict[str, dict],
+    global_data: MutableMapping[str, dict],
     summary: dict[str, dict],
 ) -> dict | None:
     """Cache-check one probe: re-inject a cached manifest (returns None), or
@@ -174,7 +177,7 @@ def _plan_probe(
 def _run_jobs(
     out_dir: Path,
     jobs: list[tuple[str, str, dict, list[dict]]],
-    global_data: dict[str, dict],
+    global_data: MutableMapping[str, dict],
     summary: dict[str, dict],
 ) -> None:
     """Fan mission extraction jobs out to worker processes and apply results."""
@@ -204,7 +207,10 @@ def _run_jobs(
 
 
 def _apply_result(
-    mission: str, res: dict, global_data: dict[str, dict], summary: dict[str, dict]
+    mission: str,
+    res: dict,
+    global_data: MutableMapping[str, dict],
+    summary: dict[str, dict],
 ) -> None:
     probe_id = res["probe_id"]
     if res["error"] is not None:
@@ -309,7 +315,7 @@ def _read_cache(
 
 
 def _inject_manifest(
-    probe_id: int, manifest: dict, global_data: dict[str, dict]
+    probe_id: int, manifest: dict, global_data: MutableMapping[str, dict]
 ) -> None:
     """Merge the attitude manifest into the probe's `__global__` object entry."""
     object_key = f"probe-{probe_id}"

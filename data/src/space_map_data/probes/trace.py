@@ -135,7 +135,19 @@ def _merged_intervals(
     return [(iv[0], iv[1]) for iv in merged]
 
 
-def inception_et(naif_id: int, kernel_paths: list[str]) -> float | None:
+def coverage_intervals(
+    naif_id: int, kernel_paths: list[str]
+) -> list[tuple[float, float]]:
+    """Merged SPK coverage of `naif_id`, computed once so `inception_et` and
+    `classify_trace` share it instead of each re-scanning every kernel."""
+    return _merged_intervals(naif_id, kernel_paths)
+
+
+def inception_et(
+    naif_id: int,
+    kernel_paths: list[str],
+    intervals: list[tuple[float, float]] | None = None,
+) -> float | None:
     """Start of the longest contiguous coverage interval — the canonical
     "this probe came into being" timestamp for `probe_id` assignment.
 
@@ -145,7 +157,8 @@ def inception_et(naif_id: int, kernel_paths: list[str]) -> float | None:
     `(mission, naif_id)` once assigned, so this only matters for probes
     ingested for the first time.
     """
-    intervals = _merged_intervals(naif_id, kernel_paths)
+    if intervals is None:
+        intervals = _merged_intervals(naif_id, kernel_paths)
     if not intervals:
         return None
     return max(intervals, key=lambda iv: iv[1] - iv[0])[0]
@@ -266,6 +279,7 @@ def classify_trace(
     naif_id: int,
     kernel_paths: list[str],
     sample_dt_days: float = 1.0,
+    intervals: list[tuple[float, float]] | None = None,
 ) -> TraceResult:
     """Sample the trajectory at `sample_dt_days` cadence; return the RLE
     zone-membership timeline plus any landed phases.
@@ -285,7 +299,9 @@ def classify_trace(
     have several, interleaved with flying ones (Apollo splashdowns, GRAIL's
     pad sample, sample-return capsules).
     """
-    merged = _merged_intervals(naif_id, kernel_paths)
+    merged = (
+        intervals if intervals is not None else _merged_intervals(naif_id, kernel_paths)
+    )
     if not merged:
         return TraceResult(zone_intervals=[], landed_phases=[])
     zone_intervals: list[ZoneInterval] = []

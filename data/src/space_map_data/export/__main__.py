@@ -13,6 +13,7 @@ from space_map_data.export.pipeline.orchestrator import export
 from space_map_data.export.spacecraft import export_spacecraft_only
 from space_map_data.export.systems import export_systems_only
 from space_map_data.utils.db import engine_scope
+from space_map_data.utils.mirror import sync_all
 from space_map_data.utils.paths import DATA_DIR
 
 
@@ -38,6 +39,7 @@ def cli():
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
+    sync_all()
     if args.only == "atmospheres":
         # Pure constants + derivation — no DB.
         export_atmospheres_only()

@@ -8,6 +8,7 @@ Earth-zone overlay/writer consume both identically.
 """
 
 import json
+from functools import cache
 import logging
 import zipfile
 from collections.abc import Iterable, Iterator
@@ -226,11 +227,13 @@ def archive_zip_fingerprints(years: Iterable[int]) -> list[dict]:
     return _dedup_fingerprints(years)
 
 
+@cache
 def week_zip_fingerprints(date_iso: str) -> list[dict]:
     """Fingerprint the archive zip(s) that can feed the week labelled
     ``date_iso``. Both Monday's and Sunday's year are fingerprinted, even
     though the week is built from the midpoint year's zip alone — a superset
     only over-invalidates, and stays correct if archive cut points move.
+    Cached per run: every part of every archive week asks for it.
     """
     monday = datetime.fromisoformat(date_iso).date()
     sunday = monday + timedelta(days=6)

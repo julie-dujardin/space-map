@@ -9,6 +9,7 @@ import tomllib
 from space_map_data.models.ingest_stamp import write_ingest_stamp
 from space_map_data.utils.paths import DATA_DIR, DB_FILE, DOWNLOAD_DIR
 from space_map_data.utils.db import get_session, session_scope
+from space_map_data.utils.mirror import sync_all
 from space_map_data.ingest.common import (
     ingest_objects,
     ingest_features,
@@ -53,6 +54,7 @@ def cli():
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
+    sync_all()
     full_rebuild = "all" in args.targets
     selected = ALL_TARGETS if full_rebuild else args.targets
     start_time = time.perf_counter()

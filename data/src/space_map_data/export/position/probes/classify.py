@@ -29,7 +29,7 @@ from space_map_data.export.position.probes.time_grid import (
     landed_chunk_range,
 )
 from space_map_data.probes.probe_id import assign, et_to_mjd
-from space_map_data.probes.trace import classify_trace, inception_et
+from space_map_data.probes.trace import classify_trace, coverage_intervals, inception_et
 from space_map_data.probes.zones import ZONES_BY_KEY
 
 logger = logging.getLogger(__name__)
@@ -72,10 +72,11 @@ def _classify_worker(
     for k in kernel_paths:
         spiceypy.furnsh(k)
     try:
-        t0 = inception_et(naif_id, kernel_paths)
+        intervals = coverage_intervals(naif_id, kernel_paths)
+        t0 = inception_et(naif_id, kernel_paths, intervals)
         if t0 is None:
             return {"status": "no_coverage"}
-        result = classify_trace(naif_id, kernel_paths)
+        result = classify_trace(naif_id, kernel_paths, intervals=intervals)
         return {
             "status": "ok",
             "inception_et": t0,

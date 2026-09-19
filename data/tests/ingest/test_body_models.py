@@ -1,5 +1,6 @@
 """Natural-body shape-model ingest: mesh parsing, GLB writing, DAMIT orientation."""
 
+import hashlib
 import json
 import math
 
@@ -283,23 +284,33 @@ class TestDamitStamp:
 
     def test_fresh_stamp_is_fresh_both_ways(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
-        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, True)
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, True, True)
 
     def test_metadata_version_bump_spares_the_glb(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
         data = json.loads(stamp.read_text())
         data["metadata"] = "v1-stale"
         stamp.write_text(json.dumps(data))
-        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False)
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False, True)
 
     def test_changed_diameter_rebuilds_geometry(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
-        assert _stamp_state(stamp, out_dir, shape, 11.0) == (False, True)
+        assert _stamp_state(stamp, out_dir, shape, 11.0) == (False, True, True)
 
     def test_missing_sidecar_is_stale(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
         (out_dir / "metadata.json").unlink()
-        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False)
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False, True)
+
+    def test_hash_keyed_stamp_is_fresh_but_not_current(self, tmp_path):
+        stamp, out_dir, shape = self._stamp(tmp_path)
+        data = json.loads(stamp.read_text())
+        del data["shape_stat"]
+        data["shape_sha"] = hashlib.sha256(shape.read_bytes()).hexdigest()
+        stamp.write_text(json.dumps(data))
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, True, False)
+        shape.write_text("changed")
+        assert _stamp_state(stamp, out_dir, shape, 10.0) == (False, True, False)
 
 
 def _damit_prime_meridian_equatorial(

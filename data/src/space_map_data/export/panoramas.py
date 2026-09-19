@@ -33,7 +33,7 @@ from PIL import Image
 
 from space_map_data.export.sidecar_io import write_atomic
 from space_map_data.panoramas.missions import probe_id
-from space_map_data.utils.paths import EXPORT_DIR, PANORAMA_DERIVED_DIR
+from space_map_data.utils.paths import CACHE_DIR, EXPORT_DIR, PANORAMA_DERIVED_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +243,30 @@ def _address(entry: dict) -> tuple:
     return entry["time"], entry["lat"], entry["lon"]
 
 
+# Sphere digests keyed by path, validated by size and mtime. The spheres sit
+# on the network mount and only change when re-tiled, so hashing them once
+# saves minutes of reads on every later run.
+_DIGEST_CACHE_PATH = CACHE_DIR / "panorama_digests.json"
+
+
+def _sphere_digest(path: Path, digest_cache: dict[str, list]) -> str:
+    st = path.stat()
+    key = str(path)
+    cached = digest_cache.get(key)
+    if cached and cached[0] == st.st_size and cached[1] == st.st_mtime_ns:
+        return cached[2]
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest_cache[key] = [st.st_size, st.st_mtime_ns, digest]
+    return digest
+
+
+def _load_digest_cache() -> dict[str, list]:
+    try:
+        return orjson.loads(_DIGEST_CACHE_PATH.read_bytes())
+    except OSError, orjson.JSONDecodeError:
+        return {}
+
+
 def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
     """Everything but the products that repeat a texture already kept.
 
@@ -254,6 +278,7 @@ def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
     crowded = Counter(_address(product.entry) for product in entries)
     seen: dict[tuple, set[str]] = {}
     kept = []
+    digest_cache = _load_digest_cache()
     for product in entries:
         address = _address(product.entry)
         # Nothing shares this time and place, so there is nothing it can repeat
@@ -265,7 +290,7 @@ def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
         # A withheld stop publishes no bytes to tell apart, and the place is
         # the whole of what it publishes, so one of them stands for all.
         digest = (
-            hashlib.sha256(product.image.read_bytes()).hexdigest()
+            _sphere_digest(product.image, digest_cache)
             if product.image
             else WITHHELD_DIGEST
         )
@@ -277,6 +302,8 @@ def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
             continue
         digests.add(digest)
         kept.append(product)
+    _DIGEST_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    write_atomic(_DIGEST_CACHE_PATH, orjson.dumps(digest_cache))
     return kept, len(entries) - len(kept)
 
 

@@ -7,6 +7,7 @@ a ``primary`` body axis is aimed exactly at a target direction, an optional
 file or unmatched ids degrade silently to the south-toward-parent default.
 """
 
+from collections.abc import MutableMapping
 import logging
 from pathlib import Path
 from typing import Any
@@ -65,7 +66,7 @@ def load_orientation_config(path: Path = CONFIG_PATH) -> dict[str, dict]:
         return {}
     try:
         raw = yaml.safe_load(path.read_text())
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         logger.exception("spacecraft-orientation: failed to read %s; ignoring", path)
         return {}
     if not isinstance(raw, dict):
@@ -100,7 +101,7 @@ def load_orientation_config(path: Path = CONFIG_PATH) -> dict[str, dict]:
 
 
 def apply_orientation_config(
-    global_data: dict[str, dict], config: dict[str, dict] | None = None
+    global_data: MutableMapping[str, dict], config: dict[str, dict] | None = None
 ) -> int:
     """Inject ``pointing`` into each matching object's global entry.
 

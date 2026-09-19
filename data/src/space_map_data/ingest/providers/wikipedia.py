@@ -16,6 +16,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
+from space_map_data.utils.mirror import local
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,12 @@ def ingest() -> None:
     )
 
     available_ids: set[str] = set()
+    usable_by_qid: dict[str, bool] = {}
     for obj_id, qid in tqdm(objects, desc="Checking Wikipedia summaries", unit="obj"):
-        if _has_usable_summary(qid):
+        usable = usable_by_qid.get(qid)
+        if usable is None:
+            usable = usable_by_qid[qid] = _has_usable_summary(qid)
+        if usable:
             available_ids.add(obj_id)
 
     session.query(Object).update({Object.has_wikipedia_description: False})
@@ -62,8 +67,9 @@ def ingest() -> None:
 
 def _has_usable_summary(qid: str) -> bool:
     """True if any language has a non-missing page with text or a URL."""
+    wiki_dir = local(WIKI_DIR)
     for lang in LANGUAGES:
-        path = WIKI_DIR / lang / f"{qid}.json"
+        path = wiki_dir / lang / f"{qid}.json"
         if not path.exists():
             continue
         try:

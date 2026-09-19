@@ -128,7 +128,7 @@ def write_chunk(
         assert time is not None, "earth zone snapshots must carry a date label"
         day_dir = _earth_day_dir(time)
         if day_dir.exists():
-            signature = sidecar.build_earth_part_signature(day_dir)
+            signature = dict(sidecar.build_earth_part_signature(day_dir))
         else:
             signature = sidecar.build_earth_archive_part_signature(time)
     else:
@@ -137,7 +137,7 @@ def write_chunk(
         # SBDB ships its full catalog as one snapshot; the sidecar fingerprint
         # is shared across every small_bodies/* part. A re-download invalidates
         # all of them at once. No CelesTrak-style per-day variance.
-        signature = sidecar.build_sbdb_part_signature(DOWNLOAD_DIR)
+        signature = dict(sidecar.build_sbdb_part_signature(DOWNLOAD_DIR))
     if signature is not None:
         # The gate byte rides into the binary but isn't covered by the source
         # fingerprints above, so a newly matched QID would otherwise leave a
