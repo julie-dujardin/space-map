@@ -160,6 +160,13 @@ class ESA3DDownloader(Downloader):
         for root, members in sorted(groups.items()):
             self._process_root(root, members, catalog)
 
+        self._save_metadata(
+            url=CATALOG_URL,
+            record_count=sum(len(m) for m in groups.values()),
+            complete=True,
+            roots=len(groups),
+        )
+
     def _fetch_catalog(self) -> dict:
         logger.info("GET %s", CATALOG_URL)
         try:

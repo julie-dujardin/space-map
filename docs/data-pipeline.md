@@ -98,6 +98,7 @@ flowchart LR
         E_SYS["systems<br/><i>group by barycenter, attach orientation polys<br/>+ NUT_PREC + texture tiers per body</i>"]
         E_IMG["images<br/><i>collect P18/P154 per object, filter servable,<br/>per-language URL bundles</i>"]
         E_TEX["textures<br/><i>emit transcoded WebP tiers + source manifest</i>"]
+        E_STAT["status<br/><i>read every provider's metadata.json<br/>for its last-download date</i>"]
 
         OUT_META[/"metadata.json"/]
         OUT_POS[/"position/{zone}/{zoom}/…bin.gz"/]
@@ -108,6 +109,7 @@ flowchart LR
         OUT_IMG[/"images/{file}/{label}.{ext} + metadata.json.gz"/]
         OUT_TEX[/"textures/{id}/{tier}.webp + metadata.json"/]
         OUT_CRED[/"credits.json"/]
+        OUT_STAT[/"status.json"/]
         OUT_MSG[/"frontend messages/{lang}.json"/]
 
         E_POS_CHEB   --> OUT_POS
@@ -119,6 +121,7 @@ flowchart LR
         E_SYS      --> OUT_SYS
         E_IMG      --> OUT_IMG
         E_TEX      --> OUT_TEX
+        E_STAT     --> OUT_STAT
         E_OBJ      --> OUT_CRED
         E_OBJ      --> OUT_META
     end
@@ -190,4 +193,8 @@ flowchart LR
 
     %% Commons image bytes flow to image export untouched (license-filtered via DB flag)
     F_IMG --> E_IMG
+
+    %% Every downloader's metadata.json is read straight off disk — status is
+    %% the one export tier that needs neither the DB nor any downloaded content
+    DL -. "per-provider metadata.json" .-> E_STAT
 ```

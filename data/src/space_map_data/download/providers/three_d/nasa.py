@@ -45,11 +45,38 @@ class NASA3DResourcesDownloader(Downloader):
             logger.info("Cloning %s -> %s", REPO_URL, TARGET_DIR)
             self._git(["clone", REPO_URL, str(TARGET_DIR)])
 
+        self._save_metadata(
+            url=REPO_URL,
+            record_count=self._tracked_files(),
+            complete=True,
+            commit=self._head_commit(),
+        )
+
+    def _tracked_files(self) -> int:
+        return len(self._git_output(["ls-files"]).splitlines())
+
+    def _head_commit(self) -> str:
+        return self._git_output(["rev-parse", "HEAD"]).strip()
+
     @staticmethod
     def _git(args: list[str]) -> None:
         """Run git with output streamed to the terminal (progress visible)."""
         try:
             subprocess.run(["git", *args], check=True)
+        except subprocess.CalledProcessError as e:
+            raise DownloadError(
+                f"git {' '.join(args)} failed: rc={e.returncode}"
+            ) from e
+
+    @staticmethod
+    def _git_output(args: list[str]) -> str:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(TARGET_DIR), *args],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
         except subprocess.CalledProcessError as e:
             raise DownloadError(
                 f"git {' '.join(args)} failed: rc={e.returncode}"

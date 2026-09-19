@@ -18,6 +18,7 @@ osculating Kepler elements from chebyshev positions when it needs to. Probe
 v1/
   metadata.json                                   (not gzipped) entry point — zone manifest, bundle counts, versions
   credits.json                                    (not gzipped) aggregated attribution for the /credits page
+  status.json                                     (not gzipped) per-source download dates for the /status page
   seo/sitemap.xml                                 (not gzipped) notable-object + group URLs for search engines
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
@@ -87,5 +88,6 @@ v1/
 | [atmospheres.md](atmospheres.md) | `atmospheres.json` per-body scattering parameters + aerosol phase LUTs. |
 | [spacecraft.md](spacecraft.md) | `spacecraft.json` vehicle catalogue: launcher C3 curves, spacecraft mass/Isp/thrust, crew, cost, plus the per-locale name bundles. |
 | [credits.md](credits.md) | `credits.json` aggregated attribution manifest. |
+| [status.md](status.md) | `status.json` per-source download-freshness report. |
 | [sitemap.md](sitemap.md) | `seo/sitemap.xml` notable-object + group URL set and its selection rule. |
 | [consuming.md](consuming.md) | End-to-end consumer walkthrough. |

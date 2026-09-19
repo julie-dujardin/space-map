@@ -26,6 +26,9 @@ class Downloader(ABC):
 
     name: str
     out_dir: Path
+    # Overridden where two providers share one out_dir and would otherwise
+    # clobber each other's record.
+    metadata_name: str = "metadata.json"
     # Completeness expires after this age, so slowly-changing upstreams get
     # re-pulled. None trusts a complete download forever.
     max_age: timedelta | None = None
@@ -38,7 +41,7 @@ class Downloader(ABC):
 
     @property
     def metadata_file(self) -> Path:
-        return self.out_dir / "metadata.json"
+        return self.out_dir / self.metadata_name
 
     def is_complete(self, limit: int | None) -> bool:
         """Check if a previous download already satisfies the requested limit."""

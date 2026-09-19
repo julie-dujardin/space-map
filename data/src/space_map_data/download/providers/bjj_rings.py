@@ -141,6 +141,11 @@ class BJJRingsDownloader(Downloader):
 
         self._write_thickness()
         self._write_metadata_yaml()
+        self._save_metadata(
+            url=SOURCE_PAGE,
+            record_count=len(CHANNELS) + 1,  # + the locally derived thickness
+            complete=True,
+        )
 
     def _write_thickness(self) -> None:
         """Rasterise the NSSDCA per-region thickness onto the BJJ sample grid,

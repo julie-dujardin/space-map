@@ -11,6 +11,7 @@ from space_map_data.export.nomenclature.quadrangles import export_quadrangles_on
 from space_map_data.export.panoramas import export_panoramas_only
 from space_map_data.export.pipeline.orchestrator import export
 from space_map_data.export.spacecraft import export_spacecraft_only
+from space_map_data.export.status import export_status_only
 from space_map_data.export.systems import export_systems_only
 from space_map_data.utils.db import engine_scope
 from space_map_data.utils.mirror import sync_all
@@ -30,6 +31,7 @@ def cli():
             "spacecraft",
             "panoramas",
             "systems",
+            "status",
         ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
@@ -49,6 +51,9 @@ def cli():
         return
     if args.only == "panoramas":
         export_panoramas_only()
+        return
+    if args.only == "status":
+        export_status_only()
         return
     with engine_scope() as engine:
         if args.only == "groups":

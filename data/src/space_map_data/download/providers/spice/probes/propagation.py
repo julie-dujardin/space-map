@@ -244,6 +244,10 @@ class PropagationDownloader(Downloader):
     ProbesDownloader / HorizonsSyntheticDownloader without bespoke wiring."""
 
     name = PROVIDERS.SPICE_PROBES_PROPAGATION
+    # Shares MISSIONS_DIR with ProbesDownloader; a shared metadata.json would
+    # leave this step's ``complete: true`` standing in for the mirror's, which
+    # skipped the mirror on every later run.
+    metadata_name = "metadata-propagation.json"
 
     def __init__(self, client: httpx.Client) -> None:
         self.client = client  # base-class contract; unused (no HTTP)

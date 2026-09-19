@@ -113,6 +113,7 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import log_color_stats
 from space_map_data.export.atmospheres import write_atmospheres
 from space_map_data.export.spacecraft import write_spacecraft
+from space_map_data.export.status import write_status
 from space_map_data.export.panoramas import write_panorama_assets, write_panorama_index
 from space_map_data.export.systems import (
     load_clouds_metadata,
@@ -1200,6 +1201,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             skybox_metadata,
             model_metadata,
         )
+        write_status(out_dir)
 
         if not tier_b_clean:
             probe_ids = _build_non_zone_object_data(
