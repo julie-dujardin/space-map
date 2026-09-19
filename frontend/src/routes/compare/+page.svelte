@@ -1,7 +1,8 @@
 <!--
   Size comparison, full page: the row is the screen, and everything else floats
   over it. The list at the side is what is being compared; how that set is
-  broken into pages is decided here, when it is drawn, from the sizes alone.
+  broken into pages is decided here, when it is drawn, from the sizes and the
+  room the names under them need.
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
@@ -20,7 +21,8 @@
 	import SiteNav from '../../components/nav/SiteNav.svelte';
 	import ComparePicker from '../../components/compare/ComparePicker.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
-	import { bandsBySize } from '$lib/compare/pages';
+	import { bandsBySize, screensOf } from '$lib/compare/pages';
+	import { bandScreen, labelWidth, screenCount } from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
 	import { COMPARE_PRESETS, presetOn, type ComparePreset } from '$lib/compare/presets';
 	import type { ObjectHit } from '$lib/search/client';
@@ -42,6 +44,7 @@
 
 	let railOpen = $state(true);
 	let pickerOpen = $state(false);
+	let stageWidth = $state(0);
 	let stageHeight = $state(0);
 	let page = $state(0);
 	let menu = $state<{ id: string; x: number; y: number } | null>(null);
@@ -77,14 +80,39 @@
 		selected.map((id) => resolved[id]).filter((o): o is CompareObject => !!o)
 	);
 	const bands = $derived(bandsBySize(objects, (o) => o.radiusKm));
-	const pageIndex = $derived(Math.min(page, Math.max(0, bands.length - 1)));
-	const band = $derived(bands[pageIndex]);
+	/** The bands, cut again where their bodies and names run out of width,
+	 *  each on the scale its first page sets. Until the stage is measured there
+	 *  is one page per band, on the row's own scale. */
+	const pages = $derived.by(() => {
+		const rowHeight = stageHeight - LABEL_ROW;
+		if (!stageWidth || rowHeight <= 0) {
+			return screensOf(
+				bands,
+				(items) => ({ count: items.length, scale: 0 }),
+				() => 0
+			);
+		}
+		const fit = (o: CompareObject) => ({
+			radiusKm: o.radiusKm,
+			label: labelWidth(o.name, sizeText(o))
+		});
+		return screensOf(
+			bands,
+			(items, after) => bandScreen(items.map(fit), after && fit(after), stageWidth, rowHeight),
+			(rest, after, scale) =>
+				screenCount(rest.map(fit), after && fit(after), scale, scale, stageWidth, false)
+		);
+	});
+	const pageIndex = $derived(Math.min(page, Math.max(0, pages.length - 1)));
+	const current = $derived(pages[pageIndex]);
 	const bodies = $derived<LineupBody[]>(
-		band
+		current
 			? [
-					...band.items.map(lineupBody),
-					...(band.previous ? [{ ...lineupBody(band.previous), aside: 'start' as const }] : []),
-					...(band.next ? [{ ...lineupBody(band.next), aside: 'end' as const }] : [])
+					...current.items.map(lineupBody),
+					...(current.previous
+						? [{ ...lineupBody(current.previous), aside: 'start' as const }]
+						: []),
+					...(current.next ? [{ ...lineupBody(current.next), aside: 'end' as const }] : [])
 				]
 			: []
 	);
@@ -94,7 +122,7 @@
 
 	// A shorter set can strand the reader on a page that no longer exists.
 	$effect(() => {
-		if (page > bands.length - 1) page = Math.max(0, bands.length - 1);
+		if (page > pages.length - 1) page = Math.max(0, pages.length - 1);
 	});
 
 	/** Pixels per kilometre on this page, read off whatever the row laid out. */
@@ -156,7 +184,7 @@
 	// --- pages, which are only a way of drawing the set ---
 
 	function turn(delta: number): void {
-		page = Math.min(Math.max(pageIndex + delta, 0), Math.max(0, bands.length - 1));
+		page = Math.min(Math.max(pageIndex + delta, 0), Math.max(0, pages.length - 1));
 		menu = null;
 	}
 
@@ -185,10 +213,10 @@
 		return { px: km * pxPerKm, label };
 	});
 
-	// The row draws both neighbouring bands itself, at its own scale — the page
+	// The row draws both neighbouring pages itself, at its own scale — the page
 	// only names them.
-	const ghost = $derived(band?.previous);
-	const speck = $derived(band?.next);
+	const ghost = $derived(current?.previous);
+	const speck = $derived(current?.next);
 
 	const menuObject = $derived(menu ? resolved[menu.id] : undefined);
 </script>
@@ -306,6 +334,7 @@
 
 		<!-- The row. Always dark: it is the same sky the map draws. -->
 		<div
+			bind:clientWidth={stageWidth}
 			bind:clientHeight={stageHeight}
 			role="group"
 			aria-label={m.compare_lineup_label()}
@@ -322,6 +351,7 @@
 						{bodies}
 						ariaLabel={m.compare_lineup_label()}
 						height={stageHeight - LABEL_ROW}
+						pxPerKm={current.scale || undefined}
 						boxed
 						labels
 						ground="transparent"
@@ -377,8 +407,8 @@
 			{/if}
 
 			{#if speck && speckAt}
-				<!-- At true size it is a few pixels across, so the reach for it is
-				     the width of the strip it sits in. -->
+				<!-- A speck is a few pixels across, so the reach for it is the width
+				     of the strip it sits in; a limb is reached over its own width. -->
 				<button
 					type="button"
 					aria-hidden="true"
@@ -387,7 +417,7 @@
 					onpointerenter={() => (hot = 'next')}
 					onpointerleave={() => (hot = null)}
 					class="absolute inset-y-0 z-10 flex items-center justify-start ps-1"
-					style="left: {speckAt.cx - 4}px; width: 44px"
+					style="left: {Math.min(speckAt.cx - speckAt.pr, speckAt.cx - 22)}px; right: 0"
 				>
 					<ChevronRightIcon
 						class="size-5 translate-y-8 transition-colors {hot === 'next'
@@ -431,15 +461,15 @@
 				</div>
 			{/if}
 
-			{#if bands.length > 1 && narrow}
+			{#if pages.length > 1 && narrow}
 				<!-- The phone has no next-page link, only the strip, so it counts pages. -->
 				<div
 					role="group"
-					aria-label={m.compare_pages_label({ n: pageIndex + 1, total: bands.length })}
+					aria-label={m.compare_pages_label({ n: pageIndex + 1, total: pages.length })}
 					class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1.5"
 					style="bottom: {LABEL_ROW + 16}px"
 				>
-					{#each bands.map((_, i) => i) as i (i)}
+					{#each pages.map((_, i) => i) as i (i)}
 						<span class="size-[7px] rounded-full {i === pageIndex ? 'bg-white/85' : 'bg-white/30'}"
 						></span>
 					{/each}

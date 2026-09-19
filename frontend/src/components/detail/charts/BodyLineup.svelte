@@ -106,6 +106,18 @@
 	import { isModifiedClick } from '$lib/modified-click';
 	import { createScrub } from '$lib/charts/scrub';
 	import { formatQuantity } from '$lib/format/quantities';
+	import {
+		ASIDE_END_PAD,
+		BOX_GAP,
+		LABEL_MAX_WIDTH,
+		SIDE_PAD,
+		VPAD,
+		endStrip,
+		fitScale,
+		fullScale,
+		labelWidth,
+		limbStrip
+	} from './lineup-fit';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
@@ -129,8 +141,13 @@
 		 *  lays out. Meshes that overlap read as one object rather than several. */
 		boxed?: boolean;
 		/** Name and size under each body, in place of the hover tooltip — for a
-		 *  lineup that is the page rather than a strip beside its own list. */
+		 *  lineup that is the page rather than a strip beside its own list. Every
+		 *  body then stands in a box at least as wide as its name. */
 		labels?: boolean;
+		/** Draw on this scale rather than fitting the largest body to the height:
+		 *  for a caller that shows one band over several screens and keeps them
+		 *  on one scale. The row still shrinks below it when the width demands. */
+		pxPerKm?: number;
 		/** Where each body ended up, reported whenever the row is laid out. The
 		 *  scale it is drawn on (px per km) is `pr / radiusKm` on any of them,
 		 *  which is what a scale bar or a body drawn beside the row needs. */
@@ -165,6 +182,7 @@
 		height = DEFAULT_HEIGHT,
 		boxed = false,
 		labels = false,
+		pxPerKm,
 		onlayout,
 		oncontextpick,
 		ground,
@@ -288,28 +306,13 @@
 		labelWidth: number;
 	}
 
-	// Layout knobs (tune freely):
-	const VPAD = 10; // equal margin above and below the largest body
-	const SIDE_PAD = 6;
-	const CRAFT_GAP = 8; // clear air between neighbouring craft boxes
 	// A craft fills its box to the edge, so a paginated row must keep clear of the
 	// page chevrons; spheres taper away from them on their own.
 	const CHEVRON_PAD = 26;
-	// Labels are laid left to right and each takes what the one before it left,
-	// up to the cap; a body with less than the floor goes unnamed rather than
-	// overlapping its neighbour. The caller's own list names every one of them.
+	// In a row that steps bodies rather than boxing them, a name with less room
+	// than this goes unnamed rather than overlapping its neighbour's.
 	const LABEL_MIN_WIDTH = 44;
-	const LABEL_MAX_WIDTH = 180;
-	// Edge room for a neighbouring band: the band before it gets this share of
-	// the row, the same on every page so it reads as an edge rather than as a
-	// body of its own; the band after needs only its own width.
-	const LIMB_SHARE = 0.065;
-	const LIMB_MIN = 44;
-	const LIMB_MAX = 120;
-	const ASIDE_END_PAD = 44;
 	const ASIDE_MAX_PR = 20000;
-	/** The strip at the start of the row given to the band before it. */
-	const limbStrip = (w: number) => Math.max(LIMB_MIN, Math.min(LIMB_MAX, w * LIMB_SHARE));
 
 	let layout = $derived.by<LaidOut[]>(() => {
 		if (!width || visibleItems.length === 0) return [];
@@ -317,34 +320,44 @@
 		const ordered = visibleItems;
 		const raw = ordered.map((p) => p.diameterKm / 2);
 		const n = ordered.length;
-		// Largest fits the height with equal top/bottom padding; true-linear from there.
-		const heightK = (height - 2 * VPAD) / 2 / raw[0];
+		// Largest fits the height with equal top/bottom padding, unless the caller
+		// holds the row to a scale of its own; true-linear from there.
+		const heightK = pxPerKm ?? fullScale(raw[0], height);
 		// Overlapping discs still read as discs, so spheres take the height and
 		// crowd. A craft's mesh is its own silhouette — two of them overlapping
 		// read as one machine — so the row must fit them side by side as well,
-		// on the one scale that keeps the comparison honest.
+		// on the one scale that keeps the comparison honest. A named body's box
+		// is as wide as its name, so names never pile up either.
 		const boxRow = boxed || ordered.some((p) => p.craft);
+		const names = ordered.map((p) => (labels ? labelWidth(p.name, sizeText(p)) : 0));
 		const sidePad = pageCount > 1 ? CHEVRON_PAD : SIDE_PAD;
 		const padStart = asides.some((a) => a.aside === 'start') ? limbStrip(width) : 0;
-		const padEnd = asides.some((a) => a.aside === 'end') ? ASIDE_END_PAD : 0;
-		const boxes = raw.reduce((a, r) => a + 2 * r, 0);
+		const end = asides.find((a) => a.aside === 'end');
+		const padEnd = end ? endStrip((end.diameterKm / 2) * heightK, width) : 0;
 		const boxRun0 = width - 2 * sidePad - padStart - padEnd;
-		const k = boxRow ? Math.min(heightK, (boxRun0 - (n - 1) * CRAFT_GAP) / boxes) : heightK;
+		const k = boxRow
+			? fitScale(
+					raw.map((r, i) => ({ radiusKm: r, label: names[i] })),
+					boxRun0,
+					heightK
+				)
+			: heightK;
 		const prs = raw.map((r) => Math.max(2, r * k)); // floor so tiny worlds stay visible
-		// Craft sit in their own boxes end to end, centred in the row; spheres get
-		// a constant centre-to-centre step, fit so the end ones touch the pads.
+		const slots = prs.map((pr, i) => Math.max(2 * pr, names[i]));
+		// Boxes sit end to end, centred in the row; spheres get a constant
+		// centre-to-centre step, fit so the end ones touch the pads.
 		const spanLeft = SIDE_PAD + padStart;
 		const spanWidth = width - 2 * SIDE_PAD - padStart - padEnd;
 		const step = n > 1 ? (spanWidth - prs[0] - prs[n - 1]) / (n - 1) : 0;
-		const boxRun = prs.reduce((a, pr) => a + 2 * pr, 0) + (n - 1) * CRAFT_GAP;
+		const boxRun = slots.reduce((a, slot) => a + slot, 0) + (n - 1) * BOX_GAP;
 		let boxX = sidePad + padStart + (boxRun0 - boxRun) / 2;
 		const baseline = height - VPAD;
 		const laid: LaidOut[] = ordered.map((p, i) => {
 			const pr = prs[i];
 			let cx: number;
 			if (boxRow) {
-				cx = boxX + pr;
-				boxX += 2 * pr + CRAFT_GAP;
+				cx = boxX + slots[i] / 2;
+				boxX += slots[i] + BOX_GAP;
 			} else {
 				cx = spanLeft + prs[0] + i * step;
 			}
@@ -368,25 +381,22 @@
 			laid[i].colLeft = left;
 			laid[i].colWidth = right - left;
 		}
-		// Names, left to right: each is centred on its body and takes what the
-		// last one left, so a crowd of small bodies loses its names rather than
-		// piling them on top of each other. Only when names are drawn: a width
-		// on an undrawn name would suppress the body's tooltip.
+		// A name is centred on its body and reaches to the middle of the air on
+		// either side of its box, or of its step. Only when names are drawn: a
+		// width on an undrawn name would suppress the body's tooltip.
 		if (labels) {
-			let taken = 0;
-			for (const p of laid) {
-				const half = Math.min(LABEL_MAX_WIDTH / 2, p.cx - taken, width - p.cx);
-				if (half * 2 < LABEL_MIN_WIDTH) continue;
-				p.labelWidth = half * 2;
-				taken = p.cx + half;
-			}
+			laid.forEach((p, i) => {
+				const room = boxRow ? slots[i] + BOX_GAP : n > 1 ? step : width;
+				p.labelWidth = Math.min(LABEL_MAX_WIDTH, room, 2 * p.cx, 2 * (width - p.cx));
+			});
 		}
 		return laid;
 	});
 
-	/** A neighbouring band's body, on this row's scale: the one before it drawn
-	 *  against the start edge, where only its limb fits, and the one after it as
-	 *  the speck it really is at the end. */
+	/** A neighbouring page's body, on this row's scale: the one before it drawn
+	 *  against the start edge, where only its limb fits, and the one after it at
+	 *  the end — as the speck it is when the band changes there, else by its own
+	 *  limb, like the one before. */
 	let asideLayout = $derived.by<LaidOut[]>(() => {
 		if (!width || layout.length === 0 || asides.length === 0) return [];
 		const k = layout[0].pr / layout[0].radiusKm;
@@ -395,13 +405,16 @@
 			// changes nothing on screen — while the real number runs into the
 			// millions of pixels, where float precision and the frustum give out.
 			const pr = Math.min(ASIDE_MAX_PR, Math.max(2, (b.diameterKm / 2) * k));
-			// The one before runs off the edge, showing whatever limb fits; the one
-			// after sits in the middle of its own gutter, where the caller has room
-			// to mark it — at true size it is a few pixels across.
+			// A limb runs off its edge, showing whatever fits its strip; a speck
+			// sits in the middle of its own gutter, where the caller has room to
+			// mark it — at true size it is a few pixels across.
+			const shown = Math.min(limbStrip(width) - SIDE_PAD, pr);
 			const cx =
 				b.aside === 'start'
-					? Math.min(limbStrip(width) - SIDE_PAD, pr) - pr
-					: width - SIDE_PAD - ASIDE_END_PAD / 2;
+					? shown - pr
+					: 2 * pr <= ASIDE_END_PAD
+						? width - SIDE_PAD - ASIDE_END_PAD / 2
+						: width - shown + pr;
 			return { ...b, pr, cx, cy: height / 2, colLeft: 0, colWidth: 0, labelWidth: 0 };
 		});
 	});
@@ -858,10 +871,12 @@
 	 * The pose that fills the strip: a body meets it edge-on at one roll and
 	 * broadside at another, and only the second says anything about its size.
 	 * Rolled about the view axis, so the face it shows is still its own —
-	 * `strip` is the width it has to fill, `right` where its outermost surface
-	 * goes, both in row pixels about the object's origin.
+	 * `strip` is the width it has to fill, `edge` how far from the object's
+	 * origin its outermost surface goes, both in row pixels. `side` is the way
+	 * the body faces: +1 from the start edge towards the row's end, −1 from the
+	 * end edge, worked in mirror so the roll and the shift come back mirrored.
 	 */
-	function fitLimb(pts: number[], strip: number, right: number) {
+	function fitLimb(pts: number[], strip: number, edge: number, side: 1 | -1) {
 		let best = { roll: 0, dx: 0, dy: 0, shown: -1 };
 		for (let step = 0; step < LIMB_ROLLS; step++) {
 			const roll = (step * Math.PI) / LIMB_ROLLS;
@@ -869,14 +884,14 @@
 			const sin = Math.sin(roll);
 			let far = -Infinity;
 			for (let i = 0; i < pts.length; i += 2) {
-				const x = pts[i] * cos - pts[i + 1] * sin;
+				const x = side * pts[i] * cos - pts[i + 1] * sin;
 				if (x > far) far = x;
 			}
 			let top = Infinity;
 			let bottom = -Infinity;
 			for (let i = 0; i < pts.length; i += 2) {
-				if (pts[i] * cos - pts[i + 1] * sin < far - strip) continue;
-				const y = pts[i] * sin + pts[i + 1] * cos;
+				if (side * pts[i] * cos - pts[i + 1] * sin < far - strip) continue;
+				const y = side * pts[i] * sin + pts[i + 1] * cos;
 				if (y < top) top = y;
 				if (y > bottom) bottom = y;
 			}
@@ -884,7 +899,7 @@
 			// squarest pose that fills it wins on the +1 rather than on a sliver.
 			const shown = Math.min(bottom - top, height);
 			if (shown > best.shown + 1) {
-				best = { roll, dx: right - far, dy: -(top + bottom) / 2, shown };
+				best = { roll: side * roll, dx: side * (edge - far), dy: -(top + bottom) / 2, shown };
 			}
 		}
 		return best;
@@ -906,10 +921,13 @@
 		let fit = asideFit.get(p.id);
 		if (fit?.mark !== mark) {
 			if (p.aside === 'start') {
-				const { roll, dx, dy } = fitLimb(asideSamples(obj), p.cx + p.pr, p.pr);
+				const { roll, dx, dy } = fitLimb(asideSamples(obj), p.cx + p.pr, p.pr, 1);
+				fit = { mark, roll, dx, dy };
+			} else if (2 * p.pr > ASIDE_END_PAD) {
+				const { roll, dx, dy } = fitLimb(asideSamples(obj), width - (p.cx - p.pr), p.pr, -1);
 				fit = { mark, roll, dx, dy };
 			} else {
-				// The band after is a speck: it only has to sit on its mark.
+				// A speck only has to sit on its mark.
 				const box = new Box3().setFromObject(obj, true);
 				fit = box.isEmpty()
 					? { mark, roll: 0, dx: 0, dy: 0 }
