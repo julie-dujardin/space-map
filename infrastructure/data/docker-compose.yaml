@@ -17,6 +17,10 @@ services:
     volumes:
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
       - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
+      # Ingest database and metadata mirror. Regenerable, but it has to persist
+      # across container recreation and stay on local disk — the downloads dir
+      # is NFS, where SQLite WAL is unsupported.
+      - ${CACHE_HOST_DIR:-/srv/space-map/space-map-cache}:/space-map-cache
 
   # Separate from the scheduler: the DSN feed keeps no history, so it has to be
   # sampled every minute, and every scheduler run that does work sends a push.
