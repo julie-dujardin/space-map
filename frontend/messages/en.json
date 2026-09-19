@@ -1476,6 +1476,7 @@
 	"nav_delta_v": "Δv map",
 	"compare_page_title": "Compare",
 	"compare_lineup_label": "Objects compared by size",
+	"lineup_compare": "Compare at full size",
 	"compare_empty": "Add an object to start a comparison.",
 	"compare_loading": "Loading",
 	"compare_add": "Add to comparison",

@@ -1285,6 +1285,7 @@
 	"nav_delta_v": "Δv 地图",
 	"compare_page_title": "比较",
 	"compare_lineup_label": "按大小比较的对象",
+	"lineup_compare": "全尺寸比较",
 	"compare_empty": "添加对象以开始比较。",
 	"compare_loading": "加载中",
 	"compare_add": "加入比较",

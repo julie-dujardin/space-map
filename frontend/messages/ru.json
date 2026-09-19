@@ -1326,6 +1326,7 @@
 	"nav_delta_v": "Карта Δv",
 	"compare_page_title": "Сравнение",
 	"compare_lineup_label": "Объекты в сравнении по размеру",
+	"lineup_compare": "Сравнить в полном размере",
 	"compare_empty": "Добавьте объект, чтобы начать сравнение.",
 	"compare_loading": "Загрузка",
 	"compare_add": "Добавить к сравнению",

@@ -96,6 +96,7 @@
 			bodies={lineup.hero.bodies}
 			ariaLabel={lineup.hero.ariaLabel}
 			perPage={lineup.hero.perPage}
+			compare
 		/>
 	{/if}
 {/snippet}
@@ -191,6 +192,7 @@
 			bodies={lineup.probeLineup.bodies}
 			ariaLabel={lineup.probeLineup.ariaLabel}
 			perPage={lineup.probeLineup.perPage}
+			compare
 		/>
 	{/if}
 {/snippet}
@@ -203,6 +205,7 @@
 			bodies={lineup.membersLineup.bodies}
 			ariaLabel={lineup.membersLineup.ariaLabel}
 			perPage={lineup.membersLineup.perPage}
+			compare
 		/>
 	{/if}
 {/snippet}

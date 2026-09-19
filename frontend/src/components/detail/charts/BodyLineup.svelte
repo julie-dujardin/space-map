@@ -108,6 +108,8 @@
 	import { formatQuantity } from '$lib/format/quantities';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
+	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages.js';
 
 	/** The strip height a drawer row uses. */
@@ -152,6 +154,9 @@
 		/** Whether hovering a body pushes its neighbours aside. The drawer's
 		 *  strip needs it to get at a crowded body; a row with room does not. */
 		spread?: boolean;
+		/** Offer the row a way out to `/compare`, carrying the same set. Off on
+		 *  the compare page itself, which is where that link goes. */
+		compare?: boolean;
 	}
 	let {
 		bodies,
@@ -163,7 +168,8 @@
 		onlayout,
 		oncontextpick,
 		ground,
-		spread = true
+		spread = true,
+		compare = false
 	}: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -228,6 +234,14 @@
 	// (in `layout`) scales to its own largest body — small worlds aren't dwarfed
 	// by giants on another page.
 	let sorted = $derived<Body[]>([...items].sort((a, b) => b.diameterKm - a.diameterKm));
+
+	// The whole row, not the page on screen: the link carries every body the
+	// lineup holds. A single body has nothing to compare itself with.
+	let compareHref = $derived(
+		compare && sorted.length > 1
+			? `${resolve('/compare')}?m=${sorted.map((b) => b.id).join(',')}`
+			: null
+	);
 	let pageCount = $derived(perPage ? Math.max(1, Math.ceil(sorted.length / perPage)) : 1);
 	let page = $state(0);
 	// Clamp when the body set shrinks (switching collections) so a stale index
@@ -1188,6 +1202,21 @@
 				></button>
 			{/if}
 		{/each}
+
+		{#if compareHref}
+			<!-- Suppresses body hover the same way the page controls do. -->
+			<a
+				href={compareHref}
+				onpointerenter={() => (hoveredId = null)}
+				onpointerdown={(e) => e.stopPropagation()}
+				onpointermove={(e) => e.stopPropagation()}
+				aria-label={m.lineup_compare()}
+				title={m.lineup_compare()}
+				class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1 right-1 z-20 rounded-full p-1 shadow-sm backdrop-blur-sm transition"
+			>
+				<Maximize2Icon size={16} />
+			</a>
+		{/if}
 
 		{#if pageCount > 1}
 			<!-- Controls suppress body hover: stopPropagation stops the container

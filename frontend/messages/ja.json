@@ -1387,6 +1387,7 @@
 	"nav_delta_v": "Δvマップ",
 	"compare_page_title": "比較",
 	"compare_lineup_label": "大きさで比較した天体",
+	"lineup_compare": "全画面で比較",
 	"compare_empty": "オブジェクトを追加すると比較が始まる。",
 	"compare_loading": "読み込み中",
 	"compare_add": "比較に追加",

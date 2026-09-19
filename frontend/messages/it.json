@@ -1308,6 +1308,7 @@
 	"nav_delta_v": "Mappa Δv",
 	"compare_page_title": "Confronta",
 	"compare_lineup_label": "Oggetti confrontati per dimensione",
+	"lineup_compare": "Confronta a grandezza intera",
 	"compare_empty": "Aggiungi un oggetto per iniziare un confronto.",
 	"compare_loading": "Caricamento",
 	"compare_add": "Aggiungi al confronto",
