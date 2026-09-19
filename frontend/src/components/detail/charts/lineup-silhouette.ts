@@ -3,11 +3,14 @@ import {
 	Box3,
 	Mesh,
 	MeshBasicMaterial,
+	MeshLambertMaterial,
+	type MeshStandardMaterial,
 	OrthographicCamera,
 	PlaneGeometry,
 	Scene,
 	ShaderMaterial,
 	Sphere,
+	type Texture,
 	Vector2,
 	type Object3D,
 	type WebGLRenderer,
@@ -59,7 +62,10 @@ export class SilhouetteGlow {
 
 	private readonly glowPx: number;
 	private readonly glowMat: MeshBasicMaterial;
-	private readonly maskMat = new MeshBasicMaterial({ color: 0xffffff });
+	// Lambert, not Basic: only Basic lacks `displacementMap`, and a DEM body's
+	// shape lives entirely in that vertex displacement. Lights are hidden during
+	// the pass, so it draws black — the blur reads coverage from alpha alone.
+	private readonly maskMat = new MeshLambertMaterial();
 	private readonly maskCam = new OrthographicCamera(-1, 1, 1, -1, -1e6, 1e6);
 	private readonly fsScene = new Scene();
 	private readonly fsQuad: Mesh;
@@ -136,6 +142,8 @@ export class SilhouetteGlow {
 			return;
 		}
 
+		this.matchDisplacement(source);
+
 		const size = Math.max(MASK_MIN, Math.min(MASK_MAX, Math.round(2 * half)));
 		this.ensureTargets(size);
 		const maskRt = this.maskRt!;
@@ -148,7 +156,7 @@ export class SilhouetteGlow {
 		this.maskCam.bottom = cy - half;
 		this.maskCam.updateProjectionMatrix();
 
-		// Mask pass: only the body, flat white on transparent.
+		// Mask pass: only the body, opaque on transparent — coverage, not colour.
 		const hidden: Object3D[] = [];
 		for (const child of scene.children) {
 			if (child !== source && child.visible) {
@@ -193,6 +201,29 @@ export class SilhouetteGlow {
 		this.plane.position.set(cx, cy, z);
 		this.plane.scale.set(2 * half, 2 * half, 1);
 		this.plane.visible = true;
+	}
+
+	/** Displace the mask by the body's own height map, so a DEM body's rim traces
+	 *  the relief it draws rather than the ellipsoid underneath it. A shape model
+	 *  carries no map and clears it again. */
+	private matchDisplacement(source: Object3D): void {
+		let map: Texture | null = null;
+		let scale = 1;
+		let bias = 0;
+		source.traverse((obj) => {
+			if (map || !(obj instanceof Mesh)) return;
+			const mat = obj.material as MeshStandardMaterial | undefined;
+			if (!mat?.displacementMap) return;
+			map = mat.displacementMap;
+			scale = mat.displacementScale;
+			bias = mat.displacementBias;
+		});
+		if (this.maskMat.displacementMap !== map) {
+			this.maskMat.displacementMap = map;
+			this.maskMat.needsUpdate = true;
+		}
+		this.maskMat.displacementScale = scale;
+		this.maskMat.displacementBias = bias;
 	}
 
 	private ensureTargets(size: number): void {

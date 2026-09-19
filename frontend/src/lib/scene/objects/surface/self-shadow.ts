@@ -12,7 +12,7 @@
  * direct light only, like the eclipse path.
  */
 
-import { type MeshStandardMaterial, type Texture, Vector2 } from 'three';
+import { type MeshStandardMaterial, type Texture, Vector2, type Vector3 } from 'three';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
@@ -46,11 +46,17 @@ export interface SelfShadowUniforms {
 	uSelfTexel: { value: Vector2 };
 }
 
-/** Attach the self-shadow + relief path, once the displacement texture is known, so the fragment march samples the same height field the vertex stage displaces by. */
+/** Attach the self-shadow + relief path, once the displacement texture is known, so the fragment march samples the same height field the vertex stage displaces by.
+ *
+ *  `scaleScene` is read against the mesh's *world* radius, so a caller whose
+ *  mesh carries the scale (the lineup's unit spheres) passes local units times
+ *  that scale, and re-calls on every resize. `sunDir` defaults to the scene's
+ *  Sun; a stage with a light of its own passes that light's direction. */
 export function attachSelfShadowToBody(
 	material: MeshStandardMaterial,
 	heightMap: Texture,
-	scaleScene: number
+	scaleScene: number,
+	sunDir?: { value: Vector3 }
 ): SelfShadowUniforms {
 	const tex = heightMap.image as { width?: number; height?: number } | undefined;
 	const texel = new Vector2(1 / (tex?.width ?? 4096), 1 / (tex?.height ?? 2048));
@@ -71,7 +77,7 @@ export function attachSelfShadowToBody(
 		uSelfTexel: { value: texel }
 	};
 	material.userData.selfShadow = uniforms;
-	const sun = getEclipseSceneUniforms().uSunDir;
+	const sun = sunDir ?? getEclipseSceneUniforms().uSunDir;
 
 	chainShaderHook(material, 'selfShadow', (shader) => {
 		// Unique name: the chained eclipse shader already declares uSunDir.

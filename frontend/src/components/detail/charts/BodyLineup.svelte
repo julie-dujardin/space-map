@@ -80,6 +80,10 @@
 	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 	import { attachDisplacementMap } from '$lib/scene/objects/surface/displacement';
 	import {
+		attachSelfShadowToBody,
+		type SelfShadowUniforms
+	} from '$lib/scene/objects/surface/self-shadow';
+	import {
 		applyShapeModelMaterial,
 		makeShapeModelMaterial,
 		setShapeModelMap,
@@ -176,6 +180,9 @@
 	// three-quarter view that reads a bus and its booms as one shape.
 	const CRAFT_VIEW_PITCH = 0.24;
 	const CRAFT_VIEW_YAW = -0.7;
+	// The row's key light, shared by the DirectionalLight and the relief shader
+	// (which needs the same direction to shade and shadow the height field).
+	const KEY_LIGHT_DIR = { value: new Vector3(-0.4, 0.45, 1).normalize() };
 	const AXIS_X = new Vector3(1, 0, 0);
 	const AXIS_Y = new Vector3(0, 1, 0);
 	const AXIS_Z = new Vector3(0, 0, 1);
@@ -529,12 +536,21 @@
 
 	/** DEM relief on the lineup's unit sphere (radius 1 = equatorial `radiusKm`).
 	 *  `absolute_radius` texels are radius-from-centre, so the shared bias drops
-	 *  the unit sphere (−1) and the layout skips oblateness for those bodies. */
+	 *  the unit sphere (−1) and the layout skips oblateness for those bodies.
+	 *
+	 *  Vertex displacement alone leaves the sphere's own normals, so a lumpy body
+	 *  still shades as a smooth ellipsoid beside the shape models. The same
+	 *  height-gradient relief + self-shadow pass the main map runs gives it the
+	 *  geometry's shading instead. */
 	function loadDisplacement(b: LineupBody, material: MeshStandardMaterial, loader: TextureLoader) {
 		if (!b.displacement) return;
 		attachDisplacementMap(material, b.displacement, 'low', loader, 1, 1 / b.radiusKm).then(
 			(tex) => {
-				if (tex) render();
+				if (!tex) return;
+				// Slopes are measured against the mesh's world radius, which `place`
+				// sets in row pixels — so is this, and it follows the scale there.
+				attachSelfShadowToBody(material, tex, material.displacementScale, KEY_LIGHT_DIR);
+				render();
 			}
 		);
 	}
@@ -781,6 +797,11 @@
 			// absolute_radius bodies skip it — their displacement carries the shape.
 			const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
 			obj.scale.set(p.pr, p.pr * polarY, p.pr);
+			// The relief shader measures slopes against the world radius the scale
+			// above just set, so its height scale is the local one times that.
+			const material = (obj as Mesh).material as MeshStandardMaterial;
+			const relief = material.userData.selfShadow as SelfShadowUniforms | undefined;
+			if (relief) relief.uSelfScale.value = material.displacementScale * p.pr;
 		}
 		applySpin(obj, p.id);
 	}
@@ -1053,7 +1074,7 @@
 		camera = new OrthographicCamera(0, 1, 1, 0, -1e6, 1e6);
 		camera.position.z = 10;
 		const key = new DirectionalLight(0xffffff, 3.1);
-		key.position.set(-0.4, 0.45, 1);
+		key.position.copy(KEY_LIGHT_DIR.value);
 		const ambient = new AmbientLight(0xffffff, 0.12);
 		scene.add(key, ambient);
 		glowOpacity = 0;
