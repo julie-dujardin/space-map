@@ -1313,6 +1313,33 @@
 	"delta_v_solar_escape": "מילוט ממערכת השמש",
 	"nav_label": "אתר",
 	"nav_menu": "תפריט",
+	"status_page_title": "מצב",
+	"status_generated": "נוצר ב-{date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "מקור אחד",
+				"countPlural=other": "{count} מקורות"
+			}
+		}
+	],
+	"status_summary_current": "מעודכנים: {count}",
+	"status_summary_due": "באיחור: {count}",
+	"status_summary_never": "לא הורדו: {count}",
+	"status_column_source": "מקור",
+	"status_column_records": "רשומות",
+	"status_column_downloaded": "הורד",
+	"status_column_age": "ותק",
+	"status_section_orbits": "מסלולים וקטלוגים",
+	"status_section_ephemerides": "אפמרידות",
+	"status_section_reference": "נתוני ייחוס",
+	"status_section_imagery": "תמונות",
+	"status_section_models": "מודלים תלת-ממדיים",
+	"status_section_science": "נתונים מדעיים",
+	"status_derived": "נגזר",
+	"status_never_downloaded": "מעולם לא",
 	"credits_page_title": "קרדיטים",
 	"credits_see_all": "הצגת כל הקרדיטים",
 	"credits_other_bodies": "גופים אחרים",

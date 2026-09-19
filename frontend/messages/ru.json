@@ -1331,6 +1331,35 @@
 	"delta_v_solar_escape": "Уход из Солнечной системы",
 	"nav_label": "Сайт",
 	"nav_menu": "Меню",
+	"status_page_title": "Состояние",
+	"status_generated": "Сформировано {date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} источник",
+				"countPlural=few": "{count} источника",
+				"countPlural=many": "{count} источников",
+				"countPlural=other": "{count} источника"
+			}
+		}
+	],
+	"status_summary_current": "{count} в срок",
+	"status_summary_due": "{count} просрочено",
+	"status_summary_never": "{count} без загрузки",
+	"status_column_source": "Источник",
+	"status_column_records": "Записей",
+	"status_column_downloaded": "Загружено",
+	"status_column_age": "Давность",
+	"status_section_orbits": "Орбиты и каталоги",
+	"status_section_ephemerides": "Эфемериды",
+	"status_section_reference": "Справочные данные",
+	"status_section_imagery": "Изображения",
+	"status_section_models": "3D-модели",
+	"status_section_science": "Научные данные",
+	"status_derived": "производное",
+	"status_never_downloaded": "Никогда",
 	"credits_page_title": "Авторы",
 	"credits_see_all": "Полный список авторов",
 	"credits_other_bodies": "Другие тела",

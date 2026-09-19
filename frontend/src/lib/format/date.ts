@@ -58,14 +58,17 @@ interface ParsedIsoDate {
  * signed strings ("+1801-01-01T00:00:00Z", "-0466-00-00T00:00:00Z"), and
  * truncated forms ("2024", "2024-06") where omitted components signal
  * unknown precision — equivalent to the Wikidata "00" placeholder. The
- * seconds field is optional ("2023-09-24T14:52Z").
+ * seconds field is optional ("2023-09-24T14:52Z"), and a time may carry
+ * fractional seconds and a numeric offset, the form Python's `isoformat`
+ * writes ("2026-09-11T20:09:06.422377+00:00"). A time without a zone is
+ * read as UTC, as the rest of the pipeline writes it.
  */
 export function parseIsoDate(raw: string): ParsedIsoDate | null {
 	const m = raw.match(
-		/^([+-]?)(\d+)(?:-(\d{2})(?:-(\d{2}))?)?(?:T(\d{2}):(\d{2})(?::(\d{2}))?Z)?$/
+		/^([+-]?)(\d+)(?:-(\d{2})(?:-(\d{2}))?)?(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:?\d{2})?)?$/
 	);
 	if (!m) return null;
-	const [, sign, yearStr, monthStr = '00', dayStr = '00', hh, mm, ss] = m;
+	const [, sign, yearStr, monthStr = '00', dayStr = '00', hh, mm, ss, frac, zone] = m;
 	const isBCE = sign === '-';
 	const yearAbs = parseInt(yearStr, 10);
 	const month = parseInt(monthStr, 10);
@@ -78,8 +81,13 @@ export function parseIsoDate(raw: string): ParsedIsoDate | null {
 			parseInt(hh, 10),
 			parseInt(mm, 10),
 			ss === undefined ? 0 : parseInt(ss, 10),
-			0
+			frac === undefined ? 0 : Math.round(Number(`0.${frac}`) * 1000)
 		);
+		if (zone !== undefined && zone !== 'Z') {
+			const [, offSign, offHH, offMM] = zone.match(/^([+-])(\d{2}):?(\d{2})$/)!;
+			const minutes = (parseInt(offHH, 10) * 60 + parseInt(offMM, 10)) * (offSign === '-' ? -1 : 1);
+			date.setTime(date.getTime() - minutes * 60_000);
+		}
 	}
 	if (isNaN(date.getTime())) return null;
 
@@ -196,7 +204,37 @@ export function formatJulianDateTime(jd: number, opts: Intl.DateTimeFormatOption
 
 /** Format a Julian Date relative to a reference JD as a localized "X ago" / "in X" string. */
 export function formatJulianDateRelative(jd: number, refJd: number): string {
-	const days = jd - refJd;
+	return relativeDays(jd - refJd);
+}
+
+/**
+ * Localized date in the short form a table column can carry ("11 Sep 2026"),
+ * or ISO 8601 when the reader asked for it. Time-bearing input is a real
+ * instant, so it renders in the reader's zone.
+ */
+export function formatIsoDateShort(raw: string): string {
+	const parsed = parseIsoDate(raw);
+	if (!parsed) return raw;
+	const { date, month, day } = parsed;
+	if (getSettings().resolvedDateFormat === 'iso') {
+		return formatIso8601(date, { month, day, hasTime: false });
+	}
+	return formatLocaleDate(date, 'short');
+}
+
+/**
+ * Localized "7 days ago" for an ISO 8601 instant. Always numeric: a freshness
+ * table reads down a column, where "last month" beside "3 months ago" hides
+ * the very comparison the column is for.
+ */
+export function formatIsoRelative(raw: string, now: number = Date.now()): string {
+	const parsed = parseIsoDate(raw);
+	if (!parsed) return raw;
+	return relativeDays((parsed.date.getTime() - now) / 86_400_000, 'always');
+}
+
+/** Signed days as a localized "X ago" / "in X", in the coarsest unit that fits. */
+function relativeDays(days: number, numeric: Intl.RelativeTimeFormatNumeric = 'auto'): string {
 	const abs = Math.abs(days);
 	let unit: Intl.RelativeTimeFormatUnit;
 	let value: number;
@@ -216,8 +254,5 @@ export function formatJulianDateRelative(jd: number, refJd: number): string {
 		unit = 'minute';
 		value = days * 24 * 60;
 	}
-	return new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto' }).format(
-		Math.round(value),
-		unit
-	);
+	return new Intl.RelativeTimeFormat(getLocale(), { numeric }).format(Math.round(value), unit);
 }

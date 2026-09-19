@@ -1479,6 +1479,33 @@
 	"delta_v_solar_escape": "Solar System escape",
 	"nav_label": "Site",
 	"nav_menu": "Menu",
+	"status_page_title": "Status",
+	"status_generated": "Generated {date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} source",
+				"countPlural=other": "{count} sources"
+			}
+		}
+	],
+	"status_summary_current": "{count} up to date",
+	"status_summary_due": "{count} due a refresh",
+	"status_summary_never": "{count} not yet downloaded",
+	"status_column_source": "Source",
+	"status_column_records": "Records",
+	"status_column_downloaded": "Downloaded",
+	"status_column_age": "Age",
+	"status_section_orbits": "Orbits and catalogues",
+	"status_section_ephemerides": "Ephemerides",
+	"status_section_reference": "Reference data",
+	"status_section_imagery": "Imagery",
+	"status_section_models": "3D models",
+	"status_section_science": "Science data",
+	"status_derived": "derived",
+	"status_never_downloaded": "Never",
 	"credits_page_title": "Credits",
 	"credits_see_all": "See full credits",
 	"credits_other_bodies": "Small bodies",

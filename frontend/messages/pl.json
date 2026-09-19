@@ -1329,6 +1329,33 @@
 	"delta_v_solar_escape": "Ucieczka z Układu Słonecznego",
 	"nav_label": "Witryna",
 	"nav_menu": "Menu",
+	"status_page_title": "Stan",
+	"status_generated": "Wygenerowano {date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} źródło",
+				"countPlural=other": "{count} źródeł"
+			}
+		}
+	],
+	"status_summary_current": "{count} na bieżąco",
+	"status_summary_due": "{count} po terminie",
+	"status_summary_never": "{count} bez pobrania",
+	"status_column_source": "Źródło",
+	"status_column_records": "Rekordy",
+	"status_column_downloaded": "Pobrano",
+	"status_column_age": "Wiek",
+	"status_section_orbits": "Orbity i katalogi",
+	"status_section_ephemerides": "Efemerydy",
+	"status_section_reference": "Dane referencyjne",
+	"status_section_imagery": "Obrazy",
+	"status_section_models": "Modele 3D",
+	"status_section_science": "Dane naukowe",
+	"status_derived": "pochodne",
+	"status_never_downloaded": "Nigdy",
 	"credits_page_title": "Podziękowania",
 	"credits_see_all": "Zobacz pełne podziękowania",
 	"credits_other_bodies": "Inne ciała",

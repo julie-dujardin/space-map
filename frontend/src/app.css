@@ -24,6 +24,7 @@
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
+	--color-status-due: var(--status-due);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -68,6 +69,10 @@
 	--accent: oklch(0.97 0 0);
 	--accent-foreground: oklch(0.205 0 0);
 	--destructive: oklch(0.577 0.245 27.325);
+	/* Data past its refresh window, or never downloaded: amber rather than
+	   the destructive red, which would read as a failure. 4.5:1 on its own
+	   surface, since it colours text. */
+	--status-due: oklch(0.55 0.13 62);
 	--border: oklch(0.922 0 0);
 	--input: oklch(0.922 0 0);
 	/* A focus ring is non-text contrast: it needs 3:1 against the surface it
@@ -278,6 +283,7 @@ body {
 	--accent: oklch(0.269 0 0);
 	--accent-foreground: oklch(0.985 0 0);
 	--destructive: oklch(0.704 0.191 22.216);
+	--status-due: oklch(0.78 0.12 70);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
 	--ring: oklch(0.62 0 0);

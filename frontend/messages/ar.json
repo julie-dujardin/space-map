@@ -1359,6 +1359,37 @@
 	"delta_v_solar_escape": "الإفلات من النظام الشمسي",
 	"nav_label": "الموقع",
 	"nav_menu": "القائمة",
+	"status_page_title": "الحالة",
+	"status_generated": "أُنشئ في {date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا مصادر",
+				"countPlural=one": "مصدر واحد",
+				"countPlural=two": "مصدران",
+				"countPlural=few": "{count} مصادر",
+				"countPlural=many": "{count} مصدرًا",
+				"countPlural=other": "{count} مصدر"
+			}
+		}
+	],
+	"status_summary_current": "محدَّثة: {count}",
+	"status_summary_due": "متأخرة: {count}",
+	"status_summary_never": "لم تُنزَّل: {count}",
+	"status_column_source": "المصدر",
+	"status_column_records": "السجلات",
+	"status_column_downloaded": "تاريخ التنزيل",
+	"status_column_age": "المدة",
+	"status_section_orbits": "المدارات والفهارس",
+	"status_section_ephemerides": "التقاويم الفلكية",
+	"status_section_reference": "البيانات المرجعية",
+	"status_section_imagery": "الصور",
+	"status_section_models": "نماذج ثلاثية الأبعاد",
+	"status_section_science": "البيانات العلمية",
+	"status_derived": "مشتق",
+	"status_never_downloaded": "لم يُنزَّل",
 	"credits_page_title": "الاعتمادات",
 	"credits_see_all": "عرض الاعتمادات الكاملة",
 	"credits_other_bodies": "أجرام أخرى",

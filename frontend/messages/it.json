@@ -1313,6 +1313,33 @@
 	"delta_v_solar_escape": "Fuga dal Sistema solare",
 	"nav_label": "Sito",
 	"nav_menu": "Menu",
+	"status_page_title": "Stato",
+	"status_generated": "Generato il {date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} fonte",
+				"countPlural=other": "{count} fonti"
+			}
+		}
+	],
+	"status_summary_current": "{count} entro i termini",
+	"status_summary_due": "{count} fuori termine",
+	"status_summary_never": "{count} senza download",
+	"status_column_source": "Fonte",
+	"status_column_records": "Record",
+	"status_column_downloaded": "Scaricato",
+	"status_column_age": "Età",
+	"status_section_orbits": "Orbite e cataloghi",
+	"status_section_ephemerides": "Effemeridi",
+	"status_section_reference": "Dati di riferimento",
+	"status_section_imagery": "Immagini",
+	"status_section_models": "Modelli 3D",
+	"status_section_science": "Dati scientifici",
+	"status_derived": "derivato",
+	"status_never_downloaded": "Mai",
 	"credits_page_title": "Crediti",
 	"credits_see_all": "Vedi tutti i crediti",
 	"credits_other_bodies": "Altri corpi",

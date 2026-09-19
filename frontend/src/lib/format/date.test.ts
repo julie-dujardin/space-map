@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
 
-import { formatIsoDate, formatJulianDate } from './date';
+import { formatIsoDate, formatIsoDateShort, formatIsoRelative, formatJulianDate } from './date';
 
 describe('formatIsoDate', () => {
 	it.each([
@@ -45,6 +45,18 @@ describe('formatIsoDate', () => {
 			name: 'second-precision event date',
 			raw: '1969-07-20T20:17:40Z',
 			expected: 'July 20, 1969 8:17:40 PM'
+		},
+		// Download records are written by Python's `isoformat`: microseconds and
+		// a numeric offset rather than a bare Z.
+		{
+			name: 'fractional seconds with +00:00 offset',
+			raw: '2026-09-11T20:09:06.422377+00:00',
+			expected: 'September 11, 2026 8:09:06 PM'
+		},
+		{
+			name: 'non-UTC offset resolves to the same instant',
+			raw: '2026-09-11T22:09:06+02:00',
+			expected: 'September 11, 2026 8:09:06 PM'
 		}
 	])('$name → $expected', ({ raw, expected }) => {
 		expect(formatIsoDate(raw)).toBe(expected);
@@ -68,5 +80,29 @@ describe('formatJulianDate', () => {
 		const result = formatJulianDate(1705532.5);
 		expect(result).toContain('44');
 		expect(result).toContain('BC');
+	});
+});
+
+describe('formatIsoDateShort', () => {
+	it('abbreviates the month so a table column can carry it', () => {
+		expect(formatIsoDateShort('2026-09-11T20:09:06.422377+00:00')).toBe('Sep 11, 2026');
+	});
+
+	it('returns raw string when unparseable', () => {
+		expect(formatIsoDateShort('not a date')).toBe('not a date');
+	});
+});
+
+describe('formatIsoRelative', () => {
+	const now = Date.parse('2026-09-19T13:15:00Z');
+
+	it.each([
+		{ raw: '2026-09-12T13:15:00Z', expected: '7 days ago' },
+		{ raw: '2026-06-19T13:15:00Z', expected: '3 months ago' },
+		// Numeric even at one unit: "last month" would not compare against "3 months ago".
+		{ raw: '2026-08-19T13:15:00Z', expected: '1 month ago' },
+		{ raw: '2026-09-11T20:09:06.422377+00:00', expected: '8 days ago' }
+	])('$raw → $expected', ({ raw, expected }) => {
+		expect(formatIsoRelative(raw, now)).toBe(expected);
 	});
 });

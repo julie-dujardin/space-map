@@ -1313,6 +1313,33 @@
 	"delta_v_solar_escape": "Flucht aus dem Sonnensystem",
 	"nav_label": "Website",
 	"nav_menu": "Menü",
+	"status_page_title": "Status",
+	"status_generated": "Erstellt am {date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} Quelle",
+				"countPlural=other": "{count} Quellen"
+			}
+		}
+	],
+	"status_summary_current": "{count} aktuell",
+	"status_summary_due": "{count} überfällig",
+	"status_summary_never": "{count} ohne Download",
+	"status_column_source": "Quelle",
+	"status_column_records": "Datensätze",
+	"status_column_downloaded": "Heruntergeladen",
+	"status_column_age": "Alter",
+	"status_section_orbits": "Bahnen und Kataloge",
+	"status_section_ephemerides": "Ephemeriden",
+	"status_section_reference": "Referenzdaten",
+	"status_section_imagery": "Bildmaterial",
+	"status_section_models": "3D-Modelle",
+	"status_section_science": "Wissenschaftliche Daten",
+	"status_derived": "abgeleitet",
+	"status_never_downloaded": "Nie",
 	"credits_page_title": "Danksagungen",
 	"credits_see_all": "Vollständige Danksagungen anzeigen",
 	"credits_other_bodies": "Weitere Körper",

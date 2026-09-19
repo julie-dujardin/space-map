@@ -1385,6 +1385,33 @@
 	"delta_v_solar_escape": "Sortie du Système solaire",
 	"nav_label": "Site",
 	"nav_menu": "Menu",
+	"status_page_title": "État",
+	"status_generated": "Généré le {date}",
+	"status_summary_sources": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} source",
+				"countPlural=other": "{count} sources"
+			}
+		}
+	],
+	"status_summary_current": "{count} à jour",
+	"status_summary_due": "{count} à rafraîchir",
+	"status_summary_never": "{count} sans téléchargement",
+	"status_column_source": "Source",
+	"status_column_records": "Enregistrements",
+	"status_column_downloaded": "Téléchargé",
+	"status_column_age": "Ancienneté",
+	"status_section_orbits": "Orbites et catalogues",
+	"status_section_ephemerides": "Éphémérides",
+	"status_section_reference": "Données de référence",
+	"status_section_imagery": "Imagerie",
+	"status_section_models": "Modèles 3D",
+	"status_section_science": "Données scientifiques",
+	"status_derived": "dérivé",
+	"status_never_downloaded": "Jamais",
 	"credits_page_title": "Crédits",
 	"credits_see_all": "Voir tous les crédits",
 	"credits_other_bodies": "Autres corps",
