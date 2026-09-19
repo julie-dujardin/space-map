@@ -47,7 +47,7 @@ services:
       dockerfile: Dockerfile.dev
     command: sh -c "pnpm build:sdk && pnpm preview:sdk --port 4173"
     ports:
-      - "4173:4173"
+      - "4177:4173"
     volumes:
       - ./frontend/src:/app/src
     depends_on:
