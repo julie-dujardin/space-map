@@ -633,6 +633,37 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{panoramas} de {probes} sur {worlds}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} panorama de surface à 360°",
+				"countPlural=other": "{display} panoramas de surface à 360°"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} sonde",
+				"countPlural=other": "{display} sondes"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} monde",
+				"countPlural=other": "{display} mondes"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "Les images de ce parcours ne sont pas publiées ici. Chaque arrêt est placé à l'endroit où l'archive indique que l'engin se trouvait.",
 	"panorama_date": "Date",
 	"panorama_instrument": "Instrument",

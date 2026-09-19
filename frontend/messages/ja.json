@@ -641,6 +641,37 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{worlds}にわたる{probes}が撮影した{panoramas}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 件の360度地表パノラマ",
+				"countPlural=other": "{display} 件の360度地表パノラマ"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 機の探査機",
+				"countPlural=other": "{display} 機の探査機"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 個の天体",
+				"countPlural=other": "{display} 個の天体"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "この走行経路の画像はここでは公開していません。各停止地点は、アーカイブが記録する探査車の位置に置かれています。",
 	"panorama_date": "日付",
 	"panorama_instrument": "観測機器",

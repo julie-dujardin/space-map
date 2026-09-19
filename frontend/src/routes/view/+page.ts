@@ -27,6 +27,13 @@ export interface Traverse {
 	entries: PanoramaEntry[];
 }
 
+/** How much coverage the gallery holds, for the line under the title. */
+export interface GallerySummary {
+	panoramas: number;
+	probes: number;
+	worlds: number;
+}
+
 /** A body and the traverses recorded on it. */
 export interface CoveredBody {
 	id: string;
@@ -43,7 +50,8 @@ function probeName(detail: ObjectDetailData | null | undefined): string | undefi
 
 export const load: PageLoad = async ({ fetch }) => {
 	const summaries = await fetchPanoramaIndex(fetch).catch(() => null);
-	if (!summaries) return { bodies: [], failed: true };
+	if (!summaries)
+		return { bodies: [], summary: { panoramas: 0, probes: 0, worlds: 0 }, failed: true };
 
 	// The craft that drove each traverse, so a card can borrow its name. Keyed
 	// the way traverses are grouped — by body and mission both, since a slug is
@@ -66,6 +74,10 @@ export const load: PageLoad = async ({ fetch }) => {
 		).then((pairs) => new Map(pairs))
 	]);
 	const bodies: CoveredBody[] = [];
+	// A craft counts once however many bodies or traverses carry it; a traverse
+	// with no probe on record stands for itself.
+	const counted = new Set<string>();
+	let panoramas = 0;
 	for (const detail of details) {
 		const global = detail?.global;
 		if (!global?.panoramas?.length) continue;
@@ -82,14 +94,24 @@ export const load: PageLoad = async ({ fetch }) => {
 			id: global.id,
 			name: detail?.localized?.name ?? global.name ?? global.id,
 			radiusKm: meanRadiusKm(global) ?? 0,
-			traverses: [...byMission].map(([mission, entries]) => ({
-				mission,
-				name: probeName(named.get(`${global.id}/${mission}`)) ?? capitalize(mission),
-				entries
-			}))
+			traverses: [...byMission].map(([mission, entries]) => {
+				const key = `${global.id}/${mission}`;
+				counted.add(probes.get(key) ?? key);
+				panoramas += entries.length;
+				return {
+					mission,
+					name: probeName(named.get(key)) ?? capitalize(mission),
+					entries
+				};
+			})
 		});
 	}
 	// A body that answered with no panoramas is data moving on; nothing
 	// answering at all is a failure worth saying out loud.
-	return { bodies, failed: bodies.length === 0 && viewable.size > 0 };
+	const summary: GallerySummary = {
+		panoramas,
+		probes: counted.size,
+		worlds: bodies.length
+	};
+	return { bodies, summary, failed: bodies.length === 0 && viewable.size > 0 };
 };

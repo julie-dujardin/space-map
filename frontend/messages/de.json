@@ -605,6 +605,37 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{panoramas} von {probes} auf {worlds}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 360°-Oberflächenpanorama",
+				"countPlural=other": "{display} 360°-Oberflächenpanoramen"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} Sonde",
+				"countPlural=other": "{display} Sonden"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} Welt",
+				"countPlural=other": "{display} Welten"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "Die Bilder dieser Fahrtstrecke werden hier nicht veröffentlicht. Jeder Halt liegt dort, wo das Archiv den Standort des Fahrzeugs angibt.",
 	"panorama_date": "Datum",
 	"panorama_instrument": "Instrument",

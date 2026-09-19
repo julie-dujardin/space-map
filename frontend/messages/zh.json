@@ -539,6 +539,37 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "来自{worlds}上{probes}的{panoramas}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 张360°地表全景图",
+				"countPlural=other": "{display} 张360°地表全景图"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 个探测器",
+				"countPlural=other": "{display} 个探测器"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 个天体",
+				"countPlural=other": "{display} 个天体"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "此行驶路线的影像未在此发布。每个停留点按档案记录的探测器位置标注。",
 	"panorama_date": "日期",
 	"panorama_instrument": "仪器",

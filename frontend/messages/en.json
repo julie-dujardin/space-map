@@ -639,6 +639,37 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{panoramas}, across {probes} and {worlds}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 360° surface panorama",
+				"countPlural=other": "{display} 360° surface panoramas"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} probe",
+				"countPlural=other": "{display} probes"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} world",
+				"countPlural=other": "{display} worlds"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "The imagery of this traverse is not published here. Each stop is placed where the archive states the craft stood.",
 	"panorama_date": "Date",
 	"panorama_instrument": "Instrument",

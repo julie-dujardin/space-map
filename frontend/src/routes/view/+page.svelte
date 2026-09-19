@@ -9,10 +9,23 @@
 	import SitePage from '../../components/nav/SitePage.svelte';
 	import { bodyHref } from '$lib/state/url';
 	import { panoramaHref } from '$lib/state/panorama-link';
+	import { getLocale } from '$lib/paraglide/runtime';
 
 	let { data } = $props();
 
 	const bodies = $derived(data.bodies);
+
+	/** What the gallery holds, as one line: panoramas, the craft that took them,
+	 *  and the worlds they stand on. */
+	const summary = $derived.by(() => {
+		// The plural form is chosen on the number, the text shows the grouped one.
+		const n = (count: number) => ({ count, display: count.toLocaleString(getLocale()) });
+		return m.panorama_gallery_summary({
+			panoramas: m.panorama_gallery_summary_panoramas(n(data.summary.panoramas)),
+			probes: m.panorama_gallery_summary_probes(n(data.summary.probes)),
+			worlds: m.panorama_gallery_summary_worlds(n(data.summary.worlds))
+		});
+	});
 
 	/** The years a traverse spans, or the one year it sits in. */
 	function years(entries: { time: string }[]): string {
@@ -33,6 +46,8 @@
 		<p class="text-sm text-muted-foreground">{m.panorama_error()}</p>
 	{:else if bodies.length === 0}
 		<p class="text-sm text-muted-foreground">{m.panorama_gallery_empty()}</p>
+	{:else}
+		<p class="-mt-6 mb-8 text-sm text-muted-foreground">{summary}</p>
 	{/if}
 
 	{#each bodies as body (body.id)}

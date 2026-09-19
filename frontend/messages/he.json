@@ -605,6 +605,40 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{panoramas} של {probes} על {worlds}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "פנורמת שטח 360° אחת",
+				"countPlural=two": "שתי פנורמות שטח 360°",
+				"countPlural=other": "{display} פנורמות שטח 360°"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "גשושית אחת",
+				"countPlural=two": "שתי גשושיות",
+				"countPlural=other": "{display} גשושיות"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "עולם אחד",
+				"countPlural=two": "שני עולמות",
+				"countPlural=other": "{display} עולמות"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "התמונות של מסלול זה אינן מתפרסמות כאן. כל עצירה ממוקמת במקום שבו הארכיון מציין שהרכב עמד.",
 	"panorama_date": "תאריך",
 	"panorama_instrument": "מכשיר",

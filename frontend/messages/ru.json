@@ -559,6 +559,43 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{panoramas} с {probes} на {worlds}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} панорама поверхности 360°",
+				"countPlural=few": "{display} панорамы поверхности 360°",
+				"countPlural=many": "{display} панорам поверхности 360°",
+				"countPlural=other": "{display} панорамы поверхности 360°"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} аппарата",
+				"countPlural=few": "{display} аппаратов",
+				"countPlural=many": "{display} аппаратов",
+				"countPlural=other": "{display} аппаратов"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} мире",
+				"countPlural=few": "{display} мирах",
+				"countPlural=many": "{display} мирах",
+				"countPlural=other": "{display} мирах"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "Снимки этого маршрута здесь не публикуются. Каждая остановка размещена там, где, согласно архиву, находился аппарат.",
 	"panorama_date": "Дата",
 	"panorama_instrument": "Инструмент",

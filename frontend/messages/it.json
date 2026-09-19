@@ -605,6 +605,37 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{panoramas} da {probes} su {worlds}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} panorama di superficie a 360°",
+				"countPlural=other": "{display} panorami di superficie a 360°"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} sonda",
+				"countPlural=other": "{display} sonde"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} mondo",
+				"countPlural=other": "{display} mondi"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "Le immagini di questo percorso non sono pubblicate qui. Ogni sosta è collocata dove l'archivio indica che si trovava il veicolo.",
 	"panorama_date": "Data",
 	"panorama_instrument": "Strumento",

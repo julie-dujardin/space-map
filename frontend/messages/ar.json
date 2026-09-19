@@ -572,6 +572,49 @@
 		}
 	],
 	"panorama_gallery_years": "{start}–{end}",
+	"panorama_gallery_summary": "{panoramas} من {probes} على {worlds}",
+	"panorama_gallery_summary_panoramas": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا بانوراما سطحية 360°",
+				"countPlural=one": "بانوراما سطحية 360° واحدة",
+				"countPlural=two": "بانوراماتان سطحيتان 360°",
+				"countPlural=few": "{display} بانورامات سطحية 360°",
+				"countPlural=many": "{display} بانوراما سطحية 360°",
+				"countPlural=other": "{display} بانوراما سطحية 360°"
+			}
+		}
+	],
+	"panorama_gallery_summary_probes": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا مسبار",
+				"countPlural=one": "مسبار واحد",
+				"countPlural=two": "مسبارين",
+				"countPlural=few": "{display} مسابر",
+				"countPlural=many": "{display} مسبارًا",
+				"countPlural=other": "{display} مسبار"
+			}
+		}
+	],
+	"panorama_gallery_summary_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا عالم",
+				"countPlural=one": "عالم واحد",
+				"countPlural=two": "عالمين",
+				"countPlural=few": "{display} عوالم",
+				"countPlural=many": "{display} عالمًا",
+				"countPlural=other": "{display} عالم"
+			}
+		}
+	],
 	"panorama_imagery_unreleased": "لا تُنشر صور هذا المسار هنا. يوضع كل موقف حيث يذكر الأرشيف أن المركبة كانت واقفة.",
 	"panorama_date": "التاريخ",
 	"panorama_instrument": "الأداة",
