@@ -13,6 +13,8 @@
 		tooltip?: string;
 		/** Only where the colour carries meaning: state, hazard, outcome. */
 		dot?: string;
+		/** A second, quieter line under the value: the fact that qualifies it. */
+		note?: string;
 		/** 0–1; draws the bar that gives the value its denominator. */
 		share?: number;
 		href?: string;
@@ -70,6 +72,9 @@
 			<span class="truncate">{stat.label}</span>
 		</div>
 		{@render value()}
+		{#if stat.note}
+			<div class="text-muted-foreground truncate text-[11px] leading-4">{stat.note}</div>
+		{/if}
 		{#if stat.share != null && stat.share >= MIN_BAR_SHARE}
 			<div class="bg-muted-foreground/30 h-0.5 w-full overflow-hidden rounded-full">
 				<div

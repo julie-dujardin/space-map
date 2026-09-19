@@ -32,6 +32,9 @@ export interface Host {
 	dataUrl: string;
 	/** Root of the image export, on its own origin in production. */
 	imagesUrl: string;
+	/** Root of the live tracking feed, rewritten every few minutes on an origin
+	 *  of its own so it never waits on a catalogue deploy. */
+	liveUrl: string;
 	/** BCP-47 tag of the reading language: picks localized names and drives Intl. */
 	locale: () => string;
 	messages: CoreMessages;
@@ -57,6 +60,7 @@ export type HostOverrides = Partial<Omit<Host, 'messages'>> & { messages?: Parti
 const DEFAULT_HOST: Host = {
 	dataUrl: 'https://static.spacemap.co',
 	imagesUrl: 'https://images.spacemap.co',
+	liveUrl: 'https://live.spacemap.co',
 	locale: () => 'en',
 	messages: {
 		body_note_no_model: () => 'no model available',
@@ -93,6 +97,7 @@ export function configureHost(overrides: HostOverrides): void {
 	// A URL root is concatenated with paths that lead with a slash.
 	current.dataUrl = current.dataUrl.replace(/\/$/, '');
 	current.imagesUrl = current.imagesUrl.replace(/\/$/, '');
+	current.liveUrl = current.liveUrl.replace(/\/$/, '');
 }
 
 export function host(): Host {

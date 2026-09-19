@@ -5,7 +5,8 @@ import type { HostOverrides } from '$lib/host';
 
 // Images are their own export project, so they follow the data origin only
 // when nothing names theirs; unset, the production origins in the host
-// defaults stand. In dev both are proxy prefixes (`/data`, `/images`).
+// defaults stand. In dev all three are proxy prefixes (`/data`, `/images`,
+// `/live`).
 const IMAGES_URL = env.PUBLIC_IMAGES_URL || env.PUBLIC_DATA_URL;
 
 /** The SvelteKit app's side of the core seam, for server and client alike;
@@ -15,6 +16,7 @@ const IMAGES_URL = env.PUBLIC_IMAGES_URL || env.PUBLIC_DATA_URL;
 export const KIT_HOST: HostOverrides = {
 	...(env.PUBLIC_DATA_URL ? { dataUrl: env.PUBLIC_DATA_URL } : {}),
 	...(IMAGES_URL ? { imagesUrl: IMAGES_URL } : {}),
+	...(env.PUBLIC_LIVE_URL ? { liveUrl: env.PUBLIC_LIVE_URL } : {}),
 	// Read through the live binding: the client swaps in a cached getLocale.
 	locale: () => getLocale(),
 	messages: m,
