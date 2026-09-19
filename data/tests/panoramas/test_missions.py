@@ -1,6 +1,13 @@
-from space_map_data.probes.probe_id import load_registry
+import pytest
+
+from space_map_data.probes.probe_id import REGISTRY_PATH, load_registry
 
 from space_map_data.panoramas.missions import MISSION_PROBE, body_id, probe_id
+
+needs_registry = pytest.mark.skipif(
+    not REGISTRY_PATH.exists(),
+    reason="probe registry not downloaded",
+)
 
 
 class TestProbeId:
@@ -19,6 +26,7 @@ class TestProbeId:
         which would silently drop a probe page rather than fail."""
         assert all(probe_id(mission) for mission in MISSION_PROBE)
 
+    @needs_registry
     def test_every_mapped_probe_is_the_craft_that_drove_the_traverse(self):
         """NAIF ids are recycled, so the slugs are keyed on probe ids instead.
         Nothing at run time reads the inventory back, which leaves this as the
@@ -39,6 +47,7 @@ class TestProbeId:
             "yutu-2": "Yutu-2",
         }
 
+    @needs_registry
     def test_a_recycled_naif_id_no_longer_decides_anything(self):
         """Curiosity and Mariner 10 both answer to NAIF -76, and the inventory
         holds both; keying on that id made the link depend on their order."""

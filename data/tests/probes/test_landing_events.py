@@ -10,8 +10,13 @@ from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import ID_TYPE_ORDINAL
 from space_map_data.probes import events, landing_events, probe_id
 from space_map_data.probes.events import event_jd
-from space_map_data.probes.probe_id import load_registry
+from space_map_data.probes.probe_id import REGISTRY_PATH, load_registry
 from space_map_data.utils.time import jd_to_et
+
+needs_registry = pytest.mark.skipif(
+    not REGISTRY_PATH.exists(),
+    reason="probe registry not downloaded",
+)
 
 
 _NAIF = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
@@ -423,6 +428,7 @@ class TestWhichProbesTheKernelsAlreadyFly:
         with patch.object(probe_id, "load_registry", return_value=registry):
             assert landing_events._spk_covered_probe_ids() == {1}
 
+    @needs_registry
     def test_the_real_registry_leaves_the_carried_craft_in(self):
         covered = landing_events._spk_covered_probe_ids()
         carried = {

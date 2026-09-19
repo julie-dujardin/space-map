@@ -20,10 +20,16 @@ from space_map_data.download.providers.spice.probes.deepcat_synth import (
     probe_claimants,
 )
 from space_map_data.probes.deepcat import DeepObject
+from space_map_data.probes.probe_id import REGISTRY_PATH
 from space_map_data.download.providers.spice.probes.synthetic_index import write_type5
 from space_map_data.probes.propagation import AU_KM
 from space_map_data.probes.deepcat_arcs import ArcClass, SolvedArc
 from space_map_data.probes.deepcat_solve import GM_SUN, ConicSolution
+
+needs_registry = pytest.mark.skipif(
+    not REGISTRY_PATH.exists(),
+    reason="probe registry not downloaded",
+)
 
 NAIF = -90000123
 STATE = (1.0 * AU_KM, 0.0, 0.0, 0.0, 32.0, 1.5)
@@ -202,6 +208,7 @@ class TestResolvingACatalogueNumber:
         )
 
 
+@needs_registry
 class TestTheRegistryItself:
     """The identity fields the joins rely on, checked against the real file."""
 
