@@ -12,6 +12,7 @@
 		<!-- Data origin for the preload script below: kept on this meta, not in the
 		     script body, so the script's bytes — and its CSP hash — are env-independent. -->
 		<meta name="sm:data-url" content="%sveltekit.env.PUBLIC_DATA_URL%" />
+		<meta name="sm:images-url" content="%sveltekit.env.PUBLIC_IMAGES_URL%" />
 		<script>
 			// Early resource hints for the data origin, mirroring DATA_BASE
 			// ($lib/fetch/data-base) so the metadata + systems-global fetches can
@@ -40,8 +41,10 @@
 						add('preload', base + '/v1/metadata.json', 'fetch');
 						add('preload', base + '/v1/systems/global.json', 'fetch');
 					}
-					// Images load from a separate origin in prod; warm it too.
-					var img = url || 'https://images.spacemap.co';
+					// Images are their own origin in prod and only follow the data one
+					// where nothing names theirs — the same fallback as KIT_HOST.
+					var imgMeta = document.querySelector('meta[name="sm:images-url"]');
+					var img = (imgMeta && imgMeta.content) || url || 'https://images.spacemap.co';
 					if (/^https?:\/\//.test(img) && img !== base) add('preconnect', img);
 				} catch (e) {}
 			})();

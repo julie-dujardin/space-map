@@ -130,7 +130,7 @@ export function lowOrbitAltitudeKm(travel: TravelBody, facts: OrbitFacts): numbe
 
 /** The highest radius still bound to the body, km. Unknown Hill radius means no
  *  cap: an orbit is offered on what is known rather than withheld on what is not. */
-function maxRadiusKm(facts: OrbitFacts): number {
+export function maxRadiusKm(facts: OrbitFacts): number {
 	return facts.hillKm ? facts.hillKm * HILL_STABLE_FRACTION : Infinity;
 }
 

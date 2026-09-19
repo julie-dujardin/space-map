@@ -82,8 +82,11 @@ export interface DrawText {
 export interface DrawOptions {
 	tree: Tree;
 	text: DrawText;
-	/** km/s as the page prints it. */
+	/** A leg figure, bare: the unit is said once, on the total it belongs to. */
 	fmt: (kms: number) => string;
+	/** A total, with its unit — the only place on the diagram the unit appears,
+	 *  since neither layout has room to repeat it on every leg. */
+	fmtTotal: (kms: number) => string;
 	/** Where a stop links; null for no link. `targetId` is the row's body, the
 	 *  origin itself on the trunk. */
 	link: (stop: TreeStop, targetId: string) => string | null;
@@ -243,12 +246,18 @@ function labelTop(l: DrawLabel): number {
 	return l.y - half - labelWidth(l.text, l.size) * Math.sin((Math.abs(l.rotate) * Math.PI) / 180);
 }
 
-/** A total as the page prints it beside a row: to orbit, then braked where an
- *  atmosphere can pay for part of it. */
-function totalText(totals: TreeTotals | null, fmt: DrawOptions['fmt']): string {
+/** A total as the page prints it beside a row: what the row's last stop comes
+ *  to, then braked where an atmosphere can pay for part of it. A row drawn
+ *  through to the surface is totalled through its landing burn, so the legs
+ *  printed along it sum to the total printed beside it. */
+function totalText(totals: TreeTotals | null, o: DrawOptions): string {
 	if (!totals) return '';
-	const { orbitKms, aeroOrbitKms } = totals;
-	return aeroOrbitKms === null ? fmt(orbitKms) : `${fmt(orbitKms)}  ·  ${fmt(aeroOrbitKms)}`;
+	const plain = totals.surfaceKms ?? totals.orbitKms;
+	const aero = totals.surfaceKms === null ? totals.aeroOrbitKms : totals.aeroSurfaceKms;
+	// The unit rides the last figure only: a braked pair is two readings of the
+	// same quantity, and saying km/s twice costs more room than the column has.
+	if (aero === null) return o.fmtTotal(plain);
+	return `${o.fmt(plain)}  ·  ${o.fmtTotal(aero)}`;
 }
 
 /** The label under a stop that is not what its column says: the two stops of
@@ -260,7 +269,7 @@ function stopCaption(row: TreeRow, stop: TreeStop, text: DrawText): string | nul
 
 // ---------------------------------------------------------------- rows
 
-const ROWS_WIDTH = 848;
+const ROWS_WIDTH = 900;
 /** Where each kind of stop sits across the page. */
 const COL: Record<StationKind, number> = {
 	transfer: 330,
@@ -354,7 +363,7 @@ export function drawRows(o: DrawOptions): Drawing {
 			end ? { size: 14, weight: 600, anchor: 'start' } : { size: 11, muted: true, anchor: 'start' }
 		);
 		if (end) {
-			S.text(COL_TOTAL, trunkYs[i], totalText(tree.trunkEnd, fmt), {
+			S.text(COL_TOTAL, trunkYs[i], totalText(tree.trunkEnd, o), {
 				anchor: 'start',
 				size: 12,
 				muted: true
@@ -420,7 +429,7 @@ export function drawRows(o: DrawOptions): Drawing {
 		});
 		drawStops(row, rowY, BUS_X, false);
 		if (row.totals) {
-			S.text(COL_TOTAL, rowY, totalText(row.totals, fmt), {
+			S.text(COL_TOTAL, rowY, totalText(row.totals, o), {
 				anchor: 'start',
 				size: 12,
 				muted: true
@@ -445,7 +454,7 @@ export function drawRows(o: DrawOptions): Drawing {
 				href: moon.stops[0] ? link(moon.stops[0], moon.targetId) : null
 			});
 			drawStops(moon, my, COL.transfer, true);
-			S.text(COL_TOTAL, my, totalText(moon.totals, fmt), {
+			S.text(COL_TOTAL, my, totalText(moon.totals, o), {
 				anchor: 'start',
 				size: 12,
 				muted: true
@@ -522,7 +531,7 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 			Math.max(
 				small ? MOON_PITCH : ROW_PITCH,
 				labelWidth(name, small ? 12 : 14),
-				labelWidth(totalText(row.totals, fmt), 12)
+				labelWidth(totalText(row.totals, o), 12)
 			) + 14
 		);
 	};
@@ -594,7 +603,7 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 			{ size: 10.5, muted: true, weight: end ? 600 : 500 }
 		);
 		if (end) {
-			S.text(trunkXs[i], Y_TRUNK + 38, totalText(tree.trunkEnd, fmt), {
+			S.text(trunkXs[i], Y_TRUNK + 38, totalText(tree.trunkEnd, o), {
 				size: 10,
 				muted: true
 			});
@@ -659,7 +668,7 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 			size: 14,
 			href: row.stops[0] ? link(row.stops[0], row.targetId) : null
 		});
-		if (row.totals) S.text(cx, top - 26, totalText(row.totals, fmt), { size: 11, muted: true });
+		if (row.totals) S.text(cx, top - 26, totalText(row.totals, o), { size: 11, muted: true });
 		for (const moon of row.moons) {
 			const mx = colXs.get(moon)!;
 			// Across from the shared intercept stop with a bend, then up.
@@ -679,7 +688,7 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 				size: 12,
 				href: moon.stops[0] ? link(moon.stops[0], moon.targetId) : null
 			});
-			S.text(mx, mtop - 26, totalText(moon.totals, fmt), { size: 10, muted: true });
+			S.text(mx, mtop - 26, totalText(moon.totals, o), { size: 10, muted: true });
 		}
 	}
 

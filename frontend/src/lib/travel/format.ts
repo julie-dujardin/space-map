@@ -46,9 +46,11 @@ export function dvParts(kms: number): Parts {
 	return dvPartsAt(kms, 1);
 }
 
-/** The figure alone, two decimals — for a diagram that says the unit once. */
+/** The figure alone, two decimals, always km/s — for a diagram that says the
+ *  unit once, beside its totals. The Mm/s climb is deliberately not taken: a
+ *  bare figure at another scale would read against the unit printed elsewhere. */
 export function formatDvFigure(kms: number): string {
-	return dvPartsAt(kms, 2).value;
+	return Number.isFinite(kms) ? fixed(kms, 2) : '—';
 }
 
 /** Δv with two decimals — the precision the estimates actually carry. */

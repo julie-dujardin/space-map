@@ -10,10 +10,13 @@
 		drawing: Drawing;
 		/** Fixed pixel size (the strip) rather than the width of the column. */
 		fixed?: boolean;
+		/** Names the graphic. Left off the strip's legend, which repeats the map
+		 *  beside it and would only name the same thing twice. */
+		label?: string;
 		class?: string;
 	}
 
-	let { drawing, fixed = false, class: className }: Props = $props();
+	let { drawing, fixed = false, label, class: className }: Props = $props();
 </script>
 
 <svg
@@ -21,7 +24,8 @@
 	width={fixed ? drawing.width : undefined}
 	height={fixed ? drawing.height : undefined}
 	class="block text-foreground {fixed ? '' : 'h-auto w-full'} {className ?? ''}"
-	role="img"
+	role={label ? 'group' : undefined}
+	aria-label={label}
 >
 	{#each drawing.lines as line, i (i)}
 		<polyline

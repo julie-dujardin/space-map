@@ -14,12 +14,12 @@ import { meanRadiusKm } from '$lib/fetch/objects/physical';
 import { fetchSolarSystemMap } from '$lib/fetch/groups/solar-system-map';
 import { loadAtmospheres } from '$lib/fetch/atmospheres';
 import { loadSystemsGlobal } from '$lib/fetch/systems-global';
-import { GM_SUN_KM3_S2 } from '$lib/math/travel';
+import { GM_SUN_KM3_S2, type TravelBody } from '$lib/math/travel';
 import type { SubwayBodies, SubwayBody } from '$lib/math/travel/subway';
 import { AU_KM } from '$lib/math/units';
 import { BODY_COLORS, SUN_ID } from '$lib/constants';
 import { resolveBodyColor } from '$lib/body-color';
-import { hasGround, synchronousRadiusKm } from './orbits';
+import { hasGround, maxRadiusKm, synchronousRadiusKm } from './orbits';
 import { resolveTripBodies } from './resolve';
 import {
 	heliocentricAncestor,
@@ -34,12 +34,19 @@ import {
  *  the one figure the root needs is here. */
 const SUN_RADIUS_KM = 695700;
 
-/** Radius of the orbit in step with the body's spin, km, or undefined where
- *  no spin is on record. */
-function syncRadiusKm(mu: number, detail: ObjectDetailData | null | undefined): number | undefined {
+/** Radius of the orbit in step with the body's spin, km, or undefined where no
+ *  spin is on record or the body does not hold an orbit that far out. The Hill
+ *  cap is the planner's own rule: without it the map draws and prices a
+ *  stationary stop the planner will not offer — the Moon's lies well outside
+ *  Earth's pull on it, as does Venus's. */
+function syncRadiusKm(
+	travel: TravelBody,
+	detail: ObjectDetailData | null | undefined
+): number | undefined {
 	const spinDegPerDay = detail?.global?.orientation?.w1;
 	if (!spinDegPerDay || !(Math.abs(spinDegPerDay) > 0)) return undefined;
-	return synchronousRadiusKm(mu, (24 * 360) / Math.abs(spinDegPerDay));
+	const rSync = synchronousRadiusKm(travel.mu, (24 * 360) / Math.abs(spinDegPerDay));
+	return rSync < maxRadiusKm({ hillKm: travel.hillKm }) ? rSync : undefined;
 }
 
 /** The body a row is held by, as the map's tree names it. */
@@ -111,7 +118,7 @@ export function subwayBodies(
 			orbitRadiusKm: aAu * AU_KM,
 			travel,
 			ground: hasGround(travel),
-			synchronousRadiusKm: syncRadiusKm(travel.mu, details.get(row.id))
+			synchronousRadiusKm: syncRadiusKm(travel, details.get(row.id))
 		});
 	}
 	return out;

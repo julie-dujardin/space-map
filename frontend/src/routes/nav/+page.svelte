@@ -15,7 +15,7 @@
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { formatNavEnd } from '$lib/state/nav-end';
-	import { formatDvFigure } from '$lib/travel/format';
+	import { formatDv, formatDvFigure } from '$lib/travel/format';
 	import { drawRows, drawStrip, type DrawText } from '$lib/travel/subway-draw';
 	import { buildTree, type TreeStop } from '$lib/travel/subway-tree';
 	import { DEFAULT_TRIP, serializeTripSuffix, type EndpointMode } from '$lib/travel/trip';
@@ -73,8 +73,15 @@
 		return `${path}?at=now${serializeTripSuffix(trip)}`;
 	}
 
-	const rows = $derived(drawRows({ tree, text, fmt: formatDvFigure, link: plannerHref }));
-	const strip = $derived(drawStrip({ tree, text, fmt: formatDvFigure, link: plannerHref }));
+	const draw = $derived({
+		tree,
+		text,
+		fmt: formatDvFigure,
+		fmtTotal: formatDv,
+		link: plannerHref
+	});
+	const rows = $derived(drawRows(draw));
+	const strip = $derived(drawStrip(draw));
 
 	/** Every body on offer, for the origin picker: the origin first. */
 	const bodies = $derived(
@@ -133,22 +140,22 @@
 
 <!-- Bleeding, so the strip gets the whole width; everything else guttered. -->
 <SitePage current="nav" title={m.nav_delta_v()} bleed>
-	{#if data.failed}
-		<p class="{SITE_GUTTER} text-sm text-muted-foreground">{m.delta_v_error()}</p>
-	{:else}
-		<div class="{SITE_GUTTER} mb-6 flex flex-wrap items-center gap-3">
-			<label class="flex items-center gap-2 text-sm text-muted-foreground">
-				{m.travel_from()}
-				<select
-					class="h-9 min-w-36 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
-					value={map.originId}
-					onchange={pickOrigin}
-				>
-					{#each bodies as body (body.id)}
-						<option value={body.id}>{body.name}</option>
-					{/each}
-				</select>
-			</label>
+	<!-- The origin picker outlives a failure: an origin the catalogue cannot
+	     place routes nowhere, and changing it is the only way back. -->
+	<div class="{SITE_GUTTER} mb-6 flex flex-wrap items-center gap-3">
+		<label class="flex items-center gap-2 text-sm text-muted-foreground">
+			{m.travel_from()}
+			<select
+				class="h-9 min-w-36 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+				value={map.originId}
+				onchange={pickOrigin}
+			>
+				{#each bodies as body (body.id)}
+					<option value={body.id}>{body.name}</option>
+				{/each}
+			</select>
+		</label>
+		{#if !data.failed}
 			<Sheet.Root bind:open={drawerOpen}>
 				<Sheet.Trigger>
 					{#snippet child({ props })}
@@ -231,11 +238,15 @@
 					{/if}
 				</Sheet.Content>
 			</Sheet.Root>
-		</div>
+		{/if}
+	</div>
 
+	{#if data.failed}
+		<p class="{SITE_GUTTER} text-sm text-muted-foreground">{m.delta_v_error()}</p>
+	{:else}
 		<!-- Rows on a wide screen; on a phone the strip, scrolled sideways. -->
 		<div class="{SITE_GUTTER} hidden md:block">
-			<SubwayDiagram drawing={rows} />
+			<SubwayDiagram drawing={rows} label={m.nav_delta_v()} />
 		</div>
 		<!-- The level names are pinned to the left edge while the map scrolls
 		     under them, so the rungs are always named. -->
@@ -244,7 +255,7 @@
 				<SubwayDiagram drawing={strip.legend} fixed />
 			</div>
 			<div class="overflow-x-auto">
-				<SubwayDiagram drawing={strip.map} fixed />
+				<SubwayDiagram drawing={strip.map} fixed label={m.nav_delta_v()} />
 			</div>
 		</div>
 	{/if}
