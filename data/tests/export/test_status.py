@@ -13,6 +13,7 @@ from space_map_data.download.common import SOURCES
 from space_map_data.export.status import (
     CATEGORIES,
     SOURCE_CATALOG,
+    UNLISTED,
     SourceInfo,
     ordered_catalog,
     source_entry,
@@ -25,7 +26,8 @@ class TestCatalog:
     """The catalog against the download registry it describes."""
 
     def test_covers_every_provider(self):
-        assert set(SOURCE_CATALOG) == set(SOURCES)
+        assert set(SOURCE_CATALOG) | UNLISTED == set(SOURCES)
+        assert not set(SOURCE_CATALOG) & UNLISTED
 
     def test_categories_are_known(self):
         assert {i.category for i in SOURCE_CATALOG.values()} <= set(CATEGORIES)
@@ -55,7 +57,7 @@ class TestSourceEntry:
             "label": "Test source",
             "homepage": "https://example.org/",
             "category": "orbits",
-            "max_age_days": 7,
+            "due_after_days": 7,
             "downloaded_at": "2026-09-11T20:09:06.422377+00:00",
             "record_count": 70656,
         }
@@ -64,7 +66,7 @@ class TestSourceEntry:
         entry = source_entry("demo", INFO, None, None)
         assert entry["id"] == "demo"
         assert "downloaded_at" not in entry
-        assert "max_age_days" not in entry
+        assert "due_after_days" not in entry
 
     def test_checked_at_only_when_it_differs(self):
         same = source_entry(
@@ -94,4 +96,4 @@ class TestOrder:
     def test_grouped_by_category(self):
         seen = [CATEGORIES.index(info.category) for _, info in ordered_catalog()]
         assert seen == sorted(seen)
-        assert len(ordered_catalog()) == len(SOURCES)
+        assert len(ordered_catalog()) == len(SOURCES) - len(UNLISTED)

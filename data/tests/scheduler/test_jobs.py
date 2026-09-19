@@ -1,9 +1,12 @@
 """The scheduler's job table must account for every download provider."""
 
 from collections import Counter
+from datetime import timedelta
+
+import pytest
 
 from space_map_data.download.common import ALL_SOURCES
-from space_map_data.scheduler.__main__ import JOBS
+from space_map_data.scheduler.jobs import JOBS, revisit_period
 
 
 class TestJobCoverage:
@@ -20,3 +23,9 @@ class TestJobCoverage:
     def test_job_names_are_unique(self):
         names = [job.name for job in JOBS]
         assert len(set(names)) == len(names)
+
+    def test_revisit_period_is_the_job_cadence(self):
+        assert revisit_period("earth_clouds") == timedelta(hours=3)
+        assert revisit_period("johnston") == timedelta(days=1)
+        with pytest.raises(KeyError):
+            revisit_period("nope")

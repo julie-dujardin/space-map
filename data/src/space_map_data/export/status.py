@@ -3,6 +3,11 @@
 One row per download provider, read from the `metadata.json` each writes into
 its own output tree. Labels here are proper nouns and ship as-is; the frontend
 keys localized category names off `category`.
+
+A row is due once the scheduler should have refreshed it and has not: the
+provider's own freshness window plus the wait for the scheduler's next pass.
+The page and the scheduler then agree, instead of the page flagging a source
+in the hours between its window lapsing and the pass that refreshes it.
 """
 
 import json
@@ -17,6 +22,7 @@ import orjson
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.common import SOURCES
+from space_map_data.scheduler.jobs import revisit_period
 from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,9 @@ class SourceInfo:
     # means the pipeline step has not re-run, not that an upstream went quiet.
     derived: bool = False
 
+
+# One-shot pulls that never expire, and so have no freshness to report.
+UNLISTED: frozenset[str] = frozenset({PROVIDERS.BJJ_RINGS})
 
 SOURCE_CATALOG: dict[str, SourceInfo] = {
     PROVIDERS.CELESTRAK: SourceInfo("CelesTrak", "https://celestrak.org/", "orbits"),
@@ -157,11 +166,6 @@ SOURCE_CATALOG: dict[str, SourceInfo] = {
         "https://osmdata.openstreetmap.de/data/water-polygons.html",
         "imagery",
     ),
-    PROVIDERS.BJJ_RINGS: SourceInfo(
-        "Björn Jónsson — Saturn ring profiles",
-        "https://bjj.mmedia.is/data/s_rings/",
-        "imagery",
-    ),
     PROVIDERS.NASA_3D: SourceInfo(
         "NASA 3D Resources",
         "https://github.com/nasa/NASA-3D-Resources",
@@ -213,7 +217,7 @@ def source_entry(
     name: str,
     info: SourceInfo,
     meta: dict | None,
-    max_age: timedelta | None,
+    due_after: timedelta | None,
 ) -> dict:
     """One `sources` row.
 
@@ -228,9 +232,9 @@ def source_entry(
     }
     if info.derived:
         entry["derived"] = True
-    if max_age is not None:
-        days = max_age.total_seconds() / 86400
-        entry["max_age_days"] = int(days) if days.is_integer() else round(days, 1)
+    if due_after is not None:
+        days = due_after.total_seconds() / 86400
+        entry["due_after_days"] = int(days) if days.is_integer() else round(days, 1)
     if meta is None:
         return entry
 
@@ -264,7 +268,10 @@ def build_status() -> dict:
             meta = _read_metadata(downloader.metadata_file)
             if meta is None:
                 logger.info("%s: no download recorded yet", name)
-            sources.append(source_entry(name, info, meta, downloader.max_age))
+            due_after = None
+            if downloader.max_age is not None:
+                due_after = downloader.max_age + revisit_period(name)
+            sources.append(source_entry(name, info, meta, due_after))
 
     return {
         "generated_at": datetime.now(UTC).isoformat(),

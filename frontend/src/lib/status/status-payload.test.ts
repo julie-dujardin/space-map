@@ -32,13 +32,13 @@ describe('freshness', () => {
 		expect(freshness(source({ downloaded_at: '2020-01-01T00:00:00Z' }), NOW)).toBe('current');
 	});
 
-	// The provider's own staleness check expires on the exact interval, so a
-	// download 7.8 days into a 7-day window is due, not current.
+	// The export already folds the scheduler's wait into the window, so the
+	// page flags a row the moment that combined age is exceeded.
 	it.each([
 		{ name: 'inside the window', downloaded_at: '2026-09-14T13:15:00Z', expected: 'current' },
 		{ name: 'past the window', downloaded_at: '2026-09-11T13:15:00Z', expected: 'due' }
 	])('$name → $expected', ({ downloaded_at, expected }) => {
-		expect(freshness(source({ downloaded_at, max_age_days: 7 }), NOW)).toBe(expected);
+		expect(freshness(source({ downloaded_at, due_after_days: 7 }), NOW)).toBe(expected);
 	});
 
 	// SBDB moves `downloaded_at` only when the mirror changed; the sync that
@@ -47,7 +47,7 @@ describe('freshness', () => {
 		const sbdb = source({
 			downloaded_at: '2026-08-01T13:15:00Z',
 			checked_at: '2026-09-17T13:15:00Z',
-			max_age_days: 7
+			due_after_days: 7
 		});
 		expect(freshness(sbdb, NOW)).toBe('current');
 	});
@@ -86,7 +86,7 @@ describe('tally', () => {
 			categories: ['orbits'],
 			sources: [
 				source({ id: 'a', downloaded_at: '2026-09-18T13:15:00Z' }),
-				source({ id: 'b', downloaded_at: '2026-08-18T13:15:00Z', max_age_days: 7 }),
+				source({ id: 'b', downloaded_at: '2026-08-18T13:15:00Z', due_after_days: 7 }),
 				source({ id: 'c' })
 			]
 		};

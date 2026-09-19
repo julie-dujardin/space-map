@@ -15,8 +15,10 @@ export interface StatusSource {
 	/** Built from data already on disk rather than fetched; its date tracks the
 	 *  pipeline step, not the upstream. */
 	derived?: boolean;
-	/** Refresh window, where the provider expires its own completeness. */
-	max_age_days?: number;
+	/** Age past which the scheduler should have refreshed the row: the
+	 *  provider's own window plus the wait for the next scheduled pass. Absent
+	 *  where a complete download is trusted for good. */
+	due_after_days?: number;
 	downloaded_at?: string;
 	/** Last verified, where a provider tells the two apart (only SBDB does). */
 	checked_at?: string;
@@ -48,10 +50,10 @@ export type Freshness = 'current' | 'due' | 'never';
 
 export function freshness(source: StatusSource, now: number): Freshness {
 	if (!source.downloaded_at) return 'never';
-	if (source.max_age_days === undefined) return 'current';
+	if (source.due_after_days === undefined) return 'current';
 	const checked = source.checked_at ?? source.downloaded_at;
 	const ageDays = (now - Date.parse(checked)) / 86_400_000;
-	return ageDays > source.max_age_days ? 'due' : 'current';
+	return ageDays > source.due_after_days ? 'due' : 'current';
 }
 
 export interface StatusSection {
