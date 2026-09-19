@@ -501,7 +501,6 @@
 	"error_page_404_title": "見つかりません",
 	"error_page_title": "問題が発生しました",
 	"error_page_body": "予期しないエラーが発生しました。ページを再読み込みしてください。",
-	"error_go_home": "マップに戻る",
 	"reload": "再読み込み",
 	"new_data_available": "新しいデータがあります。再読み込みして表示してください。",
 	"scene_canvas_label": "太陽系のインタラクティブな3Dマップ",

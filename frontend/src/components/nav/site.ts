@@ -9,7 +9,8 @@ export const SITE_COLUMN = 'mx-auto w-full max-w-4xl';
  *  something across the full width and gutter the rest of its content. */
 export const SITE_GUTTER = 'px-6';
 
-/** A page the site links to; `current` names the one being rendered. */
+/** A page the site links to; `current` names the one being rendered, and is
+ *  absent on a page the row does not list. */
 export type NavPage = 'map' | 'nav' | 'compare' | 'panoramas' | 'credits' | 'status';
 
 export const SITE_PAGES: { id: NavPage; href: string; label: () => string }[] = [

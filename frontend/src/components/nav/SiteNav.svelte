@@ -16,7 +16,7 @@
 	import { cn } from '$lib/utils.js';
 
 	interface Props {
-		current: NavPage;
+		current?: NavPage;
 		class?: string;
 	}
 

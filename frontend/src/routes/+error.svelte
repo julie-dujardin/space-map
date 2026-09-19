@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages.js';
+	import SitePage from '../components/nav/SitePage.svelte';
 
 	const isNotFound = $derived(page.status === 404);
 	const title = $derived(isNotFound ? m.error_page_404_title() : m.error_page_title());
@@ -12,18 +13,11 @@
 	<title>{title} - {m.page_title()}</title>
 </svelte:head>
 
-<main
-	class="flex h-screen w-full flex-col items-center justify-center gap-4 bg-bg px-6 text-center text-text"
->
-	<p class="text-4xl font-bold tabular-nums">{page.status}</p>
-	<h1 class="text-lg font-semibold">{title}</h1>
+<!-- No `current`: the row lists no page for an error, and the site row is the
+     way onward from it. -->
+<SitePage {title}>
+	<p class="-mt-6 text-xs text-muted-subtle tabular-nums">{page.status}</p>
 	{#if message}
-		<p class="max-w-md text-sm text-muted-foreground">{message}</p>
+		<p class="mt-6 max-w-prose text-sm leading-relaxed text-muted-foreground">{message}</p>
 	{/if}
-	<a
-		href="/"
-		class="mt-2 rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90"
-	>
-		{m.error_go_home()}
-	</a>
-</main>
+</SitePage>

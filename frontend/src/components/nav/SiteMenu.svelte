@@ -16,7 +16,7 @@
 	import { SITE_COLUMN, SITE_GUTTER, SITE_PAGES, type NavPage } from './site';
 
 	interface Props {
-		current: NavPage;
+		current?: NavPage;
 		class?: string;
 	}
 

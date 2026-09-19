@@ -569,7 +569,6 @@
 	"error_page_title": "Algo salió mal",
 	"error_page_body": "Se produjo un error inesperado. Intenta recargar la página.",
 	"error_page_404_title": "No encontrado",
-	"error_go_home": "Volver al mapa",
 	"scene_canvas_label": "Mapa 3D interactivo del sistema solar",
 	"webgl_unavailable_title": "No se puede ejecutar el mapa 3D",
 	"webgl_unavailable_body": "Tu navegador o dispositivo no admite WebGL, que el mapa necesita para renderizarse. Prueba con otro navegador o activa la aceleración por hardware.",

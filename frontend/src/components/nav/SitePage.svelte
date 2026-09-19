@@ -9,7 +9,8 @@
 	import { SITE_COLUMN, SITE_GUTTER, type NavPage } from './site';
 
 	interface Props {
-		current: NavPage;
+		/** Left out on a page the row does not list, such as the error page. */
+		current?: NavPage;
 		title: string;
 		/** Hand the children the full column and let them gutter themselves, for
 		 *  a page carrying something that wants every pixel of the width. */

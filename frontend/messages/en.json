@@ -563,7 +563,6 @@
 	"retry": "Retry",
 	"error_page_title": "Something went wrong",
 	"error_page_body": "An unexpected error occurred. Try reloading the page.",
-	"error_go_home": "Back to the map",
 	"reload": "Reload",
 	"new_data_available": "New data is available, reload to see it.",
 	"scene_canvas_label": "Interactive 3D map of the Solar System",
