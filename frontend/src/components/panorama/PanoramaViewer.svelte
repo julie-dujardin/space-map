@@ -15,6 +15,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import {
 		fetchObjectDetail,
+		isViewable,
 		type ObjectDetailData,
 		type PanoramaEntry
 	} from '$lib/fetch/objects/object-data';
@@ -94,7 +95,9 @@
 	const clock = new SimClock(0);
 
 	const at = $derived(page.url.searchParams.get('at'));
-	const entries = $derived(detail?.global?.panoramas ?? []);
+	// A stop whose imagery is withheld has no sphere to open: the map draws
+	// it as a place, and this page lists and opens nothing there.
+	const entries = $derived((detail?.global?.panoramas ?? []).filter(isViewable));
 	const bodyName = $derived(detail?.localized?.name ?? detail?.global?.name ?? bodyId);
 	const current = $derived(findPanorama(entries, at));
 	const radiusKm = $derived(meanRadiusKm(detail?.global ?? null) ?? 0);
@@ -490,6 +493,8 @@
 			<p class="text-sm text-muted-foreground">{m.loading()}</p>
 		{:else if at}
 			<p class="mb-4 text-sm text-muted-foreground">{m.panorama_not_found()}</p>
+		{:else if !byMission.length}
+			<p class="text-sm text-muted-foreground">{m.panorama_gallery_empty()}</p>
 		{/if}
 
 		{#each byMission as [mission, list] (mission)}
