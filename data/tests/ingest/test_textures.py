@@ -18,6 +18,7 @@ from space_map_data.ingest.providers.textures import (
 )
 from space_map_data.ingest.providers.textures import config
 from space_map_data.ingest.providers.textures.image_io import _repair_thin_gaps
+from space_map_data.ingest.providers.textures.metadata import refresh_metadata_from_yaml
 
 
 def _make_noise(width: int, height: int) -> Image.Image:
@@ -105,6 +106,44 @@ class TestSaveWebpCap:
         assert (tmp_path / "out.webp").exists()
         assert rec["size_bytes"] > 1
         assert any("cannot fit" in r.message for r in caplog.records)
+
+
+class TestRefreshMetadataFromYaml:
+    """A skip run rewrites the yaml fields of an existing bundle in place."""
+
+    _ENTRY = {
+        "body": "naif-299",
+        "source": "https://example.test/venus",
+        "organisation": "USGS",
+        "license": "Public domain",
+        "type": "cylindrical",
+        "variant": "usgs",
+    }
+
+    def _seed(self, out_dir: Path, **fields) -> None:
+        out_dir.mkdir()
+        (out_dir / "metadata.json").write_text(
+            json.dumps({"id": out_dir.name, "processed_at": "then", **fields})
+        )
+
+    def test_alternate_keeps_its_bundle_id(self, tmp_path):
+        """The bundle beside a body's best map is named by the directory,
+        not the body — the renderer builds the fallback URL from it."""
+        out_dir = tmp_path / "naif-299_alt-usgs"
+        self._seed(out_dir, organisation="old")
+        refresh_metadata_from_yaml(out_dir, self._ENTRY, "venus.tif")
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        assert meta["id"] == "naif-299_alt-usgs"
+        assert meta["organisation"] == "USGS"
+        assert meta["processed_at"] == "then"
+
+    def test_distribution_reaches_an_existing_bundle(self, tmp_path):
+        out_dir = tmp_path / "naif-299"
+        self._seed(out_dir, organisation="USGS")
+        entry = {**self._ENTRY, "distribution": "site-only"}
+        refresh_metadata_from_yaml(out_dir, entry, "venus.tif")
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        assert meta["distribution"] == "site-only"
 
 
 class TestAnyExportOverCap:

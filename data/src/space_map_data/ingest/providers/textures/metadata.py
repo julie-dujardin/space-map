@@ -57,7 +57,10 @@ def refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) -
 
     attribution = entry.get("attribution") or scraped_attribution(src_file_name)
     desired = {
-        "id": entry["body"],
+        # The bundle, not the body: a second-best map lives beside its body
+        # under its own name, and the body id here would point the renderer's
+        # fallback back at the map it may not serve.
+        "id": out_dir.name,
         "source": entry["source"],
         "organisation": entry["organisation"],
         "license": entry.get("license"),
