@@ -30,6 +30,7 @@ import numpy as np
 from space_map_data.ingest.providers.models import config, metadata
 from space_map_data.ingest.providers.models.bodies import glb_writer, orientation
 from space_map_data.models.object import ModelProvenance, Object
+from space_map_data.utils.content_stamp import content_stamp
 from space_map_data.utils.paths import DERIVED_MODELS_DIR
 
 log = logging.getLogger(__name__)
@@ -248,7 +249,7 @@ class DamitProcessor:
         # Stamp lives outside the export tree: every exported file counts
         # against the CDN's 100k-file cap.
         stamp = _STAMPS_DIR / f"{slug}.json"
-        geometry_fresh, metadata_fresh, stamp_current = _stamp_state(
+        geometry_fresh, metadata_fresh = _stamp_state(
             stamp, out_dir, shape_path, diameter_km
         )
         rebuild = force or not geometry_fresh or not metadata_fresh
@@ -271,7 +272,7 @@ class DamitProcessor:
                 verts,
                 faces,
             )
-        if rebuild or not stamp_current:
+        if rebuild:
             _write_stamp(stamp, shape_path, diameter_km)
 
         if is_preferred and naif_id is not None:
@@ -604,21 +605,18 @@ def _mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
 
 def _stamp_state(
     stamp: Path, out_dir: Path, shape: Path, diameter_km: float
-) -> tuple[bool, bool, bool]:
-    """``(geometry fresh, metadata fresh, stamp current)`` for an
-    already-converted model.
+) -> tuple[bool, bool]:
+    """``(geometry fresh, metadata fresh)`` for an already-converted model.
 
     Split so a metadata-only schema bump rewrites the sidecars without paying
-    to rebuild ~16k GLBs that didn't change. ``stamp current`` is False for a
-    stamp still keyed on the shape hash, so the caller rewrites it with the
-    stat and the hash is never computed again.
+    to rebuild ~16k GLBs that didn't change.
     """
     if not stamp.exists():
-        return False, False, False
+        return False, False
     try:
         data = json.loads(stamp.read_text())
     except OSError, json.JSONDecodeError:
-        return False, False, False
+        return False, False
     geometry = (
         (out_dir / "high.glb").exists()
         and data.get("knobs") == config.DAMIT_KNOBS_VERSION
@@ -628,20 +626,11 @@ def _stamp_state(
     meta_fresh = (out_dir / "metadata.json").exists() and data.get(
         "metadata"
     ) == _METADATA_VERSION
-    return geometry, meta_fresh, "shape_stat" in data
-
-
-def _shape_stat(shape: Path) -> list[int]:
-    st = shape.stat()
-    return [st.st_size, st.st_mtime_ns]
+    return geometry, meta_fresh
 
 
 def _shape_unchanged(data: dict, shape: Path) -> bool:
-    """Stat-based freshness; a stamp predating `shape_stat` falls back to the
-    content hash once and is rewritten with the stat by the caller."""
-    if "shape_stat" in data:
-        return data["shape_stat"] == _shape_stat(shape)
-    return data.get("shape_sha") == metadata.sha256_file(shape)
+    return data.get("shape_stamp") == content_stamp(shape)
 
 
 def _write_stamp(stamp: Path, shape: Path, diameter_km: float) -> None:
@@ -651,7 +640,7 @@ def _write_stamp(stamp: Path, shape: Path, diameter_km: float) -> None:
             {
                 "knobs": config.DAMIT_KNOBS_VERSION,
                 "metadata": _METADATA_VERSION,
-                "shape_stat": _shape_stat(shape),
+                "shape_stamp": content_stamp(shape),
                 "diameter_km": diameter_km,
             }
         )

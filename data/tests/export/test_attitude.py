@@ -235,7 +235,7 @@ class TestAttitudeCache:
 
     def test_second_run_skips_extraction(self, monkeypatch, tmp_path) -> None:
         calls: list[int] = []
-        stamps = {"/ck/a.bc": {"mtime_ns": 1, "size": 2}}
+        stamps = {"ck/a.bc": {"size": 2, "digest": "aa"}}
         gd1, s1 = self._run(monkeypatch, tmp_path, stamps, calls)
         gd2, s2 = self._run(monkeypatch, tmp_path, stamps, calls)
         assert len(calls) == 1  # second run served from cache
@@ -247,16 +247,16 @@ class TestAttitudeCache:
     def test_kernel_change_reextracts(self, monkeypatch, tmp_path) -> None:
         calls: list[int] = []
         self._run(
-            monkeypatch, tmp_path, {"/ck/a.bc": {"mtime_ns": 1, "size": 2}}, calls
+            monkeypatch, tmp_path, {"ck/a.bc": {"size": 2, "digest": "aa"}}, calls
         )
         self._run(
-            monkeypatch, tmp_path, {"/ck/a.bc": {"mtime_ns": 9, "size": 2}}, calls
+            monkeypatch, tmp_path, {"ck/a.bc": {"size": 2, "digest": "bb"}}, calls
         )
         assert len(calls) == 2  # changed stamp invalidated the cache
 
     def test_missing_chunk_invalidates_cache(self, monkeypatch, tmp_path) -> None:
         calls: list[int] = []
-        stamps = {"/ck/a.bc": {"mtime_ns": 1, "size": 2}}
+        stamps = {"ck/a.bc": {"size": 2, "digest": "aa"}}
         self._run(monkeypatch, tmp_path, stamps, calls)
         (tmp_path / "attitude" / "7" / "0.bin.gz").unlink()
         self._run(monkeypatch, tmp_path, stamps, calls)

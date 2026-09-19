@@ -6,7 +6,7 @@ Each chunk file `{zone}/{chunk_idx}.bin.gz` has a companion JSON sidecar
 (fit-affecting zone params), and `probes` — `{probe_id: {"fit":
 fit_sig_hash, "ord": int, "has_loc": bool}}`.
 
-`FIT_VERSION`, kernel mtimes, candidates_hash, and events_hash live inside
+`FIT_VERSION`, kernel content stamps, candidates_hash, and events_hash live inside
 the per-probe fit signature rather than here — a change to any of them
 flips the affected probe's `fit` hash. An i18n/type-tag edit flips
 `has_loc`/`ord` without invalidating the cached fit, so the chunk repacks
@@ -29,6 +29,7 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 )
 from space_map_data.probes.landing_events import EVENTS_DIR
 from space_map_data.probes.zones import Zone
+from space_map_data.utils.content_stamp import content_stamp, content_stamps
 
 
 # Bump for fit-internal changes at the same wire format. Wire-format bumps
@@ -66,27 +67,28 @@ def zone_signature(zone: Zone) -> str:
 
 
 def events_files_hash() -> str:
-    """Hash every events JSON's `(name, mtime_ns, size)` so an edit anywhere
+    """Hash every events JSON's `(name, content stamp)` so an edit anywhere
     in the events folder invalidates every cached fit that consults them.
     Empty string when the folder is absent (CI / first run)."""
     if not EVENTS_DIR.exists():
         return ""
-    entries = [
-        {"name": p.name, "mtime_ns": p.stat().st_mtime_ns, "size": p.stat().st_size}
-        for p in sorted(EVENTS_DIR.glob("*.json"))
-    ]
+    paths = sorted(EVENTS_DIR.glob("*.json"))
+    stamps = content_stamps(paths)
+    entries = [{"name": p.name, **(stamps[p] or {})} for p in paths]
     return hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def _kernel_entry(path: Path, download_dir: Path) -> dict:
-    """One kernel as `{path, mtime_ns, size}`, with the path made relative
+    """One kernel as `{path, size, digest}`, with the path made relative
     to `download_dir` so the sidecar survives moving the data tree."""
+    return {"path": kernel_rel_path(path, download_dir), **(content_stamp(path) or {})}
+
+
+def kernel_rel_path(path: Path, download_dir: Path) -> str:
     try:
-        rel = str(path.resolve().relative_to(download_dir.resolve()))
+        return str(path.resolve().relative_to(download_dir.resolve()))
     except ValueError:
-        rel = str(path)
-    st = path.stat()
-    return {"path": rel, "mtime_ns": st.st_mtime_ns, "size": st.st_size}
+        return str(path)
 
 
 def build_chunk_signature(

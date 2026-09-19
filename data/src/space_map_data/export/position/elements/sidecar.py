@@ -27,6 +27,7 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
     write_atomic,
     write_sidecar,
 )
+from space_map_data.utils.content_stamp import content_stamps
 
 
 # Bump for an encoding/row-membership change the binary VERSION bump doesn't
@@ -35,24 +36,21 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 FORMAT_VERSION = 2
 
 
-def _file_entry(path: Path, day_dir: Path) -> dict:
-    """One CSV input as `{name, mtime_ns, size}`, name relative to day_dir."""
-    rel = str(path.relative_to(day_dir))
-    st = path.stat()
-    return {"name": rel, "mtime_ns": st.st_mtime_ns, "size": st.st_size}
-
-
 def _day_dir_inputs(day_dir: Path) -> list[dict]:
-    """Fingerprint every CelesTrak CSV in `day_dir`, mirroring
-    `celestrak_source._load_day`'s file set. Sorted for stable ordering."""
-    entries: list[dict] = []
+    """Content-stamp every CelesTrak CSV in `day_dir` as `{name, size,
+    digest}`, mirroring `celestrak_source._load_day`'s file set. Sorted for
+    stable ordering."""
+    paths: list[Path] = []
     gp_active = day_dir / "gp-active.csv"
     if gp_active.exists():
-        entries.append(_file_entry(gp_active, day_dir))
+        paths.append(gp_active)
     groups_dir = day_dir / "groups"
     if groups_dir.exists():
-        for csv_path in sorted(groups_dir.glob("*.csv")):
-            entries.append(_file_entry(csv_path, day_dir))
+        paths.extend(sorted(groups_dir.glob("*.csv")))
+    stamps = content_stamps(paths)
+    entries = [
+        {"name": str(p.relative_to(day_dir)), **(stamps[p] or {})} for p in paths
+    ]
     entries.sort(key=lambda e: e["name"])
     return entries
 

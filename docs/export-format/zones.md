@@ -52,10 +52,11 @@ sidecar (stored in `EXPORT_METADATA_DIR` mirror, never published) recording
 the upstream snapshot that produced them:
 
 - `earth/{date}/{part}.meta.json` — fingerprints that date's source.
-  Recent CelesTrak dailies fingerprint the day's CSVs (`name + mtime_ns +
-  size` per CSV); historical weekly snapshots fingerprint the Space-Track
-  archive zip(s) feeding the week (`archive_inputs`). A re-downloaded day or
-  re-fetched archive zip invalidates only the affected dates' parts.
+  Recent CelesTrak dailies fingerprint the day's CSVs (`name + size +
+  content digest` per CSV); historical weekly snapshots fingerprint the
+  Space-Track archive zip(s) feeding the week (`archive_inputs`). A changed
+  day or archive zip invalidates only the affected dates' parts; moving or
+  re-downloading identical files invalidates nothing.
 - `small_bodies/{class}/{zoom}/{part}.meta.json` — fingerprints the SBDB
   download metadata (`downloaded_at + record_count + complete`). The unit
   of cacheability is the whole SBDB snapshot, so a re-download invalidates

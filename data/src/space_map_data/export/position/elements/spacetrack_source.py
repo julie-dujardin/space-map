@@ -17,6 +17,7 @@ from pathlib import Path
 
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.ingest.convert import mean_motion_to_a_km
+from space_map_data.utils.content_stamp import content_stamp
 from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
@@ -204,9 +205,8 @@ def _claim_sets(years: Iterable[int]) -> tuple[set[int], set[int]]:
 
 
 def _zip_fingerprint(zip_path: Path) -> dict:
-    """One archive zip as ``{name, mtime_ns, size}`` for sidecar/zone signatures."""
-    st = zip_path.stat()
-    return {"name": zip_path.name, "mtime_ns": st.st_mtime_ns, "size": st.st_size}
+    """One archive zip as ``{name, size, digest}`` for sidecar/zone signatures."""
+    return {"name": zip_path.name, **(content_stamp(zip_path) or {})}
 
 
 def _dedup_fingerprints(years: Iterable[int]) -> list[dict]:

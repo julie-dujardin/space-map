@@ -2,6 +2,8 @@
 
 from typing import Any
 
+import pytest
+
 from space_map_data.models.object import (
     ElementsScale,
     Horizons,
@@ -84,3 +86,13 @@ def make_object(**overrides) -> Object:
             w_dot=merged["w_dot"],
         )
     return obj
+
+
+@pytest.fixture(autouse=True)
+def _isolated_stamp_memo(tmp_path, monkeypatch):
+    """Keep content-stamp digests of test files out of the real CACHE_DIR memo."""
+    from space_map_data.utils import content_stamp
+
+    monkeypatch.setattr(content_stamp, "_MEMO_PATH", tmp_path / "content_stamps.json")
+    monkeypatch.setattr(content_stamp, "_memo", None)
+    monkeypatch.setattr(content_stamp, "_dirty", 0)

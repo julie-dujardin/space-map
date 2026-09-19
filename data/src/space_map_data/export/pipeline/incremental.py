@@ -37,6 +37,7 @@ from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.sidecar_io import mirror_path, read_sidecar, write_sidecar
 from space_map_data.models.ingest_stamp import read_ingest_stamp
+from space_map_data.utils.content_stamp import content_stamp, content_stamps
 from space_map_data.utils.paths import (
     DOWNLOAD_DIR,
     SOURCES_IMAGES_DIR,
@@ -63,11 +64,8 @@ def _digest(value) -> str:
 
 
 def _file_stamp(path: Path) -> dict | None:
-    """`{mtime_ns, size}` for one file, or None when missing."""
-    if not path.exists():
-        return None
-    st = path.stat()
-    return {"mtime_ns": st.st_mtime_ns, "size": st.st_size}
+    """`{size, digest}` for one file, or None when missing."""
+    return content_stamp(path)
 
 
 def _source_stamp(metadata_path: Path) -> dict | None:
@@ -83,21 +81,19 @@ def _source_stamp(metadata_path: Path) -> dict | None:
 
 
 def _tree_digest(root: Path, glob: str = "**/*") -> str:
-    """Digest of (relative name, mtime_ns, size) for every file under root."""
+    """Digest of (relative name, content stamp) for every file under root."""
     if not root.exists():
         return "missing"
-    entries = []
-    for path in sorted(root.glob(glob)):
-        if path.is_file():
-            st = path.stat()
-            entries.append((str(path.relative_to(root)), st.st_mtime_ns, st.st_size))
-    return _digest(entries)
+    paths = [p for p in sorted(root.glob(glob)) if p.is_file()]
+    stamps = content_stamps(paths)
+    return _digest([(str(p.relative_to(root)), stamps[p]) for p in paths])
 
 
 @cache
 def kernels_digest() -> str:
-    """Fingerprint of the whole SPICE kernel tree (stat-only, ~15k files).
-    Cached per run; the tier-B and probes gates both ask for it."""
+    """Fingerprint of the whole SPICE kernel tree (~23k files; stat-only once
+    the stamp memo is warm). Cached per run; the tier-B and probes gates both
+    ask for it."""
     return _tree_digest(SOURCES_POSITION_DIR / "spice-kernels")
 
 

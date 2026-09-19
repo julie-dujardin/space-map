@@ -32,6 +32,7 @@ from space_map_data.download.providers.spice.bodies.elements import (
     load_chebyshev_config,
 )
 from space_map_data.probes.small_bodies import SMALL_BODY_TARGET_NAIF_IDS
+from space_map_data.utils.content_stamp import content_stamps
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
 from space_map_data.utils.time import S_PER_DAY, et_to_jd, jd_to_et, year_to_jd
 
@@ -180,7 +181,8 @@ def _source_digest(paths: list[Path]) -> str:
     extends a target's coverage without moving the requested year range — so
     they belong in the cache key alongside the fit parameters.
     """
-    parts = sorted(f"{p.name}:{p.stat().st_size}:{p.stat().st_mtime_ns}" for p in paths)
+    stamps = content_stamps(paths)
+    parts = sorted(f"{p.name}:{stamps[p]}" for p in paths)
     return hashlib.sha1("\n".join(parts).encode()).hexdigest()
 
 

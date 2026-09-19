@@ -32,7 +32,8 @@ from space_map_data.download.providers.spice.probes.attitude.ck_kernels import (
 )
 from space_map_data.export.sidecar_io import mirror_path, read_sidecar, write_sidecar
 from space_map_data.probes.probe_id import load_registry
-from space_map_data.utils.paths import SOURCES_POSITION_DIR
+from space_map_data.utils.content_stamp import content_stamps
+from space_map_data.utils.paths import DOWNLOAD_DIR, SOURCES_POSITION_DIR
 
 from .extractor import DEFAULT_EPS_DEG, extract_attitude, manifest_entry
 
@@ -48,20 +49,20 @@ _ATTITUDE_CACHE_VERSION = 3
 _ATTITUDE_META_NAME = "_attitude.meta.json"
 
 
-def _file_stamp(path: Path) -> dict | None:
-    """`{mtime_ns, size}` for one kernel, or None when missing."""
-    try:
-        st = path.stat()
-    except OSError:
-        return None
-    return {"mtime_ns": st.st_mtime_ns, "size": st.st_size}
-
-
 def _mission_kernel_stamps(mission_dir: Path, index: dict) -> dict[str, dict | None]:
-    """Stamp every kernel furnished for this mission, keyed by path."""
+    """Content-stamp every kernel furnished for this mission, keyed by path
+    relative to the downloads tree so the signature survives a move."""
     paths = [_LSK, _PCK, mission_dir / index["fk"], mission_dir / index["sclk"]]
     paths += [mission_dir / name for name in index["ck_files"]]
-    return {str(p): _file_stamp(p) for p in paths}
+    stamps = content_stamps(paths)
+    return {_rel_key(p): stamps[p] for p in paths}
+
+
+def _rel_key(path: Path) -> str:
+    try:
+        return str(path.relative_to(DOWNLOAD_DIR))
+    except ValueError:
+        return str(path)
 
 
 def write_attitude(
