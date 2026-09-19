@@ -356,13 +356,16 @@
 		}
 		// Names, left to right: each is centred on its body and takes what the
 		// last one left, so a crowd of small bodies loses its names rather than
-		// piling them on top of each other.
-		let taken = 0;
-		for (const p of laid) {
-			const half = Math.min(LABEL_MAX_WIDTH / 2, p.cx - taken, width - p.cx);
-			if (half * 2 < LABEL_MIN_WIDTH) continue;
-			p.labelWidth = half * 2;
-			taken = p.cx + half;
+		// piling them on top of each other. Only when names are drawn: a width
+		// on an undrawn name would suppress the body's tooltip.
+		if (labels) {
+			let taken = 0;
+			for (const p of laid) {
+				const half = Math.min(LABEL_MAX_WIDTH / 2, p.cx - taken, width - p.cx);
+				if (half * 2 < LABEL_MIN_WIDTH) continue;
+				p.labelWidth = half * 2;
+				taken = p.cx + half;
+			}
 		}
 		return laid;
 	});
