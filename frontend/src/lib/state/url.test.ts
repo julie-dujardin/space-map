@@ -11,19 +11,22 @@ vi.mock('$app/paths', () => ({
 			.replace('/[[name]]', params.name ? `/${params.name}` : '')
 }));
 
-// `parseUrl` reads `$app/state.page` reactively. We don't exercise it here —
-// these tests cover `serializeUrl`, which is pure-ish (only depends on `resolve`).
+// `parseUrl` reads `$app/state.page`; a mutable stand-in lets a test set the
+// route it should see.
 vi.mock('$app/state', () => ({
 	page: { params: {}, route: { id: null }, url: new URL('http://x/') }
 }));
 
+import { page } from '$app/state';
 import {
 	applyFocus,
+	applyGroup,
 	applyNav,
 	applyTab,
 	formatNavEnd,
 	isBodyId,
 	parseNavEnd,
+	parseUrl,
 	serializeUrl
 } from './url';
 import { DEFAULT_TRIP } from '$lib/travel/trip';
@@ -143,6 +146,18 @@ describe('serializeUrl', () => {
 		});
 	});
 
+	describe('group focus serialization', () => {
+		const group = { ...baseView, type: 'g', groupSlug: 'cat-moons', name: 'Moons' };
+
+		it('omits focus= while the camera is on the group anchor', () => {
+			expect(serializeUrl({ ...group, id: 'naif-10' })).not.toContain('focus=');
+		});
+
+		it('emits &focus=<id> for a member the camera moved to', () => {
+			expect(serializeUrl({ ...group, id: 'naif-301' })).toContain('&focus=naif-301');
+		});
+	});
+
 	describe('tab serialization', () => {
 		it('omits tab= for the default overview tab (null)', () => {
 			expect(serializeUrl({ ...baseView, tab: null })).not.toContain('tab=');
@@ -247,6 +262,63 @@ describe('serializeUrl', () => {
 		it('omits ring= when the active tab is not rings', () => {
 			expect(serializeUrl({ ...baseView, tab: 'images', ring: 'c-ring' })).not.toContain('ring=');
 		});
+	});
+});
+
+describe('applyGroup', () => {
+	it('keeps the body in view as the focus, since opening moves no camera', () => {
+		const view = applyGroup(
+			{ ...baseView, id: 'spkid-20000001', zoom: 3 },
+			'class-mba',
+			'Main belt'
+		);
+		expect(view.groupSlug).toBe('class-mba');
+		expect(view.id).toBe('spkid-20000001');
+		expect(view.zoom).toBe(3);
+		expect(serializeUrl(view)).toContain('&focus=spkid-20000001');
+	});
+
+	it('parks on the anchor when the caller is about to fly there', () => {
+		const view = applyGroup({ ...baseView, id: 'spkid-20000001' }, 'class-mba', 'Main belt', true);
+		expect(view.id).toBe('naif-10');
+		expect(serializeUrl(view)).not.toContain('focus=');
+	});
+});
+
+describe('parseUrl on a group', () => {
+	function open(url: string) {
+		page.params = { type: 'g', id: 'cat-moons', name: 'Moons' };
+		// Kit types `page.url.pathname` as the route union; the stand-in is a
+		// plain URL.
+		page.url = new URL(url) as typeof page.url;
+	}
+
+	it('lands on the anchor, framed at the anchor zoom, without focus=', () => {
+		open('http://x/g/cat-moons/Moons');
+		const view = parseUrl()!;
+		expect(view.id).toBe('naif-10');
+		expect(view.framed).toBe(true);
+	});
+
+	it('lands on the focus= member, unframed so it frames by size', () => {
+		open('http://x/g/cat-moons/Moons?focus=naif-301');
+		const view = parseUrl()!;
+		expect(view.groupSlug).toBe('cat-moons');
+		expect(view.id).toBe('naif-301');
+		expect(view.framed).toBe(false);
+	});
+
+	it('keeps an at= camera on the focus= member', () => {
+		open('http://x/g/cat-moons/Moons?at=now,10,20,0.5&focus=spkid-20000001');
+		const view = parseUrl()!;
+		expect(view.id).toBe('spkid-20000001');
+		expect(view.framed).toBe(true);
+		expect(view.zoom).toBe(0.5);
+	});
+
+	it('ignores a focus= that is not a body id', () => {
+		open('http://x/g/cat-moons/Moons?focus=pha');
+		expect(parseUrl()!.id).toBe('naif-10');
 	});
 });
 

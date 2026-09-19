@@ -246,7 +246,7 @@
 
 	// Open a /g/<slug> group view, framing its camera anchor at the default angle.
 	function openGroup(slug: string, name: string) {
-		appState.setGroup(slug, name);
+		appState.setGroup(slug, name, true);
 		// setGroup parked view.id/zoom on the group anchor; the default framing
 		// angle lands the camera there instead of the prior angle.
 		map.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
@@ -745,8 +745,9 @@
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (!appState.view.framed) {
-				// No URL camera: frame by the target's size/model, same as search.
-				const distance = framingDistanceFor(appState.view.type, placed);
+				// No URL camera: frame by the target's size/model, same as search. The
+				// target's own type, since on a group page the view's is the group's.
+				const distance = framingDistanceFor(urlTypeFromId(initialId), placed);
 				map.snapToBody(initialId, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON, distance);
 			} else if (cameraFocus?.data.id !== initialId) {
 				// Explicit URL camera, but the renderer settled on the parent while
@@ -838,7 +839,9 @@
 			const memberIds = new Set(
 				(detail.global?.notable_members ?? []).map((mm) => mm.id).filter(Boolean)
 			);
-			if (fromId && memberIds.has(fromId)) return; // already on a craft, keep camera
+			// Already on a craft (or deep-linked onto one): keep the camera.
+			const heldId = untrack(() => appState.view.id);
+			if (memberIds.has(heldId) || (fromId && memberIds.has(fromId))) return;
 			const window = await coverageWindowFor(primary.primary_id);
 			const body = ctx.getBody(primary.primary_id);
 			// EVENTS-DB primaries have no ephemeris: nothing to fly to. The

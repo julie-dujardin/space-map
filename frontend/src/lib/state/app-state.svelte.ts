@@ -132,12 +132,21 @@ export class AppState {
 		this.pushNow();
 	}
 
-	/** Open the /g/<slug> group view. Parks `view.id` on the group's camera
-	 *  anchor body so Scene's onFocusChange guard recognizes the landing body
-	 *  as the intended target and doesn't stomp groupSlug via setFocus. */
-	setGroup(slug: string, name: string) {
-		this.view = applyGroup(this.view, slug, name);
+	/** Open the /g/<slug> group view over the body in view. `frame` parks
+	 *  `view.id` on the group's anchor for a caller about to fly there, so
+	 *  Scene's onFocusChange guard takes the landing as intended rather than
+	 *  stomping groupSlug via setFocus. */
+	setGroup(slug: string, name: string, frame = false) {
+		this.view = applyGroup(this.view, slug, name, frame);
 		this.pushNow();
+	}
+
+	/** Move the camera's subject to another member of the open group. The page
+	 *  stays the group's, so this is a camera move, not a navigation. */
+	setGroupFocus(id: string) {
+		if (id === this.view.id) return;
+		this.view = { ...this.view, id };
+		this.replaceNow();
 	}
 
 	/** Tear down every focus layer (group + feature + body); URL parks on

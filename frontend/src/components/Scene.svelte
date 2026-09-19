@@ -92,9 +92,7 @@
 				// Skip the auto-setFocus when the URL already names this body:
 				// programmatic navigators (search, deep links) push their target
 				// state first and would otherwise have featureId/groupSlug wiped
-				// out by setFocus the moment the camera lands. Also skip when a
-				// group is focused and the clicked body is a member — clicking
-				// within a group should keep the group view, only the camera moves.
+				// out by setFocus the moment the camera lands.
 				if (body.id === appState.view.id) return;
 				// A trip stays a trip: settling on a body inside one moves where the
 				// trip goes, since that is the question the page is asking.
@@ -110,14 +108,18 @@
 					appState.view.type === UrlType.Group &&
 					appState.view.groupSlug !== null &&
 					ctx.isMemberOfActiveGroup(body.id);
-				if (!inActiveGroup) {
-					appState.setFocus({
-						type: urlTypeFromId(body.id),
-						id: body.id,
-						// Drawer fills the localized name via replaceFocusName once the detail bundle resolves.
-						name: body.name ?? ''
-					});
+				if (inActiveGroup) {
+					// Clicking within a group keeps the group view; the URL only records
+					// which member the camera moved to.
+					appState.setGroupFocus(body.id);
+					return;
 				}
+				appState.setFocus({
+					type: urlTypeFromId(body.id),
+					id: body.id,
+					// Drawer fills the localized name via replaceFocusName once the detail bundle resolves.
+					name: body.name ?? ''
+				});
 			}),
 			map.on('camera', ({ lat, lon, distanceKm }) => {
 				// The URL carries scene units, which is what a shared link has always

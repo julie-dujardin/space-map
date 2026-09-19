@@ -106,7 +106,9 @@ export interface MapViewState {
 	gallery: string | null;
 	/** IAU feature id when a surface feature is the active selection; null otherwise. */
 	featureId: number | null;
-	/** Slug when /g/<slug> is active; filters the group's applies_to category. */
+	/** Slug when /g/<slug> is active; filters the group's applies_to category.
+	 *  `id` then holds the group's camera anchor, or the member the camera moved
+	 *  to — deep-linked as `&focus=` so the link reopens on that member. */
 	groupSlug: string | null;
 	/** Active drawer tab; null = overview. Deep-linked as `&tab=`. */
 	tab: Exclude<DrawerTab, 'overview'> | null;

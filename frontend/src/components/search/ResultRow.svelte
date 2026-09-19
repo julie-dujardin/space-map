@@ -43,7 +43,8 @@
 			return serializeUrl(
 				applyFeature(view, { bodyId: hit.body_id, featureId: hit.feature_id, featureName: name })
 			);
-		if (hit.kind === 'group') return serializeUrl(applyGroup(view, hit.slug, name));
+		// The click flies to the group's anchor, so the href lands there too.
+		if (hit.kind === 'group') return serializeUrl(applyGroup(view, hit.slug, name, true));
 		return serializeUrl(applyFocus(view, { type: urlTypeFromId(hit.id), id: hit.id, name }));
 	});
 

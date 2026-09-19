@@ -34,7 +34,7 @@
 
 	function href(item: FeaturedItem): string | undefined {
 		return item.kind === 'group'
-			? groupHref(appState, item.slug, item.label)
+			? groupHref(appState, item.slug, item.label, true)
 			: focusHref(appState, item.id, item.label);
 	}
 

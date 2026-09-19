@@ -47,13 +47,15 @@ export function tabHref(appState: AppState | undefined, tab: DrawerTab): string 
 	return appState ? serializeUrl(applyTab(appState.view, tab)) : undefined;
 }
 
-/** The URL for a `/g/<slug>` collection page. */
+/** The URL for a `/g/<slug>` collection page. `frame` for a link whose click
+ *  flies to the group's anchor, so the href lands there too. */
 export function groupHref(
 	appState: AppState | undefined,
 	slug: string,
-	name: string
+	name: string,
+	frame = false
 ): string | undefined {
-	return appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined;
+	return appState ? serializeUrl(applyGroup(appState.view, slug, name, frame)) : undefined;
 }
 
 /** The URL for the `/nav` trip planner; either end may be null. `terms` sets

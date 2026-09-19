@@ -178,12 +178,17 @@ export function parseUrl(): MapViewState | null {
 	// Groups ride the body route shape — [id] holds the slug, not a number.
 	if (type === UrlType.Group) {
 		const anchor = groupAnchor(idStr);
+		// `focus` names the member the camera is on instead of the anchor. The
+		// anchor zoom only fits the anchor, so a bare link frames the member by
+		// its size, the way its own page would.
+		const focus = page.url.searchParams.get('focus');
+		const member = focus !== null && focus !== anchor.id && isBodyId(focus) ? focus : null;
 		const defaults: MapViewState = {
 			...DEFAULT_VIEW,
 			type: UrlType.Group,
-			id: anchor.id,
-			zoom: anchor.zoom,
-			framed: true, // group anchor zoom is intentional framing, not a default
+			id: member ?? anchor.id,
+			zoom: member ? DEFAULT_VIEW.zoom : anchor.zoom,
+			framed: member === null, // the anchor zoom is deliberate framing, not a default
 			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
 			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
@@ -432,17 +437,23 @@ export function applyGallery(current: MapViewState, key: string | null): MapView
 	};
 }
 
-/** Next view when opening a group. Parks `id` on the group's camera anchor
- *  so the body route resolves to the anchor body. */
-export function applyGroup(current: MapViewState, slug: string, name: string): MapViewState {
-	const anchor = groupAnchor(slug);
+/** Next view when opening a group. Opening one moves no camera, so `id` stays
+ *  on the body in view; `frame` parks it on the group's anchor instead, for a
+ *  caller about to fly there. */
+export function applyGroup(
+	current: MapViewState,
+	slug: string,
+	name: string,
+	frame = false
+): MapViewState {
+	const anchor = frame ? groupAnchor(slug) : null;
 	return {
 		...current,
 		...CLEAR_TAB_SCOPE,
 		...CLEAR_NAV_SCOPE,
 		type: UrlType.Group,
-		id: anchor.id,
-		zoom: anchor.zoom,
+		id: anchor?.id ?? current.id,
+		zoom: anchor?.zoom ?? current.zoom,
 		groupSlug: slug,
 		name,
 		featureId: null,
@@ -484,7 +495,8 @@ export function bodyHref(id: string, name: string): string {
 }
 
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
- *  for bodies and groups (groups carry a slug in the id slot), or
+ *  for bodies and groups (groups carry a slug in the id slot, and `&focus=`
+ *  the member the camera is on when it is not the anchor), or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
  *  `?at=<date>,<lat>,<lon>,<zoom>` query block. */
 export function serializeUrl(state: MapViewState): string {
@@ -538,7 +550,9 @@ export function serializeUrl(state: MapViewState): string {
 			id: state.groupSlug,
 			name: state.name ? encodeURIComponent(state.name) : undefined
 		});
-		return `${path}?at=${at}${img}${tab}${gal}${surface}${ring}${mp}`;
+		// The path names the group; the member the camera is on rides the query.
+		const focus = state.id !== groupAnchor(state.groupSlug).id ? `&focus=${state.id}` : '';
+		return `${path}?at=${at}${focus}${img}${tab}${gal}${surface}${ring}${mp}`;
 	}
 
 	const bodyType = urlTypeFromId(state.id);
