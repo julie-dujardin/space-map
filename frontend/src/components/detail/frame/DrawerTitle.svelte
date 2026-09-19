@@ -21,8 +21,9 @@
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	function crumbHref(c: Crumb): string | undefined {
-		if (!appState) return undefined;
 		const t = c.target;
+		if (t.kind === 'page') return t.href;
+		if (!appState) return undefined;
 		const next =
 			t.kind === 'focus'
 				? applyFocus(appState.view, {
@@ -45,6 +46,7 @@
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		if (!appState) return;
 		const t = c.target;
+		if (t.kind === 'page') return; // the router takes the href
 		if (t.kind === 'focus') {
 			if (!focusObject) return; // no in-session nav available — let the href win
 			e.preventDefault();

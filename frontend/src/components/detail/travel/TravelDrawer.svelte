@@ -12,6 +12,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import { toast } from 'svelte-sonner';
+	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { BodyData } from '$lib/types/objects';
 	import { DRAWER_TOP_GAP_PX, trackSheetCover } from '$lib/drawer';
@@ -516,18 +517,19 @@
 
 	// The header carries the panel's step back, rather than the panel growing a
 	// second one under it: reading a trajectory, the crumb returns to the list;
-	// choosing between them, it is the destination as before. Which step that is
-	// comes off the trip's own terms, so nothing has to be handed up.
+	// choosing between them, it climbs to the Δv map the trip was picked from,
+	// opened on the same origin. Which step that is comes off the trip's own
+	// terms, so nothing has to be handed up.
 	let reading = $derived(trip.profile);
+	let mapHref = $derived(
+		originId === null
+			? resolve('/nav')
+			: `${resolve('/nav')}?${new URLSearchParams({ from: originId })}`
+	);
 	let crumb = $derived<Crumb | null>(
 		reading
 			? { label: m.travel_all_trajectories(), target: { kind: 'trip' } }
-			: target
-				? {
-						label: displayName(target),
-						target: { kind: 'focus', id: target.id, name: displayName(target) }
-					}
-				: null
+			: { label: m.nav_delta_v(), target: { kind: 'page', href: mapHref } }
 	);
 	let title = $derived(reading ? routeLabel(reading) : m.travel_title());
 

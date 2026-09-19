@@ -67,7 +67,10 @@ export type CrumbTarget =
 	// Stays on this trip and only puts the trajectory being read back on the list
 	// it was chosen from — the planner's own step back, in the slot the object
 	// drawer uses for its parent.
-	| { kind: 'trip' };
+	| { kind: 'trip' }
+	// A site page outside the map, left to the router: the planner's parent is
+	// the Δv map, not a body.
+	| { kind: 'page'; href: string };
 
 export interface Crumb {
 	label: string;
