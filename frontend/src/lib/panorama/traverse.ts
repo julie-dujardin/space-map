@@ -79,10 +79,3 @@ export function bearingDeg(a: LonLat, b: LonLat): number {
 	const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
 	return (((Math.atan2(y, x) / DEG) % 360) + 360) % 360;
 }
-
-/** Where to look first: the middle of a partial sweep, else north. */
-export function initialHeadingDeg(entry: PanoramaEntry): number {
-	if (entry.azimuth_start_deg === undefined || entry.hfov_deg === undefined || entry.hfov_deg > 300)
-		return 0;
-	return (entry.azimuth_start_deg + entry.hfov_deg / 2 - (entry.north_offset_deg ?? 0) + 360) % 360;
-}

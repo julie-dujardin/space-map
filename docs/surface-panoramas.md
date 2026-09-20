@@ -238,8 +238,10 @@ fraction and remains only for compatibility.
 
 Unknown bounds or masks produce `null`, never invented percentages. Published
 full-360 coverage can establish the horizontal fields while sphere coverage remains
-unknown. Processing reads the PDS Navcam coordinate underlay's declared DN,
-reconstructs covered mosaic samples, and discards borders overwritten by labels.
+unknown. Processing takes the coordinate underlay out at its declared DN, or at
+the DN the pixels show where the label declares none or no value (one value drawn
+as lines ten degrees apart), reconstructs covered mosaic samples, and discards
+borders overwritten by labels.
 Angular grids and labels are rendered only by the frontend.
 
 ## Approximate printed-grid geometry

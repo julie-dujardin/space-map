@@ -35,8 +35,9 @@ import { fetchObjectDetail, isViewable, type PanoramaEntry } from '$lib/fetch/ob
 import { meanRadiusKm } from '$lib/fetch/objects/physical';
 import { ControlHost, type Control, type ControlPosition } from '$lib/scene/controls';
 import { gyroAvailability, requestGyroPermission } from './gyro';
+import { aimAtCoverage, coverageMask } from './coverage';
 import { hasHeading } from './minimap';
-import { findPanorama, initialHeadingDeg, neighboursOf, type Neighbours } from './traverse';
+import { findPanorama, neighboursOf, type Neighbours } from './traverse';
 
 export type ArrowKey = 'previous' | 'next';
 
@@ -72,8 +73,9 @@ export interface PanoramaViewOptions {
 	/** The panorama to open first: its id, or its `time,lat,lon` key. The
 	 *  body's first when left out. */
 	at?: string;
-	/** Where to look first. Without them the view faces the middle of a
-	 *  partial sweep, else north. */
+	/** Where to look first. Without them the view faces the imagery: the
+	 *  middle of a partial sweep, pitched to lie inside it; north on a full
+	 *  one. */
 	heading?: number;
 	pitch?: number;
 	fov?: number;
@@ -383,11 +385,11 @@ export class PanoramaView {
 		}
 		this.current = entry;
 		this.neighbours = this.radiusKm ? neighboursOf(this.entries, entry, this.radiusKm) : null;
-		this.setView({
-			heading: this.openingView?.heading ?? initialHeadingDeg(entry),
-			pitch: this.openingView?.pitch ?? 0
-		});
+		// The host's opening direction is final; every other open turns to face
+		// the imagery once the texture says where it is.
+		const opening = this.openingView;
 		this.openingView = null;
+		if (opening) this.setView({ heading: opening.heading, pitch: opening.pitch ?? 0 });
 		// An arrow sits at the neighbour's true bearing, which only lands on the
 		// right piece of ground once the sphere knows where north is.
 		this.setArrowTargets(
@@ -400,7 +402,8 @@ export class PanoramaView {
 		);
 		await this.loadTexture(
 			versionedUrl(`/v1/panoramas/${entry.id}.webp`, 'panoramas'),
-			entry.north_offset_deg ?? 0
+			entry.north_offset_deg ?? 0,
+			!opening
 		);
 		if (this.current === entry) this.emit('load', entry);
 	}
@@ -522,7 +525,16 @@ export class PanoramaView {
 
 	// -- drawing --------------------------------------------------------------
 
-	private loadTexture(url: string, northOffsetDeg: number): Promise<void> {
+	/** Turn the view to the imagery, before its first frame is drawn. */
+	private faceCoverage(image: CanvasImageSource, northOffsetDeg: number): void {
+		const mask = coverageMask(image);
+		if (!mask) return;
+		const vfovDeg = this.view.fov;
+		const hfovDeg = (2 * Math.atan(Math.tan((vfovDeg / 2) * DEG) * this.camera.aspect)) / DEG;
+		this.setView(aimAtCoverage(mask, this.view, { northOffsetDeg, hfovDeg, vfovDeg }));
+	}
+
+	private loadTexture(url: string, northOffsetDeg: number, aim: boolean): Promise<void> {
 		const token = ++this.loadToken;
 		return new Promise((resolve, reject) => {
 			this.loader.load(
@@ -543,6 +555,7 @@ export class PanoramaView {
 					// A quarter turn puts the left edge at north; the offset then brings
 					// the column that is really north there.
 					this.sphere.rotation.y = Math.PI / 2 + northOffsetDeg * DEG;
+					if (aim) this.faceCoverage(texture.image, northOffsetDeg);
 					this.invalidate();
 					resolve();
 				},

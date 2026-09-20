@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
-import {
-	bearingDeg,
-	findPanorama,
-	groundDistanceM,
-	initialHeadingDeg,
-	neighboursOf,
-	panoramaAt
-} from './traverse';
+import { bearingDeg, findPanorama, groundDistanceM, neighboursOf, panoramaAt } from './traverse';
 
 const MARS_RADIUS_KM = 3389.5;
 
@@ -61,13 +54,5 @@ describe('neighboursOf', () => {
 		expect(neighboursOf(list, p1, MARS_RADIUS_KM).next?.entry).toBe(p2);
 		expect(neighboursOf(list, p2, MARS_RADIUS_KM).next).toBeNull();
 		expect(neighboursOf(list, p2, MARS_RADIUS_KM).previous?.bearingDeg).toBeCloseTo(180, 5);
-	});
-});
-
-describe('initialHeadingDeg', () => {
-	it('faces the middle of a partial sweep and north otherwise', () => {
-		expect(initialHeadingDeg(entry({ azimuth_start_deg: 200, hfov_deg: 60 }))).toBe(230);
-		expect(initialHeadingDeg(entry({ azimuth_start_deg: 67, hfov_deg: 353 }))).toBe(0);
-		expect(initialHeadingDeg(entry({}))).toBe(0);
 	});
 });

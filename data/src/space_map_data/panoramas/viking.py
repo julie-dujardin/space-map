@@ -24,10 +24,8 @@ from .labels import Mosaic
 from .missions import FRAME
 from .pipeline import (
     POLICY,
-    coordinate_grid_remains,
     coverage,
     fetch,
-    read_header,
     read_pixels,
     reusable,
     sha256,
@@ -215,7 +213,7 @@ def build_product(root: Path, output_dir: Path, product: dict, width: int) -> di
     mosaic = Mosaic(**product["mosaic"])
     mosaic.validate()
     image = root / product["image"]
-    rgba, tone = read_pixels(image, mosaic)
+    rgba, tone, grid_remains = read_pixels(image, mosaic)
     texture = sphere_texture(rgba, mosaic, width)
     directory = output_dir / COLLECTION / product["id"]
     directory.mkdir(parents=True, exist_ok=True)
@@ -260,7 +258,7 @@ def build_product(root: Path, output_dir: Path, product: dict, width: int) -> di
         },
         "coverage": {
             **coverage(texture, mosaic),
-            "includes_source_grid": coordinate_grid_remains(read_header(image, mosaic)),
+            "includes_source_grid": grid_remains,
         },
         "color": "grayscale",
         "source_width": mosaic.width,

@@ -66,6 +66,15 @@ GRID_MODES = {"GRID", "GRID_OVERLAY", "GRID_LABELS"}
 GRID_LABEL_VERTICAL_MARGIN = 32
 GRID_LABEL_SIDE_MARGIN = 48
 GRID_SEAM_MARGIN = 8
+# An overlay the header never declares, or declares without its value, still
+# stands out in the pixels: one value far commoner than the values beside it,
+# drawn as vertical lines ten degrees apart.
+GRID_LINE_SPACING_DEG = 10
+GRID_LINE_MIN_PIXELS = 30
+# Of the spacing: a line's own width, not a step.
+GRID_LINE_TOLERANCE = 0.03
+GRID_SPIKE_MIN_PIXELS = 1500
+GRID_SPIKE_RATIO = 20
 # Enough of a raster to hold the label attached to its front.
 LABEL_PREFIX_BYTES = 1 << 16
 
@@ -796,6 +805,37 @@ def coordinate_grid_remains(header: str) -> bool:
     return re.search(r"\bGRID_DN\s*=\s*([-+\d.eE]+)", header) is None
 
 
+def undeclared_grid_dn(pixels, valid, mosaic: Mosaic) -> float | None:
+    """The value an overlay was drawn in, read from the pixels: a value far
+    commoner than its neighbours, standing in vertical lines at the grid's
+    spacing. None where the pixels show no such thing."""
+    band = pixels[:, :, 0]
+    values = band[valid]
+    if values.size == 0 or not np.all(values == np.rint(values)):
+        return None
+    values = values.astype(np.int64)
+    counts = np.bincount(values[values > 0])
+    step = GRID_LINE_SPACING_DEG * mosaic.scale_x
+    for dn in np.argsort(counts)[::-1][:5]:
+        if counts[dn] < GRID_SPIKE_MIN_PIXELS:
+            return None
+        beside = np.concatenate((counts[max(1, dn - 3) : dn], counts[dn + 1 : dn + 4]))
+        if counts[dn] < GRID_SPIKE_RATIO * max(1, beside.mean()):
+            continue
+        columns = np.flatnonzero((band == dn).sum(axis=0) >= GRID_LINE_MIN_PIXELS)
+        lines = columns[np.r_[True, np.diff(columns) > 2]]
+        if len(lines) < 4:
+            continue
+        gaps = np.diff(lines)
+        turns = np.rint(gaps / step)
+        spaced = (turns >= 1) & (
+            np.abs(gaps - turns * step) <= GRID_LINE_TOLERANCE * step
+        )
+        if spaced.mean() >= 0.5:
+            return float(dn)
+    return None
+
+
 def remove_coordinate_grid(pixels, valid, grid_dn):
     """Reconstruct grid-covered image samples without extending into empty canvas."""
     annotation = np.all(pixels == grid_dn, axis=2) | np.all(
@@ -867,10 +907,29 @@ def read_pixels(path: Path, mosaic: Mosaic):
     valid = np.all(np.isfinite(pixels), axis=2)
     for missing in mosaic.missing:
         valid &= np.all(pixels != missing, axis=2)
-    grid_dn = coordinate_grid_dn(read_header(path, mosaic))
+    header = read_header(path, mosaic)
+    declared = coordinate_grid_dn(header)
+    # Only a declared value is taken as read; an overlay drawn without one, or
+    # without any declaration, is found in the pixels.
+    found = (
+        undeclared_grid_dn(pixels, valid, mosaic)
+        if declared in (None, GRID_BLACK_DN)
+        else None
+    )
+    grid_dn = declared if found is None else found
+    if found is not None:
+        logger.info(
+            "%s coordinate overlay at DN %g: %s",
+            "Undeclared" if declared is None else "Unvalued",
+            found,
+            path.name,
+        )
     if grid_dn is not None:
         pixels, valid = remove_coordinate_grid(pixels, valid, grid_dn)
         pixels, valid = remove_coordinate_label_borders(pixels, valid, mosaic)
+    grid_remains = coordinate_grid_remains(header) and found is None
+    if grid_remains:
+        logger.warning("Coordinate overlay lines stay, value not found: %s", path.name)
     if not valid.any():
         raise ValueError("Mosaic has no valid pixels")
     low, high = np.percentile(pixels[valid], [0.5, 99.5])
@@ -886,12 +945,13 @@ def read_pixels(path: Path, mosaic: Mosaic):
         rgb = np.repeat(rgb, 3, axis=2)
     rgba = np.dstack((rgb, valid.astype(np.uint8) * 255))
     rgba[~valid] = 0
-    return rgba, {
+    tone = {
         "stretch_percentiles": [0.5, 99.5],
         "source_dn_range": [float(low), float(high)],
         "transfer": "sRGB",
         "scientific_radiometry": False,
     }
+    return rgba, tone, grid_remains
 
 
 def sphere_texture(rgba, mosaic: Mosaic, width: int):
@@ -929,7 +989,7 @@ def coverage(texture: Image.Image, mosaic: Mosaic) -> dict:
 # Identifies the recipe that produced a sphere. Bump it whenever a change would
 # make a texture or its metadata come out different, so a resumed run discards
 # what the old recipe built instead of keeping a mix of both.
-BUILD_VERSION = 1
+BUILD_VERSION = 2
 
 
 def reusable(metadata: dict, width: int, product: dict | None = None) -> bool:
@@ -967,7 +1027,7 @@ def build_product(root, output_dir, collection, mission, product, width):
     """Render one mosaic to a sphere and write its metadata."""
     mosaic = Mosaic(**product["mosaic"])
     mosaic.validate()
-    rgba, tone = read_pixels(root / product["image"], mosaic)
+    rgba, tone, grid_remains = read_pixels(root / product["image"], mosaic)
     texture = sphere_texture(rgba, mosaic, width)
     directory = output_dir / collection / product["id"]
     directory.mkdir(parents=True, exist_ok=True)
@@ -1035,9 +1095,7 @@ def build_product(root, output_dir, collection, mission, product, width):
         ),
         "coverage": {
             **coverage(texture, mosaic),
-            "includes_source_grid": coordinate_grid_remains(
-                read_header(root / product["image"], mosaic)
-            ),
+            "includes_source_grid": grid_remains,
         },
         "color": "rgb" if mosaic.bands == 3 else "grayscale",
         "source_width": mosaic.width,

@@ -118,7 +118,7 @@ def test_big_endian_offset_and_missing_mask(tmp_path):
     path = tmp_path / "test.img"
     pixels = np.arange(360 * 3, dtype=">i2").reshape(1, 3, 360)
     path.write_bytes(b"header" + pixels.tobytes())
-    rgba, tone = read_pixels(path, mosaic(height=3, offset=6))
+    rgba, tone, _ = read_pixels(path, mosaic(height=3, offset=6))
     assert rgba[0, 0, 3] == 0
     assert rgba[-1, -1, 3] == 255
     assert rgba[-1, -1, 0] > rgba[0, 50, 0]
@@ -136,13 +136,53 @@ def test_coordinate_grid_is_excluded_from_image(tmp_path):
     pixels[0, 0, 0] = 4096
     path.write_bytes(header + pixels.tobytes())
 
-    rgba, _ = read_pixels(path, mosaic(height=3, offset=len(header)))
+    rgba, _, grid_remains = read_pixels(path, mosaic(height=3, offset=len(header)))
 
     assert rgba[1, 90:270, 3].all()
     assert not np.all(rgba[1, 90:270, :3] == 255)
     assert rgba[1, :90, 3].all()
     assert rgba[1, 270:, 3].all()
     assert rgba[0, 0, 3] == 255
+    assert not grid_remains
+
+
+def gridded_raster(path, header, grid_dn, *, every=10):
+    """A 90-by-360 mosaic with an overlay of vertical lines `every` columns."""
+    pixels = (np.arange(90 * 360) % 2000 + 1000).astype(">i2").reshape(1, 90, 360)
+    pixels[0, :, ::every] = grid_dn
+    path.write_bytes(header + pixels.tobytes())
+    return mosaic(offset=len(header))
+
+
+def test_an_undeclared_overlay_is_found_in_the_pixels_and_excluded(tmp_path):
+    """Mars 2020 and Curiosity mosaics draw a grid at DN 4096 and say nothing."""
+    path = tmp_path / "test.img"
+    m = gridded_raster(path, b"TASK='MARSMAP'", 4096)
+
+    rgba, _, grid_remains = read_pixels(path, m)
+
+    assert not grid_remains
+    assert not np.all(rgba[40, ::10, :3] == 255, axis=1).any()
+    assert rgba[40, 5, 3] == 255
+
+
+def test_an_overlay_declared_without_a_value_is_found_in_the_pixels(tmp_path):
+    path = tmp_path / "test.img"
+    m = gridded_raster(path, b"GRID='GRID_OVERLAY'", 15000)
+
+    _, _, grid_remains = read_pixels(path, m)
+
+    assert not grid_remains
+
+
+def test_lines_at_no_regular_spacing_are_not_an_overlay(tmp_path):
+    path = tmp_path / "test.img"
+    m = gridded_raster(path, b"", 4096, every=7)
+
+    rgba, _, grid_remains = read_pixels(path, m)
+
+    assert not grid_remains
+    assert np.all(rgba[40, ::7, :3] == 255, axis=1).all()
 
 
 def test_coordinate_grid_declaration_requires_value():
