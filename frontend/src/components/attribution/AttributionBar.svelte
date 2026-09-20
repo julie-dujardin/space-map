@@ -19,9 +19,22 @@
 		 *  says, and what the popover behind it lists. */
 		chips?: AttributionChip[];
 		sections?: CreditSection[];
+		/** `sky` is white on a scrim, for a bar over imagery that is dark
+		 *  whatever the theme; `surface` inks it from the theme instead. */
+		tone?: 'sky' | 'surface';
 	}
 
-	let { chips: givenChips, sections }: Props = $props();
+	let { chips: givenChips, sections, tone = 'sky' }: Props = $props();
+
+	const ink = $derived(
+		tone === 'surface'
+			? {
+					bar: 'bg-background/60 text-muted-foreground',
+					hover: 'hover:text-foreground',
+					dim: 'text-muted-subtle'
+				}
+			: { bar: 'bg-black/40 text-white/75', hover: 'hover:text-white', dim: 'text-white/50' }
+	);
 
 	const ctx = getContext<ContextManager | undefined>('ctx');
 
@@ -52,19 +65,19 @@
 </script>
 
 <div
-	class="pointer-events-auto flex items-center rounded-s-sm bg-black/40 text-[11px]
-		leading-tight text-white/75 backdrop-blur-sm whitespace-nowrap"
+	class="pointer-events-auto flex items-center rounded-s-sm text-[11px]
+		leading-tight backdrop-blur-sm whitespace-nowrap {ink.bar}"
 >
 	<Popover.Root>
 		<Popover.Trigger
 			class="flex cursor-pointer items-center gap-3 px-1 py-0
-				hover:text-white transition-colors"
+				transition-colors {ink.hover}"
 			aria-label={m.attribution_title()}
 		>
 			{#each shown as chip (chip.label)}
 				{#if chip.names.length > 0}
 					<span class="inline-block max-w-[50vw] truncate align-bottom">
-						<span class="text-white/50">{chip.label}:</span>
+						<span class={ink.dim}>{chip.label}:</span>
 						{chip.names.join(' · ')}
 					</span>
 				{/if}
@@ -75,13 +88,13 @@
 		</Popover.Content>
 	</Popover.Root>
 	{#if anyChip}
-		<span class="text-white/40" aria-hidden="true">·</span>
+		<span class={ink.dim} aria-hidden="true">·</span>
 	{/if}
 	<a
 		href={GITHUB_REPO_URL}
 		target="_blank"
 		rel="noopener noreferrer"
-		class="flex items-center px-1 py-0 hover:text-white transition-colors"
+		class="flex items-center px-1 py-0 transition-colors {ink.hover}"
 		aria-label="GitHub"
 	>
 		<svg

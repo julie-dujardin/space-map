@@ -108,4 +108,4 @@
 	});
 </script>
 
-<AttributionBar {chips} {sections} />
+<AttributionBar {chips} {sections} tone="surface" />

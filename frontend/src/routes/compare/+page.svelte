@@ -622,14 +622,14 @@
 			</aside>
 		{/if}
 
-		<!-- The row. Always dark: it is the same sky the map draws. -->
+		<!-- The row stands on the stage sheet, and everything over it is inked
+		     from the theme: dark it is the sky the map draws, light a bare sheet. -->
 		<div
 			bind:clientWidth={stageWidth}
 			bind:clientHeight={stageHeight}
 			role="group"
 			aria-label={m.compare_lineup_label()}
-			class="relative min-w-0 flex-1 overflow-hidden bg-[#0b0b0c] text-white"
-			style="--muted-foreground: oklch(0.72 0 0)"
+			class="relative min-w-0 flex-1 overflow-hidden bg-stage text-foreground"
 			onpointerdown={onSwipeStart}
 			onpointerup={onSwipeEnd}
 			onpointercancel={() => (swipeFrom = null)}
@@ -655,7 +655,7 @@
 						/>
 					</div>
 				{:else}
-					<p class="flex h-full items-center justify-center text-sm text-white/60">
+					<p class="flex h-full items-center justify-center text-sm text-muted-foreground">
 						{objects.length === 0 && selected.length > 0 ? m.compare_loading() : m.compare_empty()}
 					</p>
 				{/if}
@@ -674,11 +674,13 @@
 							style="width: {Math.max(0, ghostAt.cx + ghostAt.pr)}px"
 						>
 							<ChevronLeftIcon
-								class="size-5 transition-colors {hot === 'prev' ? 'text-white' : 'text-white/50'}"
+								class="size-5 transition-colors {hot === 'prev'
+									? 'text-foreground'
+									: 'text-muted-foreground'}"
 							/>
 						</button>
 					{/if}
-					<!-- On a dark pill: the body behind it is lit. -->
+					<!-- On a scrim of the stage: the body behind it is lit. -->
 					<button
 						type="button"
 						onclick={() => turn(-1)}
@@ -687,8 +689,8 @@
 						aria-label={opened ? m.compare_open({ name: ghost.name }) : m.search_prev_page()}
 						class="absolute start-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
 						'prev'
-							? 'bg-black/80 text-white'
-							: 'bg-black/55 text-white/70'}"
+							? 'bg-stage/80 text-foreground'
+							: 'bg-stage/55 text-muted-foreground'}"
 						style="bottom: {LABEL_ROW + 14}px"
 					>
 						<ChevronLeftIcon class="size-3.5" />
@@ -711,8 +713,8 @@
 					>
 						<ChevronRightIcon
 							class="size-5 translate-y-8 transition-colors {hot === 'next'
-								? 'text-white'
-								: 'text-white/50'}"
+								? 'text-foreground'
+								: 'text-muted-foreground'}"
 						/>
 					</button>
 					{#if !narrow}
@@ -724,8 +726,8 @@
 							aria-label={opened ? m.compare_open({ name: speck.name }) : m.search_next_page()}
 							class="absolute end-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
 							'next'
-								? 'bg-black/80 text-white'
-								: 'bg-black/55 text-white/70'}"
+								? 'bg-stage/80 text-foreground'
+								: 'bg-stage/55 text-muted-foreground'}"
 							style="bottom: {LABEL_ROW + 14}px"
 						>
 							<span>{neighbourLabel(speck, pageIndex + 2)}</span>
@@ -735,18 +737,19 @@
 				{/if}
 
 				{#if scaleBar}
-					<!-- Bottom centre, between the page links; a phone has no room there. -->
+					<!-- Bottom centre, between the page links; a phone has no room there.
+					     On its own scrim: a maximized body is drawn under it. -->
 					<div
-						class="pointer-events-none absolute flex flex-col gap-1 {narrow
+						class="pointer-events-none absolute flex flex-col gap-1 rounded-md bg-stage/70 px-1.5 py-1 {narrow
 							? 'start-5 top-5 items-start'
 							: 'left-1/2 -translate-x-1/2 items-center'}"
 						style={narrow ? '' : `bottom: ${LABEL_ROW + 14}px`}
 					>
 						<div
-							class="h-[7px] border-x border-b border-white/40"
+							class="h-[7px] border-x border-b border-muted-foreground"
 							style="width: {scaleBar.px}px"
 						></div>
-						<span class="text-[11px] text-white/60 tabular-nums">{scaleBar.label}</span>
+						<span class="text-[11px] text-muted-foreground tabular-nums">{scaleBar.label}</span>
 					</div>
 				{/if}
 
@@ -760,7 +763,9 @@
 					>
 						{#each pages.map((_, i) => i) as i (i)}
 							<span
-								class="size-[7px] rounded-full {i === pageIndex ? 'bg-white/85' : 'bg-white/30'}"
+								class="size-[7px] rounded-full {i === pageIndex
+									? 'bg-foreground/85'
+									: 'bg-foreground/30'}"
 							></span>
 						{/each}
 					</div>
@@ -789,7 +794,7 @@
 					aria-label={m.compare_show_list()}
 					aria-expanded="false"
 					onclick={() => (railOpen = true)}
-					class="absolute start-5 top-5 flex size-11 items-center justify-center rounded-xl border border-white/15 bg-black/70 text-white backdrop-blur-sm hover:bg-black/85"
+					class="absolute start-5 top-5 flex size-11 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground backdrop-blur-sm hover:bg-card"
 				>
 					<MenuIcon class="size-[18px]" />
 				</button>
@@ -802,7 +807,7 @@
 			<div class="pointer-events-none absolute inset-x-0 top-3 flex justify-end gap-2 px-3">
 				<Popover.Root bind:open={pickerOpen}>
 					<Popover.Trigger
-						class="pointer-events-auto flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-black/70 px-3 text-[13px] text-white backdrop-blur-sm"
+						class="pointer-events-auto flex h-10 items-center gap-2 rounded-xl border border-border bg-card/70 px-3 text-[13px] text-foreground backdrop-blur-sm"
 					>
 						<ListIcon class="size-4" />
 						{m.compare_object_count({ count: objects.length })}
@@ -818,7 +823,7 @@
 				aria-label={m.compare_add()}
 				onclick={() => (pickerOpen = true)}
 				style="bottom: {LABEL_ROW + 16}px"
-				class="absolute end-5 flex size-14 items-center justify-center rounded-2xl bg-white text-black shadow-lg"
+				class="absolute end-5 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg"
 			>
 				<PlusIcon class="size-6" />
 			</button>
