@@ -1,11 +1,12 @@
 name: sdk
 
-# Standalone check on PRs; a tag is what publishes.
+# Standalone check on PRs; a tag is what publishes, to npm and to the CDN.
 on:
   workflow_call:
   pull_request:
     paths:
       - frontend/**
+      - infrastructure/cdn/**
       - .github/workflows/sdk.yml
   push:
     tags:
@@ -13,7 +14,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,8 +45,31 @@ jobs:
       - name: Build and check the package
         run: cd frontend && pnpm test:sdk
 
-  publish:
-    needs: test
+      # A tag that disagrees with the manifest would publish a version nobody
+      # can find from the repo, and the number cannot be reused. Both publish
+      # jobs take the tag as the version, so this is checked once, here.
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/sdk-v')
+        run: |
+          version=$(node -p "require('./frontend/dist/sdk-npm/package.json').version")
+          tagged="${GITHUB_REF_NAME#sdk-v}"
+          [[ "$version" == "$tagged" ]] \
+            || { echo "ERROR: tag $GITHUB_REF_NAME does not match version $version" >&2; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdk-npm
+          path: frontend/dist/sdk-npm
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdk-cdn
+          path: frontend/dist/sdk
+          if-no-files-found: error
+
+  publish-npm:
+    needs: build
     if: startsWith(github.ref, 'refs/tags/sdk-v')
     runs-on: ubuntu-latest
     environment: npm-publish
@@ -55,38 +79,55 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
         with:
-          package_json_file: frontend/package.json
+          sparse-checkout: frontend/.node-version
+          sparse-checkout-cone-mode: false
 
       - uses: actions/setup-node@v6
         with:
           node-version-file: frontend/.node-version
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
-      # Trusted publishing needs npm 11.5.1 or newer. Pinned to the major: npm 12
-      # refuses the Node in .node-version.
+      # Staged publishing needs a newer npm 11 than Node ships. Pinned to the
+      # major: npm 12 refuses the Node in .node-version.
       - name: Update npm
         run: npm install -g npm@11
 
-      - name: Install dependencies
-        run: cd frontend && pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdk-npm
+          path: sdk-npm
 
-      - name: Compile paraglide messages
-        run: cd frontend && npx paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide
+      # Staged: the version goes live once approved with 2FA, on npmjs.com or
+      # with `npm stage approve`. The trusted publisher allows nothing else.
+      - name: Stage the publish
+        run: cd sdk-npm && npm stage publish --access public --provenance
 
-      - name: Build and check the package
-        run: cd frontend && pnpm test:sdk
+  publish-cdn:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/sdk-v')
+    runs-on: ubuntu-latest
+    environment: cf-pages-deploy
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            frontend/.node-version
+            infrastructure/cdn
+          sparse-checkout-cone-mode: false
 
-      # A tag that disagrees with the manifest would publish a version nobody
-      # can find from the repo, and the number cannot be reused.
-      - name: Check the tag matches the version
-        run: |
-          version=$(node -p "require('./frontend/dist/sdk-npm/package.json').version")
-          tagged="${GITHUB_REF_NAME#sdk-v}"
-          [[ "$version" == "$tagged" ]] \
-            || { echo "ERROR: tag $GITHUB_REF_NAME does not match version $version" >&2; exit 1; }
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.node-version
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdk-cdn
+          path: sdk-cdn
 
       - name: Publish
-        run: cd frontend/dist/sdk-npm && npm publish --access public
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: infrastructure/cdn/publish.sh "${GITHUB_REF_NAME#sdk-v}" sdk-cdn

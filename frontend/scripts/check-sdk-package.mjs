@@ -26,6 +26,11 @@ for (const [field, file] of [
 check(manifest.license === 'MPL-2.0', `license is ${manifest.license}, expected MPL-2.0`);
 check(existsSync(at('LICENSE')), 'no LICENSE in the package — MPL-2.0 requires the notice');
 check(existsSync(at('README.md')), 'no README.md in the package');
+// The README quotes a CDN URL; one from a previous version would be the one people copy.
+check(
+	readFileSync(at('README.md'), 'utf8').includes(`cdn.spacemap.co/${manifest.version}/`),
+	`README.md does not point at cdn.spacemap.co/${manifest.version}/`
+);
 
 // Whatever sits here is published, so build leftovers are a packaging bug.
 const expected = new Set(['index.js', 'index.d.ts', 'package.json', 'README.md', 'LICENSE']);

@@ -13,16 +13,21 @@ are licensed for non-commercial use only.
 
 ## Getting it
 
-As one script that carries everything it needs — `spacemap.js`, an ES module,
-next to `spacemap.iife.js` for pages that want a global instead:
+As one script that carries everything it needs, from the CDN or copied next to
+your page:
 
 ```html
 <div id="map" style="height: 500px"></div>
 <script type="module">
-	import { createMap } from './spacemap.js';
+	import { createMap } from 'https://cdn.spacemap.co/0.1.1/spacemap.js';
 	const map = await createMap({ container: '#map' });
 </script>
 ```
+
+`spacemap.iife.js` at the same path defines a `spacemap` global instead, for
+pages without modules. Every version stays where it was published, so pin the
+one you tested; the build's `sha384` digest in an `integrity` attribute keeps
+the page from running anything else.
 
 Or from npm, where three.js is yours to provide:
 
