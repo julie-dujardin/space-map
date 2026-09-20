@@ -24,6 +24,7 @@
 	import { TraverseState } from './state/traverse-state.svelte';
 	import { GalleryState } from './state/gallery-state.svelte';
 	import OverviewPanel from './panels/OverviewPanel.svelte';
+	import ObjectActions from './panels/overview/ObjectActions.svelte';
 	import MembersPanel from './panels/MembersPanel.svelte';
 	import FeaturesPanel from './panels/FeaturesPanel.svelte';
 	import RingsPanel from './panels/RingsPanel.svelte';
@@ -223,6 +224,9 @@
 		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
 	);
 	let showCameraButtons = $derived(!isFeatureMode && !isGroupMode && !!onMaximize && !!onMinimize);
+	// The action row is the map's: elsewhere the panel heads its overview with
+	// the way back to the map instead, and a collection is not an object to act on.
+	let showActions = $derived(!mapHref && !isGroupMode && !!body);
 
 	function handleShare() {
 		void shareUrl(displayName);
@@ -494,7 +498,24 @@
 		{parentBody}
 		{planetarySystem}
 		{mapHref}
+		actions={showActions ? objectActions : undefined}
 	/>
+{/snippet}
+
+{#snippet objectActions()}
+	{#if body}
+		<ObjectActions
+			{body}
+			featureId={feature?.featureId ?? null}
+			isFeature={isFeatureMode}
+			hasPanoramas={(data?.global?.panoramas?.length ?? 0) > 0}
+			{isMinimized}
+			onFocus={showCameraButtons
+				? () => (isMinimized ? onMinimize?.() : onMaximize?.())
+				: undefined}
+			onShare={handleShare}
+		/>
+	{/if}
 {/snippet}
 
 {#snippet targetsPanel()}
@@ -579,10 +600,11 @@
 			{/if}
 		</Button>
 	{/if}
-	<!-- "How do I get here" belongs with the object, so it rides the panel's own
-	     button row. Group panels have no body to fly to — except a launch site,
-	     which is a place, and one trips leave from rather than go to, and an
-	     Earth-orbit zone, which is where a trip ends without naming a body. -->
+	<!-- The overview's action row names the same few actions; the corner keeps
+	     them as icons so every tab has them. Group panels have no body to fly
+	     to — except a launch site, which is a place, and one trips leave from
+	     rather than go to, and an Earth-orbit zone, which is where a trip ends
+	     without naming a body. -->
 	{#if body}
 		<TravelButton target={body.data} featureId={feature?.featureId ?? null} />
 	{:else if launchSiteSlug}

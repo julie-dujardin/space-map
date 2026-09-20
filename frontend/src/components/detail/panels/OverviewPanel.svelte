@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import MapIcon from '@lucide/svelte/icons/map';
 	import PanelSkeleton from '../frame/skeleton/PanelSkeleton.svelte';
@@ -47,6 +47,9 @@
 		/** The map's page for this object, where the panel is open somewhere
 		 *  else and the map is a place to go rather than the ground underneath. */
 		mapHref?: string;
+		/** The object's action row, headed up by the drawer that knows what the
+		 *  page can do with it. Absent on a collection. */
+		actions?: Snippet;
 	}
 
 	let {
@@ -62,7 +65,8 @@
 		lineup,
 		parentBody,
 		planetarySystem,
-		mapHref
+		mapHref,
+		actions
 	}: Props = $props();
 
 	let data = $derived(load.data);
@@ -157,6 +161,9 @@
 	<PanelSkeleton />
 {:else}
 	<div class="flex flex-col gap-4">
+		{#if actions}
+			{@render actions()}
+		{/if}
 		{#if mapHref}
 			<a
 				href={mapHref}

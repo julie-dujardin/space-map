@@ -12,10 +12,8 @@
 	import type { BodyData } from '$lib/types/objects';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { EARTH_ID } from '$lib/constants';
-	import { navHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
-	import { transferPlan } from '$lib/travel/travel-body';
+	import { travelEntry } from '$lib/travel/travel-entry';
 
 	interface Props {
 		/** The body whose panel this sits in — the destination. */
@@ -29,36 +27,20 @@
 	const ctx = getContext<ContextManager | undefined>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
 
-	// Nobody travels to where they already are, so Earth's own panel opens with
-	// the departure unchosen rather than with no button at all.
-	let departure = $derived(target.id === EARTH_ID ? null : EARTH_ID);
-
-	let plannable = $derived.by(() => {
-		if (!ctx) return false;
-		if (departure === null) return true;
-		// Any bucket, not just majors — that used to hide the button on every
-		// small body and probe, exactly the ones worth planning a trip to.
-		const lookup = (id: string) => ctx.getBody(id)?.data;
-		const earth = lookup(EARTH_ID);
-		if (!earth) return false;
-		return transferPlan(earth, target, lookup).kind !== 'blocked';
-	});
-
-	let destination = $derived({ id: target.id, featureId });
-	let href = $derived(navHref(appState, departure, destination));
+	let entry = $derived(travelEntry(ctx, appState, target, featureId));
 </script>
 
-{#if plannable && href}
+{#if entry}
 	<!-- An anchor, not a button: it navigates, so ⌘-click has to open a real URL. -->
 	<Button
-		{href}
+		href={entry.href}
 		variant="secondary"
 		size="icon-lg"
 		class="rounded-full"
 		onclick={(e: MouseEvent) => {
-			if (isModifiedClick(e) || !appState) return;
+			if (isModifiedClick(e) || !appState || !entry) return;
 			e.preventDefault();
-			appState.setNav(departure, destination);
+			appState.setNav(entry.departure, entry.destination);
 		}}
 	>
 		<NavigationIcon />

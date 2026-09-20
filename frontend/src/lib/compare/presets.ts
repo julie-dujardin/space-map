@@ -5,24 +5,57 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import { ObjectType, type BodyData } from '$lib/types/objects';
 
 export interface ComparePreset {
 	slug: string;
 	label: () => string;
 	/** Object ids, in no particular order: the row sorts by size. */
 	ids: string[];
+	/** The kinds of object this set is the natural comparison for: one of them,
+	 *  on its own page, is offered this set to join. Absent where the members
+	 *  stand for nothing but themselves. */
+	kinds?: ObjectType[];
+	/** Where one kind spans more than a single scale can hold, the half this
+	 *  set is. Radii in kilometres, `min` inclusive and `max` exclusive. */
+	minRadiusKm?: number;
+	maxRadiusKm?: number;
+	/** Narrows a kind the ids tell apart but the type does not — an orbiting
+	 *  station and an interstellar probe are both spacecraft. */
+	idPrefixes?: string[];
 }
+
+/** Everything the small-body row holds: the bodies measured in tens of
+ *  kilometres rather than thousands. */
+const SMALL_BODY_KINDS = [
+	ObjectType.DWARF_PLANET,
+	ObjectType.ASTEROID,
+	ObjectType.ASTEROID_INNER,
+	ObjectType.ASTEROID_MAIN_BELT,
+	ObjectType.ASTEROID_TROJAN,
+	ObjectType.ASTEROID_CENTAUR,
+	ObjectType.ASTEROID_TNO,
+	ObjectType.COMET
+];
+
+/** Where the planets split: Uranus is the smallest giant, Earth the largest
+ *  of the others, and no scale carries both ends. */
+const GIANT_RADIUS_KM = 20000;
 
 export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		slug: 'terrestrial-planets',
 		label: m.compare_preset_terrestrial,
-		ids: ['naif-199', 'naif-299', 'naif-399', 'naif-499', 'naif-301']
+		ids: ['naif-199', 'naif-299', 'naif-399', 'naif-499', 'naif-301'],
+		kinds: [ObjectType.PLANET],
+		maxRadiusKm: GIANT_RADIUS_KM
 	},
 	{
 		slug: 'giant-planets',
 		label: m.compare_preset_giants,
-		ids: ['naif-599', 'naif-699', 'naif-799', 'naif-899']
+		ids: ['naif-599', 'naif-699', 'naif-799', 'naif-899'],
+		kinds: [ObjectType.PLANET],
+		minRadiusKm: GIANT_RADIUS_KM
 	},
 	{
 		slug: 'galilean-moons',
@@ -32,7 +65,8 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		slug: 'large-moons',
 		label: m.compare_preset_large_moons,
-		ids: ['naif-503', 'naif-606', 'naif-504', 'naif-501', 'naif-301', 'naif-502', 'naif-701']
+		ids: ['naif-503', 'naif-606', 'naif-504', 'naif-501', 'naif-301', 'naif-502', 'naif-701'],
+		kinds: [ObjectType.MOON]
 	},
 	{
 		slug: 'visited-small-bodies',
@@ -48,12 +82,15 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'spkid-20162173',
 			'spkid-20101955',
 			'spkid-20025143'
-		]
+		],
+		kinds: SMALL_BODY_KINDS
 	},
 	{
 		slug: 'space-stations',
 		label: m.compare_preset_stations,
-		ids: ['norad_satcat-25544', 'norad_satcat-16609', 'norad_satcat-6633']
+		ids: ['norad_satcat-25544', 'norad_satcat-16609', 'norad_satcat-6633'],
+		kinds: [ObjectType.SPACECRAFT],
+		idPrefixes: ['norad_satcat-']
 	},
 	{
 		slug: 'observatories',
@@ -69,7 +106,9 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'probe-88592384',
 			'probe-104804352',
 			'probe-107159552'
-		]
+		],
+		kinds: [ObjectType.SPACECRAFT],
+		idPrefixes: ['probe-']
 	}
 ];
 
@@ -85,4 +124,23 @@ export function presetOn(preset: ComparePreset, selected: readonly string[]): bo
 
 export function presetBySlug(slug: string): ComparePreset | undefined {
 	return COMPARE_PRESETS.find((p) => p.slug === slug);
+}
+
+/** Whether a body is one of the things this set stands for. */
+function fits(preset: ComparePreset, body: BodyData): boolean {
+	if (!preset.kinds?.includes(body.objectType)) return false;
+	if (preset.idPrefixes && !preset.idPrefixes.some((p) => body.id.startsWith(p))) return false;
+	if (preset.minRadiusKm !== undefined && body.radiusKm < preset.minRadiusKm) return false;
+	if (preset.maxRadiusKm !== undefined && body.radiusKm >= preset.maxRadiusKm) return false;
+	return true;
+}
+
+/** The comparison a body's own page offers: the set it already belongs to,
+ *  else the set its kind belongs in with the body added to it. Null where the
+ *  page has nothing to hold the body up against. */
+export function compareSeed(body: BodyData): string[] | null {
+	const member = COMPARE_PRESETS.find((p) => p.ids.includes(body.id));
+	if (member) return member.ids;
+	const kin = COMPARE_PRESETS.find((p) => fits(p, body));
+	return kin ? [body.id, ...kin.ids] : null;
 }

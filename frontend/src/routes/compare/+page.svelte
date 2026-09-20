@@ -146,6 +146,23 @@
 				}))
 			: bandPages
 	);
+	// A link from an object's own page lands on the page that holds it: banded
+	// by size, the set it joins usually starts several pages above it. Waits for
+	// the whole set and a measured stage, since both move the pages under it,
+	// and lands once only — after that the page is the reader's.
+	let landed = false;
+	$effect(() => {
+		// Both read before any test: a short-circuit here would drop one of them
+		// as a dependency, and the landing would miss whichever arrived last.
+		const measured = !!stageWidth;
+		const whole = objects.length === selected.length;
+		if (landed || !data.startOn || !measured || !whole) return;
+		const home = bandPages.findIndex((p) => p.items.some((o) => o.id === data.startOn));
+		if (home < 0) return;
+		landed = true;
+		untrack(() => (page = home));
+	});
+
 	const pageIndex = $derived(
 		opened
 			? Math.max(
