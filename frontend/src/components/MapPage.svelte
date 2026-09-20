@@ -954,7 +954,7 @@
 				<TimeControls {clock} panelOpen={sidebarOpen} onFitChange={(v) => (timeBarFits = v)} />
 			{/if}
 			<div
-				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
+				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
 					? 'z-[55]'
 					: 'z-10'}"
 			>
@@ -1002,7 +1002,7 @@
 				     padding, so the circle lands on the chips' centre line. -->
 				<button
 					type="button"
-					class="pointer-events-auto fixed top-[calc(var(--safe-top)_+_1rem)] z-10 hidden h-10 items-center pb-1 md:flex md:start-[calc(var(--detail-panel)_+_1rem)]"
+					class="fixed top-[calc(var(--safe-top)_+_1rem)] z-10 hidden h-10 items-center pb-1 md:flex md:start-[calc(var(--detail-panel)_+_1rem)]"
 					title={m.search_placeholder()}
 					aria-label={m.search_placeholder()}
 					onclick={openSearchBesideSidebar}
@@ -1020,7 +1020,7 @@
 				     shortcuts away from the map matter less than the control for what the
 				     reader is looking at. -->
 				<div
-					class="pointer-events-auto fixed start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] top-[calc(var(--safe-top)_+_4.125rem)] z-10 md:end-[calc(var(--safe-end)_+_1rem)] md:top-[calc(var(--safe-top)_+_1rem)] md:flex md:h-10 md:items-center md:start-[var(--featured-start)]
+					class="fixed start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] top-[calc(var(--safe-top)_+_4.125rem)] z-10 md:end-[calc(var(--safe-end)_+_1rem)] md:top-[calc(var(--safe-top)_+_1rem)] md:flex md:h-10 md:items-center md:start-[var(--featured-start)]
 						{framesDiffer || ringPillShown ? 'max-md:hidden' : ''}"
 					style="--featured-start: {featuredStart}"
 				>
@@ -1033,7 +1033,7 @@
 			{/if}
 			<div
 				inert={bgInert}
-				class="fixed end-[calc(var(--safe-end)_+_1rem)] z-10 flex flex-col items-end gap-3 pointer-events-auto {searchEnabled
+				class="fixed end-[calc(var(--safe-end)_+_1rem)] z-10 flex flex-col items-end gap-3 {searchEnabled
 					? 'top-[calc(var(--safe-top)_+_7.5rem)] md:top-[calc(var(--safe-top)_+_1rem)]'
 					: 'top-[calc(var(--safe-top)_+_1rem)]'}"
 			>

@@ -157,7 +157,7 @@
 </script>
 
 <div
-	class="border-border/60 bg-background/90 pointer-events-auto z-10 hidden
+	class="border-border/60 bg-background/90 z-10 hidden
 		flex-col gap-2.5 rounded-xl border p-3 shadow-lg backdrop-blur md:flex {positionClass}"
 >
 	<div class="flex items-center justify-between gap-3">

@@ -52,10 +52,9 @@
 		external ? ['noopener', 'noreferrer', rel].filter(Boolean).join(' ') : rel
 	);
 
-	// pointer-events-auto because parts of the drawer sit over a canvas that
-	// takes the pointer; rounded-xs so the focus ring follows the text box.
+	// rounded-xs so the focus ring follows the text box.
 	const BASE =
-		'pointer-events-auto rounded-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+		'rounded-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
 	const VARIANT: Record<LinkVariant, string> = {
 		body: 'text-muted-foreground hover:text-foreground underline underline-offset-2',
 		quiet: 'text-muted-foreground hover:text-foreground no-underline',

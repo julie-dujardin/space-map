@@ -267,7 +267,7 @@
 {/snippet}
 
 <div
-	class="absolute top-16 start-4 z-10 pointer-events-auto
+	class="absolute top-16 start-4 z-10
 		rounded-md bg-background/80 backdrop-blur-sm border border-border/60
 		px-3 py-2 text-[11px] font-mono leading-tight text-foreground/90
 		shadow-md max-w-[260px] select-text"

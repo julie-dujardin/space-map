@@ -35,7 +35,7 @@
 		return mobile && shown;
 	});
 
-	const mapGlass = `pointer-events-auto flex items-center justify-center
+	const mapGlass = `flex items-center justify-center
 		w-10 h-10 md:w-8 md:h-8 rounded-full
 		bg-black/40 backdrop-blur-md hover:bg-black/55
 		text-white transition-colors cursor-pointer`;

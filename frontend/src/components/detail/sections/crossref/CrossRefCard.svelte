@@ -29,7 +29,7 @@
 	}: Props = $props();
 
 	const TILE_CLASS =
-		'border-border/60 bg-muted pointer-events-auto relative block h-20 overflow-hidden rounded-md border';
+		'border-border/60 bg-muted relative block h-20 overflow-hidden rounded-md border';
 </script>
 
 <!-- A tile with nowhere to go stays a tile: the name and the hero are worth

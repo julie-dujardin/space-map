@@ -219,7 +219,7 @@
 	{/if}
 	{#if calibrationUi.progress !== null}
 		<div
-			class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-bg/60 backdrop-blur-sm pointer-events-auto"
+			class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-bg/60 backdrop-blur-sm"
 		>
 			<p class="text-sm text-text">{m.settings_recalibrate_running()}</p>
 			<LoadingBar value={calibrationUi.progress} label={m.settings_recalibrate_running()} />

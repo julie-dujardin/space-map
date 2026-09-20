@@ -121,8 +121,11 @@
 	</div>
 {/snippet}
 
+<!-- Non-modal: the sheet shares the screen with the page, which keeps its
+     own pointer events and scroll under it. -->
 <Vaul.Root
 	open={true}
+	modal={false}
 	{snapPoints}
 	bind:activeSnapPoint
 	shouldScaleBackground={false}

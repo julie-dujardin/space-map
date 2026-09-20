@@ -1,5 +1,5 @@
 diff --git a/dist/use-drawer-root.svelte.js b/dist/use-drawer-root.svelte.js
-index dffcf102fa23b5ab751407901513910d06980e09..3a3953c473da640b5528dc807912ae480c07ca34 100644
+index dffcf102fa23b5ab751407901513910d06980e09..58d68d7710d6fbb6963ca296382dbf69cc2f932c 100644
 --- a/dist/use-drawer-root.svelte.js
 +++ b/dist/use-drawer-root.svelte.js
 @@ -21,6 +21,7 @@ export function useDrawerRoot(opts) {
@@ -147,6 +147,37 @@ index dffcf102fa23b5ab751407901513910d06980e09..3a3953c473da640b5528dc807912ae48
      $effect(() => {
          window.requestAnimationFrame(() => {
              shouldAnimate = true;
+@@ -513,25 +549,14 @@ export function useDrawerRoot(opts) {
+         setTimeout(() => {
+             opts.onAnimationEnd.current?.(o);
+         }, TRANSITIONS.DURATION * 1000);
+-        if (o && !opts.modal.current) {
+-            if (typeof window !== "undefined") {
+-                window.requestAnimationFrame(() => {
+-                    document.body.style.pointerEvents = "auto";
+-                });
+-            }
+-        }
+-        if (!o) {
+-            // This will be removed when the exit animation ends (`500ms`)
++        // The body lock is the dialog's and only runs for a modal drawer: hand
++        // the page back at once on close, ahead of the exit animation. A
++        // non-modal drawer never touches the body, so the page under it keeps
++        // its own pointer events.
++        if (!o && opts.modal.current) {
+             document.body.style.pointerEvents = "auto";
+         }
+     }
+-    watch(() => opts.modal.current, () => {
+-        if (!opts.modal.current) {
+-            window.requestAnimationFrame(() => {
+-                document.body.style.pointerEvents = "auto";
+-            });
+-        }
+-    });
+     function setOverlayNode(node) {
+         overlayNode = node;
+     }
 diff --git a/dist/use-snap-points.svelte.d.ts b/dist/use-snap-points.svelte.d.ts
 index 1330d4af553c79d5b87019ae5c56b7434ecedb9c..efac28e279f33eca11a3c6fdc035974c03b59eaf 100644
 --- a/dist/use-snap-points.svelte.d.ts

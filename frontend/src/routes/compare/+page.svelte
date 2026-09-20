@@ -784,7 +784,7 @@
 			{/if}
 
 			<!-- Same corner as the map's, crediting what this page draws. -->
-			<div class="pointer-events-none absolute end-0 z-10" style="bottom: var(--safe-bottom)">
+			<div class="absolute end-0 z-10" style="bottom: var(--safe-bottom)">
 				<CompareCreditBar {bodies} />
 			</div>
 

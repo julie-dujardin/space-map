@@ -116,7 +116,7 @@
 			<OverlayMenuButton
 				title={m.settings_title()}
 				Icon={SettingsIcon}
-				triggerClass="pointer-events-auto flex h-10 w-10 cursor-pointer items-center justify-center
+				triggerClass="flex h-10 w-10 cursor-pointer items-center justify-center
 					rounded-lg text-muted-foreground transition-colors hover:bg-accent
 					hover:text-foreground md:h-8 md:w-8"
 			>

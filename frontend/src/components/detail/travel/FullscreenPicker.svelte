@@ -41,7 +41,7 @@
 
 <Portal>
 	<div
-		class="bg-popover pointer-events-auto fixed inset-0 z-50 flex flex-col pt-[var(--safe-top)] pe-[var(--safe-end)] pb-[var(--safe-bottom)] ps-[var(--safe-start)]"
+		class="bg-popover fixed inset-0 z-50 flex flex-col pt-[var(--safe-top)] pe-[var(--safe-end)] pb-[var(--safe-bottom)] ps-[var(--safe-start)]"
 		role="dialog"
 		aria-modal="true"
 		aria-label={title}

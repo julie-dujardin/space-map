@@ -21,7 +21,7 @@
 	aria-pressed={active}
 	title={m.panorama_gyro()}
 	aria-label={m.panorama_gyro()}
-	class="pointer-events-auto flex h-10 w-10 cursor-pointer items-center justify-center rounded-full
+	class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full
 		backdrop-blur-md transition-colors md:h-8 md:w-8
 		{active ? 'bg-white text-black hover:bg-white/85' : 'bg-black/40 text-white hover:bg-black/55'}"
 >

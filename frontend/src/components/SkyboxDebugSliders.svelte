@@ -65,7 +65,7 @@
 </script>
 
 <div
-	class="absolute top-3 end-3 z-20 pointer-events-auto
+	class="absolute top-3 end-3 z-20
 		rounded-md bg-background/80 backdrop-blur-sm border border-border/60
 		px-3 py-2 text-[11px] font-mono leading-tight text-foreground/90
 		shadow-md w-[480px] select-text"

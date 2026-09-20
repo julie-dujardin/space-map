@@ -69,8 +69,7 @@
 	});
 	let hidden = $derived(types.length - visible.length);
 
-	const CHIP =
-		'pointer-events-auto rounded-md border px-2 py-1 text-xs transition-colors whitespace-nowrap';
+	const CHIP = 'rounded-md border px-2 py-1 text-xs transition-colors whitespace-nowrap';
 </script>
 
 {#if types.length > 1}

@@ -207,7 +207,7 @@
 		type="button"
 		onclick={() => (shown = !shown)}
 		aria-pressed={shown}
-		class="pointer-events-auto flex size-10 cursor-pointer items-center justify-center rounded-full backdrop-blur-md transition-colors md:size-8 {shown
+		class="flex size-10 cursor-pointer items-center justify-center rounded-full backdrop-blur-md transition-colors md:size-8 {shown
 			? 'bg-white text-black hover:bg-white/80'
 			: 'bg-black/40 text-white hover:bg-black/55'}"
 		title={shown ? m.panorama_entry_hide() : m.panorama_entry_show()}

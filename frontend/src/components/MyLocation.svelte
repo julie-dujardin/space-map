@@ -58,7 +58,7 @@
 <button
 	onclick={locate}
 	disabled={state === 'loading'}
-	class="pointer-events-auto flex items-center justify-center
+	class="flex items-center justify-center
 		w-12 h-12 md:w-10 md:h-10 rounded-full
 		bg-white hover:bg-white/80
 		text-black transition-colors cursor-pointer

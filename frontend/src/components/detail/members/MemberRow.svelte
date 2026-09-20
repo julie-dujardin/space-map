@@ -86,7 +86,7 @@
 		<a
 			{href}
 			{onclick}
-			class="pointer-events-auto hover:bg-muted/40 -mx-1 flex items-center gap-3 rounded-md px-1 py-2"
+			class="hover:bg-muted/40 -mx-1 flex items-center gap-3 rounded-md px-1 py-2"
 			{...rest}
 		>
 			{@render content()}

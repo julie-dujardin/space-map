@@ -1290,7 +1290,7 @@
 					onfocus={(e) => e.currentTarget.matches(':focus-visible') && (hoveredId = p.id)}
 					onblur={() => hoveredId === p.id && (hoveredId = null)}
 					aria-label={p.name}
-					class="pointer-events-auto absolute top-0 bottom-0 outline-none"
+					class="absolute top-0 bottom-0 outline-none"
 					style="left: {p.colLeft}px; width: {p.colWidth}px"
 				></a>
 			{:else}
@@ -1298,7 +1298,7 @@
 					type="button"
 					onclick={() => focusBody(p.id)}
 					aria-label={p.name}
-					class="pointer-events-auto absolute top-0 bottom-0 outline-none"
+					class="absolute top-0 bottom-0 outline-none"
 					style="left: {p.colLeft}px; width: {p.colWidth}px"
 				></button>
 			{/if}
@@ -1313,7 +1313,7 @@
 				onpointermove={(e) => e.stopPropagation()}
 				aria-label={m.lineup_compare()}
 				title={m.lineup_compare()}
-				class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1 right-1 z-20 rounded-full p-1 shadow-sm backdrop-blur-sm transition"
+				class="bg-background/70 text-foreground/80 hover:bg-background absolute top-1 right-1 z-20 rounded-full p-1 shadow-sm backdrop-blur-sm transition"
 			>
 				<Maximize2Icon size={16} />
 			</a>
@@ -1329,7 +1329,7 @@
 				onpointermove={(e) => e.stopPropagation()}
 				aria-disabled={page === 0}
 				aria-label={m.search_prev_page()}
-				class="bg-background/70 text-foreground/80 pointer-events-auto absolute top-1/2 left-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition {page ===
+				class="bg-background/70 text-foreground/80 absolute top-1/2 left-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition {page ===
 				0
 					? 'cursor-default opacity-30'
 					: 'hover:bg-background'}"
@@ -1343,7 +1343,7 @@
 				onpointermove={(e) => e.stopPropagation()}
 				aria-disabled={page === pageCount - 1}
 				aria-label={m.search_next_page()}
-				class="bg-background/70 text-foreground/80 pointer-events-auto absolute top-1/2 right-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition {page ===
+				class="bg-background/70 text-foreground/80 absolute top-1/2 right-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition {page ===
 				pageCount - 1
 					? 'cursor-default opacity-30'
 					: 'hover:bg-background'}"
@@ -1355,7 +1355,7 @@
 				aria-label={ariaLabel}
 				onpointerenter={() => (hoveredId = null)}
 				onpointermove={(e) => e.stopPropagation()}
-				class="pointer-events-auto absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 gap-1.5"
+				class="absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 gap-1.5"
 			>
 				{#each Array.from({ length: pageCount }).map((_x, i) => i) as i (i)}
 					<button

@@ -65,7 +65,7 @@
 </script>
 
 <div
-	class="pointer-events-auto flex items-center rounded-s-sm text-[11px]
+	class="flex items-center rounded-s-sm text-[11px]
 		leading-tight backdrop-blur-sm whitespace-nowrap {ink.bar}"
 >
 	<Popover.Root>

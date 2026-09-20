@@ -715,8 +715,11 @@
 {/snippet}
 
 {#if isMobile}
+	<!-- Non-modal: the sheet shares the screen with the map, which keeps its
+	     own pointer events under it. -->
 	<Vaul.Root
 		open={true}
+		modal={false}
 		{snapPoints}
 		bind:activeSnapPoint
 		shouldScaleBackground={false}

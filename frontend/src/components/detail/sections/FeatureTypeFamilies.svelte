@@ -92,7 +92,7 @@
 								type="button"
 								onclick={() => toggle(family.key)}
 								aria-expanded={open}
-								class="border-border/60 hover:bg-muted/60 text-muted-foreground pointer-events-auto rounded-md border px-2 py-1 text-xs transition-colors"
+								class="border-border/60 hover:bg-muted/60 text-muted-foreground rounded-md border px-2 py-1 text-xs transition-colors"
 							>
 								{open ? m.group_family_collapse() : `+${hidden}`}
 							</button>

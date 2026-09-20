@@ -40,8 +40,7 @@
 	/** Under this the bar is a sliver that says less than the tooltip does. */
 	const MIN_BAR_SHARE = 0.05;
 
-	const CARD =
-		'border-border/60 bg-muted/40 pointer-events-auto flex min-w-0 flex-col gap-1 rounded-md border p-2.5';
+	const CARD = 'border-border/60 bg-muted/40 flex min-w-0 flex-col gap-1 rounded-md border p-2.5';
 </script>
 
 {#snippet value()}
@@ -54,9 +53,8 @@
 			href={stat.href}
 			onclick={stat.onClick}
 			{title}
-			class="pointer-events-auto block truncate {VALUE[
-				size
-			]} font-semibold tabular-nums underline underline-offset-2">{stat.value}</a
+			class="block truncate {VALUE[size]} font-semibold tabular-nums underline underline-offset-2"
+			>{stat.value}</a
 		>
 	{:else}
 		<div {title} class="truncate {VALUE[size]} font-semibold tabular-nums">{stat.value}</div>

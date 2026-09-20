@@ -140,7 +140,7 @@
 	bind:this={bar}
 	style:--panel-inset={panelOpen ? 'calc(var(--detail-panel) + 0.75rem)' : '0px'}
 	class="center-clear-of-panel fixed bottom-[calc(var(--safe-bottom)_+_1.25rem)] left-1/2 z-10
-		hidden md:flex pointer-events-auto items-baseline gap-2 p-2 rounded-full
+		hidden md:flex items-baseline gap-2 p-2 rounded-full
 		bg-primary-foreground/95 backdrop-blur text-primary
 		shadow-lg text-xs {fits ? '' : 'invisible'}"
 >

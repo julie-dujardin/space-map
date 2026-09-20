@@ -21,7 +21,7 @@
 			onclick={() => onpage(Math.max(0, page - 1))}
 			disabled={page === 0}
 			aria-label={m.search_prev_page()}
-			class="hover:text-foreground pointer-events-auto rounded p-0.5 transition disabled:opacity-30"
+			class="hover:text-foreground rounded p-0.5 transition disabled:opacity-30"
 		>
 			<ChevronLeftIcon class="size-3.5 rtl:rotate-180" />
 		</button>
@@ -31,7 +31,7 @@
 			onclick={() => onpage(Math.min(pageCount - 1, page + 1))}
 			disabled={page === pageCount - 1}
 			aria-label={m.search_next_page()}
-			class="hover:text-foreground pointer-events-auto rounded p-0.5 transition disabled:opacity-30"
+			class="hover:text-foreground rounded p-0.5 transition disabled:opacity-30"
 		>
 			<ChevronRightIcon class="size-3.5 rtl:rotate-180" />
 		</button>

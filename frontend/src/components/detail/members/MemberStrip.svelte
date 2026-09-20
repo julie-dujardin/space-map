@@ -68,7 +68,7 @@
 			<a
 				href={seeAllHref}
 				onclick={seeAll}
-				class="pointer-events-auto text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
+				class="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
 			>
 				{m.members_see_all()}
 				<span class="sr-only">— {heading}</span>
@@ -83,7 +83,7 @@
 			<a
 				href={targetHref(appState, member, name)}
 				onclick={targetClick(nav, member, name)}
-				class="pointer-events-auto group flex min-w-0 flex-col items-center gap-1"
+				class="group flex min-w-0 flex-col items-center gap-1"
 			>
 				{#if member.thumbnail}
 					<img
@@ -108,11 +108,7 @@
 			</a>
 		{/each}
 		{#if moreCount > 0}
-			<a
-				href={seeAllHref}
-				onclick={seeAll}
-				class="pointer-events-auto group flex min-w-0 flex-col items-center gap-1"
-			>
+			<a href={seeAllHref} onclick={seeAll} class="group flex min-w-0 flex-col items-center gap-1">
 				<div
 					class="bg-muted text-muted-foreground group-hover:text-foreground flex aspect-square w-full items-center justify-center rounded-lg text-xs font-medium tabular-nums"
 				>
