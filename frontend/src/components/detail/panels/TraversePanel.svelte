@@ -7,6 +7,7 @@
 	import { versionedUrl } from '$lib/fetch/data-base';
 	import { formatIsoDate } from '$lib/format/date';
 	import { panoramaHref } from '$lib/state/panorama-link';
+	import { traverseYears } from '$lib/panorama/traverses';
 	import type { Traverse } from '../state/traverse-state.svelte';
 
 	interface Props {
@@ -15,15 +16,7 @@
 
 	let { traverse }: Props = $props();
 
-	/** The years the traverse spans, or the one year it sits in. */
-	let years = $derived.by(() => {
-		const { entries } = traverse;
-		const start = new Date(entries[0].time).getUTCFullYear();
-		const end = new Date(entries[entries.length - 1].time).getUTCFullYear();
-		return start === end
-			? String(start)
-			: m.panorama_gallery_years({ start: String(start), end: String(end) });
-	});
+	let years = $derived(traverseYears(traverse.entries));
 </script>
 
 <div class="flex flex-col gap-4 px-4 pb-4">

@@ -31,15 +31,25 @@ export interface PanoramaBodySummary {
 	missions: PanoramaMissionSummary[];
 }
 
+/** The index is one static file that several pages want — the gallery, a
+ *  world's own gallery, the drawer's traverse tab — so the first read is the
+ *  one everybody gets. Dropped on failure, so a retry is a real retry. */
+let index: Promise<PanoramaBodySummary[]> | null = null;
+
 /** `fetcher` takes the `fetch` a SvelteKit `load` is handed, so the request
  *  joins the page's own load rather than starting a second one. */
-export async function fetchPanoramaIndex(
+export function fetchPanoramaIndex(
 	fetcher: (url: string) => Promise<Response> = fetchWithTimeout
 ): Promise<PanoramaBodySummary[]> {
-	const res = await fetcher(`${dataBase()}/v1/panoramas.json`);
-	if (!res.ok) throw new Error(`Failed to load panoramas.json: ${res.status}`);
-	const index = (await res.json()) as { bodies?: PanoramaBodySummary[] };
-	return index.bodies ?? [];
+	if (index) return index;
+	index = (async () => {
+		const res = await fetcher(`${dataBase()}/v1/panoramas.json`);
+		if (!res.ok) throw new Error(`Failed to load panoramas.json: ${res.status}`);
+		const body = (await res.json()) as { bodies?: PanoramaBodySummary[] };
+		return body.bodies ?? [];
+	})();
+	index.catch(() => (index = null));
+	return index;
 }
 
 /** Every panorama taken on a body, mission by mission in time order. The view

@@ -1,7 +1,8 @@
 <!--
-  Full-page panorama viewer for one body: `?at=` names the panorama, the
-  arrows step along the traverse, and without `?at=` the page lists every
-  panorama the body has.
+  Full-page panorama viewer for one body: `?at=` names the panorama and the
+  arrows step along the traverse. Without `?at=` the page is the body's own
+  gallery — the same traverse cards the gallery of every world draws, since a
+  world with hundreds of stops has no list worth reading.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
@@ -16,8 +17,7 @@
 	import {
 		fetchObjectDetail,
 		isViewable,
-		type ObjectDetailData,
-		type PanoramaEntry
+		type ObjectDetailData
 	} from '$lib/fetch/objects/object-data';
 	import { meanRadiusKm } from '$lib/fetch/objects/physical';
 	import { formatIsoDate } from '$lib/format/date';
@@ -41,9 +41,12 @@
 	import { fly } from 'svelte/transition';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { entryJd } from '$lib/panorama/minimap';
+	import { bodyTraverses } from '$lib/panorama/traverses';
 	import { gyroAvailability } from '$lib/panorama/gyro';
 	import { PanoramaView, type ArrowKey, type ScreenAnchor } from '$lib/panorama/view';
 	import PanoramaMinimap from './PanoramaMinimap.svelte';
+	import TraverseCards from './TraverseCards.svelte';
+	import MapCredits from './MapCredits.svelte';
 	import PanoramaTimeline from './PanoramaTimeline.svelte';
 	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
 	import SettingsButton from '../settings/SettingsButton.svelte';
@@ -270,12 +273,13 @@
 		return out;
 	});
 
-	const byMission = $derived.by(() => {
-		const groups = new Map<string, PanoramaEntry[]>();
-		for (const e of entries)
-			groups.set(e.mission ?? '', [...(groups.get(e.mission ?? '') ?? []), e]);
-		return [...groups.entries()];
-	});
+	/** The body's traverses, named by the craft that drove them — awaited by the
+	 *  gallery, so it says it is loading rather than saying it is empty. Asked
+	 *  for only where the page is the gallery: with a panorama open there is
+	 *  nothing to draw them on. */
+	const traverses = $derived(at || !detail ? null : bodyTraverses(bodyId, entries));
+	/** What the cards' maps are drawn from, credited once under them. */
+	let galleryCredits = $state<LayerCredit[]>([]);
 
 	/** Back to the map, standing over this panorama at its date; the body page
 	 *  unframed when no panorama is open. */
@@ -478,8 +482,8 @@
 		</div>
 	</Tooltip.Provider>
 {:else}
-	<!-- The list is a document page, not a view of the body: it carries the same
-	     frame as the gallery it came from, and the map is one tab away. -->
+	<!-- The gallery is a document page, not a view of the body: it carries the
+	     same frame as the gallery of every world, and the map is one tab away. -->
 	<SitePage current="panoramas" title={m.panorama_index_title()}>
 		<!-- The body sits where the gallery puts it: a section heading under the
 		     title, not a breadcrumb over it. -->
@@ -489,44 +493,26 @@
 
 		{#if detailError}
 			<p class="text-sm text-muted-foreground">{m.panorama_error()}</p>
-		{:else if !detail}
-			<p class="text-sm text-muted-foreground">{m.loading()}</p>
 		{:else if at}
 			<p class="mb-4 text-sm text-muted-foreground">{m.panorama_not_found()}</p>
-		{:else if !byMission.length}
-			<p class="text-sm text-muted-foreground">{m.panorama_gallery_empty()}</p>
+		{:else if traverses}
+			{#await traverses}
+				<p class="text-sm text-muted-foreground">{m.loading()}</p>
+			{:then found}
+				{#if found.length}
+					<TraverseCards
+						{bodyId}
+						{radiusKm}
+						traverses={found}
+						onCredits={(l) => (galleryCredits = l)}
+					/>
+					<MapCredits credits={galleryCredits} class="mt-8" />
+				{:else}
+					<p class="text-sm text-muted-foreground">{m.panorama_gallery_empty()}</p>
+				{/if}
+			{/await}
+		{:else}
+			<p class="text-sm text-muted-foreground">{m.loading()}</p>
 		{/if}
-
-		{#each byMission as [mission, list] (mission)}
-			<section class="mb-8">
-				<div class="mb-1 flex items-baseline justify-between gap-3">
-					<h3 class="text-sm font-medium">{capitalize(mission)}</h3>
-					<span class="text-xs text-muted-foreground">
-						{m.panorama_gallery_count({ count: list.length })}
-					</span>
-				</div>
-				<ul class="divide-y divide-border text-sm">
-					{#each list as e (e.id)}
-						<li>
-							<a
-								href={panoramaHref(bodyId, e)}
-								class="flex items-baseline justify-between gap-3 py-1.5 text-foreground/85 hover:text-foreground"
-							>
-								<span>
-									{#if e.sol !== undefined}{m.panorama_sol({ sol: e.sol })}{/if}
-									{#if e.title}
-										<span class="text-muted-foreground">
-											{#if e.sol !== undefined}·
-											{/if}{e.title}
-										</span>
-									{/if}
-								</span>
-								<span class="shrink-0 text-xs text-muted-foreground">{formatIsoDate(e.time)}</span>
-							</a>
-						</li>
-					{/each}
-				</ul>
-			</section>
-		{/each}
 	</SitePage>
 {/if}
