@@ -40,12 +40,20 @@ const expected = new Set([
 	'package.json',
 	'README.md',
 	'LICENSE',
+	'THIRD_PARTY_NOTICES.txt',
 	'dist'
 ]);
 for (const entry of readdirSync(dist)) {
 	const kind = statSync(at(entry)).isDirectory() ? 'directory' : 'file';
 	check(expected.has(entry), `unexpected ${kind} in the publish root: ${entry}`);
 }
+// MIT and ISC want their notices with every copy, and the bundles carry these two at least.
+const notices = existsSync(at('THIRD_PARTY_NOTICES.txt'))
+	? readFileSync(at('THIRD_PARTY_NOTICES.txt'), 'utf8')
+	: '';
+for (const name of ['three', 'satellite.js'])
+	check(notices.includes(`\n${name} `), `THIRD_PARTY_NOTICES.txt does not list ${name}`);
+
 // The CDN copies jsDelivr serves, and nothing else: a sourcemap here is 6 MB of package.
 const cdn = ['spacemap.js', 'spacemap.iife.js'];
 const shipped = existsSync(at('dist')) ? readdirSync(at('dist')) : [];

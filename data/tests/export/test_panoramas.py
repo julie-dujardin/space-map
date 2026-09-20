@@ -149,6 +149,18 @@ class TestSelection:
         assert product.image is None
         assert product.preview is None
 
+    def test_an_editorial_only_release_exports_its_sphere_marked(self, tmp_path: Path):
+        """ESA's standard terms allow the sphere on an educational page and not
+        a commercial one, so it publishes with the tier a reader can gate on."""
+        _write_cache(
+            tmp_path,
+            "huygens",
+            [_product(reuse={"status": "educational-editorial-informational-only"})],
+        )
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["distribution"] == "non-commercial"
+        assert product.image is not None
+
     def test_a_product_stating_nothing_about_reuse_is_unaffected(self, tmp_path: Path):
         _write_cache(tmp_path, "perseverance", [_product(reuse=None)])
         assert panoramas.load_panoramas(tmp_path)["naif-499"]

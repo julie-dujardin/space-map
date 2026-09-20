@@ -7,9 +7,33 @@ Distances are kilometres and angles are degrees throughout. Objects are named
 by their export id — `naif-399` for Earth, `spkid-20000004` for Vesta,
 `norad_satcat-25544` for the ISS.
 
-Licensed MPL-2.0. No key, no quota for now. The credit line the map draws is
-not removable: the imagery it shows requires attribution. Some body textures
-are licensed for non-commercial use only.
+No key, no quota for now.
+
+## Licensing
+
+The code is MPL-2.0. The data and imagery the map fetches keep the terms of
+their sources, which is why the credit line the map draws is not removable:
+these license require attribution.
+
+Every surface map and panorama is ranked by its terms, and the SDK draws only
+what a page may use:
+
+- **Open** imagery is free for any use, commercial included. It is the default
+  and all a map draws unless asked otherwise.
+- **Non-commercial** imagery is licensed for educational and non-commercial
+  use: the Uranus map, and the Huygens descent panorama of Titan. A page that
+  is not commercial turns it on:
+
+  ```js
+  const map = await createMap({ container: '#map', includeNonCommercial: true });
+  ```
+
+  Asking for it is accepting its terms, and the credit line naming each author
+  is part of those terms. Without the flag Uranus renders in a flat fallback
+  colour, and the Huygens stop is a place on Titan with no panorama to open.
+
+- **Site-only** imagery is licensed to spacemap.co alone and never reaches the
+  SDK.
 
 ## Getting it
 
@@ -29,7 +53,7 @@ without modules. Pin the version you tested: a published version never changes,
 and an `integrity` attribute with the file's `sha384` digest keeps the page from
 running anything else.
 
-Or from npm, where three.js is yours to provide:
+Or from npm, where you also need to provide three.js:
 
 ```sh
 npm install spacemap three

@@ -1,4 +1,4 @@
-import { getLocale, type TextureDistribution } from '$lib/host';
+import { getLocale, textureAllowed, type TextureDistribution } from '$lib/host';
 import type { ProbeCoverage } from '$lib/fetch/metadata';
 import { fetchBundlePair, OBJECT_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
@@ -444,11 +444,15 @@ export interface PanoramaEntry {
 	/** `withheld` where the release's reuse terms are unsettled: the stop is
 	 *  published as a place and a date, and no texture exists to fetch. */
 	imagery?: 'withheld';
+	/** How far down the host's texture ladder this sphere may be drawn; absent
+	 *  where its terms allow any use. */
+	distribution?: TextureDistribution;
 }
 
-/** Whether a stop has a sphere to open, as against a place on the traverse. */
+/** Whether a stop has a sphere to open, as against a place on the traverse:
+ *  one exists, and this host's terms reach it. */
 export function isViewable(entry: PanoramaEntry): boolean {
-	return entry.imagery !== 'withheld';
+	return entry.imagery !== 'withheld' && textureAllowed(entry.distribution);
 }
 
 export interface GlobalObjectData {

@@ -29,7 +29,50 @@ function inlineWorkers(): Plugin {
 	};
 }
 
-const BANNER = '/*! spacemap SDK — https://spacemap.co — Mozilla Public License 2.0 */';
+const NOTICES = 'THIRD_PARTY_NOTICES.txt';
+const BANNER = `/*! spacemap SDK — https://spacemap.co — Mozilla Public License 2.0. Bundles MIT and ISC libraries: ${NOTICES} in the spacemap npm package. */`;
+
+/** The licences of what the bundle carries, one file next to it: MIT and ISC
+ *  require their notice to travel with copies, and the minifier strips every
+ *  comment. Packages are read off the entry's module list, so a dependency
+ *  landing in the bundle brings its notice along unasked. */
+function thirdPartyNotices(): Plugin {
+	const packageRoot = /^(.*\/node_modules\/(?:@[^/]+\/)?[^/@][^/]*)\//;
+	return {
+		name: 'sdk-third-party-notices',
+		generateBundle(_options, bundle) {
+			if (bundle[NOTICES]) return;
+			const entry = Object.values(bundle).find((item) => item.type === 'chunk' && item.isEntry);
+			if (entry?.type !== 'chunk') return;
+			const roots = new Set<string>();
+			for (const id of Object.keys(entry.modules)) {
+				const root = packageRoot.exec(id)?.[1];
+				if (root) roots.add(root);
+			}
+			const notices = [...roots]
+				.map((root) => {
+					const manifest = JSON.parse(readFileSync(`${root}/package.json`, 'utf8'));
+					const license = readdirSync(root).find((file) => /^licen[cs]e/i.test(file));
+					if (!license) this.error(`${manifest.name} ships no licence file to copy`);
+					return {
+						name: manifest.name as string,
+						version: manifest.version as string,
+						license: manifest.license as string,
+						text: readFileSync(`${root}/${license}`, 'utf8').trim()
+					};
+				})
+				.sort((a, b) => a.name.localeCompare(b.name));
+			const source = [
+				'This bundle carries the following packages, under their own licences.',
+				...notices.map(
+					(n) =>
+						`\n${'='.repeat(72)}\n${n.name} ${n.version} — ${n.license}\n${'='.repeat(72)}\n\n${n.text}`
+				)
+			].join('\n');
+			this.emitFile({ type: 'asset', fileName: NOTICES, source: `${source}\n` });
+		}
+	};
+}
 
 /** One script is the whole SDK: lib mode writes CSS to its own file, so fold
  *  it into the entry, and fail if the entry needs any other emitted file at
@@ -256,6 +299,7 @@ export default defineConfig(({ mode }) => {
 			svelte({ configFile: false }),
 			inlineWorkers(),
 			singleFile(),
+			npm ? [] : thirdPartyNotices(),
 			npm
 				? [
 						bundledTypes(here('./dist/sdk-npm')),
@@ -264,7 +308,10 @@ export default defineConfig(({ mode }) => {
 						// there, so the package needs no CDN of its own. The CDN build runs
 						// first (build:sdk:npm), and its sourcemaps stay out like the
 						// package's own.
-						copied([here('./dist/sdk/spacemap.js'), here('./dist/sdk/spacemap.iife.js')], 'dist/')
+						copied([here('./dist/sdk/spacemap.js'), here('./dist/sdk/spacemap.iife.js')], 'dist/'),
+						// The CDN build's notices cover the package's own bundle too: the
+						// package externalizes three.js and carries nothing else extra.
+						copied([here(`./dist/sdk/${NOTICES}`)])
 					]
 				: [
 						// The demos ship next to the CDN bundle, so `vite preview` serves

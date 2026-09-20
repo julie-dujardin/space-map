@@ -881,6 +881,7 @@ interface PanoramaEntry {
   hfov_deg?: number;                  // … and its width; absent without archival coverage geometry
   sphere_percent?: number;            // share of the sphere the mosaic covers
   color?: string;                     // `rgb` | `grayscale`
+  distribution?: "non-commercial";    // the sphere's terms stop short of commercial reuse; absent = any use
   credit?: string;
   credit_url?: string;                // the archive's reuse terms
   source_url?: string;                // the archive record the product came from

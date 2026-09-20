@@ -11,7 +11,8 @@ established.
 A panorama whose north is unknown is still worth showing where it was taken,
 so it exports with no offset and the viewer declines to draw a heading for it.
 `altitude_m` marks the views taken above the surface rather than standing on
-it, which `lat`/`lon` alone would not distinguish.
+it, which `lat`/`lon` alone would not distinguish. `distribution` marks a sphere
+whose terms stop short of commercial reuse, on the textures' ladder.
 
 Entries sort by mission then time, so neighbours in the list are neighbours on
 the traverse.
@@ -56,6 +57,7 @@ class Product(NamedTuple):
 # What only a published sphere can be read against.
 SPHERE_FIELDS = frozenset(
     {
+        "distribution",
         "north_offset_deg",
         "orientation",
         "geometry",
@@ -96,6 +98,11 @@ WITHHELD_MISSIONS = frozenset({"zhurong", "yutu-2"})
 
 # Stands in for a texture digest where there is none: see `_dedupe`.
 WITHHELD_DIGEST = "withheld"
+
+# How far down the textures' `distribution` ladder a published sphere may be
+# drawn, by the reuse status its release records. Absent is open: the reader
+# draws it anywhere. Withheld releases never reach this.
+DISTRIBUTION_BY_REUSE = {"educational-editorial-informational-only": "non-commercial"}
 
 
 def _imagery_withheld(meta: dict) -> bool:
@@ -158,6 +165,7 @@ def _entry(meta: dict) -> dict:
         "hfov_deg": coverage.get("horizontal_degrees"),
         "sphere_percent": coverage.get("sphere_percent"),
         "color": meta.get("color"),
+        "distribution": DISTRIBUTION_BY_REUSE.get(reuse.get("status") or ""),
         "credit": meta.get("credit"),
         "credit_url": meta.get("reuse_policy_url") or reuse.get("policy_url"),
         "source_url": sources.get("label_url") or meta.get("selected_url"),

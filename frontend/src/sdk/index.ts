@@ -46,13 +46,14 @@ interface CommonOptions {
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
 	messages?: Partial<CoreMessages>;
-	/** Draw the surface maps whose licence forbids commercial reuse — off by
+	/** Draw the imagery whose licence forbids commercial reuse — off by
 	 *  default, because only the page knows whether it is a commercial one.
-	 *  Turning it on covers Venus, Io, Ganymede, Enceladus, Uranus and the
-	 *  Uranian moons, which otherwise render in their fallback colour; the page
-	 *  accepts each map's terms by asking for it, and the credit line naming
-	 *  its author is a condition of them, not a courtesy. Some maps are ours
-	 *  for spacemap.co alone and this does not reach them. */
+	 *  Turning it on covers the Uranus map, which otherwise renders in its
+	 *  fallback colour, and the Huygens descent panorama of Titan, which is
+	 *  otherwise a place on the map with no sphere to open; the page accepts
+	 *  each one's terms by asking for it, and the credit line naming its
+	 *  author is a condition of them, not a courtesy. Some maps are ours for
+	 *  spacemap.co alone and this does not reach them. */
 	includeNonCommercial?: boolean;
 }
 

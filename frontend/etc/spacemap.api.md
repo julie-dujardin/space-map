@@ -939,6 +939,7 @@ export interface PanoramaEntry {
 	credit?: string;
 	// (undocumented)
 	credit_url?: string;
+	distribution?: TextureDistribution;
 	// (undocumented)
 	elevation_m?: number;
 	geometry?: 'estimated';
