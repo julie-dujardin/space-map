@@ -579,6 +579,7 @@ export interface Host {
 	bodyHref: (id: string, name: string) => string;
 	dataUrl: string;
 	imagesUrl: string;
+	liveUrl: string;
 	locale: () => string;
 	// (undocumented)
 	messages: CoreMessages;

@@ -65,9 +65,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      # Trusted publishing needs npm 11.5.1 or newer, whatever Node ships with.
+      # Trusted publishing needs npm 11.5.1 or newer. Pinned to the major: npm 12
+      # refuses the Node in .node-version.
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - name: Install dependencies
         run: cd frontend && pnpm install --frozen-lockfile
