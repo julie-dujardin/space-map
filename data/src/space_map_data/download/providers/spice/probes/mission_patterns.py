@@ -140,13 +140,16 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^psyche_rec_\d+-\d+_\d+_v\d+\.bsp$",
         r"^psyche_ref_\d+-\d+_\d+_v\d+\.bsp$",
     ),
-    # `gaia_<launch>_<asof>_v\d+` is the cumulative reconstruction; `_rec_`
-    # and `_pre_` are weekly chunks (LATEST_ONLY picks the latest each); `_flp_`
-    # is the long-arc flight predict (to 2125).
+    # `_flp_` is ESA's post-mission product: reconstruction launch → end of
+    # mission (2025-03-28) plus the disposal-drift predict to 2125. `_rec_`
+    # weeklies (LATEST_ONLY keeps the latest) agree with it to 2 km and stay
+    # for the precise arc. The other two series predate the March-2025
+    # disposal burn and would out-furnish it: `_pre_` weeklies are TASC
+    # predicts whose newest issue teleports Gaia from 76 Mkm back to a
+    # nominal L2 halo mid-2026, and `gaia_<launch>_<asof>` is a 2022 planning
+    # file that flies Gaia on at L2 past the burn.
     "GAIA": (
-        r"^gaia_\d+_\d+_v\d+\.bsp$",
         r"^gaia_rec_\d+_\d+_v\d+\.bsp$",
-        r"^gaia_pre_\d+_\d+_v\d+\.bsp$",
         r"^gaia_flp_\d+_\d+_v\d+\.bsp$",
     ),
     # NAIF/{VEX,VENUS-EXPRESS,ROSETTA}/kernels/spk/ are empty on the
