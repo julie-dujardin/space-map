@@ -1,6 +1,6 @@
 {
 	"name": "spacemap",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "The map of the Solar System from spacemap.co, on your website!",
 	"keywords": ["solar system", "spacecraft", "orbits", "map", "three.js"],
 	"homepage": "https://spacemap.co",

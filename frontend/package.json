@@ -7,7 +7,7 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"build:sdk": "vite build --config vite.sdk.config.ts",
-		"build:sdk:npm": "svelte-kit sync && vite build --config vite.sdk.config.ts --mode npm",
+		"build:sdk:npm": "svelte-kit sync && pnpm build:sdk && vite build --config vite.sdk.config.ts --mode npm",
 		"test:sdk": "pnpm build:sdk:npm && node scripts/check-sdk-package.mjs",
 		"preview": "vite preview",
 		"preview:sdk": "vite preview --config vite.sdk.config.ts",

@@ -1,12 +1,12 @@
 name: sdk
 
-# Standalone check on PRs; a tag is what publishes, to npm and to the CDN.
+# Standalone check on PRs; a tag is what publishes. The package carries the CDN
+# copies, so jsDelivr is the CDN and npm the only publish.
 on:
   workflow_call:
   pull_request:
     paths:
       - frontend/**
-      - infrastructure/cdn/**
       - .github/workflows/sdk.yml
   push:
     tags:
@@ -38,16 +38,12 @@ jobs:
       - name: Compile paraglide messages
         run: cd frontend && npx paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide
 
-      # The CDN copy first: only that build carries the gzip budget.
-      - name: Build the CDN bundle
-        run: cd frontend && pnpm build:sdk
-
+      # Builds the CDN copies (with the gzip budget) and the package around them.
       - name: Build and check the package
         run: cd frontend && pnpm test:sdk
 
       # A tag that disagrees with the manifest would publish a version nobody
-      # can find from the repo, and the number cannot be reused. Both publish
-      # jobs take the tag as the version, so this is checked once, here.
+      # can find from the repo, and the number cannot be reused.
       - name: Check the tag matches the version
         if: startsWith(github.ref, 'refs/tags/sdk-v')
         run: |
@@ -60,12 +56,6 @@ jobs:
         with:
           name: sdk-npm
           path: frontend/dist/sdk-npm
-          if-no-files-found: error
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: sdk-cdn
-          path: frontend/dist/sdk
           if-no-files-found: error
 
   publish-npm:
@@ -101,33 +91,3 @@ jobs:
       # with `npm stage approve`. The trusted publisher allows nothing else.
       - name: Stage the publish
         run: cd sdk-npm && npm stage publish --access public --provenance
-
-  publish-cdn:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/sdk-v')
-    runs-on: ubuntu-latest
-    environment: cf-pages-deploy
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            frontend/.node-version
-            infrastructure/cdn
-          sparse-checkout-cone-mode: false
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: frontend/.node-version
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: sdk-cdn
-          path: sdk-cdn
-
-      - name: Publish
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: infrastructure/cdn/publish.sh "${GITHUB_REF_NAME#sdk-v}" sdk-cdn

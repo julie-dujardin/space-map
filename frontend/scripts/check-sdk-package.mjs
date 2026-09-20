@@ -27,17 +27,30 @@ check(manifest.license === 'MPL-2.0', `license is ${manifest.license}, expected 
 check(existsSync(at('LICENSE')), 'no LICENSE in the package — MPL-2.0 requires the notice');
 check(existsSync(at('README.md')), 'no README.md in the package');
 // The README quotes a CDN URL; one from a previous version would be the one people copy.
+const cdnPath = `cdn.jsdelivr.net/npm/spacemap@${manifest.version}/dist/`;
 check(
-	readFileSync(at('README.md'), 'utf8').includes(`cdn.spacemap.co/${manifest.version}/`),
-	`README.md does not point at cdn.spacemap.co/${manifest.version}/`
+	readFileSync(at('README.md'), 'utf8').includes(cdnPath),
+	`README.md does not point at ${cdnPath}`
 );
 
 // Whatever sits here is published, so build leftovers are a packaging bug.
-const expected = new Set(['index.js', 'index.d.ts', 'package.json', 'README.md', 'LICENSE']);
+const expected = new Set([
+	'index.js',
+	'index.d.ts',
+	'package.json',
+	'README.md',
+	'LICENSE',
+	'dist'
+]);
 for (const entry of readdirSync(dist)) {
 	const kind = statSync(at(entry)).isDirectory() ? 'directory' : 'file';
 	check(expected.has(entry), `unexpected ${kind} in the publish root: ${entry}`);
 }
+// The CDN copies jsDelivr serves, and nothing else: a sourcemap here is 6 MB of package.
+const cdn = ['spacemap.js', 'spacemap.iife.js'];
+const shipped = existsSync(at('dist')) ? readdirSync(at('dist')) : [];
+for (const file of cdn) check(shipped.includes(file), `dist/${file} is missing from the package`);
+for (const file of shipped) check(cdn.includes(file), `unexpected file in dist/: ${file}`);
 
 // three.js is the host's; anything else bare would be an unlisted dependency.
 const types = readFileSync(at('index.d.ts'), 'utf8');

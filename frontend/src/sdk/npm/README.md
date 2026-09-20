@@ -19,15 +19,15 @@ your page:
 ```html
 <div id="map" style="height: 500px"></div>
 <script type="module">
-	import { createMap } from 'https://cdn.spacemap.co/0.1.1/spacemap.js';
+	import { createMap } from 'https://cdn.jsdelivr.net/npm/spacemap@0.1.2/dist/spacemap.js';
 	const map = await createMap({ container: '#map' });
 </script>
 ```
 
-`spacemap.iife.js` at the same path defines a `spacemap` global instead, for
-pages without modules. Every version stays where it was published, so pin the
-one you tested; the build's `sha384` digest in an `integrity` attribute keeps
-the page from running anything else.
+`spacemap.iife.js` next to it defines a `spacemap` global instead, for pages
+without modules. Pin the version you tested: a published version never changes,
+and an `integrity` attribute with the file's `sha384` digest keeps the page from
+running anything else.
 
 Or from npm, where three.js is yours to provide:
 

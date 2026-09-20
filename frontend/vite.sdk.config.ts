@@ -232,17 +232,17 @@ function sizeBudget(outDir: string, file: string): Plugin {
 	};
 }
 
-/** Files that ship next to the bundle as they are. A `.template` infix is
- *  dropped on the way in: the package manifest is named that at rest so the
- *  source directory is not itself publishable. */
-function copied(files: string[]): Plugin {
+/** Files that ship next to the bundle as they are, under `dir`. A `.template`
+ *  infix is dropped on the way in: the package manifest is named that at rest
+ *  so the source directory is not itself publishable. */
+function copied(files: string[], dir = ''): Plugin {
 	return {
-		name: 'sdk-copied-files',
+		name: `sdk-copied-files${dir && `-${dir}`}`,
 		generateBundle() {
 			for (const file of files)
 				this.emitFile({
 					type: 'asset',
-					fileName: basename(file).replace('.template', ''),
+					fileName: `${dir}${basename(file).replace('.template', '')}`,
 					source: readFileSync(file)
 				});
 		}
@@ -259,7 +259,12 @@ export default defineConfig(({ mode }) => {
 			npm
 				? [
 						bundledTypes(here('./dist/sdk-npm')),
-						copied(readdirSync(here('./src/sdk/npm')).map((file) => here(`./src/sdk/npm/${file}`)))
+						copied(readdirSync(here('./src/sdk/npm')).map((file) => here(`./src/sdk/npm/${file}`))),
+						// The CDN copies ride in the package too: jsDelivr serves them from
+						// there, so the package needs no CDN of its own. The CDN build runs
+						// first (build:sdk:npm), and its sourcemaps stay out like the
+						// package's own.
+						copied([here('./dist/sdk/spacemap.js'), here('./dist/sdk/spacemap.iife.js')], 'dist/')
 					]
 				: [
 						// The demos ship next to the CDN bundle, so `vite preview` serves
