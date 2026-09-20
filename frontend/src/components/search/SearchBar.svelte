@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, tick, untrack } from 'svelte';
+	import { getContext, tick, untrack, type Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -56,9 +56,12 @@
 	type Props = {
 		onSelect: (hit: SearchHit) => void;
 		onExpandedChange?: (expanded: boolean) => void;
+		/** Ends the collapsed pill, where the site row keeps its menu button; the
+		 *  magnifier goes since the placeholder already says what the field is. */
+		trailing?: Snippet;
 	};
 
-	let { onSelect, onExpandedChange }: Props = $props();
+	let { onSelect, onExpandedChange, trailing }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
@@ -824,7 +827,9 @@
 					? 'flex h-[46px] items-center gap-2 px-3'
 					: 'flex items-center gap-2 rounded-full border border-border bg-popover/90 px-3 py-2 shadow-lg backdrop-blur-md focus-within:ring-2 focus-within:ring-ring/40'}
 			>
-				<SearchIcon class="size-4 shrink-0 text-muted-foreground" />
+				{#if !trailing || expanded}
+					<SearchIcon class="size-4 shrink-0 text-muted-foreground" />
+				{/if}
 				<input
 					bind:this={inputEl}
 					value={model.query}
@@ -870,6 +875,8 @@
 					>
 						<ChevronUpIcon class="size-4" />
 					</button>
+				{:else if trailing}
+					{@render trailing()}
 				{/if}
 			</div>
 

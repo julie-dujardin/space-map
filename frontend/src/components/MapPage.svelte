@@ -81,7 +81,8 @@
 	import AttributionBar from './attribution/AttributionBar.svelte';
 	import TimeControls from './time/TimeControls.svelte';
 	import TimeMenuButton from './time/TimeMenuButton.svelte';
-	import SettingsButton from './settings/SettingsButton.svelte';
+	import SiteMenuButton from './nav/SiteMenuButton.svelte';
+	import SiteMenu from './nav/SiteMenu.svelte';
 	import LayersButton from './layers/LayersButton.svelte';
 	import PanoramaTraces from './panorama/PanoramaTraces.svelte';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -856,6 +857,12 @@
 	});
 </script>
 
+<!-- The phone's site menu rides in the search pill: -my-2 -me-2 fills the
+     pill's own padding so the button is the pill's full height. -->
+{#snippet phoneMenu()}
+	<SiteMenu current="map" scope="map" class="-my-2 -me-2 h-9 w-9 shrink-0 text-foreground" />
+{/snippet}
+
 <svelte:head>
 	<title
 		>{selectedBody && appState.view.name
@@ -953,6 +960,7 @@
 			>
 				<SearchBar
 					bind:this={searchBar}
+					trailing={isMobileViewport ? phoneMenu : undefined}
 					onExpandedChange={(v) => (searchExpanded = v)}
 					onSelect={async (hit) => {
 						const name = localizedName(hit, getLocale());
@@ -1029,7 +1037,9 @@
 					? 'top-[calc(var(--safe-top)_+_7.5rem)] md:top-[calc(var(--safe-top)_+_1rem)]'
 					: 'top-[calc(var(--safe-top)_+_1rem)]'}"
 			>
-				<SettingsButton />
+				{#if !searchEnabled || !isMobileViewport}
+					<SiteMenuButton />
+				{/if}
 				<LayersButton />
 				<PanoramaTraces {map} focused={selectedBody ?? null} />
 			</div>
