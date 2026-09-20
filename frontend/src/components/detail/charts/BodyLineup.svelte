@@ -165,6 +165,10 @@
 		 *  default menu is suppressed only when a body is actually under the
 		 *  pointer. */
 		oncontextpick?: (id: string, clientX: number, clientY: number) => void;
+		/** Left click on a body, for a caller that opens it in place rather than
+		 *  on the map. The link still points at the object's page, so a middle
+		 *  or modified click opens that. */
+		onpick?: (id: string, name: string) => void;
 		/** The row's own ground. Defaults to the drawer's faint panel; a page
 		 *  that supplies its own sky passes a colour (or `transparent`). */
 		ground?: string;
@@ -185,6 +189,7 @@
 		pxPerKm,
 		onlayout,
 		oncontextpick,
+		onpick,
 		ground,
 		spread = true,
 		compare = false
@@ -461,15 +466,26 @@
 	}
 
 	function focusBody(id: string) {
-		if (!focusObject) return;
 		const b = items.find((x) => x.id === id);
+		if (onpick) {
+			onpick(id, b?.name ?? id);
+			return;
+		}
+		if (!focusObject) return;
 		focusObject(id, b?.name ?? id, { moveCamera: true });
 	}
 
 	function focusHovered(e: MouseEvent) {
-		if (isModifiedClick(e) || !focusObject || !hoveredId) return;
+		if (isModifiedClick(e) || !hoveredId) return;
+		const picked = hoveredId;
+		if (onpick) {
+			e.preventDefault();
+			onpick(picked, items.find((x) => x.id === picked)?.name ?? picked);
+			return;
+		}
+		if (!focusObject) return;
 		e.preventDefault();
-		focusBody(hoveredId);
+		focusBody(picked);
 	}
 
 	/** How big the body is, in the unit its class is read in: a craft's span in
@@ -516,7 +532,13 @@
 	/** The pose and place a neighbouring band had to take to show itself; see
 	 *  showAside. */
 	const asideFit = new Map<string, { mark: string; roll: number; dx: number; dy: number }>();
-	let buildToken = 0;
+	/** What each body's mesh was built from, and a token bumped whenever one is
+	 *  torn down — a load that resolves for a mesh since replaced is dropped,
+	 *  while one for a mesh still standing is kept. Per body, not per row: the
+	 *  row is rebuilt a body at a time. */
+	const builtKeys = new Map<string, string>();
+	const buildTokens = new Map<string, number>();
+	const tokenFor = (id: string): number => buildTokens.get(id) ?? 0;
 	const displayObject = (id: string): Object3D | undefined => modelRoots.get(id) ?? meshes.get(id);
 
 	// Hover spin: cache each body's base orientation so a frame is base · spin,
@@ -585,26 +607,42 @@
 		);
 	}
 
-	function clearMeshes() {
-		buildToken++; // discard any in-flight model load for the outgoing set
-		asideFit.clear();
-		baseQuats.clear();
-		spinAngles.clear();
-		bodyShift.clear();
-		for (const node of cloudNodes.values()) disposeCloudNode(node);
-		cloudNodes.clear();
-		for (const mesh of meshes.values()) {
-			scene?.remove(mesh);
-			(mesh.material as MeshStandardMaterial).map?.dispose();
-			(mesh.material as MeshStandardMaterial).displacementMap?.dispose();
-			(mesh.material as MeshStandardMaterial).dispose();
+	/** Take one body out of the row: its mesh, its textures, its pose, and any
+	 *  load still on its way. The turn it has taken under the pointer is left
+	 *  alone — a body that is only being rebuilt keeps it. */
+	function dropBody(id: string) {
+		buildTokens.set(id, tokenFor(id) + 1);
+		builtKeys.delete(id);
+		asideFit.delete(id);
+		baseQuats.delete(id);
+		const cloud = cloudNodes.get(id);
+		if (cloud) {
+			disposeCloudNode(cloud);
+			cloudNodes.delete(id);
 		}
-		meshes.clear();
-		for (const root of modelRoots.values()) {
+		const mesh = meshes.get(id);
+		if (mesh) {
+			scene?.remove(mesh);
+			const material = mesh.material as MeshStandardMaterial;
+			material.map?.dispose();
+			material.displacementMap?.dispose();
+			material.dispose();
+			meshes.delete(id);
+		}
+		const root = modelRoots.get(id);
+		if (root) {
 			scene?.remove(root);
 			disposeGltf(root);
+			modelRoots.delete(id);
 		}
-		modelRoots.clear();
+	}
+
+	function clearMeshes() {
+		for (const id of new Set([...meshes.keys(), ...modelRoots.keys(), ...builtKeys.keys()])) {
+			dropBody(id);
+		}
+		spinAngles.clear();
+		bodyShift.clear();
 	}
 
 	/** Room reflections belong to craft rows only: they carry a spacecraft's
@@ -621,60 +659,96 @@
 		}
 	}
 
+	/** What a body's mesh is built from. Everything else the row decides — where
+	 *  a body stands, how large it is drawn, which page it is on — is applied to
+	 *  the mesh it already has, so a body that survives a change to the row keeps
+	 *  its model, its surface map and the turn it has taken under the pointer.
+	 *  A body standing as a neighbouring page's limb is built differently (no
+	 *  relief, and lit by its own surface), so its side counts. */
+	function buildKey(b: Body): string {
+		return JSON.stringify([
+			b.aside ?? '',
+			b.craft ?? false,
+			b.color ?? null,
+			b.model ?? null,
+			b.surfaceFrame ?? null,
+			b.cloudSystem ?? null,
+			b.texture ?? null,
+			b.poleRa ?? null,
+			b.poleDec ?? null,
+			b.displacement ?? null
+		]);
+	}
+
 	function buildMeshes() {
 		if (!scene) return;
-		clearMeshes();
+		const wanted = new Map(drawn.map((b) => [b.id, b]));
+		// Only what has gone, or is no longer what it was built from.
+		for (const id of [...builtKeys.keys()]) {
+			const b = wanted.get(id);
+			if (!b || builtKeys.get(id) !== buildKey(b)) dropBody(id);
+		}
+		for (const id of [...spinAngles.keys()]) if (!wanted.has(id)) spinAngles.delete(id);
+		for (const id of [...bodyShift.keys()]) if (!wanted.has(id)) bodyShift.delete(id);
 		setRoomEnvironment(drawn.some((b) => b.craft));
 		const loader = new TextureLoader();
 		for (const b of drawn) {
-			// A craft is only ever its mesh: nothing stands in while it loads, and
-			// nothing is left behind if it fails.
-			if (b.craft) {
-				baseQuats.set(b.id, styledQuaternion(b));
-				loadCraftMesh(b, buildToken);
-				continue;
-			}
-			const color = b.color ?? BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
-			// The Sun is self-luminous: unlit limb-darkened disc, no model/texture/relief.
-			if (b.id === SUN_ID) {
-				const mesh = new Mesh(geometry, makeLineupSunMaterial(color));
-				baseQuats.set(b.id, styledQuaternion(b));
-				mesh.quaternion.copy(baseQuats.get(b.id)!);
-				scene.add(mesh);
-				meshes.set(b.id, mesh);
-				continue;
-			}
-			const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-			const mesh = new Mesh(b.displacement ? dispGeometry : geometry, material);
+			if (builtKeys.has(b.id)) continue;
+			builtKeys.set(b.id, buildKey(b));
+			buildBody(b, loader);
+		}
+	}
+
+	function buildBody(b: Body, loader: TextureLoader) {
+		if (!scene) return;
+		const token = tokenFor(b.id);
+		// A craft is only ever its mesh: nothing stands in while it loads, and
+		// nothing is left behind if it fails.
+		if (b.craft) {
+			baseQuats.set(b.id, styledQuaternion(b));
+			loadCraftMesh(b, token);
+			return;
+		}
+		const color = b.color ?? BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
+		// The Sun is self-luminous: unlit limb-darkened disc, no model/texture/relief.
+		if (b.id === SUN_ID) {
+			const mesh = new Mesh(geometry, makeLineupSunMaterial(color));
 			baseQuats.set(b.id, styledQuaternion(b));
 			mesh.quaternion.copy(baseQuats.get(b.id)!);
 			scene.add(mesh);
 			meshes.set(b.id, mesh);
-			// Shape-model members swap in the mesh (unless a DEM exists — the
-			// textured relief sphere wins, matching the main scene). The
-			// flat-colour sphere is the placeholder and the silent fallback.
-			if (lineupDrawsShapeModel(b)) {
-				loadModelMesh(b, color, buildToken, loader);
-				continue;
-			}
-			if (b.texture !== false) {
-				const url = versionedUrl(
-					`/v1/textures/${b.id}/${b.surfaceFrame ? `low_${b.surfaceFrame}` : 'low'}.webp`,
-					'textures'
-				);
-				loader.load(
-					url,
-					(tex) => {
-						setSurfaceMap(material, tex, b.color);
-						render();
-					},
-					undefined,
-					() => {} // keep the flat color on failure
-				);
-			}
-			if (b.displacement) loadDisplacement(b, material, loader);
-			if (b.cloudSystem) loadClouds(b.id, b.cloudSystem, mesh);
+			return;
 		}
+		const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
+		const mesh = new Mesh(b.displacement ? dispGeometry : geometry, material);
+		baseQuats.set(b.id, styledQuaternion(b));
+		mesh.quaternion.copy(baseQuats.get(b.id)!);
+		scene.add(mesh);
+		meshes.set(b.id, mesh);
+		// Shape-model members swap in the mesh (unless a DEM exists — the
+		// textured relief sphere wins, matching the main scene). The
+		// flat-colour sphere is the placeholder and the silent fallback.
+		if (lineupDrawsShapeModel(b)) {
+			loadModelMesh(b, color, token, loader);
+			return;
+		}
+		if (b.texture !== false) {
+			const url = versionedUrl(
+				`/v1/textures/${b.id}/${b.surfaceFrame ? `low_${b.surfaceFrame}` : 'low'}.webp`,
+				'textures'
+			);
+			loader.load(
+				url,
+				(tex) => {
+					setSurfaceMap(material, tex, b.color);
+					render();
+				},
+				undefined,
+				() => {} // keep the flat color on failure
+			);
+		}
+		if (b.displacement) loadDisplacement(b, material, loader);
+		if (b.cloudSystem) loadClouds(b.id, b.cloudSystem, mesh);
 	}
 
 	/** Load a spacecraft member's mesh, keeping the bundle's own materials — a
@@ -688,7 +762,7 @@
 			const gltf = await modelLoader.loadAsync(
 				versionedUrl(`/v1/models/${b.model}/${craftTier(meta)}.glb`, 'models')
 			);
-			if (token !== buildToken || !scene || !renderer) {
+			if (token !== tokenFor(b.id) || !scene || !renderer) {
 				disposeGltf(gltf.scene);
 				return;
 			}
@@ -740,7 +814,7 @@
 			const gltf = await modelLoader.loadAsync(
 				versionedUrl(`/v1/models/${b.model}/${cheapTier(meta)}.glb`, 'models')
 			);
-			if (token !== buildToken || !scene) {
+			if (token !== tokenFor(b.id) || !scene) {
 				disposeGltf(gltf.scene);
 				return;
 			}
@@ -750,7 +824,7 @@
 				loader.load(
 					versionedUrl(`/v1/textures/${b.id}/low.webp`, 'textures'),
 					(tex) => {
-						if (token !== buildToken) return;
+						if (token !== tokenFor(b.id)) return;
 						tex.colorSpace = SRGBColorSpace;
 						setShapeModelMap(root, tex, color, b.color);
 						render();
@@ -806,6 +880,15 @@
 
 	function draw() {
 		if (renderer && scene && camera) renderer.render(scene, camera);
+	}
+
+	/** The row exactly as it stands, as a PNG, for a caller animating a change
+	 *  to it. Drawn again on the spot: the drawing buffer is not kept between
+	 *  frames, so the last one is already gone. */
+	export function snapshot(): string | null {
+		if (!renderer || !canvasEl || !width) return null;
+		draw();
+		return canvasEl.toDataURL();
 	}
 
 	/** Put one body where the layout says, at the given depth and on the row's
@@ -1201,7 +1284,7 @@
 		     click. Keyboard focus still mirrors hover, unaffected by the guard. -->
 			{#if hoverCapable}
 				<a
-					href={focusHref(appState, p.id, p.name) ?? bodyHref(p.id, p.name)}
+					href={(!onpick && focusHref(appState, p.id, p.name)) || bodyHref(p.id, p.name)}
 					onclick={focusHovered}
 					onmousedown={(e) => e.button === 0 && e.preventDefault()}
 					onfocus={(e) => e.currentTarget.matches(':focus-visible') && (hoveredId = p.id)}

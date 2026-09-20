@@ -1195,6 +1195,7 @@
 	"debug_time_scale": "Zeitskala",
 	"debug_jd": "JD",
 	"go_to_object": "Zum Objekt gehen",
+	"open_in_map": "Auf der Karte öffnen",
 	"zoom_out_to_system": "Auf System herauszoomen",
 	"object_not_found": "{name} konnte nicht angezeigt werden — es existiert möglicherweise nicht oder hat keine Bahndaten",
 	"object_no_position": "{name} hat zu diesem Datum keine Positionsdaten",

@@ -1233,6 +1233,7 @@
 	"debug_camera": "Камера",
 	"debug_time_scale": "Темп времени",
 	"go_to_object": "Перейти к объекту",
+	"open_in_map": "Открыть на карте",
 	"zoom_out_to_system": "Отдалить до системы",
 	"object_not_found": "Объект {name} не найден",
 	"object_no_position": "Для объекта {name} нет данных о положении на эту дату",

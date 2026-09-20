@@ -1281,6 +1281,7 @@
 	"debug_camera": "Caméra",
 	"debug_time_scale": "Vitesse temps",
 	"go_to_object": "Aller à l'objet",
+	"open_in_map": "Ouvrir sur la carte",
 	"zoom_out_to_system": "Dézoomer vers le système",
 	"object_not_found": "Objet {name} introuvable",
 	"object_no_position": "{name} n'a pas de données de position à cette date",

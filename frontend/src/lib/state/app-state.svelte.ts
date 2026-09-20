@@ -60,13 +60,21 @@ export class AppState {
 	// navigation (pushState) so a new history entry starts without stale search.
 	private searchSuffix = '';
 
-	constructor(initial: MapViewState) {
+	/** False on a state that drives a panel somewhere else — the compare page's
+	 *  maximized object, say. The view is still the panel's source of truth; the
+	 *  page it sits on owns the address bar, and a write here would overwrite it
+	 *  with a map URL. */
+	private readonly ownsUrl: boolean;
+
+	constructor(initial: MapViewState, opts?: { ownsUrl?: boolean }) {
 		this.view = initial;
+		this.ownsUrl = opts?.ownsUrl ?? true;
 	}
 
 	private replaceNow() {
 		clearTimeout(this.dateTimer);
 		this.dateTimer = undefined;
+		if (!this.ownsUrl) return;
 		const url = serializeUrl(this.view) + this.searchSuffix;
 		// $state.snapshot unwraps the reactive proxy — history.state must be
 		// structured-cloneable, and proxies aren't.
@@ -78,6 +86,7 @@ export class AppState {
 		this.dateTimer = undefined;
 		// Navigation starts a fresh entry — search doesn't carry across it.
 		this.searchSuffix = '';
+		if (!this.ownsUrl) return;
 		const url = serializeUrl(this.view);
 		sveltePushState(url, { view: $state.snapshot(this.view) });
 	}

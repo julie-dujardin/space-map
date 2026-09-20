@@ -1289,6 +1289,7 @@
 	"debug_camera": "カメラ",
 	"debug_time_scale": "時間倍率",
 	"go_to_object": "オブジェクトに移動",
+	"open_in_map": "マップで開く",
 	"zoom_out_to_system": "惑星系までズームアウト",
 	"object_not_found": "オブジェクト {name} が見つかりません",
 	"object_no_position": "{name} はこの日付の位置データがありません",

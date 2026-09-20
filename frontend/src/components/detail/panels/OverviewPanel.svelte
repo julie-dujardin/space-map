@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import MapIcon from '@lucide/svelte/icons/map';
 	import PanelSkeleton from '../frame/skeleton/PanelSkeleton.svelte';
 	import GroupStatCards from '../sections/GroupStatCards.svelte';
 	import FeatureStatCards from '../sections/FeatureStatCards.svelte';
@@ -43,6 +44,9 @@
 		lineup: LineupHero;
 		parentBody: PositionedBody | undefined;
 		planetarySystem: PlanetarySystemState;
+		/** The map's page for this object, where the panel is open somewhere
+		 *  else and the map is a place to go rather than the ground underneath. */
+		mapHref?: string;
 	}
 
 	let {
@@ -57,7 +61,8 @@
 		surface,
 		lineup,
 		parentBody,
-		planetarySystem
+		planetarySystem,
+		mapHref
 	}: Props = $props();
 
 	let data = $derived(load.data);
@@ -152,6 +157,15 @@
 	<PanelSkeleton />
 {:else}
 	<div class="flex flex-col gap-4">
+		{#if mapHref}
+			<a
+				href={mapHref}
+				class="flex h-11 items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+			>
+				<MapIcon class="size-4" />
+				{m.open_in_map()}
+			</a>
+		{/if}
 		{#if isGroupMode && groupDetail?.global}
 			<GroupStatCards global={groupDetail.global} />
 		{:else if feature}

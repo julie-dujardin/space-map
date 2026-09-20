@@ -1187,6 +1187,7 @@
 	"debug_camera": "相机",
 	"debug_time_scale": "时间倍率",
 	"go_to_object": "前往该对象",
+	"open_in_map": "在地图中打开",
 	"zoom_out_to_system": "缩小至该系统",
 	"object_not_found": "未找到对象 {name}",
 	"object_no_position": "{name} 在此日期没有位置数据",

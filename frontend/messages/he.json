@@ -1198,6 +1198,7 @@
 	"debug_time_scale": "קנה מידה של זמן",
 	"debug_jd": "JD",
 	"go_to_object": "עבור לעצם",
+	"open_in_map": "פתח במפה",
 	"zoom_out_to_system": "התרחק למערכת",
 	"object_not_found": "לא ניתן להציג את {name} — ייתכן שאינו קיים או שאין לו נתוני מסלול",
 	"object_no_position": "ל־{name} אין נתוני מיקום בתאריך זה",

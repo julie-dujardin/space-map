@@ -3,8 +3,13 @@
   over it. The list at the side is what is being compared; how that set is
   broken into pages is decided here, when it is drawn, from the sizes and the
   room the names under them need.
+
+  Opening one of them maximizes it: the row keeps that object alone, its two
+  neighbours in size stand in the strips on either side the way a band's do,
+  and the object's own page takes the place of the list.
 -->
 <script lang="ts">
+	import { setContext, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
@@ -17,8 +22,10 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Popover from '$lib/components/ui/popover';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import SiteNav from '../../components/nav/SiteNav.svelte';
+	import DrawerSkeleton from '../../components/detail/DrawerSkeleton.svelte';
 	import ComparePicker from '../../components/compare/ComparePicker.svelte';
 	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
@@ -30,6 +37,13 @@
 	import { formatQuantity } from '$lib/format/quantities';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { bodyHref } from '$lib/state/url';
+	import { compareFocusable, type CompareFocus } from '$lib/compare/detail';
+	import { AppState } from '$lib/state/app-state.svelte';
+	import { MapCover } from '$lib/state/map-cover.svelte';
+	import { SimClock } from '$lib/scene/state/clock.svelte';
+	import { dateToJD } from '$lib/time/jd';
+	import { DEFAULT_VIEW, urlTypeFromId } from '$lib/state/view';
+	import type { SizeScreen } from '$lib/compare/pages';
 
 	let { data } = $props();
 
@@ -57,6 +71,18 @@
 	>([]);
 
 	const selected = $derived(data.selected);
+	/** The object the page is opened on, or null while the whole row is drawn. */
+	const opened = $derived(data.opened);
+
+	// The panel is the map's own, so it wants the map's context: a view state to
+	// read and write, a clock to date what it shows, and the cover claim its
+	// mobile sheet takes. There is no scene here, so no `ctx` — every consumer
+	// treats that as a body the scene has not loaded, which is what it is. The
+	// view is detached from the address bar: this page's URL is its own.
+	const appState = new AppState(DEFAULT_VIEW, { ownsUrl: false });
+	setContext('appState', appState);
+	setContext('mapCover', new MapCover());
+	const clock = new SimClock(dateToJD(new Date()), true);
 
 	/** Everything resolved so far, by id. An object is drawn as soon as its own
 	 *  bundle answers; the ones still in flight simply aren't in the row yet. */
@@ -82,10 +108,13 @@
 		selected.map((id) => resolved[id]).filter((o): o is CompareObject => !!o)
 	);
 	const bands = $derived(bandsBySize(objects, (o) => o.radiusKm));
+	/** Sorted for the side list: the row's own order, largest first. */
+	const listed = $derived([...objects].sort((a, b) => b.radiusKm - a.radiusKm));
+
 	/** The bands, cut again where their bodies and names run out of width,
 	 *  each on the scale its first page sets. Until the stage is measured there
 	 *  is one page per band, on the row's own scale. */
-	const pages = $derived.by(() => {
+	const bandPages = $derived.by(() => {
 		const rowHeight = stageHeight - LABEL_ROW;
 		if (!stageWidth || rowHeight <= 0) {
 			return screensOf(
@@ -105,7 +134,26 @@
 				screenCount(rest.map(fit), after && fit(after), scale, scale, stageWidth, false)
 		);
 	});
-	const pageIndex = $derived(Math.min(page, Math.max(0, pages.length - 1)));
+	/** Maximized, every object is its own page, and the list's own order is what
+	 *  stands in the strips on either side. */
+	const pages = $derived<SizeScreen<CompareObject>[]>(
+		opened
+			? listed.map((object, i) => ({
+					items: [object],
+					previous: listed[i - 1],
+					next: listed[i + 1],
+					scale: 0
+				}))
+			: bandPages
+	);
+	const pageIndex = $derived(
+		opened
+			? Math.max(
+					0,
+					listed.findIndex((object) => object.id === opened)
+				)
+			: Math.min(page, Math.max(0, pages.length - 1))
+	);
 	const current = $derived(pages[pageIndex]);
 	const bodies = $derived<LineupBody[]>(
 		current
@@ -119,12 +167,11 @@
 			: []
 	);
 
-	/** Sorted for the side list: the row's own order, largest first. */
-	const listed = $derived([...objects].sort((a, b) => b.radiusKm - a.radiusKm));
-
-	// A shorter set can strand the reader on a page that no longer exists.
+	// A shorter set can strand the reader on a page that no longer exists. Held
+	// while one object is maximized, so closing it comes back to the page the
+	// row was on.
 	$effect(() => {
-		if (page > pages.length - 1) page = Math.max(0, pages.length - 1);
+		if (!opened && page > pages.length - 1) page = Math.max(0, pages.length - 1);
 	});
 
 	/** Pixels per kilometre on this page, read off whatever the row laid out. */
@@ -151,12 +198,32 @@
 
 	// --- the set itself, which lives in the query string ---
 
-	function setIds(ids: readonly string[]): void {
-		goto(`${resolve('/compare')}?m=${ids.join(',')}`, {
+	function go(ids: readonly string[], open: string | null): void {
+		goto(`${resolve('/compare')}?m=${ids.join(',')}${open ? `&o=${open}` : ''}`, {
 			replaceState: true,
 			noScroll: true,
 			keepFocus: true
 		});
+	}
+
+	function setIds(ids: readonly string[]): void {
+		// An object dropped from the comparison has no page here any more.
+		go(ids, opened && ids.includes(opened) ? opened : null);
+	}
+
+	/** Maximize one object, or (with null) come back to the whole row. Closing
+	 *  lands on the page that holds the object, which is where the row zooms
+	 *  back out to. */
+	function openObject(id: string | null, slide?: -1 | 1): void {
+		menu = null;
+		if (id === opened) return;
+		const subject = id ?? opened;
+		if (!id && opened) {
+			const home = bandPages.findIndex((p) => p.items.some((o) => o.id === opened));
+			if (home >= 0) page = home;
+		}
+		startZoom(subject, slide);
+		go(selected, id);
 	}
 
 	function addHit(hit: ObjectHit): void {
@@ -186,8 +253,16 @@
 	// --- pages, which are only a way of drawing the set ---
 
 	function turn(delta: number): void {
-		page = Math.min(Math.max(pageIndex + delta, 0), Math.max(0, pages.length - 1));
+		const to = Math.min(Math.max(pageIndex + delta, 0), Math.max(0, pages.length - 1));
 		menu = null;
+		// Maximized, a page is an object: turning to one opens it, and the row
+		// carries it in the way it was asked for.
+		if (opened) {
+			const next = pages[to]?.items[0];
+			if (next) openObject(next.id, delta < 0 ? -1 : 1);
+			return;
+		}
+		page = to;
 	}
 
 	let swipeFrom: number | null = null;
@@ -221,6 +296,214 @@
 	const speck = $derived(current?.next);
 
 	const menuObject = $derived(menu ? resolved[menu.id] : undefined);
+
+	/** What the strip on either side leads to. Maximized it is the neighbouring
+	 *  object itself; otherwise it is the page that object opens. */
+	function neighbourLabel(object: CompareObject, n: number, terse = false): string {
+		const parts = [object.name];
+		if (!terse) parts.push(sizeText(object));
+		if (!opened) parts.push(m.compare_page_of({ n }));
+		return parts.join(' · ');
+	}
+
+	// --- zooming between the row and one object ---
+
+	/** How long the row takes to grow into one object, or to fall back into
+	 *  the comparison. */
+	const ZOOM_MS = 420;
+	/** How long the new row has to come up before the old picture starts to go. */
+	const ZOOM_IN_MS = 200;
+	const ZOOM_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
+
+	let row = $state<{ snapshot(): string | null } | undefined>();
+	let rowBox = $state<HTMLDivElement | null>(null);
+
+	/** The row as it stood before the change, held over the new one until the
+	 *  two line up. Both are written about the object that was clicked, so it
+	 *  never moves: the change reads as the row growing around it rather than
+	 *  as one picture swapping for another. */
+	let zoom = $state<{
+		src: string;
+		id: string;
+		/** The canvas it was drawn on, in viewport pixels. */
+		box: { left: number; top: number; width: number; height: number };
+		/** Where the object stood on it, and whether that is somewhere the new
+		 *  row can be pinned to: a body drawn as a neighbouring page's limb is
+		 *  held to its strip rather than to its true size, so the two rows have
+		 *  no common scale to grow along. */
+		at: { cx: number; cy: number; pr: number };
+		pin: boolean;
+		/** A page turn rather than a zoom: one maximized object gives way to the
+		 *  next, so the row carries the old one off and the new one on, the way
+		 *  the strips and the swipe say it should. -1 draws from the start side,
+		 *  1 from the end. */
+		slide?: -1 | 1;
+		/** What keeps the old picture where it was drawn while the stage moves
+		 *  out from under it. */
+		hold?: { dx: number; dy: number };
+		/** Where each half starts and ends, once the new row is measured. */
+		play?: { ghost: string; live: string };
+		/** Set a frame later: a transform written in the same breath as the
+		 *  transition that carries it has nothing to move from. */
+		on?: boolean;
+	} | null>(null);
+	let zoomTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/** A reader who asked for less motion gets the change without the move. */
+	const stillness = () =>
+		typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+	function startZoom(id: string | null | undefined, slide?: -1 | 1): void {
+		zoom = null;
+		clearTimeout(zoomTimer);
+		if (!id || !rowBox || stillness()) return;
+		const at = laid.find((l) => l.id === id);
+		const src = at && row?.snapshot();
+		if (!at || !src) return;
+		const box = rowBox.getBoundingClientRect();
+		const held = {
+			src,
+			id,
+			box: { left: box.left, top: box.top, width: box.width, height: box.height },
+			at: { cx: at.cx, cy: at.cy, pr: at.pr },
+			pin: !at.aside,
+			slide
+		};
+		zoom = held;
+		// Nothing else drops a picture that is never given a layout to move to.
+		zoomTimer = setTimeout(() => {
+			if (zoom === held) zoom = null;
+		}, ZOOM_MS + 200);
+	}
+
+	/** The change has landed: pin the old picture where it was drawn, and wait
+	 *  for the row to settle before measuring it. The stage takes its width
+	 *  from a resize observer, which reports after the coming frame, and the
+	 *  row is laid out from that. */
+	function holdZoom(): void {
+		const z = zoom;
+		if (!z || z.hold || !rowBox) return;
+		const box = rowBox.getBoundingClientRect();
+		z.hold = { dx: z.box.left - box.left, dy: z.box.top - box.top };
+		requestAnimationFrame(() => requestAnimationFrame(() => playZoom(z)));
+	}
+
+	/** Measure where the object ended up and set both halves moving. */
+	function playZoom(z: NonNullable<typeof zoom>): void {
+		if (zoom !== z || !rowBox) return;
+		const to = laid.find((l) => l.id === z.id);
+		const scale = z.pin && to && !to.aside ? to.pr / z.at.pr : 1;
+		if (!(scale > 0) || !Number.isFinite(scale)) {
+			zoom = null;
+			return;
+		}
+		const box = rowBox.getBoundingClientRect();
+		const dx = z.box.left - box.left;
+		const dy = z.box.top - box.top;
+		z.hold = { dx, dy };
+		if (z.slide) {
+			// One row's width, so the old one is clear of the stage as the new one
+			// lands: a page turn, with nothing to line up on.
+			const run = z.slide * box.width;
+			z.play = { ghost: `translateX(${-run}px)`, live: `translateX(${run}px)` };
+		} else {
+			z.play =
+				to && scale !== 1
+					? {
+							ghost: `translate(${to.cx - dx - scale * z.at.cx}px, ${to.cy - dy - scale * z.at.cy}px) scale(${scale})`,
+							live: `translate(${z.at.cx + dx - to.cx / scale}px, ${z.at.cy + dy - to.cy / scale}px) scale(${1 / scale})`
+						}
+					: { ghost: 'none', live: 'none' };
+		}
+		requestAnimationFrame(() => {
+			if (zoom === z) z.on = true;
+		});
+		clearTimeout(zoomTimer);
+		zoomTimer = setTimeout(() => {
+			if (zoom === z) zoom = null;
+		}, ZOOM_MS + 80);
+	}
+
+	$effect(() => {
+		void opened;
+		untrack(holdZoom);
+	});
+
+	const zoomStyle = $derived.by(() => {
+		// Nothing until the change lands: up to then the row is the old one, and
+		// it is the picture held over it.
+		if (!zoom?.hold) return '';
+		const origin = 'transform-origin: 0 0;';
+		if (!zoom.on) {
+			// Hidden from the instant the change lands, not just once the row has
+			// somewhere to move from: it is rebuilt from nothing on every change,
+			// and its ground is transparent, so a body still waiting for its
+			// texture would show through the picture held over it.
+			return `${origin} opacity: 0;${zoom.play ? ` transform: ${zoom.play.live};` : ''}`;
+		}
+		// A page turn brings the new row on from off the stage, so it needs no
+		// fade at all; it is only a zoom, where both rows draw the same object,
+		// that has to come up first and be dissolved onto — sharing the fade
+		// there would dim the object they are both drawing.
+		const fade = zoom.slide ? '' : `, opacity ${ZOOM_IN_MS}ms linear`;
+		return `${origin} transition: transform ${ZOOM_MS}ms ${ZOOM_EASE}${fade}; opacity: 1;`;
+	});
+
+	const ghostStyle = $derived.by(() => {
+		if (!zoom) return '';
+		const { box, hold, play, on } = zoom;
+		const place = `left: ${hold?.dx ?? 0}px; top: ${hold?.dy ?? 0}px; width: ${box.width}px; height: ${box.height}px;`;
+		if (!play || !on) return place;
+		// Carried off the stage, the old row needs no fade either.
+		const fade = zoom.slide
+			? ''
+			: `, opacity ${ZOOM_MS - ZOOM_IN_MS}ms linear ${ZOOM_IN_MS}ms; opacity: 0`;
+		return `${place} transition: transform ${ZOOM_MS}ms ${ZOOM_EASE}${fade}; transform: ${play.ghost};`;
+	});
+
+	// --- the maximized object's own page ---
+
+	/** The panel's focus target, built from the object's bundle. Cleared while
+	 *  the next one resolves: a panel headed with the object left behind would
+	 *  be read as this one's. */
+	// Raw: it is replaced whole, never edited, and a deep proxy would reach into
+	// the body's own record — satellite.js writes through its SGP4 record as it
+	// propagates, which a reactive proxy refuses mid-render.
+	let focusable = $state.raw<CompareFocus | null>(null);
+	$effect(() => {
+		const id = opened;
+		if (!id) {
+			focusable = null;
+			return;
+		}
+		focusable = null;
+		let stale = false;
+		compareFocusable(id).then((next) => {
+			if (!stale) focusable = next;
+		});
+		return () => {
+			stale = true;
+		};
+	});
+
+	// The panel reads its own focus off the view, so the view has to name the
+	// object it is open on.
+	$effect(() => {
+		const id = opened;
+		if (!id) return;
+		const name = resolved[id]?.name ?? '';
+		untrack(() => appState.setFocus({ type: urlTypeFromId(id), id, name }));
+	});
+
+	/** The panel is the map's whole drawer, so it is fetched only once a reader
+	 *  opens one. */
+	let DetailDrawer = $state<typeof import('../../components/detail/DetailDrawer.svelte').default>();
+	$effect(() => {
+		if (!opened || DetailDrawer) return;
+		void import('../../components/detail/DetailDrawer.svelte').then((mod) => {
+			DetailDrawer = mod.default;
+		});
+	});
 </script>
 
 <svelte:head>
@@ -234,11 +517,16 @@
 	}}
 />
 
-<div class="flex h-dvh flex-col overflow-hidden bg-background">
+<!-- The panel is fixed to the start edge and would ride over the site nav;
+     --detail-top puts it under. -->
+<div class="flex h-dvh flex-col overflow-hidden bg-background" style="--detail-top: 3.5rem">
 	<SiteNav current="compare" class="shrink-0" />
 
 	<div class="relative flex min-h-0 flex-1">
-		{#if railOpen && !narrow}
+		{#if opened && !narrow}
+			<!-- The room the panel stands in: it is fixed, so the row needs telling. -->
+			<div class="w-[var(--detail-panel)] max-w-[90vw] shrink-0"></div>
+		{:else if railOpen && !narrow}
 			<!-- The comparison: one row per object, largest first, as drawn. -->
 			<aside class="flex w-[300px] shrink-0 flex-col border-e border-border bg-card">
 				<ScrollArea class="min-h-0 flex-1">
@@ -346,136 +634,148 @@
 			onpointerup={onSwipeEnd}
 			onpointercancel={() => (swipeFrom = null)}
 		>
-			{#if bodies.length && stageHeight > LABEL_ROW}
-				<!-- The row draws the neighbouring pages too, at its own scale. -->
-				<div class="relative">
-					<BodyLineup
-						{bodies}
-						ariaLabel={m.compare_lineup_label()}
-						height={stageHeight - LABEL_ROW}
-						pxPerKm={current.scale || undefined}
-						boxed
-						labels
-						ground="transparent"
-						spread={false}
-						onlayout={(items) => (laid = items)}
-						oncontextpick={(id, x, y) => (menu = { id, x, y })}
-					/>
-				</div>
-			{:else}
-				<p class="flex h-full items-center justify-center text-sm text-white/60">
-					{objects.length === 0 && selected.length > 0 ? m.compare_loading() : m.compare_empty()}
-				</p>
-			{/if}
+			<!-- Everything the row is made of moves together when it zooms. -->
+			<div class="absolute inset-0" style={zoomStyle}>
+				{#if bodies.length && stageHeight > LABEL_ROW}
+					<!-- The row draws the neighbouring pages too, at its own scale. -->
+					<div bind:this={rowBox} class="relative">
+						<BodyLineup
+							bind:this={row}
+							{bodies}
+							ariaLabel={m.compare_lineup_label()}
+							height={stageHeight - LABEL_ROW}
+							pxPerKm={current.scale || undefined}
+							boxed
+							labels
+							ground="transparent"
+							spread={false}
+							onlayout={(items) => (laid = items)}
+							oncontextpick={(id, x, y) => (menu = { id, x, y })}
+							onpick={(id) => openObject(id)}
+						/>
+					</div>
+				{:else}
+					<p class="flex h-full items-center justify-center text-sm text-white/60">
+						{objects.length === 0 && selected.length > 0 ? m.compare_loading() : m.compare_empty()}
+					</p>
+				{/if}
 
-			{#if ghost}
-				<!-- The strip of the page before is the way back to it. -->
-				{#if ghostAt}
+				{#if ghost}
+					<!-- The strip of the page before is the way back to it. -->
+					{#if ghostAt}
+						<button
+							type="button"
+							aria-hidden="true"
+							tabindex="-1"
+							onclick={() => turn(-1)}
+							onpointerenter={() => (hot = 'prev')}
+							onpointerleave={() => (hot = null)}
+							class="absolute inset-y-0 start-0 z-10 flex items-center justify-end pe-1"
+							style="width: {Math.max(0, ghostAt.cx + ghostAt.pr)}px"
+						>
+							<ChevronLeftIcon
+								class="size-5 transition-colors {hot === 'prev' ? 'text-white' : 'text-white/50'}"
+							/>
+						</button>
+					{/if}
+					<!-- On a dark pill: the body behind it is lit. -->
 					<button
 						type="button"
-						aria-hidden="true"
-						tabindex="-1"
 						onclick={() => turn(-1)}
 						onpointerenter={() => (hot = 'prev')}
 						onpointerleave={() => (hot = null)}
-						class="absolute inset-y-0 start-0 z-10 flex items-center justify-end pe-1"
-						style="width: {Math.max(0, ghostAt.cx + ghostAt.pr)}px"
-					>
-						<ChevronLeftIcon
-							class="size-5 transition-colors {hot === 'prev' ? 'text-white' : 'text-white/50'}"
-						/>
-					</button>
-				{/if}
-				<!-- On a dark pill: the body behind it is lit. -->
-				<button
-					type="button"
-					onclick={() => turn(-1)}
-					onpointerenter={() => (hot = 'prev')}
-					onpointerleave={() => (hot = null)}
-					aria-label={m.search_prev_page()}
-					class="absolute start-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
-					'prev'
-						? 'bg-black/80 text-white'
-						: 'bg-black/55 text-white/70'}"
-					style="bottom: {LABEL_ROW + 14}px"
-				>
-					<ChevronLeftIcon class="size-3.5" />
-					<span
-						>{ghost.name} · {narrow ? '' : `${sizeText(ghost)} · `}{m.compare_page_of({
-							n: pageIndex
-						})}</span
-					>
-				</button>
-			{/if}
-
-			{#if speck && speckAt}
-				<!-- A speck is a few pixels across, so the reach for it is the width
-				     of the strip it sits in; a limb is reached over its own width. -->
-				<button
-					type="button"
-					aria-hidden="true"
-					tabindex="-1"
-					onclick={() => turn(1)}
-					onpointerenter={() => (hot = 'next')}
-					onpointerleave={() => (hot = null)}
-					class="absolute inset-y-0 z-10 flex items-center justify-start ps-1"
-					style="left: {Math.min(speckAt.cx - speckAt.pr, speckAt.cx - 22)}px; right: 0"
-				>
-					<ChevronRightIcon
-						class="size-5 translate-y-8 transition-colors {hot === 'next'
-							? 'text-white'
-							: 'text-white/50'}"
-					/>
-				</button>
-				{#if !narrow}
-					<button
-						type="button"
-						onclick={() => turn(1)}
-						onpointerenter={() => (hot = 'next')}
-						onpointerleave={() => (hot = null)}
-						aria-label={m.search_next_page()}
-						class="absolute end-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
-						'next'
+						aria-label={opened ? m.compare_open({ name: ghost.name }) : m.search_prev_page()}
+						class="absolute start-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						'prev'
 							? 'bg-black/80 text-white'
 							: 'bg-black/55 text-white/70'}"
 						style="bottom: {LABEL_ROW + 14}px"
 					>
-						<span>{speck.name} · {sizeText(speck)} · {m.compare_page_of({ n: pageIndex + 2 })}</span
-						>
-						<ChevronRightIcon class="size-3.5" />
+						<ChevronLeftIcon class="size-3.5" />
+						<span>{neighbourLabel(ghost, pageIndex, narrow)}</span>
 					</button>
 				{/if}
-			{/if}
 
-			{#if scaleBar}
-				<!-- Bottom centre, between the page links; a phone has no room there. -->
-				<div
-					class="pointer-events-none absolute flex flex-col gap-1 {narrow
-						? 'start-5 top-5 items-start'
-						: 'left-1/2 -translate-x-1/2 items-center'}"
-					style={narrow ? '' : `bottom: ${LABEL_ROW + 14}px`}
-				>
+				{#if speck && speckAt}
+					<!-- A speck is a few pixels across, so the reach for it is the width
+				     of the strip it sits in; a limb is reached over its own width. -->
+					<button
+						type="button"
+						aria-hidden="true"
+						tabindex="-1"
+						onclick={() => turn(1)}
+						onpointerenter={() => (hot = 'next')}
+						onpointerleave={() => (hot = null)}
+						class="absolute inset-y-0 z-10 flex items-center justify-start ps-1"
+						style="left: {Math.min(speckAt.cx - speckAt.pr, speckAt.cx - 22)}px; right: 0"
+					>
+						<ChevronRightIcon
+							class="size-5 translate-y-8 transition-colors {hot === 'next'
+								? 'text-white'
+								: 'text-white/50'}"
+						/>
+					</button>
+					{#if !narrow}
+						<button
+							type="button"
+							onclick={() => turn(1)}
+							onpointerenter={() => (hot = 'next')}
+							onpointerleave={() => (hot = null)}
+							aria-label={opened ? m.compare_open({ name: speck.name }) : m.search_next_page()}
+							class="absolute end-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+							'next'
+								? 'bg-black/80 text-white'
+								: 'bg-black/55 text-white/70'}"
+							style="bottom: {LABEL_ROW + 14}px"
+						>
+							<span>{neighbourLabel(speck, pageIndex + 2)}</span>
+							<ChevronRightIcon class="size-3.5" />
+						</button>
+					{/if}
+				{/if}
+
+				{#if scaleBar}
+					<!-- Bottom centre, between the page links; a phone has no room there. -->
 					<div
-						class="h-[7px] border-x border-b border-white/40"
-						style="width: {scaleBar.px}px"
-					></div>
-					<span class="text-[11px] text-white/60 tabular-nums">{scaleBar.label}</span>
-				</div>
-			{/if}
+						class="pointer-events-none absolute flex flex-col gap-1 {narrow
+							? 'start-5 top-5 items-start'
+							: 'left-1/2 -translate-x-1/2 items-center'}"
+						style={narrow ? '' : `bottom: ${LABEL_ROW + 14}px`}
+					>
+						<div
+							class="h-[7px] border-x border-b border-white/40"
+							style="width: {scaleBar.px}px"
+						></div>
+						<span class="text-[11px] text-white/60 tabular-nums">{scaleBar.label}</span>
+					</div>
+				{/if}
 
-			{#if pages.length > 1 && narrow}
-				<!-- The phone has no next-page link, only the strip, so it counts pages. -->
-				<div
-					role="group"
-					aria-label={m.compare_pages_label({ n: pageIndex + 1, total: pages.length })}
-					class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1.5"
-					style="bottom: {LABEL_ROW + 16}px"
-				>
-					{#each pages.map((_, i) => i) as i (i)}
-						<span class="size-[7px] rounded-full {i === pageIndex ? 'bg-white/85' : 'bg-white/30'}"
-						></span>
-					{/each}
-				</div>
+				{#if pages.length > 1 && narrow && !opened}
+					<!-- The phone has no next-page link, only the strip, so it counts pages. -->
+					<div
+						role="group"
+						aria-label={m.compare_pages_label({ n: pageIndex + 1, total: pages.length })}
+						class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1.5"
+						style="bottom: {LABEL_ROW + 16}px"
+					>
+						{#each pages.map((_, i) => i) as i (i)}
+							<span
+								class="size-[7px] rounded-full {i === pageIndex ? 'bg-white/85' : 'bg-white/30'}"
+							></span>
+						{/each}
+					</div>
+				{/if}
+			</div>
+
+			{#if zoom}
+				<!-- The row as it was, over the row as it is, on its way to it. -->
+				<img
+					src={zoom.src}
+					alt=""
+					aria-hidden="true"
+					class="pointer-events-none absolute z-20 max-w-none origin-top-left"
+					style={ghostStyle}
+				/>
 			{/if}
 
 			<!-- Same corner as the map's, crediting what this page draws. -->
@@ -483,7 +783,7 @@
 				<CompareCreditBar {bodies} />
 			</div>
 
-			{#if !railOpen && !narrow}
+			{#if !railOpen && !narrow && !opened}
 				<button
 					type="button"
 					aria-label={m.compare_show_list()}
@@ -522,6 +822,24 @@
 			>
 				<PlusIcon class="size-6" />
 			</button>
+		{/if}
+
+		{#if opened && !(focusable && DetailDrawer)}
+			<!-- The panel's own frame while its chunk and payload arrive, so the
+			     room it stands in is never left bare. -->
+			<DrawerSkeleton kind="body" />
+		{/if}
+
+		{#if focusable && DetailDrawer}
+			<!-- The panel's tooltips share one group, the way they do on the map. -->
+			<Tooltip.Provider delayDuration={300}>
+				<DetailDrawer
+					{focusable}
+					{clock}
+					mapHref={bodyHref(focusable.body.data.id, focusable.body.data.name ?? '')}
+					onClose={() => openObject(null)}
+				/>
+			</Tooltip.Provider>
 		{/if}
 
 		{#if menu && menuObject}

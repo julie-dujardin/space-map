@@ -1268,6 +1268,7 @@
 	"debug_camera": "الكاميرا",
 	"debug_time_scale": "تسارع الزمن",
 	"go_to_object": "الانتقال إلى الجرم",
+	"open_in_map": "افتح في الخريطة",
 	"zoom_out_to_system": "التصغير إلى النظام",
 	"object_not_found": "الجرم {name} غير موجود",
 	"object_no_position": "لا توجد بيانات موضع لـ {name} في هذا التاريخ",

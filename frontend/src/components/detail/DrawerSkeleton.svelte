@@ -59,7 +59,7 @@
 
 <aside
 	aria-hidden="true"
-	class="fixed top-0 start-0 z-50 hidden h-full w-[var(--detail-panel)] max-w-[90vw] flex-col border-e bg-background shadow-lg min-[769px]:flex"
+	class="fixed start-0 top-[var(--detail-top,0px)] z-50 hidden h-[calc(100%-var(--detail-top,0px))] w-[var(--detail-panel)] max-w-[90vw] flex-col border-e bg-background shadow-lg min-[769px]:flex"
 >
 	<div class="flex items-center justify-between gap-2 px-4 pb-2 pt-[18px]">
 		<Skeleton class="h-5 w-32" />

@@ -74,8 +74,14 @@
 		focusable: Focusable;
 		clock: SimClock;
 		onClose: () => void;
-		onMaximize: () => void;
-		onMinimize: () => void;
+		/** Frame the object, and pull back out to its system. Absent where the
+		 *  panel stands on a page with no camera to move — the comparison's
+		 *  maximized object, which offers the map as a link instead. */
+		onMaximize?: () => void;
+		onMinimize?: () => void;
+		/** The map's own page for this object, shown at the top of the overview
+		 *  when the panel is open somewhere that is not the map. */
+		mapHref?: string;
 		onSheetResize?: (heightDvh: number) => void;
 		// The mobile drawer portals out of <main>, so the parent's background-inert
 		// can't reach it; it inerts itself behind the expanded mobile search.
@@ -91,6 +97,7 @@
 		onClose,
 		onMaximize,
 		onMinimize,
+		mapHref,
 		onSheetResize,
 		inert = false,
 		inPlace = false
@@ -215,7 +222,7 @@
 	let isMinimized = $derived(
 		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
 	);
-	let showCameraButtons = $derived(!isFeatureMode && !isGroupMode);
+	let showCameraButtons = $derived(!isFeatureMode && !isGroupMode && !!onMaximize && !!onMinimize);
 
 	function handleShare() {
 		void shareUrl(displayName);
@@ -486,6 +493,7 @@
 		{lineup}
 		{parentBody}
 		{planetarySystem}
+		{mapHref}
 	/>
 {/snippet}
 
@@ -560,7 +568,7 @@
 		<Button
 			size="icon-lg"
 			class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
-			onclick={isMinimized ? onMinimize : onMaximize}
+			onclick={() => (isMinimized ? onMinimize?.() : onMaximize?.())}
 		>
 			{#if isMinimized}
 				<ZoomOutIcon />
@@ -648,7 +656,7 @@
 	<aside
 		{inert}
 		aria-labelledby="detail-drawer-title"
-		class="fixed top-0 start-0 z-50 flex h-full w-[var(--detail-panel)] max-w-[90vw] flex-col border-e bg-background shadow-lg"
+		class="fixed start-0 top-[var(--detail-top,0px)] z-50 flex h-[calc(100%-var(--detail-top,0px))] w-[var(--detail-panel)] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>
 		<!-- pt aligns the title/buttons row with the top-4 featured chips beside it. -->
 		<div class="flex items-center justify-between gap-2 px-4 pb-2 pt-[18px]">

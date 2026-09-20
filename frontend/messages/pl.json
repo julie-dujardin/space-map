@@ -1217,6 +1217,7 @@
 	"debug_time_scale": "Skala czasu",
 	"debug_jd": "JD",
 	"go_to_object": "Przejdź do obiektu",
+	"open_in_map": "Otwórz na mapie",
 	"zoom_out_to_system": "Oddal do układu",
 	"object_not_found": "Nie można wyświetlić {name} — może nie istnieć lub nie mieć danych orbity",
 	"object_no_position": "{name} nie ma danych o pozycji w tej dacie",
