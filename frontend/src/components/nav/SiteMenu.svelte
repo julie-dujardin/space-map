@@ -25,6 +25,11 @@
 	}: Props = $props();
 
 	let open = $state(false);
+	let view = $state<'pages' | 'settings'>('pages');
+	/** The settings fill the screen so the page never shows through under them. */
+	const height = $derived(
+		view === 'settings' ? 'data-[side=top]:h-dvh pb-[var(--safe-bottom)]' : ''
+	);
 </script>
 
 <Sheet.Root bind:open>
@@ -35,13 +40,15 @@
 		<MenuIcon class="size-5" />
 	</Sheet.Trigger>
 	<!-- The sheet repeats the site row so the mark and the close button sit
-	     where the mark and the menu button were. -->
+	     where the mark and the menu button were. It stacks above the detail
+	     drawers, on the tier the map's menu dialog uses. -->
 	<Sheet.Content
 		side="top"
 		showCloseButton={false}
-		class="max-h-dvh gap-0 overflow-y-auto pt-[var(--safe-top)] ps-[var(--safe-start)] pe-[var(--safe-end)]"
+		overlayClass="z-[69]"
+		class="z-[70] max-h-dvh gap-0 overflow-y-auto pt-[var(--safe-top)] ps-[var(--safe-start)] pe-[var(--safe-end)] {height}"
 	>
 		<Sheet.Title class="sr-only">{m.nav_menu()}</Sheet.Title>
-		<SiteMenuPanel {current} {scope} variant="sheet" onNavigate={() => (open = false)} />
+		<SiteMenuPanel {current} {scope} variant="sheet" bind:view onNavigate={() => (open = false)} />
 	</Sheet.Content>
 </Sheet.Root>

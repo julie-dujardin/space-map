@@ -23,11 +23,11 @@
 		variant: 'sheet' | 'popover';
 		/** Called when a page link is followed, so the host can close. */
 		onNavigate?: () => void;
+		/** Bound by the host so it can size itself to the view. */
+		view?: 'pages' | 'settings';
 	}
 
-	let { current, scope, variant, onNavigate }: Props = $props();
-
-	let view = $state<'pages' | 'settings'>('pages');
+	let { current, scope, variant, onNavigate, view = $bindable('pages') }: Props = $props();
 
 	const sheet = $derived(variant === 'sheet');
 	const column = $derived(sheet ? `${SITE_COLUMN} ${SITE_GUTTER}` : 'px-5');
