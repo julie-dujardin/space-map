@@ -1408,6 +1408,7 @@
 	"delta_v_solar_escape": "Ucieczka z Układu Słonecznego",
 	"nav_label": "Witryna",
 	"nav_menu": "Menu",
+	"nav_about": "O stronie",
 	"status_page_title": "Stan",
 	"status_generated": "Wygenerowano {date}",
 	"status_summary_sources": [

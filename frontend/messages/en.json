@@ -1554,6 +1554,8 @@
 	"delta_v_solar_escape": "Solar System escape",
 	"nav_label": "Site",
 	"nav_menu": "Menu",
+	"nav_about": "About",
+	"nav_github": "GitHub",
 	"status_page_title": "Status",
 	"status_generated": "Generated {date}",
 	"status_summary_sources": [

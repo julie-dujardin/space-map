@@ -1448,6 +1448,7 @@
 	"delta_v_solar_escape": "الإفلات من النظام الشمسي",
 	"nav_label": "الموقع",
 	"nav_menu": "القائمة",
+	"nav_about": "حول الموقع",
 	"status_page_title": "الحالة",
 	"status_generated": "أُنشئ في {date}",
 	"status_summary_sources": [

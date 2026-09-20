@@ -1386,6 +1386,7 @@
 	"delta_v_solar_escape": "Flucht aus dem Sonnensystem",
 	"nav_label": "Website",
 	"nav_menu": "Menü",
+	"nav_about": "Über",
 	"status_page_title": "Status",
 	"status_generated": "Erstellt am {date}",
 	"status_summary_sources": [

@@ -1465,6 +1465,7 @@
 	"delta_v_solar_escape": "太陽系脱出",
 	"nav_label": "サイト",
 	"nav_menu": "メニュー",
+	"nav_about": "サイトについて",
 	"status_page_title": "ステータス",
 	"status_generated": "{date} 時点",
 	"status_summary_sources": "{count} 件のソース",

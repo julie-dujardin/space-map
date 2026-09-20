@@ -5,13 +5,17 @@
   tab strip.
 -->
 <script lang="ts">
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import * as m from '$lib/paraglide/messages.js';
 	import OverlayMenuButton from '../OverlayMenuButton.svelte';
 	import SettingsMenu from '../settings/SettingsMenu.svelte';
 	import SiteMark from './SiteMark.svelte';
 	import SiteMenu from './SiteMenu.svelte';
-	import { SITE_COLUMN, SITE_GUTTER, SITE_PAGES, type NavPage } from './site';
+	import { ABOUT_LINKS, SITE_COLUMN, SITE_GUTTER, SITE_PAGES, type NavPage } from './site';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { cn } from '$lib/utils.js';
 
@@ -21,6 +25,12 @@
 	}
 
 	let { current, class: className }: Props = $props();
+
+	const aboutActive = $derived(ABOUT_LINKS.some((link) => link.id === current));
+
+	const tab = 'flex items-center whitespace-nowrap border-b-2 text-sm transition-colors';
+	const activeTab = 'border-foreground font-medium text-foreground';
+	const idleTab = 'border-transparent text-muted-foreground hover:text-foreground';
 </script>
 
 <header
@@ -58,14 +68,47 @@
 						<a
 							href={page.href}
 							aria-current={active ? 'page' : undefined}
-							class="flex items-center whitespace-nowrap border-b-2 text-sm transition-colors {active
-								? 'border-foreground font-medium text-foreground'
-								: 'border-transparent text-muted-foreground hover:text-foreground'}"
+							class="{tab} {active ? activeTab : idleTab}"
 						>
 							{page.label()}
 						</a>
 					</li>
 				{/each}
+				<li class="flex shrink-0">
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger
+							class="{tab} cursor-pointer gap-1 data-[state=open]:text-foreground {aboutActive
+								? activeTab
+								: idleTab}"
+						>
+							{m.nav_about()}
+							<ChevronDownIcon class="size-3.5" />
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="start" sideOffset={2} class="min-w-40">
+							{#each ABOUT_LINKS as link (link.id)}
+								{@const active = link.id === current}
+								<DropdownMenu.Item class="cursor-pointer justify-between">
+									{#snippet child({ props })}
+										<a
+											{...props}
+											href={link.href}
+											aria-current={active ? 'page' : undefined}
+											target={link.external ? '_blank' : undefined}
+											rel={link.external ? 'noopener noreferrer' : undefined}
+										>
+											{link.label()}
+											{#if active}
+												<CheckIcon />
+											{:else if link.external}
+												<ExternalLinkIcon class="text-muted-foreground" />
+											{/if}
+										</a>
+									{/snippet}
+								</DropdownMenu.Item>
+							{/each}
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				</li>
 			</ul>
 		</ScrollArea>
 

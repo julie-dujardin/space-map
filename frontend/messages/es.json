@@ -1386,6 +1386,7 @@
 	"delta_v_solar_escape": "Escape del Sistema Solar",
 	"nav_label": "Sitio",
 	"nav_menu": "Menú",
+	"nav_about": "Acerca de",
 	"status_page_title": "Estado",
 	"status_generated": "Generado el {date}",
 	"status_summary_sources": [

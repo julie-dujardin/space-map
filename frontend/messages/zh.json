@@ -1363,6 +1363,7 @@
 	"delta_v_solar_escape": "逃离太阳系",
 	"nav_label": "站点",
 	"nav_menu": "菜单",
+	"nav_about": "关于",
 	"status_page_title": "状态",
 	"status_generated": "生成于 {date}",
 	"status_summary_sources": "{count} 个来源",

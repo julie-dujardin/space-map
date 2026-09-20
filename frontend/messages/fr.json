@@ -1458,6 +1458,7 @@
 	"delta_v_solar_escape": "Sortie du Système solaire",
 	"nav_label": "Site",
 	"nav_menu": "Menu",
+	"nav_about": "À propos",
 	"status_page_title": "État",
 	"status_generated": "Généré le {date}",
 	"status_summary_sources": [
