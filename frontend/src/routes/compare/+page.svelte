@@ -463,9 +463,10 @@
 
 	// --- the maximized object's own page ---
 
-	/** The panel's focus target, built from the object's bundle. Cleared while
-	 *  the next one resolves: a panel headed with the object left behind would
-	 *  be read as this one's. */
+	/** The panel's focus target, built from the object's bundle. Held while the
+	 *  next one resolves: the panel stays mounted and reads the new object into
+	 *  the same frame, instead of a fresh one sliding in over the old. The row
+	 *  has already cached the bundle, so the swap is near-immediate. */
 	// Raw: it is replaced whole, never edited, and a deep proxy would reach into
 	// the body's own record — satellite.js writes through its SGP4 record as it
 	// propagates, which a reactive proxy refuses mid-render.
@@ -476,7 +477,6 @@
 			focusable = null;
 			return;
 		}
-		focusable = null;
 		let stale = false;
 		compareFocusable(id).then((next) => {
 			if (!stale) focusable = next;
@@ -838,9 +838,12 @@
 		{#if focusable && DetailDrawer}
 			<!-- The panel's tooltips share one group, the way they do on the map. -->
 			<Tooltip.Provider delayDuration={300}>
+				<!-- The placeholder frame always stands here first, so the sheet takes
+				     its place rather than sliding in over it. -->
 				<DetailDrawer
 					{focusable}
 					{clock}
+					inPlace={true}
 					mapHref={bodyHref(focusable.body.data.id, focusable.body.data.name ?? '')}
 					onClose={() => openObject(null)}
 				/>
