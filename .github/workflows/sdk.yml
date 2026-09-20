@@ -58,6 +58,19 @@ jobs:
           path: frontend/dist/sdk-npm
           if-no-files-found: error
 
+      # What the release page carries: the CDN copies with the sourcemaps the
+      # package leaves out, and the notices that go with them.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdk-release
+          path: |
+            frontend/dist/sdk/spacemap.js
+            frontend/dist/sdk/spacemap.js.map
+            frontend/dist/sdk/spacemap.iife.js
+            frontend/dist/sdk/spacemap.iife.js.map
+            frontend/dist/sdk/THIRD_PARTY_NOTICES.txt
+          if-no-files-found: error
+
   publish-npm:
     needs: build
     if: startsWith(github.ref, 'refs/tags/sdk-v')
@@ -91,3 +104,31 @@ jobs:
       # with `npm stage approve`. The trusted publisher allows nothing else.
       - name: Stage the publish
         run: cd sdk-npm && npm stage publish --access public --provenance
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/sdk-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdk-release
+          path: sdk-release
+
+      # Its own track next to the data releases (`v*`): notes start at the
+      # previous SDK tag, not the last data tag, and the repo's "Latest"
+      # badge stays with the data track.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#sdk-v}"
+          previous=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/sdk-v" \
+            --jq '.[].ref | ltrimstr("refs/tags/")' | grep -vx "$GITHUB_REF_NAME" | sort -V | tail -1)
+          gh release create "$GITHUB_REF_NAME" sdk-release/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+            --title "spacemap $version" \
+            --generate-notes ${previous:+--notes-start-tag "$previous"} \
+            --notes "npm: \`spacemap@$version\` (staged; live once approved). CDN: https://cdn.jsdelivr.net/npm/spacemap@$version/dist/spacemap.js"
