@@ -10,10 +10,24 @@
 	import { bodyHref } from '$lib/state/url';
 	import { panoramaHref } from '$lib/state/panorama-link';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import type { LayerCredit } from '$lib/flatmap/layers';
+	import Link from '../../components/detail/sections/kit/Link.svelte';
 
 	let { data } = $props();
 
 	const bodies = $derived(data.bodies);
+
+	/** What each body's maps are drawn from, as the minimaps report it. */
+	let mapCredits = $state<Record<string, LayerCredit[]>>({});
+
+	/** Every map author on the page once, in body order. */
+	const credits = $derived.by(() => {
+		const out = new Map<string, LayerCredit>();
+		for (const body of bodies)
+			for (const credit of mapCredits[body.id] ?? [])
+				if (!out.has(credit.organisation)) out.set(credit.organisation, credit);
+		return [...out.values()];
+	});
 
 	/** What the gallery holds, as one line: panoramas, the craft that took them,
 	 *  and the worlds they stand on. */
@@ -73,6 +87,7 @@
 									bodyId={body.id}
 									entries={traverse.entries}
 									radiusKm={body.radiusKm}
+									onCredits={(layers) => (mapCredits[body.id] = layers)}
 								/>
 							</div>
 							<div class="flex items-baseline justify-between gap-3 px-3 py-2.5">
@@ -88,4 +103,19 @@
 			</ul>
 		</section>
 	{/each}
+
+	{#if credits.length}
+		<!-- The maps under the traverses, credited the way the sidebar credits
+		     its own: one line per author, with the wording their terms ask for. -->
+		<footer class="border-t border-border pt-4 text-xs/5 text-muted-foreground">
+			<span>{m.attribution_map()}:</span>
+			{#each credits as credit (credit.organisation)}
+				<div>
+					<Link href={credit.source} external icon={false}>{credit.organisation}</Link>
+					{#if credit.attribution}<span class="text-muted-subtle ms-1">({credit.attribution})</span
+						>{/if}
+				</div>
+			{/each}
+		</footer>
+	{/if}
 </SitePage>

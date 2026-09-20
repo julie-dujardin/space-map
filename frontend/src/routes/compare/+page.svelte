@@ -20,6 +20,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import SiteNav from '../../components/nav/SiteNav.svelte';
 	import ComparePicker from '../../components/compare/ComparePicker.svelte';
+	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 	import { bandsBySize, screensOf } from '$lib/compare/pages';
 	import { bandScreen, labelWidth, screenCount } from '../../components/detail/charts/lineup-fit';
@@ -36,8 +37,9 @@
 	const NARROW = 768;
 	/** How far a finger travels before it counts as a page turn. */
 	const SWIPE_PX = 60;
-	/** The band of names the row draws under itself. */
-	const LABEL_ROW = 48;
+	/** The band of names the row draws under itself, with room under them for
+	 *  the credit line in the corner. */
+	const LABEL_ROW = 60;
 
 	let innerWidth = $state(NARROW + 1);
 	const narrow = $derived(innerWidth <= NARROW);
@@ -475,6 +477,11 @@
 					{/each}
 				</div>
 			{/if}
+
+			<!-- Same corner as the map's, crediting what this page draws. -->
+			<div class="pointer-events-none absolute end-0 z-10" style="bottom: var(--safe-bottom)">
+				<CompareCreditBar {bodies} />
+			</div>
 
 			{#if !railOpen && !narrow}
 				<button

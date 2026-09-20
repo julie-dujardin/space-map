@@ -4,6 +4,7 @@
 		href: string;
 		label: string;
 		sub?: string;
+		license?: string;
 	}
 	export interface CreditSection {
 		title: string;
@@ -187,8 +188,13 @@
 			<section class="space-y-1">
 				{@render sectionHeader(section.title)}
 				<ul class="space-y-0.5">
-					{#each section.rows as row (row.href)}
-						<li>{@render link(row.href, row.label, row.sub)}</li>
+					<!-- One author page can stand behind several bodies, so the link
+					     alone is not a key. -->
+					{#each section.rows as row (`${row.href}\u0000${row.label}`)}
+						<li>
+							{@render link(row.href, row.label, row.sub)}
+							{#if row.license}<span class="text-muted-foreground"> · {row.license}</span>{/if}
+						</li>
 					{/each}
 				</ul>
 			</section>

@@ -1,12 +1,11 @@
 /**
- * Surface-imagery credits for the collection-page lineups. The lineup hero
- * renders textured spheres (BodyLineup), so the bodies it shows must credit
- * their texture authors — several (Steve Albers, FarGetaNik, …) are
- * non-commercial maps whose attribution is a licence condition.
+ * Per-body imagery credits for the pages that draw textured spheres outside
+ * the scene — the collection lineups and /compare. Several surface maps
+ * (Steve Albers, FarGetaNik, …) are non-commercial works whose attribution is
+ * a licence condition, so whatever draws them has to name the author.
  *
- * The aggregated `credits.json` (also feeding the standalone /credits page)
- * carries one entry per textured body; we load it once and key it by object
- * id so a lineup can look up exactly the bodies on screen.
+ * Read off the aggregated `credits.json` that also feeds /credits, fetched
+ * once per session and keyed by object id per layer.
  */
 import { dataBase } from '$lib/fetch/data-base';
 
@@ -15,26 +14,32 @@ export interface TextureSource {
 	organisation: string;
 	/** Landing page for that author's map set. */
 	source: string;
+	license?: string;
 }
 
-let cache: Promise<Map<string, TextureSource>> | null = null;
+/** The sibling bundles a sphere outside the scene can be drawn from. */
+export type CreditedLayer = 'textures' | 'displacement';
 
-/** Texture credits keyed by body id (`Object.id`), loaded once per session.
- *  Returns an empty map on any failure — imagery credit is best-effort and
- *  must never block the lineup from rendering. */
-export function loadTextureCredits(
-	fetchFn: typeof globalThis.fetch = fetch
-): Promise<Map<string, TextureSource>> {
-	if (cache) return cache;
-	cache = (async () => {
-		const out = new Map<string, TextureSource>();
+type LayerCredits = Record<CreditedLayer, Map<string, TextureSource>>;
+
+let cache: Promise<LayerCredits> | null = null;
+
+function load(fetchFn: typeof globalThis.fetch): Promise<LayerCredits> {
+	cache ??= (async () => {
+		const out: LayerCredits = { textures: new Map(), displacement: new Map() };
 		try {
 			const res = await fetchFn(`${dataBase()}/v1/credits.json`);
 			if (!res.ok) return out;
 			const data = await res.json();
 			for (const sys of data.systems ?? []) {
-				for (const t of sys.textures ?? []) {
-					out.set(t.body_id, { organisation: t.organisation, source: t.source });
+				for (const layer of Object.keys(out) as CreditedLayer[]) {
+					for (const t of sys[layer] ?? []) {
+						out[layer].set(t.body_id, {
+							organisation: t.organisation,
+							source: t.source,
+							license: t.license
+						});
+					}
 				}
 			}
 		} catch {
@@ -43,4 +48,20 @@ export function loadTextureCredits(
 		return out;
 	})();
 	return cache;
+}
+
+/** One layer's credits keyed by body id (`Object.id`). Empty on any failure —
+ *  imagery credit is best-effort and must never block a lineup from rendering. */
+export async function loadLayerCredits(
+	layer: CreditedLayer,
+	fetchFn: typeof globalThis.fetch = fetch
+): Promise<Map<string, TextureSource>> {
+	return (await load(fetchFn))[layer];
+}
+
+/** Surface-map credits keyed by body id. */
+export function loadTextureCredits(
+	fetchFn: typeof globalThis.fetch = fetch
+): Promise<Map<string, TextureSource>> {
+	return loadLayerCredits('textures', fetchFn);
 }
