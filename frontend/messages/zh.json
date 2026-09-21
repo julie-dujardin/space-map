@@ -1337,12 +1337,17 @@
 	"compare_page_of": "第 {n} 页",
 	"compare_preset_terrestrial": "类地行星",
 	"compare_preset_giants": "巨行星",
-	"compare_preset_galilean": "伽利略卫星",
 	"compare_preset_large_moons": "最大的卫星",
 	"compare_preset_small_bodies": "探访过的小天体",
 	"compare_preset_stations": "空间站",
 	"compare_preset_observatories": "空间望远镜",
 	"compare_preset_probes": "外太阳系探测器",
+	"compare_preset_earth_sats": "地球观测卫星",
+	"compare_preset_sun": "太阳观测卫星",
+	"compare_preset_inner_probes": "内太阳系探测器",
+	"compare_preset_mars_orbiters": "火星轨道器",
+	"compare_preset_landers": "着陆器与巡视器",
+	"compare_preset_small_body_craft": "彗星与小行星探测器",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -1382,12 +1382,17 @@
 	"compare_page_of": "strona {n}",
 	"compare_preset_terrestrial": "Planety skaliste",
 	"compare_preset_giants": "Planety olbrzymy",
-	"compare_preset_galilean": "Księżyce galileuszowe",
 	"compare_preset_large_moons": "Największe księżyce",
 	"compare_preset_small_bodies": "Odwiedzone małe ciała",
 	"compare_preset_stations": "Stacje kosmiczne",
 	"compare_preset_observatories": "Teleskopy kosmiczne",
 	"compare_preset_probes": "Sondy zewnętrznego Układu Słonecznego",
+	"compare_preset_earth_sats": "Satelity obserwacji Ziemi",
+	"compare_preset_sun": "Obserwatoria słoneczne",
+	"compare_preset_inner_probes": "Sondy wewnętrznego Układu Słonecznego",
+	"compare_preset_mars_orbiters": "Orbitery Marsa",
+	"compare_preset_landers": "Lądowniki i łaziki",
+	"compare_preset_small_body_craft": "Sondy komet i planetoid",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

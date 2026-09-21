@@ -1360,12 +1360,17 @@
 	"compare_page_of": "página {n}",
 	"compare_preset_terrestrial": "Planetas telúricos",
 	"compare_preset_giants": "Planetas gigantes",
-	"compare_preset_galilean": "Luas galileanas",
 	"compare_preset_large_moons": "Maiores luas",
 	"compare_preset_small_bodies": "Corpos menores visitados",
 	"compare_preset_stations": "Estações espaciais",
 	"compare_preset_observatories": "Telescópios espaciais",
 	"compare_preset_probes": "Sondas do Sistema Solar exterior",
+	"compare_preset_earth_sats": "Satélites de observação da Terra",
+	"compare_preset_sun": "Observatórios solares",
+	"compare_preset_inner_probes": "Sondas do Sistema Solar interior",
+	"compare_preset_mars_orbiters": "Orbitadores de Marte",
+	"compare_preset_landers": "Módulos de pouso e rovers",
+	"compare_preset_small_body_craft": "Sondas a cometas e asteroides",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

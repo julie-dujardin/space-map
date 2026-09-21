@@ -293,9 +293,11 @@
 		if (Math.abs(dx) >= SWIPE_PX) turn(dx < 0 ? 1 : -1);
 	}
 
-	/** A round distance about 110 px long, for the bar the row is measured by. */
+	/** A round distance about 110 px long, for the bar the row is measured by.
+	 *  With nothing to compare against it measures one lonely body whose size
+	 *  the label under it already gives, so the row drops it. */
 	const scaleBar = $derived.by(() => {
-		if (!pxPerKm) return null;
+		if (!pxPerKm || objects.length < 2) return null;
 		const raw = 110 / pxPerKm;
 		const exponent = Math.floor(Math.log10(raw));
 		const lead = raw / 10 ** exponent;

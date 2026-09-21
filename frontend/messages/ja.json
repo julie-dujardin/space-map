@@ -1439,12 +1439,17 @@
 	"compare_page_of": "{n} ページ",
 	"compare_preset_terrestrial": "地球型惑星",
 	"compare_preset_giants": "巨大惑星",
-	"compare_preset_galilean": "ガリレオ衛星",
 	"compare_preset_large_moons": "大きな衛星",
 	"compare_preset_small_bodies": "探査された小天体",
 	"compare_preset_stations": "宇宙ステーション",
 	"compare_preset_observatories": "宇宙望遠鏡",
 	"compare_preset_probes": "外太陽系の探査機",
+	"compare_preset_earth_sats": "地球観測衛星",
+	"compare_preset_sun": "太陽観測衛星",
+	"compare_preset_inner_probes": "内太陽系の探査機",
+	"compare_preset_mars_orbiters": "火星周回機",
+	"compare_preset_landers": "着陸機とローバー",
+	"compare_preset_small_body_craft": "彗星・小惑星探査機",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -1418,12 +1418,17 @@
 	"compare_page_of": "صفحة {n}",
 	"compare_preset_terrestrial": "الكواكب الصخرية",
 	"compare_preset_giants": "الكواكب العملاقة",
-	"compare_preset_galilean": "أقمار غاليليو",
 	"compare_preset_large_moons": "أكبر الأقمار",
 	"compare_preset_small_bodies": "أجرام صغيرة تمت زيارتها",
 	"compare_preset_stations": "محطات فضائية",
 	"compare_preset_observatories": "تلسكوبات فضائية",
 	"compare_preset_probes": "مسابر النظام الشمسي الخارجي",
+	"compare_preset_earth_sats": "أقمار رصد الأرض",
+	"compare_preset_sun": "مراصد شمسية",
+	"compare_preset_inner_probes": "مسابر النظام الشمسي الداخلي",
+	"compare_preset_mars_orbiters": "مركبات مدارية حول المريخ",
+	"compare_preset_landers": "مركبات هبوط وجوالات",
+	"compare_preset_small_body_craft": "مسابر المذنبات والكويكبات",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

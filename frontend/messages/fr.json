@@ -1432,12 +1432,17 @@
 	"compare_page_of": "page {n}",
 	"compare_preset_terrestrial": "Planètes telluriques",
 	"compare_preset_giants": "Planètes géantes",
-	"compare_preset_galilean": "Lunes galiléennes",
 	"compare_preset_large_moons": "Plus grandes lunes",
 	"compare_preset_small_bodies": "Petits corps visités",
 	"compare_preset_stations": "Stations spatiales",
 	"compare_preset_observatories": "Télescopes spatiaux",
 	"compare_preset_probes": "Sondes du Système solaire externe",
+	"compare_preset_earth_sats": "Satellites d'observation de la Terre",
+	"compare_preset_sun": "Observatoires solaires",
+	"compare_preset_inner_probes": "Sondes du Système solaire interne",
+	"compare_preset_mars_orbiters": "Orbiteurs martiens",
+	"compare_preset_landers": "Atterrisseurs et rovers",
+	"compare_preset_small_body_craft": "Sondes vers comètes et astéroïdes",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

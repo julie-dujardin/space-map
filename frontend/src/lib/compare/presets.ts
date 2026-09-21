@@ -1,7 +1,6 @@
 /**
- * Ready-made comparisons. A set drawn on one scale only says something when
- * its members are within reach of each other, so these are the sets worth
- * opening the page on: a family, at a size a single row can hold.
+ * Ready-made comparisons: the sets worth opening the page on. A set only has
+ * to be a family — the row pages, so it can run as long as the family does.
  */
 
 import * as m from '$lib/paraglide/messages.js';
@@ -58,14 +57,31 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 		minRadiusKm: GIANT_RADIUS_KM
 	},
 	{
-		slug: 'galilean-moons',
-		label: m.compare_preset_galilean,
-		ids: ['naif-501', 'naif-502', 'naif-503', 'naif-504']
-	},
-	{
+		// Every moon a scale drew round, down to Mimas: the rest of the
+		// hundreds are captured rubble, and belong beside asteroids instead.
 		slug: 'large-moons',
 		label: m.compare_preset_large_moons,
-		ids: ['naif-503', 'naif-606', 'naif-504', 'naif-501', 'naif-301', 'naif-502', 'naif-701'],
+		ids: [
+			'naif-301',
+			'naif-501',
+			'naif-502',
+			'naif-503',
+			'naif-504',
+			'naif-601',
+			'naif-602',
+			'naif-603',
+			'naif-604',
+			'naif-605',
+			'naif-606',
+			'naif-608',
+			'naif-701',
+			'naif-702',
+			'naif-703',
+			'naif-704',
+			'naif-705',
+			'naif-801',
+			'naif-901'
+		],
 		kinds: [ObjectType.MOON]
 	},
 	{
@@ -74,11 +90,20 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 		ids: [
 			'naif-2000001',
 			'spkid-20000004',
+			'spkid-20000021',
 			'spkid-20000253',
 			'spkid-20000433',
 			'spkid-20000243',
 			'spkid-20000951',
+			'spkid-20052246',
+			'spkid-20152830',
+			'spkid-20486958',
+			'spkid-20065803',
 			'spkid-1000012',
+			'spkid-1000036',
+			'spkid-1000093',
+			'spkid-1000107',
+			'spkid-1000041',
 			'spkid-20162173',
 			'spkid-20101955',
 			'spkid-20025143'
@@ -88,14 +113,122 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		slug: 'space-stations',
 		label: m.compare_preset_stations,
-		ids: ['norad_satcat-25544', 'norad_satcat-16609', 'norad_satcat-6633'],
-		kinds: [ObjectType.SPACECRAFT],
-		idPrefixes: ['norad_satcat-']
+		ids: ['norad_satcat-25544', 'norad_satcat-16609', 'norad_satcat-6633']
 	},
 	{
 		slug: 'observatories',
 		label: m.compare_preset_observatories,
-		ids: ['norad_satcat-20580', 'norad_satcat-25867', 'norad_satcat-21225', 'probe-115347456']
+		ids: [
+			'probe-115347456',
+			'norad_satcat-20580',
+			'norad_satcat-25867',
+			'norad_satcat-21225',
+			'norad_satcat-28485',
+			'norad_satcat-33053',
+			'norad_satcat-25791',
+			'norad_satcat-28773',
+			'norad_satcat-44874',
+			'probe-112132096',
+			'probe-96477185',
+			'probe-96477184',
+			'probe-117612544',
+			'probe-103354368',
+			'probe-96198656',
+			'probe-109834240'
+		]
+	},
+	{
+		slug: 'earth-satellites',
+		label: m.compare_preset_earth_sats,
+		ids: [
+			'norad_satcat-25994',
+			'norad_satcat-27424',
+			'norad_satcat-28376',
+			'norad_satcat-39084',
+			'norad_satcat-25682',
+			'norad_satcat-25063',
+			'norad_satcat-39574',
+			'norad_satcat-43613',
+			'norad_satcat-37849',
+			'norad_satcat-23710',
+			'norad_satcat-22076',
+			'norad_satcat-26997',
+			'norad_satcat-25789',
+			'norad_satcat-40059',
+			'norad_satcat-24883',
+			'norad_satcat-27391'
+		],
+		// The kin an Earth satellite with no set of its own is offered: far
+		// likelier one of these than one of the three stations.
+		kinds: [ObjectType.SPACECRAFT],
+		idPrefixes: ['norad_satcat-']
+	},
+	{
+		slug: 'sun-watchers',
+		label: m.compare_preset_sun,
+		ids: [
+			'probe-76357632',
+			'norad_satcat-36395',
+			'probe-92659712',
+			'norad_satcat-29479',
+			'norad_satcat-27370',
+			'probe-68640768',
+			'probe-78942208',
+			'probe-74735616'
+		]
+	},
+	{
+		slug: 'inner-probes',
+		label: m.compare_preset_inner_probes,
+		ids: [
+			'probe-66510848',
+			'probe-89325568',
+			'probe-110526464',
+			'probe-110587904',
+			'probe-110309376',
+			'probe-112545792'
+		]
+	},
+	{
+		slug: 'mars-orbiters',
+		label: m.compare_preset_mars_orbiters,
+		ids: [
+			'probe-93536256',
+			'probe-84353024',
+			'probe-90857472',
+			'probe-120983552',
+			'probe-80715776',
+			'probe-109281280'
+		]
+	},
+	{
+		slug: 'landers',
+		label: m.compare_preset_landers,
+		ids: [
+			'probe-100265984',
+			'probe-113246208',
+			'probe-87605248',
+			'probe-87719936',
+			'probe-109899776',
+			'probe-47378432',
+			'probe-47562752',
+			'probe-89915392',
+			'probe-88694784'
+		]
+	},
+	{
+		slug: 'small-body-probes',
+		label: m.compare_preset_small_body_craft,
+		ids: [
+			'probe-88698880',
+			'probe-107429888',
+			'probe-81117184',
+			'probe-89989120',
+			'probe-77094912',
+			'probe-101912576',
+			'probe-61775872',
+			'norad_satcat-25508'
+		]
 	},
 	{
 		slug: 'outer-probes',
@@ -103,9 +236,14 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 		ids: [
 			'probe-49065984',
 			'probe-49000448',
+			'probe-40910848',
+			'probe-42479616',
+			'probe-76308480',
 			'probe-88592384',
 			'probe-104804352',
-			'probe-107159552'
+			'probe-107159552',
+			'probe-117293056',
+			'probe-119541760'
 		],
 		kinds: [ObjectType.SPACECRAFT],
 		idPrefixes: ['probe-']

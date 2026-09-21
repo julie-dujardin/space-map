@@ -1360,12 +1360,17 @@
 	"compare_page_of": "Seite {n}",
 	"compare_preset_terrestrial": "Erdähnliche Planeten",
 	"compare_preset_giants": "Riesenplaneten",
-	"compare_preset_galilean": "Galileische Monde",
 	"compare_preset_large_moons": "Größte Monde",
 	"compare_preset_small_bodies": "Besuchte Kleinkörper",
 	"compare_preset_stations": "Raumstationen",
 	"compare_preset_observatories": "Weltraumteleskope",
 	"compare_preset_probes": "Sonden im äußeren Sonnensystem",
+	"compare_preset_earth_sats": "Erdbeobachtungssatelliten",
+	"compare_preset_sun": "Sonnenobservatorien",
+	"compare_preset_inner_probes": "Sonden im inneren Sonnensystem",
+	"compare_preset_mars_orbiters": "Mars-Orbiter",
+	"compare_preset_landers": "Lander und Rover",
+	"compare_preset_small_body_craft": "Kometen- und Asteroidensonden",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

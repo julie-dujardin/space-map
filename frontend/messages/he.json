@@ -1363,12 +1363,17 @@
 	"compare_page_of": "עמוד {n}",
 	"compare_preset_terrestrial": "כוכבי לכת ארציים",
 	"compare_preset_giants": "כוכבי לכת ענקיים",
-	"compare_preset_galilean": "ירחי גליליאו",
 	"compare_preset_large_moons": "הירחים הגדולים",
 	"compare_preset_small_bodies": "גופים קטנים שנחקרו",
 	"compare_preset_stations": "תחנות חלל",
 	"compare_preset_observatories": "טלסקופי חלל",
 	"compare_preset_probes": "גשושיות מערכת השמש החיצונית",
+	"compare_preset_earth_sats": "לווייני תצפית על כדור הארץ",
+	"compare_preset_sun": "מצפי שמש",
+	"compare_preset_inner_probes": "גשושיות מערכת השמש הפנימית",
+	"compare_preset_mars_orbiters": "מקיפי מאדים",
+	"compare_preset_landers": "נחתות ורוברים",
+	"compare_preset_small_body_craft": "גשושיות שביטים ואסטרואידים",
 	"compare_object_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
