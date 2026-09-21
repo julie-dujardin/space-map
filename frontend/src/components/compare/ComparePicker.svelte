@@ -71,7 +71,9 @@
 	}
 </script>
 
-<div class="flex max-h-[70dvh] w-full flex-col">
+<!-- A grid, not a flex column: only a grid track hands the scroll viewport a
+     definite height to fill, and the cap is what the popover was given. -->
+<div class="grid max-h-(--bits-floating-available-height) w-full grid-rows-[auto_minmax(0,1fr)]">
 	<div class="border-b border-border p-3">
 		<div class="flex h-10 items-center gap-2 rounded-lg border border-input bg-background/60 px-3">
 			<SearchIcon class="size-4 shrink-0 text-muted-foreground" />
@@ -87,7 +89,7 @@
 		</div>
 	</div>
 
-	<ScrollArea class="min-h-0 flex-1">
+	<ScrollArea class="min-h-0">
 		{#if !enabled}
 			<SearchStatus status="unavailable" {query} />
 		{:else if onpreset && !query.trim()}

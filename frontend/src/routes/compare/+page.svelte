@@ -16,7 +16,6 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ChevronsLeftIcon from '@lucide/svelte/icons/chevrons-left';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
-	import ListIcon from '@lucide/svelte/icons/list';
 	import MenuIcon from '@lucide/svelte/icons/menu';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -684,7 +683,13 @@
 								<PlusIcon class="size-4" />
 								{m.compare_add()}
 							</Popover.Trigger>
-							<Popover.Content side="right" align="start" sideOffset={10} class="w-[380px] p-0">
+							<Popover.Content
+								side="right"
+								align="start"
+								sideOffset={10}
+								collisionPadding={12}
+								class="w-[380px] p-0"
+							>
 								<ComparePicker chosen={selected} onadd={addHit} />
 							</Popover.Content>
 						</Popover.Root>
@@ -946,30 +951,26 @@
 
 		{#if narrow}
 			<!-- No drawer on a phone: the row keeps the screen, and the set is
-			     changed from the two controls over it. -->
-			<div class="pointer-events-none absolute inset-x-0 top-3 flex justify-end gap-2 px-3">
-				<Popover.Root bind:open={pickerOpen}>
-					<Popover.Trigger
-						class="pointer-events-auto flex h-10 items-center gap-2 rounded-xl border border-border bg-card/70 px-3 text-[13px] text-foreground backdrop-blur-sm"
-					>
-						<ListIcon class="size-4" />
-						{m.compare_object_count({ count: objects.length })}
-					</Popover.Trigger>
-					<Popover.Content side="bottom" align="end" sideOffset={8} class="w-[330px] p-0">
-						<ComparePicker chosen={selected} onadd={addHit} onpreset={togglePreset} />
-					</Popover.Content>
-				</Popover.Root>
-			</div>
-
-			<button
-				type="button"
-				aria-label={m.compare_add()}
-				onclick={() => (pickerOpen = true)}
-				style="bottom: {LABEL_ROW + 16}px"
-				class="absolute end-5 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg"
-			>
-				<PlusIcon class="size-6" />
-			</button>
+			     changed from the one control over it. It sits at the top because
+			     the bottom corner is where the page strip and the credit are, and
+			     above the next-page strip, which reaches the same corner. -->
+			<Popover.Root bind:open={pickerOpen}>
+				<Popover.Trigger
+					aria-label={m.compare_add()}
+					class="absolute end-3 top-3 z-20 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg"
+				>
+					<PlusIcon class="size-5" />
+				</Popover.Trigger>
+				<Popover.Content
+					side="bottom"
+					align="end"
+					sideOffset={8}
+					collisionPadding={12}
+					class="w-[330px] p-0"
+				>
+					<ComparePicker chosen={selected} onadd={addHit} onpreset={togglePreset} />
+				</Popover.Content>
+			</Popover.Root>
 		{/if}
 
 		{#if opened && !(focusable && DetailDrawer)}
