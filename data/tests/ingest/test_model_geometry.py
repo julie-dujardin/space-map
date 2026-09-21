@@ -8,8 +8,8 @@ from space_map_data.ingest.providers.models import geometry
 def _box(cx, cy, cz, sx, sy, sz, step=0.25):
     """Triangles tiling a box's surface, as (min corner, max corner, area).
 
-    Areas are what the split reads, so a slab has to be built from real facets
-    rather than declared — a boom has to *earn* its small perimeter.
+    Areas cap what the split reads, so a slab has to be built from real facets
+    rather than declared — a boom has to *earn* its narrowness.
     """
     tris = []
     for axis in range(3):
@@ -46,7 +46,7 @@ def _split(tris):
 
 
 class TestBodyRange:
-    """A slice's perimeter is what separates craft from appendage."""
+    """A slice's cross-section width is what separates craft from appendage."""
 
     def test_bare_bus_is_all_body(self):
         ratio, anchor = _split(_box(0, 0, 0, 2, 2, 2))
@@ -54,8 +54,8 @@ class TestBodyRange:
         assert anchor == pytest.approx([0, 0, 0], abs=0.05)
 
     def test_solar_wings_count_as_body(self):
-        # A wing is thin but wide, so its perimeter stays in the craft's league
-        # — the span a lineup places the craft on runs wingtip to wingtip.
+        # A wing is thin but wide, so it stays in the craft's league — the span
+        # a lineup places the craft on runs wingtip to wingtip.
         craft = (
             _box(0, 0, 0, 2, 2, 2)
             + _box(0, 0, 5, 3, 0.05, 8)
@@ -83,3 +83,16 @@ class TestBodyRange:
         ratio, anchor = _split(first_stage + upper_stage)
         assert ratio == pytest.approx(1.0, abs=0.05)
         assert anchor == pytest.approx([0, 0, 0], abs=0.05)
+
+    def test_narrow_panel_is_body_and_boom_of_its_width_is_not(self):
+        # Four panels in a cross: the slice through the bus already holds a
+        # whole pair, so a lone panel is under a tenth of it. Its shape saves
+        # it — thin but wide is a plate. A square boom the same width is not.
+        bus = _box(0, 0, 0, 2, 2, 2)
+        pair = _box(0, 0, 0, 30, 0.05, 1.5)
+        panel = _box(0, 0, 8, 1.5, 0.05, 14)
+        boom = _box(0, 0, 8, 1.5, 1.5, 14)
+        _ratio, anchor = _split(bus + pair + panel)
+        assert anchor[2] == pytest.approx(0, abs=0.05)
+        _ratio, anchor = _split(bus + pair + boom)
+        assert anchor[2] == pytest.approx(-0.4, abs=0.1)

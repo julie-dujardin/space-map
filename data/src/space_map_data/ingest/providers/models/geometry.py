@@ -6,9 +6,9 @@ That span is the right scale for the *mesh* (it is what the mesh is), but the
 wrong size for the halo, the label, and the craft's slot in a lineup, and its
 centre is not where the craft is. Ulysses draws a 63 m dipole around a 3 m bus.
 
-The body is separated from what it deploys by cross-sectional perimeter: surface
-area per unit length along an axis. A boom or wire measures centimetres across,
-a solar wing or a bus metres, whatever units the model is authored in.
+The body is separated from what it deploys by cross-section shape along an
+axis. A boom or wire is narrow both ways, centimetres across whatever units the
+model is authored in; a bus is wide, and a solar wing thin but wide.
 """
 
 import json
@@ -25,10 +25,16 @@ log = logging.getLogger(__name__)
 #: Slices per axis. Fine enough to cut a boom off a bus, coarse enough that a
 #: panel gap doesn't read as empty space.
 BINS = 64
-#: A slice whose perimeter falls below this fraction of the thickest slice's is
-#: something the craft deploys, not the craft. Booms and wire antennas land
-#: below 0.03; solar wings, dishes and radiators sit above 0.1.
-APPENDAGE_PERIMETER = 0.08
+#: A slice narrower than this fraction of the widest slice is something the
+#: craft deploys, not the craft, unless it is a plate. Wires land near 0 and
+#: truss booms below 0.07; a lone panel across a craft whose widest slice holds
+#: a wing pair of its own can sit at 0.08, which is what the plate rule is for.
+APPENDAGE_WIDTH = 0.1
+#: A slice this many times wider than it is thick, with surface to fill that
+#: width, is a plate — a solar panel, a radiator, a dish seen edge-on — and
+#: craft however narrow. A boom is square in section, a wire round, and two
+#: wires side by side span a wide box with next to no surface in it.
+PLATE_ASPECT = 6
 
 #: glTF componentType → (struct code, byte width, normalisation divisor).
 _COMPONENT = {
@@ -74,7 +80,7 @@ def measure_bundle(glb_path: Path) -> dict | None:
 
 
 def _body_range(tris, lo, hi, axis: int) -> tuple[float, float]:
-    """Extent on ``axis`` of the slices thick enough to be craft, not appendage.
+    """Extent on ``axis`` of the slices wide enough to be craft, not appendage.
 
     Outermost qualifying slice on each side, not a run outward from the peak: a
     solar wing is panels with gaps between them, and a run would stop at the
@@ -83,24 +89,30 @@ def _body_range(tris, lo, hi, axis: int) -> tuple[float, float]:
     length = hi[axis] - lo[axis]
     if length <= 0:
         return lo[axis], hi[axis]
-    perimeter = _slice_perimeters(tris, lo, length, axis)
-    cut = max(perimeter) * APPENDAGE_PERIMETER
-    kept = [i for i, p in enumerate(perimeter) if p >= cut]
+    slices = _slice_widths(tris, lo, length, axis)
+    cut = max(w for w, _s, _t in slices) * APPENDAGE_WIDTH
+    kept = [
+        i
+        for i, (w, span, t) in enumerate(slices)
+        if w >= cut or (0 < t * PLATE_ASPECT < span and w * 2 >= span)
+    ]
     return (
         lo[axis] + kept[0] / BINS * length,
         lo[axis] + (kept[-1] + 1) / BINS * length,
     )
 
 
-def _slice_perimeters(tris, lo, length: float, axis: int) -> list[float]:
-    """Cross-section perimeter of each slice, times the slice's thickness.
+def _slice_widths(
+    tris, lo, length: float, axis: int
+) -> list[tuple[float, float, float]]:
+    """(width, span, thickness) of each slice's cross-section.
 
-    Two upper bounds, and the smaller wins. Surface area is exact for walls
-    along the axis but counts engine bells, fins and interior faces too, so an
-    engine section reads ten times thicker than the plain wall above it. The
-    cross-section's bounding rectangle ignores detail but spans the gap between
-    two wires of a dipole. A wire, a boom, a bare stage and a capsule all come
-    out near their real perimeter under both.
+    Span and thickness are the two sides of the cross-section's bounding
+    rectangle; width is the span capped by surface area per unit length. The
+    rectangle alone spans the gap between the two wires of a dipole; area alone
+    counts engine bells and interior faces, and reads a panel drawn
+    single-sided as half a wing. A closed body has more area than span, a wire
+    pair far less, and a plate exactly its span.
     """
     u, v = [k for k in range(3) if k != axis]
     area = [0.0] * BINS
@@ -129,9 +141,13 @@ def _slice_perimeters(tris, lo, length: float, axis: int) -> list[float]:
                 bx[3] = thi[v]
     thickness = length / BINS
     return [
-        min(area[i], 2 * (bx[1] - bx[0] + bx[3] - bx[2]) * thickness)
+        (
+            min(area[i] / thickness, max(bx[1] - bx[0], bx[3] - bx[2])),
+            max(bx[1] - bx[0], bx[3] - bx[2]),
+            min(bx[1] - bx[0], bx[3] - bx[2]),
+        )
         if area[i] > 0
-        else 0.0
+        else (0.0, 0.0, 0.0)
         for i, bx in enumerate(box)
     ]
 

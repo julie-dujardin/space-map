@@ -114,7 +114,29 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		slug: 'space-stations',
 		label: m.compare_preset_stations,
-		ids: ['norad_satcat-25544', 'norad_satcat-16609', 'norad_satcat-6633']
+		ids: [
+			'norad_satcat-25544',
+			'norad_satcat-16609',
+			'norad_satcat-6633',
+			'norad_satcat-5160',
+			'norad_satcat-13138',
+			'norad_satcat-37820',
+			'norad_satcat-41765'
+		]
+	},
+	{
+		// One craft per design, the flight it is best known for.
+		slug: 'space-capsules',
+		label: m.compare_preset_capsules,
+		ids: [
+			'norad_satcat-240',
+			'norad_satcat-103',
+			'norad_satcat-1274',
+			'probe-36888576',
+			'norad_satcat-28043',
+			'norad_satcat-45623',
+			'norad_satcat-59968'
+		]
 	},
 	{
 		// Standalone bundles rather than catalogue Objects: no kind claims them.
@@ -141,7 +163,8 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'probe-117612544',
 			'probe-103354368',
 			'probe-96198656',
-			'probe-109834240'
+			'probe-109834240',
+			'probe-111677440'
 		]
 	},
 	{
@@ -163,7 +186,8 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'norad_satcat-25789',
 			'norad_satcat-40059',
 			'norad_satcat-24883',
-			'norad_satcat-27391'
+			'norad_satcat-27391',
+			'norad_satcat-27386'
 		],
 		// The kin an Earth satellite with no set of its own is offered: far
 		// likelier one of these than one of the three stations.
@@ -193,7 +217,12 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'probe-110526464',
 			'probe-110587904',
 			'probe-110309376',
-			'probe-112545792'
+			'probe-112545792',
+			'probe-53637120',
+			'probe-31408128',
+			'probe-33755136',
+			'probe-50577409',
+			'probe-61759489'
 		]
 	},
 	{
@@ -205,7 +234,10 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'probe-90857472',
 			'probe-120983552',
 			'probe-80715776',
-			'probe-109281280'
+			'probe-109281280',
+			'probe-80879616',
+			'probe-39677952',
+			'probe-29962240'
 		]
 	},
 	{
@@ -220,7 +252,20 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'probe-47378432',
 			'probe-47562752',
 			'probe-89915392',
-			'probe-88694784'
+			'probe-88694784',
+			'norad_satcat-5667',
+			'probe-80977920',
+			'probe-77860864',
+			'norad_satcat-1954',
+			'norad_satcat-4691',
+			'probe-36904960',
+			'probe-103280641',
+			'probe-111718400',
+			'probe-117669889',
+			'probe-117665794',
+			'probe-117895168',
+			'probe-111099904',
+			'probe-117776384'
 		]
 	},
 	{
@@ -234,7 +279,9 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'probe-77094912',
 			'probe-101912576',
 			'probe-61775872',
-			'norad_satcat-25508'
+			'norad_satcat-25508',
+			'probe-120614912',
+			'probe-115220480'
 		]
 	},
 	{
@@ -250,7 +297,8 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'probe-104804352',
 			'probe-107159552',
 			'probe-117293056',
-			'probe-119541760'
+			'probe-119541760',
+			'probe-75771904'
 		],
 		kinds: [ObjectType.SPACECRAFT],
 		idPrefixes: ['probe-']
