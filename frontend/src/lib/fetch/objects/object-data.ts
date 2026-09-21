@@ -1,6 +1,11 @@
 import { getLocale, textureAllowed, type TextureDistribution } from '$lib/host';
 import type { ProbeCoverage } from '$lib/fetch/metadata';
-import { fetchBundlePair, OBJECT_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
+import {
+	fetchBundlePair,
+	OBJECT_BUNDLES,
+	prefetchBundlePair,
+	type BundlePair
+} from '$lib/fetch/bundle-pair';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
 import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
@@ -1393,4 +1398,9 @@ export function fetchObjectDetail(
 		lang,
 		fetchLocalized
 	);
+}
+
+/** Warm `fileId`'s detail bundle ahead of the drawer that will read it. */
+export function prefetchObjectDetail(fileId: string): Promise<void> {
+	return prefetchBundlePair(OBJECT_BUNDLES, fileId);
 }

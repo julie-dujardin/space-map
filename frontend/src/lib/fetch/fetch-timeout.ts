@@ -7,11 +7,12 @@ export const BOOT_FETCH_TIMEOUT_MS = 30_000;
 
 /**
  * Tee the compressed response through a byte counter so the loading bar
- * reflects real download activity. Skipped past boot, or without a
- * Content-Length to measure against.
+ * reflects real download activity. Skipped past boot, without a
+ * Content-Length to measure against, or for background prefetches — the bar
+ * measures the map coming up, and nothing waits on those.
  */
-function countBootBytes(res: Response): Response {
-	if (!loadProgress.active || !res.body) return res;
+function countBootBytes(res: Response, background: boolean): Response {
+	if (background || !loadProgress.active || !res.body) return res;
 	const total = Number(res.headers.get('content-length'));
 	if (!Number.isFinite(total) || total <= 0) return res;
 	loadProgress.announce(total);
@@ -43,7 +44,8 @@ export async function fetchWithTimeout(
 	const onCallerAbort = () => controller.abort();
 	init.signal?.addEventListener('abort', onCallerAbort, { once: true });
 	try {
-		return countBootBytes(await fetch(input, { ...init, signal: controller.signal }));
+		const res = await fetch(input, { ...init, signal: controller.signal });
+		return countBootBytes(res, init.priority === 'low');
 	} catch (e) {
 		if (controller.signal.aborted && !init.signal?.aborted) {
 			throw new Error(`Request timed out after ${timeoutMs} ms: ${input}`, { cause: e });

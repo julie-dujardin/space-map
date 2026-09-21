@@ -7,7 +7,12 @@
  */
 
 import { getLocale } from '$lib/host';
-import { fetchBundlePair, FEATURE_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
+import {
+	fetchBundlePair,
+	FEATURE_BUNDLES,
+	prefetchBundlePair,
+	type BundlePair
+} from '$lib/fetch/bundle-pair';
 import type {
 	CurrencyQuantity,
 	EntityRef,
@@ -85,4 +90,9 @@ export function fetchFeatureDetail(
 		featureBucketKey(bodyId, featureId),
 		lang
 	);
+}
+
+/** Warm a feature's detail bundle ahead of the drawer that will read it. */
+export function prefetchFeatureDetail(bodyId: string, featureId: number): Promise<void> {
+	return prefetchBundlePair(FEATURE_BUNDLES, featureBucketKey(bodyId, featureId));
 }

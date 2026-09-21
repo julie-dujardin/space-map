@@ -949,7 +949,11 @@
 		{#if opened && !(focusable && DetailDrawer)}
 			<!-- The panel's own frame while its chunk and payload arrive, so the
 			     room it stands in is never left bare. -->
-			<DrawerSkeleton kind="body" />
+			<DrawerSkeleton
+				kind="body"
+				title={(opened && resolved[opened]?.name) || ''}
+				onClose={() => openObject(null)}
+			/>
 		{/if}
 
 		{#if focusable && DetailDrawer}

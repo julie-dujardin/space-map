@@ -11,7 +11,7 @@ import { gunzipJson } from './gz';
 const MAX_BUNDLES = 24;
 const cache = new Map<string, Promise<Record<string, unknown>>>();
 
-export function fetchGzipBundle<T>(url: string): Promise<Record<string, T>> {
+export function fetchGzipBundle<T>(url: string, init?: RequestInit): Promise<Record<string, T>> {
 	let p = cache.get(url);
 	if (p) {
 		// Refresh recency (Map iterates in insertion order).
@@ -22,7 +22,7 @@ export function fetchGzipBundle<T>(url: string): Promise<Record<string, T>> {
 		p = (async () => {
 			// On the phase-1 critical path for deep-linked satellites, so a
 			// stalled connection can't hang boot.
-			const res = await fetchWithTimeout(url);
+			const res = await fetchWithTimeout(url, init);
 			if (!res.ok) {
 				if (res.status === 404) return {};
 				throw new Error(`fetchGzipBundle: ${url} returned ${res.status} ${res.statusText}`);

@@ -4,7 +4,12 @@
  */
 
 import { getLocale } from '$lib/host';
-import { fetchBundlePair, GROUP_BUNDLES, type BundlePair } from '$lib/fetch/bundle-pair';
+import {
+	fetchBundlePair,
+	GROUP_BUNDLES,
+	prefetchBundlePair,
+	type BundlePair
+} from '$lib/fetch/bundle-pair';
 import type {
 	CitedWork,
 	EntityRef,
@@ -360,4 +365,9 @@ export type GroupDetailData = BundlePair<GlobalGroupData, LocalizedGroupData>;
 
 export function fetchGroupDetail(slug: string, lang = getLocale()): Promise<GroupDetailData> {
 	return fetchBundlePair<GlobalGroupData, LocalizedGroupData>(GROUP_BUNDLES, slug, lang);
+}
+
+/** Warm a group's detail bundle ahead of the drawer that will read it. */
+export function prefetchGroupDetail(slug: string): Promise<void> {
+	return prefetchBundlePair(GROUP_BUNDLES, slug);
 }

@@ -67,6 +67,14 @@ const clientFetcher: BundleFetcher = (path, versionClass) =>
 		versionClass ? versionedUrl(path, versionClass) : `${dataBase()}${path}`
 	);
 
+/** Prefetches queue behind the scene's own boot fetches rather than beside
+ *  them — the panel they feed cannot be read until the map is up anyway. */
+const prefetchFetcher: BundleFetcher = (path, versionClass) =>
+	fetchGzipBundle<unknown>(
+		versionClass ? versionedUrl(path, versionClass) : `${dataBase()}${path}`,
+		{ priority: 'low' }
+	);
+
 export interface LoadBundlePairOptions {
 	meta: BundleMetadata;
 	lang: string;
@@ -106,6 +114,22 @@ export async function loadBundlePair<G, L>(
 		global: (globalBundle?.[key] as G | undefined) ?? null,
 		localized: (localizedBundle?.[key] as L | undefined) ?? null
 	};
+}
+
+/**
+ * Warm the bucket holding `key` so a later {@link fetchBundlePair} finds the
+ * request in flight rather than starting one. Only the global half: it is the
+ * bulk of the payload (object buckets run to ~1MB gzipped against ~180KB for a
+ * localized one), and whether a key even has a localized entry is not known
+ * until its body has streamed in.
+ */
+export async function prefetchBundlePair(desc: BundlePairDescriptor, key: string): Promise<void> {
+	const meta = await fetchMetadata();
+	const nGlobal = meta[desc.counts]?.global ?? 0;
+	if (!nGlobal) return;
+	const bucket = await hashBucket(key, nGlobal);
+	// Failures are the real load's to report — this one only fills the cache.
+	await prefetchFetcher(desc.globalPath(bucket), desc.versionClass).catch(() => null);
 }
 
 /** Client entry point: memoized metadata, cached bundles. */

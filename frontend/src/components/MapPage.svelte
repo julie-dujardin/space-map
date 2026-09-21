@@ -31,6 +31,9 @@
 	import { labelHazards } from '$lib/travel/hazard-labels';
 	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
 	import { SHEET_COLLAPSED_PX } from '$lib/drawer';
+	import { prefetchObjectDetail } from '$lib/fetch/objects/object-data';
+	import { prefetchFeatureDetail } from '$lib/fetch/nomenclature/details';
+	import { prefetchGroupDetail } from '$lib/fetch/groups/details';
 	// Not lazy: the placeholder's whole job is to be on screen before the drawer
 	// chunk is.
 	import DrawerSkeleton from './detail/DrawerSkeleton.svelte';
@@ -392,18 +395,36 @@
 
 	// The drawer chunk loads the first time anything is focused — or the first
 	// time the URL says something will be, so the fetch overlaps the scene boot
-	// instead of following it. Still in a main-thread gap: at boot it would
-	// otherwise compete with scene setup.
+	// instead of following it. Latched, not scheduled: `focusable` takes a fresh
+	// identity on every view reassignment (twice a second), and a re-run that
+	// cancelled an idle callback to book another one never let the first mature.
+	//
+	// Holding it back to the end of phase 1 was measured and dropped: the parse
+	// only lands further into minor streaming, which costs the same, and the
+	// panel arrives ~1.5s later.
+	let drawerRequested = false;
 	$effect(() => {
-		if (DetailDrawer || (!focusable && !sidebarPending)) return;
-		const load = () =>
-			import('./detail/DetailDrawer.svelte').then((mod) => (DetailDrawer = mod.default));
-		if ('requestIdleCallback' in window) {
-			const handle = requestIdleCallback(load, { timeout: 4000 });
-			return () => cancelIdleCallback(handle);
-		}
-		const timer = setTimeout(load, 1000);
-		return () => clearTimeout(timer);
+		if (drawerRequested || DetailDrawer || (!focusable && !sidebarPending)) return;
+		drawerRequested = true;
+		void import('./detail/DetailDrawer.svelte').then((mod) => (DetailDrawer = mod.default));
+	});
+
+	// The payload the drawer will read, fetched from what the URL names rather
+	// than waiting for the scene to stream that body in and the chunk to land.
+	// Keyed by URL in the bundle cache, so the drawer's own load joins this
+	// request instead of opening a second one.
+	let detailPrefetched = '';
+	$effect(() => {
+		if (!urlNamesPanel) return;
+		const slug = appState.view.groupSlug;
+		const featureId = appState.view.featureId;
+		const bodyId = appState.view.id;
+		const key = slug ?? (featureId !== null ? `${bodyId}/f/${featureId}` : bodyId);
+		if (!key || key === detailPrefetched) return;
+		detailPrefetched = key;
+		if (slug) void prefetchGroupDetail(slug);
+		else if (featureId !== null) void prefetchFeatureDetail(bodyId, featureId);
+		else void prefetchObjectDetail(bodyId);
 	});
 
 	/** The focused craft, when one is focused and the planner isn't up — the
@@ -1099,7 +1120,11 @@
 				</div>
 			{/if}
 			{#if placeholderUp}
-				<DrawerSkeleton kind={pendingKind} />
+				<DrawerSkeleton
+					kind={pendingKind}
+					title={appState.view.name}
+					onClose={() => closeDetail()}
+				/>
 			{/if}
 			{#if focusable && DetailDrawer}
 				<DetailDrawer
