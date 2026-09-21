@@ -26,6 +26,15 @@ export function craftHeightRatio(spanRatios: readonly number[]): number {
 	return up.reduce((a, w, i) => a + w * (spanRatios[i] ?? 0), 0);
 }
 
+/**
+ * The same, for a reference that is a map rather than an object: a coastline
+ * with imagery inside is drawn face-on, so the mesh's north-south axis is what
+ * stands up the screen and nothing is foreshortened.
+ */
+export function flatHeightRatio(spanRatios: readonly number[]): number {
+	return spanRatios[2] ?? 1;
+}
+
 /** Equal margin above and below the largest body. */
 export const VPAD = 10;
 /** A page takes in more bodies by shrinking its largest, down to this share of

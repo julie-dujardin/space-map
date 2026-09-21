@@ -5,7 +5,8 @@ const sized = (slug: string, spanMetres: number): SizedComparable => ({
 	slug,
 	label: () => slug,
 	radiusKm: spanMetres / 2000,
-	flatness: 1
+	flatness: 1,
+	meshSpanRatio: 1
 });
 
 const BANANA = sized('banana', 0.2);

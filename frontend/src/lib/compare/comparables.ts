@@ -10,12 +10,15 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import { fetchModelIndex } from '$lib/fetch/models';
-import { craftHeightRatio } from '../../components/detail/charts/lineup-fit';
+import { craftHeightRatio, flatHeightRatio } from '../../components/detail/charts/lineup-fit';
 
 export interface Comparable {
 	/** Model bundle slug; also the id the lineup draws it under. */
 	slug: string;
 	label: () => string;
+	/** A piece of ground: the mesh is one quad and the coastline is the
+	 *  texture's alpha, so it is drawn face-on rather than in the row's pose. */
+	flat?: boolean;
 }
 
 /** Ordered small to large, as the picker walks them. */
@@ -31,7 +34,14 @@ export const COMPARABLES: Comparable[] = [
 	{ slug: 'comparable-container-ship', label: m.compare_comparable_ship },
 	{ slug: 'comparable-eiffel-tower', label: m.compare_comparable_eiffel },
 	{ slug: 'comparable-burj-khalifa', label: m.compare_comparable_burj },
-	{ slug: 'comparable-golden-gate', label: m.compare_comparable_goldengate }
+	{ slug: 'comparable-meteor-crater', label: m.compare_comparable_crater },
+	{ slug: 'comparable-golden-gate', label: m.compare_comparable_goldengate },
+	{ slug: 'comparable-mount-everest', label: m.compare_comparable_everest },
+	{ slug: 'comparable-manhattan', label: m.compare_comparable_manhattan, flat: true },
+	{ slug: 'comparable-lake-ontario', label: m.compare_comparable_ontario, flat: true },
+	{ slug: 'comparable-caspian-sea', label: m.compare_comparable_caspian, flat: true },
+	{ slug: 'comparable-australia', label: m.compare_comparable_australia, flat: true },
+	{ slug: 'comparable-africa', label: m.compare_comparable_africa, flat: true }
 ];
 
 /** A comparable with the size and shape its bundle gives it. */
@@ -42,6 +52,10 @@ export interface SizedComparable extends Comparable {
 	 *  drawn in is as flat as a bus and as tall as a tower. 1 where the bundle
 	 *  never measured the mesh. */
 	flatness: number;
+	/** The mesh's span over the object's own: above 1 where the bundle draws
+	 *  more than what is being measured — a craft's booms, a lake's shore —
+	 *  which then overhangs the box instead of shrinking the object in it. */
+	meshSpanRatio: number;
 }
 
 /** The share of the stage's height a comparable is drawn at: big enough to read
@@ -96,10 +110,14 @@ export async function loadComparables(): Promise<SizedComparable[]> {
 		const bundle = index.find((e) => e.slug === comparable.slug);
 		const span = bundle?.scale_meters;
 		if (!span) continue;
+		const bodyRatio = bundle.body_span_ratio ?? 1;
 		sized.push({
 			...comparable,
-			radiusKm: (span * (bundle.body_span_ratio ?? 1)) / 2000,
-			flatness: bundle.span_ratios ? craftHeightRatio(bundle.span_ratios) || 1 : 1
+			radiusKm: (span * bodyRatio) / 2000,
+			meshSpanRatio: 1 / bodyRatio,
+			flatness: bundle.span_ratios
+				? (comparable.flat ? flatHeightRatio : craftHeightRatio)(bundle.span_ratios) || 1
+				: 1
 		});
 	}
 	return sized.sort((a, b) => a.radiusKm - b.radiusKm);

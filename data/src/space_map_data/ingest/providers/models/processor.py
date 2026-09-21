@@ -709,9 +709,14 @@ class ModelProcessor:
 
         Measured off the exported mesh (see ``geometry``), since only the mesh
         knows what it draws; a manifest ``body_span_ratio``/``model_anchor``
-        overrides it where the measurement misreads a craft.
+        overrides it where the measurement misreads a craft. A rocket deploys
+        nothing, so it is all body: the split would read an escape tower as a
+        boom and seat the stack a few metres high.
         """
         measured = geometry.measure_bundle(glb) or {}
+        if entry.get("kind") == "rocket" and measured:
+            measured["body_span_ratio"] = 1.0
+            measured["model_anchor"] = [0.0, 0.0, 0.0]
         for key in ("body_span_ratio", "model_anchor"):
             if entry.get(key) is not None:
                 measured[key] = entry[key]

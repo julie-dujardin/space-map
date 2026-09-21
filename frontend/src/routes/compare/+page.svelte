@@ -242,15 +242,27 @@
 					name: comparable.label(),
 					radiusKm: comparable.radiusKm,
 					model: comparable.slug,
-					craft: true
+					craft: true,
+					flat: comparable.flat,
+					meshSpanRatio: comparable.meshSpanRatio
 				}
 			: null
 	);
 	/** How wide it comes out on this page's scale, and how tall the drawing is
 	 *  at that width — a bus is mostly empty air in a square box. */
 	const comparablePx = $derived(comparable ? comparable.radiusKm * 2 * pxPerKm : 0);
-	const comparableBox = $derived(Math.round(comparablePx));
-	const comparableTall = $derived(Math.round(comparablePx * (comparable?.flatness ?? 1)));
+	/** What the mesh takes, which is the object plus anything drawn around it. */
+	const comparableDrawn = $derived(comparablePx * (comparable?.meshSpanRatio ?? 1));
+	/** Metres well past the kilometre, because a comparable is named by the
+	 *  figure people know it as: Everest is 8,849 m, not 8.8 km. */
+	const comparableSize = $derived.by(() => {
+		const metres = (comparable?.radiusKm ?? 0) * 2000;
+		return metres < 10_000
+			? formatQuantity({ value: metres, unit: 'metre' }, true)
+			: formatQuantity({ value: metres / 1000, unit: 'kilometre' }, true);
+	});
+	const comparableBox = $derived(Math.round(comparableDrawn));
+	const comparableTall = $derived(Math.round(comparableDrawn * (comparable?.flatness ?? 1)));
 	/** Below this it is a smudge, and says less than nothing there would. */
 	const comparableFits = $derived(comparablePx >= 6);
 
@@ -860,12 +872,7 @@
 						/>
 						<span class="text-center text-[11px] leading-tight text-muted-foreground">
 							{comparableBody.name} ·
-							<span class="tabular-nums"
-								>{formatQuantity(
-									{ value: comparableBody.radiusKm * 2000, unit: 'metre' },
-									true
-								)}</span
-							>
+							<span class="tabular-nums">{comparableSize}</span>
 						</span>
 					</div>
 				{/if}

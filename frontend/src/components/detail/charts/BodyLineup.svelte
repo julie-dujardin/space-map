@@ -41,6 +41,10 @@
 		/** Whether a `v1/textures/<id>/` surface map exists. Explicit `false`
 		 *  skips the fetch entirely; absent (pre-flag export) probes as before. */
 		texture?: boolean;
+		/** Craft only: a map of ground rather than an object, so the three-quarter
+		 *  pose is dropped for a face-on one — a coastline seen at a glancing
+		 *  angle is not a coastline anybody recognises. */
+		flat?: boolean;
 		/** Not a member of the row, but a neighbouring size band's body drawn at
 		 *  the row's own scale against one edge — the step in scale, shown rather
 		 *  than stated. It takes no slot, no name and no hover. */
@@ -227,6 +231,7 @@
 	/** Sphere orientation for the NW view; +Y is the texture's north. Roll = the
 	 *  body's real obliquity, so the visible tilt is true to the body. */
 	function styledQuaternion(b: LineupBody): Quaternion {
+		if (b.flat) return new Quaternion().setFromAxisAngle(AXIS_X, Math.PI / 2);
 		if (b.craft) {
 			const q = new Quaternion().setFromAxisAngle(AXIS_X, CRAFT_VIEW_PITCH);
 			return q.multiply(new Quaternion().setFromAxisAngle(AXIS_Y, CRAFT_VIEW_YAW));

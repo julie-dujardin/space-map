@@ -55,8 +55,8 @@ def measure_bundle(glb_path: Path) -> dict | None:
     tris = _triangles(glb_path)
     if not tris:
         return None
-    lo = [min(c[k] for c, _a in tris) for k in range(3)]
-    hi = [max(c[k] for c, _a in tris) for k in range(3)]
+    lo = [min(t[0][k] for t in tris) for k in range(3)]
+    hi = [max(t[1][k] for t in tris) for k in range(3)]
     outer = [hi[k] - lo[k] for k in range(3)]
     longest = max(outer)
     if longest <= 0:
@@ -83,10 +83,7 @@ def _body_range(tris, lo, hi, axis: int) -> tuple[float, float]:
     length = hi[axis] - lo[axis]
     if length <= 0:
         return lo[axis], hi[axis]
-    perimeter = [0.0] * BINS
-    for centroid, area in tris:
-        b = min(int((centroid[axis] - lo[axis]) / length * BINS), BINS - 1)
-        perimeter[b] += area
+    perimeter = _slice_perimeters(tris, lo, length, axis)
     cut = max(perimeter) * APPENDAGE_PERIMETER
     kept = [i for i, p in enumerate(perimeter) if p >= cut]
     return (
@@ -95,8 +92,55 @@ def _body_range(tris, lo, hi, axis: int) -> tuple[float, float]:
     )
 
 
-def _triangles(glb_path: Path) -> list[tuple[tuple[float, float, float], float]]:
-    """(centroid, area) per triangle in scene space.
+def _slice_perimeters(tris, lo, length: float, axis: int) -> list[float]:
+    """Cross-section perimeter of each slice, times the slice's thickness.
+
+    Two upper bounds, and the smaller wins. Surface area is exact for walls
+    along the axis but counts engine bells, fins and interior faces too, so an
+    engine section reads ten times thicker than the plain wall above it. The
+    cross-section's bounding rectangle ignores detail but spans the gap between
+    two wires of a dipole. A wire, a boom, a bare stage and a capsule all come
+    out near their real perimeter under both.
+    """
+    u, v = [k for k in range(3) if k != axis]
+    area = [0.0] * BINS
+    inf = float("inf")
+    box = [[inf, -inf, inf, -inf] for _ in range(BINS)]
+    for tlo, thi, tri_area in tris:
+        # Area is spread over every slice the triangle crosses: a low-poly
+        # mesh draws a whole stage as one tall quad.
+        a = (tlo[axis] - lo[axis]) / length * BINS
+        b = (thi[axis] - lo[axis]) / length * BINS
+        first = min(int(a), BINS - 1)
+        last = min(int(b), BINS - 1)
+        for i in range(first, last + 1):
+            if last <= first:
+                area[i] += tri_area
+            else:
+                area[i] += tri_area * (min(b, i + 1) - max(a, i)) / (b - a)
+            bx = box[i]
+            if tlo[u] < bx[0]:
+                bx[0] = tlo[u]
+            if thi[u] > bx[1]:
+                bx[1] = thi[u]
+            if tlo[v] < bx[2]:
+                bx[2] = tlo[v]
+            if thi[v] > bx[3]:
+                bx[3] = thi[v]
+    thickness = length / BINS
+    return [
+        min(area[i], 2 * (bx[1] - bx[0] + bx[3] - bx[2]) * thickness)
+        if area[i] > 0
+        else 0.0
+        for i, bx in enumerate(box)
+    ]
+
+
+Triangle = tuple[tuple[float, float, float], tuple[float, float, float], float]
+
+
+def _triangles(glb_path: Path) -> list[Triangle]:
+    """(min corner, max corner, area) per triangle in scene space.
 
     Exported bundles are Meshopt-compressed, which no stdlib can decode, so the
     file is round-tripped through gltf-transform first — it decompresses on read
@@ -119,7 +163,7 @@ def _triangles_plain(path: Path):
     nodes = gltf.get("nodes") or []
     scene = gltf.get("scenes", [{}])[gltf.get("scene", 0)]
     roots = scene.get("nodes", range(len(nodes)))
-    out: list[tuple[tuple[float, float, float], float]] = []
+    out: list[Triangle] = []
 
     def walk(index: int, parent: tuple) -> None:
         node = nodes[index]
@@ -161,11 +205,8 @@ def _accumulate(out: list, verts: list, idx) -> None:
             continue
         out.append(
             (
-                (
-                    (a[0] + b[0] + c[0]) / 3,
-                    (a[1] + b[1] + c[1]) / 3,
-                    (a[2] + b[2] + c[2]) / 3,
-                ),
+                (min(a[0], b[0], c[0]), min(a[1], b[1], c[1]), min(a[2], b[2], c[2])),
+                (max(a[0], b[0], c[0]), max(a[1], b[1], c[1]), max(a[2], b[2], c[2])),
                 area,
             )
         )
