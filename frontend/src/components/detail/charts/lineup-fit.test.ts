@@ -11,13 +11,14 @@ import {
 	BOX_GAP,
 	SIDE_PAD,
 	VPAD,
-	bandScreen,
 	craftHeightRatio,
 	craftWidthRatio,
 	endStrip,
 	fitScale,
 	limbStrip,
-	screenCount
+	screenCount,
+	screenFit,
+	screenScale
 } from './lineup-fit';
 
 const body = (radiusKm: number, label = 0) => ({ radiusKm, label });
@@ -96,13 +97,19 @@ describe('screenCount', () => {
 	});
 });
 
-describe('bandScreen', () => {
+describe('screenFit', () => {
 	const width = 1000;
 	/** The height the largest body fills at 1 px per km, so half scale is 0.5. */
 	const heightFor = (radiusKm: number) => 2 * radiusKm + 2 * VPAD;
 
 	it('fills the height when the bodies fit at full scale', () => {
-		const screen = bandScreen([body(100), body(100), body(100)], undefined, width, heightFor(100));
+		const screen = screenFit(
+			[body(100), body(100), body(100)],
+			undefined,
+			width,
+			heightFor(100),
+			true
+		);
 		expect(screen).toEqual({ count: 3, scale: 1 });
 	});
 
@@ -110,20 +117,40 @@ describe('bandScreen', () => {
 		// Nine bodies of 100 px at half scale, plus gaps, fit the run; a tenth
 		// does not, and takes a limb strip off the ninth as well.
 		const nine = Array.from({ length: 9 }, () => body(100));
-		const all = bandScreen(nine, undefined, width, heightFor(100));
+		const all = screenFit(nine, undefined, width, heightFor(100), true);
 		expect(all.count).toBe(9);
 		expect(all.scale).toBeCloseTo((width - 2 * SIDE_PAD - 8 * BOX_GAP) / 1800, 6);
-		const ten = bandScreen([...nine, body(100)], undefined, width, heightFor(100));
+		const ten = screenFit([...nine, body(100)], undefined, width, heightFor(100), true);
 		expect(ten.count).toBe(8);
 		// The eight then stand on the widest scale that holds them and the strip.
 		const run = width - 2 * SIDE_PAD - limbStrip(width);
 		expect(ten.scale).toBeCloseTo((run - 7 * BOX_GAP) / 1600, 6);
 	});
 
+	it('keeps a strip for the page before on every screen but the first', () => {
+		const nine = Array.from({ length: 9 }, () => body(100));
+		expect(screenFit(nine, undefined, width, heightFor(100), false).count).toBe(8);
+	});
+
 	it('takes one body however wide, shrunk to the width', () => {
-		const screen = bandScreen([body(5000), body(5000)], undefined, width, heightFor(5000));
+		const screen = screenFit([body(5000), body(5000)], undefined, width, heightFor(5000), true);
 		expect(screen.count).toBe(1);
 		expect(screen.scale).toBeCloseTo((width - 2 * SIDE_PAD - limbStrip(width)) / 10000, 6);
+	});
+});
+
+describe('screenScale', () => {
+	const width = 1000;
+	const heightFor = (radiusKm: number) => 2 * radiusKm + 2 * VPAD;
+
+	it('fills the height when the bodies fit, whatever scale they were cut on', () => {
+		expect(screenScale([body(10), body(10)], undefined, width, heightFor(10), false)).toBe(1);
+	});
+
+	it('shrinks to the run, with the strips of a later page taken off', () => {
+		const run = width - 2 * SIDE_PAD - limbStrip(width) - ASIDE_END_PAD;
+		const k = screenScale([body(500), body(500)], body(1), width, heightFor(500), false);
+		expect(k).toBeCloseTo((run - BOX_GAP) / 2000, 6);
 	});
 });
 

@@ -3,7 +3,8 @@
  * point the smallest body is a pixel beside the largest, and the row stops
  * saying anything. So the set is cut where its own sizes make a jump, and each
  * band is drawn on its own scale. A band is then cut again into screens, where
- * the bodies and their names run out of width, every screen on the band's scale.
+ * the bodies and their names run out of width, each screen on a scale of its
+ * own: what a page holds is what stands on it large.
  */
 
 /** A jump this large between neighbouring sizes starts a new band: the row
@@ -57,37 +58,39 @@ export function bandsBySize<T>(
 	}));
 }
 
-/** One screen of a band: what the row draws at once, on the band's scale. */
+/** One screen of a band: what the row draws at once. */
 export interface SizeScreen<T> extends SizeBand<T> {
-	/** Pixels per unit of size, the same on every screen of the band. */
+	/** Pixels per unit of size on this screen. */
+	scale: number;
+}
+
+/** How many bodies stand on a screen, and the scale they are drawn on. */
+export interface ScreenFit {
+	count: number;
 	scale: number;
 }
 
 /**
  * Cut each band into screens, so that a name is never squeezed off a body:
- * the rest turn the page instead. `first` sizes a band's first screen and
- * with it the scale the band is drawn on; `next` says how many of what is
- * left stand on a screen at that scale. Both are told the body that follows.
+ * the rest turn the page instead. `fit` is handed what is left of the band,
+ * the body that follows the band, and whether this is the band's first
+ * screen, which has no page before it to keep a strip for.
  */
 export function screensOf<T>(
 	bands: readonly SizeBand<T>[],
-	first: (items: readonly T[], after: T | undefined) => { count: number; scale: number },
-	next: (rest: readonly T[], after: T | undefined, scale: number) => number
+	fit: (rest: readonly T[], after: T | undefined, first: boolean) => ScreenFit
 ): SizeScreen<T>[] {
 	const screens: SizeScreen<T>[] = [];
 	for (const band of bands) {
-		const lead = first(band.items, band.next);
-		const scale = lead.scale;
-		let count = lead.count;
 		let rest = band.items;
 		let previous = band.previous;
 		while (rest.length) {
-			const n = Math.max(1, count);
+			const screen = fit(rest, band.next, rest === band.items);
+			const n = Math.max(1, screen.count);
 			const items = rest.slice(0, n);
 			rest = rest.slice(n);
-			screens.push({ items, previous, next: rest[0] ?? band.next, scale });
+			screens.push({ items, previous, next: rest[0] ?? band.next, scale: screen.scale });
 			previous = items[n - 1];
-			if (rest.length) count = next(rest, band.next, scale);
 		}
 	}
 	return screens;

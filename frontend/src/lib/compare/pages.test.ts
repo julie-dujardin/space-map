@@ -2,7 +2,8 @@
  * Tests the size bands: where the row is cut, and the neighbours each band
  * hands to the next. Getting the cut wrong either crowds a row until the small
  * bodies vanish, or splits a set that reads fine on one scale. Then the
- * screens a band is cut into, which must hand their neighbours on the same way.
+ * screens a band is cut into, which must hand their neighbours on the same
+ * way, each on the scale its fit gave it.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -55,51 +56,42 @@ describe('bandsBySize', () => {
 
 describe('screensOf', () => {
 	const bands = bandsBySize([6779, 3475, 939, 525, 52.8, 18.2], size);
-	const lead = (items: readonly number[]) => ({ count: items.length, scale: 1 / items[0] });
-
-	it('keeps one screen per band when everything fits, on the scale the lead sets', () => {
-		const screens = screensOf(bands, lead, () => 0);
+	it('keeps one screen per band when everything fits', () => {
+		const screens = screensOf(bands, (rest) => ({ count: rest.length, scale: 1 / rest[0] }));
 		expect(screens.map((s) => s.items)).toEqual(bands.map((b) => b.items));
 		expect(screens.map((s) => s.scale)).toEqual([1 / 6779, 1 / 52.8]);
 	});
 
-	it('cuts a band into screens and hands each its neighbours, on one scale', () => {
-		const screens = screensOf(
-			bands,
-			(items) => ({ count: Math.min(2, items.length), scale: 1 / items[0] }),
-			(rest) => Math.min(1, rest.length)
-		);
+	it('cuts a band into screens and hands each its neighbours and its own scale', () => {
+		const screens = screensOf(bands, (rest, _after, first) => ({
+			count: Math.min(first ? 2 : 1, rest.length),
+			scale: 1 / rest[0]
+		}));
 		expect(screens.map((s) => s.items)).toEqual([[6779, 3475], [939], [525], [52.8, 18.2]]);
 		expect(screens[1].previous).toBe(3475);
 		expect(screens[0].next).toBe(939);
 		expect(screens[2].next).toBe(52.8);
 		expect(screens[3].previous).toBe(525);
-		expect(screens.slice(0, 3).map((s) => s.scale)).toEqual([1 / 6779, 1 / 6779, 1 / 6779]);
+		expect(screens.map((s) => s.scale)).toEqual([1 / 6779, 1 / 939, 1 / 525, 1 / 52.8]);
 	});
 
-	it('tells the fits what follows the screen', () => {
-		const seen: (number | undefined)[] = [];
-		screensOf(
-			bands,
-			(items, after) => {
-				seen.push(after);
-				return { count: 1, scale: 1 };
-			},
-			(rest, after) => {
-				seen.push(after);
-				return 1;
-			}
-		);
-		expect(seen).toEqual([52.8, 52.8, 52.8, 52.8, undefined, undefined]);
+	it('tells the fit what follows the band, and which screen is its first', () => {
+		const seen: [number | undefined, boolean][] = [];
+		screensOf(bands, (_rest, after, first) => {
+			seen.push([after, first]);
+			return { count: 1, scale: 1 };
+		});
+		expect(seen).toEqual([
+			[52.8, true],
+			[52.8, false],
+			[52.8, false],
+			[52.8, false],
+			[undefined, true],
+			[undefined, false]
+		]);
 	});
 
 	it('always puts at least one body on a screen', () => {
-		expect(
-			screensOf(
-				bands,
-				() => ({ count: 0, scale: 1 }),
-				() => 0
-			)
-		).toHaveLength(6);
+		expect(screensOf(bands, () => ({ count: 0, scale: 1 }))).toHaveLength(6);
 	});
 });

@@ -30,12 +30,7 @@
 	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 	import { bandsBySize, screensOf } from '$lib/compare/pages';
-	import {
-		bandScreen,
-		labelWidth,
-		screenCount,
-		SIDE_PAD
-	} from '../../components/detail/charts/lineup-fit';
+	import { labelWidth, screenFit, SIDE_PAD } from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
 	import { COMPARE_PRESETS, presetOn, type ComparePreset } from '$lib/compare/presets';
 	import type { ObjectHit } from '$lib/search/client';
@@ -151,27 +146,20 @@
 	const openable = $derived(listed.filter(hasPage));
 
 	/** The bands, cut again where their bodies and names run out of width,
-	 *  each on the scale its first page sets. Until the stage is measured there
-	 *  is one page per band, on the row's own scale. */
+	 *  each page as large as its own bodies allow. Until the stage is measured
+	 *  there is one page per band, on the row's own scale. */
 	const bandPages = $derived.by(() => {
 		const rowHeight = stageHeight - LABEL_ROW;
 		if (!stageWidth || rowHeight <= 0) {
-			return screensOf(
-				bands,
-				(items) => ({ count: items.length, scale: 0 }),
-				() => 0
-			);
+			return screensOf(bands, (items) => ({ count: items.length, scale: 0 }));
 		}
 		const fit = (o: CompareObject) => ({
 			radiusKm: o.radiusKm,
 			label: labelWidth(o.name, sizeText(o)),
 			aspect: o.geometry.aspect
 		});
-		return screensOf(
-			bands,
-			(items, after) => bandScreen(items.map(fit), after && fit(after), stageWidth, rowHeight),
-			(rest, after, scale) =>
-				screenCount(rest.map(fit), after && fit(after), scale, scale, stageWidth, false)
+		return screensOf(bands, (rest, after, first) =>
+			screenFit(rest.map(fit), after && fit(after), stageWidth, rowHeight, first)
 		);
 	});
 	/** Maximized, every object with a page is one, and the list's own order is

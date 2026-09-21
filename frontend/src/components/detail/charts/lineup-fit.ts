@@ -184,20 +184,38 @@ export function screenCount(
 }
 
 /**
- * The first screen of a band, and with it the scale the whole band is drawn
- * on: as many of `bodies` as stand there with the largest at no less than half
- * the height, on the widest scale that holds them. The screens after it keep
- * that scale, so turning a page never changes what a pixel means until the
- * band does.
+ * The scale a screen is drawn on once it is cut: the widest that holds its
+ * `bodies` and their names beside the strips, up to the largest filling the
+ * height. The strips are sized as if it reached that, which is never less
+ * than they come out.
  */
-export function bandScreen(
+export function screenScale(
 	bodies: readonly FitBody[],
 	after: FitBody | undefined,
 	width: number,
-	height: number
+	height: number,
+	first: boolean
+): number {
+	const full = fullScale(bodies[0].radiusKm, height);
+	return fitScale(bodies, screenRun(after, full, width, first), full);
+}
+
+/**
+ * One screen off the front of `bodies`: as many as stand there with the
+ * largest at no less than half the height, on the widest scale that holds
+ * them. `first` is the band's first screen, with no page before it.
+ */
+export function screenFit(
+	bodies: readonly FitBody[],
+	after: FitBody | undefined,
+	width: number,
+	height: number,
+	first: boolean
 ): { count: number; scale: number } {
 	const full = fullScale(bodies[0].radiusKm, height);
-	const count = screenCount(bodies, after, full * LARGEST_MIN_SHARE, full, width, true);
-	const run = screenRun(bodies[count] ?? after, full, width, true);
-	return { count, scale: fitScale(bodies.slice(0, count), run, full) };
+	const count = screenCount(bodies, after, full * LARGEST_MIN_SHARE, full, width, first);
+	return {
+		count,
+		scale: screenScale(bodies.slice(0, count), bodies[count] ?? after, width, height, first)
+	};
 }
