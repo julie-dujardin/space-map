@@ -494,6 +494,15 @@ export function bodyHref(id: string, name: string): string {
 	});
 }
 
+/** The same for a group: `/g/<slug>/<name>`, opening on the group's anchor. */
+export function groupHref(slug: string, name: string): string {
+	return resolve('/[type]/[id]/[[name]]', {
+		type: UrlType.Group,
+		id: slug,
+		name: name ? encodeURIComponent(name) : undefined
+	});
+}
+
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
  *  for bodies and groups (groups carry a slug in the id slot, and `&focus=`
  *  the member the camera is on when it is not the anchor), or

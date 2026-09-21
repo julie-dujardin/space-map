@@ -35,6 +35,16 @@ export function flatHeightRatio(spanRatios: readonly number[]): number {
 	return spanRatios[2] ?? 1;
 }
 
+/** The same across the screen: how wide the mesh stands as a fraction of its
+ *  longest axis, so a rocket's box is as narrow as the rocket and a row of
+ *  them stands side by side rather than each in a square of air. */
+export function craftWidthRatio(spanRatios: readonly number[]): number {
+	// Row 0 of Rx(pitch)·Ry(yaw): the pitch never moves anything sideways.
+	const [sy, cy] = [Math.sin(CRAFT_VIEW_YAW), Math.cos(CRAFT_VIEW_YAW)];
+	const across = [Math.abs(cy), 0, Math.abs(sy)];
+	return across.reduce((a, w, i) => a + w * (spanRatios[i] ?? 0), 0);
+}
+
 /** Equal margin above and below the largest body. */
 export const VPAD = 10;
 /** A page takes in more bodies by shrinking its largest, down to this share of
@@ -70,10 +80,15 @@ export function endStrip(pr: number, width: number): number {
 	return 2 * pr <= ASIDE_END_PAD ? ASIDE_END_PAD : limbStrip(width);
 }
 
-/** One body as the fit sees it: its size, and the room its name needs. */
+/** One body as the fit sees it: its size, the room its name needs, and how
+ *  much of its size it takes across the screen. */
 export interface FitBody {
 	radiusKm: number;
 	label: number;
+	/** On-screen width as a fraction of the span `radiusKm` halves: a craft
+	 *  posed by `craftWidthRatio`. Absent for a sphere, which is as wide as it
+	 *  is tall. */
+	aspect?: number;
 }
 
 let measure: CanvasRenderingContext2D | null | undefined;
@@ -106,7 +121,7 @@ export function labelWidth(name: string, size: string): number {
 /** The run `bodies` take standing in boxes at `k` px per km. */
 function runOf(bodies: readonly FitBody[], k: number): number {
 	return bodies.reduce(
-		(sum, b) => sum + Math.max(2 * b.radiusKm * k, b.label),
+		(sum, b) => sum + Math.max(2 * b.radiusKm * k * (b.aspect ?? 1), b.label),
 		(bodies.length - 1) * BOX_GAP
 	);
 }

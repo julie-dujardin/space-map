@@ -38,6 +38,7 @@ export const COMPARABLES: Comparable[] = [
 	{ slug: 'comparable-golden-gate', label: m.compare_comparable_goldengate },
 	{ slug: 'comparable-mount-everest', label: m.compare_comparable_everest },
 	{ slug: 'comparable-manhattan', label: m.compare_comparable_manhattan, flat: true },
+	{ slug: 'comparable-lake-geneva', label: m.compare_comparable_geneva, flat: true },
 	{ slug: 'comparable-lake-ontario', label: m.compare_comparable_ontario, flat: true },
 	{ slug: 'comparable-caspian-sea', label: m.compare_comparable_caspian, flat: true },
 	{ slug: 'comparable-australia', label: m.compare_comparable_australia, flat: true },

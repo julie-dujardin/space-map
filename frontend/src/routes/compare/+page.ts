@@ -12,6 +12,7 @@
  */
 
 import { DEFAULT_PRESET, presetBySlug } from '$lib/compare/presets';
+import { rocketBySlug } from '$lib/compare/rockets';
 import type { PageLoad } from './$types';
 
 export const ssr = false;
@@ -32,10 +33,13 @@ export const load: PageLoad = ({ url }): ComparePageData => {
 	const selected = [...new Set(asked.filter(Boolean))];
 	const opened = url.searchParams.get('o');
 	const startOn = url.searchParams.get('on');
-	// Only the comparison's own members have a page here.
+	// Only the comparison's own members have a page here; a rocket only when
+	// its family has one.
+	const rocket = opened ? rocketBySlug(opened) : undefined;
+	const pageless = !!rocket && !rocket.group;
 	return {
 		selected,
-		opened: opened && selected.includes(opened) ? opened : null,
+		opened: opened && selected.includes(opened) && !pageless ? opened : null,
 		startOn: startOn && selected.includes(startOn) ? startOn : null
 	};
 };

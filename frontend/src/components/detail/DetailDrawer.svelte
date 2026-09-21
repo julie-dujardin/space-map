@@ -253,6 +253,10 @@
 		// zones, flags and split-comet families through the category their
 		// members belong to — none of them has a config entry.
 		sphereLineup: () => cat.sphereLineup || groupDetail?.global?.applies_to === 'small_body',
+		launchVehicle: () =>
+			isGroupMode && groupDetail?.global?.type === 'launch_vehicle'
+				? (groupSlug ?? undefined)
+				: undefined,
 		notableMembers: () => members.notableMembers,
 		probes: () => members.probes,
 		probeNames: () => members.probeNames,

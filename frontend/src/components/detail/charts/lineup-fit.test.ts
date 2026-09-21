@@ -12,6 +12,8 @@ import {
 	SIDE_PAD,
 	VPAD,
 	bandScreen,
+	craftHeightRatio,
+	craftWidthRatio,
 	endStrip,
 	fitScale,
 	limbStrip,
@@ -29,6 +31,13 @@ describe('fitScale', () => {
 		// 200 + 100 + gap at k = 1; the run holds half of that.
 		const k = fitScale([body(100), body(50)], 150 + BOX_GAP, 1);
 		expect(k).toBeCloseTo(0.5, 6);
+	});
+
+	it('cuts a craft box to the width it stands at', () => {
+		// A rocket a fifth as wide as tall takes a fifth of a sphere's box.
+		const rocket = { radiusKm: 100, label: 0, aspect: 0.2 };
+		expect(fitScale([rocket, body(100)], 40 + 200 + BOX_GAP, 1)).toBeCloseTo(1, 6);
+		expect(fitScale([rocket, body(100)], 120 + BOX_GAP, 1)).toBeCloseTo(0.5, 6);
 	});
 
 	it('counts a name wider than its body as the box', () => {
@@ -115,5 +124,19 @@ describe('bandScreen', () => {
 		const screen = bandScreen([body(5000), body(5000)], undefined, width, heightFor(5000));
 		expect(screen.count).toBe(1);
 		expect(screen.scale).toBeCloseTo((width - 2 * SIDE_PAD - limbStrip(width)) / 10000, 6);
+	});
+});
+
+describe('craft pose ratios', () => {
+	it('stands a tall mesh nearly full height and a strip wide', () => {
+		const rocket = [0.1, 1, 0.1];
+		expect(craftHeightRatio(rocket)).toBeGreaterThan(0.95);
+		expect(craftWidthRatio(rocket)).toBeLessThan(0.2);
+	});
+
+	it('lays a long mesh across the row', () => {
+		const bus = [1, 0.25, 0.3];
+		expect(craftWidthRatio(bus)).toBeGreaterThan(0.9);
+		expect(craftHeightRatio(bus)).toBeLessThan(0.5);
 	});
 });

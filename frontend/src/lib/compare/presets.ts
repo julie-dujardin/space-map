@@ -5,6 +5,7 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import { ObjectType, type BodyData } from '$lib/types/objects';
+import { ROCKETS } from './rockets';
 
 export interface ComparePreset {
 	slug: string;
@@ -114,6 +115,12 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 		slug: 'space-stations',
 		label: m.compare_preset_stations,
 		ids: ['norad_satcat-25544', 'norad_satcat-16609', 'norad_satcat-6633']
+	},
+	{
+		// Standalone bundles rather than catalogue Objects: no kind claims them.
+		slug: 'rockets',
+		label: m.compare_preset_rockets,
+		ids: ROCKETS.map((r) => r.slug)
 	},
 	{
 		slug: 'observatories',

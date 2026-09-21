@@ -6,14 +6,18 @@
  * enters the row the moment it is picked; its own bundle then supplies the
  * measured shape, the pole it tilts on, and the mesh and surface map the scene
  * would draw, and the row redraws on that. A spacecraft has no radius at all,
- * so its size comes from the model index instead.
+ * so its size comes from the model index instead; a rocket is nothing but its
+ * bundle, and is named by the row itself.
  */
 
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchModelIndex, type ModelIndexEntry } from '$lib/fetch/models';
 import type { LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
+import { craftWidthRatio } from '../../components/detail/charts/lineup-fit';
 import { RENDER_HINTS } from '../../components/detail/charts/lineup';
 import { BODY_COLORS } from '$lib/constants';
+import { groupHref } from '$lib/state/url';
+import { rocketBodies, rocketBySlug } from './rockets';
 
 /** An object the reader has put in the comparison. */
 export interface CompareObject {
@@ -44,15 +48,39 @@ function craftObject(id: string, name: string, entry: ModelIndexEntry): CompareO
 		name: name || entry.objects.find((o) => o.id === id)?.name || id,
 		type: 'spacecraft',
 		radiusKm: body / 2000,
-		geometry: { model: entry.slug, craft: true, meshSpanRatio: entry.scale_meters / body }
+		geometry: {
+			model: entry.slug,
+			craft: true,
+			meshSpanRatio: entry.scale_meters / body,
+			aspect: entry.span_ratios ? craftWidthRatio(entry.span_ratios) || undefined : undefined
+		}
 	};
 }
 
-/** The craft bundle attached to an object, if the mesh *is* that object. */
-async function craftBundleFor(id: string): Promise<ModelIndexEntry | null> {
+/** The bundle whose mesh *is* the object: a rocket's own, reached by slug and
+ *  linking to its family's page, or the craft bundle attached to a catalogue
+ *  Object. */
+async function craftBundleFor(id: string): Promise<CompareObject | null> {
+	const rocket = rocketBySlug(id);
+	if (rocket) {
+		const [body] = await rocketBodies([rocket], (r) =>
+			r.group ? groupHref(r.group, r.label()) : null
+		);
+		if (!body) return null;
+		const { model, craft, aspect, href } = body;
+		return {
+			id,
+			name: body.name,
+			type: 'rocket',
+			radiusKm: body.radiusKm,
+			geometry: { model, craft, aspect, href }
+		};
+	}
 	const index = await fetchModelIndex().catch(() => null);
-	if (!index) return null;
-	return index.find((e) => e.kind !== 'shape_model' && e.objects.some((o) => o.id === id)) ?? null;
+	const attached = index?.find(
+		(e) => e.kind !== 'shape_model' && e.objects.some((o) => o.id === id)
+	);
+	return attached ? craftObject(id, '', attached) : null;
 }
 
 /**
@@ -65,7 +93,7 @@ export async function resolveObject(
 	seed: { name: string; type?: string; diameter_km?: number }
 ): Promise<CompareObject | null> {
 	const craft = await craftBundleFor(id);
-	if (craft) return craftObject(id, seed.name, craft);
+	if (craft) return { ...craft, name: seed.name || craft.name };
 
 	const detail = await fetchObjectDetail(id, false).catch(() => null);
 	const global = detail?.global;

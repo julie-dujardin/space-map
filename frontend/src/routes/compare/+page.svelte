@@ -41,7 +41,7 @@
 	import type { ObjectHit } from '$lib/search/client';
 	import { formatQuantity } from '$lib/format/quantities';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
-	import { bodyHref } from '$lib/state/url';
+	import { bodyHref, groupHref } from '$lib/state/url';
 	import { compareFocusable, type CompareFocus } from '$lib/compare/detail';
 	import { AppState } from '$lib/state/app-state.svelte';
 	import { MapCover } from '$lib/state/map-cover.svelte';
@@ -50,6 +50,7 @@
 	import { DEFAULT_VIEW, urlTypeFromId } from '$lib/state/view';
 	import type { SizeScreen } from '$lib/compare/pages';
 	import { loadComparables, pickComparable, type SizedComparable } from '$lib/compare/comparables';
+	import { rocketBySlug } from '$lib/compare/rockets';
 
 	let { data } = $props();
 
@@ -140,6 +141,13 @@
 	const bands = $derived(bandsBySize(objects, (o) => o.radiusKm));
 	/** Sorted for the side list: the row's own order, largest first. */
 	const listed = $derived([...objects].sort((a, b) => b.radiusKm - a.radiusKm));
+	/** A rocket with no family in the catalogue has no page to open. */
+	const hasPage = (object: CompareObject) => object.geometry.href !== null;
+	/** The object's own page, or its family's where that is what it has. */
+	const pageHref = (object: CompareObject) =>
+		object.geometry.href ?? bodyHref(object.id, object.name);
+	/** The ones the row can maximize, in the list's order. */
+	const openable = $derived(listed.filter(hasPage));
 
 	/** The bands, cut again where their bodies and names run out of width,
 	 *  each on the scale its first page sets. Until the stage is measured there
@@ -155,7 +163,8 @@
 		}
 		const fit = (o: CompareObject) => ({
 			radiusKm: o.radiusKm,
-			label: labelWidth(o.name, sizeText(o))
+			label: labelWidth(o.name, sizeText(o)),
+			aspect: o.geometry.aspect
 		});
 		return screensOf(
 			bands,
@@ -164,14 +173,14 @@
 				screenCount(rest.map(fit), after && fit(after), scale, scale, stageWidth, false)
 		);
 	});
-	/** Maximized, every object is its own page, and the list's own order is what
-	 *  stands in the strips on either side. */
+	/** Maximized, every object with a page is one, and the list's own order is
+	 *  what stands in the strips on either side. */
 	const pages = $derived<SizeScreen<CompareObject>[]>(
 		opened
-			? listed.map((object, i) => ({
+			? openable.map((object, i) => ({
 					items: [object],
-					previous: listed[i - 1],
-					next: listed[i + 1],
+					previous: openable[i - 1],
+					next: openable[i + 1],
 					scale: 0
 				}))
 			: bandPages
@@ -197,7 +206,7 @@
 		opened
 			? Math.max(
 					0,
-					listed.findIndex((object) => object.id === opened)
+					openable.findIndex((object) => object.id === opened)
 				)
 			: Math.min(page, Math.max(0, pages.length - 1))
 	);
@@ -244,7 +253,8 @@
 					model: comparable.slug,
 					craft: true,
 					flat: comparable.flat,
-					meshSpanRatio: comparable.meshSpanRatio
+					meshSpanRatio: comparable.meshSpanRatio,
+					href: null
 				}
 			: null
 	);
@@ -302,7 +312,7 @@
 	 *  back out to. */
 	function openObject(id: string | null, slide?: -1 | 1): void {
 		menu = null;
-		if (id === opened) return;
+		if (id === opened || (id && resolved[id] && !hasPage(resolved[id]))) return;
 		const subject = id ?? opened;
 		if (!id && opened) {
 			const home = bandPages.findIndex((p) => p.items.some((o) => o.id === opened));
@@ -575,12 +585,17 @@
 	});
 
 	// The panel reads its own focus off the view, so the view has to name the
-	// object it is open on.
+	// object it is open on — or the group, for a rocket.
 	$effect(() => {
 		const id = opened;
 		if (!id) return;
 		const name = resolved[id]?.name ?? '';
-		untrack(() => appState.setFocus({ type: urlTypeFromId(id), id, name }));
+		const group = rocketBySlug(id)?.group;
+		untrack(() =>
+			group
+				? appState.setGroup(group, name)
+				: appState.setFocus({ type: urlTypeFromId(id), id, name })
+		);
 	});
 
 	/** The panel is the map's whole drawer, so it is fetched only once a reader
@@ -694,11 +709,15 @@
 								<li class="flex h-11 items-center gap-2.5 border-b border-border/60">
 									<span class="size-2.5 shrink-0 rounded-full" style="background: {colorOf(object)}"
 									></span>
-									<a
-										href={bodyHref(object.id, object.name)}
-										class="flex-1 truncate text-[13.5px] font-medium hover:underline"
-										>{object.name}</a
-									>
+									{#if hasPage(object)}
+										<a
+											href={pageHref(object)}
+											class="flex-1 truncate text-[13.5px] font-medium hover:underline"
+											>{object.name}</a
+										>
+									{:else}
+										<span class="flex-1 truncate text-[13.5px] font-medium">{object.name}</span>
+									{/if}
 									<span class="shrink-0 text-xs text-muted-foreground tabular-nums"
 										>{sizeText(object)}</span
 									>
@@ -957,7 +976,7 @@
 			<!-- The panel's own frame while its chunk and payload arrive, so the
 			     room it stands in is never left bare. -->
 			<DrawerSkeleton
-				kind="body"
+				kind={opened && rocketBySlug(opened) ? 'group' : 'body'}
 				title={(opened && resolved[opened]?.name) || ''}
 				onClose={() => openObject(null)}
 			/>
@@ -972,7 +991,9 @@
 					{focusable}
 					{clock}
 					inPlace={true}
-					mapHref={bodyHref(focusable.body.data.id, focusable.body.data.name ?? '')}
+					mapHref={focusable.kind === 'group'
+						? groupHref(focusable.slug, (opened && resolved[opened]?.name) || '')
+						: bodyHref(focusable.body.data.id, focusable.body.data.name ?? '')}
 					onClose={() => openObject(null)}
 				/>
 			</Tooltip.Provider>
@@ -984,13 +1005,15 @@
 				class="fixed z-50 flex w-52 flex-col rounded-xl border border-border bg-popover p-1.5 shadow-xl"
 				style="left: {Math.min(menu.x, innerWidth - 220)}px; top: {menu.y}px"
 			>
-				<a
-					href={bodyHref(menuObject.id, menuObject.name)}
-					class="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] hover:bg-accent"
-				>
-					<ExternalLinkIcon class="size-3.5" />
-					{m.compare_open({ name: menuObject.name })}
-				</a>
+				{#if hasPage(menuObject)}
+					<a
+						href={pageHref(menuObject)}
+						class="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] hover:bg-accent"
+					>
+						<ExternalLinkIcon class="size-3.5" />
+						{m.compare_open({ name: menuObject.name })}
+					</a>
+				{/if}
 				<button
 					type="button"
 					onclick={() => remove(menuObject.id)}

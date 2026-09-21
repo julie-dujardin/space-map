@@ -38,6 +38,13 @@
 		 *  on. Above 1 where the model draws booms or antennas, which then
 		 *  overhang the slot instead of shrinking the craft. Default 1. */
 		meshSpanRatio?: number;
+		/** Craft only: how wide the posed mesh stands as a fraction of its span,
+		 *  so its box is cut to it — a rocket takes a strip, not a square. */
+		aspect?: number;
+		/** Where the body's own page is, when it is not the object page its id
+		 *  names: a rocket's launch-vehicle family. Null for a body with no page
+		 *  anywhere, which the row then offers no link to. */
+		href?: string | null;
 		/** Whether a `v1/textures/<id>/` surface map exists. Explicit `false`
 		 *  skips the fetch entirely; absent (pre-flag export) probes as before. */
 		texture?: boolean;
@@ -345,13 +352,13 @@
 		const boxRun0 = width - 2 * sidePad - padStart - padEnd;
 		const k = boxRow
 			? fitScale(
-					raw.map((r, i) => ({ radiusKm: r, label: names[i] })),
+					raw.map((r, i) => ({ radiusKm: r, label: names[i], aspect: ordered[i].aspect })),
 					boxRun0,
 					heightK
 				)
 			: heightK;
 		const prs = raw.map((r) => Math.max(2, r * k)); // floor so tiny worlds stay visible
-		const slots = prs.map((pr, i) => Math.max(2 * pr, names[i]));
+		const slots = prs.map((pr, i) => Math.max(2 * pr * (ordered[i].aspect ?? 1), names[i]));
 		// Boxes sit end to end, centred in the row; spheres get a constant
 		// centre-to-centre step, fit so the end ones touch the pads.
 		const spanLeft = SIDE_PAD + padStart;
@@ -445,7 +452,8 @@
 	});
 
 	/** Body under the cursor: a sphere it sits inside wins (front-most, i.e. the
-	 *  smallest — last in `layout`); otherwise the column it's in. */
+	 *  smallest — last in `layout`), a craft its box; otherwise the column it's
+	 *  in. */
 	function pickAt(clientX: number, clientY: number): string | null {
 		if (!containerEl) return null;
 		const r = containerEl.getBoundingClientRect();
@@ -455,7 +463,9 @@
 			const p = layout[i];
 			const dx = mx - p.cx;
 			const dy = my - p.cy;
-			if (dx * dx + dy * dy <= p.pr * p.pr) return p.id;
+			if (p.aspect) {
+				if (Math.abs(dx) <= p.pr * p.aspect && Math.abs(dy) <= p.pr) return p.id;
+			} else if (dx * dx + dy * dy <= p.pr * p.pr) return p.id;
 		}
 		for (const p of layout) if (mx >= p.colLeft && mx < p.colLeft + p.colWidth) return p.id;
 		return null;
@@ -1285,10 +1295,13 @@
 		     Mouse focus is suppressed — these columns can disagree with pickAt's
 		     sphere-priority pick, so a mouse-focused link would flip the hover on
 		     click. Keyboard focus still mirrors hover, unaffected by the guard. -->
-			{#if hoverCapable}
+			{#if typeof p.href === 'string' || (hoverCapable && p.href !== null)}
+				<!-- A body with a page of its own named is a plain link to it, unless
+				     the caller takes the click; the link is then for middle/⌘-click. -->
 				<a
-					href={(!onpick && focusHref(appState, p.id, p.name)) || bodyHref(p.id, p.name)}
-					onclick={focusHovered}
+					href={p.href ??
+						((!onpick && focusHref(appState, p.id, p.name)) || bodyHref(p.id, p.name))}
+					onclick={p.href && !onpick ? undefined : focusHovered}
 					onmousedown={(e) => e.button === 0 && e.preventDefault()}
 					onfocus={(e) => e.currentTarget.matches(':focus-visible') && (hoveredId = p.id)}
 					onblur={() => hoveredId === p.id && (hoveredId = null)}

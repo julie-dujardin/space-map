@@ -20,6 +20,7 @@ import {
 import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 import type { CategoryConfig } from '$lib/state/category-config';
+import { rocketBodies, rocketsCompareHref, rocketsOf } from '$lib/compare/rockets';
 import type { Source as CitedSource } from '../sections/SourcesFooter.svelte';
 import * as m from '$lib/paraglide/messages.js';
 
@@ -57,6 +58,9 @@ export interface LineupHeroDeps {
 	fallbackName: () => string;
 	/** Whether this page asked for a sphere lineup — see `CategoryConfig`. */
 	sphereLineup: () => boolean;
+	/** The launch-vehicle group this page is, if it is one: its hero is the
+	 *  family's own rockets, which are bundles rather than members. */
+	launchVehicle: () => string | undefined;
 	notableMembers: () => NotableMemberEntry[] | undefined;
 	/** The probes this page lists — a body's visitors, or a collection's. */
 	probes: () => NotableMemberEntry[] | undefined;
@@ -79,6 +83,8 @@ export class LineupHero {
 	// Shape-model authors, keyed by body id — the mesh is what renders those
 	// members, so its catalogue credit belongs beside the texture credits.
 	#modelCredits = $state<Map<string, ImageryCredit>>(new Map());
+	// A launch-vehicle family's rockets, once their bundles have answered.
+	#rockets = $state<LineupBody[]>([]);
 
 	// A planet's moons get a lineup hero in its Moons tab; ≥2 renderable keeps it
 	// a real lineup, not a lone sphere. Mirrors DetailDrawer's showMembersTab.
@@ -152,6 +158,10 @@ export class LineupHero {
 		// Picks the collection page's lineup, or null to keep an image hero.
 		// Planets omit hover descriptions by design.
 		this.hero = $derived.by<LineupHeroSpec | null>(() => {
+			// Before the members: a family that has flown nothing yet still has
+			// its rocket to show.
+			if (this.#rockets.length > 0)
+				return { bodies: this.#rockets, ariaLabel: d.fallbackName(), perPage: 4 };
 			const members = d.notableMembers();
 			if (!members || members.length === 0) return null;
 			const names = d.memberNames();
@@ -292,6 +302,20 @@ export class LineupHero {
 						imagery: this.imagery
 					}
 		);
+
+		// Each rocket links to the whole rocket lineup, opened on itself.
+		$effect(() => {
+			const group = d.launchVehicle();
+			this.#rockets = [];
+			if (!group) return;
+			let stale = false;
+			rocketBodies(rocketsOf(group), (r) => rocketsCompareHref(r.slug)).then((bodies) => {
+				if (!stale) this.#rockets = bodies;
+			});
+			return () => {
+				stale = true;
+			};
+		});
 
 		// Load surface-imagery credits lazily, once a lineup is actually shown.
 		$effect(() => {
