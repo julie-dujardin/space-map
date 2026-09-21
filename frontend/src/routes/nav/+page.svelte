@@ -6,14 +6,17 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { MediaQuery } from 'svelte/reactivity';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ListIcon from '@lucide/svelte/icons/list';
+	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import SitePage from '../../components/nav/SitePage.svelte';
 	import { SITE_GUTTER } from '../../components/nav/site';
 	import SubwayDiagram from '../../components/nav/SubwayDiagram.svelte';
 	import BodySearch from '../../components/nav/BodySearch.svelte';
+	import VehicleField from '../../components/detail/travel/VehicleField.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -21,9 +24,12 @@
 	import { isSearchEnabled } from '$lib/search/client';
 	import { formatNavEnd } from '$lib/state/nav-end';
 	import { formatDv, formatDvFigure } from '$lib/travel/format';
+	import { craftReach } from '$lib/travel/subway-reach';
 	import { drawRows, drawStrip, type DrawText } from '$lib/travel/subway-draw';
 	import { buildTree, type TreeStop } from '$lib/travel/subway-tree';
 	import { DEFAULT_TRIP, serializeTripSuffix, type EndpointMode } from '$lib/travel/trip';
+	import { ensureVehicles, vehicleCatalogue } from '$lib/travel/vehicles';
+	import { canDepartFrom, EMPTY_MANIFEST, type Vehicle } from '$lib/math/travel';
 
 	let { data } = $props();
 
@@ -34,6 +40,29 @@
 	function name(id: string): string {
 		return names[id] ?? id;
 	}
+
+	// The catalogue is fetched here rather than in the loader: a link can name a
+	// craft, so the map has to grey itself as soon as it lands, but nothing
+	// about the map waits on it.
+	let vehicles = $state<readonly Vehicle[]>([]);
+	let vehiclesReady = $state(false);
+	$effect(() => {
+		void ensureVehicles()
+			.then(() => (vehicles = vehicleCatalogue()))
+			.catch((e) => console.warn('[nav] no spacecraft catalogue:', e))
+			.finally(() => (vehiclesReady = true));
+	});
+
+	/** Craft the map can weigh: those that leave from an orbit, since the count
+	 *  starts there, and state a Δv budget to spend once they are in one. A
+	 *  launcher states a payload curve instead, which is a different question. */
+	const offered = $derived(
+		vehicles.filter((v) => canDepartFrom(v, 'orbit') && (v.unlimitedDv || v.dvKms !== undefined))
+	);
+	const craft = $derived(offered.find((v) => v.id === data.craft) ?? null);
+	const reach = $derived(craft ? craftReach(tree, craft) : null);
+	let craftOpen = $state(false);
+	const wide = new MediaQuery('(min-width: 768px)');
 
 	const text: DrawText = $derived({
 		stop: {
@@ -83,7 +112,8 @@
 		text,
 		fmt: formatDvFigure,
 		fmtTotal: formatDv,
-		link: plannerHref
+		link: plannerHref,
+		reach
 	});
 	const rows = $derived(drawRows(draw));
 	const strip = $derived(drawStrip(draw));
@@ -94,17 +124,30 @@
 	);
 	const visible = $derived(new Set(data.visible));
 
-	/** The page for an origin, a set of switched-off bodies, and the
-	 *  destinations asked for beyond the default set. */
+	/** The page for an origin, a set of switched-off bodies, the destinations
+	 *  asked for beyond the default set, and the craft the map is read against. */
 	function pageHref(
 		from: string,
 		hidden: readonly string[],
-		extra: readonly string[] = data.extra
+		extra: readonly string[] = data.extra,
+		craftId: string | null = data.craft
 	): string {
 		const query = new URLSearchParams({ from });
 		if (hidden.length) query.set('hide', hidden.join(','));
 		if (extra.length) query.set('to', extra.join(','));
+		if (craftId) query.set('craft', craftId);
 		return `${resolve('/nav')}?${query}`;
+	}
+
+	/** The map is redrawn for the craft, and the trips it links to are the same
+	 *  trips, so the choice rides in the query rather than in a new history
+	 *  entry for every craft tried. */
+	function pickCraft(id: string | null): void {
+		void goto(pageHref(map.originId, data.hidden, data.extra, id), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
 
 	function pickOrigin(event: Event): void {
@@ -246,6 +289,40 @@
 			</label>
 		{/if}
 		{#if !data.failed}
+			<!-- What you are flying decides what the map can reach, so it sits
+			     beside the origin rather than in the targets drawer. It takes a line
+			     of its own where the row wraps, which leaves the origin and the
+			     targets drawer together on the first one. -->
+			<div class="order-last flex w-full items-center gap-1 md:order-none md:w-96">
+				<!-- The field's trigger is full-width, so it needs a track of its own
+				     to share the line with the button that clears it. -->
+				<div class="min-w-0 flex-1">
+					<VehicleField
+						fullscreen={!wide.current}
+						vehicles={offered}
+						loaded={vehiclesReady}
+						selected={craft}
+						route={null}
+						manifest={EMPTY_MANIFEST}
+						passengers={0}
+						departureMode="orbit"
+						onSelect={pickCraft}
+						open={craftOpen}
+						onOpenChange={(next: boolean) => (craftOpen = next)}
+					/>
+				</div>
+				{#if craft}
+					<button
+						type="button"
+						class="text-muted-foreground hover:bg-accent hover:text-foreground shrink-0 rounded-md p-1.5 transition-colors"
+						aria-label={m.delta_v_any_craft()}
+						title={m.delta_v_any_craft()}
+						onclick={() => pickCraft(null)}
+					>
+						<XIcon class="size-4" />
+					</button>
+				{/if}
+			</div>
 			<Sheet.Root bind:open={drawerOpen}>
 				<Sheet.Trigger>
 					{#snippet child({ props })}
@@ -355,6 +432,13 @@
 	{#if data.failed}
 		<p class="{SITE_GUTTER} text-sm text-muted-foreground">{m.delta_v_error()}</p>
 	{:else}
+		{#if craft}
+			<p class="{SITE_GUTTER} text-muted-foreground mb-4 text-xs">
+				<span class="cursor-help" title={m.delta_v_craft_note_hint()}>
+					{m.delta_v_craft_note()}
+				</span>
+			</p>
+		{/if}
 		<!-- Rows on a wide screen; on a phone the strip, scrolled sideways. -->
 		<div class="{SITE_GUTTER} hidden md:block">
 			<SubwayDiagram drawing={rows} label={m.nav_delta_v()} />

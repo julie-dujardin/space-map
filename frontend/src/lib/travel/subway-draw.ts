@@ -15,16 +15,22 @@
  */
 
 import type { StationKind } from '$lib/math/travel/subway';
+import type { Reach } from './subway-reach';
 import type { Tree, TreeLeg, TreeRow, TreeStop, TreeTotals } from './subway-tree';
 
-export interface DrawLine {
+/** Set on everything belonging to a stop a chosen craft cannot pay for. */
+interface Dimmable {
+	dim: boolean;
+}
+
+export interface DrawLine extends Dimmable {
 	points: string;
 	color: string;
 	width: number;
 	opacity: number;
 }
 
-export interface DrawStop {
+export interface DrawStop extends Dimmable {
 	x: number;
 	y: number;
 	r: number;
@@ -35,7 +41,7 @@ export interface DrawStop {
 	label: string;
 }
 
-export interface DrawLabel {
+export interface DrawLabel extends Dimmable {
 	x: number;
 	y: number;
 	text: string;
@@ -49,7 +55,7 @@ export interface DrawLabel {
 	title: string | null;
 }
 
-export interface DrawAero {
+export interface DrawAero extends Dimmable {
 	x: number;
 	y: number;
 }
@@ -90,6 +96,15 @@ export interface DrawOptions {
 	/** Where a stop links; null for no link. `targetId` is the row's body, the
 	 *  origin itself on the trunk. */
 	link: (stop: TreeStop, targetId: string) => string | null;
+	/** What a chosen craft can reach; null where no craft is chosen, or where
+	 *  the one chosen states no budget the map can weigh it by. */
+	reach?: Reach | null;
+}
+
+/** Whether a stop is out of the chosen craft's reach. */
+function dimmer(reach: Reach | null | undefined): (station: string) => boolean {
+	if (!reach) return () => false;
+	return (station) => !reach.stops.has(station);
 }
 
 /** The trunk stops in order with the rows that leave from each, and the y (or
@@ -111,6 +126,9 @@ interface PendingLine extends Omit<DrawLine, 'points'> {
 }
 
 class Sheet {
+	/** Stamped on everything pushed while it is set: the stops out of the
+	 *  chosen craft's reach, and the lines and figures that belong to them. */
+	dim = false;
 	lines: PendingLine[] = [];
 	/** Drawn after every other line: the trunk and the drops moons hang from,
 	 *  so a branch never crosses over what it branches from. */
@@ -120,7 +138,7 @@ class Sheet {
 	aeros: DrawAero[] = [];
 
 	line(pts: [number, number][], color: string, width = 6, opacity = 1, over = false): void {
-		(over ? this.over : this.lines).push({ pts, color, width, opacity });
+		(over ? this.over : this.lines).push({ pts, color, width, opacity, dim: this.dim });
 	}
 
 	drawing(width: number, height: number): Drawing {
@@ -128,7 +146,8 @@ class Sheet {
 			points: l.pts.map((p) => p.join(',')).join(' '),
 			color: l.color,
 			width: l.width,
-			opacity: l.opacity
+			opacity: l.opacity,
+			dim: l.dim
 		});
 		return {
 			width,
@@ -184,7 +203,11 @@ class Sheet {
 		href: string | null,
 		label: string
 	): void {
-		this.stops.push({ x, y, r, color, filled, href, label });
+		this.stops.push({ x, y, r, color, filled, href, label, dim: this.dim });
+	}
+
+	aero(x: number, y: number): void {
+		this.aeros.push({ x, y, dim: this.dim });
 	}
 
 	text(
@@ -204,7 +227,8 @@ class Sheet {
 			anchor: o.anchor ?? 'middle',
 			rotate: o.rotate ?? 0,
 			href: o.href ?? null,
-			title: o.title ?? null
+			title: o.title ?? null,
+			dim: this.dim
 		};
 		this.labels.push(label);
 		return label;
@@ -284,13 +308,14 @@ const BUS_X = 60;
 
 export function drawRows(o: DrawOptions): Drawing {
 	const { tree, text, fmt, link } = o;
+	const out = dimmer(o.reach);
 	const S = new Sheet();
 	// Nothing to hang the rows off: an origin the catalogue could not place.
 	if (tree.trunk.length === 0) return S.drawing(ROWS_WIDTH, 0);
 	const dv = (x1: number, x2: number, y: number, leg: TreeLeg, below = false) => {
 		const ly = below ? y + 13 : y - 12;
 		const figure = S.text((x1 + x2) / 2, ly, fmt(leg.dvKms), { weight: 600, size: 12 });
-		if (leg.aero) S.aeros.push({ x: aeroX(figure), y: ly + 3 });
+		if (leg.aero) S.aero(aeroX(figure), ly + 3);
 	};
 
 	const groups = trunkGroups(tree);
@@ -325,6 +350,7 @@ export function drawRows(o: DrawOptions): Drawing {
 	};
 	// One segment per stop, in that stop's colour: out of a moon the trunk
 	// turns the planet's colour where it leaves the moon's well.
+	S.dim = out(tree.trunk[lastTrunk].station);
 	S.line(
 		[
 			[BUS_X, trunkYs[lastTrunk]],
@@ -335,10 +361,36 @@ export function drawRows(o: DrawOptions): Drawing {
 		1,
 		true
 	);
+	/** How far down the trunk the rows leaving stop `i` hang. The stretch below
+	 *  a stop is the bus those rows branch from, so it is that stop's to grey
+	 *  out, not the next one's: a reachable stop keeps a lit line under it even
+	 *  where the climb past it is out of reach. */
+	const branchEnd = (i: number): number => {
+		const group = groups[i];
+		const last = group[group.length - 1];
+		if (!last) return trunkYs[i];
+		return rowYs.get(last.moons[last.moons.length - 1] ?? last)!;
+	};
 	tree.trunk.forEach((stop, i) => {
+		const from = i === 0 ? trunkYs[0] : trunkYs[i - 1];
+		const split = i === 0 ? from : Math.min(trunkYs[i], branchEnd(i - 1));
+		if (split > from) {
+			S.dim = out(tree.trunk[i - 1].station);
+			S.line(
+				[
+					[BUS_X, from],
+					[BUS_X, split]
+				],
+				stop.color,
+				7,
+				1,
+				true
+			);
+		}
+		S.dim = out(stop.station);
 		S.line(
 			[
-				[BUS_X, i === 0 ? trunkYs[0] : trunkYs[i - 1]],
+				[BUS_X, split],
 				[BUS_X, trunkYs[i]]
 			],
 			stop.color,
@@ -378,7 +430,8 @@ export function drawRows(o: DrawOptions): Drawing {
 		}
 	});
 
-	// Column headings.
+	// Column headings name the map rather than a stop, so a craft never dims them.
+	S.dim = false;
 	(['transfer', 'escape', 'orbit', 'surface'] as const).forEach((kind) =>
 		S.text(COL[kind], 18, text.stop[kind], { size: 10.5, muted: true, title: text.hint[kind] })
 	);
@@ -388,6 +441,7 @@ export function drawRows(o: DrawOptions): Drawing {
 		const r = small ? 5 : 6;
 		let x = from;
 		row.stops.forEach((stop, i) => {
+			S.dim = out(stop.station);
 			const cx = COL[stop.kind];
 			const legIn = i === 0 ? row.depart : row.legs[i - 1];
 			const isEntry = i === 0;
@@ -421,6 +475,7 @@ export function drawRows(o: DrawOptions): Drawing {
 
 	for (const row of tree.rows) {
 		const rowY = rowYs.get(row)!;
+		S.dim = row.stops.length > 0 && out(row.stops[0].station);
 		S.text(BUS_X + 14, rowY - 13, row.stationary ? text.stop.stationary : row.name, {
 			anchor: 'start',
 			weight: 600,
@@ -428,6 +483,7 @@ export function drawRows(o: DrawOptions): Drawing {
 			href: row.stops[0] ? link(row.stops[0], row.targetId) : null
 		});
 		drawStops(row, rowY, BUS_X, false);
+		S.dim = out(row.stops[row.stops.length - 1].station);
 		if (row.totals) {
 			S.text(COL_TOTAL, rowY, totalText(row.totals, o), {
 				anchor: 'start',
@@ -437,6 +493,7 @@ export function drawRows(o: DrawOptions): Drawing {
 		}
 		for (const moon of row.moons) {
 			const my = rowYs.get(moon)!;
+			S.dim = out(moon.stops[0].station);
 			// Down from the shared intercept stop, then across.
 			S.line(
 				[
@@ -454,6 +511,7 @@ export function drawRows(o: DrawOptions): Drawing {
 				href: moon.stops[0] ? link(moon.stops[0], moon.targetId) : null
 			});
 			drawStops(moon, my, COL.transfer, true);
+			S.dim = out(moon.stops[moon.stops.length - 1].station);
 			S.text(COL_TOTAL, my, totalText(moon.totals, o), {
 				anchor: 'start',
 				size: 12,
@@ -500,6 +558,7 @@ export interface StripDrawing {
 
 export function drawStrip(o: DrawOptions): StripDrawing {
 	const { tree, text, fmt, link } = o;
+	const out = dimmer(o.reach);
 	const S = new Sheet();
 	const L = new Sheet();
 	if (tree.trunk.length === 0) {
@@ -511,7 +570,7 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 			size: 11.5,
 			anchor: 'start'
 		});
-		if (leg.aero) S.aeros.push({ x: aeroX(figure), y: (y1 + y2) / 2 + 3 });
+		if (leg.aero) S.aero(aeroX(figure), (y1 + y2) / 2 + 3);
 	};
 
 	const groups = trunkGroups(tree);
@@ -561,6 +620,7 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 		const kind = tree.trunk[i].kind;
 		return kind === 'escape' ? text.escape : text.stop[kind];
 	};
+	S.dim = out(tree.trunk[lastTrunk].station);
 	S.line(
 		[
 			[trunkXs[lastTrunk], Y_TRUNK],
@@ -571,12 +631,36 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 		1,
 		true
 	);
+	/** How far along the trunk the columns rising from stop `i` reach; see the
+	 *  rows layout for why that stretch is the stop's own to grey out. */
+	const branchEnd = (i: number): number => {
+		const group = groups[i];
+		const last = group[group.length - 1];
+		if (!last) return trunkXs[i];
+		return colXs.get(last.moons[last.moons.length - 1] ?? last)!;
+	};
 	tree.trunk.forEach((stop, i) => {
+		const from = i === 0 ? trunkXs[0] : trunkXs[i - 1];
+		const split = i === 0 ? from : Math.min(trunkXs[i], branchEnd(i - 1));
 		// One segment per stop, in that stop's colour: out of a moon the trunk
 		// turns the planet's colour where it leaves the moon's well.
+		if (split > from) {
+			S.dim = out(tree.trunk[i - 1].station);
+			S.line(
+				[
+					[from, Y_TRUNK],
+					[split, Y_TRUNK]
+				],
+				stop.color,
+				7,
+				1,
+				true
+			);
+		}
+		S.dim = out(stop.station);
 		S.line(
 			[
-				[i === 0 ? trunkXs[0] : trunkXs[i - 1], Y_TRUNK],
+				[split, Y_TRUNK],
 				[trunkXs[i], Y_TRUNK]
 			],
 			stop.color,
@@ -616,7 +700,8 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 		}
 	});
 
-	// Level names on their own sheet, which the page pins to the left edge.
+	// Level names sit on their own sheet and name the map rather than a stop.
+	S.dim = false;
 	LEVELS.forEach((kind) => {
 		L.text(LEVELS_PAD, LEVEL[kind], text.stop[kind], {
 			size: 10.5,
@@ -630,6 +715,7 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 		const r = small ? 5 : 6;
 		let y = fromY;
 		row.stops.forEach((stop, i) => {
+			S.dim = out(stop.station);
 			const cy = LEVEL[stop.kind];
 			const legIn = i === 0 ? row.depart : row.legs[i - 1];
 			S.line(
@@ -663,14 +749,17 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 	for (const row of tree.rows) {
 		const cx = colXs.get(row)!;
 		const top = drawStops(row, cx, Y_TRUNK, false);
+		S.dim = out(row.stops[0].station);
 		S.text(cx, top - 44, row.stationary ? text.stop.stationary : row.name, {
 			weight: 600,
 			size: 14,
 			href: row.stops[0] ? link(row.stops[0], row.targetId) : null
 		});
+		S.dim = out(row.stops[row.stops.length - 1].station);
 		if (row.totals) S.text(cx, top - 26, totalText(row.totals, o), { size: 11, muted: true });
 		for (const moon of row.moons) {
 			const mx = colXs.get(moon)!;
+			S.dim = out(moon.stops[0].station);
 			// Across from the shared intercept stop with a bend, then up.
 			S.line(
 				[
@@ -684,10 +773,12 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 				true
 			);
 			const mtop = drawStops(moon, mx, LEVEL.transfer - 24, true);
+			S.dim = out(moon.stops[0].station);
 			S.text(mx, mtop - 44, moon.name, {
 				size: 12,
 				href: moon.stops[0] ? link(moon.stops[0], moon.targetId) : null
 			});
+			S.dim = out(moon.stops[moon.stops.length - 1].station);
 			S.text(mx, mtop - 26, totalText(moon.totals, o), { size: 10, muted: true });
 		}
 	}

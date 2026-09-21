@@ -1,8 +1,9 @@
 /**
  * `/nav` — the Δv subway map: what it costs to get from one body to the
  * others, as stops on a line. `?from=<id>` moves the origin off Earth,
- * `?hide=<id,id,…>` is what the reader has switched off, and `?to=<id,…>`
- * adds destinations beyond the default set.
+ * `?hide=<id,id,…>` is what the reader has switched off, `?to=<id,…>`
+ * adds destinations beyond the default set, and `?craft=<id>` greys out
+ * everything that craft's own Δv cannot pay for.
  *
  * Client-rendered: the loader fetches `/data`, which collides with the
  * `[type]/[id]` route under SSR (same reason as the credits page). The planner
@@ -39,6 +40,9 @@ export interface SubwayPageData {
 	hidden: string[];
 	/** Destinations a link asked for beyond the default set. */
 	extra: string[];
+	/** Catalogue id of the craft the map is read against; null for none. The
+	 *  catalogue itself is fetched by the page, which the map does not wait on. */
+	craft: string | null;
 	/** Nothing to draw: the catalogue did not answer, or has no orbit for the origin. */
 	failed: boolean;
 }
@@ -54,6 +58,7 @@ export const load: PageLoad = async ({ url }): Promise<SubwayPageData> => {
 	if (!isBodyId(from)) error(404, `Unknown body id "${from}"`);
 	const extra = bodyIds(url.searchParams.get('to')) ?? [];
 	const hidden = bodyIds(url.searchParams.get('hide')) ?? [];
+	const craft = url.searchParams.get('craft');
 	const offered = await defaultSubwayTargets();
 	// The drawer offers the default set whatever is drawn, and anything a link
 	// asked for on top; the origin is never a destination.
@@ -70,6 +75,7 @@ export const load: PageLoad = async ({ url }): Promise<SubwayPageData> => {
 			visible,
 			hidden,
 			extra,
+			craft,
 			failed: true
 		};
 	}
@@ -83,6 +89,7 @@ export const load: PageLoad = async ({ url }): Promise<SubwayPageData> => {
 		visible: ordered,
 		hidden,
 		extra,
+		craft,
 		// An origin the catalogue has no orbit for routes nowhere, and so does one
 		// whose primary it could not place: the map then has no trunk to draw.
 		failed: !catalogue.bodies.has(from) || map.trunk.length === 0

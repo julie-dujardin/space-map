@@ -2,6 +2,10 @@
   One drawing of the Δv map as SVG. Lines and stops are what the drawing
   says; type, theme colours and the trunk's colour come from the page, since
   the drawing writes `currentColor` for anything that is not a body.
+
+  Anything the drawing marks `dim` is beyond the chosen craft's Δv. It is
+  faded rather than removed, and stays a link: the planner is where the trip
+  says what it would take.
 -->
 <script lang="ts">
 	import type { Drawing } from '$lib/travel/subway-draw';
@@ -17,6 +21,10 @@
 	}
 
 	let { drawing, fixed = false, label, class: className }: Props = $props();
+
+	/** How much of a faded mark is left. Low enough to read as unavailable at a
+	 *  glance, high enough that the stop can still be found and followed. */
+	const DIM = 0.22;
 </script>
 
 <svg
@@ -35,7 +43,7 @@
 			stroke-width={line.width}
 			stroke-linejoin="round"
 			stroke-linecap="round"
-			opacity={line.opacity}
+			opacity={line.dim ? line.opacity * DIM : line.opacity}
 		/>
 	{/each}
 	{#each drawing.aeros as a, i (i)}
@@ -45,11 +53,12 @@
 			stroke-width="2"
 			stroke-linecap="round"
 			class="stroke-sky-500"
+			opacity={a.dim ? DIM : 1}
 		/>
 	{/each}
 	{#each drawing.stops as s, i (i)}
 		{#if s.href}
-			<a href={s.href} class="group">
+			<a href={s.href} class="group" style="opacity: {s.dim ? DIM : 1}">
 				<title>{s.label}</title>
 				<!-- A wider invisible ring keeps the stop easy to hit. -->
 				<circle cx={s.x} cy={s.y} r={s.r + 8} fill="transparent" />
@@ -72,12 +81,13 @@
 				stroke-width="3"
 				class={s.filled ? '' : 'fill-background'}
 				fill={s.filled ? s.color : undefined}
+				opacity={s.dim ? DIM : 1}
 			/>
 		{/if}
 	{/each}
 	{#each drawing.labels as t, i (i)}
 		{#if t.href}
-			<a href={t.href} class="hover:underline">
+			<a href={t.href} class="hover:underline" style="opacity: {t.dim ? DIM : 1}">
 				<text
 					x={t.x}
 					y={t.y}
@@ -98,6 +108,7 @@
 				text-anchor={t.anchor}
 				dominant-baseline="central"
 				transform={t.rotate ? `rotate(${t.rotate} ${t.x} ${t.y})` : undefined}
+				opacity={t.dim ? DIM : 1}
 				class="{t.muted ? 'fill-muted-foreground' : 'fill-foreground'} {t.title
 					? 'cursor-help'
 					: ''}"
