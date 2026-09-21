@@ -1,8 +1,8 @@
 <!--
   Size comparison, full page: the row is the screen, and everything else floats
-  over it. The list at the side is what is being compared; how that set is
-  broken into pages is decided here, when it is drawn, from the sizes and the
-  room the names under them need.
+  over it, the one control included. How the set is broken into pages is
+  decided here, when it is drawn, from the sizes and the room the names under
+  them need.
 
   Opening one of them maximizes it: the row keeps that object alone, its two
   neighbours in size stand in the strips on either side the way a band's do,
@@ -14,27 +14,22 @@
 	import { resolve } from '$app/paths';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import ChevronsLeftIcon from '@lucide/svelte/icons/chevrons-left';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import MenuIcon from '@lucide/svelte/icons/menu';
-	import PlusIcon from '@lucide/svelte/icons/plus';
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
-	import * as Popover from '$lib/components/ui/popover';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import SiteNav from '../../components/nav/SiteNav.svelte';
 	import DrawerSkeleton from '../../components/detail/DrawerSkeleton.svelte';
-	import ComparePicker from '../../components/compare/ComparePicker.svelte';
+	import CompareMenu, { type ListedObject } from '../../components/compare/CompareMenu.svelte';
 	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 	import { bandsBySize, screensOf } from '$lib/compare/pages';
 	import { labelWidth, screenFit, SIDE_PAD } from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
-	import { COMPARE_PRESETS, presetOn, type ComparePreset } from '$lib/compare/presets';
+	import { presetOn, type ComparePreset } from '$lib/compare/presets';
 	import type { ObjectHit } from '$lib/search/client';
 	import { formatQuantity } from '$lib/format/quantities';
-	import { isModifiedClick } from '$lib/modified-click';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { bodyHref, groupHref } from '$lib/state/url';
 	import { compareFocusable, type CompareFocus } from '$lib/compare/detail';
@@ -49,7 +44,7 @@
 
 	let { data } = $props();
 
-	/** Below this the rail has no room to stand beside the row. */
+	/** Below this the page is laid out for a phone. */
 	const NARROW = 768;
 	/** How far a finger travels before it counts as a page turn. */
 	const SWIPE_PX = 60;
@@ -60,8 +55,10 @@
 	let innerWidth = $state(NARROW + 1);
 	const narrow = $derived(innerWidth <= NARROW);
 
-	let railOpen = $state(true);
-	let pickerOpen = $state(false);
+	/** Up until the reader closes it, except on a phone, where it would cover
+	 *  the row: null until they have said either way. */
+	let menuOpen = $state<boolean | null>(null);
+	const showMenu = $derived(menuOpen ?? !narrow);
 	let stageWidth = $state(0);
 	let stageHeight = $state(0);
 	let page = $state(0);
@@ -143,6 +140,15 @@
 		object.geometry.href ?? bodyHref(object.id, object.name);
 	/** The ones the row can maximize, in the list's order. */
 	const openable = $derived(listed.filter(hasPage));
+	const listedRows = $derived<ListedObject[]>(
+		listed.map((o) => ({
+			id: o.id,
+			name: o.name,
+			color: colorOf(o),
+			size: sizeText(o),
+			href: hasPage(o) ? compareHref(selected, o.id) : null
+		}))
+	);
 
 	/** The bands, cut again where their bodies and names run out of width,
 	 *  each page as large as its own bodies allow. Until the stage is measured
@@ -323,7 +329,6 @@
 	function addHit(hit: ObjectHit): void {
 		seeds.set(hit.id, { name: hit.name, type: hit.type, diameter_km: hit.diameter_km });
 		setIds([...selected, hit.id]);
-		pickerOpen = false;
 	}
 
 	/** A preset is on when everything in it is up, however it got there. Turning
@@ -336,7 +341,6 @@
 				? selected.filter((id) => !preset.ids.includes(id))
 				: [...selected, ...preset.ids.filter((id) => !selected.includes(id))]
 		);
-		pickerOpen = false;
 	}
 
 	function remove(id: string): void {
@@ -627,124 +631,6 @@
 		{#if opened && !narrow}
 			<!-- The room the panel stands in: it is fixed, so the row needs telling. -->
 			<div class="w-[var(--detail-panel)] max-w-[90vw] shrink-0"></div>
-		{:else if railOpen && !narrow}
-			<!-- The comparison: one row per object, largest first, as drawn. -->
-			<aside class="flex w-[300px] shrink-0 flex-col border-e border-border bg-card">
-				<ScrollArea class="min-h-0 flex-1">
-					<div class="flex flex-col gap-4 p-5">
-						<div class="flex items-center gap-2">
-							<h1 class="flex-1 text-[17px] font-semibold tracking-tight">
-								{m.compare_page_title()}
-							</h1>
-							<span class="text-xs text-muted-foreground"
-								>{m.compare_object_count({ count: objects.length })}</span
-							>
-							<button
-								type="button"
-								aria-label={m.compare_hide_list()}
-								aria-expanded="true"
-								onclick={() => (railOpen = false)}
-								class="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-							>
-								<ChevronsLeftIcon class="size-4" />
-							</button>
-						</div>
-
-						<div class="flex flex-col gap-2">
-							<span class="text-[11px] font-medium tracking-wider text-muted-foreground uppercase"
-								>{m.compare_presets()}</span
-							>
-							<div class="flex flex-wrap gap-1.5">
-								{#each COMPARE_PRESETS as preset (preset.slug)}
-									{@const on = presetOn(preset, selected)}
-									<button
-										type="button"
-										aria-pressed={on}
-										onclick={() => togglePreset(preset)}
-										class="h-7 rounded-lg border px-2.5 text-xs transition-colors {on
-											? 'border-primary bg-primary/10 font-medium text-foreground'
-											: 'border-border hover:bg-accent'}"
-									>
-										{preset.label()}
-									</button>
-								{/each}
-							</div>
-							<button
-								type="button"
-								aria-pressed={comparablesOn}
-								onclick={toggleComparables}
-								class="h-7 self-start rounded-lg border px-2.5 text-xs transition-colors {comparablesOn
-									? 'border-primary bg-primary/10 font-medium text-foreground'
-									: 'border-border hover:bg-accent'}"
-							>
-								{m.compare_comparables()}
-							</button>
-						</div>
-
-						<Popover.Root bind:open={pickerOpen}>
-							<Popover.Trigger
-								class="flex h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-accent/40 text-sm font-medium hover:bg-accent"
-							>
-								<PlusIcon class="size-4" />
-								{m.compare_add()}
-							</Popover.Trigger>
-							<Popover.Content
-								side="right"
-								align="start"
-								sideOffset={10}
-								collisionPadding={12}
-								class="w-[380px] p-0"
-							>
-								<ComparePicker chosen={selected} onadd={addHit} />
-							</Popover.Content>
-						</Popover.Root>
-
-						{#if objects.length}
-							<button
-								type="button"
-								onclick={() => setIds([])}
-								class="-mt-2 self-start text-xs text-muted-foreground hover:text-foreground"
-								>{m.compare_clear()}</button
-							>
-						{/if}
-
-						<ul class="flex flex-col border-t border-border">
-							{#each listed as object (object.id)}
-								<li class="flex h-11 items-center gap-2.5 border-b border-border/60">
-									<span class="size-2.5 shrink-0 rounded-full" style="background: {colorOf(object)}"
-									></span>
-									{#if hasPage(object)}
-										<!-- Maximizes it here; its own page is on the context menu. -->
-										<a
-											href={compareHref(selected, object.id)}
-											onclick={(e) => {
-												if (isModifiedClick(e)) return;
-												e.preventDefault();
-												openObject(object.id);
-											}}
-											class="flex-1 truncate text-[13.5px] font-medium hover:underline"
-											>{object.name}</a
-										>
-									{:else}
-										<span class="flex-1 truncate text-[13.5px] font-medium">{object.name}</span>
-									{/if}
-									<span class="shrink-0 text-xs text-muted-foreground tabular-nums"
-										>{sizeText(object)}</span
-									>
-									<button
-										type="button"
-										aria-label={m.compare_remove({ name: object.name })}
-										onclick={() => remove(object.id)}
-										class="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-									>
-										<XIcon class="size-3.5" />
-									</button>
-								</li>
-							{/each}
-						</ul>
-					</div>
-				</ScrollArea>
-			</aside>
 		{/if}
 
 		<!-- The row stands on the stage sheet, and everything over it is inked
@@ -755,12 +641,17 @@
 			role="group"
 			aria-label={m.compare_lineup_label()}
 			class="relative min-w-0 flex-1 overflow-hidden bg-stage text-foreground"
-			onpointerdown={onSwipeStart}
-			onpointerup={onSwipeEnd}
-			onpointercancel={() => (swipeFrom = null)}
 		>
-			<!-- Everything the row is made of moves together when it zooms. -->
-			<div class="absolute inset-0" style={zoomStyle}>
+			<!-- Everything the row is made of moves together when it zooms, and
+			     a swipe is read on it alone: the card floating over it is not
+			     the row. -->
+			<div
+				class="absolute inset-0"
+				style={zoomStyle}
+				onpointerdown={onSwipeStart}
+				onpointerup={onSwipeEnd}
+				onpointercancel={() => (swipeFrom = null)}
+			>
 				{#if bodies.length && stageHeight > LABEL_ROW}
 					<!-- The row draws the neighbouring pages too, at its own scale. -->
 					<div bind:this={rowBox} class="relative">
@@ -946,42 +837,39 @@
 				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 
-			{#if !railOpen && !narrow && !opened}
-				<button
-					type="button"
-					aria-label={m.compare_show_list()}
-					aria-expanded="false"
-					onclick={() => (railOpen = true)}
-					class="absolute start-5 top-5 flex size-11 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground backdrop-blur-sm hover:bg-card"
-				>
-					<MenuIcon class="size-[18px]" />
-				</button>
+			{#if !opened}
+				<!-- Top end corner, where the row leaves the most room: the bottom
+				     corners hold the page links, the credit and the reference. -->
+				{#if showMenu}
+					<div
+						class="absolute top-4 end-4 z-20 flex max-h-[calc(100%-2rem)] w-[390px] max-w-[calc(100%-2rem)]"
+					>
+						<CompareMenu
+							{selected}
+							listed={listedRows}
+							{comparablesOn}
+							ontogglecomparables={toggleComparables}
+							onadd={addHit}
+							onpreset={togglePreset}
+							onclear={() => setIds([])}
+							onremove={remove}
+							onopen={openObject}
+							onclose={() => (menuOpen = false)}
+						/>
+					</div>
+				{:else}
+					<button
+						type="button"
+						aria-label={m.compare_show_menu()}
+						aria-expanded="false"
+						onclick={() => (menuOpen = true)}
+						class="absolute top-4 end-4 z-20 flex size-11 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground shadow-lg backdrop-blur-sm hover:bg-card"
+					>
+						<MenuIcon class="size-[18px]" />
+					</button>
+				{/if}
 			{/if}
 		</div>
-
-		{#if narrow}
-			<!-- No drawer on a phone: the row keeps the screen, and the set is
-			     changed from the one control over it. It sits at the top because
-			     the bottom corner is where the page strip and the credit are, and
-			     above the next-page strip, which reaches the same corner. -->
-			<Popover.Root bind:open={pickerOpen}>
-				<Popover.Trigger
-					aria-label={m.compare_add()}
-					class="absolute end-3 top-3 z-20 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg"
-				>
-					<PlusIcon class="size-5" />
-				</Popover.Trigger>
-				<Popover.Content
-					side="bottom"
-					align="end"
-					sideOffset={8}
-					collisionPadding={12}
-					class="w-[330px] p-0"
-				>
-					<ComparePicker chosen={selected} onadd={addHit} onpreset={togglePreset} />
-				</Popover.Content>
-			</Popover.Root>
-		{/if}
 
 		{#if opened && !(focusable && DetailDrawer)}
 			<!-- The panel's own frame while its chunk and payload arrive, so the

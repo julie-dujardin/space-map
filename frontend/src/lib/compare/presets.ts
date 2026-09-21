@@ -7,9 +7,14 @@ import * as m from '$lib/paraglide/messages.js';
 import { ObjectType, type BodyData } from '$lib/types/objects';
 import { ROCKETS } from './rockets';
 
+export type PresetGroup = 'worlds' | 'craft' | 'probes';
+
 export interface ComparePreset {
 	slug: string;
 	label: () => string;
+	/** The heading it is listed under: bodies, craft near Earth, or craft sent
+	 *  away from it. */
+	group: PresetGroup;
 	/** Object ids, in no particular order: the row sorts by size. */
 	ids: string[];
 	/** The kinds of object this set is the natural comparison for: one of them,
@@ -45,6 +50,7 @@ const GIANT_RADIUS_KM = 20000;
 export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		slug: 'terrestrial-planets',
+		group: 'worlds',
 		label: m.compare_preset_terrestrial,
 		ids: ['naif-199', 'naif-299', 'naif-399', 'naif-499'],
 		kinds: [ObjectType.PLANET],
@@ -52,6 +58,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'giant-planets',
+		group: 'worlds',
 		label: m.compare_preset_giants,
 		ids: ['naif-599', 'naif-699', 'naif-799', 'naif-899'],
 		kinds: [ObjectType.PLANET],
@@ -61,6 +68,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 		// Every moon a scale drew round, down to Mimas: the rest of the
 		// hundreds are captured rubble, and belong beside asteroids instead.
 		slug: 'large-moons',
+		group: 'worlds',
 		label: m.compare_preset_large_moons,
 		ids: [
 			'naif-301',
@@ -87,6 +95,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'visited-small-bodies',
+		group: 'worlds',
 		label: m.compare_preset_small_bodies,
 		ids: [
 			'naif-2000001',
@@ -113,6 +122,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'space-stations',
+		group: 'craft',
 		label: m.compare_preset_stations,
 		ids: [
 			'norad_satcat-25544',
@@ -127,6 +137,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		// One craft per design, the flight it is best known for.
 		slug: 'space-capsules',
+		group: 'craft',
 		label: m.compare_preset_capsules,
 		ids: [
 			'norad_satcat-240',
@@ -141,11 +152,13 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		// Standalone bundles rather than catalogue Objects: no kind claims them.
 		slug: 'rockets',
+		group: 'craft',
 		label: m.compare_preset_rockets,
 		ids: ROCKETS.map((r) => r.slug)
 	},
 	{
 		slug: 'observatories',
+		group: 'craft',
 		label: m.compare_preset_observatories,
 		ids: [
 			'probe-115347456',
@@ -169,6 +182,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'earth-satellites',
+		group: 'craft',
 		label: m.compare_preset_earth_sats,
 		ids: [
 			'norad_satcat-25994',
@@ -196,6 +210,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'sun-watchers',
+		group: 'craft',
 		label: m.compare_preset_sun,
 		ids: [
 			'probe-76357632',
@@ -210,6 +225,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'inner-probes',
+		group: 'probes',
 		label: m.compare_preset_inner_probes,
 		ids: [
 			'probe-66510848',
@@ -227,6 +243,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'mars-orbiters',
+		group: 'probes',
 		label: m.compare_preset_mars_orbiters,
 		ids: [
 			'probe-93536256',
@@ -242,6 +259,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'landers',
+		group: 'probes',
 		label: m.compare_preset_landers,
 		ids: [
 			'probe-100265984',
@@ -270,6 +288,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'small-body-probes',
+		group: 'probes',
 		label: m.compare_preset_small_body_craft,
 		ids: [
 			'probe-88698880',
@@ -286,6 +305,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	},
 	{
 		slug: 'outer-probes',
+		group: 'probes',
 		label: m.compare_preset_probes,
 		ids: [
 			'probe-49065984',
@@ -304,6 +324,15 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 		idPrefixes: ['probe-']
 	}
 ];
+
+/** The presets under their headings, in order. */
+export const COMPARE_PRESET_GROUPS = (
+	[
+		{ id: 'worlds', label: m.compare_preset_group_worlds },
+		{ id: 'craft', label: m.compare_preset_group_craft },
+		{ id: 'probes', label: m.compare_preset_group_probes }
+	] satisfies { id: PresetGroup; label: () => string }[]
+).map((group) => ({ ...group, presets: COMPARE_PRESETS.filter((p) => p.group === group.id) }));
 
 /** What the page opens on: a set that fills more than one band, so the way
  *  pages work is visible without the reader having to assemble one. */
