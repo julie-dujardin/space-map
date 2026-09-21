@@ -6,6 +6,26 @@
  * body it puts on a page always has room for its name.
  */
 
+/** Craft have no pole to tilt on, so their pose is pure staging: a
+ *  three-quarter view that reads a bus and its booms as one shape. */
+export const CRAFT_VIEW_PITCH = 0.24;
+export const CRAFT_VIEW_YAW = -0.7;
+
+/**
+ * How tall a craft mesh stands on screen, as a fraction of its longest axis:
+ * its three extents (each already a fraction of that axis) turned by the pose
+ * above and measured up the screen. A caller giving a mesh a canvas of its own
+ * needs this — a tower comes out full height, a bus a third of one, and a
+ * canvas cut to the wrong one either clips the mesh or is mostly air.
+ */
+export function craftHeightRatio(spanRatios: readonly number[]): number {
+	// Row 1 of Rx(pitch)·Ry(yaw): what each model axis contributes upwards.
+	const [sp, cp] = [Math.sin(CRAFT_VIEW_PITCH), Math.cos(CRAFT_VIEW_PITCH)];
+	const [sy, cy] = [Math.sin(CRAFT_VIEW_YAW), Math.cos(CRAFT_VIEW_YAW)];
+	const up = [Math.abs(sp * sy), Math.abs(cp), Math.abs(sp * cy)];
+	return up.reduce((a, w, i) => a + w * (spanRatios[i] ?? 0), 0);
+}
+
 /** Equal margin above and below the largest body. */
 export const VPAD = 10;
 /** A page takes in more bodies by shrinking its largest, down to this share of

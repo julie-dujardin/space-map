@@ -79,7 +79,7 @@
 	let bundles = $state<Bundle[]>([]);
 	let error = $state<string | null>(null);
 	let query = $state('');
-	let kindFilter = $state<'all' | 'craft' | 'shape'>('craft');
+	let kindFilter = $state<'all' | 'craft' | 'shape' | 'comparable'>('craft');
 	let onlyUnattached = $state(false);
 	let onlySuspect = $state(false);
 	let selected = $state<Bundle | null>(null);
@@ -87,11 +87,16 @@
 	/** Per-bundle sidecars, keyed by slug — where the credits live. */
 	let metas = $state<Record<string, BundleMeta>>({});
 
+	/** index.json names only the exceptions, so anything unlabelled is a craft. */
+	function category(b: Bundle): 'craft' | 'shape' | 'comparable' {
+		if (b.kind === 'shape_model') return 'shape';
+		if (b.kind === 'comparable') return 'comparable';
+		return 'craft';
+	}
+
 	const shown = $derived(
 		bundles.filter((b) => {
-			const isShape = b.kind === 'shape_model';
-			if (kindFilter === 'craft' && isShape) return false;
-			if (kindFilter === 'shape' && !isShape) return false;
+			if (kindFilter !== 'all' && category(b) !== kindFilter) return false;
 			if (onlyUnattached && b.objects.length > 0) return false;
 			if (onlySuspect && !b.suspect) return false;
 			const q = query.trim().toLowerCase();
@@ -399,6 +404,7 @@
 			<select bind:value={kindFilter}>
 				<option value="craft">Spacecraft</option>
 				<option value="shape">Shape models</option>
+				<option value="comparable">Comparables</option>
 				<option value="all">All</option>
 			</select>
 			<label><input type="checkbox" bind:checked={onlyUnattached} /> attached to nothing</label>
@@ -444,7 +450,10 @@
 						<p class="warn">no credit in metadata.json</p>
 					{/if}
 					{#if b.objects.length === 0}
-						<p class="none">attached to nothing</p>
+						<!-- A comparable stands beside the catalog rather than in it. -->
+						<p class="none">
+							{category(b) === 'comparable' ? 'standalone' : 'attached to nothing'}
+						</p>
 					{:else}
 						{#if b.suspect}
 							<p class="warn">no object name matches the slug</p>
@@ -491,7 +500,9 @@
 			{#if viewerError}
 				<span class="error">{viewerError}</span>
 			{:else if selected.objects.length === 0}
-				<span class="none">attached to nothing</span>
+				<span class="none"
+					>{category(selected) === 'comparable' ? 'standalone' : 'attached to nothing'}</span
+				>
 			{:else}
 				{#each selected.objects as o (o.id)}
 					<a href={bodyHref(o.id, o.name ?? '')}>{o.name ?? o.id}</a>

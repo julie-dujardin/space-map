@@ -30,7 +30,12 @@
 	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 	import { bandsBySize, screensOf } from '$lib/compare/pages';
-	import { bandScreen, labelWidth, screenCount } from '../../components/detail/charts/lineup-fit';
+	import {
+		bandScreen,
+		labelWidth,
+		screenCount,
+		SIDE_PAD
+	} from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
 	import { COMPARE_PRESETS, presetOn, type ComparePreset } from '$lib/compare/presets';
 	import type { ObjectHit } from '$lib/search/client';
@@ -44,6 +49,7 @@
 	import { dateToJD } from '$lib/time/jd';
 	import { DEFAULT_VIEW, urlTypeFromId } from '$lib/state/view';
 	import type { SizeScreen } from '$lib/compare/pages';
+	import { loadComparables, pickComparable, type SizedComparable } from '$lib/compare/comparables';
 
 	let { data } = $props();
 
@@ -69,6 +75,30 @@
 	let laid = $state<
 		{ id: string; cx: number; cy: number; pr: number; radiusKm: number; aside?: 'start' | 'end' }[]
 	>([]);
+
+	/** Everyday objects the row can be measured against, and whether the reader
+	 *  wants them. Empty until the model index lands. */
+	let comparables = $state<SizedComparable[]>([]);
+	let comparablesOn = $state(true);
+	const COMPARABLES_KEY = 'compare:comparables';
+
+	$effect(() => {
+		loadComparables().then((all) => (comparables = all));
+		try {
+			comparablesOn = localStorage.getItem(COMPARABLES_KEY) !== 'off';
+		} catch {
+			// Storage withheld: the default stands for this visit.
+		}
+	});
+
+	function toggleComparables(): void {
+		comparablesOn = !comparablesOn;
+		try {
+			localStorage.setItem(COMPARABLES_KEY, comparablesOn ? 'on' : 'off');
+		} catch {
+			// Storage withheld: the choice lasts the session.
+		}
+	}
 
 	const selected = $derived(data.selected);
 	/** The object the page is opened on, or null while the whole row is drawn. */
@@ -196,6 +226,33 @@
 		const first = laid.find((l) => !l.aside);
 		return first ? first.pr / first.radiusKm : 0;
 	});
+
+	/** What this page is measured against: whatever comes out closest to the
+	 *  target share of the stage, so turning the page can change it, and a page
+	 *  that has left everyday sizes behind gets none. */
+	const comparable = $derived(
+		comparablesOn ? pickComparable(comparables, stageHeight, pxPerKm) : null
+	);
+	/** Drawn as a craft is: the mesh is the object, and it stands on the row's
+	 *  own scale — which is the whole of what it claims. */
+	const comparableBody = $derived<LineupBody | null>(
+		comparable
+			? {
+					id: comparable.slug,
+					name: comparable.label(),
+					radiusKm: comparable.radiusKm,
+					model: comparable.slug,
+					craft: true
+				}
+			: null
+	);
+	/** How wide it comes out on this page's scale, and how tall the drawing is
+	 *  at that width — a bus is mostly empty air in a square box. */
+	const comparablePx = $derived(comparable ? comparable.radiusKm * 2 * pxPerKm : 0);
+	const comparableBox = $derived(Math.round(comparablePx));
+	const comparableTall = $derived(Math.round(comparablePx * (comparable?.flatness ?? 1)));
+	/** Below this it is a smudge, and says less than nothing there would. */
+	const comparableFits = $derived(comparablePx >= 6);
 
 	/** Where the row put the pages on either side of this one: what it drew of
 	 *  them is also the way to them. */
@@ -587,6 +644,16 @@
 									</button>
 								{/each}
 							</div>
+							<button
+								type="button"
+								aria-pressed={comparablesOn}
+								onclick={toggleComparables}
+								class="h-7 self-start rounded-lg border px-2.5 text-xs transition-colors {comparablesOn
+									? 'border-primary bg-primary/10 font-medium text-foreground'
+									: 'border-border hover:bg-accent'}"
+							>
+								{m.compare_comparables()}
+							</button>
 						</div>
 
 						<Popover.Root bind:open={pickerOpen}>
@@ -600,6 +667,15 @@
 								<ComparePicker chosen={selected} onadd={addHit} />
 							</Popover.Content>
 						</Popover.Root>
+
+						{#if objects.length}
+							<button
+								type="button"
+								onclick={() => setIds([])}
+								class="-mt-2 self-start text-xs text-muted-foreground hover:text-foreground"
+								>{m.compare_clear()}</button
+							>
+						{/if}
 
 						<ul class="flex flex-col border-t border-border">
 							{#each listed as object (object.id)}
@@ -625,17 +701,6 @@
 								</li>
 							{/each}
 						</ul>
-
-						{#if objects.length}
-							<div class="flex gap-4">
-								<button
-									type="button"
-									onclick={() => setIds([])}
-									class="text-xs text-muted-foreground hover:text-foreground"
-									>{m.compare_clear()}</button
-								>
-							</div>
-						{/if}
 					</div>
 				</ScrollArea>
 			</aside>
@@ -772,6 +837,39 @@
 					</div>
 				{/if}
 
+				{#if comparableBody && comparableFits}
+					<!-- Not a member of the comparison but a reference beside it, on the
+					     row's own scale. Right-hand side, where the row leaves the most
+					     room, clear of the page link below it. The box is cut to the
+					     drawing: most of these are long and low, a few are towers, and
+					     either way the rest would be air. -->
+					<div
+						class="pointer-events-none absolute end-5"
+						style="bottom: {LABEL_ROW + 54}px; width: {Math.max(
+							96,
+							comparableBox + 2 * SIDE_PAD
+						)}px"
+					>
+						<BodyLineup
+							bodies={[comparableBody]}
+							ariaLabel={comparableBody.name}
+							height={comparableTall}
+							{pxPerKm}
+							ground="transparent"
+							spread={false}
+						/>
+						<span class="text-center text-[11px] leading-tight text-muted-foreground">
+							{comparableBody.name} ·
+							<span class="tabular-nums"
+								>{formatQuantity(
+									{ value: comparableBody.radiusKm * 2000, unit: 'metre' },
+									true
+								)}</span
+							>
+						</span>
+					</div>
+				{/if}
+
 				{#if pages.length > 1 && narrow && !opened}
 					<!-- The phone has no next-page link, only the strip, so it counts pages. -->
 					<div
@@ -804,7 +902,7 @@
 
 			<!-- Same corner as the map's, crediting what this page draws. -->
 			<div class="absolute end-0 z-10" style="bottom: var(--safe-bottom)">
-				<CompareCreditBar {bodies} />
+				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 
 			{#if !railOpen && !narrow && !opened}

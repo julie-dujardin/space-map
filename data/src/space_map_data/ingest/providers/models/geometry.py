@@ -45,10 +45,12 @@ _IDENTITY = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 def measure_bundle(glb_path: Path) -> dict | None:
     """Body-vs-deployed geometry of an exported .glb, in normalised units.
 
-    Returns ``{body_span_ratio, model_anchor}``: the body's longest dimension as
-    a fraction of the mesh's, and the body centre's offset from the bounding-box
-    centre in the frontend's post-fit units (the mesh spans 2 of them). None when
-    the file can't be read or holds no triangles.
+    Returns ``{body_span_ratio, model_anchor, span_ratios}``: the body's longest
+    dimension as a fraction of the mesh's, the body centre's offset from the
+    bounding-box centre in the frontend's post-fit units (the mesh spans 2 of
+    them), and the mesh's three extents as fractions of its longest — a caller
+    drawing it in a box of its own needs the short axes to size the box. None
+    when the file can't be read or holds no triangles.
     """
     tris = _triangles(glb_path)
     if not tris:
@@ -63,6 +65,7 @@ def measure_bundle(glb_path: Path) -> dict | None:
     unit = longest / 2
     return {
         "body_span_ratio": round(max(b - a for a, b in body) / longest, 4),
+        "span_ratios": [round(outer[k] / longest, 4) for k in range(3)],
         "model_anchor": [
             round(((b + a) / 2 - (hi[k] + lo[k]) / 2) / unit, 4)
             for k, (a, b) in enumerate(body)

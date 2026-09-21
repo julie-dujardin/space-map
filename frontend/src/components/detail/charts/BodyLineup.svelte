@@ -110,6 +110,8 @@
 		ASIDE_END_PAD,
 		BOX_GAP,
 		LABEL_MAX_WIDTH,
+		CRAFT_VIEW_PITCH,
+		CRAFT_VIEW_YAW,
 		SIDE_PAD,
 		VPAD,
 		endStrip,
@@ -205,10 +207,6 @@
 	const ECLIPTIC_RAD = 23.4392911 * DEG2RAD;
 	const VIEW_PITCH = 0.32;
 	const FACE_YAW = 0;
-	// Craft have no pole to tilt on, so their pose is pure staging: a
-	// three-quarter view that reads a bus and its booms as one shape.
-	const CRAFT_VIEW_PITCH = 0.24;
-	const CRAFT_VIEW_YAW = -0.7;
 	// The row's key light, shared by the DirectionalLight and the relief shader
 	// (which needs the same direction to shade and shadow the height field).
 	const KEY_LIGHT_DIR = { value: new Vector3(-0.4, 0.45, 1).normalize() };

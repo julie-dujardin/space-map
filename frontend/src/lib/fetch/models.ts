@@ -30,6 +30,9 @@ export interface ModelIndexEntry {
 	scale_meters?: number | null;
 	/** The craft body within that span, booms and arrays excluded. */
 	body_span_ratio?: number | null;
+	/** The mesh's x/y/z extents as fractions of its longest, in the model's own
+	 *  frame — what a box drawn around it has to be shaped like. */
+	span_ratios?: number[] | null;
 	objects: ModelIndexObject[];
 }
 

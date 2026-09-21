@@ -541,6 +541,7 @@ class ModelProcessor:
                 "tiers": meta.get("tiers") or [],
                 "scale_meters": meta.get("scale_meters"),
                 "body_span_ratio": meta.get("body_span_ratio"),
+                "span_ratios": meta.get("span_ratios"),
                 "objects": sorted(attached[slug_dir.name], key=lambda o: o["id"]),
             }
 
@@ -914,6 +915,7 @@ class ModelProcessor:
         # dimension as a fraction of the mesh's, ``model_anchor`` its centre's
         # offset from the bounding-box centre in post-fit units. The mesh is
         # drawn on the full span; the halo, label and lineup slot use the body.
+        # ``span_ratios`` is the whole mesh's three extents against its longest.
         payload.update(body or {})
         # Model axis → spacecraft-body axis; corrects models authored in a
         # different convention (usually Y-up) than the CK/pointing body frame.
