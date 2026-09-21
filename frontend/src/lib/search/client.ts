@@ -230,6 +230,49 @@ export async function searchEndpoints(
 	return (res.hits ?? []).map((h) => toHit(h as RawHit)) as EndpointHit[];
 }
 
+/**
+ * Object types the Δv map can price a trip to.
+ *
+ * A well to climb out of and an orbit the kernel can read are what a stop on
+ * the map needs, so this is the natural bodies. A spacecraft or a piece of
+ * debris is carried by a trip rather than being one end of it, and a
+ * barycentre is a place rather than a body.
+ */
+const NAVIGABLE_TYPES = [
+	'star',
+	'planet',
+	'dwarf_planet',
+	'moon',
+	'comet',
+	'asteroid',
+	'asteroid_inner',
+	'asteroid_main_belt',
+	'asteroid_trojan',
+	'asteroid_centaur',
+	'asteroid_tno'
+] as const;
+
+/**
+ * Bodies the Δv map can draw, for its origin and destination pickers.
+ *
+ * Narrower than `searchEndpoints`: the map is drawn between bodies, so a
+ * crater or a launch pad — a real end of a *trip* — is not a stop it can hold.
+ */
+export async function searchBodies(
+	query: string,
+	locale: string,
+	limit: number = 8
+): Promise<ObjectHit[]> {
+	const c = await getClient();
+	if (!c || !query.trim()) return [];
+	const res = await c.index(INDEX).search(query, {
+		limit,
+		locales: [locale],
+		filter: `kind = "object" AND object.type IN [${NAVIGABLE_TYPES.map(quote).join(', ')}]`
+	});
+	return (res.hits ?? []).map((h) => toObjectHit(h as RawHit));
+}
+
 /** A group/moon member — usually an object, but an earth-sat zone also lists
  *  the constellations that call it home, and a feature-type page lists surface
  *  features, so a member can be any catalog kind. */

@@ -1363,6 +1363,8 @@
 	"delta_v_hint_low_orbit": "高度 200 km 的圆轨道，小天体则更低。",
 	"delta_v_reset_targets": "恢复默认目的地",
 	"delta_v_solar_escape": "逃离太阳系",
+	"delta_v_add_target": "添加目的地",
+	"delta_v_no_route": "没有前往 {bodies} 的路线。",
 	"nav_label": "站点",
 	"nav_menu": "菜单",
 	"nav_about": "关于",

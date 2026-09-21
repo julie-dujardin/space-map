@@ -1389,6 +1389,8 @@
 	"delta_v_hint_low_orbit": "מסלול מעגלי בגובה 200 ק\"מ, נמוך יותר בגופים קטנים.",
 	"delta_v_reset_targets": "חזרה ליעדי ברירת המחדל",
 	"delta_v_solar_escape": "מילוט ממערכת השמש",
+	"delta_v_add_target": "הוספת יעד",
+	"delta_v_no_route": "אין מסלול אל {bodies}.",
 	"nav_label": "אתר",
 	"nav_menu": "תפריט",
 	"nav_about": "אודות",

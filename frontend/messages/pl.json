@@ -1408,6 +1408,8 @@
 	"delta_v_hint_low_orbit": "Orbita kołowa 200 km nad powierzchnią, niższa przy małych ciałach.",
 	"delta_v_reset_targets": "Wróć do domyślnych celów",
 	"delta_v_solar_escape": "Ucieczka z Układu Słonecznego",
+	"delta_v_add_target": "Dodaj cel",
+	"delta_v_no_route": "Brak trasy do {bodies}.",
 	"nav_label": "Witryna",
 	"nav_menu": "Menu",
 	"nav_about": "O stronie",

@@ -1448,6 +1448,8 @@
 	"delta_v_hint_low_orbit": "مدار دائري على ارتفاع 200 كم، وأقل عند الأجرام الصغيرة.",
 	"delta_v_reset_targets": "العودة إلى الوجهات الافتراضية",
 	"delta_v_solar_escape": "الإفلات من النظام الشمسي",
+	"delta_v_add_target": "إضافة وجهة",
+	"delta_v_no_route": "لا يوجد مسار إلى {bodies}.",
 	"nav_label": "الموقع",
 	"nav_menu": "القائمة",
 	"nav_about": "حول الموقع",

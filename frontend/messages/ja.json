@@ -1465,6 +1465,8 @@
 	"delta_v_hint_low_orbit": "高度 200 km の円軌道。小天体ではより低い。",
 	"delta_v_reset_targets": "デフォルトの目的地に戻す",
 	"delta_v_solar_escape": "太陽系脱出",
+	"delta_v_add_target": "目的地を追加",
+	"delta_v_no_route": "{bodies} への経路はありません。",
 	"nav_label": "サイト",
 	"nav_menu": "メニュー",
 	"nav_about": "サイトについて",

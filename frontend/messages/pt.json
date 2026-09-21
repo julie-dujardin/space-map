@@ -1386,6 +1386,8 @@
 	"delta_v_hint_low_orbit": "Uma órbita circular a 200 km acima da superfície, mais baixa em corpos pequenos.",
 	"delta_v_reset_targets": "Voltar aos destinos predefinidos",
 	"delta_v_solar_escape": "Escape do Sistema Solar",
+	"delta_v_add_target": "Adicionar um destino",
+	"delta_v_no_route": "Sem rota para {bodies}.",
 	"nav_label": "Site",
 	"nav_menu": "Menu",
 	"nav_about": "Sobre",

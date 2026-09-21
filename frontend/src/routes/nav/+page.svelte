@@ -6,14 +6,19 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import * as m from '$lib/paraglide/messages.js';
 	import SitePage from '../../components/nav/SitePage.svelte';
 	import { SITE_GUTTER } from '../../components/nav/site';
 	import SubwayDiagram from '../../components/nav/SubwayDiagram.svelte';
+	import BodySearch from '../../components/nav/BodySearch.svelte';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { isSearchEnabled } from '$lib/search/client';
 	import { formatNavEnd } from '$lib/state/nav-end';
 	import { formatDv, formatDvFigure } from '$lib/travel/format';
 	import { drawRows, drawStrip, type DrawText } from '$lib/travel/subway-draw';
@@ -89,18 +94,51 @@
 	);
 	const visible = $derived(new Set(data.visible));
 
-	/** The page for an origin and a set of switched-off bodies; what a link
-	 *  asked for on top rides along. */
-	function pageHref(from: string, hidden: readonly string[]): string {
+	/** The page for an origin, a set of switched-off bodies, and the
+	 *  destinations asked for beyond the default set. */
+	function pageHref(
+		from: string,
+		hidden: readonly string[],
+		extra: readonly string[] = data.extra
+	): string {
 		const query = new URLSearchParams({ from });
 		if (hidden.length) query.set('hide', hidden.join(','));
-		if (data.extra.length) query.set('to', data.extra.join(','));
+		if (extra.length) query.set('to', extra.join(','));
 		return `${resolve('/nav')}?${query}`;
 	}
 
 	function pickOrigin(event: Event): void {
 		goto(pageHref((event.currentTarget as HTMLSelectElement).value, data.hidden));
 	}
+
+	/** The page with one more destination on it, switched on: a body found by
+	 *  search is wanted drawn, whatever the reader last hid. */
+	function addTargetHref(id: string): string {
+		const extra = data.extra.includes(id) ? data.extra : [...data.extra, id];
+		return pageHref(
+			map.originId,
+			data.hidden.filter((hidden) => hidden !== id),
+			extra
+		);
+	}
+
+	const searchEnabled = isSearchEnabled();
+	let originOpen = $state(false);
+
+	/** Bodies the origin search should not offer: the origin it would replace. */
+	const originExclude = $derived(new Set([map.originId]));
+	/** Bodies the target search should not offer: what is already drawn, and the
+	 *  origin, which is never a destination. */
+	const targetExclude = $derived(new Set([map.originId, ...data.visible]));
+
+	/** Destinations on the map that the kernel could not route to. They are
+	 *  simply absent from the drawing, so say so rather than leave a pick with
+	 *  no visible effect. */
+	const unrouted = $derived.by(() => {
+		if (data.failed) return [];
+		const routed = new Set(map.routes.map((route) => route.targetId));
+		return data.visible.filter((id) => !routed.has(id));
+	});
 
 	/** Switch bodies on or off: the map is rewritten with the new set. */
 	function setVisible(ids: readonly string[], on: boolean): void {
@@ -143,18 +181,70 @@
 	<!-- The origin picker outlives a failure: an origin the catalogue cannot
 	     place routes nowhere, and changing it is the only way back. -->
 	<div class="{SITE_GUTTER} mb-6 flex flex-wrap items-center gap-3">
-		<label class="flex items-center gap-2 text-sm text-muted-foreground">
-			{m.travel_from()}
-			<select
-				class="h-9 min-w-36 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
-				value={map.originId}
-				onchange={pickOrigin}
-			>
-				{#each bodies as body (body.id)}
-					<option value={body.id}>{body.name}</option>
-				{/each}
-			</select>
-		</label>
+		{#if searchEnabled}
+			<!-- Search over the whole catalogue, with the bodies already drawn listed
+			     under it: the usual origin still needs no typing. -->
+			<div class="flex items-center gap-2 text-sm text-muted-foreground">
+				<span id="nav-origin-label">{m.travel_from()}</span>
+				<Popover.Root bind:open={originOpen}>
+					<Popover.Trigger
+						aria-labelledby="nav-origin-label"
+						class="flex h-9 min-w-36 items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+					>
+						{name(map.originId)}
+						<ChevronDownIcon class="size-4 text-muted-foreground" />
+					</Popover.Trigger>
+					<Popover.Content
+						align="start"
+						sideOffset={6}
+						class="w-[20rem] max-w-[calc(100vw-2rem)] gap-0 p-2"
+					>
+						<BodySearch
+							label={m.travel_from()}
+							excludeIds={originExclude}
+							names={data.names}
+							hrefFor={(id) => pageHref(id, data.hidden)}
+							onNavigate={() => (originOpen = false)}
+						>
+							{#snippet browse()}
+								<ScrollArea viewportClasses="max-h-56">
+									<ul class="flex flex-col">
+										{#each bodies as body (body.id)}
+											<li>
+												<a
+													href={pageHref(body.id, data.hidden)}
+													onclick={() => (originOpen = false)}
+													aria-current={body.id === map.originId ? 'true' : undefined}
+													class="block truncate rounded-md px-2 py-1.5 text-xs hover:bg-muted {body.id ===
+													map.originId
+														? 'bg-muted font-medium'
+														: ''}"
+												>
+													{body.name}
+												</a>
+											</li>
+										{/each}
+									</ul>
+								</ScrollArea>
+							{/snippet}
+						</BodySearch>
+					</Popover.Content>
+				</Popover.Root>
+			</div>
+		{:else}
+			<label class="flex items-center gap-2 text-sm text-muted-foreground">
+				{m.travel_from()}
+				<select
+					class="h-9 min-w-36 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+					value={map.originId}
+					onchange={pickOrigin}
+				>
+					{#each bodies as body (body.id)}
+						<option value={body.id}>{body.name}</option>
+					{/each}
+				</select>
+			</label>
+		{/if}
 		{#if !data.failed}
 			<Sheet.Root bind:open={drawerOpen}>
 				<Sheet.Trigger>
@@ -169,6 +259,19 @@
 					<Sheet.Header>
 						<Sheet.Title>{m.tab_targets()}</Sheet.Title>
 					</Sheet.Header>
+					<!-- The list below is planets and large moons; any other destination
+					     is found rather than browsed for. -->
+					{#if searchEnabled}
+						<div class="mb-3 border-b border-border/60 px-4 pb-3">
+							<BodySearch
+								label={m.delta_v_add_target()}
+								excludeIds={targetExclude}
+								names={data.names}
+								hrefFor={addTargetHref}
+								onNavigate={() => (drawerOpen = false)}
+							/>
+						</div>
+					{/if}
 					<ul class="flex flex-col px-4">
 						{#each data.systems as system (system.id)}
 							{@const state = systemState(system.members)}
@@ -240,6 +343,14 @@
 			</Sheet.Root>
 		{/if}
 	</div>
+
+	{#if unrouted.length}
+		<!-- A destination with no route is simply absent from the drawing, so a
+		     pick that landed on one would otherwise look like nothing happened. -->
+		<p class="{SITE_GUTTER} mb-4 text-sm text-muted-foreground">
+			{m.delta_v_no_route({ bodies: unrouted.map(name).join(', ') })}
+		</p>
+	{/if}
 
 	{#if data.failed}
 		<p class="{SITE_GUTTER} text-sm text-muted-foreground">{m.delta_v_error()}</p>

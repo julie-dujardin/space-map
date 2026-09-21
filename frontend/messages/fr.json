@@ -1458,6 +1458,8 @@
 	"delta_v_hint_low_orbit": "Une orbite circulaire à 200 km d'altitude, plus basse pour les petits corps.",
 	"delta_v_reset_targets": "Revenir aux destinations par défaut",
 	"delta_v_solar_escape": "Sortie du Système solaire",
+	"delta_v_add_target": "Ajouter une destination",
+	"delta_v_no_route": "Aucun itinéraire vers {bodies}.",
 	"nav_label": "Site",
 	"nav_menu": "Menu",
 	"nav_about": "À propos",

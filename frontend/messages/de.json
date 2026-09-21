@@ -1386,6 +1386,8 @@
 	"delta_v_hint_low_orbit": "Eine Kreisbahn 200 km über der Oberfläche, bei kleinen Körpern niedriger.",
 	"delta_v_reset_targets": "Zurück zu den Standardzielen",
 	"delta_v_solar_escape": "Flucht aus dem Sonnensystem",
+	"delta_v_add_target": "Ziel hinzufügen",
+	"delta_v_no_route": "Keine Route nach {bodies}.",
 	"nav_label": "Website",
 	"nav_menu": "Menü",
 	"nav_about": "Über",

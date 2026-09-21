@@ -1554,6 +1554,8 @@
 	"delta_v_hint_low_orbit": "A circular orbit 200 km above the surface, lower at small bodies.",
 	"delta_v_reset_targets": "Back to the default targets",
 	"delta_v_solar_escape": "Solar System escape",
+	"delta_v_add_target": "Add a destination",
+	"delta_v_no_route": "No route to {bodies}.",
 	"nav_label": "Site",
 	"nav_menu": "Menu",
 	"nav_about": "About",
