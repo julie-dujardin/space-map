@@ -786,7 +786,9 @@
 				{/if}
 
 				{#if ghost}
-					<!-- The strip of the page before is the way back to it. -->
+					<!-- The strip of the page before is the way back to it. Its arrow sits
+					     where the other strip's does, below the middle, where that one
+					     has a speck to keep clear of. -->
 					{#if ghostAt}
 						<button
 							type="button"
@@ -799,7 +801,7 @@
 							style="width: {Math.max(0, ghostAt.cx + ghostAt.pr)}px"
 						>
 							<ChevronLeftIcon
-								class="size-5 transition-colors {hot === 'prev'
+								class="size-5 translate-y-8 transition-colors {hot === 'prev'
 									? 'text-foreground'
 									: 'text-muted-foreground'}"
 							/>
@@ -812,14 +814,14 @@
 						onpointerenter={() => (hot = 'prev')}
 						onpointerleave={() => (hot = null)}
 						aria-label={opened ? m.compare_open({ name: ghost.name }) : m.search_prev_page()}
-						class="absolute start-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						class="absolute start-5 z-10 flex h-8 max-w-[45%] items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
 						'prev'
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
 						style="bottom: {LABEL_ROW + 14}px"
 					>
-						<ChevronLeftIcon class="size-3.5" />
-						<span>{neighbourLabel(ghost, pageIndex, narrow)}</span>
+						<ChevronLeftIcon class="size-3.5 shrink-0" />
+						<span class="truncate">{neighbourLabel(ghost, pageIndex, narrow)}</span>
 					</button>
 				{/if}
 
@@ -842,23 +844,21 @@
 								: 'text-muted-foreground'}"
 						/>
 					</button>
-					{#if !narrow}
-						<button
-							type="button"
-							onclick={() => turn(1)}
-							onpointerenter={() => (hot = 'next')}
-							onpointerleave={() => (hot = null)}
-							aria-label={opened ? m.compare_open({ name: speck.name }) : m.search_next_page()}
-							class="absolute end-5 z-10 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
-							'next'
-								? 'bg-stage/80 text-foreground'
-								: 'bg-stage/55 text-muted-foreground'}"
-							style="bottom: {LABEL_ROW + 14}px"
-						>
-							<span>{neighbourLabel(speck, pageIndex + 2)}</span>
-							<ChevronRightIcon class="size-3.5" />
-						</button>
-					{/if}
+					<button
+						type="button"
+						onclick={() => turn(1)}
+						onpointerenter={() => (hot = 'next')}
+						onpointerleave={() => (hot = null)}
+						aria-label={opened ? m.compare_open({ name: speck.name }) : m.search_next_page()}
+						class="absolute end-5 z-10 flex h-8 max-w-[45%] items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						'next'
+							? 'bg-stage/80 text-foreground'
+							: 'bg-stage/55 text-muted-foreground'}"
+						style="bottom: {LABEL_ROW + 14}px"
+					>
+						<span class="truncate">{neighbourLabel(speck, pageIndex + 2, narrow)}</span>
+						<ChevronRightIcon class="size-3.5 shrink-0" />
+					</button>
 				{/if}
 
 				{#if scaleBar}
@@ -907,16 +907,17 @@
 				{/if}
 
 				{#if pages.length > 1 && narrow && !opened}
-					<!-- The phone has no next-page link, only the strip, so it counts pages. -->
+					<!-- The phone counts its pages on the credit line, at the start, where
+					     the credit leaves room for a score of them. -->
 					<div
 						role="group"
 						aria-label={m.compare_pages_label({ n: pageIndex + 1, total: pages.length })}
-						class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1.5"
-						style="bottom: {LABEL_ROW + 16}px"
+						class="pointer-events-none absolute start-5 flex gap-1"
+						style="bottom: calc(var(--safe-bottom) + 9px)"
 					>
 						{#each pages.map((_, i) => i) as i (i)}
 							<span
-								class="size-[7px] rounded-full {i === pageIndex
+								class="size-1.5 rounded-full {i === pageIndex
 									? 'bg-foreground/85'
 									: 'bg-foreground/30'}"
 							></span>
@@ -936,8 +937,12 @@
 				/>
 			{/if}
 
-			<!-- Same corner as the map's, crediting what this page draws. -->
-			<div class="absolute end-0 z-10" style="bottom: var(--safe-bottom)">
+			<!-- Same corner as the map's, crediting what this page draws. On a phone
+			     it shares the line with the page dots. -->
+			<div
+				class="absolute end-0 z-10"
+				style="bottom: var(--safe-bottom);{narrow ? ' --credit-chip-max: 34vw' : ''}"
+			>
 				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 

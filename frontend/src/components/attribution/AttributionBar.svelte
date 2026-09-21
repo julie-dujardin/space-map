@@ -76,7 +76,8 @@
 		>
 			{#each shown as chip (chip.label)}
 				{#if chip.names.length > 0}
-					<span class="inline-block max-w-[50vw] truncate align-bottom">
+					<!-- A host that keeps something else on the same line narrows the chip. -->
+					<span class="inline-block max-w-(--credit-chip-max,50vw) truncate align-bottom">
 						<span class={ink.dim}>{chip.label}:</span>
 						{chip.names.join(' · ')}
 					</span>
