@@ -487,9 +487,7 @@
 	<SitePage current="panoramas" title={m.panorama_index_title()}>
 		<!-- The body sits where the gallery puts it: a section heading under the
 		     title, not a breadcrumb over it. -->
-		<h2 class="mb-3 text-lg font-medium">
-			<a class="hover:underline" href={bodyHref(bodyId, bodyName)}>{bodyName}</a>
-		</h2>
+		<h2 class="mb-3 text-lg font-medium">{bodyName}</h2>
 
 		{#if detailError}
 			<p class="text-sm text-muted-foreground">{m.panorama_error()}</p>

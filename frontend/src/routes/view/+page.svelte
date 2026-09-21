@@ -8,7 +8,7 @@
 	import TraverseCards from '../../components/panorama/TraverseCards.svelte';
 	import MapCredits from '../../components/panorama/MapCredits.svelte';
 	import SitePage from '../../components/nav/SitePage.svelte';
-	import { bodyHref } from '$lib/state/url';
+	import { panoramaHref } from '$lib/state/panorama-link';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import type { LayerCredit } from '$lib/flatmap/layers';
 
@@ -56,10 +56,8 @@
 
 	{#each bodies as body (body.id)}
 		<section class="mb-10">
-			<!-- The world's own gallery draws these same cards, so the heading
-			     points at the body itself rather than at a copy of the section. -->
 			<h2 class="mb-3 text-lg font-medium">
-				<a class="hover:underline" href={bodyHref(body.id, body.name)}>{body.name}</a>
+				<a class="hover:underline" href={panoramaHref(body.id)}>{body.name}</a>
 			</h2>
 			<TraverseCards
 				bodyId={body.id}
