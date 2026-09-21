@@ -46,7 +46,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		slug: 'terrestrial-planets',
 		label: m.compare_preset_terrestrial,
-		ids: ['naif-199', 'naif-299', 'naif-399', 'naif-499', 'naif-301'],
+		ids: ['naif-199', 'naif-299', 'naif-399', 'naif-499'],
 		kinds: [ObjectType.PLANET],
 		maxRadiusKm: GIANT_RADIUS_KM
 	},

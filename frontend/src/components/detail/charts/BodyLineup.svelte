@@ -179,8 +179,8 @@
 		 *  pointer. */
 		oncontextpick?: (id: string, clientX: number, clientY: number) => void;
 		/** Left click on a body, for a caller that opens it in place rather than
-		 *  on the map. The link still points at the object's page, so a middle
-		 *  or modified click opens that. */
+		 *  on the map. The link still points at the object's page, but only a
+		 *  middle or modified click follows it. */
 		onpick?: (id: string, name: string) => void;
 		/** The row's own ground. Defaults to the drawer's faint panel; a page
 		 *  that supplies its own sky passes a colour (or `transparent`). */
@@ -488,17 +488,21 @@
 		focusObject(id, b?.name ?? id, { moveCamera: true });
 	}
 
-	function focusHovered(e: MouseEvent) {
-		if (isModifiedClick(e) || !hoveredId) return;
-		const picked = hoveredId;
+	/** A left click on a body's column, `column` being the body it belongs
+	 *  to. A caller taking the pick never gets the link followed: a tap records
+	 *  no hover, so the body is read off the click itself, and the column
+	 *  stands in where that finds nothing. */
+	function focusHovered(e: MouseEvent, column: string) {
+		if (isModifiedClick(e)) return;
 		if (onpick) {
 			e.preventDefault();
+			const picked = hoveredId ?? pickAt(e.clientX, e.clientY) ?? column;
 			onpick(picked, items.find((x) => x.id === picked)?.name ?? picked);
 			return;
 		}
-		if (!focusObject) return;
+		if (!focusObject || !hoveredId) return;
 		e.preventDefault();
-		focusBody(picked);
+		focusBody(hoveredId);
 	}
 
 	/** How big the body is, in the unit its class is read in: a craft's span in
@@ -1301,7 +1305,7 @@
 				<a
 					href={p.href ??
 						((!onpick && focusHref(appState, p.id, p.name)) || bodyHref(p.id, p.name))}
-					onclick={p.href && !onpick ? undefined : focusHovered}
+					onclick={p.href && !onpick ? undefined : (e) => focusHovered(e, p.id)}
 					onmousedown={(e) => e.button === 0 && e.preventDefault()}
 					onfocus={(e) => e.currentTarget.matches(':focus-visible') && (hoveredId = p.id)}
 					onblur={() => hoveredId === p.id && (hoveredId = null)}

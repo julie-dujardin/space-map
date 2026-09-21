@@ -40,6 +40,7 @@
 	import { COMPARE_PRESETS, presetOn, type ComparePreset } from '$lib/compare/presets';
 	import type { ObjectHit } from '$lib/search/client';
 	import { formatQuantity } from '$lib/format/quantities';
+	import { isModifiedClick } from '$lib/modified-click';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { bodyHref, groupHref } from '$lib/state/url';
 	import { compareFocusable, type CompareFocus } from '$lib/compare/detail';
@@ -230,9 +231,10 @@
 		if (!opened && page > pages.length - 1) page = Math.max(0, pages.length - 1);
 	});
 
-	/** Pixels per kilometre on this page, read off whatever the row laid out. */
+	/** Pixels per kilometre on this page, read off whatever the row laid out.
+	 *  With no row there is no scale: the last layout is not reported undone. */
 	const pxPerKm = $derived.by(() => {
-		const first = laid.find((l) => !l.aside);
+		const first = bodies.length ? laid.find((l) => !l.aside) : undefined;
 		return first ? first.pr / first.radiusKm : 0;
 	});
 
@@ -294,8 +296,12 @@
 
 	// --- the set itself, which lives in the query string ---
 
+	function compareHref(ids: readonly string[], open: string | null): string {
+		return `${resolve('/compare')}?m=${ids.join(',')}${open ? `&o=${open}` : ''}`;
+	}
+
 	function go(ids: readonly string[], open: string | null): void {
-		goto(`${resolve('/compare')}?m=${ids.join(',')}${open ? `&o=${open}` : ''}`, {
+		goto(compareHref(ids, open), {
 			replaceState: true,
 			noScroll: true,
 			keepFocus: true
@@ -710,8 +716,14 @@
 									<span class="size-2.5 shrink-0 rounded-full" style="background: {colorOf(object)}"
 									></span>
 									{#if hasPage(object)}
+										<!-- Maximizes it here; its own page is on the context menu. -->
 										<a
-											href={pageHref(object)}
+											href={compareHref(selected, object.id)}
+											onclick={(e) => {
+												if (isModifiedClick(e)) return;
+												e.preventDefault();
+												openObject(object.id);
+											}}
 											class="flex-1 truncate text-[13.5px] font-medium hover:underline"
 											>{object.name}</a
 										>
