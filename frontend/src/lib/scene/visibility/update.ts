@@ -123,19 +123,20 @@ export function updateBodyVisibility(
 	for (const bo of bodyObjects.values()) {
 		bo.cachedDist = f64dist(camTrue, bo.body.position);
 		// Note pops in once close enough that a body would be expected: 100 m for
-		// spacecraft (no model), 1 km for natural bodies (no measured size).
-		if (bo.noPhysical) {
+		// spacecraft (no model, or a wreck), 1 km for natural bodies (no measured size).
+		if (bo.isCrashed || bo.noPhysical) {
 			const isModel = bo.noPhysical === 'model';
-			const near = sceneToKm(bo.cachedDist) < (isModel ? 0.1 : 1);
-			setLabelAnnotation(
-				bo,
-				'missing',
-				near
-					? isModel
-						? host().messages.body_note_no_model()
-						: host().messages.body_note_no_radius()
-					: null
-			);
+			const near = sceneToKm(bo.cachedDist) < (bo.isCrashed || isModel ? 0.1 : 1);
+			let text: string | null = null;
+			if (near) {
+				const m = host().messages;
+				text = bo.isCrashed
+					? m.body_note_crash_site()
+					: isModel
+						? m.body_note_no_model()
+						: m.body_note_no_radius();
+			}
+			setLabelAnnotation(bo, 'missing', text);
 		}
 		const label = bo.label;
 		if (!label) continue;

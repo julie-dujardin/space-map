@@ -93,6 +93,9 @@ export type SubChunk = KeplerPureElts | KeplerDriftElts | ChebyshevSub | Uncover
 export interface LandedRecord {
 	bodyNaifId: number;
 	isStatic: boolean;
+	/** Crash site: the wreck's resting place is known, but no intact craft
+	 *  stands there, so the model stays hidden. */
+	isDestroyed: boolean;
 	/** Phase entry ET (s past J2000, TDB) within or extending into this chunk. */
 	startEt: number;
 	/** Phase exit ET. */
@@ -223,7 +226,7 @@ function parseKeplerPayload(
  * METHOD_LANDED payload layout (mirrors `pack_landed_payload` in format.py):
  *
  *   0   int32   body_naif_id
- *   4   uint8   flags             (bit 0 = is_static)
+ *   4   uint8   flags             (bit 0 = is_static, bit 1 = destroyed)
  *   5   uint8[3] reserved
  *   8   uint32  start_offset_s    (from chunk_start_et)
  *   12  uint32  end_offset_s
@@ -236,6 +239,7 @@ function parseKeplerPayload(
 const LANDED_LATLNG_SCALE = 1e-7;
 const LANDED_ALT_MM_SCALE = 1e-3;
 const LANDED_FLAG_STATIC = 0x01;
+const LANDED_FLAG_DESTROYED = 0x02;
 const LANDED_SAMPLE_SIZE = 16;
 const LANDED_HEADER_SIZE = 32;
 
@@ -270,6 +274,7 @@ function parseLandedPayload(
 	return {
 		bodyNaifId,
 		isStatic: (flagsByte & LANDED_FLAG_STATIC) !== 0,
+		isDestroyed: (flagsByte & LANDED_FLAG_DESTROYED) !== 0,
 		startEt: chunkStartEt + startOffsetS,
 		endEt: chunkStartEt + endOffsetS,
 		latRefDeg,

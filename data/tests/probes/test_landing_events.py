@@ -92,6 +92,40 @@ def test_apollo_descent_stage_stays_landed_forever(events_root: Path) -> None:
     assert p.start_et == pytest.approx(_et("1969-07-20T20:17:40Z"))
     assert p.end_et == _INDEFINITE_END
     assert p.site_name == "Tranquility Base"
+    assert p.destroyed is False
+
+
+def test_sited_crash_is_a_destroyed_phase(events_root: Path) -> None:
+    """An impact with a known site pins the wreck there, flagged so the
+    renderer stands no intact craft on it."""
+    _write(
+        events_root,
+        "apollo.json",
+        [
+            {
+                "probe_id": 37408768,
+                "name": "Apollo 12 LM Intrepid Ascent Stage",
+                "events": [
+                    {
+                        "type": "landing",
+                        "date": "1969-11-20T22:17:17Z",
+                        "description": "Deliberate impact for the seismometers.",
+                        "target": _MOON,
+                        "outcome": "destroyed_at_landing",
+                        "intentional": True,
+                        "site": {
+                            "lat_deg": -3.92,
+                            "lon_deg": -21.172,
+                            "name": "Oceanus Procellarum",
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+    phases = landing_events.load_phases(_INDEFINITE_END)
+    assert len(phases) == 1
+    assert phases[0].destroyed is True
 
 
 def test_two_landings_emit_two_phases(events_root: Path) -> None:

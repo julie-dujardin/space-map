@@ -1573,13 +1573,14 @@ export class SceneRenderer {
 			this.modelLight.position.copy(this._tmpSun).multiplyScalar(10);
 		}
 
-		// Contact shadow only for a landed probe in local daytime (nothing to cast
-		// onto in flight, unlit at night). Tilt the receiver to the local tangent —
-		// model +Y is up under the nadir orientation.
+		// Contact shadow only for a landed probe in local daytime: nothing to cast
+		// onto in flight, no craft to cast one at a crash site, unlit at night.
+		// Tilt the receiver to the local tangent — model +Y is up under the nadir
+		// orientation.
 		if (this.modelShadowPlane) {
 			this._tmpUp.set(0, 1, 0).applyQuaternion(bo.model.quaternion);
 			const daytime = this._tmpSun.dot(this._tmpUp) > 0.03;
-			this.modelShadowPlane.visible = Boolean(bo.isLanded) && daytime;
+			this.modelShadowPlane.visible = Boolean(bo.isLanded) && !bo.isCrashed && daytime;
 			if (this.modelShadowPlane.visible) {
 				this.modelShadowPlane.quaternion.setFromUnitVectors(this._planeNormal, this._tmpUp);
 			}

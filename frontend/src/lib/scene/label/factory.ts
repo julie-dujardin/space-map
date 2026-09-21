@@ -16,13 +16,24 @@ const SPACECRAFT_ICON_D =
 const LANDED_PROBE_ICON_D =
 	'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z';
 
-/** Swap a spacecraft halo's SVG path between the flying and landed glyphs.
- *  Called from the probe position branch when isLandedAt transitions. */
-export function setSpacecraftLanded(halo: HTMLElement | null, landed: boolean): void {
+/** Lucide `octagon-x` — a crash site: the landed octagon struck through. */
+const CRASHED_PROBE_ICON_D = LANDED_PROBE_ICON_D + 'M15 9l-6 6M9 9l6 6';
+
+export type SpacecraftGlyph = 'flying' | 'landed' | 'crashed';
+
+const SPACECRAFT_GLYPH_D: Record<SpacecraftGlyph, string> = {
+	flying: SPACECRAFT_ICON_D,
+	landed: LANDED_PROBE_ICON_D,
+	crashed: CRASHED_PROBE_ICON_D
+};
+
+/** Swap a spacecraft halo's SVG path to the glyph of its current state.
+ *  Called from the probe position branch when the state changes. */
+export function setSpacecraftGlyph(halo: HTMLElement | null, glyph: SpacecraftGlyph): void {
 	if (!halo) return;
 	const path = halo.querySelector('path');
 	if (!path) return;
-	path.setAttribute('d', landed ? LANDED_PROBE_ICON_D : SPACECRAFT_ICON_D);
+	path.setAttribute('d', SPACECRAFT_GLYPH_D[glyph]);
 }
 
 function addLabelNameSpan(

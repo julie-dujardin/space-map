@@ -127,7 +127,9 @@ Type-specific fields: `purpose` (`flyby`), `outcome` and `intentional`
 Two readers, both joining on `probe_id`:
 
 - `probes/landing_events.py` turns each `landing` that names a `site` into a
-  landed phase, so the craft sits on the surface it came down on.
+  landed phase, so the craft sits on the surface it came down on. A
+  `destroyed_at_landing` outcome flags the phase as a crash site: the map
+  places the wreck there but draws no craft.
 - `export/objects/probe_events.py` attaches the whole record to the probe's
   object bundle under `events`: the strip along the map, and the drawer's
   Targets tab, which groups the record under each place the craft reached.

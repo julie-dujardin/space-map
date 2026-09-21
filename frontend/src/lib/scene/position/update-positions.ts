@@ -38,7 +38,7 @@ import {
 } from '$lib/scene/out-of-range-notice';
 import { refreshTrail, type TrailView } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
-import { setSpacecraftLanded } from '$lib/scene/label/factory';
+import { setSpacecraftGlyph } from '$lib/scene/label/factory';
 import { setLabelAnnotation } from '$lib/scene/label/annotations';
 import { host } from '$lib/host';
 import type { PositionDiagnostics } from './diagnostics';
@@ -382,10 +382,14 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				if (flyingFrameId !== d.parentId) body.trailBuffer?.clear();
 				if (bo) {
 					bo.outOfRange = false;
-					if (!bo.isLanded) {
-						setSpacecraftLanded(bo.labelHalo, true);
+					const crashed = probeLanded.isDestroyed;
+					if (!bo.isLanded || bo.isCrashed !== crashed) {
+						setSpacecraftGlyph(bo.labelHalo, crashed ? 'crashed' : 'landed');
 						bo.isLanded = true;
+						bo.isCrashed = crashed;
 					}
+					// A crash site has no intact craft to stand on it.
+					if (bo.model) bo.model.visible = !crashed;
 				}
 				body.position[0] = landedRender.x;
 				body.position[1] = landedRender.y;
@@ -453,8 +457,13 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			}
 			diagnostics.clear('probe-unavailable', d.id);
 			if (bo?.isLanded) {
-				setSpacecraftLanded(bo.labelHalo, false);
+				setSpacecraftGlyph(bo.labelHalo, 'flying');
 				bo.isLanded = false;
+				if (bo.isCrashed) {
+					bo.isCrashed = false;
+					if (bo.model) bo.model.visible = true;
+					if (!bo.noPhysical) setLabelAnnotation(bo, 'missing', null);
+				}
 			}
 			// Sun–Earth L1/L2 is decided from the live geometry, so a probe gets
 			// its halo trail when it arrives and loses it when it leaves. The

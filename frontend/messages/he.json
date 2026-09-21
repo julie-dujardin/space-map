@@ -1217,6 +1217,7 @@
 	"out_of_range_major_bodies_outside": "כוכבי לכת וירחים: אין נתונים בזמן זה",
 	"body_note_no_model": "אין מודל זמין",
 	"body_note_no_radius": "אין נתוני גודל",
+	"body_note_crash_site": "אתר ההתרסקות, אין מודל של השברים",
 	"coverage_pause_title": "הגעת לסוף הנתונים הזמינים",
 	"coverage_pause_forward": "ל־{name} אין נתוני מסלול אחרי {date}",
 	"coverage_pause_backward": "ל־{name} אין נתוני מסלול לפני {date}",

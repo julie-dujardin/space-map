@@ -50,6 +50,7 @@ class ChunkContribution:
     (`static_lat_lng=None`, sampled via `fit_landed_chunk`) and
     events-driven (`static_lat_lng=(lat, lng)`, synthesised with no SPICE
     call, for events-only probes like Apollo descent stages).
+    `landed_destroyed` marks a crash site, so the renderer draws no intact craft.
     """
 
     zone_key: str
@@ -60,6 +61,7 @@ class ChunkContribution:
     landed_body_id_value: int | None = None
     landed_body_id_type: int | None = None
     static_lat_lng: tuple[float, float] | None = None
+    landed_destroyed: bool = False
 
 
 @dataclass

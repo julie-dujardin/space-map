@@ -91,6 +91,7 @@ def classify_events_phases(
                 landed_body_id_value=ph.body_id_value,
                 landed_body_id_type=ph.body_id_type,
                 static_lat_lng=(ph.lat_deg, ph.lng_deg),
+                landed_destroyed=ph.destroyed,
             )
             plan.contributions.append(contrib)
             chunk_index[zone.key][chunk_idx].append(plan)

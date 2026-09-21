@@ -10,6 +10,8 @@ from space_map_data.export.position.format import (
     FORMAT_ELEMENTS,
     HEADER_SIZE,
     ID_TYPE_ORDINAL,
+    LANDED_FLAG_DESTROYED,
+    LANDED_FLAG_STATIC,
     MAGIC,
     MISSING_FLOAT64,
     MISSING_ID_TYPE,
@@ -26,6 +28,7 @@ from space_map_data.export.position.format import (
     align8,
     pack_chebyshev_header,
     pack_elements_header,
+    pack_landed_payload,
 )
 from space_map_data.models.object import ElementsScale, ObjectType, OrbitalSource
 
@@ -207,3 +210,24 @@ class TestConstants:
         assert MISSING_INT32 == -1
         assert MISSING_UINT8 == 255
         assert MISSING_FLOAT64 != MISSING_FLOAT64  # NaN
+
+
+def test_landed_payload_flags_a_crash_site() -> None:
+    """The flag byte carries the crash-site bit next to the static bit."""
+
+    def flags(*, is_destroyed: bool) -> int:
+        return pack_landed_payload(
+            body_id_value=301,
+            body_id_type=ID_TYPE_ORDINAL[ID_TYPES.NAIF],
+            is_static=True,
+            is_destroyed=is_destroyed,
+            start_offset_s=0,
+            end_offset_s=86400,
+            lat_ref_deg=-3.92,
+            lng_ref_deg=-21.172,
+            alt_ref_m=0.0,
+            samples=[],
+        )[4]
+
+    assert flags(is_destroyed=False) == LANDED_FLAG_STATIC
+    assert flags(is_destroyed=True) == LANDED_FLAG_STATIC | LANDED_FLAG_DESTROYED

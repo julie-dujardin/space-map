@@ -1300,6 +1300,7 @@
 	"out_of_range_major_bodies_outside": "Planètes et lunes : aucune donnée à cette date",
 	"body_note_no_model": "aucun modèle disponible",
 	"body_note_no_radius": "aucune donnée de taille disponible",
+	"body_note_crash_site": "site de l'impact, aucun modèle de l'épave",
 	"coverage_pause_title": "Fin des données disponibles",
 	"coverage_pause_forward": "{name} n'a pas de données de trajectoire après le {date}",
 	"coverage_pause_backward": "{name} n'a pas de données de trajectoire avant le {date}",

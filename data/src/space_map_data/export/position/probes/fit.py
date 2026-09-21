@@ -312,6 +312,7 @@ def _fit_probe_keys(
                             body_id_value=c.landed_body_id_value,
                             body_id_type=c.landed_body_id_type,
                             is_static=True,
+                            is_destroyed=c.landed_destroyed,
                             start_offset_s=int(round(c.c_start_et - chunk_start_et)),
                             end_offset_s=int(round(c.c_end_et - chunk_start_et)),
                             lat_ref_deg=lat,

@@ -270,6 +270,9 @@ async function loadSpacecraftModel(
 		fitToUnitRadius(root, anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor);
 		enableShadows(root);
 		modelScene.add(root);
+		// A crash site shows no intact craft; the position loop re-shows it
+		// once the playhead leaves the crash record.
+		root.visible = !bo.isCrashed;
 		bo.model = root;
 		bo.modelName = slug;
 		setHaloLoading(bo, false);

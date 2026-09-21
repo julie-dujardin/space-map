@@ -406,10 +406,9 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		expect(probePositionKm(probe, startJd + 10, 3.986e5)).not.toBeNull();
 	});
 
-	it('parses a METHOD_LANDED record and exposes lat/lng via landedPositionAt', () => {
-		// Static lander (Phoenix-like) covering the full chunk window.
-		const startJd = 2454611.0;
-		const subchunkDays = 30.4375; // ~mars chunk
+	/** One landed-only probe, static at the Phoenix touchdown site on Mars
+	 *  for the whole chunk window; `flags` is the landed record's flag byte. */
+	function landedOnlyChunk(startJd: number, subchunkDays: number, flags: number): ArrayBuffer {
 		const landedPayloadLen = 32;
 		const size = HEADER_SIZE + PROBE_HEADER_SIZE + (SUBCHUNK_HEADER_SIZE + landedPayloadLen);
 		const buf = new ArrayBuffer(size);
@@ -439,20 +438,27 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		view.setUint32(off + 4, landedPayloadLen, true);
 		const po = off + SUBCHUNK_HEADER_SIZE;
 		view.setInt32(po, 499, true); // body_naif_id
-		view.setUint8(po + 4, 0x01); // is_static
+		view.setUint8(po + 4, flags);
 		view.setUint32(po + 8, 0, true); // start_offset_s
 		view.setUint32(po + 12, Math.round(subchunkDays * 86400), true); // end_offset_s
 		view.setInt32(po + 16, Math.round(68.4507 * 1e7), true); // lat_ref_e7
 		view.setInt32(po + 20, Math.round(-125.7513 * 1e7), true); // lng_ref_e7
 		view.setInt32(po + 24, -2591200, true); // alt_ref_mm = -2591.2 m
 		view.setUint32(po + 28, 0, true); // sample_count = 0 (static)
+		return buf;
+	}
 
+	it('parses a METHOD_LANDED record and exposes lat/lng via landedPositionAt', () => {
+		const startJd = 2454611.0;
+		const subchunkDays = 30.4375; // ~mars chunk
+		const buf = landedOnlyChunk(startJd, subchunkDays, 0x01);
 		const chunk = parseProbesPayload(buf, startJd, startJd + subchunkDays, false);
 		expect(chunk.probes).toHaveLength(1);
 		const probe = chunk.probes[0];
 		expect(probe.landed).toBeDefined();
 		expect(probe.landed!.bodyNaifId).toBe(499);
 		expect(probe.landed!.isStatic).toBe(true);
+		expect(probe.landed!.isDestroyed).toBe(false);
 		// jd in window → returns the reference position.
 		expect(isLandedAt(probe, startJd + 5)).toBe(true);
 		const sample = landedPositionAt(probe.landed!, startJd + 5);
@@ -463,5 +469,14 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		// jd outside window → null + isLandedAt false.
 		expect(isLandedAt(probe, startJd - 10)).toBe(false);
 		expect(landedPositionAt(probe.landed!, startJd - 10)).toBeNull();
+	});
+
+	it('reads the destroyed flag off a crash-site record', () => {
+		const startJd = 2454611.0;
+		const subchunkDays = 30.4375;
+		const buf = landedOnlyChunk(startJd, subchunkDays, 0x03);
+		const chunk = parseProbesPayload(buf, startJd, startJd + subchunkDays, false);
+		expect(chunk.probes[0].landed!.isStatic).toBe(true);
+		expect(chunk.probes[0].landed!.isDestroyed).toBe(true);
 	});
 });

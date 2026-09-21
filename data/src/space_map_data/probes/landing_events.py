@@ -4,6 +4,8 @@ One ``LandingPhase`` per ``landing`` or ``reentry`` event that names a site:
 the probe sits at that lat/lng on that body until it leaves. The phase ends at the landing's
 own ``end_date``, else at the next ``_DEPARTURE_TYPES`` event; otherwise the
 probe stays landed forever (Apollo descent stages, every Venera, Surveyor 1).
+A ``destroyed_at_landing`` outcome marks a crash site: the resting place is
+known, but nothing intact stands there.
 Earth landings are capped to one month so sample-return capsules and launch
 failures don't clutter Earth after touchdown.
 
@@ -69,6 +71,7 @@ class LandingPhase:
     start_et: float
     end_et: float
     site_name: str | None
+    destroyed: bool
 
 
 def _resolve_body(naif: int) -> tuple[int, int]:
@@ -178,6 +181,7 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                     start_et=start_et,
                     end_et=end_et,
                     site_name=ev.site.name,
+                    destroyed=ev.outcome == "destroyed_at_landing",
                 )
             )
     logger.info(

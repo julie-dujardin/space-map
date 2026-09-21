@@ -10,6 +10,7 @@ function record(over: Partial<LandedRecord> = {}): LandedRecord {
 	return {
 		bodyNaifId: 499,
 		isStatic: true,
+		isDestroyed: false,
 		startEt: J2000_ET,
 		endEt: J2000_ET + 100 * DAY_S,
 		latRefDeg: -23.9,

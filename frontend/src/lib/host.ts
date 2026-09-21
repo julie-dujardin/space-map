@@ -12,6 +12,7 @@
 export interface CoreMessages {
 	body_note_no_model: () => string;
 	body_note_no_radius: () => string;
+	body_note_crash_site: () => string;
 	carried_by_scene_label: (inputs: { carrier: string }) => string;
 	scene_canvas_label: () => string;
 	attribution_orbits: () => string;
@@ -65,6 +66,7 @@ const DEFAULT_HOST: Host = {
 	messages: {
 		body_note_no_model: () => 'no model available',
 		body_note_no_radius: () => 'no size data available',
+		body_note_crash_site: () => 'crash site, no wreckage model',
 		carried_by_scene_label: ({ carrier }) => `Carried by ${carrier}`,
 		scene_canvas_label: () => 'Interactive 3D map of the Solar System',
 		attribution_orbits: () => 'Orbits',

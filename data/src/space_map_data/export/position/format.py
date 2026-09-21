@@ -346,7 +346,7 @@ def align8(size: int) -> int:
 #
 # Offset  Type     Field
 # 0       int32    body_id_value     (NAIF for planet/moon, SPKID for asteroid/comet)
-# 4       uint8    flags             (bit 0 = is_static)
+# 4       uint8    flags             (bit 0 = is_static, bit 1 = destroyed)
 # 5       uint8    body_id_type      (ID_TYPE_ORDINAL — NAIF=0, SPKID=1, …)
 # 6       uint8[2] reserved          (zero pad to 4-aligned)
 # 8       uint32   start_offset_s    (seconds from chunk start_jd; phase entry within chunk)
@@ -371,6 +371,9 @@ _LANDED_SAMPLE_STRUCT = struct.Struct("<Iiii")
 assert _LANDED_SAMPLE_STRUCT.size == LANDED_SAMPLE_SIZE
 
 LANDED_FLAG_STATIC = 0x01
+# A crash site: the wreck's resting place is known, but the renderer must not
+# stand an intact craft on it.
+LANDED_FLAG_DESTROYED = 0x02
 # Scale factor `lat_deg × LAT_LNG_SCALE → int32`. Picked as the largest power
 # of 10 that still leaves int32 headroom for the full ±180° lng range (max
 # value 1.8e9 vs int32 ceiling 2.147e9). Gives the same 1.1 cm precision floor
@@ -394,6 +397,7 @@ def pack_landed_payload(
     body_id_value: int,
     body_id_type: int,
     is_static: bool,
+    is_destroyed: bool,
     start_offset_s: int,
     end_offset_s: int,
     lat_ref_deg: float,
@@ -406,7 +410,9 @@ def pack_landed_payload(
     asteroid/comet). `samples` is a list of `(et_offset_s, lat_deg, lng_deg,
     alt_m)` tuples; pass an empty list for static phases.
     """
-    flags = LANDED_FLAG_STATIC if is_static else 0
+    flags = (LANDED_FLAG_STATIC if is_static else 0) | (
+        LANDED_FLAG_DESTROYED if is_destroyed else 0
+    )
     header = _LANDED_HEADER_STRUCT.pack(
         body_id_value,
         flags,

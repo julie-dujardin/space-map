@@ -175,6 +175,9 @@ export interface BodyObjects {
 	/** True iff the probe's landed record covers the current jd. Drives the
 	 *  spacecraft halo glyph swap (flying → landed octagon). */
 	isLanded?: boolean;
+	/** True iff the active landed record is a crash site: the craft is placed
+	 *  there, but its model stays hidden and the halo shows the wreck glyph. */
+	isCrashed?: boolean;
 	/** Written by the throttled body cull. Lets the nomenclature cull skip
 	 *  dimmed labels' rects, so it doesn't over-cull features against a
 	 *  near-invisible body. Undefined before the first cull → treated as maximized. */

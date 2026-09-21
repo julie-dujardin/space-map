@@ -114,6 +114,7 @@ def _pack_landed_subchunk(fit: LandedFit) -> bytes:
         body_id_value=fit.body_id_value,
         body_id_type=fit.body_id_type,
         is_static=fit.is_static,
+        is_destroyed=fit.is_destroyed,
         start_offset_s=fit.start_offset_s,
         end_offset_s=fit.end_offset_s,
         lat_ref_deg=fit.lat_ref_deg,

@@ -1214,6 +1214,7 @@
 	"out_of_range_major_bodies_outside": "Pianeti e lune: nessun dato in questo momento",
 	"body_note_no_model": "nessun modello disponibile",
 	"body_note_no_radius": "nessun dato sulle dimensioni disponibile",
+	"body_note_crash_site": "sito dell'impatto, nessun modello del relitto",
 	"coverage_pause_title": "Raggiunta la fine dei dati disponibili",
 	"coverage_pause_forward": "{name} non ha dati di traiettoria oltre il {date}",
 	"coverage_pause_backward": "{name} non ha dati di traiettoria prima del {date}",

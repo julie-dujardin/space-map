@@ -29,12 +29,15 @@ class LandedFit:
 
     ``body_id_value`` + ``body_id_type`` together identify the landing body —
     NAIF for planet/moon, SPKID for asteroid/comet. The SPICE-driven fitter
-    always emits NAIF; the events-driven path may emit either.
+    always emits NAIF; the events-driven path may emit either. Only the
+    events-driven path can mark a crash site (``is_destroyed``): a SPICE
+    kernel that keeps going after touchdown describes a craft that landed.
     """
 
     body_id_value: int
     body_id_type: int
     is_static: bool
+    is_destroyed: bool
     start_offset_s: int  # seconds from chunk_start_jd
     end_offset_s: int
     lat_ref_deg: float
@@ -149,6 +152,7 @@ def fit_landed_chunk(
         body_id_value=body_naif_id,
         body_id_type=_NAIF_ORDINAL,
         is_static=is_static,
+        is_destroyed=False,
         start_offset_s=int(round(c_start_et - chunk_start_et)),
         end_offset_s=int(round(c_end_et - chunk_start_et)),
         lat_ref_deg=first_lat,
