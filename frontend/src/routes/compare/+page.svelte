@@ -302,16 +302,21 @@
 
 	/** Maximize one object, or (with null) come back to the whole row. Closing
 	 *  lands on the page that holds the object, which is where the row zooms
-	 *  back out to. */
+	 *  back out to. An object already alone on its page has no row to grow
+	 *  out of or back into: the panel is the whole change, so it comes without
+	 *  the zoom. */
 	function openObject(id: string | null, slide?: -1 | 1): void {
 		menu = null;
 		if (id === opened || (id && resolved[id] && !hasPage(resolved[id]))) return;
 		const subject = id ?? opened;
+		let landing = current;
 		if (!id && opened) {
 			const home = bandPages.findIndex((p) => p.items.some((o) => o.id === opened));
 			if (home >= 0) page = home;
+			landing = bandPages[home];
 		}
-		startZoom(subject, slide);
+		const alone = !slide && landing?.items.length === 1 && landing.items[0].id === subject;
+		if (!alone) startZoom(subject, slide);
 		go(selected, id);
 	}
 
