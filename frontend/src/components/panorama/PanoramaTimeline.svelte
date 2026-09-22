@@ -33,6 +33,10 @@
 	// What a card says is read off the entry when that card is drawn, not when
 	// the strip opens: a traverse runs to thousands of stops, and formatting a
 	// date for every one of them is most of the wait before the map expands.
+	//
+	// No `detail`: only some stops are titled, and the row is as tall as its
+	// tallest card, so a title line would resize the strip — and the minimap
+	// sized from it — as the reader scrolls through the traverse.
 	const items = $derived<Item[]>(
 		entries.map((entry) => {
 			const jd = entryJd(entry);
@@ -40,7 +44,6 @@
 			return {
 				id: entry.id,
 				entry,
-				detail: entry.title,
 				isPhase: false,
 				startJd: jd,
 				endJd: jd,
