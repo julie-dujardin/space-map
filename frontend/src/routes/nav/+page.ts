@@ -53,9 +53,16 @@ function bodyIds(raw: string | null): string[] | null {
 	return raw.split(',').filter(isBodyId);
 }
 
-export const load: PageLoad = async ({ url }): Promise<SubwayPageData> => {
+// The query is read here so a bad origin is still a 404, and the map itself is
+// handed over unresolved: the page draws its frame the moment the row is
+// clicked and fills in when the catalogue lands.
+export const load: PageLoad = ({ url }) => {
 	const from = url.searchParams.get('from') ?? EARTH_ID;
 	if (!isBodyId(from)) error(404, `Unknown body id "${from}"`);
+	return { subway: subway(url, from) };
+};
+
+async function subway(url: URL, from: string): Promise<SubwayPageData> {
 	const extra = bodyIds(url.searchParams.get('to')) ?? [];
 	const hidden = bodyIds(url.searchParams.get('hide')) ?? [];
 	const craft = url.searchParams.get('craft');
@@ -94,4 +101,4 @@ export const load: PageLoad = async ({ url }): Promise<SubwayPageData> => {
 		// whose primary it could not place: the map then has no trunk to draw.
 		failed: !catalogue.bodies.has(from) || map.trunk.length === 0
 	};
-};
+}

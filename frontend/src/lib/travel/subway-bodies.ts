@@ -158,11 +158,51 @@ export async function defaultSubwayTargets(): Promise<string[]> {
 }
 
 /**
+ * Catalogues already assembled this session, keyed by the id set asked for.
+ *
+ * Assembling one reads the detail bundle of every body on the map — 67 buckets
+ * for the default set, against a bundle LRU that holds 24 — so the LRU cannot
+ * hold the working set and every pass re-downloads and re-parses all of it,
+ * about 0.7 s. Raising that cap is not the trade: a parsed bucket is ~2 MB,
+ * while a catalogue is a few bodies' worth of derived figures.
+ */
+const catalogues = new Map<string, Promise<SubwayCatalogue>>();
+
+/** Distinct catalogues kept: the page holds one, and an origin or a target
+ *  tried and gone back on holds another. */
+const MAX_CATALOGUES = 8;
+
+/**
  * Every body the map needs to route between `ids`: the bodies themselves, the
  * chain above each up to the Sun, and the planet inside any barycentre on the
  * way, which the chain walk does not visit but the tree hangs a moon from.
+ *
+ * Memoized per id set, so returning to the map redraws it rather than rebuilding
+ * it. The export is fixed for the life of the page, so nothing goes stale.
  */
-export async function fetchSubwayCatalogue(ids: readonly string[]): Promise<SubwayCatalogue> {
+export function fetchSubwayCatalogue(ids: readonly string[]): Promise<SubwayCatalogue> {
+	const key = [...new Set(ids)].sort().join(',');
+	const held = catalogues.get(key);
+	if (held) {
+		// Refresh recency (Map iterates in insertion order).
+		catalogues.delete(key);
+		catalogues.set(key, held);
+		return held;
+	}
+	const pending = buildSubwayCatalogue(ids);
+	catalogues.set(key, pending);
+	// Evict on rejection so one failed pass does not answer for the session.
+	pending.catch(() => {
+		if (catalogues.get(key) === pending) catalogues.delete(key);
+	});
+	for (const oldest of catalogues.keys()) {
+		if (catalogues.size <= MAX_CATALOGUES) break;
+		catalogues.delete(oldest);
+	}
+	return pending;
+}
+
+async function buildSubwayCatalogue(ids: readonly string[]): Promise<SubwayCatalogue> {
 	await Promise.all([loadSystemsGlobal(), loadAtmospheres()]);
 	const rows = new Map<string, BodyData>();
 	let pending = [...new Set(ids)];

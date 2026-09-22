@@ -29,7 +29,47 @@ export interface CoveredBody {
 	traverses: Traverse[];
 }
 
-export const load: PageLoad = async ({ fetch }) => {
+/** What the gallery draws, once the index and every body behind it answer. */
+export interface GalleryData {
+	bodies: CoveredBody[];
+	summary: GallerySummary;
+	/** The index answered with coverage, but nothing behind it did. */
+	failed: boolean;
+}
+
+/**
+ * The gallery as assembled this session.
+ *
+ * Assembling it reads the detail bundle of every world and every craft on the
+ * index — 25 buckets, against a bundle LRU that holds 24 — so the LRU cannot
+ * hold the working set and every pass re-downloads and re-parses all of it.
+ * Held the same way one body's traverses are, and for the same reason: the
+ * gallery is walked into and back out of, and the index does not change while
+ * the page is up.
+ */
+let held: Promise<GalleryData> | null = null;
+
+// The gallery is handed over unresolved: the page draws its frame the moment
+// the row is clicked and fills in when the index and the bodies land.
+export const load: PageLoad = ({ fetch }) => ({ gallery: gallery(fetch) });
+
+function gallery(fetch: typeof globalThis.fetch): Promise<GalleryData> {
+	if (held) return held;
+	const pending = buildGallery(fetch);
+	held = pending;
+	// A pass that found nothing is a blip to retry, not an answer to keep.
+	void pending.then(
+		(data) => {
+			if (held === pending && data.bodies.length === 0) held = null;
+		},
+		() => {
+			if (held === pending) held = null;
+		}
+	);
+	return pending;
+}
+
+async function buildGallery(fetch: typeof globalThis.fetch): Promise<GalleryData> {
 	const summaries = await fetchPanoramaIndex(fetch).catch(() => null);
 	if (!summaries)
 		return { bodies: [], summary: { panoramas: 0, probes: 0, worlds: 0 }, failed: true };
@@ -86,4 +126,4 @@ export const load: PageLoad = async ({ fetch }) => {
 		worlds: bodies.length
 	};
 	return { bodies, summary, failed: bodies.length === 0 && anyViewable };
-};
+}

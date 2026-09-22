@@ -10,13 +10,17 @@ import type { Credits } from '$lib/credits/credits-payload';
 // [type]/[id] route under SSR), so this stays client-rendered.
 export const ssr = false;
 
-export const load = async ({
+// The payload is handed over unresolved: the page draws its frame the moment
+// the row is clicked and fills in when the JSON lands.
+export const load = ({
 	fetch
 }: {
 	fetch: typeof globalThis.fetch;
-}): Promise<{ credits: Credits }> => {
-	const res = await fetch(`${dataBase()}/v1/credits.json`);
-	if (!res.ok) throw new Error(`Failed to load credits.json: ${res.status}`);
-	const credits = (await res.json()) as Credits;
+}): { credits: Promise<Credits> } => {
+	const credits = (async () => {
+		const res = await fetch(`${dataBase()}/v1/credits.json`);
+		if (!res.ok) throw new Error(`Failed to load credits.json: ${res.status}`);
+		return (await res.json()) as Credits;
+	})();
 	return { credits };
 };
