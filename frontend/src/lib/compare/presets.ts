@@ -47,6 +47,10 @@ const SMALL_BODY_KINDS = [
  *  of the others, and no scale carries both ends. */
 const GIANT_RADIUS_KM = 20000;
 
+/** Where the moons split: gravity rounds a moon somewhere near this size, and
+ *  the two halves are too far apart in scale to share a row. */
+const ROUND_MOON_RADIUS_KM = 200;
+
 export const COMPARE_PRESETS: ComparePreset[] = [
 	{
 		slug: 'terrestrial-planets',
@@ -91,7 +95,35 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'naif-801',
 			'naif-901'
 		],
-		kinds: [ObjectType.MOON]
+		kinds: [ObjectType.MOON],
+		minRadiusKm: ROUND_MOON_RADIUS_KM
+	},
+	{
+		// The moons below the rounding size: captured bodies, shepherds and
+		// ring moons, each one shaped by a flyby. A moon a spacecraft never
+		// resolved is left out — triaxial radii alone draw a smooth ellipsoid,
+		// which says more about the measurement than about the moon.
+		slug: 'small-moons',
+		group: 'worlds',
+		label: m.compare_preset_small_moons,
+		ids: [
+			'naif-401',
+			'naif-402',
+			'naif-505',
+			'naif-514',
+			'naif-607',
+			'naif-609',
+			'naif-610',
+			'naif-611',
+			'naif-612',
+			'naif-615',
+			'naif-616',
+			'naif-617',
+			'naif-618',
+			'naif-807'
+		],
+		kinds: [ObjectType.MOON],
+		maxRadiusKm: ROUND_MOON_RADIUS_KM
 	},
 	{
 		slug: 'visited-small-bodies',
