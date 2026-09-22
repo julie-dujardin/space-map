@@ -21,7 +21,7 @@
 	import { isSearchEnabled, search, type ObjectHit } from '$lib/search/client';
 	import { getLocale } from '$lib/host';
 	import { objectTypeLabel } from '$lib/format/object-type';
-	import { formatQuantity } from '$lib/format/quantities';
+	import { formatKm } from '$lib/format/distance';
 	import {
 		COMPARE_PRESETS,
 		COMPARE_PRESET_GROUPS,
@@ -121,7 +121,7 @@
 
 	function sizeText(hit: ObjectHit): string | null {
 		if (!hit.diameter_km) return null;
-		return formatQuantity({ value: hit.diameter_km, unit: 'kilometre' }, true);
+		return formatKm(hit.diameter_km);
 	}
 </script>
 

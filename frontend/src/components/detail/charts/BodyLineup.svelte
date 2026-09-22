@@ -116,7 +116,7 @@
 	import { bodyHref } from '$lib/state/url';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { createScrub, SWIPE_PX } from '$lib/charts/scrub';
-	import { formatQuantity } from '$lib/format/quantities';
+	import { formatKm } from '$lib/format/distance';
 	import {
 		ASIDE_END_PAD,
 		BOX_GAP,
@@ -505,14 +505,11 @@
 		focusBody(hoveredId);
 	}
 
-	/** How big the body is, in the unit its class is read in: a craft's span in
-	 *  metres, a body's diameter in kilometres. A craft is quoted across the
-	 *  whole mesh, booms included, which is what the row draws — its slot is the
-	 *  narrower body. */
+	/** How big the body is, in the unit its own size calls for. A craft is
+	 *  quoted across the whole mesh, booms included, which is what the row
+	 *  draws — its slot is the narrower body. */
 	function sizeText(b: Body): string {
-		return b.craft
-			? formatQuantity({ value: b.diameterKm * (b.meshSpanRatio ?? 1) * 1000, unit: 'metre' }, true)
-			: formatQuantity({ value: b.diameterKm, unit: 'kilometre' }, true);
+		return formatKm(b.diameterKm * (b.craft ? (b.meshSpanRatio ?? 1) : 1));
 	}
 
 	const scrub = createScrub({

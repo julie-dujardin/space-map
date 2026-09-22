@@ -27,7 +27,7 @@ import {
 } from '$lib/fetch/bundle-pair';
 import { heroImage } from '$lib/fetch/objects/galleries';
 import { diameterKmFromH } from '$lib/math/h-magnitude';
-import { formatQuantity } from '$lib/format/quantities';
+import { formatKm } from '$lib/format/distance';
 import type {
 	GlobalObjectData,
 	LocalizedObjectData,
@@ -276,8 +276,7 @@ const CELESTRAK_NOUN: Record<string, () => string> = {
 // One clause for both units: the sentence says "across", the quantity says
 // which unit it is across in, the way every panel does it.
 function diameterClause(km: number): string {
-	const q = km < 1 ? { value: km * 1000, unit: 'metre' } : { value: km, unit: 'kilometre' };
-	return m.seo_attr_diameter({ value: formatQuantity(q, true) });
+	return m.seo_attr_diameter({ value: formatKm(km) });
 }
 
 function joinNames(names: string[]): string {

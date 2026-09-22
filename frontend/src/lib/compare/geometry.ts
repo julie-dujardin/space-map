@@ -37,6 +37,19 @@ export function lineupBody(object: CompareObject): LineupBody {
 	return { id: object.id, name: object.name, radiusKm: object.radiusKm, ...object.geometry };
 }
 
+/** What the row draws for a bundle that *is* the object: the mesh alone, no
+ *  sphere under it, and the shape of the box it needs. The size it is drawn at
+ *  is the caller's, since a craft takes it from the manifest and an object
+ *  carrying its own radius keeps that. */
+function craftGeometry(entry: ModelIndexEntry): CompareObject['geometry'] {
+	return {
+		model: entry.slug,
+		craft: true,
+		meshSpanRatio: 1 / (entry.body_span_ratio ?? 1),
+		aspect: entry.span_ratios ? craftWidthRatio(entry.span_ratios) || undefined : undefined
+	};
+}
+
 /** A craft is its mesh: the manifest span is the only size it has. A craft
  *  reached by id alone has no search hit behind it, so the name comes off the
  *  bundle's own attachment. */
@@ -48,12 +61,7 @@ function craftObject(id: string, name: string, entry: ModelIndexEntry): CompareO
 		name: name || entry.objects.find((o) => o.id === id)?.name || id,
 		type: 'spacecraft',
 		radiusKm: body / 2000,
-		geometry: {
-			model: entry.slug,
-			craft: true,
-			meshSpanRatio: entry.scale_meters / body,
-			aspect: entry.span_ratios ? craftWidthRatio(entry.span_ratios) || undefined : undefined
-		}
+		geometry: craftGeometry(entry)
 	};
 }
 
@@ -114,6 +122,18 @@ export async function resolveObject(
 		radiusKm = seed.diameter_km / 2;
 	}
 	if (!(radiusKm > 0)) return null;
+
+	// A bundle that is not a shape model is the object itself, so it is drawn
+	// the way a craft is rather than draped over a sphere. Reached by anything
+	// whose bundle the model index cannot attach to it — an object with no
+	// catalogue row of its own carries the slug and nothing else does.
+	if (global?.model_name) {
+		const index = await fetchModelIndex().catch(() => null);
+		const entry = index?.find((e) => e.slug === global.model_name);
+		if (entry && entry.kind !== 'shape_model') {
+			return { id, name, type, radiusKm, geometry: craftGeometry(entry) };
+		}
+	}
 
 	const geometry: CompareObject['geometry'] = { polarRatio };
 	const pole = global?.orientation;

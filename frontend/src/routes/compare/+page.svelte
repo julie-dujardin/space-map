@@ -31,6 +31,7 @@
 	import { presetOn, type ComparePreset } from '$lib/compare/presets';
 	import type { ObjectHit } from '$lib/search/client';
 	import { formatQuantity } from '$lib/format/quantities';
+	import { formatKm } from '$lib/format/distance';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { bodyHref, groupHref } from '$lib/state/url';
 	import { compareFocusable, type CompareFocus } from '$lib/compare/detail';
@@ -280,10 +281,7 @@
 	}
 
 	function sizeText(object: CompareObject): string {
-		const span = object.radiusKm * 2 * (object.geometry.meshSpanRatio ?? 1);
-		return object.geometry.craft
-			? formatQuantity({ value: span * 1000, unit: 'metre' }, true)
-			: formatQuantity({ value: span, unit: 'kilometre' }, true);
+		return formatKm(object.radiusKm * 2 * (object.geometry.meshSpanRatio ?? 1));
 	}
 
 	// --- the set itself, which lives in the query string ---
@@ -382,11 +380,7 @@
 		const exponent = Math.floor(Math.log10(raw));
 		const lead = raw / 10 ** exponent;
 		const km = (lead >= 5 ? 5 : lead >= 2 ? 2 : 1) * 10 ** exponent;
-		const label =
-			km < 1
-				? formatQuantity({ value: km * 1000, unit: 'metre' }, true)
-				: formatQuantity({ value: km, unit: 'kilometre' }, true);
-		return { px: km * pxPerKm, label };
+		return { px: km * pxPerKm, label: formatKm(km) };
 	});
 
 	// The row draws both neighbouring pages itself, at its own scale — the page
