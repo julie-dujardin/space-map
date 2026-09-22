@@ -24,9 +24,13 @@
 		onPick: (entry: PanoramaEntry) => void;
 		onClose: () => void;
 		positionClass: string;
+		/** The panorama on screen. Stops taken at the same moment by two cameras
+		 *  share a timestamp, so the clock cannot name it. */
+		activeId?: string;
 	}
 
-	let { missionName, entries, clock, href, onPick, onClose, positionClass }: Props = $props();
+	let { missionName, entries, clock, href, onPick, onClose, positionClass, activeId }: Props =
+		$props();
 
 	type Item = StripItem & { entry: PanoramaEntry };
 
@@ -72,9 +76,17 @@
 	});
 	$effect(() => () => player.dispose());
 
+	// Stepping walks from the stop on screen, not from the clock: two cameras
+	// shooting at once share a timestamp, and a step off the clock would land
+	// back on the first of them.
 	function step(delta: number): void {
 		player.stop();
-		const item = items[stepEntryIndex(items, clock.jd, delta)];
+		const at = activeId === undefined ? -1 : items.findIndex((item) => item.id === activeId);
+		const index =
+			at >= 0
+				? Math.min(items.length - 1, Math.max(0, at + delta))
+				: stepEntryIndex(items, clock.jd, delta);
+		const item = items[index];
 		if (item) onPick(item.entry);
 	}
 </script>
@@ -90,6 +102,7 @@
 	{clock}
 	{positionClass}
 	{onClose}
+	{activeId}
 	closeLabel={m.panorama_map_collapse()}
 	onPick={() => player.stop()}
 	onScrub={(jd) => {

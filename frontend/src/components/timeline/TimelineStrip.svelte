@@ -40,6 +40,9 @@
 		playLabel: string;
 		/** Move `delta` items along from where the clock stands. */
 		onStep: (delta: number) => void;
+		/** Which item is the subject, when the host knows it. Several stops can
+		 *  share a timestamp, and the clock alone cannot tell them apart. */
+		activeId?: string;
 		/** Stretches the map has nothing to draw at; greyed out on the axis. */
 		gaps?: readonly TimelineSpan[];
 		/** Where the strip sits; the map page's slot above the time bar unless
@@ -60,6 +63,7 @@
 		onTogglePlay,
 		playLabel,
 		onStep,
+		activeId,
 		gaps = [],
 		onClose,
 		closeLabel,
@@ -69,7 +73,10 @@
 	let startJd = $derived(items[0]?.startJd ?? 0);
 	let endJd = $derived(items[items.length - 1]?.endJd ?? 0);
 	let spanDays = $derived(endJd - startJd);
-	let activeIndex = $derived(entryIndexAt(items, clock.jd));
+	let activeIndex = $derived.by(() => {
+		const named = activeId === undefined ? -1 : items.findIndex((item) => item.id === activeId);
+		return named >= 0 ? named : entryIndexAt(items, clock.jd);
+	});
 	let clockLabel = $derived(formatJulianDate(clock.jd));
 	let ticks = $derived(spanDays > 0 ? axisTicks(startJd, endJd, 7) : []);
 

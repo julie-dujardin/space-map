@@ -453,6 +453,7 @@
 								onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
 								onClose={() => (timelineOpen = false)}
 								positionClass="relative"
+								activeId={current.id}
 							/>
 						</div>
 					{/if}
