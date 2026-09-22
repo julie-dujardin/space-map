@@ -38,7 +38,7 @@ export function makeCircleTexture(): CanvasTexture {
 
 /** Screen-space point size for asteroid clouds. Smaller on phones so the
  *  1.3M-asteroid main belt doesn't swamp the planets. 768px matches the
- *  breakpoint used elsewhere (DetailDrawer, SettingsButton). */
+ *  breakpoint used elsewhere (DetailDrawer). */
 export function asteroidPointSize(): number {
 	if (typeof window === 'undefined') return 3;
 	return window.matchMedia('(max-width: 768px)').matches ? 2 : 3;

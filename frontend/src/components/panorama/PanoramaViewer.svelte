@@ -49,7 +49,7 @@
 	import MapCredits from './MapCredits.svelte';
 	import PanoramaTimeline from './PanoramaTimeline.svelte';
 	import PanoramaCreditBar from './PanoramaCreditBar.svelte';
-	import SettingsButton from '../settings/SettingsButton.svelte';
+	import SiteMenuButton from '../nav/SiteMenuButton.svelte';
 	import SitePage from '../nav/SitePage.svelte';
 	import PanoramaGyroButton from './PanoramaGyroButton.svelte';
 	import PanoramaLayersButton from './PanoramaLayersButton.svelte';
@@ -468,7 +468,7 @@
 			<div
 				class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
 			>
-				<SettingsButton scope="panorama" />
+				<SiteMenuButton current="panoramas" scope="panorama" />
 				<PanoramaLayersButton
 					angleGrid={angleGridVisible}
 					navigation={navigationVisible}
