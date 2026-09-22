@@ -30,20 +30,32 @@
 
 	type Item = StripItem & { entry: PanoramaEntry };
 
+	// What a card says is read off the entry when that card is drawn, not when
+	// the strip opens: a traverse runs to thousands of stops, and formatting a
+	// date for every one of them is most of the wait before the map expands.
 	const items = $derived<Item[]>(
 		entries.map((entry) => {
 			const jd = entryJd(entry);
+			let when: string | undefined;
 			return {
 				id: entry.id,
 				entry,
-				label: entry.sol !== undefined ? m.panorama_sol({ sol: entry.sol }) : entry.id,
-				when: formatIsoDate(entry.time),
 				detail: entry.title,
 				isPhase: false,
 				startJd: jd,
 				endJd: jd,
-				image: versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas'),
-				href: href(entry)
+				get label() {
+					return entry.sol !== undefined ? m.panorama_sol({ sol: entry.sol }) : entry.id;
+				},
+				get when() {
+					return (when ??= formatIsoDate(entry.time));
+				},
+				get image() {
+					return versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
+				},
+				get href() {
+					return href(entry);
+				}
 			};
 		})
 	);

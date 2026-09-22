@@ -8,7 +8,7 @@
   frame rate.
 -->
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import PlayIcon from '@lucide/svelte/icons/play';
@@ -73,6 +73,25 @@
 	let clockLabel = $derived(formatJulianDate(clock.jd));
 	let ticks = $derived(spanDays > 0 ? axisTicks(startJd, endJd, 7) : []);
 
+	const phases = $derived(items.filter((item) => item.isPhase));
+	/** Moment marks, one per bucket across the track: a mark is under two
+	 *  pixels wide, so thousands of them stack into the same ink as a few
+	 *  hundred and only cost layout. */
+	const MOMENT_BUCKETS = 400;
+	const moments = $derived.by(() => {
+		const seen = new Set<number>();
+		const out: Array<{ id: string; at: number; note?: string }> = [];
+		for (const item of items) {
+			if (item.isPhase) continue;
+			const at = fraction(item.startJd);
+			const bucket = Math.round(at * MOMENT_BUCKETS);
+			if (seen.has(bucket)) continue;
+			seen.add(bucket);
+			out.push({ id: item.id, at, note: item.note });
+		}
+		return out;
+	});
+
 	/** Where `jd` sits along the track, clamped: the clock is free to be years
 	 *  off either end, and the handle should sit at the end it ran past. */
 	function fraction(jd: number): number {
@@ -84,13 +103,72 @@
 
 	let trackEl: HTMLButtonElement | undefined = $state();
 	let cardsEl: HTMLOListElement | undefined = $state();
+	let viewportEl = $state<HTMLElement | null>(null);
+	let scrollX = $state(0);
+	let viewportW = $state(0);
+
+	/** A card's width and the gap after it, pixels — `min-w-[8rem]` and
+	 *  `gap-2`. A run long enough to be windowed always overflows, so every
+	 *  card sits at exactly this pitch and the window is arithmetic. */
+	const CARD_PX = 128;
+	const GAP_PX = 8;
+	const PITCH_PX = CARD_PX + GAP_PX;
+	/** Cards drawn past each edge, so a flick lands on something. */
+	const OVERSCAN = 6;
+	/** A traverse runs to thousands of stops; past this the row is windowed
+	 *  rather than built whole. Below it every card is drawn, which is what
+	 *  lets a short run stretch its cards across the strip. */
+	const WINDOW_FROM = 40;
+
+	const windowed = $derived(items.length > WINDOW_FROM);
+
+	$effect(() => {
+		const el = viewportEl;
+		if (!el) return;
+		const read = () => {
+			// RTL scrolls to negative offsets; the window counts from the start
+			// edge either way.
+			scrollX = Math.abs(el.scrollLeft);
+			viewportW = el.clientWidth;
+		};
+		read();
+		el.addEventListener('scroll', read, { passive: true });
+		const observer = new ResizeObserver(read);
+		observer.observe(el);
+		return () => {
+			el.removeEventListener('scroll', read);
+			observer.disconnect();
+		};
+	});
+
+	/** The stretch of cards actually built, inclusive. */
+	const range = $derived.by(() => {
+		if (!windowed) return { first: 0, last: items.length - 1 };
+		return {
+			first: Math.max(0, Math.floor(scrollX / PITCH_PX) - OVERSCAN),
+			last: Math.min(items.length - 1, Math.ceil((scrollX + viewportW) / PITCH_PX) + OVERSCAN)
+		};
+	});
+	const visible = $derived(windowed ? items.slice(range.first, range.last + 1) : items);
 
 	// A record of twenty events is wider than the strip, so the row scrolls and
 	// the card the clock is on is kept in view. A short run never overflows and
-	// nothing scrolls.
+	// nothing scrolls. The scroll position is not a dependency: this follows
+	// the clock, and reading it would fight the reader's own scrolling.
 	$effect(() => {
-		const card = cardsEl?.children[activeIndex];
-		card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		const index = activeIndex;
+		const el = viewportEl;
+		if (index < 0 || !el) return;
+		if (!windowed) {
+			cardsEl?.children[index]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+			return;
+		}
+		const from = untrack(() => scrollX);
+		const left = index * PITCH_PX;
+		let to = from;
+		if (left < from) to = left;
+		else if (left + CARD_PX > from + el.clientWidth) to = left + CARD_PX - el.clientWidth;
+		if (to !== from) el.scrollLeft = getComputedStyle(el).direction === 'rtl' ? -to : to;
 	});
 
 	function scrubToFraction(f: number): void {
@@ -211,66 +289,96 @@
 		</div>
 	</div>
 
+	{#snippet card(item: StripItem, index: number, props: Record<string, unknown>)}
+		{@const active = index === activeIndex}
+		<svelte:element
+			this={item.href ? 'a' : 'button'}
+			href={item.href}
+			type={item.href ? undefined : 'button'}
+			{...props}
+			onclick={() => onPick(index)}
+			aria-current={active ? 'true' : undefined}
+			class="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-lg border px-2.5 py-2 text-start transition-colors
+				{active ? 'border-border bg-muted' : 'hover:bg-muted/50 border-transparent'}"
+		>
+			{#if item.image}
+				<!-- `w-0 min-w-full`: the row is sized to its content, so a loaded
+				     image's natural width would widen every card and grow the whole
+				     strip. The height is the 3:1 box at the card's minimum width
+				     rather than an aspect ratio, so a record of one card stretched
+				     across the viewer stays as tall as a record of fifty. -->
+				<img
+					src={item.image}
+					alt=""
+					loading="lazy"
+					class="mb-1 h-[calc(8rem/3)] w-0 min-w-full rounded object-cover"
+				/>
+			{/if}
+			<span class="flex w-full min-w-0 items-center gap-1.5">
+				<!-- A phase is a stretch of the bar below and wears its colour; a
+				     moment is a point on it and has none of its own. -->
+				{#if item.isPhase && item.color}
+					<span class="size-1.5 shrink-0 rounded-full" style="background: {item.color}"></span>
+				{/if}
+				<span class="min-w-0 truncate text-sm {active ? 'font-medium' : ''}">
+					{item.label}
+				</span>
+			</span>
+			<span class="text-muted-foreground w-full truncate text-xs tabular-nums">
+				{item.when}
+			</span>
+			{#if item.detail}
+				<span class="text-muted-subtle w-full truncate text-[11px] tabular-nums">
+					{item.detail}
+				</span>
+			{/if}
+		</svelte:element>
+	{/snippet}
+
+	<!-- A windowed row draws only cards the reader can reach, so the card is
+	     fixed at its own width; an unwindowed one lets a short run stretch
+	     across the strip. The tooltip is built only where there is a hint to
+	     show: one per card costs more than every card it annotates. -->
+	{#snippet cell(item: StripItem, index: number)}
+		<li class="flex {windowed ? 'w-32 shrink-0' : 'min-w-[8rem] flex-1'}">
+			{#if item.note}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							{@render card(item, index, props)}
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>{item.note}</Tooltip.Content>
+				</Tooltip.Root>
+			{:else}
+				{@render card(item, index, {})}
+			{/if}
+		</li>
+	{/snippet}
+
 	<!-- A record of twenty events is wider than the strip. `min-w-full` keeps a
-	     short run filling it, `w-max` lets a long one run past and scroll. -->
-	<ScrollArea orientation="horizontal" scrollbarXClasses="h-1.5">
+	     short run filling it, `w-max` lets a long one run past and scroll. The
+	     spacers stand in for the cards outside the window, so the row keeps its
+	     full width and the scrollbar its meaning. -->
+	<ScrollArea orientation="horizontal" scrollbarXClasses="h-1.5" bind:viewportRef={viewportEl}>
 		<ol bind:this={cardsEl} class="flex w-max min-w-full items-stretch gap-2 pb-1.5">
-			{#each items as item, index (item.id)}
-				{@const active = index === activeIndex}
-				<li class="flex min-w-[8rem] flex-1">
-					<Tooltip.Root disabled={!item.note}>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<svelte:element
-									this={item.href ? 'a' : 'button'}
-									href={item.href}
-									type={item.href ? undefined : 'button'}
-									{...props}
-									onclick={() => onPick(index)}
-									aria-current={active ? 'true' : undefined}
-									class="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-lg border px-2.5 py-2 text-start transition-colors
-										{active ? 'border-border bg-muted' : 'hover:bg-muted/50 border-transparent'}"
-								>
-									{#if item.image}
-										<!-- `w-0 min-w-full`: the row is sized to its content, so a
-										     loaded image's natural width would widen every card and
-										     grow the whole strip. The height is the 3:1 box at the
-										     card's minimum width rather than an aspect ratio, so a
-										     record of one card stretched across the viewer stays as
-										     tall as a record of fifty. -->
-										<img
-											src={item.image}
-											alt=""
-											loading="lazy"
-											class="mb-1 h-[calc(8rem/3)] w-0 min-w-full rounded object-cover"
-										/>
-									{/if}
-									<span class="flex w-full min-w-0 items-center gap-1.5">
-										<!-- A phase is a stretch of the bar below and wears its colour; a
-										     moment is a point on it and has none of its own. -->
-										{#if item.isPhase && item.color}
-											<span class="size-1.5 shrink-0 rounded-full" style="background: {item.color}"
-											></span>
-										{/if}
-										<span class="min-w-0 truncate text-sm {active ? 'font-medium' : ''}">
-											{item.label}
-										</span>
-									</span>
-									<span class="text-muted-foreground w-full truncate text-xs tabular-nums">
-										{item.when}
-									</span>
-									{#if item.detail}
-										<span class="text-muted-subtle w-full truncate text-[11px] tabular-nums">
-											{item.detail}
-										</span>
-									{/if}
-								</svelte:element>
-							{/snippet}
-						</Tooltip.Trigger>
-						<Tooltip.Content>{item.note}</Tooltip.Content>
-					</Tooltip.Root>
-				</li>
+			{#if windowed && range.first > 0}
+				<li
+					aria-hidden="true"
+					class="shrink-0"
+					style="width: {range.first * PITCH_PX - GAP_PX}px"
+				></li>
+			{/if}
+			{#each visible as item, offset (item.id)}
+				{@render cell(item, range.first + offset)}
 			{/each}
+			{#if windowed && range.last < items.length - 1}
+				<li
+					aria-hidden="true"
+					class="shrink-0"
+					style="width: {(items.length - 1 - range.last) * PITCH_PX - GAP_PX}px"
+				></li>
+			{/if}
 		</ol>
 	</ScrollArea>
 
@@ -306,36 +414,32 @@
 				<!-- Phases: the stretches of the run, each the colour its arc is drawn
 				     in. Laid down twice, so the part already past reads solid against
 				     the part still ahead. -->
-				{#each items as item (item.id)}
-					{#if item.isPhase}
-						{@const from = fraction(item.startJd)}
-						{@const to = fraction(item.endJd)}
-						{@const color = item.color ?? 'currentColor'}
+				{#each phases as item (item.id)}
+					{@const from = fraction(item.startJd)}
+					{@const to = fraction(item.endJd)}
+					{@const color = item.color ?? 'currentColor'}
+					<span
+						class="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full opacity-30"
+						style="inset-inline-start: {from * 100}%; width: {(to - from) *
+							100}%; background: {color}"
+					></span>
+					{#if clockFraction > from}
 						<span
-							class="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full opacity-30"
-							style="inset-inline-start: {from * 100}%; width: {(to - from) *
+							class="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full"
+							style="inset-inline-start: {from * 100}%; width: {(Math.min(clockFraction, to) -
+								from) *
 								100}%; background: {color}"
 						></span>
-						{#if clockFraction > from}
-							<span
-								class="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full"
-								style="inset-inline-start: {from * 100}%; width: {(Math.min(clockFraction, to) -
-									from) *
-									100}%; background: {color}"
-							></span>
-						{/if}
 					{/if}
 				{/each}
 				<!-- Moments: what happens at a point rather than over one. -->
-				{#each items as item (item.id)}
-					{#if !item.isPhase}
-						<span
-							class="bg-muted-foreground ring-background absolute top-1/2 z-[2] size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 {item.note
-								? 'opacity-40'
-								: ''}"
-							style="inset-inline-start: {fraction(item.startJd) * 100}%"
-						></span>
-					{/if}
+				{#each moments as moment (moment.id)}
+					<span
+						class="bg-muted-foreground ring-background absolute top-1/2 z-[2] size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 {moment.note
+							? 'opacity-40'
+							: ''}"
+						style="inset-inline-start: {moment.at * 100}%"
+					></span>
 				{/each}
 				<span
 					class="bg-foreground ring-background absolute top-1/2 z-[3] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2"
