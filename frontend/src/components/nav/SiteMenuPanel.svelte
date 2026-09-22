@@ -124,7 +124,7 @@
 	</div>
 {:else}
 	<!-- px-1 lines the settings' own px-5 up with the site gutter. -->
-	<div class="{sheet ? `${SITE_COLUMN} px-1` : ''} flex min-h-0 flex-col">
+	<div class="{sheet ? `${SITE_COLUMN} px-1` : ''} flex min-h-0 flex-1 flex-col">
 		<SettingsMenu {scope} onBack={() => (view = 'pages')} />
 	</div>
 {/if}

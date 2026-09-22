@@ -332,90 +332,92 @@
 						</Button>
 					{/snippet}
 				</Sheet.Trigger>
-				<Sheet.Content side="right" class="overflow-y-auto">
+				<Sheet.Content side="right" class="overflow-hidden">
 					<Sheet.Header>
 						<Sheet.Title>{m.tab_targets()}</Sheet.Title>
 					</Sheet.Header>
 					<!-- The list below is planets and large moons; any other destination
 					     is found rather than browsed for. -->
-					{#if searchEnabled}
-						<div class="mb-3 border-b border-border/60 px-4 pb-3">
-							<BodySearch
-								label={m.delta_v_add_target()}
-								excludeIds={targetExclude}
-								names={data.names}
-								hrefFor={addTargetHref}
-								onNavigate={() => (drawerOpen = false)}
-							/>
-						</div>
-					{/if}
-					<ul class="flex flex-col px-4">
-						{#each data.systems as system (system.id)}
-							{@const state = systemState(system.members)}
-							{@const open = expanded.has(system.id)}
-							{@const labelId = systemLabelId(system)}
-							<li>
-								<div class="flex h-9 items-center gap-1">
-									{#if system.members.length > 1}
-										<button
-											type="button"
-											class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-											aria-expanded={open}
-											aria-label={m.tab_members()}
-											onclick={() => toggleExpanded(system.id)}
-										>
-											<ChevronRightIcon
-												class="size-4 transition-transform {open ? 'rotate-90' : ''}"
+					<ScrollArea class="min-h-0 flex-1">
+						{#if searchEnabled}
+							<div class="mb-3 border-b border-border/60 px-4 pb-3">
+								<BodySearch
+									label={m.delta_v_add_target()}
+									excludeIds={targetExclude}
+									names={data.names}
+									hrefFor={addTargetHref}
+									onNavigate={() => (drawerOpen = false)}
+								/>
+							</div>
+						{/if}
+						<ul class="flex flex-col px-4">
+							{#each data.systems as system (system.id)}
+								{@const state = systemState(system.members)}
+								{@const open = expanded.has(system.id)}
+								{@const labelId = systemLabelId(system)}
+								<li>
+									<div class="flex h-9 items-center gap-1">
+										{#if system.members.length > 1}
+											<button
+												type="button"
+												class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+												aria-expanded={open}
+												aria-label={m.tab_members()}
+												onclick={() => toggleExpanded(system.id)}
+											>
+												<ChevronRightIcon
+													class="size-4 transition-transform {open ? 'rotate-90' : ''}"
+												/>
+											</button>
+										{:else}
+											<span class="size-7"></span>
+										{/if}
+										<label class="flex flex-grow items-center gap-3 text-sm font-medium">
+											<input
+												type="checkbox"
+												checked={state === 'all'}
+												indeterminate={state === 'some'}
+												onchange={(e) => setVisible(system.members, e.currentTarget.checked)}
 											/>
-										</button>
-									{:else}
-										<span class="size-7"></span>
+											<span
+												class="size-2.5 rounded-full"
+												style="background: {data.colors[labelId] ?? 'currentColor'}"
+											></span>
+											{name(labelId)}
+										</label>
+									</div>
+									{#if open && system.members.length > 1}
+										<ul class="mb-1 flex flex-col ps-8">
+											{#each system.members as id (id)}
+												<li>
+													<label class="flex h-8 items-center gap-3 text-sm">
+														<input
+															type="checkbox"
+															checked={visible.has(id)}
+															onchange={(e) => setVisible([id], e.currentTarget.checked)}
+														/>
+														<span
+															class="size-2.5 rounded-full"
+															style="background: {data.colors[id] ?? 'currentColor'}"
+														></span>
+														{name(id)}
+													</label>
+												</li>
+											{/each}
+										</ul>
 									{/if}
-									<label class="flex flex-grow items-center gap-3 text-sm font-medium">
-										<input
-											type="checkbox"
-											checked={state === 'all'}
-											indeterminate={state === 'some'}
-											onchange={(e) => setVisible(system.members, e.currentTarget.checked)}
-										/>
-										<span
-											class="size-2.5 rounded-full"
-											style="background: {data.colors[labelId] ?? 'currentColor'}"
-										></span>
-										{name(labelId)}
-									</label>
-								</div>
-								{#if open && system.members.length > 1}
-									<ul class="mb-1 flex flex-col ps-8">
-										{#each system.members as id (id)}
-											<li>
-												<label class="flex h-8 items-center gap-3 text-sm">
-													<input
-														type="checkbox"
-														checked={visible.has(id)}
-														onchange={(e) => setVisible([id], e.currentTarget.checked)}
-													/>
-													<span
-														class="size-2.5 rounded-full"
-														style="background: {data.colors[id] ?? 'currentColor'}"
-													></span>
-													{name(id)}
-												</label>
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-					{#if data.hidden.length}
-						<a
-							class="px-4 text-sm text-muted-foreground hover:text-foreground"
-							href={pageHref(map.originId, [])}
-						>
-							{m.delta_v_reset_targets()}
-						</a>
-					{/if}
+								</li>
+							{/each}
+						</ul>
+						{#if data.hidden.length}
+							<a
+								class="px-4 text-sm text-muted-foreground hover:text-foreground"
+								href={pageHref(map.originId, [])}
+							>
+								{m.delta_v_reset_targets()}
+							</a>
+						{/if}
+					</ScrollArea>
 				</Sheet.Content>
 			</Sheet.Root>
 		{/if}

@@ -23,7 +23,11 @@
 		scrollbarXClasses?: string | undefined;
 		scrollbarYClasses?: string | undefined;
 		/** For the viewport, not the root — a height cap only scrolls when it is
-		 *  on the element that overflows. */
+		 *  on the element that overflows. Inside a panel that is capped by a
+		 *  max-height rather than sized, the viewport's own `size-full` resolves
+		 *  against an indefinite height and overflows: make the root a flex
+		 *  column (`flex min-h-0 flex-1 flex-col`) and pass `min-h-0 flex-1`
+		 *  here, so flex sizing caps it instead of a percentage. */
 		viewportClasses?: string | undefined;
 		viewportRef?: HTMLElement | null;
 	} = $props();

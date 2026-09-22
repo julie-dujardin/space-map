@@ -26,6 +26,7 @@
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 
 	interface Props {
 		/** Given by a page whose credits are not the scene's: these sections
@@ -180,136 +181,138 @@
 	</a>
 {/snippet}
 
-<div class="flex max-h-[70dvh] w-72 flex-col gap-3 overflow-y-auto text-xs">
-	<h2 class="text-sm font-semibold">{m.attribution_title()}</h2>
+<ScrollArea class="max-h-[70dvh] w-72 text-xs" viewportClasses="max-h-[70dvh]">
+	<div class="flex flex-col gap-3">
+		<h2 class="text-sm font-semibold">{m.attribution_title()}</h2>
 
-	{#if sections}
-		{#each sections as section (section.title)}
-			<section class="space-y-1">
-				{@render sectionHeader(section.title)}
-				<ul class="space-y-0.5">
-					<!-- One author page can stand behind several bodies, so the link
+		{#if sections}
+			{#each sections as section (section.title)}
+				<section class="space-y-1">
+					{@render sectionHeader(section.title)}
+					<ul class="space-y-0.5">
+						<!-- One author page can stand behind several bodies, so the link
 					     alone is not a key. -->
-					{#each section.rows as row (`${row.href}\u0000${row.label}`)}
-						<li>
-							{@render link(row.href, row.label, row.sub)}
-							{#if row.license}<span class="text-muted-foreground"> · {row.license}</span>{/if}
-						</li>
-					{/each}
-				</ul>
-			</section>
-		{/each}
-	{:else}
-		{#if orbitEntries.length > 0}
-			<section class="space-y-1">
-				{@render sectionHeader(m.attribution_section_orbits())}
-				<ul class="space-y-0.5">
-					{#each orbitEntries as e (e.archive)}
-						<li>{@render link(e.url, e.name)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
+						{#each section.rows as row (`${row.href}\u0000${row.label}`)}
+							<li>
+								{@render link(row.href, row.label, row.sub)}
+								{#if row.license}<span class="text-muted-foreground"> · {row.license}</span>{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/each}
+		{:else}
+			{#if orbitEntries.length > 0}
+				<section class="space-y-1">
+					{@render sectionHeader(m.attribution_section_orbits())}
+					<ul class="space-y-0.5">
+						{#each orbitEntries as e (e.archive)}
+							<li>{@render link(e.url, e.name)}</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
 
-		{#if rotationRows.length > 0}
-			<section class="space-y-1">
-				{@render sectionHeader(m.attribution_section_rotation())}
-				<ul class="space-y-0.5">
-					{#each rotationRows as row (row.key)}
-						<li>{@render link(row.url, row.label)}</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
+			{#if rotationRows.length > 0}
+				<section class="space-y-1">
+					{@render sectionHeader(m.attribution_section_rotation())}
+					<ul class="space-y-0.5">
+						{#each rotationRows as row (row.key)}
+							<li>{@render link(row.url, row.label)}</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
 
-		{#if imageryRows.length > 0}
-			<section class="space-y-1">
-				{@render sectionHeader(m.attribution_section_imagery_all())}
-				<ul class="space-y-0.5">
-					{#each imageryRows as r (r.key)}
+			{#if imageryRows.length > 0}
+				<section class="space-y-1">
+					{@render sectionHeader(m.attribution_section_imagery_all())}
+					<ul class="space-y-0.5">
+						{#each imageryRows as r (r.key)}
+							<li>
+								{@render link(
+									r.source,
+									r.qualifier ? `${r.label} (${r.qualifier})` : r.label,
+									r.organisation
+								)}
+								{#if r.license}<span class="text-muted-foreground"> · {r.license}</span>{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+
+			{#if focusedModel}
+				<section class="space-y-1">
+					{@render sectionHeader(m.attribution_section_models())}
+					<ul class="space-y-0.5">
 						<li>
 							{@render link(
-								r.source,
-								r.qualifier ? `${r.label} (${r.qualifier})` : r.label,
-								r.organisation
+								focusedModel.source,
+								bodyName(focusedModel.bodyId),
+								focusedModel.organisation
 							)}
-							{#if r.license}<span class="text-muted-foreground"> · {r.license}</span>{/if}
+							{#if focusedModel.license}<span class="text-muted-foreground">
+									· {focusedModel.license}</span
+								>{/if}
 						</li>
-					{/each}
+						{#if provenanceLabel(focusedModel)}
+							<li class="text-muted-foreground">
+								{provenanceLabel(focusedModel)}
+								{#if focusedModel.mission}
+									· <a
+										href={missionHref(focusedModel.mission.id)}
+										onclick={(e) =>
+											openMission(e, focusedModel.mission!.id, focusedModel.mission!.name)}
+										class="text-foreground hover:underline underline-offset-2"
+										>{focusedModel.mission.name}</a
+									>
+								{/if}
+								{#if focusedModel.archive}
+									· {#if focusedModel.archiveUrl}{@render link(
+											focusedModel.archiveUrl,
+											focusedModel.archive
+										)}{:else}{focusedModel.archive}{/if}
+								{/if}
+							</li>
+						{/if}
+					</ul>
+				</section>
+			{/if}
+
+			<section class="space-y-1">
+				{@render sectionHeader(m.attribution_section_metadata())}
+				<ul class="space-y-0.5">
+					<li>{@render link('https://www.wikidata.org/', m.source_wikidata_name())}</li>
+					<li>{@render link('https://www.wikipedia.org/', m.source_wikipedia_name())}</li>
+					<li>
+						{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
+					</li>
 				</ul>
 			</section>
-		{/if}
 
-		{#if focusedModel}
 			<section class="space-y-1">
-				{@render sectionHeader(m.attribution_section_models())}
+				{@render sectionHeader(m.attribution_section_images())}
 				<ul class="space-y-0.5">
 					<li>
-						{@render link(
-							focusedModel.source,
-							bodyName(focusedModel.bodyId),
-							focusedModel.organisation
-						)}
-						{#if focusedModel.license}<span class="text-muted-foreground">
-								· {focusedModel.license}</span
-							>{/if}
+						{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
 					</li>
-					{#if provenanceLabel(focusedModel)}
-						<li class="text-muted-foreground">
-							{provenanceLabel(focusedModel)}
-							{#if focusedModel.mission}
-								· <a
-									href={missionHref(focusedModel.mission.id)}
-									onclick={(e) =>
-										openMission(e, focusedModel.mission!.id, focusedModel.mission!.name)}
-									class="text-foreground hover:underline underline-offset-2"
-									>{focusedModel.mission.name}</a
-								>
-							{/if}
-							{#if focusedModel.archive}
-								· {#if focusedModel.archiveUrl}{@render link(
-										focusedModel.archiveUrl,
-										focusedModel.archive
-									)}{:else}{focusedModel.archive}{/if}
-							{/if}
-						</li>
-					{/if}
 				</ul>
 			</section>
 		{/if}
 
 		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_metadata())}
+			{@render sectionHeader(m.attribution_section_source())}
 			<ul class="space-y-0.5">
-				<li>{@render link('https://www.wikidata.org/', m.source_wikidata_name())}</li>
-				<li>{@render link('https://www.wikipedia.org/', m.source_wikipedia_name())}</li>
-				<li>
-					{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
-				</li>
+				<li>{@render link(GITHUB_REPO_URL, m.credits_source_code())}</li>
 			</ul>
 		</section>
 
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_images())}
-			<ul class="space-y-0.5">
-				<li>
-					{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
-				</li>
-			</ul>
-		</section>
-	{/if}
-
-	<section class="space-y-1">
-		{@render sectionHeader(m.attribution_section_source())}
-		<ul class="space-y-0.5">
-			<li>{@render link(GITHUB_REPO_URL, m.credits_source_code())}</li>
-		</ul>
-	</section>
-
-	<a
-		href="/credits"
-		class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2 pt-1"
-	>
-		{m.credits_see_all()} <span class="inline-block rtl:rotate-180">→</span>
-	</a>
-</div>
+		<a
+			href="/credits"
+			class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2 pt-1"
+		>
+			{m.credits_see_all()} <span class="inline-block rtl:rotate-180">→</span>
+		</a>
+	</div>
+</ScrollArea>

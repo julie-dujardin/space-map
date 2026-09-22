@@ -51,8 +51,8 @@
 	>
 		<Sheet.Title class="sr-only">{m.nav_menu()}</Sheet.Title>
 		<ScrollArea
-			class="min-h-0 flex-1"
-			viewportClasses="[&>div]:flex [&>div]:min-h-full [&>div]:flex-col"
+			class="flex min-h-0 flex-1 flex-col"
+			viewportClasses="min-h-0 flex-1 [&>div]:flex [&>div]:min-h-full [&>div]:flex-col"
 		>
 			<SiteMenuPanel
 				{current}

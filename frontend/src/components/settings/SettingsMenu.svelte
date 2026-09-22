@@ -3,6 +3,7 @@
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import type { Snippet } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { getLocale, locales, type Locale } from '$lib/paraglide/runtime.js';
 	import {
 		getSettings,
@@ -238,7 +239,7 @@
 	</button>
 {/snippet}
 
-<div class="flex min-h-0 flex-col">
+<div class="flex min-h-0 flex-1 flex-col">
 	<header class="flex items-center gap-2 pb-3 {onBack ? 'ps-3 pe-5 pt-2' : 'px-5 pt-5'}">
 		{#if onBack}
 			<button
@@ -257,170 +258,35 @@
 		</div>
 	</header>
 
-	<div class="px-5 pb-5 flex min-h-0 flex-col gap-5 overflow-y-auto">
-		<section class="flex flex-col gap-4">
-			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-				{m.settings_section_display()}
-			</h3>
-
-			<div class="flex flex-col gap-2">
-				<div class="flex items-center justify-between gap-3">
-					<div class="min-w-0">
-						<div id="settings-language-label" class="text-sm font-medium">
-							{m.settings_language()}
-						</div>
-					</div>
-					<div class="relative shrink-0">
-						<select
-							class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
-								cursor-pointer hover:bg-accent transition-colors
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							aria-labelledby="settings-language-label"
-							value={settings.language}
-							onchange={(e) => {
-								const v = (e.currentTarget as HTMLSelectElement).value;
-								switchLanguage(v === 'auto' ? 'auto' : (v as Locale));
-							}}
-						>
-							<option value="auto">{m.settings_auto()}</option>
-							{#each locales as loc (loc)}
-								<option value={loc}>{localeLabel(loc)}</option>
-							{/each}
-						</select>
-						<ChevronDownIcon
-							class="absolute end-1.5 top-1/2 -translate-y-1/2 size-3.5 opacity-50 pointer-events-none"
-						/>
-					</div>
-				</div>
-				{#if settings.language === 'auto'}
-					{@render autoSource(
-						localeLabel(getLocale()),
-						m.settings_source_browser({ tag: settings.browserLanguage })
-					)}
-				{/if}
-			</div>
-
-			<div class="flex flex-col gap-2">
-				{@render segmented(m.settings_theme(), themeOptions, settings.theme, (v) =>
-					settings.setTheme(v as Theme)
-				)}
-				{#if settings.theme === 'auto'}
-					{@render autoSource(resolvedThemeLabel, m.settings_source_system())}
-				{/if}
-			</div>
-
-			<div class="flex flex-col gap-2">
-				{@render segmented(
-					m.settings_reduced_motion(),
-					reducedMotionOptions,
-					settings.reducedMotion,
-					(v) => settings.setReducedMotion(v as ReducedMotion)
-				)}
-				{#if settings.reducedMotion === 'auto'}
-					{@render autoSource(resolvedReducedMotionLabel, m.settings_source_system())}
-				{/if}
-			</div>
-
-			{#if scope === 'panorama'}
-				<div class="flex flex-col gap-2">
-					{@render segmented(
-						m.panorama_gyro(),
-						gyroOptions,
-						settings.panoramaGyro,
-						(v) => settings.setPanoramaGyro(v as PanoramaGyro),
-						gyroUnavailable !== undefined
-					)}
-					{#if gyroUnavailable}
-						<p class="text-xs text-muted-foreground">{gyroUnavailable}</p>
-					{:else if settings.panoramaGyro === 'auto' && settings.resolvedReducedMotion}
-						{@render autoSource(
-							m.settings_reduced_motion_off(),
-							m.settings_source_reduced_motion()
-						)}
-					{:else}
-						<p class="text-xs text-muted-foreground">{m.panorama_gyro_hint()}</p>
-					{/if}
-				</div>
-			{/if}
-
-			{#if showFullscreen}
-				<label class="flex cursor-pointer items-center justify-between gap-3">
-					<div class="min-w-0">
-						<div class="text-sm font-medium">{m.settings_fullscreen()}</div>
-					</div>
-					<button
-						type="button"
-						role="switch"
-						aria-checked={fullscreen}
-						aria-label={m.settings_fullscreen()}
-						class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-								{fullscreen ? 'bg-primary' : 'bg-muted'}"
-						onclick={() => void toggleFullscreen()}
-					>
-						<span
-							class="inline-block size-4 rounded-full bg-background shadow transition-transform
-									{fullscreen ? 'translate-x-4' : 'translate-x-0.5'}"
-						></span>
-					</button>
-				</label>
-			{/if}
-		</section>
-
-		{#if showTime}
+	<ScrollArea class="flex min-h-0 flex-1 flex-col" viewportClasses="min-h-0 flex-1">
+		<div class="flex flex-col gap-5 px-5 pb-5">
 			<section class="flex flex-col gap-4">
 				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-					{m.settings_section_time()}
-				</h3>
-
-				{@render segmented(m.settings_dateformat(), dateFormatOptions, settings.dateFormat, (v) =>
-					settings.setDateFormat(v as DateFormatChoice)
-				)}
-
-				<div class="flex flex-col gap-2">
-					{@render segmented(
-						m.settings_clock(),
-						clockOptions,
-						effectiveClock,
-						(v) => settings.setClock(v as Clock),
-						clockLocked
-					)}
-					{#if clockLocked}
-						{@render autoSource(m.settings_clock_24h(), m.settings_source_iso())}
-					{:else if settings.clock === 'auto'}
-						{@render autoSource(resolvedClockLabel, m.settings_source_locale())}
-					{/if}
-				</div>
-			</section>
-		{/if}
-
-		{#if showScene}
-			<section class="flex flex-col gap-4">
-				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-					{m.settings_section_graphics()}
+					{m.settings_section_display()}
 				</h3>
 
 				<div class="flex flex-col gap-2">
 					<div class="flex items-center justify-between gap-3">
 						<div class="min-w-0">
-							<div id="settings-atmo-quality-label" class="text-sm font-medium">
-								{m.settings_atmosphere_quality()}
+							<div id="settings-language-label" class="text-sm font-medium">
+								{m.settings_language()}
 							</div>
 						</div>
 						<div class="relative shrink-0">
 							<select
 								class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
-										cursor-pointer hover:bg-accent transition-colors
-										focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-								aria-labelledby="settings-atmo-quality-label"
-								value={settings.atmosphereQuality}
-								onchange={(e) =>
-									settings.setAtmosphereQuality(
-										(e.currentTarget as HTMLSelectElement).value as AtmosphereQualityTier
-									)}
+								cursor-pointer hover:bg-accent transition-colors
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+								aria-labelledby="settings-language-label"
+								value={settings.language}
+								onchange={(e) => {
+									const v = (e.currentTarget as HTMLSelectElement).value;
+									switchLanguage(v === 'auto' ? 'auto' : (v as Locale));
+								}}
 							>
-								{#each atmoQualityOptions as opt (opt.value)}
-									<option value={opt.value}>{opt.label()}</option>
+								<option value="auto">{m.settings_auto()}</option>
+								{#each locales as loc (loc)}
+									<option value={loc}>{localeLabel(loc)}</option>
 								{/each}
 							</select>
 							<ChevronDownIcon
@@ -428,47 +294,184 @@
 							/>
 						</div>
 					</div>
-					{#if settings.atmosphereQuality === 'auto'}
+					{#if settings.language === 'auto'}
 						{@render autoSource(
-							resolvedAtmoQualityLabel,
-							settings.atmosphereAutoTier
-								? m.settings_source_perf()
-								: settings.atmosphereCalibration
-									? m.settings_source_benchmark()
-									: m.settings_source_device(),
-							recalibrateButton
+							localeLabel(getLocale()),
+							m.settings_source_browser({ tag: settings.browserLanguage })
 						)}
 					{/if}
 				</div>
+
+				<div class="flex flex-col gap-2">
+					{@render segmented(m.settings_theme(), themeOptions, settings.theme, (v) =>
+						settings.setTheme(v as Theme)
+					)}
+					{#if settings.theme === 'auto'}
+						{@render autoSource(resolvedThemeLabel, m.settings_source_system())}
+					{/if}
+				</div>
+
+				<div class="flex flex-col gap-2">
+					{@render segmented(
+						m.settings_reduced_motion(),
+						reducedMotionOptions,
+						settings.reducedMotion,
+						(v) => settings.setReducedMotion(v as ReducedMotion)
+					)}
+					{#if settings.reducedMotion === 'auto'}
+						{@render autoSource(resolvedReducedMotionLabel, m.settings_source_system())}
+					{/if}
+				</div>
+
+				{#if scope === 'panorama'}
+					<div class="flex flex-col gap-2">
+						{@render segmented(
+							m.panorama_gyro(),
+							gyroOptions,
+							settings.panoramaGyro,
+							(v) => settings.setPanoramaGyro(v as PanoramaGyro),
+							gyroUnavailable !== undefined
+						)}
+						{#if gyroUnavailable}
+							<p class="text-xs text-muted-foreground">{gyroUnavailable}</p>
+						{:else if settings.panoramaGyro === 'auto' && settings.resolvedReducedMotion}
+							{@render autoSource(
+								m.settings_reduced_motion_off(),
+								m.settings_source_reduced_motion()
+							)}
+						{:else}
+							<p class="text-xs text-muted-foreground">{m.panorama_gyro_hint()}</p>
+						{/if}
+					</div>
+				{/if}
+
+				{#if showFullscreen}
+					<label class="flex cursor-pointer items-center justify-between gap-3">
+						<div class="min-w-0">
+							<div class="text-sm font-medium">{m.settings_fullscreen()}</div>
+						</div>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={fullscreen}
+							aria-label={m.settings_fullscreen()}
+							class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
+								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+								{fullscreen ? 'bg-primary' : 'bg-muted'}"
+							onclick={() => void toggleFullscreen()}
+						>
+							<span
+								class="inline-block size-4 rounded-full bg-background shadow transition-transform
+									{fullscreen ? 'translate-x-4' : 'translate-x-0.5'}"
+							></span>
+						</button>
+					</label>
+				{/if}
 			</section>
 
-			<section class="flex flex-col gap-4">
-				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-					{m.settings_section_developer()}
-				</h3>
+			{#if showTime}
+				<section class="flex flex-col gap-4">
+					<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+						{m.settings_section_time()}
+					</h3>
 
-				<label class="flex items-center justify-between gap-3 cursor-pointer">
-					<div class="min-w-0">
-						<div class="text-sm font-medium">{m.settings_debug_info()}</div>
-						<div class="text-xs text-muted-foreground mt-0.5">{m.settings_debug_info_desc()}</div>
+					{@render segmented(m.settings_dateformat(), dateFormatOptions, settings.dateFormat, (v) =>
+						settings.setDateFormat(v as DateFormatChoice)
+					)}
+
+					<div class="flex flex-col gap-2">
+						{@render segmented(
+							m.settings_clock(),
+							clockOptions,
+							effectiveClock,
+							(v) => settings.setClock(v as Clock),
+							clockLocked
+						)}
+						{#if clockLocked}
+							{@render autoSource(m.settings_clock_24h(), m.settings_source_iso())}
+						{:else if settings.clock === 'auto'}
+							{@render autoSource(resolvedClockLabel, m.settings_source_locale())}
+						{/if}
 					</div>
-					<button
-						type="button"
-						role="switch"
-						aria-checked={settings.showDebugInfo}
-						aria-label={m.settings_debug_info()}
-						class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
+				</section>
+			{/if}
+
+			{#if showScene}
+				<section class="flex flex-col gap-4">
+					<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+						{m.settings_section_graphics()}
+					</h3>
+
+					<div class="flex flex-col gap-2">
+						<div class="flex items-center justify-between gap-3">
+							<div class="min-w-0">
+								<div id="settings-atmo-quality-label" class="text-sm font-medium">
+									{m.settings_atmosphere_quality()}
+								</div>
+							</div>
+							<div class="relative shrink-0">
+								<select
+									class="appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
+										cursor-pointer hover:bg-accent transition-colors
+										focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									aria-labelledby="settings-atmo-quality-label"
+									value={settings.atmosphereQuality}
+									onchange={(e) =>
+										settings.setAtmosphereQuality(
+											(e.currentTarget as HTMLSelectElement).value as AtmosphereQualityTier
+										)}
+								>
+									{#each atmoQualityOptions as opt (opt.value)}
+										<option value={opt.value}>{opt.label()}</option>
+									{/each}
+								</select>
+								<ChevronDownIcon
+									class="absolute end-1.5 top-1/2 -translate-y-1/2 size-3.5 opacity-50 pointer-events-none"
+								/>
+							</div>
+						</div>
+						{#if settings.atmosphereQuality === 'auto'}
+							{@render autoSource(
+								resolvedAtmoQualityLabel,
+								settings.atmosphereAutoTier
+									? m.settings_source_perf()
+									: settings.atmosphereCalibration
+										? m.settings_source_benchmark()
+										: m.settings_source_device(),
+								recalibrateButton
+							)}
+						{/if}
+					</div>
+				</section>
+
+				<section class="flex flex-col gap-4">
+					<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+						{m.settings_section_developer()}
+					</h3>
+
+					<label class="flex items-center justify-between gap-3 cursor-pointer">
+						<div class="min-w-0">
+							<div class="text-sm font-medium">{m.settings_debug_info()}</div>
+							<div class="text-xs text-muted-foreground mt-0.5">{m.settings_debug_info_desc()}</div>
+						</div>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={settings.showDebugInfo}
+							aria-label={m.settings_debug_info()}
+							class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
 								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
 								{settings.showDebugInfo ? 'bg-primary' : 'bg-muted'}"
-						onclick={() => settings.setShowDebugInfo(!settings.showDebugInfo)}
-					>
-						<span
-							class="inline-block size-4 rounded-full bg-background shadow transition-transform
+							onclick={() => settings.setShowDebugInfo(!settings.showDebugInfo)}
+						>
+							<span
+								class="inline-block size-4 rounded-full bg-background shadow transition-transform
 									{settings.showDebugInfo ? 'translate-x-4' : 'translate-x-0.5'}"
-						></span>
-					</button>
-				</label>
-			</section>
-		{/if}
-	</div>
+							></span>
+						</button>
+					</label>
+				</section>
+			{/if}
+		</div>
+	</ScrollArea>
 </div>

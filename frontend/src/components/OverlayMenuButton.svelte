@@ -53,7 +53,7 @@
 		<Dialog.Portal>
 			<Dialog.Overlay class="fixed inset-0 z-[69] bg-black/40" />
 			<Dialog.Content
-				class="fixed inset-0 z-[70] overflow-y-auto bg-background pt-[var(--safe-top)] pb-[var(--safe-bottom)] ps-[var(--safe-start)] pe-[var(--safe-end)] outline-none"
+				class="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-background pt-[var(--safe-top)] pb-[var(--safe-bottom)] ps-[var(--safe-start)] pe-[var(--safe-end)] outline-none"
 			>
 				<Dialog.Title class="sr-only">{title}</Dialog.Title>
 				<Dialog.Close
@@ -75,7 +75,7 @@
 			side="bottom"
 			align="end"
 			sideOffset={8}
-			class="w-80 max-h-[80dvh] overflow-hidden p-0"
+			class="flex max-h-[80dvh] w-80 flex-col overflow-hidden p-0"
 		>
 			{@render children()}
 		</Popover.Content>

@@ -6,6 +6,7 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { DRAWER_TOP_GAP_PX } from '$lib/drawer';
 	import TimeMenu from './TimeMenu.svelte';
@@ -61,11 +62,11 @@
 
 				<!-- The calendar makes the sheet outgrow a short screen, so the body scrolls
 				     under a pinned header rather than the picker being cut off. -->
-				<div
-					class="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
-				>
-					<TimeMenu {clock} />
-				</div>
+				<ScrollArea class="flex min-h-0 flex-1 flex-col" viewportClasses="min-h-0 flex-1">
+					<div class="flex flex-col px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+						<TimeMenu {clock} />
+					</div>
+				</ScrollArea>
 			</Vaul.Content>
 		</Vaul.Portal>
 	</Vaul.Root>
