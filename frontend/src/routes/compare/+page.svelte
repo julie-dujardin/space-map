@@ -25,6 +25,7 @@
 	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 	import { bandsBySize, screensOf } from '$lib/compare/pages';
+	import { SWIPE_PX } from '$lib/charts/scrub';
 	import { labelWidth, screenFit, SIDE_PAD } from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
 	import { presetOn, type ComparePreset } from '$lib/compare/presets';
@@ -46,8 +47,6 @@
 
 	/** Below this the page is laid out for a phone. */
 	const NARROW = 768;
-	/** How far a finger travels before it counts as a page turn. */
-	const SWIPE_PX = 60;
 	/** The band of names the row draws under itself, with room under them for
 	 *  the credit line in the corner. */
 	const LABEL_ROW = 60;

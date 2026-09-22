@@ -1,6 +1,9 @@
 /** px a touch must travel before it reads as a scrub rather than a tap. */
 export const DRAG_SLOP = 8;
 
+/** px a finger travels across a paginated chart before it counts as a page turn. */
+export const SWIPE_PX = 60;
+
 interface ScrubOptions {
 	/** Hit-test the pointer position and show its preview. */
 	onScrub: (clientX: number, clientY: number) => void;

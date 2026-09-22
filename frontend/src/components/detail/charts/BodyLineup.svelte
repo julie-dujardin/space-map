@@ -115,7 +115,7 @@
 	import { focusHref } from '$lib/state/focus-link';
 	import { bodyHref } from '$lib/state/url';
 	import { isModifiedClick } from '$lib/modified-click';
-	import { createScrub } from '$lib/charts/scrub';
+	import { createScrub, SWIPE_PX } from '$lib/charts/scrub';
 	import { formatQuantity } from '$lib/format/quantities';
 	import {
 		ASIDE_END_PAD,
@@ -519,6 +519,27 @@
 		onScrub: (clientX, clientY) => (hoveredId = pickAt(clientX, clientY)),
 		onEnd: () => (hoveredId = null)
 	});
+
+	// A finger dragged across a paginated row turns the page, as on the compare
+	// page. It rides alongside the scrub preview: scrubbing shows what is under
+	// the finger, and where the finger ends decides whether the row moves on.
+	let touchFrom: number | null = null;
+	/** Whether the click closing this gesture ended a swipe. Reading it spends
+	 *  the start, so a later click on the same body picks it as usual. */
+	function swiped(clientX: number): boolean {
+		const from = touchFrom;
+		touchFrom = null;
+		return from !== null && Math.abs(clientX - from) >= SWIPE_PX;
+	}
+	function onSwipeStart(e: PointerEvent) {
+		touchFrom = e.pointerType === 'touch' && pageCount > 1 ? e.clientX : null;
+		scrub.onpointerdown(e);
+	}
+	function onSwipeEnd(e: PointerEvent) {
+		const dx = touchFrom === null ? 0 : e.clientX - touchFrom;
+		if (Math.abs(dx) >= SWIPE_PX) goToPage(page + (dx < 0 ? 1 : -1));
+		scrub.onpointerup();
+	}
 
 	// Mouse hover tracks the pointer directly; touch/pen goes through the scrub
 	// gesture so a tap (which fires the button's click → focus) never flashes the
@@ -1277,10 +1298,13 @@
 			e.preventDefault();
 			oncontextpick(id, e.clientX, e.clientY);
 		}}
-		onpointerdown={scrub.onpointerdown}
+		onpointerdown={onSwipeStart}
 		onpointermove={onPointerMove}
-		onpointerup={scrub.onpointerup}
-		onpointercancel={scrub.onpointercancel}
+		onpointerup={onSwipeEnd}
+		onpointercancel={() => {
+			touchFrom = null;
+			scrub.onpointercancel();
+		}}
 		onpointerleave={() => {
 			hoveredId = null;
 			scrub.onpointerleave();
@@ -1305,7 +1329,16 @@
 				<a
 					href={p.href ??
 						((!onpick && focusHref(appState, p.id, p.name)) || bodyHref(p.id, p.name))}
-					onclick={p.href && !onpick ? undefined : (e) => focusHovered(e, p.id)}
+					onclick={(e) => {
+						// A click that ends a page swipe belongs to the swipe, not the body
+						// it happens to land on.
+						if (swiped(e.clientX)) {
+							e.preventDefault();
+							return;
+						}
+						if (p.href && !onpick) return;
+						focusHovered(e, p.id);
+					}}
 					onmousedown={(e) => e.button === 0 && e.preventDefault()}
 					onfocus={(e) => e.currentTarget.matches(':focus-visible') && (hoveredId = p.id)}
 					onblur={() => hoveredId === p.id && (hoveredId = null)}
@@ -1316,7 +1349,7 @@
 			{:else}
 				<button
 					type="button"
-					onclick={() => focusBody(p.id)}
+					onclick={(e) => !swiped(e.clientX) && focusBody(p.id)}
 					aria-label={p.name}
 					class="absolute top-0 bottom-0 outline-none"
 					style="left: {p.colLeft}px; width: {p.colWidth}px"
