@@ -6,6 +6,7 @@
 	import MenuIcon from '@lucide/svelte/icons/menu';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { SettingsScope } from '../settings/SettingsMenu.svelte';
 	import SiteMenuPanel from './SiteMenuPanel.svelte';
 	import type { NavPage } from './site';
@@ -46,9 +47,20 @@
 		side="top"
 		showCloseButton={false}
 		overlayClass="z-[69]"
-		class="z-[70] max-h-dvh gap-0 overflow-y-auto pt-[var(--safe-top)] ps-[var(--safe-start)] pe-[var(--safe-end)] {height}"
+		class="z-[70] max-h-dvh gap-0 overflow-hidden pt-[var(--safe-top)] ps-[var(--safe-start)] pe-[var(--safe-end)] {height}"
 	>
 		<Sheet.Title class="sr-only">{m.nav_menu()}</Sheet.Title>
-		<SiteMenuPanel {current} {scope} variant="sheet" bind:view onNavigate={() => (open = false)} />
+		<ScrollArea
+			class="min-h-0 flex-1"
+			viewportClasses="[&>div]:flex [&>div]:min-h-full [&>div]:flex-col"
+		>
+			<SiteMenuPanel
+				{current}
+				{scope}
+				variant="sheet"
+				bind:view
+				onNavigate={() => (open = false)}
+			/>
+		</ScrollArea>
 	</Sheet.Content>
 </Sheet.Root>
