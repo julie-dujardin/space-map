@@ -18,6 +18,7 @@ from .mission_patterns import (
     LANDED_INCLUDE,
     MISSION_INCLUDE,
     MISSION_LATEST_ONLY,
+    MISSION_METAKERNEL,
     SKIP_PATTERNS,
 )
 from .sources import MissionSource
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 _GENERIC_PCK_SNAPSHOT_RE = re.compile(r"^pck\d+\.tpc$", re.IGNORECASE)
 _VERSIONED_PCK_RE = re.compile(r"^(?P<stem>.+)_v(?P<ver>\d+)\.tpc$", re.IGNORECASE)
+_METAKERNEL_SPK_RE = re.compile(r"\$KERNELS/spk/([^'\"\s]+\.bsp)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,29 @@ def apply_mission_filter(
                 kept.append(matches[-1])
         return kept
     return [h for h in hrefs if any(p.match(h) for p in compiled)]
+
+
+def metakernel_spks(text: str) -> set[str]:
+    """SPK filenames a metakernel loads.
+
+    Only the `\\begindata` sections count: the header comments name example
+    kernels that are never loaded.
+    """
+    data = "".join(
+        chunk.split("\\begintext", 1)[0] for chunk in text.split("\\begindata")[1:]
+    )
+    return set(_METAKERNEL_SPK_RE.findall(data))
+
+
+def fetch_metakernel_spks(client: httpx.Client, url: str) -> set[str] | None:
+    """SPK filenames loaded by the metakernel at `url`; None if unreachable."""
+    try:
+        resp = client.get(url, timeout=60.0)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("metakernel fetch failed for %s: %s", url, exc)
+        return None
+    return metakernel_spks(resp.text)
 
 
 def filter_pck_listing(hrefs: list[str]) -> list[str]:
@@ -149,6 +174,23 @@ def list_mission_spks(client: httpx.Client, source: MissionSource) -> MissionFil
             source.mission,
             pre_filter,
         )
+
+    mk_name = MISSION_METAKERNEL.get(source.mission)
+    if mk_name and trajectory_hrefs:
+        mk_url = source.spk_url.replace("/spk/", "/mk/") + mk_name
+        mk_spks = fetch_metakernel_spks(client, mk_url)
+        if mk_spks is None:
+            # The include patterns alone would pull every issue of the series;
+            # returning nothing leaves the previous download's index in place.
+            return MissionFiles(trajectory=[], landed=[])
+        trajectory_hrefs = [h for h in trajectory_hrefs if h in mk_spks]
+        if not trajectory_hrefs:
+            logger.warning(
+                "%s/%s: %s lists none of the pattern-matched .bsp files",
+                source.server,
+                source.mission,
+                mk_name,
+            )
 
     all_hrefs = trajectory_hrefs + landed_hrefs
     if not all_hrefs:

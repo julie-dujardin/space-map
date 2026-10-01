@@ -122,6 +122,9 @@ ESA_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         "esa_generic",
         "GNSS",  # European GNSS constellation — celestrak
         "ExoMarsRSP",  # Russian-led, canceled 2022 (only test/sim kernels)
+        # Rosalind Franklin, launching 2028: rover ground-test telemetry,
+        # landing-site plans and GNC zero-points, no flight trajectory yet.
+        "ExoMarsRFM",
         # Aliases for missions already mirrored under their NAIF directory
         # name. Skipping the ESA-hyphenated form avoids downloading the same
         # SPK files twice and producing two probe_ids for one spacecraft.

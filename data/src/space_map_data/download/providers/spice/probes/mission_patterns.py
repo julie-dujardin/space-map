@@ -13,6 +13,9 @@ LANDED wins over MISSION_INCLUDE in `listings.list_mission_spks`.
 `MISSION_LATEST_ONLY` flags missions where each MISSION_INCLUDE pattern
 matches multiple cumulative versions; keep only the lex-last per pattern.
 
+`MISSION_METAKERNEL` further narrows a mission to the SPKs its upstream
+metakernel loads.
+
 `SKIP_PATTERNS` drops generic-ephemeris (planet DE, sb441) and stationary
 post-impact / crash-site debris kernels.
 """
@@ -37,18 +40,16 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^010420R_SCPSE_EP1_JP83\.bsp$",
         r"^041014R_SCPSE_01066_04199\.bsp$",
     ),
-    # The single `mlt` file starts 2017-12-05, 20 months after launch. `fcp`
-    # is the flown cruise reconstruction, launch → Mars orbit insertion. The
-    # 2017 aerobraking year between them stays uncovered on purpose: only the
-    # `flp` predicts span it, at ~300 MiB each for one milestone.
-    "EXOMARS2016": (
-        r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",
-        r"^em16_tgo_fcp_\d+_\d+_\d+_\d+_v\d+\.bsp$",
-    ),
-    "ExoMars2016": (
-        r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",
-        r"^em16_tgo_fcp_\d+_\d+_\d+_\d+_v\d+\.bsp$",
-    ),
+    # `fsp` is the TGO orbit series, reissued weekly with each issue spanning
+    # ~6 months, so the pattern alone would pull ~470 files (~40 GiB).
+    # `MISSION_METAKERNEL` narrows it to the ~26 issues ESA's own ops
+    # metakernel chains: launch → the current predict, gap-free, with the
+    # first issue matching the `fcp` cruise reconstruction to 0.3 km.
+    # The `mlt` file this replaced was a June-2016 pre-arrival planning orbit
+    # (a generic body renamed to -143) that sat 2,000-6,000 km off the flown
+    # orbit — the wrong side of Mars — from 2017 to 2023.
+    "EXOMARS2016": (r"^em16_tgo_fsp_\d+_\d+_\d+_\d+_v\d+\.bsp$",),
+    "ExoMars2016": (r"^em16_tgo_fsp_\d+_\d+_\d+_\d+_v\d+\.bsp$",),
     # The `dawn_rec_*` series is the full-mission PDS3 reconstruction
     # (launch → Vesta → Ceres → EOM 2018-10); source switched from the op
     # tree, whose only kernel starts 2013 with no Vesta phase.
@@ -181,9 +182,21 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         # reconstruction, launch day → orbit insertion.
         r"^trj_c_\d{6}-\d{6}_rec_v\d+\.bsp$",
     ),
-    # `ref_trj_*_scpse.bsp` full-mission references; per-arc `trj_*_OD\d+_v\d+.bsp`
-    # reconstructions are not matched here.
-    "EUROPACLIPPER": (r"^ref_trj_\d+_\d+_21F31_MEGA_L\d+_A\d+_LP\d+_V\d+_scpse\.bsp$",),
+    # `ref_trj_*_scpse.bsp` is the launch-day reference, thousands of km off
+    # the flown cruise, so it only fills what the navigation files miss.
+    # Before the `cruiseNNN-reconstruct` arcs start (2025-05), only the
+    # `postLaunch` and `cruiseNNN-final` deliveries cover the flight: each is
+    # flown up to its delivery date and predicted after, so the newest
+    # (lex-last, same recon tier as the arcs) must win. `cruiseNNN-predict`
+    # carries past the newest reconstruction. Maneuver designs (`MGATRG`,
+    # `EGATRG*-FINAL`, `-noburn`) are plans and stay out.
+    "EUROPACLIPPER": (
+        r"^ref_trj_\d+_\d+_21F31_MEGA_L\d+_A\d+_LP\d+_V\d+_scpse\.bsp$",
+        r"^trj_\d{6}-\d{6}-dco\d+-postLaunch-OD\d+-v\d+\.bsp$",
+        r"^trj_\d{6}-\d{6}-dco\d+-cruise\d+-final-OD\d+-v\d+\.bsp$",
+        r"^trj_\d{6}-\d{6}-dco\d+-cruise\d+-reconstruct-OD\d+-v\d+\.bsp$",
+        r"^trj_\d{6}-\d{6}-dco\d+-cruise\d+-predict-OD\d+-v\d+\.bsp$",
+    ),
     "MARS2020": (r"^m2020_cruise_od\d+_v\d+\.bsp$",),
     "MSL": (r"^msl_cruise_v\d+\.bsp$",),
     "THEMIS": (),  # Earth-orbit constellation; tracked via celestrak instead
@@ -270,7 +283,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "MGN": (r"^precycl1\.bsp$", r"^aerobrak\.bsp$", r"^cycle[1-6]\.bsp$"),
     "NOZOMI": (r"^planetb_pb98\.bsp$",),
     # ESA-only missions (newly enabled).
-    "EUCLID": (r"^euclid_flp_\d{8}_\d{8}_v\d+\.bsp$",),
+    # Each `euclid_flp_<iter>_<launch>_<end>` issue re-spans the mission;
+    # `MISSION_LATEST_ONLY` keeps the newest. The iteration-less
+    # `euclid_flp_<launch>_<end>_v0N` pair is the launch-month predict.
+    "EUCLID": (r"^euclid_flp_\d{5}_\d{8}_\d{8}_v\d+\.bsp$",),
     # Each `integral_sc_ssm_20021017_<asof>_v<NN>.bsp` re-spans launch→that
     # date; only the lex-last filename is needed (see `MISSION_LATEST_ONLY`).
     "INTEGRAL": (r"^integral_sc_ssm_20021017_\d+_v\d+\.bsp$",),
@@ -486,8 +502,21 @@ MISSION_LATEST_ONLY: frozenset[str] = frozenset(
         "GAIA",
         "JUICE",
         "LUCY",
+        "EUCLID",
+        # Every `soc-orbit` L-issue spans 2020-02 → 2030-11, so the lex-last
+        # already won everywhere; the other ~40 were dead weight.
+        "SOLAR-ORBITER",
     }
 )
+
+# Missions whose SPK selection follows a metakernel published in the
+# mission's own `kernels/mk/` directory, for series too dense to whitelist by
+# pattern: only files both matching MISSION_INCLUDE and listed in the
+# metakernel are kept. The metakernel is the mission team's own "load these"
+# set and moves with every upstream release.
+MISSION_METAKERNEL: dict[str, str] = {
+    "EXOMARS2016": "em16_ops.tm",
+}
 
 SKIP_PATTERNS: tuple[re.Pattern, ...] = tuple(
     re.compile(p, re.IGNORECASE)

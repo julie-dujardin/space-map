@@ -43,7 +43,7 @@ STATIONARY_PATTERNS = ("_imp_", "_crashsite_")
 # match against case-folded `_`/`.`/`-` splits of the filename so accidental
 # substring hits (e.g. "merged" containing "rg") don't trigger.
 _RECON_TOKENS: frozenset[str] = frozenset(
-    {"rec", "recon", "reconstruction", "reconstructed", "fcp", "final"}
+    {"rec", "recon", "reconstruct", "reconstruction", "reconstructed", "fcp", "final"}
 )
 _PREDICT_TOKENS: frozenset[str] = frozenset(
     {"pre", "pred", "predict", "predicted", "flp", "ref", "forecast", "extrap"}
