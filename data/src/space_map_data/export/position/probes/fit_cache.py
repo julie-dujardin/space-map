@@ -28,7 +28,7 @@ from space_map_data.export.sidecar_io import write_atomic
 from space_map_data.probes.zones import Zone
 from space_map_data.utils.paths import EXPORT_METADATA_DIR
 
-INTERMEDIATE_VERSION = 1
+INTERMEDIATE_VERSION = 2
 
 FITS_ROOT = EXPORT_METADATA_DIR / "position" / "probes" / "_fits"
 
