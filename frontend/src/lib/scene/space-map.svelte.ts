@@ -38,7 +38,9 @@ import {
 import type { Extension } from './extensions/registry';
 import { MapObjectCollection, MapObjectExtension, type MapObjects } from './extensions/objects';
 import type { BodyAppearance } from './objects/body/appearance';
-import { smallCircle } from '$lib/flatmap/geometry';
+import { anchorDistanceKm, anchorOffsetKm, subsolarPoint } from './extensions/measure';
+import type { Anchor, OffsetKm } from './extensions/anchor';
+import { smallCircle, type LonLat } from '$lib/flatmap/geometry';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
@@ -419,6 +421,26 @@ export class SpaceMap {
 	 *  driven by focus and by the clock, so the list grows as the reader moves. */
 	getChildren(id: string): string[] {
 		return [...(this.ctx.bodies.getChildren(id) ?? [])];
+	}
+
+	/** Kilometres between two places, as the last frame drew them: a body's
+	 *  centre, a point on its surface, anything an anchor names. Null while
+	 *  either end is on a body this map has not loaded. */
+	distanceKm(from: Anchor, to: Anchor): number | null {
+		return anchorDistanceKm(from, to, this.ctx, this.clock.jd);
+	}
+
+	/** The same measure with its direction kept: from one place to the other,
+	 *  in kilometres on ecliptic J2000 axes. What a held camera's `up` is made
+	 *  from, when up is a way along a body's surface. */
+	offsetKm(from: Anchor, to: Anchor): OffsetKm | null {
+		return anchorOffsetKm(from, to, this.ctx, this.clock.jd);
+	}
+
+	/** Where on `id` the Sun is overhead, as the last frame drew it: the middle
+	 *  of the lit half. Null for a body not loaded, or with no measured spin. */
+	getSubsolarPoint(id: string): LonLat | null {
+		return subsolarPoint(id, this.ctx, this.clock.jd);
 	}
 
 	/** @internal Fetch the scene's data for the clock's date. Resolves when all of it is

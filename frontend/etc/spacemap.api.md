@@ -179,6 +179,8 @@ export interface CoreMessages {
 	// (undocumented)
 	attribution_orbits: () => string;
 	// (undocumented)
+	body_note_crash_site: () => string;
+	// (undocumented)
 	body_note_no_model: () => string;
 	// (undocumented)
 	body_note_no_radius: () => string;
@@ -1293,6 +1295,7 @@ export class SpaceMap {
 	readonly cooperativeGestures: GestureHandler;
 	// @internal
 	readonly ctx: ContextManager;
+	distanceKm(from: Anchor, to: Anchor): number | null;
 	readonly dragRotate: GestureHandler;
 	readonly featureSelect: GestureHandler;
 	flyTo(target: CameraTarget): Promise<void>;
@@ -1320,6 +1323,7 @@ export class SpaceMap {
 	getLayers(): MapLayerId[];
 	getLimits(): CameraLimits;
 	getPose(): CameraPose | null;
+	getSubsolarPoint(id: string): LonLat | null;
 	holdCamera(): CameraHold;
 	// @internal (undocumented)
 	readonly initialView: InitialView;
@@ -1334,6 +1338,7 @@ export class SpaceMap {
 	readonly objects: MapObjects;
 	// (undocumented)
 	off<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): void;
+	offsetKm(from: Anchor, to: Anchor): OffsetKm | null;
 	on<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): () => void;
 	once<K extends keyof MapEvents>(event: K, listener: MapEvents[K]): () => void;
 	// @internal

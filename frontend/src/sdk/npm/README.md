@@ -140,6 +140,27 @@ map.clock.setDate(new Date('2035-06-01'));
 map.clock.now();
 ```
 
+### Measuring
+
+Some things can be read off the scene instead of drawn on it. All take the
+bodies where the last frame put them, so after `setDate` wait for a `frame`
+before asking.
+
+```js
+// Kilometres between two anchors: centres, places on a surface, or one of each.
+map.distanceKm({ body: 'naif-499' }, { body: 'naif-401' });
+map.distanceKm({ body: 'naif-499', latitude: 18.4, longitude: 77.5 }, { body: 'naif-401' });
+
+// The same with its direction kept, on ecliptic axes: [x, y, z] kilometres.
+map.offsetKm({ body: 'naif-499' }, { body: 'naif-401' });
+
+// Where the Sun is overhead: the middle of the lit half.
+map.getSubsolarPoint('naif-499'); // { lon, lat }
+```
+
+Either is null while a body it names is not loaded, and the sub-solar point is
+null for a body whose spin is not measured.
+
 ### Drawing on it
 
 Everything you draw is put somewhere by an **anchor**, and the anchor is what
