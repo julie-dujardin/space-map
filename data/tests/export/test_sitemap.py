@@ -4,11 +4,8 @@ The paths here must byte-match what ``frontend/src/lib/state/url.ts`` builds —
 a mismatch makes every indexed URL a redirect or a 404.
 """
 
-from collections.abc import Iterator
 from unittest.mock import MagicMock
 
-import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.sitemap import (
@@ -17,16 +14,6 @@ from space_map_data.export.sitemap import (
     _object_path,
 )
 from space_map_data.models.feature import Feature
-from space_map_data.models.object.base import Base
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def _entities(sitelinks: dict[str, int]) -> MagicMock:

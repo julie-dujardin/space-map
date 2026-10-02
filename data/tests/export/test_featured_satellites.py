@@ -1,9 +1,5 @@
 """Tests for Earth's curated featured-satellites attachment."""
 
-from collections.abc import Iterator
-
-import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import SATELLITES_SLUG
@@ -14,16 +10,6 @@ from space_map_data.export.objects.satellites import (
 )
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.models.object.base import Base
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 class _StubCache:

@@ -45,3 +45,7 @@ dev = [
     "ruff>=0.15.5",
     "ty>=0.0.21",
 ]
+
+[tool.pytest.ini_options]
+# Python hides ResourceWarning by default, so leaked connections and files went unnoticed.
+filterwarnings = ["default::ResourceWarning"]

@@ -1,8 +1,11 @@
-"""Shared test factories for constructing model instances without a database."""
+"""Shared test factories and the in-memory database fixtures."""
 
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import Session
 
 from space_map_data.models.object import (
     ElementsScale,
@@ -11,6 +14,7 @@ from space_map_data.models.object import (
     ObjectType,
     OrbitalSource,
 )
+from space_map_data.models.object.base import Base
 
 # Kepler-element kwargs the factory accepts as a convenience and routes to the
 # correct sub-table relation (or to the celestrak transient overlay attribute).
@@ -96,3 +100,21 @@ def _isolated_stamp_memo(tmp_path, monkeypatch):
     monkeypatch.setattr(content_stamp, "_MEMO_PATH", tmp_path / "content_stamps.json")
     monkeypatch.setattr(content_stamp, "_memo", None)
     monkeypatch.setattr(content_stamp, "_dirty", 0)
+
+
+@pytest.fixture
+def engine() -> Iterator[Engine]:
+    """Fresh in-memory SQLite with the full schema, scoped to one test.
+
+    Closing a session leaves the pooled connection open, so the engine is
+    disposed to close it."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def session(engine: Engine) -> Iterator[Session]:
+    with Session(engine) as sess:
+        yield sess

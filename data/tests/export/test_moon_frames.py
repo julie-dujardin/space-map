@@ -3,8 +3,7 @@
 import math
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload
 
 from space_map_data.export.position.frames import (
     _OBLIQUITY_RAD,
@@ -23,7 +22,6 @@ from space_map_data.models.object import (
     OrbitalSource,
     SBDBMoon,
 )
-from space_map_data.models.object.base import Base
 from space_map_data.probes.propagation import AU_KM
 
 
@@ -310,13 +308,6 @@ class TestMeasuredMoonRadius:
         OrbitalSource.astersat: (Object.astersat_moon, Object.johnston_moon),
         OrbitalSource.sbdb: (Object.sbdb,),
     }
-
-    @pytest.fixture
-    def session(self):
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        with Session(engine) as sess:
-            yield sess
 
     def _expunged(self, session, source, *, astersat=None, johnston=None):
         """One object as its zone worker gets it: eager-loaded, then detached."""

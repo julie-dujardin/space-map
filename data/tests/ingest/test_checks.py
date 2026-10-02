@@ -1,9 +1,6 @@
 """Unit tests for the post-ingest namespace-collision check."""
 
-from collections.abc import Iterator
-
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.ingest.checks import (
@@ -16,17 +13,7 @@ from space_map_data.models.object import (
     ObjectType,
     OrbitalSource,
 )
-from space_map_data.models.object.base import Base
 from space_map_data.models.object.satcat import Satcat
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def _add_satcat(session: Session, norad: int, cospar: str | None = None) -> None:

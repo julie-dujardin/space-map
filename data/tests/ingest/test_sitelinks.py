@@ -4,19 +4,15 @@ import json
 from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.ingest.providers import sitelinks
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.base import Base
 
 
 @pytest.fixture
-def session(monkeypatch) -> Iterator[Session]:
+def session(monkeypatch, engine) -> Iterator[Session]:
     """In-memory DB exposed through the provider's ``get_session``."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     with Session(engine) as sess:
         monkeypatch.setattr(sitelinks, "get_session", lambda: sess)
         yield sess

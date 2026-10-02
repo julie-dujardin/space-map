@@ -6,7 +6,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.groups.probe_targets import (
@@ -15,15 +14,12 @@ from space_map_data.export.groups.probe_targets import (
 )
 from space_map_data.export.objects import probe_targets
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.base import Base
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
 
 
 @pytest.fixture
-def session() -> Iterator[Session]:
+def session(engine) -> Iterator[Session]:
     """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     with Session(engine) as sess:
         sess.add_all(
             [

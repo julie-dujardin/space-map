@@ -8,7 +8,6 @@ launch is shared, the hardware is not, so only the launch fields survive.
 
 from typing import cast
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.objects.celestrak import (
@@ -18,7 +17,6 @@ from space_map_data.export.objects.celestrak import (
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
-from space_map_data.models.object.base import Base
 
 from tests.conftest import make_object
 
@@ -112,11 +110,9 @@ class TestBuildSatcatGlobal:
 class TestDetachedObjects:
     """An object handed to a worker thread must not fire a satcat lazy load."""
 
-    def test_expunged_object_without_a_satcat_row(self):
+    def test_expunged_object_without_a_satcat_row(self, engine):
         # SBDB batches are expunged as soon as they are submitted, so a
         # relationship read in the worker raises instead of returning None.
-        engine = create_engine("sqlite://")
-        Base.metadata.create_all(engine)
         with Session(engine, expire_on_commit=False) as session:
             obj = make_object(
                 id="sbdb-2000433",
