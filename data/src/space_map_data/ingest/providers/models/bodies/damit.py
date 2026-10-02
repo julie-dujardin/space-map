@@ -180,7 +180,7 @@ class DamitProcessor:
             elif object_id in diameters:
                 diameter, scale_source = diameters[object_id]
             else:
-                log.info(
+                log.debug(
                     "DAMIT model %d (%s): no diameter and no H magnitude — skipping",
                     m.model_id,
                     object_id,

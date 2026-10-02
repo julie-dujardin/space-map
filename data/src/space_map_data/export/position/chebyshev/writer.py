@@ -168,7 +168,7 @@ def _obj_id_parts(obj: Object) -> tuple[int, int]:
     prefix, value = obj.id[:pos], obj.id[pos + 1 :]
     try:
         ordinal = ID_TYPE_ORDINAL[ID_TYPES(prefix)]
-    except (KeyError, ValueError):
+    except KeyError, ValueError:
         logger.warning("chebyshev: %s has unsupported id type %r", obj.id, prefix)
         return MISSING_ID_TYPE, MISSING_INT32
     try:
@@ -315,7 +315,7 @@ def write_chebyshev(
             radius = object_radius_km(obj)
             if math.isnan(radius):
                 radius = None
-                logger.info(
+                logger.debug(
                     "Chebyshev: no radius for %s (naif_id=%d); exporting NaN",
                     obj.id,
                     naif_id,

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+from tqdm import tqdm
 
 from ..layout import MISSIONS_DIR
 from ..sources import ESA_BASE, MissionSource, NAIF_BASE
@@ -190,7 +191,9 @@ def download_attitude_capped(
     results: list[DownloadResult] = []
     total_new_mib = 0.0
     cap = max_total_mib
-    for est_mib, source in targets:
+    bar = tqdm(targets, desc="Attitude kernels", unit="mission")
+    for est_mib, source in bar:
+        bar.set_postfix_str(source.mission)
         # Hard cap: once the running total has hit the budget, skip the
         # rest entirely. No predictive check anymore — that was unreliable
         # when estimates undershot (e.g. ORX at 2 GiB estimated, 260 GiB
@@ -209,7 +212,7 @@ def download_attitude_capped(
             )
             continue
         remaining_mib = (cap - total_new_mib) if cap is not None else None
-        logger.info(
+        logger.debug(
             "attitude: %s (est %d MiB) — running total %.1f / %s MiB",
             source.mission,
             est_mib,
@@ -225,7 +228,7 @@ def download_attitude_capped(
         results.append(result)
         total_new_mib += result.new_bytes / (1024 * 1024)
         if result.n_total_files:
-            logger.info(
+            logger.debug(
                 "attitude: %s done — %d CK, %.1f MiB new, %.1f MiB on disk",
                 source.mission,
                 result.n_ck,
@@ -233,7 +236,7 @@ def download_attitude_capped(
                 result.total_bytes / (1024 * 1024),
             )
         elif result.skipped_reason:
-            logger.info(
+            logger.debug(
                 "attitude: %s skipped — %s", source.mission, result.skipped_reason
             )
     return results

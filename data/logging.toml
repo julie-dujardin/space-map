@@ -12,3 +12,7 @@ stream = "ext://sys.stderr"
 [root]
 level = "INFO"
 handlers = ["console"]
+
+# httpx logs every request at INFO.
+[loggers.httpx]
+level = "WARNING"

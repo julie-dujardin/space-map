@@ -92,9 +92,9 @@ def download_kernels(
                 logger.debug("Kernel %s already downloaded", filename)
                 paths.append(local)
                 continue
-        logger.info("Downloading %s ...", filename)
+        logger.debug("Downloading %s ...", filename)
         stream_to(client, url, local, expected_size)
-        logger.info("  -> %s (%.1f MB)", local.name, local.stat().st_size / 1e6)
+        logger.debug("  -> %s (%.1f MB)", local.name, local.stat().st_size / 1e6)
         paths.append(local)
 
     return paths

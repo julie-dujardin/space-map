@@ -322,7 +322,7 @@ def extract_target_chebyshev(out_dir: Path = TARGET_CHEBYSHEV_DIR) -> int:
                 ),
                 sources=np.array([digest]),
             )
-            logger.info(
+            logger.debug(
                 "small-body chebyshev: %d -> %d segments over %.1f..%.1f, "
                 "shortest %.3f d",
                 naif_id,

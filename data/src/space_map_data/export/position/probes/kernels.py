@@ -202,7 +202,7 @@ def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         )
         filtered = sorted(set(targets) - set(spacecraft_ids))
         if filtered:
-            logger.info(
+            logger.debug(
                 "mission=%s: filtered %d non-spacecraft targets: %s",
                 name,
                 len(filtered),
@@ -213,7 +213,7 @@ def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         combined = trajectory_kernels + landed_kernels
         for naif_id in spacecraft_ids:
             if name == "HORIZONS-SYNTH" and naif_id in synth_qid_dups:
-                logger.info(
+                logger.debug(
                     "skipping HORIZONS-SYNTH naif=%d: QID already covered "
                     "by an agency mission probe",
                     naif_id,

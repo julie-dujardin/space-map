@@ -173,7 +173,7 @@ def matching_probe(claimants: dict[int, list[dict]], obj) -> dict | None:
     ]
     if len(named) == 1:
         return named[0]
-    logger.info(
+    logger.debug(
         "deepcat: catalogue number %s is claimed by %s and %s does not say "
         "which was tracked; no kernel",
         obj.norad_id,

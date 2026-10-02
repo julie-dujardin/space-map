@@ -47,7 +47,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
     meta_path = cache_dir / "meta.json"
 
     obj = fetch_obj_data(client, naif_id)
-    logger.info("naif %d → %s (revised %s)", naif_id, obj.name, obj.revised)
+    logger.debug("naif %d → %s (revised %s)", naif_id, obj.name, obj.revised)
 
     if not force and meta_path.exists():
         prev = orjson.loads(meta_path.read_bytes())
@@ -55,14 +55,14 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
         cached_tags = {r.get("cadence") for r in prev.get("refined", [])}
         cadence_match = not cached_tags or cached_tags == {expected_tag}
         if prev.get("revised") == obj.revised and cadence_match:
-            logger.info(
+            logger.debug(
                 "naif %d: cache up to date (revised %s), skipping fetch",
                 naif_id,
                 obj.revised,
             )
             return prev
         if not cadence_match:
-            logger.info(
+            logger.debug(
                 "naif %d: cached refine cadence %s != expected %s; refetching",
                 naif_id,
                 ",".join(sorted(t for t in cached_tags if t)) or "(none)",
@@ -76,7 +76,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
     ).days
     coarse_step = _coarse_step_for(span_days)
     skip_refine = coarse_step == "1 h"
-    logger.info(
+    logger.debug(
         "naif %d window: %s → %s (%dd, coarse=%s%s)",
         naif_id,
         win_start,
@@ -94,7 +94,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
     )
     coarse_path.write_text(coarse_text)
     coarse_samples = _parse_chunks(coarse_text)
-    logger.info("naif %d: coarse %d samples", naif_id, len(coarse_samples))
+    logger.debug("naif %d: coarse %d samples", naif_id, len(coarse_samples))
 
     refine_meta: list[dict] = []
     if coarse_samples and not skip_refine:
@@ -118,7 +118,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
 
         refine_step = _refine_step_for(naif_id)
         refine_tag = refine_step.replace(" ", "")
-        logger.info(
+        logger.debug(
             "naif %d: %d refinement windows @ %s",
             naif_id,
             len(windows),
@@ -127,7 +127,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
         for ws, we in windows:
             fn = f"refine_{ws}_{we}_{refine_tag}.csv"
             path = cache_dir / fn
-            logger.info("naif %d: refining %s..%s @ %s", naif_id, ws, we, refine_step)
+            logger.debug("naif %d: refining %s..%s @ %s", naif_id, ws, we, refine_step)
             try:
                 text = _fetch_vectors_chunked(client, naif_id, ws, we, refine_step)
             except httpx.HTTPError as exc:

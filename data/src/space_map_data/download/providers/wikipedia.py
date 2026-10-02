@@ -51,7 +51,7 @@ def _is_redirect_stub(path: Path) -> bool:
     """
     try:
         page = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return False
     return bool(page.get("redirect")) and not (page.get("extract") or "").strip()
 
@@ -309,7 +309,7 @@ class WikipediaDownloader(Downloader):
             # Division" → "Rings of Saturn#Cassini Division") leaves the lead
             # about the parent, so there is nothing here to quote.
             if sectioned:
-                logger.info(
+                logger.debug(
                     "Redirects into a section, no summary: %s/%s (%s → %s)",
                     lang,
                     task.qid,

@@ -399,7 +399,7 @@ class SBDBMoonsIngestor:
                     parent_object_id = self.parent_by_designation.get(des)
                 if parent_object_id is not None:
                     self.designation_fallback_count += 1
-                    logger.info(
+                    logger.debug(
                         "%s: parent spkid %d absent, resolved by designation %r -> %s",
                         path.name,
                         parent_spkid,
@@ -416,7 +416,7 @@ class SBDBMoonsIngestor:
                 continue
             if parent_object_id in processed_parents:
                 self.duplicate_payloads += 1
-                logger.info(
+                logger.debug(
                     "%s: parent %s already ingested from an SPK-ID alias, skipping duplicate payload",
                     path.name,
                     parent_object_id,
@@ -431,7 +431,7 @@ class SBDBMoonsIngestor:
                 if len(orbit) > 1:
                     extras = len(orbit) - 1
                     self.alt_orbits_dropped += extras
-                    logger.info(
+                    logger.debug(
                         "%s sat %d: %d alternate orbit solution(s) dropped",
                         path.name,
                         idx,
@@ -456,7 +456,7 @@ class SBDBMoonsIngestor:
                     )
                     sats.append(sat_row)
                     self.merged_count += 1
-                    logger.info(
+                    logger.debug(
                         "%s sat %d: merged %r into existing object %s",
                         path.name,
                         idx,

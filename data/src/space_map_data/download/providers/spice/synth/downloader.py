@@ -4,6 +4,7 @@ import logging
 import time
 
 import httpx
+from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
@@ -83,8 +84,9 @@ class HorizonsSyntheticDownloader(Downloader):
         skipped: list[tuple[int, str, str]] = []
         failed: list[tuple[int, str, str]] = []
 
-        for i, (naif_id, name, cospar) in enumerate(candidates, 1):
-            logger.info("[%d/%d] naif %d (%s)", i, len(candidates), naif_id, name)
+        for naif_id, name, cospar in tqdm(
+            candidates, desc="Horizons synth", unit="craft"
+        ):
             try:
                 fetch_one(self.client, naif_id)
             except RuntimeError as exc:
@@ -115,7 +117,7 @@ class HorizonsSyntheticDownloader(Downloader):
                     try:
                         build_one(naif_id, exclude=agency_iv)
                     except RuntimeError:
-                        logger.info(
+                        logger.debug(
                             "naif %d (%s): synth coverage fully inside agency "
                             "claim; dropping synth",
                             naif_id,
@@ -124,7 +126,7 @@ class HorizonsSyntheticDownloader(Downloader):
                         spk_path.unlink(missing_ok=True)
                         skipped.append((naif_id, name, "agency-window-collision"))
                         continue
-                    logger.info(
+                    logger.debug(
                         "naif %d (%s): trimmed synth to agency-coverage complement",
                         naif_id,
                         name,

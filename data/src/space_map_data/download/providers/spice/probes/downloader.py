@@ -11,6 +11,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import httpx
+from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
@@ -91,11 +92,12 @@ class ProbesDownloader(Downloader):
         sources = discover_all_sources(self.client)
 
         # Phase 1: SPK + PCK mirror, in discovery (alphabetical) order.
+        chosen = [s for s in sources if selected is None or s.mission in selected]
         results: list[dict] = []
-        for source in sources:
-            if selected is not None and source.mission not in selected:
-                continue
-            results.append(self._process_mission(source, max_mib))
+        with tqdm(chosen, desc="Probe kernels", unit="mission") as bar:
+            for source in bar:
+                bar.set_postfix_str(source.mission)
+                results.append(self._process_mission(source, max_mib))
 
         # Small-body target ephemerides + GM patch for the small-bodies
         # zone. Independent of the mission selection — it's one fixed set.
@@ -109,11 +111,8 @@ class ProbesDownloader(Downloader):
         # Phase 2: Attitude CK + FK + SCLK, in size-ascending order, capped
         # at `_ATTITUDE_MAX_GIB`. Runs as a separate pass so the small
         # missions land first regardless of where they fall alphabetically.
-        attitude_sources = [
-            s for s in sources if selected is None or s.mission in selected
-        ]
         att_results = download_attitude_capped(
-            self.client, attitude_sources, _ATTITUDE_MAX_GIB * 1024
+            self.client, chosen, _ATTITUDE_MAX_GIB * 1024
         )
         att_new_mib = sum(r.new_bytes for r in att_results) / (1024 * 1024)
         att_total_mib = sum(r.total_bytes for r in att_results) / (1024 * 1024)
@@ -161,7 +160,7 @@ class ProbesDownloader(Downloader):
             )
             return {"mission": source.mission, "skipped": True, "mib": mib}
 
-        logger.info(
+        logger.debug(
             "%s/%s: %d trajectory + %d landed files (%.1f MiB)",
             source.server,
             source.mission,
@@ -244,7 +243,7 @@ class ProbesDownloader(Downloader):
                     logger.warning("PCK download failed for %s: %s", f.name, exc)
                     continue
                 pck_bytes += local.stat().st_size
-            logger.info(
+            logger.debug(
                 "%s/%s: %d PCK files (%.1f KiB)",
                 source.server,
                 source.mission,

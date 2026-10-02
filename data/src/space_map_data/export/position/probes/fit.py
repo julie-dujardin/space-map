@@ -522,7 +522,7 @@ def build_fits(
                 stale_sigs,
             )
             done_probes += 1
-            logger.info(
+            logger.debug(
                 "[%d/%d] fit probe_id=%d (%d plans) → %d/%d stale (zone, chunk) "
                 "entries produced records",
                 done_probes,

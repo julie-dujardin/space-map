@@ -453,7 +453,7 @@ class CommonsDownloader(Downloader):
             em = info.get("extmetadata") or {}
             servable, reason = license_is_servable(em)
             if not servable:
-                logger.info(
+                logger.debug(
                     "Image %s not servable: %s",
                     filename,
                     reason or "license check failed",

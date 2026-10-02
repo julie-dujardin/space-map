@@ -156,7 +156,7 @@ def _candidates() -> dict[int, dict]:
             continue
         claimed = synthetic_sources(entry) - {SPACETRACK_TLE_MISSION}
         if claimed:
-            logger.info(
+            logger.debug(
                 "tle: %s already carries a derived kernel from %s; skipping",
                 entry.get("name"),
                 ", ".join(sorted(claimed)),
@@ -167,7 +167,7 @@ def _candidates() -> dict[int, dict]:
     out: dict[int, dict] = {}
     for norad, entries in by_norad.items():
         if len(entries) > 1:
-            logger.info(
+            logger.debug(
                 "tle: NORAD %d is claimed by %s; no kernel — the catalogue "
                 "follows one object and the data does not say which",
                 norad,
@@ -331,7 +331,7 @@ def _synthesise(candidates: dict[int, dict], mission_dir: Path) -> list[TleSynth
         runs = split_runs(collected.get(norad, {}))
         total = sum(len(epochs) for epochs, _ in runs)
         if not runs or not _is_followed(runs):
-            logger.info(
+            logger.debug(
                 "tle: %s (NORAD %d) has %d element set(s); the catalogue logged "
                 "its exit rather than following it — no kernel",
                 name,

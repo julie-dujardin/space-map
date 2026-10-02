@@ -257,13 +257,13 @@ def detect_window(client: httpx.Client, naif_id: int) -> tuple[str, str]:
             dt = _boundary_to_dt(*m_prior.groups()) + _WINDOW_MARGIN
             lo = dt.isoformat(sep=" ", timespec="seconds")
             start = lo
-            logger.info("naif %d: coverage START → %s (prior-to error)", naif_id, lo)
+            logger.debug("naif %d: coverage START → %s (prior-to error)", naif_id, lo)
             progressed = True
         if m_after:
             dt = _boundary_to_dt(*m_after.groups()) - _WINDOW_MARGIN
             hi = dt.isoformat(sep=" ", timespec="seconds")
             end = hi
-            logger.info("naif %d: coverage STOP → %s (after error)", naif_id, hi)
+            logger.debug("naif %d: coverage STOP → %s (after error)", naif_id, hi)
             progressed = True
         if progressed:
             continue

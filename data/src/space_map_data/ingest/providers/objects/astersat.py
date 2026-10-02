@@ -196,7 +196,7 @@ class AsterSatIngestor:
 
             parent_id = self._resolve_parent(system_label, parents)
             if parent_id is None:
-                logger.info("%s: parent not in objects, skipping", label)
+                logger.debug("%s: parent not in objects, skipping", label)
                 self.no_parent += 1
                 continue
             moon_id = self._resolve_moon(satellite_label, moons.get(parent_id, []))

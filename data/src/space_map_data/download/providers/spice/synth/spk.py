@@ -121,7 +121,7 @@ def build_one(naif_id: int, exclude: list[tuple[float, float]] | None = None) ->
         raise RuntimeError(f"naif {naif_id}: no usable segments")
     tmp_path.replace(spk_path)
 
-    logger.info(
+    logger.debug(
         "naif %d: wrote %s (%d segments, %d bytes)",
         naif_id,
         spk_path.name,

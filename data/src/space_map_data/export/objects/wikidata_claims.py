@@ -369,7 +369,7 @@ def drop_covered_qids(extracted: dict, covered: set[str], obj_id: str) -> None:
                 else:
                     del extracted[claim.key]
         elif val in covered:
-            logger.info("Dropped covered QID from %s %s: %s", obj_id, claim.key, val)
+            logger.debug("Dropped covered QID from %s %s: %s", obj_id, claim.key, val)
             del extracted[claim.key]
 
 

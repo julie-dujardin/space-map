@@ -30,7 +30,7 @@ def _read_conflict_resolution(csv_path: Path) -> dict[int, str]:
             continue
         try:
             resolutions[int(row[0])] = row[1].strip()
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
     return resolutions
 
@@ -69,7 +69,7 @@ def ingest(download_dir: Path) -> None:
             continue
         try:
             feature_id = int(search_term)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
         for qid in qids:
             feat_to_qids[feature_id].add(qid)
@@ -95,13 +95,13 @@ def ingest(download_dir: Path) -> None:
             if len(qid_to_feats.get(candidate, set())) == 1:
                 qid = candidate
             else:
-                logger.info(
+                logger.debug(
                     "  QID %s matched multiple features (skipped): %s",
                     candidate,
                     qid_to_feats.get(candidate),
                 )
         else:
-            logger.info(
+            logger.debug(
                 "  feature %d matched multiple QIDs (skipped): %s", feature_id, qids
             )
 

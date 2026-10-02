@@ -123,7 +123,7 @@ def load_groups(groups_dir: Path) -> GroupData:
                     data.by_cospar.setdefault(cospar, set()).add(group)
                 data.group_only_rows.setdefault(norad, row)
                 count += 1
-        logger.info("Group %s -> %d sats", group, count)
+        logger.debug("Group %s -> %d sats", group, count)
     return data
 
 
