@@ -449,7 +449,7 @@
 		src: string;
 		id: string;
 		/** The canvas it was drawn on, in viewport pixels. */
-		box: { left: number; top: number; width: number; height: number };
+		box: { left: number; top: number; width: number };
 		/** Where the object stood on it, and whether that is somewhere the new
 		 *  row can be pinned to: a body drawn as a neighbouring page's limb is
 		 *  held to its strip rather than to its true size, so the two rows have
@@ -487,7 +487,7 @@
 		const held = {
 			src,
 			id,
-			box: { left: box.left, top: box.top, width: box.width, height: box.height },
+			box: { left: box.left, top: box.top, width: box.width },
 			at: { cx: at.cx, cy: at.cy, pr: at.pr },
 			pin: !at.aside,
 			slide
@@ -575,7 +575,7 @@
 	const ghostStyle = $derived.by(() => {
 		if (!zoom) return '';
 		const { box, hold, play, on } = zoom;
-		const place = `left: ${hold?.dx ?? 0}px; top: ${hold?.dy ?? 0}px; width: ${box.width}px; height: ${box.height}px;`;
+		const place = `left: ${hold?.dx ?? 0}px; top: ${hold?.dy ?? 0}px; width: ${box.width}px;`;
 		if (!play || !on) return place;
 		// Carried off the stage, the old row needs no fade either.
 		const fade = zoom.slide
@@ -678,6 +678,7 @@
 							{bodies}
 							ariaLabel={m.compare_lineup_label()}
 							height={stageHeight - LABEL_ROW}
+							bleed={LABEL_ROW}
 							pxPerKm={current.scale || undefined}
 							boxed
 							labels

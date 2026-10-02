@@ -154,6 +154,10 @@
 		/** Canvas height in px. The default suits a row inside the drawer; a page
 		 *  that gives the lineup a stage of its own passes more. */
 		height?: number;
+		/** Let the canvas run this far below the row, for a caller whose ground
+		 *  goes on under the names: a body larger than the row is then cut at
+		 *  the page's edge rather than above the names. The caller clips it. */
+		bleed?: number;
 		/** Give every body its own box, side by side, the way a craft row already
 		 *  lays out. Meshes that overlap read as one object rather than several. */
 		boxed?: boolean;
@@ -212,6 +216,7 @@
 		ariaLabel,
 		perPage,
 		height = DEFAULT_HEIGHT,
+		bleed = 0,
 		boxed = false,
 		labels = false,
 		pxPerKm,
@@ -1065,11 +1070,11 @@
 
 	function render() {
 		if (!renderer || !scene || !camera || !width) return;
-		renderer.setSize(width, height, false);
+		renderer.setSize(width, height + bleed, false);
 		camera.left = 0;
 		camera.right = width;
 		camera.top = height;
-		camera.bottom = 0;
+		camera.bottom = -bleed;
 		// A sphere is as deep as it is wide, and the band before this one can be
 		// drawn thousands of screens across: clip to whatever is actually here,
 		// or it falls outside the frustum and vanishes.
@@ -1493,16 +1498,20 @@
 			hoveredId = null;
 			scrub.onpointerleave();
 		}}
-		class="relative w-full overflow-hidden rounded-md {rotate
+		class="relative w-full {bleed ? '' : 'overflow-hidden'} {rotate
 			? 'touch-none'
 			: 'touch-pan-y'} {orbiting ? 'cursor-grabbing [&>a]:cursor-grabbing' : ''} {ground
 			? ''
-			: 'bg-muted/30'}"
+			: 'rounded-md bg-muted/30'}"
 		style="height: {height}px; {ground ? `background: ${ground}` : ''}"
 		role="group"
 		aria-label={ariaLabel}
 	>
-		<canvas bind:this={canvasEl} class="absolute inset-0 h-full w-full"></canvas>
+		<canvas
+			bind:this={canvasEl}
+			class="absolute inset-x-0 top-0 w-full"
+			style="height: {height + bleed}px"
+		></canvas>
 
 		{#each layout as p (p.id)}
 			<!-- Per-body hit column; hover is resolved by pickAt (mesh-priority), not
@@ -1620,12 +1629,15 @@
 
 	{#if labels}
 		<!-- The name sits under the body it belongs to. One left unnamed by the
-		     declutter is still named by hovering it, and by the caller's list. -->
+		     declutter is still named by hovering it, and by the caller's list.
+		     Over a bleeding canvas a body can run under it, hence the backing. -->
 		<div class="relative h-9" aria-hidden="true">
 			{#each layout as p (p.id)}
 				{#if p.labelWidth >= LABEL_MIN_WIDTH}
 					<div
-						class="absolute top-1.5 -translate-x-1/2 text-center leading-tight"
+						class="absolute top-1.5 -translate-x-1/2 text-center leading-tight {bleed
+							? 'rounded-md bg-stage/70 px-1.5'
+							: ''}"
 						style="left: {p.cx}px; max-width: {p.labelWidth}px"
 					>
 						<div class="truncate text-[11px] font-medium">{p.name}</div>
