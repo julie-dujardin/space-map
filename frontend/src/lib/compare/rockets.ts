@@ -25,7 +25,9 @@ export interface Rocket {
 
 export const ROCKETS: Rocket[] = [
 	{ slug: 'saturn-v', label: m.compare_rocket_saturn_v, group: 'lv-saturn' },
+	{ slug: 'saturn-ib', label: m.compare_rocket_saturn_ib, group: 'lv-saturn' },
 	{ slug: 'n1', label: m.compare_rocket_n1 },
+	{ slug: 'sls-block-1', label: m.compare_rocket_sls, group: 'lv-sls' },
 	{ slug: 'space-shuttle', label: m.compare_rocket_space_shuttle, group: 'lv-space-shuttle' },
 	{ slug: 'starship', label: m.compare_rocket_starship, group: 'lv-starship' },
 	{ slug: 'new-glenn', label: m.compare_rocket_new_glenn, group: 'lv-new-glenn' },
@@ -51,7 +53,25 @@ export const ROCKETS: Rocket[] = [
 	{ slug: 'firefly-alpha', label: m.compare_rocket_firefly_alpha, group: 'lv-firefly' },
 	{ slug: 'astra-rocket-3', label: m.compare_rocket_astra_rocket_3, group: 'lv-astra-rocket-3' },
 	{ slug: 'mercury-atlas', label: m.compare_rocket_mercury_atlas, group: 'lv-atlas' },
-	{ slug: 'mercury-redstone', label: m.compare_rocket_mercury_redstone }
+	{ slug: 'mercury-redstone', label: m.compare_rocket_mercury_redstone },
+	{ slug: 'falcon-1', label: m.compare_rocket_falcon_1, group: 'lv-falcon' },
+	{ slug: 'vega-rocket', label: m.compare_rocket_vega, group: 'lv-vega' },
+	{ slug: 'saturn-i', label: m.compare_rocket_saturn_i, group: 'lv-saturn' },
+	{ slug: 'ariane-1', label: m.compare_rocket_ariane_1, group: 'lv-ariane' },
+	{ slug: 'ariane-4', label: m.compare_rocket_ariane_4, group: 'lv-ariane' },
+	{ slug: 'delta-iv-medium', label: m.compare_rocket_delta_iv_medium, group: 'lv-delta' },
+	{ slug: 'delta-iv-heavy', label: m.compare_rocket_delta_iv_heavy, group: 'lv-delta' },
+	{ slug: 'sea-dragon', label: m.compare_rocket_sea_dragon },
+	{ slug: 'angara-a5', label: m.compare_rocket_angara_a5, group: 'lv-angara' },
+	{ slug: 'angara-a3', label: m.compare_rocket_angara_a3, group: 'lv-angara' },
+	{ slug: 'astra-rocket-1', label: m.compare_rocket_astra_rocket_1 },
+	{ slug: 'astra-rocket-2', label: m.compare_rocket_astra_rocket_2 },
+	{ slug: 'atlas-a', label: m.compare_rocket_atlas_a, group: 'lv-atlas' },
+	{ slug: 'black-arrow', label: m.compare_rocket_black_arrow, group: 'lv-black-arrow' },
+	{ slug: 'conestoga-1', label: m.compare_rocket_conestoga_1, group: 'lv-conestoga' },
+	{ slug: 'conestoga-1620', label: m.compare_rocket_conestoga_1620, group: 'lv-conestoga' },
+	{ slug: 'pegasus', label: m.compare_rocket_pegasus, group: 'lv-pegasus' },
+	{ slug: 'shavit-2', label: m.compare_rocket_shavit_2, group: 'lv-shavit' }
 ];
 
 export function rocketBySlug(id: string): Rocket | undefined {

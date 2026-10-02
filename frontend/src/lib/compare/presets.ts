@@ -177,6 +177,7 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 			'norad_satcat-1274',
 			'probe-36888576',
 			'norad_satcat-28043',
+			'norad_satcat-38348',
 			'norad_satcat-45623',
 			'norad_satcat-59968'
 		]
