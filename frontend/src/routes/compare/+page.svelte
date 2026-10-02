@@ -25,7 +25,13 @@
 	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 	import { bandsBySize, screensOf } from '$lib/compare/pages';
-	import { labelWidth, screenFit, SIDE_PAD } from '../../components/detail/charts/lineup-fit';
+	import {
+		labelWidth,
+		screenFit,
+		screenScale,
+		SIDE_PAD,
+		type FitBody
+	} from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
 	import { presetOn, type ComparePreset } from '$lib/compare/presets';
 	import type { ObjectHit } from '$lib/search/client';
@@ -42,6 +48,7 @@
 	import type { SizeScreen } from '$lib/compare/pages';
 	import { loadComparables, pickComparable, type SizedComparable } from '$lib/compare/comparables';
 	import { rocketBySlug } from '$lib/compare/rockets';
+	import { prefetchCraftModel } from '$lib/scene/objects/body/model';
 
 	let { data } = $props();
 
@@ -114,6 +121,8 @@
 	 *  before its bundle lands. */
 	const seeds = new Map<string, { name: string; type?: string; diameter_km?: number }>();
 	const asked = new Set<string>();
+	/** Ids whose bundle has answered, with an object or without one. */
+	let answered = $state<Record<string, true>>({});
 
 	$effect(() => {
 		for (const id of selected) {
@@ -123,13 +132,17 @@
 				.then((object) => {
 					if (object) resolved[object.id] = object;
 				})
-				.catch(() => asked.delete(id));
+				.catch(() => asked.delete(id))
+				.finally(() => (answered[id] = true));
 		}
 	});
 
 	const objects = $derived(
 		selected.map((id) => resolved[id]).filter((o): o is CompareObject => !!o)
 	);
+	/** Every object has answered, so the pages and their scales are final: up to
+	 *  then each one that lands rescales the row. */
+	const whole = $derived(selected.every((id) => answered[id]));
 	const bands = $derived(bandsBySize(objects, (o) => o.radiusKm));
 	/** Sorted for the side list: the row's own order, largest first. */
 	const listed = $derived([...objects].sort((a, b) => b.radiusKm - a.radiusKm));
@@ -158,13 +171,8 @@
 		if (!stageWidth || rowHeight <= 0) {
 			return screensOf(bands, (items) => ({ count: items.length, scale: 0 }));
 		}
-		const fit = (o: CompareObject) => ({
-			radiusKm: o.radiusKm,
-			label: labelWidth(o.name, sizeText(o)),
-			aspect: o.geometry.aspect
-		});
 		return screensOf(bands, (rest, after, first) =>
-			screenFit(rest.map(fit), after && fit(after), stageWidth, rowHeight, first)
+			screenFit(rest.map(fitOf), after && fitOf(after), stageWidth, rowHeight, first)
 		);
 	});
 	/** Maximized, every object with a page is one, and the list's own order is
@@ -188,8 +196,8 @@
 		// Both read before any test: a short-circuit here would drop one of them
 		// as a dependency, and the landing would miss whichever arrived last.
 		const measured = !!stageWidth;
-		const whole = objects.length === selected.length;
-		if (landed || !data.startOn || !measured || !whole) return;
+		const settled = whole;
+		if (landed || !data.startOn || !measured || !settled) return;
 		const home = bandPages.findIndex((p) => p.items.some((o) => o.id === data.startOn));
 		if (home < 0) return;
 		landed = true;
@@ -233,10 +241,35 @@
 
 	/** What this page is measured against: whatever comes out closest to the
 	 *  target share of the stage, so turning the page can change it, and a page
-	 *  that has left everyday sizes behind gets none. */
+	 *  that has left everyday sizes behind gets none. None until the set is
+	 *  whole, or it is picked again for every object that lands. */
 	const comparable = $derived(
-		comparablesOn ? pickComparable(comparables, stageHeight, pxPerKm) : null
+		comparablesOn && whole ? pickComparable(comparables, stageHeight, pxPerKm) : null
 	);
+	// The pages on either side have their reference fetched ahead, so turning
+	// to one draws it at once. A maximized object has no scale until it is
+	// drawn, so it takes the one a band page would. Waits for the whole set and
+	// a measured stage, since both move the pages.
+	$effect(() => {
+		const measured = stageWidth > 0;
+		if (!whole || !measured || !comparablesOn || !comparables.length) return;
+		for (const i of [pageIndex - 1, pageIndex + 1]) {
+			const p = pages[i];
+			if (!p) continue;
+			const scale =
+				p.scale ||
+				screenScale(
+					[fitOf(p.items[0])],
+					p.next && fitOf(p.next),
+					stageWidth,
+					stageHeight - LABEL_ROW,
+					!p.previous
+				);
+			const pick = pickComparable(comparables, stageHeight, scale);
+			if (pick) prefetchCraftModel(pick.slug);
+		}
+	});
+
 	/** Drawn as a craft is: the mesh is the object, and it stands on the row's
 	 *  own scale — which is the whole of what it claims. */
 	const comparableBody = $derived<LineupBody | null>(
@@ -278,6 +311,14 @@
 
 	function colorOf(object: CompareObject): string {
 		return object.geometry.color ?? BODY_COLORS[object.id] ?? DEFAULT_BODY_COLOR;
+	}
+
+	function fitOf(object: CompareObject): FitBody {
+		return {
+			radiusKm: object.radiusKm,
+			label: labelWidth(object.name, sizeText(object)),
+			aspect: object.geometry.aspect
+		};
 	}
 
 	function sizeText(object: CompareObject): string {

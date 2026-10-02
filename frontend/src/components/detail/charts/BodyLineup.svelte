@@ -87,7 +87,7 @@
 	import { makeLineupSunMaterial } from './lineup-sun';
 	import {
 		cheapTier,
-		craftTier,
+		craftModelUrl,
 		disposeGltf,
 		fetchBundleMeta,
 		modelLoader
@@ -981,9 +981,7 @@
 		if (!b.model) return;
 		try {
 			const meta = await fetchBundleMeta(b.model);
-			const gltf = await modelLoader.loadAsync(
-				versionedUrl(`/v1/models/${b.model}/${craftTier(meta)}.glb`, 'models')
-			);
+			const gltf = await modelLoader.loadAsync(craftModelUrl(b.model, meta));
 			if (token !== tokenFor(b.id) || !scene || !renderer) {
 				disposeGltf(gltf.scene);
 				return;

@@ -134,6 +134,24 @@ export function craftTier(meta: ModelBundleMeta): ModelTier {
 	return size > CRAFT_TIER_BUDGET ? cheapTier(meta) : 'high';
 }
 
+/** The mesh a craft lineup draws for a bundle. */
+export function craftModelUrl(slug: string, meta: ModelBundleMeta): string {
+	return versionedUrl(`/v1/models/${slug}/${craftTier(meta)}.glb`, 'models');
+}
+
+const _prefetched = new Set<string>();
+
+/** Fetch a craft's lineup mesh ahead of drawing it. Bundles are served
+ *  immutable, so the HTTP cache keeps it for the load that follows. */
+export function prefetchCraftModel(slug: string): void {
+	if (_prefetched.has(slug)) return;
+	_prefetched.add(slug);
+	fetchBundleMeta(slug)
+		.then((meta) => fetch(craftModelUrl(slug, meta)))
+		.then((r) => r.arrayBuffer())
+		.catch(() => _prefetched.delete(slug));
+}
+
 /** Credit for the tier actually drawn — the two can name different catalogues. */
 export function modelTierCredit(meta: ModelBundleMeta, tier: ModelTier): ModelCredit {
 	return meta.exports[tier]?.credit ?? meta.exports.high.credit;
