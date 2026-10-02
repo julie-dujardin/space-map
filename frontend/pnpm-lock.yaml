@@ -6,7 +6,7 @@ settings:
 
 overrides:
   '@humanfs/node@<0.16.8': ^0.16.8
-  brace-expansion@<5.0.7: ^5.0.9
+  brace-expansion@<5.0.12: ^5.0.12
   cookie@<0.7.0: ^0.7.2
   devalue@<5.9.1: ^5.9.4
   postcss@<8.5.23: ^8.5.26
@@ -1854,10 +1854,10 @@ packages:
         integrity: sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g==
       }
 
-  brace-expansion@5.0.9:
+  brace-expansion@5.0.12:
     resolution:
       {
-        integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==
+        integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==
       }
     engines: { node: 20 || >=22 }
 
@@ -4743,7 +4743,7 @@ snapshots:
 
   blake3-wasm@2.1.5: {}
 
-  brace-expansion@5.0.9:
+  brace-expansion@5.0.12:
     dependencies:
       balanced-match: 4.0.4
 
@@ -5266,11 +5266,11 @@ snapshots:
 
   minimatch@10.2.3:
     dependencies:
-      brace-expansion: 5.0.9
+      brace-expansion: 5.0.12
 
   minimatch@10.2.4:
     dependencies:
-      brace-expansion: 5.0.9
+      brace-expansion: 5.0.12
 
   minimist@1.2.8: {}
 
