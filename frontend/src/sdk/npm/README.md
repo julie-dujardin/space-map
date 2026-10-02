@@ -158,8 +158,9 @@ map.offsetKm({ body: 'naif-499' }, { body: 'naif-401' });
 map.getSubsolarPoint('naif-499'); // { lon, lat }
 ```
 
-Either is null while a body it names is not loaded, and the sub-solar point is
-null for a body whose spin is not measured.
+Any of them is null while a body it names is not loaded. The sub-solar point is
+given in the frame a surface anchor is placed in, so an anchor there is on the
+lit side even on a body whose spin is not measured.
 
 ### Drawing on it
 

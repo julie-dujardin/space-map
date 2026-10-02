@@ -50,20 +50,24 @@ export function directionToLonLat(x: number, y: number, z: number): LonLat {
 	};
 }
 
-/** Where on `id` the Sun is at the zenith. Null for a body that is not loaded,
- *  or whose spin is not measured: it has no noon to speak of. */
+/**
+ * Where on `id` the Sun is at the zenith, in the frame a surface anchor is
+ * placed in: an anchor there is on the lit side. A body with no measured spin
+ * has no turning frame, and answers in the one its anchors fall back to. Null
+ * for a body that is not loaded.
+ */
 export function subsolarPoint(id: string, ctx: ContextManager, jd: number): LonLat | null {
 	const body = ctx.getBody(id);
 	const sun = ctx.getBody(SUN_ID);
-	if (!body?.orientation || !sun || body === sun) return null;
-	const toSun: [number, number, number] = [0, 0, 0];
-	rotateByQuaternion(
-		bodyQuaternion(body.orientation, jd, body.nutPrec).invert(),
+	if (!body || !sun || body === sun) return null;
+	const toSun: [number, number, number] = [
 		sun.position[0] - body.position[0],
 		sun.position[1] - body.position[1],
-		sun.position[2] - body.position[2],
-		toSun,
-		0
-	);
+		sun.position[2] - body.position[2]
+	];
+	if (body.orientation) {
+		const turned = bodyQuaternion(body.orientation, jd, body.nutPrec).invert();
+		rotateByQuaternion(turned, toSun[0], toSun[1], toSun[2], toSun, 0);
+	}
 	return directionToLonLat(toSun[0], toSun[1], toSun[2]);
 }

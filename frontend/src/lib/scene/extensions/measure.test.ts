@@ -87,9 +87,23 @@ describe('subsolarPoint', () => {
 		expect(Math.abs(noon.lat)).toBeLessThan(23.5);
 	});
 
-	it('is null for a body with no measured spin, and for the Sun itself', () => {
+	it('answers in the frame an anchor falls back to, for a body with no measured spin', () => {
+		const ctx = fakeCtx({
+			'naif-10': { position: [0, 0, 0] },
+			rock: { position: [0.3, -0.2, 0.9] }
+		});
+		const noon = subsolarPoint('rock', ctx, JD)!;
+		const rock = ctx.getBody('rock')!.position;
+		const up = resolveAnchor({ body: 'rock', latitude: noon.lat, longitude: noon.lon }, ctx, JD)!;
+		const zenith = up.map((v, i) => v - rock[i]);
+		const cosine =
+			-zenith.reduce((sum, v, i) => sum + v * rock[i], 0) /
+			(Math.hypot(...zenith) * Math.hypot(...rock));
+		expect(cosine).toBeCloseTo(1, 9);
+	});
+
+	it('is null for the Sun itself, and for a body not loaded', () => {
 		const ctx = fakeCtx({ 'naif-10': { position: [0, 0, 0] }, rock: { position: [1, 0, 0] } });
-		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
 		expect(subsolarPoint('naif-10', ctx, JD)).toBeNull();
 		expect(subsolarPoint('gone', ctx, JD)).toBeNull();
 	});

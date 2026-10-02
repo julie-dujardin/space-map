@@ -438,7 +438,8 @@ export class SpaceMap {
 	}
 
 	/** Where on `id` the Sun is overhead, as the last frame drew it: the middle
-	 *  of the lit half. Null for a body not loaded, or with no measured spin. */
+	 *  of the lit half, in the frame a surface anchor is placed in. Null for a
+	 *  body not loaded. */
 	getSubsolarPoint(id: string): LonLat | null {
 		return subsolarPoint(id, this.ctx, this.clock.jd);
 	}
