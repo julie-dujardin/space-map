@@ -1527,7 +1527,6 @@
 	"compare_clear": "Clear",
 	"compare_show_menu": "Show the menu",
 	"compare_hide_menu": "Hide the menu",
-	"compare_pages_label": "Page {n} of {total}",
 	"compare_page_of": "page {n}",
 	"compare_preset_terrestrial": "Terrestrial planets",
 	"compare_preset_giants": "Giant planets",

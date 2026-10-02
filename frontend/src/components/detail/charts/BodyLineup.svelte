@@ -71,6 +71,7 @@
 		MeshStandardMaterial,
 		type Object3D,
 		OrthographicCamera,
+		PerspectiveCamera,
 		Quaternion,
 		Scene,
 		SphereGeometry,
@@ -79,6 +80,9 @@
 		Vector3,
 		WebGLRenderer
 	} from 'three';
+	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+	import { orbitDamping, orthoRotateSpeed } from '$lib/scene/camera/motion-scale';
+	import { sceneSettings } from '$lib/scene/settings.svelte';
 	import { SilhouetteGlow } from './lineup-silhouette';
 	import { makeLineupSunMaterial } from './lineup-sun';
 	import {
@@ -115,7 +119,7 @@
 	import { focusHref } from '$lib/state/focus-link';
 	import { bodyHref } from '$lib/state/url';
 	import { isModifiedClick } from '$lib/modified-click';
-	import { createScrub, SWIPE_PX } from '$lib/charts/scrub';
+	import { createScrub, DRAG_SLOP, SWIPE_PX } from '$lib/charts/scrub';
 	import { formatKm } from '$lib/format/distance';
 	import {
 		ASIDE_END_PAD,
@@ -191,6 +195,17 @@
 		/** Offer the row a way out to `/compare`, carrying the same set. Off on
 		 *  the compare page itself, which is where that link goes. */
 		compare?: boolean;
+		/** A drag on a body turns it, in place of the turn a hover gives it. For
+		 *  a row with the room to look at one body at a time. */
+		rotate?: boolean;
+		/** With `rotate`, wheel and pinch change the scale the whole row is drawn
+		 *  on, neighbours included, for a row of one body. Reported through
+		 *  `onlayout` like any other scale. */
+		zoomable?: boolean;
+		/** With `rotate`, the element whose touches drive the controls, when the
+		 *  caller floats controls of its own over the row: a pinch's second
+		 *  finger lands wherever it lands. A gesture still starts on a body. */
+		gestures?: HTMLElement | null;
 	}
 	let {
 		bodies,
@@ -205,7 +220,10 @@
 		onpick,
 		ground,
 		spread = true,
-		compare = false
+		compare = false,
+		rotate = false,
+		zoomable = false,
+		gestures = null
 	}: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -357,7 +375,7 @@
 					heightK
 				)
 			: heightK;
-		const prs = raw.map((r) => Math.max(2, r * k)); // floor so tiny worlds stay visible
+		const prs = raw.map((r) => Math.max(2, r * k * zoom)); // floor so tiny worlds stay visible
 		const slots = prs.map((pr, i) => Math.max(2 * pr * (ordered[i].aspect ?? 1), names[i]));
 		// Boxes sit end to end, centred in the row; spheres get a constant
 		// centre-to-centre step, fit so the end ones touch the pads.
@@ -517,8 +535,7 @@
 		onEnd: () => (hoveredId = null)
 	});
 
-	// A finger dragged across a paginated row turns the page, as on the compare
-	// page. It rides alongside the scrub preview: scrubbing shows what is under
+	// A finger dragged across a paginated row turns the page. It rides alongside the scrub preview: scrubbing shows what is under
 	// the finger, and where the finger ends decides whether the row moves on.
 	let touchFrom: number | null = null;
 	/** Whether the click closing this gesture ended a swipe. Reading it spends
@@ -529,10 +546,12 @@
 		return from !== null && Math.abs(clientX - from) >= SWIPE_PX;
 	}
 	function onSwipeStart(e: PointerEvent) {
+		if (rotate) return;
 		touchFrom = e.pointerType === 'touch' && pageCount > 1 ? e.clientX : null;
 		scrub.onpointerdown(e);
 	}
 	function onSwipeEnd(e: PointerEvent) {
+		if (rotate) return;
 		const dx = touchFrom === null ? 0 : e.clientX - touchFrom;
 		if (Math.abs(dx) >= SWIPE_PX) goToPage(page + (dx < 0 ? 1 : -1));
 		scrub.onpointerup();
@@ -542,11 +561,172 @@
 	// gesture so a tap (which fires the button's click → focus) never flashes the
 	// spread/glow.
 	function onPointerMove(e: PointerEvent) {
+		if (orbiting) return;
 		if (e.pointerType === 'mouse') {
 			hoveredId = pickAt(e.clientX, e.clientY);
 			return;
 		}
-		scrub.onpointermove(e);
+		if (!rotate) scrub.onpointermove(e);
+	}
+
+	// Drag to turn uses the map's own camera controls, orbiting a stand-in eye
+	// about whichever body was grabbed. That body is drawn turned by the inverse
+	// of the orbit, so it moves exactly as a focused body does on the map. The
+	// eye's distance is the row's zoom.
+	const ORBIT_DISTANCE = 1;
+	const MIN_ZOOM = 0.5;
+	const MAX_ZOOM = 40;
+	const orbitEye = new PerspectiveCamera();
+	let orbit: OrbitControls | undefined;
+	/** The body the controls drive, and the orbit each body was left at. */
+	let orbitId: string | null = null;
+	const orbitDirs = new Map<string, Vector3>();
+	const orbitQuats = new Map<string, Quaternion>();
+	let orbiting = $state(false);
+	let zoom = $state(1);
+	let orbitFrame: number | undefined;
+	let pressFrom: { x: number; y: number; touch: boolean } | null = null;
+
+	$effect(() => {
+		if (!rotate || !containerEl) return;
+		const el = gestures ?? containerEl;
+		orbitEye.position.set(0, 0, ORBIT_DISTANCE / untrack(() => zoom));
+		const controls = new OrbitControls(orbitEye, el);
+		controls.enableDamping = true;
+		controls.dampingFactor = orbitDamping(untrack(() => sceneSettings().resolvedReducedMotion));
+		controls.enablePan = false;
+		controls.minDistance = ORBIT_DISTANCE / MAX_ZOOM;
+		controls.maxDistance = ORBIT_DISTANCE / MIN_ZOOM;
+		controls.update();
+		controls.addEventListener('change', takeOrbit);
+		controls.addEventListener('start', onOrbitStart);
+		controls.addEventListener('end', onOrbitEnd);
+		// Capture phase, so the body is chosen before the controls see the press.
+		el.addEventListener('pointerdown', onOrbitPress, { capture: true });
+		el.addEventListener('wheel', onOrbitWheel, { capture: true });
+		el.addEventListener('click', onRowClick);
+		orbit = controls;
+		return () => {
+			el.removeEventListener('pointerdown', onOrbitPress, { capture: true });
+			el.removeEventListener('wheel', onOrbitWheel, { capture: true });
+			el.removeEventListener('click', onRowClick);
+			if (orbitFrame !== undefined) cancelAnimationFrame(orbitFrame);
+			orbitFrame = undefined;
+			controls.dispose();
+			orbit = undefined;
+			orbitId = null;
+			orbiting = false;
+		};
+	});
+
+	// A new body, or a row that can no longer zoom, is drawn at its own scale.
+	$effect(() => {
+		void zoomable;
+		void visibleItems.map((b) => b.id).join();
+		untrack(() => {
+			zoom = 1;
+			orbitEye.position.setLength(ORBIT_DISTANCE);
+		});
+	});
+
+	function onOrbitPress(e: PointerEvent) {
+		if (!orbit) return;
+		// A second finger joins the pinch on the body the first one holds.
+		if (orbiting) return;
+		pressFrom = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
+		// A modified or secondary press belongs to the links and the menu, and
+		// one off the row to whatever it landed on.
+		const id = isModifiedClick(e) || !onRow(e.target) ? null : pickAt(e.clientX, e.clientY);
+		orbit.enabled = id !== null;
+		orbit.enableZoom = zoomable;
+		if (id) grab(id);
+	}
+
+	function onOrbitWheel(e: WheelEvent) {
+		if (!orbit) return;
+		// Outside a zoomable row the wheel is the page's.
+		orbit.enabled = zoomable;
+		orbit.enableZoom = zoomable;
+		const id = zoomable ? (pickAt(e.clientX, e.clientY) ?? layout[0]?.id) : null;
+		if (id) grab(id);
+		spinOrbit();
+	}
+
+	/** Point the controls at a body, from the orbit it was left at. */
+	function grab(id: string) {
+		if (!orbit) return;
+		if (id !== orbitId) {
+			// The last body stops where its coast would have taken it.
+			if (orbitId) {
+				orbit.enableDamping = false;
+				orbit.update();
+				orbit.enableDamping = true;
+			}
+			orbitId = id;
+			const dir = orbitDirs.get(id) ?? new Vector3(0, 0, 1);
+			orbitEye.position.copy(dir).multiplyScalar(ORBIT_DISTANCE / zoom);
+			orbit.update();
+		}
+		const p = layout.find((l) => l.id === id);
+		orbit.rotateSpeed = orthoRotateSpeed(p?.pr ?? 0, height);
+	}
+
+	/** Draw the grabbed body as the eye now sees it. */
+	function takeOrbit() {
+		if (!orbitId) return;
+		orbitDirs.set(orbitId, orbitEye.position.clone().normalize());
+		orbitQuats.set(orbitId, orbitEye.quaternion.clone().invert());
+		const zoomed = zoomable ? ORBIT_DISTANCE / orbitEye.position.length() : 1;
+		if (Math.abs(zoomed - zoom) > 1e-6) {
+			// The row is laid out again on the new scale, and drawn from there.
+			zoom = zoomed;
+			return;
+		}
+		const obj = displayObject(orbitId);
+		if (obj) applySpin(obj, orbitId);
+		updateGlow();
+		draw();
+	}
+
+	function onOrbitStart() {
+		orbiting = true;
+		hoveredId = orbitId;
+		spinOrbit();
+	}
+
+	function onOrbitEnd() {
+		orbiting = false;
+		if (pressFrom?.touch) hoveredId = null;
+		spinOrbit();
+	}
+
+	/** Run the controls a frame at a time while held and while they coast. */
+	function spinOrbit() {
+		if (orbitFrame !== undefined) return;
+		const step = () => {
+			orbitFrame = undefined;
+			if (!orbit) return;
+			if (orbitId) grab(orbitId);
+			if (orbit.update() || orbiting) orbitFrame = requestAnimationFrame(step);
+		};
+		orbitFrame = requestAnimationFrame(step);
+	}
+
+	function onRow(target: EventTarget | null): boolean {
+		return target instanceof Node && !!containerEl?.contains(target);
+	}
+
+	/** With the controls holding the pointer, a click lands on the row rather
+	 *  than on the body's link, so it is read here. One that ends a drag is
+	 *  the drag's. The keyboard still goes through the links. */
+	function onRowClick(e: MouseEvent) {
+		if (e.detail === 0 || !(onRow(e.target) || e.target === e.currentTarget)) return;
+		const from = pressFrom;
+		if (isModifiedClick(e)) return;
+		e.preventDefault();
+		if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > DRAG_SLOP) return;
+		const id = pickAt(e.clientX, e.clientY);
+		if (id) focusBody(id);
 	}
 
 	// --- Three.js: a flat, orthographic, pixel-space lineup of textured spheres.
@@ -677,6 +857,8 @@
 			dropBody(id);
 		}
 		spinAngles.clear();
+		orbitDirs.clear();
+		orbitQuats.clear();
 		bodyShift.clear();
 	}
 
@@ -724,6 +906,11 @@
 			if (!b || builtKeys.get(id) !== buildKey(b)) dropBody(id);
 		}
 		for (const id of [...spinAngles.keys()]) if (!wanted.has(id)) spinAngles.delete(id);
+		for (const id of [...orbitDirs.keys()]) {
+			if (wanted.has(id)) continue;
+			orbitDirs.delete(id);
+			orbitQuats.delete(id);
+		}
 		for (const id of [...bodyShift.keys()]) if (!wanted.has(id)) bodyShift.delete(id);
 		setRoomEnvironment(drawn.some((b) => b.craft));
 		const loader = new TextureLoader();
@@ -1078,22 +1265,23 @@
 		});
 	}
 
-	/** base · spin(angle about the pole); identity-cheap at rest. */
+	/** orbit · base · spin(about the pole): the turn a drag left it at, in view
+	 *  space, over the hover's turn about its own pole. */
 	function applySpin(obj: Object3D, id: string) {
 		const base = baseQuats.get(id);
 		if (!base) return;
 		const a = spinAngles.get(id) ?? 0;
-		if (a === 0) {
-			obj.quaternion.copy(base);
-			return;
-		}
-		obj.quaternion.copy(base).multiply(spinQuat.setFromAxisAngle(AXIS_Y, a));
+		const turned = orbitQuats.get(id);
+		obj.quaternion.copy(base);
+		if (a !== 0) obj.quaternion.multiply(spinQuat.setFromAxisAngle(AXIS_Y, a));
+		if (turned) obj.quaternion.premultiply(turned);
 	}
 
 	/** Ease each body's spin toward its target, ticking rAF only while in motion. */
 	function animateSpin() {
 		if (spinAnimId !== undefined) return;
-		const spinTarget = (id: string) => (id === hoveredId ? HOVER_SPIN : 0);
+		// A row turned by dragging has no hover turn.
+		const spinTarget = (id: string) => (!rotate && id === hoveredId ? HOVER_SPIN : 0);
 		if (!layout.some((p) => (spinAngles.get(p.id) ?? 0) !== spinTarget(p.id))) return;
 		const step = () => {
 			spinAnimId = undefined;
@@ -1303,10 +1491,15 @@
 			scrub.onpointercancel();
 		}}
 		onpointerleave={() => {
+			if (orbiting) return;
 			hoveredId = null;
 			scrub.onpointerleave();
 		}}
-		class="relative w-full touch-pan-y overflow-hidden rounded-md {ground ? '' : 'bg-muted/30'}"
+		class="relative w-full overflow-hidden rounded-md {rotate
+			? 'touch-none'
+			: 'touch-pan-y'} {orbiting ? 'cursor-grabbing [&>a]:cursor-grabbing' : ''} {ground
+			? ''
+			: 'bg-muted/30'}"
 		style="height: {height}px; {ground ? `background: ${ground}` : ''}"
 		role="group"
 		aria-label={ariaLabel}
@@ -1329,6 +1522,11 @@
 					onclick={(e) => {
 						// A click that ends a page swipe belongs to the swipe, not the body
 						// it happens to land on.
+						if (rotate && e.detail !== 0) {
+							// Read off the row; see onRowClick.
+							if (!isModifiedClick(e)) e.preventDefault();
+							return;
+						}
 						if (swiped(e.clientX)) {
 							e.preventDefault();
 							return;
@@ -1346,7 +1544,7 @@
 			{:else}
 				<button
 					type="button"
-					onclick={(e) => !swiped(e.clientX) && focusBody(p.id)}
+					onclick={(e) => !(rotate && e.detail !== 0) && !swiped(e.clientX) && focusBody(p.id)}
 					aria-label={p.name}
 					class="absolute top-0 bottom-0 outline-none"
 					style="left: {p.colLeft}px; width: {p.colWidth}px"

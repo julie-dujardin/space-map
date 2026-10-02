@@ -25,7 +25,6 @@
 	import CompareCreditBar from '../../components/compare/CompareCreditBar.svelte';
 	import BodyLineup, { type LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 	import { bandsBySize, screensOf } from '$lib/compare/pages';
-	import { SWIPE_PX } from '$lib/charts/scrub';
 	import { labelWidth, screenFit, SIDE_PAD } from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
 	import { presetOn, type ComparePreset } from '$lib/compare/presets';
@@ -59,6 +58,7 @@
 	 *  the row: null until they have said either way. */
 	let menuOpen = $state<boolean | null>(null);
 	const showMenu = $derived(menuOpen ?? !narrow);
+	let stage = $state<HTMLDivElement | null>(null);
 	let stageWidth = $state(0);
 	let stageHeight = $state(0);
 	let page = $state(0);
@@ -360,17 +360,6 @@
 		page = to;
 	}
 
-	let swipeFrom: number | null = null;
-	function onSwipeStart(event: PointerEvent): void {
-		swipeFrom = event.pointerType === 'touch' ? event.clientX : null;
-	}
-	function onSwipeEnd(event: PointerEvent): void {
-		if (swipeFrom === null) return;
-		const dx = event.clientX - swipeFrom;
-		swipeFrom = null;
-		if (Math.abs(dx) >= SWIPE_PX) turn(dx < 0 ? 1 : -1);
-	}
-
 	/** A round distance about 110 px long, for the bar the row is measured by.
 	 *  With nothing to compare against it measures one lonely body whose size
 	 *  the label under it already gives, so the row drops it. */
@@ -428,8 +417,8 @@
 		pin: boolean;
 		/** A page turn rather than a zoom: one maximized object gives way to the
 		 *  next, so the row carries the old one off and the new one on, the way
-		 *  the strips and the swipe say it should. -1 draws from the start side,
-		 *  1 from the end. */
+		 *  the strips say it should. -1 draws from the start side, 1 from the
+		 *  end. */
 		slide?: -1 | 1;
 		/** What keeps the old picture where it was drawn while the stage moves
 		 *  out from under it. */
@@ -629,24 +618,17 @@
 		<!-- The row stands on the stage sheet, and everything over it is inked
 		     from the theme: dark it is the sky the map draws, light a bare sheet. -->
 		<div
+			bind:this={stage}
 			bind:clientWidth={stageWidth}
 			bind:clientHeight={stageHeight}
 			role="group"
 			aria-label={m.compare_lineup_label()}
 			class="relative min-w-0 flex-1 overflow-hidden bg-stage text-foreground"
 		>
-			<!-- Everything the row is made of moves together when it zooms, and
-			     a swipe is read on it alone: the card floating over it is not
-			     the row. The swipe only repeats the turn buttons, so assistive
-			     tech has nothing to find here. -->
-			<div
-				role="presentation"
-				class="absolute inset-0"
-				style={zoomStyle}
-				onpointerdown={onSwipeStart}
-				onpointerup={onSwipeEnd}
-				onpointercancel={() => (swipeFrom = null)}
-			>
+			<!-- Everything the row is made of moves together when it zooms. A drag
+			     on it turns the body under it, so the pages turn by the buttons
+			     alone. -->
+			<div class="absolute inset-0" style={zoomStyle}>
 				{#if bodies.length && stageHeight > LABEL_ROW}
 					<!-- The row draws the neighbouring pages too, at its own scale. -->
 					<div bind:this={rowBox} class="relative">
@@ -663,6 +645,9 @@
 							onlayout={(items) => (laid = items)}
 							oncontextpick={(id, x, y) => (menu = { id, x, y })}
 							onpick={(id) => openObject(id)}
+							rotate
+							zoomable={!!opened}
+							gestures={opened ? stage : null}
 						/>
 					</div>
 				{:else}
@@ -769,7 +754,8 @@
 					     row's own scale. Right-hand side, where the row leaves the most
 					     room, clear of the page link below it. The box is cut to the
 					     drawing: most of these are long and low, a few are towers, and
-					     either way the rest would be air. -->
+					     either way the rest would be air. Its name is on a scrim: a zoomed
+					     body can be drawn under it. -->
 					<div
 						class="pointer-events-none absolute end-5"
 						style="bottom: {LABEL_ROW + 54}px; width: {Math.max(
@@ -785,29 +771,12 @@
 							ground="transparent"
 							spread={false}
 						/>
-						<span class="text-center text-[11px] leading-tight text-muted-foreground">
+						<span
+							class="mx-auto block w-fit rounded-md bg-stage/70 px-1.5 text-center text-[11px] leading-tight text-muted-foreground"
+						>
 							{comparableBody.name} ·
 							<span class="tabular-nums">{comparableSize}</span>
 						</span>
-					</div>
-				{/if}
-
-				{#if pages.length > 1 && narrow && !opened}
-					<!-- The phone counts its pages on the credit line, at the start, where
-					     the credit leaves room for a score of them. -->
-					<div
-						role="group"
-						aria-label={m.compare_pages_label({ n: pageIndex + 1, total: pages.length })}
-						class="pointer-events-none absolute start-5 flex gap-1"
-						style="bottom: calc(var(--safe-bottom) + 9px)"
-					>
-						{#each pages.map((_, i) => i) as i (i)}
-							<span
-								class="size-1.5 rounded-full {i === pageIndex
-									? 'bg-foreground/85'
-									: 'bg-foreground/30'}"
-							></span>
-						{/each}
 					</div>
 				{/if}
 			</div>
@@ -823,12 +792,8 @@
 				/>
 			{/if}
 
-			<!-- Same corner as the map's, crediting what this page draws. On a phone
-			     it shares the line with the page dots. -->
-			<div
-				class="absolute end-0 z-10"
-				style="bottom: var(--safe-bottom);{narrow ? ' --credit-chip-max: 34vw' : ''}"
-			>
+			<!-- Same corner as the map's, crediting what this page draws. -->
+			<div class="absolute end-0 z-10" style="bottom: var(--safe-bottom)">
 				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 

@@ -144,7 +144,7 @@ import {
 	type CameraBand,
 	type SurfaceClampContext
 } from './visibility/camera-limits';
-import { cameraMotionScale, type MotionScale } from './camera/motion-scale';
+import { cameraMotionScale, orbitDamping, type MotionScale } from './camera/motion-scale';
 import {
 	bodyFixedUnit,
 	renderedSurfaceRadialKm,
@@ -161,11 +161,6 @@ import { jdToDate } from '$lib/time/jd';
  *  gesture; anything else leaves the state alone, which is how one finger comes
  *  to do nothing at all. */
 const NO_TOUCH_GESTURE = -1 as TOUCH;
-
-/** OrbitControls inertia. The reduced-motion factor is far higher so the camera
- *  stops promptly on release instead of coasting (three's default is 0.05). */
-const DEFAULT_DAMPING = 0.05;
-const REDUCED_MOTION_DAMPING = 0.4;
 
 /** Depth-far tuning for subsystem views (see {@link SceneRenderer.updateDepthFar}). */
 const FAR_MARGIN = 1.2; // headroom past the farthest anchor so its halo isn't clipped
@@ -505,9 +500,7 @@ export class SceneRenderer {
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControlsClass(this.camera, canvas);
 		this.controls.enableDamping = true;
-		this.controls.dampingFactor = sceneSettings().resolvedReducedMotion
-			? REDUCED_MOTION_DAMPING
-			: DEFAULT_DAMPING;
+		this.controls.dampingFactor = orbitDamping(sceneSettings().resolvedReducedMotion);
 		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
 		this.controls.maxDistance = 31_620.5 * AU_SCALE; // 0.5 light-year
 		this.controls.target.set(0, 0, 0);
@@ -2096,7 +2089,7 @@ export class SceneRenderer {
 
 	/** Reduced motion: shorten orbit inertia so the camera stops promptly on release. */
 	setReducedMotion(on: boolean): void {
-		this.controls.dampingFactor = on ? REDUCED_MOTION_DAMPING : DEFAULT_DAMPING;
+		this.controls.dampingFactor = orbitDamping(on);
 	}
 
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {

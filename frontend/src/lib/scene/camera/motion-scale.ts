@@ -13,6 +13,12 @@ const MIN_TRANSLATE_SCALE = 0.02;
  *  1000 km station over the Sun still asks for ~2e-4. */
 const MIN_ROTATE_SCALE = 1e-4;
 
+/** OrbitControls inertia. The reduced-motion factor is far higher so the camera
+ *  stops promptly on release instead of coasting (three's default is 0.05). */
+export function orbitDamping(reducedMotion: boolean): number {
+	return reducedMotion ? 0.4 : 0.05;
+}
+
 /** Speed factors for the OrbitControls gestures at the camera's current station. */
 export interface MotionScale {
 	/** `rotateSpeed`. */
@@ -92,4 +98,15 @@ export function cameraMotionScale(
 
 function clamp(value: number, min: number): number {
 	return Math.min(1, Math.max(min, value));
+}
+
+/**
+ * `rotateSpeed` that pins a drag to the surface 1:1, as {@link cameraMotionScale}
+ * does, for a body drawn under an orthographic camera: `radiusPx` across on a
+ * viewport `viewportPx` tall. A drag of `p` px turns it `2π·p·rotateSpeed/viewportPx`
+ * radians, and each radian carries the middle of its disc `radiusPx` across.
+ */
+export function orthoRotateSpeed(radiusPx: number, viewportPx: number): number {
+	if (!(radiusPx > 0) || !(viewportPx > 0)) return 1;
+	return clamp(viewportPx / (2 * Math.PI * radiusPx), MIN_ROTATE_SCALE);
 }
