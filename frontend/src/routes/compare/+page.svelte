@@ -637,8 +637,10 @@
 		>
 			<!-- Everything the row is made of moves together when it zooms, and
 			     a swipe is read on it alone: the card floating over it is not
-			     the row. -->
+			     the row. The swipe only repeats the turn buttons, so assistive
+			     tech has nothing to find here. -->
 			<div
+				role="presentation"
 				class="absolute inset-0"
 				style={zoomStyle}
 				onpointerdown={onSwipeStart}
