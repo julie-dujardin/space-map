@@ -6,7 +6,8 @@
  */
 
 import { dataBase, versionedUrl } from '$lib/fetch/data-base';
-import { pickTexture, textureAllowed, type TextureDistribution } from '$lib/host';
+import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { pickTexture, type TextureDistribution } from '$lib/host';
 import { cloudFrameForJd } from '$lib/scene/objects/surface/clouds';
 import { textureFrameForJd } from '$lib/scene/objects/body/textures';
 
@@ -81,32 +82,61 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 	}
 }
 
-/** Read a bundle's own metadata, for the bodies that appear in no system file. */
-async function fromBundle(bodyId: string): Promise<BodySources> {
-	const meta = await fetchJson<{
-		exports?: Record<string, unknown>;
-		[key: string]: unknown;
-	}>(versionedUrl(`/v1/textures/${bodyId}/metadata.json`, 'textures'));
-	if (!meta) return {};
-	// The standalone path, so it carries the same check the system file gets.
-	if (!textureAllowed(meta.distribution as string | undefined)) return {};
-	const tiers = Object.keys(meta.exports ?? {}).filter((k) =>
-		['low', 'medium', 'high'].includes(k)
+/** What a body's own record says of its map: the same blocks a system file
+ *  carries, less the tiers. */
+export interface StandaloneRecord {
+	map_texture_available?: boolean;
+	texture?: Still;
+	alternates?: (Still & { id: string; tiers: string[] })[];
+	radii?: { a: number; b: number; c: number };
+}
+
+/** A map as a record describes it: frames counted, as a system file has them. */
+type Still = Omit<BundleMeta, 'id' | 'tiers' | 'frames'> & { frames?: number };
+
+/** The tiers a bundle was written at, coarsest first. Nothing published says,
+ *  so each file is asked after. */
+async function tiersOf(bundleId: string): Promise<string[]> {
+	const found = await Promise.all(
+		TIER_ORDER.map((tier) =>
+			fetch(versionedUrl(`/v1/textures/${bundleId}/${tier}.webp`, 'textures'), { method: 'HEAD' })
+				.then((response) => response.ok)
+				.catch(() => false)
+		)
 	);
-	if (tiers.length === 0) return {};
+	return TIER_ORDER.filter((_, i) => found[i]);
+}
+
+/**
+ * The map of a body that appears in no system file — Ceres, Vesta, the small
+ * bodies a probe has mapped — read off its own record. `tiers` answers for a
+ * bundle the record does not list them for, which is the body's own.
+ */
+export async function fromRecord(
+	bodyId: string,
+	record: StandaloneRecord | null | undefined,
+	tiers: (bundleId: string) => Promise<string[]> = tiersOf
+): Promise<BodySources> {
+	if (!record?.map_texture_available || !record.texture) return {};
+	// The same walk the system file gets: the best map this viewer may serve.
+	const surface = pickTexture([
+		{ ...record.texture, id: bodyId, tiers: undefined as string[] | undefined },
+		...(record.alternates ?? [])
+	]);
+	if (!surface) return {};
+	const written = surface.tiers ?? (await tiers(surface.id));
+	if (written.length === 0) return {};
+	const { frames, ...bundle } = surface;
+	const radii = record.radii;
 	return {
-		surface: {
-			id: bodyId,
-			tiers,
-			source: String(meta.source ?? ''),
-			organisation: String(meta.organisation ?? ''),
-			type: String(meta.type ?? 'cylindrical'),
-			attribution: meta.attribution as string | undefined,
-			description: meta.description as string | undefined,
-			license: meta.license as string | undefined,
-			distribution: meta.distribution as TextureDistribution | undefined
-		}
+		surface: { ...bundle, tiers: written, monthlyFrames: frames },
+		radiusKm: radii ? (radii.a + radii.b + radii.c) / 3 : undefined
 	};
+}
+
+async function fromBundle(bodyId: string): Promise<BodySources> {
+	const detail = await fetchObjectDetail(bodyId, false).catch(() => null);
+	return fromRecord(bodyId, detail?.global);
 }
 
 /** Every picture the export has of this body's surface. Empty when it has no
