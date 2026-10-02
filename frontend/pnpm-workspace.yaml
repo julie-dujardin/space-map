@@ -5,7 +5,7 @@ allowBuilds:
 
 overrides:
   '@humanfs/node@<0.16.8': ^0.16.8
-  brace-expansion@<5.0.7: ^5.0.9
+  brace-expansion@<5.0.12: ^5.0.12
   cookie@<0.7.0: ^0.7.2
   devalue@<5.9.1: ^5.9.4
   postcss@<8.5.23: ^8.5.26
