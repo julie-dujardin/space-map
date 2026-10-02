@@ -1,9 +1,6 @@
 """Tests for the payload/debris split behind the Satellites and Debris pages."""
 
-from collections.abc import Iterator
-
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import DEBRIS_SLUG, SATELLITES_SLUG
@@ -29,20 +26,10 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.notable import NotableObject
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.base import Base
 from space_map_data.models.object.satcat import Satcat
 
 _EARTH = "naif-399"
 _LEO = f"{CLASS_SLUG_PREFIX}LEO"
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 @pytest.fixture(autouse=True)

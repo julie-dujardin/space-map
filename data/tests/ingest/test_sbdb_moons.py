@@ -4,7 +4,7 @@ import json
 from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import ID_TYPES, make_object_id
@@ -15,7 +15,6 @@ from space_map_data.ingest.providers.objects.sbdb_moons import (
     _synth_satellite_designation,
 )
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.models.object.base import Base
 
 
 class TestSyntheticSpkid:
@@ -179,9 +178,7 @@ class TestSynthSatelliteDesignation:
 
 
 @pytest.fixture
-def session(monkeypatch) -> Iterator[Session]:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
+def session(monkeypatch, engine) -> Iterator[Session]:
     sess = Session(engine)
     monkeypatch.setattr("space_map_data.utils.db._session", sess)
     yield sess

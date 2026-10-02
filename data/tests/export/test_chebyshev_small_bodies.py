@@ -12,7 +12,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
@@ -27,7 +26,6 @@ from space_map_data.export.position.chebyshev.writer import (
 )
 from space_map_data.export.position.layout import chebyshev_npz_paths
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.base import Base
 from space_map_data.probes.small_bodies import SMALL_BODY_TARGET_NAIF_IDS
 from space_map_data.utils.naif import (
     CHEBYSHEV_ASTEROID_WHITELIST,
@@ -46,9 +44,7 @@ BODIES = [
 
 
 @pytest.fixture
-def session() -> Iterator[Session]:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
+def session(engine) -> Iterator[Session]:
     with Session(engine) as sess:
         sess.add_all(
             [

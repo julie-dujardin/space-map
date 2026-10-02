@@ -7,12 +7,8 @@ contiguous `0..N-1` run. The on-disk result must be byte-identical to writing
 the whole combo at once.
 """
 
-from collections.abc import Iterator
 from unittest.mock import MagicMock
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from space_map_data.export.pipeline import orchestrator, zone
 from space_map_data.export.pipeline.orchestrator import (
@@ -21,7 +17,6 @@ from space_map_data.export.pipeline.orchestrator import (
 )
 from space_map_data.export.pipeline.zone import _write_element_parts
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.models.object.base import Base
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
 from tests.conftest import make_object
 
@@ -72,14 +67,6 @@ def test_batched_offset_parts_match_one_shot(tmp_path, monkeypatch):
     assert one_files == batched_files == ["0.bin.gz", "1.bin.gz", "2.bin.gz"]
     for name in one_files:
         assert (one / rel / name).read_bytes() == (batched / rel / name).read_bytes()
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def test_sbdb_streaming_spans_batches_without_killing_session(

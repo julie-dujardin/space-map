@@ -1,9 +1,5 @@
 """Tests for split-comet family grouping and fragment attachment."""
 
-from collections.abc import Iterator
-
-import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.comet_fragments import family_group_slug
@@ -12,7 +8,6 @@ from space_map_data.export.objects.fragments import (
     build_comet_families,
 )
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.base import Base
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 
 
@@ -31,14 +26,6 @@ class _FakeWikidata:
 
     def get_entity(self, qid):
         return {"labels": {"en": self._labels[qid]}} if qid in self._labels else None
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def _add(

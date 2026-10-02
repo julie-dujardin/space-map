@@ -1,9 +1,6 @@
 """Tests for notable-moon selection and host resolution."""
 
-from collections.abc import Iterator
-
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.objects.moons import (
@@ -12,7 +9,6 @@ from space_map_data.export.objects.moons import (
     notable_moons_by_host,
 )
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.base import Base
 
 # Triaxial radii keyed by naif_id (km), as load_radii returns.
 RADII = {
@@ -21,14 +17,6 @@ RADII = {
 }
 # IAU pole keyed by naif_id. Io only, so Europa exercises the untilted path.
 ORIENTATION = {501: {"pole_ra_0": 268.05, "pole_dec_0": 64.50}}
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def _add(

@@ -1,9 +1,6 @@
 """Tests for the IAU quadrangle grid and its export tier."""
 
-from collections.abc import Iterator
-
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.nomenclature.quadrangle_grid import (
@@ -18,16 +15,6 @@ from space_map_data.export.nomenclature.quadrangles import (
 )
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.models.object.base import Base
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def _feature(fid: int, body: str, lat: float, lon: float, **kwargs) -> Feature:

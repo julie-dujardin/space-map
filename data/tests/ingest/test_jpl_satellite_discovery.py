@@ -4,7 +4,6 @@ import json
 from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.ingest.providers.objects.jpl_satellite_discovery import (
@@ -13,7 +12,6 @@ from space_map_data.ingest.providers.objects.jpl_satellite_discovery import (
     _first_year,
 )
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.models.object.base import Base
 
 
 class TestHelpers:
@@ -31,9 +29,7 @@ class TestHelpers:
 
 
 @pytest.fixture
-def session(monkeypatch) -> Iterator[Session]:
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
+def session(monkeypatch, engine) -> Iterator[Session]:
     sess = Session(engine)
     monkeypatch.setattr("space_map_data.utils.db._session", sess)
     yield sess

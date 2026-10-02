@@ -6,7 +6,6 @@ from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.nomenclature.continents import Continent
@@ -22,7 +21,6 @@ from space_map_data.ingest.providers.iau_nomenclature import (
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import SBDB, Object, ObjectType
 from space_map_data.models.object.sbdb import OrbitClass
-from space_map_data.models.object.base import Base
 
 KML_NS = "http://www.opengis.net/kml/2.2"
 
@@ -290,10 +288,8 @@ class TestResolveSfParent:
 
 
 @pytest.fixture
-def session(monkeypatch, tmp_path) -> Iterator[Session]:
+def session(monkeypatch, engine, tmp_path) -> Iterator[Session]:
     """Fresh in-memory SQLite installed as the global session."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
     sess = Session(engine)
     monkeypatch.setattr("space_map_data.utils.db._session", sess)
     yield sess

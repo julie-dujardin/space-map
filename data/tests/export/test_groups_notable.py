@@ -1,9 +1,6 @@
 """Tests for notable-member selection and shared bundle-entry building."""
 
-from collections.abc import Iterator
-
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
@@ -51,17 +48,7 @@ from space_map_data.export.groups.small_body import (
 )
 from space_map_data.export.notable import NotableObject
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.models.object.base import Base
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def _add_member(

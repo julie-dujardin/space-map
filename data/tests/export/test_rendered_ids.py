@@ -5,24 +5,10 @@ promotion loop retry an unfindable getBody every frame, so probes come from
 the coverage the probes pass wrote rather than from their orbital_source.
 """
 
-from collections.abc import Iterator
-
-import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.pipeline.orchestrator import _load_rendered_ids
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.models.object.base import Base
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    """Fresh in-memory SQLite with the full schema, scoped to one test."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as sess:
-        yield sess
 
 
 def _probe(session: Session, oid: str, probe_id: int) -> None:
