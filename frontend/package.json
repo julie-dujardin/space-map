@@ -27,7 +27,7 @@
 		"@microsoft/api-extractor": "^7.59.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.8",
 		"@sveltejs/kit": "^2.70.2",
-		"@sveltejs/vite-plugin-svelte": "latest",
+		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@tailwindcss/vite": "latest",
 		"@types/d3-scale": "^4.0.9",
 		"@types/d3-shape": "^3.1.8",
