@@ -1,7 +1,8 @@
 <!--
   The traverse on a flat map of the body, bottom left of the viewer: driven
   path in white, the rest in grey, and a wedge for where the reader is looking.
-  Small by default; the expand button grows it and opens the timeline.
+  Small by default; the expand button grows it and opens the timeline. The
+  host clips the corners: a caption can sit flush on top of the box.
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
@@ -225,7 +226,7 @@
 <div
 	class="relative overflow-hidden bg-black/40 backdrop-blur-sm {fill
 		? 'size-full'
-		: 'rounded-md transition-[width,height] duration-250 ease-out motion-reduce:transition-none'}"
+		: 'transition-[width,height] duration-250 ease-out motion-reduce:transition-none'}"
 	style={fill
 		? undefined
 		: `width: ${expanded ? '20rem' : '11rem'}; height: ${expanded && height ? `${height}px` : '7rem'}`}

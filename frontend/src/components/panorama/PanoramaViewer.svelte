@@ -9,7 +9,6 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import * as m from '$lib/paraglide/messages.js';
@@ -77,12 +76,6 @@
 	 *  preference except where the device refused it. */
 	let gyroActive = $state(false);
 	const gyroSupported = gyroAvailability() === 'available';
-	let detailsOpen = $state(false);
-	let missionPart = $state<HTMLElement | null>(null);
-	let solPart = $state<HTMLElement | null>(null);
-	/** Whether the sol sits on a line of its own, where a leading separator
-	 *  would read as a stray mark. */
-	let solWrapped = $state(false);
 	let neighbours = $state.raw<Neighbours | null>(null);
 	let timelineOpen = $state(false);
 	/** The timeline strip only lays out beside the minimap from `md` up. */
@@ -217,17 +210,6 @@
 		gyroActive = (await view?.setGyroEnabled(wanted)) ?? false;
 	}
 
-	$effect(() => {
-		const mission = missionPart;
-		const sol = solPart;
-		if (!mission || !sol) return;
-		const measure = () => (solWrapped = sol.offsetTop > mission.offsetTop);
-		measure();
-		const observer = new ResizeObserver(measure);
-		observer.observe(mission.parentElement!);
-		return () => observer.disconnect();
-	});
-
 	/** A rover position to the metre, which three significant figures are not. */
 	function formatCoordinate(deg: number): string {
 		return `${deg.toLocaleString(getLocale(), { maximumFractionDigits: 5 })}${m.symbol_degree()}`;
@@ -238,19 +220,25 @@
 		return [sol, formatKm(n.distanceM / 1000)].filter(Boolean).join(' · ');
 	}
 
-	const pageTitle = $derived(
+	/** What the panorama is called: the craft, and the sol where it counts them. */
+	const caption = $derived(
 		current
 			? [
 					capitalize(current.mission ?? ''),
-					current.sol !== undefined ? m.panorama_sol({ sol: current.sol }) : '',
-					bodyName
+					current.sol !== undefined ? m.panorama_sol({ sol: current.sol }) : ''
 				]
 					.filter(Boolean)
 					.join(' · ')
+			: ''
+	);
+
+	const pageTitle = $derived(
+		current
+			? [caption, bodyName].filter(Boolean).join(' · ')
 			: `${m.panorama_index_title()} · ${bodyName}`
 	);
 
-	/** Rows of the info box, in reading order. */
+	/** Rows of the info column, in reading order. */
 	const rows = $derived.by(() => {
 		if (!current) return [];
 		const out: Array<{ label: string; value: string }> = [];
@@ -300,8 +288,13 @@
 			: bodyHref(bodyId, bodyName)
 	);
 
-	const inBoxButton = `flex size-9 items-center justify-center rounded-md text-white/70
-		transition-colors hover:bg-white/10 hover:text-white md:size-7`;
+	function toggleTimeline(): void {
+		timelineOpen = wide.current && !timelineOpen;
+	}
+
+	/** The glass of the menu buttons, for the two beside them that open nothing. */
+	const glassButton = `flex size-10 cursor-pointer items-center justify-center rounded-full
+		bg-black/40 text-white backdrop-blur-md transition-colors hover:bg-black/55 md:size-8`;
 </script>
 
 <svelte:head>
@@ -309,20 +302,28 @@
 </svelte:head>
 
 {#if current}
-	<!-- Share then close, the order the detail drawer's button row uses. -->
-	{#snippet shareAndClose()}
-		<button
-			type="button"
-			onclick={() => shareUrl(pageTitle)}
-			class="cursor-pointer {inBoxButton}"
-			aria-label={m.share()}
-			title={m.share()}
-		>
-			<Share2Icon class="size-5 md:size-4" />
-		</button>
-		<a href={closeHref} class={inBoxButton} aria-label={m.close()} title={m.close()}>
-			<XIcon class="size-5 md:size-4" />
-		</a>
+	<!-- What the panorama is, in full: the timeline's first column. -->
+	{#snippet about()}
+		<div class="flex flex-col gap-2.5">
+			<div>
+				<h1 class="text-sm font-medium">{caption}</h1>
+				{#if current?.title}
+					<p class="text-muted-foreground text-xs">{current.title}</p>
+				{/if}
+			</div>
+			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+				{#each rows as row (row.label)}
+					<dt class="text-muted-foreground">{row.label}</dt>
+					<dd>{row.value}</dd>
+				{/each}
+			</dl>
+			<a
+				href="/view"
+				class="text-muted-foreground hover:text-foreground self-start text-xs hover:underline"
+			>
+				{m.panorama_index_all()}
+			</a>
+		</div>
 	{/snippet}
 
 	<Tooltip.Provider delayDuration={300}>
@@ -354,90 +355,52 @@
 				</div>
 			{/if}
 
-			<!-- Info box: the table is a disclosure, so what stands over the
-			     panorama is the name and one row of buttons. -->
-			<div
-				class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] w-[min(18rem,calc(100vw-5.5rem))] rounded-md bg-black/40 px-2.5 py-2 text-sm backdrop-blur-sm"
-			>
-				<div class="flex items-center gap-1">
-					<div class="min-w-0 flex-1">
-						<!-- The separator rides with the mission and keeps its space when
-						     hidden: it can never lead the second line, and dropping it cannot
-						     move the break that hid it. -->
-						<h1 class="text-sm font-semibold leading-tight">
-							<span bind:this={missionPart} class="whitespace-nowrap">
-								{capitalize(current.mission ?? '')}{#if current.sol !== undefined}<span
-										class="ps-1 text-white/80 {solWrapped ? 'invisible' : ''}">·</span
-									>{/if}
-							</span>
-							{#if current.sol !== undefined}
-								<span bind:this={solPart} class="whitespace-nowrap text-white/80">
-									{m.panorama_sol({ sol: current.sol })}
-								</span>
-							{/if}
-						</h1>
-						{#if current.title}
-							<p class="truncate text-xs text-white/70">{current.title}</p>
-						{/if}
-					</div>
-					<div class="-me-1 flex shrink-0 items-center gap-0.5">
-						{#if rows.length}
-							<button
-								type="button"
-								onclick={() => (detailsOpen = !detailsOpen)}
-								class="cursor-pointer {inBoxButton}"
-								aria-expanded={detailsOpen}
-								aria-label={m.panorama_details()}
-								title={m.panorama_details()}
-							>
-								<ChevronDownIcon
-									class="size-5 transition-transform md:size-4 {detailsOpen ? 'rotate-180' : ''}"
-								/>
-							</button>
-						{/if}
-						{@render shareAndClose()}
-					</div>
-				</div>
-				{#if detailsOpen}
-					<dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-						{#each rows as row (row.label)}
-							<dt class="text-white/55">{row.label}</dt>
-							<dd>{row.value}</dd>
-						{/each}
-					</dl>
-					<a
-						href="/view"
-						class="mt-2 inline-block text-xs text-white/60 hover:text-white hover:underline"
-					>
-						{m.panorama_index_all()}
-					</a>
-				{/if}
-			</div>
-
 			<!-- One row, so the minimap grows to the timeline's height. Nothing in
 			     it stretches: the strip's measured height sets the minimap's, so a
 			     stretched strip would measure its own output and ratchet up. -->
-			{#if view && missionEntries.length}
+			{#if missionEntries.length}
 				<div
 					class="absolute bottom-[calc(var(--safe-bottom)_+_1.5rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex items-end gap-2 {timelineOpen
 						? ''
 						: 'pointer-events-none'}"
 				>
-					<div class="pointer-events-auto shrink-0">
-						<PanoramaMinimap
-							{bodyId}
-							entries={missionEntries}
-							{current}
-							{radiusKm}
-							jd={clock.jd}
-							headingDeg={heading}
-							fovDeg={fov}
-							expanded={timelineOpen}
-							height={timelineOpen ? stripHeight : null}
-							onToggle={() => (timelineOpen = wide.current && !timelineOpen)}
-							onCredits={(credits) => (mapCredits = credits)}
-							onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
-						/>
+					<div class="pointer-events-auto min-w-44 shrink-0 overflow-hidden rounded-md">
+						<!-- The name rides on the map while the timeline is shut; open, the
+						     strip's first column says it in full. `w-0 min-w-full`: the map
+						     sets the width, a long title does not. -->
+						{#if !timelineOpen}
+							<h1>
+								<button
+									type="button"
+									onclick={toggleTimeline}
+									title={m.panorama_map_expand()}
+									class="block w-0 min-w-full cursor-pointer bg-black/40 px-2.5 py-1.5 text-start backdrop-blur-sm"
+								>
+									<span class="block truncate text-sm leading-tight font-semibold">{caption}</span>
+									{#if current.title}
+										<span class="block truncate text-xs font-normal text-white/70">
+											{current.title}
+										</span>
+									{/if}
+								</button>
+							</h1>
+						{/if}
+						{#if view}
+							<PanoramaMinimap
+								{bodyId}
+								entries={missionEntries}
+								{current}
+								{radiusKm}
+								jd={clock.jd}
+								headingDeg={heading}
+								fovDeg={fov}
+								expanded={timelineOpen}
+								height={timelineOpen ? stripHeight : null}
+								onToggle={toggleTimeline}
+								onCredits={(credits) => (mapCredits = credits)}
+								onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
+							/>
+						{/if}
 					</div>
 					{#if timelineOpen}
 						<div
@@ -446,7 +409,7 @@
 							transition:fly={{ y: 12, duration: motionMs }}
 						>
 							<PanoramaTimeline
-								missionName={capitalize(current.mission ?? '')}
+								aside={about}
 								entries={missionEntries}
 								{clock}
 								href={(entry) => panoramaHref(bodyId, entry)}
@@ -465,7 +428,24 @@
 				<PanoramaCreditBar entry={current} {mapCredits} />
 			</div>
 
-			<!-- Menus. Close and share sit in the info box instead. -->
+			<!-- Leaving and sharing, opposite the menus. -->
+			<div
+				class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] flex gap-3"
+			>
+				<a href={closeHref} class={glassButton} aria-label={m.close()} title={m.close()}>
+					<XIcon class="size-5 md:size-4" />
+				</a>
+				<button
+					type="button"
+					onclick={() => shareUrl(pageTitle)}
+					class={glassButton}
+					aria-label={m.share()}
+					title={m.share()}
+				>
+					<Share2Icon class="size-5 md:size-4" />
+				</button>
+			</div>
+
 			<div
 				class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
 			>

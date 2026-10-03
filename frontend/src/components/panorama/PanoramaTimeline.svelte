@@ -3,6 +3,7 @@
   viewer. Picking a card opens that panorama; playing walks the traverse.
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import TimelineStrip from '../timeline/TimelineStrip.svelte';
 	import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
@@ -15,7 +16,6 @@
 	import { TripPlayback } from '$lib/travel/playback.svelte';
 
 	interface Props {
-		missionName: string;
 		entries: readonly PanoramaEntry[];
 		clock: SimClock;
 		/** The card of each panorama is a link there. */
@@ -27,10 +27,11 @@
 		/** The panorama on screen. Stops taken at the same moment by two cameras
 		 *  share a timestamp, so the clock cannot name it. */
 		activeId?: string;
+		/** What the panorama on screen is, in a column before the cards. */
+		aside?: Snippet;
 	}
 
-	let { missionName, entries, clock, href, onPick, onClose, positionClass, activeId }: Props =
-		$props();
+	let { entries, clock, href, onPick, onClose, positionClass, activeId, aside }: Props = $props();
 
 	type Item = StripItem & { entry: PanoramaEntry };
 
@@ -92,8 +93,7 @@
 </script>
 
 {#snippet title()}
-	{missionName}
-	<span class="text-muted-foreground font-normal">· {m.panorama_traverse()}</span>
+	{m.probe_timeline()}
 {/snippet}
 
 <TimelineStrip
@@ -103,6 +103,7 @@
 	{positionClass}
 	{onClose}
 	{activeId}
+	{aside}
 	closeLabel={m.panorama_map_collapse()}
 	onPick={() => player.stop()}
 	onScrub={(jd) => {
