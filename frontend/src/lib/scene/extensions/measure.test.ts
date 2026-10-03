@@ -18,17 +18,21 @@ const EARTH_SPIN = {
 	w2: 0
 };
 
-/** Bodies the frame loop placed for {@link JD}, their spin records read. */
-function fakeCtx(bodies: Record<string, Partial<PositionedBody>>): ContextManager {
-	const full = Object.fromEntries(
-		Object.entries(bodies).map(([id, body]) => [
-			id,
-			{ data: { id, radiusKm: 1000 }, placedJd: JD, ...body }
-		])
-	);
+/** Bodies the frame loop placed for {@link JD}, their spin records read, and
+ *  `cloud` ones: dots of a point cloud, which that loop does not place. */
+function fakeCtx(
+	bodies: Record<string, Partial<PositionedBody>>,
+	cloud: Record<string, Partial<PositionedBody>> = {}
+): ContextManager {
+	const make = (entries: Record<string, Partial<PositionedBody>>, placed: object) =>
+		Object.entries(entries).map(
+			([id, body]) => [id, { data: { id, radiusKm: 1000 }, ...placed, ...body }] as const
+		);
+	const full = new Map(make(bodies, { placedJd: JD }) as [string, PositionedBody][]);
+	const all = new Map([...full, ...(make(cloud, {}) as [string, PositionedBody][])]);
 	return {
-		getBody: (id: string) => full[id],
-		bodies: { orientationRead: new Set(Object.keys(bodies)) }
+		getBody: (id: string) => all.get(id),
+		bodies: { bodiesById: full, orientationRead: new Set(all.keys()) }
 	} as unknown as ContextManager;
 }
 
@@ -51,6 +55,59 @@ describe('anchorDistanceKm', () => {
 		expect(offset[0]).toBeCloseTo(0, 3);
 		expect(offset[1]).toBeCloseTo(AU_KM, 3);
 		expect(offset[2]).toBeCloseTo(AU_KM, 3);
+	});
+
+	it('places a dot of the belt from its orbit, not where it was loaded', () => {
+		// A circular orbit of 1 AU, a quarter of the way round from where it
+		// starts, ninety-one days on.
+		const data = {
+			id: 'rock',
+			radiusKm: 1,
+			parentId: 'naif-0',
+			a: 1,
+			e: 0,
+			i: 0,
+			om: 0,
+			w: 0,
+			ma: 0,
+			n: 360 / 365.25,
+			epoch: JD,
+			validityStart: 0,
+			validityEnd: Infinity
+		};
+		const ctx = fakeCtx(
+			{ 'naif-10': { position: [0, 0, 0] } },
+			{ rock: { data, position: [9, 9, 9] } as unknown as PositionedBody }
+		);
+		const later = JD + 365.25 / 4;
+		expect(anchorDistanceKm({ body: 'naif-10' }, { body: 'rock' }, ctx, later)).toBeCloseTo(
+			AU_KM,
+			-3
+		);
+		const offset = anchorOffsetKm({ body: 'naif-10' }, { body: 'rock' }, ctx, later)!;
+		expect(Math.abs(offset[1])).toBeCloseTo(AU_KM, -3);
+	});
+
+	it('is null for a dot whose orbit does not reach the date', () => {
+		const data = {
+			id: 'rock',
+			parentId: 'naif-0',
+			a: 1,
+			e: 0,
+			i: 0,
+			om: 0,
+			w: 0,
+			ma: 0,
+			n: 1,
+			epoch: JD,
+			validityStart: JD,
+			validityEnd: JD + 1
+		};
+		const ctx = fakeCtx(
+			{ 'naif-10': { position: [0, 0, 0] } },
+			{ rock: { data, position: [1, 0, 0] } as unknown as PositionedBody }
+		);
+		expect(anchorDistanceKm({ body: 'naif-10' }, { body: 'rock' }, ctx, JD + 10)).toBeNull();
 	});
 
 	it('is null while one end is not loaded', () => {
