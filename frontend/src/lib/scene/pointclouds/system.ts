@@ -142,6 +142,9 @@ export class PointCloudSystem {
 	/** Maps a GPU pick-pass hit back to a body id. Populated per group at wire
 	 *  time; consumed by the pointer's pick pass. */
 	readonly pickRegistry = new PickRegistry();
+	/** A map removed while its data still streams in keeps notifying; past
+	 *  disposal there is nothing left to rebuild into. */
+	private disposed = false;
 	/** Worker-solved clouds by kind, sub-key (`<bucket>#<i>`) → Points. Each
 	 *  Points carries its own `groupId` and `parentBodyId` in userData, so the
 	 *  per-frame passes iterate this without a kind branch. */
@@ -454,8 +457,9 @@ export class PointCloudSystem {
 	 */
 	private async rebuildMinorPass(): Promise<void> {
 		if (
-			this.ctx.bodies.dirtyAsteroidZones.size === 0 &&
-			this.ctx.bodies.dirtySpacecraftGroups.size === 0
+			this.disposed ||
+			(this.ctx.bodies.dirtyAsteroidZones.size === 0 &&
+				this.ctx.bodies.dirtySpacecraftGroups.size === 0)
 		) {
 			return;
 		}
@@ -484,6 +488,7 @@ export class PointCloudSystem {
 			const { groups, baseWorker } = bucket
 				? await bucket.buildWorkerGroups(zone, k, skip, false)
 				: { groups: [], baseWorker: 0 };
+			if (this.disposed) return;
 			const cloudColor = bucket && groups.length > 0 ? bucket.cloudColor() : '#888888';
 			// Iterate full K (not groups.length) so subgroups #1..#K-1 get
 			// unwired when a zone shrinks below the split threshold.
@@ -534,6 +539,7 @@ export class PointCloudSystem {
 				bucket ? Array.from(bucket.values()) : []
 			);
 			const { buckets, baseWorker } = await partitionForWorkersSliced(gid, allBodies, k);
+			if (this.disposed) return;
 			// Capture after the partition await so group promotion (which runs on a
 			// chunk flush, possibly between this pass starting and here) is reflected.
 			const skip = new Set(this.bodyObjects.keys());
@@ -1003,6 +1009,7 @@ export class PointCloudSystem {
 	/** Terminate the worker pool and free cloud GPU buffers on teardown — else
 	 *  each map→credits→map round trip leaks a fresh set of workers. */
 	dispose(): void {
+		this.disposed = true;
 		this.orbitPool.destroy();
 		this.pickRegistry.clear();
 		for (const kind of WORKER_CLOUD_KINDS) this.disposeClouds(this.workerPoints[kind]);

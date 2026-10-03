@@ -317,6 +317,8 @@ export class SceneRenderer {
 	/** Focused landed probe's / surface feature's seat config at the last position update. */
 	private lastSeatConfigKey: string | null = null;
 	private lastProbeVersion = 0;
+	/** Set by {@link dispose}, for loads that land after it. */
+	private disposed = false;
 	private lastHostReadVersion = 0;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
@@ -470,7 +472,7 @@ export class SceneRenderer {
 		this.orbitPreview = new OrbitPreviewOverlay(this.scene);
 		this.orbitPreview.setLayer(SceneRenderer.MAP_LAYER);
 		this.skyboxAdjuster.set(0, 0, 0);
-		void loadSkybox(this.scene, this.renderer, ctx);
+		void loadSkybox(this.scene, this.renderer, ctx, () => this.disposed);
 
 		const sunBody = ctx.bodies.majorBodies.find((b) => b.data.id === SUN_ID);
 		const resident = ctx.getBody(initialView.id);
@@ -2547,7 +2549,7 @@ export class SceneRenderer {
 		this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
 		// The skybox's decoded faces are freed after upload, so three cannot
 		// re-upload the old CubeTexture — refetch and rebuild it instead.
-		void loadSkybox(this.scene, this.renderer, this.ctx);
+		void loadSkybox(this.scene, this.renderer, this.ctx, () => this.disposed);
 		this.resume();
 	}
 
@@ -2585,6 +2587,7 @@ export class SceneRenderer {
 	}
 
 	dispose(): void {
+		this.disposed = true;
 		cancelAnimationFrame(this.rafId);
 		this.pointerInteraction.detach();
 		this.gpuPick.dispose();

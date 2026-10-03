@@ -83,26 +83,53 @@ async function loadTierBitmaps(
  *  is on the GPU — the decoded faces are ~480MB across tiers, far too much to
  *  keep as a CPU-side copy for the whole session. */
 const tierPrefetch = new Map<string, Promise<ImageBitmap[]>>();
+/** Installs still to upload each shared tier. Two maps on a page share one
+ *  decode, and the first to upload must not close faces the second has yet to. */
+const tierClaims = new Map<string, number>();
 
 function tierKey(id: string, tier: string): string {
 	return `${id}:${tier}`;
 }
 
-function tierBitmaps(id: string, tier: string, priority?: RequestPriority): Promise<ImageBitmap[]> {
+/** `claim` is an install that will upload the faces and release them; a
+ *  prefetch only warms the cache. */
+function tierBitmaps(
+	id: string,
+	tier: string,
+	priority?: RequestPriority,
+	claim = true
+): Promise<ImageBitmap[]> {
 	const key = tierKey(id, tier);
 	let p = tierPrefetch.get(key);
 	if (!p) {
-		p = loadTierBitmaps(id, tier, priority);
+		const loading = loadTierBitmaps(id, tier, priority);
+		p = loading;
 		tierPrefetch.set(key, p);
+		// A failed fetch is not kept: the next install tries again, and the
+		// claims on this one have nothing left to release.
+		loading.catch(() => {
+			if (tierPrefetch.get(key) !== loading) return;
+			tierPrefetch.delete(key);
+			tierClaims.delete(key);
+		});
 	}
+	if (claim) tierClaims.set(key, (tierClaims.get(key) ?? 0) + 1);
 	return p;
 }
 
-/** Drop the cache entry and free the decoded faces. The CubeTexture keeps
- *  referencing the closed bitmaps, so it can never re-upload — context
- *  restore must go through a full skybox reload instead. */
+/** Drop this install's claim, and once no install is left to upload them,
+ *  the cache entry and the decoded faces. The CubeTexture keeps referencing
+ *  the closed bitmaps, so it can never re-upload — context restore must go
+ *  through a full skybox reload instead. */
 function releaseTierBitmaps(id: string, tier: string, bitmaps: ImageBitmap[]): void {
-	tierPrefetch.delete(tierKey(id, tier));
+	const key = tierKey(id, tier);
+	const left = (tierClaims.get(key) ?? 1) - 1;
+	if (left > 0) {
+		tierClaims.set(key, left);
+		return;
+	}
+	tierClaims.delete(key);
+	tierPrefetch.delete(key);
 	for (const b of bitmaps) b.close();
 }
 
@@ -128,7 +155,7 @@ function pickLowTier(meta: SkyboxMetadata): string | null {
  */
 export function prefetchSkyboxTiers(meta: SkyboxMetadata): void {
 	const low = pickLowTier(meta);
-	if (low) void tierBitmaps(meta.id, low).catch(() => tierPrefetch.delete(tierKey(meta.id, low)));
+	if (low) void tierBitmaps(meta.id, low, undefined, false).catch(() => {});
 }
 
 /** Full-res tier load waits on the eager point cloud, but never longer than this. */
@@ -137,7 +164,8 @@ const FULL_TIER_GATE_TIMEOUT_MS = 12_000;
 async function loadFromMeta(
 	scene: Scene,
 	renderer: WebGLRenderer,
-	meta: SkyboxMetadata
+	meta: SkyboxMetadata,
+	disposed: () => boolean
 ): Promise<void> {
 	const tier = pickTier(
 		meta,
@@ -161,8 +189,9 @@ async function loadFromMeta(
 		// Install low only if it wins the race, so a cached full tier goes straight up.
 		void tierBitmaps(meta.id, lowTier)
 			.then((bitmaps) => {
-				// Full already up: the low faces were fetched for nothing — free them.
-				if (fullInstalled) {
+				// Full already up, or the map gone: the low faces were fetched for
+				// nothing — free them.
+				if (fullInstalled || disposed()) {
 					releaseTierBitmaps(meta.id, lowTier, bitmaps);
 					return;
 				}
@@ -170,9 +199,18 @@ async function loadFromMeta(
 				lowRef.bitmaps = bitmaps;
 				scene.background = lowRef.cube;
 				performance.mark('sm-skybox-low');
+				if (fullFailed) keepLow();
 			})
 			.catch(() => {});
 	}
+	// The low tier is the sky for good: uploaded now, as its faces are closed.
+	let fullFailed = false;
+	const keepLow = () => {
+		if (!lowTier || !lowRef.cube || !lowRef.bitmaps) return;
+		renderer.initTexture(lowRef.cube);
+		releaseTierBitmaps(meta.id, lowTier, lowRef.bitmaps);
+		lowRef.bitmaps = null;
+	};
 	// Full tier is large (≈11MB) — hold it until the eager minor wave has its
 	// bandwidth, bounded by a timeout so a stalled load doesn't strand us on low.
 	// A tier capped to low is small and goes up at once.
@@ -183,14 +221,36 @@ async function loadFromMeta(
 		]);
 	}
 	// Low priority: the minor-body long tail is still streaming and matters more.
-	const fullBitmaps = await tierBitmaps(meta.id, tier, tier === lowTier ? undefined : 'low');
-	const full = makeCube(fullBitmaps);
+	let fullBitmaps: ImageBitmap[];
+	try {
+		fullBitmaps = await tierBitmaps(meta.id, tier, tier === lowTier ? undefined : 'low');
+	} catch (err) {
+		fullFailed = true;
+		if (!disposed()) keepLow();
+		else if (lowTier && lowRef.bitmaps) {
+			lowRef.cube?.dispose();
+			releaseTierBitmaps(meta.id, lowTier, lowRef.bitmaps);
+			lowRef.bitmaps = null;
+		}
+		throw err;
+	}
 	// Upload during idle time so the first sampling render doesn't absorb the cost.
 	await new Promise<void>((resolve) =>
 		'requestIdleCallback' in window
 			? requestIdleCallback(() => resolve(), { timeout: 2000 })
 			: setTimeout(resolve, 500)
 	);
+	// A map removed while its sky loaded uploads nothing into its dead context,
+	// and gives up its claims so another map's faces are not held open for it.
+	if (disposed()) {
+		fullInstalled = true;
+		lowRef.cube?.dispose();
+		releaseTierBitmaps(meta.id, tier, fullBitmaps);
+		if (lowTier && lowTier !== tier && lowRef.bitmaps)
+			releaseTierBitmaps(meta.id, lowTier, lowRef.bitmaps);
+		return;
+	}
+	const full = makeCube(fullBitmaps);
 	renderer.initTexture(full);
 	fullInstalled = true;
 	const prevBackground = scene.background;
@@ -216,7 +276,8 @@ async function loadFromMeta(
 export async function loadSkybox(
 	scene: Scene,
 	renderer: WebGLRenderer,
-	ctx?: ContextManager
+	ctx?: ContextManager,
+	disposed: () => boolean = () => false
 ): Promise<void> {
 	// Switched off before the map opened: the six faces are never fetched, so
 	// there is nothing to switch back on.
@@ -232,7 +293,7 @@ export async function loadSkybox(
 				attribution: meta.skybox.attribution,
 				description: meta.skybox.description
 			};
-		await loadFromMeta(scene, renderer, meta.skybox);
+		await loadFromMeta(scene, renderer, meta.skybox, disposed);
 	} catch (err) {
 		console.warn('Failed to load skybox:', err);
 	}

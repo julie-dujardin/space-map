@@ -257,6 +257,11 @@ const CONTEXT_LOST_PANEL_DELAY_MS = 2000;
  *  worker's pong can be slow; a false negative costs a full belt repack. */
 const RESTORE_PING_TIMEOUT_MS = 4000;
 
+/** Maps mounted in each container. A host remounting into the same element
+ *  can have the new map up before the old one is removed, and the old one must
+ *  not take the container's class from under the new. */
+const mapsIn = new WeakMap<HTMLElement, number>();
+
 /** The listener each `once` wrapper stands in for, so `off` can find it. */
 const onceTarget = new WeakMap<object, unknown>();
 
@@ -512,6 +517,7 @@ export class SpaceMap {
 		if (this.container) throw new Error('SpaceMap is already mounted');
 		this.container = container;
 		container.classList.add('sm-map');
+		mapsIn.set(container, (mapsIn.get(container) ?? 0) + 1);
 		this.controls = new ControlHost(this, container);
 
 		const canvas = document.createElement('canvas');
@@ -622,7 +628,9 @@ export class SpaceMap {
 		this.renderer = null;
 		canvas.remove();
 		this.labelLayer?.remove();
-		container.classList.remove('sm-map');
+		const left = (mapsIn.get(container) ?? 1) - 1;
+		mapsIn.set(container, left);
+		if (left === 0) container.classList.remove('sm-map');
 		this.container = this.canvas = this.labelLayer = null;
 	}
 
