@@ -123,11 +123,11 @@ bodies:
   license: Public domain
   file: Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif
   type: cylindrical
-  west_positive: true  # IAU Phobos uses west-positive planetographic longitude
+  # East to the right, 0deg at centre (GeoTIFF centre longitude 0); verified against the shape model and Stickney.
 # ALTERNATIVE for naif-401 (skip:true). Stooke "Cornell control" mosaic, 14400x7200, 40ppd: rebuilds
 # the Viking base and adds the best MGS/Mars Express/MRO HiRISE imagery, notably west of Stickney.
-# Recommendation: KEEP the USGS map above — it is the official, cleanly-controlled GeoTIFF and the
-# existing west_positive setup is verified. The Stooke version has newer imagery in spots but is greyscale.
+# Recommendation: KEEP the USGS map above — it is the official, cleanly-controlled GeoTIFF.
+# The Stooke version has newer imagery in spots but is greyscale.
 # To switch: set skip:true on the USGS entry and remove skip below.
 - body: naif-401
   body_name: phobos
@@ -138,7 +138,7 @@ bodies:
   file: phobos_cyl_cor_control.jpg
   type: cylindrical
   skip: true
-  west_positive: true  # IAU Phobos is W+; Stooke map is 0deg-at-centre. TODO: verify against nomenclature.
+  # East to the right, 0deg at centre; verified against the shape model.
 # SUPERSEDED by the Stooke Viking+MRO mosaic below (more surface detail). Kept as a fallback.
 - body: naif-402
   body_name: deimos
@@ -158,7 +158,7 @@ bodies:
   attribution: "Global photomosaic of Deimos by Philip J. Stooke from Viking, Mariner 9 and MRO HiRISE imagery (NASA/JPL). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
   file: deimos_cyl_viking_mro.jpg
   type: cylindrical
-  west_positive: true  # IAU Deimos is W+; Stooke map is 0deg-at-centre. TODO: verify against nomenclature.
+  # East to the right, 0deg at centre; verified against Swift and Voltaire.
 
 - body: naif-2000001
   body_name: ceres
@@ -249,7 +249,7 @@ bodies:
   attribution: "Global photomosaic of 951 Gaspra by Philip J. Stooke (Univ. of Western Ontario) from Galileo imagery (NASA/JPL), control by P. Thomas. Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
   file: gabestmo.jpg
   type: cylindrical
-  # TODO: 20ppd global mosaic; 0deg likely at centre. Needs visual verification against IAU nomenclature.
+  # 0deg at centre; verified against IAU crater positions.
 - body: spkid-20000253
   body_name: mathilde
   source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/253mathilde/
@@ -277,7 +277,7 @@ bodies:
   attribution: "Global photomosaic of 2867 Steins by Philip J. Stooke from Rosetta OSIRIS imagery (ESA; control after Leyrat et al. 2010). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
   file: steins_cylindrical_mosaic.jpg
   type: cylindrical
-  # TODO: 10ppd mosaic; 0deg at centre per Stooke notes. Needs visual verification against IAU nomenclature.
+  # 0deg at centre; verified against IAU crater positions.
 - body: spkid-1000107
   body_name: wild2
   source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/81pwild2/
@@ -286,7 +286,7 @@ bodies:
   attribution: "Northern-hemisphere photomosaic of comet 81P/Wild 2 by Philip J. Stooke from Stardust imagery (NASA/JPL; geometry after Duxbury et al. 2004). Stooke Small Bodies Maps V3.0, MULTI-SA-MULTI-6-STOOKEMAPS-V3.0, NASA PDS Small Bodies Node (PSI), 2015."
   file: wild2_cyl_stardust.jpg
   type: cylindrical
-  lon_at_left_deg: 0  # Stooke Wild 2: 0deg at left edge, 180deg at centre, increases east
+  # 0deg at centre: this lines the imaged area up with the detailed part of the shape model.
   # NOTE: only the Stardust-imaged northern hemisphere is mapped; southern half is blank.
 - body: spkid-1000005
   body_name: borrelly
@@ -345,7 +345,7 @@ bodies:
   variant: usgs
   file: Io_Galileo_SSI_Global_Mosaic_ClrMerge_1km.tif
   type: cylindrical
-  lon_at_left_deg: 0  # 180° vs the Albers map it replaces (user-verified)
+  # 0° at centre (GeoTIFF centre longitude 0); verified against Pele and Loki Patera.
 
 - body: naif-502
   body_name: europa
@@ -477,7 +477,7 @@ bodies:
   preference: 10
   file: enceladus_rgb_cyl_www.png
   type: cylindrical
-  lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
+  lon_at_left_deg: -4  # Albers SOS map: 0° near the left edge; the -4° matches the DEM, the shape model and IAU craters
 - body: naif-601
   body_name: mimas
   source: https://www.lpi.usra.edu/icy_moons/saturn/mimas/
@@ -486,7 +486,7 @@ bodies:
   attribution: "Global map of Mimas produced by Dr. Paul Schenk (Lunar and Planetary Institute, Houston TX). Image data from the Imaging Science Subsystem (ISS) on the Cassini orbiter (NASA/JPL)."
   file: Mimas-msmap-cyl-KH.jpg
   type: cylindrical
-  lon_at_left_deg: 0  # Schenk LPI map: 0° at left edge (east-positive); verified via Herschel at ~248°E
+  lon_at_left_deg: 4  # Schenk LPI map: 0° at left edge; the 4° puts Herschel on its IAU position and on the shape model
   description: https://www.lpi.usra.edu/icy_moons/, https://www.jpl.nasa.gov/images/pia18437-color-maps-of-mimas-2014/
 - body: naif-604
   body_name: dione
@@ -505,7 +505,7 @@ bodies:
   license: Public domain
   file: phoebe-PIA07775.tif
   type: cylindrical
-  west_positive: true  # IAU Saturnian satellites: W+ planetographic; PIA centre = 0°
+  # East to the right, 0° at centre; verified against the shape model and Jason.
 - body: naif-607
   body_name: hyperion
   source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/s7hyperion/
@@ -553,7 +553,7 @@ bodies:
   variant: nasa3d
   file: ariel-nasa3d.tif
   type: cylindrical
-  lon_at_left_deg: 0  # NASA 3D map is 180° rotated
+  # 0° at centre; verified against Kachina, Kewpie and Korrigan Chasmata.
 
 - body: naif-701
   body_name: ariel
@@ -565,6 +565,7 @@ bodies:
   preference: 10
   file: ariel_rgb_cyl_www.tif
   type: cylindrical
+  lon_at_left_deg: 0  # verified against Kachina, Kewpie and Korrigan Chasmata
 - body: naif-702
   body_name: umbriel
   source: http://www.unmannedspaceflight.com/index.php?act=Attach&type=post&id=4701
@@ -573,7 +574,7 @@ bodies:
   attribution: "Global map of Umbriel by Philip J. Stooke from Voyager 2 imagery (NASA/JPL). Hosted on unmannedspaceflight.com."
   file: umbriel-umcylmos.jpg
   type: cylindrical
-  lon_at_left_deg: 0  # 180° east shift; verified against IAU nomenclature
+  lon_at_left_deg: 90  # map is centred on 270°E; verified against Wunda and Vuver
 - body: naif-703
   body_name: titania
   source: https://science.nasa.gov/3d-resources/uranus-titania/
