@@ -270,6 +270,9 @@ export function dateToJD(date: Date): number;
 export function defaultSceneSettings(): SceneSettings;
 
 // @public
+export function distanceKm(from: Anchor, to: Anchor, date: Date): Promise<number | null>;
+
+// @public
 export function elements(options: ElementsOptions): InertialAnchor;
 
 // @public (undocumented)
@@ -873,6 +876,9 @@ export type NoticeTopic = Notice['topic'];
 // @public
 export type OffsetKm = readonly [number, number, number];
 
+// @public
+export function offsetKm(from: Anchor, to: Anchor, date: Date): Promise<OffsetKm | null>;
+
 // @public (undocumented)
 export interface OrbitalElements {
 	// (undocumented)
@@ -1431,6 +1437,9 @@ export interface SpaceMapOptions {
 	settings?: SceneSettings;
 	view?: CameraOptions;
 }
+
+// @public
+export function subsolarPoint(id: string, date: Date): Promise<LonLat | null>;
 
 // @public
 export interface SurfaceAnchor {

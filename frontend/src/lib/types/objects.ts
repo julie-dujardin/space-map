@@ -305,7 +305,9 @@ const NOMINAL_RADIUS_KM_DEFAULT = 0.1;
  * stand-in (see {@link NOMINAL_RADIUS_KM_BY_SOURCE}). Safe wherever a size is
  * needed for camera/LOD/framing — it never implies a drawn surface.
  */
-export function effectiveRadiusKm(data: BodyData): number {
+export function effectiveRadiusKm(
+	data: Pick<BodyData, 'radiusKm' | 'orbitalSource' | 'objectType'>
+): number {
 	if (Number.isFinite(data.radiusKm) && data.radiusKm > 0) return data.radiusKm;
 	return (
 		NOMINAL_RADIUS_KM_BY_SOURCE[data.orbitalSource] ??

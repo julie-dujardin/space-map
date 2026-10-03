@@ -114,7 +114,8 @@ function elementsUrl(zone: string, zoom: number | null, part: number, time: stri
 const PARSED_ELEMENTS_CACHE_CAPACITY = 8;
 const elementsCache = new LruPromiseCache<ElementColumns>(PARSED_ELEMENTS_CACHE_CAPACITY);
 
-async function fetchElements(
+/** One elements file, parsed. */
+export async function fetchElements(
 	zone: string,
 	zoom: number | null,
 	part: number,

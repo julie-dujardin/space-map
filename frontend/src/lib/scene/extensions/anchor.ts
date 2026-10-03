@@ -82,14 +82,19 @@ export function bodyCentre(body: PositionedBody, ctx: ContextManager, jd: number
 	return placeForRead(body, jd, ctx) ? body.position : null;
 }
 
-/** World position of `anchor` in scene units, or null while its body is not
- *  loaded — which is normal: an embed can mark a place the reader has not
- *  travelled to yet — or while the body or a moving offset is nowhere at this
- *  date. */
-export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): Vec3 | null {
-	const body = ctx.getBody(anchor.body);
-	const centre = body && bodyCentre(body, ctx, jd);
-	if (!centre) return null;
+/** What an anchor reads of the body it is on. */
+export type AnchorBody = Pick<PositionedBody, 'orientation' | 'nutPrec'> & {
+	data: Parameters<typeof effectiveRadiusKm>[0];
+};
+
+/** World position of `anchor` in scene units, on a body whose centre is at
+ *  `centre`. Null when a moving offset is nowhere at this date. */
+export function placeAnchor(
+	anchor: Anchor,
+	body: AnchorBody,
+	centre: Vec3,
+	jd: number
+): Vec3 | null {
 	const [cx, cy, cz] = centre;
 
 	if (isSurface(anchor)) {
@@ -111,6 +116,16 @@ export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): 
 	if (offset === undefined) return [cx, cy, cz];
 	const [ox, oy, oz] = eclipticToScene(offset as Vec3);
 	return [cx + ox, cy + oy, cz + oz];
+}
+
+/** World position of `anchor` in scene units, or null while its body is not
+ *  loaded — which is normal: an embed can mark a place the reader has not
+ *  travelled to yet — or while the body or a moving offset is nowhere at this
+ *  date. */
+export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): Vec3 | null {
+	const body = ctx.getBody(anchor.body);
+	const centre = body && bodyCentre(body, ctx, jd);
+	return centre ? placeAnchor(anchor, body, centre, jd) : null;
 }
 
 /** Unit vector from the body's centre toward the anchor, for the occlusion

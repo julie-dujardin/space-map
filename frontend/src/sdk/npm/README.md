@@ -166,6 +166,24 @@ anchor there is on the lit side even on a body whose spin is not measured. It
 is null as well until the map has read how the body spins, which it does once
 the camera is on the body or its system.
 
+The same three measures are functions that need no map, for a page that has
+none or that cannot wait for one to reach a date. They take the date and
+resolve when the export has answered for it:
+
+```js
+import { distanceKm, offsetKm, subsolarPoint } from 'spacemap';
+
+const landing = new Date('1971-07-30T22:16:00Z');
+await distanceKm({ body: 'naif-301' }, { body: 'naif-499' }, landing);
+await offsetKm({ body: 'naif-301' }, { body: 'naif-499' }, landing);
+await subsolarPoint('naif-301', landing);
+```
+
+Null means nowhere at that date and never not loaded yet. They place planets,
+moons and small bodies as the map does. Spacecraft are not placed, and a
+satellite of Earth only near the present: those need the map. A failed
+download rejects.
+
 ### Drawing on it
 
 Everything you draw is put somewhere by an **anchor**, and the anchor is what

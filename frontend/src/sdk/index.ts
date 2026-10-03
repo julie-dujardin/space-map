@@ -324,6 +324,8 @@ export type { OrbitalElements } from '$lib/types/objects';
 export type { BodyAppearance } from '$lib/scene/objects/body/appearance';
 export { circlePoints, planeBasis } from '$lib/scene/extensions/geometry';
 export type { CirclePointsOptions } from '$lib/scene/extensions/geometry';
+// The map's measures without a map, at a date of the page's choosing.
+export { distanceKm, offsetKm, subsolarPoint } from '$lib/scene/extensions/ephemeris';
 export type {
 	CoverageEdge,
 	CoveragePauseNotice,

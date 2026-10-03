@@ -9,7 +9,8 @@ import { bodyQuaternion } from '$lib/math/orientation';
 import { cartesianToSpherical } from '$lib/math/spherical';
 import type { LonLat } from '$lib/flatmap/geometry';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { bodyCentre, resolveAnchor, type Anchor, type OffsetKm } from './anchor';
+import type { Vec3 } from '$lib/scene/animation/math';
+import { bodyCentre, resolveAnchor, type Anchor, type AnchorBody, type OffsetKm } from './anchor';
 import { sceneToEcliptic } from './camera';
 
 /** From one anchor to another, in kilometres on ecliptic J2000 axes; null
@@ -40,11 +41,27 @@ export function anchorDistanceKm(
 }
 
 /**
- * Where on `id` the Sun is at the zenith, in the frame a surface anchor is
+ * Where on `body` the Sun is at the zenith, in the frame a surface anchor is
  * placed in: an anchor there is on the lit side. A body with no measured spin
- * has no turning frame, and answers in the one its anchors fall back to. Null
- * for a body that is not loaded or is nowhere at this date, and until the map
- * has read how it spins: the answer would be in a frame that may yet turn.
+ * has no turning frame, and answers in the one its anchors fall back to.
+ */
+export function subsolarAt(body: AnchorBody, centre: Vec3, sun: Vec3, jd: number): LonLat | null {
+	// The identity is the unrotated sphere a spin-less body's anchors are on.
+	const turn = body.orientation
+		? bodyQuaternion(body.orientation, jd, body.nutPrec).toArray()
+		: ([0, 0, 0, 1] as [number, number, number, number]);
+	const { latitude, longitude, distance } = cartesianToSpherical(
+		[sun[0], sun[1], sun[2]],
+		[centre[0], centre[1], centre[2]],
+		turn
+	);
+	return distance > 0 ? { lon: longitude, lat: latitude } : null;
+}
+
+/**
+ * {@link subsolarAt} for a body of the scene. Null for a body that is not
+ * loaded or is nowhere at this date, and until the map has read how it spins:
+ * the answer would be in a frame that may yet turn.
  */
 export function subsolarPoint(id: string, ctx: ContextManager, jd: number): LonLat | null {
 	const body = ctx.getBody(id);
@@ -52,15 +69,5 @@ export function subsolarPoint(id: string, ctx: ContextManager, jd: number): LonL
 	if (!body || !sun || body === sun) return null;
 	if (!body.orientation && !ctx.bodies.orientationRead.has(id)) return null;
 	const centre = bodyCentre(body, ctx, jd);
-	if (!centre) return null;
-	// The identity is the unrotated sphere a spin-less body's anchors are on.
-	const turn = body.orientation
-		? bodyQuaternion(body.orientation, jd, body.nutPrec).toArray()
-		: ([0, 0, 0, 1] as [number, number, number, number]);
-	const { latitude, longitude, distance } = cartesianToSpherical(
-		[sun.position[0], sun.position[1], sun.position[2]],
-		[centre[0], centre[1], centre[2]],
-		turn
-	);
-	return distance > 0 ? { lon: longitude, lat: latitude } : null;
+	return centre && subsolarAt(body, centre, sun.position, jd);
 }
