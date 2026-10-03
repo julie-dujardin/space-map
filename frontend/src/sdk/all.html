@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>spacemap SDK — all four maps</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				min-height: 100%;
+				background: #05070e;
+				color: #e6e6e6;
+				font:
+					13px/1.45 system-ui,
+					sans-serif;
+			}
+			main {
+				box-sizing: border-box;
+				padding: 10px 12px;
+			}
+			.pages {
+				margin: 0 0 6px;
+				font-size: 12px;
+				color: #9aa;
+			}
+			.pages a {
+				color: #8cf;
+			}
+			#error {
+				color: #f88;
+			}
+			#grid {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 10px;
+			}
+			section {
+				min-width: 0;
+				border: 1px solid #2c2f3a;
+				border-radius: 8px;
+				overflow: hidden;
+				background: #0b0d13;
+			}
+			#s-system {
+				grid-column: 1 / -1;
+			}
+			section > header {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 4px 8px;
+				border-bottom: 1px solid #2c2f3a;
+			}
+			section > header b {
+				flex: none;
+			}
+			section > header code {
+				flex: 1 1 0;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				color: #9fb0c9;
+				font-size: 11px;
+			}
+			button {
+				font: inherit;
+				color: inherit;
+				background: #171a24;
+				border: 1px solid #3a3e4d;
+				border-radius: 6px;
+				padding: 1px 8px;
+				cursor: pointer;
+			}
+			button:disabled {
+				opacity: 0.4;
+				cursor: default;
+			}
+			.box {
+				position: relative;
+				height: 420px;
+			}
+			#system {
+				max-width: 1000px;
+				margin: 0 auto;
+			}
+			@media (max-width: 900px) {
+				#grid {
+					grid-template-columns: minmax(0, 1fr);
+				}
+				.box {
+					height: 320px;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<nav class="pages">
+				<a href="index.html">index</a> · <a href="demo.html">3D</a> ·
+				<a href="flatmap.html">flat</a> · <a href="panorama.html">panorama</a> ·
+				<a href="systemmap.html">system</a> · <b>all</b>
+			</nav>
+			<p id="error" hidden></p>
+			<div id="grid">
+				<section id="s-system">
+					<header>
+						<b>createSystemMap</b>
+						<button id="back" type="button" disabled>← Back</button>
+						<code id="st-system"></code>
+						<button data-remount="system" type="button">Remount</button>
+					</header>
+					<div id="system"></div>
+				</section>
+				<section>
+					<header>
+						<b>createMap</b>
+						<code id="st-space"></code>
+						<button data-remount="space" type="button">Remount</button>
+					</header>
+					<div id="space" class="box"></div>
+				</section>
+				<section>
+					<header>
+						<b>createFlatMap</b>
+						<code id="st-flat"></code>
+						<button data-remount="flat" type="button">Remount</button>
+					</header>
+					<div id="flat" class="box"></div>
+				</section>
+				<section>
+					<header>
+						<b>createPanorama</b>
+						<code id="st-pano"></code>
+						<button data-remount="pano" type="button">Remount</button>
+					</header>
+					<div id="pano" class="box"></div>
+				</section>
+			</div>
+		</main>
+
+		<script type="module">
+			import {
+				createFlatMap,
+				createMap,
+				createPanorama,
+				createSystemMap,
+				fetchPanoramas,
+				isViewable
+			} from './spacemap.js';
+
+			// ?data=<export root> ?lang=<bcp47> ?nc=1 ?body=<object id>
+			const params = new URLSearchParams(location.search);
+			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
+			const common = {};
+			if (dataUrl) common.dataUrl = dataUrl;
+			if (params.has('lang')) common.locale = params.get('lang');
+			if (params.get('nc') === '1') common.includeNonCommercial = true;
+
+			const $ = (id) => document.getElementById(id);
+			const say = (box, text) => ($(`st-${box}`).textContent = text);
+			const fail = (e) => {
+				$('error').textContent = String(e?.message ?? e);
+				$('error').hidden = false;
+			};
+
+			// The four maps, for poking at from the console.
+			const maps = (globalThis.maps = {});
+			// The body last picked, and the ones the flat map and the panorama are
+			// on: a body with no map or no panorama leaves those two where they were.
+			let current = params.get('body') ?? 'naif-499';
+			let flatBody = current;
+			let panoBody = null;
+
+			// One body on every map. `from` is the map that asked, which is left alone.
+			const show = async (id, from) => {
+				if (id === current && from) return;
+				current = id;
+				if (from !== 'space') maps.space?.flyTo({ body: id }).catch(fail);
+				maps.flat
+					?.setBody(id)
+					.then(() => {
+						flatBody = id;
+						say('flat', id);
+						pinSite();
+					})
+					.catch(() => say('flat', `${id} has no map: still on ${flatBody}`));
+				openPanorama(id).catch(fail);
+			};
+
+			// -- the system map: the picker ------------------------------------
+			const trail = [];
+			const mountSystem = async () => {
+				maps.system?.remove();
+				trail.length = 0;
+				const map = (maps.system = await createSystemMap({
+					container: $('system'),
+					grouping: 'bodies',
+					zones: 'inner-outer',
+					...common,
+					events: { error: fail }
+				}));
+				const where = () => {
+					say('system', `${JSON.stringify(map.getView())} · ${map.getTargets().length} targets`);
+					$('back').disabled = trail.length === 0;
+				};
+				where();
+				map.on('viewchange', where);
+				map.on('select', async (target) => {
+					if (target.kind === 'body') return show(target.id, 'system');
+					const from = map.getView();
+					await map
+						.setView(
+							target.kind === 'system'
+								? { kind: 'system', id: target.id }
+								: { kind: 'zone', zone: target.zone }
+						)
+						.then(() => trail.push(from))
+						.catch(fail);
+					where();
+				});
+			};
+			$('back').onclick = async () => {
+				const to = trail.pop();
+				if (to) await maps.system.setView(to);
+			};
+
+			// -- the 3D map ----------------------------------------------------
+			const mountSpace = async () => {
+				maps.space?.remove();
+				const map = (maps.space = await createMap({
+					container: $('space'),
+					view: { body: current },
+					...common,
+					events: {
+						progress: (fraction) => say('space', `loading ${Math.round(fraction * 100)}%`)
+					}
+				}));
+				map.on('focuschange', ({ body, initial }) => {
+					if (body && !initial) show(body.id, 'space');
+				});
+				// The measures, read once a second off whatever is focused.
+				const measure = () => {
+					const body = map.getFocusedBody();
+					if (!body || maps.space !== map) return;
+					const km = map.distanceKm({ body: body.id }, { body: 'naif-10' });
+					const noon = map.getSubsolarPoint(body.id);
+					say(
+						'space',
+						`${body.name ?? body.id} · ${km === null ? 'null' : `${Math.round(km / 1e6)} Gm from the Sun`}` +
+							` · noon ${noon ? `${noon.lat.toFixed(0)}°, ${noon.lon.toFixed(0)}°` : 'null'}`
+					);
+				};
+				const timer = setInterval(
+					() => (maps.space === map ? measure() : clearInterval(timer)),
+					1000
+				);
+			};
+
+			// -- the flat map --------------------------------------------------
+			let flatPin = null;
+			let spacePin = null;
+			const mountFlat = async () => {
+				maps.flat?.remove();
+				const map = (maps.flat = await createFlatMap({
+					container: $('flat'),
+					body: flatBody,
+					...common,
+					events: { error: fail }
+				}));
+				say('flat', flatBody);
+				pinSite();
+				// A click on the flat map is the same place on the globe.
+				map.on('click', (at) => {
+					if (!at) return;
+					flatPin?.remove();
+					flatPin = map.addMarker({ at });
+					spacePin?.remove();
+					spacePin = maps.space?.addLabel({
+						anchor: { body: flatBody, latitude: at.lat, longitude: at.lon },
+						text: `${at.lat.toFixed(1)}°, ${at.lon.toFixed(1)}°`,
+						occlude: true
+					});
+					say('flat', `${flatBody} · ${at.lat.toFixed(2)}°, ${at.lon.toFixed(2)}°`);
+				});
+			};
+
+			// -- the panorama --------------------------------------------------
+			// Where the reader stands, pinned on the flat map while it shows that body.
+			let site = null;
+			let sitePin = null;
+			const pinSite = () => {
+				sitePin?.remove();
+				sitePin = site?.body === flatBody ? maps.flat?.addMarker({ at: site.at }) : null;
+			};
+			// The latest call, so one a later pick overtook neither opens nor stays.
+			let panoTurn = 0;
+			const openPanorama = async (id) => {
+				if (id === panoBody && maps.pano) return;
+				const turn = ++panoTurn;
+				const entries = (await fetchPanoramas(id).catch(() => [])).filter(isViewable);
+				if (turn !== panoTurn) return;
+				if (entries.length === 0) {
+					return say('pano', `none on ${id}: still on ${panoBody ?? 'nothing'}`);
+				}
+				maps.pano?.remove();
+				maps.pano = null;
+				panoBody = id;
+				const view = await createPanorama({
+					container: $('pano'),
+					body: id,
+					...common,
+					events: { error: fail }
+				});
+				if (turn !== panoTurn) return view.remove();
+				maps.pano = view;
+				const place = (entry) => {
+					say('pano', `${entry.mission ?? id} · sol ${entry.sol ?? '?'} · ${entry.id}`);
+					site = { body: id, at: { lon: entry.lon, lat: entry.lat } };
+					pinSite();
+				};
+				place(view.getCurrent());
+				view.on('load', place);
+			};
+
+			const mounts = {
+				system: mountSystem,
+				space: mountSpace,
+				flat: mountFlat,
+				// A new view of the same body: the remove and the create overlap.
+				pano: () => {
+					const id = panoBody ?? current;
+					panoBody = null;
+					return openPanorama(id);
+				}
+			};
+			for (const button of document.querySelectorAll('[data-remount]')) {
+				button.onclick = () => mounts[button.dataset.remount]().catch(fail);
+			}
+			await Promise.all(Object.values(mounts).map((mount) => mount().catch(fail)));
+		</script>
+	</body>
+</html>

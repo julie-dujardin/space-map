@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>spacemap SDK — demos</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				background: #05070e;
+				color: #e6e6e6;
+				font:
+					14px/1.5 system-ui,
+					sans-serif;
+			}
+			main {
+				box-sizing: border-box;
+				max-width: 860px;
+				margin: 0 auto;
+				padding: 16px;
+			}
+			h1 {
+				margin: 0 0 12px;
+				font-size: 16px;
+			}
+			h2 {
+				margin: 18px 0 2px;
+				font-size: 14px;
+			}
+			h2 code {
+				font-weight: normal;
+				color: #9aa;
+			}
+			a {
+				color: #8cf;
+			}
+			ul {
+				margin: 4px 0;
+				padding-left: 18px;
+			}
+			code {
+				font:
+					12px/1.5 ui-monospace,
+					monospace;
+				color: #bcd;
+			}
+			p {
+				margin: 4px 0;
+				color: #9aa;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>spacemap SDK demos</h1>
+			<p>
+				Every page takes <code>?data=&lt;export root&gt;</code> and
+				<code>?lang=&lt;bcp47&gt;</code>; on localhost the data is
+				<code>http://localhost:8080</code>. Each puts its map on <code>globalThis</code> for the
+				console.
+			</p>
+
+			<h2><a href="all.html">all.html</a> <code>all four on one page</code></h2>
+			<ul>
+				<li>pick in the system map, and the other three follow; each has a Remount</li>
+				<li><a href="all.html?body=naif-301">?body=naif-301</a> · <code>?nc=1</code></li>
+			</ul>
+
+			<h2><a href="demo.html">demo.html</a> <code>createMap</code></h2>
+			<ul>
+				<li>
+					view:
+					<a href="demo.html?body=naif-499&lat=18.4&lon=77.5&km=12000">?body= ?lat= ?lon= ?km=</a>
+				</li>
+				<li>clock: <a href="demo.html?date=2030-01-01&live=0">?date=2030-01-01 ?live=0</a></li>
+				<li>
+					input: <a href="demo.html?interactive=0">?interactive=0</a> ·
+					<a href="demo.html?no=scrollZoom,bodySelect">?no=scrollZoom,bodySelect</a> ·
+					<a href="demo.html?coop=1">?coop=1</a>
+				</li>
+				<li>
+					download: <a href="demo.html?off=asteroids,comets">?off=asteroids,comets</a> ·
+					<a href="demo.html?nc=1&body=naif-799">?nc=1</a>
+				</li>
+				<li>
+					scene settings:
+					<a href="demo.html?set=showClouds:0,showAtmospheres:0&body=naif-399"
+						>?set=showClouds:0,showAtmospheres:0</a
+					>
+					· <a href="demo.html?set=realisticLighting:1">?set=realisticLighting:1</a>
+				</li>
+			</ul>
+
+			<h2><a href="flatmap.html">flatmap.html</a> <code>createFlatMap</code></h2>
+			<ul>
+				<li>
+					view:
+					<a href="flatmap.html?body=naif-499&projection=orthographic&lat=20&lon=-60&zoom=2"
+						>?body= ?projection= ?lat= ?lon= ?zoom=</a
+					>
+					· <a href="flatmap.html?projection=orthographic&clip=60">?clip=60</a>
+				</li>
+				<li>
+					layers and date:
+					<a href="flatmap.html?off=clouds,night&date=2024-07-15"
+						>?off=clouds,night ?date=2024-07-15</a
+					>
+				</li>
+				<li>
+					input: <a href="flatmap.html?interactive=0">?interactive=0</a> ·
+					<a href="flatmap.html?no=scrollZoom">?no=scrollZoom</a> ·
+					<a href="flatmap.html?coop=1">?coop=1</a> · <code>?nc=1</code>
+				</li>
+			</ul>
+
+			<h2><a href="panorama.html">panorama.html</a> <code>createPanorama</code></h2>
+			<ul>
+				<li>
+					view: <a href="panorama.html?body=naif-499&look=90,-10,60">?body= ?look=90,-10,60</a> ·
+					<code>?at=&lt;panorama id&gt;</code>
+				</li>
+				<li>
+					limits:
+					<a href="panorama.html?heading=-45,45&pitch=-20,20&fov=40,80"
+						>?heading=-45,45 ?pitch=-20,20 ?fov=40,80</a
+					>
+				</li>
+				<li>
+					input: <a href="panorama.html?arrows=0">?arrows=0</a> ·
+					<a href="panorama.html?follow=0">?follow=0</a> ·
+					<a href="panorama.html?interactive=0">?interactive=0</a> ·
+					<a href="panorama.html?body=naif-606&nc=1">?nc=1</a>
+				</li>
+			</ul>
+
+			<h2><a href="systemmap.html">systemmap.html</a> <code>createSystemMap</code></h2>
+			<ul>
+				<li>
+					view: <a href="systemmap.html?view=system:naif-699">?view=system:naif-699</a> ·
+					<a href="systemmap.html?view=zone:inner">?view=zone:inner</a> ·
+					<a href="systemmap.html?w=420">?w=420</a>
+				</li>
+				<li>
+					picking:
+					<a href="systemmap.html?grouping=systems&zones=inner-outer"
+						>?grouping=systems ?zones=inner-outer</a
+					>
+					· <a href="systemmap.html?scope=mapped">?scope=mapped</a>
+				</li>
+				<li>
+					the page's own: <a href="systemmap.html?names=1">?names=1</a> ·
+					<a href="systemmap.html?places=1">?places=1</a>
+				</li>
+			</ul>
+		</main>
+	</body>
+</html>

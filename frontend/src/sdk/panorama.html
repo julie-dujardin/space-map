@@ -82,6 +82,14 @@
 					monospace;
 				color: #9fb0c9;
 			}
+			.pages {
+				margin: 0 0 6px;
+				font-size: 12px;
+				color: #9aa;
+			}
+			.pages a {
+				color: #8cf;
+			}
 			#error {
 				color: #f88;
 			}
@@ -103,8 +111,17 @@
 	<body>
 		<div id="panorama"></div>
 		<aside id="panel">
+			<nav class="pages">
+				<a href="index.html">index</a> · <a href="demo.html">3D</a> ·
+				<a href="flatmap.html">flat</a> · <b>panorama</b> · <a href="systemmap.html">system</a> ·
+				<a href="all.html">all</a>
+			</nav>
 			<h1>spacemap panorama <small>demo</small></h1>
 			<p id="error" hidden></p>
+
+			<h2>Body</h2>
+			<select id="bodies"></select>
+			<p id="count"></p>
 
 			<h2>Panorama</h2>
 			<select id="list"></select>
@@ -120,6 +137,8 @@
 				<button id="wide" type="button">Wide</button>
 			</div>
 			<p id="readout"></p>
+			<label><input id="grid" type="checkbox" /> Angle grid</label>
+			<label><input id="gyro" type="checkbox" /> Look with the device's motion</label>
 
 			<h2>Limits</h2>
 			<label><input id="arrows" type="checkbox" checked /> Arrows</label>
@@ -131,10 +150,18 @@
 		</aside>
 
 		<script type="module">
-			import { createPanorama } from './spacemap.js';
+			import {
+				createPanorama,
+				fetchPanoramaIndex,
+				fetchPanoramas,
+				isViewable
+			} from './spacemap.js';
 
-			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?at=<panorama id or key>
-			// ?arrows=0 ?heading=<from,to> ?pitch=<min,max> ?fov=<min,max>
+			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?at=<panorama id or key> ?nc=1
+			// ?arrows=0 ?heading=<from,to> ?pitch=<min,max> ?fov=<min,max>  limits
+			// ?look=<heading,pitch,fov>  the opening view
+			// ?follow=0                  an arrow reports the step and the page takes it
+			// ?interactive=0
 			const params = new URLSearchParams(location.search);
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
@@ -150,6 +177,13 @@
 			if (params.has('lang')) options.locale = params.get('lang');
 			if (params.has('at')) options.at = params.get('at');
 			if (params.get('arrows') === '0') options.arrows = false;
+			if (params.get('nc') === '1') options.includeNonCommercial = true;
+			if (params.get('follow') === '0') options.followArrows = false;
+			if (params.get('interactive') === '0') options.interactive = false;
+			const [heading, pitch, fov] = params.get('look')?.split(',').map(Number) ?? [];
+			if (Number.isFinite(heading)) options.heading = heading;
+			if (Number.isFinite(pitch)) options.pitch = pitch;
+			if (Number.isFinite(fov)) options.fov = fov;
 			const pair = (key) => params.get(key)?.split(',').map(Number);
 			options.limits = { heading: pair('heading'), pitch: pair('pitch'), fov: pair('fov') };
 			options.events = { error: fail };
@@ -163,6 +197,42 @@
 			}
 			// The view, for poking at from the console.
 			globalThis.view = view;
+
+			// Every body with panoramas, read without opening a view. Another body
+			// is another page load here: a view is made for one body.
+			fetchPanoramaIndex()
+				.then((bodies) => {
+					for (const body of bodies) {
+						const total = body.missions.reduce((sum, mission) => sum + mission.count, 0);
+						const option = document.createElement('option');
+						option.value = body.id;
+						option.textContent = `${body.id} · ${body.missions.length} missions · ${total}`;
+						$('bodies').append(option);
+					}
+					$('bodies').value = options.body;
+				})
+				.catch(fail);
+			$('bodies').onchange = () => {
+				params.set('body', $('bodies').value);
+				params.delete('at');
+				location.search = params;
+			};
+			// What the body lists against what this page may open.
+			fetchPanoramas(options.body).then((entries) => {
+				$('count').textContent =
+					`${entries.filter(isViewable).length} of ${entries.length} listed can be opened`;
+			});
+
+			$('grid').onchange = () => view.setAngleGridVisible($('grid').checked);
+			$('gyro').checked = view.isGyroEnabled();
+			$('gyro').onchange = async () => {
+				$('gyro').checked = await view.setGyroEnabled($('gyro').checked);
+			};
+			// With ?follow=0 the arrow only reports; the page opens it, a beat late.
+			view.on('step', ({ key, entry }) => {
+				$('place').textContent = `step ${key} → ${entry.id}`;
+				if (options.followArrows === false) setTimeout(() => view.open(entry).catch(fail), 400);
+			});
 
 			const name = (entry) =>
 				`${entry.mission ?? ''} · sol ${entry.sol ?? '?'} · ${entry.time.slice(0, 10)}`;

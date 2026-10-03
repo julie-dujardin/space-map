@@ -111,6 +111,14 @@
 				border-radius: 6px;
 				white-space: pre-wrap;
 			}
+			.pages {
+				margin: 0 0 6px;
+				font-size: 12px;
+				color: #9aa;
+			}
+			.pages a {
+				color: #8cf;
+			}
 			#error {
 				color: #f88;
 			}
@@ -171,6 +179,11 @@
 			<div id="bar"><i></i></div>
 		</div>
 		<aside id="panel">
+			<nav class="pages">
+				<a href="index.html">index</a> · <b>3D</b> · <a href="flatmap.html">flat</a> ·
+				<a href="panorama.html">panorama</a> · <a href="systemmap.html">system</a> ·
+				<a href="all.html">all</a>
+			</nav>
 			<h1>spacemap SDK <small>demo</small></h1>
 			<p id="status">Loading…</p>
 			<p id="error" hidden></p>
@@ -210,7 +223,19 @@
 				<button id="cap" type="button">Footprint</button>
 			</div>
 			<div class="row">
+				<button id="surfacepolygon" type="button">Surface area</button>
 				<button id="cleardrawings" type="button">Clear every drawing</button>
+			</div>
+			<h2>Measures</h2>
+			<p><code id="measure"></code></p>
+			<div class="row">
+				<button id="marknoon" type="button">Mark the sub-solar point</button>
+				<button id="facesun" type="button">Jump, Sun behind</button>
+			</div>
+			<h2>Controls</h2>
+			<div class="row">
+				<button id="addcontrol" type="button">Add a Home control</button>
+				<button id="removecontrol" type="button" disabled>Remove it</button>
 			</div>
 			<h2>Objects of your own</h2>
 			<p>
@@ -250,6 +275,14 @@
 					<option value="604800">1 week/s</option>
 				</select>
 			</div>
+			<div class="row">
+				<button id="now" type="button">Now</button>
+				<button id="reverse" type="button">Reverse</button>
+				<input id="date" type="date" aria-label="Date" />
+			</div>
+			<div class="row">
+				<button id="clearpromoted" type="button">Clear promoted small bodies</button>
+			</div>
 			<h2>Layers</h2>
 			<p>
 				Switched here, a layer is hidden and nothing is fetched. Open the page with
@@ -285,13 +318,26 @@
 			<pre id="log"></pre>
 		</aside>
 		<script type="module">
-			import { createMap, dateToJD, elements, jdToDate, kmToAu, samples, tle } from './spacemap.js';
+			import {
+				createMap,
+				dateToJD,
+				defaultSceneSettings,
+				elements,
+				jdToDate,
+				kmToAu,
+				samples,
+				tle
+			} from './spacemap.js';
 			// The host's own three.js, next to the demo rather than inside the
 			// bundle: the map's copy is private to it, so a page that builds a
 			// mesh brings one of its own.
 			import * as THREE from './three.module.min.js';
 
-			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?nc=1
+			// ?data=<export root> ?lang=<bcp47> ?nc=1 ?off=<layer ids>
+			// ?body=<object id> ?lat= ?lon= ?km=  the opening view
+			// ?date=<iso> ?live=0                 the opening date, and a stopped clock
+			// ?interactive=0 ?no=<gestures> ?coop=1
+			// ?set=<key:0|1,…>                    scene settings, e.g. showClouds:0,realisticLighting:1
 			const params = new URLSearchParams(location.search);
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
@@ -301,7 +347,29 @@
 			if (skipped.length) options.layers = Object.fromEntries(skipped.map((id) => [id, false]));
 			if (dataUrl) options.dataUrl = dataUrl;
 			if (params.has('lang')) options.locale = params.get('lang');
-			if (params.has('body')) options.view = { id: params.get('body') };
+			const view = {};
+			if (params.has('body')) view.body = params.get('body');
+			for (const [param, key] of [
+				['lat', 'lat'],
+				['lon', 'lon'],
+				['km', 'distanceKm']
+			]) {
+				if (params.has(param)) view[key] = Number(params.get(param));
+			}
+			if (Object.keys(view).length) options.view = view;
+			if (params.has('date')) options.date = new Date(params.get('date'));
+			if (params.has('live')) options.live = params.get('live') !== '0';
+			if (params.get('interactive') === '0') options.interactive = false;
+			if (params.get('coop') === '1') options.cooperativeGestures = true;
+			const off = (params.get('no') ?? '').split(',').filter(Boolean);
+			if (off.length) options.interactions = Object.fromEntries(off.map((g) => [g, false]));
+			if (params.has('set')) {
+				options.settings = defaultSceneSettings();
+				for (const pair of params.get('set').split(',')) {
+					const [key, value] = pair.split(':');
+					options.settings[key] = value !== '0';
+				}
+			}
 			// ?nc=1 accepts the non-commercial maps' terms, as a commercial page
 			// could not: Venus, Io, Ganymede, Enceladus and Uranus get their real
 			// surfaces instead of a flat tint.
@@ -389,6 +457,7 @@
 				log(`featureselect ${e.featureId} on ${e.bodyId}`);
 				map.panTo({ body: e.bodyId, feature: e });
 			});
+			map.on('userpromoted', (count) => log(`userpromoted ${count}`));
 			map.on('contextlost', () => log('contextlost'));
 			map.on('contextrestored', () => log('contextrestored'));
 
@@ -572,6 +641,84 @@
 					fillOpacity: 0.35
 				});
 				log(`footprint on ${name(body)} at ${lat}, ${lon}`);
+			});
+
+			$('surfacepolygon').addEventListener('click', () => {
+				const body = focused();
+				if (!body) return;
+				const [lat, lon] = somewhere();
+				map.addSurfacePolygon({
+					body: body.id,
+					points: [
+						{ lon: lon - 15, lat: lat - 10 },
+						{ lon: lon + 15, lat: lat - 10 },
+						{ lon: lon + 20, lat: lat + 10 },
+						{ lon: lon - 20, lat: lat + 10 }
+					],
+					color: '#ffaa55',
+					fill: '#ffaa55',
+					fillOpacity: 0.3
+				});
+				log(`surface area on ${name(body)}`);
+			});
+
+			// Measures read off the scene: the focused body against its parent, and
+			// where on it the Sun is overhead. Null is an answer too, so it is shown.
+			const km = (v) => (v === null ? 'null' : `${Math.round(v).toLocaleString()} km`);
+			setInterval(() => {
+				const body = focused();
+				if (!body) return;
+				const noon = map.getSubsolarPoint(body.id);
+				const parent = map.getBody(body.parentId);
+				const lines = [
+					`sub-solar ${noon ? `${noon.lat.toFixed(1)}°, ${noon.lon.toFixed(1)}°` : 'null'}`,
+					`to the Sun ${km(map.distanceKm({ body: body.id }, { body: 'naif-10' }))}`
+				];
+				if (parent) {
+					const offset = map.offsetKm({ body: parent.id }, { body: body.id });
+					lines.push(
+						`to ${name(parent)} ${km(map.distanceKm({ body: body.id }, { body: parent.id }))}`,
+						`offset ${offset ? offset.map((v) => Math.round(v)).join(', ') : 'null'}`
+					);
+				}
+				$('measure').textContent = lines.join(' · ');
+			}, 500);
+			$('marknoon').addEventListener('click', () => {
+				const body = focused();
+				const noon = body && map.getSubsolarPoint(body.id);
+				if (!noon) return log('no sub-solar point yet');
+				map.addLabel({
+					anchor: { body: body.id, latitude: noon.lat, longitude: noon.lon },
+					text: '☉ noon',
+					color: '#ffee88',
+					occlude: true
+				});
+				log(`noon on ${name(body)} at ${noon.lat.toFixed(1)}, ${noon.lon.toFixed(1)}`);
+			});
+			// A placement rather than a flight: framed against another body.
+			$('facesun').addEventListener('click', () => {
+				const body = focused();
+				if (body) map.jumpTo({ body: body.id, facing: 'naif-10', elevationDeg: 20 });
+			});
+
+			// A control is anything that builds an element when it is added.
+			const home = {
+				onAdd() {
+					const button = document.createElement('button');
+					button.textContent = 'Home';
+					button.onclick = () => map.flyTo({ body: 'naif-399' });
+					return button;
+				}
+			};
+			$('addcontrol').addEventListener('click', () => {
+				map.addControl(home, 'top-right');
+				$('addcontrol').disabled = true;
+				$('removecontrol').disabled = false;
+			});
+			$('removecontrol').addEventListener('click', () => {
+				map.removeControl(home);
+				$('addcontrol').disabled = false;
+				$('removecontrol').disabled = true;
 			});
 
 			$('cleardrawings').addEventListener('click', () => {
@@ -952,9 +1099,17 @@
 			});
 
 			$('speed').addEventListener('change', (e) => map.clock.setTimeScale(Number(e.target.value)));
-			map.on('clock', ({ date, playing }) => {
+			$('now').addEventListener('click', () => map.clock.now());
+			$('reverse').addEventListener('click', () => map.clock.toggleDirection());
+			$('date').addEventListener('change', (e) => {
+				if (e.target.value) map.clock.setDate(new Date(e.target.value));
+			});
+			$('clearpromoted').addEventListener('click', () => map.clearUserPromoted());
+			map.on('clock', ({ date, playing, direction, live }) => {
 				const iso = date.toISOString();
-				$('clock').textContent = `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+				$('clock').textContent =
+					`${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC` +
+					`${direction < 0 ? ' · backwards' : ''}${live ? ' · live' : ''}`;
 				$('play').textContent = playing ? 'Pause' : 'Play';
 			});
 		</script>

@@ -320,6 +320,8 @@ export default defineConfig(({ mode }) => {
 						// its own, and a page on the CDN copy has no way into the one
 						// inside it. It is the demo's dependency, not the SDK's.
 						copied([
+							here('./src/sdk/index.html'),
+							here('./src/sdk/all.html'),
 							here('./src/sdk/demo.html'),
 							here('./src/sdk/flatmap.html'),
 							here('./src/sdk/panorama.html'),

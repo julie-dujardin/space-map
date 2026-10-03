@@ -100,8 +100,32 @@
 			code {
 				color: #bcd;
 			}
+			.pages {
+				margin: 0 0 6px;
+				font-size: 12px;
+				color: #9aa;
+			}
+			.pages a {
+				color: #8cf;
+			}
+			#layers input[type='range'] {
+				flex: 1 1 0;
+				padding: 0;
+			}
 			#error {
 				color: #f88;
+			}
+			#viewstate,
+			#credits {
+				font:
+					12px/1.5 ui-monospace,
+					monospace;
+				color: #9fb0c9;
+			}
+			.demo-grid {
+				fill: none;
+				stroke: rgb(255 255 255 / 25%);
+				stroke-width: 0.5;
 			}
 			#readout {
 				font:
@@ -130,6 +154,11 @@
 	<body>
 		<div id="map"></div>
 		<aside id="panel">
+			<nav class="pages">
+				<a href="index.html">index</a> · <a href="demo.html">3D</a> · <b>flat</b> ·
+				<a href="panorama.html">panorama</a> · <a href="systemmap.html">system</a> ·
+				<a href="all.html">all</a>
+			</nav>
 			<h1>spacemap flat map <small>demo</small></h1>
 			<p id="error" hidden></p>
 
@@ -147,8 +176,22 @@
 			<label for="projection">Projection</label>
 			<select id="projection"></select>
 
+			<h2>View</h2>
+			<p id="viewstate"></p>
+			<div class="row">
+				<button id="home" type="button">Reset view</button>
+				<button id="zoomin" type="button">Zoom ×2</button>
+			</div>
+
 			<h2>Layers</h2>
 			<div id="layers"></div>
+			<div class="row">
+				<button id="rasterlayer" type="button">Add a picture</button>
+				<button id="vectorlayer" type="button">Add a 10° grid</button>
+			</div>
+			<label for="month">Month, for a surface that changes with the season</label>
+			<input id="month" type="range" min="0" max="11" value="0" />
+			<p id="credits"></p>
 
 			<h2>Drawing</h2>
 			<div class="row">
@@ -160,6 +203,7 @@
 				<button id="pin" type="button">Pin</button>
 			</div>
 			<div class="row">
+				<button id="polygon" type="button">Polygon</button>
 				<button id="clear" type="button">Clear drawings</button>
 			</div>
 
@@ -188,9 +232,13 @@
 		</aside>
 
 		<script type="module">
-			import { createFlatMap, PROJECTION_IDS } from './spacemap.js';
+			import { createFlatMap, dateToJD, graticule, pathFor, PROJECTION_IDS } from './spacemap.js';
 
 			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?projection=<id> ?nc=1
+			// ?zoom= ?lat= ?lon= ?clip=<degrees>  the opening view
+			// ?date=<iso>                         which monthly or dated picture
+			// ?off=<layer ids>                    layers that open switched off
+			// ?interactive=0 ?no=<gestures> ?coop=1
 			const params = new URLSearchParams(location.search);
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
@@ -221,6 +269,21 @@
 			if (dataUrl) options.dataUrl = dataUrl;
 			if (params.has('lang')) options.locale = params.get('lang');
 			if (params.has('projection')) options.projection = params.get('projection');
+			for (const [param, key] of [
+				['zoom', 'zoom'],
+				['lat', 'centerLat'],
+				['lon', 'centerLon'],
+				['clip', 'clipAngle']
+			]) {
+				if (params.has(param)) options[key] = Number(params.get(param));
+			}
+			if (params.has('date')) options.jd = dateToJD(new Date(params.get('date')));
+			const hidden = (params.get('off') ?? '').split(',').filter(Boolean);
+			if (hidden.length) options.layers = Object.fromEntries(hidden.map((id) => [id, false]));
+			if (params.get('interactive') === '0') options.interactive = false;
+			if (params.get('coop') === '1') options.cooperativeGestures = true;
+			const off = (params.get('no') ?? '').split(',').filter(Boolean);
+			if (off.length) options.interactions = Object.fromEntries(off.map((g) => [g, false]));
 			// ?nc=1 accepts the non-commercial maps' terms, as a commercial page could not.
 			if (params.get('nc') === '1') options.includeNonCommercial = true;
 			options.events = { error: (e) => fail(e) };
@@ -249,12 +312,75 @@
 						box.onchange = () => map.setLayerVisible(layer.id, box.checked);
 						const label = document.createElement('label');
 						label.append(box, layer.label);
+						if (layer.kind === 'raster') {
+							const opacity = document.createElement('input');
+							opacity.type = 'range';
+							opacity.min = 0;
+							opacity.max = 1;
+							opacity.step = 0.05;
+							opacity.value = 1;
+							opacity.oninput = () => map.setLayerOpacity(layer.id, Number(opacity.value));
+							label.append(opacity);
+						}
 						return label;
 					})
 				);
+				$('credits').textContent = map.credits
+					.map((credit) => credit.attribution ?? credit.organisation)
+					.join(' · ');
 			};
 			drawLayers(map.layers);
 			map.on('layerschange', drawLayers);
+
+			// Layers of the page's own: a picture drawn here, and lines built from
+			// the same helpers the map's own graticule uses.
+			$('rasterlayer').onclick = () => {
+				const canvas = document.createElement('canvas');
+				canvas.width = 1024;
+				canvas.height = 512;
+				const g = canvas.getContext('2d');
+				for (let x = 0; x < 12; x++) {
+					for (let y = 0; y < 6; y++) {
+						g.fillStyle = (x + y) % 2 ? 'rgb(58 123 255 / 40%)' : 'rgb(255 123 58 / 40%)';
+						g.fillRect((x * 1024) / 12, (y * 512) / 6, 1024 / 12, 512 / 6);
+					}
+				}
+				map.addRasterLayer({
+					id: 'demo-picture',
+					label: 'Demo picture',
+					url: canvas.toDataURL('image/png'),
+					credit: { organisation: 'this page', source: 'drawn on a canvas' }
+				});
+				$('rasterlayer').disabled = true;
+			};
+			$('vectorlayer').onclick = () => {
+				map.addVectorLayer({
+					id: 'demo-grid',
+					label: 'Demo 10° grid',
+					render(viewport, group) {
+						for (const line of graticule(10)) {
+							const d = pathFor(line, viewport, { stepDeg: 2 });
+							if (!d) continue;
+							const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+							path.setAttribute('d', d);
+							path.setAttribute('class', 'demo-grid');
+							group.append(path);
+						}
+					}
+				});
+				$('vectorlayer').disabled = true;
+			};
+			$('month').oninput = () => {
+				map.setTime(dateToJD(new Date(Date.UTC(2024, Number($('month').value), 15))));
+			};
+
+			const showView = (view) => {
+				$('viewstate').textContent =
+					`centre ${view.centerLat.toFixed(1)}°, ${view.centerLon.toFixed(1)}° · zoom ${view.zoom.toFixed(2)}`;
+			};
+			showView(map.viewState);
+			$('home').onclick = () => map.setView({ centerLat: 0, centerLon: 0, zoom: 1 });
+			$('zoomin').onclick = () => map.setView({ zoom: map.viewState.zoom * 2 });
 
 			$('projection').onchange = () => map.setProjection($('projection').value);
 			$('body').onchange = async () => {
@@ -308,6 +434,23 @@
 				element.textContent = 'here';
 				map.addMarker({ at: { lon: 12.5, lat: 41.9 }, element, align: [0.5, 1] });
 			};
+			$('polygon').onclick = () => {
+				map.addPolygon({
+					points: [
+						{ lon: 100, lat: -40 },
+						{ lon: 150, lat: -30 },
+						{ lon: 140, lat: 10 },
+						{ lon: 110, lat: 0 }
+					],
+					interpolate: 'geodesic',
+					color: '#ff9ad5',
+					fill: 'rgb(255 154 213 / 20%)',
+					dash: '6 4',
+					widthPx: 1.5,
+					interactive: true,
+					onclick: () => fail('the polygon was clicked')
+				});
+			};
 			$('clear').onclick = () => map.clearDrawings();
 
 			// Restrictions. Each gesture is a handler with enable/disable/isEnabled;
@@ -353,8 +496,11 @@
 
 			const fmt = (v, pos, neg) => `${Math.abs(v).toFixed(2)}°${v >= 0 ? pos : neg}`;
 			map.on('pointermove', (at) => {
+				// Round-tripped through project(), to show the pixel it lands on.
+				const px = at && map.project(at.lon, at.lat);
 				$('readout').textContent = at
-					? `${fmt(at.lat, 'N', 'S')}  ${fmt(at.lon, 'E', 'W')}`
+					? `${fmt(at.lat, 'N', 'S')}  ${fmt(at.lon, 'E', 'W')}` +
+						(px ? `  → ${Math.round(px[0])}, ${Math.round(px[1])} px` : '')
 					: 'off the map';
 			});
 			map.on('click', (at) => {
@@ -362,6 +508,7 @@
 				map.addMarker({ at });
 			});
 			map.on('viewchange', (view) => {
+				showView(view);
 				$('projection').value = view.projection;
 			});
 		</script>

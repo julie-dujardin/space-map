@@ -55,6 +55,14 @@
 			#where {
 				color: #9fb0c9;
 			}
+			.pages {
+				margin: 0 0 6px;
+				font-size: 12px;
+				color: #9aa;
+			}
+			.pages a {
+				color: #8cf;
+			}
 			#error {
 				color: #f88;
 			}
@@ -73,6 +81,11 @@
 	</head>
 	<body>
 		<main>
+			<nav class="pages">
+				<a href="index.html">index</a> · <a href="demo.html">3D</a> ·
+				<a href="flatmap.html">flat</a> · <a href="panorama.html">panorama</a> · <b>system</b> ·
+				<a href="all.html">all</a>
+			</nav>
 			<h1>spacemap system map <small>demo</small></h1>
 			<p id="error" hidden></p>
 			<div id="bar">
@@ -82,6 +95,17 @@
 					<option value="all">every body</option>
 					<option value="mapped">bodies with a map or a shape</option>
 				</select>
+				<!-- Fixed when the map is made, so these reload the page. -->
+				<select id="grouping" aria-label="Grouping">
+					<option value="bodies">grouping: bodies</option>
+					<option value="systems">grouping: systems</option>
+				</select>
+				<select id="zones" aria-label="Zones">
+					<option value="belts">zones: belts</option>
+					<option value="inner-outer">zones: inner-outer</option>
+				</select>
+				<label><input id="names" type="checkbox" /> own names</label>
+				<label><input id="places" type="checkbox" /> own places</label>
 			</div>
 			<!-- ?w=<px> narrows the box, for seeing the map at the size of a corner panel. -->
 			<div id="map"></div>
@@ -94,6 +118,8 @@
 
 			// ?data=<export root> ?lang=<bcp47> ?grouping=bodies|systems ?zones=belts|inner-outer
 			// ?scope=all|mapped ?view=solar-system|system:<id>|zone:<inner|outer> ?w=<px>
+			// ?names=1   the page's own names over the export's
+			// ?places=1  three small bodies the page describes itself, in the inner zone
 			const params = new URLSearchParams(location.search);
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
@@ -143,6 +169,41 @@
 				zones: params.get('zones') ?? 'belts'
 			};
 			if ($('scope').value === 'mapped') options.bodies = MAPPED;
+			if (params.get('names') === '1') {
+				options.names = { 'naif-399': 'Home', 'naif-499': 'The red one', 'naif-301': 'Luna' };
+			}
+			// Bodies neither map file places: described here, nothing is read for them.
+			if (params.get('places') === '1') {
+				options.view = { kind: 'zone', zone: 'inner' };
+				options.bodies = ['spkid-20101955', 'spkid-20065803', 'spkid-120065803'];
+				options.places = [
+					{ id: 'spkid-20101955', name: 'Bennu', aAu: 1.126, tiltDeg: 6.03, radiusKm: 0.245 },
+					{
+						id: 'spkid-20065803',
+						name: 'Didymos',
+						aAu: 1.643,
+						tiltDeg: 3.41,
+						radiusKm: 0.39,
+						color: '#ffb070'
+					},
+					{ id: 'spkid-120065803', name: 'Dimorphos', moon: true, parent: 'spkid-20065803' }
+				];
+			}
+			for (const id of ['grouping', 'zones']) {
+				$(id).value = options[id];
+				$(id).onchange = () => {
+					params.set(id, $(id).value);
+					location.search = params;
+				};
+			}
+			for (const id of ['names', 'places']) {
+				$(id).checked = params.get(id) === '1';
+				$(id).onchange = () => {
+					if ($(id).checked) params.set(id, '1');
+					else params.delete(id);
+					location.search = params;
+				};
+			}
 			if (dataUrl) options.dataUrl = dataUrl;
 			if (params.has('lang')) options.locale = params.get('lang');
 			options.events = { error: (e) => fail(e) };
