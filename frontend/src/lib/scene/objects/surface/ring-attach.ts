@@ -61,6 +61,10 @@ export function attachRingBundles(
 					return;
 				}
 				node.mesh.userData.ringBundle = ringMeta.bundle;
+				// The per-frame pole sync only runs when the clock moves, so a paused
+				// view would keep the unrotated ring until play resumes.
+				const host = bo.mesh ?? bo.model;
+				if (host) node.mesh.quaternion.copy(host.quaternion);
 				bo.rings.push(node);
 				scene.add(node.mesh);
 				bo.extraObjects.push(node.mesh);
