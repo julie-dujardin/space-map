@@ -22,16 +22,19 @@
 		href: (entry: PanoramaEntry) => string;
 		/** Opens a panorama the reader did not click: a step or playback. */
 		onPick: (entry: PanoramaEntry) => void;
-		onClose: () => void;
+		onClose?: () => void;
 		positionClass: string;
 		/** The panorama on screen. Stops taken at the same moment by two cameras
 		 *  share a timestamp, so the clock cannot name it. */
 		activeId?: string;
 		/** What the panorama on screen is, in a column before the cards. */
 		aside?: Snippet;
+		/** Drawn onto the host's own surface, with no card. */
+		bare?: boolean;
 	}
 
-	let { entries, clock, href, onPick, onClose, positionClass, activeId, aside }: Props = $props();
+	let { entries, clock, href, onPick, onClose, positionClass, activeId, aside, bare }: Props =
+		$props();
 
 	type Item = StripItem & { entry: PanoramaEntry };
 
@@ -104,6 +107,7 @@
 	{onClose}
 	{activeId}
 	{aside}
+	{bare}
 	closeLabel={m.panorama_map_collapse()}
 	onPick={() => player.stop()}
 	onScrub={(jd) => {

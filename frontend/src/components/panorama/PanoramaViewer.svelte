@@ -78,8 +78,11 @@
 	const gyroSupported = gyroAvailability() === 'available';
 	let neighbours = $state.raw<Neighbours | null>(null);
 	let timelineOpen = $state(false);
-	/** The timeline strip only lays out beside the minimap from `md` up. */
+	/** From `md` up the timeline lays out beside the minimap. */
 	const wide = new MediaQuery('(min-width: 768px)');
+	/** Below that there is no room beside it: the open timeline takes the
+	 *  whole screen, panorama included. */
+	const covering = $derived(timelineOpen && !wide.current);
 	let mapCredits = $state<LayerCredit[]>([]);
 	/** The strip's height, which the map beside it grows to. Kept from the last
 	 *  opening so the next one animates straight to size. */
@@ -173,10 +176,6 @@
 	});
 
 	$effect(() => {
-		if (!wide.current) timelineOpen = false;
-	});
-
-	$effect(() => {
 		if (current) clock.setJD(entryJd(current));
 	});
 
@@ -241,7 +240,8 @@
 	/** Rows of the info column, in reading order. */
 	const rows = $derived.by(() => {
 		if (!current) return [];
-		const out: Array<{ label: string; value: string }> = [];
+		/** `long`: a value that needs the row to itself where the rows pair up. */
+		const out: Array<{ label: string; value: string; long?: boolean }> = [];
 		out.push({ label: m.panorama_date(), value: formatIsoDate(current.time) });
 		if (current.instrument) out.push({ label: m.panorama_instrument(), value: current.instrument });
 		out.push({ label: m.latitude(), value: formatCoordinate(current.lat) });
@@ -256,7 +256,8 @@
 				value: m.panorama_coverage_value({
 					degrees: formatNumber(Math.round(current.hfov_deg)),
 					percent: formatNumber(Math.round(current.sphere_percent))
-				})
+				}),
+				long: true
 			});
 		return out;
 	});
@@ -289,8 +290,19 @@
 	);
 
 	function toggleTimeline(): void {
-		timelineOpen = wide.current && !timelineOpen;
+		timelineOpen = !timelineOpen;
 	}
+
+	/** The minimap and the timeline: a row along the bottom, or the whole
+	 *  screen as a column with the map last. */
+	const dockClass = $derived(
+		covering
+			? `bg-background/90 text-foreground absolute inset-0 flex flex-col-reverse gap-4
+				ps-[calc(var(--safe-start)_+_1rem)] pe-[calc(var(--safe-end)_+_1rem)]
+				pt-[calc(var(--safe-top)_+_4.5rem)] pb-[calc(var(--safe-bottom)_+_1.5rem)] backdrop-blur-lg`
+			: `absolute bottom-[calc(var(--safe-bottom)_+_1.5rem)] start-[calc(var(--safe-start)_+_1rem)]
+				end-[calc(var(--safe-end)_+_1rem)] flex items-end gap-2 ${timelineOpen ? '' : 'pointer-events-none'}`
+	);
 
 	/** The glass of the menu buttons, for the two beside them that open nothing. */
 	const glassButton = `flex size-10 cursor-pointer items-center justify-center rounded-full
@@ -302,19 +314,27 @@
 </svelte:head>
 
 {#if current}
-	<!-- What the panorama is, in full: the timeline's first column. -->
+	<!-- What the panorama is, in full: the timeline's first column, or the
+	     head of the screen where the timeline covers it. -->
 	{#snippet about()}
 		<div class="flex flex-col gap-2.5">
 			<div>
-				<h1 class="text-sm font-medium">{caption}</h1>
+				<h1 class={covering ? 'text-base font-semibold' : 'text-sm font-medium'}>{caption}</h1>
 				{#if current?.title}
 					<p class="text-muted-foreground text-xs">{current.title}</p>
 				{/if}
 			</div>
-			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+			<!-- Covering, the rows pair up: every line saved goes to the map. -->
+			<dl
+				class="grid gap-x-3 gap-y-0.5 text-xs {covering
+					? 'grid-cols-[auto_auto_auto_1fr]'
+					: 'grid-cols-[auto_1fr]'}"
+			>
 				{#each rows as row (row.label)}
-					<dt class="text-muted-foreground">{row.label}</dt>
-					<dd>{row.value}</dd>
+					<dt class="text-muted-foreground {covering && row.long ? 'col-start-1' : ''}">
+						{row.label}
+					</dt>
+					<dd class={covering && row.long ? 'col-span-3' : ''}>{row.value}</dd>
 				{/each}
 			</dl>
 			<a
@@ -355,16 +375,17 @@
 				</div>
 			{/if}
 
-			<!-- One row, so the minimap grows to the timeline's height. Nothing in
-			     it stretches: the strip's measured height sets the minimap's, so a
-			     stretched strip would measure its own output and ratchet up. -->
+			<!-- As a row, the minimap grows to the timeline's height. Nothing in it
+			     stretches: the strip's measured height sets the minimap's, so a
+			     stretched strip would measure its own output and ratchet up. As a
+			     column the map takes what the timeline leaves. -->
 			{#if missionEntries.length}
-				<div
-					class="absolute bottom-[calc(var(--safe-bottom)_+_1.5rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex items-end gap-2 {timelineOpen
-						? ''
-						: 'pointer-events-none'}"
-				>
-					<div class="pointer-events-auto min-w-44 shrink-0 overflow-hidden rounded-md">
+				<div class={dockClass}>
+					<div
+						class="pointer-events-auto overflow-hidden rounded-md {covering
+							? 'min-h-24 flex-1'
+							: 'min-w-44 shrink-0'}"
+					>
 						<!-- The name rides on the map while the timeline is shut; open, the
 						     strip's first column says it in full. `w-0 min-w-full`: the map
 						     sets the width, a long title does not. -->
@@ -395,6 +416,7 @@
 								headingDeg={heading}
 								fovDeg={fov}
 								expanded={timelineOpen}
+								fill={covering}
 								height={timelineOpen ? stripHeight : null}
 								onToggle={toggleTimeline}
 								onCredits={(credits) => (mapCredits = credits)}
@@ -404,17 +426,18 @@
 					</div>
 					{#if timelineOpen}
 						<div
-							class="min-w-0 flex-1"
+							class={covering ? '' : 'min-w-0 flex-1'}
 							bind:clientHeight={stripHeight}
 							transition:fly={{ y: 12, duration: motionMs }}
 						>
 							<PanoramaTimeline
 								aside={about}
+								bare={covering}
 								entries={missionEntries}
 								{clock}
 								href={(entry) => panoramaHref(bodyId, entry)}
 								onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
-								onClose={() => (timelineOpen = false)}
+								onClose={covering ? undefined : () => (timelineOpen = false)}
 								positionClass="relative"
 								activeId={current.id}
 							/>
@@ -428,13 +451,26 @@
 				<PanoramaCreditBar entry={current} {mapCredits} />
 			</div>
 
-			<!-- Leaving and sharing, opposite the menus. -->
+			<!-- Leaving and sharing, opposite the menus. Over a covered panorama the
+			     cross takes the cover away: a reader who meant that stays in the view. -->
 			<div
 				class="absolute top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] flex gap-3"
 			>
-				<a href={closeHref} class={glassButton} aria-label={m.close()} title={m.close()}>
-					<XIcon class="size-5 md:size-4" />
-				</a>
+				{#if covering}
+					<button
+						type="button"
+						onclick={() => (timelineOpen = false)}
+						class={glassButton}
+						aria-label={m.panorama_map_collapse()}
+						title={m.panorama_map_collapse()}
+					>
+						<XIcon class="size-5 md:size-4" />
+					</button>
+				{:else}
+					<a href={closeHref} class={glassButton} aria-label={m.close()} title={m.close()}>
+						<XIcon class="size-5 md:size-4" />
+					</a>
+				{/if}
 				<button
 					type="button"
 					onclick={() => shareUrl(pageTitle)}
@@ -450,14 +486,17 @@
 				class="absolute top-[calc(var(--safe-top)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] flex flex-col items-end gap-3"
 			>
 				<SiteMenuButton current="panoramas" scope="panorama" />
-				<PanoramaLayersButton
-					angleGrid={angleGridVisible}
-					navigation={navigationVisible}
-					onAngleGridChange={(visible) => (angleGridVisible = visible)}
-					onNavigationChange={(visible) => (navigationVisible = visible)}
-				/>
-				{#if gyroSupported}
-					<PanoramaGyroButton active={gyroActive} onToggle={() => void toggleGyro()} />
+				<!-- These act on the panorama, which a covering timeline hides. -->
+				{#if !covering}
+					<PanoramaLayersButton
+						angleGrid={angleGridVisible}
+						navigation={navigationVisible}
+						onAngleGridChange={(visible) => (angleGridVisible = visible)}
+						onNavigationChange={(visible) => (navigationVisible = visible)}
+					/>
+					{#if gyroSupported}
+						<PanoramaGyroButton active={gyroActive} onToggle={() => void toggleGyro()} />
+					{/if}
 				{/if}
 			</div>
 		</div>

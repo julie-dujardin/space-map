@@ -42,7 +42,7 @@
 		/** Height to grow to when expanded, pixels; the box animates to it. */
 		height?: number | null;
 		/** Fill whatever box the caller gives, rather than sizing itself. The
-		 *  scale bar comes along, the expand button does not. */
+		 *  scale bar comes along. */
 		fill?: boolean;
 		onToggle?: () => void;
 		/** Who the map's layers are credited to, whenever that changes. */
@@ -255,15 +255,15 @@
 		<button
 			type="button"
 			onclick={onToggle}
-			class="absolute top-1 end-1 hidden size-6 cursor-pointer items-center justify-center rounded bg-black/50 text-white hover:bg-black/70 md:flex"
+			class="absolute top-1 end-1 flex size-8 cursor-pointer items-center justify-center rounded bg-black/50 text-white hover:bg-black/70 md:size-6"
 			aria-label={expanded ? m.panorama_map_collapse() : m.panorama_map_expand()}
 			title={expanded ? m.panorama_map_collapse() : m.panorama_map_expand()}
 			aria-expanded={expanded}
 		>
 			{#if expanded}
-				<Minimize2Icon class="size-3.5" />
+				<Minimize2Icon class="size-4 md:size-3.5" />
 			{:else}
-				<Maximize2Icon class="size-3.5" />
+				<Maximize2Icon class="size-4 md:size-3.5" />
 			{/if}
 		</button>
 	{/if}

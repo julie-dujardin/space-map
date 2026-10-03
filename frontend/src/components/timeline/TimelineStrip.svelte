@@ -53,6 +53,9 @@
 		closeLabel?: string;
 		/** The host's notes on the subject, in a column before the cards. */
 		aside?: Snippet;
+		/** Drawn straight onto a surface the host provides, at any width: no card
+		 *  of its own, and the notes above the cards rather than beside them. */
+		bare?: boolean;
 	}
 
 	let {
@@ -70,6 +73,7 @@
 		onClose,
 		closeLabel,
 		aside,
+		bare = false,
 		positionClass = 'fixed bottom-[calc(var(--safe-bottom)_+_4.75rem)] end-[calc(var(--safe-end)_+_4.5rem)] start-[calc(var(--safe-start)_+_var(--detail-panel)_+_1rem)]'
 	}: Props = $props();
 
@@ -246,10 +250,13 @@
 
 <!-- `text-foreground`: a host on a dark stage hands down its own text colour. -->
 <div
-	class="border-border/60 bg-background/90 text-foreground z-10 hidden
-		gap-3 rounded-xl border p-3 shadow-lg backdrop-blur md:flex {positionClass}"
+	class="text-foreground {bare
+		? 'flex flex-col gap-4'
+		: 'border-border/60 bg-background/90 z-10 hidden gap-3 rounded-xl border p-3 shadow-lg backdrop-blur md:flex'} {positionClass}"
 >
-	{#if aside}
+	{#if aside && bare}
+		{@render aside()}
+	{:else if aside}
 		<!-- Out of flow: the cards set the strip's height, whatever the column holds. -->
 		<div class="border-border relative w-56 shrink-0 border-e">
 			<ScrollArea class="absolute inset-0 pe-3">
@@ -257,7 +264,11 @@
 			</ScrollArea>
 		</div>
 	{/if}
-	<div class="flex min-w-0 flex-1 flex-col gap-2.5">
+	<div
+		class="flex min-w-0 flex-1 flex-col gap-2.5 {bare && aside
+			? 'border-border border-t pt-4'
+			: ''}"
+	>
 		<div class="flex items-center justify-between gap-3">
 			<h2 class="min-w-0 truncate text-sm font-medium">{@render title()}</h2>
 			<div class="flex shrink-0 items-center gap-1">
@@ -266,16 +277,16 @@
 				</span>
 				<button
 					type="button"
-					class="hover:bg-muted inline-flex size-7 items-center justify-center rounded-md transition-colors"
+					class="hover:bg-muted inline-flex size-9 items-center justify-center rounded-md transition-colors md:size-7"
 					onclick={() => onStep(-1)}
 					aria-label={m.timeline_prev()}
 					title={m.timeline_prev()}
 				>
-					<ChevronLeftIcon class="size-4 rtl:rotate-180" />
+					<ChevronLeftIcon class="size-5 md:size-4 rtl:rotate-180" />
 				</button>
 				<button
 					type="button"
-					class="hover:bg-muted inline-flex size-7 items-center justify-center rounded-md transition-colors"
+					class="hover:bg-muted inline-flex size-9 items-center justify-center rounded-md transition-colors md:size-7"
 					onclick={onTogglePlay}
 					aria-label={playing ? m.timeline_stop() : playLabel}
 					title={playing ? m.timeline_stop() : playLabel}
@@ -283,22 +294,22 @@
 					{#if playing}
 						<SquareIcon class="size-3.5 fill-current" />
 					{:else}
-						<PlayIcon class="size-4 rtl:rotate-180" />
+						<PlayIcon class="size-5 md:size-4 rtl:rotate-180" />
 					{/if}
 				</button>
 				<button
 					type="button"
-					class="hover:bg-muted inline-flex size-7 items-center justify-center rounded-md transition-colors"
+					class="hover:bg-muted inline-flex size-9 items-center justify-center rounded-md transition-colors md:size-7"
 					onclick={() => onStep(1)}
 					aria-label={m.timeline_next()}
 					title={m.timeline_next()}
 				>
-					<ChevronRightIcon class="size-4 rtl:rotate-180" />
+					<ChevronRightIcon class="size-5 md:size-4 rtl:rotate-180" />
 				</button>
 				{#if onClose}
 					<button
 						type="button"
-						class="hover:bg-muted ms-1 inline-flex size-7 items-center justify-center rounded-md transition-colors"
+						class="hover:bg-muted ms-1 inline-flex size-9 items-center justify-center rounded-md transition-colors md:size-7"
 						onclick={onClose}
 						aria-label={closeLabel}
 						title={closeLabel}
