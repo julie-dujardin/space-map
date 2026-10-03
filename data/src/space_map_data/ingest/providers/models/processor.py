@@ -468,9 +468,18 @@ class ModelProcessor:
         manifest assignments win — bus assignments only fill empty slots."""
         session = get_session()
         db_object_ids = {row[0] for row in session.query(Object.id).all()}
+        manifest_slugs = self._manifest_slugs()
         assigned = 0
         for spec in SATELLITE_BUSES:
             if not spec.model_slug:
+                continue
+            # A pointer at a slug no manifest declares 404s in the client.
+            if spec.model_slug not in manifest_slugs:
+                log.warning(
+                    "bus %s: model_slug %r is in no manifest, no pointer written",
+                    spec.slug,
+                    spec.model_slug,
+                )
                 continue
             oids = self._bus_object_ids(spec, db_object_ids, for_model=True)
             if not oids:

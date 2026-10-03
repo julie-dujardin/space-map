@@ -138,12 +138,11 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "HS-601",
             "HS-601HP",
             "HS-601M",
-            "Star 63",
         ),
         model_url="https://nasa3d.arc.nasa.gov/detail/eoss-tdrs",
         model_format="glTF",
         model_license="NASA Public Domain",
-        model_slug="tracking-and-data-relay-satellites-tdrs-a",
+        model_slug="tracking-and-data-relay-satellites-tdrs",
         notes="First Hughes 3-axis-stabilized commsat; modular propulsion+payload boxes. "
         "76 launched 1992-2017. NASA 3D Resources TDRS model represents the 601HP variant. "
         "Sketchfab mirror: sketchfab.com/3d-models/tracking-and-data-relay-satellite-3d-printable-ae3ac90c4eff404bbe914838d7b5f29b",
@@ -1076,6 +1075,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             45358,
             54377,
         ),
+        model_url="https://sketchfab.com/3d-models/glonass-m-9660a3d4b72f47c2adde1be1d209b6bc",
+        model_format="glTF",
+        model_license="CC BY 4.0",
+        model_slug="glonass-m",
         notes="Same pressurized platform as Uragan with more power and a longer life. "
         "GLONASS-K moved to the unpressurized Ekspress-1000K, and the two K2 prototypes "
         "flown so far use KAUR-4N.",
@@ -1174,6 +1177,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         # One GCAT string for the whole first generation: the v0.9 demo batch,
         # v1.0, VisorSat and the v1.5 laser-link satellites are not split.
         gcat_buses=("Starlink", "Starlink?"),
+        model_url="https://sketchfab.com/3d-models/starlink-spacex-satellite-0a60f6720c5141c9a1c6d71aac108b31",
+        model_format="glTF",
+        model_license="CC BY 4.0",
+        model_slug="starlink-v1",
         notes="Flat-panel bus, single solar wing, krypton Hall thruster. "
         "STARLINK-21 through STARLINK-6380 in the catalogue.",
     ),
