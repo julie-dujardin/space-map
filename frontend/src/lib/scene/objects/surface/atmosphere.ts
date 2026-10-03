@@ -56,6 +56,7 @@ import {
 	currentAtmosphereConfig,
 	type AtmosphereQualityConfig
 } from './atmosphere-quality';
+import { logDepthToEyeGlsl } from '$lib/scene/setup/depth-mode';
 import { ECLIPSE_FACTOR_GLSL, getEclipseSceneUniforms, MAX_OCCLUDERS } from './eclipse-shadow';
 import { RING_SHADOW_GLSL, type PlanetRingShadowUniforms } from './rings';
 
@@ -623,7 +624,7 @@ const FRAGMENT_SHADER = `
 			if (hitGeom && fwd > 1e-4) {
 				float terrainW = uReversedDepth > 0.5
 					? uCameraNear * uCameraFar / (d * (uCameraFar - uCameraNear) + uCameraNear)
-					: exp2(d * log2(uCameraFar + 1.0)) - 1.0;
+					: ${logDepthToEyeGlsl('d', 'uCameraFar')};
 				float tTerrain = terrainW * dLen / (uPlanetRadiusScene * fwd);
 				if (tTerrain < tEnd) {
 					tEnd = tTerrain;

@@ -23,7 +23,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
 import { AMBIENT_INTENSITY } from '$lib/scene/lighting';
-import { setReversedDepth } from './depth-mode';
+import { installLogDepthChunks, setReversedDepth } from './depth-mode';
 
 /** Solar-system-view far plane (scene units, ~0.5 ly). Under reversed-Z, far
  *  only defines clipping — depth precision is relative to distance and doesn't
@@ -81,6 +81,7 @@ export function bootThree(
 ): ThreeBoot {
 	let renderer: WebGLRenderer;
 	const reversedDepth = probeClipControl();
+	if (!reversedDepth) installLogDepthChunks();
 	try {
 		renderer = new WebGLRenderer(
 			reversedDepth
