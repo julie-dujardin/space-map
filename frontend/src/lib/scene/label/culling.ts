@@ -405,7 +405,8 @@ export function cullOverlappingLabels(
 				: false;
 		c.isMinor = bo.isMinor;
 		c.isFocused = isFocused;
-		c.isSelected = isFocused || isHovered;
+		// A pinned body is named whatever it overlaps.
+		c.isSelected = isFocused || isHovered || ctx.visibility.isPinned(body.data.id);
 		c.dist = bo.cachedDist;
 	}
 

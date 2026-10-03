@@ -80,6 +80,8 @@ export class VisibilityController {
 	private fullMoonIds = new Set<string>();
 	/** Per-frame cache for getMoonVisibility, cleared in updateCamera. */
 	private moonVisibilityCache = new Map<string, VISIBILITY>();
+	/** Bodies a host wants in sight from however far. */
+	private pinned: ReadonlySet<string> = new Set();
 
 	constructor(
 		private readonly bodies: BodyIndex,
@@ -268,11 +270,27 @@ export class VisibilityController {
 		return vis;
 	}
 
+	setPinned(ids: Iterable<string>): void {
+		this.pinned = new Set(ids);
+	}
+
+	isPinned(id: string): boolean {
+		return this.pinned.has(id);
+	}
+
+	/** {@link ratioVisibility}, except that a pinned body is never let drop out:
+	 *  neither its distance nor a hidden layer takes its halo and orbit away. */
+	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
+		const vis = this.ratioVisibility(body, camDistThreeJS);
+		if (!this.pinned.has(body.data.id) || vis === VISIBILITY.CLOSE) return vis;
+		return VISIBILITY.FULL;
+	}
+
 	/** Distance-ratio based visibility for non-moon, non-star bodies. Probes and
 	 *  other planet-orbiters get moon-style ratio gating (against distance-to-
 	 *  parent, or planet-relative `a`); sun-orbiting bodies use the solar-orbit
 	 *  semi-major axis ratio. */
-	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
+	private ratioVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
 		if (this.getLayers().hidesBody(body.data.objectType, body.data.parentId)) {
 			return VISIBILITY.HIDE;
 		}
@@ -408,7 +426,7 @@ export class VisibilityController {
 	 *  visible even when its parentId hasn't flipped yet (chunk-load gap). */
 	hasFullRendering(body: PositionedBody): boolean {
 		const sysId = this.activeSystemId;
-		if (!sysId) return true;
+		if (!sysId || this.pinned.has(body.data.id)) return true;
 		if (
 			this.isInActiveSystem(
 				isTopLevelParent(body.data.parentId) ? body.data.id : body.data.parentId

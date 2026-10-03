@@ -1154,6 +1154,21 @@ export class SpaceMap {
 		return this;
 	}
 
+	/**
+	 * Keep these bodies in sight from however far: named, with their orbits,
+	 * where the map would let a small or distant one drop out and would give
+	 * its name up to a bigger neighbour's. A hidden layer does not take them
+	 * either. Each call replaces the last; an empty list gives the map its own
+	 * judgement back.
+	 *
+	 * A moon is only drawn inside the system the camera is in, pinned or not:
+	 * pin its planet to mark it from outside.
+	 */
+	setPinnedBodies(ids: readonly string[]): this {
+		this.requireRenderer().setPinnedBodies(ids);
+		return this;
+	}
+
 	/** A cap's radius as an angle, from whichever of the two ways the host gave
 	 *  it. A radius in kilometres needs the body's own radius, which an
 	 *  unloaded body has not published yet. */

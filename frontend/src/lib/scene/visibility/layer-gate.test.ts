@@ -143,3 +143,25 @@ describe('point clouds under a hidden layer', () => {
 		expect(off.vis.isSpacecraftGroupVisible('naif-0')).toBe(false);
 	});
 });
+
+describe('a pinned body', () => {
+	const far = 500 * AU_SCALE;
+
+	it('stays in sight from where it would have dropped out', () => {
+		const { bodies, vis } = buildScene(new LayerSet());
+		const earth = bodies.bodiesById.get(EARTH)!;
+		expect(vname(vis.getPlanetVisibility(earth, far))).not.toBe(vname(VISIBILITY.FULL));
+		vis.setPinned([EARTH]);
+		expect(vname(vis.getPlanetVisibility(earth, far))).toBe(vname(VISIBILITY.FULL));
+		vis.setPinned([]);
+		expect(vname(vis.getPlanetVisibility(earth, far))).not.toBe(vname(VISIBILITY.FULL));
+	});
+
+	it('is not taken by a hidden layer', () => {
+		const { bodies, vis } = buildScene(new LayerSet({ planets: false }));
+		vis.setPinned([EARTH]);
+		expect(vname(vis.getPlanetVisibility(bodies.bodiesById.get(EARTH)!, far))).toBe(
+			vname(VISIBILITY.FULL)
+		);
+	});
+});

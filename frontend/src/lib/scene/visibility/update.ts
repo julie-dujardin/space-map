@@ -442,7 +442,7 @@ export function updateBodyVisibility(
 		// Minor-promoted halos: ring stays (label.visible left alone so the DOM
 		// element keeps rendering), but the trail draws only on focus. The name
 		// span and halo scale are handled in cullOverlappingLabels.
-		if (bo.isMinor && !isFocused && trail) {
+		if (bo.isMinor && !isFocused && trail && !ctx.visibility.isPinned(body.data.id)) {
 			trail.visible = false;
 		}
 

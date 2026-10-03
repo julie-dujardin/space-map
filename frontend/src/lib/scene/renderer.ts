@@ -2340,6 +2340,18 @@ export class SceneRenderer {
 		this.appearances.set(id, appearance);
 	}
 
+	/** Keep these bodies in sight at every scale. One that is a dot of a point
+	 *  cloud is built as a body first: a dot has no name or orbit to keep. */
+	setPinnedBodies(ids: readonly string[]): void {
+		this.ctx.visibility.setPinned(ids);
+		for (const id of ids) {
+			const body = this.ctx.getBody(id);
+			// A moon outside the focused system is not placed, so not drawn.
+			if (!body || isSurfaceFeature(body) || body.data.objectType === ObjectType.MOON) continue;
+			this.focusController.promotion.ensureBodyObjects(body);
+		}
+	}
+
 	setNorthReference(id: string | null): void {
 		this.cameraUp.setNorthReference(id);
 	}
