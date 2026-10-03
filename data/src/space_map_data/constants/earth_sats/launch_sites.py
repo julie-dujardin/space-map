@@ -198,6 +198,13 @@ LAUNCH_SITES: tuple[LaunchSiteSpec, ...] = (
         gcat_sites=("SHAR",),
     ),
     LaunchSiteSpec(
+        "STARB",
+        "starbase",
+        "Starbase, Texas, USA",
+        "Q16950811",
+        gcat_sites=("BCB",),
+    ),
+    LaunchSiteSpec(
         "SUBL",
         "submarine-launch",
         "Submarine Launch Platform (mobile)",
