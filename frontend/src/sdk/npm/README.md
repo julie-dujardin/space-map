@@ -44,7 +44,7 @@ your page:
 ```html
 <div id="map" style="height: 500px"></div>
 <script type="module">
-	import { createMap } from 'https://cdn.jsdelivr.net/npm/spacemap@0.1.4/dist/spacemap.js';
+	import { createMap } from 'https://cdn.jsdelivr.net/npm/spacemap@0.1.5/dist/spacemap.js';
 	const map = await createMap({ container: '#map' });
 </script>
 ```
