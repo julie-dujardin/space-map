@@ -144,8 +144,19 @@ export function buildThinLineFromArrays(
 	return line;
 }
 
+/** A dashed fat line's `lineDistance`: `n` lengths along the line, each
+ *  duplicated into its point's side pair. */
+export function writeLineDistances(geometry: BufferGeometry, src: Float32Array, n: number): void {
+	const attr = geometry.getAttribute('lineDistance');
+	const arr = attr.array as Float32Array;
+	const m = Math.min(n, arr.length / 2);
+	for (let i = 0; i < m; i++) arr[2 * i] = arr[2 * i + 1] = src[i];
+	attr.needsUpdate = true;
+}
+
 /** Wrap pre-computed thin arrays into a fat-line `Mesh`. `brightness` defaults
- *  to the shade orbit trails are drawn at; see {@link makeFatTrailMaterial}. */
+ *  to the shade orbit trails are drawn at, and `dash` to a solid line; see
+ *  {@link makeFatTrailMaterial}. */
 export function buildFatLineFromThin(
 	capacity: number,
 	posArr: Float32Array,
@@ -154,11 +165,18 @@ export function buildFatLineFromThin(
 	total: number,
 	color: string,
 	lineWidth: number,
-	brightness?: number
+	brightness?: number,
+	dash?: readonly [number, number]
 ): Mesh {
 	const geometry = makeFatTrailGeometry(capacity);
+	if (dash) {
+		geometry.setAttribute(
+			'lineDistance',
+			new Float32BufferAttribute(new Float32Array(2 * capacity), 1)
+		);
+	}
 	writeFatTrailVertices(geometry, posArr, trailAlphas, fullAlphas, total);
-	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth, brightness));
+	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth, brightness, dash));
 	mesh.matrixAutoUpdate = false;
 	mesh.renderOrder = TRAIL_RENDER_ORDER;
 	return mesh;

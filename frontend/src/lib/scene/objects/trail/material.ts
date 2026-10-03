@@ -63,14 +63,18 @@ export function makeTrailMaterial(color: string, brightness = TRAIL_DIM): Shader
  * Fat-line shader: same alpha logic as {@link makeTrailMaterial}, but expands
  * each segment to a screen-space quad of width `uLineWidth` pixels. Reads the
  * (-1,+1) side pairs and `nextPosition` from `makeFatTrailGeometry` to compute
- * screen-space direction without an extra draw call.
+ * screen-space direction without an extra draw call. With `dash`, a dash and
+ * a gap in pixels, it also reads `lineDistance`: how far along the line each
+ * vertex is on screen.
  */
 export function makeFatTrailMaterial(
 	color: string,
 	lineWidth: number,
-	brightness = TRAIL_DIM
+	brightness = TRAIL_DIM,
+	dash?: readonly [number, number]
 ): ShaderMaterial {
 	return new ShaderMaterial({
+		defines: dash ? { DASHED: '' } : {},
 		transparent: true,
 		// Transparent line must not write depth, or it culls clouds/point clouds behind it.
 		depthWrite: false,
@@ -82,7 +86,8 @@ export function makeFatTrailMaterial(
 			uAlphaMin: { value: 0.0 },
 			uShowFull: { value: 0.0 },
 			uLineWidth: { value: lineWidth },
-			uResolution: { value: TRAIL_RESOLUTION }
+			uResolution: { value: TRAIL_RESOLUTION },
+			uDash: { value: new Vector2(dash?.[0] ?? 0, dash?.[1] ?? 0) }
 		},
 		vertexShader: `
 			#include <common>
@@ -96,6 +101,11 @@ export function makeFatTrailMaterial(
 			attribute float trailAlpha;
 			attribute float fullAlpha;
 			varying float vAlpha;
+			#ifdef DASHED
+			attribute float lineDistance;
+			varying float vDistW;
+			varying float vW;
+			#endif
 			void main() {
 				vAlpha = mix(trailAlpha, fullAlpha, uShowFull);
 				vec3 currRel = position + uCenterOffset;
@@ -112,6 +122,13 @@ export function makeFatTrailMaterial(
 				vec2 perp = vec2(-dirN.y, dirN.x) * side * uLineWidth * 0.5;
 				vec2 offsetNDC = perp / (uResolution * 0.5);
 				gl_Position = vec4((currNDC + offsetNDC) * currClip.w, currClip.zw);
+				#ifdef DASHED
+				// Carried times w and divided back out per fragment, which undoes
+				// the perspective a varying is interpolated with: the dashes are
+				// even on screen however much nearer one end is.
+				vDistW = lineDistance * currClip.w;
+				vW = currClip.w;
+				#endif
 				#include <logdepthbuf_vertex>
 			}
 		`,
@@ -121,7 +138,15 @@ export function makeFatTrailMaterial(
 			uniform float uAlphaMultiplier;
 			uniform float uAlphaMin;
 			varying float vAlpha;
+			#ifdef DASHED
+			uniform vec2 uDash;
+			varying float vDistW;
+			varying float vW;
+			#endif
 			void main() {
+				#ifdef DASHED
+				if (mod(vDistW / vW, uDash.x + uDash.y) > uDash.x) discard;
+				#endif
 				gl_FragColor = vec4(uColor, clamp(max(vAlpha * uAlphaMultiplier, uAlphaMin), 0.0, 1.0));
 				#include <logdepthbuf_fragment>
 			}

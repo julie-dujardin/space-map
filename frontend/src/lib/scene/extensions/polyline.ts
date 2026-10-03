@@ -8,8 +8,13 @@
 
 import { Group, Mesh, type ShaderMaterial } from 'three';
 import { kmToScene } from '$lib/math/units';
-import { buildFatLineFromThin, writeFatTrailVertices } from '$lib/scene/objects/trail/geometry';
+import {
+	buildFatLineFromThin,
+	writeFatTrailVertices,
+	writeLineDistances
+} from '$lib/scene/objects/trail/geometry';
 import { resolveAnchor, type Anchor, type OffsetKm } from './anchor';
+import { SeenLine, parseDash, reachesBehind } from './screen';
 import type { Extension, ExtensionFrame } from './registry';
 
 export interface PolylineOptions {
@@ -25,6 +30,9 @@ export interface PolylineOptions {
 	widthPx?: number;
 	/** 0 to 1. */
 	opacity?: number;
+	/** A dash and a gap in screen pixels, written as the flat map takes them:
+	 *  `"4 3"`. Solid when left out. */
+	dash?: string;
 	/** Fade the line toward its last point, the way an orbit trail fades
 	 *  behind a body. */
 	fade?: boolean;
@@ -51,6 +59,7 @@ export class PolylineExtension implements Extension, Polyline {
 	private readonly color: string;
 	private readonly widthPx: number;
 	private readonly opacity: number;
+	private readonly dash: [number, number] | null;
 	private readonly fade: boolean;
 	private readonly closed: boolean;
 	/** Points in scene units relative to the anchor, in float64: the source
@@ -62,6 +71,7 @@ export class PolylineExtension implements Extension, Polyline {
 	 *  before it duplicates them into the side pairs it draws. */
 	private scratch = new Float32Array(0);
 	private alphas = new Float32Array(0);
+	private readonly seen = new SeenLine();
 	private capacity = 0;
 	private lastOrigin: [number, number, number] = [0, 0, 0];
 	private dirty = true;
@@ -73,6 +83,7 @@ export class PolylineExtension implements Extension, Polyline {
 		this.color = options.color ?? '#ffffff';
 		this.widthPx = options.widthPx ?? 2;
 		this.opacity = options.opacity ?? 1;
+		this.dash = parseDash(options.dash);
 		this.fade = options.fade ?? false;
 		this.closed = options.closed ?? false;
 		this.local = new Float64Array(0);
@@ -97,6 +108,10 @@ export class PolylineExtension implements Extension, Polyline {
 		}
 		if (count > points.length) this.local.copyWithin(points.length * 3, 0, 3);
 		this.count = count;
+		if (this.alphas.length < count) {
+			this.scratch = new Float32Array(count * 3);
+			this.alphas = new Float32Array(count);
+		}
 		if (count > this.capacity) this.rebuild(count);
 		this.fillAlphas();
 		// The vertex buffer still holds the previous points.
@@ -125,42 +140,41 @@ export class PolylineExtension implements Extension, Polyline {
 		this.removeSelf = null;
 	}
 
-	update({ jd, basis, camera, ctx }: ExtensionFrame): void {
-		const mesh = this.mesh;
-		if (!mesh) return;
+	update({ jd, basis, camera, viewportPx, ctx }: ExtensionFrame): void {
 		const world = this.wanted && this.count >= 2 ? resolveAnchor(this.anchor, ctx, jd) : null;
-		mesh.visible = world !== null;
-		if (!world) return;
+		if (this.mesh) this.mesh.visible = world !== null;
+		if (!this.mesh || !world) return;
 		const origin: [number, number, number] = [
 			world[0] - basis[0],
 			world[1] - basis[1],
 			world[2] - basis[2]
 		];
-		if (
+		const moved =
 			this.dirty ||
 			Math.abs(origin[0] - this.lastOrigin[0]) > REDRAW_EPSILON ||
 			Math.abs(origin[1] - this.lastOrigin[1]) > REDRAW_EPSILON ||
-			Math.abs(origin[2] - this.lastOrigin[2]) > REDRAW_EPSILON
-		) {
-			this.writeVertices(mesh, origin);
+			Math.abs(origin[2] - this.lastOrigin[2]) > REDRAW_EPSILON;
+		if (moved) {
+			for (let i = 0; i < this.count * 3; i++) this.scratch[i] = this.local[i] + origin[i % 3];
 			this.lastOrigin = origin;
-			this.dirty = false;
 		}
+		// Dashes are counted on screen and a line through the camera is cut at
+		// it, so either is drawn again whenever the camera moves.
+		const cut = this.dash !== null || reachesBehind(this.scratch, this.count, camera);
+		if (cut) {
+			const { seen } = this;
+			seen.see(this.scratch, this.alphas, this.count, camera, viewportPx);
+			if (seen.count > this.capacity) this.rebuild(seen.count);
+			writeFatTrailVertices(this.mesh.geometry, seen.points, seen.alphas, seen.alphas, seen.count);
+			if (this.dash) writeLineDistances(this.mesh.geometry, seen.lengths, seen.count);
+		} else if (moved) {
+			writeFatTrailVertices(this.mesh.geometry, this.scratch, this.alphas, this.alphas, this.count);
+		}
+		this.dirty = cut;
+		const mesh = this.mesh;
 		// The line's shader is camera-relative, which is what keeps a
 		// kilometre-scale line steady when the camera is an astronomical unit out.
 		mesh.material.uniforms.uCenterOffset.value.copy(camera.position).negate();
-	}
-
-	private writeVertices(
-		mesh: Mesh<Mesh['geometry'], ShaderMaterial>,
-		origin: [number, number, number]
-	): void {
-		for (let i = 0; i < this.count; i++) {
-			this.scratch[i * 3] = this.local[i * 3] + origin[0];
-			this.scratch[i * 3 + 1] = this.local[i * 3 + 1] + origin[1];
-			this.scratch[i * 3 + 2] = this.local[i * 3 + 2] + origin[2];
-		}
-		writeFatTrailVertices(mesh.geometry, this.scratch, this.alphas, this.alphas, this.count);
 	}
 
 	/** (Re)build the geometry: it is sized once, so a longer line needs a new
@@ -168,19 +182,18 @@ export class PolylineExtension implements Extension, Polyline {
 	private rebuild(capacity: number): void {
 		this.disposeMesh();
 		this.dirty = true;
-		this.scratch = new Float32Array(capacity * 3);
-		this.alphas = new Float32Array(capacity);
 		const mesh = buildFatLineFromThin(
 			capacity,
 			this.scratch,
 			this.alphas,
 			this.alphas,
-			capacity,
+			0,
 			this.color,
 			this.widthPx,
 			// The host asked for this colour; do not shade it down the way the
 			// scene's own trails are.
-			1
+			1,
+			this.dash ?? undefined
 		);
 		// The line's shader places vertices relative to the camera, so three's
 		// own frustum test would judge it against a bounding sphere that means

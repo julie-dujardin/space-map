@@ -24,8 +24,13 @@ import { bodyQuaternion } from '$lib/math/orientation';
 import { kmToScene } from '$lib/math/units';
 import { effectiveRadiusKm } from '$lib/types/objects';
 import { densify, type Interpolation, type LonLat } from '$lib/flatmap/geometry';
-import { buildFatLineFromThin, writeFatTrailVertices } from '$lib/scene/objects/trail/geometry';
+import {
+	buildFatLineFromThin,
+	writeFatTrailVertices,
+	writeLineDistances
+} from '$lib/scene/objects/trail/geometry';
 import { bodyCentre, rotateByQuaternion, surfaceDirection } from './anchor';
+import { parseDash, screenLengths } from './screen';
 import { meanDirection, slerpDirection } from './geometry';
 import { makeAreaMaterial } from './material';
 import type { ShapeStyle } from './style';
@@ -52,6 +57,9 @@ export interface SurfaceShapeOptions extends ShapeStyle {
 export interface SurfacePolylineOptions extends SurfaceShapeOptions {
 	/** Join the last place back to the first. */
 	closed?: boolean;
+	/** A dash and a gap in screen pixels, written as the flat map takes them:
+	 *  `"4 3"`. Solid when left out. */
+	dash?: string;
 }
 
 export interface SurfacePolygonOptions extends SurfaceShapeOptions {
@@ -109,6 +117,7 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 	private readonly color: string;
 	private readonly widthPx: number;
 	private readonly opacity: number;
+	private readonly dash: [number, number] | null;
 	private readonly fillColor: string | null;
 	private readonly fillOpacity: number;
 	/** Unit directions of the outline in the body's own frame, before its
@@ -118,6 +127,7 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 	private line: Mesh<BufferGeometry, ShaderMaterial> | null = null;
 	private scratch = new Float32Array(0);
 	private alphas = new Float32Array(0);
+	private lengths = new Float32Array(0);
 	/** Directions of the fill's vertices, in the same frame: the middle first,
 	 *  then one row of the outline's length per step out to it. */
 	private fanDirs = new Float64Array(0);
@@ -136,6 +146,7 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 		this.color = options.color ?? '#ffffff';
 		this.widthPx = options.widthPx ?? 2;
 		this.opacity = options.opacity ?? 1;
+		this.dash = parseDash(options.dash);
 		this.fillColor = options.fill ?? null;
 		this.fillOpacity = options.fillOpacity ?? 0.25;
 		this.object.matrixAutoUpdate = false;
@@ -174,7 +185,7 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 		this.removeSelf = null;
 	}
 
-	update({ jd, basis, camera, ctx }: ExtensionFrame): void {
+	update({ jd, basis, camera, viewportPx, ctx }: ExtensionFrame): void {
 		const body = this.wanted && this.count >= 2 ? ctx.getBody(this.body) : undefined;
 		const centre = body && bodyCentre(body, ctx, jd);
 		if (this.line) this.line.visible = !!centre;
@@ -194,6 +205,10 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 		if (this.line) {
 			this.place(this.dirs, this.count, q, scale, origin, this.scratch);
 			writeFatTrailVertices(this.line.geometry, this.scratch, this.alphas, this.alphas, this.count);
+			if (this.dash) {
+				screenLengths(this.scratch, this.count, camera, viewportPx, this.lengths);
+				writeLineDistances(this.line.geometry, this.lengths, this.count);
+			}
 			this.line.material.uniforms.uCenterOffset.value.copy(camera.position).negate();
 		}
 		if (this.fill) {
@@ -233,6 +248,7 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 		if (this.count < 2 || this.widthPx <= 0) return;
 		this.scratch = new Float32Array(this.count * 3);
 		this.alphas = new Float32Array(this.count).fill(this.opacity);
+		this.lengths = new Float32Array(this.count);
 		const line = buildFatLineFromThin(
 			this.count,
 			this.scratch,
@@ -243,7 +259,8 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 			this.widthPx,
 			// The host asked for this colour; do not shade it down the way the
 			// scene's own trails are.
-			1
+			1,
+			this.dash ?? undefined
 		);
 		// The line's shader places vertices relative to the camera, so three's
 		// own frustum test would judge it against a bounding sphere that means
