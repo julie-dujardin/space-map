@@ -180,6 +180,10 @@ export interface PositionedBody {
 	 * `updatePositions`.
 	 */
 	positionUnknown?: boolean;
+	/** The date `position` and `positionUnknown` were last settled for. The
+	 *  frame loop skips some bodies on some frames, so a reader that needs a
+	 *  body at a date compares against this. */
+	placedJd?: number;
 }
 
 /** A synthetic surface-feature focus target — see {@link FeatureAnchor}. */

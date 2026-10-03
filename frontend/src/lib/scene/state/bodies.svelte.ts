@@ -71,9 +71,16 @@ export class BodyIndex {
 	 *  wouldn't otherwise retrigger. */
 	orientationVersion = $state(0);
 
-	/** Bodies and barycentres whose metadata is on its way: until it lands,
-	 *  a body of theirs with no `orientation` may yet be given one. */
-	readonly orientationPending = new Set<string>();
+	/** Bodies whose record has been read for a spin: one of these with no
+	 *  `orientation` has none to be given. */
+	readonly orientationRead = new Set<string>();
+
+	/** Probes a host anchor or measure read, by when it last did: the frame
+	 *  loop places these on every frame, hidden or not, while they are read. */
+	readonly hostRead = new Map<string, number>();
+	/** Bumped when a probe joins `hostRead`, so a frame loop the clock has not
+	 *  moved places it. */
+	hostReadVersion = 0;
 
 	/** Parent → children index (object ids only), for O(1) system-membership checks. */
 	private readonly childrenByParent = new Map<string, Set<string>>();

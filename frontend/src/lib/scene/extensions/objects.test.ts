@@ -12,7 +12,8 @@ import type { PositionedBody } from '$lib/types/objects';
 function fakeCtx(position: [number, number, number]): ContextManager {
 	const body = { data: { id: 'test', radiusKm: 1000 }, position } as unknown as PositionedBody;
 	return {
-		getBody: (id: string) => (id === 'test' ? body : undefined)
+		getBody: (id: string) => (id === 'test' ? body : undefined),
+		bodies: { bodiesById: new Map([['test', body]]) }
 	} as unknown as ContextManager;
 }
 

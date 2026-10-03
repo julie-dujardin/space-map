@@ -148,6 +148,7 @@ export async function loadBodyTexture(
 	// Texture/orientation/radii live in `detail.global`; the localized bundle
 	// only carries the display name.
 	const detail = await fetchObjectDetail(bo.body.data.id, false);
+	ctx?.bodies.orientationRead.add(bo.body.data.id);
 	if (!detail.global) return;
 
 	// Runs before the map-texture early-return so bodies without a surface

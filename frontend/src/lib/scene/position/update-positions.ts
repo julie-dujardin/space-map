@@ -38,6 +38,7 @@ import {
 } from '$lib/scene/out-of-range-notice';
 import { refreshTrail, type TrailView } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
+import { HOST_READ_MS } from '$lib/scene/minor-body-position';
 import { setSpacecraftGlyph } from '$lib/scene/label/factory';
 import { setLabelAnnotation } from '$lib/scene/label/annotations';
 import { host } from '$lib/host';
@@ -204,6 +205,24 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	// here — it depends on focus.focusTruePos, which can't be updated until
 	// the focused body's own position is known below.
 	const computed = new Set<string>();
+	// What a probe is placed against can sit later in the update order (promoted
+	// small bodies run after `bodiesById`) or be a moon the loop below skips:
+	// without this the probe anchors to an earlier position — a v·Δt offset
+	// (~0.4 km/frame at Bennu) that reads as altitude error plus flicker.
+	const placeFirst = (id: string) => {
+		if (computed.has(id)) return;
+		const body = ctx.bodies.bodiesById.get(id) ?? bodyObjects.get(id)?.body;
+		if (body) computePosition(body);
+	};
+	// A probe a host stopped reading goes back to the hidden stride.
+	const now = performance.now();
+	const hostReads = (id: string) => {
+		const at = ctx.bodies.hostRead.get(id);
+		if (at === undefined) return false;
+		if (now - at < HOST_READ_MS) return true;
+		ctx.bodies.hostRead.delete(id);
+		return false;
+	};
 	const computePosition = (body: PositionedBody) => {
 		if (computed.has(body.data.id)) return;
 		computed.add(body.data.id);
@@ -215,6 +234,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			bo &&
 			frame !== undefined &&
 			d.id !== focusedId &&
+			!hostReads(d.id) &&
 			!bo.group.visible &&
 			!bo.trail?.visible &&
 			(d.orbitalSource === OrbitalSource.SPICE_PROBE || !isMajorBody(d.objectType))
@@ -228,6 +248,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		const hide = (notForNotice = false) => {
 			if (bo) bo.outOfRange = true;
 			body.positionUnknown = true;
+			body.placedJd = jd;
 			if (!notForNotice && d.id === focusedId) oorState.focusedOutOfRange = true;
 		};
 		// No orbit in the catalogue at all: never placed, and never a reason for
@@ -359,6 +380,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			if (probeLanded && isLandedAt(located.probe, jd)) {
 				// Captured before `renderLandedProbe` re-parents the craft.
 				const flyingFrameId = d.parentId;
+				placeFirst(`naif-${probeLanded.bodyNaifId}`);
 				const landedRender = renderLandedProbe(
 					d,
 					located.probe,
@@ -374,6 +396,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				}
 				diagnostics.clear('probe-unavailable', d.id);
 				body.positionUnknown = false;
+				body.placedJd = jd;
 				// A craft that lands on a body other than the one its flying fits
 				// were against — Huygens fitted on Saturn, standing on Titan —
 				// leaves a buffer full of offsets from the wrong origin. Drawn
@@ -514,15 +537,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				);
 			}
 			if (probeParentChanged) d.parentId = probeParentKey;
-			// The fit center can sit later in the update order (promoted small
-			// bodies run after `bodiesById`): evaluate it now, or the probe anchors
-			// to its previous-frame position — a v·Δt offset (~0.4 km/frame at
-			// Bennu) that reads as altitude error plus frame-time flicker.
-			if (!computed.has(probeParentKey)) {
-				const parentBody =
-					ctx.bodies.bodiesById.get(probeParentKey) ?? bodyObjects.get(probeParentKey)?.body;
-				if (parentBody) computePosition(parentBody);
-			}
+			placeFirst(probeParentKey);
 			// The fit center must be placed first: without it the probe would land
 			// at the scene origin, which reads as a jump to the barycentre.
 			const probeParentPos = positionMap.get(probeParentKey);
@@ -636,6 +651,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		}
 		if (bo) bo.outOfRange = false;
 		body.positionUnknown = false;
+		body.placedJd = jd;
 		body.position[0] = x;
 		body.position[1] = y;
 		body.position[2] = z;

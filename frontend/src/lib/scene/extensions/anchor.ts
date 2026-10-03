@@ -12,8 +12,8 @@ import type { Quaternion } from 'three';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { kmToScene } from '$lib/math/units';
 import { eclipticToScene } from '$lib/math/travel/state';
-import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
-import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
+import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
+import { placeForRead } from '$lib/scene/minor-body-position';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
@@ -76,30 +76,21 @@ export function rotateByQuaternion(
 	out[at + 2] = z + q.w * tz + (q.x * ty - q.y * tx);
 }
 
-/** Where `body`'s centre is at `jd`, in scene units. The frame loop leaves a
- *  moon outside the focused system where it last placed it, which can be a
- *  different date: that one is placed from its orbit. */
-export function bodyCentre(body: PositionedBody, ctx: ContextManager, jd: number): Vec3 {
-	const d = body.data;
-	if (d.objectType !== ObjectType.MOON || d.parentId === ctx.visibility.focusedSystemId) {
-		return body.position;
-	}
-	const parent = ctx.getBody(d.parentId);
-	const offset = ctx.chebStore?.has(d.id)
-		? ctx.chebStore.positionScene(d.id, jd)
-		: orbitalElementsToPositionJD(d, jd);
-	if (!parent || !offset) return body.position;
-	const from = bodyCentre(parent, ctx, jd);
-	return [from[0] + offset[0], from[1] + offset[1], from[2] + offset[2]];
+/** Where `body`'s centre is at `jd`, in scene units, or null while it is
+ *  nowhere. */
+export function bodyCentre(body: PositionedBody, ctx: ContextManager, jd: number): Vec3 | null {
+	return placeForRead(body, jd, ctx) ? body.position : null;
 }
 
 /** World position of `anchor` in scene units, or null while its body is not
  *  loaded — which is normal: an embed can mark a place the reader has not
- *  travelled to yet — or while a moving offset says nothing at this date. */
+ *  travelled to yet — or while the body or a moving offset is nowhere at this
+ *  date. */
 export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): Vec3 | null {
 	const body = ctx.getBody(anchor.body);
-	if (!body) return null;
-	const [cx, cy, cz] = bodyCentre(body, ctx, jd);
+	const centre = body && bodyCentre(body, ctx, jd);
+	if (!centre) return null;
+	const [cx, cy, cz] = centre;
 
 	if (isSurface(anchor)) {
 		const distance = kmToScene(effectiveRadiusKm(body.data) + (anchor.altitudeKm ?? 0));
@@ -131,8 +122,8 @@ export function anchorNormal(
 	jd: number
 ): Vec3 | null {
 	const body = ctx.getBody(anchor.body);
-	if (!body) return null;
-	const centre = bodyCentre(body, ctx, jd);
+	const centre = body && bodyCentre(body, ctx, jd);
+	if (!centre) return null;
 	const dx = world[0] - centre[0];
 	const dy = world[1] - centre[1];
 	const dz = world[2] - centre[2];

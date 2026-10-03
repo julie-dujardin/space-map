@@ -19,7 +19,8 @@ function fakeCtx(position: [number, number, number]): ContextManager {
 		position
 	} as unknown as PositionedBody;
 	return {
-		getBody: (id: string) => (id === 'test' ? body : undefined)
+		getBody: (id: string) => (id === 'test' ? body : undefined),
+		bodies: { bodiesById: new Map([['test', body]]) }
 	} as unknown as ContextManager;
 }
 

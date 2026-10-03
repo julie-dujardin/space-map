@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AU_SCALE } from '$lib/math/units';
-import { anchorDistanceKm, anchorOffsetKm, directionToLonLat, subsolarPoint } from './measure';
-import { resolveAnchor, surfaceDirection } from './anchor';
+import { anchorDistanceKm, anchorOffsetKm, subsolarPoint } from './measure';
+import { resolveAnchor } from './anchor';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { PositionedBody } from '$lib/types/objects';
 
@@ -18,13 +18,17 @@ const EARTH_SPIN = {
 	w2: 0
 };
 
+/** Bodies the frame loop placed for {@link JD}, their spin records read. */
 function fakeCtx(bodies: Record<string, Partial<PositionedBody>>): ContextManager {
 	const full = Object.fromEntries(
-		Object.entries(bodies).map(([id, body]) => [id, { data: { id, radiusKm: 1000 }, ...body }])
+		Object.entries(bodies).map(([id, body]) => [
+			id,
+			{ data: { id, radiusKm: 1000 }, placedJd: JD, ...body }
+		])
 	);
 	return {
 		getBody: (id: string) => full[id],
-		bodies: { orientationPending: new Set<string>() }
+		bodies: { orientationRead: new Set(Object.keys(bodies)) }
 	} as unknown as ContextManager;
 }
 
@@ -53,20 +57,13 @@ describe('anchorDistanceKm', () => {
 		const ctx = fakeCtx({ a: { position: [0, 0, 0] } });
 		expect(anchorDistanceKm({ body: 'a' }, { body: 'gone' }, ctx, JD)).toBeNull();
 	});
-});
 
-describe('directionToLonLat', () => {
-	it('undoes the direction a surface anchor is placed along', () => {
-		for (const [lat, lon] of [
-			[0, 0],
-			[37, 122],
-			[-64, -170],
-			[89, 10]
-		]) {
-			const at = directionToLonLat(...surfaceDirection(lat, lon));
-			expect(at.lat).toBeCloseTo(lat, 9);
-			expect(at.lon).toBeCloseTo(lon, 9);
-		}
+	it('is null while one end is a stand-in position', () => {
+		const ctx = fakeCtx({
+			a: { position: [1, 0, 0] },
+			b: { position: [0, 0, 0], positionUnknown: true }
+		});
+		expect(anchorDistanceKm({ body: 'a' }, { body: 'b' }, ctx, JD)).toBeNull();
 	});
 });
 
@@ -105,12 +102,20 @@ describe('subsolarPoint', () => {
 		expect(cosine).toBeCloseTo(1, 9);
 	});
 
-	it('is null while the spin of the body is still being fetched', () => {
+	it('is null until the spin of the body has been read', () => {
 		const ctx = fakeCtx({ 'naif-10': { position: [0, 0, 0] }, rock: { position: [1, 0, 0] } });
-		ctx.bodies.orientationPending.add('rock');
+		ctx.bodies.orientationRead.delete('rock');
 		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
-		ctx.bodies.orientationPending.delete('rock');
+		ctx.bodies.orientationRead.add('rock');
 		expect(subsolarPoint('rock', ctx, JD)).not.toBeNull();
+	});
+
+	it('is null for a body at a stand-in position', () => {
+		const ctx = fakeCtx({
+			'naif-10': { position: [1, 0, 0] },
+			rock: { position: [0, 0, 0], positionUnknown: true }
+		});
+		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
 	});
 
 	it('is null for the Sun itself, and for a body not loaded', () => {

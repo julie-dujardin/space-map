@@ -25,7 +25,7 @@ import { kmToScene } from '$lib/math/units';
 import { effectiveRadiusKm } from '$lib/types/objects';
 import { densify, type Interpolation, type LonLat } from '$lib/flatmap/geometry';
 import { buildFatLineFromThin, writeFatTrailVertices } from '$lib/scene/objects/trail/geometry';
-import { rotateByQuaternion, surfaceDirection } from './anchor';
+import { bodyCentre, rotateByQuaternion, surfaceDirection } from './anchor';
 import { meanDirection, slerpDirection } from './geometry';
 import { makeAreaMaterial } from './material';
 import type { ShapeStyle } from './style';
@@ -176,18 +176,19 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 
 	update({ jd, basis, camera, ctx }: ExtensionFrame): void {
 		const body = this.wanted && this.count >= 2 ? ctx.getBody(this.body) : undefined;
-		if (this.line) this.line.visible = body !== undefined;
-		if (this.fill) this.fill.visible = body !== undefined;
-		if (!body) return;
+		const centre = body && bodyCentre(body, ctx, jd);
+		if (this.line) this.line.visible = !!centre;
+		if (this.fill) this.fill.visible = !!centre;
+		if (!body || !centre) return;
 		const radiusKm = effectiveRadiusKm(body.data);
 		const scale = kmToScene(radiusKm + (this.altitudeKm ?? radiusKm * DEFAULT_LIFT));
 		// Without orientation metadata the body has no measured spin, so the
 		// shape is put on the unrotated sphere rather than nowhere.
 		const q = body.orientation ? bodyQuaternion(body.orientation, jd, body.nutPrec) : null;
 		const origin: [number, number, number] = [
-			body.position[0] - basis[0],
-			body.position[1] - basis[1],
-			body.position[2] - basis[2]
+			centre[0] - basis[0],
+			centre[1] - basis[1],
+			centre[2] - basis[2]
 		];
 
 		if (this.line) {

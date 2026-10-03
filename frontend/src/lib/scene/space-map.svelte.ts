@@ -423,25 +423,34 @@ export class SpaceMap {
 		return [...(this.ctx.bodies.getChildren(id) ?? [])];
 	}
 
+	/** The date the measures answer for: the one the bodies are placed at,
+	 *  which the clock runs ahead of while no frame is drawn. */
+	private get placedJd(): number {
+		const jd = this.renderer?.placedJd;
+		return jd === undefined || Number.isNaN(jd) ? this.clock.jd : jd;
+	}
+
 	/** Kilometres between two places, as the last frame drew them: a body's
 	 *  centre, a point on its surface, anything an anchor names. Null while
-	 *  either end is on a body this map has not loaded. */
+	 *  either end is on a body this map has not loaded, or one that is nowhere
+	 *  at that date. */
 	distanceKm(from: Anchor, to: Anchor): number | null {
-		return anchorDistanceKm(from, to, this.ctx, this.clock.jd);
+		return anchorDistanceKm(from, to, this.ctx, this.placedJd);
 	}
 
 	/** The same measure with its direction kept: from one place to the other,
 	 *  in kilometres on ecliptic J2000 axes. What a held camera's `up` is made
 	 *  from, when up is a way along a body's surface. */
 	offsetKm(from: Anchor, to: Anchor): OffsetKm | null {
-		return anchorOffsetKm(from, to, this.ctx, this.clock.jd);
+		return anchorOffsetKm(from, to, this.ctx, this.placedJd);
 	}
 
 	/** Where on `id` the Sun is overhead, as the last frame drew it: the middle
 	 *  of the lit half, in the frame a surface anchor is placed in. Null for a
-	 *  body not loaded, and while the map is still fetching how it spins. */
+	 *  body not loaded, and until the map has read how it spins, which it does
+	 *  once the camera is on the body or its system. */
 	getSubsolarPoint(id: string): LonLat | null {
-		return subsolarPoint(id, this.ctx, this.clock.jd);
+		return subsolarPoint(id, this.ctx, this.placedJd);
 	}
 
 	/** @internal Fetch the scene's data for the clock's date. Resolves when all of it is

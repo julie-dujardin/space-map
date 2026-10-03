@@ -305,6 +305,11 @@ export class SceneRenderer {
 	};
 	/** JD at which per-frame body positions were last computed. */
 	private lastUpdatedJd = NaN;
+	/** The date the bodies are placed for, which trails the clock while no
+	 *  frame is drawn. NaN before the first one. */
+	get placedJd(): number {
+		return this.lastUpdatedJd;
+	}
 	/** Focused system at the last position update. A change re-runs updatePositions
 	 *  even when jd is frozen: out-of-system moons are skipped and left stale, so
 	 *  entering their system while paused must recompute them or they render detached. */
@@ -312,6 +317,7 @@ export class SceneRenderer {
 	/** Focused landed probe's / surface feature's seat config at the last position update. */
 	private lastSeatConfigKey: string | null = null;
 	private lastProbeVersion = 0;
+	private lastHostReadVersion = 0;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
@@ -1865,10 +1871,6 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
-		// A load already under way owns the entry: this one returns at once.
-		const pending = this.ctx.bodies.orientationPending;
-		const owns = !pending.has(body.data.id);
-		pending.add(body.data.id);
 		void loadBodyTexture(
 			bo,
 			this.textureLoader,
@@ -1876,20 +1878,18 @@ export class SceneRenderer {
 			this.scene,
 			this.renderer.capabilities.maxTextureSize,
 			this.ctx
-		)
-			.finally(() => owns && pending.delete(body.data.id))
-			.then(() => {
-				// Standalone focus (asteroids, comets) doesn't go through
-				// systemData.onLoaded, so the URL-load snap initially runs with an
-				// identity mesh quat and any queued pendingInitialView never gets
-				// replayed. Force-apply orientation now and trigger reapply so the
-				// camera lands on the body-fixed feature once orientation arrives.
-				if (this.focusController.current?.data.id !== body.data.id) return;
-				if (body.orientation && bo.mesh) {
-					applyOrientation(bo.mesh, body.orientation, this.clock.jd, body.nutPrec);
-					this.focusController.reapplyInitialViewIfPending();
-				}
-			});
+		).then(() => {
+			// Standalone focus (asteroids, comets) doesn't go through
+			// systemData.onLoaded, so the URL-load snap initially runs with an
+			// identity mesh quat and any queued pendingInitialView never gets
+			// replayed. Force-apply orientation now and trigger reapply so the
+			// camera lands on the body-fixed feature once orientation arrives.
+			if (this.focusController.current?.data.id !== body.data.id) return;
+			if (body.orientation && bo.mesh) {
+				applyOrientation(bo.mesh, body.orientation, this.clock.jd, body.nutPrec);
+				this.focusController.reapplyInitialViewIfPending();
+			}
+		});
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		// On resolve the body's radius may have been true-sized from the model's
 		// scale_meters; refresh closest-approach so zoom-in tracks real size.
@@ -2037,11 +2037,13 @@ export class SceneRenderer {
 		const systemId = this.ctx.visibility.focusedSystemId;
 		const seatKey = this.focusedSeatConfigKey();
 		const probeVersion = this.ctx.probeStore?.version ?? 0;
+		const hostReadVersion = this.ctx.bodies.hostReadVersion;
 		if (
 			this.clock.jd === this.lastUpdatedJd &&
 			systemId === this.lastUpdatedSystemId &&
 			seatKey === this.lastSeatConfigKey &&
-			probeVersion === this.lastProbeVersion
+			probeVersion === this.lastProbeVersion &&
+			hostReadVersion === this.lastHostReadVersion
 		) {
 			this.clock.seeked = false;
 			return;
@@ -2052,6 +2054,7 @@ export class SceneRenderer {
 		this.lastUpdatedSystemId = systemId;
 		this.lastSeatConfigKey = seatKey;
 		this.lastProbeVersion = probeVersion;
+		this.lastHostReadVersion = hostReadVersion;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
 		this.focusController.promotion.onSimTimeChanged();
 		const result = updatePositions({

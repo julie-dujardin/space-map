@@ -6,7 +6,7 @@
  */
 
 import { dataBase, versionedUrl } from '$lib/fetch/data-base';
-import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { pickTexture, type TextureDistribution } from '$lib/host';
 import { cloudFrameForJd } from '$lib/scene/objects/surface/clouds';
 import { textureFrameForJd } from '$lib/scene/objects/body/textures';
@@ -84,15 +84,10 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 
 /** What a body's own record says of its map: the same blocks a system file
  *  carries, less the tiers. */
-export interface StandaloneRecord {
-	map_texture_available?: boolean;
-	texture?: Still;
-	alternates?: (Still & { id: string; tiers: string[] })[];
-	radii?: { a: number; b: number; c: number };
-}
-
-/** A map as a record describes it: frames counted, as a system file has them. */
-type Still = Omit<BundleMeta, 'id' | 'tiers' | 'frames'> & { frames?: number };
+export type StandaloneRecord = Pick<
+	GlobalObjectData,
+	'map_texture_available' | 'texture' | 'alternates' | 'radii'
+>;
 
 /** The tiers a bundle was written at, coarsest first. Nothing published says,
  *  so each file is asked after. */

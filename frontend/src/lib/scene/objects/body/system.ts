@@ -89,6 +89,7 @@ export async function loadSystemData(
 		if (surface) ctx?.credits.registerImagery('surface', bodyId, barycenterId, surface);
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
+		ctx?.bodies.orientationRead.add(bodyId);
 
 		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {
