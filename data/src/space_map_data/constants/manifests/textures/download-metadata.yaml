@@ -197,7 +197,7 @@ bodies:
   attribution: "Global mosaic map of Itokawa by Philip J. Stooke from Hayabusa AMICA imagery (JAXA). Stooke Small Bodies Maps V3.0, NASA PDS Small Bodies Node (PSI)."
   file: new_itokawa_mosaic.jpg
   type: cylindrical
-  # TODO: Stooke mosaic; longitude convention undocumented. Needs visual verification against IAU nomenclature.
+  lon_at_left_deg: 0  # Stooke Itokawa: 0deg at left edge, verified against the Gaskell shape model
 - body: spkid-20101955
   body_name: Bennu
   source: https://astrogeology.usgs.gov/search/map/bennu_osiris_rex_ocams_global_pan_mosaic_5cm#open
