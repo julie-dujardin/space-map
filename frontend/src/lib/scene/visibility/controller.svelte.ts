@@ -281,17 +281,21 @@ export class VisibilityController {
 	/** {@link ratioVisibility}, except that a pinned body is never let drop out:
 	 *  neither its distance nor a hidden layer takes its halo and orbit away. */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
-		const vis = this.ratioVisibility(body, camDistThreeJS);
-		if (!this.pinned.has(body.data.id) || vis === VISIBILITY.CLOSE) return vis;
-		return VISIBILITY.FULL;
+		const pinned = this.pinned.has(body.data.id);
+		const vis = this.ratioVisibility(body, camDistThreeJS, pinned);
+		return pinned && vis !== VISIBILITY.CLOSE ? VISIBILITY.FULL : vis;
 	}
 
 	/** Distance-ratio based visibility for non-moon, non-star bodies. Probes and
 	 *  other planet-orbiters get moon-style ratio gating (against distance-to-
 	 *  parent, or planet-relative `a`); sun-orbiting bodies use the solar-orbit
 	 *  semi-major axis ratio. */
-	private ratioVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
-		if (this.getLayers().hidesBody(body.data.objectType, body.data.parentId)) {
+	private ratioVisibility(
+		body: PositionedBody,
+		camDistThreeJS: number,
+		pinned: boolean
+	): VISIBILITY {
+		if (!pinned && this.getLayers().hidesBody(body.data.objectType, body.data.parentId)) {
 			return VISIBILITY.HIDE;
 		}
 		// Check SPICE_PROBE before isSystemBody — Mars-zone probes carry parentId=naif-499,

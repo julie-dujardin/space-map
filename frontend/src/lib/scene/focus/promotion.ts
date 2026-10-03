@@ -1,5 +1,5 @@
 import type { CanvasTexture, Mesh, Scene, WebGLRenderer } from 'three';
-import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isAsteroid, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { EARTH_ID, MINOR_PROMOTED_IDS } from '$lib/constants';
@@ -74,6 +74,10 @@ export class PromotionRegistry {
 	/** Earth sats built by the sparse-cloud emphasis. Kept disjoint from
 	 *  `userPromoted` so `clearUserPromoted` leaves them alone. */
 	private readonly autoPromoted = new Set<string>();
+	/** What a host wants kept in sight, loaded yet or not. */
+	private pinned: ReadonlySet<string> = new Set();
+	/** Bodies built for a pin, and taken down when the host lets go of it. */
+	private readonly pinPromoted = new Set<string>();
 	/** Active `/g/<slug>` membership filter, or null for the whole Earth-sat zone. */
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
@@ -88,6 +92,7 @@ export class PromotionRegistry {
 	constructor(private readonly deps: PromotionDeps) {
 		deps.ctx.bodies.onBodiesAdded(() => {
 			this.onBodiesAdded();
+			this.buildPinned();
 			this.autoPromoteAsteroidMoons();
 			this.reevaluateEarthSatMode();
 			if (this.smallBodyZone !== null) this.refreshSmallBodyEmphasis();
@@ -403,6 +408,40 @@ export class PromotionRegistry {
 		}
 		if (toRemove.length === 0) return;
 		this.tearDownBodies(toRemove, this.autoPromoted);
+	}
+
+	/** Build the pinned bodies that are dots of a point cloud, now and as they
+	 *  load, and take down the ones built for a pin the host has let go of. */
+	setPinned(ids: readonly string[]): void {
+		this.pinned = new Set(ids);
+		const focusedId = this.deps.getFocusedId();
+		const dropped = [...this.pinPromoted].filter((id) => !this.pinned.has(id));
+		// The one being looked at stays, as the reader's own from here on.
+		if (focusedId && dropped.includes(focusedId)) {
+			this.pinPromoted.delete(focusedId);
+			this.userPromoted.add(focusedId);
+			this.emitUserPromotedCount();
+		}
+		this.tearDownBodies(
+			dropped.filter((id) => id !== focusedId),
+			this.pinPromoted
+		);
+		this.buildPinned();
+	}
+
+	private buildPinned(): void {
+		let built = false;
+		for (const id of this.pinned) {
+			const body = this.deps.ctx.getBody(id);
+			// A moon outside the focused system is not placed, so not drawn.
+			if (!body || isSurfaceFeature(body) || body.data.objectType === ObjectType.MOON) continue;
+			if (!this.buildBodyInstance(body)) continue;
+			built = true;
+			if (this.userPromoted.delete(id)) this.pinPromoted.add(id);
+		}
+		if (!built) return;
+		this.emitUserPromotedCount();
+		this.finalizeBuilds();
 	}
 
 	/** Tear down every user-promoted body except the focused one, reverting them to point-cloud dots. */
