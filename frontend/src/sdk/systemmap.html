@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>spacemap SDK — system map demo</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				min-height: 100%;
+				background: #05070e;
+				color: #e6e6e6;
+				font:
+					14px/1.45 system-ui,
+					sans-serif;
+			}
+			main {
+				box-sizing: border-box;
+				max-width: 960px;
+				margin: 0 auto;
+				padding: 16px;
+			}
+			h1 {
+				margin: 0 0 4px;
+				font-size: 16px;
+			}
+			h1 small {
+				font-weight: normal;
+				color: #9aa;
+			}
+			#bar {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 8px;
+				margin: 10px 0;
+			}
+			select,
+			button {
+				font: inherit;
+				color: inherit;
+				background: #171a24;
+				border: 1px solid #3a3e4d;
+				border-radius: 6px;
+				padding: 4px 8px;
+			}
+			button {
+				cursor: pointer;
+			}
+			button:disabled {
+				opacity: 0.4;
+				cursor: default;
+			}
+			#where {
+				color: #9fb0c9;
+			}
+			#error {
+				color: #f88;
+			}
+			#picked {
+				font:
+					12px/1.5 ui-monospace,
+					monospace;
+				color: #9fb0c9;
+			}
+			#targets {
+				margin-top: 10px;
+				color: #8b93a7;
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>spacemap system map <small>demo</small></h1>
+			<p id="error" hidden></p>
+			<div id="bar">
+				<button id="back" type="button" disabled>← Back</button>
+				<span id="where"></span>
+				<select id="scope" aria-label="Bodies">
+					<option value="all">every body</option>
+					<option value="mapped">bodies with a map or a shape</option>
+				</select>
+			</div>
+			<!-- ?w=<px> narrows the box, for seeing the map at the size of a corner panel. -->
+			<div id="map"></div>
+			<p id="picked">click a body, a system or a belt</p>
+			<p id="targets"></p>
+		</main>
+
+		<script type="module">
+			import { createSystemMap } from './spacemap.js';
+
+			// ?data=<export root> ?lang=<bcp47> ?grouping=bodies|systems ?zones=belts|inner-outer
+			// ?scope=all|mapped ?view=solar-system|system:<id>|zone:<inner|outer> ?w=<px>
+			const params = new URLSearchParams(location.search);
+			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
+
+			const $ = (id) => document.getElementById(id);
+			const fail = (e) => {
+				$('error').textContent = String(e?.message ?? e);
+				$('error').hidden = false;
+			};
+
+			// A page offering part of the catalogue names it: here, the bodies with a
+			// surface map or a measured shape, Earth and the Sun left out.
+			const MAPPED = [
+				...[199, 299, 301, 401, 402, 499, 501, 502, 503, 504, 505, 514, 599].map(
+					(n) => `naif-${n}`
+				),
+				...[601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616].map(
+					(n) => `naif-${n}`
+				),
+				...[617, 618, 635, 699, 701, 702, 703, 704, 705, 715, 799, 801, 807, 808, 899].map(
+					(n) => `naif-${n}`
+				),
+				...[901, 902, 903, 999, 2000001].map((n) => `naif-${n}`),
+				...[20000004, 20000433, 20101955, 20162173, 20025143, 20000021, 20000243, 20000951].map(
+					(n) => `spkid-${n}`
+				),
+				...[20000253, 20000016, 20004179, 20099942, 20065803, 120065803, 20486958].map(
+					(n) => `spkid-${n}`
+				),
+				...[1000012, 1000036, 1000041, 1000093, 1000107].map((n) => `spkid-${n}`)
+			];
+
+			const parseView = (text) => {
+				const [kind, rest] = (text ?? 'solar-system').split(':');
+				if (kind === 'system') return { kind, id: rest };
+				if (kind === 'zone') return { kind, zone: rest };
+				return { kind: 'solar-system' };
+			};
+
+			const width = Number(params.get('w'));
+			if (width) $('map').style.width = `${width}px`;
+			$('scope').value = params.get('scope') ?? 'all';
+
+			const options = {
+				view: parseView(params.get('view')),
+				grouping: params.get('grouping') ?? 'bodies',
+				zones: params.get('zones') ?? 'belts'
+			};
+			if ($('scope').value === 'mapped') options.bodies = MAPPED;
+			if (dataUrl) options.dataUrl = dataUrl;
+			if (params.has('lang')) options.locale = params.get('lang');
+			options.events = { error: (e) => fail(e) };
+
+			let map;
+			try {
+				map = await createSystemMap({ container: $('map'), ...options });
+			} catch (e) {
+				fail(e);
+				throw e;
+			}
+			// The map, for poking at from the console.
+			globalThis.map = map;
+
+			// The map reports a pick and stays where it is; walking down into a
+			// system or a zone, and back up, is this page's own doing.
+			const trail = [];
+			const describe = (view) =>
+				view.kind === 'solar-system'
+					? 'Solar System'
+					: view.kind === 'system'
+						? `system of ${view.id}`
+						: `${view.zone} zone`;
+			const show = () => {
+				$('where').textContent = describe(map.getView());
+				$('back').disabled = trail.length === 0;
+				$('targets').textContent = `${map.getTargets().length} targets: ${map
+					.getTargets()
+					.map((t) => t.name)
+					.join(', ')}`;
+			};
+			show();
+			map.on('viewchange', show);
+
+			map.on('select', async (target) => {
+				$('picked').textContent = JSON.stringify(target);
+				if (target.kind === 'body') return;
+				const from = map.getView();
+				try {
+					await map.setView(
+						target.kind === 'system'
+							? { kind: 'system', id: target.id }
+							: { kind: 'zone', zone: target.zone }
+					);
+					trail.push(from);
+					$('error').hidden = true;
+				} catch (e) {
+					fail(e);
+				}
+				show();
+			});
+			$('back').onclick = async () => {
+				const to = trail.pop();
+				if (to) await map.setView(to);
+				show();
+			};
+			$('scope').onchange = async () => {
+				await map.setBodies($('scope').value === 'mapped' ? MAPPED : null);
+				show();
+			};
+		</script>
+	</body>
+</html>

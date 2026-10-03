@@ -205,7 +205,27 @@ export interface CoreMessages {
 	// (undocumented)
 	layer_surface: () => string;
 	// (undocumented)
+	planetary_system_axis_unit: () => string;
+	// (undocumented)
+	planetary_system_primary: () => string;
+	// (undocumented)
+	planetary_system_retrograde: () => string;
+	// (undocumented)
 	scene_canvas_label: () => string;
+	// (undocumented)
+	system_map_axis_au: () => string;
+	// (undocumented)
+	system_map_moons: (inputs: { count: number }) => string;
+	// (undocumented)
+	system_map_solar_system: () => string;
+	// (undocumented)
+	system_map_zone_inner: () => string;
+	// (undocumented)
+	system_map_zone_outer: () => string;
+	// (undocumented)
+	tab_rings: () => string;
+	// (undocumented)
+	unit_symbol_astronomical_unit: () => string;
 }
 
 // @public
@@ -239,6 +259,9 @@ export function createPanorama(options: PanoramaCreateOptions): Promise<Panorama
 
 // @public
 export function createProjection(id: ProjectionId, options?: ProjectionOptions): Projection;
+
+// @public
+export function createSystemMap(options: SystemMapCreateOptions): Promise<SystemMap>;
 
 // @public
 export function dateToJD(date: Date): number;
@@ -1456,6 +1479,100 @@ export interface SurfaceShapeOptions extends ShapeStyle {
 	points: readonly LonLat[];
 	stepDeg?: number;
 }
+
+// @public
+export class SystemMap {
+	constructor(options?: SystemMapOptions);
+	getTargets(): SystemMapTarget[];
+	// (undocumented)
+	getView(): SystemMapView;
+	// @internal
+	load(): Promise<void>;
+	// @internal
+	mount(container: HTMLElement): void;
+	// (undocumented)
+	off<K extends keyof SystemMapEvents>(event: K, listener: SystemMapEvents[K]): void;
+	on<K extends keyof SystemMapEvents>(event: K, listener: SystemMapEvents[K]): () => void;
+	once<K extends keyof SystemMapEvents>(event: K, listener: SystemMapEvents[K]): () => void;
+	remove(): void;
+	setBodies(ids: readonly string[] | null): Promise<void>;
+	setView(view: SystemMapView): Promise<void>;
+}
+
+// @public (undocumented)
+export interface SystemMapCreateOptions extends CommonOptions, SystemMapOptions {
+	events?: {
+		[K in keyof SystemMapEvents]?: SystemMapEvents[K];
+	};
+}
+
+// @public (undocumented)
+export interface SystemMapEvents {
+	error: (error: Error) => void;
+	select: (target: SystemMapTarget) => void;
+	// (undocumented)
+	viewchange: (view: SystemMapView) => void;
+}
+
+// @public (undocumented)
+export interface SystemMapOptions {
+	bodies?: readonly string[];
+	grouping?: 'bodies' | 'systems';
+	names?: Record<string, string>;
+	places?: readonly SystemMapPlace[];
+	view?: SystemMapView;
+	zones?: 'belts' | 'inner-outer';
+}
+
+// @public
+export interface SystemMapPlace {
+	aAu?: number;
+	color?: string;
+	// (undocumented)
+	id: string;
+	moon?: boolean;
+	name?: string;
+	parent?: string;
+	// (undocumented)
+	radiusKm?: number;
+	tiltDeg?: number;
+}
+
+// @public
+export type SystemMapTarget =
+	| {
+			kind: 'body';
+			id: string;
+			name: string;
+	  }
+	| {
+			kind: 'system';
+			id: string;
+			name: string;
+	  }
+	| {
+			kind: 'zone';
+			zone: SystemMapZone;
+			name: string;
+	  };
+
+// @public (undocumented)
+export type SystemMapView =
+	| {
+			kind: 'solar-system';
+	  }
+	/** One planetary system, named by its primary: `naif-699`, `naif-999`. */
+	| {
+			kind: 'system';
+			id: string;
+	  }
+	| {
+			kind: 'zone';
+			zone: SystemMapZone;
+	  };
+
+// @public
+export type SystemMapZone = 'inner' | 'outer';
 
 // @public
 export function tle(line1: string, line2: string): InertialAnchor;

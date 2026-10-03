@@ -26,6 +26,16 @@ export interface CoreMessages {
 	cooperative_wheel: () => string;
 	cooperative_wheel_mac: () => string;
 	cooperative_touch: () => string;
+	planetary_system_primary: () => string;
+	planetary_system_retrograde: () => string;
+	planetary_system_axis_unit: () => string;
+	tab_rings: () => string;
+	system_map_solar_system: () => string;
+	system_map_moons: (inputs: { count: number }) => string;
+	system_map_zone_inner: () => string;
+	system_map_zone_outer: () => string;
+	unit_symbol_astronomical_unit: () => string;
+	system_map_axis_au: () => string;
 }
 
 export interface Host {
@@ -79,7 +89,17 @@ const DEFAULT_HOST: Host = {
 		layer_nomenclature: () => 'Named features',
 		cooperative_wheel: () => 'Use ctrl + scroll to zoom the map',
 		cooperative_wheel_mac: () => 'Use ⌘ + scroll to zoom the map',
-		cooperative_touch: () => 'Use two fingers to move the map'
+		cooperative_touch: () => 'Use two fingers to move the map',
+		planetary_system_primary: () => 'primary',
+		planetary_system_retrograde: () => 'retrograde',
+		planetary_system_axis_unit: () => 'primary radii · log',
+		tab_rings: () => 'Rings',
+		system_map_solar_system: () => 'Solar System',
+		system_map_moons: ({ count }) => (count === 1 ? '1 moon' : `${count} moons`),
+		system_map_zone_inner: () => 'Inner asteroids & comets',
+		system_map_zone_outer: () => 'Outer asteroids & comets',
+		unit_symbol_astronomical_unit: () => 'AU',
+		system_map_axis_au: () => 'AU · log'
 	},
 	// A bare embed has no pages to link to, so labels stay put.
 	bodyHref: () => '',

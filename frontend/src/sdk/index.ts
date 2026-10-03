@@ -1,14 +1,16 @@
 /**
  * The map for pages outside spacemap.co, as one script.
  *
- * There are three of them. {@link createMap} puts the Solar System in a
+ * There are four of them. {@link createMap} puts the Solar System in a
  * container — bodies and spacecraft in three dimensions, over time.
  * {@link createFlatMap} puts one body's surface there instead, drawn flat in a
  * projection of the host's choosing, with layers it can switch and drawings of
  * its own on top. {@link createPanorama} stands the reader on that surface,
- * inside a rover's panorama, with arrows along its traverse. The classes, the
- * host seam and the clock's date helpers are exported for hosts that drive
- * them directly.
+ * inside a rover's panorama, with arrows along its traverse.
+ * {@link createSystemMap} is the diagram to pick a body from: the Solar
+ * System, a planetary system or a zone of small bodies along a distance axis.
+ * The classes, the host seam and the clock's date helpers are exported for
+ * hosts that drive them directly.
  *
  * Distances are kilometres and angles are degrees throughout.
  */
@@ -25,6 +27,7 @@ import {
 	type PanoramaViewEvents,
 	type PanoramaViewOptions
 } from '$lib/panorama/view';
+import { SystemMap, type SystemMapEvents, type SystemMapOptions } from '$lib/systemmap/system-map';
 import { AttributionControl } from './controls/attribution.svelte';
 import { FlatAttributionControl } from './controls/flat-attribution';
 import { PanoramaAttributionControl } from './controls/panorama-attribution';
@@ -81,6 +84,12 @@ export interface PanoramaCreateOptions extends CommonOptions, PanoramaViewOption
 	/** Listeners attached before the first load, so a slow or failed load is
 	 *  observable while it runs. Later ones go through {@link PanoramaView.on}. */
 	events?: { [K in keyof PanoramaViewEvents]?: PanoramaViewEvents[K] };
+}
+
+export interface SystemMapCreateOptions extends CommonOptions, SystemMapOptions {
+	/** Listeners attached before the first load, so a failed one is observable
+	 *  while it runs. Later ones go through {@link SystemMap.on}. */
+	events?: { [K in keyof SystemMapEvents]?: SystemMapEvents[K] };
 }
 
 /** Mount a map and resolve once it is worth looking at: the opening body
@@ -192,6 +201,33 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
 	return view;
 }
 
+/** Mount a system map and resolve once its first view is drawn. It is as wide
+ *  as its container and three times as wide as it is tall. A click reports
+ *  what was picked and goes nowhere: following it is {@link SystemMap.setView},
+ *  which the page calls or does not.
+ *
+ *  Rejects when the data does not load, or the opening view is a `system`
+ *  named for a body with no moons. */
+export async function createSystemMap(options: SystemMapCreateOptions): Promise<SystemMap> {
+	const { container, dataUrl, imagesUrl, locale, messages, includeNonCommercial, events, ...rest } =
+		options;
+	const element = resolveContainer(container);
+	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
+
+	const map = new SystemMap(rest);
+	map.mount(element);
+	for (const [event, listener] of Object.entries(events ?? {})) {
+		map.on(event as keyof SystemMapEvents, listener as SystemMapEvents[keyof SystemMapEvents]);
+	}
+	try {
+		await map.load();
+	} catch (error) {
+		map.remove();
+		throw error;
+	}
+	return map;
+}
+
 function resolveContainer(container: HTMLElement | string): HTMLElement {
 	if (typeof container !== 'string') return container;
 	const element = document.querySelector(container);
@@ -229,7 +265,8 @@ export {
 	jdToDate,
 	PanoramaAttributionControl,
 	PanoramaView,
-	SpaceMap
+	SpaceMap,
+	SystemMap
 };
 
 // -- the Solar System map -----------------------------------------------------
@@ -344,6 +381,15 @@ export {
 	neighboursOf,
 	panoramaAt
 } from '$lib/panorama/traverse';
+
+// -- the system map -----------------------------------------------------------
+export type { SystemMapEvents, SystemMapOptions } from '$lib/systemmap/system-map';
+export type {
+	SystemMapPlace,
+	SystemMapTarget,
+	SystemMapView,
+	SystemMapZone
+} from '$lib/systemmap/views';
 
 // -- the host seam ------------------------------------------------------------
 export type { CoreMessages, Host, HostOverrides } from '$lib/host';

@@ -1,7 +1,8 @@
 # spacemap
 
 The map of the Solar System from [spacemap.co](https://spacemap.co), on your
-website! There are flat maps too, and 360 panoramas from the surface.
+website! There are flat maps too, 360 panoramas from the surface, and a
+diagram of the whole system to pick a body from.
 
 Distances are kilometres and angles are degrees throughout. Objects are named
 by their export id — `naif-399` for Earth, `spkid-20000004` for Vesta,
@@ -537,6 +538,113 @@ view.setLimits({ heading: [300, 60], fov: [60, 60] }); // ±60° of north, no zo
 view.setLimits({}); // free again
 ```
 
+## The system map
+
+The Solar System as a diagram to pick from: the Sun at the left edge, every
+body along a log distance axis at its true relative size, moons stacked over
+their planet, the belts as bands. It is what spacemap.co opens its Solar System
+and planetary system pages with.
+
+```js
+import { createSystemMap } from 'spacemap';
+
+const picker = await createSystemMap({ container: '#picker' });
+picker.on('select', (target) => console.log(target.kind, target.name));
+```
+
+It is as wide as its container and three times as wide as it is tall, and it
+reads at any width from a corner panel up. It draws from the export's own
+figures and no imagery, so it is the one map with no credit line.
+
+There are three views:
+
+```js
+await picker.setView({ kind: 'solar-system' });
+await picker.setView({ kind: 'system', id: 'naif-699' }); // Saturn and its moons
+await picker.setView({ kind: 'zone', zone: 'inner' }); // small bodies inside Jupiter's orbit
+await picker.setView({ kind: 'zone', zone: 'outer' }); // and from it outward, the trojans included
+```
+
+A `system` is named by its primary and measured in the primary's radii. A body
+with no moons has no system map, and asking for one rejects, leaving the map as
+it was.
+
+**A click reports what was picked and goes nowhere.** Walking down into a
+system and back up is the page's own doing, which is what lets it keep a back
+button, a breadcrumb or a URL of its own:
+
+```js
+picker.on('select', (target) => {
+	if (target.kind === 'system') picker.setView({ kind: 'system', id: target.id });
+	else if (target.kind === 'zone') picker.setView({ kind: 'zone', zone: target.zone });
+	else choose(target.id); // a body
+});
+```
+
+`getView()` says which view is up and `getTargets()` lists everything a click
+on it can pick, for a page that wants a list beside the picture. `viewchange`
+fires once a new view is drawn, and `error` when one could not be.
+
+Two options decide what a click on the Solar System means:
+
+```js
+createSystemMap({ container: '#picker', grouping: 'systems', zones: 'inner-outer' });
+```
+
+- `grouping: 'systems'` makes a primary and the moons stacked on it one target,
+  a `system` — one click for "somewhere round Saturn". A primary with no moons
+  drawn stays a `body`. The default, `'bodies'`, leaves the dot and its stack a
+  target each.
+- `zones: 'inner-outer'` turns the two belts into the doors of the two zones of
+  small bodies, labelled as such. The default, `'belts'`, leaves them the
+  scenery they are.
+
+A map that offers part of the catalogue names it, and everything else goes
+undrawn in every view:
+
+```js
+const picker = await createSystemMap({
+	container: '#picker',
+	bodies: ['naif-499', 'naif-401', 'naif-602', 'spkid-20101955'],
+	names: { 'naif-602': 'Encelade' }
+});
+await picker.setBodies(null); // everything again, once redrawn
+```
+
+A primary left out is still drawn while a moon of it is in, as the thing the
+moon is found by; it is then not a target itself. `names` goes over the
+export's own names, and is worth filling in for a small moon: the export names
+a system's twenty most notable in a system view and the rest by id.
+
+A zone shows the dwarf planets and large asteroids the Solar System view has,
+and every other small body `bodies` names — a comet, a near-Earth asteroid, a
+moon of one, which rides over its parent. The map has to learn where each of
+those is, and reading that from the export costs a few hundred kilobytes a
+body. A page that already knows says so instead, and nothing is read:
+
+```js
+createSystemMap({
+	container: '#picker',
+	view: { kind: 'zone', zone: 'inner' },
+	bodies: ['spkid-20101955', 'spkid-20065803', 'spkid-120065803'],
+	places: [
+		{ id: 'spkid-20101955', name: 'Bennu', aAu: 1.126, tiltDeg: 6.03, radiusKm: 0.245 },
+		{ id: 'spkid-20065803', name: 'Didymos', aAu: 1.643, tiltDeg: 3.41, radiusKm: 0.39 },
+		{ id: 'spkid-120065803', name: 'Dimorphos', moon: true, parent: 'spkid-20065803' }
+	]
+});
+```
+
+The colours are custom properties, set on the container or anything above it:
+`--sm-system-map-background`, `--sm-system-map-ink` for the axis and the muted
+band, `--sm-system-map-sky` and `--sm-system-map-amber` for the other two bands
+with a `-label` of each, `--sm-system-map-tip-background` and
+`--sm-system-map-tip-ink` for the hover readout, and `--sm-system-map-radius`
+for the corners. The words it writes itself are in `messages`, under
+`system_map_*`, `planetary_system_*`, `tab_rings` and
+`unit_symbol_astronomical_unit`. Kilometres are written by the browser, in the
+`locale`'s own form.
+
 ## Restricting the map
 
 Both maps take restrictions on what the reader may do. Each gesture is a
@@ -644,7 +752,7 @@ this document describes: `flyTo` and `jumpTo`, `getLayers` and
 
 ## Where the data comes from
 
-Both maps read the published export. `dataUrl` and `imagesUrl` point them
+Every map reads the published export. `dataUrl` and `imagesUrl` point them
 somewhere else — your own mirror, or a local copy while you develop. They are
 page-wide: the last map created sets them, and data already fetched keeps the
 origin it came from.
