@@ -71,6 +71,10 @@ export class BodyIndex {
 	 *  wouldn't otherwise retrigger. */
 	orientationVersion = $state(0);
 
+	/** Bodies and barycentres whose metadata is on its way: until it lands,
+	 *  a body of theirs with no `orientation` may yet be given one. */
+	readonly orientationPending = new Set<string>();
+
 	/** Parent → children index (object ids only), for O(1) system-membership checks. */
 	private readonly childrenByParent = new Map<string, Set<string>>();
 

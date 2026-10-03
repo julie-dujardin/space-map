@@ -22,7 +22,10 @@ function fakeCtx(bodies: Record<string, Partial<PositionedBody>>): ContextManage
 	const full = Object.fromEntries(
 		Object.entries(bodies).map(([id, body]) => [id, { data: { id, radiusKm: 1000 }, ...body }])
 	);
-	return { getBody: (id: string) => full[id] } as unknown as ContextManager;
+	return {
+		getBody: (id: string) => full[id],
+		bodies: { orientationPending: new Set<string>() }
+	} as unknown as ContextManager;
 }
 
 describe('anchorDistanceKm', () => {
@@ -100,6 +103,14 @@ describe('subsolarPoint', () => {
 			-zenith.reduce((sum, v, i) => sum + v * rock[i], 0) /
 			(Math.hypot(...zenith) * Math.hypot(...rock));
 		expect(cosine).toBeCloseTo(1, 9);
+	});
+
+	it('is null while the spin of the body is still being fetched', () => {
+		const ctx = fakeCtx({ 'naif-10': { position: [0, 0, 0] }, rock: { position: [1, 0, 0] } });
+		ctx.bodies.orientationPending.add('rock');
+		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
+		ctx.bodies.orientationPending.delete('rock');
+		expect(subsolarPoint('rock', ctx, JD)).not.toBeNull();
 	});
 
 	it('is null for the Sun itself, and for a body not loaded', () => {

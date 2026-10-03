@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three';
 import { AU_SCALE } from '$lib/math/units';
-import { resolveAnchor, rotateByQuaternion, surfaceDirection } from './anchor';
+import { bodyCentre, resolveAnchor, rotateByQuaternion, surfaceDirection } from './anchor';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import type { PositionedBody } from '$lib/types/objects';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import type { Vec3 } from '$lib/scene/animation/math';
 
 const AU_KM = 149597870.7;
 
@@ -105,5 +106,25 @@ describe('rotateByQuaternion', () => {
 		const out = new Float64Array(6);
 		rotateByQuaternion(new Quaternion(), 1, 2, 3, out, 3);
 		expect([...out]).toEqual([0, 0, 0, 1, 2, 3]);
+	});
+});
+
+describe('bodyCentre', () => {
+	it('places a moon outside the focused system from its orbit, not where it was left', () => {
+		const planet = { data: { id: 'planet' }, position: [5, 0, 0] };
+		const moon = {
+			data: { id: 'moon', objectType: ObjectType.MOON, parentId: 'planet' },
+			position: [1, 1, 1]
+		};
+		const ctx = {
+			getBody: (id: string) => ({ planet, moon })[id],
+			visibility: { focusedSystemId: null as string | null },
+			chebStore: { has: () => true, positionScene: () => [0, 2, 0] }
+		};
+		const at = (): Vec3 =>
+			bodyCentre(moon as unknown as PositionedBody, ctx as unknown as ContextManager, 2460000);
+		expect(at()).toEqual([5, 2, 0]);
+		ctx.visibility.focusedSystemId = 'planet';
+		expect(at()).toEqual([1, 1, 1]);
 	});
 });

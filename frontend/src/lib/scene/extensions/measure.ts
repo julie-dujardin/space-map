@@ -8,7 +8,13 @@ import { SUN_ID } from '$lib/constants';
 import { bodyQuaternion } from '$lib/math/orientation';
 import type { LonLat } from '$lib/flatmap/geometry';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { resolveAnchor, rotateByQuaternion, type Anchor, type OffsetKm } from './anchor';
+import {
+	bodyCentre,
+	resolveAnchor,
+	rotateByQuaternion,
+	type Anchor,
+	type OffsetKm
+} from './anchor';
 import { sceneToEcliptic } from './camera';
 
 const DEG = 180 / Math.PI;
@@ -54,16 +60,20 @@ export function directionToLonLat(x: number, y: number, z: number): LonLat {
  * Where on `id` the Sun is at the zenith, in the frame a surface anchor is
  * placed in: an anchor there is on the lit side. A body with no measured spin
  * has no turning frame, and answers in the one its anchors fall back to. Null
- * for a body that is not loaded.
+ * for a body that is not loaded, and while its spin is still being fetched:
+ * the answer would be in a frame about to turn.
  */
 export function subsolarPoint(id: string, ctx: ContextManager, jd: number): LonLat | null {
 	const body = ctx.getBody(id);
 	const sun = ctx.getBody(SUN_ID);
 	if (!body || !sun || body === sun) return null;
+	const pending = ctx.bodies.orientationPending;
+	if (!body.orientation && (pending.has(id) || pending.has(body.data.parentId))) return null;
+	const centre = bodyCentre(body, ctx, jd);
 	const toSun: [number, number, number] = [
-		sun.position[0] - body.position[0],
-		sun.position[1] - body.position[1],
-		sun.position[2] - body.position[2]
+		sun.position[0] - centre[0],
+		sun.position[1] - centre[1],
+		sun.position[2] - centre[2]
 	];
 	if (body.orientation) {
 		const turned = bodyQuaternion(body.orientation, jd, body.nutPrec).invert();

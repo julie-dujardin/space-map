@@ -12,7 +12,8 @@ import type { Quaternion } from 'three';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { kmToScene } from '$lib/math/units';
 import { eclipticToScene } from '$lib/math/travel/state';
-import { effectiveRadiusKm } from '$lib/types/objects';
+import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
+import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
@@ -75,13 +76,30 @@ export function rotateByQuaternion(
 	out[at + 2] = z + q.w * tz + (q.x * ty - q.y * tx);
 }
 
+/** Where `body`'s centre is at `jd`, in scene units. The frame loop leaves a
+ *  moon outside the focused system where it last placed it, which can be a
+ *  different date: that one is placed from its orbit. */
+export function bodyCentre(body: PositionedBody, ctx: ContextManager, jd: number): Vec3 {
+	const d = body.data;
+	if (d.objectType !== ObjectType.MOON || d.parentId === ctx.visibility.focusedSystemId) {
+		return body.position;
+	}
+	const parent = ctx.getBody(d.parentId);
+	const offset = ctx.chebStore?.has(d.id)
+		? ctx.chebStore.positionScene(d.id, jd)
+		: orbitalElementsToPositionJD(d, jd);
+	if (!parent || !offset) return body.position;
+	const from = bodyCentre(parent, ctx, jd);
+	return [from[0] + offset[0], from[1] + offset[1], from[2] + offset[2]];
+}
+
 /** World position of `anchor` in scene units, or null while its body is not
  *  loaded — which is normal: an embed can mark a place the reader has not
  *  travelled to yet — or while a moving offset says nothing at this date. */
 export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): Vec3 | null {
 	const body = ctx.getBody(anchor.body);
 	if (!body) return null;
-	const [cx, cy, cz] = body.position;
+	const [cx, cy, cz] = bodyCentre(body, ctx, jd);
 
 	if (isSurface(anchor)) {
 		const distance = kmToScene(effectiveRadiusKm(body.data) + (anchor.altitudeKm ?? 0));
@@ -106,12 +124,18 @@ export function resolveAnchor(anchor: Anchor, ctx: ContextManager, jd: number): 
 
 /** Unit vector from the body's centre toward the anchor, for the occlusion
  *  test; null when the anchor sits at the centre. */
-export function anchorNormal(anchor: Anchor, world: Vec3, ctx: ContextManager): Vec3 | null {
+export function anchorNormal(
+	anchor: Anchor,
+	world: Vec3,
+	ctx: ContextManager,
+	jd: number
+): Vec3 | null {
 	const body = ctx.getBody(anchor.body);
 	if (!body) return null;
-	const dx = world[0] - body.position[0];
-	const dy = world[1] - body.position[1];
-	const dz = world[2] - body.position[2];
+	const centre = bodyCentre(body, ctx, jd);
+	const dx = world[0] - centre[0];
+	const dy = world[1] - centre[1];
+	const dz = world[2] - centre[2];
 	const length = Math.hypot(dx, dy, dz);
 	if (length === 0) return null;
 	return [dx / length, dy / length, dz / length];

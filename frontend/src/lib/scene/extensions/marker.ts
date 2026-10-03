@@ -93,8 +93,8 @@ export class MarkerExtension implements Extension, Marker {
 	}
 
 	/** The place is on the near side when the camera is above its horizon. */
-	private facesCamera(world: Vec3, { camera, ctx }: ExtensionFrame): boolean {
-		const normal = anchorNormal(this.anchor, world, ctx);
+	private facesCamera(world: Vec3, { camera, ctx, jd }: ExtensionFrame): boolean {
+		const normal = anchorNormal(this.anchor, world, ctx, jd);
 		if (!normal) return true;
 		const { position } = this.label;
 		const dx = camera.position.x - position.x;

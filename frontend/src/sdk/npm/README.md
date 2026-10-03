@@ -160,7 +160,9 @@ map.getSubsolarPoint('naif-499'); // { lon, lat }
 
 Any of them is null while a body it names is not loaded. The sub-solar point is
 given in the frame a surface anchor is placed in, so an anchor there is on the
-lit side even on a body whose spin is not measured.
+lit side even on a body whose spin is not measured. It is null as well while
+the map is still fetching a body's spin, which it starts on once the camera is
+on the body.
 
 ### Drawing on it
 

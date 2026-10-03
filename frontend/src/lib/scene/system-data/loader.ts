@@ -76,6 +76,10 @@ export class SystemDataLoader {
 	}
 
 	private load(baryId: string): void {
+		// A load already under way owns the entry: this one may finish first.
+		const pending = this.ctx.bodies.orientationPending;
+		const owns = !pending.has(baryId);
+		pending.add(baryId);
 		loadSystemData(
 			baryId,
 			this.bodyObjects,
@@ -84,10 +88,12 @@ export class SystemDataLoader {
 			this.clock.jd,
 			this.renderer.capabilities.maxTextureSize,
 			this.ctx
-		).then(() => {
-			this.onLoaded();
-			this.ctx.bodies.orientationVersion++;
-		});
+		)
+			.finally(() => owns && pending.delete(baryId))
+			.then(() => {
+				this.onLoaded();
+				this.ctx.bodies.orientationVersion++;
+			});
 	}
 
 	/** Release the GPU textures of every queued system. Gate on focus-fly settled. */

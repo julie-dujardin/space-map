@@ -1865,6 +1865,10 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
+		// A load already under way owns the entry: this one returns at once.
+		const pending = this.ctx.bodies.orientationPending;
+		const owns = !pending.has(body.data.id);
+		pending.add(body.data.id);
 		void loadBodyTexture(
 			bo,
 			this.textureLoader,
@@ -1872,18 +1876,20 @@ export class SceneRenderer {
 			this.scene,
 			this.renderer.capabilities.maxTextureSize,
 			this.ctx
-		).then(() => {
-			// Standalone focus (asteroids, comets) doesn't go through
-			// systemData.onLoaded, so the URL-load snap initially runs with an
-			// identity mesh quat and any queued pendingInitialView never gets
-			// replayed. Force-apply orientation now and trigger reapply so the
-			// camera lands on the body-fixed feature once orientation arrives.
-			if (this.focusController.current?.data.id !== body.data.id) return;
-			if (body.orientation && bo.mesh) {
-				applyOrientation(bo.mesh, body.orientation, this.clock.jd, body.nutPrec);
-				this.focusController.reapplyInitialViewIfPending();
-			}
-		});
+		)
+			.finally(() => owns && pending.delete(body.data.id))
+			.then(() => {
+				// Standalone focus (asteroids, comets) doesn't go through
+				// systemData.onLoaded, so the URL-load snap initially runs with an
+				// identity mesh quat and any queued pendingInitialView never gets
+				// replayed. Force-apply orientation now and trigger reapply so the
+				// camera lands on the body-fixed feature once orientation arrives.
+				if (this.focusController.current?.data.id !== body.data.id) return;
+				if (body.orientation && bo.mesh) {
+					applyOrientation(bo.mesh, body.orientation, this.clock.jd, body.nutPrec);
+					this.focusController.reapplyInitialViewIfPending();
+				}
+			});
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		// On resolve the body's radius may have been true-sized from the model's
 		// scale_meters; refresh closest-approach so zoom-in tracks real size.
