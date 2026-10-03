@@ -173,9 +173,9 @@
 	let dataArcValue = $derived(
 		observationArcDays != null ? formatDuration(observationArcDays) : null
 	);
-	// Chebyshev-tracked bodies get osculating Kepler elements computed regularly to
-	// display trails — that epoch isn't a real observational one, so showing it is misleading.
-	let isChebyshev = $derived(body != null && ctx?.chebStore?.has(body.data.id) === true);
+	// A body built from the ephemeris carries osculating elements re-derived for
+	// its trail: their epoch is no observational one, so showing it is misleading.
+	let isChebyshev = $derived(body?.data.orbitalSource === OrbitalSource.SPICE);
 	let epochJd = $derived(
 		isChebyshev ? null : (orbitElements?.epoch ?? global?.orbit?.epoch_jd ?? null)
 	);
@@ -239,7 +239,7 @@
 				}
 			}
 		}
-		if (body && ctx?.chebStore?.has(body.data.id)) return m.method_chebyshev();
+		if (body && ctx?.chebStore?.positionScene(body.data.id, jd)) return m.method_chebyshev();
 		if (body?.data.satrec) return m.method_sgp4();
 		if ((orbitElements?.omDot ?? 0) !== 0 || (orbitElements?.wDot ?? 0) !== 0)
 			return m.method_kepler_j2();

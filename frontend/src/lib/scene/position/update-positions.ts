@@ -223,6 +223,21 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		ctx.bodies.hostRead.delete(id);
 		return false;
 	};
+	// Offset from `parentPos`, like the ephemeris gives. The row can hang off
+	// another parent than the ephemeris does (the Sun, not the barycentre).
+	const elementRowOffset = (body: PositionedBody, parentPos: Vec3): Vec3 | null => {
+		const row = ctx.bodies.elementRow(body);
+		const rowParentPos = row && positionMap.get(row.parentId);
+		if (!rowParentPos) return null;
+		const offset =
+			row.q != null ? parabolicToPositionJD(row, jd) : orbitalElementsToPositionJD(row, jd);
+		if (!offset) return null;
+		return [
+			rowParentPos[0] - parentPos[0] + offset[0],
+			rowParentPos[1] - parentPos[1] + offset[1],
+			rowParentPos[2] - parentPos[2] + offset[2]
+		];
+	};
 	const computePosition = (body: PositionedBody) => {
 		if (computed.has(body.data.id)) return;
 		computed.add(body.data.id);
@@ -320,9 +335,11 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		let y: number;
 		let z: number;
 		if (isChebTracked) {
-			// Chebyshev: polynomials only. No Kepler fallback — drifting into
-			// extrapolated positions would break eclipse geometry.
-			const chebOffset = ctx.chebStore!.positionScene(d.id, jd);
+			// A probe target's ephemeris spans its mission only: its element row
+			// carries it the rest of the time. A body with no row stays hidden,
+			// an extrapolated planet or moon would break eclipse geometry.
+			const chebOffset =
+				ctx.chebStore!.positionScene(d.id, jd) ?? elementRowOffset(body, parentPos);
 			if (!chebOffset) {
 				hide(true);
 				// Only count as OOR-for-notice when jd is outside zone coverage;

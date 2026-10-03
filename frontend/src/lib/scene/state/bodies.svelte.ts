@@ -1,4 +1,5 @@
-import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isAsteroid, type BodyData, type PositionedBody } from '$lib/types/objects';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import { MinorBucket } from '$lib/fetch/position/minor-columns';
 import type { LabelMap } from '$lib/fetch/position/labels';
 import { EARTH_ID, SSB_ID, SUN_ID } from '$lib/constants';
@@ -186,6 +187,16 @@ export class BodyIndex {
 			if (byId.has(id)) return zone;
 		}
 		return undefined;
+	}
+
+	/** Catalogue elements of `body`: its own data, or the belt's row when the
+	 *  body was built from the ephemeris. Undefined for a body the ephemeris
+	 *  alone carries (planets, moons, perturbers). */
+	elementRow(body: PositionedBody): BodyData | undefined {
+		const d = body.data;
+		if (d.orbitalSource !== OrbitalSource.SPICE) return d;
+		const zone = this.findAsteroidZone(d.id);
+		return zone === undefined ? undefined : this.asteroidBodiesByZone.get(zone)?.get(d.id)?.data;
 	}
 
 	/** Max moon-orbit semi-major axis (AU) under `parentId`, or undefined. */
