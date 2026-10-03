@@ -52,9 +52,9 @@ export function fetchPanoramaIndex(
 	return index;
 }
 
-/** Every panorama taken on a body, mission by mission in time order. The view
- *  reads the same list when it opens; a page that decides which panorama to
- *  open reads it first. Empty when the body has none. */
+/** Every panorama taken on a body, mission by mission in time order: the list
+ *  the view reads when it opens, before it drops the stops it cannot show
+ *  ({@link isViewable}). Empty when the body has none. */
 export async function fetchPanoramas(bodyId: string): Promise<PanoramaEntry[]> {
 	const detail = await fetchObjectDetail(bodyId, false);
 	return detail.global?.panoramas ?? [];

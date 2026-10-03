@@ -657,6 +657,9 @@ export type Interpolation =
 	| 'geodesic';
 
 // @public
+export function isViewable(entry: PanoramaEntry): boolean;
+
+// @public
 export function jdToDate(jd: number): Date;
 
 // @public

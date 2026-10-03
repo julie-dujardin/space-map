@@ -497,12 +497,27 @@ view exists — what a page picking one for the reader needs, since `createPanor
 opens the body's first unless told which:
 
 ```js
-import { fetchPanoramaIndex, fetchPanoramas } from 'spacemap';
+import { fetchPanoramaIndex, fetchPanoramas, isViewable } from 'spacemap';
 
 await fetchPanoramaIndex(); // every body with coverage, and the missions on it
-const entries = await fetchPanoramas('naif-499'); // every panorama on Mars
+const entries = (await fetchPanoramas('naif-499')).filter(isViewable); // every one that opens
 const pick = entries[(Math.random() * entries.length) | 0];
 const view = await createPanorama({ container: '#panorama', body: 'naif-499', at: pick.id });
+```
+
+The list is every stop on every traverse, and not every stop has a sphere this
+page may open: some are places the archive withheld the imagery of, and some
+are under a licence the page has not accepted (`includeNonCommercial`).
+`isViewable` says which open; the view skips the rest itself.
+
+Both read the page's own settings, which a `create…` call applies. A page that
+reads the list before it has made anything applies them itself first, or the
+list comes from the published export and under the default licence:
+
+```js
+import { configureHost } from 'spacemap';
+
+configureHost({ textures: 'non-commercial' }); // what `includeNonCommercial` sets
 ```
 
 ```js
