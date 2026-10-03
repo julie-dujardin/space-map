@@ -1,10 +1,15 @@
 /* The map's own DOM — a canvas under the label layer — as SpaceMap builds it. */
 .sm-map {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* No specificity: the container is the host's, and a size or a position it
+   sets by a class of its own has to win. */
+:where(.sm-map) {
 	position: relative;
 	width: 100%;
 	height: 100%;
-	user-select: none;
-	-webkit-user-select: none;
 }
 
 .sm-map__canvas {
