@@ -782,6 +782,7 @@
 	"type_asteroid": "אסטרואיד",
 	"type_barycenter": "מרכז כובד",
 	"planetary_system_axis_unit": "רדיוסי הגוף הראשי · לוג",
+	"system_map_axis_au": "AU · לוג",
 	"planetary_system_primary": "גוף ראשי",
 	"planetary_system_retrograde": "רטרוגרדי",
 	"planetary_system_title": "מערכת {primary}",

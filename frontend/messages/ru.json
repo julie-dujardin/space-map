@@ -753,6 +753,7 @@
 	"type_asteroid": "астероид",
 	"type_barycenter": "барицентр",
 	"planetary_system_axis_unit": "радиусы главного тела · лог",
+	"system_map_axis_au": "а.е. · лог",
 	"planetary_system_primary": "главное тело",
 	"planetary_system_retrograde": "обратное",
 	"planetary_system_title": "Система {primary}",

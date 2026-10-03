@@ -1,0 +1,104 @@
+/* Every colour is a custom property with a dark-page default, so a host themes
+   the map by setting them on it or on any ancestor. */
+.sm-system-map {
+	position: relative;
+	overflow: hidden;
+	width: 100%;
+	border-radius: var(--sm-system-map-radius, 6px);
+	background: var(--sm-system-map-background, rgb(255 255 255 / 5%));
+	color: var(--sm-system-map-ink, rgb(255 255 255 / 62%));
+}
+
+.sm-system-map--background {
+	height: 100%;
+	border-radius: 0;
+	background: none;
+	pointer-events: none;
+}
+
+.sm-system-map__svg {
+	display: block;
+	width: 100%;
+	height: auto;
+	/* A vertical drag is the page's to scroll with. */
+	touch-action: pan-y;
+}
+
+.sm-system-map--background .sm-system-map__svg {
+	height: 100%;
+}
+
+.sm-system-map__svg--near :is(a, .sm-system-map__button):not([data-near]) {
+	pointer-events: none;
+}
+
+.sm-system-map__button {
+	cursor: pointer;
+}
+
+.sm-system-map__button:focus {
+	outline: none;
+}
+
+.sm-system-map__reference {
+	opacity: 0.6;
+}
+
+.sm-system-map__band--muted {
+	color: var(--sm-system-map-ink, rgb(255 255 255 / 62%));
+}
+
+.sm-system-map__band--sky {
+	color: var(--sm-system-map-sky, oklch(74.6% 0.16 232.661 / 70%));
+}
+
+.sm-system-map__band--amber {
+	color: var(--sm-system-map-amber, oklch(92.4% 0.12 95.746 / 80%));
+}
+
+.sm-system-map__band-label {
+	font-weight: 600;
+}
+
+.sm-system-map__band-label--muted {
+	fill: var(--sm-system-map-ink, rgb(255 255 255 / 62%));
+}
+
+.sm-system-map__band-label--sky {
+	fill: var(--sm-system-map-sky-label, oklch(74.6% 0.16 232.661));
+}
+
+.sm-system-map__band-label--amber {
+	fill: var(--sm-system-map-amber-label, oklch(92.4% 0.12 95.746 / 90%));
+}
+
+.sm-system-map__tip {
+	position: absolute;
+	z-index: 10;
+	width: max-content;
+	padding: 0.25rem 0.5rem;
+	transform: translateX(-50%);
+	border-radius: 0.25rem;
+	background: var(--sm-system-map-tip-background, rgb(10 12 20 / 90%));
+	box-shadow:
+		0 1px 3px 0 rgb(0 0 0 / 10%),
+		0 1px 2px -1px rgb(0 0 0 / 10%);
+	color: var(--sm-system-map-tip-ink, rgb(255 255 255 / 95%));
+	font-size: 0.75rem;
+	line-height: calc(1 / 0.75);
+	white-space: nowrap;
+	pointer-events: none;
+	backdrop-filter: blur(8px);
+}
+
+.sm-system-map__tip[hidden] {
+	display: none;
+}
+
+.sm-system-map__tip-title {
+	font-weight: 500;
+}
+
+.sm-system-map__tip-sub {
+	color: var(--sm-system-map-ink, rgb(255 255 255 / 62%));
+}

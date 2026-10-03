@@ -1,15 +1,24 @@
 /**
- * The model SystemMap draws: a primary framed off the left edge, its bodies on a
+ * The model the system map draws: a primary framed off the left edge, its bodies on a
  * log distance axis at true relative diameters, and annular bands (belts, rings)
  * that link somewhere. The Solar System and every planetary system reduce to
  * this, which is what makes one map readable against another.
  */
+
+/** What a target does when picked. With an `href` it is a real link, so a
+ *  modified click opens it; with `onclick` alone it is a button. */
+export interface MapLink {
+	href?: string;
+	onclick?: (e: MouseEvent) => void;
+}
 
 export interface MapSatellite {
 	id: string;
 	name: string;
 	radiusKm: number;
 	color: string;
+	/** A target of its own, for a stack with no page to stand for it. */
+	link?: MapLink;
 }
 
 export interface MapBody {
@@ -29,9 +38,16 @@ export interface MapBody {
 	satelliteCount?: number;
 	/** The stack links to the body's moons tab; else to its largest moon. */
 	satellitesTab?: boolean;
+	link?: MapLink;
+	/** Where the stack as a whole leads. */
+	satellitesLink?: MapLink;
+	/** Body and stack are one target, led by `link`. */
+	grouped?: boolean;
+	/** A landmark to read the axis by rather than something to pick. */
+	reference?: boolean;
 }
 
-export interface MapBand {
+export interface MapBand extends MapLink {
 	key: string;
 	/** Drawn across the band, so it has to survive a band a few px wide. */
 	label: string;
@@ -42,8 +58,6 @@ export interface MapBand {
 	/** Tooltip second line; the band's own distance span when absent. */
 	sub?: string;
 	tone: 'muted' | 'sky' | 'amber';
-	href?: string;
-	onclick?: (e: MouseEvent) => void;
 }
 
 /** A population too large and too anonymous to draw as bodies: no name, no
@@ -53,8 +67,18 @@ export interface MapCloud {
 	color: string;
 }
 
+/** The words the map writes itself, which its host owns the language of. */
+export interface MapText {
+	primary: string;
+	retrograde: string;
+	moons: (count: number) => string;
+	distance: (km: number) => string;
+	/** The axis label of a view measured from the Sun: the unit and the scale. */
+	axisAu: string;
+}
+
 export interface SystemMapModel {
-	primary: { id: string; name: string; radiusKm: number; color: string };
+	primary: { id: string; name: string; radiusKm: number; color: string; link?: MapLink };
 	bodies: MapBody[];
 	bands: MapBand[];
 	cloud?: MapCloud;
@@ -68,6 +92,7 @@ export interface SystemMapModel {
 	pxPerKm: number;
 	/** Inclination → vertical offset. */
 	pxPerDeg: number;
+	text: MapText;
 	/** Crop for the background variant; the whole map when absent. */
 	backgroundView?: string;
 	/** How the crop meets its box: anchored left and sliced by default; `fit`

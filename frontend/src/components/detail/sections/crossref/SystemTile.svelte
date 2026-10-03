@@ -11,7 +11,7 @@
 	import { getContext } from 'svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import type { PlanetarySystemMapData } from '../../charts/planetary-system.svelte';
+	import type { PlanetarySystemMapData } from '$lib/systemmap/planetary';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {

@@ -18,7 +18,11 @@ import * as m from '$lib/paraglide/messages.js';
 import { resolveBodyColor } from '$lib/body-color';
 import { buildLineup, geometryFromMember } from './lineup';
 import { fetchMoonDiscovery, type MoonDiscoveryFile } from '$lib/fetch/groups/moon-discovery';
-import type { PlanetarySystemsMapEntry } from '$lib/fetch/groups/planetary-systems-map';
+import {
+	type PlanetarySystemMapData,
+	type SystemMoon,
+	type SystemRings
+} from '$lib/systemmap/planetary';
 import type { LineupBody } from './BodyLineup.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import {
@@ -26,38 +30,6 @@ import {
 	type GlobalObjectData,
 	type ObjectDetailData
 } from '$lib/fetch/objects/object-data';
-
-export interface SystemMoon {
-	id: string;
-	name: string;
-	/** Orbit semi-major axis in primary equatorial radii — the map's x axis. */
-	aRp: number;
-	/** Orbit tilt to the *primary's equator* [deg]; > 90° is retrograde about the
-	 *  primary. The exported elements are ecliptic, which would read the primary's
-	 *  own obliquity as inclination and lay the whole regular system off-axis. */
-	tiltDeg: number;
-	radiusKm: number;
-	color: string;
-}
-
-export interface SystemRings {
-	/** Ring span in primary equatorial radii, across every ring bundle. */
-	innerRp: number;
-	outerRp: number;
-}
-
-/** What the system map draws — built from the live scene on a system page,
- *  or from the export's baked maps on the collection page. */
-export interface PlanetarySystemMapData {
-	planetId: string;
-	planetName: string;
-	planetRadiusKm: number;
-	planetColor: string;
-	moons: SystemMoon[];
-	rings: SystemRings | null;
-	/** Moons the catalogue knows about, which is more than the scene loads. */
-	moonCount: number;
-}
 
 export interface PlanetarySystem extends PlanetarySystemMapData {
 	planet: PositionedBody;
@@ -75,29 +47,6 @@ export function systemTitle(id: string, primary: string): string {
 	return EARTH_MOON_IDS.has(id)
 		? m.planetary_system_title_earth_moon()
 		: m.planetary_system_title({ primary });
-}
-
-/** A baked map entry as the system map draws it. */
-export function systemFromMapEntry(
-	entry: PlanetarySystemsMapEntry,
-	name: string
-): PlanetarySystemMapData {
-	return {
-		planetId: entry.primary.id,
-		planetName: name,
-		planetRadiusKm: entry.primary.radius_km,
-		planetColor: BODY_COLORS[entry.primary.id] ?? DEFAULT_BODY_COLOR,
-		moons: entry.moons.map((mn) => ({
-			id: mn.id,
-			name: mn.id,
-			aRp: mn.a_rp,
-			tiltDeg: mn.tilt_deg,
-			radiusKm: mn.radius_km,
-			color: BODY_COLORS[mn.id] ?? mn.color ?? DEFAULT_BODY_COLOR
-		})),
-		rings: entry.rings ? { innerRp: entry.rings.inner_rp, outerRp: entry.rings.outer_rp } : null,
-		moonCount: entry.moon_count
-	};
 }
 
 const DEG2RAD = Math.PI / 180;

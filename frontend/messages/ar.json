@@ -786,6 +786,7 @@
 	"type_asteroid": "كويكب",
 	"type_barycenter": "مركز ثقل",
 	"planetary_system_axis_unit": "أنصاف أقطار الجرم الرئيسي · لوغاريتمي",
+	"system_map_axis_au": "و.ف · لوغاريتمي",
 	"planetary_system_primary": "الجرم الرئيسي",
 	"planetary_system_retrograde": "تراجعي",
 	"planetary_system_title": "نظام {primary}",

@@ -713,6 +713,7 @@
 	"type_asteroid": "小行星",
 	"type_barycenter": "质心",
 	"planetary_system_axis_unit": "主星半径 · 对数",
+	"system_map_axis_au": "AU · 对数",
 	"planetary_system_primary": "主星",
 	"planetary_system_retrograde": "逆行",
 	"planetary_system_title": "{primary}系统",

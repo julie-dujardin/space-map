@@ -8,7 +8,7 @@
 		fetchPlanetarySystemsMap,
 		type PlanetarySystemsMapFile
 	} from '$lib/fetch/groups/planetary-systems-map';
-	import { systemFromMapEntry } from '../../charts/planetary-system.svelte';
+	import { systemFromMapEntry } from '$lib/systemmap/planetary';
 	import SystemTile from './SystemTile.svelte';
 
 	interface Props {

@@ -19,7 +19,7 @@ import {
 	orbitClassShortLabel,
 	type EarthOrbitSample
 } from '$lib/charts/orbit-zones';
-import type { MapBand, MapCloud } from './system-map';
+import type { MapBand, MapCloud } from '$lib/systemmap/model';
 
 /** The system map only draws these bands for Earth. */
 export const EARTH_ID = 'naif-399';

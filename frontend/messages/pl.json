@@ -799,6 +799,7 @@
 	"type_asteroid": "asteroida",
 	"type_barycenter": "barycentrum",
 	"planetary_system_axis_unit": "promienie ciała głównego · log",
+	"system_map_axis_au": "au · log",
 	"planetary_system_primary": "ciało główne",
 	"planetary_system_retrograde": "wsteczna",
 	"planetary_system_title": "Układ {primary}",

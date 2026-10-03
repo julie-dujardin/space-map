@@ -779,6 +779,7 @@
 	"type_asteroid": "asteroide",
 	"type_barycenter": "baricentro",
 	"planetary_system_axis_unit": "radios del primario · log",
+	"system_map_axis_au": "UA · log",
 	"planetary_system_primary": "primario",
 	"planetary_system_retrograde": "retrógrado",
 	"planetary_system_title": "Sistema de {primary}",
