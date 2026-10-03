@@ -235,6 +235,10 @@ an area drawn as a fill alone. The flat map says the same things with the same
 words — its version is `FlatShapeStyle`, named apart because a page can hold
 both maps at once — so a drawing described once can be handed to either.
 
+A line, in space or on a surface, takes `dash` as the flat map's does: `'4 3'`
+is four pixels drawn and three left out, counted on screen like the width, so
+the dashes read the same from any distance.
+
 Two rules fall out of the scene rather than out of taste. Widths are pixels
 because the map spans metres to astronomical units, and a line a kilometre wide
 is a wall from low orbit and nothing at all from the next planet out. And a body
@@ -465,6 +469,22 @@ flat.setLayerVisible('clouds', false);
 flat.isLayerVisible('clouds');
 flat.on('layerschange', (layers) => redraw(layers));
 ```
+
+### Bodies kept in sight
+
+The map decides what to name by how far the camera is: a planet's halo and
+orbit drop out once its whole orbit is a few pixels across, and a name gives way
+to a bigger neighbour's. `setPinnedBodies` takes that decision for the bodies a
+page is about:
+
+```js
+map.setPinnedBodies(['naif-499', 'spkid-20000433']); // Mars and Eros, from anywhere
+map.setPinnedBodies([]); // back to the map's own judgement
+```
+
+A pinned body keeps its halo, name and orbit from however far, and through a
+hidden layer. A moon is the exception: it is only drawn inside the system the
+camera is in, so pin its planet to mark it from outside.
 
 ## The flat map
 

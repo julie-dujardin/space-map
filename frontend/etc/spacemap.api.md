@@ -1129,6 +1129,7 @@ export interface PolylineOptions {
 	anchor: Anchor;
 	closed?: boolean;
 	color?: string;
+	dash?: string;
 	fade?: boolean;
 	opacity?: number;
 	points: readonly OffsetKm[];
@@ -1391,6 +1392,7 @@ export class SpaceMap {
 			radiusKm: number;
 		} | null
 	): void;
+	setPinnedBodies(ids: readonly string[]): this;
 	// @internal (undocumented)
 	setSelectedFeature(featureId: number | null): void;
 	// @internal (undocumented)
@@ -1463,6 +1465,7 @@ export interface SurfacePolygonOptions extends SurfaceShapeOptions {
 // @public (undocumented)
 export interface SurfacePolylineOptions extends SurfaceShapeOptions {
 	closed?: boolean;
+	dash?: string;
 }
 
 // @public
