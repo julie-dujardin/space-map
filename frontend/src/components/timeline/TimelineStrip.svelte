@@ -464,10 +464,18 @@
 							></span>
 						{/if}
 					{/each}
-					<!-- Moments: what happens at a point rather than over one. -->
+					<!-- Moments: what happens at a point rather than over one. The rings
+					     are a layer of their own under every mark: drawn per mark, each
+					     would cut into the one before it wherever marks overlap. -->
 					{#each moments as moment (moment.id)}
 						<span
-							class="bg-muted-foreground ring-background absolute top-1/2 z-[2] size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 {moment.note
+							class="bg-background absolute top-1/2 z-[2] size-2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+							style="inset-inline-start: {moment.at * 100}%"
+						></span>
+					{/each}
+					{#each moments as moment (moment.id)}
+						<span
+							class="bg-muted-foreground absolute top-1/2 z-[2] size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full {moment.note
 								? 'opacity-40'
 								: ''}"
 							style="inset-inline-start: {moment.at * 100}%"
