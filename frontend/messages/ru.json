@@ -1486,6 +1486,7 @@
 	"delta_v_hint_capture": "Торможение на связанную эллиптическую орбиту.",
 	"delta_v_hint_low_orbit": "Круговая орбита на высоте 200 км, ниже у малых тел.",
 	"delta_v_reset_targets": "Вернуть цели по умолчанию",
+	"delta_v_reset": "Сбросить",
 	"delta_v_solar_escape": "Уход из Солнечной системы",
 	"delta_v_add_target": "Добавить цель",
 	"delta_v_no_route": "Нет маршрута до {bodies}.",

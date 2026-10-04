@@ -16,10 +16,13 @@
 		/** Hand the children the full column and let them gutter themselves, for
 		 *  a page carrying something that wants every pixel of the width. */
 		bleed?: boolean;
+		/** A column wider than the site's, for a page that stands a sidebar
+		 *  beside its content. */
+		wide?: boolean;
 		children: Snippet;
 	}
 
-	let { current, title, bleed = false, children }: Props = $props();
+	let { current, title, bleed = false, wide = false, children }: Props = $props();
 </script>
 
 <!-- html/body lock overflow for the 3D map, so the page owns its scroll. The row
@@ -30,7 +33,11 @@
 	<SiteNav {current} class="shrink-0" />
 
 	<ScrollArea class="min-h-0 flex-1">
-		<main class="{SITE_COLUMN} pt-10 pb-[calc(2.5rem+var(--safe-bottom))]">
+		<main
+			class="{wide
+				? 'mx-auto w-full max-w-7xl'
+				: SITE_COLUMN} pt-10 pb-[calc(2.5rem+var(--safe-bottom))]"
+		>
 			<h1 class="{SITE_GUTTER} mb-8 text-2xl font-semibold">{title}</h1>
 			{#if bleed}
 				{@render children()}

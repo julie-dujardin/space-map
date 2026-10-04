@@ -1460,6 +1460,7 @@
 	"delta_v_hint_capture": "Abbremsen auf eine gebundene elliptische Bahn.",
 	"delta_v_hint_low_orbit": "Eine Kreisbahn 200 km über der Oberfläche, bei kleinen Körpern niedriger.",
 	"delta_v_reset_targets": "Zurück zu den Standardzielen",
+	"delta_v_reset": "Zurücksetzen",
 	"delta_v_solar_escape": "Flucht aus dem Sonnensystem",
 	"delta_v_add_target": "Ziel hinzufügen",
 	"delta_v_no_route": "Keine Route nach {bodies}.",

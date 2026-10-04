@@ -1,8 +1,9 @@
 <!--
   The Δv subway map itself: the origin's trunk and one line per destination,
-  every stop a link into the planner for that trip. Rows down the page on a
-  wide screen, one strip scrolled sideways on a phone. The page around it draws
-  before this does, so it takes the payload already resolved.
+  every stop a link into the planner for that trip. On a wide screen the
+  controls stand in a sidebar beside the rows; on a phone they are a sheet over
+  the foot of one strip scrolled sideways. The page around it draws before this
+  does, so it takes the payload already resolved.
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
@@ -10,7 +11,6 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import ListIcon from '@lucide/svelte/icons/list';
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import { SITE_GUTTER } from './site';
@@ -18,9 +18,8 @@
 	import BodySearch from './BodySearch.svelte';
 	import VehicleField from '../detail/travel/VehicleField.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
-	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import SubwaySheet from './SubwaySheet.svelte';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import { isSearchEnabled } from '$lib/search/client';
 	import { formatNavEnd } from '$lib/state/nav-end';
 	import { formatDv, formatDvFigure } from '$lib/travel/format';
@@ -30,6 +29,7 @@
 	import { DEFAULT_TRIP, serializeTripSuffix, type EndpointMode } from '$lib/travel/trip';
 	import { ensureVehicles, vehicleCatalogue } from '$lib/travel/vehicles';
 	import { canDepartFrom, EMPTY_MANIFEST, type Vehicle } from '$lib/math/travel';
+	import { systemTitle } from '../detail/charts/planetary-system.svelte';
 	import type { SubwayPageData } from '../../routes/nav/+page';
 
 	interface Props {
@@ -67,7 +67,8 @@
 	const craft = $derived(offered.find((v) => v.id === data.craft) ?? null);
 	const reach = $derived(craft ? craftReach(tree, craft) : null);
 	let craftOpen = $state(false);
-	const wide = new MediaQuery('(min-width: 768px)');
+	/** Where the sidebar fits beside rows still wide enough to read. */
+	const wide = new MediaQuery('(min-width: 1024px)');
 
 	const text: DrawText = $derived({
 		stop: {
@@ -171,6 +172,9 @@
 	}
 
 	const searchEnabled = isSearchEnabled();
+	/** The closed look of every field in the controls, the craft's included. */
+	const FIELD =
+		'flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-start text-sm font-medium transition-colors hover:bg-muted';
 	let originOpen = $state(false);
 
 	/** Bodies the origin search should not offer: the origin it would replace. */
@@ -209,7 +213,9 @@
 		return on === 0 ? 'none' : on === members.length ? 'all' : 'some';
 	}
 
-	let drawerOpen = $state(false);
+	/** Whether the targets are anything but the default set. */
+	const changed = $derived(data.hidden.length > 0 || data.extra.length > 0);
+	let sheetPx = $state(132);
 	let expanded = $state(new Set<string>());
 
 	function toggleExpanded(id: string): void {
@@ -220,21 +226,18 @@
 	}
 </script>
 
-<!-- The origin picker outlives a failure: an origin the catalogue cannot
-     place routes nowhere, and changing it is the only way back. -->
-<div class="{SITE_GUTTER} mb-6 flex flex-wrap items-center gap-3">
+{#snippet origin()}
+	<!-- The origin picker outlives a failure: an origin the catalogue cannot
+	     place routes nowhere, and changing it is the only way back. -->
 	{#if searchEnabled}
 		<!-- Search over the whole catalogue, with the bodies already drawn listed
 		     under it: the usual origin still needs no typing. -->
 		<div class="flex items-center gap-2 text-sm text-muted-foreground">
 			<span id="nav-origin-label">{m.travel_from()}</span>
 			<Popover.Root bind:open={originOpen}>
-				<Popover.Trigger
-					aria-labelledby="nav-origin-label"
-					class="flex h-9 min-w-36 items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
-				>
-					{name(map.originId)}
-					<ChevronDownIcon class="size-4 text-muted-foreground" />
+				<Popover.Trigger aria-labelledby="nav-origin-label" class="{FIELD} min-w-0 flex-1">
+					<span class="min-w-0 flex-1 truncate text-foreground">{name(map.originId)}</span>
+					<ChevronDownIcon class="size-4 shrink-0 text-muted-foreground" />
 				</Popover.Trigger>
 				<Popover.Content
 					align="start"
@@ -277,7 +280,7 @@
 		<label class="flex items-center gap-2 text-sm text-muted-foreground">
 			{m.travel_from()}
 			<select
-				class="h-9 min-w-36 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+				class="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
 				value={map.originId}
 				onchange={pickOrigin}
 			>
@@ -287,171 +290,199 @@
 			</select>
 		</label>
 	{/if}
-	{#if !data.failed}
-		<!-- What you are flying decides what the map can reach, so it sits
-		     beside the origin rather than in the targets drawer. It takes a line
-		     of its own where the row wraps, which leaves the origin and the
-		     targets drawer together on the first one. -->
-		<div class="order-last flex w-full items-center gap-1 md:order-none md:w-96">
-			<!-- The field's trigger is full-width, so it needs a track of its own
-			     to share the line with the button that clears it. -->
-			<div class="min-w-0 flex-1">
-				<VehicleField
-					fullscreen={!wide.current}
-					vehicles={offered}
-					loaded={vehiclesReady}
-					selected={craft}
-					route={null}
-					manifest={EMPTY_MANIFEST}
-					passengers={0}
-					departureMode="orbit"
-					onSelect={pickCraft}
-					open={craftOpen}
-					onOpenChange={(next: boolean) => (craftOpen = next)}
-				/>
-			</div>
-			{#if craft}
-				<button
-					type="button"
-					class="text-muted-foreground hover:bg-accent hover:text-foreground shrink-0 rounded-md p-1.5 transition-colors"
-					aria-label={m.delta_v_any_craft()}
-					title={m.delta_v_any_craft()}
-					onclick={() => pickCraft(null)}
-				>
-					<XIcon class="size-4" />
-				</button>
-			{/if}
+{/snippet}
+
+{#snippet craftField()}
+	<!-- What you are flying decides what the map can reach, so it sits under
+	     the origin rather than among the targets. -->
+	<div class="flex items-center gap-1">
+		<!-- The field's trigger is full-width, so it needs a track of its own
+		     to share the line with the button that clears it. -->
+		<div class="min-w-0 flex-1">
+			<VehicleField
+				fullscreen={!wide.current}
+				triggerClass="{FIELD} w-full"
+				vehicles={offered}
+				loaded={vehiclesReady}
+				selected={craft}
+				route={null}
+				manifest={EMPTY_MANIFEST}
+				passengers={0}
+				departureMode="orbit"
+				onSelect={pickCraft}
+				open={craftOpen}
+				onOpenChange={(next: boolean) => (craftOpen = next)}
+			/>
 		</div>
-		<Sheet.Root bind:open={drawerOpen}>
-			<Sheet.Trigger>
-				{#snippet child({ props })}
-					<Button {...props} variant="outline" size="sm" class="ms-auto">
-						<ListIcon />
-						{m.tab_targets()}
-					</Button>
-				{/snippet}
-			</Sheet.Trigger>
-			<Sheet.Content side="right" class="overflow-hidden">
-				<Sheet.Header>
-					<Sheet.Title>{m.tab_targets()}</Sheet.Title>
-				</Sheet.Header>
-				<!-- The list below is planets and large moons; any other destination
-				     is found rather than browsed for. -->
-				<ScrollArea class="min-h-0 flex-1">
-					{#if searchEnabled}
-						<div class="mb-3 border-b border-border/60 px-4 pb-3">
-							<BodySearch
-								label={m.delta_v_add_target()}
-								excludeIds={targetExclude}
-								names={data.names}
-								hrefFor={addTargetHref}
-								onNavigate={() => (drawerOpen = false)}
-							/>
-						</div>
+		{#if craft}
+			<button
+				type="button"
+				class="text-muted-foreground hover:bg-accent hover:text-foreground shrink-0 rounded-md p-1.5 transition-colors"
+				aria-label={m.delta_v_any_craft()}
+				title={m.delta_v_any_craft()}
+				onclick={() => pickCraft(null)}
+			>
+				<XIcon class="size-4" />
+			</button>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet targets()}
+	<div class="flex h-7 items-center gap-2">
+		<h2 class="flex-1 text-[13px] font-semibold">{m.tab_targets()}</h2>
+		{#if changed}
+			<a
+				class="text-xs text-muted-foreground hover:text-foreground"
+				title={m.delta_v_reset_targets()}
+				href={pageHref(map.originId, [], [])}
+			>
+				{m.delta_v_reset()}
+			</a>
+		{/if}
+	</div>
+	<!-- The list below is planets and large moons; any other destination is
+	     found rather than browsed for. -->
+	{#if searchEnabled}
+		<BodySearch
+			label={m.delta_v_add_target()}
+			placeholder={m.delta_v_add_target()}
+			autofocus={false}
+			excludeIds={targetExclude}
+			names={data.names}
+			hrefFor={addTargetHref}
+		/>
+	{/if}
+	<ul class="-ms-2 flex flex-col">
+		{#each data.systems as system (system.id)}
+			{@const state = systemState(system.members)}
+			{@const open = expanded.has(system.id)}
+			{@const labelId = systemLabelId(system)}
+			<li>
+				<div class="flex h-9 items-center gap-1">
+					{#if system.members.length > 1}
+						<button
+							type="button"
+							class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+							aria-expanded={open}
+							aria-label={m.tab_members()}
+							onclick={() => toggleExpanded(system.id)}
+						>
+							<ChevronRightIcon class="size-4 transition-transform {open ? 'rotate-90' : ''}" />
+						</button>
+					{:else}
+						<span class="size-7"></span>
 					{/if}
-					<ul class="flex flex-col px-4">
-						{#each data.systems as system (system.id)}
-							{@const state = systemState(system.members)}
-							{@const open = expanded.has(system.id)}
-							{@const labelId = systemLabelId(system)}
+					<label class="flex flex-grow cursor-pointer items-center gap-2.5 text-sm font-medium">
+						<input
+							type="checkbox"
+							class="size-4 accent-foreground"
+							checked={state === 'all'}
+							indeterminate={state === 'some'}
+							onchange={(e) => setVisible(system.members, e.currentTarget.checked)}
+						/>
+						<span
+							class="size-2.5 rounded-full"
+							style="background: {data.colors[labelId] ?? 'currentColor'}"
+						></span>
+						{system.members.length > 1 ? systemTitle(system.id, name(system.id)) : name(labelId)}
+					</label>
+				</div>
+				{#if open && system.members.length > 1}
+					<!-- Under the system's name, a step in from its own checkbox. -->
+					<ul class="mb-1 flex flex-col ps-[3.625rem]">
+						{#each system.members as id (id)}
 							<li>
-								<div class="flex h-9 items-center gap-1">
-									{#if system.members.length > 1}
-										<button
-											type="button"
-											class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-											aria-expanded={open}
-											aria-label={m.tab_members()}
-											onclick={() => toggleExpanded(system.id)}
-										>
-											<ChevronRightIcon
-												class="size-4 transition-transform {open ? 'rotate-90' : ''}"
-											/>
-										</button>
-									{:else}
-										<span class="size-7"></span>
-									{/if}
-									<label class="flex flex-grow items-center gap-3 text-sm font-medium">
-										<input
-											type="checkbox"
-											checked={state === 'all'}
-											indeterminate={state === 'some'}
-											onchange={(e) => setVisible(system.members, e.currentTarget.checked)}
-										/>
-										<span
-											class="size-2.5 rounded-full"
-											style="background: {data.colors[labelId] ?? 'currentColor'}"
-										></span>
-										{name(labelId)}
-									</label>
-								</div>
-								{#if open && system.members.length > 1}
-									<ul class="mb-1 flex flex-col ps-8">
-										{#each system.members as id (id)}
-											<li>
-												<label class="flex h-8 items-center gap-3 text-sm">
-													<input
-														type="checkbox"
-														checked={visible.has(id)}
-														onchange={(e) => setVisible([id], e.currentTarget.checked)}
-													/>
-													<span
-														class="size-2.5 rounded-full"
-														style="background: {data.colors[id] ?? 'currentColor'}"
-													></span>
-													{name(id)}
-												</label>
-											</li>
-										{/each}
-									</ul>
-								{/if}
+								<label class="flex h-8 cursor-pointer items-center gap-2.5 text-sm">
+									<input
+										type="checkbox"
+										class="size-4 accent-foreground"
+										checked={visible.has(id)}
+										onchange={(e) => setVisible([id], e.currentTarget.checked)}
+									/>
+									<span
+										class="size-2.5 rounded-full"
+										style="background: {data.colors[id] ?? 'currentColor'}"
+									></span>
+									{name(id)}
+								</label>
 							</li>
 						{/each}
 					</ul>
-					{#if data.hidden.length}
-						<a
-							class="px-4 text-sm text-muted-foreground hover:text-foreground"
-							href={pageHref(map.originId, [])}
-						>
-							{m.delta_v_reset_targets()}
-						</a>
-					{/if}
-				</ScrollArea>
-			</Sheet.Content>
-		</Sheet.Root>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+{/snippet}
+
+{#snippet notes()}
+	{#if unrouted.length}
+		<!-- A destination with no route is simply absent from the drawing, so a
+		     pick that landed on one would otherwise look like nothing happened. -->
+		<p class="mb-4 text-sm text-muted-foreground">
+			{m.delta_v_no_route({ bodies: unrouted.map(name).join(', ') })}
+		</p>
 	{/if}
-</div>
-
-{#if unrouted.length}
-	<!-- A destination with no route is simply absent from the drawing, so a
-	     pick that landed on one would otherwise look like nothing happened. -->
-	<p class="{SITE_GUTTER} mb-4 text-sm text-muted-foreground">
-		{m.delta_v_no_route({ bodies: unrouted.map(name).join(', ') })}
-	</p>
-{/if}
-
-{#if data.failed}
-	<p class="{SITE_GUTTER} text-sm text-muted-foreground">{m.delta_v_error()}</p>
-{:else}
-	{#if craft}
-		<p class="{SITE_GUTTER} text-muted-foreground mb-4 text-xs">
+	{#if data.failed}
+		<p class="text-sm text-muted-foreground">{m.delta_v_error()}</p>
+	{:else if craft}
+		<p class="text-muted-foreground mb-4 text-xs">
 			<span class="cursor-help" title={m.delta_v_craft_note_hint()}>
 				{m.delta_v_craft_note()}
 			</span>
 		</p>
 	{/if}
-	<!-- Rows on a wide screen; on a phone the strip, scrolled sideways. -->
-	<div class="{SITE_GUTTER} hidden md:block">
-		<SubwayDiagram drawing={rows} label={m.nav_delta_v()} />
-	</div>
-	<!-- The level names are pinned to the left edge while the map scrolls
-	     under them, so the rungs are always named. -->
-	<div class="flex md:hidden">
-		<div class="shrink-0">
-			<SubwayDiagram drawing={strip.legend} fixed />
+{/snippet}
+
+{#if wide.current}
+	<div class="{SITE_GUTTER} flex items-start gap-12">
+		<aside class="flex w-72 shrink-0 flex-col gap-3">
+			<div class="flex flex-col gap-2.5">
+				{@render origin()}
+				{#if !data.failed}{@render craftField()}{/if}
+			</div>
+			{#if !data.failed}
+				<div class="my-1 h-px bg-border"></div>
+				{@render targets()}
+			{/if}
+		</aside>
+		<div class="min-w-0 flex-1 pt-3">
+			{@render notes()}
+			{#if !data.failed}
+				<SubwayDiagram drawing={rows} label={m.nav_delta_v()} />
+			{/if}
 		</div>
-		<div class="overflow-x-auto">
-			<SubwayDiagram drawing={strip.map} fixed label={m.nav_delta_v()} />
-		</div>
 	</div>
+{:else}
+	<!-- Room under the map for the collapsed sheet to stand in, and no more:
+	     the page's own foot would scroll blank space up from under it. -->
+	<div style="padding-bottom: {sheetPx}px; margin-bottom: calc(-2.5rem - var(--safe-bottom))">
+		<div class={SITE_GUTTER}>{@render notes()}</div>
+		{#if !data.failed}
+			<!-- The level names are pinned to the left edge while the map scrolls
+			     under them, so the rungs are always named. -->
+			<div class="flex">
+				<div class="shrink-0">
+					<SubwayDiagram drawing={strip.legend} fixed />
+				</div>
+				<div class="overflow-x-auto">
+					<SubwayDiagram drawing={strip.map} fixed label={m.nav_delta_v()} />
+				</div>
+			</div>
+		{/if}
+	</div>
+	<SubwaySheet label={m.nav_delta_v()} bind:collapsedPx={sheetPx}>
+		{#snippet head()}
+			<div class="flex flex-col gap-2.5">
+				{@render origin()}
+				{#if !data.failed}{@render craftField()}{/if}
+			</div>
+		{/snippet}
+		{#if !data.failed}
+			<div class="flex flex-col gap-3">
+				<div class="h-px bg-border"></div>
+				{@render targets()}
+			</div>
+		{/if}
+	</SubwaySheet>
 {/if}

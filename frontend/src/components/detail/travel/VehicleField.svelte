@@ -61,6 +61,9 @@
 		onOpenChange: (open: boolean) => void;
 		/** Take the whole screen rather than open a popover — the phone layout. */
 		fullscreen?: boolean;
+		/** The closed field's look, for a page whose other fields differ from
+		 *  the travel panel's. */
+		triggerClass?: string;
 	}
 	let {
 		vehicles,
@@ -73,7 +76,8 @@
 		onSelect,
 		open,
 		onOpenChange,
-		fullscreen = false
+		fullscreen = false,
+		triggerClass = TRIGGER
 	}: Props = $props();
 
 	/** The stats the closed field carries beside the name — the same figures the
@@ -287,7 +291,7 @@
 {/snippet}
 
 {#if fullscreen}
-	<button type="button" class={TRIGGER} onclick={() => onOpenChange(true)}>
+	<button type="button" class={triggerClass} onclick={() => onOpenChange(true)}>
 		{@render triggerBody()}
 	</button>
 	{#if open}
@@ -297,7 +301,7 @@
 	{/if}
 {:else}
 	<Popover.Root {open} onOpenChange={(next: boolean) => onOpenChange(next)}>
-		<Popover.Trigger class="{TRIGGER} data-[state=open]:bg-background">
+		<Popover.Trigger class="{triggerClass} data-[state=open]:bg-background">
 			{@render triggerBody()}
 		</Popover.Trigger>
 		<Popover.Content

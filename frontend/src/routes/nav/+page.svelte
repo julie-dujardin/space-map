@@ -20,7 +20,7 @@
 </svelte:head>
 
 <!-- Bleeding, so the strip gets the whole width; everything else guttered. -->
-<SitePage current="nav" title={m.nav_delta_v()} bleed>
+<SitePage current="nav" title={m.nav_delta_v()} bleed wide>
 	{#if subway.value}
 		<SubwayMapPage data={subway.value} />
 	{:else if subway.error}

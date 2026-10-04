@@ -34,8 +34,22 @@
 		/** What stands in the results' place before anything is typed — the
 		 *  bodies already to hand, so the usual choice needs no query. */
 		browse?: Snippet;
+		/** Shown in the empty input, when the label says more than "search". */
+		placeholder?: string;
+		/** Off for a field that stands in the page rather than in something the
+		 *  reader just opened. */
+		autofocus?: boolean;
 	}
-	let { label, excludeIds, names, hrefFor, onNavigate, browse }: Props = $props();
+	let {
+		label,
+		excludeIds,
+		names,
+		hrefFor,
+		onNavigate,
+		browse,
+		placeholder = m.travel_search_placeholder(),
+		autofocus = true
+	}: Props = $props();
 
 	const uid = $props.id();
 	const listboxId = `nav-body-list-${uid}`;
@@ -110,7 +124,7 @@
 	// Autofocus is a desktop gesture — on touch it throws the keyboard over the
 	// popover that just opened.
 	$effect(() => {
-		if (!isCoarsePointer()) input?.focus();
+		if (autofocus && !isCoarsePointer()) input?.focus();
 	});
 
 	// Combobox-style: walked from the input, not seven extra tab stops.
@@ -151,7 +165,7 @@
 			bind:this={input}
 			bind:value={query}
 			type="text"
-			placeholder={m.travel_search_placeholder()}
+			{placeholder}
 			aria-label={label}
 			role="combobox"
 			aria-expanded={visible.length > 0}
