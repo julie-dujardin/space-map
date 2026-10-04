@@ -366,6 +366,7 @@ export class SceneRenderer {
 	/** The sky while the `stars` layer is off. */
 	private stashedSky: Scene['background'] = null;
 	private namesShown = true;
+	private halosShown = true;
 	private readonly textureLoader = new TextureLoader();
 	/** Pictures a host has put on bodies of the map's own. */
 	private readonly appearances = new BodyAppearances();
@@ -2475,7 +2476,7 @@ export class SceneRenderer {
 	 * it, so `stars` swaps that out and keeps it aside — the cube stays
 	 * uploaded, and switching back on costs nothing. Names are DOM, so `labels`
 	 * is a class on the layer they live in; the ring that marks a body too far
-	 * to have a disc is not a name and stays.
+	 * to have a disc is not a name and answers to `halos` the same way.
 	 *
 	 * Run per frame, since the sky lands well after the map opens.
 	 */
@@ -2493,6 +2494,11 @@ export class SceneRenderer {
 		if (names !== this.namesShown) {
 			this.namesShown = names;
 			this.labelContainer.classList.toggle('scene-overlay--no-names', !names);
+		}
+		const halos = this.ctx.layers.isVisible('halos');
+		if (halos !== this.halosShown) {
+			this.halosShown = halos;
+			this.labelContainer.classList.toggle('scene-overlay--no-halos', !halos);
 		}
 	}
 

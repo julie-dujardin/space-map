@@ -435,8 +435,9 @@ object first, then the chrome drawn around them:
 
 `planets`, `dwarfPlanets`, `moons`, `asteroids`, `comets`, `spacecraft`,
 `satellites` (the ones round Earth), `debris`, `orbits`, `labels` (the names of
-objects), `nomenclature` (the names of places on them) and `stars` (the sky
-behind everything).
+objects), `halos` (the rings that mark objects too far to show a disc),
+`nomenclature` (the names of places on them) and `stars` (the sky behind
+everything).
 
 ```js
 const map = await createMap({

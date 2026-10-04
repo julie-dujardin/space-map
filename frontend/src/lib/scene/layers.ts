@@ -28,6 +28,7 @@ export const MAP_LAYERS = [
 	'debris',
 	'orbits',
 	'labels',
+	'halos',
 	'nomenclature',
 	'stars'
 ] as const;

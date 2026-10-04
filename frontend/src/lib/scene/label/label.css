@@ -287,3 +287,12 @@
 .scene-overlay--no-names .scene-label__annotations {
 	display: none;
 }
+
+/* The `halos` layer, off: the ring goes and its box stops taking clicks, so
+ * empty sky is not a link. The name keeps its place and stays pressable. */
+.scene-overlay--no-halos .scene-label__halo {
+	visibility: hidden;
+}
+.scene-overlay--no-halos .scene-label {
+	pointer-events: none;
+}
