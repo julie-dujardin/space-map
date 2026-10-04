@@ -210,6 +210,9 @@
 		 *  caller floats controls of its own over the row: a pinch's second
 		 *  finger lands wherever it lands. A gesture still starts on a body. */
 		gestures?: HTMLElement | null;
+		/** With `rotate`, whether a drag has left any body turned, for a caller
+		 *  that offers `resetOrientation`. */
+		onturned?: (turned: boolean) => void;
 	}
 	let {
 		bodies,
@@ -228,7 +231,8 @@
 		compare = false,
 		rotate = false,
 		zoomable = false,
-		gestures = null
+		gestures = null,
+		onturned
 	}: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -681,6 +685,7 @@
 		if (!orbitId) return;
 		orbitDirs.set(orbitId, orbitEye.position.clone().normalize());
 		orbitQuats.set(orbitId, orbitEye.quaternion.clone().invert());
+		syncTurned();
 		const zoomed = zoomable ? ORBIT_DISTANCE / orbitEye.position.length() : 1;
 		if (Math.abs(zoomed - zoom) > 1e-6) {
 			// The row is laid out again on the new scale, and drawn from there.
@@ -689,6 +694,33 @@
 		}
 		const obj = displayObject(orbitId);
 		if (obj) applySpin(obj, orbitId);
+		updateGlow();
+		draw();
+	}
+
+	// The controls never roll the eye, so one still on its first axis has not
+	// turned its body.
+	function syncTurned() {
+		onturned?.([...orbitDirs.values()].some((dir) => dir.z < 1 - 1e-9));
+	}
+
+	/** Put every body back as the row first drew it. The zoom stays. */
+	export function resetOrientation() {
+		if (orbit) {
+			// A coast still running would turn the body again.
+			orbit.enableDamping = false;
+			orbit.update();
+			orbit.enableDamping = true;
+			orbitEye.position.set(0, 0, ORBIT_DISTANCE / zoom);
+			orbit.update();
+		}
+		orbitDirs.clear();
+		orbitQuats.clear();
+		onturned?.(false);
+		for (const p of [...layout, ...asideLayout]) {
+			const obj = displayObject(p.id);
+			if (obj) applySpin(obj, p.id);
+		}
 		updateGlow();
 		draw();
 	}
@@ -864,6 +896,7 @@
 		spinAngles.clear();
 		orbitDirs.clear();
 		orbitQuats.clear();
+		onturned?.(false);
 		bodyShift.clear();
 	}
 
@@ -916,6 +949,7 @@
 			orbitDirs.delete(id);
 			orbitQuats.delete(id);
 		}
+		syncTurned();
 		for (const id of [...bodyShift.keys()]) if (!wanted.has(id)) bodyShift.delete(id);
 		setRoomEnvironment(drawn.some((b) => b.craft));
 		const loader = new TextureLoader();

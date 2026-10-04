@@ -15,7 +15,8 @@
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
-	import MenuIcon from '@lucide/svelte/icons/menu';
+	import ListIcon from '@lucide/svelte/icons/list';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -60,6 +61,14 @@
 
 	let innerWidth = $state(NARROW + 1);
 	const narrow = $derived(innerWidth <= NARROW);
+
+	// The map's glass buttons. Dark, the stage is as dark as the glass, so
+	// they take a grey of their own.
+	const MAP_GLASS = `flex items-center justify-center
+		w-10 h-10 md:w-8 md:h-8 rounded-full
+		bg-black/40 backdrop-blur-md hover:bg-black/55
+		dark:border dark:border-border dark:bg-card dark:hover:bg-accent
+		text-white transition-colors cursor-pointer`;
 
 	/** Up until the reader closes it, except on a phone, where it would cover
 	 *  the row: null until they have said either way. */
@@ -438,7 +447,8 @@
 	const ZOOM_IN_MS = 200;
 	const ZOOM_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
-	let row = $state<{ snapshot(): string | null } | undefined>();
+	let row = $state<{ snapshot(): string | null; resetOrientation(): void } | undefined>();
+	let turned = $state(false);
 	let rowBox = $state<HTMLDivElement | null>(null);
 
 	/** The row as it stood before the change, held over the new one until the
@@ -688,6 +698,7 @@
 							oncontextpick={(id, x, y) => (menu = { id, x, y })}
 							onpick={(id) => openObject(id)}
 							rotate
+							onturned={(on) => (turned = on)}
 							zoomable={!!opened}
 							gestures={opened ? stage : null}
 						/>
@@ -839,6 +850,19 @@
 				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 
+			{#if turned}
+				<!-- Top start corner, under the scale bar a phone has there. -->
+				<button
+					type="button"
+					aria-label={m.compare_reset_orientation()}
+					title={m.compare_reset_orientation()}
+					onclick={() => row?.resetOrientation()}
+					class="absolute start-4 z-20 {MAP_GLASS} {narrow ? 'top-16' : 'top-4'}"
+				>
+					<RotateCcwIcon class="size-5 md:size-4" />
+				</button>
+			{/if}
+
 			{#if !opened}
 				<!-- Top end corner, where the row leaves the most room: the bottom
 				     corners hold the page links, the credit and the reference. -->
@@ -865,9 +889,9 @@
 						aria-label={m.compare_show_menu()}
 						aria-expanded="false"
 						onclick={() => (menuOpen = true)}
-						class="absolute top-4 end-4 z-20 flex size-11 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground shadow-lg backdrop-blur-sm hover:bg-card"
+						class="absolute top-4 end-4 z-20 {MAP_GLASS}"
 					>
-						<MenuIcon class="size-[18px]" />
+						<ListIcon class="size-5 md:size-4" />
 					</button>
 				{/if}
 			{/if}

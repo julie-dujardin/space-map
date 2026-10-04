@@ -1437,6 +1437,7 @@
 	"compare_clear": "消去",
 	"compare_show_menu": "メニューを表示",
 	"compare_hide_menu": "メニューを隠す",
+	"compare_reset_orientation": "向きをリセット",
 	"compare_page_of": "{n} ページ",
 	"compare_preset_terrestrial": "地球型惑星",
 	"compare_preset_giants": "巨大惑星",

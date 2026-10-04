@@ -1358,6 +1358,7 @@
 	"compare_clear": "Leeren",
 	"compare_show_menu": "Menü einblenden",
 	"compare_hide_menu": "Menü ausblenden",
+	"compare_reset_orientation": "Ausrichtung zurücksetzen",
 	"compare_page_of": "Seite {n}",
 	"compare_preset_terrestrial": "Erdähnliche Planeten",
 	"compare_preset_giants": "Riesenplaneten",

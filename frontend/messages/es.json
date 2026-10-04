@@ -1358,6 +1358,7 @@
 	"compare_clear": "Vaciar",
 	"compare_show_menu": "Mostrar el menú",
 	"compare_hide_menu": "Ocultar el menú",
+	"compare_reset_orientation": "Restablecer la orientación",
 	"compare_page_of": "página {n}",
 	"compare_preset_terrestrial": "Planetas terrestres",
 	"compare_preset_giants": "Planetas gigantes",
