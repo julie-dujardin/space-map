@@ -90,6 +90,28 @@ MODEL_CATALOGS: dict[str, dict[str, str]] = {
     },
 }
 
+# Where an author outside the catalogs publishes, for the credits.json line of
+# an author with several models: those have no single source page to link.
+# Keyed by the attribution without its note on what was changed.
+MODEL_CONTRIBUTOR_PAGES: dict[str, str] = {
+    "NASA": "https://science.nasa.gov/3d-resources/",
+    "NASA Visualization Technology Applications and Development (VTAD)": "https://science.nasa.gov/3d-resources/",
+    "NASA/JPL-Caltech": "https://eyes.nasa.gov/apps/solar-system/",
+    "ASParrish / Thingiverse": "https://www.thingiverse.com/ASParrish/designs",
+    "Celeste_El / Thingiverse": "https://www.thingiverse.com/Celeste_El/designs",
+    "ForestKatsch / Sketchfab": "https://sketchfab.com/ForestKatsch",
+    "Smithsonian Institution / Sketchfab": "https://sketchfab.com/Smithsonian",
+    "Stanley_Creative / Sketchfab": "https://sketchfab.com/Stanley_Creative",
+    "akareactor / Sketchfab": "https://sketchfab.com/akareactor",
+    "clarence365 / Sketchfab": "https://sketchfab.com/clarence365",
+    "dannzjs / Sketchfab": "https://sketchfab.com/dannzjs",
+    "emin31284 / Sketchfab": "https://sketchfab.com/emin31284",
+    "rocket0314 / Sketchfab": "https://sketchfab.com/rocket0314",
+    "sunnychen753 / Sketchfab": "https://sketchfab.com/sunnychen753",
+    "tashtego / Sketchfab": "https://sketchfab.com/tashtego",
+    "uperesito / Sketchfab": "https://sketchfab.com/uperesito",
+}
+
 
 # --- Natural-body shape models -------------------------------------------
 # Missions + radar tiers convert through Blender like spacecraft; the DAMIT

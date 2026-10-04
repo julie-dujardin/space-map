@@ -9,6 +9,7 @@ from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
 from space_map_data.export.credits import (
     _REFERENCE_SECTIONS,
     _atmosphere_references,
+    _build_model_contributors,
     _merge_references,
 )
 
@@ -87,3 +88,58 @@ class TestMergeReferences:
             _pair("temperature", "atmosphere", "the same thing", "the same thing")
         )
         assert merged["temperature"][0]["contribution"] == "the same thing"
+
+
+def _bundle(*credits: dict, catalog: str | None = None) -> dict:
+    tiers = [
+        {"credit": credit} | ({"catalog": catalog} if catalog else {})
+        for credit in credits
+    ]
+    return {"exports": dict(zip(("high", "low"), tiers))}
+
+
+class TestModelContributors:
+    """Models outside the catalogs are credited once per author."""
+
+    def test_a_catalog_model_is_left_to_the_catalog_list(self):
+        bundle = _bundle({"name": "NASA", "url": "u"}, catalog="NASA-3D-Resources")
+        assert _build_model_contributors({"a": bundle}) == []
+
+    def test_an_author_with_several_models_gets_one_line(self):
+        out = _build_model_contributors(
+            {
+                "a": _bundle({"name": "ann / Sketchfab", "url": "u1", "license": "L1"}),
+                "b": _bundle({"name": "ann / Sketchfab", "url": "u2", "license": "L2"}),
+            }
+        )
+        assert out == [{"name": "ann / Sketchfab", "licenses": ["L1", "L2"]}]
+
+    def test_an_author_with_several_models_links_their_own_page(self):
+        name = "tashtego / Sketchfab"
+        out = _build_model_contributors(
+            {
+                "a": _bundle({"name": name, "url": "u1"}),
+                "b": _bundle({"name": name, "url": "u2"}),
+            }
+        )
+        assert out[0]["url"] == "https://sketchfab.com/tashtego"
+
+    def test_a_single_source_page_is_linked(self):
+        credit = {"name": "ann / Sketchfab", "url": "u1", "license": "L1"}
+        out = _build_model_contributors({"a": _bundle(credit, credit)})
+        assert out == [{"name": "ann / Sketchfab", "url": "u1", "licenses": ["L1"]}]
+
+    def test_the_note_on_what_was_changed_does_not_split_an_author(self):
+        out = _build_model_contributors(
+            {
+                "a": _bundle({"name": "ann / Sketchfab, painted", "url": "u1"}),
+                "b": _bundle({"name": "ann / Sketchfab", "url": "u2"}),
+            }
+        )
+        assert [row["name"] for row in out] == ["ann / Sketchfab"]
+
+    def test_a_second_credited_party_is_kept(self):
+        """Without a hosting site the comma joins two parties, not a note."""
+        credit = {"name": "EOX IT Services, coastline from OpenStreetMap", "url": "u"}
+        out = _build_model_contributors({"a": _bundle(credit)})
+        assert out[0]["name"] == credit["name"]

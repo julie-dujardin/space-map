@@ -60,6 +60,11 @@ interface Credits {
     url: string;                 // user-facing catalog landing page
     license?: string;            // Wikimedia-style short license when known
   }>;
+  model_contributors?: Array<{   // authors of models that no catalog covers, one entry each
+    name: string;                // "tashtego / Sketchfab", "NASA/JPL-Caltech"
+    url?: string;                // the source page, or the author's own page when they have several models
+    licenses: string[];          // every short license their models carry, sorted
+  }>;
   skybox?: {                     // whole-sky cubemap backdrop — single global asset, no host body
     source: string;
     organisation: string;
@@ -120,3 +125,9 @@ one model bundle under `models/{slug}/`. The catalog license is what matters, no
 per-body attribution, so no item list is emitted. Models whose `attribution`
 doesn't match a known catalog log a warning during export so the catalog list
 stays maintained.
+
+`model_contributors` credits the models that come from outside those catalogs
+(Sketchfab, Thingiverse, one-off NASA pages), which carry per-model terms. It
+has one entry per author, sorted by name. The note on what was changed
+("…, painted") is dropped from the name so one author's models share an entry;
+the per-model credit in `models/{slug}/metadata.json` keeps it.

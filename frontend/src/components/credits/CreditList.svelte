@@ -81,6 +81,7 @@
 
 	const references = $derived(REFERENCE_SECTIONS.filter((section) => credits[section.key]?.length));
 
+	const hasModels = $derived(!!credits.models?.length || !!credits.model_contributors?.length);
 	const hasImagery = $derived(imagerySystems.length > 0 || !!credits.skybox);
 
 	interface Entry {
@@ -106,9 +107,7 @@
 			label: m.credits_group_media(),
 			children: [
 				{ id: 'images', label: m.attribution_section_images() },
-				...(credits.models?.length
-					? [{ id: 'models', label: m.attribution_section_models() }]
-					: []),
+				...(hasModels ? [{ id: 'models', label: m.attribution_section_models() }] : []),
 				...(hasImagery ? [{ id: 'imagery', label: m.attribution_section_imagery_all() }] : [])
 			]
 		},
@@ -301,15 +300,27 @@
 			<p class="text-xs text-muted-foreground mt-2">{m.credits_images_individual_note()}</p>
 		</section>
 
-		{#if credits.models && credits.models.length > 0}
+		{#if hasModels}
 			<section>
 				{@render sectionHeader('models', m.attribution_section_models())}
 				<ul class="space-y-1">
-					{#each credits.models as cat (cat.url)}
+					{#each credits.models ?? [] as cat (cat.url)}
 						<li>
 							{@render link(cat.url, cat.name)}
 							{#if cat.license}<span class="text-xs text-muted-foreground">
 									· {cat.license}</span
+								>{/if}
+						</li>
+					{/each}
+					{#each credits.model_contributors ?? [] as author (author.name)}
+						<li>
+							{#if author.url}
+								{@render link(author.url, author.name)}
+							{:else}
+								{author.name}
+							{/if}
+							{#if author.licenses.length > 0}<span class="text-xs text-muted-foreground">
+									· {author.licenses.join(', ')}</span
 								>{/if}
 						</li>
 					{/each}

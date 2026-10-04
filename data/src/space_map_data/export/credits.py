@@ -25,9 +25,23 @@ from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.objects.sources import Reference
-from space_map_data.export.systems import texture_attribution
-from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
+from space_map_data.export.systems import (
+    load_clouds_metadata,
+    load_displacement_metadata,
+    load_model_metadata,
+    load_night_metadata,
+    load_ring_metadata,
+    load_skybox_metadata,
+    load_specular_metadata,
+    load_texture_metadata,
+    texture_attribution,
+)
+from space_map_data.ingest.providers.models.config import (
+    MODEL_CATALOGS,
+    MODEL_CONTRIBUTOR_PAGES,
+)
 from space_map_data.models.object import Object, ObjectType
+from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +259,59 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
         for name, catalog in MODEL_CATALOGS.items()
         if name in matched
     ]
+
+
+def _contributor(attribution: str) -> str:
+    """Name the author without the note on what was changed.
+
+    A model from a hosting site is credited as "author / site, what changed";
+    the note differs per model, and one author must share one line.
+    """
+    author, site, rest = attribution.partition(" / ")
+    return author + site + rest.split(", ")[0]
+
+
+def _build_model_contributors(model_metadata: dict[str, dict]) -> list[dict]:
+    """Emit one entry per author of a model that no catalog covers.
+
+    These models come under per-model terms, so the catalog roll-up cannot
+    credit them. ``url`` is the source page of an author with one, else the
+    author's own page from ``MODEL_CONTRIBUTOR_PAGES``.
+    """
+    urls: dict[str, set[str]] = {}
+    licenses: dict[str, set[str]] = {}
+    for meta in model_metadata.values():
+        for tier in (meta.get("exports") or {}).values():
+            if not isinstance(tier, dict) or tier.get("catalog") in MODEL_CATALOGS:
+                continue
+            credit = tier.get("credit") or {}
+            if not isinstance(credit.get("name"), str):
+                continue
+            name = _contributor(credit["name"])
+            urls.setdefault(name, set()).update(filter(None, [credit.get("url")]))
+            licenses.setdefault(name, set()).update(
+                filter(None, [credit.get("license")])
+            )
+    out: list[dict] = []
+    for name in sorted(urls, key=str.casefold):
+        url = (
+            next(iter(urls[name]))
+            if len(urls[name]) == 1
+            else MODEL_CONTRIBUTOR_PAGES.get(name)
+        )
+        if url is None:
+            logger.warning(
+                "Model author %r has %d source pages and no entry in "
+                "MODEL_CONTRIBUTOR_PAGES; credited without a link",
+                name,
+                len(urls[name]),
+            )
+        out.append(
+            {"name": name}
+            | ({"url": url} if url else {})
+            | {"licenses": sorted(licenses[name])}
+        )
+    return out
 
 
 # Appended once to a merged attribution when any contributing bundle rebuilt
@@ -499,6 +566,7 @@ def write_credits(
         systems_out.append(bucket)
 
     models_out = _build_models_credits(model_metadata)
+    model_contributors_out = _build_model_contributors(model_metadata)
 
     # Each list is the whole bibliography behind one constants package; the
     # per-body panels credit only the works their own numbers come from.
@@ -527,6 +595,8 @@ def write_credits(
     }
     if models_out:
         payload["models"] = models_out
+    if model_contributors_out:
+        payload["model_contributors"] = model_contributors_out
     if skybox_metadata is not None:
         payload["skybox"] = _skybox_credit_entry(skybox_metadata)
     (out_dir / "credits.json").write_bytes(
@@ -549,3 +619,25 @@ def write_credits(
         "" if len(models_out) == 1 else "s",
         ", + skybox" if skybox_metadata is not None else "",
     )
+
+
+def export_credits_only(engine) -> None:
+    """`space-map-export --only credits` — rewrites credits.json alone.
+
+    The file restates what the bundles and the reference constants already
+    say, so a credit edit reaches the page without re-running the whole export.
+    """
+    out_dir = EXPORT_DIR / "v1"
+    with Session(engine) as session:
+        write_credits(
+            session,
+            out_dir,
+            load_texture_metadata(out_dir),
+            load_ring_metadata(out_dir),
+            load_clouds_metadata(out_dir),
+            load_night_metadata(out_dir),
+            load_specular_metadata(out_dir),
+            load_displacement_metadata(out_dir),
+            load_skybox_metadata(out_dir),
+            load_model_metadata(out_dir),
+        )

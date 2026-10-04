@@ -59,6 +59,13 @@ export interface ModelCatalog {
 	license?: string;
 }
 
+/** The author of models that no catalog covers; `url` is their one source page, or their own page. */
+export interface ModelContributor {
+	name: string;
+	url?: string;
+	licenses: string[];
+}
+
 /** One literature source behind a hand-curated constant (see `references.py` beside each in data/src/space_map_data/constants/). */
 export interface Reference {
 	title: string;
@@ -94,5 +101,6 @@ export interface Credits extends Partial<Record<ReferenceSection, Reference[]>> 
 	systems: SystemGroup[];
 	ephemeris_archives: EphemerisArchive[];
 	models?: ModelCatalog[];
+	model_contributors?: ModelContributor[];
 	skybox?: SkyboxCredit;
 }

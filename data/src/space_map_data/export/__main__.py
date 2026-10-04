@@ -10,6 +10,10 @@ from space_map_data.export.groups import export_groups_only
 from space_map_data.export.nomenclature.quadrangles import export_quadrangles_only
 from space_map_data.export.panoramas import export_panoramas_only
 from space_map_data.export.pipeline.orchestrator import export
+
+# After the orchestrator: credits imported first hits the import cycle
+# between export.ephemeris and export.objects.
+from space_map_data.export.credits import export_credits_only  # isort: skip
 from space_map_data.export.spacecraft import export_spacecraft_only
 from space_map_data.export.status import export_status_only
 from space_map_data.export.systems import export_systems_only
@@ -32,6 +36,7 @@ def cli():
             "panoramas",
             "systems",
             "status",
+            "credits",
         ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
@@ -62,6 +67,8 @@ def cli():
             export_quadrangles_only(engine)
         elif args.only == "systems":
             export_systems_only(engine)
+        elif args.only == "credits":
+            export_credits_only(engine)
         else:
             export(engine)
 
