@@ -215,6 +215,9 @@
 		/** With `rotate`, whether a drag has left any body turned, for a caller
 		 *  that offers `resetOrientation`. */
 		onturned?: (turned: boolean) => void;
+		/** Where a boxed row stands its bodies: on the middle line, or all on
+		 *  the floor, the way a sphere row already does. */
+		align?: 'center' | 'bottom';
 	}
 	let {
 		bodies,
@@ -234,7 +237,8 @@
 		rotate = false,
 		zoomable = false,
 		gestures = null,
-		onturned
+		onturned,
+		align = 'center'
 	}: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -407,12 +411,13 @@
 			}
 			// A sphere stands on the row's baseline; a craft has no ground to stand
 			// on, and the width fit leaves it well short of the height, so it reads
-			// better centred than sunk to the floor.
+			// better centred than sunk to the floor — unless the caller asks for
+			// the floor.
 			return {
 				...p,
 				pr,
 				cx,
-				cy: boxRow ? height / 2 : baseline - pr,
+				cy: boxRow && align === 'center' ? height / 2 : baseline - pr,
 				colLeft: 0,
 				colWidth: 0,
 				labelWidth: 0
@@ -459,7 +464,10 @@
 					: 2 * pr <= ASIDE_END_PAD
 						? width - SIDE_PAD - ASIDE_END_PAD / 2
 						: width - shown + pr;
-			return { ...b, pr, cx, cy: height / 2, colLeft: 0, colWidth: 0, labelWidth: 0 };
+			// On the floor with the row when it fits there; a limb larger than
+			// the row stays on the middle line, where its edge still shows.
+			const cy = align === 'bottom' ? Math.max(height / 2, height - VPAD - pr) : height / 2;
+			return { ...b, pr, cx, cy, colLeft: 0, colWidth: 0, labelWidth: 0 };
 		});
 	});
 

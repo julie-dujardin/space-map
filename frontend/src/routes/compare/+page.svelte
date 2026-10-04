@@ -15,6 +15,8 @@
 	import { setContext, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import AlignCenterHorizontalIcon from '@lucide/svelte/icons/align-center-horizontal';
+	import AlignEndHorizontalIcon from '@lucide/svelte/icons/align-end-horizontal';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
@@ -454,6 +456,8 @@
 
 	let row = $state<{ snapshot(): string | null; resetOrientation(): void } | undefined>();
 	let turned = $state(false);
+	/** Bodies on the middle line, or all standing on the floor. */
+	let align = $state<'center' | 'bottom'>('center');
 	let rowBox = $state<HTMLDivElement | null>(null);
 
 	/** The row as it stood before the change, held over the new one until the
@@ -710,6 +714,7 @@
 							onpick={(id) => openObject(id)}
 							rotate
 							onturned={(on) => (turned = on)}
+							{align}
 							zoomable={!!opened}
 							gestures={opened ? stage : null}
 						/>
@@ -865,18 +870,36 @@
 				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 
-			{#if turned}
-				<!-- Top left corner, under the scale bar a phone has there. -->
-				<button
-					type="button"
-					aria-label={m.compare_reset_orientation()}
-					title={m.compare_reset_orientation()}
-					onclick={() => row?.resetOrientation()}
-					class="absolute left-4 z-20 {MAP_GLASS} {narrow ? 'top-16' : 'top-4'}"
-				>
-					<RotateCcwIcon class="size-5 md:size-4" />
-				</button>
-			{/if}
+			<!-- Top left corner, under the scale bar a phone has there. -->
+			<div class="absolute left-4 z-20 flex flex-col gap-2 {narrow ? 'top-16' : 'top-4'}">
+				{#if bodies.length}
+					{@const label = align === 'center' ? m.compare_align_bottom() : m.compare_align_center()}
+					<button
+						type="button"
+						aria-label={label}
+						title={label}
+						onclick={() => (align = align === 'center' ? 'bottom' : 'center')}
+						class={MAP_GLASS}
+					>
+						{#if align === 'center'}
+							<AlignEndHorizontalIcon class="size-5 md:size-4" />
+						{:else}
+							<AlignCenterHorizontalIcon class="size-5 md:size-4" />
+						{/if}
+					</button>
+				{/if}
+				{#if turned}
+					<button
+						type="button"
+						aria-label={m.compare_reset_orientation()}
+						title={m.compare_reset_orientation()}
+						onclick={() => row?.resetOrientation()}
+						class={MAP_GLASS}
+					>
+						<RotateCcwIcon class="size-5 md:size-4" />
+					</button>
+				{/if}
+			</div>
 
 			{#if !opened}
 				<!-- Top right corner, where the row leaves the most room: the bottom

@@ -1362,6 +1362,8 @@
 	"compare_show_menu": "הצגת התפריט",
 	"compare_hide_menu": "הסתרת התפריט",
 	"compare_reset_orientation": "איפוס הכיוון",
+	"compare_align_bottom": "יישור לתחתית",
+	"compare_align_center": "מרכוז אנכי",
 	"compare_page_of": "עמוד {n}",
 	"compare_preset_terrestrial": "כוכבי לכת ארציים",
 	"compare_preset_giants": "כוכבי לכת ענקיים",
