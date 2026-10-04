@@ -176,7 +176,7 @@ export interface BodyObjects {
 	 *  spacecraft halo glyph swap (flying → landed octagon). */
 	isLanded?: boolean;
 	/** True iff the active landed record is a crash site: the craft is placed
-	 *  there, but its model stays hidden and the halo shows the wreck glyph. */
+	 *  there, but its model stays hidden. */
 	isCrashed?: boolean;
 	/** Written by the throttled body cull. Lets the nomenclature cull skip
 	 *  dimmed labels' rects, so it doesn't over-cull features against a

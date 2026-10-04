@@ -423,11 +423,11 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				if (bo) {
 					bo.outOfRange = false;
 					const crashed = probeLanded.isDestroyed;
-					if (!bo.isLanded || bo.isCrashed !== crashed) {
-						setSpacecraftGlyph(bo.labelHalo, crashed ? 'crashed' : 'landed');
+					if (!bo.isLanded) {
+						setSpacecraftGlyph(bo.labelHalo, 'landed');
 						bo.isLanded = true;
-						bo.isCrashed = crashed;
 					}
+					bo.isCrashed = crashed;
 					// A crash site has no intact craft to stand on it.
 					if (bo.model) bo.model.visible = !crashed;
 				}
