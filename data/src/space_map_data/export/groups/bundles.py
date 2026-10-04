@@ -30,6 +30,7 @@ from space_map_data.constants.earth_sats.launch_sites import (
 from space_map_data.constants.earth_sats.launch_vehicles import (
     GCAT_LV_TYPE_TO_QID,
     LAUNCH_VEHICLE_BY_CONSTELLATION,
+    LAUNCH_VEHICLE_BY_SLUG,
 )
 from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
@@ -454,6 +455,13 @@ def _fallback_group_name(group: Group) -> str | None:
         code = FEATURE_TYPE_CODE_BY_SLUG.get(group.slug)
         if code:
             return FEATURE_TYPES[code].singular
+    if group.type is GroupType.LAUNCH_VEHICLE:
+        lv = LAUNCH_VEHICLE_BY_SLUG.get(
+            group.slug.removeprefix(LAUNCH_VEHICLE_SLUG_PREFIX)
+        )
+        if lv and lv.name:
+            return lv.name
+        return _prettify_slug(group.slug, LAUNCH_VEHICLE_SLUG_PREFIX)
     return None
 
 

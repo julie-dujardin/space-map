@@ -14,6 +14,7 @@ from space_map_data.export.objects.wikidata_claims import (
     EntityRef,
     attach_launch_vehicle_group_link,
 )
+from space_map_data.export.groups.bundles import _fallback_group_name
 from space_map_data.export.groups.registry import GROUP_BY_SLUG, GroupType
 
 
@@ -142,3 +143,18 @@ class TestGcatVariantMapping:
         for v in LAUNCH_VEHICLE_VARIANTS:
             for name in v.gcat_names:
                 assert match_launch_vehicle_slug(name) == v.family_slug, name
+
+
+class TestFallbackName:
+    """A family names itself when Wikidata gives it no label."""
+
+    def test_no_family_falls_back_to_its_slug(self):
+        for group in GROUP_BY_SLUG.values():
+            if group.type is not GroupType.LAUNCH_VEHICLE:
+                continue
+            name = _fallback_group_name(group)
+            assert name and not name.startswith("lv-"), group.slug
+
+    def test_curated_name_wins(self):
+        assert _fallback_group_name(GROUP_BY_SLUG["lv-angara"]) == "Angara"
+        assert _fallback_group_name(GROUP_BY_SLUG["lv-hanbit"]) == "HANBIT-Nano"

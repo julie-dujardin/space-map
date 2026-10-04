@@ -13,7 +13,10 @@ from space_map_data.constants.categories import CATEGORIES
 from space_map_data.constants.countries import COUNTRIES
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
 from space_map_data.constants.object_names import NAME_ENTITIES
-from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_VARIANTS
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    LAUNCH_VEHICLE_VARIANTS,
+    LAUNCH_VEHICLES,
+)
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.earth_sats.reusable_vehicles import REUSABLE_VEHICLE_QIDS
 from space_map_data.constants.minor_planet_moons import minor_planet_moon_qids
@@ -187,6 +190,14 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="object names",
+        )
+        # Launch-vehicle family QIDs. A payload's P375 names the variant, so a
+        # family none of them claim is not reached otherwise.
+        self._fetch_entities(
+            {lv.qid for lv in LAUNCH_VEHICLES if lv.qid},
+            referenced_dir,
+            limit=None,
+            fetch_desc="launch-vehicle families",
         )
         # Launch-vehicle variant QIDs. GCAT-only variants (never a payload's
         # P375) aren't reached otherwise — seed so the breakdown gets a sitelink.
