@@ -515,16 +515,21 @@ export function updateBodyVisibility(
 	// Screen-space label occlusion runs every frame (cheap: typically 0-2 occluders).
 	// Overlap culling is throttled to every 3rd frame.
 	if (screenOccluders.length > 0) {
+		// A focused barycenter is usually inside its primary, which would hide
+		// the only marker of the selection.
+		const focusedPrimaryId = focusedBodyId ? barycenterPrimaryId(focusedBodyId) : null;
 		for (const bo of bodyObjects.values()) {
 			if (!bo.label?.visible) continue;
 			if (!labelScreenRect(bo, camera, fp, screenW, screenH, _occlusionRect)) continue;
+			const id = bo.body.data.id;
 			if (
 				isScreenOccluded(
 					_occlusionRect.x,
 					_occlusionRect.y,
 					bo.cachedDist,
-					bo.body.data.id,
-					screenOccluders
+					id,
+					screenOccluders,
+					id === focusedBodyId ? focusedPrimaryId : null
 				)
 			) {
 				bo.label.visible = false;

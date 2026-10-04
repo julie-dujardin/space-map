@@ -197,16 +197,18 @@ export function applyLabelDisplay(
 	return show && !wasVisible;
 }
 
-/** True when a screen point falls inside a closer occluder's silhouette cone. */
+/** True when a screen point falls inside a closer occluder's silhouette cone.
+ *  `exemptId` names one more body that never hides this point. */
 export function isScreenOccluded(
 	sx: number,
 	sy: number,
 	dist: number,
 	selfId: string,
-	occluders: readonly ScreenOccluder[]
+	occluders: readonly ScreenOccluder[],
+	exemptId: string | null = null
 ): boolean {
 	for (const occ of occluders) {
-		if (occ.id === selfId) continue;
+		if (occ.id === selfId || occ.id === exemptId) continue;
 		// Map the label's camera-space view ray d = (u, v, −f) into the space where
 		// the body is a unit sphere (d' = (d·gx, d·gy, d·gz)), then run the cone test
 		// (d'·c')² > K·|d'|² with the ray pointing toward the body (d'·c' > 0).
