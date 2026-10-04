@@ -8,6 +8,7 @@ import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } f
 import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/time/jd';
 import type { TextureBundleMeta } from '$lib/scene/types';
+import type { AtmosphereParams } from './atmosphere';
 
 /**
  * Runs of real coverage as `[firstSlot, lastSlot]` ids. Between two runs the
@@ -38,8 +39,18 @@ export interface CloudNode {
 	lastSwapMs?: number;
 }
 
-/** Offset above the surface (multiplicative on parent scale): small enough to be invisible, large enough to avoid coplanar depth-fighting. Deck bodies (Venus) sit their overlay on the shell's reference level instead. */
+/** Clearance over the surface (multiplicative on parent scale): invisible, but enough to avoid coplanar depth-fighting. */
 export const CLOUD_RADIUS_OFFSET = 1.002;
+
+/**
+ * Overlay radius over the solid body's. A deck body (Venus) has it on the
+ * shell's render level, the cloud top: the usual clearance is lower than the
+ * relief under it.
+ */
+export function cloudRadiusRatio(params: AtmosphereParams | undefined, surfaceKm: number): number {
+	const deckKm = params?.referenceAltitudeKm ?? 0;
+	return deckKm > 0 ? 1 + deckKm / surfaceKm : CLOUD_RADIUS_OFFSET;
+}
 
 /** Min interval between cloud-texture swaps. At high time-warp, a new 3h snapshot every render would cost fetch+decode+upload each frame. */
 const CLOUD_SWAP_MIN_INTERVAL_MS = 1000;

@@ -105,11 +105,13 @@
 		setSurfaceMap
 	} from '$lib/scene/objects/body/model-texture';
 	import {
+		cloudRadiusRatio,
 		disposeCloudNode,
 		loadCloudNode,
 		type CloudMeta,
 		type CloudNode
 	} from '$lib/scene/objects/surface/clouds';
+	import { getAtmosphereParams, loadAtmospheres } from '$lib/fetch/atmospheres';
 	import { makeEnvMap } from '$lib/scene/lighting';
 	import { frameMapQuaternion } from '$lib/math/orientation';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR, SUN_ID } from '$lib/constants';
@@ -828,7 +830,7 @@
 	/** Cloud overlay: a child sphere inheriting the body's tilt + scale. Frame
 	 *  ids can be live timestamps, so read the system meta rather than bake one.
 	 *  Best-effort — clouds are optional. */
-	async function loadClouds(bodyId: string, systemId: string, bodyMesh: Mesh) {
+	async function loadClouds(bodyId: string, systemId: string, radiusKm: number, bodyMesh: Mesh) {
 		try {
 			const res = await fetch(`${dataBase()}/v1/systems/${systemId}.json`);
 			if (!res.ok) return;
@@ -836,8 +838,10 @@
 			const meta: CloudMeta | undefined = sys[bodyId]?.clouds;
 			if (!meta?.frames?.length) return;
 			const frame = meta.frames[meta.frames.length - 1];
+			await loadAtmospheres().catch(() => {});
+			const ratio = cloudRadiusRatio(getAtmosphereParams(bodyId), radiusKm);
 			if (meshes.get(bodyId) !== bodyMesh) return; // rebuilt while awaiting
-			const node = await loadCloudNode(bodyMesh, 1, meta, frame);
+			const node = await loadCloudNode(bodyMesh, 1, meta, frame, ratio);
 			if (node) cloudNodes.set(bodyId, node);
 			render();
 		} catch {
@@ -1016,7 +1020,7 @@
 			);
 		}
 		if (b.displacement) loadDisplacement(b, material, loader);
-		if (b.cloudSystem) loadClouds(b.id, b.cloudSystem, mesh);
+		if (b.cloudSystem) loadClouds(b.id, b.cloudSystem, b.radiusKm, mesh);
 	}
 
 	/** Load a spacecraft member's mesh, keeping the bundle's own materials — a

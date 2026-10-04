@@ -12,6 +12,7 @@ import type { BodyObjects, TextureBundleMeta } from '$lib/scene/types';
 import {
 	CLOUD_RADIUS_OFFSET,
 	cloudFrameForJd,
+	cloudRadiusRatio,
 	disposeCloudNode,
 	loadCloudNode,
 	type CloudMeta
@@ -178,16 +179,15 @@ const SIBLING_LAYERS: { [L in SiblingLayer]: LayerSpec<SiblingMetas[L]> } = {
 			const frame = cloudFrameForJd(env.currentJd, meta.frames, meta.coverage);
 			// No exported snapshot yet — skip rather than park a frameless node.
 			if (!frame) return;
-			// A deck body's overlay is its shell's render level (Venus: the cloud
-			// top, 65 km up) — the march floor, so no ray marches on behind it.
-			// Its direct light still sees only the haze above the usual clearance:
-			// the disc's tuned look, the sun dimming the deck under the whole
-			// column would be a different one. Elsewhere the overlay keeps its
-			// anti-z-fight clearance over the surface.
-			const deckRatio = bo.atmosphere
-				? bo.atmosphere.planetRadiusKm / bo.atmosphere.surfaceRadiusKm
-				: 1;
-			const cloudRatio = deckRatio > 1 ? deckRatio : CLOUD_RADIUS_OFFSET;
+			// At a deck the overlay is the march floor, so no ray marches on behind
+			// it. Its direct light still sees only the haze above the usual
+			// clearance: the disc's tuned look, the sun dimming the deck under the
+			// whole column would be a different one.
+			const cloudRatio = cloudRadiusRatio(
+				bo.atmosphere?.params,
+				bo.atmosphere?.surfaceRadiusKm ?? 1
+			);
+			const deckRatio = cloudRatio === CLOUD_RADIUS_OFFSET ? 1 : cloudRatio;
 			const node = await loadCloudNode(mesh, bo.radiusScene, meta, frame, cloudRatio);
 			if (!node) return;
 			if (bo.clouds) {
