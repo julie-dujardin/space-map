@@ -458,14 +458,16 @@
 	let turned = $state(false);
 	/** Bodies on the middle line, or all standing on the floor. */
 	let align = $state<'center' | 'bottom'>('center');
+	let menuHeight = $state(0);
 	/** On the floor, the small end of the row stands where the next page's
-	 *  link and the reference sit, so they go to the top, under the menu. */
-	const UNDER_MENU = 164;
+	 *  link and the reference sit, so they go to the top of the room left
+	 *  free: just under the menu, or its button, whatever its size. */
+	const underMenu = $derived(12 + (opened ? 0 : 16 + (showMenu ? menuHeight : narrow ? 40 : 32)));
 	const linkAt = $derived(
-		align === 'bottom' ? `top: ${UNDER_MENU}px` : `bottom: ${LABEL_ROW + 14}px`
+		align === 'bottom' ? `top: ${underMenu}px` : `bottom: ${LABEL_ROW + 14}px`
 	);
 	const referenceAt = $derived(
-		align === 'bottom' ? `top: ${UNDER_MENU + 40}px` : `bottom: ${LABEL_ROW + 54}px`
+		align === 'bottom' ? `top: ${underMenu + 40}px` : `bottom: ${LABEL_ROW + 54}px`
 	);
 	let rowBox = $state<HTMLDivElement | null>(null);
 
@@ -913,6 +915,7 @@
 				{#if showMenu}
 					<div
 						class="absolute top-4 right-4 z-20 flex max-h-[calc(100%-2rem)] w-[390px] max-w-[calc(100%-2rem)]"
+						bind:clientHeight={menuHeight}
 					>
 						<CompareMenu
 							{selected}
