@@ -23,6 +23,7 @@
 	display: flex;
 	align-items: center;
 	gap: 0.5em;
+	box-sizing: border-box;
 	max-width: 100%;
 	padding: 1px 6px;
 	border-radius: var(--sm-attribution-radius);
