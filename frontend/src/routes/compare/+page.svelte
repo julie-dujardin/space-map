@@ -459,8 +459,14 @@
 	/** Bodies on the middle line, or all standing on the floor. */
 	let align = $state<'center' | 'bottom'>('center');
 	/** On the floor, the small end of the row stands where the next page's
-	 *  link and the reference sit, so they go up out of its way. */
-	const endLift = $derived(LABEL_ROW + 14 + (align === 'bottom' ? 96 : 0));
+	 *  link and the reference sit, so they go to the top, under the menu. */
+	const UNDER_MENU = 164;
+	const linkAt = $derived(
+		align === 'bottom' ? `top: ${UNDER_MENU}px` : `bottom: ${LABEL_ROW + 14}px`
+	);
+	const referenceAt = $derived(
+		align === 'bottom' ? `top: ${UNDER_MENU + 40}px` : `bottom: ${LABEL_ROW + 54}px`
+	);
 	let rowBox = $state<HTMLDivElement | null>(null);
 
 	/** The row as it stood before the change, held over the new one until the
@@ -799,7 +805,7 @@
 						'next'
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
-						style="bottom: {endLift}px"
+						style={linkAt}
 					>
 						<span class="truncate"
 							>{@render dotted(neighbourLabel(speck, pageIndex + 2, narrow))}</span
@@ -834,7 +840,7 @@
 					     body can be drawn under it. -->
 					<div
 						class="pointer-events-none absolute right-5"
-						style="bottom: {endLift + 40}px; width: {Math.max(96, comparableBox + 2 * SIDE_PAD)}px"
+						style="{referenceAt}; width: {Math.max(96, comparableBox + 2 * SIDE_PAD)}px"
 					>
 						<BodyLineup
 							bodies={[comparableBody]}
