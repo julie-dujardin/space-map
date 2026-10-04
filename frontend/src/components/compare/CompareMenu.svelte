@@ -58,6 +58,9 @@
 		onclose: () => void;
 	}
 
+	/** Between the parts of a label. */
+	const DOT = ' · ';
+
 	let {
 		selected,
 		listed,
@@ -205,9 +208,9 @@
 									class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-start hover:bg-accent disabled:opacity-45 disabled:hover:bg-transparent"
 								>
 									<span class="min-w-0 flex-1">
-										<span class="block truncate text-sm font-medium">{hit.name}</span>
+										<span class="block truncate text-sm font-medium"><bdi>{hit.name}</bdi></span>
 										<span class="block truncate text-[11.5px] text-muted-foreground">
-											{objectTypeLabel(hit.type)}{size ? ` · ${size}` : ''}
+											{objectTypeLabel(hit.type)}{#if size}{DOT}<bdi>{size}</bdi>{/if}
 										</span>
 									</span>
 									{#if already}
@@ -267,10 +270,12 @@
 										e.preventDefault();
 										onopen(object.id);
 									}}
-									class="flex-1 truncate text-[13px] font-medium hover:underline">{object.name}</a
+									class="flex-1 truncate text-[13px] font-medium hover:underline"
+									><bdi>{object.name}</bdi></a
 								>
 							{:else}
-								<span class="flex-1 truncate text-[13px] font-medium">{object.name}</span>
+								<span class="flex-1 truncate text-[13px] font-medium"><bdi>{object.name}</bdi></span
+								>
 							{/if}
 							<span class="shrink-0 text-xs text-muted-foreground tabular-nums">{object.size}</span>
 							<Button

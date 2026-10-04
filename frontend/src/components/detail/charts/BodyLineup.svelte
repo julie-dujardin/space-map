@@ -1685,7 +1685,7 @@
 							: ''}"
 						style="left: {p.cx}px; max-width: {p.labelWidth}px"
 					>
-						<div class="truncate text-[11px] font-medium">{p.name}</div>
+						<div dir="auto" class="truncate text-[11px] font-medium">{p.name}</div>
 						<div class="truncate text-[11px] text-muted-foreground tabular-nums">
 							{sizeText(p)}
 						</div>
@@ -1705,7 +1705,7 @@
 			style="left: {tipLeft}px; top: {height +
 				6}px; max-width: {tipMaxWidth}px; visibility: {tipWidth === 0 ? 'hidden' : 'visible'}"
 		>
-			<div class="text-xs font-medium whitespace-nowrap">{hovered.name}</div>
+			<div dir="auto" class="text-xs font-medium whitespace-nowrap">{hovered.name}</div>
 			{#if hovered.description}
 				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
 			{/if}

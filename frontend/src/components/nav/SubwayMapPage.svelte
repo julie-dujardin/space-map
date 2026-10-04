@@ -13,6 +13,8 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
+	import { ltrIsolate } from '$lib/format/bidi';
 	import { SITE_GUTTER } from './site';
 	import SubwayDiagram from './SubwayDiagram.svelte';
 	import BodySearch from './BodySearch.svelte';
@@ -117,9 +119,12 @@
 		tree,
 		text,
 		fmt: formatDvFigure,
-		fmtTotal: formatDv,
+		// Isolated: in a right-to-left label a Latin unit would trade places
+		// with its figure.
+		fmtTotal: (kms: number) => ltrIsolate(formatDv(kms)),
 		link: plannerHref,
-		reach
+		reach,
+		mirror: getTextDirection(getLocale()) === 'rtl'
 	});
 	const rows = $derived(drawRows(draw));
 	const strip = $derived(drawStrip(draw));
@@ -368,7 +373,9 @@
 							aria-label={m.tab_members()}
 							onclick={() => toggleExpanded(system.id)}
 						>
-							<ChevronRightIcon class="size-4 transition-transform {open ? 'rotate-90' : ''}" />
+							<ChevronRightIcon
+								class="size-4 transition-transform {open ? 'rotate-90' : 'rtl:rotate-180'}"
+							/>
 						</button>
 					{:else}
 						<span class="size-7"></span>
@@ -459,7 +466,7 @@
 	<div style="padding-bottom: {sheetPx}px; margin-bottom: calc(-2.5rem - var(--safe-bottom))">
 		<div class={SITE_GUTTER}>{@render notes()}</div>
 		{#if !data.failed}
-			<!-- The level names are pinned to the left edge while the map scrolls
+			<!-- The level names are pinned to the start edge while the map scrolls
 			     under them, so the rungs are always named. -->
 			<div class="flex">
 				<div class="shrink-0">

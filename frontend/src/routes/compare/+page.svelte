@@ -7,6 +7,9 @@
   Opening one of them maximizes it: the row keeps that object alone, its two
   neighbours in size stand in the strips on either side the way a band's do,
   and the object's own page takes the place of the list.
+
+  The row is a picture drawn left to right in every locale, so what stands on
+  it is placed by physical side, not by reading direction.
 -->
 <script lang="ts">
 	import { setContext, untrack } from 'svelte';
@@ -55,6 +58,8 @@
 
 	/** Below this the page is laid out for a phone. */
 	const NARROW = 768;
+	/** Between the parts of a label. */
+	const DOT = ' · ';
 	/** The band of names the row draws under itself, with room under them for
 	 *  the credit line in the corner. */
 	const LABEL_ROW = 60;
@@ -431,11 +436,11 @@
 
 	/** What the strip on either side leads to. Maximized it is the neighbouring
 	 *  object itself; otherwise it is the page that object opens. */
-	function neighbourLabel(object: CompareObject, n: number, terse = false): string {
+	function neighbourLabel(object: CompareObject, n: number, terse = false): string[] {
 		const parts = [object.name];
 		if (!terse) parts.push(sizeText(object));
 		if (!opened) parts.push(m.compare_page_of({ n }));
-		return parts.join(' · ');
+		return parts;
 	}
 
 	// --- zooming between the row and one object ---
@@ -644,6 +649,12 @@
 	});
 </script>
 
+<!-- Each part isolated: a Latin name beside a figure would otherwise trade
+     places with it in a right-to-left line. -->
+{#snippet dotted(parts: string[])}
+	{#each parts as part, i (i)}{#if i}{DOT}{/if}<bdi>{part}</bdi>{/each}
+{/snippet}
+
 <svelte:head>
 	<title>{m.compare_page_title()} - {m.page_title()}</title>
 </svelte:head>
@@ -716,12 +727,13 @@
 					{#if ghostAt}
 						<button
 							type="button"
+							dir="ltr"
 							aria-hidden="true"
 							tabindex="-1"
 							onclick={() => turn(-1)}
 							onpointerenter={() => (hot = 'prev')}
 							onpointerleave={() => (hot = null)}
-							class="absolute inset-y-0 start-0 z-10 flex items-center justify-end pe-1"
+							class="absolute inset-y-0 left-0 z-10 flex items-center justify-end pe-1"
 							style="width: {Math.max(0, ghostAt.cx + ghostAt.pr)}px"
 						>
 							<ChevronLeftIcon
@@ -738,14 +750,14 @@
 						onpointerenter={() => (hot = 'prev')}
 						onpointerleave={() => (hot = null)}
 						aria-label={opened ? m.compare_open({ name: ghost.name }) : m.search_prev_page()}
-						class="absolute start-5 z-10 flex h-8 max-w-[45%] items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						class="absolute left-5 z-10 flex h-8 max-w-[45%] items-center rtl:flex-row-reverse gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
 						'prev'
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
 						style="bottom: {LABEL_ROW + 14}px"
 					>
 						<ChevronLeftIcon class="size-3.5 shrink-0" />
-						<span class="truncate">{neighbourLabel(ghost, pageIndex, narrow)}</span>
+						<span class="truncate">{@render dotted(neighbourLabel(ghost, pageIndex, narrow))}</span>
 					</button>
 				{/if}
 
@@ -754,6 +766,7 @@
 				     of the strip it sits in; a limb is reached over its own width. -->
 					<button
 						type="button"
+						dir="ltr"
 						aria-hidden="true"
 						tabindex="-1"
 						onclick={() => turn(1)}
@@ -774,13 +787,15 @@
 						onpointerenter={() => (hot = 'next')}
 						onpointerleave={() => (hot = null)}
 						aria-label={opened ? m.compare_open({ name: speck.name }) : m.search_next_page()}
-						class="absolute end-5 z-10 flex h-8 max-w-[45%] items-center gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						class="absolute right-5 z-10 flex h-8 max-w-[45%] items-center rtl:flex-row-reverse gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
 						'next'
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
 						style="bottom: {LABEL_ROW + 14}px"
 					>
-						<span class="truncate">{neighbourLabel(speck, pageIndex + 2, narrow)}</span>
+						<span class="truncate"
+							>{@render dotted(neighbourLabel(speck, pageIndex + 2, narrow))}</span
+						>
 						<ChevronRightIcon class="size-3.5 shrink-0" />
 					</button>
 				{/if}
@@ -790,7 +805,7 @@
 					     On its own scrim: a maximized body is drawn under it. -->
 					<div
 						class="pointer-events-none absolute flex flex-col gap-1 rounded-md bg-stage/70 px-1.5 py-1 {narrow
-							? 'start-5 top-5 items-start'
+							? 'left-5 top-5 items-start'
 							: 'left-1/2 -translate-x-1/2 items-center'}"
 						style={narrow ? '' : `bottom: ${LABEL_ROW + 14}px`}
 					>
@@ -810,7 +825,7 @@
 					     either way the rest would be air. Its name is on a scrim: a zoomed
 					     body can be drawn under it. -->
 					<div
-						class="pointer-events-none absolute end-5"
+						class="pointer-events-none absolute right-5"
 						style="bottom: {LABEL_ROW + 54}px; width: {Math.max(
 							96,
 							comparableBox + 2 * SIDE_PAD
@@ -827,8 +842,8 @@
 						<span
 							class="mx-auto block w-fit rounded-md bg-stage/70 px-1.5 text-center text-[11px] leading-tight text-muted-foreground"
 						>
-							{comparableBody.name} ·
-							<span class="tabular-nums">{comparableSize}</span>
+							<bdi>{comparableBody.name}</bdi> ·
+							<bdi class="tabular-nums">{comparableSize}</bdi>
 						</span>
 					</div>
 				{/if}
@@ -851,24 +866,24 @@
 			</div>
 
 			{#if turned}
-				<!-- Top start corner, under the scale bar a phone has there. -->
+				<!-- Top left corner, under the scale bar a phone has there. -->
 				<button
 					type="button"
 					aria-label={m.compare_reset_orientation()}
 					title={m.compare_reset_orientation()}
 					onclick={() => row?.resetOrientation()}
-					class="absolute start-4 z-20 {MAP_GLASS} {narrow ? 'top-16' : 'top-4'}"
+					class="absolute left-4 z-20 {MAP_GLASS} {narrow ? 'top-16' : 'top-4'}"
 				>
 					<RotateCcwIcon class="size-5 md:size-4" />
 				</button>
 			{/if}
 
 			{#if !opened}
-				<!-- Top end corner, where the row leaves the most room: the bottom
+				<!-- Top right corner, where the row leaves the most room: the bottom
 				     corners hold the page links, the credit and the reference. -->
 				{#if showMenu}
 					<div
-						class="absolute top-4 end-4 z-20 flex max-h-[calc(100%-2rem)] w-[390px] max-w-[calc(100%-2rem)]"
+						class="absolute top-4 right-4 z-20 flex max-h-[calc(100%-2rem)] w-[390px] max-w-[calc(100%-2rem)]"
 					>
 						<CompareMenu
 							{selected}
@@ -889,7 +904,7 @@
 						aria-label={m.compare_show_menu()}
 						aria-expanded="false"
 						onclick={() => (menuOpen = true)}
-						class="absolute top-4 end-4 z-20 {MAP_GLASS}"
+						class="absolute top-4 right-4 z-20 {MAP_GLASS}"
 					>
 						<ListIcon class="size-5 md:size-4" />
 					</button>

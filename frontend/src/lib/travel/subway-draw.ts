@@ -99,6 +99,9 @@ export interface DrawOptions {
 	/** What a chosen craft can reach; null where no craft is chosen, or where
 	 *  the one chosen states no budget the map can weigh it by. */
 	reach?: Reach | null;
+	/** Draw for a page read right to left: the trunk on the right, lines
+	 *  running left from it. */
+	mirror?: boolean;
 }
 
 /** Whether a stop is out of the chosen craft's reach. */
@@ -141,9 +144,12 @@ class Sheet {
 		(over ? this.over : this.lines).push({ pts, color, width, opacity, dim: this.dim });
 	}
 
-	drawing(width: number, height: number): Drawing {
+	/** `mirror` flips left for right, for a page read right to left. Anchors
+	 *  stay as they are: under `direction: rtl` the page already flips them. */
+	drawing(width: number, height: number, mirror = false): Drawing {
+		const fx = (x: number) => (mirror ? width - x : x);
 		const serialise = (l: PendingLine): DrawLine => ({
-			points: l.pts.map((p) => p.join(',')).join(' '),
+			points: l.pts.map(([x, y]) => `${fx(x)},${y}`).join(' '),
 			color: l.color,
 			width: l.width,
 			opacity: l.opacity,
@@ -153,9 +159,9 @@ class Sheet {
 			width,
 			height,
 			lines: [...this.lines, ...this.over].map(serialise),
-			stops: this.stops,
-			labels: this.labels,
-			aeros: this.aeros
+			stops: this.stops.map((s) => ({ ...s, x: fx(s.x) })),
+			labels: this.labels.map((l) => ({ ...l, x: fx(l.x), rotate: mirror ? -l.rotate : l.rotate })),
+			aeros: this.aeros.map((a) => ({ ...a, x: fx(a.x) }))
 		};
 	}
 
@@ -311,7 +317,7 @@ export function drawRows(o: DrawOptions): Drawing {
 	const out = dimmer(o.reach);
 	const S = new Sheet();
 	// Nothing to hang the rows off: an origin the catalogue could not place.
-	if (tree.trunk.length === 0) return S.drawing(ROWS_WIDTH, 0);
+	if (tree.trunk.length === 0) return S.drawing(ROWS_WIDTH, 0, o.mirror);
 	const dv = (x1: number, x2: number, y: number, leg: TreeLeg, below = false) => {
 		const ly = below ? y + 13 : y - 12;
 		const figure = S.text((x1 + x2) / 2, ly, fmt(leg.dvKms), { weight: 600, size: 12 });
@@ -520,7 +526,7 @@ export function drawRows(o: DrawOptions): Drawing {
 		}
 	}
 
-	return S.drawing(ROWS_WIDTH, yEnd + 30);
+	return S.drawing(ROWS_WIDTH, yEnd + 30, o.mirror);
 }
 
 // --------------------------------------------------------------- strip
@@ -793,5 +799,8 @@ export function drawStrip(o: DrawOptions): StripDrawing {
 	// estimate, and the slack it leaves is gap enough.
 	const legendWidth = Math.round(L.rightEdge());
 	const width = Math.round(Math.max(xEnd, S.rightEdge()) + TAIL_PAD);
-	return { map: S.drawing(width, height), legend: L.drawing(legendWidth, height) };
+	return {
+		map: S.drawing(width, height, o.mirror),
+		legend: L.drawing(legendWidth, height, o.mirror)
+	};
 }
