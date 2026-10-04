@@ -70,14 +70,14 @@
 >
 	<Popover.Root>
 		<Popover.Trigger
-			class="flex cursor-pointer items-center gap-3 px-1 py-0
+			class="flex min-w-0 cursor-pointer items-center gap-3 px-1 py-0
 				transition-colors {ink.hover}"
 			aria-label={m.attribution_title()}
 		>
 			{#each shown as chip (chip.label)}
 				{#if chip.names.length > 0}
-					<!-- A host that keeps something else on the same line narrows the chip. -->
-					<span class="inline-block max-w-(--credit-chip-max,50vw) truncate align-bottom">
+					<!-- The chips share what the host's width leaves after the logo. -->
+					<span class="min-w-0 truncate">
 						<span class={ink.dim}>{chip.label}:</span>
 						{chip.names.join(' · ')}
 					</span>
@@ -89,13 +89,13 @@
 		</Popover.Content>
 	</Popover.Root>
 	{#if anyChip}
-		<span class={ink.dim} aria-hidden="true">·</span>
+		<span class="shrink-0 {ink.dim}" aria-hidden="true">·</span>
 	{/if}
 	<a
 		href={GITHUB_REPO_URL}
 		target="_blank"
 		rel="noopener noreferrer"
-		class="flex items-center px-1 py-0 transition-colors {ink.hover}"
+		class="flex shrink-0 items-center px-1 py-0 transition-colors {ink.hover}"
 		aria-label="GitHub"
 	>
 		<svg

@@ -861,7 +861,7 @@
 			{/if}
 
 			<!-- Same corner as the map's, crediting what this page draws. -->
-			<div class="absolute end-0 z-10" style="bottom: var(--safe-bottom)">
+			<div class="absolute end-0 z-10 max-w-full" style="bottom: var(--safe-bottom)">
 				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 

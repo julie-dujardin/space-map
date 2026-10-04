@@ -447,7 +447,7 @@
 			{/if}
 
 			<!-- Credit bar -->
-			<div class="absolute bottom-[var(--safe-bottom)] end-[var(--safe-end)]">
+			<div class="absolute bottom-[var(--safe-bottom)] end-[var(--safe-end)] max-w-full">
 				<PanoramaCreditBar entry={current} {mapCredits} />
 			</div>
 
