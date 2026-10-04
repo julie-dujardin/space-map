@@ -698,15 +698,22 @@
 		draw();
 	}
 
-	// The controls never roll the eye, so one still on its first axis has not
-	// turned its body.
+	// Only the page's own bodies count: a neighbouring page's cannot be reached
+	// to turn. The controls never roll the eye, so one still on its first axis
+	// has not turned its body.
 	function syncTurned() {
-		onturned?.([...orbitDirs.values()].some((dir) => dir.z < 1 - 1e-9));
+		onturned?.(layout.some((p) => (orbitDirs.get(p.id)?.z ?? 1) < 1 - 1e-9));
 	}
+	$effect(() => {
+		void layout.map((p) => p.id).join();
+		untrack(syncTurned);
+	});
 
-	/** Put every body back as the row first drew it. The zoom stays. */
+	/** Put the page's bodies back as the row first drew them. The zoom stays,
+	 *  and so does a neighbouring page's body, left as it was turned there. */
 	export function resetOrientation() {
-		if (orbit) {
+		const held = layout.some((p) => p.id === orbitId);
+		if (orbit && held) {
 			// A coast still running would turn the body again.
 			orbit.enableDamping = false;
 			orbit.update();
@@ -714,13 +721,13 @@
 			orbitEye.position.set(0, 0, ORBIT_DISTANCE / zoom);
 			orbit.update();
 		}
-		orbitDirs.clear();
-		orbitQuats.clear();
-		onturned?.(false);
-		for (const p of [...layout, ...asideLayout]) {
+		for (const p of layout) {
+			orbitDirs.delete(p.id);
+			orbitQuats.delete(p.id);
 			const obj = displayObject(p.id);
 			if (obj) applySpin(obj, p.id);
 		}
+		onturned?.(false);
 		updateGlow();
 		draw();
 	}
