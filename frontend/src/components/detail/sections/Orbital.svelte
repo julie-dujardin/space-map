@@ -130,12 +130,13 @@
 	let celestrak = $derived(global?.celestrak);
 	let sats = $derived(sbdb?.sats);
 	let rotationDays = $derived(rotationPeriodDays(global));
-	// Earth sats and probes surface altitude/speed/period in the ObjectStats
-	// cards instead, so those rows are suppressed here to avoid duplicating them.
+	// The ObjectStats cards already show altitude and speed for Earth sats and
+	// probes, so those rows are dropped here. Only the Earth-sat cards carry the
+	// period: a probe's third card is its light lag.
 	let isEarthSat = $derived(celestrak?.orbit_center === 'earth');
-	let inObjectStats = $derived(
-		isEarthSat || body?.data.orbitalSource === OrbitalSource.SPICE_PROBE
-	);
+	let isProbe = $derived(body?.data.orbitalSource === OrbitalSource.SPICE_PROBE);
+	let inObjectStats = $derived(isEarthSat || isProbe);
+	let periodInObjectStats = $derived(isEarthSat && !isProbe);
 	let satPeriodDays = $derived(celestrak?.period != null ? celestrak.period / 1440 : null);
 	// Fallback for bodies without SBDB/CelesTrak (planets, moons, Horizons-only):
 	// derive period from mean motion. Only valid for elliptical orbits — n ≤ 0
@@ -338,13 +339,13 @@
 				value={formatDuration(sbdb.per_y * 365.25)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
-		{:else if satPeriodDays != null && !inObjectStats}
+		{:else if satPeriodDays != null && !periodInObjectStats}
 			<Row
 				label={m.orbital_period()}
 				value={formatDuration(satPeriodDays)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
-		{:else if elementsPeriodDays != null && !inObjectStats}
+		{:else if elementsPeriodDays != null && !periodInObjectStats}
 			<Row
 				label={m.orbital_period()}
 				value={formatDuration(elementsPeriodDays)}
