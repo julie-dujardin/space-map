@@ -458,26 +458,9 @@
 	let turned = $state(false);
 	/** Bodies on the middle line, or all standing on the floor. */
 	let align = $state<'center' | 'bottom'>('center');
-	let nextWidth = $state(0);
-
-	/** How far up the stage the next page's link stands, with the reference
-	 *  above it. On the floor, the small end of the row stands where they do,
-	 *  so they go up over it. A body too tall to clear is left to their scrims:
-	 *  it is the large end's edge, reaching in from beside them. */
-	const endLift = $derived.by(() => {
-		const floor = LABEL_ROW + 14;
-		if (align !== 'bottom') return floor;
-		const refWidth =
-			comparableBody && comparableFits ? Math.max(96, comparableBox + 2 * SIDE_PAD) : 0;
-		const linkWidth = speck && speckAt ? nextWidth : 0;
-		const from = stageWidth - 20 - Math.max(refWidth, linkWidth) - 8;
-		let lift = floor;
-		for (const l of laid) {
-			const over = stageHeight - (l.cy - l.pr) + 8;
-			if (!l.aside && l.cx + l.pr > from && over <= stageHeight / 2) lift = Math.max(lift, over);
-		}
-		return lift;
-	});
+	/** On the floor, the small end of the row stands where the next page's
+	 *  link and the reference sit, so they go up out of its way. */
+	const endLift = $derived(LABEL_ROW + 14 + (align === 'bottom' ? 96 : 0));
 	let rowBox = $state<HTMLDivElement | null>(null);
 
 	/** The row as it stood before the change, held over the new one until the
@@ -817,7 +800,6 @@
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
 						style="bottom: {endLift}px"
-						bind:clientWidth={nextWidth}
 					>
 						<span class="truncate"
 							>{@render dotted(neighbourLabel(speck, pageIndex + 2, narrow))}</span
