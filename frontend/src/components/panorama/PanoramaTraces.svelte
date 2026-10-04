@@ -2,14 +2,13 @@
   The way into the panoramas from the 3D map, after Street View: every rover
   traverse on the focused body drawn on its ground as a thick blue line, with
   the nearest panorama shown as a card when the pointer rests on the line and
-  opened by a click on it. A button in the corner stack takes the lines off
-  the map. Standing on the body counts as focusing it — a landed rover, a
+  opened by a click on it. A layer setting takes the lines off the map.
+  Standing on the body counts as focusing it — a landed rover, a
   crater — so the way in stays open from the ground; an orbiter's body is
   not the one it flies over. Bodies with no panoramas get neither.
 -->
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import PersonStandingIcon from '@lucide/svelte/icons/person-standing';
 	import * as m from '$lib/paraglide/messages.js';
 	import {
 		fetchObjectDetail,
@@ -25,6 +24,7 @@
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { TraverseTrace } from '$lib/panorama/trace';
 	import { panoramaHref } from '$lib/state/panorama-link';
+	import { getSettings } from '$lib/state/settings.svelte';
 
 	interface Props {
 		map: SpaceMap;
@@ -69,7 +69,7 @@
 	const LIFT_KM = 0.01;
 
 	let entries = $state<PanoramaEntry[]>([]);
-	let shown = $state(true);
+	const settings = getSettings();
 
 	$effect(() => {
 		const id = bodyId;
@@ -127,7 +127,7 @@
 		const body = bodyId;
 		const renderer = map.renderer;
 		const data = body ? ctx.getBody(body)?.data : undefined;
-		if (!shown || !body || !renderer || !data || !entries.length) return;
+		if (!settings.showPanoramaTraces || !body || !renderer || !data || !entries.length) return;
 		const radiusKm = effectiveRadiusKm(data);
 
 		/** Height of the drawn ground under a panorama, above the mean radius;
@@ -201,21 +201,6 @@
 		};
 	});
 </script>
-
-{#if entries.length}
-	<button
-		type="button"
-		onclick={() => (shown = !shown)}
-		aria-pressed={shown}
-		class="flex size-10 cursor-pointer items-center justify-center rounded-full backdrop-blur-md transition-colors md:size-8 {shown
-			? 'bg-white text-black hover:bg-white/80'
-			: 'bg-black/40 text-white hover:bg-black/55'}"
-		title={shown ? m.panorama_entry_hide() : m.panorama_entry_show()}
-		aria-label={shown ? m.panorama_entry_hide() : m.panorama_entry_show()}
-	>
-		<PersonStandingIcon class="size-5 md:size-4" />
-	</button>
-{/if}
 
 <style>
 	:global(.panorama-trace-preview) {

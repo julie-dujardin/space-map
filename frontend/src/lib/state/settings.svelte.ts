@@ -48,6 +48,7 @@ interface SettingValues {
 	atmosphereCalibration: AtmosphereCalibration | null;
 	atmoQualityOverrides: Partial<AtmosphereQualityConfig>;
 	highAmbient: boolean;
+	showPanoramaTraces: boolean;
 	realisticLighting: boolean;
 	overexposeRings: boolean;
 	showShapeMesh: boolean;
@@ -90,6 +91,7 @@ const SETTING_SPEC = {
 	// A debug layer on top of the tier preset: the map opens on the preset.
 	atmoQualityOverrides: { default: {}, persist: false },
 	highAmbient: { default: false, persist: true },
+	showPanoramaTraces: { default: true, persist: true },
 	realisticLighting: { default: false, persist: true },
 	// The physical picture is the one the map opens on.
 	overexposeRings: { default: false, persist: false },
@@ -172,6 +174,7 @@ class SettingsState implements SceneSettings, SettingValues {
 	);
 	/** Flood the scene with flat ambient fill so night sides are fully lit. */
 	highAmbient = $state<boolean>(SETTING_SPEC.highAmbient.default);
+	showPanoramaTraces = $state<boolean>(SETTING_SPEC.showPanoramaTraces.default);
 	/** Scale sunlight with the true inverse-square distance from the Sun instead
 	 *  of lighting every body as if it sat at 1 AU. Debug menu only. */
 	realisticLighting = $state<boolean>(SETTING_SPEC.realisticLighting.default);
@@ -284,6 +287,10 @@ class SettingsState implements SceneSettings, SettingValues {
 
 	setHighAmbient(v: boolean) {
 		this.set('highAmbient', v);
+	}
+
+	setShowPanoramaTraces(v: boolean) {
+		this.set('showPanoramaTraces', v);
 	}
 
 	setRealisticLighting(v: boolean) {

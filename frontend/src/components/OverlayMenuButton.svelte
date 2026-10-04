@@ -9,7 +9,8 @@
 	interface Props {
 		title: string;
 		Icon: Component<{ class?: string }>;
-		/** Overrides the map's glass trigger for chrome on a light surface. */
+		/** Overrides the map's glass trigger for chrome on a light surface. The
+		 *  panel then drops below it; a glass trigger's panel opens over it. */
 		triggerClass?: string;
 		children: Snippet;
 	}
@@ -41,6 +42,9 @@
 		text-white transition-colors cursor-pointer`;
 
 	const buttonClass = $derived(triggerClass ?? mapGlass);
+	const cover = $derived(!triggerClass);
+	/** The glass trigger's height from `md` up, where the popover is used. */
+	const TRIGGER_PX = 32;
 </script>
 
 {#if isMobile}
@@ -74,9 +78,18 @@
 		<Popover.Content
 			side="bottom"
 			align="end"
-			sideOffset={8}
-			class="flex max-h-[80dvh] w-80 flex-col overflow-hidden p-0"
+			sideOffset={cover ? -TRIGGER_PX : 8}
+			class="relative flex max-h-[80dvh] w-80 flex-col overflow-hidden p-0"
 		>
+			{#if cover}
+				<!-- The panel stands on its own trigger, so it carries the way out. -->
+				<Popover.Close
+					class="absolute top-2 end-2 z-10 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-accent"
+					aria-label={m.close()}
+				>
+					<XIcon class="size-4" />
+				</Popover.Close>
+			{/if}
 			{@render children()}
 		</Popover.Content>
 	</Popover.Root>

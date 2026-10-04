@@ -42,6 +42,13 @@
 			desc: () => m.layers_high_ambient_desc(),
 			checked: () => settings.highAmbient,
 			set: (on) => settings.setHighAmbient(on)
+		},
+		{
+			id: 'panoramas',
+			label: () => m.layers_panoramas(),
+			desc: () => m.layers_panoramas_desc(),
+			checked: () => settings.showPanoramaTraces,
+			set: (on) => settings.setShowPanoramaTraces(on)
 		}
 	];
 </script>
