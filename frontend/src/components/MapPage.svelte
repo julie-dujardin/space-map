@@ -691,7 +691,8 @@
 	});
 
 	// Prompt a reload when data looks stale after a redeploy (rotated `?v=`
-	// tokens): on a tab-refocus version change or repeated refresher failures.
+	// tokens): on a version change seen by the watcher or repeated refresher
+	// failures.
 	onMount(() => {
 		const showStale = () =>
 			toast.warning(m.new_data_available(), {

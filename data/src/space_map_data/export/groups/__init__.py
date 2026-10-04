@@ -598,10 +598,17 @@ def run_groups_tier(
 
 
 def update_metadata_group_bundles(out_dir: Path, group_bundles: dict[str, int]) -> None:
-    """Patch only ``group_bundles`` in metadata.json (for additive runs)."""
+    """Patch ``group_bundles`` and the ``membership`` cache token in
+    metadata.json (for additive runs). The run rewrites membership/, which is
+    served immutable: a stale token keeps browsers on the old files."""
+    from space_map_data.export.pipeline.orchestrator import _content_token
+
     path = out_dir / "metadata.json"
     metadata = orjson.loads(path.read_bytes()) if path.exists() else {}
     metadata["group_bundles"] = group_bundles
+    metadata.setdefault("versions", {})["membership"] = _content_token(
+        out_dir / "membership"
+    )
     path.write_bytes(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
 
 

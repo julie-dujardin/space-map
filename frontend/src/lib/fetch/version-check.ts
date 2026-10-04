@@ -23,20 +23,39 @@ async function dataVersionChanged(): Promise<boolean> {
 	}
 }
 
+/** How often a visible tab re-checks: a tab left in the foreground never fires
+ *  `visibilitychange`, so it would otherwise miss a deploy entirely. */
+const POLL_MS = 5 * 60_000;
+
 /**
- * Re-check the data version on tab refocus (no polling timer — the moment a
- * long-idle session comes back); invoke `onStale` once on a detected redeploy.
- * Returns a disposer.
+ * Re-check the data version on tab refocus, on a back/forward-cache restore,
+ * and every few minutes while the tab is visible; invoke `onStale` once on a
+ * detected redeploy. Returns a disposer.
  */
 export function watchDataVersion(onStale: () => void): () => void {
 	let fired = false;
+	let checking = false;
 	const check = async () => {
-		if (fired || document.visibilityState !== 'visible') return;
-		if (await dataVersionChanged()) {
-			fired = true;
-			onStale();
+		if (fired || checking || document.visibilityState !== 'visible') return;
+		checking = true;
+		try {
+			if (await dataVersionChanged()) {
+				fired = true;
+				onStale();
+			}
+		} finally {
+			checking = false;
 		}
 	};
+	const onPageShow = (e: PageTransitionEvent) => {
+		if (e.persisted) void check();
+	};
+	const timer = setInterval(check, POLL_MS);
 	document.addEventListener('visibilitychange', check);
-	return () => document.removeEventListener('visibilitychange', check);
+	window.addEventListener('pageshow', onPageShow);
+	return () => {
+		clearInterval(timer);
+		document.removeEventListener('visibilitychange', check);
+		window.removeEventListener('pageshow', onPageShow);
+	};
 }

@@ -39,8 +39,8 @@ fi
 cp "$SCRIPT_DIR/.assetsignore.static" "$EXPORT_DIR/.assetsignore"
 npx wrangler deploy --config "$SCRIPT_DIR/wrangler.jsonc"
 
-# The cache-buster skips the edge cache so we compare against the new deploy,
-# not a stale copy.
+# The query string is only a label: Workers assets ignore it, so this checks
+# what the edge serves for the plain path right now.
 probe "https://static.spacemap.co/v1/metadata.json?deploy-check=$(date +%s)" \
   | cmp -s - "$EXPORT_DIR/v1/metadata.json" \
   || { echo "ERROR: metadata.json unreachable or differs from local export" >&2; exit 1; }

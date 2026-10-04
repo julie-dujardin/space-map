@@ -43,13 +43,17 @@ export function versionedImageUrl(path: string): string {
 	return buildVersionedUrl(imagesBase(), path, 'images');
 }
 
+/** Stand-in token for a URL built without one. Unique per page load: a bare
+ *  path under the immutable header would stay cached across every later
+ *  deploy, and only a manual cache clear would get rid of it. */
+const fallbackToken = `boot-${Date.now().toString(36)}`;
+
 function buildVersionedUrl(base: string, path: string, cls: string): string {
 	const token = versions[cls];
 	if (!token) {
-		// Before metadata resolves, or on a legacy export: an unversioned URL
-		// risks a stale cache entry under the immutable header, so surface it.
+		// Before metadata resolves, or on a legacy export.
 		console.error(`versionedUrl: missing '${cls}' token for ${path}`);
-		return `${base}${path}`;
+		return `${base}${path}?v=${fallbackToken}`;
 	}
 	return `${base}${path}?v=${token}`;
 }
