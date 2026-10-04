@@ -191,10 +191,30 @@ index 1330d4af553c79d5b87019ae5c56b7434ecedb9c..efac28e279f33eca11a3c6fdc035974c
          draggedDistance: number;
          closeDrawer: () => void;
 diff --git a/dist/use-snap-points.svelte.js b/dist/use-snap-points.svelte.js
-index 643d6e686c0b38a4ff82670e586795fe25278219..b85122eab98bf2c1ec06b840cbdbdc8e9936aa4d 100644
+index 643d6e686c0b38a4ff82670e586795fe25278219..f69ee3e26354739b42920d69f6667264c8a71418 100644
 --- a/dist/use-snap-points.svelte.js
 +++ b/dist/use-snap-points.svelte.js
-@@ -199,6 +199,16 @@ export function useSnapPoints({ snapPoints, drawerNode: drawerNode, overlayNode:
+@@ -122,6 +122,19 @@ export function useSnapPoints({ snapPoints, drawerNode: drawerNode, overlayNode:
+             snapToPoint(snapPointsOffset[newIndex]);
+         }
+     });
++    // Offsets are measured from the viewport edge, so a resize moves every snap
++    // point while the active one keeps its name. Follow it without a slide: the
++    // drawer has to stay glued to the edge the window is dragging.
++    watch(() => windowDimensions, () => {
++        if (!open.current || isReleasing() || typeof activeSnapPointOffset !== "number")
++            return;
++        set(drawerNode(), {
++            transition: "none",
++            transform: isVertical(direction.current)
++                ? `translate3d(0, ${activeSnapPointOffset}px, 0)`
++                : `translate3d(${activeSnapPointOffset}px, 0, 0)`,
++        });
++    }, { lazy: true });
+     function onRelease({ draggedDistance, closeDrawer, velocity, dismissible, }) {
+         if (fadeFromIndex.current === undefined)
+             return;
+@@ -199,6 +212,16 @@ export function useSnapPoints({ snapPoints, drawerNode: drawerNode, overlayNode:
                  : `translate3d(${newValue}px, 0, 0)`,
          });
      }
@@ -211,7 +231,7 @@ index 643d6e686c0b38a4ff82670e586795fe25278219..b85122eab98bf2c1ec06b840cbdbdc8e
      function getPercentageDragged(absDraggedDistance, isDraggingDown) {
          if (!snapPoints.current ||
              typeof activeSnapPointIndex !== "number" ||
-@@ -249,6 +259,7 @@ export function useSnapPoints({ snapPoints, drawerNode: drawerNode, overlayNode:
+@@ -249,6 +272,7 @@ export function useSnapPoints({ snapPoints, drawerNode: drawerNode, overlayNode:
              return $state.snapshot(snapPointsOffset);
          },
          getPercentageDragged,

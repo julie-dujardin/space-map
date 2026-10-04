@@ -16,7 +16,7 @@ overrides:
   ws@<8.21.0: ^8.21.3
 
 patchedDependencies:
-  vaul-svelte: b4b703e5fc87b5872bd712da947953d791ac35c6d0b53f5695d2aab1d7addd86
+  vaul-svelte: 6724757ce4ab4c5af5f4f99c0437f299fa07fc85f38664a20701409c06c2c94f
 
 importers:
   .:
@@ -147,7 +147,7 @@ importers:
         version: 8.57.0(eslint@10.0.3(jiti@2.7.0))(typescript@5.9.3)
       vaul-svelte:
         specifier: 1.0.0-next.7
-        version: 1.0.0-next.7(patch_hash=b4b703e5fc87b5872bd712da947953d791ac35c6d0b53f5695d2aab1d7addd86)(svelte@5.56.1(@typescript-eslint/types@8.57.0))
+        version: 1.0.0-next.7(patch_hash=6724757ce4ab4c5af5f4f99c0437f299fa07fc85f38664a20701409c06c2c94f)(svelte@5.56.1(@typescript-eslint/types@8.57.0))
       vite:
         specifier: ^8.0.10
         version: 8.0.10(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)
@@ -5702,7 +5702,7 @@ snapshots:
 
   uuid@14.0.0: {}
 
-  vaul-svelte@1.0.0-next.7(patch_hash=b4b703e5fc87b5872bd712da947953d791ac35c6d0b53f5695d2aab1d7addd86)(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
+  vaul-svelte@1.0.0-next.7(patch_hash=6724757ce4ab4c5af5f4f99c0437f299fa07fc85f38664a20701409c06c2c94f)(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
     dependencies:
       runed: 0.23.4(svelte@5.56.1(@typescript-eslint/types@8.57.0))
       svelte: 5.56.1(@typescript-eslint/types@8.57.0)

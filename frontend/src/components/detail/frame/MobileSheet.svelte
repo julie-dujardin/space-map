@@ -106,10 +106,13 @@
 			dvh = s * 100;
 		} else if (typeof s === 'string') {
 			const px = parseFloat(s);
-			if (!Number.isNaN(px)) dvh = (px / window.innerHeight) * 100;
+			if (!Number.isNaN(px)) dvh = (px / innerH) * 100;
 		}
 		onSheetResize?.(dvh);
 	});
+	// A flip to the desktop layout unmounts the sheet; the map's controls must
+	// not stay parked above it.
+	$effect(() => () => onSheetResize?.(0));
 </script>
 
 {#snippet scroller()}

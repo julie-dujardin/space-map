@@ -607,14 +607,17 @@
 	// Report the snap target rather than sampling during the drag: a per-frame
 	// getBoundingClientRect loop thrashes layout and makes the transition jank.
 	$effect(() => {
-		if (!isMobile) return;
+		if (!isMobile) {
+			onSheetResize?.(0);
+			return;
+		}
 		const s = activeSnapPoint;
 		let dvh = 0;
 		if (typeof s === 'number') {
 			dvh = s * 100;
 		} else if (typeof s === 'string') {
 			const px = parseFloat(s);
-			if (!Number.isNaN(px)) dvh = (px / window.innerHeight) * 100;
+			if (!Number.isNaN(px)) dvh = (px / innerH) * 100;
 		}
 		onSheetResize?.(dvh);
 	});
