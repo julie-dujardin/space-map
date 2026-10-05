@@ -466,6 +466,14 @@
 	const linkAt = $derived(
 		align === 'bottom' ? `top: ${underMenu}px` : `bottom: ${LABEL_ROW + 14}px`
 	);
+	/** The previous page's link stands level with the next one's, below the
+	 *  buttons in the other corner if they reach further down. */
+	const prevLinkAt = $derived.by(() => {
+		if (align !== 'bottom') return `bottom: ${LABEL_ROW + 14}px`;
+		const button = narrow ? 40 : 32;
+		const column = (narrow ? 64 : 16) + button + (turned ? 8 + button : 0);
+		return `top: ${Math.max(underMenu, column + 12)}px`;
+	});
 	const referenceAt = $derived(
 		align === 'bottom' ? `top: ${underMenu + 40}px` : `bottom: ${LABEL_ROW + 54}px`
 	);
@@ -770,7 +778,7 @@
 						'prev'
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
-						style="bottom: {LABEL_ROW + 14}px"
+						style={prevLinkAt}
 					>
 						<ChevronLeftIcon class="size-3.5 shrink-0" />
 						<span class="truncate">{@render dotted(neighbourLabel(ghost, pageIndex, narrow))}</span>
@@ -818,12 +826,13 @@
 
 				{#if scaleBar}
 					<!-- Bottom centre, between the page links; a phone has no room there.
-					     On its own scrim: a maximized body is drawn under it. -->
+					     On its own scrim: a maximized body is drawn under it. On the
+					     floor, the row stands there, so it goes to the top. -->
 					<div
 						class="pointer-events-none absolute flex flex-col gap-1 rounded-md bg-stage/70 px-1.5 py-1 {narrow
 							? 'left-5 top-5 items-start'
 							: 'left-1/2 -translate-x-1/2 items-center'}"
-						style={narrow ? '' : `bottom: ${LABEL_ROW + 14}px`}
+						style={narrow ? '' : align === 'bottom' ? 'top: 16px' : `bottom: ${LABEL_ROW + 14}px`}
 					>
 						<div
 							class="h-[7px] border-x border-b border-muted-foreground"

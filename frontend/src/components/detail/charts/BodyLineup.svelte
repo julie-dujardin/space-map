@@ -905,6 +905,7 @@
 			scene?.remove(root);
 			disposeGltf(root);
 			modelRoots.delete(id);
+			floorFit.delete(id);
 		}
 	}
 
@@ -1057,6 +1058,7 @@
 			root.add(fitted);
 			scene.add(root);
 			modelRoots.set(b.id, root);
+			floorFit.delete(b.id);
 			render();
 		} catch {
 			/* a craft with no usable mesh simply isn't drawn */
@@ -1114,6 +1116,7 @@
 			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
 			scene.add(root);
 			modelRoots.set(b.id, root);
+			floorFit.delete(b.id);
 			meshes.get(b.id)?.removeFromParent(); // sphere placeholder no longer needed
 			render();
 		} catch {
@@ -1194,7 +1197,25 @@
 			const relief = material.userData.selfShadow as SelfShadowUniforms | undefined;
 			if (relief) relief.uSelfScale.value = material.displacementScale * p.pr;
 		}
+		if (align === 'bottom' && !p.aside && modelRoot) obj.position.y += floorLift(p, obj);
 		applySpin(obj, p.id);
+	}
+
+	/** On the floor, a mesh stands by what it draws rather than by the radius it
+	 *  is named by: a contact binary or a long craft reaches well past it. Read
+	 *  in the body's own pose, before any spin, so it does not bob as it turns. */
+	const floorFit = new Map<string, { mark: string; dy: number }>();
+	function floorLift(p: LaidOut, obj: Object3D): number {
+		const mark = p.pr.toFixed(1);
+		let fit = floorFit.get(p.id);
+		if (fit?.mark !== mark) {
+			const base = baseQuats.get(p.id);
+			if (base) obj.quaternion.copy(base);
+			const box = new Box3().setFromObject(obj, true);
+			fit = { mark, dy: box.isEmpty() ? 0 : VPAD - box.min.y };
+			floorFit.set(p.id, fit);
+		}
+		return fit.dy;
 	}
 
 	/** How much of its own surface a neighbouring band shows, as light: the row
