@@ -208,6 +208,7 @@ export class PointCloudSystem {
 		private readonly onBasisRebuilt: () => void
 	) {
 		this.orbitPool.setResultHandler(this.onPoolResult);
+		this.orbitPool.setStallHandler(() => void this.recover(false));
 	}
 
 	basis(): Vec3 {
@@ -430,12 +431,22 @@ export class PointCloudSystem {
 	 * the second respawn killing the pool the first was still re-wiring into.
 	 */
 	recoverWorkersIfDead(timeoutMs?: number): Promise<boolean> {
-		this.recovering ??= this.runRecovery(timeoutMs).finally(() => (this.recovering = null));
+		return this.recover(true, timeoutMs);
+	}
+
+	/** `probe` false is the pool's stall report: a dispatch never came back, and
+	 *  live workers would pass the ping while the group stays stuck — respawn
+	 *  outright. A stall that lands during a probe that passes is reported again
+	 *  a stall window later. */
+	private recover(probe: boolean, timeoutMs?: number): Promise<boolean> {
+		if (this.disposed) return Promise.resolve(false);
+		this.recovering ??= this.runRecovery(probe, timeoutMs).finally(() => (this.recovering = null));
 		return this.recovering;
 	}
 
-	private async runRecovery(timeoutMs?: number): Promise<boolean> {
-		if (await this.orbitPool.ping(timeoutMs)) return false;
+	private async runRecovery(probe: boolean, timeoutMs?: number): Promise<boolean> {
+		if (probe && (await this.orbitPool.ping(timeoutMs))) return false;
+		if (this.disposed) return false;
 		this.orbitPool.respawn();
 		// Respawned pool has no wiring; re-mark all and clear the gate so a full
 		// repack runs even mid-stream.

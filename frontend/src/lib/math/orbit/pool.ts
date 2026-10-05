@@ -1,6 +1,7 @@
 import type { PositionedBody } from '$lib/types/objects';
 import type { Vec3 } from '$lib/scene/animation/math';
-import OrbitWorker from './worker?worker';
+// Inline: a respawn must not refetch a hashed script a redeploy has since removed.
+import OrbitWorker from './worker?worker&inline';
 import { packBodiesSliced, columnsTransferList, type OrbitColumns } from './soa';
 
 /*
@@ -13,8 +14,17 @@ import { packBodiesSliced, columnsTransferList, type OrbitColumns } from './soa'
  * becomes the new front (bound to geometry) on return via {@link setResultHandler}.
  *
  * Double-buffered: while a group's worker is busy, back is null and that
- * group is skipped on the frame's tick.
+ * group is skipped on the frame's tick. A dispatch that never comes back
+ * (worker threw, or a mobile OS dropped it) would leave the group skipped for
+ * good, so tick watches in-flight age and reports a stall (see {@link setStallHandler}).
  */
+
+/** Frame-driven time a dispatch may stay in flight before it counts as lost.
+ *  A main-belt solve is tens of ms even on slow phones. */
+const STALL_MS = 5000;
+/** Most of one tick-to-tick gap that ages an in-flight dispatch: a hidden tab
+ *  or a paused clock must not make a reply queued behind the pause look lost. */
+const MAX_TICK_GAP_MS = 250;
 
 interface GroupState {
 	workerIdx: number;
@@ -40,6 +50,8 @@ interface GroupState {
 	/** jd that the current `front` buffer was solved at — lets the caller's
 	 *  subpixel gate measure how stale a skipped group's positions are. */
 	frontJd: number;
+	/** {@link OrbitWorkerPool.activeMs} at dispatch of the in-flight tick. */
+	dispatchedAt: number;
 }
 
 export type GroupResultHandler = (
@@ -72,6 +84,14 @@ export class OrbitWorkerPool {
 		resolve: (ok: boolean) => void;
 	} | null = null;
 	private generation = 0;
+	private onStall: (() => void) | null = null;
+	/** Time summed over tick-to-tick gaps, each capped at {@link MAX_TICK_GAP_MS}. */
+	private activeMs = 0;
+	private lastTickAt = NaN;
+	private lastStallAt = -Infinity;
+	/** A respawned pool that has not answered yet. Its stalls go unreported:
+	 *  workers that can't start would otherwise respawn in a loop. */
+	private unprovenRespawn = false;
 
 	constructor(size: number = navigator.hardwareConcurrency ?? 4) {
 		// Floor at 2 so even 2-core phones (hardwareConcurrency=2) get parallel
@@ -85,6 +105,12 @@ export class OrbitWorkerPool {
 		for (let i = 0; i < this.size; i++) {
 			const w = new OrbitWorker();
 			w.onmessage = (ev: MessageEvent<PoolInMsg>) => this.onMessage(ev.data);
+			// An uncaught throw drops the tick in flight; the worker stays up and
+			// would still answer a ping.
+			w.onerror = (ev) => {
+				console.warn('[orbit-pool] worker error:', ev.message);
+				this.reportStall('a worker threw');
+			};
 			this.workers.push(w);
 		}
 	}
@@ -129,6 +155,8 @@ export class OrbitWorkerPool {
 		this.workers = [];
 		this.groups.clear();
 		this.generation++;
+		this.unprovenRespawn = true;
+		this.lastStallAt = -Infinity;
 		this.spawn();
 	}
 
@@ -140,6 +168,24 @@ export class OrbitWorkerPool {
 
 	setResultHandler(handler: GroupResultHandler): void {
 		this.onResult = handler;
+	}
+
+	/**
+	 * Called when a dispatch has been in flight past {@link STALL_MS} or a
+	 * worker threw. The pool can't recover that group itself — its buffers went
+	 * with the lost tick — and a ping may still pass, so the handler should
+	 * {@link respawn} and re-wire. Repeats at most once per stall window.
+	 */
+	setStallHandler(handler: () => void): void {
+		this.onStall = handler;
+	}
+
+	private reportStall(reason: string): void {
+		if (this.unprovenRespawn || this.workers.length === 0) return;
+		if (this.activeMs - this.lastStallAt < STALL_MS) return;
+		this.lastStallAt = this.activeMs;
+		console.warn(`[orbit-pool] ${reason}; recovering`);
+		this.onStall?.();
 	}
 
 	get workerCount(): number {
@@ -238,7 +284,8 @@ export class OrbitWorkerPool {
 			pendingJd: inFlight ? prev!.pendingJd : null,
 			frontBasis: prev?.frontBasis ?? [0, 0, 0],
 			frontParent: prev?.frontParent ?? [0, 0, 0],
-			frontJd: prev?.frontJd ?? NaN
+			frontJd: prev?.frontJd ?? NaN,
+			dispatchedAt: inFlight ? prev!.dispatchedAt : NaN
 		});
 
 		this.workers[workerIdx].postMessage(
@@ -263,6 +310,12 @@ export class OrbitWorkerPool {
 	 *  tick; catch up next frame) or absent from `parents` (hidden clouds).
 	 *  `requiredFlags` (0 = none) is the NEO/PHA filter for `applyFlagFilter` groups. */
 	tick(jd: number, basis: Vec3, parents: Map<string, Vec3>, requiredFlags: number = 0): void {
+		const now = performance.now();
+		if (!Number.isNaN(this.lastTickAt))
+			this.activeMs += Math.min(now - this.lastTickAt, MAX_TICK_GAP_MS);
+		this.lastTickAt = now;
+		let stalled = false;
+
 		const perWorker: {
 			id: string;
 			parent: [number, number, number];
@@ -271,7 +324,10 @@ export class OrbitWorkerPool {
 		}[][] = this.workers.map(() => []);
 
 		for (const [id, state] of this.groups) {
-			if (!state.back || !state.idBack) continue;
+			if (!state.back || !state.idBack) {
+				if (this.activeMs - state.dispatchedAt > STALL_MS) stalled = true;
+				continue;
+			}
 			const parent = parents.get(id);
 			if (!parent) continue;
 			perWorker[state.workerIdx].push({
@@ -285,7 +341,9 @@ export class OrbitWorkerPool {
 			state.pendingBasis = [basis[0], basis[1], basis[2]];
 			state.pendingParent = [parent[0], parent[1], parent[2]];
 			state.pendingJd = jd;
+			state.dispatchedAt = this.activeMs;
 		}
+		if (stalled) this.reportStall('a dispatch never came back');
 
 		for (let i = 0; i < this.workers.length; i++) {
 			const groupMsgs = perWorker[i];
@@ -308,6 +366,7 @@ export class OrbitWorkerPool {
 	}
 
 	private onMessage(msg: PoolInMsg): void {
+		this.unprovenRespawn = false;
 		if (msg.type === 'pong') {
 			const p = this.pendingPing;
 			if (p && ++p.got >= p.need) p.resolve(true);
