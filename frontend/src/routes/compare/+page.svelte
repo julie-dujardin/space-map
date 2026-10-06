@@ -15,6 +15,8 @@
 	import { setContext, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import AlignCenterHorizontalIcon from '@lucide/svelte/icons/align-center-horizontal';
+	import AlignEndHorizontalIcon from '@lucide/svelte/icons/align-end-horizontal';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
@@ -34,6 +36,7 @@
 		screenFit,
 		screenScale,
 		SIDE_PAD,
+		VPAD,
 		type FitBody
 	} from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
@@ -63,6 +66,8 @@
 	/** The band of names the row draws under itself, with room under them for
 	 *  the credit line in the corner. */
 	const LABEL_ROW = 60;
+	/** The band over the names that the page links and the scale bar stand in. */
+	const LINK_BAND = 54;
 
 	let innerWidth = $state(NARROW + 1);
 	const narrow = $derived(innerWidth <= NARROW);
@@ -181,7 +186,7 @@
 	 *  each page as large as its own bodies allow. Until the stage is measured
 	 *  there is one page per band, on the row's own scale. */
 	const bandPages = $derived.by(() => {
-		const rowHeight = stageHeight - LABEL_ROW;
+		const rowHeight = fitHeight;
 		if (!stageWidth || rowHeight <= 0) {
 			return screensOf(bands, (items) => ({ count: items.length, scale: 0 }));
 		}
@@ -276,7 +281,7 @@
 					[fitOf(p.items[0])],
 					p.next && fitOf(p.next),
 					stageWidth,
-					stageHeight - LABEL_ROW,
+					fitHeight,
 					!p.previous
 				);
 			const pick = pickComparable(comparables, stageHeight, scale);
@@ -454,6 +459,23 @@
 
 	let row = $state<{ snapshot(): string | null; resetOrientation(): void } | undefined>();
 	let turned = $state(false);
+	/** Bodies on the middle line, or all standing on the floor. */
+	let align = $state<'center' | 'bottom'>('center');
+	/** On the floor, the row stands over the page links and the scale bar
+	 *  rather than behind them. A maximized body has the whole stage. */
+	const floor = $derived(align === 'bottom' && !opened ? LINK_BAND : VPAD);
+	const fitHeight = $derived(stageHeight - LABEL_ROW - (floor - VPAD));
+	let menuHeight = $state(0);
+	let menuExtended = $state(false);
+	/** On the floor, the small end of the row stands where the reference
+	 *  sits, so it goes to the top corner, under the menu or its button. A
+	 *  menu with its body out has that corner, and the reference is not drawn. */
+	const referenceAt = $derived(
+		align === 'bottom'
+			? `top: ${12 + (opened ? 0 : 16 + (showMenu ? menuHeight : narrow ? 40 : 32))}px`
+			: `bottom: ${LABEL_ROW + 54}px`
+	);
+	const referenceShown = $derived(align !== 'bottom' || !menuExtended);
 	let rowBox = $state<HTMLDivElement | null>(null);
 
 	/** The row as it stood before the change, held over the new one until the
@@ -710,6 +732,8 @@
 							onpick={(id) => openObject(id)}
 							rotate
 							onturned={(on) => (turned = on)}
+							{align}
+							{floor}
 							zoomable={!!opened}
 							gestures={opened ? stage : null}
 						/>
@@ -817,7 +841,7 @@
 					</div>
 				{/if}
 
-				{#if comparableBody && comparableFits}
+				{#if comparableBody && comparableFits && referenceShown}
 					<!-- Not a member of the comparison but a reference beside it, on the
 					     row's own scale. Right-hand side, where the row leaves the most
 					     room, clear of the page link below it. The box is cut to the
@@ -826,10 +850,7 @@
 					     body can be drawn under it. -->
 					<div
 						class="pointer-events-none absolute right-5"
-						style="bottom: {LABEL_ROW + 54}px; width: {Math.max(
-							96,
-							comparableBox + 2 * SIDE_PAD
-						)}px"
+						style="{referenceAt}; width: {Math.max(96, comparableBox + 2 * SIDE_PAD)}px"
 					>
 						<BodyLineup
 							bodies={[comparableBody]}
@@ -865,18 +886,36 @@
 				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
 			</div>
 
-			{#if turned}
-				<!-- Top left corner, under the scale bar a phone has there. -->
-				<button
-					type="button"
-					aria-label={m.compare_reset_orientation()}
-					title={m.compare_reset_orientation()}
-					onclick={() => row?.resetOrientation()}
-					class="absolute left-4 z-20 {MAP_GLASS} {narrow ? 'top-16' : 'top-4'}"
-				>
-					<RotateCcwIcon class="size-5 md:size-4" />
-				</button>
-			{/if}
+			<!-- Top left corner, under the scale bar a phone has there. -->
+			<div class="absolute left-4 z-20 flex flex-col gap-2 {narrow ? 'top-16' : 'top-4'}">
+				{#if bodies.length}
+					{@const label = align === 'center' ? m.compare_align_bottom() : m.compare_align_center()}
+					<button
+						type="button"
+						aria-label={label}
+						title={label}
+						onclick={() => (align = align === 'center' ? 'bottom' : 'center')}
+						class={MAP_GLASS}
+					>
+						{#if align === 'center'}
+							<AlignEndHorizontalIcon class="size-5 md:size-4" />
+						{:else}
+							<AlignCenterHorizontalIcon class="size-5 md:size-4" />
+						{/if}
+					</button>
+				{/if}
+				{#if turned}
+					<button
+						type="button"
+						aria-label={m.compare_reset_orientation()}
+						title={m.compare_reset_orientation()}
+						onclick={() => row?.resetOrientation()}
+						class={MAP_GLASS}
+					>
+						<RotateCcwIcon class="size-5 md:size-4" />
+					</button>
+				{/if}
+			</div>
 
 			{#if !opened}
 				<!-- Top right corner, where the row leaves the most room: the bottom
@@ -884,6 +923,7 @@
 				{#if showMenu}
 					<div
 						class="absolute top-4 right-4 z-20 flex max-h-[calc(100%-2rem)] w-[390px] max-w-[calc(100%-2rem)]"
+						bind:clientHeight={menuHeight}
 					>
 						<CompareMenu
 							{selected}
@@ -896,6 +936,7 @@
 							onremove={remove}
 							onopen={openObject}
 							onclose={() => (menuOpen = false)}
+							onextend={(on) => (menuExtended = on)}
 						/>
 					</div>
 				{:else}

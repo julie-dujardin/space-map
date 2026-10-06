@@ -1360,6 +1360,8 @@
 	"compare_show_menu": "Mostrar o menu",
 	"compare_hide_menu": "Ocultar o menu",
 	"compare_reset_orientation": "Repor a orientação",
+	"compare_align_bottom": "Alinhar em baixo",
+	"compare_align_center": "Centrar verticalmente",
 	"compare_page_of": "página {n}",
 	"compare_preset_terrestrial": "Planetas telúricos",
 	"compare_preset_giants": "Planetas gigantes",

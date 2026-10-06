@@ -93,7 +93,10 @@
 		modelLoader
 	} from '$lib/scene/objects/body/model';
 	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
-	import { attachDisplacementMap } from '$lib/scene/objects/surface/displacement';
+	import {
+		attachDisplacementMap,
+		bilinearHeightTexel
+	} from '$lib/scene/objects/surface/displacement';
 	import {
 		attachSelfShadowToBody,
 		type SelfShadowUniforms
@@ -215,6 +218,12 @@
 		/** With `rotate`, whether a drag has left any body turned, for a caller
 		 *  that offers `resetOrientation`. */
 		onturned?: (turned: boolean) => void;
+		/** Where a boxed row stands its bodies: on the middle line, or all on
+		 *  the floor, the way a sphere row already does. */
+		align?: 'center' | 'bottom';
+		/** How far above the row's bottom edge the floor is, for a caller that
+		 *  keeps something of its own under the bodies. */
+		floor?: number;
 	}
 	let {
 		bodies,
@@ -234,7 +243,9 @@
 		rotate = false,
 		zoomable = false,
 		gestures = null,
-		onturned
+		onturned,
+		align = 'center',
+		floor = VPAD
 	}: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -366,7 +377,7 @@
 		const n = ordered.length;
 		// Largest fits the height with equal top/bottom padding, unless the caller
 		// holds the row to a scale of its own; true-linear from there.
-		const heightK = pxPerKm ?? fullScale(raw[0], height);
+		const heightK = pxPerKm ?? fullScale(raw[0], height - (floor - VPAD));
 		// Overlapping discs still read as discs, so spheres take the height and
 		// crowd. A craft's mesh is its own silhouette — two of them overlapping
 		// read as one machine — so the row must fit them side by side as well,
@@ -395,7 +406,7 @@
 		const step = n > 1 ? (spanWidth - prs[0] - prs[n - 1]) / (n - 1) : 0;
 		const boxRun = slots.reduce((a, slot) => a + slot, 0) + (n - 1) * BOX_GAP;
 		let boxX = sidePad + padStart + (boxRun0 - boxRun) / 2;
-		const baseline = height - VPAD;
+		const baseline = height - floor;
 		const laid: LaidOut[] = ordered.map((p, i) => {
 			const pr = prs[i];
 			let cx: number;
@@ -407,12 +418,13 @@
 			}
 			// A sphere stands on the row's baseline; a craft has no ground to stand
 			// on, and the width fit leaves it well short of the height, so it reads
-			// better centred than sunk to the floor.
+			// better centred than sunk to the floor — unless the caller asks for
+			// the floor.
 			return {
 				...p,
 				pr,
 				cx,
-				cy: boxRow ? height / 2 : baseline - pr,
+				cy: boxRow && align === 'center' ? height / 2 : baseline - pr,
 				colLeft: 0,
 				colWidth: 0,
 				labelWidth: 0
@@ -459,7 +471,10 @@
 					: 2 * pr <= ASIDE_END_PAD
 						? width - SIDE_PAD - ASIDE_END_PAD / 2
 						: width - shown + pr;
-			return { ...b, pr, cx, cy: height / 2, colLeft: 0, colWidth: 0, labelWidth: 0 };
+			// On the floor with the row when it fits there; a limb larger than
+			// the row stays on the middle line, where its edge still shows.
+			const cy = align === 'bottom' ? Math.max(height / 2, height - floor - pr) : height / 2;
+			return { ...b, pr, cx, cy, colLeft: 0, colWidth: 0, labelWidth: 0 };
 		});
 	});
 
@@ -877,6 +892,7 @@
 		buildTokens.set(id, tokenFor(id) + 1);
 		builtKeys.delete(id);
 		asideFit.delete(id);
+		floorFit.delete(id);
 		baseQuats.delete(id);
 		const cloud = cloudNodes.get(id);
 		if (cloud) {
@@ -1049,6 +1065,7 @@
 			root.add(fitted);
 			scene.add(root);
 			modelRoots.set(b.id, root);
+			floorFit.delete(b.id);
 			render();
 		} catch {
 			/* a craft with no usable mesh simply isn't drawn */
@@ -1106,6 +1123,7 @@
 			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
 			scene.add(root);
 			modelRoots.set(b.id, root);
+			floorFit.delete(b.id);
 			meshes.get(b.id)?.removeFromParent(); // sphere placeholder no longer needed
 			render();
 		} catch {
@@ -1186,7 +1204,71 @@
 			const relief = material.userData.selfShadow as SelfShadowUniforms | undefined;
 			if (relief) relief.uSelfScale.value = material.displacementScale * p.pr;
 		}
+		if (align === 'bottom' && !p.aside) obj.position.y += floorLift(p, obj);
 		applySpin(obj, p.id);
+	}
+
+	/** On the floor, a body stands by what it draws rather than by the radius it
+	 *  is named by: a flattened or lumpy world stops short of it, a contact
+	 *  binary or a long craft reaches past it. Read in the body's own pose,
+	 *  before any spin, so it does not bob as it turns, and kept as a share of
+	 *  `pr`, which everything drawn scales with. */
+	const floorFit = new Map<string, { mark: string; low: number }>();
+	function floorLift(p: LaidOut, obj: Object3D): number {
+		const relief = ((obj as Mesh).material as MeshStandardMaterial | undefined)?.displacementMap;
+		const mark = modelRoots.has(p.id) ? 'mesh' : relief ? 'relief' : 'sphere';
+		let fit = floorFit.get(p.id);
+		if (fit?.mark !== mark) {
+			const base = baseQuats.get(p.id);
+			if (base) obj.quaternion.copy(base);
+			const low = lowestPoint(obj);
+			fit = { mark, low: Number.isFinite(low) ? (low - obj.position.y) / p.pr : -1 };
+			floorFit.set(p.id, fit);
+		}
+		return floor - (obj.position.y + fit.low * p.pr);
+	}
+
+	/** The lowest point `obj` draws, in row pixels. Relief is added in the
+	 *  vertex shader, so a sphere with a height map is displaced here too. */
+	function lowestPoint(obj: Object3D): number {
+		obj.updateWorldMatrix(true, true);
+		const v = new Vector3();
+		const n = new Vector3();
+		let low = Infinity;
+		obj.traverse((o) => {
+			if (!(o instanceof Mesh)) return;
+			const { position, normal, uv } = o.geometry.attributes;
+			if (!position) return;
+			const relief = normal && uv ? reliefOf(o.material as MeshStandardMaterial) : null;
+			for (let i = 0; i < position.count; i++) {
+				o.getVertexPosition(i, v);
+				if (relief) {
+					v.addScaledVector(n.fromBufferAttribute(normal, i), relief(uv.getX(i), uv.getY(i)));
+				}
+				low = Math.min(low, v.applyMatrix4(o.matrixWorld).y);
+			}
+		});
+		return low;
+	}
+
+	/** A material's height map as the vertex shader reads it: how far a vertex
+	 *  moves along its normal, by its uv. */
+	function reliefOf(material: MeshStandardMaterial): ((u: number, v: number) => number) | null {
+		const image = material.displacementMap?.image as HTMLImageElement | undefined;
+		if (!image?.width) return null;
+		const { width: w, height: h } = image;
+		const canvas = document.createElement('canvas');
+		canvas.width = w;
+		canvas.height = h;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return null;
+		ctx.drawImage(image, 0, 0);
+		const rgba = ctx.getImageData(0, 0, w, h).data;
+		const heights = new Uint8Array(w * h);
+		for (let i = 0; i < heights.length; i++) heights[i] = rgba[i * 4];
+		const { displacementScale: scale, displacementBias: bias } = material;
+		return (u, v) =>
+			bias + scale * bilinearHeightTexel(heights, w, h, u * w - 0.5, (1 - v) * h - 0.5);
 	}
 
 	/** How much of its own surface a neighbouring band shows, as light: the row

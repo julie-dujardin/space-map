@@ -56,6 +56,8 @@
 		/** Maximize one object in the row. */
 		onopen: (id: string) => void;
 		onclose: () => void;
+		/** Whether the body is out under the bar: hits, the sets or the list. */
+		onextend?: (extended: boolean) => void;
 	}
 
 	/** Between the parts of a label. */
@@ -71,7 +73,8 @@
 		onclear,
 		onremove,
 		onopen,
-		onclose
+		onclose,
+		onextend
 	}: Props = $props();
 
 	type Section = 'presets' | 'list';
@@ -91,6 +94,11 @@
 	);
 	/** A query takes the body over; whatever was open comes back once it is cleared. */
 	const showHits = $derived(query.trim() !== '');
+
+	$effect(() => {
+		onextend?.(showHits || open !== null);
+		return () => onextend?.(false);
+	});
 
 	/** One request per settled query: typing fires this on every keystroke, and
 	 *  a stale answer must never overwrite a newer one. */

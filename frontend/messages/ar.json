@@ -1418,6 +1418,8 @@
 	"compare_show_menu": "إظهار القائمة",
 	"compare_hide_menu": "إخفاء القائمة",
 	"compare_reset_orientation": "إعادة ضبط الاتجاه",
+	"compare_align_bottom": "محاذاة إلى الأسفل",
+	"compare_align_center": "توسيط عمودي",
 	"compare_page_of": "صفحة {n}",
 	"compare_preset_terrestrial": "الكواكب الصخرية",
 	"compare_preset_giants": "الكواكب العملاقة",

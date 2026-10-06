@@ -1337,6 +1337,8 @@
 	"compare_show_menu": "显示菜单",
 	"compare_hide_menu": "隐藏菜单",
 	"compare_reset_orientation": "重置朝向",
+	"compare_align_bottom": "底部对齐",
+	"compare_align_center": "垂直居中",
 	"compare_page_of": "第 {n} 页",
 	"compare_preset_terrestrial": "类地行星",
 	"compare_preset_giants": "巨行星",
