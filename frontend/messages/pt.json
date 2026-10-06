@@ -1201,6 +1201,7 @@
 	"object_not_found": "Não foi possível mostrar {name} — pode não existir ou não ter dados orbitais",
 	"object_no_position": "{name} não tem dados de posição nesta data",
 	"object_position_unknown": "O mapa não tem qualquer posição para {name}",
+	"object_shown_at_host": "O mapa não tem qualquer posição para {name}. Mostra {host} em seu lugar.",
 	"clock_moved_title": "Data alterada",
 	"clock_moved_body": "{name} não tem dados de posição em {from}. O mapa mostra agora {to}.",
 	"out_of_range_title": "Dados limitados neste momento",

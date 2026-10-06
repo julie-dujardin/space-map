@@ -236,7 +236,11 @@ export class OrbitWorkerPool {
 			pendingBasis: inFlight ? prev!.pendingBasis : null,
 			pendingParent: inFlight ? prev!.pendingParent : null,
 			pendingJd: inFlight ? prev!.pendingJd : null,
+			// Not places: the basis and parent of a front buffer no solve has
+			// filled yet, which `frontJd` NaN marks. A result reads the pending pair.
+			// eslint-disable-next-line no-restricted-syntax
 			frontBasis: prev?.frontBasis ?? [0, 0, 0],
+			// eslint-disable-next-line no-restricted-syntax
 			frontParent: prev?.frontParent ?? [0, 0, 0],
 			frontJd: prev?.frontJd ?? NaN
 		});

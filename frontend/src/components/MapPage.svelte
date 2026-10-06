@@ -2,7 +2,7 @@
 	import { onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
-	import { SpaceMap } from '$lib/scene/space-map.svelte';
+	import { SpaceMap, type Arrival } from '$lib/scene/space-map.svelte';
 	import { formatJulianDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
@@ -92,7 +92,7 @@
 	import SearchBar from './search/SearchBar.svelte';
 	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
-	import { coverageWindowFor, snapJdIntoWindow } from '$lib/fetch/coverage';
+	import { coverageOf } from '$lib/fetch/coverage';
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { watchDataVersion } from '$lib/fetch/version-check';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
@@ -133,28 +133,46 @@
 	setContext('mapCover', mapCover);
 	const settings = getSettings();
 
-	// Snap the clock into `id`'s coverage window if the sim date is outside it:
-	// the midpoint, not the boundary (no sample there). No-op when there's no
-	// window. A page that opens on another date than the one asked for has to
-	// say so, hence the toast.
-	async function snapClockIntoCoverage(id: string, name?: string) {
-		const cov = await coverageWindowFor(id);
-		const snap = cov ? snapJdIntoWindow(clock.jd, cov) : null;
-		if (snap === null) return;
-		const from = formatJulianDate(clock.jd);
-		const bounded = cov!.startJd !== undefined && cov!.endJd !== undefined;
-		clock.setJD(bounded ? (cov!.startJd! + cov!.endJd!) / 2 : snap);
-		// A bare `/e/<id>` link carries no name; the localized bundle does.
+	/** Say what a navigation did that the reader did not ask for: it changed
+	 *  the date, or the object has no place and the camera went elsewhere. */
+	async function reportArrival(arrival: Arrival, id: string, name?: string): Promise<void> {
+		if (arrival.outcome === 'superseded') return;
+		// A bare `/e/<id>` link carries no name; the catalogue and the localized bundle do.
 		const label =
-			name && name !== id ? name : ((await fetchObjectDetail(id)).localized?.name ?? id);
-		// Persistent: it fires during the load, whose main-thread churn would eat
-		// a timed toast before it paints. The next snap replaces it.
-		toast.info(m.clock_moved_title(), {
-			id: 'clock-moved',
-			description: m.clock_moved_body({ name: label, from, to: formatJulianDate(clock.jd) }),
-			duration: Number.POSITIVE_INFINITY,
-			closeButton: true
-		});
+			name && name !== id
+				? name
+				: (arrival.body?.data.name ??
+					(await fetchObjectDetail(id).catch(() => null))?.localized?.name ??
+					id);
+		// Persistent: they fire during the load, whose main-thread churn would eat
+		// a timed toast before it paints. The next one replaces it.
+		const sticky = { duration: Number.POSITIVE_INFINITY, closeButton: true };
+		if (arrival.clockMoved) {
+			toast.info(m.clock_moved_title(), {
+				id: 'clock-moved',
+				description: m.clock_moved_body({
+					name: label,
+					from: formatJulianDate(arrival.clockMoved.from),
+					to: formatJulianDate(arrival.clockMoved.to)
+				}),
+				...sticky
+			});
+		}
+		const noPosition =
+			arrival.outcome === 'host'
+				? m.object_shown_at_host({
+						name: label,
+						host: arrival.host?.data.name ?? arrival.host?.data.id ?? ''
+					})
+				: arrival.outcome === 'nowhere'
+					? m.object_position_unknown({ name: label })
+					: arrival.outcome === 'unplaced'
+						? m.object_no_position({ name: label })
+						: arrival.outcome === 'missing'
+							? m.object_not_found({ name: label })
+							: null;
+		if (noPosition) toast.warning(noPosition, { id: 'object-no-position', ...sticky });
+		else toast.dismiss('object-no-position');
 	}
 
 	/** A system barycenter has no radius of its own, and for every planet but
@@ -185,64 +203,35 @@
 		return framingZoom(body);
 	}
 
-	// Generic focus for the search bar, featured chips, and in-drawer links:
-	// snap into coverage, stream the body if absent, then frame it.
+	// Generic focus for the search bar, featured chips, and in-drawer links.
 	const focusObject: FocusObject = (id, name, opts) => {
 		void (async () => {
 			const type = urlTypeFromId(id);
-			await snapClockIntoCoverage(id, name);
-
-			// Stream an out-of-view target in place (probe/sat); no page reload.
-			if (!ctx.getBody(id)) await ctx.ensureBody(id, jdToDate(clock.jd));
-
-			appState.setFocus({ type, id, name, tab: opts?.tab, featureType: opts?.featureType });
-
-			const body = ctx.getBody(id);
-			if (!body) {
-				console.warn(`[map] focusObject: ${id} not resolvable — nothing to focus.`);
-				// Take the name back off the URL: `setFocus` above promised a panel
-				// nothing is going to build, and the placeholder frame reads that
-				// promise.
-				appState.replaceFocusName('');
-				return;
-			}
-			if (body.positionUnknown) {
-				// No ephemeris — at this time, or ever: take the focus so the drawer
-				// opens, and say why the camera did not move.
-				const label = name || id;
-				toast.warning(
-					body.data.unplaceable
-						? m.object_position_unknown({ name: label })
-						: m.object_no_position({ name: label }),
-					{ id: 'object-no-position', closeButton: true }
-				);
-				map.focusOnBody(id);
-			} else if (opts?.moveCamera === false) {
-				// Re-anchor focus only, no fly (comet fragments).
-				map.focusOnBody(id);
-			} else if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
-				const distance = framingDistanceFor(type, body);
-				map.focusOnBody(id, distance, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
-			} else {
-				map.focusOnBody(id, framingDistanceFor(type, body));
-			}
+			const craft = type === UrlType.Probe || type === UrlType.EarthSatellite;
+			const arrival = await map.goTo(id, {
+				// `moveCamera: false` re-anchors the focus with no fly (comet fragments).
+				camera: opts?.moveCamera === false ? 'pan' : 'fly',
+				view: (body) => ({
+					distance: framingDistanceFor(type, body),
+					...(craft ? { latitude: DEFAULT_FRAMING_LAT, longitude: DEFAULT_FRAMING_LON } : {})
+				}),
+				commit: () =>
+					appState.setFocus({ type, id, name, tab: opts?.tab, featureType: opts?.featureType })
+			});
+			void reportArrival(arrival, id, name);
 		})();
 	};
 	setContext('focusObject', focusObject);
 
-	// Feature picks from a collection page cross bodies: stream the host in and
+	// Feature picks from a collection page cross bodies: bring the host in and
 	// point selectedBody at it, then the resolve effect below fetches its
 	// nomenclature and frames the feature.
 	const focusFeature: FocusFeature = (bodyId, featureId, name) => {
 		void (async () => {
-			await snapClockIntoCoverage(bodyId, ctx.getBody(bodyId)?.data.name ?? undefined);
-			if (!ctx.getBody(bodyId)) await ctx.ensureBody(bodyId, jdToDate(clock.jd));
-			const body = ctx.getBody(bodyId);
-			if (!body) {
-				console.warn(`[map] focusFeature: host ${bodyId} not resolvable — nothing to focus.`);
-				return;
-			}
-			selectedBody = body;
+			const arrival = await map.goTo(bodyId, { camera: 'none' });
+			void reportArrival(arrival, bodyId);
+			if (!arrival.body) return;
+			selectedBody = arrival.body;
 			appState.setFeature({ bodyId, featureId, featureName: name });
 		})();
 	};
@@ -519,14 +508,8 @@
 	// the ordinary focus path would close the planner to look at one of its own
 	// waypoints.
 	function focusCameraOn(id: string): void {
-		void (async () => {
-			if (!ctx.getBody(id)) {
-				await ctx
-					.ensureBody(id, jdToDate(clock.jd))
-					.catch((e) => console.warn(`[map] timeline stop ${id} could not be streamed in:`, e));
-			}
-			map.focusOnBody(id);
-		})();
+		// The trip owns the date: the clock stays.
+		void map.goTo(id, { clock: 'keep', camera: 'pan' });
 	}
 
 	// A non-resident trip end (probe, small body) has no elements to transfer
@@ -542,22 +525,21 @@
 		// Neither end chosen: nothing to stream, nothing to re-frame.
 		if (ends.length === 0) return;
 		void (async () => {
+			// With nowhere to go yet, the departure is the subject.
+			const framed = to ?? ends[0];
 			await Promise.all(
 				ends.map((id) =>
-					ctx.getBody(id)
+					id === framed || ctx.getBody(id)
 						? Promise.resolve()
 						: ctx
 								.ensureBody(id, at)
 								.catch((e) => console.warn(`[map] trip end ${id} could not be streamed in:`, e))
 				)
 			);
-			// With nowhere to go yet, the departure is the subject.
-			const framed = to ?? ends[0];
 			if (untrack(() => cameraFocus?.data.id) === framed) return;
 			// Pan, don't fly: retargeting a trip is picking a place on a map, not
-			// visiting it. Omitting the zoom holds the camera where it is and
-			// only swings the pivot onto the new end.
-			map.focusOnBody(framed);
+			// visiting it. The trip owns the date, so the clock stays.
+			await map.goTo(framed, { clock: 'keep', camera: 'pan' });
 		})();
 	});
 
@@ -721,43 +703,16 @@
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			await ctx.applyGroupFilter(appState.view.groupSlug);
 		}
-		// Snap the clock into range first (same path search takes), else an
-		// `?at=` outside coverage would fail to resolve.
-		await snapClockIntoCoverage(initialId, initialName);
-		// Resolves as soon as the target lands, about two seconds before the rest
-		// of the load; the error screen renders off ctx.error either way.
-		await map.open(initialId).catch(() => {});
-		// Error screen already shown: don't also fire the "not found" toast over it.
-		if (ctx.error) return;
-		if (!ctx.getBody(initialId)) {
-			// The load pass can't graft a probe whose only record needs its
-			// stamped fit-center streamed first (Deep Impact → Tempel 1);
-			// ensureBody owns that chain, so give it one shot before landing
-			// on the not-found fallback.
-			await ctx
-				.ensureBody(initialId, jdToDate(clock.jd))
-				.catch((e) => console.warn(`[map] initial target ${initialId} could not be streamed:`, e));
-		}
-		let initialBody = ctx.getBody(initialId);
-		// A freshly grafted probe can spend a few frames unplaced while its
-		// stamped fit center streams in and the position pass picks it up —
-		// don't judge it unplaceable until that settles.
-		if (initialBody?.positionUnknown) {
-			const deadline = performance.now() + 1500;
-			while (initialBody?.positionUnknown && performance.now() < deadline) {
-				// Timer alongside the frame: a backgrounded tab fires no rAF, and the
-				// wait would never end for a body that is never placed.
-				await Promise.race([
-					new Promise(requestAnimationFrame),
-					new Promise((resolve) => setTimeout(resolve, 100))
-				]);
-				initialBody = ctx.getBody(initialId);
-			}
-		}
-		// A body that is resident but has no ephemeris at this time carries a
-		// stand-in position (its parent, or the scene origin), so there is
-		// nothing to fly to — it keeps the focus, the camera stays put.
-		const placed = initialBody?.positionUnknown ? undefined : initialBody;
+		// The opening navigation: the clock goes to a date the target has a place
+		// at before the scene loads, so the load is for that date. The camera is
+		// placed below, by what the URL asks for.
+		// A trip owns its dates, and its panel tells what the map cannot place.
+		const arrival = await map.goTo(initialId, { camera: 'none', clock: isNav ? 'keep' : 'snap' });
+		// Error screen already shown: no toast over it. A later navigation (the
+		// trip's own, a mission's) owns the camera from here.
+		if (ctx.error || arrival.outcome === 'superseded') return;
+		if (!isNav) void reportArrival(arrival, initialId, initialName);
+		const placed = arrival.outcome === 'placed' ? arrival.body : undefined;
 		if (placed && appState.view.featureId !== null) {
 			// Feature deep-link: the featureId→activeFeature effect frames the
 			// camera on the feature seat. Skip host framing here, it runs after
@@ -791,34 +746,8 @@
 					framingDistanceFor(urlTypeFromId(fromId), departure)
 				);
 			}
-		} else if (initialBody) {
-			// Unplaceable, but its drawer still has everything to show: hold the
-			// focus the URL asked for and say why the camera did not move. The
-			// catalogue name beats the URL slug, which a bare `/e/<id>` link lacks.
-			const label = initialBody.data.name ?? initialName;
-			toast.warning(
-				initialBody.data.unplaceable
-					? m.object_position_unknown({ name: label })
-					: m.object_no_position({ name: label }),
-				{
-					id: 'object-no-position',
-					duration: Number.POSITIVE_INFINITY,
-					closeButton: true
-				}
-			);
-			// The renderer settles its own focus on a placed body and refuses an
-			// unplaced one, so this call is the only thing that opens the drawer
-			// here. The map holds it if the scene is still mounting.
-			map.focusOnBody(initialId);
-		} else {
-			// Persistent (no auto-dismiss): the scene-load main-thread churn can
-			// starve a transient toast so its duration timer expires before it ever
-			// paints. A stable id de-dupes if the load is retried.
-			toast.warning(m.object_not_found({ name: initialName }), {
-				id: 'object-not-found',
-				duration: Number.POSITIVE_INFINITY,
-				closeButton: true
-			});
+		} else if (arrival.outcome === 'missing') {
+			// An unknown URL opens home. `reportArrival` said why.
 			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
 			// The renderer settled the camera on whatever it could find (the Sun);
 			// land on the default view instead, so an unknown URL opens home.
@@ -834,9 +763,9 @@
 		void ctx.applyGroupFilter(slug);
 	});
 
-	// Opening a mission flies the camera to its primary probe (snapping the
-	// clock into coverage), unless already focused on one of its craft, in
-	// which case the mission page just opens over the current view.
+	// Opening a mission flies the camera to its primary probe, unless already
+	// focused on one of its craft, in which case the mission page just opens
+	// over the current view.
 	let missionFlownSlug: string | null = null;
 	$effect(() => {
 		// Read renderer/loading synchronously so a direct /g/mission-… load retries
@@ -864,16 +793,14 @@
 			// Already on a craft (or deep-linked onto one): keep the camera.
 			const heldId = untrack(() => appState.view.id);
 			if (memberIds.has(heldId) || (fromId && memberIds.has(fromId))) return;
-			const window = await coverageWindowFor(primary.primary_id);
-			const body = ctx.getBody(primary.primary_id);
 			// EVENTS-DB primaries have no ephemeris: nothing to fly to. The
 			// mission page still opens; camera stays put.
-			if (!window && !body) return;
-			if (window) {
-				const snap = snapJdIntoWindow(clock.jd, window);
-				if (snap !== null) clock.setJD(snap);
-			}
-			map.focusOnBody(primary.primary_id, body ? framingZoom(body) : undefined);
+			if ((await coverageOf(primary.primary_id)).length === 0) return;
+			if (appState.view.groupSlug !== slug) return;
+			const arrival = await map.goTo(primary.primary_id, {
+				view: (body) => ({ distance: framingZoom(body) })
+			});
+			void reportArrival(arrival, primary.primary_id);
 		})();
 	});
 </script>
@@ -986,21 +913,7 @@
 					onSelect={async (hit) => {
 						const name = localizedName(hit, getLocale());
 						if (hit.kind === 'feature') {
-							const diameterM = (hit.diameter_km ?? 0) * 1000;
-							appState.setFeature({
-								bodyId: hit.body_id,
-								featureId: hit.feature_id,
-								featureName: name
-							});
-							map.focusOnFeature(
-								hit.body_id,
-								hit.feature_id,
-								hit.center_lat,
-								hit.center_lon,
-								diameterM,
-								name,
-								'frame'
-							);
+							focusFeature(hit.body_id, hit.feature_id, name);
 							return;
 						}
 						if (hit.kind === 'group') {

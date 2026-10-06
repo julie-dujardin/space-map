@@ -92,17 +92,18 @@ vi.mock('$lib/search/client', () => ({
 	}
 }));
 
-/** What the drawn objects' bundles hold. A `naif-` body is placed whatever the
- *  bundle says, so a test that wants an unplaceable one draws a `spkid-`. */
-const bundles: Record<string, { orbit?: Record<string, number> } | null> = {
-	'spkid-1': null,
-	'spkid-2': { orbit: { epoch_jd: 2460000, a: 2.3, ma: 1, n: 0.2 } }
+/** A bundle the map can place: the pipeline wrote the dates it covers. */
+const COVERED = { coverage: { windows: [[2460000, null]] } };
+/** Bundles with no coverage. Every other member draws {@link COVERED}. */
+const uncovered: Record<string, object> = {
+	// A moon of an asteroid published without an orbit.
+	'spkid-1': { type: 'moon' }
 };
 
 vi.mock('$lib/fetch/objects/object-data', async (importOriginal) => ({
 	...(await importOriginal<typeof import('$lib/fetch/objects/object-data')>()),
 	fetchObjectDetail: (id: string) =>
-		Promise.resolve({ global: bundles[id] ?? null, localized: null })
+		Promise.resolve({ global: uncovered[id] ?? COVERED, localized: null })
 }));
 
 /** Successive draws over the unit interval, so a test names the branch it takes. */

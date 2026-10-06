@@ -19,6 +19,7 @@ export function buildTrailPoints(
 	// bright end on the barycenter the curve traces, not the body's own offset
 	// position (which would kink the line). Falls back to `body.position`.
 	const anchor = body.trailAnchor ?? body.position;
+	if (!anchor) return [];
 	const bodyLocal: [number, number, number] = [anchor[0] - cx, anchor[1] - cy, anchor[2] - cz];
 
 	let nearest = 0;

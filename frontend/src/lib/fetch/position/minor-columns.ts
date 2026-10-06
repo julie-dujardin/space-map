@@ -151,10 +151,8 @@ export class MinorBucket {
 		}
 	}
 
-	/** Materialize (and cache) the body for one id. Position starts at the
-	 *  origin, flagged as a stand-in until `refreshMinorBodyPosition` places it
-	 *  at pick/promotion time — framing the origin would read as a jump to the
-	 *  barycentre. */
+	/** Materialize (and cache) the body for one id. The placement pass or the
+	 *  first reader gives it its place. */
 	get(id: string): PositionedBody | undefined {
 		const cached = this.cache.get(id);
 		if (cached) return cached;
@@ -169,7 +167,7 @@ export class MinorBucket {
 			this.parentIdType
 		);
 		if (!data) return undefined;
-		const body: PositionedBody = { data, position: [0, 0, 0], positionUnknown: true };
+		const body: PositionedBody = { data, position: null };
 		this.cache.set(id, body);
 		return body;
 	}

@@ -1193,6 +1193,7 @@
 	"object_not_found": "未找到对象 {name}",
 	"object_no_position": "{name} 在此日期没有位置数据",
 	"object_position_unknown": "地图中没有 {name} 的位置",
+	"object_shown_at_host": "地图中没有 {name} 的位置，改为显示 {host}。",
 	"clock_moved_title": "日期已更改",
 	"clock_moved_body": "{name} 在 {from} 没有位置数据。地图现在显示 {to}。",
 	"out_of_range_title": "此时段数据有限",

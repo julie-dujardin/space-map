@@ -10,20 +10,20 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
-import type { ProbeCoverage } from '$lib/fetch/metadata';
+import type { Coverage } from '$lib/fetch/metadata';
 import type { ProbeEvent } from '$lib/fetch/objects/object-data';
 import type { TimelineSpan } from '$lib/timeline/axis';
 import type { StripItem } from '$lib/timeline/strip';
 import { eventDay, eventLabel, eventPlace, flybyPurposeLabel } from './event-labels';
 
-/** The spans the craft can be drawn in. */
-function coverageWindows(coverage: ProbeCoverage): [number, number][] {
-	return coverage.windows ?? [[coverage.start_jd, coverage.end_jd]];
+/** The spans the craft can be drawn in. An open side is infinite. */
+function coverageWindows(coverage: Coverage): [number, number][] {
+	return coverage.windows.map(([from, to]) => [from ?? -Infinity, to ?? Infinity]);
 }
 
 /** Whether the craft has a trajectory at this date. Coverage bounds are
  *  whole-day-ish, so a same-day event is left alone. */
-function outsideCoverage(jd: number, coverage: ProbeCoverage | undefined): boolean {
+function outsideCoverage(jd: number, coverage: Coverage | undefined): boolean {
 	if (!coverage) return false;
 	return !coverageWindows(coverage).some(([from, to]) => jd >= from - 0.5 && jd <= to + 0.5);
 }
@@ -31,7 +31,7 @@ function outsideCoverage(jd: number, coverage: ProbeCoverage | undefined): boole
 /** The stretches of `[startJd, endJd]` the craft cannot be drawn in: before
  *  the archive starts, after it ends, and every hole inside it. */
 export function coverageGaps(
-	coverage: ProbeCoverage | undefined,
+	coverage: Coverage | undefined,
 	startJd: number,
 	endJd: number
 ): TimelineSpan[] {
@@ -47,10 +47,7 @@ export function coverageGaps(
 	return gaps.filter((g) => g.endJd > g.startJd);
 }
 
-export function eventStripItems(
-	events: readonly ProbeEvent[],
-	coverage?: ProbeCoverage
-): StripItem[] {
+export function eventStripItems(events: readonly ProbeEvent[], coverage?: Coverage): StripItem[] {
 	return events.map((event, index) => {
 		const purpose = flybyPurposeLabel(event);
 		const place = eventPlace(event);

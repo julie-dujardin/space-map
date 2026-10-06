@@ -59,8 +59,9 @@ export function updateRingShaders(
 	if (!sunPos) return;
 	const [fx, fy, fz] = focusTruePos;
 	for (const bo of bodyObjects.values()) {
-		if (!bo.rings.length) continue;
-		const [bx, by, bz] = bo.body.position;
+		const at = bo.body.position;
+		if (!bo.rings.length || !at) continue;
+		const [bx, by, bz] = at;
 
 		for (const ring of bo.rings) {
 			// Bundles whose peak opacity can't reach a displayable value are

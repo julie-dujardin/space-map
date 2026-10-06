@@ -1295,6 +1295,7 @@
 	"object_not_found": "オブジェクト {name} が見つかりません",
 	"object_no_position": "{name} はこの日付の位置データがありません",
 	"object_position_unknown": "{name} の位置はマップにありません",
+	"object_shown_at_host": "{name} の位置はマップにありません。代わりに {host} を表示しています。",
 	"clock_moved_title": "日付を変更しました",
 	"clock_moved_body": "{name} には {from} の位置データがありません。地図は現在 {to} を表示しています。",
 	"out_of_range_title": "この時刻のデータは限定的です",

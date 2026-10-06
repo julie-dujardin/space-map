@@ -18,21 +18,21 @@ const EARTH_SPIN = {
 	w2: 0
 };
 
-/** Bodies the frame loop placed for {@link JD}, their spin records read, and
- *  `cloud` ones: dots of a point cloud, which that loop does not place. */
+/** A scene that holds `bodies`, their spin records read. It places each one
+ *  where its fixture says at every date, unless `place` says otherwise. */
 function fakeCtx(
 	bodies: Record<string, Partial<PositionedBody>>,
-	cloud: Record<string, Partial<PositionedBody>> = {}
+	place: ContextManager['place'] = (body) => body.position
 ): ContextManager {
-	const make = (entries: Record<string, Partial<PositionedBody>>, placed: object) =>
-		Object.entries(entries).map(
-			([id, body]) => [id, { data: { id, radiusKm: 1000 }, ...placed, ...body }] as const
-		);
-	const full = new Map(make(bodies, { placedJd: JD }) as [string, PositionedBody][]);
-	const all = new Map([...full, ...(make(cloud, {}) as [string, PositionedBody][])]);
+	const all = new Map(
+		Object.entries(bodies).map(
+			([id, body]) => [id, { data: { id, radiusKm: 1000 }, ...body } as PositionedBody] as const
+		)
+	);
 	return {
 		getBody: (id: string) => all.get(id),
-		bodies: { bodiesById: full, orientationRead: new Set(all.keys()) }
+		place,
+		bodies: { orientationRead: new Set(all.keys()) }
 	} as unknown as ContextManager;
 }
 
@@ -57,56 +57,28 @@ describe('anchorDistanceKm', () => {
 		expect(offset[2]).toBeCloseTo(AU_KM, 3);
 	});
 
-	it('places a dot of the belt from its orbit, not where it was loaded', () => {
-		// A circular orbit of 1 AU, a quarter of the way round from where it
-		// starts, ninety-one days on.
-		const data = {
-			id: 'rock',
-			radiusKm: 1,
-			parentId: 'naif-0',
-			a: 1,
-			e: 0,
-			i: 0,
-			om: 0,
-			w: 0,
-			ma: 0,
-			n: 360 / 365.25,
-			epoch: JD,
-			validityStart: 0,
-			validityEnd: Infinity
-		};
+	it('measures to where the scene places a body at the date asked, not where it was left', () => {
+		// The scene has the rock an AU along ecliptic +y at the later date.
+		const later = JD + 91;
 		const ctx = fakeCtx(
-			{ 'naif-10': { position: [0, 0, 0] } },
-			{ rock: { data, position: [9, 9, 9] } as unknown as PositionedBody }
+			{ 'naif-10': { position: [0, 0, 0] }, rock: { position: [9, 9, 9] } },
+			(body, jd) => (body.data.id === 'rock' && jd === later ? [0, 0, -AU_SCALE] : body.position)
 		);
-		const later = JD + 365.25 / 4;
 		expect(anchorDistanceKm({ body: 'naif-10' }, { body: 'rock' }, ctx, later)).toBeCloseTo(
 			AU_KM,
-			-3
+			3
 		);
 		const offset = anchorOffsetKm({ body: 'naif-10' }, { body: 'rock' }, ctx, later)!;
-		expect(Math.abs(offset[1])).toBeCloseTo(AU_KM, -3);
+		expect(offset[1]).toBeCloseTo(AU_KM, 3);
 	});
 
-	it('is null for a dot whose orbit does not reach the date', () => {
-		const data = {
-			id: 'rock',
-			parentId: 'naif-0',
-			a: 1,
-			e: 0,
-			i: 0,
-			om: 0,
-			w: 0,
-			ma: 0,
-			n: 1,
-			epoch: JD,
-			validityStart: JD,
-			validityEnd: JD + 1
-		};
+	it('is null at a date the scene has no place for one end', () => {
+		// The rock keeps the place it was left with, and the scene answers for the date.
 		const ctx = fakeCtx(
-			{ 'naif-10': { position: [0, 0, 0] } },
-			{ rock: { data, position: [1, 0, 0] } as unknown as PositionedBody }
+			{ 'naif-10': { position: [0, 0, 0] }, rock: { position: [1, 0, 0] } },
+			(body, jd) => (body.data.id === 'rock' && jd > JD + 1 ? null : body.position)
 		);
+		expect(anchorDistanceKm({ body: 'naif-10' }, { body: 'rock' }, ctx, JD)).not.toBeNull();
 		expect(anchorDistanceKm({ body: 'naif-10' }, { body: 'rock' }, ctx, JD + 10)).toBeNull();
 	});
 
@@ -115,11 +87,8 @@ describe('anchorDistanceKm', () => {
 		expect(anchorDistanceKm({ body: 'a' }, { body: 'gone' }, ctx, JD)).toBeNull();
 	});
 
-	it('is null while one end is a stand-in position', () => {
-		const ctx = fakeCtx({
-			a: { position: [1, 0, 0] },
-			b: { position: [0, 0, 0], positionUnknown: true }
-		});
+	it('is null while one end has no place', () => {
+		const ctx = fakeCtx({ a: { position: [1, 0, 0] }, b: { position: null } });
 		expect(anchorDistanceKm({ body: 'a' }, { body: 'b' }, ctx, JD)).toBeNull();
 	});
 });
@@ -132,7 +101,7 @@ describe('subsolarPoint', () => {
 		});
 		(ctx.getBody('earth') as { orientation: unknown }).orientation = EARTH_SPIN;
 		const noon = subsolarPoint('earth', ctx, JD)!;
-		const earth = ctx.getBody('earth')!.position;
+		const earth = ctx.getBody('earth')!.position!;
 		const up = resolveAnchor({ body: 'earth', latitude: noon.lat, longitude: noon.lon }, ctx, JD)!;
 		const zenith = up.map((v, i) => v - earth[i]);
 		const toSun = earth.map((v) => -v);
@@ -150,7 +119,7 @@ describe('subsolarPoint', () => {
 			rock: { position: [0.3, -0.2, 0.9] }
 		});
 		const noon = subsolarPoint('rock', ctx, JD)!;
-		const rock = ctx.getBody('rock')!.position;
+		const rock = ctx.getBody('rock')!.position!;
 		const up = resolveAnchor({ body: 'rock', latitude: noon.lat, longitude: noon.lon }, ctx, JD)!;
 		const zenith = up.map((v, i) => v - rock[i]);
 		const cosine =
@@ -167,12 +136,11 @@ describe('subsolarPoint', () => {
 		expect(subsolarPoint('rock', ctx, JD)).not.toBeNull();
 	});
 
-	it('is null for a body at a stand-in position', () => {
-		const ctx = fakeCtx({
-			'naif-10': { position: [1, 0, 0] },
-			rock: { position: [0, 0, 0], positionUnknown: true }
-		});
-		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
+	it('is null while the body or the Sun has no place', () => {
+		const noRock = fakeCtx({ 'naif-10': { position: [1, 0, 0] }, rock: { position: null } });
+		expect(subsolarPoint('rock', noRock, JD)).toBeNull();
+		const noSun = fakeCtx({ 'naif-10': { position: null }, rock: { position: [1, 0, 0] } });
+		expect(subsolarPoint('rock', noSun, JD)).toBeNull();
 	});
 
 	it('is null for the Sun itself, and for a body not loaded', () => {

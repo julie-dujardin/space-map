@@ -1239,6 +1239,7 @@
 	"object_not_found": "Объект {name} не найден",
 	"object_no_position": "Для объекта {name} нет данных о положении на эту дату",
 	"object_position_unknown": "На карте нет положения для объекта {name}",
+	"object_shown_at_host": "На карте нет положения для объекта {name}. Вместо него показан объект {host}.",
 	"clock_moved_title": "Дата изменена",
 	"clock_moved_body": "У {name} нет данных о положении на {from}. Карта теперь показывает {to}.",
 	"out_of_range_title": "Ограниченные данные на это время",

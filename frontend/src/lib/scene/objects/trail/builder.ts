@@ -24,6 +24,7 @@ export function writeBufferVerticesWithLiveHead(
 	transform?: SampleTransform
 ): number {
 	const head = body.trailAnchor ?? body.position;
+	if (!head) return 0;
 	posArr[0] = head[0] - basisPos[0];
 	posArr[1] = head[1] - basisPos[1];
 	posArr[2] = head[2] - basisPos[2];

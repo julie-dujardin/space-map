@@ -184,9 +184,7 @@ export function unloadSystemTextures(
 		}
 		for (const ring of bo.rings) {
 			ring.planetShadow?.disable();
-			scene.remove(ring.mesh);
-			const idx = bo.extraObjects.indexOf(ring.mesh);
-			if (idx >= 0) bo.extraObjects.splice(idx, 1);
+			ring.mesh.removeFromParent();
 			disposeRingNode(ring);
 		}
 		bo.rings = [];

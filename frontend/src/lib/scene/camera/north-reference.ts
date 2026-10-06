@@ -66,7 +66,7 @@ export function bodyNorthVector(
 ): Vector3 {
 	const target = out ?? new Vector3();
 	if (!body.orientation) {
-		if (landed && body.orbitCenter) {
+		if (landed && body.orbitCenter && body.position) {
 			// orbitCenter = host centre, so this resolves to the local zenith.
 			target.set(
 				body.position[0] - body.orbitCenter[0],

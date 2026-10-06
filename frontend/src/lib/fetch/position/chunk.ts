@@ -1,7 +1,5 @@
 import { fetchLabels, type LabelMap } from '$lib/fetch/position/labels';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
-import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
-import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import {
 	type KeplerianColumns,
 	type ParabolicColumns,
@@ -13,29 +11,20 @@ import {
 	pickIsMinor,
 	keplerianToBody,
 	parabolicToBody,
-	sgp4ToBody,
-	materializeBodyData
+	sgp4ToBody
 } from '$lib/fetch/position/elements/row';
 import { LruPromiseCache } from '$lib/fetch/position/cache';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import { yieldToMain } from '$lib/yield';
-import {
-	OrbitalSource,
-	chunkedPartedUrl,
-	idTypeForPrefix,
-	partedUrl
-} from '$lib/fetch/position/format';
-import { idToKey, objectKey, type ObjectKey } from '$lib/fetch/position/object-key';
-import { rowId, rowKey } from '$lib/fetch/position/elements/parse';
+import { OrbitalSource, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
-import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY, kmToScene } from '$lib/math/units';
+import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY } from '$lib/math/units';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { chebyshevPositionScene, chebyshevStateKm } from '$lib/fetch/position/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
-import { probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
 import { deriveProbeTrailParams } from '$lib/fetch/position/probes/trail';
@@ -44,9 +33,6 @@ import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
 import { dateToJD } from '$lib/time/jd';
-
-/** Position-only materialization (moon-host parents) doesn't need names. */
-const NO_LABELS: LabelMap = new Map();
 
 /** NAIF ids of the two heliocentric origins, as the binary carries them. */
 const SSB_NAIF_ID = 0;
@@ -152,17 +138,9 @@ export class ChunkLoader {
 		fetch(elementsUrl(zone, zoom, part, time));
 	}
 
-	/** Positions by full Object.id (e.g. "naif-399", "spkid-2000004"). String-keyed
-	 *  so zones with different parent prefixes don't collide on the numeric portion. */
-	positions = new Map<string, [number, number, number]>();
 	/** Barycenter elements used for planet orbit drawing. `processChebyshev`
 	 *  populates first (so `process` sees them when resolving planet parents). */
 	barycenters = new Map<string, OrbitalElements>();
-	/** Body IDs whose positions must be retained even when normally skipped —
-	 *  seeded by the orchestrator with parent IDs downstream zones need (e.g.
-	 *  `small_body_moons` parents living in `small_bodies/*`). */
-	neededParentKeys = new Set<ObjectKey>();
-
 	/**
 	 * Past-position ring buffers for probes with at least one chebyshev
 	 * sub-chunk. Keyed by probe.id, tagged with the current parent key so a
@@ -171,21 +149,19 @@ export class ChunkLoader {
 	 */
 	private readonly probeBuffers = new Map<string, { buffer: TrailBuffer; parentKey: string }>();
 
-	constructor(private readonly cheb: ChebyshevStore | null) {
-		this.positions.set('naif-0', [0, 0, 0]); // Solar System Barycenter
-	}
+	constructor(private readonly cheb: ChebyshevStore | null) {}
 
 	/**
 	 * Build PositionedBody[] for every chebyshev body covered by `date`. Caller
-	 * must `await store.ensure(jd).done` first. Walks barycenter-first so
-	 * children resolve parents from `positions`; each body carries osculating
+	 * must `await store.ensure(jd).done` first. Walks barycenter-first so a
+	 * planet finds the elements of its barycenter; each body carries osculating
 	 * Keplerian elements matching the SBDB/Horizons shape for the unified
-	 * kepler trail curve.
+	 * kepler trail curve. The placement pass gives the bodies their places.
 	 */
 	processChebyshev(date: Date, labels: LabelMap): PositionedBody[] {
 		if (!this.cheb) return [];
 		const jd = dateToJD(date);
-		const writePositions = this.barycenters.size === 0;
+		const firstPass = this.barycenters.size === 0;
 		const result: PositionedBody[] = [];
 		// Look up chebyshev body by NAIF so borrowed bodies (planets) can attach
 		// a rederive callback that points at the *parent's* chebyshev — the
@@ -218,24 +194,6 @@ export class ChunkLoader {
 			if (!offset) continue;
 			chebBodiesByNaif.set(body.naifId, body);
 			const parentKey = `naif-${body.parentId}`;
-			const parentPos = this.positions.get(parentKey);
-			if (!parentPos) {
-				// Chebyshev bodies are sorted parents-first so the parent should
-				// always be resolved by the time we reach this child. A miss
-				// here means the ephemeris carries a body whose parent isn't in
-				// the chebyshev set — hide it rather than anchoring it at the
-				// origin (which would visually misplace the body and pollute
-				// trail derivation).
-				console.warn(
-					`processChebyshev: parent ${parentKey} not in positions for ${body.id} — hiding`
-				);
-				continue;
-			}
-			const pos: [number, number, number] = [
-				parentPos[0] + offset[0],
-				parentPos[1] + offset[1],
-				parentPos[2] + offset[2]
-			];
 			const objType = body.objectType as ObjectType;
 			// A moon's elements are about its planet, not the system barycentre
 			// the ephemeris centres it on. The two differ by 4,700 km for the
@@ -245,7 +203,6 @@ export class ChunkLoader {
 				objType === ObjectType.MOON && body.parentId >= 1 && body.parentId <= 9
 					? `naif-${body.parentId * 100 + 99}`
 					: null;
-			const primaryPos = primaryId ? this.positions.get(primaryId) : undefined;
 			// Osculating elements snapshot: position + velocity from the
 			// polynomial, parent GM from the global systems file. Returns null
 			// when the parent has no GM (out-of-coverage in SPICE) or the
@@ -302,16 +259,15 @@ export class ChunkLoader {
 				orbitalSource: OrbitalSource.SPICE,
 				visibleFromDays: body.visibleFromDays
 			};
-			if (writePositions) this.positions.set(body.id, pos);
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
-				if (writePositions && elements && elements.a > 0 && elements.e < 1) {
+				if (firstPass && elements && elements.a > 0 && elements.e < 1) {
 					this.barycenters.set(body.id, elements);
 				}
 				result.push({
 					data,
-					position: pos,
+					position: null,
 					orbitElements: elements ?? undefined,
-					orbitCenter: parentPos,
+					orbitCenterId: parentKey,
 					rederiveElements: ownRederive
 				});
 				continue;
@@ -319,9 +275,8 @@ export class ChunkLoader {
 			if (isMajorBody(objType)) {
 				// Mirror the elements path: planets use the parent barycenter's
 				// orbit (the planet's own offset is just wobble); moons use
-				// their own. When borrowing barycenter elements, leave
-				// `orbitCenter` undefined so the curve is drawn at SSB —
-				// otherwise the heliocentric ellipse would land on the planet.
+				// their own. A borrowed curve has no centre body: it is drawn
+				// about the barycentre of the Solar System.
 				const isMoon = objType === ObjectType.MOON;
 				const parentElements = this.barycenters.get(parentKey);
 				const orbitElements = isMoon ? elements : (parentElements ?? elements);
@@ -342,23 +297,21 @@ export class ChunkLoader {
 						: ownRederive;
 				result.push({
 					data,
-					position: pos,
+					position: null,
 					orbitElements: orbitElements ?? undefined,
 					// A moon's curve sits on its planet, where its elements are taken.
-					orbitCenter: borrowedFromParent ? undefined : (primaryPos ?? parentPos),
-					// The borrowed curve traces the *barycenter*'s orbit, so the
-					// trail's bright end belongs on the barycenter. Fresh array
-					// (not the shared `parentPos` ref) so the per-frame mutator
-					// can update it independently from the parent's own object.
-					trailAnchor: borrowedFromParent ? [parentPos[0], parentPos[1], parentPos[2]] : undefined,
+					orbitCenterId: borrowedFromParent ? undefined : (primaryId ?? parentKey),
+					// The borrowed curve traces the orbit of the barycenter, so the
+					// bright end of the trail belongs on the barycenter.
+					trailAnchorId: borrowedFromParent ? parentKey : undefined,
 					rederiveElements
 				});
 			} else {
 				result.push({
 					data,
-					position: pos,
+					position: null,
 					orbitElements: elements ?? undefined,
-					orbitCenter: parentPos,
+					orbitCenterId: parentKey,
 					rederiveElements: ownRederive
 				});
 			}
@@ -369,8 +322,8 @@ export class ChunkLoader {
 	/**
 	 * Build PositionedBody[] for every probe whose current chunk is resident in
 	 * `probeStore`. Mirrors `processChebyshev`: resolves each probe's fit-center
-	 * body (chebyshev must have run first) and its GM, needed to evaluate
-	 * Kepler-pure sub-chunks.
+	 * body and its GM, needed to evaluate Kepler-pure sub-chunks. The placement
+	 * pass gives the probes their places.
 	 *
 	 * Trail handling splits per probe: pure-Kepler probes carry an osculating
 	 * snapshot (`orbitElements` + `rederiveElements`) that `refreshTrail`
@@ -385,9 +338,7 @@ export class ChunkLoader {
 	processProbes(probeStore: ProbeStore, date: Date, labels: LabelMap): PositionedBody[] {
 		const jd = dateToJD(date);
 		const result: PositionedBody[] = [];
-		const missingParents = new Map<string, Set<string>>(); // parentKey → probe ids
 		const missingGm = new Map<string, Set<string>>(); // "naif-<id>" or "naif-undefined" → probe ids
-		const nullOffsets = new Set<string>();
 		const undefinedCenterProbes = new Set<string>();
 		// At boot there's no focused system, so the initial zone wins by metadata
 		// order (interplanetary first); the per-frame propagator flips parentId later.
@@ -398,45 +349,21 @@ export class ChunkLoader {
 			if (!id) continue;
 			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(id);
 			const zoneCenterKey = `naif-${zoneCenterNaifId}`;
-			// Sub-chunks are fit against the probe's actual fit center — the stamped
+			// Sub-chunks are fit against the probe's actual fit center: the stamped
 			// override (Moon for lunar orbiters, Ryugu for Hayabusa2, …) or the zone
-			// center — so its NAIF/GM/position drive the propagator and anchor. An
-			// unplaceable stamped center degrades to the zone center key with
-			// `positionUnknown` (never a position: the offset is body-relative).
+			// center. Only its identity and GM are needed here. The placement pass
+			// resolves it again at each date and hides the probe when it has no place.
 			const primary =
 				zoneCenterNaifId === undefined
 					? null
-					: resolveProbePrimary(probe, jd, zoneCenterNaifId, this.cheb, (id) =>
-							this.positions.has(id)
-						);
+					: resolveProbePrimary(probe, jd, zoneCenterNaifId, this.cheb, () => true);
 			const primaryKey = primary ? primary.id : zoneCenterKey;
 			const primaryMu = primary?.muKm3S2 ?? 0;
-			const primaryUnplaceable = primary === null;
-			const primaryPos = this.positions.get(primaryKey);
-			if (!primaryPos) {
-				let s = missingParents.get(primaryKey);
-				if (!s) missingParents.set(primaryKey, (s = new Set()));
-				s.add(id);
-			}
 			if (primaryMu === 0) {
 				let s = missingGm.get(primaryKey);
 				if (!s) missingGm.set(primaryKey, (s = new Set()));
 				s.add(id);
 			}
-			const offsetKm = probePositionKm(probe, jd, primaryMu);
-			if (!offsetKm) nullOffsets.add(id);
-			const anchor = primaryPos ?? ([0, 0, 0] as [number, number, number]);
-			const offset: [number, number, number] | null = offsetKm
-				? [kmToScene(offsetKm[0]), kmToScene(offsetKm[2]), -kmToScene(offsetKm[1])]
-				: null;
-			// A gap in the sub-chunks (or an unresolved fit center) leaves the probe
-			// unplaceable: it still enters the scene so a scrub into coverage picks
-			// it up, but `positionUnknown` keeps the camera off the stand-in.
-			const positionUnknown = !offset || !primaryPos || primaryUnplaceable;
-			const pos: [number, number, number] =
-				offset && !primaryUnplaceable
-					? [anchor[0] + offset[0], anchor[1] + offset[1], anchor[2] + offset[2]]
-					: [anchor[0], anchor[1], anchor[2]];
 			const data: BodyData = {
 				id,
 				name: pickLabel(labels, id),
@@ -512,14 +439,11 @@ export class ChunkLoader {
 			}
 			result.push({
 				data,
-				position: pos,
-				positionUnknown,
+				position: null,
 				// Kept even when the buffer drives the trail: the detail panel reads
 				// these for its orbital-elements section (the trail path ignores them).
 				orbitElements: elements ?? undefined,
-				// Copy, not a shared ref to the fit center's position: a probe's parent
-				// can flip between frames as it crosses zones.
-				orbitCenter: [anchor[0], anchor[1], anchor[2]],
+				orbitCenterId: primaryKey,
 				rederiveElements,
 				trailBuffer
 			});
@@ -533,13 +457,6 @@ export class ChunkLoader {
 					(undefinedCenterProbes.size > 10 ? ` (+${undefinedCenterProbes.size - 10} more)` : '')
 			);
 		}
-		for (const [parentKey, probeIds] of missingParents) {
-			console.warn(
-				`processProbes: fit-center ${parentKey} not in positions ` +
-					`(unplaceable, kept hidden) — ${probeIds.size} probe(s): ${Array.from(probeIds).slice(0, 5).join(', ')}` +
-					(probeIds.size > 5 ? ` (+${probeIds.size - 5} more)` : '')
-			);
-		}
 		for (const [parentKey, probeIds] of missingGm) {
 			console.warn(
 				`processProbes: GM unavailable for ${parentKey} ` +
@@ -548,120 +465,39 @@ export class ChunkLoader {
 					(probeIds.size > 5 ? ` (+${probeIds.size - 5} more)` : '')
 			);
 		}
-		if (nullOffsets.size > 0) {
-			console.warn(
-				`processProbes: ${nullOffsets.size} probe(s) outside sub-chunk windows at load ` +
-					`(will stay hidden until jd enters coverage): ` +
-					`${Array.from(nullOffsets).slice(0, 5).join(', ')}` +
-					(nullOffsets.size > 5 ? ` (+${nullOffsets.size - 5} more)` : '')
-			);
-		}
 		return result;
-	}
-
-	/** Fetch + parse a zone's elements file and register every row's parent ID
-	 *  in `neededParentIds`. Call before processing zones whose parents live in
-	 *  a different zone, or the dependent body's position would be dropped. */
-	async seedNeededParents(
-		zone: string,
-		zoom: number | null,
-		part: number,
-		time: string | null,
-		parentIdType: string
-	): Promise<void> {
-		const cols = await fetchElements(zone, zoom, part, time);
-		const parentType = idTypeForPrefix(parentIdType);
-		if (parentType === undefined) return;
-		for (let i = 0; i < cols.rowCount; i++) {
-			this.neededParentKeys.add(objectKey(parentType, cols.parentId[i]));
-		}
 	}
 
 	/**
 	 * Fetch + parse one minor-body chunk into columnar form, without building a
-	 * per-row `PositionedBody` — the point cloud runs off the worker's per-frame
+	 * per-row `PositionedBody`: the point cloud runs off the worker's per-frame
 	 * solve, and the few bodies that become objects materialize on demand via
-	 * {@link MinorBucket}. Still resolves positions for `neededParentIds` rows
-	 * into `this.positions`, since `process()` no longer runs for asteroid zones
-	 * to do it.
+	 * {@link MinorBucket}.
 	 */
 	async fetchMinorColumns(
 		zone: string,
 		zoom: number | null,
 		part: number,
-		date: Date,
 		time: string | null = null,
-		parentIdType: string = 'naif',
 		priority?: RequestPriority
 	): Promise<ElementColumns> {
-		const cols = await fetchElements(zone, zoom, part, time, priority);
-		if (this.neededParentKeys.size > 0) await this.resolveNeededParents(cols, date, parentIdType);
-		return cols;
+		return fetchElements(zone, zoom, part, time, priority);
 	}
 
-	/** Solve + store positions for rows whose id is a needed moon-host parent.
-	 *  Mirrors the per-row offset selection in {@link process}. Time-sliced
-	 *  like the ingest: it walks every row of every part. */
-	private async resolveNeededParents(
-		cols: ElementColumns,
-		date: Date,
-		parentIdType: string
-	): Promise<void> {
-		const jd = dateToJD(date);
-		const isParabolic = cols.kind === 'parabolic';
-		const needed = this.neededParentKeys;
-		let sliceStart = performance.now();
-		for (let i = 0; i < cols.rowCount; i++) {
-			if ((i & 4095) === 4095 && performance.now() - sliceStart > 6) {
-				await yieldToMain();
-				sliceStart = performance.now();
-			}
-			if (!needed.has(rowKey(cols, i))) continue;
-			const id = rowId(cols, i);
-			if (id === null) continue;
-			const parentPos = this.positions.get(`${parentIdType}-${cols.parentId[i]}`);
-			if (!parentPos) continue;
-			const body = materializeBodyData(cols, i, NO_LABELS, parentIdType);
-			if (!body) continue;
-			const inRange = jd >= body.validityStart && jd <= body.validityEnd;
-			const offset = !inRange
-				? ([0, 0, 0] as [number, number, number])
-				: body.satrec
-					? sgp4PositionScene(body.satrec, jd)
-					: body.q != null
-						? parabolicToPosition(body, date)
-						: body.a === 0 && !isParabolic
-							? ([0, 0, 0] as [number, number, number])
-							: orbitalElementsToPosition(body, date);
-			if (!offset) continue;
-			this.positions.set(id, [
-				parentPos[0] + offset[0],
-				parentPos[1] + offset[1],
-				parentPos[2] + offset[2]
-			]);
-		}
-	}
-
-	/** `eagerIds`: satellites that need a load-time position (URL targets).
-	 *  Named satellites always get one; the rest of an Earth zone is placed on
-	 *  promotion, so 20k SGP4 records are never built here. */
+	/** One body per row of an elements file. The placement pass gives them
+	 *  their places: a row whose parent is not loaded stays without one. */
 	async process(
 		zone: string,
 		zoom: number | null,
 		part: number,
-		date: Date,
 		time: string | null = null,
 		parentIdType: string = 'naif',
-		eagerIds?: ReadonlySet<string>,
 		priority?: RequestPriority
 	): Promise<PositionedBody[]> {
-		const writePositions = this.barycenters.size === 0;
+		const firstPass = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
-		const skippedMissingParent = new Map<string, number>();
-		// Bodies whose propagator refused the load-time jd — SGP4 rejects a
-		// satellite that has already re-entered, and every decayed sat still in
-		// the chunk hits this. Tallied, not logged per body.
-		const unpropagated: string[] = [];
+		// Rows with no orbit to propagate. Tallied, not logged per body.
+		let degenerate = 0;
 
 		const [cols, labels] = await Promise.all([
 			fetchElements(zone, zoom, part, time, priority),
@@ -670,7 +506,6 @@ export class ChunkLoader {
 
 		const isParabolic = cols.kind === 'parabolic';
 		const isSGP4 = cols.kind === 'sgp4';
-		const jd = dateToJD(date);
 
 		// Time-budgeted slicing: this loop runs for every row of every minor
 		// chunk (~1M rows on a full load) — without yields it starves input
@@ -693,135 +528,47 @@ export class ChunkLoader {
 				objType !== ObjectType.LAGRANGE_POINT &&
 				!isMajorBody(objType)
 			) {
+				degenerate++;
 				continue;
 			}
 
 			const parentKey = `${parentIdType}-${cols.parentId[idx]}`;
-			const parentPos = this.positions.get(parentKey);
-			if (!parentPos) {
-				// Hide the body: the SSB fallback used to anchor it at the
-				// origin, which placed asteroid moons (whose NEO parents aren't
-				// chebyshev perturbers) at the wrong scene location. Tally by
-				// parent so the post-loop log groups them.
-				skippedMissingParent.set(parentKey, (skippedMissingParent.get(parentKey) ?? 0) + 1);
-				continue;
-			}
-
 			const body = isParabolic
 				? parabolicToBody(cols as ParabolicColumns, idx, labels, parentIdType)
 				: isSGP4
 					? sgp4ToBody(cols as SGP4Columns, idx, labels, parentIdType)
 					: keplerianToBody(cols as KeplerianColumns, idx, labels, parentIdType);
 			if (!body) continue;
-			// An unnamed satellite nobody asked for stays a point-cloud dot until
-			// promotion places it; its SGP4 record is built then.
-			if (isSGP4 && body.name === null && !eagerIds?.has(body.id)) {
-				bodies.push({
-					data: body,
-					position: [parentPos[0], parentPos[1], parentPos[2]],
-					positionUnknown: true
-				});
-				continue;
-			}
-			// An SGP4 record that fails to initialise drops the row: earth sats
-			// must not fall back to Kepler.
-			if (isSGP4 && !body.satrec) continue;
-			// If the load-time jd is outside the chunk's validity window (e.g.
-			// user URL-loaded a far-future date), seed with the parent position and
-			// mark it a stand-in: the per-frame propagation gate keeps the body
-			// hidden until jd re-enters range, and nothing may frame the seed.
-			const inRange = jd >= body.validityStart && jd <= body.validityEnd;
-			const offset = !inRange
-				? ([0, 0, 0] as [number, number, number])
-				: body.satrec
-					? sgp4PositionScene(body.satrec, jd)
-					: body.a === 0 && !isParabolic
-						? ([0, 0, 0] as [number, number, number])
-						: body.q != null
-							? parabolicToPosition(body, date)
-							: orbitalElementsToPosition(body, date);
-			if (!offset) {
-				unpropagated.push(body.id);
-				continue;
-			}
-			const pos: [number, number, number] = [
-				parentPos[0] + offset[0],
-				parentPos[1] + offset[1],
-				parentPos[2] + offset[2]
-			];
-
-			// Retain positions of bodies that downstream zones need as parents
-			// (e.g. asteroid hosts of `small_body_moons`). The normal stores
-			// below only fire for barycenters / Lagrange points / major bodies,
-			// so without this an asteroid parent would never land in
-			// `this.positions`.
-			const bodyKey = idToKey(body.id);
-			if (bodyKey !== null && this.neededParentKeys.has(bodyKey)) {
-				this.positions.set(body.id, pos);
-			}
-
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
-				if (writePositions) {
-					// if parent is SSB, don't use it
-					if (body.a > 0 && body.e < 1) {
-						this.barycenters.set(body.id, body);
-					}
-					this.positions.set(body.id, pos);
-				}
+				// A barycenter about the SSB has no ellipse to lend.
+				if (firstPass && body.a > 0 && body.e < 1) this.barycenters.set(body.id, body);
 				bodies.push({
 					data: body,
-					position: pos,
-					positionUnknown: !inRange,
+					position: null,
 					orbitElements: body.a > 0 ? body : undefined,
-					orbitCenter: parentPos
+					orbitCenterId: parentKey
 				});
 				continue;
-			}
-
-			if (writePositions && isMajorBody(objType)) {
-				this.positions.set(body.id, pos);
 			}
 
 			if (isMajorBody(objType)) {
 				const isMoon = objType === ObjectType.MOON;
-				// If the parent has barycenter elements, draw the orbit around SSB
-				// (centered at origin) using those elements. Otherwise the body's
-				// own elements are around the parent (e.g. Ceres around the Sun),
-				// so the orbit must be drawn centered on the parent's actual
-				// position, not at SSB — failing to do so leaves the trail offset
-				// from the body by parent_pos − SSB.
+				// A planet whose parent has barycenter elements borrows them: that
+				// curve is about the barycentre of the Solar System. Any other body
+				// has its own elements about its parent (Ceres about the Sun).
 				const hasBarycenter = this.barycenters.has(parentKey);
 				bodies.push({
 					data: body,
-					position: pos,
-					positionUnknown: !inRange,
+					position: null,
 					orbitElements: isMoon ? body : (this.barycenters.get(parentKey) ?? body),
-					orbitCenter: isMoon || !hasBarycenter ? parentPos : undefined
+					orbitCenterId: isMoon || !hasBarycenter ? parentKey : undefined
 				});
 			} else {
-				bodies.push({
-					data: body,
-					position: pos,
-					positionUnknown: !inRange
-				});
+				bodies.push({ data: body, position: null });
 			}
 		}
-		if (unpropagated.length > 0) {
-			console.warn(
-				`process(${zone}/${zoom}/${part}): positioned ${bodies.length} body(ies), ` +
-					`dropped ${unpropagated.length} the propagator refused — ` +
-					`${unpropagated.slice(0, 5).join(', ')}` +
-					(unpropagated.length > 5 ? ` (+${unpropagated.length - 5} more)` : '')
-			);
-		}
-		if (skippedMissingParent.size > 0) {
-			const total = Array.from(skippedMissingParent.values()).reduce((a, b) => a + b, 0);
-			const entries = Array.from(skippedMissingParent.entries())
-				.map(([k, n]) => `${k}×${n}`)
-				.join(', ');
-			console.warn(
-				`process(${zone}/${zoom}/${part}): hid ${total} body(ies) with unresolved parent — ${entries}`
-			);
+		if (degenerate > 0) {
+			console.debug(`process(${zone}/${zoom}/${part}): skipped ${degenerate} row(s) with a = 0`);
 		}
 		return bodies;
 	}

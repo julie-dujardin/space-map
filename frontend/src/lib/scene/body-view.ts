@@ -75,14 +75,14 @@ const ORBIT_CLASSES: Partial<Record<ObjectType, OrbitClass>> = {
 /** @internal A snapshot: the scene mutates its own records every frame, so a
  *  host holding one of these is holding what was true when it asked. */
 export function bodyView(body: PositionedBody): Body {
-	const { id, name, objectType, parentId, radiusKm, unplaceable } = body.data;
+	const { id, name, objectType, parentId, radiusKm } = body.data;
 	const view: Body = {
 		id,
 		name,
 		type: TYPES[objectType],
 		parentId,
 		radiusKm: Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : null,
-		placed: unplaceable !== true && body.positionUnknown !== true
+		placed: body.position !== null
 	};
 	const orbitClass = ORBIT_CLASSES[objectType];
 	if (orbitClass) view.orbitClass = orbitClass;

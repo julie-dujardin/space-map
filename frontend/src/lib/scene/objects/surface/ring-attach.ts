@@ -66,8 +66,7 @@ export function attachRingBundles(
 				const host = bo.mesh ?? bo.model;
 				if (host) node.mesh.quaternion.copy(host.quaternion);
 				bo.rings.push(node);
-				scene.add(node.mesh);
-				bo.extraObjects.push(node.mesh);
+				bo.root.add(node.mesh);
 				// Analytical ring shadow on the body itself. The material is built
 				// as a MeshStandardMaterial in `buildMajorBodies`; this swaps in an
 				// onBeforeCompile that adds a ray-march to the ring plane after the

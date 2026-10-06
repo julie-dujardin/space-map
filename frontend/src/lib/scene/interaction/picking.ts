@@ -1,7 +1,6 @@
 import type { PerspectiveCamera, Vector2, Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import type { Vec3 } from '../animation/math';
 
@@ -37,13 +36,14 @@ export function pickMoonDot(
 	let bestWorldDist = Infinity;
 
 	const testBody = (body: PositionedBody): void => {
-		// Moon dots' positions are advanced on the GPU; refresh the CPU copy from
-		// orbital elements at the current jd so picking matches the rendered dot
-		// even while paused.
-		refreshMinorBodyPosition(body, jd, ctx);
+		// The frame loop does not place a moon outside the focused system: settle
+		// it at the current jd, so the pick matches the dot. A moon with no place
+		// has no dot to pick.
+		const at = ctx.place(body, jd);
+		if (!at) return;
 		// Render-space position (focus sits at the scene origin, so subtracting
 		// focusTruePos puts the body in the same frame as `camera.position`).
-		v.set(body.position[0] - fx, body.position[1] - fy, body.position[2] - fz);
+		v.set(at[0] - fx, at[1] - fy, at[2] - fz);
 		// True scene-unit distance from camera — captured *before* project()
 		// turns `v` into NDC coords. The caller compares this against the mesh
 		// raycaster's `hits[0].distance` (also scene units) to pick whichever

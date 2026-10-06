@@ -12,7 +12,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import TimelineStrip from '../../timeline/TimelineStrip.svelte';
 	import { fetchObjectDetail, type ProbeEvents } from '$lib/fetch/objects/object-data';
-	import type { ProbeCoverage } from '$lib/fetch/metadata';
+	import type { Coverage } from '$lib/fetch/metadata';
 	import { coverageGaps, eventStripItems } from '$lib/probes/event-timeline';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { stepEntryIndex } from '$lib/timeline/axis';
@@ -30,7 +30,7 @@
 	let { objectId, name, clock }: Props = $props();
 
 	let events = $state.raw<ProbeEvents | null>(null);
-	let coverage = $state.raw<ProbeCoverage | undefined>(undefined);
+	let coverage = $state.raw<Coverage | undefined>(undefined);
 
 	// The drawer has usually fetched this bundle already; the cache makes the
 	// second read free, and asking for it here keeps the strip standalone.

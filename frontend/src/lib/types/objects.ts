@@ -103,12 +103,8 @@ export interface BodyData extends OrbitalElements {
 	 * `global.orbit.source` instead.
 	 */
 	orbitalSource: OrbitalSource;
-	/**
-	 * The catalogue carries no orbit for this object at all (an asteroid moon
-	 * published without elements, a probe with no ephemeris). It exists as a
-	 * page, never as a point: the position pass leaves it unplaced.
-	 */
-	unplaceable?: boolean;
+	/** The catalogue has no orbit for this object. It has a page and never a place. */
+	pageOnly?: true;
 	/**
 	 * Days from J2000 to when the body came into existence (moon/sat discovery
 	 * or launch). The render gate hides it while `jd - 2451545 < visibleFromDays`.
@@ -117,18 +113,44 @@ export interface BodyData extends OrbitalElements {
 	visibleFromDays?: number;
 }
 
+/** Why a body has no place at the scene date. */
+export type Unplaced =
+	/** The catalogue has no orbit for it. */
+	| 'never'
+	/** The date is before its launch or discovery. */
+	| 'not-yet'
+	/** Its ephemeris does not reach the date. */
+	| 'no-data'
+	/** The data for the date is still on its way. */
+	| 'loading'
+	/** The body it hangs off has no place. */
+	| 'parent'
+	/** The propagator gave no result. */
+	| 'failed';
+
 export interface PositionedBody {
 	data: BodyData;
-	position: [number, number, number];
+	/**
+	 * Scene coordinates at the date of the last placement. Null while the body
+	 * has no known place: nothing draws it and nothing frames it. Only
+	 * `lib/scene/position` writes it. The frame loop skips hidden bodies on some
+	 * frames, so a reader that needs a body at a date asks `ctx.place`.
+	 */
+	readonly position: [number, number, number] | null;
+	/** Why `position` is null. Undefined while it is not, and before the first placement. */
+	readonly unplaced?: Unplaced;
 	/** Elements used for orbit drawing — may differ from `data` (e.g. planets borrowing barycenter elements). */
 	orbitElements?: OrbitalElements;
-	/** World-space center of the orbit (parent position). Defaults to origin. */
-	orbitCenter?: [number, number, number];
-	/**
-	 * Where the trail's brightest end sits when `position` is offset from the
-	 * orbit curve (planets borrowing barycenter elements: curve passes through
-	 * the barycenter so the trail head must too, or it kinks). Updated each frame.
-	 */
+	/** Body the orbit curve is drawn about. Undefined: the Solar System barycentre. */
+	orbitCenterId?: string;
+	/** Place of `orbitCenterId`, written with `position`. Null while that body
+	 *  has no place: the curve is not drawn. */
+	readonly orbitCenter?: [number, number, number] | null;
+	/** Body the bright end of the trail sits on, for a planet that borrows the
+	 *  elements of its barycentre: the curve passes through the barycentre, not
+	 *  through the planet. Undefined: the trail ends on the body. */
+	trailAnchorId?: string;
+	/** Place of `trailAnchorId`, written with `position`. */
 	trailAnchor?: [number, number, number];
 	/**
 	 * Re-derive `orbitElements` at a new `jd`. Set on chebyshev bodies so the
@@ -172,18 +194,6 @@ export interface PositionedBody {
 	 *  (the seat); everything data-facing (terrain, nomenclature, attribution)
 	 *  defers to `featureAnchor.hostId`. */
 	featureAnchor?: FeatureAnchor;
-	/**
-	 * `position` is a stand-in — the parent's place, the scene origin, or a
-	 * stale sample — because the body has no ephemeris at the current time.
-	 * Nothing may frame the camera on such a body: the stand-in reads as a
-	 * teleport to the Sun or the barycentre. Maintained per frame by
-	 * `updatePositions`.
-	 */
-	positionUnknown?: boolean;
-	/** The date `position` and `positionUnknown` were last settled for. The
-	 *  frame loop skips some bodies on some frames, so a reader that needs a
-	 *  body at a date compares against this. */
-	placedJd?: number;
 }
 
 /** A synthetic surface-feature focus target — see {@link FeatureAnchor}. */

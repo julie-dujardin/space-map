@@ -21,7 +21,6 @@ vi.mock('$lib/scene/objects/body/textures', () => ({
 	loadBodyLabel: () => {},
 	unloadBodyTexture: () => {}
 }));
-vi.mock('$lib/scene/minor-body-position', () => ({ refreshMinorBodyPosition: () => {} }));
 
 // Earth-sat emphasis ramps off members valid at sim time; scrubbing across a
 // snapshot's validity window loads no data, so the registry must recount on
@@ -155,7 +154,8 @@ describe('asteroid-moon auto-promotion', () => {
 			onSmallBodyFilterChange: () => () => {},
 			earthSatFilter: null,
 			smallBodyFilter: null,
-			getBody: (id: string) => hosts.get(id)
+			getBody: (id: string) => hosts.get(id),
+			place: (body: PositionedBody) => body.position
 		} as unknown as ContextManager;
 		const bodyObjects = new Map<string, unknown>();
 		new PromotionRegistry({

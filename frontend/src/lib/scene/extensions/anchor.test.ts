@@ -4,7 +4,7 @@ import { AU_SCALE } from '$lib/math/units';
 import { bodyCentre, resolveAnchor, rotateByQuaternion, surfaceDirection } from './anchor';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import type { PositionedBody } from '$lib/types/objects';
 import type { Vec3 } from '$lib/scene/animation/math';
 
 const AU_KM = 149597870.7;
@@ -12,7 +12,7 @@ const AU_KM = 149597870.7;
 /** A body at a known place, with a measured radius and no orientation data —
  *  the surface path then falls back to the unrotated sphere. */
 function fakeCtx(
-	body: Partial<PositionedBody> & { position: [number, number, number] }
+	body: Partial<PositionedBody> & { position: [number, number, number] | null }
 ): ContextManager {
 	const full = {
 		data: { id: 'test', radiusKm: 1000 },
@@ -20,7 +20,7 @@ function fakeCtx(
 	} as unknown as PositionedBody;
 	return {
 		getBody: (id: string) => (id === 'test' ? full : undefined),
-		bodies: { bodiesById: new Map([['test', full]]) }
+		place: (asked: PositionedBody) => asked.position
 	} as unknown as ContextManager;
 }
 
@@ -33,6 +33,12 @@ describe('resolveAnchor', () => {
 	it('is null while the body is not loaded', () => {
 		const ctx = fakeCtx({ position: [0, 0, 0] });
 		expect(resolveAnchor({ body: 'elsewhere' }, ctx, 2460000)).toBeNull();
+	});
+
+	it('is null while the body has no place', () => {
+		const ctx = fakeCtx({ position: null });
+		expect(resolveAnchor({ body: 'test' }, ctx, 2460000)).toBeNull();
+		expect(resolveAnchor({ body: 'test', latitude: 0, longitude: 0 }, ctx, 2460000)).toBeNull();
 	});
 
 	it('turns an ecliptic offset in km into the scene axes', () => {
@@ -113,79 +119,43 @@ describe('rotateByQuaternion', () => {
 
 describe('bodyCentre', () => {
 	const JD = 2460000;
-	const moonCtx = (moon: object, offset: Vec3 | null = [0, 2, 0]) => {
-		const planet = { data: { id: 'planet' }, position: [5, 0, 0], placedJd: JD };
-		const full = {
-			position: [1, 1, 1],
-			...moon,
-			data: { id: 'moon', objectType: ObjectType.MOON, parentId: 'planet', ...moon }
-		} as unknown as PositionedBody;
+	/** A scene that answers each read with the next of `places`, and keeps what
+	 *  it was asked. */
+	const sceneCtx = (...places: (Vec3 | null)[]) => {
+		const asked: [PositionedBody, number][] = [];
 		const ctx = {
-			getBody: (id: string) => ({ planet, moon: full })[id],
-			chebStore: { has: () => true, positionScene: () => offset }
+			place: (body: PositionedBody, jd: number) => {
+				asked.push([body, jd]);
+				return places.shift() ?? null;
+			}
 		} as unknown as ContextManager;
-		return { ctx, moon: full };
+		return { ctx, asked };
 	};
+	const moon = { data: { id: 'moon' }, position: [1, 1, 1] } as unknown as PositionedBody;
 
-	it('places a moon the frame loop left at another date from its orbit', () => {
-		const { ctx, moon } = moonCtx({});
+	it('is where the scene places the body at the date asked, not where it was left', () => {
+		// The frame loop skips a hidden body, so its `position` can be of another date.
+		const { ctx, asked } = sceneCtx([5, 2, 0]);
 		expect(bodyCentre(moon, ctx, JD)).toEqual([5, 2, 0]);
-		// Written through, so everything else that reads the moon agrees.
-		expect(moon.position).toEqual([5, 2, 0]);
+		expect(asked).toEqual([[moon, JD]]);
 	});
 
-	it('leaves a moon the frame loop placed for this date where it is', () => {
-		const { ctx, moon } = moonCtx({});
-		moon.placedJd = JD;
-		expect(bodyCentre(moon, ctx, JD)).toEqual([1, 1, 1]);
+	it('is nowhere while the scene has no place for the body', () => {
+		const { ctx } = sceneCtx(null);
+		expect(bodyCentre(moon, ctx, JD)).toBeNull();
 	});
 
-	it('is nowhere for a moon with no orbit, before its discovery, or off its ephemeris', () => {
-		const unplaceable = moonCtx({ unplaceable: true });
-		expect(bodyCentre(unplaceable.moon, unplaceable.ctx, JD)).toBeNull();
-		const unborn = moonCtx({ visibleFromDays: 1e6 });
-		expect(bodyCentre(unborn.moon, unborn.ctx, JD)).toBeNull();
-		const uncovered = moonCtx({}, null);
-		expect(bodyCentre(uncovered.moon, uncovered.ctx, JD)).toBeNull();
-	});
-
-	it('is nowhere for a probe the frame loop skipped, and asks that loop to place it', () => {
+	it('is nowhere for a probe until the scene can place it, and asks on every read', () => {
 		const probe = {
 			data: { id: 'probe', orbitalSource: OrbitalSource.SPICE_PROBE },
-			position: [1, 2, 3]
+			position: null
 		} as unknown as PositionedBody;
-		const bodies = { hostRead: new Map<string, number>(), hostReadVersion: 0 };
-		const ctx = { bodies } as unknown as ContextManager;
+		const { ctx, asked } = sceneCtx(null, [1, 2, 3]);
 		expect(bodyCentre(probe, ctx, JD)).toBeNull();
-		expect(bodies.hostRead.has('probe')).toBe(true);
-		expect(bodies.hostReadVersion).toBe(1);
-		// Placed by the next frame, and still asked for while it is read.
-		probe.placedJd = JD;
 		expect(bodyCentre(probe, ctx, JD)).toEqual([1, 2, 3]);
-		expect(bodies.hostReadVersion).toBe(1);
-	});
-
-	it('places a moon against its host where that is now, not where it was left', () => {
-		const host = {
-			data: {
-				id: 'host',
-				parentId: 'naif-0',
-				a: 0,
-				validityStart: -Infinity,
-				validityEnd: Infinity
-			},
-			position: [9, 9, 9],
-			positionUnknown: true
-		} as unknown as PositionedBody;
-		const moon = {
-			data: { id: 'moon', objectType: ObjectType.MOON, parentId: 'host', a: 0 },
-			position: [1, 1, 1]
-		} as unknown as PositionedBody;
-		const ctx = {
-			getBody: (id: string) => ({ host, moon })[id],
-			bodies: { bodiesById: new Map() }
-		} as unknown as ContextManager;
-		// The host is a dot of a point cloud: placed from its orbit, at the origin.
-		expect(bodyCentre(moon, ctx, JD)).toEqual([0, 0, 0]);
+		expect(asked).toEqual([
+			[probe, JD],
+			[probe, JD]
+		]);
 	});
 });

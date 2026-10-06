@@ -69,5 +69,6 @@ export function subsolarPoint(id: string, ctx: ContextManager, jd: number): LonL
 	if (!body || !sun || body === sun) return null;
 	if (!body.orientation && !ctx.bodies.orientationRead.has(id)) return null;
 	const centre = bodyCentre(body, ctx, jd);
-	return centre && subsolarAt(body, centre, sun.position, jd);
+	const sunCentre = bodyCentre(sun, ctx, jd);
+	return centre && sunCentre && subsolarAt(body, centre, sunCentre, jd);
 }

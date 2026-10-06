@@ -13,7 +13,6 @@ import { bodyQuaternion } from '$lib/math/orientation';
 import { kmToScene } from '$lib/math/units';
 import { eclipticToScene } from '$lib/math/travel/state';
 import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
-import { placeForRead } from '$lib/scene/minor-body-position';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
@@ -79,7 +78,7 @@ export function rotateByQuaternion(
 /** Where `body`'s centre is at `jd`, in scene units, or null while it is
  *  nowhere. */
 export function bodyCentre(body: PositionedBody, ctx: ContextManager, jd: number): Vec3 | null {
-	return placeForRead(body, jd, ctx) ? body.position : null;
+	return ctx.place(body, jd);
 }
 
 /** What an anchor reads of the body it is on. */

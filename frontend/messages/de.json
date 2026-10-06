@@ -1201,6 +1201,7 @@
 	"object_not_found": "{name} konnte nicht angezeigt werden — es existiert möglicherweise nicht oder hat keine Bahndaten",
 	"object_no_position": "{name} hat zu diesem Datum keine Positionsdaten",
 	"object_position_unknown": "Die Karte hat keine Position für {name}",
+	"object_shown_at_host": "Die Karte hat keine Position für {name}. Sie zeigt stattdessen {host}.",
 	"clock_moved_title": "Datum geändert",
 	"clock_moved_body": "{name} hat am {from} keine Positionsdaten. Die Karte zeigt jetzt den {to}.",
 	"out_of_range_title": "Begrenzte Daten zu diesem Zeitpunkt",

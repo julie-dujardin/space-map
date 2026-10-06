@@ -118,7 +118,8 @@ export class ZoneRefresher {
 						parts,
 						parentIdType,
 						zoomData,
-						currentTime: snapshotDate(zoomData, initialDate),
+						// Nothing is loaded yet: the first `ready` or `tick` loads it.
+						currentTime: '',
 						inFlight: null,
 						lastLoadStartMs: -Infinity,
 						cap
@@ -138,7 +139,7 @@ export class ZoneRefresher {
 						preloads: new Map()
 					};
 					this.zones.push(state);
-					this.preloadChunkNeighbors(state, initialDate);
+					this.preloadChunkNeighbors(state);
 				}
 			}
 		}
@@ -212,67 +213,108 @@ export class ZoneRefresher {
 					const previous = state.currentIdx;
 					state.currentIdx = target;
 					this.applyChunkSwap(state, previous, target, preload.bodies);
-					this.preloadChunkNeighbors(state, date);
+					this.preloadChunkNeighbors(state);
 				}
 				if (state.inFlight) continue;
 				const target = chunkIndexForJd(state.zoomData, jd);
 				if (target === state.currentIdx) continue;
-				state.inFlight = this.loadChunk(state, target, date).finally(() => {
+				state.inFlight = this.loadChunk(state, target).finally(() => {
 					state.inFlight = null;
 				});
 			}
 		}
 	}
 
-	/** Stream a single target into the running scene if it isn't loaded — owns
-	 *  the loader, so it's the entry point for in-session on-demand focus. */
-	async ensureBody(targetId: string, date: Date): Promise<void> {
-		if (this.ctx.getBody(targetId)) return;
-		// Probes carry no orbital elements (the placeholder path can't build them)
-		// and an out-of-coverage probe isn't in bodiesById at boot. Load its chunk
-		// for the (coverage-snapped) date and re-run processProbes for it.
-		if (targetId.startsWith('probe-')) {
-			const store = this.ctx.probeStore;
-			if (!store) return;
-			const jd = dateToJD(date);
-			// Started before the chunk wait so the two fetches overlap.
-			const passengerPromise = passengerFor(targetId);
-			await store.ensure(jd).done;
-			// Registered before the store is asked anything about the craft: a
-			// passenger answers off its carrier, the stamped fit center below
-			// included.
-			const passenger = await passengerPromise;
-			if (passenger) store.registerCarried(passenger);
-			// A record stamped to a small body (Deep Impact → Tempel 1) is gated
-			// until that body can anchor it. Stream the body in and seed its
-			// position so the probe below comes out placed even when no other
-			// zone covers this date.
-			const fcId = store.stampedFitCenterAt(targetId, jd);
-			if (fcId) {
-				if (!this.ctx.getBody(fcId)) {
-					await ensureTargetStreamed(this.ctx, fcId, date, this.loader);
-				}
-				const fcBody = this.ctx.getBody(fcId);
-				if (fcBody && !fcBody.positionUnknown && !this.loader.positions.has(fcId)) {
-					this.loader.positions.set(fcId, fcBody.position);
-				}
-			}
-			const labels = await fetchLabels();
-			const target = this.loader
-				.processProbes(store, date, labels)
-				.find((b) => b.data.id === targetId);
-			if (!target) {
-				// No chunk anywhere for this craft: fall through to the global
-				// bundle, which stands it in as an unplaceable focus target.
-				await ensureTargetStreamed(this.ctx, targetId, date, this.loader);
-				return;
-			}
-			this.ctx.bodies.addBodies([target]);
-			this.ctx.credits.recordOrbitSources([target]);
-			this.ctx.bodies.notifyBodiesAdded();
-			return;
+	/**
+	 * Resolves when every zone holds its data for `date`. A navigation waits on
+	 * this before it reads a place: the frame loop loads the same data, a frame
+	 * later and no more than once every two seconds.
+	 */
+	async ready(date: Date = this.latestDate): Promise<void> {
+		this.latestDate = date;
+		const jd = dateToJD(date);
+		const waits: Promise<unknown>[] = this.zones.map((z) => this.zoneReady(z, date, jd));
+		if (this.ctx.chebStore) waits.push(this.ctx.chebStore.ensure(jd).done);
+		if (this.ctx.probeStore) waits.push(this.ctx.probeStore.ensure(jd).done);
+		await Promise.all(waits);
+	}
+
+	private async zoneReady(z: ZoneState, date: Date, jd: number): Promise<void> {
+		// A load that runs now can be for another date.
+		while (z.inFlight) await z.inFlight;
+		if (z.kind === 'time') {
+			const target = snapshotDate(z.zoomData, date);
+			if (target === z.currentTime) return;
+			z.lastLoadStartMs = performance.now();
+			z.inFlight = this.loadTime(z, target, date).finally(() => {
+				z.inFlight = null;
+			});
+		} else {
+			const target = chunkIndexForJd(z.zoomData, jd);
+			if (target === z.currentIdx) return;
+			z.inFlight = this.loadChunk(z, target).finally(() => {
+				z.inFlight = null;
+			});
 		}
-		await ensureTargetStreamed(this.ctx, targetId, date, this.loader);
+		await z.inFlight;
+	}
+
+	/** Ids a zone keeps whatever filter is active: a navigation asked for them. */
+	private readonly wanted = new Set<string>();
+
+	/** Keep `id` through group filters and snapshot changes. */
+	want(id: string): void {
+		this.wanted.add(id);
+	}
+
+	/**
+	 * Make `targetId` a body of the scene. Call after {@link ready}: a body a
+	 * zone carries at that date is then here already, and this adds the rest
+	 * (a probe from its chunk, a small body or a stand-in from its bundle).
+	 */
+	async ensureBody(targetId: string, date: Date): Promise<void> {
+		if (targetId.startsWith('probe-')) await this.ensureProbe(targetId, date);
+		if (this.ctx.getBody(targetId)) return;
+		if (targetId.startsWith('norad_satcat-') && !this.wanted.has(targetId)) {
+			this.want(targetId);
+			if (this.ctx.earthSatFilter || this.ctx.earthTypeFilter) {
+				// The group filter left it out of the snapshot: load it again with the id kept.
+				this.invalidateZone('earth');
+				await this.ready(date);
+				if (this.ctx.getBody(targetId)) return;
+			}
+		}
+		// No position file holds it at this date: its bundle stands in for it.
+		await ensureTargetStreamed(this.ctx, targetId);
+	}
+
+	/** Give a probe what its place needs at `date`: its chunk, the craft it
+	 *  rides on, and the small body its record is fit to. Adds the probe when
+	 *  a chunk holds it. */
+	private async ensureProbe(targetId: string, date: Date): Promise<void> {
+		const store = this.ctx.probeStore;
+		if (!store) return;
+		const jd = dateToJD(date);
+		// Started before the chunk wait so the two fetches overlap.
+		const passengerPromise = passengerFor(targetId);
+		await store.ensure(jd).done;
+		// Registered before the store is asked anything about the craft: a
+		// passenger answers off its carrier, the stamped fit center below
+		// included.
+		const passenger = await passengerPromise;
+		if (passenger) store.registerCarried(passenger);
+		// A record stamped to a small body (Deep Impact → Tempel 1) is gated
+		// until that body is in the scene to anchor it.
+		const fcId = store.stampedFitCenterAt(targetId, jd);
+		if (fcId) await ensureTargetStreamed(this.ctx, fcId);
+		if (this.ctx.getBody(targetId)) return;
+		const labels = await fetchLabels();
+		const target = this.loader
+			.processProbes(store, date, labels)
+			.find((b) => b.data.id === targetId);
+		if (!target) return;
+		this.ctx.bodies.addBodies([target]);
+		this.ctx.credits.recordOrbitSources([target]);
 	}
 
 	private async loadTime(z: TimeZoneState, time: string, date: Date): Promise<void> {
@@ -281,7 +323,7 @@ export class ZoneRefresher {
 			const parts = partsForDate(z.zoomData, time, z.cap);
 			const chunks = await Promise.all(
 				Array.from({ length: parts }, (_, part) =>
-					this.loader.process(z.zone, z.zoom, part, date, time, z.parentIdType)
+					this.loader.process(z.zone, z.zoom, part, time, z.parentIdType)
 				)
 			);
 
@@ -301,13 +343,15 @@ export class ZoneRefresher {
 						);
 						continue;
 					}
-					if (earthFilter && !earthFilter.has(body.data.id)) {
-						filteredOut++;
-						continue;
-					}
-					if (typeFilter && !typeFilter.has(t)) {
-						filteredOut++;
-						continue;
+					if (!this.wanted.has(body.data.id)) {
+						if (earthFilter && !earthFilter.has(body.data.id)) {
+							filteredOut++;
+							continue;
+						}
+						if (typeFilter && !typeFilter.has(t)) {
+							filteredOut++;
+							continue;
+						}
 					}
 					const key = body.data.parentId;
 					let bucket = newBuckets.get(key);
@@ -331,27 +375,13 @@ export class ZoneRefresher {
 				// Keep mesh-promoted ids: their PositionedBody is shared with the
 				// mesh, so dropping the entry would orphan it on reappearance.
 				for (const id of bucket.keys()) {
-					if (freshBodies.has(id) || this.ctx.hasMeshBody?.(id)) continue;
+					if (freshBodies.has(id) || this.ctx.hasMeshBody?.(id) || this.wanted.has(id)) continue;
 					bucket.delete(id);
 					removed++;
 				}
-				for (const [id, b] of freshBodies) {
-					const e = bucket.get(id);
-					if (e) {
-						e.data = b.data;
-						e.position = b.position;
-						// Don't overwrite optional fields with undefined: chunk.ts leaves
-						// orbitElements/orbitCenter unset for non-major bodies, but the
-						// placeholder for a focused sat needs its `orbitCenter` array to
-						// stay alive — the per-frame loop mutates it to track parent
-						// motion and syncs the trail via that reference.
-						if (b.orbitElements !== undefined) e.orbitElements = b.orbitElements;
-						if (b.orbitCenter !== undefined) e.orbitCenter = b.orbitCenter;
-						updated++;
-					} else {
-						bucket.set(id, b);
-						added++;
-					}
+				for (const b of freshBodies.values()) {
+					if (this.ctx.bodies.putSpacecraft(b)) added++;
+					else updated++;
 				}
 				this.ctx.bodies.dirtySpacecraftGroups.add(key);
 			}
@@ -373,7 +403,7 @@ export class ZoneRefresher {
 		}
 	}
 
-	private async loadChunk(z: ChunkZoneState, target: number, date: Date): Promise<void> {
+	private async loadChunk(z: ChunkZoneState, target: number): Promise<void> {
 		const previous = z.currentIdx;
 		// Optimistic update so a re-entrant tick during the fetch sees this
 		// target as already-being-loaded and doesn't double-fire.
@@ -390,12 +420,12 @@ export class ZoneRefresher {
 			} else {
 				chunks = await Promise.all(
 					Array.from({ length: z.parts }, (_, part) =>
-						this.loader.process(z.zone, z.zoom, part, date, String(target), z.parentIdType)
+						this.loader.process(z.zone, z.zoom, part, String(target), z.parentIdType)
 					)
 				);
 			}
 			this.applyChunkSwap(z, previous, target, chunks);
-			this.preloadChunkNeighbors(z, date);
+			this.preloadChunkNeighbors(z);
 			this.recordSuccess();
 		} catch (e) {
 			console.warn(`zone-refresher: ${z.zone} chunk reload failed (${previous} → ${target}):`, e);
@@ -404,11 +434,9 @@ export class ZoneRefresher {
 		}
 	}
 
-	/** Mutate `ctx.bodiesById` in place from a chunk's fresh bodies. Shared
+	/** Give the bodies of `ctx.bodiesById` the rows of a fresh chunk. Shared
 	 *  by the synchronous swap (preload 'ready') and the async swap (preload
-	 *  'pending' or cold miss). Caller is responsible for updating `currentIdx`
-	 *  before invoking — `applyChunkSwap` only touches body fields and the
-	 *  reactive minorBodyVersion. */
+	 *  'pending' or cold miss). The caller updates `currentIdx` first. */
 	private applyChunkSwap(
 		z: ChunkZoneState,
 		previous: number,
@@ -420,20 +448,13 @@ export class ZoneRefresher {
 		for (const chunk of chunks) {
 			this.ctx.credits.recordOrbitSources(chunk);
 			for (const fresh of chunk) {
-				const existing = this.ctx.bodies.bodiesById.get(fresh.data.id);
-				if (!existing) {
-					// New body in this chunk — register it. Rare in practice (moons
-					// membership is stable across Method-C chunks) but cheap.
-					this.ctx.bodies.addBodies([fresh]);
+				const isNew = !this.ctx.bodies.bodiesById.has(fresh.data.id);
+				this.ctx.bodies.addBodies([fresh]);
+				if (isNew) {
+					// Rare in practice: moons membership is stable across Method-C chunks.
 					this.ctx.bodies.majorBodies.push(fresh);
 					added++;
-					continue;
-				}
-				existing.data = fresh.data;
-				existing.position = fresh.position;
-				if (fresh.orbitElements !== undefined) existing.orbitElements = fresh.orbitElements;
-				if (fresh.orbitCenter !== undefined) existing.orbitCenter = fresh.orbitCenter;
-				updated++;
+				} else updated++;
 			}
 		}
 		this.ctx.bodies.minorBodyVersion++;
@@ -448,7 +469,7 @@ export class ZoneRefresher {
 	 *  re-running the bodies-build loop and — critically — lets the swap
 	 *  happen without an `await` microtask. Out-of-window entries are pruned
 	 *  so the map stays bounded to ≤3 resolved chunks. */
-	private preloadChunkNeighbors(z: ChunkZoneState, date: Date): void {
+	private preloadChunkNeighbors(z: ChunkZoneState): void {
 		const lo = Math.max(0, z.currentIdx - 1);
 		const hi = Math.min(z.zoomData.chunks - 1, z.currentIdx + 1);
 		for (let i = lo; i <= hi; i++) {
@@ -456,7 +477,7 @@ export class ZoneRefresher {
 			const time = String(i);
 			const promise = Promise.all(
 				Array.from({ length: z.parts }, (_, part) =>
-					this.loader.process(z.zone, z.zoom, part, date, time, z.parentIdType)
+					this.loader.process(z.zone, z.zoom, part, time, z.parentIdType)
 				)
 			);
 			z.preloads.set(i, { kind: 'pending', promise });

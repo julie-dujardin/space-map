@@ -18,7 +18,6 @@ import {
 } from '$lib/scene/objects/surface/nomenclature';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
-import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	FOCUS_DURATION_MS,
 	prepareFlyToCamera,
@@ -94,6 +93,11 @@ export class FocusController {
 
 	get current(): PositionedBody | undefined {
 		return this.focusedBody;
+	}
+
+	/** Place of `body` at the scene date. Null when it has none. */
+	private place(body: PositionedBody): Vec3 | null {
+		return this.deps.ctx.place(body, this.deps.clock.jd);
 	}
 
 	setPendingInitialView(view: CameraView): void {
@@ -187,17 +191,28 @@ export class FocusController {
 		return newIds;
 	}
 
-	/** Pan to frame `body` without changing the focused body — used to re-center on
-	 *  the parent when focus goes out of range, keeping the "no data" notice on the original. */
-	panCameraToBody(body: PositionedBody): void {
-		if (body.positionUnknown) return;
+	/** Move the camera onto `body` without changing the focused body: onto the
+	 *  parent when the focus has no data, or onto the host of an object the map
+	 *  cannot place. With `distance`, it arrives that far from the body, from
+	 *  the direction it is in now. */
+	panCameraToBody(body: PositionedBody, distance?: number): void {
+		const pos = this.place(body);
+		if (!pos) return;
 		const { focus, camera } = this.deps;
+		const camWorld = this.cameraTruePos();
+		let camPos: Vec3 | undefined;
+		if (distance !== undefined) {
+			const dir = this._tmpV3
+				.set(camWorld[0] - pos[0], camWorld[1] - pos[1], camWorld[2] - pos[2])
+				.normalize();
+			camPos = [pos[0] + dir.x * distance, pos[1] + dir.y * distance, pos[2] + dir.z * distance];
+		}
 		prepareFocusTarget(
 			focus,
-			[...body.position],
+			[...pos],
 			camera,
-			this.cameraTruePos(),
-			undefined,
+			camWorld,
+			camPos,
 			sceneSettings().resolvedReducedMotion
 		);
 	}
@@ -244,11 +259,12 @@ export class FocusController {
 			return;
 		}
 		this.setFocusTarget(body);
-		if (body.positionUnknown) return; // camera never moved — nothing to report
+		const pos = body.position;
+		if (!pos) return; // camera never moved — nothing to report
 		const camWorld = this.cameraTruePos();
 		const { latitude, longitude, distance } = cartesianToSpherical(
 			camWorld,
-			body.position,
+			pos,
 			this.focusedBodyQuat(body)
 		);
 		this.deps.callbacks.onCameraPosition?.(latitude, longitude, distance);
@@ -302,13 +318,13 @@ export class FocusController {
 			if (landingBody) loadTexture(landingBody);
 		}
 		systemData.syncToFocus();
-		// An unplaced body's `position` is a stand-in (its parent, or the scene
-		// origin): moving the camera there would fly it to the Sun or the
-		// barycentre. Take the focus, leave the camera where the user left it.
-		if (!body.positionUnknown) {
+		// A body with no place takes the focus, and the camera stays where the
+		// user left it. The frame loop then follows its nearest placed ancestor.
+		const pos = this.place(body);
+		if (pos) {
 			prepareFocusTarget(
 				focus,
-				[...body.position],
+				[...pos],
 				camera,
 				this.cameraTruePos(),
 				camPos,
@@ -324,60 +340,43 @@ export class FocusController {
 	 * specific body-fixed lat/lon. Returns the animation duration in ms.
 	 */
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
-		const { ctx, clock, focus, camera, callbacks, pointClouds } = this.deps;
+		const { ctx, focus, camera, callbacks, pointClouds } = this.deps;
 		const body = ctx.getBody(id);
 		if (!body) return 0;
-		// Point-cloud bodies materialize frozen at [0,0,0]; refresh before computing
-		// the camera destination below, or we'd frame the SSB instead of the body.
-		if (!ctx.bodies.bodiesById.has(id)) refreshMinorBodyPosition(body, clock.jd, ctx);
-		// Nowhere to fly: take the focus (drawer, trails, system data) and hold the
-		// camera. Framing the stand-in position would read as a jump to the Sun.
-		if (body.positionUnknown) {
+		// Nowhere to fly: take the focus (drawer, trails, system data) and hold the camera.
+		const pos = this.place(body);
+		if (!pos) {
 			this.setFocusTarget(body);
 			return 0;
 		}
 		let camPos: Vec3 | undefined;
 		if (zoom !== undefined) {
 			if (latitude !== undefined && longitude !== undefined) {
-				camPos = sphericalToCartesian(
-					body.position,
-					latitude,
-					longitude,
-					zoom,
-					this.focusedBodyQuat(body)
-				);
+				camPos = sphericalToCartesian(pos, latitude, longitude, zoom, this.focusedBodyQuat(body));
 			} else {
 				// Place camera at `zoom` distance, arriving from the current direction.
 				const camWorld = this.cameraTruePos();
 				const dir = this._tmpV3
-					.set(
-						body.position[0] - camWorld[0],
-						body.position[1] - camWorld[1],
-						body.position[2] - camWorld[2]
-					)
+					.set(pos[0] - camWorld[0], pos[1] - camWorld[1], pos[2] - camWorld[2])
 					.normalize()
 					.negate();
-				camPos = [
-					body.position[0] + dir.x * zoom,
-					body.position[1] + dir.y * zoom,
-					body.position[2] + dir.z * zoom
-				];
+				camPos = [pos[0] + dir.x * zoom, pos[1] + dir.y * zoom, pos[2] + dir.z * zoom];
 			}
 		}
 		// Emit before dispatch so AppState's camera fields are fresh when
 		// onFocusChange fires inside setFocusTarget.
 		const emitFrom = camPos ?? this.cameraTruePos();
-		const spherical = cartesianToSpherical(emitFrom, body.position, this.focusedBodyQuat(body));
+		const spherical = cartesianToSpherical(emitFrom, pos, this.focusedBodyQuat(body));
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 		if (zoom !== undefined && camPos) {
 			// Re-framing needs the camera actually orbiting this body — `focusedBody` is
 			// set eagerly and can be stale, so gate on origin coincidence instead.
 			const orbitingThisBody =
 				this.focusedBody?.data.id === id &&
-				f64dist(focus.focusTruePos, body.position) < minCameraDistance(body);
+				f64dist(focus.focusTruePos, pos) < minCameraDistance(body);
 			if (orbitingThisBody) {
 				// Snap focus in case a prior fly animation hasn't fully settled.
-				focus.focusTruePos = [...body.position];
+				focus.focusTruePos = [...pos];
 				this.deps.repositionAll();
 				pointClouds.rebuildBasis();
 				prepareFlyToCamera(
@@ -404,8 +403,9 @@ export class FocusController {
 	 *  late-arriving chunk landing after the camera settled on the placeholder parent. */
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
 		const body = this.deps.ctx.getBody(id);
-		if (!body || body.positionUnknown) return;
-		this.settleOnBodyInstant(body);
+		const pos = body && this.place(body);
+		if (!body || !pos) return;
+		this.settleOnBodyInstant(body, pos);
 		this.snapToBodyFrame(latitude, longitude, zoom);
 	}
 
@@ -415,10 +415,12 @@ export class FocusController {
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
 		const { ctx, camera, controls, callbacks } = this.deps;
 		const body = ctx.getBody(id);
-		if (!body || body.positionUnknown) return;
-		this.settleOnBodyInstant(body);
-		const toward = ctx.getBody(towardId)?.position ?? [0, 0, 0];
-		const offset = offsetFacing(body.position, toward, elevationDeg, distance);
+		const towardBody = ctx.getBody(towardId);
+		const pos = body && this.place(body);
+		const toward = towardBody && this.place(towardBody);
+		if (!body || !pos || !toward) return;
+		this.settleOnBodyInstant(body, pos);
+		const offset = offsetFacing(pos, toward, elevationDeg, distance);
 		camera.position.set(offset[0], offset[1], offset[2]);
 		controls.update();
 		const settled = cartesianToSpherical(offset, [0, 0, 0]);
@@ -428,12 +430,12 @@ export class FocusController {
 
 	/** Settle focus onto a resident body with no approach fly, nulling the cam-fly
 	 *  fields so stepFocusAnimation's settle branch leaves the snapped frame untouched. */
-	private settleOnBodyInstant(body: PositionedBody): void {
+	private settleOnBodyInstant(body: PositionedBody, pos: Readonly<Vec3>): void {
 		const { focus, pointClouds } = this.deps;
 		this.setFocusTarget(body);
-		focus.focusTruePos = [...body.position];
-		focus.focusOriginWorld = [...body.position];
-		focus.focusTargetWorld = [...body.position];
+		focus.focusTruePos = [...pos];
+		focus.focusOriginWorld = [...pos];
+		focus.focusTargetWorld = [...pos];
 		focus.focusStartTime = -FOCUS_DURATION_MS; // already settled
 		focus.camOriginWorld = null;
 		focus.camTargetWorld = null;

@@ -344,8 +344,15 @@ function makePathLabel(
 	return object;
 }
 
+/** `at` relative to the basis the scene is drawn from. Null with no place. */
+function toOffset(at: Vec3 | null, basis: Vec3): Vec3 | null {
+	return at && [at[0] - basis[0], at[1] - basis[1], at[2] - basis[2]];
+}
+
 export class TravelPathOverlay {
 	private readonly group = new Group();
+	/** What hangs off a body other than the centre of the path, by that body. */
+	private readonly anchored = new Map<string, Group>();
 	private arcs: DrawnArc[] = [];
 	/** The end orbits, which are among `arcs` too — this is what gates them on how
 	 *  close the camera is. */
@@ -497,7 +504,7 @@ export class TravelPathOverlay {
 			const local = eclipticToScene(at.r) as Vec3;
 			const anchorId = at.centerId === path.centerId ? null : at.centerId;
 			const sprite = makeSprite(warningTexture(color), HAZARD_MARKER_SIZE);
-			this.group.add(sprite);
+			this.parentOf(anchorId).add(sprite);
 			this.markers.push({ sprite, local, anchorId });
 
 			const element = document.createElement('div');
@@ -508,7 +515,7 @@ export class TravelPathOverlay {
 			// Anchored on the point with the text running off to its side, the way an
 			// end label is.
 			object.center.set(0, 0.5);
-			this.group.add(object);
+			this.parentOf(anchorId).add(object);
 			// `faint` keeps it out of the end labels' cull, and a null owner out of
 			// the hover styling: a chip is neither a candidate for screen space nor
 			// part of the link with the launch-window field.
@@ -573,7 +580,7 @@ export class TravelPathOverlay {
 		this.addArcs(path, LINE_WIDTH, LINE_BRIGHTNESS, null, true);
 		this.addEndOrbits(path);
 		this.addSteps(path, steps);
-		for (const marker of this.markers) this.group.add(marker.sprite);
+		for (const marker of this.markers) this.parentOf(marker.anchorId).add(marker.sprite);
 
 		// Added last so it draws over the burn it is sitting on when the two meet.
 		this.craft = {
@@ -602,7 +609,7 @@ export class TravelPathOverlay {
 				canvas: this.canvas,
 				onSelect: step.onPick
 			});
-			this.group.add(object);
+			this.parentOf(anchorId).add(object);
 			this.labels.push({
 				object,
 				local,
@@ -884,7 +891,7 @@ export class TravelPathOverlay {
 		);
 		line.frustumCulled = false;
 		line.renderOrder = opts.renderOrder ?? PATH_RENDER_ORDER;
-		this.group.add(line);
+		this.parentOf(opts.anchorId ?? null).add(line);
 		const arc: DrawnArc = {
 			line,
 			owner,
@@ -927,8 +934,7 @@ export class TravelPathOverlay {
 	 * `centerScenePos` is the centre body's position this frame; `basis` is
 	 * what the scene is drawn relative to, both in scene units. `bodyScenePos`
 	 * answers for planet-frame ends, which hang off their own body rather than
-	 * the transfer's centre — one whose body isn't resident keeps the centre's
-	 * offset, drawn briefly wrong rather than flickering out.
+	 * the transfer's centre. One whose body has no place is not drawn.
 	 */
 	reposition(centerScenePos: Vec3, basis: Vec3, bodyScenePos: (id: string) => Vec3 | null): void {
 		if (this.center === null) return;
@@ -937,21 +943,21 @@ export class TravelPathOverlay {
 		const dz = centerScenePos[2] - basis[2];
 		// One lookup per body rather than per line: both ends of a trip come through
 		// here every frame, and each owns several.
-		const offsets = new Map<string, Vec3>();
-		const offsetOf = (anchorId: string | null): Vec3 => {
-			if (anchorId === null) return [dx, dy, dz];
-			const known = offsets.get(anchorId);
-			if (known) return known;
+		const centre: Vec3 = [dx, dy, dz];
+		const offsets = new Map<string, Vec3 | null>();
+		for (const [anchorId, parent] of this.anchored) {
 			const at = bodyScenePos(anchorId);
-			const offset: Vec3 = at
-				? [at[0] - basis[0], at[1] - basis[1], at[2] - basis[2]]
-				: [dx, dy, dz];
-			offsets.set(anchorId, offset);
-			return offset;
-		};
+			offsets.set(anchorId, toOffset(at, basis));
+			parent.visible = at !== null;
+		}
+		// Null: the body it hangs off has no place, and its group is hidden.
+		const offsetOf = (anchorId: string | null): Vec3 | null =>
+			anchorId === null ? centre : (offsets.get(anchorId) ?? null);
 
 		for (const arc of this.arcs) {
-			const [ax, ay, az] = offsetOf(arc.anchorId);
+			const offset = offsetOf(arc.anchorId);
+			if (!offset) continue;
+			const [ax, ay, az] = offset;
 			for (let i = 0; i < arc.count; i++) {
 				arc.positions[i * 3] = arc.local[i * 3] + ax;
 				arc.positions[i * 3 + 1] = arc.local[i * 3 + 1] + ay;
@@ -960,20 +966,32 @@ export class TravelPathOverlay {
 			writeFatTrailVertices(arc.line.geometry, arc.positions, arc.alphas, arc.alphas, arc.count);
 		}
 		for (const marker of this.markers) {
-			const [ax, ay, az] = offsetOf(marker.anchorId);
+			const offset = offsetOf(marker.anchorId);
+			if (!offset) continue;
+			const [ax, ay, az] = offset;
 			marker.sprite.position.set(marker.local[0] + ax, marker.local[1] + ay, marker.local[2] + az);
 		}
 		for (const label of this.labels) {
-			const [ax, ay, az] = offsetOf(label.anchorId);
+			const offset = offsetOf(label.anchorId);
+			if (!offset) continue;
+			const [ax, ay, az] = offset;
 			label.object.position.set(label.local[0] + ax, label.local[1] + ay, label.local[2] + az);
 		}
 		if (this.craft) {
 			const { sprite, local, anchorId } = this.craft;
-			const [ax, ay, az] = offsetOf(anchorId);
-			sprite.position.set(local[0] + ax, local[1] + ay, local[2] + az);
+			// The craft changes frame along the trip: it is in no anchor group.
+			const offset =
+				anchorId === null || this.anchored.has(anchorId)
+					? offsetOf(anchorId)
+					: toOffset(bodyScenePos(anchorId), basis);
+			if (offset)
+				sprite.position.set(local[0] + offset[0], local[1] + offset[1], local[2] + offset[2]);
+			else sprite.visible = false;
 		}
 		for (const ring of this.rings) {
-			const [ax, ay, az] = offsetOf(ring.arc.anchorId);
+			const offset = offsetOf(ring.arc.anchorId);
+			if (!offset) continue;
+			const [ax, ay, az] = offset;
 			ring.world.set(ring.local[0] + ax, ring.local[1] + ay, ring.local[2] + az);
 		}
 	}
@@ -1107,24 +1125,39 @@ export class TravelPathOverlay {
 		label.object.element.classList.toggle('scene-path-label--dim', dimmed);
 	}
 
+	/** The group for what hangs off `anchorId`: the overlay's own for the
+	 *  centre of the path, else one per body, hidden while that body has no place. */
+	private parentOf(anchorId: string | null): Group {
+		if (anchorId === null) return this.group;
+		let parent = this.anchored.get(anchorId);
+		if (!parent) {
+			parent = new Group();
+			this.anchored.set(anchorId, parent);
+			this.group.add(parent);
+		}
+		return parent;
+	}
+
 	private clear(): void {
 		for (const arc of this.arcs) {
-			this.group.remove(arc.line);
+			arc.line.removeFromParent();
 			arc.line.geometry.dispose();
 			(arc.line.material as ShaderMaterial).dispose();
 		}
 		for (const marker of [...this.markers, ...(this.craft ? [this.craft] : [])]) {
-			this.group.remove(marker.sprite);
+			marker.sprite.removeFromParent();
 			const material = marker.sprite.material as SpriteMaterial;
 			material.map?.dispose();
 			material.dispose();
 		}
 		for (const label of this.labels) {
-			this.group.remove(label.object);
+			label.object.removeFromParent();
 			// The CSS2D renderer parents the element to its own container, so removing
 			// the object is not enough to take the DOM node with it.
 			label.object.element.remove();
 		}
+		for (const parent of this.anchored.values()) this.group.remove(parent);
+		this.anchored.clear();
 		this.arcs = [];
 		this.rings = [];
 		this.markers = [];

@@ -12,7 +12,6 @@ import type { PositionedBody } from '$lib/types/objects';
 import type { FocusState } from '$lib/scene/animation/focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import { attachedModelRoots } from '$lib/scene/objects/body/model';
 import { pickMoonDot } from './picking';
 import type { GpuPickPass } from './gpu-pick';
@@ -32,6 +31,14 @@ interface PointHit {
 /** Pointer-down/up handlers that distinguish a click from a drag and pick the
  *  topmost body under the cursor. Moons and meshes resolve on the CPU; the
  *  asteroid/spacecraft clouds resolve on the GPU via {@link GpuPickPass}. */
+/** True when the top-level object that holds `obj` is hidden. A raycast does
+ *  not read `visible`, and a body with no place is not there to click. */
+function inHiddenRoot(obj: Object3D): boolean {
+	let top = obj;
+	while (top.parent?.parent) top = top.parent;
+	return !top.visible;
+}
+
 export class PointerInteraction {
 	private readonly downPos = new Vector2();
 	private readonly pointer = new Vector2();
@@ -153,25 +160,22 @@ export class PointerInteraction {
 			if (!bodyId) continue;
 			const body = this.ctx.getBody(bodyId);
 			if (!body) continue;
-			// Advance the CPU copy to the current jd so its position matches the
-			// rendered dot (and feeds the focus animation), mirroring the CPU picker.
-			refreshMinorBodyPosition(body, jd, this.ctx);
-			const worldDist = this.worldDistOf(body);
+			// Settle the row at the current jd, so its place matches the rendered
+			// dot and feeds the focus animation.
+			const at = this.ctx.place(body, jd);
+			if (!at) continue;
+			const worldDist = this.worldDistOf(at);
 			if (!this.isDotVisible(c.ndcX, c.ndcY, worldDist)) continue; // occluded — try next
 			return { body, distance: worldDist, screenDist: c.pixelDist };
 		}
 		return null;
 	}
 
-	/** Scene-unit distance from the camera to a body's rendered position. */
-	private worldDistOf(body: PositionedBody): number {
+	/** Scene-unit distance from the camera to a place of the scene. */
+	private worldDistOf(at: readonly [number, number, number]): number {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const cam = this.camera.position;
-		return Math.hypot(
-			body.position[0] - fx - cam.x,
-			body.position[1] - fy - cam.y,
-			body.position[2] - fz - cam.z
-		);
+		return Math.hypot(at[0] - fx - cam.x, at[1] - fy - cam.y, at[2] - fz - cam.z);
 	}
 
 	/** First raycast hit that resolves to a body. Walks parents so child meshes
@@ -181,6 +185,7 @@ export class PointerInteraction {
 		hits: Intersection[]
 	): { body: PositionedBody; distance: number } | undefined {
 		for (const hit of hits) {
+			if (inHiddenRoot(hit.object)) continue;
 			let obj: Object3D | null = hit.object;
 			while (obj) {
 				const mapped = this.meshToBody.get(obj as Mesh) ?? obj.userData.pickBody;
@@ -205,9 +210,10 @@ export class PointerInteraction {
 		if (attachedModelRoots.size > 0) {
 			hits.push(...this.raycaster.intersectObjects<Object3D>([...attachedModelRoots], true));
 		}
-		if (hits.length === 0) return true;
 		let nearest = Infinity;
-		for (const h of hits) if (h.distance < nearest) nearest = h.distance;
+		for (const h of hits) {
+			if (h.distance < nearest && !inHiddenRoot(h.object)) nearest = h.distance;
+		}
 		return nearest >= worldDist * 0.999;
 	};
 }

@@ -94,8 +94,9 @@ export class HaloDebugOverlay {
 		let n = 0;
 		for (const bo of bodyObjects.values()) {
 			const { label, group, radiusScene: r } = bo;
-			if (!label || r <= 0) continue;
-			const [bx, by, bz] = bo.body.position;
+			const at = bo.body.position;
+			if (!label || r <= 0 || !at) continue;
+			const [bx, by, bz] = at;
 
 			// Camera-frame center.
 			this.tmp.set(bx - fx, by - fy, bz - fz).applyMatrix4(camInverse);

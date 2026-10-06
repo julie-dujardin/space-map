@@ -24,7 +24,7 @@ import {
 	type ScreenOccluder
 } from '../label/culling';
 import { poolSlot } from '../pool';
-import { HALO_RADIUS_PX, type BodyObjects } from '../types';
+import { HALO_RADIUS_PX, isDrawn, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
 import {
 	updateNomenclatureVisibility,
@@ -121,7 +121,13 @@ export function updateBodyVisibility(
 	const fp = focusTruePos;
 	const cameraInverse = camera.matrixWorldInverse;
 	for (const bo of bodyObjects.values()) {
-		bo.cachedDist = f64dist(camTrue, bo.body.position);
+		const pos = bo.body.position;
+		// Not drawn: the main loop below hides it.
+		if (!pos || bo.carried) {
+			bo.cachedDist = Infinity;
+			continue;
+		}
+		bo.cachedDist = f64dist(camTrue, pos);
 		// Note pops in once close enough that a body would be expected: 100 m for
 		// spacecraft (no model, or a wreck), 1 km for natural bodies (no measured size).
 		if (bo.isCrashed || bo.noPhysical) {
@@ -147,7 +153,7 @@ export function updateBodyVisibility(
 			label.position.set(0, 0, 0);
 			continue;
 		}
-		const [bx, by, bz] = bo.body.position;
+		const [bx, by, bz] = pos;
 		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
 		const camX = tmpV3.x,
 			camY = tmpV3.y,
@@ -231,11 +237,12 @@ export function updateBodyVisibility(
 		halfH = screenH * 0.5;
 	let occluderCount = 0;
 	for (const bo of bodyObjects.values()) {
-		// No disc → can't occlude other labels.
+		// No disc → can't occlude other labels. Neither can a body that is not drawn.
 		const r = bo.noPhysical ? 0 : bo.radiusScene;
-		if (!r) continue;
+		const pos = bo.body.position;
+		if (!r || !pos || bo.carried) continue;
 		const dist = bo.cachedDist;
-		const [bx, by, bz] = bo.body.position;
+		const [bx, by, bz] = pos;
 
 		const modelSpheres = bo.model?.userData.occluderSpheres as OccluderSphere[] | undefined;
 		if (bo.model && modelSpheres?.length) {
@@ -351,6 +358,9 @@ export function updateBodyVisibility(
 	for (const bo of bodyObjects.values()) {
 		const { body, group, trail } = bo;
 		const dist = bo.cachedDist;
+		// The one gate for everything the body draws in the main scene.
+		const drawn = isDrawn(bo);
+		bo.root.visible = drawn;
 
 		let showLabel: boolean;
 		let isClose: boolean;
@@ -373,7 +383,7 @@ export function updateBodyVisibility(
 				const primaryId = !isFocused ? barycenterPrimaryId(body.data.id) : undefined;
 				if (primaryId) {
 					const primary = bodyObjects.get(primaryId)?.body ?? ctx.getBody(primaryId);
-					if (primary) {
+					if (primary?.position && body.position) {
 						const sepWorld = f64dist(body.position, primary.position);
 						const camToPrimary = f64dist(camTrue, primary.position);
 						const pxSep = (sepWorld / camToPrimary) * projScale;
@@ -407,21 +417,20 @@ export function updateBodyVisibility(
 			isClose = vf.isClose;
 		}
 
-		// Propagation was skipped this frame because jd is outside the chunk's
-		// validity window — force the whole body hidden so it doesn't linger at
-		// its last valid position.
-		if (bo.outOfRange) {
+		if (!drawn) {
 			group.visible = false;
-			if (trail) trail.visible = false;
 			showLabel = false;
+			isClose = false;
 		}
+		// A curve whose centre body has no place has nowhere to be drawn.
+		if (trail && (!drawn || body.orbitCenter === null)) trail.visible = false;
 
 		// Star extras: the point sprite takes over once the mesh disc shrinks to
 		// the point's own on-screen area, matching HDR contributions at the
 		// handoff. Beyond it `uIntensity` falls as the squared screen-radius
 		// ratio — equivalent to 1/d² apparent flux since screenR ∝ 1/d. The
 		// floor keeps the dot visible at LDR once flux drops below bloom threshold.
-		if (bo.starPoint) {
+		if (bo.starPoint && drawn) {
 			const screenR = (bo.radiusScene / dist) * projScale;
 			const subPixel = screenR < STAR_POINT_HANDOFF_R;
 			bo.starPoint.visible = subPixel;

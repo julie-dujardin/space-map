@@ -163,9 +163,9 @@ function ommOf(cols: SGP4Columns, idx: number): SGP4Inputs {
 
 /** Shared prototype for SGP4 rows. A per-instance `satrec` accessor put every
  *  satellite in dictionary mode at ~2 KB each; one getter on a shared
- *  prototype keeps the objects small and in fast mode. An init failure (a
- *  decayed satellite) marks the row unplaceable instead of letting the Kepler
- *  fallback draw a wrong orbit. */
+ *  prototype keeps the objects small and in fast mode. A row whose record
+ *  fails to build keeps `omm` and has no `satrec`: `elementsOffset` gives it
+ *  no place. */
 const SGP4_BODY_PROTO = {
 	get omm(): SGP4Inputs | undefined {
 		const row = sgp4Rows.get(this as unknown as BodyData);
@@ -177,7 +177,6 @@ const SGP4_BODY_PROTO = {
 		if (satrec === undefined) {
 			satrec = buildSatrec(body.omm!, body.name ?? undefined);
 			satrecs.set(body, satrec);
-			if (!satrec) body.unplaceable = true;
 		}
 		return satrec ?? undefined;
 	}
@@ -223,8 +222,7 @@ export function sgp4ToBody(
 
 /** Materialize the full `BodyData` for one row, dispatching on sub-format.
  *  Returns null for SGP4 rows whose satrec init fails (same drop rule as the
- *  AoS path). Position is the caller's responsibility (the worker solves the
- *  bulk; pick/promotion call `refreshMinorBodyPosition`). */
+ *  AoS path). */
 export function materializeBodyData(
 	cols: ElementColumns,
 	idx: number,

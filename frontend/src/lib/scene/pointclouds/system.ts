@@ -574,15 +574,16 @@ export class PointCloudSystem {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
 					continue;
 				}
-				const arr = new Float32Array(bodies.length * 3);
-				const colors = new Float32Array(bodies.length * 3);
-				this.seedGeometryArray(arr, bodies, colors);
 				// Spacecraft buckets mix SPACECRAFT + DEBRIS under the same parentId —
 				// per-vertex colors keep each dot honest instead of painting the whole
 				// sub-cloud from bodies[0]'s type.
+				const colors = new Float32Array(bodies.length * 3);
+				this.seedColors(colors, bodies);
+				// Positions start empty (drawRange 0), like the asteroid clouds: the
+				// first worker tick fills them and expands the draw range.
 				const pts = makePointCloudFromBuffer(
-					arr,
-					bodies.length,
+					new Float32Array(bodies.length * 3),
+					0,
 					this.circleTexture,
 					'#ffffff',
 					undefined,
@@ -658,50 +659,33 @@ export class PointCloudSystem {
 		return false;
 	}
 
-	/** Write basis-relative positions for `bodies` into the first `bodies.length*3` slots of `arr`.
-	 *  When `colorArr` is provided, parallel-writes per-body RGB triplets resolved from each body's type. */
-	private seedGeometryArray(
-		arr: Float32Array,
-		bodies: PositionedBody[],
-		colorArr: Float32Array | null = null
-	): void {
-		const [bx, by, bz] = this.basisPos;
-		const n = Math.min(bodies.length, arr.length / 3);
-		const tmp = colorArr ? new Color() : null;
+	/** Write the per-body RGB triplets, resolved from each body's type. */
+	private seedColors(colorArr: Float32Array, bodies: PositionedBody[]): void {
+		const tmp = new Color();
+		const n = Math.min(bodies.length, colorArr.length / 3);
 		for (let i = 0; i < n; i++) {
-			const b = bodies[i];
-			const p = b.position;
-			arr[i * 3] = p[0] - bx;
-			arr[i * 3 + 1] = p[1] - by;
-			arr[i * 3 + 2] = p[2] - bz;
-			if (colorArr && tmp) {
-				tmp.set(resolveBodyColor(b.data));
-				colorArr[i * 3] = tmp.r;
-				colorArr[i * 3 + 1] = tmp.g;
-				colorArr[i * 3 + 2] = tmp.b;
-			}
+			tmp.set(resolveBodyColor(bodies[i].data));
+			colorArr[i * 3] = tmp.r;
+			colorArr[i * 3 + 1] = tmp.g;
+			colorArr[i * 3 + 2] = tmp.b;
 		}
 	}
 
-	/** AoS (spacecraft) geometry resize: if the position array no longer matches
-	 *  the body count, swap in a freshly-seeded array (size change is rare — only
-	 *  on rewire with membership change). Same-capacity rewires leave the
-	 *  attribute alone so the next worker result updates it in place. */
+	/** AoS (spacecraft) geometry resize. A rewire that keeps the body count
+	 *  leaves the position attribute alone: the next worker result updates it
+	 *  in place. On a size change the rows are other bodies, so the cloud
+	 *  starts empty again and the next result draws it. */
 	private resizeGeometryIfNeeded(geometry: BufferGeometry, bodies: PositionedBody[]): void {
 		const need = bodies.length * 3;
 		const posAttr = geometry.getAttribute('position') as BufferAttribute;
-		const arr = posAttr.array as Float32Array;
-		if (arr.length === need) {
-			geometry.setDrawRange(0, bodies.length);
-			return;
+		if ((posAttr.array as Float32Array).length === need) return;
+		geometry.setAttribute('position', new BufferAttribute(new Float32Array(need), 3));
+		if (geometry.getAttribute('color')) {
+			const colors = new Float32Array(need);
+			this.seedColors(colors, bodies);
+			geometry.setAttribute('color', new BufferAttribute(colors, 3));
 		}
-		const hasColors = !!geometry.getAttribute('color');
-		const fresh = new Float32Array(need);
-		const freshColors = hasColors ? new Float32Array(need) : null;
-		this.seedGeometryArray(fresh, bodies, freshColors);
-		geometry.setAttribute('position', new BufferAttribute(fresh, 3));
-		if (freshColors) geometry.setAttribute('color', new BufferAttribute(freshColors, 3));
-		geometry.setDrawRange(0, bodies.length);
+		geometry.setDrawRange(0, 0);
 	}
 
 	/**
@@ -860,11 +844,14 @@ export class PointCloudSystem {
 
 		const parents = this._parentsScratch;
 		parents.clear();
-		const sunPos = this.ctx.getBody(SUN_ID)?.position ?? ([0, 0, 0] as Vec3);
+		// A cloud is solved about its parent body. With no place for the parent,
+		// it is not solved, and `isCloudParentPlaced` keeps it hidden.
+		const sunPos = this.ctx.getBody(SUN_ID)?.position;
 		// Only visible clouds go in the map; orbitPool.tick solves exactly these,
 		// so zooming into a system drops the hidden zones' Kepler solves.
 		// groupId/parentVec are cached on userData and mutated in place — no realloc.
 		for (const [key, pts] of this.workerPoints.asteroid) {
+			if (!sunPos) break;
 			if (!this.ctx.visibility.isAsteroidGroupVisible(parentIdFromSubkey(key))) continue;
 			const groupId = pts.userData.groupId as string;
 			if (!this.shouldSolveGroup(groupId, sunPos, jd, view)) continue;
@@ -878,19 +865,11 @@ export class PointCloudSystem {
 			if (!this.ctx.visibility.isSpacecraftGroupVisible(parentIdFromSubkey(key))) continue;
 			const groupId = pts.userData.groupId as string;
 			const pp = this.ctx.getBody(pts.userData.parentBodyId as string)?.position;
-			// No parent position (parent not resident) → always solve; the gate's
-			// distance term would be meaningless.
-			if (pp && !this.shouldSolveGroup(groupId, pp, jd, view)) continue;
+			if (!pp || !this.shouldSolveGroup(groupId, pp, jd, view)) continue;
 			const v = pts.userData.parentVec as Vec3;
-			if (pp) {
-				v[0] = pp[0];
-				v[1] = pp[1];
-				v[2] = pp[2];
-			} else {
-				v[0] = 0;
-				v[1] = 0;
-				v[2] = 0;
-			}
+			v[0] = pp[0];
+			v[1] = pp[1];
+			v[2] = pp[2];
 			parents.set(groupId, v);
 		}
 		this.orbitPool.tick(jd, this.basisPos, parents, this.ctx.visibility.getRequiredFlags());
@@ -953,17 +932,13 @@ export class PointCloudSystem {
 			const arr = posAttr.array as Float32Array;
 			const n = Math.min(moons.length, arr.length / 3);
 			for (let i = 0; i < n; i++) {
-				const m = moons[i];
-				// Hide out-of-range moons (undiscovered, or past their validity
-				// window): a NaN vertex isn't rasterized, and these Points have
+				// A moon with no place (undiscovered, or outside its data) has no
+				// dot: a NaN vertex isn't rasterized, and these Points have
 				// frustumCulled = false so NaN can't poison the bounding sphere.
-				if (this.bodyObjects.get(m.data.id)?.outOfRange) {
-					arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = NaN;
-					continue;
-				}
-				arr[i * 3] = m.position[0] - bx;
-				arr[i * 3 + 1] = m.position[1] - by;
-				arr[i * 3 + 2] = m.position[2] - bz;
+				const at = moons[i].position;
+				arr[i * 3] = at ? at[0] - bx : NaN;
+				arr[i * 3 + 1] = at ? at[1] - by : NaN;
+				arr[i * 3 + 2] = at ? at[2] - bz : NaN;
 			}
 			posAttr.needsUpdate = true;
 		}
@@ -976,9 +951,10 @@ export class PointCloudSystem {
 			if (!existing) continue;
 			const positions = new Float32Array(moons.length * 3);
 			for (let i = 0; i < moons.length; i++) {
-				positions[i * 3] = moons[i].position[0] - basis[0];
-				positions[i * 3 + 1] = moons[i].position[1] - basis[1];
-				positions[i * 3 + 2] = moons[i].position[2] - basis[2];
+				const at = moons[i].position;
+				positions[i * 3] = at ? at[0] - basis[0] : NaN;
+				positions[i * 3 + 1] = at ? at[1] - basis[1] : NaN;
+				positions[i * 3 + 2] = at ? at[2] - basis[2] : NaN;
 			}
 			existing.geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
 		}

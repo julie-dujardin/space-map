@@ -31,8 +31,15 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 	protected readonly inflight = new Map<string, Promise<void>>();
 	/** Last jd passed to `ensure()` — skips a full pass when nothing changed. */
 	private lastEnsuredJd: number = NaN;
+	/** Bumped per stored chunk. The renderer watches it, so a clock that stands
+	 *  still gets a position pass when data arrives. */
+	private _version = 0;
 
 	constructor(protected readonly zoneParams: Map<string, TParams>) {}
+
+	get version(): number {
+		return this._version;
+	}
 
 	zones(): string[] {
 		return Array.from(this.zoneParams.keys());
@@ -147,6 +154,7 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		let zoneMap = this.chunks.get(zone);
 		if (!zoneMap) this.chunks.set(zone, (zoneMap = new Map()));
 		zoneMap.set(chunkIdx, chunk);
+		this._version++;
 		this.afterStore(zone, chunk);
 	}
 

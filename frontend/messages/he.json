@@ -1204,6 +1204,7 @@
 	"object_not_found": "לא ניתן להציג את {name} — ייתכן שאינו קיים או שאין לו נתוני מסלול",
 	"object_no_position": "ל־{name} אין נתוני מיקום בתאריך זה",
 	"object_position_unknown": "למפה אין מיקום עבור {name}",
+	"object_shown_at_host": "למפה אין מיקום עבור {name}. במקומו מוצג {host}.",
 	"clock_moved_title": "התאריך שונה",
 	"clock_moved_body": "אין נתוני מיקום עבור {name} בתאריך {from}. המפה מציגה כעת את {to}.",
 	"out_of_range_title": "נתונים מוגבלים בזמן זה",

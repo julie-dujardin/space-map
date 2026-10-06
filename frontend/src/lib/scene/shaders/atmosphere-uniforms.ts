@@ -191,7 +191,9 @@ export function updateAtmosphereShaders(
 	for (const bo of bodyObjects.values()) {
 		if (!bo.atmosphere) continue;
 		bo.atmosphere.mesh.visible = visible;
-		if (!visible) continue;
+		// The root hides the shell of a body with no place.
+		const at = bo.body.position;
+		if (!visible || !at) continue;
 		applyAtmosphereQuality(bo.atmosphere, quality);
 		// Seasonal bodies (Mars) re-derive their params when L_s drifts; off
 		// (or reverting) snaps back to the base params. Derived objects are
@@ -212,7 +214,7 @@ export function updateAtmosphereShaders(
 				}
 			}
 		}
-		const [bx, by, bz] = bo.body.position;
+		const [bx, by, bz] = at;
 		const uniforms = bo.atmosphere.material.uniforms;
 		uniforms.uGroundAlbedo.value = quality.groundAlbedo
 			? (bo.atmosphere.params.groundAlbedo ?? 0)

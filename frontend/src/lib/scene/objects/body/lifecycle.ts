@@ -4,7 +4,6 @@ import {
 	type Material,
 	Mesh,
 	MeshStandardMaterial,
-	type Object3D,
 	Scene,
 	SphereGeometry
 } from 'three';
@@ -82,21 +81,20 @@ export function buildMajorBodies(
 		const noPhysical: 'model' | 'radius' | undefined =
 			!modelBearing && isNaturalBody(t) && !radiusKnown ? 'radius' : undefined;
 
+		// repositionAll() puts the root at the focus-relative place each frame.
+		// Hidden until the visibility pass finds the body has a place.
+		const root = new Group();
+		root.visible = false;
 		const group = new Group();
-		// repositionAll() applies the focus-relative offset each frame.
-		group.position.set(0, 0, 0);
+		root.add(group);
 
 		let mesh: Mesh | null = null;
 		let starExtras: StarExtras | null = null;
 		let eclipseShadow: EclipseSelfUniforms | null = null;
 		let atmosphere: AtmosphereNode | null = null;
 		let sunTint: SunTransmittanceUniforms[] | undefined;
-		const extraObjects: Object3D[] = [];
 		if (!isVirtual && !noPhysical) {
-			if (isStar) {
-				starExtras = buildStarExtras(scene, radius, color, circleTexture);
-				extraObjects.push(starExtras.light, starExtras.corona, starExtras.starPoint);
-			}
+			if (isStar) starExtras = buildStarExtras(root, radius, color, circleTexture);
 
 			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);
@@ -112,18 +110,16 @@ export function buildMajorBodies(
 				// Body-on-body shadows are analytical (fragment shader); shadow map unused.
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
 			}
-			scene.add(mesh);
-			extraObjects.push(mesh);
+			root.add(mesh);
 
 			clickables.push(mesh);
 			meshToBody.set(mesh, body);
 
-			// Scattering shell, kept centred on the body via extraObjects.
+			// Scattering shell, centred on the body.
 			const atmoParams = isStar ? undefined : getAtmosphereParams(id);
 			if (atmoParams) {
 				atmosphere = buildAtmosphereNode(atmoParams, radius, effectiveRadiusKm(body.data));
-				scene.add(atmosphere.mesh);
-				extraObjects.push(atmosphere.mesh);
+				root.add(atmosphere.mesh);
 				if (eclipseShadow) {
 					sunTint = [
 						attachSunTransmittanceToBody(
@@ -158,20 +154,20 @@ export function buildMajorBodies(
 			group.add(label);
 		}
 
-		scene.add(group);
+		scene.add(root);
 		const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;
 		if (labelHalo) {
 			labelHalo.dataset.origBorder = labelHalo.style.border;
 		}
 		bodyObjects.set(id, {
 			body,
+			root,
 			group,
 			mesh,
 			label,
 			labelHalo,
 			labelStack: null,
 			loadingEl: null,
-			extraObjects,
 			corona: starExtras?.corona ?? null,
 			starPoint: starExtras?.starPoint ?? null,
 			// Trail is built later via buildTrails() to defer 100K+ Kepler solves.
@@ -238,9 +234,8 @@ export function upgradeBodyMesh(
 	const mesh = new Mesh(geometry, material);
 	// Probes are model-bearing — hide the sphere.
 	if (modelBearing) mesh.visible = false;
-	scene.add(mesh);
+	bo.root.add(mesh);
 	bo.mesh = mesh;
-	bo.extraObjects.push(mesh);
 	clickables.push(mesh);
 	meshToBody.set(mesh, body);
 	bo.eclipseShadow = attachEclipseShadowToBody(material);
@@ -249,8 +244,7 @@ export function upgradeBodyMesh(
 	const atmoParams = getAtmosphereParams(body.data.id);
 	if (atmoParams) {
 		bo.atmosphere = buildAtmosphereNode(atmoParams, radiusScene, effectiveRadiusKm(body.data));
-		scene.add(bo.atmosphere.mesh);
-		bo.extraObjects.push(bo.atmosphere.mesh);
+		bo.root.add(bo.atmosphere.mesh);
 		bo.sunTint = [
 			attachSunTransmittanceToBody(
 				material,
@@ -291,14 +285,12 @@ export function downgradeBodyMesh(
 			bo.selfShadow = null;
 		}
 		bo.terrainWindow = null;
-		scene.remove(mesh);
+		mesh.removeFromParent();
 		mesh.geometry.dispose();
 		disposeMaterial(mesh.material);
 		const idx = clickables.indexOf(mesh);
 		if (idx >= 0) clickables.splice(idx, 1);
 		meshToBody.delete(mesh);
-		const extraIdx = bo.extraObjects.indexOf(mesh);
-		if (extraIdx >= 0) bo.extraObjects.splice(extraIdx, 1);
 		bo.mesh = null;
 		bo.currentSegments = undefined;
 		bo.eclipseShadow = null;
@@ -311,9 +303,7 @@ export function downgradeBodyMesh(
 
 	if (bo.atmosphere) {
 		const atmoMesh = bo.atmosphere.mesh;
-		scene.remove(atmoMesh);
-		const ai = bo.extraObjects.indexOf(atmoMesh);
-		if (ai >= 0) bo.extraObjects.splice(ai, 1);
+		atmoMesh.removeFromParent();
 		atmoMesh.geometry.dispose();
 		disposeMaterial(atmoMesh.material);
 		bo.atmosphere = null;

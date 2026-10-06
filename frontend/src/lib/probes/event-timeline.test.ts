@@ -59,7 +59,7 @@ describe('eventStripItems', () => {
 	});
 
 	it('marks an event the ephemeris does not reach, and moves nothing', () => {
-		const coverage = { start_jd: 2447900, end_jd: 2460000 };
+		const coverage = { windows: [[2447900, 2460000]] as [number, number][] };
 		const [launch, flyby] = eventStripItems([LAUNCH, FLYBY], coverage);
 		expect(launch.note).toBeTruthy();
 		expect(launch.startJd).toBe(LAUNCH.jd);
@@ -72,8 +72,6 @@ describe('eventStripItems', () => {
 
 	it('marks an event that falls in a hole between two windows', () => {
 		const coverage = {
-			start_jd: 2440000,
-			end_jd: 2460000,
 			windows: [
 				[2440000, 2445000],
 				[2455000, 2460000]
@@ -87,8 +85,6 @@ describe('eventStripItems', () => {
 describe('coverageGaps', () => {
 	it('is the run before, between and after the windows', () => {
 		const coverage = {
-			start_jd: 100,
-			end_jd: 400,
 			windows: [
 				[100, 200],
 				[300, 400]
@@ -102,7 +98,17 @@ describe('coverageGaps', () => {
 	});
 
 	it('is empty inside one unbroken window, and without coverage', () => {
-		expect(coverageGaps({ start_jd: 0, end_jd: 1000 }, 100, 900)).toEqual([]);
+		expect(coverageGaps({ windows: [[0, 1000]] }, 100, 900)).toEqual([]);
 		expect(coverageGaps(undefined, 0, 1)).toEqual([]);
+	});
+
+	it('reads a null bound as open on that side', () => {
+		// A craft still flying has no end to its last window.
+		expect(coverageGaps({ windows: [[200, null]] }, 100, 900)).toEqual([
+			{ startJd: 100, endJd: 200 }
+		]);
+		expect(coverageGaps({ windows: [[null, 200]] }, 100, 900)).toEqual([
+			{ startJd: 200, endJd: 900 }
+		]);
 	});
 });

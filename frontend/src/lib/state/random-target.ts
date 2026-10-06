@@ -40,7 +40,7 @@ import {
 	CAT_STRUCTURE_ACTIVITY
 } from '$lib/fetch/groups/registry';
 import { categoryLabel } from '$lib/format/group';
-import { canBePlaced } from '$lib/fetch/objects/global-body';
+import { canBePlaced } from '$lib/fetch/coverage';
 import {
 	fetchObjectDetail,
 	memberEntryKey,
@@ -239,7 +239,7 @@ async function placeableMember(
 		const global = await fetchObjectDetail(member.id, false, locale)
 			.then((d) => d.global)
 			.catch(() => null);
-		if (canBePlaced(member.id, global)) return member;
+		if (canBePlaced(global)) return member;
 	}
 	// Every draw came back unplaceable — a collection of nothing but decayed
 	// debris is a real thing. Its page still has something to read.

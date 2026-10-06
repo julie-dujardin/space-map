@@ -63,3 +63,60 @@ describe('BodyIndex.elementRow', () => {
 		expect(bodies.elementRow(vesta)).toBeUndefined();
 	});
 });
+
+/**
+ * The scene holds one object per id: the renderer and the drawer refer to it.
+ * A row a loader reads for an object the scene holds refreshes that object.
+ */
+describe('BodyIndex.putSpacecraft', () => {
+	const MIR = 'norad_satcat-16609';
+	const sat = (data: Partial<BodyData> = {}) =>
+		mkBody({ id: MIR, orbitalSource: OrbitalSource.SPACETRACK, parentId: 'naif-399', ...data });
+
+	it('adds a new row to the bucket of its parent', () => {
+		const bodies = new BodyIndex();
+		const row = sat();
+		expect(bodies.putSpacecraft(row)).toBe(true);
+		expect(bodies.getBody(MIR)).toBe(row);
+	});
+
+	it('turns a page-only stand-in into the object, and keeps the object', () => {
+		const bodies = new BodyIndex();
+		const standIn = sat({ pageOnly: true, parentId: '', a: NaN });
+		bodies.addBodies([standIn]);
+		const row = sat({ a: 4.5e-5 });
+		expect(bodies.putSpacecraft(row)).toBe(false);
+		expect(bodies.getBody(MIR)).toBe(standIn);
+		expect(standIn.data).toBe(row.data);
+		expect(bodies.bodiesById.has(MIR)).toBe(false);
+		expect(bodies.spacecraftByParent.get('naif-399')?.get(MIR)).toBe(standIn);
+	});
+
+	it('refreshes a row from another snapshot in place', () => {
+		const bodies = new BodyIndex();
+		const first = sat({ epoch: 1 });
+		bodies.putSpacecraft(first);
+		const second = sat({ epoch: 2 });
+		expect(bodies.putSpacecraft(second)).toBe(false);
+		expect(bodies.getBody(MIR)).toBe(first);
+		expect(first.data.epoch).toBe(2);
+	});
+
+	it('tells the position pass that data arrived', () => {
+		const bodies = new BodyIndex();
+		const before = bodies.dataVersion;
+		bodies.putSpacecraft(sat());
+		expect(bodies.dataVersion).toBeGreaterThan(before);
+	});
+});
+
+describe('BodyIndex.addBodies', () => {
+	it('refreshes a body it holds in place', () => {
+		const bodies = new BodyIndex();
+		const held = mkBody({ id: 'naif-301', orbitalSource: OrbitalSource.SPICE, epoch: 1 });
+		bodies.addBodies([held]);
+		bodies.addBodies([mkBody({ id: 'naif-301', orbitalSource: OrbitalSource.SPICE, epoch: 2 })]);
+		expect(bodies.getBody('naif-301')).toBe(held);
+		expect(held.data.epoch).toBe(2);
+	});
+});

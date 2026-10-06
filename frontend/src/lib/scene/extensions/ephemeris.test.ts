@@ -11,6 +11,7 @@ function orbit(parent: string, a: number, ma: number, diameter?: number) {
 	return {
 		type: 'asteroid',
 		sbdb: diameter ? { diameter } : undefined,
+		coverage: { windows: [[null, null]] },
 		orbit: { parent_id: parent, a, e: 0, i: 0, om: 0, w: 0, ma, n: 1, epoch_jd: dateToJD(DATE) }
 	};
 }

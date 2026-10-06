@@ -18,6 +18,7 @@ vi.mock('$lib/fetch/objects/object-data', () => ({
 		return Promise.resolve({
 			global: {
 				type: 'asteroid',
+				coverage: { windows: [[null, null]] },
 				orbit: {
 					epoch_jd: 2451545,
 					e: 0.1,

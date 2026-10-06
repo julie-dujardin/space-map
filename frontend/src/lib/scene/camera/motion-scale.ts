@@ -72,13 +72,14 @@ export function cameraMotionScale(
 
 	let clearance = orbitRadius;
 	for (const body of [sized, seated ? undefined : parent]) {
-		if (!body) continue;
+		const at = body?.position;
+		if (!body || !at) continue;
 		const radiusScene = kmToScene(effectiveRadiusKm(body.data));
 		if (!(radiusScene > 0)) continue;
 		const dist = Math.hypot(
-			camera.position.x - (body.position[0] - focusTruePos[0]),
-			camera.position.y - (body.position[1] - focusTruePos[1]),
-			camera.position.z - (body.position[2] - focusTruePos[2])
+			camera.position.x - (at[0] - focusTruePos[0]),
+			camera.position.y - (at[1] - focusTruePos[1]),
+			camera.position.z - (at[2] - focusTruePos[2])
 		);
 		clearance = Math.min(clearance, dist - radiusScene);
 	}

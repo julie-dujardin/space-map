@@ -177,8 +177,7 @@ export function parentCrumb(
 		const id = parent?.data.id ?? data.parentId;
 		const name = parent?.data.name ?? detail?.global?.parent_name;
 		// Land on the parent's Moons tab so the moon's siblings are in view. A
-		// moon the catalogue gives no host id for (an unplaceable stand-in) has
-		// nowhere to climb to, name or not.
+		// moon the catalogue names no host for has nowhere to climb to.
 		return name && id ? { label: name, target: { kind: 'focus', id, name, tab: 'members' } } : null;
 	}
 

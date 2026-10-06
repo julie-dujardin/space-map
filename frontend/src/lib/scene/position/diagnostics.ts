@@ -1,6 +1,12 @@
 /** Warn-once-per-(channel, id) for transient failures — otherwise the
  *  console floods at 60 fps. Probes clear on recovery, so a later drop re-warns. */
-type Channel = 'cheb-null' | 'probe-unavailable' | 'non-finite' | 'missing-parent';
+type Channel =
+	| 'cheb-null'
+	| 'probe-unavailable'
+	| 'non-finite'
+	| 'missing-parent'
+	| 'parent-cycle'
+	| 'drawn-unplaced';
 
 export class PositionDiagnostics {
 	private readonly seen = new Map<Channel, Set<string>>();

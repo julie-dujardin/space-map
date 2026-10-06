@@ -7,7 +7,7 @@ import {
 	type Material,
 	PointLight,
 	Points,
-	Scene,
+	Object3D,
 	ShaderMaterial,
 	Sprite,
 	SpriteMaterial,
@@ -226,20 +226,20 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 /**
  * Every scene-side object a star contributes beyond its photosphere mesh:
  * heliocentric PointLight, additive corona sprite, sub-pixel fallback point.
- * Added to `scene` and returned so the caller can track them on BodyObjects.
+ * Added to `root`, the body's own group, and returned for BodyObjects.
  */
 export function buildStarExtras(
-	scene: Scene,
+	root: Object3D,
 	radius: number,
 	color: string,
 	circleTexture: CanvasTexture
 ): StarExtras {
 	const light = new PointLight(0xffffff, SUN_LIGHT_INTENSITY, 0, 0);
-	scene.add(light);
+	root.add(light);
 	const corona = makeStarGlow(radius, color);
-	scene.add(corona);
+	root.add(corona);
 	const starPoint = makeStarPoint(color, circleTexture);
-	scene.add(starPoint);
+	root.add(starPoint);
 	return { light, corona, starPoint };
 }
 

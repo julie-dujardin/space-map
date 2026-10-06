@@ -1,94 +1,11 @@
-import { Quaternion, Vector3 } from 'three';
-import { ObjectType, isMajorBody, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
-import { seatFeatureBody } from '$lib/scene/focus/feature-focus';
-import { kmToScene } from '$lib/math/units';
-import {
-	applyOrientation,
-	applyPointing,
-	applySouthTowardParent,
-	applyUpVector,
-	type PointingSpec
-} from '$lib/math/orientation';
-import { isModelBearing } from '$lib/scene/objects/body/model';
-import { EARTH_ID, SUN_ID } from '$lib/constants';
-import { classifyLagrange } from '$lib/math/orbit/lagrange';
-import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
-import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
-import { OrbitalSource } from '$lib/fetch/position/format';
-import { isLandedAt, probePositionKm } from '$lib/fetch/position/probes/propagate';
-import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
-import {
-	buildParentGatedSampler,
-	deriveProbeTrailParams,
-	extendProbeTrailBuffer,
-	populateProbeTrailBuffer
-} from '$lib/fetch/position/probes/trail';
-import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
-import { planRideMarkers } from '$lib/fetch/position/probes/passenger';
-import { ADAPTIVE_MIN_STEP_FACTOR } from '$lib/fetch/position/trail-buffer';
-import { J2000_JD } from '$lib/time/jd';
+import { ObjectType, type PositionedBody, type Unplaced } from '$lib/types/objects';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { FocusState } from '$lib/scene/animation/focus';
 import type { Vec3 } from '$lib/scene/animation/math';
-import {
-	emptyGroup,
-	type OutOfRangeNotifier,
-	type OutOfRangeState
-} from '$lib/scene/out-of-range-notice';
+import type { OutOfRangeNotifier } from '$lib/scene/out-of-range-notice';
 import { refreshTrail, type TrailView } from '$lib/scene/objects/trail/refresh';
-import { renderLandedProbe } from './landed-probe';
-import { HOST_READ_MS } from '$lib/scene/minor-body-position';
-import { setSpacecraftGlyph } from '$lib/scene/label/factory';
-import { setLabelAnnotation } from '$lib/scene/label/annotations';
-import { host } from '$lib/host';
-import type { PositionDiagnostics } from './diagnostics';
-
-/** Module-scope scratch for adaptive trail chord-error sampling. JS is single-
- *  threaded and the buffer is consumed within one probe iteration, so reusing
- *  one allocation across all probes per frame is safe and avoids GC churn. */
-const newestPosScratch: [number, number, number] = [0, 0, 0];
-
-/** Scratch for the focused probe's attitude quaternion (one body per frame). */
-const attitudeQuat = new Quaternion();
-
-/** A hidden probe or minor body moves on every `HIDDEN_STRIDE`th frame only;
- *  nothing on screen reads its position in between. */
-const HIDDEN_STRIDE = 4;
-let nextStaggerSlot = 0;
-
-/** Last world position per body for `velocity`-target pointing. Only the focused
- *  model carries a pointing spec, so this stays tiny. */
-const velCache = new Map<
-	string,
-	{ jd: number; pos: [number, number, number]; dir: [number, number, number] | null }
->();
-
-function needsVelocity(spec: PointingSpec): boolean {
-	return spec.primary.target === 'velocity' || spec.secondary?.target === 'velocity';
-}
-
-/** Finite-difference world velocity direction; source-agnostic. Reuses the last
- *  good direction while paused (dt = 0); undefined until two distinct-jd samples
- *  exist. Sign-corrected so reverse playback still yields the prograde heading. */
-function estimateVelocity(
-	id: string,
-	jd: number,
-	pos: readonly [number, number, number]
-): [number, number, number] | undefined {
-	const prev = velCache.get(id);
-	let dir = prev?.dir ?? null;
-	if (prev && jd !== prev.jd) {
-		const s = Math.sign(jd - prev.jd);
-		const vx = (pos[0] - prev.pos[0]) * s;
-		const vy = (pos[1] - prev.pos[1]) * s;
-		const vz = (pos[2] - prev.pos[2]) * s;
-		const len = Math.hypot(vx, vy, vz);
-		if (len > 1e-12) dir = [vx / len, vy / len, vz / len];
-	}
-	velCache.set(id, { jd, pos: [pos[0], pos[1], pos[2]], dir });
-	return dir ?? undefined;
-}
+import type { Placer } from './placer';
 
 export interface UpdatePositionsParams {
 	jd: number;
@@ -96,9 +13,7 @@ export interface UpdatePositionsParams {
 	bodyObjects: Map<string, BodyObjects>;
 	focus: FocusState;
 	focusedBody: PositionedBody | undefined;
-	/** Caller-owned scratch Map; cleared and reused each call. */
-	positionMap: Map<string, Vec3>;
-	diagnostics: PositionDiagnostics;
+	placer: Placer;
 	/** Camera for the trail rewrite gate; absent = rewrite every visible trail. */
 	trailView?: TrailView;
 	/** Frame counter for the hidden-body stagger; absent = move every body. */
@@ -108,751 +23,98 @@ export interface UpdatePositionsParams {
 }
 
 export interface UpdatePositionsResult {
-	/** Focused body had no data at this jd (hidden). */
-	focusedOutOfRange: boolean;
-	/** Nearest in-range ancestor the camera was re-anchored to, or null. */
-	reanchorId: string | null;
+	/** The focused body has no place at this date. */
+	focusUnplaced: boolean;
+	/** Nearest placed ancestor the camera follows in its stead, or null. */
+	anchorId: string | null;
 }
 
+/** Reasons the notice reports. `never` has its own message, and `loading` ends by itself. */
+const NOTICE_REASONS: ReadonlySet<Unplaced> = new Set(['not-yet', 'no-data', 'parent', 'failed']);
+
 /**
- * Per-frame body position + orientation update. Drives chebyshev, SPICE-probe,
- * SGP4, parabolic, and Keplerian paths; aggregates out-of-range bodies into a
- * single notice; locks focus onto the focused body's new position (unless an
- * animation is driving it); refreshes trail geometry against the new
- * focus basis. Invisible lines are marked `refreshDeferred` for the next pass.
+ * Per-frame pass: places the bodies the scene draws, reports missing data in
+ * one notice, keeps the camera on the focused body, and refreshes the trails
+ * against the new focus basis.
  */
 export function updatePositions(params: UpdatePositionsParams): UpdatePositionsResult {
-	const {
-		jd,
-		ctx,
-		bodyObjects,
-		focus,
-		focusedBody,
-		positionMap,
-		diagnostics,
-		trailView,
-		frame,
-		outOfRange
-	} = params;
-	// Keep the chebyshev working set centred on `jd`. Fire-and-forget: the
-	// frame may miss data for one or two ticks at a boundary, during which
-	// chebyshev-tracked bodies are hidden (outOfRange) just like SGP4.
+	const { jd, ctx, bodyObjects, focus, focusedBody, placer, trailView, frame, outOfRange } = params;
+	// Keep the ephemeris working sets centred on `jd`. A body whose chunk is not
+	// there yet has no place for a frame or two.
 	ctx.chebStore?.ensure(jd);
 	ctx.probeStore?.ensure(jd);
 
-	// When zoomed into a planet, prefer its zone over interplanetary so flyby
-	// probes (Psyche → Mars, Voyager → Jupiter) take the planet-relative fit
-	// and flip parentId to the planet. Null = no preference, interplanetary
-	// wins by default.
-	const activeSysId = ctx.visibility.activeSystemId;
-	const probeZonePreference = activeSysId
-		? (fitCenterNaif: number) => ctx.bodies.isInSystem(`naif-${fitCenterNaif}`, activeSysId)
-		: undefined;
-
-	// Aggregate data-unavailability into a single summary notice — per-body
-	// notices would be spammy at chunk boundaries.
-	const oorState: OutOfRangeState = {
-		jd,
-		// Resolved from zone metadata after the loop; per-body validity only hides
-		// sats, it doesn't drive the notice.
-		satellites: { kind: 'covered' },
-		majorBodies: emptyGroup(),
-		focusedOutOfRange: false
-	};
-	const focusedId = focusedBody?.data.id;
-
-	// Decided per frame rather than at load: the same carried pair is one marker
-	// before separation and two after it.
-	const rideMarkers = planRideMarkers(
-		ctx.probeStore?.ridesAt(jd) ?? [],
-		focusedId,
-		(id) => ctx.getBody(id)?.data.name
-	);
-
-	// Snapshot the focus's orbit-ancestor positions before computePosition
-	// overwrites them; the focus-sync block re-anchors off these when the focus
-	// goes out of range across a time jump.
-	const focusAncestors: { id: string; oldPos: Vec3; bo: BodyObjects | undefined }[] = [];
+	// Where the focus chain was before this pass: the camera follows the
+	// displacement of an ancestor when the focus itself has no place.
+	const ancestors: { body: PositionedBody; oldPos: Vec3 | null }[] = [];
 	if (focusedBody) {
 		const seen = new Set<string>([focusedBody.data.id]);
 		let cur = ctx.getBody(focusedBody.data.parentId);
 		while (cur && !seen.has(cur.data.id)) {
 			seen.add(cur.data.id);
-			focusAncestors.push({
-				id: cur.data.id,
-				oldPos: [cur.position[0], cur.position[1], cur.position[2]],
-				bo: bodyObjects.get(cur.data.id)
-			});
+			ancestors.push({ body: cur, oldPos: cur.position ? [...cur.position] : null });
 			cur = ctx.getBody(cur.data.parentId);
 		}
 	}
 
-	// Pre-seed last-known positions so a child reads the previous-frame value
-	// (not [0,0,0]) when a parent early-returns. Seed stores body.position by
-	// reference, so successful updates remain visible without re-seeding.
-	positionMap.clear();
-	positionMap.set('naif-0', [0, 0, 0]);
-	for (const body of ctx.bodies.bodiesById.values()) {
-		positionMap.set(body.data.id, body.position);
-	}
-	for (const bo of bodyObjects.values()) {
-		if (!ctx.bodies.bodiesById.has(bo.body.data.id)) {
-			positionMap.set(bo.body.data.id, bo.body.position);
-		}
-	}
-
-	// Pass 1: compute positions + orbitCenters. Don't touch trail geometry
-	// here — it depends on focus.focusTruePos, which can't be updated until
-	// the focused body's own position is known below.
-	const computed = new Set<string>();
-	// What a probe is placed against can sit later in the update order (promoted
-	// small bodies run after `bodiesById`) or be a moon the loop below skips:
-	// without this the probe anchors to an earlier position — a v·Δt offset
-	// (~0.4 km/frame at Bennu) that reads as altitude error plus flicker.
-	const placeFirst = (id: string) => {
-		if (computed.has(id)) return;
-		const body = ctx.bodies.bodiesById.get(id) ?? bodyObjects.get(id)?.body;
-		if (body) computePosition(body);
-	};
-	// A probe a host stopped reading goes back to the hidden stride.
-	const now = performance.now();
-	const hostReads = (id: string) => {
-		const at = ctx.bodies.hostRead.get(id);
-		if (at === undefined) return false;
-		if (now - at < HOST_READ_MS) return true;
-		ctx.bodies.hostRead.delete(id);
-		return false;
-	};
-	// Offset from `parentPos`, like the ephemeris gives. The row can hang off
-	// another parent than the ephemeris does (the Sun, not the barycentre).
-	const elementRowOffset = (body: PositionedBody, parentPos: Vec3): Vec3 | null => {
-		const row = ctx.bodies.elementRow(body);
-		const rowParentPos = row && positionMap.get(row.parentId);
-		if (!rowParentPos) return null;
-		const offset =
-			row.q != null ? parabolicToPositionJD(row, jd) : orbitalElementsToPositionJD(row, jd);
-		if (!offset) return null;
-		return [
-			rowParentPos[0] - parentPos[0] + offset[0],
-			rowParentPos[1] - parentPos[1] + offset[1],
-			rowParentPos[2] - parentPos[2] + offset[2]
-		];
-	};
-	const computePosition = (body: PositionedBody) => {
-		if (computed.has(body.data.id)) return;
-		computed.add(body.data.id);
-		const d = body.data;
-		const bo = bodyObjects.get(d.id);
-		// A hidden leaf (probe, promoted minor) keeps its last position for a
-		// few frames: nothing reads it while hidden, and it was seeded above.
-		if (
-			bo &&
-			frame !== undefined &&
-			d.id !== focusedId &&
-			!hostReads(d.id) &&
-			!bo.group.visible &&
-			!bo.trail?.visible &&
-			(d.orbitalSource === OrbitalSource.SPICE_PROBE || !isMajorBody(d.objectType))
-		) {
-			bo.staggerSlot ??= nextStaggerSlot++ % HIDDEN_STRIDE;
-			if (frame % HIDDEN_STRIDE !== bo.staggerSlot) return;
-		}
-		// No placement this frame: hide the mesh and mark `position` a stand-in so
-		// the camera is never framed on it. `notForNotice` covers the sat-validity
-		// case, where zone coverage drives the notice instead.
-		const hide = (notForNotice = false) => {
-			if (bo) bo.outOfRange = true;
-			body.positionUnknown = true;
-			body.placedJd = jd;
-			if (!notForNotice && d.id === focusedId) oorState.focusedOutOfRange = true;
-		};
-		// No orbit in the catalogue at all: never placed, and never a reason for
-		// the "no data at this time" notice — the drawer says it outright.
-		if (d.unplaceable) {
-			hide(true);
-			return;
-		}
-		const isChebTracked = ctx.chebStore?.has(d.id) ?? false;
-		const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
-		if (isProbe) {
-			// The other half of a carried pair. Hidden rather than out of range:
-			// nothing is missing, the marker already on screen is both of them.
-			if (rideMarkers.hidden.has(d.id)) {
-				hide(true);
-				return;
-			}
-			if (bo) {
-				const carrier = rideMarkers.credits.get(d.id);
-				setLabelAnnotation(
-					bo,
-					'carrier',
-					carrier ? host().messages.carried_by_scene_label({ carrier }) : null
-				);
-			}
-		}
-		// Discovery gate: hide a body before it came into existence (moon/sat
-		// discovery or launch). NaN/undefined visibleFromDays = always visible.
-		// outOfRange hides the mesh + label; writeMoons() drops the dot too.
-		if (d.visibleFromDays !== undefined && jd - J2000_JD < d.visibleFromDays) {
-			hide();
-			return;
-		}
-		// Probes re-resolve their fit center below (cruise → captured orbit can
-		// flip parentId); everyone else needs the parent already in positionMap.
-		// A miss means it isn't tracked this frame (e.g. an unloaded chunk, or a
-		// host in `asteroidBodiesByZone`, not pre-seeded). Hide rather than fall
-		// back to SSB — the origin would place asteroid-moons at the Sun.
-		let parentPos: Vec3;
-		if (isProbe) {
-			// Placeholder: the probe branch re-resolves its fit center below and
-			// overwrites this before any position is derived from it.
-			parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
-		} else {
-			const lookup = positionMap.get(d.parentId);
-			if (!lookup) {
-				hide();
-				diagnostics.warnOnce(
-					'missing-parent',
-					d.id,
-					() => `computePosition[${d.id}]: parent ${d.parentId} not in positionMap — hiding`
-				);
-				return;
-			}
-			parentPos = lookup;
-			diagnostics.clear('missing-parent', d.id);
-		}
-		const isParabolic = d.q != null;
-		// Validity gate: hide SGP4/parabolic bodies outside their stated window.
-		// Skipped for chebyshev (validityStart/End is the startup chunk's window,
-		// not the full segment range) — its `positionScene` is the gate instead.
-		if (!isChebTracked && !isProbe && (jd < d.validityStart || jd > d.validityEnd)) {
-			// Hide the sat; the group notice comes from zone coverage below, not a
-			// stale chunk. Only SGP4 has finite validity (Keplerian/parabolic ±Inf).
-			hide(!d.satrec);
-			return;
-		}
-		let x: number;
-		let y: number;
-		let z: number;
-		if (isChebTracked) {
-			// A probe target's ephemeris spans its mission only: its element row
-			// carries it the rest of the time. A body with no row stays hidden,
-			// an extrapolated planet or moon would break eclipse geometry.
-			const chebOffset =
-				ctx.chebStore!.positionScene(d.id, jd) ?? elementRowOffset(body, parentPos);
-			if (!chebOffset) {
-				hide(true);
-				// Only count as OOR-for-notice when jd is outside zone coverage;
-				// inside coverage means a chunk is still loading (transient).
-				const coverage = ctx.chebStore!.zoneCoverage(d.id);
-				if (coverage && (jd < coverage.start || jd > coverage.end)) {
-					oorState.majorBodies.count++;
-					if (coverage.start < oorState.majorBodies.earliestStart) {
-						oorState.majorBodies.earliestStart = coverage.start;
-					}
-					if (coverage.end > oorState.majorBodies.latestEnd) {
-						oorState.majorBodies.latestEnd = coverage.end;
-					}
-					if (d.id === focusedId) oorState.focusedOutOfRange = true;
-				}
-				// Cascade-root diagnostic: when chebOffset is null for a major body,
-				// any child whose own chebOffset is `[0,0,0]` lands at finite-zero
-				// world coords this frame. Log once per body so we know which chunk
-				// dropped out (positionMap pre-seed handles the child's own pos).
-				diagnostics.warnOnce('cheb-null', d.id, () => {
-					const insideCoverage = coverage ? jd >= coverage.start && jd <= coverage.end : undefined;
-					const cov = coverage
-						? `[${coverage.start.toFixed(1)},${coverage.end.toFixed(1)}]`
-						: 'unknown';
-					return (
-						`chebStore.positionScene[${d.id}] returned null at jd=${jd.toFixed(3)} ` +
-						`(coverage=${cov}, insideCoverage=${insideCoverage}) — children of this ` +
-						`body will read stale positionMap entry (pre-seeded) instead of falling to SSB`
-					);
-				});
-				return;
-			}
-			x = parentPos[0] + chebOffset[0];
-			y = parentPos[1] + chebOffset[1];
-			z = parentPos[2] + chebOffset[2];
-		} else if (isProbe) {
-			// Probes dispatch per sub-chunk inside the store. Fit center is the
-			// zone's `fit_center_naif_id` — NOT d.parentId (which lags by a frame
-			// at cross-zone transitions). Re-resolve per frame, then flip parentId
-			// so trail geometry and trail-anchor writes follow the new parent.
-			const located = ctx.probeStore?.probeWithCenter(d.id, jd, probeZonePreference) ?? null;
-			if (!located) {
-				hide();
-				diagnostics.warnOnce('probe-unavailable', d.id, () => {
-					const reason = !ctx.probeStore
-						? 'no ProbeStore'
-						: 'no zone has both a loaded chunk and a sub-chunk covering this jd';
-					return `probe ${d.id} (${d.name ?? 'unnamed'}): hidden — ${reason}`;
-				});
-				return;
-			}
-			// Landed branch: place at lat/lng on the landing body's surface,
-			// applying its IAU orientation. Skip the flying-fit path entirely.
-			const probeLanded = located.probe.landed;
-			if (probeLanded && isLandedAt(located.probe, jd)) {
-				// Captured before `renderLandedProbe` re-parents the craft.
-				const flyingFrameId = d.parentId;
-				placeFirst(`naif-${probeLanded.bodyNaifId}`);
-				const landedRender = renderLandedProbe(
-					d,
-					located.probe,
-					probeLanded,
-					jd,
-					positionMap,
-					ctx,
-					bodyObjects
-				);
-				if (!landedRender) {
-					hide();
-					return;
-				}
-				diagnostics.clear('probe-unavailable', d.id);
-				body.positionUnknown = false;
-				body.placedJd = jd;
-				// A craft that lands on a body other than the one its flying fits
-				// were against — Huygens fitted on Saturn, standing on Titan —
-				// leaves a buffer full of offsets from the wrong origin. Drawn
-				// against the new one they rule a line from the landing site out
-				// to the old frame, so the descent trail ends at touchdown.
-				if (flyingFrameId !== d.parentId) body.trailBuffer?.clear();
-				if (bo) {
-					bo.outOfRange = false;
-					const crashed = probeLanded.isDestroyed;
-					if (!bo.isLanded) {
-						setSpacecraftGlyph(bo.labelHalo, 'landed');
-						bo.isLanded = true;
-					}
-					bo.isCrashed = crashed;
-					// A crash site has no intact craft to stand on it.
-					if (bo.model) bo.model.visible = !crashed;
-				}
-				body.position[0] = landedRender.x;
-				body.position[1] = landedRender.y;
-				body.position[2] = landedRender.z;
-				if (body.orbitCenter) {
-					body.orbitCenter[0] = landedRender.parentPos[0];
-					body.orbitCenter[1] = landedRender.parentPos[1];
-					body.orbitCenter[2] = landedRender.parentPos[2];
-				}
-				if (body.trailAnchor) {
-					body.trailAnchor[0] = landedRender.parentPos[0];
-					body.trailAnchor[1] = landedRender.parentPos[1];
-					body.trailAnchor[2] = landedRender.parentPos[2];
-				}
-				positionMap.set(d.id, body.position);
-				// Stand the lander on the terrain slope (seat facet's normal); radial
-				// nadir until the seat resolves. Camera-north stays radial either way
-				// (bodyNorthVector), only the model tilts.
-				const up = landedRender.up;
-				if (bo?.mesh) {
-					if (up) applyUpVector(bo.mesh, up);
-					else applySouthTowardParent(bo.mesh, body.position, landedRender.parentPos);
-				}
-				if (bo?.model) {
-					if (up) applyUpVector(bo.model, up);
-					else applySouthTowardParent(bo.model, body.position, landedRender.parentPos);
-				}
-				return;
-			}
-			// Resolve the probe's stamped primary (Moon for lunar orbiters,
-			// Ryugu for Hayabusa2, …) or the zone center. Sub-chunks are fit
-			// against THAT body, so the propagator's mu must match; a primary
-			// that can't be placed this frame means hide, not fall back.
-			const primary = resolveProbePrimary(
-				located.probe,
-				jd,
-				located.fitCenterNaifId,
-				ctx.chebStore ?? null,
-				(id) => positionMap.has(id)
-			);
-			if (!primary) {
-				hide();
-				diagnostics.warnOnce(
-					'probe-unavailable',
-					d.id,
-					() =>
-						`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — stamped fit center ` +
-						'is not placeable this frame'
-				);
-				return;
-			}
-			const probeParentKey = primary.id;
-			const primaryMu = primary.muKm3S2;
-			const probeOffsetKm = probePositionKm(located.probe, jd, primaryMu);
-			if (!probeOffsetKm) {
-				hide();
-				diagnostics.warnOnce(
-					'probe-unavailable',
-					d.id,
-					() =>
-						`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — sub-chunk evaluation returned ` +
-						'null (uncoverable, non-finite fit, or missing mu for kepler_pure)'
-				);
-				return;
-			}
-			diagnostics.clear('probe-unavailable', d.id);
-			if (bo?.isLanded) {
-				setSpacecraftGlyph(bo.labelHalo, 'flying');
-				bo.isLanded = false;
-				if (bo.isCrashed) {
-					bo.isCrashed = false;
-					if (bo.model) bo.model.visible = true;
-					if (!bo.noPhysical) setLabelAnnotation(bo, 'missing', null);
-				}
-			}
-			// Sun–Earth L1/L2 is decided from the live geometry, so a probe gets
-			// its halo trail when it arrives and loses it when it leaves. The
-			// envelope is wide enough that a halo never wanders across the edge.
-			const earthPos = positionMap.get(EARTH_ID);
-			const sunPos = positionMap.get(SUN_ID);
-			const lagrangeTrail =
-				probeParentKey === EARTH_ID &&
-				earthPos !== undefined &&
-				sunPos !== undefined &&
-				classifyLagrange(
-					[kmToScene(probeOffsetKm[0]), kmToScene(probeOffsetKm[2]), -kmToScene(probeOffsetKm[1])],
-					[sunPos[0] - earthPos[0], sunPos[1] - earthPos[1], sunPos[2] - earthPos[2]]
-				) !== null;
-			const lagrangeChanged = lagrangeTrail !== (body.lagrangeTrail ?? false);
-			body.lagrangeTrail = lagrangeTrail;
-			// Reseed the trail buffer (when present) before flipping parentId,
-			// so the back-population samples against the OLD parent's frame are
-			// dropped and the new frame starts fresh. Sampling params must be
-			// re-derived in the NEW frame first: reusing cruise-scale stepDays/
-			// epsilon for a planet-frame flyby walks the encounter in segments
-			// several Jupiter radii long (visibly spiky trail), and the reverse
-			// truncates a heliocentric trail to one chunk window. Skip on
-			// first-ever resolve (initial parentId was set by processProbes
-			// against the same parent) — only the live mid-play flip needs a clear.
-			// A Lagrange arrival or departure reseeds the same way: the halo
-			// span and the osculating span are different walks.
-			const probeParentChanged = d.parentId !== probeParentKey;
-			if ((probeParentChanged || lagrangeChanged) && body.trailBuffer && ctx.probeStore) {
-				const buf = body.trailBuffer;
-				buf.clear();
-				buf.needsPopulate = false;
-				const freshElements = probeOsculatingElements(located.probe, jd, primaryMu);
-				const params = deriveProbeTrailParams(
-					freshElements,
-					d.validityEnd - d.validityStart,
-					buf.capacity,
-					lagrangeTrail
-				);
-				buf.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
-				populateProbeTrailBuffer(
-					buf,
-					ctx.probeStore,
-					ctx.chebStore ?? null,
-					d.id,
-					probeParentKey,
-					jd
-				);
-			}
-			if (probeParentChanged) d.parentId = probeParentKey;
-			placeFirst(probeParentKey);
-			// The fit center must be placed first: without it the probe would land
-			// at the scene origin, which reads as a jump to the barycentre.
-			const probeParentPos = positionMap.get(probeParentKey);
-			if (!probeParentPos) {
-				hide();
-				diagnostics.warnOnce(
-					'probe-unavailable',
-					d.id,
-					() =>
-						`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — fit center ${probeParentKey} ` +
-						'has no position this frame'
-				);
-				return;
-			}
-			parentPos = probeParentPos;
-			const probeOffsetX = kmToScene(probeOffsetKm[0]);
-			const probeOffsetY = kmToScene(probeOffsetKm[2]);
-			const probeOffsetZ = -kmToScene(probeOffsetKm[1]);
-			x = parentPos[0] + probeOffsetX;
-			y = parentPos[1] + probeOffsetY;
-			z = parentPos[2] + probeOffsetZ;
-			// Trail-buffer maintenance. A backwards jump or a gap > one full span
-			// invalidates the samples — reseed via back-populate. Otherwise extend
-			// forward from the newest sample with the same chord-error subdivision as
-			// the back-fill, so a fast periapsis pass (a large arc per frame at high
-			// time-speed) densifies instead of drawing one long facet per frame.
-			const tb = body.trailBuffer;
-			// The load-time back-fill is owed until the trail first shows.
-			if (tb?.needsPopulate && bo?.trail?.visible && ctx.probeStore) {
-				tb.needsPopulate = false;
-				tb.clear();
-				populateProbeTrailBuffer(
-					tb,
-					ctx.probeStore,
-					ctx.chebStore ?? null,
-					d.id,
-					probeParentKey,
-					jd
-				);
-			}
-			if (tb) {
-				const last = tb.newestJd;
-				const dt = jd - last;
-				const span = tb.stepDays * tb.capacity;
-				// A backward jump or a gap wider than one buffered period invalidates
-				// the samples. A tight orbit trips this every frame above ~day/s, so a
-				// full per-period reseed would run continuously for every probe.
-				const discontinuity = isFinite(last) && (dt < 0 || dt > span);
-				if (discontinuity && d.id === focusedId && ctx.probeStore) {
-					// Focused probe only: rebuild one accurate osculating period ending on
-					// the body so a close-up stays smooth even when a frame skips many
-					// orbits. Re-derive params — the orbit may have changed across the jump.
-					tb.clear();
-					const jumpElements = probeOsculatingElements(located.probe, jd, primaryMu);
-					const params = deriveProbeTrailParams(
-						jumpElements,
-						d.validityEnd - d.validityStart,
-						tb.capacity,
-						lagrangeTrail
-					);
-					tb.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
-					populateProbeTrailBuffer(
-						tb,
-						ctx.probeStore,
-						ctx.chebStore ?? null,
-						d.id,
-						probeParentKey,
-						jd
-					);
-				} else if (discontinuity) {
-					// Unfocused: the orbit is sub-pixel at the speeds that trip this, so the
-					// per-period reseed is wasted work. Drop the stale samples (an orbit-wide
-					// facet would otherwise spike) and restart on the body.
-					tb.clear();
-					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
-				} else if (!isFinite(last)) {
-					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
-				} else if (isFinite(tb.epsilonScene)) {
-					const minStep = tb.stepDays * ADAPTIVE_MIN_STEP_FACTOR;
-					if (dt >= minStep && ctx.probeStore && tb.readNewestPos(newestPosScratch)) {
-						extendProbeTrailBuffer(
-							tb,
-							buildParentGatedSampler(ctx.probeStore, ctx.chebStore ?? null, d.id, probeParentKey),
-							last,
-							[newestPosScratch[0], newestPosScratch[1], newestPosScratch[2]],
-							jd
-						);
-					}
-				} else if (dt >= tb.stepDays) {
-					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
-				}
-			}
-		} else if (d.a === 0 && !isParabolic && !d.satrec) {
-			// Body coincides with its parent (Kepler-only barycenter placeholder).
-			[x, y, z] = parentPos;
-		} else {
-			const offset = d.satrec
-				? sgp4PositionScene(d.satrec, jd)
-				: isParabolic
-					? parabolicToPositionJD(d, jd)
-					: orbitalElementsToPositionJD(d, jd);
-			// A propagator that fails here (SGP4 decay, degenerate elements) leaves
-			// the last sample in `position` — hide rather than keep drawing it.
-			if (!offset) {
-				hide();
-				return;
-			}
-			x = parentPos[0] + offset[0];
-			y = parentPos[1] + offset[1];
-			z = parentPos[2] + offset[2];
-		}
-		if (bo) bo.outOfRange = false;
-		body.positionUnknown = false;
-		body.placedJd = jd;
-		body.position[0] = x;
-		body.position[1] = y;
-		body.position[2] = z;
-		if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-			diagnostics.warnOnce('non-finite', d.id, () => {
-				const parentInMap = positionMap.has(d.parentId);
-				return (
-					`computePosition[${d.id}] non-finite: pos=[${x},${y},${z}] ` +
-					`parentId=${d.parentId} parentInPositionMap=${parentInMap} ` +
-					`parentPos=[${parentPos[0]},${parentPos[1]},${parentPos[2]}] ` +
-					`isChebTracked=${isChebTracked} isProbe=${isProbe} objectType=${d.objectType}`
-				);
-			});
-		}
-		if (body.orbitCenter) {
-			body.orbitCenter[0] = parentPos[0];
-			body.orbitCenter[1] = parentPos[1];
-			body.orbitCenter[2] = parentPos[2];
-		}
-		if (body.trailAnchor) {
-			body.trailAnchor[0] = parentPos[0];
-			body.trailAnchor[1] = parentPos[1];
-			body.trailAnchor[2] = parentPos[2];
-		}
-		positionMap.set(d.id, body.position);
-
-		if (!bo) return;
-		if (bo.trail && body.orbitCenter) {
-			const oc = bo.trail.userData.orbitCenter as Vector3 | undefined;
-			if (oc) oc.set(parentPos[0], parentPos[1], parentPos[2]);
-		}
-		if (body.orientation && (bo.mesh || bo.model)) {
-			if (bo.mesh) applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
-			// Natural-body shape model shares the sphere's IAU spin. Neither its
-			// mount nor the overlay carries rotation, so writing the local
-			// quaternion is enough. The label anchor co-rotates so surface
-			// features stay pinned to the model.
-			if (bo.model) applyOrientation(bo.model, body.orientation, jd, body.nutPrec);
-			if (bo.nomenclatureAnchor)
-				applyOrientation(bo.nomenclatureAnchor, body.orientation, jd, body.nutPrec);
-		} else if (isModelBearing(body)) {
-			// Sats/probes have no IAU data. Priority: debug override > CK attitude
-			// track (within coverage) > pointing spec > nadir at the parent. Sphere
-			// and overlay model share the attitude.
-			const track = body.attitudeTrack;
-			if (!body.pointingOverride && track && track.orientationAt(jd, attitudeQuat)) {
-				if (bo.mesh) bo.mesh.quaternion.copy(attitudeQuat);
-				if (bo.model) bo.model.quaternion.copy(attitudeQuat);
-			} else {
-				const spec = body.pointingOverride ?? body.pointing;
-				if (spec) {
-					const velocity = needsVelocity(spec)
-						? estimateVelocity(d.id, jd, body.position)
-						: undefined;
-					const pctx = {
-						bodyPos: body.position,
-						parentPos,
-						sunPos: positionMap.get(SUN_ID),
-						velocity
-					};
-					if (bo.mesh) applyPointing(bo.mesh, spec, pctx);
-					if (bo.model) applyPointing(bo.model, spec, pctx);
-				} else {
-					if (bo.mesh) applySouthTowardParent(bo.mesh, body.position, parentPos);
-					if (bo.model) applySouthTowardParent(bo.model, body.position, parentPos);
-				}
-			}
-		}
-		// Rings inherit the planet's pole orientation (geometry pre-rotated so
-		// local +Y is the pole). Re-apply each frame so nutation/precession/spin
-		// stay in sync with the planet.
-		if (body.orientation) {
-			for (const ring of bo.rings) {
-				applyOrientation(ring.mesh, body.orientation, jd, body.nutPrec);
-			}
-		}
-	};
-
-	// First pass: bodies in ctx.bodies.bodiesById (barycenters → planets → moons).
-	// Second pass: promoted minor bodies that only live in bodyObjects.
-	//
-	// Skip moons outside the focused system: their visuals are all gated on
-	// `isInFocusedSystem`, so a stale position can't render, and switching
-	// focus pulls them back in the same frame `focusedSystemId` flips.
+	placer.begin(jd, focusedBody?.data.id, frame);
+	// Moons outside the focused system are not drawn: `place` settles one when
+	// something reads it.
 	const sysId = ctx.visibility.focusedSystemId;
 	for (const body of ctx.bodies.bodiesById.values()) {
-		if (body.data.objectType === ObjectType.MOON) {
-			const inSystem = sysId !== null && body.data.parentId === sysId;
-			if (!inSystem && body.data.id !== focusedId) {
-				// Seed positionMap with the last-computed position so any child
-				// (e.g. a sub-moon spacecraft) resolves to the stale-but-known
-				// parent location instead of origin.
-				positionMap.set(body.data.id, body.position);
-				continue;
-			}
+		if (
+			body.data.objectType === ObjectType.MOON &&
+			body.data.parentId !== sysId &&
+			body !== focusedBody
+		) {
+			continue;
 		}
-		computePosition(body);
+		placer.placeInPass(body);
 	}
-	for (const bo of bodyObjects.values()) {
-		if (!ctx.bodies.bodiesById.has(bo.body.data.id)) computePosition(bo.body);
-	}
+	for (const bo of bodyObjects.values()) placer.placeInPass(bo.body);
+	// A surface feature is in neither store.
+	const focusPos = focusedBody ? placer.place(focusedBody, jd) : null;
 
-	oorState.satellites = ctx.refresher?.satelliteCoverage(jd) ?? { kind: 'covered' };
-	outOfRange.update(oorState);
+	const why = focusedBody?.unplaced;
+	outOfRange.update({
+		jd,
+		satellites: ctx.refresher?.satelliteCoverage(jd) ?? { kind: 'covered' },
+		majorBodies: placer.noData,
+		focusedOutOfRange: why !== undefined && NOTICE_REASONS.has(why)
+	});
 
-	// Re-seat a focused surface feature on its host's current-LOD surface before
-	// the focus-tracking block pins focusTruePos to it. The host is a major, so
-	// its world position is already fresh this frame; without it the seat can't
-	// be placed, so treat the feature as out-of-range (camera holds on the host).
-	if (focusedBody && isSurfaceFeature(focusedBody)) {
-		const host = ctx.getBody(focusedBody.featureAnchor!.hostId);
-		if (host && positionMap.has(host.data.id)) {
-			seatFeatureBody(focusedBody, host, bodyObjects.get(host.data.id), jd);
-		} else {
-			oorState.focusedOutOfRange = true;
-		}
-	}
-
-	// Lock focus onto the focused body's new position unless an animation is
-	// driving it. Also refresh body-relative camera target so the fly
-	// destination tracks the moving body.
-	let reanchorId: string | null = null;
-	if (focusedBody && oorState.focusedOutOfRange) {
-		// Focused body has no data this frame — track the nearest in-range ancestor
-		// so the camera follows it instead of freezing in world space. The focus
-		// (and its "no data at this time" notice) stays on the original body; the
-		// renderer pans the camera onto the anchor.
-		const anchor = focusAncestors.find((a) => a.bo && !a.bo.outOfRange);
-		if (anchor) {
-			reanchorId = anchor.id;
-			const p = positionMap.get(anchor.id) ?? anchor.oldPos;
-			const elapsed = performance.now() - focus.focusStartTime;
-			const animating = elapsed < focus.focusDurationMs;
+	// Lock the camera frame onto the focused body unless an animation drives it.
+	let anchorId: string | null = null;
+	const animating = performance.now() - focus.focusStartTime < focus.focusDurationMs;
+	if (focusedBody && !focusPos) {
+		// The focus stays on the body. The camera follows its nearest placed
+		// ancestor, so it does not freeze in world space.
+		for (const a of ancestors) {
+			const p = placer.place(a.body, jd);
+			if (!p) continue;
+			anchorId = a.body.data.id;
 			if (animating) {
 				// A pan onto the anchor is running: keep its look target on the anchor.
-				focus.focusTargetWorld[0] = p[0];
-				focus.focusTargetWorld[1] = p[1];
-				focus.focusTargetWorld[2] = p[2];
+				setVec(focus.focusTargetWorld, p);
 				const camOff = focus.camTargetOffset;
-				if (camOff && focus.camTargetWorld) {
-					focus.camTargetWorld[0] = p[0] + camOff[0];
-					focus.camTargetWorld[1] = p[1] + camOff[1];
-					focus.camTargetWorld[2] = p[2] + camOff[2];
-				}
-			} else {
-				// Idle: shift the camera frame by the anchor's displacement so it keeps
-				// tracking — beside the anchor before the pan, centered on it after.
-				const dx = p[0] - anchor.oldPos[0];
-				const dy = p[1] - anchor.oldPos[1];
-				const dz = p[2] - anchor.oldPos[2];
-				focus.focusTruePos[0] += dx;
-				focus.focusTruePos[1] += dy;
-				focus.focusTruePos[2] += dz;
-				focus.focusTargetWorld[0] = focus.focusTruePos[0];
-				focus.focusTargetWorld[1] = focus.focusTruePos[1];
-				focus.focusTargetWorld[2] = focus.focusTruePos[2];
+				if (camOff && focus.camTargetWorld) addVec(focus.camTargetWorld, p, camOff);
+			} else if (a.oldPos) {
+				// Idle: shift the camera frame by the displacement of the anchor.
+				focus.focusTruePos[0] += p[0] - a.oldPos[0];
+				focus.focusTruePos[1] += p[1] - a.oldPos[1];
+				focus.focusTruePos[2] += p[2] - a.oldPos[2];
+				setVec(focus.focusTargetWorld, focus.focusTruePos);
 			}
+			break;
 		}
-	} else if (focusedBody) {
-		const p = focusedBody.position;
-		const elapsed = performance.now() - focus.focusStartTime;
-		const animating = elapsed < focus.focusDurationMs;
-		focus.focusTargetWorld[0] = p[0];
-		focus.focusTargetWorld[1] = p[1];
-		focus.focusTargetWorld[2] = p[2];
+	} else if (focusPos) {
+		setVec(focus.focusTargetWorld, focusPos);
 		const camOff = focus.camTargetOffset;
-		if (camOff && focus.camTargetWorld) {
-			focus.camTargetWorld[0] = p[0] + camOff[0];
-			focus.camTargetWorld[1] = p[1] + camOff[1];
-			focus.camTargetWorld[2] = p[2] + camOff[2];
-		}
-		// Arc-orbit only: pin the arc's start point to the body too, so the arc
-		// center stays equidistant from both ends and the body stays framed.
+		if (camOff && focus.camTargetWorld) addVec(focus.camTargetWorld, focusPos, camOff);
+		// Arc-orbit only: pin the start of the arc to the body too, so the body stays framed.
 		const camOrigOff = focus.camOriginOffset;
-		if (camOrigOff && focus.camOriginWorld) {
-			focus.camOriginWorld[0] = p[0] + camOrigOff[0];
-			focus.camOriginWorld[1] = p[1] + camOrigOff[1];
-			focus.camOriginWorld[2] = p[2] + camOrigOff[2];
-		}
-		if (!animating) {
-			focus.focusTruePos[0] = p[0];
-			focus.focusTruePos[1] = p[1];
-			focus.focusTruePos[2] = p[2];
-		}
+		if (camOrigOff && focus.camOriginWorld) addVec(focus.camOriginWorld, focusPos, camOrigOff);
+		if (!animating) setVec(focus.focusTruePos, focusPos);
 	}
 
 	// Refresh trails against the fresh focus basis. Doing it inside computePosition
@@ -870,7 +132,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		line.userData.refreshDeferred = false;
 	}
 
-	return { focusedOutOfRange: oorState.focusedOutOfRange, reanchorId };
+	return { focusUnplaced: focusedBody !== undefined && !focusPos, anchorId };
 }
 
 /**
@@ -892,4 +154,16 @@ export function refreshDeferredTrails(
 		refreshTrail(bo.body, line, basis, jd, trailView);
 		line.userData.refreshDeferred = false;
 	}
+}
+
+function setVec(out: Vec3, v: Readonly<Vec3>): void {
+	out[0] = v[0];
+	out[1] = v[1];
+	out[2] = v[2];
+}
+
+function addVec(out: Vec3, a: Readonly<Vec3>, b: Readonly<Vec3>): void {
+	out[0] = a[0] + b[0];
+	out[1] = a[1] + b[1];
+	out[2] = a[2] + b[2];
 }

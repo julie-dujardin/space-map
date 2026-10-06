@@ -92,12 +92,13 @@ export function clampCameraOutsideBody(
 	surface?: SurfaceClampContext
 ): void {
 	const radiusKm = body.data.radiusKm;
-	if (!Number.isFinite(radiusKm) || radiusKm <= 0) return;
+	const at = body.position;
+	if (!Number.isFinite(radiusKm) || radiusKm <= 0 || !at) return;
 
 	// Body center relative to the focus origin (camera.position shares this frame).
-	const bx = body.position[0] - focusTruePos[0];
-	const by = body.position[1] - focusTruePos[1];
-	const bz = body.position[2] - focusTruePos[2];
+	const bx = at[0] - focusTruePos[0];
+	const by = at[1] - focusTruePos[1];
+	const bz = at[2] - focusTruePos[2];
 	// Focus origin (0,0,0) is the focused object, so this is its distance to the
 	// parent center — i.e. the ground level right under a landed probe.
 	const focusDist = Math.hypot(bx, by, bz);

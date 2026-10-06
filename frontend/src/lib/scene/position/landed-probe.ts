@@ -23,7 +23,7 @@ const _upScene = new Vector3();
  * the same sampler the camera's terrain floor uses, so they never disagree.
  * The record's altitude is ignored (coarse height maps make it float/sink).
  *
- * Null when the body isn't loaded or lacks orientation data. `up` is the seat
+ * Null when the body isn't loaded, has no place or lacks orientation data. `up` is the seat
  * normal in scene frame, null until surface data resolves. Scratch-backed —
  * consume within the frame. Mutates `d.parentId` so trail geometry follows.
  */
@@ -32,16 +32,16 @@ export function renderLandedProbe(
 	probe: Probe,
 	landed: LandedRecord,
 	jd: number,
-	positionMap: Map<string, Vec3>,
+	where: (id: string) => Readonly<Vec3> | null,
 	ctx: ContextManager,
 	bodyObjects: Map<string, BodyObjects>
-): { x: number; y: number; z: number; parentPos: Vec3; up: Vector3 | null } | null {
+): { x: number; y: number; z: number; parentPos: Readonly<Vec3>; up: Vector3 | null } | null {
 	const sample = landedPositionAt(landed, jd, landedOpenEnded(probe));
 	if (!sample) return null;
 	const bodyKey = `naif-${landed.bodyNaifId}`;
 	const landingBody = ctx.bodies.bodiesById.get(bodyKey);
 	if (!landingBody || !landingBody.orientation) return null;
-	const bodyWorldPos = positionMap.get(bodyKey);
+	const bodyWorldPos = where(bodyKey);
 	if (!bodyWorldPos) return null;
 	const radiusKm = landingBody.data.radiusKm;
 	if (!Number.isFinite(radiusKm) || radiusKm <= 0) return null;

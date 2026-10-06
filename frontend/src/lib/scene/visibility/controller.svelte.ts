@@ -2,7 +2,7 @@ import { isAsteroid, ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_KM, AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
-import { EARTH_ID, SUN_ID } from '$lib/constants';
+import { EARTH_ID, SSB_ID, SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
 import { hillRadiusAU } from '$lib/scene/visibility/hill';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
@@ -388,7 +388,8 @@ export class VisibilityController {
 
 		if (!captured) {
 			const sun = this.bodies.bodiesById.get(SUN_ID);
-			const helioDist = sun ? f64dist(body.position, sun.position) / AU_SCALE : 0;
+			const helioDist =
+				sun?.position && body.position ? f64dist(body.position, sun.position) / AU_SCALE : 0;
 			if (helioDist === 0) return VISIBILITY.FULL;
 			const ratio = this.cameraDistThreeJS / AU_SCALE / helioDist;
 			const tier = computeVisibilityFromRatio(
@@ -404,7 +405,7 @@ export class VisibilityController {
 
 		if (!this.isProbeInFocusedSystem(body)) return VISIBILITY.HIDE;
 		const parent = this.bodies.bodiesById.get(body.data.parentId);
-		if (!parent) return VISIBILITY.FULL;
+		if (!parent?.position || !body.position) return VISIBILITY.FULL;
 		const distToParent = f64dist(body.position, parent.position) / AU_SCALE;
 		if (distToParent === 0) return VISIBILITY.FULL;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / distToParent;
@@ -464,9 +465,12 @@ export class VisibilityController {
 	 */
 	isSpacecraftGroupVisible(groupParentId: string): boolean {
 		if (this.getLayers().hidesSpacecraftGroup(groupParentId)) return false;
+		const parent = this.bodies.bodiesById.get(groupParentId);
+		// A cloud is drawn about its parent. With no place for the parent, there
+		// is nowhere to draw it.
+		if (groupParentId !== SSB_ID && !parent?.position) return false;
 		const sysId = this.activeSystemId;
 		if (isTopLevelParent(groupParentId)) return !sysId;
-		const parent = this.bodies.bodiesById.get(groupParentId);
 		if (parent?.data.objectType === ObjectType.STAR) return !sysId;
 		if (!sysId) return false;
 		if (groupParentId === sysId) return true;
@@ -480,6 +484,8 @@ export class VisibilityController {
 	isAsteroidGroupVisible(zone: string): boolean {
 		if (this.getLayers().hidesZone(zone)) return false;
 		if (this.activeSystemId) return false;
+		// The asteroid clouds are drawn about the Sun.
+		if (!this.bodies.bodiesById.get(SUN_ID)?.position) return false;
 		const filter = this.getSmallBodyFilter();
 		if (filter && zone.startsWith(SMALL_BODY_ZONE_PREFIX)) {
 			const className = zone.slice(SMALL_BODY_ZONE_PREFIX.length);

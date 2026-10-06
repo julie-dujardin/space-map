@@ -111,14 +111,6 @@ export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 	private readonly warmed = new Map<string, FetchedProbes>();
 	/** Passenger object id → the ride it is on. See {@link registerCarried}. */
 	private readonly carried = new Map<string, PassengerGraft>();
-	/** Bumped per stored chunk. The renderer watches it so a paused clock still
-	 *  gets a position pass when probe data arrives after the boot pass. */
-	private _version = 0;
-
-	get version(): number {
-		return this._version;
-	}
-
 	zoneCenter(zone: string): number | undefined {
 		return this.zoneParams.get(zone)?.fit_center_naif_id;
 	}
@@ -138,9 +130,7 @@ export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 		return fetchProbes(zone, chunkIdx, params.float64_coeffs, priority);
 	}
 
-	protected afterStore(): void {
-		this._version++;
-	}
+	protected afterStore(): void {}
 
 	/** Load whatever covers `jd` for the trip planner, off to one side. The
 	 *  window above belongs to the clock (one date, drops the rest); a planner

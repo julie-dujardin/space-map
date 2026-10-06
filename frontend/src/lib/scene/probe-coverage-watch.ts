@@ -1,21 +1,21 @@
 /**
- * Pauses the sim clock at the focused probe's coverage edges and reports it.
- * Heliocentric/hyperbolic probes propagate beyond their SPICE data, so
- * `(start_jd, end_jd)` is a hard data wall, not a fit boundary — worth
- * stopping at rather than silently extrapolating.
+ * Pauses the sim clock at the edges of the focused probe's coverage and
+ * reports it. A probe has no trajectory past its SPICE data, so the edge of a
+ * coverage window is a hard wall: the clock stops there, and the probe stays
+ * on screen. A hole inside the coverage stops it too.
  */
 
-import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import type { ProbeCoverage } from '$lib/fetch/metadata';
+import { coverageOf, type CoverageWindow } from '$lib/fetch/coverage';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import type { PositionedBody } from '$lib/types/objects';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import type { NoticeSink } from './notice';
 
 /** Pull the stop inward by this much (JD days, ≈86 ms) so the snap lands
- *  inside the probe's last sub-chunk, not on its half-open upper bound —
- *  otherwise `findSubChunkIndex` misses and the probe vanishes at the pause
- *  frame. Also what lets `SimClock.tick`'s strict `<` guard advance past the
- *  stop on the next Play instead of re-triggering it. */
+ *  inside the probe's last sub-chunk, not on its half-open upper bound:
+ *  `findSubChunkIndex` misses there and the probe has no place at the pause
+ *  frame. It is also what lets the strict `<` guard of `SimClock.tick` advance
+ *  past the stop on the next Play. */
 const STOP_INSET_JD = 1e-6;
 
 /** A probe's `data.name` is `string | null` (rare); fall back to the bare id
@@ -29,9 +29,8 @@ export class ProbeCoverageWatch {
 	/** Whether the notice is live, so it is dismissed when focus changes or
 	 *  jd re-enters coverage. */
 	private noticeShown = false;
-	/** Resolved coverage per probe id; `null` once we know a probe has none
-	 *  (legacy export). Absent key = not fetched yet. */
-	private readonly coverage = new Map<string, ProbeCoverage | null>();
+	/** Coverage windows per probe id. Absent key: not fetched yet. */
+	private readonly coverage = new Map<string, CoverageWindow[]>();
 	private readonly pending = new Set<string>();
 
 	constructor(
@@ -39,16 +38,19 @@ export class ProbeCoverageWatch {
 		private readonly notices: NoticeSink
 	) {}
 
-	/** Coverage for `probeId`, fetched-and-cached on first ask. Until it
-	 *  resolves, `sync` finds nothing and stays disarmed. */
-	private coverageFor(probeId: string): ProbeCoverage | undefined {
+	/** Windows of `probeId`, fetched and cached on first ask. Until they
+	 *  resolve, `sync` finds nothing and stays disarmed. */
+	private windowsOf(probeId: string): CoverageWindow[] | undefined {
 		const cached = this.coverage.get(probeId);
-		if (cached !== undefined) return cached ?? undefined;
+		if (cached) return cached;
 		if (!this.pending.has(probeId)) {
 			this.pending.add(probeId);
-			fetchObjectDetail(probeId, false)
-				.then((d) => this.coverage.set(probeId, d.global?.coverage ?? null))
-				.catch(() => this.coverage.set(probeId, null))
+			coverageOf(probeId)
+				.catch((e) => {
+					console.warn(`[coverage] ${probeId}: no coverage to arm the clock with:`, e);
+					return [];
+				})
+				.then((windows) => this.coverage.set(probeId, windows))
 				.finally(() => this.pending.delete(probeId));
 		}
 		return undefined;
@@ -57,35 +59,30 @@ export class ProbeCoverageWatch {
 	/** Per-frame entry point. Cheap when nothing changed. Call before
 	 *  {@link SimClock.tick} so stops are armed for the upcoming step. */
 	sync(focused: PositionedBody | undefined, jd: number): void {
-		const probeId = focused?.data.id ?? null;
-		const cov = probeId !== null ? this.coverageFor(probeId) : undefined;
-
-		if (!focused || !cov) {
+		const probe = focused?.data.orbitalSource === OrbitalSource.SPICE_PROBE ? focused : undefined;
+		// The window the clock is in. Outside every window there is no wall ahead.
+		const window = probe && this.windowsOf(probe.data.id)?.find(([s, e]) => jd > s && jd < e);
+		if (!probe || !window) {
 			this.disarm();
 			return;
 		}
 
-		if (this.armedProbeId !== probeId) {
-			// Focus moved to a different probe — drop the old notice (the old
-			// probe's edge is irrelevant now) and let the new probe arm fresh.
+		if (this.armedProbeId !== probe.data.id) {
+			// Focus moved to a different probe: the old probe's edge is irrelevant now.
 			this.dismissNotice();
-			this.armedProbeId = probeId;
+			this.armedProbeId = probe.data.id;
 		}
 
-		const forwardJd = cov.end_jd - STOP_INSET_JD;
-		const backwardJd = cov.start_jd + STOP_INSET_JD;
+		const forwardJd = window[1] - STOP_INSET_JD;
+		const backwardJd = window[0] + STOP_INSET_JD;
 
-		// Dismiss the notice once jd is back inside coverage. The user either
-		// scrubbed back in or reversed direction past the edge; either way the
-		// wall message is stale.
-		if (this.noticeShown && jd > backwardJd && jd < forwardJd) {
-			this.dismissNotice();
-		}
+		// The user scrubbed back in, or reversed past the edge: the wall message is stale.
+		if (this.noticeShown && jd > backwardJd && jd < forwardJd) this.dismissNotice();
 
 		this.clock.setBoundaryStops({
-			forwardJd,
-			backwardJd,
-			onHit: (hitJd) => this.onHit(focused, hitJd, forwardJd)
+			forwardJd: Number.isFinite(forwardJd) ? forwardJd : null,
+			backwardJd: Number.isFinite(backwardJd) ? backwardJd : null,
+			onHit: (hitJd) => this.onHit(probe, hitJd, forwardJd)
 		});
 	}
 

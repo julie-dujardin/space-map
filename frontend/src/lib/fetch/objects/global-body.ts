@@ -7,9 +7,11 @@
 
 import { ObjectType, type BodyData } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { buildSatrec } from '$lib/math/orbit/sgp4';
+import { buildSatrec, type SGP4Inputs } from '$lib/math/orbit/sgp4';
+import { J2000_JD } from '$lib/time/jd';
+import { canBePlaced } from '$lib/fetch/coverage';
 import { AU_KM } from '$lib/math/units';
-import type { GlobalObjectData, ObjectDetailData } from './object-data';
+import type { ObjectDetailData } from './object-data';
 
 /** Map a GlobalObjectData.type string (e.g. "asteroid_main_belt") to the ObjectType enum. */
 function parseObjectType(typeStr: string): ObjectType {
@@ -42,48 +44,56 @@ function parseOrbitalSource(name: string | undefined): OrbitalSource {
 const SGP4_VALIDITY_SLACK_DAYS = 14;
 
 /**
- * The body `detail` describes, or null when it has no orbit to propagate —
- * the Sun, a barycentre root, and anything whose ephemeris the export carries
- * as sampled positions rather than elements.
+ * The body `detail` describes, built from the elements of its bundle. Null
+ * when the map cannot place the object (no `coverage`: a docked module has
+ * elements and is in no position file), and when the bundle has no full set
+ * of elements: the Sun, a barycentre root, and anything the export places
+ * from a position file only.
  */
 export function bodyDataFromGlobal(id: string, detail: ObjectDetailData): BodyData | null {
 	const global = detail.global;
-	if (!global?.orbit) return null;
+	const orbit = global?.orbit;
+	if (!global || !orbit || !canBePlaced(global)) return null;
+	const isParabolic = orbit.q != null && orbit.tp != null;
+	if (
+		!isParabolic &&
+		(orbit.epoch_jd == null || orbit.a == null || orbit.ma == null || orbit.n == null)
+	) {
+		return null;
+	}
 
-	const orbit = global.orbit;
 	// Planet scale means CelesTrak TLE data: kilometres and Earth-equatorial
 	// angles, where everything else is AU about the ecliptic.
 	const isPlanetScale = orbit.scale === 'planet';
-	const isParabolic = orbit.q != null;
 
 	const noradCatId = global.cross_refs?.norad_cat_id;
-	const hasSGP4Fields =
+	const omm: SGP4Inputs | undefined =
+		isPlanetScale &&
 		orbit.bstar != null &&
 		orbit.mean_motion_dot != null &&
 		orbit.mean_motion_ddot != null &&
 		orbit.n != null &&
-		noradCatId != null;
-	const satrec =
-		isPlanetScale && hasSGP4Fields
-			? (buildSatrec(
-					{
-						noradCatId,
-						epochJd: orbit.epoch_jd,
-						meanMotion: orbit.n!,
-						eccentricity: orbit.e,
-						inclination: orbit.i,
-						raOfAscNode: orbit.om,
-						argOfPericenter: orbit.w,
-						meanAnomaly: orbit.ma ?? 0,
-						bstar: orbit.bstar!,
-						meanMotionDot: orbit.mean_motion_dot!,
-						meanMotionDdot: orbit.mean_motion_ddot!,
-						elementSetNo: orbit.element_set_no ?? 0,
-						revAtEpoch: orbit.rev_at_epoch ?? 0
-					},
-					global.name ?? undefined
-				) ?? undefined)
+		noradCatId != null
+			? {
+					noradCatId,
+					epochJd: orbit.epoch_jd,
+					meanMotion: orbit.n,
+					eccentricity: orbit.e,
+					inclination: orbit.i,
+					raOfAscNode: orbit.om,
+					argOfPericenter: orbit.w,
+					meanAnomaly: orbit.ma ?? 0,
+					bstar: orbit.bstar,
+					meanMotionDot: orbit.mean_motion_dot,
+					meanMotionDdot: orbit.mean_motion_ddot,
+					elementSetNo: orbit.element_set_no ?? 0,
+					revAtEpoch: orbit.rev_at_epoch ?? 0
+				}
 			: undefined;
+	const satrec = omm ? (buildSatrec(omm, global.name ?? undefined) ?? undefined) : undefined;
+	// The row from a position file carries the launch or discovery gate. A
+	// body built from the bundle takes it from the start of its coverage.
+	const coverageStart = global.coverage?.windows[0]?.[0];
 
 	return {
 		id,
@@ -109,20 +119,22 @@ export function bodyDataFromGlobal(id: string, detail: ObjectDetailData): BodyDa
 		n: isPlanetScale ? (orbit.n ?? 0) * 360 : (orbit.n ?? 0),
 		epoch: orbit.epoch_jd,
 		equatorial: isPlanetScale,
-		validityStart: satrec ? orbit.epoch_jd - SGP4_VALIDITY_SLACK_DAYS : -Infinity,
-		validityEnd: satrec ? orbit.epoch_jd + SGP4_VALIDITY_SLACK_DAYS : Infinity,
+		validityStart: omm ? orbit.epoch_jd - SGP4_VALIDITY_SLACK_DAYS : -Infinity,
+		validityEnd: omm ? orbit.epoch_jd + SGP4_VALIDITY_SLACK_DAYS : Infinity,
 		orbitalSource: parseOrbitalSource(orbit.source),
+		...(coverageStart != null ? { visibleFromDays: coverageStart - J2000_JD } : {}),
 		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {}),
+		...(omm ? { omm } : {}),
 		...(satrec ? { satrec } : {})
 	};
 }
 
 /**
- * A body row for an object the catalogue carries no orbit for — an asteroid
- * moon published without elements, a probe with no ephemeris. It can never be
- * placed, but it has a page, so the scene keeps it as a focusable stand-in.
+ * A stand-in row for an object the scene has no elements for. It has a page,
+ * so it can take the focus, and it has no place. A row from a position file
+ * replaces its data.
  */
-export function unplacedBodyDataFromGlobal(id: string, detail: ObjectDetailData): BodyData | null {
+export function pageOnlyBodyData(id: string, detail: ObjectDetailData): BodyData | null {
 	const global = detail.global;
 	if (!global) return null;
 	return {
@@ -134,12 +146,11 @@ export function unplacedBodyDataFromGlobal(id: string, detail: ObjectDetailData)
 			global.provisional_designation ??
 			null,
 		objectType: parseObjectType(global.type),
-		// No parent to hang off: the position pass reads `unplaceable` and stops
-		// before it ever looks one up.
-		parentId: '',
+		// The body it sits at or orbits, when the catalogue names one.
+		parentId: global.host_id ?? '',
 		radiusKm: global.sbdb?.diameter ? global.sbdb.diameter / 2 : NaN,
 		hasLocalized: detail.localized != null,
-		unplaceable: true,
+		pageOnly: true,
 		a: NaN,
 		e: NaN,
 		i: NaN,
@@ -152,25 +163,4 @@ export function unplacedBodyDataFromGlobal(id: string, detail: ObjectDetailData)
 		validityEnd: Infinity,
 		orbitalSource: OrbitalSource.UNKNOWN
 	};
-}
-
-/**
- * Whether the map can put this object anywhere.
- *
- * Mirrors `Object.has_position` on the pipeline side, read off the bundle the
- * client already has: the ingest sets that flag from the same fields, and an
- * object without it ships in no position zone and no labels file.
- *
- * The `naif-` bodies and the probes ride sampled ephemerides rather than
- * elements, so their bundles say nothing about it and they are always placed.
- * What this rejects is a satellite the archive holds no elements for, a moon of
- * an asteroid published without an orbit, and — the one case wider than the
- * flag — a decayed object whose elements are gone from the current week.
- */
-export function canBePlaced(id: string, global: GlobalObjectData | null): boolean {
-	if (id.startsWith('naif-') || id.startsWith('probe-')) return true;
-	const orbit = global?.orbit;
-	if (!orbit) return false;
-	if (orbit.q != null && orbit.tp != null) return true; // parabolic comet
-	return orbit.epoch_jd != null && orbit.a != null && orbit.ma != null && orbit.n != null;
 }

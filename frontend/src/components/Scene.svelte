@@ -5,13 +5,12 @@
 	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { page } from '$app/state';
-	import { sphericalToCartesian } from '$lib/math/spherical';
 	import { kmToScene } from '$lib/math/units';
 	import { navEndOf, parseUrl, urlTypeFromId } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { MapCover } from '$lib/state/map-cover.svelte';
-	import { jdToDate } from '$lib/time/jd';
+	import { dateToJD, jdToDate } from '$lib/time/jd';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import LoadingBar from './LoadingBar.svelte';
@@ -149,12 +148,23 @@
 			const oldId = appState.view.id;
 			appState.syncFromPopState(view);
 			if (view.id === oldId) return;
-			const body = ctx.getBody(view.id);
-			const target = body?.position ?? map.focusedBody?.position ?? [0, 0, 0];
-			const camPos = sphericalToCartesian(target, view.latitude, view.longitude, view.zoom);
+			// Back to the entry's own date, then to the object: `goTo` moves the
+			// clock again only when the object has no place at that date.
+			if (!view.isNow) clock.jumpTo(dateToJD(view.date));
+			else if (!clock.live) clock.now();
 			isNavigatingBack = true;
-			if (body) map.setFocusTarget(body, camPos);
-			isNavigatingBack = false;
+			void map
+				.goTo(view.id, {
+					camera: 'cut',
+					view: () => ({
+						distance: view.zoom,
+						latitude: view.latitude,
+						longitude: view.longitude
+					})
+				})
+				.finally(() => {
+					isNavigatingBack = false;
+				});
 		};
 		window.addEventListener('popstate', onPopState);
 

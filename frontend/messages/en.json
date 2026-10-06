@@ -1351,6 +1351,7 @@
 	"object_not_found": "Couldn't show {name} — it may not exist or have no orbit data",
 	"object_no_position": "{name} has no position data at this date",
 	"object_position_unknown": "The map has no position for {name}",
+	"object_shown_at_host": "The map has no position for {name}. It shows {host} instead.",
 	"clock_moved_title": "Date changed",
 	"clock_moved_body": "{name} has no position data at {from}. The map now shows {to}.",
 	"out_of_range_title": "Limited data at this time",

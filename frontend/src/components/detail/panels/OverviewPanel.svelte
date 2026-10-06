@@ -85,12 +85,12 @@
 	);
 
 	// Bodies whose `data` holds no usable elements — probes carry a=e=i=…=0,
-	// unplaceable stand-ins carry NaN — must not reach the Orbital panel, which
+	// page-only stand-ins carry NaN — must not reach the Orbital panel, which
 	// would warn (or throw on the epoch) once a frame.
 	let drawerOrbitElements = $derived.by(() => {
 		if (!body) return undefined;
 		if (body.orbitElements) return body.orbitElements;
-		if (body.data.unplaceable || body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
+		if (body.data.pageOnly || body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
 			return undefined;
 		}
 		return body.data;

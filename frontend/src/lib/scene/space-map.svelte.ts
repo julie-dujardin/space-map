@@ -55,6 +55,7 @@ import { minCameraDistance, type CameraBand } from './visibility/camera-limits';
 import { GestureHandler, gestureStart } from '$lib/interaction/gesture';
 import { CooperativeGestures } from '$lib/interaction/cooperative';
 import { dateToJD, jdToDate } from '$lib/time/jd';
+import { coverageOf, nearestCoveredJd, type CoverageWindow } from '$lib/fetch/coverage';
 import { host } from '$lib/host';
 import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 import type { LabelledHazard } from '$lib/travel/hazards';
@@ -197,6 +198,44 @@ export interface ClockState {
 	live: boolean;
 }
 
+/** @internal What a navigation does on its way to an object. */
+export interface GoToOptions {
+	/** `snap` moves the clock to the nearest date the object has a place at.
+	 *  `keep` leaves the date to the caller. Default `snap`. */
+	clock?: 'snap' | 'keep';
+	/** How the camera gets there: `fly` travels, `cut` is there at once, `pan`
+	 *  turns to it from where it is, `none` leaves it to the caller. Default `fly`. */
+	camera?: 'fly' | 'cut' | 'pan' | 'none';
+	/** Where the camera ends up: scene units and body-fixed degrees. Read once
+	 *  the body is in the scene. */
+	view?: (body: PositionedBody) => { distance?: number; latitude?: number; longitude?: number };
+	/** Called once the object is in the scene, before it takes the focus:
+	 *  where a page records the navigation. */
+	commit?: (body: PositionedBody) => void;
+}
+
+/** @internal How a navigation ended. */
+export interface Arrival {
+	/**
+	 * - `placed`: the object has a place, and the camera is on it or left to the caller.
+	 * - `host`: the map has no place for it at any date. It has the focus, and
+	 *   the camera is on the body it belongs to.
+	 * - `nowhere`: the same, with no such body: the camera stayed where it was.
+	 * - `unplaced`: it has a place at other dates and none at this one. It has
+	 *   the focus, and the camera stayed where it was.
+	 * - `missing`: the map has no such object.
+	 * - `superseded`: a later navigation took over before this one moved anything.
+	 */
+	outcome: 'placed' | 'host' | 'nowhere' | 'unplaced' | 'missing' | 'superseded';
+	body?: PositionedBody;
+	/** The body the camera is on in its stead. */
+	host?: PositionedBody;
+	/** Set when the clock moved: the date it left, and the date it is at. */
+	clockMoved?: { from: number; to: number };
+	/** How long the flight takes, in milliseconds. */
+	flightMs: number;
+}
+
 export interface MapEvents {
 	focuschange: (e: FocusChange) => void;
 	/** The camera came to rest around the focused body. */
@@ -318,6 +357,10 @@ export class SpaceMap {
 	private limits: CameraLimits = {};
 	private initialFocusPending = true;
 	private pendingFocusId: string | null = null;
+	/** The first load, started once. */
+	private opening: Promise<void> | null = null;
+	/** Counts navigations: a later one supersedes an earlier one still on its way. */
+	private navigation = 0;
 	/** Retires the host's hold on the camera. Kept so that a second hold, or
 	 *  unmounting, can take the camera off the hold before it. */
 	private retireCameraHold: (() => void) | null = null;
@@ -476,7 +519,11 @@ export class SpaceMap {
 	 * that point a failure has nowhere left to reject to, and reaches the host
 	 * as an `error` event instead.
 	 */
-	async open(targetId: string = this.initialView.id): Promise<void> {
+	open(targetId: string = this.initialView.id): Promise<void> {
+		return (this.opening ??= this.openOnce(targetId));
+	}
+
+	private async openOnce(targetId: string): Promise<void> {
 		const loaded = this.load(targetId);
 		loaded.catch(() => {
 			/* reported by the error effect, and logged by the data layer */
@@ -569,6 +616,7 @@ export class SpaceMap {
 			const w = window as unknown as Record<string, unknown>;
 			w.__smRenderer = renderer;
 			w.__smCtx = this.ctx;
+			w.__smMap = this;
 		}
 
 		const resize = new ResizeObserver(() =>
@@ -783,15 +831,152 @@ export class SpaceMap {
 	/**
 	 * Fly the camera to a body, or to a named feature on one. Resolves when the
 	 * flight lands. Whatever the target leaves out the map frames itself, so
-	 * `{ body }` alone is the ordinary way to move.
+	 * `{ body }` alone is the ordinary way to move. A body the map has not
+	 * loaded is loaded first. The clock stays where the host set it.
 	 */
-	flyTo(target: CameraTarget): Promise<void> {
+	async flyTo(target: CameraTarget): Promise<void> {
 		const body = this.targetBody(target);
 		if (target.feature) return this.toFeature(body, target.feature, 'frame');
 		// Always with a distance: told to fly to a body and nothing more, the
 		// focus controller re-aims without approaching, and the host asked to be
 		// taken there.
-		return this.settled(this.focusOnBody(body, this.framing(target, body), target.lat, target.lon));
+		const arrival = await this.goTo(body, {
+			clock: 'keep',
+			view: () => ({
+				distance: this.framing(target, body),
+				latitude: target.lat,
+				longitude: target.lon
+			})
+		});
+		return this.settled(arrival.flightMs);
+	}
+
+	/**
+	 * @internal
+	 * The one way to navigate to an object. It runs these steps in order, so
+	 * that no caller can skip one: move the clock to a date the object has a
+	 * place at, wait for the data of that date, add the object to the scene,
+	 * place it, then give it the focus and move the camera.
+	 *
+	 * An object with no place takes the focus all the same: it has a page. The
+	 * camera then goes to the body it belongs to, or stays where it is.
+	 */
+	async goTo(id: string, options: GoToOptions = {}): Promise<Arrival> {
+		const token = ++this.navigation;
+		const superseded = (): boolean => token !== this.navigation;
+		const gone: Arrival = { outcome: 'superseded', flightMs: 0 };
+		const coverage = (): Promise<CoverageWindow[]> =>
+			coverageOf(id).catch((e) => {
+				console.warn(`[map] goTo ${id}: no coverage to read, the clock stays:`, e);
+				return [];
+			});
+
+		// Measured before the clock moves: after it, the camera is far from
+		// where the focused body went.
+		const distanceBefore = this.cameraDistance();
+		let clockMoved: Arrival['clockMoved'];
+		let windows: CoverageWindow[] | null = null;
+		// The scene stays at the old date while the data of the new one loads.
+		let release = (): void => {};
+		if (options.clock !== 'keep') {
+			windows = await coverage();
+			if (superseded()) return gone;
+			const from = this.clock.jd;
+			const to = nearestCoveredJd(windows, from);
+			if (to !== null && to !== from) {
+				release = this.renderer?.holdDate() ?? release;
+				this.clock.jumpTo(to);
+				clockMoved = { from, to };
+			}
+		}
+
+		let renderer: SceneRenderer | null;
+		try {
+			await this.open(id).catch(() => {
+				/* reported by the error effect */
+			});
+			const date = jdToDate(this.clock.jd);
+			await this.ctx.ready(date);
+			await this.ctx.ensureBody(id, date);
+			renderer = await this.rendering();
+		} finally {
+			release();
+		}
+		if (superseded()) return gone;
+		const body = this.ctx.getBody(id);
+		if (!body || !renderer) {
+			console.warn(`[map] goTo ${id}: not an object of this map`);
+			return { outcome: 'missing', clockMoved, flightMs: 0 };
+		}
+
+		options.commit?.(body);
+		if (renderer.placeOf(body)) {
+			const view = options.view?.(body) ?? {};
+			const distance =
+				view.distance ?? (body.data.radiusKm > 0 ? this.framing({}, id) : distanceBefore);
+			let flightMs = 0;
+			switch (options.camera ?? 'fly') {
+				case 'fly':
+					flightMs = renderer.focusOnBody(id, distance, view.latitude, view.longitude);
+					break;
+				case 'cut':
+					renderer.snapToBody(
+						id,
+						view.latitude ?? DEFAULT_FRAMING_LAT,
+						view.longitude ?? DEFAULT_FRAMING_LON,
+						distance
+					);
+					break;
+				case 'pan':
+					flightMs = renderer.focusOnBody(id);
+					break;
+				case 'none':
+			}
+			return { outcome: 'placed', body, clockMoved, flightMs };
+		}
+
+		// No place: it takes the focus, and the camera stays off it.
+		renderer.focusOnBody(id);
+		windows ??= await coverage();
+		if (windows.length > 0) {
+			// The export says it has a place at some date, and it has none here.
+			if (options.clock !== 'keep') {
+				console.error(
+					`[map] goTo ${id}: no place at jd ${this.clock.jd} (${body.unplaced}), inside its coverage`
+				);
+			}
+			return { outcome: 'unplaced', body, clockMoved, flightMs: 0 };
+		}
+		const host = this.placedAncestor(body, renderer);
+		if (!host) return { outcome: 'nowhere', body, clockMoved, flightMs: 0 };
+		const flightMs = renderer.panCameraTo(host, this.framing({}, host.data.id));
+		return { outcome: 'host', body, host, clockMoved, flightMs };
+	}
+
+	/** The nearest body `body` hangs off that has a place. */
+	private placedAncestor(body: PositionedBody, renderer: SceneRenderer): PositionedBody | null {
+		const seen = new Set<string>([body.data.id]);
+		let cur = this.ctx.getBody(body.data.parentId);
+		while (cur && !seen.has(cur.data.id)) {
+			if (renderer.placeOf(cur)) return cur;
+			seen.add(cur.data.id);
+			cur = this.ctx.getBody(cur.data.parentId);
+		}
+		return null;
+	}
+
+	/** The renderer, once the map draws. Null when it never will. */
+	private rendering(): Promise<SceneRenderer | null> {
+		return new Promise((resolve) => {
+			const check = (): void => {
+				if (this.renderer) resolve(this.renderer);
+				else if (this.webglError || this.ctx.error) resolve(null);
+				// A timer alongside the frame: a backgrounded tab fires no rAF.
+				else if (document.hidden) setTimeout(check, 100);
+				else requestAnimationFrame(check);
+			};
+			check();
+		});
 	}
 
 	/** Turn to a feature on the body already framed, without travelling to it —
@@ -964,14 +1149,18 @@ export class SpaceMap {
 		if (target.distanceKm !== undefined) return kmToScene(target.distanceKm);
 		const body = this.ctx.getBody(id);
 		if (body && body.data.radiusKm > 0) return minCameraDistance(body) * 5;
+		return this.cameraDistance();
+	}
+
+	/** How far the camera is from what it orbits, in scene units. */
+	private cameraDistance(): number {
 		return this.renderer?.getCameraState().distance ?? DEFAULT_ZOOM;
 	}
 
 	/** @internal */
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
-		// A deep link on a body the renderer will not settle on itself (an
-		// unplaceable one) can ask for focus while the scene is still mounting;
-		// hold the ask rather than dropping it, and mount applies it.
+		// A caller can ask for focus while the scene is still mounting: hold the
+		// ask, and mount applies it.
 		if (!this.renderer) {
 			this.pendingFocusId = id;
 			return 0;

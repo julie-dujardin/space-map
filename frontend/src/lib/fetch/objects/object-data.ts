@@ -1,5 +1,5 @@
 import { getLocale, textureAllowed, type TextureDistribution } from '$lib/host';
-import type { ProbeCoverage } from '$lib/fetch/metadata';
+import type { Coverage } from '$lib/fetch/metadata';
 import {
 	fetchBundlePair,
 	OBJECT_BUNDLES,
@@ -775,9 +775,11 @@ export interface GlobalObjectData {
 		categories?: string[];
 		country_codes?: string[];
 	};
-	/** Probe objects only. Outermost SPK coverage envelope; the focused-probe
-	 *  coverage-end pause arms a SimClock boundary stop from these bounds. */
-	coverage?: ProbeCoverage;
+	/** When the map can place the object. Absent: it has no place at any date. */
+	coverage?: Coverage;
+	/** On an object with no `coverage`: the body it sits at or orbits, when the
+	 *  catalogue names one. */
+	host_id?: string;
 	/** Top moons picked at export time (image/sitelinks/diameter rank); on
 	 *  planets/dwarf planets and asteroids with satellites. */
 	notable_moons?: NotableMemberEntry[];

@@ -12,7 +12,6 @@ import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { loadBodyLabel, unloadBodyTexture } from '$lib/scene/objects/body/textures';
 import { unloadBodyModel } from '$lib/scene/objects/body/model';
 import { disposeNomenclatureLabels } from '$lib/scene/objects/surface/nomenclature';
-import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 
 /** Sparse-cloud emphasis: `half` (<50 members) renders halo-only, `full` (<20)
@@ -221,22 +220,21 @@ export class PromotionRegistry {
 		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, circleTexture, renderer } =
 			this.deps;
 		if (bodyObjects.has(body.data.id)) return false;
-		// Point-cloud position is frozen at load; refresh so the mesh/halo/trail
-		// spawn at the current jd instead of jumping next tick.
-		refreshMinorBodyPosition(body, clock.jd, ctx);
 		// Minor bodies from chunks lack orbitElements; populate so trails can build.
 		// Skip probes (data is all-zero, state comes from sub-chunk dispatch) and
-		// unplaceable stand-ins (data is NaN): elements from either would draw
+		// page-only stand-ins (data is NaN): elements from either would draw
 		// nothing and defeat the drawer's own guards.
 		if (
 			!body.orbitElements &&
-			!body.data.unplaceable &&
+			!body.data.pageOnly &&
 			body.data.orbitalSource !== OrbitalSource.SPICE_PROBE
 		) {
 			body.orbitElements = body.data;
-			const parent = bodyObjects.get(body.data.parentId);
-			if (parent) body.orbitCenter = [...parent.body.position];
+			body.orbitCenterId = body.data.parentId;
 		}
+		// A point-cloud row has no place until something asks: settle it, so the
+		// mesh, halo and trail start where the dot is.
+		ctx.place(body, clock.jd);
 		buildMajorBodies(
 			[body],
 			scene,
@@ -478,9 +476,8 @@ export class PromotionRegistry {
 			unloadBodyModel(bo);
 			unloadBodyTexture(bo);
 			disposeNomenclatureLabels(bo);
-			scene.remove(bo.group);
-			// Mesh + (for stars) corona/starPoint/etc. are added to scene directly.
-			for (const obj of bo.extraObjects) scene.remove(obj);
+			// The root holds the label group, the mesh and the star extras.
+			scene.remove(bo.root);
 			if (bo.trail) scene.remove(bo.trail);
 			if (bo.mesh) {
 				bo.mesh.geometry.dispose();

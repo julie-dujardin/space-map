@@ -46,7 +46,7 @@ import {
 	type FeatureAnchor,
 	type PositionedBody
 } from '$lib/types/objects';
-import { makeFeatureBody, seatFeatureBody } from './focus/feature-focus';
+import { makeFeatureBody } from './focus/feature-focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
@@ -115,6 +115,8 @@ import { OrbitPreviewOverlay, type OrbitPreview } from './objects/travel/orbit-p
 import { eclipticToScene } from '$lib/math/travel/state';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { updatePositions, refreshDeferredTrails } from './position/update-positions';
+import { Placer } from './position/placer';
+import { SSB_POSITION } from './position/placement';
 import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
 import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
@@ -123,7 +125,13 @@ import { evaluateEclipseFactor } from './objects/surface/eclipse-shadow';
 import { updateSunShadowLight } from './shaders/sun-shadow-light';
 import { updateSphereLOD } from './lod/sphere-lod';
 import { updateTextureLOD } from './lod/texture-lod';
-import { type BodyObjects, type Callbacks, type CameraView, type InitialView } from './types';
+import {
+	isDrawn,
+	type BodyObjects,
+	type Callbacks,
+	type CameraView,
+	type InitialView
+} from './types';
 import type { Vec3 } from './animation/math';
 import {
 	type FocusState,
@@ -218,6 +226,7 @@ export class SceneRenderer {
 	private pointClouds!: PointCloudSystem;
 	private systemData!: SystemDataLoader;
 	private readonly positionDiagnostics = new PositionDiagnostics();
+	private readonly placer: Placer;
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
 	private hoveredBodyIds = new Set<string>();
@@ -319,11 +328,12 @@ export class SceneRenderer {
 	private lastProbeVersion = 0;
 	/** Set by {@link dispose}, for loads that land after it. */
 	private disposed = false;
-	private lastHostReadVersion = 0;
+	private lastDataVersion = -1;
+	/** Live {@link holdDate} calls. */
+	private dateHolds = 0;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
-	private readonly _positionMapScratch = new Map<string, Vec3>();
 	/** Frames rendered; the hidden-body stagger in `updatePositions` keys off it. */
 	private frameIndex = 0;
 	/** Frames kept rendering after the last invalidation: damping tails and
@@ -378,7 +388,7 @@ export class SceneRenderer {
 	private get sunPointLight(): PointLight | undefined {
 		return this.bodyObjects
 			.get(SUN_ID)
-			?.extraObjects.find((o): o is PointLight => o instanceof PointLight);
+			?.root.children.find((o): o is PointLight => o instanceof PointLight);
 	}
 	/** Tight-far regime active (see TIGHT_FAR_ENGAGE / updateDepthFar). */
 	private tightFar = false;
@@ -475,19 +485,17 @@ export class SceneRenderer {
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx, () => this.disposed);
 
-		const sunBody = ctx.bodies.majorBodies.find((b) => b.data.id === SUN_ID);
-		const resident = ctx.getBody(initialView.id);
-		// An unplaced target (no ephemeris at this time) carries a stand-in
-		// position; treat it as absent so the camera settles somewhere real.
-		const matchedBody = resident && !resident.positionUnknown ? resident : undefined;
-		// Without a target — still streaming, absent, or unplaceable — the camera
-		// settles on the default view's body, which MapPage then eases onto the
-		// real target from once it lands. The Sun stands in only if Earth itself
-		// hasn't loaded.
-		const fallbackBody =
-			ctx.bodies.majorBodies.find((b) => b.data.id === DEFAULT_FOCUS_ID) || sunBody;
-		const focusBody = matchedBody ?? fallbackBody;
-		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
+		this.placer = new Placer(ctx, this.bodyObjects, this.positionDiagnostics);
+		ctx.placer = this.placer;
+		// The camera settles on the first of these that has a place: the target,
+		// else the default view's body (MapPage eases onto the real target once
+		// it lands), else the Sun. With none, the basis is the barycentre.
+		const focusBody = [
+			ctx.getBody(initialView.id),
+			ctx.bodies.majorBodies.find((b) => b.data.id === DEFAULT_FOCUS_ID),
+			ctx.bodies.majorBodies.find((b) => b.data.id === SUN_ID)
+		].find((b) => b && this.placer.place(b, this.clock.jd));
+		const focusPos = focusBody?.position ?? SSB_POSITION;
 
 		this.focus.focusTruePos = [...focusPos];
 		this.focus.focusOriginWorld = [...focusPos];
@@ -571,13 +579,14 @@ export class SceneRenderer {
 		// The URL framing belongs to the target: a probe's metre-scale zoom against
 		// the fallback body would bury the camera inside it. Default framing until
 		// the target lands.
-		const framing = matchedBody
-			? initialView
-			: {
-					latitude: DEFAULT_FRAMING_LAT,
-					longitude: DEFAULT_FRAMING_LON,
-					zoom: DEFAULT_ZOOM
-				};
+		const framing =
+			focusBody?.data.id === initialView.id
+				? initialView
+				: {
+						latitude: DEFAULT_FRAMING_LAT,
+						longitude: DEFAULT_FRAMING_LON,
+						zoom: DEFAULT_ZOOM
+					};
 		const camPos = sphericalToCartesian(
 			[0, 0, 0],
 			framing.latitude,
@@ -701,10 +710,12 @@ export class SceneRenderer {
 		// camera's mid-flight position says nothing anyway.
 		const flying = performance.now() - this.focus.focusStartTime < this.focus.focusDurationMs;
 		if (flying && this.previewFlyBodyId === frame.bodyId) return;
+		const pos = this.whereBody(body);
+		if (!pos) return;
 		const basis = this.focus.focusTruePos;
-		const dx = body.position[0] - basis[0] - this.camera.position.x;
-		const dy = body.position[1] - basis[1] - this.camera.position.y;
-		const dz = body.position[2] - basis[2] - this.camera.position.z;
+		const dx = pos[0] - basis[0] - this.camera.position.x;
+		const dy = pos[1] - basis[1] - this.camera.position.y;
+		const dz = pos[2] - basis[2] - this.camera.position.z;
 		const distance = Math.hypot(dx, dy, dz);
 		// The ring already reads at this vantage — neither inside it nor so far
 		// out it is a speck — so the reader's own framing survives.
@@ -717,10 +728,7 @@ export class SceneRenderer {
 	 *  path, since the bodies move under them. */
 	private refreshOrbitPreview(): void {
 		if (this.orbitPreview.isEmpty) return;
-		this.orbitPreview.reposition(
-			(id) => this.ctx.getBody(id)?.position ?? null,
-			this.focus.focusTruePos
-		);
+		this.orbitPreview.reposition((id) => this.where(id), this.focus.focusTruePos);
 		this.orbitPreview.updateCameraOffset(this.camera.position);
 	}
 
@@ -733,7 +741,7 @@ export class SceneRenderer {
 			return;
 		}
 		const centerId = this.travelPath.centerId;
-		const center = centerId ? this.ctx.getBody(centerId) : null;
+		const center = centerId ? this.where(centerId) : null;
 		if (!center) {
 			this.travelPath.setVisible(false);
 			this.reserveTravelLabelSpace();
@@ -741,10 +749,8 @@ export class SceneRenderer {
 		}
 		this.travelPath.setVisible(true);
 		this.travelPath.setClock(this.clock.jd);
-		this.travelPath.reposition(center.position, this.focus.focusTruePos, (id) => {
-			// Planet-frame ends hang off the live body, which may not be streamed in.
-			return this.ctx.getBody(id)?.position ?? null;
-		});
+		// Planet-frame ends hang off the live body, which may not be streamed in.
+		this.travelPath.reposition(center, this.focus.focusTruePos, (id) => this.where(id));
 		this.travelPath.updateCameraOffset(this.camera.position);
 		this.reserveTravelLabelSpace();
 	}
@@ -763,11 +769,11 @@ export class SceneRenderer {
 	 *  reader already chose rather than closing in on every timeline touch. */
 	focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void {
 		this.disarmLimits();
-		const center = this.ctx.getBody(centerId);
+		const center = this.where(centerId);
 		if (!center) return;
 		const [x, y, z] = eclipticToScene(rKm);
 		this.travelFocus = { centerId, local: [x, y, z] };
-		const world = this.travelFocusWorld(center.position);
+		const world = this.travelFocusWorld(center);
 		if (!world) return;
 		this.focusController.focusOnPoint(world);
 	}
@@ -809,9 +815,9 @@ export class SceneRenderer {
 			this.travelFocus = null;
 			return;
 		}
-		const center = this.ctx.getBody(this.travelFocus.centerId);
+		const center = this.where(this.travelFocus.centerId);
 		if (!center) return;
-		const world = this.travelFocusWorld(center.position);
+		const world = this.travelFocusWorld(center);
 		if (!world) return;
 		const f = this.focus;
 		f.focusTargetWorld = world;
@@ -840,19 +846,20 @@ export class SceneRenderer {
 			this.ctx.visibility.clearTravelSystem();
 			return;
 		}
-		const center = this.ctx.getBody(target.centerId);
-		const world = center ? this.travelFocusWorld(center.position) : null;
+		const center = this.where(target.centerId);
+		const world = center ? this.travelFocusWorld(center) : null;
 		if (!world) return;
 		let inSystem: string | null = null;
 		for (const stop of path.stops) {
 			const body = this.ctx.getBody(stop.bodyId);
-			if (!body) continue;
+			const bodyPos = body && this.whereBody(body);
+			if (!body || !bodyPos) continue;
 			const sysId = this.ctx.visibility.resolveSystemId(body);
 			if (!sysId) continue;
 			// The same reach the declutter measures the camera against.
 			const enterAU = this.ctx.visibility.systemReachAU(sysId);
 			if (!(enterAU > 0)) continue;
-			const distAU = f64dist(world, body.position) / AU_SCALE;
+			const distAU = f64dist(world, bodyPos) / AU_SCALE;
 			if (!inSystem && distAU <= enterAU) {
 				inSystem = sysId;
 			} else if (distAU <= enterAU * TRAVEL_SYSTEM_PREFETCH_MULTIPLIER) {
@@ -896,16 +903,58 @@ export class SceneRenderer {
 		this.rebuildTrailBasis();
 	}
 
+	/** Dev check, once a frame: nothing is on screen for a body with no place. */
+	private checkDrawnArePlaced(): void {
+		for (const bo of this.bodyObjects.values()) {
+			if (bo.body.position) continue;
+			const drawn = bo.root.visible
+				? 'root'
+				: bo.trail?.visible
+					? 'trail'
+					: bo.model?.parent === this.modelScene
+						? 'model'
+						: null;
+			if (!drawn) continue;
+			this.positionDiagnostics.warnOnce(
+				'drawn-unplaced',
+				bo.body.data.id,
+				() =>
+					`[scene] ${bo.body.data.id} has no place (${bo.body.unplaced}) and its ${drawn} is drawn`
+			);
+		}
+	}
+
+	/** Place of `body` at the clock's date, once the scene has caught up with
+	 *  the clock. Null when it has none. */
+	placeOf(body: PositionedBody): Vec3 | null {
+		this.applyJdUpdate();
+		return this.whereBody(body);
+	}
+
+	/** Move the camera onto `body`, `distance` away, and leave the focus where
+	 *  it is. Returns how long the move takes (ms). */
+	panCameraTo(body: PositionedBody, distance?: number): number {
+		this.disarmLimits();
+		this.focusController.panCameraToBody(body, distance);
+		return this.focus.focusDurationMs;
+	}
+
+	/** Place of the body `id` at the scene date. Null when it has none. */
+	private where(id: string): Vec3 | null {
+		return this.placer.at(id, this.clock.jd);
+	}
+
+	private whereBody(body: PositionedBody): Vec3 | null {
+		return this.placer.place(body, this.clock.jd);
+	}
+
 	/** Like {@link repositionAll} but skips the trail rewrite — for callers that already refreshed lines per-body. */
 	private repositionBodies(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
-			const [bx, by, bz] = bo.body.position;
-			const rx = bx - fx;
-			const ry = by - fy;
-			const rz = bz - fz;
-			bo.group.position.set(rx, ry, rz);
-			for (const obj of bo.extraObjects) obj.position.set(rx, ry, rz);
+			const p = bo.body.position;
+			// A body with no place is not drawn: its root stays hidden.
+			if (p) bo.root.position.set(p[0] - fx, p[1] - fy, p[2] - fz);
 		}
 		this.pointClouds.reposition();
 	}
@@ -1186,6 +1235,7 @@ export class SceneRenderer {
 		// After updateSunShadowLight: may re-seat the shadow light around a
 		// focused mounted model with a model-tight frustum.
 		this.updateModelMounts();
+		if (import.meta.env.DEV) this.checkDrawnArePlaced();
 
 		// One point-cloud upload per frame to spread GPU cost. Auto-promotion
 		// now happens push-style at chunk-arrival time (PromotionRegistry
@@ -1236,9 +1286,10 @@ export class SceneRenderer {
 		const anchorBo = anchorId ? this.bodyObjects.get(anchorId) : undefined;
 		const radius = anchorBo?.radiusScene ?? 0;
 		let dist = distance;
-		if (focused && anchorBo && anchorId !== focused.data.id) {
+		const anchorAt = anchorBo?.body.position;
+		if (focused && anchorAt && anchorId !== focused.data.id) {
 			const [fx, fy, fz] = this.focus.focusTruePos;
-			const [bx, by, bz] = anchorBo.body.position;
+			const [bx, by, bz] = anchorAt;
 			const cam = this.camera.position;
 			dist = Math.hypot(fx + cam.x - bx, fy + cam.y - by, fz + cam.z - bz);
 		}
@@ -1272,27 +1323,24 @@ export class SceneRenderer {
 			const sunBo = this.bodyObjects.get(SUN_ID);
 			if (this.tightFar) {
 				// Any in-system orbit stays within apoapsis < 2·a of the root.
-				const root = this.bodyObjects.get(sysId)?.body;
+				const root = this.bodyObjects.get(sysId)?.body.position;
 				if (root) {
-					const rootDist = Math.hypot(
-						root.position[0] - fx,
-						root.position[1] - fy,
-						root.position[2] - fz
-					);
+					const rootDist = Math.hypot(root[0] - fx, root[1] - fy, root[2] - fz);
 					const reach = rootDist + this.ctx.bodies.getSystemExtent(sysId) * AU_SCALE * 2;
 					maxDistSq = Math.max(maxDistSq, reach * reach);
 				}
 			} else {
 				// The Sun stays lit and visible from inside a subsystem
 				// (hasFullRendering excludes it) — keep it in range.
-				if (sunBo) consider(sunBo.body.position);
+				if (sunBo?.body.position) consider(sunBo.body.position);
 			}
 			// Everything rendered while zoomed in holds the far plane — bodyObjects,
 			// not ctx.bodies.majorBodies, so in-system probes (JWST from the Moon)
 			// and L-point markers count too. Out-of-system bodies fail
 			// hasFullRendering; their sub-pixel meshes clip harmlessly.
 			for (const bo of this.bodyObjects.values()) {
-				if (this.ctx.visibility.hasFullRendering(bo.body)) consider(bo.body.position);
+				const p = bo.body.position;
+				if (p && this.ctx.visibility.hasFullRendering(bo.body)) consider(p);
 			}
 			far = Math.min(CAMERA_FAR_DEFAULT, Math.max(FAR_MIN, Math.sqrt(maxDistSq) * FAR_MARGIN));
 		}
@@ -1313,9 +1361,10 @@ export class SceneRenderer {
 	 */
 	private updateSunProxy(refraction: { angleRad: number; up: Vector3 } | null): void {
 		const sunBo = this.bodyObjects.get(SUN_ID);
-		if (!sunBo) return;
+		const sunAt = sunBo?.body.position;
+		if (!sunBo || !sunAt) return;
 		const [fx, fy, fz] = this.focus.focusTruePos;
-		const [sx, sy, sz] = sunBo.body.position;
+		const [sx, sy, sz] = sunAt;
 		let rx = sx - fx;
 		let ry = sy - fy;
 		let rz = sz - fz;
@@ -1348,8 +1397,7 @@ export class SceneRenderer {
 			this.sunBaseMeshScale = sunBo.mesh?.scale.x ?? 1;
 			this.sunBaseCoronaScale = sunBo.corona?.scale.x ?? 0;
 		}
-		sunBo.group.position.set(rx * k, ry * k, rz * k);
-		for (const obj of sunBo.extraObjects) obj.position.set(rx * k, ry * k, rz * k);
+		sunBo.root.position.set(rx * k, ry * k, rz * k);
 		sunBo.mesh?.scale.setScalar(this.sunBaseMeshScale * k);
 		sunBo.corona?.scale.set(this.sunBaseCoronaScale * k, this.sunBaseCoronaScale * k, 1);
 		this.sunProxyK = k;
@@ -1422,7 +1470,7 @@ export class SceneRenderer {
 	private updateModelMounts(): void {
 		let overlayActive = false;
 		for (const bo of this.bodyObjects.values()) {
-			if (bo.model && isModelBearing(bo.body)) {
+			if (bo.model && isModelBearing(bo.body) && isDrawn(bo)) {
 				overlayActive = true;
 				break;
 			}
@@ -1430,9 +1478,17 @@ export class SceneRenderer {
 		this.overlayActive = overlayActive;
 		for (const bo of this.bodyObjects.values()) {
 			const root = bo.model;
+			if (!root) continue;
+			const drawn = isDrawn(bo);
 			const mount = bo.modelRoot;
-			if (!root || !mount) continue;
-			if (overlayActive) {
+			if (!mount) {
+				// A spacecraft model has no place in the main scene: the overlay
+				// scene holds it, and only while the craft is drawn.
+				if (drawn && root.parent !== this.modelScene) this.modelScene.add(root);
+				else if (!drawn && root.parent) root.removeFromParent();
+				continue;
+			}
+			if (overlayActive && drawn) {
 				if (root.parent !== this.modelScene) this.modelScene.add(root);
 			} else if (root.parent !== mount) {
 				// Back from an overlay episode: restore the fit normalisation the
@@ -1476,15 +1532,14 @@ export class SceneRenderer {
 		const castShadow = this.shadowLight.intensity > 0;
 		this.shadowLight.castShadow = castShadow;
 		if (!castShadow) return;
-		const sunBody = this.bodyObjects.get(SUN_ID)?.body;
-		if (!sunBody) return;
-		const [sx, sy, sz] = sunBody.position;
-		const [bx, by, bz] = bo.body.position;
-		this._tmpSun.set(sx - bx, sy - by, sz - bz).normalize();
+		const sunAt = this.bodyObjects.get(SUN_ID)?.body.position;
+		const at = bo.body.position;
+		if (!sunAt || !at) return;
+		this._tmpSun.set(sunAt[0] - at[0], sunAt[1] - at[1], sunAt[2] - at[2]).normalize();
 		this.shadowLight.position
-			.copy(bo.group.position)
+			.copy(bo.root.position)
 			.addScaledVector(this._tmpSun, MODEL_SHADOW_DIST * s);
-		this.shadowLight.target.position.copy(bo.group.position);
+		this.shadowLight.target.position.copy(bo.root.position);
 		const cam = this.shadowLight.shadow.camera;
 		cam.left = cam.bottom = -MODEL_SHADOW_EXTENT * s;
 		cam.right = cam.top = MODEL_SHADOW_EXTENT * s;
@@ -1530,7 +1585,7 @@ export class SceneRenderer {
 		// Mirror the overlay camera off the body's render-space position, not the
 		// focus origin — during flies focusTruePos lags the body's true motion and
 		// the model would render displaced from the main-scene body (labels detach).
-		this._tmpV3.copy(this.camera.position).sub(bo.group.position);
+		this._tmpV3.copy(this.camera.position).sub(bo.root.position);
 		const camDist = this._tmpV3.length();
 		// Model is normalised to radius 1 in modelScene; this overlayDist makes it
 		// subtend exactly what the radiusScene sphere would, so the model renders
@@ -1547,11 +1602,11 @@ export class SceneRenderer {
 		let extraReach = 0;
 		for (const other of this.bodyObjects.values()) {
 			const m = other.model;
-			if (!m || other === bo) continue;
+			if (!m || other === bo || !isDrawn(other)) continue;
 			const s = modelUnitScene(other) / unit;
 			const ofitScale = (m.userData as { fitScale?: number }).fitScale ?? 1;
 			m.scale.setScalar(ofitScale * s);
-			m.position.subVectors(other.group.position, bo.group.position).divideScalar(unit);
+			m.position.subVectors(other.root.position, bo.root.position).divideScalar(unit);
 			const ofit = m.userData as { centerOffset?: Vector3 };
 			if (ofit.centerOffset) m.position.addScaledVector(ofit.centerOffset, -s);
 			const reach = m.position.length() + s;
@@ -1563,12 +1618,12 @@ export class SceneRenderer {
 
 		// Sun direction in the overlay = (sun - focus) normalised, applied as
 		// the directional light position (target at origin, distance arbitrary).
-		const sunBody = this.bodyObjects.get(SUN_ID)?.body;
+		const sunAt = this.bodyObjects.get(SUN_ID)?.body.position;
+		// `overlayModelBo` returns a drawn body: it has a place.
+		const at = bo.body.position!;
 		let irradiance = 1;
-		if (sunBody) {
-			const [sx, sy, sz] = sunBody.position;
-			const [fx, fy, fz] = bo.body.position;
-			this._tmpSun.set(sx - fx, sy - fy, sz - fz);
+		if (sunAt) {
+			this._tmpSun.set(sunAt[0] - at[0], sunAt[1] - at[1], sunAt[2] - at[2]);
 			if (sceneSettings().realisticLighting)
 				irradiance = sunIrradianceFactor(this._tmpSun.length());
 			this._tmpSun.normalize();
@@ -1753,12 +1808,9 @@ export class SceneRenderer {
 		const focused = this.focusController.current;
 		const basis = this.focus.focusTruePos;
 		const cam = this.camera.position;
-		if (!focused) return [cam.x, cam.y, cam.z];
-		return [
-			cam.x + basis[0] - focused.position[0],
-			cam.y + basis[1] - focused.position[1],
-			cam.z + basis[2] - focused.position[2]
-		];
+		const at = focused?.position;
+		if (!at) return [cam.x, cam.y, cam.z];
+		return [cam.x + basis[0] - at[0], cam.y + basis[1] - at[1], cam.z + basis[2] - at[2]];
 	}
 
 	/** Hand the camera to a host until {@link releaseCamera}. Any fly in flight
@@ -2026,7 +2078,22 @@ export class SceneRenderer {
 		this.focusController.syncUpgradeTargets(focused);
 	}
 
+	/**
+	 * Keep the scene at the date it shows until the returned function is called.
+	 * A navigation holds it while the data for the new date loads: without the
+	 * hold, every body whose data is not there yet goes off the screen for a moment.
+	 */
+	holdDate(): () => void {
+		this.dateHolds++;
+		let held = true;
+		return () => {
+			if (held) this.dateHolds--;
+			held = false;
+		};
+	}
+
 	private applyJdUpdate(allowOorRefocus = false): void {
+		if (this.dateHolds > 0) return;
 		this.ensureFocusedProbeTarget();
 		// Recompute on a focused-system change too, not just a jd change: moons
 		// outside the focused system are skipped and their world positions freeze.
@@ -2040,13 +2107,14 @@ export class SceneRenderer {
 		const systemId = this.ctx.visibility.focusedSystemId;
 		const seatKey = this.focusedSeatConfigKey();
 		const probeVersion = this.ctx.probeStore?.version ?? 0;
-		const hostReadVersion = this.ctx.bodies.hostReadVersion;
+		// A body that arrived, or took a new row, is placed by a pass too.
+		const dataVersion = this.ctx.bodies.dataVersion + (this.ctx.chebStore?.version ?? 0);
 		if (
 			this.clock.jd === this.lastUpdatedJd &&
 			systemId === this.lastUpdatedSystemId &&
 			seatKey === this.lastSeatConfigKey &&
 			probeVersion === this.lastProbeVersion &&
-			hostReadVersion === this.lastHostReadVersion
+			dataVersion === this.lastDataVersion
 		) {
 			this.clock.seeked = false;
 			return;
@@ -2057,7 +2125,7 @@ export class SceneRenderer {
 		this.lastUpdatedSystemId = systemId;
 		this.lastSeatConfigKey = seatKey;
 		this.lastProbeVersion = probeVersion;
-		this.lastHostReadVersion = hostReadVersion;
+		this.lastDataVersion = dataVersion;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
 		this.focusController.promotion.onSimTimeChanged();
 		const result = updatePositions({
@@ -2066,8 +2134,7 @@ export class SceneRenderer {
 			bodyObjects: this.bodyObjects,
 			focus: this.focus,
 			focusedBody: this.focusController.current,
-			positionMap: this._positionMapScratch,
-			diagnostics: this.positionDiagnostics,
+			placer: this.placer,
 			trailView: this.trailView(),
 			frame: this.frameIndex,
 			outOfRange: this.outOfRange
@@ -2087,14 +2154,13 @@ export class SceneRenderer {
 		}
 		this.syncLandedNomenclature();
 
-		// A seek just landed where the focus has no data — pan the camera onto the
-		// in-range ancestor it's now tracking. Only on the transition into
-		// out-of-range: the focus (and its "no data at this time" notice) stays on
-		// the original body, so it keeps firing while parked here. Once per episode.
-		const enteringOutOfRange = result.focusedOutOfRange && !this.focusWasOutOfRange;
-		this.focusWasOutOfRange = result.focusedOutOfRange;
-		if (allowOorRefocus && seeked && enteringOutOfRange && result.reanchorId) {
-			const anchor = this.ctx.getBody(result.reanchorId);
+		// A seek just landed where the focus has no place: pan the camera onto the
+		// ancestor it now follows. Only on the transition, once per episode: the
+		// focus and its notice stay on the original body.
+		const losingPlace = result.focusUnplaced && !this.focusWasOutOfRange;
+		this.focusWasOutOfRange = result.focusUnplaced;
+		if (allowOorRefocus && seeked && losingPlace && result.anchorId) {
+			const anchor = this.ctx.getBody(result.anchorId);
 			if (anchor) this.focusController.panCameraToBody(anchor);
 		}
 	}
@@ -2132,7 +2198,9 @@ export class SceneRenderer {
 		this.applyJdUpdate();
 		this.focusWasOutOfRange = false;
 		const host = this.ctx.getBody(anchor.hostId);
-		if (!host) return 0;
+		const hostPos = host && this.whereBody(host);
+		// A feature of a body with no place has nowhere to be framed.
+		if (!host || !hostPos) return 0;
 		// The feature framing supersedes the URL's body-level at=: the queued
 		// initial-view replay (fired when the host's system data lands — see
 		// reapplyInitialViewIfPending) would otherwise re-frame the host and
@@ -2152,9 +2220,8 @@ export class SceneRenderer {
 		const hostBo = this.bodyObjects.get(host.data.id);
 		this.selectedFeatureId = anchor.featureId;
 		if (hostBo) setActiveFeatureLabel(hostBo, anchor.featureId);
-		seatFeatureBody(fb, host, hostBo, this.clock.jd);
-
-		const seat = fb.position;
+		const seat = this.whereBody(fb);
+		if (!seat) return 0;
 		const quat = this.focusController.focusedBodyQuat(fb);
 
 		if (mode === 'pan') {
@@ -2170,9 +2237,9 @@ export class SceneRenderer {
 
 		// Camera along the local zenith above the seat; fall back to scene-up at a
 		// pole where the zenith is degenerate.
-		let zx = seat[0] - host.position[0];
-		let zy = seat[1] - host.position[1];
-		let zz = seat[2] - host.position[2];
+		let zx = seat[0] - hostPos[0];
+		let zy = seat[1] - hostPos[1];
+		let zz = seat[2] - hostPos[2];
 		const len = Math.hypot(zx, zy, zz);
 		if (len > 1e-9) {
 			zx /= len;
@@ -2258,7 +2325,7 @@ export class SceneRenderer {
 		let best: PositionedBody | null = null;
 		let bestDist = Infinity;
 		for (const other of this.bodyObjects.values()) {
-			if (!other.model) continue;
+			if (!other.model || !isDrawn(other)) continue;
 			const hits = this._modelRaycaster.intersectObject(other.model, true);
 			if (hits.length > 0 && hits[0].distance < bestDist) {
 				bestDist = hits[0].distance;
@@ -2276,20 +2343,21 @@ export class SceneRenderer {
 	 *  that body's whole visual — the sphere mesh stays hidden under it, so
 	 *  skipping the overlay would blank the body out of its own descent. */
 	private overlayModelBo(): BodyObjects | null {
+		// A body that is not drawn has no model on screen either.
+		const withModel = (bo: BodyObjects | undefined) => (bo?.model && isDrawn(bo) ? bo : null);
 		const focusBody = this.focusController.current;
 		if (!focusBody) {
 			const centerId = this.travelFocus?.centerId;
-			const bo = centerId ? this.bodyObjects.get(centerId) : undefined;
-			return bo?.model ? bo : null;
+			return withModel(centerId ? this.bodyObjects.get(centerId) : undefined);
 		}
 		const modelId = isSurfaceFeature(focusBody)
 			? focusBody.featureAnchor!.hostId
 			: focusBody.data.id;
 		const bo = this.bodyObjects.get(modelId);
-		if (bo?.model) return bo;
+		const own = withModel(bo);
+		if (own) return own;
 		if (focusBody.data.orbitalSource === OrbitalSource.SPICE_PROBE && !bo?.isLanded) {
-			const pbo = this.bodyObjects.get(focusBody.data.parentId);
-			if (pbo?.model) return pbo;
+			return withModel(this.bodyObjects.get(focusBody.data.parentId));
 		}
 		return null;
 	}

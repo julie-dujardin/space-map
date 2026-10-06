@@ -8,7 +8,7 @@
  * of its own and opens on its family's group instead.
  */
 
-import { bodyDataFromGlobal, unplacedBodyDataFromGlobal } from '$lib/fetch/objects/global-body';
+import { bodyDataFromGlobal, pageOnlyBodyData } from '$lib/fetch/objects/global-body';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import type { Focusable } from '$lib/state/focusable';
 import { rocketBySlug } from './rockets';
@@ -21,7 +21,7 @@ export async function compareFocusable(id: string): Promise<CompareFocus | null>
 	if (group) return { kind: 'group', slug: group };
 	const detail = await fetchObjectDetail(id).catch(() => null);
 	if (!detail?.global) return null;
-	const data = bodyDataFromGlobal(id, detail) ?? unplacedBodyDataFromGlobal(id, detail);
+	const data = bodyDataFromGlobal(id, detail) ?? pageOnlyBodyData(id, detail);
 	if (!data) return null;
-	return { kind: 'body', body: { data, position: [0, 0, 0], positionUnknown: true } };
+	return { kind: 'body', body: { data, position: null } };
 }

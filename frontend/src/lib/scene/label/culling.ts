@@ -280,7 +280,9 @@ export function labelScreenRect(
 	const label = bo.label!;
 	// label.position carries the silhouette offset (set in updateBodyVisibility),
 	// and the focus-relative origin matches the camera's coordinate space.
-	const [bx, by, bz] = bo.body.position;
+	const pos = bo.body.position;
+	if (!pos) return false;
+	const [bx, by, bz] = pos;
 	const lp = label.position;
 	_tmpProj.set(
 		bx - focusTruePos[0] + lp.x,

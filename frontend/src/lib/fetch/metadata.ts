@@ -222,6 +222,13 @@ export type DateCoverage =
 	| { kind: 'after'; lastMs: number }
 	| { kind: 'gap' };
 
+/** Last instant a date-segmented zone places anything at: the slack of its
+ *  last snapshot. */
+export function lastCoveredMs(zoom: DateSegmentedZoom): number {
+	const dates = sortedDateMs(zoom);
+	return dates[dates.length - 1] + SNAPSHOT_VALIDITY_SLACK_DAYS * 86400000;
+}
+
 export function dateCoverage(zoom: DateSegmentedZoom, date: Date): DateCoverage {
 	const dates = sortedDateMs(zoom);
 	const t = date.getTime();
@@ -254,15 +261,15 @@ export function partsForDate(zoom: DateSegmentedZoom, isoDate: string, cap = 0):
 	return cap > 0 ? Math.min(parts, cap) : parts;
 }
 
-/** A probe's SPK coverage envelope (start, end JD) across every zone it
- *  touches. Lives on the probe's `__global__` entry (`GlobalObjectData.coverage`);
- *  read only for the focused probe. Absent on legacy exports. */
-export interface ProbeCoverage {
-	start_jd: number;
-	end_jd: number;
-	/** Spans a date resolves to a position in. An archive with holes yields
-	 *  several; `start_jd`/`end_jd` bound them all. */
-	windows?: [number, number][];
+/**
+ * The dates the map can place an object at. Lives on the `__global__` entry
+ * of the object. The pipeline writes it from the position files it ships. An
+ * object with no block has no place at any date.
+ */
+export interface Coverage {
+	/** Spans a date resolves to a position in, sorted and disjoint. A null
+	 *  bound is open on that side. */
+	windows: [number | null, number | null][];
 	/** Set on a craft with no trajectory of its own over part of its life:
 	 *  it was bolted to `object_id` and is drawn wherever that craft is,
 	 *  until it separates. */

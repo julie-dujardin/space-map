@@ -1,5 +1,5 @@
 import type { Vec3 } from '$lib/scene/animation/math';
-import type { BodyObjects } from '$lib/scene/types';
+import { isDrawn, type BodyObjects } from '$lib/scene/types';
 import { ObjectType } from '$lib/types/objects';
 import {
 	cullOccludersFor,
@@ -20,13 +20,13 @@ export function updateEclipseUniforms(
 ): void {
 	const eclipse = getEclipseSceneUniforms();
 	const sunBo = bodyObjects.get(SUN_ID);
-	if (!sunBo) {
+	const sunPos = sunBo?.body.position;
+	if (!sunBo || !sunPos) {
 		eclipse.uSunAngularRadius.value = 0;
 		eclipse.uOccluderCount.value = 0;
 		return;
 	}
 	const [fx, fy, fz] = focusTruePos;
-	const sunPos = sunBo.body.position;
 	// Precompute unit-dir + angular radius in float64. Per-fragment recompute
 	// in float32 over ~1 AU would just inject quantisation banding (variation
 	// across a body is ~r/AU ≈ 1e-5, well below the Sun's angular size).
@@ -47,7 +47,8 @@ export function updateEclipseUniforms(
 		if (bo.body.data.objectType === ObjectType.STAR) continue;
 		const km = bo.body.data.radiusKm;
 		if (!Number.isFinite(km) || km <= 0) continue;
-		if (bo.radiusScene <= 0) continue;
+		// A body that is not drawn casts no shadow.
+		if (bo.radiusScene <= 0 || !isDrawn(bo)) continue;
 		candidates[n++] = bo;
 	}
 	candidates.length = n;
@@ -59,7 +60,7 @@ export function updateEclipseUniforms(
 	const slots = eclipse.uOccluders.value;
 	for (let i = 0; i < n; i++) {
 		const bo = candidates[i];
-		const [bx, by, bz] = bo.body.position;
+		const [bx, by, bz] = bo.body.position!;
 		slots[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
 	}
 	eclipse.uOccluderCount.value = n;
@@ -74,9 +75,10 @@ export function updateEclipseUniforms(
 	const sunDir = eclipse.uSunDir.value;
 	for (const bo of bodyObjects.values()) {
 		const self = bo.eclipseShadow;
-		if (!self) continue;
+		const at = bo.body.position;
+		if (!self || !at) continue;
 		if (bo.cachedDist > 0 && bo.radiusScene < bo.cachedDist * 1e-4) continue;
-		const [bx, by, bz] = bo.body.position;
+		const [bx, by, bz] = at;
 		const center = self.uEclipseSelfPos.value.set(bx - fx, by - fy, bz - fz);
 		self.uOccluderCount.value = cullOccludersFor(
 			self.uOccluders.value,

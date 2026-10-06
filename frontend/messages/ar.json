@@ -1274,6 +1274,7 @@
 	"object_not_found": "الجرم {name} غير موجود",
 	"object_no_position": "لا توجد بيانات موضع لـ {name} في هذا التاريخ",
 	"object_position_unknown": "لا يوجد موضع لـ {name} على الخريطة",
+	"object_shown_at_host": "لا يوجد موضع لـ {name} على الخريطة. تُعرض {host} بدلاً منه.",
 	"clock_moved_title": "تم تغيير التاريخ",
 	"clock_moved_body": "لا توجد بيانات موقع لـ {name} في {from}. تعرض الخريطة الآن {to}.",
 	"out_of_range_title": "البيانات محدودة في هذا الوقت",

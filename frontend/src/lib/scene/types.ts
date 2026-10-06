@@ -47,8 +47,18 @@ export function typePriority(type: ObjectType): number {
 	}
 }
 
+/** True when the scene draws the body: it has a place, and it is not the
+ *  hidden half of a carried pair. */
+export function isDrawn(bo: BodyObjects): boolean {
+	return bo.body.position !== null && !bo.carried;
+}
+
 export interface BodyObjects {
 	body: PositionedBody;
+	/** Parent of everything the body draws in the main scene, at the place of
+	 *  the body. Visible only while the body has a place. */
+	root: Group;
+	/** Holds the label. */
 	group: Group;
 	mesh: Mesh | null;
 	label: CSS2DObject | null;
@@ -60,8 +70,8 @@ export interface BodyObjects {
 	labelAnnotations?: Partial<Record<LabelAnnotation, HTMLElement>>;
 	/** Viewport-pinned model-load spinner, shown when the halo would be hidden. */
 	loadingEl: HTMLElement | null;
-	/** Top-level scene objects that track this body's position. */
-	extraObjects: Object3D[];
+	/** The hidden half of a carried pair: the marker of its carrier stands for both. */
+	carried?: boolean;
 	corona: Sprite | null;
 	starPoint: Points | null;
 	/** Thin trails use `Line`; wider trails use a `Mesh` of expanded quads. */
@@ -89,11 +99,6 @@ export interface BodyObjects {
 	labelAnchorOffscreen?: boolean;
 	/** Width/height segment count of the mesh's current SphereGeometry; undefined for virtual bodies. */
 	currentSegments?: number;
-	/**
-	 * True when jd is outside this body's chunk validity window. `updateBodyVisibility`
-	 * forces the group hidden so SGP4 doesn't diverge / a stale satellite stays onscreen.
-	 */
-	outOfRange?: boolean;
 	availableTiers?: string[];
 	/** Bundle the surface map is read from when it is not the body's own —
 	 *  a fallback map this viewer may serve, where the best one it cannot. */

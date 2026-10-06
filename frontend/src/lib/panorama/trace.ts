@@ -200,17 +200,18 @@ export class TraverseTrace implements Extension {
 
 	update({ jd, basis, camera, viewportPx, ctx }: ExtensionFrame): void {
 		const body = ctx.getBody(this.options.body);
-		this.object.visible = body !== undefined;
-		if (!body) {
+		const centre = body && ctx.place(body, jd);
+		this.object.visible = !!centre;
+		if (!body || !centre) {
 			this.facing.fill(0);
 			return;
 		}
 		const radiusKm = effectiveRadiusKm(body.data);
 		const q = body.orientation ? bodyQuaternion(body.orientation, jd, body.nutPrec) : null;
 		const origin: [number, number, number] = [
-			body.position[0] - basis[0],
-			body.position[1] - basis[1],
-			body.position[2] - basis[2]
+			centre[0] - basis[0],
+			centre[1] - basis[1],
+			centre[2] - basis[2]
 		];
 		this.centre.set(origin[0], origin[1], origin[2]);
 		// Scene units per pixel at unit distance from the camera, which times a

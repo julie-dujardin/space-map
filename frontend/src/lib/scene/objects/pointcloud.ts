@@ -52,31 +52,22 @@ export function makePointCloud(
 	size: number = 4,
 	colorForBody: ((body: PositionedBody) => string) | null = null
 ): Points {
-	const valid = bodies.filter((b) => {
-		const [x, y, z] = b.position;
-		if (
-			isFinite(x) &&
-			Math.abs(x) <= F32_MAX &&
-			isFinite(y) &&
-			Math.abs(y) <= F32_MAX &&
-			isFinite(z) &&
-			Math.abs(z) <= F32_MAX
-		)
-			return true;
-		console.warn(
-			`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`,
-			b.position
-		);
-		return false;
-	});
+	// A body with no place, or with one a float32 cannot hold, has no dot.
+	const valid: { body: PositionedBody; at: [number, number, number] }[] = [];
+	for (const body of bodies) {
+		const at = body.position;
+		if (at && Math.max(Math.abs(at[0]), Math.abs(at[1]), Math.abs(at[2])) <= F32_MAX) {
+			valid.push({ body, at });
+		}
+	}
 	const positions = new Float32Array(valid.length * 3);
 	const colors = colorForBody ? new Float32Array(valid.length * 3) : null;
 	const tmp = colors ? new Color() : null;
 	for (let i = 0; i < valid.length; i++) {
-		const b = valid[i];
-		positions[i * 3] = b.position[0] - basisPos[0];
-		positions[i * 3 + 1] = b.position[1] - basisPos[1];
-		positions[i * 3 + 2] = b.position[2] - basisPos[2];
+		const { body: b, at } = valid[i];
+		positions[i * 3] = at[0] - basisPos[0];
+		positions[i * 3 + 1] = at[1] - basisPos[1];
+		positions[i * 3 + 2] = at[2] - basisPos[2];
 		if (colors && tmp && colorForBody) {
 			tmp.set(colorForBody(b));
 			colors[i * 3] = tmp.r;

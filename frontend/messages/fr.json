@@ -1287,6 +1287,7 @@
 	"object_not_found": "Objet {name} introuvable",
 	"object_no_position": "{name} n'a pas de données de position à cette date",
 	"object_position_unknown": "La carte n'a aucune position pour {name}",
+	"object_shown_at_host": "La carte n'a aucune position pour {name}. Elle affiche {host} à la place.",
 	"clock_moved_title": "Date modifiée",
 	"clock_moved_body": "{name} n'a pas de données de position au {from}. La carte affiche maintenant le {to}.",
 	"out_of_range_title": "Données limitées à cette date",

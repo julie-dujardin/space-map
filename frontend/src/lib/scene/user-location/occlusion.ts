@@ -20,8 +20,8 @@ export function updateUserLocationOcclusion(
 	const ex = _tmp.x;
 	const ey = _tmp.y;
 	const ez = _tmp.z;
-	// Earth-center → camera; mesh.position is Earth's focus-relative pos.
-	const ep = earth.mesh.position;
+	// Earth-center → camera; the root is at the focus-relative place of Earth.
+	const ep = earth.root.position;
 	const cx = camera.position.x - ep.x;
 	const cy = camera.position.y - ep.y;
 	const cz = camera.position.z - ep.z;

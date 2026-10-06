@@ -6,6 +6,7 @@ import { matchesSmallBodyFilter } from '$lib/scene/visibility/small-body-filter'
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
+import type { Placer } from '$lib/scene/position/placer';
 import { loadScene } from '$lib/scene/setup/scene-load';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
@@ -83,6 +84,10 @@ export class ContextManager {
 	 *  end of {@link loadScene}. */
 	refresher: ZoneRefresher | null = null;
 
+	/** Settles where bodies are. Set by the renderer, which owns the render
+	 *  objects a placement updates. */
+	placer: Placer | null = null;
+
 	/** Renderer-set: true when `id` is promoted to a mesh body. Keeps the
 	 *  zone-refresher from dropping the bucket entry a mesh still shares. */
 	hasMeshBody: ((id: string) => boolean) | null = null;
@@ -141,6 +146,11 @@ export class ContextManager {
 		return this.bodies.getBody(id, zone);
 	}
 
+	/** Place of `body` at `jd`. Null when it has none, and before the scene is up. */
+	place(body: PositionedBody, jd: number): [number, number, number] | null {
+		return this.placer?.place(body, jd) ?? null;
+	}
+
 	/** True when an /g/<slug> view is active and the body belongs to it — keeps
 	 *  the group view sticky when a member is clicked. */
 	isMemberOfActiveGroup(bodyId: string): boolean {
@@ -175,8 +185,14 @@ export class ContextManager {
 		this.refresher?.tick(date);
 	}
 
-	/** Stream an out-of-view target into the running scene on demand (no reload).
-	 *  No-op before {@link load} sets the refresher, or if already loaded. */
+	/** Resolves when the scene holds its data for `date`. A navigation waits on
+	 *  it before it reads a place. */
+	async ready(date: Date): Promise<void> {
+		await this.refresher?.ready(date);
+	}
+
+	/** Add an object the scene does not hold yet (no reload). Call after
+	 *  {@link ready}. No-op before the first load phase ends, or if it is here. */
 	async ensureBody(targetId: string, date: Date): Promise<void> {
 		await this.refresher?.ensureBody(targetId, date);
 	}

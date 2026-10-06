@@ -125,6 +125,7 @@ export function refreshBufferTrail(
 	const useTrail = ud.useTrail as boolean;
 	const oc = ud.orbitCenter as Vector3;
 	const head = body.trailAnchor ?? body.position;
+	if (!head) return;
 	const offX = oc.x - basisPos[0];
 	const offY = oc.y - basisPos[1];
 	const offZ = oc.z - basisPos[2];
@@ -284,6 +285,7 @@ export function refreshTrail(
 	// centre) and the offset (centre minus basis). Skip while all three sit
 	// within the tolerance measured at the last rewrite.
 	const anchor = body.trailAnchor ?? body.position;
+	if (!anchor) return;
 	const ud = line.userData;
 	const offX = cx - basisPos[0];
 	const offY = cy - basisPos[1];

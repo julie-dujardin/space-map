@@ -31,8 +31,20 @@ export function collisionParentId(parentId: string): string | undefined {
 	return dominantPlanetId(parentId) ?? parentId;
 }
 
-/** The scene's body store: every loaded `PositionedBody` plus the parent/child
- *  graph. Loaders write through it; visibility and per-frame loops read from it. */
+/** Give `held` the row a loader just read for the same object. The scene keeps
+ *  the object it holds: the renderer and the drawer refer to it. */
+export function adoptRow(held: PositionedBody, fresh: PositionedBody): void {
+	held.data = fresh.data;
+	if (fresh.orbitElements !== undefined) held.orbitElements = fresh.orbitElements;
+	held.orbitCenterId = fresh.orbitCenterId ?? held.orbitCenterId;
+	held.trailAnchorId = fresh.trailAnchorId;
+}
+
+/**
+ * The scene's body store: every loaded `PositionedBody` plus the parent/child
+ * graph. Loaders write through it; visibility and per-frame loops read from it.
+ * It holds one object per id: a second row for an object refreshes the first.
+ */
 export class BodyIndex {
 	/** All major-tier bodies, keyed by object id. */
 	readonly bodiesById = new Map<string, PositionedBody>();
@@ -64,6 +76,10 @@ export class BodyIndex {
 	 *  point-cloud full-zone repacks ({@link PointCloudSystem.rebuildMinor}). */
 	minorStreaming = false;
 
+	/** Bumped when a body arrives or takes a new row: the position pass runs
+	 *  again, also while the clock stands still. */
+	dataVersion = 0;
+
 	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
 	minorBodyVersion = $state(0);
 
@@ -75,13 +91,6 @@ export class BodyIndex {
 	/** Bodies whose record has been read for a spin: one of these with no
 	 *  `orientation` has none to be given. */
 	readonly orientationRead = new Set<string>();
-
-	/** Probes a host anchor or measure read, by when it last did: the frame
-	 *  loop places these on every frame, hidden or not, while they are read. */
-	readonly hostRead = new Map<string, number>();
-	/** Bumped when a probe joins `hostRead`, so a frame loop the clock has not
-	 *  moved places it. */
-	hostReadVersion = 0;
 
 	/** Parent → children index (object ids only), for O(1) system-membership checks. */
 	private readonly childrenByParent = new Map<string, Set<string>>();
@@ -104,6 +113,7 @@ export class BodyIndex {
 	/** Fire `onBodiesAdded` listeners; also called directly by loaders that
 	 *  mutate zone buckets outside `addBodies`. */
 	notifyBodiesAdded(): void {
+		this.dataVersion++;
 		for (const cb of this.addListeners) cb();
 	}
 
@@ -130,13 +140,18 @@ export class BodyIndex {
 	}
 
 	/** Register a batch of bodies: updates `bodiesById`, the parent/child index,
-	 *  and the moon-max-a tracker. Orbit-source attribution is the caller's job
-	 *  (see CreditsStore.recordOrbitSources). */
+	 *  and the moon-max-a tracker. A row for a body the scene holds refreshes
+	 *  that body. Orbit-source attribution is the caller's job (see
+	 *  CreditsStore.recordOrbitSources). */
 	addBodies(bodies: PositionedBody[]): void {
 		let added = false;
 		for (const b of bodies) {
-			if (!this.bodiesById.has(b.data.id)) added = true;
-			this.bodiesById.set(b.data.id, b);
+			const held = this.bodiesById.get(b.data.id);
+			if (held) adoptRow(held, b);
+			else {
+				added = true;
+				this.bodiesById.set(b.data.id, b);
+			}
 
 			const set = this.childrenByParent.get(b.data.parentId) ?? new Set<string>();
 			set.add(b.data.id);
@@ -146,7 +161,37 @@ export class BodyIndex {
 				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
 			}
 		}
+		this.dataVersion++;
 		if (added) this.notifyBodiesAdded();
+	}
+
+	/**
+	 * Give the scene a spacecraft row, in the bucket of its parent. A row for a
+	 * body the scene holds refreshes that body and moves it there: a stand-in
+	 * for an object with no elements becomes the object. True when it is new.
+	 */
+	putSpacecraft(fresh: PositionedBody): boolean {
+		const id = fresh.data.id;
+		const bucket = this.spacecraftBucket(fresh.data.parentId);
+		let held = bucket.get(id) ?? this.bodiesById.get(id);
+		if (!held) {
+			for (const other of this.spacecraftByParent.values()) {
+				held = other.get(id);
+				if (held) {
+					other.delete(id);
+					break;
+				}
+			}
+		}
+		this.dataVersion++;
+		if (!held) {
+			bucket.set(id, fresh);
+			return true;
+		}
+		adoptRow(held, fresh);
+		this.bodiesById.delete(id);
+		bucket.set(id, held);
+		return false;
 	}
 
 	/** Zone bucket for asteroids/comets, created on demand. Ingest adds in place;
@@ -172,6 +217,7 @@ export class BodyIndex {
 		this.asteroidBodiesByZone = new Map(this.asteroidBodiesByZone);
 		this.spacecraftByParent = new Map(this.spacecraftByParent);
 		this.minorBodyVersion++;
+		this.dataVersion++;
 		if (addedAny) this.notifyBodiesAdded();
 	}
 
