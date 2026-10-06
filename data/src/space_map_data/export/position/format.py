@@ -38,6 +38,7 @@ reading code at HEADER_SIZE=32 carries over unchanged.
 
 import math
 import struct
+from typing import NamedTuple
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
@@ -197,6 +198,63 @@ def pack_probes_header(
     ) + _PROBES_EXT_STRUCT.pack(probe_count, float(subchunk_days))
 
 
+class ElementsHeader(NamedTuple):
+    """The 32-byte header of an elements-payload file."""
+
+    version: int
+    start_jd: float
+    end_jd: float
+    sub_format: int
+    id_type: int
+    row_count: int
+
+
+class ChebyshevHeader(NamedTuple):
+    """The 32-byte header of a chebyshev-payload file."""
+
+    version: int
+    start_jd: float
+    end_jd: float
+    body_count: int
+    float64_coeffs: bool
+
+
+def _unpack_common(buf: bytes, top_format: int) -> tuple[int, float, float]:
+    """Unpack the common header as `(version, start_jd, end_jd)`. Raises
+    ValueError when the bytes are not a position file of `top_format`."""
+    magic, version, found, _reserved, start_jd, end_jd = _COMMON_STRUCT.unpack_from(buf)
+    if magic != MAGIC or found != top_format:
+        raise ValueError(
+            f"not a position file of format {top_format}: magic {magic!r}, "
+            f"format {found}"
+        )
+    return version, start_jd, end_jd
+
+
+def unpack_elements_header(buf: bytes) -> ElementsHeader:
+    """Unpack the header that `pack_elements_header` writes."""
+    version, start_jd, end_jd = _unpack_common(buf, FORMAT_ELEMENTS)
+    sub_format, _source, id_type, row_count = _ELEMENTS_EXT_STRUCT.unpack_from(
+        buf, COMMON_HEADER_SIZE
+    )
+    return ElementsHeader(version, start_jd, end_jd, sub_format, id_type, row_count)
+
+
+def unpack_chebyshev_header(buf: bytes) -> ChebyshevHeader:
+    """Unpack the header that `pack_chebyshev_header` writes."""
+    version, start_jd, end_jd = _unpack_common(buf, FORMAT_CHEBYSHEV)
+    body_count, flags, _r1, _r2 = _CHEBYSHEV_EXT_STRUCT.unpack_from(
+        buf, COMMON_HEADER_SIZE
+    )
+    return ChebyshevHeader(
+        version,
+        start_jd,
+        end_jd,
+        body_count,
+        bool(flags & CHEBYSHEV_FLAG_FLOAT64_COEFFS),
+    )
+
+
 # Per-probe header inside a probes-payload file (20 bytes, 4-aligned):
 #
 # Offset  Type     Field
@@ -333,6 +391,37 @@ def pack_body_header(
         segment_count,
         visible_from_days,
         0,
+    )
+
+
+class BodyHeader(NamedTuple):
+    """The fields of a per-body chebyshev header that locate and gate it."""
+
+    obj_id_value: int
+    id_type: int
+    coeffs_per_axis: int
+    segment_count: int
+    visible_from_days: float
+
+
+def unpack_body_header(buf: bytes, offset: int) -> BodyHeader:
+    """Unpack the header that `pack_body_header` writes."""
+    (
+        _naif_id,
+        _parent_id,
+        obj_id_value,
+        _radius_km,
+        coeffs_per_axis,
+        id_type,
+        _has_localized,
+        _object_type,
+        _reserved,
+        segment_count,
+        visible_from_days,
+        _pad,
+    ) = _BODY_HEADER_STRUCT.unpack_from(buf, offset)
+    return BodyHeader(
+        obj_id_value, id_type, coeffs_per_axis, segment_count, visible_from_days
     )
 
 

@@ -475,10 +475,22 @@ interface GlobalObjectData {
   probes?: NotableEntry[];
   probe_count?: number;              // present iff `probes` is
 
-  // Probe objects only. SPK coverage envelope (union across zones); the
-  // focused-probe pause arms a SimClock boundary stop at the data wall. Read
-  // only for the focused probe, so it rides here, not in metadata.json.
-  coverage?: { start_jd: number; end_jd: number };
+  // The clock dates at which the map can place the object (see `coverage`
+  // below). Absent: the map can never place it, and no other field says
+  // otherwise.
+  coverage?: {
+    windows: [number | null, number | null][]; // [start JD, end JD], sorted and disjoint; null = no limit on that side
+    start_jd?: number;                // probes only: first window's start …
+    end_jd?: number;                  // … and last window's end
+    position_from?: {                 // probes only: a craft that rides another one over part of its life
+      object_id: string;              // the carrier, "probe-<id>"
+      start_jd: number;
+      end_jd: number;
+    };
+  };
+  // Only on an object with no `coverage`: the Object.id of the body or craft
+  // it sits at or orbits, when the catalogue names one.
+  host_id?: string;
 }
 
 // Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)
@@ -891,6 +903,62 @@ interface PanoramaEntry {
 `space-map-export --only panoramas` copies the textures, rewrites `panoramas`
 on every global bundle in place (set where the cache has some, cleared where
 it no longer does) and refreshes the `objects` and `panoramas` version tokens.
+
+### `coverage` and `host_id`
+
+`coverage.windows` lists the clock dates at which the map can place the
+object. For a date strictly inside a window, the position file the frontend
+loads for that date holds the object, and the row passes the file's validity
+window and its own launch or discovery gate. A window edge itself is not
+guaranteed. An object with no `coverage` is in no position file, or in one
+that can never show it; the frontend must not infer placement from any other
+field (`orbit`, `celestrak`, the id prefix).
+
+Bounds are Julian Dates on the scale of the file they come from, the same
+numbers the position headers and rows carry: UTC days for the `earth` zone and
+for a launch or discovery gate, TDB for chebyshev segments and the probe
+block. `null` means the window has no limit on that side.
+
+The export computes the windows from the written position files, as listed in
+`metadata.json → position.zones`, not from the database
+(`export/position/coverage.py`). The rule depends on how the frontend selects
+a file:
+
+| Zone shape | Window of one row |
+|---|---|
+| `earth` (date labels) | The clock dates for which its snapshot is the nearest label (the earlier one on a tie; the first and last snapshot also serve every date beyond them), cut to the part file's validity window, to the row's launch gate and to the SATCAT `decay_date`. Snapshots that follow each other join into one window. |
+| `parted` elements zones | From the row's discovery gate to the end of the file's validity window. Both are usually absent, which gives `[gate, null]` or `[null, null]`. |
+| `moons` (chunk index) | The chunk's validity window after the row's discovery gate, joined across chunks. |
+| chebyshev zones | Where the body's segments in the chunk for that date cover the clock, after its discovery gate. |
+| probe zones | Built by the probes writer from the fit plan, see [probes.md](probes.md). Probes also keep the `start_jd`/`end_jd` envelope and `position_from`. |
+
+An object that ships in more than one zone gets the union. A small body with
+a chebyshev overlay thus takes the window of its element row, which carries
+it outside the overlay's span.
+
+A window of the `earth` zone that reaches the last snapshot has a `null` end,
+unless the object re-entered inside that snapshot's validity window. A later
+export can add snapshots without a rewrite of the bundles, so the frontend
+clamps a `null` end to the zone's own end (`end_date` plus the validity
+slack).
+
+Three cases get no `coverage` although the catalogue knows the object:
+
+- A row with a missing element (an SBDB orbit of condition code 9).
+- A satellite in a file that can never show it: it was launched after the
+  clock dates its only snapshots serve, or SATCAT dates its re-entry before
+  them.
+- A craft docked to a station, which is left out of the position files.
+
+A hand-authored object (`extra-<n>`) is in no position file. The frontend
+places it from its `orbit` block, so it carries `windows: [[null, null]]`.
+
+`host_id` goes on an object with no `coverage` when the catalogue says what
+it sits at or orbits: the primary of an asteroid moon, the station a docked
+craft is docked to (`norad_satcat-<orbit_center_docked_to>`), else the body
+SATCAT gives as the centre of the orbit (`naif-399` for `earth`). It is
+absent when that centre is not a body (a Lagrange point, an unnamed asteroid,
+an escape trajectory) and when the object has no SATCAT row.
 
 ## Localized (`objects/{lang}/{bucket}.json.gz`)
 

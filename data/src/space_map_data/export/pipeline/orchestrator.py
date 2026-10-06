@@ -94,6 +94,12 @@ from space_map_data.export.position.chebyshev.coverage import (
     chebyshev_coverage,
     chebyshev_written_ids,
 )
+from space_map_data.export.position.coverage import (
+    build_coverage,
+    load_hosts,
+    stamp_coverage,
+    stamp_hosts,
+)
 from space_map_data.export.position.elements.celestrak_source import (
     FILL_LOOKBACK_DAYS,
     CelesTrakElements,
@@ -920,20 +926,34 @@ def _inject_carried_by(
         passenger.pop("norad_cat_id", None)
 
 
+def _inject_coverage(
+    engine: Engine,
+    out_dir: Path,
+    global_data: MutableMapping[str, dict],
+    position_zones: Mapping[str, Mapping],
+) -> None:
+    """Stamp `coverage` on each object a position file can place, and
+    `host_id` on the others where the catalogue names a host.
+
+    Runs after the probes got their own block, so a probe with coverage is
+    not given a host.
+    """
+    with Session(engine) as session:
+        decay_jds = _satellite_decay_jds(session)
+        hosts = load_hosts(session)
+    stamp_coverage(global_data, build_coverage(out_dir, position_zones, decay_jds))
+    stamp_hosts(global_data, hosts)
+
+
 def _write_metadata_json(
     out_dir: Path,
-    zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]],
-    chebyshev_zones: dict,
-    probe_zones: dict,
+    position_metadata: dict,
     bundle_ns: dict,
     feature_bundle_ns: dict,
     group_bundle_ns: dict,
     skybox_metadata: dict | None,
 ) -> None:
     """Emit the top-level metadata.json (position manifest + bundles + skybox)."""
-    position_metadata = build_position_metadata(
-        zone_structure, chebyshev_zones, probe_zones
-    )
     metadata: dict = {
         "position": position_metadata,
         "object_bundles": bundle_ns,
@@ -1219,6 +1239,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             _load_rendered_ids(session, probe_coverage) if not tier_b_clean else set()
         )
 
+    # Built once: the coverage windows must read the files this manifest lists.
+    position_metadata = build_position_metadata(
+        agg.zone_structure, chebyshev_zones, probe_zones
+    )
+
     if tier_b_clean:
         # Outputs on disk are already current; reuse the bucket counts the
         # last full run published so metadata.json stays consistent.
@@ -1278,6 +1303,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Coverage rides the global bundle (like attitude) — only read for the
         # focused probe; must land before the bundles are sealed below.
         _inject_probe_coverage(agg.all_objects.global_data, probe_coverage)
+        _inject_coverage(
+            engine, out_dir, agg.all_objects.global_data, position_metadata["zones"]
+        )
 
         bundle_ns = write_object_bundles(
             out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
@@ -1325,9 +1353,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     prune_image_bundles()
     _write_metadata_json(
         out_dir,
-        agg.zone_structure,
-        chebyshev_zones,
-        probe_zones,
+        position_metadata,
         bundle_ns,
         feature_bundle_ns,
         group_bundle_ns,

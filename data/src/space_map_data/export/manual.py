@@ -24,6 +24,9 @@ from space_map_data.utils.manual_overlay import (
 
 logger = logging.getLogger(__name__)
 
+# Orbit-block fields the frontend needs to propagate a manual object.
+_ORBIT_ELEMENTS = ("epoch_jd", "a", "e", "i", "om", "w", "ma", "n")
+
 
 def _global(entry: dict, name: str) -> dict:
     """Language-independent bundle entry (mirrors export/objects/writer._build_global)."""
@@ -58,6 +61,15 @@ def _global(entry: dict, name: str) -> dict:
         "scale": "system",
         "parent_id": entry.get("parent_id"),
     }
+    # No position file holds a manual object: the frontend places it from the
+    # orbit block, which is good for any date.
+    if all(data["orbit"][name] is not None for name in _ORBIT_ELEMENTS):
+        data["coverage"] = {"windows": [[None, None]]}
+    else:
+        logger.warning(
+            "Manual object %s has an incomplete orbit; it gets no coverage",
+            entry["id"],
+        )
     return data
 
 
