@@ -159,6 +159,11 @@ SOURCE_CATALOG: dict[str, SourceInfo] = {
         "https://planetarynames.wr.usgs.gov/",
         "reference",
     ),
+    PROVIDERS.IAU_STAR_NAMES: SourceInfo(
+        "IAU Catalog of Star Names",
+        "https://exopla.net/star-names/modern-iau-star-names/",
+        "reference",
+    ),
     PROVIDERS.TEXTURE_SOURCES: SourceInfo(
         "Texture provenance pages (NASA, USGS, ESA)",
         "https://photojournal.jpl.nasa.gov/",

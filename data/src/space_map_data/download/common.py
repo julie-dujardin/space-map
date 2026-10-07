@@ -65,6 +65,7 @@ from space_map_data.download.providers.stars.gaia_cross_match import (
     GaiaCrossMatchDownloader,
 )
 from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloader
+from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ PROVIDERS_CLASSES = [
     GaiaAstrophysicalParametersDownloader,
     GaiaCrossMatchDownloader,
     CDSStarCataloguesDownloader,
+    IAUStarNamesDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
