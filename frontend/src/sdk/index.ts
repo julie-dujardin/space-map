@@ -45,6 +45,12 @@ interface CommonOptions {
 	 *  origin does not serve pictures; a mirror that serves both sets this to
 	 *  the same place as `dataUrl`. */
 	imagesUrl?: string;
+	/** Root of the live tracking feed, for a mirror that writes its own. */
+	liveUrl?: string;
+	/** Root of the surface tile pyramids, for a mirror that serves them. The
+	 *  production CDN serves none: without it a body draws its whole-globe
+	 *  maps alone. */
+	tilesUrl?: string;
 	/** BCP-47 tag that picks localized names; English when omitted. */
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
@@ -104,6 +110,8 @@ export async function createMap(options: MapOptions): Promise<SpaceMap> {
 		container,
 		dataUrl,
 		imagesUrl,
+		liveUrl,
+		tilesUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -112,7 +120,7 @@ export async function createMap(options: MapOptions): Promise<SpaceMap> {
 		...rest
 	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
+	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
 
 	const map = new SpaceMap(rest);
 	map.mount(element);
@@ -140,6 +148,8 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
 		container,
 		dataUrl,
 		imagesUrl,
+		liveUrl,
+		tilesUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -148,7 +158,7 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
 		...rest
 	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
+	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
 
 	const map = new FlatMap(rest);
 	map.mount(element);
@@ -176,6 +186,8 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
 		container,
 		dataUrl,
 		imagesUrl,
+		liveUrl,
+		tilesUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -184,7 +196,7 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
 		...rest
 	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
+	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
 
 	const view = new PanoramaView(rest);
 	view.mount(element);
@@ -209,10 +221,20 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
  *  Rejects when the data does not load, or the opening view is a `system`
  *  named for a body with no moons. */
 export async function createSystemMap(options: SystemMapCreateOptions): Promise<SystemMap> {
-	const { container, dataUrl, imagesUrl, locale, messages, includeNonCommercial, events, ...rest } =
-		options;
+	const {
+		container,
+		dataUrl,
+		imagesUrl,
+		liveUrl,
+		tilesUrl,
+		locale,
+		messages,
+		includeNonCommercial,
+		events,
+		...rest
+	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, locale, messages, includeNonCommercial });
+	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
 
 	const map = new SystemMap(rest);
 	map.mount(element);
@@ -241,13 +263,21 @@ function resolveContainer(container: HTMLElement | string): HTMLElement {
 function applyHost(
 	options: Pick<
 		CommonOptions,
-		'dataUrl' | 'imagesUrl' | 'locale' | 'messages' | 'includeNonCommercial'
+		| 'dataUrl'
+		| 'imagesUrl'
+		| 'liveUrl'
+		| 'tilesUrl'
+		| 'locale'
+		| 'messages'
+		| 'includeNonCommercial'
 	>
 ) {
 	const overrides: HostOverrides = {};
 	// The trailing slash is trimmed by configureHost, for every host alike.
 	if (options.dataUrl !== undefined) overrides.dataUrl = options.dataUrl;
 	if (options.imagesUrl !== undefined) overrides.imagesUrl = options.imagesUrl;
+	if (options.liveUrl !== undefined) overrides.liveUrl = options.liveUrl;
+	if (options.tilesUrl !== undefined) overrides.tilesUrl = options.tilesUrl;
 	if (options.locale !== undefined) overrides.locale = () => options.locale as string;
 	if (options.messages !== undefined) overrides.messages = options.messages;
 	// The site-only tier is never reachable from here — it is not the SDK's to grant.

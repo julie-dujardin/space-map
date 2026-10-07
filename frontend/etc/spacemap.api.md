@@ -4,6 +4,7 @@
 
 ```ts
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { DataArrayTexture } from 'three';
 import { Group } from 'three';
 import { InstancedMesh } from 'three';
 import type { Line } from 'three';
@@ -624,6 +625,7 @@ export interface Host {
 	// (undocumented)
 	messages: CoreMessages;
 	textures: TextureDistribution;
+	tilesUrl: string;
 }
 
 // @public
