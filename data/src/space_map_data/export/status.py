@@ -52,7 +52,14 @@ class SourceInfo:
 
 
 # One-shot pulls that never expire, and so have no freshness to report.
-UNLISTED: frozenset[str] = frozenset({PROVIDERS.BJJ_RINGS})
+UNLISTED: frozenset[str] = frozenset(
+    {
+        PROVIDERS.BJJ_RINGS,
+        PROVIDERS.GAIA_SOURCE,
+        PROVIDERS.GAIA_ASTROPHYSICAL_PARAMETERS,
+        PROVIDERS.GAIA_CROSS_MATCH,
+    }
+)
 
 SOURCE_CATALOG: dict[str, SourceInfo] = {
     PROVIDERS.CELESTRAK: SourceInfo("CelesTrak", "https://celestrak.org/", "orbits"),

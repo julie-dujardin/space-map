@@ -57,6 +57,13 @@ from space_map_data.download.providers.three_d.nasa import NASA3DResourcesDownlo
 from space_map_data.download.providers.three_d.esa import ESA3DDownloader
 from space_map_data.download.providers.three_d.body_shapes import BodyShapesDownloader
 from space_map_data.download.providers.three_d.damit import DAMITDownloader
+from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownloader
+from space_map_data.download.providers.stars.gaia_astrophysical_parameters import (
+    GaiaAstrophysicalParametersDownloader,
+)
+from space_map_data.download.providers.stars.gaia_cross_match import (
+    GaiaCrossMatchDownloader,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +102,10 @@ PROVIDERS_CLASSES = [
     ESA3DDownloader,
     BodyShapesDownloader,
     DAMITDownloader,
+    # Ordered: the astrophysical parameters read the chunks gaia_source writes.
+    GaiaSourceDownloader,
+    GaiaAstrophysicalParametersDownloader,
+    GaiaCrossMatchDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 

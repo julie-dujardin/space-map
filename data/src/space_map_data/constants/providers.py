@@ -34,6 +34,9 @@ class PROVIDERS(StrEnum):
     ESA_3D = "esa_3d"
     BODY_SHAPES = "body_shapes"
     DAMIT = "damit"
+    GAIA_SOURCE = "gaia_source"
+    GAIA_ASTROPHYSICAL_PARAMETERS = "gaia_astrophysical_parameters"
+    GAIA_CROSS_MATCH = "gaia_cross_match"
     MANUAL = "manual"
 
 

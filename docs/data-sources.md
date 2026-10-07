@@ -17,7 +17,7 @@
 |  | ❌ | MPC designation | 1; 2024 FG9 | P5736 | sbdb |
 |  | ❌ | NAIF | 20000001 | P2956 | horizons (spkid computable from NAIF) |
 | Star | ❔ | SIMBAD ID | NAME Proxima Centauri | P3083 | |
-|  | ❔ | Gaia ID | 5853498713190525696 | P13228 | |
+|  | ❔ | Gaia ID | 5853498713190525696 | P13228 | Gaia DR3 |
 |  | ❔ | Exoplanet Archive ID | Proxima Cen | P5667 | |
 |  | ❔ | Hipparcos | HIP 70890 | P528/P972 w/Q537199 | |
 | Exoplanet | ❔ | Exoplanet Archive ID | Proxima Cen b | P5667 | |
@@ -38,7 +38,7 @@
 | SPK ID | Small bodies | 20000001 | https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=\<id\> | | P716 | sbdb (horizons: computed from NAIF) |
 | MPC designation | Small bodies | 1; 2024 FG9 | https://www.minorplanetcenter.net/db_search/show_object?object_id=\<id\> | | P5736 | sbdb |
 | SIMBAD ID | Stars, Exoplanets | NAME Proxima Centauri, NAME Proxima Centauri b | https://simbad.u-strasbg.fr/simbad/sim-id?Ident=proxima+cen&NbIdent=1&Radius=2&Radius.unit=arcmin&submit=submit+id | Has references to HIP, Gaia DR2 & 3,  | P3083 | |
-| Gaia ID | Stars | 5853498713190525696 | | May not be stable over new datasets | P13228 | |
+| Gaia ID | Stars | 5853498713190525696 | | May not be stable over new datasets | P13228 | Gaia DR3 |
 | Exoplanet Archive ID | Stars, Exoplanets | Proxima Cen | | | P5667 | |
 | Hipparcos | Stars | HIP 70890 | | | P528/P972 w/Q537199 | |
 | Extrasolar Planets Encyclopaedia | Exoplanets | proxima_centauri_b--4042 | https://exoplanet.eu/catalog/proxima_centauri_b--4042/ | | P5653 |  |
