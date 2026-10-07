@@ -32,6 +32,7 @@ class PROVIDERS(StrEnum):
     IAU_NOMENCLATURE = "iau_nomenclature"
     GVP = "gvp"
     TEXTURE_SOURCES = "texture_sources"
+    TEXTURE_FILES = "texture_files"
     BJJ_RINGS = "bjj_rings"
     LAUNCH_PERFORMANCE = "launch_performance"
     PSG_ATMOSPHERE = "psg_atmosphere"

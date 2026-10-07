@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import ssl
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -10,6 +11,20 @@ from pathlib import Path
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Intermediate certificates that some hosts fail to send with their own. Each
+# chains to a root the system already trusts, so loading it restores the
+# verification a browser does by fetching it; the alternative is to turn
+# verification off for that host.
+_INTERMEDIATES_DIR = Path(__file__).parent / "certs"
+
+
+def tls_context() -> ssl.SSLContext:
+    """httpx's own trust store plus the bundled intermediates."""
+    context = httpx.create_ssl_context()
+    for pem in sorted(_INTERMEDIATES_DIR.glob("*.pem")):
+        context.load_verify_locations(cafile=str(pem))
+    return context
 
 
 class DownloadError(Exception):

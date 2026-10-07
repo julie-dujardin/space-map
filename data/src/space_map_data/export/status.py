@@ -56,6 +56,7 @@ class SourceInfo:
 UNLISTED: frozenset[str] = frozenset(
     {
         PROVIDERS.BJJ_RINGS,
+        PROVIDERS.TEXTURE_FILES,
         PROVIDERS.GAIA_SOURCE,
         PROVIDERS.GAIA_ASTROPHYSICAL_PARAMETERS,
         PROVIDERS.GAIA_CROSS_MATCH,

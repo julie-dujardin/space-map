@@ -9,7 +9,7 @@ from typing import Any, Type
 import httpx
 
 from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
-from space_map_data.download.downloader import Downloader
+from space_map_data.download.downloader import Downloader, tls_context
 from space_map_data.download.providers.objects.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.objects.gcat import GCATDownloader
 from space_map_data.download.providers.objects.gcat_deep import GCATDeepDownloader
@@ -56,6 +56,9 @@ from space_map_data.download.providers.images.earth_clouds import (
 )
 from space_map_data.download.providers.images.earth_water import (
     EarthWaterDownloader,
+)
+from space_map_data.download.providers.images.texture_files import (
+    TextureFilesDownloader,
 )
 from space_map_data.download.providers.metadata.texture_sources import (
     TextureSourcesDownloader,
@@ -129,6 +132,7 @@ PROVIDERS_CLASSES = [
     EarthWaterDownloader,
     IAUNomenclatureDownloader,
     TextureSourcesDownloader,
+    TextureFilesDownloader,
     BJJRingsDownloader,
     LaunchPerformanceDownloader,
     PSGAtmosphereDownloader,
@@ -196,6 +200,7 @@ def download(
         headers={"User-Agent": user_agent},
         follow_redirects=True,
         timeout=60.0,
+        verify=tls_context(),
     ) as client:
         for name in selected:
             cls = SOURCES[name]
