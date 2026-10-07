@@ -177,6 +177,7 @@ JOBS: list[Job] = [
             PROVIDERS.GAIA_SOURCE,
             PROVIDERS.GAIA_ASTROPHYSICAL_PARAMETERS,
             PROVIDERS.GAIA_CROSS_MATCH,
+            PROVIDERS.CDS_STAR_CATALOGUES,
         ),
         schedule=Every(timedelta(days=7)),
     ),

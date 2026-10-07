@@ -19,7 +19,7 @@
 | Star | ❔ | SIMBAD ID | NAME Proxima Centauri | P3083 | |
 |  | ❔ | Gaia ID | 5853498713190525696 | P13228 | Gaia DR3 |
 |  | ❔ | Exoplanet Archive ID | Proxima Cen | P5667 | |
-|  | ❔ | Hipparcos | HIP 70890 | P528/P972 w/Q537199 | |
+|  | ❔ | Hipparcos | HIP 70890 | P528/P972 w/Q537199 | Hipparcos (CDS), Gaia DR3 cross-match |
 | Exoplanet | ❔ | Exoplanet Archive ID | Proxima Cen b | P5667 | |
 |  | ❔ | SIMBAD ID | NAME Proxima Centauri b | P3083 | |
 |  | ❔ | Extrasolar Planets Encyclopaedia | proxima_centauri_b--4042 | P5653 | https://exoplanet.eu/catalog/proxima_centauri_b--4042/ |
@@ -40,7 +40,7 @@
 | SIMBAD ID | Stars, Exoplanets | NAME Proxima Centauri, NAME Proxima Centauri b | https://simbad.u-strasbg.fr/simbad/sim-id?Ident=proxima+cen&NbIdent=1&Radius=2&Radius.unit=arcmin&submit=submit+id | Has references to HIP, Gaia DR2 & 3,  | P3083 | |
 | Gaia ID | Stars | 5853498713190525696 | | May not be stable over new datasets | P13228 | Gaia DR3 |
 | Exoplanet Archive ID | Stars, Exoplanets | Proxima Cen | | | P5667 | |
-| Hipparcos | Stars | HIP 70890 | | | P528/P972 w/Q537199 | |
+| Hipparcos | Stars | HIP 70890 | | | P528/P972 w/Q537199 | Hipparcos (CDS), Gaia DR3 cross-match |
 | Extrasolar Planets Encyclopaedia | Exoplanets | proxima_centauri_b--4042 | https://exoplanet.eu/catalog/proxima_centauri_b--4042/ | | P5653 |  |
 | IAU Gazetteer feature ID | Surface feature | 162 | https://planetarynames.wr.usgs.gov/Feature/\<id\> | | P2824 | https://planetarynames.wr.usgs.gov/GIS_Downloads |
 | Name | Any (reduced coverage) | Earth | | differs by language | name | wikidata, horizons, space-track... |

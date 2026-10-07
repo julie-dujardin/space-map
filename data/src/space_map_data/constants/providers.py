@@ -37,6 +37,7 @@ class PROVIDERS(StrEnum):
     GAIA_SOURCE = "gaia_source"
     GAIA_ASTROPHYSICAL_PARAMETERS = "gaia_astrophysical_parameters"
     GAIA_CROSS_MATCH = "gaia_cross_match"
+    CDS_STAR_CATALOGUES = "cds_star_catalogues"
     MANUAL = "manual"
 
 
