@@ -26,6 +26,11 @@ describe('tilesServe', () => {
 		expect(tilesServe(body({ max_level: 2 }))).toBe(false);
 	});
 
+	it('is false for a body drawn as a shape model, which takes the largest tier', () => {
+		configureHost({ tilesUrl: 'https://tiles.example.org' });
+		expect(tilesServe({ ...body(), model: {} } as unknown as BodyObjects)).toBe(false);
+	});
+
 	it('is false after the tile host failed the pyramid', () => {
 		configureHost({ tilesUrl: 'https://tiles.example.org' });
 		expect(tilesServe(body({}, { dead: true }))).toBe(false);

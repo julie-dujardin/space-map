@@ -96,7 +96,7 @@ export function updateTextureLOD(
 			camera,
 			renderer,
 			projScale * renderer.getPixelRatio(),
-			settings.showSurfaceTexture && !bo.appearance?.surfaceOwned && !bo.model,
+			settings.showSurfaceTexture && !bo.appearance?.surfaceOwned,
 			invalidate
 		);
 

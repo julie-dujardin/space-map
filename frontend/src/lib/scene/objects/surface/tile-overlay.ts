@@ -1,6 +1,7 @@
 import {
 	DataArrayTexture,
 	LinearFilter,
+	LinearMipmapLinearFilter,
 	Matrix4,
 	type MeshStandardMaterial,
 	NearestFilter,
@@ -290,7 +291,10 @@ function createStore(tileSize: number, layers: number, renderer: WebGLRenderer):
 	texture.type = UnsignedByteType;
 	texture.colorSpace = SRGBColorSpace;
 	texture.wrapS = texture.wrapT = RepeatWrapping;
-	texture.minFilter = texture.magFilter = LinearFilter;
+	texture.magFilter = LinearFilter;
+	// The renderer only passes anisotropy on with a mipmap filter. The texture
+	// has one level, so this filter reads the same pixels as a linear one.
+	texture.minFilter = LinearMipmapLinearFilter;
 	texture.generateMipmaps = false;
 	texture.anisotropy = Math.min(MAX_ANISOTROPY, renderer.capabilities.getMaxAnisotropy());
 	texture.needsUpdate = true;
@@ -478,11 +482,13 @@ export function disposeTileOverlay(bo: BodyObjects): void {
 }
 
 /** Whether tiles carry this body's surface detail, so the largest whole-globe
- *  tier need not load. False once the tile host has failed it. */
+ *  tier need not load. False once the tile host has failed it, and for a
+ *  shape model, which takes the sphere's map and no windows. */
 export function tilesServe(bo: BodyObjects): boolean {
 	const tiles = bo.surfaceTiles;
 	return (
 		!!tiles &&
+		!bo.model &&
 		tiles.max_level >= FIRST_TILE_LEVEL &&
 		tilesBase() !== '' &&
 		maxTileWindows() > 0 &&
@@ -498,7 +504,7 @@ const over = new Vector3();
  * Per-frame: keep `bo`'s tile windows on the ground under the camera, at the
  * levels the screen needs. `projScale` is in device pixels. `drawable` is
  * false where the surface map must not be touched (hidden, replaced by a
- * host's picture, on a shape model).
+ * host's picture).
  */
 export function updateTileOverlay(
 	bo: BodyObjects,
