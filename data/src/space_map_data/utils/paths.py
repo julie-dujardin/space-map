@@ -35,6 +35,9 @@ SOURCES_METADATA_DIR = SOURCES_DIR / "metadata"
 SOURCES_ATMOSPHERE_DIR = SOURCES_DIR / "atmosphere"
 # Star catalogues. Each provider mirrors the upstream path below its own tree.
 SOURCES_STARS_DIR = SOURCES_DIR / "stars"
+# Published catalogues of the objects outside the solar system that are not
+# single stars or planets. One tree for each object class.
+SOURCES_CATALOGUES_DIR = SOURCES_DIR / "catalogues"
 # Launch-vehicle escape performance: payload-vs-C3 curves, one file per
 # vehicle configuration.
 SOURCES_LAUNCH_PERFORMANCE_DIR = SOURCES_DIR / "launch-performance"

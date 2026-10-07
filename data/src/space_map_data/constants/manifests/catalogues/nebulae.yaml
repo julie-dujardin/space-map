@@ -1,0 +1,380 @@
+# Nebulae and the interstellar medium.
+# `constants/manifests/catalogues.py` describes the fields.
+catalogues:
+- key: sharpless-1959
+  title: Catalogue of H II Regions (Sh 2)
+  reference: Sharpless 1959, ApJS 4, 257
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/20/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/20
+    files: [catalog.dat.gz]
+
+- key: lynds-bright-1965
+  title: Catalogue of Bright Nebulae (LBN)
+  reference: Lynds 1965, ApJS 12, 163
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/9/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/9
+    files: [catalog.dat]
+
+- key: lynds-dark-1962
+  title: Catalogue of Dark Nebulae (LDN)
+  reference: Lynds 1962, ApJS 7, 1
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/7A/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/7A
+    files: [ldn]
+
+- key: barnard-1927
+  title: Barnard's Catalogue of 349 Dark Objects in the Sky
+  reference: >-
+    Barnard 1927, A Photographic Atlas of Selected Regions of the Milky Way,
+    Carnegie Institution of Washington
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/220A/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/220A
+    files: [barnard.dat, notes.dat.gz]
+
+- key: van-den-bergh-1966
+  title: Catalogue of Reflection Nebulae (vdB)
+  reference: van den Bergh 1966, AJ 71, 990
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/21/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/21
+    files: [catalog.dat, errata.txt]
+
+- key: rcw-1960
+  title: A catalogue of H-alpha emission regions in the Southern Milky Way (RCW)
+  reference: Rodgers, Campbell & Whiteoak 1960, MNRAS 121, 103
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/216/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/216
+    files: [rcw.dat.gz, notes.dat.gz]
+
+- key: cederblad-1946
+  title: Catalog of bright diffuse Galactic nebulae
+  reference: Cederblad 1946, Lund Medd. Astron. Obs. Ser. II, 119, 1
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/231/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/231
+    files: [catalog.dat, notes.dat, refs.dat]
+
+- key: hash
+  title: "HASH: the Hong Kong/AAO/Strasbourg Hα planetary nebula database"
+  reference: Parker, Bojičić & Frew 2016, J. Phys. Conf. Ser. 728, 032008
+  license: >-
+    None stated. "If you use this resource in a publication, please cite this
+    paper" (Parker, Bojičić & Frew 2016) "and include the following
+    acknowledgement: "This research has made use of the HASH PN database at
+    hashpn.space"."
+  terms_url: http://hashpn.space/
+  distribution: undecided
+  cds:
+    catalogue: V/163
+    files: [pnmain.dat, spectra.dat.gz]
+
+- key: frew-2016
+  title: >-
+    The Hα surface brightness-radius relation: a robust statistical distance
+    indicator for planetary nebulae
+  reference: Frew, Parker & Bojičić 2016, MNRAS 455, 1459
+  license: >-
+    None stated. The e-print carries only the arXiv licence: "I grant arXiv.org
+    a perpetual, non-exclusive license to distribute this article."
+  terms_url: https://arxiv.org/abs/1504.01534
+  distribution: undecided
+  urls:
+  # The source holds the full distance tables, which are not at CDS.
+  - url: https://arxiv.org/e-print/1504.01534
+    name: arxiv-1504.01534.tar.gz
+
+- key: chornay-walton-2021
+  title: Gaia EDR3 planetary nebula central star distances
+  reference: Chornay & Walton 2021, A&A 656, A110
+  license: None stated. Derived from Gaia EDR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/656/A110/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/656/A110
+    files: [tablea1.dat]
+
+- key: deng-2026
+  title: Extinction distances for planetary nebulae
+  reference: Deng, Wang, Jiang & Deng 2026, A&A 708, A191
+  license: None stated. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/708/A191/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/708/A191
+    files: [table3.dat]
+
+- key: green-2024
+  title: A Catalogue of Galactic Supernova Remnants, 2024 October version
+  reference: Green 2025, J. Astrophys. Astron. 46, 14
+  license: >-
+    None stated. "Copyright © D. A. Green 2024/2025." "Please cite the
+    following paper for the summary data from this catalogue: Green D. A.,
+    2025, Journal of Astrophysics and Astronomy, 46, 14."
+  terms_url: https://www.mrao.cam.ac.uk/surveys/snrs/
+  distribution: undecided
+  cds:
+    catalogue: VII/297
+    files: [snrs.dat]
+  urls:
+  - https://www.mrao.cam.ac.uk/surveys/snrs/snrs.info.html
+  - https://www.mrao.cam.ac.uk/surveys/snrs/snrs.names.html
+  - https://www.mrao.cam.ac.uk/surveys/snrs/snrs.pp.html
+  # The detailed listings, which the site splits into 310 pages.
+  - https://www.mrao.cam.ac.uk/surveys/snrs/snr-catalogue2024-table-V.pdf
+
+- key: snrcat
+  title: SNRcat, high energy observations of Galactic supernova remnants
+  reference: Ferrand & Safi-Harb 2012, Adv. Space Res. 49, 1313
+  license: >-
+    None stated. "If you use information from SNRcat, we kindly ask you to
+    cite Ferrand & Safi-Harb (2012) and the URL:
+    http://snrcat.physics.umanitoba.ca"
+  terms_url: http://snrcat.physics.umanitoba.ca/
+  distribution: undecided
+  refresh_days: 7
+  urls:
+  - url: http://snrcat.physics.umanitoba.ca/SNRdownload.php?table=SNR
+    name: snrcat-snr.csv
+  - url: http://snrcat.physics.umanitoba.ca/SNRdownload.php?table=OBS
+    name: snrcat-obs.csv
+
+- key: ranasinghe-leahy-2022
+  title: Reliable distances of Galactic supernova remnants
+  reference: Ranasinghe & Leahy 2022, ApJ 940, 63
+  license: None stated. The article is CC BY 4.0.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJ/940/63/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJ/940/63
+    files: [table1.dat, refs.dat]
+
+- key: ranasinghe-leahy-2023
+  title: A statistical analysis of Galactic radio supernova remnants
+  reference: Ranasinghe & Leahy 2023, ApJS 265, 53
+  license: None stated. The article is CC BY 4.0.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJS/265/53/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJS/265/53
+    files: [table1.dat]
+
+- key: bozzetto-2017
+  title: Statistical Analysis of Supernova Remnants in the Large Magellanic Cloud
+  reference: Bozzetto et al. 2017, ApJS 230, 2
+  license: >-
+    None stated. The e-print carries only the arXiv licence: "I grant arXiv.org
+    a perpetual, non-exclusive license to distribute this article."
+  terms_url: https://arxiv.org/abs/1703.02676
+  distribution: undecided
+  urls:
+  # The tables are not at CDS.
+  - url: https://arxiv.org/e-print/1703.02676
+    name: arxiv-1703.02676.tar.gz
+
+- key: maggi-2019
+  title: The supernova remnant population of the Small Magellanic Cloud
+  reference: Maggi et al. 2019, A&A 631, A127
+  license: >-
+    None stated. The e-print carries only the arXiv licence: "I grant arXiv.org
+    a perpetual, non-exclusive license to distribute this article." The A&A
+    article is CC BY 4.0.
+  terms_url: https://arxiv.org/abs/1908.11234
+  distribution: undecided
+  urls:
+  # The tables are not at CDS.
+  - url: https://arxiv.org/e-print/1908.11234
+    name: arxiv-1908.11234.tar.gz
+
+- key: wise-hii
+  title: The WISE Catalog of Galactic H II Regions, V3.0
+  reference: Anderson et al. 2014, ApJS 212, 1
+  license: None stated. The page asks for no credit.
+  terms_url: http://astro.phys.wvu.edu/wise/
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - http://astro.phys.wvu.edu/wise/WISE_HII_V3.0.csv
+  # The database has 241 columns, the CSV 86 of them.
+  - http://astro.phys.wvu.edu/wise/WISE_HII_V3.0.db
+
+- key: shen-2025
+  title: Parallax-based distances to Galactic H II regions
+  reference: Shen, Hou, Liu & Gao 2025, A&A 696, A67
+  license: None stated. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/696/A67/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/696/A67
+    files: [table2.dat, tablea1.dat]
+
+- key: reid-2019
+  title: >-
+    Trigonometric parallaxes of high-mass star-forming regions: our view of the
+    Milky Way
+  reference: Reid et al. 2019, ApJ 885, 131
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJ/885/131/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJ/885/131
+    files: [table1.dat, refs.dat]
+  urls:
+  # The spiral-arm fits (Table 2) are not at CDS.
+  - url: https://arxiv.org/e-print/1910.03357
+    name: arxiv-1910.03357.tar.gz
+  # The distance calculator of the paper holds the trace of each arm segment.
+  - url: https://cloud.mpifr-bonn.mpg.de/index.php/s/LCdPgRJMmfj6XJB/download
+    name: bessel-distance-calculator-v2.4.1.tar
+
+- key: zucker-2019
+  title: >-
+    A Large Catalog of Accurate Distances to Local Molecular Clouds: The Gaia
+    DR2 Edition
+  reference: Zucker et al. 2019, ApJ 879, 125
+  license: CC0 1.0. Derived from Gaia DR2 (CC BY-NC 3.0 IGO).
+  terms_url: https://dataverse.harvard.edu/dataverse/cloud_distances
+  distribution: non-commercial
+  urls:
+  - url: https://dataverse.harvard.edu/api/access/datafile/3350710
+    name: Table1_Machine_Readable.dat
+  - url: https://dataverse.harvard.edu/api/access/datafile/3350712
+    name: Table2_Machine_Readable.dat
+  - url: https://dataverse.harvard.edu/api/access/datafile/3348573
+    name: Table3_Machine_Readable.dat
+  # The 27 tables of one dataset, as Dataverse bundles them.
+  - url: "https://dataverse.harvard.edu/api/access/dataset/:persistentId?persistentId=doi:10.7910/DVN/74Y5KU"
+    name: per-cloud-tables.zip
+
+- key: zucker-2020
+  title: A compendium of distances to molecular clouds in the Star Formation Handbook
+  reference: Zucker et al. 2020, A&A 633, A51
+  license: CC0 1.0. Derived from Gaia DR2 (CC BY-NC 3.0 IGO).
+  terms_url: https://dataverse.harvard.edu/dataverse/sf_handbook_distances
+  distribution: non-commercial
+  urls:
+  - url: https://dataverse.harvard.edu/api/access/datafile/4361456
+    name: Handbook_Distances_Zucker2020.dat
+  # The sightlines of Alves et al. 2020, from the same collection.
+  - url: https://dataverse.harvard.edu/api/access/datafile/4361453
+    name: Bridging_Sightlines_Alves_2020.dat
+
+- key: wang-2025
+  title: >-
+    A Comprehensive All-sky Catalog of 3345 Molecular Clouds from
+    Three-dimensional Dust Extinction
+  reference: Wang et al. 2025, ApJS 280, 16
+  license: >-
+    None stated on the VizieR page of the catalogue. The CDS ReadMe answers
+    HTTP 403. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0
+    IGO).
+  terms_url: https://vizier.cds.unistra.fr/viz-bin/VizieR?-source=J/ApJS/280/16
+  distribution: undecided
+  urls:
+  # The CDS archive directory of this catalogue answers HTTP 403.
+  - url: https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync
+    name: table2.csv
+    method: POST
+    data:
+      REQUEST: doQuery
+      LANG: ADQL
+      FORMAT: csv
+      QUERY: 'SELECT * FROM "J/ApJS/280/16/table2"'
+
+- key: miville-deschenes-2017
+  title: Physical properties of molecular clouds for the entire Milky Way disk
+  reference: Miville-Deschênes, Murray & Lee 2017, ApJ 834, 57
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJ/834/57/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJ/834/57
+    files: [table1.dat.gz]
+
+- key: reipurth-1999
+  title: A General Catalogue of Herbig-Haro Objects, 2nd edition
+  reference: Reipurth 1999, Center for Astrophysics and Space Astronomy, University of Colorado
+  license: >-
+    None stated. "Reference to this catalogue should be done as follows:
+    Reipurth, B.: 1999, {\em A general catalogue of Herbig-Haro objects}, 2.
+    edition, http://casa.colorado.edu/hhcat"
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/V/104/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: V/104
+    files: [catalog.dat.gz, notes.dat.gz, refs.dat.gz]
+
+- key: konietzka-2024
+  title: The Radcliffe Wave is oscillating
+  reference: Konietzka et al. 2024, Nature 628, 62
+  license: CC0 1.0. Derived from Gaia data (CC BY-NC 3.0 IGO).
+  terms_url: https://dataverse.harvard.edu/dataverse/radwavemotion
+  distribution: non-commercial
+  urls:
+  # Without `format=original` Dataverse serves its own conversion of each file.
+  - url: https://dataverse.harvard.edu/api/access/datafile/8954305?format=original
+    name: Radcliffe_Wave_best_fit_model_Konietzka2024.csv
+  - url: https://dataverse.harvard.edu/api/access/datafile/7211931?format=original
+    name: Radcliffe_Wave_stellar_clusters_Konietzka2023.csv
+  - url: https://dataverse.harvard.edu/api/access/datafile/7211929?format=original
+    name: Radcliffe_Wave_CO_analysis_Konietzka2023.csv
+
+- key: oneill-2024
+  title: "The Local Bubble Is a Local Chimney: A New Model from 3D Dust Mapping"
+  reference: O'Neill et al. 2024, ApJ 973, 136
+  license: >-
+    CC0 1.0. Built on the dust map of Edenhofer et al. 2024, which is derived
+    from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/INB1RB
+  distribution: non-commercial
+  urls:
+  - url: https://dataverse.harvard.edu/api/access/datafile/8943782
+    name: ONeill2024_LocalBubble_ShellProperties_MeanDraws.fits
+  - url: https://dataverse.harvard.edu/api/access/datafile/8943783
+    name: ONeill2024_LocalBubble_ShellProperties_A0.5.fits
+  - url: https://dataverse.harvard.edu/api/access/datafile/8955364
+    name: ONeill2024_LocalBubble_ShellProperties_A0.9.fits
+
+- key: vergely-2022
+  title: "Three-dimensional extinction maps: Inverting inter-calibrated extinction catalogs"
+  reference: Vergely, Lallement & Cox 2022, A&A 664, A174
+  license: None stated. The article is CC BY 4.0. Derived from Gaia EDR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/664/A174/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/664/A174
+    files:
+    - list.dat
+    - fits/explore_cube_density_values_050pc_v2.fits
+    - fits/explore_cube_density_values_025pc_v2.fits
+    - fits/explore_cube_density_values_010pc_v2.fits
+    - fits/explore_cube_density_errors_050pc_v2.fits
+    - fits/explore_cube_extinct_errors_050pc_v2.fits
+
+- key: edenhofer-2024
+  title: A parsec-scale Galactic 3D dust map out to 1.25 kpc from the Sun
+  reference: Edenhofer et al. 2024, A&A 685, A82
+  license: CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://zenodo.org/records/10658339
+  distribution: non-commercial
+  zenodo:
+    record: 10658339
+    files: [readme.md, interp2box.py, interp2lbd.py, mean_and_std_healpix.fits]

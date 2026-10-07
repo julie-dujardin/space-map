@@ -1,0 +1,172 @@
+# Star clusters, associations, stellar streams, and the structure of the Milky Way.
+# `constants/manifests/catalogues.py` describes the fields.
+catalogues:
+- key: hunt-reffert-2024
+  title: Improving the open cluster census. III. Masses, sizes and classes
+  reference: Hunt & Reffert 2024, A&A 686, A42
+  license: None stated. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/686/A42/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/686/A42
+    files: [clusters.dat.gz, members.dat.gz, crossma.dat.gz]
+
+- key: ucc
+  title: The Unified Cluster Catalogue, version 260615
+  reference: Perren et al. 2023, MNRAS 526, 4107
+  license: CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://zenodo.org/records/20705026
+  distribution: non-commercial
+  zenodo:
+    record: 20705026
+
+- key: harris-2010
+  title: Catalog of Parameters for Milky Way Globular Clusters, 2010 edition
+  reference: Harris 1996, AJ 112, 1487 (2010 edition)
+  license: >-
+    None stated. "supplied free of charge", "must refer to the original
+    source", "without charge of any fee".
+  terms_url: https://physics.mcmaster.ca/~harris/mwgc.dat
+  distribution: undecided
+  urls:
+  - https://physics.mcmaster.ca/~harris/mwgc.dat
+
+- key: vasiliev-baumgardt-2021
+  title: Gaia EDR3 view on Galactic globular clusters, membership probabilities
+  reference: Vasiliev & Baumgardt 2021, MNRAS 505, 5978
+  license: CC BY 4.0. Derived from Gaia EDR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://zenodo.org/records/4891252
+  distribution: non-commercial
+  zenodo:
+    record: 4891252
+
+- key: baumgardt-globular-clusters
+  title: Fundamental parameters of Galactic globular clusters, 4th version
+  reference: >-
+    Baumgardt & Hilker 2018, MNRAS 478, 1520; Baumgardt & Vasiliev 2021,
+    MNRAS 505, 5957
+  license: >-
+    None stated. "(C) Holger Baumgardt, Antonio Sollima, Michael Hilker,
+    Andrea Bellini, Eugene Vasiliev, Vincent Henault-Brunet & Nolan Dickson,
+    March 2023". "If you use these profiles for your research, please give
+    reference to the papers." The proper motions are from Gaia EDR3
+    (CC BY-NC 3.0 IGO).
+  terms_url: https://people.smp.uq.edu.au/HolgerBaumgardt/globular/
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://people.smp.uq.edu.au/HolgerBaumgardt/globular/orbits_table.txt
+  - https://people.smp.uq.edu.au/HolgerBaumgardt/globular/combined_table.txt
+  - url: https://people.smp.uq.edu.au/HolgerBaumgardt/globular/lgclusters/combined_table.txt
+    name: lgclusters_combined_table.txt
+  - https://people.smp.uq.edu.au/HolgerBaumgardt/globular/rv.dat
+  - url: https://people.smp.uq.edu.au/HolgerBaumgardt/globular/appendix/combined_table.txt
+    name: appendix_combined_table.txt
+
+- key: bica-2008
+  title: A general catalogue of extended objects in the Magellanic System
+  reference: Bica et al. 2008, MNRAS 389, 678
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/389/678/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/MNRAS/389/678
+    files: [table3.dat, table4.dat, table5.dat, table6.dat]
+
+- key: bica-2020
+  title: >-
+    An updated Small Magellanic Cloud and Magellanic Bridge catalog of star
+    clusters, associations, and related objects
+  reference: Bica et al. 2020, AJ 159, 82
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/AJ/159/82/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/AJ/159/82
+    files: [table2.dat, table4.dat, refs.dat]
+
+- key: bologna-rbc-v5
+  title: Revised Bologna Catalogue of M31 globular clusters and candidates, V.5
+  reference: Galleti et al. 2004, A&A 416, 917
+  license: None stated. "Please acknowledge the use of this catalogue."
+  terms_url: http://www.bo.astro.it/M31/
+  distribution: undecided
+  # The CDS copy (V/143) is the master table only, with one header line.
+  urls:
+  - http://www.bo.astro.it/M31/m31rbcV5.dat
+  - http://www.bo.astro.it/M31/RBC_12_V5.tab
+  - http://www.bo.astro.it/M31/RBC_Phot12_V5.tab
+  - http://www.bo.astro.it/M31/RBC_VR12_V5.tab
+  - http://www.bo.astro.it/M31/RBC_SP12_V5.tab
+  - http://www.bo.astro.it/M31/RBC_sdss12_V5.tab
+  - http://www.bo.astro.it/M31/M31GC_Fe.tab
+  - http://www.bo.astro.it/M31/M31GCindex.tab
+  - http://www.bo.astro.it/M31/MWGC_ind.tab
+  - http://www.bo.astro.it/M31/refsV5.tab
+  - http://www.bo.astro.it/M31/RevisionsV5.tab
+  - http://www.bo.astro.it/M31/C09_P10_RBC.tab
+  - http://www.bo.astro.it/M31/RBC_Caldwell.txt
+
+- key: mocadb
+  title: Montreal Open Clusters and Associations database, snapshot 20260106
+  reference: Gagné et al. 2026, arXiv:2602.15695
+  license: CC BY 4.0. Holds Gaia DR3 data (CC BY-NC 3.0 IGO).
+  terms_url: https://zenodo.org/records/18166118
+  distribution: non-commercial
+  zenodo:
+    record: 18166118
+    files: [moca_tables.zip, summary_tables.zip]
+
+- key: quintana-2026
+  title: A new Gaia census of OB associations within 1 kpc
+  reference: Quintana et al. 2026, MNRAS 549, stag853
+  license: '"License: CC-BY-4.0". Derived from Gaia DR3 (CC BY-NC 3.0 IGO).'
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/549/G853/ReadMe
+  distribution: non-commercial
+  cds:
+    catalogue: J/MNRAS/549/G853
+    files: [table1.dat, members.dat.gz, rejected.dat]
+
+- key: wright-2020
+  title: OB Associations and their origins, census of known OB associations
+  reference: Wright 2020, New Astronomy Reviews 90, 101549
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/other/NewAR/90.1549/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/other/NewAR/90.1549
+    files: [table1.dat]
+
+- key: galstreams
+  title: galstreams, library of stellar stream tracks in the Milky Way, v1.2.1
+  reference: Mateu 2023, MNRAS 520, 5225
+  license: >-
+    BSD 3-Clause. 130 of the 217 tracks come from the Gaia stream members of
+    Ibata et al. 2021 and 2024 (CC BY-NC 3.0 IGO).
+  terms_url: https://github.com/cmateu/galstreams/blob/v1.2.1/LICENSE
+  distribution: non-commercial
+  urls:
+  - url: https://codeload.github.com/cmateu/galstreams/tar.gz/refs/tags/v1.2.1
+    name: galstreams-1.2.1.tar.gz
+
+- key: ibata-2024
+  title: STREAMFINDER atlas of stellar streams detected in Gaia DR3
+  reference: Ibata et al. 2024, ApJ 967, 89
+  license: None stated. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://doi.org/10.3847/1538-4357/ad382d
+  distribution: undecided
+  urls:
+  - https://content.cld.iop.org/journals/0004-637X/967/2/89/revision1/apjad382dt1_mrt.txt
+  # The table of the 87 streams exists only as LaTeX, in the preprint source.
+  - url: https://arxiv.org/e-print/2311.17202v1
+    name: arXiv-2311.17202v1.tar.gz
+
+- key: skowron-2019
+  title: A three-dimensional map of the Milky Way using classical Cepheid variable stars
+  reference: Skowron et al. 2019, Science 365, 478
+  license: None stated.
+  terms_url: https://ogle.astrouw.edu.pl/cont/4_main/str/3dgal/
+  distribution: undecided
+  urls:
+  - https://ftp.astrouw.edu.pl/ogle/ogle4/MILKY_WAY_3D_MAP/Skowron2019_GalClassCephDist.dat
+  - https://ftp.astrouw.edu.pl/ogle/ogle4/MILKY_WAY_3D_MAP/allGalCep.listID

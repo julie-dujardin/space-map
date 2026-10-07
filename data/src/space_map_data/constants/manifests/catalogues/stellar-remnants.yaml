@@ -1,0 +1,206 @@
+# Pulsars, neutron stars and white dwarfs.
+# `constants/manifests/catalogues.py` describes the fields.
+catalogues:
+- key: atnf-psrcat
+  title: ATNF Pulsar Catalogue
+  reference: Manchester et al. 2005, AJ 129, 1993
+  license: >-
+    Two statements. The download page, on the program: "PSRCAT is free
+    software: you can redistribute it and/or modify it under the terms of the
+    GNU General Public License as published by the Free Software Foundation,
+    either version 3 of the License, or (at your option) any later version."
+    The same page: "The programs and databases remain the property of the
+    Australia Telescope National Facility, CSIRO". The CSIRO Data Access
+    Portal collection of the same catalogue (https://doi.org/10.25919/mjwb-7w32):
+    licence "BSD 3-Clause Licence", rights "All Rights (including copyright)
+    CSIRO 2025.", and a bundled OSS_LICENSE.txt headed "CSIRO Open Source
+    Software Licence v1.0 (Based on MIT/BSD Open Source Licence)". Credit
+    asked: "we would appreciate acknowledgement by reference to the
+    publication "The ATNF Pulsar Catalogue", R. N. Manchester, G. B. Hobbs,
+    A. Teoh & M. Hobbs, Astronomical Journal, 129, 1993-2006 (2005) and by
+    quoting the web address https://www.atnf.csiro.au/research/pulsar/psrcat".
+  terms_url: https://www.atnf.csiro.au/research/pulsar/psrcat/download.html
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://www.atnf.csiro.au/research/pulsar/psrcat/downloads/psrcat_pkg.tar.gz
+
+- key: freire-gc-pulsars
+  title: Pulsars in globular clusters
+  reference: P. C. C. Freire, web list, Max-Planck-Institut für Radioastronomie
+  license: >-
+    None stated. "I give relevant references on each pulsar whenever they are
+    available, please cite these if possible."
+  terms_url: https://www3.mpifr-bonn.mpg.de/staff/pfreire/GCpsr.html
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://www3.mpifr-bonn.mpg.de/staff/pfreire/GCpsr.txt
+  - https://www3.mpifr-bonn.mpg.de/staff/pfreire/GCpsr.html
+
+- key: fast-gpps
+  title: Newly discovered pulsars from the FAST Galactic Plane Pulsar Snapshot survey
+  reference: Han et al. 2021, RAA 21, 107
+  license: >-
+    None stated. "If you want to use any data in this page for scientific
+    research or scientific propagation, please do cite properly to" the GPPS
+    papers that the page lists.
+  terms_url: http://zmtt.bao.ac.cn/GPPS/GPPSnewPSR.html
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - http://zmtt.bao.ac.cn/GPPS/GPPSnewPSR.html
+
+- key: galactic-msps
+  title: Galactic millisecond pulsars
+  reference: E. Ferrara and D. Lorimer, web list, University of Maryland
+  license: >-
+    None stated. "Please acknowledge the URL in any papers that make use of
+    it."
+  terms_url: https://pages.astro.umd.edu/~eferrara/pulsars/
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://pages.astro.umd.edu/~eferrara/pulsars/GalacticMSPs.txt
+
+- key: cornell-pulsar-parallaxes
+  title: Pulsar parallaxes
+  reference: S. Chatterjee, web list, Cornell University
+  license: None stated. The page asks for no credit.
+  terms_url: https://hosting.astro.cornell.edu/research/parallax/
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://hosting.astro.cornell.edu/research/parallax/Parallaxes.txt
+
+- key: fermi-3pc
+  title: The Third Fermi Large Area Telescope Catalog of Gamma-ray Pulsars
+  reference: Smith et al. 2023, ApJ 958, 191
+  license: None stated on the data page. The article is CC BY 4.0.
+  terms_url: https://fermi.gsfc.nasa.gov/ssc/data/access/lat/3rd_PSR_catalog/
+  distribution: undecided
+  urls:
+  - https://fermi.gsfc.nasa.gov/ssc/data/access/lat/3rd_PSR_catalog/3PC_Catalog+SEDs_20230803.fits
+  - https://fermi.gsfc.nasa.gov/ssc/data/access/lat/3rd_PSR_catalog/README_3PC_Catalog+SEDs.txt
+  - https://fermi.gsfc.nasa.gov/ssc/data/access/lat/3rd_PSR_catalog/README_3PC_SEDs.txt
+
+- key: mcgill-magnetars
+  title: McGill Online Magnetar Catalog
+  reference: Olausen & Kaspi 2014, ApJS 212, 6
+  license: >-
+    None stated. "You are free to use the information in this catalog in
+    publications, however, we ask that you please cite the published paper
+    (Olausen & Kaspi, 2014) and refer to the url
+    (http://www.physics.mcgill.ca/~pulsar/magnetar/main.html) in either the
+    acknowledgements or a footnote."
+  terms_url: http://www.physics.mcgill.ca/~pulsar/magnetar/main.html
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/main.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/TabO1.csv
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/TabO2.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/TabO3.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/TabO4.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/Tab1.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/Tab2.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/Tab3.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/Tab4.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/Tab5.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/Tab6.html
+  - http://www.physics.mcgill.ca/~pulsar/magnetar/Tab7.html
+
+- key: ioffe-cooling-neutron-stars
+  title: Thermal luminosities of cooling neutron stars
+  reference: Potekhin et al. 2020, MNRAS 496, 5052
+  license: None stated. The page names the article as its reference and asks for no credit.
+  terms_url: http://www.ioffe.ru/astro/NSG/thermal/cooldat.html
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - http://www.ioffe.ru/astro/NSG/thermal/cooldat.html
+
+- key: gentile-fusillo-2021
+  title: A catalogue of white dwarfs in Gaia EDR3
+  reference: Gentile Fusillo et al. 2021, MNRAS 508, 3877
+  license: None stated. Derived from Gaia EDR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/508/3877/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/MNRAS/508/3877
+    files: [maincat.dat.gz, sdssspec.dat.gz, rpm_ext.dat.gz]
+
+- key: obrien-2024
+  title: The 40 pc sample of white dwarfs from Gaia
+  reference: O'Brien et al. 2024, MNRAS 527, 8687
+  license: None stated. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/527/8687/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/MNRAS/527/8687
+    files: [tablea1.dat, tablea6.dat]
+
+- key: vincent-2024
+  title: Classification and parameterization of a large Gaia sample of white dwarfs using XP spectra
+  reference: Vincent et al. 2024, A&A 682, A5
+  license: None stated. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/682/A5/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/682/A5
+    files: [catalog.dat.gz]
+
+- key: desi-dr1-white-dwarfs
+  title: The DESI Data Release 1 white dwarf catalogue
+  reference: Swan et al. 2026, MNRAS, accepted (arXiv:2609.04314)
+  license: >-
+    None stated. "If you make use of this repository, please acknowledge and
+    cite Swan et al. 2026". Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/
+  distribution: undecided
+  urls:
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_catalogue_1.0.csv.gz
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_classifications_1.0.csv.gz
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_classificationLog_1.0.csv.gz
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_exposures_1.0.csv.gz
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_externalData_1.0.csv.gz
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_fullFitResults_1.0.csv.gz
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_kinematics_1.0.csv.gz
+  - https://cygnus.astro.warwick.ac.uk/phsdaj/WhiteDwarfs/Tables/DESI_DR1_RVs_1.0.csv.gz
+
+- key: mwdd
+  title: Montreal White Dwarf Database
+  reference: Dufour et al. 2017, ASP Conf. Ser. 509, 3
+  license: >-
+    None stated. "If the Montreal White Dwarf Database was useful for your
+    work, please cite this paper : "The Montreal White Dwarf Database: a Tool
+    for the Community"". The table carries Gaia columns (CC BY-NC 3.0 IGO).
+  terms_url: https://www.montrealwhitedwarfdatabase.org/
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://www.montrealwhitedwarfdatabase.org/table.json
+  - https://www.montrealwhitedwarfdatabase.org/references.html
+
+- key: el-badry-2021
+  title: "A million binaries from Gaia eDR3: sample selection and validation of Gaia parallax uncertainties"
+  reference: El-Badry, Rix & Heintz 2021, MNRAS 506, 2269
+  license: CC BY 4.0. Derived from Gaia EDR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://zenodo.org/records/4435257
+  distribution: non-commercial
+  zenodo:
+    record: 4435257
+    # The shifted catalogue is the control sample of chance alignments.
+    files: [all_columns_catalog.fits.gz, all_columns_catalog_shift.fits.gz]
+
+- key: culpan-2022
+  title: >-
+    The population of hot subdwarf stars studied with Gaia. IV. Catalogues of
+    hot subluminous stars based on Gaia EDR3
+  reference: Culpan et al. 2022, A&A 662, A40
+  license: None stated. Derived from Gaia EDR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/662/A40/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/662/A40
+    files: [knownhsd.dat.gz, hotsd.dat.gz]

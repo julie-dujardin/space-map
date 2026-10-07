@@ -1,0 +1,258 @@
+# Galaxies, their groups and clusters, and the large-scale structure.
+# `constants/manifests/catalogues.py` describes the fields.
+catalogues:
+- key: lvdb
+  title: Local Volume Database, v1.1.1
+  reference: Pace 2025, OJAp 8, 142
+  license: >-
+    CC0 1.0 (Zenodo licence field, repository LICENSE). "If you use this in
+    your research please cite the overview paper and include a link to the
+    github repository (https://github.com/apace7/local_volume_database)."
+  terms_url: https://zenodo.org/records/21910097
+  distribution: open
+  zenodo:
+    record: 21910097
+  urls:
+  - https://github.com/apace7/local_volume_database/releases/download/v1.1.1/comb_all.csv
+
+# The site writes a table file again only when its table form is posted, so a
+# plain fetch cannot refresh it.
+- key: lvg
+  title: Catalog and Atlas of the Local Volume Galaxies
+  reference: Karachentsev, Makarov & Kaisina 2013, AJ 145, 101
+  license: None stated. The site asks for no credit.
+  terms_url: https://www.sao.ru/lv/lvgdb/introduction.php
+  distribution: undecided
+  urls:
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table1.dat
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table2.dat
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table3.dat
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table4.dat
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table5.dat
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table6.dat
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table7.dat
+  - https://www.sao.ru/lv/lvgdb/tables/lvg_table8.dat
+
+- key: hecate
+  title: Heraklion Extragalactic Catalogue (HECATE)
+  reference: Kovlakas et al. 2021, MNRAS 506, 1896
+  license: >-
+    "License: CC-BY-4.0". Derived from HyperLEDA ("All the data and the
+    software is publicly available in open-source for non-commercial
+    purposes").
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/506/1896/ReadMe
+  distribution: non-commercial
+  cds:
+    catalogue: J/MNRAS/506/1896
+    files: [hecate.dat.gz]
+
+- key: cosmicflows-4
+  title: Cosmicflows-4
+  reference: Tully et al. 2023, ApJ 944, 94
+  license: >-
+    None stated. The Extragalactic Distance Database of the authors: "All
+    available data is free for use in any research or application with proper
+    citation(s)."
+  terms_url: https://edd.ifa.hawaii.edu/
+  distribution: undecided
+  cds:
+    catalogue: J/ApJ/944/94
+    files: [table2.dat.gz, table3.dat.gz, table4.dat.gz]
+
+- key: cosmicflows-4-basins
+  title: Watershed basins of attraction and repulsion of the Cosmicflows-4 velocity field
+  reference: Dupuy & Courtois 2023, A&A 678, A176
+  license: None stated. "If you use this data cite the article above".
+  terms_url: https://projets.ip2i.in2p3.fr/cosmicflows/
+  distribution: undecided
+  urls:
+  - https://projets.ip2i.in2p3.fr/cosmicflows/CF4_new_128-z008_watersheds-fits.zip
+
+# One archive of the repository. It carries the nebula outlines too.
+- key: openngc
+  title: OpenNGC, release v20260501
+  reference: M. Verga, OpenNGC, https://github.com/mattiaverga/OpenNGC
+  license: >-
+    "OpenNGC is released under CC-BY-SA-4.0 license". Built in part from
+    HyperLEDA ("non-commercial purposes").
+  terms_url: https://github.com/mattiaverga/OpenNGC/blob/v20260501/README.md
+  distribution: non-commercial
+  urls:
+  - url: https://codeload.github.com/mattiaverga/OpenNGC/tar.gz/refs/tags/v20260501
+    name: OpenNGC-v20260501.tar.gz
+
+- key: tully-2015
+  title: "Galaxy groups: a 2MASS catalog"
+  reference: Tully 2015, AJ 149, 171
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/AJ/149/171/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/AJ/149/171
+    files: [table3.dat.gz, table4.dat.gz, table5.dat.gz]
+
+- key: kourkchi-tully-2017
+  title: Galaxy groups within 3500 km/s
+  reference: Kourkchi & Tully 2017, ApJ 843, 16
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJ/843/16/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJ/843/16
+    files: [table2.dat.gz, table3.dat.gz, table4.dat]
+
+- key: abell-aco
+  title: A Catalogue of Rich Clusters of Galaxies
+  reference: Abell, Corwin & Olowin 1989, ApJS 70, 1
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/110A/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/110A
+    files:
+    - table3.dat.gz
+    - table4.dat.gz
+    - table5.dat.gz
+    - table6.dat.gz
+    - notes.dat.gz
+    - docu.txt
+
+- key: mcxc-ii
+  title: "MCXC-II: second release of the Meta-Catalogue of X-ray detected Clusters of galaxies"
+  reference: Sadibekova et al. 2024, A&A 688, A187
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/688/A187/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/688/A187
+    files: [mcxcii.dat.gz, tableb1.dat, tableb2.dat, tableb3.dat]
+
+- key: planck-psz2
+  title: Second Planck catalogue of Sunyaev-Zeldovich sources (PSZ2)
+  reference: Planck Collaboration 2016, A&A 594, A27
+  license: >-
+    None stated. "If you use any of these results for presentations, please
+    acknowledge the corresponding paper, ESA/Planck, and the Planck
+    Collaboration."
+  terms_url: https://www.cosmos.esa.int/web/planck/publications
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/594/A27
+    files: [psz2.dat, pszmmf1.dat, pszmmf3.dat, pszpws.dat]
+
+- key: erass1-clusters
+  title: SRG/eROSITA All-Sky Survey, first catalogue of galaxy clusters and groups
+  reference: Bulbul et al. 2024, A&A 685, A106
+  license: >-
+    None stated. "All publications based on eROSITA-DE data must include the
+    following text: This work is based on data from eROSITA, the soft X-ray
+    instrument aboard SRG, a joint Russian-German science mission supported
+    by the Russian Space Agency (Roskosmos), in the interests of the Russian
+    Academy of Sciences represented by its Space Research Institute (IKI),
+    and the Deutsches Zentrum für Luft- und Raumfahrt (DLR)."
+  terms_url: https://erosita.mpe.mpg.de/dr1/AllSkySurveyData_dr1/acknowledgement.html
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/685/A106
+    files: [emain.dat.gz, ecosmos.dat.gz]
+
+- key: einasto-2001
+  title: Superclusters of Abell and X-ray clusters
+  reference: Einasto et al. 2001, AJ 122, 2222
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/AJ/122/2222/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/AJ/122/2222
+    files: [tablea1.dat, tableb1.dat, tableb2.dat]
+
+- key: mscc
+  title: Two new catalogues of superclusters of Abell/ACO galaxy clusters out to redshift 0.15
+  reference: Chow-Martínez et al. 2014, MNRAS 445, 4073
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/445/4073/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/MNRAS/445/4073
+    files: [mscc.dat, sscc.dat, cat.dat]
+
+- key: pustilnik-2019
+  title: Void galaxies in the nearby Universe. I. Sample description
+  reference: Pustilnik, Tepliakova & Makarov 2019, MNRAS 482, 4329
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/482/4329/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/MNRAS/482/4329
+    files: [table1.dat, table2.dat, table3.dat]
+
+- key: desivast
+  title: "DESIVAST: catalogues of low-redshift voids from the DESI DR1 Bright Galaxy Survey"
+  reference: Rincon et al. 2025, ApJ 982, 38
+  license: >-
+    "The Dark Energy Spectroscopic Instrument (DESI) data are licensed under
+    the Creative Commons Attribution 4.0 International License".
+  terms_url: https://data.desi.lbl.gov/public/dr1/LICENSE.md
+  distribution: open
+  urls:
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_VoidFinder_NGC.fits
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_VoidFinder_SGC.fits
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_V2_ZOBOV_NGC.fits
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_V2_ZOBOV_SGC.fits
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_V2_VIDE_NGC.fits
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_V2_VIDE_SGC.fits
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_V2_REVOLVER_NGC.fits
+  - https://data.desi.lbl.gov/public/dr1/vac/dr1/desivast/v1.0/DESIVAST_BGS_VOLLIM_V2_REVOLVER_SGC.fits
+
+- key: 2mpp
+  title: 2M++ density and peculiar velocity fields, v1.0
+  reference: Carrick et al. 2015, MNRAS 450, 317
+  license: >-
+    None stated. "Please cite "Cosmological parameters from the comparison of
+    peculiar velocities with predictions from the 2M++ density field",
+    Carrick J., Turnbull S., Lavaux G. & Hudson M. J., MNRAS, 2015." The page
+    carries "© 2014-2020 Guilhem Lavaux, Michael J. Hudson, Jon Carrick &
+    Stephen Turnbull".
+  terms_url: https://cosmicflows.iap.fr/download/
+  distribution: undecided
+  urls:
+  - https://cosmicflows.iap.fr/assets/data/twompp_density.npy
+  - https://cosmicflows.iap.fr/assets/data/twompp_velocity.npy
+  - https://cosmicflows.iap.fr/assets/data/twompp_README.txt
+
+# `Current` serves the newest release, whatever its date.
+- key: ned-lvs
+  title: NED Local Volume Sample (NED-LVS)
+  reference: Cook et al. 2023, ApJS 268, 14
+  license: >-
+    None stated. "If you use the NED-LVS in your research, please cite both
+    the publication (Cook et. al (2023)) and the Digital Object Identifier
+    (DOI): 10.26132/NED8".
+  terms_url: https://ned.ipac.caltech.edu/NED::LVS/
+  distribution: undecided
+  urls:
+  - url: https://ned.ipac.caltech.edu/NED::LVS/fits/Current/
+    name: NEDLVS.fits
+
+- key: sdss-dr17
+  title: SDSS DR17 spectroscopic catalogue (specObj)
+  reference: Abdurro'uf et al. 2022, ApJS 259, 35
+  license: >-
+    "All SDSS data released in our public data releases are considered in the
+    public domain."
+  terms_url: https://www.sdss.org/collaboration/image-use-policy/
+  distribution: open
+  urls:
+  - https://data.sdss.org/sas/dr17/sdss/spectro/redux/specObj-dr17.fits
+
+# The PIC and AWS mirrors still serve the file that DESI replaced on 2026-07-10.
+- key: desi-dr1
+  title: DESI Data Release 1 redshift catalogue (zall-pix-iron)
+  reference: DESI Collaboration 2025, arXiv:2503.14745
+  license: >-
+    "The Dark Energy Spectroscopic Instrument (DESI) data are licensed under
+    the Creative Commons Attribution 4.0 International License".
+  terms_url: https://data.desi.lbl.gov/public/dr1/LICENSE.md
+  distribution: open
+  urls:
+  - https://data.desi.lbl.gov/public/dr1/spectro/redux/iron/zcatalog/v1/zall-pix-iron.fits

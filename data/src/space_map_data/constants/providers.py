@@ -44,6 +44,14 @@ class PROVIDERS(StrEnum):
     GAIA_CROSS_MATCH = "gaia_cross_match"
     CDS_STAR_CATALOGUES = "cds_star_catalogues"
     IAU_STAR_NAMES = "iau_star_names"
+    GALAXY_CATALOGUES = "galaxy_catalogues"
+    STAR_CLUSTER_CATALOGUES = "star_cluster_catalogues"
+    NEBULA_CATALOGUES = "nebula_catalogues"
+    STELLAR_REMNANT_CATALOGUES = "stellar_remnant_catalogues"
+    BLACK_HOLE_CATALOGUES = "black_hole_catalogues"
+    TRANSIENT_CATALOGUES = "transient_catalogues"
+    SIMBAD_OBJECTS = "simbad_objects"
+    WIKIDATA_SIMBAD_IDS = "wikidata_simbad_ids"
     MANUAL = "manual"
 
 

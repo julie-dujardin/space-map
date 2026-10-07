@@ -1,0 +1,202 @@
+# Supernovae, bursts, novae and cataclysmic variables.
+# `constants/manifests/catalogues.py` describes the fields.
+catalogues:
+- key: open-supernova-catalog
+  title: The Open Supernova Catalog
+  reference: Guillochon et al. 2017, ApJ 835, 64
+  license: >-
+    None stated. "Published under open scientific data standards". "If you
+    use data or tools from the Open Supernova Catalog in academic
+    publications, thesis dissertations, or astronomical research, please cite
+    the primary literature paper".
+  terms_url: https://sne.space/about/
+  distribution: undecided
+  refresh_days: 7
+  urls:
+  # The server also has `catalog.min.json.gz`, which is an older copy.
+  - https://sne.space/astrocats/astrocats/supernovae/output/catalog.min.json
+
+- key: pantheon-plus
+  title: Pantheon+SH0ES data release, supernova and Cepheid host distances
+  reference: Brout et al. 2022, ApJ 938, 110; Riess et al. 2022, ApJ 934, L7
+  license: None stated. "Please cite papers individually when referencing them."
+  terms_url: https://pantheonplussh0es.github.io/
+  distribution: undecided
+  urls:
+  - url: https://raw.githubusercontent.com/PantheonPlusSH0ES/DataRelease/main/Pantheon+_Data/4_DISTANCES_AND_COVAR/Pantheon+SH0ES.dat
+    name: Pantheon+SH0ES.dat
+  - url: https://raw.githubusercontent.com/PantheonPlusSH0ES/DataRelease/main/Pantheon+_Data/4_DISTANCES_AND_COVAR/README
+    name: README
+
+- key: asiago-supernovae
+  title: The Asiago Supernova Catalogue
+  reference: Barbon et al. 1999, A&AS 139, 531
+  license: >-
+    None stated. "If you make use of the catalog for your research an
+    acknowledgment would be appreciated."
+  terms_url: http://graspa.oapd.inaf.it/asnc.html
+  distribution: undecided
+  urls:
+  # Only this view has the supernovae after 2015bn and those with no IAU designation.
+  - url: http://graspa.oapd.inaf.it/cgi-bin/sncat_new.cgi?yr=0
+    name: catalogue.html
+  - http://graspa.oapd.inaf.it/asnc/cat.txt
+  - http://graspa.oapd.inaf.it/asnc/asnc_desc.html
+
+- key: grbweb
+  title: GRBweb, an all-inclusive catalog of gamma-ray bursts
+  reference: P. Coppin, GRBweb, IceCube Collaboration
+  license: >-
+    None stated. "© Copyright. All rights reserved." "Concerning references,
+    please refer to the original catalogs."
+  terms_url: https://user-web.icecube.wisc.edu/~grbweb_public/Construction.html
+  distribution: undecided
+  refresh_days: 7
+  urls:
+  - https://user-web.icecube.wisc.edu/~grbweb_public/Summary_table.txt
+  - https://user-web.icecube.wisc.edu/~grbweb_public/GRBweb2.sqlite
+
+- key: greiner-grb
+  title: GRBs localized with BSAX, RXTE, IPN, HETE, INTEGRAL, Swift, AGILE, Fermi, MAXI, LEIA, Einstein Probe, SVOM or SRG
+  reference: J. Greiner, Max Planck Institute for Extraterrestrial Physics
+  license: >-
+    None stated. "If you make heavy use of these pages, an acknowledgement is
+    appreciated."
+  terms_url: https://www.mpe.mpg.de/~jcg/grbgen.html
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://www.mpe.mpg.de/~jcg/grbgen.html
+
+- key: swift-grb
+  title: Swift Gamma Ray Burst Compilation by Burst Advocate (SWIFTGRBBA)
+  reference: Gehrels et al. 2004, ApJ 611, 1005
+  license: >-
+    None stated. "This research has made use of data and/or software provided
+    by the High Energy Astrophysics Science Archive Research Center (HEASARC),
+    which is a service of the Astrophysics Science Division at NASA/GSFC."
+  terms_url: https://heasarc.gsfc.nasa.gov/docs/heasarc/acknow.html
+  distribution: undecided
+  refresh_days: 7
+  urls:
+  - https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_swiftgrbba.tdat.gz
+
+- key: fermi-gbm-bursts
+  title: Fermi GBM Burst Catalog (FERMIGBRST)
+  reference: >-
+    von Kienlin et al. 2020, ApJ 893, 46; Gruber et al. 2014, ApJS 211, 12;
+    von Kienlin et al. 2014, ApJS 211, 13; Bhat et al. 2016, ApJS 223, 28
+  license: >-
+    None stated. "When referencing results from this online catalog, please
+    cite von Kienlin, A. et al. 2020, Gruber, D. et al. 2014, von Kienlin, A.
+    et al. 2014, and Bhat, P. et al. 2016."
+  terms_url: https://heasarc.gsfc.nasa.gov/W3Browse/fermi/fermigbrst.html
+  distribution: undecided
+  refresh_days: 7
+  urls:
+  - https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_fermigbrst.tdat.gz
+
+- key: chime-frb-catalog-2
+  title: The Second CHIME/FRB Catalog of Fast Radio Bursts
+  reference: CHIME/FRB Collaboration 2026, arXiv:2601.09399, doi:10.11570/25.0066
+  license: >-
+    None stated. "You may use the data presented in this website for
+    publications; however, we ask that you cite the relevant CHIME/FRB
+    Collaboration papers."
+  terms_url: https://chime-frb-open-data.github.io/
+  distribution: undecided
+  urls:
+  - https://www.canfar.net/storage/vault/file/AstroDataCitationDOI/CISTI.CANFAR/25.0066/data/table/chimefrbcat2.csv
+
+- key: frb-repository
+  title: FRBs/FRB, Python code and data related to fast radio bursts, release 2.3
+  reference: Prochaska et al. 2025, FRBs/FRB v2.3, doi:10.5281/zenodo.16763432
+  license: BSD 3-Clause License
+  terms_url: https://github.com/FRBs/FRB/blob/v2.3/LICENSE
+  distribution: open
+  urls:
+  - url: https://codeload.github.com/FRBs/FRB/tar.gz/refs/tags/v2.3
+    name: FRB-2.3.tar.gz
+
+- key: blinkverse
+  title: "Blinkverse: A Database of Fast Radio Bursts"
+  reference: Xu et al. 2023, Universe 9, 330
+  license: >-
+    None stated. "if users have used the data in Blinkverse, we request the
+    usage of Blinkverse to be acknowledged".
+  terms_url: https://blinkverse.zero2x.org/publication/acknowledgements
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - url: https://blinkverse.zero2x.org/api/app/adcp-blinkverse/frb_sources
+    name: frb_sources.json
+  - url: https://blinkverse.zero2x.org/api/app/adcp-blinkverse/frb_hosts/
+    name: frb_hosts.json
+
+- key: schaefer-2022
+  title: Comprehensive catalogue of the overall best distances and properties of 402 Galactic novae
+  reference: Schaefer 2022, MNRAS 517, 6150
+  license: None stated. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/517/6150/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/MNRAS/517/6150
+    files: [table1.dat, table3.dat, table4.dat, table5.dat, table6.dat]
+
+- key: mukai-novae
+  title: Koji's List of Recent Galactic Novae
+  reference: K. Mukai, NASA Goddard Space Flight Center
+  license: None stated. The page asks for no acknowledgement.
+  terms_url: https://asd.gsfc.nasa.gov/Koji.Mukai/novae/novae.html
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://asd.gsfc.nasa.gov/Koji.Mukai/novae/novae.html
+  - https://asd.gsfc.nasa.gov/Koji.Mukai/novae/unconfirmed.html
+
+- key: canbay-2023
+  title: Galactic Model Parameters and Spatial Density of Cataclysmic Variables in the Gaia Era
+  reference: Canbay et al. 2023, AJ 165, 163
+  license: None stated. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/AJ/165/163/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/AJ/165/163
+    files: [table1.dat, refs.dat]
+
+- key: ritter-kolb
+  title: Catalogue of cataclysmic binaries, low-mass X-ray binaries and related objects, edition 7.24
+  reference: Ritter & Kolb 2003, A&A 404, 301 (update RKcat7.24, 2016)
+  license: >-
+    None stated. "Please refer to this catalogue as: Ritter H., Kolb U. 2003,
+    A&A, 404, 301 (update RKcat7.24, 2016)".
+  terms_url: https://wwwmpa.mpa-garching.mpg.de/RKcat/
+  distribution: undecided
+  cds:
+    catalogue: B/cb
+    files:
+    - cbdata.dat
+    - lmxbdata.dat
+    - pcbdata.dat
+    - cbrefs.dat
+    - lmxbrefs.dat
+    - pcbrefs.dat
+    - findrefs.dat
+    - whoswho1.dat
+    - whoswho2.dat
+    - whoswho5.dat
+
+- key: merc-symbiotics
+  title: New Online Database of Symbiotic Variables
+  reference: Merc, Gális & Wolf 2019, RNAAS 3, 28
+  license: >-
+    None stated. The pages ask for no acknowledgement. Carries Gaia DR3
+    parallaxes and distances derived from them (CC BY-NC 3.0 IGO).
+  terms_url: https://sirrah.troja.mff.cuni.cz/~merc/nodsv/
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - https://sirrah.troja.mff.cuni.cz/~merc/nodsv/galactic.html
+  - https://sirrah.troja.mff.cuni.cz/~merc/nodsv/extragalactic.html
+  - https://sirrah.troja.mff.cuni.cz/~merc/nodsv/galactic-misclassified.html
+  - https://sirrah.troja.mff.cuni.cz/~merc/nodsv/extragalactic-misclassified.html

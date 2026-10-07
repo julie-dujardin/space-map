@@ -1,0 +1,351 @@
+# Black holes, X-ray binaries, active galaxies, and gravitational-wave events.
+# `constants/manifests/catalogues.py` describes the fields.
+catalogues:
+- key: van-den-bosch-2016
+  title: Unification of the fundamental plane and supermassive black hole masses
+  reference: van den Bosch 2016, ApJ 831, 134
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJ/831/134/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJ/831/134
+    files: [table2.dat, table3.dat, table4.dat, refs.dat]
+
+# The author's copy states a licence but is older than the CDS files.
+- key: van-den-bosch-2016-repository
+  title: Black-Hole-Mass-compilation, the data table and code of van den Bosch 2016
+  reference: van den Bosch 2016, ApJ 831, 134
+  license: >-
+    MIT, with one added line: "And please cite my paper associated with this
+    code and datatable."
+  terms_url: https://github.com/remco-space/Black-Hole-Mass-compilation/blob/master/LICENSE
+  distribution: open
+  urls:
+  - url: https://codeload.github.com/remco-space/Black-Hole-Mass-compilation/tar.gz/refs/heads/master
+    name: Black-Hole-Mass-compilation-master.tar.gz
+
+- key: bass-dr2
+  title: BASS. XXII. The BASS DR2 AGN catalog and data
+  reference: Koss et al. 2022, ApJS 261, 2
+  license: None stated. The article is CC BY 4.0.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJS/261/2/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJS/261/2
+    files: [table8.dat, table9.dat, table11.dat]
+
+- key: agn-black-hole-mass-database
+  title: The AGN Black Hole Mass Database
+  reference: Bentz & Katz 2015, PASP 127, 67
+  license: >-
+    None stated. "Please cite the appropriate references for the reverberation
+    campaigns and measurements. This database is simply a compilation, it does
+    not supersede the original publications. However, if you have found this
+    database useful, please cite the PASP article."
+  terms_url: http://www.astro.gsu.edu/AGNmass/
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  # The POST makes the CSV in a session, so it must come before the download.
+  - url: http://www.astro.gsu.edu/AGNmass/
+    name: agnmass.html
+    method: POST
+    data: {filetype: csv, submit: Create File}
+  - url: http://www.astro.gsu.edu/AGNmass/download.php
+    name: mbh.csv
+
+- key: fortin-hmxb
+  title: >-
+    A catalogue of high-mass X-ray binaries in the Galaxy: from the INTEGRAL
+    to the Gaia era
+  reference: Fortin et al. 2023, A&A 671, A149
+  license: >-
+    "This website is licensed under a Creative Commons Attribution-ShareAlike
+    4.0 International License." The catalogue carries Gaia DR3 data
+    (CC BY-NC 3.0 IGO).
+  terms_url: https://binary-revolution.github.io/HMXBwebcat/
+  distribution: non-commercial
+  refresh_days: 30
+  urls:
+  - https://binary-revolution.github.io/HMXBwebcat/downloads/HMXBwebcat_latest.csv
+  - https://binary-revolution.github.io/HMXBwebcat/notes.html
+
+- key: fortin-lmxb
+  title: >-
+    A catalogue of low-mass X-ray binaries in the Galaxy: from the INTEGRAL to
+    the Gaia era
+  reference: Fortin et al. 2024, A&A 684, A124
+  license: >-
+    "This website is licensed under a Creative Commons Attribution-ShareAlike
+    4.0 International License." The catalogue carries Gaia DR3 data
+    (CC BY-NC 3.0 IGO).
+  terms_url: https://binary-revolution.github.io/LMXBwebcat/
+  distribution: non-commercial
+  refresh_days: 30
+  urls:
+  - https://binary-revolution.github.io/LMXBwebcat/downloads/LMXBwebcat_latest.csv
+  - https://binary-revolution.github.io/LMXBwebcat/notes.html
+
+- key: xrbcats
+  title: "XRBcats: Galactic high-mass and low-mass X-ray binary catalogues"
+  reference: Neumann et al. 2023, A&A 677, A134; Avakyan et al. 2023, A&A 675, A199
+  license: >-
+    None stated. "You are free to use the information in these catalogues in
+    publications, however, we ask that you please cite the published paper
+    (HMXB: Neumann et al 2023, LMXB: Avakyan et al 2023) and refer to the url
+    http://astro.uni-tuebingen.de/~xrbcat/ in either the acknowledgements or a
+    footnote." The articles are CC BY 4.0. The catalogues carry Gaia DR3 data
+    (CC BY-NC 3.0 IGO).
+  terms_url: http://astro.uni-tuebingen.de/~xrbcat/
+  distribution: undecided
+  urls:
+  # Each path names one release, so a newer release needs a new URL.
+  - http://astro.uni-tuebingen.de/~xrbcat/HMXBcat/March2025/HMXBcat.fits
+  - http://astro.uni-tuebingen.de/~xrbcat/LMXBcat/january_24/LMXBcat.fits
+  - http://astro.uni-tuebingen.de/~xrbcat/Updates.html
+
+- key: blackcat
+  title: "BlackCAT: a catalogue of stellar-mass black holes in X-ray transients"
+  reference: Corral-Santana et al. 2016, A&A 587, A61
+  license: >-
+    None stated. "Please acknowledge the use of this catalogue in any
+    published work you derive from it."
+  terms_url: https://www.astro.puc.cl/BlackCAT/transients.php
+  distribution: undecided
+  refresh_days: 30
+  urls:
+  - url: https://www.astro.puc.cl/BlackCAT/transients.php
+    name: transients.html
+  - url: https://www.astro.puc.cl/BlackCAT/references.php
+    name: references.html
+
+# The paper tables hold the dynamical masses, which the live list does not.
+- key: blackcat-2016
+  title: "BlackCAT: a catalogue of stellar-mass black holes in X-ray transients"
+  reference: Corral-Santana et al. 2016, A&A 587, A61
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/587/A61/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/A+A/587/A61
+    files:
+    - tablea1.dat
+    - tablea2.dat
+    - tablea3.dat
+    - tablea4.dat
+    - notes1.dat
+    - notes2.dat
+    - refs.dat
+
+- key: watchdog
+  title: "WATCHDOG: a comprehensive all-sky database of Galactic black hole X-ray binaries"
+  reference: Tetarenko et al. 2016, ApJS 222, 15
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/ApJS/222/15/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/ApJS/222/15
+    files:
+    - table8.dat
+    - table9.dat
+    - table12.dat
+    - table13.dat
+    - table14.dat
+    - table15.dat
+    - table16.dat
+    - table17.dat
+    - refs.dat
+
+- key: walton-2022-ulx
+  title: A multimission catalogue of ultraluminous X-ray source candidates
+  reference: Walton et al. 2022, MNRAS 509, 1587
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/J/MNRAS/509/1587/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: J/MNRAS/509/1587
+    files: [master.dat.gz, 4xmmdr10.dat.gz, 2sxps.dat.gz, csc2.dat.gz]
+
+- key: tdecat
+  title: "TDECat: a comprehensive compilation of optical tidal disruption events"
+  reference: Langis et al. 2026, A&A 707, A171
+  license: >-
+    "TDECat © 2025 by Dimitrios Alkinoos Langis is licensed under Creative
+    Commons Attribution-NonCommercial 4.0 International"
+  terms_url: https://github.com/dlangis/TDECat
+  distribution: non-commercial
+  cds:
+    catalogue: J/A+A/707/A171
+    files: [tdecat.dat, table1.dat]
+
+- key: fermi-4lac-dr3
+  title: >-
+    The Fourth Catalog of Active Galactic Nuclei Detected by the Fermi Large
+    Area Telescope, Data Release 3
+  reference: Ajello et al. 2022, ApJS 263, 24
+  license: None stated. The article is CC BY 4.0.
+  terms_url: https://fermi.gsfc.nasa.gov/ssc/data/access/lat/4LACDR3/
+  distribution: undecided
+  urls:
+  - https://fermi.gsfc.nasa.gov/ssc/data/access/lat/4LACDR3/table-4LAC-DR3-h.fits
+  - https://fermi.gsfc.nasa.gov/ssc/data/access/lat/4LACDR3/table-4LAC-DR3-l.fits
+
+- key: roma-bzcat-5
+  title: The Roma-BZCAT, 5th edition
+  reference: Massaro et al. 2015, Ap&SS 357, 75
+  license: None stated.
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/274/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/274
+    files: [bzcat5.dat]
+
+- key: reionization-era-quasars
+  title: >-
+    Reionization-Era Quasars: A Catalogue of Spectroscopically Confirmed
+    Quasars at z >= 5.3
+  reference: Bañados 2026, Saas-Fee Advanced Course 54, arXiv:2603.21976
+  license: CC BY 4.0.
+  terms_url: https://zenodo.org/records/19094457
+  distribution: open
+  zenodo:
+    record: 19094457
+
+- key: 3crr
+  title: The online 3CRR catalogue
+  reference: Laing, Riley & Longair 1983, MNRAS 204, 151
+  license: >-
+    None stated. "The catalogue is presently in preparation; use at your own
+    risk."
+  terms_url: https://3crr.extragalactic.info/
+  distribution: undecided
+  urls:
+  # Both queries name every field of the database.
+  - url: https://3crr.extragalactic.info/cgi/ascii?1,2,3,4,8,7,5,22,6,9,10,21,11,12,13,14,15,16,17,18,19,20,23,24,25
+    name: database.txt
+  - url: https://3crr.extragalactic.info/cgi/database?1=on&2=on&3=on&4=on&8=on&7=on&5=on&22=on&6=on&9=on&10=on&21=on&11=on&12=on&13=on&14=on&15=on&16=on&17=on&18=on&19=on&20=on&23=on&24=on&25=on
+    name: database.html
+  - url: https://3crr.extragalactic.info/cgi/biblio
+    name: biblio.html
+  - https://3crr.extragalactic.info/field_info.html
+
+- key: gwtc-events
+  title: Gravitational-Wave Transient Catalog, the cumulative event list of GWOSC
+  reference: >-
+    LIGO Scientific, Virgo and KAGRA Collaborations 2026, "Open Data from
+    LIGO, Virgo, and KAGRA through the Second Part of the Fourth Observing
+    Run", arXiv:2605.27090
+  license: >-
+    "Data from this web site are licensed under a Creative Commons Attribution
+    4.0 International License."
+  terms_url: https://gwosc.org/acknowledgement/
+  distribution: open
+  refresh_days: 7
+  urls:
+  - url: https://gwosc.org/eventapi/json/GWTC/
+    name: gwtc.json
+
+- key: gwtc-5-0-sky-maps
+  title: "GWTC-5.0: Parameter estimation data release (Part 1 of 2)"
+  reference: LIGO Scientific, Virgo and KAGRA Collaborations 2026, doi:10.5281/zenodo.20348005
+  license: CC BY 4.0.
+  terms_url: https://zenodo.org/records/20348005
+  distribution: open
+  zenodo:
+    record: 20348005
+    files:
+    - IGWN-GWTC5p0-29ebe06b7_25-Archived_Skymaps.tar.gz
+    - IGWN-GWTC5p0-29ebe06b7_25-PESummaryTable.hdf5
+
+- key: gwtc-4-1-sky-maps
+  title: "GWTC-4.1: Parameter estimation data release"
+  reference: LIGO Scientific, Virgo and KAGRA Collaborations 2026, doi:10.5281/zenodo.20275769
+  license: CC BY 4.0.
+  terms_url: https://zenodo.org/records/20275769
+  distribution: open
+  zenodo:
+    record: 20275769
+    files:
+    - IGWN-GWTC4p1-18965dda8_5-Archived_Skymaps.tar.gz
+    - IGWN-GWTC4p1-18965dda8_5-PESummaryTable.hdf5
+
+- key: gwtc-3-sky-maps
+  title: "GWTC-3: Parameter estimation data release"
+  reference: LIGO Scientific, Virgo and KAGRA Collaborations 2026, doi:10.5281/zenodo.22685054
+  license: CC BY 4.0.
+  terms_url: https://zenodo.org/records/22685054
+  distribution: open
+  zenodo:
+    record: 22685054
+    files: [IGWN-GWTC3p0-v3-PESkyLocalizations.tar.gz]
+
+- key: gwtc-2-1-sky-maps
+  title: "GWTC-2.1: Parameter estimation data release"
+  reference: LIGO Scientific and Virgo Collaborations 2022, doi:10.5281/zenodo.6513631
+  license: CC BY 4.0.
+  terms_url: https://zenodo.org/records/6513631
+  distribution: open
+  zenodo:
+    record: 6513631
+    files: [IGWN-GWTC2p1-v2-PESkyMaps.tar.gz]
+
+- key: gwtc-1-sky-maps
+  title: Sky localization probability maps (skymaps) release for GWTC-1
+  reference: LIGO Scientific and Virgo Collaborations 2019, LIGO-P1800381-v7
+  license: >-
+    None stated on the document page. The GWOSC page of the GWTC-1 release
+    lists it as a data product and says "Data released under a CC BY 4.0
+    License."
+  terms_url: https://gwosc.org/GWTC-1/
+  distribution: undecided
+  urls:
+  - https://dcc.ligo.org/public/0157/P1800381/007/GWTC-1_skymaps.tar.gz
+
+- key: sdss-dr16q
+  title: "The Sloan Digital Sky Survey Quasar Catalog: Sixteenth Data Release"
+  reference: Lyke et al. 2020, ApJS 250, 8
+  license: >-
+    "All SDSS data released in our public data releases are considered in the
+    public domain." The catalogue carries Gaia DR2 columns (CC BY-NC 3.0 IGO).
+  terms_url: https://www.sdss.org/collaboration/
+  distribution: non-commercial
+  cds:
+    catalogue: VII/289
+    files: [dr16q.dat.gz, dr16qdup.dat.gz]
+
+- key: desi-dr1-qso
+  title: DESI Data Release 1 quasar catalogue
+  reference: >-
+    DESI Collaboration et al. 2026, "Data Release 1 of the Dark Energy
+    Spectroscopic Instrument"
+  license: >-
+    "The Dark Energy Spectroscopic Instrument (DESI) data are licensed under
+    the Creative Commons Attribution 4.0 International License"
+  terms_url: https://data.desi.lbl.gov/doc/acknowledgments/
+  distribution: open
+  urls:
+  - https://data.desi.lbl.gov/public/dr1/survey/catalogs/dr1/QSO/iron/QSO_cat_iron_cumulative_v0.fits
+  - https://data.desi.lbl.gov/public/dr1/survey/catalogs/dr1/QSO/iron/dr1_survey_catalogs_dr1_QSO_iron.sha256sum
+
+- key: quaia
+  title: "Quaia: The Gaia-unWISE Quasar Catalog"
+  reference: Storey-Fisher et al. 2024, ApJ 964, 69
+  license: CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
+  terms_url: https://zenodo.org/records/10403370
+  distribution: non-commercial
+  zenodo:
+    record: 10403370
+    files: [quaia_G20.5.fits]
+
+- key: milliquas-v8
+  title: The Million Quasars (Milliquas) catalogue, v8
+  reference: Flesch 2023, OJAp 6, 49
+  license: >-
+    None stated. "Please cite as Milliquas v8, Flesch, E.W. 2023, paper in
+    preparation." The catalogue carries Gaia EDR3 astrometry (CC BY-NC 3.0
+    IGO).
+  terms_url: https://cdsarc.cds.unistra.fr/ftp/VII/294/ReadMe
+  distribution: undecided
+  cds:
+    catalogue: VII/294
+    files: [catalog.dat.gz, refs.dat]

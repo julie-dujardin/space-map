@@ -51,7 +51,8 @@ class SourceInfo:
     derived: bool = False
 
 
-# One-shot pulls that never expire, and so have no freshness to report.
+# No freshness to report. These are one-shot pulls that never expire, and
+# catalogues that no export reads yet.
 UNLISTED: frozenset[str] = frozenset(
     {
         PROVIDERS.BJJ_RINGS,
@@ -59,6 +60,14 @@ UNLISTED: frozenset[str] = frozenset(
         PROVIDERS.GAIA_ASTROPHYSICAL_PARAMETERS,
         PROVIDERS.GAIA_CROSS_MATCH,
         PROVIDERS.CDS_STAR_CATALOGUES,
+        PROVIDERS.GALAXY_CATALOGUES,
+        PROVIDERS.STAR_CLUSTER_CATALOGUES,
+        PROVIDERS.NEBULA_CATALOGUES,
+        PROVIDERS.STELLAR_REMNANT_CATALOGUES,
+        PROVIDERS.BLACK_HOLE_CATALOGUES,
+        PROVIDERS.TRANSIENT_CATALOGUES,
+        PROVIDERS.SIMBAD_OBJECTS,
+        PROVIDERS.WIKIDATA_SIMBAD_IDS,
     }
 )
 

@@ -79,6 +79,20 @@ from space_map_data.download.providers.stars.gaia_cross_match import (
 )
 from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloader
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
+from space_map_data.download.providers.catalogues.provider import (
+    BlackHoleCataloguesDownloader,
+    GalaxyCataloguesDownloader,
+    NebulaCataloguesDownloader,
+    StarClusterCataloguesDownloader,
+    StellarRemnantCataloguesDownloader,
+    TransientCataloguesDownloader,
+)
+from space_map_data.download.providers.catalogues.simbad import (
+    SimbadObjectsDownloader,
+)
+from space_map_data.download.providers.catalogues.wikidata_simbad import (
+    WikidataSimbadIdsDownloader,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +143,14 @@ PROVIDERS_CLASSES = [
     GaiaCrossMatchDownloader,
     CDSStarCataloguesDownloader,
     IAUStarNamesDownloader,
+    GalaxyCataloguesDownloader,
+    StarClusterCataloguesDownloader,
+    NebulaCataloguesDownloader,
+    StellarRemnantCataloguesDownloader,
+    BlackHoleCataloguesDownloader,
+    TransientCataloguesDownloader,
+    SimbadObjectsDownloader,
+    WikidataSimbadIdsDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
