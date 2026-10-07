@@ -90,6 +90,10 @@ function estimateVelocity(
 /**
  * Settles where a body is at a date. The frame loop and every other reader go
  * through `place`, so one set of rules decides what has a place.
+ *
+ * A place is settled into the scene. While the scene stays at the date of the
+ * last pass, a reader gets the place for that date: one for the date it asks
+ * for would move the body in a scene that shows another date.
  */
 export class Placer {
 	/** Placed on every frame, hidden or not. */
@@ -109,7 +113,9 @@ export class Placer {
 	constructor(
 		private readonly ctx: ContextManager,
 		private readonly bodyObjects: Map<string, BodyObjects>,
-		private readonly diagnostics: PositionDiagnostics
+		private readonly diagnostics: PositionDiagnostics,
+		/** True while the scene stays at the date of the last pass. */
+		private readonly held: () => boolean = () => false
 	) {}
 
 	/** Open a frame pass at `jd`. `frame` absent: no body is skipped. */
@@ -149,6 +155,7 @@ export class Placer {
 
 	/** Settle `body` for `jd` and return its place. Null when it has none. */
 	place(body: PositionedBody, jd: number): Vec3 | null {
+		if (jd !== this.passJd && this.held()) jd = this.passJd;
 		const id = body.data.id;
 		if (jd === this.passJd && this.settled.has(id)) return body.position;
 		if (this.settling.has(id)) {

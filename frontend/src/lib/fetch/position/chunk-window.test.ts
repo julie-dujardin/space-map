@@ -39,6 +39,10 @@ class TestWindow extends ChunkWindow<{ idx: number }, TestParams> {
 		this.pending = [];
 		for (const job of jobs) job();
 	}
+
+	holds(chunkIdx: number): boolean {
+		return this.isResident(ZONE, chunkIdx);
+	}
 }
 
 function windowOf(present: boolean[]): TestWindow {
@@ -69,6 +73,32 @@ describe('ChunkWindow.loadingAt', () => {
 		const win = windowOf([true, false, true]);
 		win.ensure(START_JD + 15);
 		expect(win.loadingAt(START_JD + 15)).toBe(false);
+	});
+});
+
+describe('ChunkWindow.request', () => {
+	it('loads the chunk for a date and keeps the chunks of the window', async () => {
+		const win = windowOf(Array(8).fill(true));
+		win.ensure(START_JD + 5);
+		win.settle();
+		await flush();
+		win.request(START_JD + 65);
+		expect(win.loadingAt(START_JD + 65)).toBe(true);
+		win.settle();
+		await flush();
+		expect(win.loadingAt(START_JD + 65)).toBe(false);
+		expect(win.holds(0)).toBe(true);
+		expect(win.holds(6)).toBe(true);
+		// The window moves with the next `ensure`.
+		win.ensure(START_JD + 65);
+		expect(win.holds(0)).toBe(false);
+		expect(win.holds(6)).toBe(true);
+	});
+
+	it('asks for nothing where no file is', () => {
+		const win = windowOf([true, false]);
+		win.request(START_JD + 15);
+		expect(win.requested).toEqual([]);
 	});
 });
 

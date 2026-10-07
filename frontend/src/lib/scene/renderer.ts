@@ -331,6 +331,10 @@ export class SceneRenderer {
 	private lastDataVersion = -1;
 	/** Live {@link holdDate} calls. */
 	private dateHolds = 0;
+	/** `clock.jumps` at the last look: a change is a new jump. */
+	private seenJumps = 0;
+	/** Date of a clock jump whose chunks are on their way, or null. */
+	private jumpJd: number | null = null;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
@@ -424,6 +428,7 @@ export class SceneRenderer {
 		this.ctx = ctx;
 		ctx.hasMeshBody = (id) => this.bodyObjects.has(id);
 		this.clock = clock;
+		this.seenJumps = clock.jumps;
 		this.callbacks = callbacks;
 		this.outOfRange = new OutOfRangeNotifier(callbacks.notices);
 		this.labelContainer = labelContainer;
@@ -488,7 +493,9 @@ export class SceneRenderer {
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx, () => this.disposed);
 
-		this.placer = new Placer(ctx, this.bodyObjects, this.positionDiagnostics);
+		this.placer = new Placer(ctx, this.bodyObjects, this.positionDiagnostics, () =>
+			this.dateHeld()
+		);
 		ctx.placer = this.placer;
 		// The camera settles on the first of these that has a place: the target,
 		// else the default view's body (MapPage eases onto the real target once
@@ -751,7 +758,7 @@ export class SceneRenderer {
 			return;
 		}
 		this.travelPath.setVisible(true);
-		this.travelPath.setClock(this.clock.jd);
+		this.travelPath.setClock(this.sceneJd);
 		// Planet-frame ends hang off the live body, which may not be streamed in.
 		this.travelPath.reposition(center, this.focus.focusTruePos, (id) => this.where(id));
 		this.travelPath.updateCameraOffset(this.camera.position);
@@ -944,11 +951,11 @@ export class SceneRenderer {
 
 	/** Place of the body `id` at the scene date. Null when it has none. */
 	private where(id: string): Vec3 | null {
-		return this.placer.at(id, this.clock.jd);
+		return this.placer.at(id, this.sceneJd);
 	}
 
 	private whereBody(body: PositionedBody): Vec3 | null {
-		return this.placer.place(body, this.clock.jd);
+		return this.placer.place(body, this.sceneJd);
 	}
 
 	/** Like {@link repositionAll} but skips the trail rewrite — for callers that already refreshed lines per-body. */
@@ -976,7 +983,7 @@ export class SceneRenderer {
 			if (!line) continue;
 			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 			if (trailBuffer) {
-				refreshBufferTrail(bo.body, line, trailBuffer, basis, this.clock.jd);
+				refreshBufferTrail(bo.body, line, trailBuffer, basis, this.sceneJd);
 				continue;
 			}
 			const localPositions = line.userData.trailLocalPositions as
@@ -997,7 +1004,7 @@ export class SceneRenderer {
 		this.lastTickMs = nowMs;
 
 		// The north reference writes camera.up, which a held pose owns instead.
-		if (!this.holdingCamera) this.cameraUp.update(this.clock.jd);
+		if (!this.holdingCamera) this.cameraUp.update(this.sceneJd);
 
 		if (this.firstFrame) {
 			this.firstFrame = false;
@@ -1041,7 +1048,7 @@ export class SceneRenderer {
 		this.refreshTravelFocus();
 		// Bodies are at this frame's positions and the camera has not been moved
 		// yet: the seam where a host can read one and drive the other.
-		this.callbacks.onFrame?.(this.clock.jd, renderedDtMs);
+		this.callbacks.onFrame?.(this.sceneJd, renderedDtMs);
 
 		const controlsSettled = this.holdingCamera
 			? this.applyHeldCamera()
@@ -1110,7 +1117,7 @@ export class SceneRenderer {
 
 		const { distance } = this.getCameraState();
 		this.updateTravelCraftSystem();
-		this.ctx.visibility.updateCamera(distance, this.clock.jd);
+		this.ctx.visibility.updateCamera(distance, this.sceneJd);
 		this.updateTightFar(distance);
 
 		// A flyby probe entering a planet's system mid-play (time advancing, not a
@@ -1125,7 +1132,7 @@ export class SceneRenderer {
 		this.refreshTravelPath();
 		this.refreshOrbitPreview();
 		this.extensions.update({
-			jd: this.clock.jd,
+			jd: this.sceneJd,
 			basis: this.focus.focusTruePos,
 			camera: this.camera,
 			viewportPx: this.viewportH,
@@ -1180,7 +1187,7 @@ export class SceneRenderer {
 			sceneSettings().realisticLighting,
 			this.sunIntensityScale,
 			currentAtmosphereConfig(),
-			this.clock.jd
+			this.sceneJd
 		);
 		recordAtmospherePerf(renderedDtMs, atmoState.shellProminent);
 		// Inside a shell, stars dim by the extinction of the air above the
@@ -1219,7 +1226,7 @@ export class SceneRenderer {
 			this.ctx,
 			this.textureLoader,
 			focusedIdLod,
-			this.clock.jd,
+			this.sceneJd,
 			this.appearances,
 			this.invalidate
 		);
@@ -1457,7 +1464,7 @@ export class SceneRenderer {
 			};
 		if (!seated || !body.orientation) return undefined;
 		return {
-			invQuat: bodyQuaternion(body.orientation, this.clock.jd, body.nutPrec).invert(),
+			invQuat: bodyQuaternion(body.orientation, this.sceneJd, body.nutPrec).invert(),
 			seated,
 			radialKm: (dir) => renderedSurfaceRadialKm(bo, body.data.id, body.data.radiusKm, dir)
 		};
@@ -1858,7 +1865,7 @@ export class SceneRenderer {
 	 *  in for "the controls have settled": nothing is animating. */
 	private applyHeldCamera(): boolean {
 		const pose = this.cameraHold;
-		const resolved = pose && resolvePose(pose, this.ctx, this.clock.jd);
+		const resolved = pose && resolvePose(pose, this.ctx, this.sceneJd);
 		if (!resolved) return true;
 		const basis = this.focus.focusTruePos;
 		this.camera.up.set(resolved.up[0], resolved.up[1], resolved.up[2]).normalize();
@@ -1933,7 +1940,7 @@ export class SceneRenderer {
 		void loadBodyTexture(
 			bo,
 			this.textureLoader,
-			this.clock.jd,
+			this.sceneJd,
 			this.scene,
 			this.renderer.capabilities.maxTextureSize,
 			this.ctx
@@ -1945,7 +1952,7 @@ export class SceneRenderer {
 			// camera lands on the body-fixed feature once orientation arrives.
 			if (this.focusController.current?.data.id !== body.data.id) return;
 			if (body.orientation && bo.mesh) {
-				applyOrientation(bo.mesh, body.orientation, this.clock.jd, body.nutPrec);
+				applyOrientation(bo.mesh, body.orientation, this.sceneJd, body.nutPrec);
 				this.focusController.reapplyInitialViewIfPending();
 			}
 		});
@@ -2096,8 +2103,44 @@ export class SceneRenderer {
 		};
 	}
 
+	/**
+	 * True while the chunks for the date of a clock jump are on their way. The
+	 * scene stays at the date it shows till then, for the reason of {@link holdDate}.
+	 */
+	private jumpLoads(): boolean {
+		const { clock, ctx } = this;
+		if (clock.jumps !== this.seenJumps) {
+			this.seenJumps = clock.jumps;
+			this.jumpJd = clock.jd;
+			// A pass asks for the data of its date, and no pass runs here.
+			ctx.refreshTick(jdToDate(clock.jd));
+			ctx.chebStore?.request(clock.jd);
+			ctx.probeStore?.request(clock.jd);
+		}
+		const jd = this.jumpJd;
+		if (jd === null) return false;
+		if (!ctx.chebStore?.loadingAt(jd) && !ctx.probeStore?.loadingAt(jd)) {
+			this.jumpJd = null;
+			return false;
+		}
+		// A clock that stands still draws no frame: stay awake for the data.
+		this.invalidate();
+		return true;
+	}
+
+	/** True while the scene stays at the date of its last pass. Before the first
+	 *  pass it shows no date. */
+	private dateHeld(): boolean {
+		return !Number.isNaN(this.lastUpdatedJd) && (this.dateHolds > 0 || this.jumpLoads());
+	}
+
+	/** The date the scene shows: behind the clock while the date is held. */
+	private get sceneJd(): number {
+		return this.dateHeld() ? this.lastUpdatedJd : this.clock.jd;
+	}
+
 	private applyJdUpdate(allowOorRefocus = false): void {
-		if (this.dateHolds > 0) return;
+		if (this.dateHolds > 0 || this.jumpLoads()) return;
 		this.ensureFocusedProbeTarget();
 		// Recompute on a focused-system change too, not just a jd change: moons
 		// outside the focused system are skipped and their world positions freeze.

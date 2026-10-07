@@ -54,7 +54,8 @@ const probeStoreWith = (loading: boolean) => ({
 function placerOver(
 	bodies: PositionedBody[],
 	cheb?: FakeCheb,
-	probeStore: ReturnType<typeof probeStoreWith> | null = null
+	probeStore: ReturnType<typeof probeStoreWith> | null = null,
+	held?: () => boolean
 ): Placer {
 	const byId = new Map(bodies.map((b) => [b.data.id, b]));
 	const ctx = {
@@ -73,7 +74,7 @@ function placerOver(
 		probeStore,
 		visibility: { activeSystemId: null }
 	} as unknown as ContextManager;
-	return new Placer(ctx, new Map(), new PositionDiagnostics());
+	return new Placer(ctx, new Map(), new PositionDiagnostics(), held);
 }
 
 function placerFor(...bodies: PositionedBody[]): Placer {
@@ -215,6 +216,22 @@ describe('Placer pass', () => {
 		expect([...placer.place(rock, JD)!]).toEqual(first);
 		placer.begin(JD, undefined, undefined);
 		expect([...placer.place(rock, JD)!]).not.toEqual(first);
+	});
+});
+
+describe('a scene held at the date of its last pass', () => {
+	it('gives a reader the place it shows, whatever date the reader asks for', () => {
+		const rock = mkBody({ id: 'rock', parentId: 'naif-0' });
+		let held = false;
+		const placer = placerOver([rock], undefined, null, () => held);
+		placer.begin(JD, undefined, undefined);
+		placer.placeInPass(rock);
+		const shown = [...rock.position!];
+		held = true;
+		expect([...placer.place(rock, JD + 50)!]).toEqual(shown);
+		expect([...rock.position!]).toEqual(shown);
+		held = false;
+		expect([...placer.place(rock, JD + 50)!]).not.toEqual(shown);
 	});
 });
 

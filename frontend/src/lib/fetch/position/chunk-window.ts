@@ -89,6 +89,15 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		return { ready, done };
 	}
 
+	/** Load the chunks covering `jd` and leave the window where it is: a scene
+	 *  that waits for them still reads the date it shows. */
+	request(jd: number): void {
+		for (const [zone, params] of this.zoneParams) {
+			const idx = chunkIndexForJd(params, jd);
+			if (this.isLoadable(params, idx)) this.loadChunk(zone, params, idx, 'high')?.catch(() => {});
+		}
+	}
+
 	/** True while a chunk that covers `jd` is on its way: of `zone`, or of any
 	 *  zone. A chunk nobody asked for is not on its way. */
 	loadingAt(jd: number, zone?: string): boolean {
