@@ -1,17 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { BackSide, FrontSide, Group, Vector3 } from 'three';
+import { BackSide, FrontSide, Group, type Material, Vector3 } from 'three';
 
 import { updateAtmosphereShaders } from './atmosphere-uniforms';
 import { SUN_ID } from '$lib/constants';
+import { makeStarSurfaceMaterial, starViewTintUniforms } from '$lib/scene/objects/sun';
 import { buildAtmosphereNode, type AtmosphereParams } from '$lib/scene/objects/surface/atmosphere';
 import { ATMOSPHERE_QUALITY_PRESETS } from '$lib/scene/objects/surface/atmosphere-quality';
 import type { BodyObjects } from '$lib/scene/types';
 
 /**
- * A shell is inside-view only for a camera inside that shell. The scene origin
- * is the focus, so a camera close to the focus is close to the origin, not to
- * every planet: a shell that measures from the origin stops its depth test and
- * draws through the focused body.
+ * The scene origin is the focus, so a camera close to the focus is close to
+ * the origin, not to every planet. A shell that measures from the origin takes
+ * that camera as inside it: it stops its depth test and draws through the
+ * focused body, and the Sun disc is tinted through air that is not there, down
+ * to black.
  */
 
 const PARAMS: AtmosphereParams = {
@@ -36,7 +38,11 @@ const RADIUS_SCENE = 1;
 const SHELL_SCENE = RADIUS_SCENE * (1 + PARAMS.topAltitudeKm / RADIUS_KM);
 const PLANET_AT: [number, number, number] = [50, 0, 0];
 
-function scene(): { bodyObjects: Map<string, BodyObjects>; planet: BodyObjects } {
+function scene(): {
+	bodyObjects: Map<string, BodyObjects>;
+	planet: BodyObjects;
+	sun: BodyObjects;
+} {
 	const root = new Group();
 	root.position.set(...PLANET_AT);
 	const atmosphere = buildAtmosphereNode(PARAMS, RADIUS_SCENE, RADIUS_KM);
@@ -50,14 +56,15 @@ function scene(): { bodyObjects: Map<string, BodyObjects>; planet: BodyObjects }
 	const sun = {
 		body: { position: [0, 0, 500], data: { id: SUN_ID } },
 		root: new Group(),
-		mesh: null
+		mesh: { material: makeStarSurfaceMaterial() }
 	} as unknown as BodyObjects;
 	return {
 		bodyObjects: new Map([
 			[SUN_ID, sun],
 			['planet', planet]
 		]),
-		planet
+		planet,
+		sun
 	};
 }
 
@@ -96,5 +103,13 @@ describe('updateAtmosphereShaders', () => {
 		expect(state.insideShell).toBe(true);
 		expect(material.side).toBe(BackSide);
 		expect(material.depthTest).toBe(false);
+	});
+
+	it('aims the Sun disc tint at the shell when the camera is near the focus', () => {
+		const { bodyObjects, sun } = scene();
+		update(bodyObjects, new Vector3(SHELL_SCENE / 2, 0, 0));
+		const tint = starViewTintUniforms(sun.mesh!.material as Material)!;
+		expect(tint.uAtmoTEnable.value).toBe(1);
+		expect(tint.uAtmoTCenter.value.toArray()).toEqual(PLANET_AT);
 	});
 });
