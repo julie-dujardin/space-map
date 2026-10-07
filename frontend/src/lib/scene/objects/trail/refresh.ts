@@ -223,18 +223,21 @@ export function refreshTrail(
 		cy = oc.y,
 		cz = oc.z;
 
-	// SGP4 curves are a sliding window ending at the current sim jd. One
-	// sample step of lag is invisible, so the window slides once per step
-	// instead of every frame (513 propagations each).
+	// An SGP4 curve is a window of one period that ends on `curveJd`. It slides
+	// once per sample step: a slide costs 513 propagations.
+	let windowStart: number | undefined;
 	if (body.data.satrec) {
 		const meanMotion = body.data.n / 360;
 		const stepDays = meanMotion > 0 ? 1 / meanMotion / NUM_TRAIL_POINTS : 0;
-		const curveJd = line.userData.curveJd as number | undefined;
+		let curveJd = line.userData.curveJd as number | undefined;
 		if (curve.length === 0 || curveJd === undefined || Math.abs(jd - curveJd) >= stepDays) {
 			curve = sgp4Curve(body.data.satrec, jd, meanMotion, NUM_TRAIL_POINTS);
 			line.userData.sourceCurve = curve;
-			line.userData.curveJd = jd;
+			line.userData.curveJd = curveJd = jd;
 		}
+		// The sample behind the body is the last one, or the one before it when the
+		// date went back. The nearest sample can be one of the oldest, a period ago.
+		windowStart = curve.length - (jd < curveJd ? 2 : 1);
 	} else if (body.orbitElements) {
 		// Chebyshev-derived elements: re-snapshot periodically so the static
 		// ellipse stays aligned with the body's real path. Mutates
@@ -294,7 +297,7 @@ export function refreshTrail(
 	const headZ = anchor[2] - cz;
 	if (withinTolerance(ud, curve, offX, offY, offZ, headX, headY, headZ, view)) return;
 
-	const validPoints = buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
+	const validPoints = buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz, windowStart);
 	if (validPoints.length < 2) return;
 
 	// Clamp to working-array capacity rather than skip the frame — skipping

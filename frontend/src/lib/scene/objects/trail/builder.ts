@@ -105,15 +105,16 @@ export function makeTrail(
 	}
 	const { orbitElements, orbitCenter, data } = body;
 
-	// SGP4 Earth sats: sample the propagator over the past period so the trail
-	// ends on the body (data.n is deg/day here, hence /360 back to rev/day).
-	// Kept open: a sliding window never rejoins curve[0] to the body, so closing
-	// it draws a stray segment that spikes off the marker up close.
+	// An SGP4 curve is a window of one period that ends on the body, so the trail
+	// starts on its last sample. It is open, because its first sample is not on
+	// the body. `data.n` is in deg/day.
 	let curve: [number, number, number][] | null;
 	let isOpenCurve: boolean;
+	let start: number | undefined;
 	if (data.satrec) {
 		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_TRAIL_POINTS);
 		isOpenCurve = true;
+		start = curve.length - 1;
 	} else {
 		if (!orbitElements) throw new Error('makeTrail called without orbitElements');
 		// The Kepler curve waits for the first refresh that finds the trail
@@ -134,7 +135,7 @@ export function makeTrail(
 		data.objectType === ObjectType.COMET ||
 		isAsteroid(data.objectType);
 
-	const validPoints = curve ? buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz) : [];
+	const validPoints = curve ? buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz, start) : [];
 	if (curve && validPoints.length < 2) return makeEmptyTrail();
 
 	// Size buffers to the full curve length so later refreshes (e.g. SGP4
