@@ -22,15 +22,23 @@ TILES_DIR="$REPO_ROOT/../space-map-tiles"
 # Tile URLs carry a per-pyramid ?v= token, so a tile is safe to cache forever.
 # --checksum compares content, not mtimes: a rebuild that reproduces a tile
 # byte for byte uploads nothing. --fast-list keeps the listing to a few
-# billable requests.
+# billable requests. A pyramid still being built stays local, with the saves
+# its build resumes from.
 rclone sync "$TILES_DIR/v1" "$TILES_REMOTE/v1" \
   --checksum --fast-list --transfers 32 --checkers 32 \
+  --exclude "*.building/**" --exclude ".build/**" \
   --header-upload "Cache-Control: public, max-age=31536000, immutable" \
   --stats 30s --stats-one-line
 
-# Verify one tile per pyramid end to end, through the public origin.
+# Verify one tile per pyramid end to end, through the public origin. A monthly
+# map holds a pyramid per month, one folder down.
 for pyramid in "$TILES_DIR"/v1/tiles/*/; do
-  tile="v1/tiles/$(basename "$pyramid")/0/0/0.webp"
+  [[ "$pyramid" == *.building/ ]] && continue
+  tile=""
+  for first in "$pyramid"0/0/0.webp "$pyramid"*/0/0/0.webp; do
+    [[ -f "$first" ]] && { tile="${first#"$TILES_DIR"/}"; break; }
+  done
+  [[ -n "$tile" ]] || { echo "ERROR: no first tile in $pyramid" >&2; exit 1; }
   curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "$TILES_URL/$tile?deploy-check=$(date +%s)" \
     | cmp -s - "$TILES_DIR/$tile" \
     || { echo "ERROR: $tile unreachable or differs from the local build" >&2; exit 1; }
