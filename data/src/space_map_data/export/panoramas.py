@@ -18,7 +18,6 @@ Entries sort by mission then time, so neighbours in the list are neighbours on
 the traverse.
 """
 
-import gzip
 import hashlib
 import logging
 from collections import Counter
@@ -32,6 +31,7 @@ import orjson
 from tqdm import tqdm
 from PIL import Image
 
+from space_map_data.export.in_place import patch_global_bundles, refresh_versions
 from space_map_data.export.sidecar_io import write_atomic
 from space_map_data.panoramas.missions import probe_id
 from space_map_data.utils.paths import CACHE_DIR, EXPORT_DIR, PANORAMA_DERIVED_DIR
@@ -402,19 +402,18 @@ def _patch_global_bundles(out_dir: Path) -> None:
     some, cleared on the ones that no longer do."""
     by_body = _cached()
     seen: set[str] = set()
-    for bucket_path in sorted((out_dir / "objects" / "__global__").glob("*.json.gz")):
-        bundle = orjson.loads(gzip.decompress(bucket_path.read_bytes()))
-        changed = False
-        for body_id, data in bundle.items():
-            if body_id in by_body:
-                data["panoramas"] = [p.entry for p in by_body[body_id]]
-                seen.add(body_id)
-                changed = True
-            elif data.pop("panoramas", None) is not None:
-                logger.info("Panoramas: %s has none any more", body_id)
-                changed = True
-        if changed:
-            write_atomic(bucket_path, gzip.compress(orjson.dumps(bundle), mtime=0))
+
+    def patch(body_id: str, data: dict) -> bool:
+        if body_id in by_body:
+            data["panoramas"] = [p.entry for p in by_body[body_id]]
+            seen.add(body_id)
+            return True
+        if data.pop("panoramas", None) is not None:
+            logger.info("Panoramas: %s has none any more", body_id)
+            return True
+        return False
+
+    patch_global_bundles(out_dir, patch)
     for body_id in sorted(set(by_body) - seen):
         logger.warning(
             "%s not in any global bundle; its panoramas are unreachable", body_id
@@ -424,8 +423,6 @@ def _patch_global_bundles(out_dir: Path) -> None:
 def export_panoramas_only() -> None:
     """`space-map-export --only panoramas` — assets plus in-place bundle
     patches, then fresh cache tokens for both classes."""
-    from space_map_data.export.pipeline.orchestrator import _content_token
-
     out_dir = EXPORT_DIR / "v1"
     metadata_path = out_dir / "metadata.json"
     if not metadata_path.exists():
@@ -433,7 +430,4 @@ def export_panoramas_only() -> None:
     write_panorama_assets(out_dir)
     write_panorama_index(out_dir)
     _patch_global_bundles(out_dir)
-    metadata = orjson.loads(metadata_path.read_bytes())
-    for cls in ("objects", ASSET_DIR):
-        metadata["versions"][cls] = _content_token(out_dir / cls)
-    metadata_path.write_bytes(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
+    refresh_versions(out_dir, "objects", ASSET_DIR)

@@ -5,7 +5,6 @@ planetary system.
 """
 
 import csv
-import gzip
 import logging
 from collections import Counter
 import orjson
@@ -22,7 +21,8 @@ from space_map_data.constants.orientation import (
     ORIENTATION_SOURCE_PCK,
 )
 from space_map_data.constants.manifests.textures import ALT_INFIX
-from space_map_data.export.sidecar_io import mirror_path, write_atomic
+from space_map_data.export.in_place import patch_global_bundles, refresh_versions
+from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -803,33 +803,30 @@ def patch_object_bundles(
     system they are the only copy the renderer reads. Returns how many bundle
     files changed.
     """
-    rewritten = 0
-    for bucket_path in sorted((out_dir / "objects" / "__global__").glob("*.json.gz")):
-        bundle = orjson.loads(gzip.decompress(bucket_path.read_bytes()))
+
+    def patch(body_id: str, data: dict) -> bool:
+        blocks: dict[str, object] = {}
+        meta = texture_metadata.get(body_id)
+        if data.get("map_texture_available") and meta is not None:
+            blocks["texture"] = texture_attribution(meta)
+            alternates = alternate_blocks(alternate_metadata.get(body_id))
+            if alternates:
+                blocks["alternates"] = alternates
+        disp_meta = displacement_metadata.get(body_id)
+        if disp_meta is not None:
+            blocks["displacement"] = displacement_block(disp_meta)
         changed = False
-        for body_id, data in bundle.items():
-            blocks: dict[str, object] = {}
-            meta = texture_metadata.get(body_id)
-            if data.get("map_texture_available") and meta is not None:
-                blocks["texture"] = texture_attribution(meta)
-                alternates = alternate_blocks(alternate_metadata.get(body_id))
-                if alternates:
-                    blocks["alternates"] = alternates
-            disp_meta = displacement_metadata.get(body_id)
-            if disp_meta is not None:
-                blocks["displacement"] = displacement_block(disp_meta)
-            for key in ("texture", "alternates", "displacement"):
-                if data.get(key) == blocks.get(key):
-                    continue
-                if key in blocks:
-                    data[key] = blocks[key]
-                else:
-                    del data[key]
-                changed = True
-        if changed:
-            write_atomic(bucket_path, gzip.compress(orjson.dumps(bundle), mtime=0))
-            rewritten += 1
-    return rewritten
+        for key in ("texture", "alternates", "displacement"):
+            if data.get(key) == blocks.get(key):
+                continue
+            if key in blocks:
+                data[key] = blocks[key]
+            else:
+                del data[key]
+            changed = True
+        return changed
+
+    return patch_global_bundles(out_dir, patch)
 
 
 def export_systems_only(engine) -> None:
@@ -840,8 +837,6 @@ def export_systems_only(engine) -> None:
     about themselves, so a credit or rights edit in the manifests, or a new
     tile pyramid, reaches the frontend without re-running the whole export.
     """
-    from space_map_data.export.pipeline.orchestrator import _content_token
-
     out_dir = EXPORT_DIR / "v1"
     texture_metadata = load_texture_metadata(out_dir)
     alternate_metadata = load_alternate_metadata(out_dir)
@@ -868,9 +863,5 @@ def export_systems_only(engine) -> None:
         out_dir, texture_metadata, alternate_metadata, displacement_metadata
     )
     if rewritten:
-        # The bundles are cached by this token, so it must follow their bytes.
-        metadata_path = out_dir / "metadata.json"
-        metadata = orjson.loads(metadata_path.read_bytes())
-        metadata["versions"]["objects"] = _content_token(out_dir / "objects")
-        metadata_path.write_bytes(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
+        refresh_versions(out_dir, "objects")
     logger.info("Restated surface-map blocks on %d object bundle files", rewritten)
