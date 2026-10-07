@@ -301,7 +301,7 @@ export class VisibilityController {
 		// Check SPICE_PROBE before isSystemBody — Mars-zone probes carry parentId=naif-499,
 		// which would otherwise satisfy isSystemBody and short-circuit to FULL.
 		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
-			return this.getProbeVisibility(body);
+			return this.getProbeVisibility(body, camDistThreeJS);
 		}
 
 		// Earth-sat group focus: hide any earth-orbiting non-member, including
@@ -365,11 +365,12 @@ export class VisibilityController {
 		return tier === VISIBILITY.CLOSE ? VISIBILITY.FULL : tier;
 	}
 
-	/** Probe visibility splits on whether it's captured. Flyby/cruise (heliocentric
-	 *  fit present) → sun-orbiting style, visible in the solar view even mid Hill-
-	 *  sphere transit. Captured (no fit) → moon style: focused-system gate + ratio
-	 *  against distance-to-parent. */
-	private getProbeVisibility(body: PositionedBody): VISIBILITY {
+	/** A flyby or cruise probe has a heliocentric fit. It is gated like a
+	 *  Sun-orbiting body and shows in the solar view.
+	 *  A captured probe has no such fit. It shows only in the focused system,
+	 *  and only while its distance to its parent is large on screen.
+	 *  `camDistThreeJS` is the camera distance to the probe. */
+	private getProbeVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
 		const ps = this.getProbeStore();
 		const inSysNaif = ps ? ps.containingSystemAt(body.data.id, this.currentJd) : null;
 
@@ -408,7 +409,8 @@ export class VisibilityController {
 		if (!parent?.position || !body.position) return VISIBILITY.FULL;
 		const distToParent = f64dist(body.position, parent.position) / AU_SCALE;
 		if (distToParent === 0) return VISIBILITY.FULL;
-		const ratio = this.cameraDistThreeJS / AU_SCALE / distToParent;
+		// The parent can be far from the focus, so measure from the camera to the probe.
+		const ratio = camDistThreeJS / AU_SCALE / distToParent;
 		const fullThreshold =
 			this.scaledPlanetary[VISIBILITY.FULL] * (isFocused ? FOCUSED_FULL_MULTIPLIER_MOON : 1);
 		return ratio <= fullThreshold ? VISIBILITY.FULL : VISIBILITY.HIDE;
