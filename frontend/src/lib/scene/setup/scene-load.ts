@@ -200,11 +200,10 @@ function dedupeById(bodies: PositionedBody[]): PositionedBody[] {
  * Caller resets `loading` on a thrown error — this only clears it on success.
  */
 export async function loadScene(ctx: ContextManager, date: Date, targetId?: string): Promise<void> {
-	// IAU nutation/precession angles + per-body GMs. Fire-and-forget; rotation
-	// falls back to the first-order model until it lands.
 	performance.mark('sm-load-start');
 	loadProgress.reset();
-	void loadSystemsGlobal().catch((e) =>
+	// The major-body pass fits each orbit with the GM of its centre.
+	const systemsGlobalPromise = loadSystemsGlobal().catch((e) =>
 		console.warn('scene-load: systems-global (GMs/nutation) failed to load:', e)
 	);
 	// Awaited before majors land — scattering shells build synchronously with
@@ -271,6 +270,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			(ctx.chebStore?.has(id) ?? false) || ctx.getBody(id) !== undefined;
 	}
 
+	await systemsGlobalPromise;
 	const major = await loadMajorBodies(ctx, loader, metadata, date, jd, await passengerPromise);
 	loadProgress.reach('majors');
 	await atmospheresPromise;
