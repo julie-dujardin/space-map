@@ -129,6 +129,18 @@ JOBS: list[Job] = [
         ),
         schedule=DailyAt(dtime(hour=3, minute=0)),
     ),
+    # Ordered: SIMBAD reads the three catalogues, and Gaia reads SIMBAD.
+    Job(
+        name="exoplanets",
+        sources=(
+            PROVIDERS.EXOPLANET_ARCHIVE,
+            PROVIDERS.EXOPLANET_EU,
+            PROVIDERS.OPEN_EXOPLANET_CATALOGUE,
+            PROVIDERS.EXOPLANET_SIMBAD,
+            PROVIDERS.EXOPLANET_GAIA,
+        ),
+        schedule=DailyAt(dtime(hour=6, minute=0)),
+    ),
     # Kernels and reference tables. The slowest window here is GVP at 45 days;
     # the rest are one-shots that re-check cheaply and repair a missing file.
     Job(

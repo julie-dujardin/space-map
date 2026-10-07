@@ -38,6 +38,8 @@ SOURCES_STARS_DIR = SOURCES_DIR / "stars"
 # Launch-vehicle escape performance: payload-vs-C3 curves, one file per
 # vehicle configuration.
 SOURCES_LAUNCH_PERFORMANCE_DIR = SOURCES_DIR / "launch-performance"
+# Exoplanet catalogues and the star identifiers that join them.
+SOURCES_EXOPLANETS_DIR = SOURCES_DIR / "exoplanets"
 
 # Hand-authored supplemental overlays the automated providers can't discover
 # (mirrors sources/models/spacecraft/manual + Commons manual-extra.json). See

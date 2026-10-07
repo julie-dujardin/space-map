@@ -34,6 +34,19 @@ from space_map_data.download.providers.objects.jpl_satellite_discovery import (
     JPLSatelliteDiscoveryDownloader,
 )
 from space_map_data.download.providers.objects.spacetrack import SpaceTrackDownloader
+from space_map_data.download.providers.exoplanets.nasa_archive import (
+    ExoplanetArchiveDownloader,
+)
+from space_map_data.download.providers.exoplanets.exoplanet_eu import (
+    ExoplanetEUDownloader,
+)
+from space_map_data.download.providers.exoplanets.open_catalogue import (
+    OpenExoplanetCatalogueDownloader,
+)
+from space_map_data.download.providers.exoplanets.simbad import (
+    ExoplanetSimbadDownloader,
+)
+from space_map_data.download.providers.exoplanets.gaia import ExoplanetGaiaDownloader
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
 from space_map_data.download.providers.manual import ManualDownloader
@@ -81,6 +94,12 @@ PROVIDERS_CLASSES = [
     JohnstonDownloader,
     SsODNetDownloader,
     JPLSatelliteDiscoveryDownloader,
+    # Ordered: SIMBAD reads the three catalogues, and Gaia reads SIMBAD.
+    ExoplanetArchiveDownloader,
+    ExoplanetEUDownloader,
+    OpenExoplanetCatalogueDownloader,
+    ExoplanetSimbadDownloader,
+    ExoplanetGaiaDownloader,
     SpiceDownloader,
     ProbesDownloader,
     HorizonsSyntheticDownloader,

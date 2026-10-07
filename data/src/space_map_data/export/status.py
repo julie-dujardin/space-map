@@ -105,6 +105,29 @@ SOURCE_CATALOG: dict[str, SourceInfo] = {
         "https://ssd.jpl.nasa.gov/sats/discovery.html",
         "orbits",
     ),
+    PROVIDERS.EXOPLANET_ARCHIVE: SourceInfo(
+        "NASA Exoplanet Archive",
+        "https://exoplanetarchive.ipac.caltech.edu/",
+        "orbits",
+    ),
+    PROVIDERS.EXOPLANET_EU: SourceInfo(
+        "Extrasolar Planets Encyclopaedia", "https://exoplanet.eu/", "orbits"
+    ),
+    PROVIDERS.OPEN_EXOPLANET_CATALOGUE: SourceInfo(
+        "Open Exoplanet Catalogue",
+        "https://github.com/OpenExoplanetCatalogue/open_exoplanet_catalogue",
+        "orbits",
+    ),
+    PROVIDERS.EXOPLANET_SIMBAD: SourceInfo(
+        "SIMBAD (CDS) — exoplanet and host identifiers",
+        "https://simbad.cds.unistra.fr/simbad/",
+        "orbits",
+    ),
+    PROVIDERS.EXOPLANET_GAIA: SourceInfo(
+        "Gaia DR3 (ESA) — exoplanet tables",
+        "https://gea.esac.esa.int/archive/",
+        "orbits",
+    ),
     PROVIDERS.SPICE: SourceInfo(
         "NAIF generic kernels",
         "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/",
