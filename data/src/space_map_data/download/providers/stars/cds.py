@@ -14,16 +14,14 @@ Every file is checked against the record count in its ReadMe, on download and
 again on each later run. CDS answers 403 to a User-Agent that contains "bot".
 """
 
-import gzip
-import io
 import logging
-import re
 import time
 from pathlib import Path
 
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.download.cds import CDS_URL, README, count_records, record_counts
 from space_map_data.download.downloader import (
     DownloadError,
     Downloader,
@@ -33,9 +31,7 @@ from space_map_data.utils.paths import SOURCES_STARS_DIR
 
 logger = logging.getLogger(__name__)
 
-CDS_URL = "https://cdsarc.cds.unistra.fr/ftp"
 OUT_DIR = SOURCES_STARS_DIR / "cds"
-README = "ReadMe"
 ATTEMPTS = 4
 RETRY_WAIT_SECONDS = 15.0
 
@@ -114,28 +110,6 @@ CATALOGUES: dict[str, tuple[str, ...]] = {
         "progwd.dat",
     ),
 }
-
-_SUMMARY_ROW = re.compile(r"^\s*(\S+)\s+\d+\s+(\d+)(?:\s|$)")
-
-
-def record_counts(readme: str) -> dict[str, int]:
-    """The record count of each file, from the `File Summary` of a ReadMe."""
-    counts: dict[str, int] = {}
-    in_summary = False
-    for line in readme.splitlines():
-        if line.startswith("File Summary"):
-            in_summary = True
-        elif in_summary and line.startswith(("See also", "Byte-by-byte")):
-            break
-        elif in_summary and (match := _SUMMARY_ROW.match(line)):
-            counts[match[1]] = int(match[2])
-    return counts
-
-
-def count_records(content: bytes, name: str) -> int:
-    stream = io.BytesIO(content)
-    with gzip.open(stream) if name.endswith(".gz") else stream as file:
-        return sum(1 for _ in file)
 
 
 class CDSStarCataloguesDownloader(Downloader):

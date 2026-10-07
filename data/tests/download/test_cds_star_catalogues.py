@@ -6,14 +6,10 @@ import json
 import httpx
 import pytest
 
+from space_map_data.download.cds import CDS_URL
 from space_map_data.download.downloader import DownloadError
 from space_map_data.download.providers.stars import cds
-from space_map_data.download.providers.stars.cds import (
-    CDS_URL,
-    CDSStarCataloguesDownloader,
-    count_records,
-    record_counts,
-)
+from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloader
 
 README = """I/311               Hipparcos, the New Reduction       (van Leeuwen, 2007)
 ================================================================================
@@ -65,17 +61,6 @@ def downloader(tmp_path, monkeypatch):
         headers={"User-Agent": "space-map-bot/0.1 (a@b.test)"},
     )
     return CDSStarCataloguesDownloader(client), requested
-
-
-class TestReadMe:
-    """Record counts from the `File Summary` block."""
-
-    def test_counts_only_the_summary_rows(self):
-        assert record_counts(README) == {"hip2.dat": 3, "hip7p.dat": 2, "notes.doc": 1}
-
-    def test_counts_records_in_plain_and_gzip_files(self):
-        assert count_records(b"a\nb\n", "a.dat") == 2
-        assert count_records(gzip.compress(b"a\nb\nc\n"), "a.dat.gz") == 3
 
 
 class TestDownload:
