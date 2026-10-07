@@ -26,6 +26,72 @@ MANIFEST_NAME = "download-metadata.yaml"
 SURFACES_SUBDIR = "surfaces"
 # The map types where one body can have several candidates worth keeping.
 _RANKED_TYPES = ("cylindrical", "cylindrical_monthly")
+# `tiles:` value of an entry that feeds its bundle's tile pyramid and nothing
+# else, in place of the entry the tiers come from.
+TILES_ONLY = "only"
+
+
+def builds_tiers(entry: dict) -> bool:
+    """Whether the entry exports the whole-globe ``{tier}.webp`` files."""
+    return not entry.get("skip") and entry.get("tiles") != TILES_ONLY
+
+
+def source_layers(entry: dict) -> list[dict]:
+    """Every raster an entry names: its own, then the layers that refine it in
+    a pyramid. ``insets`` replace it over the band each one covers,
+    ``brightness`` layers replace only its fine detail."""
+    return [entry, *(entry.get("insets") or []), *(entry.get("brightness") or [])]
+
+
+def _corner(degrees: int, width: int) -> str:
+    """A quad corner as file names state it: zero-padded, minus for west and
+    south, no sign otherwise."""
+    return f"{'-' if degrees < 0 else ''}{abs(degrees):0{width}d}"
+
+
+def _layer_cells(layer: dict) -> list[list[tuple[str, str | None]]]:
+    """``(file, download link)`` for each file of a layer, as rows north to
+    south and each row west to east. A link is the file itself, or a zip
+    archive that holds it."""
+    prefix = f"{layer['dir']}/" if layer.get("dir") else ""
+    if "quads" in layer:
+        # A regular grid of square quads, each named by its south-west corner.
+        quads = layer["quads"]
+        step = quads["step_deg"]
+        south, north = layer["lat_range"]
+        west = int(layer.get("lon_at_left_deg", -180))
+        rows = []
+        for lat in range(north - step, south - 1, -step):
+            row = []
+            for lon in range(west, west + 360, step):
+                names = {"lon": _corner(lon, 3), "lat": _corner(lat, 2)}
+                archive = quads.get("archive")
+                row.append(
+                    (
+                        prefix + quads["file"].format(**names),
+                        archive.format(**names) if archive else None,
+                    )
+                )
+            rows.append(row)
+        return rows
+    if "grid" in layer:
+        base = layer.get("download_dir")
+        return [
+            [(prefix + name, f"{base}/{name}" if base else None) for name in row]
+            for row in layer["grid"]
+        ]
+    return [[(prefix + layer["file"], layer.get("download_url"))]]
+
+
+def layer_grid(layer: dict) -> list[list[str]]:
+    """The files of a layer, relative to the entry's source directory: rows
+    north to south, each row west to east."""
+    return [[name for name, _ in row] for row in _layer_cells(layer)]
+
+
+def layer_files(layer: dict) -> list[tuple[str, str | None]]:
+    """``(file, download link)`` for each file of a layer."""
+    return [cell for row in _layer_cells(layer) for cell in row]
 
 
 def load_entries(textures_dir: Path) -> list[dict]:
@@ -98,7 +164,7 @@ def rank_by_body(entries: list[dict]) -> dict[str, str]:
     """
     by_body: dict[str, list[dict]] = {}
     for entry in entries:
-        if entry.get("skip") or entry.get("type") not in _RANKED_TYPES:
+        if not builds_tiers(entry) or entry.get("type") not in _RANKED_TYPES:
             continue
         by_body.setdefault(entry["body"], []).append(entry)
     result: dict[str, str] = {}

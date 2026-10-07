@@ -7,6 +7,7 @@ bodies:
 - body: naif-499
   body_name: mars
   source: https://astrogeology.usgs.gov/search/map/mars_mgs_mola_mex_hrsc_blended_dem_global_200m
+  download_url: https://planetarymaps.usgs.gov/mosaic/Mars/HRSC_MOLA_Blend/Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2.tif
   organisation: USGS
   # LICENSE REVIEW: USGS releases this blended product as PD, but it incorporates
   # ESA Mars Express HRSC data (CC BY-SA 3.0 IGO); the ShareAlike term could

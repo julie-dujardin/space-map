@@ -51,6 +51,7 @@ v1/
   textures/{id}_specular/metadata.json            specular source + exports
   textures/stars/{tier}_{face}.webp               cubemap-skybox faces (type = cubemap_skybox), face ∈ px|nx|py|ny|pz|nz
   textures/stars/metadata.json                    skybox source + per-face exports
+  tiles/{id}/metadata.json                        tile-pyramid descriptor; the tiles are published apart from the export, see tiles.md
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   models/{slug}/{tier}.glb                        tier = low | high — Meshopt geometry + WebP textures
@@ -82,6 +83,7 @@ v1/
 | [nomenclature.md](nomenclature.md) | IAU surface-feature markers (eager) + feature detail bundles (lazy). |
 | [images.md](images.md) | Per-image thumbnail bundles, size variants, and image metadata. |
 | [textures.md](textures.md) | Surface/cloud/specular/skybox textures, tiers, and metadata. |
+| [tiles.md](tiles.md) | Surface tile pyramids of all layers: grid, colour and height tiles, sources, descriptor. |
 | [rings.md](rings.md) | Ring radial-profile channels and metadata. |
 | [models.md](models.md) | 3D spacecraft/satellite glTF bundles and metadata. |
 | [systems.md](systems.md) | `systems/global.json` lookups + per-system `systems/{barycenter_id}.json`. |

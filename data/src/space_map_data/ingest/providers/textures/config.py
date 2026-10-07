@@ -4,6 +4,7 @@ from space_map_data.utils.paths import (
     DERIVED_TEXTURES_DIR,
     EXPORT_DIR,
     SOURCES_TEXTURES_DIR,
+    TILES_DIR,
 )
 
 # Per-body surface textures (flat — filename encodes the body). The root
@@ -107,3 +108,25 @@ SHRINK_RATIO = 0.85  # how much to downscale per iteration when quality floor is
 MIN_DIM_AFTER_SHRINK = 4096  # stop shrinking below this — below the medium tier
 
 IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+
+# Tile pyramids (see tiles.py). The descriptor is build metadata, so it sits in
+# the export's mirror; the tiles sit in their own tree.
+TILES_SUBPATH = "v1/tiles"
+TILES_PROCESSED_DIR = TILES_DIR / TILES_SUBPATH
+TILES_METADATA_DIR = EXPORT_DIR / TILES_SUBPATH
+TILE_SIZE = 1024
+# A source this little wider than a level is resampled down to it: one more
+# level is four times the tiles for a few percent of detail.
+TILE_LEVEL_SLACK = 0.1
+# Degrees of latitude over which an inset fades into the map under it.
+TILE_INSET_FEATHER_DEG = 1.0
+# Blur that brings a brightness layer down to its colour base's resolution,
+# in base pixels. Larger doubles the contrast both maps already share.
+TILE_SHARPEN_SIGMA = 0.7
+# Bounds on how far a brightness layer may darken or brighten the base.
+TILE_SHARPEN_RANGE = (0.4, 2.5)
+# Largest source a build decodes whole, in bytes once decoded. Sources stored
+# as plain samples are read in bands and have no limit.
+TILE_MAX_LOAD_BYTES = 4 << 30
+# Lossless effort. Higher settings take 15 times longer for under 2%.
+TILE_LOSSLESS_KWARGS = {"lossless": True, "method": 4, "quality": 75}

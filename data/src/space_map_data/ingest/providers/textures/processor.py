@@ -9,20 +9,29 @@ from datetime import UTC, datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 
+import numpy as np
 import py360convert
 from PIL import Image
 
-from space_map_data.constants.manifests.textures import load_entries, rank_by_body
+from space_map_data.constants.manifests.textures import (
+    TILES_ONLY,
+    builds_tiers,
+    layer_files,
+    layer_grid,
+    load_entries,
+    rank_by_body,
+)
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
-from . import config, skybox
+from . import config, skybox, tiles
 from .alignment import align_cylindrical, entry_alignment
 from .encoding import resize, save_webp, size_target, tier_for_size
 from .image_io import (
     open_displacement_source,
+    open_height_raster,
     open_image,
     open_specular_source,
 )
@@ -37,6 +46,22 @@ from .metadata import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _described_files(names: list[str]) -> dict:
+    """A layer's files for the descriptor: listed, or counted past a few."""
+    if len(names) <= 16:
+        return {"files": names}
+    return {"file_count": len(names), "first_file": names[0], "last_file": names[-1]}
+
+
+# The sibling layers that get a tile pyramid, by entry type. Clouds do not:
+# they are a time series at a resolution the tiers already hold.
+_TILED_SIBLINGS = {
+    "cylindrical_displacement": config.DISPLACEMENT_SUFFIX,
+    "cylindrical_specular": config.SPECULAR_SUFFIX,
+    "cylindrical_night_lights": config.NIGHT_SUFFIX,
+}
 
 
 def _coverage_runs(slots: list[str]) -> list[list[str]]:
@@ -285,7 +310,7 @@ class TextureProcessor:
                 known_files.update(expand_entry_files(entry))
 
         for entry in self._raw_meta:
-            if entry.get("skip"):
+            if not builds_tiers(entry):
                 continue
             if entry.get("type") == "cylindrical_monthly":
                 self._process_monthly(entry, force=force)
@@ -326,8 +351,8 @@ class TextureProcessor:
         if entry is None:
             log.warning("%s not found in the texture manifests", src.name)
             return config.PROCESSED_DIR
-        if entry.get("skip"):
-            log.debug("skipping %s (marked skip in the manifest)", src.name)
+        if not builds_tiers(entry):
+            log.debug("skipping %s (no tiers asked for in the manifest)", src.name)
             return config.PROCESSED_DIR
 
         object_id = self._bundles.get(src.name)
@@ -359,6 +384,300 @@ class TextureProcessor:
         )
         log.info("processed %s → %s (%d exports)", src.name, object_id, len(exports))
         return out_dir
+
+    def process_tiles(self, force: bool = False) -> None:
+        """Build a tile pyramid for every map, and drop the pyramids of maps
+        that are gone."""
+        sources: dict[str, dict] = {}
+        for entry in self._raw_meta:
+            if entry.get("skip"):
+                continue
+            pyramid_id = self._pyramid_id(entry)
+            if pyramid_id is None:
+                continue
+            current = sources.get(pyramid_id)
+            dedicated = entry.get("tiles") == TILES_ONLY
+            if current is None or (dedicated and current.get("tiles") != TILES_ONLY):
+                sources[pyramid_id] = entry
+            elif dedicated:
+                log.warning(
+                    "%s: %s already has a tile source, ignoring",
+                    entry["file"],
+                    pyramid_id,
+                )
+        for pyramid_id, entry in sources.items():
+            self._process_tiles(entry, pyramid_id, force=force)
+
+        for root in (
+            config.TILES_PROCESSED_DIR,
+            mirror_path(config.TILES_METADATA_DIR),
+        ):
+            if not root.exists():
+                continue
+            for child in root.iterdir():
+                # A stopped build of a map that is still there waits for its
+                # next run, which may be days of work in.
+                name = child.name.removesuffix(".building")
+                if child.is_dir() and name not in sources:
+                    shutil.rmtree(child)
+                    log.info("removed stale tile pyramid %s", child)
+
+    def _pyramid_id(self, entry: dict) -> str | None:
+        """The bundle a pyramid refines: it shares the id of that bundle's
+        tiers, whichever entry those come from. None for what is not tiled."""
+        type_ = entry.get("type", "")
+        if type_ in ("cylindrical", "cylindrical_monthly"):
+            if entry.get("tiles") == TILES_ONLY:
+                return entry["body"]
+            return self._bundles.get(entry["file"])
+        suffix = _TILED_SIBLINGS.get(type_)
+        return None if suffix is None else f"{entry['body']}{suffix}"
+
+    def _process_tiles(self, entry: dict, pyramid_id: str, force: bool) -> None:
+        source_dir = entry["_source_dir"]
+        is_height = entry["type"] == "cylindrical_displacement"
+        # One pyramid per frame; a single-frame map has one, unnamed.
+        frames: dict[str, list[dict]]
+        if entry["type"] == "cylindrical_monthly":
+            frames = {
+                f"{month:02d}": [{**entry, "file": name}]
+                for month, name in enumerate(expand_entry_files(entry), 1)
+            }
+        else:
+            frames = {"": [entry, *(entry.get("insets") or [])]}
+        base_specs = [spec for specs in frames.values() for spec in specs]
+        brightness_specs = entry.get("brightness") or []
+
+        missing = [
+            name
+            for spec in (*base_specs, *brightness_specs)
+            for name, _ in layer_files(spec)
+            if not (source_dir / name).exists()
+        ]
+        if missing:
+            log.warning(
+                "tile source missing for %s: %d files, first %s",
+                pyramid_id,
+                len(missing),
+                missing[0],
+            )
+            return
+
+        alignment = entry_alignment(entry)
+        height_fields = {
+            key: entry.get(key)
+            for key in ("height_unit", "height_scale", "height_offset", "height_nodata")
+        }
+        signature: dict = {
+            "recipe": tiles.RECIPE,
+            "tile_size": config.TILE_SIZE,
+            "max_level": entry.get("tiles_max_level"),
+            "alignment": alignment,
+            "nodata_fill_km": entry.get("nodata_fill_km"),
+            "layers": [
+                {
+                    "file": spec["file"],
+                    "size": (source_dir / spec["file"]).stat().st_size,
+                    "lat_range": spec.get("lat_range"),
+                    **{k: spec.get(k, v) for k, v in height_fields.items()},
+                }
+                for spec in base_specs
+            ],
+        }
+        sharpen_sigma = entry.get("sharpen_sigma", config.TILE_SHARPEN_SIGMA)
+        if brightness_specs:
+            signature["brightness"] = {
+                "recipe": tiles.SHARPEN_RECIPE,
+                "sigma": sharpen_sigma,
+                "range": config.TILE_SHARPEN_RANGE,
+                "layers": [
+                    {
+                        "files": [
+                            [name, (source_dir / name).stat().st_size]
+                            for name, _ in layer_files(spec)
+                        ],
+                        "lat_range": spec.get("lat_range"),
+                        "projection": spec.get("projection"),
+                        "alignment": entry_alignment(spec),
+                        **({"gamma": spec["gamma"]} if spec.get("gamma") else {}),
+                    }
+                    for spec in brightness_specs
+                ],
+            }
+        version = tiles.signature_version(signature)
+        credit = {
+            "id": pyramid_id,
+            "source": entry["source"],
+            "organisation": entry["organisation"],
+            "license": entry.get("license"),
+            "distribution": entry.get("distribution"),
+            "attribution": entry.get("attribution")
+            or scraped_attribution(base_specs[0]["file"]),
+            "description": entry.get("description"),
+            "type": entry["type"],
+        }
+
+        out_dir = config.TILES_PROCESSED_DIR / pyramid_id
+        meta_path = mirror_path(
+            config.TILES_METADATA_DIR / pyramid_id / "metadata.json"
+        )
+        existing = (
+            json.loads(meta_path.read_text())
+            if meta_path.exists() and out_dir.exists()
+            else None
+        )
+        if not force and existing and existing.get("version") == version:
+            if any(existing.get(k) != v for k, v in credit.items()):
+                meta_path.write_text(json.dumps({**existing, **credit}, indent=2))
+                log.info("refreshed tile credits from yaml: %s", pyramid_id)
+            log.debug("skipping tiles for %s (already built)", pyramid_id)
+            return
+
+        brightness = [
+            self._open_brightness_layer(source_dir, spec) for spec in brightness_specs
+        ]
+        described = [
+            {
+                **_described_files([name for name, _ in layer_files(spec)]),
+                "source": spec["source"],
+                "dimensions": layer.dimensions,
+                "lat_range": spec.get("lat_range"),
+                "role": "brightness",
+            }
+            for spec, layer in zip(brightness_specs, brightness)
+        ]
+
+        # Built aside, so a failed run never leaves half a pyramid in place.
+        # The first part to build tells whether what is there can be kept.
+        building = out_dir.with_name(f"{out_dir.name}.building")
+        first = building / next(iter(frames))
+        if building.exists() and not tiles.resumable(first, version):
+            shutil.rmtree(building)
+        max_level = entry.get("tiles_max_level")
+        stats: tiles.PyramidStats | None = None
+        cap_stats: tiles.PyramidStats | None = None
+        builders: list[tiles.PyramidBuilder] = []
+        coding = None
+        for frame, specs in frames.items():
+            layers = []
+            quanta = []
+            for spec in specs:
+                path = source_dir / spec["file"]
+                lat_bottom, lat_top = spec.get("lat_range") or (-90.0, 90.0)
+                placement = tiles.Placement(
+                    lat_top=lat_top, lat_bottom=lat_bottom, **alignment
+                )
+                if is_height:
+                    raster = open_height_raster(
+                        path,
+                        unit=spec.get("height_unit")
+                        or height_fields["height_unit"]
+                        or "m",
+                        scale=spec.get("height_scale", height_fields["height_scale"]),
+                        offset=spec.get(
+                            "height_offset", height_fields["height_offset"]
+                        ),
+                        nodata=spec.get(
+                            "height_nodata", height_fields["height_nodata"]
+                        ),
+                    )
+                    quanta.append(tiles.height_quantum_km(raster))
+                    layers.append(tiles.height_layer(raster, placement))
+                elif entry["type"] == "cylindrical_specular":
+                    mask = np.asarray(open_specular_source(path))
+                    layers.append(tiles.Layer(mask, placement))
+                else:
+                    layers.append(tiles.open_colour_layer(path, placement))
+            if max_level is None:
+                max_level = tiles.finest_level(
+                    max(layer.width for layer in (*layers, *brightness))
+                )
+            if stats is None or cap_stats is None:
+                stats = tiles.PyramidStats.empty(max_level)
+                cap_stats = tiles.PyramidStats.empty(max_level)
+                described[:0] = [
+                    {
+                        "file": spec["file"],
+                        "source": spec["source"],
+                        "dimensions": layer.dimensions,
+                        "lat_range": spec.get("lat_range"),
+                    }
+                    for spec, layer in zip(specs, layers)
+                ]
+            if is_height:
+                lo, hi, gaps = tiles.height_range_km(layers)
+                coding = tiles.HeightCoding.for_range(
+                    lo, hi, min(quanta), entry.get("nodata_fill_km")
+                )
+                log.info(
+                    "%s: %.3f..%.3f km in %.2f m steps, %d source px unmapped",
+                    pyramid_id,
+                    lo,
+                    hi,
+                    coding.step_km * 1000,
+                    gaps,
+                )
+            name = f"{pyramid_id} {frame}".strip()
+            shared = (layers, max_level, coding, brightness, sharpen_sigma, version)
+            builder = tiles.PyramidBuilder(name, layers, building / frame, *shared[1:])
+            stats.add(builder.build())
+            builders.append(builder)
+            if max_level < tiles.CapBuilder.min_level:
+                continue
+            for folder, north in tiles.CAP_FOLDERS.items():
+                cap = tiles.CapBuilder(
+                    f"{name} {folder} cap",
+                    north,
+                    layers,
+                    building / frame / folder,
+                    *shared[1:],
+                )
+                cap_stats.add(cap.build())
+                builders.append(cap)
+        assert stats is not None and cap_stats is not None and max_level is not None
+        for builder in builders:
+            builder.finish()
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        building.rename(out_dir)
+
+        metadata: dict = {
+            **credit,
+            "version": version,
+            "tile_size": config.TILE_SIZE,
+            "max_level": max_level,
+            "layers": described,
+            "levels": stats.levels(),
+            "cap_levels": cap_stats.levels(tiles.CapBuilder.min_level),
+            "processed_at": datetime.now(UTC).isoformat(),
+        }
+        if entry["type"] == "cylindrical_monthly":
+            metadata["frames"] = len(frames)
+        if coding is not None:
+            metadata["displacement_bias_km"] = coding.bias_km
+            metadata["displacement_scale_km"] = coding.step_km * tiles.HEIGHT_LEVELS
+            metadata["absolute_radius"] = bool(entry.get("absolute_radius", False))
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(metadata, indent=2))
+        log.info(
+            "tiled %s: levels 0-%d, %d tiles, %.2f GiB",
+            pyramid_id,
+            max_level,
+            sum(stats.tiles) + sum(cap_stats.tiles),
+            (sum(stats.size_bytes) + sum(cap_stats.size_bytes)) / 2**30,
+        )
+
+    def _open_brightness_layer(self, source_dir: Path, spec: dict) -> tiles.Source:
+        lat_bottom, lat_top = spec.get("lat_range") or (-90.0, 90.0)
+        placement = tiles.Placement(
+            lat_top=lat_top, lat_bottom=lat_bottom, **entry_alignment(spec)
+        )
+        grid = [[source_dir / name for name in row] for row in layer_grid(spec)]
+        if spec.get("projection") == "polar_stereographic":
+            return tiles.open_polar_brightness_layer(
+                grid[0][0], placement, spec.get("gamma")
+            )
+        return tiles.open_brightness_layer(grid, placement, spec.get("gamma"))
 
     def _process_specular(self, entry: dict, force: bool = False) -> Path:
         """Process a `cylindrical_specular` entry.

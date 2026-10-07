@@ -88,6 +88,37 @@ bodies:
   license: Public domain
   file: lroc_color_poles.tif
   type: cylindrical
+# The kit's colour, with detail below its 400 m from the LROC wide-angle camera
+# at 100 m. Each pixel of that mosaic is the median of about 142 images
+# normalised to one lighting, so it holds no cast shadows to fight the
+# renderer's own.
+- body: naif-301
+  body_name: moon
+  source: https://data.lroc.im-ldi.com/lroc/view_rdr/WAC_EMP
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA/GSFC/Arizona State University. Detail: LROC Wide Angle Camera 643 nm empirically normalised mosaic, 100 m/px. Colour: NASA's Scientific Visualization Studio, CGI Moon Kit."
+  file: lroc_color_poles.tif
+  type: cylindrical
+  tiles: only
+  brightness:
+  - source: https://data.lroc.im-ldi.com/lroc/view_rdr/WAC_EMP
+    download_dir: https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_EMP
+    lat_range: [-60, 60]
+    lon_at_left_deg: 0
+    grid:
+    - [WAC_EMP_643NM_E300N0450_304P.IMG, WAC_EMP_643NM_E300N1350_304P.IMG, WAC_EMP_643NM_E300N2250_304P.IMG, WAC_EMP_643NM_E300N3150_304P.IMG]
+    - [WAC_EMP_643NM_E300S0450_304P.IMG, WAC_EMP_643NM_E300S1350_304P.IMG, WAC_EMP_643NM_E300S2250_304P.IMG, WAC_EMP_643NM_E300S3150_304P.IMG]
+  - file: WAC_EMP_643NM_P900N0000_304P.IMG
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/WAC_EMP
+    download_url: https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_EMP/WAC_EMP_643NM_P900N0000_304P.IMG
+    projection: polar_stereographic
+    lat_range: [60, 90]
+  - file: WAC_EMP_643NM_P900S0000_304P.IMG
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/WAC_EMP
+    download_url: https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_EMP/WAC_EMP_643NM_P900S0000_304P.IMG
+    projection: polar_stereographic
+    lat_range: [-90, -60]
 # Moon LRO LOLA height map lives in its own asset dir (displacement/moon/),
 # like night/ and bathymetry/.
 
@@ -104,18 +135,51 @@ bodies:
 - body: naif-499
   body_name: mars
   source: https://astrogeology.usgs.gov/search/map/mars_viking_colorized_global_mosaic_232m#open
+  download_url: https://planetarymaps.usgs.gov/mosaic/Mars_Viking_MDIM21_ClrMosaic_global_232m.tif
   organisation: USGS
   license: Public domain
   file: Mars_Viking_MDIM21_ClrMosaic_global_232m.tif
   type: cylindrical
+  # Four times the detail of the 925 m map but washed pink, with frost over
+  # Hellas. The CTX entry below gives the pyramid far more detail in the
+  # 925 m map's own colours.
   skip: true
 - body: naif-499
   body_name: mars
   source: https://astrogeology.usgs.gov/search/map/mars_viking_global_color_mosaic_925m#open
+  download_url: https://planetarymaps.usgs.gov/mosaic/Mars_Viking_ClrMosaic_global_925m.tif
   organisation: USGS
   license: Public domain
   file: Mars_Viking_ClrMosaic_global_925m.tif
   type: cylindrical
+# The 925 m colour, with detail from the Murray Lab's global mosaic of MRO
+# Context Camera images at 5 m. No open colour map of Mars is sharper than
+# Viking's; CTX is greyscale, so it supplies brightness only.
+- body: naif-499
+  body_name: mars
+  source: https://murray-lab.caltech.edu/CTX/
+  organisation: NASA
+  license: Free use for all purposes
+  attribution: "NASA/JPL/MSSS/The Murray Lab. Detail: Global CTX Mosaic of Mars V01, 5 m/px (Dickson et al. 2024, doi:10.1029/2024EA003555). Colour: USGS Astrogeology Science Center, Viking Orbiter global colour mosaic."
+  file: Mars_Viking_ClrMosaic_global_925m.tif
+  type: cylindrical
+  tiles: only
+  # 10 m. Level 11 would hold the mosaic's full 5 m, for four times the tiles:
+  # 11 million of them, about 0.6 TB.
+  tiles_max_level: 10
+  # The colour map is far softer than its pixels, and CTX holds real shading
+  # up to kilometres, so CTX takes over below about 3 km.
+  sharpen_sigma: 3.0
+  brightness:
+  - source: https://murray-lab.caltech.edu/CTX/
+    dir: mars-ctx
+    lat_range: [-88, 88]
+    # 8-bit values stretched for display, not linear brightness.
+    gamma: 2.2
+    quads:
+      step_deg: 4
+      file: "MurrayLab_CTX_V01_E{lon}_N{lat}_Mosaic.tif"
+      archive: "https://murray-lab.caltech.edu/CTX/V01/tiles/MurrayLab_GlobalCTXMosaic_V01_E{lon}_N{lat}.zip"
 - body: naif-401
   body_name: phobos
   source: https://astrogeology.usgs.gov/search/map/phobos_viking_global_mosaic_5m#open

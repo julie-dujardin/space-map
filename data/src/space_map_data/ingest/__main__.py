@@ -29,6 +29,7 @@ ALL_TARGETS = [
     "images",
     "wikipedia",
     "textures",
+    "tiles",
     "rings",
     "models",
 ]
@@ -47,7 +48,7 @@ def cli():
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Reprocess even if output already exists (textures, rings)",
+        help="Reprocess even if output already exists (textures, tiles, rings)",
     )
     args = parser.parse_args()
 
@@ -82,6 +83,8 @@ def cli():
             log_db_summary(start_time=start_time)
         if "textures" in selected:
             TextureProcessor().process_all(force=args.force)
+        if "tiles" in selected:
+            TextureProcessor().process_tiles(force=args.force)
         if "rings" in selected:
             RingProcessor().process_all(force=args.force)
         if "models" in selected:

@@ -17,7 +17,7 @@ from space_map_data.ingest.providers.textures import (
     save_webp,
 )
 from space_map_data.ingest.providers.textures import config
-from space_map_data.ingest.providers.textures.image_io import _repair_thin_gaps
+from space_map_data.ingest.providers.textures.image_io import repair_thin_gaps
 from space_map_data.ingest.providers.textures.metadata import refresh_metadata_from_yaml
 
 
@@ -611,28 +611,28 @@ class TestRepairThinGaps:
 
     def test_dead_column_interpolates_from_both_sides(self):
         elev, finite = self._grid(nan_cols=(7,))
-        assert _repair_thin_gaps(elev, finite) == 8
+        assert repair_thin_gaps(elev, finite) == 8
         assert np.allclose(elev[:, 7], np.arange(8) * 0.5 + 7 * 0.25)
 
     def test_edge_column_uses_the_longitude_wrap(self):
         # Column 0's left neighbour is the last column: the map is a cylinder.
         elev, finite = self._grid(nan_cols=(0,))
-        assert _repair_thin_gaps(elev, finite) == 8
+        assert repair_thin_gaps(elev, finite) == 8
         assert np.isfinite(elev[:, 0]).all()
 
     def test_pole_row_fills_from_the_row_below(self):
         # Latitude clamps, so row 0 has only one valid vertical neighbour.
         elev, finite = self._grid(nan_rows=(0,))
-        assert _repair_thin_gaps(elev, finite) == 16
+        assert repair_thin_gaps(elev, finite) == 16
         assert np.allclose(elev[0], elev[1])
 
     def test_wide_gap_keeps_a_core_for_the_flat_fill(self):
         elev, finite = self._grid(nan_cols=range(2, 14))
-        _repair_thin_gaps(elev, finite)
+        repair_thin_gaps(elev, finite)
         assert not np.isfinite(elev[:, 7]).any()
 
     def test_fully_mapped_grid_is_untouched(self):
         elev, finite = self._grid()
         before = elev.copy()
-        assert _repair_thin_gaps(elev, finite) == 0
+        assert repair_thin_gaps(elev, finite) == 0
         assert np.array_equal(elev, before)

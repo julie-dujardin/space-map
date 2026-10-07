@@ -66,6 +66,11 @@ EXPORT_DIR = PROJECT_ROOT.parent / "space-map-export"
 # exactly; use sidecar_io.mirror_path to translate between the two.
 EXPORT_METADATA_DIR = PROJECT_ROOT.parent / "space-map-export-metadata"
 
+# Surface tile pyramids: millions of files, which the export's host caps, so
+# they are served apart from it. Layout mirrors EXPORT_DIR (v1/tiles/…). Like
+# DOWNLOAD_DIR this may sit on a network mount.
+TILES_DIR = PROJECT_ROOT.parent / "space-map-tiles"
+
 # Frequently-changing data published on its own, away from the export: a
 # re-export is a whole-catalogue rebuild, and this changes every few minutes.
 LIVE_DIR = PROJECT_ROOT.parent / "space-map-live"

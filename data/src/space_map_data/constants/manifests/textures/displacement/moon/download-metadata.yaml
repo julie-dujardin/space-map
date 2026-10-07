@@ -1,12 +1,7 @@
-# Manifest for the manually downloaded LRO LOLA height map (NASA SVS CGI Moon
-# Kit). Like the GEBCO bathymetry and Black Marble night-lights, this isn't
-# fetched by the texture_sources downloader; TextureProcessor merges every
-# */*/download-metadata.yaml into the main bodies list at startup, stamping
-# `_source_dir` so the file resolves from this dir.
-#
-# `ldem_64.tif`: SVS float variant, value already in km (no GDAL tags), so
-# `height_unit: km` stops the loader treating it as metres.
+# Lunar height maps. Elevation is relative to the 1737.4 km reference sphere.
 bodies:
+# SVS CGI Moon Kit float variant: already in km and carries no GDAL tags, so
+# the unit is stated here.
 - body: naif-301
   body_name: moon
   source: https://svs.gsfc.nasa.gov/4720/#media_group_322785
@@ -17,3 +12,25 @@ bodies:
   file: ldem_64.tif
   type: cylindrical_displacement
   height_unit: km
+# LOLA alone leaves kilometre-wide gaps between tracks near the equator, which
+# the 256 ppd grid interpolates. SLDEM2015 fills them from Kaguya stereo but
+# stops at 60° latitude, where the LOLA tracks have converged.
+- body: naif-301
+  body_name: moon
+  source: https://astrogeology.usgs.gov/search/map/moon_lro_lola_dem_118m
+  download_url: https://planetarymaps.usgs.gov/mosaic/Lunar_LRO_LOLA_Global_LDEM_118m_Mar2014.tif
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA/GSFC/USGS. Elevation: Lunar Orbiter Laser Altimeter (LOLA), LRO, 256 px/deg; between 60°S and 60°N, SLDEM2015 (LOLA merged with SELENE Kaguya Terrain Camera stereo, 512 px/deg; Barker et al. 2016, doi:10.1016/j.icarus.2015.07.039). Reference sphere radius 1737.4 km."
+  description: "Lunar topography tile pyramid."
+  file: Lunar_LRO_LOLA_Global_LDEM_118m_Mar2014.tif
+  type: cylindrical_displacement
+  tiles: only
+  # 83 m. Level 7 would hold the full 59 m of the inset, for four times the
+  # tiles.
+  tiles_max_level: 6
+  insets:
+  - file: Lunar_LRO_LOLAKaguya_DEMmerge_60N60S_512ppd.tif
+    source: https://astrogeology.usgs.gov/search/map/moon_lro_lola_selene_kaguya_tc_dem_merge_60n60s_59m
+    download_url: https://planetarymaps.usgs.gov/mosaic/LolaKaguya_Topo/Lunar_LRO_LOLAKaguya_DEMmerge_60N60S_512ppd.tif
+    lat_range: [-60, 60]

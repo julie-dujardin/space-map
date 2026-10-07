@@ -2,6 +2,7 @@
 
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +16,7 @@ log = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None
 
-_NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
+NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
 
 # Native height unit → kilometres. USGS planetary DEMs are metres; the SVS
 # LOLA float map is already km; the SVS uint variant is half-metres.
@@ -62,7 +63,7 @@ def open_image(path: Path, keep_alpha: bool = False) -> Image.Image:
     if arr.ndim == 2:
         arr = arr[..., None]
 
-    nodata_mask = arr < _NODATA_THRESHOLD
+    nodata_mask = arr < NODATA_THRESHOLD
     arr = np.clip(arr, 0.0, None)
     arr[nodata_mask] = 0.0
     arr = arr.astype(np.float32)
@@ -104,14 +105,14 @@ def _gdal_nodata(page: tifffile.TiffPage) -> float | None:
     if tag and tag.value is not None:
         try:
             return float(tag.value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
     return None
 
 
 # PDS3/ISIS2 CORE_ITEM_TYPE → numpy dtype (big/little-endian IEEE reals). ISIS
 # special pixels (nulls, saturations) live near -3.4e38 and fall to the shared
-# _NODATA_THRESHOLD guard, so no explicit nodata is needed.
+# NODATA_THRESHOLD guard, so no explicit nodata is needed.
 _ISIS_REAL_DTYPE = {
     ("SUN_REAL", 4): ">f4",
     ("MSB_IEEE_REAL", 4): ">f4",
@@ -165,6 +166,123 @@ def _open_isis_cube(src: Path) -> tuple[np.ndarray, float, float, float | None]:
     return mm, multiplier, base, None
 
 
+# PDS3 SAMPLE_TYPE and SAMPLE_BITS → numpy dtype.
+_PDS_SAMPLE_DTYPE = {
+    ("PC_REAL", 32): "<f4",
+    ("IEEE_REAL", 32): ">f4",
+    ("LSB_INTEGER", 16): "<i2",
+    ("MSB_INTEGER", 16): ">i2",
+    ("LSB_UNSIGNED_INTEGER", 16): "<u2",
+    ("MSB_UNSIGNED_INTEGER", 16): ">u2",
+    ("UNSIGNED_INTEGER", 8): "u1",
+    ("MSB_UNSIGNED_INTEGER", 8): "u1",
+    ("LSB_UNSIGNED_INTEGER", 8): "u1",
+}
+
+
+def read_pds_label(src: Path) -> dict[str, str]:
+    """``KEY = value`` pairs of a PDS3 attached label, units stripped."""
+    with src.open("rb") as fh:
+        text = fh.read(1 << 16).decode("latin-1", "replace")
+    label: dict[str, str] = {}
+    for line in text.split("END\r\n")[0].splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            label.setdefault(
+                key.strip(), re.sub(r"<[^>]*>", "", value).strip().strip('"')
+            )
+    return label
+
+
+def open_pds_image(src: Path) -> np.ndarray:
+    """Memory-map the samples of a single-band PDS3 image with an attached
+    label, such as the LROC mosaic tiles."""
+    label = read_pds_label(src)
+    try:
+        key = (label["SAMPLE_TYPE"], int(label["SAMPLE_BITS"]))
+        offset = (int(label["^IMAGE"]) - 1) * int(label["RECORD_BYTES"])
+        shape = (int(label["LINES"]), int(label["LINE_SAMPLES"]))
+    except KeyError as e:
+        raise ValueError(f"{src.name}: PDS label lacks {e}") from None
+    if key not in _PDS_SAMPLE_DTYPE:
+        raise ValueError(f"{src.name}: unsupported PDS sample type {key}")
+    return np.memmap(
+        src, dtype=_PDS_SAMPLE_DTYPE[key], mode="r", offset=offset, shape=shape
+    )
+
+
+def memmap_page(src: Path, page: tifffile.TiffPage) -> np.ndarray | None:
+    """The page's samples mapped in place, or None when the file does not
+    store them as one plain block.
+
+    tifffile's own memmap refuses data at an odd byte offset and copies it to
+    a temporary file instead, which a 20 GB DEM cannot afford.
+    """
+    if not page.is_final or page.dtype is None:
+        return None
+    return np.memmap(
+        src,
+        dtype=page.dtype.newbyteorder(page.parent.byteorder),
+        mode="r",
+        offset=page.dataoffsets[0],
+        shape=page.shape,
+    )
+
+
+@dataclass(frozen=True)
+class HeightRaster:
+    """A height grid and how its raw samples map to kilometres:
+    ``km = (raw·scale + offset)·unit_km``."""
+
+    samples: np.ndarray
+    scale: float
+    offset: float
+    unit_km: float
+    nodata: float | None
+
+
+def open_height_raster(
+    src: Path,
+    *,
+    unit: str = "m",
+    scale: float | None = None,
+    offset: float | None = None,
+    nodata: float | None = None,
+) -> HeightRaster:
+    """Open a DEM without reading it: a GeoTIFF (GDAL tags) or a single-band
+    ISIS2/PDS3 cube, memory-mapped when the file is stored contiguously.
+
+    scale, offset and nodata default to the file's own tags, overridable per
+    manifest entry.
+    """
+    if unit not in _HEIGHT_UNIT_KM:
+        raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
+    unit_km = _HEIGHT_UNIT_KM[unit]
+
+    if src.suffix.lower() in (".cub", ".cube"):
+        mm, f_scale, f_offset, f_nodata = _open_isis_cube(src)
+    else:
+        with tifffile.TiffFile(str(src)) as tif:
+            page = tif.pages[0]
+            assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+            f_scale, f_offset = _gdal_scale_offset(page)
+            f_nodata = _gdal_nodata(page)
+            mm = memmap_page(src, page)
+            if mm is None:
+                # Only memmappable sources stream; the rest are small enough.
+                log.info(
+                    "%s not contiguous; full-loading instead of streaming", src.name
+                )
+                mm = page.asarray()
+    return HeightRaster(
+        samples=mm,
+        scale=f_scale if scale is None else scale,
+        offset=f_offset if offset is None else offset,
+        unit_km=unit_km,
+        nodata=f_nodata if nodata is None else nodata,
+    )
+
+
 def open_displacement_source(
     src: Path,
     *,
@@ -176,51 +294,25 @@ def open_displacement_source(
 ) -> tuple[Image.Image, float, float]:
     """DEM/height source → 8-bit grayscale tile + the km range it encodes.
 
-    Reads GeoTIFFs (GDAL tags) and single-band ISIS2/PDS3 cubes. Value km =
-    ``(raw·scale + offset)·unit→km`` — elevation for most DEMs, or absolute
-    radius for those that store it (the renderer subtracts its sphere radius
-    then). scale/offset/nodata default to the file's tags, overridable per
-    entry. ``nodata_fill_km`` sets the elevation gaps sink to (default: the
-    lowest valid terrain; partial-coverage DEMs pass 0 to rest at the datum).
-    Returns the tile + the km at texel 0 and 255 so the renderer scales
-    displacement to true relief.
+    Value km is elevation for most DEMs, or absolute radius for those that
+    store it (the renderer subtracts its sphere radius then).
+    ``nodata_fill_km`` sets the elevation gaps sink to (default: the lowest
+    valid terrain; partial-coverage DEMs pass 0 to rest at the datum). Returns
+    the tile + the km at texel 0 and 255 so the renderer scales displacement
+    to true relief.
     """
-    if unit not in _HEIGHT_UNIT_KM:
-        raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
-    unit_km = _HEIGHT_UNIT_KM[unit]
-
-    if src.suffix.lower() in (".cub", ".cube"):
-        mm, f_scale, f_offset, f_nodata = _open_isis_cube(src)
-        return _bake_displacement(
-            mm,
-            src.name,
-            scale=f_scale if scale is None else scale,
-            offset=f_offset if offset is None else offset,
-            nodata=f_nodata if nodata is None else nodata,
-            unit_km=unit_km,
-            nodata_fill_km=nodata_fill_km,
-        )
-
-    with tifffile.TiffFile(str(src)) as tif:
-        page = tif.pages[0]
-        assert isinstance(page, tifffile.TiffPage)  # page 0 is always a full page
-        g_scale, g_offset = _gdal_scale_offset(page)
-        g_nodata = _gdal_nodata(page) if nodata is None else nodata
-        if page.is_contiguous:
-            mm = page.asarray(out="memmap")
-        else:
-            # Only memmappable sources stream; the rest are small enough to fit.
-            log.info("%s not contiguous; full-loading instead of streaming", src.name)
-            mm = page.asarray()
-        return _bake_displacement(
-            mm,
-            src.name,
-            scale=g_scale if scale is None else scale,
-            offset=g_offset if offset is None else offset,
-            nodata=g_nodata,
-            unit_km=unit_km,
-            nodata_fill_km=nodata_fill_km,
-        )
+    raster = open_height_raster(
+        src, unit=unit, scale=scale, offset=offset, nodata=nodata
+    )
+    return _bake_displacement(
+        raster.samples,
+        src.name,
+        scale=raster.scale,
+        offset=raster.offset,
+        nodata=raster.nodata,
+        unit_km=raster.unit_km,
+        nodata_fill_km=nodata_fill_km,
+    )
 
 
 def _gap_front(known: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -238,7 +330,7 @@ def _gap_front(known: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return ys, xs
 
 
-def _repair_thin_gaps(elev: np.ndarray, finite: np.ndarray) -> int:
+def repair_thin_gaps(elev: np.ndarray, finite: np.ndarray) -> int:
     """Fill narrow nodata slivers from their neighbours in place; return px fixed.
 
     Global DEMs routinely ship a dead edge column or blank polar row (Schenk's
@@ -321,7 +413,7 @@ def _bake_displacement(
         oy1 = min(oy0 + _DISPLACEMENT_BAND_OUT_ROWS, out_h)
         bh = oy1 - oy0
         raw = np.asarray(mm[oy0 * ds : oy1 * ds, :crop_w]).astype(np.float32)
-        valid = np.isfinite(raw) & (raw > _NODATA_THRESHOLD)
+        valid = np.isfinite(raw) & (raw > NODATA_THRESHOLD)
         if nodata is not None:
             valid &= raw != nodata
         elev = (raw * scale + offset) * unit_km
@@ -344,7 +436,7 @@ def _bake_displacement(
     # ellipsoid instead of the deepest basin.
     fill = lo if nodata_fill_km is None else nodata_fill_km
     n_gap = int((~finite).sum())
-    n_repaired = _repair_thin_gaps(out_elev, finite) if n_gap else 0
+    n_repaired = repair_thin_gaps(out_elev, finite) if n_gap else 0
     if n_gap:
         log.info(
             "%s: %d/%d output px unmapped (%d interpolated, %d filled at %.3f km)",

@@ -14,6 +14,8 @@ Generated during ingest (not export) and written directly to the export director
 
 The size is a target, not a hard limit. Some textures go over it.
 
+Each layer also has a tile pyramid, which holds the layer at the full detail of its source. The tiers are the fallback when the tile host is not available. See [tiles.md](tiles.md).
+
 ## Texture type
 
 The `type` field in the metadata (and mirrored to `systems/{bary}.json` / `credits.json`) discriminates how the renderer should consume the export bundle:
