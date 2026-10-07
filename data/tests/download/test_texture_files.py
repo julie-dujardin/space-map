@@ -123,6 +123,17 @@ class TestTextureFilesDownloader:
         assert not target.exists()
         assert (target.parent / "dem.tif.part").exists()
 
+    def test_host_that_states_no_size_fails_that_file_alone(
+        self, tmp_path, monkeypatch
+    ):
+        downloader, _ = _downloader(tmp_path, monkeypatch)
+        downloader.client = httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200))
+        )
+        with pytest.raises(DownloadError, match="1 of 1 texture files not fetched"):
+            downloader.download()
+        assert downloader.metadata_file.exists()
+
     def test_recorded_file_needs_no_request_on_the_next_run(
         self, tmp_path, monkeypatch
     ):

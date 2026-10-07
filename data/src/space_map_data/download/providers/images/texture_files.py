@@ -182,7 +182,11 @@ class TextureFilesDownloader(Downloader):
     def _download(self, url: str, path: Path) -> int:
         """Fetch ``url`` to ``path``, resuming a partial file."""
         head = self._head(url)
-        total = int(head.headers["Content-Length"])
+        length = head.headers.get("Content-Length")
+        if length is None:
+            # Without a size a cut-off file cannot be told from a whole one.
+            raise DownloadError(f"{path.name}: the host states no size")
+        total = int(length)
         validator = head.headers.get("ETag") or head.headers.get("Last-Modified")
 
         if path.exists():
