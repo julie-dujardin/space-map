@@ -1,4 +1,4 @@
-"""Range-resume file download shared by the shape-model providers.
+"""Range-resume file download shared by the providers that fetch large files.
 
 Sized for the slow backup uplink: kill-safe (``.part`` + Range), sequential
 callers, generous retries on transient errors.
@@ -6,6 +6,7 @@ callers, generous retries on transient errors.
 
 import logging
 import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import httpx
@@ -17,9 +18,25 @@ RETRIES = 5
 RETRY_WAIT_SECONDS = 30.0
 
 
-def download_resumable(client: httpx.Client, url: str, dest: Path) -> bool:
-    """Fetch ``url`` → ``dest``. Returns False on a non-retryable failure."""
-    if dest.exists() and dest.stat().st_size > 0:
+def download_resumable(
+    client: httpx.Client,
+    url: str,
+    dest: Path,
+    *,
+    method: str = "GET",
+    data: Mapping[str, str] | None = None,
+    headers: Mapping[str, str] | None = None,
+    replace: bool = False,
+    html: bool = False,
+    check: Callable[[Path], None] | None = None,
+) -> bool:
+    """Fetch ``url`` → ``dest``. Returns False on a non-retryable failure.
+
+    ``replace`` fetches when ``dest`` exists. ``html`` accepts an HTML body.
+    ``check`` reads the partial file before it becomes ``dest``. When it
+    raises, the partial file is removed and ``dest`` stays as it was.
+    """
+    if not replace and dest.exists() and dest.stat().st_size > 0:
         return True
     part = dest.with_suffix(dest.suffix + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -30,19 +47,23 @@ def download_resumable(client: httpx.Client, url: str, dest: Path) -> bool:
     meta = part.with_suffix(part.suffix + ".meta")
 
     for attempt in range(1, RETRIES + 1):
-        offset = part.stat().st_size if part.exists() else 0
-        headers = {"Range": f"bytes={offset}-"} if offset else {}
-        if offset and meta.exists():
-            headers["If-Range"] = meta.read_text().strip()
+        offset = part.stat().st_size if method == "GET" and part.exists() else 0
+        request_headers = dict(headers or {})
+        if offset:
+            request_headers["Range"] = f"bytes={offset}-"
+            if meta.exists():
+                request_headers["If-Range"] = meta.read_text().strip()
         try:
-            with client.stream("GET", url, headers=headers, timeout=120.0) as resp:
+            with client.stream(
+                method, url, data=data, headers=request_headers, timeout=120.0
+            ) as resp:
                 if resp.status_code == 416:  # past EOF: we already have every byte
                     break
                 resp.raise_for_status()
                 # Routers intercept dead uplinks with a 200 text/html error
                 # page; no model file is HTML, so retry rather than save it.
                 ctype = resp.headers.get("content-type", "")
-                if "text/html" in ctype:
+                if not html and "text/html" in ctype:
                     raise httpx.TransportError(
                         f"text/html response (captive portal?): {ctype}"
                     )
@@ -83,6 +104,13 @@ def download_resumable(client: httpx.Client, url: str, dest: Path) -> bool:
         time.sleep(RETRY_WAIT_SECONDS)
 
     if part.exists():
-        part.rename(dest)
+        if check is not None:
+            try:
+                check(part)
+            except Exception:
+                part.unlink()
+                meta.unlink(missing_ok=True)
+                raise
+        part.replace(dest)
     meta.unlink(missing_ok=True)
     return True
