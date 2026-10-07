@@ -203,33 +203,20 @@ export class ChunkLoader {
 				objType === ObjectType.MOON && body.parentId >= 1 && body.parentId <= 9
 					? `naif-${body.parentId * 100 + 99}`
 					: null;
-			// Osculating elements snapshot: position + velocity from the
-			// polynomial, parent GM from the global systems file. Returns null
-			// when the parent has no GM (out-of-coverage in SPICE) or the
-			// state is degenerate; the body still gets a position-only entry
-			// so it can render, just without an orbit curve.
-			const elements = chebyshevOsculatingElements(
-				body,
-				body.parentId,
-				jd,
-				primaryId ? (cheb.body(primaryId, jd) ?? undefined) : undefined
-			);
-			// Re-derive callback used by the trail refresh path. We can't
-			// close over the `ChebyshevBody` reference here — those records
-			// are *per-chunk*, so by the time the user crosses a chunk boundary
-			// the captured ref no longer covers the new jd and rederive would
-			// silently return null. Look up the live body each call via its
-			// stable string id so the callback follows chunk transitions.
+			// Elements about the primary when there is one. Null when the primary has no
+			// record: elements about the barycentre do not agree with a curve on the primary.
+			const elementsAt = (record: ChebyshevBody, at: number): OrbitalElements | null => {
+				if (!primaryId) return chebyshevOsculatingElements(record, record.parentId, at);
+				const primary = cheb.body(primaryId, at);
+				return primary ? chebyshevOsculatingElements(record, record.parentId, at, primary) : null;
+			};
+			// Null elements: the body has a place, and no curve.
+			const elements = elementsAt(body, jd);
+			// The records are per chunk: read the one that covers the date by id.
 			const ownId = body.id;
 			const ownRederive = (newJd: number): OrbitalElements | null => {
 				const fresh = cheb.body(ownId, newJd);
-				if (!fresh) return null;
-				return chebyshevOsculatingElements(
-					fresh,
-					fresh.parentId,
-					newJd,
-					primaryId ? (cheb.body(primaryId, newJd) ?? undefined) : undefined
-				);
+				return fresh ? elementsAt(fresh, newJd) : null;
 			};
 			// Position-magnitude proxy for visibility-ratio code when elements
 			// are unavailable. Cheb gives parent-relative offsets in scene units,

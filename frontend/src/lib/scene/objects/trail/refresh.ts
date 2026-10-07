@@ -251,9 +251,8 @@ export function refreshTrail(
 			);
 			if (dt > refreshThreshold) {
 				const fresh = body.rederiveElements(jd);
-				// Null fresh = jd out of chebyshev coverage; the out-of-range
-				// notice already surfaces that, so keep the stale snapshot
-				// silently rather than warn-spam per frame.
+				// Null: the date has no elements, or a record is not loaded yet.
+				// The snapshot stays, and the next refresh asks again.
 				if (fresh) {
 					Object.assign(body.orbitElements, fresh);
 					curve = orbitalElementsToCurve(body.orbitElements, NUM_TRAIL_POINTS).points;

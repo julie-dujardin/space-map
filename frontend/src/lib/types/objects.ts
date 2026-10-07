@@ -152,12 +152,9 @@ export interface PositionedBody {
 	trailAnchorId?: string;
 	/** Place of `trailAnchorId`, written with `position`. */
 	trailAnchor?: [number, number, number];
-	/**
-	 * Re-derive `orbitElements` at a new `jd`. Set on chebyshev bodies so the
-	 * trail can periodically re-snapshot osculating elements as the body
-	 * progresses through its chunk. Returns null on missing GM / sample miss /
-	 * degenerate state; callers keep existing elements then.
-	 */
+	/** Elements of the body at `jd`, from the ephemeris. The trail asks again as
+	 *  the date moves. Null when a record, a GM or an orbit is missing at that
+	 *  date: the caller keeps the elements it has. */
 	rederiveElements?: (jd: number) => OrbitalElements | null;
 	/**
 	 * Past-position ring buffer for probes whose chunk has any chebyshev sub-chunk

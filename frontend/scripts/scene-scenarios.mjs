@@ -1,10 +1,11 @@
 /**
  * Scene scenarios: drives the real app in a headless browser and checks what
- * the scene holds. They cover the two rules no unit test can see end to end:
+ * the scene holds. They cover the rules no unit test can see end to end:
  *
  * - a body with no known place is not drawn, and the camera is never on a
  *   stand-in for it;
- * - a navigation to an object moves the clock to a date the object has a place at.
+ * - a navigation to an object moves the clock to a date the object has a place at;
+ * - a body is on the curve drawn for its orbit.
  *
  * Needs a dev server (its build exposes `__smCtx`, `__smRenderer`, `__smMap`)
  * on an export that carries `coverage`, and a Chromium with remote debugging:
@@ -102,9 +103,10 @@ class Tab {
 /** Runs in the page: what the scene holds for `id`, and what must hold for every body. */
 const SNAPSHOT = `((id) => {
 	const ctx = window.__smCtx, r = window.__smRenderer;
+	const KM = 14959787.07;
 	const body = ctx.getBody(id);
 	const bo = r.bodyObjects.get(id);
-	const km = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) * 14959787.07;
+	const km = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) * KM;
 	const basis = r.focus.focusTruePos;
 	const earth = ctx.getBody('naif-399')?.position, emb = ctx.getBody('naif-3')?.position;
 	const leaks = [];
@@ -113,6 +115,57 @@ const SNAPSHOT = `((id) => {
 		if (o.root.visible) leaks.push(o.body.data.id + ':root');
 		if (o.trail?.visible) leaks.push(o.body.data.id + ':trail');
 		if (o.model?.parent === r.modelScene) leaks.push(o.body.data.id + ':model');
+	}
+	// A navigation places its target at the new date before the frame that
+	// redraws the curves: no curve is read until the scene is at the date of the clock.
+	const caughtUp = Math.abs(r.clock.jd - r.placedJd) * 86400 < 1;
+	const sub = (u, v) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
+	const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+	// How far a body is off the closed curve drawn for it, and how far off the
+	// polygon of that curve leaves a body that is on the orbit. Null when no
+	// such curve is drawn.
+	const offCurve = (o) => {
+		const ud = o?.trail?.userData, at = o?.body.trailAnchor ?? o?.body.position;
+		if (!caughtUp || !o?.trail?.visible || !ud.sourceCurve || ud.isOpenCurve || !at) return null;
+		// The last point is the first one again.
+		const pts = ud.sourceCurve, sides = pts.length - 1, c = ud.orbitCenter;
+		const q = [at[0] - c.x, at[1] - c.y, at[2] - c.z];
+		let off = Infinity, side = 0;
+		for (let k = 0; k < sides; k++) {
+			const d = sub(pts[k + 1], pts[k]), len2 = dot(d, d);
+			if (len2 === 0) continue;
+			const w = sub(q, pts[k]);
+			const t = Math.max(0, Math.min(1, dot(w, d) / len2));
+			const gap = Math.hypot(w[0] - t * d[0], w[1] - t * d[1], w[2] - t * d[2]);
+			if (gap < off) { off = gap; side = k; }
+		}
+		// Sag of the arc over the nearest side, from the circle through that side
+		// and the point before it.
+		const ab = sub(pts[side + 1], pts[side]);
+		const ap = sub(pts[(side + sides - 1) % sides], pts[side]);
+		const bp = sub(ap, ab);
+		const cross = [ab[1] * ap[2] - ab[2] * ap[1], ab[2] * ap[0] - ab[0] * ap[2], ab[0] * ap[1] - ab[1] * ap[0]];
+		const length = Math.hypot(...ab);
+		const sag = (length * Math.hypot(...cross)) / (4 * Math.hypot(...ap) * Math.hypot(...bp));
+		return { km: off * KM, slackKm: (2 * sag + 0.01 * length) * KM };
+	};
+	// How far the drawn line is from where the scene has it: its head from the
+	// body, and its next point from the points of the curve. Null when no such
+	// curve is drawn.
+	const drawnOff = (o) => {
+		const ud = o?.trail?.userData, at = o?.body.trailAnchor ?? o?.body.position;
+		if (!offCurve(o)) return null;
+		const drawn = ud.isFatLine ? ud.thinPositions : o.trail.geometry.getAttribute('position').array;
+		const c = ud.orbitCenter;
+		const head = Math.hypot(drawn[0] - (at[0] - basis[0]), drawn[1] - (at[1] - basis[1]), drawn[2] - (at[2] - basis[2]));
+		const next = [drawn[3] + basis[0] - c.x, drawn[4] + basis[1] - c.y, drawn[5] + basis[2] - c.z];
+		const fromCurve = Math.min(...ud.sourceCurve.map((p) => Math.hypot(...sub(next, p))));
+		return Math.max(head, fromCurve) * KM;
+	};
+	const offCurves = [];
+	for (const o of r.bodyObjects.values()) {
+		const c = offCurve(o);
+		if (c && c.km > c.slackKm) offCurves.push(o.body.data.id + ' ' + Math.round(c.km) + ' km');
 	}
 	return {
 		jd: r.clock.jd,
@@ -126,7 +179,10 @@ const SNAPSHOT = `((id) => {
 		earthOffBarycentreKm: earth && emb ? km(earth, emb) : null,
 		basisAtOrigin: Math.hypot(...basis) < 1e-9,
 		drawn: !!bo?.root.visible,
+		offCurveKm: offCurve(bo)?.km ?? null,
+		drawnOffKm: drawnOff(bo),
 		leaks,
+		offCurves,
 		toasts: [...document.querySelectorAll('[data-sonner-toast]')].map((e) => e.innerText)
 	};
 })`;
@@ -135,15 +191,40 @@ const READY = `!!window.__smRenderer && !!window.__smMap && window.__smCtx?.load
 const focusedIs = (id) => `window.__smRenderer?.focusController.current?.data.id === '${id}'`;
 const goTo = (id) =>
 	`window.__smMap.goTo('${id}').then((a) => ({ outcome: a.outcome, moved: !!a.clockMoved, host: a.host?.data.id ?? null }))`;
+const curveDrawn = (id) => `(${SNAPSHOT}('${id}')).offCurveKm !== null`;
+const FLY_ENDED = `performance.now() - window.__smRenderer.focus.focusStartTime > window.__smRenderer.focus.focusDurationMs`;
 const jdOf = (iso) => Date.parse(iso) / 86400000 + 2440587.5;
 
 function check(failures, ok, message) {
 	if (!ok) failures.push(message);
 }
 
+/** Wait for the curve of the moon `id` to be drawn, then check the moon is on it. */
+async function onItsCurve(tab, failures, id) {
+	await tab.until(curveDrawn(id), `the curve of ${id} drawn`);
+	await sleep(1500);
+	const s = await tab.eval(`${SNAPSHOT}('${id}')`);
+	check(
+		failures,
+		s.offCurveKm !== null && s.offCurveKm < 100,
+		`${id} is ${s.offCurveKm} km off its curve`
+	);
+	check(
+		failures,
+		s.drawnOffKm !== null && s.drawnOffKm < 100,
+		`the line drawn for ${id} is ${s.drawnOffKm} km off its curve`
+	);
+	return s;
+}
+
 /** What must hold after every scenario. */
 function invariants(failures, s) {
 	check(failures, s.leaks.length === 0, `drawn with no place: ${s.leaks.join(', ')}`);
+	check(
+		failures,
+		s.offCurves.length === 0,
+		`off the curve of its orbit: ${s.offCurves.join(', ')}`
+	);
 	check(failures, !s.basisAtOrigin, 'the camera basis is on the barycentre of the Solar System');
 	check(
 		failures,
@@ -307,6 +388,38 @@ const SCENARIOS = {
 		check(f, s.jd > jdOf('2001-03-01') && s.jd < jdOf('2001-03-23'), `clock at jd ${s.jd}`);
 		check(f, s.cameraToBodyKm < 1, `camera ${s.cameraToBodyKm} km from Mir`);
 		return s;
+	},
+
+	/** Pluto is 2,100 km off the barycentre of its system: a curve drawn on the
+	 *  barycentre leaves Charon beside it. */
+	async 'Charon is on the curve of its orbit'(tab, f) {
+		await tab.goto('/b/901/Charon?at=now,80,0,0.004');
+		await tab.until(`${READY} && ${focusedIs('naif-901')}`, 'Charon focused');
+		return onItsCurve(tab, f, 'naif-901');
+	},
+
+	/** Earth is 4,600 km off the barycentre of its system. The last check is
+	 *  after three days in another system: elements that old put the curve
+	 *  some 1,000 km off the Moon. */
+	async 'Moon is on the curve of its orbit, also after a stay in another system'(tab, f) {
+		const MOON = 'naif-301';
+		await tab.goto('/b/301/Moon?at=now,80,0,0.0064');
+		await tab.until(`${READY} && ${focusedIs(MOON)}`, 'Moon focused');
+		await onItsCurve(tab, f, MOON);
+		// A quarter of an hour on, with the curve on screen: the line follows the Moon.
+		await tab.eval(`window.__smRenderer.clock.setJD(window.__smRenderer.clock.jd + 0.01)`);
+		await onItsCurve(tab, f, MOON);
+		const toMars = await tab.eval(goTo('naif-499'));
+		check(f, toMars.outcome === 'placed', `to Mars: ${JSON.stringify(toMars)}`);
+		await tab.until(`${focusedIs('naif-499')} && ${FLY_ENDED}`, 'the camera on Mars');
+		await tab.eval(`window.__smRenderer.clock.setJD(window.__smRenderer.clock.jd + 3)`);
+		await sleep(1500);
+		const back = await tab.eval(goTo(MOON));
+		check(f, back.outcome === 'placed', `back to the Moon: ${JSON.stringify(back)}`);
+		await tab.until(`${focusedIs(MOON)} && ${FLY_ENDED}`, 'the camera on the Moon');
+		// The camera stops too near the Moon for its curve to show.
+		await tab.eval(`window.__smRenderer.camera.position.set(0, 0.0064, 0.0011)`);
+		return onItsCurve(tab, f, MOON);
 	},
 
 	async 'home view'(tab, f) {
