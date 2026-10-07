@@ -5,6 +5,7 @@ services:
       - "8080:80"
     volumes:
       - ../space-map-export:/usr/share/nginx/html:ro
+      - ../space-map-tiles:/usr/share/nginx/tiles:ro
       - ./infrastructure/dev/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   meili:
