@@ -25,7 +25,6 @@ On-disk layout::
 """
 
 import logging
-import re
 import time
 from pathlib import Path
 from typing import NamedTuple
@@ -33,7 +32,11 @@ from typing import NamedTuple
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import (
+    DownloadError,
+    Downloader,
+    user_agent_without_bot,
+)
 from space_map_data.utils.paths import SOURCES_ATMOSPHERE_DIR
 
 logger = logging.getLogger(__name__)
@@ -68,9 +71,6 @@ MIN_LAYERS = 10
 
 BAR_TO_PA = 1.0e5
 
-_BOT_TOKEN = re.compile(r"[-_]?bot", re.IGNORECASE)
-FALLBACK_USER_AGENT = "space-map/0.1"
-
 
 class PSGAtmosphereDownloader(Downloader):
     """Download PSG reference atmosphere profiles."""
@@ -81,7 +81,8 @@ class PSGAtmosphereDownloader(Downloader):
         super().__init__(client)
         self.out_dir = SOURCES_ATMOSPHERE_DIR / "psg"
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self._agent: str | None = None
+        # PSG answers 200 with an empty body to a User-Agent that contains "bot".
+        self._agent = user_agent_without_bot(client)
 
     def is_complete(self, limit: int | None) -> bool:
         if not self.metadata_file.exists():
@@ -132,7 +133,7 @@ class PSGAtmosphereDownloader(Downloader):
             resp = self.client.post(
                 API_URL,
                 data={"type": "cfg", "watm": "y", "file": config},
-                headers={"User-Agent": self._user_agent()},
+                headers={"User-Agent": self._agent},
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
@@ -150,18 +151,6 @@ class PSGAtmosphereDownloader(Downloader):
                 f"(expected at least {MIN_LAYERS})"
             )
         return text
-
-    def _user_agent(self) -> str:
-        """PSG answers 200 with an empty body to any User-Agent containing
-        "bot", so the shared one has to lose that token. Contact details stay."""
-        if self._agent is None:
-            shared = str(self.client.headers.get("User-Agent", ""))
-            self._agent = _BOT_TOKEN.sub("", shared).strip() or FALLBACK_USER_AGENT
-            if self._agent != shared:
-                logger.info(
-                    "Requesting as %r — PSG blocks bot user agents", self._agent
-                )
-        return self._agent
 
 
 class Level(NamedTuple):

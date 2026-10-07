@@ -5,7 +5,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from space_map_data.download.downloader import Downloader
+import httpx
+
+from space_map_data.download.downloader import Downloader, user_agent_without_bot
 
 
 class _FakeDownloader(Downloader):
@@ -74,3 +76,20 @@ def test_is_fresh_ignores_age_without_max_age(tmp_path):
     old = (datetime.now(timezone.utc) - timedelta(days=365)).timestamp()
     os.utime(path, (old, old))
     assert dl._is_fresh(path)
+
+
+def test_user_agent_loses_the_bot_token_and_keeps_the_contact():
+    client = httpx.Client(headers={"User-Agent": "space-map-bot/0.1 (a@b.test)"})
+    assert user_agent_without_bot(client) == "space-map/0.1 (a@b.test)"
+
+
+def test_user_agent_keeps_a_bot_inside_the_contact():
+    client = httpx.Client(
+        headers={"User-Agent": "space-map-bot/0.1 (robot@abbott.test/bot/)"}
+    )
+    assert user_agent_without_bot(client) == "space-map/0.1 (robot@abbott.test/bot/)"
+
+
+def test_user_agent_falls_back_when_nothing_is_left():
+    client = httpx.Client(headers={"User-Agent": "bot"})
+    assert user_agent_without_bot(client) == "space-map/0.1"

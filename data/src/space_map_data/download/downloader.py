@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,6 +14,21 @@ logger = logging.getLogger(__name__)
 
 class DownloadError(Exception):
     """A provider hit an unrecoverable error and should not retry this run."""
+
+
+# The "bot" that ends the product name, which is the text before the version.
+_BOT_TOKEN = re.compile(r"^([^/\s]*?)[-_]?bot(?=[/\s]|$)", re.IGNORECASE)
+FALLBACK_USER_AGENT = "space-map/0.1"
+
+
+def user_agent_without_bot(client: httpx.Client) -> str:
+    """The shared User-Agent without the "bot" of its product name.
+
+    Some servers refuse every User-Agent that contains "bot". The version and
+    the contact details stay as they are.
+    """
+    shared = str(client.headers.get("User-Agent", ""))
+    return _BOT_TOKEN.sub(r"\1", shared).strip() or FALLBACK_USER_AGENT
 
 
 class Downloader(ABC):
