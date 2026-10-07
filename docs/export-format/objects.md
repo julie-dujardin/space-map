@@ -43,6 +43,7 @@ interface GlobalObjectData {
     frames?: number;                  // only on cylindrical_monthly; frame count (1-based, files end in _01..frames)
     attribution?: string;             // long-form credit line; omitted when unavailable
     description?: string;
+    tiles?: TilesBlock;               // tile pyramid of this map, with its own credit; see tiles.md
   };
   model_name?: string;                // slug under /v1/models/{model_name}/ when this body ships a 3D-model bundle (see models.md); shared by bodies that reuse one model
   model_source?: {                    // shape-model provenance (natural bodies only), denormalized from the bundle. Consumed by the scene's attribution popover, which credits the mesh it draws — not by the detail sidebar, whose sources list covers only what the sidebar itself renders

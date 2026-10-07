@@ -1,16 +1,26 @@
 """Tests for space_map_data.export.systems."""
 
+import gzip
 import json
+
+import orjson
+import pytest
 
 from space_map_data.export.systems import (
     _tiers_from_meta,
     clouds_block,
+    displacement_block,
     load_clouds_metadata,
+    load_displacement_metadata,
     load_night_metadata,
     load_orientation,
+    load_specular_metadata,
     load_texture_metadata,
     night_block,
+    patch_object_bundles,
+    specular_block,
     texture_attribution,
+    tiles_block,
 )
 
 
@@ -208,6 +218,220 @@ class TestLoadTextureMetadataFiltersClouds:
         )
         result = load_texture_metadata(tmp_path)
         assert set(result.keys()) == {"naif-399"}
+
+
+class TestTilesBlock:
+    """A bundle's tile pyramid rides inside its texture or displacement block."""
+
+    DESCRIPTOR = {
+        "id": "naif-499",
+        "type": "cylindrical",
+        "source": "https://example.com/232m",
+        "organisation": "USGS",
+        "license": "Public domain",
+        "distribution": None,
+        "attribution": "Viking MDIM 2.1",
+        "version": "0123456789",
+        "tile_size": 1024,
+        "max_level": 6,
+        "levels": [],
+    }
+
+    @staticmethod
+    def _write(root, kind: str, bundle_id: str, meta: dict) -> None:
+        (root / kind / bundle_id).mkdir(parents=True)
+        (root / kind / bundle_id / "metadata.json").write_text(json.dumps(meta))
+
+    def test_texture_block_carries_the_pyramid_and_its_own_credit(self, tmp_path):
+        self._write(
+            tmp_path,
+            "textures",
+            "naif-499",
+            {
+                "id": "naif-499",
+                "source": "https://example.com/925m",
+                "organisation": "USGS",
+                "type": "cylindrical",
+            },
+        )
+        self._write(tmp_path, "tiles", "naif-499", self.DESCRIPTOR)
+
+        block = texture_attribution(load_texture_metadata(tmp_path)["naif-499"])
+        assert block["source"] == "https://example.com/925m"
+        assert block["tiles"] == {
+            "id": "naif-499",
+            "tile_size": 1024,
+            "max_level": 6,
+            "version": "0123456789",
+            "source": "https://example.com/232m",
+            "organisation": "USGS",
+            "license": "Public domain",
+            "attribution": "Viking MDIM 2.1",
+        }
+
+    def test_bundle_without_a_pyramid_has_no_tiles_key(self, tmp_path):
+        self._write(
+            tmp_path,
+            "textures",
+            "naif-499",
+            {
+                "id": "naif-499",
+                "source": "https://example.com",
+                "organisation": "USGS",
+                "type": "cylindrical",
+            },
+        )
+        block = texture_attribution(load_texture_metadata(tmp_path)["naif-499"])
+        assert "tiles" not in block
+
+    def test_monthly_pyramid_states_its_frames(self):
+        block = tiles_block({**self.DESCRIPTOR, "frames": 12})
+        assert block["frames"] == 12
+
+    @pytest.mark.parametrize(
+        ("suffix", "load", "build"),
+        [
+            ("_night", load_night_metadata, night_block),
+            ("_specular", load_specular_metadata, specular_block),
+        ],
+    )
+    def test_sibling_layers_carry_their_pyramid(self, tmp_path, suffix, load, build):
+        bundle = f"naif-399{suffix}"
+        self._write(
+            tmp_path,
+            "textures",
+            bundle,
+            {
+                "id": bundle,
+                "source": "https://example.com",
+                "organisation": "NASA",
+                "type": "cylindrical",
+                "exports": {"low": {}},
+            },
+        )
+        self._write(tmp_path, "tiles", bundle, {**self.DESCRIPTOR, "id": bundle})
+        assert build(load(tmp_path)["naif-399"])["tiles"]["id"] == bundle
+
+    def test_displacement_pyramid_states_its_own_height_scale(self, tmp_path):
+        self._write(
+            tmp_path,
+            "textures",
+            "naif-499_displacement",
+            {
+                "id": "naif-499_displacement",
+                "source": "https://example.com/dem",
+                "organisation": "USGS",
+                "type": "cylindrical_displacement",
+                "displacement_bias_km": -8.2,
+                "displacement_scale_km": 29.4,
+                "exports": {"low": {}},
+            },
+        )
+        self._write(
+            tmp_path,
+            "tiles",
+            "naif-499_displacement",
+            {
+                **self.DESCRIPTOR,
+                "id": "naif-499_displacement",
+                "displacement_bias_km": -8.201,
+                "displacement_scale_km": 65.535,
+            },
+        )
+
+        meta = load_displacement_metadata(tmp_path)["naif-499"]
+        block = displacement_block(meta)
+        assert (block["bias_km"], block["scale_km"]) == (-8.2, 29.4)
+        assert block["tiles"]["id"] == "naif-499_displacement"
+        assert (block["tiles"]["bias_km"], block["tiles"]["scale_km"]) == (
+            -8.201,
+            65.535,
+        )
+
+
+class TestPatchObjectBundles:
+    """The scoped systems run restates the surface-map blocks on the object
+    bundles, which are the only copy for a body outside every system."""
+
+    TEXTURE = {
+        "id": "spkid-20000004",
+        "source": "https://example.com/vesta",
+        "organisation": "NASA",
+        "type": "cylindrical",
+    }
+    HEIGHTS = {
+        "id": "spkid-20000004_displacement",
+        "source": "https://example.com/dtm",
+        "organisation": "DLR",
+        "type": "cylindrical_displacement",
+        "displacement_bias_km": 200.0,
+        "displacement_scale_km": 90.0,
+        "exports": {"low": {}},
+    }
+
+    @staticmethod
+    def _bundle(root, name: str, bodies: dict):
+        path = root / "objects" / "__global__" / f"{name}.json.gz"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(gzip.compress(orjson.dumps(bodies), mtime=0))
+        return path
+
+    @staticmethod
+    def _read(path) -> dict:
+        return orjson.loads(gzip.decompress(path.read_bytes()))
+
+    def test_blocks_are_restated_with_their_pyramids(self, tmp_path):
+        vesta = {"id": "spkid-20000004", "map_texture_available": True, "name": "Vesta"}
+        path = self._bundle(tmp_path, "a1", {"spkid-20000004": vesta})
+        tiles = {**TestTilesBlock.DESCRIPTOR, "id": "spkid-20000004"}
+
+        rewritten = patch_object_bundles(
+            tmp_path,
+            {"spkid-20000004": {**self.TEXTURE, "tiles": tiles}},
+            {},
+            {"spkid-20000004": self.HEIGHTS},
+        )
+
+        data = self._read(path)["spkid-20000004"]
+        assert rewritten == 1
+        assert data["name"] == "Vesta"
+        assert data["texture"]["tiles"]["id"] == "spkid-20000004"
+        assert data["displacement"]["scale_km"] == 90.0
+
+    def test_bundle_already_current_is_not_rewritten(self, tmp_path):
+        body = {
+            "id": "spkid-20000004",
+            "map_texture_available": True,
+            "texture": texture_attribution(self.TEXTURE),
+        }
+        path = self._bundle(tmp_path, "a1", {"spkid-20000004": body})
+        before = path.stat().st_mtime_ns
+        assert (
+            patch_object_bundles(tmp_path, {"spkid-20000004": self.TEXTURE}, {}, {})
+            == 0
+        )
+        assert path.stat().st_mtime_ns == before
+
+    def test_block_of_a_map_that_is_gone_is_removed(self, tmp_path):
+        body = {
+            "id": "spkid-20000004",
+            "displacement": displacement_block(self.HEIGHTS),
+            "alternates": [{"id": "spkid-20000004_alt-old"}],
+        }
+        path = self._bundle(tmp_path, "a1", {"spkid-20000004": body})
+        assert patch_object_bundles(tmp_path, {}, {}, {}) == 1
+        assert self._read(path)["spkid-20000004"] == {"id": "spkid-20000004"}
+
+    def test_body_without_the_texture_flag_gets_no_texture_block(self, tmp_path):
+        """The flag comes from the database, which this run does not restate."""
+        path = self._bundle(
+            tmp_path, "a1", {"spkid-20000004": {"id": "spkid-20000004"}}
+        )
+        assert (
+            patch_object_bundles(tmp_path, {"spkid-20000004": self.TEXTURE}, {}, {})
+            == 0
+        )
+        assert "texture" not in self._read(path)["spkid-20000004"]
 
 
 class TestNightBlock:

@@ -84,7 +84,19 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
       "source": "https://svs.gsfc.nasa.gov/4720/",
       "organisation": "NASA",
       "type": "cylindrical_displacement",
-      "attribution": "NASA's Scientific Visualization Studio. Elevation: Lunar Orbiter Laser Altimeter (LOLA), LRO."
+      "attribution": "NASA's Scientific Visualization Studio. Elevation: Lunar Orbiter Laser Altimeter (LOLA), LRO.",
+      "tiles": {
+        "id": "naif-301_displacement",
+        "tile_size": 1024,
+        "max_level": 6,
+        "version": "3f9a1c2e07",
+        "scale_km": 32.7675,
+        "bias_km": -9.13,
+        "source": "https://astrogeology.usgs.gov/search/map/moon_lro_lola_dem_118m",
+        "organisation": "NASA",
+        "license": "Public domain",
+        "attribution": "NASA/GSFC/USGS. Elevation: Lunar Orbiter Laser Altimeter (LOLA), LRO, …"
+      }
     }
   },
   "naif-699": {
@@ -111,5 +123,9 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
 The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, (where `radii` differ) flattens bodies into oblate ellipsoids, and shows per-organisation imagery attribution for bodies currently in view. `texture` mirrors the shape embedded in each body's global detail file.
 
 When a body carries a `displacement` block, the frontend loads the height map as the material's `displacementMap`. `scale_km`/`bias_km` map each texel to a value — `km = bias_km + scale_km · texel` — which the renderer converts to scene units, so relief is physically scaled and tracks the per-frame sphere-LOD tessellation. When `absolute_radius` is true the value is radius-from-centre rather than elevation: the renderer subtracts the body's own sphere radius and skips triaxial flattening, letting the DEM carry the whole shape (used for irregular bodies like Vesta and Ceres). Ships as a sibling bundle (`textures/{host_id}_displacement/`) credited independently from the surface texture.
+
+A `texture`, `displacement`, `night` or `specular` block has a `tiles` block when the tile pyramid of the layer is built. The pyramid holds the layer at the full detail of its source. It has its own credit fields and, for heights, its own `scale_km`/`bias_km`. See [tiles.md](tiles.md).
+
+`space-map-export --only systems` rewrites the system files. It also rewrites `texture`, `alternates` and `displacement` on the global object bundles in place, because the bundles repeat these blocks and are the only copy for a body that is not in a system file. Then it refreshes the `objects` version token.
 
 When a body carries a `rings` block, the frontend builds an annulus aligned to its IAU pole, fetches `${DATA_BASE}/v1/rings/{body_id}/{channels[name]}` for each channel, and routes the credit fields through the same per-organisation attribution path as textures. The `channels` map is flat (channel → filename) rather than tier-nested because rings ship at a single resolution.

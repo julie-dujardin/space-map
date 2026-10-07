@@ -19,6 +19,7 @@ interface Credits {
       frames?: number;           // only on cylindrical_monthly; frame count
       attribution?: string;      // long-form credit line when available
       description?: string;      // optional one-liner about the dataset
+      tiles?: TilesBlock;        // the tile pyramid of this map and its own credit, see tiles.md
     }>;
     rings?: Array<{
       body_id: string;           // real Object.id of the ringed host (e.g. "naif-699"); the array name is the disambiguator, not a synthetic "-rings" suffix
@@ -44,7 +45,8 @@ interface Credits {
   }>;
   // `night`, `specular` and `displacement` share the `clouds` shape: the host
   // body's real id, its English name, and the credit fields from the sibling
-  // bundle's metadata.json.
+  // bundle's metadata.json. A `displacement` entry also has `tiles?: TilesBlock`
+  // when the height map has a tile pyramid.
   atmosphere_references: Array<{ // literature behind the derived scattering params
     title: string;               // "Fulchignoni et al. 2005 (Nature 438)"
     url: string;                 // DOI or stable publisher/archive link

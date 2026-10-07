@@ -35,6 +35,7 @@ from space_map_data.export.systems import (
     load_specular_metadata,
     load_texture_metadata,
     texture_attribution,
+    tiles_block,
 )
 from space_map_data.ingest.providers.models.config import (
     MODEL_CATALOGS,
@@ -501,9 +502,10 @@ def write_credits(
             )
             continue
         sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
-        displacement_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, _body_name(obj), meta)
-        )
+        entry = _sibling_credit_entry(body_id, _body_name(obj), meta)
+        if meta.get("tiles") is not None:
+            entry["tiles"] = tiles_block(meta["tiles"])
+        displacement_grouped.setdefault(sys_id, []).append(entry)
 
     for entries in textures_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())

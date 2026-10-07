@@ -5,6 +5,7 @@ planetary system.
 """
 
 import csv
+import gzip
 import logging
 from collections import Counter
 import orjson
@@ -21,7 +22,7 @@ from space_map_data.constants.orientation import (
     ORIENTATION_SOURCE_PCK,
 )
 from space_map_data.constants.manifests.textures import ALT_INFIX
-from space_map_data.export.sidecar_io import mirror_path
+from space_map_data.export.sidecar_io import mirror_path, write_atomic
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -150,7 +151,44 @@ def texture_attribution(meta: dict) -> dict:
         result["description"] = meta["description"]
     if meta.get("frames") is not None:
         result["frames"] = meta["frames"]
+    if meta.get("tiles") is not None:
+        result["tiles"] = tiles_block(meta["tiles"])
     return result
+
+
+def _with_tiles(out_dir: Path, bundle_id: str, meta: dict) -> dict:
+    """``meta`` with its bundle's tile-pyramid descriptor under ``tiles``, when
+    one is built. Ingest writes the two files separately."""
+    tiles_file = mirror_path(out_dir / "tiles" / bundle_id / "metadata.json")
+    if tiles_file.exists():
+        meta["tiles"] = orjson.loads(tiles_file.read_bytes())
+    return meta
+
+
+def tiles_block(meta: dict) -> dict:
+    """The ``tiles`` block inside a layer's block: the same layer as a tile
+    pyramid, as fine as its source.
+
+    It carries its own credit, since the pyramid may come from another source
+    than the tiers. URLs, on the tile host:
+    ``/v1/tiles/{tiles.id}/{z}/{x}/{y}.webp?v={tiles.version}``, with a
+    ``{NN}/`` frame directory before ``{z}`` when ``frames`` is set.
+    """
+    block: dict = {
+        "id": meta["id"],
+        "tile_size": meta["tile_size"],
+        "max_level": meta["max_level"],
+        "version": meta["version"],
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+    }
+    if "displacement_scale_km" in meta:
+        block["scale_km"] = meta["displacement_scale_km"]
+        block["bias_km"] = meta["displacement_bias_km"]
+    for key in ("frames", "license", "distribution", "attribution"):
+        if meta.get(key) is not None:
+            block[key] = meta[key]
+    return block
 
 
 def alternate_blocks(metas: list[dict] | None) -> list[dict]:
@@ -207,7 +245,9 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
             continue
         meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
-            result[body_dir.name] = orjson.loads(meta_file.read_bytes())
+            result[body_dir.name] = _with_tiles(
+                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
+            )
     logger.info("Loaded texture metadata for %d bodies", len(result))
     return result
 
@@ -231,7 +271,9 @@ def load_alternate_metadata(out_dir: Path) -> dict[str, list[dict]]:
         if not meta_file.exists():
             continue
         body_id = body_dir.name.split(ALT_INFIX)[0]
-        result.setdefault(body_id, []).append(orjson.loads(meta_file.read_bytes()))
+        result.setdefault(body_id, []).append(
+            _with_tiles(out_dir, body_dir.name, orjson.loads(meta_file.read_bytes()))
+        )
     logger.info("Loaded alternate texture metadata for %d bodies", len(result))
     return result
 
@@ -300,7 +342,9 @@ def load_specular_metadata(out_dir: Path) -> dict[str, dict]:
         meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             host_id = body_dir.name.removesuffix(_SPECULAR_SUFFIX)
-            result[host_id] = orjson.loads(meta_file.read_bytes())
+            result[host_id] = _with_tiles(
+                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
+            )
     logger.info("Loaded specular metadata for %d bodies", len(result))
     return result
 
@@ -323,6 +367,8 @@ def specular_block(meta: dict) -> dict:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
         block["description"] = meta["description"]
+    if meta.get("tiles") is not None:
+        block["tiles"] = tiles_block(meta["tiles"])
     return block
 
 
@@ -339,7 +385,9 @@ def load_night_metadata(out_dir: Path) -> dict[str, dict]:
         meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             host_id = body_dir.name.removesuffix(_NIGHT_SUFFIX)
-            result[host_id] = orjson.loads(meta_file.read_bytes())
+            result[host_id] = _with_tiles(
+                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
+            )
     logger.info("Loaded night-lights metadata for %d bodies", len(result))
     return result
 
@@ -362,6 +410,8 @@ def night_block(meta: dict) -> dict:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
         block["description"] = meta["description"]
+    if meta.get("tiles") is not None:
+        block["tiles"] = tiles_block(meta["tiles"])
     return block
 
 
@@ -378,7 +428,9 @@ def load_displacement_metadata(out_dir: Path) -> dict[str, dict]:
         meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             host_id = body_dir.name.removesuffix(_DISPLACEMENT_SUFFIX)
-            result[host_id] = orjson.loads(meta_file.read_bytes())
+            result[host_id] = _with_tiles(
+                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
+            )
     logger.info("Loaded displacement metadata for %d bodies", len(result))
     return result
 
@@ -405,6 +457,8 @@ def displacement_block(meta: dict) -> dict:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
         block["description"] = meta["description"]
+    if meta.get("tiles") is not None:
+        block["tiles"] = tiles_block(meta["tiles"])
     return block
 
 
@@ -737,14 +791,61 @@ def write_system_metadata(
             logger.info("System metadata %s: %d bodies", sys_id, len(bodies))
 
 
-def export_systems_only(engine) -> None:
-    """`space-map-export --only systems` — rewrites systems/*.json alone.
+def patch_object_bundles(
+    out_dir: Path,
+    texture_metadata: dict[str, dict],
+    alternate_metadata: dict[str, list[dict]],
+    displacement_metadata: dict[str, dict],
+) -> int:
+    """Restate the surface-map blocks on the global object bundles, in place.
 
-    The per-system files restate what the texture, ring and overlay bundles
-    already say about themselves, so a credit or rights edit in the manifests
-    reaches the frontend without re-running the whole export.
+    The bundles mirror the system files, and for a small body outside every
+    system they are the only copy the renderer reads. Returns how many bundle
+    files changed.
     """
+    rewritten = 0
+    for bucket_path in sorted((out_dir / "objects" / "__global__").glob("*.json.gz")):
+        bundle = orjson.loads(gzip.decompress(bucket_path.read_bytes()))
+        changed = False
+        for body_id, data in bundle.items():
+            blocks: dict[str, object] = {}
+            meta = texture_metadata.get(body_id)
+            if data.get("map_texture_available") and meta is not None:
+                blocks["texture"] = texture_attribution(meta)
+                alternates = alternate_blocks(alternate_metadata.get(body_id))
+                if alternates:
+                    blocks["alternates"] = alternates
+            disp_meta = displacement_metadata.get(body_id)
+            if disp_meta is not None:
+                blocks["displacement"] = displacement_block(disp_meta)
+            for key in ("texture", "alternates", "displacement"):
+                if data.get(key) == blocks.get(key):
+                    continue
+                if key in blocks:
+                    data[key] = blocks[key]
+                else:
+                    del data[key]
+                changed = True
+        if changed:
+            write_atomic(bucket_path, gzip.compress(orjson.dumps(bundle), mtime=0))
+            rewritten += 1
+    return rewritten
+
+
+def export_systems_only(engine) -> None:
+    """`space-map-export --only systems` — rewrites systems/*.json and the
+    blocks of the object bundles that mirror them.
+
+    These files restate what the texture, ring and overlay bundles already say
+    about themselves, so a credit or rights edit in the manifests, or a new
+    tile pyramid, reaches the frontend without re-running the whole export.
+    """
+    from space_map_data.export.pipeline.orchestrator import _content_token
+
     out_dir = EXPORT_DIR / "v1"
+    texture_metadata = load_texture_metadata(out_dir)
+    alternate_metadata = load_alternate_metadata(out_dir)
+    displacement_metadata = load_displacement_metadata(out_dir)
     with Session(engine) as session:
         write_system_metadata(
             session,
@@ -752,14 +853,24 @@ def export_systems_only(engine) -> None:
             load_orientation(DOWNLOAD_DIR),
             load_radii(DOWNLOAD_DIR),
             load_nut_prec(DOWNLOAD_DIR),
-            load_texture_metadata(out_dir),
-            load_alternate_metadata(out_dir),
+            texture_metadata,
+            alternate_metadata,
             load_ring_metadata(out_dir),
             load_clouds_metadata(out_dir),
             load_specular_metadata(out_dir),
             load_night_metadata(out_dir),
-            load_displacement_metadata(out_dir),
+            displacement_metadata,
         )
         write_systems_global(
             out_dir, load_gms(DOWNLOAD_DIR), load_nut_prec_angles(DOWNLOAD_DIR)
         )
+    rewritten = patch_object_bundles(
+        out_dir, texture_metadata, alternate_metadata, displacement_metadata
+    )
+    if rewritten:
+        # The bundles are cached by this token, so it must follow their bytes.
+        metadata_path = out_dir / "metadata.json"
+        metadata = orjson.loads(metadata_path.read_bytes())
+        metadata["versions"]["objects"] = _content_token(out_dir / "objects")
+        metadata_path.write_bytes(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
+    logger.info("Restated surface-map blocks on %d object bundle files", rewritten)
