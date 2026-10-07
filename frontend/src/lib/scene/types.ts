@@ -10,6 +10,7 @@ import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 import type { SunTransmittanceUniforms } from './objects/surface/sun-transmittance';
 import type { SelfShadowUniforms } from './objects/surface/self-shadow';
+import type { TileOverlay } from './objects/surface/tile-overlay';
 import type { DisplacementMeta } from './objects/surface/displacement';
 import type { TerrainWindowState } from './lod/terrain-window';
 import type { NoticeSink } from './notice';
@@ -30,6 +31,25 @@ export interface TextureBundleMeta extends CreditFields {
 	id: string;
 	tiers: string[];
 	type: string;
+	tiles?: TilesBlock;
+}
+
+/**
+ * A layer's tile pyramid: the same map cut into tiles at doubling sizes, as
+ * fine as its source (docs/export-format/tiles.md). It names its own credit,
+ * since it can come from another source than the tiers.
+ */
+export interface TilesBlock extends CreditFields {
+	id: string;
+	tile_size: number;
+	max_level: number;
+	/** Cache token of this build of the pyramid. */
+	version: string;
+	/** Monthly maps only: one pyramid per month. */
+	frames?: number;
+	/** Height pyramids only: `km = bias_km + scale_km · value / 65535`. */
+	scale_km?: number;
+	bias_km?: number;
 }
 
 export function typePriority(type: ObjectType): number {
@@ -113,6 +133,10 @@ export interface BodyObjects {
 	/** Bumped on unload; an in-flight swap whose captured value is now stale
 	 *  discards its result instead of re-attaching a texture that's no longer wanted. */
 	textureLoadGen?: number;
+	/** Tile pyramid of the surface map this body draws, where it has one. */
+	surfaceTiles?: TilesBlock;
+	/** The tile windows drawn over the surface map while the camera is close. */
+	tileOverlay?: TileOverlay;
 	/** Cached screen-pixel width of the label name text. */
 	labelTextWidth?: number;
 	/** Minor-promoted halo: rendered as a small ring; expands on hover. From {@link MINOR_PROMOTED_IDS}. */

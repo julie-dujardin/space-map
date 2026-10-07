@@ -9,6 +9,7 @@ import {
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
 import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
+import type { TilesBlock } from '$lib/scene/types';
 import type { RingMeta } from '$lib/scene/objects/surface/rings';
 import type {
 	MeasuredShapeSource,
@@ -126,6 +127,7 @@ export interface TextureAttribution {
 	description?: string;
 	/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
 	frames?: number;
+	tiles?: TilesBlock;
 }
 
 /** One denormalized notable object for the detail-page strip + list — a

@@ -46,6 +46,10 @@ export interface Host {
 	/** Root of the live tracking feed, rewritten every few minutes on an origin
 	 *  of its own so it never waits on a catalogue deploy. */
 	liveUrl: string;
+	/** Root of the surface tile pyramids, which are too many files for the
+	 *  data export's host. Empty where none is served: bodies then draw their
+	 *  whole-globe tiers alone. */
+	tilesUrl: string;
 	/** BCP-47 tag of the reading language: picks localized names and drives Intl. */
 	locale: () => string;
 	messages: CoreMessages;
@@ -72,6 +76,7 @@ const DEFAULT_HOST: Host = {
 	dataUrl: 'https://static.spacemap.co',
 	imagesUrl: 'https://images.spacemap.co',
 	liveUrl: 'https://live.spacemap.co',
+	tilesUrl: '',
 	locale: () => 'en',
 	messages: {
 		body_note_no_model: () => 'no model available',
@@ -120,6 +125,7 @@ export function configureHost(overrides: HostOverrides): void {
 	current.dataUrl = current.dataUrl.replace(/\/$/, '');
 	current.imagesUrl = current.imagesUrl.replace(/\/$/, '');
 	current.liveUrl = current.liveUrl.replace(/\/$/, '');
+	current.tilesUrl = current.tilesUrl.replace(/\/$/, '');
 }
 
 export function host(): Host {

@@ -1220,7 +1220,8 @@ export class SceneRenderer {
 			this.textureLoader,
 			focusedIdLod,
 			this.clock.jd,
-			this.appearances
+			this.appearances,
+			this.invalidate
 		);
 		updateSphereLOD(this.bodyObjects, this.camera, this.renderer, this.ctx, focusedIdLod);
 

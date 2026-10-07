@@ -9,6 +9,7 @@ import {
 } from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
 import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
+import { tilesServe, updateTileOverlay } from '$lib/scene/objects/surface/tile-overlay';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { maxTextureTier } from '$lib/scene/render-tier';
 import type { BodyAppearances } from '$lib/scene/objects/body/appearance';
@@ -32,7 +33,8 @@ export function updateTextureLOD(
 	textureLoader: TextureLoader,
 	focusedId: string | undefined,
 	jd: number,
-	appearances: BodyAppearances
+	appearances: BodyAppearances,
+	invalidate: () => void
 ): void {
 	// Before the tier work rather than after it: a host's picture is not one of
 	// the map's tiers, and the pass below must see that it is already there.
@@ -71,7 +73,10 @@ export function updateTextureLOD(
 		else desired = 'high';
 
 		const currentRank = tierRank(bo.textureTier);
-		const desiredRank = Math.min(tierRank(desired), tierCap);
+		// Where tiles carry the detail, the largest tier is half a gigabyte of
+		// texture for nothing. It stays the fallback if the tile host fails.
+		const bodyCap = tilesServe(bo) ? Math.min(tierCap, tierRank('medium')) : tierCap;
+		const desiredRank = Math.min(tierRank(desired), bodyCap);
 		const desiredFrame = textureFrameForJd(jd, bo.availableFrames);
 		const frameChanged = desiredFrame !== bo.textureFrame;
 		const wantsUpgrade = desiredRank > currentRank;
@@ -85,6 +90,15 @@ export function updateTextureLOD(
 				: bo.textureTier;
 			if (target) loadBodyTextureTier(bo, target, desiredFrame, textureLoader);
 		}
+
+		updateTileOverlay(
+			bo,
+			camera,
+			renderer,
+			projScale * renderer.getPixelRatio(),
+			settings.showSurfaceTexture && !bo.appearance?.surfaceOwned && !bo.model,
+			invalidate
+		);
 
 		// Tier rank capped by maxTextureSize: DataTextures aren't resized by three,
 		// so a 16k upload on an 8k-limit GPU would error out.

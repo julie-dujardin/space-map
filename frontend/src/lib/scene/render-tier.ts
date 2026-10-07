@@ -20,6 +20,9 @@ export interface RenderTierPreset {
 	pointBudget: number;
 	/** Highest surface texture tier to decode; the 16k tier is 512 MB of RGBA. */
 	maxTextureTier: 'low' | 'medium' | 'high';
+	/** Surface tile windows drawn for one body, 64 MB of RGBA each. One more
+	 *  is held to load a window on before it replaces another. */
+	tileWindows: number;
 	/** Largest skybox face edge, in pixels. */
 	maxSkyboxFace: number;
 }
@@ -32,6 +35,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		bloomScale: 0.5,
 		pointBudget: 400_000,
 		maxTextureTier: 'medium',
+		tileWindows: 3,
 		maxSkyboxFace: 2048
 	},
 	medium: {
@@ -41,6 +45,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		bloomScale: 0.75,
 		pointBudget: 900_000,
 		maxTextureTier: 'medium',
+		tileWindows: 4,
 		maxSkyboxFace: 2048
 	},
 	high: {
@@ -50,6 +55,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		bloomScale: 1,
 		pointBudget: Infinity,
 		maxTextureTier: 'high',
+		tileWindows: 6,
 		maxSkyboxFace: Infinity
 	}
 };
@@ -58,6 +64,12 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 export function maxTextureTier(): 'low' | 'medium' | 'high' {
 	if (isLowEndDevice()) return 'low';
 	return currentRenderTier().maxTextureTier;
+}
+
+/** Surface tile windows a body may hold; none where memory is short. */
+export function maxTileWindows(): number {
+	if (isLowEndDevice()) return 0;
+	return currentRenderTier().tileWindows;
 }
 
 export function resolveRenderTier(): RenderTier {

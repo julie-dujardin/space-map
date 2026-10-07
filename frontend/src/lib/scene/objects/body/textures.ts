@@ -11,6 +11,7 @@ import { getLabelVariant, setLabelName } from '../../label/factory';
 import { syncAtmosphereEllipsoid } from '../surface/atmosphere';
 import { attachRingBundles } from '../surface/ring-attach';
 import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
+import { disposeTileOverlay } from '../surface/tile-overlay';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import type { BodyObjects } from '../../types';
 import { applyBodyOrientation } from './orientation-apply';
@@ -224,6 +225,7 @@ export async function loadBodyTexture(
 	// No map within reach leaves the sphere on its base tint.
 	if (!surface) return;
 	bo.textureBundleId = surface.id === bodyId ? undefined : surface.id;
+	bo.surfaceTiles = surface.tiles;
 	bo.availableTiers ??= surface.tiers ?? [...TIER_NAMES];
 	bo.availableFrames = surface.frames;
 	await swapBodyTexture(bo, 'low', textureFrameForJd(currentJd, bo.availableFrames), textureLoader);
@@ -256,6 +258,7 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	bo.textureLoadGen = (bo.textureLoadGen ?? 0) + 1;
 	const material = bo.mesh.material as MeshStandardMaterial;
 	unloadSiblingLayer('topography', bo);
+	disposeTileOverlay(bo);
 	if (!material.map) return;
 	material.map.dispose();
 	material.map = null;

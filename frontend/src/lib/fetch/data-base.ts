@@ -11,6 +11,30 @@ export function imagesBase(): string {
 	return host().imagesUrl;
 }
 
+/** Root of the surface tile pyramids; empty where this host serves none. */
+export function tilesBase(): string {
+	return host().tilesUrl;
+}
+
+/**
+ * URL of one tile of a pyramid (docs/export-format/tiles.md). The pyramid's
+ * own version rides along, so a rebuilt pyramid is never served from cache.
+ * `cap` is empty for a tile of the map. `frame` is the 1-based month of a
+ * monthly map.
+ */
+export function tileUrl(
+	tiles: { id: string; version: string },
+	cap: '' | 'north' | 'south',
+	level: number,
+	x: number,
+	y: number,
+	frame?: number
+): string {
+	const month = frame === undefined ? '' : `${String(frame).padStart(2, '0')}/`;
+	const chart = cap && `${cap}/`;
+	return `${tilesBase()}/v1/tiles/${tiles.id}/${month}${chart}${level}/${x}/${y}.webp?v=${tiles.version}`;
+}
+
 /**
  * Per-content-class cache-busting tokens from `metadata.json → versions`.
  * Populated once metadata resolves (see `fetchMetadata`); every versioned

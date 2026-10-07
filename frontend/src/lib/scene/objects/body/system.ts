@@ -9,7 +9,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { disposeRingNode, type RingMeta } from '../surface/rings';
 import { attachRingBundles } from '../surface/ring-attach';
 import { disposeNomenclatureLabels } from '../surface/nomenclature';
-import type { BodyObjects } from '../../types';
+import type { BodyObjects, TilesBlock } from '../../types';
 import { applyBodyOrientation } from './orientation-apply';
 import { loadSiblingLayers, type SiblingBundles, unloadSiblingLayers } from './sibling-layers';
 import {
@@ -36,6 +36,7 @@ interface SystemBodyMeta extends SiblingBundles {
 		description?: string;
 		/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
 		frames?: number;
+		tiles?: TilesBlock;
 	};
 	orientation?: {
 		pole_ra_0: number;
@@ -128,6 +129,7 @@ export async function loadSystemData(
 			bo.availableTiers = surface.tiers;
 			bo.availableFrames = surface.frames;
 			bo.textureBundleId = surface.id === bodyId ? undefined : surface.id;
+			bo.surfaceTiles = surface.tiles;
 			if (!bo.textureTier) {
 				const frame = textureFrameForJd(currentJd, bo.availableFrames);
 				promises.push(loadBodyTextureTier(bo, 'low', frame, textureLoader));
