@@ -241,13 +241,13 @@ export function updateAtmosphereShaders(
 			spinAxis.set(0, 1, 0).applyQuaternion(bo.mesh.quaternion);
 			(uniforms.uSpinAxis.value as Vector3).copy(spinAxis);
 		}
-		const atmoMesh = bo.atmosphere.mesh;
-		const shellRadius = bo.atmosphere.geometryRadiusScene * atmoMesh.scale.x;
-		const camDist = cameraPosition.distanceTo(atmoMesh.position);
+		// The shell hangs under the root, so the root carries the body's place.
+		const shellCenter = bo.root.position;
+		const shellRadius = bo.atmosphere.geometryRadiusScene * bo.atmosphere.mesh.scale.x;
+		const camDist = cameraPosition.distanceTo(shellCenter);
 		// ~11°+ of view — big enough that its fragments dominate frame cost.
 		if (shellRadius > camDist * 0.1) state.shellProminent = true;
-		if (quality.eclipseShadows)
-			cullShellOccluders(uniforms, atmoMesh.position, sunVec, shellRadius);
+		if (quality.eclipseShadows) cullShellOccluders(uniforms, shellCenter, sunVec, shellRadius);
 		const inside = quality.insideView && camDist < shellRadius;
 		const referenceKm = bo.atmosphere.planetRadiusKm;
 		const kmPerScene = (referenceKm + params.topAltitudeKm) / shellRadius;
@@ -265,7 +265,7 @@ export function updateAtmosphereShaders(
 			state.insideShell = true;
 			const sinSunElev = camUp
 				.copy(cameraPosition)
-				.sub(atmoMesh.position)
+				.sub(shellCenter)
 				.divideScalar(camDist)
 				.dot(sunVec);
 			// The cloud top closes over the stars as the deck's light takes over,
@@ -296,7 +296,7 @@ export function updateAtmosphereShaders(
 			const planetRadiusScene =
 				(shellRadius / (1 + params.topAltitudeKm / referenceKm)) *
 				(bo.atmosphere.surfaceRadiusKm / referenceKm);
-			camRel.copy(cameraPosition).sub(atmoMesh.position);
+			camRel.copy(cameraPosition).sub(shellCenter);
 			const shellSpinAxis = uniforms.uSpinAxis.value as Vector3;
 			const shellStretch = uniforms.uStretch.value as number;
 			if (
@@ -322,7 +322,7 @@ export function updateAtmosphereShaders(
 				bindViewTint(
 					sunViewTint,
 					params,
-					atmoMesh.position,
+					shellCenter,
 					planetRadiusScene,
 					bo.atmosphere.surfaceRadiusKm,
 					shellSpinAxis,
