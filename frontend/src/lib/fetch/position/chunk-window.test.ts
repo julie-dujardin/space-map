@@ -50,6 +50,28 @@ function windowOf(present: boolean[]): TestWindow {
 /** Drain the microtask queue so the neighbour tail and awaited `done` land. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+describe('ChunkWindow.loadingAt', () => {
+	it('is true from the request for a chunk to its arrival', async () => {
+		const win = windowOf([true, true, true]);
+		expect(win.loadingAt(START_JD + 5)).toBe(false);
+		const { done } = win.ensure(START_JD + 5);
+		expect(win.loadingAt(START_JD + 5)).toBe(true);
+		expect(win.loadingAt(START_JD + 5, ZONE)).toBe(true);
+		expect(win.loadingAt(START_JD + 5, 'other/zone')).toBe(false);
+		// The chunk of another date is not on its way.
+		expect(win.loadingAt(START_JD + 25)).toBe(false);
+		win.settle();
+		await done;
+		expect(win.loadingAt(START_JD + 5)).toBe(false);
+	});
+
+	it('is false for a date with no file', () => {
+		const win = windowOf([true, false, true]);
+		win.ensure(START_JD + 15);
+		expect(win.loadingAt(START_JD + 15)).toBe(false);
+	});
+});
+
 describe('ChunkWindow.ensure', () => {
 	it('makes a repeat call on the same jd wait for the first call’s fetches', async () => {
 		const win = windowOf([true, true, true]);

@@ -5,7 +5,8 @@
  * - a body with no known place is not drawn, and the camera is never on a
  *   stand-in for it;
  * - a navigation to an object moves the clock to a date the object has a place at;
- * - a body is on the curve drawn for its orbit.
+ * - a body is on the curve drawn for its orbit;
+ * - a jump of the clock leaves the camera on a body whose data has to load.
  *
  * Needs a dev server (its build exposes `__smCtx`, `__smRenderer`, `__smMap`)
  * on an export that carries `coverage`, and a Chromium with remote debugging:
@@ -174,6 +175,7 @@ const SNAPSHOT = `((id) => {
 		unplaced: body?.unplaced ?? null,
 		focused: r.focusController.current?.data.id ?? null,
 		cameraToBodyKm: body?.position ? km(basis, body.position) : null,
+		cameraOffKm: r.camera.position.length() * KM,
 		cameraToEarthKm: earth ? km(basis, earth) : null,
 		bodyToEarthKm: body?.position && earth ? km(body.position, earth) : null,
 		earthOffBarycentreKm: earth && emb ? km(earth, emb) : null,
@@ -194,6 +196,20 @@ const goTo = (id) =>
 const curveDrawn = (id) => `(${SNAPSHOT}('${id}')).offCurveKm !== null`;
 const FLY_ENDED = `performance.now() - window.__smRenderer.focus.focusStartTime > window.__smRenderer.focus.focusDurationMs`;
 const jdOf = (iso) => Date.parse(iso) / 86400000 + 2440587.5;
+/** Move the clock by `days` like the date picker does. Resolves after `ms`
+ *  with every notice shown in that time. */
+const jumpAndWatch = (days, ms) => `(async () => {
+	const clock = window.__smRenderer.clock;
+	clock.jumpTo(clock.jd + ${days});
+	const seen = new Set();
+	const end = performance.now() + ${ms};
+	while (performance.now() < end) {
+		for (const e of document.querySelectorAll('[data-sonner-toast]')) seen.add(e.innerText);
+		await new Promise((r) => setTimeout(r, 30));
+	}
+	return [...seen];
+})()`;
+const NO_DATA_NOTICE = 'selected object has no data';
 
 function check(failures, ok, message) {
 	if (!ok) failures.push(message);
@@ -213,6 +229,37 @@ async function onItsCurve(tab, failures, id) {
 		failures,
 		s.drawnOffKm !== null && s.drawnOffKm < 100,
 		`the line drawn for ${id} is ${s.drawnOffKm} km off its curve`
+	);
+	return s;
+}
+
+/** Open the page of `id`, jump the clock by `days` to a date whose data is not
+ *  loaded, and check the camera is on the body as it was before the jump. */
+async function jumpKeepsCamera(tab, failures, path, id, days) {
+	await tab.goto(path);
+	await tab.until(
+		`${READY} && ${focusedIs(id)} && ${FLY_ENDED} && !!window.__smCtx.getBody('${id}')?.position`,
+		`${id} placed`
+	);
+	await sleep(1500);
+	const before = await tab.eval(`${SNAPSHOT}('${id}')`);
+	const notices = await tab.eval(jumpAndWatch(days, 4000));
+	const s = await tab.eval(`${SNAPSHOT}('${id}')`);
+	check(failures, Math.abs(s.jd - before.jd - days) < 0.01, `clock at jd ${s.jd}`);
+	check(
+		failures,
+		s.placed && s.cameraToBodyKm < 1,
+		`placed=${s.placed}, camera ${s.cameraToBodyKm} km from ${id}`
+	);
+	check(
+		failures,
+		Math.abs(s.cameraOffKm / before.cameraOffKm - 1) < 0.01,
+		`the camera went from ${before.cameraOffKm} km to ${s.cameraOffKm} km off ${id}`
+	);
+	check(
+		failures,
+		!notices.some((t) => t.includes(NO_DATA_NOTICE)),
+		`notices: ${notices.join(' | ')}`
 	);
 	return s;
 }
@@ -420,6 +467,42 @@ const SCENARIOS = {
 		// The camera stops too near the Moon for its curve to show.
 		await tab.eval(`window.__smRenderer.camera.position.set(0, 0.0064, 0.0011)`);
 		return onItsCurve(tab, f, MOON);
+	},
+
+	/** Ten years on is another chunk of the planets: the barycentre the Moon is
+	 *  placed from has no place until it is here. */
+	async 'date jump keeps the camera on a moon while the data of its parent loads'(tab, f) {
+		return jumpKeepsCamera(tab, f, '/b/301/Moon', 'naif-301', 3653);
+	},
+
+	/** The moons of Saturn come in chunks of 46 days. */
+	async 'date jump keeps the camera on a moon while its own data loads'(tab, f) {
+		return jumpKeepsCamera(tab, f, '/b/606/Titan', 'naif-606', 200);
+	},
+
+	async 'date jump keeps the camera on a probe while its data loads'(tab, f) {
+		return jumpKeepsCamera(tab, f, '/p/49065984/Voyager%201', 'probe-49065984', -3300);
+	},
+
+	/** In 2002 the chunk has to load before it can tell the telescope is not in it. */
+	async 'date jump to before a launch moves the camera to the host and tells'(tab, f) {
+		const JWST = 'probe-115347456';
+		await tab.goto('/p/115347456/James%20Webb%20Space%20Telescope');
+		await tab.until(
+			`${READY} && ${focusedIs(JWST)} && ${FLY_ENDED} && !!window.__smCtx.getBody('${JWST}')?.position`,
+			'the telescope placed'
+		);
+		await sleep(1500);
+		const notices = await tab.eval(jumpAndWatch(-9000, 5000));
+		const s = await tab.eval(`${SNAPSHOT}('${JWST}')`);
+		check(f, s.focused === JWST && !s.placed, `focused ${s.focused}, placed=${s.placed}`);
+		check(f, s.cameraToEarthKm < 1, `camera ${s.cameraToEarthKm} km from Earth`);
+		check(
+			f,
+			notices.some((t) => t.includes(NO_DATA_NOTICE)),
+			`notices: ${notices.join(' | ')}`
+		);
+		return s;
 	},
 
 	async 'home view'(tab, f) {

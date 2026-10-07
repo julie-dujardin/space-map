@@ -37,12 +37,25 @@ interface FakeCheb {
 	ids: string[];
 	offset: (id: string, jd: number) => [number, number, number] | null;
 	coverage?: { start: number; end: number };
+	/** A chunk for the date is on its way. */
+	loading?: boolean;
 	/** Catalogue rows of the bodies that have one. */
 	rows?: Map<string, BodyData>;
 }
 
-/** A placer over a scene that holds `bodies`, with no probe store. */
-function placerOver(bodies: PositionedBody[], cheb?: FakeCheb): Placer {
+/** A probe store with no chunk for the date, and one on its way or not. */
+const probeStoreWith = (loading: boolean) => ({
+	ridesAt: () => [],
+	probeWithCenter: () => null,
+	loadingAt: () => loading
+});
+
+/** A placer over a scene that holds `bodies`. */
+function placerOver(
+	bodies: PositionedBody[],
+	cheb?: FakeCheb,
+	probeStore: ReturnType<typeof probeStoreWith> | null = null
+): Placer {
 	const byId = new Map(bodies.map((b) => [b.data.id, b]));
 	const ctx = {
 		getBody: (id: string) => byId.get(id),
@@ -53,10 +66,11 @@ function placerOver(bodies: PositionedBody[], cheb?: FakeCheb): Placer {
 			? {
 					has: (id: string) => cheb.ids.includes(id),
 					positionScene: cheb.offset,
-					zoneCoverage: () => cheb.coverage ?? null
+					zoneCoverage: () => cheb.coverage ?? null,
+					isLoading: () => cheb.loading ?? false
 				}
 			: null,
-		probeStore: null,
+		probeStore,
 		visibility: { activeSystemId: null }
 	} as unknown as ContextManager;
 	return new Placer(ctx, new Map(), new PositionDiagnostics());
@@ -225,9 +239,21 @@ describe('a body the ephemeris tracks', () => {
 
 	it('waits for a chunk that is on its way', () => {
 		const body = moon();
-		const placer = placerOver([body], { ids: ['naif-301'], offset: () => null, coverage });
+		const placer = placerOver([body], {
+			ids: ['naif-301'],
+			offset: () => null,
+			coverage,
+			loading: true
+		});
 		expect(placer.place(body, JD)).toBeNull();
 		expect(body.unplaced).toBe('loading');
+	});
+
+	it('has no data inside its coverage when no chunk is on its way', () => {
+		const body = moon();
+		const placer = placerOver([body], { ids: ['naif-301'], offset: () => null, coverage });
+		expect(placer.place(body, JD)).toBeNull();
+		expect(body.unplaced).toBe('no-data');
 	});
 
 	it('has no data outside the coverage of its zone, and the pass counts it', () => {
@@ -254,5 +280,39 @@ describe('a body the ephemeris tracks', () => {
 		});
 		expect(placer.place(body, JD)).not.toBeNull();
 		expect(body.unplaced).toBeUndefined();
+	});
+});
+
+/** A load ends by itself, so it is not a loss of place: the reason passes down
+ *  to everything placed from the body that waits. */
+describe('a body whose data is on its way', () => {
+	const waiting = { ids: ['bary'], offset: () => null, loading: true };
+	const bary = () => mkBody({ id: 'bary', parentId: 'naif-0', objectType: ObjectType.BARYCENTER });
+
+	it('makes the bodies placed from it wait too', () => {
+		const moon = mkBody({ id: 'moon', parentId: 'bary', objectType: ObjectType.MOON });
+		const lander = mkBody({ id: 'lander', parentId: 'moon' });
+		const placer = placerOver([bary(), moon, lander], waiting);
+		expect(placer.place(lander, JD)).toBeNull();
+		expect(moon.unplaced).toBe('loading');
+		expect(lander.unplaced).toBe('loading');
+	});
+
+	it('leaves a body under a parent with no data without a place for that reason', () => {
+		const moon = mkBody({ id: 'moon', parentId: 'bary' });
+		const placer = placerOver([bary(), moon], { ...waiting, loading: false });
+		expect(placer.place(moon, JD)).toBeNull();
+		expect(moon.unplaced).toBe('parent');
+	});
+
+	it('makes a probe wait while a probe chunk for the date is on its way', () => {
+		const craft = () =>
+			mkBody({ id: 'probe-1', parentId: 'naif-0', orbitalSource: OrbitalSource.SPICE_PROBE });
+		const loading = craft();
+		placerOver([loading], undefined, probeStoreWith(true)).place(loading, JD);
+		expect(loading.unplaced).toBe('loading');
+		const absent = craft();
+		placerOver([absent], undefined, probeStoreWith(false)).place(absent, JD);
+		expect(absent.unplaced).toBe('no-data');
 	});
 });

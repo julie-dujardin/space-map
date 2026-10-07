@@ -162,12 +162,19 @@ export class Placer {
 		return pos;
 	}
 
+	/** Why a body has no place when the body `aboveId` it is placed from has
+	 *  none. A load passes down: the body comes back with the data. */
+	private under(aboveId: string): Unplaced {
+		const above = this.ctx.getBody(aboveId) ?? this.bodyObjects.get(aboveId)?.body;
+		return above?.unplaced === 'loading' ? 'loading' : 'parent';
+	}
+
 	/** A surface feature sits on its host. */
 	private seatFeature(body: PositionedBody, jd: number): Vec3 | null {
 		const hostId = body.featureAnchor!.hostId;
 		const host = this.ctx.getBody(hostId);
 		const hostPos = host && this.place(host, jd);
-		if (!host || !hostPos) return setUnplaced(body, 'parent');
+		if (!host || !hostPos) return setUnplaced(body, this.under(hostId));
 		return seatFeatureBody(body, host, hostPos, this.bodyObjects.get(hostId), jd);
 	}
 
@@ -207,12 +214,15 @@ export class Placer {
 		if (d.orbitalSource === OrbitalSource.SPICE_PROBE) return this.settleProbe(body, bo, jd);
 		const parentPos = this.at(d.parentId, jd);
 		if (!parentPos) {
-			diagnostics.warnOnce(
-				'missing-parent',
-				d.id,
-				() => `place[${d.id}]: parent ${d.parentId} has no place`
-			);
-			return setUnplaced(body, 'parent');
+			const why = this.under(d.parentId);
+			if (why === 'parent') {
+				diagnostics.warnOnce(
+					'missing-parent',
+					d.id,
+					() => `place[${d.id}]: parent ${d.parentId} has no place`
+				);
+			}
+			return setUnplaced(body, why);
 		}
 		diagnostics.clear('missing-parent', d.id);
 		let offset: Vec3 | Unplaced;
@@ -240,10 +250,12 @@ export class Placer {
 		);
 	}
 
-	/** Why the ephemeris has nothing for `id` at `jd`: the date is outside its
-	 *  coverage, or the chunk for the date is still loading. */
+	/** Why the ephemeris has nothing for `id` at `jd`: the chunk for the date is
+	 *  on its way, or the ephemeris does not reach the date. */
 	private chebMiss(id: string, jd: number): Unplaced {
-		const coverage = this.ctx.chebStore!.zoneCoverage(id);
+		const store = this.ctx.chebStore!;
+		if (store.isLoading(id, jd)) return 'loading';
+		const coverage = store.zoneCoverage(id);
 		const outside = coverage !== null && (jd < coverage.start || jd > coverage.end);
 		if (outside && jd === this.passJd) {
 			this.noData.count++;
@@ -256,7 +268,7 @@ export class Placer {
 				: 'unknown';
 			return `chebStore.positionScene[${id}] returned null at jd=${jd.toFixed(3)} (coverage=${cov})`;
 		});
-		return outside ? 'no-data' : 'loading';
+		return 'no-data';
 	}
 
 	/** Write the place, the orbit centre and the attitude of a body. */
@@ -367,6 +379,8 @@ export class Placer {
 		// so trail geometry and trail-anchor writes follow the new parent.
 		const located = ctx.probeStore?.probeWithCenter(d.id, jd, zonePref) ?? null;
 		if (!located) {
+			// A chunk on its way can hold the craft.
+			if (ctx.probeStore?.loadingAt(jd)) return setUnplaced(body, 'loading');
 			setUnplaced(body, 'no-data');
 			diagnostics.warnOnce('probe-unavailable', d.id, () => {
 				const reason = !ctx.probeStore
@@ -392,7 +406,7 @@ export class Placer {
 				bodyObjects
 			);
 			if (!landedRender) {
-				return setUnplaced(body, 'parent');
+				return setUnplaced(body, this.under(`naif-${probeLanded.bodyNaifId}`));
 			}
 			diagnostics.clear('probe-unavailable', d.id);
 			// A craft that lands on a body other than the one its flying fits
@@ -441,7 +455,8 @@ export class Placer {
 			(id) => this.at(id, jd) !== null
 		);
 		if (!primary) {
-			setUnplaced(body, 'parent');
+			const center = located.probe.fitCenter?.id;
+			setUnplaced(body, center ? this.under(center) : 'parent');
 			diagnostics.warnOnce(
 				'probe-unavailable',
 				d.id,
@@ -528,7 +543,7 @@ export class Placer {
 		// at the scene origin, which reads as a jump to the barycentre.
 		const probeParentPos = this.at(probeParentKey, jd);
 		if (!probeParentPos) {
-			setUnplaced(body, 'parent');
+			setUnplaced(body, this.under(probeParentKey));
 			diagnostics.warnOnce(
 				'probe-unavailable',
 				d.id,

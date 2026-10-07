@@ -23,8 +23,11 @@ export interface UpdatePositionsParams {
 }
 
 export interface UpdatePositionsResult {
-	/** The focused body has no place at this date. */
+	/** The focused body has no place at this date. False while its data loads:
+	 *  that ends by itself. */
 	focusUnplaced: boolean;
+	/** The data of the focused body for this date is on its way. */
+	focusLoading: boolean;
 	/** Nearest placed ancestor the camera follows in its stead, or null. */
 	anchorId: string | null;
 }
@@ -99,11 +102,13 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				const camOff = focus.camTargetOffset;
 				if (camOff && focus.camTargetWorld) addVec(focus.camTargetWorld, p, camOff);
 			} else if (a.oldPos) {
-				// Idle: shift the camera frame by the displacement of the anchor.
-				focus.focusTruePos[0] += p[0] - a.oldPos[0];
-				focus.focusTruePos[1] += p[1] - a.oldPos[1];
-				focus.focusTruePos[2] += p[2] - a.oldPos[2];
-				setVec(focus.focusTargetWorld, focus.focusTruePos);
+				// Idle: shift the camera frame by the displacement of the anchor. Its
+				// target shifts too: a pan that ended this frame still lands on the anchor.
+				for (let k = 0; k < 3; k++) {
+					const moved = p[k] - a.oldPos[k];
+					focus.focusTruePos[k] += moved;
+					focus.focusTargetWorld[k] += moved;
+				}
 			}
 			break;
 		}
@@ -132,7 +137,12 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		line.userData.refreshDeferred = false;
 	}
 
-	return { focusUnplaced: focusedBody !== undefined && !focusPos, anchorId };
+	const focusLoading = !focusPos && why === 'loading';
+	return {
+		focusUnplaced: focusedBody !== undefined && !focusPos && !focusLoading,
+		focusLoading,
+		anchorId
+	};
 }
 
 /**

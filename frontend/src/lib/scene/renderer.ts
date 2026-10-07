@@ -334,6 +334,9 @@ export class SceneRenderer {
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
+	/** A seek left the focus with its data on its way: the pass that has the
+	 *  data settles what the seek does to the camera. */
+	private seekAwaitsData = false;
 	/** Frames rendered; the hidden-body stagger in `updatePositions` keys off it. */
 	private frameIndex = 0;
 	/** Frames kept rendering after the last invalidation: damping tails and
@@ -2119,7 +2122,7 @@ export class SceneRenderer {
 			this.clock.seeked = false;
 			return;
 		}
-		const seeked = this.clock.seeked;
+		const seeked = this.clock.seeked || this.seekAwaitsData;
 		this.clock.seeked = false;
 		this.lastUpdatedJd = this.clock.jd;
 		this.lastUpdatedSystemId = systemId;
@@ -2157,6 +2160,7 @@ export class SceneRenderer {
 		// A seek just landed where the focus has no place: pan the camera onto the
 		// ancestor it now follows. Only on the transition, once per episode: the
 		// focus and its notice stay on the original body.
+		this.seekAwaitsData = seeked && result.focusLoading;
 		const losingPlace = result.focusUnplaced && !this.focusWasOutOfRange;
 		this.focusWasOutOfRange = result.focusUnplaced;
 		if (allowOorRefocus && seeked && losingPlace && result.anchorId) {

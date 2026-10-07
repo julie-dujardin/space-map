@@ -87,6 +87,12 @@ export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneP
 		return { start: params.start_jd, end: params.end_jd };
 	}
 
+	/** True while the chunk that covers `jd` for `objectId` is on its way. */
+	isLoading(objectId: string, jd: number): boolean {
+		const zone = this.idToZone.get(objectId);
+		return zone !== undefined && this.loadingAt(jd, zone);
+	}
+
 	private resolve(objectId: string, jd: number): BodyLocation | null {
 		const zone = this.idToZone.get(objectId);
 		if (zone === undefined) return null;

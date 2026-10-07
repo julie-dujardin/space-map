@@ -89,6 +89,17 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		return { ready, done };
 	}
 
+	/** True while a chunk that covers `jd` is on its way: of `zone`, or of any
+	 *  zone. A chunk nobody asked for is not on its way. */
+	loadingAt(jd: number, zone?: string): boolean {
+		if (this.inflight.size === 0) return false;
+		for (const [name, params] of this.zoneParams) {
+			if (zone !== undefined && name !== zone) continue;
+			if (this.inflight.has(chunkKey(name, chunkIndexForJd(params, jd)))) return true;
+		}
+		return false;
+	}
+
 	/**
 	 * The current chunks still in flight. An `ensure` on an already-ensured jd
 	 * must still hand back a wait: same jd doesn't mean loaded, and a second
