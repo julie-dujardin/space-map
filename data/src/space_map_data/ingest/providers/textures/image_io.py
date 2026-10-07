@@ -29,7 +29,7 @@ _DISPLACEMENT_BAND_OUT_ROWS = 256
 # Neighbour-interpolation passes over nodata before falling back to the flat
 # fill; each pass closes one pixel from either side, so 4 repairs slivers up to
 # 8 px wide and leaves genuinely unmapped regions to `fill`.
-_GAP_REPAIR_PASSES = 4
+GAP_REPAIR_PASSES = 4
 
 
 def _has_alpha(img: Image.Image) -> bool:
@@ -345,7 +345,7 @@ def repair_thin_gaps(elev: np.ndarray, finite: np.ndarray) -> int:
     h, w = elev.shape
     known = finite.copy()
     repaired = 0
-    for _ in range(_GAP_REPAIR_PASSES):
+    for _ in range(GAP_REPAIR_PASSES):
         ys, xs = _gap_front(known)
         if ys.size == 0:
             break

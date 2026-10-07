@@ -397,6 +397,26 @@ class TestProcessSingleFrame:
         expected = {f"{tier}.webp" for tier in meta["exports"]}
         assert {p.name for p in body_dir.glob("*.webp")} == expected
 
+    def test_file_also_listed_as_a_pyramid_source_still_gets_its_tiers(
+        self, tmp_path, monkeypatch
+    ):
+        entry = {
+            "body": "naif-601",
+            "body_name": "mimas",
+            "source": "https://example.com",
+            "organisation": "NASA",
+            "attribution": "Test attribution",
+            "file": "mimas.jpg",
+            "type": "cylindrical",
+        }
+        proc = TestProcessMonthly._make_processor(monkeypatch, tmp_path, entry)
+        proc._raw_meta.insert(0, {**entry, "tiles": "only"})
+        _make_gradient(256, 128).save(config.RAW_DIR / entry["file"])
+
+        proc.process(config.RAW_DIR / entry["file"])
+
+        assert (config.PROCESSED_DIR / "naif-601" / "metadata.json").exists()
+
 
 class TestProcessClouds:
     """End-to-end ingest of a synthetic earth_clouds snapshot tree, DB writes

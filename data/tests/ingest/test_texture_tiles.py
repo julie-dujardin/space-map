@@ -1,6 +1,7 @@
 """Tests for the tile pyramid builder and its place in the texture processor."""
 
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -239,6 +240,43 @@ class TestHeightPyramid:
         # It only ever rises towards the equator: no step back at the join.
         assert (np.diff(column[: TILE + 1]) >= 0).all()
 
+    def test_wider_inset_listed_last_hides_a_narrower_one(self, tmp_path):
+        base = _height_layer(np.zeros((4 * TILE, 8 * TILE), dtype=np.int16))
+        narrow = _height_layer(
+            np.full((TILE, 8 * TILE), 1000, dtype=np.int16),
+            lat_top=20.0,
+            lat_bottom=-20.0,
+        )
+        wide = _height_layer(
+            np.full((4 * TILE, 8 * TILE), 2000, dtype=np.int16),
+            lat_top=80.0,
+            lat_bottom=-80.0,
+        )
+        coding = tiles.HeightCoding.for_range(0.0, 2.0, 1e-3, None)
+        layers = [base, narrow, wide]
+        tiles.PyramidBuilder("test", layers, tmp_path / "out", 2, coding).build()
+
+        column = _decode_km(_stitch(tmp_path / "out", 2), coding)[:, 0]
+        assert column[0] == 0.0
+        # 34° and 6° north: beside the narrow inset, and under both.
+        assert column[5 * TILE // 4] == pytest.approx(2.0)
+        assert column[15 * TILE // 8] == pytest.approx(2.0)
+
+    def test_gap_in_an_inset_shows_the_base(self, tmp_path):
+        base = _height_layer(np.full((4 * TILE, 8 * TILE), 500, dtype=np.int16))
+        raised = np.full((4 * TILE, 8 * TILE), 1000, dtype=np.int16)
+        raised[:, : 4 * TILE] = -32768
+        inset = _height_layer(raised, lat_top=60.0, lat_bottom=-60.0)
+        coding = tiles.HeightCoding.for_range(0.0, 1.0, 1e-3, None)
+        tiles.PyramidBuilder("test", [base, inset], tmp_path / "out", 2, coding).build()
+
+        km = _decode_km(_stitch(tmp_path / "out", 2), coding)
+        # 50° north, where the inset only reaches part of the tile row, and
+        # 20° north, where it covers the whole row.
+        for row in (7 * TILE // 8, 25 * TILE // 16):
+            assert km[row, 6 * TILE] == pytest.approx(1.0)
+            assert km[row, 2 * TILE] == pytest.approx(0.5)
+
     def test_inset_fades_in_over_the_feather(self):
         inset = tiles.Layer(np.zeros((4, 8)), tiles.Placement(60.0, -60.0))
         weights = inset.weights(np.array([61.0, 60.0, 59.5, 59.0, 0.0]))
@@ -302,6 +340,35 @@ class TestLayerWindows:
         whole = layer.resample(8 * TILE, edges)
         wrapped = layer.window(8 * TILE, edges, -TILE, TILE)
         assert np.array_equal(wrapped, np.roll(whole, TILE, axis=1)[:, : 2 * TILE])
+
+    def test_part_of_a_raster_with_gaps_reads_like_the_whole(self):
+        """Thin gaps are filled from their neighbours, also from the ones
+        outside the part. A wide gap stays a gap at the part's edge."""
+        metres = _terrain(8 * TILE, 2 * TILE)
+        metres[:, 3 * TILE - 2 : 3 * TILE + 3] = -32768
+        metres[TILE - 3 : TILE + 2, : 2 * TILE] = -32768
+        metres[:, 5 * TILE : 7 * TILE] = -32768
+        layer = _height_layer(metres)
+        whole = layer.rows(0, 2 * TILE)
+        assert np.isnan(whole).sum() == 2 * TILE * (2 * TILE - 8)
+        for y0, y1, c0, c1 in (
+            (0, TILE, 0, 3 * TILE),
+            (TILE, 2 * TILE, 3 * TILE, 6 * TILE),
+            (TILE // 2, TILE, 6 * TILE, 8 * TILE),
+        ):
+            part = layer.read(y0, y1, c0, c1)
+            assert np.array_equal(part, whole[y0:y1, c0:c1], equal_nan=True)
+
+    def test_window_with_an_edge_inside_a_gap_keeps_the_gap(self):
+        """The far side of the window is not the ground beside its edge."""
+        metres = _terrain(8 * TILE, 2 * TILE)
+        metres[:, 2 * TILE : 6 * TILE] = -32768
+        layer = _height_layer(metres)
+        edges = 90.0 - np.arange(TILE + 1) * (180.0 / (2 * TILE))
+        whole = layer.resample(8 * TILE, edges)
+        part = layer.window(8 * TILE, edges, 3 * TILE, 7 * TILE)
+        assert np.isnan(part[:, 0]).all()
+        assert np.array_equal(part, whole[:, 3 * TILE : 7 * TILE], equal_nan=True)
 
     def test_read_matches_flip_then_shift_of_the_stored_rows(self):
         layer = self._layer(west_positive=True, lon_at_left_deg=90.0)
@@ -380,6 +447,24 @@ class TestBrightness:
         inside = out[:, TILE : 7 * TILE].astype(int)
         assert np.abs(inside - (120, 110, 100)).max() <= 1
         assert out[4, 12 * TILE + 6, 0] > 128
+
+    def test_gap_in_a_later_layer_keeps_the_layer_under_it(self):
+        base = tiles.Layer(
+            np.zeros((2 * TILE, 4 * TILE, 3), dtype=np.uint8), tiles.Placement()
+        )
+        under = np.full((8 * TILE, 16 * TILE), 0.2, dtype=np.float32)
+        over = np.full((8 * TILE, 16 * TILE), 0.4, dtype=np.float32)
+        over[:, : 8 * TILE] = 0.0
+        layers = [
+            tiles.Layer(values, tiles.Placement(), to_values=tiles._brightness)
+            for values in (under, over)
+        ]
+        builder = tiles.PyramidBuilder("test", [base], Path(), 3, brightness=layers)
+        got = builder._brightness_window(0, TILE, 0, 16 * TILE)
+        assert got[:, 4 * TILE] == pytest.approx(tiles._brightness(under[:1, :1])[0, 0])
+        assert got[:, 12 * TILE] == pytest.approx(
+            tiles._brightness(over[:1, -1:])[0, 0]
+        )
 
     def test_grid_of_tiles_and_a_single_file_open_alike(self, tmp_path):
         whole = self._stripes()[: 2 * TILE, : 4 * TILE]
@@ -519,9 +604,9 @@ class TestBlockBuild:
 
         assert stats.tiles == [2 * 4**z for z in range(self.LEVEL + 1)]
         self._same_tiles(tmp_path, exact=True)
-        # The save stays until the caller has every part it builds beside it.
+        # The save stays until the caller has put the output in place.
         assert tiles.resumable(tmp_path / "blocks", "v1")
-        resumed.finish()
+        tiles.clear_state(tmp_path / "blocks")
         assert not (tmp_path / "blocks" / ".build").exists()
 
 
@@ -764,6 +849,24 @@ class TestCapPyramid:
         assert np.allclose(km[lats > 47.0], 1.0, atol=0.002)
         assert np.allclose(km[lats < 45.0], 0.0, atol=0.002)
 
+    def test_gap_in_an_inset_shows_the_base(self, tmp_path):
+        flat = _height_layer(np.full((4 * TILE, 8 * TILE), 500, dtype=np.int16))
+        raised = np.full((TILE, 8 * TILE), 1000, dtype=np.int16)
+        raised[:, : 4 * TILE] = -32768
+        inset = _height_layer(raised, lat_top=90.0, lat_bottom=45.0)
+        coding = tiles.HeightCoding.for_range(0.0, 1.0, 0.001, None)
+        cap = tiles.Cap(True, 3)
+        tiles.CapBuilder(
+            "test", True, [flat, inset], tmp_path / "out", 3, coding
+        ).build()
+        km = _decode_km(_stitch_cap(tmp_path / "out", 3), coding)
+        lats, lons = _cap_lat_lon(cap)
+        # Clear of the feather, of the gap's edges, and of the pole, where
+        # the columns are wide.
+        ring = (lats > 47.0) & (lats < 75.0)
+        assert np.allclose(km[ring & (np.abs(lons - 90.0) < 70.0)], 1.0, atol=0.002)
+        assert np.allclose(km[ring & (np.abs(lons + 90.0) < 70.0)], 0.5, atol=0.002)
+
     def test_finished_build_is_not_written_again(self, tmp_path):
         coding = tiles.HeightCoding.for_range(-5.0, 5.0, 0.001, None)
 
@@ -908,6 +1011,61 @@ class TestProcessTiles:
         assert (
             tmp_path / "tiles" / "naif-499" / "south" / "1" / "0" / "0.webp"
         ).exists()
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_stop_while_the_old_pyramid_goes_keeps_the_new_one(
+        self, tmp_path, monkeypatch, force
+    ):
+        entry = self._colour_entry(tmp_path)
+        proc = self._processor(monkeypatch, tmp_path, [entry])
+        proc.process_tiles()
+        if not force:
+            entry["tiles_max_level"] = 1
+        out = tmp_path / "tiles" / "naif-499"
+        stopped = []
+        real = shutil.rmtree
+
+        def stop_on_the_old_pyramid(path, *args, **kwargs):
+            if Path(path) == out and not stopped:
+                stopped.append(path)
+                raise RuntimeError("stopped")
+            real(path, *args, **kwargs)
+
+        monkeypatch.setattr(shutil, "rmtree", stop_on_the_old_pyramid)
+        with pytest.raises(RuntimeError):
+            proc.process_tiles(force=force)
+        building = tmp_path / "tiles" / "naif-499.building"
+        (building / "1" / "0" / "0.webp").write_bytes(b"kept")
+        proc.process_tiles()
+        assert (out / "1" / "0" / "0.webp").read_bytes() == b"kept"
+        assert not building.exists()
+        assert not list(out.rglob(".build"))
+
+    def test_stop_before_the_descriptor_keeps_the_new_pyramid(
+        self, tmp_path, monkeypatch
+    ):
+        proc = self._processor(monkeypatch, tmp_path, [self._colour_entry(tmp_path)])
+        stopped = []
+        real = Path.write_text
+
+        def stop_on_the_descriptor(path, *args, **kwargs):
+            if path.name == "metadata.json" and not stopped:
+                stopped.append(path)
+                raise RuntimeError("stopped")
+            return real(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", stop_on_the_descriptor)
+        with pytest.raises(RuntimeError):
+            proc.process_tiles()
+        out = tmp_path / "tiles" / "naif-499"
+        (out / "1" / "0" / "0.webp").write_bytes(b"kept")
+        proc.process_tiles()
+        assert (out / "1" / "0" / "0.webp").read_bytes() == b"kept"
+        meta = json.loads(
+            (tmp_path / "meta" / "naif-499" / "metadata.json").read_text()
+        )
+        assert meta["max_level"] == 1
+        assert not list(out.rglob(".build"))
 
     def test_height_pyramid_states_its_scale(self, tmp_path, monkeypatch):
         raw = tmp_path / "raw"

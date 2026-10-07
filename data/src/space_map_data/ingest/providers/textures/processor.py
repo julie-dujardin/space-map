@@ -347,11 +347,13 @@ class TextureProcessor:
         Returns the output directory.
         """
         src = Path(src)
-        entry = next((b for b in self._raw_meta if b["file"] == src.name), None)
-        if entry is None:
+        entries = [b for b in self._raw_meta if b["file"] == src.name]
+        if not entries:
             log.warning("%s not found in the texture manifests", src.name)
             return config.PROCESSED_DIR
-        if not builds_tiers(entry):
+        # A file may also be listed as the source of a pyramid alone.
+        entry = next((b for b in entries if builds_tiers(b)), None)
+        if entry is None:
             log.debug("skipping %s (no tiers asked for in the manifest)", src.name)
             return config.PROCESSED_DIR
 
@@ -521,12 +523,22 @@ class TextureProcessor:
         meta_path = mirror_path(
             config.TILES_METADATA_DIR / pyramid_id / "metadata.json"
         )
+        # Built aside, so a failed run never leaves half a pyramid in place.
+        # The first part to build tells whether what is there can be kept.
+        building = out_dir.with_name(f"{out_dir.name}.building")
+        first = next(iter(frames))
+        # A run that stopped before the descriptor named its build left the
+        # saves in the pyramid it had just put in place.
+        if not building.exists() and tiles.resumable(out_dir / first, version):
+            out_dir.rename(building)
+        pending = building.exists() and tiles.resumable(building / first, version)
         existing = (
             json.loads(meta_path.read_text())
             if meta_path.exists() and out_dir.exists()
             else None
         )
-        if not force and existing and existing.get("version") == version:
+        current = existing and existing.get("version") == version
+        if existing and current and not (force or pending):
             if any(existing.get(k) != v for k, v in credit.items()):
                 meta_path.write_text(json.dumps({**existing, **credit}, indent=2))
                 log.info("refreshed tile credits from yaml: %s", pyramid_id)
@@ -547,16 +559,12 @@ class TextureProcessor:
             for spec, layer in zip(brightness_specs, brightness)
         ]
 
-        # Built aside, so a failed run never leaves half a pyramid in place.
-        # The first part to build tells whether what is there can be kept.
-        building = out_dir.with_name(f"{out_dir.name}.building")
-        first = building / next(iter(frames))
-        if building.exists() and not tiles.resumable(first, version):
+        if building.exists() and not pending:
             shutil.rmtree(building)
         max_level = entry.get("tiles_max_level")
         stats: tiles.PyramidStats | None = None
         cap_stats: tiles.PyramidStats | None = None
-        builders: list[tiles.PyramidBuilder] = []
+        parts: list[Path] = []
         coding = None
         for frame, specs in frames.items():
             layers = []
@@ -621,7 +629,7 @@ class TextureProcessor:
             shared = (layers, max_level, coding, brightness, sharpen_sigma, version)
             builder = tiles.PyramidBuilder(name, layers, building / frame, *shared[1:])
             stats.add(builder.build())
-            builders.append(builder)
+            parts.append(Path(frame))
             if max_level < tiles.CapBuilder.min_level:
                 continue
             for folder, north in tiles.CAP_FOLDERS.items():
@@ -633,10 +641,8 @@ class TextureProcessor:
                     *shared[1:],
                 )
                 cap_stats.add(cap.build())
-                builders.append(cap)
+                parts.append(Path(frame, folder))
         assert stats is not None and cap_stats is not None and max_level is not None
-        for builder in builders:
-            builder.finish()
         if out_dir.exists():
             shutil.rmtree(out_dir)
         building.rename(out_dir)
@@ -659,6 +665,10 @@ class TextureProcessor:
             metadata["absolute_radius"] = bool(entry.get("absolute_radius", False))
         meta_path.parent.mkdir(parents=True, exist_ok=True)
         meta_path.write_text(json.dumps(metadata, indent=2))
+        # Last: until the descriptor names this build, the saves are all that
+        # keeps the next run from starting it over.
+        for part in parts:
+            tiles.clear_state(out_dir / part)
         log.info(
             "tiled %s: levels 0-%d, %d tiles, %.2f GiB",
             pyramid_id,

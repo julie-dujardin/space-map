@@ -45,6 +45,7 @@ from .image_io import (
     open_image,
     open_pds_image,
     read_pds_label,
+    GAP_REPAIR_PASSES,
     repair_thin_gaps,
 )
 
@@ -267,6 +268,23 @@ class Layer:
     def read(self, y0: int, y1: int, c0: int, c1: int) -> np.ndarray:
         """Rows ``y0:y1`` and columns ``c0:c1`` in the renderer's alignment:
         east to the right, 180°W at column 0. Columns wrap around the globe."""
+        if self.to_values is None:
+            band = self._stored(y0, y1, c0, c1)
+            if self.grey:
+                band = np.repeat(band[..., None], 3, axis=-1)
+            return np.ascontiguousarray(band)
+        # A dead edge column would otherwise sink to the fill height and cut a
+        # trench along its meridian. The repair reads as far as it fills, so a
+        # part of the raster needs that much around it to match the whole.
+        reach = GAP_REPAIR_PASSES
+        top, bottom = max(y0 - reach, 0), min(y1 + reach, self.height)
+        band = self.to_values(self._stored(top, bottom, c0 - reach, c1 + reach))
+        finite = np.isfinite(band)
+        if not finite.all():
+            repair_thin_gaps(band, finite)
+        return np.ascontiguousarray(band[y0 - top : y1 - top, reach:-reach])
+
+    def _stored(self, y0: int, y1: int, c0: int, c1: int) -> np.ndarray:
         width = self.width
         place = self.placement
         shift = round((place.lon_at_left_deg + 180.0) / 360.0 * width) % width
@@ -277,17 +295,7 @@ class Layer:
             count = min(c1 - column, width - start)
             parts.append(self._eastward(y0, y1, start, start + count))
             column += count
-        band = parts[0] if len(parts) == 1 else np.concatenate(parts, axis=1)
-        if self.grey:
-            band = np.repeat(band[..., None], 3, axis=-1)
-        if self.to_values is not None:
-            band = self.to_values(band)
-            finite = np.isfinite(band)
-            if not finite.all():
-                # A dead edge column would otherwise sink to the fill height
-                # and cut a trench along its meridian.
-                repair_thin_gaps(band, finite)
-        return np.ascontiguousarray(band)
+        return parts[0] if len(parts) == 1 else np.concatenate(parts, axis=1)
 
     def _eastward(self, y0: int, y1: int, a0: int, a1: int) -> np.ndarray:
         """Stored samples for columns ``a0:a1`` counted east from the raster's
@@ -748,6 +756,20 @@ def apply_detail(colour: np.ndarray, ratio: np.ndarray) -> np.ndarray:
     return _LINEAR_TO_SRGB[linear.astype(np.uint16)]
 
 
+def _over(under: np.ndarray, patch: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+    """``patch`` over ``under`` at weight ``alpha``. A gap in the patch shows
+    what is under it."""
+    if patch.dtype.kind == "f":
+        seen = np.isfinite(patch)
+        if not seen.all():
+            alpha = alpha * seen
+            patch = np.where(seen, patch, 0.0)
+    mixed = under * (1.0 - alpha) + patch * alpha
+    if under.dtype == np.uint8:
+        mixed = np.rint(mixed)
+    return mixed.astype(under.dtype)
+
+
 def _halve(band: np.ndarray) -> np.ndarray:
     """2×2 box average."""
     if band.dtype == np.uint8:
@@ -801,6 +823,11 @@ def resumable(out_dir: Path, token: str) -> bool:
         return str(saved["token"]) == token
 
 
+def clear_state(out_dir: Path) -> None:
+    """Drop the saved progress of the build in ``out_dir``."""
+    shutil.rmtree(out_dir / _STATE_DIR, ignore_errors=True)
+
+
 class PyramidBuilder:
     """Writes one pyramid under ``out_dir``.
 
@@ -812,8 +839,8 @@ class PyramidBuilder:
     ``checkpoint`` names the inputs. A block build saves its progress under
     that name after each row of blocks, any build when it is done, and a
     build picks up from a save of the same name. The caller clears ``out_dir``
-    when there is none to pick up, and calls ``finish`` once every pyramid
-    that shares the output is built.
+    when there is none to pick up, and drops the saves with ``clear_state``
+    once the output is in place.
     """
 
     # Coarsest level: two tiles side by side.
@@ -871,10 +898,6 @@ class PyramidBuilder:
                         log.info("%s: tile row %d of %d", self.name, row + 1, rows)
                 self._save(rows)
         return self._stats
-
-    def finish(self) -> None:
-        """Drop the saved progress: the output is about to be put in place."""
-        shutil.rmtree(self.out_dir / _STATE_DIR, ignore_errors=True)
 
     def _columns(self, level: int) -> int:
         return 2 << level
@@ -953,35 +976,34 @@ class PyramidBuilder:
         x1: int,
     ) -> np.ndarray:
         weights = [inset.weights(lat_edges) for inset in insets]
-        # An inset at full weight over the whole band hides everything under it.
-        covered = any(bool((w == 1.0).all()) for w in weights)
-        band = None if covered else self._values(base, width, lat_edges, x0, x1)
-        for inset, weight in zip(insets, weights):
+        # An inset at full weight over the whole band hides everything under
+        # it, where it has data.
+        full = [i for i, weight in enumerate(weights) if (weight == 1.0).all()]
+        top = full[-1] if full else -1
+        if top < 0:
+            band = self._filled(base.window(width, lat_edges, x0, x1))
+        else:
+            band = insets[top].window(width, lat_edges, x0, x1)
+            if band.dtype.kind == "f" and not np.isfinite(band).all():
+                under = self._composite(base, insets[:top], width, lat_edges, x0, x1)
+                band = np.where(np.isfinite(band), band, under)
+        for inset, weight in zip(insets[top + 1 :], weights[top + 1 :]):
             (rows,) = np.nonzero(weight)
             if rows.size == 0:
                 continue
             first, last = int(rows[0]), int(rows[-1]) + 1
-            patch = self._values(inset, width, lat_edges[first : last + 1], x0, x1)
-            if band is None:
-                band = patch
-                continue
+            patch = inset.window(width, lat_edges[first : last + 1], x0, x1)
             alpha = weight[first:last].reshape(-1, *([1] * (band.ndim - 1)))
-            mixed = band[first:last] * (1.0 - alpha) + patch * alpha
-            if band.dtype == np.uint8:
-                mixed = np.rint(mixed)
             if not band.flags.writeable:
                 band = band.copy()
-            band[first:last] = mixed.astype(band.dtype)
-        assert band is not None
+            band[first:last] = _over(band[first:last], patch, alpha)
         return band
 
-    def _values(
-        self, layer: Layer, width: int, lat_edges: np.ndarray, x0: int, x1: int
-    ) -> np.ndarray:
-        band = layer.window(width, lat_edges, x0, x1)
-        if self.coding is not None and not np.isfinite(band).all():
-            band = np.where(np.isfinite(band), band, self.coding.fill_km)
-        return band
+    def _filled(self, values: np.ndarray) -> np.ndarray:
+        """Heights with their gaps at the fill height."""
+        if self.coding is not None and not np.isfinite(values).all():
+            values = np.where(np.isfinite(values), values, self.coding.fill_km)
+        return values
 
     def _brightness_window(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         """Brightness over rows ``y0:y1`` and columns ``x0:x1`` of the finest
@@ -998,9 +1020,9 @@ class PyramidBuilder:
             (rows,) = np.nonzero(layer.placement.covers(centres))
             if rows.size:
                 first, last = int(rows[0]), int(rows[-1]) + 1
-                out[top - y0 + first : top - y0 + last] = layer.window(
-                    width, lat_edges[first : last + 1], x0, x1
-                )
+                fresh = layer.window(width, lat_edges[first : last + 1], x0, x1)
+                held = out[top - y0 + first : top - y0 + last]
+                np.copyto(held, fresh, where=np.isfinite(fresh))
         return out
 
     def _sharpen(self, band: np.ndarray, y0: int, y1: int) -> np.ndarray:
@@ -1253,15 +1275,9 @@ class CapBuilder(PyramidBuilder):
         assert out is not None
         return out
 
-    def _cap_values(self, layer: Source, *square: int) -> np.ndarray:
-        values = layer.cap(self.cap, *square)
-        if self.coding is not None and not np.isfinite(values).all():
-            values = np.where(np.isfinite(values), values, self.coding.fill_km)
-        return values
-
     def _composite_square(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         base, *insets = self.layers
-        values = self._cap_values(base, y0, y1, x0, x1)
+        values = self._filled(base.cap(self.cap, y0, y1, x0, x1))
         if not insets:
             return values
         lats = self.cap.latitudes(y0, y1, x0, x1)
@@ -1269,12 +1285,9 @@ class CapBuilder(PyramidBuilder):
             weight = inset.inside(lats)
             if not weight.any():
                 continue
-            patch = self._cap_values(inset, y0, y1, x0, x1)
+            patch = inset.cap(self.cap, y0, y1, x0, x1)
             alpha = weight.reshape(*weight.shape, *([1] * (values.ndim - 2)))
-            mixed = values * (1.0 - alpha) + patch * alpha
-            if values.dtype == np.uint8:
-                mixed = np.rint(mixed)
-            values = mixed.astype(values.dtype)
+            values = _over(values, patch, alpha)
         return values
 
     def _brightness_window(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
@@ -1287,7 +1300,9 @@ class CapBuilder(PyramidBuilder):
             for layer in self.brightness:
                 seen = layer.placement.covers(lats)
                 if seen.any():
-                    out[seen] = layer.cap(self.cap, *square)[seen]
+                    fresh = layer.cap(self.cap, *square)
+                    seen &= np.isfinite(fresh)
+                    out[seen] = fresh[seen]
             return out
 
         return self._gather(read, y0, y1, x0, x1)
