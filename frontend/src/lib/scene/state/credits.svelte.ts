@@ -2,6 +2,7 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { orbitSourceInfo, type NamedOrbitSource } from './orbit-sources';
 import type { OrientationReference, OrientationSource } from '$lib/credits/orientation-sources';
 import type { CreditFields, ImageryLayer } from '$lib/credits/imagery-layers';
+import { tileCredit } from '$lib/credits/tile-credit';
 import type { PositionedBody } from '$lib/types/objects';
 
 /** One credited work behind a body's imagery, recorded as the layer attaches.
@@ -62,13 +63,31 @@ export class CreditsStore {
 	 *  the focused system is one the source fed. Reassigned like `orbitSources`. */
 	orbitSourceParents = $state(new Map<NamedOrbitSource, Set<string>>());
 
-	/** Rings key on the source too: one bundle cites several works (Saturn).
-	 *  Every other layer keeps one credit per body, so whichever path attaches
-	 *  it first — per-system or standalone — wins. */
-	registerImagery(layer: ImageryLayer, bodyId: string, systemId: string, meta: CreditFields): void {
-		const sep = '\u0000';
-		const key =
-			layer === 'rings' ? `${layer}${sep}${bodyId}${sep}${meta.source}` : `${layer}${sep}${bodyId}`;
+	/** A layer keeps one credit per body, so whichever path attaches it first —
+	 *  per-system or standalone — wins. A surface map whose tile pyramid holds
+	 *  another work is credited for both. */
+	registerImagery(
+		layer: ImageryLayer,
+		bodyId: string,
+		systemId: string,
+		meta: CreditFields & { tiles?: CreditFields }
+	): void {
+		this.addImagery(layer, bodyId, systemId, meta, layer === 'rings');
+		// Only the surface: height tiles are not drawn.
+		const tiles = layer === 'surface' ? tileCredit(meta) : undefined;
+		if (tiles) this.addImagery(layer, bodyId, systemId, tiles, true);
+	}
+
+	/** `bySource` keys the credit on its source too, for a layer of several
+	 *  works: one ring bundle cites more than one (Saturn). */
+	private addImagery(
+		layer: ImageryLayer,
+		bodyId: string,
+		systemId: string,
+		meta: CreditFields,
+		bySource: boolean
+	): void {
+		const key = [layer, bodyId, ...(bySource ? [meta.source] : [])].join('\u0000');
 		if (this.imagery.has(key)) return;
 		const { source, organisation, license, attribution, description } = meta;
 		this.imagery.set(key, {

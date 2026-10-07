@@ -5,6 +5,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import type { CreditFields } from './imagery-layers';
 
 /** One credited work behind a body's imagery. The layer it belongs to is the
  *  array it sits in — `textures`, `rings`, … — matching `export/credits.py`. */
@@ -16,6 +17,8 @@ export interface BodyCredit {
 	license?: string;
 	attribution?: string;
 	description?: string;
+	/** Surface and height maps only: the tile pyramid's own credit. */
+	tiles?: CreditFields;
 }
 
 /**

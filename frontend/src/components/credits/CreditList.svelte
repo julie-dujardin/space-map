@@ -9,6 +9,7 @@
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import { REFERENCE_SECTIONS, type BodyCredit, type Credits } from '$lib/credits/credits-payload';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
+	import { tileCredit } from '$lib/credits/tile-credit';
 
 	interface Props {
 		credits: Credits;
@@ -41,7 +42,10 @@
 		for (const group of credits.systems) {
 			// Keyed by the export's array names; IMAGERY_LAYERS fixes the row order.
 			const lists: Record<ImageryLayer, BodyCredit[] | undefined> = {
-				surface: group.textures,
+				surface: group.textures?.flatMap((credit) => {
+					const tiles = tileCredit(credit);
+					return tiles ? [credit, { ...credit, ...tiles }] : [credit];
+				}),
 				clouds: group.clouds,
 				night: group.night,
 				specular: group.specular,
