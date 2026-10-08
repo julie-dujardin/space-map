@@ -66,7 +66,7 @@ flowchart LR
   user --> cfpagesfront
   user --> cfpagesstatic
   user --> cfpagesimages
-  user -->|"asks for a one-hour search key"| cfpagesfront
+  user -->|"Turnstile proof for a one-hour search key"| cfpagesfront
   user -->|"search (using that key)"| cftunnel
   cftunnel -->|":9750"| caddy
 ```

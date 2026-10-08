@@ -92,6 +92,7 @@
 	import SearchBar from './search/SearchBar.svelte';
 	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
+	import { onOpenSearch } from '$lib/search/proof.svelte';
 	import { coverageOf } from '$lib/fetch/coverage';
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { watchDataVersion } from '$lib/fetch/version-check';
@@ -562,6 +563,15 @@
 		else closeDetail(false);
 		searchBar?.open();
 	}
+
+	// The toast that asks for the human check opens search as the page does: the
+	// desktop sidebar covers the search bar, so it closes first.
+	$effect(() =>
+		onOpenSearch(() => {
+			if (sidebarOpen && !isMobileViewport) openSearchBesideSidebar();
+			else searchBar?.open();
+		})
+	);
 
 	// `refocusMain` off when the caller takes focus itself; otherwise focus
 	// silently falls to <body> once the drawer unmounts.

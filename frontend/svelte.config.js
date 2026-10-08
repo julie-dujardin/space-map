@@ -7,6 +7,9 @@ const dev = process.env.NODE_ENV !== 'production';
 const connectSrc = ['self', 'https:', 'blob:'];
 if (dev) connectSrc.push('http://127.0.0.1:7700', 'http://localhost:7700', 'ws:', 'wss:');
 
+// Cloudflare serves the Turnstile script and its frame from here only.
+const TURNSTILE = 'https://challenges.cloudflare.com';
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	kit: {
@@ -25,6 +28,7 @@ const config = {
 				'script-src': [
 					'self',
 					'wasm-unsafe-eval',
+					TURNSTILE,
 					'sha256-/5ozVzgeMHeJpMEVlzzJ/6dkOg7+w1n5I+ARm1PXT1w=',
 					'sha256-3GkLjh8hUINKAQM1DYGLTD5hrwnZc1a0cFwUcKJaKSs='
 				],
@@ -34,6 +38,7 @@ const config = {
 				'font-src': ['self', 'data:'],
 				'connect-src': connectSrc,
 				'worker-src': ['self', 'blob:'],
+				'frame-src': [TURNSTILE],
 				'object-src': ['none'],
 				'base-uri': ['self']
 			}

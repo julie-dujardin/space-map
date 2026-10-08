@@ -52,6 +52,7 @@
 	import SortMenu from './SortMenu.svelte';
 	import FilterDrill from './FilterDrill.svelte';
 	import SearchResults from './SearchResults.svelte';
+	import SearchProof from './SearchProof.svelte';
 
 	type Props = {
 		onSelect: (hit: SearchHit) => void;
@@ -115,8 +116,8 @@
 	const groupBySlug = $derived(new Map(groupCatalog.map((g) => [g.slug, g])));
 
 	// The three loads below wait for the panel to open. A closed panel then
-	// asks the index for nothing. A load that fails leaves its list empty, and
-	// the next opening asks again.
+	// asks the index for nothing, so it calls for no proof of a person. A load
+	// that fails leaves its list empty, and the next opening asks again.
 
 	// Group/collection taxonomy for the filter tree + token labels (one fetch).
 	$effect(() => {
@@ -959,7 +960,11 @@
 						{/if}
 					</div>
 				</div>
+			{/if}
 
+			<SearchProof shown={expanded} class="px-3 pb-3" />
+
+			{#if expanded}
 				{#if tokens.length > 0}
 					<div class="flex flex-wrap gap-1.5 px-3 pb-2.5">
 						{#each tokens as t (t.key + (t.value ?? ''))}

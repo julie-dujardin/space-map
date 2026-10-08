@@ -25,6 +25,7 @@
 	import { EARTH_ID } from '$lib/constants';
 	import { isCoarsePointer } from '$lib/device';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
+	import SearchProof from '../../search/SearchProof.svelte';
 
 	interface Props {
 		/** What this search chooses — accessible name, so the two otherwise-identical boxes announce apart. */
@@ -226,6 +227,8 @@
 				</button>
 			{/if}
 		</div>
+
+		<SearchProof shown={query.trim().length >= MIN_QUERY} />
 
 		{#if query.trim().length >= MIN_QUERY}
 			{#if visible.length > 0}

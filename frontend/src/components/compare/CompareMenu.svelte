@@ -30,6 +30,7 @@
 	} from '$lib/compare/presets';
 	import { isModifiedClick } from '$lib/modified-click';
 	import SearchStatus from '../search/SearchStatus.svelte';
+	import SearchProof from '../search/SearchProof.svelte';
 
 	export interface ListedObject {
 		id: string;
@@ -197,6 +198,8 @@
 			{@render toggle('list', m.compare_object_count({ count: selected.length }))}
 		</div>
 	</div>
+
+	<SearchProof shown={showHits} class="px-4 pb-3" />
 
 	{#if showHits || open}
 		<ScrollArea class="min-h-0 flex-1 border-t border-border">

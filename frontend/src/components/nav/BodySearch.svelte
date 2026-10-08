@@ -18,6 +18,7 @@
 	import { secondaryText } from '$lib/search/format';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { isCoarsePointer } from '$lib/device';
+	import SearchProof from '../search/SearchProof.svelte';
 
 	interface Props {
 		/** Accessible name: two of these on one page announce apart. */
@@ -191,6 +192,8 @@
 			</button>
 		{/if}
 	</div>
+
+	<SearchProof shown={query.trim().length >= MIN_QUERY} />
 
 	{#if query.trim().length >= MIN_QUERY}
 		{#if visible.length > 0}

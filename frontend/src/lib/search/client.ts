@@ -3,8 +3,11 @@
  *  render a disabled state without special-casing the absence. */
 
 import type { Meilisearch } from 'meilisearch';
+import { toast } from 'svelte-sonner';
 import { env } from '$env/dynamic/public';
+import * as m from '$lib/paraglide/messages.js';
 import type { Locale } from '$lib/paraglide/runtime.js';
+import { takeProof } from './proof.svelte';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 import {
 	CLASS_SLUG_PREFIX,
@@ -106,7 +109,7 @@ function warnOnce(reason: string) {
 	console.warn(`[search] unavailable: ${reason}`);
 }
 
-/** Gives a short-lived key. */
+/** Gives a short-lived key in exchange for proof of a person. */
 const KEY_ENDPOINT = '/api/search-key';
 /** A key is dropped this long before it expires. */
 const KEY_MARGIN_MS = 60_000;
@@ -117,10 +120,23 @@ const KEY_RETRY_MS = 30_000;
 let minted: { key: string; until: number } | null = null;
 let minting: Promise<string> | null = null;
 let mintFailedAt = -Infinity;
+/** The visitor is told once. A list that loads in the background fails as often as it retries. */
+let toldUnverified = false;
 
 async function mint(): Promise<string> {
-	const res = await fetch(KEY_ENDPOINT, { method: 'POST' });
-	if (!res.ok) throw new Error(`${KEY_ENDPOINT} answered ${res.status}`);
+	const res = await fetch(KEY_ENDPOINT, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ proof: await takeProof() })
+	});
+	if (!res.ok) {
+		// 403: the endpoint requires proof and got none that holds.
+		if (res.status === 403 && !toldUnverified) {
+			toldUnverified = true;
+			toast.error(m.search_unverified());
+		}
+		throw new Error(`${KEY_ENDPOINT} answered ${res.status}`);
+	}
 	const { key, ttl } = (await res.json()) as { key: string; ttl: number };
 	minted = { key, until: Date.now() + ttl * 1000 - KEY_MARGIN_MS };
 	return key;
