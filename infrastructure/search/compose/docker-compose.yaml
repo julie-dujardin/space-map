@@ -71,8 +71,8 @@ configs:
       		respond 204
       	}
 
-      	# Public surface: search + per-index stats (catalog count) + health.
-      	@public path /indexes/*/search /indexes/*/stats /multi-search /health
+      	# Public surface: search + health.
+      	@public path /indexes/*/search /multi-search /health
       	handle @public {
       		reverse_proxy meili:7700
       	}

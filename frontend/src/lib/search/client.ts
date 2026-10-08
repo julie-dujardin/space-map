@@ -121,7 +121,7 @@ async function getClient(): Promise<Meilisearch | null> {
 		// unreachable host, CORS rejection, revoked key, missing index.
 		client
 			.index(INDEX)
-			.getStats()
+			.search('', { limit: 0 })
 			.catch((e) => warnOnce(`${env.PUBLIC_MEILI_URL} unreachable — ${e}`));
 	}
 	return client;
@@ -677,35 +677,41 @@ export async function searchCatalog(opts: {
 	};
 }
 
-// Unfiltered facet distribution over the whole catalog, cached after first use.
-// Supplies the full value vocabulary so bounded facets (kind, type, flags) can
-// still list every option — at 0 — once a query/filter narrows them away.
-let facetUniverseCache: FacetDistribution | null = null;
+let facetUniverse: Promise<FacetDistribution> | null = null;
 
-export async function catalogFacets(): Promise<FacetDistribution> {
-	if (facetUniverseCache) return facetUniverseCache;
-	const c = await getClient();
-	if (!c) return {};
-	const res = await c.index(INDEX).search('', { facets: FACETS, limit: 0 });
-	facetUniverseCache = (res.facetDistribution ?? {}) as FacetDistribution;
-	return facetUniverseCache;
+/**
+ * Facet distribution of the whole catalog, with no query and no filter. A
+ * bounded facet (kind, type, flags) lists every value from it, at 0 when a
+ * query narrows that value away.
+ *
+ * One request serves every caller. A failure is not kept.
+ */
+export function catalogFacets(): Promise<FacetDistribution> {
+	facetUniverse ??= (async () => {
+		const c = await getClient();
+		if (!c) return {};
+		const res = await c.index(INDEX).search('', { facets: FACETS, limit: 0 });
+		return (res.facetDistribution ?? {}) as FacetDistribution;
+	})().catch((e) => {
+		facetUniverse = null;
+		throw e;
+	});
+	return facetUniverse;
 }
 
-// Total documents in the catalog, cached after the first stats call. Drives the
-// idle "N entries in catalog" hint (estimatedTotalHits caps at maxTotalHits).
-// Returns null when the index can't be reached (env unset or server down) so the
-// hint can read "catalog unavailable" instead of a misleading "0 entries". The
-// failure isn't cached, so a later call retries once the DB is back.
-let catalogCountCache: number | null = null;
-
+/**
+ * Total documents in the catalog, for the idle "N entries in catalog" hint.
+ * Every document has a `kind`, so the counts of that facet add up to the total.
+ * `estimatedTotalHits` stops at `maxTotalHits`, and the search key cannot read
+ * the index stats.
+ *
+ * Null when the index cannot be reached. The failure is not cached.
+ */
 export async function catalogCount(): Promise<number | null> {
-	if (catalogCountCache !== null) return catalogCountCache;
-	const c = await getClient();
-	if (!c) return null;
+	if (!isSearchEnabled()) return null;
 	try {
-		const stats = await c.index(INDEX).getStats();
-		catalogCountCache = stats.numberOfDocuments ?? 0;
-		return catalogCountCache;
+		const kinds = (await catalogFacets())[ARRAY_FACETS.kind.attr] ?? {};
+		return Object.values(kinds).reduce((sum, n) => sum + n, 0);
 	} catch {
 		return null;
 	}

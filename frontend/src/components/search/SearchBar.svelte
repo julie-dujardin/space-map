@@ -114,9 +114,18 @@
 
 	const groupBySlug = $derived(new Map(groupCatalog.map((g) => [g.slug, g])));
 
+	// The three loads below wait for the panel to open. A closed panel then
+	// asks the index for nothing. A load that fails leaves its list empty, and
+	// the next opening asks again.
+
 	// Group/collection taxonomy for the filter tree + token labels (one fetch).
 	$effect(() => {
-		if (enabled) fetchGroupCatalog(getLocale()).then((g) => (groupCatalog = g));
+		if (enabled && expanded) {
+			fetchGroupCatalog(getLocale()).then(
+				(g) => (groupCatalog = g),
+				() => {}
+			);
+		}
 	});
 
 	// Catalog size for the idle hint. catalogCount() doesn't cache failures, so a
@@ -124,12 +133,19 @@
 	function loadCatalogCount() {
 		if (enabled) catalogCount().then((n) => (catalogTotal = n));
 	}
-	$effect(loadCatalogCount);
+	$effect(() => {
+		if (expanded) loadCatalogCount();
+	});
 
 	// Full facet vocabulary (locale-agnostic codes) so bounded facets can list
 	// every value even once a query/filter narrows the live distribution.
 	$effect(() => {
-		if (enabled) catalogFacets().then((d) => (facetUniverse = d));
+		if (enabled && expanded) {
+			catalogFacets().then(
+				(d) => (facetUniverse = d),
+				() => {}
+			);
+		}
 	});
 
 	// Debounced reset on query/filter/sort change; `page` is not a dep, so

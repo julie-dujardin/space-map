@@ -3,9 +3,9 @@
 Meilisearch + Caddy + cloudflared, deployed via docker-compose.
 
 Caddy (config inlined in the compose `config`, so no host file needed) proxies
-**search only** — `/indexes/*/search`, `/indexes/*/stats`, `/multi-search`,
-`/health`; everything else returns `403`. It has no host port: the only public
-path is the in-stack Cloudflare tunnel (which also terminates TLS) → `caddy:80`.
+**search only** — `/indexes/*/search`, `/multi-search`, `/health`; everything
+else returns `403`. It has no host port: the only public path is the in-stack
+Cloudflare tunnel (which also terminates TLS) → `caddy:80`.
 
 Admin (settings, keys, indexing) is Meili directly on `:9751`, protected by the
 master key. It binds to `127.0.0.1`, forward it with:

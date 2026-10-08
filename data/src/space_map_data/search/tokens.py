@@ -1,9 +1,8 @@
-"""Generate scoped API keys for the frontend.
+"""Generate the scoped API key for the frontend.
 
-Meili supports per-key action scoping. The frontend ships a key limited to
-``search`` (querying) and ``stats.get`` (the idle "N entries in catalog"
-count, which exceeds search's maxTotalHits cap); the master key never leaves
-the indexer host.
+The key can only search. The frontend server signs short-lived tenant tokens
+with it, and a tenant token can do nothing but search. The master key never
+leaves the indexer host.
 """
 
 import json
@@ -13,8 +12,7 @@ from .client import MeiliClient
 
 logger = logging.getLogger(__name__)
 
-# Actions granted to the frontend key. stats.get backs catalogCount().
-_FRONTEND_ACTIONS = ["search", "stats.get"]
+_FRONTEND_ACTIONS = ["search"]
 
 
 def ensure_search_key(
