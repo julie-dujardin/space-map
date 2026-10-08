@@ -7,7 +7,7 @@ import { toast } from 'svelte-sonner';
 import { env } from '$env/dynamic/public';
 import * as m from '$lib/paraglide/messages.js';
 import type { Locale } from '$lib/paraglide/runtime.js';
-import { takeProof } from './proof.svelte';
+import { startProof } from './proof.svelte';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 import {
 	CLASS_SLUG_PREFIX,
@@ -123,23 +123,37 @@ let mintFailedAt = -Infinity;
 /** The visitor is told once. A list that loads in the background fails as often as it retries. */
 let toldUnverified = false;
 
-async function mint(): Promise<string> {
-	const res = await fetch(KEY_ENDPOINT, {
+function askForKey(proof: string | null): Promise<Response> {
+	return fetch(KEY_ENDPOINT, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ proof: await takeProof() })
+		body: JSON.stringify({ proof })
 	});
-	if (!res.ok) {
-		// 403: the endpoint requires proof and got none that holds.
-		if (res.status === 403 && !toldUnverified) {
-			toldUnverified = true;
-			toast.error(m.search_unverified());
+}
+
+async function mint(): Promise<string> {
+	const proof = await startProof();
+	try {
+		let res = await askForKey((await proof?.quiet) ?? null);
+		// 403: the endpoint requires proof and got none that holds. Only now is
+		// the visitor asked for the click that Cloudflare may want.
+		if (res.status === 403) {
+			const token = await proof?.click();
+			if (token) res = await askForKey(token);
 		}
-		throw new Error(`${KEY_ENDPOINT} answered ${res.status}`);
+		if (!res.ok) {
+			if (res.status === 403 && !toldUnverified) {
+				toldUnverified = true;
+				toast.error(m.search_unverified());
+			}
+			throw new Error(`${KEY_ENDPOINT} answered ${res.status}`);
+		}
+		const { key, ttl } = (await res.json()) as { key: string; ttl: number };
+		minted = { key, until: Date.now() + ttl * 1000 - KEY_MARGIN_MS };
+		return key;
+	} finally {
+		proof?.end();
 	}
-	const { key, ttl } = (await res.json()) as { key: string; ttl: number };
-	minted = { key, until: Date.now() + ttl * 1000 - KEY_MARGIN_MS };
-	return key;
 }
 
 /** `PUBLIC_MEILI_SEARCH_KEY` when the deployment has one, else a key from the endpoint. */

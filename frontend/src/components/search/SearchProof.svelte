@@ -21,16 +21,17 @@
 </script>
 
 <!-- Holds the Turnstile widget. It stays mounted with no size, because
-     Cloudflare runs its check inside it. -->
+     Cloudflare runs its check inside it. The widget can show a checkbox before
+     the visitor is asked for the click, so the holder is cut to nothing. -->
 <div
 	inert={!shown}
 	class={[
 		floating &&
 			'fixed start-1/2 top-20 z-[100] w-[min(21rem,calc(100vw-1rem))] -translate-x-1/2 rtl:translate-x-1/2',
 		floating && visible && 'bg-popover text-popover-foreground rounded-lg border p-3 shadow-lg',
-		floating && !visible && 'pointer-events-none',
 		!floating && visible && spacing,
-		!floating && !visible && 'absolute h-0 w-full overflow-hidden'
+		!floating && !visible && 'absolute w-full',
+		!visible && 'pointer-events-none h-0 overflow-hidden'
 	]}
 	aria-live="polite"
 >

@@ -57,11 +57,11 @@ export const proofState = new ProofState();
 /** Every mounted slot. A slot goes to the end when the visitor gets to see it. */
 const slots: Slot[] = [];
 
-/** The proof under way: where its widget is, how to move it, how to end it. */
+/** The proof under way: where its widget is, how to move it, how to end its wait. */
 let run: {
 	slot: Slot;
 	place: (slot: Slot) => void;
-	end: (token: string | null) => void;
+	giveUp: () => void;
 } | null = null;
 
 /** The visitor is told once for each page load that a check waits out of sight. */
@@ -91,7 +91,7 @@ function settle(): void {
 	if (!run) return;
 	const next = best();
 	if (!slots.includes(run.slot)) {
-		if (!next) return run.end(null);
+		if (!next) return run.giveUp();
 		run.place(next);
 	} else if (proofState.asking && !run.slot.shown && next?.shown) {
 		run.place(next);
@@ -134,9 +134,9 @@ export function proofSlot(el: HTMLElement, options: SlotOptions) {
 	};
 }
 
-/** Stops the wait for a click. The endpoint then decides without a token. */
+/** Stops the wait for a click. The visitor gets no key. */
 export function dismissProof(): void {
-	run?.end(null);
+	run?.giveUp();
 }
 
 let loading: Promise<Turnstile> | null = null;
@@ -171,74 +171,116 @@ function tabShown(): Promise<void> {
 	});
 }
 
+/** One proof: a widget on the page from `startProof` to `end`. */
+export interface ProofRun {
+	/** The token, or null when none comes without a click. */
+	quiet: Promise<string | null>;
+	/** Shows the widget and waits for the click that Cloudflare wants. Null when
+	 *  it wants none, and when the click does not pass. */
+	click(): Promise<string | null>;
+	/** Takes the widget off the page. */
+	end(): void;
+}
+
 /**
- * One token, or null when none came. Without `PUBLIC_TURNSTILE_SITEKEY` it
- * loads nothing from Cloudflare.
+ * Starts a proof. Null without `PUBLIC_TURNSTILE_SITEKEY`, which loads nothing
+ * from Cloudflare, and when the page can hold no widget.
  *
- * The widget shows only when Cloudflare wants a click. It then goes to the
- * search box the visitor has open, and the wait lasts until the click.
+ * The caller asks the endpoint with what `quiet` gives, and calls `click` only
+ * when the endpoint refuses that. A visitor is then not asked for a click that
+ * the endpoint does not require.
  */
-export async function takeProof(): Promise<string | null> {
+export async function startProof(): Promise<ProofRun | null> {
 	const sitekey = env.PUBLIC_TURNSTILE_SITEKEY;
 	if (!sitekey) return null;
 	await tabShown();
 	const api = await load().catch(() => null);
 	const first = best();
 	if (!api || !first) return null;
+
 	let widget: string | null | undefined;
 	let patience: ReturnType<typeof setTimeout> | undefined;
 	/** Counts the widgets, so a callback of a removed one is ignored. */
 	let placed = 0;
-	try {
-		return await new Promise<string | null>((resolve) => {
-			const place = (slot: Slot) => {
-				const mine = ++placed;
-				if (widget) api.remove(widget);
-				widget = null;
-				proofState.asking = null;
-				clearTimeout(patience);
-				patience = setTimeout(() => resolve(null), PATIENCE_MS);
-				run = { slot, place, end: resolve };
-				try {
-					widget = api.render(slot.el, {
-						sitekey,
-						action: 'search',
-						appearance: 'interaction-only',
-						size: 'flexible',
-						theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-						language: getLocale(),
-						callback: (token: string) => {
-							if (mine === placed) resolve(token);
-						},
-						'retry-interval': RETRY_MS,
-						'error-callback': (code: unknown) => {
-							if (mine === placed && !RETRIED.test(String(code))) resolve(null);
-							// `true` tells Cloudflare that the page handles the error.
-							return true;
-						},
-						'unsupported-callback': () => {
-							if (mine === placed) resolve(null);
-						},
-						'before-interactive-callback': () => {
-							if (mine !== placed) return;
-							clearTimeout(patience);
-							proofState.asking = slot.el;
-							// Not inside the callback: `settle` can remove this widget.
-							queueMicrotask(settle);
-						}
-					});
-				} catch {
-					// Cloudflare refuses the key or an option.
-				}
-				if (!widget) resolve(null);
-			};
-			place(first);
-		});
-	} finally {
-		clearTimeout(patience);
-		run = null;
-		proofState.asking = null;
-		toast.dismiss(TOAST_ID);
+	/** Cloudflare wants a click in the widget on the page. */
+	let wantsClick = false;
+	/** The visitor is asked for that click. */
+	let clicking = false;
+	/** Ends the wait under way: for a token without a click, then for the click. */
+	let answer: (token: string | null) => void = () => {};
+	const wait = () => new Promise<string | null>((resolve) => (answer = resolve));
+
+	const place = (slot: Slot) => {
+		const mine = ++placed;
 		if (widget) api.remove(widget);
-	}
+		widget = null;
+		wantsClick = false;
+		proofState.asking = null;
+		clearTimeout(patience);
+		patience = setTimeout(() => answer(null), PATIENCE_MS);
+		run = { slot, place, giveUp: () => answer(null) };
+		try {
+			widget = api.render(slot.el, {
+				sitekey,
+				action: 'search',
+				appearance: 'interaction-only',
+				size: 'flexible',
+				theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+				language: getLocale(),
+				callback: (token: string) => {
+					if (mine === placed) answer(token);
+				},
+				'retry-interval': RETRY_MS,
+				'error-callback': (code: unknown) => {
+					// A click that fails is the answer. Without one the widget tries again.
+					if (mine === placed && (wantsClick || !RETRIED.test(String(code)))) answer(null);
+					// `true` tells Cloudflare that the page handles the error.
+					return true;
+				},
+				'unsupported-callback': () => {
+					if (mine === placed) answer(null);
+				},
+				'before-interactive-callback': () => {
+					if (mine !== placed) return;
+					clearTimeout(patience);
+					wantsClick = true;
+					if (!clicking) return answer(null);
+					proofState.asking = slot.el;
+					// Not inside the callback: `settle` can remove this widget.
+					queueMicrotask(settle);
+				},
+				'after-interactive-callback': () => {
+					if (mine !== placed) return;
+					proofState.asking = null;
+					queueMicrotask(settle);
+				}
+			});
+		} catch {
+			// Cloudflare refuses the key or an option.
+		}
+		if (!widget) answer(null);
+	};
+
+	const quiet = wait();
+	place(first);
+	return {
+		quiet,
+		click() {
+			if (!run || !widget || !wantsClick) return Promise.resolve(null);
+			clicking = true;
+			const clicked = wait();
+			proofState.asking = run.slot.el;
+			settle();
+			return clicked;
+		},
+		end() {
+			clearTimeout(patience);
+			answer(null);
+			run = null;
+			proofState.asking = null;
+			toast.dismiss(TOAST_ID);
+			if (widget) api.remove(widget);
+			widget = null;
+		}
+	};
 }

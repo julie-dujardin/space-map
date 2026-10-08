@@ -67,9 +67,12 @@ request without one that holds is refused, `403`:
 | `search` | required |
 
 - A token is good once and a key for an hour: an hour of search costs a
-  challenge. Nothing shows unless Cloudflare wants a click. Its widget then
-  shows in the search box the visitor has open, and with none open a toast
-  says so, once a page load.
+  challenge. Nothing shows unless Cloudflare wants a click and the proof is
+  required: the page first asks for its key without the click, and shows the
+  widget only when that is refused. The widget then shows in the search box
+  the visitor has open, and with none open a toast says so, once a page load.
+- A click that does not pass ends the proof. The visitor is told once, and
+  the page asks again after 30 seconds.
 - What has no built-in results waits for that click, `/random` too, behind a
   card that holds the widget. A key that is refused or cannot be had stops
   the wait: `/random` then draws uniformly, from the export alone.
@@ -85,7 +88,10 @@ request without one that holds is refused, `403`:
 - `TURNSTILE_REQUIRE` without `TURNSTILE_SECRET` is a `503` for every request:
   giving keys would leave open a door the settings say is shut.
 - Every key given or refused without a proof that held is logged, `no proof of
-  a person`, with why: what to read before requiring it.
+  a person`, with why: what to read before requiring it. With nothing
+  required, a visitor Cloudflare wants a click from is logged as `absent`.
+  With proof required, the same visitor is logged as refused once, before
+  the click.
 - Without `TURNSTILE_SECRET` nobody is asked, and without the sitekey the page
   sends no proof.
 
