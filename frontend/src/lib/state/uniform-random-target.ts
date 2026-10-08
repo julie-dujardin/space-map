@@ -5,7 +5,8 @@
  * are the catalogue's own shape: 99% of the tickets are objects, six draws in
  * seven land on a numbered rock in the Main Belt, and the 858 collection pages
  * share one draw in two thousand. This is what `/random` refuses, and why it
- * walks the collection tree instead.
+ * walks the collection tree instead. `/random` makes this draw only when the
+ * search index gives it no answer.
  *
  * No memory of past draws and no reweighting. A repeat is what uniform looks
  * like, and at 1.6 M tickets there won't be one.

@@ -53,6 +53,7 @@ import {
 	MAX_TOTAL_HITS,
 	type MemberHit
 } from '$lib/search/client';
+import { uniformRandomTarget } from './uniform-random-target';
 import { UrlType, urlTypeFromId, urlTypeToIdPrefix } from './view';
 
 /** Anything that can fill the sidebar: a collection page, a body, a landform. */
@@ -112,14 +113,22 @@ function childNodes(children: ChildGroupEntry[] | undefined): Node[] {
  * asteroid after another reads as a broken button even when each draw is honest.
  * If every attempt repeats something, the repeat is taken: going nowhere is
  * worse than going somewhere twice.
+ *
+ * The walk asks the search index for a member. When the index gives no answer,
+ * the draw is the uniform one, which reads the export only.
  */
 export async function randomTarget(locale = getLocale()): Promise<RandomTarget | null> {
 	const recent = readRecent();
 	let drawn: Draw | null = null;
-	for (let attempt = 0; attempt < DRAW_ATTEMPTS; attempt++) {
-		drawn = await walk(locale, recent.categories);
-		if (!drawn) return null;
-		if (!recent.targets.includes(targetKey(drawn.target))) break;
+	try {
+		for (let attempt = 0; attempt < DRAW_ATTEMPTS; attempt++) {
+			drawn = await walk(locale, recent.categories);
+			if (!drawn) return null;
+			if (!recent.targets.includes(targetKey(drawn.target))) break;
+		}
+	} catch (e) {
+		console.warn('[random] the walk failed — drawing uniformly.', e);
+		return uniformRandomTarget(locale);
 	}
 	if (drawn) rememberDraw(recent, drawn);
 	return drawn?.target ?? null;

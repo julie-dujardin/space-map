@@ -78,18 +78,26 @@ vi.mock('$lib/fetch/groups/details', () => ({
 let lastQuery: { slug: string; offset: number } | null = null;
 /** Ids the collection hands out, in order, when a test cares which. */
 let memberIds: string[] = [];
+/** The index gives no answer: no key, or no server. */
+let indexDown = false;
 vi.mock('$lib/search/client', () => ({
 	MAX_TOTAL_HITS: 1000,
 	isSearchEnabled: () => true,
 	localizedName: (hit: { name: string }) => hit.name,
 	searchGroupMembers: (slug: string, offset: number): Promise<GroupMemberPage> => {
 		lastQuery = { slug, offset };
+		if (indexDown) return Promise.reject(new Error('no search key'));
 		const id = memberIds.shift() ?? `naif-${offset}`;
 		return Promise.resolve({
 			hits: [{ kind: 'object', id, name: `member ${offset}` }],
 			estimatedTotalHits: 1000
 		} as GroupMemberPage);
 	}
+}));
+
+const UNIFORM = { kind: 'object', id: 'spkid-20000433', name: 'drawn uniformly' };
+vi.mock('./uniform-random-target', () => ({
+	uniformRandomTarget: () => Promise.resolve(UNIFORM)
 }));
 
 /** A bundle the map can place: the pipeline wrote the dates it covers. */
@@ -132,6 +140,7 @@ beforeEach(() => {
 	store.clear();
 	lastQuery = null;
 	memberIds = [];
+	indexDown = false;
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -251,6 +260,24 @@ describe('randomTarget: what the map can place', () => {
 	it('asks nothing of a landform or a collection', async () => {
 		draws(COLLECTIONS, 0.9);
 		await expect(randomTarget()).resolves.toMatchObject({ kind: 'group' });
+	});
+});
+
+describe('randomTarget: an index that gives no answer', () => {
+	it('draws uniformly, and records nothing of the walk', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		indexDown = true;
+		draws(MOONS, 0.5);
+		await expect(randomTarget()).resolves.toEqual(UNIFORM);
+		expect(lastQuery?.slug).toBe(CAT_MOONS);
+		expect(store.has(RECENT_KEY)).toBe(false);
+	});
+
+	it('still walks to a collection page, which asks the index nothing', async () => {
+		indexDown = true;
+		draws(COLLECTIONS, 0.99);
+		await expect(randomTarget()).resolves.toMatchObject({ kind: 'group' });
+		expect(lastQuery).toBeNull();
 	});
 });
 

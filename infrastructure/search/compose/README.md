@@ -71,7 +71,8 @@ request without one that holds is refused, `403`:
   shows in the search box the visitor has open, and with none open a toast
   says so, once a page load.
 - What has no built-in results waits for that click, `/random` too, behind a
-  card that holds the widget.
+  card that holds the widget. A key that is refused or cannot be had stops
+  the wait: `/random` then draws uniformly, from the export alone.
 - A page loads nothing of Cloudflare's until it searches: the search panel
   opened, or a list that pages through the index.
 - A proof that cannot be checked gets its key: Cloudflare not answering in
