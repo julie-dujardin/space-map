@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import { dateToJD } from '$lib/time/jd';
-import { distanceKm, offsetKm, subsolarPoint } from './ephemeris';
+import { distanceKm, offsetKm, subsolarPoint, sunlight } from './ephemeris';
 
 const AU_KM = 149597870.7;
 const DATE = new Date('1971-07-31T13:00:00Z');
@@ -16,11 +16,19 @@ function orbit(parent: string, a: number, ma: number, diameter?: number) {
 	};
 }
 
+/** The orbit of the moons of `near` that are near its shadow, in AU. */
+const CLOSE = 0.0001;
+/** Degrees round that orbit from the axis of the shadow to its edge. */
+const EDGE = (Math.asin(1000 / (CLOSE * AU_KM)) * 180) / Math.PI;
+
 const CATALOGUE: Record<string, object> = {
-	'naif-10': orbit('naif-0', 0, 0),
+	'naif-10': orbit('naif-0', 0, 0, 1391400),
 	near: orbit('naif-0', 1, 0, 2000),
 	far: orbit('naif-0', 2, 180),
 	moon: orbit('near', 0.001, 90),
+	shaded: orbit('near', CLOSE, 0, 200),
+	sunward: orbit('near', CLOSE, 180, 200),
+	edge: orbit('near', CLOSE, EDGE),
 	orphan: orbit('nothing', 1, 0),
 	loop: orbit('loop', 1, 0)
 };
@@ -91,5 +99,27 @@ describe('subsolarPoint', () => {
 
 	it('is null for the Sun', async () => {
 		expect(await subsolarPoint('naif-10', DATE)).toBeNull();
+	});
+});
+
+describe('sunlight', () => {
+	it('is 1 for a body with nothing between it and the Sun', async () => {
+		expect(await sunlight('near', DATE)).toBe(1);
+		expect(await sunlight('sunward', DATE)).toBe(1);
+		expect(await sunlight('moon', DATE)).toBe(1);
+	});
+
+	it('is 0 in the shadow of the body it orbits', async () => {
+		expect(await sunlight('shaded', DATE)).toBe(0);
+	});
+
+	it('is a half for a point on the edge of that shadow', async () => {
+		expect(await sunlight('edge', DATE)).toBeCloseTo(0.5, 2);
+	});
+
+	it('is null for the Sun, and for a body that is nowhere', async () => {
+		expect(await sunlight('naif-10', DATE)).toBeNull();
+		expect(await sunlight('unknown', DATE)).toBeNull();
+		expect(await sunlight('orphan', DATE)).toBeNull();
 	});
 });

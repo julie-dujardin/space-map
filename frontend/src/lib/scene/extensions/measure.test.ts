@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AU_SCALE } from '$lib/math/units';
-import { anchorDistanceKm, anchorOffsetKm, subsolarPoint } from './measure';
+import { anchorDistanceKm, anchorOffsetKm, subsolarPoint, sunlightAt, type Ball } from './measure';
 import { resolveAnchor } from './anchor';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { PositionedBody } from '$lib/types/objects';
@@ -147,5 +147,65 @@ describe('subsolarPoint', () => {
 		const ctx = fakeCtx({ 'naif-10': { position: [0, 0, 0] }, rock: { position: [1, 0, 0] } });
 		expect(subsolarPoint('naif-10', ctx, JD)).toBeNull();
 		expect(subsolarPoint('gone', ctx, JD)).toBeNull();
+	});
+});
+
+describe('sunlightAt', () => {
+	/** Enceladus, 238 000 km from Saturn, with the Sun along +x. */
+	const SUN: Ball = { centre: [1.4e9, 0, 0], radiusKm: 695700 };
+	const MOON_KM = 250;
+	const saturn = (ahead: number, aside: number): Ball => ({
+		centre: [ahead, aside, 0],
+		radiusKm: 60000
+	});
+
+	it('is 1 when nothing is between the body and the Sun', () => {
+		expect(sunlightAt(MOON_KM, SUN, [])).toBe(1);
+		expect(sunlightAt(MOON_KM, SUN, [saturn(-238000, 0)])).toBe(1);
+		expect(sunlightAt(MOON_KM, SUN, [saturn(0, 238000)])).toBe(1);
+		expect(sunlightAt(MOON_KM, SUN, [saturn(238000, 61000)])).toBe(1);
+	});
+
+	it('is 0 when all of the body is in the umbra', () => {
+		expect(sunlightAt(MOON_KM, SUN, [saturn(238000, 0)])).toBe(0);
+		expect(sunlightAt(MOON_KM, SUN, [saturn(238000, 59000)])).toBe(0);
+	});
+
+	it('is a half when the edge of the shadow is on the centre of the body', () => {
+		expect(sunlightAt(MOON_KM, SUN, [saturn(238000, 60000)])).toBeCloseTo(0.5, 2);
+	});
+
+	it('counts each point by the area it shows to the Sun', () => {
+		// A Sun this small gives a sharp edge. Half a radius from the centre, the
+		// edge cuts 19.6% off a disc.
+		const small = { ...SUN, radiusKm: 7000 };
+		const cut = (Math.acos(0.5) - 0.5 * Math.sqrt(0.75)) / Math.PI;
+		const lit = sunlightAt(MOON_KM, small, [saturn(238000, 60000 + MOON_KM / 2)]);
+		const dark = sunlightAt(MOON_KM, small, [saturn(238000, 60000 - MOON_KM / 2)]);
+		expect(Math.abs(lit - (1 - cut))).toBeLessThan(0.005);
+		expect(Math.abs(dark - cut)).toBeLessThan(0.005);
+	});
+
+	it('is a little less than 1 under the shadow of a small moon', () => {
+		const titan: Ball = { centre: [1.2e6, 0, 0], radiusKm: 2575 };
+		const lit = sunlightAt(60000, SUN, [titan]);
+		expect(lit).toBeLessThan(1);
+		expect(lit).toBeGreaterThan(0.99);
+	});
+
+	it('multiplies the shadows of two bodies', () => {
+		const one = sunlightAt(MOON_KM, SUN, [saturn(238000, 60000)]);
+		const two = sunlightAt(MOON_KM, SUN, [saturn(238000, 60000), saturn(238000, -60000)]);
+		expect(two).toBeLessThan(one * one + 0.01);
+		expect(two).toBeGreaterThan(0);
+	});
+
+	it('takes a body with no size as one point', () => {
+		expect(sunlightAt(0, SUN, [saturn(238000, 59500)])).toBe(0);
+		expect(sunlightAt(0, SUN, [saturn(238000, 60500)])).toBe(1);
+	});
+
+	it('is 1 when the Sun has no size to hide', () => {
+		expect(sunlightAt(MOON_KM, { ...SUN, radiusKm: NaN }, [saturn(238000, 0)])).toBe(1);
 	});
 });

@@ -1,7 +1,8 @@
 /**
  * The measures of a map, without a map. They give the distance between two
- * places and the place on a body where the Sun is overhead. Each reads the
- * export for its date and resolves with the answer.
+ * places, the place on a body where the Sun is overhead, and the sunlight
+ * that reaches a body. Each reads the export for its date and resolves with
+ * the answer.
  *
  * Planets, moons and small bodies are placed as the map places them.
  * Spacecraft are not placed. A satellite of Earth is placed only near the
@@ -34,7 +35,7 @@ import { dateToJD, J2000_JD } from '$lib/time/jd';
 import type { BodyData } from '$lib/types/objects';
 import { placeAnchor, type Anchor, type AnchorBody, type OffsetKm } from './anchor';
 import { sceneToEcliptic } from './camera';
-import { subsolarAt } from './measure';
+import { subsolarAt, sunlightAt, type Ball } from './measure';
 
 /** The export, opened at one date. */
 interface Reading {
@@ -53,6 +54,9 @@ interface Offset {
 interface Placed {
 	data: AnchorBody['data'];
 	centre: Vec3;
+	/** The bodies it orbits, nearest first, without the barycentre of the
+	 *  Solar System. */
+	parents: string[];
 }
 
 let chebyshev: ChebyshevStore | null = null;
@@ -144,11 +148,26 @@ async function place(
 	if (above.has(id)) return null;
 	const own = await locate(id, at);
 	if (!own) return null;
-	if (own.parentId === SSB_ID) return { data: own.data, centre: own.offset };
+	if (own.parentId === SSB_ID) return { data: own.data, centre: own.offset, parents: [] };
 	const parent = await place(own.parentId, at, new Set(above).add(id));
 	if (!parent) return null;
 	const [x, y, z] = parent.centre;
-	return { data: own.data, centre: [x + own.offset[0], y + own.offset[1], z + own.offset[2]] };
+	return {
+		data: own.data,
+		centre: [x + own.offset[0], y + own.offset[1], z + own.offset[2]],
+		parents: [own.parentId, ...parent.parents]
+	};
+}
+
+/** The bodies whose shadow can be on `id`. They are the bodies it orbits, and
+ *  the bodies of the ephemeris that orbit the same ones. */
+function neighbours(id: string, { parents }: Placed, at: Reading): string[] {
+	const ids = new Set(parents);
+	for (const { body } of at.chebyshev?.bodiesAt(at.jd) ?? []) {
+		if (parents.includes(`naif-${body.parentId}`)) ids.add(body.id);
+	}
+	ids.delete(id);
+	return [...ids];
 }
 
 /** How `id` spins, as the map reads it. */
@@ -204,5 +223,40 @@ export function subsolarPoint(id: string, date: Date): Promise<LonLat | null> {
 		const sun = body && (await place(SUN_ID, at));
 		if (!body || !sun) return null;
 		return subsolarAt({ data: body.data, ...(await spinOf(id)) }, body.centre, sun.centre, at.jd);
+	});
+}
+
+/**
+ * The part of the light of the Sun that reaches `id` at `date`, from 0 to 1.
+ * It is 1 in full sunlight and 0 when all of the body is in the shadow of
+ * another. Between the two, a part of its sunlit face is in shadow.
+ *
+ * Only the bodies of its own system can be in the way. These are the body it
+ * orbits, and the planet and the moons that orbit the same body. Each is a
+ * ball of the radius the map draws it with. The value is a mean over 1024
+ * points of the sunlit face. Null and rejection are those of
+ * {@link subsolarPoint}.
+ */
+export function sunlight(id: string, date: Date): Promise<number | null> {
+	return inTurn(async () => {
+		if (id === SUN_ID) return null;
+		const at = await open(date);
+		const body = await place(id, at);
+		const sun = body && (await place(SUN_ID, at));
+		if (!body || !sun) return null;
+		const ball = ({ data, centre }: Placed): Ball => ({
+			centre: sceneToEcliptic([
+				centre[0] - body.centre[0],
+				centre[1] - body.centre[1],
+				centre[2] - body.centre[2]
+			]),
+			radiusKm: data.radiusKm
+		});
+		const occluders: Ball[] = [];
+		for (const other of neighbours(id, body, at)) {
+			const placed = await place(other, at);
+			if (placed && placed.data.radiusKm > 0) occluders.push(ball(placed));
+		}
+		return sunlightAt(body.data.radiusKm > 0 ? body.data.radiusKm : 0, ball(sun), occluders);
 	});
 }

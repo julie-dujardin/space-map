@@ -184,6 +184,26 @@ moons and small bodies as the map does. Spacecraft are not placed, and a
 satellite of Earth only near the present: those need the map. A failed
 download rejects.
 
+`sunlight` is a fourth, with no map form. It says how much of the Sun's light
+reaches a body, which is how to know that the map will draw it in eclipse:
+
+```js
+import { sunlight } from 'spacemap';
+
+// Enceladus goes into the shadow of Saturn.
+await sunlight('naif-602', new Date('2026-10-08T04:19:00Z')); // 1
+await sunlight('naif-602', new Date('2026-10-08T04:20:00Z')); // 0.6
+await sunlight('naif-602', new Date('2026-10-08T04:21:00Z')); // 0
+```
+
+It is 1 in full sunlight and 0 when the whole body is in the shadow of another;
+between the two, that share of its sunlit face is lit. The bodies of its own
+system are what can be in the way: the body it orbits, and the planet and moons
+that orbit the same body. Each is a ball of the radius the map draws it with,
+and the shadow is the one the map shades with. The answer is a mean over 1024
+points of the sunlit face, so a shadow smaller than a thousandth of that face
+can be missed: a small moon's on its planet, say.
+
 ### Drawing on it
 
 Everything you draw is put somewhere by an **anchor**, and the anchor is what

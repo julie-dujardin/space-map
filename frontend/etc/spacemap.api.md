@@ -1459,6 +1459,9 @@ export interface SpaceMapOptions {
 export function subsolarPoint(id: string, date: Date): Promise<LonLat | null>;
 
 // @public
+export function sunlight(id: string, date: Date): Promise<number | null>;
+
+// @public
 export interface SurfaceAnchor {
 	altitudeKm?: number;
 	// (undocumented)

@@ -182,13 +182,41 @@ export function cullOccludersFor(
 }
 
 /**
- * CPU port of {@link ECLIPSE_FACTOR_GLSL}. Reads the same `SHARED` uniforms
- * the shader does, so call after `updateEclipseUniforms`. Used for the
- * spacecraft 3D-model overlay, which lives in a parallel scene the
- * per-fragment shader can't reach — a single ray from the body's center
- * suffices since the penumbra is uniform at spacecraft scale.
+ * The part of the disc of the Sun that one occluder leaves in view, from 0 to
+ * 1. `aSun` and `aOc` are the angular radii of the Sun and of the occluder.
+ * `sep` is the angle between their centres.
  *
- * Any change to the GLSL formula MUST be mirrored here; `eclipse-shadow.test.ts` is the contract.
+ * CPU port of one pass of the loop in {@link ECLIPSE_FACTOR_GLSL}. A change to
+ * one must be made in the other. `eclipse-shadow.test.ts` is the contract.
+ */
+export function sunInView(aSun: number, aOc: number, sep: number): number {
+	if (aOc > 10 * aSun) {
+		const t = (aOc - sep) / aSun;
+		if (t >= 1) return 0;
+		if (t <= -1) return 1;
+		return 1 - (Math.acos(-t) + t * Math.sqrt(Math.max(1 - t * t, 0))) / Math.PI;
+	}
+
+	if (sep >= aSun + aOc) return 1;
+	if (sep + aSun <= aOc) return 0;
+	if (sep + aOc <= aSun) return 1 - (aOc * aOc) / (aSun * aSun);
+	const a = aSun;
+	const b = aOc;
+	const c = sep;
+	const x = (c * c + a * a - b * b) / (2 * c);
+	const y = Math.sqrt(Math.max(a * a - x * x, 0));
+	const A =
+		a * a * Math.acos(Math.max(-1, Math.min(1, x / a))) +
+		b * b * Math.acos(Math.max(-1, Math.min(1, (c - x) / b))) -
+		c * y;
+	return 1 - A / (Math.PI * a * a);
+}
+
+/**
+ * {@link sunInView} for every occluder of the scene, at one point. It reads
+ * the `SHARED` uniforms, so call it after `updateEclipseUniforms`. The
+ * spacecraft 3D-model overlay uses it. The fragment shader cannot reach that
+ * scene, and one ray from the centre of the craft is sufficient.
  */
 export function evaluateEclipseFactor(receiverPos: Vector3, selfPos: Vector3): number {
 	const aSun = SHARED.uSunAngularRadius.value;
@@ -212,33 +240,8 @@ export function evaluateEclipseFactor(receiverPos: Vector3, selfPos: Vector3): n
 		if (dOc < 1e-5) continue;
 		const aOc = Math.asin(Math.min(r / dOc, 1));
 		const cosSep = Math.max(-1, Math.min(1, (sunDir.x * tx + sunDir.y * ty + sunDir.z * tz) / dOc));
-		const sep = Math.acos(cosSep);
-
-		if (aOc > 10 * aSun) {
-			const t = (aOc - sep) / aSun;
-			if (t >= 1) return 0;
-			if (t <= -1) continue;
-			const covered = (Math.acos(-t) + t * Math.sqrt(Math.max(1 - t * t, 0))) / Math.PI;
-			result *= 1 - covered;
-			continue;
-		}
-
-		if (sep >= aSun + aOc) continue;
-		if (sep + aSun <= aOc) return 0;
-		if (sep + aOc <= aSun) {
-			result *= 1 - (aOc * aOc) / (aSun * aSun);
-			continue;
-		}
-		const a = aSun;
-		const b = aOc;
-		const c = sep;
-		const x = (c * c + a * a - b * b) / (2 * c);
-		const y = Math.sqrt(Math.max(a * a - x * x, 0));
-		const A =
-			a * a * Math.acos(Math.max(-1, Math.min(1, x / a))) +
-			b * b * Math.acos(Math.max(-1, Math.min(1, (c - x) / b))) -
-			c * y;
-		result *= 1 - A / (Math.PI * a * a);
+		result *= sunInView(aSun, aOc, Math.acos(cosSep));
+		if (result === 0) return 0;
 	}
 	return result;
 }
