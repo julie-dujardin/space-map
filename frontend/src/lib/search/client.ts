@@ -106,33 +106,73 @@ function warnOnce(reason: string) {
 	console.warn(`[search] unavailable: ${reason}`);
 }
 
+/** Gives a short-lived key. */
+const KEY_ENDPOINT = '/api/search-key';
+/** A key is dropped this long before it expires. */
+const KEY_MARGIN_MS = 60_000;
+/** No new request for this long after a failed one. A typed query calls for a
+ *  key at each letter. */
+const KEY_RETRY_MS = 30_000;
+
+let minted: { key: string; until: number } | null = null;
+let minting: Promise<string> | null = null;
+let mintFailedAt = -Infinity;
+
+async function mint(): Promise<string> {
+	const res = await fetch(KEY_ENDPOINT, { method: 'POST' });
+	if (!res.ok) throw new Error(`${KEY_ENDPOINT} answered ${res.status}`);
+	const { key, ttl } = (await res.json()) as { key: string; ttl: number };
+	minted = { key, until: Date.now() + ttl * 1000 - KEY_MARGIN_MS };
+	return key;
+}
+
+/** `PUBLIC_MEILI_SEARCH_KEY` when the deployment has one, else a key from the endpoint. */
+function searchKey(): string | Promise<string> {
+	if (env.PUBLIC_MEILI_SEARCH_KEY) return env.PUBLIC_MEILI_SEARCH_KEY;
+	if (minted && Date.now() < minted.until) return minted.key;
+	// Checked here, outside the request: a call during the hold must not restart it.
+	if (!minting && Date.now() - mintFailedAt < KEY_RETRY_MS) {
+		return Promise.reject(new Error('search key: retry is on hold'));
+	}
+	minting ??= mint()
+		.catch((e) => {
+			mintFailedAt = Date.now();
+			warnOnce(String(e));
+			throw e;
+		})
+		.finally(() => (minting = null));
+	return minting;
+}
+
 // The Meilisearch SDK (~40 kB gzip) is dynamically imported so it splits out of
 // the main map chunk — it only loads once the user actually searches.
-let client: Meilisearch | null = null;
+let client: { key: string; meili: Meilisearch } | null = null;
+let probed = false;
 async function getClient(): Promise<Meilisearch | null> {
 	if (!isSearchEnabled()) return null;
-	if (!client) {
+	const apiKey = await searchKey();
+	if (client?.key !== apiKey) {
 		const { Meilisearch } = await import('meilisearch');
-		client = new Meilisearch({
-			host: env.PUBLIC_MEILI_URL,
-			apiKey: env.PUBLIC_MEILI_SEARCH_KEY
-		});
+		client = { key: apiKey, meili: new Meilisearch({ host: env.PUBLIC_MEILI_URL, apiKey }) };
+	}
+	if (!probed) {
+		probed = true;
 		// One unawaited probe on first use. Covers what the env check can't:
 		// unreachable host, CORS rejection, revoked key, missing index.
-		client
+		client.meili
 			.index(INDEX)
 			.search('', { limit: 0 })
 			.catch((e) => warnOnce(`${env.PUBLIC_MEILI_URL} unreachable — ${e}`));
 	}
-	return client;
+	return client.meili;
 }
 
 /** Enablement is a pure env check — no client instantiation, so callers stay
  *  synchronous and the SDK isn't pulled in just to render the disabled state. */
 export function isSearchEnabled(): boolean {
-	const enabled = Boolean(env.PUBLIC_MEILI_URL && env.PUBLIC_MEILI_SEARCH_KEY);
+	const enabled = Boolean(env.PUBLIC_MEILI_URL);
 	// Runtime vars, so a build that passed CI still ships search dark.
-	if (!enabled) warnOnce('PUBLIC_MEILI_URL / PUBLIC_MEILI_SEARCH_KEY are unset');
+	if (!enabled) warnOnce('PUBLIC_MEILI_URL is unset');
 	return enabled;
 }
 
