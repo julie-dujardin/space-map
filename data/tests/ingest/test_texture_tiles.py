@@ -397,6 +397,21 @@ class TestMosaic:
         with pytest.raises(FileNotFoundError):
             mosaic.read(1, 3, 2, 8)
 
+    def test_only_the_last_files_read_stay_mapped(self, tmp_path, monkeypatch):
+        """Every file of Mars' mosaic held mapped outgrows the build's memory
+        in page tables alone."""
+        monkeypatch.setattr(tiles, "_MOSAIC_OPEN", 2)
+        whole = np.arange(4 * 24, dtype=np.float32).reshape(4, 24) + 1
+        paths = [tmp_path / f"{i}.IMG" for i in range(4)]
+        for i, path in enumerate(paths):
+            _write_pds_image(path, whole[:, i * 6 : (i + 1) * 6])
+        mosaic = tiles.Mosaic([paths])
+        assert np.array_equal(mosaic.read(0, 4, 0, 24), whole)
+        assert list(mosaic._mapped) == [(0, 2), (0, 3)]
+        # A file that was let go is mapped again when a read comes back to it.
+        assert np.array_equal(mosaic.read(1, 3, 2, 9), whole[1:3, 2:9])
+        assert list(mosaic._mapped) == [(0, 0), (0, 1)]
+
     def test_tiles_of_different_sizes_are_refused(self):
         with pytest.raises(ValueError):
             tiles.Mosaic([[np.zeros((4, 6)), np.zeros((4, 5))]])

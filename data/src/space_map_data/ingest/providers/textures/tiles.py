@@ -25,6 +25,7 @@ import math
 import os
 import shutil
 import threading
+from collections import OrderedDict
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -192,17 +193,29 @@ class Source(Protocol):
         ...
 
 
+# Files a mosaic keeps mapped. The page tables of a mapping stay until it is
+# unmapped, at 1/512 of the bytes read through it: Mars' 8.9 TB of quads held
+# mapped is 17 GB of them.
+_MOSAIC_OPEN = 256
+
+
 class Mosaic:
     """Adjoining rasters of one size, read as a single array: rows north to
     south, each row west to east.
 
-    A cell given as a path is opened when a read first touches it, so a mosaic
-    of thousands of files only maps the few under the window.
+    A cell given as a path is mapped when a read touches it and let go once
+    enough others were read since, so a mosaic of thousands of files only maps
+    the few under the window.
     """
 
     def __init__(self, grid: Sequence[Sequence[np.ndarray | Path]]) -> None:
         self._grid = [list(row) for row in grid]
-        self._tile_h, self._tile_w = self._tile(0, 0).shape
+        self._mapped: OrderedDict[tuple[int, int], np.ndarray] = OrderedDict()
+        self._lock = threading.Lock()
+        first = self._grid[0][0]
+        if isinstance(first, Path):
+            first = _open_grey(first)
+        self._tile_h, self._tile_w = first.shape
         for row in self._grid:
             for cell in row:
                 if isinstance(cell, np.ndarray):
@@ -215,11 +228,19 @@ class Mosaic:
 
     def _tile(self, row: int, col: int) -> np.ndarray:
         cell = self._grid[row][col]
-        if isinstance(cell, Path):
-            cell = self._grid[row][col] = _open_grey(cell)
-            if (row, col) != (0, 0):
-                self._check(cell)
-        return cell
+        if isinstance(cell, np.ndarray):
+            return cell
+        with self._lock:
+            tile = self._mapped.get((row, col))
+            if tile is None:
+                tile = self._mapped[row, col] = _open_grey(cell)
+                self._check(tile)
+                if len(self._mapped) > _MOSAIC_OPEN:
+                    # A read that still holds the oldest keeps it mapped.
+                    self._mapped.popitem(last=False)
+            else:
+                self._mapped.move_to_end((row, col))
+        return tile
 
     def read(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         th, tw = self._tile_h, self._tile_w
