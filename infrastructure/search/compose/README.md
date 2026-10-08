@@ -9,7 +9,8 @@ Cloudflare tunnel (which also terminates TLS) → `caddy:80`.
 
 The page holds no lasting key. The frontend's Worker keeps the search-only key
 and signs a tenant token with it at `/api/search-key`, good for one hour, which
-Meili checks by itself.
+Meili checks by itself. The Worker can ask for [proof of a person](#proof-of-a-person)
+first.
 
 Admin (settings, keys, indexing) is Meili directly on `:9751`, protected by the
 master key. It binds to `127.0.0.1`, forward it with:
@@ -38,10 +39,49 @@ then use `MEILI_URL=http://127.0.0.1:9751` while the session is open.
    `MEILI_SEARCH_KEY_UID` of the frontend's Worker, set in the Cloudflare
    dashboard beside `PUBLIC_MEILI_URL`. `PUBLIC_MEILI_SEARCH_KEY` stays unset:
    a page that has it searches with it and asks the Worker for nothing.
+5. Create a Turnstile widget (Turnstile > Add widget) in Managed mode, for the
+   hostname the site is served from, with pre-clearance left off. Its secret
+   key is the Worker's `TURNSTILE_SECRET`. Leave `TURNSTILE_REQUIRE` unset
+   until the logs show proofs that hold, then set it to `search`.
+6. Add a rate limiting rule (the zone > Security > WAF > Rate limiting rules)
+   on `http.host eq "<the site's hostname>" and http.request.uri.path eq "/api/search-key"`:
+   20 requests per 10 seconds per IP, block. A proof guards the key, not the
+   asking for one; this does. A page load asks once at most.
+
 A deployment that gave its pages `PUBLIC_MEILI_SEARCH_KEY` has one more step:
 delete that key in Meili (`DELETE /keys/<uid>`, with the master key) once the
 new build is live. Whoever holds it can search with it until then. A tab
 still on the old build loses search until it reloads.
+
+## Proof of a person
+
+With `TURNSTILE_SECRET` set, `/api/search-key` checks the `proof` of a request
+with Cloudflare: a Turnstile token. `TURNSTILE_REQUIRE` says whether a
+request without one that holds is refused, `403`:
+
+| `TURNSTILE_REQUIRE` | a key request |
+| --- | --- |
+| unset | checked and logged |
+| `search` | required |
+
+- A token is good once and a key for an hour: an hour of search costs a
+  challenge.
+- A proof that cannot be checked gets its key: Cloudflare not answering in
+  three seconds is logged as an error and costs the check, not search. No
+  proof at all is never that.
+- A secret Cloudflare does not know is not that either. With proof required,
+  a request that brings a token gets a `503` and search stops, where passing
+  for an outage would let every made-up token in. With nothing required it is
+  logged as an error and refuses nobody.
+- `TURNSTILE_REQUIRE` without `TURNSTILE_SECRET` is a `503` for every request:
+  giving keys would leave open a door the settings say is shut.
+- Every key given or refused without a proof that held is logged, `no proof of
+  a person`, with why: what to read before requiring it.
+- Without `TURNSTILE_SECRET` nobody is asked.
+
+Cloudflare's [test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)
+work on localhost: `1x0000000000000000000000000000000AA` as the secret passes
+every token, `2x0000000000000000000000000000000AA` none.
 
 ## Indexing
 
