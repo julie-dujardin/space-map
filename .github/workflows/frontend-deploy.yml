@@ -72,6 +72,8 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: frontend
+          # Before 4.42.1, a version upload drops the dashboard variables.
+          wranglerVersion: '4.148.0'
           command: ${{ github.event_name == 'pull_request' && 'versions upload' || 'deploy' }}
 
       - name: Verify deployment
