@@ -132,7 +132,8 @@ export function parseSearchSuffix(params: URLSearchParams): SearchUrlState | nul
 
 			const key = TOKEN_TO_KEY.get(name);
 			if (!key) continue;
-			const vals = rawVal.split(',').map(decodeURIComponent).filter(Boolean);
+			// `params` decoded them: a second pass throws on a `%`.
+			const vals = rawVal.split(',').filter(Boolean);
 			if (vals.length) filters[key] = vals;
 		}
 	}

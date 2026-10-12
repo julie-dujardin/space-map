@@ -40,6 +40,11 @@ describe('serializeSearchSuffix', () => {
 });
 
 describe('parseSearchSuffix', () => {
+	it('reads a `%` in a value as it is', () => {
+		const state = parseSearchSuffix(new URLSearchParams('f=type:%25,moon'));
+		expect(state?.filters.type).toEqual(['%', 'moon']);
+	});
+
 	it('returns null when no search is encoded', () => {
 		expect(parseSearchSuffix(new URLSearchParams(''))).toBeNull();
 		expect(parseSearchSuffix(new URLSearchParams('at=now,1,2,3'))).toBeNull();
