@@ -122,7 +122,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusHref } from '$lib/state/focus-link';
-	import { bodyHref } from '$lib/state/url';
+	import { bodyHref } from '$lib/state/page-href';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { createScrub, DRAG_SLOP, SWIPE_PX } from '$lib/charts/scrub';
 	import { formatKm } from '$lib/format/distance';

@@ -1,30 +1,26 @@
 import { error } from '@sveltejs/kit';
 import { browser } from '$app/environment';
-import { FEATURE_ROUTE_TYPES, urlTypeToIdPrefix } from '$lib/state/view';
-import { loadFeatureSeo, minimalSeo } from '$lib/seo/meta';
+import { featureHref } from '$lib/state/page-href';
+import { featureIdOfRoute, objectIdOfRoute } from '$lib/state/view';
+import { catalogueSeo, loadFeatureSeo } from '$lib/seo/meta';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ params, url }) => {
-	// Features hang off a body — 404 any non-body type segment.
-	if (!FEATURE_ROUTE_TYPES.has(params.type)) {
-		error(404, `Unknown type segment "${params.type}"`);
-	}
+	// Features hang off a body: 404 a group or any other type segment.
+	const bodyId = objectIdOfRoute(params.type, params.id);
+	if (bodyId === null) error(404, `Unknown body "/${params.type}/${params.id}"`);
+	const featureId = featureIdOfRoute(params.featureId);
+	if (featureId === null) error(404, `Unknown feature id "${params.featureId}"`);
 
 	// Meta matters only for the server-rendered document; client navigations let
 	// MapPage own the head, so skip the fetch there.
 	if (browser) return { seo: null };
-	const name = params.name ? decodeURIComponent(params.name) : '';
-	const fallback = () => minimalSeo(name, url.origin, url.pathname);
 
-	const featureId = Number(params.featureId);
-	if (!Number.isFinite(featureId)) return { seo: fallback() };
-
-	const seo = await loadFeatureSeo(
-		`${urlTypeToIdPrefix(params.type)}-${params.id}`,
-		featureId,
-		name,
-		url.origin,
-		url.pathname
-	);
-	return { seo: seo ?? fallback() };
+	return {
+		seo: await catalogueSeo(
+			loadFeatureSeo(bodyId, featureId, url),
+			url,
+			featureHref(bodyId, featureId, '')
+		)
+	};
 };

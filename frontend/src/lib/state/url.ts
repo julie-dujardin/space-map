@@ -15,10 +15,13 @@ import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from '$l
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { SUN_VIEW_ZOOM } from '$lib/scene/framing';
 import { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd } from './nav-end';
+import { bodyHref, featureHref, groupHref } from './page-href';
 import {
 	DEFAULT_VIEW,
 	DRAWER_TABS,
 	UrlType,
+	featureIdOfRoute,
+	objectIdOfRoute,
 	urlTypeFromId,
 	urlTypeToIdPrefix,
 	type DrawerTab,
@@ -118,7 +121,8 @@ function withSlug(
 	return slug ? { ...place, siteSlug: slug, padCode: pad } : place;
 }
 
-/** Parse current page state → MapViewState, or null */
+/** Parse current page state → MapViewState, or null. The name segment is not
+ *  read: a view takes its name from the export. */
 export function parseUrl(): MapViewState | null {
 	// /nav has no type segment of its own, and both its ends are optional, so it
 	// is recognised by its route id rather than by which params happen to be set.
@@ -189,7 +193,6 @@ export function parseUrl(): MapViewState | null {
 			id: member ?? anchor.id,
 			zoom: member ? DEFAULT_VIEW.zoom : anchor.zoom,
 			framed: member === null, // the anchor zoom is deliberate framing, not a default
-			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
 			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
 			gallery: page.url.searchParams.get('gal'),
@@ -203,28 +206,24 @@ export function parseUrl(): MapViewState | null {
 		return applyAtParam(defaults);
 	}
 
-	const numericId = Number(idStr);
-	if (!Number.isFinite(numericId)) {
-		console.warn(`parseUrl: non-numeric id param: ${idStr}`);
+	const id = objectIdOfRoute(type, idStr);
+	if (id === null) {
+		console.warn(`parseUrl: no object at /${type}/${idStr}`);
 		return null;
 	}
-	const id = `${urlTypeToIdPrefix(type)}-${numericId}`;
-	const name = decodeURIComponent(page.params.name ?? '');
-
 	// Feature route /[type]/[id]/f/[featureId]/[[name]] surfaces featureId; the
 	// body route /[type]/[id]/[[name]] does not. Discriminate on its presence.
 	const featureIdStr = page.params.featureId;
 	if (featureIdStr !== undefined) {
-		const numericFeatureId = Number(featureIdStr);
-		if (!Number.isFinite(numericFeatureId)) {
-			console.warn(`parseUrl: non-numeric featureId param: ${featureIdStr}`);
+		const numericFeatureId = featureIdOfRoute(featureIdStr);
+		if (numericFeatureId === null) {
+			console.warn(`parseUrl: no feature id in "${featureIdStr}"`);
 			return null;
 		}
 		const defaults: MapViewState = {
 			...DEFAULT_VIEW,
 			type: UrlType.Feature,
 			id,
-			name,
 			featureId: numericFeatureId,
 			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
 			gallery: page.url.searchParams.get('gal'),
@@ -239,7 +238,6 @@ export function parseUrl(): MapViewState | null {
 		...DEFAULT_VIEW,
 		type,
 		id,
-		name,
 		imageIndex,
 		gallery: page.url.searchParams.get('gal'),
 		featureId: null,
@@ -481,28 +479,6 @@ export function applyFeature(
 	};
 }
 
-/** Query-less route path for a body id — used by scene labels as an `<a href>`
- *  so middle/⌘-click opens the body in a new tab. No `?at=` framing: a fresh
- *  open frames by the body's size, same as any unframed load. */
-export function bodyHref(id: string, name: string): string {
-	const type = urlTypeFromId(id);
-	const numericId = id.slice(`${urlTypeToIdPrefix(type)}-`.length);
-	return resolve('/[type]/[id]/[[name]]', {
-		type,
-		id: numericId,
-		name: name ? encodeURIComponent(name) : undefined
-	});
-}
-
-/** The same for a group: `/g/<slug>/<name>`, opening on the group's anchor. */
-export function groupHref(slug: string, name: string): string {
-	return resolve('/[type]/[id]/[[name]]', {
-		type: UrlType.Group,
-		id: slug,
-		name: name ? encodeURIComponent(name) : undefined
-	});
-}
-
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
  *  for bodies and groups (groups carry a slug in the id slot, and `&focus=`
  *  the member the camera is on when it is not the anchor), or
@@ -554,36 +530,18 @@ export function serializeUrl(state: MapViewState): string {
 	}
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {
-		const path = resolve('/[type]/[id]/[[name]]', {
-			type: state.type,
-			id: state.groupSlug,
-			name: state.name ? encodeURIComponent(state.name) : undefined
-		});
+		const path = groupHref(state.groupSlug, state.name);
 		// The path names the group; the member the camera is on rides the query.
 		const focus = state.id !== groupAnchor(state.groupSlug).id ? `&focus=${state.id}` : '';
 		return `${path}?at=${at}${focus}${img}${tab}${gal}${surface}${ring}${mp}`;
 	}
 
-	const bodyType = urlTypeFromId(state.id);
-	const prefix = `${urlTypeToIdPrefix(bodyType)}-`;
-	const numericId = state.id.slice(prefix.length);
-
 	if (state.type === UrlType.Feature && state.featureId !== null) {
-		const path = resolve('/[type]/[id]/f/[featureId]/[[name]]', {
-			type: bodyType,
-			id: numericId,
-			featureId: String(state.featureId),
-			name: state.name ? encodeURIComponent(state.name) : undefined
-		});
+		const path = featureHref(state.id, state.featureId, state.name);
 		// A feature's own pictures are its only shelf; the rest of the query
 		// block belongs to lists and drills it doesn't have.
 		return `${path}?at=${at}${img}${tab}${gal}`;
 	}
 
-	const path = resolve('/[type]/[id]/[[name]]', {
-		type: state.type,
-		id: numericId,
-		name: state.name ? encodeURIComponent(state.name) : undefined
-	});
-	return `${path}?at=${at}${img}${tab}${gal}${surface}${ring}${mp}`;
+	return `${bodyHref(state.id, state.name)}?at=${at}${img}${tab}${gal}${surface}${ring}${mp}`;
 }

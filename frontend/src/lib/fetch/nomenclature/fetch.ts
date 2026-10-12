@@ -9,6 +9,7 @@
 
 import { getLocale } from '$lib/host';
 import { versionedUrl } from '$lib/fetch/data-base';
+import { gunzip } from '$lib/fetch/gz';
 import { parseNomenclature, type NomenclatureRecord } from '$lib/fetch/nomenclature/parse';
 
 export interface NomenclatureFeature extends NomenclatureRecord {
@@ -24,22 +25,28 @@ async function fetchPositions(bodyId: string): Promise<NomenclatureRecord[]> {
 		if (res.status === 404) return [];
 		throw new Error(`fetchPositions: ${url} returned ${res.status} ${res.statusText}`);
 	}
-	const ds = new DecompressionStream('gzip');
-	const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
-	return parseNomenclature(buffer);
+	return parseNomenclature(await gunzip(res).arrayBuffer());
 }
 
-async function fetchLabels(bodyId: string, lang: string): Promise<string[]> {
+/** The label file of a body, as text; empty when it has none. */
+async function fetchLabelText(bodyId: string, lang: string): Promise<string> {
 	const url = versionedUrl(`/v1/nomenclature/labels/${lang}/${bodyId}.txt.gz`, 'nomenclature');
 	const res = await fetch(url);
 	if (!res.ok) {
-		if (res.status === 404) return [];
+		if (res.status === 404) return '';
 		throw new Error(`fetchNomenclatureLabels: ${url} returned ${res.status} ${res.statusText}`);
 	}
-	const ds = new DecompressionStream('gzip');
-	const text = await new Response(res.body!.pipeThrough(ds)).text();
+	return gunzip(res).text();
+}
+
+/** The records with their names: line i of the label file names record i. */
+export function nameFeatures(
+	records: NomenclatureRecord[],
+	labelText: string
+): NomenclatureFeature[] {
 	// "".split("\n") returns [""] (one empty line) — empty bodies stay empty.
-	return text === '' ? [] : text.split('\n');
+	const labels = labelText === '' ? [] : labelText.split('\n');
+	return records.map((rec, i) => ({ ...rec, name: labels[i] ?? `Feature ${rec.featureId}` }));
 }
 
 export function fetchBodyNomenclature(
@@ -52,12 +59,9 @@ export function fetchBodyNomenclature(
 		p = (async () => {
 			const [records, labels] = await Promise.all([
 				fetchPositions(bodyId),
-				fetchLabels(bodyId, lang)
+				fetchLabelText(bodyId, lang)
 			]);
-			return records.map((rec, i) => ({
-				...rec,
-				name: labels[i] ?? `Feature ${rec.featureId}`
-			}));
+			return nameFeatures(records, labels);
 		})();
 		cache.set(key, p);
 		// Evict on rejection so a transient failure doesn't leave the body's

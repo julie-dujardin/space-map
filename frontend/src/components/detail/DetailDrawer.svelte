@@ -66,11 +66,6 @@
 	import { MembersState } from './state/members-state.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 
-	// Module-scope dedupe so the "no name resolved" warning fires at most once
-	// per focusable across the session — survives drawer remounts and effect
-	// re-runs.
-	const nameMissingLogged = new Set<string>();
-
 	interface Props {
 		focusable: Focusable;
 		clock: SimClock;
@@ -204,20 +199,6 @@
 	);
 	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
 
-	// Push the resolved name into the URL/title. On permanent failure, log once
-	// per focusable and fall back to its key so the header isn't left empty.
-	$effect(() => {
-		// A failed load has no name to resolve — the alert panel speaks for it, and
-		// warning "no name resolved" here would just be misleading.
-		if (loading || load.loadError) return;
-		// Stable key — avoids re-firing (and ping-ponging via replaceFocusName) on view churn.
-		const key = focusableId;
-		if (!resolvedName && !nameMissingLogged.has(key)) {
-			nameMissingLogged.add(key);
-			console.warn(`No name resolved for ${key} after detail fetch; using id as fallback.`);
-		}
-		appState.replaceFocusName(resolvedName ?? key);
-	});
 	// Flip to minimize well before the maximize target distance, so fly-to
 	// overshoot can't strand the camera on the maximize side of an exact threshold.
 	let isMinimized = $derived(

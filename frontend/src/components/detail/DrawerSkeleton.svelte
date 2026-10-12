@@ -1,12 +1,12 @@
 <script lang="ts">
 	// The detail panel's frame, standing in until the drawer chunk and its
-	// payload arrive. A shared link names its object in the URL seconds before
-	// the scene has streamed that body in, and everything the panel displaces
-	// moves on the same signal — so the frame goes up at first paint and the
-	// real drawer lands in the space it already holds.
+	// payload arrive. A link's ids say which panel opens seconds before the
+	// scene has streamed that body in, and everything the panel displaces moves
+	// on the same signal: the frame goes up at first paint and the real drawer
+	// lands in the space it already holds.
 	//
-	// What the URL already settles is drawn for real, not greyed out: the title
-	// it names, and the two actions that need nothing but the page itself.
+	// What is known already is drawn for real, not greyed out: the name when
+	// the view has one, and the two actions that need nothing but the page.
 	import type { TransitionConfig } from 'svelte/transition';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -22,7 +22,7 @@
 		/** What the URL points at — it sets how many toolbar buttons the header
 		 *  row ends up carrying (see DetailDrawer's `drawerToolbar`). */
 		kind: 'body' | 'feature' | 'group';
-		/** The name the URL carries, empty until one is known. */
+		/** The subject's name, empty until it is known. */
 		title: string;
 		onClose: () => void;
 	}

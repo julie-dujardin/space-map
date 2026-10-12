@@ -34,7 +34,7 @@
 	import { frameMapQuaternion } from '$lib/math/orientation';
 	import { fetchMetadata } from '$lib/fetch/metadata';
 	import { versionedUrl } from '$lib/fetch/data-base';
-	import { bodyHref } from '$lib/state/url';
+	import { bodyHref } from '$lib/state/page-href';
 
 	interface IndexObject {
 		id: string;

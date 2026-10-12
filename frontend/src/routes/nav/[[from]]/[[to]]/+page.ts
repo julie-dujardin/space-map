@@ -17,5 +17,5 @@ export const load: PageLoad = async ({ params, url }) => {
 
 	// A trip has no indexable subject of its own — both ends already have pages,
 	// and the route count is the square of the catalogue. Minimal meta only.
-	return { seo: minimalSeo('', url.origin, url.pathname) };
+	return { seo: minimalSeo(url, url.pathname) };
 };

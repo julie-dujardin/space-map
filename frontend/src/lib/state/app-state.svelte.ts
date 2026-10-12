@@ -257,12 +257,8 @@ export class AppState {
 		this.pushNow();
 	}
 
-	/**
-	 * Update just the URL slug name for the currently focused object — used
-	 * when the localized display name resolves *after* the click (drawer
-	 * detail fetch) and we want the URL/title to catch up without growing
-	 * history.
-	 */
+	/** Give the view the export's name for its subject, read after the view
+	 *  was set: the title and the URL catch up without growing history. */
 	replaceFocusName(name: string) {
 		if (this.view.name === name) return;
 		this.view = { ...this.view, name };

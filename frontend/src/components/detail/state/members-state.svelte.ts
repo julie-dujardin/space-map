@@ -15,7 +15,7 @@ import type { CategoryConfig } from '$lib/state/category-config';
 import { groupHref, tabHref } from '$lib/state/focus-link';
 import { targetVisits, type TargetVisit } from '$lib/probes/target-list';
 import * as m from '$lib/paraglide/messages.js';
-import { systemTitle } from '../charts/planetary-system.svelte';
+import { systemTitle } from '$lib/state/page-name';
 
 /** A planetary system's member is labelled by its primary; the page reads it
  *  as "<primary> system", the name its own page carries. Built over every

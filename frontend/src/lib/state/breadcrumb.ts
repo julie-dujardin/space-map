@@ -7,8 +7,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
-import { SSB_ID } from '$lib/constants';
+import { SSB_ID, dominantPlanetId } from '$lib/constants';
 import {
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,

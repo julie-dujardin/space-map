@@ -57,6 +57,13 @@ export const SUN_ID = 'naif-10';
 export const EARTH_ID = 'naif-399';
 export const SSB_ID = 'naif-0';
 
+/** Barycenter → dominant planet id (`naif-{X}` → `naif-{X}99`, SPICE convention),
+ *  or null if `id` isn't a barycenter. Barycenters carry no name/frame of their own. */
+export function dominantPlanetId(id: string): string | null {
+	const m = /^naif-([1-9])$/.exec(id);
+	return m ? `naif-${m[1]}99` : null;
+}
+
 /**
  * Bodies whose reported radius bounds a gas envelope or plasma (the Sun's
  * photosphere, the giant planets' cloud tops) rather than a solid surface.

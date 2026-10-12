@@ -2,18 +2,11 @@ import { ObjectType, isAsteroid, type BodyData, type PositionedBody } from '$lib
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { MinorBucket } from '$lib/fetch/position/minor-columns';
 import type { LabelMap } from '$lib/fetch/position/labels';
-import { EARTH_ID, SSB_ID, SUN_ID } from '$lib/constants';
+import { EARTH_ID, SSB_ID, SUN_ID, dominantPlanetId } from '$lib/constants';
 
 /** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
 export function isTopLevelParent(parentId: string): boolean {
 	return parentId === SSB_ID || parentId === SUN_ID;
-}
-
-/** Barycenter → dominant planet id (`naif-{X}` → `naif-{X}99`, SPICE convention),
- *  or null if `id` isn't a barycenter. Barycenters carry no name/frame of their own. */
-export function dominantPlanetId(id: string): string | null {
-	const m = /^naif-([1-9])$/.exec(id);
-	return m ? `naif-${m[1]}99` : null;
 }
 
 /** The body whose halo a barycenter's would sit on top of when the two are

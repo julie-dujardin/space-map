@@ -11,9 +11,17 @@
  * `[type]/[id]` route, and event.fetch dispatches it to the router (returning
  * HTML) instead of the vite proxy. A real network request to the origin hits
  * the proxy in dev and the CDN in prod.
+ *
+ * Nothing here comes from the name in the request path: a subject the export
+ * does not hold is a 404, and its name is the export's, in the language of the
+ * request. The canonical link is built from that name too, so a made-up URL
+ * cannot put its own words on this site.
  */
 
+import { error } from '@sveltejs/kit';
 import * as m from '$lib/paraglide/messages.js';
+import { dominantPlanetId } from '$lib/constants';
+import { getLocale } from '$lib/host';
 import { dataBase, imagesBase } from '$lib/fetch/data-base';
 import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/objects/images';
 import {
@@ -39,6 +47,11 @@ import {
 	type FeatureGlobalData,
 	type FeatureLocalizedData
 } from '$lib/fetch/nomenclature/details';
+import { nameFeatures } from '$lib/fetch/nomenclature/fetch';
+import { parseNomenclature } from '$lib/fetch/nomenclature/parse';
+import { gunzip, gunzipJson } from '$lib/fetch/gz';
+import { bodyHref, featureHref, groupHref } from '$lib/state/page-href';
+import { groupPageName, objectPageName } from '$lib/state/page-name';
 
 /** Localized shapes share this description source (object + group bundles).
  *  `description` is the CC0 Wikidata short description — the Wikipedia extract
@@ -55,25 +68,55 @@ export interface SeoMeta {
 	ogType: 'website' | 'article';
 }
 
-// English is the SSR default: it's the right baseline for search/social, and
-// there's no server-side locale context (no hooks.server.ts) to key off yet.
-const SSR_LANG = 'en';
-
 // OG images want ~1200px; prefer the medium bucket, fall back either way.
 const OG_LABELS = ['m', 'xl', 's'] as const;
 
 const DESCRIPTION_MAX = 200;
 
-async function fetchJsonGz(url: string): Promise<Record<string, unknown> | null> {
-	const res = await fetch(url);
-	if (!res.ok) return null;
-	const ds = new DecompressionStream('gzip');
-	return (await new Response(res.body!.pipeThrough(ds)).json()) as Record<string, unknown>;
+/** Longest wait for all the files of one page: a slow origin costs the page
+ *  its meta, not its response. */
+const LOOKUP_TIMEOUT_MS = 5_000;
+
+/** The export as one page lookup reads it. */
+interface SeoExport {
+	/** The request the lookup is for. */
+	url: URL;
+	/** Absolute root of the data. */
+	base: string;
+	meta: BundleMetadata;
+	/** Language of the request, as `hooks.server.ts` resolved it. A crawler
+	 *  that states none reads English. */
+	lang: string;
+	/** Ends every fetch of the lookup at its one deadline. */
+	signal: AbortSignal;
+}
+
+/** One file of the export. Null when the export does not have it; throws when
+ *  it cannot be read, which says nothing about what the export holds. */
+async function fetchExport(url: string, signal: AbortSignal): Promise<Response | null> {
+	const res = await fetch(url, { signal });
+	if (res.status === 404) return null;
+	if (!res.ok) throw new Error(`${url} returned ${res.status} ${res.statusText}`);
+	return res;
 }
 
 /** Absolute for a cross-origin CDN base; else resolved against the request. */
 function absolutize(url: string, origin: string): string {
 	return /^https?:\/\//i.test(url) ? url : `${origin}${url}`;
+}
+
+/** The absolute address of an app path. On the server, `$app/paths` gives a
+ *  path relative to the request. */
+function absoluteHref(href: string, url: URL): string {
+	return new URL(href, url).href;
+}
+
+async function openExport(url: URL): Promise<SeoExport> {
+	const signal = AbortSignal.timeout(LOOKUP_TIMEOUT_MS);
+	const base = absolutize(dataBase(), url.origin);
+	const res = await fetchExport(`${base}/v1/metadata.json`, signal);
+	if (!res) throw new Error(`${base}/v1/metadata.json is missing`);
+	return { url, base, meta: (await res.json()) as BundleMetadata, lang: getLocale(), signal };
 }
 
 function versioned(url: string, token: string | undefined): string {
@@ -92,11 +135,7 @@ const CREDIT_ARTIST_MAX = 60;
 // Prefer attribution-free images; fall back to a credit-tier image, which the
 // caller must attribute in the description. `other` (uncreditable) is skipped.
 // Keeps ingest rank order; prefers photo over logo.
-function pickOgImage(
-	images: ObjectImage[] | undefined,
-	imagesToken: string | undefined,
-	origin: string
-): OgPick | undefined {
+function pickOgImage(images: ObjectImage[] | undefined, exp: SeoExport): OgPick | undefined {
 	const pick = (tier: 'free' | 'credit') =>
 		images?.find((i) => i.kind === 'photo' && i.attr === tier) ??
 		images?.find((i) => i.kind === 'logo' && i.attr === tier);
@@ -107,7 +146,10 @@ function pickOgImage(
 		if (!ext) continue;
 		const path = `/v1/images/${encodeURIComponent(img.file)}/${label}.${ext}`;
 		return {
-			url: absolutize(versioned(`${imagesBase()}${path}`, imagesToken), origin),
+			url: absolutize(
+				versioned(`${imagesBase()}${path}`, exp.meta.versions?.images),
+				exp.url.origin
+			),
 			image: img,
 			attr: img.attr
 		};
@@ -115,19 +157,22 @@ function pickOgImage(
 	return undefined;
 }
 
-function pickLocale(v: string | Record<string, string> | undefined): string | undefined {
+function pickLocale(
+	v: string | Record<string, string> | undefined,
+	lang: string
+): string | undefined {
 	if (!v || typeof v === 'string') return v || undefined;
-	return v[SSR_LANG] ?? v.en ?? Object.values(v)[0];
+	return v[lang] ?? v.en ?? Object.values(v)[0];
 }
 
 /** Front-loadable credit for a `credit`-tier card image, or null when the
  *  author is missing — a license name alone can't attribute it. */
-function buildCredit(meta: {
-	license?: { name?: string };
-	artist?: string | Record<string, string>;
-}): string | null {
+function buildCredit(
+	meta: { license?: { name?: string }; artist?: string | Record<string, string> },
+	lang: string
+): string | null {
 	const license = meta.license?.name;
-	const artistRaw = pickLocale(meta.artist);
+	const artistRaw = pickLocale(meta.artist, lang);
 	if (!license || !artistRaw) return null;
 	const artist = truncate(stripHtml(artistRaw), CREDIT_ARTIST_MAX);
 	return artist ? `Image: ${artist} (${license})` : null;
@@ -138,30 +183,23 @@ function buildCredit(meta: {
  * Metadata is embedded in the variants' EXIF; the imported helpers are pure
  * functions, so no client cache is touched. The sidecar fallback covers bundles
  * that couldn't embed. */
-async function fetchImageCredit(
-	image: ObjectImage,
-	origin: string,
-	imagesToken: string | undefined
-): Promise<string | null> {
+async function fetchImageCredit(image: ObjectImage, exp: SeoExport): Promise<string | null> {
 	const base = `${imagesBase()}/v1/images/${encodeURIComponent(image.file)}`;
+	const file = (name: string) =>
+		fetchExport(
+			absolutize(versioned(`${base}/${name}`, exp.meta.versions?.images), exp.url.origin),
+			exp.signal
+		);
 	const label = smallestRasterVariant(image.variants);
 	if (label) {
-		const url = absolutize(
-			versioned(`${base}/${label}.${image.variants[label]}`, imagesToken),
-			origin
-		);
-		const res = await fetch(url).catch(() => null);
-		if (res?.ok) {
+		const res = await file(`${label}.${image.variants[label]}`);
+		if (res) {
 			const meta = extractEmbeddedImageMetadata(new Uint8Array(await res.arrayBuffer()));
-			if (meta) return buildCredit(meta);
+			if (meta) return buildCredit(meta, exp.lang);
 		}
 	}
-	const meta = await fetchJsonGz(
-		absolutize(versioned(`${base}/sidecar.json.gz`, imagesToken), origin)
-	);
-	return meta
-		? buildCredit(meta as { license?: { name?: string }; artist?: string | Record<string, string> })
-		: null;
+	const sidecar = await file('sidecar.json.gz');
+	return sidecar ? buildCredit(await gunzipJson(sidecar), exp.lang) : null;
 }
 
 /** Resolve the card image + description together: a `credit`-tier image is only
@@ -170,13 +208,13 @@ async function fetchImageCredit(
 async function resolveOgCard(
 	images: ObjectImage[] | undefined,
 	baseDescription: string,
-	origin: string,
-	imagesToken: string | undefined
+	exp: SeoExport
 ): Promise<{ image?: string; description: string }> {
-	const pick = pickOgImage(images, imagesToken, origin);
+	const pick = pickOgImage(images, exp);
 	if (!pick) return { description: baseDescription };
 	if (pick.attr === 'free') return { image: pick.url, description: baseDescription };
-	const credit = await fetchImageCredit(pick.image, origin, imagesToken);
+	// An image whose credit cannot be read is one that cannot be credited.
+	const credit = await fetchImageCredit(pick.image, exp).catch(() => null);
 	if (!credit) return { description: baseDescription };
 	return { image: pick.url, description: `${credit}. ${baseDescription}` };
 }
@@ -372,76 +410,120 @@ export function pageTitle(name: string): string {
 	return name ? `${name} - Space Map` : 'Space Map';
 }
 
-/** Baseline meta when there's no per-object data to fetch (groups, features,
- *  unknown ids): a title and canonical still make the page shareable. */
-export function minimalSeo(name: string, origin: string, path: string): SeoMeta {
+/** Meta for a page with no subject of its own to describe: a title and
+ *  canonical still make it shareable. `href` is the page's app path. */
+export function minimalSeo(url: URL, href: string): SeoMeta {
 	return {
-		title: pageTitle(name),
-		description: name
-			? genericDescription(name)
-			: 'Space Map, an interactive 3D map of the solar system.',
-		canonical: `${origin}${path}`,
+		title: pageTitle(''),
+		description: 'Space Map, an interactive 3D map of the solar system.',
+		canonical: absoluteHref(href, url),
 		ogType: 'website'
 	};
 }
 
-/** Load a bundle pair per request: absolute origin, English, no shared cache.
- *  Null when metadata is unreachable. */
-async function loadSeoPair<G, L>(
+/**
+ * Meta for a page of the catalogue, from one of the loaders below. Answers
+ * 404 when the export does not hold the subject. When the export cannot be
+ * read the page opens all the same, on bare meta at `href`, its path with no
+ * name: the app reports its own load, and the reader may reach the data where
+ * the server did not.
+ */
+export async function catalogueSeo(
+	lookup: Promise<SeoMeta | null>,
+	url: URL,
+	href: string
+): Promise<SeoMeta> {
+	let seo: SeoMeta | null;
+	try {
+		seo = await lookup;
+	} catch (e) {
+		console.warn(`[seo] ${url.pathname}: export not readable, bare meta:`, e);
+		return minimalSeo(url, href);
+	}
+	if (!seo) error(404, 'Not found');
+	return seo;
+}
+
+/**
+ * Both bundles holding `key`, per request: no shared cache.
+ *
+ * Metadata counts the buckets, so one that is not there is an export in the
+ * middle of an upload. It throws: only a bucket that was read can say that a
+ * key is not in it.
+ */
+function loadSeoPair<G, L>(
+	exp: SeoExport,
 	desc: BundlePairDescriptor,
-	key: string,
-	origin: string
-): Promise<{ pair: BundlePair<G, L>; imagesToken?: string } | null> {
-	const base = absolutize(dataBase(), origin);
-	const metaRes = await fetch(`${base}/v1/metadata.json`);
-	if (!metaRes.ok) return null;
-	const meta = (await metaRes.json()) as BundleMetadata;
-	const pair = await loadBundlePair<G, L>(desc, key, {
-		meta,
-		lang: SSR_LANG,
-		fetchBundle: (path, versionClass) =>
-			fetchJsonGz(
-				versioned(`${base}${path}`, versionClass ? meta.versions?.[versionClass] : undefined)
-			)
+	key: string
+): Promise<BundlePair<G, L>> {
+	return loadBundlePair<G, L>(desc, key, {
+		meta: exp.meta,
+		lang: exp.lang,
+		fetchBundle: async (path, versionClass) => {
+			const token = versionClass ? exp.meta.versions?.[versionClass] : undefined;
+			const url = versioned(`${exp.base}${path}`, token);
+			const res = await fetchExport(url, exp.signal);
+			if (!res) throw new Error(`${url} is missing`);
+			return gunzipJson(res);
+		}
 	});
-	return { pair, imagesToken: meta.versions?.images };
+}
+
+type ObjectPair = BundlePair<GlobalObjectData, LocalizedObjectData>;
+
+function loadObjectPair(exp: SeoExport, fileId: string): Promise<ObjectPair> {
+	return loadSeoPair<GlobalObjectData, LocalizedObjectData>(exp, OBJECT_BUNDLES, fileId);
 }
 
 /** Fetch one object's global + localized bundles server-side and build its meta.
- *  Returns null when the object isn't found so the caller can fall back. */
-export async function loadObjectSeo(
-	fileId: string,
-	origin: string,
-	path: string
-): Promise<SeoMeta | null> {
-	const loaded = await loadSeoPair<GlobalObjectData, LocalizedObjectData>(
-		OBJECT_BUNDLES,
-		fileId,
-		origin
-	);
-	if (!loaded) return null;
-	const { global, localized } = loaded.pair;
+ *  Null when the export holds no such object. */
+export async function loadObjectSeo(fileId: string, url: URL): Promise<SeoMeta | null> {
+	const exp = await openExport(url);
+	const own = await loadObjectPair(exp, fileId);
+	const { global, localized } = own;
 	// An object with no global entry is unknown, whatever a stray localized
-	// entry says; the caller falls back to minimal meta.
+	// entry says.
 	if (!global) return null;
 
-	const name = localized?.name || global.name || '';
-	const card = await resolveOgCard(
-		global.images,
-		describeObject(name, global, localized),
-		origin,
-		loaded.imagesToken
-	);
+	// The page of a planetary barycenter is named off its primary.
+	const planetId = dominantPlanetId(fileId);
+	const name = objectPageName(fileId, own, planetId ? await loadObjectPair(exp, planetId) : null);
+	const card = await resolveOgCard(global.images, describeObject(name, global, localized), exp);
 	return {
 		title: pageTitle(name),
 		description: card.description,
-		canonical: `${origin}${path}`,
+		canonical: absoluteHref(bodyHref(fileId, name), url),
 		image: card.image,
 		ogType: 'article'
 	};
 }
 
+/** The name the body's gazetteer gives the feature, or null when it lists no
+ *  such feature. The detail bundles carry no name. */
+async function featureName(
+	exp: SeoExport,
+	bodyId: string,
+	featureId: number
+): Promise<string | null> {
+	const file = (path: string) =>
+		fetchExport(
+			versioned(`${exp.base}/v1/nomenclature/${path}`, exp.meta.versions?.nomenclature),
+			exp.signal
+		);
+	const [positions, labels] = await Promise.all([
+		file(`positions/${bodyId}.bin.gz`),
+		file(`labels/${exp.lang}/${bodyId}.txt.gz`)
+	]);
+	if (!positions) return null;
+	const features = nameFeatures(
+		parseNomenclature(await gunzip(positions).arrayBuffer()),
+		labels ? await gunzip(labels).text() : ''
+	);
+	return features.find((f) => f.featureId === featureId)?.name ?? null;
+}
+
 /** Meta for a surface-feature page (`/<type>/<id>/f/<featureId>/<name>`).
+ *  Null when the body has no such feature.
  *
  * Description order: the CC0 Wikidata short description, then the IAU
  * name-origin blurb — public-domain gazetteer text, and the one line that
@@ -450,81 +532,58 @@ export async function loadObjectSeo(
 export async function loadFeatureSeo(
 	bodyId: string,
 	featureId: number,
-	name: string,
-	origin: string,
-	path: string
+	url: URL
 ): Promise<SeoMeta | null> {
-	const loaded = await loadSeoPair<FeatureGlobalData, FeatureLocalizedData>(
-		FEATURE_BUNDLES,
-		featureBucketKey(bodyId, featureId),
-		origin
-	);
-	if (!loaded) return null;
-	const { global, localized } = loaded.pair;
-	if (!global && !localized) return null;
+	const exp = await openExport(url);
+	const [{ global, localized }, name] = await Promise.all([
+		loadSeoPair<FeatureGlobalData, FeatureLocalizedData>(
+			exp,
+			FEATURE_BUNDLES,
+			featureBucketKey(bodyId, featureId)
+		),
+		featureName(exp, bodyId, featureId)
+	]);
+	if (name === null) {
+		// In the bundles and not in the gazetteer: an export in the middle of an
+		// upload, not an unknown feature.
+		if (global) throw new Error(`no gazetteer entry for ${bodyId}:${featureId}`);
+		return null;
+	}
 
 	const description = localized?.description
 		? ucfirst(cleanDescription(localized.description))
 		: global?.origin
 			? cleanDescription(ucfirst(global.origin.replace(/\.?$/, '.')))
 			: genericDescription(name);
-	const card = await resolveOgCard(global?.images, description, origin, loaded.imagesToken);
+	const card = await resolveOgCard(global?.images, description, exp);
 	return {
 		title: pageTitle(name),
 		description: card.description,
-		canonical: `${origin}${path}`,
+		canonical: absoluteHref(featureHref(bodyId, featureId, name), url),
 		image: card.image,
 		ogType: 'article'
 	};
 }
 
-// Group slug prefixes to strip when a collection has no localized name yet.
-const GROUP_PREFIXES = [
-	'const-',
-	'class-',
-	'cat-',
-	'flag-',
-	'comet-family-',
-	'mission-',
-	'bus-',
-	'lv-',
-	'ft-'
-];
-
-function prettifySlug(slug: string): string {
-	const prefix = GROUP_PREFIXES.find((p) => slug.startsWith(p));
-	const stem = prefix ? slug.slice(prefix.length) : slug;
-	return stem.replace(/[-_]/g, ' ').trim() || slug;
-}
-
-/** Meta for a /g/<slug> collection page. The display name lives in the localized
- *  bundle; the global bundle carries images. Group bundles are unversioned. */
-export async function loadGroupSeo(
-	slug: string,
-	origin: string,
-	path: string
-): Promise<SeoMeta | null> {
-	const loaded = await loadSeoPair<GlobalGroupData, LocalizedGroupData>(
+/** Meta for a /g/<slug> collection page, or null when the export holds no such
+ *  collection. The display name lives in the localized bundle; the global
+ *  bundle carries images. Group bundles are unversioned. */
+export async function loadGroupSeo(slug: string, url: URL): Promise<SeoMeta | null> {
+	const exp = await openExport(url);
+	const { global, localized } = await loadSeoPair<GlobalGroupData, LocalizedGroupData>(
+		exp,
 		GROUP_BUNDLES,
-		slug,
-		origin
+		slug
 	);
-	if (!loaded) return null;
-	const { global, localized } = loaded.pair;
 	if (!global && !localized) return null;
 
-	const name = localized?.name || prettifySlug(slug);
+	const name = groupPageName(slug, localized?.name);
 	const lead = heroImage(global);
-	const card = await resolveOgCard(
-		lead ? [lead] : undefined,
-		describe(name, localized),
-		origin,
-		loaded.imagesToken
-	);
+	const card = await resolveOgCard(lead ? [lead] : undefined, describe(name, localized), exp);
 	return {
 		title: pageTitle(name),
 		description: card.description,
-		canonical: `${origin}${path}`,
+		canonical: absoluteHref(groupHref(slug, name), url),
 		image: card.image,
 		ogType: 'website'
 	};

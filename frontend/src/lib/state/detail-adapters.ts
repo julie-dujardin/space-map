@@ -5,9 +5,7 @@
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
 import type { GroupDetailData } from '$lib/fetch/groups/details';
-import { CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
-import { categoryLabel } from '$lib/format/group';
-import { groupSlugLabel } from '$lib/state/focusable';
+import { groupPageName } from '$lib/state/page-name';
 
 export function featureDetailToObjectData(
 	detail: FeatureDetailData,
@@ -38,10 +36,7 @@ export function featureDetailToObjectData(
 
 export function groupDetailToObjectData(detail: GroupDetailData, slug: string): ObjectDetailData {
 	const websites = [detail.global?.website, detail.global?.url].filter((u): u is string => !!u);
-	// Categories display an i18n label, not the English bundle name.
-	const name = slug.startsWith(CATEGORY_SLUG_PREFIX)
-		? categoryLabel(slug)
-		: (detail.localized?.name ?? groupSlugLabel(slug));
+	const name = groupPageName(slug, detail.localized?.name);
 	return {
 		global: {
 			id: `group-${slug}`,

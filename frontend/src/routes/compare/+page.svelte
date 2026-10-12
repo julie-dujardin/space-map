@@ -45,7 +45,7 @@
 	import { formatQuantity } from '$lib/format/quantities';
 	import { formatKm } from '$lib/format/distance';
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
-	import { bodyHref, groupHref } from '$lib/state/url';
+	import { bodyHref, groupHref } from '$lib/state/page-href';
 	import { compareFocusable, type CompareFocus } from '$lib/compare/detail';
 	import { AppState } from '$lib/state/app-state.svelte';
 	import { MapCover } from '$lib/state/map-cover.svelte';

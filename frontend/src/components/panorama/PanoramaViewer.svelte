@@ -32,7 +32,8 @@
 	import { capitalize } from '$lib/search/format';
 	import { shareUrl } from '$lib/share';
 	import { panoramaHref } from '$lib/state/panorama-link';
-	import { bodyHref, serializeUrl } from '$lib/state/url';
+	import { bodyHref } from '$lib/state/page-href';
+	import { serializeUrl } from '$lib/state/url';
 	import { DEFAULT_VIEW } from '$lib/state/view';
 	import { urlTypeFromId } from '$lib/state/view';
 	import { kmToScene } from '$lib/math/units';

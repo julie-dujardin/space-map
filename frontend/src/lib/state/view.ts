@@ -64,6 +64,31 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
 	UrlType.Extra
 ]);
 
+/** The number of an id as a URL writes it: digits, with a minus for a NAIF
+ *  spacecraft code, no padding, no exponent. `Number()` reads `1e2`, `0x10`
+ *  and the empty string too, and each would be one more address for the same
+ *  page. */
+const ID_NUMBER = /^-?(0|[1-9]\d*)$/;
+
+export function isIdNumber(segment: string): boolean {
+	return ID_NUMBER.test(segment);
+}
+
+/**
+ * The object a body route names (`/b/399` is `naif-399`), or null when its
+ * segments name none. The one reading of the pair: the route load answers 404
+ * on null, and the page takes its view from the same id.
+ */
+export function objectIdOfRoute(type: string, id: string): string | null {
+	if (!FEATURE_ROUTE_TYPES.has(type) || !isIdNumber(id)) return null;
+	return `${urlTypeToIdPrefix(type)}-${id}`;
+}
+
+/** The IAU feature id a feature route names, or null. */
+export function featureIdOfRoute(segment: string): number | null {
+	return isIdNumber(segment) && !segment.startsWith('-') ? Number(segment) : null;
+}
+
 /** Every detail-drawer tab, in the order the drawer's bar lists them;
  *  'overview' is the null default in URL state. The one list the tab type and
  *  the URL codec both derive from. */
@@ -89,7 +114,10 @@ export type DrawerTab = (typeof DRAWER_TABS)[number];
 export interface MapViewState {
 	type: string;
 	id: string; // prefixed body id, e.g. "naif-10", "spkid-20134340" — the renderer always focuses a body, even in feature/group mode
-	name: string; // active object's display name (body in body mode, feature in feature mode, group in group mode)
+	/** Name of the subject (the body, the feature or the group) as the export
+	 *  gives it; empty till it is known. Written to the URL and never read from
+	 *  it: there it only tells a reader what a link opens. */
+	name: string;
 	date: Date;
 	isNow: boolean;
 	latitude: number;

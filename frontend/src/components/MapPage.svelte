@@ -6,7 +6,6 @@
 	import { formatJulianDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
-	import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
 	import {
 		DEFAULT_FRAMING_LAT,
@@ -14,7 +13,7 @@
 		DEFAULT_VIEW_ELEVATION_DEG,
 		SUN_VIEW_ZOOM
 	} from '$lib/scene/framing';
-	import { EARTH_ID, SUN_ID } from '$lib/constants';
+	import { EARTH_ID, SUN_ID, dominantPlanetId } from '$lib/constants';
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { MapCover } from '$lib/state/map-cover.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
@@ -34,6 +33,7 @@
 	import { prefetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { prefetchFeatureDetail } from '$lib/fetch/nomenclature/details';
 	import { prefetchGroupDetail } from '$lib/fetch/groups/details';
+	import { fetchPageName, type PageSubject } from '$lib/state/page-name';
 	// Not lazy: the placeholder's whole job is to be on screen before the drawer
 	// chunk is.
 	import DrawerSkeleton from './detail/DrawerSkeleton.svelte';
@@ -352,17 +352,24 @@
 		return { kind: 'body', body: selectedBody };
 	});
 
-	/** Whether the URL promises a detail panel. A shared link names its object,
-	 *  but `focusable` only fills once the scene has streamed that body in and
-	 *  framed it — seconds later on a cold load. Closing the drawer keeps the id
-	 *  as the camera's anchor and drops the name, so a name (or a group/feature
-	 *  of its own) is what marks a panel rather than an anchor. */
-	const urlNamesPanel = $derived(
+	/** The opening view has no panel yet. A page of the catalogue opens with
+	 *  one, and its name may not be known: the URL's is not read. */
+	let opening = $state(true);
+	$effect(() => {
+		if (focusable) opening = false;
+	});
+	/** Whether the view promises a detail panel. `focusable` only fills once
+	 *  the scene has streamed the body in and framed it, seconds later on a cold
+	 *  load. Closing the drawer keeps the id as the camera's anchor and drops
+	 *  the name, so past the opening a name (or a group/feature of its own) is
+	 *  what marks a panel rather than an anchor. */
+	const panelPromised = $derived(
 		!isNav &&
-			Boolean(appState.view.groupSlug || appState.view.name || appState.view.featureId !== null)
+			(opening ||
+				Boolean(appState.view.groupSlug || appState.view.name || appState.view.featureId !== null))
 	);
 	/** The placeholder frame is up: the panel is promised but not built yet. */
-	const sidebarPending = $derived(urlNamesPanel && !focusable);
+	const sidebarPending = $derived(panelPromised && !focusable);
 	/** How much of the viewport the mobile sheet takes, the placeholder's own
 	 *  collapsed height included, so the buttons it lifts don't drop and rise
 	 *  again as the real sheet takes over. */
@@ -404,22 +411,44 @@
 		void import('./detail/DetailDrawer.svelte').then((mod) => (DetailDrawer = mod.default));
 	});
 
-	// The payload the drawer will read, fetched from what the URL names rather
-	// than waiting for the scene to stream that body in and the chunk to land.
-	// Keyed by URL in the bundle cache, so the drawer's own load joins this
-	// request instead of opening a second one.
-	let detailPrefetched = '';
+	/** What the panel is about, while one is up or promised. A primitive:
+	 *  `view` is replaced twice a second. */
+	const panelSubject = $derived.by(() => {
+		if (!panelPromised && !focusable) return null;
+		const { groupSlug, featureId, id } = appState.view;
+		return groupSlug ?? (featureId !== null ? `${id}/f/${featureId}` : id);
+	});
+
+	// The payload the drawer will read and the name of its subject, asked for
+	// from what the view names rather than when the scene has streamed that
+	// body in and the chunk has landed. Keyed by URL in the bundle cache, so
+	// the drawer's own load joins these requests.
 	$effect(() => {
-		if (!urlNamesPanel) return;
-		const slug = appState.view.groupSlug;
-		const featureId = appState.view.featureId;
-		const bodyId = appState.view.id;
-		const key = slug ?? (featureId !== null ? `${bodyId}/f/${featureId}` : bodyId);
-		if (!key || key === detailPrefetched) return;
-		detailPrefetched = key;
-		if (slug) void prefetchGroupDetail(slug);
-		else if (featureId !== null) void prefetchFeatureDetail(bodyId, featureId);
-		else void prefetchObjectDetail(bodyId);
+		const key = panelSubject;
+		if (key === null) return;
+		untrack(() => {
+			const { groupSlug: slug, featureId, id: bodyId } = appState.view;
+			let subject: PageSubject;
+			if (slug) {
+				void prefetchGroupDetail(slug);
+				subject = { kind: 'group', slug };
+			} else if (featureId !== null) {
+				void prefetchFeatureDetail(bodyId, featureId);
+				subject = { kind: 'feature', bodyId, featureId };
+			} else {
+				void prefetchObjectDetail(bodyId);
+				subject = { kind: 'body', id: bodyId, localized: ctx.getBody(bodyId)?.data.hasLocalized };
+			}
+			// The view takes the export's name as soon as it is read, and the title
+			// and the URL with it.
+			fetchPageName(subject).then(
+				(name) => {
+					if (panelSubject === key) appState.replaceFocusName(name);
+				},
+				// The panel's own load reports a bundle that does not come.
+				() => {}
+			);
+		});
 	});
 
 	/** The focused craft, when one is focused and the planner isn't up — the
@@ -593,6 +622,7 @@
 		const anchorId = selectedBody?.data.id ?? appState.view.id;
 		selectedBody = undefined;
 		activeFeature = null;
+		opening = false;
 		appState.closeDetail(anchorId);
 		drawerHeightDvh = 0;
 		if (refocusMain) tick().then(() => document.getElementById('main-content')?.focus());
@@ -723,9 +753,8 @@
 
 	async function openInitialView(): Promise<void> {
 		const initialId = appState.view.id;
-		// Friendly label from the URL slug; captured before the Sun fallback
-		// below overwrites appState.view.name.
-		const initialName = appState.view.name || initialId;
+		// Captured before the home fallback below overwrites the view.
+		const initialName = appState.view.name;
 		// URL camera framing, restored onto the real target once it loads: the
 		// renderer settles its initial focus on the parent while the target's
 		// chunk is still streaming.

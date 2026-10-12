@@ -16,7 +16,7 @@ import type { LineupBody } from '../../components/detail/charts/BodyLineup.svelt
 import { craftWidthRatio } from '../../components/detail/charts/lineup-fit';
 import { RENDER_HINTS } from '../../components/detail/charts/lineup';
 import { BODY_COLORS } from '$lib/constants';
-import { groupHref } from '$lib/state/url';
+import { groupHref } from '$lib/state/page-href';
 import { rocketBodies, rocketBySlug } from './rockets';
 
 /** An object the reader has put in the comparison. */

@@ -119,7 +119,7 @@
 				appState.setFocus({
 					type: urlTypeFromId(body.id),
 					id: body.id,
-					// Drawer fills the localized name via replaceFocusName once the detail bundle resolves.
+					// The page puts the export's name in its place once that is read.
 					name: body.name ?? ''
 				});
 			}),

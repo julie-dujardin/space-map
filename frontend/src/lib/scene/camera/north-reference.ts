@@ -3,9 +3,8 @@ import type { PositionedBody } from '$lib/types/objects';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 import { isModelBearing } from '$lib/scene/objects/body/model';
-import { SSB_ID } from '$lib/constants';
+import { SSB_ID, dominantPlanetId } from '$lib/constants';
 
 /**
  * Camera "north" reference. `id === null` → ecliptic Y; `GALACTIC_REF_ID` →

@@ -7,7 +7,7 @@
  * re-exports what is here.
  */
 
-import type { NavPlace } from './view';
+import { isIdNumber, type NavPlace } from './view';
 
 /** Path segment for an end of a trip that has not been chosen. The two ends are
  *  positional, so a destination-only trip needs something in the departure slot
@@ -22,8 +22,7 @@ const ID_PREFIXES = ['naif-', 'spkid-', 'norad_satcat-', 'probe-', 'extra-'] as 
  *  asked to frame it. */
 export function isBodyId(value: string): boolean {
 	const prefix = ID_PREFIXES.find((p) => value.startsWith(p));
-	if (!prefix) return false;
-	return Number.isFinite(Number(value.slice(prefix.length)));
+	return prefix !== undefined && isIdNumber(value.slice(prefix.length));
 }
 
 /** Separator between a body id and the IAU feature refining it, mirroring the

@@ -4,7 +4,7 @@ import { configureHost } from '$lib/host';
 import { KIT_HOST } from '$lib/state/kit-host';
 import { setSceneSettings } from '$lib/scene/settings.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
-import { bodyHref } from '$lib/state/url';
+import { bodyHref } from '$lib/state/page-href';
 
 // The core's view of the app: data origins, language, label links, and the
 // persisted display settings. What the map reports back arrives as events.

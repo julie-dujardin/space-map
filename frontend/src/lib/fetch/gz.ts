@@ -6,10 +6,14 @@
  * dead for the whole session.
  */
 
+/** A response over the decoded body of a gzipped one. */
+export function gunzip(res: Response): Response {
+	return new Response(res.body!.pipeThrough(new DecompressionStream('gzip')));
+}
+
 /** Decode a gzipped JSON response body. */
 export async function gunzipJson<T>(res: Response): Promise<T> {
-	const ds = new DecompressionStream('gzip');
-	return (await new Response(res.body!.pipeThrough(ds)).json()) as T;
+	return (await gunzip(res).json()) as T;
 }
 
 export interface GzJsonOptions<T> {

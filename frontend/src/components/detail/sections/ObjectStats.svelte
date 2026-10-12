@@ -15,12 +15,12 @@
 	import { isLandedAt, probeStateKm } from '$lib/fetch/position/probes/propagate';
 	import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-	import { dominantPlanetId, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
+	import { isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
 	import { diameterKmFromH } from '$lib/math/h-magnitude';
 	import { sgp4State } from '$lib/math/orbit/sgp4';
 	import { AU_KM, AU_SCALE, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
-	import { EARTH_ID } from '$lib/constants';
+	import { EARTH_ID, dominantPlanetId } from '$lib/constants';
 	import { SECONDS_PER_DAY } from '$lib/time/jd';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';

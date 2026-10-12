@@ -31,7 +31,7 @@
 	import { DEFAULT_TRIP, serializeTripSuffix, type EndpointMode } from '$lib/travel/trip';
 	import { ensureVehicles, vehicleCatalogue } from '$lib/travel/vehicles';
 	import { canDepartFrom, EMPTY_MANIFEST, type Vehicle } from '$lib/math/travel';
-	import { systemTitle } from '../detail/charts/planetary-system.svelte';
+	import { systemTitle } from '$lib/state/page-name';
 	import type { SubwayPageData } from '../../routes/nav/+page';
 
 	interface Props {

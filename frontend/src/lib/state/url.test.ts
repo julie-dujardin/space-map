@@ -81,6 +81,12 @@ describe('serializeUrl', () => {
 		expect(url.startsWith('/e/25544/ISS?at=')).toBe(true);
 	});
 
+	it('takes the type segment of a body from its id', () => {
+		// Leaving a feature sets the body type, whatever kind of id hosts it.
+		const url = serializeUrl({ ...baseView, type: 'b', id: 'spkid-20000004', name: 'Vesta' });
+		expect(url.startsWith('/s/20000004/Vesta?at=')).toBe(true);
+	});
+
 	it('nests features under the body route with the body type segment', () => {
 		const url = serializeUrl({
 			...baseView,
@@ -319,6 +325,52 @@ describe('parseUrl on a group', () => {
 	it('ignores a focus= that is not a body id', () => {
 		open('http://x/g/cat-moons/Moons?focus=pha');
 		expect(parseUrl()!.id).toBe('naif-10');
+	});
+
+	it('does not read the name segment', () => {
+		open('http://x/g/cat-moons/Moons');
+		expect(parseUrl()!.name).toBe('');
+	});
+});
+
+describe('parseUrl on an object', () => {
+	function open(params: Record<string, string>) {
+		page.params = params;
+		page.url = new URL('http://x/') as typeof page.url;
+	}
+
+	it('does not read the name segment', () => {
+		// A link cannot name a page: the view waits for the export's name.
+		open({ type: 'b', id: '399', name: 'Planet Nine Found' });
+		expect(parseUrl()).toMatchObject({ id: 'naif-399', name: '' });
+		open({ type: 'b', id: '499', featureId: '4', name: 'Planet Nine Found' });
+		expect(parseUrl()).toMatchObject({ id: 'naif-499', featureId: 4, name: '' });
+	});
+
+	it('reads no object out of an id that is not a plain number', () => {
+		for (const id of ['abc', '399.5', '0399', '1e2', '0x10', ' 399', '']) {
+			open({ type: 'b', id });
+			expect(parseUrl(), id).toBeNull();
+		}
+	});
+
+	it('reads no feature out of an id that is not a plain number', () => {
+		for (const featureId of ['abc', '-4', '4.5', '04']) {
+			open({ type: 'b', id: '499', featureId });
+			expect(parseUrl(), featureId).toBeNull();
+		}
+		open({ type: 'b', id: '499', featureId: '4' });
+		expect(parseUrl()).toMatchObject({ id: 'naif-499', featureId: 4 });
+	});
+});
+
+describe('isBodyId', () => {
+	it('takes a prefix and a plain number, and nothing else', () => {
+		expect(isBodyId('naif-399')).toBe(true);
+		expect(isBodyId('norad_satcat-25544')).toBe(true);
+		for (const id of ['naif-', 'naif-1e2', 'naif- 399', 'naif-399.5', 'moon-301', '399']) {
+			expect(isBodyId(id), id).toBe(false);
+		}
 	});
 });
 
