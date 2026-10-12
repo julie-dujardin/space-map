@@ -63,12 +63,22 @@ export class AppState {
 	/** False on a state that drives a panel somewhere else — the compare page's
 	 *  maximized object, say. The view is still the panel's source of truth; the
 	 *  page it sits on owns the address bar, and a write here would overwrite it
-	 *  with a map URL. */
-	private readonly ownsUrl: boolean;
+	 *  with a map URL. False too after {@link release}. */
+	private ownsUrl: boolean;
 
 	constructor(initial: MapViewState, opts?: { ownsUrl?: boolean }) {
 		this.view = initial;
 		this.ownsUrl = opts?.ownsUrl ?? true;
+	}
+
+	/** Give the address bar up, for good: the page that made this state is
+	 *  gone. A date write waits out its throttle, and callers hold the state
+	 *  across a fetch, so a write can come after the page — onto the URL of the
+	 *  next one. */
+	release() {
+		clearTimeout(this.dateTimer);
+		this.dateTimer = undefined;
+		this.ownsUrl = false;
 	}
 
 	private replaceNow() {

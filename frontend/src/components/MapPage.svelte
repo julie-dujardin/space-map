@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, setContext, tick, untrack } from 'svelte';
+	import { onDestroy, onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
 	import { SpaceMap, type Arrival } from '$lib/scene/space-map.svelte';
@@ -117,6 +117,8 @@
 
 	const appState = createAppState();
 	setContext('appState', appState);
+	// The next page owns the address bar from the moment this one goes.
+	onDestroy(() => appState.release());
 	const map = new SpaceMap({
 		date: appState.view.date,
 		live: appState.view.isNow,

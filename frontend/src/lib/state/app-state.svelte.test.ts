@@ -129,6 +129,30 @@ describe('AppState.setDate', () => {
 	});
 });
 
+describe('AppState.release', () => {
+	it('drops the date write that waits out its throttle', () => {
+		const s = new AppState({ ...initialView });
+		s.setDate(new Date('2030-06-01T00:00:00Z'), false);
+		s.release();
+		vi.advanceTimersByTime(DATE_THROTTLE_MS);
+		expect(replaceStateSpy).not.toHaveBeenCalled();
+	});
+
+	it('writes no URL for a caller that still holds the state', () => {
+		const s = new AppState({ ...initialView });
+		s.release();
+		s.setFocus({ type: 'b', id: 'naif-499', name: 'Mars' });
+		s.replaceFocusName('Mars');
+		s.setCamera({ latitude: 30, longitude: -60, zoom: 5 });
+		s.setDate(new Date('2030-06-01T00:00:00Z'), false);
+		vi.advanceTimersByTime(DATE_THROTTLE_MS);
+		expect(pushStateSpy).not.toHaveBeenCalled();
+		expect(replaceStateSpy).not.toHaveBeenCalled();
+		// The view is still the panel's source of truth.
+		expect(s.view.id).toBe('naif-499');
+	});
+});
+
 describe('AppState.setFocus', () => {
 	it('updates focus fields and clears imageIndex', () => {
 		const s = new AppState({ ...initialView, imageIndex: 3 });
