@@ -1,7 +1,8 @@
 /**
  * The name a page of the catalogue goes by: its title, and the name segment
  * of its URL. The server and the page share these rules, so the canonical
- * link of a page is the URL the page writes.
+ * link of a page is the URL the page writes. The sitemap must list that same
+ * URL: `export/sitemap.py` in the data package mirrors the rules.
  */
 
 import * as m from '$lib/paraglide/messages.js';

@@ -1,25 +1,39 @@
 """Sitemap generation for the notable-object subset.
 
 Enumerates the promoted set plus anything with a real Wikidata presence, and
-writes a single ``v1/seo/sitemap.xml``. Canonical URL shape mirrors
-``frontend/src/lib/state/url.ts``: ``/<type>/<id>/<name>`` for objects,
-``/g/<slug>`` for groups, ``/<type>/<id>/f/<featureId>/<name>`` for features.
+writes a single ``v1/seo/sitemap.xml``.
+
+A page states its canonical link with the name the app gives it in the base
+locale. Each path here carries that name, taken from the files the app reads,
+so that no listed URL names another one as canonical. The names follow
+``frontend/src/lib/state/page-name.ts`` and the paths ``page-href.ts``:
+``/<type>/<id>/<name>`` for objects, ``/g/<slug>/<name>`` for groups,
+``/<type>/<id>/f/<featureId>/<name>`` for features.
 """
 
 import datetime
+import gzip
 import logging
+from collections.abc import Collection
 from pathlib import Path
 from urllib.parse import quote
 from xml.sax.saxutils import escape
 
 import orjson
-from sqlalchemy import or_, select
+from sqlalchemy import Engine, or_, select
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.categories import CATEGORY_SLUG_PREFIX
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS
+from space_map_data.constants.providers import BASE_LOCALE
+from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
+from space_map_data.export.localization import MESSAGES_DIR
+from space_map_data.export.nomenclature.writer import feature_label
+from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
+from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +53,7 @@ _SITEMAP_TYPES = (
     ObjectType.star,
 )
 
-# Object id prefix → URL type segment. Inverse of urlTypeToIdPrefix in url.ts.
+# Object id prefix → URL type segment. Inverse of urlTypeToIdPrefix in view.ts.
 _PREFIX_TO_TYPE = {
     "naif": "b",
     "spkid": "s",
@@ -53,39 +67,96 @@ _PREFIX_TO_TYPE = {
 _URI_SAFE = "-_.!~*'()"
 
 
-def _object_path(obj_id: str, name: str | None) -> str | None:
-    """Canonical ``/<type>/<id>/<name>`` path for an object id, or None if the
-    id uses an unknown scheme."""
+def _object_path(obj_id: str) -> str | None:
+    """``/<type>/<id>`` for an object id, or None if the id uses an unknown
+    scheme."""
     prefix, _, numeric = obj_id.partition("-")
     letter = _PREFIX_TO_TYPE.get(prefix)
     if letter is None or not numeric:
         return None
-    path = f"/{letter}/{numeric}"
-    if name:
-        path += "/" + quote(name, safe=_URI_SAFE)
-    return path
+    return f"/{letter}/{numeric}"
 
 
-def _notable_paths(session: Session) -> list[str]:
-    """Canonical paths for every notable object: promoted types, curated extras,
-    or a Wikidata presence at or above the sitelink floor."""
-    rows = session.execute(
-        select(Object.id, Object.name).where(
+def _named(path: str, name: str | None) -> str:
+    """*path* with its name segment. A page with no name has none."""
+    return f"{path}/{quote(name, safe=_URI_SAFE)}" if name else path
+
+
+def _bundle_names(
+    bundle_dir: Path, n_buckets: int, keys: Collection[str]
+) -> dict[str, str | None]:
+    """The name of each of *keys* that the bundles of *bundle_dir* have an
+    entry for; None when the entry gives no name.
+
+    Finds a bucket by the hash of the key, as the app does: the directory can
+    hold files of an earlier run with more buckets.
+    """
+    # A tier with no entry has no bucket.
+    if not n_buckets:
+        return {}
+    by_bucket: dict[int, list[str]] = {}
+    for key in keys:
+        by_bucket.setdefault(hash_bucket(key, n_buckets), []).append(key)
+    names: dict[str, str | None] = {}
+    for bucket, bucket_keys in by_bucket.items():
+        path = bundle_dir / f"{bucket}.json.gz"
+        # A bucket with no entry has no file.
+        if not path.exists():
+            continue
+        bundle = orjson.loads(gzip.decompress(path.read_bytes()))
+        for key in bucket_keys:
+            if key in bundle:
+                names[key] = bundle[key].get("name") or None
+    return names
+
+
+def _object_names(
+    out_dir: Path, object_buckets: dict[str, int], ids: Collection[str]
+) -> dict[str, str | None]:
+    """The page name of each of *ids* that the export has. Mirror of
+    ``objectPageName``: the localized name, else the catalogue's."""
+    objects = out_dir / "objects"
+    localized = _bundle_names(objects / BASE_LOCALE, object_buckets[BASE_LOCALE], ids)
+    named = {obj_id: name for obj_id, name in localized.items() if name}
+    # Each exported object has a global entry.
+    rest = [obj_id for obj_id in ids if obj_id not in named]
+    return named | _bundle_names(objects / "__global__", object_buckets["global"], rest)
+
+
+def _notable_paths(
+    session: Session, out_dir: Path, object_buckets: dict[str, int]
+) -> list[str]:
+    """Canonical paths for every notable object the export has: promoted
+    types, curated extras, or a Wikidata presence at or above the sitelink
+    floor.
+
+    Never a barycenter: its page takes its title from an app label.
+    """
+    ids = session.scalars(
+        select(Object.id).where(
+            Object.object_type != ObjectType.barycenter,
             or_(
                 Object.object_type.in_(_SITEMAP_TYPES),
                 Object.id.in_(PROMOTED_EXTRA_IDS),
                 Object.sitelinks_count >= SITELINKS_THRESHOLD,
-            )
+            ),
         )
     ).all()
+    names = _object_names(out_dir, object_buckets, ids)
+    # The catalogue has objects the export leaves out; they have no page.
+    if len(names) < len(ids):
+        logger.info(
+            "sitemap: skipped %d objects that are not in the export",
+            len(ids) - len(names),
+        )
     paths: list[str] = []
     skipped = 0
-    for obj_id, name in rows:
-        path = _object_path(obj_id, name)
+    for obj_id, name in names.items():
+        path = _object_path(obj_id)
         if path is None:
             skipped += 1
             continue
-        paths.append(path)
+        paths.append(_named(path, name))
     if skipped:
         logger.warning("sitemap: skipped %d objects with unmapped id scheme", skipped)
     return paths
@@ -99,47 +170,69 @@ def _feature_paths(
     Most of the 16k gazetteer entries are anonymous craters with no description
     worth indexing; the Wikidata-backed ones clear the bar.
     """
-    rows = session.execute(
-        select(
-            Feature.feature_id,
-            Feature.object_id,
-            Feature.name,
-            Feature.unicode_name,
-            Feature.wikidata_qid,
-        ).where(Feature.wikidata_qid.isnot(None), Feature.object_id.isnot(None))
+    features = session.scalars(
+        select(Feature).where(
+            Feature.wikidata_qid.isnot(None), Feature.object_id.isnot(None)
+        )
     ).all()
     paths: list[str] = []
     skipped = 0
-    for feature_id, object_id, name, unicode_name, qid in rows:
-        wd = wikidata_entities.get_feature_entity(qid)
+    for feature in features:
+        wd = wikidata_entities.get_feature_entity(feature.wikidata_qid)
         if not wd or len(wd["sitelinks"]) < SITELINKS_THRESHOLD:
             continue
-        base = _object_path(object_id, None)
+        assert feature.object_id is not None
+        base = _object_path(feature.object_id)
         if base is None:
             skipped += 1
             continue
-        canonical = unicode_name or name
-        paths.append(f"{base}/f/{feature_id}/{quote(canonical, safe=_URI_SAFE)}")
+        paths.append(
+            _named(
+                f"{base}/f/{feature.feature_id}",
+                feature_label(feature, BASE_LOCALE, wikidata_entities),
+            )
+        )
     if skipped:
         logger.warning("sitemap: skipped %d features with unmapped host id", skipped)
     logger.info(
         "sitemap: %d of %d Wikidata-backed features meet the %d-sitelink floor",
         len(paths),
-        len(rows),
+        len(features),
         SITELINKS_THRESHOLD,
     )
     return paths
 
 
-def _group_paths(out_dir: Path) -> list[str]:
-    """``/g/<slug>`` for every exported group. Slug is already descriptive, so
-    no name segment."""
+def _group_name(
+    slug: str, exported: str | None, app_labels: dict[str, str]
+) -> str | None:
+    """Mirror of ``groupPageName``: the app has its own label for a category,
+    and for an orbit class the export does not name."""
+    if slug.startswith(CATEGORY_SLUG_PREFIX):
+        stem = slug.removeprefix(CATEGORY_SLUG_PREFIX).replace("-", "_")
+        return app_labels.get(f"category_name_{stem}")
+    if exported is None and slug.startswith(CLASS_SLUG_PREFIX):
+        return app_labels.get(f"orbit_class_{slug.removeprefix(CLASS_SLUG_PREFIX)}")
+    return exported
+
+
+def _group_paths(out_dir: Path, n_buckets: int) -> list[str]:
+    """Canonical paths for every exported group."""
     index = out_dir / "groups" / "__index__.json"
     if not index.exists():
         logger.warning("sitemap: %s missing; no group URLs emitted", index)
         return []
-    slugs = orjson.loads(index.read_bytes())
-    return [f"/g/{slug}" for slug in slugs]
+    slugs = list(orjson.loads(index.read_bytes()))
+    exported = _bundle_names(out_dir / "groups" / BASE_LOCALE, n_buckets, slugs)
+    app_labels = orjson.loads((MESSAGES_DIR / f"{BASE_LOCALE}.json").read_bytes())
+    names = {slug: _group_name(slug, exported.get(slug), app_labels) for slug in slugs}
+    unnamed = [slug for slug, name in names.items() if not name]
+    if unnamed:
+        # The page of such a group calls itself by a name this file cannot give.
+        logger.warning(
+            "sitemap: %d groups have no name: %s", len(unnamed), ", ".join(unnamed)
+        )
+    return [_named(f"/g/{slug}", name) for slug, name in names.items()]
 
 
 def _urlset(paths: list[str], lastmod: str) -> bytes:
@@ -155,15 +248,20 @@ def _urlset(paths: list[str], lastmod: str) -> bytes:
 
 
 def write_sitemap(
-    session: Session, out_dir: Path, wikidata_entities: WikidataEntityCache
+    session: Session,
+    out_dir: Path,
+    wikidata_entities: WikidataEntityCache,
+    object_buckets: dict[str, int],
+    group_buckets: dict[str, int],
 ) -> int:
     """Write ``v1/seo/sitemap.xml`` and return the URL count.
 
-    Reads the group index that the groups tier already wrote to ``out_dir``.
+    Reads the object and group bundles and the group index already in
+    ``out_dir``; the bucket counts are those of ``metadata.json``.
     """
     paths = (
-        _notable_paths(session)
-        + _group_paths(out_dir)
+        _notable_paths(session, out_dir, object_buckets)
+        + _group_paths(out_dir, group_buckets[BASE_LOCALE])
         + _feature_paths(session, wikidata_entities)
     )
     if len(paths) > _MAX_URLS_PER_FILE:
@@ -178,3 +276,21 @@ def write_sitemap(
     (seo_dir / "sitemap.xml").write_bytes(_urlset(paths, lastmod))
     logger.info("Sitemap: %d URLs written to %s", len(paths), seo_dir / "sitemap.xml")
     return len(paths)
+
+
+def export_sitemap_only(engine: Engine) -> None:
+    """`space-map-export --only sitemap` — rewrites seo/sitemap.xml alone.
+
+    The names come from the bundles, so a change of the path rules reaches the
+    file without re-running the whole export.
+    """
+    out_dir = EXPORT_DIR / "v1"
+    metadata = orjson.loads((out_dir / "metadata.json").read_bytes())
+    with Session(engine) as session:
+        write_sitemap(
+            session,
+            out_dir,
+            WikidataEntityCache(),
+            metadata["object_bundles"],
+            metadata["group_bundles"],
+        )

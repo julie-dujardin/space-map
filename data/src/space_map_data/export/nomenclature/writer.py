@@ -239,33 +239,41 @@ def _build_positions(features: list[Feature]) -> bytes:
     return b"".join(parts)
 
 
-def _build_labels(
-    features: list[Feature],
+def feature_label(
+    feature: Feature,
     lang: str,
     wikidata_entities: WikidataEntityCache,
-) -> bytes:
-    """Pack one line per feature: the IAU ``name`` in English, else the Wikidata
-    label in *lang*, else the IAU name.
+) -> str:
+    """The name of a feature in *lang*: the IAU ``name`` in English, else the
+    Wikidata label in *lang*, else the IAU name.
 
     The IAU is the naming authority, so its spelling is the English one;
     Wikidata only supplies the other languages, where it has a native form
     the gazetteer does not (a vandalised English label once shipped as
     "Mare Tranquilliton").
+    """
+    if feature.wikidata_qid and lang != BASE_LOCALE:
+        wd = wikidata_entities.get_feature_entity(feature.wikidata_qid)
+        if wd is not None:
+            wd_label = wd["labels"].get(lang) or wd["labels"].get("mul")
+            if wd_label:
+                return wd_label
+    return feature.name
+
+
+def _build_labels(
+    features: list[Feature],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> bytes:
+    """Pack one :func:`feature_label` line per feature.
 
     Order matches :func:`_build_positions`, by contract — frontend joins by
     index (positions[i] ↔ label_lines[i]).
     """
-    lines: list[str] = []
-    for f in features:
-        label = f.name
-        if f.wikidata_qid and lang != BASE_LOCALE:
-            wd = wikidata_entities.get_feature_entity(f.wikidata_qid)
-            if wd is not None:
-                wd_label = wd["labels"].get(lang) or wd["labels"].get("mul")
-                if wd_label:
-                    label = wd_label
-        lines.append(label)
-    return "\n".join(lines).encode("utf-8")
+    return "\n".join(
+        feature_label(f, lang, wikidata_entities) for f in features
+    ).encode("utf-8")
 
 
 def write_nomenclature_positions(
