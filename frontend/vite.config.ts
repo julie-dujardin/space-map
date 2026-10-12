@@ -3,6 +3,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { paraglideLocaleSplit } from './paraglide-locale-split';
+import { thirdPartyNotices } from './third-party-notices';
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { createReadStream, readFileSync, statSync } from 'node:fs';
@@ -20,6 +21,7 @@ const stashed: Record<string, string | null> = JSON.parse(process.env[STASH] ?? 
 // satellite.js's optional WASM runtime: nothing calls it, and bundled it is a
 // 310 kB chunk with a top-level await.
 const noWasm = fileURLToPath(new URL('./src/lib/math/orbit/no-wasm.ts', import.meta.url));
+const appStyles = fileURLToPath(new URL('./src/app.css', import.meta.url));
 
 export default defineConfig(({ command, mode }) => {
 	// Vite's own loadEnv lets process.env shadow the .env files; parse them off
@@ -99,6 +101,7 @@ export default defineConfig(({ command, mode }) => {
 				outputStructure: 'locale-modules'
 			}),
 			paraglideLocaleSplit('en'),
+			thirdPartyNotices([appStyles]),
 			...(isRemoteLiveUrl ? [] : [serveDirectory('/live', localLiveDir)])
 		],
 		server: {

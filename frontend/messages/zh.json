@@ -1617,6 +1617,7 @@
 	"source_jonathan_space_report_role": "发射与天体历史",
 	"attribution_section_source": "源代码",
 	"credits_source_code": "源代码 — AGPL-3.0",
+	"credits_third_party_licences": "第三方软件许可证",
 	"wikipedia_license_notice": "文本改编自维基百科，遵循",
 	"model_provenance_missions": "来自航天器任务的三维形状模型",
 	"model_provenance_radar": "来自地基雷达的三维形状模型",

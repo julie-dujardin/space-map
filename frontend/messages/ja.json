@@ -513,6 +513,7 @@
 	"webgl_context_lost_body": "グラフィックスコンテキストが失われました。デバイスのメモリ不足時に発生することがあります。再読み込みしてマップを再起動してください。",
 	"attribution_section_source": "ソースコード",
 	"credits_source_code": "ソースコード — AGPL-3.0",
+	"credits_third_party_licences": "サードパーティ製ソフトウェアのライセンス",
 	"distance_from_sun": "太陽からの距離",
 	"distance_from_body": "{name}からの距離",
 	"group_moons_per_planet": "惑星ごとの衛星数",

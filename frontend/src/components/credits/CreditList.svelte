@@ -6,7 +6,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveRole } from '$lib/credits/archive-labels';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
-	import { GITHUB_REPO_URL } from '$lib/constants';
+	import { GITHUB_REPO_URL, THIRD_PARTY_NOTICES_URL } from '$lib/constants';
 	import { REFERENCE_SECTIONS, type BodyCredit, type Credits } from '$lib/credits/credits-payload';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { tileCredit } from '$lib/credits/tile-credit';
@@ -187,6 +187,7 @@
 		{@render groupHeader('source', m.attribution_section_source())}
 		<ul class="mt-2 space-y-1">
 			<li>{@render link(GITHUB_REPO_URL, m.credits_source_code())}</li>
+			<li>{@render link(THIRD_PARTY_NOTICES_URL, m.credits_third_party_licences())}</li>
 		</ul>
 	</section>
 

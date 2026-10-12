@@ -505,6 +505,7 @@
 	"webgl_context_lost_body": "Le contexte graphique a été perdu — cela peut arriver lorsque l'appareil manque de mémoire. Rechargez pour redémarrer la carte.",
 	"attribution_section_source": "Code source",
 	"credits_source_code": "Code source — AGPL-3.0",
+	"credits_third_party_licences": "Licences des logiciels tiers",
 	"distance_from_sun": "Distance solaire",
 	"distance_from_body": "Distance à {name}",
 	"group_moons_per_planet": "Lunes par planète",

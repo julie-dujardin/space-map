@@ -1683,6 +1683,7 @@
 	"source_jonathan_space_report_role": "история запусков и объектов",
 	"attribution_section_source": "Исходный код",
 	"credits_source_code": "Исходный код — AGPL-3.0",
+	"credits_third_party_licences": "Лицензии стороннего программного обеспечения",
 	"wikipedia_license_notice": "Текст адаптирован из Википедии, под лицензией",
 	"model_provenance_missions": "3D-модель формы по данным космической миссии",
 	"model_provenance_radar": "3D-модель формы по данным наземного радара",
