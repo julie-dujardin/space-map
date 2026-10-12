@@ -102,6 +102,8 @@
 	// probe — the same source as the zone page, so chip and page agree.
 	// Mutually exclusive with the earth-sat orbit-class slot above.
 	let lagrangeRef = $state<CrossRef | null>(null);
+	/** The row is an extra: without the membership file there is none. */
+	const NO_MEMBERSHIP = () => {};
 	$effect(() => {
 		const id = body?.data.id;
 		if (!id || body?.data.orbitalSource !== OrbitalSource.SPICE_PROBE) {
@@ -121,7 +123,7 @@
 						ref: groupRef(orbitClassLabel(point), `${CLASS_SLUG_PREFIX}${point}`)
 					}
 				: null;
-		});
+		}, NO_MEMBERSHIP);
 		return () => {
 			stale = true;
 		};

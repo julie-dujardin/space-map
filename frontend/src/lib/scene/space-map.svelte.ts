@@ -224,9 +224,13 @@ export interface Arrival {
 	 * - `unplaced`: it has a place at other dates and none at this one. It has
 	 *   the focus, and the camera stayed where it was.
 	 * - `missing`: the map has no such object.
+	 * - `failed`: a load failed, and the object is not in the scene or has no
+	 *   place where the export gives it one. Nothing moved but the clock.
 	 * - `superseded`: a later navigation took over before this one moved anything.
 	 */
-	outcome: 'placed' | 'host' | 'nowhere' | 'unplaced' | 'missing' | 'superseded';
+	outcome: 'placed' | 'host' | 'nowhere' | 'unplaced' | 'missing' | 'failed' | 'superseded';
+	/** What the load failed with, on `failed`. */
+	error?: unknown;
 	body?: PositionedBody;
 	/** The body the camera is on in its stead. */
 	host?: PositionedBody;
@@ -848,6 +852,7 @@ export class SpaceMap {
 				longitude: target.lon
 			})
 		});
+		if (arrival.outcome === 'failed') throw arrival.error;
 		return this.settled(arrival.flightMs);
 	}
 
@@ -860,6 +865,12 @@ export class SpaceMap {
 	 *
 	 * An object with no place takes the focus all the same: it has a page. The
 	 * camera then goes to the body it belongs to, or stays where it is.
+	 *
+	 * A load that fails is an outcome like the others, not a rejection: most
+	 * callers do not wait on the navigation, and a rejection there is a click
+	 * that does nothing and says nothing. It is the outcome only when the
+	 * object is what the failure cost. A zone the object is not in can fail,
+	 * and the navigation goes on.
 	 */
 	async goTo(id: string, options: GoToOptions = {}): Promise<Arrival> {
 		const token = ++this.navigation;
@@ -891,13 +902,22 @@ export class SpaceMap {
 		}
 
 		let renderer: SceneRenderer | null;
+		// The first load that failed on the way.
+		let loadError: unknown;
+		const note = (error: unknown): void => {
+			loadError ??= error;
+		};
+		const failed = (): Arrival => {
+			console.warn(`[map] goTo ${id}: its data did not load:`, loadError);
+			return { outcome: 'failed', error: loadError, clockMoved, flightMs: 0 };
+		};
 		try {
 			await this.open(id).catch(() => {
 				/* reported by the error effect */
 			});
 			const date = jdToDate(this.clock.jd);
-			await this.ctx.ready(date);
-			await this.ctx.ensureBody(id, date);
+			await this.ctx.ready(date).catch(note);
+			await this.ctx.ensureBody(id, date).catch(note);
 			renderer = await this.rendering();
 		} finally {
 			release();
@@ -905,12 +925,21 @@ export class SpaceMap {
 		if (superseded()) return gone;
 		const body = this.ctx.getBody(id);
 		if (!body || !renderer) {
+			if (loadError !== undefined) return failed();
 			console.warn(`[map] goTo ${id}: not an object of this map`);
 			return { outcome: 'missing', clockMoved, flightMs: 0 };
 		}
 
+		const placed = renderer.placeOf(body) !== null;
+		if (!placed && loadError !== undefined) {
+			windows ??= await coverage();
+			if (superseded()) return gone;
+			// The export gives it a place at this date: the failed load is why it has none.
+			if (nearestCoveredJd(windows, this.clock.jd) === this.clock.jd) return failed();
+		}
+
 		options.commit?.(body);
-		if (renderer.placeOf(body)) {
+		if (placed) {
 			const view = options.view?.(body) ?? {};
 			const distance =
 				view.distance ?? (body.data.radiusKm > 0 ? this.framing({}, id) : distanceBefore);

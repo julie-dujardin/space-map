@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, getContext, untrack } from 'svelte';
 	import type { SceneRenderer } from '$lib/scene/renderer';
-	import type { SpaceMap } from '$lib/scene/space-map.svelte';
+	import type { Arrival, SpaceMap } from '$lib/scene/space-map.svelte';
 	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { page } from '$app/state';
@@ -46,6 +46,8 @@
 		map: SpaceMap;
 		northRefId?: string | null;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
+		/** How a navigation this component made ended: browser back and forward. */
+		onArrival?: (arrival: Arrival, id: string, name: string) => void;
 		onUserPromotedChange?: (count: number) => void;
 		onFeatureSelect?: (
 			bodyId: string,
@@ -60,6 +62,7 @@
 		map,
 		northRefId = null,
 		onFocusChange,
+		onArrival,
 		onUserPromotedChange,
 		onFeatureSelect
 	}: Props = $props();
@@ -162,6 +165,7 @@
 						longitude: view.longitude
 					})
 				})
+				.then((arrival) => onArrival?.(arrival, view.id, view.name))
 				.finally(() => {
 					isNavigatingBack = false;
 				});

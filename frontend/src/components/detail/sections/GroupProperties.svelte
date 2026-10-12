@@ -95,6 +95,8 @@
 	let isOrbitClassGroup = $derived(global?.type === 'earth_orbit_class');
 	const ORBIT_CLASS_MIN_SHARE = 0.1;
 	let orbitClassRefs = $state<EntityRef[]>([]);
+	/** The row is an extra: without the membership file there is none. */
+	const NO_MEMBERSHIP = () => {};
 	$effect(() => {
 		if (!global || !isEarthSatGroup || isOrbitClassGroup) {
 			orbitClassRefs = [];
@@ -128,7 +130,7 @@
 				primary_type: 'group',
 				primary_id: h.slug
 			}));
-		});
+		}, NO_MEMBERSHIP);
 	});
 
 	let hasMission = $derived(

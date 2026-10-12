@@ -105,7 +105,11 @@ export class ContextManager {
 	/** Member ids of the active mission group; lets the focus guard keep the
 	 *  mission view sticky when the camera lands on the primary probe. */
 	private missionMemberIds: Set<string> | null = null;
-	private currentGroupSlug: string | null = null;
+	/** The slug the filter is installed for, or being installed for. Undefined
+	 *  after an install that failed: the scene then matches no slug. */
+	private currentGroupSlug: string | null | undefined = null;
+	/** The install of {@link currentGroupSlug}. */
+	private groupFilterJob: Promise<void> = Promise.resolve();
 	/** Notified after `earthSatFilter` is set. Ramps emphasis / bulk-promotes
 	 *  members when the count is small. */
 	private readonly groupFilterListeners = new Set<(filter: ReadonlySet<string> | null) => void>();
@@ -171,12 +175,18 @@ export class ContextManager {
 		try {
 			await loadScene(this, date, targetId);
 		} catch (e) {
-			this.loading = false;
-			// Surface it so MapPage's error screen renders instead of a black scene.
-			this.error = e instanceof Error ? e.message : String(e);
-			console.error('[scene-load]', e);
+			this.fail(e);
 			throw e;
 		}
+	}
+
+	/** End the load on an error. Every way to open the scene ends here or in
+	 *  `loading = false`: the page shows this, with a reload, in place of a
+	 *  loading bar that never ends. */
+	fail(e: unknown): void {
+		this.loading = false;
+		this.error = e instanceof Error ? e.message : String(e);
+		console.error('[scene-load]', e);
 	}
 
 	/** Per-frame hook, called when sim jd advances, driving hot-reload of
@@ -201,11 +211,23 @@ export class ContextManager {
 	 *  `applies_to`. Safe to call before {@link load}. Small-body filter is a
 	 *  render-time mask ({@link VisibilityController.isAsteroidGroupVisible});
 	 *  Earth-sat filter is applied at chunk-fetch time, so changes trigger a
-	 *  zone invalidation + refetch. */
-	async applyGroupFilter(slug: string | null): Promise<void> {
-		if (slug === this.currentGroupSlug) return;
+	 *  zone invalidation + refetch.
+	 *
+	 *  Rejects when a file the filter is made from does not load. A call for
+	 *  the same slug then starts over, and one made while the install runs
+	 *  shares its outcome. */
+	applyGroupFilter(slug: string | null): Promise<void> {
+		if (slug === this.currentGroupSlug) return this.groupFilterJob;
 		this.currentGroupSlug = slug;
+		const job = this.installGroupFilter(slug);
+		this.groupFilterJob = job;
+		job.catch(() => {
+			if (this.groupFilterJob === job) this.currentGroupSlug = undefined;
+		});
+		return job;
+	}
 
+	private async installGroupFilter(slug: string | null): Promise<void> {
 		// Mission members are probes, not a streamed layer — no scene filter — but
 		// the focus guard needs their ids to keep the mission view on a fly-to.
 		if (slug?.startsWith(MISSION_SLUG_PREFIX)) {
@@ -218,7 +240,8 @@ export class ContextManager {
 			this.missionMemberIds = null;
 		}
 
-		const entry = slug ? await this.resolveIndexEntry(slug) : null;
+		// A slug the index does not list filters nothing.
+		const entry = slug ? ((await fetchGroupIndex())[slug] ?? null) : null;
 		if (slug !== this.currentGroupSlug) return;
 
 		const nextSmallBody = this.resolveSmallBodyFilter(slug, entry?.applies_to, entry?.n);
@@ -268,14 +291,5 @@ export class ContextManager {
 			return { kind: 'flag', flag: name, mask, n: n ?? 0 };
 		}
 		return null;
-	}
-
-	private async resolveIndexEntry(slug: string) {
-		try {
-			const index = await fetchGroupIndex();
-			return index[slug] ?? null;
-		} catch {
-			return null;
-		}
 	}
 }

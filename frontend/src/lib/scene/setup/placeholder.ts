@@ -13,7 +13,8 @@ import { SSB_ID } from '$lib/constants';
  *
  * A target whose bundle has no elements comes back as a page-only stand-in:
  * it has a page to open. An object with no bundle at all (or a parent cycle)
- * yields an empty array.
+ * yields an empty array. A bundle that does not load rejects: it says nothing
+ * about the object, and "no such object" would be the wrong answer.
  *
  * Each entry's `zone` is the SBDB-class id (e.g. `"APO"`); null when the body
  * has no SBDB record, in which case the caller falls back to `parentId`-based
@@ -29,13 +30,7 @@ export async function createPlaceholderBody(
 		return [];
 	}
 	visited.add(targetId);
-	let detail: Awaited<ReturnType<typeof fetchObjectDetail>>;
-	try {
-		detail = await fetchObjectDetail(targetId);
-	} catch {
-		console.warn(`createPlaceholderBody: failed to fetch global data for ${targetId} — hiding`);
-		return [];
-	}
+	const detail = await fetchObjectDetail(targetId);
 	const global = detail.global;
 	if (!global) {
 		console.warn(`createPlaceholderBody: no catalogue record for ${targetId} — hiding`);

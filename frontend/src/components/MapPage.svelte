@@ -135,7 +135,8 @@
 	const settings = getSettings();
 
 	/** Say what a navigation did that the reader did not ask for: it changed
-	 *  the date, or the object has no place and the camera went elsewhere. */
+	 *  the date, the object has no place and the camera went elsewhere, or its
+	 *  data did not load. */
 	async function reportArrival(arrival: Arrival, id: string, name?: string): Promise<void> {
 		if (arrival.outcome === 'superseded') return;
 		// A bare `/e/<id>` link carries no name; the catalogue and the localized bundle do.
@@ -160,18 +161,20 @@
 			});
 		}
 		const noPosition =
-			arrival.outcome === 'host'
-				? m.object_shown_at_host({
-						name: label,
-						host: arrival.host?.data.name ?? arrival.host?.data.id ?? ''
-					})
-				: arrival.outcome === 'nowhere'
-					? m.object_position_unknown({ name: label })
-					: arrival.outcome === 'unplaced'
-						? m.object_no_position({ name: label })
-						: arrival.outcome === 'missing'
-							? m.object_not_found({ name: label })
-							: null;
+			arrival.outcome === 'failed'
+				? m.object_load_failed({ name: label })
+				: arrival.outcome === 'host'
+					? m.object_shown_at_host({
+							name: label,
+							host: arrival.host?.data.name ?? arrival.host?.data.id ?? ''
+						})
+					: arrival.outcome === 'nowhere'
+						? m.object_position_unknown({ name: label })
+						: arrival.outcome === 'unplaced'
+							? m.object_no_position({ name: label })
+							: arrival.outcome === 'missing'
+								? m.object_not_found({ name: label })
+								: null;
 		if (noPosition) toast.warning(noPosition, { id: 'object-no-position', ...sticky });
 		else toast.dismiss('object-no-position');
 	}
@@ -505,12 +508,20 @@
 		else map.focusOnPathPoint(target.centerId, target.r);
 	}
 
+	/** For a navigation inside the planner, whose panel tells the rest: only a
+	 *  load that failed is the page's to say. */
+	function reportFailed(arrival: Arrival, id: string): void {
+		if (arrival.outcome === 'failed') void reportArrival(arrival, id);
+	}
+
 	// Look at a body without touching the URL. On /nav the trip owns the URL, so
 	// the ordinary focus path would close the planner to look at one of its own
 	// waypoints.
 	function focusCameraOn(id: string): void {
 		// The trip owns the date: the clock stays.
-		void map.goTo(id, { clock: 'keep', camera: 'pan' });
+		void map
+			.goTo(id, { clock: 'keep', camera: 'pan' })
+			.then((arrival) => reportFailed(arrival, id));
 	}
 
 	// A non-resident trip end (probe, small body) has no elements to transfer
@@ -540,7 +551,7 @@
 			if (untrack(() => cameraFocus?.data.id) === framed) return;
 			// Pan, don't fly: retargeting a trip is picking a place on a map, not
 			// visiting it. The trip owns the date, so the clock stays.
-			await map.goTo(framed, { clock: 'keep', camera: 'pan' });
+			reportFailed(await map.goTo(framed, { clock: 'keep', camera: 'pan' }), framed);
 		})();
 	});
 
@@ -699,7 +710,16 @@
 		};
 	});
 
-	onMount(async () => {
+	onMount(() => {
+		void openInitialView().catch((e) => {
+			// Before the scene is up, a failure here is the page's: with no error
+			// to show, the loading bar would stay for good.
+			if (ctx.loading) ctx.fail(e);
+			else console.error('[map] the opening view failed:', e);
+		});
+	});
+
+	async function openInitialView(): Promise<void> {
 		const initialId = appState.view.id;
 		// Friendly label from the URL slug; captured before the Sun fallback
 		// below overwrites appState.view.name.
@@ -763,15 +783,32 @@
 			// land on the default view instead, so an unknown URL opens home.
 			map.snapToBodyFacing(DEFAULT_VIEW.id, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 		}
-	});
+	}
 
-	$effect(() => {
-		const slug =
-			appState.view.type === UrlType.Group && appState.view.groupSlug
-				? appState.view.groupSlug
-				: null;
-		void ctx.applyGroupFilter(slug);
-	});
+	// A primitive: `view` is replaced twice a second, and the filter is asked
+	// for when the group changes, not on each of those.
+	const groupSlug = $derived(
+		appState.view.type === UrlType.Group && appState.view.groupSlug ? appState.view.groupSlug : null
+	);
+	$effect(() => applyGroupFilter(groupSlug));
+
+	function applyGroupFilter(slug: string | null): void {
+		const name = untrack(() => appState.view.name) || (slug ?? '');
+		toast.dismiss('group-filter-failed');
+		ctx.applyGroupFilter(slug).catch((e) => {
+			// On the opening view this is the load's failure, shown as one. A group
+			// the reader left has nothing to say.
+			if (ctx.loading || ctx.error || slug !== groupSlug) return;
+			console.warn(`[map] group filter for ${slug} did not load:`, e);
+			// The scene shows every object till then, so the way back is on the toast.
+			toast.warning(m.object_load_failed({ name }), {
+				id: 'group-filter-failed',
+				duration: Number.POSITIVE_INFINITY,
+				closeButton: true,
+				action: { label: m.retry(), onClick: () => applyGroupFilter(slug) }
+			});
+		});
+	}
 
 	// Opening a mission flies the camera to its primary probe, unless already
 	// focused on one of its craft, in which case the mission page just opens
@@ -886,6 +923,7 @@
 						cameraFocus = body;
 						selectedBody = body;
 					}}
+					onArrival={(arrival, id, name) => void reportArrival(arrival, id, name)}
 					onFeatureSelect={async (bodyId, fid, lat, lon, d) => {
 						const features = await fetchBodyNomenclature(bodyId);
 						const f = features.find((x) => x.featureId === fid);

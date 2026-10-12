@@ -5,6 +5,7 @@
  */
 
 import { versionedUrl } from '$lib/fetch/data-base';
+import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { memoizedGzJson } from '$lib/fetch/gz';
 import { fetchMetadata } from '$lib/fetch/metadata';
 
@@ -18,6 +19,8 @@ export const fetchEarthMembership = memoizedGzJson<EarthMembership>(
 		return versionedUrl('/v1/membership/earth.json.gz', 'membership');
 	},
 	{
+		// A group page waits on it before its scene loads.
+		fetcher: fetchWithTimeout,
 		// No file ⇒ no members, not an error: the export may predate the index.
 		onMissing: () => ({}),
 		error: (res) => `fetchEarthMembership: ${res.status} ${res.statusText}`
