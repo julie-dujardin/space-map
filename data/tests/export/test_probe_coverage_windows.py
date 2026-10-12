@@ -35,7 +35,11 @@ def _plan(probe_id: int, spans: list[tuple[float, float]]) -> ProbePlan:
 
 def _meta(probe_id: int, obj_id: str) -> ProbeMeta:
     return ProbeMeta(
-        probe_id=probe_id, obj_id=obj_id, object_type_ordinal=0, has_localized=False
+        probe_id=probe_id,
+        obj_id=obj_id,
+        object_type_ordinal=0,
+        has_localized=False,
+        archive_ordinal=0,
     )
 
 

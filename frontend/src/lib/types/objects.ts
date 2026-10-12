@@ -1,7 +1,7 @@
 import type { SatRec } from 'satellite.js';
 import type { SGP4Inputs } from '$lib/math/orbit/sgp4';
 import type { Quaternion } from 'three';
-import { OrbitalSource } from '$lib/fetch/position/format';
+import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
 import type { NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
 import type { AttitudeTrack } from '$lib/fetch/attitude/track';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -103,6 +103,9 @@ export interface BodyData extends OrbitalElements {
 	 * `global.orbit.source` instead.
 	 */
 	orbitalSource: OrbitalSource;
+	/** Archive a probe's trajectory is credited to, from its chunk header.
+	 *  Every other source names one archive for all its bodies. */
+	orbitArchive?: OrbitArchive;
 	/** The catalogue has no orbit for this object. It has a page and never a place. */
 	pageOnly?: true;
 	/**

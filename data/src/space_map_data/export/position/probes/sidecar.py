@@ -4,13 +4,13 @@ Each chunk file `{zone}/{chunk_idx}.bin.gz` has a companion JSON sidecar
 `{chunk_idx}.meta.json` recording the inputs that produced it:
 `binary_version` (wire-format bumps auto-invalidate), `zone_hash`
 (fit-affecting zone params), and `probes` — `{probe_id: {"fit":
-fit_sig_hash, "ord": int, "has_loc": bool}}`.
+fit_sig_hash, "ord": int, "has_loc": bool, "archive": int}}`.
 
 `FIT_VERSION`, kernel content stamps, candidates_hash, and events_hash live inside
 the per-probe fit signature rather than here — a change to any of them
-flips the affected probe's `fit` hash. An i18n/type-tag edit flips
-`has_loc`/`ord` without invalidating the cached fit, so the chunk repacks
-from cached trajectory data.
+flips the affected probe's `fit` hash. An i18n, type-tag or credit edit flips
+`has_loc`/`ord`/`archive` without invalidating the cached fit, so the chunk
+repacks from cached trajectory data.
 
 Atomic writes: binary then sidecar, each tempfile + rename.
 """
@@ -40,7 +40,8 @@ FIT_VERSION = 16
 # header-only changes the fit signatures can't see (fit-center id encoding).
 # 3: propagate the pgaa/drm kernel-precedence re-fits (furnish order isn't
 # part of the fit signature, so those chunks never self-dirty).
-PACK_VERSION = 3
+# 4: archive byte in the probe header.
+PACK_VERSION = 4
 
 
 def zone_signature(zone: Zone) -> str:
@@ -95,10 +96,11 @@ def build_chunk_signature(
     zone: Zone,
     probe_block: dict[str, dict],
 ) -> dict:
-    """Chunk-level signature: zone params + per-probe `{fit, ord, has_loc}`,
-    one entry per probe contributing a `ChunkProbeRecord`. `fit` flips when
-    the trajectory must re-fit; the other two flip on a wire-header-only
-    change (i18n, type tag), so the chunk repacks from cached fits.
+    """Chunk-level signature: zone params + per-probe `{fit, ord, has_loc,
+    archive}`, one entry per probe contributing a `ChunkProbeRecord`. `fit`
+    flips when the trajectory must re-fit; the others flip on a
+    wire-header-only change (i18n, type tag, credit), so the chunk repacks
+    from cached fits.
     """
     return {
         "binary_version": BINARY_VERSION,

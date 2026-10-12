@@ -41,11 +41,27 @@ ARCHIVE_SPACETRACK = "spacetrack"
 ARCHIVE_GCAT_DEEP = "gcat-deepcat"
 ARCHIVE_NSDB = "nsdb"
 
+# Archive byte of a probe's chunk header, so the scene credits a trajectory
+# without the detail fetch. Must stay in sync with `PROBE_ARCHIVES` in
+# format.ts; an ordinal is never reassigned.
+PROBE_ARCHIVE_ORDINAL: dict[str | None, int] = {
+    None: 0,
+    ARCHIVE_NAIF: 1,
+    ARCHIVE_ESA: 2,
+    ARCHIVE_NAIF_PDS3: 3,
+    ARCHIVE_NAIF_PDS4: 4,
+    ARCHIVE_JAXA_DARTS: 5,
+    ARCHIVE_HORIZONS: 6,
+    ARCHIVE_GCAT_DEEP: 7,
+    ARCHIVE_SPACETRACK: 8,
+}
+
 
 # `server` strings written into `_index.json` by `ProbesDownloader`. Synth
 # probes get the Horizons credit since their trajectory came from there, and
 # catalogue-derived probes credit the catalogue their elements came from —
-# their trajectory is nobody's archive solution.
+# their trajectory is nobody's archive solution. Space-Track's terms make the
+# citation a condition of redistribution.
 _SERVER_TO_ARCHIVE: dict[str, str] = {
     "NAIF": ARCHIVE_NAIF,
     "ESA": ARCHIVE_ESA,
@@ -54,6 +70,7 @@ _SERVER_TO_ARCHIVE: dict[str, str] = {
     "JAXA-DARTS": ARCHIVE_JAXA_DARTS,
     "JPL-Horizons-synth": ARCHIVE_HORIZONS,
     "GCAT-DEEP": ARCHIVE_GCAT_DEEP,
+    "SPACETRACK-TLE": ARCHIVE_SPACETRACK,
 }
 
 # Generic SPICE kernels (planets/moons/asteroids) come from NAIF's tree.
@@ -196,18 +213,25 @@ def ephemeris_accuracy_for(
     return probe_accuracy.get(obj.probe_id)
 
 
+def probe_archive(
+    probe_id: int | None, probe_kernel_sources: dict[int, str | None]
+) -> str | None:
+    """Archive id crediting a probe's trajectory, or None. A registered `None`
+    suppresses the credit; unregistered probes fall back to NAIF."""
+    if probe_id is not None and probe_id in probe_kernel_sources:
+        return probe_kernel_sources[probe_id]
+    return ARCHIVE_NAIF
+
+
 def ephemeris_archive_for(
     obj: Object, probe_kernel_sources: dict[int, str | None]
 ) -> str | None:
-    """Archive id crediting *obj*'s ephemeris, or None. A registered `None`
-    suppresses the credit; unregistered probes fall back to NAIF."""
+    """Archive id crediting *obj*'s ephemeris, or None."""
     src = obj.orbital_source
     if src is None:
         return None
     if src == OrbitalSource.spice_probe:
-        if obj.probe_id is not None and obj.probe_id in probe_kernel_sources:
-            return probe_kernel_sources[obj.probe_id]
-        return ARCHIVE_NAIF
+        return probe_archive(obj.probe_id, probe_kernel_sources)
     return _NON_PROBE_ARCHIVE.get(src)
 
 

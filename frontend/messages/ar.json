@@ -1361,6 +1361,8 @@
 	"attribution_map": "الخريطة",
 	"attribution_section_panorama": "بانوراما السطح",
 	"provider_nasa": "ناسا",
+	"provider_esa": "إيسا",
+	"provider_jaxa": "جاكسا",
 	"attribution_title": "مصادر البيانات",
 	"attribution_section_orbits": "العناصر المدارية",
 	"attribution_section_rotation": "الدوران والتوجه وأنصاف الأقطار",

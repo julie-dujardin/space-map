@@ -14,9 +14,12 @@ from space_map_data.probes import probe_id
 from space_map_data.export.ephemeris import (
     ARCHIVE_GCAT_DEEP,
     ARCHIVE_NAIF,
+    ARCHIVE_SPACETRACK,
     EPHEMERIS_ARCHIVES,
+    PROBE_ARCHIVE_ORDINAL,
     load_probe_ephemeris_accuracy,
     load_probe_kernel_sources,
+    probe_archive,
 )
 from space_map_data.probes.propagation import AU_KM
 
@@ -110,11 +113,45 @@ class TestCredit:
         )
         assert load_probe_kernel_sources()[PROBE_ID] == ARCHIVE_GCAT_DEEP
 
+    def test_a_trajectory_from_tles_credits_space_track(self, tree):
+        tle = tree.parent / "missions" / "SPACETRACK-TLE"
+        tle.mkdir()
+        (tle / "_index.json").write_text(json.dumps({"server": "SPACETRACK-TLE"}))
+        tree.write_text(
+            json.dumps(
+                _registry(
+                    [
+                        {"mission": "EVENTS-DB", "naif_id": NAIF},
+                        {"mission": "SPACETRACK-TLE", "naif_id": NAIF},
+                    ]
+                )
+            )
+        )
+        assert load_probe_kernel_sources()[PROBE_ID] == ARCHIVE_SPACETRACK
+
     def test_a_probe_with_no_archived_source_is_left_uncredited(self, tree):
         tree.write_text(
             json.dumps(_registry([{"mission": "EVENTS-DB", "naif_id": NAIF}]))
         )
         assert load_probe_kernel_sources()[PROBE_ID] is None
+
+    def test_an_unregistered_probe_falls_back_to_naif(self):
+        assert probe_archive(PROBE_ID, {}) == ARCHIVE_NAIF
+
+    def test_a_registered_none_stays_uncredited(self):
+        assert probe_archive(PROBE_ID, {PROBE_ID: None}) is None
+
+
+class TestChunkHeaderArchive:
+    """The archive byte the scene credits a probe by."""
+
+    def test_every_archive_a_probe_can_have_has_an_ordinal(self):
+        assert set(ephemeris._SERVER_TO_ARCHIVE.values()) <= set(PROBE_ARCHIVE_ORDINAL)
+
+    def test_ordinals_are_distinct_and_zero_is_no_credit(self):
+        ordinals = list(PROBE_ARCHIVE_ORDINAL.values())
+        assert len(set(ordinals)) == len(ordinals)
+        assert PROBE_ARCHIVE_ORDINAL[None] == 0
 
 
 def test_every_archive_id_is_shipped_for_the_frontend_to_label():

@@ -1,42 +1,37 @@
 /**
  * Who to credit for a position, declared once. The attribution bar, its
- * popover, the Orbital detail section and the SDK control all key off this
- * table, so a new `OrbitalSource` needs an entry here rather than a line in
- * four unrelated files — each of which used to carry its own partial copy.
+ * popover, the Orbital detail section and the SDK control all key off these
+ * tables, so a new `OrbitalSource` or archive needs an entry here rather than
+ * a line in four unrelated files.
  *
- * Core-side, so the labels here are the untranslated fallback; the app passes
+ * Core-side, so the names here are the untranslated fallback; the app passes
  * its own through `attributionChips`.
  */
-import { OrbitalSource } from '$lib/fetch/position/format';
+import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
 
 /** Every source but the sentinel for files that predate the provenance byte. */
 export type NamedOrbitSource = Exclude<OrbitalSource, OrbitalSource.UNKNOWN>;
 
 export interface OrbitSourceInfo {
-	/** Archive id carrying the citation's name and home page. */
-	archive: string;
-	/** Organisation as it is cited. NASA-produced sources share one chip. */
-	label: string;
+	/** Archive carrying the citation's name and home page. Absent for probes:
+	 *  agencies keep their own kernels, so each craft names its archive. */
+	archive?: OrbitArchive;
 	/** Its bodies hang off one system at a time — Earth's satellites, a binary
 	 *  asteroid's moons — so it is credited only while the camera is there. */
 	scoped?: boolean;
 }
 
 /** `Record` rather than a lookup: a new source fails to compile until it says
- *  who produced it and where the data came from. */
+ *  where the data came from. */
 export const ORBIT_SOURCES: Record<NamedOrbitSource, OrbitSourceInfo> = {
-	[OrbitalSource.HORIZONS]: { archive: 'horizons', label: 'NASA' },
-	[OrbitalSource.SBDB]: { archive: 'sbdb', label: 'NASA' },
-	[OrbitalSource.SPICE]: { archive: 'naif', label: 'NASA' },
-	[OrbitalSource.SBDB_MOON]: { archive: 'sbdb', label: 'NASA', scoped: true },
-	[OrbitalSource.ASTERSAT]: {
-		archive: 'nsdb',
-		label: 'Natural Satellites Data Base',
-		scoped: true
-	},
-	[OrbitalSource.SPICE_PROBE]: { archive: 'naif', label: 'NASA' },
-	[OrbitalSource.CELESTRAK]: { archive: 'celestrak', label: 'CelesTrak', scoped: true },
-	[OrbitalSource.SPACETRACK]: { archive: 'spacetrack', label: 'Space-Track.org', scoped: true }
+	[OrbitalSource.HORIZONS]: { archive: 'horizons' },
+	[OrbitalSource.SBDB]: { archive: 'sbdb' },
+	[OrbitalSource.SPICE]: { archive: 'naif' },
+	[OrbitalSource.SBDB_MOON]: { archive: 'sbdb', scoped: true },
+	[OrbitalSource.ASTERSAT]: { archive: 'nsdb', scoped: true },
+	[OrbitalSource.SPICE_PROBE]: {},
+	[OrbitalSource.CELESTRAK]: { archive: 'celestrak', scoped: true },
+	[OrbitalSource.SPACETRACK]: { archive: 'spacetrack', scoped: true }
 };
 
 /** Display order wherever sources are listed together. Explicit because the
@@ -51,6 +46,21 @@ export const ORBIT_SOURCE_ORDER: readonly NamedOrbitSource[] = [
 	OrbitalSource.CELESTRAK,
 	OrbitalSource.SPACETRACK
 ];
+
+/** Organisation each archive is cited as. NASA's archives share one chip. */
+export const ORBIT_ARCHIVE_ORGANISATIONS: Record<OrbitArchive, string> = {
+	horizons: 'NASA',
+	sbdb: 'NASA',
+	naif: 'NASA',
+	'naif-pds3': 'NASA',
+	'naif-pds4': 'NASA',
+	esa: 'ESA',
+	'jaxa-darts': 'JAXA',
+	'gcat-deepcat': 'McDowell Deep Space Catalog',
+	nsdb: 'Natural Satellites Data Base',
+	celestrak: 'CelesTrak',
+	spacetrack: 'Space-Track.org'
+};
 
 export function orbitSourceInfo(source: OrbitalSource): OrbitSourceInfo | undefined {
 	return ORBIT_SOURCES[source as NamedOrbitSource];

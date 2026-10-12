@@ -47,9 +47,9 @@
 	const ctx = getContext<ContextManager>('ctx');
 
 	// Fallback when the global JSON predates `ephemeris_source`: the archive the
-	// source is cited by carries both its name and its home page.
-	const sourceArchive = (s: OrbitalSource | undefined) =>
-		s === undefined ? undefined : orbitSourceInfo(s)?.archive;
+	// body is cited by carries both its name and its home page.
+	const sourceArchive = (b: PositionedBody | undefined) =>
+		b && (orbitSourceInfo(b.data.orbitalSource)?.archive ?? b.data.orbitArchive);
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -186,20 +186,11 @@
 			: null
 	);
 
-	let dataSourceLabel = $derived.by(() => {
-		const archive = archiveLabel(global?.ephemeris_source);
-		if (archive) return archive;
-		const src = body?.data.orbitalSource;
-		// UNKNOWN is the legit "no provenance shipped" sentinel (hand-authored
-		// elements, or files pre-dating the source byte) — show nothing, no warn.
-		if (src == null || src === OrbitalSource.UNKNOWN) return null;
-		const label = archiveLabel(sourceArchive(src));
-		if (!label) {
-			console.warn(`[Orbital] body ${body?.data.id} has UNKNOWN orbital source`);
-			return null;
-		}
-		return label;
-	});
+	// Null where nothing is credited: no provenance shipped (hand-authored
+	// elements, files pre-dating the source byte), or a probe no archive tracked.
+	let dataSourceLabel = $derived(
+		archiveLabel(global?.ephemeris_source) ?? archiveLabel(sourceArchive(body))
+	);
 
 	// Present only on trajectories we derived from published elements, so its
 	// absence means an archive solution rather than an unmeasured one.
@@ -214,7 +205,7 @@
 	let dataSourceUrl = $derived.by(() => {
 		const archive = global?.ephemeris_source;
 		if (archive) return archiveUrl(archive);
-		return archiveUrl(sourceArchive(body?.data.orbitalSource));
+		return archiveUrl(sourceArchive(body));
 	});
 
 	// Mirrors the renderer's dispatch order (renderer.ts:computePosition):

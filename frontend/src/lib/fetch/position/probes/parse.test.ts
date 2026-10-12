@@ -32,6 +32,7 @@ interface ProbeSpec {
 	subChunks: SubChunkSpec[];
 	fitCenterIdValue?: number;
 	fitCenterIdType?: number;
+	archiveOrdinal?: number;
 }
 
 function buildBuffer(
@@ -71,6 +72,7 @@ function buildBuffer(
 		view.setUint16(off + 10, p.firstSubchunkOffset, true);
 		view.setInt32(off + 12, p.fitCenterIdValue ?? MISSING_INT32, true);
 		view.setUint8(off + 16, p.fitCenterIdType ?? MISSING_UINT8);
+		view.setUint8(off + 18, p.archiveOrdinal ?? 0);
 		off += PROBE_HEADER_SIZE;
 		for (const sc of p.subChunks) {
 			const payloadLen = sc.payload.length * coeffBytes;
@@ -373,6 +375,27 @@ describe('parseProbesPayload — synthetic buffers', () => {
 			idValue: 301
 		});
 		expect(chunk.probes[1].fitCenter).toBeNull();
+	});
+
+	it('names the archive each probe is credited to, and none for ordinal 0', () => {
+		const probe = (probeId: number, archiveOrdinal?: number): ProbeSpec => ({
+			probeId,
+			objectType: 13,
+			hasLocalized: false,
+			firstSubchunkOffset: 0,
+			subChunks: [{ method: PROBE_METHOD_UNCOVERABLE, payload: [] }],
+			archiveOrdinal
+		});
+		const buf = buildBuffer(
+			2451545.0,
+			2451545.0 + 7.0,
+			7.0,
+			// 200 is an ordinal newer than this build.
+			[probe(1, 2), probe(2, 5), probe(3), probe(4, 200)],
+			false
+		);
+		const chunk = parseProbesPayload(buf, 2451545.0, 2451545.0 + 7.0, false);
+		expect(chunk.probes.map((p) => p.archive)).toEqual(['esa', 'jaxa-darts', undefined, undefined]);
 	});
 
 	it('honours first_subchunk_offset for probes that start mid-chunk', () => {

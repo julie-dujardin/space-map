@@ -2,8 +2,7 @@
 	import { getContext } from 'svelte';
 	import { siGithub } from 'simple-icons';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-	import { attributionChips, type OrbitSourceLabels } from '$lib/scene/state/attribution';
-	import { OrbitalSource } from '$lib/fetch/position/format';
+	import { attributionChips, type OrbitArchiveLabels } from '$lib/scene/state/attribution';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Popover from '$lib/components/ui/popover';
@@ -38,18 +37,21 @@
 
 	const ctx = getContext<ContextManager | undefined>('ctx');
 
-	// The translated half of `ORBIT_SOURCES`, which carries everything else about
-	// a source. NASA-produced ones collapse to a single "NASA" chip; the shared
-	// derivation dedups on the label, so the translation decides.
-	const labels: OrbitSourceLabels = $derived({
-		[OrbitalSource.HORIZONS]: m.provider_nasa(),
-		[OrbitalSource.SBDB]: m.provider_nasa(),
-		[OrbitalSource.SPICE]: m.provider_nasa(),
-		[OrbitalSource.SBDB_MOON]: m.provider_nasa(),
-		[OrbitalSource.ASTERSAT]: m.source_nsdb_name(),
-		[OrbitalSource.SPICE_PROBE]: m.provider_nasa(),
-		[OrbitalSource.CELESTRAK]: m.source_celestrak_name(),
-		[OrbitalSource.SPACETRACK]: m.source_spacetrack_name()
+	// The translated half of `ORBIT_ARCHIVE_ORGANISATIONS`. NASA's archives
+	// collapse to a single "NASA" chip; the shared derivation dedups on the
+	// label, so the translation decides.
+	const labels: OrbitArchiveLabels = $derived({
+		horizons: m.provider_nasa(),
+		sbdb: m.provider_nasa(),
+		naif: m.provider_nasa(),
+		'naif-pds3': m.provider_nasa(),
+		'naif-pds4': m.provider_nasa(),
+		esa: m.provider_esa(),
+		'jaxa-darts': m.provider_jaxa(),
+		'gcat-deepcat': m.source_archive_gcat_deep(),
+		nsdb: m.source_nsdb_name(),
+		celestrak: m.source_celestrak_name(),
+		spacetrack: m.source_spacetrack_name()
 	});
 
 	const shown = $derived.by<AttributionChip[]>(() => {

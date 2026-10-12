@@ -544,10 +544,10 @@ def decide_dirty_chunks(
     per-probe fit signatures + header bits, and compare against the on-disk
     sidecar.
 
-    Per-probe block carries `{fit, ord, has_loc}`: `fit` is a short hash of
-    the per-probe fit signature, flipping when the trajectory must change;
-    `ord`/`has_loc` are wire-header bits that flip on an i18n/type-tag
-    change, repacking the binary without re-fitting.
+    Per-probe block carries `{fit, ord, has_loc, archive}`: `fit` is a short
+    hash of the per-probe fit signature, flipping when the trajectory must
+    change; the rest are wire-header fields that flip on an i18n, type-tag or
+    credit change, repacking the binary without re-fitting.
     """
     probes_dir = out_dir / "position" / "probes"
     dirty: dict[str, dict[int, dict]] = defaultdict(dict)
@@ -565,6 +565,7 @@ def decide_dirty_chunks(
                     "fit": fit_cache.signature_hash(sig),
                     "ord": meta.object_type_ordinal,
                     "has_loc": meta.has_localized,
+                    "archive": meta.archive_ordinal,
                 }
             new_sig = sidecar.build_chunk_signature(zone_obj, probe_block)
             binary_path = zone_out / f"{chunk_idx}.bin.gz"

@@ -120,6 +120,36 @@ export enum OrbitalSource {
 	UNKNOWN = 255
 }
 
+/** An archive a position is credited to, by the id `global.ephemeris_source`
+ *  and `credits.ephemeris_archives` name it with. */
+export type OrbitArchive =
+	| 'horizons'
+	| 'sbdb'
+	| 'nsdb'
+	| 'celestrak'
+	| 'spacetrack'
+	| 'naif'
+	| 'esa'
+	| 'naif-pds3'
+	| 'naif-pds4'
+	| 'jaxa-darts'
+	| 'gcat-deepcat';
+
+/** Archive byte of a probe's chunk header, by ordinal. Must stay in sync with
+ *  `PROBE_ARCHIVE_ORDINAL` in ephemeris.py. Ordinal 0 is a probe no archive
+ *  tracked, which is credited to nobody. */
+export const PROBE_ARCHIVES: readonly (OrbitArchive | undefined)[] = [
+	undefined,
+	'naif',
+	'esa',
+	'naif-pds3',
+	'naif-pds4',
+	'jaxa-darts',
+	'horizons',
+	'gcat-deepcat',
+	'spacetrack'
+];
+
 /** Object-ID prefix for every row (elements) or body (chebyshev). Combined
  *  with the numeric value to rebuild `<prefix>-<numeric>` (e.g. `naif-399`).
  *  Ordinals must stay in sync with `ID_TYPE_ORDINAL` in format.py. */

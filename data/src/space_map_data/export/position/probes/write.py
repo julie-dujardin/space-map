@@ -282,6 +282,7 @@ def write_pass(
                         fit_center_id_value=fc_value,
                         fit_center_id_type=fc_type,
                         n_system_intervals=len(rec.system_intervals),
+                        archive_ordinal=meta.archive_ordinal,
                     )
                 )
                 for sc in flying:

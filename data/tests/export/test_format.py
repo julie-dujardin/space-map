@@ -19,6 +19,7 @@ from space_map_data.export.position.format import (
     MISSING_SOURCE,
     MISSING_UINT8,
     OBJECT_TYPE_ORDINAL,
+    PROBE_HEADER_SIZE,
     SCALE_ORDINAL,
     SOURCE_ORDINAL,
     SUBFORMAT_KEPLERIAN,
@@ -29,6 +30,7 @@ from space_map_data.export.position.format import (
     pack_chebyshev_header,
     pack_elements_header,
     pack_landed_payload,
+    pack_probe_header,
 )
 from space_map_data.models.object import ElementsScale, ObjectType, OrbitalSource
 
@@ -231,3 +233,21 @@ def test_landed_payload_flags_a_crash_site() -> None:
 
     assert flags(is_destroyed=False) == LANDED_FLAG_STATIC
     assert flags(is_destroyed=True) == LANDED_FLAG_STATIC | LANDED_FLAG_DESTROYED
+
+
+def test_probe_header_names_the_archive_to_credit() -> None:
+    """The archive byte sits past the fit-center block, zero when uncredited."""
+
+    def header(archive_ordinal: int) -> bytes:
+        return pack_probe_header(
+            probe_id=22904832,
+            object_type_ordinal=OBJECT_TYPE_ORDINAL[ObjectType.spacecraft],
+            has_localized=True,
+            n_subchunks=3,
+            first_subchunk_offset=0,
+            archive_ordinal=archive_ordinal,
+        )
+
+    assert len(header(0)) == PROBE_HEADER_SIZE
+    assert header(0)[18] == 0
+    assert header(2)[18] == 2

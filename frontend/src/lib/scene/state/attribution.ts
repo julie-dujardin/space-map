@@ -5,21 +5,18 @@
  * control, so an embed credits exactly what the site does.
  */
 
+import { PROBE_ARCHIVES, type OrbitArchive } from '$lib/fetch/position/format';
 import type { ContextManager } from './context-manager.svelte';
 import {
+	ORBIT_ARCHIVE_ORGANISATIONS,
 	ORBIT_SOURCE_ORDER,
 	ORBIT_SOURCES,
-	type NamedOrbitSource,
-	type OrbitSourceInfo
+	type NamedOrbitSource
 } from './orbit-sources';
-
-export type OrbitSourceLabels = Record<NamedOrbitSource, string>;
 
 /** Organisation names as they are cited, translated only where the app has a
  *  translation of its own to pass in. */
-export const DEFAULT_ORBIT_LABELS: OrbitSourceLabels = Object.fromEntries(
-	ORBIT_SOURCE_ORDER.map((s) => [s, ORBIT_SOURCES[s].label])
-) as OrbitSourceLabels;
+export type OrbitArchiveLabels = Record<OrbitArchive, string>;
 
 /** True while the camera sits in a system this scoped source fed. A source
  *  recorded without parents came off the chunk-level path, where crediting it
@@ -32,14 +29,21 @@ function feedsFocusedSystem(ctx: ContextManager, source: NamedOrbitSource): bool
 	return false;
 }
 
-/** Which sources belong in the credits right now: everything that contributed,
- *  less the system-scoped providers while the camera is elsewhere. */
-export function creditedOrbitSources(
-	ctx: ContextManager
-): Array<{ source: NamedOrbitSource; info: OrbitSourceInfo }> {
-	return ORBIT_SOURCE_ORDER.filter((s) => ctx.credits.orbitSources.has(s))
-		.filter((s) => !ORBIT_SOURCES[s].scoped || feedsFocusedSystem(ctx, s))
-		.map((source) => ({ source, info: ORBIT_SOURCES[source] }));
+/** Which archives belong in the credits right now: every one that fed a body
+ *  of the scene, less the system-scoped providers while the camera is
+ *  elsewhere. Several sources share an archive (SBDB serves both the small
+ *  bodies and their moons), so each is listed once. */
+export function creditedOrbitArchives(ctx: ContextManager): OrbitArchive[] {
+	const credits = ctx.credits;
+	const archives = new Set<OrbitArchive>();
+	for (const source of ORBIT_SOURCE_ORDER) {
+		if (!credits.orbitSources.has(source)) continue;
+		const { archive, scoped } = ORBIT_SOURCES[source];
+		if (scoped && !feedsFocusedSystem(ctx, source)) continue;
+		if (archive) archives.add(archive);
+		else for (const a of PROBE_ARCHIVES) if (a && credits.probeArchives.has(a)) archives.add(a);
+	}
+	return [...archives];
 }
 
 /** Credits for the focused system plus the focused body — the latter covers
@@ -64,14 +68,14 @@ export interface AttributionChips {
  *  `$effect` recomputes as the scene loads. */
 export function attributionChips(
 	ctx: ContextManager,
-	labels: OrbitSourceLabels = DEFAULT_ORBIT_LABELS
+	labels: OrbitArchiveLabels = ORBIT_ARCHIVE_ORGANISATIONS
 ): AttributionChips {
 	const credits = ctx.credits;
 	void credits.imageryVersion;
 	void credits.modelVersion;
 
-	// Deduped on the label, so the translation decides which sources collapse.
-	const orbits = [...new Set(creditedOrbitSources(ctx).map(({ source }) => labels[source]))];
+	// Deduped on the label, so the translation decides which archives collapse.
+	const orbits = [...new Set(creditedOrbitArchives(ctx).map((archive) => labels[archive]))];
 
 	const organisations = new Set<string>();
 	for (const credit of scopedCredits(ctx, credits.imagery.values())) {

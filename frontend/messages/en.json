@@ -1433,6 +1433,8 @@
 	"attribution_map": "Map",
 	"attribution_section_panorama": "Surface panorama",
 	"provider_nasa": "NASA",
+	"provider_esa": "ESA",
+	"provider_jaxa": "JAXA",
 	"attribution_title": "Data sources",
 	"attribution_section_orbits": "Orbital elements",
 	"attribution_section_rotation": "Rotation, orientation & radii",

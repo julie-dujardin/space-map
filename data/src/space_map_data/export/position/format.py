@@ -270,7 +270,9 @@ def unpack_chebyshev_header(buf: bytes) -> ChebyshevHeader:
 # 16      uint8    fit_center_id_type    (ID_TYPE_ORDINAL for fit_center_id_value;
 #                                         MISSING_ID_TYPE = use zone default)
 # 17      uint8    n_system_intervals    (interplanetary chunks only; 0 elsewhere)
-# 18      uint8[2] reserved              (zero pad to 4-aligned)
+# 18      uint8    archive               (PROBE_ARCHIVE_ORDINAL in export/ephemeris.py;
+#                                         0 = no archive to credit)
+# 19      uint8    reserved              (zero pad to 4-aligned)
 #
 # fit_center lets a probe fit against its dominant primary (Moon, Titan,
 # Vesta, …) instead of the zone center; renderer composes
@@ -280,7 +282,7 @@ def unpack_chebyshev_header(buf: bytes) -> ChebyshevHeader:
 # planet encounter); planet-zone records omit it since their system is the
 # zone identity.
 PROBE_HEADER_SIZE = 20
-_PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHHiBBxx")
+_PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHHiBBBx")
 assert _PROBE_HEADER_STRUCT.size == PROBE_HEADER_SIZE
 
 
@@ -294,6 +296,7 @@ def pack_probe_header(
     fit_center_id_value: int = MISSING_INT32,
     fit_center_id_type: int = MISSING_ID_TYPE,
     n_system_intervals: int = 0,
+    archive_ordinal: int = 0,
 ) -> bytes:
     flags = PROBE_FLAG_HAS_LANDED_RECORD if has_landed_record else 0
     return _PROBE_HEADER_STRUCT.pack(
@@ -307,6 +310,7 @@ def pack_probe_header(
         fit_center_id_value,
         fit_center_id_type,
         n_system_intervals,
+        archive_ordinal,
     )
 
 

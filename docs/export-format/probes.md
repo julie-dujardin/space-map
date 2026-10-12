@@ -38,7 +38,7 @@ flybys on Chebyshev, low-orbit phases on Kepler-drift.
 property — so it's promoted to the file header rather than repeated per
 probe.
 
-## Per-probe header (12 bytes, repeats `probe_count` times)
+## Per-probe header (20 bytes, repeats `probe_count` times)
 
 | Offset | Type    | Field |
 |--------|---------|-------|
@@ -46,9 +46,33 @@ probe.
 | 4      | uint8   | `id_type` (always `4` = `PROBE`; see [Object ID reconstruction](object-ids.md)) |
 | 5      | uint8   | `object_type` (`ObjectType` ordinal — currently always `spacecraft`) |
 | 6      | uint8   | `has_localized` (1 iff the probe has a localized detail bundle) |
-| 7      | uint8   | Reserved |
+| 7      | uint8   | `flags` (bit 0 = a landed record follows the sub-chunks) |
 | 8      | uint16  | `n_subchunks` |
 | 10     | uint16  | `first_subchunk_offset` (in units of `subchunk_days`, from the chunk's `start_jd`) |
+| 12     | int32   | `fit_center_id_value` — the body the fit is relative to, when it is not the zone center (`-1` = zone center) |
+| 16     | uint8   | `fit_center_id_type` (`255` = zone center) |
+| 17     | uint8   | `n_system_intervals` (interplanetary chunks only; `0` elsewhere) |
+| 18     | uint8   | `archive` — the archive to credit for the trajectory (table below) |
+| 19     | uint8   | Reserved |
+
+`archive` lets a renderer credit every probe it draws without a fetch of the
+probe's detail bundle. The ids are the ones `ephemeris_source` and
+`credits.json → ephemeris_archives` use.
+
+| Ordinal | Archive id |
+|---------|------------|
+| 0       | none — no archive tracked the craft (a lander placed from its landing coordinates). Credit nobody. |
+| 1       | `naif` |
+| 2       | `esa` |
+| 3       | `naif-pds3` |
+| 4       | `naif-pds4` |
+| 5       | `jaxa-darts` |
+| 6       | `horizons` |
+| 7       | `gcat-deepcat` |
+| 8       | `spacetrack` |
+
+An ordinal is never reassigned. A reader that does not know an ordinal
+treats it as `0`.
 
 `first_subchunk_offset` lets probes start partway into a chunk without
 having to ship dummy leading sub-chunks. The first sub-chunk's time bounds

@@ -371,7 +371,8 @@ export class ChunkLoader {
 				equatorial: false,
 				validityStart: startJd,
 				validityEnd: endJd,
-				orbitalSource: OrbitalSource.SPICE_PROBE
+				orbitalSource: OrbitalSource.SPICE_PROBE,
+				orbitArchive: probe.archive
 			};
 			const elements = probeOsculatingElements(probe, jd, primaryMu);
 			// Re-read the probe and its fit center on every call: scrubbing can move

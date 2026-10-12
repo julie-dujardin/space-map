@@ -15,6 +15,11 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from space_map_data.export.ephemeris import (
+    PROBE_ARCHIVE_ORDINAL,
+    load_probe_kernel_sources,
+    probe_archive,
+)
 from space_map_data.export.position.format import (
     MISSING_ID_TYPE,
     MISSING_INT32,
@@ -36,6 +41,7 @@ class ProbeMeta:
     obj_id: str
     object_type_ordinal: int
     has_localized: bool
+    archive_ordinal: int
 
 
 @dataclass(frozen=True)
@@ -106,6 +112,7 @@ def build_probe_metas(
             Object.orbital_source == OrbitalSource.spice_probe
         )
     ).all()
+    kernel_sources = load_probe_kernel_sources()
     metas: dict[int, ProbeMeta] = {}
     for row in rows:
         if row.probe_id is None:
@@ -115,6 +122,9 @@ def build_probe_metas(
             obj_id=row.id,
             object_type_ordinal=OBJECT_TYPE_ORDINAL.get(row.object_type, 255),
             has_localized=bool(has_localized.get(row.id, False)),
+            archive_ordinal=PROBE_ARCHIVE_ORDINAL[
+                probe_archive(row.probe_id, kernel_sources)
+            ],
         )
     return metas
 

@@ -20,7 +20,7 @@
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { orientationCredits } from '$lib/credits/orientation-sources';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
-	import { creditedOrbitSources, scopedCredits } from '$lib/scene/state/attribution';
+	import { creditedOrbitArchives, scopedCredits } from '$lib/scene/state/attribution';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
@@ -41,12 +41,10 @@
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	// One row per contributing archive — the citation /credits and the Orbital
-	// section quote it by. Several sources share an archive (SBDB serves both
-	// the small bodies and their moons), so the rows dedupe on it.
+	// section quote it by.
 	const orbitEntries = $derived.by(() => {
-		const archives = [...new Set(creditedOrbitSources(ctx).map(({ info }) => info.archive))];
 		const rows: Array<{ archive: string; name: string; url: string }> = [];
-		for (const archive of archives) {
+		for (const archive of creditedOrbitArchives(ctx)) {
 			const name = archiveLabel(archive);
 			const url = archiveUrl(archive);
 			if (name && url) rows.push({ archive, name, url });

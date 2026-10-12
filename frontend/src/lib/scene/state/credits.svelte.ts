@@ -1,4 +1,4 @@
-import { OrbitalSource } from '$lib/fetch/position/format';
+import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
 import { orbitSourceInfo, type NamedOrbitSource } from './orbit-sources';
 import type { OrientationReference, OrientationSource } from '$lib/credits/orientation-sources';
 import type { CreditFields, ImageryLayer } from '$lib/credits/imagery-layers';
@@ -62,6 +62,9 @@ export class CreditsStore {
 	/** Parent each scoped source's bodies hang off, so the bar can ask whether
 	 *  the focused system is one the source fed. Reassigned like `orbitSources`. */
 	orbitSourceParents = $state(new Map<NamedOrbitSource, Set<string>>());
+	/** Archives behind the probes of the scene, which the source alone does
+	 *  not name. Reassigned like `orbitSources`. */
+	probeArchives = $state(new Set<OrbitArchive>());
 
 	/** A layer keeps one credit per body, so whichever path attaches it first —
 	 *  per-system or standalone — wins. A surface map whose tile pyramid holds
@@ -121,16 +124,22 @@ export class CreditsStore {
 	}
 
 	/** Fold each body's `orbitalSource` into the reactive set, plus the parent it
-	 *  orbits for the sources scoped to a system. */
+	 *  orbits for the sources scoped to a system and the archive of a probe. */
 	recordOrbitSources(bodies: PositionedBody[]): void {
 		let added = false;
 		let scoped = false;
+		let archived = false;
 		for (const b of bodies) {
 			const src = b.data.orbitalSource;
 			if (src === OrbitalSource.UNKNOWN) continue;
 			if (!this.orbitSources.has(src)) {
 				this.orbitSources.add(src);
 				added = true;
+			}
+			const archive = b.data.orbitArchive;
+			if (archive && !this.probeArchives.has(archive)) {
+				this.probeArchives.add(archive);
+				archived = true;
 			}
 			if (!orbitSourceInfo(src)?.scoped) continue;
 			let parents = this.orbitSourceParents.get(src as NamedOrbitSource);
@@ -144,6 +153,7 @@ export class CreditsStore {
 		}
 		if (added) this.orbitSources = new Set(this.orbitSources);
 		if (scoped) this.orbitSourceParents = new Map(this.orbitSourceParents);
+		if (archived) this.probeArchives = new Set(this.probeArchives);
 	}
 
 	/** Record one chunk-level orbit source — minor chunks carry a single

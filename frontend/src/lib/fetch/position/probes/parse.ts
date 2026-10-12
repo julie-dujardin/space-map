@@ -20,6 +20,7 @@ import {
 	IdType,
 	MISSING_INT32,
 	MISSING_UINT8,
+	PROBE_ARCHIVES,
 	PROBE_FLAG_HAS_LANDED_RECORD,
 	PROBE_HEADER_SIZE,
 	PROBE_METHOD_CHEBYSHEV,
@@ -29,7 +30,8 @@ import {
 	PROBE_METHOD_UNCOVERABLE,
 	SUBCHUNK_HEADER_SIZE,
 	SYSTEM_INTERVAL_SIZE,
-	buildObjectId
+	buildObjectId,
+	type OrbitArchive
 } from '$lib/fetch/position/format';
 import { SECONDS_PER_DAY, jdToEt } from '$lib/time/jd';
 
@@ -131,6 +133,9 @@ export interface Probe {
 	hasLocalized: boolean;
 	/** ObjectType ordinal — always `spacecraft` today; surfaced for futureproofing. */
 	objectType: number;
+	/** Who the trajectory is credited to. Undefined for a craft no archive
+	 *  tracked, such as a lander placed from its landing coordinates. */
+	archive?: OrbitArchive;
 	/** Per-probe fit-center override. Null when the probe stayed on the zone's
 	 *  stored fit center (renderer composes against the zone center as before).
 	 *  Non-null when the writer routed this probe to a moon/asteroid — the
@@ -331,6 +336,7 @@ export function parseProbesPayload(
 		const fitCenterIdValue = view.getInt32(offset + 12, true);
 		const fitCenterIdType = view.getUint8(offset + 16);
 		const nSystemIntervals = view.getUint8(offset + 17);
+		const archive = PROBE_ARCHIVES[view.getUint8(offset + 18)];
 		offset += PROBE_HEADER_SIZE;
 
 		const id = buildObjectId(idTypeOrdinal, objIdValue) ?? '';
@@ -409,6 +415,7 @@ export function parseProbesPayload(
 			probeId: objIdValue,
 			hasLocalized,
 			objectType,
+			archive,
 			fitCenter,
 			subStartEt,
 			subEndEt,
