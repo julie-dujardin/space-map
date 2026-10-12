@@ -145,15 +145,9 @@ export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 			if (this.isResident(zone, idx)) continue;
 			const key = chunkKey(zone, idx);
 			if (this.warmed.has(key)) continue;
-			const existing = this.inflight.get(key);
-			if (existing) {
-				jobs.push(existing);
-				continue;
-			}
-			const job = this.fetchAndWarm(key, zone, idx, params);
-			this.inflight.set(key, job);
-			job.finally(() => this.inflight.delete(key));
-			jobs.push(job);
+			jobs.push(
+				this.inflight.get(key) ?? this.track(key, this.fetchAndWarm(key, zone, idx, params))
+			);
 		}
 		await Promise.all(jobs);
 	}
@@ -184,7 +178,7 @@ export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 	/** Iterate every probe whose chunk for `jd` is loaded, deduped to one entry
 	 *  per `probe.id` — `isPreferred`'s zone wins if supplied, else metadata
 	 *  order. Sub-chunk coverage isn't checked here; use `resolve` /
-	 *  `probeWithCenter` for that. Callers must `await ensure(jd).done` first. */
+	 *  `probeWithCenter` for that. Callers must `await load(jd)` first. */
 	*probesAt(
 		jd: number,
 		isPreferred?: (fitCenterNaif: number) => boolean

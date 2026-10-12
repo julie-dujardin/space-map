@@ -135,7 +135,8 @@ export class ChunkLoader {
 		part: number,
 		time: string | null = null
 	): void {
-		fetch(elementsUrl(zone, zoom, part, time));
+		// The load that needs the file is the one to report it missing.
+		fetch(elementsUrl(zone, zoom, part, time)).catch(() => {});
 	}
 
 	/** Barycenter elements used for planet orbit drawing. `processChebyshev`
@@ -153,7 +154,7 @@ export class ChunkLoader {
 
 	/**
 	 * Build PositionedBody[] for every chebyshev body covered by `date`. Caller
-	 * must `await store.ensure(jd).done` first. Walks barycenter-first so a
+	 * must `await store.load(jd)` first. Walks barycenter-first so a
 	 * planet finds the elements of its barycenter; each body carries osculating
 	 * Keplerian elements matching the SBDB/Horizons shape for the unified
 	 * kepler trail curve. The placement pass gives the bodies their places.

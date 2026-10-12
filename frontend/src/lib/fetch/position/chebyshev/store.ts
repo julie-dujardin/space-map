@@ -19,7 +19,7 @@ import { ChunkWindow } from '$lib/fetch/position/chunk-window';
 /** Walk the chunk for jd in every loaded zone and yield each body alongside
  *  the chunk's validity window (used by callers that build PositionedBody).
  *  Bodies whose chunk hasn't loaded yet are skipped — caller is responsible
- *  for awaiting `ensure(jd).done` first. */
+ *  for awaiting `load(jd)` first. */
 export interface BodyWithWindow {
 	zone: string;
 	body: ChebyshevBody;
@@ -119,7 +119,7 @@ export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneP
 	/**
 	 * Iterate every chebyshev body covered by `jd` across every zone. Skips
 	 * zones whose chunk for `jd` isn't loaded yet (callers must await
-	 * `ensure(jd).done` to guarantee full coverage). Used by the scene loader
+	 * `load(jd)` to guarantee full coverage). Used by the scene loader
 	 * to construct the major-body list — every Sun/planet/dwarf/perturber/
 	 * whitelisted moon comes through here; chebyshev is their only position
 	 * source.

@@ -10,6 +10,7 @@ import { Matrix4, Quaternion, Vector3 } from 'three';
 import { dataBase } from '$lib/fetch/data-base';
 import type { ProbeAttitude } from '$lib/fetch/objects/object-data';
 import { equatorialToScene } from '$lib/math/units';
+import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { parseAttitudeChunk, type AttitudeChunk } from './parse';
 
 const SECONDS_PER_DAY = 86400;
@@ -43,7 +44,7 @@ export class AttitudeTrack {
 	private readonly files: ProbeAttitude['files'];
 	private readonly chunks = new Map<number, AttitudeChunk>();
 	private readonly inflight = new Set<number>();
-	private readonly failed = new Set<number>();
+	private readonly retries = new RetryBackoff<number>();
 
 	constructor(
 		private readonly probeId: string,
@@ -154,13 +155,13 @@ export class AttitudeTrack {
 		_qa.slerpQuaternions(_qa, _qb, t);
 	}
 
-	/** Decoded chunk `i` if resident; otherwise kick off its fetch (once) and
-	 *  return undefined so the caller falls back this frame. */
+	/** Decoded chunk `i` if resident; otherwise kick off its fetch and return
+	 *  undefined so the caller falls back this frame. */
 	private ensure(i: number): AttitudeChunk | undefined {
 		if (i < 0 || i >= this.files.length) return undefined;
 		const have = this.chunks.get(i);
 		if (have) return have;
-		if (this.inflight.has(i) || this.failed.has(i)) return undefined;
+		if (this.inflight.has(i) || this.retries.waiting(i)) return undefined;
 		this.inflight.add(i);
 		void this.load(i);
 		return undefined;
@@ -174,8 +175,9 @@ export class AttitudeTrack {
 			const ds = new DecompressionStream('gzip');
 			const buf = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
 			this.chunks.set(i, parseAttitudeChunk(buf));
+			this.retries.clear(i);
 		} catch (e) {
-			this.failed.add(i);
+			this.retries.fail(i);
 			console.warn(`attitude: chunk ${this.probeId}/${file.name} failed to load:`, e);
 		} finally {
 			this.inflight.delete(i);

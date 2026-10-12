@@ -11,10 +11,11 @@
  */
 
 import { chunkIndexForJd, type ChunkRange } from '$lib/fetch/metadata';
+import { RetryBackoff } from '$lib/fetch/retry-backoff';
 
 const NEIGHBOR_WINDOW = 1;
 
-/** Shared across every `ensure` with nothing in flight, of which there is one
+/** Shared across every pass with nothing in flight, of which there is one
  *  per frame. */
 const RESOLVED: Promise<void> = Promise.resolve();
 
@@ -26,13 +27,22 @@ export function chunkKey(zone: string, chunkIdx: number): string {
 export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 	/** `zone → chunkIdx → parsed chunk`. */
 	protected readonly chunks = new Map<string, Map<number, TChunk>>();
-	/** In-flight loads keyed by {@link chunkKey}, so concurrent `ensure()` calls
-	 *  (per frame, among others) don't kick off duplicate fetches. */
+	/** In-flight loads keyed by {@link chunkKey}, so concurrent passes (one per
+	 *  frame, among others) don't kick off duplicate fetches. */
 	protected readonly inflight = new Map<string, Promise<void>>();
-	/** Last jd passed to `ensure()` — skips a full pass when nothing changed. */
+	/** Chunks whose last load failed. {@link ensure} does not ask for one again
+	 *  before its wait is over: it runs every frame. */
+	private readonly retries = new RetryBackoff<string>(() => {
+		this.retryDue = true;
+		this._version++;
+	});
+	/** A wait ended since the last pass. */
+	private retryDue = false;
+	/** Last jd of a pass — {@link ensure} skips one when nothing changed. */
 	private lastEnsuredJd: number = NaN;
-	/** Bumped per stored chunk. The renderer watches it, so a clock that stands
-	 *  still gets a position pass when data arrives. */
+	/** Bumped when a pass has something new to do: a chunk arrived, or a failed
+	 *  one can be asked for again. The renderer watches it, so a clock that
+	 *  stands still gets a position pass. */
 	private _version = 0;
 
 	constructor(protected readonly zoneParams: Map<string, TParams>) {}
@@ -46,27 +56,36 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 	}
 
 	/**
-	 * Load the chunks covering `jd`, and warm their neighbours, for every zone.
-	 * Idempotent, safe to call every frame.
-	 *
-	 * `ready` says whether every current chunk is resident now, so the caller
-	 * can rely on position queries right away. `done` waits for the current
-	 * chunks only: the neighbours are a warm-up and must not hold the first
-	 * frame.
+	 * Keep the window on `jd`: load the chunks covering it, and warm their
+	 * neighbours, for every zone. Idempotent, safe to call every frame.
 	 */
-	ensure(jd: number): { ready: boolean; done: Promise<void> } {
-		if (jd === this.lastEnsuredJd) {
-			return { ready: this.allCurrentChunksLoaded(jd), done: this.pendingCurrent(jd) };
-		}
+	ensure(jd: number): void {
+		if (jd === this.lastEnsuredJd && !this.retryDue) return;
+		void this.pass(jd, false);
+	}
+
+	/**
+	 * The chunks covering `jd`, for a caller that waits for them: position
+	 * queries at `jd` are good when it resolves. It asks at once for a chunk
+	 * that failed, whatever its wait, and rejects when one does not load.
+	 *
+	 * The wait is for the current chunks only: the neighbours are a warm-up and
+	 * must not hold the first frame.
+	 */
+	load(jd: number): Promise<void> {
+		return this.pass(jd, true);
+	}
+
+	/** Move the window to `jd`. `now` asks for a failed chunk inside its wait. */
+	private pass(jd: number, now: boolean): Promise<void> {
 		this.lastEnsuredJd = jd;
+		this.retryDue = false;
 		const jobs: Promise<void>[] = [];
 		const neighbors: [zone: string, params: TParams, idx: number][] = [];
-		let ready = true;
 		for (const [zone, params] of this.zoneParams) {
 			const center = chunkIndexForJd(params, jd);
-			if (this.isLoadable(params, center) && !this.isResident(zone, center)) {
-				ready = false;
-				const job = this.loadChunk(zone, params, center, 'high');
+			if (this.isLoadable(params, center)) {
+				const job = this.loadChunk(zone, params, center, 'high', now);
 				if (job) jobs.push(job);
 			}
 			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
@@ -78,7 +97,8 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		}
 		const done = jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : RESOLVED;
 		// Neighbours start once the current chunks are in: launched together they
-		// share the link, and a boot on a slow one waits for the whole set.
+		// share the link, and a boot on a slow one waits for the whole set. The
+		// catch also answers for `ensure`, which does not read the outcome.
 		void done
 			.catch(() => {})
 			.then(() => {
@@ -86,7 +106,7 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 					this.loadChunk(zone, params, idx, 'low')?.catch(() => {});
 				}
 			});
-		return { ready, done };
+		return done;
 	}
 
 	/** Load the chunks covering `jd` and leave the window where it is: a scene
@@ -109,32 +129,6 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		return false;
 	}
 
-	/**
-	 * The current chunks still in flight. An `ensure` on an already-ensured jd
-	 * must still hand back a wait: same jd doesn't mean loaded, and a second
-	 * awaiter (a deep link grafting one body onto a running scene) must not
-	 * proceed against absent chunks.
-	 */
-	private pendingCurrent(jd: number): Promise<void> {
-		if (this.inflight.size === 0) return RESOLVED;
-		let pending: Promise<void>[] | null = null;
-		for (const [zone, params] of this.zoneParams) {
-			const job = this.inflight.get(chunkKey(zone, chunkIndexForJd(params, jd)));
-			if (job) (pending ??= []).push(job);
-		}
-		return pending ? Promise.all(pending).then(() => undefined) : RESOLVED;
-	}
-
-	/** True when every chunk for `jd` that exists is resident in memory. */
-	protected allCurrentChunksLoaded(jd: number): boolean {
-		for (const [zone, params] of this.zoneParams) {
-			const center = chunkIndexForJd(params, jd);
-			if (!this.isLoadable(params, center)) continue;
-			if (!this.isResident(zone, center)) return false;
-		}
-		return true;
-	}
-
 	protected isResident(zone: string, chunkIdx: number): boolean {
 		return this.chunks.get(zone)?.has(chunkIdx) ?? false;
 	}
@@ -147,20 +141,37 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		}
 	}
 
-	/** Null when the chunk is already resident. */
+	/** The load of a chunk, in flight or started here. Null when there is none
+	 *  to wait on: the chunk is resident, or it failed and waits for its retry
+	 *  (`now` starts it all the same). */
 	protected loadChunk(
 		zone: string,
 		params: TParams,
 		chunkIdx: number,
-		priority: RequestPriority
+		priority: RequestPriority,
+		now = false
 	): Promise<void> | null {
 		if (this.isResident(zone, chunkIdx)) return null;
 		const key = chunkKey(zone, chunkIdx);
 		const existing = this.inflight.get(key);
 		if (existing) return existing;
-		const job = this.fetchAndStore(zone, params, chunkIdx, priority);
+		if (!now && this.retries.waiting(key)) return null;
+		return this.track(key, this.fetchAndStore(zone, params, chunkIdx, priority));
+	}
+
+	/** Hold `job` as the load in flight for `key`, and keep its outcome for
+	 *  the retry wait. */
+	protected track(key: string, job: Promise<void>): Promise<void> {
 		this.inflight.set(key, job);
-		job.finally(() => this.inflight.delete(key));
+		const settle = (ok: boolean): void => {
+			if (this.inflight.get(key) === job) this.inflight.delete(key);
+			if (ok) this.retries.clear(key);
+			else this.retries.fail(key);
+		};
+		job.then(
+			() => settle(true),
+			() => settle(false)
+		);
 		return job;
 	}
 

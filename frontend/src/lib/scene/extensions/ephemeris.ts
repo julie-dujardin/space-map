@@ -77,13 +77,7 @@ async function open(date: Date): Promise<Reading> {
 		const params = chebyshevZoneParams(metadata);
 		if (params.size > 0) chebyshev = new ChebyshevStore(params);
 	}
-	try {
-		await chebyshev?.ensure(jd).done;
-	} catch (error) {
-		// A store does not fetch a date twice. The next read makes a new store.
-		chebyshev = null;
-		throw error;
-	}
+	await chebyshev?.load(jd);
 	return { jd, metadata, chebyshev };
 }
 

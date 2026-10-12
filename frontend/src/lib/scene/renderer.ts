@@ -2152,8 +2152,12 @@ export class SceneRenderer {
 		const systemId = this.ctx.visibility.focusedSystemId;
 		const seatKey = this.focusedSeatConfigKey();
 		const probeVersion = this.ctx.probeStore?.version ?? 0;
-		// A body that arrived, or took a new row, is placed by a pass too.
-		const dataVersion = this.ctx.bodies.dataVersion + (this.ctx.chebStore?.version ?? 0);
+		// A body that arrived, or took a new row, is placed by a pass too. So is
+		// one whose load was put off, when the pass that asks for it again is due.
+		const dataVersion =
+			this.ctx.bodies.dataVersion +
+			(this.ctx.chebStore?.version ?? 0) +
+			(this.ctx.refresher?.wakes ?? 0);
 		if (
 			this.clock.jd === this.lastUpdatedJd &&
 			systemId === this.lastUpdatedSystemId &&

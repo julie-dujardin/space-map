@@ -213,8 +213,11 @@
 		const store = ctx?.probeStore;
 		if (!store) return null;
 		// The renderer warms this window every frame, so only a cold deep link
-		// waits on a fetch this started.
-		await store.ensure(nowJd).done;
+		// waits on a fetch this started. A probe whose chunk does not load is
+		// priced as the body it is: the panel must not wait on it for good.
+		await store
+			.load(nowJd)
+			.catch((e) => console.warn(`[travel] no probe data at jd ${nowJd} to place ${id}:`, e));
 		return landedEnd(store, id, nowJd);
 	}
 

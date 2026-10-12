@@ -119,7 +119,7 @@ async function buildProbeStore(
 		);
 	}
 	const store = new ProbeStore(params);
-	await store.ensure(jd).done;
+	await store.load(jd);
 	return store;
 }
 
@@ -245,7 +245,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		for (const zone of params.keys()) if (ctx.layers.skipsZone(zone)) params.delete(zone);
 		if (params.size === 0) return null;
 		const store = new ChebyshevStore(params);
-		await store.ensure(jd).done;
+		await store.load(jd);
 		return store;
 	});
 	const probePromise = metadataPromise.then((metadata) =>
@@ -379,8 +379,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			),
 			// A few small files that put the cloud around the default landing
 			// body. For the date the clock is at now: a navigation can have moved it.
-			ctx.refresher?.ready().then(() => {
-				noteAdded();
+			// The map is open: a zone that does not load now is asked for again
+			// later, and costs it its cloud till then, not the page.
+			ctx.refresher?.ready().then(noteAdded, (e) => {
+				console.warn('scene-load: the data of the opening date is not all in:', e);
 			})
 		]);
 		await Promise.all(

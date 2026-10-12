@@ -26,6 +26,7 @@ import {
 	type Metadata
 } from '$lib/fetch/metadata';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
+import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
@@ -81,6 +82,11 @@ type ZoneState = TimeZoneState | ChunkZoneState;
  *  the `?v=` tokens, so every reload then 404s/mismatches. */
 const STALE_FAILURE_STREAK = 3;
 
+/** Backoff key of one zone at one snapshot date or chunk index. */
+function loadKey(z: ZoneState, target: string | number): string {
+	return `${z.zone}:${z.zoom ?? ''}:${target}`;
+}
+
 export class ZoneRefresher {
 	private readonly zones: ZoneState[] = [];
 	/** Latest date seen by tick; lets {@link invalidateZone} re-fire without
@@ -90,6 +96,14 @@ export class ZoneRefresher {
 	private failureStreak = 0;
 	/** Guards the one-shot `onDataStale` notification. */
 	private staleNotified = false;
+	/** Loads that failed. `tick` does not start one again before its wait is
+	 *  over: it runs every frame the clock moves. */
+	private readonly retries = new RetryBackoff<string>(() => this.wakes++);
+	/** Bumped when a load that `tick` put off can start: its retry wait ended,
+	 *  or the limit on load starts did. The renderer watches it: a clock that
+	 *  stands still sends no tick to ask. */
+	wakes = 0;
+	private wakeTimer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -145,18 +159,40 @@ export class ZoneRefresher {
 		}
 	}
 
-	private recordSuccess(): void {
+	private recordSuccess(key: string): void {
+		this.retries.clear(key);
 		this.failureStreak = 0;
 	}
 
 	/** Fire the one-shot stale signal after {@link STALE_FAILURE_STREAK} failures
 	 *  in a row (usually a redeploy). */
-	private recordFailure(): void {
+	private recordFailure(key: string): void {
+		this.retries.fail(key);
 		this.failureStreak++;
 		if (this.failureStreak >= STALE_FAILURE_STREAK && !this.staleNotified) {
 			this.staleNotified = true;
 			this.ctx.onDataStale?.();
 		}
+	}
+
+	/** Come back to a load the limit on starts held. One timer: `tick` asks on
+	 *  every frame the clock moves. */
+	private wakeIn(ms: number): void {
+		this.wakeTimer ??= setTimeout(() => {
+			this.wakeTimer = undefined;
+			this.wakes++;
+		}, ms);
+	}
+
+	/** Run `load` as the one load of the zone. It tells how the load ended;
+	 *  `inFlight` only that it did. */
+	private start(z: ZoneState, load: Promise<void>): Promise<void> {
+		z.inFlight = load
+			.catch(() => {})
+			.finally(() => {
+				z.inFlight = null;
+			});
+		return load;
 	}
 
 	/** Clear loaded state and re-fire {@link tick} now so paused-clock callers
@@ -195,12 +231,15 @@ export class ZoneRefresher {
 				if (state.inFlight) continue;
 				const target = snapshotDate(state.zoomData, date);
 				if (target === state.currentTime) continue;
+				if (this.retries.waiting(loadKey(state, target))) continue;
 				const nowMs = performance.now();
-				if (nowMs - state.lastLoadStartMs < MIN_LOAD_INTERVAL_MS) continue;
+				const held = state.lastLoadStartMs + MIN_LOAD_INTERVAL_MS - nowMs;
+				if (held > 0) {
+					this.wakeIn(held);
+					continue;
+				}
 				state.lastLoadStartMs = nowMs;
-				state.inFlight = this.loadTime(state, target, date).finally(() => {
-					state.inFlight = null;
-				});
+				void this.start(state, this.loadTime(state, target, date));
 			} else {
 				// Drain as many ready preloads as the user has scrubbed across in
 				// one frame. Uncommon (chunks span chunk_days of sim time) but
@@ -218,27 +257,31 @@ export class ZoneRefresher {
 				if (state.inFlight) continue;
 				const target = chunkIndexForJd(state.zoomData, jd);
 				if (target === state.currentIdx) continue;
-				state.inFlight = this.loadChunk(state, target).finally(() => {
-					state.inFlight = null;
-				});
+				if (this.retries.waiting(loadKey(state, target))) continue;
+				void this.start(state, this.loadChunk(state, target));
 			}
 		}
 	}
 
 	/**
-	 * Resolves when every zone holds its data for `date`. A navigation waits on
-	 * this before it reads a place: the frame loop loads the same data, a frame
-	 * later and no more than once every two seconds.
+	 * Settles when every zone has loaded its data for `date`, or failed to. A
+	 * navigation waits on this before it reads a place: the frame loop loads the
+	 * same data, a frame later and no more than once every two seconds.
+	 *
+	 * Rejects, with the first failure, after all of them settled: the caller
+	 * knows what the scene holds, and decides if what is missing is its business.
 	 */
 	async ready(date: Date = this.latestDate): Promise<void> {
 		this.latestDate = date;
 		const jd = dateToJD(date);
 		const waits: Promise<unknown>[] = this.zones.map((z) => this.zoneReady(z, date, jd));
-		if (this.ctx.chebStore) waits.push(this.ctx.chebStore.ensure(jd).done);
-		if (this.ctx.probeStore) waits.push(this.ctx.probeStore.ensure(jd).done);
-		await Promise.all(waits);
+		if (this.ctx.chebStore) waits.push(this.ctx.chebStore.load(jd));
+		if (this.ctx.probeStore) waits.push(this.ctx.probeStore.load(jd));
+		const failure = (await Promise.allSettled(waits)).find((w) => w.status === 'rejected');
+		if (failure) throw failure.reason;
 	}
 
+	/** Someone waits: a load that failed is made again whatever its wait. */
 	private async zoneReady(z: ZoneState, date: Date, jd: number): Promise<void> {
 		// A load that runs now can be for another date.
 		while (z.inFlight) await z.inFlight;
@@ -246,17 +289,12 @@ export class ZoneRefresher {
 			const target = snapshotDate(z.zoomData, date);
 			if (target === z.currentTime) return;
 			z.lastLoadStartMs = performance.now();
-			z.inFlight = this.loadTime(z, target, date).finally(() => {
-				z.inFlight = null;
-			});
+			await this.start(z, this.loadTime(z, target, date));
 		} else {
 			const target = chunkIndexForJd(z.zoomData, jd);
 			if (target === z.currentIdx) return;
-			z.inFlight = this.loadChunk(z, target).finally(() => {
-				z.inFlight = null;
-			});
+			await this.start(z, this.loadChunk(z, target));
 		}
-		await z.inFlight;
 	}
 
 	/** Ids a zone keeps whatever filter is active: a navigation asked for them. */
@@ -278,9 +316,10 @@ export class ZoneRefresher {
 		if (targetId.startsWith('norad_satcat-') && !this.wanted.has(targetId)) {
 			this.want(targetId);
 			if (this.ctx.earthSatFilter || this.ctx.earthTypeFilter) {
-				// The group filter left it out of the snapshot: load it again with the id kept.
+				// The group filter left it out of the snapshot: load it again with the
+				// id kept. The stand-in below covers a snapshot that does not load.
 				this.invalidateZone('earth');
-				await this.ready(date);
+				await this.ready(date).catch(() => {});
 				if (this.ctx.getBody(targetId)) return;
 			}
 		}
@@ -297,7 +336,9 @@ export class ZoneRefresher {
 		const jd = dateToJD(date);
 		// Started before the chunk wait so the two fetches overlap.
 		const passengerPromise = passengerFor(targetId);
-		await store.ensure(jd).done;
+		// A zone that does not load can be another craft's. When it is this
+		// one's, the craft is not found below and its bundle stands in.
+		await store.load(jd).catch(() => {});
 		// Registered before the store is asked anything about the craft: a
 		// passenger answers off its carrier, the stamped fit center below
 		// included.
@@ -396,10 +437,11 @@ export class ZoneRefresher {
 				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
 			);
 			this.prefetchTimeNeighbors(z, date);
-			this.recordSuccess();
+			this.recordSuccess(loadKey(z, time));
 		} catch (e) {
 			console.warn(`zone-refresher: failed to refresh ${z.zone}@${time}:`, e);
-			this.recordFailure();
+			this.recordFailure(loadKey(z, time));
+			throw e;
 		}
 	}
 
@@ -426,11 +468,12 @@ export class ZoneRefresher {
 			}
 			this.applyChunkSwap(z, previous, target, chunks);
 			this.preloadChunkNeighbors(z);
-			this.recordSuccess();
+			this.recordSuccess(loadKey(z, target));
 		} catch (e) {
 			console.warn(`zone-refresher: ${z.zone} chunk reload failed (${previous} → ${target}):`, e);
 			z.currentIdx = previous;
-			this.recordFailure();
+			this.recordFailure(loadKey(z, target));
+			throw e;
 		}
 	}
 
