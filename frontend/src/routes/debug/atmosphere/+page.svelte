@@ -56,7 +56,8 @@
 	import { fetchMetadata } from '$lib/fetch/metadata';
 	import { versionedUrl } from '$lib/fetch/data-base';
 	import { AU_KM } from '$lib/math/units';
-	import { AMBIENT_INTENSITY, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+	import { AMBIENT_INTENSITY, BLOOM_THRESHOLD, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+	import { installBloomHighPass } from '$lib/scene/setup/bloom-high-pass';
 	import { loadSkybox, SKYBOX_BASE_ROTATION } from '$lib/scene/objects/sky/skybox';
 	import {
 		DEEP_SKY_EXPOSURE,
@@ -810,9 +811,14 @@
 		composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		composer.setSize(canvas.clientWidth, canvas.clientHeight);
 		composer.addPass(new RenderPass(scene, camera));
-		composer.addPass(
-			new UnrealBloomPass(new Vector2(canvas.clientWidth, canvas.clientHeight), 0.3, 0.5, 1.0)
+		const bloomPass = new UnrealBloomPass(
+			new Vector2(canvas.clientWidth, canvas.clientHeight),
+			0.3,
+			0.5,
+			BLOOM_THRESHOLD
 		);
+		installBloomHighPass(bloomPass);
+		composer.addPass(bloomPass);
 		composer.addPass(new OutputPass());
 
 		Promise.allSettled([fetchMetadata(), loadAtmospheres()]).then(() => {

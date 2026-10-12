@@ -211,7 +211,8 @@ export interface BodyObjects {
 	 *  dimmed labels' rects, so it doesn't over-cull features against a
 	 *  near-invisible body. Undefined before the first cull → treated as maximized. */
 	labelMaximized?: boolean;
-	/** Sphere pulled off the camera layer while under half a pixel on screen. */
+	/** Sphere pulled off the camera layer: under half a pixel on screen, or a
+	 *  star's disc while its point is drawn. */
 	meshSubPixel?: boolean;
 	/** Frame slot this body moves on while hidden (see `updatePositions`). */
 	staggerSlot?: number;

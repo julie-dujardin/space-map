@@ -11,9 +11,10 @@ import {
 	ShaderMaterial,
 	Sprite,
 	SpriteMaterial,
-	Vector3
+	Vector3,
+	Vector4
 } from 'three';
-import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+import { BLOOM_THRESHOLD, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 import {
 	makeViewTintUniforms,
 	VIEW_TINT_GLSL,
@@ -21,23 +22,27 @@ import {
 } from './surface/sun-transmittance';
 
 /**
- * Photosphere → star-point bloom handoff constants, tuned together so the
- * star-point's per-pixel HDR matches the mesh's disc-averaged HDR:
- *   uIntensity · STAR_POINT_TEXEL_ALPHA = SUN_HDR_MULTIPLIER · LIMB_DISC_AVG
+ * Photosphere → star-point handoff constants. The point gives the bloom the
+ * light of the disc it replaces, or the glow steps at the handoff:
+ * STAR_POINT_LIGHT is that light, in HDR × CSS px².
  * LIMB_DISC_AVG ≈ 0.8: the I(μ) = μ^α limb law disc-averages to 2/(α+2) at the
  * luminance-weighted α, matching the classical Eddington average (handoff is
- * insensitive to whether the exported α has arrived). STAR_POINT_TEXEL_ALPHA
- * is the circle-texture fill alpha. STAR_POINT_FLOOR_INTENSITY sits just
- * above the bloom threshold so faint stars still get a halo, not a hard speck.
+ * insensitive to whether the exported α has arrived).
  */
 export const SUN_HDR_MULTIPLIER = 6;
 const LIMB_DISC_AVG = 0.8;
-/** Switch mesh → point when projected radius drops below SIZE/2 (equal areas). */
+/** CSS px. Switch mesh → point when projected radius drops below SIZE/2 (equal areas). */
 export const STAR_POINT_SIZE_PX = 4;
-const STAR_POINT_TEXEL_ALPHA = 0.3;
-export const STAR_POINT_HANDOFF_INTENSITY =
-	(SUN_HDR_MULTIPLIER * LIMB_DISC_AVG) / STAR_POINT_TEXEL_ALPHA;
-export const STAR_POINT_FLOOR_INTENSITY = 3;
+const STAR_POINT_LIGHT =
+	SUN_HDR_MULTIPLIER * LIMB_DISC_AVG * Math.PI * (STAR_POINT_SIZE_PX / 2) ** 2;
+/** The dot once the star has too little light for the bloom: in view, with no glow. */
+const STAR_POINT_FLOOR = 0.9;
+/** A focused star is at the centre of the canvas, a corner or a centre of a
+ *  pixel: the dot is seated off both, or it flips between two seats. */
+const STAR_POINT_SEAT_BIAS = 0.125;
+const CORONA_OPACITY = 0.6;
+/** The corona is gone at the handoff and whole at this many times its radius. */
+const CORONA_WHOLE = 1.5;
 
 /** Bundle of scene objects the Sun contributes beyond the photosphere sphere. */
 export interface StarExtras {
@@ -163,7 +168,7 @@ function makeStarGlow(radius: number, color: string): Sprite {
 		map: glowTexture,
 		blending: AdditiveBlending,
 		transparent: true,
-		opacity: 0.6,
+		opacity: CORONA_OPACITY,
 		depthWrite: false,
 		depthTest: true
 	});
@@ -174,29 +179,59 @@ function makeStarGlow(radius: number, color: string): Sprite {
 	return corona;
 }
 
+/** Pixels of a dot `size` wide that is seated on a pixel corner. */
+function dotPixels(size: number): number {
+	const reach = Math.ceil(size / 2);
+	let count = 0;
+	for (let y = -reach; y < reach; y++) {
+		for (let x = -reach; x < reach; x++) {
+			if ((x + 0.5) ** 2 + (y + 0.5) ** 2 <= (size * size) / 4) count++;
+		}
+	}
+	return count;
+}
+
 /**
- * Fixed-size dot for when the star's mesh is sub-pixel. Custom shader (not
- * `PointsMaterial`) so output can exceed 1.0 and feed bloom — otherwise the
- * sun's bloom vanishes the instant the mesh drops below one pixel.
- * `uIntensity` is driven per-frame from `screenR²` for inverse-square falloff.
+ * Stands for the star once its disc is too small to draw: a disc of a few
+ * pixels is sampled at one or two of them, so its HDR output changes as it
+ * crosses the pixel grid. `uFlux` is the star's light: 1 at the handoff, then
+ * inverse-square.
+ * The bloom takes a pixel whole or not at all, so the dot must not change the
+ * pixels it gives as it moves: it is seated on a pixel corner, with no soft
+ * edge, and its light is on pixels that are all over the threshold.
  */
-function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
+function makeStarPoint(color: string): Points {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(3), 3));
 	const c = new Color(color);
+	const disc = new Color(PHOTOSPHERE_CENTRE_COLOR);
+	const viewport = new Vector4(0, 0, 1, 1);
+	const size = STAR_POINT_SIZE_PX.toFixed(1);
+	const uniforms = {
+		uColor: { value: new Vector3(c.r, c.g, c.b) },
+		uDiscColor: { value: new Vector3(disc.r, disc.g, disc.b) },
+		uFlux: { value: 1 },
+		uPixelRatio: { value: 1 },
+		uPixels: { value: dotPixels(STAR_POINT_SIZE_PX) },
+		uViewport: { value: viewport },
+		uTint: { value: new Vector3(1, 1, 1) }
+	};
 	const material = new ShaderMaterial({
-		uniforms: {
-			uColor: { value: new Vector3(c.r, c.g, c.b) },
-			uIntensity: { value: STAR_POINT_HANDOFF_INTENSITY },
-			uTint: { value: new Vector3(1, 1, 1) },
-			uMap: { value: circleTexture }
-		},
+		uniforms,
 		vertexShader: `
 			#include <common>
 			#include <logdepthbuf_pars_vertex>
+			uniform float uPixelRatio;
+			uniform vec4 uViewport;
+			varying vec2 vSeat;
 			void main() {
 				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-				gl_PointSize = ${STAR_POINT_SIZE_PX.toFixed(1)};
+				vec2 halfView = 0.5 * uViewport.zw;
+				vec2 seat = floor((gl_Position.xy / gl_Position.w + 1.0) * halfView + ${(0.5 + STAR_POINT_SEAT_BIAS).toFixed(3)});
+				gl_Position.xy = (seat / halfView - 1.0) * gl_Position.w;
+				vSeat = uViewport.xy + seat;
+				// A margin: the square of the point must not cut the dot.
+				gl_PointSize = ${size} * uPixelRatio + 2.0;
 				#include <logdepthbuf_vertex>
 			}
 		`,
@@ -204,14 +239,35 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 			#include <common>
 			#include <logdepthbuf_pars_fragment>
 			uniform vec3 uColor;
-			uniform float uIntensity;
+			uniform vec3 uDiscColor;
+			uniform float uFlux;
+			uniform float uPixelRatio;
+			uniform float uPixels;
 			uniform vec3 uTint;
-			uniform sampler2D uMap;
+			varying vec2 vSeat;
 			void main() {
 				#include <logdepthbuf_fragment>
-				vec4 texel = texture2D(uMap, gl_PointCoord);
-				if (texel.a < 0.01) discard;
-				gl_FragColor = vec4(uTint * uColor * uIntensity, texel.a);
+				vec2 p = gl_FragCoord.xy - vSeat;
+				float radius = 0.5 * ${size} * uPixelRatio;
+				if (dot(p, p) > radius * radius) discard;
+				// The disc's colour at the handoff, so the glow keeps it there.
+				vec3 colour = uTint * mix(uColor, uDiscColor, uFlux);
+				float luma = max(luminance(colour), 0.0001);
+				// What the bloom takes for sure, and what it leaves for sure.
+				float over = ${(BLOOM_THRESHOLD * 1.05).toFixed(2)} / luma;
+				float under = ${(BLOOM_THRESHOLD * 0.95).toFixed(2)} / luma;
+				// The disc's light at the handoff, on all the pixels. With too little
+				// for all, the four at the centre have it: the glow goes on for a
+				// fainter star.
+				float all = ${STAR_POINT_LIGHT.toFixed(3)} * uFlux * uPixelRatio * uPixelRatio / uPixels;
+				float four = all * uPixels / 4.0;
+				float value = clamp(all, ${STAR_POINT_FLOOR.toFixed(1)}, under);
+				if (all >= over) {
+					value = all;
+				} else if (four >= over && max(abs(p.x), abs(p.y)) < 1.0) {
+					value = four;
+				}
+				gl_FragColor = vec4(colour * value, 1.0);
 			}
 		`,
 		transparent: true,
@@ -220,6 +276,15 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 	});
 	const points = new Points(geometry, material);
 	points.frustumCulled = false;
+	// The shader places pixels in the viewport of the pass that draws it.
+	points.onBeforeRender = (renderer) => {
+		renderer.getCurrentViewport(viewport).floor();
+		const pixelRatio = renderer.getPixelRatio();
+		if (pixelRatio !== uniforms.uPixelRatio.value) {
+			uniforms.uPixelRatio.value = pixelRatio;
+			uniforms.uPixels.value = dotPixels(STAR_POINT_SIZE_PX * pixelRatio);
+		}
+	};
 	return points;
 }
 
@@ -228,17 +293,12 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
  * heliocentric PointLight, additive corona sprite, sub-pixel fallback point.
  * Added to `root`, the body's own group, and returned for BodyObjects.
  */
-export function buildStarExtras(
-	root: Object3D,
-	radius: number,
-	color: string,
-	circleTexture: CanvasTexture
-): StarExtras {
+export function buildStarExtras(root: Object3D, radius: number, color: string): StarExtras {
 	const light = new PointLight(0xffffff, SUN_LIGHT_INTENSITY, 0, 0);
 	root.add(light);
 	const corona = makeStarGlow(radius, color);
 	root.add(corona);
-	const starPoint = makeStarPoint(color, circleTexture);
+	const starPoint = makeStarPoint(color);
 	root.add(starPoint);
 	return { light, corona, starPoint };
 }
@@ -254,6 +314,16 @@ export function applyStarTint(
 	if (starPoint) {
 		((starPoint.material as ShaderMaterial).uniforms.uTint.value as Vector3).copy(tint);
 	}
+}
+
+/** Fade the corona out as the disc comes to the handoff (`t` = 1), where the
+ *  point takes over: on the point, it would lift pixels over the bloom
+ *  threshold as the star moves. */
+export function fadeStarCorona(corona: Sprite | null, t: number): void {
+	if (!corona) return;
+	const part = Math.min(Math.max((t - 1) / (CORONA_WHOLE - 1), 0), 1);
+	corona.visible = part > 0;
+	(corona.material as SpriteMaterial).opacity = CORONA_OPACITY * part;
 }
 
 /** The photosphere's view-tint handle, for updateAtmosphereShaders to aim. */

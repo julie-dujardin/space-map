@@ -576,7 +576,6 @@ export class SceneRenderer {
 			},
 			focusBody,
 			this.hoveredBodyIds,
-			this.circleTexture,
 			this.renderer
 		);
 
@@ -660,7 +659,6 @@ export class SceneRenderer {
 			this.clickables,
 			this.meshToBody,
 			this.bodyObjects,
-			this.circleTexture,
 			this.renderer.domElement,
 			(body) => this.focusController.handleFocus(body),
 			(id, hovered) => {

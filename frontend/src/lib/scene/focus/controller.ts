@@ -68,7 +68,6 @@ export class FocusController {
 		private readonly deps: FocusDeps,
 		initialFocus: PositionedBody | undefined,
 		hoveredBodyIds: Set<string>,
-		circleTexture: PromotionDeps['circleTexture'],
 		renderer: PromotionDeps['renderer']
 	) {
 		this.focusedBody = initialFocus;
@@ -78,7 +77,6 @@ export class FocusController {
 			ctx: deps.ctx,
 			clock: deps.clock,
 			renderer,
-			circleTexture,
 			clickables: deps.clickables,
 			meshToBody: deps.meshToBody,
 			hoveredBodyIds,

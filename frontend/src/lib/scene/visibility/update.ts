@@ -35,16 +35,11 @@ import { f64dist, type Vec3 } from '../animation/math';
 import { AU_SCALE } from '$lib/math/units';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
 import { parentIdFromSubkey } from '$lib/math/orbit/partition';
-import {
-	STAR_POINT_FLOOR_INTENSITY,
-	STAR_POINT_HANDOFF_INTENSITY,
-	STAR_POINT_SIZE_PX
-} from '../objects/sun';
+import { fadeStarCorona, STAR_POINT_SIZE_PX } from '../objects/sun';
 
-/** Screen radius (px) at which the photosphere mesh hands off to the star
- *  point: mesh disc and point sprite cover the same area here, so the render
- *  contributions match in HDR for a smooth bloom transition. See
- *  `STAR_POINT_HANDOFF_INTENSITY` for the brightness side. */
+/** Screen radius (CSS px) at which the photosphere mesh hands off to the star
+ *  point: disc and dot cover the same area there. `makeStarPoint` has the
+ *  brightness side. */
 const STAR_POINT_HANDOFF_R = STAR_POINT_SIZE_PX / 2;
 
 /** Orbit-centre distance (from focus) past which a trail counts as
@@ -425,26 +420,21 @@ export function updateBodyVisibility(
 		// A curve whose centre body has no place has nowhere to be drawn.
 		if (trail && (!drawn || body.orbitCenter === null)) trail.visible = false;
 
-		// Star extras: the point sprite takes over once the mesh disc shrinks to
-		// the point's own on-screen area, matching HDR contributions at the
-		// handoff. Beyond it `uIntensity` falls as the squared screen-radius
-		// ratio — equivalent to 1/d² apparent flux since screenR ∝ 1/d. The
-		// floor keeps the dot visible at LDR once flux drops below bloom threshold.
+		// Star extras: the point takes over once the mesh disc shrinks to the
+		// point's own on-screen area, and the disc goes: that small, it is a few
+		// HDR samples that change as the star crosses pixels, and the bloom
+		// flickers with them. Light goes as 1/d², and screenR as 1/d.
+		let starIsPoint = false;
 		if (bo.starPoint && drawn) {
-			const screenR = (bo.radiusScene / dist) * projScale;
-			const subPixel = screenR < STAR_POINT_HANDOFF_R;
-			bo.starPoint.visible = subPixel;
-			if (subPixel) {
-				const material = bo.starPoint.material as ShaderMaterial;
-				const t = screenR / STAR_POINT_HANDOFF_R;
-				const intensity = Math.max(
-					STAR_POINT_HANDOFF_INTENSITY * t * t,
-					STAR_POINT_FLOOR_INTENSITY
-				);
-				material.uniforms.uIntensity.value = intensity;
+			const t = ((bo.radiusScene / dist) * projScale) / STAR_POINT_HANDOFF_R;
+			starIsPoint = t < 1;
+			bo.starPoint.visible = starIsPoint;
+			if (starIsPoint) {
+				(bo.starPoint.material as ShaderMaterial).uniforms.uFlux.value = t * t;
 			}
+			fadeStarCorona(bo.corona, t);
 			group.visible = true;
-			isClose = !subPixel;
+			isClose = !starIsPoint;
 			showLabel = !isClose;
 		}
 
@@ -490,10 +480,11 @@ export function updateBodyVisibility(
 		}
 
 		// A sphere under half a pixel draws nothing, yet costs a draw call: drop
-		// it from the camera's layer. Layer bits, not `visible`, so the model
-		// swap that owns `visible` is untouched.
+		// it from the camera's layer, as a star's disc under its point. Layer
+		// bits, not `visible`, so the model swap that owns `visible` is untouched.
 		if (bo.mesh && bo.radiusScene > 0) {
-			const subPixel = !isFocused && !isSystemRoot && (bo.radiusScene / dist) * projScale < 0.5;
+			const subPixel =
+				starIsPoint || (!isFocused && !isSystemRoot && (bo.radiusScene / dist) * projScale < 0.5);
 			if (subPixel !== bo.meshSubPixel) {
 				bo.meshSubPixel = subPixel;
 				if (subPixel) bo.mesh.layers.disable(0);

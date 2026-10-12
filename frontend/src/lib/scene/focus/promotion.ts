@@ -1,4 +1,4 @@
-import type { CanvasTexture, Mesh, Scene, WebGLRenderer } from 'three';
+import type { Mesh, Scene, WebGLRenderer } from 'three';
 import { ObjectType, isAsteroid, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { fetchLabels } from '$lib/fetch/position/labels';
@@ -39,7 +39,6 @@ export interface PromotionDeps {
 	ctx: ContextManager;
 	clock: SimClock;
 	renderer: WebGLRenderer;
-	circleTexture: CanvasTexture;
 	clickables: Mesh[];
 	meshToBody: Map<Mesh, PositionedBody>;
 	hoveredBodyIds: Set<string>;
@@ -217,8 +216,7 @@ export class PromotionRegistry {
 		halfPromoteIds?: ReadonlySet<string>,
 		auto = false
 	): boolean {
-		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, circleTexture, renderer } =
-			this.deps;
+		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, renderer } = this.deps;
 		if (bodyObjects.has(body.data.id)) return false;
 		// Minor bodies from chunks lack orbitElements; populate so trails can build.
 		// Skip probes (data is all-zero, state comes from sub-chunk dispatch) and
@@ -241,7 +239,6 @@ export class PromotionRegistry {
 			clickables,
 			meshToBody,
 			bodyObjects,
-			circleTexture,
 			renderer.domElement,
 			this.deps.onBodyClick,
 			(id, hovered) =>

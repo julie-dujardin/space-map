@@ -1,12 +1,4 @@
-import {
-	CanvasTexture,
-	Group,
-	type Material,
-	Mesh,
-	MeshStandardMaterial,
-	Scene,
-	SphereGeometry
-} from 'three';
+import { Group, type Material, Mesh, MeshStandardMaterial, Scene, SphereGeometry } from 'three';
 import { bodyMeshColor, resolveBodyColor } from '$lib/body-color';
 import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
@@ -51,7 +43,6 @@ export function buildMajorBodies(
 	clickables: Mesh[],
 	meshToBody: Map<Mesh, PositionedBody>,
 	bodyObjects: Map<string, BodyObjects>,
-	circleTexture: CanvasTexture,
 	rendererElement: HTMLCanvasElement,
 	handleFocus: (body: PositionedBody) => void,
 	onHoverChange?: (id: string, hovered: boolean) => void,
@@ -95,7 +86,7 @@ export function buildMajorBodies(
 		let atmosphere: AtmosphereNode | null = null;
 		let sunTint: SunTransmittanceUniforms[] | undefined;
 		if (!isVirtual && !noPhysical) {
-			if (isStar) starExtras = buildStarExtras(root, radius, color, circleTexture);
+			if (isStar) starExtras = buildStarExtras(root, radius, color);
 
 			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);

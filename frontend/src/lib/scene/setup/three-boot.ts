@@ -22,7 +22,8 @@ import { currentRenderTier, renderPixelRatio } from '$lib/scene/render-tier';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
-import { AMBIENT_INTENSITY } from '$lib/scene/lighting';
+import { AMBIENT_INTENSITY, BLOOM_THRESHOLD } from '$lib/scene/lighting';
+import { installBloomHighPass } from './bloom-high-pass';
 import { installLogDepthChunks, setReversedDepth } from './depth-mode';
 
 /** Solar-system-view far plane (scene units, ~0.5 ly). Under reversed-Z, far
@@ -72,7 +73,7 @@ export interface ThreeBoot {
  * Build the Three.js foundation: WebGL renderer, label renderer, scene + lights,
  * camera, and the composer with bloom + tonemap passes. Tonemapping moves to
  * the composer's OutputPass (the renderer's own stage doesn't run under composer
- * control). Bloom threshold=1.0 — only the Sun's HDR pixels cross it.
+ * control). Only the Sun's HDR pixels cross the bloom threshold.
  */
 export function bootThree(
 	canvas: HTMLCanvasElement,
@@ -155,8 +156,9 @@ export function bootThree(
 		new Vector2(canvas.clientWidth * tier.bloomScale, canvas.clientHeight * tier.bloomScale),
 		0.3, // strength
 		0.5, // radius
-		1.0 // threshold — only HDR over-bright pixels (the Sun) bloom
+		BLOOM_THRESHOLD
 	);
+	installBloomHighPass(bloomPass);
 	composer.addPass(bloomPass);
 	composer.addPass(new OutputPass());
 

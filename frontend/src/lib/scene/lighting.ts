@@ -9,6 +9,9 @@ export const AMBIENT_INTENSITY = 0.01;
  *  model-overlay light) so a body reads the same brightness as sphere, DEM, or mesh. */
 export const SUN_LIGHT_INTENSITY = 3.5;
 
+/** Luma over which the bloom takes a pixel: only HDR over-bright pixels (the Sun) bloom. */
+export const BLOOM_THRESHOLD = 1;
+
 /** "High ambient" toggle: floods the scene so the night side is inspectable regardless of Sun direction. */
 export const AMBIENT_BOOST_INTENSITY = 1;
 
