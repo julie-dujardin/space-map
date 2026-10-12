@@ -16,14 +16,15 @@ The code is MPL-2.0. The data and imagery the map fetches keep the terms of
 their sources, which is why the credit line the map draws is not removable:
 these license require attribution.
 
-Every surface map and panorama is ranked by its terms, and the SDK draws only
-what a page may use:
+Every surface map, panorama and spacecraft model is ranked by its terms, and
+the SDK draws only what a page may use:
 
-- **Open** imagery is free for any use, commercial included. It is the default
-  and all a map draws unless asked otherwise.
-- **Non-commercial** imagery is licensed for educational and non-commercial
-  use: the Uranus map, and the Huygens descent panorama of Titan. A page that
-  is not commercial turns it on:
+- **Open** imagery and models are free for any use, commercial included. They
+  are the default and all a map draws unless asked otherwise.
+- **Non-commercial** imagery and models are licensed for educational and
+  non-commercial use: the Uranus map, the Huygens descent panorama of Titan,
+  and the models of a few craft, most of them Soviet (Buran, Vostok, Lunokhod,
+  Salyut 1). A page that is not commercial turns them on:
 
   ```js
   const map = await createMap({ container: '#map', includeNonCommercial: true });
@@ -31,7 +32,9 @@ what a page may use:
 
   Asking for it is accepting its terms, and the credit line naming each author
   is part of those terms. Without the flag Uranus renders in a flat fallback
-  colour, and the Huygens stop is a place on Titan with no panorama to open.
+  colour, the Huygens stop is a place on Titan with no panorama to open, and
+  those craft stay markers with no model. Mir is the exception: it has an open
+  model too, and the map draws that one.
 
 - **Site-only** imagery is licensed to spacemap.co alone and never reaches the
   SDK.

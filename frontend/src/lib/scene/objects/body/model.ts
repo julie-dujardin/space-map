@@ -15,6 +15,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { createAttitudeTrack } from '$lib/fetch/attitude/track';
 import { versionedUrl } from '$lib/fetch/data-base';
+import { textureAllowed } from '$lib/host';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
@@ -54,6 +55,9 @@ export interface ModelTierExport {
 	credit: ModelCredit;
 	/** GLB size on the CDN; what a small drawing weighs its tier choice against. */
 	size_bytes?: number;
+	/** Who may serve this mesh, on the textures' ladder (`textureAllowed` in
+	 *  `$lib/host`). Absent is anyone. */
+	distribution?: string;
 }
 
 /** Subset of `metadata.json` the scene needs: the high-tier credit block and,
@@ -103,8 +107,22 @@ export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 	if (!p) {
 		p = fetch(versionedUrl(`/v1/models/${slug}/metadata.json`, 'models')).then((r) => r.json());
 		_bundleMetaCache.set(slug, p);
+		// A craft's mesh waits on this, so a failed fetch must not stick.
+		p.catch(() => _bundleMetaCache.delete(slug));
 	}
 	return p;
+}
+
+/**
+ * The best tier of a craft bundle this embed may draw. The two tiers can come
+ * from different authors under different licences (Mir's high is CC BY-NC,
+ * its low NASA's), so an embed barred from one walks down to the other.
+ * Undefined when both are out of reach.
+ */
+export function allowedTier(meta: ModelBundleMeta): ModelTier | undefined {
+	if (textureAllowed(meta.exports.high.distribution)) return 'high';
+	if (meta.exports.low && textureAllowed(meta.exports.low.distribution)) return 'low';
+	return undefined;
 }
 
 /** Credit for a shape-model bundle: top-level credit if set, else the high-tier GLB's. */
@@ -265,26 +283,24 @@ async function loadSpacecraftModel(
 		// owned exclusively here; per-frame culling must not touch it.
 		if (bo.mesh) bo.mesh.visible = false;
 		setHaloLoading(bo, true);
-		// Metadata fires alongside the GLB; frame_map must land before fitToUnitRadius.
-		const metaPromise = fetchBundleMeta(slug);
-		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));
-		let meta: ModelBundleMeta | null = null;
-		try {
-			meta = await metaPromise;
-		} catch (e) {
-			// Metadata is a nice-to-have; missing/corrupt metadata.json shouldn't
-			// tear down the loaded model.
-			console.warn(`Failed to load model metadata for ${slug}:`, e);
+		// The metadata lands before the mesh is asked for: it says which tier
+		// this embed may draw and whom to credit for it.
+		const meta = await fetchBundleMeta(slug);
+		const tier = allowedTier(meta);
+		if (!tier) {
+			bo.noPhysical = 'model';
+			return;
 		}
+		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/${tier}.glb`, 'models'));
 		if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) {
 			disposeGltf(gltf.scene);
 			return;
 		}
-		const baseFrame = meta?.frame_map ? frameMapQuaternion(meta.frame_map) : null;
+		const baseFrame = meta.frame_map ? frameMapQuaternion(meta.frame_map) : null;
 		bo.body.modelBaseFrame = baseFrame ?? undefined;
 		const root = withBaseFrame(gltf.scene, baseFrame);
 		// The anchor is measured in the model's own frame, so it turns with it.
-		const anchor = meta?.model_anchor ? new Vector3(...meta.model_anchor) : null;
+		const anchor = meta.model_anchor ? new Vector3(...meta.model_anchor) : null;
 		fitToUnitRadius(root, anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor);
 		enableShadows(root);
 		modelScene.add(root);
@@ -294,25 +310,24 @@ async function loadSpacecraftModel(
 		bo.model = root;
 		bo.modelName = slug;
 		setHaloLoading(bo, false);
-		if (meta) {
-			// True-size from the model's longest dimension, so the overlay (sized
-			// off modelUnitScene) renders to scale against the solar system. The
-			// body radius is the craft itself — a boom or a wire dipole is drawn,
-			// but it is not how big the craft reads, so the halo, the label and
-			// the camera's closest approach stay off the body.
-			if (meta.scale_meters) {
-				const spanKm = meta.scale_meters / 2000; // half the longest dim, km
-				bo.body.data.radiusKm = spanKm * (meta.body_span_ratio ?? 1);
-				bo.radiusScene = kmToScene(effectiveRadiusKm(bo.body.data));
-				bo.modelUnitOverride = meta.body_span_ratio ? kmToScene(spanKm) : undefined;
-			}
-			ctx?.credits.registerModel({
-				bodyId: bo.body.data.id,
-				source: meta.exports.high.credit.url,
-				organisation: meta.exports.high.credit.name,
-				license: meta.exports.high.credit.license
-			});
+		// True-size from the model's longest dimension, so the overlay (sized
+		// off modelUnitScene) renders to scale against the solar system. The
+		// body radius is the craft itself — a boom or a wire dipole is drawn,
+		// but it is not how big the craft reads, so the halo, the label and
+		// the camera's closest approach stay off the body.
+		if (meta.scale_meters) {
+			const spanKm = meta.scale_meters / 2000; // half the longest dim, km
+			bo.body.data.radiusKm = spanKm * (meta.body_span_ratio ?? 1);
+			bo.radiusScene = kmToScene(effectiveRadiusKm(bo.body.data));
+			bo.modelUnitOverride = meta.body_span_ratio ? kmToScene(spanKm) : undefined;
 		}
+		const credit = modelTierCredit(meta, tier);
+		ctx?.credits.registerModel({
+			bodyId: bo.body.data.id,
+			source: credit.url,
+			organisation: credit.name,
+			license: credit.license
+		});
 	} finally {
 		// Load aborted → back to the halo (never the sphere for these types).
 		if (!bo.model) setHaloLoading(bo, false);

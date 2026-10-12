@@ -55,14 +55,15 @@ interface CommonOptions {
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
 	messages?: Partial<CoreMessages>;
-	/** Draw the imagery whose licence forbids commercial reuse — off by
-	 *  default, because only the page knows whether it is a commercial one.
-	 *  Turning it on covers the Uranus map, which otherwise renders in its
-	 *  fallback colour, and the Huygens descent panorama of Titan, which is
-	 *  otherwise a place on the map with no sphere to open; the page accepts
-	 *  each one's terms by asking for it, and the credit line naming its
-	 *  author is a condition of them, not a courtesy. Some maps are ours for
-	 *  spacemap.co alone and this does not reach them. */
+	/** Draw the imagery and models whose licence forbids commercial reuse —
+	 *  off by default, because only the page knows whether it is a commercial
+	 *  one. Turning it on covers the Uranus map, which otherwise renders in
+	 *  its fallback colour, the Huygens descent panorama of Titan, which is
+	 *  otherwise a place on the map with no sphere to open, and the models of
+	 *  a few craft (Buran, Vostok, Lunokhod), which otherwise stay markers;
+	 *  the page accepts each one's terms by asking for it, and the credit line
+	 *  naming its author is a condition of them, not a courtesy. Some maps are
+	 *  ours for spacemap.co alone and this does not reach them. */
 	includeNonCommercial?: boolean;
 }
 

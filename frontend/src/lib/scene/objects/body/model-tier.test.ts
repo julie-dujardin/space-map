@@ -5,8 +5,16 @@
  * 100 px hero.
  */
 
-import { describe, expect, it } from 'vitest';
-import { cheapTier, craftTier, modelTierCredit, type ModelBundleMeta } from './model';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { configureHost } from '$lib/host';
+import {
+	allowedTier,
+	cheapTier,
+	craftTier,
+	modelTierCredit,
+	type ModelBundleMeta,
+	type ModelTierExport
+} from './model';
 
 const nasa = { name: 'NASA', url: 'https://nasa.gov' };
 const esa = { name: 'ESA', url: 'https://scifleet.esa.int/' };
@@ -57,5 +65,46 @@ describe('cheapTier', () => {
 	it('is what a shape model takes: the same surface, decimated', () => {
 		expect(cheapTier(bundle(1_593_000))).toBe('low');
 		expect(cheapTier(bundle(1_593_000, false))).toBe('high');
+	});
+});
+
+describe('allowedTier', () => {
+	beforeEach(() => {
+		// Back to what a bare embed gets; each test opts up from there.
+		configureHost({});
+	});
+
+	const open: ModelTierExport = { credit: { ...nasa, license: 'Public domain' } };
+	const nonCommercial: ModelTierExport = {
+		credit: { name: 'tashtego / Sketchfab', url: 'https://sketchfab.com', license: 'CC BY-NC 4.0' },
+		distribution: 'non-commercial'
+	};
+	const tiers = (high: ModelTierExport, low: ModelTierExport): ModelBundleMeta => ({
+		tiers: ['high', 'low'],
+		exports: { high, low }
+	});
+
+	it('draws the best mesh when no licence restricts it', () => {
+		expect(allowedTier(tiers(open, open))).toBe('high');
+	});
+
+	it('walks down to an open mesh in an embed that accepted no licence', () => {
+		// Mir: the detailed mesh is CC BY-NC, the plain one is NASA's.
+		expect(allowedTier(tiers(nonCommercial, open))).toBe('low');
+	});
+
+	it('draws nothing when both meshes bar commercial reuse', () => {
+		expect(allowedTier(tiers(nonCommercial, nonCommercial))).toBeUndefined();
+	});
+
+	it('draws the non-commercial mesh once the page accepts its terms', () => {
+		configureHost({ textures: 'non-commercial' });
+		expect(allowedTier(tiers(nonCommercial, open))).toBe('high');
+		expect(allowedTier(tiers(nonCommercial, nonCommercial))).toBe('high');
+	});
+
+	it('refuses a tier newer than this build rather than guessing', () => {
+		const future: ModelTierExport = { ...open, distribution: 'partners-only' };
+		expect(allowedTier(tiers(future, open))).toBe('low');
 	});
 });

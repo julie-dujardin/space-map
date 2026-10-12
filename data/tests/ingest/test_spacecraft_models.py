@@ -1,7 +1,9 @@
 """Manifest-field validation for the spacecraft model processor."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
+from space_map_data.ingest.providers.models.config import license_distribution
 from space_map_data.ingest.providers.models.metadata import convertible_files
 from space_map_data.ingest.providers.models.processor import (
     ModelProcessor,
@@ -84,3 +86,45 @@ class TestConvertibleFiles:
             {"path": "stowed.glb", "type": "glb", "exclude": True},
         ]
         assert [f["path"] for f in convertible_files(files)] == ["deployed.glb"]
+
+
+class TestLicenseDistribution:
+    """A licence that bars commercial reuse puts its mesh behind the tier."""
+
+    def test_non_commercial_licences(self):
+        assert license_distribution("CC BY-NC 4.0") == "non-commercial"
+        assert license_distribution("CC BY-NC-SA 4.0") == "non-commercial"
+
+    def test_open_licences(self):
+        for license in ("CC BY 4.0", "CC BY-SA 3.0 IGO", "CC0 1.0", "Public domain"):
+            assert license_distribution(license) is None
+
+    def test_no_licence_on_record(self):
+        assert license_distribution(None) is None
+
+    def test_letters_inside_a_word_are_not_the_element(self):
+        assert license_distribution("ESA Standard Licence, NCAR data") is None
+
+
+class TestCatalogByTier:
+    """Each tier says who may serve it, since the two can differ in author."""
+
+    @staticmethod
+    def _tiers(high: dict, low: dict) -> dict[str, dict]:
+        p = ModelProcessor.__new__(ModelProcessor)
+        p._yaml_docs = []
+        p._catalog_downloaded_at = {}
+        return p._catalog_by_tier(Path("merged.yaml"), high, low)
+
+    def test_a_non_commercial_tier_is_marked_and_an_open_one_is_not(self):
+        tiers = self._tiers(
+            {
+                "path": "mir.glb",
+                "source": "Sketchfab",
+                "attribution": "tashtego / Sketchfab",
+                "license": "CC BY-NC 4.0",
+            },
+            {"path": "Mir.glb", "source": "NASA-3D-Resources"},
+        )
+        assert tiers["high"]["distribution"] == "non-commercial"
+        assert "distribution" not in tiers["low"]

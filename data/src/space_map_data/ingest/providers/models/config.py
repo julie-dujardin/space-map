@@ -1,5 +1,7 @@
 """Paths, schema version, and per-tier knobs for the 3D-model provider."""
 
+import re
+
 from space_map_data.utils.paths import (
     DERIVED_MODELS_DIR,
     EXPORT_DIR,
@@ -89,6 +91,22 @@ MODEL_CATALOGS: dict[str, dict[str, str]] = {
         "license": "CC BY 4.0",
     },
 }
+
+_NON_COMMERCIAL_ELEMENT = re.compile(r"\bNC\b")
+
+
+def license_distribution(license: str | None) -> str | None:
+    """Where a mesh's licence puts it on the textures' ``distribution`` ladder
+    (docs/export-format/textures.md): ``"non-commercial"`` for a Creative
+    Commons licence with the NC element, else None for one anyone may serve.
+
+    Read off the licence, so a model entered with its licence is gated with
+    no second manifest field to forget.
+    """
+    if license and _NON_COMMERCIAL_ELEMENT.search(license):
+        return "non-commercial"
+    return None
+
 
 # Where an author outside the catalogs publishes, for the credits.json line of
 # an author with several models: those have no single source page to link.

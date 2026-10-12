@@ -55,16 +55,18 @@ export interface Host {
 	messages: CoreMessages;
 	/** Link target of a body's scene label. */
 	bodyHref: (id: string, name: string) => string;
-	/** How far down the `distribution` ladder this embed may draw surface maps
-	 *  (docs/export-format/textures.md). `open` is the maps anyone may serve,
-	 *  `non-commercial` adds those whose licence bars commercial reuse, and
-	 *  `site-only` adds those cleared for spacemap.co alone. A bare embed gets
-	 *  `open`: it cannot accept a licence for the page it sits on. */
+	/** How far down the `distribution` ladder this embed may draw surface maps,
+	 *  panoramas and craft models (docs/export-format/textures.md). `open` is
+	 *  what anyone may serve, `non-commercial` adds works whose licence bars
+	 *  commercial reuse, and `site-only` adds those cleared for spacemap.co
+	 *  alone. A bare embed gets `open`: it cannot accept a licence for the page
+	 *  it sits on. */
 	textures: TextureDistribution;
 }
 
-/** Who may serve a surface map, widest first. A body whose map this embed may
- *  not draw renders in its fallback colour, as an untextured body does. */
+/** Who may serve a work, widest first. A body whose map this embed may not
+ *  draw renders in its fallback colour, as an untextured body does; a craft
+ *  whose model it may not draw stays a marker. */
 export type TextureDistribution = 'open' | 'non-commercial' | 'site-only';
 
 const TEXTURE_LADDER: readonly TextureDistribution[] = ['open', 'non-commercial', 'site-only'];

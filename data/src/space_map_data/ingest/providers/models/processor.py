@@ -815,7 +815,7 @@ class ModelProcessor:
         high_src: dict,
         low_src: dict,
     ) -> dict[str, dict]:
-        """Per-tier ``{credit: {name, url}, catalog?, downloaded_at?}``.
+        """Per-tier ``{credit: {name, url}, distribution?, catalog?, downloaded_at?}``.
 
         ``credit.name`` is always the attribution (inline or catalog
         default), so the frontend chip says e.g. "NASA" regardless of
@@ -870,6 +870,9 @@ class ModelProcessor:
             if credit_license:
                 credit["license"] = credit_license
             out: dict = {"credit": credit}
+            distribution = config.license_distribution(credit_license)
+            if distribution:
+                out["distribution"] = distribution
             if catalog:
                 out["catalog"] = name
             ts = self._catalog_downloaded_at.get(name)
