@@ -334,6 +334,26 @@ class TestLayerWindows:
                 layer.window(8 * TILE, edges, x0, x1), whole[:, x0:x1]
             )
 
+    def test_wide_reduction_is_read_in_pieces(self, monkeypatch):
+        """A cap near a pole takes thousands of source columns for each of its
+        own: read whole, a row of such squares outgrows the build's memory."""
+        layer = self._layer()
+        edges = 90.0 - np.arange(5) * (180.0 / 4)
+        whole = layer.window(TILE, edges, 0, TILE)
+        monkeypatch.setattr(tiles, "_WINDOW_COLUMNS", 1)
+        monkeypatch.setattr(tiles, "_WINDOW_PIXELS", layer.height * 8 * 4)
+        widths = []
+        read = tiles.Layer._window
+
+        def spy(self, out_w, lat_edges, x0, x1):
+            widths.append(x1 - x0)
+            return read(self, out_w, lat_edges, x0, x1)
+
+        monkeypatch.setattr(tiles.Layer, "_window", spy)
+        pieces = layer.window(TILE, edges, 0, TILE)
+        assert widths == [4, 4, 4, 4]
+        assert np.abs(pieces.astype(int) - whole.astype(int)).max() <= 1
+
     def test_columns_past_the_edge_wrap_around(self):
         layer = self._layer()
         edges = 90.0 - np.arange(TILE + 1) * (180.0 / (2 * TILE))

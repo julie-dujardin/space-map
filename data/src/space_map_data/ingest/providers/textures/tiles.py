@@ -59,6 +59,13 @@ SHARPEN_RECIPE = 2
 
 # Bicubic reach in source pixels at unit scale; it widens when shrinking.
 _FILTER_SUPPORT = 2.0
+# Source pixels a window holds at a time. Near a pole a cap square maps to a
+# few columns of a narrow grid, each thousands of source columns wide: read
+# whole, the squares of one row outgrow the build's memory.
+_WINDOW_PIXELS = 1 << 24
+# Fewest output columns in a piece of a window: each piece reads the filter's
+# reach again on both sides.
+_WINDOW_COLUMNS = 32
 # Source rows per chunk when scanning a DEM for its height range.
 _SCAN_ROWS = 1024
 # Output columns reprojected or sharpened at a time, to bound the working
@@ -356,6 +363,24 @@ class Layer:
         return self.window(out_w, lat_edges, 0, out_w)
 
     def window(self, out_w: int, lat_edges: np.ndarray, x0: int, x1: int) -> np.ndarray:
+        rows = self.source_row(float(lat_edges[-1])) - self.source_row(
+            float(lat_edges[0])
+        )
+        per_column = max(rows, 1.0) * max(self.width / out_w, 1.0)
+        step = max(int(_WINDOW_PIXELS / per_column), _WINDOW_COLUMNS)
+        if x1 - x0 <= step:
+            return self._window(out_w, lat_edges, x0, x1)
+        return np.concatenate(
+            [
+                self._window(out_w, lat_edges, x, min(x + step, x1))
+                for x in range(x0, x1, step)
+            ],
+            axis=1,
+        )
+
+    def _window(
+        self, out_w: int, lat_edges: np.ndarray, x0: int, x1: int
+    ) -> np.ndarray:
         out_h = lat_edges.size - 1
         top = self.source_row(float(lat_edges[0]))
         bottom = self.source_row(float(lat_edges[-1]))
