@@ -42,6 +42,9 @@ bodies:
   preference: 10
   file: venus4_rgb_cyl_www.tif
   type: cylindrical
+  # The map sits 0.29° east of the radar mosaics, whose frame the feature
+  # names and the tiles are in.
+  lon_at_left_deg: -180.286
 - body: naif-299
   body_name: venus
   source: https://astrogeology.usgs.gov/search/map/venus_magellan_global_c3_mdir_synthetic_color_mosaic_4641m#open
@@ -65,8 +68,8 @@ bodies:
   attribution: "Colour: processed by Steve Albers from Magellan radar mosaics (NASA, compiled by Emily Lakdawalla / The Planetary Society) overlaid on a global map by Calvin Hamilton. Detail: Magellan SAR FMAP left-look global mosaic, 75 m/px (NASA/JPL, USGS Astrogeology Science Center)."
   file: venus4_rgb_cyl_www.tif
   type: cylindrical
-  # The map sits 0.29° east and 0.13° south of the radar mosaic, everywhere.
-  # The first is taken out here; the second is under the blur below.
+  # As on the tiers of this file. The map also sits 0.13° south of the radar
+  # mosaic, everywhere: that is under the blur below.
   lon_at_left_deg: -180.286
   tiles: only
   # The map gives the tint and the radar mosaic all detail below 37 km.
@@ -89,6 +92,10 @@ bodies:
   file: Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif
   type: cylindrical
   tiles: only
+  # The colours are a table of radar brightness: enlarged, its steps show as
+  # blotches. The map gives the tint and the radar mosaic all detail below 19 km.
+  sharpen_sigma: 4.0
+  soften_colour: true
   brightness:
   - file: Venus_Magellan_LeftLook_mosaic_global_75m.tif
     source: https://astrogeology.usgs.gov/search/map/venus_magellan_sar_fmap_left_look_global_mosaic_75m
