@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { configureHost } from '$lib/host';
-import { tileCredit } from './tile-credit';
+import { patchCredits, tileCredit } from './tile-credit';
 
 const map = { source: 'https://example.org/map', organisation: 'USGS', attribution: 'Map' };
 const mosaic = { source: 'https://example.org/mosaic', organisation: 'NASA' };
@@ -34,5 +34,32 @@ describe('tileCredit', () => {
 		configureHost({ tilesUrl: 'https://tiles.example.org', textures: 'open' });
 		const held = { ...mosaic, distribution: 'site-only' as const };
 		expect(tileCredit({ ...map, tiles: held })).toBeUndefined();
+	});
+});
+
+describe('patchCredits', () => {
+	afterEach(() => configureHost({}));
+
+	const jezero = { source: 'https://example.org/jezero', organisation: 'USGS' };
+	const gale = { source: 'https://example.org/gale', organisation: 'USGS' };
+	const tiles = { ...mosaic, patches: [jezero, gale, { ...jezero }] };
+
+	it('is the credit of each patch, one for each source', () => {
+		configureHost({ tilesUrl: 'https://tiles.example.org' });
+		expect(patchCredits({ ...map, tiles }).map((c) => c.source)).toEqual([
+			jezero.source,
+			gale.source
+		]);
+	});
+
+	it('is nothing for a pyramid without patches', () => {
+		configureHost({ tilesUrl: 'https://tiles.example.org' });
+		expect(patchCredits({ ...map, tiles: mosaic })).toEqual([]);
+		expect(patchCredits(map)).toEqual([]);
+	});
+
+	it('is nothing where the host draws no tiles', () => {
+		configureHost({});
+		expect(patchCredits({ ...map, tiles })).toEqual([]);
 	});
 });

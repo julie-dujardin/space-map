@@ -9,7 +9,7 @@
 	import { GITHUB_REPO_URL, THIRD_PARTY_NOTICES_URL } from '$lib/constants';
 	import { REFERENCE_SECTIONS, type BodyCredit, type Credits } from '$lib/credits/credits-payload';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
-	import { tileCredit } from '$lib/credits/tile-credit';
+	import { patchCredits, tileCredit } from '$lib/credits/tile-credit';
 
 	interface Props {
 		credits: Credits;
@@ -44,7 +44,8 @@
 			const lists: Record<ImageryLayer, BodyCredit[] | undefined> = {
 				surface: group.textures?.flatMap((credit) => {
 					const tiles = tileCredit(credit);
-					return tiles ? [credit, { ...credit, ...tiles }] : [credit];
+					const works = [...(tiles ? [tiles] : []), ...patchCredits(credit)];
+					return [credit, ...works.map((work) => ({ ...credit, ...work }))];
 				}),
 				clouds: group.clouds,
 				night: group.night,

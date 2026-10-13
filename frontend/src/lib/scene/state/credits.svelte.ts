@@ -2,7 +2,7 @@ import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
 import { orbitSourceInfo, type NamedOrbitSource } from './orbit-sources';
 import type { OrientationReference, OrientationSource } from '$lib/credits/orientation-sources';
 import type { CreditFields, ImageryLayer } from '$lib/credits/imagery-layers';
-import { tileCredit } from '$lib/credits/tile-credit';
+import { patchCredits, tileCredit, type TiledMap } from '$lib/credits/tile-credit';
 import type { PositionedBody } from '$lib/types/objects';
 
 /** One credited work behind a body's imagery, recorded as the layer attaches.
@@ -68,17 +68,15 @@ export class CreditsStore {
 
 	/** A layer keeps one credit per body, so whichever path attaches it first —
 	 *  per-system or standalone — wins. A surface map whose tile pyramid holds
-	 *  another work is credited for both. */
-	registerImagery(
-		layer: ImageryLayer,
-		bodyId: string,
-		systemId: string,
-		meta: CreditFields & { tiles?: CreditFields }
-	): void {
+	 *  another work is credited for both, and for each mosaic of its patches. */
+	registerImagery(layer: ImageryLayer, bodyId: string, systemId: string, meta: TiledMap): void {
 		this.addImagery(layer, bodyId, systemId, meta, layer === 'rings');
 		// Only the surface: height tiles are not drawn.
-		const tiles = layer === 'surface' ? tileCredit(meta) : undefined;
-		if (tiles) this.addImagery(layer, bodyId, systemId, tiles, true);
+		if (layer !== 'surface') return;
+		const tiles = tileCredit(meta);
+		for (const work of [...(tiles ? [tiles] : []), ...patchCredits(meta)]) {
+			this.addImagery(layer, bodyId, systemId, work, true);
+		}
 	}
 
 	/** `bySource` keys the credit on its source too, for a layer of several
