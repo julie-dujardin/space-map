@@ -240,6 +240,23 @@ class TestPatchBuilder:
         # Detail is brightness: the three channels move together.
         assert np.corrcoef(inside[..., 0].ravel(), inside[..., 1].ravel())[0, 1] > 0.9
 
+    def test_darker_raster_over_another_leaves_no_step(self, tmp_path):
+        """Two mosaics of one place differ in brightness by their sun."""
+        wide = _texture()
+        # The middle of the same ground, at half the brightness.
+        inner = (wide[64:192, 64:192] // 2).astype(np.uint8)
+        builder = patches.PatchBuilder(
+            "test",
+            _pyramid(tmp_path / "tiles"),
+            BASE,
+            [_raster(wide), _raster(inner, (15.625, 26.875, 14.375, 3.125))],
+            tmp_path / "patch",
+            1.0,
+        )
+        builder.build()
+        middle = _tile(tmp_path / "patch", 7, 143, 57).astype(float)
+        assert abs(middle[..., 0].mean() - COLOUR[0]) < 25.0
+
     def test_tile_past_the_raster_is_the_map(self, tmp_path):
         self._build(tmp_path)
         # The north-west tile: the raster starts 12 px down.

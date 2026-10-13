@@ -758,17 +758,30 @@ def _open_grey(path: Path) -> np.ndarray:
     return np.asarray(_load_whole(path, 1))
 
 
+def _compressed(path: Path) -> bool:
+    """Whether a file is a one-band TIFF that cannot be mapped in place."""
+    if path.suffix.lower() not in (".tif", ".tiff"):
+        return False
+    with tifffile.TiffFile(str(path)) as tif:
+        page = tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        return page.ndim == 2 and memmap_page(path, page) is None
+
+
 def open_brightness_layer(
     grid: Sequence[Sequence[Path]], placement: Placement, gamma: float | None = None
 ) -> Layer:
     """Greyscale rasters in the equirectangular projection: one file, or a grid
     of adjoining ones."""
-    single = len(grid) == 1 and len(grid[0]) == 1
-    return Layer(
-        _open_grey(grid[0][0]) if single else Mosaic(grid),
-        placement,
-        to_values=brightness_values(gamma),
-    )
+    pixels: np.ndarray | Mosaic | Region
+    if len(grid) > 1 or len(grid[0]) > 1:
+        pixels = Mosaic(grid)
+    elif _compressed(grid[0][0]):
+        # Decoded band by band: whole, a mosaic of this kind is gigabytes.
+        pixels = Region(ChunkedTiff(grid[0][0]), -180.0, 180.0, 90.0, -90.0)
+    else:
+        pixels = _open_grey(grid[0][0])
+    return Layer(pixels, placement, to_values=brightness_values(gamma))
 
 
 def _geotiff_bounds(path: Path) -> tuple[float, float, float, float]:
@@ -821,12 +834,8 @@ def open_region_layer(path: Path, gamma: float | None = None) -> Layer:
     if path.suffix.lower() == ".img":
         pixels, bounds = open_pds_image(path), _pds_bounds(path)
     else:
-        with tifffile.TiffFile(str(path)) as tif:
-            page = tif.pages[0]
-            assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
-            mapped = memmap_page(path, page)
         # A site mosaic stored in compressed chunks is too large to decode whole.
-        pixels = ChunkedTiff(path) if mapped is None else mapped
+        pixels = ChunkedTiff(path) if _compressed(path) else _open_grey(path)
         bounds = _geotiff_bounds(path)
     return Layer(
         Region(pixels, *bounds), Placement(), to_values=brightness_values(gamma)

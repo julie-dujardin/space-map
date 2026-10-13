@@ -37,7 +37,7 @@ _WORKERS = 4
 # Raster pixels a read holds at a time. Whole rows: a tall, narrow read of a
 # file on a network mount fetches a page for every row.
 _READ_PIXELS = 1 << 25
-# Pixels of the pyramid's finest level read around a patch, past the blur.
+# Pixels read around a patch past the blur, and around a raster past its edge.
 _MARGIN = 4
 
 
@@ -141,6 +141,7 @@ class PatchBuilder:
 
     def fine(
         self,
+        raster: tiles.Layer,
         level: int,
         y0: int,
         y1: int,
@@ -148,24 +149,32 @@ class PatchBuilder:
         x1: int,
         pool: ThreadPoolExecutor | None = None,
     ) -> np.ndarray:
-        """Brightness of the rasters over a pixel window of ``level``: a later
-        raster over an earlier one, NaN where none has data. A window that
-        takes many reads can share them out over ``pool``."""
+        """Brightness of one raster over a pixel window of ``level``, NaN
+        where it has no data. A window that takes many reads can share them
+        out over ``pool``."""
         rows = config.TILE_SIZE << level
         width = tiles.level_width(level)
         out = np.full((y1 - y0, x1 - x0), np.nan, dtype=np.float32)
-        for raster in self.rasters:
-            per_row = (x1 - x0) * raster.width / width * raster.height / rows
-            step = max(int(_READ_PIXELS / max(per_row, 1.0)), 1)
+        # Only the part of the window the raster is in: the rest of it would
+        # be read as so many pixels of nothing.
+        west, east, north, south = _bounds(raster)
+        left = max(x0, math.floor((west + 180.0) / 360.0 * width) - _MARGIN)
+        right = min(x1, math.ceil((east + 180.0) / 360.0 * width) + _MARGIN)
+        first = max(y0, math.floor((90.0 - north) / 180.0 * rows) - _MARGIN)
+        last = min(y1, math.ceil((90.0 - south) / 180.0 * rows) + _MARGIN)
+        if left >= right or first >= last:
+            return out
+        per_row = (right - left) * raster.width / width * raster.height / rows
+        step = max(int(_READ_PIXELS / max(per_row, 1.0)), 1)
 
-            def band(top: int, raster: tiles.Layer = raster, step: int = step) -> None:
-                bottom = min(top + step, y1)
-                lat_edges = 90.0 - np.arange(top, bottom + 1) * (180.0 / rows)
-                fresh = raster.window(width, lat_edges, x0, x1)
-                held = out[top - y0 : bottom - y0]
-                np.copyto(held, fresh, where=np.isfinite(fresh))
+        def band(top: int) -> None:
+            bottom = min(top + step, last)
+            lat_edges = 90.0 - np.arange(top, bottom + 1) * (180.0 / rows)
+            out[top - y0 : bottom - y0, left - x0 : right - x0] = raster.window(
+                width, lat_edges, left, right
+            )
 
-            list((pool.map if pool else map)(band, range(y0, y1, step)))
+        list((pool.map if pool else map)(band, range(first, last, step)))
         return out
 
     def _tile(
@@ -270,15 +279,25 @@ class _Ground:
         bottom = min((y1 + 1) * half + reach, size << level)
 
         self.plain = self._map(level, self.top, bottom, self.left, right)
+        sigma = patch.sigma
+        # Each raster blurred on its own: two mosaics of one place differ in
+        # brightness by their sun, and only what each shows within itself is
+        # detail.
+        self.lows = []
+        seen = np.zeros(self.plain.shape[:2], dtype=bool)
         # The one read of the rasters from end to end.
         with ThreadPoolExecutor(_WORKERS) as pool:
-            fine = patch.fine(level, self.top, bottom, self.left, right, pool)
-        seen = np.isfinite(fine)
-        sigma = patch.sigma
-        coverage = ndimage.gaussian_filter(seen.astype(np.float32), sigma)
-        coarse = ndimage.gaussian_filter(np.where(seen, fine, 0.0), sigma)
-        self.low = np.ones_like(fine)
-        np.divide(coarse, coverage, out=self.low, where=coverage > 0.05)
+            for raster in patch.rasters:
+                fine = patch.fine(
+                    raster, level, self.top, bottom, self.left, right, pool
+                )
+                here = np.isfinite(fine)
+                coverage = ndimage.gaussian_filter(here.astype(np.float32), sigma)
+                coarse = ndimage.gaussian_filter(np.where(here, fine, 0.0), sigma)
+                low = np.ones_like(fine)
+                np.divide(coarse, coverage, out=low, where=coverage > 0.05)
+                self.lows.append(low)
+                seen |= here
         # Full weight one blur inside the rasters: at their edge the patch
         # fades into the map.
         inside = ndimage.distance_transform_edt(seen)
@@ -335,11 +354,15 @@ class _Ground:
         weight = _resized(self.weight, box, shape)
         if not weight.any():
             return plain
-        fine = self.patch.fine(level, y0, y1, x0, x1)
-        low = _resized(self.low, box, shape)
-        usable = np.isfinite(fine) & (low > 0)
-        ratio = np.ones_like(low)
-        np.divide(fine, low, out=ratio, where=usable)
+        # A later raster over an earlier one, where it has data.
+        ratio = np.ones(weight.shape, dtype=np.float32)
+        usable = np.zeros(weight.shape, dtype=bool)
+        for raster, coarse in zip(self.patch.rasters, self.lows):
+            fine = self.patch.fine(raster, level, y0, y1, x0, x1)
+            low = _resized(coarse, box, shape)
+            here = np.isfinite(fine) & (low > 0)
+            np.divide(fine, low, out=ratio, where=here)
+            usable |= here
         np.clip(ratio, *config.TILE_SHARPEN_RANGE, out=ratio)
         sharp = tiles.apply_detail(_resized(self.soft, box, shape), ratio)
         alpha = np.where(usable, weight, 0.0)[..., None]
