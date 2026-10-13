@@ -374,9 +374,6 @@ bodies:
   file: Mars_Viking_ClrMosaic_global_925m.tif
   type: cylindrical
   tiles: only
-  # 10 m. Level 11 would hold the mosaic's full 5 m, for four times the tiles:
-  # 11 million of them, about 0.6 TB.
-  tiles_max_level: 10
   # The colour map is far softer than its pixels, and CTX holds real shading
   # up to kilometres, so CTX takes over below about 3 km.
   sharpen_sigma: 3.0
