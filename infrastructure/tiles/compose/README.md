@@ -62,4 +62,5 @@ keeps them under it. For a height pyramid with a new range, those heights
 are wrong. Deploy the export soon after a rebuild.
 
 Between the removal of the old folder and the rename of the new one the
-pyramid is absent, and the edge keeps a `404` for three minutes.
+pyramid is absent. Caddy marks each error `no-store`, so neither the edge nor
+a browser keeps the `404`.

@@ -24,8 +24,7 @@ configs:
       	header Access-Control-Allow-Origin "*"
 
       	# A tile URL carries the ?v= token of its build, so a tile is safe to
-      	# cache forever. An error must not say so: the edge would keep it for a
-      	# year, long after its cause is gone.
+      	# cache forever.
       	header {
       		Cache-Control "public, max-age=31536000, immutable"
       		match status 2xx 304
@@ -42,7 +41,14 @@ configs:
       	handle @tile {
       		file_server
       	}
+      	# An error must outlive its cause nowhere. Left unmarked, Cloudflare
+      	# tells the browser to keep a 404 for the zone's Browser Cache TTL.
       	handle {
+      		header Cache-Control "no-store"
       		respond 404
+      	}
+      	# A tile that is not there is a handler error, which takes this route.
+      	handle_errors {
+      		header Cache-Control "no-store"
       	}
       }
