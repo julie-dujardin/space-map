@@ -568,9 +568,9 @@ const view = await createPanorama({ container: '#panorama', body: 'naif-499', at
 ```
 
 The list is every stop on every traverse, and not every stop has a sphere this
-page may open: some are places the archive withheld the imagery of, and some
-are under a licence the page has not accepted (`includeNonCommercial`).
-`isViewable` says which open; the view skips the rest itself.
+page may open: some are under a licence the page has not accepted
+(`includeNonCommercial`). `isViewable` says which open; the view skips the rest
+itself.
 
 Both read the page's own settings, which a `create…` call applies. A page that
 reads the list before it has made anything applies them itself first, or the

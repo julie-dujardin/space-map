@@ -95,8 +95,7 @@
 	const clock = new SimClock(0);
 
 	const at = $derived(page.url.searchParams.get('at'));
-	// A stop whose imagery is withheld has no sphere to open: the map draws
-	// it as a place, and this page lists and opens nothing there.
+	// The page lists only the stops that this host can open.
 	const entries = $derived((detail?.global?.panoramas ?? []).filter(isViewable));
 	const bodyName = $derived(detail?.localized?.name ?? detail?.global?.name ?? bodyId);
 	const current = $derived(findPanorama(entries, at));

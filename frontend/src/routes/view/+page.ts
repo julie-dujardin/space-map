@@ -80,11 +80,7 @@ async function buildGallery(fetch: typeof globalThis.fetch): Promise<GalleryData
 	const probes = new Map<string, string>();
 	for (const body of summaries)
 		for (const summary of body.missions)
-			if (summary.imagery !== false && summary.probe)
-				probes.set(`${body.id}/${summary.mission}`, summary.probe);
-	// A traverse published as places only has no sphere for a card to open, so
-	// an index with none of them is coverage nobody can reach.
-	const anyViewable = summaries.some((body) => body.missions.some((mm) => mm.imagery !== false));
+			if (summary.probe) probes.set(`${body.id}/${summary.mission}`, summary.probe);
 	// Bodies and the craft on them, all at once: one waits on the other only
 	// through the index, which is already in hand.
 	const [details, crews] = await Promise.all([
@@ -100,10 +96,8 @@ async function buildGallery(fetch: typeof globalThis.fetch): Promise<GalleryData
 		const global = detail?.global;
 		if (!global) continue;
 		const crew = crews[i];
-		const traverses = traversesOf(
-			(global.panoramas ?? []).filter(isViewable),
-			summaries[i],
-			(mission) => crew.get(mission)
+		const traverses = traversesOf((global.panoramas ?? []).filter(isViewable), (mission) =>
+			crew.get(mission)
 		);
 		if (!traverses.length) continue;
 		for (const traverse of traverses) {
@@ -125,5 +119,5 @@ async function buildGallery(fetch: typeof globalThis.fetch): Promise<GalleryData
 		probes: counted.size,
 		worlds: bodies.length
 	};
-	return { bodies, summary, failed: bodies.length === 0 && anyViewable };
+	return { bodies, summary, failed: bodies.length === 0 && summaries.length > 0 };
 }

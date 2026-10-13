@@ -298,8 +298,7 @@ export class PanoramaView {
 	async load(): Promise<void> {
 		const detail = await fetchObjectDetail(this.bodyId, false);
 		if (this.disposed) return;
-		// A stop whose imagery is withheld has no sphere to open, so it is not
-		// part of the view or of the neighbours the arrows reach.
+		// The view and its arrows use only the stops that this host can open.
 		this.entries = (detail.global?.panoramas ?? []).filter(isViewable);
 		this.radiusKm = meanRadiusKm(detail.global) ?? 0;
 		this.emit('ready');
@@ -402,7 +401,7 @@ export class PanoramaView {
 		);
 		await this.loadTexture(
 			versionedUrl(`/v1/panoramas/${entry.id}.webp`, 'panoramas'),
-			entry.north_offset_deg ?? 0,
+			entry.north_offset_deg,
 			!opening
 		);
 		if (this.current === entry) this.emit('load', entry);

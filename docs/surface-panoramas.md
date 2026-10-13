@@ -396,11 +396,8 @@ Nothing is published, added to the app export, or included in the software licen
   and its PLACES table.
 
 China's release states no reuse terms this project can rely on, so the Zhurong
-and Yutu-2 spheres stay in the cache. Where each craft stood, and when, is
-measurement its labels state, so each stop is exported as a place on the
-traverse instead: dated, credited to the release, and marked
-`imagery: "withheld"`. The map draws those traverses and the viewer has nothing
-to open on them, so the gallery leaves them out.
+and Yutu-2 spheres stay in the cache and the panorama export publishes nothing
+of them. A traverse with no sphere to open is not a way into anything.
 
 Third-party stitched panoramas and AI-generated fill are not used. Color labels
 distinguish natural/approximate-true, enhanced, and source color composites where

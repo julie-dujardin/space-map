@@ -78,7 +78,8 @@
 		if (!id) return;
 		fetchObjectDetail(id, false).then(
 			(detail) => {
-				if (!cancelled) entries = detail.global?.panoramas ?? [];
+				// The line goes only through stops that the viewer can open.
+				if (!cancelled) entries = (detail.global?.panoramas ?? []).filter(isViewable);
 			},
 			(error) => console.warn('Panorama traces:', error)
 		);
@@ -96,8 +97,7 @@
 
 	/** The card: the panorama's preview over its mission and sol, a link into
 	 *  it, with a hit disc at the place itself so the click lands where the
-	 *  pointer already is. A stop whose imagery is withheld has neither picture
-	 *  nor anything to open, so its card is the caption alone. */
+	 *  pointer already is. */
 	function buildPreview(): {
 		element: HTMLAnchorElement;
 		show: (body: string, entry: PanoramaEntry) => void;
@@ -111,11 +111,8 @@
 		return {
 			element: a,
 			show(body, entry) {
-				const viewable = isViewable(entry);
-				if (viewable) a.href = panoramaHref(body, entry);
-				else a.removeAttribute('href');
-				a.classList.toggle('panorama-trace-preview--caption-only', !viewable);
-				if (viewable) img.src = versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
+				a.href = panoramaHref(body, entry);
+				img.src = versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
 				caption.textContent = `${capitalize(entry.mission ?? '')} · ${
 					entry.sol === undefined ? formatIsoDate(entry.time) : m.panorama_sol({ sol: entry.sol })
 				}`;
@@ -186,7 +183,7 @@
 				altitudeKm: ground(entry)
 			});
 			marker.setVisible(true);
-			canvas.style.cursor = isViewable(entry) ? 'pointer' : '';
+			canvas.style.cursor = 'pointer';
 			renderer.invalidate();
 		};
 		window.addEventListener('pointermove', onPointer);
@@ -225,13 +222,6 @@
 		display: block;
 		width: 100%;
 		border-radius: 6px 6px 0 0;
-	}
-	/* Nothing to picture, so the caption is the whole card. */
-	:global(.panorama-trace-preview--caption-only img) {
-		display: none;
-	}
-	:global(.panorama-trace-preview--caption-only span) {
-		border-radius: 6px;
 	}
 	:global(.panorama-trace-preview span) {
 		display: block;

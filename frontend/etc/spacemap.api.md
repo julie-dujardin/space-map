@@ -996,14 +996,13 @@ export interface PanoramaEntry {
 	hfov_deg?: number;
 	// (undocumented)
 	id: string;
-	imagery?: 'withheld';
 	// (undocumented)
 	instrument?: string;
 	lat: number;
 	// (undocumented)
 	lon: number;
 	mission?: string;
-	north_offset_deg?: number;
+	north_offset_deg: number;
 	orientation?: 'unknown' | 'caption-aligned' | 'matched to an archival sphere';
 	position_uncertainty_m?: number;
 	// (undocumented)
@@ -1025,7 +1024,6 @@ export interface PanoramaMissionSummary {
 	count: number;
 	// (undocumented)
 	first_time: string;
-	imagery?: boolean;
 	// (undocumented)
 	last_time: string;
 	// (undocumented)

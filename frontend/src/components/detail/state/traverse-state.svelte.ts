@@ -15,8 +15,7 @@ export interface Traverse {
 	radiusKm: number;
 	/** The mission's panoramas in time order — the whole ground track. */
 	entries: PanoramaEntry[];
-	/** The ones the panel pictures. Empty where the traverse publishes as
-	 *  places only, its imagery unreleased. */
+	/** The ones the panel pictures. */
 	highlights: PanoramaEntry[];
 }
 
@@ -69,14 +68,14 @@ async function load(probeId: string): Promise<Traverse | null> {
 		if (!mission) continue;
 		const detail = await fetchObjectDetail(body.id);
 		const global = detail.global;
-		const entries = global?.panoramas?.filter((e) => e.mission === mission) ?? [];
+		const entries = global?.panoramas?.filter((e) => e.mission === mission && isViewable(e)) ?? [];
 		if (!entries.length) return null;
 		return {
 			bodyId: body.id,
 			bodyName: detail.localized?.name ?? global?.name ?? body.id,
 			radiusKm: (global && meanRadiusKm(global)) ?? 0,
 			entries,
-			highlights: panoramaHighlights(entries.filter(isViewable), HIGHLIGHT_LIMIT)
+			highlights: panoramaHighlights(entries, HIGHLIGHT_LIMIT)
 		};
 	}
 	return null;

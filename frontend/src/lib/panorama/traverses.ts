@@ -16,24 +16,17 @@ export interface Traverse {
 }
 
 /**
- * The traverses of one body, from the stops a reader can open — callers filter
- * with `isViewable`, since the lists they hold are filtered already. `summary`
- * is the body's row in the panorama index, which says which whole traverses
- * publish no spheres; without it every mission counts, the index being the only
- * thing that would say otherwise. `name` resolves the craft behind a mission.
+ * The traverses of one body. `entries` must hold only the stops a reader can
+ * open, so callers filter with `isViewable` first. `name` gives the craft
+ * behind a mission.
  */
 export function traversesOf(
 	entries: readonly PanoramaEntry[],
-	summary: PanoramaBodySummary | undefined,
 	name: (mission: string) => string | undefined
 ): Traverse[] {
-	const withheld = new Set(
-		(summary?.missions ?? []).filter((mm) => mm.imagery === false).map((mm) => mm.mission)
-	);
 	const byMission = new Map<string, PanoramaEntry[]>();
 	for (const entry of entries) {
 		const mission = entry.mission ?? '';
-		if (withheld.has(mission)) continue;
 		let list = byMission.get(mission);
 		if (!list) byMission.set(mission, (list = []));
 		list.push(entry);
@@ -78,7 +71,7 @@ export function bodyTraverses(
 			.then((bodies) => bodies.find((b) => b.id === bodyId))
 			.catch(() => undefined);
 		const names = await traverseCrewNames(summary);
-		return traversesOf(entries, summary, (mission) => names.get(mission));
+		return traversesOf(entries, (mission) => names.get(mission));
 	})();
 	byBody.set(bodyId, found);
 	return found;
