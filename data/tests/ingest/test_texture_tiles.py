@@ -1233,6 +1233,24 @@ class TestProcessTiles:
         assert meta["max_level"] == 2
         assert _stitch(tmp_path / "tiles" / "naif-499", 0)[0, 0, 2] > 150
 
+    def test_entry_written_for_the_pyramid_of_a_second_map(self, tmp_path, monkeypatch):
+        """It names the file of the map it refines, the best one or not."""
+        best = self._colour_entry(tmp_path, preference=10)
+        Image.new("RGB", (4 * TILE, 2 * TILE), color=(20, 60, 200)).save(
+            tmp_path / "raw" / "second.png"
+        )
+        second = {**best, "file": "second.png", "preference": 5, "variant": "usgs"}
+        sharp = {**second, "source": "https://example.com/sharp", "tiles": "only"}
+        proc = self._processor(monkeypatch, tmp_path, [best, second, sharp])
+        proc.process_tiles()
+
+        metas = {
+            name: json.loads((tmp_path / "meta" / name / "metadata.json").read_text())
+            for name in ("naif-499", "naif-499_alt-usgs")
+        }
+        assert metas["naif-499"]["source"] == "https://example.com/mars"
+        assert metas["naif-499_alt-usgs"]["source"] == "https://example.com/sharp"
+
     def test_monthly_map_gets_a_pyramid_per_frame(self, tmp_path, monkeypatch):
         raw = tmp_path / "raw"
         raw.mkdir()

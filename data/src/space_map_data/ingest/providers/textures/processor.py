@@ -429,9 +429,13 @@ class TextureProcessor:
         tiers, whichever entry those come from. None for what is not tiled."""
         type_ = entry.get("type", "")
         if type_ in ("cylindrical", "cylindrical_monthly"):
-            if entry.get("tiles") == TILES_ONLY:
+            # An entry written for a pyramid refines the bundle whose tiers
+            # come from its file: a body with a second map can sharpen both.
+            # With a file of its own it refines the body's best map.
+            bundle = self._bundles.get(entry["file"])
+            if bundle is None and entry.get("tiles") == TILES_ONLY:
                 return entry["body"]
-            return self._bundles.get(entry["file"])
+            return bundle
         suffix = _TILED_SIBLINGS.get(type_)
         return None if suffix is None else f"{entry['body']}{suffix}"
 
