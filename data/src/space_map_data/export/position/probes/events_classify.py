@@ -90,7 +90,8 @@ def classify_events_phases(
                 kind="landed",
                 landed_body_id_value=ph.body_id_value,
                 landed_body_id_type=ph.body_id_type,
-                static_lat_lng=(ph.lat_deg, ph.lng_deg),
+                site_lat_lng=ph.position_at(c_start),
+                waypoints=tuple(w for w in ph.waypoints if c_start < w[0] < c_end),
                 landed_destroyed=ph.destroyed,
             )
             plan.contributions.append(contrib)

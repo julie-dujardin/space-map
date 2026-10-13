@@ -48,6 +48,40 @@ class LandedFit:
     peak_displacement_m: float
 
 
+def sited_landed_chunk(
+    body_id_value: int,
+    body_id_type: int,
+    is_destroyed: bool,
+    chunk_start_et: float,
+    c_start_et: float,
+    c_end_et: float,
+    site_lat_lng: tuple[float, float],
+    waypoints: tuple[tuple[float, float, float], ...],
+) -> LandedFit:
+    """The landed record of an events-driven phase in `[c_start_et, c_end_et]`.
+
+    The probe is at `site_lat_lng`. It is then at each waypoint
+    `(et, lat_deg, lng_deg)` from the time of that waypoint. The altitude is 0
+    because no source states it."""
+    lat, lng = site_lat_lng
+    return LandedFit(
+        body_id_value=body_id_value,
+        body_id_type=body_id_type,
+        is_static=not waypoints,
+        is_destroyed=is_destroyed,
+        start_offset_s=int(round(c_start_et - chunk_start_et)),
+        end_offset_s=int(round(c_end_et - chunk_start_et)),
+        lat_ref_deg=lat,
+        lng_ref_deg=lng,
+        alt_ref_m=0.0,
+        samples=[
+            (int(round(et - chunk_start_et)), w_lat, w_lng, 0.0)
+            for et, w_lat, w_lng in waypoints
+        ],
+        peak_displacement_m=0.0,
+    )
+
+
 def _daily_midnight_ets(t_start_et: float, t_end_et: float) -> list[float]:
     """ETs at 00:00:00 UTC each calendar day strictly inside (t_start_et,
     t_end_et). Uses `str2et` per date so we stay UTC-aligned across leap

@@ -309,8 +309,8 @@ def write_chebyshev_meta(
 
 
 def probes_signature() -> dict:
-    """Inputs of the probes pass: kernels, events, fit-center candidates,
-    registry, and the pack version a header-only change bumps.
+    """Inputs of the probes pass: kernels, events, traverses, fit-center
+    candidates, registry, and the pack version a header-only change bumps.
 
     Same tier-B caveat as chebyshev: probe Object rows and has_localized
     bits are covered by the tier-B gate.
@@ -321,6 +321,7 @@ def probes_signature() -> dict:
         "pack_version": PROBES_PACK_VERSION,
         "kernels": kernels_digest(),
         "events": _tree_digest(SOURCES_POSITION_DIR / "probe-events", "*.json"),
+        "traverses": _tree_digest(derived / "traverses", "*.json"),
         "candidates": _tree_digest(derived / "chebyshev", "*.npz"),
         "registry": _file_stamp(derived / "tables" / "probe_ids.json"),
     }

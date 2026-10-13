@@ -182,6 +182,37 @@ Within a segment, evaluate each axis with Clenshaw's recursion on
 **`uncoverable` (method = 0)** — `payload_len = 0`. The consumer must hide
 the probe through the sub-chunk's time window.
 
+## Landed record
+
+When bit 0 of the probe's `flags` is set, one more record follows the
+sub-chunks, with `method = 4`. The probe is on a surface from `start_offset_s`
+to `end_offset_s`.
+
+| Offset | Type    | Field |
+|--------|---------|-------|
+| 0      | int32   | `body_id_value` — the body the probe is on |
+| 4      | uint8   | `flags` (bit 0 = static, bit 1 = destroyed: a crash site, draw no craft) |
+| 5      | uint8   | `body_id_type` (see [Object ID reconstruction](object-ids.md)) |
+| 6      | uint8×2 | Reserved |
+| 8      | uint32  | `start_offset_s` — seconds from the chunk's `start_jd` |
+| 12     | uint32  | `end_offset_s` |
+| 16     | int32   | `lat_ref_e7` — degrees × 1e7 |
+| 20     | int32   | `lng_ref_e7` — east longitude, degrees × 1e7 |
+| 24     | int32   | `alt_ref_mm` |
+| 28     | uint32  | `sample_count` (0 when static) |
+| 32     | …       | `sample_count` × 16 bytes: `uint32 et_offset_s`, `int32 lat_e7`, `int32 lng_e7`, `int32 alt_mm` |
+
+The probe is at the reference position until the first sample. It is then at
+each sample's position from that sample's time until the next one. Do not
+interpolate between samples.
+
+Samples have two sources. A rover with a kernel is sampled each day at 00:00
+UTC, and each time it has moved 100 m. A rover with no kernel has one sample
+for each waypoint of its traverse (see "Traverses" in
+[probe-events-schema.md](../probe-events-schema.md)), and its altitude is 0:
+the altitude is not stated, and a reader seats a landed probe on the surface
+it draws.
+
 ## Probe ID stability
 
 `probe_id` is a synthetic int32 packing the spacecraft's inception MJD

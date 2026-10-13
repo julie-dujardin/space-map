@@ -129,7 +129,8 @@ Two readers, both joining on `probe_id`:
 - `probes/landing_events.py` turns each `landing` that names a `site` into a
   landed phase, so the craft sits on the surface it came down on. A
   `destroyed_at_landing` outcome flags the phase as a crash site: the map
-  places the wreck there but draws no craft.
+  places the wreck there but draws no craft. A rover with a traverse then
+  moves from the site through its waypoints.
 - `export/objects/probe_events.py` attaches the whole record to the probe's
   object bundle under `events`: the strip along the map, and the drawer's
   Targets tab, which groups the record under each place the craft reached.
@@ -138,6 +139,24 @@ Two readers, both joining on `probe_id`:
 
 `export/objects/missions.py` reads `status` for the mission pages: `alive`
 makes a mission operating, `lost` separates a failure from a retirement.
+
+## Traverses
+
+`space-map-downloads/derived/position/traverses/<probe_id>.json` holds where a
+rover drove, for a rover no SPICE kernel covers. `probes/traverses.py` states
+the format. A waypoint is the first moment the archive shows the rover at a
+place, and the rover stays there until the next waypoint.
+
+The positions are in the frame of the archive, which is not the frame of the
+map. China's release puts the Tianwen-1 lander 1.3 km from the place its
+orbital imagery gives, and that imagery is registered to the global CTX mosaic.
+Distances inside the archive's frame are correct. `landing_point` is where that
+frame puts the landing site, and the loader moves each waypoint by its offset
+from that point onto the `site` of the rover's `landing` event.
+
+A rover that came down on a lander has a `landing` event at the lander's
+touchdown, with the lander's `site`. Without that event the traverse has no
+phase to belong to and is not used.
 
 ## Editing
 

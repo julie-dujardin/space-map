@@ -28,6 +28,7 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
     write_sidecar,
 )
 from space_map_data.probes.landing_events import EVENTS_DIR
+from space_map_data.probes.traverses import TRAVERSES_DIR
 from space_map_data.probes.zones import Zone
 from space_map_data.utils.content_stamp import content_stamp, content_stamps
 
@@ -68,14 +69,16 @@ def zone_signature(zone: Zone) -> str:
 
 
 def events_files_hash() -> str:
-    """Hash every events JSON's `(name, content stamp)` so an edit anywhere
-    in the events folder invalidates every cached fit that consults them.
-    Empty string when the folder is absent (CI / first run)."""
+    """Hash of every events JSON and every traverse file, by name and content
+    stamp. A cached landed fit is stale when one of them changes.
+    Empty string when the events folder is absent (CI / first run)."""
     if not EVENTS_DIR.exists():
         return ""
-    paths = sorted(EVENTS_DIR.glob("*.json"))
+    paths = sorted(EVENTS_DIR.glob("*.json")) + sorted(TRAVERSES_DIR.glob("*.json"))
     stamps = content_stamps(paths)
-    entries = [{"name": p.name, **(stamps[p] or {})} for p in paths]
+    entries = [
+        {"name": f"{p.parent.name}/{p.name}", **(stamps[p] or {})} for p in paths
+    ]
     return hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()[:16]
 
 

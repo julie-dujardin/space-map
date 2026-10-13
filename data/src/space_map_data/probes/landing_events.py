@@ -4,6 +4,8 @@ One ``LandingPhase`` per ``landing`` or ``reentry`` event that names a site:
 the probe sits at that lat/lng on that body until it leaves. The phase ends at the landing's
 own ``end_date``, else at the next ``_DEPARTURE_TYPES`` event; otherwise the
 probe stays landed forever (Apollo descent stages, every Venera, Surveyor 1).
+A rover with a traverse (``traverses.py``) starts at the site and then moves
+through its waypoints.
 A ``destroyed_at_landing`` outcome marks a crash site: the resting place is
 known, but nothing intact stands there.
 Earth landings are capped to one month so sample-return capsules and launch
@@ -21,6 +23,7 @@ from dataclasses import dataclass
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import ID_TYPE_ORDINAL
 from space_map_data.probes.events import EVENTS_DIR, ProbeEvent, load_event_probes
+from space_map_data.probes.traverses import Traverse, load_traverses
 from space_map_data.utils.time import jd_to_et
 
 logger = logging.getLogger(__name__)
@@ -59,8 +62,8 @@ _EARTH_LANDING_MAX_S = 30 * 86400.0
 
 @dataclass(frozen=True)
 class LandingPhase:
-    """One landed phase: the probe is at a fixed lat/lng on ``body`` from
-    ``start_et`` to ``end_et``."""
+    """One landed phase. The probe is on ``body`` from ``start_et`` to
+    ``end_et``. It is at ``lat_deg``/``lng_deg`` until the first waypoint."""
 
     probe_id: int
     probe_name: str  # logging only
@@ -72,6 +75,18 @@ class LandingPhase:
     end_et: float
     site_name: str | None
     destroyed: bool
+    # Where a rover moved to, as ``(et, lat_deg, lng_deg)`` in time order.
+    # Empty for a craft that did not move.
+    waypoints: tuple[tuple[float, float, float], ...] = ()
+
+    def position_at(self, et: float) -> tuple[float, float]:
+        """The position of the probe at ``et``."""
+        lat, lng = self.lat_deg, self.lng_deg
+        for w_et, w_lat, w_lng in self.waypoints:
+            if w_et > et:
+                break
+            lat, lng = w_lat, w_lng
+        return lat, lng
 
 
 def _resolve_body(naif: int) -> tuple[int, int]:
@@ -131,12 +146,31 @@ def _spk_covered_probe_ids() -> set[int]:
     }
 
 
+def _phase_waypoints(
+    traverse: Traverse | None,
+    body: tuple[int, int],
+    site: tuple[float, float],
+    start_et: float,
+    end_et: float,
+) -> tuple[tuple[float, float, float], ...]:
+    """The waypoints of ``traverse`` inside one landed phase on ``body``, in
+    the frame that puts the landing at ``site``."""
+    if traverse is None or body != (_NAIF, traverse.body_naif):
+        return ()
+    return tuple(
+        (et, w.lat_deg, w.lon_deg)
+        for w in traverse.from_site(*site)
+        if start_et < (et := jd_to_et(w.jd)) < end_et
+    )
+
+
 def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
     """Every landed phase the curated events describe.
     ``end_et_for_indefinite`` is the upper bound for probes that stay on the
     surface (caller passes ``jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))``).
     """
     spk_covered = _spk_covered_probe_ids()
+    traverses = load_traverses()
     out: list[LandingPhase] = []
     skipped_no_target = 0
     skipped_spk_covered = 0
@@ -182,12 +216,26 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                     end_et=end_et,
                     site_name=ev.site.name,
                     destroyed=ev.outcome == "destroyed_at_landing",
+                    waypoints=_phase_waypoints(
+                        traverses.get(probe.probe_id),
+                        (body_id_type, body_id_value),
+                        (ev.site.lat_deg, ev.site.lon_deg),
+                        start_et,
+                        end_et,
+                    ),
                 )
             )
+    placed = {p.probe_id for p in out if p.waypoints}
+    for probe_id in sorted(set(traverses) - placed):
+        logger.warning(
+            "events: traverse of probe %d matches no landed phase; not used",
+            probe_id,
+        )
     logger.info(
-        "events: loaded %d landed phases (skipped: %d landings with no body, "
-        "%d deferred to SPICE)",
+        "events: loaded %d landed phases, %d of them with a traverse (skipped: "
+        "%d landings with no body, %d deferred to SPICE)",
         len(out),
+        len(placed),
         skipped_no_target,
         skipped_spk_covered,
     )

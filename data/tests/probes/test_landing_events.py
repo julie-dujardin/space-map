@@ -11,6 +11,7 @@ from space_map_data.export.position.format import ID_TYPE_ORDINAL
 from space_map_data.probes import events, landing_events, probe_id
 from space_map_data.probes.events import event_jd
 from space_map_data.probes.probe_id import REGISTRY_PATH, load_registry
+from space_map_data.probes.traverses import Traverse, Waypoint
 from space_map_data.utils.time import jd_to_et
 
 needs_registry = pytest.mark.skipif(
@@ -39,6 +40,7 @@ def events_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root.mkdir()
     monkeypatch.setattr(events, "EVENTS_DIR", root)
     monkeypatch.setattr(landing_events, "_spk_covered_probe_ids", set)
+    monkeypatch.setattr(landing_events, "load_traverses", dict)
     return root
 
 
@@ -427,6 +429,123 @@ def test_spk_covered_probe_is_skipped(
         ],
     )
     assert landing_events.load_phases(_INDEFINITE_END) == []
+
+
+_MARS = {"naif": 499, "name": "Mars"}
+_ROVER = 113217538
+
+
+def _rover(landing: dict, *later: dict) -> dict:
+    return {
+        "probe_id": _ROVER,
+        "name": "Zhurong",
+        "events": [
+            {
+                "type": "landing",
+                "date": "2021-05-14T23:18:00Z",
+                "description": "Touchdown on the lander.",
+                "target": _MARS,
+                "outcome": "controlled",
+                "site": {"lat_deg": 25.066, "lon_deg": 109.925},
+                **landing,
+            },
+            *later,
+        ],
+    }
+
+
+def _traverse(body_naif: int = 499, *times: str) -> dict[int, Traverse]:
+    """A track that goes 0.001 degrees south at each of `times`. Its frame
+    puts the landing point 0.017 degrees north of the site."""
+    return {
+        _ROVER: Traverse(
+            probe_id=_ROVER,
+            body_naif=body_naif,
+            landing_lat_deg=25.083,
+            landing_lon_deg=109.925,
+            waypoints=tuple(
+                Waypoint(event_jd(time), 25.083 - 0.001 * (i + 1), 109.925)
+                for i, time in enumerate(times)
+            ),
+        )
+    }
+
+
+class TestTraverse:
+    """A rover with a traverse moves through its waypoints after the landing."""
+
+    def test_waypoints_are_carried_onto_the_frame_of_the_site(
+        self, events_root: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        _write(events_root, "mars.json", [_rover({})])
+        monkeypatch.setattr(
+            landing_events,
+            "load_traverses",
+            lambda: _traverse(499, "2021-06-03T09:01:52Z", "2021-06-05T10:51:15Z"),
+        )
+        [phase] = landing_events.load_phases(_INDEFINITE_END)
+        assert (phase.lat_deg, phase.lng_deg) == (25.066, 109.925)
+        assert [w[0] for w in phase.waypoints] == [
+            pytest.approx(_et("2021-06-03T09:01:52Z")),
+            pytest.approx(_et("2021-06-05T10:51:15Z")),
+        ]
+        assert [w[1] for w in phase.waypoints] == pytest.approx([25.065, 25.064])
+        assert [w[2] for w in phase.waypoints] == pytest.approx([109.925, 109.925])
+
+    def test_the_rover_holds_each_place_until_the_next_waypoint(
+        self, events_root: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        _write(events_root, "mars.json", [_rover({})])
+        monkeypatch.setattr(
+            landing_events,
+            "load_traverses",
+            lambda: _traverse(499, "2021-06-03T09:01:52Z", "2021-06-05T10:51:15Z"),
+        )
+        [phase] = landing_events.load_phases(_INDEFINITE_END)
+        assert phase.position_at(_et("2021-05-20T00:00:00Z")) == (25.066, 109.925)
+        assert phase.position_at(_et("2021-06-04T00:00:00Z")) == pytest.approx(
+            (25.065, 109.925)
+        )
+        assert phase.position_at(_et("2030-01-01T00:00:00Z")) == pytest.approx(
+            (25.064, 109.925)
+        )
+
+    def test_a_waypoint_outside_the_phase_is_dropped(
+        self, events_root: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        _write(events_root, "mars.json", [_rover({"end_date": "2021-06-04"})])
+        monkeypatch.setattr(
+            landing_events,
+            "load_traverses",
+            lambda: _traverse(
+                499,
+                "2021-05-01T00:00:00Z",
+                "2021-06-03T09:01:52Z",
+                "2021-06-05T10:51:15Z",
+            ),
+        )
+        [phase] = landing_events.load_phases(_INDEFINITE_END)
+        assert [w[0] for w in phase.waypoints] == [
+            pytest.approx(_et("2021-06-03T09:01:52Z"))
+        ]
+
+    def test_a_traverse_on_another_body_is_not_used(
+        self, events_root: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        _write(events_root, "mars.json", [_rover({})])
+        monkeypatch.setattr(
+            landing_events,
+            "load_traverses",
+            lambda: _traverse(301, "2021-06-03T09:01:52Z"),
+        )
+        [phase] = landing_events.load_phases(_INDEFINITE_END)
+        assert phase.waypoints == ()
+
+    def test_a_craft_with_no_traverse_stays_at_its_site(self, events_root: Path):
+        _write(events_root, "mars.json", [_rover({})])
+        [phase] = landing_events.load_phases(_INDEFINITE_END)
+        assert phase.waypoints == ()
+        assert phase.position_at(_et("2030-01-01T00:00:00Z")) == (25.066, 109.925)
 
 
 class TestWhichProbesTheKernelsAlreadyFly:

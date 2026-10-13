@@ -28,7 +28,10 @@ import spiceypy
 from tqdm import tqdm
 
 from space_map_data.export.position.probes import fit_cache, sidecar
-from space_map_data.export.position.probes.landed import LandedFit, fit_landed_chunk
+from space_map_data.export.position.probes.landed import (
+    fit_landed_chunk,
+    sited_landed_chunk,
+)
 from space_map_data.export.position.probes.plan import (
     ChunkProbeRecord,
     ProbeMeta,
@@ -303,23 +306,16 @@ def _fit_probe_keys(
                 elif c.kind == "landed":
                     assert c.landed_body_id_value is not None
                     assert c.landed_body_id_type is not None
-                    if c.static_lat_lng is not None:
-                        # Events-driven landing: static lat/lng, no SPICE.
-                        # Probes that move on the surface have SPICE
-                        # coverage instead, via fit_landed_chunk.
-                        lat, lng = c.static_lat_lng
-                        landed_fit = LandedFit(
+                    if c.site_lat_lng is not None:
+                        landed_fit = sited_landed_chunk(
                             body_id_value=c.landed_body_id_value,
                             body_id_type=c.landed_body_id_type,
-                            is_static=True,
                             is_destroyed=c.landed_destroyed,
-                            start_offset_s=int(round(c.c_start_et - chunk_start_et)),
-                            end_offset_s=int(round(c.c_end_et - chunk_start_et)),
-                            lat_ref_deg=lat,
-                            lng_ref_deg=lng,
-                            alt_ref_m=0.0,
-                            samples=[],
-                            peak_displacement_m=0.0,
+                            chunk_start_et=chunk_start_et,
+                            c_start_et=c.c_start_et,
+                            c_end_et=c.c_end_et,
+                            site_lat_lng=c.site_lat_lng,
+                            waypoints=c.waypoints,
                         )
                     else:
                         landed_fit = fit_landed_chunk(
