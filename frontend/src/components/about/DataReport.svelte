@@ -18,6 +18,7 @@
 		mapFigures,
 		totals,
 		type AboutData,
+		type MapCredit,
 		type MapPatch,
 		type MapSource,
 		type WorldMap
@@ -40,12 +41,17 @@
 
 	const EM_DASH = '—';
 
+	// On a wide screen the table is wider than the column of the page, and the
+	// source has a column. Below that, the source goes under its row.
+	const TABLE = 'xl:mx-[calc((100%-min(96rem,100vw))/2)] xl:px-6';
 	// Column widths, shared by the header and every row.
 	const WORLD = 'sm:w-28 sm:shrink-0';
+	const MAP = 'min-w-0 flex-1 xl:w-60 xl:flex-none';
 	const RESOLUTION = 'w-20 shrink-0 text-end sm:w-24';
 	const EXTENT = 'hidden w-48 shrink-0 text-end lg:block';
 	const TILES = 'hidden w-20 shrink-0 text-end sm:block';
 	const SIZE = 'w-20 shrink-0 text-end';
+	const SOURCE = 'mt-1 w-full min-w-0 xl:mt-0 xl:w-auto xl:flex-1';
 
 	function count(n: number): string {
 		return n.toLocaleString(getLocale());
@@ -131,6 +137,21 @@
 	{/if}
 {/snippet}
 
+<!-- Under a row the name of the source is as small as the notes there. -->
+{#snippet source(credit: MapCredit)}
+	<a
+		href={credit.source}
+		target="_blank"
+		rel="noopener noreferrer"
+		class="text-xs text-muted-foreground hover:underline underline-offset-2 xl:text-sm xl:text-foreground"
+		>{credit.organisation}</a
+	>
+	{#if credit.attribution}
+		<!-- A credit line is in its own language, whatever that of the page. -->
+		<div dir="auto" class="text-xs text-muted-subtle rtl:text-right">{credit.attribution}</div>
+	{/if}
+{/snippet}
+
 <div class="text-sm leading-relaxed">
 	<p class="-mt-6 mb-2 text-xs text-muted-subtle">
 		{m.status_generated({ date: formatIsoDate(data.generated_at) })}
@@ -148,82 +169,89 @@
 		{/each}
 	</dl>
 
-	<div
-		class="mt-8 flex items-baseline gap-4 border-b border-border pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-subtle"
-	>
-		<div class="hidden {WORLD} sm:block">{m.about_data_column_world()}</div>
-		<div class="min-w-0 flex-1">{m.about_data_column_map()}</div>
-		<div class={RESOLUTION}>{m.about_data_column_resolution()}</div>
-		<div class={EXTENT}>{m.about_data_column_extent()}</div>
-		<div class={TILES}>{m.about_data_column_tiles()}</div>
-		<div class={SIZE}>{m.about_data_column_size()}</div>
-	</div>
+	<div class={TABLE}>
+		<div
+			class="mt-8 flex items-baseline gap-4 border-b border-border pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-subtle"
+		>
+			<div class="hidden {WORLD} sm:block">{m.about_data_column_world()}</div>
+			<div class={MAP}>{m.about_data_column_map()}</div>
+			<div class={RESOLUTION}>{m.about_data_column_resolution()}</div>
+			<div class={EXTENT}>{m.about_data_column_extent()}</div>
+			<div class={TILES}>{m.about_data_column_tiles()}</div>
+			<div class={SIZE}>{m.about_data_column_size()}</div>
+			<div class="hidden min-w-0 flex-1 xl:block">{m.status_column_source()}</div>
+		</div>
 
-	{#each data.systems as system (system.id)}
-		<section>
-			<h2 class="mt-7 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-				{system.name === null ? m.credits_other_bodies() : named(system.primary_id, system.name)}
-			</h2>
-			{#each system.worlds as world (world.id)}
-				{@const name = named(world.id, world.name)}
-				<div class="border-b border-border py-2.5 sm:flex sm:gap-4">
-					<h3 class="font-medium {WORLD}">
-						<a href={bodyHref(world.id, name)} class="hover:underline underline-offset-2">{name}</a>
-					</h3>
-					<ul class="flex min-w-0 flex-1 flex-col gap-2.5">
-						{#each world.maps as map (map.id)}
-							{@const figures = mapFigures(map)}
-							{@const details = notes(map)}
-							<li>
-								<div class="flex items-baseline gap-4">
-									<div class="min-w-0 flex-1">
-										{ucfirst(layerLabel(map.layer))}
-										{#if map.alternate}
-											<span class="text-muted-subtle">· {m.about_data_alternate()}</span>
-										{/if}
-										{@render under(pixels(figures.width, figures.height), figures.tiles)}
-										{#each details as line (line)}
-											<div class="text-xs text-muted-subtle">{line}</div>
-										{/each}
+		{#each data.systems as system (system.id)}
+			<section>
+				<h2 class="mt-7 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+					{system.name === null ? m.credits_other_bodies() : named(system.primary_id, system.name)}
+				</h2>
+				{#each system.worlds as world (world.id)}
+					{@const name = named(world.id, world.name)}
+					<div class="border-b border-border py-2.5 sm:flex sm:gap-4">
+						<h3 class="font-medium {WORLD}">
+							<a href={bodyHref(world.id, name)} class="hover:underline underline-offset-2"
+								>{name}</a
+							>
+						</h3>
+						<ul class="flex min-w-0 flex-1 flex-col gap-2.5">
+							{#each world.maps as map (map.id)}
+								{@const figures = mapFigures(map)}
+								{@const details = notes(map)}
+								<li>
+									<div class="flex flex-wrap items-baseline gap-x-4">
+										<div class={MAP}>
+											{ucfirst(layerLabel(map.layer))}
+											{#if map.alternate}
+												<span class="text-muted-subtle">· {m.about_data_alternate()}</span>
+											{/if}
+											{@render under(pixels(figures.width, figures.height), figures.tiles)}
+											{#each details as line (line)}
+												<div class="text-xs text-muted-subtle">{line}</div>
+											{/each}
+										</div>
+										<div class="{RESOLUTION} tabular-nums">{resolution(figures.m_per_px)}</div>
+										<div class="{EXTENT} text-muted-foreground tabular-nums">
+											{pixels(figures.width, figures.height)}
+										</div>
+										<div class="{TILES} text-muted-foreground tabular-nums">
+											{figures.tiles === undefined ? EM_DASH : count(figures.tiles)}
+										</div>
+										<div class="{SIZE} text-muted-foreground tabular-nums">
+											{formatBytes(figures.size_bytes)}
+										</div>
+										<div class={SOURCE}>{@render source(map)}</div>
 									</div>
-									<div class="{RESOLUTION} tabular-nums">{resolution(figures.m_per_px)}</div>
-									<div class="{EXTENT} text-muted-foreground tabular-nums">
-										{pixels(figures.width, figures.height)}
-									</div>
-									<div class="{TILES} text-muted-foreground tabular-nums">
-										{figures.tiles === undefined ? EM_DASH : count(figures.tiles)}
-									</div>
-									<div class="{SIZE} text-muted-foreground tabular-nums">
-										{formatBytes(figures.size_bytes)}
-									</div>
-								</div>
-								{#if map.tiles?.patches}
-									<ul class="mt-1.5 flex flex-col gap-1.5">
-										{#each map.tiles.patches as patch (patch.id)}
-											<li class="flex items-baseline gap-4">
-												<div class="min-w-0 flex-1 ps-4">
-													{patch.name}
-													{@render under(ground(patch), patch.tiles)}
-												</div>
-												<div class="{RESOLUTION} tabular-nums">{resolution(patch.m_per_px)}</div>
-												<div class="{EXTENT} text-muted-foreground tabular-nums">
-													{ground(patch)}
-												</div>
-												<div class="{TILES} text-muted-foreground tabular-nums">
-													{count(patch.tiles)}
-												</div>
-												<div class="{SIZE} text-muted-foreground tabular-nums">
-													{formatBytes(patch.size_bytes)}
-												</div>
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/each}
-		</section>
-	{/each}
+									{#if map.tiles?.patches}
+										<ul class="mt-1.5 flex flex-col gap-1.5">
+											{#each map.tiles.patches as patch (patch.id)}
+												<li class="flex flex-wrap items-baseline gap-x-4">
+													<div class="{MAP} ps-4">
+														{patch.name}
+														{@render under(ground(patch), patch.tiles)}
+													</div>
+													<div class="{RESOLUTION} tabular-nums">{resolution(patch.m_per_px)}</div>
+													<div class="{EXTENT} text-muted-foreground tabular-nums">
+														{ground(patch)}
+													</div>
+													<div class="{TILES} text-muted-foreground tabular-nums">
+														{count(patch.tiles)}
+													</div>
+													<div class="{SIZE} text-muted-foreground tabular-nums">
+														{formatBytes(patch.size_bytes)}
+													</div>
+													<div class="{SOURCE} ps-4 xl:ps-0">{@render source(patch)}</div>
+												</li>
+											{/each}
+										</ul>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/each}
+			</section>
+		{/each}
+	</div>
 </div>

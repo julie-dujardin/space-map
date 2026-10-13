@@ -27,6 +27,8 @@ function map(overrides: Partial<WorldMap> = {}): WorldMap {
 	return {
 		id: 'naif-499',
 		layer: 'surface',
+		source: 'https://example.org/map',
+		organisation: 'USGS',
 		tiers: [
 			{ name: 'low', width: 2048, height: 1024, size_bytes: 10, m_per_px: 400 },
 			{ name: 'high', width: 4096, height: 2048, size_bytes: 30, m_per_px: 200 }
@@ -103,7 +105,17 @@ describe('totals', () => {
 	it('adds maps, patches and their tiles over all worlds', () => {
 		const patched = pyramid({
 			patches: [
-				{ id: 'site', name: 'Site', max_level: 5, lat: 0, lon: 0, tiles: 20, size_bytes: 500 }
+				{
+					id: 'site',
+					name: 'Site',
+					source: 'https://example.org/site',
+					organisation: 'NASA',
+					max_level: 5,
+					lat: 0,
+					lon: 0,
+					tiles: 20,
+					size_bytes: 500
+				}
 			]
 		});
 		const data: AboutData = {

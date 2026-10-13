@@ -19,6 +19,16 @@ from tests.conftest import make_object
 MARS_KM = 3396.19
 
 
+def _meta(bundle_id: str, **extra) -> dict:
+    return {
+        "id": bundle_id,
+        "source": "https://example.org/map",
+        "organisation": "USGS",
+        "attribution": "Map credit",
+        **extra,
+    }
+
+
 def _tier(width: int, size: int) -> dict:
     return {"file": "x.webp", "width": width, "height": width // 2, "size_bytes": size}
 
@@ -45,6 +55,9 @@ def _patch(**extra) -> dict:
     return {
         "id": "site",
         "name": "Site",
+        "source": "https://example.org/site",
+        "organisation": "NASA",
+        "attribution": "Site credit",
         "max_level": 16,
         "full_width": 85355564,
         "bounds": {"west": 77.0, "east": 77.5, "south": 18.0, "north": 19.0},
@@ -160,34 +173,59 @@ class TestPatchRow:
         row = patch_row(_patch(), 1024, None)
         assert not {"m_per_px", "width_km", "height_km"} & set(row)
 
+    def test_patch_has_its_own_credit(self):
+        row = patch_row(_patch(), 1024, MARS_KM)
+        assert (row["source"], row["organisation"], row["attribution"]) == (
+            "https://example.org/site",
+            "NASA",
+            "Site credit",
+        )
+
 
 class TestMapRow:
     """One map of a world."""
 
     def test_monthly_map_states_its_frames(self):
-        meta = {"id": "naif-399", "type": "cylindrical_monthly", "frames": 12}
+        meta = _meta("naif-399", type="cylindrical_monthly", frames=12)
         assert map_row("surface", meta, [], None)["frames"] == 12
 
     def test_cloud_overlay_counts_its_snapshots(self):
-        meta = {"id": "naif-399_clouds", "frames": ["2026031112", "2026031115"]}
+        meta = _meta("naif-399_clouds", frames=["2026031112", "2026031115"])
         assert map_row("clouds", meta, [], None)["frames"] == 2
 
     def test_single_frame_states_none(self):
-        meta = {"id": "naif-299_clouds", "frames": ["static"]}
+        meta = _meta("naif-299_clouds", frames=["static"])
         assert "frames" not in map_row("clouds", meta, [], None)
 
     def test_tier_scale_follows_its_width(self):
         tier = {"name": "high", "width": 4267800, "height": 2133900, "size_bytes": 1}
-        row = map_row("surface", {"id": "naif-499"}, [tier], MARS_KM)
+        row = map_row("surface", _meta("naif-499"), [tier], MARS_KM)
         assert row["tiers"][0]["m_per_px"] == 5.0
 
     def test_height_image_has_eight_bits(self):
-        meta = {"id": "naif-499_displacement", "displacement_scale_km": 25.5}
+        meta = _meta("naif-499_displacement", displacement_scale_km=25.5)
         assert map_row("topography", meta, [], None)["height_step_m"] == 100.0
 
     def test_second_map_of_a_body_is_marked(self):
-        row = map_row("surface", {"id": "naif-299_alt-usgs"}, [], None, alternate=True)
-        assert row["alternate"] is True
+        meta = _meta("naif-299_alt-usgs")
+        assert map_row("surface", meta, [], None, alternate=True)["alternate"] is True
+
+    def test_map_without_a_pyramid_has_the_credit_of_its_bundle(self):
+        row = map_row("surface", _meta("naif-499"), [], None)
+        assert (row["source"], row["organisation"], row["attribution"]) == (
+            "https://example.org/map",
+            "USGS",
+            "Map credit",
+        )
+
+    def test_pyramid_from_another_source_gives_the_credit(self):
+        pyramid = _pyramid(source="https://example.org/ctx", organisation="NASA")
+        row = map_row("surface", _meta("naif-499", tiles=pyramid), [], None)
+        assert (row["source"], row["organisation"]) == (
+            "https://example.org/ctx",
+            "NASA",
+        )
+        assert "attribution" not in row
 
 
 class TestBuild:
@@ -195,11 +233,7 @@ class TestBuild:
 
     @staticmethod
     def _texture(bundle_id: str) -> dict:
-        return {
-            "id": bundle_id,
-            "type": "cylindrical",
-            "exports": {"low": _tier(2048, 10)},
-        }
+        return _meta(bundle_id, type="cylindrical", exports={"low": _tier(2048, 10)})
 
     def _build(self, session, tmp_path, textures: dict, radii: dict) -> dict:
         return build_about_data(session, tmp_path, radii, textures, {}, {}, {}, {}, {})

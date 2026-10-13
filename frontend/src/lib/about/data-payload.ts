@@ -7,6 +7,14 @@ import type { LabelMap } from '$lib/fetch/position/labels';
 
 export type MapLayer = 'surface' | 'clouds' | 'night' | 'specular' | 'topography';
 
+/** Where a map or a patch comes from. */
+export interface MapCredit {
+	/** The page of the source. */
+	source: string;
+	organisation: string;
+	attribution?: string;
+}
+
 /** A whole-globe image of a map. */
 export interface MapTier {
 	name: string;
@@ -29,7 +37,7 @@ export interface MapSource {
 }
 
 /** An area where a pyramid goes deeper than its finest level. */
-export interface MapPatch {
+export interface MapPatch extends MapCredit {
 	id: string;
 	name: string;
 	max_level: number;
@@ -57,7 +65,9 @@ export interface MapPyramid {
 	patches?: MapPatch[];
 }
 
-export interface WorldMap {
+/** Its credit is that of its pyramid, which can have another source than the
+ *  whole-globe images. */
+export interface WorldMap extends MapCredit {
 	id: string;
 	layer: MapLayer;
 	/** A map ranked below the best map of its body. */

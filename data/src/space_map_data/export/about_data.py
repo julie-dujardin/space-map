@@ -58,6 +58,15 @@ def ground_scale(width: int, radius_km: float | None) -> dict:
     return {"m_per_px": _figures(2 * math.pi * radius_km * 1000 / width)}
 
 
+def credit(meta: dict) -> dict:
+    """Where a map or a patch comes from: the page of its source, who gives
+    it, and the credit line."""
+    fields = {"source": meta["source"], "organisation": meta["organisation"]}
+    if meta.get("attribution") is not None:
+        fields["attribution"] = meta["attribution"]
+    return fields
+
+
 def tier_rows(meta: dict) -> list[dict]:
     """The whole-globe images of a bundle, coarsest first. A monthly map has
     one image for each frame, and their sizes add up."""
@@ -127,6 +136,7 @@ def patch_row(patch: dict, tile_size: int, radius_km: float | None) -> dict:
         "lon": round((bounds["east"] + bounds["west"]) / 2, 4),
         "tiles": sum(level["tiles"] for level in patch["levels"]),
         "size_bytes": sum(level["size_bytes"] for level in patch["levels"]),
+        **credit(patch),
     }
     if radius_km is not None:
         per_degree = math.radians(radius_km)
@@ -178,8 +188,13 @@ def map_row(
     alternate: bool = False,
 ) -> dict:
     """One map of a world: its whole-globe images, and its pyramid if it has
-    one."""
-    row: dict = {"id": meta["id"], "layer": layer}
+    one. The credit is that of the pyramid, which can have another source
+    than the images."""
+    row: dict = {
+        "id": meta["id"],
+        "layer": layer,
+        **credit(meta.get("tiles") or meta),
+    }
     if alternate:
         row["alternate"] = True
     frames = meta.get("frames")

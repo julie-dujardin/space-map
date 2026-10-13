@@ -20,7 +20,13 @@ interface AboutData {
   }>;
 }
 
-interface Map {
+interface Credit {
+  source: string;                  // page of the source
+  organisation: string;
+  attribution?: string;            // credit line
+}
+
+interface Map extends Credit {
   id: string;                      // bundle id, "naif-499_displacement"
   layer: "surface" | "clouds" | "night" | "specular" | "topography";
   alternate?: true;                // a map that ranks below the best map of its body
@@ -47,7 +53,7 @@ interface Map {
       lat_range?: [number, number];  // south and north edge of a source that covers a band
     }>;
     height_step_m?: number;        // height pyramids: the step of the 16-bit tiles
-    patches?: Array<{
+    patches?: Array<Credit & {
       id: string;
       name: string;                // proper noun, shipped as it is
       max_level: number;
@@ -68,6 +74,7 @@ Notes:
 - **`m_per_px` is the ground size of one pixel at the equator**: `2π · radius_km / width`. It is absent where `radius_km` is absent.
 - **The coarser of the grid and the source sets the scale of a pyramid.** The finest level is the first one that is as wide as the finest source, so its pixels can be smaller than those of the source. `tiles.m_per_px` then states the source. A patch follows the same rule: a 0.25 m mosaic sits at level 16, whose pixels are 0.16 m, and its `m_per_px` is 0.25.
 - **`sources` are the `layers` of the pyramid descriptor.** `base` is the first one and covers the whole body. An `inset` replaces it over a band. A `detail` source is a brightness layer: the colour stays that of the base.
+- **The credit of a map is that of its pyramid** where it has one, because a pyramid can come from another source than the whole-globe images. A map with no pyramid has the credit of its bundle. A patch has its own. The fields are those of `credits.json`, without the licence.
 - **Sizes do not overlap.** `tiers[].size_bytes`, `tiles.size_bytes` and each `patches[].size_bytes` count different files. The page adds the tiers and the pyramid for the row of a map, and gives each patch a row of its own.
 - **Worlds are in the order of the page**: the systems from Mercury to Pluto, the planet before its moons, the moons by number, then the bodies in no system.
 - A bundle whose id is not an object, such as the star map, has no row.
