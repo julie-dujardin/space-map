@@ -603,7 +603,7 @@ class TextureProcessor:
                     layers.append(tiles.Layer(mask, placement))
                 else:
                     layer = tiles.open_colour_layer(path, placement)
-                    if entry.get("soften_colour"):
+                    if brightness_specs and entry.get("soften_colour"):
                         layer = tiles.softened(layer, sharpen_sigma)
                     layers.append(layer)
             if max_level is None:

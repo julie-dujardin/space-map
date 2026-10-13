@@ -1331,6 +1331,22 @@ class TestProcessTiles:
         proc.process_tiles()
         assert json.loads(meta_path.read_text())["version"] != plain
 
+    def test_softened_colour_needs_a_detail_layer(self, tmp_path, monkeypatch):
+        """Alone, the option changes neither the tiles nor their version."""
+        entry = self._colour_entry(tmp_path)
+        proc = self._processor(monkeypatch, tmp_path, [entry])
+        proc.process_tiles()
+        meta_path = tmp_path / "meta" / "naif-499" / "metadata.json"
+        plain = json.loads(meta_path.read_text())["version"]
+
+        def blurred(*args):
+            raise AssertionError("a map with no detail layer was blurred")
+
+        monkeypatch.setattr(tiles, "softened", blurred)
+        entry["soften_colour"] = True
+        proc.process_tiles(force=True)
+        assert json.loads(meta_path.read_text())["version"] == plain
+
     def test_monthly_map_gets_a_pyramid_per_frame(self, tmp_path, monkeypatch):
         raw = tmp_path / "raw"
         raw.mkdir()

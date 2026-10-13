@@ -179,7 +179,7 @@ No field is necessary to get a pyramid. These fields change how it is built:
 - `tiles: only` — the entry is the source of the pyramid of its body, in place of the entry that the tiers come from. It makes no tiers.
 - `tiles_max_level` — limit on the finest level.
 - `sharpen_sigma` — width of the blur that separates the detail of the brightness layers from the colour map, in pixels of the colour map. The default is 0.7. Use a larger value when the colour map is much softer than its pixel size.
-- `soften_colour` — blurs the colour map by `sharpen_sigma` before the brightness layers go on it. Use it when the colour map and a brightness layer disagree on the position of features by some pixels of the colour map: the colour map then gives the tint only, and no feature shows twice.
+- `soften_colour` — blurs the colour map by `sharpen_sigma` before the brightness layers go on it. Use it when the colour map and a brightness layer disagree on the position of features by some pixels of the colour map: the colour map then gives the tint only, and no feature shows twice. It has no effect on an entry without brightness layers.
 - `insets` — list of finer maps, each with `file`, `source` and `lat_range: [south, north]`.
 - `brightness` — list of brightness layers (colour maps only). Each has `source`, `lat_range`, and one of:
   - `file` — one equirectangular raster (PDS3 `.IMG` or greyscale TIFF),
