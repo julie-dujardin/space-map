@@ -4,7 +4,7 @@ A tile pyramid holds one surface layer of a body at the full detail of its sourc
 
 Each surface layer of each body has a pyramid: the colour map (one pyramid for each month of a monthly map), the height map, the night-lights map and the specular mask. Cloud overlays and the star map do not have one.
 
-Ingest builds the pyramids (`space-map-ingest --targets tiles`). They are not part of the export directory: a pyramid is thousands of files, and the host of the export has a file limit. They are written to `space-map-tiles/`, which has the same `v1/` layout as the export, and `infrastructure/deploy/deploy-tiles.sh` publishes them to object storage.
+Ingest builds the pyramids (`space-map-ingest --targets tiles`). They are not part of the export directory: a pyramid is thousands of files, and the host of the export has a file limit. They are written to `space-map-tiles/`, which has the same `v1/` layout as the export. The tile host (`infrastructure/tiles/`) serves that directory as it is, so a pyramid is public when its build ends.
 
 **Path:** `tiles/{id}/{z}/{x}/{y}.webp` for the map, and `tiles/{id}/{cap}/{z}/{x}/{y}.webp` for a polar cap (`cap` = `north` or `south`). A monthly map has one such tree for each month, in `tiles/{id}/{NN}/` (`NN` = `01`..`frames`).
 

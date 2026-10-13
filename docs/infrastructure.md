@@ -5,6 +5,8 @@ flowchart LR
   user((User browser))
   sources((CelesTrak - Space-Track - clouds.matteason.co.uk))
   cftunnel((Cloudflare Tunnel<br/>search.spacemap.co))
+  cftiles((Homelab Cloudflare Tunnel<br/>+ edge cache<br/>tiles.spacemap.co))
+  tiletree[("NAS<br/>space-map-tiles")]
 
   subgraph repo["GitHub: julie-dujardin/space-map"]
     direction TB
@@ -12,6 +14,7 @@ flowchart LR
     src_data[data/]
     src_infra[infrastructure/data/]
     src_search[infrastructure/search/]
+    src_tiles[infrastructure/tiles/]
   end
 
   subgraph ci["GitHub Actions"]
@@ -35,6 +38,11 @@ flowchart LR
     container["space-map-data container<br/>(daily scheduler)"]
     grafana[Loki / Prometheus / Grafana<br/>Monitors stdout & metrics]
 
+    subgraph tiles["tiles stack"]
+      direction TB
+      tilescaddy["Caddy<br/>(:9752 read-only file server)"]
+    end
+
     subgraph search["search stack"]
       direction TB
       caddy["Caddy<br/>(:9750 search-only proxy)"]
@@ -47,6 +55,7 @@ flowchart LR
   src_infra --> wf_data
   src_infra -.->|deploy| portainer
   src_search -.->|deploy| portainer
+  src_tiles -.->|deploy| portainer
 
   wf_fe -->|"wrangler pages deploy"| cfpagesfront
   wf_data -->|"docker push :version :sha :latest"| ghcr
@@ -62,6 +71,8 @@ flowchart LR
 
   container -.->|"space-map-search push<br/>:9751"| meili
   caddy --> meili
+  portainer --> tiles
+  tilescaddy -->|"NFS, read-only"| tiletree
 
   user --> cfpagesfront
   user --> cfpagesstatic
@@ -69,6 +80,8 @@ flowchart LR
   user -->|"Turnstile proof for a one-hour search key"| cfpagesfront
   user -->|"search (using that key)"| cftunnel
   cftunnel -->|":9750"| caddy
+  user -->|"surface tiles"| cftiles
+  cftiles -->|":9752, tiles the edge does not hold"| tilescaddy
 ```
 
 ## EU-0

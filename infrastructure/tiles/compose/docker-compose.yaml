@@ -1,0 +1,48 @@
+services:
+  caddy:
+    image: caddy:2.10
+    container_name: space-map-tiles-caddy
+    restart: unless-stopped
+    # The homelab's Cloudflare tunnel is a stack of its own and shares no
+    # network with this one: it comes in through the host port.
+    ports:
+      - "9752:80"
+    volumes:
+      - ${TILES_HOST_DIR:-/srv/space-map/space-map-tiles}/v1:/srv/v1:ro
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+
+configs:
+  caddyfile:
+    # Inlined so the stack deploys from Portainer without the file present on host.
+    content: |
+      :80 {
+      	root * /srv
+
+      	# Any origin: the SDK embeds the map on other sites.
+      	header Access-Control-Allow-Origin "*"
+
+      	# A tile URL carries the ?v= token of its build, so a tile is safe to
+      	# cache forever. An error must not say so: the edge would keep it for a
+      	# year, long after its cause is gone.
+      	header {
+      		Cache-Control "public, max-age=31536000, immutable"
+      		match status 2xx 304
+      	}
+
+      	# Plain folder names only. That leaves out what a build keeps aside: a
+      	# pyramid (`{id}.building`), a patch (`.patch-{id}`) and the saves that a
+      	# build resumes from (`.build`).
+      	# $$ escapes Compose interpolation.
+      	@tile {
+      		method GET HEAD
+      		path_regexp ^/v1/tiles/([\w-]+/)+\d+\.webp$$
+      	}
+      	handle @tile {
+      		file_server
+      	}
+      	handle {
+      		respond 404
+      	}
+      }
