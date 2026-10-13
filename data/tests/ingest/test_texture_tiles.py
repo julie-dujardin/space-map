@@ -470,6 +470,44 @@ class TestBrightness:
         # The same factor on every channel.
         assert (out[..., 0] > out[..., 1]).all() and (out[..., 1] > out[..., 2]).all()
 
+    def test_wide_blur_is_built_in_blocks(self, tmp_path, monkeypatch):
+        """On a row of tiles a blur of hundreds of pixels takes minutes."""
+        monkeypatch.setattr(tiles, "BLOCK_LEVELS", 2)
+        base = tiles.Layer(
+            np.full((2 * TILE, 4 * TILE, 3), (120, 110, 100), dtype=np.uint8),
+            tiles.Placement(),
+        )
+        fine = tiles.Layer(
+            self._stripes(), tiles.Placement(), to_values=tiles._brightness
+        )
+        used = []
+        monkeypatch.setattr(
+            tiles.PyramidBuilder,
+            "_build_blocks",
+            lambda self, pool, start: used.append(self.sharpen_sigma),
+        )
+        for sigma in (0.7, 8.0):
+            tiles.PyramidBuilder(
+                "t",
+                [base],
+                tmp_path / str(sigma),
+                3,
+                brightness=[fine],
+                sharpen_sigma=sigma,
+            ).build()
+        # 8 px of a base four times coarser: 32 px of the finest level.
+        assert used == [8.0]
+
+    def test_softened_colour_keeps_its_tint_and_loses_its_features(self):
+        """For a colour map that sits a few pixels from the brightness map."""
+        colour = np.full((2 * TILE, 4 * TILE, 3), (120, 110, 100), dtype=np.uint8)
+        colour[:, 2 * TILE] = 255
+        soft = tiles.softened(tiles.Layer(colour, tiles.Placement()), 3.0)
+        pixels = np.asarray(soft.pixels)
+        assert pixels[TILE, 2 * TILE, 0] < 180
+        assert pixels[TILE, 2 * TILE + 2, 0] > 125
+        assert np.abs(pixels[TILE, 0].astype(int) - (120, 110, 100)).max() <= 1
+
     def test_uniform_brightness_changes_nothing(self):
         out = self._sharpened(np.full((8 * TILE, 16 * TILE), 0.3, dtype=np.float32))
         assert np.abs(out.astype(int) - (120, 110, 100)).max() <= 1
@@ -1250,6 +1288,22 @@ class TestProcessTiles:
         }
         assert metas["naif-499"]["source"] == "https://example.com/mars"
         assert metas["naif-499_alt-usgs"]["source"] == "https://example.com/sharp"
+
+    def test_softened_colour_is_a_build_of_its_own(self, tmp_path, monkeypatch):
+        """The option is part of what decides the bytes of the tiles."""
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        tifffile.imwrite(raw / "fine.tif", np.full((4 * TILE, 8 * TILE), 90, np.uint8))
+        entry = self._colour_entry(
+            tmp_path, tiles="only", brightness=[{"file": "fine.tif", "source": "s"}]
+        )
+        proc = self._processor(monkeypatch, tmp_path, [entry])
+        proc.process_tiles()
+        meta_path = tmp_path / "meta" / "naif-499" / "metadata.json"
+        plain = json.loads(meta_path.read_text())["version"]
+        entry["soften_colour"] = True
+        proc.process_tiles()
+        assert json.loads(meta_path.read_text())["version"] != plain
 
     def test_monthly_map_gets_a_pyramid_per_frame(self, tmp_path, monkeypatch):
         raw = tmp_path / "raw"

@@ -511,6 +511,8 @@ class TextureProcessor:
                     for spec in brightness_specs
                 ],
             }
+            if entry.get("soften_colour"):
+                signature["brightness"]["soften_colour"] = True
         version = tiles.signature_version(signature)
         credit = {
             "id": pyramid_id,
@@ -600,7 +602,10 @@ class TextureProcessor:
                     mask = np.asarray(open_specular_source(path))
                     layers.append(tiles.Layer(mask, placement))
                 else:
-                    layers.append(tiles.open_colour_layer(path, placement))
+                    layer = tiles.open_colour_layer(path, placement)
+                    if entry.get("soften_colour"):
+                        layer = tiles.softened(layer, sharpen_sigma)
+                    layers.append(layer)
             if max_level is None:
                 max_level = tiles.finest_level(
                     max(layer.width for layer in (*layers, *brightness))

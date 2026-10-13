@@ -687,17 +687,28 @@ def open_colour_layer(path: Path, placement: Placement) -> Layer:
     return Layer(np.asarray(_load_whole(path, 3)), placement)
 
 
-def soften(pixels: np.ndarray, sigma: float) -> np.ndarray:
-    """sRGB ``pixels`` blurred by ``sigma`` in linear light: the tint stays
-    and the features go."""
+def soften(pixels: np.ndarray, sigma: float, around: bool = False) -> np.ndarray:
+    """sRGB ``pixels`` blurred by ``sigma`` in linear light, ``around`` the
+    globe for a whole map: the tint stays and the features go."""
     linear = _SRGB_TO_LINEAR[pixels]
+    mode = ("nearest", "wrap") if around else "nearest"
     for channel in range(3):
         linear[..., channel] = ndimage.gaussian_filter(
-            linear[..., channel], sigma, mode="nearest"
+            linear[..., channel], sigma, mode=mode
         )
     linear *= 65535.0
     np.clip(linear, 0, 65535, out=linear)
     return _LINEAR_TO_SRGB[linear.astype(np.uint16)]
+
+
+def softened(layer: Layer, sigma: float) -> Layer:
+    """A colour map blurred by ``sigma`` of its pixels. Where its features sit
+    a few pixels from those of the brightness layers, each would show twice."""
+    place = layer.placement
+    return Layer(
+        soften(layer.rows(0, layer.height), sigma, around=True),
+        Placement(lat_top=place.lat_top, lat_bottom=place.lat_bottom),
+    )
 
 
 def height_layer(raster: HeightRaster, placement: Placement) -> Layer:
@@ -1059,7 +1070,14 @@ class PyramidBuilder:
         self._lock = threading.Lock()
 
     def build(self) -> PyramidStats:
-        blocked = self.max_level > MAX_BAND_LEVEL
+        # A blur hundreds of pixels wide takes minutes on a row of tiles. A
+        # block runs it on a reduced copy.
+        wide_blur = (
+            bool(self.brightness)
+            and self._sigma() >= 2 * _REDUCED_SIGMA
+            and self.max_level - BLOCK_LEVELS >= self.min_level
+        )
+        blocked = self.max_level > MAX_BAND_LEVEL or wide_blur
         rows = self._rows(self.max_level - BLOCK_LEVELS if blocked else self.max_level)
         start = self._restore()
         if start == rows:
