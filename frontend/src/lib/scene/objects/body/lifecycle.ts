@@ -17,6 +17,7 @@ import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../su
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
+import { attachCameraRelative } from '../surface/camera-relative';
 import {
 	attachSunTransmittanceToBody,
 	type SunTransmittanceUniforms
@@ -102,6 +103,7 @@ export function buildMajorBodies(
 			if (!isStar) {
 				// Body-on-body shadows are analytical (fragment shader); shadow map unused.
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
+				attachCameraRelative(mesh, material as MeshStandardMaterial);
 			}
 			root.add(mesh);
 
@@ -232,6 +234,7 @@ export function upgradeBodyMesh(
 	clickables.push(mesh);
 	meshToBody.set(mesh, body);
 	bo.eclipseShadow = attachEclipseShadowToBody(material);
+	attachCameraRelative(mesh, material);
 	bo.currentSegments = segments;
 
 	const atmoParams = getAtmosphereParams(body.data.id);

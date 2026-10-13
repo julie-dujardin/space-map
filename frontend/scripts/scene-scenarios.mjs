@@ -8,7 +8,8 @@
  * - a body is on the curve drawn for its orbit;
  * - a jump of the clock changes nothing in the scene until the data for the new
  *   date is in, and then the camera is on the body as before;
- * - a lander has its place before the page reads it, on a link and on a click.
+ * - a lander has its place before the page reads it, on a link and on a click;
+ * - the ground under a lander holds still on screen while its body turns.
  *
  * Needs a dev server (its build exposes `__smCtx`, `__smRenderer`, `__smMap`)
  * on an export that carries `coverage`, and a Chromium with remote debugging:
@@ -241,6 +242,51 @@ const jumpAndWatch = (days, ms) => `(async () => {
 	return { heldMs, lost: [...lost], farthestFromEarthKm, notices: [...notices] };
 })()`;
 const NO_DATA_NOTICE = 'selected object has no data';
+/**
+ * Draws `frames` frames of the scene and compares each with the one before.
+ * Resolves with the median change between two frames, as a part of the full
+ * range of a pixel, and the contrast of the picture: a flat one cannot change.
+ * The median, because a tile that loads changes one frame.
+ */
+const frameChange = (frames) => `(async () => {
+	const r = window.__smRenderer, canvas = r.renderer.domElement;
+	const W = canvas.width >> 1, H = canvas.height >> 1;
+	const copy = document.createElement('canvas');
+	copy.width = W;
+	copy.height = H;
+	const g = copy.getContext('2d', { willReadFrequently: true });
+	// The right half: the drawer covers the left on a page.
+	const x0 = W >> 1, n = (W - x0) * H;
+	const greys = [];
+	const render = r.composer.render;
+	// Read in the call that drew it: the buffer is gone after the frame.
+	await new Promise((done) => {
+		r.composer.render = function (...a) {
+			render.apply(this, a);
+			g.drawImage(canvas, 0, 0, W, H);
+			const d = g.getImageData(x0, 0, W - x0, H).data;
+			const grey = new Float32Array(n);
+			for (let i = 0; i < n; i++) grey[i] = (d[4 * i] + d[4 * i + 1] + d[4 * i + 2]) / 765;
+			greys.push(grey);
+			if (greys.length < ${frames}) return;
+			r.composer.render = render;
+			done();
+		};
+	});
+	const changes = [];
+	for (let k = 1; k < greys.length; k++) {
+		let sum = 0;
+		for (let i = 0; i < n; i++) sum += Math.abs(greys[k][i] - greys[k - 1][i]);
+		changes.push(sum / n);
+	}
+	changes.sort((a, b) => a - b);
+	let min = 1, max = 0;
+	for (const v of greys[0]) {
+		min = Math.min(min, v);
+		max = Math.max(max, v);
+	}
+	return { change: changes[changes.length >> 1], contrast: max - min };
+})()`;
 
 function check(failures, ok, message) {
 	if (!ok) failures.push(message);
@@ -613,6 +659,23 @@ const SCENARIOS = {
 		const s = await tab.eval(`${SNAPSHOT}('${CURIOSITY}')`);
 		check(f, s.toasts.length === 0, `toasts: ${s.toasts.join(' | ')}`);
 		return s;
+	},
+
+	/** A vertex of Mars and the camera are both a radius from the mesh origin:
+	 *  at 32 bits their difference is good to 22 cm, and the camera is 11 m away. */
+	async 'ground under a lander holds still while its body turns'(tab, f) {
+		await tab.goto(`/p/100265984/Curiosity?at=${GALE_NOON},35,70,${LANDER_ZOOM}`);
+		await tab.until(
+			`${READY} && ${focusedIs(CURIOSITY)} && !!window.__smRenderer.bodyObjects.get('naif-499')?.terrainWindow`,
+			'the terrain under Curiosity built'
+		);
+		// On a cold cache the rover and the tiles come later.
+		await tab.until(`${frameChange(2)}.then((p) => p.contrast > 0.05)`, 'a picture with detail');
+		await sleep(3000);
+		const { change, contrast } = await tab.eval(frameChange(40));
+		check(f, contrast > 0.05, `the ground is flat on screen: contrast ${contrast}`);
+		check(f, change < 2e-4, `two frames differ by ${change} of the range of a pixel`);
+		return tab.eval(`${SNAPSHOT}('${CURIOSITY}')`);
 	},
 
 	async 'home view'(tab, f) {

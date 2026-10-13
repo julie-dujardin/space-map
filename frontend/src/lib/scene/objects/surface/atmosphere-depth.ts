@@ -15,6 +15,7 @@ import {
 } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 import { isReversedDepth } from '$lib/scene/setup/depth-mode';
+import { shareCameraRelative } from './camera-relative';
 
 /**
  * Opaque-depth prepass for the atmosphere shells. Inside a shell, depthTest is
@@ -105,6 +106,7 @@ export class AtmosphereDepthPass {
 		let depth = this.#depthMaterials.get(material);
 		if (!depth) {
 			depth = new MeshDepthMaterial();
+			shareCameraRelative(material, depth);
 			this.#depthMaterials.set(material, depth);
 		}
 		const src = material as MeshStandardMaterial;
