@@ -10,6 +10,7 @@
 	import { REFERENCE_SECTIONS, type BodyCredit, type Credits } from '$lib/credits/credits-payload';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { patchCredits, tileCredit } from '$lib/credits/tile-credit';
+	import PageContents, { type ContentsEntry } from '../nav/PageContents.svelte';
 
 	interface Props {
 		credits: Credits;
@@ -93,14 +94,8 @@
 	const hasModels = $derived(!!credits.models?.length || !!credits.model_contributors?.length);
 	const hasImagery = $derived(imagerySystems.length > 0 || !!credits.skybox);
 
-	interface Entry {
-		id: string;
-		label: string;
-		children?: Entry[];
-	}
-
 	// Only what draws: an entry for an absent section would link nowhere.
-	const contents = $derived<Entry[]>([
+	const contents = $derived<ContentsEntry[]>([
 		{ id: 'source', label: m.attribution_section_source() },
 		{
 			id: 'data',
@@ -151,10 +146,6 @@
 	<h4 class="text-xs font-semibold text-foreground mt-3 mb-1">{label}</h4>
 {/snippet}
 
-{#snippet contentsLink(entry: Entry)}
-	<a href="#{entry.id}" class="hover:text-foreground">{entry.label}</a>
-{/snippet}
-
 {#snippet link(href: string, label: string, sub?: string)}
 	<a
 		{href}
@@ -167,26 +158,7 @@
 {/snippet}
 
 <div class="relative text-sm leading-relaxed">
-	<!-- In the page margin, so it only shows where the margin can hold it. -->
-	<nav
-		aria-label={m.credits_contents()}
-		class="absolute inset-y-0 end-full me-8 hidden w-44 xl:block"
-	>
-		<ul class="sticky top-10 space-y-3 text-xs leading-snug text-muted-foreground">
-			{#each contents as group (group.id)}
-				<li>
-					<span class="font-medium text-foreground">{@render contentsLink(group)}</span>
-					{#if group.children}
-						<ul class="mt-1.5 space-y-1.5">
-							{#each group.children as entry (entry.id)}
-								<li>{@render contentsLink(entry)}</li>
-							{/each}
-						</ul>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-	</nav>
+	<PageContents entries={contents} />
 
 	<section>
 		{@render groupHeader('source', m.attribution_section_source())}
