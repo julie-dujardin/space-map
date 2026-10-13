@@ -46,6 +46,16 @@ v = (1 + r·sin λ) / 2      south cap
 
 At the pole, a pixel of a cap is 5% larger on the ground than a pixel of the map at the same level. Away from the pole it becomes smaller, by 15% at the middle of a side.
 
+## Patches
+
+A landing site can have a mosaic that is much sharper than the map of its body. A patch holds such a mosaic: it continues the pyramid past `max_level`, but only over the ground that the mosaic covers.
+
+A patch uses the grid and the paths of the map: `tiles/{id}/{z}/{x}/{y}.webp`, with `z` from `max_level + 1` to the `max_level` of the patch. At its finest level, the patch has the tiles from column `x[0]` to `x[1]` and from row `y[0]` to `y[1]`. At a level `n` levels above that, it has the tiles from `x[0] >> n` to `x[1] >> n` and from `y[0] >> n` to `y[1] >> n`. No other tile of these levels exists, and a renderer must not ask for one.
+
+The builder makes a patch from the finest tiles of the pyramid and from the mosaic. The colour and the tone at large scales are those of the tiles, so a patch joins the map around it without a step. All detail below a set scale comes from the mosaic alone. The map and a mosaic of another team can disagree on the position of a feature by some pixels of the map, and a mix of their detail would show the feature twice. At the edge of the mosaic the patch fades into the map. A tile of a patch that the mosaic covers only in part shows the enlarged map in the remaining part.
+
+The polar caps and the height pyramids have no patches.
+
 ## Tile content
 
 - **Colour** (`cylindrical`, `cylindrical_monthly`, `cylindrical_night_lights`, `cylindrical_specular`): lossy WebP, quality 80, RGB.
@@ -59,7 +69,7 @@ At the pole, a pixel of a cap is 5% larger on the ground than a pixel of the map
 
 ## Sources of a pyramid
 
-By default a pyramid comes from the same file as the tiers of its bundle. A manifest entry with `tiles: only` replaces that file for the pyramid, and the tiers do not change. Such an entry can combine files:
+By default a pyramid comes from the same file as the tiers of its bundle. A manifest entry with `tiles: only` replaces that entry for the pyramid, and the tiers do not change. It refines the bundle whose tiers come from the file that it names, which can be the best map of the body or an alternate one. If no bundle comes from that file, it refines the best map. Such an entry can combine files:
 
 - **Insets** replace the first file over a band of latitude, with a blend 1° wide at each edge that is not a pole. A later inset goes over an earlier one. Where an inset has no data, the map under it shows. The lunar height pyramid uses LOLA for the whole body and SLDEM2015 between 60°S and 60°N.
 - **Brightness layers** give a colour map the detail that it is too coarse to hold. The builder divides the brightness map by a copy of itself that is blurred to the resolution of the colour map. The result holds only the detail that the colour map cannot show. The builder then multiplies the colour map by this ratio in linear light. The tone and the colour stay those of the colour map, so the coarse levels agree with the tiers. Where the brightness map has no data, the colour map does not change. Where two brightness layers overlap, the later one is used where it has data. The lunar colour pyramid uses the 400 m colour map and the 100 m LROC wide-angle mosaic, which is normalised to one lighting and thus has no cast shadows.
@@ -110,6 +120,7 @@ Build metadata. It is in the metadata mirror, not in the tile tree.
 - `layers` — the source files. The first one covers the whole body. An entry with no `role` after it is an inset. An entry with `"role": "brightness"` is a brightness layer.
 - `levels` — the tiles of the map. `cap_levels` — the tiles of the two caps together, from level 1.
 - `frames` — monthly maps only: the number of frames. `levels` and `cap_levels` count the tiles of all frames.
+- `patches` — present when the pyramid has patches. Each has an `id`, its own credit fields (`source`, `organisation`, `license`, `attribution`), a `version`, its `max_level`, the tile ranges `x` and `y` at that level, its source `files` and its `levels`.
 - `displacement_bias_km`, `displacement_scale_km`, `absolute_radius` — height pyramids only. See *Tile content*.
 
 The export copies the fields that the renderer needs into a `tiles` block, inside the block of the layer (`texture`, `displacement`, `night`, `specular`) in `systems/{bary}.json`, in the object bundle and in `credits.json`:
@@ -135,6 +146,26 @@ The export copies the fields that the renderer needs into a `tiles` block, insid
 }
 ```
 
+A pyramid with patches has a `patches` array in the block. Each patch has `id`, `max_level`, `x`, `y`, `version` and its credit fields:
+
+```json
+"patches": [
+  {
+    "id": "jezero",
+    "max_level": 16,
+    "x": [93652, 93783],
+    "y": [25970, 26102],
+    "version": "5c0a91d2e7",
+    "source": "https://…",
+    "organisation": "USGS",
+    "license": "Public domain",
+    "attribution": "…"
+  }
+]
+```
+
+The tiles of a patch use the `version` of the patch in `?v=`, not that of the pyramid.
+
 The `tiles` block has its own credit fields because a pyramid can come from a different source than the tiers. `scale_km` and `bias_km` are present for height pyramids only, and `frames` for monthly maps only. `distribution` is present when the source has a restricted licence, with the same meaning as on a texture.
 
 ## Manifest fields
@@ -152,4 +183,5 @@ No field is necessary to get a pyramid. These fields change how it is built:
   - `quads` — a regular grid of square files, each named by its south-west corner: `step_deg`, a `file` name pattern, and optionally an `archive` URL pattern for a zip that holds the file. `{lon}` and `{lat}` are the corner in whole degrees, padded with zeros, with a minus sign for west and south.
 
   `dir` is a directory below the source directory of the entry that holds the files. `gamma` is the display curve of integer samples that are stretched for viewing, such as 2.2; the builder removes it. `lon_at_left_deg` and `west_positive` state the alignment of the layer, as on an entry.
-- `download_url` — direct link to a file, on an entry, an inset or a brightness layer. A `grid` uses `download_dir`, the URL of the directory that holds its files, and `quads` use `archive`. `space-map-download --sources texture_files` fetches the linked files, four at a time, and can resume a partial download.
+- `patches` — list of patches (colour maps only). Each has an `id`, credit fields, and `files`: a list of greyscale GeoTIFFs in the equirectangular projection, each with `file` and optionally `dir`, `download_url` and `gamma`. A later file goes over an earlier one, so mosaics that overlap belong in one patch. `sharpen_sigma` is the scale below which the files give all the detail, in pixels of the finest level of the pyramid (default 16). `tiles_max_level` limits the finest level of the patch. A change to a patch does not rebuild the pyramid.
+- `download_url` — direct link to a file, on an entry, an inset, a brightness layer or a file of a patch. A `grid` uses `download_dir`, the URL of the directory that holds its files, and `quads` use `archive`. `space-map-download --sources texture_files` fetches the linked files, four at a time, and can resume a partial download.

@@ -265,13 +265,58 @@ class Mosaic:
         return np.concatenate(bands, axis=0)
 
 
+class Region:
+    """A raster of a part of the globe, read as one that covers all of it at
+    the same pixel size. Where it has nothing it reads as zero, which a
+    brightness reader takes as not observed."""
+
+    def __init__(
+        self, pixels: np.ndarray, west: float, east: float, north: float, south: float
+    ) -> None:
+        height, width = pixels.shape
+        self._pixels = pixels
+        self.shape = (
+            round(height * 180.0 / (north - south)),
+            round(width * 360.0 / (east - west)),
+        )
+        self._top = round((90.0 - north) / 180.0 * self.shape[0])
+        self._left = round((west + 180.0) % 360.0 / 360.0 * self.shape[1])
+        if self._left + width > self.shape[1]:
+            raise ValueError("a regional raster across the 180° meridian")
+
+    @property
+    def bounds(self) -> tuple[float, float, float, float]:
+        """West, east, north and south edge in degrees, on the grid that
+        ``read`` uses."""
+        rows, columns = self.shape
+        height, width = self._pixels.shape
+        return (
+            self._left / columns * 360.0 - 180.0,
+            (self._left + width) / columns * 360.0 - 180.0,
+            90.0 - self._top / rows * 180.0,
+            90.0 - (self._top + height) / rows * 180.0,
+        )
+
+    def read(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        out = np.zeros((y1 - y0, x1 - x0), dtype=self._pixels.dtype)
+        height, width = self._pixels.shape
+        top, bottom = max(y0, self._top), min(y1, self._top + height)
+        left, right = max(x0, self._left), min(x1, self._left + width)
+        if top < bottom and left < right:
+            out[top - y0 : bottom - y0, left - x0 : right - x0] = self._pixels[
+                top - self._top : bottom - self._top,
+                left - self._left : right - self._left,
+            ]
+        return out
+
+
 @dataclass
 class Layer:
     """An equirectangular raster, read in row bands."""
 
     # (H, W) heights or brightness, or colour as (H, W, 3), planar (3, H, W),
     # or one grey band (H, W) with ``grey`` set.
-    pixels: np.ndarray | Mosaic
+    pixels: np.ndarray | Mosaic | Region
     placement: Placement
     planar: bool = False
     grey: bool = False
@@ -332,7 +377,7 @@ class Layer:
         if self.placement.west_positive:
             s0, s1 = self.width - a1, self.width - a0
         pixels = self.pixels
-        if isinstance(pixels, Mosaic):
+        if isinstance(pixels, (Mosaic, Region)):
             part = pixels.read(y0, y1, s0, s1)
         elif self.planar:
             part = np.moveaxis(np.asarray(pixels[:, y0:y1, s0:s1]), 0, -1)
@@ -636,6 +681,19 @@ def open_colour_layer(path: Path, placement: Placement) -> Layer:
     return Layer(np.asarray(_load_whole(path, 3)), placement)
 
 
+def soften(pixels: np.ndarray, sigma: float) -> np.ndarray:
+    """sRGB ``pixels`` blurred by ``sigma`` in linear light: the tint stays
+    and the features go."""
+    linear = _SRGB_TO_LINEAR[pixels]
+    for channel in range(3):
+        linear[..., channel] = ndimage.gaussian_filter(
+            linear[..., channel], sigma, mode="nearest"
+        )
+    linear *= 65535.0
+    np.clip(linear, 0, 65535, out=linear)
+    return _LINEAR_TO_SRGB[linear.astype(np.uint16)]
+
+
 def height_layer(raster: HeightRaster, placement: Placement) -> Layer:
     def to_km(raw: np.ndarray) -> np.ndarray:
         km = (raw.astype(np.float32) * raster.scale + raster.offset) * raster.unit_km
@@ -703,6 +761,44 @@ def open_brightness_layer(
     return Layer(
         _open_grey(grid[0][0]) if single else Mosaic(grid),
         placement,
+        to_values=brightness_values(gamma),
+    )
+
+
+def _geotiff_bounds(path: Path) -> tuple[float, float, float, float]:
+    """West, east, north and south edge of an equirectangular GeoTIFF, in
+    degrees."""
+    with tifffile.TiffFile(str(path)) as tif:
+        page = tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        keys = page.geotiff_tags or {}
+        height, width = page.shape[:2]
+    # 17: the equirectangular projection.
+    if keys.get("ProjCoordTransGeoKey") != 17 or "ModelTiepoint" not in keys:
+        raise ValueError(f"{path.name}: not an equirectangular GeoTIFF")
+    radius = keys["GeogSemiMajorAxisGeoKey"]
+    # Metres east of the central meridian shrink by the cosine of the
+    # latitude the projection is true at.
+    true_at = math.radians(keys.get("ProjStdParallel1GeoKey", 0.0))
+    centre = keys.get("ProjCenterLongGeoKey", keys.get("ProjNatOriginLongGeoKey", 0.0))
+    step_x, step_y = keys["ModelPixelScale"][:2]
+    x0, y0 = keys["ModelTiepoint"][3:5]
+    per_degree = math.radians(radius)
+    west = centre + x0 / (per_degree * math.cos(true_at))
+    north = y0 / per_degree
+    return (
+        west,
+        west + width * step_x / (per_degree * math.cos(true_at)),
+        north,
+        north - height * step_y / per_degree,
+    )
+
+
+def open_region_layer(path: Path, gamma: float | None = None) -> Layer:
+    """A greyscale raster of a part of the globe, as a brightness layer."""
+    return Layer(
+        Region(_open_grey(path), *_geotiff_bounds(path)),
+        Placement(),
         to_values=brightness_values(gamma),
     )
 

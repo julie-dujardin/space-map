@@ -26,7 +26,7 @@ from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
-from . import config, skybox, tiles
+from . import config, patches, skybox, tiles
 from .alignment import align_cylindrical, entry_alignment
 from .encoding import resize, save_webp, size_target, tier_for_size
 from .image_io import (
@@ -409,6 +409,7 @@ class TextureProcessor:
                 )
         for pyramid_id, entry in sources.items():
             self._process_tiles(entry, pyramid_id, force=force)
+            self._process_patches(entry, pyramid_id)
 
         for root in (
             config.TILES_PROCESSED_DIR,
@@ -680,6 +681,115 @@ class TextureProcessor:
             sum(stats.tiles) + sum(cap_stats.tiles),
             (sum(stats.size_bytes) + sum(cap_stats.size_bytes)) / 2**30,
         )
+
+    def _process_patches(self, entry: dict, pyramid_id: str) -> None:
+        """Build the patches of a pyramid that are not there, and take out the
+        ones its entry no longer names."""
+        out_dir = config.TILES_PROCESSED_DIR / pyramid_id
+        meta_path = mirror_path(
+            config.TILES_METADATA_DIR / pyramid_id / "metadata.json"
+        )
+        if not (out_dir.exists() and meta_path.exists()):
+            return
+        metadata = json.loads(meta_path.read_text())
+        built = {patch["id"]: patch for patch in metadata.get("patches") or []}
+        wanted = {spec["id"]: spec for spec in entry.get("patches") or []}
+        if not (built or wanted):
+            return
+        source_dir = entry["_source_dir"]
+        base_level = metadata["max_level"]
+
+        def save() -> None:
+            metadata["patches"] = list(built.values())
+            if not built:
+                del metadata["patches"]
+            meta_path.write_text(json.dumps(metadata, indent=2))
+
+        for patch_id in built.keys() - wanted.keys():
+            patches.remove(out_dir, base_level, built.pop(patch_id))
+            save()
+            log.info("removed patch %s of %s", patch_id, pyramid_id)
+
+        for patch_id, spec in wanted.items():
+            files = [name for layer in spec["files"] for name, _ in layer_files(layer)]
+            missing = [name for name in files if not (source_dir / name).exists()]
+            if missing:
+                log.warning(
+                    "patch source missing for %s %s: %s",
+                    pyramid_id,
+                    patch_id,
+                    missing[0],
+                )
+                continue
+            sigma = spec.get("sharpen_sigma", config.PATCH_SIGMA)
+            version = tiles.signature_version(
+                {
+                    "recipe": patches.RECIPE,
+                    "pyramid": metadata["version"],
+                    "sigma": sigma,
+                    "max_level": spec.get("tiles_max_level"),
+                    "files": [
+                        [name, (source_dir / name).stat().st_size, layer.get("gamma")]
+                        for layer in spec["files"]
+                        for name, _ in layer_files(layer)
+                    ],
+                }
+            )
+            credit = {
+                key: spec.get(key)
+                for key in ("id", "source", "organisation", "license", "attribution")
+            }
+            current = built.get(patch_id)
+            if current and current["version"] == version:
+                if any(current.get(key) != value for key, value in credit.items()):
+                    built[patch_id] = {**current, **credit}
+                    save()
+                continue
+            if current:
+                patches.remove(out_dir, base_level, built.pop(patch_id))
+                save()
+
+            # Built aside: a stopped run leaves the pyramid as it was.
+            building = out_dir / f".patch-{patch_id}"
+            if building.exists():
+                shutil.rmtree(building)
+            rasters = [
+                tiles.open_region_layer(source_dir / name, layer.get("gamma"))
+                for layer in spec["files"]
+                for name, _ in layer_files(layer)
+            ]
+            builder = patches.PatchBuilder(
+                f"{pyramid_id} {patch_id}",
+                out_dir,
+                base_level,
+                rasters,
+                building,
+                sigma,
+                spec.get("tiles_max_level"),
+            )
+            stats = builder.build()
+            patches.put_in_place(building, out_dir)
+            x0, x1, y0, y1 = builder.tile_range(builder.level)
+            built[patch_id] = {
+                **credit,
+                "version": version,
+                "max_level": builder.level,
+                "x": [x0, x1],
+                "y": [y0, y1],
+                "files": files,
+                "levels": stats.levels(base_level + 1),
+                "processed_at": datetime.now(UTC).isoformat(),
+            }
+            save()
+            log.info(
+                "patched %s %s: levels %d-%d, %d tiles, %.2f GiB",
+                pyramid_id,
+                patch_id,
+                base_level + 1,
+                builder.level,
+                sum(stats.tiles),
+                sum(stats.size_bytes) / 2**30,
+            )
 
     def _open_brightness_layer(self, source_dir: Path, spec: dict) -> tiles.Source:
         lat_bottom, lat_top = spec.get("lat_range") or (-90.0, 90.0)

@@ -165,6 +165,20 @@ def _with_tiles(out_dir: Path, bundle_id: str, meta: dict) -> dict:
     return meta
 
 
+# What the renderer needs of a patch: where its tiles are, and its credit.
+_PATCH_KEYS = (
+    "id",
+    "max_level",
+    "x",
+    "y",
+    "version",
+    "source",
+    "organisation",
+    "license",
+    "attribution",
+)
+
+
 def tiles_block(meta: dict) -> dict:
     """The ``tiles`` block inside a layer's block: the same layer as a tile
     pyramid, as fine as its source.
@@ -188,6 +202,11 @@ def tiles_block(meta: dict) -> dict:
     for key in ("frames", "license", "distribution", "attribution"):
         if meta.get(key) is not None:
             block[key] = meta[key]
+    if meta.get("patches"):
+        block["patches"] = [
+            {key: patch[key] for key in _PATCH_KEYS if patch.get(key) is not None}
+            for patch in meta["patches"]
+        ]
     return block
 
 

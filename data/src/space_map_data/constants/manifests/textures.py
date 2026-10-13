@@ -39,8 +39,19 @@ def builds_tiers(entry: dict) -> bool:
 def source_layers(entry: dict) -> list[dict]:
     """Every raster an entry names: its own, then the layers that refine it in
     a pyramid. ``insets`` replace it over the band each one covers,
-    ``brightness`` layers replace only its fine detail."""
-    return [entry, *(entry.get("insets") or []), *(entry.get("brightness") or [])]
+    ``brightness`` layers replace only its fine detail, and the files of its
+    ``patches`` take the pyramid deeper over a small area."""
+    return [
+        entry,
+        *(entry.get("insets") or []),
+        *(entry.get("brightness") or []),
+        *patch_files(entry),
+    ]
+
+
+def patch_files(entry: dict) -> list[dict]:
+    """The rasters of every patch of an entry."""
+    return [file for patch in entry.get("patches") or [] for file in patch["files"]]
 
 
 def _corner(degrees: int, width: int) -> str:

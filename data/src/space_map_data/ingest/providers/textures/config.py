@@ -125,6 +125,10 @@ TILE_INSET_FEATHER_DEG = 1.0
 TILE_SHARPEN_SIGMA = 0.7
 # Bounds on how far a brightness layer may darken or brighten the base.
 TILE_SHARPEN_RANGE = (0.4, 2.5)
+# Scale below which a patch takes all its detail from its own rasters, in
+# pixels of the pyramid's finest level: wider than the distance between a
+# feature on the map and the same one on a mosaic of another team.
+PATCH_SIGMA = 16.0
 # Largest source a build decodes whole, in bytes once decoded. Sources stored
 # as plain samples are read in bands and have no limit.
 TILE_MAX_LOAD_BYTES = 4 << 30
