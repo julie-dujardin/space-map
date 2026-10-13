@@ -19,7 +19,7 @@ v1/
   metadata.json                                   (not gzipped) entry point — zone manifest, bundle counts, versions
   credits.json                                    (not gzipped) aggregated attribution for the /credits page
   status.json                                     (not gzipped) per-source download dates for the /status page
-  about-data.json                                 (not gzipped) resolution and size of each map, for the /about/data page
+  about-data.json                                 (not gzipped) resolution and size of each map, ring bundle and 3D model, for the /about/data page
   seo/sitemap.xml                                 (not gzipped) notable-object + group URLs for search engines
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
@@ -92,6 +92,6 @@ v1/
 | [spacecraft.md](spacecraft.md) | `spacecraft.json` vehicle catalogue: launcher C3 curves, spacecraft mass/Isp/thrust, crew, cost, plus the per-locale name bundles. |
 | [credits.md](credits.md) | `credits.json` aggregated attribution manifest. |
 | [status.md](status.md) | `status.json` per-source download-freshness report. |
-| [about-data.md](about-data.md) | `about-data.json` resolution, tile count and size of each map of each world. |
+| [about-data.md](about-data.md) | `about-data.json` resolution and size of each map, each ring bundle and each 3D model. |
 | [sitemap.md](sitemap.md) | `seo/sitemap.xml` notable-object + group URL set and its selection rule. |
 | [consuming.md](consuming.md) | End-to-end consumer walkthrough. |

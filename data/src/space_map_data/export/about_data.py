@@ -1,9 +1,10 @@
 """`v1/about-data.json` for the `/about/data` page.
 
-One row for each map of each world: how fine it is on the ground, and how many
-files and bytes it takes. A patch of a tile pyramid is a row of its own. Each
-figure comes from the metadata that ingest writes for a bundle and for a tile
-pyramid, so the file needs no pass over the tiles.
+One row for each map, each ring bundle and each 3D model: how fine it is, and
+how many files and bytes it takes. A patch of a tile pyramid is a row of its
+own. The shapes that come from light curves are one row together. Each figure
+comes from the metadata that ingest writes for a bundle, so the file needs no
+pass over the tiles or the meshes.
 """
 
 import logging
@@ -16,6 +17,7 @@ import orjson
 from PIL import Image
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
 from space_map_data.export.system_groups import (
     body_name,
     load_system_lookup,
@@ -25,11 +27,15 @@ from space_map_data.export.systems import (
     load_alternate_metadata,
     load_clouds_metadata,
     load_displacement_metadata,
+    load_model_metadata,
     load_night_metadata,
     load_radii,
+    load_ring_metadata,
     load_specular_metadata,
     load_texture_metadata,
+    ring_block,
 )
+from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
 from space_map_data.ingest.providers.textures.tiles import HEIGHT_LEVELS
 from space_map_data.models.object import Object
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
@@ -38,6 +44,21 @@ logger = logging.getLogger(__name__)
 
 # Values a whole-globe height image can hold: it has 8 bits.
 _TIER_HEIGHT_LEVELS = 255
+
+# The files of a model, low before high.
+_MODEL_TIERS = ("low", "high")
+
+# Kinds of craft model in the order of the page. Other kinds follow by name.
+_CRAFT_KINDS = (
+    "probe",
+    "earth_sat",
+    "station",
+    "lander",
+    "robot",
+    "rocket",
+    "generic_sat",
+    "comparable",
+)
 
 
 def _figures(value: float, digits: int = 4) -> float:
@@ -213,6 +234,12 @@ def map_row(
     return row
 
 
+def has_no_surface(body_id: str) -> bool:
+    """True for a giant planet: its surface map shows its cloud top."""
+    facts = ATMOSPHERE_FACTS.get(body_id)
+    return facts is not None and facts.note == "no_surface"
+
+
 def world_maps(
     body_id: str,
     radius_km: float | None,
@@ -248,12 +275,178 @@ def world_maps(
     return rows
 
 
+def ring_row(meta: dict) -> dict:
+    """One ring bundle: its radial range, its samples and its strip. The
+    figures are those of the system files."""
+    block = ring_block(meta)
+    inner = block["inner_radius_km"]
+    outer = block["outer_radius_km"]
+    samples = block["sample_count"]
+    return {
+        "id": block["bundle"],
+        "inner_radius_km": inner,
+        "outer_radius_km": outer,
+        "samples": samples,
+        # The first and the last sample are on the two edges.
+        "km_per_sample": _figures((outer - inner) / (samples - 1)),
+        "size_bytes": meta["strip"]["size_bytes"],
+        "sources": [
+            {
+                "source": source["source"],
+                "organisation": source["organisation"],
+                "attribution": source["work"],
+            }
+            for source in meta["sources"]
+        ],
+    }
+
+
+def model_tiers(meta: dict) -> list[dict]:
+    """The files of a model, low before high."""
+    exports = meta["exports"]
+    return [
+        {
+            "name": name,
+            "triangles": exports[name]["stats"]["triangles"],
+            "size_bytes": exports[name]["size_bytes"],
+        }
+        for name in _MODEL_TIERS
+        if name in exports
+    ]
+
+
+def _model_credit(credit: dict, attribution: str | None = None) -> dict:
+    """The credit of a model in the fields of a map credit. A model can have
+    no source page."""
+    fields = {"organisation": credit["name"]}
+    if credit.get("url") is not None:
+        fields["source"] = credit["url"]
+    if attribution is not None:
+        fields["attribution"] = attribution
+    return fields
+
+
+def craft_sources(meta: dict) -> list[dict]:
+    """Who made the files of a model, the high file first. One author has one
+    entry, with the page of the highest file."""
+    sources: dict[str, dict] = {}
+    for name in reversed(_MODEL_TIERS):
+        tier = meta["exports"].get(name)
+        if tier is not None:
+            sources.setdefault(tier["credit"]["name"], _model_credit(tier["credit"]))
+    return list(sources.values())
+
+
+def shape_row(meta: dict) -> dict:
+    """The shape model of a world. Its credit line is the citation of the
+    data set."""
+    return {
+        "slug": meta["slug"],
+        "provenance": meta["provenance"],
+        "tiers": model_tiers(meta),
+        "extent_m": _figures(meta["true_scale"]["max_extent_km"] * 1000),
+        "sources": [_model_credit(meta["credit"], meta.get("citation"))],
+    }
+
+
+def craft_row(meta: dict, objects: list[tuple[str, str]]) -> dict:
+    """One model of a craft or of another object. ``objects`` are the ids and
+    names of the objects that the map draws with it."""
+    row: dict = {"slug": meta["slug"], "tiers": model_tiers(meta)}
+    if meta.get("scale_meters") is not None:
+        row["extent_m"] = meta["scale_meters"]
+    row["sources"] = craft_sources(meta)
+    row["objects"] = len(objects)
+    if len(objects) == 1:
+        row["object"] = {"id": objects[0][0], "name": objects[0][1]}
+    return row
+
+
+def lightcurve_block(metas: list[dict]) -> dict:
+    """The shapes from light curves, as one row. Their credit is that of their
+    catalogues."""
+    tiers = [tier for meta in metas for tier in meta["exports"].values()]
+    catalogs = dict.fromkeys(tier["catalog"] for tier in tiers)
+    return {
+        "models": len(metas),
+        "worlds": len({meta["object_id"] for meta in metas}),
+        "triangles": sum(model_tiers(meta)[-1]["triangles"] for meta in metas),
+        "size_bytes": sum(tier["size_bytes"] for tier in tiers),
+        "sources": [
+            {
+                "source": MODEL_CATALOGS[name]["url"],
+                "organisation": MODEL_CATALOGS[name]["default_attribution"],
+            }
+            for name in catalogs
+        ],
+    }
+
+
+def craft_groups(session: Session, metas: list[dict]) -> list[dict]:
+    """The models that are not shapes of worlds, by kind. A model lists the
+    objects whose ``model_name`` is its slug."""
+    slugs = [meta["slug"] for meta in metas]
+    drawn: dict[str, list[tuple[str, str]]] = {}
+    rows = session.query(Object.id, Object.name, Object.model_name).filter(
+        Object.model_name.in_(slugs)
+    )
+    for object_id, name, slug in rows:
+        drawn.setdefault(slug, []).append((object_id, name or object_id))
+
+    by_kind: dict[str, list[dict]] = {}
+    for meta in sorted(metas, key=lambda meta: meta["slug"]):
+        by_kind.setdefault(meta["kind"], []).append(
+            craft_row(meta, sorted(drawn.get(meta["slug"], [])))
+        )
+    kinds = sorted(
+        by_kind,
+        key=lambda kind: (
+            _CRAFT_KINDS.index(kind) if kind in _CRAFT_KINDS else len(_CRAFT_KINDS),
+            kind,
+        ),
+    )
+    return [{"kind": kind, "models": by_kind[kind]} for kind in kinds]
+
+
 def _world_order(obj: Object) -> tuple:
     """The primary of a system first, then its moons in the order of their
     numbers. Bodies with no number go by name."""
     naif = obj.naif_id
     primary = naif is not None and naif % 100 == 99 and naif < 1000
     return (not primary, naif is None, naif or 0, body_name(obj).lower())
+
+
+def _placed(
+    session: Session, body_ids: set[str], lookup: tuple
+) -> list[tuple[Object, str | None]]:
+    """The objects of ``body_ids`` in the order of the page, each with the id
+    of its system: Mercury to Pluto, then the bodies that belong to none."""
+    bary_by_id, child_to_bary, _, system_order = lookup
+    objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
+    for body_id in sorted(body_ids - {obj.id for obj in objects}):
+        logger.warning("Metadata for %s has no matching Object row", body_id)
+    placed = [
+        (obj, resolve_system_id(obj, bary_by_id, child_to_bary)) for obj in objects
+    ]
+    return sorted(
+        placed,
+        key=lambda item: (
+            item[1] is None,
+            system_order.get(item[1], 0),
+            _world_order(item[0]),
+        ),
+    )
+
+
+def _world_rows(
+    placed: list[tuple[Object, str | None]], field: str, rows: dict[str, list[dict]]
+) -> list[dict]:
+    """The worlds that have ``rows``, in the order of the page."""
+    return [
+        {"id": obj.id, "name": body_name(obj), field: rows[obj.id]}
+        for obj, _ in placed
+        if obj.id in rows
+    ]
 
 
 def build_about_data(
@@ -266,18 +459,32 @@ def build_about_data(
     night: dict[str, dict],
     specular: dict[str, dict],
     displacement: dict[str, dict],
+    rings: dict[str, list[dict]],
+    models: dict[str, dict],
 ) -> dict:
-    """The payload: worlds grouped by planetary system, Mercury to Pluto, then
-    the bodies that belong to none."""
+    """The payload. The maps are grouped by planetary system. The rings and
+    the shape models are lists of worlds in the same order."""
     layers = (textures, alternates, clouds, night, specular, displacement)
-    body_ids = set().union(*layers)
-    objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
-    bary_by_id, child_to_bary, system_names, system_order = load_system_lookup(session)
-    for body_id in sorted(body_ids - {obj.id for obj in objects}):
-        logger.warning("Map metadata for %s has no matching Object row", body_id)
+    mapped = set().union(*layers)
+    lightcurve = []
+    craft = []
+    shapes: dict[str, list[dict]] = {}
+    for _, meta in sorted(models.items()):
+        if meta["kind"] != "shape_model":
+            craft.append(meta)
+        elif meta["provenance"] == "lightcurve":
+            lightcurve.append(meta)
+        else:
+            shapes.setdefault(meta["object_id"], []).append(shape_row(meta))
+
+    lookup = load_system_lookup(session)
+    _, _, system_names, system_order = lookup
+    placed = _placed(session, mapped | set(rings) | set(shapes), lookup)
 
     grouped: dict[str | None, list[dict]] = {}
-    for obj in sorted(objects, key=_world_order):
+    for obj, system_id in placed:
+        if obj.id not in mapped:
+            continue
         triaxial = radii.get(obj.naif_id) if obj.naif_id is not None else None
         radius_km = equator_radius_km(triaxial) if triaxial else None
         if radius_km is None:
@@ -285,11 +492,12 @@ def build_about_data(
         world: dict = {"id": obj.id, "name": body_name(obj)}
         if radius_km is not None:
             world["radius_km"] = _figures(radius_km, 6)
+        if has_no_surface(obj.id):
+            world["no_surface"] = True
         world["maps"] = world_maps(obj.id, radius_km, out_dir, *layers)
-        system_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         grouped.setdefault(system_id, []).append(world)
 
-    systems = [
+    systems: list[dict] = [
         {
             "id": sys_id,
             "name": system_names[sys_id],
@@ -297,14 +505,35 @@ def build_about_data(
             "primary_id": f"naif-{system_order[sys_id] * 100 + 99}",
             "worlds": worlds,
         }
-        for sys_id, worlds in sorted(
-            ((s, w) for s, w in grouped.items() if s is not None),
-            key=lambda item: system_order[item[0]],
-        )
+        for sys_id, worlds in grouped.items()
+        if sys_id is not None
     ]
     if None in grouped:
         systems.append({"id": None, "name": None, "worlds": grouped[None]})
-    return {"generated_at": datetime.now(UTC).isoformat(), "systems": systems}
+
+    model_block: dict = {
+        "worlds": _world_rows(placed, "models", shapes),
+        "craft": craft_groups(session, craft),
+    }
+    if lightcurve:
+        model_block["lightcurve"] = lightcurve_block(lightcurve)
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        # The bodies with a map, a ring or a shape model.
+        "worlds": len(
+            {obj.id for obj, _ in placed} | {meta["object_id"] for meta in lightcurve}
+        ),
+        "systems": systems,
+        "rings": _world_rows(
+            placed,
+            "rings",
+            {
+                body_id: [ring_row(meta) for meta in metas]
+                for body_id, metas in rings.items()
+            },
+        ),
+        "models": model_block,
+    }
 
 
 def write_about_data(
@@ -317,6 +546,8 @@ def write_about_data(
     night: dict[str, dict],
     specular: dict[str, dict],
     displacement: dict[str, dict],
+    rings: dict[str, list[dict]],
+    models: dict[str, dict],
 ) -> None:
     """Emit `v1/about-data.json`."""
     t0 = time.monotonic()
@@ -330,18 +561,27 @@ def write_about_data(
         night,
         specular,
         displacement,
+        rings,
+        models,
     )
     (out_dir / "about-data.json").write_bytes(
         orjson.dumps(payload, option=orjson.OPT_INDENT_2)
     )
     worlds = [world for system in payload["systems"] for world in system["worlds"]]
     maps = [row for world in worlds for row in world["maps"]]
+    model_block = payload["models"]
     logger.info(
-        "Wrote about-data.json (%d worlds, %d maps, %d with tiles, %d patches) in %.1fs",
-        len(worlds),
+        "Wrote about-data.json (%d worlds, %d maps, %d with tiles, %d patches, "
+        "%d ring bundles, %d shape models, %d from light curves, %d other models) "
+        "in %.1fs",
+        payload["worlds"],
         len(maps),
         sum(1 for row in maps if "tiles" in row),
         sum(len(row["tiles"].get("patches", [])) for row in maps if "tiles" in row),
+        sum(len(world["rings"]) for world in payload["rings"]),
+        sum(len(world["models"]) for world in model_block["worlds"]),
+        model_block.get("lightcurve", {}).get("models", 0),
+        sum(len(group["models"]) for group in model_block["craft"]),
         time.monotonic() - t0,
     )
 
@@ -360,4 +600,6 @@ def export_about_data_only(engine) -> None:
             load_night_metadata(out_dir),
             load_specular_metadata(out_dir),
             load_displacement_metadata(out_dir),
+            load_ring_metadata(out_dir),
+            load_model_metadata(out_dir),
         )

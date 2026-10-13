@@ -1,4 +1,5 @@
-"""Checks for the `/about/data` report: ground scales, sizes and grouping."""
+"""Checks for the `/about/data` report: scales, sizes and grouping of the maps,
+the rings and the 3D models."""
 
 import pytest
 from PIL import Image
@@ -6,11 +7,18 @@ from PIL import Image
 from space_map_data.export.about_data import (
     build_about_data,
     cloud_tier_rows,
+    craft_groups,
+    craft_row,
+    craft_sources,
     equator_radius_km,
     ground_scale,
+    lightcurve_block,
     map_row,
+    model_tiers,
     patch_row,
     pyramid_block,
+    ring_row,
+    shape_row,
     tier_rows,
 )
 from space_map_data.models.object import ObjectType
@@ -65,6 +73,65 @@ def _patch(**extra) -> dict:
             {"level": 15, "tiles": 4, "size_bytes": 100},
             {"level": 16, "tiles": 16, "size_bytes": 400},
         ],
+        **extra,
+    }
+
+
+def _ring(bundle: str = "primary", **extra) -> dict:
+    return {
+        "bundle": bundle,
+        "sources": [
+            {
+                "source": "https://example.org/rings",
+                "organisation": "NASA",
+                "license": "Public domain",
+                "work": "Ring table",
+                "contribution": "radii",
+            }
+        ],
+        "inner_radius_km": 74510.0,
+        "outer_radius_km": 140390.0,
+        "sample_count": 13177,
+        "strip": {
+            "file": "strip.webp",
+            "width": 13177,
+            "height": 6,
+            "rows": ["transmittance", "color"],
+            "size_bytes": 99,
+        },
+        **extra,
+    }
+
+
+def _mesh(triangles: int, size: int, author: str = "NASA", page: str = "") -> dict:
+    return {
+        "size_bytes": size,
+        "stats": {"triangles": triangles},
+        "credit": {"name": author, "url": f"https://example.org/{author}{page}"},
+        "catalog": "DAMIT",
+    }
+
+
+def _craft(slug: str, kind: str = "probe", **extra) -> dict:
+    return {
+        "slug": slug,
+        "kind": kind,
+        "exports": {"high": _mesh(900, 30), "low": _mesh(300, 10)},
+        "scale_meters": 8.3,
+        **extra,
+    }
+
+
+def _shape(slug: str, object_id: str, provenance: str = "missions", **extra) -> dict:
+    return {
+        "slug": slug,
+        "kind": "shape_model",
+        "provenance": provenance,
+        "object_id": object_id,
+        "credit": {"name": "NASA", "url": "https://example.org/shape"},
+        "citation": "Gaskell (2021)",
+        "true_scale": {"max_extent_km": 32.67030906677246},
+        "exports": {"high": _mesh(900, 30), "low": _mesh(300, 10)},
         **extra,
     }
 
@@ -228,6 +295,143 @@ class TestMapRow:
         assert "attribution" not in row
 
 
+class TestRingRow:
+    """One ring bundle."""
+
+    def test_samples_span_the_two_edges(self):
+        assert ring_row(_ring())["km_per_sample"] == 5.0
+
+    def test_size_is_that_of_the_strip(self):
+        row = ring_row(_ring("outer"))
+        assert (row["id"], row["samples"], row["size_bytes"]) == ("outer", 13177, 99)
+
+    def test_credit_line_is_the_cited_work(self):
+        assert ring_row(_ring())["sources"] == [
+            {
+                "source": "https://example.org/rings",
+                "organisation": "NASA",
+                "attribution": "Ring table",
+            }
+        ]
+
+
+class TestModelRows:
+    """One 3D model."""
+
+    def test_low_file_comes_first(self):
+        assert model_tiers(_craft("ace")) == [
+            {"name": "low", "triangles": 300, "size_bytes": 10},
+            {"name": "high", "triangles": 900, "size_bytes": 30},
+        ]
+
+    def test_model_of_one_file(self):
+        meta = _craft("ace", exports={"high": _mesh(900, 30)})
+        assert [tier["name"] for tier in model_tiers(meta)] == ["high"]
+
+    def test_one_author_has_one_source(self):
+        exports = {"high": _mesh(900, 30, page="/fine"), "low": _mesh(300, 10)}
+        assert craft_sources(_craft("ace", exports=exports)) == [
+            {"organisation": "NASA", "source": "https://example.org/NASA/fine"}
+        ]
+
+    def test_two_authors_are_listed_high_file_first(self):
+        exports = {"low": _mesh(300, 10), "high": _mesh(900, 30, author="tashtego")}
+        sources = craft_sources(_craft("mir", exports=exports))
+        assert [source["organisation"] for source in sources] == ["tashtego", "NASA"]
+
+    def test_author_with_no_page_has_no_link(self):
+        mesh = _mesh(900, 30)
+        mesh["credit"]["url"] = None
+        (source,) = craft_sources(_craft("ace", exports={"high": mesh}))
+        assert source == {"organisation": "NASA"}
+
+    def test_craft_names_its_only_object(self):
+        row = craft_row(_craft("ace"), [("probe-1", "ACE")])
+        assert (row["objects"], row["object"]) == (1, {"id": "probe-1", "name": "ACE"})
+        assert row["extent_m"] == 8.3
+
+    def test_shared_model_counts_its_objects(self):
+        row = craft_row(_craft("starlink"), [("a", "A"), ("b", "B")])
+        assert row["objects"] == 2
+        assert "object" not in row
+
+    def test_unmeasured_craft_has_no_extent(self):
+        row = craft_row(_craft("smile", scale_meters=None), [])
+        assert "extent_m" not in row
+
+    def test_shape_has_its_extent_and_its_citation(self):
+        row = shape_row(_shape("eros", "spkid-20000433"))
+        assert (row["provenance"], row["extent_m"]) == ("missions", 32670.0)
+        assert row["sources"] == [
+            {
+                "organisation": "NASA",
+                "source": "https://example.org/shape",
+                "attribution": "Gaskell (2021)",
+            }
+        ]
+
+
+class TestLightcurveBlock:
+    """The shapes from light curves are one row."""
+
+    def test_models_of_one_world_count_once(self):
+        metas = [
+            _shape("damit-1", "spkid-1", "lightcurve", exports={"high": _mesh(100, 5)}),
+            _shape("damit-2", "spkid-1", "lightcurve", exports={"high": _mesh(200, 7)}),
+            _shape("damit-3", "spkid-2", "lightcurve", exports={"high": _mesh(300, 9)}),
+        ]
+        block = lightcurve_block(metas)
+        assert (block["models"], block["worlds"]) == (3, 2)
+        assert (block["triangles"], block["size_bytes"]) == (600, 21)
+
+    def test_credit_is_that_of_the_catalogue(self):
+        (source,) = lightcurve_block([_shape("damit-1", "spkid-1", "lightcurve")])[
+            "sources"
+        ]
+        assert source == {
+            "source": "https://damit.cuni.cz/projects/damit/",
+            "organisation": "DAMIT (Ďurech et al.)",
+        }
+
+
+class TestCraftGroups:
+    """The models that are not shapes of worlds."""
+
+    def test_kinds_in_the_order_of_the_page(self, session):
+        metas = [
+            _craft("saturn-v", "rocket"),
+            _craft("zeppelin", "aircraft"),
+            _craft("voyager", "probe"),
+            _craft("ace", "probe"),
+        ]
+        groups = craft_groups(session, metas)
+        assert [
+            (group["kind"], [m["slug"] for m in group["models"]]) for group in groups
+        ] == [
+            ("probe", ["ace", "voyager"]),
+            ("rocket", ["saturn-v"]),
+            ("aircraft", ["zeppelin"]),
+        ]
+
+    def test_model_lists_the_objects_that_draw_it(self, session):
+        session.add_all(
+            [
+                make_object(
+                    id="probe-1", name="Voyager 1", naif_id=-31, model_name="voyager"
+                ),
+                make_object(
+                    id="probe-2", name="Voyager 2", naif_id=-32, model_name="voyager"
+                ),
+                make_object(id="probe-3", name="ACE", naif_id=-33, model_name="ace"),
+            ]
+        )
+        session.commit()
+        (group,) = craft_groups(session, [_craft("voyager"), _craft("ace")])
+        ace, voyager = group["models"]
+        assert ace["object"] == {"id": "probe-3", "name": "ACE"}
+        assert voyager["objects"] == 2
+
+
 class TestBuild:
     """Worlds grouped by system, as on the credits page."""
 
@@ -235,8 +439,28 @@ class TestBuild:
     def _texture(bundle_id: str) -> dict:
         return _meta(bundle_id, type="cylindrical", exports={"low": _tier(2048, 10)})
 
-    def _build(self, session, tmp_path, textures: dict, radii: dict) -> dict:
-        return build_about_data(session, tmp_path, radii, textures, {}, {}, {}, {}, {})
+    def _build(
+        self,
+        session,
+        tmp_path,
+        textures: dict,
+        radii: dict,
+        rings: dict | None = None,
+        models: dict | None = None,
+    ) -> dict:
+        return build_about_data(
+            session,
+            tmp_path,
+            radii,
+            textures,
+            {},
+            {},
+            {},
+            {},
+            {},
+            rings or {},
+            models or {},
+        )
 
     def test_planet_before_its_moons_and_standalones_last(self, session, tmp_path):
         session.add_all(
@@ -285,6 +509,75 @@ class TestBuild:
         assert world["radius_km"] == MARS_KM
         assert "m_per_px" in world["maps"][0]["tiers"][0]
 
+    def test_giant_planet_is_marked_as_a_world_with_no_surface(self, session, tmp_path):
+        session.add_all(
+            [
+                make_object(id="naif-599", name="Jupiter", naif_id=599),
+                make_object(id="naif-499", name="Mars", naif_id=499),
+            ]
+        )
+        session.commit()
+        textures = {body: self._texture(body) for body in ("naif-599", "naif-499")}
+        payload = self._build(session, tmp_path, textures, {})
+        marked = {
+            world["name"]: world.get("no_surface")
+            for system in payload["systems"]
+            for world in system["worlds"]
+        }
+        assert marked == {"Jupiter": True, "Mars": None}
+
     def test_bundle_with_no_object_is_left_out(self, session, tmp_path):
         payload = self._build(session, tmp_path, {"stars": self._texture("stars")}, {})
         assert payload["systems"] == []
+
+    def test_rings_and_shapes_list_their_worlds_in_page_order(self, session, tmp_path):
+        session.add_all(
+            [
+                make_object(
+                    id="naif-6",
+                    name="Saturn Barycenter",
+                    naif_id=6,
+                    object_type=ObjectType.barycenter,
+                    parent_id="naif-0",
+                ),
+                make_object(
+                    id="naif-699", name="Saturn", naif_id=699, parent_id="naif-6"
+                ),
+                make_object(
+                    id="naif-601", name="Mimas", naif_id=601, parent_id="naif-6"
+                ),
+                make_object(
+                    id="spkid-20000433",
+                    name="433 Eros",
+                    naif_id=2000433,
+                    parent_id="naif-10",
+                ),
+            ]
+        )
+        session.commit()
+        models = {
+            "eros": _shape("eros", "spkid-20000433"),
+            "mimas": _shape("mimas", "naif-601", "radar"),
+            "damit-1": _shape("damit-1", "spkid-20000433", "lightcurve"),
+            "damit-2": _shape("damit-2", "spkid-20000021", "lightcurve"),
+            "ace": _craft("ace"),
+        }
+        rings = {"naif-699": [_ring("inner"), _ring("primary")]}
+        payload = self._build(session, tmp_path, {}, {}, rings, models)
+        assert [
+            (world["name"], [ring["id"] for ring in world["rings"]])
+            for world in payload["rings"]
+        ] == [("Saturn", ["inner", "primary"])]
+        assert [
+            (world["name"], [model["slug"] for model in world["models"]])
+            for world in payload["models"]["worlds"]
+        ] == [("Mimas", ["mimas"]), ("433 Eros", ["eros"])]
+        assert payload["models"]["lightcurve"]["models"] == 2
+        assert [group["kind"] for group in payload["models"]["craft"]] == ["probe"]
+        # Saturn, Mimas, Eros, and the asteroid that has only a light-curve shape.
+        assert payload["worlds"] == 4
+
+    def test_no_light_curve_shapes_gives_no_block(self, session, tmp_path):
+        payload = self._build(session, tmp_path, {}, {}, {}, {"ace": _craft("ace")})
+        assert "lightcurve" not in payload["models"]
+        assert payload["rings"] == []

@@ -1206,6 +1206,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             night_metadata,
             specular_metadata,
             displacement_metadata,
+            ring_metadata,
+            model_metadata,
         )
         write_status(out_dir)
 
