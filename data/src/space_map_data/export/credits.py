@@ -25,6 +25,11 @@ from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.objects.sources import Reference
+from space_map_data.export.system_groups import (
+    body_name,
+    load_system_lookup,
+    resolve_system_id,
+)
 from space_map_data.export.systems import (
     load_clouds_metadata,
     load_displacement_metadata,
@@ -41,97 +46,10 @@ from space_map_data.ingest.providers.models.config import (
     MODEL_CATALOGS,
     MODEL_CONTRIBUTOR_PAGES,
 )
-from space_map_data.models.object import Object, ObjectType
+from space_map_data.models.object import Object
 from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
-
-# Top-level NAIF hubs (SSB, Sun). Bodies parented here are standalone —
-# asteroids and dwarf planets without a hosting planetary system.
-_TOP_LEVEL_NAIF_IDS = {0, 10}
-
-
-def _body_name(obj: Object) -> str:
-    """Canonical English-ish display name, falling back to MPC/provisional
-    designations so an unnamed asteroid reads as something better than its
-    opaque object ID. The credits page is English-only for now."""
-    return obj.name or obj.mpc_designation or obj.provisional_designation or obj.id
-
-
-def _load_system_lookup(
-    session: Session,
-) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, int]]:
-    """Build the mappings needed to group a textured body under a system.
-
-    Returns `(bary_by_id, child_to_bary, system_name_by_id, system_order_by_id)`:
-    an identity map of barycenter ids, a child→barycenter routing map (so
-    Earth satellites route to the Earth–Moon barycenter), display names keyed
-    off the primary planet rather than the DB's "X Barycenter" label, and
-    NAIF order for Mercury→Pluto sorting.
-    """
-    top_level_ids = [f"naif-{n}" for n in _TOP_LEVEL_NAIF_IDS]
-    barycenters = (
-        session.query(Object)
-        .filter(
-            Object.object_type == ObjectType.barycenter.value,
-            Object.parent_id.in_(top_level_ids),
-            Object.naif_id.not_in(list(_TOP_LEVEL_NAIF_IDS)),
-        )
-        .all()
-    )
-
-    bary_by_id: dict[str, str] = {}
-    system_order_by_id: dict[str, int] = {}
-    for b in barycenters:
-        if b.naif_id is not None:
-            bary_by_id[b.id] = b.id
-            system_order_by_id[b.id] = b.naif_id
-
-    child_to_bary: dict[str, str] = {}
-    for bary in barycenters:
-        children = session.query(Object).filter(Object.parent_id == bary.id).all()
-        for child in children:
-            child_to_bary[child.id] = bary.id
-
-    # Prefer the primary planet's name as the system label (naif-X99 for
-    # barycenter naif-X) — "Earth" reads better than "Earth-Moon Barycenter".
-    system_name_by_id: dict[str, str] = {}
-    primary_naif_ids = [
-        (b.naif_id or 0) * 100 + 99 for b in barycenters if b.naif_id is not None
-    ]
-    primaries = session.query(Object).filter(Object.naif_id.in_(primary_naif_ids)).all()
-    primary_by_naif = {p.naif_id: p for p in primaries}
-    for bary in barycenters:
-        if bary.naif_id is None:
-            continue
-        primary = primary_by_naif.get(bary.naif_id * 100 + 99)
-        if primary and primary.name:
-            system_name_by_id[bary.id] = primary.name
-        else:
-            # Fallback: strip the redundant "Barycenter" suffix.
-            name = bary.name or bary.id
-            system_name_by_id[bary.id] = name.replace(" Barycenter", "").strip()
-
-    return bary_by_id, child_to_bary, system_name_by_id, system_order_by_id
-
-
-def _resolve_system_id(
-    obj: Object,
-    bary_by_id: dict[str, str],
-    child_to_bary: dict[str, str],
-) -> str | None:
-    """The barycenter ID that owns *obj*, or None for standalones.
-
-    Mirrors `write_system_metadata`'s containment rules: parented directly on
-    a barycenter, parented on one of its children, or being one itself.
-    """
-    if obj.parent_id in bary_by_id:
-        return bary_by_id[obj.parent_id]
-    if obj.parent_id in child_to_bary:
-        return child_to_bary[obj.parent_id]
-    if obj.id in bary_by_id:
-        return bary_by_id[obj.id]
-    return None
 
 
 def _sibling_credit_entry(body_id: str, name: str, meta: dict) -> dict:
@@ -406,7 +324,7 @@ def write_credits(
     by_id = {obj.id: obj for obj in objects}
 
     bary_by_id, child_to_bary, system_name_by_id, system_order_by_id = (
-        _load_system_lookup(session)
+        load_system_lookup(session)
     )
 
     textures_grouped: dict[str | None, list[dict]] = {}
@@ -423,10 +341,10 @@ def write_credits(
             continue
         entry = {
             "body_id": body_id,
-            "name": _body_name(obj),
+            "name": body_name(obj),
             **texture_attribution(meta),
         }
-        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
+        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         textures_grouped.setdefault(sys_id, []).append(entry)
 
     rings_grouped: dict[str | None, list[dict]] = {}
@@ -446,8 +364,8 @@ def write_credits(
                 body_id,
             )
             continue
-        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
-        for entry in _merge_ring_sources(body_id, _body_name(obj), metas):
+        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
+        for entry in _merge_ring_sources(body_id, body_name(obj), metas):
             rings_grouped.setdefault(sys_id, []).append(entry)
 
     clouds_grouped: dict[str | None, list[dict]] = {}
@@ -459,9 +377,9 @@ def write_credits(
                 body_id,
             )
             continue
-        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
+        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         clouds_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, _body_name(obj), meta)
+            _sibling_credit_entry(body_id, body_name(obj), meta)
         )
 
     night_grouped: dict[str | None, list[dict]] = {}
@@ -473,9 +391,9 @@ def write_credits(
                 body_id,
             )
             continue
-        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
+        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         night_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, _body_name(obj), meta)
+            _sibling_credit_entry(body_id, body_name(obj), meta)
         )
 
     specular_grouped: dict[str | None, list[dict]] = {}
@@ -487,9 +405,9 @@ def write_credits(
                 body_id,
             )
             continue
-        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
+        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         specular_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, _body_name(obj), meta)
+            _sibling_credit_entry(body_id, body_name(obj), meta)
         )
 
     displacement_grouped: dict[str | None, list[dict]] = {}
@@ -501,8 +419,8 @@ def write_credits(
                 body_id,
             )
             continue
-        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
-        entry = _sibling_credit_entry(body_id, _body_name(obj), meta)
+        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
+        entry = _sibling_credit_entry(body_id, body_name(obj), meta)
         if meta.get("tiles") is not None:
             entry["tiles"] = tiles_block(meta["tiles"])
         displacement_grouped.setdefault(sys_id, []).append(entry)
