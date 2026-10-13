@@ -54,6 +54,49 @@ bodies:
   # lower coverage:
   # https://www.jpl.nasa.gov/images/pia00256-venus-simple-cylindrical-map-of-surface-eastern-half/
   # https://www.jpl.nasa.gov/images/pia00255-venus-simple-cylindrical-map-of-surface-western-half/
+# Each colour map, with detail from the Magellan radar mosaic at 75 m. Radar
+# brightness is roughness and slope, not sunlight: no camera sees this surface.
+- body: naif-299
+  body_name: venus
+  source: https://astrogeology.usgs.gov/search/map/venus_magellan_sar_fmap_left_look_global_mosaic_75m
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  distribution: site-only
+  attribution: "Colour: processed by Steve Albers from Magellan radar mosaics (NASA, compiled by Emily Lakdawalla / The Planetary Society) overlaid on a global map by Calvin Hamilton. Detail: Magellan SAR FMAP left-look global mosaic, 75 m/px (NASA/JPL, USGS Astrogeology Science Center)."
+  file: venus4_rgb_cyl_www.tif
+  type: cylindrical
+  # The map sits 0.29° east and 0.13° south of the radar mosaic, everywhere.
+  # The first is taken out here; the second is under the blur below.
+  lon_at_left_deg: -180.286
+  tiles: only
+  # The map gives the tint and the radar mosaic all detail below 37 km.
+  sharpen_sigma: 4.0
+  soften_colour: true
+  brightness:
+  - file: Venus_Magellan_LeftLook_mosaic_global_75m.tif
+    source: https://astrogeology.usgs.gov/search/map/venus_magellan_sar_fmap_left_look_global_mosaic_75m
+    download_url: https://planetarymaps.usgs.gov/mosaic/Venus_Magellan_LeftLook_mosaic_global_75m.tif
+    # The file's own extent; 8% of the planet inside it was never imaged.
+    lat_range: [-80.0106, 83.9996]
+    # 8-bit values stretched for display, not linear brightness.
+    gamma: 2.2
+- body: naif-299
+  body_name: venus
+  source: https://astrogeology.usgs.gov/search/map/venus_magellan_sar_fmap_left_look_global_mosaic_75m
+  organisation: USGS
+  license: Public domain
+  attribution: "USGS Astrogeology Science Center. Colour: Magellan C3-MDIR synthetic colour mosaic, 4.6 km/px. Detail: Magellan SAR FMAP left-look global mosaic, 75 m/px (NASA/JPL)."
+  file: Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif
+  type: cylindrical
+  tiles: only
+  brightness:
+  - file: Venus_Magellan_LeftLook_mosaic_global_75m.tif
+    source: https://astrogeology.usgs.gov/search/map/venus_magellan_sar_fmap_left_look_global_mosaic_75m
+    download_url: https://planetarymaps.usgs.gov/mosaic/Venus_Magellan_LeftLook_mosaic_global_75m.tif
+    # The file's own extent; 8% of the planet inside it was never imaged.
+    lat_range: [-80.0106, 83.9996]
+    # 8-bit values stretched for display, not linear brightness.
+    gamma: 2.2
 
 - body: naif-399
   body_name: earth
@@ -119,6 +162,152 @@ bodies:
     download_url: https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_EMP/WAC_EMP_643NM_P900S0000_304P.IMG
     projection: polar_stereographic
     lat_range: [-90, -60]
+  # Mosaics of the LROC narrow-angle camera under a low sun. Their shadows
+  # are real, where the map around them has none: at this scale the height
+  # map has no relief to light, and a mosaic under a high sun shows a flat
+  # plain. The camera's maps agree to well under a pixel of the lunar map,
+  # and a mosaic is strips a few kilometres wide, so the blend is narrow.
+  patches:
+  - id: apollo-11
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO11LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 11 landing site, 0.5 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_APOLLO11LOA_E004N0235.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO11LOA/NAC_ROI_APOLLO11LOA_E004N0235.IMG
+  - id: apollo-12
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO12LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 12 and Surveyor 3 landing site, 1.1 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_APOLLO12LOA_E024S3368.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO12LOA/NAC_ROI_APOLLO12LOA_E024S3368.IMG
+  - id: apollo-14
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO14LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 14 landing site, 1.1 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_APOLLO14LOA_E038S3426.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO14LOA/NAC_ROI_APOLLO14LOA_E038S3426.IMG
+  - id: apollo-15
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO15LOD
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 15 landing site and Hadley Rille, 1.4 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_APOLLO15LOD_E259N0038.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO15LOD/NAC_ROI_APOLLO15LOD_E259N0038.IMG
+  - id: apollo-16
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO16LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 16 landing site, 0.9 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_APOLLO16LOA_E090S0155.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO16LOA/NAC_ROI_APOLLO16LOA_E090S0155.IMG
+  - id: apollo-17
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO17LOE
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 17 landing site, 0.8 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_APOLLO17LOE_E200N0305.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO17LOE/NAC_ROI_APOLLO17LOE_E200N0305.IMG
+  - id: lunokhod-1
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNOKOD1LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Luna 17 landing site and the track of Lunokhod 1, 0.5 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_LUNOKOD1LOA_E381N3246.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNOKOD1LOA/NAC_ROI_LUNOKOD1LOA_E381N3246.IMG
+  - id: lunokhod-2
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNOKOD2LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Luna 21 landing site and the track of Lunokhod 2, 0.5 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_LUNOKOD2LOA_E259N0306.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNOKOD2LOA/NAC_ROI_LUNOKOD2LOA_E259N0306.IMG
+  - id: luna-20
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNA_20_LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Luna 20 landing site, 1.2 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_LUNA_20_LOA_E034N0566.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNA_20_LOA/NAC_ROI_LUNA_20_LOA_E034N0566.IMG
+  - id: change-4
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_CHANGE4_LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Chang'e 4 landing site in Von Kármán crater, 1.4 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_CHANGE4_LOA_E458S1776.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/CHANGE4_LOA/NAC_ROI_CHANGE4_LOA_E458S1776.IMG
+  - id: change-5
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_CHANGE5_LOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Chang'e 5 landing site, 1.2 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_CHANGE5_LOA_E432N3091.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/CHANGE5_LOA/NAC_ROI_CHANGE5_LOA_E432N3091.IMG
+  - id: surveyor-1
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_FLMSTEEDLOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Surveyor 1 landing site in Flamsteed P, 0.5 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_FLMSTEEDLOA_E025S3171.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/FLMSTEEDLOA/NAC_ROI_FLMSTEEDLOA_E025S3171.IMG
+  - id: tycho
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_TYCHOCTRLOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the central peak of Tycho crater, 0.55 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_TYCHOCTRLOA_E430S3489.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/TYCHOCTRLOA/NAC_ROI_TYCHOCTRLOA_E430S3489.IMG
+  - id: copernicus
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_COPERNICLOA
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the central peaks of Copernicus crater, 0.55 m/px."
+    sharpen_sigma: 3
+    files:
+    - file: NAC_ROI_COPERNICLOA_E098N3401.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/COPERNICLOA/NAC_ROI_COPERNICLOA_E098N3401.IMG
 # Moon LRO LOLA height map lives in its own asset dir (displacement/moon/),
 # like night/ and bathymetry/.
 
@@ -181,17 +370,33 @@ bodies:
       file: "MurrayLab_CTX_V01_E{lon}_N{lat}_Mosaic.tif"
       archive: "https://murray-lab.caltech.edu/CTX/V01/tiles/MurrayLab_GlobalCTXMosaic_V01_E{lon}_N{lat}.zip"
   patches:
-  # Jezero crater, where Perseverance works: the mosaic made to land it.
+  # Jezero crater, where Perseverance works: the mosaic made to land it, over
+  # the one of the crater rim west of it, made for the return of its samples.
   - id: jezero
     source: https://astrogeology.usgs.gov/search/map/mars_2020_terrain_relative_navigation_hirise_orthorectified_image_mosaic
     organisation: USGS
     license: Public domain
-    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. Mars 2020 Terrain Relative Navigation HiRISE orthorectified image mosaic, 25 cm/px."
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. Mars 2020 and Mars Sample Return Terrain Relative Navigation HiRISE orthorectified image mosaics, 25 cm/px."
     files:
+    - file: MSR_hirise_soc_003_Orthomosaic_0.25m_Eqc_latTs0_lon0_First_NoBlend.tif
+      dir: mars-sites
+      download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/MSR_TRN_HiRISE_soc_003_USGS_release_aug2024/MSR_TRN_HiRISE_soc_003_USGS_release_aug2024_mosaics.zip
+      gamma: 2.2
     - file: JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first.tif
       dir: mars-sites
       download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first.tif
       # 8-bit values stretched for display, not linear brightness.
+      gamma: 2.2
+  # Gale crater and the foot of Mount Sharp, where Curiosity works.
+  - id: gale
+    source: https://astrogeology.usgs.gov/search/map/mars_msl_gale_merged_orthophoto_mosaic_25cm_v3
+    organisation: USGS
+    license: Public domain
+    attribution: "NASA/JPL-Caltech/University of Arizona/USGS Astrogeology Science Center. MSL Gale merged orthophoto mosaic of HiRISE images, 25 cm/px (Calef and Parker)."
+    files:
+    - file: MSL_Gale_Orthophoto_Mosaic_25cm_v3.tif
+      dir: mars-sites
+      download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/MSL/MSL_Gale_Orthophoto_Mosaic_25cm_v3.tif
       gamma: 2.2
 - body: naif-401
   body_name: phobos
@@ -258,6 +463,24 @@ bodies:
   file: Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif
   type: cylindrical
   lon_at_left_deg: 0  # 180° vs the Albers map it replaces (user-verified)
+# The USGS map, with detail from the mosaic of Dawn's lowest orbit at 35 m.
+# Albers' map sits about 1° from that mosaic, so it cannot take the detail:
+# every crater would show twice.
+- body: naif-2000001
+  body_name: ceres
+  source: https://sbnarchive.psi.edu/pds3/dawn/fc/DWNCLCFC2_2/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA. Dawn Framing Camera global mosaics of Ceres: HAMO (USGS Astrogeology Science Center) with detail from the LAMO clear-filter mosaic, 35 m/px (PDS Small Bodies Node)."
+  file: Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif
+  type: cylindrical
+  lon_at_left_deg: 0
+  tiles: only
+  brightness:
+  - file: CE_LAMO_G_00N_180E_EQU_CLR.TIF
+    source: https://sbnarchive.psi.edu/pds3/dawn/fc/DWNCLCFC2_2/
+    download_url: https://sbnarchive.psi.edu/pds3/dawn/fc/DWNCLCFC2_2/EXTRAS/CE_LAMO_G_00N_180E_EQU_CLR.TIF
+    lon_at_left_deg: 0
 
 - body: spkid-20000004
   body_name: vesta
@@ -266,6 +489,22 @@ bodies:
   license: Public domain
   file: Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
   type: cylindrical
+# The same map, with detail from the mosaic of Dawn's lowest orbit at 20 m.
+# The north was in darkness then: there the 60 m map stays as it is.
+- body: spkid-20000004
+  body_name: vesta
+  source: https://sbnarchive.psi.edu/pds3/dawn/fc/DWNVFC2_2/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA. Dawn Framing Camera global mosaics of Vesta: HAMO, 60 m/px (USGS Astrogeology Science Center) with detail from the LAMO clear-filter mosaic, 20 m/px (PDS Small Bodies Node)."
+  file: Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
+  type: cylindrical
+  tiles: only
+  brightness:
+  - file: VE_LAMO_00N_330E_CYL_CLEAR.TIF
+    source: https://sbnarchive.psi.edu/pds3/dawn/fc/DWNVFC2_2/
+    download_url: https://sbnarchive.psi.edu/pds3/dawn/fc/DWNVFC2_2/EXTRAS/LAMO_CLEAR/VE_LAMO_00N_330E_CYL_CLEAR.TIF
+    lon_at_left_deg: 150  # centred on 330°E
 - body: spkid-20025143
   body_name: itokawa
   source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/25143itokawa/
