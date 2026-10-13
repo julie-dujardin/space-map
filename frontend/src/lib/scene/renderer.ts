@@ -145,6 +145,7 @@ import { OutOfRangeNotifier } from './out-of-range-notice';
 import { ExtensionRegistry } from './extensions/registry';
 import { resolvePose, type CameraPose } from './extensions/camera';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
+import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import {
 	minCameraDistance,
 	clampCameraOutsideBody,
@@ -2048,6 +2049,13 @@ export class SceneRenderer {
 	/** Fit-center ids already sent to `ensureBody`, so a frame loop never
 	 *  re-requests a stream. */
 	private requestedProbeTargets = new Set<string>();
+	/** Fit-center bodies whose load failed, till they can be asked for again.
+	 *  The check runs once for a focus and a date: the end of a wait runs it
+	 *  again. */
+	private probeTargetRetries = new RetryBackoff<string>(() => {
+		this.lastProbeTargetCheck = null;
+		this.invalidate();
+	});
 	/** Craft already asked about a ride, so a re-focus doesn't re-ask. */
 	private askedProbeRides = new Set<string>();
 
@@ -2076,9 +2084,18 @@ export class SceneRenderer {
 		if (!fcId) return;
 		const body = this.ctx.getBody(fcId);
 		if (!body) {
-			if (this.requestedProbeTargets.has(fcId)) return;
+			if (this.requestedProbeTargets.has(fcId) || this.probeTargetRetries.waiting(fcId)) return;
 			this.requestedProbeTargets.add(fcId);
-			void this.ctx.ensureBody(fcId, jdToDate(this.clock.jd));
+			this.ctx.ensureBody(fcId, jdToDate(this.clock.jd)).then(
+				() => this.probeTargetRetries.clear(fcId),
+				(error: unknown) => {
+					// A bundle that did not load says nothing about the body: it is
+					// asked for again after a wait, and the craft keeps its own fit.
+					console.warn(`[renderer] the body ${fcId} a craft is fit to did not load:`, error);
+					this.requestedProbeTargets.delete(fcId);
+					this.probeTargetRetries.fail(fcId);
+				}
+			);
 			return;
 		}
 		// Promotion makes `fitCenterUsable` pass, which flips the probe onto the

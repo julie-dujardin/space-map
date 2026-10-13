@@ -202,6 +202,8 @@ export class ZoneRefresher {
 			if (z.zone !== zoneName || z.kind !== 'time') continue;
 			z.currentTime = '';
 			z.lastLoadStartMs = -Infinity;
+			// Someone asked for this load: it does not wait out a failure.
+			this.retries.clear(loadKey(z, snapshotDate(z.zoomData, this.latestDate)));
 		}
 		this.tick(this.latestDate);
 	}
@@ -311,7 +313,19 @@ export class ZoneRefresher {
 	 * (a probe from its chunk, a small body or a stand-in from its bundle).
 	 */
 	async ensureBody(targetId: string, date: Date): Promise<void> {
-		if (targetId.startsWith('probe-')) await this.ensureProbe(targetId, date);
+		// The body a craft is fit to can fail to load. The craft is made a body
+		// all the same, and the failure is told last: the caller weighs it
+		// against the place the craft still has.
+		const anchorFailure = targetId.startsWith('probe-')
+			? await this.ensureProbe(targetId, date)
+			: null;
+		await this.ensureListed(targetId, date);
+		if (anchorFailure) throw anchorFailure.error;
+	}
+
+	/** Add `targetId` when no zone and no chunk gave it: a satellite a filter
+	 *  left out, or a stand-in from its bundle. */
+	private async ensureListed(targetId: string, date: Date): Promise<void> {
 		if (this.ctx.getBody(targetId)) return;
 		if (targetId.startsWith('norad_satcat-') && !this.wanted.has(targetId)) {
 			this.want(targetId);
@@ -329,10 +343,11 @@ export class ZoneRefresher {
 
 	/** Give a probe what its place needs at `date`: its chunk, the craft it
 	 *  rides on, and the small body its record is fit to. Adds the probe when
-	 *  a chunk holds it. */
-	private async ensureProbe(targetId: string, date: Date): Promise<void> {
+	 *  a chunk holds it. Returns the failure of that small body's load, if it
+	 *  did not load. */
+	private async ensureProbe(targetId: string, date: Date): Promise<{ error: unknown } | null> {
 		const store = this.ctx.probeStore;
-		if (!store) return;
+		if (!store) return null;
 		const jd = dateToJD(date);
 		// Started before the chunk wait so the two fetches overlap.
 		const passengerPromise = passengerFor(targetId);
@@ -347,15 +362,22 @@ export class ZoneRefresher {
 		// A record stamped to a small body (Deep Impact → Tempel 1) is gated
 		// until that body is in the scene to anchor it.
 		const fcId = store.stampedFitCenterAt(targetId, jd);
-		if (fcId) await ensureTargetStreamed(this.ctx, fcId);
-		if (this.ctx.getBody(targetId)) return;
+		const anchorFailure = fcId
+			? await ensureTargetStreamed(this.ctx, fcId).then(
+					() => null,
+					(error: unknown) => ({ error })
+				)
+			: null;
+		if (this.ctx.getBody(targetId)) return anchorFailure;
 		const labels = await fetchLabels();
 		const target = this.loader
 			.processProbes(store, date, labels)
 			.find((b) => b.data.id === targetId);
-		if (!target) return;
-		this.ctx.bodies.addBodies([target]);
-		this.ctx.credits.recordOrbitSources([target]);
+		if (target) {
+			this.ctx.bodies.addBodies([target]);
+			this.ctx.credits.recordOrbitSources([target]);
+		}
+		return anchorFailure;
 	}
 
 	private async loadTime(z: TimeZoneState, time: string, date: Date): Promise<void> {

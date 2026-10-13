@@ -258,10 +258,12 @@ export class Placer {
 	}
 
 	/** Why the ephemeris has nothing for `id` at `jd`: the chunk for the date is
-	 *  on its way, or the ephemeris does not reach the date. */
+	 *  still to come, or the ephemeris does not reach the date. A chunk that
+	 *  failed and waits for another try is still to come: "no data at this
+	 *  date" would be false of it. */
 	private chebMiss(id: string, jd: number): Unplaced {
 		const store = this.ctx.chebStore!;
-		if (store.isLoading(id, jd)) return 'loading';
+		if (store.isAwaited(id, jd)) return 'loading';
 		const coverage = store.zoneCoverage(id);
 		const outside = coverage !== null && (jd < coverage.start || jd > coverage.end);
 		if (outside && jd === this.passJd) {
@@ -386,8 +388,8 @@ export class Placer {
 		// so trail geometry and trail-anchor writes follow the new parent.
 		const located = ctx.probeStore?.probeWithCenter(d.id, jd, zonePref) ?? null;
 		if (!located) {
-			// A chunk on its way can hold the craft.
-			if (ctx.probeStore?.loadingAt(jd)) return setUnplaced(body, 'loading');
+			// A chunk that is still to come can hold the craft.
+			if (ctx.probeStore?.awaitedAt(jd)) return setUnplaced(body, 'loading');
 			setUnplaced(body, 'no-data');
 			diagnostics.warnOnce('probe-unavailable', d.id, () => {
 				const reason = !ctx.probeStore

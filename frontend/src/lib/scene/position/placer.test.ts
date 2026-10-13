@@ -47,7 +47,7 @@ interface FakeCheb {
 const probeStoreWith = (loading: boolean) => ({
 	ridesAt: () => [],
 	probeWithCenter: () => null,
-	loadingAt: () => loading
+	awaitedAt: () => loading
 });
 
 /** A placer over a scene that holds `bodies`. */
@@ -68,7 +68,7 @@ function placerOver(
 					has: (id: string) => cheb.ids.includes(id),
 					positionScene: cheb.offset,
 					zoneCoverage: () => cheb.coverage ?? null,
-					isLoading: () => cheb.loading ?? false
+					isAwaited: () => cheb.loading ?? false
 				}
 			: null,
 		probeStore,

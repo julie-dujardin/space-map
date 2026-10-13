@@ -87,10 +87,11 @@ export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneP
 		return { start: params.start_jd, end: params.end_jd };
 	}
 
-	/** True while the chunk that covers `jd` for `objectId` is on its way. */
-	isLoading(objectId: string, jd: number): boolean {
+	/** True while the chunk that covers `jd` for `objectId` is still to come:
+	 *  on its way, or waiting for another try. */
+	isAwaited(objectId: string, jd: number): boolean {
 		const zone = this.idToZone.get(objectId);
-		return zone !== undefined && this.loadingAt(jd, zone);
+		return zone !== undefined && this.awaitedAt(jd, zone);
 	}
 
 	private resolve(objectId: string, jd: number): BodyLocation | null {

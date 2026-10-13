@@ -197,6 +197,37 @@ describe('ChunkWindow after a failed load', () => {
 		expect(win.requested).toHaveLength(2);
 	});
 
+	it('says what failed, for a loop that reads no outcome', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		await failedWindow();
+		expect(warn).toHaveBeenCalledWith(
+			`[position] chunk ${ZONE}:0 did not load:`,
+			expect.objectContaining({ message: 'no chunk 0' })
+		);
+		warn.mockRestore();
+	});
+
+	it('still awaits the chunk through its wait and its next try', async () => {
+		const win = await failedWindow();
+		// Not on its way, and not for good either.
+		expect(win.loadingAt(START_JD + 5)).toBe(false);
+		expect(win.awaitedAt(START_JD + 5)).toBe(true);
+		expect(win.awaitedAt(START_JD + 5, 'other/zone')).toBe(false);
+		await vi.advanceTimersByTimeAsync(FIRST_WAIT_MS);
+		win.ensure(START_JD + 5);
+		expect(win.awaitedAt(START_JD + 5)).toBe(true);
+		win.settle();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(win.awaitedAt(START_JD + 5)).toBe(false);
+	});
+
+	it('asks at once for a scene that holds its date on the chunk', async () => {
+		const win = await failedWindow();
+		win.request(START_JD + 5);
+		expect(win.requested).toHaveLength(2);
+		expect(win.loadingAt(START_JD + 5)).toBe(true);
+	});
+
 	it('asks at once for a caller that waits, and is not loading the chunk till then', async () => {
 		const win = await failedWindow();
 		expect(win.loadingAt(START_JD + 5)).toBe(false);

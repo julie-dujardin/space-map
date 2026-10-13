@@ -66,9 +66,15 @@ export class AppState {
 	 *  with a map URL. False too after {@link release}. */
 	private ownsUrl: boolean;
 
+	/** Whether the view's camera is one to write down: the URL gave it, or the
+	 *  scene has reported it. Before that it is the default one, and a link
+	 *  that carried it would open there in place of a framing of its target. */
+	private cameraKnown: boolean;
+
 	constructor(initial: MapViewState, opts?: { ownsUrl?: boolean }) {
 		this.view = initial;
 		this.ownsUrl = opts?.ownsUrl ?? true;
+		this.cameraKnown = initial.framed === true;
 	}
 
 	/** Give the address bar up, for good: the page that made this state is
@@ -113,6 +119,7 @@ export class AppState {
 
 	setCamera(cam: CameraView) {
 		this.view = { ...this.view, ...cam };
+		this.cameraKnown = true;
 		this.replaceNow();
 	}
 
@@ -258,11 +265,13 @@ export class AppState {
 	}
 
 	/** Give the view the export's name for its subject, read after the view
-	 *  was set: the title and the URL catch up without growing history. */
+	 *  was set: the title and the URL catch up without growing history. The
+	 *  name can come before the scene has a camera to report; the URL then
+	 *  takes it with the first camera write. */
 	replaceFocusName(name: string) {
 		if (this.view.name === name) return;
 		this.view = { ...this.view, name };
-		this.replaceNow();
+		if (this.cameraKnown) this.replaceNow();
 	}
 
 	/** Switch tabs (replaceState — no history spam). Resets the depth reached

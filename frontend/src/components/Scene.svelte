@@ -159,6 +159,8 @@
 			void map
 				.goTo(view.id, {
 					camera: 'cut',
+					// A trip owns its dates: the clock stays on the entry's.
+					clock: view.type === UrlType.Nav ? 'keep' : 'snap',
 					view: () => ({
 						distance: view.zoom,
 						latitude: view.latitude,

@@ -124,7 +124,8 @@ export type Unplaced =
 	| 'not-yet'
 	/** Its ephemeris does not reach the date. */
 	| 'no-data'
-	/** Its data for the date, or that of a body it is placed from, is on its way. */
+	/** Its data for the date, or that of a body it is placed from, is on its
+	 *  way, or will be asked for again after a load that failed. */
 	| 'loading'
 	/** The body it hangs off has no place. */
 	| 'parent'

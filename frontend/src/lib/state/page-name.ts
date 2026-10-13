@@ -76,9 +76,11 @@ export async function fetchPageName(subject: PageSubject): Promise<string> {
 		return features.find((f) => f.featureId === subject.featureId)?.name ?? '';
 	}
 	const planetId = dominantPlanetId(subject.id);
+	// In the background: at boot these bundles would take the link from the
+	// scene's own fetches, and nothing waits on a name.
 	const [own, primary] = await Promise.all([
-		fetchObjectDetail(subject.id, subject.localized),
-		planetId ? fetchObjectDetail(planetId) : null
+		fetchObjectDetail(subject.id, subject.localized, undefined, true),
+		planetId ? fetchObjectDetail(planetId, true, undefined, true) : null
 	]);
 	return objectPageName(subject.id, own, primary);
 }

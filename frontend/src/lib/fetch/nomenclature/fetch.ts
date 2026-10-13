@@ -10,6 +10,7 @@
 import { getLocale } from '$lib/host';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { gunzip } from '$lib/fetch/gz';
+import { fetchMetadata } from '$lib/fetch/metadata';
 import { parseNomenclature, type NomenclatureRecord } from '$lib/fetch/nomenclature/parse';
 
 export interface NomenclatureFeature extends NomenclatureRecord {
@@ -57,6 +58,9 @@ export function fetchBodyNomenclature(
 	let p = cache.get(key);
 	if (!p) {
 		p = (async () => {
+			// The version tokens of both URLs come with the metadata: a page that
+			// opens on a feature asks for its name before the scene has read it.
+			await fetchMetadata();
 			const [records, labels] = await Promise.all([
 				fetchPositions(bodyId),
 				fetchLabelText(bodyId, lang)

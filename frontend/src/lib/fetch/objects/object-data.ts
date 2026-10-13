@@ -1389,18 +1389,21 @@ export type ObjectDetailData = BundlePair<GlobalObjectData, LocalizedObjectData>
 /**
  * Fetch the global + (optionally) localized detail bundles for `fileId`.
  * Pass `body.data.hasLocalized` for `fetchLocalized` to skip the localized
- * fetch on bodies with no Wikidata (avoids a guaranteed 404).
+ * fetch on bodies with no Wikidata (avoids a guaranteed 404). `background`
+ * queues the fetches behind the scene's own, for a caller nothing waits on.
  */
 export function fetchObjectDetail(
 	fileId: string,
 	fetchLocalized = true,
-	lang = getLocale()
+	lang = getLocale(),
+	background = false
 ): Promise<ObjectDetailData> {
 	return fetchBundlePair<GlobalObjectData, LocalizedObjectData>(
 		OBJECT_BUNDLES,
 		fileId,
 		lang,
-		fetchLocalized
+		fetchLocalized,
+		background
 	);
 }
 

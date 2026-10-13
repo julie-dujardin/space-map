@@ -110,11 +110,13 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 	}
 
 	/** Load the chunks covering `jd` and leave the window where it is: a scene
-	 *  that waits for them still reads the date it shows. */
+	 *  that waits for them still reads the date it shows. The scene waits, so
+	 *  a chunk that failed is asked for at once, whatever its wait. */
 	request(jd: number): void {
 		for (const [zone, params] of this.zoneParams) {
 			const idx = chunkIndexForJd(params, jd);
-			if (this.isLoadable(params, idx)) this.loadChunk(zone, params, idx, 'high')?.catch(() => {});
+			if (!this.isLoadable(params, idx)) continue;
+			this.loadChunk(zone, params, idx, 'high', true)?.catch(() => {});
 		}
 	}
 
@@ -125,6 +127,18 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		for (const [name, params] of this.zoneParams) {
 			if (zone !== undefined && name !== zone) continue;
 			if (this.inflight.has(chunkKey(name, chunkIndexForJd(params, jd)))) return true;
+		}
+		return false;
+	}
+
+	/** True while a chunk that covers `jd` is not there yet and is still to
+	 *  come: on its way, or waiting to be asked for again after a failure. Its
+	 *  bodies have no place for now, which is not the same as no data. */
+	awaitedAt(jd: number, zone?: string): boolean {
+		for (const [name, params] of this.zoneParams) {
+			if (zone !== undefined && name !== zone) continue;
+			const key = chunkKey(name, chunkIndexForJd(params, jd));
+			if (this.inflight.has(key) || this.retries.waiting(key)) return true;
 		}
 		return false;
 	}
@@ -170,7 +184,12 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		};
 		job.then(
 			() => settle(true),
-			() => settle(false)
+			(error: unknown) => {
+				// The frame loop reads no outcome: without this line a chunk that
+				// never loads is asked for again and again with nothing to show.
+				console.warn(`[position] chunk ${key} did not load:`, error);
+				settle(false);
+			}
 		);
 		return job;
 	}

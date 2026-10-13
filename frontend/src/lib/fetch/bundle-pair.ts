@@ -132,18 +132,20 @@ export async function prefetchBundlePair(desc: BundlePairDescriptor, key: string
 	await prefetchFetcher(desc.globalPath(bucket), desc.versionClass).catch(() => null);
 }
 
-/** Client entry point: memoized metadata, cached bundles. */
+/** Client entry point: memoized metadata, cached bundles. `background` is
+ *  for a caller that nothing waits on: its fetches queue like a prefetch. */
 export async function fetchBundlePair<G, L>(
 	desc: BundlePairDescriptor,
 	key: string,
 	lang: string,
-	localized = true
+	localized = true,
+	background = false
 ): Promise<BundlePair<G, L>> {
 	const meta = await fetchMetadata();
 	return loadBundlePair<G, L>(desc, key, {
 		meta,
 		lang,
 		localized,
-		fetchBundle: clientFetcher
+		fetchBundle: background ? prefetchFetcher : clientFetcher
 	});
 }

@@ -291,6 +291,38 @@ describe('AppState.setMemberPage', () => {
 	});
 });
 
+describe('AppState.replaceFocusName', () => {
+	it('keeps the name off the URL while the camera is the default one', () => {
+		const s = new AppState({ ...initialView, name: '' });
+		s.replaceFocusName('Sun');
+		expect(s.view.name).toBe('Sun');
+		expect(replaceStateSpy).not.toHaveBeenCalled();
+	});
+
+	it('writes the name with the first camera the scene reports', () => {
+		const s = new AppState({ ...initialView, name: '' });
+		s.replaceFocusName('Sun');
+		s.setCamera({ latitude: 30, longitude: -60, zoom: 5 });
+		expect(replaceStateSpy).toHaveBeenCalledTimes(1);
+		expect(replaceStateSpy.mock.calls[0][0]).toContain('/Sun?at=');
+		expect(replaceStateSpy.mock.calls[0][0]).toContain(',30.00000,-60.00000,');
+	});
+
+	it('writes at once when the URL gave the camera', () => {
+		const s = new AppState({ ...initialView, name: '', framed: true });
+		s.replaceFocusName('Sun');
+		expect(replaceStateSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('writes at once after the scene has reported a camera', () => {
+		const s = new AppState({ ...initialView, name: '' });
+		s.setCamera({ latitude: 30, longitude: -60, zoom: 5 });
+		replaceStateSpy.mockClear();
+		s.replaceFocusName('Sun');
+		expect(replaceStateSpy).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('AppState.syncFromPopState', () => {
 	it('replaces the view without writing to URL', () => {
 		const s = new AppState({ ...initialView });

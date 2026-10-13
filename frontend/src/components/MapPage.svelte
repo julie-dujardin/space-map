@@ -136,18 +136,37 @@
 	setContext('mapCover', mapCover);
 	const settings = getSettings();
 
+	/** Longest wait for a name after a load that failed. The bundle with the
+	 *  name can be the load that failed: on a link that stalls, the message
+	 *  would wait for it as long again. */
+	const FAILED_NAME_WAIT_MS = 1500;
+
+	/** The name the export gives `id`, or undefined when it gives none, or
+	 *  none in time when `hurried`. */
+	async function exportedName(id: string, hurried: boolean): Promise<string | undefined> {
+		const name = fetchObjectDetail(id).then(
+			(detail) => detail.localized?.name,
+			() => undefined
+		);
+		if (!hurried) return name;
+		return Promise.race([
+			name,
+			new Promise<undefined>((resolve) => setTimeout(resolve, FAILED_NAME_WAIT_MS))
+		]);
+	}
+
 	/** Say what a navigation did that the reader did not ask for: it changed
 	 *  the date, the object has no place and the camera went elsewhere, or its
 	 *  data did not load. */
 	async function reportArrival(arrival: Arrival, id: string, name?: string): Promise<void> {
 		if (arrival.outcome === 'superseded') return;
-		// A bare `/e/<id>` link carries no name; the catalogue and the localized bundle do.
-		const label =
-			name && name !== id
-				? name
-				: (arrival.body?.data.name ??
-					(await fetchObjectDetail(id).catch(() => null))?.localized?.name ??
-					id);
+		// A bare `/e/<id>` link carries no name; the view has the export's once
+		// the page has read it, and the catalogue and the localized bundle do.
+		const known =
+			(name && name !== id ? name : undefined) ??
+			arrival.body?.data.name ??
+			(appState.view.id === id && appState.view.name ? appState.view.name : undefined);
+		const label = known ?? (await exportedName(id, arrival.outcome === 'failed')) ?? id;
 		// Persistent: they fire during the load, whose main-thread churn would eat
 		// a timed toast before it paints. The next one replaces it.
 		const sticky = { duration: Number.POSITIVE_INFINITY, closeButton: true };
@@ -363,11 +382,13 @@
 	 *  load. Closing the drawer keeps the id as the camera's anchor and drops
 	 *  the name, so past the opening a name (or a group/feature of its own) is
 	 *  what marks a panel rather than an anchor. */
-	const panelPromised = $derived(
-		!isNav &&
-			(opening ||
-				Boolean(appState.view.groupSlug || appState.view.name || appState.view.featureId !== null))
+	const panelNamed = $derived(
+		opening ||
+			Boolean(appState.view.groupSlug || appState.view.name || appState.view.featureId !== null)
 	);
+	// Two steps: the compiler has dropped the parentheses of an `&&` over an
+	// `||` group inside one `$derived`.
+	const panelPromised = $derived(!isNav && panelNamed);
 	/** The placeholder frame is up: the panel is promised but not built yet. */
 	const sidebarPending = $derived(panelPromised && !focusable);
 	/** How much of the viewport the mobile sheet takes, the placeholder's own
@@ -543,6 +564,8 @@
 	 *  load that failed is the page's to say. */
 	function reportFailed(arrival: Arrival, id: string): void {
 		if (arrival.outcome === 'failed') void reportArrival(arrival, id);
+		// The message of an earlier failure goes once a navigation ends well.
+		else if (arrival.outcome !== 'superseded') toast.dismiss('object-no-position');
 	}
 
 	// Look at a body without touching the URL. On /nav the trip owns the URL, so
@@ -753,8 +776,6 @@
 
 	async function openInitialView(): Promise<void> {
 		const initialId = appState.view.id;
-		// Captured before the home fallback below overwrites the view.
-		const initialName = appState.view.name;
 		// URL camera framing, restored onto the real target once it loads: the
 		// renderer settles its initial focus on the parent while the target's
 		// chunk is still streaming.
@@ -772,7 +793,7 @@
 		// Error screen already shown: no toast over it. A later navigation (the
 		// trip's own, a mission's) owns the camera from here.
 		if (ctx.error || arrival.outcome === 'superseded') return;
-		if (!isNav) void reportArrival(arrival, initialId, initialName);
+		if (!isNav) void reportArrival(arrival, initialId);
 		const placed = arrival.outcome === 'placed' ? arrival.body : undefined;
 		if (placed && appState.view.featureId !== null) {
 			// Feature deep-link: the featureId→activeFeature effect frames the
@@ -954,7 +975,11 @@
 						cameraFocus = body;
 						selectedBody = body;
 					}}
-					onArrival={(arrival, id, name) => void reportArrival(arrival, id, name)}
+					onArrival={(arrival, id, name) => {
+						// A trip's panel tells the rest, as on any navigation inside it.
+						if (isNav) reportFailed(arrival, id);
+						else void reportArrival(arrival, id, name);
+					}}
 					onFeatureSelect={async (bodyId, fid, lat, lon, d) => {
 						const features = await fetchBodyNomenclature(bodyId);
 						const f = features.find((x) => x.featureId === fid);
