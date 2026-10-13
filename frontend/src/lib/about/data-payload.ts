@@ -7,12 +7,17 @@ import type { LabelMap } from '$lib/fetch/position/labels';
 
 export type MapLayer = 'surface' | 'clouds' | 'night' | 'specular' | 'topography';
 
-/** Where a map or a patch comes from. */
-export interface MapCredit {
-	/** The page of the source. */
-	source: string;
+/** Where a ring or a model comes from. */
+export interface Credit {
+	/** The page of the source. A model can have none. */
+	source?: string;
 	organisation: string;
 	attribution?: string;
+}
+
+/** Where a map or a patch comes from. */
+export interface MapCredit extends Credit {
+	source: string;
 }
 
 /** A whole-globe image of a map. */
@@ -85,6 +90,8 @@ export interface World {
 	id: string;
 	name: string;
 	radius_km?: number;
+	/** A giant planet: its `surface` map shows its cloud top. */
+	no_surface?: true;
 	maps: WorldMap[];
 }
 
@@ -97,9 +104,90 @@ export interface DataSystem {
 	worlds: World[];
 }
 
+/** One bundle of the rings of a world. */
+export interface Ring {
+	/** `inner`, `primary` or `outer`. */
+	id: string;
+	/** From the centre of the body. */
+	inner_radius_km: number;
+	outer_radius_km: number;
+	samples: number;
+	/** Radial distance between two samples. */
+	km_per_sample: number;
+	size_bytes: number;
+	sources: Credit[];
+}
+
+export interface RingWorld {
+	id: string;
+	name: string;
+	/** Innermost first. */
+	rings: Ring[];
+}
+
+/** One file of a model. */
+export interface ModelTier {
+	name: string;
+	triangles: number;
+	size_bytes: number;
+}
+
+export interface Model {
+	slug: string;
+	/** The low file, then the high one. */
+	tiers: ModelTier[];
+	/** Longest dimension of the object. Absent for a craft with no measured size. */
+	extent_m?: number;
+	sources: Credit[];
+}
+
+/** The measured shape of a world. */
+export interface ShapeModel extends Model {
+	provenance: string;
+}
+
+export interface ShapeWorld {
+	id: string;
+	name: string;
+	models: ShapeModel[];
+}
+
+/** A model of a craft, or of another object that is not a world. */
+export interface CraftModel extends Model {
+	/** Objects that the map draws with the model. */
+	objects: number;
+	/** That object, where there is one. */
+	object?: { id: string; name: string };
+}
+
+export interface CraftGroup {
+	kind: string;
+	models: CraftModel[];
+}
+
+/** The shapes from light curves, as one row. */
+export interface LightcurveModels {
+	models: number;
+	worlds: number;
+	triangles: number;
+	size_bytes: number;
+	sources: Credit[];
+}
+
+export interface DataModels {
+	worlds: ShapeWorld[];
+	craft: CraftGroup[];
+	lightcurve?: LightcurveModels;
+}
+
 export interface AboutData {
 	generated_at: string;
+	/** Bodies with a map, a ring or a shape model. */
+	worlds: number;
+	/** The maps. */
 	systems: DataSystem[];
+	rings: RingWorld[];
+	models: DataModels;
 }
 
 /** What the page loads: the report, and the names of its worlds in the
@@ -142,6 +230,25 @@ export function mapFigures(map: WorldMap): MapFigures {
 		height: finest?.height,
 		size_bytes: tierBytes,
 		height_step_m: map.height_step_m
+	};
+}
+
+/** What the row of a model states. */
+export interface ModelFigures {
+	triangles: number;
+	/** Present where the low file has another count. */
+	low_triangles?: number;
+	size_bytes: number;
+}
+
+/** The high file gives the triangles. The size counts each file. */
+export function modelFigures(model: Model): ModelFigures {
+	const triangles = model.tiers.at(-1)?.triangles ?? 0;
+	const low = model.tiers[0]?.triangles;
+	return {
+		triangles,
+		low_triangles: low === triangles ? undefined : low,
+		size_bytes: model.tiers.reduce((sum, tier) => sum + tier.size_bytes, 0)
 	};
 }
 
@@ -188,14 +295,23 @@ export interface DataTotals {
 	maps: number;
 	patches: number;
 	tiles: number;
+	rings: number;
+	models: number;
 	size_bytes: number;
 }
 
 export function totals(data: AboutData): DataTotals {
-	const sum: DataTotals = { worlds: 0, maps: 0, patches: 0, tiles: 0, size_bytes: 0 };
+	const sum: DataTotals = {
+		worlds: data.worlds,
+		maps: 0,
+		patches: 0,
+		tiles: 0,
+		rings: 0,
+		models: 0,
+		size_bytes: 0
+	};
 	for (const system of data.systems) {
 		for (const world of system.worlds) {
-			sum.worlds += 1;
 			for (const map of world.maps) {
 				const figures = mapFigures(map);
 				sum.maps += 1;
@@ -209,5 +325,19 @@ export function totals(data: AboutData): DataTotals {
 			}
 		}
 	}
+	for (const ring of data.rings.flatMap((world) => world.rings)) {
+		sum.rings += 1;
+		sum.size_bytes += ring.size_bytes;
+	}
+	const listed: Model[] = [
+		...data.models.worlds.flatMap((world) => world.models),
+		...data.models.craft.flatMap((group) => group.models)
+	];
+	for (const model of listed) {
+		sum.models += 1;
+		sum.size_bytes += modelFigures(model).size_bytes;
+	}
+	sum.models += data.models.lightcurve?.models ?? 0;
+	sum.size_bytes += data.models.lightcurve?.size_bytes ?? 0;
 	return sum;
 }

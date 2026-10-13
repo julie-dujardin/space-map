@@ -3,10 +3,12 @@ import { describe, it, expect } from 'vitest';
 import {
 	listedSources,
 	mapFigures,
+	modelFigures,
 	totals,
 	type AboutData,
 	type MapPyramid,
 	type MapSource,
+	type Model,
 	type WorldMap
 } from './data-payload';
 
@@ -33,6 +35,18 @@ function map(overrides: Partial<WorldMap> = {}): WorldMap {
 			{ name: 'low', width: 2048, height: 1024, size_bytes: 10, m_per_px: 400 },
 			{ name: 'high', width: 4096, height: 2048, size_bytes: 30, m_per_px: 200 }
 		],
+		...overrides
+	};
+}
+
+function model(overrides: Partial<Model> = {}): Model {
+	return {
+		slug: 'ace',
+		tiers: [
+			{ name: 'low', triangles: 300, size_bytes: 10 },
+			{ name: 'high', triangles: 900, size_bytes: 30 }
+		],
+		sources: [{ organisation: 'NASA' }],
 		...overrides
 	};
 }
@@ -101,8 +115,31 @@ describe('listedSources', () => {
 	});
 });
 
+describe('modelFigures', () => {
+	it('states the triangles of the high file and the size of each file', () => {
+		expect(modelFigures(model())).toEqual({ triangles: 900, low_triangles: 300, size_bytes: 40 });
+	});
+
+	it('states one count where the two files have the same', () => {
+		const tiers = [
+			{ name: 'low', triangles: 900, size_bytes: 30 },
+			{ name: 'high', triangles: 900, size_bytes: 30 }
+		];
+		expect(modelFigures(model({ tiers })).low_triangles).toBeUndefined();
+	});
+
+	it('states one count for a model of one file', () => {
+		const tiers = [{ name: 'high', triangles: 1144, size_bytes: 9 }];
+		expect(modelFigures(model({ tiers }))).toEqual({
+			triangles: 1144,
+			low_triangles: undefined,
+			size_bytes: 9
+		});
+	});
+});
+
 describe('totals', () => {
-	it('adds maps, patches and their tiles over all worlds', () => {
+	it('adds maps, patches, rings and models, and takes the worlds as stated', () => {
 		const patched = pyramid({
 			patches: [
 				{
@@ -120,6 +157,31 @@ describe('totals', () => {
 		});
 		const data: AboutData = {
 			generated_at: '2026-10-13T18:00:00+00:00',
+			worlds: 12,
+			rings: [
+				{
+					id: 'naif-699',
+					name: 'Saturn',
+					rings: [
+						{
+							id: 'primary',
+							inner_radius_km: 74510,
+							outer_radius_km: 140390,
+							samples: 13177,
+							km_per_sample: 5,
+							size_bytes: 7,
+							sources: []
+						}
+					]
+				}
+			],
+			models: {
+				worlds: [
+					{ id: 'naif-401', name: 'Phobos', models: [{ ...model(), provenance: 'missions' }] }
+				],
+				craft: [{ kind: 'probe', models: [{ ...model(), objects: 0 }] }],
+				lightcurve: { models: 9, worlds: 8, triangles: 9000, size_bytes: 90, sources: [] }
+			},
 			systems: [
 				{
 					id: 'naif-4',
@@ -132,11 +194,13 @@ describe('totals', () => {
 			]
 		};
 		expect(totals(data)).toEqual({
-			worlds: 2,
+			worlds: 12,
 			maps: 3,
 			patches: 1,
 			tiles: 72,
-			size_bytes: 5040 + 500 + 40 + 40
+			rings: 1,
+			models: 11,
+			size_bytes: 5040 + 500 + 40 + 40 + 7 + 40 + 40 + 90
 		});
 	});
 });
