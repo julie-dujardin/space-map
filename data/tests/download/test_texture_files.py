@@ -71,6 +71,20 @@ class TestTextureFilesDownloader:
         assert not list(target.parent.glob("*.part*"))
         assert all("skipped" not in str(r.url) for r in requests)
 
+    def test_file_named_by_two_entries_is_fetched_once(self, tmp_path, monkeypatch):
+        """Two maps of one body share a detail layer."""
+        downloader, requests = _downloader(tmp_path, monkeypatch)
+        layer = {"file": "detail.tif", "download_url": URL}
+        entries = [
+            {"file": name, "_source_dir": tmp_path / "surfaces", "brightness": [layer]}
+            for name in ("best.tif", "second.tif")
+        ]
+        monkeypatch.setattr(texture_files, "load_entries", lambda _dir: entries)
+        downloader.download()
+
+        assert (tmp_path / "surfaces" / "detail.tif").read_bytes() == BODY
+        assert sum(r.method == "GET" for r in requests) == 1
+
     def test_requests_drop_the_bot_token_and_keep_the_contact(
         self, tmp_path, monkeypatch
     ):

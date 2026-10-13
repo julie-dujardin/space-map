@@ -89,14 +89,17 @@ class TextureFilesDownloader(Downloader):
         self._headers = {"User-Agent": user_agent_without_bot(client)}
 
     def _targets(self) -> list[tuple[str, Path]]:
-        return [
-            (url, entry["_source_dir"] / name)
+        # Keyed on the file: two maps of a body can share a detail layer, and
+        # two writers on one partial file corrupt it.
+        targets = {
+            entry["_source_dir"] / name: url
             for entry in load_entries(self.out_dir)
             if not entry.get("skip")
             for layer in source_layers(entry)
             for name, url in layer_files(layer)
             if url
-        ]
+        }
+        return [(url, path) for path, url in targets.items()]
 
     def _key(self, path: Path) -> str:
         return str(path.relative_to(self.out_dir))
