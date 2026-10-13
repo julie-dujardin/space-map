@@ -141,6 +141,9 @@ export interface TileChain {
 		home: { value: Vector2[] };
 		/** The point under the camera, in the mesh's own frame. */
 		anchor: { value: Vector3 };
+		/** Per window: a bit per slot, set where its tile is in. For a reader
+		 *  that cannot afford a look at the mask each time. */
+		loaded: { value: Int32Array };
 		/** Most taps of the anisotropic filter, and a tile's side in pixels. */
 		filter: { value: Vector2 };
 	};
@@ -314,6 +317,7 @@ export function createChain(kind: TileKind): TileChain {
 			window: { value: Array.from({ length: MAX_DRAWN }, () => new Vector4()) },
 			home: { value: Array.from({ length: MAX_DRAWN }, () => new Vector2()) },
 			anchor: { value: new Vector3(1, 0, 0) },
+			loaded: { value: new Int32Array(MAX_DRAWN) },
 			filter: { value: new Vector2(1, 1) }
 		},
 		inflight: 0,
@@ -668,5 +672,10 @@ export function updateChain(
 			chain.uniforms.home.value[i].set(from.x, from.y);
 		}
 		link.set(win.chart, win.layer, win.level, 1);
+		let loaded = 0;
+		for (let slot = 0; slot < SLOTS; slot++) {
+			if (isLoaded(store, win.layer, slot)) loaded |= 1 << slot;
+		}
+		chain.uniforms.loaded.value[i] = loaded;
 	}
 }

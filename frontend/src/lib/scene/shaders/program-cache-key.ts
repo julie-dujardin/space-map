@@ -1,7 +1,11 @@
 import type { Material } from 'three';
 
+/** A modifier's name. A function, where its shader depends on a setting that
+ *  can change: a new name is a new program. */
+type ShaderMod = string | (() => string);
+
 interface TaggedMaterial extends Material {
-	userData: { shaderMods?: string[] };
+	userData: { shaderMods?: ShaderMod[] };
 }
 
 /**
@@ -16,12 +20,13 @@ interface TaggedMaterial extends Material {
  * Also keeps the key stable across detach/re-attach, since a cache hit skips
  * `onBeforeCompile` — and the uniform wiring with it.
  */
-export function tagShaderModifier(material: Material, mod: string): void {
+export function tagShaderModifier(material: Material, mod: ShaderMod): void {
 	const tagged = material as TaggedMaterial;
 	const mods = (tagged.userData.shaderMods ??= []);
 	if (mods.includes(mod)) return;
 	mods.push(mod);
-	material.customProgramCacheKey = () => mods.join('|');
+	material.customProgramCacheKey = () =>
+		mods.map((name) => (typeof name === 'string' ? name : name())).join('|');
 }
 
 /**
@@ -31,7 +36,7 @@ export function tagShaderModifier(material: Material, mod: string): void {
  */
 export function chainShaderHook(
 	material: Material,
-	mod: string,
+	mod: ShaderMod,
 	patch: Material['onBeforeCompile']
 ): void {
 	const prev = material.onBeforeCompile;

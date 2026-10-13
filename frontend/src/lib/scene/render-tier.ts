@@ -25,6 +25,10 @@ export interface RenderTierPreset {
 	tileWindows: number;
 	/** Height tile windows drawn for one body, 32 MB each, and one more held. */
 	reliefWindows: number;
+	/** Samples of the ray that finds the ground's own shadow in the height
+	 *  tiles, for each pixel of lit ground. None: the whole-globe map casts
+	 *  the shadows there too. */
+	reliefShadowSteps: number;
 	/** Cells from one band of the terrain grid to the next. At ground level the
 	 *  grid has about (125 + 14 × this)² vertices. */
 	terrainBandCells: number;
@@ -42,6 +46,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		maxTextureTier: 'medium',
 		tileWindows: 3,
 		reliefWindows: 2,
+		reliefShadowSteps: 12,
 		terrainBandCells: 16,
 		maxSkyboxFace: 2048
 	},
@@ -54,6 +59,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		maxTextureTier: 'medium',
 		tileWindows: 4,
 		reliefWindows: 3,
+		reliefShadowSteps: 16,
 		terrainBandCells: 24,
 		maxSkyboxFace: 2048
 	},
@@ -66,6 +72,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		maxTextureTier: 'high',
 		tileWindows: 6,
 		reliefWindows: 4,
+		reliefShadowSteps: 32,
 		terrainBandCells: 32,
 		maxSkyboxFace: Infinity
 	}
@@ -87,6 +94,11 @@ export function maxTileWindows(): number {
 export function maxReliefWindows(): number {
 	if (isLowEndDevice()) return 0;
 	return currentRenderTier().reliefWindows;
+}
+
+/** Samples of a shadow ray through the height tiles; see the preset. */
+export function reliefShadowSteps(): number {
+	return currentRenderTier().reliefShadowSteps;
 }
 
 export function resolveRenderTier(): RenderTier {

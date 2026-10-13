@@ -7,7 +7,8 @@
  *     close the gradient comes from the body's height tiles.
  *  2. Self-cast shadows — per-fragment march of the height texture toward the
  *     Sun. Detail is bounded by texture resolution, not mesh tessellation,
- *     beating a geometry shadow map at planet scale.
+ *     beating a geometry shadow map at planet scale. Up close the march is
+ *     over the height tiles too.
  *
  * Chained onto `onBeforeCompile` to stack with eclipse/ring-shadow; scales
  * direct light only, like the eclipse path.
@@ -15,7 +16,8 @@
 
 import { type MeshStandardMaterial, type Texture, Vector2, type Vector3 } from 'three';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
-import { RELIEF_TILES_GLSL, type ReliefTiles } from './relief-tiles';
+import { type ReliefTiles, reliefTilesGlsl } from './relief-tiles';
+import { reliefShadowSteps } from '$lib/scene/render-tier';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
 /** Self-shadow march sample count. */
@@ -40,6 +42,19 @@ const TERMINATOR_GATE_DARK = -0.08;
  *  slope as occluded, banding the terminator; fade it out and let Lambert darken that zone instead. */
 const MARCH_GRAZE_FADE = 0.18;
 
+/** The tiles' own shadow: the Sun in the body's frame, as a way along the
+ *  sphere and a height above it. Ground that faces away from the Sun takes
+ *  no light from it, and so needs no ray. */
+const TILE_LIGHT = /* glsl */ `
+						if (byTiles > 0.005 && dot(normal, mat3(viewMatrix) * L) > 0.0) {
+							vec3 sunward = normalize(L * mat3(modelMatrix));
+							float up = dot(sunward, selfDir);
+							vec3 along = sunward - selfDir * up;
+							float run = length(along);
+							if (run > 1e-4) tileLight = reliefTileShadow(selfDir, selfCharts, along / run, up / run, uSelfSunSize, selfFirst);
+							if (tileLight < 0.0) byTiles = 0.0;
+						}`;
+
 export interface SelfShadowUniforms {
 	uSelfHeightMap: { value: Texture | null };
 	/** Scene units per unit texel value: `kmToScene(scale_km)`. Bias is dropped —
@@ -54,7 +69,8 @@ export interface SelfShadowUniforms {
  *  mesh carries the scale (the lineup's unit spheres) passes local units times
  *  that scale, and re-calls on every resize. `sunDir` defaults to the scene's
  *  Sun; a stage with a light of its own passes that light's direction. `tiles`
- *  gives the slope of the ground up close, where the body has height tiles. */
+ *  gives the slope and the shadows of the ground up close, where the body has
+ *  height tiles. */
 export function attachSelfShadowToBody(
 	material: MeshStandardMaterial,
 	heightMap: Texture,
@@ -83,9 +99,14 @@ export function attachSelfShadowToBody(
 	material.userData.selfShadow = uniforms;
 	const sun = sunDir ?? getEclipseSceneUniforms().uSunDir;
 
-	chainShaderHook(material, tiles ? 'selfShadowTiles' : 'selfShadow', (shader) => {
+	// The shader with tiles has the samples of its shadow ray as a constant.
+	const mod = tiles ? () => `selfShadowTiles${reliefShadowSteps()}` : 'selfShadow';
+	chainShaderHook(material, mod, (shader) => {
+		const steps = tiles ? reliefShadowSteps() : 0;
 		// Unique name: the chained eclipse shader already declares uSunDir.
 		Object.assign(shader.uniforms, uniforms, { uSelfSunDir: sun }, tiles?.uniforms);
+		// Unique name here too: the eclipse shader declares the scene's own.
+		if (tiles) shader.uniforms.uSelfSunSize = getEclipseSceneUniforms().uSunAngularRadius;
 
 		shader.vertexShader = shader.vertexShader
 			.replace(
@@ -127,6 +148,7 @@ export function attachSelfShadowToBody(
 				uniform vec2 uSelfTexel;
 				uniform vec3 uSelfSunDir;
 				uniform mat3 normalMatrix;
+				${tiles ? 'uniform mat4 modelMatrix;\n\t\t\t\tuniform float uSelfSunSize;' : ''}
 				varying vec3 vSelfWorldNormal;
 				varying vec2 vSelfUv;
 				varying vec3 vSelfDir;
@@ -134,7 +156,7 @@ export function attachSelfShadowToBody(
 					varying vec3 vSelfNorthW;
 					varying float vSelfRadiusW;
 					varying float vSelfCosLat;
-				${tiles ? RELIEF_TILES_GLSL : ''}
+				${tiles ? reliefTilesGlsl(steps) : ''}
 
 				float selfHeight(vec2 uv) {
 					return texture2D(uSelfHeightMap, uv).r * uSelfScale;
@@ -173,7 +195,36 @@ export function attachSelfShadowToBody(
 						float R = vSelfRadiusW;
 						Tu = vSelfEastW * (6.2831853 * R * vSelfCosLat);
 						Tv = vSelfNorthW * (3.14159265 * R);
-					}`
+					}
+
+				// Part of the Sun's light that the ground of the whole-globe map
+				// lets through, for a Sun towards L that is gN above the sphere.
+				float selfMapLight(vec3 L, float gN) {
+					vec3 Tu, Tv;
+					selfTangents(Tu, Tv);
+					float lenTu = length(Tu);
+					float lenTv = length(Tv);
+					if (lenTu <= 1e-12 || lenTv <= 1e-12) return 1.0;
+					float lu = dot(L, Tu / lenTu);
+					float lv = dot(L, Tv / lenTv);
+					float lh = sqrt(lu * lu + lv * lv);
+					if (lh <= 1e-4) return 1.0;
+					float ds = ${SHADOW_REACH.toFixed(3)} * uSelfScale / float(SELF_STEPS);
+					// World step → uv step via the per-axis metric (|Tu|, |Tv|).
+					vec2 stepUv = ds * vec2((lu / lh) / lenTu, (lv / lh) / lenTv);
+					float h0 = selfHeight(vSelfUv);
+					float tanElev = gN / lh;
+					float block = 0.0;
+					for (int i = 1; i <= SELF_STEPS; i++) {
+						vec2 uv = vSelfUv + float(i) * stepUv;
+						float rayH = h0 + float(i) * ds * tanElev;
+						block = max(block, selfHeight(uv) - rayH);
+					}
+					// Fade the march out at grazing angles: a near-horizontal ray
+					// occludes every away-facing slope, banding the terminator.
+					float marchFade = smoothstep(0.0, ${MARCH_GRAZE_FADE.toFixed(3)}, gN);
+					return 1.0 - marchFade * clamp(block / (${SHADOW_SOFT.toFixed(3)} * uSelfScale), 0.0, 1.0);
+				}`
 			)
 			// Replace the geometric normal with the one of the ground's slope: from
 			// the height tiles where they cover the fragment, from the whole-globe
@@ -181,15 +232,17 @@ export function attachSelfShadowToBody(
 			.replace(
 				'#include <normal_fragment_maps>',
 				`#include <normal_fragment_maps>
+				vec3 selfDir = normalize(vSelfDir);
+				// The part of the fragment that the tiles answer for.
+				float selfCovered = 0.0;
+				${tiles ? 'TileCharts selfCharts = tileCharts(selfDir);\n\t\t\t\tint selfFirst = -1;' : ''}
 				{
-					vec3 dir = normalize(vSelfDir);
-					float covered = 0.0;
 					vec3 slope = vec3(0.0);
-					${tiles ? 'slope = reliefTileSlope(dir, covered);' : ''}
-					if (covered < 0.995 && uSelfScale > 0.0) slope += (1.0 - covered) * selfMapSlope(dir);
+					${tiles ? 'slope = reliefTileSlope(selfDir, selfCharts, selfCovered, selfFirst);' : ''}
+					if (selfCovered < 0.995 && uSelfScale > 0.0) slope += (1.0 - selfCovered) * selfMapSlope(selfDir);
 					float steep = length(slope);
 					if (steep > ${SLOPE_CLAMP.toFixed(3)}) slope *= ${SLOPE_CLAMP.toFixed(3)} / steep;
-					normal = normalize(normalMatrix * (dir - slope));
+					normal = normalize(normalMatrix * (selfDir - slope));
 				}`
 			)
 			.replace(
@@ -203,33 +256,16 @@ export function attachSelfShadowToBody(
 					// past the terminator and light the night side. Fading direct light
 					// by geometric N·L keeps the night dark regardless.
 					float shadow = smoothstep(${TERMINATOR_GATE_DARK.toFixed(3)}, ${TERMINATOR_GATE_LIT.toFixed(3)}, gN);
-					vec3 Tu, Tv;
-					selfTangents(Tu, Tv);
-					float lenTu = length(Tu);
-					float lenTv = length(Tv);
 					// Local crater self-shadow, lit hemisphere only — the macro gate owns
 					// the night side; the short march can't see that curvature.
-					if (shadow > 0.0 && uSelfScale > 0.0 && lenTu > 1e-12 && lenTv > 1e-12 && gN > 0.0) {
-						float lu = dot(L, Tu / lenTu);
-						float lv = dot(L, Tv / lenTv);
-						float lh = sqrt(lu * lu + lv * lv);
-						if (lh > 1e-4) {
-							float ds = ${SHADOW_REACH.toFixed(3)} * uSelfScale / float(SELF_STEPS);
-							// World step → uv step via the per-axis metric (|Tu|, |Tv|).
-							vec2 stepUv = ds * vec2((lu / lh) / lenTu, (lv / lh) / lenTv);
-							float h0 = selfHeight(vSelfUv);
-							float tanElev = gN / lh;
-							float block = 0.0;
-							for (int i = 1; i <= SELF_STEPS; i++) {
-								vec2 uv = vSelfUv + float(i) * stepUv;
-								float rayH = h0 + float(i) * ds * tanElev;
-								block = max(block, selfHeight(uv) - rayH);
-							}
-							// Fade the march out at grazing angles: a near-horizontal ray
-							// occludes every away-facing slope, banding the terminator.
-							float marchFade = smoothstep(0.0, ${MARCH_GRAZE_FADE.toFixed(3)}, gN);
-							shadow *= 1.0 - marchFade * clamp(block / (${SHADOW_SOFT.toFixed(3)} * uSelfScale), 0.0, 1.0);
-						}
+					if (shadow > 0.0 && gN > 0.0) {
+						// The part of the fragment whose shadow the tiles cast.
+						float byTiles = ${steps > 0 ? 'selfCovered' : '0.0'};
+						float tileLight = 1.0;
+						${steps > 0 ? TILE_LIGHT : ''}
+						float mapLight = 1.0;
+						if (byTiles < 0.995 && uSelfScale > 0.0) mapLight = selfMapLight(L, gN);
+						shadow *= mix(mapLight, tileLight, byTiles);
 					}
 					reflectedLight.directDiffuse *= shadow;
 					reflectedLight.directSpecular *= shadow;
