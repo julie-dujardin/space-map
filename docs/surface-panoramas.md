@@ -397,7 +397,10 @@ Nothing is published, added to the app export, or included in the software licen
 
 China's release states no reuse terms this project can rely on, so the Zhurong
 and Yutu-2 spheres stay in the cache and the panorama export publishes nothing
-of them. A traverse with no sphere to open is not a way into anything.
+of them. A traverse with no sphere to open is not a way into anything. Where
+each rover stood, and when, is measurement its labels state. That goes to the
+rover's own position on the map instead: see "Traverses" in
+[probe-events-schema.md](probe-events-schema.md).
 
 Third-party stitched panoramas and AI-generated fill are not used. Color labels
 distinguish natural/approximate-true, enhanced, and source color composites where

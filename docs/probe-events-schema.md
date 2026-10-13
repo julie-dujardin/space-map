@@ -158,6 +158,15 @@ A rover that came down on a lander has a `landing` event at the lander's
 touchdown, with the lander's `site`. Without that event the traverse has no
 phase to belong to and is not used.
 
+Zhurong and Yutu-2 are built from the labels the panorama pipeline downloads
+(`panoramas/clpds.py`):
+
+```
+uv run python -m space_map_data.probes.clpds_traverse
+```
+
+Run it again after a label download. Yutu-2's release still grows.
+
 ## Editing
 
 Events are ordered by date within a probe; a landed phase ends at the next
