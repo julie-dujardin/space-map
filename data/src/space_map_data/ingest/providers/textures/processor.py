@@ -560,6 +560,7 @@ class TextureProcessor:
                 **_described_files([name for name, _ in layer_files(spec)]),
                 "source": spec["source"],
                 "dimensions": layer.dimensions,
+                "full_width": layer.width,
                 "lat_range": spec.get("lat_range"),
                 "role": "brightness",
             }
@@ -618,6 +619,7 @@ class TextureProcessor:
                         "file": spec["file"],
                         "source": spec["source"],
                         "dimensions": layer.dimensions,
+                        "full_width": layer.width,
                         "lat_range": spec.get("lat_range"),
                     }
                     for spec, layer in zip(specs, layers)
@@ -742,7 +744,14 @@ class TextureProcessor:
             )
             credit = {
                 key: spec.get(key)
-                for key in ("id", "source", "organisation", "license", "attribution")
+                for key in (
+                    "id",
+                    "name",
+                    "source",
+                    "organisation",
+                    "license",
+                    "attribution",
+                )
             }
             current = built.get(patch_id)
             if current and current["version"] == version:
@@ -812,6 +821,11 @@ class TextureProcessor:
                 "x": [x0, x1],
                 "y": [y0, y1],
                 "files": files,
+                "full_width": builder.full_width,
+                "bounds": {
+                    edge: round(getattr(builder, edge), 6)
+                    for edge in ("west", "east", "south", "north")
+                },
                 "levels": stats.levels(base_level + 1),
                 "processed_at": datetime.now(UTC).isoformat(),
             }

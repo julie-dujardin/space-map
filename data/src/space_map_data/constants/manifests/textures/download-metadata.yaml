@@ -176,6 +176,7 @@ bodies:
   # and a mosaic is strips a few kilometres wide, so the blend is narrow.
   patches:
   - id: apollo-11
+    name: Apollo 11
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO11LOA
     organisation: NASA
     license: Public domain
@@ -186,6 +187,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO11LOA/NAC_ROI_APOLLO11LOA_E004N0235.IMG
   - id: apollo-12
+    name: Apollo 12 and Surveyor 3
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO12LOA
     organisation: NASA
     license: Public domain
@@ -196,6 +198,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO12LOA/NAC_ROI_APOLLO12LOA_E024S3368.IMG
   - id: apollo-14
+    name: Apollo 14
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO14LOA
     organisation: NASA
     license: Public domain
@@ -206,6 +209,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO14LOA/NAC_ROI_APOLLO14LOA_E038S3426.IMG
   - id: apollo-15
+    name: Apollo 15 and Hadley Rille
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO15LOD
     organisation: NASA
     license: Public domain
@@ -216,6 +220,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO15LOD/NAC_ROI_APOLLO15LOD_E259N0038.IMG
   - id: apollo-16
+    name: Apollo 16
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO16LOA
     organisation: NASA
     license: Public domain
@@ -226,6 +231,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO16LOA/NAC_ROI_APOLLO16LOA_E090S0155.IMG
   - id: apollo-17
+    name: Apollo 17
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO17LOE
     organisation: NASA
     license: Public domain
@@ -236,6 +242,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO17LOE/NAC_ROI_APOLLO17LOE_E200N0305.IMG
   - id: lunokhod-1
+    name: Luna 17 and Lunokhod 1
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNOKOD1LOA
     organisation: NASA
     license: Public domain
@@ -246,6 +253,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNOKOD1LOA/NAC_ROI_LUNOKOD1LOA_E381N3246.IMG
   - id: lunokhod-2
+    name: Luna 21 and Lunokhod 2
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNOKOD2LOA
     organisation: NASA
     license: Public domain
@@ -256,6 +264,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNOKOD2LOA/NAC_ROI_LUNOKOD2LOA_E259N0306.IMG
   - id: luna-20
+    name: Luna 20
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNA_20_LOA
     organisation: NASA
     license: Public domain
@@ -266,6 +275,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNA_20_LOA/NAC_ROI_LUNA_20_LOA_E034N0566.IMG
   - id: change-4
+    name: "Chang'e 4"
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_CHANGE4_LOA
     organisation: NASA
     license: Public domain
@@ -276,6 +286,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/CHANGE4_LOA/NAC_ROI_CHANGE4_LOA_E458S1776.IMG
   - id: change-5
+    name: "Chang'e 5"
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_CHANGE5_LOA
     organisation: NASA
     license: Public domain
@@ -286,6 +297,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/CHANGE5_LOA/NAC_ROI_CHANGE5_LOA_E432N3091.IMG
   - id: surveyor-1
+    name: Surveyor 1
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_FLMSTEEDLOA
     organisation: NASA
     license: Public domain
@@ -296,6 +308,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/FLMSTEEDLOA/NAC_ROI_FLMSTEEDLOA_E025S3171.IMG
   - id: tycho
+    name: Tycho central peak
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_TYCHOCTRLOA
     organisation: NASA
     license: Public domain
@@ -306,6 +319,7 @@ bodies:
       dir: moon-sites
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/TYCHOCTRLOA/NAC_ROI_TYCHOCTRLOA_E430S3489.IMG
   - id: copernicus
+    name: Copernicus central peaks
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_COPERNICLOA
     organisation: NASA
     license: Public domain
@@ -380,6 +394,7 @@ bodies:
   # Jezero crater, where Perseverance works: the mosaic made to land it, over
   # the one of the crater rim west of it, made for the return of its samples.
   - id: jezero
+    name: Jezero
     source: https://astrogeology.usgs.gov/search/map/mars_2020_terrain_relative_navigation_hirise_orthorectified_image_mosaic
     organisation: USGS
     license: Public domain
@@ -396,6 +411,7 @@ bodies:
       gamma: 2.2
   # Gale crater and the foot of Mount Sharp, where Curiosity works.
   - id: gale
+    name: Gale
     source: https://astrogeology.usgs.gov/search/map/mars_msl_gale_merged_orthophoto_mosaic_25cm_v3
     organisation: USGS
     license: Public domain

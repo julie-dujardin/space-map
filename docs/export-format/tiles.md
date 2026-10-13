@@ -106,8 +106,8 @@ Build metadata. It is in the metadata mirror, not in the tile tree.
   "tile_size": 1024,
   "max_level": 6,
   "layers": [
-    { "file": "lroc_color_poles.tif", "source": "https://…", "dimensions": [27360, 13680], "lat_range": null },
-    { "files": ["WAC_EMP_643NM_E300N0450_304P.IMG", "…"], "source": "https://…", "dimensions": [109440, 36480], "lat_range": [-60, 60], "role": "brightness" }
+    { "file": "lroc_color_poles.tif", "source": "https://…", "dimensions": [27360, 13680], "full_width": 27360, "lat_range": null },
+    { "files": ["WAC_EMP_643NM_E300N0450_304P.IMG", "…"], "source": "https://…", "dimensions": [109440, 36480], "full_width": 109440, "lat_range": [-60, 60], "role": "brightness" }
   ],
   "levels": [
     { "level": 0, "tiles": 2, "size_bytes": 220000 },
@@ -121,10 +121,10 @@ Build metadata. It is in the metadata mirror, not in the tile tree.
 ```
 
 - `version` — a digest of the inputs that decide the bytes of the tiles: source files, alignment, level limit and the build recipe. The renderer appends it to each tile URL as `?v=`, so tiles can be cached with no expiry.
-- `layers` — the source files. The first one covers the whole body. An entry with no `role` after it is an inset. An entry with `"role": "brightness"` is a brightness layer.
+- `layers` — the source files. The first one covers the whole body. An entry with no `role` after it is an inset. An entry with `"role": "brightness"` is a brightness layer. `dimensions` is the size of the files in pixels. `full_width` is the width that a map of the whole body has at the pixel size of the layer: for an equirectangular layer it is the width of the files, and for a polar stereographic image it follows from the pixel size at the pole.
 - `levels` — the tiles of the map. `cap_levels` — the tiles of the two caps together, from level 1.
 - `frames` — monthly maps only: the number of frames. `levels` and `cap_levels` count the tiles of all frames.
-- `patches` — present when the pyramid has patches. Each has an `id`, its own credit fields (`source`, `organisation`, `license`, `attribution`), a `version`, its `max_level`, the tile ranges `x` and `y` at that level, its source `files` and its `levels`.
+- `patches` — present when the pyramid has patches. Each has an `id`, a display `name`, its own credit fields (`source`, `organisation`, `license`, `attribution`), a `version`, its `max_level`, the tile ranges `x` and `y` at that level, its source `files` and its `levels`. `full_width` is that of its finest file, as on a layer. `bounds` are the `west`, `east`, `south` and `north` edges of its files together, in degrees.
 - `displacement_bias_km`, `displacement_scale_km`, `absolute_radius` — height pyramids only. See *Tile content*.
 
 The export copies the fields that the renderer needs into a `tiles` block, inside the block of the layer (`texture`, `displacement`, `night`, `specular`) in `systems/{bary}.json`, in the object bundle and in `credits.json`:
@@ -188,7 +188,7 @@ No field is necessary to get a pyramid. These fields change how it is built:
   - `quads` — a regular grid of square files, each named by its south-west corner: `step_deg`, a `file` name pattern, and optionally an `archive` URL pattern for a zip that holds the file. `{lon}` and `{lat}` are the corner in whole degrees, padded with zeros, with a minus sign for west and south.
 
   `dir` is a directory below the source directory of the entry that holds the files. `gamma` is the display curve of integer samples that are stretched for viewing, such as 2.2; the builder removes it. `lon_at_left_deg` and `west_positive` state the alignment of the layer, as on an entry.
-- `patches` — list of patches (colour maps only). Each has an `id`, credit fields, and `files`: a list of greyscale rasters in the equirectangular projection (GeoTIFF, compressed or not, or PDS3 image with an attached label), each with `file` and optionally `dir`, `download_url` and `gamma`. A later file goes over an earlier one, so mosaics that overlap belong in one patch, and so do mosaics that touch the same tile at the level after the finest level of the pyramid. `sharpen_sigma` is the scale below which the files give all the detail, in pixels of the finest level of the pyramid (default 16). `tiles_max_level` limits the finest level of the patch. A change to a patch does not rebuild the pyramid, and the tiles of the patch stay until the new ones are complete.
+- `patches` — list of patches (colour maps only). Each has an `id`, a display `name`, credit fields, and `files`: a list of greyscale rasters in the equirectangular projection (GeoTIFF, compressed or not, or PDS3 image with an attached label), each with `file` and optionally `dir`, `download_url` and `gamma`. A later file goes over an earlier one, so mosaics that overlap belong in one patch, and so do mosaics that touch the same tile at the level after the finest level of the pyramid. `sharpen_sigma` is the scale below which the files give all the detail, in pixels of the finest level of the pyramid (default 16). `tiles_max_level` limits the finest level of the patch. A change to a patch does not rebuild the pyramid, and the tiles of the patch stay until the new ones are complete.
 
   A GeoTIFF must count metres from the equator and the central meridian, with its tiepoint at the first pixel, and its samples must be a grey scale with black at zero. A PDS3 image must count longitude east. In integer samples, zero means no data. In float samples, only the null value of the file means no data: a value at or below zero is ground in shadow. The builder refuses a file that does not obey these rules, and builds the other patches.
 - `download_url` — direct link to a file, on an entry, an inset, a brightness layer or a file of a patch. A `grid` uses `download_dir`, the URL of the directory that holds its files, and `quads` use `archive`. `space-map-download --sources texture_files` fetches the linked files, four at a time, and can resume a partial download.

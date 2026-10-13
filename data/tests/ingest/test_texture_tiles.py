@@ -1066,6 +1066,8 @@ class TestProcessTiles:
             {"level": 1, "tiles": 2, "size_bytes": meta["cap_levels"][0]["size_bytes"]}
         ]
         assert meta["attribution"] == "Test credit"
+        (layer,) = meta["layers"]
+        assert (layer["dimensions"], layer["full_width"]) == ([4 * TILE, 2 * TILE], 64)
         assert "displacement_scale_km" not in meta
         out = tmp_path / "tiles" / "naif-499"
         assert (out / "1" / "3" / "1.webp").exists()

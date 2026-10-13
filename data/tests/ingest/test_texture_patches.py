@@ -509,6 +509,7 @@ class TestProcessPatches:
     def _spec(**extra) -> dict:
         return {
             "id": "site",
+            "name": "Site",
             "source": "https://example.com/site",
             "organisation": "USGS",
             "license": "Public domain",
@@ -534,7 +535,12 @@ class TestProcessPatches:
         (patch,) = meta["patches"]
         assert (patch["id"], patch["max_level"]) == ("site", 7)
         assert (patch["x"], patch["y"]) == ([135, 151], [49, 65])
-        assert patch["attribution"] == "Site credit"
+        assert patch["full_width"] == 4096
+        # On the pixel grid of the raster, where a pixel is 0.09°.
+        assert patch["bounds"] == pytest.approx(
+            {"west": 10.0, "east": 32.5, "south": -2.5, "north": 20.0}, abs=0.05
+        )
+        assert (patch["name"], patch["attribution"]) == ("Site", "Site credit")
         assert [level["level"] for level in patch["levels"]] == [4, 5, 6, 7]
         assert patch["levels"][-1]["tiles"] == 289
         assert len(_files(tmp_path / "tiles" / "naif-499")[7]) == 289

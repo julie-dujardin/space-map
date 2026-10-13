@@ -126,8 +126,12 @@ class PatchBuilder:
         self.sigma = sigma
         # A raster away from the equator has wider pixels in longitude than in
         # latitude: the finer of the two decides.
-        widest = max(max(raster.width, 2 * raster.height) for raster in rasters)
-        self.level = tiles.finest_level(widest) if max_level is None else max_level
+        self.full_width = max(
+            max(raster.width, 2 * raster.height) for raster in rasters
+        )
+        self.level = (
+            tiles.finest_level(self.full_width) if max_level is None else max_level
+        )
         self._fields = [_fields(raster) for raster in rasters]
         if self.level <= base_level:
             raise ValueError(f"{name}: no finer than level {base_level} of its map")
