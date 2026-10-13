@@ -27,7 +27,7 @@ from .encoding import webp_kwargs
 log = logging.getLogger(__name__)
 
 # Bumped when a change to the build changes the bytes of a patch's tiles.
-RECIPE = 1
+RECIPE = 2
 # Levels made from one read of the rasters: a block is 4 × 4 of the finest tiles.
 _BLOCK_LEVELS = 2
 # Levels of blocks built side by side, each held until its group is done.
@@ -58,6 +58,27 @@ def _bounds(raster: tiles.Layer) -> tuple[float, float, float, float]:
     return pixels.bounds
 
 
+def _parts(raster: tiles.Layer) -> tuple[tiles.Layer, tiles.Layer]:
+    """A raster as two fields that can be resampled: its values with nothing
+    where it has no data, and the share of data. A site mosaic is strips with
+    gaps between them, and one missing pixel under a filter would otherwise
+    take the whole output pixel with it."""
+    to_values = raster.to_values
+    assert to_values is not None
+
+    def filled(raw: np.ndarray) -> np.ndarray:
+        values = to_values(raw)
+        return np.where(np.isfinite(values), values, np.float32(0.0))
+
+    def share(raw: np.ndarray) -> np.ndarray:
+        return np.isfinite(to_values(raw)).astype(np.float32)
+
+    return (
+        tiles.Layer(raster.pixels, raster.placement, to_values=filled),
+        tiles.Layer(raster.pixels, raster.placement, to_values=share),
+    )
+
+
 class PatchBuilder:
     """Builds the tiles of one patch from the finest tiles of its pyramid and
     the patch's rasters.
@@ -84,11 +105,11 @@ class PatchBuilder:
         self.rasters = rasters
         self.out_dir = out_dir
         self.sigma = sigma
-        self.level = (
-            tiles.finest_level(max(raster.width for raster in rasters))
-            if max_level is None
-            else max_level
-        )
+        # A raster away from the equator has wider pixels in longitude than in
+        # latitude: the finer of the two decides.
+        widest = max(max(raster.width, 2 * raster.height) for raster in rasters)
+        self.level = tiles.finest_level(widest) if max_level is None else max_level
+        self._parts = [_parts(raster) for raster in rasters]
         if self.level <= base_level:
             raise ValueError(f"{name}: no finer than level {base_level} of its map")
         edges = [_bounds(raster) for raster in rasters]
@@ -141,7 +162,7 @@ class PatchBuilder:
 
     def fine(
         self,
-        raster: tiles.Layer,
+        index: int,
         level: int,
         y0: int,
         y1: int,
@@ -149,9 +170,11 @@ class PatchBuilder:
         x1: int,
         pool: ThreadPoolExecutor | None = None,
     ) -> np.ndarray:
-        """Brightness of one raster over a pixel window of ``level``, NaN
-        where it has no data. A window that takes many reads can share them
-        out over ``pool``."""
+        """Brightness of raster ``index`` over a pixel window of ``level``,
+        NaN where less than half of a pixel has data. A window that takes
+        many reads can share them out over ``pool``."""
+        raster = self.rasters[index]
+        filled, share = self._parts[index]
         rows = config.TILE_SIZE << level
         width = tiles.level_width(level)
         out = np.full((y1 - y0, x1 - x0), np.nan, dtype=np.float32)
@@ -170,9 +193,10 @@ class PatchBuilder:
         def band(top: int) -> None:
             bottom = min(top + step, last)
             lat_edges = 90.0 - np.arange(top, bottom + 1) * (180.0 / rows)
-            out[top - y0 : bottom - y0, left - x0 : right - x0] = raster.window(
-                width, lat_edges, left, right
-            )
+            total = filled.window(width, lat_edges, left, right)
+            seen = share.window(width, lat_edges, left, right)
+            held = out[top - y0 : bottom - y0, left - x0 : right - x0]
+            np.divide(total, seen, out=held, where=seen > 0.5)
 
         list((pool.map if pool else map)(band, range(first, last, step)))
         return out
@@ -287,9 +311,9 @@ class _Ground:
         seen = np.zeros(self.plain.shape[:2], dtype=bool)
         # The one read of the rasters from end to end.
         with ThreadPoolExecutor(_WORKERS) as pool:
-            for raster in patch.rasters:
+            for index in range(len(patch.rasters)):
                 fine = patch.fine(
-                    raster, level, self.top, bottom, self.left, right, pool
+                    index, level, self.top, bottom, self.left, right, pool
                 )
                 here = np.isfinite(fine)
                 coverage = ndimage.gaussian_filter(here.astype(np.float32), sigma)
@@ -357,8 +381,8 @@ class _Ground:
         # A later raster over an earlier one, where it has data.
         ratio = np.ones(weight.shape, dtype=np.float32)
         usable = np.zeros(weight.shape, dtype=bool)
-        for raster, coarse in zip(self.patch.rasters, self.lows):
-            fine = self.patch.fine(raster, level, y0, y1, x0, x1)
+        for index, coarse in enumerate(self.lows):
+            fine = self.patch.fine(index, level, y0, y1, x0, x1)
             low = _resized(coarse, box, shape)
             here = np.isfinite(fine) & (low > 0)
             np.divide(fine, low, out=ratio, where=here)

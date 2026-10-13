@@ -263,6 +263,22 @@ class TestPatchBuilder:
         corner = _tile(tmp_path / "patch", 7, 135, 49).astype(int)
         assert np.abs(corner[:6] - COLOUR).max() <= 4
 
+    def test_thin_gaps_do_not_blank_the_ground_around_them(self, tmp_path):
+        """A mosaic is strips with slivers of nothing between them."""
+        pixels = _texture()
+        pixels[:, ::16] = 0
+        self._build(tmp_path, pixels=pixels)
+        inside = _tile(tmp_path / "patch", 7, 143, 57).astype(float)
+        assert inside[..., 0].std() > 12.0
+
+    def test_level_is_that_of_the_finer_axis(self, tmp_path):
+        """Away from the equator a pixel spans more longitude than latitude."""
+        squat = _raster(_texture(), (10.0, 32.5, 20.0, 8.75))
+        builder = patches.PatchBuilder(
+            "test", _pyramid(tmp_path / "tiles"), BASE, [squat], tmp_path / "patch", 1.0
+        )
+        assert builder.level == 8
+
     def test_gap_in_the_raster_shows_the_map(self, tmp_path):
         pixels = _texture()
         pixels[64:192, 64:192] = 0
