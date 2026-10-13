@@ -396,6 +396,24 @@ class TestLayerWindows:
         expected = np.roll(stored[:, ::-1], 6 * TILE, axis=1)
         assert np.array_equal(layer.rows(0, 2 * TILE), expected)
 
+    def test_fields_of_a_sample_are_resampled_apart(self):
+        """A converter can give several values per sample from one read."""
+        rng = np.random.default_rng(seed=4)
+        pixels = rng.uniform(0.1, 0.9, size=(2 * TILE, 8 * TILE)).astype(np.float32)
+
+        def both(raw: np.ndarray) -> np.ndarray:
+            return np.stack([raw, 1.0 - raw], axis=-1)
+
+        edges = np.linspace(90.0, -90.0, TILE + 1)
+        window = tiles.Layer(pixels, tiles.Placement(), to_values=both).window(
+            4 * TILE, edges, 3, 3 * TILE
+        )
+        for field, convert in enumerate((lambda raw: raw, lambda raw: 1.0 - raw)):
+            alone = tiles.Layer(pixels, tiles.Placement(), to_values=convert)
+            assert (
+                window[..., field] == alone.window(4 * TILE, edges, 3, 3 * TILE)
+            ).all()
+
 
 class TestMosaic:
     """Adjoining rasters read as one."""

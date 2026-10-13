@@ -324,17 +324,25 @@ class Region:
         return out
 
 
+def _bicubic(
+    band: np.ndarray, size: tuple[int, int], box: tuple[float, float, float, float]
+) -> np.ndarray:
+    resized = Image.fromarray(band).resize(size, Image.Resampling.BICUBIC, box=box)
+    return np.asarray(resized)
+
+
 @dataclass
 class Layer:
     """An equirectangular raster, read in row bands."""
 
     # (H, W) heights or brightness, or colour as (H, W, 3), planar (3, H, W),
     # or one grey band (H, W) with ``grey`` set.
-    pixels: np.ndarray | Mosaic | Region
+    pixels: np.ndarray | Mosaic | Region | ChunkedTiff
     placement: Placement
     planar: bool = False
     grey: bool = False
-    # Raw samples → float32 values, gaps as NaN. Colour passes through.
+    # Raw samples → float32 values, gaps as NaN. Colour passes through. It may
+    # give several fields per sample, as (H, W, n): each is resampled alone.
     to_values: Callable[[np.ndarray], np.ndarray] | None = None
 
     @property
@@ -393,6 +401,8 @@ class Layer:
         pixels = self.pixels
         if isinstance(pixels, (Mosaic, Region)):
             part = pixels.read(y0, y1, s0, s1)
+        elif isinstance(pixels, ChunkedTiff):
+            part = pixels[y0:y1, s0:s1]
         elif self.planar:
             part = np.moveaxis(np.asarray(pixels[:, y0:y1, s0:s1]), 0, -1)
         else:
@@ -469,10 +479,13 @@ class Layer:
             right - c0,
             min(float(band.shape[0]), bottom - y0 + above),
         )
-        resized = Image.fromarray(band).resize(
-            (x1 - x0, out_h), Image.Resampling.BICUBIC, box=box
-        )
-        return np.asarray(resized)
+        size = (x1 - x0, out_h)
+        if band.ndim == 3 and band.dtype != np.uint8:
+            fields = [
+                _bicubic(band[..., field], size, box) for field in range(band.shape[2])
+            ]
+            return np.stack(fields, axis=-1)
+        return _bicubic(band, size, box)
 
     def cap(self, cap: Cap, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         """Read through patches of an equirectangular grid, each as wide as
@@ -802,12 +815,12 @@ def open_brightness_layer(
 ) -> Layer:
     """Greyscale rasters in the equirectangular projection: one file, or a grid
     of adjoining ones."""
-    pixels: np.ndarray | Mosaic | Region
+    pixels: np.ndarray | Mosaic | ChunkedTiff
     if len(grid) > 1 or len(grid[0]) > 1:
         pixels = Mosaic(grid)
     elif _compressed(grid[0][0]):
         # Decoded band by band: whole, a mosaic of this kind is gigabytes.
-        pixels = Region(ChunkedTiff(grid[0][0]), -180.0, 180.0, 90.0, -90.0)
+        pixels = ChunkedTiff(grid[0][0])
     else:
         pixels = _open_grey(grid[0][0])
     return Layer(pixels, placement, to_values=brightness_values(gamma))

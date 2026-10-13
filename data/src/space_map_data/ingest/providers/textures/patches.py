@@ -47,14 +47,14 @@ _SHADOW_FLOOR = 0.2
 
 
 def _resized(
-    values: np.ndarray, box: tuple[float, float, float, float], size: tuple[int, int]
+    image: Image.Image, box: tuple[float, float, float, float], size: tuple[int, int]
 ) -> np.ndarray:
-    """``box`` of ``values`` at ``size``: smooth for colour, linear for the
+    """``box`` of ``image`` at ``size``: smooth for colour, linear for the
     slow fields a ratio is made of."""
     filter_ = (
-        Image.Resampling.BICUBIC if values.ndim == 3 else Image.Resampling.BILINEAR
+        Image.Resampling.BICUBIC if image.mode == "RGB" else Image.Resampling.BILINEAR
     )
-    return np.asarray(Image.fromarray(values).resize(size, filter_, box=box))
+    return np.asarray(image.resize(size, filter_, box=box))
 
 
 def _region(raster: tiles.Layer) -> tiles.Region:
@@ -67,7 +67,7 @@ def _bounds(raster: tiles.Layer) -> tuple[float, float, float, float]:
     return _region(raster).bounds
 
 
-def _parts(raster: tiles.Layer) -> tuple[tiles.Layer, tiles.Layer]:
+def _fields(raster: tiles.Layer) -> tiles.Layer:
     """A raster as two fields that can be resampled: its values with nothing
     where it has no data, and the share of data. A site mosaic is strips with
     gaps between them, and one missing pixel under a filter would otherwise
@@ -75,17 +75,13 @@ def _parts(raster: tiles.Layer) -> tuple[tiles.Layer, tiles.Layer]:
     to_values = raster.to_values
     assert to_values is not None
 
-    def filled(raw: np.ndarray) -> np.ndarray:
+    def fields(raw: np.ndarray) -> np.ndarray:
         values = to_values(raw)
-        return np.where(np.isfinite(values), values, np.float32(0.0))
+        seen = np.isfinite(values)
+        filled = np.where(seen, values, np.float32(0.0))
+        return np.stack([filled, seen.astype(np.float32)], axis=-1)
 
-    def share(raw: np.ndarray) -> np.ndarray:
-        return np.isfinite(to_values(raw)).astype(np.float32)
-
-    return (
-        tiles.Layer(raster.pixels, raster.placement, to_values=filled),
-        tiles.Layer(raster.pixels, raster.placement, to_values=share),
-    )
+    return tiles.Layer(raster.pixels, raster.placement, to_values=fields)
 
 
 def first_range(
@@ -132,7 +128,7 @@ class PatchBuilder:
         # latitude: the finer of the two decides.
         widest = max(max(raster.width, 2 * raster.height) for raster in rasters)
         self.level = tiles.finest_level(widest) if max_level is None else max_level
-        self._parts = [_parts(raster) for raster in rasters]
+        self._fields = [_fields(raster) for raster in rasters]
         if self.level <= base_level:
             raise ValueError(f"{name}: no finer than level {base_level} of its map")
         edges = [_bounds(raster) for raster in rasters]
@@ -197,7 +193,7 @@ class PatchBuilder:
         NaN where less than half of a pixel has data. A window that takes
         many reads can share them out over ``pool``."""
         raster = self.rasters[index]
-        filled, share = self._parts[index]
+        fields = self._fields[index]
         rows = config.TILE_SIZE << level
         width = tiles.level_width(level)
         out = np.full((y1 - y0, x1 - x0), np.nan, dtype=np.float32)
@@ -216,8 +212,8 @@ class PatchBuilder:
         def band(top: int) -> None:
             bottom = min(top + step, last)
             lat_edges = 90.0 - np.arange(top, bottom + 1) * (180.0 / rows)
-            total = filled.window(width, lat_edges, left, right)
-            seen = share.window(width, lat_edges, left, right)
+            both = fields.window(width, lat_edges, left, right)
+            total, seen = both[..., 0], both[..., 1]
             held = out[top - y0 : bottom - y0, left - x0 : right - x0]
             np.divide(total, seen, out=held, where=seen > 0.5)
 
@@ -325,13 +321,13 @@ class _Ground:
         right = (x1 + 1) * half + reach
         bottom = min((y1 + 1) * half + reach, size << level)
 
-        self.plain = self._map(level, self.top, bottom, self.left, right)
+        plain = self._map(level, self.top, bottom, self.left, right)
         sigma = patch.sigma
         # Each raster blurred on its own: two mosaics of one place differ in
         # brightness by their sun, and only what each shows within itself is
         # detail.
         self.lows = []
-        seen = np.zeros(self.plain.shape[:2], dtype=bool)
+        seen = np.zeros(plain.shape[:2], dtype=bool)
         # The one read of the rasters from end to end.
         with ThreadPoolExecutor(_WORKERS) as pool:
             for index in range(len(patch.rasters)):
@@ -346,13 +342,17 @@ class _Ground:
                 if _region(patch.rasters[index]).calibrated and here.any():
                     floor = _SHADOW_FLOOR * float(fine[here].mean())
                     np.maximum(low, floor, out=low)
-                self.lows.append(low)
+                self.lows.append(Image.fromarray(low))
                 seen |= here
         # Full weight one blur inside the rasters: at their edge the patch
         # fades into the map.
         inside = ndimage.distance_transform_edt(seen)
-        self.weight = np.clip(inside / max(sigma, 1.0), 0.0, 1.0).astype(np.float32)
-        self.soft = tiles.soften(self.plain, sigma)
+        weight = np.clip(inside / max(sigma, 1.0), 0.0, 1.0).astype(np.float32)
+        # Held as images: every block cuts its part from each, and an array
+        # would be copied whole each time.
+        self.weight = Image.fromarray(weight)
+        self.plain = Image.fromarray(plain)
+        self.soft = Image.fromarray(tiles.soften(plain, sigma))
 
     def _map(self, level: int, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         """Pixels of the pyramid's own tiles; columns wrap around the globe."""
