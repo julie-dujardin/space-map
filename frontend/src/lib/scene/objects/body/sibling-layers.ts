@@ -9,6 +9,7 @@ import { kmToScene } from '$lib/math/units';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects, TextureBundleMeta } from '$lib/scene/types';
+import { effectiveRadiusKm } from '$lib/types/objects';
 import {
 	CLOUD_RADIUS_OFFSET,
 	cloudFrameForJd,
@@ -24,6 +25,7 @@ import {
 } from '../surface/displacement';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
 import { attachNightLights, disposeNightLightsFromMaterial } from '../surface/night-lights';
+import { disposeReliefTiles, reliefTilesOf } from '../surface/relief-tiles';
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { attachSpecularMap, disposeSpecularFromMaterial } from '../surface/specular';
 import { attachSunTransmittanceToBody } from '../surface/sun-transmittance';
@@ -156,9 +158,18 @@ const SIBLING_LAYERS: { [L in SiblingLayer]: LayerSpec<SiblingMetas[L]> } = {
 			bo.displacementMeta = meta;
 			bo.displacementTier = 'low';
 			// Debug: self-shadow off → relief without in-shader cast shadows.
-			bo.selfShadow = sceneSettings().showSelfShadow
-				? attachSelfShadowToBody(material, tex, kmToScene(meta.scale_km))
-				: null;
+			if (!sceneSettings().showSelfShadow) {
+				bo.selfShadow = null;
+				return;
+			}
+			bo.reliefTiles = reliefTilesOf(material, meta.tiles, effectiveRadiusKm(bo.body.data));
+			bo.selfShadow = attachSelfShadowToBody(
+				material,
+				tex,
+				kmToScene(meta.scale_km),
+				undefined,
+				bo.reliefTiles
+			);
 		},
 		unload(bo, mesh) {
 			if (!mesh) return;
@@ -167,6 +178,8 @@ const SIBLING_LAYERS: { [L in SiblingLayer]: LayerSpec<SiblingMetas[L]> } = {
 			bo.displacementTier = undefined;
 			detachSelfShadow(bo.selfShadow);
 			bo.selfShadow = null;
+			disposeReliefTiles(bo);
+			bo.reliefTiles = undefined;
 		}
 	},
 

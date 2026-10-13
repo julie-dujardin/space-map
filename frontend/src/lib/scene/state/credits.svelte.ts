@@ -67,12 +67,12 @@ export class CreditsStore {
 	probeArchives = $state(new Set<OrbitArchive>());
 
 	/** A layer keeps one credit per body, so whichever path attaches it first —
-	 *  per-system or standalone — wins. A surface map whose tile pyramid holds
-	 *  another work is credited for both, and for each mosaic of its patches. */
+	 *  per-system or standalone — wins. A surface or height map whose tile
+	 *  pyramid holds another work is credited for both, and for each mosaic of
+	 *  its patches. */
 	registerImagery(layer: ImageryLayer, bodyId: string, systemId: string, meta: TiledMap): void {
 		this.addImagery(layer, bodyId, systemId, meta, layer === 'rings');
-		// Only the surface: height tiles are not drawn.
-		if (layer !== 'surface') return;
+		if (layer !== 'surface' && layer !== 'topography') return;
 		const tiles = tileCredit(meta);
 		for (const work of [...(tiles ? [tiles] : []), ...patchCredits(meta)]) {
 			this.addImagery(layer, bodyId, systemId, work, true);

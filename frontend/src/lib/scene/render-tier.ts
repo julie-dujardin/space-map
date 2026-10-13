@@ -23,6 +23,11 @@ export interface RenderTierPreset {
 	/** Surface tile windows drawn for one body, 64 MB of RGBA each. One more
 	 *  is held to load a window on before it replaces another. */
 	tileWindows: number;
+	/** Height tile windows drawn for one body, 32 MB each, and one more held. */
+	reliefWindows: number;
+	/** Cells from one band of the terrain grid to the next. At ground level the
+	 *  grid has about (125 + 14 × this)² vertices. */
+	terrainBandCells: number;
 	/** Largest skybox face edge, in pixels. */
 	maxSkyboxFace: number;
 }
@@ -36,6 +41,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		pointBudget: 400_000,
 		maxTextureTier: 'medium',
 		tileWindows: 3,
+		reliefWindows: 2,
+		terrainBandCells: 16,
 		maxSkyboxFace: 2048
 	},
 	medium: {
@@ -46,6 +53,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		pointBudget: 900_000,
 		maxTextureTier: 'medium',
 		tileWindows: 4,
+		reliefWindows: 3,
+		terrainBandCells: 24,
 		maxSkyboxFace: 2048
 	},
 	high: {
@@ -56,6 +65,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		pointBudget: Infinity,
 		maxTextureTier: 'high',
 		tileWindows: 6,
+		reliefWindows: 4,
+		terrainBandCells: 32,
 		maxSkyboxFace: Infinity
 	}
 };
@@ -70,6 +81,12 @@ export function maxTextureTier(): 'low' | 'medium' | 'high' {
 export function maxTileWindows(): number {
 	if (isLowEndDevice()) return 0;
 	return currentRenderTier().tileWindows;
+}
+
+/** Height tile windows a body may hold; none where memory is short. */
+export function maxReliefWindows(): number {
+	if (isLowEndDevice()) return 0;
+	return currentRenderTier().reliefWindows;
 }
 
 export function resolveRenderTier(): RenderTier {

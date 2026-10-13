@@ -37,20 +37,24 @@
 
 	const collator = new Intl.Collator();
 
+	/** A map's own credit, then those of its tile pyramid and of the pyramid's
+	 *  patches, where they hold other works. */
+	function withTileCredits(credit: BodyCredit): BodyCredit[] {
+		const tiles = tileCredit(credit);
+		const works = [...(tiles ? [tiles] : []), ...patchCredits(credit)];
+		return [credit, ...works.map((work) => ({ ...credit, ...work }))];
+	}
+
 	const imagerySystems = $derived.by<ImagerySystem[]>(() => {
 		const out: ImagerySystem[] = [];
 		for (const group of credits.systems) {
 			// Keyed by the export's array names; IMAGERY_LAYERS fixes the row order.
 			const lists: Record<ImageryLayer, BodyCredit[] | undefined> = {
-				surface: group.textures?.flatMap((credit) => {
-					const tiles = tileCredit(credit);
-					const works = [...(tiles ? [tiles] : []), ...patchCredits(credit)];
-					return [credit, ...works.map((work) => ({ ...credit, ...work }))];
-				}),
+				surface: group.textures?.flatMap(withTileCredits),
 				clouds: group.clouds,
 				night: group.night,
 				specular: group.specular,
-				topography: group.displacement,
+				topography: group.displacement?.flatMap(withTileCredits),
 				rings: group.rings
 			};
 			const byBody = new Map<string, Array<{ layer: ImageryLayer; credit: BodyCredit }>>();

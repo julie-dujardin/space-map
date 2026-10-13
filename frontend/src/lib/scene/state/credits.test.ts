@@ -22,11 +22,12 @@ describe('CreditsStore.registerImagery', () => {
 		expect(credits.imageryOf('surface')).toHaveLength(1);
 	});
 
-	it('leaves out the pyramid of a height map, which is not drawn', () => {
+	it('credits a height map and the other work in its tile pyramid', () => {
 		configureHost({ tilesUrl: 'https://tiles.example.org' });
 		const credits = new CreditsStore();
-		credits.registerImagery('topography', 'naif-499', 'naif-4', { ...map, tiles: mosaic });
-		expect(credits.imageryOf('topography')).toHaveLength(1);
+		credits.registerImagery('topography', 'naif-301', 'naif-3', { ...map, tiles: mosaic });
+		const organisations = credits.imageryOf('topography').map((credit) => credit.organisation);
+		expect(organisations).toEqual(['USGS', 'NASA']);
 	});
 
 	it('keeps the first surface map a body registers', () => {

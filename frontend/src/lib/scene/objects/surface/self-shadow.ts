@@ -3,7 +3,8 @@
  * bodies, adding what vertex displacement alone can't:
  *
  *  1. Lit relief — geometric normal replaced by the height field's gradient
- *     normal, so shading follows craters (a normal map we never bake).
+ *     normal, so shading follows craters (a normal map we never bake). Up
+ *     close the gradient comes from the body's height tiles.
  *  2. Self-cast shadows — per-fragment march of the height texture toward the
  *     Sun. Detail is bounded by texture resolution, not mesh tessellation,
  *     beating a geometry shadow map at planet scale.
@@ -14,6 +15,7 @@
 
 import { type MeshStandardMaterial, type Texture, Vector2, type Vector3 } from 'three';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
+import { RELIEF_TILES_GLSL, type ReliefTiles } from './relief-tiles';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
 /** Self-shadow march sample count. */
@@ -51,12 +53,14 @@ export interface SelfShadowUniforms {
  *  `scaleScene` is read against the mesh's *world* radius, so a caller whose
  *  mesh carries the scale (the lineup's unit spheres) passes local units times
  *  that scale, and re-calls on every resize. `sunDir` defaults to the scene's
- *  Sun; a stage with a light of its own passes that light's direction. */
+ *  Sun; a stage with a light of its own passes that light's direction. `tiles`
+ *  gives the slope of the ground up close, where the body has height tiles. */
 export function attachSelfShadowToBody(
 	material: MeshStandardMaterial,
 	heightMap: Texture,
 	scaleScene: number,
-	sunDir?: { value: Vector3 }
+	sunDir?: { value: Vector3 },
+	tiles?: ReliefTiles
 ): SelfShadowUniforms {
 	const tex = heightMap.image as { width?: number; height?: number } | undefined;
 	const texel = new Vector2(1 / (tex?.width ?? 4096), 1 / (tex?.height ?? 2048));
@@ -79,9 +83,9 @@ export function attachSelfShadowToBody(
 	material.userData.selfShadow = uniforms;
 	const sun = sunDir ?? getEclipseSceneUniforms().uSunDir;
 
-	chainShaderHook(material, 'selfShadow', (shader) => {
+	chainShaderHook(material, tiles ? 'selfShadowTiles' : 'selfShadow', (shader) => {
 		// Unique name: the chained eclipse shader already declares uSunDir.
-		Object.assign(shader.uniforms, uniforms, { uSelfSunDir: sun });
+		Object.assign(shader.uniforms, uniforms, { uSelfSunDir: sun }, tiles?.uniforms);
 
 		shader.vertexShader = shader.vertexShader
 			.replace(
@@ -89,6 +93,7 @@ export function attachSelfShadowToBody(
 				`#include <common>
 				varying vec3 vSelfWorldNormal;
 				varying vec2 vSelfUv;
+				varying vec3 vSelfDir;
 					varying vec3 vSelfEastW;
 					varying vec3 vSelfNorthW;
 					varying float vSelfRadiusW;
@@ -99,6 +104,7 @@ export function attachSelfShadowToBody(
 				`#include <beginnormal_vertex>
 				vSelfWorldNormal = normalize(mat3(modelMatrix) * objectNormal);
 				vSelfUv = uv;
+				vSelfDir = position;
 					// Analytic equirect tangent basis: smooth per fragment, so the
 					// relief normal doesn't inherit mesh facets.
 					vec3 nObj = normalize(position);
@@ -120,62 +126,70 @@ export function attachSelfShadowToBody(
 				uniform float uSelfScale;
 				uniform vec2 uSelfTexel;
 				uniform vec3 uSelfSunDir;
+				uniform mat3 normalMatrix;
 				varying vec3 vSelfWorldNormal;
 				varying vec2 vSelfUv;
+				varying vec3 vSelfDir;
 					varying vec3 vSelfEastW;
 					varying vec3 vSelfNorthW;
 					varying float vSelfRadiusW;
 					varying float vSelfCosLat;
+				${tiles ? RELIEF_TILES_GLSL : ''}
 
 				float selfHeight(vec2 uv) {
 					return texture2D(uSelfHeightMap, uv).r * uSelfScale;
 				}
 
-					// Analytic equirect frame (Tu=∂pos/∂u east, Tv=∂pos/∂v south). Screen-
-					// derivative tangents were piecewise-constant per triangle, tiling the
-					// relief normal with mesh facets. |Tu|=2πR·cos(lat), |Tv|=πR is the true metric.
+				// Slope of the whole-globe height map at a direction of the
+				// body's frame: a vector along the unit sphere that points
+				// uphill, as long as the rise over the run.
+				vec3 selfMapSlope(vec3 dir) {
+					float cosLat = sqrt(max(1.0 - dir.y * dir.y, 0.0));
+					if (cosLat < 1e-5) return vec3(0.0);
+					vec3 east = vec3(dir.z, 0.0, -dir.x) / cosLat;
+					vec3 north = cross(dir, east);
+					// Wider-than-one-texel stencil averages out 8-bit terracing, floored
+					// at the low tier's texel so a higher-res map keeps the same
+					// physical smoothing width instead of flattening the relief.
+					vec2 d = max(uSelfTexel, vec2(1.0 / 2048.0, 1.0 / 1024.0)) * ${GRADIENT_STENCIL.toFixed(3)};
+					float hu = selfHeight(vSelfUv + vec2(d.x, 0.0))
+						- selfHeight(vSelfUv - vec2(d.x, 0.0));
+					float hv = selfHeight(vSelfUv + vec2(0.0, d.y))
+						- selfHeight(vSelfUv - vec2(0.0, d.y));
+					// The map's u runs east over 2π·cos(lat) radii, its v north over π radii.
+					float su = hu / (2.0 * d.x * 6.2831853 * cosLat * vSelfRadiusW);
+					float sv = hv / (2.0 * d.y * 3.14159265 * vSelfRadiusW);
+					// Fade at the poles, where the columns of the map close in and
+					// blow the east-west slope up into a starburst.
+					float gain = ${NORMAL_STRENGTH.toFixed(3)} * smoothstep(0.0, 0.12, cosLat);
+					su = clamp(su * gain, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
+					sv = clamp(sv * gain, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
+					return east * su + north * sv;
+				}
+
+					// Analytic equirect frame for the shadow march: Tu=∂pos/∂u runs east and
+					// Tv=∂pos/∂v north, as the map's v does. |Tu|=2πR·cos(lat), |Tv|=πR.
 					void selfTangents(out vec3 Tu, out vec3 Tv) {
 						float R = vSelfRadiusW;
 						Tu = vSelfEastW * (6.2831853 * R * vSelfCosLat);
-						Tv = -vSelfNorthW * (3.14159265 * R);
+						Tv = vSelfNorthW * (3.14159265 * R);
 					}`
 			)
-			// Replace geometric normal with the relief gradient normal. Every
-			// normalize/divide is guarded: a degenerate frame (poles, |Tu|→0)
-			// falls back to the geometric normal instead of a body-transparent NaN.
+			// Replace the geometric normal with the one of the ground's slope: from
+			// the height tiles where they cover the fragment, from the whole-globe
+			// map elsewhere.
 			.replace(
 				'#include <normal_fragment_maps>',
 				`#include <normal_fragment_maps>
 				{
-					vec3 Tu, Tv;
-					selfTangents(Tu, Tv);
-					float lenTu = length(Tu);
-					float lenTv = length(Tv);
-					vec3 Nw = normalize(vSelfWorldNormal);
-					if (uSelfScale > 0.0 && lenTu > 1e-12 && lenTv > 1e-12) {
-						// Wider-than-one-texel stencil averages out 8-bit terracing, floored
-						// at the low tier's texel so a higher-res map keeps the same
-						// physical smoothing width instead of flattening the relief.
-						vec2 d = max(uSelfTexel, vec2(1.0 / 2048.0, 1.0 / 1024.0)) * ${GRADIENT_STENCIL.toFixed(3)};
-						float hu = selfHeight(vSelfUv + vec2(d.x, 0.0))
-							- selfHeight(vSelfUv - vec2(d.x, 0.0));
-						float hv = selfHeight(vSelfUv + vec2(0.0, d.y))
-							- selfHeight(vSelfUv - vec2(0.0, d.y));
-						// Slope = Δheight / Δworld-distance along each axis.
-						float su = ${NORMAL_STRENGTH.toFixed(3)} * hu / (2.0 * d.x * lenTu);
-						float sv = ${NORMAL_STRENGTH.toFixed(3)} * hv / (2.0 * d.y * lenTv);
-						// |Tu|/|Tv|=2·cos(lat): fade relief at the poles, where |Tu|→0 blows up east-west slope into a starburst.
-						float poleFade = smoothstep(0.0, 0.12, lenTu / (2.0 * lenTv));
-						su = clamp(su * poleFade, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
-						sv = clamp(sv * poleFade, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
-						vec3 reliefN = cross(Tu / lenTu + Nw * su, Tv / lenTv + Nw * sv);
-						float rl = length(reliefN);
-						if (rl > 1e-12) {
-							reliefN /= rl;
-							if (dot(reliefN, Nw) < 0.0) reliefN = -reliefN;
-							normal = normalize((viewMatrix * vec4(reliefN, 0.0)).xyz);
-						}
-					}
+					vec3 dir = normalize(vSelfDir);
+					float covered = 0.0;
+					vec3 slope = vec3(0.0);
+					${tiles ? 'slope = reliefTileSlope(dir, covered);' : ''}
+					if (covered < 0.995 && uSelfScale > 0.0) slope += (1.0 - covered) * selfMapSlope(dir);
+					float steep = length(slope);
+					if (steep > ${SLOPE_CLAMP.toFixed(3)}) slope *= ${SLOPE_CLAMP.toFixed(3)} / steep;
+					normal = normalize(normalMatrix * (dir - slope));
 				}`
 			)
 			.replace(

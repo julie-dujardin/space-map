@@ -11,6 +11,7 @@ import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 import type { SunTransmittanceUniforms } from './objects/surface/sun-transmittance';
 import type { SelfShadowUniforms } from './objects/surface/self-shadow';
 import type { TileOverlay } from './objects/surface/tile-overlay';
+import type { ReliefTiles } from './objects/surface/relief-tiles';
 import type { DisplacementMeta } from './objects/surface/displacement';
 import type { TerrainWindowState } from './lod/terrain-window';
 import type { NoticeSink } from './notice';
@@ -182,6 +183,8 @@ export interface BodyObjects {
 	terrainWindow?: TerrainWindowState | null;
 	/** Terrain self-shadow + relief uniforms; set alongside the displacement map. */
 	selfShadow: SelfShadowUniforms | null;
+	/** The height tile windows that give the slope of the ground up close. */
+	reliefTiles?: ReliefTiles;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
 	/** Sun-transmittance patches on the body (and cloud) materials, kept so

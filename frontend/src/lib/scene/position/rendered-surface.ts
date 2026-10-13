@@ -9,10 +9,11 @@ import {
 import type { BodyObjects } from '$lib/scene/types';
 
 /** Grid a body's mesh currently renders: a uniform `SphereGeometry`, or the
- *  close-zoom terrain window's explicit row/column angles. */
+ *  close-zoom terrain window's explicit row/column angles. `riseKm` is set on
+ *  a window that carries its own heights, one per vertex, row by row. */
 type SurfaceGrid =
 	| { kind: 'uniform'; segs: number }
-	| { kind: 'window'; thetas: Float64Array; phis: Float64Array };
+	| { kind: 'window'; thetas: Float64Array; phis: Float64Array; riseKm?: Float32Array };
 
 /** Index i with `arr[i] <= x <= arr[i+1]`, clamped to a valid cell. */
 function cellIndex(arr: Float64Array, x: number): number {
@@ -52,8 +53,9 @@ function displacedPoint(
 }
 
 interface GridCell {
-	/** TL, TR, BL, BR vertex parameters of the bracketing cell. */
-	corners: { latRad: number; lonRad: number }[];
+	/** TL, TR, BL, BR vertex parameters of the bracketing cell. `riseKm` is
+	 *  the vertex's own height, on a grid that carries them. */
+	corners: { latRad: number; lonRad: number; riseKm?: number }[];
 	tx: number;
 	ty: number;
 }
@@ -81,7 +83,7 @@ function gridCell(grid: SurfaceGrid, latRad: number, lonRad: number): GridCell {
 		}));
 		return { corners, tx, ty };
 	}
-	const { thetas, phis } = grid;
+	const { thetas, phis, riseKm } = grid;
 	const theta = Math.PI / 2 - latRad;
 	let phi = (lonRad - Math.PI) % (2 * Math.PI);
 	if (phi < 0) phi += 2 * Math.PI;
@@ -96,7 +98,8 @@ function gridCell(grid: SurfaceGrid, latRad: number, lonRad: number): GridCell {
 		[iy0 + 1, ix0 + 1]
 	].map(([iy, ix]) => ({
 		latRad: Math.PI / 2 - thetas[iy],
-		lonRad: phis[ix] + Math.PI
+		lonRad: phis[ix] + Math.PI,
+		riseKm: riseKm?.[iy * phis.length + ix]
 	}));
 	return { corners, tx, ty };
 }
@@ -305,7 +308,7 @@ function radiiFor(bodyId: string, radiusKm: number): { a: number; b: number; c: 
 function gridForBody(bo: BodyObjects | undefined): SurfaceGrid {
 	const tw = bo?.terrainWindow;
 	return tw
-		? { kind: 'window', thetas: tw.thetas, phis: tw.phis }
+		? { kind: 'window', thetas: tw.thetas, phis: tw.phis, riseKm: tw.riseKm }
 		: { kind: 'uniform', segs: bo?.currentSegments ?? 128 };
 }
 
@@ -322,19 +325,24 @@ function renderedCell(
 ): { pts: [number, number, number][]; tx: number; ty: number } | null {
 	const radii = radiiFor(bodyId, radiusKm);
 	if (!radii) return null;
+	const grid = gridForBody(bo);
 	let hf: HeightField | null = null;
 	let scaleKm = 0;
 	let biasKm = 0;
 	const meta = bo?.displacementMeta;
-	if (meta && bo?.displacementMap) {
+	// A grid with its own heights needs no height map.
+	const ownHeights = grid.kind === 'window' && !!grid.riseKm;
+	if (meta && bo?.displacementMap && !ownHeights) {
 		hf = heightFieldFor(bo, bodyId);
 		if (!hf) return null;
 		scaleKm = meta.scale_km;
 		biasKm = meta.bias_km - (meta.absolute_radius ? radiusKm : 0);
 	}
-	const { corners, tx, ty } = gridCell(gridForBody(bo), latRad, lonRad);
+	const { corners, tx, ty } = gridCell(grid, latRad, lonRad);
 	const pts = corners.map((corner) => {
-		const dispKm = hf ? sampleHeightTexel(hf, corner.latRad, corner.lonRad) * scaleKm + biasKm : 0;
+		const dispKm =
+			corner.riseKm ??
+			(hf ? sampleHeightTexel(hf, corner.latRad, corner.lonRad) * scaleKm + biasKm : 0);
 		return displacedPoint(
 			corner.latRad,
 			corner.lonRad,

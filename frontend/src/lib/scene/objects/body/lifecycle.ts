@@ -23,6 +23,7 @@ import {
 } from '../surface/sun-transmittance';
 import { detachSelfShadow } from '../surface/self-shadow';
 import { isModelBearing, unloadBodyModel } from './model';
+import { disposeReliefTiles } from '../surface/relief-tiles';
 import { disposeTileOverlay } from '../surface/tile-overlay';
 import type { BodyObjects } from '../../types';
 
@@ -279,6 +280,8 @@ export function downgradeBodyMesh(
 		// The windows hang off the material that is about to go.
 		disposeTileOverlay(bo);
 		bo.tileOverlay = undefined;
+		disposeReliefTiles(bo);
+		bo.reliefTiles = undefined;
 		bo.terrainWindow = null;
 		mesh.removeFromParent();
 		mesh.geometry.dispose();

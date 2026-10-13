@@ -122,6 +122,8 @@ import { updateRingShaders } from './shaders/ring-uniforms';
 import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
 import { updateEclipseUniforms } from './shaders/eclipse-uniforms';
 import { evaluateEclipseFactor } from './objects/surface/eclipse-shadow';
+import { disposeReliefTiles } from './objects/surface/relief-tiles';
+import { disposeTileOverlay } from './objects/surface/tile-overlay';
 import { updateSunShadowLight } from './shaders/sun-shadow-light';
 import { updateSphereLOD } from './lod/sphere-lod';
 import { updateTextureLOD } from './lod/texture-lod';
@@ -1229,7 +1231,14 @@ export class SceneRenderer {
 			this.appearances,
 			this.invalidate
 		);
-		updateSphereLOD(this.bodyObjects, this.camera, this.renderer, this.ctx, focusedIdLod);
+		updateSphereLOD(
+			this.bodyObjects,
+			this.camera,
+			this.renderer,
+			this.ctx,
+			focusedIdLod,
+			this.invalidate
+		);
 
 		updateSunShadowLight(
 			this.bodyObjects,
@@ -2755,6 +2764,12 @@ export class SceneRenderer {
 		// Unload resident models: the module-level mount registry must not carry
 		// disposed meshes into the next renderer lifetime.
 		for (const bo of this.bodyObjects.values()) if (bo.model) unloadBodyModel(bo);
+		// A tile that arrives after this would be copied in by a renderer that
+		// is gone.
+		for (const bo of this.bodyObjects.values()) {
+			disposeTileOverlay(bo);
+			disposeReliefTiles(bo);
+		}
 		// Worker pool + cloud buffers — the biggest per-navigation leak.
 		this.pointClouds.dispose();
 		// renderer.dispose() frees only its own caches, not our geometries/

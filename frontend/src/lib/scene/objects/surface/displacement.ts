@@ -56,11 +56,22 @@ export async function attachDisplacementMap(
 
 	texture.colorSpace = NoColorSpace;
 	material.displacementMap = texture;
+	setDisplacementScale(material, dispMeta, sphereRadius, kmToLocal);
+	material.needsUpdate = true;
+	return texture;
+}
+
+/** Scale and bias that put a texel of `dispMeta`'s map at its true height
+ *  over a sphere of `sphereRadius`. */
+export function setDisplacementScale(
+	material: MeshStandardMaterial,
+	dispMeta: DisplacementMeta,
+	sphereRadius: number,
+	kmToLocal: number = kmToScene(1)
+): void {
 	material.displacementScale = dispMeta.scale_km * kmToLocal;
 	material.displacementBias =
 		dispMeta.bias_km * kmToLocal - (dispMeta.absolute_radius ? sphereRadius : 0);
-	material.needsUpdate = true;
-	return texture;
 }
 
 export function displacementTierUrl(dispMeta: DisplacementMeta, tier: string): string {

@@ -1,4 +1,5 @@
 import { host } from '$lib/host';
+import { tilePath } from './tile-path';
 
 /** Root of the data export, as the host configured it. */
 export function dataBase(): string {
@@ -16,11 +17,15 @@ export function tilesBase(): string {
 	return host().tilesUrl;
 }
 
+/** Folder of a pyramid on the tile host. */
+export function tileRoot(tiles: { id: string }): string {
+	return `${tilesBase()}/v1/tiles/${tiles.id}/`;
+}
+
 /**
- * URL of one tile of a pyramid (docs/export-format/tiles.md). The pyramid's
- * own version rides along, so a rebuilt pyramid is never served from cache.
- * `cap` is empty for a tile of the map. `frame` is the 1-based month of a
- * monthly map.
+ * URL of one tile of a pyramid. The pyramid's own version rides along, so a
+ * rebuilt pyramid is never served from cache. `frame` is the 1-based month of
+ * a monthly map.
  */
 export function tileUrl(
 	tiles: { id: string; version: string },
@@ -31,8 +36,7 @@ export function tileUrl(
 	frame?: number
 ): string {
 	const month = frame === undefined ? '' : `${String(frame).padStart(2, '0')}/`;
-	const chart = cap && `${cap}/`;
-	return `${tilesBase()}/v1/tiles/${tiles.id}/${month}${chart}${level}/${x}/${y}.webp?v=${tiles.version}`;
+	return `${tileRoot(tiles)}${month}${tilePath(cap, level, x, y)}?v=${tiles.version}`;
 }
 
 /**

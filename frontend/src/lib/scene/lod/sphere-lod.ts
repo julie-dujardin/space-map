@@ -43,7 +43,8 @@ export function updateSphereLOD(
 	camera: PerspectiveCamera,
 	renderer: WebGLRenderer,
 	ctx: ContextManager,
-	focusedId: string | undefined
+	focusedId: string | undefined,
+	invalidate: () => void
 ): void {
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenH = renderer.domElement.clientHeight;
@@ -58,7 +59,7 @@ export function updateSphereLOD(
 		const isStar = bo.body.data.objectType === ObjectType.STAR;
 		const id = bo.body.data.id;
 		if (id === terrainId || bo.terrainWindow) {
-			if (updateTerrainWindow(bo, camera, id === terrainId)) continue;
+			if (updateTerrainWindow(bo, camera, id === terrainId, invalidate)) continue;
 		}
 		const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
 		const inSystem = activeSystem

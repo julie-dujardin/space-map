@@ -9,6 +9,7 @@ import {
 } from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
 import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
+import { reliefTilesServe, updateReliefTiles } from '$lib/scene/objects/surface/relief-tiles';
 import { tilesServe, updateTileOverlay } from '$lib/scene/objects/surface/tile-overlay';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { maxTextureTier } from '$lib/scene/render-tier';
@@ -91,21 +92,24 @@ export function updateTextureLOD(
 			if (target) loadBodyTextureTier(bo, target, desiredFrame, textureLoader);
 		}
 
+		const devicePx = projScale * renderer.getPixelRatio();
 		updateTileOverlay(
 			bo,
 			camera,
 			renderer,
-			projScale * renderer.getPixelRatio(),
+			devicePx,
 			settings.showSurfaceTexture && !bo.appearance?.surfaceOwned,
 			invalidate
 		);
+		updateReliefTiles(bo, camera, renderer, devicePx, invalidate);
 
 		// Tier rank capped by maxTextureSize: DataTextures aren't resized by three,
-		// so a 16k upload on an 8k-limit GPU would error out.
+		// so a 16k upload on an 8k-limit GPU would error out. Where tiles carry
+		// the relief up close, the largest tier is 134 MB of heights for nothing.
 		const dispTiers = bo.displacementMeta?.tiers;
 		if (bo.displacementMap && dispTiers?.length && !bo.displacementLoading) {
 			const maxTex = renderer.capabilities.maxTextureSize;
-			const capRank = maxTex >= 16383 ? 2 : maxTex >= 8192 ? 1 : 0;
+			const capRank = maxTex >= 16383 && !reliefTilesServe(bo) ? 2 : maxTex >= 8192 ? 1 : 0;
 			const current = bo.displacementTier ?? 'low';
 			const target = highestAvailableTier(
 				Math.min(tierRank(desiredDemTier(altitudeRadii, current)), capRank, tierCap),
