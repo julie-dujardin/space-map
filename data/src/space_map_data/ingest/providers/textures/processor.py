@@ -750,29 +750,59 @@ class TextureProcessor:
                     built[patch_id] = {**current, **credit}
                     save()
                 continue
-            if current:
-                patches.remove(out_dir, base_level, built.pop(patch_id))
-                save()
 
-            # Built aside: a stopped run leaves the pyramid as it was.
+            # Built aside, and the tiles it replaces stay until it is whole: a
+            # stopped build leaves the pyramid as it was.
             building = out_dir / f".patch-{patch_id}"
             if building.exists():
                 shutil.rmtree(building)
-            rasters = [
-                tiles.open_region_layer(source_dir / name, layer.get("gamma"))
-                for layer in spec["files"]
-                for name, _ in layer_files(layer)
+            try:
+                rasters = [
+                    tiles.open_region_layer(source_dir / name, layer.get("gamma"))
+                    for layer in spec["files"]
+                    for name, _ in layer_files(layer)
+                ]
+                builder = patches.PatchBuilder(
+                    f"{pyramid_id} {patch_id}",
+                    out_dir,
+                    base_level,
+                    rasters,
+                    building,
+                    sigma,
+                    spec.get("tiles_max_level"),
+                )
+            except ValueError as error:
+                # A file this build cannot place: the other patches still can.
+                log.error("patch %s %s: %s", pyramid_id, patch_id, error)
+                continue
+            # The tiles of the first level are the widest. One that two
+            # patches share would be written by each without the other's
+            # detail, and deleted with either.
+            reach = builder.tile_range(base_level + 1)
+            shared = [
+                other["id"]
+                for other in built.values()
+                if other["id"] != patch_id
+                and patches.share_tiles(
+                    reach,
+                    patches.first_range(
+                        base_level, other["max_level"], other["x"], other["y"]
+                    ),
+                )
             ]
-            builder = patches.PatchBuilder(
-                f"{pyramid_id} {patch_id}",
-                out_dir,
-                base_level,
-                rasters,
-                building,
-                sigma,
-                spec.get("tiles_max_level"),
-            )
+            if shared:
+                log.error(
+                    "patch %s %s shares tiles with %s: they belong in one patch",
+                    pyramid_id,
+                    patch_id,
+                    shared[0],
+                )
+                continue
             stats = builder.build()
+            if current:
+                del built[patch_id]
+                save()
+                patches.remove(out_dir, base_level, current)
             patches.put_in_place(building, out_dir)
             x0, x1, y0, y1 = builder.tile_range(builder.level)
             built[patch_id] = {

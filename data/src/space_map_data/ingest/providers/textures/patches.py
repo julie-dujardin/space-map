@@ -88,6 +88,20 @@ def _parts(raster: tiles.Layer) -> tuple[tiles.Layer, tiles.Layer]:
     )
 
 
+def first_range(
+    base_level: int, max_level: int, x: Sequence[int], y: Sequence[int]
+) -> tuple[int, int, int, int]:
+    """The tiles of a patch at its coarsest level, from its range at its
+    finest: first and last column, then first and last row."""
+    shift = max_level - base_level - 1
+    return x[0] >> shift, x[1] >> shift, y[0] >> shift, y[1] >> shift
+
+
+def share_tiles(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    """Whether two tile ranges of one level have a tile in common."""
+    return a[0] <= b[1] and b[0] <= a[1] and a[2] <= b[3] and b[2] <= a[3]
+
+
 class PatchBuilder:
     """Builds the tiles of one patch from the finest tiles of its pyramid and
     the patch's rasters.

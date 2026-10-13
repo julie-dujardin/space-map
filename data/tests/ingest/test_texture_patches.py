@@ -579,6 +579,59 @@ class TestProcessPatches:
         assert "patches" not in self._meta(tmp_path)
         assert any("patch source missing" in r.message for r in caplog.records)
 
+    def test_stopped_build_keeps_the_patch_it_was_to_replace(
+        self, tmp_path, monkeypatch
+    ):
+        proc = self._processor(monkeypatch, tmp_path, [self._spec()])
+        _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        proc.process_tiles()
+        first = self._meta(tmp_path)["patches"][0]
+        proc._raw_meta[0]["patches"] = [self._spec(tiles_max_level=5)]
+
+        def stop(self):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(patches.PatchBuilder, "build", stop)
+        with pytest.raises(KeyboardInterrupt):
+            proc.process_tiles()
+        assert self._meta(tmp_path)["patches"] == [first]
+        assert len(_files(tmp_path / "tiles" / "naif-499")[7]) == 289
+
+    def test_raster_it_cannot_place_does_not_stop_the_other_patches(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        elsewhere = (-100.0, -77.5, 20.0, -2.5)
+        specs = [
+            self._spec(id="odd", files=[{"file": "odd.tif"}]),
+            self._spec(files=[{"file": "site.tif"}]),
+        ]
+        proc = self._processor(monkeypatch, tmp_path, specs)
+        _write_geotiff(
+            tmp_path / "raw" / "odd.tif", _texture(), elsewhere, tiepoint=(4.0, 0.0)
+        )
+        _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        proc.process_tiles()
+        assert [patch["id"] for patch in self._meta(tmp_path)["patches"]] == ["site"]
+        assert any("odd" in r.message for r in caplog.records if r.levelname == "ERROR")
+
+    def test_patch_that_shares_tiles_with_another_is_refused(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Each would write the shared tiles without the other's detail."""
+        # Its first column is the last of the other, at the first patch level.
+        beside = (33.0, 55.5, 20.0, -2.5)
+        specs = [
+            self._spec(files=[{"file": "site.tif"}]),
+            self._spec(id="beside", files=[{"file": "beside.tif"}]),
+        ]
+        proc = self._processor(monkeypatch, tmp_path, specs)
+        _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        _write_geotiff(tmp_path / "raw" / "beside.tif", _texture(), beside)
+        proc.process_tiles()
+        assert [patch["id"] for patch in self._meta(tmp_path)["patches"]] == ["site"]
+        assert any("belong in one patch" in r.message for r in caplog.records)
+        assert len(_files(tmp_path / "tiles" / "naif-499")[7]) == 289
+
     def test_map_built_again_takes_its_patches_with_it(self, tmp_path, monkeypatch):
         proc = self._processor(monkeypatch, tmp_path, [self._spec()])
         _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
