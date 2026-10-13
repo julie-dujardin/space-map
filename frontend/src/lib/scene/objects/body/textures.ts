@@ -155,7 +155,7 @@ export async function loadBodyTexture(
 	// Runs before the map-texture early-return so bodies without a surface
 	// map (most asteroids) still get their ellipsoid shape and spin axis.
 	if (detail.global.orientation && !bo.body.orientation) {
-		applyBodyOrientation(bo, detail.global.orientation, ctx);
+		applyBodyOrientation(bo.body, detail.global.orientation, ctx);
 	}
 	// Absolute-radius DEM bodies (Vesta/Ceres) skip triaxial — the displacement
 	// already carries the full shape.

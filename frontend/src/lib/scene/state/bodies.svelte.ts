@@ -69,16 +69,15 @@ export class BodyIndex {
 	 *  point-cloud full-zone repacks ({@link PointCloudSystem.rebuildMinor}). */
 	minorStreaming = false;
 
-	/** Bumped when a body arrives or takes a new row: the position pass runs
-	 *  again, also while the clock stands still. */
+	/** Bumped when a body arrives, or takes a new row or its spin: the position
+	 *  pass runs again, also while the clock stands still. */
 	dataVersion = 0;
 
 	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
 	minorBodyVersion = $state(0);
 
-	/** Bumped when `loadSystemData` attaches `orientation` to a body, so reactive
-	 *  consumers (compass-north list) re-derive — a `$state.raw` mutation
-	 *  wouldn't otherwise retrigger. */
+	/** Bumped when a body takes its `orientation`, which is not reactive: the
+	 *  consumers of it (compass-north list) derive again. */
 	orientationVersion = $state(0);
 
 	/** Bodies whose record has been read for a spin: one of these with no

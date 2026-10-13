@@ -1,23 +1,25 @@
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-import type { BodyObjects } from '../../types';
+import type { PositionedBody } from '$lib/types/objects';
 
 type Orientation = NonNullable<GlobalObjectData['orientation']>;
 
 /**
  * Single place the scene adopts a body's orientation, whichever path found it
- * first — so the credit popover always has a source to point to.
+ * first: the credit popover always has a source to point to, and what stands
+ * on the body is placed again.
  */
 export function applyBodyOrientation(
-	bo: BodyObjects,
+	body: PositionedBody,
 	orientation: Orientation,
 	ctx?: ContextManager,
 	systemId?: string
 ): void {
-	bo.body.orientation = orientation;
+	body.orientation = orientation;
+	if (ctx) ctx.bodies.dataVersion++;
 	ctx?.credits.registerOrientation({
-		bodyId: bo.body.data.id,
-		systemId: systemId ?? bo.body.data.id,
+		bodyId: body.data.id,
+		systemId: systemId ?? body.data.id,
 		source: orientation.source,
 		reference: orientation.reference
 	});

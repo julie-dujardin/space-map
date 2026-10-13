@@ -536,7 +536,9 @@ export class SpaceMap {
 		const framable = new Promise<void>((resolve) => {
 			const check = (): void => {
 				if (!watching) return;
-				if (this.renderer && this.ctx.getBody(targetId)) resolve();
+				// The first phase ends with what the opening body is placed from:
+				// before that, it can be in the scene with no place.
+				if (this.renderer && !this.ctx.loading && this.ctx.getBody(targetId)) resolve();
 				// A timer alongside the frame: a backgrounded tab fires no rAF, and
 				// the poll would never come back.
 				else if (document.hidden) setTimeout(check, 100);

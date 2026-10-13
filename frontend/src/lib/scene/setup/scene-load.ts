@@ -25,6 +25,7 @@ import { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { ProbeStore } from '$lib/fetch/position/probes/store';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { prefetchSkyboxTiers } from '$lib/scene/objects/sky/skybox';
+import { readLandingBodySpin } from '$lib/scene/objects/body/system';
 import { markEagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { isLowEndDevice } from '$lib/device';
 import { createPlaceholderBody, routePlaceholders } from '$lib/scene/setup/placeholder';
@@ -276,6 +277,12 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	await atmospheresPromise;
 	ctx.bodies.addBodies(major);
 	ctx.credits.recordOrbitSources(major);
+	// A lander is placed from the spin of the body it stands on. Read before
+	// the scene shows, the map opens on the lander. A failure is the
+	// navigation's to tell: it reads the spin again.
+	const landingBodySpin = targetId
+		? readLandingBodySpin(targetId, jd, ctx).catch(() => {})
+		: undefined;
 
 	// Awaited once so each MinorBucket can materialize names/flags on demand
 	// without re-awaiting per chunk.
@@ -324,6 +331,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	} catch (e) {
 		console.error('scene-load: ZoneRefresher init failed; time-segmented zones stay empty:', e);
 	}
+	await landingBodySpin;
 	loadProgress.reach('done');
 	ctx.loading = false;
 	performance.mark('sm-majors-done');

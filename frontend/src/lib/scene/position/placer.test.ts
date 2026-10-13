@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { J2000_JD } from '$lib/time/jd';
+import { J2000_JD, jdToEt } from '$lib/time/jd';
+import type { Probe } from '$lib/fetch/position/probes/parse';
 import { PositionDiagnostics } from './diagnostics';
 import { Placer } from './placer';
 
@@ -331,5 +332,71 @@ describe('a body whose data is on its way', () => {
 		const absent = craft();
 		placerOver([absent], undefined, probeStoreWith(false)).place(absent, JD);
 		expect(absent.unplaced).toBe('no-data');
+	});
+});
+
+/** A lander is placed from the spin of the body it stands on. */
+describe('a lander', () => {
+	const SPIN = {
+		pole_ra_0: 317,
+		pole_ra_1: 0,
+		pole_dec_0: 54,
+		pole_dec_1: 0,
+		w0: 176,
+		w1: 350,
+		w2: 0
+	};
+	const landedProbe = {
+		subEndEt: new Float64Array(0),
+		landed: {
+			bodyNaifId: 499,
+			isStatic: true,
+			isDestroyed: false,
+			startEt: jdToEt(JD - 1),
+			endEt: jdToEt(JD + 1),
+			latRefDeg: -4.6,
+			lngRefDeg: 137.4,
+			altRefM: 0,
+			sampleEt: new Float64Array(0),
+			sampleLatDeg: new Float32Array(0),
+			sampleLngDeg: new Float32Array(0),
+			sampleAltM: new Float32Array(0)
+		}
+	} as unknown as Probe;
+
+	function scene() {
+		const mars = mkBody({ id: 'naif-499', parentId: 'naif-0', radiusKm: 3389.5 });
+		const lander = mkBody({
+			id: 'probe-1',
+			parentId: 'naif-0',
+			orbitalSource: OrbitalSource.SPICE_PROBE
+		});
+		const byId = new Map([mars, lander].map((b) => [b.data.id, b]));
+		const ctx = {
+			getBody: (id: string) => byId.get(id),
+			bodies: { bodiesById: byId, elementRow: (b: PositionedBody) => b.data },
+			chebStore: null,
+			probeStore: {
+				ridesAt: () => [],
+				probeWithCenter: () => ({ probe: landedProbe, fitCenterNaifId: 499 }),
+				awaitedAt: () => false
+			},
+			visibility: { activeSystemId: null }
+		} as unknown as ContextManager;
+		return { mars, lander, placer: new Placer(ctx, new Map(), new PositionDiagnostics()) };
+	}
+
+	it('has no place on a body with no spin', () => {
+		const { lander, placer } = scene();
+		expect(placer.place(lander, JD)).toBeNull();
+		expect(lander.unplaced).toBe('parent');
+	});
+
+	it('stands on the body once its spin is read', () => {
+		const { mars, lander, placer } = scene();
+		mars.orientation = SPIN;
+		const pos = placer.place(lander, JD);
+		expect(pos).not.toBeNull();
+		expect(lander.data.parentId).toBe('naif-499');
 	});
 });

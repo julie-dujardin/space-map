@@ -16,6 +16,7 @@
 import { fetchProbes, type FetchedProbes } from '$lib/fetch/position/probes/fetch';
 import {
 	findSubChunkIndex,
+	isLandedAt,
 	jdToEt,
 	probePositionKm,
 	probePositionScene
@@ -361,6 +362,13 @@ export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 			}
 		}
 		return null;
+	}
+
+	/** The body `objectId` stands on at `jd`. Null when it flies, or when no
+	 *  loaded chunk holds it at that date. */
+	landingBodyAt(objectId: string, jd: number): string | null {
+		const probe = this.probe(objectId, jd);
+		return probe?.landed && isLandedAt(probe, jd) ? `naif-${probe.landed.bodyNaifId}` : null;
 	}
 
 	/** Parsed probe record for `objectId` at `jd`, across every loaded zone.

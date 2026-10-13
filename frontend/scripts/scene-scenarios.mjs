@@ -7,7 +7,8 @@
  * - a navigation to an object moves the clock to a date the object has a place at;
  * - a body is on the curve drawn for its orbit;
  * - a jump of the clock changes nothing in the scene until the data for the new
- *   date is in, and then the camera is on the body as before.
+ *   date is in, and then the camera is on the body as before;
+ * - a lander has its place before the page reads it, on a link and on a click.
  *
  * Needs a dev server (its build exposes `__smCtx`, `__smRenderer`, `__smMap`)
  * on an export that carries `coverage`, and a Chromium with remote debugging:
@@ -323,6 +324,11 @@ function invariants(failures, s) {
 }
 
 const MIR = 'norad_satcat-16609';
+const CURIOSITY = 'probe-100265984';
+/** Noon at Gale crater: the ground under Curiosity is lit. */
+const GALE_NOON = '2026-08-30T13:06:00.000Z';
+/** Camera distance of the lander links, in scene units: 11.5 m. */
+const LANDER_ZOOM = 7.7e-10;
 const ISS = 'norad_satcat-25544';
 const SPUTNIK = 'norad_satcat-2';
 
@@ -552,6 +558,60 @@ const SCENARIOS = {
 			watch.notices.some((t) => t.includes(NO_DATA_NOTICE)),
 			`notices: ${watch.notices.join(' | ')}`
 		);
+		return s;
+	},
+
+	/** A lander is placed from the spin of Mars, which the scene reads with the
+	 *  system in focus: the page must not read the place before it. */
+	async 'lander deep link opens on the lander, at the camera of the link'(tab, f) {
+		await tab.goto(`/p/100265984/Curiosity?at=${GALE_NOON},35,70,${LANDER_ZOOM}`);
+		await tab.until(`${READY} && ${focusedIs(CURIOSITY)}`, 'Curiosity focused');
+		await sleep(1500);
+		const s = await tab.eval(`${SNAPSHOT}('${CURIOSITY}')`);
+		check(f, s.placed, `unplaced=${s.unplaced}`);
+		check(f, s.toasts.length === 0, `toasts: ${s.toasts.join(' | ')}`);
+		check(
+			f,
+			Math.abs(s.cameraOffKm / (LANDER_ZOOM * KM) - 1) < 0.01,
+			`camera ${s.cameraOffKm} km from Curiosity`
+		);
+		return s;
+	},
+
+	/** The scene is at rest: the clock stands still and no body arrives. A
+	 *  reader settles the lander with no place just before the spin of Mars
+	 *  arrives, so only that spin can start the pass that places it. */
+	async 'in-session navigation to a lander in another system places it'(tab, f) {
+		await tab.goto('/b/399/Earth');
+		await tab.until(
+			`${READY} && ${focusedIs('naif-399')} && window.__smCtx.bodies.minorStreaming === false`,
+			'Earth focused, the small bodies in'
+		);
+		const toLander = await tab.eval(`(async () => {
+			const r = window.__smRenderer, ctx = window.__smCtx;
+			r.clock.pause();
+			const fetchNow = window.fetch;
+			let unplacedBefore = false;
+			window.fetch = async (...a) => {
+				const response = await fetchNow(...a);
+				if (String(a[0]?.url ?? a[0]).includes('/systems/naif-4.json')) {
+					const lander = ctx.getBody('${CURIOSITY}');
+					unplacedBefore = !!lander && ctx.place(lander, r.clock.jd) === null;
+				}
+				return response;
+			};
+			const arrival = await ${goTo(CURIOSITY)};
+			window.fetch = fetchNow;
+			return { ...arrival, unplacedBefore };
+		})()`);
+		check(f, toLander.unplacedBefore, 'the lander was not settled with no place before the spin');
+		check(
+			f,
+			toLander.outcome === 'placed' && !toLander.moved,
+			`to Curiosity: ${JSON.stringify(toLander)}`
+		);
+		const s = await tab.eval(`${SNAPSHOT}('${CURIOSITY}')`);
+		check(f, s.toasts.length === 0, `toasts: ${s.toasts.join(' | ')}`);
 		return s;
 	},
 

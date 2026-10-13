@@ -31,6 +31,7 @@ import { dateToJD, jdToDate } from '$lib/time/jd';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import { ensureTargetStreamed } from '$lib/scene/setup/placeholder';
+import { readLandingBodySpin } from '$lib/scene/objects/body/system';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 
@@ -313,14 +314,12 @@ export class ZoneRefresher {
 	 * (a probe from its chunk, a small body or a stand-in from its bundle).
 	 */
 	async ensureBody(targetId: string, date: Date): Promise<void> {
-		// The body a craft is fit to can fail to load. The craft is made a body
-		// all the same, and the failure is told last: the caller weighs it
+		// A body a craft is placed from can fail to load. The craft is made a
+		// body all the same, and the failure is told last: the caller weighs it
 		// against the place the craft still has.
-		const anchorFailure = targetId.startsWith('probe-')
-			? await this.ensureProbe(targetId, date)
-			: null;
+		const failure = targetId.startsWith('probe-') ? await this.ensureProbe(targetId, date) : null;
 		await this.ensureListed(targetId, date);
-		if (anchorFailure) throw anchorFailure.error;
+		if (failure) throw failure.error;
 	}
 
 	/** Add `targetId` when no zone and no chunk gave it: a satellite a filter
@@ -342,9 +341,9 @@ export class ZoneRefresher {
 	}
 
 	/** Give a probe what its place needs at `date`: its chunk, the craft it
-	 *  rides on, and the small body its record is fit to. Adds the probe when
-	 *  a chunk holds it. Returns the failure of that small body's load, if it
-	 *  did not load. */
+	 *  rides on, the small body its record is fit to, and the spin of the body
+	 *  it stands on. Adds the probe when a chunk holds it. Returns the first
+	 *  failure of the last two loads. */
 	private async ensureProbe(targetId: string, date: Date): Promise<{ error: unknown } | null> {
 		const store = this.ctx.probeStore;
 		if (!store) return null;
@@ -362,13 +361,15 @@ export class ZoneRefresher {
 		// A record stamped to a small body (Deep Impact → Tempel 1) is gated
 		// until that body is in the scene to anchor it.
 		const fcId = store.stampedFitCenterAt(targetId, jd);
-		const anchorFailure = fcId
-			? await ensureTargetStreamed(this.ctx, fcId).then(
-					() => null,
-					(error: unknown) => ({ error })
-				)
-			: null;
-		if (this.ctx.getBody(targetId)) return anchorFailure;
+		const failureOf = (load: Promise<void>): Promise<{ error: unknown } | null> =>
+			load.then(
+				() => null,
+				(error: unknown) => ({ error })
+			);
+		const anchorFailure = fcId ? await failureOf(ensureTargetStreamed(this.ctx, fcId)) : null;
+		const spinFailure = await failureOf(readLandingBodySpin(targetId, jd, this.ctx));
+		const failure = anchorFailure ?? spinFailure;
+		if (this.ctx.getBody(targetId)) return failure;
 		const labels = await fetchLabels();
 		const target = this.loader
 			.processProbes(store, date, labels)
@@ -377,7 +378,7 @@ export class ZoneRefresher {
 			this.ctx.bodies.addBodies([target]);
 			this.ctx.credits.recordOrbitSources([target]);
 		}
-		return anchorFailure;
+		return failure;
 	}
 
 	private async loadTime(z: TimeZoneState, time: string, date: Date): Promise<void> {

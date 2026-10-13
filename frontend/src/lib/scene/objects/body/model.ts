@@ -360,7 +360,7 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		// Model load can win the race against loadBodyTexture; make sure the
 		// spin axis is on the body so per-frame orientation finds it.
 		if (detail.global?.orientation && !bo.body.orientation) {
-			applyBodyOrientation(bo, detail.global.orientation, ctx);
+			applyBodyOrientation(bo.body, detail.global.orientation, ctx);
 		}
 		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));

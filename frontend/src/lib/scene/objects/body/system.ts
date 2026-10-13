@@ -1,9 +1,11 @@
 import { type Scene, SphereGeometry, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
-import { effectiveRadiusKm } from '$lib/types/objects';
+import { effectiveRadiusKm, ObjectType, type PositionedBody } from '$lib/types/objects';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
+import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { dataBase } from '$lib/fetch/data-base';
+import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { pickTexture, type TextureDistribution } from '$lib/host';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { disposeRingNode, type RingMeta } from '../surface/rings';
@@ -56,6 +58,86 @@ interface SystemBodyMeta extends SiblingBundles {
 	rings?: RingMeta[];
 }
 
+type SystemMeta = Record<string, SystemBodyMeta>;
+
+/** System files on their way: the spin of a landing body and the system in
+ *  focus can ask for the same one at the same time. */
+const systemMetaLoads = new Map<string, Promise<SystemMeta | null>>();
+
+/** The file of the system of `barycenterId`: a record per body. Null when the
+ *  export has none. Rejects when it did not load. */
+function fetchSystemMeta(barycenterId: string): Promise<SystemMeta | null> {
+	let load = systemMetaLoads.get(barycenterId);
+	if (!load) {
+		load = downloadSystemMeta(barycenterId).finally(() => systemMetaLoads.delete(barycenterId));
+		systemMetaLoads.set(barycenterId, load);
+	}
+	return load;
+}
+
+async function downloadSystemMeta(barycenterId: string): Promise<SystemMeta | null> {
+	const resp = await fetchWithTimeout(`${dataBase()}/v1/systems/${barycenterId}.json`);
+	if (resp.status === 404) return null;
+	if (!resp.ok) throw new Error(`systems/${barycenterId}.json: ${resp.status}`);
+	return resp.json();
+}
+
+/** Give `body` the spin of its system record: the pole and the rate, and the
+ *  nutation terms joined with the angles its system shares. */
+function adoptSystemSpin(
+	body: PositionedBody,
+	orientation: NonNullable<SystemBodyMeta['orientation']>,
+	nutPrec: SystemBodyMeta['nut_prec'],
+	ctx: ContextManager | undefined,
+	barycenterId: string
+): void {
+	applyBodyOrientation(body, orientation, ctx, barycenterId);
+	if (!nutPrec) return;
+	const naifMatch = body.data.id.match(/^naif-(-?\d+)$/);
+	const naifId = naifMatch ? parseInt(naifMatch[1], 10) : null;
+	const angles = naifId !== null ? getNutPrecAngles(ownerIdFor(naifId)) : undefined;
+	if (angles) body.nutPrec = { ...nutPrec, angles };
+}
+
+/**
+ * Read how `body` spins, with no mesh to turn. The scene reads a spin with the
+ * system or the texture of the body in focus, and a lander is placed from the
+ * spin of the body it stands on before it has the focus.
+ *
+ * Rejects when a file did not load.
+ */
+export async function readSpin(body: PositionedBody, ctx: ContextManager): Promise<void> {
+	const id = body.data.id;
+	const known = (): boolean => !!body.orientation || ctx.bodies.orientationRead.has(id);
+	if (known()) return;
+	const systemId = ctx.visibility.resolveSystemId(body);
+	const system = systemId ? ctx.getBody(systemId) : undefined;
+	// A small body is its own system, and has no system file.
+	const barycenterId = system?.data.objectType === ObjectType.BARYCENTER ? system.data.id : null;
+	const record = barycenterId ? (await fetchSystemMeta(barycenterId))?.[id] : undefined;
+	const detail = record?.orientation ? null : await fetchObjectDetail(id, false);
+	// The system in focus, or another read, can give the spin in the meantime.
+	if (known()) return;
+	if (record?.orientation) {
+		adoptSystemSpin(body, record.orientation, record.nut_prec, ctx, barycenterId!);
+	} else if (detail?.global?.orientation) {
+		applyBodyOrientation(body, detail.global.orientation, ctx);
+	}
+	ctx.bodies.orientationRead.add(id);
+	if (body.orientation) ctx.bodies.orientationVersion++;
+}
+
+/** {@link readSpin} for the body the probe `probeId` stands on at `jd`. */
+export async function readLandingBodySpin(
+	probeId: string,
+	jd: number,
+	ctx: ContextManager
+): Promise<void> {
+	const landingBodyId = ctx.probeStore?.landingBodyAt(probeId, jd);
+	const landingBody = landingBodyId ? ctx.getBody(landingBodyId) : undefined;
+	if (landingBody) await readSpin(landingBody, ctx);
+}
+
 /**
  * Fetch and apply system metadata (textures, orientation, rings) to every
  * body in the system, keyed by barycenter ID (naif-3, naif-5, …).
@@ -69,14 +151,8 @@ export async function loadSystemData(
 	maxTextureSize: number,
 	ctx?: ContextManager
 ): Promise<void> {
-	let meta: Record<string, SystemBodyMeta>;
-	try {
-		const resp = await fetch(`${dataBase()}/v1/systems/${barycenterId}.json`);
-		if (!resp.ok) return;
-		meta = await resp.json();
-	} catch {
-		return;
-	}
+	const meta = await fetchSystemMeta(barycenterId).catch(() => null);
+	if (!meta) return;
 
 	const promises: Promise<void>[] = [];
 	for (const [bodyId, bodyMeta] of Object.entries(meta)) {
@@ -94,18 +170,7 @@ export async function loadSystemData(
 
 		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {
-			applyBodyOrientation(bo, bodyMeta.orientation, ctx, barycenterId);
-
-			// Join per-body nut/prec coefficients with the system-shared IAU angles.
-			if (bodyMeta.nut_prec) {
-				const naifMatch = bodyId.match(/^naif-(-?\d+)$/);
-				const naifId = naifMatch ? parseInt(naifMatch[1], 10) : null;
-				const angles = naifId !== null ? getNutPrecAngles(ownerIdFor(naifId)) : undefined;
-				if (angles) {
-					bo.body.nutPrec = { ...bodyMeta.nut_prec, angles };
-				}
-			}
-
+			adoptSystemSpin(bo.body, bodyMeta.orientation, bodyMeta.nut_prec, ctx, barycenterId);
 			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd, bo.body.nutPrec);
 		}
 
