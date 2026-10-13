@@ -12,9 +12,13 @@ from PIL import Image
 from space_map_data.ingest.providers.textures import (
     TextureProcessor,
     config,
+    image_io,
     patches,
     tiles,
 )
+from space_map_data.ingest.providers.textures.image_io import ChunkedTiff
+
+from .test_texture_tiles import _write_pds_image
 
 TILE = 16
 COLOUR = (200, 90, 40)
@@ -65,7 +69,7 @@ def _tile(root: Path, level: int, x: int, y: int) -> np.ndarray:
     return np.asarray(Image.open(root / str(level) / str(x) / f"{y}.webp"))
 
 
-def _write_geotiff(path: Path, pixels: np.ndarray, bounds=BOUNDS) -> None:
+def _write_geotiff(path: Path, pixels: np.ndarray, bounds=BOUNDS, **storage) -> None:
     """An equirectangular GeoTIFF of a sphere of ``RADIUS`` metres."""
     west, east, north, south = bounds
     per_degree = np.radians(RADIUS)
@@ -90,6 +94,7 @@ def _write_geotiff(path: Path, pixels: np.ndarray, bounds=BOUNDS) -> None:
             (34735, "H", len(keys), keys, True),
             (34736, "d", 3, (RADIUS, 0.0, 0.0), True),
         ],
+        **storage,
     )
 
 
@@ -120,9 +125,70 @@ class TestRegion:
         seen = np.isfinite(raster.window(1024, edges, 530, 550))
         assert seen[15, 15] and not seen[2, 15] and not seen[15, 2]
 
+    def test_pds_image_is_placed_by_the_edges_its_label_states(self, tmp_path):
+        west, east, north, south = BOUNDS
+        _write_pds_image(
+            tmp_path / "site.img",
+            _texture(64).astype(np.float32),
+            MAP_PROJECTION_TYPE="EQUIRECTANGULAR",
+            WESTERNMOST_LONGITUDE=f"{west} <DEG>",
+            EASTERNMOST_LONGITUDE=f"{east} <DEG>",
+            MAXIMUM_LATITUDE=f"{north} <DEG>",
+            MINIMUM_LATITUDE=f"{south} <DEG>",
+        )
+        raster = tiles.open_region_layer(tmp_path / "site.img")
+        assert isinstance(raster.pixels, tiles.Region)
+        assert raster.pixels.bounds == pytest.approx(BOUNDS, abs=0.2)
+        assert raster.pixels.shape == (512, 1024)
+
     def test_bounds_of_a_geotiff(self, tmp_path):
         _write_geotiff(tmp_path / "site.tif", _texture(64))
         assert tiles._geotiff_bounds(tmp_path / "site.tif") == pytest.approx(BOUNDS)
+
+
+class TestChunkedTiff:
+    """A compressed mosaic is read by window, chunk by chunk."""
+
+    @pytest.mark.parametrize(
+        "storage",
+        [
+            {"tile": (64, 64), "compression": "packbits"},
+            {"rowsperstrip": 48, "compression": "lzw"},
+            {"tile": (128, 64), "compression": "deflate"},
+        ],
+        ids=["tiles", "strips", "tiles not square"],
+    )
+    def test_window_holds_the_pixels_of_the_file(self, tmp_path, storage):
+        pixels = _texture(200)
+        tifffile.imwrite(tmp_path / "site.tif", pixels, **storage)
+        chunked = ChunkedTiff(tmp_path / "site.tif")
+        assert chunked.shape == (200, 200)
+        for window in (
+            (slice(0, 200), slice(0, 200)),
+            (slice(60, 70), slice(120, 131)),
+            (slice(190, 200), slice(0, 5)),
+        ):
+            assert (chunked[window] == pixels[window]).all()
+
+    def test_chunks_stay_decoded_up_to_a_limit(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(image_io, "_CHUNK_CACHE_BYTES", 3 * 64 * 64)
+        pixels = _texture(256)
+        tifffile.imwrite(
+            tmp_path / "site.tif", pixels, tile=(64, 64), compression="packbits"
+        )
+        chunked = ChunkedTiff(tmp_path / "site.tif")
+        assert (chunked[0:256, 0:256] == pixels).all()
+        assert len(chunked._cache) == 3
+
+    def test_compressed_geotiff_is_a_regional_raster(self, tmp_path):
+        _write_geotiff(
+            tmp_path / "site.tif", _texture(64), tile=(32, 32), compression="packbits"
+        )
+        raster = tiles.open_region_layer(tmp_path / "site.tif")
+        assert isinstance(raster.pixels, tiles.Region)
+        assert (
+            raster.pixels.read(190, 210, 530, 550)[9:, 10:] == _texture(64)[:11, :10]
+        ).all()
 
 
 class TestPatchBuilder:

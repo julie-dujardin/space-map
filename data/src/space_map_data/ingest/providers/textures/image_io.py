@@ -1,7 +1,10 @@
 """Adapters for raw input images (PIL, tifffile, bathymetry → ocean mask)."""
 
 import logging
+import os
 import re
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +33,9 @@ _DISPLACEMENT_BAND_OUT_ROWS = 256
 # fill; each pass closes one pixel from either side, so 4 repairs slivers up to
 # 8 px wide and leaves genuinely unmapped regions to `fill`.
 GAP_REPAIR_PASSES = 4
+
+# Decoded bytes a chunked TIFF keeps for the reads beside the last one.
+_CHUNK_CACHE_BYTES = 256 << 20
 
 
 def _has_alpha(img: Image.Image) -> bool:
@@ -227,6 +233,73 @@ def memmap_page(src: Path, page: tifffile.TiffPage) -> np.ndarray | None:
         offset=page.dataoffsets[0],
         shape=page.shape,
     )
+
+
+class ChunkedTiff:
+    """A single-band TIFF stored as compressed tiles or strips, read by window
+    like an array.
+
+    Such a file can be tens of gigapixels: it cannot be mapped in place like
+    plain samples, nor decoded whole. A read decodes the chunks under it, and
+    the last ones stay decoded for the reads beside it.
+    """
+
+    def __init__(self, src: Path) -> None:
+        self._tif = tifffile.TiffFile(str(src))
+        page = self._tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        self._page = page
+        self._fd = os.open(src, os.O_RDONLY)
+        self.shape: tuple[int, int] = (page.shape[0], page.shape[1])
+        self.dtype = page.dtype
+        self._chunk_rows, self._chunk_columns = page.chunks[:2]
+        self._across = page.chunked[1]
+        self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
+        self._held = 0
+        self._lock = threading.Lock()
+
+    def __del__(self) -> None:
+        os.close(self._fd)
+        self._tif.close()
+
+    def _chunk(self, index: int) -> np.ndarray:
+        with self._lock:
+            chunk = self._cache.get(index)
+            if chunk is not None:
+                self._cache.move_to_end(index)
+                return chunk
+        count = self._page.databytecounts[index]
+        if count:
+            data = os.pread(self._fd, count, self._page.dataoffsets[index])
+            decoded = self._page.decode(data, index)[0]
+            assert decoded is not None
+            chunk = decoded.reshape(decoded.shape[1], decoded.shape[2])
+        else:
+            # A chunk the writer left out holds no data.
+            chunk = np.zeros((self._chunk_rows, self._chunk_columns), self.dtype)
+        with self._lock:
+            self._cache[index] = chunk
+            self._held += chunk.nbytes
+            while self._held > _CHUNK_CACHE_BYTES and len(self._cache) > 1:
+                self._held -= self._cache.popitem(last=False)[1].nbytes
+        return chunk
+
+    def __getitem__(self, key: tuple[slice, slice]) -> np.ndarray:
+        y0, y1, _ = key[0].indices(self.shape[0])
+        x0, x1, _ = key[1].indices(self.shape[1])
+        out = np.empty((max(y1 - y0, 0), max(x1 - x0, 0)), dtype=self.dtype)
+        rows, columns = self._chunk_rows, self._chunk_columns
+        for cy in range(y0 // rows, -(-y1 // rows)):
+            for cx in range(x0 // columns, -(-x1 // columns)):
+                chunk = self._chunk(cy * self._across + cx)
+                top, left = max(y0, cy * rows), max(x0, cx * columns)
+                bottom = min(y1, cy * rows + chunk.shape[0])
+                right = min(x1, cx * columns + chunk.shape[1])
+                out[top - y0 : bottom - y0, left - x0 : right - x0] = chunk[
+                    top - cy * rows : bottom - cy * rows,
+                    left - cx * columns : right - cx * columns,
+                ]
+        return out
 
 
 @dataclass(frozen=True)

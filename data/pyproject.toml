@@ -6,6 +6,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "cbor2>=5.7.0",
     "httpx",
+    "imagecodecs>=2026.10.10",
     "jplephem>=2.24",
     "meilisearch>=0.41.0",
     "miepython>=3.2.0",

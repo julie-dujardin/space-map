@@ -40,6 +40,7 @@ from scipy import ndimage
 from . import config
 from .encoding import linear_to_srgb, webp_kwargs
 from .image_io import (
+    ChunkedTiff,
     NODATA_THRESHOLD,
     HeightRaster,
     memmap_page,
@@ -271,7 +272,12 @@ class Region:
     brightness reader takes as not observed."""
 
     def __init__(
-        self, pixels: np.ndarray, west: float, east: float, north: float, south: float
+        self,
+        pixels: np.ndarray | ChunkedTiff,
+        west: float,
+        east: float,
+        north: float,
+        south: float,
     ) -> None:
         height, width = pixels.shape
         self._pixels = pixels
@@ -794,12 +800,36 @@ def _geotiff_bounds(path: Path) -> tuple[float, float, float, float]:
     )
 
 
+def _pds_bounds(path: Path) -> tuple[float, float, float, float]:
+    """West, east, north and south edge of an equirectangular PDS3 image, in
+    degrees, as its label states them."""
+    label = read_pds_label(path)
+    if label.get("MAP_PROJECTION_TYPE") != "EQUIRECTANGULAR":
+        raise ValueError(f"{path.name}: not an equirectangular image")
+    return (
+        float(label["WESTERNMOST_LONGITUDE"]),
+        float(label["EASTERNMOST_LONGITUDE"]),
+        float(label["MAXIMUM_LATITUDE"]),
+        float(label["MINIMUM_LATITUDE"]),
+    )
+
+
 def open_region_layer(path: Path, gamma: float | None = None) -> Layer:
-    """A greyscale raster of a part of the globe, as a brightness layer."""
+    """A greyscale raster of a part of the globe, as a brightness layer: an
+    equirectangular GeoTIFF or PDS3 image."""
+    pixels: np.ndarray | ChunkedTiff
+    if path.suffix.lower() == ".img":
+        pixels, bounds = open_pds_image(path), _pds_bounds(path)
+    else:
+        with tifffile.TiffFile(str(path)) as tif:
+            page = tif.pages[0]
+            assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+            mapped = memmap_page(path, page)
+        # A site mosaic stored in compressed chunks is too large to decode whole.
+        pixels = ChunkedTiff(path) if mapped is None else mapped
+        bounds = _geotiff_bounds(path)
     return Layer(
-        Region(_open_grey(path), *_geotiff_bounds(path)),
-        Placement(),
-        to_values=brightness_values(gamma),
+        Region(pixels, *bounds), Placement(), to_values=brightness_values(gamma)
     )
 
 
