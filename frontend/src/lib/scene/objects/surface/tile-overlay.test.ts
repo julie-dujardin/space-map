@@ -5,7 +5,7 @@ import { tilesServe } from './tile-overlay';
 
 function body(tiles: Partial<TilesBlock> = {}, overlay?: { dead: boolean }): BodyObjects {
 	const surfaceTiles = { id: 'naif-499', tile_size: 1024, max_level: 6, version: 'v', ...tiles };
-	return { surfaceTiles, tileOverlay: overlay } as unknown as BodyObjects;
+	return { surfaceTiles, tileOverlay: overlay && { chain: overlay } } as unknown as BodyObjects;
 }
 
 describe('tilesServe', () => {
