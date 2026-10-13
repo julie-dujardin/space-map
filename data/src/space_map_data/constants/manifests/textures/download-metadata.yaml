@@ -180,6 +180,19 @@ bodies:
       step_deg: 4
       file: "MurrayLab_CTX_V01_E{lon}_N{lat}_Mosaic.tif"
       archive: "https://murray-lab.caltech.edu/CTX/V01/tiles/MurrayLab_GlobalCTXMosaic_V01_E{lon}_N{lat}.zip"
+  patches:
+  # Jezero crater, where Perseverance works: the mosaic made to land it.
+  - id: jezero
+    source: https://astrogeology.usgs.gov/search/map/mars_2020_terrain_relative_navigation_hirise_orthorectified_image_mosaic
+    organisation: USGS
+    license: Public domain
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. Mars 2020 Terrain Relative Navigation HiRISE orthorectified image mosaic, 25 cm/px."
+    files:
+    - file: JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first.tif
+      dir: mars-sites
+      download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first.tif
+      # 8-bit values stretched for display, not linear brightness.
+      gamma: 2.2
 - body: naif-401
   body_name: phobos
   source: https://astrogeology.usgs.gov/search/map/phobos_viking_global_mosaic_5m#open
@@ -450,6 +463,39 @@ bodies:
   file: ganymede_4k.jpg
   type: cylindrical
   lon_at_left_deg: 0  # Albers SOS map is east-positive (reprojected for display), 0° at left edge
+# Each colour map, with detail from the USGS mosaic at 1 km. The USGS colour
+# mosaic is a patchwork of tints, so it gives no colour here.
+- body: naif-503
+  body_name: ganymede
+  source: https://astrogeology.usgs.gov/search/map/ganymede_voyager_galileo_ssi_global_mosaic_1km
+  organisation: Steve Albers
+  license: Personal, non-commercial use only
+  distribution: site-only
+  attribution: "Colour: processed by Steve Albers — modified version of a Voyager/Galileo map by Björn Jónsson, with localised blends from the USGS Ganymede map. Detail: Voyager and Galileo SSI global mosaic, 1 km/px (NASA/JPL, USGS Astrogeology Science Center)."
+  file: ganymede_4k.jpg
+  type: cylindrical
+  lon_at_left_deg: 0
+  tiles: only
+  brightness:
+  - file: Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif
+    source: https://astrogeology.usgs.gov/search/map/ganymede_voyager_galileo_ssi_global_mosaic_1km
+    download_url: https://planetarymaps.usgs.gov/mosaic/Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif
+    lon_at_left_deg: 0
+- body: naif-503
+  body_name: ganymede
+  source: https://astrogeology.usgs.gov/search/map/ganymede_voyager_galileo_ssi_global_mosaic_1km
+  organisation: Björn Jónsson
+  license: Free use with attribution
+  attribution: "Colour: Ganymede global map by Björn Jónsson, from Voyager and Galileo imagery (NASA/JPL). Detail: Voyager and Galileo SSI global mosaic, 1 km/px (NASA/JPL, USGS Astrogeology Science Center)."
+  file: ganymede-bjj.jpg
+  type: cylindrical
+  lon_at_left_deg: 0
+  tiles: only
+  brightness:
+  - file: Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif
+    source: https://astrogeology.usgs.gov/search/map/ganymede_voyager_galileo_ssi_global_mosaic_1km
+    download_url: https://planetarymaps.usgs.gov/mosaic/Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif
+    lon_at_left_deg: 0
 - body: naif-504
   body_name: callisto
   source: https://bjj.mmedia.is/data/callisto/index.html
@@ -459,6 +505,22 @@ bodies:
   file: callisto.jpg
   type: cylindrical
   lon_at_left_deg: 0  # BJJ map is east-positive (reprojected for display), 0° at left edge
+# Jónsson's colour, with detail from the USGS mosaic at 1 km.
+- body: naif-504
+  body_name: callisto
+  source: https://astrogeology.usgs.gov/search/map/callisto_galileo_voyager_global_mosaic_1km
+  organisation: Björn Jónsson
+  license: Free use with attribution
+  attribution: "Colour: Callisto global map by Björn Jónsson (2000), reprojected from 78 Voyager and Galileo images (NASA/JPL). Detail: Voyager and Galileo SSI global mosaic, 1 km/px (NASA/JPL, USGS Astrogeology Science Center)."
+  file: callisto.jpg
+  type: cylindrical
+  lon_at_left_deg: 0
+  tiles: only
+  brightness:
+  - file: Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif
+    source: https://astrogeology.usgs.gov/search/map/callisto_galileo_voyager_global_mosaic_1km
+    download_url: https://planetarymaps.usgs.gov/mosaic/Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif
+    lon_at_left_deg: 0
 - body: naif-505
   body_name: amalthea
   source: https://sbnarchive.psi.edu/pds3/multi_mission/MULTI_SA_MULTI_6_STOOKEMAPS_V3_0/document/j5amalthea/
@@ -747,6 +809,23 @@ bodies:
   file: PIA11707.tif
   type: cylindrical
   lon_at_left_deg: 0  # 180° east shift; lon+lat verified against IAU nomenclature (Sputnik Planitia, Burney). Same frame as the Pluto DEM.
+# The same colour, with detail from the USGS mosaic at 300 m. South of about
+# 38°S was in darkness: there the colour map stays as it is.
+- body: naif-999
+  body_name: pluto
+  source: https://astrogeology.usgs.gov/search/map/pluto_new_horizons_lorri_mvic_global_mosaic_300m
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA/Johns Hopkins University Applied Physics Laboratory/Southwest Research Institute. Detail: New Horizons LORRI and MVIC global mosaic of Pluto, 300 m/px (USGS Astrogeology Science Center)."
+  file: PIA11707.tif
+  type: cylindrical
+  lon_at_left_deg: 0
+  tiles: only
+  brightness:
+  - file: Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif
+    source: https://astrogeology.usgs.gov/search/map/pluto_new_horizons_lorri_mvic_global_mosaic_300m
+    download_url: https://planetarymaps.usgs.gov/mosaic/Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif
+    lon_at_left_deg: 0
 - body: naif-999
   body_name: pluto
   source: https://stevealbers.net/albers/sos/sos.html#PLUTO
@@ -764,6 +843,20 @@ bodies:
   attribution: "Map projection of Charon from New Horizons imagery. Credit: NASA/Johns Hopkins University Applied Physics Laboratory/Southwest Research Institute. Published by the IAU."
   file: charon-iau1803c.tif
   type: cylindrical
+# The same colour, with detail from the USGS mosaic at 300 m.
+- body: naif-901
+  body_name: charon
+  source: https://astrogeology.usgs.gov/search/map/charon_new_horizons_lorri_mvic_global_mosaic_300m
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA/Johns Hopkins University Applied Physics Laboratory/Southwest Research Institute. Detail: New Horizons LORRI and MVIC global mosaic of Charon, 300 m/px (USGS Astrogeology Science Center)."
+  file: charon-iau1803c.tif
+  type: cylindrical
+  tiles: only
+  brightness:
+  - file: Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif
+    source: https://astrogeology.usgs.gov/search/map/charon_new_horizons_lorri_mvic_global_mosaic_300m
+    download_url: https://planetarymaps.usgs.gov/mosaic/Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif
 - body: naif-902
   body_name: nix
   source: https://www.deviantart.com/askaniy/art/Nix-False-Color-Map-926588947
