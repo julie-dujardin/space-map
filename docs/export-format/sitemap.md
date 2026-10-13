@@ -18,24 +18,42 @@ unique content. An object earns a URL when it is any of:
   (`export/sitemap.py`, default 5 — at which ~99.9 % also carry a Wikipedia
   description, keeping thin pages out).
 
-Every exported group (`/g/<slug>`) is included.
+An object the export leaves out has no page and is not listed. Every exported
+group is included.
 
 **Surface features** clear the same sitelink floor, counted on the feature's own
 Wikidata entity: 3.5 k of the 9 k features that have a QID, out of a 16 k
 gazetteer. The rest are anonymous craters whose page would be a name and a
-coordinate. Together this yields ~42 k URLs; raise the threshold to trim the
-tail.
+coordinate. A feature the gazetteer does not export (no position or no type
+code) is not listed: its page would answer 404. Together this yields ~42 k
+URLs; raise the threshold to trim the tail.
 
 ## URL shape
 
-Canonical paths mirror `frontend/src/lib/state/url.ts`:
+A page states its canonical link with the name the app gives it in the base
+locale, and the sitemap must list that same URL. So each path carries that
+name, read from the files the app reads it from. The paths follow
+`frontend/src/lib/state/page-href.ts` and the names
+`frontend/src/lib/state/page-name.ts`:
 
 - objects → `/<type>/<id>/<name>` — type letter from the id prefix
   (`naif`→`b`, `spkid`→`s`, `norad_satcat`→`e`, `probe`→`p`, `extra`→`u`),
-  `<name>` is `obj.name` percent-encoded like `encodeURIComponent`;
-- groups → `/g/<slug>` — the slug is already descriptive, so no name segment;
+  `<name>` is the name of the object's base-locale bundle entry, else that of
+  its `__global__` entry;
+- groups → `/g/<slug>/<name>` — `<name>` is the name of the group's
+  base-locale bundle entry. A category (`cat-…`) takes the app's own label
+  (`category_name_*` in `frontend/messages`), and so does an orbit class the
+  export does not name (`orbit_class_*`);
 - features → `/<type>/<id>/f/<featureId>/<name>` — `<type>/<id>` is the host
-  body, `<name>` is `unicode_name or name` (the value the app routes on).
+  body, `<name>` is the feature's line in the base-locale label file, which is
+  the IAU `name`.
+
+Every name is percent-encoded like `encodeURIComponent`. A page with no name
+has no name segment, and the writer warns about a group in that case: its page
+calls itself by a name the sitemap cannot give.
+
+The names come from the bundles, so `space-map-export --only sitemap` rewrites
+the file from an export that is already there.
 
 Each of these pages builds its own SSR title/description/OG card in
 `frontend/src/lib/seo/meta.ts`. A feature's description is its CC0 Wikidata

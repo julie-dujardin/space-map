@@ -54,6 +54,9 @@ def _feature(session: Session, feature_id: int, **kwargs) -> None:
         "name": f"Feature {feature_id}",
         "target": "moon",
         "wikidata_qid": f"Q{feature_id}",
+        "center_lat": 0.0,
+        "center_lon": 0.0,
+        "feature_type_code": "AA",
     }
     defaults.update(kwargs)
     session.add(Feature(**defaults))
@@ -270,6 +273,19 @@ class TestFeaturePaths:
         session.flush()
 
         assert _feature_paths(session, _entities({"Q4": SITELINKS_THRESHOLD})) == []
+
+    @pytest.mark.parametrize(
+        "missing",
+        [{"center_lat": None}, {"center_lon": None}, {"feature_type_code": None}],
+    )
+    def test_skips_a_feature_the_gazetteer_leaves_out(
+        self, session: Session, missing: dict
+    ):
+        """Such a feature has no page: the app reads its name from the gazetteer."""
+        _feature(session, 5, **missing)
+        session.flush()
+
+        assert _feature_paths(session, _entities({"Q5": SITELINKS_THRESHOLD})) == []
 
 
 class TestGroupName:

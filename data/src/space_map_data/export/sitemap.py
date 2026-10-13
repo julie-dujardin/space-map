@@ -28,7 +28,10 @@ from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS
 from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.localization import MESSAGES_DIR
-from space_map_data.export.nomenclature.writer import feature_label
+from space_map_data.export.nomenclature.writer import (
+    feature_label,
+    renderable_feature_filter,
+)
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
@@ -168,11 +171,12 @@ def _feature_paths(
     """Canonical paths for surface features at or above the sitelink floor.
 
     Most of the 16k gazetteer entries are anonymous craters with no description
-    worth indexing; the Wikidata-backed ones clear the bar.
+    worth indexing; the Wikidata-backed ones clear the bar. Only a feature the
+    gazetteer exports is listed: the page of another one answers 404.
     """
     features = session.scalars(
         select(Feature).where(
-            Feature.wikidata_qid.isnot(None), Feature.object_id.isnot(None)
+            Feature.wikidata_qid.isnot(None), *renderable_feature_filter()
         )
     ).all()
     paths: list[str] = []
