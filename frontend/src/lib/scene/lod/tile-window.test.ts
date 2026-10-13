@@ -4,16 +4,21 @@ import {
 	FIRST_TILE_LEVEL,
 	MAP,
 	NORTH,
+	type PatchRange,
 	SOUTH,
 	WINDOW_TILES,
+	type WindowPlacement,
 	cameraChart,
 	chartColumns,
 	chartPoint,
 	chartRows,
+	deepestLevel,
 	neededLevel,
+	patchOfTile,
 	placeWindow,
 	slotTile,
-	windowChain
+	windowChain,
+	windowHome
 } from './tile-window';
 
 /** Unit direction of a latitude and an east longitude, as the sphere mesh has it. */
@@ -239,5 +244,58 @@ describe('slotTile', () => {
 			}
 		}
 		expect(kept).toBe(WINDOW_TILES * (WINDOW_TILES - 1));
+	});
+});
+
+describe('patches', () => {
+	// Jezero's: levels 11 to 16 of the Mars pyramid.
+	const patches: PatchRange[] = [{ max_level: 16, x: [93652, 93783], y: [25970, 26102] }];
+	const inside = { x: 93700 / chartColumns(MAP, 16), y: 26000 / chartRows(MAP, 16) };
+
+	it('has the tiles of its range at its own level', () => {
+		expect(patchOfTile(patches, 16, 93652, 25970)).toBe(patches[0]);
+		expect(patchOfTile(patches, 16, 93783, 26102)).toBe(patches[0]);
+		expect(patchOfTile(patches, 16, 93651, 25970)).toBeUndefined();
+		expect(patchOfTile(patches, 16, 93652, 26103)).toBeUndefined();
+	});
+
+	it('has the tiles above those at each coarser level', () => {
+		expect(patchOfTile(patches, 11, 2926, 811)).toBe(patches[0]);
+		expect(patchOfTile(patches, 11, 2930, 815)).toBe(patches[0]);
+		expect(patchOfTile(patches, 11, 2925, 811)).toBeUndefined();
+		expect(patchOfTile(patches, 11, 2931, 815)).toBeUndefined();
+	});
+
+	it('has no tile past its finest level', () => {
+		expect(patchOfTile(patches, 17, 93700 * 2, 26000 * 2)).toBeUndefined();
+	});
+
+	it('takes a camera over it deeper than the pyramid goes', () => {
+		expect(deepestLevel(10, patches, inside.x, inside.y)).toBe(16);
+		expect(deepestLevel(10, patches, inside.x + 0.01, inside.y)).toBe(10);
+		expect(deepestLevel(10, undefined, inside.x, inside.y)).toBe(10);
+	});
+});
+
+describe('windowHome', () => {
+	it('is the camera point counted from the window corner, in tiles', () => {
+		const placement = placeWindow(MAP, 16, 0.7148, 0.3967);
+		const home = windowHome(placement, 0.7148, 0.3967);
+		expect(home.x).toBeCloseTo(0.7148 * chartColumns(MAP, 16) - placement.tx0, 6);
+		expect(home.y).toBeCloseTo(0.3967 * chartRows(MAP, 16) - placement.ty0, 6);
+		expect(home.x).toBeGreaterThan(0);
+		expect(home.x).toBeLessThan(WINDOW_TILES);
+	});
+
+	it('goes the short way around for a window across the 180° meridian', () => {
+		// Its west corner is three tiles before the east edge of the map.
+		const placement: WindowPlacement = {
+			chart: MAP,
+			level: 5,
+			tx0: chartColumns(MAP, 5) - 3,
+			ty0: 14
+		};
+		const home = windowHome(placement, 0.5 / chartColumns(MAP, 5), 0.5);
+		expect(home.x).toBeCloseTo(3.5, 9);
 	});
 });

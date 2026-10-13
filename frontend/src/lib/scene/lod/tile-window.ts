@@ -174,6 +174,73 @@ export function placeWindow(
 	return { chart, level, tx0, ty0 };
 }
 
+/** The tiles of a patch: the levels of a pyramid past its finest, over the
+ *  ground of one regional mosaic. Map chart only. */
+export interface PatchRange {
+	max_level: number;
+	/** First and last column, then first and last row, at `max_level`. */
+	x: [number, number];
+	y: [number, number];
+}
+
+/** The patch that has map tile `(x, y)` of `level`. No other tile exists past
+ *  a pyramid's finest level, and a host would answer 404 for it. */
+export function patchOfTile<P extends PatchRange>(
+	patches: readonly P[] | undefined,
+	level: number,
+	x: number,
+	y: number
+): P | undefined {
+	return patches?.find((patch) => {
+		const up = patch.max_level - level;
+		return (
+			up >= 0 &&
+			x >= patch.x[0] >> up &&
+			x <= patch.x[1] >> up &&
+			y >= patch.y[0] >> up &&
+			y <= patch.y[1] >> up
+		);
+	});
+}
+
+/** The finest level with a tile at the map point `(x, y)`, as `chartPoint`
+ *  gives it: the pyramid's own, or that of a patch the point is in. */
+export function deepestLevel(
+	maxLevel: number,
+	patches: readonly PatchRange[] | undefined,
+	x: number,
+	y: number
+): number {
+	let deepest = maxLevel;
+	for (const patch of patches ?? []) {
+		const tx = Math.floor(x * chartColumns(MAP, patch.max_level));
+		const ty = Math.floor(y * chartRows(MAP, patch.max_level));
+		if (patchOfTile([patch], patch.max_level, tx, ty)) {
+			deepest = Math.max(deepest, patch.max_level);
+		}
+	}
+	return deepest;
+}
+
+/**
+ * Where a window's north-west corner is from the map point `(x, y)`, in tiles
+ * of the window's level: the point's place in the window, with the sign
+ * turned. The shader adds a fragment's own small offset from the point to
+ * this, so a position keeps its digits at levels where a tile index alone
+ * takes all a float has.
+ */
+export function windowHome(
+	placement: WindowPlacement,
+	x: number,
+	y: number
+): { x: number; y: number } {
+	const columns = chartColumns(placement.chart, placement.level);
+	let east = x * columns - placement.tx0;
+	// The nearer way around the globe.
+	east -= columns * Math.round(east / columns);
+	return { x: east, y: y * chartRows(placement.chart, placement.level) - placement.ty0 };
+}
+
 /** The tile of `placement` that lives in slot `(sx, sy)` of its texture. */
 export function slotTile(
 	placement: WindowPlacement,

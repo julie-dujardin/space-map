@@ -39,12 +39,25 @@ export interface TextureBundleMeta extends CreditFields {
  * fine as its source (docs/export-format/tiles.md). It names its own credit,
  * since it can come from another source than the tiers.
  */
+/** The tiles of the levels past a pyramid's `max_level`, over the ground of
+ *  one regional mosaic, with that mosaic's credit. */
+export interface TilePatch extends CreditFields {
+	id: string;
+	max_level: number;
+	/** First and last column, then first and last row, at `max_level`. */
+	x: [number, number];
+	y: [number, number];
+	/** Cache token of this build of the patch: its tiles take it, not the pyramid's. */
+	version: string;
+}
+
 export interface TilesBlock extends CreditFields {
 	id: string;
 	tile_size: number;
 	max_level: number;
 	/** Cache token of this build of the pyramid. */
 	version: string;
+	patches?: TilePatch[];
 	/** Monthly maps only: one pyramid per month. */
 	frames?: number;
 	/** Height pyramids only: `km = bias_km + scale_km · value / 65535`. */

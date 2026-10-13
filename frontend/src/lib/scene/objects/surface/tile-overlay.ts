@@ -33,10 +33,13 @@ import {
 	chartColumns,
 	chartPoint,
 	chartRows,
+	deepestLevel,
 	neededLevel,
+	patchOfTile,
 	placeWindow,
 	slotTile,
-	windowChain
+	windowChain,
+	windowHome
 } from '$lib/scene/lod/tile-window';
 import { maxTileWindows } from '$lib/scene/render-tier';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
@@ -56,6 +59,10 @@ import type { BodyObjects, TilesBlock } from '$lib/scene/types';
  * Near a pole the windows are on that pole's cap, where a tile is as wide on
  * the ground as it is tall. A window that changes chart loads on a spare
  * layer while the one it replaces stays drawn, so the change does not show.
+ *
+ * Over a patch the chain goes past the pyramid's finest level. Those levels
+ * have tiles on the ground of the patch only; around it the coarser windows
+ * show.
  */
 
 /** Windows the chain can hold. A device holds as many as its tier allows. */
@@ -122,6 +129,10 @@ export interface TileOverlay {
 		uTileGrid: { value: Vector4[] };
 		/** Per window: its chart, its layer, its level, and 1 while it is drawn. */
 		uTileWindow: { value: Vector4[] };
+		/** Per map window: the point under the camera, in tiles from its north-west corner. */
+		uTileHome: { value: Vector2[] };
+		/** The point under the camera, in the mesh's own frame. */
+		uTileAnchor: { value: Vector3 };
 		uTileFilter: { value: Vector2 };
 	};
 	/** Chart of the camera's own windows, kept near the line between two. */
@@ -137,11 +148,13 @@ export interface TileOverlay {
 }
 
 const PARS = /* glsl */ `
-varying vec3 vTileDir;
+varying vec3 vTileOff;
 uniform sampler2DArray uTileMap;
 uniform sampler2DArray uTileMask;
 uniform vec4 uTileGrid[ ${MAX_DRAWN} ];
 uniform vec4 uTileWindow[ ${MAX_DRAWN} ];
+uniform vec2 uTileHome[ ${MAX_DRAWN} ];
+uniform vec3 uTileAnchor;
 // Most taps of the anisotropic filter, and a tile's side in pixels.
 uniform vec2 uTileFilter;
 
@@ -165,24 +178,39 @@ void tileAxes( vec2 fx, vec2 fy, out vec2 major, out vec2 minor ) {
 vec3 tileColour( vec3 below ) {
 	if ( uTileWindow[ 0 ].w < 0.5 ) return below;
 
-	// Where the fragment is on each chart, as fractions from the chart's
-	// north-west corner, and what a screen pixel spans there. Both come from
-	// the direction of the fragment rather than its interpolated coordinates:
-	// those have one slope per triangle, which near a pole differs enough
-	// between the two triangles of a grid cell to pick different levels, and
-	// they jump at the 180° meridian.
-	vec3 dir = normalize( vTileDir );
-	vec3 ddx = dFdx( dir );
-	vec3 ddy = dFdy( dir );
+	// The fragment as an offset from the point under the camera, and what a
+	// screen pixel spans. A position on the sphere has seven digits, and a
+	// tile index of a patch takes them all; the offset keeps its own. It
+	// comes from the fragment's place rather than its interpolated map
+	// coordinates: those have one slope per triangle, which near a pole
+	// differs enough between the two triangles of a grid cell to pick
+	// different levels, and they jump at the 180° meridian.
+	vec3 off = vTileOff;
+	vec3 at = uTileAnchor;
+	vec3 pos = at + off;
+	vec3 ox = dFdx( off );
+	vec3 oy = dFdy( off );
 
-	float flat2 = max( dir.x * dir.x + dir.z * dir.z, 1e-12 );
+	// On the map: the turn about the axis and the drop from the north pole,
+	// each as the angle between the anchor and the fragment.
+	float flat2 = max( pos.x * pos.x + pos.z * pos.z, 1e-30 );
+	float flat1 = sqrt( flat2 );
+	float flat0 = sqrt( at.x * at.x + at.z * at.z );
+	float turn = atan( at.z * off.x - at.x * off.z, at.x * pos.x + at.z * pos.z );
+	float out1 = ( 2.0 * ( at.x * off.x + at.z * off.z ) + off.x * off.x + off.z * off.z ) / ( flat1 + flat0 );
+	float drop = atan( out1 * at.y - off.y * flat0, pos.y * at.y + flat1 * flat0 );
+	vec2 mapOff = vec2( turn / ( 2.0 * PI ), drop / PI );
 	float east = 1.0 / ( 2.0 * PI * flat2 );
-	float south = - 1.0 / ( PI * sqrt( flat2 ) );
-	vec2 mapAt = vec2( fract( atan( dir.z, - dir.x ) / ( 2.0 * PI ) ), acos( clamp( dir.y, - 1.0, 1.0 ) ) / PI );
-	vec2 mapDx = vec2( ( dir.z * ddx.x - dir.x * ddx.z ) * east, ddx.y * south );
-	vec2 mapDy = vec2( ( dir.z * ddy.x - dir.x * ddy.z ) * east, ddy.y * south );
+	float south = 1.0 / ( PI * dot( pos, pos ) );
+	vec2 mapDx = vec2( ( pos.z * ox.x - pos.x * ox.z ) * east, ( pos.y * ( pos.x * ox.x + pos.z * ox.z ) / flat1 - flat1 * ox.y ) * south );
+	vec2 mapDy = vec2( ( pos.z * oy.x - pos.x * oy.z ) * east, ( pos.y * ( pos.x * oy.x + pos.z * oy.z ) / flat1 - flat1 * oy.y ) * south );
 
-	// The cap of the fragment's own hemisphere, seen from above its pole.
+	// The cap of the fragment's own hemisphere, seen from above its pole. A
+	// cap goes no deeper than the pyramid, so the direction itself will do.
+	float range = length( pos );
+	vec3 dir = pos / range;
+	vec3 ddx = ( ox - dir * dot( dir, ox ) ) / range;
+	vec3 ddy = ( oy - dir * dot( dir, oy ) ) / range;
 	float side = dir.y < 0.0 ? - 1.0 : 1.0;
 	float fold = 1.0 + side * dir.y;
 	vec2 plane = vec2( dir.x, side * dir.z );
@@ -201,7 +229,6 @@ vec3 tileColour( vec3 below ) {
 		bool onMap = window.x < 0.5;
 		// The other pole's cap.
 		if ( ! onMap && ( window.x < 1.5 ) != ( side > 0.0 ) ) continue;
-		vec2 tile = ( onMap ? mapAt : capAt ) * grid.xy;
 		vec2 dx = ( onMap ? mapDx : capDx ) * grid.xy * uTileFilter.y;
 		vec2 dy = ( onMap ? mapDy : capDy ) * grid.xy * uTileFilter.y;
 
@@ -216,12 +243,14 @@ vec3 tileColour( vec3 below ) {
 		float weight = clamp( 1.0 - log2( max( foot, 1e-6 ) ), 0.0, 1.0 );
 		if ( weight <= 0.0 ) continue;
 
-		// Half a pixel in from a pole of the map: past it the filter would
-		// read the far row.
-		if ( onMap ) tile.y = clamp( tile.y, 0.0005, grid.y - 0.0005 );
-		// Offset from the window's north-west corner; the map's longitude wraps.
-		vec2 rel = tile - grid.zw;
-		if ( onMap ) rel.x = mod( rel.x, grid.x );
+		// Offset from the window's north-west corner, in tiles.
+		vec2 rel = onMap ? uTileHome[ i ] + mapOff * grid.xy : capAt * grid.xy - grid.zw;
+		if ( onMap ) {
+			// Half a pixel in from a pole of the map: past it the filter would
+			// read the far row. The map's longitude wraps.
+			rel.y = clamp( rel.y, 0.0005 - grid.w, grid.y - 0.0005 - grid.w );
+			rel.x = mod( rel.x, grid.x );
+		}
 		if ( rel.x < 0.0 || rel.x > rows || rel.y < 0.0 || rel.y > rows ) continue;
 		// Distance to the window's edge, in tiles. A pole of the map is no
 		// edge: nothing lies past it.
@@ -230,13 +259,14 @@ vec3 tileColour( vec3 below ) {
 		if ( onMap && grid.w + rows > grid.y - 0.5 ) near.y = grid.w < 0.5 ? rows : rel.y;
 		float edge = min( near.x, near.y );
 
-		ivec3 slot = ivec3( int( mod( tile.x, rows ) ), int( mod( tile.y, rows ) ), int( window.y ) );
+		// The texture repeats every window: a tile sits in the slot its own
+		// column and row pick, north up.
+		vec2 spot = rel + mod( grid.zw, rows );
+		ivec3 slot = ivec3( int( mod( spot.x, rows ) ), int( mod( spot.y, rows ) ), int( window.y ) );
 		float alpha = weight * texelFetch( uTileMask, slot, 0 ).r * smoothstep( 0.0, ${FEATHER_TILES.toFixed(2)}, edge );
 		if ( alpha <= 0.0 ) continue;
 
-		// The texture repeats every window: a tile sits in the slot its own
-		// column and row pick, north up.
-		vec3 st = vec3( tile.x / rows, - tile.y / rows, window.y );
+		vec3 st = vec3( spot.x / rows, - spot.y / rows, window.y );
 		vec2 texel = vec2( 1.0, - 1.0 ) / ( rows * uTileFilter.y );
 		colour += ( 1.0 - covered ) * alpha * textureGrad( uTileMap, st, major * texel, minor * texel ).rgb;
 		covered += ( 1.0 - covered ) * alpha;
@@ -262,6 +292,8 @@ function createOverlay(material: MeshStandardMaterial): TileOverlay {
 			uTileMask: { value: null },
 			uTileGrid: { value: Array.from({ length: MAX_DRAWN }, () => new Vector4()) },
 			uTileWindow: { value: Array.from({ length: MAX_DRAWN }, () => new Vector4()) },
+			uTileHome: { value: Array.from({ length: MAX_DRAWN }, () => new Vector2()) },
+			uTileAnchor: { value: new Vector3(1, 0, 0) },
 			uTileFilter: { value: new Vector2(1, 1) }
 		},
 		inflight: 0,
@@ -273,8 +305,14 @@ function createOverlay(material: MeshStandardMaterial): TileOverlay {
 	chainShaderHook(material, 'surfaceTiles', (shader) => {
 		Object.assign(shader.uniforms, overlay.uniforms);
 		shader.vertexShader = shader.vertexShader
-			.replace('#include <common>', '#include <common>\nvarying vec3 vTileDir;')
-			.replace('#include <begin_vertex>', '#include <begin_vertex>\nvTileDir = position;');
+			.replace(
+				'#include <common>',
+				'#include <common>\nvarying vec3 vTileOff;\nuniform vec3 uTileAnchor;'
+			)
+			.replace(
+				'#include <begin_vertex>',
+				'#include <begin_vertex>\nvTileOff = position - uTileAnchor;'
+			);
 		shader.fragmentShader = shader.fragmentShader
 			.replace('#include <map_pars_fragment>', `#include <map_pars_fragment>\n${PARS}`)
 			.replace('#include <map_fragment>', MAP_FRAGMENT);
@@ -356,12 +394,32 @@ function release(store: WindowStore, win: TileWindow): void {
 	store.free.push(win.layer);
 }
 
+/** The patch a tile past the pyramid's finest level belongs to. Such a level
+ *  has tiles on the ground of its patches only. */
+function patchOf(tiles: TilesBlock, win: TileWindow, tile: { x: number; y: number }) {
+	return win.chart === MAP ? patchOfTile(tiles.patches, win.level, tile.x, tile.y) : undefined;
+}
+
+/** Whether the tile of a slot exists at all. */
+function exists(tiles: TilesBlock, win: TileWindow, slot: number): boolean {
+	if (win.level <= tiles.max_level) return true;
+	if (!win.placement) return false;
+	const tile = slotTile(win.placement, slot % WINDOW_TILES, Math.floor(slot / WINDOW_TILES));
+	return patchOf(tiles, win, tile) !== undefined;
+}
+
 /** Whether every tile of the window is in, or will not come. */
-function settled(overlay: TileOverlay, store: WindowStore, win: TileWindow): boolean {
+function settled(
+	overlay: TileOverlay,
+	store: WindowStore,
+	tiles: TilesBlock,
+	win: TileWindow
+): boolean {
 	for (let slot = 0; slot < SLOTS; slot++) {
 		const key = win.wanted[slot];
 		if (!key) return false;
-		if (!isLoaded(store, win.layer, slot) && !overlay.failed.has(key)) return false;
+		if (isLoaded(store, win.layer, slot) || overlay.failed.has(key)) continue;
+		if (exists(tiles, win, slot)) return false;
 	}
 	return true;
 }
@@ -403,7 +461,7 @@ function pump(
 	for (let slot = 0; slot < SLOTS; slot++) {
 		const key = win.wanted[slot];
 		if (!key || win.pending.has(slot) || overlay.failed.has(key)) continue;
-		if (isLoaded(store, win.layer, slot)) continue;
+		if (isLoaded(store, win.layer, slot) || !exists(tiles, win, slot)) continue;
 		const tile = slotTile(placement, slot % WINDOW_TILES, Math.floor(slot / WINDOW_TILES));
 		let dx = tile.x + 0.5 - cx;
 		if (win.chart === MAP) dx -= columns * Math.round(dx / columns);
@@ -426,7 +484,10 @@ function pump(
 		win.pending.set(slot, { key, abort });
 		overlay.inflight++;
 		const folder = CHART_FOLDER[win.chart];
-		fetchTile(tileUrl(tiles, folder, win.level, tile.x, tile.y, win.frame), abort.signal)
+		// A patch is built apart from its pyramid, and has its own cache token.
+		const version = patchOf(tiles, win, tile)?.version ?? tiles.version;
+		const pyramid = { id: tiles.id, version };
+		fetchTile(tileUrl(pyramid, folder, win.level, tile.x, tile.y, win.frame), abort.signal)
 			.then((bitmap) => {
 				if (win.wanted[slot] === key && !abort.signal.aborted) {
 					const source = new Texture(bitmap);
@@ -499,6 +560,7 @@ export function tilesServe(bo: BodyObjects): boolean {
 
 const inverse = new Matrix4();
 const over = new Vector3();
+const anchor = new Vector3();
 
 /**
  * Per-frame: keep `bo`'s tile windows on the ground under the camera, at the
@@ -517,10 +579,19 @@ export function updateTileOverlay(
 	const tiles = bo.surfaceTiles;
 	const mesh = bo.mesh;
 	const material = mesh?.material as MeshStandardMaterial | undefined;
-	const level =
-		tiles && mesh && material?.map && drawable && tilesServe(bo)
-			? neededLevel(bo.radiusScene, bo.cachedDist, projScale, tiles.max_level)
-			: -1;
+	let level = -1;
+	let chart: Chart = MAP;
+	if (tiles && mesh && material?.map && drawable && tilesServe(bo)) {
+		// The point straight under the camera, as a direction in the body's frame.
+		over.copy(camera.position).applyMatrix4(inverse.copy(mesh.matrixWorld).invert()).normalize();
+		chart = cameraChart(over.y, bo.tileOverlay?.chart);
+		let deepest = tiles.max_level;
+		if (chart === MAP && tiles.patches) {
+			const point = chartPoint(MAP, over.x, over.y, over.z);
+			deepest = deepestLevel(deepest, tiles.patches, point.x, point.y);
+		}
+		level = neededLevel(bo.radiusScene, bo.cachedDist, projScale, deepest);
+	}
 	const now = performance.now();
 
 	if (!tiles || !mesh || !material || level < FIRST_TILE_LEVEL) {
@@ -536,9 +607,11 @@ export function updateTileOverlay(
 	const overlay = (bo.tileOverlay ??= createOverlay(material));
 	overlay.lastUsed = now;
 
-	// One place more than the pyramid has levels: for the coarsest level on a
-	// second chart. One layer more than that: for a window changing chart.
-	const levels = tiles.max_level - FIRST_TILE_LEVEL + 1;
+	// One place more than the pyramid has levels, patches included: for the
+	// coarsest level on a second chart. One layer more than that: for a window
+	// changing chart.
+	const finest = Math.max(tiles.max_level, ...(tiles.patches ?? []).map((p) => p.max_level));
+	const levels = finest - FIRST_TILE_LEVEL + 1;
 	const count = Math.min(maxTileWindows(), MAX_WINDOWS, levels + 1);
 	if (overlay.store && overlay.store.texture.image.depth !== count + 1) disposeTileOverlay(bo);
 	const store = (overlay.store ??= createStore(tiles.tile_size, count + 1, renderer));
@@ -546,11 +619,20 @@ export function updateTileOverlay(
 	overlay.uniforms.uTileMask.value = store.mask;
 	overlay.uniforms.uTileFilter.value.set(store.texture.anisotropy, tiles.tile_size);
 
-	// The point straight under the camera, as a direction in the body's frame.
-	over.copy(camera.position).applyMatrix4(inverse.copy(mesh.matrixWorld).invert()).normalize();
 	const cap = over.y >= 0 ? NORTH : SOUTH;
-	overlay.chart = cameraChart(over.y, overlay.chart);
+	overlay.chart = chart;
 	const chain = windowChain(level, count, overlay.chart, over.y);
+	// The same point near the mesh, with the digits the shader has: the place
+	// of each window is counted from where the shader takes it to be.
+	const radius = bo.radiusScene;
+	anchor.set(
+		Math.fround(over.x * radius),
+		Math.fround(over.y * radius),
+		Math.fround(over.z * radius)
+	);
+	overlay.uniforms.uTileAnchor.value.copy(anchor);
+	const range = anchor.length();
+	const home = chartPoint(MAP, anchor.x / range, anchor.y / range, anchor.z / range);
 	// Also on a new month: the keys carry the frame, so every slot reloads.
 	const frame = tiles.frames ? bo.textureFrame : undefined;
 
@@ -566,7 +648,7 @@ export function updateTileOverlay(
 		const heir = chain.find((link) => link.level === win.level);
 		const heirWindow = heir && held(heir);
 		const near = win.chart === MAP || win.chart === cap;
-		if (heir && near && !(heirWindow && settled(overlay, store, heirWindow))) return true;
+		if (heir && near && !(heirWindow && settled(overlay, store, tiles, heirWindow))) return true;
 		release(store, win);
 		return false;
 	});
@@ -607,6 +689,10 @@ export function updateTileOverlay(
 			win.placement.tx0,
 			win.placement.ty0
 		);
+		if (win.chart === MAP) {
+			const from = windowHome(win.placement, home.x, home.y);
+			overlay.uniforms.uTileHome.value[i].set(from.x, from.y);
+		}
 		link.set(win.chart, win.layer, win.level, 1);
 	}
 }
