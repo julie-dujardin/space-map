@@ -30,6 +30,7 @@ export const DEFAULT_VIEW: ViewState = { zoom: 1, centerX: 0, centerY: 0 };
 export interface FlatMapLimits {
 	/** 1 is the whole world; the reader may not go under it either way. */
 	minZoom?: number;
+	/** Left out, the map sets its own: 16, or more where the surface has tiles. */
 	maxZoom?: number;
 	/** The band of the surface the middle of the frame may sit in. A longitude
 	 *  band may run through the antimeridian: 170 to −170 is the twenty degrees
@@ -40,8 +41,8 @@ export interface FlatMapLimits {
 	maxLat?: number;
 }
 
-/** Far enough in that the picture is a handful of pixels across, which is as
- *  much as an equirectangular texture holds. */
+/** The zoom limit of a map without tiles. Its largest whole-body picture is
+ *  then drawn at about its own size. */
 export const DEFAULT_MAX_ZOOM = 16;
 
 /** A place held inside the band a host allows the reader. */

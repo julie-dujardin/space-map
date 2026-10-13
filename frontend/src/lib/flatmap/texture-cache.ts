@@ -72,10 +72,16 @@ class Store<T> {
 		return value;
 	}
 
-	release(key: string): void {
+	/** Give up one claim. `keep` false frees the picture at once when no map
+	 *  claims it. It then does not wait in the budget. */
+	release(key: string, keep = true): void {
 		const entry = this.entries.get(key);
 		if (!entry) return;
 		entry.claims = Math.max(0, entry.claims - 1);
+		if (!keep && !entry.claims) {
+			this.entries.delete(key);
+			this.free(entry.value);
+		}
 		this.evict();
 	}
 
@@ -134,7 +140,8 @@ export async function acquireBitmap(
 	if (!work) {
 		work = decode(url, decodeWidth);
 		pending.set(key, work);
-		work.finally(() => pending.delete(key));
+		const done = (): boolean => pending.delete(key);
+		work.then(done, done);
 	}
 	const bitmap = await work;
 	if (!bitmap) return null;
@@ -161,8 +168,10 @@ async function decode(url: string, decodeWidth: number | null): Promise<ImageBit
 	}
 }
 
-export function releaseBitmap(key: string): void {
-	bitmaps.release(key);
+/** `keep` false is for a picture that the caller has copied and will not
+ *  ask for again. */
+export function releaseBitmap(key: string, keep = true): void {
+	bitmaps.release(key, keep);
 }
 
 /**

@@ -10,6 +10,7 @@ import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/obj
 import { pickTexture, type TextureDistribution } from '$lib/host';
 import { cloudFrameForJd } from '$lib/scene/objects/surface/clouds';
 import { textureFrameForJd } from '$lib/scene/objects/body/textures';
+import type { TilesBlock } from '$lib/scene/types';
 
 /** What every texture bundle in the export says about itself. */
 export interface BundleMeta {
@@ -28,6 +29,8 @@ export interface BundleMeta {
 	type: string;
 	attribution?: string;
 	description?: string;
+	/** The tile pyramid of the same picture, where it has one. */
+	tiles?: TilesBlock;
 }
 
 /** Resolution tiers, coarsest first. */

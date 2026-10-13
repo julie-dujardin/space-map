@@ -235,6 +235,7 @@
 			import { createFlatMap, dateToJD, graticule, pathFor, PROJECTION_IDS } from './spacemap.js';
 
 			// ?data=<export root> ?lang=<bcp47> ?body=<object id> ?projection=<id> ?nc=1
+			// ?tiles=<tile host>                  surface tiles past the whole-body maps
 			// ?zoom= ?lat= ?lon= ?clip=<degrees>  the opening view
 			// ?date=<iso>                         which monthly or dated picture
 			// ?off=<layer ids>                    layers that open switched off
@@ -242,6 +243,8 @@
 			const params = new URLSearchParams(location.search);
 			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
 			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
+			// The local data server has the tiles too.
+			const tilesUrl = params.get('tiles') ?? (local && !params.has('data') ? dataUrl : null);
 
 			const $ = (id) => document.getElementById(id);
 			const fail = (e) => {
@@ -267,6 +270,7 @@
 
 			const options = { body: params.get('body') ?? 'naif-399' };
 			if (dataUrl) options.dataUrl = dataUrl;
+			if (tilesUrl) options.tilesUrl = tilesUrl;
 			if (params.has('lang')) options.locale = params.get('lang');
 			if (params.has('projection')) options.projection = params.get('projection');
 			for (const [param, key] of [

@@ -73,6 +73,19 @@ describe('the shared picture store', () => {
 		releaseBitmap(second!.key);
 	});
 
+	it('drops a picture at once when its last claim does not keep it', async () => {
+		const closed = { count: 0 };
+		const { fetches } = stubDecoding(closed);
+		const first = await acquireBitmap('/tile.webp', 64);
+		const second = await acquireBitmap('/tile.webp', 64);
+		releaseBitmap(first!.key, false);
+		expect(closed.count).toBe(0);
+		releaseBitmap(second!.key, false);
+		expect(closed.count).toBe(1);
+		await acquireBitmap('/tile.webp', 64);
+		expect(fetches.length).toBe(2);
+	});
+
 	it('drops unclaimed pictures that go past the budget', async () => {
 		const closed = { count: 0 };
 		stubDecoding(closed);

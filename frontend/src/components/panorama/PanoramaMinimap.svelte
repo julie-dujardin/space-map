@@ -68,16 +68,22 @@
 
 	/** A traverse of a few hundred metres still gets a frame this wide. */
 	const MIN_SPAN_DEG = 0.02;
-	/** A record that never moved has no path to frame, and a rover-sized box
-	 *  round it is far closer than a basemap resolves — sampling is capped at
-	 *  4096 px of texture, so a tighter frame only magnifies the same pixels.
-	 *  This is about where craters and mare edges come back. */
+	/** The frame of a record that never moved, where the map has no tiles. The
+	 *  whole-body picture shows craters and mare edges at this span, and only
+	 *  larger pixels in a tighter frame. */
 	const POINT_SPAN_DEG = 8;
 	/** How close a click must land to a panorama, in screen pixels. */
 	const PICK_PX = 14;
 
 	const stationary = $derived(!hasExtent(entries));
-	const spanDeg = $derived(stationary ? POINT_SPAN_DEG : MIN_SPAN_DEG);
+	/** The span that the box shows at one tile pixel for each of its pixels.
+	 *  Null where the surface has no tiles. */
+	let tileSpanDeg = $state<number | null>(null);
+	const spanDeg = $derived(
+		stationary
+			? Math.min(Math.max(tileSpanDeg ?? POINT_SPAN_DEG, MIN_SPAN_DEG), POINT_SPAN_DEG)
+			: MIN_SPAN_DEG
+	);
 
 	let container: HTMLElement;
 	let map = $state<FlatMap | null>(null);
@@ -138,13 +144,15 @@
 	/** Hold the whole traverse in the box, whatever the projection. */
 	function frame(): void {
 		if (!map) return;
+		const { clientWidth: w, clientHeight: h } = container;
+		if (!w || !h) return;
+		const step = entries.length ? map.tileStepDeg(entries[0].lon, entries[0].lat) : null;
+		tileSpanDeg = step === null ? null : step * Math.min(w, h);
 		const box = traverseFrame(entries, spanDeg);
 		map.setView({ zoom: 1, centerLon: box.centerLon, centerLat: box.centerLat });
 		const a = map.project(box.centerLon - box.lonSpan / 2, box.centerLat - box.latSpan / 2);
 		const b = map.project(box.centerLon + box.lonSpan / 2, box.centerLat + box.latSpan / 2);
 		if (!a || !b) return;
-		const { clientWidth: w, clientHeight: h } = container;
-		if (!w || !h) return;
 		map.setView({ zoom: Math.min(w / Math.abs(b[0] - a[0]), h / Math.abs(b[1] - a[1])) });
 		const up = map.project(box.centerLon, box.centerLat + 0.01);
 		const at = map.project(box.centerLon, box.centerLat);

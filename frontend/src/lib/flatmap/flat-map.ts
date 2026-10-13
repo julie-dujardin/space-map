@@ -10,7 +10,10 @@
  * place is.
  */
 
-import { host, type CoreMessages } from '$lib/host';
+import { tileCredit, patchCredits } from '$lib/credits/tile-credit';
+import { tilesBase } from '$lib/fetch/data-base';
+import { host, textureAllowed, type CoreMessages } from '$lib/host';
+import { textureFrameForJd } from '$lib/scene/objects/body/textures';
 import { dateToJD } from '$lib/time/jd';
 import {
 	creditOf,
@@ -59,6 +62,8 @@ import {
 	releaseRaster,
 	textureKey
 } from './texture-cache';
+import { finestLevelAt, planWindows, stepOfLevel, type FrameSample } from './tile-plan';
+import { LayerTiles } from './tile-windows';
 import {
 	clampToBand,
 	clampView,
@@ -70,7 +75,7 @@ import {
 import { ControlHost, type Control, type ControlPosition } from '$lib/scene/controls';
 import { CooperativeGestures } from '$lib/interaction/cooperative';
 import { GestureHandler, gestureStart } from '$lib/interaction/gesture';
-import type { LonLat } from './geometry';
+import { angularDistance, type LonLat } from './geometry';
 import './flat-map.css';
 
 export interface FlatMapOptions {
@@ -165,6 +170,16 @@ const WORTH_COARSENING = 0.8;
 /** How long after the last movement the map is redrawn in full. */
 const SETTLE_MS = 140;
 
+/** The tier that stays under the tiles of a layer. The tiles hold all detail
+ *  past it, so a larger tier only costs memory. */
+const TILED_BASE_TIER = 'medium';
+
+/** How often a map in movement asks for the tiles of its new frame. */
+const MOVING_PLAN_MS = 250;
+
+/** How large the reader can make a pixel of the finest tiles, in CSS pixels. */
+const MAX_TILE_STRETCH = 2;
+
 const DEFAULT_BODY = 'naif-399';
 
 /**
@@ -226,6 +241,8 @@ export class FlatMap {
 	private projectionOptions: ProjectionOptions;
 	private view: ViewState;
 	private limits: FlatMapLimits;
+	/** True when the host gave no `maxZoom`. The map then sets its own limit. */
+	private ownMaxZoom: boolean;
 	/** The reader has moved the view since the last programmatic one, so the
 	 *  limits apply to it. A {@link setView} lands where it was told. */
 	private limitsArmed = false;
@@ -242,6 +259,10 @@ export class FlatMap {
 	/** Pictures the export does not have. Remembered, or every pan would ask
 	 *  for them again and report the same failure. */
 	private readonly missing = new Set<string>();
+	/** The tile windows of each picture layer that has a pyramid. */
+	private readonly tiles = new Map<Layer, LayerTiles>();
+	/** `performance.now()` of the last tile plan. */
+	private plannedAt = 0;
 	/** Bumped whenever the map moves to another body, so work started for the
 	 *  one being left can tell that it is no longer wanted. */
 	private generation = 0;
@@ -292,6 +313,7 @@ export class FlatMap {
 		};
 		this.projection = createProjection(this.projectionId, this.projectionOptions);
 		this.limits = { maxZoom: DEFAULT_MAX_ZOOM, ...options.limits };
+		this.ownMaxZoom = options.limits?.maxZoom === undefined;
 		this.view = { zoom: options.zoom ?? 1, centerX: 0, centerY: 0 };
 		this.jd = options.jd ?? dateToJD(new Date());
 		this.dragPan = new GestureHandler(
@@ -371,6 +393,7 @@ export class FlatMap {
 		for (const layer of this.layerList) if (!isRaster(layer)) layer.dispose?.();
 		this.overlay.clear();
 		this.dropTextures();
+		this.dropTiles();
 		this.root.remove();
 		this.container = null;
 	}
@@ -414,6 +437,7 @@ export class FlatMap {
 	private release(): void {
 		this.generation++;
 		this.dropTextures();
+		this.dropTiles();
 		this.missing.clear();
 		for (const layer of this.layerList) {
 			if (!isRaster(layer) && !this.customLayers.includes(layer)) layer.dispose?.();
@@ -423,10 +447,11 @@ export class FlatMap {
 	private buildLayers(): void {
 		const { messages } = host();
 		const layers: Layer[] = [];
+		this.dropTiles();
 		for (const spec of RASTER_LAYERS) {
 			const bundle = this.sources[spec.kind];
 			if (!bundle) continue;
-			layers.push({
+			const layer: RasterLayer = {
 				kind: 'raster',
 				id: spec.kind,
 				label: spec.label(messages),
@@ -436,7 +461,23 @@ export class FlatMap {
 				credit: creditOf(bundle),
 				tiers: bundle.tiers,
 				url: (jd, tier) => bundleUrl(bundle, tier, jd)
-			});
+			};
+			layers.push(layer);
+			if (!bundle.tiles) continue;
+			const tiles = new LayerTiles(
+				bundle.tiles,
+				() => {
+					// The whole-body pictures now need a larger tier, and the credit of
+					// the tiles goes.
+					if (tiles.dead) {
+						void this.loadVisible();
+						this.emit('layerschange', this.layers);
+					}
+					this.render();
+				},
+				() => this.moves()
+			);
+			this.tiles.set(layer, tiles);
 		}
 		layers.push(graticuleLayer(messages.layer_graticule()));
 		layers.push(nomenclatureLayer(this.bodyId, messages.layer_nomenclature()));
@@ -473,11 +514,20 @@ export class FlatMap {
 	get credits(): LayerCredit[] {
 		const seen = new Set<string>();
 		const out: LayerCredit[] = [];
+		const add = (credit: LayerCredit): void => {
+			if (seen.has(credit.organisation)) return;
+			seen.add(credit.organisation);
+			out.push(credit);
+		};
 		for (const layer of this.layerList) {
 			if (!layer.visible || !layer.credit) continue;
-			if (seen.has(layer.credit.organisation)) continue;
-			seen.add(layer.credit.organisation);
-			out.push(layer.credit);
+			add(layer.credit);
+			const tiles = this.tilesOf(layer);
+			if (!tiles) continue;
+			const map = { ...layer.credit, tiles: tiles.block };
+			const pyramid = tileCredit(map);
+			if (pyramid) add(pyramid);
+			for (const patch of patchCredits(map)) add(patch);
 		}
 		return out;
 	}
@@ -615,20 +665,25 @@ export class FlatMap {
 
 	/**
 	 * Replace the reader's limits, whole. What the new set leaves out is
-	 * unrestricted again, except `maxZoom`, which goes back to 16.
+	 * unrestricted again, except `maxZoom`, which goes back to the map's own:
+	 * 16, or more where the surface has tiles.
 	 *
 	 * Limits gate reader input only: {@link setView} lands where it was told,
 	 * and the reader's next gesture brings the view back inside.
 	 */
 	setLimits(limits: FlatMapLimits): this {
 		this.limits = { maxZoom: DEFAULT_MAX_ZOOM, ...limits };
+		this.ownMaxZoom = limits.maxZoom === undefined;
 		this.render();
 		return this;
 	}
 
-	/** The limits as they stand. */
+	/** The limits as they stand. Where the host gave no `maxZoom`, it is the
+	 *  map's own for the place in the middle of the frame. */
 	getLimits(): FlatMapLimits {
-		return { ...this.limits };
+		return this.ownMaxZoom
+			? { ...this.limits, maxZoom: this.pictureMaxZoom() }
+			: { ...this.limits };
 	}
 
 	/** The moment the map is of. Moves the clouds and, on Earth, the season. */
@@ -737,9 +792,10 @@ export class FlatMap {
 
 	// -- pictures -------------------------------------------------------------
 
-	private tier(tiers: readonly string[]): string {
-		const wanted = TIER_BY_ZOOM.find(([zoom]) => this.view.zoom >= zoom)?.[1] ?? 'low';
-		return bestTier(tiers, lowerTier(wanted, tierForWidth(this.usableSourceWidth())));
+	private tier(layer: RasterLayer): string {
+		let wanted = TIER_BY_ZOOM.find(([zoom]) => this.view.zoom >= zoom)?.[1] ?? 'low';
+		if (this.tilesOf(layer)) wanted = lowerTier(wanted, TILED_BASE_TIER);
+		return bestTier(layer.tiers, lowerTier(wanted, tierForWidth(this.usableSourceWidth())));
 	}
 
 	/**
@@ -782,7 +838,7 @@ export class FlatMap {
 		return this.layerList
 			.filter((l): l is RasterLayer => isRaster(l) && l.visible)
 			.map((layer) => {
-				const tier = this.tier(layer.tiers);
+				const tier = this.tier(layer);
 				return { url: layer.url(this.jd, tier), tier };
 			});
 	}
@@ -878,12 +934,132 @@ export class FlatMap {
 		this.rasters.clear();
 	}
 
+	// -- tiles ----------------------------------------------------------------
+
+	/** The tiles of a layer, where this host draws them and the pyramid holds
+	 *  more than the picture under it. */
+	private tilesOf(layer: Layer): LayerTiles | undefined {
+		const tiles = this.tiles.get(layer);
+		if (!tiles || !isRaster(layer) || tiles.dead || tilesBase() === '') return undefined;
+		if (!textureAllowed(tiles.block.distribution)) return undefined;
+		const finest = Math.max(
+			tiles.block.max_level,
+			...(tiles.block.patches ?? []).map((patch) => patch.max_level)
+		);
+		return finest >= this.firstTileLevel(layer, tiles) ? tiles : undefined;
+	}
+
+	/** The first level that holds more than the picture under the tiles. An
+	 *  equirectangular map draws that picture whole, and the others sample a
+	 *  copy of a limited width. */
+	private firstTileLevel(layer: RasterLayer, tiles: LayerTiles): number {
+		const whole = TIER_WIDTH[bestTier(layer.tiers, TILED_BASE_TIER)] ?? MAX_WORKING_WIDTH;
+		const width =
+			this.projectionId === 'equirectangular' ? whole : Math.min(whole, MAX_WORKING_WIDTH);
+		return Math.floor(Math.log2(width / (2 * tiles.block.tile_size))) + 1;
+	}
+
+	/** What the tile plan reads of a frame. `density` is the number of drawn
+	 *  pixels for each pixel of `viewport`. Undefined when the middle of the
+	 *  frame is off the world. */
+	private frameSample(viewport: Viewport, density: number): FrameSample | undefined {
+		const { width, height, projection } = viewport;
+		const at = (px: number, py: number) => viewport.unproject(px, py);
+		const middle = at(width / 2, height / 2);
+		const beside = at(width / 2 + 1, height / 2);
+		const below = at(width / 2, height / 2 + 1);
+		if (!middle || !beside || !below) return undefined;
+		const from = { lon: middle[0], lat: middle[1] };
+		const step = Math.min(
+			angularDistance(from, { lon: beside[0], lat: beside[1] }),
+			angularDistance(from, { lon: below[0], lat: below[1] })
+		);
+		const shows = (lat: number): boolean => {
+			const pole = projection.azimuthal ? viewport.project(0, lat) : null;
+			return !!pole && pole[0] >= 0 && pole[0] <= width && pole[1] >= 0 && pole[1] <= height;
+		};
+		return {
+			place: (fx, fy) => at(fx * width, fy * height),
+			step: (step * Math.PI) / 180 / density,
+			north: shows(90),
+			south: shows(-90)
+		};
+	}
+
+	/** Ask for the tile windows of the frame, layer by layer. */
+	private planTiles(viewport: Viewport, density: number): void {
+		const kind = this.projectionId === 'equirectangular' ? 'canvas' : 'pixels';
+		let frame: FrameSample | undefined;
+		for (const [layer, tiles] of this.tiles) {
+			const drawn = isRaster(layer) && layer.visible && layer.opacity > 0 && this.tilesOf(layer);
+			frame ??= drawn ? this.frameSample(viewport, density) : undefined;
+			const first = drawn && frame ? this.firstTileLevel(layer, tiles) : 0;
+			const specs = drawn && frame ? planWindows(tiles.block, frame, first, this.moves()) : [];
+			tiles.plan(specs, kind, textureFrameForJd(this.jd, tiles.block.frames));
+		}
+	}
+
+	/** Whether the reader can move the map. */
+	private moves(): boolean {
+		return this.dragPan.isEnabled() || this.scrollZoom.isEnabled();
+	}
+
+	private dropTiles(): void {
+		for (const tiles of this.tiles.values()) tiles.clear();
+		this.tiles.clear();
+	}
+
+	/**
+	 * How far in the reader can go when the host gives no limit. Where tiles
+	 * serve, it is the zoom that draws the finest tiles under the middle of the
+	 * frame at `MAX_TILE_STRETCH`.
+	 */
+	private pictureMaxZoom(): number {
+		let zoom = DEFAULT_MAX_ZOOM;
+		const { clientWidth, clientHeight } = this.root;
+		if (!clientWidth || !clientHeight) return zoom;
+		const viewport = new Viewport(this.projection, clientWidth, clientHeight, this.view);
+		const frame = this.frameSample(viewport, 1);
+		const middle = frame?.place(0.5, 0.5);
+		if (!frame || !middle) return zoom;
+		for (const layer of this.layerList) {
+			const tiles = layer.visible ? this.tilesOf(layer) : undefined;
+			if (!tiles) continue;
+			const level = finestLevelAt(tiles.block, middle[0], middle[1]);
+			const finest = stepOfLevel(level, tiles.block.tile_size) / MAX_TILE_STRETCH;
+			zoom = Math.max(zoom, (this.view.zoom * frame.step) / finest);
+		}
+		return zoom;
+	}
+
+	/** The limits that hold the view. Where tiles serve, the map's own zoom
+	 *  limit changes from place to place. It then only stops the way in, and
+	 *  does not pull back a view that is past it. */
+	private heldLimits(): FlatMapLimits {
+		if (!this.ownMaxZoom) return this.limits;
+		const tiled = this.layerList.some((layer) => layer.visible && this.tilesOf(layer));
+		return tiled ? { ...this.limits, maxZoom: undefined } : this.limits;
+	}
+
+	/**
+	 * @internal The angle that one pixel of the finest tiles covers at a place,
+	 * in degrees. Null where the surface draws no tiles.
+	 */
+	tileStepDeg(lon: number, lat: number): number | null {
+		const surface = this.layerList.find((layer) => layer.id === 'surface');
+		const tiles = surface && this.tilesOf(surface);
+		if (!tiles) return null;
+		const level = finestLevelAt(tiles.block, lon, lat);
+		return (stepOfLevel(level, tiles.block.tile_size) * 180) / Math.PI;
+	}
+
 	// -- rendering ------------------------------------------------------------
 
 	private viewport(width?: number, height?: number): Viewport {
 		const w = width ?? this.root.clientWidth ?? 1;
 		const h = height ?? this.root.clientHeight ?? 1;
-		this.view = clampView(this.view, this.projection, w, h, this.limitsArmed ? this.limits : {});
+		const limits = this.limitsArmed ? this.heldLimits() : {};
+		this.view = clampView(this.view, this.projection, w, h, limits);
 		return new Viewport(this.projection, Math.max(1, w), Math.max(1, h), this.view);
 	}
 
@@ -934,6 +1110,12 @@ export class FlatMap {
 
 		const cssViewport = this.viewport(cssWidth, cssHeight);
 		const deviceViewport = new Viewport(this.projection, width, height, this.view);
+		// A map in movement is drawn coarse, but its tiles are those of the sharp frame.
+		const now = performance.now();
+		if (!this.moving || now - this.plannedAt > MOVING_PLAN_MS) {
+			this.plannedAt = now;
+			this.planTiles(cssViewport, sharp);
+		}
 		this.clipToDisc(cssViewport);
 		this.drawRaster(deviceViewport, width, height);
 		this.drawVector(cssViewport);
@@ -995,13 +1177,12 @@ export class FlatMap {
 			// does the whole job — sharper than resampling, and much faster.
 			const drawable = layers
 				.map((layer) => ({
-					image: this.bitmaps.get(layer.url(this.jd, this.tier(layer.tiers)))?.bitmap,
+					image: this.bitmaps.get(layer.url(this.jd, this.tier(layer)))?.bitmap,
 					opacity: layer.opacity,
-					blend: layer.blend
+					blend: layer.blend,
+					detail: this.tilesOf(layer)?.canvases()
 				}))
-				.filter((l): l is { image: ImageBitmap; opacity: number; blend: 'normal' | 'add' } =>
-					Boolean(l.image)
-				);
+				.filter((l): l is typeof l & { image: ImageBitmap } => Boolean(l.image));
 			if (drawable.length) drawEquirect(ctx, viewport, drawable);
 			return;
 		}
@@ -1013,13 +1194,12 @@ export class FlatMap {
 		// and nothing to do with how many pixels this frame covers.
 		const stack = layers
 			.map((layer) => ({
-				image: this.rasterFor(layer.url(this.jd, this.tier(layer.tiers)), workingWidth),
+				image: this.rasterFor(layer.url(this.jd, this.tier(layer)), workingWidth),
 				opacity: layer.opacity,
-				blend: layer.blend
+				blend: layer.blend,
+				detail: this.tilesOf(layer)?.rasters()
 			}))
-			.filter((l): l is { image: RasterImage; opacity: number; blend: 'normal' | 'add' } =>
-				Boolean(l.image)
-			);
+			.filter((l): l is typeof l & { image: RasterImage } => Boolean(l.image));
 		if (stack.length === 0) return;
 
 		if (!this.buffer || this.buffer.width !== width || this.buffer.height !== height) {
@@ -1230,10 +1410,11 @@ export class FlatMap {
 		this.limitsArmed = true;
 		const before = this.viewport();
 		const anchor = before.fromScreen(px, py);
-		const zoom = Math.min(
-			this.limits.maxZoom ?? Number.POSITIVE_INFINITY,
-			Math.max(1, this.limits.minZoom ?? 1, this.view.zoom * factor)
-		);
+		// The map's own limit stops the way in only. A view past it can still go out.
+		const furthest = this.ownMaxZoom
+			? Math.max(this.pictureMaxZoom(), this.view.zoom)
+			: (this.limits.maxZoom ?? Number.POSITIVE_INFINITY);
+		const zoom = Math.min(furthest, Math.max(1, this.limits.minZoom ?? 1, this.view.zoom * factor));
 		if (zoom === this.view.zoom) return;
 		this.view = { ...this.view, zoom };
 		const after = this.viewport();
