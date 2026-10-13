@@ -20,6 +20,7 @@ from sqlalchemy import case, or_, true as sa_true
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
+from space_map_data.export.about_data import write_about_data
 from space_map_data.export.credits import write_credits
 from space_map_data.export.ephemeris import (
     load_probe_ephemeris_accuracy,
@@ -1194,6 +1195,17 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             displacement_metadata,
             skybox_metadata,
             model_metadata,
+        )
+        write_about_data(
+            session,
+            out_dir,
+            radii,
+            texture_metadata,
+            alternate_metadata,
+            clouds_metadata,
+            night_metadata,
+            specular_metadata,
+            displacement_metadata,
         )
         write_status(out_dir)
 

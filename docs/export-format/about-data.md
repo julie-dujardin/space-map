@@ -1,0 +1,74 @@
+# About data (`about-data.json`)
+
+The report that the `/about/data` page shows: each map of each world, how fine it is on the ground, and how many files and bytes it takes. It is one JSON file that is not gzipped. `export/about_data.py` writes it on each full export, and `space-map-export --only about-data` writes it alone.
+
+The export makes the file from the metadata that ingest writes: `textures/{id}/metadata.json` for a [texture](textures.md) bundle and `tiles/{id}/metadata.json` for its [tile pyramid](tiles.md). It does not read the tiles. A cloud overlay is the exception: its metadata does not state the size of its images, so the export reads them from the bundle.
+
+```typescript
+interface AboutData {
+  generated_at: string;            // ISO 8601 UTC
+  systems: Array<{
+    id: string | null;             // system barycentre, "naif-4"; null for the bodies in no planetary system
+    name: string | null;           // English name of the planet of the system
+    primary_id?: string;           // that planet, "naif-499"; the page takes its name in the reader's language from the labels
+    worlds: Array<{
+      id: string;                  // object id
+      name: string;                // English name
+      radius_km?: number;          // mean radius of the equator; absent when the size of the body is unknown
+      maps: Map[];
+    }>;
+  }>;
+}
+
+interface Map {
+  id: string;                      // bundle id, "naif-499_displacement"
+  layer: "surface" | "clouds" | "night" | "specular" | "topography";
+  alternate?: true;                // a map that ranks below the best map of its body
+  frames?: number;                 // monthly maps and cloud overlays with more than one frame
+  tiers: Array<{                   // the whole-globe images, coarsest first
+    name: string;                  // "low" | "medium" | "high"
+    width: number;
+    height: number;
+    size_bytes: number;            // all frames together
+    m_per_px?: number;
+  }>;
+  height_step_m?: number;          // height maps: the step of the whole-globe images, which have 8 bits
+  tiles?: {                        // present when the map has a tile pyramid
+    max_level: number;
+    width: number;                 // pixels of the finest level
+    height: number;
+    m_per_px?: number;
+    tiles: number;                 // the map and its two polar caps, all frames, without the patches
+    size_bytes: number;
+    sources: Array<{
+      role: "base" | "inset" | "detail";
+      width: number;               // `full_width` of the source
+      m_per_px?: number;
+      lat_range?: [number, number];  // south and north edge of a source that covers a band
+    }>;
+    height_step_m?: number;        // height pyramids: the step of the 16-bit tiles
+    patches?: Array<{
+      id: string;
+      name: string;                // proper noun, shipped as it is
+      max_level: number;
+      m_per_px?: number;
+      lat: number;                 // centre of the mosaic, degrees, east positive
+      lon: number;
+      width_km?: number;           // east to west at the latitude of the centre
+      height_km?: number;
+      tiles: number;               // all levels of the patch
+      size_bytes: number;
+    }>;
+  };
+}
+```
+
+Notes:
+
+- **`m_per_px` is the ground size of one pixel at the equator**: `2π · radius_km / width`. It is absent where `radius_km` is absent.
+- **The coarser of the grid and the source sets the scale of a pyramid.** The finest level is the first one that is as wide as the finest source, so its pixels can be smaller than those of the source. `tiles.m_per_px` then states the source. A patch follows the same rule: a 0.25 m mosaic sits at level 16, whose pixels are 0.16 m, and its `m_per_px` is 0.25.
+- **`sources` are the `layers` of the pyramid descriptor.** `base` is the first one and covers the whole body. An `inset` replaces it over a band. A `detail` source is a brightness layer: the colour stays that of the base.
+- **Sizes do not overlap.** `tiers[].size_bytes`, `tiles.size_bytes` and each `patches[].size_bytes` count different files. The page adds the tiers and the pyramid for the row of a map, and gives each patch a row of its own.
+- **Worlds are in the order of the page**: the systems from Mercury to Pluto, the planet before its moons, the moons by number, then the bodies in no system.
+- A bundle whose id is not an object, such as the star map, has no row.
+- Rings and shape models are not in the file.

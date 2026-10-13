@@ -110,6 +110,7 @@ flowchart LR
         OUT_TEX[/"textures/{id}/{tier}.webp + metadata.json"/]
         OUT_CRED[/"credits.json"/]
         OUT_STAT[/"status.json"/]
+        OUT_ABOUT[/"about-data.json"/]
         OUT_MSG[/"frontend messages/{lang}.json"/]
 
         E_POS_CHEB   --> OUT_POS
@@ -122,6 +123,7 @@ flowchart LR
         E_IMG      --> OUT_IMG
         E_TEX      --> OUT_TEX
         E_STAT     --> OUT_STAT
+        E_TEX      --> OUT_ABOUT
         E_OBJ      --> OUT_CRED
         E_OBJ      --> OUT_META
     end
