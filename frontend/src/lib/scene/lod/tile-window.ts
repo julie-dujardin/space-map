@@ -118,16 +118,24 @@ export function cameraChart(y: number, previous?: Chart): Chart {
  * as many as `count` allows, on the camera's chart. Where both charts reach
  * the camera and a place is left, the coarsest level comes on the other chart
  * too, last.
+ *
+ * A level past `maxLevel`, the pyramid's finest, has tiles on a patch only.
+ * The last places of the chain stay with the pyramid's own levels, which
+ * cover the ground around the patch.
  */
 export function windowChain(
 	level: number,
 	count: number,
 	chart: Chart,
-	y: number
+	y: number,
+	maxLevel: number
 ): { chart: Chart; level: number }[] {
 	const chain: { chart: Chart; level: number }[] = [];
-	for (let z = level; z >= FIRST_TILE_LEVEL && chain.length < count; z--) {
+	const own = Math.max(1, Math.floor(count / 3));
+	let z = level;
+	while (z >= FIRST_TILE_LEVEL && chain.length < count) {
 		chain.push({ chart, level: z });
+		z = z > maxLevel && chain.length >= count - own ? Math.min(z - 1, maxLevel) : z - 1;
 	}
 	const reached = chain.length > 0 && chain[chain.length - 1].level === FIRST_TILE_LEVEL;
 	const both = Math.abs(y) > Math.sin((BOTH_CHARTS_DEG * Math.PI) / 180);
@@ -203,8 +211,14 @@ export function patchOfTile<P extends PatchRange>(
 	});
 }
 
-/** The finest level with a tile at the map point `(x, y)`, as `chartPoint`
- *  gives it: the pyramid's own, or that of a patch the point is in. */
+/** How far from its point a window is sure to have a tile, in tiles: half a
+ *  window, less the half tile its first column is rounded by. */
+const REACH_TILES = WINDOW_TILES / 2 - 0.5;
+
+/** The finest level whose window around the map point `(x, y)`, as
+ *  `chartPoint` gives it, has a tile: the pyramid's own, or a level of a patch
+ *  the window reaches. A coarser window reaches further, so the levels of a
+ *  patch come in one by one on the way to it. */
 export function deepestLevel(
 	maxLevel: number,
 	patches: readonly PatchRange[] | undefined,
@@ -212,22 +226,36 @@ export function deepestLevel(
 	y: number
 ): number {
 	let deepest = maxLevel;
-	for (const patch of patches ?? []) {
-		const tx = Math.floor(x * chartColumns(MAP, patch.max_level));
-		const ty = Math.floor(y * chartRows(MAP, patch.max_level));
-		if (patchOfTile([patch], patch.max_level, tx, ty)) {
-			deepest = Math.max(deepest, patch.max_level);
+	if (!patches) return deepest;
+	for (const patch of patches) {
+		for (let level = patch.max_level; level > deepest; level--) {
+			const up = patch.max_level - level;
+			const columns = chartColumns(MAP, level);
+			const x0 = patch.x[0] >> up;
+			const y0 = patch.y[0] >> up;
+			const halfWidth = ((patch.x[1] >> up) + 1 - x0) / 2;
+			const halfHeight = ((patch.y[1] >> up) + 1 - y0) / 2;
+			let east = x * columns - (x0 + halfWidth);
+			// The nearer way around the globe.
+			east -= columns * Math.round(east / columns);
+			const south = y * chartRows(MAP, level) - (y0 + halfHeight);
+			if (
+				Math.abs(east) - halfWidth <= REACH_TILES &&
+				Math.abs(south) - halfHeight <= REACH_TILES
+			) {
+				deepest = level;
+				break;
+			}
 		}
 	}
 	return deepest;
 }
 
 /**
- * Where a window's north-west corner is from the map point `(x, y)`, in tiles
- * of the window's level: the point's place in the window, with the sign
- * turned. The shader adds a fragment's own small offset from the point to
- * this, so a position keeps its digits at levels where a tile index alone
- * takes all a float has.
+ * The map point `(x, y)` counted from a window's north-west corner, in tiles
+ * of the window's level. The shader adds a fragment's own small offset from
+ * the point to this, so a position keeps its digits at levels where a tile
+ * index alone takes all a float has.
  */
 export function windowHome(
 	placement: WindowPlacement,

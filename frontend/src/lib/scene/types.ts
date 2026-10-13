@@ -34,11 +34,6 @@ export interface TextureBundleMeta extends CreditFields {
 	tiles?: TilesBlock;
 }
 
-/**
- * A layer's tile pyramid: the same map cut into tiles at doubling sizes, as
- * fine as its source (docs/export-format/tiles.md). It names its own credit,
- * since it can come from another source than the tiers.
- */
 /** The tiles of the levels past a pyramid's `max_level`, over the ground of
  *  one regional mosaic, with that mosaic's credit. */
 export interface TilePatch extends CreditFields {
@@ -51,6 +46,11 @@ export interface TilePatch extends CreditFields {
 	version: string;
 }
 
+/**
+ * A layer's tile pyramid: the same map cut into tiles at doubling sizes, as
+ * fine as its source (docs/export-format/tiles.md). It names its own credit,
+ * since it can come from another source than the tiers.
+ */
 export interface TilesBlock extends CreditFields {
 	id: string;
 	tile_size: number;

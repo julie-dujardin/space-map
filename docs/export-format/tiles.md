@@ -54,6 +54,8 @@ A patch uses the grid and the paths of the map: `tiles/{id}/{z}/{x}/{y}.webp`, w
 
 The builder makes a patch from the finest tiles of the pyramid and from the mosaic. The colour and the tone at large scales are those of the tiles, so a patch joins the map around it without a step. All detail below a set scale comes from the mosaic alone. The map and a mosaic of another team can disagree on the position of a feature by some pixels of the map, and a mix of their detail would show the feature twice. At the edge of the mosaic the patch fades into the map. A tile of a patch that the mosaic covers only in part shows the enlarged map in the remaining part.
 
+A renderer draws the levels of a patch when a window of that level reaches the tiles of the patch, also from a point beside the patch. These levels have no tiles around the patch, so a renderer keeps some windows on the levels of the pyramid for the ground there.
+
 The polar caps and the height pyramids have no patches.
 
 ## Tile content

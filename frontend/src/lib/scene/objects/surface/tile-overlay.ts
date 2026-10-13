@@ -60,9 +60,10 @@ import type { BodyObjects, TilesBlock } from '$lib/scene/types';
  * the ground as it is tall. A window that changes chart loads on a spare
  * layer while the one it replaces stays drawn, so the change does not show.
  *
- * Over a patch the chain goes past the pyramid's finest level. Those levels
- * have tiles on the ground of the patch only; around it the coarser windows
- * show.
+ * Near a patch the chain goes past the pyramid's finest level, as deep as a
+ * window still reaches the patch. Those levels have tiles on the ground of the
+ * patch only, so the chain's last windows stay on the pyramid's own levels,
+ * for the ground around it.
  */
 
 /** Windows the chain can hold. A device holds as many as its tier allows. */
@@ -397,7 +398,8 @@ function release(store: WindowStore, win: TileWindow): void {
 /** The patch a tile past the pyramid's finest level belongs to. Such a level
  *  has tiles on the ground of its patches only. */
 function patchOf(tiles: TilesBlock, win: TileWindow, tile: { x: number; y: number }) {
-	return win.chart === MAP ? patchOfTile(tiles.patches, win.level, tile.x, tile.y) : undefined;
+	if (win.chart !== MAP || win.level <= tiles.max_level) return undefined;
+	return patchOfTile(tiles.patches, win.level, tile.x, tile.y);
 }
 
 /** Whether the tile of a slot exists at all. */
@@ -610,7 +612,8 @@ export function updateTileOverlay(
 	// One place more than the pyramid has levels, patches included: for the
 	// coarsest level on a second chart. One layer more than that: for a window
 	// changing chart.
-	const finest = Math.max(tiles.max_level, ...(tiles.patches ?? []).map((p) => p.max_level));
+	let finest = tiles.max_level;
+	if (tiles.patches) for (const patch of tiles.patches) finest = Math.max(finest, patch.max_level);
 	const levels = finest - FIRST_TILE_LEVEL + 1;
 	const count = Math.min(maxTileWindows(), MAX_WINDOWS, levels + 1);
 	if (overlay.store && overlay.store.texture.image.depth !== count + 1) disposeTileOverlay(bo);
@@ -621,7 +624,7 @@ export function updateTileOverlay(
 
 	const cap = over.y >= 0 ? NORTH : SOUTH;
 	overlay.chart = chart;
-	const chain = windowChain(level, count, overlay.chart, over.y);
+	const chain = windowChain(level, count, overlay.chart, over.y, tiles.max_level);
 	// The same point near the mesh, with the digits the shader has: the place
 	// of each window is counted from where the shader takes it to be.
 	const radius = bo.radiusScene;

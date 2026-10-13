@@ -123,7 +123,7 @@ describe('cameraChart', () => {
 
 describe('windowChain', () => {
 	it('lists a window per level, finest first, on the camera chart', () => {
-		expect(windowChain(6, 3, MAP, 0)).toEqual([
+		expect(windowChain(6, 3, MAP, 0, 6)).toEqual([
 			{ chart: MAP, level: 6 },
 			{ chart: MAP, level: 5 },
 			{ chart: MAP, level: 4 }
@@ -131,27 +131,39 @@ describe('windowChain', () => {
 	});
 
 	it('stops at the first tile level', () => {
-		expect(windowChain(4, 6, MAP, 0).map((link) => link.level)).toEqual([4, 3]);
+		expect(windowChain(4, 6, MAP, 0, 6).map((link) => link.level)).toEqual([4, 3]);
 	});
 
 	it('is empty below the first tile level', () => {
-		expect(windowChain(FIRST_TILE_LEVEL - 1, 6, MAP, 0)).toEqual([]);
+		expect(windowChain(FIRST_TILE_LEVEL - 1, 6, MAP, 0, 6)).toEqual([]);
 	});
 
 	it('adds the coarsest level on the other chart where both reach the camera', () => {
-		expect(windowChain(4, 6, MAP, sinDeg(50))).toEqual([
+		expect(windowChain(4, 6, MAP, sinDeg(50), 6)).toEqual([
 			{ chart: MAP, level: 4 },
 			{ chart: MAP, level: 3 },
 			{ chart: NORTH, level: 3 }
 		]);
-		expect(windowChain(4, 6, SOUTH, sinDeg(-70)).at(-1)).toEqual({ chart: MAP, level: 3 });
+		expect(windowChain(4, 6, SOUTH, sinDeg(-70), 6).at(-1)).toEqual({ chart: MAP, level: 3 });
 	});
 
 	it('does not add it far from the caps, or with no place left', () => {
-		expect(windowChain(4, 6, MAP, sinDeg(30))).toHaveLength(2);
-		expect(windowChain(4, 2, MAP, sinDeg(50))).toHaveLength(2);
+		expect(windowChain(4, 6, MAP, sinDeg(30), 6)).toHaveLength(2);
+		expect(windowChain(4, 2, MAP, sinDeg(50), 6)).toHaveLength(2);
 		// The chain did not reach the coarsest level.
-		expect(windowChain(6, 3, NORTH, sinDeg(80))).toHaveLength(3);
+		expect(windowChain(6, 3, NORTH, sinDeg(80), 6)).toHaveLength(3);
+	});
+
+	it('keeps its last places for the levels of the pyramid, past its finest', () => {
+		const levels = (count: number) => windowChain(16, count, MAP, 0, 10).map((link) => link.level);
+		expect(levels(6)).toEqual([16, 15, 14, 13, 10, 9]);
+		expect(levels(4)).toEqual([16, 15, 14, 10]);
+		expect(levels(3)).toEqual([16, 15, 10]);
+	});
+
+	it('skips no level while the chain reaches the pyramid by itself', () => {
+		const levels = windowChain(13, 6, MAP, 0, 10).map((link) => link.level);
+		expect(levels).toEqual([13, 12, 11, 10, 9, 8]);
 	});
 });
 
@@ -274,6 +286,21 @@ describe('patches', () => {
 		expect(deepestLevel(10, patches, inside.x, inside.y)).toBe(16);
 		expect(deepestLevel(10, patches, inside.x + 0.01, inside.y)).toBe(10);
 		expect(deepestLevel(10, undefined, inside.x, inside.y)).toBe(10);
+	});
+
+	it('takes a camera beside it as deep as a window still reaches it', () => {
+		// Tiles of level 16 east of the last column.
+		const east = (tiles: number) => (93784 + tiles) / chartColumns(MAP, 16);
+		expect(deepestLevel(10, patches, east(1), inside.y)).toBe(16);
+		expect(deepestLevel(10, patches, east(2.5), inside.y)).toBe(15);
+		expect(deepestLevel(10, patches, east(20), inside.y)).toBe(12);
+		expect(deepestLevel(10, patches, east(100), inside.y)).toBe(10);
+	});
+
+	it('counts the reach the short way around the globe', () => {
+		const first: PatchRange[] = [{ max_level: 16, x: [0, 99], y: [25970, 26102] }];
+		const west = 1 - 1 / chartColumns(MAP, 16);
+		expect(deepestLevel(10, first, west, inside.y)).toBe(16);
 	});
 });
 
