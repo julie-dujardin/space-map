@@ -268,8 +268,8 @@ class Mosaic:
 
 class Region:
     """A raster of a part of the globe, read as one that covers all of it at
-    the same pixel size. Where it has nothing it reads as zero, which a
-    brightness reader takes as not observed."""
+    the same pixel size. Where it has nothing it reads as what a brightness
+    reader takes as not observed: zero, or NaN for float samples."""
 
     def __init__(
         self,
@@ -291,6 +291,13 @@ class Region:
             raise ValueError("a regional raster across the 180° meridian")
 
     @property
+    def calibrated(self) -> bool:
+        """Whether the samples are measured values, as float samples are, and
+        not a picture stretched for viewing. Their noise puts a real sample in
+        shadow at or below zero."""
+        return self._pixels.dtype.kind == "f"
+
+    @property
     def bounds(self) -> tuple[float, float, float, float]:
         """West, east, north and south edge in degrees, on the grid that
         ``read`` uses."""
@@ -304,7 +311,8 @@ class Region:
         )
 
     def read(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
-        out = np.zeros((y1 - y0, x1 - x0), dtype=self._pixels.dtype)
+        blank = np.nan if self.calibrated else 0
+        out = np.full((y1 - y0, x1 - x0), blank, dtype=self._pixels.dtype)
         height, width = self._pixels.shape
         top, bottom = max(y0, self._top), min(y1, self._top + height)
         left, right = max(x0, self._left), min(x1, self._left + width)
@@ -730,11 +738,16 @@ def height_quantum_km(raster: HeightRaster) -> float:
     return abs(raster.scale) * raster.unit_km
 
 
-def brightness_values(gamma: float | None) -> Callable[[np.ndarray], np.ndarray]:
+def brightness_values(
+    gamma: float | None, shadows: bool = False
+) -> Callable[[np.ndarray], np.ndarray]:
     """Greyscale samples → float32 brightness, NaN where a sample is not
     positive: nothing was observed there. ``gamma`` is the display curve of
     integer samples stretched for viewing, undone here so that brightness
-    ratios are ratios of light."""
+    ratios are ratios of light.
+
+    ``shadows`` is for calibrated samples: one at or below zero is real, and
+    only the null value of the file marks what was not observed."""
     # 8-bit samples, the common case by terabytes, take one table lookup.
     table = None
     if gamma is not None:
@@ -745,7 +758,12 @@ def brightness_values(gamma: float | None) -> Callable[[np.ndarray], np.ndarray]
         if table is not None and raw.dtype == np.uint8:
             return table[raw]
         values = raw.astype(np.float32)
-        values[~(values > 0)] = np.nan
+        if shadows:
+            gaps = ~(values > NODATA_THRESHOLD)
+            np.maximum(values, 0.0, out=values)
+            values[gaps] = np.nan
+        else:
+            values[~(values > 0)] = np.nan
         if gamma is not None:
             values /= np.float32(np.iinfo(raw.dtype).max)
             values **= np.float32(gamma)
@@ -806,6 +824,17 @@ def _geotiff_bounds(path: Path) -> tuple[float, float, float, float]:
     # 17: the equirectangular projection.
     if keys.get("ProjCoordTransGeoKey") != 17 or "ModelTiepoint" not in keys:
         raise ValueError(f"{path.name}: not an equirectangular GeoTIFF")
+    # The edges below hold for metres counted from the equator and the central
+    # meridian, with the first pixel at the tiepoint. 9001: metres.
+    origin = (
+        keys.get("ProjCenterLatGeoKey", 0.0),
+        keys.get("ProjNatOriginLatGeoKey", 0.0),
+        keys.get("ProjFalseEastingGeoKey", 0.0),
+        keys.get("ProjFalseNorthingGeoKey", 0.0),
+        *keys["ModelTiepoint"][:2],
+    )
+    if any(origin) or keys.get("ProjLinearUnitsGeoKey", 9001) != 9001:
+        raise ValueError(f"{path.name}: a projection origin or unit not read here")
     radius = keys["GeogSemiMajorAxisGeoKey"]
     # Metres east of the central meridian shrink by the cosine of the
     # latitude the projection is true at.
@@ -830,9 +859,16 @@ def _pds_bounds(path: Path) -> tuple[float, float, float, float]:
     label = read_pds_label(path)
     if label.get("MAP_PROJECTION_TYPE") != "EQUIRECTANGULAR":
         raise ValueError(f"{path.name}: not an equirectangular image")
+    if label.get("POSITIVE_LONGITUDE_DIRECTION", "EAST") != "EAST":
+        raise ValueError(f"{path.name}: longitudes counted west")
+    west = float(label["WESTERNMOST_LONGITUDE"])
+    east = float(label["EASTERNMOST_LONGITUDE"])
+    # Longitudes from 0° to 360°, and an image across the prime meridian.
+    if east <= west:
+        east += 360.0
     return (
-        float(label["WESTERNMOST_LONGITUDE"]),
-        float(label["EASTERNMOST_LONGITUDE"]),
+        west,
+        east,
         float(label["MAXIMUM_LATITUDE"]),
         float(label["MINIMUM_LATITUDE"]),
     )
@@ -848,8 +884,9 @@ def open_region_layer(path: Path, gamma: float | None = None) -> Layer:
         # A site mosaic stored in compressed chunks is too large to decode whole.
         pixels = ChunkedTiff(path) if _compressed(path) else _open_grey(path)
         bounds = _geotiff_bounds(path)
+    region = Region(pixels, *bounds)
     return Layer(
-        Region(pixels, *bounds), Placement(), to_values=brightness_values(gamma)
+        region, Placement(), to_values=brightness_values(gamma, region.calibrated)
     )
 
 

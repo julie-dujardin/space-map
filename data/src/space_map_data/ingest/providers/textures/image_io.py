@@ -235,6 +235,18 @@ def memmap_page(src: Path, page: tifffile.TiffPage) -> np.ndarray | None:
     )
 
 
+def _stored_as_grey(page: tifffile.TiffPage) -> bool:
+    """Whether a page's samples are brightness as stored: black at zero, or
+    a palette that is the same grey ramp."""
+    if page.photometric == tifffile.PHOTOMETRIC.MINISBLACK:
+        return True
+    table = page.colormap
+    if page.photometric != tifffile.PHOTOMETRIC.PALETTE or table is None:
+        return False
+    # 16-bit entries, the grey in the high byte.
+    return bool(np.array_equal(table >> 8, np.broadcast_to(np.arange(256), (3, 256))))
+
+
 class ChunkedTiff:
     """A single-band TIFF stored as compressed tiles or strips, read by window
     like an array.
@@ -242,16 +254,21 @@ class ChunkedTiff:
     Such a file can be tens of gigapixels: it cannot be mapped in place like
     plain samples, nor decoded whole. A read decodes the chunks under it, and
     the last ones stay decoded for the reads beside it.
+
+    The samples are given as they are stored, so they must be a grey scale
+    that starts at black.
     """
 
     def __init__(self, src: Path) -> None:
         self._tif = tifffile.TiffFile(str(src))
+        self._fd = os.open(src, os.O_RDONLY)
         page = self._tif.pages[0]
         assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        if page.dtype is None or not _stored_as_grey(page):
+            raise ValueError(f"{src.name}: samples are not a grey scale from black")
         self._page = page
-        self._fd = os.open(src, os.O_RDONLY)
-        self.shape: tuple[int, int] = (page.shape[0], page.shape[1])
-        self.dtype = page.dtype
+        self.shape: tuple[int, ...] = (page.shape[0], page.shape[1])
+        self.dtype: np.dtype = page.dtype
         self._chunk_rows, self._chunk_columns = page.chunks[:2]
         self._across = page.chunked[1]
         self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
@@ -271,17 +288,22 @@ class ChunkedTiff:
         count = self._page.databytecounts[index]
         if count:
             data = os.pread(self._fd, count, self._page.dataoffsets[index])
-            decoded = self._page.decode(data, index)[0]
+            # A JPEG chunk can keep its tables in a tag of the page.
+            decoded = self._page.decode(data, index, jpegtables=self._page.jpegtables)[
+                0
+            ]
             assert decoded is not None
             chunk = decoded.reshape(decoded.shape[1], decoded.shape[2])
         else:
             # A chunk the writer left out holds no data.
             chunk = np.zeros((self._chunk_rows, self._chunk_columns), self.dtype)
         with self._lock:
-            self._cache[index] = chunk
-            self._held += chunk.nbytes
-            while self._held > _CHUNK_CACHE_BYTES and len(self._cache) > 1:
-                self._held -= self._cache.popitem(last=False)[1].nbytes
+            # Two reads can decode one chunk at the same time: it counts once.
+            if index not in self._cache:
+                self._cache[index] = chunk
+                self._held += chunk.nbytes
+                while self._held > _CHUNK_CACHE_BYTES and len(self._cache) > 1:
+                    self._held -= self._cache.popitem(last=False)[1].nbytes
         return chunk
 
     def __getitem__(self, key: tuple[slice, slice]) -> np.ndarray:

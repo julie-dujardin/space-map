@@ -2,6 +2,7 @@
 the ground a regional mosaic covers."""
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -69,22 +70,31 @@ def _tile(root: Path, level: int, x: int, y: int) -> np.ndarray:
     return np.asarray(Image.open(root / str(level) / str(x) / f"{y}.webp"))
 
 
-def _write_geotiff(path: Path, pixels: np.ndarray, bounds=BOUNDS, **storage) -> None:
-    """An equirectangular GeoTIFF of a sphere of ``RADIUS`` metres."""
+def _write_geotiff(
+    path: Path,
+    pixels: np.ndarray,
+    bounds=BOUNDS,
+    more_keys: tuple[int, ...] = (),
+    tiepoint: tuple[float, float] = (0.0, 0.0),
+    **storage,
+) -> None:
+    """An equirectangular GeoTIFF of a sphere of ``RADIUS`` metres.
+    ``more_keys`` are further entries of its key directory."""
     west, east, north, south = bounds
     per_degree = np.radians(RADIUS)
     height, width = pixels.shape
     step = (east - west) * per_degree / width
     keys = (
-        (1, 1, 0, 5)
+        (1, 1, 0, 5 + len(more_keys) // 4)
         + (1024, 0, 1, 1)
         + (2057, 34736, 1, 0)
         + (3075, 0, 1, 17)
         + (3078, 34736, 1, 1)
         + (3088, 34736, 1, 2)
+        + more_keys
     )
     scale = (step, (north - south) * per_degree / height, 0.0)
-    corner = (0.0, 0.0, 0.0, west * per_degree, north * per_degree, 0.0)
+    corner = (*tiepoint, 0.0, west * per_degree, north * per_degree, 0.0)
     tifffile.imwrite(
         path,
         pixels,
@@ -145,6 +155,80 @@ class TestRegion:
         _write_geotiff(tmp_path / "site.tif", _texture(64))
         assert tiles._geotiff_bounds(tmp_path / "site.tif") == pytest.approx(BOUNDS)
 
+    @pytest.mark.parametrize(
+        "origin",
+        [
+            # ProjLinearUnitsGeoKey: kilometres.
+            {"more_keys": (3076, 0, 1, 9036)},
+            # ProjCenterLatGeoKey and ProjFalseEastingGeoKey: the first double.
+            {"more_keys": (3089, 34736, 1, 0)},
+            {"more_keys": (3082, 34736, 1, 0)},
+            {"tiepoint": (4.0, 0.0)},
+        ],
+        ids=["kilometres", "latitude of origin", "false easting", "tiepoint"],
+    )
+    def test_geotiff_with_an_origin_it_cannot_read_is_refused(self, tmp_path, origin):
+        """Its edges would come out wrong, with nothing to show it."""
+        _write_geotiff(tmp_path / "site.tif", _texture(64), **origin)
+        with pytest.raises(ValueError, match="origin or unit"):
+            tiles._geotiff_bounds(tmp_path / "site.tif")
+
+    def test_float_raster_reads_as_no_data_outside_it(self):
+        region = tiles.Region(_texture(64).astype(np.float32), *BOUNDS)
+        window = region.read(190, 210, 530, 550)
+        assert np.isnan(window[:9]).all() and np.isfinite(window[9:, 10:]).all()
+
+    @staticmethod
+    def _site_image(path: Path, values: np.ndarray, **label) -> None:
+        west, east, north, south = BOUNDS
+        fields = {
+            "MAP_PROJECTION_TYPE": "EQUIRECTANGULAR",
+            "WESTERNMOST_LONGITUDE": f"{west} <DEG>",
+            "EASTERNMOST_LONGITUDE": f"{east} <DEG>",
+            "MAXIMUM_LATITUDE": f"{north} <DEG>",
+            "MINIMUM_LATITUDE": f"{south} <DEG>",
+            **label,
+        }
+        _write_pds_image(path, values, **fields)
+
+    def test_shadow_in_a_calibrated_image_is_ground(self, tmp_path):
+        """Noise puts a real sample in shadow at or below zero; only the
+        file's null value is a gap."""
+        values = _texture(64).astype(np.float32) / 1000.0
+        values[20:30, 20:30] = -0.002
+        # Wider than the gaps a layer fills in from their sides.
+        values[34:58, 34:58] = -3.4028227e38
+        self._site_image(tmp_path / "site.img", values)
+        raster = tiles.open_region_layer(tmp_path / "site.img")
+        # Its own pixel size, from its first row and column.
+        edges = 90.0 - np.arange(199, 264) * (180.0 / 512)
+        seen = raster.window(1024, edges, 540, 604)
+        assert (seen[20:30, 20:30] == 0.0).all()
+        assert np.isnan(seen[44:48, 44:48]).all()
+        assert seen[5, 5] == pytest.approx(values[5, 5])
+
+    def test_pds_image_counted_west_is_refused(self, tmp_path):
+        self._site_image(
+            tmp_path / "site.img",
+            _texture(64).astype(np.float32),
+            POSITIVE_LONGITUDE_DIRECTION="WEST",
+        )
+        with pytest.raises(ValueError, match="west"):
+            tiles.open_region_layer(tmp_path / "site.img")
+
+    def test_pds_image_across_the_prime_meridian(self, tmp_path):
+        """A label that counts from 0° to 360° has its east edge below its
+        west edge there."""
+        self._site_image(
+            tmp_path / "site.img",
+            _texture(64).astype(np.float32),
+            WESTERNMOST_LONGITUDE="350.0 <DEG>",
+            EASTERNMOST_LONGITUDE="12.5 <DEG>",
+        )
+        raster = tiles.open_region_layer(tmp_path / "site.img")
+        assert isinstance(raster.pixels, tiles.Region)
+        assert raster.pixels.bounds == pytest.approx((-10.0, 12.5, 20.0, -2.5), abs=0.2)
+
 
 class TestChunkedTiff:
     """A compressed mosaic is read by window, chunk by chunk."""
@@ -179,6 +263,73 @@ class TestChunkedTiff:
         chunked = ChunkedTiff(tmp_path / "site.tif")
         assert (chunked[0:256, 0:256] == pixels).all()
         assert len(chunked._cache) == 3
+
+    def test_chunk_two_reads_decode_at_once_counts_once(self, tmp_path, monkeypatch):
+        """The limit is on what the cache holds, not on what was decoded."""
+        tifffile.imwrite(
+            tmp_path / "site.tif", _texture(128), tile=(64, 64), compression="packbits"
+        )
+        chunked = ChunkedTiff(tmp_path / "site.tif")
+        read = os.pread
+        other_came_first = False
+
+        def pread(fd: int, count: int, offset: int) -> bytes:
+            nonlocal other_came_first
+            if not other_came_first:
+                other_came_first = True
+                chunked._chunk(0)
+            return read(fd, count, offset)
+
+        monkeypatch.setattr(image_io.os, "pread", pread)
+        chunked._chunk(0)
+        assert chunked._held == sum(chunk.nbytes for chunk in chunked._cache.values())
+
+    @pytest.mark.parametrize(
+        "storage",
+        [
+            {"photometric": "miniswhite"},
+            {
+                "photometric": "palette",
+                "colormap": np.tile(
+                    np.arange(255, -1, -1, dtype=np.uint16) * 256, (3, 1)
+                ),
+            },
+        ],
+        ids=["white at zero", "palette in another order"],
+    )
+    def test_samples_that_are_not_brightness_as_stored_are_refused(
+        self, tmp_path, storage
+    ):
+        tifffile.imwrite(
+            tmp_path / "site.tif",
+            _texture(128),
+            tile=(64, 64),
+            compression="packbits",
+            **storage,
+        )
+        with pytest.raises(ValueError, match="grey scale"):
+            ChunkedTiff(tmp_path / "site.tif")
+
+    def test_palette_that_is_the_grey_ramp_is_brightness(self, tmp_path):
+        pixels = _texture(128)
+        tifffile.imwrite(
+            tmp_path / "site.tif",
+            pixels,
+            tile=(64, 64),
+            compression="packbits",
+            photometric="palette",
+            colormap=np.tile(np.arange(256, dtype=np.uint16) * 256, (3, 1)),
+        )
+        assert (ChunkedTiff(tmp_path / "site.tif")[0:128, 0:128] == pixels).all()
+
+    def test_jpeg_chunks_take_their_tables_from_the_page(self, tmp_path):
+        """A mosaic written by GDAL keeps them in a tag, once for all chunks."""
+        ramp = np.add.outer(np.arange(128), np.arange(128)).astype(np.uint8)
+        Image.fromarray(ramp).save(tmp_path / "site.tif", compression="jpeg")
+        with tifffile.TiffFile(tmp_path / "site.tif") as tif:
+            assert tif.pages[0].jpegtables is not None
+        decoded = ChunkedTiff(tmp_path / "site.tif")[0:128, 0:128].astype(int)
+        assert np.abs(decoded - ramp).max() <= 4
 
     def test_compressed_geotiff_is_a_regional_raster(self, tmp_path):
         _write_geotiff(
@@ -285,6 +436,29 @@ class TestPatchBuilder:
         self._build(tmp_path, pixels=pixels)
         hole = _tile(tmp_path / "patch", 7, 143, 57).astype(int)
         assert np.abs(hole - COLOUR).max() <= 4
+
+    def test_wide_shadow_is_dark_and_its_noise_is_not_detail(self, tmp_path):
+        """A calibrated mosaic has samples around zero in a shadow."""
+        rng = np.random.default_rng(seed=5)
+        pixels = _texture().astype(np.float32) / 1000.0
+        pixels[64:192, 64:192] = rng.uniform(-0.002, 0.002, size=(128, 128))
+        raster = tiles.Layer(
+            tiles.Region(pixels, *BOUNDS),
+            tiles.Placement(),
+            to_values=tiles.brightness_values(None, shadows=True),
+        )
+        builder = patches.PatchBuilder(
+            "test",
+            _pyramid(tmp_path / "tiles"),
+            BASE,
+            [raster],
+            tmp_path / "patch",
+            1.0,
+        )
+        builder.build()
+        shadow = _tile(tmp_path / "patch", 7, 143, 57).astype(float)
+        assert shadow[..., 0].max() < 0.8 * COLOUR[0]
+        assert shadow[..., 0].std() < 3.0
 
 
 class TestPatchTiles:

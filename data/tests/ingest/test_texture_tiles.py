@@ -441,6 +441,14 @@ class TestBrightness:
     """A sharper greyscale map adds detail to a colour base without moving
     its tone."""
 
+    def test_calibrated_samples_keep_their_shadows(self):
+        """At or below zero is a real sample; the null value is not."""
+        raw = np.array([[-0.01, 0.0, 0.2, -3.4028227e38, np.nan]], dtype=np.float32)
+        values = tiles.brightness_values(None, shadows=True)(raw)
+        assert values[0, :3].tolist() == [0.0, 0.0, pytest.approx(0.2)]
+        assert np.isnan(values[0, 3:]).all()
+        assert np.isnan(tiles.brightness_values(None)(raw)[0, :2]).all()
+
     @staticmethod
     def _sharpened(brightness: np.ndarray, colour=(120, 110, 100)) -> np.ndarray:
         base = tiles.Layer(

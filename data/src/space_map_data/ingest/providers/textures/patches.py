@@ -27,7 +27,7 @@ from .encoding import webp_kwargs
 log = logging.getLogger(__name__)
 
 # Bumped when a change to the build changes the bytes of a patch's tiles.
-RECIPE = 2
+RECIPE = 3
 # Levels made from one read of the rasters: a block is 4 × 4 of the finest tiles.
 _BLOCK_LEVELS = 2
 # Levels of blocks built side by side, each held until its group is done.
@@ -39,6 +39,11 @@ _WORKERS = 4
 _READ_PIXELS = 1 << 25
 # Pixels read around a patch past the blur, and around a raster past its edge.
 _MARGIN = 4
+# Least broad brightness the detail of a calibrated raster is compared with,
+# as a share of the raster's average. A shadow wider than the blur has almost
+# none of its own: its noise would otherwise count as detail as strong as the
+# ground's.
+_SHADOW_FLOOR = 0.2
 
 
 def _resized(
@@ -52,10 +57,14 @@ def _resized(
     return np.asarray(Image.fromarray(values).resize(size, filter_, box=box))
 
 
-def _bounds(raster: tiles.Layer) -> tuple[float, float, float, float]:
+def _region(raster: tiles.Layer) -> tiles.Region:
     pixels = raster.pixels
     assert isinstance(pixels, tiles.Region)
-    return pixels.bounds
+    return pixels
+
+
+def _bounds(raster: tiles.Layer) -> tuple[float, float, float, float]:
+    return _region(raster).bounds
 
 
 def _parts(raster: tiles.Layer) -> tuple[tiles.Layer, tiles.Layer]:
@@ -320,6 +329,9 @@ class _Ground:
                 coarse = ndimage.gaussian_filter(np.where(here, fine, 0.0), sigma)
                 low = np.ones_like(fine)
                 np.divide(coarse, coverage, out=low, where=coverage > 0.05)
+                if _region(patch.rasters[index]).calibrated and here.any():
+                    floor = _SHADOW_FLOOR * float(fine[here].mean())
+                    np.maximum(low, floor, out=low)
                 self.lows.append(low)
                 seen |= here
         # Full weight one blur inside the rasters: at their edge the patch
