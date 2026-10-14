@@ -226,8 +226,8 @@ class SpiceDownloader(Downloader):
         orientation_rows = extract_orientation()
         self._write_csv("orientation.csv", _ORIENTATION_FIELDNAMES, orientation_rows)
 
-        nut_prec_coeffs, nut_prec_angles = extract_nutation()
-        self._write_nutation(nut_prec_coeffs, nut_prec_angles)
+        nut_prec_coeffs, nut_prec_angles, phase_degrees = extract_nutation()
+        self._write_nutation(nut_prec_coeffs, nut_prec_angles, phase_degrees)
 
         gravity_rows = extract_gravity_field()
         self._write_csv("gravity.csv", _GRAVITY_FIELDNAMES, gravity_rows)
@@ -557,8 +557,9 @@ class SpiceDownloader(Downloader):
         self,
         coefficients: dict[int, dict[str, list[float]]],
         angles: dict[int, list[float]],
+        phase_degrees: dict[int, int],
     ) -> None:
-        """Dump PCK nutation terms as two JSON files (orjson refuses int keys)."""
+        """Dump PCK nutation terms as three JSON files (orjson refuses int keys)."""
         (self.out_dir / "nut_prec.json").write_bytes(
             orjson.dumps(
                 {
@@ -570,6 +571,11 @@ class SpiceDownloader(Downloader):
         (self.out_dir / "nut_prec_angles.json").write_bytes(
             orjson.dumps(
                 {str(owner_id): vals for owner_id, vals in sorted(angles.items())}
+            )
+        )
+        (self.out_dir / "nut_prec_phase_degree.json").write_bytes(
+            orjson.dumps(
+                {str(owner_id): d for owner_id, d in sorted(phase_degrees.items())}
             )
         )
         logger.info(

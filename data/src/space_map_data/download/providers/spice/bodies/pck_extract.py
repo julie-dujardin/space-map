@@ -65,7 +65,7 @@ def extract_orientation() -> list[dict]:
 
 
 def extract_nutation() -> tuple[
-    dict[int, dict[str, list[float]]], dict[int, list[float]]
+    dict[int, dict[str, list[float]]], dict[int, list[float]], dict[int, int]
 ]:
     """Extract PCK nutation/precession terms for the full IAU rotation model.
 
@@ -73,15 +73,18 @@ def extract_nutation() -> tuple[
       α += Σ ra[i]  · sin(θ_i(T))
       δ += Σ dec[i] · cos(θ_i(T))
       W += Σ pm[i]  · sin(θ_i(T))
-    where θ_i(T) = angles[2i] + angles[2i+1]·T (degrees, deg/century, T = Julian centuries).
+    where θ_i(T) is a polynomial in T (Julian centuries) with degree+1
+    coefficients per angle in `angles` (degrees, deg/century, deg/century²).
 
-    The angles array is defined once per "owner" body — typically the planetary
-    system barycenter (1..9); bodies derive their owner as `naif_id // 100`
-    (or `naif_id` itself when < 100).
+    The angles array is defined once per "owner" body: the planetary system
+    barycenter (1..9). A body's owner is `naif_id // 100`, or `naif_id` when
+    < 100. The polynomial degree is 1 unless the kernel sets
+    `BODY<owner>_MAX_PHASE_DEGREE`. pck00011 sets 2 for Mars.
 
-    Returns (coefficients, angles):
-      coefficients: {naif_id: {"ra": [...], "dec": [...], "pm": [...]}}
-      angles:       {owner_naif_id: [θ₀_1, θ₁_1, θ₀_2, θ₁_2, ...]}
+    Returns (coefficients, angles, phase_degrees):
+      coefficients:  {naif_id: {"ra": [...], "dec": [...], "pm": [...]}}
+      angles:        {owner_naif_id: [θ₀_1, θ₁_1, (θ₂_1,) θ₀_2, ...]}
+      phase_degrees: {owner_naif_id: degree}, only for owners the kernel sets
     """
     coefficients: dict[int, dict[str, list[float]]] = {}
     for kind, key in (("ra", "RA"), ("dec", "DEC"), ("pm", "PM")):
@@ -121,6 +124,20 @@ def extract_nutation() -> tuple[
             continue
         angles[owner_id] = [float(v) for v in values]
 
+    phase_degrees: dict[int, int] = {}
+    # A kernel before pck00011 sets no degree, and gnpool raises when nothing matches.
+    try:
+        degree_vars = spiceypy.gnpool("BODY*_MAX_PHASE_DEGREE", 0, 1000)
+    except spiceypy.exceptions.NotFoundError:
+        degree_vars = []
+    for var in degree_vars:
+        m = re.match(r"BODY(-?\d+)_MAX_PHASE_DEGREE$", var)
+        if not m:
+            continue
+        owner_id = int(m.group(1))
+        degree = spiceypy.bodvrd(str(owner_id), "MAX_PHASE_DEGREE", 1)[1][0]
+        phase_degrees[owner_id] = int(degree)
+
     # Sanity-check: every body with coefficients should have a resolvable owner,
     # and per-channel arrays may not exceed the angle count (they may be shorter —
     # bodies often use only the first few system angles).
@@ -135,12 +152,13 @@ def extract_nutation() -> tuple[
                 owner_id,
             )
             continue
-        n_angles = len(angles[owner_id]) // 2
+        stride = phase_degrees.get(owner_id, 1) + 1
+        n_angles = len(angles[owner_id]) // stride
         for kind in ("ra", "dec", "pm"):
             if len(coeffs[kind]) > n_angles:
                 logger.warning(
                     "Body %d NUT_PREC_%s has %d coefficients but owner %d only "
-                    "defines %d angle pairs; extra coefficients will be ignored",
+                    "defines %d angles; extra coefficients will be ignored",
                     naif_id,
                     kind.upper(),
                     len(coeffs[kind]),
@@ -148,7 +166,7 @@ def extract_nutation() -> tuple[
                     n_angles,
                 )
 
-    return coefficients, angles
+    return coefficients, angles, phase_degrees
 
 
 def extract_radii() -> list[dict]:

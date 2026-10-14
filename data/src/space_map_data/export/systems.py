@@ -138,6 +138,20 @@ def load_nut_prec_angles(download_dir: Path) -> dict[int, list[float]]:
     return result
 
 
+def load_nut_prec_phase_degrees(download_dir: Path) -> dict[int, int]:
+    """Load the phase polynomial degree per owner that the PCK sets.
+
+    Returns {owner_naif_id: degree}. An owner that is absent has degree 1.
+    The file is required: without it, the angles of an owner with a higher
+    degree would be read in the wrong groups.
+    """
+    json_path = (
+        download_dir / "derived" / "position" / "tables" / "nut_prec_phase_degree.json"
+    )
+    raw = orjson.loads(json_path.read_bytes())
+    return {int(owner): degree for owner, degree in raw.items()}
+
+
 def texture_attribution(meta: dict) -> dict:
     """Extract the user-facing attribution subset from a texture metadata dict."""
     result = {
@@ -660,12 +674,14 @@ def write_systems_global(
     out_dir: Path,
     gms: dict[int, float],
     nut_prec_angles: dict[int, list[float]],
+    nut_prec_phase_degrees: dict[int, int],
 ) -> None:
     """Write the always-loaded `systems/global.json` lookup file.
 
-    Holds data the frontend needs regardless of which system it's viewing:
-    `gm` (full GM table, for chebyshev trail-buffer period estimates) and
-    `nut_prec_angles` (paired with per-body `nut_prec` in the per-system files).
+    The frontend needs it for every system. `gm` is the full GM table, for the
+    chebyshev trail-buffer period estimates. `nut_prec_angles` pairs with the
+    per-body `nut_prec` in the per-system files. `nut_prec_phase_degree` gives
+    the polynomial degree of those angles, for the owners where it is not 1.
     """
     if not gms and not nut_prec_angles:
         return
@@ -677,6 +693,11 @@ def write_systems_global(
     if nut_prec_angles:
         payload["nut_prec_angles"] = {
             str(owner): vals for owner, vals in sorted(nut_prec_angles.items())
+        }
+    if nut_prec_phase_degrees:
+        payload["nut_prec_phase_degree"] = {
+            str(owner): degree
+            for owner, degree in sorted(nut_prec_phase_degrees.items())
         }
     (systems_dir / "global.json").write_bytes(orjson.dumps(payload))
     logger.info(
@@ -904,7 +925,10 @@ def export_systems_only(engine) -> None:
             displacement_metadata,
         )
         write_systems_global(
-            out_dir, load_gms(DOWNLOAD_DIR), load_nut_prec_angles(DOWNLOAD_DIR)
+            out_dir,
+            load_gms(DOWNLOAD_DIR),
+            load_nut_prec_angles(DOWNLOAD_DIR),
+            load_nut_prec_phase_degrees(DOWNLOAD_DIR),
         )
     rewritten = patch_object_bundles(
         out_dir, texture_metadata, alternate_metadata, displacement_metadata

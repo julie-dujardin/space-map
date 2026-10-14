@@ -130,6 +130,7 @@ from space_map_data.export.systems import (
     load_night_metadata,
     load_nut_prec,
     load_nut_prec_angles,
+    load_nut_prec_phase_degrees,
     load_orientation,
     load_radii,
     load_ring_metadata,
@@ -1075,6 +1076,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     gms = load_gms(DOWNLOAD_DIR)
     nut_prec = load_nut_prec(DOWNLOAD_DIR)
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
+    nut_prec_phase_degrees = load_nut_prec_phase_degrees(DOWNLOAD_DIR)
     texture_metadata = load_texture_metadata(out_dir)
     alternate_metadata = load_alternate_metadata(out_dir)
     ring_metadata = load_ring_metadata(out_dir)
@@ -1118,7 +1120,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         ring_metadata=ring_metadata,
     )
 
-    write_systems_global(out_dir, gms, nut_prec_angles)
+    write_systems_global(out_dir, gms, nut_prec_angles, nut_prec_phase_degrees)
     write_atmospheres(out_dir)
     write_spacecraft(out_dir, wikidata_entities)
     write_panorama_assets(out_dir)

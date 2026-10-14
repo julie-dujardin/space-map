@@ -16,16 +16,23 @@ A single tiny top-level file fetched once at app start, paired with the per-syst
   "nut_prec_angles": {
     "1": [174.791086, 4.092335, 349.582171, 8.184670],
     "3": [125.045, -0.0529921, 250.089, -0.1059842],
+    "4": [190.72646643, 15917.10818695, 0, 21.4689247, 31834.27934054, 0],
     "5": [73.32, 91472.9, 24.62, 45137.2]
+  },
+  "nut_prec_phase_degree": {
+    "4": 2
   }
 }
 ```
 
 - **`gm`** — gravitational parameters (km³/s²) per body NAIF id, sourced from SPICE PCK (`gm_de440.tpc`). Includes a synthesized SSB row (`"0"`) reusing the Sun's GM so chebyshev-only bodies that orbit SSB resolve correctly. Used by the chebyshev trail-buffer sizing path to estimate orbital periods via Kepler's third law (`n = √(GM/a³)`) for any parent NAIF id.
-- **`nut_prec_angles`** — IAU nutation/precession angle pairs `(θ₀, θ₁)` per "owner" body — typically the planetary system barycenter. Bodies derive their owner as `naif_id // 100` if `naif_id ≥ 100`, else `naif_id`. Each owner's array is a flat `[θ₀_1, θ₁_1, θ₀_2, θ₁_2, …]` in degrees and degrees/century. Combined with each body's `nut_prec` coefficient arrays:
+- **`nut_prec_angles`** — IAU nutation/precession angles per "owner" body, the planetary system barycenter. A body's owner is `naif_id // 100` if `naif_id ≥ 100`, else `naif_id`. Each angle is a polynomial in T with `degree + 1` coefficients (degrees, degrees/century, degrees/century²), flattened in angle order.
+- **`nut_prec_phase_degree`** — the polynomial degree per owner, from the kernel's `BODY<owner>_MAX_PHASE_DEGREE`. An owner that is absent has degree 1. pck00011 sets 2 for Mars.
+
+  Combined with each body's `nut_prec` coefficient arrays, with `k = degree + 1`:
 
   ```
-  θ_i(T) = angles[2i] + angles[2i+1]·T          (T = Julian centuries since J2000)
+  θ_i(T) = Σ_j angles[k·i + j] · T^j    (j = 0..degree, T = Julian centuries since J2000)
   α(T)  += Σ nut_prec.ra[i]  · sin(θ_i(T))
   δ(T)  += Σ nut_prec.dec[i] · cos(θ_i(T))
   W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
