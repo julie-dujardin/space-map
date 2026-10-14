@@ -1,21 +1,34 @@
 /**
- * Per-channel sun-transmittance tints the scattering shell can't provide: its
- * premultiplied alpha is a luminance scalar, so it dims but never colours,
- * and never touches light striking a surface.
+ * Per-channel light of the air that the scattering shell cannot give. The
+ * shell composites with one luminance alpha, so it dims but does not colour,
+ * and it does not touch the light on a surface.
  *
- * - Surface patch: direct light × sun→fragment transmittance (sunset light).
- *   Inside a deep column (under Venus's deck, under Titan's haze) the direct
- *   beam is gone, and the patch lights the ground with the column's diffuse
- *   sky instead.
- * - {@link VIEW_TINT_GLSL}: camera→fragment chroma for the sun disc,
- *   per-fragment since from orbit the disc outsizes the atmosphere band.
- * - {@link sunPathTransmittance}: CPU ratio for corona/star point.
+ * - Surface patch: the direct light times the transmittance of the air from
+ *   the Sun to the fragment (sunset light), plus the diffuse light of the sky.
+ *   Inside a deep column (under the deck of Venus, under the haze of Titan)
+ *   the direct beam is gone, and the column's own diffuse light replaces both.
+ * - {@link VIEW_TINT_GLSL}: the chroma of the air from the camera to the Sun
+ *   disc, per fragment, because from orbit the disc is larger than the band.
+ * - {@link sunPathTransmittance}: the same ratio on the CPU, for the corona
+ *   and the star point.
  *
- * Tints are T/lum(T) ratios, so the shell's alpha keeps sole ownership of
- * dimming. Same squashed space as the shell (oblate ellipsoid = unit sphere):
+ * The view tints are T/lum(T), so the shell's alpha does all the dimming.
+ *
+ * Sky light over the sunlight, after Bird & Riordan (1986, SPCTRAL2):
+ *   E = μ · Ta · [½ (1 − Tr^0.95) + Fs · Tr^1.5 · (1 − Tm)]
+ * Tr, Tm and Ta are the Rayleigh, aerosol and absorber transmittances of the
+ * zenith column at airmass m = 1/μ. Fs is the downward part of the aerosol
+ * light, from the asymmetry of the body's phase table. For a Sun at sine s,
+ * μ = √(s² + μh²) with μh = δ/√π, the inverse of the airmass at the horizon,
+ * and δ = √(2H/R). Past the terminator μ = μh·exp(−s²/δ²) and m = 1/μh: the
+ * air lit at a depression d is R·d²/2 high. At noon the sky light comes out of
+ * the direct light, so open ground at noon keeps its tuned brightness. The
+ * giants and the deep columns get none (see {@link skyLightSplit}).
+ *
+ * Same squashed space as the shell (the oblate ellipsoid is the unit sphere):
  * on gas giants the polar dip is hundreds of scale heights, so a spherical
- * march would read mid-latitudes as deep underground. Radii passed in are the
- * solid body's; the shell's deck offset is added here, like in the shell.
+ * march would put mid-latitudes deep underground. Radii passed in are those
+ * of the solid body; the deck offset is added here, as in the shell.
  */
 
 import {
@@ -38,6 +51,7 @@ import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 /** Kept under the shell's LIGHT_STEPS — the surface patch runs over full-screen landed terrain. */
 const FRAGMENT_STEPS = 6;
 const CPU_STEPS = 16;
+const INV_SQRT_PI = 1 / Math.sqrt(Math.PI);
 
 /** Scene-wide enable flag (mirrors the atmosphere visibility setting); shared
  *  value ref like the eclipse uniforms, mutated in place each frame. */
@@ -118,7 +132,7 @@ const SUN_TINT_GLSL = `
 		return (hi - h) * (hi - h) / (2.0 * uAtmoTAbsWidth);
 	}
 
-	vec3 atmoSunTint(vec3 worldPos) {
+	vec3 atmoSunTint(vec3 worldPos, vec3 sunDir) {
 		if (uAtmoTEnable < 0.5) return vec3(1.0);
 		vec3 p = atmoTSquash((worldPos - uAtmoTCenter) / uAtmoTRadiusScene);
 		// Snap the start to the mesh's analytic sphere: interpolated positions
@@ -132,14 +146,14 @@ const SUN_TINT_GLSL = `
 		if (atmoTUnderDeck()) {
 			float zf = (length(p) - uAtmoTDeepBaseR) / uAtmoTDeepSpanR;
 			if (zf < 1.0) {
-				float mu = max(dot(normalize(p), uAtmoTSunDir), 0.05);
+				float mu = max(dot(normalize(p), sunDir), 0.05);
 				float dz = (1.0 - zf) / 6.0;
 				vec3 tau = vec3(0.0);
 				for (int i = 0; i < 6; i++) tau += atmoTDeepTap(2.0, zf + dz * (float(i) + 0.5));
 				return exp(-tau * (dz * uAtmoTDeepSpanR * uAtmoTDeepKmPerRadius / mu));
 			}
 		}
-		vec3 sd = atmoTSquash(uAtmoTSunDir);
+		vec3 sd = atmoTSquash(sunDir);
 		float sunLen = length(sd);
 		sd /= sunLen;
 		float b = dot(p, sd);
@@ -194,6 +208,49 @@ const SUN_TINT_GLSL = `
 		down *= (uAtmoTDeepIrradiance * sun) / max(exposure, 1e-4);
 		float w = 0.5 + 0.5 * dot(worldNormal, up);
 		return mix(down * atmoTDeepTap(1.0, zf), down, w) * uAtmoTDeepBlend;
+	}
+
+	// Sky light of a thin column: see the module comment and skyLightFraction.
+	uniform vec3 uAtmoTBetaMScat;    // Mie scattering β, per planet radius
+	uniform vec3 uAtmoTMieG;         // aerosol asymmetry factor
+	uniform vec3 uAtmoTSkyDirect;    // part of the direct light that stays (skyLightSplit)
+	uniform vec3 uAtmoTSkyGain;      // 0 where the body gets no sky light (skyLightSplit)
+
+	// Sun height and airmass over a column of scale height h, in radii.
+	vec2 atmoTSkySun(float s, float h) {
+		float delta = sqrt(2.0 * h);
+		float muH = ${INV_SQRT_PI.toFixed(7)} * delta;
+		float day = sqrt(s * s + muH * muH);
+		float night = muH * exp(-(s * s) / (delta * delta));
+		return s > 0.0 ? vec2(day, 1.0 / day) : vec2(night, 1.0 / muH);
+	}
+
+	vec3 atmoSkyLight(vec3 worldPos, vec3 worldNormal, vec3 sunDir) {
+		if (uAtmoTEnable < 0.5 || uAtmoTSkyGain.g <= 0.0) return vec3(0.0);
+		vec3 rel = worldPos - uAtmoTCenter;
+		float s = dot(normalize(atmoTSquash(rel)), normalize(atmoTSquash(sunDir)));
+		vec2 sunR = atmoTSkySun(s, uAtmoTRayleighH);
+		vec2 sunM = atmoTSkySun(s, uAtmoTMieH);
+		// The patch snaps every fragment to the mesh's sphere, as atmoSunTint does.
+		float h0 = max(uAtmoTMeshR - 1.0, 0.0);
+		vec3 tauR = uAtmoTBetaR * (uAtmoTRayleighH * exp(-h0 / uAtmoTRayleighH));
+		float mieColumn = uAtmoTMieH * exp(-h0 / uAtmoTMieH);
+		vec3 absorb = exp(-(
+			(uAtmoTBetaMExt - uAtmoTBetaMScat) * (mieColumn * sunM.y) +
+			uAtmoTBetaA * (atmoTTentColumn(h0) * sunR.y)
+		));
+		vec3 alg = log(1.0 - uAtmoTMieG);
+		vec3 afs = alg * (1.459 + alg * (0.1595 + alg * 0.4129));
+		vec3 bfs = alg * (0.0783 + alg * (-0.3824 - alg * 0.5874));
+		vec3 down = 1.0 - 0.5 * exp((afs + bfs * sunM.x) * sunM.x);
+		vec3 sky = 0.5 * sunR.x * (1.0 - exp(-0.95 * sunR.y * tauR)) +
+			sunM.x * down * exp(-1.5 * sunR.y * tauR) * (1.0 - exp(-sunM.y * mieColumn * uAtmoTBetaMScat));
+		float view = 0.5 + 0.5 * dot(worldNormal, normalize(rel));
+		return sky * absorb * uAtmoTSkyGain * view;
+	}
+
+	vec3 atmoSkyDirect() {
+		return uAtmoTEnable < 0.5 ? vec3(1.0) : uAtmoTSkyDirect;
 	}
 `;
 
@@ -266,6 +323,12 @@ export interface SunTransmittanceParamUniforms {
 	uAtmoTDeepIrradiance: { value: number };
 	/** Per frame: the camera's weight inside the column ({@link deckBlendWeight}). */
 	uAtmoTDeepBlend: { value: number };
+	uAtmoTBetaMScat: { value: Vector3 };
+	/** {@link phaseAsymmetry} of the body's aerosol. */
+	uAtmoTMieG: { value: Vector3 };
+	/** The two parts of {@link skyLightSplit}. */
+	uAtmoTSkyDirect: { value: Vector3 };
+	uAtmoTSkyGain: { value: Vector3 };
 }
 
 /** Surface-patch handle: params + the re-bound eclipse sun-dir/centre refs. */
@@ -303,7 +366,11 @@ function makeParamUniforms(enable: { value: number }): SunTransmittanceParamUnif
 		uAtmoTDeepSpanR: { value: 0 },
 		uAtmoTDeepKmPerRadius: { value: 1 },
 		uAtmoTDeepIrradiance: { value: 0 },
-		uAtmoTDeepBlend: { value: 0 }
+		uAtmoTDeepBlend: { value: 0 },
+		uAtmoTBetaMScat: { value: new Vector3() },
+		uAtmoTMieG: { value: new Vector3() },
+		uAtmoTSkyDirect: { value: new Vector3(1, 1, 1) },
+		uAtmoTSkyGain: { value: new Vector3() }
 	};
 }
 
@@ -351,6 +418,148 @@ export function syncSunTransmittanceUniforms(
 	u.uAtmoTDeepBaseR.value = surfaceKm / planetRadiusKm;
 	u.uAtmoTDeepSpanR.value = deep ? deep.topKm / planetRadiusKm : 0;
 	u.uAtmoTDeepKmPerRadius.value = planetRadiusKm;
+	u.uAtmoTBetaMScat.value.set(toNorm(ms[0]), toNorm(ms[1]), toNorm(ms[2]));
+	u.uAtmoTMieG.value.fromArray(phaseAsymmetry(params.miePhase));
+	skyLightSplit(
+		params,
+		Math.max(u.uAtmoTMeshR.value - 1, 0) * planetRadiusKm,
+		planetRadiusKm,
+		u.uAtmoTSkyDirect.value,
+		u.uAtmoTSkyGain.value
+	);
+}
+
+/** Column (∫density above `hKm`) of a linear-tent absorber band, in km of
+ *  surface-density-equivalent path. The area of the tent is `widthKm`.
+ *  Mirrored by `atmoTTentColumn`. */
+export function tentColumnAboveKm(hKm: number, centerKm: number, widthKm: number): number {
+	if (widthKm <= 0) return 0;
+	if (hKm <= centerKm - widthKm) return widthKm;
+	if (hKm >= centerKm + widthKm) return 0;
+	if (hKm <= centerKm) return widthKm - (hKm - (centerKm - widthKm)) ** 2 / (2 * widthKm);
+	return (centerKm + widthKm - hKm) ** 2 / (2 * widthKm);
+}
+
+const asymmetries = new WeakMap<readonly number[], [number, number, number]>();
+
+/** Asymmetry factor ⟨cos θ⟩ per channel of a 3×128 phase table, sampled at
+ *  θ = π·(i/127)². Trapezoids over θ, weighted by sin θ. */
+export function phaseAsymmetry(table: readonly number[]): [number, number, number] {
+	const hit = asymmetries.get(table);
+	if (hit) return hit;
+	const n = table.length / 3;
+	const g: [number, number, number] = [0, 0, 0];
+	for (let c = 0; c < 3; c++) {
+		let weight = 0;
+		let moment = 0;
+		for (let i = 0; i < n - 1; i++) {
+			const t0 = Math.PI * (i / (n - 1)) ** 2;
+			const t1 = Math.PI * ((i + 1) / (n - 1)) ** 2;
+			const f0 = table[c * n + i] * Math.sin(t0);
+			const f1 = table[c * n + i + 1] * Math.sin(t1);
+			weight += 0.5 * (f0 + f1) * (t1 - t0);
+			moment += 0.5 * (f0 * Math.cos(t0) + f1 * Math.cos(t1)) * (t1 - t0);
+		}
+		g[c] = moment / weight;
+	}
+	asymmetries.set(table, g);
+	return g;
+}
+
+/** Sun height and airmass over a column of scale height `h`, in radii, for a
+ *  Sun at sine `s` over the horizon. CPU port of `atmoTSkySun`. */
+export function skySun(s: number, h: number): [number, number] {
+	const delta = Math.sqrt(2 * h);
+	const muH = INV_SQRT_PI * delta;
+	if (s > 0) {
+		const day = Math.hypot(s, muH);
+		return [day, 1 / day];
+	}
+	return [muH * Math.exp(-(s * s) / (delta * delta)), 1 / muH];
+}
+
+/**
+ * Sky irradiance on level ground `hKm` over the reference level, over the
+ * irradiance of the sunlight on a surface that faces the Sun, for a Sun at
+ * sine `s`. `radiusKm` is the radius of the reference level.
+ *
+ * CPU port of `atmoSkyLight` with no gain, eclipse or tilt. A change to one
+ * must be made in the other. `sun-transmittance.test.ts` is the contract.
+ */
+export function skyLightFraction(
+	params: AtmosphereParams,
+	hKm: number,
+	radiusKm: number,
+	s: number
+): [number, number, number] {
+	const hR = params.rayleighScaleHeightKm;
+	const hM = params.mieScaleHeightKm;
+	const [muR, mR] = skySun(s, hR / radiusKm);
+	const [muM, mM] = skySun(s, hM / radiusKm);
+	const rayleighColumn = hR * Math.exp(-hKm / hR);
+	const mieColumn = hM * Math.exp(-hKm / hM);
+	const band = tentColumnAboveKm(hKm, params.absorptionCenterKm, params.absorptionWidthKm);
+	const g = phaseAsymmetry(params.miePhase);
+	const out: [number, number, number] = [0, 0, 0];
+	for (let c = 0; c < 3; c++) {
+		const tauR = params.rayleighScatterPerKm[c] * rayleighColumn;
+		const absorb = Math.exp(
+			-(params.mieAbsorptionPerKm[c] * mieColumn * mM + params.absorptionPerKm[c] * band * mR)
+		);
+		const alg = Math.log(1 - g[c]);
+		const afs = alg * (1.459 + alg * (0.1595 + alg * 0.4129));
+		const bfs = alg * (0.0783 + alg * (-0.3824 - alg * 0.5874));
+		const down = 1 - 0.5 * Math.exp((afs + bfs * muM) * muM);
+		const sky =
+			0.5 * muR * (1 - Math.exp(-0.95 * mR * tauR)) +
+			muM *
+				down *
+				Math.exp(-1.5 * mR * tauR) *
+				(1 - Math.exp(-mM * mieColumn * params.mieScatterPerKm[c]));
+		out[c] = sky * absorb;
+	}
+	return out;
+}
+
+/**
+ * Split the light on open ground at noon between the direct beam and the sky,
+ * as the zenith column at `hKm` does, and write the gain of each part. The
+ * texture shows the ground under that light, so the two gains keep the total
+ * as it is now. `direct` scales the direct diffuse light; `sky` scales
+ * {@link skyLightFraction}.
+ *
+ * No sky light where a deep column lights the ground itself, nor where the
+ * shell has no ground under it to couple to (no `groundAlbedo`: the giants,
+ * whose cloud-top map already holds the light of the gas above it).
+ */
+export function skyLightSplit(
+	params: AtmosphereParams,
+	hKm: number,
+	radiusKm: number,
+	direct: Vector3,
+	sky: Vector3
+): void {
+	if (params.deepColumn || !params.groundAlbedo) {
+		direct.set(1, 1, 1);
+		sky.set(0, 0, 0);
+		return;
+	}
+	const noon = skyLightFraction(params, hKm, radiusKm, 1);
+	const rayleighColumn =
+		params.rayleighScaleHeightKm * Math.exp(-hKm / params.rayleighScaleHeightKm);
+	const mieColumn = params.mieScaleHeightKm * Math.exp(-hKm / params.mieScaleHeightKm);
+	const band = tentColumnAboveKm(hKm, params.absorptionCenterKm, params.absorptionWidthKm);
+	for (let c = 0; c < 3; c++) {
+		const tau =
+			params.rayleighScatterPerKm[c] * rayleighColumn +
+			(params.mieScatterPerKm[c] + params.mieAbsorptionPerKm[c]) * mieColumn +
+			params.absorptionPerKm[c] * band;
+		const beam = Math.exp(-tau);
+		// The scene's noon direct light: the column minus its baked part.
+		const now = Math.exp(-(1 - params.bakedCompensation) * tau);
+		direct.setComponent(c, beam / (beam + noon[c]));
+		sky.setComponent(c, now / (beam + noon[c]));
+	}
 }
 
 /** Make a view-tint uniform set: disabled until {@link bindViewTint} aims it
@@ -379,9 +588,10 @@ export function bindViewTint(
 }
 
 /**
- * Filter resolved direct light by the sun→fragment transmittance. Requires
- * `attachEclipseShadowToBody` first — reuses its `vEclipseWorldPos` varying.
- * Indirect light stays untouched, like the eclipse patch.
+ * Light the surface of a body with air: filter the direct light by the air
+ * from the Sun to the fragment, and add the light of the sky. Requires
+ * `attachEclipseShadowToBody` first, for its `vEclipseWorldPos` varying and
+ * eclipse factor.
  *
  * `shell`, when given, shares the body's shell uniforms so per-frame
  * spin-axis/stretch updates propagate to the squash; omitted means identity
@@ -416,12 +626,38 @@ export function attachSunTransmittanceToBody(
 			.replace(
 				'#include <lights_fragment_end>',
 				`#include <lights_fragment_end>
-				vec3 atmoTint = atmoSunTint(vEclipseWorldPos);
-				reflectedLight.directDiffuse *= atmoTint;
+				vec3 atmoSunDir = uAtmoTSunDir;
+				vec3 atmoSunLight = vec3(0.0);
+				#if NUM_DIR_LIGHTS > 0
+					atmoSunLight += directionalLights[0].color;
+				#endif
+				#if NUM_POINT_LIGHTS > 0
+					// At the scale of the solar system the Sun is a point light, and the shared direction is that of the focus.
+					if (pointLights[0].color.g > 0.0) {
+						IncidentLight atmoSun;
+						getPointLightInfo(pointLights[0], geometryPosition, atmoSun);
+						atmoSunLight += atmoSun.color;
+						atmoSunDir = inverseTransformDirection(atmoSun.direction, viewMatrix);
+					}
+				#endif
+				vec3 atmoTint = atmoSunTint(vEclipseWorldPos, atmoSunDir);
+				reflectedLight.directDiffuse *= atmoTint * atmoSkyDirect();
 				reflectedLight.directSpecular *= atmoTint;
+				vec3 atmoNormal = inverseTransformDirection(normal, viewMatrix);
 				reflectedLight.indirectDiffuse +=
-					atmoDeepSkyLight(vEclipseWorldPos, inverseTransformDirection(normal, viewMatrix)) *
-					BRDF_Lambert(diffuseColor.rgb);`
+					atmoDeepSkyLight(vEclipseWorldPos, atmoNormal) * BRDF_Lambert(diffuseColor.rgb);`
+			)
+			// After every hook on the lights, so the ring shadow of the planet is known here.
+			.replace(
+				'#include <aomap_fragment>',
+				`vec3 atmoSky = atmoSunLight * atmoSkyLight(vEclipseWorldPos, atmoNormal, atmoSunDir);
+				// Eclipses and ring shadows darken the sky; relief shadows do not.
+				#ifdef PLANET_RING_SHADOW
+					atmoSky *= ringShadow;
+				#endif
+				if (atmoSky.g > 0.0) atmoSky *= eclipseFactorAt(vEclipseWorldPos, uEclipseSelfPos, uSunDir);
+				reflectedLight.indirectDiffuse += atmoSky * BRDF_Lambert(diffuseColor.rgb);
+				#include <aomap_fragment>`
 			);
 	});
 	return uniforms;

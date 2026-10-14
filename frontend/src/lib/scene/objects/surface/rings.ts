@@ -590,6 +590,8 @@ export function attachRingShadowToPlanet(
 				'#include <common>',
 				`#include <common>
 				varying vec3 vRingShadowWorldPos;
+				// The sky light of sun-transmittance.ts reads ringShadow.
+				#define PLANET_RING_SHADOW
 				${RING_SHADOW_GLSL}`
 			)
 			.replace(

@@ -18,7 +18,8 @@ import {
 	bindViewTint,
 	setSunTransmittanceEnabled,
 	sunPathTransmittance,
-	syncSunTransmittanceUniforms
+	syncSunTransmittanceUniforms,
+	tentColumnAboveKm
 } from '$lib/scene/objects/surface/sun-transmittance';
 import { setStarLimbAlpha, starViewTintUniforms } from '$lib/scene/objects/sun';
 import type { Material, Vector4 } from 'three';
@@ -28,16 +29,6 @@ const camUp = new Vector3();
 
 /** Photopic luminance weights (Rec. 709). */
 const LUM = [0.2126, 0.7152, 0.0722];
-
-/** Column (∫density above h) of a linear-tent absorber band, in km of
- *  surface-density-equivalent path. Total tent area is `w`. */
-function tentColumnAboveKm(hKm: number, centerKm: number, widthKm: number): number {
-	if (widthKm <= 0) return 0;
-	if (hKm <= centerKm - widthKm) return widthKm;
-	if (hKm >= centerKm + widthKm) return 0;
-	if (hKm <= centerKm) return widthKm - (hKm - (centerKm - widthKm)) ** 2 / (2 * widthKm);
-	return (centerKm + widthKm - hKm) ** 2 / (2 * widthKm);
-}
 
 /** Zenith transmittance above altitude `hKm`: per-channel Beer-Lambert over
  *  the exponential Rayleigh/Mie columns and the absorber tent, collapsed to a
