@@ -2,6 +2,7 @@ import type { Vec3 } from '$lib/scene/animation/math';
 import { isDrawn, type BodyObjects } from '$lib/scene/types';
 import { ObjectType } from '$lib/types/objects';
 import {
+	atmosphereLeak,
 	cullOccludersFor,
 	getEclipseSceneUniforms,
 	MAX_OCCLUDERS
@@ -11,12 +12,14 @@ import { SUN_ID } from '$lib/constants';
 // Reused across frames; trimmed to active prefix each call.
 const _candidatesScratch: BodyObjects[] = [];
 
-/** Refresh per-frame eclipse uniforms (sun, occluders, self-pos). Occluders
- *  need a measured `radiusKm`; stars excluded since the Sun *is* the light.
- *  On overflow keeps the largest {@link MAX_OCCLUDERS} by scene radius. */
+/** Fill the eclipse uniforms for the frame: the Sun, the occluders, and the
+ *  list of each receiver. An occluder has a measured `radiusKm` and is not a
+ *  star. If there are too many, the {@link MAX_OCCLUDERS} largest stay. With
+ *  `air` off, no occluder bends light into its shadow. */
 export function updateEclipseUniforms(
 	bodyObjects: Map<string, BodyObjects>,
-	focusTruePos: Vec3
+	focusTruePos: Vec3,
+	air: boolean
 ): void {
 	const eclipse = getEclipseSceneUniforms();
 	const sunBo = bodyObjects.get(SUN_ID);
@@ -58,10 +61,16 @@ export function updateEclipseUniforms(
 		n = MAX_OCCLUDERS;
 	}
 	const slots = eclipse.uOccluders.value;
+	const leaks = eclipse.uOccluderLeak.value;
 	for (let i = 0; i < n; i++) {
 		const bo = candidates[i];
 		const [bx, by, bz] = bo.body.position!;
 		slots[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
+		if (air && bo.atmosphere) {
+			atmosphereLeak(bo.atmosphere.params, bo.atmosphere.planetRadiusKm, leaks[i]);
+		} else {
+			leaks[i].set(0, 0, 0, 0);
+		}
 	}
 	eclipse.uOccluderCount.value = n;
 	// Drop refs so the scratch doesn't pin disposed BodyObjects (they
@@ -84,7 +93,8 @@ export function updateEclipseUniforms(
 			self.uOccluders.value,
 			center,
 			bo.radiusScene,
-			sunDir
+			sunDir,
+			self.uOccluderLeak.value
 		);
 	}
 }

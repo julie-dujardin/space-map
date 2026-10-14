@@ -121,7 +121,7 @@ import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
 import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
 import { updateEclipseUniforms } from './shaders/eclipse-uniforms';
-import { evaluateEclipseFactor } from './objects/surface/eclipse-shadow';
+import { evaluateEclipseFactor, evaluateEclipseLeak } from './objects/surface/eclipse-shadow';
 import { disposeReliefTiles } from './objects/surface/relief-tiles';
 import { disposeTileOverlay } from './objects/surface/tile-overlay';
 import { updateSunShadowLight } from './shaders/sun-shadow-light';
@@ -281,6 +281,7 @@ export class SceneRenderer {
 	private modelShadowPlane: Mesh | null = null;
 	private readonly _tmpUp = new Vector3();
 	private readonly _tmpSun = new Vector3();
+	private readonly _tmpLeak = new Vector3();
 	private readonly _planeNormal = new Vector3(0, 0, 1);
 	private readonly _modelRaycaster = new Raycaster();
 	private readonly _pickNdc = new Vector2();
@@ -1182,7 +1183,11 @@ export class SceneRenderer {
 		);
 		// Before the atmosphere update — shells cull their private occluder
 		// sets against this frame's scene-wide list.
-		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
+		updateEclipseUniforms(
+			this.bodyObjects,
+			this.focus.focusTruePos,
+			sceneSettings().showAtmospheres
+		);
 		const atmoState = updateAtmosphereShaders(
 			this.bodyObjects,
 			this.camera.position,
@@ -1677,11 +1682,13 @@ export class SceneRenderer {
 			}
 		}
 
-		// Dim the sun by the analytical eclipse occlusion at the focused body's center.
+		// The sunlight that the occluders leave at the centre of the focused body, with the light that their air bends in.
 		this._tmpV3.set(0, 0, 0);
-		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3) * irradiance;
-		this.modelLight.intensity = SUN_LIGHT_INTENSITY * factor * this.sunIntensityScale;
-		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * factor;
+		const inView = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
+		const leak = evaluateEclipseLeak(this._tmpV3, this._tmpV3, this._tmpLeak);
+		this.modelLight.color.setRGB(inView + leak.x, inView + leak.y, inView + leak.z);
+		this.modelLight.intensity = SUN_LIGHT_INTENSITY * irradiance * this.sunIntensityScale;
+		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * inView * irradiance;
 
 		// Debug axis arrows share the model's world attitude (model sits at the
 		// overlay origin), drawn over it so the pointing config reads clearly.

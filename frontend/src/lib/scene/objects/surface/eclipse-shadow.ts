@@ -1,19 +1,21 @@
 /**
- * Analytical sun-disc occlusion: each {@link MeshStandardMaterial} body
- * computes how much of the Sun's disc neighbouring bodies block and dims
- * direct sunlight by that fraction. Treating the Sun as a finite disc gives a
- * real penumbra, a 100%-obscured umbra core, and annular eclipses for free
- * when the occluder's angular size is smaller than the Sun's.
+ * The shadow that one body casts on another. Each fragment of a
+ * {@link MeshStandardMaterial} body finds the part of the disc of the Sun that
+ * the bodies near it leave in view, and scales the direct sunlight by it. The
+ * Sun is a disc, so the shadow has a penumbra, and an occluder smaller than
+ * the Sun gives an annular eclipse.
  *
- * Replaces the directional shadow map for body-on-body shadows: per-pixel,
- * so no blockiness or resolution dropout on close zoom, and one formula
- * covers solar/lunar eclipses and mutual moon transits alike. The
- * Saturn-on-rings shadow instead uses the oblate-spheroid ray-march in
- * `rings.ts`; this is the spherical-occluder version for solid bodies.
+ * An occluder with air also bends some sunlight into its shadow. That light
+ * goes through much air and comes out red. It gives the Moon its colour in a
+ * total lunar eclipse.
+ *
+ * The occluders are spheres. The shadow of an oblate planet on its rings is in
+ * `rings.ts`.
  */
 
 import { type MeshStandardMaterial, Vector3, Vector4 } from 'three';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
+import type { AtmosphereParams } from './atmosphere';
 
 /** Hard cap on simultaneously-tracked occluders. The shader loops up to
  *  {@link EclipseSceneUniforms.uOccluderCount} so unused slots cost
@@ -21,15 +23,19 @@ import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
  *  moon set with headroom; bigger systems can bump this. */
 export const MAX_OCCLUDERS = 32;
 
+/** Display gain of the light that air bends into a shadow, of the same kind as the ambient fill. The physical value is about 1e-4. */
+export const ECLIPSE_LEAK_GAIN = 0.5;
+/** That light follows this power of the hidden part of the Sun, so that the penumbra stays grey. */
+const LEAK_FADE = 8;
+
 /**
- * Scene-wide eclipse uniforms — one instance shared by every body's fragment
- * shader, mutated in place each frame.
+ * The eclipse uniforms of the scene. Every body shader shares the one set,
+ * and the renderer changes its values in place each frame.
  *
- * `uSunDir`/`uSunAngularRadius` instead of `uSunPos`/`uSunRadius`: the Sun is
- * ~1 AU away while receivers sit near the focus origin, so float32 would
- * quantise `uSunPos - vWorldPos` into stripes. CPU-normalising once in
- * float64 keeps the direction smooth; per-fragment `dSun` variation is far
- * below the Sun's angular size, so `asin(R_sun / dSun)` is precomputed too.
+ * The Sun is a direction and an angular radius, not a place and a radius. It
+ * is about 1 AU from receivers near the focus, so `uSunPos - vWorldPos` in
+ * float32 would show stripes. The CPU finds both in float64 once. Over one
+ * body they change much less than the angular size of the Sun.
  */
 export interface EclipseSceneUniforms {
 	/** Unit vector from the focus origin toward the Sun. */
@@ -43,39 +49,63 @@ export interface EclipseSceneUniforms {
 	 *  `.w` = scene-unit radius. Renderer mutates the first
 	 *  `uOccluderCount` entries in place. */
 	uOccluders: { value: Vector4[] };
+	/** The air of each occluder, at the index of the occluder. See
+	 *  {@link atmosphereLeak}. All 0 for an occluder with no air. */
+	uOccluderLeak: { value: Vector4[] };
 }
 
 const SHARED: EclipseSceneUniforms = {
 	uSunDir: { value: new Vector3(1, 0, 0) },
 	uSunAngularRadius: { value: 0 },
 	uOccluderCount: { value: 0 },
-	uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) }
+	uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) },
+	uOccluderLeak: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) }
 };
 
 /**
- * GLSL closed-form Sun-disc obscuration, shared by every receiver material and
- * the atmosphere shell. Declares the scene-wide occluder uniforms; the caller
- * supplies the fragment position, the receiver's own center (self-skip), and
- * the sun direction. Mirrored on the CPU by {@link evaluateEclipseFactor};
- * keep both in sync (eclipse-shadow.test.ts is the contract). Requires
- * three.js `<common>` (PI).
+ * GLSL of the part of the disc of the Sun that the occluders leave in view.
+ * Every receiver material and the atmosphere shell use it. It declares the
+ * occluder uniforms. The caller gives the place of the fragment, the centre of
+ * its own body and the direction of the Sun. Mirrored on the CPU by
+ * {@link sunInView} and {@link evaluateEclipseFactor}. A change to one must be
+ * made in the other. `eclipse-shadow.test.ts` is the contract. Needs `PI` from
+ * three.js `<common>`.
  *
- * Two regimes:
- *  (1) Comparable angular sizes (e.g. Earth eclipse, aSun ≈ aMoon): the
- *      standard two-circle lens-area formula — stable since no term
- *      dominates by orders of magnitude.
- *  (2) Occluder much larger than the Sun (e.g. LEO satellite under Earth):
- *      the lens formula's terms nearly cancel there, amplifying float32
- *      noise into blocky shading. The occluder limb is locally straight at
- *      sun-disc scale for aOc > 10·aSun, so use a chord approximation
- *      instead: covered fraction = Sun-disc area on one side of a chord at
- *      signed distance (aOc − sep).
+ * `sunInView` has two cases:
+ *  (1) Discs of comparable size (the Moon over the Sun): the area of the lens
+ *      that two circles share.
+ *  (2) An occluder more than 10 times as wide as the Sun (the Earth over a
+ *      satellite): the terms of the lens formula almost cancel in float32, and
+ *      the limb is almost straight over the disc of the Sun. The part of the
+ *      disc on one side of a chord replaces the lens.
  */
 export const ECLIPSE_FACTOR_GLSL = `
 	#define ECLIPSE_MAX_OCCLUDERS ${MAX_OCCLUDERS}
 	uniform float uSunAngularRadius;
 	uniform int uOccluderCount;
 	uniform vec4 uOccluders[ECLIPSE_MAX_OCCLUDERS];
+
+	float sunInView(float aSun, float aOc, float sep) {
+		if (aOc > 10.0 * aSun) {
+			// Case (2): chord.
+			float t = (aOc - sep) / aSun;
+			if (t >= 1.0) return 0.0;
+			if (t <= -1.0) return 1.0;
+			return 1.0 - (acos(-t) + t * sqrt(max(1.0 - t * t, 0.0))) / PI;
+		}
+
+		// Case (1): lens.
+		if (sep >= aSun + aOc) return 1.0;
+		if (sep + aSun <= aOc) return 0.0;
+		if (sep + aOc <= aSun) return 1.0 - (aOc * aOc) / (aSun * aSun);
+		float a = aSun, b = aOc, c = sep;
+		float x = (c * c + a * a - b * b) / (2.0 * c);
+		float y = sqrt(max(a * a - x * x, 0.0));
+		float A = a * a * acos(clamp(x / a, -1.0, 1.0))
+			+ b * b * acos(clamp((c - x) / b, -1.0, 1.0))
+			- c * y;
+		return 1.0 - A / (PI * a * a);
+	}
 
 	float eclipseFactorAt(vec3 fragPos, vec3 selfPos, vec3 sunDir) {
 		if (uSunAngularRadius <= 0.0) return 1.0;
@@ -86,42 +116,48 @@ export const ECLIPSE_FACTOR_GLSL = `
 			vec4 oc = uOccluders[i];
 			float r = oc.w;
 			if (r <= 0.0) continue;
-			// Skip the receiver's own body. Distinct bodies don't overlap, so
-			// any occluder closer than its own radius to the receiver center
-			// IS the receiver.
+			// Bodies do not overlap, so an occluder this near the centre of the receiver is the receiver.
 			if (length(oc.xyz - selfPos) < r * 0.5) continue;
 			vec3 toOc = oc.xyz - fragPos;
 			float dOc = length(toOc);
 			if (dOc < 1e-5) continue;
 			float aOc = asin(min(r / dOc, 1.0));
 			float sep = acos(clamp(dot(sunDir, toOc) / dOc, -1.0, 1.0));
-
-			if (aOc > 10.0 * aSun) {
-				// Regime (2): chord approximation.
-				float t = (aOc - sep) / aSun;
-				if (t >= 1.0) { result = 0.0; break; }    // sun fully behind
-				if (t <= -1.0) continue;                  // no overlap
-				float covered = (acos(-t) + t * sqrt(max(1.0 - t * t, 0.0))) / PI;
-				result *= 1.0 - covered;
-				continue;
-			}
-
-			// Regime (1): lens formula.
-			if (sep >= aSun + aOc) continue;                  // no overlap
-			if (sep + aSun <= aOc) { result = 0.0; break; }   // total
-			if (sep + aOc <= aSun) {                          // annular
-				result *= 1.0 - (aOc * aOc) / (aSun * aSun);
-				continue;
-			}
-			float a = aSun, b = aOc, c = sep;
-			float x = (c * c + a * a - b * b) / (2.0 * c);
-			float y = sqrt(max(a * a - x * x, 0.0));
-			float A = a * a * acos(clamp(x / a, -1.0, 1.0))
-				+ b * b * acos(clamp((c - x) / b, -1.0, 1.0))
-				- c * y;
-			result *= 1.0 - A / (PI * a * a);
+			result *= sunInView(aSun, aOc, sep);
+			if (result <= 0.0) break;
 		}
 		return result;
+	}
+`;
+
+/**
+ * GLSL of the sunlight that the air of the occluders bends into their shadow,
+ * with the display gain. For surfaces. It goes after
+ * {@link ECLIPSE_FACTOR_GLSL}. Mirrored on the CPU by {@link sunLeak} and
+ * {@link evaluateEclipseLeak}. A change to one must be made in the other.
+ */
+const ECLIPSE_LEAK_GLSL = `
+	uniform vec4 uOccluderLeak[ECLIPSE_MAX_OCCLUDERS];
+
+	vec3 eclipseLeakAt(vec3 fragPos, vec3 selfPos, vec3 sunDir) {
+		vec3 leak = vec3(0.0);
+		float aSun = uSunAngularRadius;
+		if (aSun <= 0.0) return leak;
+		for (int i = 0; i < ECLIPSE_MAX_OCCLUDERS; i++) {
+			if (i >= uOccluderCount) break;
+			vec4 air = uOccluderLeak[i];
+			if (air.w <= 0.0) continue;
+			vec4 oc = uOccluders[i];
+			if (length(oc.xyz - selfPos) < oc.w * 0.5) continue;
+			vec3 toOc = oc.xyz - fragPos;
+			float dOc = length(toOc);
+			float aOc = asin(min(oc.w / dOc, 1.0));
+			float sep = acos(clamp(dot(sunDir, toOc) / dOc, -1.0, 1.0));
+			float inView = sunInView(aSun, aOc, sep);
+			float behind = sunInView(aSun, max(aOc - air.w, 0.0), sep) - inView;
+			if (behind > 0.0) leak += behind * pow(1.0 - inView, ${LEAK_FADE.toFixed(1)}) * exp(-air.xyz * clamp(aOc - sep, 0.0, air.w));
+		}
+		return ${ECLIPSE_LEAK_GAIN.toFixed(3)} * leak;
 	}
 `;
 
@@ -132,13 +168,14 @@ export function getEclipseSceneUniforms(): EclipseSceneUniforms {
 	return SHARED;
 }
 
-/** Per-body eclipse uniforms, refilled each frame by `updateEclipseUniforms`:
- *  the receiver's own centre (so the shader skips its own slot) and the scene
- *  occluders whose shadow can reach it. The per-fragment loop runs over this
- *  short list, not the scene-wide one. */
+/** The eclipse uniforms of one body. `updateEclipseUniforms` fills them each
+ *  frame with the centre of the body, which its shader skips as an occluder,
+ *  and with the scene occluders whose shadow can reach it. The loop of a
+ *  fragment is over this short list. */
 export interface EclipseSelfUniforms {
 	uEclipseSelfPos: { value: Vector3 };
 	uOccluders: { value: Vector4[] };
+	uOccluderLeak: { value: Vector4[] };
 	uOccluderCount: { value: number };
 }
 
@@ -146,23 +183,27 @@ export function makeEclipseSelfUniforms(): EclipseSelfUniforms {
 	return {
 		uEclipseSelfPos: { value: new Vector3() },
 		uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) },
+		uOccluderLeak: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) },
 		uOccluderCount: { value: 0 }
 	};
 }
 
 /**
  * Copy into `dst` the scene occluders whose shadow cone can touch a sphere of
- * `radius` at `center`, and return how many. Conservative: a kept occluder
- * renders identically, a dropped one could not have contributed.
+ * `radius` at `center`, and return how many. `leakDst` takes the air of each
+ * one. An occluder that stays draws the same. An occluder that goes had no
+ * effect.
  */
 export function cullOccludersFor(
 	dst: Vector4[],
 	center: Vector3,
 	radius: number,
-	sunDir: Vector3
+	sunDir: Vector3,
+	leakDst?: Vector4[]
 ): number {
 	const aSun = SHARED.uSunAngularRadius.value;
 	const src = SHARED.uOccluders.value;
+	const leak = SHARED.uOccluderLeak.value;
 	const srcCount = SHARED.uOccluderCount.value;
 	let n = 0;
 	for (let i = 0; i < srcCount; i++) {
@@ -176,6 +217,7 @@ export function cullOccludersFor(
 		if (t < -(radius + oc.w)) continue; // anti-sunward: casts away from the receiver
 		const reach = radius + oc.w + aSun * (t + radius) * 1.5;
 		if (d2 - t * t > reach * reach) continue; // off the sun axis beyond any penumbra
+		leakDst?.[n].copy(leak[i]);
 		dst[n++].copy(oc);
 	}
 	return n;
@@ -186,8 +228,8 @@ export function cullOccludersFor(
  * 1. `aSun` and `aOc` are the angular radii of the Sun and of the occluder.
  * `sep` is the angle between their centres.
  *
- * CPU port of one pass of the loop in {@link ECLIPSE_FACTOR_GLSL}. A change to
- * one must be made in the other. `eclipse-shadow.test.ts` is the contract.
+ * CPU port of `sunInView` in {@link ECLIPSE_FACTOR_GLSL}. A change to one must
+ * be made in the other. `eclipse-shadow.test.ts` is the contract.
  */
 export function sunInView(aSun: number, aOc: number, sep: number): number {
 	if (aOc > 10 * aSun) {
@@ -247,15 +289,105 @@ export function evaluateEclipseFactor(receiverPos: Vector3, selfPos: Vector3): n
 }
 
 /**
- * Inject the analytical sun-disc occlusion path into a
- * {@link MeshStandardMaterial}. Chains the existing `onBeforeCompile` so
- * other shader modifiers (e.g. `attachRingShadowToPlanet`) can stack on
- * top — Saturn runs both this and the ring-cast factor.
+ * Fill `out` with the air of an occluder, as its shadow needs it. `.xyz` is
+ * the Rayleigh optical depth of a ray that grazes the limb, per radian of its
+ * bend, for (R, G, B). `.w` is the largest bend of a ray that comes through,
+ * in radians. All 0 for air with no `refractivity`. `radiusKm` is the radius
+ * of the reference level.
  *
- * Edits land after `<lights_fragment_end>`, scaling only direct light —
- * ambient/env light is untouched, so the umbra stays softly lit like a real
- * eclipse. `selfUniforms` lets a sibling material (e.g. a cloud overlay)
- * reuse the body's self-position for its own self-occlusion skip.
+ * The bend of a ray and its optical depth are both in proportion to the
+ * density of the air at its lowest point. The transmittance of the ray with a
+ * given bend is thus `exp(-k · bend)`. The lowest ray that comes through
+ * grazes the reference level, or the level where the haze has an optical
+ * depth of 1 along the ray if that is higher.
+ */
+export function atmosphereLeak(params: AtmosphereParams, radiusKm: number, out: Vector4): Vector4 {
+	const refractivity = params.refractivity?.[1];
+	if (!refractivity) return out.set(0, 0, 0, 0);
+	const scaleKm = params.rayleighScaleHeightKm;
+	const hazeScaleKm = params.mieScaleHeightKm;
+	const haze = Math.min(
+		params.mieScatterPerKm[0] + params.mieAbsorptionPerKm[0],
+		params.mieScatterPerKm[1] + params.mieAbsorptionPerKm[1],
+		params.mieScatterPerKm[2] + params.mieAbsorptionPerKm[2]
+	);
+	const hazeDepth = haze * Math.sqrt(2 * Math.PI * radiusKm * hazeScaleKm);
+	const hazeFloor = Math.min(1, hazeDepth ** (-hazeScaleKm / scaleKm));
+	const groundBend = refractivity * Math.sqrt((2 * Math.PI * radiusKm) / scaleKm);
+	const perBend = scaleKm / refractivity;
+	const [r, g, b] = params.rayleighScatterPerKm;
+	return out.set(r * perBend, g * perBend, b * perBend, groundBend * hazeFloor);
+}
+
+/**
+ * The sunlight that the air of one occluder bends to a point in its shadow,
+ * for (R, G, B), as a part of the full sunlight and before the display gain.
+ * `air` is from {@link atmosphereLeak}. The other arguments are those of
+ * {@link sunInView}.
+ *
+ * The part of the disc of the Sun that is behind the limb, but not deeper
+ * than the largest bend, gives the light. A power of the hidden part of the
+ * Sun fades it out in the penumbra. The ray from the centre of the Sun gives
+ * its colour.
+ *
+ * CPU port of one pass of the loop in `ECLIPSE_LEAK_GLSL`.
+ */
+export function sunLeak(
+	aSun: number,
+	aOc: number,
+	sep: number,
+	air: Vector4,
+	out: Vector3
+): Vector3 {
+	const inView = sunInView(aSun, aOc, sep);
+	const behind = sunInView(aSun, Math.max(aOc - air.w, 0), sep) - inView;
+	if (behind <= 0) return out.set(0, 0, 0);
+	const weight = behind * (1 - inView) ** LEAK_FADE;
+	const bend = Math.min(Math.max(aOc - sep, 0), air.w);
+	return out.set(
+		weight * Math.exp(-air.x * bend),
+		weight * Math.exp(-air.y * bend),
+		weight * Math.exp(-air.z * bend)
+	);
+}
+
+const _leak = new Vector3();
+
+/**
+ * {@link sunLeak} for every occluder of the scene, at one point, with the
+ * display gain. The light of the Sun there is {@link evaluateEclipseFactor}
+ * plus this. It reads the `SHARED` uniforms, as that function does.
+ */
+export function evaluateEclipseLeak(receiverPos: Vector3, selfPos: Vector3, out: Vector3): Vector3 {
+	out.set(0, 0, 0);
+	const aSun = SHARED.uSunAngularRadius.value;
+	if (aSun <= 0) return out;
+	const sunDir = SHARED.uSunDir.value;
+	const count = SHARED.uOccluderCount.value;
+	const occluders = SHARED.uOccluders.value;
+	const leaks = SHARED.uOccluderLeak.value;
+	for (let i = 0; i < count; i++) {
+		const air = leaks[i];
+		if (air.w <= 0) continue;
+		const oc = occluders[i];
+		if (Math.hypot(oc.x - selfPos.x, oc.y - selfPos.y, oc.z - selfPos.z) < oc.w * 0.5) continue;
+		const tx = oc.x - receiverPos.x;
+		const ty = oc.y - receiverPos.y;
+		const tz = oc.z - receiverPos.z;
+		const dOc = Math.hypot(tx, ty, tz);
+		const aOc = Math.asin(Math.min(oc.w / dOc, 1));
+		const cosSep = Math.max(-1, Math.min(1, (sunDir.x * tx + sunDir.y * ty + sunDir.z * tz) / dOc));
+		out.add(sunLeak(aSun, aOc, Math.acos(cosSep), air, _leak));
+	}
+	return out.multiplyScalar(ECLIPSE_LEAK_GAIN);
+}
+
+/**
+ * Attach the shadow of the other bodies to a {@link MeshStandardMaterial}. It
+ * scales the direct light by the part of the Sun in view, and adds the light
+ * that the air of the occluders bends in. The ambient light stays in the
+ * umbra. `selfUniforms` lets a second material of the same body, such as its
+ * cloud overlay, use the uniforms of the first.
  */
 export function attachEclipseShadowToBody(
 	material: MeshStandardMaterial,
@@ -281,17 +413,16 @@ export function attachEclipseShadowToBody(
 				uniform vec3 uEclipseSelfPos;
 				varying vec3 vEclipseWorldPos;
 				${ECLIPSE_FACTOR_GLSL}
-				float eclipseFactor() {
-					return eclipseFactorAt(vEclipseWorldPos, uEclipseSelfPos, uSunDir);
-				}
+				${ECLIPSE_LEAK_GLSL}
 				`
 			)
 			.replace(
 				'#include <lights_fragment_end>',
 				`#include <lights_fragment_end>
-				float eclipseShadow = eclipseFactor();
-				reflectedLight.directDiffuse *= eclipseShadow;
-				reflectedLight.directSpecular *= eclipseShadow;`
+				vec3 eclipseLight = eclipseFactorAt(vEclipseWorldPos, uEclipseSelfPos, uSunDir)
+					+ eclipseLeakAt(vEclipseWorldPos, uEclipseSelfPos, uSunDir);
+				reflectedLight.directDiffuse *= eclipseLight;
+				reflectedLight.directSpecular *= eclipseLight;`
 			);
 	});
 	return self;
