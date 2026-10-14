@@ -12,12 +12,12 @@
  */
 
 import { SRGBColorSpace, type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
-import { bodyMeshColor } from '$lib/body-color';
 import type { BodyObjects } from '$lib/scene/types';
 import { MAX_ANISOTROPY } from '../surface/anisotropy';
 import { attachNightTexture, disposeNightLightsFromMaterial } from '../surface/night-lights';
 import { mountCloudSphere } from '../surface/clouds';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
+import { untexturedSurfaceColour } from './surface-albedo';
 
 /** Pictures a host has put on a body. Each is a URL the browser can load, and
  *  what is left out is the map's own. */
@@ -114,9 +114,9 @@ function revert(bo: BodyObjects, appearance: BodyAppearance | undefined): void {
 	if (applied.surfaceOwned && appearance?.surface === undefined) {
 		applied.surfaceMap?.dispose();
 		material.map = null;
-		material.color.set(bodyMeshColor(bo.body.data));
+		untexturedSurfaceColour(bo.body.data, material.color);
 		material.needsUpdate = true;
-		if (bo.model) setShapeModelMap(bo.model, null, bodyMeshColor(bo.body.data));
+		if (bo.model) setShapeModelMap(bo.model, null, material.color);
 		applied.surfaceOwned = undefined;
 		applied.surfaceUrl = undefined;
 		applied.surfaceMap = undefined;
@@ -191,7 +191,7 @@ async function applyToBody(
 				// Whatever was on the material goes out with it — a tier of the
 				// map's own, or the host's own picture from before.
 				setSurfaceMap(live, texture);
-				if (bo.model) setShapeModelMap(bo.model, texture, bodyMeshColor(bo.body.data));
+				if (bo.model) setShapeModelMap(bo.model, texture, untexturedSurfaceColour(bo.body.data));
 				applied.surfaceUrl = appearance.surface;
 				applied.surfaceMap = texture;
 			}

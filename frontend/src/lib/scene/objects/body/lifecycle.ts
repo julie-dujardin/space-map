@@ -1,5 +1,5 @@
 import { Group, type Material, Mesh, MeshStandardMaterial, Scene, SphereGeometry } from 'three';
-import { bodyMeshColor, resolveBodyColor } from '$lib/body-color';
+import { resolveBodyColor } from '$lib/body-color';
 import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import {
@@ -24,6 +24,7 @@ import {
 	type PhotometryUniforms
 } from '../surface/photometry';
 import { attachPlanetshine, type PlanetshineUniforms } from '../surface/planetshine';
+import { untexturedSurfaceColour } from './surface-albedo';
 import {
 	attachSunTransmittanceToBody,
 	type SunTransmittanceUniforms
@@ -100,11 +101,10 @@ export function buildMajorBodies(
 
 			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);
-			// Sphere uses the per-body export colour or neutral white; `color`
-			// (per-type) stays for star glow + halos, so the UI reads as type-level.
+			// `color` (per type) stays for star glow and halos, so the UI reads by type.
 			const material = isStar
 				? makeStarSurfaceMaterial()
-				: new MeshStandardMaterial({ color: bodyMeshColor(body.data) });
+				: new MeshStandardMaterial({ color: untexturedSurfaceColour(body.data) });
 			mesh = new Mesh(geometry, material);
 			// Model-bearing types use the model overlay — hide the sphere so it can't flash.
 			if (modelBearing) mesh.visible = false;
@@ -233,12 +233,9 @@ export function upgradeBodyMesh(
 		bo.noPhysical = 'radius';
 		return;
 	}
-	// Per-body export colour, else neutral white — the per-type tint stays
-	// UI-only, on point clouds/halos/trails.
-	const color = bodyMeshColor(body.data);
 	const segments = BODY_SPHERE_SEGMENTS;
 	const geometry = new SphereGeometry(radiusScene, segments, segments);
-	const material = new MeshStandardMaterial({ color });
+	const material = new MeshStandardMaterial({ color: untexturedSurfaceColour(body.data) });
 	const mesh = new Mesh(geometry, material);
 	// Probes are model-bearing — hide the sphere.
 	if (modelBearing) mesh.visible = false;

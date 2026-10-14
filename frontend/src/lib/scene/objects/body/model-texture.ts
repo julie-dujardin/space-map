@@ -1,4 +1,11 @@
-import { Mesh, MeshStandardMaterial, type Object3D, SRGBColorSpace, type Texture } from 'three';
+import {
+	type Color,
+	Mesh,
+	MeshStandardMaterial,
+	type Object3D,
+	SRGBColorSpace,
+	type Texture
+} from 'three';
 import { tintBaseColor } from './texture-tint';
 import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 import { MAX_ANISOTROPY } from '../surface/anisotropy';
@@ -32,7 +39,7 @@ const EQUIRECT_MAP_FRAGMENT = /* glsl */ `
  * Material for a shape-model mesh: flat body tint until a surface map arrives
  * (via {@link setShapeModelMap}), then the map projected equirectangularly.
  */
-export function makeShapeModelMaterial(color: string | number): MeshStandardMaterial {
+export function makeShapeModelMaterial(color: Color | string | number): MeshStandardMaterial {
 	const material = new MeshStandardMaterial({
 		color,
 		roughness: 1,
@@ -84,7 +91,7 @@ export function applyShapeModelMaterial(root: Object3D, material: MeshStandardMa
 export function setShapeModelMap(
 	root: Object3D,
 	map: Texture | null,
-	fallbackColor: string | number,
+	fallbackColor: Color | string | number,
 	tintHex?: string
 ): void {
 	root.traverse((obj) => {

@@ -10,6 +10,8 @@
 		/** Flat sphere colour when no `low.webp` texture loads. Overrides the
 		 *  id-keyed BODY_COLORS lookup — small bodies pass a resolved tint here. */
 		color?: string;
+		/** V-band geometric albedo of `color`, where a hex cannot hold it. */
+		geometricAlbedo?: number;
 		/** Factor on the lunar weight of the ground, from a published
 		 *  disk-resolved fit (`lunar_weight_scale`). */
 		lunarWeightScale?: number;
@@ -119,6 +121,7 @@
 		setShapeModelMap,
 		setSurfaceMap
 	} from '$lib/scene/objects/body/model-texture';
+	import { untexturedSurfaceColour } from '$lib/scene/objects/body/surface-albedo';
 	import {
 		cloudRadiusRatio,
 		disposeCloudNode,
@@ -902,7 +905,8 @@
 	}
 
 	/** The law of the ground depends on the atmosphere table, which can come
-	 *  after the body is built. */
+	 *  after the body is built. So does the brightness of a measured colour
+	 *  on a body with no map. */
 	async function attachPhotometry(material: MeshStandardMaterial, b: Body) {
 		await loadAtmospheres().catch(() => {});
 		attachSurfacePhotometry(
@@ -911,6 +915,7 @@
 			makePhotometryUniforms(b.lunarWeightScale),
 			KEY_LIGHT_DIR
 		);
+		if (b.color && !material.map) untexturedSurfaceColour(b, material.color);
 		render();
 	}
 
@@ -981,6 +986,7 @@
 			b.aside ?? '',
 			b.craft ?? false,
 			b.color ?? null,
+			b.geometricAlbedo ?? null,
 			b.model ?? null,
 			b.surfaceFrame ?? null,
 			b.cloudSystem ?? null,

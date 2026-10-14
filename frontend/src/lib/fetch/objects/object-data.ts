@@ -181,11 +181,14 @@ export interface NotableMemberEntry {
 	albedo?: number;
 	/** SBDB taxonomic type — SMASS else Tholen (small bodies only). */
 	spec?: string;
-	/** Physically-derived #rrggbb surface colour (TrueColorTools); the lineup
-	 *  sphere tint for small bodies. Absent → caller falls back to a generic tint. */
+	/** As on the object: the measured #rrggbb surface colour. Absent → the
+	 *  lineup falls back to a tint by body. */
 	color?: string;
 	/** As on the object: the factor on the lunar weight of the ground. */
 	lunar_weight_scale?: number;
+	/** As on the object: the V-band geometric albedo. Planets and moons, and
+	 *  small bodies where the hex of `color` cannot hold it. */
+	geometric_albedo?: number;
 	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
 	first_obs?: string;
 	/** Probe entries on a target body: what the probe did there. `end` is the
@@ -468,11 +471,13 @@ export interface GlobalObjectData {
 	 *  parent even when its body isn't resident in the scene (small-body hosts
 	 *  get culled by the streaming loader once focus moves on). */
 	parent_name?: string;
-	/** Moons only — #rrggbb physically-derived surface colour (TrueColorTools,
-	 *  NAIF-keyed). Top-level because moons carry no `sbdb` block; small bodies
-	 *  carry the equivalent under `sbdb.color`. The textureless sphere adopts it. */
+	/** Moons: the measured surface colour, a hue at a luminance of the V-band
+	 *  geometric albedo. Small bodies carry theirs under `sbdb.color`. */
 	color?: string;
 	color_method?: 'spectrum' | 'albedo';
+	/** Planets and moons: the V-band geometric albedo, which can be above what
+	 *  a hex holds. A planet has it and no `color`. */
+	geometric_albedo?: number;
 	/** Factor on the lunar weight of McEwen (1996) for the ground, from a
 	 *  published disk-resolved fit. Absent where none is published. */
 	lunar_weight_scale?: number;
@@ -636,6 +641,8 @@ export interface GlobalObjectData {
 		color?: string;
 		/** How `color` was derived (present iff `color` is); credits the method. */
 		color_method?: 'spectrum' | 'photometry' | 'taxonomy' | 'albedo';
+		/** V-band geometric albedo, where the hex of `color` cannot hold it. */
+		geometric_albedo?: number;
 		BV?: number;
 		UB?: number;
 		IR?: number;

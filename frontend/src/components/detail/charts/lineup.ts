@@ -19,7 +19,7 @@ export const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 
 /** A member's full lineup geometry: size + oblateness from PCK `radii`, else
  *  SBDB diameter, else Wikidata radius; tilt from the IAU `pole`; render hints;
  *  tint (`undefined` for curated BODY_COLORS bodies, which defer to texture);
- *  the factor on the lunar weight of the ground. `null` when sizeless, which
+ *  the measured albedo and the law of the ground. `null` when sizeless, which
  *  doubles as the renderable filter. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	// A surface feature isn't a body — its `id` is the host it sits on, so it
@@ -49,6 +49,7 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		...geom,
 		...RENDER_HINTS[m.id],
 		color: BODY_COLORS[m.id] ? undefined : m.color,
+		geometricAlbedo: m.geometric_albedo,
 		lunarWeightScale: m.lunar_weight_scale
 	};
 }

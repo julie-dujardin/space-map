@@ -1,17 +1,44 @@
-import { Color, type MeshStandardMaterial } from 'three';
+import { Color, type MeshStandardMaterial, type Texture } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
 import { SUN_LIGHT_INTENSITY, sunIrradianceFactor } from '$lib/scene/lighting';
+import { shinerAlbedo } from '$lib/scene/objects/body/surface-albedo';
 import { meanMapColor } from '$lib/scene/objects/body/texture-tint';
 import { selectShiners, type Shiner } from '$lib/scene/objects/surface/planetshine';
 
 const _shiners: Shiner[] = [];
 
+interface ShineAlbedo {
+	color?: string;
+	geometricAlbedo?: number;
+	map: Texture | null;
+	albedo: Color | null;
+}
+const _albedos = new WeakMap<BodyObjects, ShineAlbedo>();
+
+/** {@link shinerAlbedo} of a body, made again when its colour, its albedo or its map changes. */
+function measuredShinerAlbedo(bo: BodyObjects, map: Texture | null): Color | null {
+	const { color, geometricAlbedo } = bo.body.data;
+	let entry = _albedos.get(bo);
+	if (
+		!entry ||
+		entry.color !== color ||
+		entry.geometricAlbedo !== geometricAlbedo ||
+		entry.map !== map
+	) {
+		entry = { color, geometricAlbedo, map, albedo: shinerAlbedo(bo.body.data, map, new Color()) };
+		_albedos.set(bo, entry);
+	}
+	return entry.albedo;
+}
+
 /**
  * Fill the planetshine uniforms of each receiver for the frame. The shiners
  * are the `occluders` of the eclipse pass that draw a mesh, so every planet is
- * a shiner for its moons. A shiner has the colour the scene draws it with, and
- * the sunlight of the direct light at its own distance from the Sun.
+ * a shiner for its moons. A shiner has its measured albedo, which for Earth
+ * includes the clouds. A body with no albedo has the colour the scene draws it
+ * with. Each has the sunlight of the direct light at its own distance from the
+ * Sun.
  */
 export function updatePlanetshineUniforms(
 	bodyObjects: Map<string, BodyObjects>,
@@ -49,9 +76,13 @@ export function updatePlanetshineUniforms(
 			s.sunY = sy / sunDist;
 			s.sunZ = sz / sunDist;
 			s.sunlight = SUN_LIGHT_INTENSITY * sunScale * (realistic ? sunIrradianceFactor(sunDist) : 1);
-			s.albedo.copy(material.color);
-			const mean = material.map && meanMapColor(material.map);
-			if (mean) s.albedo.multiply(mean);
+			const measured = measuredShinerAlbedo(bo, material.map);
+			if (measured) s.albedo.copy(measured);
+			else {
+				s.albedo.copy(material.color);
+				const mean = material.map && meanMapColor(material.map);
+				if (mean) s.albedo.multiply(mean);
+			}
 		}
 	}
 

@@ -148,6 +148,7 @@ export async function resolveObject(
 	// bodies carry it under `sbdb`, moons top-level. Curated bodies keep their
 	// own constant, which the row falls back to on its own.
 	geometry.color = BODY_COLORS[id] ? undefined : (global?.sbdb?.color ?? global?.color);
+	geometry.geometricAlbedo = global?.sbdb?.geometric_albedo ?? global?.geometric_albedo;
 	geometry.lunarWeightScale = global?.lunar_weight_scale;
 
 	return { id, name, type, radiusKm, geometry: { ...geometry, ...RENDER_HINTS[id] } };

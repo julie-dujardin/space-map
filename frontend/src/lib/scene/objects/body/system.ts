@@ -16,6 +16,7 @@ import { applyBodyOrientation } from './orientation-apply';
 import { loadSiblingLayers, type SiblingBundles, unloadSiblingLayers } from './sibling-layers';
 import {
 	applyRadiiToMesh,
+	applySurfaceColour,
 	loadBodyTextureTier,
 	textureFrameForJd,
 	unloadBodyTexture
@@ -56,6 +57,11 @@ interface SystemBodyMeta extends SiblingBundles {
 	/** Ring bundles, inner → outer. Split per opacity range (Saturn has
 	 *  three) since one 8-bit strip can't span six orders of magnitude. */
 	rings?: RingMeta[];
+	/** As on the object: the measured colour, its albedo and the law of the
+	 *  ground, so that a body out of focus has them too. */
+	color?: string;
+	geometric_albedo?: number;
+	lunar_weight_scale?: number;
 }
 
 type SystemMeta = Record<string, SystemBodyMeta>;
@@ -167,6 +173,15 @@ export async function loadSystemData(
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
 		ctx?.bodies.orientationRead.add(bodyId);
+
+		// So that a body out of focus has them too. The object bundle of the
+		// body in focus can have given them first.
+		const data = bo.body.data;
+		data.color ??= bodyMeta.color;
+		data.geometricAlbedo ??= bodyMeta.geometric_albedo;
+		data.lunarWeightScale ??= bodyMeta.lunar_weight_scale;
+		if (bo.photometry) bo.photometry.uLunarWeightScale.value = data.lunarWeightScale ?? 1;
+		applySurfaceColour(bo);
 
 		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {

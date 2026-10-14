@@ -44,18 +44,3 @@ export function resolveBodyColor(data: BodyData): string {
 	}
 	return DEFAULT_BODY_COLOR;
 }
-
-/** Stand-in albedo for a surface with no measured colour — roughly the mean of
- *  the surface maps `SUN_LIGHT_INTENSITY` is tuned against. White is albedo 1:
- *  it clips to a blown-out disc under that sun, which is what an untextured
- *  body would flash as while its texture is still loading. */
-const UNKNOWN_SURFACE_COLOR = '#6b6b6b';
-
-/**
- * Colour for a body's physical surface mesh: its own measured colour if known,
- * else a neutral stand-in. The categorical type/curated tint is a UI signal only
- * (point clouds, halos, trails) and never stands in for a real surface.
- */
-export function bodyMeshColor(data: BodyData): string {
-	return data.color ?? UNKNOWN_SURFACE_COLOR;
-}

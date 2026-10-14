@@ -1,5 +1,4 @@
 import { MeshStandardMaterial, type Scene, type Texture, type TextureLoader } from 'three';
-import { bodyMeshColor } from '$lib/body-color';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
@@ -13,6 +12,8 @@ import { attachRingBundles } from '../surface/ring-attach';
 import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
 import { disposeTileOverlay } from '../surface/tile-overlay';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
+import { untexturedSurfaceColour } from './surface-albedo';
+import { isModelBearing } from './model';
 import type { BodyObjects } from '../../types';
 import { applyBodyOrientation } from './orientation-apply';
 import { loadSiblingLayer, unloadSiblingLayer } from './sibling-layers';
@@ -87,10 +88,10 @@ async function swapBodyTexture(
 			return;
 		}
 		const material = bo.mesh.material as MeshStandardMaterial;
-		setSurfaceMap(material, texture, bo.body.data.color);
+		const data = bo.body.data;
+		setSurfaceMap(material, texture, data.color);
 		// A loaded shape model samples the same map (equirect-projected).
-		if (bo.model)
-			setShapeModelMap(bo.model, texture, bodyMeshColor(bo.body.data), bo.body.data.color);
+		if (bo.model) setShapeModelMap(bo.model, texture, untexturedSurfaceColour(data), data.color);
 		bo.textureTier = tier;
 		bo.textureFrame = frame;
 	} catch (err) {
@@ -98,6 +99,20 @@ async function swapBodyTexture(
 	} finally {
 		bo.textureLoading = false;
 	}
+}
+
+/**
+ * Give the sphere and the shape model of a body with no surface map the
+ * colour of its measured albedo. Call it when the colour, the albedo or the
+ * law of the ground arrives. A map keeps the brightness it is published at.
+ */
+export function applySurfaceColour(bo: BodyObjects): void {
+	// A star has no ground. A craft keeps the colours of its own model.
+	if (!bo.mesh || !bo.photometry || isModelBearing(bo.body) || bo.appearance?.surfaceOwned) return;
+	const material = bo.mesh.material as MeshStandardMaterial;
+	if (material.map) return;
+	untexturedSurfaceColour(bo.body.data, material.color);
+	if (bo.model) setShapeModelMap(bo.model, null, material.color);
 }
 
 /**
@@ -185,20 +200,13 @@ export async function loadBodyTexture(
 		);
 	}
 
-	// Physically-derived surface colour, applied here since it rides the global
-	// bundle fetched on focus. The untextured sphere adopts it; point cloud/label
-	// keep their per-type tint via resolveBodyColor. Small bodies carry it under
-	// `sbdb`, moons top-level.
-	const surfaceColor = detail.global.sbdb?.color ?? detail.global.color;
-	if (surfaceColor) {
-		bo.body.data.color = surfaceColor;
-		if (bo.mesh && !bo.textureTier) {
-			(bo.mesh.material as MeshStandardMaterial).color.set(surfaceColor);
-		}
-	}
-	// The law of the ground also comes with the global bundle.
-	bo.body.data.lunarWeightScale = detail.global.lunar_weight_scale;
-	if (bo.photometry) bo.photometry.uLunarWeightScale.value = detail.global.lunar_weight_scale ?? 1;
+	// Small bodies carry their measured colour and albedo under `sbdb`.
+	const data = bo.body.data;
+	data.color = detail.global.sbdb?.color ?? detail.global.color;
+	data.geometricAlbedo = detail.global.sbdb?.geometric_albedo ?? detail.global.geometric_albedo;
+	data.lunarWeightScale = detail.global.lunar_weight_scale;
+	if (bo.photometry) bo.photometry.uLunarWeightScale.value = data.lunarWeightScale ?? 1;
+	applySurfaceColour(bo);
 
 	if (!detail.global.map_texture_available) return;
 	// Standalones aren't tied to a system barycenter; key credits on the body
@@ -265,10 +273,10 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	if (!material.map) return;
 	material.map.dispose();
 	material.map = null;
-	material.color.set(bodyMeshColor(bo.body.data));
+	untexturedSurfaceColour(bo.body.data, material.color);
 	material.needsUpdate = true;
 	// Don't leave the model sampling the disposed texture.
-	if (bo.model) setShapeModelMap(bo.model, null, bodyMeshColor(bo.body.data));
+	if (bo.model) setShapeModelMap(bo.model, null, material.color);
 	bo.textureTier = undefined;
 }
 

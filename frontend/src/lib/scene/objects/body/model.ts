@@ -20,12 +20,12 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
 import { frameMapQuaternion } from '$lib/math/orientation';
-import { bodyMeshColor } from '$lib/body-color';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 import { setLabelAnnotation } from '../../label/annotations';
 import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } from './model-texture';
+import { untexturedSurfaceColour } from './surface-albedo';
 import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
@@ -388,7 +388,7 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		// Only a main-scene model is measurable: the camera clamp reads radii in
 		// mount units, which say nothing about an overlay model's drawn size.
 		root.userData.radialIndex = buildRadialIndex(root);
-		const material = makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data));
+		const material = makeShapeModelMaterial(untexturedSurfaceColour(bo.body.data));
 		bo.photometry ??= makePhotometryUniforms(bo.body.data.lunarWeightScale);
 		attachSurfacePhotometry(material, bo.body.data.id, bo.photometry);
 		bo.planetshine = attachPlanetshine(material, bo.planetshine ?? undefined);
@@ -397,7 +397,7 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		// keeps later tier upgrades in sync).
 		const sphereMap = bo.mesh ? (bo.mesh.material as MeshStandardMaterial).map : null;
 		if (sphereMap)
-			setShapeModelMap(root, sphereMap, bodyMeshColor(bo.body.data), bo.body.data.color);
+			setShapeModelMap(root, sphereMap, untexturedSurfaceColour(bo.body.data), bo.body.data.color);
 		enableShadows(root);
 		attachModelEclipse(bo, root);
 		// Size the mount against the real half-extent, matching radiusScene's

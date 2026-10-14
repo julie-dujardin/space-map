@@ -46,11 +46,14 @@ export interface BodyData extends OrbitalElements {
 	 */
 	isMinor?: boolean;
 	objectType: ObjectType;
-	/** Physically-derived per-body surface colour (`__global__.sbdb.color`), set
-	 *  lazily on focus by `loadBodyTexture`. Used for the rendered sphere of a
-	 *  textureless small body; the point cloud and label keep their per-type
-	 *  tint via `resolveBodyColor`. */
+	/** Measured surface colour, set by the system file or on focus by
+	 *  `loadBodyTexture`. It sets the brightness of the ground
+	 *  (`surface-albedo.ts`). The point cloud and label keep their tint by type
+	 *  via `resolveBodyColor`. */
 	color?: string;
+	/** V-band geometric albedo: of a planet or a moon, and of a small body
+	 *  where the hex of `color` cannot hold it. */
+	geometricAlbedo?: number;
 	/** Factor on the lunar weight of the ground (`__global__.lunar_weight_scale`),
 	 *  set on focus by `loadBodyTexture`. Absent where no disk-resolved fit is
 	 *  published. */
