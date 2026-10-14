@@ -280,6 +280,12 @@ class Mosaic:
             bands.append(np.concatenate(parts, axis=1))
         return np.concatenate(bands, axis=0)
 
+    def release(self) -> None:
+        """Let go of the files opened so far, and of what was decoded of
+        them; a later read opens them again."""
+        with self._lock:
+            self._mapped.clear()
+
 
 class Region:
     """A raster of a part of the globe, read as one that covers all of it at
@@ -597,7 +603,8 @@ class Layer:
         ]
 
     def release(self) -> None:
-        pass
+        if isinstance(self.pixels, Mosaic):
+            self.pixels.release()
 
 
 @dataclass

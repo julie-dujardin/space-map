@@ -1409,7 +1409,9 @@ class TestProcessTiles:
         assert _stitch(root / "01", 1)[0, 0, 0] > 200
         assert _stitch(root / "02", 1)[0, 0, 0] < 60
 
-    def test_monthly_map_in_a_grid_of_files_a_month(self, tmp_path, monkeypatch):
+    @staticmethod
+    def _monthly_grid(tmp_path) -> dict:
+        """Two months of a map in two files each, as compressed strips."""
         folder = tmp_path / "raw" / "bm"
         folder.mkdir(parents=True)
         for month, red in ((1, 250), (2, 10)):
@@ -1421,7 +1423,7 @@ class TestProcessTiles:
                     rowsperstrip=1,
                     compression="deflate",
                 )
-        entry = {
+        return {
             "body": "naif-399",
             "source": "https://example.com/earth",
             "organisation": "NASA",
@@ -1431,6 +1433,25 @@ class TestProcessTiles:
             "dir": "bm",
             "grid": [["earth_{month:02d}_A.tif", "earth_{month:02d}_B.tif"]],
         }
+
+    def test_each_month_lets_go_of_its_files(self, tmp_path, monkeypatch):
+        """Earth's eight files of a month hold gigabytes decoded: the run
+        went past its memory cap when two months stayed open."""
+        proc = self._processor(monkeypatch, tmp_path, [self._monthly_grid(tmp_path)])
+        released = []
+        real = tiles.Mosaic.release
+
+        def release(mosaic):
+            released.append(len(mosaic._mapped))
+            real(mosaic)
+            assert not mosaic._mapped
+
+        monkeypatch.setattr(tiles.Mosaic, "release", release)
+        proc.process_tiles()
+        assert released == [2, 2]
+
+    def test_monthly_map_in_a_grid_of_files_a_month(self, tmp_path, monkeypatch):
+        entry = self._monthly_grid(tmp_path)
         proc = self._processor(monkeypatch, tmp_path, [entry])
         proc.process_tiles()
 

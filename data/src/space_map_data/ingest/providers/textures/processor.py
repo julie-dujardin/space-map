@@ -661,18 +661,21 @@ class TextureProcessor:
             builder = tiles.PyramidBuilder(name, layers, building / frame, *shared[1:])
             stats.add(builder.build())
             parts.append(Path(frame))
-            if max_level < tiles.CapBuilder.min_level:
-                continue
-            for folder, north in tiles.CAP_FOLDERS.items():
-                cap = tiles.CapBuilder(
-                    f"{name} {folder} cap",
-                    north,
-                    layers,
-                    building / frame / folder,
-                    *shared[1:],
-                )
-                cap_stats.add(cap.build())
-                parts.append(Path(frame, folder))
+            if max_level >= tiles.CapBuilder.min_level:
+                for folder, north in tiles.CAP_FOLDERS.items():
+                    cap = tiles.CapBuilder(
+                        f"{name} {folder} cap",
+                        north,
+                        layers,
+                        building / frame / folder,
+                        *shared[1:],
+                    )
+                    cap_stats.add(cap.build())
+                    parts.append(Path(frame, folder))
+            # The builders keep the frame's layers until the next frame's
+            # replace them: what they read goes now, or two months stay held.
+            for layer in layers:
+                layer.release()
         assert stats is not None and cap_stats is not None and max_level is not None
         if out_dir.exists():
             shutil.rmtree(out_dir)
