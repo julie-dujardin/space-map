@@ -157,7 +157,13 @@ import {
 	type CameraBand,
 	type SurfaceClampContext
 } from './visibility/camera-limits';
-import { cameraMotionScale, orbitDamping, type MotionScale } from './camera/motion-scale';
+import {
+	DAMPING_FRAME_MS,
+	cameraMotionScale,
+	frameDamping,
+	orbitDamping,
+	type MotionScale
+} from './camera/motion-scale';
 import {
 	bodyFixedUnit,
 	renderedSurfaceRadialKm,
@@ -386,6 +392,8 @@ export class SceneRenderer {
 	private firstFrame = true;
 	private pendingUrlWrite = false;
 	private lastTickMs = 0;
+	/** OrbitControls damping per 60 Hz frame; `tick` scales it to the frame time. */
+	private orbitDampingFactor: number;
 	/** Ring buffer of recent tick timestamps; fps = (n-1) / (last - first). */
 	private static readonly FPS_SAMPLE_FRAMES = 30;
 	private fpsSamples: number[] = [];
@@ -538,7 +546,7 @@ export class SceneRenderer {
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControlsClass(this.camera, canvas);
 		this.controls.enableDamping = true;
-		this.controls.dampingFactor = orbitDamping(sceneSettings().resolvedReducedMotion);
+		this.orbitDampingFactor = orbitDamping(sceneSettings().resolvedReducedMotion);
 		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
 		this.controls.maxDistance = 31_620.5 * AU_SCALE; // 0.5 light-year
 		this.controls.target.set(0, 0, 0);
@@ -1011,6 +1019,10 @@ export class SceneRenderer {
 		const nowMs = performance.now();
 		const frameDtMs = this.lastTickMs ? nowMs - this.lastTickMs : 0;
 		this.lastTickMs = nowMs;
+		this.controls.dampingFactor = frameDamping(
+			this.orbitDampingFactor,
+			frameDtMs || DAMPING_FRAME_MS
+		);
 
 		// The north reference writes camera.up, which a held pose owns instead.
 		if (!this.holdingCamera) this.cameraUp.update(this.sceneJd);
@@ -2302,7 +2314,7 @@ export class SceneRenderer {
 
 	/** Reduced motion: shorten orbit inertia so the camera stops promptly on release. */
 	setReducedMotion(on: boolean): void {
-		this.controls.dampingFactor = orbitDamping(on);
+		this.orbitDampingFactor = orbitDamping(on);
 	}
 
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {

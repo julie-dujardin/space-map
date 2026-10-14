@@ -3,7 +3,7 @@ import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { kmToScene } from '$lib/math/units';
-import { cameraMotionScale } from './motion-scale';
+import { DAMPING_FRAME_MS, cameraMotionScale, frameDamping, orbitDamping } from './motion-scale';
 
 const FOCUS: [number, number, number] = [0, 0, 0];
 const VIEWPORT_H = 800;
@@ -204,5 +204,21 @@ describe('cameraMotionScale on a seated focus', () => {
 			false
 		);
 		expect(scale.translate).toBe(0.02);
+	});
+});
+
+describe('frameDamping', () => {
+	/** Share of a drag still to apply after `ms`, stepped at `hz`. */
+	function remaining(hz: number, ms: number): number {
+		const factor = frameDamping(orbitDamping(false), 1000 / hz);
+		return (1 - factor) ** Math.round((ms * hz) / 1000);
+	}
+
+	it('keeps the factor at 60 Hz', () => {
+		expect(frameDamping(0.05, DAMPING_FRAME_MS)).toBeCloseTo(0.05, 12);
+	});
+
+	it('gives the same inertia at any frame rate', () => {
+		for (const hz of [30, 144]) expect(remaining(hz, 500)).toBeCloseTo(remaining(60, 500), 9);
 	});
 });

@@ -13,10 +13,19 @@ const MIN_TRANSLATE_SCALE = 0.02;
  *  1000 km station over the Sun still asks for ~2e-4. */
 const MIN_ROTATE_SCALE = 1e-4;
 
-/** OrbitControls inertia. The reduced-motion factor is far higher so the camera
- *  stops promptly on release instead of coasting (three's default is 0.05). */
+/** Frame time that {@link orbitDamping} applies to. */
+export const DAMPING_FRAME_MS = 1000 / 60;
+
+/** OrbitControls inertia per 60 Hz frame. The reduced-motion factor is far
+ *  higher so that the camera stops promptly on release (three's default is 0.05). */
 export function orbitDamping(reducedMotion: boolean): number {
 	return reducedMotion ? 0.4 : 0.05;
+}
+
+/** `factor` for a frame of `frameDtMs`. OrbitControls damps once per update,
+ *  so a fixed factor makes the inertia last longer at a lower frame rate. */
+export function frameDamping(factor: number, frameDtMs: number): number {
+	return 1 - (1 - factor) ** (frameDtMs / DAMPING_FRAME_MS);
 }
 
 /** Speed factors for the OrbitControls gestures at the camera's current station. */

@@ -81,7 +81,12 @@
 		WebGLRenderer
 	} from 'three';
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-	import { orbitDamping, orthoRotateSpeed } from '$lib/scene/camera/motion-scale';
+	import {
+		DAMPING_FRAME_MS,
+		frameDamping,
+		orbitDamping,
+		orthoRotateSpeed
+	} from '$lib/scene/camera/motion-scale';
 	import { sceneSettings } from '$lib/scene/settings.svelte';
 	import { SilhouetteGlow } from './lineup-silhouette';
 	import { makeLineupSunMaterial } from './lineup-sun';
@@ -619,7 +624,6 @@
 		orbitEye.position.set(0, 0, ORBIT_DISTANCE / untrack(() => zoom));
 		const controls = new OrbitControls(orbitEye, el);
 		controls.enableDamping = true;
-		controls.dampingFactor = orbitDamping(untrack(() => sceneSettings().resolvedReducedMotion));
 		controls.enablePan = false;
 		controls.minDistance = ORBIT_DISTANCE / MAX_ZOOM;
 		controls.maxDistance = ORBIT_DISTANCE / MIN_ZOOM;
@@ -764,9 +768,15 @@
 	/** Run the controls a frame at a time while held and while they coast. */
 	function spinOrbit() {
 		if (orbitFrame !== undefined) return;
-		const step = () => {
+		let lastMs: number | undefined;
+		const step = (nowMs: number) => {
 			orbitFrame = undefined;
 			if (!orbit) return;
+			orbit.dampingFactor = frameDamping(
+				orbitDamping(sceneSettings().resolvedReducedMotion),
+				lastMs === undefined ? DAMPING_FRAME_MS : nowMs - lastMs
+			);
+			lastMs = nowMs;
 			if (orbitId) grab(orbitId);
 			if (orbit.update() || orbiting) orbitFrame = requestAnimationFrame(step);
 		};
