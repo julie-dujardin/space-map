@@ -206,6 +206,21 @@ export interface PatchRange {
 	/** First and last column, then first and last row, at `max_level`. */
 	x: [number, number];
 	y: [number, number];
+	/** How many of the pyramid's own levels, from its finest up, show the
+	 *  patch in the tiles under it. */
+	map_levels?: number;
+}
+
+/** Whether map tile `(x, y)` of `level` is in the range of a patch. */
+function inRange(patch: PatchRange, level: number, x: number, y: number): boolean {
+	const up = patch.max_level - level;
+	return (
+		up >= 0 &&
+		x >= patch.x[0] >> up &&
+		x <= patch.x[1] >> up &&
+		y >= patch.y[0] >> up &&
+		y <= patch.y[1] >> up
+	);
 }
 
 /** The patch that has map tile `(x, y)` of `level`. No other tile exists past
@@ -216,16 +231,26 @@ export function patchOfTile<P extends PatchRange>(
 	x: number,
 	y: number
 ): P | undefined {
-	return patches?.find((patch) => {
-		const up = patch.max_level - level;
-		return (
-			up >= 0 &&
-			x >= patch.x[0] >> up &&
-			x <= patch.x[1] >> up &&
-			y >= patch.y[0] >> up &&
-			y <= patch.y[1] >> up
-		);
-	});
+	return patches?.find((patch) => inRange(patch, level, x, y));
+}
+
+/** The cache token of map tile `(x, y)` of one of a pyramid's own levels. A
+ *  patch is drawn over the tiles under it at the finest of these levels, so
+ *  such a tile changes with the patch and not with the pyramid alone. */
+export function mapTileVersion(
+	pyramid: {
+		version: string;
+		max_level: number;
+		patches?: readonly (PatchRange & { version: string })[];
+	},
+	level: number,
+	x: number,
+	y: number
+): string {
+	const over = pyramid.patches?.filter(
+		(patch) => level > pyramid.max_level - (patch.map_levels ?? 0) && inRange(patch, level, x, y)
+	);
+	return over?.length ? over.map((patch) => patch.version).join('.') : pyramid.version;
 }
 
 /** How far from its point a window is sure to have a tile, in tiles: half a

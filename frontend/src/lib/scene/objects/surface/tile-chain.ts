@@ -33,6 +33,7 @@ import {
 	chartPoint,
 	chartRows,
 	deepestLevel,
+	mapTileVersion,
 	patchOfTile,
 	placeWindow,
 	slotTile,
@@ -473,7 +474,10 @@ function pump(
 		chain.inflight++;
 		const folder = CHART_FOLDER[win.chart];
 		// A patch is built apart from its pyramid, and has its own cache token.
-		const version = patchOf(tiles, win, tile)?.version ?? tiles.version;
+		// So have the tiles of the map that it is drawn over.
+		const version =
+			patchOf(tiles, win, tile)?.version ??
+			(win.chart === MAP ? mapTileVersion(tiles, win.level, tile.x, tile.y) : tiles.version);
 		const pyramid = { id: tiles.id, version };
 		chain.kind
 			.load(tileUrl(pyramid, folder, win.level, tile.x, tile.y, win.frame), abort.signal)

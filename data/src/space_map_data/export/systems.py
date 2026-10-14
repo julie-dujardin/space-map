@@ -169,6 +169,7 @@ def _with_tiles(out_dir: Path, bundle_id: str, meta: dict) -> dict:
 _PATCH_KEYS = (
     "id",
     "max_level",
+    "map_levels",
     "x",
     "y",
     "version",

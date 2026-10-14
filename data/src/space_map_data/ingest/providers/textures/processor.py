@@ -838,12 +838,13 @@ class TextureProcessor:
                 del built[patch_id]
                 save()
                 patches.remove(out_dir, base_level, current)
-            patches.put_in_place(building, out_dir)
+            patches.put_in_place(building, out_dir, patch_id)
             x0, x1, y0, y1 = builder.tile_range(builder.level)
             built[patch_id] = {
                 **credit,
                 "version": version,
                 "max_level": builder.level,
+                "map_levels": builder.map_levels,
                 "x": [x0, x1],
                 "y": [y0, y1],
                 "files": files,

@@ -54,7 +54,9 @@ A patch uses the grid and the paths of the map: `tiles/{id}/{z}/{x}/{y}.webp`, w
 
 The builder makes a patch from the finest tiles of the pyramid and from the mosaic. The colour and the tone at large scales are those of the tiles, so a patch joins the map around it without a step. All detail below a set scale comes from the mosaic alone. The map and a mosaic of another team can disagree on the position of a feature by some pixels of the map, and a mix of their detail would show the feature twice. At the edge of the mosaic the patch fades into the map. A tile of a patch that the mosaic covers only in part shows the enlarged map in the remaining part.
 
-Two patches of one pyramid have no tile in common. At the first level of a patch a tile is large, so two mosaics that are near each other can touch the same tile. The builder refuses the second of two such patches: mosaics that are this near belong in one patch.
+A patch also shows in the finest levels of the pyramid: `map_levels` of them, from `max_level` of the pyramid up. Without this, a view that goes in would change one picture of the ground for another at the first level of the patch. The builder draws the patch over each tile of these levels that the mosaic touches, with the same fade at the edge of the mosaic. The scale below which the mosaic gives the detail is half as many pixels at each coarser level. `map_levels` is the number of levels where this scale is more than one pixel: 4 levels for the default of 16 pixels, and none for 1 pixel or less. A patch of a height pyramid has none: its tiles hold heights in three bytes, which cannot be mixed as colours are. These tiles keep their paths. The builder keeps the tile that the pyramid made in `.map/{z}/{x}/{y}.webp` and the picture that each patch draws over it in `.over/{patch id}/{z}/{x}/{y}.webp`, both in the directory of the pyramid. It makes the tile again from these when a patch changes, and puts the tile of the pyramid back when no patch touches it. A renderer does not read these two directories.
+
+Two patches of one pyramid have no tile in common past `max_level` of the pyramid. At the first level of a patch a tile is large, so two mosaics that are near each other can touch the same tile. The builder refuses the second of two such patches: mosaics that are this near belong in one patch.
 
 A renderer draws the levels of a patch when a window of that level reaches the tiles of the patch, also from a point beside the patch. These levels have no tiles around the patch, so a renderer keeps some windows on the levels of the pyramid for the ground there.
 
@@ -128,7 +130,7 @@ Build metadata. It is in the metadata mirror, not in the tile tree.
 - `layers` — the source files. The first one covers the whole body. An entry with no `role` after it is an inset. An entry with `"role": "brightness"` is a brightness layer. `dimensions` is the size of the files in pixels. `full_width` is the width that a map of the whole body has at the pixel size of the layer: for an equirectangular layer it is the width of the files, and for a polar stereographic image it follows from the pixel size at the pole.
 - `levels` — the tiles of the map. `cap_levels` — the tiles of the two caps together, from level 1.
 - `frames` — monthly maps only: the number of frames. `levels` and `cap_levels` count the tiles of all frames.
-- `patches` — present when the pyramid has patches. Each has an `id`, a display `name`, its own credit fields (`source`, `organisation`, `license`, `attribution`), a `version`, its `max_level`, the tile ranges `x` and `y` at that level, its source `files` and its `levels`. `full_width` is that of its finest file, as on a layer. `bounds` are the `west`, `east`, `south` and `north` edges of its files together, in degrees.
+- `patches` — present when the pyramid has patches. Each has an `id`, a display `name`, its own credit fields (`source`, `organisation`, `license`, `attribution`), a `version`, its `max_level`, the tile ranges `x` and `y` at that level, its `map_levels`, its source `files` and its `levels`. `full_width` is that of its finest file, as on a layer. `bounds` are the `west`, `east`, `south` and `north` edges of its files together, in degrees.
 - `displacement_bias_km`, `displacement_scale_km`, `absolute_radius` — height pyramids only. See *Tile content*.
 
 The export copies the fields that the renderer needs into a `tiles` block, inside the block of the layer (`texture`, `displacement`, `night`, `specular`) in `systems/{bary}.json`, in the object bundle and in `credits.json`:
@@ -154,13 +156,14 @@ The export copies the fields that the renderer needs into a `tiles` block, insid
 }
 ```
 
-A pyramid with patches has a `patches` array in the block. Each patch has `id`, `max_level`, `x`, `y`, `version` and its credit fields:
+A pyramid with patches has a `patches` array in the block. Each patch has `id`, `max_level`, `map_levels`, `x`, `y`, `version` and its credit fields:
 
 ```json
 "patches": [
   {
     "id": "jezero",
     "max_level": 16,
+    "map_levels": 4,
     "x": [93652, 93783],
     "y": [25970, 26102],
     "version": "5c0a91d2e7",
@@ -172,7 +175,7 @@ A pyramid with patches has a `patches` array in the block. Each patch has `id`, 
 ]
 ```
 
-The tiles of a patch use the `version` of the patch in `?v=`, not that of the pyramid.
+The tiles of a patch use the `version` of the patch in `?v=`, not that of the pyramid. A patch also changes tiles of the pyramid: the tiles of the map that are in its range at the last `map_levels` levels of the pyramid, with the range found as for the levels of the patch. Such a tile uses the versions of the patches that have it, in the order of the array, with a `.` between them. The caps have no such tiles.
 
 The `tiles` block has its own credit fields because a pyramid can come from a different source than the tiers. `scale_km` and `bias_km` are present for height pyramids only, and `frames` for monthly maps only. `distribution` is present when the source has a restricted licence, with the same meaning as on a texture.
 

@@ -730,6 +730,21 @@ class TestHeightPatchBuilder:
         # Each to its own step: a sixteenth and an eighth of a metre.
         assert np.abs(_km(tmp_path / "patch", 6, 71, 28) - mean).max() < 1.5e-4
 
+    def test_leaves_the_levels_of_the_pyramid_alone(self, tmp_path):
+        """Heights in three bytes do not mix by alpha."""
+        builder = patches.PatchBuilder(
+            "test",
+            _height_pyramid(tmp_path / "tiles"),
+            BASE,
+            [_height_raster(_relief())],
+            tmp_path / "patch",
+            4.0,
+            coding=CODING,
+        )
+        builder.build()
+        assert builder.map_levels == 0
+        assert not (tmp_path / "patch" / ".over").exists()
+
     def test_tiles_are_lossless(self, tmp_path):
         self._build(tmp_path)
         with Image.open(tmp_path / "patch" / "7" / "143" / "57.webp") as tile:
@@ -752,14 +767,175 @@ class TestPatchTiles:
             "test", pyramid, BASE, [_raster(_texture())], pyramid / ".patch-site", 1.0
         )
         builder.build()
-        patches.put_in_place(pyramid / ".patch-site", pyramid)
+        patches.put_in_place(pyramid / ".patch-site", pyramid, "site")
         assert not (pyramid / ".patch-site").exists()
         assert sorted(_files(pyramid)) == [0, 1, 2, 3, 4, 5, 6, 7]
 
         x0, x1, y0, y1 = builder.tile_range(7)
-        patches.remove(pyramid, BASE, {"max_level": 7, "x": [x0, x1], "y": [y0, y1]})
+        site = {"id": "site", "max_level": 7, "x": [x0, x1], "y": [y0, y1]}
+        patches.remove(pyramid, BASE, site)
         assert _files(pyramid) == own
         assert not (pyramid / "4").exists()
+
+
+def _blocks(side: int = 256, seed: int = 7) -> np.ndarray:
+    """Ground with features as wide as a pixel of the map's finest level."""
+    rng = np.random.default_rng(seed)
+    coarse = rng.uniform(60, 250, size=(side // 16, side // 16))
+    return np.kron(coarse, np.ones((16, 16))).astype(np.uint8)
+
+
+def _bytes(pyramid: Path) -> dict[str, bytes]:
+    """Each tile of the pyramid's own levels, as it is on disk."""
+    return {
+        str(path.relative_to(pyramid)): path.read_bytes()
+        for level in range(BASE + 1)
+        for path in (pyramid / str(level)).glob("*/*.webp")
+    }
+
+
+class TestMapLevels:
+    """A patch shows in the finest levels of the pyramid itself."""
+
+    # The blur is 4 px of the finest level and 2 px of the level above it.
+    SIGMA = 4.0
+    # A raster east of the first one. The two share no tile of the first
+    # patch level, and one tile of each of the pyramid's two finest levels.
+    EAST = (34.0, 56.5, 20.0, -2.5)
+
+    @staticmethod
+    def _place(pyramid: Path, patch_id: str = "site", bounds=BOUNDS, seed: int = 7):
+        builder = patches.PatchBuilder(
+            "test",
+            pyramid,
+            BASE,
+            [_raster(_blocks(seed=seed), bounds)],
+            pyramid / f".patch-{patch_id}",
+            TestMapLevels.SIGMA,
+        )
+        builder.build()
+        patches.put_in_place(pyramid / f".patch-{patch_id}", pyramid, patch_id)
+        return builder
+
+    @staticmethod
+    def _site(builder: patches.PatchBuilder, patch_id: str = "site") -> dict:
+        x0, x1, y0, y1 = builder.tile_range(builder.level)
+        return {
+            "id": patch_id,
+            "max_level": builder.level,
+            "x": [x0, x1],
+            "y": [y0, y1],
+        }
+
+    @staticmethod
+    def _drawn(pyramid: Path, patch_id: str, level: int, x: int, y: int) -> np.ndarray:
+        """Where a patch draws on a tile of the pyramid, at over half weight."""
+        over = pyramid / ".over" / patch_id / str(level) / str(x) / f"{y}.webp"
+        return np.asarray(Image.open(over))[..., 3] > 128
+
+    @staticmethod
+    def _over(pyramid: Path, patch_id: str = "site") -> set[str]:
+        """The tiles of the pyramid that a patch draws on."""
+        folder = pyramid / ".over" / patch_id
+        return {str(path.relative_to(folder)) for path in folder.glob("*/*/*.webp")}
+
+    def test_levels_follow_the_blur(self):
+        assert patches.map_levels(16.0, 10) == 4
+        assert patches.map_levels(3.0, 6) == 2
+        assert patches.map_levels(1.0, 6) == 0
+        # No further than the pyramid goes.
+        assert patches.map_levels(16.0, 2) == 3
+
+    def test_coarser_level_takes_no_colour_from_what_is_not_drawn(self):
+        image = np.zeros((2 * TILE, 2 * TILE, 3), dtype=np.uint8)
+        alpha = np.zeros((2 * TILE, 2 * TILE), dtype=np.uint8)
+        # One drawn pixel of each block of four, in red.
+        image[::2, ::2] = (200, 0, 0)
+        alpha[::2, ::2] = 255
+        half, low = patches._coarser(image, alpha)
+        assert (half == (200, 0, 0)).all()
+        assert (low == 64).all()
+
+    def test_patch_shows_in_the_tiles_of_the_map_under_it(self, tmp_path):
+        pyramid = _pyramid(tmp_path / "tiles")
+        own = _bytes(pyramid)
+        builder = self._place(pyramid)
+        assert builder.map_levels == 2
+
+        assert self._over(pyramid) == {
+            *(f"3/{x}/{y}.webp" for x in (8, 9) for y in (3, 4)),
+            "2/4/1.webp",
+            "2/4/2.webp",
+        }
+        now = _bytes(pyramid)
+        changed = {name for name in own if now[name] != own[name]}
+        assert "3/8/3.webp" in changed and changed <= self._over(pyramid)
+        inside = self._drawn(pyramid, "site", 3, 8, 3)
+        tile = _tile(pyramid, 3, 8, 3).astype(float)
+        assert tile[inside][:, 0].std() > 12.0
+        # The tone stays the map's, and so does the ground past the raster.
+        assert abs(tile[inside][:, 0].mean() - COLOUR[0]) < 25.0
+        assert np.abs(tile[:, :6] - COLOUR).max() <= 6
+
+    def test_tile_of_the_map_is_kept_as_it_was_built(self, tmp_path):
+        pyramid = _pyramid(tmp_path / "tiles")
+        own = _bytes(pyramid)
+        self._place(pyramid)
+        kept = {
+            str(path.relative_to(pyramid / ".map")): path.read_bytes()
+            for path in (pyramid / ".map").glob("*/*/*.webp")
+        }
+        assert set(kept) == self._over(pyramid)
+        assert all(kept[name] == own[name] for name in kept)
+
+    def test_patch_built_again_gives_the_same_tiles(self, tmp_path):
+        """It is drawn over the map's own tiles, not over itself."""
+        pyramid = _pyramid(tmp_path / "tiles")
+        self._place(pyramid)
+        first = _bytes(pyramid)
+        self._place(pyramid)
+        assert _bytes(pyramid) == first
+
+    def test_patch_taken_out_gives_the_map_its_tiles_back(self, tmp_path):
+        pyramid = _pyramid(tmp_path / "tiles")
+        own = _bytes(pyramid)
+        builder = self._place(pyramid)
+        patches.remove(pyramid, BASE, self._site(builder))
+        assert _bytes(pyramid) == own
+        assert not (pyramid / ".map").exists()
+        assert not (pyramid / ".over").exists()
+
+    def test_two_patches_on_one_tile_of_the_map(self, tmp_path):
+        pyramid = _pyramid(tmp_path / "tiles")
+        own = _bytes(pyramid)
+        first = self._place(pyramid)
+        self._place(pyramid, "east", self.EAST, seed=11)
+        west = self._drawn(pyramid, "site", 3, 9, 3)
+        east = self._drawn(pyramid, "east", 3, 9, 3)
+        assert west.any() and east.any()
+        shared = _tile(pyramid, 3, 9, 3).astype(float)
+        assert shared[west][:, 0].std() > 8.0
+        assert shared[east][:, 0].std() > 8.0
+
+        patches.remove(pyramid, BASE, self._site(first))
+        shared = _tile(pyramid, 3, 9, 3).astype(float)
+        assert np.abs(shared[west] - COLOUR).max() <= 6
+        assert shared[east][:, 0].std() > 8.0
+        assert (pyramid / ".map" / "3" / "9" / "3.webp").read_bytes() == own[
+            "3/9/3.webp"
+        ]
+        assert _bytes(pyramid)["3/8/3.webp"] == own["3/8/3.webp"]
+
+    def test_patch_with_a_blur_of_one_pixel_leaves_the_map_alone(self, tmp_path):
+        pyramid = _pyramid(tmp_path / "tiles")
+        own = _bytes(pyramid)
+        builder = patches.PatchBuilder(
+            "test", pyramid, BASE, [_raster(_blocks())], pyramid / ".patch-site", 1.0
+        )
+        builder.build()
+        patches.put_in_place(pyramid / ".patch-site", pyramid, "site")
+        assert builder.map_levels == 0
+        assert _bytes(pyramid) == own
 
 
 class TestProcessPatches:
@@ -815,6 +991,7 @@ class TestProcessPatches:
         assert meta["max_level"] == BASE
         (patch,) = meta["patches"]
         assert (patch["id"], patch["max_level"]) == ("site", 7)
+        assert patch["map_levels"] == 0
         assert (patch["x"], patch["y"]) == ([135, 151], [49, 65])
         assert patch["full_width"] == 4096
         # On the pixel grid of the raster, where a pixel is 0.09°.
@@ -825,6 +1002,31 @@ class TestProcessPatches:
         assert [level["level"] for level in patch["levels"]] == [4, 5, 6, 7]
         assert patch["levels"][-1]["tiles"] == 289
         assert len(_files(tmp_path / "tiles" / "naif-499")[7]) == 289
+
+    def test_patch_in_the_levels_of_the_map(self, tmp_path, monkeypatch):
+        proc = self._processor(monkeypatch, tmp_path, [self._spec(sharpen_sigma=4.0)])
+        _write_geotiff(tmp_path / "raw" / "site.tif", _blocks())
+        proc._raw_meta[0]["patches"] = []
+        proc.process_tiles()
+        pyramid = tmp_path / "tiles" / "naif-499"
+        own = _bytes(pyramid)
+
+        proc._raw_meta[0]["patches"] = [self._spec(sharpen_sigma=4.0)]
+        proc.process_tiles()
+        (patch,) = self._meta(tmp_path)["patches"]
+        assert patch["map_levels"] == 2
+        assert _bytes(pyramid)["3/8/3.webp"] != own["3/8/3.webp"]
+
+        # Another raster: the tiles of the map follow, from their own pixels.
+        _write_geotiff(tmp_path / "raw" / "site.tif", _blocks(128))
+        proc.process_tiles()
+        assert (pyramid / ".map" / "3" / "8" / "3.webp").read_bytes() == own[
+            "3/8/3.webp"
+        ]
+
+        proc._raw_meta[0]["patches"] = []
+        proc.process_tiles()
+        assert _bytes(pyramid) == own
 
     def test_patch_already_built_is_kept(self, tmp_path, monkeypatch):
         proc = self._processor(monkeypatch, tmp_path, [self._spec()])
@@ -1002,8 +1204,8 @@ class TestProcessHeightPatches:
         proc.process_tiles()
         assert self._meta(tmp_path)["patches"][0]["version"] != first
 
-    def test_colour_patch_keeps_its_version(self, tmp_path, monkeypatch):
-        """Height patches came later: the patches built before them stay."""
+    def test_colour_patch_has_no_field_of_a_height_patch(self, tmp_path, monkeypatch):
+        """A colour patch's token is its own fields only."""
         proc = TestProcessPatches._processor(
             monkeypatch, tmp_path, [TestProcessPatches._spec()]
         )
@@ -1015,7 +1217,7 @@ class TestProcessHeightPatches:
         size = (tmp_path / "raw" / "site.tif").stat().st_size
         assert meta["patches"][0]["version"] == tiles.signature_version(
             {
-                "recipe": 3,
+                "recipe": patches.RECIPE,
                 "pyramid": meta["version"],
                 "sigma": 1.0,
                 "max_level": None,

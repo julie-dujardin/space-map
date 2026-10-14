@@ -9,6 +9,10 @@ tone stay, so a patch joins the map around it without a step. Everything
 finer comes from the mosaic alone: the map's own detail may sit some pixels
 from the mosaic's, and each feature would otherwise show twice.
 
+A colour patch also shows in the finest levels of the pyramid itself, as far
+up as its mosaic has detail that the map lacks. A view that goes in would
+otherwise change one picture of the ground for another where the patch starts.
+
 A patch of a height pyramid is built the same way from a terrain model of the
 site: the broad heights stay those of the pyramid, and the model gives the
 relief below that scale. The two are tied to the body by different
@@ -17,6 +21,7 @@ measurements, and can stand some metres apart.
 
 import logging
 import math
+import shutil
 import threading
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -32,9 +37,14 @@ from .encoding import webp_kwargs
 log = logging.getLogger(__name__)
 
 # Bumped when a change to the build changes the bytes of a patch's tiles.
-RECIPE = 3
+RECIPE = 4
 # The same for the tiles of a height patch.
 HEIGHT_RECIPE = 2
+# Inside a pyramid: its own tiles that a patch is drawn over, and what each
+# patch draws over them. The tiles can then be made again when a patch changes
+# or goes.
+_OWN_DIR = ".map"
+_OVER_DIR = ".over"
 # Levels made from one read of the rasters: a block is 4 × 4 of the finest tiles.
 _BLOCK_LEVELS = 2
 # Levels of blocks built side by side, each held until its group is done.
@@ -110,6 +120,23 @@ def _inside(here: np.ndarray) -> np.ndarray:
     return np.clip(deep / _SEAM, 0.0, 1.0).astype(np.float32)
 
 
+def map_levels(sigma: float, base_level: int) -> int:
+    """How many of a pyramid's own levels a patch shows in, from the finest
+    up. The blur is half as many pixels wide at each level: at one pixel the
+    rasters have no detail left that the map lacks."""
+    if sigma <= 1.0:
+        return 0
+    return min(math.ceil(math.log2(sigma)), base_level + 1)
+
+
+def own_tile(pyramid: Path, level: int, x: int, y: int) -> Path:
+    """The tile as the pyramid built it, which stands aside while a patch is
+    drawn over it."""
+    name = Path(str(level), str(x), f"{y}.webp")
+    aside = pyramid / _OWN_DIR / name
+    return aside if aside.exists() else pyramid / name
+
+
 def first_range(
     base_level: int, max_level: int, x: Sequence[int], y: Sequence[int]
 ) -> tuple[int, int, int, int]:
@@ -153,6 +180,8 @@ class PatchBuilder:
         self.out_dir = out_dir
         self.sigma = sigma
         self.coding = coding
+        # Heights in three bytes do not mix by alpha as colours do.
+        self.map_levels = map_levels(sigma, base_level) if coding is None else 0
         # A raster away from the equator has wider pixels in longitude than in
         # latitude: the finer of the two decides.
         self.full_width = max(
@@ -203,10 +232,13 @@ class PatchBuilder:
             for x in range(x0, x1 + 1):
                 (self.out_dir / str(level) / str(x)).mkdir(parents=True, exist_ok=True)
         x0, x1, y0, y1 = self.tile_range(first)
+        over = _Over(self, ground) if self.map_levels else None
         with ThreadPoolExecutor(_WORKERS) as pool:
             for y in range(y0, y1 + 1):
                 for x in range(x0, x1 + 1):
-                    self._tile(pool, ground, first, x, y)
+                    values = self._tile(pool, ground, first, x, y)
+                    if over:
+                        over.take(x, y, values)
                 log.info(
                     "%s: tile row %d of %d, %d tiles",
                     self.name,
@@ -214,6 +246,10 @@ class PatchBuilder:
                     y1 - y0 + 1,
                     sum(self.stats.tiles),
                 )
+        if over:
+            # The ground is as large again, and the tiles do not need it.
+            del ground
+            over.write(self.out_dir / _OVER_DIR)
         return self.stats
 
     def fine(
@@ -423,8 +459,8 @@ class _Ground:
         out: np.ndarray | None = None
         for ty in range(y0 // size, (y1 - 1) // size + 1):
             for tx in range(x0 // size, (x1 - 1) // size + 1):
-                path = self.patch.pyramid / str(level) / str(tx % columns)
-                tile = self._decode(Image.open(path / f"{ty}.webp"))
+                path = own_tile(self.patch.pyramid, level, tx % columns, ty)
+                tile = self._decode(Image.open(path))
                 if out is None:
                     out = np.empty((y1 - y0, x1 - x0, *tile.shape[2:]), tile.dtype)
                 top, left = max(y0, ty * size), max(x0, tx * size)
@@ -542,8 +578,159 @@ class _HeightGround(_Ground):
         return plain + (sharp - plain) * weight
 
 
-def put_in_place(built: Path, pyramid: Path) -> None:
-    """Move the tiles of a patch built aside into its pyramid."""
+class _Over:
+    """What a patch draws over the pyramid's own tiles: its first level made
+    one level coarser, with the weight it has there as alpha, as whole tiles
+    of the pyramid's finest level."""
+
+    def __init__(self, patch: PatchBuilder, ground: "_Ground") -> None:
+        self.patch = patch
+        size = config.TILE_SIZE
+        x0, x1, y0, y1 = patch.tile_range(patch.base_level)
+        # From an even tile to an odd one: whole tiles of the next level.
+        x0, y0 = x0 - x0 % 2, y0 - y0 % 2
+        self.x0, self.y0 = x0, y0
+        shape = (((y1 | 1) - y0 + 1) * size, ((x1 | 1) - x0 + 1) * size)
+        self.image = np.zeros((*shape, 3), dtype=np.uint8)
+        self.alpha = np.zeros(shape, dtype=np.uint8)
+        # The ground is on the same grid, and starts at a pixel of its own.
+        weight = np.asarray(ground.weight)
+        top, left = ground.top - y0 * size, ground.left - x0 * size
+        rows = slice(max(top, 0), min(top + weight.shape[0], shape[0]))
+        columns = slice(max(left, 0), min(left + weight.shape[1], shape[1]))
+        self.alpha[rows, columns] = np.rint(
+            weight[
+                rows.start - top : rows.stop - top,
+                columns.start - left : columns.stop - left,
+            ]
+            * 255.0
+        )
+
+    def take(self, x: int, y: int, values: np.ndarray) -> None:
+        """Hold tile ``(x, y)`` of the patch's first level."""
+        half = config.TILE_SIZE // 2
+        top = y * half - self.y0 * config.TILE_SIZE
+        left = x * half - self.x0 * config.TILE_SIZE
+        self.image[top : top + half, left : left + half] = tiles._halve(values)
+
+    def write(self, out_dir: Path) -> None:
+        """One tile for each tile of the pyramid that the patch shows in."""
+        size = config.TILE_SIZE
+        image, alpha = self.image, self.alpha
+        x0, y0 = self.x0, self.y0
+        for level in range(
+            self.patch.base_level, self.patch.base_level - self.patch.map_levels, -1
+        ):
+            for down in range(alpha.shape[0] // size):
+                for right in range(alpha.shape[1] // size):
+                    rows = slice(down * size, (down + 1) * size)
+                    columns = slice(right * size, (right + 1) * size)
+                    if not alpha[rows, columns].any():
+                        continue
+                    tile = np.dstack([image[rows, columns], alpha[rows, columns]])
+                    folder = out_dir / str(level) / str(x0 + right)
+                    folder.mkdir(parents=True, exist_ok=True)
+                    Image.fromarray(tile).save(
+                        folder / f"{y0 + down}.webp",
+                        "webp",
+                        **config.TILE_LOSSLESS_KWARGS,
+                    )
+            # Whole tiles of the next level, which may start a tile earlier.
+            pad = (
+                (y0 % 2 * size, (alpha.shape[0] // size + y0) % 2 * size),
+                (x0 % 2 * size, (alpha.shape[1] // size + x0) % 2 * size),
+            )
+            if any(map(any, pad)):
+                alpha = np.pad(alpha, pad)
+                image = np.pad(image, (*pad, (0, 0)))
+            image, alpha = _coarser(image, alpha)
+            x0, y0 = x0 // 2, y0 // 2
+
+
+def _coarser(image: np.ndarray, alpha: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``image`` and its ``alpha`` at half the size. Each pixel counts by its
+    alpha: one that the patch does not draw has no colour to give."""
+    out = np.zeros((image.shape[0] // 2, image.shape[1] // 2, 3), dtype=np.uint8)
+    low = np.zeros(out.shape[:2], dtype=np.uint8)
+    # In strips: the whole image as floats is several times its size.
+    rows = 2 * config.TILE_SIZE
+    for top in range(0, image.shape[0], rows):
+        part = slice(top // 2, (top + rows) // 2)
+        weight = alpha[top : top + rows].astype(np.float32)
+        held = tiles._halve(image[top : top + rows] * weight[..., None])
+        weight = tiles._halve(weight)
+        np.divide(held, weight[..., None], out=held, where=weight[..., None] > 0)
+        out[part] = np.rint(held)
+        low[part] = np.rint(weight)
+    return out, low
+
+
+def _tiles_under(folder: Path) -> set[tuple[int, int, int]]:
+    """Level, column and row of each tile under ``folder``."""
+    return {
+        (int(path.parts[-3]), int(path.parts[-2]), int(path.stem))
+        for path in folder.glob("*/*/*.webp")
+    }
+
+
+def _lay(pyramid: Path, level: int, x: int, y: int) -> None:
+    """Make tile ``(x, y)`` of one of the pyramid's own levels again: its own
+    pixels, with what each patch draws over them."""
+    name = Path(str(level), str(x), f"{y}.webp")
+    shown, own = pyramid / name, pyramid / _OWN_DIR / name
+    overs = sorted((pyramid / _OVER_DIR).glob(f"*/{name}"))
+    if not overs:
+        if own.exists():
+            # As the pyramid built it, byte for byte.
+            own.replace(shown)
+            _drop_empty(own.parent, pyramid)
+        return
+    if not own.exists():
+        own.parent.mkdir(parents=True, exist_ok=True)
+        part = own.with_suffix(".part")
+        shutil.copyfile(shown, part)
+        part.replace(own)
+    tile = np.asarray(Image.open(own).convert("RGB")).astype(np.float32)
+    for over in overs:
+        drawn = np.asarray(Image.open(over).convert("RGBA")).astype(np.float32)
+        tile += (drawn[..., :3] - tile) * (drawn[..., 3:] / 255.0)
+    # A reader never sees half a tile.
+    part = shown.with_suffix(".part")
+    Image.fromarray(np.rint(tile).astype(np.uint8)).save(
+        part, "webp", **webp_kwargs(lossless=False)
+    )
+    part.replace(shown)
+
+
+def _drop_empty(folder: Path, stop: Path) -> None:
+    """Remove ``folder`` and the folders over it, up to ``stop``, while they
+    are empty."""
+    while folder != stop and not any(folder.iterdir()):
+        folder.rmdir()
+        folder = folder.parent
+
+
+def _draw(pyramid: Path, patch_id: str, built: Path | None) -> None:
+    """Change what patch ``patch_id`` draws over the pyramid's own tiles for
+    the tiles under ``built``, or for nothing, and make each tile that either
+    touches again."""
+    over = pyramid / _OVER_DIR / patch_id
+    touched = _tiles_under(over)
+    shutil.rmtree(over, ignore_errors=True)
+    if built is not None and built.exists():
+        over.parent.mkdir(exist_ok=True)
+        built.replace(over)
+        touched |= _tiles_under(over)
+    for level, x, y in sorted(touched):
+        _lay(pyramid, level, x, y)
+    if over.parent.exists():
+        _drop_empty(over.parent, pyramid)
+
+
+def put_in_place(built: Path, pyramid: Path, patch_id: str) -> None:
+    """Move the tiles of a patch built aside into its pyramid, and draw the
+    patch over the pyramid's own tiles."""
+    _draw(pyramid, patch_id, built / _OVER_DIR)
     for level in built.iterdir():
         for column in level.iterdir():
             target = pyramid / level.name / column.name
@@ -556,7 +743,9 @@ def put_in_place(built: Path, pyramid: Path) -> None:
 
 
 def remove(pyramid: Path, base_level: int, patch: dict) -> None:
-    """Delete the tiles of a patch, as its descriptor entry states them."""
+    """Delete the tiles of a patch, as its descriptor entry states them, and
+    give the pyramid its own tiles back."""
+    _draw(pyramid, patch["id"], None)
     (x0, x1), (y0, y1) = patch["x"], patch["y"]
     for level in range(base_level + 1, patch["max_level"] + 1):
         shift = patch["max_level"] - level

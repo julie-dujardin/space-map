@@ -13,6 +13,7 @@ import {
 	chartPoint,
 	chartRows,
 	deepestLevel,
+	mapTileVersion,
 	neededLevel,
 	patchOfTile,
 	placeWindow,
@@ -321,6 +322,41 @@ describe('patches', () => {
 		const first: PatchRange[] = [{ max_level: 16, x: [0, 99], y: [25970, 26102] }];
 		const west = 1 - 1 / chartColumns(MAP, 16);
 		expect(deepestLevel(10, first, west, inside.y)).toBe(16);
+	});
+
+	describe('in the levels of the map', () => {
+		// The last four levels of the pyramid show the patch: 10 down to 7.
+		const pyramid = {
+			version: 'map',
+			max_level: 10,
+			patches: [{ ...patches[0], version: 'jezero', map_levels: 4 }]
+		};
+
+		it('gives its token to the tiles of the map under it', () => {
+			expect(mapTileVersion(pyramid, 10, 1463, 405)).toBe('jezero');
+			expect(mapTileVersion(pyramid, 7, 182, 50)).toBe('jezero');
+		});
+
+		it('leaves the pyramid its token beside it and above its levels', () => {
+			expect(mapTileVersion(pyramid, 10, 1462, 405)).toBe('map');
+			expect(mapTileVersion(pyramid, 6, 91, 25)).toBe('map');
+		});
+
+		it('leaves a pyramid whose patches stay out of the map its token', () => {
+			const plain = { ...pyramid, patches: [{ ...patches[0], version: 'jezero' }] };
+			expect(mapTileVersion(plain, 10, 1463, 405)).toBe('map');
+			expect(mapTileVersion({ version: 'map', max_level: 10 }, 10, 1463, 405)).toBe('map');
+		});
+
+		it('names each patch on a tile that two share', () => {
+			const beside: PatchRange = { max_level: 16, x: [93900, 94000], y: [25970, 26102] };
+			const both = {
+				...pyramid,
+				patches: [...pyramid.patches, { ...beside, version: 'beside', map_levels: 4 }]
+			};
+			expect(mapTileVersion(both, 7, 183, 50)).toBe('jezero.beside');
+			expect(mapTileVersion(both, 10, 1467, 405)).toBe('beside');
+		});
 	});
 });
 

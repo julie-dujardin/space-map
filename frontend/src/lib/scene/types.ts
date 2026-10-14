@@ -46,6 +46,9 @@ export interface TilePatch extends CreditFields {
 	y: [number, number];
 	/** Cache token of this build of the patch: its tiles take it, not the pyramid's. */
 	version: string;
+	/** How many of the pyramid's own levels, from its finest up, show the
+	 *  patch in the tiles under it. Those tiles take the patch's token too. */
+	map_levels?: number;
 }
 
 /**
