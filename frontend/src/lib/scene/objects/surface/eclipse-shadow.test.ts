@@ -8,6 +8,8 @@ import {
 	evaluateEclipseFactor,
 	evaluateEclipseLeak,
 	getEclipseSceneUniforms,
+	getOccluderPool,
+	MAX_OCCLUDERS,
 	sunLeak
 } from './eclipse-shadow';
 
@@ -390,20 +392,54 @@ describe('evaluateEclipseLeak', () => {
 describe('cullOccludersFor', () => {
 	beforeEach(resetUniforms);
 
+	function setPool(occluders: { pos: [number, number, number]; r: number }[]): void {
+		const pool = getOccluderPool();
+		pool.count = occluders.length;
+		for (let i = 0; i < occluders.length; i++) {
+			pool.occluders[i] ??= new Vector4();
+			pool.leaks[i] ??= new Vector4();
+			pool.occluders[i].set(...occluders[i].pos, occluders[i].r);
+			pool.leaks[i].set(0, 0, 0, 0);
+		}
+	}
+
+	const slots = () => Array.from({ length: MAX_OCCLUDERS }, () => new Vector4());
+
 	it('keeps the air of an occluder at the index of the occluder', () => {
 		setSun(0.0047);
 		// The first is far off the line to the Sun. The second is on it.
-		setOccluders([
+		setPool([
 			{ pos: [60, 500, 0], r: 1 },
 			{ pos: [60, 0, 0], r: 1 }
 		]);
-		const u = getEclipseSceneUniforms();
-		u.uOccluderLeak.value[1].set(146, 347, 868, 0.0192);
-		const dst = [new Vector4(), new Vector4()];
-		const leakDst = [new Vector4(), new Vector4()];
-		const kept = cullOccludersFor(dst, ORIGIN, 0.27, u.uSunDir.value, leakDst);
+		getOccluderPool().leaks[1].set(146, 347, 868, 0.0192);
+		const dst = slots();
+		const leakDst = slots();
+		const kept = cullOccludersFor(
+			dst,
+			ORIGIN,
+			0.27,
+			getEclipseSceneUniforms().uSunDir.value,
+			leakDst
+		);
 		expect(kept).toBe(1);
 		expect(dst[0].toArray()).toEqual([60, 0, 0, 1]);
 		expect(leakDst[0].toArray()).toEqual([146, 347, 868, 0.0192]);
+	});
+
+	it('keeps the occluders of largest angular radius when too many can reach', () => {
+		setSun(0.0047);
+		// All on the line to the Sun. The angular radius grows with the index.
+		const all = Array.from({ length: MAX_OCCLUDERS + 8 }, (_, i) => ({
+			pos: [100 + i, 0, 0] as [number, number, number],
+			r: 0.01 * (i + 1)
+		}));
+		setPool(all);
+		const dst = slots();
+		const kept = cullOccludersFor(dst, ORIGIN, 1, getEclipseSceneUniforms().uSunDir.value);
+		expect(kept).toBe(MAX_OCCLUDERS);
+		const radii = dst.map((v) => v.w).sort((a, b) => a - b);
+		expect(radii[0]).toBeCloseTo(0.09, 9);
+		expect(radii[MAX_OCCLUDERS - 1]).toBeCloseTo(0.4, 9);
 	});
 });

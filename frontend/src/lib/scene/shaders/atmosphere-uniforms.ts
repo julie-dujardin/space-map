@@ -130,8 +130,8 @@ const sunT = new Vector3();
 const camRel = new Vector3();
 const refractionUp = new Vector3();
 
-/** Fill a shell's private occluder uniforms with the scene occluders whose
- *  shadow cone could touch it; the shell evaluates the list per march sample. */
+/** Fill the occluder list of a shell with the occluders whose shadow can
+ *  touch it. The shell evaluates the list at each march sample. */
 function cullShellOccluders(
 	uniforms: Record<string, { value: unknown }>,
 	shellCenter: Vector3,

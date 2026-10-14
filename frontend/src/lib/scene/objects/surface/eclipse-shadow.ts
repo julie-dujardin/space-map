@@ -17,10 +17,8 @@ import { type MeshStandardMaterial, Vector3, Vector4 } from 'three';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 import type { AtmosphereParams } from './atmosphere';
 
-/** Hard cap on simultaneously-tracked occluders. The shader loops up to
- *  {@link EclipseSceneUniforms.uOccluderCount} so unused slots cost
- *  nothing past the early-exit. Sized to comfortably cover Saturn's main
- *  moon set with headroom; bigger systems can bump this. */
+/** Length of each occluder list, of a receiver and of the scene set. The
+ *  shader loop stops at the count, so empty slots cost nothing. */
 export const MAX_OCCLUDERS = 32;
 
 /** Display gain of the light that air bends into a shadow, of the same kind as the ambient fill. The physical value is about 1e-4. */
@@ -45,9 +43,9 @@ export interface EclipseSceneUniforms {
 	uSunAngularRadius: { value: number };
 	/** Number of populated entries in `uOccluders`. */
 	uOccluderCount: { value: number };
-	/** Pre-allocated occluder slots: `.xyz` = focus-relative center,
-	 *  `.w` = scene-unit radius. Renderer mutates the first
-	 *  `uOccluderCount` entries in place. */
+	/** The occluders whose shadow can reach a point nearer to the focus than
+	 *  the camera is. `.xyz` is the centre relative to the focus, `.w` the
+	 *  radius in scene units. */
 	uOccluders: { value: Vector4[] };
 	/** The air of each occluder, at the index of the occluder. See
 	 *  {@link atmosphereLeak}. All 0 for an occluder with no air. */
@@ -61,6 +59,21 @@ const SHARED: EclipseSceneUniforms = {
 	uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) },
 	uOccluderLeak: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) }
 };
+
+/** Every occluder of the frame, with no cap. The entries are as in
+ *  {@link EclipseSceneUniforms}. Each occluder list is culled from it. */
+export interface OccluderPool {
+	occluders: Vector4[];
+	leaks: Vector4[];
+	count: number;
+}
+
+const POOL: OccluderPool = { occluders: [], leaks: [], count: 0 };
+
+/** The occluder pool of the frame. `updateEclipseUniforms` fills it. */
+export function getOccluderPool(): OccluderPool {
+	return POOL;
+}
 
 /**
  * GLSL of the part of the disc of the Sun that the occluders leave in view.
@@ -170,8 +183,8 @@ export function getEclipseSceneUniforms(): EclipseSceneUniforms {
 
 /** The eclipse uniforms of one body. `updateEclipseUniforms` fills them each
  *  frame with the centre of the body, which its shader skips as an occluder,
- *  and with the scene occluders whose shadow can reach it. The loop of a
- *  fragment is over this short list. */
+ *  and with the occluders whose shadow can reach it. The loop of a fragment is
+ *  over this short list. */
 export interface EclipseSelfUniforms {
 	uEclipseSelfPos: { value: Vector3 };
 	uOccluders: { value: Vector4[] };
@@ -188,11 +201,18 @@ export function makeEclipseSelfUniforms(): EclipseSelfUniforms {
 	};
 }
 
+/** Pool indices of the occluders that one cull keeps. */
+let _kept = new Int32Array(0);
+/** Square of the angular radius of each kept occluder, by pool index. */
+let _size = new Float64Array(0);
+const largestFirst = (a: number, b: number): number => _size[b] - _size[a];
+
 /**
- * Copy into `dst` the scene occluders whose shadow cone can touch a sphere of
- * `radius` at `center`, and return how many. `leakDst` takes the air of each
- * one. An occluder that stays draws the same. An occluder that goes had no
- * effect.
+ * Copy into `dst` the occluders of the pool whose shadow cone can touch a
+ * sphere of `radius` at `center`, and return how many. `leakDst` takes the air
+ * of each one. An occluder that stays draws the same. An occluder that goes
+ * had no effect. Over {@link MAX_OCCLUDERS}, the occluders with the largest
+ * angular radius from `center` stay.
  */
 export function cullOccludersFor(
 	dst: Vector4[],
@@ -202,11 +222,13 @@ export function cullOccludersFor(
 	leakDst?: Vector4[]
 ): number {
 	const aSun = SHARED.uSunAngularRadius.value;
-	const src = SHARED.uOccluders.value;
-	const leak = SHARED.uOccluderLeak.value;
-	const srcCount = SHARED.uOccluderCount.value;
+	const src = POOL.occluders;
+	if (_kept.length < POOL.count) {
+		_kept = new Int32Array(POOL.count);
+		_size = new Float64Array(POOL.count);
+	}
 	let n = 0;
-	for (let i = 0; i < srcCount; i++) {
+	for (let i = 0; i < POOL.count; i++) {
 		const oc = src[i];
 		const ox = oc.x - center.x;
 		const oy = oc.y - center.y;
@@ -217,8 +239,17 @@ export function cullOccludersFor(
 		if (t < -(radius + oc.w)) continue; // anti-sunward: casts away from the receiver
 		const reach = radius + oc.w + aSun * (t + radius) * 1.5;
 		if (d2 - t * t > reach * reach) continue; // off the sun axis beyond any penumbra
-		leakDst?.[n].copy(leak[i]);
-		dst[n++].copy(oc);
+		_size[i] = (oc.w * oc.w) / d2;
+		_kept[n++] = i;
+	}
+	if (n > MAX_OCCLUDERS) {
+		_kept.subarray(0, n).sort(largestFirst);
+		n = MAX_OCCLUDERS;
+	}
+	for (let k = 0; k < n; k++) {
+		const i = _kept[k];
+		leakDst?.[k].copy(POOL.leaks[i]);
+		dst[k].copy(src[i]);
 	}
 	return n;
 }
@@ -255,8 +286,8 @@ export function sunInView(aSun: number, aOc: number, sep: number): number {
 }
 
 /**
- * {@link sunInView} for every occluder of the scene, at one point. It reads
- * the `SHARED` uniforms, so call it after `updateEclipseUniforms`. The
+ * {@link sunInView} for the occluders of the `SHARED` uniforms, at one point
+ * nearer to the focus than the camera. Call it after `updateEclipseUniforms`. The
  * spacecraft 3D-model overlay uses it. The fragment shader cannot reach that
  * scene, and one ray from the centre of the craft is sufficient.
  */
@@ -354,9 +385,9 @@ export function sunLeak(
 const _leak = new Vector3();
 
 /**
- * {@link sunLeak} for every occluder of the scene, at one point, with the
- * display gain. The light of the Sun there is {@link evaluateEclipseFactor}
- * plus this. It reads the `SHARED` uniforms, as that function does.
+ * {@link sunLeak} for the occluders of the `SHARED` uniforms, at one point,
+ * with the display gain. The light of the Sun there is
+ * {@link evaluateEclipseFactor} plus this.
  */
 export function evaluateEclipseLeak(receiverPos: Vector3, selfPos: Vector3, out: Vector3): Vector3 {
 	out.set(0, 0, 0);

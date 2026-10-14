@@ -1,3 +1,4 @@
+import { Vector3, Vector4 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
 import { isDrawn, type BodyObjects } from '$lib/scene/types';
 import { ObjectType } from '$lib/types/objects';
@@ -5,14 +6,15 @@ import {
 	atmosphereLeak,
 	cullOccludersFor,
 	getEclipseSceneUniforms,
-	MAX_OCCLUDERS
+	getOccluderPool
 } from '$lib/scene/objects/surface/eclipse-shadow';
 import { SUN_ID } from '$lib/constants';
 
+const FOCUS = new Vector3();
+
 /** Put the occluders of the frame in `out` and return it. An occluder is
- *  drawn, has a measured `radiusKm` and is not a star. If there are too many,
- *  the {@link MAX_OCCLUDERS} largest stay. The caller must clear `out` after
- *  use, so it does not keep disposed bodies alive. */
+ *  drawn, has a measured `radiusKm` and is not a star. The caller must clear
+ *  `out` after use, so it does not keep disposed bodies alive. */
 export function collectOccluders(
 	bodyObjects: Map<string, BodyObjects>,
 	out: BodyObjects[]
@@ -27,28 +29,31 @@ export function collectOccluders(
 		out[n++] = bo;
 	}
 	out.length = n;
-	if (n > MAX_OCCLUDERS) {
-		out.sort((a, b) => b.radiusScene - a.radiusScene);
-		out.length = MAX_OCCLUDERS;
-	}
 	return out;
 }
 
-/** Fill the eclipse uniforms for the frame: the Sun, the `occluders` of
- *  {@link collectOccluders}, and the list of each receiver. With `air` off, no
- *  occluder bends light into its shadow. */
+/**
+ * Fill the eclipse uniforms for the frame: the Sun, the occluder pool from
+ * the `occluders` of {@link collectOccluders}, and the list of each receiver.
+ * The scene set holds the occluders that can shadow the space within
+ * `cameraDistance` of the focus. With `air` off, no occluder bends light into
+ * its shadow.
+ */
 export function updateEclipseUniforms(
 	bodyObjects: Map<string, BodyObjects>,
 	occluders: readonly BodyObjects[],
 	focusTruePos: Vec3,
+	cameraDistance: number,
 	air: boolean
 ): void {
 	const eclipse = getEclipseSceneUniforms();
+	const pool = getOccluderPool();
 	const sunBo = bodyObjects.get(SUN_ID);
 	const sunPos = sunBo?.body.position;
 	if (!sunBo || !sunPos) {
 		eclipse.uSunAngularRadius.value = 0;
 		eclipse.uOccluderCount.value = 0;
+		pool.count = 0;
 		return;
 	}
 	const [fx, fy, fz] = focusTruePos;
@@ -67,24 +72,34 @@ export function updateEclipseUniforms(
 	}
 
 	const n = occluders.length;
-	const slots = eclipse.uOccluders.value;
-	const leaks = eclipse.uOccluderLeak.value;
+	while (pool.occluders.length < n) {
+		pool.occluders.push(new Vector4());
+		pool.leaks.push(new Vector4());
+	}
 	for (let i = 0; i < n; i++) {
 		const bo = occluders[i];
 		const [bx, by, bz] = bo.body.position!;
-		slots[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
+		pool.occluders[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
 		if (air && bo.atmosphere) {
-			atmosphereLeak(bo.atmosphere.params, bo.atmosphere.planetRadiusKm, leaks[i]);
+			atmosphereLeak(bo.atmosphere.params, bo.atmosphere.planetRadiusKm, pool.leaks[i]);
 		} else {
-			leaks[i].set(0, 0, 0, 0);
+			pool.leaks[i].set(0, 0, 0, 0);
 		}
 	}
-	eclipse.uOccluderCount.value = n;
+	pool.count = n;
+
+	const sunDir = eclipse.uSunDir.value;
+	eclipse.uOccluderCount.value = cullOccludersFor(
+		eclipse.uOccluders.value,
+		FOCUS,
+		cameraDistance,
+		sunDir,
+		eclipse.uOccluderLeak.value
+	);
 
 	// Each receiver gets its centre and the occluders that can reach it. A
 	// receiver too small to render keeps its last list: its fragments are
 	// never shaded, and the list is rebuilt the frame it grows back.
-	const sunDir = eclipse.uSunDir.value;
 	for (const bo of bodyObjects.values()) {
 		const self = bo.eclipseShadow;
 		const at = bo.body.position;

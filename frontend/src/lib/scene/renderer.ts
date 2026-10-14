@@ -1198,12 +1198,13 @@ export class SceneRenderer {
 			this.camera.position,
 			this.pxPerRad()
 		);
-		// The atmosphere update below culls the occluders of each shell from this list.
+		// The atmosphere update below culls each shell's list from the pool that updateEclipseUniforms fills.
 		const occluders = collectOccluders(this.bodyObjects, this._occluders);
 		updateEclipseUniforms(
 			this.bodyObjects,
 			occluders,
 			this.focus.focusTruePos,
+			this.camera.position.length(),
 			sceneSettings().showAtmospheres
 		);
 		updatePlanetshineUniforms(

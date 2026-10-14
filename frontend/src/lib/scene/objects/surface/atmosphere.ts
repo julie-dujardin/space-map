@@ -887,10 +887,7 @@ export function buildAtmosphereNode(
 		uniforms: {
 			// Shared scene ref (mutated in place by updateEclipseUniforms).
 			uSunAngularRadius: eclipse.uSunAngularRadius,
-			// Own occluder set, unlike surface materials which share the scene
-			// list: the shell pays the eclipse loop per march sample, so
-			// updateAtmosphereShaders culls it down to occluders that could
-			// actually shadow this shell (almost always none).
+			// `updateAtmosphereShaders` culls this list to the occluders that can shadow the shell.
 			uOccluderCount: { value: 0 },
 			uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) },
 			uSunDir: { value: new Vector3(1, 0, 0) },

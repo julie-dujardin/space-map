@@ -3,26 +3,15 @@ import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
 import { SUN_LIGHT_INTENSITY, sunIrradianceFactor } from '$lib/scene/lighting';
 import { meanMapColor } from '$lib/scene/objects/body/texture-tint';
-import { MAX_OCCLUDERS } from '$lib/scene/objects/surface/eclipse-shadow';
 import { selectShiners, type Shiner } from '$lib/scene/objects/surface/planetshine';
 
-const _shiners: Shiner[] = Array.from({ length: MAX_OCCLUDERS }, () => ({
-	x: 0,
-	y: 0,
-	z: 0,
-	radius: 0,
-	sunX: 0,
-	sunY: 0,
-	sunZ: 0,
-	sunlight: 0,
-	albedo: new Color()
-}));
+const _shiners: Shiner[] = [];
 
 /**
  * Fill the planetshine uniforms of each receiver for the frame. The shiners
- * are the `occluders` of the eclipse pass that draw a mesh. A shiner has the
- * colour the scene draws it with, and the sunlight of the direct light at its
- * own distance from the Sun.
+ * are the `occluders` of the eclipse pass that draw a mesh, so every planet is
+ * a shiner for its moons. A shiner has the colour the scene draws it with, and
+ * the sunlight of the direct light at its own distance from the Sun.
  */
 export function updatePlanetshineUniforms(
 	bodyObjects: Map<string, BodyObjects>,
@@ -41,7 +30,17 @@ export function updatePlanetshineUniforms(
 			const sy = sunPos[1] - y;
 			const sz = sunPos[2] - z;
 			const sunDist = Math.hypot(sx, sy, sz);
-			const s = _shiners[n++];
+			const s = (_shiners[n++] ??= {
+				x: 0,
+				y: 0,
+				z: 0,
+				radius: 0,
+				sunX: 0,
+				sunY: 0,
+				sunZ: 0,
+				sunlight: 0,
+				albedo: new Color()
+			});
 			s.x = x;
 			s.y = y;
 			s.z = z;

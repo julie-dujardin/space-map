@@ -157,11 +157,12 @@ export function selectShiners(
 		const dx = s.x - x;
 		const dy = s.y - y;
 		const dz = s.z - z;
-		const d = Math.hypot(dx, dy, dz);
+		const d2 = dx * dx + dy * dy + dz * dz;
+		// The phase function and the albedo are at most 1.
+		if ((2 / 3) * s.radius * s.radius < SHINE_FLOOR * d2) continue;
+		const d = Math.sqrt(d2);
 		if (d <= s.radius) continue;
 		const k = s.radius / d;
-		// The phase function and the albedo are at most 1.
-		if ((2 / 3) * k * k < SHINE_FLOOR) continue;
 		const cosPhase = -(dx * s.sunX + dy * s.sunY + dz * s.sunZ) / d;
 		const fraction = planetshineFraction(
 			s.radius,
