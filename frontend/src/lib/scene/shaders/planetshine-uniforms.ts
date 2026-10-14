@@ -32,6 +32,16 @@ function measuredShinerAlbedo(bo: BodyObjects, map: Texture | null): Color | nul
 	return entry.albedo;
 }
 
+/** Lambert albedo of a body as a source of light: measured, else the colour
+ *  the scene draws it with. */
+export function shineAlbedo(bo: BodyObjects, material: MeshStandardMaterial, out: Color): Color {
+	const measured = measuredShinerAlbedo(bo, material.map);
+	if (measured) return out.copy(measured);
+	out.copy(material.color);
+	const mean = material.map && meanMapColor(material.map);
+	return mean ? out.multiply(mean) : out;
+}
+
 /**
  * Fill the planetshine uniforms of each receiver for the frame. The shiners
  * are the `occluders` of the eclipse pass that draw a mesh, so every planet is
@@ -76,13 +86,7 @@ export function updatePlanetshineUniforms(
 			s.sunY = sy / sunDist;
 			s.sunZ = sz / sunDist;
 			s.sunlight = SUN_LIGHT_INTENSITY * sunScale * (realistic ? sunIrradianceFactor(sunDist) : 1);
-			const measured = measuredShinerAlbedo(bo, material.map);
-			if (measured) s.albedo.copy(measured);
-			else {
-				s.albedo.copy(material.color);
-				const mean = material.map && meanMapColor(material.map);
-				if (mean) s.albedo.multiply(mean);
-			}
+			shineAlbedo(bo, material, s.albedo);
 		}
 	}
 

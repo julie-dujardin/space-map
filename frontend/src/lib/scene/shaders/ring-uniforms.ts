@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { type Color, type MeshStandardMaterial, Quaternion, type Vector2, Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
 import { SUN_ID } from '$lib/constants';
@@ -8,6 +8,12 @@ import {
 	RING_MIN_VISIBLE_ALPHA,
 	RING_THICKNESS_LAYERS_MAX
 } from '$lib/scene/objects/surface/rings';
+import {
+	fillPlanetLight,
+	ringshinePatches,
+	writeRingshine
+} from '$lib/scene/objects/surface/ring-light';
+import { shineAlbedo } from './planetshine-uniforms';
 
 // IAU nominal solar radius; over the ring-planet distance this gives the
 // sun's angular radius, which sets the penumbra widths of both ring-shadow
@@ -16,7 +22,15 @@ const SUN_RADIUS_SCENE = kmToScene(695_700);
 
 const SHEETS_PER_PX = 2;
 
+/** The light between a planet and its rings is made again when sin B moves by this. */
+const SIN_B_STEP = 1e-4;
+/** Rings smaller than this on screen keep the light they have. */
+const RING_LIGHT_MIN_PX = 2;
+
 const tmp = new Vector3();
+const _axis = new Vector3();
+const _sunLocal = new Vector3();
+const _inverse = new Quaternion();
 
 /** How the nearest part of a ring annulus sits relative to the camera: `dist`
  *  in scene units, `sinToPole` = how edge-on the sheet stack reads onscreen.
@@ -127,5 +141,54 @@ export function updateRingShaders(
 			ps.uRingShadowPoleDir.value.copy(psOnRing.uPlanetPoleDir.value);
 			ps.uRingShadowCenter.value.copy(psOnRing.uPlanetCenter.value);
 		}
+		updateRingLight(bo, camPos, pxPerRad);
+	}
+}
+
+/**
+ * Refresh the light between a planet and its rings: the ringshine patches of
+ * the bundle that casts the shadow, the planet's light on each visible
+ * bundle, and their uniforms. The sums run again only when the Sun's
+ * elevation over the rings moves, and only for rings big enough to see.
+ */
+function updateRingLight(bo: BodyObjects, camPos: Vector3, pxPerRad: number): void {
+	const caster = bo.rings.reduce((best, ring) =>
+		ring.intensityScale > best.intensityScale ? ring : best
+	);
+	const uniforms = caster.material.uniforms;
+	const sunDir = uniforms.uSunDir.value as Vector3;
+	const pole = caster.planetShadowOnRing.uPlanetPoleDir.value;
+	const center = caster.planetShadowOnRing.uPlanetCenter.value;
+	const sinB = Math.min(Math.max(sunDir.dot(pole), -1), 1);
+	const light = caster.light;
+	const seen =
+		(caster.outerScene / Math.max(camPos.distanceTo(center), 1e-12)) * pxPerRad >=
+		RING_LIGHT_MIN_PX;
+	if (seen && !(Math.abs(sinB - light.patchesSinB) < SIN_B_STEP)) {
+		ringshinePatches(light.patches, light.profile, sinB, light.planet);
+		light.patchesSinB = sinB;
+	}
+
+	// The Sun's azimuth in the ring plane. Any direction serves with the Sun over the pole.
+	_axis.copy(sunDir).addScaledVector(pole, -sinB);
+	if (_axis.lengthSq() < 1e-12) {
+		_axis.set(Math.abs(pole.x) < 0.9 ? 1 : 0, Math.abs(pole.x) < 0.9 ? 0 : 1, 0).cross(pole);
+	}
+	_axis.normalize();
+	if (caster.ringshine) {
+		writeRingshine(caster.ringshine, light, _axis, sinB, uniforms.uLightScale.value as number);
+	}
+
+	_sunLocal.copy(_axis).applyQuaternion(_inverse.copy(caster.mesh.quaternion).invert());
+	for (const ring of bo.rings) {
+		if (!ring.mesh.visible) continue;
+		if (seen && ring.light.planetLightSinB !== light.patchesSinB) {
+			fillPlanetLight(ring.light, light.patchesSinB, light);
+		}
+		const ringUniforms = ring.material.uniforms;
+		(ringUniforms.uSunAzimuth.value as Vector2).set(_sunLocal.x, _sunLocal.z).normalize();
+		const albedo = ringUniforms.uPlanetAlbedo.value as Color;
+		if (bo.mesh) shineAlbedo(bo, bo.mesh.material as MeshStandardMaterial, albedo);
+		else albedo.setRGB(0, 0, 0);
 	}
 }

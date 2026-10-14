@@ -266,6 +266,7 @@ export function unloadSystemTextures(
 		}
 		for (const ring of bo.rings) {
 			ring.planetShadow?.disable();
+			ring.ringshine?.disable();
 			ring.mesh.removeFromParent();
 			disposeRingNode(ring);
 		}

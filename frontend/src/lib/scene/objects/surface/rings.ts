@@ -1,13 +1,13 @@
 /**
- * Ring annulus disc, albedo sampled from 1-D radial profiles shipped per body
- * as a single N×5 `v1/rings/{id}/strip.webp` (color, backscattered,
- * forwardscattered, unlitside, transparency=1−opacity). Split into separate
- * 1-row textures after decode so per-channel filtering can't bleed rows
- * together. Channel values are normalised; × `intensity_scale` recovers
- * physical brightness/opacity — the overexpose-rings toggle skips that scale.
+ * Ring annuli drawn from 1-D radial profiles. Each body ships one N×5 strip,
+ * `v1/rings/{id}/strip.webp`: color, backscattered, forwardscattered,
+ * unlitside and transparency (1 − opacity). After decode each row becomes its
+ * own texture, so that mipmaps cannot mix the rows. The three scatter rows
+ * share one texture as its R, G and B channels. Stored values × the bundle's
+ * `intensity_scale` are physical; the overexpose-rings toggle skips the scale.
  *
- * Mesh is a scene-level sibling of the body (not a child) so the planet's
- * triaxial flattening doesn't distort the circular profile.
+ * The mesh is a sibling of the body in the scene, so the triaxial scale of the
+ * planet does not distort the rings.
  *
  * Refs: Björn Jónsson https://bjj.mmedia.is/data/s_rings/index.html (channel
  * meanings, color calibrated against backscatter only, warm-white unlit hint);
@@ -17,6 +17,7 @@
 
 import {
 	CanvasTexture,
+	Color,
 	DoubleSide,
 	InstancedBufferAttribute,
 	InstancedMesh,
@@ -30,12 +31,23 @@ import {
 	ShaderMaterial,
 	SRGBColorSpace,
 	type Texture,
+	Vector2,
 	Vector3
 } from 'three';
 import { kmToScene } from '$lib/math/units';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
 import { MAX_ANISOTROPY } from './anisotropy';
+import {
+	FORWARD_TINT_BIAS,
+	makeRingLight,
+	PLANET_LIGHT_AZIMUTHS,
+	PLANET_LIGHT_RADII,
+	type RingLight,
+	ringProfile,
+	type RingshineUniforms,
+	UNLIT_TINT
+} from './ring-light';
 
 export type RingChannel =
 	| 'color'
@@ -46,7 +58,13 @@ export type RingChannel =
 
 /** The five channels every bundle has, plus the optional thickness profile. */
 type StripRows = Record<RingChannel, number> & { thickness?: number };
-type StripTextures = Record<RingChannel, Texture> & { thickness?: Texture };
+interface StripTextures {
+	color: Texture;
+	/** Backscattered, forwardscattered and unlitside as R, G and B. */
+	scatter: Texture;
+	transparency: Texture;
+	thickness?: Texture;
+}
 
 /** One contributor to a bundle — bundles mix sources (e.g. Saturn mixes
  *  Björn Jónsson's photometry with NSSDCA vertical extents), so each states
@@ -96,6 +114,11 @@ export interface RingNode {
 	planetShadow: PlanetRingShadowUniforms | null;
 	/** Ring material's planet-shadow uniforms; radii set once by `loadRingNode`'s caller. */
 	planetShadowOnRing: PlanetShadowOnRingUniforms;
+	/** The light of the planet on this bundle, and of this bundle on the planet. */
+	light: RingLight;
+	/** Ringshine on the planet's material. Only on the bundle that casts the
+	 *  shadow, and only where its light can show. */
+	ringshine: RingshineUniforms | null;
 }
 
 /**
@@ -136,55 +159,67 @@ export const RING_THICKNESS_LAYERS_MAX = 48;
 export const RING_MIN_VISIBLE_ALPHA = 0.25 / 255;
 
 /**
- * Fetch the body's N×5 strip and split each channel row into its own 2-tall
- * CanvasTexture. Split-after-decode avoids mipmapping averaging adjacent rows
- * into each other. Per-channel canvases (not TextureLoader) work around an
- * Android-Chrome bug that zeroes 1-px-tall VP8L WebPs, and let us downscale
- * past GL MAX_TEXTURE_SIZE (Saturn's strip is ~13177px; Adreno 5xx caps at
- * 4096). The doubled row lets mipmap generation succeed.
+ * Fetch the body's N×5 strip and make its rows into 2-tall CanvasTextures.
+ * Canvases, not TextureLoader: an Android Chrome bug zeroes 1-px-tall VP8L
+ * WebPs, and a canvas can scale the strip under GL MAX_TEXTURE_SIZE (Saturn's
+ * strip is 13177 px; Adreno 5xx stops at 4096). The doubled row lets mipmap
+ * generation succeed. Also returns the strip's pixels at native width.
  */
 async function loadStripTextures(
 	url: string,
 	rows: StripRows,
 	maxTextureSize: number
-): Promise<StripTextures> {
+): Promise<{ textures: StripTextures; pixels: Uint8ClampedArray; width: number }> {
 	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`);
 	}
 	const blob = await response.blob();
 	const bitmap = await createImageBitmap(blob);
-	const targetWidth = Math.min(bitmap.width, maxTextureSize);
-	if (targetWidth < bitmap.width) {
+	const width = bitmap.width;
+	const targetWidth = Math.min(width, maxTextureSize);
+	if (targetWidth < width) {
 		console.info(
-			`Ring strip ${url}: downscaling ${bitmap.width}px → ${targetWidth}px to fit GL MAX_TEXTURE_SIZE.`
+			`Ring strip ${url}: downscaling ${width}px → ${targetWidth}px to fit GL MAX_TEXTURE_SIZE.`
 		);
 	}
-	const strip = readStripPixels(bitmap, url, maxTextureSize);
-	const textures = {} as StripTextures;
-	for (const [channel, row] of Object.entries(rows) as [keyof StripTextures, number][]) {
+	const pixels = readStripPixels(bitmap, url, maxTextureSize);
+	bitmap.close();
+	const line = (row: number) => boxFilterRow(pixels, width, row, targetWidth);
+	const texture = (data: ImageData, srgb = false): Texture => {
 		const canvas = document.createElement('canvas');
 		canvas.width = targetWidth;
 		canvas.height = 2;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) throw new Error(`Failed to acquire 2D context for ring strip ${url}`);
-		const line = boxFilterRow(strip, bitmap.width, row, targetWidth);
-		ctx.putImageData(line, 0, 0);
-		ctx.putImageData(line, 0, 1);
-
+		ctx.putImageData(data, 0, 0);
+		ctx.putImageData(data, 0, 1);
 		const tex = new CanvasTexture(canvas);
-		// Color is a perceptual albedo tint (sRGB); scalar profiles are linear.
-		if (channel === 'color') tex.colorSpace = SRGBColorSpace;
+		if (srgb) tex.colorSpace = SRGBColorSpace;
 		// Seen at a low angle, a pixel covers many more texels along the radius than across it.
 		tex.minFilter = LinearMipmapLinearFilter;
 		tex.magFilter = LinearFilter;
 		tex.generateMipmaps = true;
 		tex.anisotropy = MAX_ANISOTROPY;
 		tex.needsUpdate = true;
-		textures[channel] = tex;
+		return tex;
+	};
+	// One fetch gives all three scatter profiles.
+	const scatter = line(rows.backscattered);
+	const forward = line(rows.forwardscattered);
+	const unlit = line(rows.unlitside);
+	for (let d = 0; d < scatter.data.length; d += 4) {
+		scatter.data[d + 1] = forward.data[d];
+		scatter.data[d + 2] = unlit.data[d];
 	}
-	bitmap.close();
-	return textures;
+	const textures: StripTextures = {
+		// Color is a perceptual albedo tint (sRGB); scalar profiles are linear.
+		color: texture(line(rows.color), true),
+		scatter: texture(scatter),
+		transparency: texture(line(rows.transparency))
+	};
+	if (rows.thickness !== undefined) textures.thickness = texture(line(rows.thickness));
+	return { textures, pixels, width };
 }
 
 /**
@@ -293,29 +328,23 @@ const VERTEX_SHADER = `
 `;
 
 /**
- * Phase-angle-aware fragment shader, per BJJ's documentation. Lit side
- * (observer and sun on the same side of the ring plane) blends
- * `backscattered` (low phase, color-tinted) toward `forwardscattered` (high
- * phase, warm-white) with phase angle. Unlit side (opposite sides) uses
- * `unlitside` directly — that profile already *is* the transmitted
- * appearance, no phase blend. The Cassini-derived `color` profile is
- * calibrated against backscatter only, so it tints just that branch; forward
- * and unlit use a fixed warm-white tint.
+ * Ring fragment shader, after Björn Jónsson's notes. A face reflects the light
+ * from its own side of the ring plane: `backscattered` at low phase,
+ * `forwardscattered` at high phase, with the Cassini `color` on both. A face
+ * passes the light from the other side as `unlitside`, with a fixed warm
+ * white tint.
  *
- * Transparency convention: profile value 1 = empty space, 0 = opaque, so
- * alpha = `1 - profile`.
+ * Two lights reach the rings. The Sun is one. An exact ray test against the
+ * planet's spheroid gives the planet's shadow on the rings. The planet is the
+ * other, from the texture of `ring-light.ts`.
  *
- * Planet shadow is a per-pixel analytic ray trace against the planet's
- * oblate spheroid, avoiding shadow-map resolution limits (stair-stepping) at
- * any zoom.
+ * A transparency of 1 is empty space and 0 is opaque, so alpha is 1 minus it.
  */
 const FRAGMENT_SHADER = `
 	#include <common>
 	#include <logdepthbuf_pars_fragment>
 
-	uniform sampler2D uBackscattered;
-	uniform sampler2D uForwardscattered;
-	uniform sampler2D uUnlitside;
+	uniform sampler2D uScatter;
 	uniform sampler2D uTransparency;
 	uniform sampler2D uColor;
 	uniform float uInnerScene;
@@ -337,18 +366,25 @@ const FRAGMENT_SHADER = `
 	// 1/layerCount: opacity is split across the vertical layer instances so
 	// the composited stack reproduces the strip's alpha.
 	uniform float uLayerAlphaExp;
+	// Light of the planet on the +Y and the -Y face over the Sun's, per unit of the
+	// planet's albedo, by the cosine of the azimuth from the Sun (x) and radius (y).
+	uniform sampler2D uPlanetLight;
+	// Lambert albedo of the planet, linear RGB.
+	uniform vec3 uPlanetAlbedo;
+	// Unit direction of the Sun in the local XZ plane.
+	uniform vec2 uSunAzimuth;
 
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
 	varying vec3 vWorldNormal;
 
-	// Per BJJ: the Cassini-derived color profile only fits backscattered
-	// light. Unlit/forward branches get a fixed near-white tint per BJJ.
-	const vec3 UNLIT_TINT = vec3(1.0, 0.97075, 0.952);
+	const vec3 UNLIT_TINT = vec3(${UNLIT_TINT.join(', ')});
+	const vec3 FORWARD_TINT_BIAS = vec3(${FORWARD_TINT_BIAS.join(', ')});
 
-	// Red bias on the forward-scatter branch, per BJJ's "becoming slightly
-	// redder" observation as phase angle climbs.
-	const vec3 FORWARD_TINT_BIAS = vec3(1.02, 0.99, 0.97);
+	// Weight of forward scatter: 0 at phase 0, 1 at phase 180 deg, 0.5 edge-on.
+	float forwardWeight(float cosPhase) {
+		return 1.0 - smoothstep(-1.0, 1.0, cosPhase);
+	}
 
 	// Ray-march from the fragment toward the sun against the planet's oblate
 	// spheroid: warp into the pole-aligned frame so the spheroid becomes a
@@ -391,29 +427,24 @@ const FRAGMENT_SHADER = `
 
 		bool lit = dot(uSunDir, N) > 0.0;
 
-		// cosAlpha = cos(phase angle): +1 low phase, -1 high phase.
 		vec3 viewDir = normalize(cameraPosition - vWorldPos);
-		float cosAlpha = dot(uSunDir, viewDir);
+		vec3 colorTint = texture2D(uColor, uv).rgb;
+		vec3 scatter = texture2D(uScatter, uv).rgb;
+		vec3 back = scatter.r * colorTint;
+		vec3 forward = scatter.g * colorTint * FORWARD_TINT_BIAS;
+		vec3 unlit = scatter.b * UNLIT_TINT;
+		vec3 sunLit = lit ? mix(back, forward, forwardWeight(dot(uSunDir, viewDir))) : unlit;
 
-		vec3 finalAlbedo;
-		if (lit) {
-			// Blend backscatter → forward scatter with phase angle; smoothstep
-			// over [-1, 1] centers the transition on edge-on viewing (α = 90°).
-			// Both branches share the Cassini color profile (calibrated for
-			// backscatter only) plus a small red bias on the forward branch,
-			// since dropping color entirely visibly loses the ring's tan/gold
-			// hue seen in forward-scattered Cassini imagery.
-			vec3 colorTint = texture2D(uColor, uv).rgb;
-			vec3 forwardTint = colorTint * FORWARD_TINT_BIAS;
-			vec3 back = texture2D(uBackscattered, uv).rgb * colorTint;
-			vec3 forward = texture2D(uForwardscattered, uv).rgb * forwardTint;
-			float wForward = 1.0 - smoothstep(-1.0, 1.0, cosAlpha);
-			finalAlbedo = mix(back, forward, wForward);
-		} else {
-			// unlitside already is the transmitted-light appearance; no
-			// phase-angle blend needed.
-			finalAlbedo = texture2D(uUnlitside, uv).rgb * UNLIT_TINT;
-		}
+		// The light is the same at plus and minus an azimuth, so the texture holds its cosine.
+		float azimuth = 0.5 - 0.5 * dot(vLocalPos.xz, uSunAzimuth) / radius;
+		const vec2 NODES = vec2(${PLANET_LIGHT_AZIMUTHS}.0, ${PLANET_LIGHT_RADII}.0);
+		vec2 planet = texture2D(uPlanetLight, (vec2(azimuth, t) * (NODES - 1.0) + 0.5) / NODES).rg;
+		float near = gl_FrontFacing ? planet.x : planet.y;
+		float far = gl_FrontFacing ? planet.y : planet.x;
+		float planetPhase = dot(normalize(uPlanetCenter - vWorldPos), viewDir);
+		vec3 planetLit = uPlanetAlbedo
+			* (near * mix(back, forward, forwardWeight(planetPhase)) + far * unlit);
+
 		// Transparency convention: 1.0 = empty space, 0.0 = opaque.
 		float alpha = clamp((1.0 - texture2D(uTransparency, uv).r) * uIntensityScale, 0.0, 1.0);
 		// Split opacity across layer instances so the composited stack
@@ -422,7 +453,7 @@ const FRAGMENT_SHADER = `
 
 		float shadow = planetShadow();
 
-		gl_FragColor = vec4(finalAlbedo * uIntensityScale * shadow * uLightScale, alpha);
+		gl_FragColor = vec4((sunLit * shadow + planetLit) * uIntensityScale * uLightScale, alpha);
 		#include <logdepthbuf_fragment>
 	}
 `;
@@ -619,11 +650,23 @@ export async function loadRingNode(
 	const intensityScale = meta.intensity_scale ?? 1;
 
 	let textures: StripTextures;
+	let light: RingLight;
 	try {
-		textures = await loadStripTextures(
+		const strip = await loadStripTextures(
 			versionedUrl(`/v1/rings/${bodyId}/${meta.strip}`, 'rings'),
 			meta.strip_rows,
 			maxTextureSize
+		);
+		textures = strip.textures;
+		light = makeRingLight(
+			ringProfile(
+				strip.pixels,
+				strip.width,
+				meta.strip_rows,
+				innerScene,
+				outerScene,
+				intensityScale
+			)
 		);
 	} catch (err) {
 		console.warn(`Failed to load ring strip for ${bodyId}:`, err);
@@ -639,9 +682,7 @@ export async function loadRingNode(
 
 	const material = new ShaderMaterial({
 		uniforms: {
-			uBackscattered: { value: textures.backscattered },
-			uForwardscattered: { value: textures.forwardscattered },
-			uUnlitside: { value: textures.unlitside },
+			uScatter: { value: textures.scatter },
 			uTransparency: { value: textures.transparency },
 			uColor: { value: textures.color },
 			// Falls back to any bound texture: never sampled when
@@ -661,7 +702,10 @@ export async function loadRingNode(
 			uPlanetEquatorialScene: { value: 0 },
 			uPlanetPolarScene: { value: 0 },
 			uLightScale: { value: 1 },
-			uIntensityScale: { value: intensityScale }
+			uIntensityScale: { value: intensityScale },
+			uPlanetLight: { value: light.planetLight },
+			uPlanetAlbedo: { value: new Color(0, 0, 0) },
+			uSunAzimuth: { value: new Vector2(1, 0) }
 		},
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,
@@ -730,7 +774,9 @@ export async function loadRingNode(
 		innerScene,
 		outerScene,
 		planetShadow: null,
-		planetShadowOnRing
+		planetShadowOnRing,
+		light,
+		ringshine: null
 	};
 }
 
@@ -738,14 +784,7 @@ export async function loadRingNode(
 export function disposeRingNode(ring: RingNode): void {
 	ring.mesh.geometry.dispose();
 	const uniforms = ring.material.uniforms as Record<string, { value: Texture | unknown }>;
-	for (const key of [
-		'uBackscattered',
-		'uForwardscattered',
-		'uUnlitside',
-		'uTransparency',
-		'uColor',
-		'uThickness'
-	]) {
+	for (const key of ['uScatter', 'uTransparency', 'uColor', 'uThickness', 'uPlanetLight']) {
 		const tex = uniforms[key]?.value as Texture | undefined;
 		tex?.dispose();
 	}

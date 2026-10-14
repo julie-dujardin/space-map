@@ -10,6 +10,8 @@ import type { BodyObjects } from '../../types';
 import type { ContextManager } from '../../state/context-manager.svelte';
 import { attachRingShadowToAtmosphere } from './atmosphere';
 import { attachRingShadowToPlanet, loadRingNode, type RingMeta } from './rings';
+import { attachRingshine, peakRingshine, type Spheroid } from './ring-light';
+import { SHINE_FLOOR } from './planetshine';
 
 /** SPICE/occultation triaxial semi-axes, km along body-fixed X, Y, Z. */
 export interface BodyRadii {
@@ -61,6 +63,7 @@ export function attachRingBundles(
 					return;
 				}
 				node.mesh.userData.ringBundle = ringMeta.bundle;
+				node.light.planet = ringPlanet(radii, bo.radiusScene);
 				// The per-frame pole sync only runs when the clock moves, so a paused
 				// view would keep the unrotated ring until play resumes.
 				const host = bo.mesh ?? bo.model;
@@ -72,13 +75,18 @@ export function attachRingBundles(
 				// onBeforeCompile that adds a ray-march to the ring plane after the
 				// standard lighting calc.
 				if (bo.mesh && ringMeta === shadowCaster) {
+					const material = bo.mesh.material as MeshStandardMaterial;
 					node.planetShadow = attachRingShadowToPlanet(
-						bo.mesh.material as MeshStandardMaterial,
+						material,
 						node.innerScene,
 						node.outerScene,
 						node.transparency,
 						node.intensityScale
 					);
+					// Faint rings get no patch loop on the planet.
+					if (peakRingshine(node.light.profile, node.light.planet) >= SHINE_FLOOR) {
+						node.ringshine = attachRingshine(material);
+					}
 					// The rings shade the scattering shell's air column too, sharing
 					// the same per-frame uniform refs.
 					if (bo.atmosphere) {
@@ -104,4 +112,12 @@ export function attachRingBundles(
 		);
 	}
 	return promises;
+}
+
+/** The body as a spheroid about its pole: the mean equatorial radius and the
+ *  polar radius, or a sphere where the body has no radii. */
+function ringPlanet(radii: BodyRadii | undefined, radiusScene: number): Spheroid {
+	return radii
+		? { equatorial: kmToScene((radii.a + radii.b) / 2), polar: kmToScene(radii.c) }
+		: { equatorial: radiusScene, polar: radiusScene };
 }
