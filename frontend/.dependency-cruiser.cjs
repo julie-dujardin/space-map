@@ -12,7 +12,7 @@ module.exports = {
 			to: {
 				path:
 					'^\\$app/|^\\$env/|(^\\$lib|^src/lib)/paraglide/|^src/lib/components/|^src/components/|\\.svelte$|' +
-					'node_modules/(svelte-sonner|bits-ui|layercake|d3-[a-z]+|photoswipe|meilisearch|tailwind-merge|clsx|mode-watcher|@lucide/svelte|vaul-svelte)/',
+					'node_modules/(svelte-sonner|bits-ui|layercake|d3-[a-z]+|photoswipe|meilisearch|tailwind-merge|clsx|@lucide/svelte|vaul-svelte)/',
 				reachable: true
 			}
 		}
