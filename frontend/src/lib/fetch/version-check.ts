@@ -1,13 +1,20 @@
 import { dataBase, getDataVersions } from '$lib/fetch/data-base';
 
+/** A stalled check would hold off every later one. */
+const CHECK_TIMEOUT_MS = 15_000;
+
 /**
  * Redeploy detection. `?v=` tokens are query strings on stable paths, so after a
  * data deploy an old session fetches new bytes under old tokens → silent refresh
  * failures. Comparing live tokens against a fresh metadata.json catches it.
+ * False when the check itself fails, as it does offline.
  */
-async function dataVersionChanged(): Promise<boolean> {
+export async function dataVersionChanged(): Promise<boolean> {
 	try {
-		const res = await fetch(`${dataBase()}/v1/metadata.json`, { cache: 'no-store' });
+		const res = await fetch(`${dataBase()}/v1/metadata.json`, {
+			cache: 'no-store',
+			signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
+		});
 		if (!res.ok) return false;
 		const meta = (await res.json()) as { versions?: Record<string, string> };
 		const live = getDataVersions();

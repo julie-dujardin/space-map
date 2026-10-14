@@ -27,6 +27,7 @@ import {
 } from '$lib/fetch/metadata';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
+import { dataVersionChanged } from '$lib/fetch/version-check';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
@@ -79,8 +80,8 @@ interface ChunkZoneState extends BaseZoneState {
 
 type ZoneState = TimeZoneState | ChunkZoneState;
 
-/** Consecutive reload failures before treating data as stale — a redeploy rotates
- *  the `?v=` tokens, so every reload then 404s/mismatches. */
+/** Consecutive reload failures before a check for a redeploy, which rotates the
+ *  `?v=` tokens so that every reload fails. */
 const STALE_FAILURE_STREAK = 3;
 
 /** Backoff key of one zone at one snapshot date or chunk index. */
@@ -97,6 +98,7 @@ export class ZoneRefresher {
 	private failureStreak = 0;
 	/** Guards the one-shot `onDataStale` notification. */
 	private staleNotified = false;
+	private staleCheckRunning = false;
 	/** Loads that failed. `tick` does not start one again before its wait is
 	 *  over: it runs every frame the clock moves. */
 	private readonly retries = new RetryBackoff<string>(() => this.wakes++);
@@ -165,15 +167,25 @@ export class ZoneRefresher {
 		this.failureStreak = 0;
 	}
 
-	/** Fire the one-shot stale signal after {@link STALE_FAILURE_STREAK} failures
-	 *  in a row (usually a redeploy). */
+	/** After {@link STALE_FAILURE_STREAK} failures in a row, fire the one-shot
+	 *  stale signal if the data version changed. A network failure also makes a
+	 *  streak, and a reload offline loses the page. A check that finds no change
+	 *  starts a new streak, so an outage does not check on every failure. */
 	private recordFailure(key: string): void {
 		this.retries.fail(key);
 		this.failureStreak++;
-		if (this.failureStreak >= STALE_FAILURE_STREAK && !this.staleNotified) {
+		if (this.failureStreak < STALE_FAILURE_STREAK || this.staleNotified || this.staleCheckRunning)
+			return;
+		this.staleCheckRunning = true;
+		void dataVersionChanged().then((changed) => {
+			this.staleCheckRunning = false;
+			if (!changed) {
+				this.failureStreak = 0;
+				return;
+			}
 			this.staleNotified = true;
 			this.ctx.onDataStale?.();
-		}
+		});
 	}
 
 	/** Come back to a load the limit on starts held. One timer: `tick` asks on
