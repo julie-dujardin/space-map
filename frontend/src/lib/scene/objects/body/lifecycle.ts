@@ -18,6 +18,7 @@ import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
 import { attachCameraRelative } from '../surface/camera-relative';
+import { attachSurfacePhotometry } from '../surface/photometry';
 import {
 	attachSunTransmittanceToBody,
 	type SunTransmittanceUniforms
@@ -104,6 +105,7 @@ export function buildMajorBodies(
 				// Body-on-body shadows are analytical (fragment shader); shadow map unused.
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
 				attachCameraRelative(mesh, material as MeshStandardMaterial);
+				attachSurfacePhotometry(material as MeshStandardMaterial, id);
 			}
 			root.add(mesh);
 
@@ -235,6 +237,7 @@ export function upgradeBodyMesh(
 	meshToBody.set(mesh, body);
 	bo.eclipseShadow = attachEclipseShadowToBody(material);
 	attachCameraRelative(mesh, material);
+	attachSurfacePhotometry(material, body.data.id);
 	bo.currentSegments = segments;
 
 	const atmoParams = getAtmosphereParams(body.data.id);

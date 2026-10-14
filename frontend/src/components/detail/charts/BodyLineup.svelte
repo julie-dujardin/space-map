@@ -101,6 +101,7 @@
 		attachSelfShadowToBody,
 		type SelfShadowUniforms
 	} from '$lib/scene/objects/surface/self-shadow';
+	import { attachSurfacePhotometry } from '$lib/scene/objects/surface/photometry';
 	import {
 		applyShapeModelMaterial,
 		makeShapeModelMaterial,
@@ -258,8 +259,7 @@
 	const ECLIPTIC_RAD = 23.4392911 * DEG2RAD;
 	const VIEW_PITCH = 0.32;
 	const FACE_YAW = 0;
-	// The row's key light, shared by the DirectionalLight and the relief shader
-	// (which needs the same direction to shade and shadow the height field).
+	// The row's key light. The relief shader and the law of the ground use its direction.
 	const KEY_LIGHT_DIR = { value: new Vector3(-0.4, 0.45, 1).normalize() };
 	const AXIS_X = new Vector3(1, 0, 0);
 	const AXIS_Y = new Vector3(0, 1, 0);
@@ -885,6 +885,14 @@
 		);
 	}
 
+	/** The law of the ground depends on the atmosphere table, which can come
+	 *  after the body is built. */
+	async function attachPhotometry(material: MeshStandardMaterial, bodyId: string) {
+		await loadAtmospheres().catch(() => {});
+		attachSurfacePhotometry(material, bodyId, KEY_LIGHT_DIR);
+		render();
+	}
+
 	/** Take one body out of the row: its mesh, its textures, its pose, and any
 	 *  load still on its way. The turn it has taken under the pointer is left
 	 *  alone — a body that is only being rebuilt keeps it. */
@@ -1008,6 +1016,7 @@
 			return;
 		}
 		const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
+		attachPhotometry(material, b.id);
 		const mesh = new Mesh(b.displacement ? dispGeometry : geometry, material);
 		baseQuats.set(b.id, styledQuaternion(b));
 		mesh.quaternion.copy(baseQuats.get(b.id)!);
@@ -1106,7 +1115,9 @@
 				return;
 			}
 			const root = gltf.scene;
-			applyShapeModelMaterial(root, makeShapeModelMaterial(color));
+			const material = makeShapeModelMaterial(color);
+			attachPhotometry(material, b.id);
+			applyShapeModelMaterial(root, material);
 			if (b.texture !== false) {
 				loader.load(
 					versionedUrl(`/v1/textures/${b.id}/low.webp`, 'textures'),

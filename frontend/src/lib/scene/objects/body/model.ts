@@ -29,6 +29,7 @@ import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } fro
 import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
+import { attachSurfacePhotometry } from '../surface/photometry';
 import { buildRadialIndex, radialIndexDistance, type RadialIndex } from './model-radial';
 
 /** Types whose placeholder sphere is meaningless and hidden the moment a load
@@ -386,10 +387,9 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		// Only a main-scene model is measurable: the camera clamp reads radii in
 		// mount units, which say nothing about an overlay model's drawn size.
 		root.userData.radialIndex = buildRadialIndex(root);
-		applyShapeModelMaterial(
-			root,
-			makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data))
-		);
+		const material = makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data));
+		attachSurfacePhotometry(material, bo.body.data.id);
+		applyShapeModelMaterial(root, material);
 		// Sphere path owns texture loading/LOD; mirror it now (swapBodyTexture
 		// keeps later tier upgrades in sync).
 		const sphereMap = bo.mesh ? (bo.mesh.material as MeshStandardMaterial).map : null;

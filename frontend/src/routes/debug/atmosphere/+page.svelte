@@ -68,6 +68,7 @@
 		attachEclipseShadowToBody,
 		getEclipseSceneUniforms
 	} from '$lib/scene/objects/surface/eclipse-shadow';
+	import { attachSurfacePhotometry } from '$lib/scene/objects/surface/photometry';
 	import {
 		attachSunTransmittanceToBody,
 		attachViewTintToMaterial,
@@ -648,6 +649,7 @@
 			currentBody.radiusKm,
 			eclipseSelf
 		);
+		attachSurfacePhotometry(material, bodyId);
 		// Re-aim the disc's per-fragment chroma at the newly selected body.
 		push();
 		planetMesh = new Mesh(geometry, material);
