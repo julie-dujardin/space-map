@@ -389,7 +389,6 @@ export interface HazardContext {
 	/** Bodies a swing-by route passes; without the right one its second arc
 	 *  cannot be rebuilt and the scan has no geometry to read. */
 	vias?: readonly TravelBody[];
-	retrograde?: boolean;
 }
 
 /**
@@ -543,7 +542,6 @@ function scan(
 		centralMu,
 		systemPrimary: context.systemPrimary,
 		orbitChange: context.orbitChange,
-		retrograde: context.retrograde,
 		vias: context.vias,
 		samples: hazardSamples(route)
 	});

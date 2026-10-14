@@ -14,7 +14,7 @@ import { sphereOfInfluenceKm, type TravelBody } from './body';
 import { CAPTURE_APOAPSIS_RADII, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby } from './flyby';
 import { sampleHeldDrive, samplePoweredFlight, type HeldDriveSample } from './held-drive';
-import { solveLambert } from './lambert';
+import { solveLambert, transferArc } from './lambert';
 import { rebuildSpiral } from './low-thrust';
 import {
 	aeroPassRadiusKm,
@@ -371,14 +371,13 @@ function conicArc(
 /** The Lambert arc between two bodies, sampled. */
 function lambertArc(
 	from: { r: Vec3; v: Vec3 },
-	to: { r: Vec3 },
+	to: { r: Vec3; v: Vec3 },
 	startJd: number,
 	days: number,
 	mu: number,
-	retrograde: boolean,
 	samples: number
 ): PathArc | null {
-	const arc = solveLambert(from.r, to.r, days * SEC_PER_DAY, mu, retrograde);
+	const arc = transferArc(from, to, days * SEC_PER_DAY, mu);
 	if (!arc) return null;
 	return conicArc(from.r, arc.v1, to.r, startJd, days, mu, samples);
 }
@@ -441,7 +440,6 @@ function buildCrossing(
 	const {
 		centerId,
 		centralMu = GM_SUN_KM3_S2,
-		retrograde = false,
 		systemPrimary,
 		orbitChange,
 		vias = [],
@@ -492,8 +490,9 @@ function buildCrossing(
 
 		const tof1 = flyby.jd - route.departJd;
 		const tof2 = route.arriveJd - flyby.jd;
-		const out = solveLambert(from.r, mid.r, tof1 * SEC_PER_DAY, centralMu, retrograde);
-		const back = solveLambert(mid.r, to.r, tof2 * SEC_PER_DAY, centralMu, retrograde);
+		const normal = cross(from.r, from.v);
+		const out = solveLambert(from.r, mid.r, tof1 * SEC_PER_DAY, centralMu, normal);
+		const back = solveLambert(mid.r, to.r, tof2 * SEC_PER_DAY, centralMu, normal);
 		if (!out || !back) return null;
 		const first = conicArc(from.r, out.v1, mid.r, route.departJd, tof1, centralMu, samples);
 		const second = conicArc(mid.r, back.v1, to.r, flyby.jd, tof2, centralMu, samples);
@@ -547,7 +546,7 @@ function buildCrossing(
 		};
 	}
 
-	const arc = lambertArc(from, to, route.departJd, route.tofDays, centralMu, retrograde, samples);
+	const arc = lambertArc(from, to, route.departJd, route.tofDays, centralMu, samples);
 	if (!arc) return null;
 	return { centerId, arcs: [arc], stops: [departureStop, arrivalStop], meeting };
 }
@@ -703,7 +702,7 @@ function endApproaches(
 	options: PathOptions,
 	path: PathGeometry
 ): { from?: EndApproach; to?: EndApproach } {
-	const { centralMu = GM_SUN_KM3_S2, retrograde = false, systemPrimary, vias = [] } = options;
+	const { centralMu = GM_SUN_KM3_S2, systemPrimary, vias = [] } = options;
 	if (route.lowThrust) return {};
 	if (route.constantThrust != null) {
 		return heldDriveApproaches(departure, target, route, options, path);
@@ -753,19 +752,20 @@ function endApproaches(
 		const via = vias.find((body) => body.id === flyby.bodyId);
 		const mid = via ? elementsToState(via.elements, flyby.jd, centralMu) : null;
 		if (!mid) return {};
+		const normal = cross(from.r, from.v);
 		const out = solveLambert(
 			from.r,
 			mid.r,
 			(flyby.jd - route.departJd) * SEC_PER_DAY,
 			centralMu,
-			retrograde
+			normal
 		);
 		const back = solveLambert(
 			mid.r,
 			to.r,
 			(route.arriveJd - flyby.jd) * SEC_PER_DAY,
 			centralMu,
-			retrograde
+			normal
 		);
 		if (!out || !back) return {};
 		return {
@@ -784,7 +784,7 @@ function endApproaches(
 		};
 	}
 
-	const arc = solveLambert(from.r, to.r, route.tofDays * SEC_PER_DAY, centralMu, retrograde);
+	const arc = transferArc(from, to, route.tofDays * SEC_PER_DAY, centralMu);
 	if (!arc) return {};
 	return {
 		from: {

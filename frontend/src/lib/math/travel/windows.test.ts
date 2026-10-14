@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { AU_KM } from '$lib/math/units';
+import type { TravelBody } from './body';
 import {
 	crossingTimeDays,
 	hohmannTransferDays,
@@ -92,6 +94,35 @@ describe('nextTransferWindows', () => {
 			expect(Math.abs(check[0] - jd)).toBeLessThan(2);
 		}
 		expect(isFinite(phase)).toBe(true);
+	});
+
+	it('finds the same windows whichever way the orbit plane faces', () => {
+		// Ariel and Umbriel, in Uranus's equator and laid flat in the ecliptic.
+		const GM_URANUS = 5793951.3;
+		const moon = (aKm: number, ma: number, i: number, om: number): TravelBody => ({
+			id: 'moon',
+			mu: 85,
+			muEstimated: false,
+			radiusKm: 580,
+			elements: {
+				a: aKm / AU_KM,
+				e: 0,
+				i,
+				om,
+				w: 0,
+				ma,
+				n: Math.sqrt(GM_URANUS / aKm ** 3) * (180 / Math.PI) * 86400,
+				epoch: J2000
+			},
+			parentId: 'naif-799'
+		});
+		const windows = (i: number, om: number) =>
+			nextTransferWindows(moon(190900, 0, i, om), moon(266000, 40, i, om), J2000, 3, GM_URANUS);
+		const flat = windows(0, 0);
+		expect(flat).toHaveLength(3);
+		const tilted = windows(97.77, 167.6);
+		expect(tilted).toHaveLength(3);
+		for (let k = 0; k < 3; k++) expect(Math.abs(tilted[k] - flat[k])).toBeLessThan(1e-4);
 	});
 });
 

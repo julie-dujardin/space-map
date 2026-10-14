@@ -25,10 +25,11 @@ const HOUSEHOLDER_MAX_ITER = 15;
 
 /**
  * Solve for the arc from `r1` to `r2` in `tofSec`. Positions are in km in any
- * consistent inertial frame; `mu` in km³/s². `retrograde` picks the transfer
- * running clockwise about the frame's +Z axis — for heliocentric transfers in
- * ecliptic J2000 the default (prograde) is right, since the planets all orbit
- * that way. Returns null for degenerate geometry (coincident or antipodal
+ * consistent inertial frame; `mu` in km³/s². The arc goes round `normal` the
+ * prograde way. Pass the departure orbit's angular momentum, `r × v`, so the
+ * craft goes round the same way as the body it leaves. The moons of Uranus and
+ * Pluto go round ecliptic south. The default, ecliptic north, suits the
+ * planets. Returns null for degenerate geometry (coincident or antipodal
  * endpoints, where the transfer plane is undefined), non-positive time of
  * flight, or a non-converged solve.
  */
@@ -37,7 +38,7 @@ export function solveLambert(
 	r2: Vec3,
 	tofSec: number,
 	mu: number,
-	retrograde = false
+	normal: Vec3 = [0, 0, 1]
 ): LambertArc | null {
 	if (!(tofSec > 0) || !(mu > 0)) return null;
 
@@ -64,8 +65,8 @@ export function solveLambert(
 
 	let it1: Vec3;
 	let it2: Vec3;
-	if (ih[2] < 0) {
-		// Transfer angle exceeds π when measured prograde about +Z.
+	if (dot(ih, normal) < 0) {
+		// Transfer angle exceeds π when measured prograde about `normal`.
 		lambda = -lambda;
 		it1 = cross(ir1, ih);
 		it2 = cross(ir2, ih);
@@ -75,12 +76,6 @@ export function solveLambert(
 	}
 	it1 = normalize(it1);
 	it2 = normalize(it2);
-
-	if (retrograde) {
-		lambda = -lambda;
-		it1 = scale(it1, -1);
-		it2 = scale(it2, -1);
-	}
 
 	// Non-dimensional time of flight.
 	const T = Math.sqrt((2 * mu) / (s * s * s)) * tofSec;
@@ -224,4 +219,24 @@ function hypergeometric2F1(z: number, tol = 1e-11): number {
 		if (Math.abs(term) < tol) break;
 	}
 	return sum;
+}
+
+/**
+ * The arc from the state `from` to the state `to` in `tofSec`, going round the
+ * way `from` does. Where `to` goes round the other way, the arc that goes its
+ * way is solved too, and the one with less excess speed at its two ends wins.
+ */
+export function transferArc(
+	from: { r: Vec3; v: Vec3 },
+	to: { r: Vec3; v: Vec3 },
+	tofSec: number,
+	mu: number
+): LambertArc | null {
+	const normal = cross(from.r, from.v);
+	const along = solveLambert(from.r, to.r, tofSec, mu, normal);
+	if (dot(cross(to.r, to.v), normal) >= 0) return along;
+	const against = solveLambert(from.r, to.r, tofSec, mu, scale(normal, -1));
+	if (!along || !against) return along ?? against;
+	const excess = (arc: LambertArc) => norm(sub(arc.v1, from.v)) + norm(sub(arc.v2, to.v));
+	return excess(against) < excess(along) ? against : along;
 }

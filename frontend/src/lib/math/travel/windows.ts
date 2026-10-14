@@ -10,7 +10,7 @@ import { AU_KM } from '$lib/math/units';
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { elementsToState } from './state';
-import { dot } from './vec3';
+import { angleAbout, cross, dot, normalize } from './vec3';
 
 const TWO_PI = Math.PI * 2;
 
@@ -147,13 +147,6 @@ export function requiredPhaseAngle(
 	return wrapPi(Math.PI - nB * tof);
 }
 
-/** Heliocentric ecliptic longitude of a body at `jd`, radians. */
-function longitude(body: TravelBody, jd: number, mu: number): number | null {
-	const s = elementsToState(body.elements, jd, mu);
-	if (!s) return null;
-	return Math.atan2(s.r[1], s.r[0]);
-}
-
 function wrapPi(angle: number): number {
 	let x = angle % TWO_PI;
 	if (x > Math.PI) x -= TWO_PI;
@@ -187,11 +180,14 @@ export function nextTransferWindows(
 	const step = synodic / 180;
 	const horizon = fromJd + synodic * (count + 1.2);
 
+	// The lead is measured about the departure orbit's own normal, the way the
+	// transfer goes round: about ecliptic north, a near-polar orbit flips it.
 	const offset = (jd: number): number | null => {
-		const lonA = longitude(a, jd, mu);
-		const lonB = longitude(b, jd, mu);
-		if (lonA === null || lonB === null) return null;
-		return wrapPi(lonB - lonA - phase);
+		const sA = elementsToState(a.elements, jd, mu);
+		const sB = elementsToState(b.elements, jd, mu);
+		if (!sA || !sB) return null;
+		const normal = normalize(cross(sA.r, sA.v));
+		return wrapPi(angleAbout(sA.r, sB.r, normal) - phase);
 	};
 
 	const windows: number[] = [];

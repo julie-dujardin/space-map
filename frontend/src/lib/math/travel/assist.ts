@@ -49,7 +49,7 @@ import {
 	type RouteOptions
 } from './route';
 import { elementsToState, type StateVector } from './state';
-import { norm, sub, type Vec3 } from './vec3';
+import { cross, norm, sub, type Vec3 } from './vec3';
 import { nextTransferWindows, synodicPeriodDays, transferScale } from './windows';
 
 /**
@@ -72,7 +72,6 @@ export function buildAssistRoute(
 		departureMode = 'surface',
 		arrivalMode = 'capture',
 		centralMu = GM_SUN_KM3_S2,
-		retrograde = false,
 		aero = 'none'
 	} = options;
 	if (!(tof1Days > 0) || !(tof2Days > 0)) return null;
@@ -85,9 +84,10 @@ export function buildAssistRoute(
 	const to = elementsToState(target.elements, arriveJd, centralMu);
 	if (!from || !mid || !to) return null;
 
-	const arc1 = solveLambert(from.r, mid.r, tof1Days * SEC_PER_DAY, centralMu, retrograde);
+	const normal = cross(from.r, from.v);
+	const arc1 = solveLambert(from.r, mid.r, tof1Days * SEC_PER_DAY, centralMu, normal);
 	if (!arc1) return null;
-	const arc2 = solveLambert(mid.r, to.r, tof2Days * SEC_PER_DAY, centralMu, retrograde);
+	const arc2 = solveLambert(mid.r, to.r, tof2Days * SEC_PER_DAY, centralMu, normal);
 	if (!arc2) return null;
 
 	const vInfDepVec = sub(arc1.v1, from.v);
@@ -191,6 +191,8 @@ const DEFAULT_TOF_STEPS = 22;
  */
 interface Approach {
 	flybyJd: number;
+	/** The departure orbit's `r × v`, which both arcs go round. */
+	normal: Vec3;
 	midR: Vec3;
 	midV: Vec3;
 	vInfIn: Vec3;
@@ -207,7 +209,6 @@ function approach(
 	departJd: number,
 	tof1Days: number,
 	centralMu: number,
-	retrograde: boolean,
 	departureMode: DepartureMode,
 	departureOrbit: EndOrbit | undefined,
 	departureSiteLatDeg: number | undefined
@@ -215,7 +216,8 @@ function approach(
 	const flybyJd = departJd + tof1Days;
 	const mid = elementsToState(via.elements, flybyJd, centralMu);
 	if (!mid) return null;
-	const arc1 = solveLambert(from.r, mid.r, tof1Days * SEC_PER_DAY, centralMu, retrograde);
+	const normal = cross(from.r, from.v);
+	const arc1 = solveLambert(from.r, mid.r, tof1Days * SEC_PER_DAY, centralMu, normal);
 	if (!arc1) return null;
 
 	const vInfDepVec = sub(arc1.v1, from.v);
@@ -233,6 +235,7 @@ function approach(
 
 	return {
 		flybyJd,
+		normal,
 		midR: mid.r,
 		midV: mid.v,
 		vInfIn,
@@ -259,7 +262,6 @@ function tailCostKms(
 	target: TravelBody,
 	tof2Days: number,
 	centralMu: number,
-	retrograde: boolean,
 	arrivalMode: ArrivalMode,
 	aero: AeroAssist,
 	targetOrbit: EndOrbit | undefined,
@@ -269,7 +271,7 @@ function tailCostKms(
 ): number {
 	const to = elementsToState(target.elements, app.flybyJd + tof2Days, centralMu);
 	if (!to) return NaN;
-	const arc2 = solveLambert(app.midR, to.r, tof2Days * SEC_PER_DAY, centralMu, retrograde);
+	const arc2 = solveLambert(app.midR, to.r, tof2Days * SEC_PER_DAY, centralMu, app.normal);
 	if (!arc2) return NaN;
 
 	const vInfArrVec = sub(arc2.v2, to.v);
@@ -335,7 +337,6 @@ export function searchAssist(
 		departureMode = 'surface',
 		arrivalMode = 'capture',
 		centralMu = GM_SUN_KM3_S2,
-		retrograde = false,
 		aero = 'none'
 	} = routeOptions;
 
@@ -369,7 +370,6 @@ export function searchAssist(
 				departJd,
 				tof1,
 				centralMu,
-				retrograde,
 				departureMode,
 				options.departureOrbit,
 				options.departureSiteLatDeg
@@ -387,7 +387,6 @@ export function searchAssist(
 					target,
 					tof2,
 					centralMu,
-					retrograde,
 					arrivalMode,
 					aero,
 					options.targetOrbit,

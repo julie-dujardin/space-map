@@ -8,7 +8,7 @@
 import type { TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import type { FlybyPass } from './flyby';
-import { solveLambert } from './lambert';
+import { transferArc } from './lambert';
 import {
 	aeroPassRadiusKm,
 	arrivalCost,
@@ -219,8 +219,6 @@ export interface RouteOptions {
 	aero?: AeroAssist;
 	/** μ of the body both endpoints orbit, km³/s². Defaults to the Sun. */
 	centralMu?: number;
-	/** Solve the transfer clockwise about the frame's +Z axis. */
-	retrograde?: boolean;
 	/**
 	 * Set when the trip stays inside one system: the named end is the body the
 	 * transfer orbits, and the other end is a satellite of it. There is no
@@ -372,7 +370,6 @@ export function buildRoute(
 		targetSiteLatDeg,
 		aero = 'none',
 		centralMu = GM_SUN_KM3_S2,
-		retrograde = false,
 		systemPrimary,
 		orbitChange
 	} = options;
@@ -407,7 +404,7 @@ export function buildRoute(
 	const to = elementsToState(target.elements, arriveJd, centralMu);
 	if (!from || !to) return null;
 
-	const arc = solveLambert(from.r, to.r, tofDays * SEC_PER_DAY, centralMu, retrograde);
+	const arc = transferArc(from, to, tofDays * SEC_PER_DAY, centralMu);
 	if (!arc) return null;
 
 	const vInfDepVec = sub(arc.v1, from.v);

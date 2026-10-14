@@ -4,6 +4,8 @@ import { ascentDv, parkingOrbit } from './maneuvers';
 import { computePorkchop, selectRoutes } from './porkchop';
 import { nextTransferWindows, hohmannTransferDays } from './windows';
 import { EARTH, J2000, JUPITER, MARS, MOON, PARABOLIC_COMET } from './test-fixtures';
+import type { TravelBody } from './body';
+import { AU_KM } from '$lib/math/units';
 
 const MARS_WINDOW = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
 const MARS_TOF = hohmannTransferDays(EARTH, MARS)!;
@@ -332,5 +334,43 @@ describe('an orbit whose plane cannot hold the asymptote', () => {
 		})!;
 		expect(route.legs.slice(-3).map((leg) => leg.kind)).toEqual(['aero-pass', 'raise', 'turn-in']);
 		expect(route.legs.reduce((sum, leg) => sum + leg.dvKms, 0)).toBeCloseTo(route.totalDvKms, 12);
+	});
+});
+
+describe('a trip between two moons of Uranus', () => {
+	// Uranus's equator sits 97.8° to the ecliptic, so its moons go round ecliptic south.
+	const GM_URANUS = 5793951.3;
+	const moon = (id: string, aKm: number, ma: number): TravelBody => ({
+		id,
+		mu: 85,
+		muEstimated: false,
+		radiusKm: 580,
+		elements: {
+			a: aKm / AU_KM,
+			e: 0,
+			i: 97.77,
+			om: 167.6,
+			w: 0,
+			ma,
+			n: Math.sqrt(GM_URANUS / aKm ** 3) * (180 / Math.PI) * 86400,
+			epoch: J2000
+		},
+		parentId: 'naif-799'
+	});
+	const ARIEL = moon('naif-701', 190900, 0);
+	const UMBRIEL = moon('naif-702', 266000, 0);
+
+	it('costs about a Hohmann transfer, going round the way the moons do', () => {
+		// Hohmann between the two circles: 0.84 km/s of excess speed in all.
+		const a = (190900 + 266000) / 2;
+		const tofDays = (Math.PI * Math.sqrt(a ** 3 / GM_URANUS)) / 86400;
+		let best = Infinity;
+		for (let k = 0; k < 400; k++) {
+			const route = buildRoute(ARIEL, UMBRIEL, J2000 + k * 0.02, tofDays, {
+				centralMu: GM_URANUS
+			});
+			if (route) best = Math.min(best, route.vInfDepKms + route.vInfArrKms);
+		}
+		expect(best).toBeLessThan(1);
 	});
 });
