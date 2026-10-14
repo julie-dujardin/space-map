@@ -58,8 +58,9 @@ export class FocusController {
 	readerFocusFilter: ((body: PositionedBody) => boolean) | null = null;
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
-	/** Initial lat/lon/zoom stashed until orientation loads and the camera can be
-	 *  re-placed in body-fixed coords. Cleared once applied or once moved. */
+	/** The opening view of the focused body, kept until its spin is on the mesh
+	 *  and the camera can be put at the right angle. Dropped once applied, once
+	 *  the camera moves, and once the focus goes to another body. */
 	private pendingInitialView: CameraView | null = null;
 	/** Members of the last {@link syncUpgradeTargets} pass. */
 	private upgradeTargetIds = new Set<string>();
@@ -297,6 +298,7 @@ export class FocusController {
 			if (prevNomBo) disposeNomenclatureLabels(prevNomBo);
 		}
 
+		if (body.data.id !== prev?.data.id) this.pendingInitialView = null;
 		this.focusedBody = body;
 		// Retire the synthetic feature body so getBody stops resolving a stale id.
 		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
@@ -367,6 +369,8 @@ export class FocusController {
 		const spherical = cartesianToSpherical(emitFrom, pos, this.focusedBodyQuat(body));
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 		if (zoom !== undefined && camPos) {
+			// The flight sets the camera: the opening view would undo it.
+			this.pendingInitialView = null;
 			// Re-framing needs the camera actually orbiting this body — `focusedBody` is
 			// set eagerly and can be stale, so gate on origin coincidence instead.
 			const orbitingThisBody =
@@ -463,12 +467,9 @@ export class FocusController {
 		// lon is stored 0..360 and would otherwise leak straight to the URL.
 		const settled = cartesianToSpherical(camOffset, [0, 0, 0], quat);
 		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
-		const isIdentity =
-			bodyFixed && quat![0] === 0 && quat![1] === 0 && quat![2] === 0 && quat![3] === 1;
-		if (isIdentity) {
-			// Overrides any queued URL at= — feature framing is more specific.
-			this.pendingInitialView = { latitude, longitude, zoom };
-		}
+		// A view queued before this one would put the camera back where it was.
+		// This one is queued while the mesh has no spin: its angle is wrong till then.
+		this.pendingInitialView = bodyFixed && isIdentity(quat!) ? { latitude, longitude, zoom } : null;
 	}
 
 	/** Re-place the camera at the URL's body-fixed lat/lon once orientation has
@@ -479,7 +480,7 @@ export class FocusController {
 		if (!pending) return;
 		const quat = this.focusedBodyQuat();
 		// Identity quat → no orientation data (e.g. asteroids); keep scene-frame placement.
-		if (!quat || (quat[0] === 0 && quat[1] === 0 && quat[2] === 0 && quat[3] === 1)) {
+		if (!quat || isIdentity(quat)) {
 			this.pendingInitialView = null;
 			return;
 		}
@@ -494,6 +495,11 @@ export class FocusController {
 		this.deps.controls.update();
 		this.pendingInitialView = null;
 	}
+}
+
+/** A mesh quaternion with no spin on it yet. */
+function isIdentity(q: readonly number[]): boolean {
+	return q[0] === 0 && q[1] === 0 && q[2] === 0 && q[3] === 1;
 }
 
 /** Bodies whose mesh should be upgraded while `focus` is focused: the focus

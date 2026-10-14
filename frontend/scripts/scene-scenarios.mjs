@@ -9,7 +9,8 @@
  * - a jump of the clock changes nothing in the scene until the data for the new
  *   date is in, and then the camera is on the body as before;
  * - a lander has its place before the page reads it, on a link and on a click;
- * - the ground under a lander holds still on screen while its body turns.
+ * - the ground under a lander holds still on screen while its body turns;
+ * - a link with no camera opens framed on its body.
  *
  * Needs a dev server (its build exposes `__smCtx`, `__smRenderer`, `__smMap`)
  * on an export that carries `coverage`, and a Chromium with remote debugging:
@@ -676,6 +677,28 @@ const SCENARIOS = {
 		check(f, contrast > 0.05, `the ground is flat on screen: contrast ${contrast}`);
 		check(f, change < 2e-4, `two frames differ by ${change} of the range of a pixel`);
 		return tab.eval(`${SNAPSHOT}('${CURIOSITY}')`);
+	},
+
+	/** The page frames Saturn after the scene has put the camera 1.5 AU out, the
+	 *  view of a link with no camera: that view must not come back. */
+	async 'link with no camera opens framed on its body'(tab, f) {
+		const linkCamera = `new URLSearchParams(location.search).get('at')?.split(',')[3]`;
+		await tab.goto('/b/699/Saturn');
+		await tab.until(
+			`${READY} && ${focusedIs('naif-699')} && !!${linkCamera} && window.__smCtx.bodies.orientationRead.has('naif-699')`,
+			'Saturn framed and its spin read'
+		);
+		// The old view came back with the data of the system, after the spin.
+		await sleep(1500);
+		const s = await tab.eval(`${SNAPSHOT}('naif-699')`);
+		const linkKm = (await tab.eval(`Number(${linkCamera})`)) * KM;
+		check(f, linkKm < 1e6, `the link has the camera ${linkKm} km out`);
+		check(
+			f,
+			Math.abs(s.cameraOffKm / linkKm - 1) < 0.01,
+			`camera ${s.cameraOffKm} km from Saturn, ${linkKm} km in the link`
+		);
+		return s;
 	},
 
 	async 'home view'(tab, f) {
