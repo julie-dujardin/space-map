@@ -6,6 +6,16 @@ import { NUM_TRAIL_POINTS, buildTrailPoints, writeTrailAlphas } from './points';
 import { buildFatLineFromThin, buildThinLineFromArrays, makeEmptyTrail } from './geometry';
 import type { SampleTransform } from './lagrange-frame';
 import { dateToJD } from '$lib/time/jd';
+import { renderPixelRatio } from '$lib/scene/render-tier';
+
+/** From this pixel ratio a width-1 trail takes the fat path. A GL line is one
+ *  device pixel wide. The low tier caps the ratio below this, so its weak
+ *  devices keep the thin line at a fifth of the memory. */
+const FAT_TRAIL_MIN_PIXEL_RATIO = 1.5;
+
+function drawsFat(lineWidth: number): boolean {
+	return lineWidth > 1 || renderPixelRatio() >= FAT_TRAIL_MIN_PIXEL_RATIO;
+}
 
 /**
  * Write a trail-buffer's contents into `posArr`, prefixed by a live-head
@@ -74,7 +84,7 @@ function makeBufferTrail(
 		);
 	}
 
-	const isFat = lineWidth > 1;
+	const isFat = drawsFat(lineWidth);
 	const obj = isFat
 		? buildFatLineFromThin(geomCap, posArr, trailAlphas, fullAlphas, total, color, lineWidth)
 		: buildThinLineFromArrays(posArr, trailAlphas, fullAlphas, total, color);
@@ -164,7 +174,7 @@ export function makeTrail(
 		posArr[k * 3 + 2] = validPoints[k][2] + bz;
 	}
 
-	const isFat = lineWidth > 1;
+	const isFat = drawsFat(lineWidth);
 	const obj = isFat
 		? buildFatLineFromThin(
 				bufferCapacity,
