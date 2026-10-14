@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import SeoHead from '$lib/seo/SeoHead.svelte';
+	import MapPageLoader from '../../../../components/MapPageLoader.svelte';
 
 	let { data } = $props();
 </script>
@@ -15,11 +16,7 @@
 	<SeoHead seo={data.seo} />
 {/if}
 
-<!-- The WebGL app is client-only. Dynamic-import it so its Three.js module graph
-     never loads during SSR — the server emits just the head + shell. -->
+<!-- The WebGL app is client-only. -->
 {#if browser}
-	{#await import('../../../../components/MapPage.svelte') then mod}
-		{@const MapPage = mod.default}
-		<MapPage />
-	{/await}
+	<MapPageLoader />
 {/if}

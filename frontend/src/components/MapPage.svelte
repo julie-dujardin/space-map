@@ -105,13 +105,11 @@
 	import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 	import { calibrationUi } from '$lib/scene/perf/calibration-state.svelte';
 	import LoadingBar from './LoadingBar.svelte';
-	import { startPageReload } from '$lib/reload';
+	import ReloadButton from './ReloadButton.svelte';
+	import { lazyImport } from '$lib/lazy-import';
 	import { sceneToKm } from '$lib/math/units';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { jdToDate } from '$lib/time/jd';
-
-	let reloading = $state(false);
-	const startReload = () => startPageReload(() => (reloading = true));
 
 	const searchEnabled = isSearchEnabled();
 
@@ -429,7 +427,9 @@
 	$effect(() => {
 		if (drawerRequested || DetailDrawer || (!focusable && !sidebarPending)) return;
 		drawerRequested = true;
-		void import('./detail/DetailDrawer.svelte').then((mod) => (DetailDrawer = mod.default));
+		void lazyImport(() => import('./detail/DetailDrawer.svelte')).then((mod) => {
+			if (mod) DetailDrawer = mod.default;
+		});
 	});
 
 	/** What the panel is about, while one is up or promised. A primitive:
@@ -478,15 +478,24 @@
 		!isNav && selectedBody?.data.id.startsWith('probe-') ? selectedBody.data.id : null
 	);
 
+	// Latched like the drawer, so that a re-run cannot start a second load.
+	let tripRequested = false;
+	let probeTimelineRequested = false;
 	$effect(() => {
-		if (isNav && !TravelDrawer) {
-			import('./detail/travel/TravelDrawer.svelte').then((mod) => (TravelDrawer = mod.default));
+		if (isNav && !tripRequested) {
+			tripRequested = true;
+			void lazyImport(() => import('./detail/travel/TravelDrawer.svelte')).then((mod) => {
+				if (mod) TravelDrawer = mod.default;
+			});
+			void lazyImport(() => import('./detail/travel/TripTimeline.svelte')).then((mod) => {
+				if (mod) TripTimeline = mod.default;
+			});
 		}
-		if (isNav && !TripTimeline) {
-			import('./detail/travel/TripTimeline.svelte').then((mod) => (TripTimeline = mod.default));
-		}
-		if (SHOW_PROBE_TIMELINE && focusedProbeId && !ProbeTimeline) {
-			import('./detail/probes/ProbeTimeline.svelte').then((mod) => (ProbeTimeline = mod.default));
+		if (SHOW_PROBE_TIMELINE && focusedProbeId && !probeTimelineRequested) {
+			probeTimelineRequested = true;
+			void lazyImport(() => import('./detail/probes/ProbeTimeline.svelte')).then((mod) => {
+				if (mod) ProbeTimeline = mod.default;
+			});
 		}
 	});
 
@@ -941,16 +950,7 @@
 		class="flex h-screen flex-col items-center justify-center gap-4 bg-bg px-6 text-center"
 	>
 		<p class="max-w-md text-sm text-text-error">{m.error_prefix({ error: ctx.error })}</p>
-		<button
-			class="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:opacity-50"
-			disabled={reloading}
-			onclick={startReload}
-		>
-			{m.reload()}
-		</button>
-		{#if reloading}
-			<LoadingBar label={m.reload()} />
-		{/if}
+		<ReloadButton />
 	</div>
 {:else}
 	<Tooltip.Provider delayDuration={300}>

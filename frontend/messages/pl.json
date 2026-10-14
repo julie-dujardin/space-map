@@ -1715,6 +1715,8 @@
 	"tooltip_group_stat_moid": "Mediana najmniejszej odległości między orbitą członka a orbitą Ziemi.",
 	"reload": "Odśwież",
 	"new_data_available": "Dostępne są nowe dane, odśwież, aby je zobaczyć.",
+	"page_part_load_failed": "Nie udało się wczytać części strony. Sprawdź połączenie i odśwież stronę.",
+	"map_load_failed": "Nie udało się wczytać mapy. Sprawdź połączenie i odśwież stronę.",
 	"seo_noun_asteroid": "Asteroida",
 	"seo_noun_main_belt_asteroid": "Asteroida pasa głównego",
 	"seo_noun_near_earth_asteroid": "Asteroida bliska Ziemi",

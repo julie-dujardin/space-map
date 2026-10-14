@@ -568,6 +568,8 @@
 	"error_page_body": "An unexpected error occurred. Try reloading the page.",
 	"reload": "Reload",
 	"new_data_available": "New data is available, reload to see it.",
+	"page_part_load_failed": "Couldn't load part of the page. Check your connection, then reload.",
+	"map_load_failed": "Couldn't load the map. Check your connection, then reload.",
 	"scene_canvas_label": "Interactive 3D map of the Solar System",
 	"travel_craft_loading": "Loading the catalogue…",
 	"travel_dv_unpublished": "No published engine",

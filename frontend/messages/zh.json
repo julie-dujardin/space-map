@@ -1603,6 +1603,8 @@
 	"time_scale_realtime": "1×",
 	"reload": "重新加载",
 	"new_data_available": "有新数据可用，请重新加载以查看。",
+	"page_part_load_failed": "无法加载页面的一部分。请检查网络连接后重新加载。",
+	"map_load_failed": "无法加载地图。请检查网络连接后重新加载。",
 	"seo_noun_asteroid": "小行星",
 	"seo_noun_main_belt_asteroid": "主带小行星",
 	"seo_noun_near_earth_asteroid": "近地小行星",

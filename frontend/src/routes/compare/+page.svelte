@@ -56,6 +56,7 @@
 	import { loadComparables, pickComparable, type SizedComparable } from '$lib/compare/comparables';
 	import { rocketBySlug } from '$lib/compare/rockets';
 	import { prefetchCraftModel } from '$lib/scene/objects/body/model';
+	import { lazyImport } from '$lib/lazy-import';
 
 	let { data } = $props();
 
@@ -663,10 +664,12 @@
 	/** The panel is the map's whole drawer, so it is fetched only once a reader
 	 *  opens one. */
 	let DetailDrawer = $state<typeof import('../../components/detail/DetailDrawer.svelte').default>();
+	let drawerRequested = false;
 	$effect(() => {
-		if (!opened || DetailDrawer) return;
-		void import('../../components/detail/DetailDrawer.svelte').then((mod) => {
-			DetailDrawer = mod.default;
+		if (!opened || drawerRequested) return;
+		drawerRequested = true;
+		void lazyImport(() => import('../../components/detail/DetailDrawer.svelte')).then((mod) => {
+			if (mod) DetailDrawer = mod.default;
 		});
 	});
 </script>

@@ -1725,6 +1725,8 @@
 	"time_scale_realtime": "‎1×‎",
 	"reload": "إعادة التحميل",
 	"new_data_available": "تتوفر بيانات جديدة، أعد التحميل لعرضها.",
+	"page_part_load_failed": "تعذّر تحميل جزء من الصفحة. تحقق من اتصالك ثم أعد التحميل.",
+	"map_load_failed": "تعذّر تحميل الخريطة. تحقق من اتصالك ثم أعد التحميل.",
 	"seo_noun_asteroid": "كويكب",
 	"seo_noun_main_belt_asteroid": "كويكب من الحزام الرئيسي",
 	"seo_noun_near_earth_asteroid": "كويكب قريب من الأرض",

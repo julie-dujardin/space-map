@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import SeoHead from '$lib/seo/SeoHead.svelte';
+	import MapPageLoader from '../../../../../../components/MapPageLoader.svelte';
 
 	let { data } = $props();
 </script>
@@ -9,10 +10,7 @@
 	<SeoHead seo={data.seo} />
 {/if}
 
-<!-- Client-only WebGL app; dynamic-imported so its module graph skips SSR. -->
+<!-- The WebGL app is client-only. -->
 {#if browser}
-	{#await import('../../../../../../components/MapPage.svelte') then mod}
-		{@const MapPage = mod.default}
-		<MapPage />
-	{/await}
+	<MapPageLoader />
 {/if}

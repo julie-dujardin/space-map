@@ -504,6 +504,8 @@
 	"error_page_body": "Une erreur inattendue s'est produite. Essayez de recharger la page.",
 	"reload": "Recharger",
 	"new_data_available": "De nouvelles données sont disponibles — rechargez pour les voir.",
+	"page_part_load_failed": "Impossible de charger une partie de la page. Vérifiez votre connexion, puis rechargez.",
+	"map_load_failed": "Impossible de charger la carte. Vérifiez votre connexion, puis rechargez.",
 	"scene_canvas_label": "Carte 3D interactive du Système solaire",
 	"webgl_unavailable_title": "Impossible d'afficher la carte 3D",
 	"webgl_unavailable_body": "Votre navigateur ou appareil ne prend pas en charge WebGL, nécessaire au rendu de la carte. Essayez un autre navigateur ou activez l'accélération matérielle.",

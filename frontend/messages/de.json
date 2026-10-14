@@ -1667,6 +1667,8 @@
 	"tooltip_group_stat_moid": "Median des kleinsten Abstands zwischen der Bahn eines Mitglieds und der Erdbahn.",
 	"reload": "Neu laden",
 	"new_data_available": "Neue Daten sind verfügbar, lade neu, um sie zu sehen.",
+	"page_part_load_failed": "Ein Teil der Seite konnte nicht geladen werden. Prüfen Sie Ihre Verbindung und laden Sie die Seite neu.",
+	"map_load_failed": "Die Karte konnte nicht geladen werden. Prüfen Sie Ihre Verbindung und laden Sie die Seite neu.",
 	"seo_noun_asteroid": "Asteroid",
 	"seo_noun_main_belt_asteroid": "Hauptgürtel-Asteroid",
 	"seo_noun_near_earth_asteroid": "Erdnaher Asteroid",

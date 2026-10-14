@@ -14,7 +14,7 @@
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import LoadingBar from './LoadingBar.svelte';
-	import { startPageReload } from '$lib/reload';
+	import ReloadButton from './ReloadButton.svelte';
 	import { dismissNotice, showNotice } from '$lib/state/notices';
 
 	const settings = getSettings();
@@ -74,8 +74,6 @@
 	const { ctx, clock } = map;
 
 	let container: HTMLDivElement;
-	let reloading = $state(false);
-	const startReload = () => startPageReload(() => (reloading = true));
 	const getRenderer = (): SceneRenderer | undefined => map.renderer ?? undefined;
 
 	let isNavigatingBack = false;
@@ -221,16 +219,7 @@
 		>
 			<h2 class="text-lg font-semibold">{m.webgl_context_lost_title()}</h2>
 			<p class="max-w-md text-sm text-muted-foreground">{m.webgl_context_lost_body()}</p>
-			<button
-				class="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:opacity-50"
-				disabled={reloading}
-				onclick={startReload}
-			>
-				{m.reload()}
-			</button>
-			{#if reloading}
-				<LoadingBar label={m.reload()} />
-			{/if}
+			<ReloadButton />
 		</div>
 	{/if}
 	{#if calibrationUi.progress !== null}

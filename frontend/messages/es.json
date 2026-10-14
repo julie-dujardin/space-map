@@ -1691,6 +1691,8 @@
 	"tooltip_group_stat_moid": "Mediana de la distancia mínima entre la órbita de un miembro y la de la Tierra.",
 	"reload": "Recargar",
 	"new_data_available": "Hay datos nuevos disponibles, recarga para verlos.",
+	"page_part_load_failed": "No se pudo cargar parte de la página. Compruebe su conexión y recargue.",
+	"map_load_failed": "No se pudo cargar el mapa. Compruebe su conexión y recargue.",
 	"seo_noun_asteroid": "Asteroide",
 	"seo_noun_main_belt_asteroid": "Asteroide del cinturón principal",
 	"seo_noun_near_earth_asteroid": "Asteroide cercano a la Tierra",
