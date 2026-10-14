@@ -25,6 +25,7 @@ import { setTrailResolution } from '$lib/scene/objects/trail/material';
 import { AMBIENT_INTENSITY, BLOOM_THRESHOLD } from '$lib/scene/lighting';
 import { installBloomHighPass } from './bloom-high-pass';
 import { installLogDepthChunks, setReversedDepth } from './depth-mode';
+import { installOutputDither } from './output-dither';
 
 /** Solar-system-view far plane (scene units, ~0.5 ly). Under reversed-Z, far
  *  only defines clipping — depth precision is relative to distance and doesn't
@@ -73,10 +74,10 @@ export interface ThreeBoot {
 }
 
 /**
- * Build the Three.js foundation: WebGL renderer, label renderer, scene + lights,
- * camera, and the composer with bloom + tonemap passes. Tonemapping moves to
- * the composer's OutputPass (the renderer's own stage doesn't run under composer
- * control). Only the Sun's HDR pixels cross the bloom threshold.
+ * Build the WebGL renderer, the label renderer, the scene with its lights, the
+ * camera and the composer. The composer's output pass does the tone map, the
+ * sRGB encode and the dither, because the renderer's own tone map does not run
+ * under the composer. Only the Sun's HDR pixels cross the bloom threshold.
  */
 export function bootThree(
 	canvas: HTMLCanvasElement,
@@ -170,6 +171,7 @@ export function bootThree(
 	installBloomHighPass(bloomPass);
 	composer.addPass(bloomPass);
 	const outputPass = new OutputPass();
+	installOutputDither(outputPass);
 	// With no swap after the last pass, three never builds the composer's second target.
 	outputPass.needsSwap = false;
 	composer.addPass(outputPass);

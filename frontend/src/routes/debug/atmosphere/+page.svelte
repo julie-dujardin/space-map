@@ -58,6 +58,7 @@
 	import { AU_KM } from '$lib/math/units';
 	import { AMBIENT_INTENSITY, BLOOM_THRESHOLD, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 	import { installBloomHighPass } from '$lib/scene/setup/bloom-high-pass';
+	import { installOutputDither } from '$lib/scene/setup/output-dither';
 	import { loadSkybox, SKYBOX_BASE_ROTATION } from '$lib/scene/objects/sky/skybox';
 	import {
 		DEEP_SKY_EXPOSURE,
@@ -821,7 +822,9 @@
 		);
 		installBloomHighPass(bloomPass);
 		composer.addPass(bloomPass);
-		composer.addPass(new OutputPass());
+		const outputPass = new OutputPass();
+		installOutputDither(outputPass);
+		composer.addPass(outputPass);
 
 		Promise.allSettled([fetchMetadata(), loadAtmospheres()]).then(() => {
 			if (!getAtmosphereParams(bodyId)) {
