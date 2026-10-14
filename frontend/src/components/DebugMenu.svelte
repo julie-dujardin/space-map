@@ -204,7 +204,7 @@
 			set: (v) => settings.setShowLightingTuner(v)
 		},
 		{
-			label: 'Realistic lighting',
+			label: 'Fixed exposure',
 			hint: '(inverse-square sunlight)',
 			get: () => settings.realisticLighting,
 			set: (v) => settings.setRealisticLighting(v)

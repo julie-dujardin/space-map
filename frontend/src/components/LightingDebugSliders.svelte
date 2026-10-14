@@ -26,7 +26,7 @@
 			set: (v) => settings.setHighAmbient(v)
 		},
 		{
-			label: 'Realistic light',
+			label: 'Fixed exposure',
 			get: () => settings.realisticLighting,
 			set: (v) => settings.setRealisticLighting(v)
 		}
