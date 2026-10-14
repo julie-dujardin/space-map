@@ -1,7 +1,7 @@
 import type { OrbitalElements } from '$lib/types/objects';
 import { AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
-import { dateToJD } from '$lib/time/jd';
+import { dateToJD, tdbToUtc, utcToTdb } from '$lib/time/jd';
 
 const DEG2RAD = Math.PI / 180;
 const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
@@ -52,15 +52,32 @@ export function orbitalToThreeJS(
 }
 
 /**
- * Copy of `el` with `om`/`w` advanced to `jd` via secular drift rates
- * (input returned as-is if rates are absent/zero). Mirrors what
- * `orbitalElementsToPositionJD` does internally, so curve generators can
- * render the *current* orbit plane — re-invoke as `jd` advances or it goes stale.
+ * The clock's (UTC) `jd` on the time scale that `el` is dated in. TLE elements
+ * (`equatorial`) are dated in UTC; the others come from ephemerides, in TDB.
+ */
+export function elementsJd(el: { equatorial?: boolean }, jd: number): number {
+	return el.equatorial ? jd : utcToTdb(jd);
+}
+
+/** A date `t` on the time scale of `el`, as a clock (UTC) JD; the inverse of {@link elementsJd}. */
+export function clockJd(el: { equatorial?: boolean }, t: number): number {
+	return el.equatorial ? t : tdbToUtc(t);
+}
+
+/**
+ * Copy of `el` with `om`/`w` advanced to the clock's `jd` by their secular
+ * drift rates, or `el` itself when it has none. Curve generators draw the
+ * current orbit plane with it, so call it again as `jd` moves.
  */
 export function propagateOrbitAngles(el: OrbitalElements, jd: number): OrbitalElements {
+	return anglesAt(el, elementsJd(el, jd));
+}
+
+/** {@link propagateOrbitAngles} at `t`, on the time scale of `el`. */
+function anglesAt(el: OrbitalElements, t: number): OrbitalElements {
 	const { omDot, wDot, om, w, epoch } = el;
 	if (!omDot && !wDot) return el;
-	const dt = jd - epoch;
+	const dt = t - epoch;
 	return {
 		...el,
 		om: omDot ? om + omDot * dt : om,
@@ -92,12 +109,13 @@ export function orbitalElementsToPositionJD(
 		return null;
 	}
 
-	const dt = jd - epoch; // days since epoch
+	const t = elementsJd(el, jd);
+	const dt = t - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
 	// Secular drift on the node and apsidal angles, shared with the orbit-curve
 	// generator. SPICE moons get om_dot/w_dot from the Method C mean-element
 	// fit; other sources leave them undefined and the helper is a no-op.
-	const { om: omPropagated, w: wPropagated } = propagateOrbitAngles(el, jd);
+	const { om: omPropagated, w: wPropagated } = anglesAt(el, t);
 
 	// Parabolic comets (e≈1, unbound) bypass this via parabolicToPositionJD's
 	// q/tp. Bound orbits with e rounded to 1 in float32 (e.g. SPICE Sun:
@@ -168,7 +186,7 @@ export function parabolicToPositionJD(
 		return null;
 	}
 
-	const result = solveBarker(q, tp, jd);
+	const result = solveBarker(q, tp, elementsJd(el, jd));
 	if (!result) return null;
 
 	const xOrb = result.r * Math.cos(result.nu);

@@ -17,6 +17,7 @@ import { allocColumns, type OrbitColumns } from '$lib/math/orbit/soa';
 import { resolveBodyColor } from '$lib/body-color';
 import { MIN_BODIES_PER_BUCKET, hashString } from '$lib/math/orbit/partition';
 import { yieldToMain } from '$lib/yield';
+import { tdbToUtc } from '$lib/time/jd';
 import { RefIndex } from '$lib/fetch/position/ref-index';
 
 /** One worker-bound subgroup: the SoA to solve (KIND_SKIP rows included —
@@ -243,6 +244,10 @@ export class MinorBucket {
 		}
 
 		// Pass 2: fill each subgroup, widening its validity window across rows.
+		// The window goes on the clock's scale: TLE rows are UTC already, the
+		// others TDB.
+		const clockStarts = this.chunks.map((chunk) => tdbToUtc(chunk.validityStart));
+		const clockEnds = this.chunks.map((chunk) => tdbToUtc(chunk.validityEnd));
 		const starts = new Array<number>(k).fill(Infinity);
 		const ends = new Array<number>(k).fill(-Infinity);
 		const writeIdx = new Array<number>(k).fill(0);
@@ -263,8 +268,11 @@ export class MinorBucket {
 			const key = rowKey(cols, i);
 			g.keys[outIdx] = key;
 			if (fillOrbitColumnRow(cols, i, g.cols, outIdx, key, skip)) {
-				if (cols.validityStart < starts[b]) starts[b] = cols.validityStart;
-				if (cols.validityEnd > ends[b]) ends[b] = cols.validityEnd;
+				const tle = g.cols.equatorial[outIdx] === 1;
+				const start = tle ? cols.validityStart : clockStarts[c];
+				const end = tle ? cols.validityEnd : clockEnds[c];
+				if (start < starts[b]) starts[b] = start;
+				if (end > ends[b]) ends[b] = end;
 			}
 			if (g.colors && tmp) {
 				const data = materializeBodyData(cols, i, this.labels, this.parentIdType);

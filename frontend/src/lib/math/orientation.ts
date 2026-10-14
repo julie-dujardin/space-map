@@ -1,11 +1,10 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import type { Object3D } from 'three';
 import { equatorialToScene } from '$lib/math/units';
+import { J2000_JD, utcToTdb } from '$lib/time/jd';
 
 const DEG2RAD = Math.PI / 180;
 
-/** J2000 epoch as Julian Date. */
-const J2000_JD = 2451545.0;
 /** Julian days per Julian century. */
 const DAYS_PER_CENTURY = 36525;
 
@@ -44,17 +43,17 @@ export interface NutPrec {
 }
 
 /**
- * Body-fixed quaternion (axial tilt + spin) at a Julian date, scene frame.
- * Local +Y is the body's north pole; local +X is the IAU ascending node Q,
- * rotated by W (prime meridian) along the equator per IAU convention — this
- * matches the USGS/Blue Marble equirectangular texture convention.
+ * Body-fixed quaternion (axial tilt + spin) in the scene frame, at an app (UTC)
+ * Julian date. Local +Y is the north pole. Local +X is the prime meridian: the
+ * IAU ascending node Q turned by W along the equator. This matches the
+ * USGS/Blue Marble equirectangular textures. The IAU model counts TDB days.
  */
 export function bodyQuaternion(
 	orientation: Orientation,
 	currentJd: number,
 	nutPrec?: NutPrec
 ): Quaternion {
-	const dt = currentJd - J2000_JD;
+	const dt = utcToTdb(currentJd) - J2000_JD;
 	const T = dt / DAYS_PER_CENTURY;
 
 	let raDeg = orientation.pole_ra_0 + orientation.pole_ra_1 * T;

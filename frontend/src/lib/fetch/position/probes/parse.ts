@@ -33,7 +33,7 @@ import {
 	buildObjectId,
 	type OrbitArchive
 } from '$lib/fetch/position/format';
-import { SECONDS_PER_DAY, jdToEt } from '$lib/time/jd';
+import { SECONDS_PER_DAY, tdbJdToEt } from '$lib/time/jd';
 
 /** Kepler-pure / Kepler-drift element block (units match the writer). */
 export interface KeplerPureElts {
@@ -319,7 +319,8 @@ export function parseProbesPayload(
 	const probeCount = view.getUint32(24, true);
 	const subchunkDays = view.getFloat32(28, true);
 	const subchunkS = subchunkDays * SECONDS_PER_DAY;
-	const chunkStartEt = jdToEt(startJd);
+	// The header's start is a TDB JD already.
+	const chunkStartEt = tdbJdToEt(startJd);
 
 	const probes: Probe[] = [];
 	let offset = HEADER_SIZE;

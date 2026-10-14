@@ -6,6 +6,7 @@ import type { ProbeZoneParams } from './position/probes/store';
 import { dataBase, setDataVersions } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 import { sha256 } from './sha256';
+import { utcToTdb } from '$lib/time/jd';
 
 /**
  * Bucket counts for hash-bucketed object detail bundles. `global` counts
@@ -102,7 +103,7 @@ export function isChebyshev(zoom: ZoomMetadata): zoom is ChebyshevZoom {
 	return zoom.shape === 'chunked';
 }
 
-/** Minimal shape needed to map a JD to a chunk index. */
+/** Minimal shape needed to map a JD to a chunk index. `start_jd` is TDB. */
 export interface ChunkRange {
 	chunks: number;
 	chunk_days: number;
@@ -110,11 +111,11 @@ export interface ChunkRange {
 }
 
 /**
- * Resolve a JD to a chunk index, clamped so boundary JDs map onto the last
- * chunk instead of overflowing.
+ * Resolve an app (UTC) JD to a chunk index, clamped so boundary JDs map onto
+ * the last chunk instead of overflowing.
  */
 export function chunkIndexForJd(zone: ChunkRange, jd: number): number {
-	const idx = Math.floor((jd - zone.start_jd) / zone.chunk_days);
+	const idx = Math.floor((utcToTdb(jd) - zone.start_jd) / zone.chunk_days);
 	return Math.max(0, Math.min(zone.chunks - 1, idx));
 }
 

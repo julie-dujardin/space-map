@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseChebyshevPayload } from './parse';
 import { chebyshevPositionKm } from './propagate';
+import { tdbToUtc } from '$lib/time/jd';
 import {
 	CHEBYSHEV_BODY_HEADER_SIZE,
 	CHEBYSHEV_FLAG_FLOAT64_COEFFS,
@@ -255,7 +256,8 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 	});
 
 	it('evaluates at τ=-1 (segment start) correctly', () => {
-		const p = chebyshevPositionKm(body, 0);
+		// Just inside the start: the UTC round trip can land a hair before it.
+		const p = chebyshevPositionKm(body, tdbToUtc(1e-9));
 		expect(p).not.toBeNull();
 		// τ=-1 on seg 0: x = 1-2+3 = 2, y=0, z=10
 		expect(p![0]).toBeCloseTo(2, 5);
@@ -264,7 +266,7 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 	});
 
 	it('evaluates at τ=0 (segment midpoint) correctly', () => {
-		const p = chebyshevPositionKm(body, 1);
+		const p = chebyshevPositionKm(body, tdbToUtc(1));
 		expect(p).not.toBeNull();
 		// τ=0 on seg 0: x = 1-3 = -2, y=0, z=10
 		expect(p![0]).toBeCloseTo(-2, 5);
@@ -275,7 +277,7 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 	it('picks the correct segment across the boundary', () => {
 		// JD=2 is the start of seg 1, so τ=-1 on seg 1:
 		// x = 5-0+0 = 5, y = 0-1+0 = -1, z = 0-0+1 = 1
-		const p = chebyshevPositionKm(body, 2);
+		const p = chebyshevPositionKm(body, tdbToUtc(2));
 		expect(p).not.toBeNull();
 		expect(p![0]).toBeCloseTo(5, 5);
 		expect(p![1]).toBeCloseTo(-1, 5);

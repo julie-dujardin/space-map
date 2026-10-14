@@ -7,9 +7,9 @@
 
 import { fetchMetadata, isDateSegmented, lastCoveredMs, zoneLayers } from '$lib/fetch/metadata';
 import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
-import { unixMsToJD } from '$lib/time/jd';
+import { tdbToUtc, unixMsToJD } from '$lib/time/jd';
 
-/** A span of dates, in JD. An open side is infinite. */
+/** A span of dates, in app (UTC) JD. An open side is infinite. */
 export type CoverageWindow = [start: number, end: number];
 
 /** An arrival stays this far inside a window (one minute): its last instant
@@ -29,13 +29,26 @@ async function earthZoneEndJd(): Promise<number> {
 	return zoom && isDateSegmented(zoom) ? unixMsToJD(lastCoveredMs(zoom)) : Infinity;
 }
 
-/** The spans the map can place `id` in, sorted. Empty: it has no place at any date. */
+/**
+ * The spans the map can place `id` in, sorted. Empty: it has no place at any date.
+ *
+ * A satellite placed from its TLE has windows in UTC, like the clock. For the
+ * others, an end is a bound of the position files, in TDB. A start can be one
+ * too, or the launch or discovery date, in UTC. A start stays as it is: read
+ * as UTC, a TDB start is 69 s inside the true one.
+ */
 export async function coverageOf(id: string): Promise<CoverageWindow[]> {
 	const detail = await fetchObjectDetail(id, false);
 	const windows = detail.global?.coverage?.windows ?? [];
-	const openEnd = id.startsWith('norad_satcat-') ? await earthZoneEndJd() : Infinity;
+	const tle = detail.global?.orbit?.scale === 'planet';
+	const openEnd = tle ? await earthZoneEndJd() : Infinity;
 	return windows
-		.map(([start, end]): CoverageWindow => [start ?? -Infinity, end ?? openEnd])
+		.map(
+			([start, end]): CoverageWindow => [
+				start ?? -Infinity,
+				end == null ? openEnd : tle ? end : tdbToUtc(end)
+			]
+		)
 		.filter(([start, end]) => end > start);
 }
 

@@ -32,7 +32,7 @@ import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
-import { dateToJD } from '$lib/time/jd';
+import { dateToJD, utcToTdb } from '$lib/time/jd';
 
 /** NAIF ids of the two heliocentric origins, as the binary carries them. */
 const SSB_NAIF_ID = 0;
@@ -68,7 +68,7 @@ function chebyshevOsculatingElements(
 		(state.velocity[1] - (from?.velocity[1] ?? 0)) * KM_DAY_TO_AU_DAY,
 		(state.velocity[2] - (from?.velocity[2] ?? 0)) * KM_DAY_TO_AU_DAY
 	];
-	return stateVectorToElements(r, v, muAuDay2, jd);
+	return stateVectorToElements(r, v, muAuDay2, utcToTdb(jd));
 }
 
 /**

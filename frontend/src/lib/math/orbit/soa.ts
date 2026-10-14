@@ -4,7 +4,8 @@ import type { PositionedBody } from '$lib/types/objects';
 import { sgp4, SatRecError, type SatRec } from 'satellite.js';
 import { buildSatrec } from './sgp4';
 import { yieldToMain } from '$lib/yield';
-import { J2000_JD } from '$lib/time/jd';
+import { J2000_JD, utcToTdb } from '$lib/time/jd';
+import { clockJd } from './position';
 
 const DEG2RAD = Math.PI / 180;
 const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
@@ -64,11 +65,10 @@ export interface OrbitColumns {
 	 *  filter doesn't erase them. */
 	applyFlagFilter: boolean;
 	/**
-	 * Group-level validity window (JD TDB). Written once at pack time from the
-	 * widest span across bodies — bodies in a pool group always come from one
-	 * zone export so in practice they share a single chunk window. `writePositions`
-	 * early-exits (returning 0) when the tick's jd falls outside this range,
-	 * avoiding a futile SGP4 loop that would spam propagation warnings.
+	 * Group-level validity window, in clock (UTC) JD. Written once at pack time
+	 * from the widest span across bodies. The bodies of a group come from one
+	 * zone, so they share one chunk window. `writePositions` returns 0 when the
+	 * tick's jd is outside it: an SGP4 sweep there would fail on every row.
 	 */
 	validityStart: number;
 	validityEnd: number;
@@ -187,8 +187,10 @@ export async function packBodiesSliced(
 		}
 		if (!packRowInto(cols, idx, bodies[idx], skip)) continue;
 		const d = bodies[idx].data;
-		if (d.validityStart < start) start = d.validityStart;
-		if (d.validityEnd > end) end = d.validityEnd;
+		const s = clockJd(d, d.validityStart);
+		const e = clockJd(d, d.validityEnd);
+		if (s < start) start = s;
+		if (e > end) end = e;
 	}
 	cols.validityStart = start === Infinity ? -Infinity : start;
 	cols.validityEnd = end === -Infinity ? Infinity : end;
@@ -322,6 +324,8 @@ export function writePositions(
 	// Hide bodies not yet existing at this jd (undiscovered/not launched).
 	// visibleFromDays is days from J2000; NaN never gates, so those rows always render.
 	const jdDays = jd - J2000_JD;
+	// For the Kepler and Barker rows: TLE rows are dated in UTC, like the clock; the others in TDB.
+	const tdb = utcToTdb(jd);
 	let writeIdx = 0;
 
 	for (let idx = 0; idx < count; idx++) {
@@ -400,14 +404,14 @@ export function writePositions(
 		const wi = w[idx];
 
 		if (k === KIND_PARABOLIC) {
-			const result = solveBarker(q[idx], tp[idx], jd);
+			const result = solveBarker(q[idx], tp[idx], equatorial[idx] ? jd : tdb);
 			if (!result) continue;
 			xOrb = result.r * Math.cos(result.nu);
 			yOrb = result.r * Math.sin(result.nu);
 		} else {
 			const ai = a[idx];
 			if (!isFinite(ai) || !isFinite(ei) || !isFinite(ma[idx]) || !isFinite(n[idx])) continue;
-			const dt = jd - epoch[idx];
+			const dt = (equatorial[idx] ? jd : tdb) - epoch[idx];
 			const M = (ma[idx] + n[idx] * dt) * DEG2RAD;
 
 			let nu: number, r: number;

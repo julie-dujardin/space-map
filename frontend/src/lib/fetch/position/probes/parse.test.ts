@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseProbesPayload } from './parse';
 import { isLandedAt, landedPositionAt, probePositionKm } from './propagate';
+import { tdbToUtc } from '$lib/time/jd';
 import {
 	FORMAT_PROBES,
 	HEADER_SIZE,
@@ -150,7 +151,7 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		const sub = probe.subChunks[0];
 		expect(sub.method).toBe(PROBE_METHOD_KEPLER_PURE);
 		// At the sub-chunk start ET (jd = 2451545.0 = J2000), M=0 so we're at (a,0,0).
-		const pos = probePositionKm(probe, 2451545.0, 3.986e5);
+		const pos = probePositionKm(probe, tdbToUtc(2451545.0), 3.986e5);
 		expect(pos).not.toBeNull();
 		expect(pos![0]).toBeCloseTo(aKm, 0);
 		expect(pos![1]).toBeCloseTo(0, 5);

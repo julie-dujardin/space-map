@@ -9,7 +9,7 @@ import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 import { AU_KM, kmToScene } from '$lib/math/units';
-import { jdToDate } from '$lib/time/jd';
+import { jdToDate, utcToTdb } from '$lib/time/jd';
 import { ObjectType } from '$lib/types/objects';
 
 const SUN_GM = 132712440041.94;
@@ -73,8 +73,9 @@ function chunk(midJd: number, separationKm: number): ChebyshevBody[] {
 
 const NEAR_KM = 384400;
 const FAR_KM = 400000;
-const FIRST = chunk(JD, NEAR_KM);
-const SECOND = chunk(LATER, FAR_KM);
+// Records are dated in TDB; JD and LATER are the clock's UTC.
+const FIRST = chunk(utcToTdb(JD), NEAR_KM);
+const SECOND = chunk(utcToTdb(LATER), FAR_KM);
 const withoutEarth = (records: ChebyshevBody[]) => records.filter((r) => r.naifId !== 399);
 
 /** The Moon as the loader builds it at `JD`, over a store that answers each
@@ -111,7 +112,7 @@ describe('ChunkLoader.processChebyshev, a moon', () => {
 
 	it('takes later elements from the records of the later date', () => {
 		const later = moonOver([...FIRST, ...SECOND]).rederiveElements!(LATER)!;
-		expect(later.epoch).toBe(LATER);
+		expect(later.epoch).toBe(utcToTdb(LATER));
 		expect(later.a * AU_KM).toBeCloseTo(FAR_KM, 0);
 		expect(orbitalElementsToPositionJD(later, LATER)![0]).toBeCloseTo(kmToScene(FAR_KM), 9);
 	});

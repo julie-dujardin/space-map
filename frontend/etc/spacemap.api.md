@@ -903,7 +903,6 @@ export interface OrbitalElements {
 	a: number;
 	// (undocumented)
 	e: number;
-	// (undocumented)
 	epoch: number;
 	equatorial?: boolean;
 	// (undocumented)
@@ -917,7 +916,6 @@ export interface OrbitalElements {
 	omDot?: number;
 	// (undocumented)
 	q?: number;
-	// (undocumented)
 	tp?: number;
 	// (undocumented)
 	w: number;

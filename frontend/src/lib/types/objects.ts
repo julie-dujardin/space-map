@@ -14,7 +14,9 @@ export interface OrbitalElements {
 	w: number; // argument of perihelion (degrees)
 	ma: number; // mean anomaly at epoch (degrees)
 	n: number; // mean motion (degrees/day)
-	epoch: number; // epoch (Julian Date)
+	/** Julian date of the elements: UTC for TLE elements (`equatorial`), as the
+	 *  TLE gives it; TDB for the others, as the ephemerides give it. */
+	epoch: number;
 	/**
 	 * Secular drift rates (deg/day) applied to om and w. Populated for SPICE
 	 * moons via the Method C mean-element fit so the propagated orbit tracks
@@ -25,7 +27,9 @@ export interface OrbitalElements {
 	wDot?: number;
 	// Parabolic orbits (e=1): a/ma/n are not available; use q and tp instead
 	q?: number; // perihelion distance (AU) — only for parabolic orbits
-	tp?: number; // time of perihelion passage (Julian Date) — only for parabolic orbits
+	/** Julian date of perihelion passage, on the time scale of `epoch`. Only for
+	 *  parabolic orbits. */
+	tp?: number;
 	/**
 	 * True when i/om/w are referenced to Earth's mean equator of J2000 instead of
 	 * the ecliptic. TLE-sourced Earth satellites (CelesTrak) are in TEME, treated

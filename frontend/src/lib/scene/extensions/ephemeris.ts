@@ -29,6 +29,7 @@ import { materializeBodyData } from '$lib/fetch/position/elements/row';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { getNutPrecAngles, loadSystemsGlobal, ownerIdFor } from '$lib/fetch/systems-global';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
+import { withinValidity } from '$lib/math/orbit/offset';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import type { Vec3 } from '$lib/scene/animation/math';
 import { dateToJD, J2000_JD } from '$lib/time/jd';
@@ -102,7 +103,7 @@ async function moonRow(id: string, { jd, metadata }: Reading): Promise<BodyData 
 
 function elementsOffset(data: BodyData, jd: number): Vec3 | null {
 	if (!discovered(data.visibleFromDays, jd)) return null;
-	if (jd < data.validityStart || jd > data.validityEnd) return null;
+	if (!withinValidity(data, jd)) return null;
 	if (data.satrec) return sgp4PositionScene(data.satrec, jd);
 	if (data.q != null) return parabolicToPositionJD(data, jd);
 	if (data.a === 0) return [0, 0, 0];

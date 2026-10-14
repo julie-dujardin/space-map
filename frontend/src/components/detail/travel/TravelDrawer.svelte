@@ -25,6 +25,7 @@
 	import type { TimelineEntry } from '$lib/travel/timeline';
 	import type { Hazard } from '$lib/travel/hazards';
 	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
+	import { withinValidity } from '$lib/math/orbit/offset';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import type { EphemerisSamples, TrajectoryFrame } from '$lib/math/travel';
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
@@ -165,7 +166,7 @@
 		const found = ctx?.getBody(id);
 		const rederive = found?.rederiveElements;
 		if (!found || !rederive) return null;
-		if (jd >= found.data.validityStart && jd <= found.data.validityEnd) return null;
+		if (withinValidity(found.data, jd)) return null;
 
 		const store = ctx?.probeStore;
 		if (store && id.startsWith('probe-')) {

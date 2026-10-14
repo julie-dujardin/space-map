@@ -1,5 +1,9 @@
 import { ObjectType, isMajorBody, type BodyData, type Unplaced } from '$lib/types/objects';
-import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
+import {
+	elementsJd,
+	orbitalElementsToPositionJD,
+	parabolicToPositionJD
+} from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { J2000_JD } from '$lib/time/jd';
 
@@ -8,6 +12,13 @@ type Vec3 = [number, number, number];
 /** True when the body exists at `jd`: the date is not before its launch or discovery. */
 export function existsAt(d: BodyData, jd: number): boolean {
 	return !(d.visibleFromDays !== undefined && jd - J2000_JD < d.visibleFromDays);
+}
+
+/** True when the clock's `jd` is inside the row's validity window, which is on
+ *  the time scale of the row's elements. */
+export function withinValidity(d: BodyData, jd: number): boolean {
+	const t = elementsJd(d, jd);
+	return t >= d.validityStart && t <= d.validityEnd;
 }
 
 /** True for a row that sits on its parent: a barycentre or a planet with no
@@ -28,7 +39,7 @@ function sitsOnParent(d: BodyData): boolean {
 export function elementsOffset(d: BodyData, jd: number): Vec3 | Unplaced {
 	if (d.pageOnly) return 'never';
 	if (!existsAt(d, jd)) return 'not-yet';
-	if (jd < d.validityStart || jd > d.validityEnd) return 'no-data';
+	if (!withinValidity(d, jd)) return 'no-data';
 	let offset: Vec3 | null;
 	const satrec = d.satrec;
 	if (satrec) offset = sgp4PositionScene(satrec, jd);

@@ -22,9 +22,11 @@ import { describe, expect, it } from 'vitest';
 import type { OrbitalElements } from '$lib/types/objects';
 import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 import { AU_KM, AU_SCALE } from '$lib/math/units';
+import { tdbToUtc } from '$lib/time/jd';
 import fixture from './spice-truth.fixtures.json';
 
 interface FixtureSample {
+	/** TDB, as SPICE gives it. */
 	jd: number;
 	expected_parent_relative_km: [number, number, number];
 }
@@ -86,7 +88,7 @@ const TOLERANCE_KM: Record<string, number> = {
 };
 
 function propagationErrorKm(el: OrbitalElements, sample: FixtureSample): number {
-	const scene = orbitalElementsToPositionJD(el, sample.jd);
+	const scene = orbitalElementsToPositionJD(el, tdbToUtc(sample.jd));
 	if (!scene) throw new Error(`propagation returned null for jd ${sample.jd}`);
 	return distanceKm(sceneToEclipticKm(scene), sample.expected_parent_relative_km);
 }

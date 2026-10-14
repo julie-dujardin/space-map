@@ -12,6 +12,7 @@ import type { ProbeAttitude } from '$lib/fetch/objects/object-data';
 import { equatorialToScene } from '$lib/math/units';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { parseAttitudeChunk, type AttitudeChunk } from './parse';
+import { utcToTdb } from '$lib/time/jd';
 
 const SECONDS_PER_DAY = 86400;
 
@@ -59,26 +60,32 @@ export class AttitudeTrack {
 		this.files = manifest.files;
 	}
 
-	/** True when `jd` is inside the track's keyframe coverage. */
+	/** True when app (UTC) `jd` is inside the track's keyframe coverage. */
 	covers(jd: number): boolean {
-		return jd >= this.startJd && jd <= this.endJd && this.files.length > 0;
+		return this.coversTdb(utcToTdb(jd));
+	}
+
+	/** Keyframes and file windows are TDB. */
+	private coversTdb(tdb: number): boolean {
+		return tdb >= this.startJd && tdb <= this.endJd && this.files.length > 0;
 	}
 
 	/**
-	 * Write the scene-frame body→world orientation at `jd` into `out`. Returns
-	 * false when `jd` is outside coverage or its chunk isn't resident yet (the
-	 * fetch is kicked off; caller falls back to pointing/nadir until it lands).
+	 * Write the scene-frame body→world orientation at app (UTC) `jd` into `out`.
+	 * False when `jd` is outside coverage or its chunk is not loaded yet. The
+	 * fetch then starts, and the caller uses pointing or nadir until it lands.
 	 */
 	orientationAt(jd: number, out: Quaternion): boolean {
-		if (!this.covers(jd)) return false;
-		const ci = this.fileIndexFor(jd);
+		const tdb = utcToTdb(jd);
+		if (!this.coversTdb(tdb)) return false;
+		const ci = this.fileIndexFor(tdb);
 		const chunk = this.ensure(ci);
 		if (!chunk) return false;
 		// Warm neighbours so scrubbing across a chunk edge doesn't stall.
 		this.ensure(ci - 1);
 		this.ensure(ci + 1);
 
-		this.sampleChunk(jd, ci, chunk);
+		this.sampleChunk(tdb, ci, chunk);
 
 		// Recompose this chunk's spin baseline (if any): q_full =
 		// spin(rate·(t−anchor_jd))·anchor·residual. A spinner that changes rate
@@ -86,7 +93,7 @@ export class AttitudeTrack {
 		const baseline = this.baselines?.[this.files[ci].baseline_index ?? 0];
 		if (baseline) {
 			const { axis, rate_rad_s, anchor, anchor_jd } = baseline;
-			const tSeconds = (jd - anchor_jd) * SECONDS_PER_DAY;
+			const tSeconds = (tdb - anchor_jd) * SECONDS_PER_DAY;
 			_baselineAxis.set(axis[0], axis[1], axis[2]);
 			_qBaseline.setFromAxisAngle(_baselineAxis, rate_rad_s * tSeconds);
 			_qb.set(anchor[1], anchor[2], anchor[3], anchor[0]);

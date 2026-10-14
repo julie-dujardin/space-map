@@ -18,7 +18,7 @@ import {
 } from '$lib/fetch/position/format';
 import type { KeplerDriftElts, KeplerPureElts, Probe } from '$lib/fetch/position/probes/parse';
 import { findSubChunkIndex, jdToEt, probeStateKm } from '$lib/fetch/position/probes/propagate';
-import { SECONDS_PER_DAY, etToJd } from '$lib/time/jd';
+import { SECONDS_PER_DAY, etToTdbJd, utcToTdb } from '$lib/time/jd';
 
 const RAD2DEG = 180 / Math.PI;
 
@@ -29,7 +29,7 @@ function keplerPureElements(
 ): OrbitalElements | null {
 	if (muKm3S2 <= 0) return null;
 	const nRadS = Math.sqrt(muKm3S2 / (sub.aKm * sub.aKm * sub.aKm));
-	const epoch = etToJd(subStartEt + sub.tAnchorOffsetS);
+	const epoch = etToTdbJd(subStartEt + sub.tAnchorOffsetS);
 	return {
 		a: sub.aKm / AU_KM,
 		e: sub.e,
@@ -44,7 +44,7 @@ function keplerPureElements(
 }
 
 function keplerDriftElements(sub: KeplerDriftElts, subStartEt: number): OrbitalElements {
-	const epoch = etToJd(subStartEt + sub.tAnchorOffsetS);
+	const epoch = etToTdbJd(subStartEt + sub.tAnchorOffsetS);
 	return {
 		a: sub.aKm / AU_KM,
 		e: sub.e,
@@ -75,7 +75,7 @@ function chebyshevElements(probe: Probe, jd: number, muKm3S2: number): OrbitalEl
 		state.velocity[1] * KM_DAY_TO_AU_DAY,
 		state.velocity[2] * KM_DAY_TO_AU_DAY
 	];
-	return stateVectorToElements(r, v, muAuDay2, jd);
+	return stateVectorToElements(r, v, muAuDay2, utcToTdb(jd));
 }
 
 export function probeOsculatingElements(

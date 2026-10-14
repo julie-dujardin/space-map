@@ -13,6 +13,8 @@ import { loadBodyLabel, unloadBodyTexture } from '$lib/scene/objects/body/textur
 import { unloadBodyModel } from '$lib/scene/objects/body/model';
 import { disposeNomenclatureLabels } from '$lib/scene/objects/surface/nomenclature';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
+import { clockJd } from '$lib/math/orbit/position';
+import { withinValidity } from '$lib/math/orbit/offset';
 
 /** Sparse-cloud emphasis: `half` (<50 members) renders halo-only, `full` (<20)
  *  full sphere + trail, `none` plain dots. Counts bodies observable at sim jd,
@@ -30,7 +32,7 @@ function computeGroupMode(count: number): GroupPromotionMode {
 }
 
 function isCurrentlyValid(body: PositionedBody, jd: number): boolean {
-	return body.data.validityStart <= jd && jd <= body.data.validityEnd;
+	return withinValidity(body.data, jd);
 }
 
 export interface PromotionDeps {
@@ -368,7 +370,9 @@ export class PromotionRegistry {
 		let n = 0;
 		for (const body of bucket.values()) {
 			if (this.groupTargets && !this.groupTargets.has(body.data.id)) continue;
-			const { validityStart, validityEnd } = body.data;
+			// The edges are times of the clock.
+			const validityStart = clockJd(body.data, body.data.validityStart);
+			const validityEnd = clockJd(body.data, body.data.validityEnd);
 			if (validityStart <= jd) {
 				if (validityStart > this.countStableLo) this.countStableLo = validityStart;
 			} else if (validityStart < this.countStableHi) {

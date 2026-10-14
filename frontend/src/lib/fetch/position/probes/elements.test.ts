@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { probeOsculatingElements } from './elements';
+import { utcToTdb } from '$lib/time/jd';
 import {
 	PROBE_METHOD_CHEBYSHEV,
 	PROBE_METHOD_KEPLER_DRIFT,
@@ -135,7 +136,7 @@ describe('probeOsculatingElements', () => {
 			expect(Number.isFinite(el!.a)).toBe(true);
 			expect(Number.isFinite(el!.e)).toBe(true);
 			expect(Number.isFinite(el!.n)).toBe(true);
-			expect(el!.epoch).toBeCloseTo(JD_J2000 + 0.5, 12);
+			expect(el!.epoch).toBeCloseTo(utcToTdb(JD_J2000 + 0.5), 12);
 			expect(el!.equatorial).toBe(false);
 		});
 

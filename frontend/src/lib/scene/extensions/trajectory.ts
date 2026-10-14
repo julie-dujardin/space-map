@@ -42,8 +42,9 @@ export interface ElementsOptions {
 	/** What the orbit is round; the Sun when left out. */
 	body?: string;
 	/** The export's own elements: `a` in astronomical units, angles in degrees,
-	 *  `n` in degrees a day, `epoch` a Julian date. Set `equatorial` when the
-	 *  angles are referenced to Earth's equator rather than the ecliptic. */
+	 *  `n` in degrees a day, `epoch` a Julian date in TDB. Set `equatorial` when
+	 *  the angles are referenced to Earth's equator rather than the ecliptic, as
+	 *  in a TLE: `epoch` is then in UTC, as the TLE gives it. */
 	elements: OrbitalElements;
 }
 

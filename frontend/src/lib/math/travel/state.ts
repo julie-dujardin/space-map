@@ -10,7 +10,7 @@
 
 import type { OrbitalElements } from '$lib/types/objects';
 import { AU_KM, AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
-import { propagateOrbitAngles } from '$lib/math/orbit/position';
+import { elementsJd, propagateOrbitAngles } from '$lib/math/orbit/position';
 import { solveBarker, solveKepler, solveKeplerHyperbolic } from '$lib/math/orbit/solvers';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import type { Vec3 } from './vec3';
@@ -105,6 +105,7 @@ export function elementsToState(
 	muKm3S2?: number
 ): StateVector | null {
 	const { a, e, ma, n, epoch, q, tp } = el;
+	const t = elementsJd(el, jd);
 	const { om, w } = propagateOrbitAngles(el, jd);
 	const equatorial = el.equatorial ?? false;
 
@@ -112,7 +113,7 @@ export function elementsToState(
 	// heliocentric comets — hence the Sun's μ as the fallback.
 	if (!isFinite(a) || a === 0 || !isFinite(n) || n <= 0) {
 		if (q == null || tp == null || !isFinite(q) || !isFinite(tp) || q <= 0) return null;
-		const solved = solveBarker(q, tp, jd);
+		const solved = solveBarker(q, tp, t);
 		if (!solved) return null;
 		const mu = muKm3S2 && muKm3S2 > 0 ? muKm3S2 : GM_SUN_KM3_S2;
 		const rKm = solved.r * AU_KM;
@@ -130,7 +131,7 @@ export function elementsToState(
 			: nRadPerSec * nRadPerSec * Math.abs(aKm) * Math.abs(aKm) * Math.abs(aKm);
 	if (!isFinite(mu) || mu <= 0) return null;
 
-	const M = (ma + n * (jd - epoch)) * DEG2RAD;
+	const M = (ma + n * (t - epoch)) * DEG2RAD;
 
 	let nu: number;
 	let rKm: number;

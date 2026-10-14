@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
-import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-import { canBePlaced, nearestCoveredJd, type CoverageWindow } from './coverage';
+import { describe, expect, it, vi } from 'vitest';
+import type { GlobalObjectData, ObjectDetailData } from '$lib/fetch/objects/object-data';
+import { tdbToUtc } from '$lib/time/jd';
+import { canBePlaced, coverageOf, nearestCoveredJd, type CoverageWindow } from './coverage';
+
+const detail = vi.hoisted(() => ({ global: null as unknown }));
+vi.mock('$lib/fetch/objects/object-data', () => ({
+	fetchObjectDetail: () => Promise.resolve(detail as ObjectDetailData)
+}));
+vi.mock('$lib/fetch/metadata', () => ({
+	fetchMetadata: () => Promise.resolve({ position: { zones: {} } }),
+	isDateSegmented: () => false,
+	lastCoveredMs: () => 0,
+	zoneLayers: () => []
+}));
 
 const MINUTE = 1 / 1440;
 
@@ -59,5 +71,24 @@ describe('canBePlaced', () => {
 		// Sputnik 1: launch and decay dates, and no window.
 		expect(canBePlaced(bundle())).toBe(false);
 		expect(canBePlaced(null)).toBe(false);
+	});
+});
+
+describe('coverageOf', () => {
+	/** A discovery date (UTC) and the end of the last position file (TDB). */
+	const GATE = 2460000.25;
+	const FILE_END = 2460100.5;
+
+	it('keeps a launch or discovery date and puts a file bound on the clock', async () => {
+		detail.global = { coverage: { windows: [[GATE, FILE_END]] }, orbit: { scale: 'system' } };
+		const windows = await coverageOf('spkid-1');
+		expect(windows).toEqual([[GATE, tdbToUtc(FILE_END)]]);
+		// An arrival from before the discovery lands after it.
+		expect(nearestCoveredJd(windows, GATE - 10)!).toBeGreaterThan(GATE);
+	});
+
+	it('leaves the windows of a satellite placed from its TLE in UTC', async () => {
+		detail.global = { coverage: { windows: [[GATE, FILE_END]] }, orbit: { scale: 'planet' } };
+		expect(await coverageOf('norad_satcat-25544')).toEqual([[GATE, FILE_END]]);
 	});
 });

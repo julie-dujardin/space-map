@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
-import { dateToJD } from '$lib/time/jd';
+import { dateToJD, utcToTdb } from '$lib/time/jd';
 import { distanceKm, offsetKm, subsolarPoint, sunlight } from './ephemeris';
 
 const AU_KM = 149597870.7;
@@ -12,7 +12,11 @@ function orbit(parent: string, a: number, ma: number, diameter?: number) {
 		type: 'asteroid',
 		sbdb: diameter ? { diameter } : undefined,
 		coverage: { windows: [[null, null]] },
-		orbit: { parent_id: parent, a, e: 0, i: 0, om: 0, w: 0, ma, n: 1, epoch_jd: dateToJD(DATE) }
+		orbit: {
+			...{ parent_id: parent, a, e: 0, i: 0, om: 0, w: 0, ma, n: 1 },
+			// Element epochs are TDB.
+			epoch_jd: utcToTdb(dateToJD(DATE))
+		}
 	};
 }
 

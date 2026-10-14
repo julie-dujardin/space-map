@@ -15,6 +15,7 @@ import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate'
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import { chunkIndexForJd } from '$lib/fetch/metadata';
 import { ChunkWindow } from '$lib/fetch/position/chunk-window';
+import { tdbToUtc } from '$lib/time/jd';
 
 /** Walk the chunk for jd in every loaded zone and yield each body alongside
  *  the chunk's validity window (used by callers that build PositionedBody).
@@ -74,17 +75,16 @@ export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneP
 	}
 
 	/**
-	 * Full JD extent of the zone hosting `objectId` — union of all its chunks.
-	 * Distinguishes "jd permanently outside exported coverage" (notice-worthy)
-	 * from "chunk still loading" (transient). Returns null if the body isn't
-	 * tracked or its zone hasn't been seen yet.
+	 * The UTC span that the zone hosting `objectId` covers, over all its chunks.
+	 * It tells a date outside the export (worth a notice) from a chunk that is
+	 * still loading. Null when the body isn't tracked or its zone is not seen yet.
 	 */
 	zoneCoverage(objectId: string): { start: number; end: number } | null {
 		const zone = this.idToZone.get(objectId);
 		if (zone === undefined) return null;
 		const params = this.zoneParams.get(zone);
 		if (!params) return null;
-		return { start: params.start_jd, end: params.end_jd };
+		return { start: tdbToUtc(params.start_jd), end: tdbToUtc(params.end_jd) };
 	}
 
 	/** True while the chunk that covers `jd` for `objectId` is still to come:
