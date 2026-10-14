@@ -42,11 +42,49 @@ def source_layers(entry: dict) -> list[dict]:
     ``brightness`` layers replace only its fine detail, and the files of its
     ``patches`` take the pyramid deeper over a small area."""
     return [
-        entry,
+        *month_layers(entry),
         *(entry.get("insets") or []),
         *(entry.get("brightness") or []),
         *patch_files(entry),
     ]
+
+
+_MONTH_NAMES = (
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+)
+
+
+def month_layers(entry: dict) -> list[dict]:
+    """The layer of each month of a ``cylindrical_monthly`` entry, its file or
+    ``grid`` named from ``{month}`` and its ``download_dir`` from
+    ``{month_name}``; any other entry as its one layer."""
+    if entry.get("type") != "cylindrical_monthly":
+        return [entry]
+    layers = []
+    for month in range(1, entry.get("months", 12) + 1):
+        names = {"month": month, "month_name": _MONTH_NAMES[month - 1]}
+        layer = dict(entry)
+        if "grid" in entry:
+            layer["grid"] = [
+                [name.format(**names) for name in row] for row in entry["grid"]
+            ]
+        else:
+            layer["file"] = entry["file"].format(**names)
+        if "download_dir" in entry:
+            layer["download_dir"] = entry["download_dir"].format(**names)
+        layers.append(layer)
+    return layers
 
 
 def patch_files(entry: dict) -> list[dict]:

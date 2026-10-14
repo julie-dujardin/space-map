@@ -213,37 +213,50 @@ class Mosaic:
     """Adjoining rasters of one size, read as a single array: rows north to
     south, each row west to east.
 
-    A cell given as a path is mapped when a read touches it and let go once
-    enough others were read since, so a mosaic of thousands of files only maps
-    the few under the window.
+    A cell given as a path is opened by ``open_cell`` when a read touches it
+    and let go once enough others were read since, so a mosaic of thousands
+    of files only maps the few under the window. Cells are grey unless
+    ``open_cell`` gives colour.
     """
 
-    def __init__(self, grid: Sequence[Sequence[np.ndarray | Path]]) -> None:
+    def __init__(
+        self,
+        grid: Sequence[Sequence[np.ndarray | Path]],
+        open_cell: Callable[[Path], np.ndarray | ChunkedTiff] | None = None,
+    ) -> None:
         self._grid = [list(row) for row in grid]
-        self._mapped: OrderedDict[tuple[int, int], np.ndarray] = OrderedDict()
+        self._open = open_cell or _open_grey
+        self._mapped: OrderedDict[tuple[int, int], np.ndarray | ChunkedTiff] = (
+            OrderedDict()
+        )
         self._lock = threading.Lock()
         first = self._grid[0][0]
         if isinstance(first, Path):
-            first = _open_grey(first)
-        self._tile_h, self._tile_w = first.shape
+            first = self._open(first)
+        self._tile_h, self._tile_w = first.shape[:2]
+        self._bands = tuple(first.shape[2:])
         for row in self._grid:
             for cell in row:
                 if isinstance(cell, np.ndarray):
                     self._check(cell)
-        self.shape = (self._tile_h * len(grid), self._tile_w * len(grid[0]))
+        self.shape = (
+            self._tile_h * len(grid),
+            self._tile_w * len(grid[0]),
+            *self._bands,
+        )
 
-    def _check(self, tile: np.ndarray) -> None:
-        if tile.shape != (self._tile_h, self._tile_w):
+    def _check(self, tile: np.ndarray | ChunkedTiff) -> None:
+        if tile.shape != (self._tile_h, self._tile_w, *self._bands):
             raise ValueError("mosaic tiles differ in size")
 
-    def _tile(self, row: int, col: int) -> np.ndarray:
+    def _tile(self, row: int, col: int) -> np.ndarray | ChunkedTiff:
         cell = self._grid[row][col]
         if isinstance(cell, np.ndarray):
             return cell
         with self._lock:
             tile = self._mapped.get((row, col))
             if tile is None:
-                tile = self._mapped[row, col] = _open_grey(cell)
+                tile = self._mapped[row, col] = self._open(cell)
                 self._check(tile)
                 if len(self._mapped) > _MOSAIC_OPEN:
                     # A read that still holds the oldest keeps it mapped.
@@ -713,6 +726,30 @@ def open_colour_layer(path: Path, placement: Placement) -> Layer:
                 if pixels is not None:
                     return Layer(pixels, placement, planar=planar, grey=grey)
     return Layer(np.asarray(_load_whole(path, 3)), placement)
+
+
+def _colour_cell(path: Path) -> np.ndarray | ChunkedTiff:
+    """One file of a colour grid, mapped in place or read by chunk. A grid is
+    gigabytes a file, and a dozen of them would not fit decoded whole."""
+    with tifffile.TiffFile(str(path)) as tif:
+        page = tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        chunky = page.axes == "YXS" and page.dtype == np.uint8
+        pixels = memmap_page(path, page) if chunky else None
+    if pixels is not None:
+        return pixels
+    chunked = ChunkedTiff(path)
+    if chunked.shape[2:] != (3,):
+        raise ValueError(f"{path.name}: one band in a grid of colour files")
+    return chunked
+
+
+def open_colour_grid(grid: Sequence[Sequence[Path]], placement: Placement) -> Layer:
+    """A colour source in adjoining files, rows north to south: one file, or
+    a grid of them."""
+    if len(grid) == 1 and len(grid[0]) == 1:
+        return open_colour_layer(grid[0][0], placement)
+    return Layer(Mosaic(grid, _colour_cell), placement)
 
 
 def soften(pixels: np.ndarray, sigma: float, around: bool = False) -> np.ndarray:

@@ -247,16 +247,27 @@ def _stored_as_grey(page: tifffile.TiffPage) -> bool:
     return bool(np.array_equal(table >> 8, np.broadcast_to(np.arange(256), (3, 256))))
 
 
+def _stored_as_rgb(page: tifffile.TiffPage) -> bool:
+    """Whether a page holds 8-bit colour, the three samples of a pixel side by
+    side."""
+    return (
+        page.photometric == tifffile.PHOTOMETRIC.RGB
+        and page.samplesperpixel == 3
+        and page.planarconfig == tifffile.PLANARCONFIG.CONTIG
+        and page.dtype == np.uint8
+    )
+
+
 class ChunkedTiff:
-    """A single-band TIFF stored as compressed tiles or strips, read by window
-    like an array.
+    """A TIFF stored as compressed tiles or strips, read by window like an
+    array: one band, or 8-bit colour as (H, W, 3).
 
     Such a file can be tens of gigapixels: it cannot be mapped in place like
     plain samples, nor decoded whole. A read decodes the chunks under it, and
     the last ones stay decoded for the reads beside it.
 
-    The samples are given as they are stored, so they must be a grey scale
-    that starts at black.
+    The samples are given as they are stored, so one band must be a grey
+    scale that starts at black.
     """
 
     def __init__(self, src: Path) -> None:
@@ -264,10 +275,14 @@ class ChunkedTiff:
         self._fd = os.open(src, os.O_RDONLY)
         page = self._tif.pages[0]
         assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
-        if page.dtype is None or not _stored_as_grey(page):
-            raise ValueError(f"{src.name}: samples are not a grey scale from black")
+        colour = _stored_as_rgb(page)
+        if page.dtype is None or not (colour or _stored_as_grey(page)):
+            raise ValueError(
+                f"{src.name}: samples are not a grey scale from black or 8-bit RGB"
+            )
         self._page = page
-        self.shape: tuple[int, ...] = (page.shape[0], page.shape[1])
+        self._bands: tuple[int, ...] = (3,) if colour else ()
+        self.shape: tuple[int, ...] = (page.shape[0], page.shape[1], *self._bands)
         self.dtype: np.dtype = page.dtype
         self._chunk_rows, self._chunk_columns = page.chunks[:2]
         self._across = page.chunked[1]
@@ -296,11 +311,13 @@ class ChunkedTiff:
                 0
             ]
             assert decoded is not None
-            chunk = decoded.reshape(decoded.shape[1], decoded.shape[2])
+            chunk = decoded.reshape(decoded.shape[1], decoded.shape[2], *self._bands)
         else:
             # A chunk the writer left out holds no data.
             chunk = np.full(
-                (self._chunk_rows, self._chunk_columns), self.blank, self.dtype
+                (self._chunk_rows, self._chunk_columns, *self._bands),
+                self.blank,
+                self.dtype,
             )
         with self._lock:
             # Two reads can decode one chunk at the same time: it counts once.
@@ -314,7 +331,9 @@ class ChunkedTiff:
     def __getitem__(self, key: tuple[slice, slice]) -> np.ndarray:
         y0, y1, _ = key[0].indices(self.shape[0])
         x0, x1, _ = key[1].indices(self.shape[1])
-        out = np.empty((max(y1 - y0, 0), max(x1 - x0, 0)), dtype=self.dtype)
+        out = np.empty(
+            (max(y1 - y0, 0), max(x1 - x0, 0), *self._bands), dtype=self.dtype
+        )
         rows, columns = self._chunk_rows, self._chunk_columns
         for cy in range(y0 // rows, -(-y1 // rows)):
             for cx in range(x0 // columns, -(-x1 // columns)):

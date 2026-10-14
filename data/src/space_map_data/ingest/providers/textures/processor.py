@@ -19,6 +19,7 @@ from space_map_data.constants.manifests.textures import (
     layer_files,
     layer_grid,
     load_entries,
+    month_layers,
     rank_by_body,
 )
 from space_map_data.export.sidecar_io import mirror_path
@@ -347,7 +348,7 @@ class TextureProcessor:
         Returns the output directory.
         """
         src = Path(src)
-        entries = [b for b in self._raw_meta if b["file"] == src.name]
+        entries = [b for b in self._raw_meta if b.get("file") == src.name]
         if not entries:
             log.warning("%s not found in the texture manifests", src.name)
             return config.PROCESSED_DIR
@@ -404,7 +405,7 @@ class TextureProcessor:
             elif dedicated:
                 log.warning(
                     "%s: %s already has a tile source, ignoring",
-                    entry["file"],
+                    entry.get("file", entry["body"]),
                     pyramid_id,
                 )
         for pyramid_id, entry in sources.items():
@@ -433,7 +434,7 @@ class TextureProcessor:
             # An entry written for a pyramid refines the bundle whose tiers
             # come from its file: a body with a second map can sharpen both.
             # With a file of its own it refines the body's best map.
-            bundle = self._bundles.get(entry["file"])
+            bundle = self._bundles.get(entry.get("file", ""))
             if bundle is None and entry.get("tiles") == TILES_ONLY:
                 return entry["body"]
             return bundle
@@ -447,8 +448,8 @@ class TextureProcessor:
         frames: dict[str, list[dict]]
         if entry["type"] == "cylindrical_monthly":
             frames = {
-                f"{month:02d}": [{**entry, "file": name}]
-                for month, name in enumerate(expand_entry_files(entry), 1)
+                f"{month:02d}": [layer]
+                for month, layer in enumerate(month_layers(entry), 1)
             }
         else:
             frames = {"": [entry, *(entry.get("insets") or [])]}
@@ -475,6 +476,18 @@ class TextureProcessor:
             key: entry.get(key)
             for key in ("height_unit", "height_scale", "height_offset", "height_nodata")
         }
+
+        def signed_files(spec: dict) -> dict:
+            if "grid" not in spec:
+                path = source_dir / spec["file"]
+                return {"file": spec["file"], "size": path.stat().st_size}
+            return {
+                "files": [
+                    [name, (source_dir / name).stat().st_size]
+                    for name, _ in layer_files(spec)
+                ]
+            }
+
         signature: dict = {
             "recipe": tiles.RECIPE,
             "tile_size": config.TILE_SIZE,
@@ -483,8 +496,7 @@ class TextureProcessor:
             "nodata_fill_km": entry.get("nodata_fill_km"),
             "layers": [
                 {
-                    "file": spec["file"],
-                    "size": (source_dir / spec["file"]).stat().st_size,
+                    **signed_files(spec),
                     "lat_range": spec.get("lat_range"),
                     **{k: spec.get(k, v) for k, v in height_fields.items()},
                 }
@@ -521,7 +533,7 @@ class TextureProcessor:
             "license": entry.get("license"),
             "distribution": entry.get("distribution"),
             "attribution": entry.get("attribution")
-            or scraped_attribution(base_specs[0]["file"]),
+            or scraped_attribution(layer_files(base_specs[0])[0][0]),
             "description": entry.get("description"),
             "type": entry["type"],
         }
@@ -578,7 +590,8 @@ class TextureProcessor:
             layers = []
             quanta = []
             for spec in specs:
-                path = source_dir / spec["file"]
+                grid = [[source_dir / name for name in row] for row in layer_grid(spec)]
+                path = grid[0][0]
                 lat_bottom, lat_top = spec.get("lat_range") or (-90.0, 90.0)
                 placement = tiles.Placement(
                     lat_top=lat_top, lat_bottom=lat_bottom, **alignment
@@ -603,7 +616,7 @@ class TextureProcessor:
                     mask = np.asarray(open_specular_source(path))
                     layers.append(tiles.Layer(mask, placement))
                 else:
-                    layer = tiles.open_colour_layer(path, placement)
+                    layer = tiles.open_colour_grid(grid, placement)
                     if brightness_specs and entry.get("soften_colour"):
                         layer = tiles.softened(layer, sharpen_sigma)
                     layers.append(layer)
@@ -616,7 +629,13 @@ class TextureProcessor:
                 cap_stats = tiles.PyramidStats.empty(max_level)
                 described[:0] = [
                     {
-                        "file": spec["file"],
+                        **(
+                            {"file": spec["file"]}
+                            if "file" in spec
+                            else _described_files(
+                                [name for name, _ in layer_files(spec)]
+                            )
+                        ),
                         "source": spec["source"],
                         "dimensions": layer.dimensions,
                         "full_width": layer.width,

@@ -454,6 +454,39 @@ class TestMosaic:
         with pytest.raises(ValueError):
             tiles.Mosaic([[np.zeros((4, 6)), np.zeros((4, 5))]])
 
+    def test_grid_of_compressed_colour_files_reads_as_one(self, tmp_path):
+        whole = np.random.default_rng(5).integers(
+            0, 256, (2 * TILE, 4 * TILE, 3), np.uint8
+        )
+        grid = []
+        for row in range(2):
+            grid.append([])
+            for col in range(2):
+                path = tmp_path / f"{row}{col}.tif"
+                tifffile.imwrite(
+                    path,
+                    whole[
+                        row * TILE : (row + 1) * TILE,
+                        col * 2 * TILE : (col + 1) * 2 * TILE,
+                    ],
+                    photometric="rgb",
+                    rowsperstrip=1,
+                    compression="deflate",
+                )
+                grid[-1].append(path)
+        layer = tiles.open_colour_grid(grid, tiles.Placement())
+        assert layer.dimensions == [4 * TILE, 2 * TILE]
+        assert np.array_equal(layer.rows(0, 2 * TILE), whole)
+
+    def test_grey_file_in_a_colour_grid_is_refused(self, tmp_path):
+        tifffile.imwrite(
+            tmp_path / "grey.tif", np.zeros((4, 6), np.uint8), compression="deflate"
+        )
+        with pytest.raises(ValueError, match="one band"):
+            tiles.open_colour_grid(
+                [[tmp_path / "grey.tif", tmp_path / "grey.tif"]], tiles.Placement()
+            )
+
 
 class TestBrightness:
     """A sharper greyscale map adds detail to a colour base without moving
@@ -1375,6 +1408,42 @@ class TestProcessTiles:
         root = tmp_path / "tiles" / "naif-399"
         assert _stitch(root / "01", 1)[0, 0, 0] > 200
         assert _stitch(root / "02", 1)[0, 0, 0] < 60
+
+    def test_monthly_map_in_a_grid_of_files_a_month(self, tmp_path, monkeypatch):
+        folder = tmp_path / "raw" / "bm"
+        folder.mkdir(parents=True)
+        for month, red in ((1, 250), (2, 10)):
+            for half, green in (("A", 30), ("B", 220)):
+                tifffile.imwrite(
+                    folder / f"earth_{month:02d}_{half}.tif",
+                    np.full((2 * TILE, 2 * TILE, 3), (red, green, 40), np.uint8),
+                    photometric="rgb",
+                    rowsperstrip=1,
+                    compression="deflate",
+                )
+        entry = {
+            "body": "naif-399",
+            "source": "https://example.com/earth",
+            "organisation": "NASA",
+            "type": "cylindrical_monthly",
+            "months": 2,
+            "tiles": "only",
+            "dir": "bm",
+            "grid": [["earth_{month:02d}_A.tif", "earth_{month:02d}_B.tif"]],
+        }
+        proc = self._processor(monkeypatch, tmp_path, [entry])
+        proc.process_tiles()
+
+        meta = json.loads(
+            (tmp_path / "meta" / "naif-399" / "metadata.json").read_text()
+        )
+        assert meta["frames"] == 2
+        assert meta["layers"][0]["files"] == ["bm/earth_01_A.tif", "bm/earth_01_B.tif"]
+        root = tmp_path / "tiles" / "naif-399"
+        january, february = _stitch(root / "01", 1), _stitch(root / "02", 1)
+        assert january[0, 0, 0] > 200 and february[0, 0, 0] < 60
+        # West half from file A, east half from file B.
+        assert january[0, 0, 1] < 60 and january[0, -1, 1] > 180
 
     @pytest.mark.parametrize(
         ("type_", "pyramid_id"),

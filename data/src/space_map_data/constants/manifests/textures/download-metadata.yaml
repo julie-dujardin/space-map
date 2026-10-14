@@ -115,14 +115,28 @@ bodies:
   file: "world.2004{month:02d}.3x21600x10800_geo.tif"
   type: cylindrical_monthly
   months: 12
+# The same maps at 500 m for the tile pyramid, in eight files a month.
 - body: naif-399
   body_name: earth
-  source: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/
+  source: https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/
   organisation: NASA
   license: Public domain
-  file: world.200406.3x21600x21600.B1_geo.tif
-  type: cylindrical_tile
-  skip: true
+  attribution: "NASA Earth Observatory — Blue Marble: Next Generation monthly composites (2004)."
+  description: See https://science.nasa.gov/earth/earth-observatory/collections/blue-marble/
+  type: cylindrical_monthly
+  months: 12
+  tiles: only
+  dir: bmng-500m
+  grid:
+  - - "world.2004{month:02d}.3x21600x21600.A1_geo.tif"
+    - "world.2004{month:02d}.3x21600x21600.B1_geo.tif"
+    - "world.2004{month:02d}.3x21600x21600.C1_geo.tif"
+    - "world.2004{month:02d}.3x21600x21600.D1_geo.tif"
+  - - "world.2004{month:02d}.3x21600x21600.A2_geo.tif"
+    - "world.2004{month:02d}.3x21600x21600.B2_geo.tif"
+    - "world.2004{month:02d}.3x21600x21600.C2_geo.tif"
+    - "world.2004{month:02d}.3x21600x21600.D2_geo.tif"
+  download_dir: "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/{month_name}"
 - body: naif-301
   body_name: moon
   source: https://svs.gsfc.nasa.gov/4720/#media_group_379232

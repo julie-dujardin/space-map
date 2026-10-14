@@ -16,6 +16,7 @@ from space_map_data.ingest.providers.textures import (
     expand_entry_files,
     save_webp,
 )
+from space_map_data.constants.manifests.textures import layer_files, source_layers
 from space_map_data.ingest.providers.textures import config
 from space_map_data.ingest.providers.textures.image_io import repair_thin_gaps
 from space_map_data.ingest.providers.textures.metadata import refresh_metadata_from_yaml
@@ -223,6 +224,33 @@ class TestExpandEntryFiles:
         assert result[0] == "world.200401.tif"
         assert result[5] == "world.200406.tif"
         assert result[11] == "world.200412.tif"
+
+    def test_monthly_grid_expands_every_file_of_every_month(self):
+        entry = {
+            "type": "cylindrical_monthly",
+            "months": 2,
+            "dir": "bm",
+            "grid": [["w.{month:02d}.A.tif", "w.{month:02d}.B.tif"]],
+        }
+        assert expand_entry_files(entry) == [
+            "bm/w.01.A.tif",
+            "bm/w.01.B.tif",
+            "bm/w.02.A.tif",
+            "bm/w.02.B.tif",
+        ]
+
+    def test_monthly_grid_links_name_the_month(self):
+        entry = {
+            "type": "cylindrical_monthly",
+            "months": 2,
+            "grid": [["w.{month:02d}.A.tif"]],
+            "download_dir": "https://example.com/{month_name}",
+        }
+        links = [url for layer in source_layers(entry) for _, url in layer_files(layer)]
+        assert links == [
+            "https://example.com/january/w.01.A.tif",
+            "https://example.com/february/w.02.A.tif",
+        ]
 
     def test_monthly_default_months_is_twelve(self):
         """`months` defaults to 12 when omitted — matches the Blue Marble cycle."""

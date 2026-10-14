@@ -295,6 +295,21 @@ class TestChunkedTiff:
         ):
             assert (chunked[window] == pixels[window]).all()
 
+    def test_colour_window_holds_the_pixels_of_the_file(self, tmp_path):
+        """As NASA stores Blue Marble at 500 m: one row a strip, the three
+        samples of a pixel side by side."""
+        pixels = np.random.default_rng(3).integers(0, 256, (120, 90, 3), np.uint8)
+        tifffile.imwrite(
+            tmp_path / "world.tif",
+            pixels,
+            photometric="rgb",
+            rowsperstrip=1,
+            compression="deflate",
+        )
+        chunked = ChunkedTiff(tmp_path / "world.tif")
+        assert chunked.shape == (120, 90, 3)
+        assert (chunked[40:73, 10:61] == pixels[40:73, 10:61]).all()
+
     def test_chunks_stay_decoded_up_to_a_limit(self, tmp_path, monkeypatch):
         monkeypatch.setattr(image_io, "_CHUNK_CACHE_BYTES", 3 * 64 * 64)
         pixels = _texture(256)

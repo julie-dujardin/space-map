@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
+from space_map_data.constants.manifests.textures import layer_files, month_layers
 from space_map_data.export.sidecar_io import mirror_path
 
 from . import config
@@ -31,7 +32,7 @@ def scraped_attribution(src_file_name: str) -> str | None:
         return None
     try:
         data = json.loads(parsed.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         log.warning("Failed to read scraped source metadata at %s", parsed)
         return None
     guess = data.get("attribution_guess")
@@ -51,7 +52,7 @@ def refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) -
         return
     try:
         current = json.loads(meta_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         log.warning("Failed to read existing metadata at %s", meta_path)
         return
 
@@ -87,12 +88,9 @@ def expand_entry_files(entry: dict) -> list[str]:
 
     Single-frame entries return ``[entry["file"]]``. ``cylindrical_monthly``
     entries python-format ``{month:02d}`` (and the unpadded ``{month}``) for
-    ``range(1, months+1)``.
+    ``range(1, months+1)``, in each file of a ``grid`` if they have one.
     """
-    if entry.get("type") == "cylindrical_monthly":
-        months = entry.get("months", 12)
-        return [entry["file"].format(month=m) for m in range(1, months + 1)]
-    return [entry["file"]]
+    return [name for layer in month_layers(entry) for name, _ in layer_files(layer)]
 
 
 def stale_metadata_reason(existing: dict, entry: dict) -> str | None:
@@ -155,7 +153,7 @@ def any_export_over_cap(out_dir: Path) -> bool:
         return False
     try:
         meta = json.loads(meta_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return False
 
     class _MaybeSized(TypedDict, total=False):
