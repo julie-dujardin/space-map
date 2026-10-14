@@ -58,18 +58,22 @@ Two patches of one pyramid have no tile in common. At the first level of a patch
 
 A renderer draws the levels of a patch when a window of that level reaches the tiles of the patch, also from a point beside the patch. These levels have no tiles around the patch, so a renderer keeps some windows on the levels of the pyramid for the ground there.
 
-The polar caps and the height pyramids have no patches.
+A height pyramid can have patches too. Such a patch holds a terrain model of the site, and the builder makes it in the same way, with sums in place of ratios. The heights at large scales are those of the pyramid. The terrain model gives the relief below the set scale. A terrain model and the map of its body are tied to the body by different measurements, and one can be some metres above the other. The builder thus measures the difference between them at the set scale and removes it. Two terrain models of one patch can also be some decimetres apart where they meet. A later model thus replaces an earlier one gradually, across 16 pixels of the finest level from each edge of its data. A height patch of a site usually has the `id` of the colour patch of that site, but the two are not related: each has its own tile ranges and its own `max_level`.
+
+The polar caps have no patches.
 
 ## Tile content
 
 - **Colour** (`cylindrical`, `cylindrical_monthly`, `cylindrical_night_lights`, `cylindrical_specular`): lossy WebP, quality 80, RGB.
-- **Height** (`cylindrical_displacement`): lossless WebP that holds a 16-bit value. Red is the high byte and green is the low byte. Blue is 0.
+- **Height** (`cylindrical_displacement`): lossless WebP that holds a 16-bit value. Red is the high byte and green is the low byte. Blue counts 256ths of one step of that value.
 
   ```
-  km = bias_km + scale_km · (256·R + G) / 65535
+  km = bias_km + scale_km · (256·R + G + B/256) / 65535
   ```
 
-  `bias_km` and `scale_km` apply to all tiles of the pyramid, so adjacent tiles and adjacent levels agree. They are not the values of the tier bundle, which has 8 bits. The step is the smallest height difference that the source can state (1 m for the Mars DEM, 0.5 m for the lunar DEMs), unless the height range needs a larger one to fit in 16 bits. A decoder must read the bytes unchanged: no colour-space conversion and no premultiplied alpha.
+  `bias_km` and `scale_km` apply to all tiles of the pyramid and of its patches, so adjacent tiles and adjacent levels agree. They are not the values of the tier bundle, which has 8 bits. The step is the smallest height difference that the source can state (1 m for the Mars DEM, 0.5 m for the lunar DEMs), unless the height range needs a larger one to fit in 16 bits. A decoder must read the bytes unchanged: no colour-space conversion and no premultiplied alpha.
+
+  In the tiles of the pyramid, blue is 0. Only the tiles of a patch use it. A pixel of a patch can be 100 times smaller than a pixel of the pyramid, and a full step between two such pixels would show as a staircase. A tile that is `n` levels below `max_level` of the pyramid states its heights to `1/2^n` of a step, and to 1/256 from 8 levels down. The step thus has the same ratio to the pixel at each level. A decoder that ignores blue gets the height rounded down to a full step.
 
 ## Sources of a pyramid
 
@@ -188,7 +192,9 @@ No field is necessary to get a pyramid. These fields change how it is built:
   - `quads` — a regular grid of square files, each named by its south-west corner: `step_deg`, a `file` name pattern, and optionally an `archive` URL pattern for a zip that holds the file. `{lon}` and `{lat}` are the corner in whole degrees, padded with zeros, with a minus sign for west and south.
 
   `dir` is a directory below the source directory of the entry that holds the files. `gamma` is the display curve of integer samples that are stretched for viewing, such as 2.2; the builder removes it. `lon_at_left_deg` and `west_positive` state the alignment of the layer, as on an entry.
-- `patches` — list of patches (colour maps only). Each has an `id`, a display `name`, credit fields, and `files`: a list of greyscale rasters in the equirectangular projection (GeoTIFF, compressed or not, or PDS3 image with an attached label), each with `file` and optionally `dir`, `download_url` and `gamma`. A later file goes over an earlier one, so mosaics that overlap belong in one patch, and so do mosaics that touch the same tile at the level after the finest level of the pyramid. `sharpen_sigma` is the scale below which the files give all the detail, in pixels of the finest level of the pyramid (default 16). `tiles_max_level` limits the finest level of the patch. A change to a patch does not rebuild the pyramid, and the tiles of the patch stay until the new ones are complete.
+- `patches` — list of patches (colour maps and height maps). Each has an `id`, a display `name`, credit fields, and `files`: a list of greyscale rasters in the equirectangular projection (GeoTIFF, compressed or not, or PDS3 image with an attached label), each with `file` and optionally `dir`, `download_url` and `gamma`. A later file goes over an earlier one, so mosaics that overlap belong in one patch, and so do mosaics that touch the same tile at the level after the finest level of the pyramid. `sharpen_sigma` is the scale below which the files give all the detail, in pixels of the finest level of the pyramid (default 16). `tiles_max_level` limits the finest level of the patch. A change to a patch does not rebuild the pyramid, and the tiles of the patch stay until the new ones are complete.
 
   A GeoTIFF must count metres from the equator and the central meridian, with its tiepoint at the first pixel, and its samples must be a grey scale with black at zero. A PDS3 image must count longitude east. In integer samples, zero means no data. In float samples, only the null value of the file means no data: a value at or below zero is ground in shadow. The builder refuses a file that does not obey these rules, and builds the other patches.
+
+  The files of a patch of a height map are terrain models, in the same projection and file formats. Each can have `height_unit`, `height_scale`, `height_offset` and `height_nodata`, with the same meaning as on the entry. The default is the value of the entry, then the value that the file states, and metres for the unit. A file with integer samples must have a value for no data. `gamma` does not apply.
 - `download_url` — direct link to a file, on an entry, an inset, a brightness layer or a file of a patch. A `grid` uses `download_dir`, the URL of the directory that holds its files, and `quads` use `archive`. `space-map-download --sources texture_files` fetches the linked files, four at a time, and can resume a partial download.

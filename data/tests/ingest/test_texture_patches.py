@@ -17,7 +17,10 @@ from space_map_data.ingest.providers.textures import (
     patches,
     tiles,
 )
-from space_map_data.ingest.providers.textures.image_io import ChunkedTiff
+from space_map_data.ingest.providers.textures.image_io import (
+    ChunkedTiff,
+    HeightRaster,
+)
 
 from .test_texture_tiles import _write_pds_image
 
@@ -55,6 +58,44 @@ def _raster(pixels: np.ndarray, bounds=BOUNDS) -> tiles.Layer:
     return tiles.Layer(
         tiles.Region(pixels, *bounds), tiles.Placement(), to_values=tiles._brightness
     )
+
+
+# A height pyramid in steps of a metre from 2 km below the datum, and the
+# height of its flat ground.
+CODING = tiles.HeightCoding(-2.0, 1e-3, -2.0)
+GROUND_KM = 1.5
+
+
+def _height_pyramid(root: Path, metres: np.ndarray | None = None) -> Path:
+    """A height map tiled to ``BASE``: flat ground, or ``metres``."""
+    if metres is None:
+        metres = np.full((TILE << BASE, (2 * TILE) << BASE), GROUND_KM * 1000)
+    raster = HeightRaster(
+        metres.astype(np.int16), scale=1.0, offset=0.0, unit_km=1e-3, nodata=None
+    )
+    out = root / "naif-499_displacement"
+    layer = tiles.height_layer(raster, tiles.Placement())
+    tiles.PyramidBuilder("heights", [layer], out, BASE, CODING).build()
+    return out
+
+
+def _relief(side: int = 256) -> np.ndarray:
+    """Rough ground in km, 80 m above that of the height pyramid."""
+    rng = np.random.default_rng(seed=5)
+    return (GROUND_KM + 0.08 + rng.normal(0.0, 0.02, size=(side, side))).astype("f4")
+
+
+def _height_raster(km: np.ndarray, bounds=BOUNDS) -> tiles.Layer:
+    raster = HeightRaster(km, scale=1.0, offset=0.0, unit_km=1.0, nodata=None)
+    return tiles.Layer(
+        tiles.Region(km, *bounds, blank=np.nan),
+        tiles.Placement(),
+        to_values=tiles._height_values(raster),
+    )
+
+
+def _km(root: Path, level: int, x: int, y: int) -> np.ndarray:
+    return CODING.unpack(_tile(root, level, x, y))
 
 
 def _files(root: Path) -> dict[int, set[tuple[int, int]]]:
@@ -461,6 +502,246 @@ class TestPatchBuilder:
         assert shadow[..., 0].std() < 3.0
 
 
+class TestFineHeights:
+    """The tiles of a height patch count 256ths of a step in the blue byte."""
+
+    def test_blue_is_the_part_of_a_step(self):
+        km = np.array([[CODING.bias_km + 1e-3 * (1000 + 37 / 256)]])
+        assert CODING.pack_fine(km)[0, 0].tolist() == [3, 232, 37]
+
+    def test_tile_reads_back_as_its_heights(self):
+        km = np.linspace(-1.9, 21.0, 64, dtype=np.float32).reshape(8, 8)
+        back = CODING.unpack(CODING.pack_fine(km))
+        assert np.abs(back - km).max() < 4e-6
+
+    def test_tile_of_the_pyramid_reads_the_same_way(self):
+        km = np.array([[0.25, 1.5]], dtype=np.float32)
+        assert CODING.unpack(CODING.pack(km)) == pytest.approx(km)
+
+    def test_coarser_part_of_a_step(self):
+        km = np.array([[CODING.bias_km + 1e-3 * (1000 + 37 / 256)]])
+        assert CODING.pack_fine(km, 4)[0, 0].tolist() == [3, 232, 64]
+        assert CODING.pack_fine(km, 1)[0, 0].tolist() == [3, 232, 0]
+
+    def test_height_out_of_the_range_stops_at_its_end(self):
+        km = np.array([[-5.0, 100.0]])
+        assert CODING.pack_fine(km).tolist() == [[[0, 0, 0], [255, 255, 255]]]
+
+
+class TestHeightRegion:
+    """A terrain model of a site reads as heights in km, with nothing around it."""
+
+    def test_geotiff_states_its_heights_in_metres(self, tmp_path):
+        metres = (_relief(64) * 1000).astype("f4")
+        _write_geotiff(tmp_path / "site.tif", metres)
+        raster = tiles.open_height_region_layer(tmp_path / "site.tif")
+        # Its own pixel size, from 9 rows above and 10 columns west of it.
+        edges = 90.0 - np.arange(190, 211) * (180.0 / 512)
+        km = raster.window(1024, edges, 530, 550)
+        assert np.isnan(km[0, 15]) and np.isnan(km[15, 2])
+        assert km[15, 15] == pytest.approx(metres[6, 5] / 1000, abs=1e-6)
+
+    def test_compressed_geotiff_is_read_by_window(self, tmp_path):
+        metres = (_relief(64) * 1000).astype("f4")
+        _write_geotiff(tmp_path / "site.tif", metres, compression="zlib", tile=(16, 16))
+        raster = tiles.open_height_region_layer(tmp_path / "site.tif")
+        region = raster.pixels
+        assert isinstance(region, tiles.Region)
+        assert isinstance(region._pixels, ChunkedTiff)
+        assert (region.read(199, 201, 540, 542) == metres[:2, :2]).all()
+
+    def test_tiepoint_at_a_pixel_centre_moves_the_edges_half_a_pixel(self, tmp_path):
+        pixels = np.zeros((64, 64), dtype="f4")
+        # 1025, 0, 1, 2: the raster type key, a pixel is a point.
+        _write_geotiff(tmp_path / "point.tif", pixels, more_keys=(1025, 0, 1, 2))
+        west, east, north, south = tiles._geotiff_bounds(tmp_path / "point.tif")
+        half = (BOUNDS[1] - BOUNDS[0]) / 64 / 2
+        assert (west, east) == pytest.approx((BOUNDS[0] - half, BOUNDS[1] - half))
+        assert (north, south) == pytest.approx((BOUNDS[2] + half, BOUNDS[3] + half))
+
+    def test_chunk_left_out_of_a_compressed_dtm_is_a_gap(self, tmp_path):
+        metres = np.full((64, 64), 1500.0, dtype="f4")
+        _write_geotiff(tmp_path / "site.tif", metres, compression="zlib", tile=(16, 16))
+        raster = tiles.open_height_region_layer(tmp_path / "site.tif")
+        region = raster.pixels
+        assert isinstance(region, tiles.Region)
+        chunks = region._pixels
+        assert isinstance(chunks, ChunkedTiff)
+        chunks._page.databytecounts = (0, *chunks._page.databytecounts[1:])
+        assert raster.to_values is not None
+        km = raster.to_values(raster._stored(199, 263, 540, 604))
+        assert np.isnan(km[:16, :16]).all() and km[16:] == pytest.approx(1.5)
+
+    def test_value_for_no_data_is_a_gap(self, tmp_path):
+        metres = (_relief(64) * 1000).astype("f4")
+        metres[10:20, 10:20] = -9999.0
+        _write_geotiff(tmp_path / "site.tif", metres)
+        raster = tiles.open_height_region_layer(tmp_path / "site.tif", nodata=-9999.0)
+        assert raster.to_values is not None
+        km = raster.to_values(raster._stored(199, 263, 540, 604))
+        assert np.isnan(km[10:20, 10:20]).all() and np.isfinite(km[:10]).all()
+
+    def test_manifest_overrides_what_the_file_states(self, tmp_path):
+        _write_geotiff(tmp_path / "site.tif", np.full((64, 64), 3.0, dtype="f4"))
+        raster = tiles.open_height_region_layer(
+            tmp_path / "site.tif", unit="km", scale=2.0, offset=1.0
+        )
+        assert raster.read(199, 200, 540, 541)[0, 0] == pytest.approx(7.0)
+
+    def test_integer_heights_need_a_value_for_no_data(self, tmp_path):
+        _write_geotiff(tmp_path / "site.tif", np.zeros((64, 64), dtype=np.int16))
+        with pytest.raises(ValueError, match="no data"):
+            tiles.open_height_region_layer(tmp_path / "site.tif")
+        raster = tiles.open_height_region_layer(tmp_path / "site.tif", nodata=-32768)
+        # Past its edge: the value for no data, not ground at the datum.
+        assert np.isnan(raster.read(190, 191, 540, 541)[0, 0])
+
+    def test_pds_image_scales_by_its_label(self, tmp_path):
+        west, east, north, south = BOUNDS
+        _write_pds_image(
+            tmp_path / "site.IMG",
+            np.full((64, 64), 250.0),
+            MAP_PROJECTION_TYPE='"EQUIRECTANGULAR"',
+            WESTERNMOST_LONGITUDE=f"{west} <DEG>",
+            EASTERNMOST_LONGITUDE=f"{east} <DEG>",
+            MAXIMUM_LATITUDE=f"{north} <DEG>",
+            MINIMUM_LATITUDE=f"{south} <DEG>",
+            SCALING_FACTOR=2.0,
+            OFFSET=1000.0,
+            MISSING_CONSTANT="16#FF7FFFFB#",
+        )
+        raster = tiles.open_height_region_layer(tmp_path / "site.IMG")
+        assert raster.read(199, 200, 540, 541)[0, 0] == pytest.approx(1.5)
+
+
+class TestHeightPatchBuilder:
+    """A height patch is the pyramid's broad heights with the raster's relief."""
+
+    @staticmethod
+    def _build(tmp_path, km=None, pyramid=None, **kwargs) -> patches.PatchBuilder:
+        builder = patches.PatchBuilder(
+            "test",
+            _height_pyramid(tmp_path / "tiles") if pyramid is None else pyramid,
+            BASE,
+            [_height_raster(_relief() if km is None else km)],
+            tmp_path / "patch",
+            1.0,
+            coding=CODING,
+            **kwargs,
+        )
+        builder.build()
+        return builder
+
+    def test_has_the_tiles_of_a_colour_patch(self, tmp_path):
+        builder = self._build(tmp_path)
+        assert builder.level == 7
+        assert sorted(_files(tmp_path / "patch")) == [4, 5, 6, 7]
+        assert builder.tile_range(7) == (135, 151, 49, 65)
+
+    def test_relief_is_the_rasters_and_broad_height_is_the_pyramids(self, tmp_path):
+        self._build(tmp_path)
+        inside = _km(tmp_path / "patch", 7, 143, 57)
+        assert inside.std() > 0.015
+        # Not the 80 m by which the raster stands above the pyramid.
+        assert abs(inside.mean() - GROUND_KM) < 0.01
+
+    def test_step_halves_with_each_level(self, tmp_path):
+        """A level's pixels are half as wide as those of the level above."""
+        self._build(tmp_path)
+        parts = {
+            level: np.unique(_tile(tmp_path / "patch", level, x, y)[..., 2]).tolist()
+            for level, x, y in ((4, 16, 6), (5, 35, 14), (7, 143, 57))
+        }
+        assert parts[4] == [0, 128]
+        assert parts[5] == [0, 64, 128, 192]
+        assert parts[7] == list(range(0, 256, 16))
+
+    def test_raster_apart_from_the_pyramid_leaves_no_step(self, tmp_path):
+        self._build(tmp_path, km=np.full((256, 256), GROUND_KM + 0.08, dtype="f4"))
+        for x, y in _files(tmp_path / "patch")[7]:
+            assert np.abs(_km(tmp_path / "patch", 7, x, y) - GROUND_KM).max() < 1e-5
+
+    def test_slope_at_the_edge_does_not_lift_the_patch(self, tmp_path):
+        """A blur at the edge of a raster has ground on one side only."""
+        # 4 m a pixel of the pyramid to the east: 0.25 m a pixel of the raster.
+        ramp = np.arange((2 * TILE) << BASE) * 4.0
+        pyramid = _height_pyramid(
+            tmp_path / "tiles", np.broadcast_to(ramp, (TILE << BASE, ramp.size))
+        )
+        west = (BOUNDS[0] + 180.0) / 360.0 * ramp.size
+        same = (west + (np.arange(256) + 0.5) / 16 - 0.5) * 4e-3
+        self._build(
+            tmp_path,
+            km=np.broadcast_to(same, (256, 256)).astype("f4"),
+            pyramid=pyramid,
+        )
+        edge = _km(tmp_path / "patch", 7, 136, 57)
+        along = (136 * TILE + np.arange(TILE) + 0.5) / 16 - 0.5
+        assert np.abs(edge - along * 4e-3).max() < 5e-4
+
+    def test_tile_past_the_raster_is_the_pyramid(self, tmp_path):
+        self._build(tmp_path)
+        # The north-west tile: the raster starts 12 px down.
+        corner = _km(tmp_path / "patch", 7, 135, 49)
+        assert np.abs(corner[:6] - GROUND_KM).max() < 1e-5
+
+    def test_gap_in_the_raster_is_the_pyramid(self, tmp_path):
+        km = _relief()
+        km[64:192, 64:192] = np.nan
+        self._build(tmp_path, km=km)
+        hole = _km(tmp_path / "patch", 7, 143, 57)
+        assert np.abs(hole - GROUND_KM).max() < 1e-5
+
+    def test_later_raster_comes_in_over_an_earlier_one_with_no_step(self, tmp_path):
+        """Two rasters of one place differ by more than their blurs show."""
+        flat = np.full((256, 256), GROUND_KM, dtype="f4")
+        # Waves of 2 m, too short for the blur to level, with a crest at the
+        # raster's west edge.
+        waves = flat + 2e-3 * np.cos(np.pi * (np.arange(256) - 128) / 32).astype("f4")
+        waves[:, :128] = np.nan
+        patches.PatchBuilder(
+            "test",
+            _height_pyramid(tmp_path / "tiles"),
+            BASE,
+            [_height_raster(flat), _height_raster(waves)],
+            tmp_path / "patch",
+            1.0,
+            coding=CODING,
+        ).build()
+        across = np.concatenate(
+            [_km(tmp_path / "patch", 7, x, 57) for x in range(141, 148)], axis=1
+        )
+        # A cut would be a step of more than a metre; the waves are 0.2 m a pixel.
+        assert np.abs(np.diff(across, axis=1)).max() < 4e-4
+        assert np.ptp(across[:, -64:]) > 2e-3
+
+    def test_level_above_is_the_average_of_the_heights(self, tmp_path):
+        self._build(tmp_path)
+        fine = np.concatenate(
+            [
+                np.concatenate(
+                    [_km(tmp_path / "patch", 7, 142 + dx, 56 + dy) for dx in (0, 1)],
+                    axis=1,
+                )
+                for dy in (0, 1)
+            ]
+        )
+        mean = fine.reshape(TILE, 2, TILE, 2).mean(axis=(1, 3))
+        # Each to its own step: a sixteenth and an eighth of a metre.
+        assert np.abs(_km(tmp_path / "patch", 6, 71, 28) - mean).max() < 1.5e-4
+
+    def test_tiles_are_lossless(self, tmp_path):
+        self._build(tmp_path)
+        with Image.open(tmp_path / "patch" / "7" / "143" / "57.webp") as tile:
+            assert tile.mode == "RGB"
+        # A lossy tile would not hold a height to a 256th of a step.
+        again = tmp_path / "again"
+        self._build(again)
+        assert (
+            _tile(tmp_path / "patch", 7, 143, 57) == _tile(again / "patch", 7, 143, 57)
+        ).all()
+
+
 class TestPatchTiles:
     """A patch built aside goes into its pyramid, and comes out again."""
 
@@ -652,3 +933,92 @@ class TestProcessPatches:
         assert patch["version"] != first
         inside = _tile(tmp_path / "tiles" / "naif-499", 7, 143, 57).astype(float)
         assert inside[..., 2].mean() > inside[..., 0].mean()
+
+
+class TestProcessHeightPatches:
+    """A height pyramid takes patches from terrain models."""
+
+    @staticmethod
+    def _processor(monkeypatch, tmp_path, patch_specs: list[dict]) -> TextureProcessor:
+        raw = tmp_path / "raw"
+        raw.mkdir(exist_ok=True)
+        metres = np.full((8 * TILE, 16 * TILE), GROUND_KM * 1000, dtype=np.int16)
+        # The lowest point of the body: no height of a patch is below it.
+        metres[0, 0] = 0
+        tifffile.imwrite(raw / "dem.tif", metres)
+        monkeypatch.setattr(config, "TILES_PROCESSED_DIR", tmp_path / "tiles")
+        monkeypatch.setattr(config, "TILES_METADATA_DIR", tmp_path / "meta")
+        proc = TextureProcessor.__new__(TextureProcessor)
+        proc._raw_meta = [
+            {
+                "body": "naif-499",
+                "source": "https://example.com/dem",
+                "organisation": "USGS",
+                "attribution": "DEM credit",
+                "file": "dem.tif",
+                "type": "cylindrical_displacement",
+                "patches": patch_specs,
+                "_source_dir": raw,
+            }
+        ]
+        return proc
+
+    @staticmethod
+    def _meta(tmp_path) -> dict:
+        folder = tmp_path / "meta" / "naif-499_displacement"
+        return json.loads((folder / "metadata.json").read_text())
+
+    def test_patch_and_its_descriptor(self, tmp_path, monkeypatch):
+        spec = TestProcessPatches._spec()
+        proc = self._processor(monkeypatch, tmp_path, [spec])
+        _write_geotiff(tmp_path / "raw" / "site.tif", _relief() * 1000)
+        proc.process_tiles()
+
+        meta = self._meta(tmp_path)
+        assert meta["max_level"] == BASE
+        (patch,) = meta["patches"]
+        assert (patch["id"], patch["max_level"]) == ("site", 7)
+        assert (patch["x"], patch["y"]) == ([135, 151], [49, 65])
+        # In the coding of its pyramid, which the descriptor states once.
+        coding = tiles.HeightCoding(
+            meta["displacement_bias_km"],
+            meta["displacement_scale_km"] / tiles.HEIGHT_LEVELS,
+            0.0,
+        )
+        root = tmp_path / "tiles" / "naif-499_displacement"
+        inside = coding.unpack(_tile(root, 7, 143, 57))
+        assert inside.std() > 0.015 and abs(inside.mean() - GROUND_KM) < 0.01
+
+    def test_other_unit_is_another_patch(self, tmp_path, monkeypatch):
+        spec = TestProcessPatches._spec()
+        proc = self._processor(monkeypatch, tmp_path, [spec])
+        _write_geotiff(tmp_path / "raw" / "site.tif", _relief() * 1000)
+        proc.process_tiles()
+        first = self._meta(tmp_path)["patches"][0]["version"]
+        proc.process_tiles()
+        assert self._meta(tmp_path)["patches"][0]["version"] == first
+
+        spec["files"] = [{"file": "site.tif", "height_unit": "half_m"}]
+        proc.process_tiles()
+        assert self._meta(tmp_path)["patches"][0]["version"] != first
+
+    def test_colour_patch_keeps_its_version(self, tmp_path, monkeypatch):
+        """Height patches came later: the patches built before them stay."""
+        proc = TestProcessPatches._processor(
+            monkeypatch, tmp_path, [TestProcessPatches._spec()]
+        )
+        _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        proc.process_tiles()
+        meta = json.loads(
+            (tmp_path / "meta" / "naif-499" / "metadata.json").read_text()
+        )
+        size = (tmp_path / "raw" / "site.tif").stat().st_size
+        assert meta["patches"][0]["version"] == tiles.signature_version(
+            {
+                "recipe": 3,
+                "pyramid": meta["version"],
+                "sigma": 1.0,
+                "max_level": None,
+                "files": [["site.tif", size, None]],
+            }
+        )

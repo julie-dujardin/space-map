@@ -271,6 +271,9 @@ class ChunkedTiff:
         self.dtype: np.dtype = page.dtype
         self._chunk_rows, self._chunk_columns = page.chunks[:2]
         self._across = page.chunked[1]
+        # What a chunk the writer left out reads as: black, or for heights
+        # their value for no data.
+        self.blank: float = 0
         self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
         self._held = 0
         self._lock = threading.Lock()
@@ -296,7 +299,9 @@ class ChunkedTiff:
             chunk = decoded.reshape(decoded.shape[1], decoded.shape[2])
         else:
             # A chunk the writer left out holds no data.
-            chunk = np.zeros((self._chunk_rows, self._chunk_columns), self.dtype)
+            chunk = np.full(
+                (self._chunk_rows, self._chunk_columns), self.blank, self.dtype
+            )
         with self._lock:
             # Two reads can decode one chunk at the same time: it counts once.
             if index not in self._cache:
@@ -329,7 +334,7 @@ class HeightRaster:
     """A height grid and how its raw samples map to kilometres:
     ``km = (raw·scale + offset)·unit_km``."""
 
-    samples: np.ndarray
+    samples: np.ndarray | ChunkedTiff
     scale: float
     offset: float
     unit_km: float
@@ -343,12 +348,14 @@ def open_height_raster(
     scale: float | None = None,
     offset: float | None = None,
     nodata: float | None = None,
+    chunked: bool = False,
 ) -> HeightRaster:
     """Open a DEM without reading it: a GeoTIFF (GDAL tags) or a single-band
     ISIS2/PDS3 cube, memory-mapped when the file is stored contiguously.
 
     scale, offset and nodata default to the file's own tags, overridable per
-    manifest entry.
+    manifest entry. ``chunked`` reads a compressed GeoTIFF by window: whole,
+    a site DTM is gigabytes.
     """
     if unit not in _HEIGHT_UNIT_KM:
         raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
@@ -362,7 +369,7 @@ def open_height_raster(
             assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
             f_scale, f_offset = _gdal_scale_offset(page)
             f_nodata = _gdal_nodata(page)
-            mm = memmap_page(src, page)
+            mm = ChunkedTiff(src) if chunked else memmap_page(src, page)
             if mm is None:
                 # Only memmappable sources stream; the rest are small enough.
                 log.info(
@@ -375,6 +382,25 @@ def open_height_raster(
         offset=f_offset if offset is None else offset,
         unit_km=unit_km,
         nodata=f_nodata if nodata is None else nodata,
+    )
+
+
+def open_pds_height_raster(src: Path, *, unit: str = "m") -> HeightRaster:
+    """Open a DEM stored as a single-band PDS3 image with an attached label,
+    such as the LROC stereo DTMs. Its scale, offset and value for no data are
+    those of the label."""
+    if unit not in _HEIGHT_UNIT_KM:
+        raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
+    label = read_pds_label(src)
+    missing = label.get("MISSING_CONSTANT")
+    return HeightRaster(
+        samples=open_pds_image(src),
+        scale=float(label.get("SCALING_FACTOR", 1.0)),
+        offset=float(label.get("OFFSET", 0.0)),
+        unit_km=_HEIGHT_UNIT_KM[unit],
+        # A real is also written as its bits in hex, which states nothing new:
+        # the special pixels of a real image are far below any height.
+        nodata=float(missing) if missing and "#" not in missing else None,
     )
 
 
@@ -399,6 +425,7 @@ def open_displacement_source(
     raster = open_height_raster(
         src, unit=unit, scale=scale, offset=offset, nodata=nodata
     )
+    assert isinstance(raster.samples, np.ndarray)  # not asked for in chunks
     return _bake_displacement(
         raster.samples,
         src.name,

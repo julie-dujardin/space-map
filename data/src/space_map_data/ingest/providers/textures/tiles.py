@@ -28,7 +28,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -45,6 +45,8 @@ from .image_io import (
     HeightRaster,
     memmap_page,
     open_image,
+    open_height_raster,
+    open_pds_height_raster,
     open_pds_image,
     read_pds_label,
     GAP_REPAIR_PASSES,
@@ -268,8 +270,9 @@ class Mosaic:
 
 class Region:
     """A raster of a part of the globe, read as one that covers all of it at
-    the same pixel size. Where it has nothing it reads as what a brightness
-    reader takes as not observed: zero, or NaN for float samples."""
+    the same pixel size. Where it has nothing it reads as ``blank``. Without
+    one, that is what a brightness reader takes as not observed: zero, or NaN
+    for float samples."""
 
     def __init__(
         self,
@@ -278,9 +281,11 @@ class Region:
         east: float,
         north: float,
         south: float,
+        blank: float | None = None,
     ) -> None:
         height, width = pixels.shape
         self._pixels = pixels
+        self._blank = blank
         self.shape = (
             round(height * 180.0 / (north - south)),
             round(width * 360.0 / (east - west)),
@@ -311,7 +316,9 @@ class Region:
         )
 
     def read(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
-        blank = np.nan if self.calibrated else 0
+        blank = self._blank
+        if blank is None:
+            blank = np.nan if self.calibrated else 0
         out = np.full((y1 - y0, x1 - x0), blank, dtype=self._pixels.dtype)
         height, width = self._pixels.shape
         top, bottom = max(y0, self._top), min(y1, self._top + height)
@@ -732,7 +739,9 @@ def softened(layer: Layer, sigma: float) -> Layer:
     )
 
 
-def height_layer(raster: HeightRaster, placement: Placement) -> Layer:
+def _height_values(raster: HeightRaster) -> Callable[[np.ndarray], np.ndarray]:
+    """Raw samples of ``raster`` → float32 km, NaN where it has no data."""
+
     def to_km(raw: np.ndarray) -> np.ndarray:
         km = (raw.astype(np.float32) * raster.scale + raster.offset) * raster.unit_km
         if raw.dtype.kind == "f":
@@ -741,7 +750,11 @@ def height_layer(raster: HeightRaster, placement: Placement) -> Layer:
             km[raw == raster.nodata] = np.nan
         return km
 
-    return Layer(raster.samples, placement, to_values=to_km)
+    return to_km
+
+
+def height_layer(raster: HeightRaster, placement: Placement) -> Layer:
+    return Layer(raster.samples, placement, to_values=_height_values(raster))
 
 
 def height_quantum_km(raster: HeightRaster) -> float:
@@ -855,6 +868,9 @@ def _geotiff_bounds(path: Path) -> tuple[float, float, float, float]:
     centre = keys.get("ProjCenterLongGeoKey", keys.get("ProjNatOriginLongGeoKey", 0.0))
     step_x, step_y = keys["ModelPixelScale"][:2]
     x0, y0 = keys["ModelTiepoint"][3:5]
+    # 2: the tiepoint is the centre of the first pixel, not its corner.
+    if keys.get("GTRasterTypeGeoKey") == 2:
+        x0, y0 = x0 - step_x / 2, y0 + step_y / 2
     per_degree = math.radians(radius)
     west = centre + x0 / (per_degree * math.cos(true_at))
     north = y0 / per_degree
@@ -903,6 +919,41 @@ def open_region_layer(path: Path, gamma: float | None = None) -> Layer:
     )
 
 
+def open_height_region_layer(
+    path: Path,
+    *,
+    unit: str = "m",
+    scale: float | None = None,
+    offset: float | None = None,
+    nodata: float | None = None,
+) -> Layer:
+    """A height raster of a part of the globe: an equirectangular GeoTIFF or
+    PDS3 image. ``scale``, ``offset`` and ``nodata`` default to what the file
+    states."""
+    if path.suffix.lower() == ".img":
+        raster, bounds = open_pds_height_raster(path, unit=unit), _pds_bounds(path)
+    else:
+        # A site DTM stored in compressed chunks is too large to decode whole.
+        raster = open_height_raster(path, unit=unit, chunked=_compressed(path))
+        bounds = _geotiff_bounds(path)
+    raster = replace(
+        raster,
+        scale=raster.scale if scale is None else scale,
+        offset=raster.offset if offset is None else offset,
+        nodata=raster.nodata if nodata is None else nodata,
+    )
+    blank = raster.nodata
+    if raster.samples.dtype.kind == "f":
+        blank = np.nan
+    elif blank is None:
+        # Zero outside the raster would read as ground at the datum.
+        raise ValueError(f"{path.name}: integer heights with no value for no data")
+    if isinstance(raster.samples, ChunkedTiff):
+        raster.samples.blank = blank
+    region = Region(raster.samples, *bounds, blank=blank)
+    return Layer(region, Placement(), to_values=_height_values(raster))
+
+
 def open_polar_brightness_layer(
     path: Path, placement: Placement, gamma: float | None = None
 ) -> PolarLayer:
@@ -944,8 +995,11 @@ def height_range_km(layers: Sequence[Layer]) -> tuple[float, float, int]:
 
 @dataclass(frozen=True)
 class HeightCoding:
-    """16-bit heights in a lossless RGB tile: red is the high byte, green the
-    low byte, and ``km = bias_km + step_km · (256·R + G)``."""
+    """Heights in a lossless RGB tile: red is the high byte, green the low
+    byte, and ``km = bias_km + step_km · (256·R + G + B/256)``. A pyramid's own
+    tiles hold 16 bits and blue is zero. The tiles of a patch use blue too:
+    their pixels are a hundred times as fine as the pyramid's, and a whole
+    step from one to the next would be a staircase."""
 
     bias_km: float
     step_km: float
@@ -969,6 +1023,26 @@ class HeightCoding:
         rgb[..., 0] = code >> 8
         rgb[..., 1] = code & 0xFF
         return rgb
+
+    def pack_fine(self, km: np.ndarray, parts: int = 256) -> np.ndarray:
+        """``km`` in three bytes, rounded to one of ``parts`` of a step: a
+        power of two, 256 at most."""
+        # A float32 cannot hold 24 bits and their rounding.
+        code = np.rint((km.astype(np.float64) - self.bias_km) * (parts / self.step_km))
+        code *= 256 // parts
+        code = np.clip(code, 0, HEIGHT_LEVELS * 256 + 255).astype(np.uint32)
+        rgb = np.empty((*code.shape, 3), dtype=np.uint8)
+        rgb[..., 0] = code >> 16
+        rgb[..., 1] = (code >> 8) & 0xFF
+        rgb[..., 2] = code & 0xFF
+        return rgb
+
+    def unpack(self, rgb: np.ndarray) -> np.ndarray:
+        """The heights of a tile, in km."""
+        code = (
+            rgb[..., 0].astype(np.float64) * 256.0 + rgb[..., 1] + rgb[..., 2] / 256.0
+        )
+        return (self.bias_km + self.step_km * code).astype(np.float32)
 
 
 def detail_ratio(fine: np.ndarray, sigma: float) -> np.ndarray:

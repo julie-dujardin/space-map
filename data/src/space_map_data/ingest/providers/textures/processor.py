@@ -705,6 +705,25 @@ class TextureProcessor:
             return
         source_dir = entry["_source_dir"]
         base_level = metadata["max_level"]
+        # A height pyramid: its patches are heights in its own coding.
+        coding = None
+        if "displacement_scale_km" in metadata:
+            coding = tiles.HeightCoding(
+                metadata["displacement_bias_km"],
+                metadata["displacement_scale_km"] / tiles.HEIGHT_LEVELS,
+                metadata["displacement_bias_km"],
+            )
+
+        def height_fields(layer: dict) -> dict:
+            """How the samples of a height raster are read: the file's own
+            statement, unless the patch's file or the entry says otherwise."""
+            return {
+                "unit": layer.get("height_unit") or entry.get("height_unit") or "m",
+                **{
+                    key: layer.get(f"height_{key}", entry.get(f"height_{key}"))
+                    for key in ("scale", "offset", "nodata")
+                },
+            }
 
         def save() -> None:
             metadata["patches"] = list(built.values())
@@ -729,19 +748,21 @@ class TextureProcessor:
                 )
                 continue
             sigma = spec.get("sharpen_sigma", config.PATCH_SIGMA)
-            version = tiles.signature_version(
-                {
-                    "recipe": patches.RECIPE,
-                    "pyramid": metadata["version"],
-                    "sigma": sigma,
-                    "max_level": spec.get("tiles_max_level"),
-                    "files": [
-                        [name, (source_dir / name).stat().st_size, layer.get("gamma")]
-                        for layer in spec["files"]
-                        for name, _ in layer_files(layer)
-                    ],
-                }
-            )
+            signature: dict = {
+                "recipe": patches.RECIPE,
+                "pyramid": metadata["version"],
+                "sigma": sigma,
+                "max_level": spec.get("tiles_max_level"),
+                "files": [
+                    [name, (source_dir / name).stat().st_size, layer.get("gamma")]
+                    for layer in spec["files"]
+                    for name, _ in layer_files(layer)
+                ],
+            }
+            if coding is not None:
+                signature["recipe"] = patches.HEIGHT_RECIPE
+                signature["heights"] = [height_fields(layer) for layer in spec["files"]]
+            version = tiles.signature_version(signature)
             credit = {
                 key: spec.get(key)
                 for key in (
@@ -768,6 +789,10 @@ class TextureProcessor:
             try:
                 rasters = [
                     tiles.open_region_layer(source_dir / name, layer.get("gamma"))
+                    if coding is None
+                    else tiles.open_height_region_layer(
+                        source_dir / name, **height_fields(layer)
+                    )
                     for layer in spec["files"]
                     for name, _ in layer_files(layer)
                 ]
@@ -779,6 +804,7 @@ class TextureProcessor:
                     building,
                     sigma,
                     spec.get("tiles_max_level"),
+                    coding,
                 )
             except ValueError as error:
                 # A file this build cannot place: the other patches still can.

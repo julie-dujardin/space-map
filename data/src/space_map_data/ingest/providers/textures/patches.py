@@ -8,6 +8,11 @@ A patch is built on the tiles of its pyramid. Their colour and their broad
 tone stay, so a patch joins the map around it without a step. Everything
 finer comes from the mosaic alone: the map's own detail may sit some pixels
 from the mosaic's, and each feature would otherwise show twice.
+
+A patch of a height pyramid is built the same way from a terrain model of the
+site: the broad heights stay those of the pyramid, and the model gives the
+relief below that scale. The two are tied to the body by different
+measurements, and can stand some metres apart.
 """
 
 import logging
@@ -28,6 +33,8 @@ log = logging.getLogger(__name__)
 
 # Bumped when a change to the build changes the bytes of a patch's tiles.
 RECIPE = 3
+# The same for the tiles of a height patch.
+HEIGHT_RECIPE = 2
 # Levels made from one read of the rasters: a block is 4 × 4 of the finest tiles.
 _BLOCK_LEVELS = 2
 # Levels of blocks built side by side, each held until its group is done.
@@ -39,6 +46,11 @@ _WORKERS = 4
 _READ_PIXELS = 1 << 25
 # Pixels read around a patch past the blur, and around a raster past its edge.
 _MARGIN = 4
+# Most parts of a height step that a tile states: all the third byte holds.
+_STEP_PARTS = 256
+# Pixels of a height patch's finest level over which a raster comes in from
+# its edge.
+_SEAM = 16
 # Least broad brightness the detail of a calibrated raster is compared with,
 # as a share of the raster's average. A shadow wider than the blur has almost
 # none of its own: its noise would otherwise count as detail as strong as the
@@ -47,12 +59,17 @@ _SHADOW_FLOOR = 0.2
 
 
 def _resized(
-    image: Image.Image, box: tuple[float, float, float, float], size: tuple[int, int]
+    image: Image.Image,
+    box: tuple[float, float, float, float],
+    size: tuple[int, int],
+    smooth: bool = False,
 ) -> np.ndarray:
-    """``box`` of ``image`` at ``size``: smooth for colour, linear for the
-    slow fields a ratio is made of."""
+    """``box`` of ``image`` at ``size``: smooth for colour and for a map that
+    is ``smooth``, linear for the slow fields that correct one."""
     filter_ = (
-        Image.Resampling.BICUBIC if image.mode == "RGB" else Image.Resampling.BILINEAR
+        Image.Resampling.BICUBIC
+        if smooth or image.mode == "RGB"
+        else Image.Resampling.BILINEAR
     )
     return np.asarray(image.resize(size, filter_, box=box))
 
@@ -84,6 +101,15 @@ def _fields(raster: tiles.Layer) -> tiles.Layer:
     return tiles.Layer(raster.pixels, raster.placement, to_values=fields)
 
 
+def _inside(here: np.ndarray) -> np.ndarray:
+    """How far inside the data of a raster each pixel is: 0 where there is
+    none, 1 from ``_SEAM`` pixels in."""
+    if here.all():
+        return np.ones(here.shape, dtype=np.float32)
+    deep = ndimage.distance_transform_edt(here)
+    return np.clip(deep / _SEAM, 0.0, 1.0).astype(np.float32)
+
+
 def first_range(
     base_level: int, max_level: int, x: Sequence[int], y: Sequence[int]
 ) -> tuple[int, int, int, int]:
@@ -105,7 +131,8 @@ class PatchBuilder:
     The finest level comes from the rasters, block by block, and each level
     above it from the one below, as in a pyramid. ``sigma`` is the scale below
     which the rasters give all the detail, in pixels of the pyramid's finest
-    level.
+    level. ``coding`` is that of a height pyramid, whose rasters are then
+    heights.
     """
 
     def __init__(
@@ -117,6 +144,7 @@ class PatchBuilder:
         out_dir: Path,
         sigma: float,
         max_level: int | None = None,
+        coding: tiles.HeightCoding | None = None,
     ) -> None:
         self.name = name
         self.pyramid = pyramid
@@ -124,6 +152,7 @@ class PatchBuilder:
         self.rasters = rasters
         self.out_dir = out_dir
         self.sigma = sigma
+        self.coding = coding
         # A raster away from the equator has wider pixels in longitude than in
         # latitude: the finer of the two decides.
         self.full_width = max(
@@ -142,7 +171,11 @@ class PatchBuilder:
         self.south = min(edge[3] for edge in edges)
         self.stats = tiles.PyramidStats.empty(self.level)
         self._lock = threading.Lock()
-        self._save_kwargs = webp_kwargs(lossless=False)
+        self._save_kwargs = (
+            webp_kwargs(lossless=False)
+            if coding is None
+            else config.TILE_LOSSLESS_KWARGS
+        )
         # Level of the tile a block leaves, and of the tile a group leaves.
         self._block_level = max(self.level - _BLOCK_LEVELS, base_level + 1)
         self._group_level = max(self._block_level - _GROUP_LEVELS, base_level + 1)
@@ -163,7 +196,7 @@ class PatchBuilder:
         return x0 <= x <= x1 and y0 <= y <= y1
 
     def build(self) -> tiles.PyramidStats:
-        ground = _Ground(self)
+        ground = _Ground(self) if self.coding is None else _HeightGround(self)
         first = self.base_level + 1
         for level in range(first, self.level + 1):
             x0, x1, _, _ = self.tile_range(level)
@@ -193,9 +226,9 @@ class PatchBuilder:
         x1: int,
         pool: ThreadPoolExecutor | None = None,
     ) -> np.ndarray:
-        """Brightness of raster ``index`` over a pixel window of ``level``,
-        NaN where less than half of a pixel has data. A window that takes
-        many reads can share them out over ``pool``."""
+        """Values of raster ``index`` over a pixel window of ``level``, NaN
+        where less than half of a pixel has data. A window that takes many
+        reads can share them out over ``pool``."""
         raster = self.rasters[index]
         fields = self._fields[index]
         rows = config.TILE_SIZE << level
@@ -297,6 +330,12 @@ class PatchBuilder:
                 tile = values[
                     down * size : (down + 1) * size, right * size : (right + 1) * size
                 ]
+                if self.coding is not None:
+                    # A step as fine against a pixel as the pyramid's own: a
+                    # level's pixels are half as wide as those of the level
+                    # above, and a finer step would store noise.
+                    parts = min(1 << (level - self.base_level), _STEP_PARTS)
+                    tile = self.coding.pack_fine(tile, parts)
                 path = self.out_dir / str(level) / str(x) / f"{y}.webp"
                 Image.fromarray(tile).save(path, "webp", **self._save_kwargs)
                 count += 1
@@ -310,6 +349,10 @@ class _Ground:
     """What a patch is built on, on the grid of the pyramid's finest level:
     the map there, the same map with its detail blurred away, the rasters
     blurred as much, and how far inside the rasters each pixel is."""
+
+    # A map of heights is enlarged smoothly: a crease at each of its pixels
+    # would be lit as one.
+    smooth = False
 
     def __init__(self, patch: PatchBuilder) -> None:
         self.patch = patch
@@ -326,11 +369,8 @@ class _Ground:
         bottom = min((y1 + 1) * half + reach, size << level)
 
         plain = self._map(level, self.top, bottom, self.left, right)
-        sigma = patch.sigma
-        # Each raster blurred on its own: two mosaics of one place differ in
-        # brightness by their sun, and only what each shows within itself is
-        # detail.
-        self.lows = []
+        # Per raster, what the blocks need of it.
+        self.held: list[Image.Image] = []
         seen = np.zeros(plain.shape[:2], dtype=bool)
         # The one read of the rasters from end to end.
         with ThreadPoolExecutor(_WORKERS) as pool:
@@ -339,40 +379,61 @@ class _Ground:
                     index, level, self.top, bottom, self.left, right, pool
                 )
                 here = np.isfinite(fine)
-                coverage = ndimage.gaussian_filter(here.astype(np.float32), sigma)
-                coarse = ndimage.gaussian_filter(np.where(here, fine, 0.0), sigma)
-                low = np.ones_like(fine)
-                np.divide(coarse, coverage, out=low, where=coverage > 0.05)
-                if _region(patch.rasters[index]).calibrated and here.any():
-                    floor = _SHADOW_FLOOR * float(fine[here].mean())
-                    np.maximum(low, floor, out=low)
-                self.lows.append(Image.fromarray(low))
+                self._take(index, plain, fine, here)
                 seen |= here
         # Full weight one blur inside the rasters: at their edge the patch
         # fades into the map.
         inside = ndimage.distance_transform_edt(seen)
-        weight = np.clip(inside / max(sigma, 1.0), 0.0, 1.0).astype(np.float32)
+        weight = np.clip(inside / max(patch.sigma, 1.0), 0.0, 1.0).astype(np.float32)
         # Held as images: every block cuts its part from each, and an array
         # would be copied whole each time.
         self.weight = Image.fromarray(weight)
         self.plain = Image.fromarray(plain)
-        self.soft = Image.fromarray(tiles.soften(plain, sigma))
+        self._keep(plain)
+
+    def _take(
+        self, index: int, plain: np.ndarray, fine: np.ndarray, here: np.ndarray
+    ) -> None:
+        """Hold what the blocks need of raster ``index``, read as ``fine`` on
+        the grid of ``plain``: for a colour map, the raster blurred."""
+        sigma = self.patch.sigma
+        # Each raster blurred on its own: two mosaics of one place differ in
+        # brightness by their sun, and only what each shows within itself is
+        # detail.
+        coverage = ndimage.gaussian_filter(here.astype(np.float32), sigma)
+        coarse = ndimage.gaussian_filter(np.where(here, fine, 0.0), sigma)
+        low = np.ones_like(fine)
+        np.divide(coarse, coverage, out=low, where=coverage > 0.05)
+        if _region(self.patch.rasters[index]).calibrated and here.any():
+            floor = _SHADOW_FLOOR * float(fine[here].mean())
+            np.maximum(low, floor, out=low)
+        self.held.append(Image.fromarray(low))
+
+    def _keep(self, plain: np.ndarray) -> None:
+        self.soft = Image.fromarray(tiles.soften(plain, self.patch.sigma))
+
+    def _decode(self, tile: Image.Image) -> np.ndarray:
+        """A tile of the pyramid as the values a patch is made of."""
+        return np.asarray(tile.convert("RGB"))
 
     def _map(self, level: int, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         """Pixels of the pyramid's own tiles; columns wrap around the globe."""
         size = config.TILE_SIZE
         columns = 2 << level
-        out = np.empty((y1 - y0, x1 - x0, 3), dtype=np.uint8)
+        out: np.ndarray | None = None
         for ty in range(y0 // size, (y1 - 1) // size + 1):
             for tx in range(x0 // size, (x1 - 1) // size + 1):
                 path = self.patch.pyramid / str(level) / str(tx % columns)
-                tile = np.asarray(Image.open(path / f"{ty}.webp").convert("RGB"))
+                tile = self._decode(Image.open(path / f"{ty}.webp"))
+                if out is None:
+                    out = np.empty((y1 - y0, x1 - x0, *tile.shape[2:]), tile.dtype)
                 top, left = max(y0, ty * size), max(x0, tx * size)
                 bottom, right = min(y1, (ty + 1) * size), min(x1, (tx + 1) * size)
                 out[top - y0 : bottom - y0, left - x0 : right - x0] = tile[
                     top - ty * size : bottom - ty * size,
                     left - tx * size : right - tx * size,
                 ]
+        assert out is not None
         return out
 
     def _box(
@@ -392,7 +453,7 @@ class _Ground:
         size = config.TILE_SIZE
         x0, y0 = tile_x * size, tile_y * size
         box = self._box(level, x0, y0, x0 + size, y0 + size)
-        return _resized(self.plain, box, (size, size))
+        return _resized(self.plain, box, (size, size), self.smooth)
 
     def block(
         self, level: int, tile_x: int, tile_y: int, across: int, down: int
@@ -411,7 +472,7 @@ class _Ground:
         # A later raster over an earlier one, where it has data.
         ratio = np.ones(weight.shape, dtype=np.float32)
         usable = np.zeros(weight.shape, dtype=bool)
-        for index, coarse in enumerate(self.lows):
+        for index, coarse in enumerate(self.held):
             fine = self.patch.fine(index, level, y0, y1, x0, x1)
             low = _resized(coarse, box, shape)
             here = np.isfinite(fine) & (low > 0)
@@ -421,6 +482,64 @@ class _Ground:
         sharp = tiles.apply_detail(_resized(self.soft, box, shape), ratio)
         alpha = np.where(usable, weight, 0.0)[..., None]
         return np.rint(plain * (1.0 - alpha) + sharp * alpha).astype(np.uint8)
+
+
+class _HeightGround(_Ground):
+    """The ground of a height patch: the pyramid's heights in km, and for each
+    raster how far the pyramid stands above it at the scale of the blur."""
+
+    smooth = True
+
+    def _take(
+        self, index: int, plain: np.ndarray, fine: np.ndarray, here: np.ndarray
+    ) -> None:
+        sigma = self.patch.sigma
+        # The difference is blurred, not each map: at the edge of a raster a
+        # blur has ground on one side only, and on a slope that alone would
+        # raise or sink the patch there.
+        coverage = ndimage.gaussian_filter(here.astype(np.float32), sigma)
+        apart = ndimage.gaussian_filter(np.where(here, plain - fine, 0.0), sigma)
+        offset = np.zeros_like(fine)
+        np.divide(apart, coverage, out=offset, where=coverage > 0.05)
+        self.held.append(Image.fromarray(offset))
+
+    def _keep(self, plain: np.ndarray) -> None:
+        pass
+
+    def _decode(self, tile: Image.Image) -> np.ndarray:
+        coding = self.patch.coding
+        assert coding is not None
+        return coding.unpack(np.asarray(tile.convert("RGB")))
+
+    def block(
+        self, level: int, tile_x: int, tile_y: int, across: int, down: int
+    ) -> np.ndarray:
+        size = config.TILE_SIZE
+        x0, y0 = tile_x * size, tile_y * size
+        x1, y1 = x0 + across * size, y0 + down * size
+        box = self._box(level, x0, y0, x1, y1)
+        shape = (x1 - x0, y1 - y0)
+        plain = _resized(self.plain, box, shape, smooth=True)
+        weight = _resized(self.weight, box, shape)
+        if not weight.any():
+            return plain
+        # A later raster over an earlier one. Two terrain models of one place
+        # stand apart by what their blurs do not show, and a cut from one to
+        # the other would be a step in the ground: each comes in gradually.
+        top = max(y0 - _SEAM, 0)
+        bottom = min(y1 + _SEAM, size << level)
+        rows = slice(y0 - top, y1 - top)
+        columns = slice(_SEAM, _SEAM + x1 - x0)
+        sharp = plain.copy()
+        for index, offset in enumerate(self.held):
+            fine = self.patch.fine(index, level, top, bottom, x0 - _SEAM, x1 + _SEAM)
+            here = np.isfinite(fine)
+            if not here.any():
+                continue
+            share = _inside(here)[rows, columns]
+            over = fine[rows, columns] + _resized(offset, box, shape) - sharp
+            np.add(sharp, over * share, out=sharp, where=share > 0)
+        return plain + (sharp - plain) * weight
 
 
 def put_in_place(built: Path, pyramid: Path) -> None:

@@ -34,3 +34,141 @@ bodies:
     source: https://astrogeology.usgs.gov/search/map/moon_lro_lola_selene_kaguya_tc_dem_merge_60n60s_59m
     download_url: https://planetarymaps.usgs.gov/mosaic/LolaKaguya_Topo/Lunar_LRO_LOLAKaguya_DEMmerge_60N60S_512ppd.tif
     lat_range: [-60, 60]
+  # Terrain models from stereo pairs of the LROC narrow-angle camera, tied to
+  # LOLA like the map, for the sites that the colour map has a mosaic of. Most
+  # are one strip some kilometres wide, and the map is good down to a few of
+  # its own pixels, so the blend is narrow. A later file is the finer one.
+  patches:
+  - id: apollo-11
+    name: Apollo 11
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO11
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the Apollo 11 landing site, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_APOLLO11_E008N0234.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO11/NAC_DTM_APOLLO11_E008N0234.IMG
+  - id: apollo-12
+    name: Apollo 12 and Surveyor 3
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO12
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the Apollo 12 and Surveyor 3 landing site, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_APOLLO12_E030S3365.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO12/NAC_DTM_APOLLO12_E030S3365.IMG
+  - id: apollo-14
+    name: Apollo 14
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO14
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the Apollo 14 landing site, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_APOLLO14_E034S3425.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO14/NAC_DTM_APOLLO14_E034S3425.IMG
+  - id: apollo-15
+    name: Apollo 15 and Hadley Rille
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO15
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain models of the Apollo 15 landing site, Hadley Rille and Mons Hadley, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_APOLLO15_2_E260N0036.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO15_2/NAC_DTM_APOLLO15_2_E260N0036.IMG
+    - file: NAC_DTM_MONSHADLEY1_E265N0040.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/MONSHADLEY1/NAC_DTM_MONSHADLEY1_E265N0040.IMG
+    - file: NAC_DTM_APOLLO15_E261N0036.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO15/NAC_DTM_APOLLO15_E261N0036.IMG
+  - id: apollo-16
+    name: Apollo 16
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO16
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the Apollo 16 landing site, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_APOLLO16_E091S0155.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16/NAC_DTM_APOLLO16_E091S0155.IMG
+  - id: apollo-17
+    name: Apollo 17
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO17_2M
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain models of the Apollo 17 landing site, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_APOLLO17_E203N0308.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO17/NAC_DTM_APOLLO17_E203N0308.IMG
+    - file: NAC_DTM_APOLLO17_2M_E201N0307.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO17_2M/NAC_DTM_APOLLO17_2M_E201N0307.IMG
+  - id: lunokhod-2
+    name: Luna 21 and Lunokhod 2
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_LUNOKHOD2
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the Luna 21 landing site and the route of Lunokhod 2, 5 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_LUNOKHOD2_E258N0307.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/LUNOKHOD2/NAC_DTM_LUNOKHOD2_E258N0307.IMG
+  - id: luna-20
+    name: Luna 20
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_LUNA20
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the Luna 20 landing site, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_LUNA20_E037N0566.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/LUNA20/NAC_DTM_LUNA20_E037N0566.IMG
+  - id: change-4
+    name: "Chang'e 4"
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_CHANGE4
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the Chang'e 4 landing site, 5 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_CHANGE4_E458S1775.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/CHANGE4/NAC_DTM_CHANGE4_E458S1775.IMG
+  - id: change-5
+    name: "Chang'e 5"
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_CHANGE501
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain models of Rima Sharp and the Chang'e 5 landing site, 3 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_RIMASHARP_E437N3096.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/RIMASHARP/NAC_DTM_RIMASHARP_E437N3096.IMG
+    - file: NAC_DTM_CHANGE501_E430N3081.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/CHANGE501/NAC_DTM_CHANGE501_E430N3081.IMG
+  - id: tycho
+    name: Tycho central peak
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_TYCHOPK
+    organisation: NASA
+    license: Public domain
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera digital terrain model of the central peak of Tycho, 2 m/px."
+    sharpen_sigma: 4
+    files:
+    - file: NAC_DTM_TYCHOPK_E434S3486.IMG
+      dir: sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/TYCHOPK/NAC_DTM_TYCHOPK_E434S3486.IMG

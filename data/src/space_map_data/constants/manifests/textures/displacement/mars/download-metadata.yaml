@@ -17,3 +17,31 @@ bodies:
   description: "Mars topography displacement sibling — drives the renderer's vertex displacement at true physical scale."
   file: Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2.tif
   type: cylindrical_displacement
+  # Terrain models of the sites that the colour map has a mosaic of, from
+  # HiRISE stereo pairs at a post each metre. They are tied to MOLA, like the
+  # global map, and their heights count from the same areoid.
+  patches:
+  # The crater floor and the delta, over the rim west of them.
+  - id: jezero
+    name: Jezero
+    source: https://astrogeology.usgs.gov/search/map/mars_2020_terrain_relative_navigation_hirise_dtm_mosaic
+    organisation: USGS
+    license: Public domain
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. Mars 2020 and Mars Sample Return Terrain Relative Navigation HiRISE DTM mosaics, 1 m/px."
+    files:
+    - file: MSR_hirise_soc_003_DTM_MOLATopography_DeltaGeoid_1m_Eqc_latTs0_lon0_Blend40.tif
+      dir: sites
+      download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/MSR_TRN_HiRISE_soc_003_USGS_release_aug2024/MSR_TRN_HiRISE_soc_003_USGS_release_aug2024_mosaics.zip
+    - file: JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40.tif
+      dir: sites
+      download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40.tif
+  - id: gale
+    name: Gale
+    source: https://astrogeology.usgs.gov/search/map/mars_msl_gale_merged_dem_1m_v3
+    organisation: USGS
+    license: Public domain
+    attribution: "NASA/JPL-Caltech/University of Arizona/USGS Astrogeology Science Center. MSL Gale merged DEM of HiRISE stereo pairs, 1 m/px (Calef and Parker)."
+    files:
+    - file: MSL_Gale_DEM_Mosaic_1m_v3.tif
+      dir: sites
+      download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/MSL/MSL_Gale_DEM_Mosaic_1m_v3.tif
