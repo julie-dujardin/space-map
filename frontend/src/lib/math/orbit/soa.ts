@@ -3,6 +3,7 @@ import { AU_SCALE, AU_KM, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { PositionedBody } from '$lib/types/objects';
 import { sgp4, SatRecError, type SatRec } from 'satellite.js';
 import { buildSatrec } from './sgp4';
+import { temeToEclipticMatrix } from './teme';
 import { yieldToMain } from '$lib/yield';
 import { J2000_JD, utcToTdb } from '$lib/time/jd';
 import { clockJd } from './position';
@@ -326,6 +327,7 @@ export function writePositions(
 	const jdDays = jd - J2000_JD;
 	// For the Kepler and Barker rows: TLE rows are dated in UTC, like the clock; the others in TDB.
 	const tdb = utcToTdb(jd);
+	const teme = temeToEclipticMatrix(jd);
 	let writeIdx = 0;
 
 	for (let idx = 0; idx < count; idx++) {
@@ -362,18 +364,13 @@ export function writePositions(
 			const tsince = (jd - sat.jdsatepoch) * 1440;
 			const result = sgp4(sat, tsince);
 			if (!result || sat.error !== SatRecError.None) continue;
-			const xk = result.position.x;
-			const yk = result.position.y;
-			const zk = result.position.z;
-			// km -> scene units, then TEME -> ecliptic rotation about X, then
-			// ecliptic -> Three.js basis swap (see position.ts for reference).
-			const xs = xk * KM_TO_SCENE;
-			const yk_s = yk * KM_TO_SCENE;
-			const zk_s = zk * KM_TO_SCENE;
-			const yEcl = yk_s * COS_EPS + zk_s * SIN_EPS;
-			const zEcl = -yk_s * SIN_EPS + zk_s * COS_EPS;
-			const sx = xs;
-			const sy = zEcl;
+			const xk = result.position.x * KM_TO_SCENE;
+			const yk = result.position.y * KM_TO_SCENE;
+			const zk = result.position.z * KM_TO_SCENE;
+			// TEME → ecliptic J2000, then the Three.js basis swap (see position.ts).
+			const sx = teme[0] * xk + teme[1] * yk + teme[2] * zk;
+			const yEcl = teme[3] * xk + teme[4] * yk + teme[5] * zk;
+			const sy = teme[6] * xk + teme[7] * yk + teme[8] * zk;
 			const sz = -yEcl;
 			if (
 				!writeVertex(

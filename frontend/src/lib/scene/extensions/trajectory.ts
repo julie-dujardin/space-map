@@ -11,16 +11,13 @@
  */
 
 import { SUN_ID, EARTH_ID } from '$lib/constants';
-import { AU_KM, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
+import { AU_KM } from '$lib/math/units';
 import { elementsToState } from '$lib/math/travel/state';
 import { sgp4PositionTEME } from '$lib/math/orbit/sgp4';
+import { temeToEcliptic } from '$lib/math/orbit/teme';
 import type { OrbitalElements } from '$lib/types/objects';
 import { twoline2satrec, SatRecError } from 'satellite.js';
 import type { Anchor, InertialAnchor, OffsetKm } from './anchor';
-
-const RAD = Math.PI / 180;
-const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * RAD);
-const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * RAD);
 
 /** One state on a sampled trajectory: a date, and where the object was on it. */
 export interface TrajectorySample {
@@ -103,15 +100,9 @@ export function tle(line1: string, line2: string): InertialAnchor {
 		offsetKm: (jd) => {
 			if (satrec.error !== SatRecError.None) return null;
 			const teme = sgp4PositionTEME(satrec, jd);
-			return teme && temeToEcliptic(teme[0], teme[1], teme[2]);
+			return teme && temeToEcliptic(teme[0], teme[1], teme[2], jd);
 		}
 	};
-}
-
-/** TEME kilometres to ecliptic J2000 kilometres: one turn about the shared
- *  vernal-equinox axis by the obliquity. */
-function temeToEcliptic(x: number, y: number, z: number): OffsetKm {
-	return [x, y * COS_EPS + z * SIN_EPS, -y * SIN_EPS + z * COS_EPS];
 }
 
 /**

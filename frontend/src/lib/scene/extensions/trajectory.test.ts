@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { AU_KM, AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
+import { AU_KM, AU_SCALE } from '$lib/math/units';
 import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionTEME } from '$lib/math/orbit/sgp4';
+import { temeToEcliptic } from '$lib/math/orbit/teme';
 import { twoline2satrec } from 'satellite.js';
 import type { OrbitalElements } from '$lib/types/objects';
 import { resolveAnchor } from './anchor';
@@ -186,15 +187,15 @@ describe('tle', () => {
 		expect(tle(ISS_LINE1, ISS_LINE2).body).toBe('naif-399');
 	});
 
-	it('is what SGP4 says, turned onto the ecliptic', () => {
+	it('is what SGP4 says, turned from TEME onto the ecliptic', () => {
 		const anchor = tle(ISS_LINE1, ISS_LINE2);
 		const jd = satrec.jdsatepoch + 0.01;
 		const teme = sgp4PositionTEME(satrec, jd)!;
 		const km = offsetKm(anchor, jd)!;
-		const eps = (EARTH_OBLIQUITY_DEG * Math.PI) / 180;
-		expect(km[0]).toBeCloseTo(teme[0], 9);
-		expect(km[1]).toBeCloseTo(teme[1] * Math.cos(eps) + teme[2] * Math.sin(eps), 9);
-		expect(km[2]).toBeCloseTo(-teme[1] * Math.sin(eps) + teme[2] * Math.cos(eps), 9);
+		const want = temeToEcliptic(teme[0], teme[1], teme[2], jd);
+		expect(km[0]).toBeCloseTo(want[0], 9);
+		expect(km[1]).toBeCloseTo(want[1], 9);
+		expect(km[2]).toBeCloseTo(want[2], 9);
 		// The turn is a rotation, so the distance from Earth is unchanged.
 		expect(Math.hypot(...km)).toBeCloseTo(Math.hypot(...teme), 9);
 	});

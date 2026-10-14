@@ -5,11 +5,8 @@
  */
 
 import { json2satrec, sgp4, type SatRec, SatRecError, type OMMJsonObject } from 'satellite.js';
-import { AU_KM, AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
-
-const DEG2RAD = Math.PI / 180;
-const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
-const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * DEG2RAD);
+import { AU_KM, AU_SCALE } from '$lib/math/units';
+import { temeToEcliptic } from './teme';
 /** 1970-01-01 00:00:00 UTC as a Julian Date. */
 const JD_UNIX_EPOCH = 2440587.5;
 
@@ -91,23 +88,18 @@ export function sgp4PositionTEME(satrec: SatRec, jd: number): [number, number, n
 	return [x, y, z];
 }
 
-/**
- * TEME-frame position (km) → Three.js scene coordinates. Same obliquity
- * rotation as orbitalToThreeJS's equatorial branch, so SGP4 output lands in
- * the ecliptic frame the rest of the scene uses.
- */
-export function temeKmToThreeJS(x: number, y: number, z: number): [number, number, number] {
+/** TEME position (km) at `jd` → Three.js scene coordinates, in the ecliptic
+ *  frame the rest of the scene uses. */
+export function temeKmToThreeJS(
+	x: number,
+	y: number,
+	z: number,
+	jd: number
+): [number, number, number] {
 	const scale = AU_SCALE / AU_KM;
-	const xs = x * scale;
-	let ys = y * scale;
-	let zs = z * scale;
-	// Rotate equatorial J2000 -> ecliptic J2000 about the shared X axis (vernal equinox)
-	const yEcl = ys * COS_EPS + zs * SIN_EPS;
-	const zEcl = -ys * SIN_EPS + zs * COS_EPS;
-	ys = yEcl;
-	zs = zEcl;
+	const [xe, ye, ze] = temeToEcliptic(x, y, z, jd);
 	// Ecliptic -> Three.js: ecliptic X -> X, ecliptic Z (north pole) -> Y, ecliptic Y -> -Z.
-	return [xs, zs, -ys];
+	return [xe * scale, ze * scale, -ye * scale];
 }
 
 /**
@@ -117,7 +109,7 @@ export function temeKmToThreeJS(x: number, y: number, z: number): [number, numbe
 export function sgp4PositionScene(satrec: SatRec, jd: number): [number, number, number] | null {
 	const teme = sgp4PositionTEME(satrec, jd);
 	if (!teme) return null;
-	return temeKmToThreeJS(teme[0], teme[1], teme[2]);
+	return temeKmToThreeJS(teme[0], teme[1], teme[2], jd);
 }
 
 /**
