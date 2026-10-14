@@ -481,7 +481,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "المشغلون",
 				"countPlural=one": "المشغل",
+				"countPlural=two": "المشغلان",
+				"countPlural=few": "المشغلون",
+				"countPlural=many": "المشغلون",
 				"countPlural=other": "المشغلون"
 			}
 		}
@@ -491,7 +495,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "الشركات المصنعة",
 				"countPlural=one": "الشركة المصنعة",
+				"countPlural=two": "الشركتان المصنعتان",
+				"countPlural=few": "الشركات المصنعة",
+				"countPlural=many": "الشركات المصنعة",
 				"countPlural=other": "الشركات المصنعة"
 			}
 		}
@@ -1176,7 +1184,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "تم مسح ‎{count}‎ من الأجرام المُثبَّتة",
 				"countPlural=one": "تم مسح جرم مُثبَّت واحد",
+				"countPlural=two": "تم مسح جرمين مُثبَّتين",
+				"countPlural=few": "تم مسح ‎{count}‎ من الأجرام المُثبَّتة",
+				"countPlural=many": "تم مسح ‎{count}‎ من الأجرام المُثبَّتة",
 				"countPlural=other": "تم مسح ‎{count}‎ من الأجرام المُثبَّتة"
 			}
 		}
@@ -2569,7 +2581,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "بلدان المنشأ",
 				"countPlural=one": "بلد المنشأ",
+				"countPlural=two": "بلدا المنشأ",
+				"countPlural=few": "بلدان المنشأ",
+				"countPlural=many": "بلدان المنشأ",
 				"countPlural=other": "بلدان المنشأ"
 			}
 		}
@@ -2580,7 +2596,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "المُطوِّرون",
 				"countPlural=one": "المُطوِّر",
+				"countPlural=two": "المُطوِّران",
+				"countPlural=few": "المُطوِّرون",
+				"countPlural=many": "المُطوِّرون",
 				"countPlural=other": "المُطوِّرون"
 			}
 		}
@@ -2594,7 +2614,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "ممولون",
 				"countPlural=one": "ممول",
+				"countPlural=two": "ممولان",
+				"countPlural=few": "ممولون",
+				"countPlural=many": "ممولون",
 				"countPlural=other": "ممولون"
 			}
 		}
@@ -2607,7 +2631,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "مقدمو خدمة الإطلاق",
 				"countPlural=one": "مقدم خدمة الإطلاق",
+				"countPlural=two": "مقدما خدمة الإطلاق",
+				"countPlural=few": "مقدمو خدمة الإطلاق",
+				"countPlural=many": "مقدمو خدمة الإطلاق",
 				"countPlural=other": "مقدمو خدمة الإطلاق"
 			}
 		}
@@ -2622,7 +2650,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "الشركات المصنعة",
 				"countPlural=one": "الشركة المصنعة",
+				"countPlural=two": "الشركتان المصنعتان",
+				"countPlural=few": "الشركات المصنعة",
+				"countPlural=many": "الشركات المصنعة",
 				"countPlural=other": "الشركات المصنعة"
 			}
 		}
@@ -2637,7 +2669,11 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
+				"countPlural=zero": "المشغلون",
 				"countPlural=one": "المشغل",
+				"countPlural=two": "المشغلان",
+				"countPlural=few": "المشغلون",
+				"countPlural=many": "المشغلون",
 				"countPlural=other": "المشغلون"
 			}
 		}

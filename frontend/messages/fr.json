@@ -283,6 +283,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} membre",
+				"countPlural=many": "{count} membres",
 				"countPlural=other": "{count} membres"
 			}
 		}
@@ -301,6 +302,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} lancement",
+				"countPlural=many": "{count} lancements",
 				"countPlural=other": "{count} lancements"
 			}
 		}
@@ -382,6 +384,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} découverte",
+				"countPlural=many": "{count} découvertes",
 				"countPlural=other": "{count} découvertes"
 			}
 		}
@@ -392,6 +395,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} nom approuvé",
+				"countPlural=many": "{count} noms approuvés",
 				"countPlural=other": "{count} noms approuvés"
 			}
 		}
@@ -443,6 +447,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Opérateur",
+				"countPlural=many": "Opérateurs",
 				"countPlural=other": "Opérateurs"
 			}
 		}
@@ -453,6 +458,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Constructeur",
+				"countPlural=many": "Constructeurs",
 				"countPlural=other": "Constructeurs"
 			}
 		}
@@ -630,6 +636,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} panorama",
+				"countPlural=many": "{count} panoramas",
 				"countPlural=other": "{count} panoramas"
 			}
 		}
@@ -642,6 +649,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{display} panorama de surface à 360°",
+				"countPlural=many": "{display} panoramas de surface à 360°",
 				"countPlural=other": "{display} panoramas de surface à 360°"
 			}
 		}
@@ -652,6 +660,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{display} sonde",
+				"countPlural=many": "{display} sondes",
 				"countPlural=other": "{display} sondes"
 			}
 		}
@@ -662,6 +671,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{display} monde",
+				"countPlural=many": "{display} mondes",
 				"countPlural=other": "{display} mondes"
 			}
 		}
@@ -717,6 +727,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} anneau",
+				"countPlural=many": "{count} anneaux",
 				"countPlural=other": "{count} anneaux"
 			}
 		}
@@ -727,6 +738,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} division",
+				"countPlural=many": "{count} divisions",
 				"countPlural=other": "{count} divisions"
 			}
 		}
@@ -737,6 +749,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} lacune",
+				"countPlural=many": "{count} lacunes",
 				"countPlural=other": "{count} lacunes"
 			}
 		}
@@ -747,6 +760,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} annelet",
+				"countPlural=many": "{count} annelets",
 				"countPlural=other": "{count} annelets"
 			}
 		}
@@ -757,6 +771,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} région",
+				"countPlural=many": "{count} régions",
 				"countPlural=other": "{count} régions"
 			}
 		}
@@ -767,6 +782,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} arc",
+				"countPlural=many": "{count} arcs",
 				"countPlural=other": "{count} arcs"
 			}
 		}
@@ -777,6 +793,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} bande de poussière",
+				"countPlural=many": "{count} bandes de poussière",
 				"countPlural=other": "{count} bandes de poussière"
 			}
 		}
@@ -820,6 +837,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} lune",
+				"countPlural=many": "{count} lunes",
 				"countPlural=other": "{count} lunes"
 			}
 		}
@@ -1078,6 +1096,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} objet",
+				"countPlural=many": "{count} objets",
 				"countPlural=other": "{count} objets"
 			}
 		}
@@ -1191,6 +1210,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} objet épinglé effacé",
+				"countPlural=many": "{count} objets épinglés effacés",
 				"countPlural=other": "{count} objets épinglés effacés"
 			}
 		}
@@ -1526,6 +1546,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} objet",
+				"countPlural=many": "{count} objets",
 				"countPlural=other": "{count} objets"
 			}
 		}
@@ -1557,6 +1578,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} source",
+				"countPlural=many": "{count} sources",
 				"countPlural=other": "{count} sources"
 			}
 		}
@@ -1707,6 +1729,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Pays",
+				"countPlural=many": "Pays",
 				"countPlural=other": "Pays"
 			}
 		}
@@ -2395,6 +2418,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "pays d'origine",
+				"countPlural=many": "pays d'origine",
 				"countPlural=other": "pays d'origine"
 			}
 		}
@@ -2406,6 +2430,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "développé par",
+				"countPlural=many": "développé par",
 				"countPlural=other": "développé par"
 			}
 		}
@@ -2420,6 +2445,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "financeur",
+				"countPlural=many": "financeurs",
 				"countPlural=other": "financeurs"
 			}
 		}
@@ -2432,6 +2458,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "service de lancement",
+				"countPlural=many": "services de lancement",
 				"countPlural=other": "services de lancement"
 			}
 		}
@@ -2447,6 +2474,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "fabricant",
+				"countPlural=many": "fabricants",
 				"countPlural=other": "fabricants"
 			}
 		}
@@ -2462,6 +2490,7 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "opérateur",
+				"countPlural=many": "opérateurs",
 				"countPlural=other": "opérateurs"
 			}
 		}

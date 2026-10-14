@@ -293,6 +293,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} element",
+				"countPlural=few": "{count} elementy",
+				"countPlural=many": "{count} elementów",
 				"countPlural=other": "{count} elementów"
 			}
 		}
@@ -311,6 +313,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} start",
+				"countPlural=few": "{count} starty",
+				"countPlural=many": "{count} startów",
 				"countPlural=other": "{count} startów"
 			}
 		}
@@ -405,6 +409,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} obiekt",
+				"countPlural=few": "{count} obiekty",
+				"countPlural=many": "{count} obiektów",
 				"countPlural=other": "{count} obiektów"
 			}
 		}
@@ -457,6 +463,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} odkrycie",
+				"countPlural=few": "{count} odkrycia",
+				"countPlural=many": "{count} odkryć",
 				"countPlural=other": "{count} odkryć"
 			}
 		}
@@ -467,6 +475,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} zatwierdzona nazwa",
+				"countPlural=few": "{count} zatwierdzone nazwy",
+				"countPlural=many": "{count} zatwierdzonych nazw",
 				"countPlural=other": "{count} zatwierdzonych nazw"
 			}
 		}
@@ -518,6 +528,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Operator",
+				"countPlural=few": "Operatorzy",
+				"countPlural=many": "Operatorzy",
 				"countPlural=other": "Operatorzy"
 			}
 		}
@@ -528,6 +540,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Producent",
+				"countPlural=few": "Producenci",
+				"countPlural=many": "Producenci",
 				"countPlural=other": "Producenci"
 			}
 		}
@@ -601,6 +615,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} panorama",
+				"countPlural=few": "{count} panoramy",
+				"countPlural=many": "{count} panoram",
 				"countPlural=other": "{count} panoram"
 			}
 		}
@@ -1123,6 +1139,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Wyczyszczono {count} przypięty obiekt",
+				"countPlural=few": "Wyczyszczono {count} przypięte obiekty",
+				"countPlural=many": "Wyczyszczono {count} przypiętych obiektów",
 				"countPlural=other": "Wyczyszczono {count} przypiętych obiektów"
 			}
 		}
@@ -1475,6 +1493,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} obiekt",
+				"countPlural=few": "{count} obiekty",
+				"countPlural=many": "{count} obiektów",
 				"countPlural=other": "{count} obiektów"
 			}
 		}
@@ -1506,6 +1526,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "{count} źródło",
+				"countPlural=few": "{count} źródła",
+				"countPlural=many": "{count} źródeł",
 				"countPlural=other": "{count} źródeł"
 			}
 		}
@@ -1731,6 +1753,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Kraj",
+				"countPlural=few": "Kraje",
+				"countPlural=many": "Kraje",
 				"countPlural=other": "Kraje"
 			}
 		}
@@ -2368,6 +2392,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "kraj pochodzenia",
+				"countPlural=few": "kraje pochodzenia",
+				"countPlural=many": "kraje pochodzenia",
 				"countPlural=other": "kraje pochodzenia"
 			}
 		}
@@ -2379,6 +2405,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "twórca",
+				"countPlural=few": "twórcy",
+				"countPlural=many": "twórcy",
 				"countPlural=other": "twórcy"
 			}
 		}
@@ -2393,6 +2421,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "fundator",
+				"countPlural=few": "fundatorzy",
+				"countPlural=many": "fundatorzy",
 				"countPlural=other": "fundatorzy"
 			}
 		}
@@ -2406,6 +2436,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "wykonawca startu",
+				"countPlural=few": "wykonawcy startu",
+				"countPlural=many": "wykonawcy startu",
 				"countPlural=other": "wykonawcy startu"
 			}
 		}
@@ -2421,6 +2453,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "wytwórca",
+				"countPlural=few": "wytwórcy",
+				"countPlural=many": "wytwórcy",
 				"countPlural=other": "wytwórcy"
 			}
 		}
@@ -2436,6 +2470,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "operator",
+				"countPlural=few": "operatorzy",
+				"countPlural=many": "operatorzy",
 				"countPlural=other": "operatorzy"
 			}
 		}

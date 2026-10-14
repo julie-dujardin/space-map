@@ -471,6 +471,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Оператор",
+				"countPlural=few": "Операторы",
+				"countPlural=many": "Операторы",
 				"countPlural=other": "Операторы"
 			}
 		}
@@ -481,6 +483,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "Производитель",
+				"countPlural=few": "Производители",
+				"countPlural=many": "Производители",
 				"countPlural=other": "Производители"
 			}
 		}
@@ -2582,6 +2586,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "страна происхождения",
+				"countPlural=few": "страны происхождения",
+				"countPlural=many": "страны происхождения",
 				"countPlural=other": "страны происхождения"
 			}
 		}
@@ -2593,6 +2599,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "разработчик",
+				"countPlural=few": "разработчики",
+				"countPlural=many": "разработчики",
 				"countPlural=other": "разработчики"
 			}
 		}
@@ -2607,6 +2615,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "заказчик",
+				"countPlural=few": "заказчики",
+				"countPlural=many": "заказчики",
 				"countPlural=other": "заказчики"
 			}
 		}
@@ -2620,6 +2630,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "подрядчик запуска",
+				"countPlural=few": "подрядчики запуска",
+				"countPlural=many": "подрядчики запуска",
 				"countPlural=other": "подрядчики запуска"
 			}
 		}
@@ -2635,6 +2647,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "производитель",
+				"countPlural=few": "производители",
+				"countPlural=many": "производители",
 				"countPlural=other": "производители"
 			}
 		}
@@ -2650,6 +2664,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "оператор",
+				"countPlural=few": "операторы",
+				"countPlural=many": "операторы",
 				"countPlural=other": "операторы"
 			}
 		}

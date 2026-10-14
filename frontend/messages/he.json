@@ -293,6 +293,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "חבר {count}",
+				"countPlural=two": "{count} חברים",
+				"countPlural=many": "{count} חברים",
 				"countPlural=other": "{count} חברים"
 			}
 		}
@@ -311,6 +313,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "שיגור {count}",
+				"countPlural=two": "{count} שיגורים",
+				"countPlural=many": "{count} שיגורים",
 				"countPlural=other": "{count} שיגורים"
 			}
 		}
@@ -405,6 +409,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "עצם {count}",
+				"countPlural=two": "{count} עצמים",
+				"countPlural=many": "{count} עצמים",
 				"countPlural=other": "{count} עצמים"
 			}
 		}
@@ -457,6 +463,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "תגלית {count}",
+				"countPlural=two": "{count} תגליות",
+				"countPlural=many": "{count} תגליות",
 				"countPlural=other": "{count} תגליות"
 			}
 		}
@@ -467,6 +475,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "שם אחד אושר",
+				"countPlural=two": "{count} שמות אושרו",
+				"countPlural=many": "{count} שמות אושרו",
 				"countPlural=other": "{count} שמות אושרו"
 			}
 		}
@@ -518,6 +528,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "מפעיל",
+				"countPlural=two": "מפעילים",
+				"countPlural=many": "מפעילים",
 				"countPlural=other": "מפעילים"
 			}
 		}
@@ -528,6 +540,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "יצרן",
+				"countPlural=two": "יצרנים",
+				"countPlural=many": "יצרנים",
 				"countPlural=other": "יצרנים"
 			}
 		}
@@ -601,6 +615,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "פנורמה {count}",
+				"countPlural=two": "{count} פנורמות",
+				"countPlural=many": "{count} פנורמות",
 				"countPlural=other": "{count} פנורמות"
 			}
 		}
@@ -614,6 +630,7 @@
 			"match": {
 				"countPlural=one": "פנורמת שטח 360° אחת",
 				"countPlural=two": "שתי פנורמות שטח 360°",
+				"countPlural=many": "{display} פנורמות שטח 360°",
 				"countPlural=other": "{display} פנורמות שטח 360°"
 			}
 		}
@@ -625,6 +642,7 @@
 			"match": {
 				"countPlural=one": "גשושית אחת",
 				"countPlural=two": "שתי גשושיות",
+				"countPlural=many": "{display} גשושיות",
 				"countPlural=other": "{display} גשושיות"
 			}
 		}
@@ -636,6 +654,7 @@
 			"match": {
 				"countPlural=one": "עולם אחד",
 				"countPlural=two": "שני עולמות",
+				"countPlural=many": "{display} עולמות",
 				"countPlural=other": "{display} עולמות"
 			}
 		}
@@ -691,6 +710,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "טבעת {count}",
+				"countPlural=two": "{count} טבעות",
+				"countPlural=many": "{count} טבעות",
 				"countPlural=other": "{count} טבעות"
 			}
 		}
@@ -701,6 +722,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "חיץ {count}",
+				"countPlural=two": "{count} חיצים",
+				"countPlural=many": "{count} חיצים",
 				"countPlural=other": "{count} חיצים"
 			}
 		}
@@ -711,6 +734,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "רווח {count}",
+				"countPlural=two": "{count} רווחים",
+				"countPlural=many": "{count} רווחים",
 				"countPlural=other": "{count} רווחים"
 			}
 		}
@@ -721,6 +746,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "טבעתון {count}",
+				"countPlural=two": "{count} טבעתונים",
+				"countPlural=many": "{count} טבעתונים",
 				"countPlural=other": "{count} טבעתונים"
 			}
 		}
@@ -731,6 +758,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "אזור {count}",
+				"countPlural=two": "{count} אזורים",
+				"countPlural=many": "{count} אזורים",
 				"countPlural=other": "{count} אזורים"
 			}
 		}
@@ -741,6 +770,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "קשת {count}",
+				"countPlural=two": "{count} קשתות",
+				"countPlural=many": "{count} קשתות",
 				"countPlural=other": "{count} קשתות"
 			}
 		}
@@ -751,6 +782,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "רצועת אבק {count}",
+				"countPlural=two": "{count} רצועות אבק",
+				"countPlural=many": "{count} רצועות אבק",
 				"countPlural=other": "{count} רצועות אבק"
 			}
 		}
@@ -794,6 +827,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "ירח {count}",
+				"countPlural=two": "{count} ירחים",
+				"countPlural=many": "{count} ירחים",
 				"countPlural=other": "{count} ירחים"
 			}
 		}
@@ -1104,6 +1139,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "נוקה עצם מוצמד {count}",
+				"countPlural=two": "נוקו {count} עצמים מוצמדים",
+				"countPlural=many": "נוקו {count} עצמים מוצמדים",
 				"countPlural=other": "נוקו {count} עצמים מוצמדים"
 			}
 		}
@@ -1456,6 +1493,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "עצם {count}",
+				"countPlural=two": "{count} עצמים",
+				"countPlural=many": "{count} עצמים",
 				"countPlural=other": "{count} עצמים"
 			}
 		}
@@ -1487,6 +1526,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "מקור אחד",
+				"countPlural=two": "{count} מקורות",
+				"countPlural=many": "{count} מקורות",
 				"countPlural=other": "{count} מקורות"
 			}
 		}
@@ -1712,6 +1753,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "מדינה",
+				"countPlural=two": "מדינות",
+				"countPlural=many": "מדינות",
 				"countPlural=other": "מדינות"
 			}
 		}
@@ -2478,6 +2521,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "מדינת מקור",
+				"countPlural=two": "מדינות מקור",
+				"countPlural=many": "מדינות מקור",
 				"countPlural=other": "מדינות מקור"
 			}
 		}
@@ -2489,6 +2534,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "מפתח",
+				"countPlural=two": "מפתחים",
+				"countPlural=many": "מפתחים",
 				"countPlural=other": "מפתחים"
 			}
 		}
@@ -2503,6 +2550,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "מממן",
+				"countPlural=two": "מממנים",
+				"countPlural=many": "מממנים",
 				"countPlural=other": "מממנים"
 			}
 		}
@@ -2516,6 +2565,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "קבלן שיגור",
+				"countPlural=two": "קבלני שיגור",
+				"countPlural=many": "קבלני שיגור",
 				"countPlural=other": "קבלני שיגור"
 			}
 		}
@@ -2531,6 +2582,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "יצרן",
+				"countPlural=two": "יצרנים",
+				"countPlural=many": "יצרנים",
 				"countPlural=other": "יצרנים"
 			}
 		}
@@ -2546,6 +2599,8 @@
 			"selectors": ["countPlural"],
 			"match": {
 				"countPlural=one": "מפעיל",
+				"countPlural=two": "מפעילים",
+				"countPlural=many": "מפעילים",
 				"countPlural=other": "מפעילים"
 			}
 		}
