@@ -142,12 +142,11 @@ export function bootThree(
 	// The canvas's own antialiasing does not reach this target. The renderer sets its sample count.
 	const composerTarget = new WebGLRenderTarget(canvas.clientWidth, canvas.clientHeight, {
 		type: HalfFloatType,
-		// No pass reads the scene's depth.
+		// The model overlay reads the scene's depth: the renderer resolves it while one is drawn.
 		resolveDepthBuffer: false,
-		// Reversed depth needs a float buffer. three takes the buffer's type from this texture.
-		depthTexture: renderer.capabilities.reversedDepthBuffer
-			? new DepthTexture(canvas.clientWidth, canvas.clientHeight, FloatType)
-			: null
+		// Float: reversed depth needs it, and decoding a depth magnifies small differences.
+		// three takes the buffer's type from this texture.
+		depthTexture: new DepthTexture(canvas.clientWidth, canvas.clientHeight, FloatType)
 	});
 	const gl = renderer.getContext() as WebGL2RenderingContext;
 	// The counts come in descending order. A device can have none for this format.

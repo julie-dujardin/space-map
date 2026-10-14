@@ -82,6 +82,7 @@ import {
 	modelOuterRadiusKm,
 	modelSurfaceRadialKm
 } from './objects/body/model';
+import { ModelDepthPass } from './objects/body/model-depth';
 import {
 	AMBIENT_BOOST_INTENSITY,
 	AMBIENT_INTENSITY,
@@ -210,6 +211,7 @@ export class SceneRenderer {
 	private composer: EffectComposer;
 	private maxSceneSamples: number;
 	private atmoDepthPass: AtmosphereDepthPass;
+	private readonly modelDepthPass = new ModelDepthPass();
 	private bloomPass: UnrealBloomPass;
 	private labelRenderer: ThrottledCSS2DRenderer;
 	private scene: Scene;
@@ -281,6 +283,7 @@ export class SceneRenderer {
 	 *  plane at the surface, so the rover casts a soft shadow onto the terrain. */
 	private modelShadowPlane: Mesh | null = null;
 	private readonly _tmpUp = new Vector3();
+	private readonly _tmpFwd = new Vector3();
 	private readonly _tmpSun = new Vector3();
 	private readonly _tmpLeak = new Vector3();
 	private readonly _occluders: BodyObjects[] = [];
@@ -1295,6 +1298,7 @@ export class SceneRenderer {
 		}
 
 		this.syncSceneSamples(atmoState.insideShell);
+		this.composer.readBuffer.resolveDepthBuffer = this.overlayActive;
 		this.composer.render();
 		this.renderModelOverlay();
 		this.labelRenderer.render(this.scene, this.camera);
@@ -1606,10 +1610,12 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Composite the focused body's 3D model on top of the main render. The model
+	 * Composite the focused body's 3D model over the main render. The model
 	 * lives in `modelScene` at unit scale; the overlay camera mirrors the main
 	 * camera's orientation at a distance that keeps the model's screen footprint
 	 * matching what the body sphere occupied, with tight near/far for depth.
+	 * The main scene's depth goes into the canvas first, so that the ground in
+	 * front of the model hides it.
 	 * Skipped while no spacecraft model is resident — natural-body models then
 	 * render mounted in the main scene (see `updateModelMounts`).
 	 */
@@ -1725,8 +1731,22 @@ export class SceneRenderer {
 			this.pointingAxes.visible = false;
 		}
 
+		const box = bo.model.userData as { boxCenter: Vector3; halfExtents: Vector3 };
+		this._tmpV3.copy(box.boxCenter).applyQuaternion(bo.model.quaternion).add(bo.model.position);
+		this.modelCamera.getWorldDirection(this._tmpFwd);
+		const boxFront =
+			this._tmpV3.sub(this.modelCamera.position).dot(this._tmpFwd) - box.halfExtents.length();
+
 		this.renderer.autoClear = false;
 		this.renderer.clearDepth();
+		this.modelDepthPass.run(
+			this.renderer,
+			this.composer.readBuffer.depthTexture!,
+			this.camera,
+			this.modelCamera,
+			unit,
+			boxFront
+		);
 		this.renderer.render(this.modelScene, this.modelCamera);
 		this.renderer.autoClear = true;
 	}
@@ -2824,6 +2844,7 @@ export class SceneRenderer {
 		// EffectComposer render targets (bloom mips) survive renderer.dispose().
 		this.composer.dispose();
 		this.atmoDepthPass.dispose();
+		this.modelDepthPass.dispose();
 		this.renderer.dispose();
 	}
 

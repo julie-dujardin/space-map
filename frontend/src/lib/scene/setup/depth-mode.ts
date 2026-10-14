@@ -52,3 +52,10 @@ export function logDepthToEyeGlsl(depth: string, far: string): string {
 	const floor = LOG_DEPTH_FLOOR.toFixed(1);
 	return `exp2(${depth} * (log2(${far} + 1.0) - ${floor}) + ${floor})`;
 }
+
+/** GLSL expression for the logarithmic depth of an eye distance, as the
+ *  fragment chunk writes it. */
+export function eyeToLogDepthGlsl(eye: string, far: string): string {
+	const floor = LOG_DEPTH_FLOOR.toFixed(1);
+	return `max(log2(${eye}) - ${floor}, 0.0) / (log2(${far} + 1.0) - ${floor})`;
+}

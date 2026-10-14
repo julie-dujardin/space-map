@@ -504,9 +504,10 @@ function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
  * the craft body inside it. A mount's or the overlay camera's single scale
  * factor then makes it true-sized.
  *
- * Records `centerOffset`/`feetOffset` in `userData` — the overlay seats a
- * landed probe on its feet, not bbox-centred. `occluderSpheres` feeds the
- * label-occlusion pass so CSS2D labels behind the model get hidden.
+ * `userData` keeps what the overlay needs: `centerOffset` and `feetOffset` to
+ * seat a landed probe on its feet, the box (`boxCenter`, `halfExtents`) where
+ * the ground's depth stops, and `occluderSpheres`, which hide the CSS2D labels
+ * behind the model.
  */
 function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): void {
 	root.updateMatrixWorld(true);
@@ -520,6 +521,7 @@ function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): void {
 	const maxDim = Math.max(size.x, size.y, size.z);
 	if (maxDim <= 0) return;
 	const k = 2 / maxDim;
+	root.userData.boxCenter = center.clone().multiplyScalar(k);
 	// Seat the craft body at the origin, not the box centre: the body is what
 	// the orbit anchors and the label point at, and a long boom drags the box
 	// centre off it. The anchor is in post-fit units, hence the half-span.
