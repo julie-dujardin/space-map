@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configureHost } from '$lib/host';
 import type { BodyObjects, TilesBlock } from '$lib/scene/types';
-import { tilesServe } from './tile-overlay';
+import { surfaceTilesEnabled, tilesServe } from './tile-overlay';
 
 function body(tiles: Partial<TilesBlock> = {}, overlay?: { dead: boolean }): BodyObjects {
 	const surfaceTiles = { id: 'naif-499', tile_size: 1024, max_level: 6, version: 'v', ...tiles };
@@ -34,5 +34,24 @@ describe('tilesServe', () => {
 	it('is false after the tile host failed the pyramid', () => {
 		configureHost({ tilesUrl: 'https://tiles.example.org' });
 		expect(tilesServe(body({}, { dead: true }))).toBe(false);
+	});
+});
+
+describe('surfaceTilesEnabled', () => {
+	afterEach(() => {
+		configureHost({});
+		vi.unstubAllGlobals();
+	});
+
+	it('is false on a device short of memory, which holds no tile windows', () => {
+		configureHost({ tilesUrl: 'https://tiles.example.org' });
+		vi.stubGlobal('navigator', { deviceMemory: 4 });
+		expect(surfaceTilesEnabled()).toBe(false);
+	});
+
+	it('is true with a tile host on a device that has the memory', () => {
+		configureHost({ tilesUrl: 'https://tiles.example.org' });
+		vi.stubGlobal('navigator', { deviceMemory: 8 });
+		expect(surfaceTilesEnabled()).toBe(true);
 	});
 });

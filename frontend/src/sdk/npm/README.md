@@ -451,6 +451,22 @@ it straight back.
 The flat map needs nothing of its own for this: its pictures are layers already,
 and `addRasterLayer` puts one of yours over or in place of them.
 
+### Surface tiles
+
+Close up, a body's surface sharpens with tiles fetched around the camera. Some
+maps draw none — on a device short of memory, for one — and every body then
+shows its whole-globe maps alone, which go soft close up:
+
+```js
+map.tilesEnabled(); // false where the map draws no tiles at all
+await map.hasTiles('naif-499'); // whether tiles sharpen Mars up close
+```
+
+`hasTiles` is also false for a body without tiles, one drawn as a shape model
+up close, and one whose tiles could not be fetched. It reads the body's own
+data, so it answers before the camera gets there. A page can use the two to
+limit how far the reader zooms in, or to say that close-up detail is off.
+
 ### Layers
 
 What the map draws is a set of layers, each switched by id — the kinds of

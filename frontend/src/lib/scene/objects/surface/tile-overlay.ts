@@ -13,7 +13,7 @@ import { textureAllowed } from '$lib/host';
 import { FIRST_TILE_LEVEL, WINDOW_TILES, neededLevel } from '$lib/scene/lod/tile-window';
 import { maxTileWindows } from '$lib/scene/render-tier';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
-import type { BodyObjects } from '$lib/scene/types';
+import type { BodyObjects, TilesBlock } from '$lib/scene/types';
 import {
 	MAX_DRAWN,
 	TILE_CHAIN_GLSL,
@@ -152,20 +152,28 @@ export function disposeTileOverlay(bo: BodyObjects): void {
 	if (bo.tileOverlay) disposeChain(bo.tileOverlay.chain);
 }
 
+/** Whether surface tiles draw at all: they need a tile host, and memory this
+ *  device does not always have. */
+export function surfaceTilesEnabled(): boolean {
+	return tilesBase() !== '' && maxTileWindows() > 0;
+}
+
+/** Whether this embed draws the pyramid `tiles` on this device. A body can
+ *  still rule it out. */
+export function tilesDrawable(tiles: TilesBlock | undefined): boolean {
+	return (
+		!!tiles &&
+		tiles.max_level >= FIRST_TILE_LEVEL &&
+		surfaceTilesEnabled() &&
+		textureAllowed(tiles.distribution)
+	);
+}
+
 /** Whether tiles carry this body's surface detail, so the largest whole-globe
  *  tier need not load. False once the tile host has failed it, and for a
  *  shape model, which takes the sphere's map and no windows. */
 export function tilesServe(bo: BodyObjects): boolean {
-	const tiles = bo.surfaceTiles;
-	return (
-		!!tiles &&
-		!bo.model &&
-		tiles.max_level >= FIRST_TILE_LEVEL &&
-		tilesBase() !== '' &&
-		maxTileWindows() > 0 &&
-		!bo.tileOverlay?.chain.dead &&
-		textureAllowed(tiles.distribution)
-	);
+	return tilesDrawable(bo.surfaceTiles) && !bo.model && !bo.tileOverlay?.chain.dead;
 }
 
 /**

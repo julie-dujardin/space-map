@@ -1468,6 +1468,12 @@ export class SceneRenderer {
 		return Boolean(this.bodyObjects.get(id)?.isLanded);
 	}
 
+	/** @internal Whether the tile host has failed `id`'s surface tiles: they
+	 *  are not asked for again this session. */
+	tilesFailed(id: string): boolean {
+		return Boolean(this.bodyObjects.get(id)?.tileOverlay?.chain.dead);
+	}
+
 	/** @internal Distance from `bodyId`'s centre to the surface as it is drawn
 	 *  this frame, in km, under a body-fixed place; null while its terrain or
 	 *  radii are still loading. What a shape laid on the ground follows. */

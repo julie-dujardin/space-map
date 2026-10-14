@@ -38,6 +38,8 @@ import {
 import type { Extension } from './extensions/registry';
 import { MapObjectCollection, MapObjectExtension, type MapObjects } from './extensions/objects';
 import type { BodyAppearance } from './objects/body/appearance';
+import { shapeModelSkipReason } from './objects/body/shape-model-policy';
+import { surfaceTilesEnabled, tilesDrawable } from './objects/surface/tile-overlay';
 import { anchorDistanceKm, anchorOffsetKm, subsolarPoint } from './extensions/measure';
 import type { Anchor, OffsetKm } from './extensions/anchor';
 import { smallCircle, type LonLat } from '$lib/flatmap/geometry';
@@ -56,7 +58,8 @@ import { GestureHandler, gestureStart } from '$lib/interaction/gesture';
 import { CooperativeGestures } from '$lib/interaction/cooperative';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 import { coverageOf, nearestCoveredJd, type CoverageWindow } from '$lib/fetch/coverage';
-import { host } from '$lib/host';
+import { host, pickTexture } from '$lib/host';
+import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 import type { LabelledHazard } from '$lib/travel/hazards';
 import { bodyView, type Body } from './body-view';
@@ -503,6 +506,25 @@ export class SpaceMap {
 	 *  once the camera is on the body or its system. */
 	getSubsolarPoint(id: string): LonLat | null {
 		return subsolarPoint(id, this.ctx, this.placedJd);
+	}
+
+	/** Whether this map draws surface tiles at all. False where no tile host is
+	 *  set, and on a device short of memory: every body then shows its
+	 *  whole-globe maps alone, and close up they go soft. */
+	tilesEnabled(): boolean {
+		return surfaceTilesEnabled();
+	}
+
+	/** Whether tiles sharpen `id`'s surface up close. False for a body without
+	 *  a tile pyramid this embed may draw, one that is a shape model up close,
+	 *  and one whose tiles the tile host has failed. Read from the body's own
+	 *  data, so the answer does not wait for the camera to get there. */
+	async hasTiles(id: string): Promise<boolean> {
+		const global = (await fetchObjectDetail(id, false).catch(() => null))?.global;
+		if (!global?.map_texture_available || shapeModelSkipReason(global) === null) return false;
+		const best = global.texture && { ...global.texture, id };
+		const surface = pickTexture([best, ...(global.alternates ?? [])]);
+		return tilesDrawable(surface?.tiles) && !this.renderer?.tilesFailed(id);
 	}
 
 	/** @internal Fetch the scene's data for the clock's date. Resolves when all of it is
