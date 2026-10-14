@@ -14,6 +14,7 @@
 		type Status,
 		type StatusSource
 	} from '$lib/status/status-payload';
+	import BackendStatus from './BackendStatus.svelte';
 
 	interface Props {
 		status: Status;
@@ -58,6 +59,8 @@
 		{m.status_summary_due({ count: counts.due })} ·
 		{m.status_summary_never({ count: counts.never })}
 	</p>
+
+	<BackendStatus />
 
 	<!-- One row per source: name, then three right-aligned figures. The
 	     header labels them once for the whole page; each section repeats
