@@ -169,23 +169,29 @@ bodies:
     download_url: https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/MDR/WAC_EMP/WAC_EMP_643NM_P900S0000_304P.IMG
     projection: polar_stereographic
     lat_range: [-90, -60]
-  # Mosaics of the LROC narrow-angle camera under a low sun. Their shadows
-  # are real, where the map around them has none: at this scale the height
-  # map has no relief to light, and a mosaic under a high sun shows a flat
-  # plain. The camera's maps agree to well under a pixel of the lunar map,
-  # and a mosaic is strips a few kilometres wide, so the blend is narrow.
+  # Mosaics of the LROC narrow-angle camera. Where a terrain model of the
+  # site gives the ground its relief, the mosaic is one under a high sun: the
+  # renderer casts the shadows, and those of a low sun would show beside
+  # them. Elsewhere it is one under a low sun, as at this scale the height
+  # map has no relief to light and a high sun shows a flat plain; so too
+  # where no mosaic under a high sun covers the site. The camera's maps agree
+  # to well under a pixel of the lunar map, and a mosaic is strips a few
+  # kilometres wide, so the blend is narrow.
   patches:
   - id: apollo-11
     name: Apollo 11
-    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO11LOA
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO11HIA
     organisation: NASA
     license: Public domain
-    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 11 landing site, 0.5 m/px."
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaics of the Apollo 11 landing site under a high Sun, 1.3 m/px and 0.4 m/px."
     sharpen_sigma: 3
     files:
-    - file: NAC_ROI_APOLLO11LOA_E004N0235.IMG
+    - file: NAC_ROI_APOLLO11HIA_E010N0234.IMG
       dir: moon-sites
-      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO11LOA/NAC_ROI_APOLLO11LOA_E004N0235.IMG
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO11HIA/NAC_ROI_APOLLO11HIA_E010N0234.IMG
+    - file: NAC_ROI_APOLLO11HIB_E006N0235.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO11HIB/NAC_ROI_APOLLO11HIB_E006N0235.IMG
   - id: apollo-12
     name: Apollo 12 and Surveyor 3
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO12LOA
@@ -210,26 +216,29 @@ bodies:
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO14LOA/NAC_ROI_APOLLO14LOA_E038S3426.IMG
   - id: apollo-15
     name: Apollo 15 and Hadley Rille
-    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO15LOD
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO15HIA
     organisation: NASA
     license: Public domain
-    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 15 landing site and Hadley Rille, 1.4 m/px."
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera mosaics of Hadley Rille, 1.4 m/px, and of the Apollo 15 landing site, 0.55 m/px, under a high Sun."
     sharpen_sigma: 3
     files:
-    - file: NAC_ROI_APOLLO15LOD_E259N0038.IMG
+    - file: NAC_ROI_HADLEY__HIA_E253N0026.IMG
       dir: moon-sites
-      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO15LOD/NAC_ROI_APOLLO15LOD_E259N0038.IMG
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/HADLEY__HIA/NAC_ROI_HADLEY__HIA_E253N0026.IMG
+    - file: NAC_ROI_APOLLO15HIA_E259N0036.IMG
+      dir: moon-sites
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO15HIA/NAC_ROI_APOLLO15HIA_E259N0036.IMG
   - id: apollo-16
     name: Apollo 16
-    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO16LOA
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO16HIA
     organisation: NASA
     license: Public domain
-    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 16 landing site, 0.9 m/px."
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera semi-controlled mosaic of the Apollo 16 landing site under a high Sun, 0.5 m/px."
     sharpen_sigma: 3
     files:
-    - file: NAC_ROI_APOLLO16LOA_E090S0155.IMG
+    - file: NAC_ROI_APOLLO16HIA_E091S0152.IMG
       dir: moon-sites
-      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO16LOA/NAC_ROI_APOLLO16LOA_E090S0155.IMG
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/APOLLO16HIA/NAC_ROI_APOLLO16HIA_E091S0152.IMG
   - id: apollo-17
     name: Apollo 17
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_APOLLO17LOE
@@ -254,15 +263,15 @@ bodies:
       download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNOKOD1LOA/NAC_ROI_LUNOKOD1LOA_E381N3246.IMG
   - id: lunokhod-2
     name: Luna 21 and Lunokhod 2
-    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNOKOD2LOA
+    source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNA_21_HIA
     organisation: NASA
     license: Public domain
-    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Luna 21 landing site and the track of Lunokhod 2, 0.5 m/px."
+    attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Luna 21 landing site and the track of Lunokhod 2 under a high Sun, 1.4 m/px."
     sharpen_sigma: 3
     files:
-    - file: NAC_ROI_LUNOKOD2LOA_E259N0306.IMG
+    - file: NAC_ROI_LUNA_21_HIA_E262N0307.IMG
       dir: moon-sites
-      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNOKOD2LOA/NAC_ROI_LUNOKOD2LOA_E259N0306.IMG
+      download_url: https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/BDR/NAC_ROI/LUNA_21_HIA/NAC_ROI_LUNA_21_HIA_E262N0307.IMG
   - id: luna-20
     name: Luna 20
     source: https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_ROI_LUNA_20_LOA
