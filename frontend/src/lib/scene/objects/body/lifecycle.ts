@@ -18,7 +18,11 @@ import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
 import { attachCameraRelative } from '../surface/camera-relative';
-import { attachSurfacePhotometry } from '../surface/photometry';
+import {
+	attachSurfacePhotometry,
+	makePhotometryUniforms,
+	type PhotometryUniforms
+} from '../surface/photometry';
 import { attachPlanetshine, type PlanetshineUniforms } from '../surface/planetshine';
 import {
 	attachSunTransmittanceToBody,
@@ -88,6 +92,7 @@ export function buildMajorBodies(
 		let starExtras: StarExtras | null = null;
 		let eclipseShadow: EclipseSelfUniforms | null = null;
 		let planetshine: PlanetshineUniforms | null = null;
+		let photometry: PhotometryUniforms | null = null;
 		let atmosphere: AtmosphereNode | null = null;
 		let sunTint: SunTransmittanceUniforms[] | undefined;
 		if (!isVirtual && !noPhysical) {
@@ -107,7 +112,8 @@ export function buildMajorBodies(
 				// Body-on-body shadows are analytical (fragment shader); shadow map unused.
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
 				attachCameraRelative(mesh, material as MeshStandardMaterial);
-				attachSurfacePhotometry(material as MeshStandardMaterial, id);
+				photometry = makePhotometryUniforms(body.data.lunarWeightScale);
+				attachSurfacePhotometry(material as MeshStandardMaterial, id, photometry);
 				if (!modelBearing) planetshine = attachPlanetshine(material as MeshStandardMaterial);
 			}
 			root.add(mesh);
@@ -188,6 +194,7 @@ export function buildMajorBodies(
 			selfShadow: null,
 			eclipseShadow,
 			planetshine,
+			photometry,
 			nomenclatureLabels: null,
 			model: null
 		});
@@ -241,7 +248,8 @@ export function upgradeBodyMesh(
 	meshToBody.set(mesh, body);
 	bo.eclipseShadow = attachEclipseShadowToBody(material);
 	attachCameraRelative(mesh, material);
-	attachSurfacePhotometry(material, body.data.id);
+	bo.photometry = makePhotometryUniforms(body.data.lunarWeightScale);
+	attachSurfacePhotometry(material, body.data.id, bo.photometry);
 	if (!modelBearing) bo.planetshine = attachPlanetshine(material);
 	bo.currentSegments = segments;
 
@@ -304,6 +312,7 @@ export function downgradeBodyMesh(
 		bo.currentSegments = undefined;
 		bo.eclipseShadow = null;
 		bo.planetshine = null;
+		bo.photometry = null;
 		bo.sunTint = undefined;
 		// Re-upgrade builds a fresh identity-scale mesh, so triaxial scale must
 		// be reapplied; `bo.radiusScene` keeps its bumped value for that.

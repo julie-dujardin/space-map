@@ -51,6 +51,10 @@ export interface BodyData extends OrbitalElements {
 	 *  textureless small body; the point cloud and label keep their per-type
 	 *  tint via `resolveBodyColor`. */
 	color?: string;
+	/** Factor on the lunar weight of the ground (`__global__.lunar_weight_scale`),
+	 *  set on focus by `loadBodyTexture`. Absent where no disk-resolved fit is
+	 *  published. */
+	lunarWeightScale?: number;
 	parentId: string; // always "naif-{n}" — parents are always major bodies / barycenters
 	/** Probe-only: parent set at scene-load, never mutated by the per-frame
 	 *  zone re-resolution. A mismatch with `parentId` marks the probe as

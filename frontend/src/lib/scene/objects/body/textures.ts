@@ -196,6 +196,9 @@ export async function loadBodyTexture(
 			(bo.mesh.material as MeshStandardMaterial).color.set(surfaceColor);
 		}
 	}
+	// The law of the ground also comes with the global bundle.
+	bo.body.data.lunarWeightScale = detail.global.lunar_weight_scale;
+	if (bo.photometry) bo.photometry.uLunarWeightScale.value = detail.global.lunar_weight_scale ?? 1;
 
 	if (!detail.global.map_texture_available) return;
 	// Standalones aren't tied to a system barycenter; key credits on the body

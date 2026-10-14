@@ -10,6 +10,9 @@
 		/** Flat sphere colour when no `low.webp` texture loads. Overrides the
 		 *  id-keyed BODY_COLORS lookup — small bodies pass a resolved tint here. */
 		color?: string;
+		/** Factor on the lunar weight of the ground, from a published
+		 *  disk-resolved fit (`lunar_weight_scale`). */
+		lunarWeightScale?: number;
 		/** Localized Wikidata short description, shown under the name on hover. */
 		description?: string;
 		/** Equatorial radius (km) = PCK `radii.a`; the value the 3D scene renders
@@ -106,7 +109,10 @@
 		attachSelfShadowToBody,
 		type SelfShadowUniforms
 	} from '$lib/scene/objects/surface/self-shadow';
-	import { attachSurfacePhotometry } from '$lib/scene/objects/surface/photometry';
+	import {
+		attachSurfacePhotometry,
+		makePhotometryUniforms
+	} from '$lib/scene/objects/surface/photometry';
 	import {
 		applyShapeModelMaterial,
 		makeShapeModelMaterial,
@@ -897,9 +903,14 @@
 
 	/** The law of the ground depends on the atmosphere table, which can come
 	 *  after the body is built. */
-	async function attachPhotometry(material: MeshStandardMaterial, bodyId: string) {
+	async function attachPhotometry(material: MeshStandardMaterial, b: Body) {
 		await loadAtmospheres().catch(() => {});
-		attachSurfacePhotometry(material, bodyId, KEY_LIGHT_DIR);
+		attachSurfacePhotometry(
+			material,
+			b.id,
+			makePhotometryUniforms(b.lunarWeightScale),
+			KEY_LIGHT_DIR
+		);
 		render();
 	}
 
@@ -1026,7 +1037,7 @@
 			return;
 		}
 		const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-		attachPhotometry(material, b.id);
+		attachPhotometry(material, b);
 		const mesh = new Mesh(b.displacement ? dispGeometry : geometry, material);
 		baseQuats.set(b.id, styledQuaternion(b));
 		mesh.quaternion.copy(baseQuats.get(b.id)!);
@@ -1126,7 +1137,7 @@
 			}
 			const root = gltf.scene;
 			const material = makeShapeModelMaterial(color);
-			attachPhotometry(material, b.id);
+			attachPhotometry(material, b);
 			applyShapeModelMaterial(root, material);
 			if (b.texture !== false) {
 				loader.load(

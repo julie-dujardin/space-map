@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.measured_shapes import measured_shape_references
 from space_map_data.constants.orientation import ORIENTATION_SOURCE_PCK
+from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.images import (
     collect_feature_images,
     collect_group_images,
@@ -314,6 +315,9 @@ def notable_entries(
             entry["spec"] = member.spec
         if member.color is not None:
             entry["color"] = member.color
+        weight_scale = lunar_weight_scale(member.object_id)
+        if weight_scale is not None:
+            entry["lunar_weight_scale"] = weight_scale
         if member.ring_mass is not None:
             entry["ring_mass"] = member.ring_mass
         if member.ocean is not None:

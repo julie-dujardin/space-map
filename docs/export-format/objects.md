@@ -35,6 +35,7 @@ interface GlobalObjectData {
   parent_name?: string;               // host display name; moons only — lets the breadcrumb label the parent when its body isn't resident in the scene
   color?: string;                     // moons only — #rrggbb physically-derived surface colour. Top-level (moons carry no `sbdb` block); small bodies carry theirs under `sbdb.color`. Absent → frontend generic tint
   color_method?: "spectrum" | "albedo"; // moons only — how `color` was derived (present iff color is): TCT measured reflectance, else neutral grey × JPL Horizons geometric albedo
+  lunar_weight_scale?: number;        // factor on the lunar weight of McEwen (1996) in the lunar-Lambert law of the ground, from a published disk-resolved fit (`constants/disk_photometry.py`). Absent → McEwen's weight
   map_texture_available?: boolean;    // only present if true
   texture?: {                         // only when map_texture_available; mirrors systems/{bary}.json
     source: string;                   // source page URL

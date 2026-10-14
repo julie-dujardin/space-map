@@ -69,7 +69,10 @@
 		attachEclipseShadowToBody,
 		getEclipseSceneUniforms
 	} from '$lib/scene/objects/surface/eclipse-shadow';
-	import { attachSurfacePhotometry } from '$lib/scene/objects/surface/photometry';
+	import {
+		attachSurfacePhotometry,
+		makePhotometryUniforms
+	} from '$lib/scene/objects/surface/photometry';
 	import {
 		attachSunTransmittanceToBody,
 		attachViewTintToMaterial,
@@ -650,7 +653,8 @@
 			currentBody.radiusKm,
 			eclipseSelf
 		);
-		attachSurfacePhotometry(material, bodyId);
+		// Every body here has an atmosphere, so its ground is Lambert and needs no albedo.
+		attachSurfacePhotometry(material, bodyId, makePhotometryUniforms(undefined));
 		// Re-aim the disc's per-fragment chroma at the newly selected body.
 		push();
 		planetMesh = new Mesh(geometry, material);

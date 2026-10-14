@@ -29,7 +29,7 @@ import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } fro
 import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
-import { attachSurfacePhotometry } from '../surface/photometry';
+import { attachSurfacePhotometry, makePhotometryUniforms } from '../surface/photometry';
 import { attachPlanetshine } from '../surface/planetshine';
 import { buildRadialIndex, radialIndexDistance, type RadialIndex } from './model-radial';
 
@@ -389,7 +389,8 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		// mount units, which say nothing about an overlay model's drawn size.
 		root.userData.radialIndex = buildRadialIndex(root);
 		const material = makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data));
-		attachSurfacePhotometry(material, bo.body.data.id);
+		bo.photometry ??= makePhotometryUniforms(bo.body.data.lunarWeightScale);
+		attachSurfacePhotometry(material, bo.body.data.id, bo.photometry);
 		bo.planetshine = attachPlanetshine(material, bo.planetshine ?? undefined);
 		applyShapeModelMaterial(root, material);
 		// Sphere path owns texture loading/LOD; mirror it now (swapBodyTexture

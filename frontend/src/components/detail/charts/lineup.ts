@@ -18,8 +18,9 @@ export const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 
 
 /** A member's full lineup geometry: size + oblateness from PCK `radii`, else
  *  SBDB diameter, else Wikidata radius; tilt from the IAU `pole`; render hints;
- *  tint (`undefined` for curated BODY_COLORS bodies, which defer to texture).
- *  `null` when sizeless, which doubles as the renderable filter. */
+ *  tint (`undefined` for curated BODY_COLORS bodies, which defer to texture);
+ *  the factor on the lunar weight of the ground. `null` when sizeless, which
+ *  doubles as the renderable filter. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	// A surface feature isn't a body — its `id` is the host it sits on, so it
 	// would draw (and key) as a duplicate of that host's sphere.
@@ -44,7 +45,12 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 	if (m.model) geom.model = m.model;
 	// Explicit false only — absent means a pre-flag export, which still probes.
 	geom.texture = m.texture;
-	return { ...geom, ...RENDER_HINTS[m.id], color: BODY_COLORS[m.id] ? undefined : m.color };
+	return {
+		...geom,
+		...RENDER_HINTS[m.id],
+		color: BODY_COLORS[m.id] ? undefined : m.color,
+		lunarWeightScale: m.lunar_weight_scale
+	};
 }
 
 /** A spacecraft member's lineup geometry. The mesh *is* the craft — there is no

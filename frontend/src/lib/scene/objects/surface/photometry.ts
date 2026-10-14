@@ -4,9 +4,12 @@
  * Dry ground has no specular light. Water keeps it. The specular mask gives
  * the part of a texel under water.
  *
- * A body with no atmosphere follows the lunar-Lambert law. At full phase its
- * disc is as bright at the limb as at the centre. A body with an atmosphere
- * keeps the Lambert law.
+ * A body with no atmosphere follows the lunar-Lambert law. At full phase the
+ * disc of the Moon is as bright at the limb as at the centre. Bright ice
+ * scatters light many times, so its disc gets darker toward the limb. A body
+ * with a published disk-resolved fit scales the lunar weight by the factor
+ * the export gives (`lunar_weight_scale`). A body with an atmosphere keeps
+ * the Lambert law.
  *
  * The law has no phase function here, so ground that faces the Sun and the
  * camera keeps its brightness. Ground that the camera sees at a lower angle
@@ -32,22 +35,34 @@ const GRAZE_FLOOR = 0.05;
  * must be made in the other. `photometry.test.ts` is the contract.
  */
 const LUNAR_LAMBERT_GLSL = /* glsl */ `
-	float lunarLambertWeight(float phaseDeg) {
-		return clamp(1.0 + phaseDeg * (${WEIGHT_POLY[0].toFixed(8)} + phaseDeg * (${WEIGHT_POLY[1].toFixed(8)} + phaseDeg * ${WEIGHT_POLY[2].toFixed(8)})), 0.0, 1.0);
+	float lunarLambertWeight(float phaseDeg, float scale) {
+		return min(scale * clamp(1.0 + phaseDeg * (${WEIGHT_POLY[0].toFixed(8)} + phaseDeg * (${WEIGHT_POLY[1].toFixed(8)} + phaseDeg * ${WEIGHT_POLY[2].toFixed(8)})), 0.0, 1.0), 1.0);
 	}
 
-	float lunarLambertGain(float phaseDeg, float mu0, float mu) {
-		float weight = lunarLambertWeight(phaseDeg);
+	float lunarLambertGain(float phaseDeg, float mu0, float mu, float scale) {
+		float weight = lunarLambertWeight(phaseDeg, scale);
 		float sun = max(mu0, 0.0);
 		return 2.0 * weight / max(sun + max(mu, sun), ${GRAZE_FLOOR.toFixed(3)}) + 1.0 - weight;
 	}
 `;
 
-/** Weight of the lunar part. It is 1 at phase 0, and 0 from about 104° on,
- *  where the law is all Lambert. */
-export function lunarLambertWeight(phaseDeg: number): number {
+/** The law of the ground of one body. Its sphere and its shape model share it. */
+export interface PhotometryUniforms {
+	uLunarWeightScale: { value: number };
+}
+
+/** Uniforms for a body with this `lunar_weight_scale`. With none, the body
+ *  keeps the weight of the Moon. */
+export function makePhotometryUniforms(scale: number | undefined): PhotometryUniforms {
+	return { uLunarWeightScale: { value: scale ?? 1 } };
+}
+
+/** Weight of the lunar part: `scale` times that of the Moon, at most 1. It is
+ *  0 from about 104° on, where the law is all Lambert. */
+export function lunarLambertWeight(phaseDeg: number, scale: number): number {
 	const [a, b, c] = WEIGHT_POLY;
-	return Math.min(1, Math.max(0, 1 + phaseDeg * (a + phaseDeg * (b + phaseDeg * c))));
+	const moon = Math.min(1, Math.max(0, 1 + phaseDeg * (a + phaseDeg * (b + phaseDeg * c))));
+	return Math.min(1, scale * moon);
 }
 
 /**
@@ -56,8 +71,8 @@ export function lunarLambertWeight(phaseDeg: number): number {
  * cosine below the incidence cosine counts as equal to it, so the product
  * with `mu0` is at most 1.
  */
-export function lunarLambertGain(phaseDeg: number, mu0: number, mu: number): number {
-	const weight = lunarLambertWeight(phaseDeg);
+export function lunarLambertGain(phaseDeg: number, mu0: number, mu: number, scale: number): number {
+	const weight = lunarLambertWeight(phaseDeg, scale);
 	const sun = Math.max(mu0, 0);
 	return (2 * weight) / Math.max(sun + Math.max(mu, sun), GRAZE_FLOOR) + 1 - weight;
 }
@@ -83,7 +98,8 @@ const LUNAR_LAMBERT = /* glsl */ `
 		reflectedLight.directDiffuse *= lunarLambertGain(
 			phaseDeg,
 			dot(geometryNormal, sunView),
-			dot(geometryNormal, geometryViewDir)
+			dot(geometryNormal, geometryViewDir),
+			uLunarWeightScale
 		);
 	}
 `;
@@ -97,6 +113,7 @@ const LUNAR_LAMBERT = /* glsl */ `
 export function attachSurfacePhotometry(
 	material: MeshStandardMaterial,
 	bodyId: string,
+	uniforms: PhotometryUniforms,
 	sunDir?: { value: Vector3 }
 ): void {
 	const airless = !getAtmosphereParams(bodyId);
@@ -106,7 +123,8 @@ export function attachSurfacePhotometry(
 		if (airless) {
 			// The chained eclipse shader declares `uSunDir`, so this one has its own name.
 			shader.uniforms.uPhotometrySunDir = sunDir ?? getEclipseSceneUniforms().uSunDir;
-			pars = `uniform vec3 uPhotometrySunDir;\n${LUNAR_LAMBERT_GLSL}`;
+			Object.assign(shader.uniforms, uniforms);
+			pars = `uniform vec3 uPhotometrySunDir;\nuniform float uLunarWeightScale;\n${LUNAR_LAMBERT_GLSL}`;
 			light += LUNAR_LAMBERT;
 		}
 		shader.fragmentShader = shader.fragmentShader

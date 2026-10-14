@@ -71,6 +71,7 @@ from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit_cached
+from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
@@ -564,6 +565,10 @@ def _build_global(
         if color is not None:
             data["color"] = color
             data["color_method"] = method
+    # Factor on the lunar weight of the ground, where a disk-resolved fit is published.
+    weight_scale = lunar_weight_scale(obj.id)
+    if weight_scale is not None:
+        data["lunar_weight_scale"] = weight_scale
     if obj.mpc_designation is not None:
         data["sbdb_primary_designation"] = obj.mpc_designation
     if obj.provisional_designation is not None:

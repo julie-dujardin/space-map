@@ -9,6 +9,7 @@ import type { AppliedAppearance } from './objects/body/appearance';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 import type { PlanetshineUniforms } from './objects/surface/planetshine';
+import type { PhotometryUniforms } from './objects/surface/photometry';
 import type { SunTransmittanceUniforms } from './objects/surface/sun-transmittance';
 import type { SelfShadowUniforms } from './objects/surface/self-shadow';
 import type { TileOverlay } from './objects/surface/tile-overlay';
@@ -193,6 +194,8 @@ export interface BodyObjects {
 	eclipseShadow: EclipseSelfUniforms | null;
 	/** The light of nearby bodies on this one. Null on stars, on craft and on bodies with no surface drawn. */
 	planetshine: PlanetshineUniforms | null;
+	/** The law of the ground, shared by the sphere and the shape model. Null on stars and on bodies with no surface drawn. */
+	photometry: PhotometryUniforms | null;
 	/** Sun-transmittance patches on the body (and cloud) materials, kept so
 	 *  {@link applyRadiiToMesh} can re-sync them to the SPICE equatorial radius
 	 *  — their β/height normalisation is baked at attach time. */

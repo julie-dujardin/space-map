@@ -60,6 +60,7 @@ interface NotableEntry {
   albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`
   spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); see `color`
   color?: string;                   // #rrggbb physically-derived surface colour (TrueColorTools). Small bodies: per-body TCT/SBDB colour, else taxonomy chroma × albedo, else albedo grey. Moons: per-body TCT colour (NAIF-keyed), else neutral grey × JPL Horizons geometric albedo. Absent → frontend generic tint
+  lunar_weight_scale?: number;      // factor on the lunar weight of the ground, as on the object
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it). On a `probes` entry it is the probe's launch date
   visits?: {                        // `probes` entries only: the members this probe reached, latest arrival first, uncapped
     id: string;                     // member Object.id; per-language label overrides in LocalizedGroupData.body_names

@@ -184,6 +184,8 @@ export interface NotableMemberEntry {
 	/** Physically-derived #rrggbb surface colour (TrueColorTools); the lineup
 	 *  sphere tint for small bodies. Absent → caller falls back to a generic tint. */
 	color?: string;
+	/** As on the object: the factor on the lunar weight of the ground. */
+	lunar_weight_scale?: number;
 	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
 	first_obs?: string;
 	/** Probe entries on a target body: what the probe did there. `end` is the
@@ -471,6 +473,9 @@ export interface GlobalObjectData {
 	 *  carry the equivalent under `sbdb.color`. The textureless sphere adopts it. */
 	color?: string;
 	color_method?: 'spectrum' | 'albedo';
+	/** Factor on the lunar weight of McEwen (1996) for the ground, from a
+	 *  published disk-resolved fit. Absent where none is published. */
+	lunar_weight_scale?: number;
 	/** True when this body has IAU planetary nomenclature features exported.
 	 *  Gates the per-body fetch of `v1/nomenclature/{positions,__global__}/{id}.*`. */
 	has_nomenclature?: true;
