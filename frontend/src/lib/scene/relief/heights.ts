@@ -1,6 +1,7 @@
 /**
  * Height tiles as numbers (docs/export-format/tiles.md): a tile holds a 16-bit
- * value per pixel, the high byte in red and the low byte in green.
+ * value per pixel, the high byte in red and the low byte in green. A tile of a
+ * patch counts 256ths of that value's step in blue.
  */
 
 /**
@@ -20,11 +21,34 @@ export function packHeightBytes(rgba: Uint8ClampedArray, size: number): Uint8Arr
 	return out;
 }
 
-/** The 16-bit height of each pixel of a decoded tile, north row first. */
-export function heightValues(rgba: Uint8ClampedArray, size: number): Uint16Array {
-	const out = new Uint16Array(size * size);
+/**
+ * The height of each pixel of a decoded tile in 16-bit steps, with the part
+ * of a step that a tile of a patch states, south row first: a window texture
+ * of numbers.
+ */
+export function packHeightValues(rgba: Uint8ClampedArray, size: number): Float32Array {
+	const out = new Float32Array(size * size);
+	for (let row = 0; row < size; row++) {
+		let src = (size - 1 - row) * size * 4;
+		const end = (row + 1) * size;
+		for (let dst = row * size; dst < end; dst++, src += 4) {
+			out[dst] = ((rgba[src] << 8) | rgba[src + 1]) + rgba[src + 2] / 256;
+		}
+	}
+	return out;
+}
+
+/** The height of each pixel of a decoded tile in 16-bit steps, north row
+ *  first. `fine` keeps the part of a step that a tile of a patch states. */
+export function heightValues(
+	rgba: Uint8ClampedArray,
+	size: number,
+	fine: boolean
+): Uint16Array | Float32Array {
+	const out = fine ? new Float32Array(size * size) : new Uint16Array(size * size);
 	for (let i = 0, src = 0; i < out.length; i++, src += 4) {
-		out[i] = (rgba[src] << 8) | rgba[src + 1];
+		const value = (rgba[src] << 8) | rgba[src + 1];
+		out[i] = fine ? value + rgba[src + 2] / 256 : value;
 	}
 	return out;
 }

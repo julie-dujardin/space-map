@@ -118,7 +118,8 @@ export function attachSelfShadowToBody(
 					varying vec3 vSelfEastW;
 					varying vec3 vSelfNorthW;
 					varying float vSelfRadiusW;
-					varying float vSelfCosLat;`
+					varying float vSelfCosLat;
+				${tiles ? 'varying vec3 vReliefOff;\n\t\t\t\tuniform vec3 uReliefAnchor;' : ''}`
 			)
 			.replace(
 				'#include <beginnormal_vertex>',
@@ -126,6 +127,7 @@ export function attachSelfShadowToBody(
 				vSelfWorldNormal = normalize(mat3(modelMatrix) * objectNormal);
 				vSelfUv = uv;
 				vSelfDir = position;
+				${tiles ? 'vReliefOff = position - uReliefAnchor;' : ''}
 					// Analytic equirect tangent basis: smooth per fragment, so the
 					// relief normal doesn't inherit mesh facets.
 					vec3 nObj = normalize(position);
@@ -235,7 +237,7 @@ export function attachSelfShadowToBody(
 				vec3 selfDir = normalize(vSelfDir);
 				// The part of the fragment that the tiles answer for.
 				float selfCovered = 0.0;
-				${tiles ? 'TileCharts selfCharts = tileCharts(selfDir);\n\t\t\t\tint selfFirst = -1;' : ''}
+				${tiles ? 'TileCharts selfCharts = tileChartsFrom(uReliefAnchor, vReliefOff);\n\t\t\t\tint selfFirst = -1;' : ''}
 				{
 					vec3 slope = vec3(0.0);
 					${tiles ? 'slope = reliefTileSlope(selfDir, selfCharts, selfCovered, selfFirst);' : ''}

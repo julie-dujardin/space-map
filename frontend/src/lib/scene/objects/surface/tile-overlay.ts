@@ -4,6 +4,7 @@ import {
 	RGBAFormat,
 	SRGBColorSpace,
 	Texture,
+	UnsignedByteType,
 	type Vector3,
 	type WebGLRenderer
 } from 'three';
@@ -113,6 +114,7 @@ async function loadColourTile(url: string, signal: AbortSignal): Promise<LoadedT
 
 const COLOUR_TILES: TileKind = {
 	format: RGBAFormat,
+	type: UnsignedByteType,
 	colorSpace: SRGBColorSpace,
 	load: loadColourTile
 };

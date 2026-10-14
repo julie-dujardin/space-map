@@ -27,7 +27,8 @@ export interface RenderTierPreset {
 	/** Surface tile windows drawn for one body, 64 MB of RGBA each. One more
 	 *  is held to load a window on before it replaces another. */
 	tileWindows: number;
-	/** Height tile windows drawn for one body, 32 MB each, and one more held. */
+	/** Height tile windows drawn for one body, and one more held: 32 MB each,
+	 *  64 MB near a patch. */
 	reliefWindows: number;
 	/** Samples of the ray that finds the ground's own shadow in the height
 	 *  tiles, for each pixel of lit ground. None: the whole-globe map casts

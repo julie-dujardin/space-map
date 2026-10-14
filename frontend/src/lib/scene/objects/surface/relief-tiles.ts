@@ -1,10 +1,13 @@
 import {
 	DataTexture,
+	FloatType,
 	type Material,
 	NoColorSpace,
 	type PerspectiveCamera,
+	RedFormat,
 	RGFormat,
 	UnsignedByteType,
+	Vector4,
 	type WebGLRenderer
 } from 'three';
 import { tilesBase } from '$lib/fetch/data-base';
@@ -21,6 +24,7 @@ import {
 	type TileKind,
 	createChain,
 	disposeChain,
+	finestLevelAt,
 	pointUnderCamera,
 	restChain,
 	updateChain
@@ -35,6 +39,10 @@ import {
  * the pyramid, in 16 bits. The code here is one part of the self-shadow
  * shader. The terrain grid takes its heights from the same tiles (see
  * `terrain-window.ts`).
+ *
+ * Near a patch the chain goes past the pyramid's finest level. The tiles of a
+ * patch state a height to 1/256 of a 16-bit step, and the windows hold each
+ * height as one number from the first time the chain goes that deep.
  */
 
 /** Longest shadow ray, in heights of the pyramid's range. A ray is cut short
@@ -67,8 +75,12 @@ export interface ReliefTiles {
 		uReliefMask: TileChain['uniforms']['mask'];
 		uReliefGrid: TileChain['uniforms']['grid'];
 		uReliefWindow: TileChain['uniforms']['window'];
+		uReliefHome: TileChain['uniforms']['home'];
+		uReliefAnchor: TileChain['uniforms']['anchor'];
 		uReliefLoaded: TileChain['uniforms']['loaded'];
 		uReliefFilter: TileChain['uniforms']['filter'];
+		/** What a pixel of the windows is multiplied by: see `reliefValue`. */
+		uReliefRead: { value: Vector4 };
 		/** Height range of the pyramid as a part of the body's radius. */
 		uReliefScale: { value: number };
 	};
@@ -79,13 +91,18 @@ uniform sampler2DArray uReliefMap;
 uniform sampler2DArray uReliefMask;
 uniform vec4 uReliefGrid[ ${MAX_DRAWN} ];
 uniform vec4 uReliefWindow[ ${MAX_DRAWN} ];
+uniform vec2 uReliefHome[ ${MAX_DRAWN} ];
+uniform vec3 uReliefAnchor;
 uniform int uReliefLoaded[ ${MAX_DRAWN} ];
 uniform vec2 uReliefFilter;
+uniform vec4 uReliefRead;
 uniform float uReliefScale;
+varying vec3 vReliefOff;
 ${TILE_CHAIN_GLSL}
-// Each byte is filtered alone, and the sum of the two is the filtered height.
+// The height of a pixel of the windows, as a part of the pyramid's range.
+// They hold it as two bytes or as one number, and uReliefRead weighs either.
 float reliefValue( vec4 texel ) {
-	return dot( texel.rg, vec2( 65280.0, 255.0 ) ) / 65535.0;
+	return dot( texel, uReliefRead );
 }
 
 // How the coordinates of each chart change along the sphere at a direction:
@@ -131,7 +148,7 @@ vec3 reliefTileSlope( vec3 dir, TileCharts charts, out float covered, out int fi
 		vec2 spot;
 		vec2 major;
 		vec2 minor;
-		float alpha = tileWindowWeight( charts, window, grid, - grid.zw, uReliefFilter, spot, major, minor );
+		float alpha = tileWindowWeight( charts, window, grid, uReliefHome[ i ], uReliefFilter, spot, major, minor );
 		if ( alpha <= 0.0 ) continue;
 		// Filtered, the mask falls towards a missing tile. The pixels beside
 		// one are left out: their slope would read its blank slot.
@@ -178,8 +195,12 @@ struct ReliefSight {
 	// The part of the ray inside the window, in radians along it.
 	float enters;
 	float leaves;
-	// The longest step that the window's pixels still hold.
+	// The longest step that the window's pixels still hold, and the step from
+	// which the ray reads the next window.
 	float widest;
+	float hands;
+	// How far from the fragment the next window can be read at all.
+	float beyond;
 	int loaded;
 };
 
@@ -188,10 +209,10 @@ ReliefSight reliefSight( int i, TileCharts charts, vec2 mapStep, vec2 capStep ) 
 	vec4 grid = uReliefGrid[ i ];
 	bool onMap = window.x < 0.5;
 	float rows = ${WINDOW_TILES.toFixed(1)};
-	// In tiles from the window's north-west corner. The map goes round: the
-	// fragment is taken on the side nearest the window.
-	vec2 rel = ( onMap ? charts.mapAt : charts.capAt ) * grid.xy - grid.zw;
-	if ( onMap ) rel.x = mod( rel.x - 0.5 * rows + 0.5 * grid.x, grid.x ) + 0.5 * rows - 0.5 * grid.x;
+	// In tiles from the window's north-west corner. The map is counted from
+	// the point under the camera, so the fragment is on the side of the globe
+	// nearest the window.
+	vec2 rel = onMap ? uReliefHome[ i ] + charts.mapAt * grid.xy : charts.capAt * grid.xy - grid.zw;
 	vec2 rate = ( onMap ? mapStep : capStep ) * grid.xy;
 
 	// Half a pixel in from the window's sides: past it the filter reads the
@@ -204,13 +225,31 @@ ReliefSight reliefSight( int i, TileCharts charts, vec2 mapStep, vec2 capStep ) 
 	vec2 far = max( a, b );
 
 	ReliefSight sight;
-	sight.from = vec3( ( rel.x + grid.z ) / rows, - ( rel.y + grid.w ) / rows, window.y );
+	// The texture repeats every window. The tile index of a patch alone takes
+	// all the digits of a float: only its place in the window is added.
+	vec2 slot = rel + mod( grid.zw, rows );
+	sight.from = vec3( slot.x / rows, - slot.y / rows, window.y );
 	sight.rate = vec2( rate.x, - rate.y ) / rows;
 	sight.enters = max( near.x, near.y );
 	sight.leaves = min( far.x, far.y );
 	// The other pole's cap holds none of the ray.
 	if ( ! onMap && ( window.x < 1.5 ) != ( charts.side > 0.0 ) ) sight.leaves = - 1.0;
 	sight.widest = ${STEP_PIXELS.toFixed(2)} * PI / ( uReliefFilter.y * exp2( window.z ) );
+	// Near a patch the next window can be some levels coarser. The ray then
+	// stays here until its step is half of what that window holds: too wide
+	// for these pixels, but they are the same ground as the fragment's. The
+	// pyramid around a patch is not: it has none of the hills that only the
+	// patch resolves, and close to the fragment it would stand in the ray.
+	sight.hands = sight.widest;
+	sight.beyond = 0.0;
+	if ( i + 1 < ${MAX_DRAWN} ) {
+		float next = PI / ( uReliefFilter.y * exp2( uReliefWindow[ i + 1 ].z ) );
+		sight.hands = max( sight.hands, 0.5 * ${STEP_PIXELS.toFixed(2)} * next );
+		// Within half a pixel of a window, its height is that of the fragment's
+		// own pixel, and the fragment stands above or below that by all the
+		// relief that the pixel averages away.
+		sight.beyond = 0.5 * next;
+	}
 	sight.loaded = uReliefLoaded[ i ];
 	return sight;
 }
@@ -299,13 +338,14 @@ float reliefTileShadow( vec3 dir, TileCharts charts, vec3 toSun, float tanElev, 
 	for ( int i = 1; i <= ${steps}; i ++ ) {
 		float before = t;
 		t = t * ratio + head;
-		if ( w + 1 < drawn && t - before > sight.widest ) {
+		if ( w + 1 < drawn && t - before > sight.hands ) {
 			w ++;
 			sight = reliefSight( w, charts, mapStep, capStep );
 		}
 		float value = reliefSightValue( sight, t );
 		// The ray left this window, or a tile of it is missing.
 		if ( value < 0.0 && w + 1 < drawn ) {
+			if ( t < sight.beyond ) continue;
 			w ++;
 			sight = reliefSight( w, charts, mapStep, capStep );
 			value = reliefSightValue( sight, t );
@@ -339,6 +379,9 @@ float reliefTileShadow( vec3 dir, TileCharts charts, vec3 toSun, float tanElev, 
 			float centre = worst;
 			for ( int e = 0; e < 2; e ++ ) {
 				float at = centre + ( e == 0 ? - around : around );
+				// Nearer than a pixel, the window holds no crest: only the slope
+				// of the fragment's own ground, which is the normal's to light.
+				if ( at < sight.widest * ${(1 / STEP_PIXELS).toFixed(4)} ) continue;
 				float value = reliefSightValue( sight, at );
 				if ( value < 0.0 ) continue;
 				float stands = ( ( value - own ) * uReliefScale / at - tanElev - 0.5 * at ) * perDisc;
@@ -360,14 +403,33 @@ export function reliefTilesGlsl(steps: number): string {
 	return steps > 0 ? SLOPE_GLSL + shadowGlsl(steps) : SLOPE_GLSL;
 }
 
-async function loadTile(url: string, signal: AbortSignal): Promise<LoadedTile> {
-	const { bytes, size } = await loadHeightTile(url, signal);
-	const texture = new DataTexture(bytes, size, size, RGFormat, UnsignedByteType);
-	return { texture, release: () => texture.dispose() };
+function heightTiles(fine: boolean): TileKind {
+	const format = fine ? RedFormat : RGFormat;
+	const type = fine ? FloatType : UnsignedByteType;
+	return {
+		format,
+		type,
+		colorSpace: NoColorSpace,
+		async load(url, signal): Promise<LoadedTile> {
+			const tile = await loadHeightTile(url, fine, signal);
+			const texture = new DataTexture(tile.heights, tile.size, tile.size, format, type);
+			return { texture, release: () => texture.dispose() };
+		}
+	};
 }
 
 /** Two bytes per pixel: half the memory of a colour window. */
-const HEIGHT_TILES: TileKind = { format: RGFormat, colorSpace: NoColorSpace, load: loadTile };
+const HEIGHT_TILES = heightTiles(false);
+const BYTES_READ = new Vector4(65280 / 65535, 255 / 65535, 0, 0);
+
+/**
+ * One number per pixel, as much memory as a colour window. A GPU filters each
+ * byte to 1/256, so where the high byte differs between two pixels the sum of
+ * the bytes is off by up to half a step. That is nothing across a pixel of
+ * the pyramid, and a steep slope across the metre of a pixel of a patch.
+ */
+const FINE_HEIGHT_TILES = heightTiles(true);
+const NUMBER_READ = new Vector4(1 / 65535, 0, 0, 0);
 
 /** Whether this host and device can draw the height pyramid `tiles` at all. */
 export function reliefTilesAvailable(tiles: TilesBlock | undefined): tiles is TilesBlock {
@@ -394,7 +456,7 @@ export function reliefTilesOf(
 	if (!reliefTilesAvailable(tiles)) return undefined;
 	const held = material.userData.reliefTiles as ReliefTiles | undefined;
 	if (held) return held;
-	const chain = createChain(HEIGHT_TILES);
+	const chain = createChain(HEIGHT_TILES, true);
 	const relief: ReliefTiles = {
 		tiles,
 		chain,
@@ -404,8 +466,11 @@ export function reliefTilesOf(
 			uReliefMask: chain.uniforms.mask,
 			uReliefGrid: chain.uniforms.grid,
 			uReliefWindow: chain.uniforms.window,
+			uReliefHome: chain.uniforms.home,
+			uReliefAnchor: chain.uniforms.anchor,
 			uReliefLoaded: chain.uniforms.loaded,
 			uReliefFilter: chain.uniforms.filter,
+			uReliefRead: { value: BYTES_READ },
 			uReliefScale: { value: (tiles.scale_km ?? 0) / radiusKm }
 		}
 	};
@@ -444,24 +509,38 @@ export function updateReliefTiles(
 		relief.shadowSteps = reliefShadowSteps();
 		(mesh.material as Material).needsUpdate = true;
 	}
-	const level =
-		mesh && bo.selfShadow && !relief.chain.dead
-			? neededLevel(bo.radiusScene, bo.cachedDist, projScale, relief.tiles.max_level)
-			: -1;
-	if (!mesh || level < FIRST_TILE_LEVEL) {
-		restChain(relief.chain, performance.now());
+	const { chain, tiles } = relief;
+	const over = mesh && bo.selfShadow && !chain.dead ? pointUnderCamera(mesh, camera) : undefined;
+	// A device that cannot filter a window of numbers stays on the pyramid.
+	const deep = renderer.extensions.has('OES_texture_float_linear');
+	const level = over
+		? neededLevel(
+				bo.radiusScene,
+				bo.cachedDist,
+				projScale,
+				deep ? finestLevelAt(chain, tiles, over) : tiles.max_level
+			)
+		: -1;
+	if (!over || level < FIRST_TILE_LEVEL) {
+		restChain(chain, performance.now());
+		// The next windows are of bytes again, until a patch asks for more.
+		if (!chain.store) chain.kind = HEIGHT_TILES;
 		return;
 	}
-	const levels = relief.tiles.max_level - FIRST_TILE_LEVEL + 1;
+	// Kept from then on: a change of kind loads every window again.
+	if (level > tiles.max_level) chain.kind = FINE_HEIGHT_TILES;
+	let finest = tiles.max_level;
+	if (deep) for (const patch of tiles.patches ?? []) finest = Math.max(finest, patch.max_level);
 	updateChain(
-		relief.chain,
-		relief.tiles,
-		Math.min(maxReliefWindows(), levels),
+		chain,
+		tiles,
+		Math.min(maxReliefWindows(), finest - FIRST_TILE_LEVEL + 1),
 		level,
-		pointUnderCamera(mesh, camera),
+		over,
 		bo.radiusScene,
 		undefined,
 		renderer,
 		invalidate
 	);
+	relief.uniforms.uReliefRead.value = chain.kind === FINE_HEIGHT_TILES ? NUMBER_READ : BYTES_READ;
 }

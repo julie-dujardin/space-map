@@ -165,6 +165,26 @@ describe('windowChain', () => {
 		const levels = windowChain(13, 6, MAP, 0, 10).map((link) => link.level);
 		expect(levels).toEqual([13, 12, 11, 10, 9, 8]);
 	});
+
+	it('goes from a patch to its pyramid at even steps for a reader of one window after another', () => {
+		const levels = (count: number) =>
+			windowChain(14, count, MAP, 0, 6, true).map((link) => link.level);
+		expect(levels(4)).toEqual([14, 11, 9, 6]);
+		expect(levels(3)).toEqual([14, 10, 6]);
+	});
+
+	it('gives the first of two places the level half-way to the pyramid', () => {
+		const levels = (level: number) =>
+			windowChain(level, 2, MAP, 0, 6, true).map((link) => link.level);
+		expect(levels(14)).toEqual([10, 6]);
+		expect(levels(9)).toEqual([8, 6]);
+		expect(levels(7)).toEqual([7, 6]);
+	});
+
+	it('keeps every level where the chain has a place for each', () => {
+		const levels = windowChain(8, 4, MAP, 0, 6, true).map((link) => link.level);
+		expect(levels).toEqual([8, 7, 6, 5]);
+	});
 });
 
 describe('placeWindow', () => {

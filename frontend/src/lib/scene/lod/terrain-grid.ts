@@ -22,7 +22,7 @@ export const MARGIN = 1.25;
 export const SIN_FLOOR = 0.05;
 
 /** Width of the pyramid's coarsest level, in pixels. */
-const BASE_WIDTH_PX = 2048;
+export const BASE_WIDTH_PX = 2048;
 
 export interface GridAxis {
 	/** Angles of the rows or columns, ascending, both ends of the axis included. */

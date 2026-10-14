@@ -10,6 +10,7 @@ import {
 	RedFormat,
 	RepeatWrapping,
 	type Texture,
+	type TextureDataType,
 	UnsignedByteType,
 	Vector2,
 	Vector3,
@@ -94,6 +95,7 @@ export interface LoadedTile {
 /** What a pyramid's tiles hold, and how they reach the window texture. */
 export interface TileKind {
 	format: AnyPixelFormat;
+	type: TextureDataType;
 	colorSpace: ColorSpace;
 	/** Fetch and decode one tile, south row first: the window is stored north up. */
 	load(url: string, signal: AbortSignal): Promise<LoadedTile>;
@@ -115,6 +117,8 @@ interface TileWindow {
 }
 
 interface WindowStore {
+	/** What its layers hold: a chain that takes another kind starts over. */
+	kind: TileKind;
 	/** Every window, one layer each, and one layer to spare. */
 	texture: DataArrayTexture;
 	/** Per layer, a row of slots per tile row: 255 where the tile is in. */
@@ -126,6 +130,8 @@ interface WindowStore {
 
 export interface TileChain {
 	kind: TileKind;
+	/** Its levels past the pyramid are at even steps: see `windowChain`. */
+	spread: boolean;
 	store?: WindowStore;
 	uniforms: {
 		map: { value: DataArrayTexture | null };
@@ -189,26 +195,6 @@ void tileCap( vec3 dir, vec3 ddx, vec3 ddy, out float side, out vec2 capAt, out 
 	capAt = 0.5 + plane * capScale;
 	capDx = ( vec2( ddx.x, side * ddx.z ) - plane * ( side * ddx.y / fold ) ) * capScale;
 	capDy = ( vec2( ddy.x, side * ddy.z ) - plane * ( side * ddy.y / fold ) ) * capScale;
-}
-
-// The charts of a direction, the map counted from its north-west corner. The
-// direction is the fragment's own rather than its interpolated coordinates:
-// those have one slope per triangle, which near a pole differs enough between
-// the two triangles of a grid cell to pick different levels, and they jump at
-// the 180° meridian.
-TileCharts tileCharts( vec3 dir ) {
-	TileCharts charts;
-	vec3 ddx = dFdx( dir );
-	vec3 ddy = dFdy( dir );
-
-	float flat2 = max( dir.x * dir.x + dir.z * dir.z, 1e-12 );
-	float east = 1.0 / ( 2.0 * PI * flat2 );
-	float south = - 1.0 / ( PI * sqrt( flat2 ) );
-	charts.mapAt = vec2( fract( atan( dir.z, - dir.x ) / ( 2.0 * PI ) ), acos( clamp( dir.y, - 1.0, 1.0 ) ) / PI );
-	charts.mapDx = vec2( ( dir.z * ddx.x - dir.x * ddx.z ) * east, ddx.y * south );
-	charts.mapDy = vec2( ( dir.z * ddy.x - dir.x * ddy.z ) * east, ddy.y * south );
-	tileCap( dir, ddx, ddy, charts.side, charts.capAt, charts.capDx, charts.capDy );
-	return charts;
 }
 
 // The charts of the point at + off, the map counted from at. A position on
@@ -304,9 +290,10 @@ float tileWindowWeight( TileCharts charts, vec4 window, vec4 grid, vec2 home, ve
 #endif
 `;
 
-export function createChain(kind: TileKind): TileChain {
+export function createChain(kind: TileKind, spread = false): TileChain {
 	return {
 		kind,
+		spread,
 		uniforms: {
 			map: { value: null },
 			mask: { value: null },
@@ -336,7 +323,7 @@ function createStore(
 	// Storage only: the tiles are copied in as they arrive.
 	texture.source.dataReady = false;
 	texture.format = kind.format;
-	texture.type = UnsignedByteType;
+	texture.type = kind.type;
 	texture.colorSpace = kind.colorSpace;
 	texture.wrapS = texture.wrapT = RepeatWrapping;
 	texture.magFilter = LinearFilter;
@@ -362,7 +349,7 @@ function createStore(
 	mask.needsUpdate = true;
 
 	const free = Array.from({ length: layers }, (_, layer) => layer);
-	return { texture, mask, windows: [], free, tileSize };
+	return { kind, texture, mask, windows: [], free, tileSize };
 }
 
 function setLoaded(store: WindowStore, layer: number, slot: number, loaded: boolean): void {
@@ -590,7 +577,10 @@ export function updateChain(
 	invalidate: () => void
 ): void {
 	chain.lastUsed = performance.now();
-	if (chain.store && chain.store.texture.image.depth !== count + 1) disposeChain(chain);
+	const held = chain.store;
+	if (held && (held.texture.image.depth !== count + 1 || held.kind !== chain.kind)) {
+		disposeChain(chain);
+	}
 	const store = (chain.store ??= createStore(chain.kind, tiles.tile_size, count + 1, renderer));
 	chain.uniforms.map.value = store.texture;
 	chain.uniforms.mask.value = store.mask;
@@ -598,7 +588,7 @@ export function updateChain(
 
 	const cap = over.y >= 0 ? NORTH : SOUTH;
 	chain.chart = cameraChart(over.y, chain.chart);
-	const links = windowChain(level, count, chain.chart, over.y, tiles.max_level);
+	const links = windowChain(level, count, chain.chart, over.y, tiles.max_level, chain.spread);
 	// The same point near the mesh, with the digits the shader has: the place
 	// of each window is counted from where the shader takes it to be.
 	anchor.set(
@@ -610,7 +600,7 @@ export function updateChain(
 	const range = anchor.length();
 	const home = chartPoint(MAP, anchor.x / range, anchor.y / range, anchor.z / range);
 
-	const held = (link: { chart: Chart; level: number }) =>
+	const windowOf = (link: { chart: Chart; level: number }) =>
 		store.windows.find((win) => win.chart === link.chart && win.level === link.level);
 
 	// A window the chain dropped stays while the one that replaces it, the
@@ -620,7 +610,7 @@ export function updateChain(
 		if (win.rank >= 0) return true;
 		win.rank = links.length;
 		const heir = links.find((link) => link.level === win.level);
-		const heirWindow = heir && held(heir);
+		const heirWindow = heir && windowOf(heir);
 		const near = win.chart === MAP || win.chart === cap;
 		if (heir && near && !(heirWindow && settled(chain, store, tiles, heirWindow))) return true;
 		release(store, win);
@@ -630,7 +620,7 @@ export function updateChain(
 	// Coarsest first, to place and to load: it covers the most ground for the bytes.
 	for (let i = links.length - 1; i >= 0; i--) {
 		const link = links[i];
-		let win = held(link);
+		let win = windowOf(link);
 		if (!win) {
 			const layer = store.free.pop();
 			// Every layer is held: one frees when a window on its way out is replaced.

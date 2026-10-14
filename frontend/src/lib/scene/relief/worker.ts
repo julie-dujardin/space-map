@@ -11,14 +11,21 @@
 
 import { tilePath } from '$lib/fetch/tile-path';
 import { type GridAxis, buildGridArrays } from '$lib/scene/lod/terrain-grid';
-import { CHART_FOLDER } from '$lib/scene/lod/tile-window';
+import { CHART_FOLDER, MAP, type PatchRange, patchOfTile } from '$lib/scene/lod/tile-window';
 import { gridHeights, gridTiles, tileOfKey } from './grid-heights';
-import { heightValues, packHeightBytes } from './heights';
+import { heightValues, packHeightBytes, packHeightValues } from './heights';
 
 export interface TileRequest {
 	type: 'tile';
 	id: number;
 	url: string;
+	/** The answer keeps the part of a step that a tile of a patch states. */
+	fine: boolean;
+}
+
+/** A patch as the grid needs it: where its tiles are, and their cache token. */
+export interface GridPatch extends PatchRange {
+	version: string;
 }
 
 export interface GridRequest {
@@ -27,6 +34,9 @@ export interface GridRequest {
 	/** Folder of the pyramid, as a full URL, and its cache token. */
 	root: string;
 	version: string;
+	/** Finest level of the pyramid itself, and its patches past that. */
+	maxLevel: number;
+	patches: GridPatch[];
 	tileSize: number;
 	/** A vertex is `biasKm + scaleKm · value / 65535` above the sphere. */
 	scaleKm: number;
@@ -49,8 +59,8 @@ export interface TileResponse {
 	type: 'tile';
 	id: number;
 	size: number;
-	/** Two bytes per pixel, south row first. */
-	bytes: Uint8Array;
+	/** South row first: two bytes per pixel, or one number when `fine`. */
+	heights: Uint8Array | Float32Array;
 }
 
 export interface GridResponse {
@@ -103,32 +113,44 @@ async function decodeTile(
 
 async function sendTile(request: TileRequest, signal: AbortSignal): Promise<void> {
 	const { rgba, size } = await decodeTile(request.url, signal);
-	const bytes = packHeightBytes(rgba, size);
-	post.postMessage({ type: 'tile', id: request.id, size, bytes } satisfies TileResponse, [
-		bytes.buffer
+	const heights = request.fine ? packHeightValues(rgba, size) : packHeightBytes(rgba, size);
+	post.postMessage({ type: 'tile', id: request.id, size, heights } satisfies TileResponse, [
+		heights.buffer
 	]);
 }
 
 /** The tiles of the last grid, by key, for the pyramid at `gridRoot`. The
  *  next grid is mostly on the same ones. */
-const gridCache = new Map<number, Uint16Array>();
+const gridCache = new Map<number, Uint16Array | Float32Array>();
 let gridRoot = '';
 
 async function sendGrid(request: GridRequest, signal: AbortSignal): Promise<void> {
-	const { rows, columns, tileSize } = request;
-	const root = `${request.root}?${request.version}`;
+	const { rows, columns, tileSize, maxLevel, patches } = request;
+	const versions = [request.version, ...patches.map((patch) => patch.version)];
+	const root = `${request.root}?${versions.join()}`;
 	if (root !== gridRoot) gridCache.clear();
 	gridRoot = root;
 
-	const needed = gridTiles(rows, columns, tileSize);
+	// Past the pyramid's finest level, only the tiles of a patch exist.
+	const patchOf = (chart: number, level: number, x: number, y: number) =>
+		chart === MAP ? patchOfTile(patches, level, x, y) : undefined;
+	const needed = gridTiles(
+		rows,
+		columns,
+		tileSize,
+		maxLevel,
+		(chart, level, x, y) => patchOf(chart, level, x, y) !== undefined
+	);
 	const queue = [...needed].filter((key) => !gridCache.has(key));
 	const fetchNext = async (): Promise<void> => {
 		for (let key = queue.pop(); key !== undefined; key = queue.pop()) {
 			const { chart, level, x, y } = tileOfKey(key);
-			const url = `${request.root}${tilePath(CHART_FOLDER[chart], level, x, y)}?v=${request.version}`;
+			const fine = level > maxLevel;
+			const version = fine ? patchOf(chart, level, x, y)?.version : request.version;
+			const url = `${request.root}${tilePath(CHART_FOLDER[chart], level, x, y)}?v=${version}`;
 			try {
 				const { rgba, size } = await decodeTile(url, signal);
-				gridCache.set(key, heightValues(rgba, size));
+				gridCache.set(key, heightValues(rgba, size, fine));
 			} catch {
 				// Its vertices take the level below.
 				if (signal.aborted) return;

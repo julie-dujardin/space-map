@@ -76,9 +76,16 @@ function absolute(url: string): string {
 	return new URL(url, location.href).href;
 }
 
-/** The height tile at `url`, decoded. */
-export function loadHeightTile(url: string, signal: AbortSignal): Promise<TileResponse> {
-	return ask((id) => ({ type: 'tile', id, url: absolute(url) }), signal) as Promise<TileResponse>;
+/** The height tile at `url`, decoded: as numbers when `fine`, else as bytes. */
+export function loadHeightTile(
+	url: string,
+	fine: boolean,
+	signal: AbortSignal
+): Promise<TileResponse> {
+	return ask(
+		(id) => ({ type: 'tile', id, url: absolute(url), fine }),
+		signal
+	) as Promise<TileResponse>;
 }
 
 /** A terrain grid with its heights from the pyramid at `spec.root`. */

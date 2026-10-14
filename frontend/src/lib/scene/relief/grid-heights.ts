@@ -5,6 +5,9 @@
  * cells around it: a finer level would pick one pixel out of many, and the
  * ground would look rougher than it is. Past latitude 60° it reads the cap of
  * its pole, where a fine band of the grid stays on a few tiles.
+ *
+ * A level past the pyramid's finest has tiles on the ground of a patch only.
+ * A vertex beside the patch takes the finest level that has its ground.
  */
 
 import {
@@ -21,18 +24,26 @@ import type { GridAxis } from '$lib/scene/lod/terrain-grid';
 /** sin of the latitude past which a vertex reads its pole's cap. */
 const CAP_SIN = Math.sin((60 * Math.PI) / 180);
 
-/** A decoded tile by its key: 16-bit heights, north row first. */
-export type TileLookup = (key: number) => Uint16Array | undefined;
+/** A decoded tile by its key: heights in 16-bit steps, north row first. */
+export type TileLookup = (key: number) => Uint16Array | Float32Array | undefined;
+
+/** Whether a tile is there to fetch. */
+export type TileExists = (chart: Chart, level: number, x: number, y: number) => boolean;
+
+// Room for level 16 of the map: 2^17 columns and 2^16 rows.
+const KEY_COLUMNS = 2 ** 18;
+const KEY_ROWS = 2 ** 17;
+const KEY_LEVELS = 32;
 
 export function tileKey(chart: Chart, level: number, x: number, y: number): number {
-	return ((chart * 16 + level) * 8192 + x) * 8192 + y;
+	return ((chart * KEY_LEVELS + level) * KEY_COLUMNS + x) * KEY_ROWS + y;
 }
 
 export function tileOfKey(key: number): { chart: Chart; level: number; x: number; y: number } {
-	const y = key % 8192;
-	const x = Math.floor(key / 8192) % 8192;
-	const head = Math.floor(key / (8192 * 8192));
-	return { chart: Math.floor(head / 16) as Chart, level: head % 16, x, y };
+	const y = key % KEY_ROWS;
+	const x = Math.floor(key / KEY_ROWS) % KEY_COLUMNS;
+	const head = Math.floor(key / (KEY_ROWS * KEY_COLUMNS));
+	return { chart: Math.floor(head / KEY_LEVELS) as Chart, level: head % KEY_LEVELS, x, y };
 }
 
 /** The four pixels around a point of one level of one chart. */
@@ -95,21 +106,45 @@ function eachVertex(
 	}
 }
 
-/** Keys of the tiles a grid reads, the two of the coarsest level included:
- *  they are what a vertex falls back to. */
-export function gridTiles(rows: GridAxis, columns: GridAxis, tileSize: number): Set<number> {
+/**
+ * Keys of the tiles a grid reads, the two of the coarsest level included:
+ * they are what a vertex falls back to. `finest` is the finest level of the
+ * pyramid itself. Past it, a vertex whose tiles do not all exist asks for
+ * those of the level below, down to the pyramid's own.
+ */
+export function gridTiles(
+	rows: GridAxis,
+	columns: GridAxis,
+	tileSize: number,
+	finest = Infinity,
+	exists: TileExists = () => true
+): Set<number> {
 	const keys = new Set<number>([tileKey(MAP, 0, 0, 0), tileKey(MAP, 0, 1, 0)]);
-	eachVertex(rows, columns, (_vertex, level, x, y, z) => {
-		const at = locate(level, x, y, z, tileSize);
-		const tx0 = Math.floor(at.x0 / tileSize);
-		const tx1 = Math.floor(at.x1 / tileSize);
-		const ty0 = Math.floor(at.y0 / tileSize);
-		const ty1 = Math.floor(at.y1 / tileSize);
-		keys.add(tileKey(at.chart, at.level, tx0, ty0));
-		if (tx1 !== tx0) keys.add(tileKey(at.chart, at.level, tx1, ty0));
-		if (ty1 !== ty0) {
-			keys.add(tileKey(at.chart, at.level, tx0, ty1));
-			if (tx1 !== tx0) keys.add(tileKey(at.chart, at.level, tx1, ty1));
+	eachVertex(rows, columns, (_vertex, asked, x, y, z) => {
+		for (let level = asked; ; level--) {
+			const at = locate(level, x, y, z, tileSize);
+			const tx0 = Math.floor(at.x0 / tileSize);
+			const tx1 = Math.floor(at.x1 / tileSize);
+			const ty0 = Math.floor(at.y0 / tileSize);
+			const ty1 = Math.floor(at.y1 / tileSize);
+			if (
+				level > finest &&
+				!(
+					exists(at.chart, level, tx0, ty0) &&
+					exists(at.chart, level, tx1, ty0) &&
+					exists(at.chart, level, tx0, ty1) &&
+					exists(at.chart, level, tx1, ty1)
+				)
+			) {
+				continue;
+			}
+			keys.add(tileKey(at.chart, level, tx0, ty0));
+			if (tx1 !== tx0) keys.add(tileKey(at.chart, level, tx1, ty0));
+			if (ty1 !== ty0) {
+				keys.add(tileKey(at.chart, level, tx0, ty1));
+				if (tx1 !== tx0) keys.add(tileKey(at.chart, level, tx1, ty1));
+			}
+			return;
 		}
 	});
 	return keys;
@@ -117,8 +152,8 @@ export function gridTiles(rows: GridAxis, columns: GridAxis, tileSize: number): 
 
 /**
  * The height value (0..65535, filtered) at a direction, from `level` or the
- * finest level below it whose tiles are all there. Undefined when even the
- * coarsest is missing.
+ * finest level below it whose tiles are all there: a tile that failed, or the
+ * ground beside a patch. Undefined when even the coarsest is missing.
  */
 function sampleValue(
 	lookup: TileLookup,

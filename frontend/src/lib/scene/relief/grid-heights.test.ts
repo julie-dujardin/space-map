@@ -27,6 +27,11 @@ describe('tileKey', () => {
 	it('gives back the tile it was made from', () => {
 		expect(tileOfKey(tileKey(NORTH, 6, 31, 17))).toEqual({ chart: NORTH, level: 6, x: 31, y: 17 });
 	});
+
+	it('holds a tile of the deepest level of a patch', () => {
+		const tile = { chart: MAP, level: 16, x: 131071, y: 65535 };
+		expect(tileOfKey(tileKey(MAP, tile.level, tile.x, tile.y))).toEqual(tile);
+	});
 });
 
 describe('gridTiles', () => {
@@ -46,6 +51,55 @@ describe('gridTiles', () => {
 			.filter((tile) => tile.level === MAX_LEVEL);
 		expect(fine.length).toBeGreaterThan(0);
 		expect(fine.every((tile) => tile.chart === NORTH)).toBe(true);
+	});
+});
+
+describe('gridTiles near a patch', () => {
+	const DEEP = 9;
+	// Around 4.6°S 137.4°E, the point of `grid` below, three levels down.
+	const centre = { theta: ((90 + 4.6) * Math.PI) / 180, phi: ((137.4 + 180) * Math.PI) / 180 };
+	const tileAt = (level: number) => ({
+		x: Math.floor((centre.phi / (2 * Math.PI)) * (2 << level)),
+		y: Math.floor((centre.theta / Math.PI) * (1 << level))
+	});
+	const deepGrid = () => {
+		const stepLevel = nestedStepLevel(1e-6, DEEP, 16);
+		return planNestedGrid(centre.theta, centre.phi, 1e-6, 0.004, DEEP, 16, stepLevel);
+	};
+	const fineTiles = (keys: Set<number>) =>
+		[...keys].map(tileOfKey).filter((tile) => tile.level > MAX_LEVEL);
+
+	it('asks for the tiles of the patch that its fine bands are on', () => {
+		const { rows, columns } = deepGrid();
+		const keys = gridTiles(rows, columns, TILE, MAX_LEVEL, () => true);
+		const levels = new Set(fineTiles(keys).map((tile) => tile.level));
+		expect([...levels].sort()).toEqual([7, 8, 9]);
+		const { x, y } = tileAt(DEEP);
+		expect(keys.has(tileKey(MAP, DEEP, x, y))).toBe(true);
+	});
+
+	it('asks for no tile that the patch does not have', () => {
+		const { rows, columns } = deepGrid();
+		// The patch is the one tile under the centre at each of its levels.
+		const exists = (_chart: number, level: number, x: number, y: number) =>
+			x === tileAt(level).x && y === tileAt(level).y;
+		const keys = gridTiles(rows, columns, TILE, MAX_LEVEL, exists);
+		const fine = fineTiles(keys);
+		expect(fine.length).toBeGreaterThan(0);
+		expect(fine.every((tile) => exists(MAP, tile.level, tile.x, tile.y))).toBe(true);
+		// The ground beside it comes from the pyramid's own finest level.
+		const own = [...keys].map(tileOfKey).filter((tile) => tile.level === MAX_LEVEL);
+		expect(own.length).toBeGreaterThan(0);
+	});
+
+	it('gives a vertex beside the patch the height of the pyramid', () => {
+		const { rows, columns } = deepGrid();
+		const lookup = flat((level) => level > MAX_LEVEL);
+		const heights = gridHeights(rows, columns, lookup, TILE, 65.535, -8);
+		const cols = columns.at.length;
+		const row = rows.level.indexOf(DEEP);
+		const column = columns.level.indexOf(DEEP);
+		expect(heights![row * cols + column]).toBeCloseTo(-2, 5);
 	});
 });
 

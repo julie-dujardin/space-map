@@ -15,7 +15,9 @@ import { buildTerrainGrid } from '$lib/scene/relief/client';
 import { currentRenderTier } from '$lib/scene/render-tier';
 import { effectiveRadiusKm } from '$lib/types/objects';
 import type { BodyObjects, TilesBlock } from '$lib/scene/types';
+import { deepestLevel } from './tile-window';
 import {
+	BASE_WIDTH_PX,
 	COARSE_SEGS,
 	type GridArrays,
 	MARGIN,
@@ -33,7 +35,8 @@ import {
  *
  * Where the body has height tiles, the grid is built in the relief worker
  * with its heights in its vertices, from the pyramid at 16 bits (see
- * `terrain-grid.ts`). Elsewhere the vertex shader displaces a grid whose
+ * `terrain-grid.ts`). Near a patch of that pyramid its cells go on past the
+ * pyramid's finest level. Elsewhere the vertex shader displaces a grid whose
  * finest cells are a texel of the whole-globe height map wide.
  */
 export interface TerrainWindowState {
@@ -70,6 +73,16 @@ const RECENTER_FRAC = 0.35;
 const REBUILD_MIN_MS = 300;
 /** Bail-out: a grid this big means a sizing bug, not a legitimate window. */
 const MAX_VERTS = 400_000;
+/**
+ * Most cells from one band to the next on a grid that goes past the pyramid.
+ * Each level more is a band more, and a band adds its rows and columns to the
+ * whole lattice: at the tier's own count a grid six levels deeper would have
+ * three times the vertices.
+ */
+const DEEP_BAND_CELLS = 16;
+/** Least width of a cell, in steps of a vertex position's float: a cell of
+ *  fewer steps is crooked by the rounding of its corners. */
+const CELL_FLOAT_STEPS = 8;
 
 const _inv = new Matrix4();
 const _camLocal = new Vector3();
@@ -134,6 +147,24 @@ function heightTilesOf(bo: BodyObjects): TilesBlock | undefined {
 	return reliefTilesAvailable(tiles) && !tiledStates.get(bo)?.dead ? tiles : undefined;
 }
 
+/**
+ * The finest level a grid around the map point `(theta, phi)` takes its
+ * heights from: the pyramid's own, or a level of a patch there, as far as
+ * the floats of a vertex on a sphere of `radius` still tell two cells apart.
+ */
+function gridLevel(tiles: TilesBlock, theta: number, phi: number, radius: number): number {
+	const deepest = deepestLevel(
+		tiles.max_level,
+		tiles.patches,
+		phi / (2 * Math.PI),
+		theta / Math.PI
+	);
+	if (deepest === tiles.max_level) return deepest;
+	const floatStep = 2 ** (Math.floor(Math.log2(radius)) - 23);
+	const cells = (2 * Math.PI * radius) / (CELL_FLOAT_STEPS * floatStep);
+	return Math.max(tiles.max_level, Math.min(deepest, Math.floor(Math.log2(cells / BASE_WIDTH_PX))));
+}
+
 /** Hand the heights back to the shader. */
 function restoreDisplacement(bo: BodyObjects): void {
 	if (!bo.mesh || !bo.displacementMeta) return;
@@ -190,23 +221,28 @@ function updateTiledWindow(
 
 	const meta = bo.displacementMeta;
 	if (!meta) return !!held;
-	const bandCells = currentRenderTier().terrainBandCells;
-	const stepLevel = nestedStepLevel(altitude, tiles.max_level, bandCells, held?.stepLevel);
+	const radiusKm = effectiveRadiusKm(bo.body.data);
+	const finest = gridLevel(tiles, centerTheta, centerPhi, kmToScene(radiusKm));
+	const texWidth = BASE_WIDTH_PX * 2 ** finest;
+	const tierCells = currentRenderTier().terrainBandCells;
+	const bandCells = finest > tiles.max_level ? Math.min(tierCells, DEEP_BAND_CELLS) : tierCells;
+	// A level of another finest level counts other pixels.
+	const kept = held?.texWidth === texWidth ? held.stepLevel : undefined;
+	const stepLevel = nestedStepLevel(altitude, finest, bandCells, kept);
 	if (held) {
 		const still = drift(centerTheta, centerPhi, held.centerTheta, held.centerPhi);
-		if (held.stepLevel === stepLevel && still < RECENTER_FRAC * held.angRadius) return true;
+		if (kept === stepLevel && still < RECENTER_FRAC * held.angRadius) return true;
 		// Rate cap: lagging a spinning body briefly beats rebuilding every frame.
 		if (performance.now() - held.builtAt < REBUILD_MIN_MS) return true;
 	}
 
-	const radiusKm = effectiveRadiusKm(bo.body.data);
 	const grid = planNestedGrid(
 		centerTheta,
 		centerPhi,
 		altitude,
 		// The map's range is the relief from its lowest to its highest point.
 		(0.5 * meta.scale_km) / radiusKm,
-		tiles.max_level,
+		finest,
 		bandCells,
 		stepLevel
 	);
@@ -227,6 +263,13 @@ function updateTiledWindow(
 		{
 			root: tileRoot(tiles),
 			version: tiles.version,
+			maxLevel: tiles.max_level,
+			patches: (tiles.patches ?? []).map(({ max_level, x, y, version }) => ({
+				max_level,
+				x,
+				y,
+				version
+			})),
 			tileSize: tiles.tile_size,
 			scaleKm: tiles.scale_km ?? 0,
 			biasKm: (tiles.bias_km ?? 0) - (meta.absolute_radius ? radiusKm : 0),
@@ -255,7 +298,7 @@ function updateTiledWindow(
 				centerPhi,
 				angRadius: grid.innerRadius,
 				stepLevel,
-				texWidth: 2048 * 2 ** tiles.max_level,
+				texWidth,
 				builtAt: performance.now(),
 				riseKm: built.riseKm
 			};

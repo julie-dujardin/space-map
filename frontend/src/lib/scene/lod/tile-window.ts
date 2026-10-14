@@ -122,15 +122,32 @@ export function cameraChart(y: number, previous?: Chart): Chart {
  * A level past `maxLevel`, the pyramid's finest, has tiles on a patch only.
  * The last places of the chain stay with the pyramid's own levels, which
  * cover the ground around the patch.
+ *
+ * `spread` is for a reader that compares one window with the next, as a
+ * shadow ray does. A patch and its pyramid do not agree on the height of a
+ * hill that only the patch resolves, so the chain must not go from a fine
+ * level of the patch to the pyramid in one step. Its levels are then at even
+ * steps from `level` down to `maxLevel`. With two places the first takes the
+ * level half-way: at `level` it would hold only the ground at the camera's
+ * feet, and the pyramid's own level all the rest of the patch.
  */
 export function windowChain(
 	level: number,
 	count: number,
 	chart: Chart,
 	y: number,
-	maxLevel: number
+	maxLevel: number,
+	spread = false
 ): { chart: Chart; level: number }[] {
 	const chain: { chart: Chart; level: number }[] = [];
+	const deep = level - maxLevel;
+	if (spread && count > 1 && deep >= count) {
+		const top = count === 2 ? maxLevel + Math.ceil(deep / 2) : level;
+		for (let i = 0; i < count; i++) {
+			chain.push({ chart, level: Math.round(top - (i * (top - maxLevel)) / (count - 1)) });
+		}
+		return chain;
+	}
 	const own = Math.max(1, Math.floor(count / 3));
 	let z = level;
 	while (z >= FIRST_TILE_LEVEL && chain.length < count) {
