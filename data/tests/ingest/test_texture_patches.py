@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 import tifffile
 from PIL import Image
+from scipy import ndimage
 
 from space_map_data.ingest.providers.textures import (
     TextureProcessor,
@@ -844,9 +845,12 @@ class TestMapLevels:
 
     @staticmethod
     def _drawn(pyramid: Path, patch_id: str, level: int, x: int, y: int) -> np.ndarray:
-        """Where a patch draws on a tile of the pyramid, at over half weight."""
+        """Where a patch draws on a tile of the pyramid at full weight: one blur
+        inside the rasters' edge."""
         over = pyramid / ".over" / patch_id / str(level) / str(x) / f"{y}.webp"
-        return np.asarray(Image.open(over))[..., 3] > 128
+        drawn = np.asarray(Image.open(over))[..., 3] > 0
+        blur = round(TestMapLevels.SIGMA) >> (BASE - level)
+        return ndimage.binary_erosion(drawn, iterations=blur, border_value=1)
 
     @staticmethod
     def _over(pyramid: Path, patch_id: str = "site") -> set[str]:
@@ -887,10 +891,23 @@ class TestMapLevels:
         assert "3/8/3.webp" in changed and changed <= self._over(pyramid)
         inside = self._drawn(pyramid, "site", 3, 8, 3)
         tile = _tile(pyramid, 3, 8, 3).astype(float)
-        assert tile[inside][:, 0].std() > 12.0
+        assert tile[inside][:, 0].std() > 8.0
         # The tone stays the map's, and so does the ground past the raster.
         assert abs(tile[inside][:, 0].mean() - COLOUR[0]) < 25.0
         assert np.abs(tile[:, :6] - COLOUR).max() <= 6
+
+    def test_edge_of_the_patch_fades_once(self, tmp_path, monkeypatch):
+        """The patch's tiles already fade into the map at the rasters' edge."""
+        monkeypatch.setattr(
+            patches, "webp_kwargs", lambda lossless: config.TILE_LOSSLESS_KWARGS
+        )
+        pyramid = _pyramid(tmp_path / "tiles")
+        self._place(pyramid)
+        over = pyramid / ".over" / "site" / "3" / "8" / "3.webp"
+        drawn = np.asarray(Image.open(over)).astype(int)
+        shown = drawn[..., 3] > 0
+        tile = _tile(pyramid, 3, 8, 3).astype(int)
+        assert np.abs(tile[shown] - drawn[shown][:, :3]).max() <= 1
 
     def test_tile_of_the_map_is_kept_as_it_was_built(self, tmp_path):
         pyramid = _pyramid(tmp_path / "tiles")

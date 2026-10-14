@@ -580,8 +580,9 @@ class _HeightGround(_Ground):
 
 class _Over:
     """What a patch draws over the pyramid's own tiles: its first level made
-    one level coarser, with the weight it has there as alpha, as whole tiles
-    of the pyramid's finest level."""
+    one level coarser, as whole tiles of the pyramid's finest level. It is
+    opaque where the rasters are: its tiles already fade into the map there,
+    and a second fade would weaken the detail at the edge."""
 
     def __init__(self, patch: PatchBuilder, ground: "_Ground") -> None:
         self.patch = patch
@@ -598,13 +599,11 @@ class _Over:
         top, left = ground.top - y0 * size, ground.left - x0 * size
         rows = slice(max(top, 0), min(top + weight.shape[0], shape[0]))
         columns = slice(max(left, 0), min(left + weight.shape[1], shape[1]))
-        self.alpha[rows, columns] = np.rint(
-            weight[
-                rows.start - top : rows.stop - top,
-                columns.start - left : columns.stop - left,
-            ]
-            * 255.0
-        )
+        inside = weight[
+            rows.start - top : rows.stop - top,
+            columns.start - left : columns.stop - left,
+        ]
+        self.alpha[rows, columns] = np.where(inside > 0, 255, 0)
 
     def take(self, x: int, y: int, values: np.ndarray) -> None:
         """Hold tile ``(x, y)`` of the patch's first level."""
