@@ -2,6 +2,7 @@ import { type MeshStandardMaterial, type Texture, type TextureLoader } from 'thr
 import { versionedUrl } from '$lib/fetch/data-base';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 import type { TextureBundleMeta } from '$lib/scene/types';
+import { MAX_ANISOTROPY } from './anisotropy';
 
 /**
  * Roughness target over open water.
@@ -37,6 +38,7 @@ export async function attachSpecularMap(
 		return null;
 	}
 
+	texture.anisotropy = MAX_ANISOTROPY;
 	material.roughnessMap = texture;
 
 	const patched = material as PatchedMaterial;

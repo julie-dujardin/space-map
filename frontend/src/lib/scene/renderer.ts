@@ -207,6 +207,7 @@ const MODEL_SHADOW_NORMAL_BIAS = 0.02;
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
 	private composer: EffectComposer;
+	private maxSceneSamples: number;
 	private atmoDepthPass: AtmosphereDepthPass;
 	private bloomPass: UnrealBloomPass;
 	private labelRenderer: ThrottledCSS2DRenderer;
@@ -444,6 +445,7 @@ export class SceneRenderer {
 		this.scene.add(this.extensions.group);
 		this.camera = boot.camera;
 		this.composer = boot.composer;
+		this.maxSceneSamples = boot.maxSceneSamples;
 		this.bloomPass = boot.bloomPass;
 		this.shadowLight = boot.shadowLight;
 		const drawSize = this.renderer.getDrawingBufferSize(new Vector2());
@@ -1276,6 +1278,7 @@ export class SceneRenderer {
 			);
 		}
 
+		this.syncSceneSamples(atmoState.insideShell);
 		this.composer.render();
 		this.renderModelOverlay();
 		this.labelRenderer.render(this.scene, this.camera);
@@ -1291,6 +1294,18 @@ export class SceneRenderer {
 			);
 		}
 	};
+
+	/** Give the scene's target the tier's sample count, or none inside a shell.
+	 *  The haze there stops at one depth for each pixel, and more samples put
+	 *  dark dots on a ridge against the sky. */
+	private syncSceneSamples(insideShell: boolean): void {
+		const target = this.composer.readBuffer;
+		const samples = insideShell ? 0 : Math.min(this.tier.sceneSamples, this.maxSceneSamples);
+		if (target.samples === samples) return;
+		target.samples = samples;
+		// three reads the count only when it builds the target's buffers.
+		target.dispose();
+	}
 
 	/** Hysteresis gate for the tight-far regime (`distance` = camera to focus,
 	 *  scene units). A focused landed probe or surface feature has ~zero radius
@@ -2717,7 +2732,8 @@ export class SceneRenderer {
 	}
 
 	/** Re-read the tier after a recalibration. Pixel ratio and point budget
-	 *  follow at once; shadow map and bloom sizes are fixed at boot. */
+	 *  follow at once, scene samples at the next frame; shadow map and bloom
+	 *  sizes are fixed at boot. */
 	applyRenderTier(): void {
 		this.tier = currentRenderTier();
 		const ratio = renderPixelRatio();

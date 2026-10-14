@@ -60,6 +60,9 @@ export interface ThreeBoot {
 	scene: Scene;
 	camera: PerspectiveCamera;
 	composer: EffectComposer;
+	/** Most samples the device has for the composer's half-float target. It can
+	 *  be under the limit that three checks, or none. */
+	maxSceneSamples: number;
 	bloomPass: UnrealBloomPass;
 	/** Main-scene ambient fill; intensity is driven by the high-ambient toggle. */
 	ambientLight: AmbientLight;
@@ -84,6 +87,7 @@ export function bootThree(
 	const reversedDepth = probeClipControl();
 	if (!reversedDepth) installLogDepthChunks();
 	try {
+		// The canvas keeps its antialiasing for the model overlay, the one scene drawn straight to it.
 		renderer = new WebGLRenderer(
 			reversedDepth
 				? { canvas, reversedDepthBuffer: true, antialias: true }
@@ -135,17 +139,23 @@ export function bootThree(
 	const aspect = canvas.clientWidth / canvas.clientHeight;
 	const camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), CAMERA_FAR_DEFAULT);
 
-	// Reversed-Z pays off only against a float depth attachment — a 24-bit
-	// unorm buffer quantizes z_ndc uniformly, keeping the old hyperbolic
-	// precision distribution. The scene renders into the composer's target, so
-	// that's where the float32 depth texture goes (sized by composer.setSize;
-	// three re-fits the depth texture to the framebuffer on setup).
-	const composerTarget = renderer.capabilities.reversedDepthBuffer
-		? new WebGLRenderTarget(canvas.clientWidth, canvas.clientHeight, {
-				type: HalfFloatType,
-				depthTexture: new DepthTexture(canvas.clientWidth, canvas.clientHeight, FloatType)
-			})
-		: undefined;
+	// The canvas's own antialiasing does not reach this target. The renderer sets its sample count.
+	const composerTarget = new WebGLRenderTarget(canvas.clientWidth, canvas.clientHeight, {
+		type: HalfFloatType,
+		// No pass reads the scene's depth.
+		resolveDepthBuffer: false,
+		// Reversed depth needs a float buffer. three takes the buffer's type from this texture.
+		depthTexture: renderer.capabilities.reversedDepthBuffer
+			? new DepthTexture(canvas.clientWidth, canvas.clientHeight, FloatType)
+			: null
+	});
+	const gl = renderer.getContext() as WebGL2RenderingContext;
+	// The counts come in descending order. A device can have none for this format.
+	const sampleCounts: Int32Array = gl.getInternalformatParameter(
+		gl.RENDERBUFFER,
+		gl.RGBA16F,
+		gl.SAMPLES
+	);
 	const composer = new EffectComposer(renderer, composerTarget);
 	composer.setPixelRatio(renderPixelRatio());
 	composer.setSize(canvas.clientWidth, canvas.clientHeight);
@@ -160,7 +170,20 @@ export function bootThree(
 	);
 	installBloomHighPass(bloomPass);
 	composer.addPass(bloomPass);
-	composer.addPass(new OutputPass());
+	const outputPass = new OutputPass();
+	// With no swap after the last pass, three never builds the composer's second target.
+	outputPass.needsSwap = false;
+	composer.addPass(outputPass);
 
-	return { renderer, labelRenderer, scene, camera, composer, bloomPass, ambientLight, shadowLight };
+	return {
+		renderer,
+		labelRenderer,
+		scene,
+		camera,
+		composer,
+		maxSceneSamples: sampleCounts[0] ?? 0,
+		bloomPass,
+		ambientLight,
+		shadowLight
+	};
 }

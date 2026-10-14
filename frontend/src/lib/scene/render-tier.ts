@@ -16,6 +16,10 @@ export interface RenderTierPreset {
 	softShadows: boolean;
 	/** Bloom render-target size relative to the canvas. */
 	bloomScale: number;
+	/** Samples for each pixel of the scene's render target, to smooth the
+	 *  edges. None: an edge has steps of one pixel. Four cost 2 to 3 ms a frame
+	 *  on a GPU of the low tier. */
+	sceneSamples: number;
 	/** Cloud points drawn at once over every visible group. */
 	pointBudget: number;
 	/** Highest surface texture tier to decode; the 16k tier is 512 MB of RGBA. */
@@ -42,6 +46,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		shadowMapSize: 1024,
 		softShadows: false,
 		bloomScale: 0.5,
+		sceneSamples: 0,
 		pointBudget: 400_000,
 		maxTextureTier: 'medium',
 		tileWindows: 3,
@@ -55,6 +60,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		shadowMapSize: 2048,
 		softShadows: true,
 		bloomScale: 0.75,
+		sceneSamples: 4,
 		pointBudget: 900_000,
 		maxTextureTier: 'medium',
 		tileWindows: 4,
@@ -68,6 +74,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		shadowMapSize: 4096,
 		softShadows: true,
 		bloomScale: 1,
+		sceneSamples: 4,
 		pointBudget: Infinity,
 		maxTextureTier: 'high',
 		tileWindows: 6,

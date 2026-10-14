@@ -8,6 +8,7 @@ import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } f
 import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/time/jd';
 import type { TextureBundleMeta } from '$lib/scene/types';
+import { MAX_ANISOTROPY } from './anisotropy';
 import type { AtmosphereParams } from './atmosphere';
 
 /**
@@ -75,6 +76,7 @@ async function fetchCloudTexture(id: string, tier: string, frame: string): Promi
 		const texture = new Texture(bitmap);
 		texture.flipY = false;
 		texture.colorSpace = SRGBColorSpace;
+		texture.anisotropy = MAX_ANISOTROPY;
 		texture.needsUpdate = true;
 		return texture;
 	} catch (err) {

@@ -14,6 +14,7 @@
 import { SRGBColorSpace, type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
 import { bodyMeshColor } from '$lib/body-color';
 import type { BodyObjects } from '$lib/scene/types';
+import { MAX_ANISOTROPY } from '../surface/anisotropy';
 import { attachNightTexture, disposeNightLightsFromMaterial } from '../surface/night-lights';
 import { mountCloudSphere } from '../surface/clouds';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
@@ -225,6 +226,7 @@ function applyClouds(
 	texture: Texture,
 	url: string
 ): void {
+	texture.anisotropy = MAX_ANISOTROPY;
 	let node = bo.clouds;
 	if (!node) {
 		if (!bo.mesh) return;

@@ -1,6 +1,7 @@
 import { Mesh, MeshStandardMaterial, type Object3D, SRGBColorSpace, type Texture } from 'three';
 import { tintBaseColor } from './texture-tint';
 import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
+import { MAX_ANISOTROPY } from '../surface/anisotropy';
 
 /**
  * Equirectangular `map` sampling for shape-model meshes, which ship no texture
@@ -96,9 +97,9 @@ export function setShapeModelMap(
 }
 
 /**
- * Sphere-side counterpart of {@link setShapeModelMap}, shared by the focused
- * scene and the lineup so identical bodies colour identically. Tags sRGB,
- * disposes any prior map, and applies the same grayscale-tint rule as above.
+ * Put `map` on a sphere's material, as {@link setShapeModelMap} does for a
+ * shape model. The scene and the lineup share it, so a body has the same
+ * colour and the same filter in both. It disposes the map it replaces.
  */
 export function setSurfaceMap(
 	material: MeshStandardMaterial,
@@ -107,6 +108,7 @@ export function setSurfaceMap(
 ): void {
 	if (material.map && material.map !== map) material.map.dispose();
 	map.colorSpace = SRGBColorSpace;
+	map.anisotropy = MAX_ANISOTROPY;
 	material.map = map;
 	material.color.copy(tintBaseColor(map, tintHex));
 	material.needsUpdate = true;

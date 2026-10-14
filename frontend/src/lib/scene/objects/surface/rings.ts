@@ -35,6 +35,7 @@ import {
 import { kmToScene } from '$lib/math/units';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
+import { MAX_ANISOTROPY } from './anisotropy';
 
 export type RingChannel =
 	| 'color'
@@ -174,14 +175,11 @@ async function loadStripTextures(
 		const tex = new CanvasTexture(canvas);
 		// Color is a perceptual albedo tint (sRGB); scalar profiles are linear.
 		if (channel === 'color') tex.colorSpace = SRGBColorSpace;
-		// 1×N radial profile at grazing angles: many samples per pixel plus a
-		// screen-space U-gradient far steeper than V — exactly what trilinear
-		// + anisotropic filtering is for. Three.js clamps anisotropy to the
-		// GPU's max, so 16 is safe unconditionally.
+		// Seen at a low angle, a pixel covers many more texels along the radius than across it.
 		tex.minFilter = LinearMipmapLinearFilter;
 		tex.magFilter = LinearFilter;
 		tex.generateMipmaps = true;
-		tex.anisotropy = 16;
+		tex.anisotropy = MAX_ANISOTROPY;
 		tex.needsUpdate = true;
 		textures[channel] = tex;
 	}

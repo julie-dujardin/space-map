@@ -39,6 +39,7 @@ import {
 	windowHome
 } from '$lib/scene/lod/tile-window';
 import type { TilesBlock } from '$lib/scene/types';
+import { MAX_ANISOTROPY } from './anisotropy';
 
 /**
  * A chain of tile windows of one pyramid, kept on the ground under the camera.
@@ -81,10 +82,6 @@ const IDLE_DISPOSE_S = 5;
 
 /** Width of the fade at a window's edge, in tiles. */
 const FEATHER_TILES = 0.5;
-
-/** Towards the horizon a pixel covers many more map pixels along the view
- *  than across it, and on the map also east-west by 1 / cos φ. */
-const MAX_ANISOTROPY = 16;
 
 const SLOTS = WINDOW_TILES * WINDOW_TILES;
 

@@ -1,6 +1,7 @@
 import { Color, type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
 import { SRGBColorSpace } from 'three';
 import { versionedUrl } from '$lib/fetch/data-base';
+import { MAX_ANISOTROPY } from './anisotropy';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 import type { TextureBundleMeta } from '$lib/scene/types';
@@ -54,6 +55,7 @@ export async function attachNightLights(
  * same way the export's does.
  */
 export function attachNightTexture(material: MeshStandardMaterial, texture: Texture): void {
+	texture.anisotropy = MAX_ANISOTROPY;
 	material.emissiveMap = texture;
 	// White so totalEmissiveRadiance passes the raw texture colour unchanged.
 	material.emissive = new Color(0xffffff);
