@@ -30,16 +30,17 @@ export interface Orientation {
  *   α += Σ ra[i]  · sin(θ_i(T))
  *   δ += Σ dec[i] · cos(θ_i(T))
  *   W += Σ pm[i]  · sin(θ_i(T))
- * with θ_i(T) = angles[2i] + angles[2i+1]·T (degrees, deg/century).
+ * with θ_i(T) = Σ_j angles[k·i + j] · T^j, k = phaseDegree + 1 (degrees, per century^j).
  *
- * `angles` is shared per system (SPICE convention), from global.json's
- * `nut_prec_angles`, keyed by owner naif_id (`naif_id // 100` for moons).
+ * `angles` and `phaseDegree` are shared per system (SPICE convention), from
+ * global.json, keyed by owner naif_id (`naif_id // 100` for moons).
  */
 export interface NutPrec {
 	ra: number[];
 	dec: number[];
 	pm: number[];
 	angles: number[];
+	phaseDegree: number;
 }
 
 /**
@@ -62,9 +63,12 @@ export function bodyQuaternion(
 
 	if (nutPrec) {
 		const { ra, dec, pm, angles } = nutPrec;
-		const n = Math.min(angles.length >> 1, Math.max(ra.length, dec.length, pm.length));
+		const k = nutPrec.phaseDegree + 1;
+		const n = Math.min(Math.floor(angles.length / k), Math.max(ra.length, dec.length, pm.length));
 		for (let i = 0; i < n; i++) {
-			const theta = (angles[2 * i] + angles[2 * i + 1] * T) * DEG2RAD;
+			let thetaDeg = 0;
+			for (let j = k - 1; j >= 0; j--) thetaDeg = thetaDeg * T + angles[k * i + j];
+			const theta = thetaDeg * DEG2RAD;
 			const s = Math.sin(theta);
 			if (i < ra.length) raDeg += ra[i] * s;
 			if (i < dec.length) decDeg += dec[i] * Math.cos(theta);

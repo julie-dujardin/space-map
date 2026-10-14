@@ -1,17 +1,18 @@
 /**
- * Always-loaded systems metadata from `/data/v1/systems/global.json`,
- * distinct from the lazily-loaded per-system `systems/naif-{N}.json`. Holds
- * two context-independent lookups: GMs (km^3/s^2 per NAIF id, from SPICE PCK
- * kernels, plus a synthesized SSB row reusing the Sun's GM) for chebyshev
- * trail-buffer period estimates, and NUT_PREC_ANGLES (IAU nutation/precession
- * coefficients per planetary-system owner) paired with each body's
- * `nut_prec` array to evaluate pole/spin orientation.
+ * Always-loaded systems metadata from `/data/v1/systems/global.json`. The
+ * per-system `systems/naif-{N}.json` files load later. It holds the GM per NAIF
+ * id (km³/s², with the Sun's GM for the SSB) for trail-buffer period estimates,
+ * and the IAU nutation/precession angles per planetary-system owner. The angles
+ * pair with each body's `nut_prec` to give its pole and spin.
  */
 
+import type { NutPrec } from '$lib/math/orientation';
 import { dataBase } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
-const angles = new Map<number, number[]>();
+type NutPrecPhases = Pick<NutPrec, 'angles' | 'phaseDegree'>;
+
+const phases = new Map<number, NutPrecPhases>();
 const gmKm3s2 = new Map<number, number>();
 let loadPromise: Promise<void> | null = null;
 
@@ -23,12 +24,17 @@ export function loadSystemsGlobal(): Promise<void> {
 		const raw = (await r.json()) as {
 			gm?: Record<string, number>;
 			nut_prec_angles?: Record<string, number[]>;
+			nut_prec_phase_degree?: Record<string, number>;
 		};
 		if (raw.gm) {
 			for (const [k, v] of Object.entries(raw.gm)) gmKm3s2.set(parseInt(k, 10), v);
 		}
 		if (raw.nut_prec_angles) {
-			for (const [k, v] of Object.entries(raw.nut_prec_angles)) angles.set(parseInt(k, 10), v);
+			for (const [k, v] of Object.entries(raw.nut_prec_angles)) {
+				// SPICE's default when the kernel sets no MAX_PHASE_DEGREE.
+				const phaseDegree = raw.nut_prec_phase_degree?.[k] ?? 1;
+				phases.set(parseInt(k, 10), { angles: v, phaseDegree });
+			}
 		}
 	})();
 	// Evict on rejection so a boot-time blip doesn't poison the memo — GM/nutation
@@ -44,8 +50,8 @@ export function ownerIdFor(naifId: number): number {
 	return naifId >= 100 ? Math.trunc(naifId / 100) : naifId;
 }
 
-export function getNutPrecAngles(ownerId: number): number[] | undefined {
-	return angles.get(ownerId);
+export function getNutPrecPhases(ownerId: number): NutPrecPhases | undefined {
+	return phases.get(ownerId);
 }
 
 export function getGmKm3s2(naifId: number): number | undefined {

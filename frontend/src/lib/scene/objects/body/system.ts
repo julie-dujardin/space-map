@@ -2,7 +2,7 @@ import { type Scene, SphereGeometry, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
 import { effectiveRadiusKm, ObjectType, type PositionedBody } from '$lib/types/objects';
 import { applyOrientation } from '$lib/math/orientation';
-import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
+import { getNutPrecPhases, ownerIdFor } from '$lib/fetch/systems-global';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { dataBase } from '$lib/fetch/data-base';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
@@ -101,8 +101,8 @@ function adoptSystemSpin(
 	if (!nutPrec) return;
 	const naifMatch = body.data.id.match(/^naif-(-?\d+)$/);
 	const naifId = naifMatch ? parseInt(naifMatch[1], 10) : null;
-	const angles = naifId !== null ? getNutPrecAngles(ownerIdFor(naifId)) : undefined;
-	if (angles) body.nutPrec = { ...nutPrec, angles };
+	const phases = naifId !== null ? getNutPrecPhases(ownerIdFor(naifId)) : undefined;
+	if (phases) body.nutPrec = { ...nutPrec, ...phases };
 }
 
 /**
