@@ -19,7 +19,40 @@ export function tintBaseColor(texture: Texture, tintHex?: string): Color {
 	return base;
 }
 
-/** Sample grid for the grayscale test — tiny; we only need mean chroma. */
+/**
+ * Mean colour of a whole-globe map in the linear working space, with each row
+ * weighted by the cosine of its latitude. Null while the image is not
+ * readable. Memoised on the Texture for its current image.
+ */
+export function meanMapColor(texture: Texture): Color | null {
+	const cache = texture.userData as { meanColor?: Color | null; meanColorImage?: unknown };
+	if (cache.meanColorImage !== texture.image) {
+		cache.meanColor = computeMeanColor(texture);
+		cache.meanColorImage = texture.image;
+	}
+	return cache.meanColor ?? null;
+}
+
+function computeMeanColor(texture: Texture): Color | null {
+	const data = samplePixels(texture);
+	if (!data) return null;
+	const mean = new Color(0, 0, 0);
+	const texel = new Color();
+	let weightSum = 0;
+	for (let row = 0; row < SAMPLE_H; row++) {
+		const weight = Math.sin((Math.PI * (row + 0.5)) / SAMPLE_H);
+		for (let i = row * SAMPLE_W * 4; i < (row + 1) * SAMPLE_W * 4; i += 4) {
+			texel.setRGB(data[i] / 255, data[i + 1] / 255, data[i + 2] / 255, texture.colorSpace);
+			mean.r += weight * texel.r;
+			mean.g += weight * texel.g;
+			mean.b += weight * texel.b;
+		}
+		weightSum += weight * SAMPLE_W;
+	}
+	return mean.multiplyScalar(1 / weightSum);
+}
+
+/** Size of the sample grid. Only means are read from it, so it is small. */
 const SAMPLE_W = 32;
 const SAMPLE_H = 16;
 /** Mean sRGB chroma above which a map is treated as coloured and left as-is.
@@ -44,23 +77,11 @@ function computeTintBase(texture: Texture, tintHex?: string): Color {
 	return new Color().setRGB(tint.r / lum, tint.g / lum, tint.b / lum);
 }
 
-/** Mean per-pixel chroma (max−min of RGB, 0..1) of a downscaled copy of the
- *  texture, or null if unreadable (undecoded, or a tainted canvas). */
+/** Mean per-pixel chroma (max−min of RGB, 0..1) of the sample grid, or null
+ *  if unreadable. */
 function meanChroma(texture: Texture): number | null {
-	const img = texture.image as CanvasImageSource & { width?: number; height?: number };
-	if (!img || !img.width || !img.height) return null;
-	const canvas = document.createElement('canvas');
-	canvas.width = SAMPLE_W;
-	canvas.height = SAMPLE_H;
-	const g = canvas.getContext('2d', { willReadFrequently: true });
-	if (!g) return null;
-	g.drawImage(img, 0, 0, SAMPLE_W, SAMPLE_H);
-	let data: Uint8ClampedArray;
-	try {
-		data = g.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
-	} catch {
-		return null; // tainted canvas
-	}
+	const data = samplePixels(texture);
+	if (!data) return null;
 	let sum = 0;
 	const n = data.length / 4;
 	for (let i = 0; i < data.length; i += 4) {
@@ -70,4 +91,22 @@ function meanChroma(texture: Texture): number | null {
 		sum += Math.max(r, gg, b) - Math.min(r, gg, b);
 	}
 	return sum / n;
+}
+
+/** RGBA bytes of a downscaled copy of the texture, or null if unreadable
+ *  (undecoded, or a tainted canvas). */
+function samplePixels(texture: Texture): Uint8ClampedArray | null {
+	const img = texture.image as CanvasImageSource & { width?: number; height?: number };
+	if (!img || !img.width || !img.height) return null;
+	const canvas = document.createElement('canvas');
+	canvas.width = SAMPLE_W;
+	canvas.height = SAMPLE_H;
+	const g = canvas.getContext('2d', { willReadFrequently: true });
+	if (!g) return null;
+	g.drawImage(img, 0, 0, SAMPLE_W, SAMPLE_H);
+	try {
+		return g.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
+	} catch {
+		return null; // tainted canvas
+	}
 }

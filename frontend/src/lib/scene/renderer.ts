@@ -120,7 +120,8 @@ import { SSB_POSITION } from './position/placement';
 import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
 import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
-import { updateEclipseUniforms } from './shaders/eclipse-uniforms';
+import { collectOccluders, updateEclipseUniforms } from './shaders/eclipse-uniforms';
+import { updatePlanetshineUniforms } from './shaders/planetshine-uniforms';
 import { evaluateEclipseFactor, evaluateEclipseLeak } from './objects/surface/eclipse-shadow';
 import { disposeReliefTiles } from './objects/surface/relief-tiles';
 import { disposeTileOverlay } from './objects/surface/tile-overlay';
@@ -282,6 +283,7 @@ export class SceneRenderer {
 	private readonly _tmpUp = new Vector3();
 	private readonly _tmpSun = new Vector3();
 	private readonly _tmpLeak = new Vector3();
+	private readonly _occluders: BodyObjects[] = [];
 	private readonly _planeNormal = new Vector3(0, 0, 1);
 	private readonly _modelRaycaster = new Raycaster();
 	private readonly _pickNdc = new Vector2();
@@ -1181,13 +1183,22 @@ export class SceneRenderer {
 			this.camera.position,
 			this.pxPerRad()
 		);
-		// Before the atmosphere update — shells cull their private occluder
-		// sets against this frame's scene-wide list.
+		// The atmosphere update below culls the occluders of each shell from this list.
+		const occluders = collectOccluders(this.bodyObjects, this._occluders);
 		updateEclipseUniforms(
 			this.bodyObjects,
+			occluders,
 			this.focus.focusTruePos,
 			sceneSettings().showAtmospheres
 		);
+		updatePlanetshineUniforms(
+			this.bodyObjects,
+			occluders,
+			sceneSettings().realisticLighting,
+			this.sunIntensityScale
+		);
+		// Cleared so the list does not keep disposed bodies alive.
+		occluders.length = 0;
 		const atmoState = updateAtmosphereShaders(
 			this.bodyObjects,
 			this.camera.position,

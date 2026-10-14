@@ -9,15 +9,37 @@ import {
 } from '$lib/scene/objects/surface/eclipse-shadow';
 import { SUN_ID } from '$lib/constants';
 
-// Reused across frames; trimmed to active prefix each call.
-const _candidatesScratch: BodyObjects[] = [];
+/** Put the occluders of the frame in `out` and return it. An occluder is
+ *  drawn, has a measured `radiusKm` and is not a star. If there are too many,
+ *  the {@link MAX_OCCLUDERS} largest stay. The caller must clear `out` after
+ *  use, so it does not keep disposed bodies alive. */
+export function collectOccluders(
+	bodyObjects: Map<string, BodyObjects>,
+	out: BodyObjects[]
+): BodyObjects[] {
+	let n = 0;
+	for (const bo of bodyObjects.values()) {
+		if (bo.body.data.objectType === ObjectType.STAR) continue;
+		const km = bo.body.data.radiusKm;
+		if (!Number.isFinite(km) || km <= 0) continue;
+		// A body that is not drawn casts no shadow.
+		if (bo.radiusScene <= 0 || !isDrawn(bo)) continue;
+		out[n++] = bo;
+	}
+	out.length = n;
+	if (n > MAX_OCCLUDERS) {
+		out.sort((a, b) => b.radiusScene - a.radiusScene);
+		out.length = MAX_OCCLUDERS;
+	}
+	return out;
+}
 
-/** Fill the eclipse uniforms for the frame: the Sun, the occluders, and the
- *  list of each receiver. An occluder has a measured `radiusKm` and is not a
- *  star. If there are too many, the {@link MAX_OCCLUDERS} largest stay. With
- *  `air` off, no occluder bends light into its shadow. */
+/** Fill the eclipse uniforms for the frame: the Sun, the `occluders` of
+ *  {@link collectOccluders}, and the list of each receiver. With `air` off, no
+ *  occluder bends light into its shadow. */
 export function updateEclipseUniforms(
 	bodyObjects: Map<string, BodyObjects>,
+	occluders: readonly BodyObjects[],
 	focusTruePos: Vec3,
 	air: boolean
 ): void {
@@ -44,26 +66,11 @@ export function updateEclipseUniforms(
 		eclipse.uSunAngularRadius.value = 0;
 	}
 
-	const candidates = _candidatesScratch;
-	let n = 0;
-	for (const bo of bodyObjects.values()) {
-		if (bo.body.data.objectType === ObjectType.STAR) continue;
-		const km = bo.body.data.radiusKm;
-		if (!Number.isFinite(km) || km <= 0) continue;
-		// A body that is not drawn casts no shadow.
-		if (bo.radiusScene <= 0 || !isDrawn(bo)) continue;
-		candidates[n++] = bo;
-	}
-	candidates.length = n;
-	if (n > MAX_OCCLUDERS) {
-		candidates.sort((a, b) => b.radiusScene - a.radiusScene);
-		candidates.length = MAX_OCCLUDERS;
-		n = MAX_OCCLUDERS;
-	}
+	const n = occluders.length;
 	const slots = eclipse.uOccluders.value;
 	const leaks = eclipse.uOccluderLeak.value;
 	for (let i = 0; i < n; i++) {
-		const bo = candidates[i];
+		const bo = occluders[i];
 		const [bx, by, bz] = bo.body.position!;
 		slots[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
 		if (air && bo.atmosphere) {
@@ -73,10 +80,6 @@ export function updateEclipseUniforms(
 		}
 	}
 	eclipse.uOccluderCount.value = n;
-	// Drop refs so the scratch doesn't pin disposed BodyObjects (they
-	// transitively hold DOM elements and GPU resources).
-	for (let i = 0; i < n; i++) candidates[i] = undefined as never;
-	candidates.length = 0;
 
 	// Each receiver gets its centre and the occluders that can reach it. A
 	// receiver too small to render keeps its last list: its fragments are

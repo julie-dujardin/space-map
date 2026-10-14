@@ -19,6 +19,7 @@ import { buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere'
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
 import { attachCameraRelative } from '../surface/camera-relative';
 import { attachSurfacePhotometry } from '../surface/photometry';
+import { attachPlanetshine, type PlanetshineUniforms } from '../surface/planetshine';
 import {
 	attachSunTransmittanceToBody,
 	type SunTransmittanceUniforms
@@ -86,6 +87,7 @@ export function buildMajorBodies(
 		let mesh: Mesh | null = null;
 		let starExtras: StarExtras | null = null;
 		let eclipseShadow: EclipseSelfUniforms | null = null;
+		let planetshine: PlanetshineUniforms | null = null;
 		let atmosphere: AtmosphereNode | null = null;
 		let sunTint: SunTransmittanceUniforms[] | undefined;
 		if (!isVirtual && !noPhysical) {
@@ -106,6 +108,7 @@ export function buildMajorBodies(
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
 				attachCameraRelative(mesh, material as MeshStandardMaterial);
 				attachSurfacePhotometry(material as MeshStandardMaterial, id);
+				if (!modelBearing) planetshine = attachPlanetshine(material as MeshStandardMaterial);
 			}
 			root.add(mesh);
 
@@ -184,6 +187,7 @@ export function buildMajorBodies(
 			displacementMap: null,
 			selfShadow: null,
 			eclipseShadow,
+			planetshine,
 			nomenclatureLabels: null,
 			model: null
 		});
@@ -238,6 +242,7 @@ export function upgradeBodyMesh(
 	bo.eclipseShadow = attachEclipseShadowToBody(material);
 	attachCameraRelative(mesh, material);
 	attachSurfacePhotometry(material, body.data.id);
+	if (!modelBearing) bo.planetshine = attachPlanetshine(material);
 	bo.currentSegments = segments;
 
 	const atmoParams = getAtmosphereParams(body.data.id);
@@ -298,6 +303,7 @@ export function downgradeBodyMesh(
 		bo.mesh = null;
 		bo.currentSegments = undefined;
 		bo.eclipseShadow = null;
+		bo.planetshine = null;
 		bo.sunTint = undefined;
 		// Re-upgrade builds a fresh identity-scale mesh, so triaxial scale must
 		// be reapplied; `bo.radiusScene` keeps its bumped value for that.

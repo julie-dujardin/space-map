@@ -30,6 +30,7 @@ import { shapeModelSkipReason } from './shape-model-policy';
 import { applyBodyOrientation } from './orientation-apply';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
 import { attachSurfacePhotometry } from '../surface/photometry';
+import { attachPlanetshine } from '../surface/planetshine';
 import { buildRadialIndex, radialIndexDistance, type RadialIndex } from './model-radial';
 
 /** Types whose placeholder sphere is meaningless and hidden the moment a load
@@ -389,6 +390,7 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		root.userData.radialIndex = buildRadialIndex(root);
 		const material = makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data));
 		attachSurfacePhotometry(material, bo.body.data.id);
+		bo.planetshine = attachPlanetshine(material, bo.planetshine ?? undefined);
 		applyShapeModelMaterial(root, material);
 		// Sphere path owns texture loading/LOD; mirror it now (swapBodyTexture
 		// keeps later tier upgrades in sync).
