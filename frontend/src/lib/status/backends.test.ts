@@ -57,16 +57,16 @@ describe('backends', () => {
 	// The edge keeps a tile, and would answer for a server that is down.
 	it('asks for a tile that the export names, past the edge cache', async () => {
 		urls.tilesUrl = 'https://tiles.example';
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(() => Promise.resolve(Response.json(ABOUT_DATA)))
-		);
+		const fetch = vi.fn(() => Promise.resolve(Response.json(ABOUT_DATA)));
+		vi.stubGlobal('fetch', fetch);
 		const tiles = backends().find((service) => service.id === 'tiles')!;
 		vi.spyOn(Date, 'now').mockReturnValueOnce(1).mockReturnValueOnce(2);
 		expect([await tiles.url(), await tiles.url()]).toEqual([
 			'https://tiles.example/v1/tiles/naif-499/0/0/0.webp?probe=1',
 			'https://tiles.example/v1/tiles/naif-499/0/0/0.webp?probe=2'
 		]);
+		// The export is read once: later probes ask the tile host alone.
+		expect(fetch).toHaveBeenCalledTimes(1);
 	});
 });
 

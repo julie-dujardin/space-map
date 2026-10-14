@@ -150,8 +150,9 @@ export function bootThree(
 		depthTexture: new DepthTexture(canvas.clientWidth, canvas.clientHeight, FloatType)
 	});
 	const gl = renderer.getContext() as WebGL2RenderingContext;
-	// The counts come in descending order. A device can have none for this format.
-	const sampleCounts: Int32Array = gl.getInternalformatParameter(
+	// The counts come in descending order. A device can have none for this
+	// format, and one that cannot render to it at all gives null.
+	const sampleCounts: Int32Array | null = gl.getInternalformatParameter(
 		gl.RENDERBUFFER,
 		gl.RGBA16F,
 		gl.SAMPLES
@@ -182,7 +183,7 @@ export function bootThree(
 		scene,
 		camera,
 		composer,
-		maxSceneSamples: sampleCounts[0] ?? 0,
+		maxSceneSamples: sampleCounts?.[0] ?? 0,
 		bloomPass,
 		ambientLight,
 		shadowLight

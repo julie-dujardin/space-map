@@ -303,7 +303,11 @@ async function loadSpacecraftModel(
 		const root = withBaseFrame(gltf.scene, baseFrame);
 		// The anchor is measured in the model's own frame, so it turns with it.
 		const anchor = meta.model_anchor ? new Vector3(...meta.model_anchor) : null;
-		fitToUnitRadius(root, anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor);
+		if (!fitToUnitRadius(root, anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor)) {
+			disposeGltf(gltf.scene);
+			bo.noPhysical = 'model';
+			return;
+		}
 		enableShadows(root);
 		modelScene.add(root);
 		// A crash site shows no intact craft; the position loop re-shows it
@@ -384,7 +388,11 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 			return;
 		}
 		const root = gltf.scene;
-		fitToUnitRadius(root); // normalise to radius 1; the mount reproduces true size via radiusScene
+		// Normalise to radius 1; the mount reproduces true size via radiusScene.
+		if (!fitToUnitRadius(root)) {
+			disposeGltf(gltf.scene);
+			return;
+		}
 		// Only a main-scene model is measurable: the camera clamp reads radii in
 		// mount units, which say nothing about an overlay model's drawn size.
 		root.userData.radialIndex = buildRadialIndex(root);
@@ -509,8 +517,10 @@ function withBaseFrame(scene: Object3D, q: Quaternion | null): Object3D {
  * seat a landed probe on its feet, the box (`boxCenter`, `halfExtents`) where
  * the ground's depth stops, and `occluderSpheres`, which hide the CSS2D labels
  * behind the model.
+ *
+ * False for a model with nothing to draw: it has no box to fit.
  */
-function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): void {
+function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): boolean {
 	root.updateMatrixWorld(true);
 	// Precise: the default walks each geometry's own box through the world
 	// matrix, which inflates it on any rotated node — 45% on Perseverance, so
@@ -520,7 +530,7 @@ function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): void {
 	const size = bbox.getSize(new Vector3());
 	const center = bbox.getCenter(new Vector3());
 	const maxDim = Math.max(size.x, size.y, size.z);
-	if (maxDim <= 0) return;
+	if (maxDim <= 0) return false;
 	const k = 2 / maxDim;
 	root.userData.boxCenter = center.clone().multiplyScalar(k);
 	// Seat the craft body at the origin, not the box centre: the body is what
@@ -544,6 +554,7 @@ function fitToUnitRadius(root: Object3D, anchor: Vector3 | null = null): void {
 	const offset = root.userData.centerOffset.length();
 	root.userData.minRadius = Math.max(0, fit.minRadius - offset);
 	root.userData.maxRadius = root.userData.halfExtents.length() + offset;
+	return true;
 }
 
 /** A model-hugging occluder blob: `center` is post-fit units in the root's

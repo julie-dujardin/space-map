@@ -42,9 +42,20 @@ export function backends(): Backend[] {
 	return out;
 }
 
+let tilePath: Promise<string> | undefined;
+
 /** The first tile of a pyramid that the export names. The tile host serves
- *  tiles and nothing else, so it has no health route. */
-async function firstTile(): Promise<string> {
+ *  tiles and nothing else, so it has no health route. The path is found once:
+ *  then a data host that is down cannot show the tiles as down. */
+function firstTile(): Promise<string> {
+	tilePath ??= findFirstTile().catch((error: unknown) => {
+		tilePath = undefined;
+		throw error;
+	});
+	return tilePath;
+}
+
+async function findFirstTile(): Promise<string> {
 	const res = await fetch(`${dataBase()}/v1/about-data.json`);
 	const data = (await res.json()) as AboutData;
 	const maps = data.systems.flatMap((system) => system.worlds.flatMap((world) => world.maps));
