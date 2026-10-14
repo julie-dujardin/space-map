@@ -33,8 +33,9 @@ interface GlobalObjectData {
   type: string;                       // ObjectType name
   name?: string;
   parent_name?: string;               // host display name; moons only — lets the breadcrumb label the parent when its body isn't resident in the scene
-  color?: string;                     // moons only — #rrggbb physically-derived surface colour. Top-level (moons carry no `sbdb` block); small bodies carry theirs under `sbdb.color`. Absent → frontend generic tint
-  color_method?: "spectrum" | "albedo"; // moons only — how `color` was derived (present iff color is): TCT measured reflectance, else neutral grey × JPL Horizons geometric albedo
+  color?: string;                     // moons only — #rrggbb surface colour: a measured hue at a luminance of `geometric_albedo` (see "Surface colour" below). Absent on planets and on moons with no known albedo. Small bodies carry theirs under `sbdb.color`. Absent → frontend generic tint
+  color_method?: "spectrum" | "albedo"; // moons only — source of the hue (present iff color is): TCT measured reflectance, else neutral
+  geometric_albedo?: number;          // planets and moons — V-band geometric albedo at phase 0; can be above 1 (Enceladus 1.375). A planet has it and no `color`. Small bodies carry theirs under `sbdb`
   lunar_weight_scale?: number;        // factor on the lunar weight of McEwen (1996) in the lunar-Lambert law of the ground, from a published disk-resolved fit (`constants/disk_photometry.py`). Absent → McEwen's weight
   map_texture_available?: boolean;    // only present if true
   texture?: {                         // only when map_texture_available; mirrors systems/{bary}.json
@@ -355,8 +356,9 @@ interface GlobalObjectData {
     mass?: { value: number; unit: string };
     H?: number; G?: number;
     spec_B?: string; spec_T?: string;
-    color?: string;  // #rrggbb physically-derived surface colour (TrueColorTools): per-body measured colour, else taxonomy chroma × albedo, else albedo grey. Absent → frontend generic tint
-    color_method?: "spectrum" | "photometry" | "taxonomy" | "albedo";  // how `color` was derived (present iff color is)
+    color?: string;  // #rrggbb surface colour: the best hue known at a luminance of the V-band geometric albedo (see "Surface colour" below). Absent → frontend generic tint
+    color_method?: "spectrum" | "photometry" | "taxonomy" | "albedo";  // source of the hue (present iff color is): TCT spectrum, SBDB B-V/U-B, Bus-DeMeo class, neutral
+    geometric_albedo?: number;  // V-band geometric albedo, only where the hex of `color` cannot hold it (a full channel and a luminance short of the albedo)
     BV?: number; UB?: number; IR?: number;
     moid?: number;   // AU, Earth MOID
     moid_jup?: number; t_jup?: number;
@@ -519,6 +521,33 @@ interface QuantityWithUnit { value: number; unit: string; }
 // Currencies use ISO 4217 codes (e.g. "EUR", "USD")
 interface CurrencyQuantity { value: number; currency: string; }
 ```
+
+### Surface colour
+
+`color` (top level for moons, `sbdb.color` for small bodies) is a hue at a
+linear luminance equal to the body's V-band geometric albedo, sRGB-encoded.
+The hue comes from TrueColorTools (`constants/small_body_colors.json`): a
+measured spectrum, else SBDB B-V/U-B, else the Bus-DeMeo class, else neutral.
+It is the colour of the surface in sunlight with the sunlight shown white:
+the generator adapts the flat spectrum (Illuminant E) to the D65 white of
+sRGB, so a grey surface is grey.
+The albedo is the first one known of:
+
+1. `constants/geometric_albedos.py` — published values with their source
+   (Mallama et al. 2017 for the planets, Verbiscer et al. 2007 for Saturn's
+   inner moons, Helfenstein and Verbiscer 2025 for Pluto and Charon);
+2. JPL Horizons for a moon (`constants/moon_albedos.json`), SBDB `albedo` for a
+   small body;
+3. the albedo of the TrueColorTools entry.
+
+A small body with none takes 0.10; a moon with none gets no colour. A planet
+gets `geometric_albedo` and no colour, so that its map keeps its own hue. A
+colour too bright for a hex keeps its hue at the brightest value a hex holds;
+`geometric_albedo` then carries the true value. Planets and moons always have
+`geometric_albedo` where an albedo is known; a small body or a dwarf planet has
+it (under `sbdb`) only where its hex falls short. The frontend draws a body with
+no surface map at this albedo, and a body as a source of planetshine at it;
+a surface map keeps the brightness it is published at.
 
 ### `atmosphere`
 

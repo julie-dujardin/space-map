@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from space_map_data.export.notable import render_size
 from space_map_data.export.objects.writer import _orbit_elements
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.small_body_color import resolve_moon_color
+from space_map_data.export.small_body_color import resolve_major_body_color
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.export.position.frames import equatorial_to_ecliptic_vector
 from space_map_data.models.object.main import Object, ObjectType
@@ -142,7 +142,7 @@ def build_planetary_systems_map(
                         el.get("i", 0.0), el.get("om", 0.0), pole
                     ),
                     radius_km=moon_radius or 0.0,
-                    color=resolve_moon_color(obj.naif_id)[0],
+                    color=resolve_major_body_color(obj.naif_id)[0],
                 )
             )
         if not moons:

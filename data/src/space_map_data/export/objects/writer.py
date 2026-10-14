@@ -72,7 +72,7 @@ from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit_cached
 from space_map_data.export.disk_photometry import lunar_weight_scale
-from space_map_data.export.small_body_color import resolve_moon_color
+from space_map_data.export.small_body_color import resolve_major_body_color
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
     clouds_block,
@@ -558,13 +558,15 @@ def _build_global(
         parent_name = parent_names.get(obj.parent_id)
         if parent_name:
             data["parent_name"] = parent_name
-    # TCT surface colour for moons (mirrors sbdb.py for small bodies), drives
-    # the flat sphere where no texture loads.
-    if obj.object_type == ObjectType.moon:
-        color, method = resolve_moon_color(obj.naif_id)
-        if color is not None:
-            data["color"] = color
-            data["color_method"] = method
+    # Surface colour of a moon, albedo of a planet or a moon. Small bodies
+    # have their colour in `sbdb`.
+    if obj.object_type in (ObjectType.planet, ObjectType.moon):
+        surface = resolve_major_body_color(obj.naif_id)
+        if surface.color is not None:
+            data["color"] = surface.color
+            data["color_method"] = surface.method
+        if surface.geometric_albedo is not None:
+            data["geometric_albedo"] = surface.geometric_albedo
     # Factor on the lunar weight of the ground, where a disk-resolved fit is published.
     weight_scale = lunar_weight_scale(obj.id)
     if weight_scale is not None:

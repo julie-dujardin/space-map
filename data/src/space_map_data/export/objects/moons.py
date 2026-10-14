@@ -25,7 +25,7 @@ from space_map_data.export.notable import (
     textured_object_ids,
 )
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.small_body_color import resolve_moon_color
+from space_map_data.export.small_body_color import resolve_major_body_color
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
 
@@ -138,6 +138,7 @@ def notable_moons_by_host(
             geo = render_geometry(
                 r.naif_id, r.wikidata_qid, radii, orientation=orientation
             )
+            surface = resolve_major_body_color(r.naif_id)
             moons.append(
                 NotableObject(
                     object_id=r.id,
@@ -147,9 +148,8 @@ def notable_moons_by_host(
                     first_obs=None,
                     radii=geo.radii,
                     pole=geo.pole,
-                    # Physically-derived TCT surface tint for textureless moons;
-                    # None for moons TCT hasn't measured (frontend keeps its tint).
-                    color=resolve_moon_color(r.naif_id)[0],
+                    color=surface.color,
+                    geometric_albedo=surface.geometric_albedo,
                 )
             )
         named = sum(1 for r in children if r.name)

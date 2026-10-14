@@ -33,7 +33,7 @@ A single tiny top-level file fetched once at app start, paired with the per-syst
 
 ## System metadata (`systems/{barycenter_id}.json`)
 
-Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, texture attribution, orientation (pole/spin polynomial, tagged with the `source` that published it — see `objects.md`), nutation/precession coefficients, and triaxial radii when known.
+Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, texture attribution, orientation (pole/spin polynomial, tagged with the `source` that published it — see `objects.md`), nutation/precession coefficients, and triaxial radii when known. They also carry `color`, `geometric_albedo` and `lunar_weight_scale` as the body's global object does (a small body's from its `sbdb` block) (`objects.md`, "Surface colour"), so that a body out of focus has its measured albedo and the law of its ground.
 
 ```json
 {
@@ -74,6 +74,8 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
   },
   "naif-301": {
     "tiers": ["low"],
+    "color": "#6f5e54",
+    "geometric_albedo": 0.12,
     "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" },
     "displacement": {
       "id": "naif-301_displacement",

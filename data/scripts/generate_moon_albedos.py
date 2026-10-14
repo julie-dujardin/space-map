@@ -3,10 +3,8 @@
 JPL's static "Planetary Satellite Physical Parameters" table dropped albedo in
 its 2021 site redesign (it now lists only GM / mean radius / mean density), but
 Horizons still prints a ``Geometric Albedo`` line in each body's OBJ_DATA block.
-We harvest it per moon to feed the neutral-grey "albedo" colour tier in
-``export/small_body_color.py``: a moon TrueColorTools never measured (most
-irregular satellites) then gets a physically-correct *brightness* — a dark P-type
-captured grey vs a bright icy grey — instead of one flat generic tint.
+``export/small_body_color.py`` sets the brightness of the colour of a moon from
+it, where ``constants/geometric_albedos.py`` has no published value.
 
 Only planetary satellites carry a Horizons albedo, so we query the moons whose
 NAIF id is a classical satellite number (< 1000); the 5-digit provisional-name

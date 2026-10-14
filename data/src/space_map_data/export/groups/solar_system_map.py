@@ -27,7 +27,7 @@ from space_map_data.export.groups.small_body import OrbitClassSample
 from space_map_data.export.notable import render_size
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import (
-    resolve_moon_color,
+    resolve_major_body_color,
     resolve_small_body_color,
 )
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -251,7 +251,7 @@ def _moons(
                     a=a,
                     i=0.0,
                     diameter_km=diameter,
-                    color=resolve_moon_color(naif_id)[0],
+                    color=resolve_major_body_color(naif_id)[0],
                     parent=host,
                     link_parent=link_parent,
                 )
@@ -312,7 +312,7 @@ def _dwarf_planets(
             )
             continue
         color = (
-            resolve_small_body_color(spkid, spec_b or spec_t, albedo)[0]
+            resolve_small_body_color(obj_id, spkid, spec_b or spec_t, albedo)[0]
             if spkid is not None
             else None
         )
@@ -373,7 +373,7 @@ def _asteroids(session: Session, count: int) -> list[MapObject]:
         albedo,
     ) in rows:
         color = (
-            resolve_small_body_color(spkid, spec_b or spec_t, albedo)[0]
+            resolve_small_body_color(obj_id, spkid, spec_b or spec_t, albedo)[0]
             if spkid is not None
             else None
         )

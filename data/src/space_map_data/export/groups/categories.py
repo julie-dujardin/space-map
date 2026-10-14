@@ -72,7 +72,8 @@ from space_map_data.export.objects import radiation
 from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
 from space_map_data.export.objects.temperature import heliocentric_distance_au
 from space_map_data.export.small_body_color import (
-    resolve_moon_color,
+    albedo_beyond_hex,
+    resolve_major_body_color,
     resolve_small_body_color,
 )
 from space_map_data.export.objects.wikidata_claims import (
@@ -183,6 +184,7 @@ def _body_member(
 ) -> NotableObject:
     """Denormalize a body, attaching its PCK mass + shared lineup render geometry."""
     geo = render_geometry(naif_id, qid, radii, orientation=orientation)
+    surface = resolve_major_body_color(naif_id)
     return NotableObject(
         object_id=obj_id,
         wikidata_qid=qid,
@@ -193,9 +195,9 @@ def _body_member(
         radii=geo.radii,
         radius_km=geo.radius_km,
         pole=geo.pole,
-        # Tints textureless moons in the Moons-page lineup; None (so the frontend
-        # tint stands) for planets/dwarfs and unmeasured moons.
-        color=resolve_moon_color(naif_id)[0],
+        # A dwarf planet takes its colour from SBDB in its own builder.
+        color=surface.color,
+        geometric_albedo=surface.geometric_albedo,
     )
 
 
@@ -389,7 +391,9 @@ def _dwarf_planet_members(
         if spkid is not None:
             member.albedo = albedo
             member.spec = spec_b or spec_t
-            member.color = resolve_small_body_color(spkid, spec_b or spec_t, albedo)[0]
+            surface = resolve_small_body_color(obj_id, spkid, spec_b or spec_t, albedo)
+            member.color = surface.color
+            member.geometric_albedo = albedo_beyond_hex(surface)
         members.append(member)
     return members
 

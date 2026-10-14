@@ -21,8 +21,14 @@ from space_map_data.constants.orientation import (
     ORIENTATION_SOURCE_PCK,
 )
 from space_map_data.constants.manifests.textures import ALT_INFIX
+from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.in_place import patch_global_bundles, refresh_versions
 from space_map_data.export.sidecar_io import mirror_path
+from space_map_data.export.small_body_color import (
+    albedo_beyond_hex,
+    resolve_major_body_color,
+    resolve_small_body_color,
+)
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -774,6 +780,27 @@ def write_system_metadata(
             # km, along body-fixed X, Y, Z.
             if obj.naif_id is not None and obj.naif_id in radii:
                 entry["radii"] = radii[obj.naif_id]
+
+            # As on the object. Here too, so that a body that is not in focus
+            # draws its ground and its planetshine at the right brightness.
+            if obj.object_type in (ObjectType.planet, ObjectType.moon):
+                surface = resolve_major_body_color(obj.naif_id)
+                if surface.color is not None:
+                    entry["color"] = surface.color
+                if surface.geometric_albedo is not None:
+                    entry["geometric_albedo"] = surface.geometric_albedo
+            elif obj.sbdb is not None:
+                sbdb = obj.sbdb
+                surface = resolve_small_body_color(
+                    obj.id, sbdb.spkid, sbdb.spec_B or sbdb.spec_T, sbdb.albedo
+                )
+                if surface.color is not None:
+                    entry["color"] = surface.color
+                if (albedo := albedo_beyond_hex(surface)) is not None:
+                    entry["geometric_albedo"] = albedo
+            weight_scale = lunar_weight_scale(obj.id)
+            if weight_scale is not None:
+                entry["lunar_weight_scale"] = weight_scale
 
             # Ring profile bundles, inner → outer.
             if obj.has_rings:

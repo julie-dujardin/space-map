@@ -59,7 +59,8 @@ interface NotableEntry {
   pole?: { ra: number; dec: number; source?: "lightcurve" | "occultation" }; // IAU J2000 pole RA/Dec (deg); the lineup's true axial tilt. `source` is present only when the pole isn't the PCK's — small-body members tilt on DAMIT lightcurve poles, which the footer credits to DAMIT rather than to the IAU/NAIF
   albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`
   spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); see `color`
-  color?: string;                   // #rrggbb physically-derived surface colour (TrueColorTools). Small bodies: per-body TCT/SBDB colour, else taxonomy chroma × albedo, else albedo grey. Moons: per-body TCT colour (NAIF-keyed), else neutral grey × JPL Horizons geometric albedo. Absent → frontend generic tint
+  color?: string;                   // #rrggbb surface colour, as on the object: a measured hue at a luminance of the V-band geometric albedo (objects.md, "Surface colour"). Absent → frontend generic tint
+  geometric_albedo?: number;        // V-band geometric albedo, as on the object: planets and moons, and small bodies whose hex cannot hold it; can be above 1
   lunar_weight_scale?: number;      // factor on the lunar weight of the ground, as on the object
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it). On a `probes` entry it is the probe's launch date
   visits?: {                        // `probes` entries only: the members this probe reached, latest arrival first, uncapped

@@ -64,7 +64,10 @@ class NotableObject:
     spec: str | None = (
         None  # SBDB taxonomic type (SMASS, else Tholen); small bodies only
     )
-    color: str | None = None  # physically-derived #rrggbb surface tint; small bodies
+    color: str | None = None  # physically-derived #rrggbb surface colour
+    # V-band geometric albedo: always for planets and moons, for a small body
+    # only where the hex of `color` cannot hold it. A planet has no `color`.
+    geometric_albedo: float | None = None
     ring_mass: dict | None = None  # ring mass for Ring Systems chart; `ring_stats.mass`
     # Structure & Activity page members are ranked by this one figure, same shape
     # as the body's own panel.
@@ -315,6 +318,8 @@ def notable_entries(
             entry["spec"] = member.spec
         if member.color is not None:
             entry["color"] = member.color
+        if member.geometric_albedo is not None:
+            entry["geometric_albedo"] = member.geometric_albedo
         weight_scale = lunar_weight_scale(member.object_id)
         if weight_scale is not None:
             entry["lunar_weight_scale"] = weight_scale

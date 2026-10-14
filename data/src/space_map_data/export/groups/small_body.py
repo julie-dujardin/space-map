@@ -29,7 +29,10 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.notable import NotableObject, render_geometry
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.small_body_color import resolve_small_body_color
+from space_map_data.export.small_body_color import (
+    albedo_beyond_hex,
+    resolve_small_body_color,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
@@ -303,6 +306,7 @@ def _notable_members(
         geo = render_geometry(
             naif_id, qid, radii, units, wikidata_entities, orientation
         )
+        surface = resolve_small_body_color(object_id, spkid, spec_b or spec_t, albedo)
         members.append(
             NotableObject(
                 object_id=object_id,
@@ -317,7 +321,8 @@ def _notable_members(
                 # SMASS (spec_B) preferred over Tholen (spec_T).
                 spec=spec_b or spec_t,
                 # Lineup needs only the colour, not its derivation method.
-                color=resolve_small_body_color(spkid, spec_b or spec_t, albedo)[0],
+                color=surface.color,
+                geometric_albedo=albedo_beyond_hex(surface),
             )
         )
     return members

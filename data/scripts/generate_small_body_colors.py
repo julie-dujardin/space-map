@@ -1,27 +1,29 @@
-"""Generate physically-derived small-body sRGB colours from TrueColorTools.
+"""Generate the surface hues of small bodies and moons from TrueColorTools.
 
-Replaces the hand-tuned frontend taxonomy heuristic with TCT's "natural colour
-as-is" (geometric-albedo–scaled, gamma-corrected, brightness *not* maximized).
-Emits ``constants/small_body_colors.json`` consumed by the export resolver:
+TCT gives each body a colour from a measured reflectance spectrum, scaled to
+the geometric albedo of the database entry. Those albedos do not share one
+definition: an entry can be one hemisphere, exclude the opposition surge, or
+have no albedo (TCT then makes the brightest channel 1). So this script keeps
+only the hue from TCT. The export (``export/small_body_color.py``) sets the
+brightness from a V-band geometric albedo of one definition.
+
+Emits ``constants/small_body_colors.json``:
 
     {
-      "neutral_linear": [r, g, b],   # reflectance=1 linear RGB (luminance 1),
-                                     # the hue-less chroma for the albedo-grey tier
-      "by_taxon": {"S": [r, g, b], ...},   # Bus-DeMeo class chroma (linear,
-                                     # luminance-normalized) — hue only
-      "by_spkid": {                  # per-body asteroids/comets, by derivation
-        "spectrum":   {"20000004": "#rrggbb", ...},  # measured reflectance
-        "photometry": {"20000433": "#rrggbb", ...},  # SBDB B-V/U-B indices
+      "neutral_linear": [1, 1, 1],   # hue of a flat spectrum: grey
+      "by_taxon": {"S": [r, g, b], ...},   # Bus-DeMeo class hue, luminance 1
+      "by_spkid": {                  # asteroids and comets, by derivation
+        "spectrum":   {"20000004": {"chroma": [r, g, b], "albedo": 0.38}, ...},
+        "photometry": {"20000433": {"chroma": [r, g, b]}, ...},
       },
-      "by_naif": {                   # moons/natural satellites, keyed by NAIF id
-        "spectrum":   {"607": "#rrggbb", ...},       # measured reflectance (TCT)
+      "by_naif": {                   # natural satellites, keyed by NAIF id
+        "spectrum":   {"607": {"chroma": [r, g, b], "albedo": 0.25}, ...},
       }
     }
 
-The export scales a chroma (``neutral_linear`` or a ``by_taxon`` entry) by a
-body's geometric albedo and sRGB-encodes it, so per-class/grey brightness always
-comes from the body's own measured albedo. ``by_spkid`` are final per-body
-colours (full natural TCT colour, brightness from that body's own data).
+``chroma`` is linear sRGB at luminance 1. ``albedo`` is the V-band value of
+the entry's geometric albedo spectrum, absent where TCT has none. The export
+uses it only for a body with no albedo from a better source.
 
 This is a one-off generator, regenerated when SBDB or TCT refreshes. It is NOT
 on the export hot path — TCT's numpy/scipy/astropy deps never enter the project.
@@ -100,9 +102,18 @@ def _load_tct(tct_root: Path):
         ObjectName,
         Spectrum,
         database_parser,
+        get_filter,
     )
 
-    return db, database_parser, ColorPoint, ColorSystem, ObjectName, Spectrum
+    return (
+        db,
+        database_parser,
+        ColorPoint,
+        ColorSystem,
+        ObjectName,
+        Spectrum,
+        get_filter,
+    )
 
 
 def main() -> None:
@@ -115,27 +126,23 @@ def main() -> None:
     out_path = args.out.resolve()  # resolve before chdir into the TCT root
     db_path = args.db.resolve()
 
-    db, database_parser, ColorPoint, ColorSystem, ObjectName, Spectrum = _load_tct(
-        args.tct_root.resolve()
-    )
+    (
+        db,
+        database_parser,
+        ColorPoint,
+        ColorSystem,
+        ObjectName,
+        Spectrum,
+        get_filter,
+    ) = _load_tct(args.tct_root.resolve())
     import numpy as np
 
-    srgb = ColorSystem("sRGB")
-
-    def colour_of(body) -> str | None:
-        """Natural geometric-albedo colour as ``#rrggbb``; None if unscalable."""
-        spectrum, estimated = body.get_spectrum("geometric")
-        c = ColorPoint.from_spectral_data(spectrum).to_color_system(srgb)
-        c.gamma_correction = True
-        # Brightness maximization only when albedo can't scale the spectrum —
-        # otherwise we keep the true (dark) reflectance the user asked for.
-        c.maximize_brightness = estimated is None
-        return c.to_html()
-
-    def colour_of_entry(name, entry) -> str | None:
-        return colour_of(database_parser(name, entry))
-
-    objs, _refs = db.import_DBs(["spectra"])
+    # A reflectance spectrum is the colour of the surface in sunlight, with the
+    # sunlight shown white. Its white is the flat spectrum, Illuminant E, so
+    # the Bradford adaptation from E to the D65 of sRGB (TCT's own default)
+    # makes a grey surface grey.
+    srgb = ColorSystem("sRGB", "Illuminant E")
+    v_band = get_filter("Generic_Bessell.V")
 
     def luminance(linear) -> float:
         """sRGB/Rec.709 relative luminance of a linear-light RGB triple."""
@@ -143,20 +150,36 @@ def main() -> None:
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
     def chroma(linear) -> list[float]:
-        """Normalize a linear colour to luminance 1 — hue only, brightness
-        re-applied per body via its albedo. Falls back to neutral grey if black."""
+        """Normalize a linear colour to luminance 1. Falls back to neutral grey
+        if black."""
         lin = np.asarray(linear, dtype=float)
         y = luminance(lin)
         if y <= 0:
             return [1.0, 1.0, 1.0]
         return [round(float(v), 6) for v in lin / y]
 
+    def linear_of(spectrum) -> np.ndarray:
+        """Linear sRGB of a spectrum, desaturated into the gamut by TCT."""
+        c = ColorPoint.from_spectral_data(spectrum).to_color_system(srgb)
+        c.gamma_correction = False
+        return np.asarray(c.to_array())
+
+    def entry_of(name, entry) -> dict:
+        """Hue of a database entry, and its V-band geometric albedo if TCT has one."""
+        spectrum, estimated = database_parser(name, entry).get_spectrum("geometric")
+        out: dict = {"chroma": chroma(linear_of(spectrum))}
+        if estimated is not None:
+            out["albedo"] = round(float((spectrum @ v_band)[0]), 4)
+        return out
+
+    objs, _refs = db.import_DBs(["spectra"])
+
     # --- neutral chroma: flat reflectance = 1 (the reflectance-1 white point) ---
     nm = np.arange(380, 781, 5)
     flat = Spectrum(nm, np.ones_like(nm, dtype=float), name=ObjectName("neutral"))
-    neutral = ColorPoint.from_spectral_data(flat).to_color_system(srgb)
-    neutral.gamma_correction = False  # linear; the export applies sRGB OETF
-    neutral_linear = chroma(neutral.to_array())
+    neutral_linear = chroma(linear_of(flat))
+    if max(neutral_linear) - min(neutral_linear) > 1e-5:
+        raise SystemExit(f"a flat spectrum is not grey: {neutral_linear}")
 
     # --- by_taxon: Bus-DeMeo class spectra (the taxonomy SBDB spec_B uses) ---
     # Two entries per class (distinct sources); average in linear light.
@@ -170,30 +193,25 @@ def main() -> None:
             continue
         cls = m.group(1)
         try:
-            body = database_parser(name, entry)
-            spectrum, estimated = body.get_spectrum("geometric")
-            c = ColorPoint.from_spectral_data(spectrum).to_color_system(srgb)
-            c.gamma_correction = False
-            taxon_linear.setdefault(cls, []).append(np.asarray(c.to_array()))
+            spectrum, _ = database_parser(name, entry).get_spectrum("geometric")
+            taxon_linear.setdefault(cls, []).append(linear_of(spectrum))
         except Exception as e:  # noqa: BLE001
             print(f"  skip taxon {name}: {e}", file=sys.stderr)
 
-    # Average each class in linear light, then keep only its hue (luminance 1);
-    # the export re-applies brightness from each body's measured albedo.
     by_taxon = {
         cls: chroma(np.mean(arrs, axis=0)) for cls, arrs in taxon_linear.items()
     }
 
-    # Per-body colours are grouped by derivation method so the export can credit
+    # Per-body hues are grouped by derivation method so the export can credit
     # each: `spectrum` = a measured reflectance spectrum, `photometry` = SBDB
     # broadband B-V/U-B colour indices. Both run through TrueColorTools' engine.
-    def sort_by_spkid(d: dict[str, str]) -> dict[str, str]:
+    def sort_by_id(d: dict[str, dict]) -> dict[str, dict]:
         return dict(sorted(d.items(), key=lambda kv: int(kv[0])))
 
     # --- spectrum: individually-measured named bodies in TCT ---
     # Keys look like "4 Vesta [refs]" / "134340 Pluto [refs]". Skip sub-region
     # entries ("4 Vesta: Bright areas", "Ahuna Mons (Ceres)").
-    by_spectrum: dict[str, str] = {}
+    by_spectrum: dict[str, dict] = {}
     skipped_named = 0
     for name, entry in objs.items():
         s = str(name)
@@ -206,51 +224,48 @@ def main() -> None:
             continue
         spkid = str(_SPKID_ASTEROID_OFFSET + int(m.group(1)))
         try:
-            hexcol = colour_of_entry(name, entry)
-            if hexcol:
-                by_spectrum[spkid] = hexcol
+            by_spectrum[spkid] = entry_of(name, entry)
         except Exception as e:  # noqa: BLE001
             skipped_named += 1
             print(f"  skip named {name}: {e}", file=sys.stderr)
 
     # --- photometry: SBDB B-V + U-B colour indices through the TCT engine ---
+    # Hue only: the export takes the albedo from SBDB itself.
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     rows = con.execute(
-        "SELECT spkid, BV, UB, albedo FROM sbdb WHERE BV IS NOT NULL AND UB IS NOT NULL"
+        "SELECT spkid, BV, UB FROM sbdb WHERE BV IS NOT NULL AND UB IS NOT NULL"
     ).fetchall()
     con.close()
     print(
         f"  photometry: {len(rows)} candidate bodies ...", file=sys.stderr, flush=True
     )
-    by_photometry: dict[str, str] = {}
+    by_photometry: dict[str, dict] = {}
     bv_skipped = 0
-    for i, (spkid, bv, ub, albedo) in enumerate(rows):
+    for i, (spkid, bv, ub) in enumerate(rows):
         if i and i % 100 == 0:
             print(f"    ...{i}/{len(rows)}", file=sys.stderr, flush=True)
-        if spkid is None or spkid in by_spectrum:  # a measured spectrum wins
+        if spkid is None or str(spkid) in by_spectrum:  # a measured spectrum wins
             continue
         entry: dict[str, object] = {
             "photometric_system": "Generic_Bessell",
             "color_indices": {"U-B": float(ub), "B-V": float(bv)},
             "calibration_system": "Vega",
         }
-        if albedo is not None:
-            entry["geometric_albedo"] = ["Generic_Bessell.V", [float(albedo), 0.0]]
         try:
-            hexcol = colour_of_entry(ObjectName(f"sbdb-{spkid}"), entry)
-            if hexcol:
-                by_photometry[str(spkid)] = hexcol
+            spectrum, _ = database_parser(
+                ObjectName(f"sbdb-{spkid}"), entry
+            ).get_spectrum("geometric")
+            by_photometry[str(spkid)] = {"chroma": chroma(linear_of(spectrum))}
         except Exception as e:  # noqa: BLE001
             bv_skipped += 1
             print(f"  skip BV/UB {spkid}: {e}", file=sys.stderr)
 
     # --- by_naif: moons/natural satellites in TCT, keyed by NAIF id ---
-    # The `natural satellite/...` tag excludes rings/aurorae/surface features for
-    # free. Per body we keep one representative entry, preferring (in order):
-    # TCT's own `featured` disk spectrum, any whole-disk entry, else a hemisphere
-    # entry (Amalthea/Thebe/Metis only have leading/trailing). Pure sub-region
-    # entries ("Bright areas", "polar cap") are skipped so a feature is never
-    # mislabelled as the disk. Ties break on the name for determinism.
+    # The `natural satellite/...` tag excludes rings, aurorae and surface
+    # features. Each body keeps one entry. The order of preference is: the disk
+    # entry that TCT features, then any disk entry or featured hemisphere entry
+    # (the Moon has only hemisphere entries), then any hemisphere entry. An entry
+    # for one region only ("Bright areas") is not used. Ties break on the name.
     naif_cands: dict[int, list[tuple[int, str, object, object]]] = {}
     for name, entry in objs.items():
         tags = entry.get("tags", [])
@@ -264,12 +279,12 @@ def main() -> None:
         if ":" not in base:
             rank = 0 if "featured" in tags else 1
         elif re.search(r"hemisphere|side", base, re.IGNORECASE):
-            rank = 2
+            rank = 2 if "featured" not in tags else 1
         else:
             rank = 3  # material/region only — last resort
         naif_cands.setdefault(naif, []).append((rank, s, name, entry))
 
-    by_naif: dict[str, str] = {}
+    by_naif: dict[str, dict] = {}
     naif_skipped = 0
     for naif, cands in naif_cands.items():
         cands.sort(key=lambda c: (c[0], c[1]))
@@ -282,9 +297,7 @@ def main() -> None:
             )
             continue
         try:
-            hexcol = colour_of_entry(best_name, best_entry)
-            if hexcol:
-                by_naif[str(naif)] = hexcol
+            by_naif[str(naif)] = entry_of(best_name, best_entry)
         except Exception as e:  # noqa: BLE001
             naif_skipped += 1
             print(f"  skip moon {naif} ({best_label}): {e}", file=sys.stderr)
@@ -293,11 +306,11 @@ def main() -> None:
         "neutral_linear": neutral_linear,
         "by_taxon": dict(sorted(by_taxon.items())),
         "by_spkid": {
-            "spectrum": sort_by_spkid(by_spectrum),
-            "photometry": sort_by_spkid(by_photometry),
+            "spectrum": sort_by_id(by_spectrum),
+            "photometry": sort_by_id(by_photometry),
         },
         "by_naif": {
-            "spectrum": sort_by_spkid(by_naif),
+            "spectrum": sort_by_id(by_naif),
         },
     }
     out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="UTF-8")
