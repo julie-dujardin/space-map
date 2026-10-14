@@ -152,6 +152,11 @@
 	// Debounced reset on query/filter/sort change; `page` is not a dep, so
 	// scrolling updates the anchor without retriggering a reset.
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	/** A search waits out the debounce. */
+	let searchPending = $state(false);
+	/** Enter came before the results of the last keystroke. A new keystroke
+	 *  cancels it. */
+	let pickTopWhenSettled = $state(false);
 	$effect(() => {
 		const snap = {
 			query: model.query,
@@ -160,9 +165,22 @@
 			reverse: model.reverse,
 			locale: getLocale()
 		};
+		searchPending = true;
+		pickTopWhenSettled = false;
 		clearTimeout(debounceTimer);
-		debounceTimer = setTimeout(() => model.runSearch(snap), 150);
+		debounceTimer = setTimeout(() => {
+			searchPending = false;
+			model.runSearch(snap);
+		}, 150);
 		return () => clearTimeout(debounceTimer);
+	});
+	/** The hits are those of the query as it stands. */
+	const searchSettled = $derived(!searchPending && !model.loading);
+	$effect(() => {
+		if (!pickTopWhenSettled || !searchSettled) return;
+		pickTopWhenSettled = false;
+		const top = model.hits[0];
+		if (top) untrack(() => pick(top));
 	});
 
 	// Announce the settled result count / "no results" to screen readers (WCAG
@@ -795,11 +813,13 @@
 			e.preventDefault();
 			moveHighlight(e.key === 'ArrowDown' ? 1 : -1);
 		} else if (e.key === 'Enter') {
+			// An input method confirms its text with Enter.
+			if (e.isComposing || e.keyCode === 229) return;
+			e.preventDefault();
 			const hit = highlightedIndex >= 0 ? model.hits[highlightedIndex] : undefined;
-			if (hit) {
-				e.preventDefault();
-				pick(hit);
-			}
+			if (hit) pick(hit);
+			else if (!searchSettled) pickTopWhenSettled = true;
+			else if (model.hits[0]) pick(model.hits[0]);
 		} else if (e.key === 'Escape') {
 			model.setQuery('');
 			collapse();
@@ -858,6 +878,7 @@
 					}}
 					onkeydown={onInputKeyDown}
 					type="text"
+					enterkeyhint="go"
 					role="combobox"
 					aria-expanded={expanded && model.hasResults}
 					aria-controls="search-results-listbox"

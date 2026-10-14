@@ -929,7 +929,7 @@
 
 {#if ctx.loading || calibrationUi.bootPending}
 	<div
-		class="flex h-screen flex-col items-center justify-center gap-3 bg-bg text-text"
+		class="flex h-dvh flex-col items-center justify-center gap-3 bg-bg text-text"
 		role="status"
 		aria-live="polite"
 	>
@@ -947,7 +947,7 @@
 {:else if ctx.error}
 	<div
 		role="alert"
-		class="flex h-screen flex-col items-center justify-center gap-4 bg-bg px-6 text-center"
+		class="flex h-dvh flex-col items-center justify-center gap-4 bg-bg px-6 text-center"
 	>
 		<p class="max-w-md text-sm text-text-error">{m.error_prefix({ error: ctx.error })}</p>
 		<ReloadButton />
@@ -961,7 +961,7 @@
 		>
 			{m.skip_to_content()}
 		</a>
-		<main id="main-content" tabindex="-1" class="relative w-full h-screen outline-none">
+		<main id="main-content" tabindex="-1" class="relative w-full h-dvh outline-none">
 			<!-- Visually-hidden h1 so screen readers get a stable page-title
 			     landmark even when the drawer is closed. -->
 			<h1 class="sr-only">{appState.view.name || m.page_title()}</h1>

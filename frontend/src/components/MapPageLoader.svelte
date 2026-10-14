@@ -18,7 +18,7 @@
 {#snippet failure()}
 	<div
 		role="alert"
-		class="flex h-screen flex-col items-center justify-center gap-4 bg-bg px-6 text-center"
+		class="flex h-dvh flex-col items-center justify-center gap-4 bg-bg px-6 text-center"
 	>
 		<p class="max-w-md text-sm text-text-error">{m.map_load_failed()}</p>
 		<ReloadButton />
