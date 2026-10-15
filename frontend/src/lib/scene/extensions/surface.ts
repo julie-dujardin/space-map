@@ -29,7 +29,7 @@ import {
 	writeFatTrailVertices,
 	writeLineDistances
 } from '$lib/scene/objects/trail/geometry';
-import { bodyCentre, rotateByQuaternion, surfaceDirection } from './anchor';
+import { bodyCentre, GroundDirections, rotateByQuaternion, surfaceDirection } from './anchor';
 import { parseDash, screenLengths } from './screen';
 import { meanDirection, slerpDirection } from './geometry';
 import { makeAreaMaterial } from './material';
@@ -131,6 +131,8 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 	/** Directions of the fill's vertices, in the same frame: the middle first,
 	 *  then one row of the outline's length per step out to it. */
 	private fanDirs = new Float64Array(0);
+	private readonly groundDirs = new GroundDirections();
+	private readonly groundFanDirs = new GroundDirections();
 	private fill: Mesh<BufferGeometry, ShaderMaterial> | null = null;
 	private fillScratch = new Float32Array(0);
 	private readonly turned: [number, number, number] = [0, 0, 0];
@@ -203,7 +205,8 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 		];
 
 		if (this.line) {
-			this.place(this.dirs, this.count, q, scale, origin, this.scratch);
+			const dirs = this.groundDirs.of(this.dirs, body.drawnRadii);
+			this.place(dirs, this.count, q, scale, origin, this.scratch);
 			writeFatTrailVertices(this.line.geometry, this.scratch, this.alphas, this.alphas, this.count);
 			if (this.dash) {
 				screenLengths(this.scratch, this.count, camera, viewportPx, this.lengths);
@@ -213,7 +216,8 @@ export class SurfaceShapeExtension implements Extension, SurfaceShape {
 		}
 		if (this.fill) {
 			const position = this.fill.geometry.getAttribute('position');
-			this.place(this.fanDirs, this.fillScratch.length / 3, q, scale, origin, this.fillScratch);
+			const fanDirs = this.groundFanDirs.of(this.fanDirs, body.drawnRadii);
+			this.place(fanDirs, this.fillScratch.length / 3, q, scale, origin, this.fillScratch);
 			position.needsUpdate = true;
 			this.fill.material.uniforms.uCenterOffset.value.copy(camera.position).negate();
 		}

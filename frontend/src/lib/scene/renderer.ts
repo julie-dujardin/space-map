@@ -164,11 +164,8 @@ import {
 	orbitDamping,
 	type MotionScale
 } from './camera/motion-scale';
-import {
-	bodyFixedUnit,
-	renderedSurfaceRadialKm,
-	surfaceDataEpoch
-} from './position/rendered-surface';
+import { renderedSurfaceRadialKm, surfaceDataEpoch } from './position/rendered-surface';
+import { surfaceDirection } from './extensions/anchor';
 import { collisionParentId } from './state/bodies.svelte';
 import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
@@ -1497,7 +1494,7 @@ export class SceneRenderer {
 	surfaceRadialKm(bodyId: string, latitude: number, longitude: number): number | null {
 		const body = this.ctx.getBody(bodyId);
 		if (!body) return null;
-		const dir = bodyFixedUnit((latitude * Math.PI) / 180, (longitude * Math.PI) / 180);
+		const dir = surfaceDirection(latitude, longitude, body.drawnRadii);
 		return renderedSurfaceRadialKm(
 			this.bodyObjects.get(bodyId),
 			bodyId,

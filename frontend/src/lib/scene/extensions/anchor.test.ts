@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three';
 import { AU_SCALE } from '$lib/math/units';
-import { bodyCentre, resolveAnchor, rotateByQuaternion, surfaceDirection } from './anchor';
+import {
+	bodyCentre,
+	GroundDirections,
+	resolveAnchor,
+	rotateByQuaternion,
+	surfaceDirection
+} from './anchor';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { PositionedBody } from '$lib/types/objects';
@@ -96,6 +102,51 @@ describe('surfaceDirection', () => {
 		const east = surfaceDirection(0, 90);
 		expect(east[0]).toBeCloseTo(0, 12);
 		expect(east[2]).toBeCloseTo(-1, 12);
+	});
+});
+
+describe('on a drawn ellipsoid', () => {
+	const MARS = { a: 3396.19, b: 3396.19, c: 3376.2 };
+	/** Latitude of a direction from the centre. */
+	const centric = ([x, y, z]: Vec3) => (Math.atan2(y, Math.hypot(x, z)) * 180) / Math.PI;
+
+	it('points at the place the mesh draws at that latitude', () => {
+		// Jezero: the mesh puts 18.44 degrees at a direction 0.1 degrees nearer
+		// the equator, 6 km on the ground.
+		const dir = surfaceDirection(18.44, 77.45, MARS);
+		const lat = (18.44 * Math.PI) / 180;
+		const lon = (77.45 * Math.PI) / 180;
+		const drawn = new Vector3(
+			MARS.a * Math.cos(lat) * Math.cos(lon),
+			MARS.c * Math.sin(lat),
+			-MARS.b * Math.cos(lat) * Math.sin(lon)
+		).normalize();
+		expect(dir[0]).toBeCloseTo(drawn.x, 12);
+		expect(dir[1]).toBeCloseTo(drawn.y, 12);
+		expect(dir[2]).toBeCloseTo(drawn.z, 12);
+		expect(centric(dir)).toBeCloseTo(18.3387, 4);
+	});
+
+	it('keeps the direction on a sphere', () => {
+		const sphere = { a: 1000, b: 1000, c: 1000 };
+		const dir = surfaceDirection(40, 10, sphere);
+		const plain = surfaceDirection(40, 10);
+		dir.forEach((v, i) => expect(v).toBeCloseTo(plain[i], 12));
+	});
+
+	it('places a surface anchor where the mesh draws its latitude', () => {
+		const ctx = fakeCtx({ position: [0, 0, 0], drawnRadii: MARS });
+		const at = resolveAnchor({ body: 'test', latitude: 18.44, longitude: 77.45 }, ctx, 2460000)!;
+		expect(centric(at)).toBeCloseTo(18.3387, 4);
+	});
+
+	it('moves a set of directions once for the same radii', () => {
+		const ground = new GroundDirections();
+		const dirs = new Float64Array(surfaceDirection(18.44, 77.45));
+		const first = ground.of(dirs, MARS);
+		expect(ground.of(dirs, MARS)).toBe(first);
+		expect(centric([first[0], first[1], first[2]])).toBeCloseTo(18.3387, 4);
+		expect(ground.of(dirs, undefined)).toBe(dirs);
 	});
 });
 

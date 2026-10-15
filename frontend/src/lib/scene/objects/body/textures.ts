@@ -133,6 +133,7 @@ export function applyRadiiToMesh(
 	bo.radiusScene = kmToScene(Math.max(a, b, c));
 	// Mesh-local x/y/z semi-axes (matches the scale order) for ellipsoid occlusion.
 	bo.semiAxesScene = [kmToScene(a), kmToScene(c), kmToScene(b)];
+	bo.body.drawnRadii = { a, b, c };
 	// Reshape the scattering shell to match, and re-normalise sun-transmittance —
 	// their baked mean-radius heights would put the equator off the datum otherwise.
 	if (bo.atmosphere) {

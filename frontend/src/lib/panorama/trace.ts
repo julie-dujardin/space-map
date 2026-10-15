@@ -26,7 +26,11 @@ import {
 import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { kmToScene } from '$lib/math/units';
-import { rotateByQuaternion, surfaceDirection } from '$lib/scene/extensions/anchor';
+import {
+	GroundDirections,
+	rotateByQuaternion,
+	surfaceDirection
+} from '$lib/scene/extensions/anchor';
 import type { Extension, ExtensionFrame } from '$lib/scene/extensions/registry';
 import { MIN_BODY_SCREEN_RADIUS_PX } from '$lib/scene/objects/surface/nomenclature';
 import { effectiveRadiusKm } from '$lib/types/objects';
@@ -114,6 +118,8 @@ class Run {
 	readonly count: number;
 	/** Body-fixed unit directions of the places, before the body's rotation. */
 	readonly dirs: Float64Array;
+	/** The same, on the ground of the body as drawn. */
+	readonly ground = new GroundDirections();
 	readonly positions: Float32Array;
 	readonly alphas: Float32Array;
 	/** The turned directions, placed this frame: the places themselves. */
@@ -230,14 +236,15 @@ export class TraverseTrace implements Extension {
 
 		let at = 0;
 		for (const run of this.runs) {
+			const dirs = run.ground.of(run.dirs, body.drawnRadii);
 			for (let i = 0; i < run.count; i++) {
 				const entry = this.entries[at + i];
 				const d = i * 3;
-				if (q) rotateByQuaternion(q, run.dirs[d], run.dirs[d + 1], run.dirs[d + 2], this.turned, 0);
+				if (q) rotateByQuaternion(q, dirs[d], dirs[d + 1], dirs[d + 2], this.turned, 0);
 				else {
-					this.turned[0] = run.dirs[d];
-					this.turned[1] = run.dirs[d + 1];
-					this.turned[2] = run.dirs[d + 2];
+					this.turned[0] = dirs[d];
+					this.turned[1] = dirs[d + 1];
+					this.turned[2] = dirs[d + 2];
 				}
 				const scale = kmToScene(radiusKm + this.options.ground(entry));
 				run.placed[d] = this.turned[0] * scale + origin[0];

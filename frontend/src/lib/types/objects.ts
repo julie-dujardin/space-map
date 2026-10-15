@@ -186,6 +186,9 @@ export interface PositionedBody {
 	orientation?: Orientation;
 	/** IAU nutation/precession sums (per-body coefficients + system-shared angles). */
 	nutPrec?: NutPrec;
+	/** Semi-axes (km) of the ellipsoid the mesh is drawn as. Unset while the
+	 *  mesh is a sphere. */
+	drawnRadii?: { a: number; b: number; c: number };
 	/**
 	 * Per-spacecraft pointing spec (export `pointing`). Set on focus when the
 	 * model loads; drives the focused model's attitude instead of the default

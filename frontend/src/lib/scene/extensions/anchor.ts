@@ -47,13 +47,59 @@ function isSurface(anchor: Anchor): anchor is SurfaceAnchor {
 	return 'latitude' in anchor;
 }
 
+/** Semi-axes (km) of a drawn ellipsoid. `a` and `b` are equatorial, along
+ *  body-fixed x and z; `c` is polar, along y. */
+export type Radii = NonNullable<PositionedBody['drawnRadii']>;
+
 /** Body-fixed unit vector for lat/lon in the scene's axes, before the body's
  *  own rotation: latitude 0, longitude 0 on +X, longitude increasing east.
- *  Matches the texture convention {@link bodyQuaternion} establishes. */
-export function surfaceDirection(latitude: number, longitude: number): Vec3 {
+ *  Matches the texture convention {@link bodyQuaternion} establishes. With
+ *  `radii` it points at the place on the drawn ellipsoid instead. */
+export function surfaceDirection(latitude: number, longitude: number, radii?: Radii): Vec3 {
 	const lat = latitude * RAD;
 	const lon = longitude * RAD;
-	return [Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon)];
+	const out: Vec3 = [Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon)];
+	if (radii) onEllipsoid(radii, out, 0, out, 0);
+	return out;
+}
+
+/** Move the unit direction at `from[at]` to the drawn place with the same
+ *  latitude and longitude, into `out[to]`. The mesh and its texture put a
+ *  latitude at that parametric angle of the ellipsoid, so on an oblate body
+ *  the place is nearer the equator than the direction. */
+function onEllipsoid(
+	radii: Radii,
+	from: ArrayLike<number>,
+	at: number,
+	out: Float64Array | number[],
+	to: number
+): void {
+	const x = from[at] * radii.a;
+	const y = from[at + 1] * radii.c;
+	const z = from[at + 2] * radii.b;
+	const n = Math.hypot(x, y, z);
+	out[to] = x / n;
+	out[to + 1] = y / n;
+	out[to + 2] = z / n;
+}
+
+/** A set of body-fixed unit directions moved onto the drawn ellipsoid, kept
+ *  until the directions or the radii change. */
+export class GroundDirections {
+	private source: Float64Array | null = null;
+	private radii: Radii | undefined;
+	private out = new Float64Array(0);
+
+	of(dirs: Float64Array, radii: Radii | undefined): Float64Array {
+		if (!radii) return dirs;
+		if (dirs !== this.source || radii !== this.radii) {
+			if (this.out.length !== dirs.length) this.out = new Float64Array(dirs.length);
+			for (let i = 0; i < dirs.length; i += 3) onEllipsoid(radii, dirs, i, this.out, i);
+			this.source = dirs;
+			this.radii = radii;
+		}
+		return this.out;
+	}
 }
 
 /** Rotate (x, y, z) by `q` into `out` at index `at`. Written out and given an
@@ -82,7 +128,7 @@ export function bodyCentre(body: PositionedBody, ctx: ContextManager, jd: number
 }
 
 /** What an anchor reads of the body it is on. */
-export type AnchorBody = Pick<PositionedBody, 'orientation' | 'nutPrec'> & {
+export type AnchorBody = Pick<PositionedBody, 'orientation' | 'nutPrec' | 'drawnRadii'> & {
 	data: Parameters<typeof effectiveRadiusKm>[0];
 };
 
@@ -98,7 +144,7 @@ export function placeAnchor(
 
 	if (isSurface(anchor)) {
 		const distance = kmToScene(effectiveRadiusKm(body.data) + (anchor.altitudeKm ?? 0));
-		const [dx, dy, dz] = surfaceDirection(anchor.latitude, anchor.longitude);
+		const [dx, dy, dz] = surfaceDirection(anchor.latitude, anchor.longitude, body.drawnRadii);
 		// Without orientation metadata the body has no measured spin, so the
 		// place is put on the unrotated sphere rather than nowhere.
 		const q = body.orientation ? bodyQuaternion(body.orientation, jd, body.nutPrec) : null;
