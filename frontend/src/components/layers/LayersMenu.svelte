@@ -21,6 +21,8 @@
 		desc: () => string;
 		checked: () => boolean;
 		set: (on: boolean) => void;
+		/** Whether the current view mode leaves the layer out whatever the switch says. */
+		disabled?: () => boolean;
 	}[] = [
 		{
 			id: 'clouds',
@@ -48,7 +50,8 @@
 			label: () => m.layers_panoramas(),
 			desc: () => m.layers_panoramas_desc(),
 			checked: () => settings.showPanoramaTraces,
-			set: (on) => settings.setShowPanoramaTraces(on)
+			set: (on) => settings.setShowPanoramaTraces(on),
+			disabled: () => settings.viewMode === 'immersive'
 		}
 	];
 </script>
@@ -92,12 +95,17 @@
 					{m.layers_section_layers()}
 				</h3>
 				{#each layerToggles as toggle (toggle.id)}
-					<label class="flex items-center justify-between gap-3 cursor-pointer">
-						<div class="flex flex-col min-w-0">
+					{@const disabled = toggle.disabled?.() ?? false}
+					<label
+						class="flex items-center justify-between gap-3
+						{disabled ? 'cursor-not-allowed' : 'cursor-pointer'}"
+					>
+						<!-- The switch dims itself. -->
+						<div class="flex flex-col min-w-0 {disabled ? 'opacity-50' : ''}">
 							<span class="text-sm font-medium">{toggle.label()}</span>
 							<span class="text-xs text-muted-foreground">{toggle.desc()}</span>
 						</div>
-						<Switch checked={toggle.checked()} onCheckedChange={toggle.set} />
+						<Switch checked={toggle.checked()} onCheckedChange={toggle.set} {disabled} />
 					</label>
 				{/each}
 			</section>

@@ -2,7 +2,8 @@
   The way into the panoramas from the 3D map, after Street View: every rover
   traverse on the focused body drawn on its ground as a thick blue line, with
   the nearest panorama shown as a card when the pointer rests on the line and
-  opened by a click on it. A layer setting takes the lines off the map.
+  opened by a click on it. A layer setting and immersive view take the lines
+  off the map.
   Standing on the body counts as focusing it — a landed rover, a
   crater — so the way in stays open from the ground; an orbiter's body is
   not the one it flies over. Bodies with no panoramas get neither.
@@ -124,7 +125,8 @@
 		const body = bodyId;
 		const renderer = map.renderer;
 		const data = body ? ctx.getBody(body)?.data : undefined;
-		if (!settings.showPanoramaTraces || !body || !renderer || !data || !entries.length) return;
+		if (!settings.showPanoramaTraces || settings.viewMode === 'immersive') return;
+		if (!body || !renderer || !data || !entries.length) return;
 		const radiusKm = effectiveRadiusKm(data);
 
 		/** Height of the drawn ground under a panorama, above the mean radius;
