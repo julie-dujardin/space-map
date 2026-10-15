@@ -1,6 +1,7 @@
 """Shared constants and paths for the textures provider."""
 
 from space_map_data.utils.paths import (
+    CACHE_DIR,
     DERIVED_TEXTURES_DIR,
     EXPORT_DIR,
     SOURCES_TEXTURES_DIR,
@@ -129,6 +130,9 @@ TILE_SHARPEN_RANGE = (0.4, 2.5)
 # pixels of the pyramid's finest level: wider than the distance between a
 # feature on the map and the same one on a mosaic of another team.
 PATCH_SIGMA = 16.0
+# Site mosaics with their Sun's shading taken out (see deshade.py), by
+# pyramid. Gigabytes each and slow to make, so kept, but only on this machine.
+DESHADED_DIR = CACHE_DIR / "deshaded"
 # Largest source a build decodes whole, in bytes once decoded. Sources stored
 # as plain samples are read in bands and have no limit.
 TILE_MAX_LOAD_BYTES = 4 << 30

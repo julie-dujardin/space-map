@@ -184,13 +184,18 @@ bodies:
     projection: polar_stereographic
     lat_range: [-90, -60]
   # Mosaics of the LROC narrow-angle camera. Where a terrain model of the
-  # site gives the ground its relief, the mosaic is one under a high sun: the
-  # renderer casts the shadows, and those of a low sun would show beside
-  # them. Elsewhere it is one under a low sun, as at this scale the height
-  # map has no relief to light and a high sun shows a flat plain; so too
-  # where no mosaic under a high sun covers the site. The camera's maps agree
-  # to well under a pixel of the lunar map, and a mosaic is strips a few
-  # kilometres wide, so the blend is narrow.
+  # site gives the ground its relief, the renderer casts the shadows, and
+  # those of the mosaic's own Sun would show beside them. There the mosaic is
+  # one under a high Sun. Where the site has none and the model covers most
+  # of a low-Sun mosaic, that Sun's shading is taken out by the model
+  # (`deshade`). Where the model covers only part of it, the ground past the
+  # model keeps its shading and a line shows where the model ends; and the
+  # models of Tycho and Chang'e 5 do not match the mosaic's shading well
+  # enough. Those sites, and the others, keep a mosaic under a low Sun, as at
+  # this scale the height map has no relief to light and a high Sun shows a
+  # flat plain. The camera's maps agree to well under a pixel of the lunar
+  # map, and a mosaic is strips a few kilometres wide, so the blend is
+  # narrow.
   patches:
   - id: apollo-11
     name: Apollo 11
@@ -260,6 +265,7 @@ bodies:
     license: Public domain
     attribution: "NASA/GSFC/Arizona State University. LROC Narrow Angle Camera controlled mosaic of the Apollo 17 landing site, 0.8 m/px."
     sharpen_sigma: 3
+    deshade: true
     files:
     - file: NAC_ROI_APOLLO17LOE_E200N0305.IMG
       dir: moon-sites

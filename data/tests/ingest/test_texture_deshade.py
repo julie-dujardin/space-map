@@ -1,6 +1,7 @@
 """Tests for deshading: a site mosaic taken in a low Sun, with the shading of
 that Sun taken out by the site's terrain model."""
 
+import json
 import math
 from pathlib import Path
 
@@ -8,9 +9,16 @@ import numpy as np
 import pytest
 from scipy import ndimage
 
-from space_map_data.ingest.providers.textures import deshade, patches, tiles
+from space_map_data.ingest.providers.textures import config, deshade, patches, tiles
 
-from .test_texture_patches import _height_raster
+from . import test_texture_patches as patch_tests
+from .test_texture_patches import (
+    TILE,
+    _height_raster,
+    _relief,
+    _texture,
+    _write_geotiff,
+)
 from .test_texture_tiles import _write_pds_image
 
 RADIUS_KM = 1737.4
@@ -260,3 +268,127 @@ class TestHeights:
         # The model ends at column 64; 20 m is 10 columns of 2 m.
         _, inside = deshade._heights(terrain, 4608, edges, 2432, 2560, 4.0, 2.0)
         assert inside[32, 54] == 1.0 and inside[32, 55] < 1.0
+
+
+class TestProcessDeshadedPatches:
+    """A colour patch marked ``deshade`` is built from a copy of its mosaic
+    with the shading taken out by the terrain models of its site."""
+
+    @pytest.fixture(autouse=True)
+    def _small_tiles(self, monkeypatch):
+        monkeypatch.setattr(config, "TILE_SIZE", TILE)
+
+    @staticmethod
+    def _processor(monkeypatch, tmp_path, **extra):
+        spec = patch_tests.TestProcessPatches._spec(deshade=True, **extra)
+        proc = patch_tests.TestProcessPatches._processor(monkeypatch, tmp_path, [spec])
+        _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        _write_geotiff(tmp_path / "raw" / "dtm.tif", _relief() * 1000)
+        monkeypatch.setattr(config, "DESHADED_DIR", tmp_path / "deshaded")
+        written: list[Path] = []
+
+        def write(mosaic, terrain, out):
+            written.append(mosaic)
+            out.write_bytes(mosaic.read_bytes())
+            return deshade.Light(120.0, 25.0, 0.9, 0.8)
+
+        monkeypatch.setattr(deshade, "write", write)
+        proc._raw_meta.append(
+            {
+                "body": "naif-499",
+                "file": "dem.tif",
+                "type": "cylindrical_displacement",
+                "patches": [
+                    {
+                        **patch_tests.TestProcessPatches._spec(),
+                        "files": [{"file": "dtm.tif"}],
+                    }
+                ],
+                "_source_dir": tmp_path / "raw",
+            }
+        )
+        return proc, written
+
+    @staticmethod
+    def _run(proc) -> None:
+        """The colour pyramid and its patches, and not the height pyramid."""
+        entry = proc._raw_meta[0]
+        proc._process_tiles(entry, "naif-499", force=False)
+        proc._process_patches(entry, "naif-499")
+
+    @staticmethod
+    def _copies(tmp_path) -> list[str]:
+        folder = tmp_path / "deshaded" / "naif-499"
+        return sorted(path.name for path in folder.iterdir())
+
+    def test_patch_is_built_from_the_copy(self, tmp_path, monkeypatch):
+        proc, written = self._processor(monkeypatch, tmp_path)
+        self._run(proc)
+        assert written == [tmp_path / "raw" / "site.tif"]
+        (copy,) = self._copies(tmp_path)
+        assert copy.startswith("site-") and copy.endswith(".tif")
+        meta = json.loads(
+            (tmp_path / "meta" / "naif-499" / "metadata.json").read_text()
+        )
+        (patch,) = meta["patches"]
+        assert patch["files"] == ["site.tif"]
+
+    def test_copy_is_made_once(self, tmp_path, monkeypatch):
+        proc, written = self._processor(monkeypatch, tmp_path)
+        self._run(proc)
+        proc._raw_meta[0]["patches"][0]["tiles_max_level"] = 5
+        self._run(proc)
+        assert len(written) == 1
+
+    def test_other_terrain_is_another_copy_and_patch(self, tmp_path, monkeypatch):
+        proc, written = self._processor(monkeypatch, tmp_path)
+        self._run(proc)
+        meta_path = tmp_path / "meta" / "naif-499" / "metadata.json"
+        first = json.loads(meta_path.read_text())["patches"][0]["version"]
+        _write_geotiff(tmp_path / "raw" / "dtm.tif", _relief(128) * 1000)
+        self._run(proc)
+        assert len(written) == 2 and len(self._copies(tmp_path)) == 1
+        assert json.loads(meta_path.read_text())["patches"][0]["version"] != first
+
+    def test_copy_no_longer_used_is_removed(self, tmp_path, monkeypatch):
+        proc, _ = self._processor(monkeypatch, tmp_path)
+        self._run(proc)
+        del proc._raw_meta[0]["patches"][0]["deshade"]
+        self._run(proc)
+        assert self._copies(tmp_path) == []
+
+    @pytest.mark.parametrize(
+        "change",
+        [{"id": "elsewhere"}, {"files": []}],
+        ids=["no height patch", "no files in it"],
+    )
+    def test_site_with_no_terrain_model_is_not_built(
+        self, tmp_path, monkeypatch, caplog, change
+    ):
+        proc, written = self._processor(monkeypatch, tmp_path)
+        proc._raw_meta[1]["patches"][0].update(change)
+        self._run(proc)
+        meta = json.loads(
+            (tmp_path / "meta" / "naif-499" / "metadata.json").read_text()
+        )
+        assert "patches" not in meta and written == []
+        assert any("no terrain model" in r.message for r in caplog.records)
+
+    def test_copy_of_a_mosaic_out_of_reach_stays(self, tmp_path, monkeypatch):
+        """A share that is down for a run would otherwise cost every copy."""
+        proc, _ = self._processor(monkeypatch, tmp_path)
+        self._run(proc)
+        (copy,) = self._copies(tmp_path)
+        (tmp_path / "raw" / "site.tif").rename(tmp_path / "site.tif")
+        self._run(proc)
+        assert self._copies(tmp_path) == [copy]
+
+    def test_copies_go_when_the_pyramid_has_no_patches(self, tmp_path, monkeypatch):
+        proc, _ = self._processor(monkeypatch, tmp_path)
+        self._run(proc)
+        proc._raw_meta[0]["patches"] = []
+        self._run(proc)
+        stray = tmp_path / "deshaded" / "naif-499" / "site-0123456789.tif"
+        stray.write_bytes(b"")
+        self._run(proc)
+        assert self._copies(tmp_path) == []

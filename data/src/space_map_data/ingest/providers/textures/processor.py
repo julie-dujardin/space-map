@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import shutil
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from functools import cached_property
 from pathlib import Path
@@ -27,7 +28,7 @@ from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
-from . import config, patches, skybox, tiles
+from . import config, deshade, patches, skybox, tiles
 from .alignment import align_cylindrical, entry_alignment
 from .encoding import resize, save_webp, size_target, tier_for_size
 from .image_io import (
@@ -47,6 +48,18 @@ from .metadata import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _height_fields(entry: dict, layer: dict) -> dict:
+    """How the samples of a height raster are read: the file's own statement,
+    unless the patch's file or the entry says otherwise."""
+    return {
+        "unit": layer.get("height_unit") or entry.get("height_unit") or "m",
+        **{
+            key: layer.get(f"height_{key}", entry.get(f"height_{key}"))
+            for key in ("scale", "offset", "nodata")
+        },
+    }
 
 
 def _described_files(names: list[str]) -> dict:
@@ -724,6 +737,7 @@ class TextureProcessor:
         built = {patch["id"]: patch for patch in metadata.get("patches") or []}
         wanted = {spec["id"]: spec for spec in entry.get("patches") or []}
         if not (built or wanted):
+            self._drop_copies(pyramid_id, set())
             return
         source_dir = entry["_source_dir"]
         base_level = metadata["max_level"]
@@ -736,17 +750,6 @@ class TextureProcessor:
                 metadata["displacement_bias_km"],
             )
 
-        def height_fields(layer: dict) -> dict:
-            """How the samples of a height raster are read: the file's own
-            statement, unless the patch's file or the entry says otherwise."""
-            return {
-                "unit": layer.get("height_unit") or entry.get("height_unit") or "m",
-                **{
-                    key: layer.get(f"height_{key}", entry.get(f"height_{key}"))
-                    for key in ("scale", "offset", "nodata")
-                },
-            }
-
         def save() -> None:
             metadata["patches"] = list(built.values())
             if not built:
@@ -758,16 +761,39 @@ class TextureProcessor:
             save()
             log.info("removed patch %s of %s", patch_id, pyramid_id)
 
+        # Mosaics with their Sun's shading taken out, kept for the next build.
+        # A source out of reach for a run keeps its copies.
+        copies_dir = config.DESHADED_DIR / pyramid_id
+        kept_copies: set[str] = set()
+        kept_mosaics: list[str] = []
+
         for patch_id, spec in wanted.items():
             files = [name for layer in spec["files"] for name, _ in layer_files(layer)]
-            missing = [name for name in files if not (source_dir / name).exists()]
+            terrain = None
+            if spec.get("deshade"):
+                terrain = self._site_terrain(entry["body"], patch_id)
+                if terrain is None:
+                    log.error(
+                        "patch %s %s: no terrain model to deshade it by",
+                        pyramid_id,
+                        patch_id,
+                    )
+                    continue
+            missing = [
+                path
+                for path in [source_dir / name for name in files]
+                + [path for path, _ in terrain or []]
+                if not path.exists()
+            ]
             if missing:
                 log.warning(
                     "patch source missing for %s %s: %s",
                     pyramid_id,
                     patch_id,
-                    missing[0],
+                    missing[0].name,
                 )
+                if terrain is not None:
+                    kept_mosaics.extend(files)
                 continue
             sigma = spec.get("sharpen_sigma", config.PATCH_SIGMA)
             signature: dict = {
@@ -783,7 +809,23 @@ class TextureProcessor:
             }
             if coding is not None:
                 signature["recipe"] = patches.HEIGHT_RECIPE
-                signature["heights"] = [height_fields(layer) for layer in spec["files"]]
+                signature["heights"] = [
+                    _height_fields(entry, layer) for layer in spec["files"]
+                ]
+            copy_keys: dict[str, str] = {}
+            if terrain is not None:
+                signature["deshade"] = [
+                    deshade.RECIPE,
+                    [[path.name, path.stat().st_size, how] for path, how in terrain],
+                ]
+                for name in files:
+                    copy_keys[name] = tiles.signature_version(
+                        {
+                            "mosaic": [name, (source_dir / name).stat().st_size],
+                            "deshade": signature["deshade"],
+                        }
+                    )
+                    kept_copies.add(deshade.copy_name(name, copy_keys[name]))
             version = tiles.signature_version(signature)
             credit = {
                 key: spec.get(key)
@@ -809,15 +851,28 @@ class TextureProcessor:
             if building.exists():
                 shutil.rmtree(building)
             try:
-                rasters = [
-                    tiles.open_region_layer(source_dir / name, layer.get("gamma"))
-                    if coding is None
-                    else tiles.open_height_region_layer(
-                        source_dir / name, **height_fields(layer)
-                    )
-                    for layer in spec["files"]
-                    for name, _ in layer_files(layer)
+                models = [
+                    tiles.open_height_region_layer(path, **how)
+                    for path, how in terrain or []
                 ]
+                rasters = []
+                for layer in spec["files"]:
+                    for name, _ in layer_files(layer):
+                        path = source_dir / name
+                        if coding is not None:
+                            rasters.append(
+                                tiles.open_height_region_layer(
+                                    path, **_height_fields(entry, layer)
+                                )
+                            )
+                            continue
+                        if models:
+                            path = deshade.deshaded(
+                                path, models, copy_keys[name], copies_dir
+                            )
+                        rasters.append(
+                            tiles.open_region_layer(path, layer.get("gamma"))
+                        )
                 builder = patches.PatchBuilder(
                     f"{pyramid_id} {patch_id}",
                     out_dir,
@@ -888,6 +943,43 @@ class TextureProcessor:
                 sum(stats.tiles),
                 sum(stats.size_bytes) / 2**30,
             )
+
+        self._drop_copies(pyramid_id, kept_copies, kept_mosaics)
+
+    @staticmethod
+    def _drop_copies(
+        pyramid_id: str, keep: set[str], mosaics: Sequence[str] = ()
+    ) -> None:
+        """Delete the deshaded copies of a pyramid that are not in ``keep``
+        and not of one of ``mosaics``."""
+        folder = config.DESHADED_DIR / pyramid_id
+        if not folder.exists():
+            return
+        for copy in folder.iterdir():
+            if copy.name in keep or any(deshade.copy_of(copy.name, m) for m in mosaics):
+                continue
+            copy.unlink()
+            log.info("removed deshaded copy %s", copy.name)
+
+    def _site_terrain(self, body: str, patch_id: str) -> list[tuple[Path, dict]] | None:
+        """The terrain models of a site: the files of the patch of the same id
+        in the body's height pyramid, and how each is read."""
+        for entry in self._raw_meta:
+            if (
+                entry.get("skip")
+                or entry.get("type") != "cylindrical_displacement"
+                or entry["body"] != body
+            ):
+                continue
+            for spec in entry.get("patches") or []:
+                if spec["id"] == patch_id:
+                    found = [
+                        (entry["_source_dir"] / name, _height_fields(entry, layer))
+                        for layer in spec["files"]
+                        for name, _ in layer_files(layer)
+                    ]
+                    return found or None
+        return None
 
     def _open_brightness_layer(self, source_dir: Path, spec: dict) -> tiles.Source:
         lat_bottom, lat_top = spec.get("lat_range") or (-90.0, 90.0)
