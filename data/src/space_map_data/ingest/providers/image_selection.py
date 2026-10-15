@@ -163,6 +163,7 @@ def ingest() -> None:
     # One selection, two consumers: each ringed body's own Rings tab, and the
     # collection page that pools them.
     ring_images = _select_ring_images(metadata_cache, wikidata_root / "referenced")
+    _merge_manual_extras(ring_images, gallery="rings")
     _write_cache(RING_IMAGES_PATH, "ring_systems", ring_images)
     _fill_ring_systems(group_selections, ring_images)
     # Atmosphere and interior articles: one shelf each on the body's Images tab.
@@ -452,13 +453,19 @@ class _MetadataView:
         return meta
 
 
-def _merge_manual_extras(selections: dict[str, list[dict]]) -> None:
-    """Append manual-extra entries to the per-object selections in place.
+def _merge_manual_extras(
+    selections: dict[str, list[dict]], gallery: str | None = None
+) -> None:
+    """Append the manual-extra entries of ``gallery`` to ``selections`` in
+    place. No gallery is the object's own pictures.
 
     Drops entries not yet downloaded or with a non-servable license, with
     a warning — the downloader is responsible for fetching them.
     """
     for obj_id, entries in read_manual_extras().items():
+        entries = [e for e in entries if e.get("gallery") == gallery]
+        if not entries:
+            continue
         existing = selections.setdefault(obj_id, [])
         existing_files = {e["file"] for e in existing}
         for entry in entries:
@@ -473,7 +480,7 @@ def _merge_manual_extras(selections: dict[str, list[dict]]) -> None:
                     obj_id,
                 )
                 continue
-            existing.append(entry)
+            existing.append({"file": file, "kind": entry["kind"]})
             existing_files.add(file)
         if not existing:
             selections.pop(obj_id, None)

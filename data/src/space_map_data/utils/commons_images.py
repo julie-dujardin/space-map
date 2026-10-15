@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 COMMONS_DIR = SOURCES_IMAGES_DIR / "commons"
 IMAGES_DIR = COMMONS_DIR / "images"
 MANUAL_EXTRA_PATH = COMMONS_DIR / "manual-extra.json"
+# Shelves of an object's page that a manual-extra entry can name instead of
+# the object's own pictures.
+MANUAL_EXTRA_GALLERIES = frozenset({"rings"})
 
 _WIKIDATA_IMAGE_PIDS = ("P18", "P154")
 # P18 photo + P242 locator map (USGS-style IAU feature outline). Logo (P154)
@@ -411,8 +414,10 @@ def read_manual_extras() -> dict[str, list[dict]]:
 
     Lets us inject Commons images for objects whose Wikidata/Wikipedia
     discovery missed them. Same on-disk shape as ``object_images.json``:
-    ``{object_id: [{"file": ..., "kind": ...}, ...]}``. Filenames are
-    normalised to canonical (underscore) form on read.
+    ``{object_id: [{"file": ..., "kind": ...}, ...]}``. An entry with
+    ``"gallery": "rings"`` goes to the object's ring pictures instead of its
+    own (see ``MANUAL_EXTRA_GALLERIES``). Filenames are normalised to
+    canonical (underscore) form on read.
     """
     manual_extra = local(MANUAL_EXTRA_PATH)
     if not manual_extra.exists():
@@ -430,9 +435,19 @@ def read_manual_extras() -> dict[str, list[dict]]:
             if not isinstance(file, str) or not file:
                 logger.warning("Skipping manual-extra entry with no file: %r", entry)
                 continue
-            normalised.append(
-                {"file": canonical_filename(file), "kind": entry.get("kind", "photo")}
-            )
+            gallery = entry.get("gallery")
+            if gallery is not None and gallery not in MANUAL_EXTRA_GALLERIES:
+                logger.warning(
+                    "Skipping manual-extra entry with unknown gallery: %r", entry
+                )
+                continue
+            picked = {
+                "file": canonical_filename(file),
+                "kind": entry.get("kind", "photo"),
+            }
+            if gallery is not None:
+                picked["gallery"] = gallery
+            normalised.append(picked)
         if normalised:
             out[obj_id] = normalised
     return out

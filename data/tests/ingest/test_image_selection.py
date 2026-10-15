@@ -253,3 +253,60 @@ class TestReadObjectImages:
         assert "naif-399" in payload["objects"]
         assert "399" not in payload["objects"]
         assert payload["schema_version"] == image_selection.SCHEMA_VERSION
+
+
+class TestMergeManualExtras:
+    @pytest.fixture
+    def extras(self, layout, monkeypatch):
+        path = layout["download"] / "manual-extra.json"
+        monkeypatch.setattr(ci, "MANUAL_EXTRA_PATH", path)
+
+        def write(payload: dict) -> None:
+            path.write_bytes(orjson.dumps(payload))
+
+        return write
+
+    def test_entry_with_no_gallery_joins_the_object_pictures(self, layout, extras):
+        _stage_metadata(layout, "Saturn_portrait.jpg")
+        extras({"naif-699": [{"file": "Saturn portrait.jpg"}]})
+        selections: dict[str, list[dict]] = {}
+        image_selection._merge_manual_extras(selections)
+        assert selections == {
+            "naif-699": [{"file": "Saturn_portrait.jpg", "kind": "photo"}]
+        }
+        rings: dict[str, list[dict]] = {}
+        image_selection._merge_manual_extras(rings, gallery="rings")
+        assert rings == {}
+
+    def test_rings_entry_joins_the_ring_pictures_only(self, layout, extras):
+        _stage_metadata(layout, "Saturn_Equinox.jpg")
+        extras(
+            {
+                "naif-699": [
+                    {"file": "Saturn_Equinox.jpg", "kind": "photo", "gallery": "rings"}
+                ]
+            }
+        )
+        rings = {"naif-699": [{"file": "Rings.jpg", "kind": "photo"}]}
+        image_selection._merge_manual_extras(rings, gallery="rings")
+        assert rings == {
+            "naif-699": [
+                {"file": "Rings.jpg", "kind": "photo"},
+                {"file": "Saturn_Equinox.jpg", "kind": "photo"},
+            ]
+        }
+        selections: dict[str, list[dict]] = {}
+        image_selection._merge_manual_extras(selections)
+        assert selections == {}
+
+    def test_unknown_gallery_is_skipped(self, layout, extras):
+        _stage_metadata(layout, "Saturn_Equinox.jpg")
+        extras({"naif-699": [{"file": "Saturn_Equinox.jpg", "gallery": "moons"}]})
+        assert ci.read_manual_extras() == {}
+
+    def test_entry_not_servable_is_skipped(self, layout, extras):
+        _stage_metadata(layout, "Saturn_Equinox.jpg", license_servable=False)
+        extras({"naif-699": [{"file": "Saturn_Equinox.jpg", "gallery": "rings"}]})
+        rings: dict[str, list[dict]] = {}
+        image_selection._merge_manual_extras(rings, gallery="rings")
+        assert rings == {}
