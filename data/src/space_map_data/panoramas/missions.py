@@ -27,6 +27,15 @@ MISSION_PROBE: dict[str, int] = {
     "zhurong": 113217538,
     "yutu": 103280641,
     "yutu-2": 110784513,
+    "surveyor1": 32206848,
+    "surveyor3": 33525760,
+    "surveyor5": 34115584,
+    "surveyor6": 34361344,
+    "surveyor7": 34611200,
+    "venera13": 55275522,
+    "venera14": 55296002,
+    "huygens": 89915392,
+    "philae": 88694784,
 }
 
 # Which world each traverse is on. The export drops a panorama that names no
@@ -44,6 +53,15 @@ MISSION_BODIES: dict[str, str] = {
     "zhurong": "naif-499",
     "yutu": "naif-301",
     "yutu-2": "naif-301",
+    "surveyor1": "naif-301",
+    "surveyor3": "naif-301",
+    "surveyor5": "naif-301",
+    "surveyor6": "naif-301",
+    "surveyor7": "naif-301",
+    "venera13": "naif-299",
+    "venera14": "naif-299",
+    "huygens": "naif-606",
+    "philae": "spkid-1000012",
 }
 
 

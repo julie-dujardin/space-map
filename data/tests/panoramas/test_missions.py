@@ -45,6 +45,15 @@ class TestProbeId:
             "zhurong": "Zhurong",
             "yutu": "Yutu",
             "yutu-2": "Yutu-2",
+            "surveyor1": "Surveyor 1",
+            "surveyor3": "Surveyor 3",
+            "surveyor5": "Surveyor 5",
+            "surveyor6": "Surveyor 6",
+            "surveyor7": "Surveyor 7",
+            "venera13": "Venera 13 Lander",
+            "venera14": "Venera 14 Lander",
+            "huygens": "Huygens",
+            "philae": "Philae",
         }
 
     @needs_registry
@@ -57,7 +66,7 @@ class TestProbeId:
         assert probe_id("curiosity") == "probe-100265984"
 
     def test_an_unmapped_mission_links_nothing(self):
-        assert probe_id("venera13") is None
+        assert probe_id("apollo15") is None
         assert probe_id(None) is None
 
 

@@ -1224,5 +1224,71 @@
       "azimuth_agreement_deg": 3.1
     },
     "horizontal_basis": "published caption, confirmed by the sweep closing on itself"
+  },
+  {
+    "id": "phoenix-pia13804",
+    "collection": "phoenix",
+    "horizontal_degrees": 360,
+    "horizon_fraction": 0.156,
+    "linear_elevation": true,
+    "source_url": "https://science.nasa.gov/photojournal/mars-panorama-of-phoenix-landing-site-and-lander-deck/",
+    "source_sha256": "1e664762e3287dbb487641cb08bddd8f77a338209070ac99b31af877b884f69a",
+    "capture_time": "2008-06-05",
+    "capture_stop_time": "2008-07-12",
+    "capture_date_source_url": "https://science.nasa.gov/photojournal/phoenix-lander-on-mars-with-surrounding-terrain-vertical-projection/",
+    "start_azimuth_deg": 358.4,
+    "start_azimuth_basis": "skyline match",
+    "start_azimuth_evidence": {
+      "reference": "S_020EDN_CYL_SR129F8_R888M1",
+      "reference_url": "https://planetarydata.jpl.nasa.gov/img/data/phoenix/phxmos_0xxx/data/ssi/sol020/s_020edn_cyl_sr129f8_r888m1.img",
+      "method": "correlation peak at 358.5\u00b0 against the sol 20 horizon pan; SIFT registration against S_013EFF_CYL_SR11E1C_R111M1 gives 358.3\u00b0 and 14 patches from 10\u00b0 to 335\u00b0 give 358.4\u00b0 with no drift",
+      "caption_disagrees": "the caption places west at the centre; that sentence predates the 2011 crop"
+    },
+    "horizon_basis": "solved against the archive's horizon pans of the same lander; rows are evenly spaced in elevation, 72.8 px per degree in the master as across it",
+    "horizon_evidence": {
+      "reference": "S_020EDN_CYL_SR129F8_R888M1",
+      "horizon_fraction_range": [
+        0.155,
+        0.157
+      ],
+      "elevation_range_deg": [
+        -71.6,
+        13.3
+      ]
+    },
+    "horizontal_basis": "published caption, confirmed by the sweep closing on itself"
+  },
+  {
+    "id": "pathfinder-pia01466",
+    "collection": "pathfinder",
+    "horizontal_degrees": 358.05,
+    "horizon_fraction": 0.18,
+    "linear_elevation": true,
+    "source_url": "https://science.nasa.gov/photojournal/improved-mpf-360-degree-color-panorama/",
+    "source_sha256": "924b3e12ff4b7b750e9831386daac479164fba932ea6dd49f023f38f19a924c8",
+    "capture_time": "1997-07-12",
+    "capture_stop_time": "1997-07-15",
+    "capture_date_source_url": "https://planetarydata.jpl.nasa.gov/img/data/mpf/imp/mpim_0003/index/cumindex.tab",
+    "capture_sol": 8,
+    "capture_sol_basis": "first sol of the Gallery Pan sequences 164-167, as the cumulative index of the frames states",
+    "capture_sol_source_url": "https://planetarydata.jpl.nasa.gov/img/data/mpf/imp/mpim_0003/index/cumindex.tab",
+    "start_azimuth_deg": 128.9,
+    "start_azimuth_basis": "controlled mosaic match",
+    "start_azimuth_evidence": {
+      "reference": "PIA01153",
+      "reference_url": "https://photojournal.jpl.nasa.gov/catalog/PIA01153",
+      "method": "SIFT/RANSAC registration against the USGS controlled Gallery Pan, whose azimuth and elevation grid PIA01149 states: 360\u00b0 from 125.0\u00b0, +4\u00b0 to -45\u00b0"
+    },
+    "horizon_basis": "registered against the USGS controlled Gallery Pan; rows fit an even spacing in elevation better than a tangent",
+    "horizon_evidence": {
+      "reference": "PIA01153",
+      "horizon_fraction_range": [
+        0.17,
+        0.19
+      ],
+      "horizon_wobble_deg": 1.7
+    },
+    "horizontal_basis": "registered against the USGS controlled Gallery Pan: 358.05\u00b0 with a 2\u00b0 gap at 127-129\u00b0",
+    "horizontal_source_url": "https://photojournal.jpl.nasa.gov/catalog/PIA01149"
   }
 ]

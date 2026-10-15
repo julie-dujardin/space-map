@@ -17,6 +17,7 @@ STRIPS = json.loads(Path(__file__).with_name("curated_strips.json").read_text())
 ORIENTATION = {
     "published cardinal direction": "caption-aligned",
     "skyline match": "matched to an archival sphere",
+    "controlled mosaic match": "matched to a controlled mosaic",
 }
 
 
@@ -38,7 +39,19 @@ def orientation_status(spec):
     return ORIENTATION[basis]
 
 
-def project_strip(source, horizontal, horizon, width=4096, *, start_azimuth=0):
+def project_strip(
+    source,
+    horizontal,
+    horizon,
+    width=4096,
+    *,
+    start_azimuth=0,
+    linear=False,
+    empty=None,
+):
+    """`linear`: rows are spaced evenly in elevation rather than in its
+    tangent, as in a mosaic the team projected onto a sphere. `empty`: the
+    source pixels that hold no imagery; every near-black one when not given."""
     if (
         not np.isfinite(start_azimuth)
         or not 0 < horizontal <= 360
@@ -52,15 +65,14 @@ def project_strip(source, horizontal, horizon, width=4096, *, start_azimuth=0):
     scale = columns / np.deg2rad(horizontal)
     elevation = np.pi / 2 - (np.arange(width // 2) + 0.5) * 2 * np.pi / width
     # A cylindrical approximation preserves the strip's horizontal sweep.
-    sy = horizon * height - scale * np.tan(elevation)
+    sy = horizon * height - scale * (elevation if linear else np.tan(elevation))
     azimuth = ((np.arange(width) + 0.5) / width * 360 - start_azimuth) % 360
     sx = azimuth / horizontal * columns
     valid = (sy[:, None] >= 0) & (sy[:, None] < height) & (sx[None, :] < columns)
-    rgb = pixels[
-        np.clip(sy, 0, height - 1).astype(int)[:, None],
-        np.clip(sx, 0, columns - 1).astype(int)[None, :],
-    ]
-    valid &= rgb.max(axis=2) > 8
+    rows = np.clip(sy, 0, height - 1).astype(int)[:, None]
+    cols = np.clip(sx, 0, columns - 1).astype(int)[None, :]
+    rgb = pixels[rows, cols]
+    valid &= rgb.max(axis=2) > 8 if empty is None else ~empty[rows, cols]
     rgba = np.dstack((rgb, valid.astype(np.uint8) * 255))
     weights = np.cos(elevation)[:, None]
     fraction = float((valid * weights).sum() / (width * weights.sum()))
@@ -74,6 +86,12 @@ def render_curated(target, metadata, spec, *, width=4096):
         )
     horizontal = spec["horizontal_degrees"]
     heading = spec["start_azimuth_deg"]
+    linear = spec.get("linear_elevation", False)
+    scale = (
+        "rows measured evenly spaced in elevation"
+        if linear
+        else "cylindrical scale assumed"
+    )
     with Image.open(target / metadata["preview"]) as source:
         source_size = source.size
         sphere, percent = project_strip(
@@ -82,6 +100,7 @@ def render_curated(target, metadata, spec, *, width=4096):
             spec["horizon_fraction"],
             width,
             start_azimuth=heading or 0,
+            linear=linear,
         )
     sphere.save(target / "sphere.webp", lossless=True)
     metadata.update(
@@ -155,12 +174,12 @@ def render_curated(target, metadata, spec, *, width=4096):
                 "method": "published sweep; approximate cylindrical mapping and near-black missing-pixel mask",
             },
             "geometry_note": (
-                "Horizon solved against archival spheres of the same stop; "
-                "cylindrical scale assumed."
+                "Horizon solved against a calibrated view of the same stop; "
                 if spec.get("horizon_evidence")
-                else "Visually estimated horizon and cylindrical scale."
+                else "Visually estimated horizon; "
             )
-            + " Source seams/blended sky retained. Near-black masking can"
+            + scale
+            + ". Source seams/blended sky retained. Near-black masking can"
             " remove real shadows.",
         }
     )

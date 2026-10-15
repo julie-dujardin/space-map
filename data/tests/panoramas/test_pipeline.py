@@ -22,6 +22,7 @@ from space_map_data.panoramas.pipeline import (
     metres_apart,
     download,
     fetch,
+    fill_from_neighbours,
     positions,
     process,
     resumable,
@@ -1065,3 +1066,40 @@ class TestALabelThatOnlyPointsAtItsRaster:
 
         with pytest.raises(ValueError, match="Missing PDS block: IMAGE"):
             read_pds3(detached)
+
+
+class TestFillingFromNeighbours:
+    """A hole is filled a ring at a time, never out into empty canvas."""
+
+    def test_a_hole_cut_off_from_the_picture_stays_empty(self):
+        pixels = np.ones((10, 10, 1), dtype=np.float32)
+        valid = np.zeros((10, 10), dtype=bool)
+        holes = np.zeros((10, 10), dtype=bool)
+        holes[4:6, 4:6] = True
+
+        _, filled = fill_from_neighbours(pixels, valid, holes, passes=8)
+
+        assert not filled.any()
+
+    def test_a_hole_inside_the_picture_takes_its_neighbours_value(self):
+        pixels = np.full((10, 10, 1), 5.0, dtype=np.float32)
+        pixels[3:7, 3:7] = 99
+        valid = np.ones((10, 10), dtype=bool)
+        holes = np.zeros((10, 10), dtype=bool)
+        holes[3:7, 3:7] = True
+
+        filled_pixels, filled = fill_from_neighbours(pixels, valid, holes, passes=8)
+
+        assert filled.all()
+        assert filled_pixels[:, :, 0] == pytest.approx(5.0)
+
+    def test_one_pass_fills_only_the_outer_ring(self):
+        pixels = np.full((10, 10, 1), 5.0, dtype=np.float32)
+        valid = np.ones((10, 10), dtype=bool)
+        holes = np.zeros((10, 10), dtype=bool)
+        holes[3:7, 3:7] = True
+
+        _, filled = fill_from_neighbours(pixels, valid, holes)
+
+        assert not filled[4:6, 4:6].any()
+        assert filled[3, 3:7].all()

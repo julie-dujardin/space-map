@@ -25,7 +25,7 @@ from .labels import (
     attached_constants,
     describes_raster,
     read_insight_pds4,
-    read_mer_pds3,
+    read_attached_pds3,
     read_pds3,
     read_pds4,
 )
@@ -630,7 +630,7 @@ def download(
                     image_url = url + name
                     # The sweep is filed under the stop it ended at, which is
                     # also the one its label is referenced to.
-                    mosaic = read_mer_pds3(
+                    mosaic = read_attached_pds3(
                         ranged_label(client, image_url), span[1][1], sol
                     )
                 else:
@@ -841,31 +841,45 @@ def remove_coordinate_grid(pixels, valid, grid_dn):
     annotation = np.all(pixels == grid_dn, axis=2) | np.all(
         pixels == GRID_BLACK_DN, axis=2
     )
-    valid &= ~annotation
+    return fill_from_neighbours(pixels, valid, annotation)
+
+
+def fill_from_neighbours(pixels, valid, holes, passes=1):
+    """Replace hole pixels with the mean of their valid neighbours, one ring per
+    pass. A hole with no valid neighbour stays empty, so nothing grows out
+    into canvas the mosaic never covered."""
+    valid &= ~holes
+    holes = holes.copy()
     height, width = valid.shape
-    padded_pixels = np.pad(pixels, ((1, 1), (1, 1), (0, 0)))
-    padded_valid = np.pad(valid, 1)
-    total = np.zeros_like(pixels)
-    count = np.zeros_like(valid, dtype=np.uint8)
-    for dy, dx in (
-        (-1, -1),
-        (-1, 0),
-        (-1, 1),
-        (0, -1),
-        (0, 1),
-        (1, -1),
-        (1, 0),
-        (1, 1),
-    ):
-        neighbor_valid = padded_valid[1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width]
-        neighbor_pixels = padded_pixels[
-            1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width
-        ]
-        total += neighbor_pixels * neighbor_valid[:, :, None]
-        count += neighbor_valid
-    fill = annotation & (count > 0)
-    pixels[fill] = total[fill] / count[fill, None]
-    valid |= fill
+    for _ in range(passes):
+        padded_pixels = np.pad(pixels, ((1, 1), (1, 1), (0, 0)))
+        padded_valid = np.pad(valid, 1)
+        total = np.zeros_like(pixels)
+        count = np.zeros_like(valid, dtype=np.uint8)
+        for dy, dx in (
+            (-1, -1),
+            (-1, 0),
+            (-1, 1),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
+        ):
+            neighbor_valid = padded_valid[
+                1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width
+            ]
+            neighbor_pixels = padded_pixels[
+                1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width
+            ]
+            total += neighbor_pixels * neighbor_valid[:, :, None]
+            count += neighbor_valid
+        fill = holes & (count > 0)
+        if not fill.any():
+            break
+        pixels[fill] = total[fill] / count[fill, None]
+        valid |= fill
+        holes &= ~fill
     return pixels, valid
 
 
@@ -895,7 +909,8 @@ def remove_coordinate_label_borders(pixels, valid, mosaic: Mosaic):
     return pixels, valid
 
 
-def read_pixels(path: Path, mosaic: Mosaic):
+def raw_pixels(path: Path, mosaic: Mosaic):
+    """The raster as floats, bands last, and where it holds data."""
     raster = np.memmap(
         path,
         mode="r",
@@ -907,6 +922,11 @@ def read_pixels(path: Path, mosaic: Mosaic):
     valid = np.all(np.isfinite(pixels), axis=2)
     for missing in mosaic.missing:
         valid &= np.all(pixels != missing, axis=2)
+    return pixels, valid
+
+
+def read_pixels(path: Path, mosaic: Mosaic):
+    pixels, valid = raw_pixels(path, mosaic)
     header = read_header(path, mosaic)
     declared = coordinate_grid_dn(header)
     # Only a declared value is taken as read; an overlay drawn without one, or
@@ -930,6 +950,12 @@ def read_pixels(path: Path, mosaic: Mosaic):
     grid_remains = coordinate_grid_remains(header) and found is None
     if grid_remains:
         logger.warning("Coordinate overlay lines stay, value not found: %s", path.name)
+    rgba, tone = tone_map(pixels, valid, mosaic.bands)
+    return rgba, tone, grid_remains
+
+
+def tone_map(pixels, valid, bands: int):
+    """Display pixels with an alpha channel, and the stretch that made them."""
     if not valid.any():
         raise ValueError("Mosaic has no valid pixels")
     low, high = np.percentile(pixels[valid], [0.5, 99.5])
@@ -941,7 +967,7 @@ def read_pixels(path: Path, mosaic: Mosaic):
         pixels <= 0.0031308, pixels * 12.92, 1.055 * pixels ** (1 / 2.4) - 0.055
     )
     rgb = np.rint(pixels * 255).astype(np.uint8)
-    if mosaic.bands == 1:
+    if bands == 1:
         rgb = np.repeat(rgb, 3, axis=2)
     rgba = np.dstack((rgb, valid.astype(np.uint8) * 255))
     rgba[~valid] = 0
@@ -951,7 +977,7 @@ def read_pixels(path: Path, mosaic: Mosaic):
         "transfer": "sRGB",
         "scientific_radiometry": False,
     }
-    return rgba, tone, grid_remains
+    return rgba, tone
 
 
 def sphere_texture(rgba, mosaic: Mosaic, width: int):

@@ -20,7 +20,8 @@ flat imagery — Apollo, Venera, Huygens, Philae — are in
 | `pancam` | Every linked page in ASU's full and small-panorama galleries for Spirit/Opportunity | Color landscape variants; separate mosaics on shared pages retained |
 | `curiosity`, `spirit`, `opportunity` | All pages of NASA image-library panorama/mosaic/360 searches | Screened official color releases, including crops |
 | `insight` | Curated first surface image, first/dusty/final selfies, late surface image | Five timeline frames; last exposure not claimed verified |
-| `phoenix`, `pathfinder` | Official PIA13804 / PIA01466 hero panoramas | One preprocessed lander panorama each |
+| `phoenix`, `pathfinder` | Official PIA13804 / PIA01466 hero panoramas | One preprocessed lander panorama each, placed by registration |
+| `phoenix-mosaic` | The five full-circle horizon mosaics of Phoenix's PDS mosaic volume | Grayscale, label geometry, north-aligned |
 | Perseverance Navcam | Every PDS release inventory, supported RGB cylindrical products | Localized, north-aligned sphere textures |
 | `curiosity-navcam` | Every PDS sol directory, thinned to one stopping point per 20 sols | Grayscale full/partial sphere textures with localization and north alignment |
 | `spirit-mosaic`, `opportunity-mosaic` | The whole-mission mosaic index of each PDS operations volume, cylindrical Navcam and Pancam | Grayscale sphere textures, placed on the corrected traverse |
@@ -60,6 +61,10 @@ uv run space-map-panoramas all \
   --source-dir ../../space-map-downloads/sources/images/panoramas \
   --output-dir ../../space-map-downloads/derived/panoramas \
   --missions perseverance
+
+uv run python -m space_map_data.panoramas.phoenix all \
+  --source-dir ../../space-map-downloads/sources/images/panoramas \
+  --output-dir ../../space-map-downloads/derived/panoramas
 
 uv run python -m space_map_data.panoramas.clpds all \
   --source-dir ../../space-map-downloads/sources/images/panoramas \
@@ -460,6 +465,29 @@ Release processing now reapplies curated strip fits automatically. The standalon
 Open `http://localhost:8765/?collection=curiosity&panorama=curiosity-pia20840`
 or `http://localhost:8765/?collection=insight&panorama=insight-pia23140`.
 Immersive products appear before flat-only products in each collection.
+
+### Phoenix and Pathfinder
+
+Phoenix's [PDS mosaic volume](https://planetarydata.jpl.nasa.gov/img/data/phoenix/phxmos_0xxx/)
+(PHX-M-SSI-5-MOSAIC-OPS-V1.0) holds 615 cylindrical mosaics in the site frame,
+whose azimuth starts at north. Only five go all the way round at the horizon:
+the ring of sols 1–3 and the 56-frame horizon pans of sols 20, 54, 87 and 112,
+all from the lander's one spot. `phoenix.py` reads them with their attached
+labels. The archive draws its coordinate overlay into the pixels: a grid across
+empty canvas, which stays empty, and azimuth and elevation numbers along the
+edges, black with a white outline. Rows of numbers along the top and bottom are
+dropped; the numbers on the sides are filled in from the pixels around them.
+
+The colour hero panoramas are curated strips with rows spaced evenly in
+elevation (`linear_elevation`), not by tangent:
+
+| Product | Left edge | Sweep | Horizon | Dates | How it was found |
+|---|---|---|---|---|---|
+| Phoenix PIA13804 | 358.4° | 360° | 0.156 | 2008-06-05 to 07-12 | registered against the sol 13 and sol 20 PDS mosaics; the caption's west-facing centre predates the 2011 crop |
+| Pathfinder PIA01466 | 128.9° | 358.05° | 0.18 | 1997-07-12 to 07-15 (sol 8) | registered against the USGS controlled Gallery Pan (PIA01153/PIA01149); dates from the frame index of the Gallery Pan sequences |
+
+Pathfinder's orientation is `matched to a controlled mosaic`, a basis of its
+own in `strip_spheres.ORIENTATION`.
 
 ### Dated Mastcam-Z 360 spheres
 

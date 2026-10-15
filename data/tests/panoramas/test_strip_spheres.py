@@ -46,6 +46,29 @@ def test_north_at_source_center_is_rotated_to_seam():
     assert tuple(np.asarray(sphere)[90, 180, :3]) == (200, 50, 20)
 
 
+def test_linear_rows_reach_further_down_than_tangent_ones():
+    """A strip spaced evenly in elevation keeps ground the tangent rule would
+    push off the bottom of the picture."""
+    source = Image.new("RGB", (360, 120), (140, 90, 40))
+    linear, _ = project_strip(source, 360, 0.25, width=360, linear=True)
+    tangent, _ = project_strip(source, 360, 0.25, width=360)
+    lowest = [np.flatnonzero(np.asarray(s)[:, 0, 3]).max() for s in (linear, tangent)]
+    # 90 rows below the horizon is 90° evenly spaced, 57.5° by tangent.
+    assert lowest[0] == 179
+    assert lowest[1] == 147
+
+
+def test_named_empty_pixels_replace_the_black_rule():
+    pixels = np.full((60, 360, 3), 120, dtype=np.uint8)
+    pixels[40:50, 100:110] = 0
+    empty = np.zeros((60, 360), dtype=bool)
+    empty[:5] = True
+    sphere, _ = project_strip(Image.fromarray(pixels), 360, 0.5, width=360, empty=empty)
+    alpha = np.asarray(sphere)[:, :, 3]
+    assert alpha[90 + 12, 105]
+    assert not alpha[90 - 27, 105]
+
+
 def test_curated_processing_is_dated_idempotent_and_ignores_inactive(tmp_path):
     import json
     from space_map_data.panoramas.strip_spheres import STRIPS, process
@@ -119,7 +142,7 @@ class TestHowAStripSaysItsGeometryWasFound:
         evidence = result["geometry_evidence"]
         assert evidence["vertical"] == spec["horizon_basis"]
         assert evidence["horizon_evidence"]["matched_products"]
-        assert "solved against archival spheres" in result["geometry_note"]
+        assert "solved against a calibrated view" in result["geometry_note"]
 
     def test_an_eyeballed_horizon_still_says_so(self, tmp_path):
         from space_map_data.panoramas.strip_spheres import STRIPS

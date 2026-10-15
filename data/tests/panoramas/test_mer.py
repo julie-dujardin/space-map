@@ -3,7 +3,7 @@ import math
 import pytest
 
 from space_map_data.panoramas import mer, place
-from space_map_data.panoramas.labels import read_mer_pds3
+from space_map_data.panoramas.labels import read_attached_pds3
 
 TRAVERSE = """SITE,DRIVE,START_SOL,END_SOL,RAW_X,RAW_Y,RAW_Z,CORRECTED_X,CORRECTED_Y
 0,0,1,1,0.000,0.000,0,-1000.00,-863000.00
@@ -224,7 +224,7 @@ def test_listing_keeps_only_cylindrical_mapping_cameras():
 
 def test_attached_label_reads_geometry_and_the_drive_from_beside_it():
     """The label states the site; only the pointing file knows the drive."""
-    found = read_mer_pds3(LABEL, 7)
+    found = read_attached_pds3(LABEL, 7)
 
     assert (found.site, found.drive) == (2, 7)
     assert found.sol == 1
@@ -238,7 +238,7 @@ def test_a_detached_image_pointer_is_not_an_attached_raster():
         "^IMAGE                            = 5", '^IMAGE = ("X.IMG",5)'
     )
     with pytest.raises(ValueError, match="Unsupported image pointer"):
-        read_mer_pds3(detached, 7)
+        read_attached_pds3(detached, 7)
 
 
 def test_camera_is_read_from_the_product_name():
@@ -261,7 +261,7 @@ class TestRasterKinds:
             "SAMPLE_BITS                     = 32\n  DERIVED_IMAGE_TYPE              =",
         )
 
-        assert read_mer_pds3(label, 7).dtype == ">f4"
+        assert read_attached_pds3(label, 7).dtype == ">f4"
 
     def test_eight_bit_counts_are_read(self):
         label = LABEL.replace(
@@ -272,7 +272,7 @@ class TestRasterKinds:
             "SAMPLE_BITS                     = 8",
         )
 
-        assert read_mer_pds3(label, 7).dtype == "u1"
+        assert read_attached_pds3(label, 7).dtype == "u1"
 
     @pytest.mark.parametrize("kind", ["RANGE_MAP", "XYZ_MAP", "SLOPE_MAP", "MASK"])
     def test_a_raster_that_is_not_a_photograph_is_refused(self, kind):
@@ -292,7 +292,7 @@ class TestRasterKinds:
         )
 
         with pytest.raises(ValueError, match=f"Not imagery: {kind}"):
-            read_mer_pds3(label, 7)
+            read_attached_pds3(label, 7)
 
     def test_a_stated_photograph_is_kept(self):
         label = LABEL.replace(
@@ -303,7 +303,7 @@ class TestRasterKinds:
             "END_GROUP                         = DERIVED_IMAGE_PARMS",
         )
 
-        assert read_mer_pds3(label, 7).dtype == ">i2"
+        assert read_attached_pds3(label, 7).dtype == ">i2"
 
     def test_a_layout_no_archive_delivers_is_still_refused(self):
         label = LABEL.replace(
@@ -312,7 +312,7 @@ class TestRasterKinds:
         )
 
         with pytest.raises(ValueError, match="Unsupported PDS3 sample type"):
-            read_mer_pds3(label, 7)
+            read_attached_pds3(label, 7)
 
 
 def test_the_volume_index_supplies_a_sol_the_label_omits():
@@ -320,13 +320,13 @@ def test_the_volume_index_supplies_a_sol_the_label_omits():
     one, which is the same archive stating the same field."""
     label = LABEL.replace(" PLANET_DAY_NUMBER                = 1\n", "")
 
-    assert read_mer_pds3(label, 7, 412).sol == 412
+    assert read_attached_pds3(label, 7, 412).sol == 412
     with pytest.raises(ValueError, match="PLANET_DAY_NUMBER"):
-        read_mer_pds3(label, 7)
+        read_attached_pds3(label, 7)
 
 
 def test_a_stated_sol_beats_the_index():
-    assert read_mer_pds3(LABEL, 7, 412).sol == 1
+    assert read_attached_pds3(LABEL, 7, 412).sol == 1
 
 
 class TestPlacingAPanoramaByADrivingSol:

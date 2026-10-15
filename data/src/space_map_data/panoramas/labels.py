@@ -228,12 +228,14 @@ def read_pds3(text: str, attached: str | None = None) -> Mosaic:
     )
 
 
-def read_mer_pds3(text: str, drive: int, sol: int | None = None) -> Mosaic:
-    """A Mars Exploration Rover mosaic, whose label is attached to its raster.
+def read_attached_pds3(text: str, drive: int, sol: int | None = None) -> Mosaic:
+    """A Mars Exploration Rover or Phoenix mosaic, whose label is attached to
+    its raster.
 
     The label states the site its projection is referenced to but not the drive
-    within it, which only the pointing-correction file beside it records. Some
-    labels state no capture sol either; the volume index filed them under one.
+    within it: for a rover only the pointing-correction file beside it records
+    that, and Phoenix never drove. Some labels state no capture sol either; the
+    volume index or the product name states it instead.
     """
     projection, raster = cylindrical_blocks(text)
     pointer = value(text, "^IMAGE")
