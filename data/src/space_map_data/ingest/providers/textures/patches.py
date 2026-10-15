@@ -94,7 +94,7 @@ def _bounds(raster: tiles.Layer) -> tuple[float, float, float, float]:
     return _region(raster).bounds
 
 
-def _fields(raster: tiles.Layer) -> tiles.Layer:
+def fields(raster: tiles.Layer) -> tiles.Layer:
     """A raster as two fields that can be resampled: its values with nothing
     where it has no data, and the share of data. A site mosaic is strips with
     gaps between them, and one missing pixel under a filter would otherwise
@@ -102,13 +102,13 @@ def _fields(raster: tiles.Layer) -> tiles.Layer:
     to_values = raster.to_values
     assert to_values is not None
 
-    def fields(raw: np.ndarray) -> np.ndarray:
+    def convert(raw: np.ndarray) -> np.ndarray:
         values = to_values(raw)
         seen = np.isfinite(values)
         filled = np.where(seen, values, np.float32(0.0))
         return np.stack([filled, seen.astype(np.float32)], axis=-1)
 
-    return tiles.Layer(raster.pixels, raster.placement, to_values=fields)
+    return tiles.Layer(raster.pixels, raster.placement, to_values=convert)
 
 
 def _inside(here: np.ndarray) -> np.ndarray:
@@ -190,7 +190,7 @@ class PatchBuilder:
         self.level = (
             tiles.finest_level(self.full_width) if max_level is None else max_level
         )
-        self._fields = [_fields(raster) for raster in rasters]
+        self._fields = [fields(raster) for raster in rasters]
         if self.level <= base_level:
             raise ValueError(f"{name}: no finer than level {base_level} of its map")
         edges = [_bounds(raster) for raster in rasters]
