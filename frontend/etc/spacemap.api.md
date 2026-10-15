@@ -4,9 +4,11 @@
 
 ```ts
 import { AnyPixelFormat } from 'three';
+import { Color } from 'three';
 import { ColorSpace } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { DataArrayTexture } from 'three';
+import { DataTexture } from 'three';
 import { Group } from 'three';
 import { InstancedMesh } from 'three';
 import type { Line } from 'three';
@@ -20,6 +22,7 @@ import { Quaternion } from 'three';
 import { ShaderMaterial } from 'three';
 import type { Sprite } from 'three';
 import { Texture } from 'three';
+import { TextureDataType } from 'three';
 import { Vector2 } from 'three';
 import { Vector3 } from 'three';
 import { Vector4 } from 'three';

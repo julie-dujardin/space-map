@@ -37,6 +37,11 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && pnpm install --frozen-lockfile
 
+      # The API report hook declares the SDK's types, and they read the compiled
+      # messages. The messages are generated, not committed.
+      - name: Compile paraglide messages
+        run: cd frontend && npx paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide
+
       - uses: pre-commit/action@v3.0.1
         env:
           PUBLIC_DATA_URL: ${{ vars.PUBLIC_DATA_URL }}

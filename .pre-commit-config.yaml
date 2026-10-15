@@ -49,6 +49,15 @@ repos:
         pass_filenames: false
         files: ^frontend/
 
+      # Writes the SDK's API report from the code. If the report changes, the
+      # commit stops until the report is staged.
+      - id: api-report-frontend
+        name: API report (frontend)
+        entry: bash -c 'cd frontend && pnpm api-report'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
       - id: build-frontend
         name: build (frontend)
         entry: bash -c 'cd frontend && pnpm build'

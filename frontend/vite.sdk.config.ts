@@ -1,11 +1,10 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Extractor, ExtractorConfig, ExtractorLogLevel } from '@microsoft/api-extractor';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import ts from 'typescript';
 import { defineConfig, type Plugin } from 'vite';
+import { writeSdkTypes } from './sdk-types';
 import { NOTICES, thirdPartyNotices } from './third-party-notices';
 
 // The embeddable SDK: `src/sdk/index.ts` and the core under it, built as one
@@ -69,150 +68,9 @@ function singleFile(): Plugin {
 	};
 }
 
-/** `index.d.ts` for the package: tsc declares the entry's reach into a scratch
- *  tree, api-extractor rolls it into one file. Both see only that reach plus
- *  the globals SvelteKit would add (runes, `?worker` modules), so the app's
- *  files add neither diagnostics nor ambient modules. */
+/** The package's `index.d.ts`, and the API report in `etc/`. */
 function bundledTypes(outDir: string): Plugin {
-	const tsconfigPath = here('./tsconfig.json');
-	const scratch = `${outDir}/types`;
-	const reportFolder = here('./etc');
-	const entry = `${scratch}/sdk/index.d.ts`;
-	// The project's own globals: Intl.DurationFormat, which TypeScript's lib lacks.
-	const ambient = here('./src/lib/types/intl-duration.d.ts');
-	const shared = { types: ['svelte', 'vite/client'] };
-	return {
-		name: 'sdk-bundled-types',
-		closeBundle() {
-			mkdirSync(reportFolder, { recursive: true });
-			const tsconfig = ts.readConfigFile(tsconfigPath, ts.sys.readFile).config;
-			const parsed = ts.parseJsonConfigFileContent(
-				{ ...tsconfig, files: ['src/sdk/index.ts', ambient], include: [] },
-				ts.sys,
-				here('.'),
-				undefined,
-				tsconfigPath
-			);
-			const program = ts.createProgram(parsed.fileNames, {
-				...parsed.options,
-				...shared,
-				declaration: true,
-				emitDeclarationOnly: true,
-				noEmit: false,
-				rootDir: here('./src'),
-				outDir: scratch
-			});
-			const diagnostics = [...ts.getPreEmitDiagnostics(program), ...program.emit().diagnostics];
-			if (diagnostics.length)
-				this.error(
-					ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-						getCanonicalFileName: (name) => name,
-						getCurrentDirectory: ts.sys.getCurrentDirectory,
-						getNewLine: () => '\n'
-					})
-				);
-			const result = Extractor.invoke(
-				ExtractorConfig.prepare({
-					configObject: {
-						projectFolder: here('.'),
-						mainEntryPointFilePath: entry,
-						// satellite.js is inside the bundle, so its types go inside too.
-						bundledPackages: ['satellite.js'],
-						newlineKind: 'lf',
-						compiler: {
-							overrideTsconfig: {
-								compilerOptions: {
-									...shared,
-									target: 'esnext',
-									module: 'esnext',
-									moduleResolution: 'bundler',
-									lib: ['esnext', 'DOM', 'DOM.Iterable'],
-									strict: true,
-									skipLibCheck: true,
-									paths: { '$lib/*': [`${scratch}/lib/*`] }
-								},
-								files: [entry, ambient],
-								include: []
-							}
-						},
-						dtsRollup: { enabled: true, publicTrimmedFilePath: `${outDir}/index.d.ts` },
-						// Written, not compared: the committed report is what a review
-						// reads, so an unintended widening of the API shows up as a diff.
-						apiReport: {
-							enabled: true,
-							reportFolder,
-							reportFileName: 'spacemap.api.md',
-							reportTempFolder: `${scratch}/api-report-temp`
-						},
-						docModel: { enabled: false },
-						tsdocMetadata: { enabled: false },
-						messages: {
-							// Every type the surface reaches is a "forgotten export" to it.
-							extractorMessageReporting: {
-								'ae-forgotten-export': { logLevel: ExtractorLogLevel.None },
-								'ae-missing-release-tag': { logLevel: ExtractorLogLevel.None },
-								'ae-unresolved-link': { logLevel: ExtractorLogLevel.None }
-							},
-							tsdocMessageReporting: { default: { logLevel: ExtractorLogLevel.None } }
-						}
-					},
-					configObjectFullPath: undefined,
-					packageJsonFullPath: here('./package.json')
-				}),
-				{ localBuild: true }
-			);
-			if (!result.succeeded) {
-				rmSync(scratch, { recursive: true });
-				this.error(`api-extractor reported ${result.errorCount} errors`);
-			}
-			// A trimmed rollup still declares every internal type the untrimmed
-			// analysis walked through, unreferenced. Rolling the trimmed file up
-			// again drops them: nothing left in it reaches them.
-			const trimmed = `${scratch}/trimmed.d.ts`;
-			renameSync(`${outDir}/index.d.ts`, trimmed);
-			const pruned = Extractor.invoke(
-				ExtractorConfig.prepare({
-					configObject: {
-						projectFolder: here('.'),
-						mainEntryPointFilePath: trimmed,
-						newlineKind: 'lf',
-						compiler: {
-							overrideTsconfig: {
-								compilerOptions: {
-									...shared,
-									target: 'esnext',
-									module: 'esnext',
-									moduleResolution: 'bundler',
-									lib: ['esnext', 'DOM', 'DOM.Iterable'],
-									strict: true,
-									skipLibCheck: true
-								},
-								files: [trimmed, ambient],
-								include: []
-							}
-						},
-						dtsRollup: { enabled: true, untrimmedFilePath: `${outDir}/index.d.ts` },
-						apiReport: { enabled: false },
-						docModel: { enabled: false },
-						tsdocMetadata: { enabled: false },
-						messages: {
-							extractorMessageReporting: {
-								'ae-forgotten-export': { logLevel: ExtractorLogLevel.None },
-								'ae-missing-release-tag': { logLevel: ExtractorLogLevel.None },
-								'ae-unresolved-link': { logLevel: ExtractorLogLevel.None }
-							},
-							tsdocMessageReporting: { default: { logLevel: ExtractorLogLevel.None } }
-						}
-					},
-					configObjectFullPath: undefined,
-					packageJsonFullPath: here('./package.json')
-				}),
-				{ localBuild: true }
-			);
-			rmSync(scratch, { recursive: true });
-			if (!pruned.succeeded) this.error(`api-extractor reported ${pruned.errorCount} errors`);
-		}
-	};
+	return { name: 'sdk-bundled-types', closeBundle: () => writeSdkTypes(outDir) };
 }
 
 /** What the CDN copy may weigh, gzipped, since that is what a page downloads.
