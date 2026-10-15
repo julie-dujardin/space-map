@@ -20,6 +20,8 @@ const FONT = fileURLToPath(
 	)
 );
 const OUT = fileURLToPath(new URL('../../docs/images/', import.meta.url));
+// The site draws its surface tiles from this host. Without it the SDK draws none.
+const TILES_URL = 'https://tiles.spacemap.co';
 
 // Two shapes only: images that share a table row must share a size.
 const TILE = { width: 1200, height: 800 };
@@ -72,6 +74,15 @@ const SHOTS = [
 		url: 'https://spacemap.co/b/699/Saturn?at=2020-06-02T14:10:11.542Z,39.08590,-147.48087,0.06'
 	},
 	{
+		// Seen from Nix on this date, Styx, Charon and Pluto are in a line. A
+		// short page draws the line small enough to fit in the tile.
+		name: 'nix',
+		...TILE,
+		url: 'https://spacemap.co/b/902/Nix?at=2026-10-28T18:59:23.404Z,-9.91278,-105.83276,0.000025125',
+		window: 1040,
+		shift: [160, 100]
+	},
+	{
 		name: 'iss',
 		...TILE,
 		url: 'https://spacemap.co/e/25544/International%20Space%20Station?at=2026-07-08T22:38:33.108Z,10.5,36,8.69e-9',
@@ -81,7 +92,7 @@ const SHOTS = [
 	{
 		name: 'hubble',
 		...TILE,
-		url: 'https://spacemap.co/e/20580/Hubble%20Space%20Telescope?at=2026-07-26T11:43:18.534Z,7.05186,38.41685,1.4104e-9',
+		url: 'https://spacemap.co/e/20580/Hubble%20Space%20Telescope?at=2026-07-26T11:43:26.534Z,7.05186,38.41685,1.4104e-9',
 		hide: ['labels', 'orbits', 'satellites', 'debris']
 	},
 	{
@@ -94,6 +105,11 @@ const SHOTS = [
 		...TILE,
 		url: 'https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-52,-72.77,6.016e-10',
 		shift: [0, -120]
+	},
+	{
+		name: 'bennu',
+		...TILE,
+		url: 'https://spacemap.co/s/20101955/101955%20Bennu?at=now,-16.79942,96.57172,7.6093e-8'
 	}
 ];
 
@@ -140,7 +156,7 @@ const PAGE = `<!doctype html>
 <div id="map"></div>
 <script type="module">
 	import { createMap } from './spacemap.js';
-	const { date, view, hide, dataUrl } = JSON.parse(new URLSearchParams(location.search).get('options'));
+	const { date, view, hide, dataUrl, tilesUrl } = JSON.parse(new URLSearchParams(location.search).get('options'));
 	window.loading = true;
 	try {
 		await document.fonts.load('16px "Geist Variable"');
@@ -149,6 +165,7 @@ const PAGE = `<!doctype html>
 			interactive: false,
 			view,
 			date: date && new Date(date),
+			tilesUrl,
 			...(dataUrl && { dataUrl }),
 			events: { loading: (loading) => (window.loading = loading) }
 		});
@@ -321,7 +338,7 @@ try {
 
 	for (const shot of SHOTS) {
 		if (args.length && !args.includes(shot.name)) continue;
-		const options = mapOptions(shot);
+		const options = { ...mapOptions(shot), tilesUrl: TILES_URL };
 		if (dataUrl) options.dataUrl = dataUrl;
 		const started = Date.now();
 		// A context of its own: on data left in the cache by an earlier shot,
