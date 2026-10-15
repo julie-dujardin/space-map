@@ -30,6 +30,7 @@ from space_map_data.export.position.probes.time_grid import (
 )
 from space_map_data.probes.probe_id import assign, et_to_mjd
 from space_map_data.probes.trace import classify_trace, coverage_intervals, inception_et
+from space_map_data.probes.traverses import load_traverses
 from space_map_data.probes.zones import ZONES_BY_KEY
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,7 @@ def classify_pass(
     chunk_index: dict[str, dict[int, list[ProbePlan]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    traverses = load_traverses()
 
     # LSK first so SPK Type 10 (SGP4) probes — HST's hst_edited.bsp uses
     # this format — can convert TLE epochs to ET; PCK for body-fixed-frame
@@ -242,6 +244,7 @@ def classify_pass(
             # Landed phases — each gets one trailing `METHOD_LANDED` record
             # per streaming chunk it overlaps. Routes to the body's parent
             # planet zone (Mars 499 → mars zone, Titan 606 → saturn, …).
+            # A traverse on the same body replaces the kernel's surface position.
             for body_naif, ph_start, ph_end in landed_phases:
                 zone = zone_for_landed_body(int(body_naif))
                 if zone is None:
@@ -255,9 +258,17 @@ def classify_pass(
                         ph_end,
                     )
                     continue
+                traverse = traverses.get(probe_id)
+                if traverse is not None and traverse.body_naif != int(body_naif):
+                    traverse = None
                 for chunk_idx, c_start, c_end in landed_chunk_range(
                     zone.chunk_days, ph_start, ph_end, start_jd
                 ):
+                    site, waypoints = (
+                        traverse.in_window(c_start, c_end)
+                        if traverse is not None
+                        else (None, ())
+                    )
                     contrib = ChunkContribution(
                         zone_key=zone.key,
                         chunk_idx=chunk_idx,
@@ -266,6 +277,8 @@ def classify_pass(
                         kind="landed",
                         landed_body_id_value=int(body_naif),
                         landed_body_id_type=_NAIF_ORDINAL,
+                        site_lat_lng=site,
+                        waypoints=waypoints,
                     )
                     plan.contributions.append(contrib)
                     chunk_index[zone.key][chunk_idx].append(plan)

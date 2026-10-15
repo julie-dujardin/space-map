@@ -94,14 +94,15 @@ class TestDatingASol:
 
 
 class TestLandingSites:
-    """The volume gives west longitude as the Viking era did."""
+    """The sites are planetocentric, east longitude, as the map is."""
 
     def test_viking_one_sits_in_chryse(self):
-        assert position(1)["longitude"] == pytest.approx(312.032)
-        assert position(1)["latitude"] == pytest.approx(22.480)
+        assert position(1)["longitude"] == pytest.approx(312.05)
+        assert position(1)["latitude"] == pytest.approx(22.27)
 
     def test_viking_two_sits_in_utopia(self):
-        assert position(2)["longitude"] == pytest.approx(134.263)
+        assert position(2)["longitude"] == pytest.approx(134.29)
+        assert position(2)["latitude"] == pytest.approx(47.64)
 
     def test_longitude_is_stated_as_east(self):
         assert position(1)["longitude_direction"] == "east"

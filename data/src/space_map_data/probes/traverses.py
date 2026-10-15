@@ -1,8 +1,7 @@
-"""Rover traverses: the places a rover moved to, and when.
+"""Rover traverses: the places a craft stood on its body, and when.
 
 One file for each probe under ``derived/position/traverses/``, named by
-``probe_id``. It is for a rover that no SPICE kernel covers, when its archive
-states the position of the rover on each product.
+``probe_id``.
 
     {"schema_version": 1, "probe_id": 113217538, "body_naif": 499,
      "source_url": "https://clpds.bao.ac.cn/",
@@ -10,12 +9,16 @@ states the position of the rover on each product.
      "waypoints": [{"time": "2021-06-03T09:01:52Z",
                     "lat_deg": 25.083231, "lon_deg": 109.908435}]}
 
-The positions are in the frame of the archive. That frame can differ from the
-frame of the map. China's release puts the Tianwen-1 lander 1.3 km from the
-place its orbital imagery gives. Distances inside the frame are correct.
-``landing_point`` is where the frame puts the landing site. A reader moves each
-waypoint by its offset from ``landing_point`` onto the site that the curated
-events state.
+``landing_point`` is where the frame of the traverse puts the landing site.
+For a craft that no SPICE kernel lands, a reader moves each waypoint by its
+offset from ``landing_point`` onto the site that the curated events state.
+That frame can differ from the frame of the map. China's release puts the
+Tianwen-1 lander 1.3 km from the place its orbital imagery gives.
+
+For a craft that a SPICE kernel lands, the traverse replaces the surface
+position of the kernel and stays in its own frame. The panoramas of the craft
+are in that frame, so the craft stands where they were taken. A lander has a
+landing point and no waypoints.
 
 A waypoint is the first time the archive shows the rover at a place. The rover
 stays there until the next waypoint.
@@ -29,6 +32,7 @@ from pathlib import Path
 
 from space_map_data.probes.events import event_jd
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
+from space_map_data.utils.time import jd_to_et
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +72,22 @@ class Traverse:
             )
             for w in self.waypoints
         )
+
+    def in_window(
+        self, start_et: float, end_et: float
+    ) -> tuple[tuple[float, float], tuple[tuple[float, float, float], ...]]:
+        """Where the craft is at ``start_et``, and the waypoints after it and
+        before ``end_et`` as ``(et, lat, lon)``. Both are in the frame of the
+        traverse."""
+        site = (self.landing_lat_deg, self.landing_lon_deg)
+        inner = []
+        for w in self.waypoints:
+            et = jd_to_et(w.jd)
+            if et <= start_et:
+                site = (w.lat_deg, w.lon_deg)
+            elif et < end_et:
+                inner.append((et, w.lat_deg, w.lon_deg))
+        return site, tuple(inner)
 
 
 def _read(path: Path) -> Traverse:

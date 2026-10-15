@@ -7,6 +7,7 @@ import pytest
 
 from space_map_data.probes import traverses
 from space_map_data.probes.events import event_jd
+from space_map_data.utils.time import jd_to_et
 
 
 def _write(root: Path, **overrides) -> Path:
@@ -87,6 +88,34 @@ class TestFromSite:
         traverse = traverses.load_traverses(tmp_path)[113217538]
         (moved,) = traverse.from_site(60.0, 10.0)
         assert moved.lon_deg == pytest.approx(12.0)
+
+
+class TestInWindow:
+    """The place a chunk starts at, and the moves inside it, in the frame of
+    the traverse."""
+
+    def test_before_the_first_waypoint_the_craft_is_at_the_landing_point(
+        self, tmp_path: Path
+    ):
+        _write(tmp_path)
+        traverse = traverses.load_traverses(tmp_path)[113217538]
+        start = jd_to_et(event_jd("2021-06-01T00:00:00Z"))
+        end = jd_to_et(event_jd("2021-06-04T00:00:00Z"))
+        site, inner = traverse.in_window(start, end)
+        assert site == (25.083, 109.908)
+        assert inner == ((jd_to_et(traverse.waypoints[0].jd), 25.083, 109.908),)
+
+    def test_a_waypoint_before_the_window_is_where_it_starts(self, tmp_path: Path):
+        _write(tmp_path)
+        traverse = traverses.load_traverses(tmp_path)[113217538]
+        start = jd_to_et(event_jd("2021-06-04T00:00:00Z"))
+        end = jd_to_et(event_jd("2021-06-05T00:00:00Z"))
+        assert traverse.in_window(start, end) == ((25.083, 109.908), ())
+
+    def test_a_lander_stays_at_its_landing_point(self, tmp_path: Path):
+        _write(tmp_path, waypoints=[])
+        traverse = traverses.load_traverses(tmp_path)[113217538]
+        assert traverse.in_window(0.0, 1e9) == ((25.083, 109.908), ())
 
 
 class TestWrite:

@@ -44,13 +44,13 @@ COLLECTION = "viking"
 # states its own length, so this only has to be an upper bound.
 LABEL_PREFIX_BYTES = 16384
 
-# Stated in the volume's own mission catalogue, which gives west longitude as
-# the Viking era did. Both convert into the Chryse and Utopia basins the IAU
-# gazetteer places at 319.69 and 117.52 degrees east.
-CATALOG = ARCHIVE.replace("viking/viking/", "viking/vl_0001/catalog/mission.cat")
+# NASA's planetocentric sites, which agree with the HiRISE images of the
+# landers. The volume's own mission catalogue gives areographic latitude, and
+# its sites are 12 km to 18 km from these.
+SITES = "https://science.nasa.gov/mission/viking/"
 LANDERS = {
-    1: {"latitude": 22.480, "west_longitude": 47.968, "naif": -327},
-    2: {"latitude": 47.967, "west_longitude": 225.737, "naif": -330},
+    1: {"latitude": 22.27, "longitude": 312.05, "naif": -327},
+    2: {"latitude": 47.64, "longitude": 134.29, "naif": -330},
 }
 # Mars sols since landing are what the labels count, so the date each one falls
 # on is reckoned from the landing and checked against the day of year beside it.
@@ -142,13 +142,13 @@ def position(lander: int) -> dict:
     return {
         **FRAME,
         "latitude": site["latitude"],
-        "longitude": (360 - site["west_longitude"]) % 360,
+        "longitude": site["longitude"],
         "elevation_m": None,
         "elevation_datum": None,
-        "method": "published landing site, west longitude as the volume states it",
+        "method": "published landing site",
         "reference_point": "lander",
         "uncertainty_m": None,
-        "source_url": CATALOG,
+        "source_url": SITES,
     }
 
 

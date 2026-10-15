@@ -226,7 +226,8 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                 )
             )
     placed = {p.probe_id for p in out if p.waypoints}
-    for probe_id in sorted(set(traverses) - placed):
+    # The SPICE classify pass reads the traverses of the probes it lands.
+    for probe_id in sorted(set(traverses) - placed - spk_covered):
         logger.warning(
             "events: traverse of probe %d matches no landed phase; not used",
             probe_id,

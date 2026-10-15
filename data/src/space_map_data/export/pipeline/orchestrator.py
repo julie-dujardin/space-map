@@ -120,7 +120,7 @@ from space_map_data.export.small_body_color import log_color_stats
 from space_map_data.export.atmospheres import write_atmospheres
 from space_map_data.export.spacecraft import write_spacecraft
 from space_map_data.export.status import write_status
-from space_map_data.export.in_place import content_token
+from space_map_data.export.in_place import content_token, refresh_versions
 from space_map_data.export.panoramas import write_panorama_assets, write_panorama_index
 from space_map_data.export.systems import (
     load_clouds_metadata,
@@ -1041,6 +1041,26 @@ def _run_probes(
     zone_manifest, coverage = write_probes(session, DOWNLOAD_DIR, out_dir, has_loc)
     incremental.write_probes_meta(out_dir, sig, zone_manifest, coverage, has_loc)
     return zone_manifest, coverage
+
+
+def export_probes_only(engine: Engine) -> None:
+    """`space-map-export --only probes`: the probe position chunks, their
+    meta and a fresh position token. The zone list in metadata.json and the
+    probe coverage in the object bundles change only in a full export."""
+    out_dir = EXPORT_DIR / "v1"
+    meta = incremental.read_probes_meta(out_dir)
+    if meta is None or not (out_dir / "metadata.json").exists():
+        raise SystemExit(f"No probes export in {out_dir}; run a full export first.")
+    has_loc = meta.get("has_localized", {})
+    with Session(engine) as session:
+        zone_manifest, coverage = write_probes(session, DOWNLOAD_DIR, out_dir, has_loc)
+    sig = incremental.probes_signature()
+    incremental.write_probes_meta(out_dir, sig, zone_manifest, coverage, has_loc)
+    refresh_versions(out_dir, "position")
+    if zone_manifest != meta["zone_manifest"] or coverage != meta["coverage"]:
+        logger.warning(
+            "Probe zones or coverage changed; run a full export to restate them"
+        )
 
 
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:

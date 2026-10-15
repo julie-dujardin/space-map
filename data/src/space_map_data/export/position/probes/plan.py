@@ -52,12 +52,12 @@ class ChunkContribution:
     `kind="flying"` goes through `size_chunk` (sub-chunk-grid-aligned).
     `kind="landed"` carries the landing body's id; the fit pass packs it as a
     trailing `METHOD_LANDED` record covering the literal phase-within-chunk
-    window (not grid-aligned). Two flavours: SPICE-driven
-    (`site_lat_lng=None`, sampled via `fit_landed_chunk`) and
-    events-driven (`site_lat_lng=(lat, lng)`, synthesised with no SPICE
-    call, for events-only probes like Apollo descent stages). An events-driven
-    rover also has `waypoints`: the `(et, lat, lng)` places it moves to inside
-    the window.
+    window (not grid-aligned). With `site_lat_lng=None` the fit pass samples
+    the SPICE kernel (`fit_landed_chunk`). With `site_lat_lng=(lat, lng)` it
+    makes the record with no SPICE call (`sited_landed_chunk`). Events-only
+    probes like Apollo descent stages and SPICE probes with a traverse are
+    sited. A rover also has `waypoints`, the `(et, lat, lng)` places it moves
+    to inside the window.
     `landed_destroyed` marks a crash site, so the renderer draws no intact craft.
     """
 

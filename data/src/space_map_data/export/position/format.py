@@ -481,6 +481,11 @@ def quantize_deg(deg: float) -> int:
     )
 
 
+def _quantize_lng(deg: float) -> int:
+    """Longitude in degrees east, any range, → int32 inside ±180°."""
+    return quantize_deg((deg + 180.0) % 360.0 - 180.0)
+
+
 def _quantize_alt_m(alt_m: float) -> int:
     """Altitude metres → int32 millimetres (range ±2,147 km — fits any body)."""
     return max(-2_147_483_647, min(2_147_483_647, int(round(alt_m * 1000.0))))
@@ -514,7 +519,7 @@ def pack_landed_payload(
         int(start_offset_s),
         int(end_offset_s),
         quantize_deg(lat_ref_deg),
-        quantize_deg(lng_ref_deg),
+        _quantize_lng(lng_ref_deg),
         _quantize_alt_m(alt_ref_m),
         len(samples),
     )
@@ -527,7 +532,7 @@ def pack_landed_payload(
             i * LANDED_SAMPLE_SIZE,
             int(et_offset_s),
             quantize_deg(lat_deg),
-            quantize_deg(lng_deg),
+            _quantize_lng(lng_deg),
             _quantize_alt_m(alt_m),
         )
     return header + bytes(sample_buf)

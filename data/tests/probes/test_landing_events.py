@@ -547,6 +547,24 @@ class TestTraverse:
         assert phase.waypoints == ()
         assert phase.position_at(_et("2030-01-01T00:00:00Z")) == (25.066, 109.925)
 
+    def test_a_traverse_the_kernels_land_is_not_reported_unused(
+        self,
+        events_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        """The SPICE classify pass reads it."""
+        monkeypatch.setattr(landing_events, "_spk_covered_probe_ids", lambda: {_ROVER})
+        monkeypatch.setattr(
+            landing_events,
+            "load_traverses",
+            lambda: _traverse(499, "2021-06-03T09:01:52Z"),
+        )
+        _write(events_root, "mars.json", [_rover({})])
+        with caplog.at_level("WARNING"):
+            assert landing_events.load_phases(_INDEFINITE_END) == []
+        assert "matches no landed phase" not in caplog.text
+
 
 class TestWhichProbesTheKernelsAlreadyFly:
     """A landed phase here on top of a SPICE trajectory would draw the craft

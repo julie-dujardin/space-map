@@ -21,6 +21,7 @@ from pathlib import Path
 from space_map_data.export.position.probes.plan import ChunkProbeRecord
 from space_map_data.export.position.probes.sidecar import (
     FIT_VERSION,
+    LANDED_VERSION,
     _kernel_entry,
     zone_signature,
 )
@@ -76,6 +77,7 @@ def build_fit_signature(
         sig["candidates_hash"] = candidates_hash
     if has_landed:
         sig["events_hash"] = events_hash
+        sig["landed_version"] = LANDED_VERSION
     return sig
 
 

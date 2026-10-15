@@ -147,7 +147,9 @@ def fit_landed_chunk(
             )
         except spiceypy.exceptions.SpiceyError:
             continue
-        lon_rad, lat_rad, alt_km = spiceypy.recgeo(pos, re, f)
+        # The maps and panoramas use planetocentric latitude.
+        _, lon_rad, lat_rad = spiceypy.reclat(pos)
+        alt_km = spiceypy.recgeo(pos, re, f)[2]
         fine_samples.append(
             (
                 float(et),

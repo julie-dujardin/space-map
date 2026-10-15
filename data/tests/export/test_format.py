@@ -12,6 +12,7 @@ from space_map_data.export.position.format import (
     ID_TYPE_ORDINAL,
     LANDED_FLAG_DESTROYED,
     LANDED_FLAG_STATIC,
+    LANDED_HEADER_SIZE,
     MAGIC,
     MISSING_FLOAT64,
     MISSING_ID_TYPE,
@@ -233,6 +234,26 @@ def test_landed_payload_flags_a_crash_site() -> None:
 
     assert flags(is_destroyed=False) == LANDED_FLAG_STATIC
     assert flags(is_destroyed=True) == LANDED_FLAG_STATIC | LANDED_FLAG_DESTROYED
+
+
+def test_a_landed_longitude_east_of_180_packs_inside_the_int32_range() -> None:
+    """Opportunity's site, 354.47 degrees east, packs as 5.53 degrees west."""
+    payload = pack_landed_payload(
+        body_id_value=499,
+        body_id_type=ID_TYPE_ORDINAL[ID_TYPES.NAIF],
+        is_static=False,
+        is_destroyed=False,
+        start_offset_s=0,
+        end_offset_s=86400,
+        lat_ref_deg=-1.9462,
+        lng_ref_deg=354.4734,
+        alt_ref_m=0.0,
+        samples=[(60, -2.0, 354.5, 0.0)],
+    )
+    header = struct.unpack_from("<iBB2sIIiiiI", payload, 0)
+    sample = struct.unpack_from("<Iiii", payload, LANDED_HEADER_SIZE)
+    assert header[7] == round(-5.5266 * 1e7)
+    assert sample[2] == round(-5.5 * 1e7)
 
 
 def test_probe_header_names_the_archive_to_credit() -> None:

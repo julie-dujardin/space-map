@@ -37,12 +37,13 @@ from space_map_data.utils.content_stamp import content_stamp, content_stamps
 # travel via `BINARY_VERSION` in the signature dict — don't bump here for those.
 FIT_VERSION = 16
 
-# Bump to repack every chunk from cached fits without re-fitting — for
-# header-only changes the fit signatures can't see (fit-center id encoding).
-# 3: propagate the pgaa/drm kernel-precedence re-fits (furnish order isn't
-# part of the fit signature, so those chunks never self-dirty).
-# 4: archive byte in the probe header.
-PACK_VERSION = 4
+# Bump for a change to how a landed phase is sampled. Only the probes with a
+# landed phase re-fit.
+LANDED_VERSION = 1
+
+# Bump to repack every chunk from cached fits without re-fitting, for a change
+# to the packing that the fit signatures cannot see.
+PACK_VERSION = 5
 
 
 def zone_signature(zone: Zone) -> str:
