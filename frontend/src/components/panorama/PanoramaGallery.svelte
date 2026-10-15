@@ -61,6 +61,7 @@
 		<TraverseCards
 			bodyId={body.id}
 			radiusKm={body.radiusKm}
+			hasMap={body.hasMap}
 			traverses={body.traverses}
 			onCredits={(layers) => (mapCredits[body.id] = layers)}
 		/>

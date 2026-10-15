@@ -434,7 +434,11 @@ export interface PanoramaEntry {
 	 *  `unknown` means the sphere sits at an arbitrary azimuth, so nothing
 	 *  may be drawn or written as a heading. The full set `export/panoramas.py`
 	 *  writes — a wider union would erase the literals and stop checking. */
-	orientation?: 'unknown' | 'caption-aligned' | 'matched to an archival sphere';
+	orientation?:
+		| 'unknown'
+		| 'caption-aligned'
+		| 'matched to an archival sphere'
+		| 'matched to a controlled mosaic';
 	/** `estimated` where the sphere's angular bounds were fitted to a
 	 *  published flat image rather than read from an archive label. */
 	geometry?: 'estimated';

@@ -16,7 +16,7 @@
 		isViewable,
 		type PanoramaEntry
 	} from '$lib/fetch/objects/object-data';
-	import { versionedUrl } from '$lib/fetch/data-base';
+	import { panoramaPreviewUrl } from '$lib/fetch/panoramas';
 	import { formatIsoDate } from '$lib/format/date';
 	import { capitalize } from '$lib/search/format';
 	import type { SpaceMap } from '$lib/scene/space-map.svelte';
@@ -24,6 +24,7 @@
 	import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { TraverseTrace } from '$lib/panorama/trace';
+	import { crewName } from '$lib/panorama/traverses';
 	import { panoramaHref } from '$lib/state/panorama-link';
 	import { getSettings } from '$lib/state/settings.svelte';
 
@@ -96,7 +97,7 @@
 		return [...groups.values()];
 	});
 
-	/** The card: the panorama's preview over its mission and sol, a link into
+	/** The card: the panorama's preview over its craft and sol, a link into
 	 *  it, with a hit disc at the place itself so the click lands where the
 	 *  pointer already is. */
 	function buildPreview(): {
@@ -109,14 +110,21 @@
 		img.alt = '';
 		const caption = document.createElement('span');
 		a.append(img, caption);
+		let shown = '';
 		return {
 			element: a,
 			show(body, entry) {
 				a.href = panoramaHref(body, entry);
-				img.src = versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
-				caption.textContent = `${capitalize(entry.mission ?? '')} · ${
-					entry.sol === undefined ? formatIsoDate(entry.time) : m.panorama_sol({ sol: entry.sol })
-				}`;
+				img.src = panoramaPreviewUrl(entry);
+				const mission = entry.mission ?? '';
+				const when =
+					entry.sol === undefined ? formatIsoDate(entry.time) : m.panorama_sol({ sol: entry.sol });
+				// The craft is named by its page, which may still be on its way.
+				caption.textContent = when;
+				shown = entry.id;
+				void crewName(body, mission).then((name) => {
+					if (shown === entry.id) caption.textContent = `${name ?? capitalize(mission)} · ${when}`;
+				});
 			}
 		};
 	}

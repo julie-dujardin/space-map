@@ -74,7 +74,9 @@
 	let heroes = $derived<Record<DrawerTab, Snippet | undefined>>({
 		overview: load.loadError ? undefined : objectHeaderHero,
 		targets: undefined,
-		traverse: traverse.traverse ? traverseHero : undefined,
+		// A comet has no map to draw a traverse on, and the panel below it
+		// already pictures the panoramas.
+		traverse: traverse.traverse?.hasMap ? traverseHero : undefined,
 		images: undefined,
 		features: body && surface.showSurfaceHero ? surfaceQuadHero : undefined,
 		structure: gallery.atmosphereGallery ? atmosphereHero : undefined,

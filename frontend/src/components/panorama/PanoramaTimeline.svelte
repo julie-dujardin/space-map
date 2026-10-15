@@ -7,7 +7,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import TimelineStrip from '../timeline/TimelineStrip.svelte';
 	import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
-	import { versionedUrl } from '$lib/fetch/data-base';
+	import { panoramaPreviewUrl } from '$lib/fetch/panoramas';
 	import { formatIsoDate } from '$lib/format/date';
 	import { entryJd } from '$lib/panorama/minimap';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
@@ -55,14 +55,17 @@
 				isPhase: false,
 				startJd: jd,
 				endJd: jd,
+				// A view with no sol goes by its title, not its product id.
 				get label() {
-					return entry.sol !== undefined ? m.panorama_sol({ sol: entry.sol }) : entry.id;
+					return entry.sol !== undefined
+						? m.panorama_sol({ sol: entry.sol })
+						: (entry.title ?? entry.id);
 				},
 				get when() {
 					return (when ??= formatIsoDate(entry.time));
 				},
 				get image() {
-					return versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
+					return panoramaPreviewUrl(entry);
 				},
 				get href() {
 					return href(entry);

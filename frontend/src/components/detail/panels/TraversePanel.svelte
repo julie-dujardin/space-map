@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { versionedUrl } from '$lib/fetch/data-base';
+	import { panoramaPreviewUrl } from '$lib/fetch/panoramas';
 	import { formatIsoDate } from '$lib/format/date';
 	import { panoramaHref } from '$lib/state/panorama-link';
 	import { traverseYears } from '$lib/panorama/traverses';
@@ -37,7 +37,7 @@
 					     how much sky the sweep caught; the box crops rather than letting
 					     the grid step. -->
 					<img
-						src={versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas')}
+						src={panoramaPreviewUrl(entry)}
 						alt={entry.title ?? ''}
 						loading="lazy"
 						class="h-24 w-full bg-black/40 object-cover"

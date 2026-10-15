@@ -13,6 +13,8 @@ export interface Traverse {
 	bodyName: string;
 	/** Mean radius of the body, kilometres; sizes the minimap's scale bar. */
 	radiusKm: number;
+	/** Whether the body has a map to draw the traverse on. */
+	hasMap: boolean;
 	/** The mission's panoramas in time order — the whole ground track. */
 	entries: PanoramaEntry[];
 	/** The ones the panel pictures. */
@@ -74,6 +76,7 @@ async function load(probeId: string): Promise<Traverse | null> {
 			bodyId: body.id,
 			bodyName: detail.localized?.name ?? global?.name ?? body.id,
 			radiusKm: (global && meanRadiusKm(global)) ?? 0,
+			hasMap: !!global?.map_texture_available,
 			entries,
 			highlights: panoramaHighlights(entries, HIGHLIGHT_LIMIT)
 		};

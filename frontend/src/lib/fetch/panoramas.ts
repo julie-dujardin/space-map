@@ -8,7 +8,7 @@
  * picking a place takes the list.
  */
 
-import { dataBase } from './data-base';
+import { dataBase, versionedUrl } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 import { fetchObjectDetail, type PanoramaEntry } from './objects/object-data';
 
@@ -55,4 +55,9 @@ export function fetchPanoramaIndex(
 export async function fetchPanoramas(bodyId: string): Promise<PanoramaEntry[]> {
 	const detail = await fetchObjectDetail(bodyId, false);
 	return detail.global?.panoramas ?? [];
+}
+
+/** The export's thumbnail of a panorama: its observed strip, 512 px wide. */
+export function panoramaPreviewUrl(entry: PanoramaEntry): string {
+	return versionedUrl(`/v1/panoramas/${entry.id}-preview.webp`, 'panoramas');
 }

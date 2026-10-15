@@ -1004,7 +1004,11 @@ export interface PanoramaEntry {
 	lon: number;
 	mission?: string;
 	north_offset_deg: number;
-	orientation?: 'unknown' | 'caption-aligned' | 'matched to an archival sphere';
+	orientation?:
+		| 'unknown'
+		| 'caption-aligned'
+		| 'matched to an archival sphere'
+		| 'matched to a controlled mosaic';
 	position_uncertainty_m?: number;
 	// (undocumented)
 	sol?: number;

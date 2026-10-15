@@ -26,6 +26,8 @@ export interface CoveredBody {
 	name: string;
 	/** Mean radius, kilometres; sizes each map's scale bar. */
 	radiusKm: number;
+	/** Whether the body has a map to draw its traverses on. */
+	hasMap: boolean;
 	traverses: Traverse[];
 }
 
@@ -109,6 +111,7 @@ async function buildGallery(fetch: typeof globalThis.fetch): Promise<GalleryData
 			id: global.id,
 			name: detail?.localized?.name ?? global.name ?? global.id,
 			radiusKm: meanRadiusKm(global) ?? 0,
+			hasMap: !!global.map_texture_available,
 			traverses
 		});
 	}

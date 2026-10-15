@@ -46,12 +46,26 @@ export async function traverseCrewNames(
 	const pairs = await Promise.all(
 		(summary?.missions ?? [])
 			.filter((mm) => !!mm.probe)
-			.map(async (mm) => {
-				const detail = await fetchObjectDetail(mm.probe as string).catch(() => null);
-				return [mm.mission, detail?.localized?.name ?? detail?.global?.name] as const;
-			})
+			.map(async (mm) => [mm.mission, await probeName(mm.probe as string)] as const)
 	);
 	return new Map(pairs.filter((p): p is readonly [string, string] => !!p[1]));
+}
+
+/** The craft behind one traverse, for a page that shows one panorama: one
+ *  craft's page, not every craft on the body. Undefined where the index links
+ *  none. */
+export async function crewName(bodyId: string, mission: string): Promise<string | undefined> {
+	const body = await fetchPanoramaIndex().then(
+		(bodies) => bodies.find((b) => b.id === bodyId),
+		() => undefined
+	);
+	const probe = body?.missions.find((mm) => mm.mission === mission)?.probe;
+	return probe ? probeName(probe) : undefined;
+}
+
+async function probeName(probe: string): Promise<string | undefined> {
+	const detail = await fetchObjectDetail(probe).catch(() => null);
+	return detail?.localized?.name ?? detail?.global?.name;
 }
 
 /** Held per body: the gallery is walked into and back out of as panoramas open

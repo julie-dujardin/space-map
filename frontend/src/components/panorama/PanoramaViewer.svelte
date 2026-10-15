@@ -41,7 +41,7 @@
 	import { fly } from 'svelte/transition';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { entryJd } from '$lib/panorama/minimap';
-	import { bodyTraverses } from '$lib/panorama/traverses';
+	import { bodyTraverses, crewName } from '$lib/panorama/traverses';
 	import { gyroAvailability } from '$lib/panorama/gyro';
 	import { PanoramaView, type ArrowKey, type ScreenAnchor } from '$lib/panorama/view';
 	import PanoramaMinimap from './PanoramaMinimap.svelte';
@@ -100,6 +100,8 @@
 	const bodyName = $derived(detail?.localized?.name ?? detail?.global?.name ?? bodyId);
 	const current = $derived(findPanorama(entries, at));
 	const radiusKm = $derived(meanRadiusKm(detail?.global ?? null) ?? 0);
+	/** A comet has no map to draw a traverse on. */
+	const hasMap = $derived(!!detail?.global?.map_texture_available);
 	/** The arrows the view drew, each with the neighbour it points at. */
 	const arrowTargets = $derived(
 		(['previous', 'next'] as const).flatMap((key) => {
@@ -219,11 +221,27 @@
 		return [sol, formatKm(n.distanceM / 1000)].filter(Boolean).join(' · ');
 	}
 
+	const mission = $derived(current?.mission ?? '');
+	/** The craft of the open traverse as its page names it, once that page is
+	 *  in; until then the caption leaves it out rather than show the slug. */
+	let craft = $state<{ mission: string; name: string } | null>(null);
+	$effect(() => {
+		const id = bodyId;
+		const named = mission;
+		let cancelled = false;
+		void crewName(id, named).then((name) => {
+			if (!cancelled) craft = { mission: named, name: name ?? capitalize(named) };
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	/** What the panorama is called: the craft, and the sol where it counts them. */
 	const caption = $derived(
 		current
 			? [
-					capitalize(current.mission ?? ''),
+					craft && craft.mission === current.mission ? craft.name : '',
 					current.sol !== undefined ? m.panorama_sol({ sol: current.sol }) : ''
 				]
 					.filter(Boolean)
@@ -381,49 +399,53 @@
 			     column the map takes what the timeline leaves. -->
 			{#if missionEntries.length}
 				<div class={dockClass}>
-					<div
-						class="pointer-events-auto overflow-hidden rounded-md {covering
-							? 'min-h-24 flex-1'
-							: 'min-w-44 shrink-0'}"
-					>
-						<!-- The name rides on the map while the timeline is shut; open, the
+					<!-- With no map and the timeline open, the box would hold nothing. -->
+					{#if hasMap || !timelineOpen}
+						<div
+							class="pointer-events-auto overflow-hidden rounded-md {covering
+								? 'min-h-24 flex-1'
+								: 'min-w-44 shrink-0'}"
+						>
+							<!-- The name rides on the map while the timeline is shut; open, the
 						     strip's first column says it in full. `w-0 min-w-full`: the map
 						     sets the width, a long title does not. -->
-						{#if !timelineOpen}
-							<h1>
-								<button
-									type="button"
-									onclick={toggleTimeline}
-									title={m.panorama_map_expand()}
-									class="block w-0 min-w-full cursor-pointer bg-black/40 px-2.5 py-1.5 text-start backdrop-blur-sm"
-								>
-									<span class="block truncate text-sm leading-tight font-semibold">{caption}</span>
-									{#if current.title}
-										<span class="block truncate text-xs font-normal text-white/70">
-											{current.title}
-										</span>
-									{/if}
-								</button>
-							</h1>
-						{/if}
-						{#if view}
-							<PanoramaMinimap
-								{bodyId}
-								entries={missionEntries}
-								{current}
-								{radiusKm}
-								jd={clock.jd}
-								headingDeg={heading}
-								fovDeg={fov}
-								expanded={timelineOpen}
-								fill={covering}
-								height={timelineOpen ? stripHeight : null}
-								onToggle={toggleTimeline}
-								onCredits={(credits) => (mapCredits = credits)}
-								onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
-							/>
-						{/if}
-					</div>
+							{#if !timelineOpen}
+								<h1>
+									<button
+										type="button"
+										onclick={toggleTimeline}
+										title={m.panorama_map_expand()}
+										class="block w-0 min-w-full cursor-pointer bg-black/40 px-2.5 py-1.5 text-start backdrop-blur-sm"
+									>
+										<span class="block truncate text-sm leading-tight font-semibold">{caption}</span
+										>
+										{#if current.title}
+											<span class="block truncate text-xs font-normal text-white/70">
+												{current.title}
+											</span>
+										{/if}
+									</button>
+								</h1>
+							{/if}
+							{#if view && hasMap}
+								<PanoramaMinimap
+									{bodyId}
+									entries={missionEntries}
+									{current}
+									{radiusKm}
+									jd={clock.jd}
+									headingDeg={heading}
+									fovDeg={fov}
+									expanded={timelineOpen}
+									fill={covering}
+									height={timelineOpen ? stripHeight : null}
+									onToggle={toggleTimeline}
+									onCredits={(credits) => (mapCredits = credits)}
+									onPick={(entry) => void goto(panoramaHref(bodyId, entry))}
+								/>
+							{/if}
+						</div>
+					{/if}
 					{#if timelineOpen}
 						<div
 							class={covering ? '' : 'min-w-0 flex-1'}
@@ -521,6 +543,7 @@
 					<TraverseCards
 						{bodyId}
 						{radiusKm}
+						{hasMap}
 						traverses={found}
 						onCredits={(l) => (galleryCredits = l)}
 					/>
