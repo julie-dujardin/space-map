@@ -42,7 +42,9 @@ import {
 	FORWARD_TINT_BIAS,
 	makeRingLight,
 	PLANET_LIGHT_AZIMUTHS,
+	PARTICLE_PHASE_EXPONENT,
 	PLANET_LIGHT_RADII,
+	PROFILE_MU,
 	type RingLight,
 	ringProfile,
 	type RingshineUniforms,
@@ -149,12 +151,11 @@ export const RING_THICKNESS_LAYERS_MAX = 48;
 
 /**
  * Peak opacity below which a bundle can't change any pixel, so the renderer
- * skips it unless the overexpose toggle is on. Occlusion (intensity alone)
- * sets the floor rather than additive brightness (intensity²), since it's
- * the more visible effect. A quarter of an 8-bit code value against white is
- * generous headroom: culled bundles (Jupiter's τ~5e-6 rings, Saturn's outer
- * tenuous system) sit orders of magnitude under it; the faintest survivor
- * (Neptune's, 0.0031) clears it 3×.
+ * skips it unless the overexpose toggle is on. Its light scales with the
+ * same intensity. A quarter of an 8-bit code value against white is generous
+ * headroom: culled bundles (Jupiter's τ~5e-6 rings, Saturn's outer tenuous
+ * system) sit orders of magnitude under it; the faintest survivor (Neptune's,
+ * 0.0031) clears it 3×.
  */
 export const RING_MIN_VISIBLE_ALPHA = 0.25 / 255;
 
@@ -329,16 +330,27 @@ const VERTEX_SHADER = `
 
 /**
  * Ring fragment shader, after Björn Jónsson's notes. A face reflects the light
- * from its own side of the ring plane: `backscattered` at low phase,
+ * from its own side of the ring plane: `backscattered` at low phase under the
+ * phase function of the particles (`particlePhase` of `ring-light.ts`),
  * `forwardscattered` at high phase, with the Cassini `color` on both. A face
  * passes the light from the other side as `unlitside`, with a fixed warm
  * white tint.
+ *
+ * The output is premultiplied: the ring adds its light and hides the
+ * background by its opacity along the line of sight. `backscattered` is the
+ * light of the ring as seen. Jónsson stretched each profile to a peak of 1,
+ * and only the backscatter has a level checked against measurements (see
+ * `ring-light.ts`). The other two keep the level they had under the opacity.
+ * The light changes with the elevation of the Sun and of the eye
+ * (`reflectionGain` and `unlitGain` of `ring-light.ts`), so the rings go dark
+ * when the Sun is in their plane. A gain over 1 lifts only the backscatter:
+ * on the other two profiles it would lift a level that no measurement sets.
  *
  * Two lights reach the rings. The Sun is one. An exact ray test against the
  * planet's spheroid gives the planet's shadow on the rings. The planet is the
  * other, from the texture of `ring-light.ts`.
  *
- * A transparency of 1 is empty space and 0 is opaque, so alpha is 1 minus it.
+ * A transparency of 1 is empty space and 0 is opaque.
  */
 const FRAGMENT_SHADER = `
 	#include <common>
@@ -367,7 +379,8 @@ const FRAGMENT_SHADER = `
 	// the composited stack reproduces the strip's alpha.
 	uniform float uLayerAlphaExp;
 	// Light of the planet on the +Y and the -Y face over the Sun's, per unit of the
-	// planet's albedo, by the cosine of the azimuth from the Sun (x) and radius (y).
+	// planet's albedo, and the mean sine of its incidence on each, by the cosine
+	// of the azimuth from the Sun (x) and radius (y).
 	uniform sampler2D uPlanetLight;
 	// Lambert albedo of the planet, linear RGB.
 	uniform vec3 uPlanetAlbedo;
@@ -380,10 +393,40 @@ const FRAGMENT_SHADER = `
 
 	const vec3 UNLIT_TINT = vec3(${UNLIT_TINT.join(', ')});
 	const vec3 FORWARD_TINT_BIAS = vec3(${FORWARD_TINT_BIAS.join(', ')});
+	const float PROFILE_MU = ${PROFILE_MU};
+
+	float oneMinusExp(float x) {
+		return x < 1e-3 ? x * (1.0 - 0.5 * x) : 1.0 - exp(-x);
+	}
+
+	float reflectionGain(float mu0, float mu, float tau) {
+		float a = max(mu0, 1e-4);
+		float b = max(mu, 1e-4);
+		return mu0 / (a + b) * oneMinusExp(tau * (1.0 / a + 1.0 / b))
+			/ (0.5 * oneMinusExp(2.0 * tau / PROFILE_MU));
+	}
+
+	float unlitGain(float mu0, float mu) {
+		return 2.0 * mu0 / max(mu0 + mu, 1e-4);
+	}
 
 	// Weight of forward scatter: 0 at phase 0, 1 at phase 180 deg, 0.5 edge-on.
 	float forwardWeight(float cosPhase) {
 		return 1.0 - smoothstep(-1.0, 1.0, cosPhase);
+	}
+
+	float particlePhase(float cosPhase) {
+		return pow(1.0 - acos(clamp(cosPhase, -1.0, 1.0)) / PI, ${PARTICLE_PHASE_EXPONENT});
+	}
+
+	// The lit face at a phase and a gain: the backscatter profile under the
+	// phase function of the particles, blended into the forward-scatter profile.
+	vec3 litLight(vec3 back, vec3 forward, float cosPhase, float gain) {
+		return mix(
+			back * particlePhase(cosPhase) * gain,
+			forward * min(gain, 1.0),
+			forwardWeight(cosPhase)
+		);
 	}
 
 	// Ray-march from the fragment toward the sun against the planet's oblate
@@ -425,35 +468,49 @@ const FRAGMENT_SHADER = `
 		// the outward direction of the face actually being viewed.
 		vec3 N = gl_FrontFacing ? vWorldNormal : -vWorldNormal;
 
-		bool lit = dot(uSunDir, N) > 0.0;
+		float sunMu = dot(uSunDir, N);
+		bool lit = sunMu > 0.0;
+		float mu0 = abs(sunMu);
 
 		vec3 viewDir = normalize(cameraPosition - vWorldPos);
+		float mu = abs(dot(viewDir, N));
+		// Transparency convention: 1.0 = empty space, 0.0 = opaque.
+		float opacity = clamp((1.0 - texture2D(uTransparency, uv).r) * uIntensityScale, 0.0, 1.0);
+		float tau = max(-log(max(1.0 - opacity, 1e-6)), 1e-6);
+
 		vec3 colorTint = texture2D(uColor, uv).rgb;
 		vec3 scatter = texture2D(uScatter, uv).rgb;
 		vec3 back = scatter.r * colorTint;
-		vec3 forward = scatter.g * colorTint * FORWARD_TINT_BIAS;
-		vec3 unlit = scatter.b * UNLIT_TINT;
-		vec3 sunLit = lit ? mix(back, forward, forwardWeight(dot(uSunDir, viewDir))) : unlit;
+		vec3 forward = scatter.g * opacity * colorTint * FORWARD_TINT_BIAS;
+		vec3 unlit = scatter.b * opacity * UNLIT_TINT;
+		vec3 sunLit = lit
+			? litLight(back, forward, dot(uSunDir, viewDir), reflectionGain(mu0, mu, tau))
+			: unlit * min(unlitGain(mu0, mu), 1.0);
 
 		// The light is the same at plus and minus an azimuth, so the texture holds its cosine.
 		float azimuth = 0.5 - 0.5 * dot(vLocalPos.xz, uSunAzimuth) / radius;
 		const vec2 NODES = vec2(${PLANET_LIGHT_AZIMUTHS}.0, ${PLANET_LIGHT_RADII}.0);
-		vec2 planet = texture2D(uPlanetLight, (vec2(azimuth, t) * (NODES - 1.0) + 0.5) / NODES).rg;
-		float near = gl_FrontFacing ? planet.x : planet.y;
-		float far = gl_FrontFacing ? planet.y : planet.x;
+		vec4 planet = texture2D(uPlanetLight, (vec2(azimuth, t) * (NODES - 1.0) + 0.5) / NODES);
+		vec2 near = gl_FrontFacing ? planet.xz : planet.yw;
+		vec2 far = gl_FrontFacing ? planet.yw : planet.xz;
 		float planetPhase = dot(normalize(uPlanetCenter - vWorldPos), viewDir);
-		vec3 planetLit = uPlanetAlbedo
-			* (near * mix(back, forward, forwardWeight(planetPhase)) + far * unlit);
+		vec3 planetLit = uPlanetAlbedo * (
+			near.x * litLight(back, forward, planetPhase, reflectionGain(near.y, mu, tau))
+			+ far.x * min(unlitGain(far.y, mu), 1.0) * unlit);
 
-		// Transparency convention: 1.0 = empty space, 0.0 = opaque.
-		float alpha = clamp((1.0 - texture2D(uTransparency, uv).r) * uIntensityScale, 0.0, 1.0);
-		// Split opacity across layer instances so the composited stack
-		// reproduces the strip's alpha.
-		alpha = 1.0 - pow(1.0 - alpha, uLayerAlphaExp);
+		// The slant path hides more of the background.
+		float alpha = oneMinusExp(tau / max(mu, 0.02));
+		// Split the opacity across the sheets of the stack so that it composites
+		// to the layer's. Each sheet adds its share of the light.
+		float layerAlpha = 1.0 - pow(1.0 - alpha, uLayerAlphaExp);
+		float share = alpha > 1e-4 ? layerAlpha / alpha : uLayerAlphaExp;
 
 		float shadow = planetShadow();
 
-		gl_FragColor = vec4((sunLit * shadow + planetLit) * uIntensityScale * uLightScale, alpha);
+		gl_FragColor = vec4(
+			(sunLit * shadow + planetLit) * uIntensityScale * uLightScale * share,
+			layerAlpha
+		);
 		#include <logdepthbuf_fragment>
 	}
 `;
@@ -712,6 +769,7 @@ export async function loadRingNode(
 		transparent: true,
 		depthWrite: false,
 		blending: NormalBlending,
+		premultipliedAlpha: true,
 		side: DoubleSide
 	});
 

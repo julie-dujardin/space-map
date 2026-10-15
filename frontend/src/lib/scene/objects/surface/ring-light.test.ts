@@ -3,17 +3,21 @@ import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 import { lambertSpherePhase, SHINE_FLOOR } from './planetshine';
 import {
 	forwardWeight,
+	particlePhase,
 	PLANET_LIGHT_AZIMUTHS,
 	PLANET_LIGHT_RADII,
 	peakRingshine,
 	planetLightOnRing,
+	PROFILE_MU,
 	type ProfileRows,
+	reflectionGain,
 	type RingProfile,
 	ringProfile,
 	RINGSHINE_PATCHES,
 	ringshineAt,
 	ringshinePatches,
-	type Spheroid
+	type Spheroid,
+	unlitGain
 } from './ring-light';
 
 /**
@@ -124,6 +128,8 @@ function ringshineReference(
 	const dr = (profile.outer - profile.inner) / radial;
 	const dPhi = (2 * Math.PI) / azimuths;
 	const sunSide = sinB >= 0 === q[2] >= 0;
+	const litGain = (bin: number) =>
+		reflectionGain(mu0, mu0, -Math.log(Math.max(profile.transmission[bin], 1e-6)));
 	let e = 0;
 	for (let j = 0; j < azimuths; j++) {
 		const phi = (j + 0.5) * dPhi;
@@ -142,9 +148,12 @@ function ringshineReference(
 			const mu = Math.abs(vz) / d;
 			const cosPhase = -(vx * cosB + vz * sinB) / d;
 			const radiance = sunSide
-				? profile.back[bin] + (profile.forward[bin] - profile.back[bin]) * forwardWeight(cosPhase)
+				? (profile.back[bin] * particlePhase(cosPhase) +
+						(profile.forward[bin] - profile.back[bin] * particlePhase(cosPhase)) *
+							forwardWeight(cosPhase)) *
+					litGain(bin)
 				: profile.unlit[bin];
-			e += ((radiance * ((2 * mu0) / (mu0 + mu)) * facing * mu) / (d * d)) * r * dr * dPhi;
+			e += ((radiance * unlitGain(mu0, mu) * facing * mu) / (d * d)) * r * dr * dPhi;
 		}
 	}
 	return e;
@@ -158,6 +167,54 @@ describe('forwardWeight', () => {
 	});
 });
 
+describe('particlePhase', () => {
+	it('is 1 at phase 0 and falls as a power of π minus the phase', () => {
+		expect(particlePhase(1)).toBe(1);
+		expect(particlePhase(0)).toBeCloseTo(0.5 ** 3.09, 12);
+		expect(particlePhase(-1)).toBe(0);
+	});
+});
+
+describe('reflectionGain', () => {
+	const deg = (d: number) => Math.sin((d * Math.PI) / 180);
+
+	it('is 1 in the geometry of the profiles at any depth', () => {
+		for (const tau of [1e-6, 0.01, 0.1, 1, 5]) {
+			expect(reflectionGain(PROFILE_MU, PROFILE_MU, tau)).toBeCloseTo(1, 4);
+		}
+	});
+
+	it('goes to 0 when the Sun is in the ring plane', () => {
+		for (const tau of [0.05, 0.5, 2]) {
+			expect(reflectionGain(deg(0.05), deg(25), tau)).toBeLessThan(0.01);
+			expect(reflectionGain(0, deg(25), tau)).toBe(0);
+		}
+	});
+
+	it('is Lommel-Seeliger for a dense ring', () => {
+		for (const [mu0, mu] of [
+			[0.4, 0.4],
+			[0.1, 0.8],
+			[0.9, 0.05]
+		]) {
+			expect(reflectionGain(mu0, mu, 8)).toBeCloseTo(unlitGain(mu0, mu), 3);
+		}
+	});
+
+	it('gives the change in I/F that HST measured from 4.5° to 23.6°', () => {
+		// Salo and French (2010), F555W at phase 0.27-0.46°: C ring at a depth of
+		// 0.09, 0.168 to 0.0657; A ring at 0.45, 0.528 to 0.412.
+		const tilt = (tau: number) => {
+			const low = deg(4.5);
+			const high = deg(23.6);
+			return reflectionGain(high, high, tau) / reflectionGain(low, low, tau);
+		};
+		expect(tilt(0.09) / (0.0657 / 0.168)).toBeCloseTo(1, 1);
+		expect(tilt(0.45) / (0.412 / 0.528)).toBeGreaterThan(1);
+		expect(tilt(0.45) / (0.412 / 0.528)).toBeLessThan(1.2);
+	});
+});
+
 describe('ringProfile', () => {
 	it('bins the light as the ring shader draws it', () => {
 		const width = 512;
@@ -166,7 +223,7 @@ describe('ringProfile', () => {
 		const p = ringProfile(pixels, width, ROWS, 1, 2, 0.5);
 		const opacity = (1 - 128 / 255) * 0.5;
 		const weight = opacity * 0.5;
-		expect(p.back[0]).toBeCloseTo(weight, 6);
+		expect(p.back[0]).toBeCloseTo(0.5, 6);
 		expect(p.forward[10]).toBeCloseTo(
 			(128 / 255) * weight * (0.2126 * 1.02 + 0.7152 * 0.99 + 0.0722 * 0.97),
 			6
@@ -220,10 +277,13 @@ describe('ringshinePatches', () => {
 		for (let j = 0; j < steps; j++) {
 			const phi = ((j + 0.5) / steps) * 2 * Math.PI;
 			const w = forwardWeight(-cosB * Math.cos(phi));
+			const phase = particlePhase(-cosB * Math.cos(phi));
 			for (let i = 0; i < bins; i++) {
 				const r = profile.inner + (i + 0.5) * dr;
 				if (shadowed(r * Math.cos(phi), r * Math.sin(phi), sinB, SATURN)) continue;
-				const lit = profile.back[i] + (profile.forward[i] - profile.back[i]) * w;
+				const gain = reflectionGain(sinB, sinB, -Math.log(Math.max(profile.transmission[i], 1e-6)));
+				const lit =
+					(profile.back[i] * phase + (profile.forward[i] - profile.back[i] * phase) * w) * gain;
 				direct += (lit + profile.unlit[i]) * r * dr * ((2 * Math.PI) / steps);
 			}
 		}
@@ -268,9 +328,11 @@ describe('ringshineAt', () => {
 		const peak = Math.max(...pairs.map((p) => p.reference));
 		// The ringshine at its peak is some percent of the sunlight.
 		expect(peak / SUN_LIGHT_INTENSITY).toBeGreaterThan(0.01);
+		// A patch takes the phase toward the planet's centre. The phase function of
+		// the particles is steep, so the sum is off most where the light is low.
 		for (const { at, reference, patches: sum } of pairs) {
 			const error = Math.abs(sum - reference) / Math.max(reference, 0.05 * peak);
-			expect(error, at).toBeLessThan(0.2);
+			expect(error, at).toBeLessThan(0.25);
 		}
 	});
 
@@ -301,8 +363,8 @@ describe('planetLightOnRing', () => {
 	const empty = ringProfile(strip(64, 1, 2, []), 64, ROWS, 1, 2, 1);
 	const noPatches = new Float64Array(4 * RINGSHINE_PATCHES);
 	const sphere: Spheroid = { equatorial: 1, polar: 1 };
-	const out = new Float32Array(2 * PLANET_LIGHT_AZIMUTHS * PLANET_LIGHT_RADII);
-	const node = (j: number, k: number) => 2 * (j * PLANET_LIGHT_AZIMUTHS + k);
+	const out = new Float32Array(4 * PLANET_LIGHT_AZIMUTHS * PLANET_LIGHT_RADII);
+	const node = (j: number, k: number) => 4 * (j * PLANET_LIGHT_AZIMUTHS + k);
 
 	it('is the light of a Lambert sphere far away', () => {
 		const sinB = 0.3;
@@ -314,6 +376,19 @@ describe('planetLightOnRing', () => {
 			const expected = (2 / 3) * lambertSpherePhase(phase) * (1 / 300) ** 2;
 			expect((out[node(0, k)] + out[node(0, k) + 1]) / expected).toBeCloseTo(1, 1);
 		}
+	});
+
+	it('comes in at the sine of the planet as the ring sees it', () => {
+		const sinB = 0.3;
+		planetLightOnRing(out, 300, 400, sinB, sphere, empty, noPatches);
+		// A far planet is a point in the ring plane: it lights both faces at grazing incidence.
+		expect(out[node(0, 0) + 2]).toBeLessThan(0.01);
+		planetLightOnRing(out, 1.3, 2.3, sinB, SATURN, empty, noPatches);
+		const near = out[node(0, 0) + 2];
+		const far = out[node(PLANET_LIGHT_RADII - 1, 0) + 2];
+		expect(near).toBeGreaterThan(far);
+		expect(near).toBeLessThan(0.6);
+		expect(far).toBeGreaterThan(0.05);
 	});
 
 	it('lights the face on the side of the Sun more at full phase', () => {
@@ -341,7 +416,7 @@ describe('planetLightOnRing', () => {
 		// The lit face sees the night side under the lit face of the rings.
 		expect(out[shadow]).toBeGreaterThan(1e-4);
 		expect(out[shadow]).toBeLessThan(1e-2);
-		expect(out[shadow]).toBeGreaterThan(2 * out[shadow + 1]);
+		expect(out[shadow]).toBeGreaterThan(1.5 * out[shadow + 1]);
 	});
 
 	it('darkens the light from under the ring shadow', () => {

@@ -14,9 +14,19 @@
  * it, and sectors of azimuth from the Sun. A patch is at the centroid of its
  * light after the shadow of the planet. The planet's shader adds the patches
  * with the cosine at the fragment. The radiance of a face toward the fragment
- * is Lommel-Seeliger, 2μ0 / (μ0 + μ) times the profile. The profiles are seen
- * from the direction of the Sun, where this factor is 1. The light goes to 0
- * when the Sun is in the ring plane.
+ * is the profile, times {@link reflectionGain} seen from the Sun, times
+ * {@link unlitGain} for the angle to the fragment: the change with the angle
+ * of a dense ring. The backscatter profile takes {@link particlePhase} at the
+ * phase toward the planet's centre. The light goes to 0 when the Sun is in the
+ * ring plane.
+ *
+ * The backscatter profile is the light of the ring as seen, not a colour
+ * under its opacity. With {@link reflectionGain}, it gives the I/F that HST
+ * measured at elevations of 4.5° and 23.6° (Salo and French 2010, Tables 1-3)
+ * to 3% for the C ring, 15% for the B ring and 25% for the A ring. Jónsson
+ * stretched each profile to a peak of 1, and no measurement gives the level
+ * of the forward-scatter and unlit-side profiles. They keep the level they
+ * had under the opacity.
  *
  * The frame is the Sun's frame of the ring plane: x points to the azimuth of
  * the Sun, z along the pole. The light is the same at +y and −y. Thus a patch
@@ -33,7 +43,7 @@ import {
 	HalfFloatType,
 	LinearFilter,
 	type MeshStandardMaterial,
-	RGFormat,
+	RGBAFormat,
 	Vector3,
 	Vector4
 } from 'three';
@@ -45,6 +55,46 @@ export const UNLIT_TINT: readonly [number, number, number] = [1.0, 0.97075, 0.95
 /** Red bias of forward scatter: the rings get slightly redder at high phase. */
 export const FORWARD_TINT_BIAS: readonly [number, number, number] = [1.02, 0.99, 0.97];
 
+/** Sine of the Sun's elevation over the rings in the images of the profiles:
+ *  Voyager 2 saw the lit face in August 1981, with the Sun about 8° high. */
+export const PROFILE_MU = Math.sin((8 * Math.PI) / 180);
+
+/** 1 − e^(−x), exact for a small x too. */
+function oneMinusExp(x: number): number {
+	return x < 1e-3 ? x * (1 - 0.5 * x) : 1 - Math.exp(-x);
+}
+
+/**
+ * The light of the lit face of a ring of normal optical depth `tau`, with the
+ * Sun at the sine `mu0` over the plane and the eye at `mu`, over its light in
+ * the profiles. Single scattering by a layer of particles:
+ * μ0 / (μ0 + μ) (1 − e^(−τ (1/μ0 + 1/μ))), the profiles seen from the Sun at
+ * {@link PROFILE_MU}. It goes to 0 when the Sun is in the ring plane, and a
+ * thin ring is brightest seen at a low angle.
+ *
+ * CPU port of `reflectionGain` in the ring shader (rings.ts).
+ */
+export function reflectionGain(mu0: number, mu: number, tau: number): number {
+	const a = Math.max(mu0, 1e-4);
+	const b = Math.max(mu, 1e-4);
+	const t = Math.max(tau, 1e-6);
+	return (
+		((mu0 / (a + b)) * oneMinusExp(t * (1 / a + 1 / b))) / (0.5 * oneMinusExp((2 * t) / PROFILE_MU))
+	);
+}
+
+/**
+ * The light of the unlit face over its light in the profiles, and the light
+ * of a face toward the planet: Lommel-Seeliger, 2μ0 / (μ0 + μ), 1 seen from
+ * the light. A dense ring passes light by multiple scattering, so the single
+ * scattering of {@link reflectionGain} does not hold for the unlit face.
+ *
+ * CPU port of `unlitGain` in the ring shader (rings.ts).
+ */
+export function unlitGain(mu0: number, mu: number): number {
+	return (2 * mu0) / Math.max(mu0 + mu, 1e-4);
+}
+
 const RINGSHINE_BANDS = 3;
 const SECTORS = 12;
 /** One patch per band and per sector from the Sun to the anti-Sun. */
@@ -55,6 +105,7 @@ const RINGSHINE_MIN_MU0 = 1e-4;
 
 /** Radial bins of the profile copy on the CPU. */
 const PROFILE_BINS = 256;
+const _litGain = new Float64Array(PROFILE_BINS);
 /** Azimuth steps per sector, for the shadow and the centroid of a patch. */
 const SECTOR_STEPS = 6;
 
@@ -74,8 +125,9 @@ export interface Spheroid {
 export interface RingProfile {
 	inner: number;
 	outer: number;
-	/** Luminance of each face per bin: channel × colour × opacity × intensity,
-	 *  as the ring shader draws it. */
+	/** Luminance of each face per bin, seen from the Sun, as the ring shader
+	 *  draws it: channel × colour × intensity, and × opacity for the forward
+	 *  and unlit profiles. */
 	back: Float64Array;
 	forward: Float64Array;
 	unlit: Float64Array;
@@ -136,14 +188,14 @@ export function ringProfile(
 			const green = SRGB_TO_LINEAR[pixels[c + 1]];
 			const blue = SRGB_TO_LINEAR[pixels[c + 2]];
 			const opacity = Math.min(1, (1 - pixels[at(rows.transparency, i)] / 255) * intensity);
-			const weight = opacity * intensity;
-			const backscatter = (pixels[at(rows.backscattered, i)] / 255) * weight;
+			const backscatter = (pixels[at(rows.backscattered, i)] / 255) * intensity;
 			back[k] += backscatter * luminance(red, green, blue);
 			forward[k] +=
 				(pixels[at(rows.forwardscattered, i)] / 255) *
-				weight *
+				opacity *
+				intensity *
 				luminance(red * br, green * bg, blue * bb);
-			unlit[k] += (pixels[at(rows.unlitside, i)] / 255) * weight * unlitLuminance;
+			unlit[k] += (pixels[at(rows.unlitside, i)] / 255) * opacity * intensity * unlitLuminance;
 			transmission[k] += 1 - opacity;
 			tint[0] += backscatter * red * r;
 			tint[1] += backscatter * green * r;
@@ -207,6 +259,23 @@ export function forwardWeight(cosPhase: number): number {
 	return 1 - t * t * (3 - 2 * t);
 }
 
+/** Exponent of the power-law phase function of the ring particles,
+ *  (π − α)^n: it fits the B ring and Callisto, and Voyager's phase curves of
+ *  the A ring (Salo and French 2010, Eq. 12; Dones et al. 1993). */
+export const PARTICLE_PHASE_EXPONENT = 3.09;
+
+/**
+ * The phase function of the ring particles over its value at phase 0, at the
+ * cosine of the phase angle. The backscatter profile is the rings near phase
+ * 0, so this dims it toward the forward-scatter profile.
+ *
+ * CPU port of `particlePhase` in the ring shader (rings.ts).
+ */
+export function particlePhase(cosPhase: number): number {
+	const alpha = Math.acos(Math.min(Math.max(cosPhase, -1), 1));
+	return (1 - alpha / Math.PI) ** PARTICLE_PHASE_EXPONENT;
+}
+
 /** True where the planet hides the Sun from the point (`x`, `y`) of the ring plane. */
 function inPlanetShadow(
 	x: number,
@@ -228,8 +297,8 @@ function inPlanetShadow(
  * Fill `out` (4 values per patch: x, y, the light of the +z face, the light of
  * the −z face) with the ringshine patches of `profile` for the Sun at
  * elevation asin(`sinB`). A light is the radiance of the face toward the
- * planet times the area of the patch. A patch on the x axis is its own
- * mirror and holds half its light.
+ * planet, seen from the Sun, times the area of the patch. A patch on the x
+ * axis is its own mirror and holds half its light.
  */
 export function ringshinePatches(
 	out: Float64Array,
@@ -238,8 +307,14 @@ export function ringshinePatches(
 	planet: Spheroid
 ): void {
 	const cosB = Math.sqrt(Math.max(0, 1 - sinB * sinB));
+	const mu0 = Math.abs(sinB);
 	const sunAbove = sinB >= 0;
-	const { inner, outer, back, forward, unlit, bands } = profile;
+	const { inner, outer, back, forward, unlit, transmission, bands } = profile;
+	// Seen from the Sun, a thin ring is brighter when the Sun is low. The
+	// planet's shader adds the change with the angle of view.
+	for (let i = 0; i < PROFILE_BINS; i++) {
+		_litGain[i] = reflectionGain(mu0, mu0, -Math.log(Math.max(transmission[i], 1e-6)));
+	}
 	const dr = (outer - inner) / PROFILE_BINS;
 	const sector = (2 * Math.PI) / SECTORS;
 	const dPhi = sector / SECTOR_STEPS;
@@ -257,11 +332,12 @@ export function ringshinePatches(
 				const sn = Math.sin(phi);
 				// The phase at the patch, from the Sun to the planet's centre.
 				const w = forwardWeight(-cosB * c);
+				const phase = particlePhase(-cosB * c);
 				for (let i = bands[band]; i < bands[band + 1]; i++) {
 					const r = inner + (i + 0.5) * dr;
 					if (inPlanetShadow(r * c, r * sn, cosB, sinB, planet)) continue;
 					const area = r * dr * dPhi;
-					const lit = (back[i] + (forward[i] - back[i]) * w) * area;
+					const lit = (back[i] * phase + (forward[i] - back[i] * phase) * w) * _litGain[i] * area;
 					const through = unlit[i] * area;
 					above += sunAbove ? lit : through;
 					below += sunAbove ? through : lit;
@@ -360,12 +436,14 @@ const _cells = {
 
 /**
  * Fill `out` with the light of the planet on a bundle from `inner` to `outer`,
- * over the Sun's irradiance and per unit of the planet's Lambert albedo. Two
- * values per node, the +z face then the −z face. Nodes go by the cosine of the
- * azimuth from the Sun (1 to −1 in {@link PLANET_LIGHT_AZIMUTHS} steps), then
- * by radius. Even steps in the cosine are fine where the light changes fast.
- * A face takes the light from its own side of the ring plane, from every
- * direction alike, as the rings take the sunlight in the ring shader.
+ * over the Sun's irradiance and per unit of the planet's Lambert albedo. Four
+ * values per node: the light on the +z face and on the −z face, then the mean
+ * sine of its incidence on each face, weighted by the light. The ring shader
+ * takes the light as one beam at that sine, as it takes the sunlight. Nodes go
+ * by the cosine of the azimuth from the Sun (1 to −1 in
+ * {@link PLANET_LIGHT_AZIMUTHS} steps), then by radius. Even steps in the
+ * cosine are fine where the light changes fast. A face takes the light from
+ * its own side of the ring plane.
  *
  * The planet's radiance is the Lambert law under the Sun and the shadow of
  * `caster`, plus the ringshine of `patches` on the night side.
@@ -430,6 +508,8 @@ export function planetLightOnRing(
 			const py = r * Math.sqrt(1 - cosPhi * cosPhi);
 			let above = 0;
 			let below = 0;
+			let aboveMu = 0;
+			let belowMu = 0;
 			for (let i = 0; i < PLANET_ROWS * PLANET_COLUMNS; i++) {
 				const vx = px - cells.x[i];
 				const vy = py - cells.y[i];
@@ -438,13 +518,22 @@ export function planetLightOnRing(
 				// A cell that faces the point is in its view: the planet is convex.
 				const facing = cells.nx[i] * vx + cells.ny[i] * vy + cells.nz[i] * vz;
 				if (facing <= 0) continue;
-				const e = (cells.light[i] * facing) / (d2 * Math.sqrt(d2));
-				if (cells.z[i] > 0) above += e;
-				else below += e;
+				const d = Math.sqrt(d2);
+				const e = (cells.light[i] * facing) / (d2 * d);
+				const mu = Math.abs(vz) / d;
+				if (cells.z[i] > 0) {
+					above += e;
+					aboveMu += e * mu;
+				} else {
+					below += e;
+					belowMu += e * mu;
+				}
 			}
-			const node = 2 * (j * PLANET_LIGHT_AZIMUTHS + k);
+			const node = 4 * (j * PLANET_LIGHT_AZIMUTHS + k);
 			out[node] = above;
 			out[node + 1] = below;
+			out[node + 2] = above > 0 ? aboveMu / above : 0;
+			out[node + 3] = below > 0 ? belowMu / below : 0;
 		}
 	}
 }
@@ -465,14 +554,14 @@ export interface RingLight {
 	patchesSinB: number;
 }
 
-const _grid = new Float32Array(2 * PLANET_LIGHT_AZIMUTHS * PLANET_LIGHT_RADII);
+const _grid = new Float32Array(4 * PLANET_LIGHT_AZIMUTHS * PLANET_LIGHT_RADII);
 
 export function makeRingLight(profile: RingProfile): RingLight {
 	const texture = new DataTexture(
-		new Uint16Array(2 * PLANET_LIGHT_AZIMUTHS * PLANET_LIGHT_RADII),
+		new Uint16Array(4 * PLANET_LIGHT_AZIMUTHS * PLANET_LIGHT_RADII),
 		PLANET_LIGHT_AZIMUTHS,
 		PLANET_LIGHT_RADII,
-		RGFormat,
+		RGBAFormat,
 		HalfFloatType
 	);
 	texture.minFilter = LinearFilter;
