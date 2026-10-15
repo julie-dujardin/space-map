@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>WebGPU bench</title>
+		<style>
+			body {
+				font:
+					14px system-ui,
+					sans-serif;
+				margin: 16px;
+				background: #111;
+				color: #ddd;
+			}
+			table {
+				border-collapse: collapse;
+				margin-top: 12px;
+			}
+			th,
+			td {
+				border: 1px solid #444;
+				padding: 4px 8px;
+				text-align: right;
+			}
+			th:first-child,
+			td:first-child {
+				text-align: left;
+			}
+			iframe {
+				width: 1px;
+				height: 1px;
+				border: 0;
+				position: absolute;
+				left: -10px;
+			}
+			pre {
+				white-space: pre-wrap;
+			}
+		</style>
+	</head>
+	<body>
+		<p>
+			Runs each scene under WebGLRenderer (<code>webgl</code>), WebGPURenderer on WebGL2
+			(<code>webgpu-gl</code>) and WebGPURenderer on WebGPU (<code>webgpu</code>), one page each.
+			Query: <code>w, h, frames, reps, scens, modes</code>. Keep this tab in front while it runs.
+		</p>
+		<p id="status">Starting…</p>
+		<table id="out">
+			<thead>
+				<tr>
+					<th>scene</th>
+					<th>mode</th>
+					<th>update ms</th>
+					<th>render() ms</th>
+					<th>frame ms</th>
+					<th>first frame ms</th>
+					<th>lit %</th>
+				</tr>
+			</thead>
+			<tbody></tbody>
+		</table>
+		<h3>GPUs</h3>
+		<pre id="gpus"></pre>
+		<h3>Raw</h3>
+		<pre id="raw"></pre>
+		<script type="module">
+			const q = new URLSearchParams(location.search);
+			const w = q.get('w') ?? '1920',
+				h = q.get('h') ?? '1080',
+				frames = q.get('frames') ?? '60';
+			const reps = +(q.get('reps') ?? 3);
+			const scens = (q.get('scens') ?? 'points,points-dyn,drawcalls,fill,bloom').split(',');
+			const modes = (q.get('modes') ?? 'webgl,webgpu-gl,webgpu').split(',');
+			const status = document.getElementById('status');
+			const tbody = document.querySelector('#out tbody');
+			const raw = document.getElementById('raw');
+			const gpus = new Set();
+
+			function runOne(mode, scen) {
+				return new Promise((resolve) => {
+					const f = document.createElement('iframe');
+					f.src = `bench.html?mode=${mode}&scen=${scen}&w=${w}&h=${h}&frames=${frames}`;
+					document.body.appendChild(f);
+					const t0 = performance.now();
+					const poll = setInterval(() => {
+						const r = f.contentWindow?.__result;
+						const timedOut = performance.now() - t0 > 300_000;
+						if (!r && !timedOut) return;
+						clearInterval(poll);
+						f.remove();
+						resolve(r ?? { error: 'timed out' });
+					}, 250);
+				});
+			}
+
+			const med = (xs) => {
+				const s = xs.filter((x) => x != null).sort((a, b) => a - b);
+				return s.length ? s[Math.floor(s.length / 2)] : null;
+			};
+			const fmt = (x) => (x == null ? '–' : x.toFixed(1));
+
+			for (const scen of scens) {
+				for (const mode of modes) {
+					const runs = [];
+					for (let i = 0; i < reps; i++) {
+						status.textContent = `${scen} / ${mode} — run ${i + 1} of ${reps}`;
+						const r = await runOne(mode, scen);
+						raw.textContent += JSON.stringify({ mode, scen, ...r }) + '\n';
+						if (r.gpu) gpus.add(`${mode}: ${r.gpu}`);
+						runs.push(r);
+					}
+					const ok = runs.filter((r) => !r.error);
+					const tr = document.createElement('tr');
+					const cells = ok.length
+						? [
+								scen,
+								mode,
+								...['updateMs', 'submitMs', 'frameMs', 'firstFrameMs', 'litPct'].map((k) =>
+									fmt(med(ok.map((r) => r[k])))
+								)
+							]
+						: [scen, mode, `failed: ${runs[0].error}`, '', '', '', ''];
+					for (const c of cells) {
+						const td = document.createElement('td');
+						td.textContent = c;
+						tr.appendChild(td);
+					}
+					tbody.appendChild(tr);
+					document.getElementById('gpus').textContent = [...gpus].join('\n');
+				}
+			}
+			status.textContent =
+				'Done. Medians over runs; "frame ms" waits for the GPU to finish each frame.';
+		</script>
+	</body>
+</html>

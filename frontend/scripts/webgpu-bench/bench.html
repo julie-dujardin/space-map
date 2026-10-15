@@ -1,0 +1,370 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<style>
+			html,
+			body {
+				margin: 0;
+				background: #000;
+			}
+			canvas {
+				display: block;
+			}
+		</style>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "/three/build/three.module.js",
+					"three/webgpu": "/three/build/three.webgpu.js",
+					"three/tsl": "/three/build/three.tsl.js",
+					"three/addons/": "/three/examples/jsm/"
+				}
+			}
+		</script>
+	</head>
+	<body>
+		<script>
+			// Report a failure to the runner instead of leaving it waiting.
+			addEventListener('error', (e) => {
+				window.__result ??= { error: String(e.message) };
+			});
+			addEventListener('unhandledrejection', (e) => {
+				window.__result ??= { error: String(e.reason) };
+			});
+		</script>
+		<script type="module">
+			const params = new URLSearchParams(location.search);
+			const MODE = params.get('mode'); // webgl | webgpu | webgpu-gl
+			const SCEN = params.get('scen'); // points | points-dyn | drawcalls | fill | bloom
+			const W = +(params.get('w') ?? 1280),
+				H = +(params.get('h') ?? 720);
+			const WARM = +(params.get('warm') ?? 10),
+				FRAMES = +(params.get('frames') ?? 40);
+
+			const isNode = MODE !== 'webgl';
+			const T = isNode ? await import('three/webgpu') : await import('three');
+			const TSL = isNode ? await import('three/tsl') : null;
+
+			const canvas = document.createElement('canvas');
+			canvas.width = W;
+			canvas.height = H;
+			canvas.style.width = W + 'px';
+			canvas.style.height = H + 'px';
+			document.body.appendChild(canvas);
+
+			let renderer;
+			if (MODE === 'webgl') {
+				renderer = new T.WebGLRenderer({ canvas, antialias: false, reversedDepthBuffer: true });
+			} else {
+				renderer = new T.WebGPURenderer({
+					canvas,
+					antialias: false,
+					forceWebGL: MODE === 'webgpu-gl',
+					reversedDepthBuffer: true
+				});
+				await renderer.init();
+			}
+			renderer.setPixelRatio(1);
+			renderer.setSize(W, H, false);
+			renderer.toneMapping = T.ACESFilmicToneMapping;
+
+			const scene = new T.Scene();
+			const camera = new T.PerspectiveCamera(60, W / H, 0.01, 10000);
+			camera.position.set(0, 30, 120);
+			camera.lookAt(0, 0, 0);
+			scene.add(new T.AmbientLight(0xffffff, 0.2));
+			const sun = new T.PointLight(0xffffff, 3, 0, 0);
+			scene.add(sun);
+
+			let rng = 12345;
+			const rand = () => (rng = (rng * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+			let perFrame = () => {};
+			let post = null;
+
+			function buildPoints(n, dynamic) {
+				const pos = new Float32Array(n * 3),
+					col = new Float32Array(n * 3);
+				const a0 = new Float32Array(n),
+					r0 = new Float32Array(n);
+				for (let i = 0; i < n; i++) {
+					r0[i] = 20 + rand() * 60;
+					a0[i] = rand() * Math.PI * 2;
+					pos[i * 3] = Math.cos(a0[i]) * r0[i];
+					pos[i * 3 + 1] = (rand() - 0.5) * 6;
+					pos[i * 3 + 2] = Math.sin(a0[i]) * r0[i];
+					col[i * 3] = 0.6 + rand() * 0.4;
+					col[i * 3 + 1] = 0.6;
+					col[i * 3 + 2] = 0.5;
+				}
+				const g = new T.BufferGeometry();
+				const pa = new T.BufferAttribute(pos, 3);
+				if (dynamic) pa.setUsage(T.DynamicDrawUsage);
+				g.setAttribute('position', pa);
+				g.setAttribute('color', new T.BufferAttribute(col, 3));
+				let m;
+				if (isNode) {
+					m = new T.PointsNodeMaterial({
+						vertexColors: true,
+						transparent: true,
+						depthWrite: false,
+						sizeAttenuation: false
+					});
+					m.sizeNode = TSL.float(2);
+				} else {
+					m = new T.PointsMaterial({
+						vertexColors: true,
+						transparent: true,
+						depthWrite: false,
+						size: 2,
+						sizeAttenuation: false
+					});
+				}
+				const p = new T.Points(g, m);
+				p.frustumCulled = false;
+				scene.add(p);
+				if (dynamic) {
+					let t = 0;
+					perFrame = () => {
+						t += 0.002;
+						for (let i = 0; i < n; i++) {
+							const a = a0[i] + (t * 40) / r0[i];
+							pos[i * 3] = Math.cos(a) * r0[i];
+							pos[i * 3 + 2] = Math.sin(a) * r0[i];
+						}
+						pa.needsUpdate = true;
+					};
+				}
+			}
+
+			function buildDrawcalls(nLines, nMeshes) {
+				const seg = 512;
+				for (let k = 0; k < nLines; k++) {
+					const r = 5 + rand() * 90,
+						inc = (rand() - 0.5) * 0.4,
+						e = rand() * 0.3;
+					const pos = new Float32Array((seg + 1) * 3);
+					for (let i = 0; i <= seg; i++) {
+						const a = (i / seg) * Math.PI * 2,
+							rr = (r * (1 - e * e)) / (1 + e * Math.cos(a));
+						pos[i * 3] = Math.cos(a) * rr;
+						pos[i * 3 + 1] = Math.sin(a) * rr * Math.sin(inc);
+						pos[i * 3 + 2] = Math.sin(a) * rr * Math.cos(inc);
+					}
+					const g = new T.BufferGeometry();
+					g.setAttribute('position', new T.BufferAttribute(pos, 3));
+					const M = isNode ? T.LineBasicNodeMaterial : T.LineBasicMaterial;
+					const m = new M({
+						color: new T.Color().setHSL(rand(), 0.6, 0.5),
+						transparent: true,
+						opacity: 0.6,
+						depthWrite: false
+					});
+					scene.add(new T.Line(g, m));
+				}
+				const sg = new T.SphereGeometry(1, 32, 16);
+				const meshes = [];
+				for (let k = 0; k < nMeshes; k++) {
+					const M = isNode ? T.MeshStandardNodeMaterial : T.MeshStandardMaterial;
+					const m = new M({ color: new T.Color().setHSL(rand(), 0.4, 0.5), roughness: 0.8 });
+					const mesh = new T.Mesh(sg, m);
+					const r = 5 + rand() * 90,
+						a = rand() * Math.PI * 2;
+					mesh.position.set(Math.cos(a) * r, (rand() - 0.5) * 4, Math.sin(a) * r);
+					mesh.scale.setScalar(0.3 + rand());
+					scene.add(mesh);
+					meshes.push(mesh);
+				}
+				let t = 0;
+				perFrame = () => {
+					t += 0.01;
+					camera.position.set(Math.cos(t) * 120, 30, Math.sin(t) * 120);
+					camera.lookAt(0, 0, 0);
+					for (const m of meshes) m.rotation.y += 0.01;
+				};
+			}
+
+			// Full-screen pass with a 48-step march per pixel, in the shape of the atmosphere shell.
+			function buildFill() {
+				const STEPS = 48;
+				const g = new T.PlaneGeometry(2, 2);
+				let m;
+				if (isNode) {
+					const { Fn, vec3, vec4, float, uv, Loop, exp, dot, normalize, max, uniform } = TSL;
+					const uTime = uniform(0);
+					m = new T.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+					m.vertexNode = TSL.vec4(TSL.positionGeometry.xy, 0, 1);
+					m.colorNode = Fn(() => {
+						const p = uv().mul(2).sub(1).toVar();
+						const ro = vec3(0, 0, -3).toVar();
+						const rd = normalize(vec3(p.x, p.y, 1.5)).toVar();
+						const acc = vec3(0).toVar();
+						const tr = float(1).toVar();
+						Loop(STEPS, ({ i }) => {
+							const x = ro.add(rd.mul(float(i).mul(0.08)));
+							const h = max(x.length().sub(1), 0);
+							const dens = exp(h.mul(-4)).mul(0.05);
+							const mu = dot(rd, normalize(vec3(1, 0.3, uTime.sin())));
+							acc.addAssign(vec3(0.3, 0.5, 1).mul(dens).mul(tr).mul(mu.mul(mu).add(1)));
+							tr.mulAssign(exp(dens.negate()));
+						});
+						return vec4(acc, 1);
+					})();
+					perFrame = () => {
+						uTime.value += 0.01;
+					};
+				} else {
+					m = new T.ShaderMaterial({
+						depthTest: false,
+						depthWrite: false,
+						uniforms: { uTime: { value: 0 } },
+						vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+						fragmentShader: `varying vec2 vUv; uniform float uTime;
+        void main(){
+          vec2 p = vUv * 2.0 - 1.0; vec3 ro = vec3(0,0,-3); vec3 rd = normalize(vec3(p, 1.5));
+          vec3 acc = vec3(0); float tr = 1.0;
+          for (int i = 0; i < ${STEPS}; i++) {
+            vec3 x = ro + rd * (float(i) * 0.08);
+            float h = max(length(x) - 1.0, 0.0);
+            float dens = exp(-h * 4.0) * 0.05;
+            float mu = dot(rd, normalize(vec3(1.0, 0.3, sin(uTime))));
+            acc += vec3(0.3, 0.5, 1.0) * dens * tr * (1.0 + mu * mu);
+            tr *= exp(-dens);
+          }
+          gl_FragColor = vec4(acc, 1.0);
+        }`
+					});
+					perFrame = () => {
+						m.uniforms.uTime.value += 0.01;
+					};
+				}
+				const q = new T.Mesh(g, m);
+				q.frustumCulled = false;
+				scene.add(q);
+			}
+
+			async function buildBloom() {
+				buildDrawcalls(500, 200);
+				// A bright sun to cross the threshold.
+				const sm = isNode
+					? new T.MeshBasicNodeMaterial({ color: new T.Color(20, 18, 15) })
+					: new T.MeshBasicMaterial({ color: new T.Color(20, 18, 15) });
+				scene.add(new T.Mesh(new T.SphereGeometry(4, 32, 16), sm));
+				if (isNode) {
+					const { pass } = TSL;
+					const { bloom } = await import('three/addons/tsl/display/BloomNode.js');
+					const P = T.RenderPipeline ?? T.PostProcessing;
+					const pp = new P(renderer);
+					const scenePass = pass(scene, camera);
+					const color = scenePass.getTextureNode('output');
+					pp.outputNode = color.add(bloom(color, 0.3, 0.5, 1.0));
+					post = () => pp.render();
+				} else {
+					const { EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js');
+					const { RenderPass } = await import('three/addons/postprocessing/RenderPass.js');
+					const { UnrealBloomPass } =
+						await import('three/addons/postprocessing/UnrealBloomPass.js');
+					const { OutputPass } = await import('three/addons/postprocessing/OutputPass.js');
+					const rt = new T.WebGLRenderTarget(W, H, { type: T.HalfFloatType });
+					const c = new EffectComposer(renderer, rt);
+					c.setPixelRatio(1);
+					c.setSize(W, H);
+					c.addPass(new RenderPass(scene, camera));
+					c.addPass(new UnrealBloomPass(new T.Vector2(W, H), 0.3, 0.5, 1.0));
+					c.addPass(new OutputPass());
+					c.renderToScreen = false;
+					post = () => c.render();
+				}
+			}
+
+			if (SCEN === 'points') buildPoints(1_500_000, false);
+			else if (SCEN === 'points-dyn') buildPoints(1_500_000, true);
+			else if (SCEN === 'drawcalls') buildDrawcalls(2000, 400);
+			else if (SCEN === 'fill') buildFill();
+			else if (SCEN === 'bloom') await buildBloom();
+
+			// Headless WebGPU loses its device when it presents to a canvas, so every path
+			// draws into an offscreen target of the same size.
+			const outRT = MODE === 'webgl' ? new T.WebGLRenderTarget(W, H) : new T.RenderTarget(W, H);
+			const draw0 = post ?? (() => renderer.render(scene, camera));
+			const draw = () => {
+				renderer.setRenderTarget(outRT);
+				draw0();
+			};
+
+			// GPU sync: WebGL drains with a 1-pixel read; WebGPU waits on the queue.
+			let sync;
+			if (MODE === 'webgl' || MODE === 'webgpu-gl') {
+				const gl = MODE === 'webgl' ? renderer.getContext() : renderer.backend.gl;
+				const px = new Uint8Array(4);
+				sync = async () => {
+					const fb = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+					gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+					gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+					gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+				};
+			} else {
+				const dev = renderer.backend.device;
+				sync = () => dev.queue.onSubmittedWorkDone();
+			}
+
+			const t0 = performance.now();
+			perFrame();
+			draw();
+			await sync();
+			const firstFrame = performance.now() - t0;
+
+			const cpu = [],
+				total = [],
+				scriptJs = [];
+			for (let i = 0; i < WARM + FRAMES; i++) {
+				const a = performance.now();
+				perFrame();
+				const b = performance.now();
+				draw();
+				const c = performance.now();
+				await sync();
+				const d = performance.now();
+				if (i >= WARM) {
+					scriptJs.push(b - a);
+					cpu.push(c - b);
+					total.push(d - a);
+				}
+			}
+			const med = (xs) => {
+				const s = [...xs].sort((x, y) => x - y);
+				return s[Math.floor(s.length / 2)];
+			};
+			const info = renderer.info;
+			let pixels;
+			if (MODE === 'webgl') {
+				pixels = new Uint8Array(W * H * 4);
+				renderer.readRenderTargetPixels(outRT, 0, 0, W, H, pixels);
+			} else pixels = await renderer.readRenderTargetPixelsAsync(outRT, 0, 0, W, H);
+			let lit = 0;
+			for (let i = 0; i < pixels.length; i += 4)
+				if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 0) lit++;
+			let gpu = '';
+			if (MODE === 'webgpu') {
+				const i = renderer.backend.device.adapterInfo;
+				gpu = i ? [i.vendor, i.architecture, i.description].filter(Boolean).join(' ') : '';
+			} else {
+				const gl = MODE === 'webgl' ? renderer.getContext() : renderer.backend.gl;
+				const e = gl.getExtension('WEBGL_debug_renderer_info');
+				gpu = String(gl.getParameter(e ? e.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+			}
+			window.__result = {
+				gpu,
+				litPct: +((100 * lit) / (W * H)).toFixed(1),
+				mode: MODE,
+				scen: SCEN,
+				firstFrameMs: +firstFrame.toFixed(1),
+				updateMs: +med(scriptJs).toFixed(2),
+				submitMs: +med(cpu).toFixed(2),
+				frameMs: +med(total).toFixed(2),
+				calls: MODE === 'webgl' ? info.render.calls : info.render.drawCalls
+			};
+		</script>
+	</body>
+</html>
