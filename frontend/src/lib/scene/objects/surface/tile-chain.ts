@@ -167,42 +167,36 @@ export interface TileChain {
  * Fragment code shared by every shader that reads a chain: where the fragment
  * is on the charts, and how much of one window shows there. Guarded, since
  * two chains can be on one material.
+ *
+ * It has no struct: Firefox on an Adreno GPU keeps the floats of a struct at
+ * half precision, and the place of a fragment near the camera then rounds to 0.
  */
 export const TILE_CHAIN_GLSL = /* glsl */ `
 #ifndef TILE_CHAIN
 #define TILE_CHAIN
 
-// Where a fragment is on the map and on the cap of its own hemisphere, as
-// fractions of the chart, and what a screen pixel spans there. The place on
-// the cap is from the chart's north-west corner. The place on the map is from
-// the point that the maker of the charts counts from.
-struct TileCharts {
-	vec2 mapAt;
-	vec2 mapDx;
-	vec2 mapDy;
-	vec2 capAt;
-	vec2 capDx;
-	vec2 capDy;
-	float side;
-};
+// A fragment on one chart is a mat3x2: its place, as a fraction of the
+// chart, then what a screen pixel adds to that along x and along y.
 
-// The cap of the hemisphere of dir, seen from above its pole. ddx and ddy are
-// what a screen pixel adds to dir.
-void tileCap( vec3 dir, vec3 ddx, vec3 ddy, out float side, out vec2 capAt, out vec2 capDx, out vec2 capDy ) {
+// The cap of the hemisphere of dir, seen from above its pole: the place is
+// from the chart's north-west corner. ddx and ddy are what a screen pixel
+// adds to dir.
+void tileCap( vec3 dir, vec3 ddx, vec3 ddy, out float side, out mat3x2 cap ) {
 	side = dir.y < 0.0 ? - 1.0 : 1.0;
 	float fold = 1.0 + side * dir.y;
 	vec2 plane = vec2( dir.x, side * dir.z );
 	float capScale = 0.5 / ( ${CAP_EDGE.toFixed(8)} * fold );
-	capAt = 0.5 + plane * capScale;
-	capDx = ( vec2( ddx.x, side * ddx.z ) - plane * ( side * ddx.y / fold ) ) * capScale;
-	capDy = ( vec2( ddy.x, side * ddy.z ) - plane * ( side * ddy.y / fold ) ) * capScale;
+	cap = mat3x2(
+		0.5 + plane * capScale,
+		( vec2( ddx.x, side * ddx.z ) - plane * ( side * ddx.y / fold ) ) * capScale,
+		( vec2( ddy.x, side * ddy.z ) - plane * ( side * ddy.y / fold ) ) * capScale
+	);
 }
 
-// The charts of the point at + off, the map counted from at. A position on
-// the sphere has seven digits, and a tile index of a patch takes them all;
-// the offset keeps its own.
-TileCharts tileChartsFrom( vec3 at, vec3 off ) {
-	TileCharts charts;
+// The point at + off on the map, counted from at, and on the cap of its own
+// hemisphere, which side gives. A position on the sphere has seven digits,
+// and a tile index of a patch takes them all; the offset keeps its own.
+void tileChartsFrom( vec3 at, vec3 off, out mat3x2 map, out mat3x2 cap, out float side ) {
 	vec3 pos = at + off;
 	vec3 ox = dFdx( off );
 	vec3 oy = dFdy( off );
@@ -215,19 +209,20 @@ TileCharts tileChartsFrom( vec3 at, vec3 off ) {
 	float turn = atan( at.z * off.x - at.x * off.z, at.x * pos.x + at.z * pos.z );
 	float out1 = ( 2.0 * ( at.x * off.x + at.z * off.z ) + off.x * off.x + off.z * off.z ) / ( flat1 + flat0 );
 	float drop = atan( out1 * at.y - off.y * flat0, pos.y * at.y + flat1 * flat0 );
-	charts.mapAt = vec2( turn / ( 2.0 * PI ), drop / PI );
 	float east = 1.0 / ( 2.0 * PI * flat2 );
 	float south = 1.0 / ( PI * dot( pos, pos ) );
-	charts.mapDx = vec2( ( pos.z * ox.x - pos.x * ox.z ) * east, ( pos.y * ( pos.x * ox.x + pos.z * ox.z ) / flat1 - flat1 * ox.y ) * south );
-	charts.mapDy = vec2( ( pos.z * oy.x - pos.x * oy.z ) * east, ( pos.y * ( pos.x * oy.x + pos.z * oy.z ) / flat1 - flat1 * oy.y ) * south );
+	map = mat3x2(
+		turn / ( 2.0 * PI ), drop / PI,
+		( pos.z * ox.x - pos.x * ox.z ) * east, ( pos.y * ( pos.x * ox.x + pos.z * ox.z ) / flat1 - flat1 * ox.y ) * south,
+		( pos.z * oy.x - pos.x * oy.z ) * east, ( pos.y * ( pos.x * oy.x + pos.z * oy.z ) / flat1 - flat1 * oy.y ) * south
+	);
 
 	// A cap goes no deeper than the pyramid, so the direction itself will do.
 	float range = length( pos );
 	vec3 dir = pos / range;
 	vec3 ddx = ( ox - dir * dot( dir, ox ) ) / range;
 	vec3 ddy = ( oy - dir * dot( dir, oy ) ) / range;
-	tileCap( dir, ddx, ddy, charts.side, charts.capAt, charts.capDx, charts.capDy );
-	return charts;
+	tileCap( dir, ddx, ddy, side, cap );
 }
 
 // Long and short half-axes of the footprint whose sides are fx and fy. The
@@ -251,12 +246,13 @@ void tileAxes( vec2 fx, vec2 fy, out vec2 major, out vec2 minor ) {
 // home is the point that the charts count the map from, in tiles from the
 // window's north-west corner. Gives the fragment's place in the window's
 // texture, in tiles, and the axes of its footprint, in the window's pixels.
-float tileWindowWeight( TileCharts charts, vec4 window, vec4 grid, vec2 home, vec2 tileFilter, out vec2 spot, out vec2 major, out vec2 minor ) {
+float tileWindowWeight( mat3x2 map, mat3x2 cap, float side, vec4 window, vec4 grid, vec2 home, vec2 tileFilter, out vec2 spot, out vec2 major, out vec2 minor ) {
 	bool onMap = window.x < 0.5;
 	// The other pole's cap.
-	if ( ! onMap && ( window.x < 1.5 ) != ( charts.side > 0.0 ) ) return 0.0;
-	vec2 dx = ( onMap ? charts.mapDx : charts.capDx ) * grid.xy * tileFilter.y;
-	vec2 dy = ( onMap ? charts.mapDy : charts.capDy ) * grid.xy * tileFilter.y;
+	if ( ! onMap && ( window.x < 1.5 ) != ( side > 0.0 ) ) return 0.0;
+	mat3x2 chart = onMap ? map : cap;
+	vec2 dx = chart[ 1 ] * grid.xy * tileFilter.y;
+	vec2 dy = chart[ 2 ] * grid.xy * tileFilter.y;
 
 	// Level this fragment asks of the window, from the short axis of its
 	// footprint in the window's pixels: the long axis is the anisotropic
@@ -269,7 +265,7 @@ float tileWindowWeight( TileCharts charts, vec4 window, vec4 grid, vec2 home, ve
 
 	float rows = ${WINDOW_TILES.toFixed(1)};
 	// Offset from the window's north-west corner, in tiles.
-	vec2 rel = onMap ? home + charts.mapAt * grid.xy : charts.capAt * grid.xy - grid.zw;
+	vec2 rel = onMap ? home + chart[ 0 ] * grid.xy : chart[ 0 ] * grid.xy - grid.zw;
 	if ( onMap ) {
 		// Half a pixel in from a pole of the map: past it the filter would
 		// read the far row. The map's longitude wraps.

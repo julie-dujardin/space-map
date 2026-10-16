@@ -51,7 +51,7 @@ const TILE_LIGHT = /* glsl */ `
 							float up = dot(sunward, selfDir);
 							vec3 along = sunward - selfDir * up;
 							float run = length(along);
-							if (run > 1e-4) tileLight = reliefTileShadow(selfDir, selfCharts, along / run, up / run, uSelfSunSize, selfFirst);
+							if (run > 1e-4) tileLight = reliefTileShadow(selfDir, selfMap, selfCap, selfSide, along / run, up / run, uSelfSunSize, selfFirst);
 							if (tileLight < 0.0) byTiles = 0.0;
 						}`;
 
@@ -237,10 +237,10 @@ export function attachSelfShadowToBody(
 				vec3 selfDir = normalize(vSelfDir);
 				// The part of the fragment that the tiles answer for.
 				float selfCovered = 0.0;
-				${tiles ? 'TileCharts selfCharts = tileChartsFrom(uReliefAnchor, vReliefOff);\n\t\t\t\tint selfFirst = -1;' : ''}
+				${tiles ? 'mat3x2 selfMap;\n\t\t\t\tmat3x2 selfCap;\n\t\t\t\tfloat selfSide;\n\t\t\t\ttileChartsFrom(uReliefAnchor, vReliefOff, selfMap, selfCap, selfSide);\n\t\t\t\tint selfFirst = -1;' : ''}
 				{
 					vec3 slope = vec3(0.0);
-					${tiles ? 'slope = reliefTileSlope(selfDir, selfCharts, selfCovered, selfFirst);' : ''}
+					${tiles ? 'slope = reliefTileSlope(selfDir, selfMap, selfCap, selfSide, selfCovered, selfFirst);' : ''}
 					if (selfCovered < 0.995 && uSelfScale > 0.0) slope += (1.0 - selfCovered) * selfMapSlope(selfDir);
 					float steep = length(slope);
 					if (steep > ${SLOPE_CLAMP.toFixed(3)}) slope *= ${SLOPE_CLAMP.toFixed(3)} / steep;

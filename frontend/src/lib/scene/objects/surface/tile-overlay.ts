@@ -55,7 +55,10 @@ uniform vec2 uTileFilter;
 ${TILE_CHAIN_GLSL}
 vec3 tileColour( vec3 below ) {
 	if ( uTileWindow[ 0 ].w < 0.5 ) return below;
-	TileCharts charts = tileChartsFrom( uTileAnchor, vTileOff );
+	mat3x2 map;
+	mat3x2 cap;
+	float side;
+	tileChartsFrom( uTileAnchor, vTileOff, map, cap, side );
 
 	float rows = ${WINDOW_TILES.toFixed(1)};
 	vec3 colour = vec3( 0.0 );
@@ -66,7 +69,7 @@ vec3 tileColour( vec3 below ) {
 		vec2 spot;
 		vec2 major;
 		vec2 minor;
-		float alpha = tileWindowWeight( charts, window, uTileGrid[ i ], uTileHome[ i ], uTileFilter, spot, major, minor );
+		float alpha = tileWindowWeight( map, cap, side, window, uTileGrid[ i ], uTileHome[ i ], uTileFilter, spot, major, minor );
 		if ( alpha <= 0.0 ) continue;
 		ivec3 slot = ivec3( int( mod( spot.x, rows ) ), int( mod( spot.y, rows ) ), int( window.y ) );
 		alpha *= texelFetch( uTileMask, slot, 0 ).r;

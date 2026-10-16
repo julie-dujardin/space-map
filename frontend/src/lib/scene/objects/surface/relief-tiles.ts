@@ -105,40 +105,35 @@ float reliefValue( vec4 texel ) {
 	return dot( texel, uReliefRead );
 }
 
-// How the coordinates of each chart change along the sphere at a direction:
-// the dot product with a step along the sphere is that step on the chart.
-struct ReliefRates {
-	vec3 mapX;
-	vec3 mapY;
-	vec3 capX;
-	vec3 capY;
-};
-
-ReliefRates reliefRates( vec3 dir, float side ) {
-	ReliefRates rates;
+// How the coordinates of each chart change along the sphere at a direction,
+// as a mat2x3 per chart: a step along the sphere times it is that step on the
+// chart, and it times a step on the chart is that step along the sphere.
+void reliefRates( vec3 dir, float side, out mat2x3 map, out mat2x3 cap ) {
 	float flat2 = max( dir.x * dir.x + dir.z * dir.z, 1e-12 );
-	rates.mapX = vec3( dir.z, 0.0, - dir.x ) / ( 2.0 * PI * flat2 );
-	rates.mapY = ( dir * dir.y - vec3( 0.0, 1.0, 0.0 ) ) / ( PI * sqrt( flat2 ) );
+	map = mat2x3(
+		vec3( dir.z, 0.0, - dir.x ) / ( 2.0 * PI * flat2 ),
+		( dir * dir.y - vec3( 0.0, 1.0, 0.0 ) ) / ( PI * sqrt( flat2 ) )
+	);
 	float fold = 1.0 + side * dir.y;
 	float capScale = 0.5 / ( ${CAP_EDGE.toFixed(8)} * fold );
 	vec2 plane = vec2( dir.x, side * dir.z ) * side / fold;
-	rates.capX = vec3( 1.0, - plane.x, 0.0 ) * capScale;
-	rates.capY = vec3( 0.0, - plane.y, side ) * capScale;
-	rates.capX -= dir * dot( rates.capX, dir );
-	rates.capY -= dir * dot( rates.capY, dir );
-	return rates;
+	vec3 capX = vec3( 1.0, - plane.x, 0.0 ) * capScale;
+	vec3 capY = vec3( 0.0, - plane.y, side ) * capScale;
+	cap = mat2x3( capX - dir * dot( capX, dir ), capY - dir * dot( capY, dir ) );
 }
 
 // Slope of the ground at a direction of the body's frame: a vector along the
 // unit sphere that points uphill, as long as the rise over the run. Also
 // gives the part of the fragment that the tiles answer for, and the finest
 // window that does, or -1.
-vec3 reliefTileSlope( vec3 dir, TileCharts charts, out float covered, out int first ) {
+vec3 reliefTileSlope( vec3 dir, mat3x2 map, mat3x2 cap, float side, out float covered, out int first ) {
 	covered = 0.0;
 	first = - 1;
 	vec3 slope = vec3( 0.0 );
 	if ( uReliefWindow[ 0 ].w < 0.5 ) return slope;
-	ReliefRates rates = reliefRates( dir, charts.side );
+	mat2x3 mapRates;
+	mat2x3 capRates;
+	reliefRates( dir, side, mapRates, capRates );
 
 	float rows = ${WINDOW_TILES.toFixed(1)};
 	for ( int i = 0; i < ${MAX_DRAWN}; i ++ ) {
@@ -148,7 +143,7 @@ vec3 reliefTileSlope( vec3 dir, TileCharts charts, out float covered, out int fi
 		vec2 spot;
 		vec2 major;
 		vec2 minor;
-		float alpha = tileWindowWeight( charts, window, grid, uReliefHome[ i ], uReliefFilter, spot, major, minor );
+		float alpha = tileWindowWeight( map, cap, side, window, grid, uReliefHome[ i ], uReliefFilter, spot, major, minor );
 		if ( alpha <= 0.0 ) continue;
 		// Filtered, the mask falls towards a missing tile. The pixels beside
 		// one are left out: their slope would read its blank slot.
@@ -167,8 +162,7 @@ vec3 reliefTileSlope( vec3 dir, TileCharts charts, out float covered, out int fi
 			reliefValue( textureGrad( uReliefMap, st + east, gx, gy ) ) - reliefValue( textureGrad( uReliefMap, st - east, gx, gy ) ),
 			reliefValue( textureGrad( uReliefMap, st + south, gx, gy ) ) - reliefValue( textureGrad( uReliefMap, st - south, gx, gy ) )
 		) * 0.5 * grid.xy * uReliefFilter.y;
-		bool onMap = window.x < 0.5;
-		vec3 uphill = rise.x * ( onMap ? rates.mapX : rates.capX ) + rise.y * ( onMap ? rates.mapY : rates.capY );
+		vec3 uphill = ( window.x < 0.5 ? mapRates : capRates ) * rise;
 		slope += ( 1.0 - covered ) * alpha * uphill;
 		covered += ( 1.0 - covered ) * alpha;
 		if ( covered > 0.995 ) break;
@@ -186,25 +180,14 @@ function shadowGlsl(steps: number): string {
 	return /* glsl */ `
 // One window as a shadow ray reads it. The ray is a line on the window's
 // chart, so where it is inside the window is worked out once, not at each
-// sample.
-struct ReliefSight {
-	// The fragment in the window's texture, with its layer, and how far the
-	// ray goes there in a radian.
-	vec3 from;
-	vec2 rate;
-	// The part of the ray inside the window, in radians along it.
-	float enters;
-	float leaves;
-	// The longest step that the window's pixels still hold, and the step from
-	// which the ray reads the next window.
-	float widest;
-	float hands;
-	// How far from the fragment the next window can be read at all.
-	float beyond;
-	int loaded;
-};
-
-ReliefSight reliefSight( int i, TileCharts charts, vec2 mapStep, vec2 capStep ) {
+// sample. 'sight' holds what a sample reads, as a mat2x4 and not a struct
+// (see the chain code): the fragment's place in the window's texture and how
+// far the ray goes there in a radian; then the part of the ray inside the
+// window, in radians along it, the window's layer and its tiles that are in,
+// a bit each. 'widest' is the longest step that the window's pixels still
+// hold, 'hands' the step from which the ray reads the next window, and
+// 'beyond' how far from the fragment the next window can be read at all.
+void reliefSight( int i, mat3x2 map, mat3x2 cap, float side, vec2 mapStep, vec2 capStep, out mat2x4 sight, out float widest, out float hands, out float beyond ) {
 	vec4 window = uReliefWindow[ i ];
 	vec4 grid = uReliefGrid[ i ];
 	bool onMap = window.x < 0.5;
@@ -212,7 +195,7 @@ ReliefSight reliefSight( int i, TileCharts charts, vec2 mapStep, vec2 capStep ) 
 	// In tiles from the window's north-west corner. The map is counted from
 	// the point under the camera, so the fragment is on the side of the globe
 	// nearest the window.
-	vec2 rel = onMap ? uReliefHome[ i ] + charts.mapAt * grid.xy : charts.capAt * grid.xy - grid.zw;
+	vec2 rel = onMap ? uReliefHome[ i ] + map[ 0 ] * grid.xy : cap[ 0 ] * grid.xy - grid.zw;
 	vec2 rate = ( onMap ? mapStep : capStep ) * grid.xy;
 
 	// Half a pixel in from the window's sides: past it the filter reads the
@@ -224,51 +207,50 @@ ReliefSight reliefSight( int i, TileCharts charts, vec2 mapStep, vec2 capStep ) 
 	vec2 near = min( a, b );
 	vec2 far = max( a, b );
 
-	ReliefSight sight;
 	// The texture repeats every window. The tile index of a patch alone takes
 	// all the digits of a float: only its place in the window is added.
 	vec2 slot = rel + mod( grid.zw, rows );
-	sight.from = vec3( slot.x / rows, - slot.y / rows, window.y );
-	sight.rate = vec2( rate.x, - rate.y ) / rows;
-	sight.enters = max( near.x, near.y );
-	sight.leaves = min( far.x, far.y );
+	float leaves = min( far.x, far.y );
 	// The other pole's cap holds none of the ray.
-	if ( ! onMap && ( window.x < 1.5 ) != ( charts.side > 0.0 ) ) sight.leaves = - 1.0;
-	sight.widest = ${STEP_PIXELS.toFixed(2)} * PI / ( uReliefFilter.y * exp2( window.z ) );
+	if ( ! onMap && ( window.x < 1.5 ) != ( side > 0.0 ) ) leaves = - 1.0;
+	sight = mat2x4(
+		slot.x / rows, - slot.y / rows, rate.x / rows, - rate.y / rows,
+		max( near.x, near.y ), leaves, window.y, float( uReliefLoaded[ i ] )
+	);
+	widest = ${STEP_PIXELS.toFixed(2)} * PI / ( uReliefFilter.y * exp2( window.z ) );
 	// Near a patch the next window can be some levels coarser. The ray then
 	// stays here until its step is half of what that window holds: too wide
 	// for these pixels, but they are the same ground as the fragment's. The
 	// pyramid around a patch is not: it has none of the hills that only the
 	// patch resolves, and close to the fragment it would stand in the ray.
-	sight.hands = sight.widest;
-	sight.beyond = 0.0;
+	hands = widest;
+	beyond = 0.0;
 	if ( i + 1 < ${MAX_DRAWN} ) {
 		float next = PI / ( uReliefFilter.y * exp2( uReliefWindow[ i + 1 ].z ) );
-		sight.hands = max( sight.hands, 0.5 * ${STEP_PIXELS.toFixed(2)} * next );
+		hands = max( hands, 0.5 * ${STEP_PIXELS.toFixed(2)} * next );
 		// Within half a pixel of a window, its height is that of the fragment's
 		// own pixel, and the fragment stands above or below that by all the
 		// relief that the pixel averages away.
-		sight.beyond = 0.5 * next;
+		beyond = 0.5 * next;
 	}
-	sight.loaded = uReliefLoaded[ i ];
-	return sight;
 }
 
 // Height of the ground 't' radians along the ray, as a part of the pyramid's
 // range. Negative where the window does not hold that ground.
-float reliefSightValue( ReliefSight sight, float t ) {
-	if ( t < sight.enters || t > sight.leaves ) return - 1.0;
-	vec2 st = sight.from.xy + t * sight.rate;
+float reliefSightValue( mat2x4 sight, float t ) {
+	if ( t < sight[ 1 ].x || t > sight[ 1 ].y ) return - 1.0;
+	vec2 st = sight[ 0 ].xy + t * sight[ 0 ].zw;
 	// Both tiles that the filter can read must be in.
-	if ( sight.loaded != ${(1 << (WINDOW_TILES * WINDOW_TILES)) - 1} ) {
+	if ( sight[ 1 ].w != ${((1 << (WINDOW_TILES * WINDOW_TILES)) - 1).toFixed(1)} ) {
+		int loaded = int( sight[ 1 ].w );
 		vec2 tile = vec2( st.x, - st.y ) * ${WINDOW_TILES.toFixed(1)};
 		float inset = 0.5 / uReliefFilter.y;
 		ivec2 a = ivec2( floor( tile - inset ) ) & ${WINDOW_TILES - 1};
 		ivec2 b = ivec2( floor( tile + inset ) ) & ${WINDOW_TILES - 1};
-		int both = ( sight.loaded >> ( a.x + ${WINDOW_TILES} * a.y ) ) & ( sight.loaded >> ( b.x + ${WINDOW_TILES} * b.y ) );
+		int both = ( loaded >> ( a.x + ${WINDOW_TILES} * a.y ) ) & ( loaded >> ( b.x + ${WINDOW_TILES} * b.y ) );
 		if ( ( both & 1 ) == 0 ) return - 1.0;
 	}
-	return reliefValue( textureLod( uReliefMap, vec3( st, sight.from.z ), 0.0 ) );
+	return reliefValue( textureLod( uReliefMap, vec3( st, sight[ 1 ].z ), 0.0 ) );
 }
 
 // Part of the Sun's disc that the ground leaves in sight of the fragment at
@@ -281,23 +263,28 @@ float reliefSightValue( ReliefSight sight, float t ) {
 // read from the window whose pixels are about as wide as the step. A shadow
 // is then sharp beside what casts it, at a cost that does not grow with its
 // length.
-float reliefTileShadow( vec3 dir, TileCharts charts, vec3 toSun, float tanElev, float sunSize, int first ) {
-	ReliefRates rates = reliefRates( dir, charts.side );
-	vec2 mapStep = vec2( dot( rates.mapX, toSun ), dot( rates.mapY, toSun ) );
-	vec2 capStep = vec2( dot( rates.capX, toSun ), dot( rates.capY, toSun ) );
+float reliefTileShadow( vec3 dir, mat3x2 map, mat3x2 cap, float side, vec3 toSun, float tanElev, float sunSize, int first ) {
+	mat2x3 mapRates;
+	mat2x3 capRates;
+	reliefRates( dir, side, mapRates, capRates );
+	vec2 mapStep = toSun * mapRates;
+	vec2 capStep = toSun * capRates;
 
 	int drawn = 0;
 	for ( int i = 0; i < ${MAX_DRAWN}; i ++ ) {
 		if ( uReliefWindow[ i ].w > 0.5 ) drawn = i + 1;
 	}
 	int w = first;
-	ReliefSight sight;
+	mat2x4 sight;
+	float widest;
+	float hands;
+	float beyond;
 	float own = - 1.0;
 	for ( int i = 0; i < ${MAX_DRAWN}; i ++ ) {
 		if ( i < first ) continue;
 		if ( i >= drawn ) break;
 		w = i;
-		sight = reliefSight( i, charts, mapStep, capStep );
+		reliefSight( i, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
 		own = reliefSightValue( sight, 0.0 );
 		if ( own >= 0.0 ) break;
 	}
@@ -314,7 +301,7 @@ float reliefTileShadow( vec3 dir, TileCharts charts, vec3 toSun, float tanElev, 
 	// The ratio that takes steps from one pixel to the reach: 'rate' is its
 	// logarithm times the count, and solves rate / ( exp( rate ) - 1 ) = part.
 	float count = ${steps.toFixed(1)};
-	float pixel = sight.widest / ${STEP_PIXELS.toFixed(2)};
+	float pixel = widest / ${STEP_PIXELS.toFixed(2)};
 	float part = count * pixel / reach;
 	float rate = 0.0;
 	if ( part < 1.0 ) {
@@ -338,16 +325,16 @@ float reliefTileShadow( vec3 dir, TileCharts charts, vec3 toSun, float tanElev, 
 	for ( int i = 1; i <= ${steps}; i ++ ) {
 		float before = t;
 		t = t * ratio + head;
-		if ( w + 1 < drawn && t - before > sight.hands ) {
+		if ( w + 1 < drawn && t - before > hands ) {
 			w ++;
-			sight = reliefSight( w, charts, mapStep, capStep );
+			reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
 		}
 		float value = reliefSightValue( sight, t );
 		// The ray left this window, or a tile of it is missing.
 		if ( value < 0.0 && w + 1 < drawn ) {
-			if ( t < sight.beyond ) continue;
+			if ( t < beyond ) continue;
 			w ++;
-			sight = reliefSight( w, charts, mapStep, capStep );
+			reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
 			value = reliefSightValue( sight, t );
 		}
 		if ( value < 0.0 ) continue;
@@ -369,19 +356,19 @@ float reliefTileShadow( vec3 dir, TileCharts charts, vec3 toSun, float tanElev, 
 	float crest = ${(STEEPEST * 0.5).toFixed(2)} * around / max( worst, 1e-9 ) * perDisc;
 	if ( hidden < 1.0 && hidden + crest > - 1.0 ) {
 		w = worstWindow;
-		sight = reliefSight( w, charts, mapStep, capStep );
+		reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
 		for ( int k = 0; k < ${REFINE_STEPS}; k ++ ) {
 			around *= 0.5;
-			if ( w > start && around < sight.widest ) {
+			if ( w > start && around < widest ) {
 				w --;
-				sight = reliefSight( w, charts, mapStep, capStep );
+				reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
 			}
 			float centre = worst;
 			for ( int e = 0; e < 2; e ++ ) {
 				float at = centre + ( e == 0 ? - around : around );
 				// Nearer than a pixel, the window holds no crest: only the slope
 				// of the fragment's own ground, which is the normal's to light.
-				if ( at < sight.widest * ${(1 / STEP_PIXELS).toFixed(4)} ) continue;
+				if ( at < widest * ${(1 / STEP_PIXELS).toFixed(4)} ) continue;
 				float value = reliefSightValue( sight, at );
 				if ( value < 0.0 ) continue;
 				float stands = ( ( value - own ) * uReliefScale / at - tanElev - 0.5 * at ) * perDisc;
