@@ -22,6 +22,7 @@ from space_map_data.ingest.providers.textures.image_io import (
     ChunkedTiff,
     HeightRaster,
 )
+from space_map_data.ingest.providers.textures.processor import _height_fields
 
 from .test_texture_tiles import _write_pds_image
 
@@ -628,6 +629,58 @@ class TestHeightRegion:
         )
         raster = tiles.open_height_region_layer(tmp_path / "site.IMG")
         assert raster.read(199, 200, 540, 541)[0, 0] == pytest.approx(1.5)
+
+
+class TestSmoothedFill:
+    """A terrain model that fills its gaps with blocks of one height reads as
+    a smooth surface there, and as it is elsewhere."""
+
+    BLOCK = 4
+
+    @staticmethod
+    def _ground(y: np.ndarray, x: np.ndarray) -> np.ndarray:
+        return 500.0 + 40.0 * np.sin(x / 10.0) + 30.0 * np.cos(y / 12.0)
+
+    def _site(self) -> tuple[np.ndarray, np.ndarray]:
+        """Metres of the ground, and of a model of it. The model is measured
+        in the west half and holds blocks of one height in the east half."""
+        y, x = np.mgrid[0:64, 0:64].astype(float)
+        ground = self._ground(y, x)
+        centre = (np.floor(np.mgrid[0:64, 0:64] / self.BLOCK) + 0.5) * self.BLOCK - 0.5
+        model = np.where(x < 32, ground, self._ground(*centre))
+        return ground, model.astype("f4")
+
+    def test_fill_reads_as_the_surface_through_its_blocks(self, tmp_path):
+        ground, model = self._site()
+        _write_geotiff(tmp_path / "site.tif", model, compression="zlib", tile=(16, 16))
+        raster = tiles.open_height_region_layer(
+            tmp_path / "site.tif", fill_block=self.BLOCK
+        )
+        metres = raster.read(199, 263, 540, 604) * 1000.0
+        assert np.abs(metres[:, :32] - model[:, :32]).max() < 1e-3
+        # The filter reads two blocks past each pixel.
+        inner = (slice(8, 56), slice(36, 56))
+        assert np.abs(model[inner] - ground[inner]).max() > 3.0
+        assert np.abs(metres[inner] - ground[inner]).max() < 0.3
+
+    def test_gap_in_the_fill_stays_a_gap(self, tmp_path):
+        _, model = self._site()
+        model[8:24, 40:56] = -9999.0
+        _write_geotiff(tmp_path / "site.tif", model)
+        raster = tiles.open_height_region_layer(
+            tmp_path / "site.tif", nodata=-9999.0, fill_block=self.BLOCK
+        )
+        km = raster.read(199, 263, 540, 604)
+        # A read repairs 4 px in from the edge of a gap.
+        assert np.isnan(km[12:20, 44:52]).all()
+        assert np.isfinite(km[24:32, 40:56]).all()
+
+    def test_only_a_file_with_fill_states_it(self):
+        """The fields are part of a patch's version. Files without fill keep theirs."""
+        plain = {"unit": "m", "scale": None, "offset": None, "nodata": None}
+        assert _height_fields({}, {"file": "site.tif"}) == plain
+        filled = _height_fields({}, {"file": "site.tif", "fill_block": 20})
+        assert filled == {**plain, "fill_block": 20}
 
 
 class TestHeightPatchBuilder:

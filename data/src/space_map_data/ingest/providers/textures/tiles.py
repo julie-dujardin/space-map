@@ -295,7 +295,7 @@ class Region:
 
     def __init__(
         self,
-        pixels: np.ndarray | ChunkedTiff,
+        pixels: "np.ndarray | ChunkedTiff | SmoothedFill",
         west: float,
         east: float,
         north: float,
@@ -355,6 +355,109 @@ def _bicubic(
 ) -> np.ndarray:
     resized = Image.fromarray(band).resize(size, Image.Resampling.BICUBIC, box=box)
     return np.asarray(resized)
+
+
+def _fill_pixels(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    """The pixels that hold the value of a neighbour in their row and of a
+    neighbour in their column. A measured terrain model almost never does."""
+    out = []
+    for axis in (0, 1):
+        ahead = [slice(None)] * 2
+        behind = [slice(None)] * 2
+        ahead[axis], behind[axis] = slice(1, None), slice(None, -1)
+        a, b = tuple(ahead), tuple(behind)
+        same = (values[a] == values[b]) & valid[a] & valid[b]
+        either = np.zeros(values.shape, dtype=bool)
+        either[a] |= same
+        either[b] |= same
+        out.append(either)
+    return out[0] & out[1]
+
+
+class SmoothedFill:
+    """The samples of a terrain model that fills its gaps with a coarser
+    model, enlarged to blocks of ``block`` pixels that hold one height. Each
+    block edge is a step in the ground. A pixel of the fill reads as the
+    smooth surface through the means of the blocks, and the other pixels read
+    as they are. ``nodata`` is the raw value of the file for no data.
+    """
+
+    def __init__(
+        self, samples: np.ndarray | ChunkedTiff, block: int, nodata: float | None
+    ) -> None:
+        self._samples = samples
+        self._block = block
+        self._nodata = nodata
+        height, width = samples.shape[:2]
+        self.shape = (height, width)
+        self.dtype = np.dtype(np.float32)
+        rows, columns = -(-height // block), -(-width // block)
+        total = np.zeros((rows, columns))
+        count = np.zeros((rows, columns))
+        filled = seen = 0
+        step = max(_WINDOW_PIXELS // width // block, 1) * block
+        for top in range(0, height, step):
+            values, valid = self._values(top, min(top + step, height), 0, width)
+            filled += int(_fill_pixels(values, valid).sum())
+            seen += int(valid.sum())
+            pad = ((0, -values.shape[0] % block), (0, columns * block - width))
+            values = np.pad(np.where(valid, values, 0.0), pad)
+            valid = np.pad(valid, pad)
+            shape = (-1, block, columns, block)
+            band = slice(top // block, (top + values.shape[0]) // block)
+            total[band] = values.reshape(shape).sum(axis=(1, 3), dtype=np.float64)
+            count[band] = valid.reshape(shape).sum(axis=(1, 3))
+        # A block less than half in the model is no sample of it.
+        means = np.full((rows, columns), np.nan, dtype=np.float32)
+        np.divide(total, count, out=means, where=count >= block * block / 2)
+        gaps = np.isnan(means)
+        if gaps.all():
+            raise ValueError("no block of the terrain model holds data")
+        # The filter reads past the model, so each gap takes the nearest block.
+        nearest = ndimage.distance_transform_edt(
+            gaps, return_distances=False, return_indices=True
+        )
+        self._means = means[tuple(nearest)]
+        log.info(
+            "terrain model fill in blocks of %d px: %.1f%% of its samples",
+            block,
+            100.0 * filled / max(seen, 1),
+        )
+
+    def _values(
+        self, y0: int, y1: int, x0: int, x1: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Raw samples of a window as floats, and where they hold data."""
+        values = np.array(self._samples[y0:y1, x0:x1], dtype=np.float32)
+        valid = np.isfinite(values) & (values > NODATA_THRESHOLD)
+        if self._nodata is not None:
+            valid &= values != np.float32(self._nodata)
+        return values, valid
+
+    def __getitem__(self, key: tuple[slice, slice]) -> np.ndarray:
+        height, width = self.shape
+        y0, y1, _ = key[0].indices(height)
+        x0, x1, _ = key[1].indices(width)
+        # The test for fill reads the neighbours of each pixel.
+        top, left = max(y0 - 1, 0), max(x0 - 1, 0)
+        values, valid = self._values(top, min(y1 + 1, height), left, min(x1 + 1, width))
+        inner = (slice(y0 - top, y1 - top), slice(x0 - left, x1 - left))
+        fill = _fill_pixels(values, valid)[inner]
+        out = values[inner]
+        if fill.any():
+            out[fill] = self._smooth(y0, y1, x0, x1)[fill]
+        return out
+
+    def _smooth(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        """The surface through the means of the blocks, over a window of pixels.
+        A block's mean stands at its centre."""
+        block = self._block
+        rows, columns = self._means.shape
+        # The filter reads two blocks past the window.
+        b0, b1 = max(y0 // block - 2, 0), min(-(-y1 // block) + 2, rows)
+        a0, a1 = max(x0 // block - 2, 0), min(-(-x1 // block) + 2, columns)
+        box = (x0 / block - a0, y0 / block - b0, x1 / block - a0, y1 / block - b0)
+        return _bicubic(self._means[b0:b1, a0:a1], (x1 - x0, y1 - y0), box)
 
 
 @dataclass
@@ -970,10 +1073,12 @@ def open_height_region_layer(
     scale: float | None = None,
     offset: float | None = None,
     nodata: float | None = None,
+    fill_block: int | None = None,
 ) -> Layer:
     """A height raster of a part of the globe: an equirectangular GeoTIFF or
     PDS3 image. ``scale``, ``offset`` and ``nodata`` default to what the file
-    states."""
+    states. ``fill_block`` is the side of the blocks of one height with which
+    the raster fills its gaps from a coarser model: see ``SmoothedFill``."""
     if path.suffix.lower() == ".img":
         raster, bounds = open_pds_height_raster(path, unit=unit), _pds_bounds(path)
     else:
@@ -994,7 +1099,10 @@ def open_height_region_layer(
         raise ValueError(f"{path.name}: integer heights with no value for no data")
     if isinstance(raster.samples, ChunkedTiff):
         raster.samples.blank = blank
-    region = Region(raster.samples, *bounds, blank=blank)
+    samples: np.ndarray | ChunkedTiff | SmoothedFill = raster.samples
+    if fill_block:
+        samples = SmoothedFill(samples, fill_block, raster.nodata)
+    region = Region(samples, *bounds, blank=blank)
     return Layer(region, Placement(), to_values=_height_values(raster))
 
 

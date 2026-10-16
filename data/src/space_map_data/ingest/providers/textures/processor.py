@@ -52,14 +52,19 @@ log = logging.getLogger(__name__)
 
 def _height_fields(entry: dict, layer: dict) -> dict:
     """How the samples of a height raster are read: the file's own statement,
-    unless the patch's file or the entry says otherwise."""
-    return {
+    unless the patch's file or the entry says otherwise. A file that fills
+    its gaps from a coarser model also gives the side of its blocks."""
+    fields = {
         "unit": layer.get("height_unit") or entry.get("height_unit") or "m",
         **{
             key: layer.get(f"height_{key}", entry.get(f"height_{key}"))
             for key in ("scale", "offset", "nodata")
         },
     }
+    # The fields are part of the version of a patch. Other files keep theirs.
+    if layer.get("fill_block"):
+        fields["fill_block"] = layer["fill_block"]
+    return fields
 
 
 def _described_files(names: list[str]) -> dict:

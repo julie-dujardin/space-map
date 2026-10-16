@@ -45,3 +45,6 @@ bodies:
     - file: MSL_Gale_DEM_Mosaic_1m_v3.tif
       dir: sites
       download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/MSL/MSL_Gale_DEM_Mosaic_1m_v3.tif
+      # Around the HiRISE models, the file holds a 20 m model as blocks of
+      # one height.
+      fill_block: 20
