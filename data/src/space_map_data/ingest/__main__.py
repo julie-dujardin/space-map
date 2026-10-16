@@ -22,7 +22,7 @@ from space_map_data.ingest.providers.models import ModelProcessor
 from space_map_data.ingest.providers.rings import RingProcessor
 from space_map_data.ingest.providers.textures import TextureProcessor
 
-ALL_TARGETS = [
+TARGETS = [
     "objects",
     "features",
     "wikidata",
@@ -33,6 +33,9 @@ ALL_TARGETS = [
     "rings",
     "models",
 ]
+# A tile build runs for days and replaces the public pyramids, so "all" leaves
+# it out and it runs only when named.
+NAMED_ONLY = {"tiles"}
 
 
 def cli():
@@ -40,10 +43,11 @@ def cli():
     parser.add_argument(
         "--targets",
         nargs="+",
-        choices=[*ALL_TARGETS, "all"],
+        choices=[*TARGETS, "all"],
         default=["all"],
         metavar="TARGET",
-        help=f"Targets to ingest: {', '.join(ALL_TARGETS)}, all (default: all)",
+        help=f"Targets to ingest: {', '.join(TARGETS)}, all (default: all; "
+        "all leaves out tiles)",
     )
     parser.add_argument(
         "--force",
@@ -57,7 +61,11 @@ def cli():
 
     sync_all()
     full_rebuild = "all" in args.targets
-    selected = ALL_TARGETS if full_rebuild else args.targets
+    selected = [
+        t
+        for t in TARGETS
+        if t in args.targets or (full_rebuild and t not in NAMED_ONLY)
+    ]
     start_time = time.perf_counter()
 
     if full_rebuild:
