@@ -491,30 +491,18 @@ bodies:
   type: cylindrical
   # East to the right, 0deg at centre; verified against Swift and Voltaire.
 
-- body: naif-2000001
-  body_name: ceres
-  source: https://stevealbers.net/albers/sos/sos.html#CERES
-  organisation: Steve Albers
-  license: Personal, non-commercial use only
-  distribution: site-only
-  attribution: "Processed by Steve Albers by reprojecting Dawn spacecraft imagery (NASA/JPL-Caltech/UCLA/MPS/DLR/IDA) onto a lower-resolution base map."
-  preference: 10
-  file: ceres_rgb_cyl.png
-  type: cylindrical
-  lon_at_left_deg: 0  # 180° east shift (Albers Ceres convention)
+# Albers' map of Ceres is not used: it is grey only, and it is up to 20 km
+# off the Dawn frame of the DTM.
 - body: naif-2000001
   body_name: ceres
   source: https://astrogeology.usgs.gov/search/map/ceres_dawn_fc_global_mosaic_140m#open
   organisation: USGS
   license: Public domain
-  preference: 5
-  variant: usgs
   file: Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif
   type: cylindrical
-  lon_at_left_deg: 0  # 180° vs the Albers map it replaces (user-verified)
-# The USGS map, with detail from the mosaic of Dawn's lowest orbit at 35 m.
-# Albers' map sits about 1° from that mosaic, so it cannot take the detail:
-# every crater would show twice.
+  lon_at_left_deg: 0
+# The pyramid of the USGS map takes detail from the mosaic of Dawn's lowest
+# orbit at 35 m.
 - body: naif-2000001
   body_name: ceres
   source: https://sbnarchive.psi.edu/pds3/dawn/fc/DWNCLCFC2_2/
