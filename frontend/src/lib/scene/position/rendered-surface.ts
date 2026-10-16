@@ -160,7 +160,7 @@ export function triangleNormalKm(
  *  maps are `DataTexture`s, rows already CPU-side (v=0=south); the initial low
  *  tier is an image texture, read back once per body (~2 MB). */
 interface HeightField {
-	data: Uint8Array | Uint8ClampedArray;
+	data: Uint8Array | Uint8ClampedArray | Float32Array;
 	width: number;
 	height: number;
 	/** Row 0 = south (DataTexture) vs north (canvas readback). */
@@ -231,8 +231,9 @@ function heightFieldFor(bo: BodyObjects, bodyId: string): HeightField | null {
 		| { data?: unknown; width?: number; height?: number }
 		| undefined;
 	if (!image) return null;
-	if (image.data instanceof Uint8Array && image.width && image.height) {
-		return { data: image.data, width: image.width, height: image.height, bottomUp: true };
+	const data = image.data;
+	if ((data instanceof Uint8Array || data instanceof Float32Array) && image.width && image.height) {
+		return { data, width: image.width, height: image.height, bottomUp: true };
 	}
 	const cached = lowFields.get(bodyId);
 	if (cached && cached !== 'failed') {

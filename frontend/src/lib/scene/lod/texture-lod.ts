@@ -8,7 +8,11 @@ import {
 	highestAvailableTier
 } from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
-import { swapDisplacementTier } from '$lib/scene/objects/surface/displacement';
+import {
+	PYRAMID_TIER,
+	pyramidHeightsServe,
+	swapDisplacementTier
+} from '$lib/scene/objects/surface/displacement';
 import { reliefTilesServe, updateReliefTiles } from '$lib/scene/objects/surface/relief-tiles';
 import { tilesServe, updateTileOverlay } from '$lib/scene/objects/surface/tile-overlay';
 import { sceneSettings } from '$lib/scene/settings.svelte';
@@ -103,11 +107,15 @@ export function updateTextureLOD(
 		);
 		updateReliefTiles(bo, camera, renderer, devicePx, invalidate);
 
-		// Tier rank capped by maxTextureSize: DataTextures aren't resized by three,
-		// so a 16k upload on an 8k-limit GPU would error out. Where tiles carry
-		// the relief up close, the largest tier is 134 MB of heights for nothing.
 		const dispTiers = bo.displacementMeta?.tiers;
-		if (bo.displacementMap && dispTiers?.length && !bo.displacementLoading) {
+		if (bo.displacementMap && !bo.displacementLoading && pyramidHeightsServe(bo, renderer)) {
+			// As wide as the low tier at every distance: closer in, the tiles
+			// themselves take over the relief.
+			if (bo.displacementTier !== PYRAMID_TIER) void swapDisplacementTier(bo, PYRAMID_TIER);
+		} else if (bo.displacementMap && dispTiers?.length && !bo.displacementLoading) {
+			// Tier rank capped by maxTextureSize: DataTextures aren't resized by three,
+			// so a 16k upload on an 8k-limit GPU would error out. Where tiles carry
+			// the relief up close, the largest tier is 134 MB of heights for nothing.
 			const maxTex = renderer.capabilities.maxTextureSize;
 			const capRank = maxTex >= 16383 && !reliefTilesServe(bo) ? 2 : maxTex >= 8192 ? 1 : 0;
 			const current = bo.displacementTier ?? 'low';
