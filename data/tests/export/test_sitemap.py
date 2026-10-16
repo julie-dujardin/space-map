@@ -204,7 +204,10 @@ class TestNotablePaths:
         )
 
         paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 1, "global": 1})
-        assert sorted(paths) == ["/b/399/Earth", "/s/20000001/1%20Ceres"]
+        assert paths == {
+            "naif-399": "/b/399/Earth",
+            "spkid-20000001": "/s/20000001/1%20Ceres",
+        }
 
     def test_skips_a_notable_object_the_export_does_not_have(
         self, session: Session, tmp_path: Path
@@ -216,7 +219,7 @@ class TestNotablePaths:
         _write_bundles(tmp_path / "objects" / "__global__", 1, {"spkid-1000005": {}})
 
         paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 1})
-        assert paths == ["/s/1000005"]
+        assert paths == {"spkid-1000005": "/s/1000005"}
 
     def test_never_lists_a_barycenter(self, session: Session, tmp_path: Path):
         """Its page is named by an app label, which no bundle carries."""
@@ -230,7 +233,7 @@ class TestNotablePaths:
         )
         session.flush()
 
-        assert _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 0}) == []
+        assert _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 0}) == {}
 
 
 class TestFeaturePaths:
@@ -241,7 +244,7 @@ class TestFeaturePaths:
         session.flush()
 
         paths = _feature_paths(session, _entities({"Q7": SITELINKS_THRESHOLD}))
-        assert paths == ["/b/301/f/7/Tycho"]
+        assert [path for _, path in paths] == ["/b/301/f/7/Tycho"]
 
     def test_drops_features_under_the_sitelink_floor(self, session: Session):
         _feature(session, 1, name="Famous")
@@ -252,7 +255,7 @@ class TestFeaturePaths:
             session,
             _entities({"Q1": SITELINKS_THRESHOLD, "Q2": SITELINKS_THRESHOLD - 1}),
         )
-        assert paths == ["/b/301/f/1/Famous"]
+        assert [path for _, path in paths] == ["/b/301/f/1/Famous"]
 
     def test_drops_features_with_no_wikidata_entity(self, session: Session):
         _feature(session, 1, name="Ghost")
@@ -266,7 +269,7 @@ class TestFeaturePaths:
         session.flush()
 
         paths = _feature_paths(session, _entities({"Q3": SITELINKS_THRESHOLD}))
-        assert paths == ["/b/301/f/3/Plante"]
+        assert [path for _, path in paths] == ["/b/301/f/3/Plante"]
 
     def test_skips_features_with_no_host_body(self, session: Session):
         _feature(session, 4, object_id=None)
@@ -354,11 +357,11 @@ class TestGroupPaths:
             orjson.dumps({"const-oneweb": {}, "cat-planets": {}, "const-bare": {}})
         )
 
-        assert _group_paths(tmp_path, 1) == [
-            "/g/const-oneweb/OneWeb",
-            "/g/cat-planets/Planets",
-            "/g/const-bare",
-        ]
+        assert _group_paths(tmp_path, 1) == {
+            "const-oneweb": "/g/const-oneweb/OneWeb",
+            "cat-planets": "/g/cat-planets/Planets",
+            "const-bare": "/g/const-bare",
+        }
 
     def test_lists_no_group_without_the_index(self, tmp_path: Path):
-        assert _group_paths(tmp_path, 1) == []
+        assert _group_paths(tmp_path, 1) == {}

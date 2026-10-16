@@ -21,6 +21,7 @@ v1/
   status.json                                     (not gzipped) per-source download dates for the /status page
   about-data.json                                 (not gzipped) resolution and size of each map, ring bundle and 3D model, for the /about/data page
   seo/sitemap.xml                                 (not gzipped) notable-object + group URLs for search engines
+  seo/pages.json.gz                               SSR meta inputs of each sitemap page, for the site's build
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
     {zone}/[{zoom}/]{part}.bin.gz                 static parted        — small_bodies/{class} (zoomed), small_body_moons (zoomed), Earth-orbit spacecraft
@@ -93,5 +94,5 @@ v1/
 | [credits.md](credits.md) | `credits.json` aggregated attribution manifest. |
 | [status.md](status.md) | `status.json` per-source download-freshness report. |
 | [about-data.md](about-data.md) | `about-data.json` resolution and size of each map, each ring bundle and each 3D model. |
-| [sitemap.md](sitemap.md) | `seo/sitemap.xml` notable-object + group URL set and its selection rule. |
+| [sitemap.md](sitemap.md) | `seo/sitemap.xml` notable-object + group URL set and its selection rule; `seo/pages.json.gz` page records. |
 | [consuming.md](consuming.md) | End-to-end consumer walkthrough. |

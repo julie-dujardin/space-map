@@ -52,8 +52,8 @@ Every name is percent-encoded like `encodeURIComponent`. A page with no name
 has no name segment, and the writer warns about a group in that case: its page
 calls itself by a name the sitemap cannot give.
 
-The names come from the bundles, so `space-map-export --only sitemap` rewrites
-the file from an export that is already there.
+The names come from the bundles, so `space-map-export --only seo` rewrites
+the file from an export that is already there, with the page records below.
 
 Each of these pages builds its own SSR title/description/OG card in
 `frontend/src/lib/seo/meta.ts`. A feature's description is its CC0 Wikidata
@@ -63,3 +63,28 @@ never the Wikipedia extract, which is CC BY-SA with no credit surface on a card.
 `lastmod` is the export date (uniform — the export is when content last
 changed). Above 45 k URLs the writer warns; splitting into a sitemap index
 would then also need matching chunk routes in the frontend proxy.
+
+## Page records — `seo/pages.json.gz`
+
+One record for each page of the sitemap, keyed by the path of its file in the
+site's assets:
+
+- `o/<object id>` — `{global, localized, credits}`;
+- `g/<slug>` — `{global, localized, credits}`, where `global.images` holds the
+  group's lead image only;
+- `f/<body id>/<feature id>` — `{global, localized, credits, names}`.
+
+`global` holds the fields of the page's `__global__` bundle entry that
+`meta.ts` reads (its `Seo*` types), or is null when the bundles have no entry.
+`localized` holds the same for each language that has an entry. `images` keeps
+only the first photo and the first logo of each of the `free` and `credit`
+tiers, which leaves the choice of the card image unchanged. `credits` holds the
+`license.name` and `artist` of each `credit` image, as its variants embed them,
+by file. `names` is the feature's line in each language's label file.
+
+The frontend build writes each record into the site's own static assets
+(`frontend/scripts/seo-pages.mjs`, adding the `images` token of
+`metadata.json` as `v`). The Worker then reads a file of a few KB where the
+bundles are buckets of a few MB: parsing them was most of its CPU time. A page
+that has no record reads the bundles, and a record shows the export as it was
+when the site was built.

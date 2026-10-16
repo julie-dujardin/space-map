@@ -15,7 +15,7 @@ from space_map_data.export.pipeline.orchestrator import export, export_probes_on
 # between export.ephemeris and export.objects.
 from space_map_data.export.credits import export_credits_only  # isort: skip
 from space_map_data.export.about_data import export_about_data_only
-from space_map_data.export.sitemap import export_sitemap_only
+from space_map_data.export.seo_pages import export_seo_only
 from space_map_data.export.spacecraft import export_spacecraft_only
 from space_map_data.export.status import export_status_only
 from space_map_data.export.systems import export_systems_only
@@ -41,7 +41,7 @@ def cli():
             "status",
             "credits",
             "about-data",
-            "sitemap",
+            "seo",
         ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
@@ -78,8 +78,8 @@ def cli():
             export_credits_only(engine)
         elif args.only == "about-data":
             export_about_data_only(engine)
-        elif args.only == "sitemap":
-            export_sitemap_only(engine)
+        elif args.only == "seo":
+            export_seo_only(engine)
         else:
             export(engine)
 

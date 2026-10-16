@@ -52,6 +52,7 @@ from space_map_data.export.objects.probe_targets import (
 from space_map_data.export.notable import craft_model_slugs, shape_model_slugs
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.export.images import prune_image_bundles
+from space_map_data.export.seo_pages import write_seo_pages
 from space_map_data.export.sitemap import write_sitemap
 from space_map_data.export.objects.features import attach_notable_features
 from space_map_data.export.objects.galleries import attach_galleries
@@ -1362,7 +1363,17 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns
         )
     with Session(engine) as session:
-        write_sitemap(session, out_dir, wikidata_entities, bundle_ns, group_bundle_ns)
+        pages = write_sitemap(
+            session, out_dir, wikidata_entities, bundle_ns, group_bundle_ns
+        )
+        write_seo_pages(
+            out_dir,
+            pages,
+            wikidata_entities,
+            bundle_ns,
+            feature_bundle_ns,
+            group_bundle_ns,
+        )
     prune_small_bodies(out_dir, agg.zone_structure)
     prune_nomenclature(out_dir, nomenclature_by_body.keys())
     prune_image_bundles()
