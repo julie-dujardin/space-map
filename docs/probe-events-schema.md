@@ -167,6 +167,13 @@ uv run python -m space_map_data.probes.clpds_traverse
 
 Run it again after a label download. Yutu-2's release still grows.
 
+Lunokhod 1 and 2 are built from the tables of the route papers (Karachevtseva
+et al. 2013 and 2017), which `probes/lunokhod_traverse.py` holds:
+
+```
+uv run python -m space_map_data.probes.lunokhod_traverse
+```
+
 ## Editing
 
 Events are ordered by date within a probe; a landed phase ends at the next
