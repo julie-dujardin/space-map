@@ -1,4 +1,4 @@
-"""The credits bibliography — one row per work across the seven lists."""
+"""The credits bibliography — one row per work across the eight lists."""
 
 from space_map_data.constants.activity.references import ACTIVITY_SOURCES
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
@@ -6,6 +6,7 @@ from space_map_data.constants.radiation.references import RADIATION_SOURCES
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
+from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.export.credits import (
     _REFERENCE_SECTIONS,
     _atmosphere_references,
@@ -23,6 +24,7 @@ def _sections() -> dict[str, list[dict]]:
         "interior": [r._asdict() for r in INTERIOR_SOURCES.values()],
         "temperature": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
         "radiation": [r._asdict() for r in RADIATION_SOURCES.values()],
+        "traverse": [r._asdict() for r in TRAVERSE_SOURCES.values()],
     }
 
 

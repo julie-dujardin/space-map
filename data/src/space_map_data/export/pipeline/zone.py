@@ -68,6 +68,8 @@ class ObjectDataContext:
     # probe_id -> median position error in km, for the probes whose trajectory
     # was derived from published elements rather than tracked.
     probe_ephemeris_accuracy: dict[int, float]
+    # probe_id -> cited works of the traverse that places the craft.
+    probe_position_sources: dict[int, list[dict]]
     nomenclature_body_ids: set[str]
     # parent Object.id -> display name, for moons whose parent may live in
     # another chunk (lets the frontend breadcrumb name the host without the
@@ -154,6 +156,7 @@ def build_zone_object_data(
         model_sources=ctx.model_sources,
         probe_kernel_sources=ctx.probe_kernel_sources,
         probe_ephemeris_accuracy=ctx.probe_ephemeris_accuracy,
+        probe_position_sources=ctx.probe_position_sources,
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,
         taxonomy=ctx.taxonomy,

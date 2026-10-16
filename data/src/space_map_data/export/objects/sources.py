@@ -11,6 +11,7 @@ from space_map_data.constants.interior.references import InteriorReference
 from space_map_data.constants.radiation.references import RadiationReference
 from space_map_data.constants.spacecraft.references import SpacecraftReference
 from space_map_data.constants.temperature.references import TemperatureReference
+from space_map_data.constants.traverses.references import TraverseReference
 
 Reference = (
     ActivityReference
@@ -19,6 +20,7 @@ Reference = (
     | RadiationReference
     | SpacecraftReference
     | TemperatureReference
+    | TraverseReference
 )
 
 

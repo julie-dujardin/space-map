@@ -554,6 +554,8 @@ export interface GlobalObjectData {
 	 *  derived from published elements rather than tracked. Its absence means
 	 *  the position is an archive solution, not that the error is unknown. */
 	ephemeris_accuracy_km?: number;
+	/** The works of the traverse that places a probe on the ground. */
+	position_sources?: CitedWork[];
 	cross_refs?: {
 		wikidata_qid?: string;
 		naif_id?: number;

@@ -467,6 +467,7 @@ def _traverse(body_naif: int = 499, *times: str) -> dict[int, Traverse]:
                 Waypoint(event_jd(time), 25.083 - 0.001 * (i + 1), 109.925)
                 for i, time in enumerate(times)
             ),
+            sources=("clpds",),
         )
     }
 

@@ -12,10 +12,10 @@ from space_map_data.utils.time import jd_to_et
 
 def _write(root: Path, **overrides) -> Path:
     data = {
-        "schema_version": 1,
+        "schema_version": 2,
         "probe_id": 113217538,
         "body_naif": 499,
-        "source_url": "https://example.test/",
+        "sources": ["clpds"],
         "landing_point": {"lat_deg": 25.083, "lon_deg": 109.908},
         "waypoints": [
             {"time": "2021-06-03T09:01:52Z", "lat_deg": 25.083, "lon_deg": 109.908},
@@ -56,8 +56,22 @@ class TestLoad:
         with pytest.raises(ValueError, match="time order"):
             traverses.load_traverses(tmp_path)
 
-    def test_an_unknown_schema_is_refused(self, tmp_path: Path):
-        _write(tmp_path, schema_version=2)
+    def test_a_traverse_names_its_sources(self, tmp_path: Path):
+        _write(tmp_path)
+        assert traverses.load_traverses(tmp_path)[113217538].sources == ("clpds",)
+
+    def test_a_traverse_with_no_source_is_refused(self, tmp_path: Path):
+        _write(tmp_path, sources=[])
+        with pytest.raises(ValueError, match="no source"):
+            traverses.load_traverses(tmp_path)
+
+    def test_a_source_the_references_do_not_list_is_refused(self, tmp_path: Path):
+        _write(tmp_path, sources=["somewhere"])
+        with pytest.raises(ValueError, match="somewhere"):
+            traverses.load_traverses(tmp_path)
+
+    def test_another_schema_is_refused(self, tmp_path: Path):
+        _write(tmp_path, schema_version=1)
         with pytest.raises(ValueError, match="schema"):
             traverses.load_traverses(tmp_path)
 
@@ -126,7 +140,7 @@ class TestWrite:
             tmp_path,
             probe_id=110784513,
             body_naif=301,
-            source_url="https://example.test/",
+            sources=("clpds",),
             landing_point=(-45.4446, 177.5991),
             waypoints=[("2019-01-04T04:15:18Z", -45.44502, 177.599017)],
         )

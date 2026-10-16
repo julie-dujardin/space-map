@@ -1447,6 +1447,7 @@
 	"attribution_section_temperatures": "Temperatures",
 	"attribution_section_radiation": "Radiation environments",
 	"attribution_section_spacecraft": "Spacecraft & launch vehicles",
+	"attribution_section_traverses": "Rover routes & landing sites",
 	"attribution_section_clouds": "Cloud cover",
 	"attribution_section_night": "Night lights",
 	"attribution_section_topography": "Topography",

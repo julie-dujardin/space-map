@@ -238,6 +238,7 @@ def build_chunk_object_data(
     model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     probe_ephemeris_accuracy: dict[int, float],
+    probe_position_sources: dict[int, list[dict]],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
     taxonomy: dict,
@@ -286,6 +287,7 @@ def build_chunk_object_data(
             model_sources,
             probe_kernel_sources,
             probe_ephemeris_accuracy,
+            probe_position_sources,
             nomenclature_body_ids,
             parent_names,
             taxonomy,
@@ -500,6 +502,7 @@ def _build_global(
     model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     probe_ephemeris_accuracy: dict[int, float],
+    probe_position_sources: dict[int, list[dict]],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
     taxonomy: dict,
@@ -602,6 +605,9 @@ def _build_global(
     accuracy_km = ephemeris_accuracy_for(obj, probe_ephemeris_accuracy)
     if accuracy_km is not None:
         data["ephemeris_accuracy_km"] = round(accuracy_km)
+    # The works that place a craft on the ground, where a traverse does.
+    if obj.probe_id in probe_position_sources:
+        data["position_sources"] = probe_position_sources[obj.probe_id]
 
     # Orbital elements — parabolic comets use q/tp instead of a/ma/n
     sbdb = obj.sbdb if obj.spkid is not None else None

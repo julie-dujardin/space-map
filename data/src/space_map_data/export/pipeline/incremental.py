@@ -40,6 +40,9 @@ from space_map_data.export.position.probes.sidecar import (
     PACK_VERSION as PROBES_PACK_VERSION,
 )
 from space_map_data.export.sidecar_io import mirror_path, read_sidecar, write_sidecar
+from space_map_data.export.objects.position_sources import (
+    load_probe_position_sources,
+)
 from space_map_data.models.ingest_stamp import read_ingest_stamp
 from space_map_data.utils.content_stamp import content_stamp, content_stamps
 from space_map_data.utils.paths import (
@@ -106,7 +109,8 @@ def tier_b_fingerprint(session: Session) -> dict:
 
     `ingest_stamp` covers all DB content; the source stamps cover files the
     export reads directly from the downloads tree; `kernels` covers the
-    attitude blocks injected into object bundles.
+    attitude blocks injected into object bundles. `position_sources` is what
+    the traverses add to bundles, so a route that only grows rewrites none.
     """
     return {
         "version": TIER_B_VERSION,
@@ -121,6 +125,10 @@ def tier_b_fingerprint(session: Session) -> dict:
             SOURCES_METADATA_DIR / "nasa-science-urls" / "pk-to-url.json"
         ),
         "kernels": kernels_digest(),
+        "position_sources": {
+            str(probe_id): works
+            for probe_id, works in sorted(load_probe_position_sources().items())
+        },
     }
 
 

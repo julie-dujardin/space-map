@@ -213,6 +213,10 @@ for each waypoint of its traverse (see "Traverses" in
 the altitude is not stated, and a reader seats a landed probe on the surface
 it draws.
 
+A probe that a traverse places carries the works of that traverse in its
+detail bundle, as `position_sources: {title, url, note?}[]`. The full
+bibliography is in `credits.json` as `traverse_references`.
+
 ## Probe ID stability
 
 `probe_id` is a synthetic int32 packing the spacecraft's inception MJD

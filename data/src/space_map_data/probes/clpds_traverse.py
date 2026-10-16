@@ -19,7 +19,7 @@ from space_map_data.utils.paths import PANORAMA_SOURCES_DIR
 
 logger = logging.getLogger(__name__)
 
-SOURCE_URL = "https://clpds.bao.ac.cn/"
+SOURCES = ("clpds",)
 # The labels state positions to six decimals.
 PLACES = 6
 
@@ -129,7 +129,7 @@ def build(rover: Rover, source_dir: Path, output_dir: Path) -> Path:
         output_dir,
         probe_id=rover.probe_id,
         body_naif=rover.body_naif,
-        source_url=SOURCE_URL,
+        sources=SOURCES,
         landing_point=landing_point(rover, positions),
         waypoints=track,
     )

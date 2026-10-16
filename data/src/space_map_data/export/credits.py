@@ -23,6 +23,7 @@ from space_map_data.constants.rings.attribution import RingSource
 from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
+from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.objects.sources import Reference
 from space_map_data.export.system_groups import (
@@ -116,6 +117,7 @@ def _atmosphere_references() -> list[dict]:
 _REFERENCE_SECTIONS = (
     "spacecraft",
     "ring",
+    "traverse",
     "temperature",
     "radiation",
     "activity",
@@ -499,6 +501,7 @@ def write_credits(
             "interior": [_bibliography_row(r) for r in INTERIOR_SOURCES.values()],
             "temperature": [_bibliography_row(r) for r in TEMPERATURE_SOURCES.values()],
             "radiation": [_bibliography_row(r) for r in RADIATION_SOURCES.values()],
+            "traverse": [_bibliography_row(r) for r in TRAVERSE_SOURCES.values()],
         }
     )
 
@@ -512,6 +515,7 @@ def write_credits(
         "interior_references": references["interior"],
         "activity_references": references["activity"],
         "radiation_references": references["radiation"],
+        "traverse_references": references["traverse"],
     }
     if models_out:
         payload["models"] = models_out

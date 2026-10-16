@@ -106,7 +106,7 @@ def build_rover(mission: str, source_dir: Path, output_dir: Path) -> Path:
         output_dir,
         probe_id=probe_id,
         body_naif=_body_naif(mission),
-        source_url=mer.TRAVERSE + mer.TRAVERSE_TABLES[mission],
+        sources=("mer_traverse",),
         landing_point=mer.LANDING[mission],
         waypoints=track,
     )
@@ -122,7 +122,7 @@ def build_lander(mission: str, output_dir: Path) -> Path:
         output_dir,
         probe_id=MISSION_PROBE[mission],
         body_naif=_body_naif(mission),
-        source_url=site["source_url"],
+        sources=("viking_sites",),
         landing_point=(site["latitude"], site["longitude"]),
         waypoints=[],
     )

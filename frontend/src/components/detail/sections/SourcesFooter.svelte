@@ -167,6 +167,8 @@
 
 		const eph = global?.ephemeris_source;
 		if (eph) add(eph, archiveLabel(eph) ?? eph, archiveUrl(eph), archiveRole(eph) ?? undefined);
+		// On the ground, a traverse places the craft; its works stand beside the archive.
+		for (const source of global?.position_sources ?? []) addWork(source);
 
 		const qid = global?.cross_refs?.wikidata_qid;
 		if (qid) addProvider('wikidata', `https://www.wikidata.org/wiki/${qid}`);

@@ -3,11 +3,14 @@
 One file for each probe under ``derived/position/traverses/``, named by
 ``probe_id``.
 
-    {"schema_version": 1, "probe_id": 113217538, "body_naif": 499,
-     "source_url": "https://clpds.bao.ac.cn/",
+    {"schema_version": 2, "probe_id": 113217538, "body_naif": 499,
+     "sources": ["clpds"],
      "landing_point": {"lat_deg": 25.083304, "lon_deg": 109.908429},
      "waypoints": [{"time": "2021-06-03T09:01:52Z",
                     "lat_deg": 25.083231, "lon_deg": 109.908435}]}
+
+``sources`` are keys of ``constants/traverses/references.py``, the works the
+panel of the craft credits for its place.
 
 ``landing_point`` is where the frame of the traverse puts the landing site.
 For a craft that no SPICE kernel lands, a reader moves each waypoint by its
@@ -30,6 +33,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.probes.events import event_jd
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
 from space_map_data.utils.time import jd_to_et
@@ -38,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 TRAVERSES_DIR = DERIVED_POSITION_DIR / "traverses"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ class Traverse:
     landing_lat_deg: float
     landing_lon_deg: float
     waypoints: tuple[Waypoint, ...]
+    sources: tuple[str, ...]
 
     def from_site(self, lat_deg: float, lon_deg: float) -> tuple[Waypoint, ...]:
         """The waypoints in the frame that puts the landing site at
@@ -100,13 +105,24 @@ def _read(path: Path) -> Traverse:
     )
     if any(a.jd >= b.jd for a, b in zip(waypoints, waypoints[1:])):
         raise ValueError(f"{path}: waypoints are not in time order")
+    sources = tuple(data["sources"])
+    _check_sources(sources, path)
     return Traverse(
         probe_id=int(data["probe_id"]),
         body_naif=int(data["body_naif"]),
         landing_lat_deg=float(data["landing_point"]["lat_deg"]),
         landing_lon_deg=float(data["landing_point"]["lon_deg"]),
         waypoints=waypoints,
+        sources=sources,
     )
+
+
+def _check_sources(sources: tuple[str, ...], where: Path) -> None:
+    if not sources:
+        raise ValueError(f"{where}: a traverse names no source")
+    unknown = set(sources) - TRAVERSE_SOURCES.keys()
+    if unknown:
+        raise ValueError(f"{where}: no such traverse sources {sorted(unknown)}")
 
 
 def load_traverses(root: Path | None = None) -> dict[int, Traverse]:
@@ -124,20 +140,21 @@ def write_traverse(
     *,
     probe_id: int,
     body_naif: int,
-    source_url: str,
+    sources: tuple[str, ...],
     landing_point: tuple[float, float],
     waypoints: list[tuple[str, float, float]],
 ) -> Path:
     """Write the traverse of one probe. ``waypoints`` are ``(time, lat, lon)``."""
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{probe_id}.json"
+    _check_sources(sources, path)
     path.write_text(
         json.dumps(
             {
                 "schema_version": SCHEMA_VERSION,
                 "probe_id": probe_id,
                 "body_naif": body_naif,
-                "source_url": source_url,
+                "sources": list(sources),
                 "landing_point": {
                     "lat_deg": landing_point[0],
                     "lon_deg": landing_point[1],
