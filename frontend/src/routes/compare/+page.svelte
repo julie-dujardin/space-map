@@ -330,7 +330,7 @@
 	const speckAt = $derived(laid.find((l) => l.aside === 'end'));
 
 	function colorOf(object: CompareObject): string {
-		return object.geometry.color ?? BODY_COLORS[object.id] ?? DEFAULT_BODY_COLOR;
+		return BODY_COLORS[object.id] ?? object.geometry.color ?? DEFAULT_BODY_COLOR;
 	}
 
 	function fitOf(object: CompareObject): FitBody {

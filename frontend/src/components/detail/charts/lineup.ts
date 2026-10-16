@@ -1,7 +1,6 @@
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 import type { ModelIndexEntry } from '$lib/fetch/models';
 import type { ModelBundleMeta } from '$lib/scene/objects/body/model';
-import { BODY_COLORS } from '$lib/constants';
 import type { LineupBody } from './BodyLineup.svelte';
 
 /** The body-class-specific part of a LineupBody: geometry plus optional flat
@@ -16,11 +15,11 @@ export const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 
 	'naif-399': { surfaceFrame: '06', cloudSystem: 'naif-3' } // Earth
 };
 
-/** A member's full lineup geometry: size + oblateness from PCK `radii`, else
- *  SBDB diameter, else Wikidata radius; tilt from the IAU `pole`; render hints;
- *  tint (`undefined` for curated BODY_COLORS bodies, which defer to texture);
- *  the measured albedo and the law of the ground. `null` when sizeless, which
- *  doubles as the renderable filter. */
+/** The lineup geometry of a member. The size and flattening come from PCK
+ *  `radii`, else the SBDB diameter, else the Wikidata radius. The tilt comes
+ *  from the IAU `pole`. It also carries the render hints, the measured colour
+ *  and albedo, and the law of the ground. `null` for a member with no size, so
+ *  it also filters what the row can draw. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	// A surface feature isn't a body — its `id` is the host it sits on, so it
 	// would draw (and key) as a duplicate of that host's sphere.
@@ -48,7 +47,7 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 	return {
 		...geom,
 		...RENDER_HINTS[m.id],
-		color: BODY_COLORS[m.id] ? undefined : m.color,
+		color: m.color,
 		geometricAlbedo: m.geometric_albedo,
 		lunarWeightScale: m.lunar_weight_scale
 	};

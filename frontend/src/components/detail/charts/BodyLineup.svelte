@@ -7,8 +7,8 @@
 	export interface LineupBody {
 		id: string;
 		name: string;
-		/** Flat sphere colour when no `low.webp` texture loads. Overrides the
-		 *  id-keyed BODY_COLORS lookup — small bodies pass a resolved tint here. */
+		/** Measured surface colour. It tints a grayscale map and colours the
+		 *  sphere when no map loads. */
 		color?: string;
 		/** V-band geometric albedo of `color`, where a hex cannot hold it. */
 		geometricAlbedo?: number;
@@ -1539,7 +1539,7 @@
 				// rim's core while nearer bodies still occlude it.
 				const depth = -(layout.length - 1 - i) * Z_STEP;
 				// White default when the body has no colour of its own.
-				const tint = p.color ?? BODY_COLORS[p.id] ?? '#ffffff';
+				const tint = BODY_COLORS[p.id] ?? p.color ?? '#ffffff';
 				silhouette.update(renderer, scene, disp, depth - (p.pr + 60), tint, glowOpacity);
 			}
 		}

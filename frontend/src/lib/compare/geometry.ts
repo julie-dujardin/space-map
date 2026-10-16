@@ -15,7 +15,6 @@ import { fetchModelIndex, type ModelIndexEntry } from '$lib/fetch/models';
 import type { LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 import { craftWidthRatio } from '../../components/detail/charts/lineup-fit';
 import { RENDER_HINTS } from '../../components/detail/charts/lineup';
-import { BODY_COLORS } from '$lib/constants';
 import { groupHref } from '$lib/state/page-href';
 import { rocketBodies, rocketBySlug } from './rockets';
 
@@ -144,10 +143,8 @@ export async function resolveObject(
 	if (global?.model_name) geometry.model = global.model_name;
 	if (global?.displacement) geometry.displacement = global.displacement;
 	geometry.texture = global?.map_texture_available ?? false;
-	// The same surface colour the scene tints an untextured body with: small
-	// bodies carry it under `sbdb`, moons top-level. Curated bodies keep their
-	// own constant, which the row falls back to on its own.
-	geometry.color = BODY_COLORS[id] ? undefined : (global?.sbdb?.color ?? global?.color);
+	// The measured colour the scene uses. Small bodies carry it under `sbdb`.
+	geometry.color = global?.sbdb?.color ?? global?.color;
 	geometry.geometricAlbedo = global?.sbdb?.geometric_albedo ?? global?.geometric_albedo;
 	geometry.lunarWeightScale = global?.lunar_weight_scale;
 
