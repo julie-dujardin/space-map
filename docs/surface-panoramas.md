@@ -497,12 +497,18 @@ the Navcam mosaics that now cover the same sols. The published 360° extent come
 from the collection page; the horizon is visually estimated like every other
 curated strip.
 
-Only the Octavia E. Butler landing panorama (sols 3–11) has a heading. The rover
-did not move before sol 14, so the sol 2, 12 and 13 Navcam spheres share its
-spot. SIFT matches against all three agree on 132° within 0.3° (basis
-`feature match`). The skyline matcher fails here. The sol 2 sphere stops 3°
-above the horizon, and its references disagree from 25° to 175°. The other 52
-stay `orientation: unknown`.
+Only the two landing-site panoramas have a heading: Octavia E. Butler landing
+(sols 3–11) and Horizon 1 (sol 4). The rover did not move before sol 14, so the
+sol 2, 12 and 13 Navcam spheres share their spot. SIFT matches against these
+spheres give the heading (basis `feature match`):
+
+- Butler landing: all three agree on 132° within 0.3°.
+- Horizon 1: 91.9°. This strip is only 6.6° tall, so there are few matches,
+  and the result was checked by eye.
+
+The skyline matcher fails here. The sol 2 sphere stops 3° above the horizon,
+and the references disagree by up to 170°. The other 51 stay
+`orientation: unknown`.
 
 The gallery names a sol, not an Earth date. Each capture interval therefore comes
 from the Mars 2020 raw-image feed: the UTC dates of the frames returned for the

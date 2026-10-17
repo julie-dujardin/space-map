@@ -519,7 +519,14 @@
     "source_sha256": "d223134040292420cee9da13776b994bfea3aa42c95b4e24684104e806be66a4",
     "capture_time": "2021-02-22",
     "capture_stop_time": "2021-02-22",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 91.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0013_rzs_0030028_cyl_l_autogenj03",
+      "reference_sol": 13,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0 of a strip only 6.6\u00b0 tall: 28 agree on 91.9\u00b0, and the sol 12 Navcam sphere of the same stop gives 91.9\u00b0 from 8; the buttes and the delta scarp line up by eye in every quarter"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=4:sol:gte&condition_3=4:sol:lte"
   },
   {
