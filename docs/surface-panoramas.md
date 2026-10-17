@@ -495,7 +495,14 @@ The manifest also fits all 53 panoramas of ASU's Mastcam-Z 360 collection, sols 
 to 1879. They are ASU's curated Mastcam-Z releases, at a longer focal length than
 the Navcam mosaics that now cover the same sols. The published 360° extent comes
 from the collection page; the horizon is visually estimated like every other
-curated strip, and no heading is recorded.
+curated strip.
+
+Only the Octavia E. Butler landing panorama (sols 3–11) has a heading. The rover
+did not move before sol 14, so the sol 2, 12 and 13 Navcam spheres share its
+spot. SIFT matches against all three agree on 132° within 0.3° (basis
+`feature match`). The skyline matcher fails here. The sol 2 sphere stops 3°
+above the horizon, and its references disagree from 25° to 175°. The other 52
+stay `orientation: unknown`.
 
 The gallery names a sol, not an Earth date. Each capture interval therefore comes
 from the Mars 2020 raw-image feed: the UTC dates of the frames returned for the

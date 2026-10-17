@@ -17,6 +17,7 @@ STRIPS = json.loads(Path(__file__).with_name("curated_strips.json").read_text())
 ORIENTATION = {
     "published cardinal direction": "caption-aligned",
     "skyline match": "matched to an archival sphere",
+    "feature match": "matched to an archival sphere",
     "controlled mosaic match": "matched to a controlled mosaic",
 }
 

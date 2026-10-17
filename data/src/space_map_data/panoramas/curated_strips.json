@@ -500,7 +500,14 @@
     "source_sha256": "73da25178e8eb01f20f40fd4d7856b9a419ed64c774d6a06a52c409056f8661f",
     "capture_time": "2021-02-21",
     "capture_stop_time": "2021-03-02",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 132.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0002_rzs_0010052_cyl_l_autogenj02",
+      "reference_sol": 2,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 257 agree on 131.7\u00b0; the sol 12 and sol 13 Navcam spheres of the same stop give 132.0\u00b0 from 454 and 364, within 1\u00b0 in every 45\u00b0 sector"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=3:sol:gte&condition_3=11:sol:lte"
   },
   {
