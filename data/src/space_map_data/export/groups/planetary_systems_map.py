@@ -47,11 +47,11 @@ class SystemMap:
     moon_count: int
 
 
-def _pole_ecliptic(orientation: dict) -> tuple[float, float, float]:
-    """The IAU pole as a unit vector in ecliptic J2000, the frame the moons'
-    elements are in."""
-    ra = math.radians(orientation["pole_ra_0"])
-    dec = math.radians(orientation["pole_dec_0"])
+def _pole_ecliptic(pole: dict) -> tuple[float, float, float]:
+    """A pole of :func:`j2000_poles` as a unit vector in ecliptic J2000, the
+    frame the moons' elements are in."""
+    ra = math.radians(pole["ra"])
+    dec = math.radians(pole["dec"])
     return equatorial_to_ecliptic_vector(
         (
             math.cos(dec) * math.cos(ra),
@@ -88,7 +88,7 @@ def _ring_span(metas: list[dict] | None, radius_km: float) -> dict | None:
 def build_planetary_systems_map(
     session: Session,
     radii: dict[int, dict],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
     ring_metadata: dict[str, list[dict]],
     units: UnitConverter,
     entities: WikidataEntityCache,
@@ -108,9 +108,7 @@ def build_planetary_systems_map(
         if triaxial is None:
             continue
         radius_km = max(triaxial["a"], triaxial["b"], triaxial["c"])
-        pole = (
-            _pole_ecliptic(orientation[host_naif]) if host_naif in orientation else None
-        )
+        pole = _pole_ecliptic(poles[host_naif]) if host_naif in poles else None
         # SPICE hangs a system's moons off the barycenter, but a few sit on the
         # planet itself; take both so no system draws short.
         moon_rows = (

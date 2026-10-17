@@ -49,7 +49,11 @@ from space_map_data.export.objects.probe_targets import (
     attach_probe_targets,
     attach_system_probes,
 )
-from space_map_data.export.notable import craft_model_slugs, shape_model_slugs
+from space_map_data.export.notable import (
+    craft_model_slugs,
+    j2000_poles,
+    shape_model_slugs,
+)
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.export.images import prune_image_bundles
 from space_map_data.export.seo_pages import write_seo_pages
@@ -1281,7 +1285,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 agg.all_objects,
                 wikidata_entities,
                 radii,
-                orientation,
+                j2000_poles(
+                    orientation, nut_prec, nut_prec_angles, nut_prec_phase_degrees
+                ),
                 displacement_metadata,
                 model_slugs,
             )

@@ -11,6 +11,8 @@ import re
 
 import spiceypy
 
+from space_map_data.utils.naif import nut_prec_owner
+
 logger = logging.getLogger(__name__)
 
 # pck00011 Galileo-flyby asteroid ids → SBDB-canonical naif (2_000_000 + number).
@@ -142,7 +144,7 @@ def extract_nutation() -> tuple[
     # and per-channel arrays may not exceed the angle count (they may be shorter —
     # bodies often use only the first few system angles).
     for naif_id, coeffs in coefficients.items():
-        owner_id = naif_id // 100 if naif_id >= 100 else naif_id
+        owner_id = nut_prec_owner(naif_id)
         if owner_id not in angles:
             logger.warning(
                 "NUT_PREC coefficients for body %d reference owner %d which "

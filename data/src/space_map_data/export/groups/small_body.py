@@ -238,7 +238,7 @@ def _notable_members(
     radii: dict[int, dict] | None = None,
     units: UnitConverter | None = None,
     wikidata_entities: WikidataEntityCache | None = None,
-    orientation: dict[int, dict] | None = None,
+    poles: dict[int, dict] | None = None,
 ) -> list[NotableObject]:
     """Top members by (has image, sitelinks, diameter, brightness).
 
@@ -251,7 +251,7 @@ def _notable_members(
 
     ``radii``/``units``/``wikidata_entities`` resolve each member's render size
     (PCK triaxial radii or the Wikidata-radius override) so the lineup hero
-    sizes dwarf planets the same way the 3D scene does. ``orientation`` gives the
+    sizes dwarf planets the same way the 3D scene does. ``poles`` gives the
     PCK dwarfs (Ceres in MBA, Pluto in TNO) the same axial tilt they get on the
     dwarf-planet page.
     """
@@ -303,9 +303,7 @@ def _notable_members(
             spec_b,
             spec_t,
         ) = row
-        geo = render_geometry(
-            naif_id, qid, radii, units, wikidata_entities, orientation
-        )
+        geo = render_geometry(naif_id, qid, radii, units, wikidata_entities, poles)
         surface = resolve_small_body_color(object_id, spkid, spec_b or spec_t, albedo)
         members.append(
             NotableObject(
@@ -333,14 +331,14 @@ def build_small_body_group_stats(
     radii: dict[int, dict] | None = None,
     units: UnitConverter | None = None,
     wikidata_entities: WikidataEntityCache | None = None,
-    orientation: dict[int, dict] | None = None,
+    poles: dict[int, dict] | None = None,
 ) -> SmallBodyGroupStats:
     """Return member counts and discovery-year histograms per small-body group.
 
     All aggregation runs in SQL — the function pulls only summary rows
     (~5k for class×year histograms, ~200 each for NEO/PHA). Rows lacking a
     parseable year are excluded from histograms but still count toward
-    ``member_counts``. ``radii``/``units``/``wikidata_entities``/``orientation``
+    ``member_counts``. ``radii``/``units``/``wikidata_entities``/``poles``
     give notable members their render size + tilt for the lineup hero.
     """
     base = (
@@ -489,7 +487,7 @@ def build_small_body_group_stats(
             radii=radii,
             units=units,
             wikidata_entities=wikidata_entities,
-            orientation=orientation,
+            poles=poles,
         )
         if members:
             notable_members[f"{CLASS_SLUG_PREFIX}{cls.name}"] = members
@@ -499,7 +497,7 @@ def build_small_body_group_stats(
         radii=radii,
         units=units,
         wikidata_entities=wikidata_entities,
-        orientation=orientation,
+        poles=poles,
     )
     if neo_notable:
         notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_notable
@@ -509,7 +507,7 @@ def build_small_body_group_stats(
         radii=radii,
         units=units,
         wikidata_entities=wikidata_entities,
-        orientation=orientation,
+        poles=poles,
     )
     if pha_notable:
         notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_notable

@@ -84,7 +84,7 @@ def _resolve_host(session: Session, parent_id: str) -> str:
 
 
 def notable_moons_by_host(
-    session: Session, radii: dict[int, dict], orientation: dict[int, dict]
+    session: Session, radii: dict[int, dict], poles: dict[int, dict]
 ) -> dict[str, HostMoons]:
     """Top moons per host body, keyed by the host's Object.id.
 
@@ -135,9 +135,7 @@ def notable_moons_by_host(
         for r in top:
             # Triaxial radii + pole give the lineup its true oblate shape and tilt
             # (the same geometry as the 3D scene); diameter_km stays for the list.
-            geo = render_geometry(
-                r.naif_id, r.wikidata_qid, radii, orientation=orientation
-            )
+            geo = render_geometry(r.naif_id, r.wikidata_qid, radii, poles=poles)
             surface = resolve_major_body_color(r.naif_id)
             moons.append(
                 NotableObject(
@@ -177,7 +175,7 @@ def attach_notable_moons(
     chunk: ChunkObjectData,
     wikidata_entities: WikidataEntityCache,
     radii: dict[int, dict],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,
 ) -> None:
@@ -188,7 +186,7 @@ def attach_notable_moons(
     entry: the chunk's ``has_localized`` bit is set during the zone pass and
     can't be flipped here.
     """
-    hosts = notable_moons_by_host(session, radii, orientation)
+    hosts = notable_moons_by_host(session, radii, poles)
     textured_ids = textured_object_ids(session)
     attached = 0
     for host_id, host_moons in hosts.items():

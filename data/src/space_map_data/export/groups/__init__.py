@@ -71,6 +71,7 @@ from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.export.notable import (
     NotableObject,
     craft_model_slugs,
+    j2000_poles,
     shape_model_slugs,
     textured_object_ids,
 )
@@ -397,6 +398,9 @@ def run_groups_tier(
     shape model keys off the bundle, a spacecraft's off ``Object.model_name``.
     """
     from space_map_data.export.systems import (
+        load_nut_prec,
+        load_nut_prec_angles,
+        load_nut_prec_phase_degrees,
         load_orientation,
         load_planet_elements,
         load_ring_metadata,
@@ -404,9 +408,14 @@ def run_groups_tier(
     from space_map_data.utils.paths import DOWNLOAD_DIR
 
     units = UnitConverter(wikidata_entities)
-    # PCK poles for the lineup hero's true tilt — loaded here rather than widening
+    # Poles for the lineup hero's true tilt — loaded here rather than widening
     # the orchestrator→tier interface for a tier-internal render detail.
-    orientation = load_orientation(DOWNLOAD_DIR)
+    poles = j2000_poles(
+        load_orientation(DOWNLOAD_DIR),
+        load_nut_prec(DOWNLOAD_DIR),
+        load_nut_prec_angles(DOWNLOAD_DIR),
+        load_nut_prec_phase_degrees(DOWNLOAD_DIR),
+    )
     # Horizons mean elements for the SBDB-less planets (minimap + moons chart).
     planet_elements = load_planet_elements(DOWNLOAD_DIR)
     model_slugs = shape_model_slugs(model_metadata or {})
@@ -415,7 +424,7 @@ def run_groups_tier(
         gallery_subjects = _gallery_subjects(session, wikidata_entities)
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
-            session, radii, units, wikidata_entities, orientation
+            session, radii, units, wikidata_entities, poles
         )
         earth_orbit_stats = build_earth_orbit_classes(session)
         feature_types = build_feature_type_groups(session, wikidata_entities)
@@ -442,7 +451,7 @@ def run_groups_tier(
             earth_orbit_stats,
             radii,
             gms,
-            orientation,
+            poles,
             wikidata_entities,
             planet_elements,
         )
@@ -462,7 +471,7 @@ def run_groups_tier(
         planetary_systems_map = build_planetary_systems_map(
             session,
             radii,
-            orientation,
+            poles,
             load_ring_metadata(out_dir),
             units,
             wikidata_entities,

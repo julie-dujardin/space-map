@@ -180,10 +180,10 @@ def _body_member(
     name: str | None,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> NotableObject:
     """Denormalize a body, attaching its PCK mass + shared lineup render geometry."""
-    geo = render_geometry(naif_id, qid, radii, orientation=orientation)
+    geo = render_geometry(naif_id, qid, radii, poles=poles)
     surface = resolve_major_body_color(naif_id)
     return NotableObject(
         object_id=obj_id,
@@ -238,7 +238,7 @@ def _ranked_members(
     limit: int,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Top ``limit`` bodies for a hero strip: image-bearing first, then sitelinks
     (prominence proxy), id as tiebreak. Shared by every notable strip except
@@ -254,17 +254,14 @@ def _ranked_members(
         .limit(limit)
         .all()
     )
-    return [
-        _body_member(*row, radii=radii, gms=gms, orientation=orientation)
-        for row in rows
-    ]
+    return [_body_member(*row, radii=radii, gms=gms, poles=poles) for row in rows]
 
 
 def _planet_members(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """The planets, in heliocentric order (NAIF 199…899)."""
     rows = (
@@ -273,17 +270,14 @@ def _planet_members(
         .order_by(Object.naif_id)
         .all()
     )
-    return [
-        _body_member(*row, radii=radii, gms=gms, orientation=orientation)
-        for row in rows
-    ]
+    return [_body_member(*row, radii=radii, gms=gms, poles=poles) for row in rows]
 
 
 def _planetary_system_members(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """One member per barycenter with a moon, in heliocentric order. Each
     routes to the barycenter page but carries its primary's QID and images:
@@ -318,7 +312,7 @@ def _planetary_system_members(
     members = []
     for bary_id, host_id, naif_id, qid, name in hosts:
         host = _body_member(
-            host_id, naif_id, qid, name, radii=radii, gms=gms, orientation=orientation
+            host_id, naif_id, qid, name, radii=radii, gms=gms, poles=poles
         )
         members.append(replace(host, object_id=bary_id, image_of=host_id))
     members.sort(key=lambda m: barycenters[m.object_id] or 0)
@@ -345,7 +339,7 @@ def _dwarf_planet_members(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
     entities: WikidataEntityCache,
     units: UnitConverter,
 ) -> list[NotableObject]:
@@ -376,7 +370,7 @@ def _dwarf_planet_members(
     members: list[NotableObject] = []
     for obj_id, naif_id, qid, name, spkid, spec_b, spec_t, albedo in rows:
         member = _body_member(
-            obj_id, naif_id, qid, name, radii=radii, gms=gms, orientation=orientation
+            obj_id, naif_id, qid, name, radii=radii, gms=gms, poles=poles
         )
         member.diameter_km = _wikidata_diameter_km(member.wikidata_qid, entities, units)
         if member.diameter_km is None:
@@ -635,7 +629,7 @@ def _star_member(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> NotableObject | None:
     """The Sun — pinned first on the Solar System root page."""
     row = (
@@ -645,7 +639,7 @@ def _star_member(
         .first()
     )
     return (
-        _body_member(*row, radii=radii, gms=gms, orientation=orientation)
+        _body_member(*row, radii=radii, gms=gms, poles=poles)
         if row is not None
         else None
     )
@@ -656,7 +650,7 @@ def _solar_system_members(
     star: NotableObject | None,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Sun first, then the most-linked bodies (same image/sitelinks proxy)."""
     # +1 so pinning the Sun first can't drop the last ranked body.
@@ -666,7 +660,7 @@ def _solar_system_members(
         SOLAR_SYSTEM_NOTABLE_COUNT + 1,
         radii,
         gms,
-        orientation,
+        poles,
     )
     if star is not None:
         members = [star] + [m for m in members if m.object_id != star.object_id]
@@ -677,7 +671,7 @@ def _ring_system_members(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Every body the ring catalogue covers, in its curated order (giants
     outward, then occultation-only bodies) — not ranked, the catalogue already
@@ -699,7 +693,7 @@ def _ring_system_members(
         )
     return [
         replace(
-            _body_member(*rows[body], radii=radii, gms=gms, orientation=orientation),
+            _body_member(*rows[body], radii=radii, gms=gms, poles=poles),
             ring_mass=ring_mass_block(body),
         )
         for body in RING_CATALOGS
@@ -747,7 +741,7 @@ def _property_members(
     page: str,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Members of a Structure & Activity page: exactly the bodies the constants
     hold the property for, already in page order — not a query. A body the
@@ -768,7 +762,7 @@ def _property_members(
         )
     return [
         attach(
-            _body_member(*rows[body], radii=radii, gms=gms, orientation=orientation),
+            _body_member(*rows[body], radii=radii, gms=gms, poles=poles),
             body,
         )
         for body in body_ids
@@ -780,7 +774,7 @@ def _atmosphere_members(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Every body with a measured envelope, thickest first.
 
@@ -809,16 +803,14 @@ def _atmosphere_members(
             limb=limb_profile(body),
         )
 
-    return _property_members(
-        session, ordered, attach, "Atmospheres", radii, gms, orientation
-    )
+    return _property_members(session, ordered, attach, "Atmospheres", radii, gms, poles)
 
 
 def _ocean_members(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Every body with an ocean, largest first.
 
@@ -835,9 +827,7 @@ def _ocean_members(
     def attach(member: NotableObject, body: str) -> NotableObject:
         return replace(member, ocean=oceans[body], cutaway=cutaway_layers(body))
 
-    return _property_members(
-        session, ordered, attach, "Oceans", radii, gms, orientation
-    )
+    return _property_members(session, ordered, attach, "Oceans", radii, gms, poles)
 
 
 def _atmosphere_stats(members: list[NotableObject]) -> GroupExtraStats:
@@ -904,7 +894,7 @@ def _activity_members(
     page: str,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Members of one of the three heat pages, ordered by what its chart plots.
     All three read one `collection_row` — a body is usually on more than one —
@@ -918,7 +908,7 @@ def _activity_members(
         )
 
     return _property_members(
-        session, sorted(table, key=rank), attach, page, radii, gms, orientation
+        session, sorted(table, key=rank), attach, page, radii, gms, poles
     )
 
 
@@ -934,7 +924,7 @@ def _measured_first(value: float | None, body: str) -> tuple[int, float, str]:
 RUNGS = {"active": 0, "probable": 1, "suspected": 2, "dormant": 3, "extinct": 4}
 
 
-def _volcanism_members(session, radii, gms, orientation) -> list[NotableObject]:
+def _volcanism_members(session, radii, gms, poles) -> list[NotableObject]:
     """Every body with a geologic record, most recently active first. Ordered
     by status, not a number: only a few of the fifteen have a heat output or
     vent count, so what separates them is whether anyone caught them at it.
@@ -947,11 +937,11 @@ def _volcanism_members(session, radii, gms, orientation) -> list[NotableObject]:
         "Volcanism",
         radii,
         gms,
-        orientation,
+        poles,
     )
 
 
-def _tectonics_members(session, radii, gms, orientation) -> list[NotableObject]:
+def _tectonics_members(session, radii, gms, poles) -> list[NotableObject]:
     """Every body whose crust anyone has read a tectonic history off (ten of
     volcanism's fifteen lack one). Ordered by the same status ladder, then
     style, so the ice shells sit together — read across styles more than down
@@ -979,11 +969,11 @@ def _tectonics_members(session, radii, gms, orientation) -> list[NotableObject]:
         "Tectonics",
         radii,
         gms,
-        orientation,
+        poles,
     )
 
 
-def _magnetic_members(session, radii, gms, orientation) -> list[NotableObject]:
+def _magnetic_members(session, radii, gms, poles) -> list[NotableObject]:
     """Every body anyone has measured a field on, strongest first. Surface
     field, not dipole moment — the figure a reader can picture standing on the
     body; moment stays in the row for comparison. Having one is also what
@@ -1009,11 +999,11 @@ def _magnetic_members(session, radii, gms, orientation) -> list[NotableObject]:
         return _measured_first(field.value if field else None, body)
 
     return _activity_members(
-        session, measured, rank, "Magnetic fields", radii, gms, orientation
+        session, measured, rank, "Magnetic fields", radii, gms, poles
     )
 
 
-def _tidal_members(session, radii, gms, orientation) -> list[NotableObject]:
+def _tidal_members(session, radii, gms, poles) -> list[NotableObject]:
     """Every body a tide is raised on, hardest-worked first.
 
     Only three of the eleven have a wattage; the rest order by the role the
@@ -1028,7 +1018,7 @@ def _tidal_members(session, radii, gms, orientation) -> list[NotableObject]:
         return (1, float(roles.get(TIDAL_HEATING[body].role, 9)), body)
 
     return _activity_members(
-        session, TIDAL_HEATING, rank, "Tidal heating", radii, gms, orientation
+        session, TIDAL_HEATING, rank, "Tidal heating", radii, gms, poles
     )
 
 
@@ -1062,7 +1052,7 @@ def _radiation_members(
     places: dict[str, radiation.Place],
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> list[NotableObject]:
     """Every place anyone has put a dose on, harshest first.
 
@@ -1102,7 +1092,7 @@ def _radiation_members(
         return replace(member, radiation=rows[body], cutaway=cutaway_layers(body))
 
     return _property_members(
-        session, sorted(rows, key=rank), attach, "Radiation", radii, gms, orientation
+        session, sorted(rows, key=rank), attach, "Radiation", radii, gms, poles
     )
 
 
@@ -1265,7 +1255,7 @@ def _probe_members(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
 ) -> tuple[list[NotableObject], int]:
     """The notable probes (most-linked first) plus the total probe count.
 
@@ -1275,7 +1265,7 @@ def _probe_members(
     is_probe = Object.orbital_source == OrbitalSource.spice_probe
     total = session.query(func.count(Object.id)).filter(is_probe).scalar() or 0
     return (
-        _ranked_members(session, is_probe, NOTABLE_COUNT, radii, gms, orientation),
+        _ranked_members(session, is_probe, NOTABLE_COUNT, radii, gms, poles),
         total,
     )
 
@@ -1296,7 +1286,7 @@ def build_category_data(
     earth_orbit: EarthOrbitClassStats,
     radii: dict[int, dict],
     gms: dict[int, float],
-    orientation: dict[int, dict],
+    poles: dict[int, dict],
     entities: WikidataEntityCache,
     planet_elements: dict[int, dict],
 ) -> CategoryData:
@@ -1364,32 +1354,28 @@ def build_category_data(
     }
 
     units = UnitConverter(entities)
-    planet_members = _planet_members(session, radii, gms, orientation)
-    dwarf_members = _dwarf_planet_members(
-        session, radii, gms, orientation, entities, units
-    )
+    planet_members = _planet_members(session, radii, gms, poles)
+    dwarf_members = _dwarf_planet_members(session, radii, gms, poles, entities, units)
     moon_members = _ranked_members(
         session,
         Object.object_type == ObjectType.moon,
         TOP_MOONS,
         radii,
         gms,
-        orientation,
+        poles,
     )
-    ring_members = _ring_system_members(session, radii, gms, orientation)
-    atmosphere_members = _atmosphere_members(session, radii, gms, orientation)
-    ocean_members = _ocean_members(session, radii, gms, orientation)
-    volcanism_members = _volcanism_members(session, radii, gms, orientation)
-    tectonics_members = _tectonics_members(session, radii, gms, orientation)
-    magnetic_members = _magnetic_members(session, radii, gms, orientation)
-    tidal_members = _tidal_members(session, radii, gms, orientation)
+    ring_members = _ring_system_members(session, radii, gms, poles)
+    atmosphere_members = _atmosphere_members(session, radii, gms, poles)
+    ocean_members = _ocean_members(session, radii, gms, poles)
+    volcanism_members = _volcanism_members(session, radii, gms, poles)
+    tectonics_members = _tectonics_members(session, radii, gms, poles)
+    magnetic_members = _magnetic_members(session, radii, gms, poles)
+    tidal_members = _tidal_members(session, radii, gms, poles)
     radiation_where = radiation_places(session)
-    radiation_members = _radiation_members(
-        session, radiation_where, radii, gms, orientation
-    )
-    star = _star_member(session, radii, gms, orientation)
-    system_members = _planetary_system_members(session, radii, gms, orientation)
-    probe_members, probes_total = _probe_members(session, radii, gms, orientation)
+    radiation_members = _radiation_members(session, radiation_where, radii, gms, poles)
+    star = _star_member(session, radii, gms, poles)
+    system_members = _planetary_system_members(session, radii, gms, poles)
+    probe_members, probes_total = _probe_members(session, radii, gms, poles)
     moons = _moon_data(session, planet_elements)
     moons_total, moon_counts = moons.total, moons.rows
     probe_targets = build_probe_target_chart(session)
@@ -1592,7 +1578,7 @@ def build_category_data(
         notable_members[COMETS_SLUG] = comet_notable
     if probe_members:
         notable_members[PROBES_SLUG] = probe_members
-    solar_system = _solar_system_members(session, star, radii, gms, orientation)
+    solar_system = _solar_system_members(session, star, radii, gms, poles)
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
     if system_members:

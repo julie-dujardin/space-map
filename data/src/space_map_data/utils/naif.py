@@ -259,6 +259,13 @@ def classify_object(
     )
 
 
+def nut_prec_owner(naif_id: int) -> int:
+    """The body whose NUT_PREC_ANGLES the nutation sums of ``naif_id`` pair
+    with: the system barycentre for a planet or a moon, the body itself below
+    100."""
+    return naif_id // 100 if naif_id >= 100 else naif_id
+
+
 @dataclass
 class MajorBody:
     name: str | None

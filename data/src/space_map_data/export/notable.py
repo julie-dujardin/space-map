@@ -6,6 +6,7 @@ carrying name, routing id, optional diameter/discovery and a thumbnail, plus
 a per-language label-override map keyed by the same routing id.
 """
 
+import math
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -25,6 +26,7 @@ from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
+from space_map_data.utils.naif import nut_prec_owner
 
 
 @dataclass
@@ -118,21 +120,37 @@ def render_size(
     return None, None
 
 
-def pole_from_orientation(
-    orientation: dict[int, dict], naif_id: int | None
-) -> dict | None:
-    """The body's IAU J2000 pole {ra, dec} (deg), for the lineup hero's axial tilt.
+def j2000_poles(
+    orientation: dict[int, dict],
+    nut_prec: dict[int, dict[str, list[float]]],
+    nut_prec_angles: dict[int, list[float]],
+    nut_prec_phase_degrees: dict[int, int],
+) -> dict[int, dict]:
+    """Each body's IAU pole {ra, dec} (deg) at J2000, for the lineup's axial tilt.
+
+    The nutation terms are in, as the map turns the globe with them: without
+    them Triton tilts 30° where it tilts 50°. At J2000 the export does not
+    change with the date it runs; Triton is then 1.2° off its 2026 tilt.
 
     Carries ``source`` since ``orientation`` merges three sets — a DAMIT pole
     must not get credited to the PCK.
     """
-    if naif_id is None or naif_id not in orientation:
-        return None
-    o = orientation[naif_id]
-    pole = {"ra": o["pole_ra_0"], "dec": o["pole_dec_0"]}
-    if o.get("source") and o["source"] != ORIENTATION_SOURCE_PCK:
-        pole["source"] = o["source"]
-    return pole
+    poles: dict[int, dict] = {}
+    for naif_id, o in orientation.items():
+        ra, dec = o["pole_ra_0"], o["pole_dec_0"]
+        owner = nut_prec_owner(naif_id)
+        sums = nut_prec.get(naif_id)
+        if sums and owner in nut_prec_angles:
+            # At J2000 each angle is the constant term of its polynomial.
+            stride = nut_prec_phase_degrees.get(owner, 1) + 1
+            thetas = [math.radians(t) for t in nut_prec_angles[owner][::stride]]
+            ra += sum(c * math.sin(t) for c, t in zip(sums["ra"], thetas))
+            dec += sum(c * math.cos(t) for c, t in zip(sums["dec"], thetas))
+        pole = {"ra": ra, "dec": dec}
+        if o.get("source") and o["source"] != ORIENTATION_SOURCE_PCK:
+            pole["source"] = o["source"]
+        poles[naif_id] = pole
+    return poles
 
 
 class RenderGeometry(NamedTuple):
@@ -149,16 +167,15 @@ def render_geometry(
     radii: dict[int, dict],
     units: UnitConverter | None = None,
     wikidata_entities: WikidataEntityCache | None = None,
-    orientation: dict[int, dict] | None = None,
+    poles: dict[int, dict] | None = None,
 ) -> RenderGeometry:
     """Lineup render geometry (size + tilt) as one bundle, so a body renders the
-    same wherever it appears. Omit ``units``/``wikidata_entities`` or
-    ``orientation`` to skip that source.
+    same wherever it appears. Omit ``units``/``wikidata_entities`` or ``poles``
+    (from :func:`j2000_poles`) to skip that source.
     """
     triaxial, radius_km = render_size(naif_id, qid, radii, units, wikidata_entities)
-    return RenderGeometry(
-        triaxial, radius_km, pole_from_orientation(orientation or {}, naif_id)
-    )
+    pole = (poles or {}).get(naif_id) if naif_id is not None else None
+    return RenderGeometry(triaxial, radius_km, pole)
 
 
 def _member_entity(member: NotableObject, wikidata_entities: WikidataEntityCache):

@@ -164,16 +164,16 @@ class TestNotableMembers:
         (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
         assert member.spec == "S"
 
-    def test_pole_from_orientation_for_pck_dwarf(self, session: Session) -> None:
+    def test_pole_for_pck_dwarf(self, session: Session) -> None:
         # A PCK dwarf (Ceres in MBA) gets the same tilt as on its dwarf-planet page.
         _add_member(session, 2000001, naif_id=2000001)
-        orientation = {2000001: {"pole_ra_0": 291.418, "pole_dec_0": 66.764}}
+        poles = {2000001: {"ra": 291.418, "dec": 66.764}}
         (member,) = _notable_members(
-            session, SBDB.class_ == OrbitClass.MBA, orientation=orientation
+            session, SBDB.class_ == OrbitClass.MBA, poles=poles
         )
         assert member.pole == {"ra": 291.418, "dec": 66.764}
 
-    def test_no_pole_without_orientation(self, session: Session) -> None:
+    def test_no_pole_without_poles(self, session: Session) -> None:
         _add_member(session, 2000001, naif_id=2000001)
         (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
         assert member.pole is None
@@ -543,29 +543,43 @@ class TestNotableEntries:
         assert descs == {"spkid-1": "dwarf planet"}
 
 
-class TestMemberPoleProvenance:
-    """A member's tilt names its publisher when it isn't the PCK — the footer
-    credits the IAU only for poles the IAU actually tabulated."""
+class TestJ2000Poles:
+    """A member's tilt is the IAU pole at J2000 with its nutation terms. It
+    names its publisher when it isn't the PCK — the footer credits the IAU only
+    for poles the IAU actually tabulated."""
 
-    def test_pck_pole_carries_no_source(self, session: Session) -> None:
-        _add_member(session, 2000001, naif_id=2000001)
+    def test_pck_pole_carries_no_source(self) -> None:
         orientation = {
             2000001: {"pole_ra_0": 291.418, "pole_dec_0": 66.764, "source": "pck"}
         }
-        (member,) = _notable_members(
-            session, SBDB.class_ == OrbitClass.MBA, orientation=orientation
-        )
-        assert member.pole == {"ra": 291.418, "dec": 66.764}
+        assert notable.j2000_poles(orientation, {}, {}, {}) == {
+            2000001: {"ra": 291.418, "dec": 66.764}
+        }
 
-    def test_lightcurve_pole_is_labelled(self, session: Session) -> None:
-        _add_member(session, 2000021, naif_id=2000021)
+    def test_lightcurve_pole_is_labelled(self) -> None:
         orientation = {
             2000021: {"pole_ra_0": 130.0, "pole_dec_0": -59.0, "source": "lightcurve"}
         }
-        (member,) = _notable_members(
-            session, SBDB.class_ == OrbitClass.MBA, orientation=orientation
-        )
-        assert member.pole == {"ra": 130.0, "dec": -59.0, "source": "lightcurve"}
+        assert notable.j2000_poles(orientation, {}, {}, {}) == {
+            2000021: {"ra": 130.0, "dec": -59.0, "source": "lightcurve"}
+        }
+
+    def test_nutation_terms_move_the_pole(self) -> None:
+        # Triton's mean pole and its leading term, on the Neptune system's N7.
+        orientation = {801: {"pole_ra_0": 299.36, "pole_dec_0": 41.17}}
+        nut_prec = {801: {"ra": [0.0] * 7 + [-32.35], "dec": [0.0] * 7 + [22.55]}}
+        angles = {8: [0.0, 0.0] * 7 + [177.85, 52.316]}
+        pole = notable.j2000_poles(orientation, nut_prec, angles, {})[801]
+        assert pole["ra"] == pytest.approx(298.146, abs=1e-3)
+        assert pole["dec"] == pytest.approx(18.636, abs=1e-3)
+
+    def test_phase_degree_sets_the_stride(self) -> None:
+        # Degree 2 gives three numbers per angle; at J2000 only the first counts.
+        orientation = {601: {"pole_ra_0": 40.0, "pole_dec_0": 80.0}}
+        nut_prec = {601: {"ra": [0.0, 10.0], "dec": [0.0, 0.0]}}
+        angles = {6: [0.0, 1.0, 2.0, 90.0, 1.0, 2.0]}
+        pole = notable.j2000_poles(orientation, nut_prec, angles, {6: 2})[601]
+        assert pole["ra"] == pytest.approx(50.0)
 
 
 class TestRingSystemMembers:
