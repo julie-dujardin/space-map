@@ -839,7 +839,7 @@ def _load_nasa_science_urls() -> dict[str, str]:
 
 
 # Content-class directories served under an immutable `Cache-Control` rule
-# (see infrastructure/deploy/_headers). Each gets a content-hash token in
+# (see infrastructure/export/prod/_headers). Each gets a content-hash token in
 # metadata.json `versions`; the frontend appends it as `?v=` so a content change
 # yields a fresh URL while unchanged classes stay cached. Roots that stay on the
 # revalidating default (metadata, systems, groups, labels, credits) are absent.

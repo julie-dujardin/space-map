@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 EXPORT_DIR="$REPO_ROOT/../space-map-export"
 # Meili's admin port binds to loopback on the VPS; forward it first with
 # `ssh -L 9751:127.0.0.1:9751 <vps>`.

@@ -3,7 +3,7 @@ services:
     image: ghcr.io/julie-dujardin/space-map-data:latest
     build:
       context: ../..
-      dockerfile: infrastructure/data/Dockerfile
+      dockerfile: infrastructure/scheduler/Dockerfile
     container_name: space-map-data
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
@@ -28,7 +28,7 @@ services:
     image: ghcr.io/julie-dujardin/space-map-data:latest
     build:
       context: ../..
-      dockerfile: infrastructure/data/Dockerfile
+      dockerfile: infrastructure/scheduler/Dockerfile
     container_name: space-map-tracking
     command: space-map-tracking run
     restart: unless-stopped

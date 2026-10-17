@@ -12,7 +12,7 @@ flowchart LR
     direction TB
     src_fe[frontend/]
     src_data[data/]
-    src_infra[infrastructure/data/]
+    src_infra[infrastructure/scheduler/]
     src_search[infrastructure/search/]
     src_tiles[infrastructure/tiles/]
   end

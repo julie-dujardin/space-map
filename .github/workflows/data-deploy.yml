@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - data/**
-      - infrastructure/data/**
+      - infrastructure/scheduler/**
       - .github/workflows/data-deploy.yml
       - .github/workflows/backend-test.yml
   pull_request:
     paths:
       - data/**
-      - infrastructure/data/**
+      - infrastructure/scheduler/**
       - .github/workflows/data-deploy.yml
       - .github/workflows/backend-test.yml
 
@@ -78,7 +78,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: infrastructure/data/Dockerfile
+          file: infrastructure/scheduler/Dockerfile
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

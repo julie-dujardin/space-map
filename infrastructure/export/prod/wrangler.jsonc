@@ -4,6 +4,6 @@
   "name": "space-map-static",
   "compatibility_date": "2026-04-01",
   "assets": {
-    "directory": "../../../space-map-export"
+    "directory": "../../../../space-map-export"
   }
 }

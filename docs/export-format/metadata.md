@@ -123,7 +123,7 @@ contents only churn the token (weaker caching), never correctness.
 
 The nine versioned classes — `position`, `objects`, `nomenclature`,
 `textures`, `rings`, `models`, `images`, `membership`, `panoramas` — are served under an
-immutable `Cache-Control` rule (`infrastructure/deploy/_headers`). The
+immutable `Cache-Control` rule (`infrastructure/export/prod/_headers`). The
 remaining roots (`metadata.json`, `credits.json`, `labels/`, `systems/`,
 `groups/`, `attitude/`) carry no token and fall through to Cloudflare Pages'
 revalidating default; `metadata.json` is the single always-fresh entry point that pins

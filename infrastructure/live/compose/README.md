@@ -2,8 +2,8 @@
 
 One container, deployed via docker-compose, that ships the tree the tracking
 service writes (`space-map-live`, the `tracking` service of
-[the data stack](../../data/docker-compose.yaml)) to the Workers static-assets
-project `space-map-live`, served at `live.spacemap.co`.
+[the scheduler stack](../../scheduler/docker-compose.yaml)) to the Workers
+static-assets project `space-map-live`, served at `live.spacemap.co`.
 
 The deploy script, `wrangler.jsonc` and `_headers` are inlined in the compose
 `configs`, so no host file is needed. Every minute the script copies the tree,
