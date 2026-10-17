@@ -57,6 +57,13 @@ export const SUN_ID = 'naif-10';
 export const EARTH_ID = 'naif-399';
 export const SSB_ID = 'naif-0';
 
+/** Numeric part of a `naif-<n>` id; null for any other prefix. */
+export function naifId(objectId: string): number | null {
+	if (!objectId.startsWith('naif-')) return null;
+	const value = Number.parseInt(objectId.slice('naif-'.length), 10);
+	return Number.isFinite(value) ? value : null;
+}
+
 /** Barycenter → dominant planet id (`naif-{X}` → `naif-{X}99`, SPICE convention),
  *  or null if `id` isn't a barycenter. Barycenters carry no name/frame of their own. */
 export function dominantPlanetId(id: string): string | null {

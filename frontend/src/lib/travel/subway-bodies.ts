@@ -17,7 +17,7 @@ import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import { GM_SUN_KM3_S2, type TravelBody } from '$lib/math/travel';
 import type { SubwayBodies, SubwayBody } from '$lib/math/travel/subway';
 import { AU_KM } from '$lib/math/units';
-import { BODY_COLORS, SUN_ID } from '$lib/constants';
+import { BODY_COLORS, naifId, SUN_ID } from '$lib/constants';
 import { resolveBodyColor } from '$lib/body-color';
 import { hasGround, maxRadiusKm, synchronousRadiusKm } from './orbits';
 import { resolveTripBodies } from './resolve';
@@ -26,7 +26,6 @@ import {
 	hillPrimaryOf,
 	isHeliocentricRoot,
 	lookupIn,
-	naifId,
 	toTravelBody
 } from './travel-body';
 

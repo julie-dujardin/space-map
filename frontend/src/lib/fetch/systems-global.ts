@@ -6,7 +6,8 @@
  * pair with each body's `nut_prec` to give its pole and spin.
  */
 
-import type { NutPrec } from '$lib/math/orientation';
+import { naifId } from '$lib/constants';
+import type { NutPrec, NutPrecSums } from '$lib/math/orientation';
 import { dataBase } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
@@ -20,7 +21,7 @@ export function loadSystemsGlobal(): Promise<void> {
 	if (loadPromise) return loadPromise;
 	const p = (async () => {
 		const r = await fetchWithTimeout(`${dataBase()}/v1/systems/global.json`);
-		if (!r.ok) return;
+		if (!r.ok) throw new Error(`systems/global.json: ${r.status}`);
 		const raw = (await r.json()) as {
 			gm?: Record<string, number>;
 			nut_prec_angles?: Record<string, number[]>;
@@ -37,8 +38,8 @@ export function loadSystemsGlobal(): Promise<void> {
 			}
 		}
 	})();
-	// Evict on rejection so a boot-time blip doesn't poison the memo — GM/nutation
-	// data would otherwise stay dead all session.
+	// Forgotten on any failure, an error status included, so the next caller
+	// fetches again: the GMs and nutation angles would be missing all session.
 	p.catch(() => {
 		if (loadPromise === p) loadPromise = null;
 	});
@@ -46,12 +47,13 @@ export function loadSystemsGlobal(): Promise<void> {
 	return p;
 }
 
-export function ownerIdFor(naifId: number): number {
-	return naifId >= 100 ? Math.trunc(naifId / 100) : naifId;
-}
-
-export function getNutPrecPhases(ownerId: number): NutPrecPhases | undefined {
-	return phases.get(ownerId);
+/** The nutation terms of body `id`: its own sums joined with the angles its
+ *  system shares. Undefined where either is missing. */
+export function nutPrecFor(id: string, sums: NutPrecSums | undefined): NutPrec | undefined {
+	const naif = naifId(id);
+	if (naif === null || !sums) return undefined;
+	const owned = phases.get(naif >= 100 ? Math.trunc(naif / 100) : naif);
+	return owned && { ...sums, ...owned };
 }
 
 export function getGmKm3s2(naifId: number): number | undefined {

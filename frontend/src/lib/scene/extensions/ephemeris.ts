@@ -27,7 +27,7 @@ import { fetchElements } from '$lib/fetch/position/chunk';
 import { rowId } from '$lib/fetch/position/elements/parse';
 import { materializeBodyData } from '$lib/fetch/position/elements/row';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { getNutPrecPhases, loadSystemsGlobal, ownerIdFor } from '$lib/fetch/systems-global';
+import { loadSystemsGlobal, nutPrecFor } from '$lib/fetch/systems-global';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { withinValidity } from '$lib/math/orbit/offset';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
@@ -168,11 +168,10 @@ function neighbours(id: string, { parents }: Placed, at: Reading): string[] {
 /** How `id` spins, as the map reads it. */
 async function spinOf(id: string): Promise<Pick<AnchorBody, 'orientation' | 'nutPrec'>> {
 	const [detail] = await Promise.all([fetchObjectDetail(id, false), loadSystemsGlobal()]);
-	const orientation = detail.global?.orientation;
-	const sums = detail.global?.nut_prec;
-	const naif = /^naif-(-?\d+)$/.exec(id);
-	const phases = naif ? getNutPrecPhases(ownerIdFor(parseInt(naif[1], 10))) : undefined;
-	return { orientation, nutPrec: sums && phases ? { ...sums, ...phases } : undefined };
+	return {
+		orientation: detail.global?.orientation,
+		nutPrec: nutPrecFor(id, detail.global?.nut_prec)
+	};
 }
 
 async function resolve(anchor: Anchor, at: Reading): Promise<Vec3 | null> {

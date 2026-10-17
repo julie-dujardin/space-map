@@ -11,6 +11,7 @@
  */
 
 import { Vector3 } from 'three';
+import { naifId } from '$lib/constants';
 import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
@@ -49,13 +50,6 @@ const SUN_ID = 10;
 const SSB_ID = 0;
 const SUN_OBJECT_ID = `naif-${SUN_ID}`;
 const SSB_OBJECT_ID = `naif-${SSB_ID}`;
-
-/** Numeric part of a `naif-<n>` id; null for any other prefix. */
-export function naifId(objectId: string): number | null {
-	if (!objectId.startsWith('naif-')) return null;
-	const value = Number.parseInt(objectId.slice('naif-'.length), 10);
-	return Number.isFinite(value) ? value : null;
-}
 
 /** True for the Sun or the solar-system barycentre — the roots of the walk. */
 export function isHeliocentricRoot(objectId: string): boolean {

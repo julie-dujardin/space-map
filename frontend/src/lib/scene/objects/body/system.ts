@@ -1,8 +1,7 @@
 import { type Scene, SphereGeometry, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
 import { effectiveRadiusKm, ObjectType, type PositionedBody } from '$lib/types/objects';
-import { applyOrientation } from '$lib/math/orientation';
-import { getNutPrecPhases, ownerIdFor } from '$lib/fetch/systems-global';
+import { applyOrientation, type NutPrecSums } from '$lib/math/orientation';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { dataBase } from '$lib/fetch/data-base';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
@@ -51,7 +50,7 @@ interface SystemBodyMeta extends SiblingBundles {
 		w2: number;
 	};
 	/** Per-body IAU nutation/precession coefficients (paired with global angles). */
-	nut_prec?: { ra: number[]; dec: number[]; pm: number[] };
+	nut_prec?: NutPrecSums;
 	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis). */
 	radii?: { a: number; b: number; c: number };
 	/** Ring bundles, inner → outer. Split per opacity range (Saturn has
@@ -88,23 +87,6 @@ async function downloadSystemMeta(barycenterId: string): Promise<SystemMeta | nu
 	return resp.json();
 }
 
-/** Give `body` the spin of its system record: the pole and the rate, and the
- *  nutation terms joined with the angles its system shares. */
-function adoptSystemSpin(
-	body: PositionedBody,
-	orientation: NonNullable<SystemBodyMeta['orientation']>,
-	nutPrec: SystemBodyMeta['nut_prec'],
-	ctx: ContextManager | undefined,
-	barycenterId: string
-): void {
-	applyBodyOrientation(body, orientation, ctx, barycenterId);
-	if (!nutPrec) return;
-	const naifMatch = body.data.id.match(/^naif-(-?\d+)$/);
-	const naifId = naifMatch ? parseInt(naifMatch[1], 10) : null;
-	const phases = naifId !== null ? getNutPrecPhases(ownerIdFor(naifId)) : undefined;
-	if (phases) body.nutPrec = { ...nutPrec, ...phases };
-}
-
 /**
  * Read how `body` spins, with no mesh to turn. The scene reads a spin with the
  * system or the texture of the body in focus, and a lander is placed from the
@@ -125,9 +107,9 @@ export async function readSpin(body: PositionedBody, ctx: ContextManager): Promi
 	// The system in focus, or another read, can give the spin in the meantime.
 	if (known()) return;
 	if (record?.orientation) {
-		adoptSystemSpin(body, record.orientation, record.nut_prec, ctx, barycenterId!);
+		applyBodyOrientation(body, record.orientation, record.nut_prec, ctx, barycenterId!);
 	} else if (detail?.global?.orientation) {
-		applyBodyOrientation(body, detail.global.orientation, ctx);
+		applyBodyOrientation(body, detail.global.orientation, detail.global.nut_prec, ctx);
 	}
 	ctx.bodies.orientationRead.add(id);
 	if (body.orientation) ctx.bodies.orientationVersion++;
@@ -185,7 +167,7 @@ export async function loadSystemData(
 
 		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {
-			adoptSystemSpin(bo.body, bodyMeta.orientation, bodyMeta.nut_prec, ctx, barycenterId);
+			applyBodyOrientation(bo.body, bodyMeta.orientation, bodyMeta.nut_prec, ctx, barycenterId);
 			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd, bo.body.nutPrec);
 		}
 

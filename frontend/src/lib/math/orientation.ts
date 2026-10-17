@@ -43,6 +43,9 @@ export interface NutPrec {
 	phaseDegree: number;
 }
 
+/** The sums of {@link NutPrec} that belong to one body, as the export ships them. */
+export type NutPrecSums = Pick<NutPrec, 'ra' | 'dec' | 'pm'>;
+
 /**
  * Body-fixed quaternion (axial tilt + spin) in the scene frame, at an app (UTC)
  * Julian date. Local +Y is the north pole. Local +X is the prime meridian: the

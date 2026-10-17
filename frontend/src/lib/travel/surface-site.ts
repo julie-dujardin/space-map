@@ -9,12 +9,11 @@
  */
 
 import { Vector3 } from 'three';
-import { bodyQuaternion, type NutPrec } from '$lib/math/orientation';
+import { bodyQuaternion } from '$lib/math/orientation';
 import { bodyFixedUnit } from '$lib/scene/position/rendered-surface';
 import { effectiveRadiusKm, type BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-import { getNutPrecPhases, ownerIdFor } from '$lib/fetch/systems-global';
-import { naifId } from '$lib/travel/travel-body';
+import { nutPrecFor } from '$lib/fetch/systems-global';
 import type { Vec3 } from '$lib/math/travel/vec3';
 
 const DEG2RAD = Math.PI / 180;
@@ -32,10 +31,7 @@ export function surfaceSiteAt(
 	if (!orientation) return null;
 	const radiusKm = effectiveRadiusKm(body);
 	if (!(radiusKm > 0)) return null;
-	const id = naifId(body.id);
-	const phases = id !== null ? getNutPrecPhases(ownerIdFor(id)) : undefined;
-	const nutPrec: NutPrec | undefined =
-		detail.nut_prec && phases ? { ...detail.nut_prec, ...phases } : undefined;
+	const nutPrec = nutPrecFor(body.id, detail.nut_prec);
 	const unit = bodyFixedUnit(latDeg * DEG2RAD, lonDeg * DEG2RAD);
 	const v = new Vector3();
 	return (jd) => {

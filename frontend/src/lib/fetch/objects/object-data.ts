@@ -7,7 +7,7 @@ import {
 	type BundlePair
 } from '$lib/fetch/bundle-pair';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
-import type { PointingSpec } from '$lib/math/orientation';
+import type { NutPrecSums, PointingSpec } from '$lib/math/orientation';
 import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
 import type { TilesBlock } from '$lib/scene/types';
 import type { RingMeta } from '$lib/scene/objects/surface/rings';
@@ -604,11 +604,7 @@ export interface GlobalObjectData {
 		 *  literature, not a kernel. */
 		reference?: { title: string; url: string };
 	};
-	nut_prec?: {
-		ra: number[];
-		dec: number[];
-		pm: number[];
-	};
+	nut_prec?: NutPrecSums;
 	/** Hand-edited per-spacecraft pointing (spacecraft-orientation.yaml); the
 	 *  focused model aims `primary.axis` at `primary.target`, rolling toward the
 	 *  optional `secondary`. Absent → south-toward-parent default. */
