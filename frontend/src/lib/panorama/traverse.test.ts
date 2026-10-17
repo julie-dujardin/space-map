@@ -55,4 +55,22 @@ describe('neighboursOf', () => {
 		expect(neighboursOf(list, p2, MARS_RADIUS_KM).next).toBeNull();
 		expect(neighboursOf(list, p2, MARS_RADIUS_KM).previous?.bearingDeg).toBeCloseTo(180, 5);
 	});
+
+	it('steps past the other mosaics of the same stop', () => {
+		const before = entry({ id: 'before', mission: 'm', lat: 17.999 });
+		const stop = [1, 2, 3].map((n) => entry({ id: `stop${n}`, mission: 'm', lat: 18 }));
+		// Half a metre: a re-localisation of the same stop, not a drive.
+		const nudged = entry({ id: 'nudged', mission: 'm', lat: 18.0000085 });
+		const after = entry({ id: 'after', mission: 'm', lat: 18.001 });
+		const list = [before, ...stop, nudged, after];
+		const middle = neighboursOf(list, stop[1], MARS_RADIUS_KM);
+		expect(middle.previous?.entry).toBe(before);
+		expect(middle.next?.entry).toBe(after);
+		expect(neighboursOf(list, after, MARS_RADIUS_KM).previous?.entry).toBe(nudged);
+	});
+
+	it('has no neighbour where the rest of the traverse is the same spot', () => {
+		const list = [1, 2].map((n) => entry({ id: `p${n}`, mission: 'm' }));
+		expect(neighboursOf(list, list[0], MARS_RADIUS_KM)).toEqual({ previous: null, next: null });
+	});
 });

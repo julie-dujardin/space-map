@@ -118,9 +118,6 @@ const ARROW_DISTANCE = 9;
 const CLICK_SLOP_PX = 6;
 const ANGLE_STEP_DEG = 10;
 const ANGLE_SAMPLE_STEP_DEG = 1;
-/** A neighbour closer than this stands on the same spot; there is no
- *  direction to point an arrow in. */
-const MIN_ARROW_DISTANCE_M = 1;
 
 /** The turn from the device frame, whose Z points out of the screen, to the
  *  camera frame, which looks along -Z. */
@@ -367,7 +364,8 @@ export class PanoramaView {
 		return this.current;
 	}
 
-	/** The panoramas before and after the current one on its traverse. */
+	/** The nearest panoramas before and after the current one that stand
+	 *  elsewhere on its traverse. */
 	getNeighbours(): Neighbours | null {
 		return this.neighbours;
 	}
@@ -395,7 +393,7 @@ export class PanoramaView {
 			this.neighbours && hasHeading(entry)
 				? (['previous', 'next'] as const)
 						.map((key) => ({ key, n: this.neighbours?.[key] ?? null }))
-						.filter((a) => a.n && a.n.distanceM >= MIN_ARROW_DISTANCE_M)
+						.filter((a) => a.n)
 						.map((a) => ({ key: a.key, bearingDeg: a.n!.bearingDeg }))
 				: []
 		);
@@ -407,7 +405,7 @@ export class PanoramaView {
 		if (this.current === entry) this.emit('load', entry);
 	}
 
-	/** Open the previous or next panorama on the traverse, when there is one. */
+	/** Open the previous or next neighbour on the traverse, when there is one. */
 	async step(key: ArrowKey): Promise<void> {
 		const n = this.neighbours?.[key];
 		if (n) await this.open(n.entry);

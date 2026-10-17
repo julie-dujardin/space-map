@@ -38,25 +38,31 @@ export interface Neighbours {
 	next: Neighbour | null;
 }
 
-/** The entries before and after `current` on the same mission's traverse.
- *  The list is already mission-then-time ordered, so neighbours are adjacent
- *  rows until the mission changes. */
+/** A panorama closer than this stands on the same spot, with no direction to
+ *  step in. */
+const MIN_STEP_M = 1;
+
+/** The nearest entries before and after `current` on the same mission's
+ *  traverse that stand somewhere else. A rover often shoots many mosaics at
+ *  one stop, so the adjacent rows of the mission-then-time list are mostly
+ *  the same spot. */
 export function neighboursOf(
 	entries: PanoramaEntry[],
 	current: PanoramaEntry,
 	radiusKm: number
 ): Neighbours {
 	const i = entries.findIndex((e) => e.id === current.id);
-	const sameMission = (e: PanoramaEntry | undefined) => e && e.mission === current.mission;
-	const toNeighbour = (e: PanoramaEntry | undefined): Neighbour | null =>
-		sameMission(e)
-			? {
-					entry: e!,
-					distanceM: groundDistanceM(current, e!, radiusKm),
-					bearingDeg: bearingDeg(current, e!)
-				}
-			: null;
-	return { previous: toNeighbour(entries[i - 1]), next: toNeighbour(entries[i + 1]) };
+	const nearest = (step: -1 | 1): Neighbour | null => {
+		for (let j = i + step; j >= 0 && j < entries.length; j += step) {
+			const e = entries[j];
+			if (e.mission !== current.mission) return null;
+			const distanceM = groundDistanceM(current, e, radiusKm);
+			if (distanceM >= MIN_STEP_M)
+				return { entry: e, distanceM, bearingDeg: bearingDeg(current, e) };
+		}
+		return null;
+	};
+	return { previous: nearest(-1), next: nearest(1) };
 }
 
 const DEG = Math.PI / 180;
