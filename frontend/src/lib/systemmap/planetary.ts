@@ -6,6 +6,7 @@
 
 import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 import type { PlanetarySystemsMapEntry } from '$lib/fetch/groups/planetary-systems-map';
+import { visibleSpan, type RingStripProfile } from '$lib/rings/strip';
 import type { MapBand, MapCloud, MapLink, MapText, SystemMapModel } from './model';
 
 export interface SystemMoon {
@@ -61,6 +62,20 @@ export function systemFromMapEntry(
 		rings: entry.rings ? { innerRp: entry.rings.inner_rp, outerRp: entry.rings.outer_rp } : null,
 		moonCount: entry.moon_count
 	};
+}
+
+/** The part of the rings the scene shows, from the primary's radial profiles.
+ *  The faint dust that widens the full span (Saturn's E ring, Uranus' ζ and
+ *  μ rings) is never seen in the scene. Null when none of the rings is; the
+ *  full span when no profile loaded. */
+export function visibleRings(
+	system: PlanetarySystemMapData,
+	profiles: readonly RingStripProfile[]
+): SystemRings | null {
+	if (!system.rings || !profiles.length) return system.rings;
+	const span = visibleSpan(profiles);
+	const rKm = system.planetRadiusKm;
+	return span && { innerRp: span.inner / rKm, outerRp: span.outer / rKm };
 }
 
 const TOP_MOON_R = 14;

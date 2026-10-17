@@ -6,7 +6,12 @@
 	import SystemMap from './SystemMap.svelte';
 	import { siteMapText } from './system-map-text';
 	import type { MapBand } from '$lib/systemmap/model';
-	import { planetarySystemModel, type PlanetarySystemMapData } from '$lib/systemmap/planetary';
+	import {
+		planetarySystemModel,
+		visibleRings,
+		type PlanetarySystemMapData
+	} from '$lib/systemmap/planetary';
+	import { loadRingStrips, type RingStripProfile } from '$lib/rings/strip';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -29,6 +34,24 @@
 
 	let isEarth = $derived(system.planetId === EARTH_ID);
 
+	// The band spans the rings as the scene draws them, so it is held until
+	// the profiles say how far that is: drawn at full span first, Saturn's
+	// would cover four moons and then shrink off them.
+	let ringed = $derived(system.rings ? system.planetId : null);
+	let profiles = $state<{ id: string; profiles: RingStripProfile[] } | null>(null);
+	$effect(() => {
+		const id = ringed;
+		if (!id) return;
+		untrack(() =>
+			loadRingStrips(id).then((p) => {
+				if (ringed === id) profiles = { id, profiles: p };
+			})
+		);
+	});
+	let rings = $derived(
+		profiles && profiles.id === ringed ? visibleRings(system, profiles.profiles) : null
+	);
+
 	// Earth's orbit zones, as the only system whose primary has a catalogued
 	// population of its own. Rings are a band on every other system.
 	let bands = $derived.by<MapBand[]>(() => {
@@ -39,13 +62,13 @@
 				href: groupHref(appState, b.slug, b.groupLabel),
 				onclick: groupClick(appState, b.slug, b.groupLabel)
 			}));
-		if (!system.rings) return [];
+		if (!rings) return [];
 		return [
 			{
 				key: 'rings',
 				label: m.tab_rings(),
-				innerKm: system.rings.innerRp * rKm,
-				outerKm: system.rings.outerRp * rKm,
+				innerKm: rings.innerRp * rKm,
+				outerKm: rings.outerRp * rKm,
 				tone: 'amber',
 				href: focusHref(appState, system.planetId, system.planetName, 'rings'),
 				onclick: focusClick(focusObject, system.planetId, system.planetName, { tab: 'rings' })

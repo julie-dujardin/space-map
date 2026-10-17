@@ -1563,6 +1563,7 @@ export interface SystemMapOptions {
 	grouping?: 'bodies' | 'systems';
 	names?: Record<string, string>;
 	places?: readonly SystemMapPlace[];
+	rings?: 'all' | 'visible';
 	view?: SystemMapView;
 	zones?: 'belts' | 'inner-outer';
 }

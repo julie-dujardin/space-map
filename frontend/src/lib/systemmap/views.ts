@@ -12,8 +12,9 @@ import type {
 } from '$lib/fetch/groups/planetary-systems-map';
 import type { SolarSystemMapFile, SolarSystemMapObject } from '$lib/fetch/groups/solar-system-map';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+import type { RingStripProfile } from '$lib/rings/strip';
 import type { MapBand, MapBody, MapLink, MapSatellite, MapText, SystemMapModel } from './model';
-import { planetarySystemModel, systemFromMapEntry } from './planetary';
+import { planetarySystemModel, systemFromMapEntry, visibleRings } from './planetary';
 import {
 	SOLAR_PX_PER_DEG,
 	SOLAR_PX_PER_KM,
@@ -84,6 +85,9 @@ export interface ViewData {
 	solar: SolarSystemMapFile;
 	systems: PlanetarySystemsMapFile;
 	extras: readonly ExtraBody[];
+	/** The primary's ring profiles, for a band that spans only what the scene
+	 *  draws; the full span when absent. */
+	ringProfiles?: readonly RingStripProfile[];
 }
 
 export interface ViewOptions {
@@ -309,13 +313,14 @@ export function buildSystemView(
 		.filter((moon) => scope.has(moon.id))
 		.map((moon) => ({ ...moon, name: scope.name(moon.id, exported[moon.id]) }));
 	const rKm = system.planetRadiusKm;
-	const bands: MapBand[] = system.rings
+	const rings = data.ringProfiles ? visibleRings(system, data.ringProfiles) : system.rings;
+	const bands: MapBand[] = rings
 		? [
 				{
 					key: 'rings',
 					label: text.rings,
-					innerKm: system.rings.innerRp * rKm,
-					outerKm: system.rings.outerRp * rKm,
+					innerKm: rings.innerRp * rKm,
+					outerKm: rings.outerRp * rKm,
 					tone: 'amber'
 				}
 			]

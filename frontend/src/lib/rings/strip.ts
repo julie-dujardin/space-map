@@ -153,6 +153,32 @@ export function sampleProfiles(
 	return covered ? { rgb: [red, green, blue], tau } : null;
 }
 
+/** Face-on opacity a ring needs to be seen in the scene. The renderer draws
+ *  far fainter rings, which change a pixel but do not show: Neptune's peak at
+ *  0.003, Uranus' ζ ring at 0.01. Uranus' main rings start at 0.08. */
+const SEEN_ALPHA = 0.02;
+const SEEN_TAU = -Math.log1p(-SEEN_ALPHA);
+
+/** The radii the scene shows, in km, from the first sample seen to the last.
+ *  Null when none is. */
+export function visibleSpan(
+	profiles: readonly RingStripProfile[]
+): { inner: number; outer: number } | null {
+	let inner = Infinity;
+	let outer = -Infinity;
+	for (const profile of profiles) {
+		const n = profile.tau.length;
+		const kmPerSample = (profile.outer - profile.inner) / (n - 1);
+		for (let i = 0; i < n; i++) {
+			if (profile.tau[i] < SEEN_TAU) continue;
+			const km = profile.inner + i * kmPerSample;
+			if (km < inner) inner = km;
+			if (km > outer) outer = km;
+		}
+	}
+	return outer >= inner ? { inner, outer } : null;
+}
+
 export function loadRingStrips(bodyId: string): Promise<RingStripProfile[]> {
 	let pending = cache.get(bodyId);
 	if (!pending) {

@@ -12,6 +12,7 @@ import { fetchSolarSystemMap } from '$lib/fetch/groups/solar-system-map';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { host } from '$lib/host';
 import { AU_KM } from '$lib/math/units';
+import { loadRingStrips } from '$lib/rings/strip';
 import { SystemMapChart } from './chart';
 import {
 	buildSolarView,
@@ -49,6 +50,12 @@ export interface SystemMapOptions {
 	/** `inner-outer` turns the two belts into the doors of the two zones of
 	 *  small bodies; `belts` leaves them the scenery they are. */
 	zones?: 'belts' | 'inner-outer';
+	/** `visible` spans a planetary system's rings band over only the rings
+	 *  {@link createMap} shows: Saturn's stops at the F ring rather than the
+	 *  E ring, and Jupiter's and Neptune's, too faint to see, have no band. It
+	 *  reads the primary's bundle and ring profiles. `all`, the default, spans
+	 *  every ring. */
+	rings?: 'all' | 'visible';
 }
 
 export interface SystemMapEvents {
@@ -103,6 +110,7 @@ export class SystemMap {
 	private readonly names: Record<string, string>;
 	private readonly grouping: 'bodies' | 'systems';
 	private readonly zones: 'belts' | 'inner-outer';
+	private readonly rings: 'all' | 'visible';
 	private readonly places: ExtraBody[];
 	private targets: SystemMapTarget[] = [];
 	/** Bundles read for the bodies no map file places, by id; null where the
@@ -119,6 +127,7 @@ export class SystemMap {
 		this.names = options.names ?? {};
 		this.grouping = options.grouping ?? 'bodies';
 		this.zones = options.zones ?? 'belts';
+		this.rings = options.rings ?? 'all';
 		this.places = (options.places ?? []).map(extraFromPlace);
 	}
 
@@ -209,15 +218,14 @@ export class SystemMap {
 		switch (view.kind) {
 			case 'solar-system':
 				return buildSolarView(data, options, text, pick);
-			case 'system':
-				return buildSystemView(
-					data,
-					view.id,
-					await this.exportedNames(view.id, systems),
-					options,
-					text,
-					pick
-				);
+			case 'system': {
+				const ringed = this.rings === 'visible' && !!systemEntry(systems, view.id)?.rings;
+				const [names, ringProfiles] = await Promise.all([
+					this.exportedNames(view.id, systems),
+					ringed ? loadRingStrips(view.id) : undefined
+				]);
+				return buildSystemView({ ...data, ringProfiles }, view.id, names, options, text, pick);
+			}
 			case 'zone': {
 				const ids = unplacedIds(
 					solar,

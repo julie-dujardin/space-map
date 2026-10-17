@@ -662,6 +662,22 @@ A `system` is named by its primary and measured in the primary's radii. A body
 with no moons has no system map, and asking for one rejects, leaving the map as
 it was.
 
+A ringed primary's rings are a band across every ring there is, out to the
+faintest dust: Saturn's runs past Mimas, Enceladus, Tethys and Dione to the
+E ring. `rings: 'visible'` spans only the rings `createMap` shows, at the cost
+of the primary's bundle and its ring profiles:
+
+```js
+createSystemMap({
+	container: '#picker',
+	view: { kind: 'system', id: 'naif-699' },
+	rings: 'visible'
+});
+```
+
+Jupiter's and Neptune's rings are too faint to see, so their systems then have
+no band.
+
 **A click reports what was picked and goes nowhere.** Walking down into a
 system and back up is the page's own doing, which is what lets it keep a back
 button, a breadcrumb or a URL of its own:

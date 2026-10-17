@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PlanetarySystemsMapFile } from '$lib/fetch/groups/planetary-systems-map';
 import type { SolarSystemMapFile, SolarSystemMapObject } from '$lib/fetch/groups/solar-system-map';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+import type { RingStripProfile } from '$lib/rings/strip';
 import {
 	buildSolarView,
 	buildSystemView,
@@ -319,6 +320,35 @@ describe('buildSystemView', () => {
 		expect(() => buildSystemView(data(), 'naif-299', {}, options(), TEXT, () => {})).toThrow(
 			/no planetary system/
 		);
+	});
+
+	const profile = (inner: number, outer: number, tau: number[]): RingStripProfile => ({
+		inner,
+		outer,
+		tau: Float32Array.from(tau),
+		rgb: new Uint8ClampedArray(tau.length * 3)
+	});
+	const ringBand = (ringProfiles: RingStripProfile[]) =>
+		buildSystemView({ ...data(), ringProfiles }, 'naif-699', {}, options(), TEXT, () => {}).model
+			.bands;
+
+	it('spans the rings band over the samples the scene shows', () => {
+		const [band] = ringBand([
+			profile(66_900, 74_500, [3e-3, 0.05, 0.05]),
+			profile(74_500, 140_500, [0.5, 1, 0.1, 0.01]),
+			profile(149_000, 480_000, [1e-5, 1e-5])
+		]);
+		expect(band.innerKm).toBeCloseTo(70_700, 6);
+		expect(band.outerKm).toBeCloseTo(118_500, 6);
+	});
+
+	it('has no rings band where the scene shows none of the rings', () => {
+		expect(ringBand([profile(41_000, 63_000, [1e-5, 3e-3, 1e-5])])).toEqual([]);
+	});
+
+	it('keeps the full span when no profile loaded', () => {
+		const [band] = ringBand([]);
+		expect([band.innerKm, band.outerKm]).toEqual([1.1 * 60268, 8 * 60268]);
 	});
 });
 

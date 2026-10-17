@@ -104,6 +104,10 @@
 					<option value="belts">zones: belts</option>
 					<option value="inner-outer">zones: inner-outer</option>
 				</select>
+				<select id="rings" aria-label="Rings">
+					<option value="all">rings: all</option>
+					<option value="visible">rings: visible</option>
+				</select>
 				<label><input id="names" type="checkbox" /> own names</label>
 				<label><input id="places" type="checkbox" /> own places</label>
 			</div>
@@ -117,6 +121,7 @@
 			import { createSystemMap } from './spacemap.js';
 
 			// ?data=<export root> ?lang=<bcp47> ?grouping=bodies|systems ?zones=belts|inner-outer
+			// ?rings=all|visible
 			// ?scope=all|mapped ?view=solar-system|system:<id>|zone:<inner|outer> ?w=<px>
 			// ?names=1   the page's own names over the export's
 			// ?places=1  three small bodies the page describes itself, in the inner zone
@@ -166,7 +171,8 @@
 			const options = {
 				view: parseView(params.get('view')),
 				grouping: params.get('grouping') ?? 'bodies',
-				zones: params.get('zones') ?? 'belts'
+				zones: params.get('zones') ?? 'belts',
+				rings: params.get('rings') ?? 'all'
 			};
 			if ($('scope').value === 'mapped') options.bodies = MAPPED;
 			if (params.get('names') === '1') {
@@ -189,7 +195,7 @@
 					{ id: 'spkid-120065803', name: 'Dimorphos', moon: true, parent: 'spkid-20065803' }
 				];
 			}
-			for (const id of ['grouping', 'zones']) {
+			for (const id of ['grouping', 'zones', 'rings']) {
 				$(id).value = options[id];
 				$(id).onchange = () => {
 					params.set(id, $(id).value);
