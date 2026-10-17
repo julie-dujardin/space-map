@@ -497,6 +497,29 @@ elevation (`linear_elevation`), not by tangent:
 Pathfinder's orientation is `matched to a controlled mosaic`, a basis of its
 own in `strip_spheres.ORIENTATION`.
 
+### Viking Landers
+
+The 55 Viking mosaics state the azimuth of their first pixel as "Mars local".
+That azimuth is levelled and clockwise from north, but a few degrees off, so
+`viking.py` adds a correction to it.
+
+- **The 33 survey mosaics** (`dns`, `fns`) take one correction per camera:
+  +2.7° and +3.3° on Lander 1, −0.5° and 0° on Lander 2.
+  - **Why Lander 1 is off:** its labels place the lander at 138.0°. The imaging
+    team published 141.91° ([Tucker 1978, NASA RP-1007, p. 1](https://ntrs.nasa.gov/api/citations/19780012099/downloads/19780012099.pdf);
+    Liebes 1982, NASA CR-3568). The cameras' bolt-down offsets are not applied
+    either.
+  - **How the corrections were measured:** each mosaic was registered against
+    the camera frames its label names.
+  - **Cross-check:** the camera pointing places the Sun within 0.3° of where
+    SPICE puts it, across 21 Sun images.
+- **The other 22** (`dnm`, `dnr`, `fnm`) were assembled another way and are off
+  by −1.2° to +15.2°. Each takes its own correction, recorded in
+  `viking_north.json`:
+  - SIFT matches against the survey mosaics of the same camera. The two cameras
+    stand 0.8 m apart, and matches across them disagree by up to a degree.
+  - Each was checked by eye on a board of the two horizons.
+
 ### Dated Mastcam-Z 360 spheres
 
 The manifest also fits all 53 panoramas of ASU's Mastcam-Z 360 collection, sols 3

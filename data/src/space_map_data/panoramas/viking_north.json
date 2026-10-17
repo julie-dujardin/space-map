@@ -1,0 +1,134 @@
+[
+  {
+    "id": "viking1-dnm207",
+    "correction_deg": 8.7,
+    "reference": "viking1-dns615",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1595 on viking1-dns615; checked by eye"
+  },
+  {
+    "id": "viking1-dnm606",
+    "correction_deg": 7.5,
+    "reference": "viking1-dns616",
+    "method": "SIFT matches against the survey mosaics of the same camera: 3667 on viking1-dns616; 4 survey mosaics agree within 0.20\u00b0; checked by eye"
+  },
+  {
+    "id": "viking1-dnm607",
+    "correction_deg": 8.7,
+    "reference": "viking1-dns615",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1488 on viking1-dns615; checked by eye"
+  },
+  {
+    "id": "viking1-dnm608",
+    "correction_deg": 15.2,
+    "reference": "viking1-dns612",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1912 on viking1-dns612; 3 survey mosaics agree within 0.22\u00b0; checked by eye"
+  },
+  {
+    "id": "viking1-dnr628",
+    "correction_deg": 2.7,
+    "reference": "viking1-dns601",
+    "method": "SIFT matches against the survey mosaics of the same camera: 858 on viking1-dns601; 3 survey mosaics agree within 0.01\u00b0; checked by eye"
+  },
+  {
+    "id": "viking1-dnr629",
+    "correction_deg": 4.7,
+    "reference": "viking1-dns603",
+    "method": "SIFT matches against the survey mosaics of the same camera: 336 on viking1-dns603; 2 survey mosaics agree within 0.01\u00b0; checked by eye"
+  },
+  {
+    "id": "viking1-dnr631",
+    "correction_deg": 9.3,
+    "reference": "viking1-dns606",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1646 on viking1-dns606; 5 survey mosaics agree within 0.02\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-dnr633a",
+    "correction_deg": 6.0,
+    "reference": "viking2-fns620",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1488 on viking2-fns620; 3 survey mosaics agree within 0.01\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-dnr633b",
+    "correction_deg": 6.0,
+    "reference": "viking2-fns620",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1848 on viking2-fns620; 3 survey mosaics agree within 0.02\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-dnr635",
+    "correction_deg": 0.0,
+    "reference": "viking2-fns620",
+    "method": "SIFT matches against the survey mosaics of the same camera: 5415 on viking2-fns620; 5 survey mosaics agree within 0.01\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm601",
+    "correction_deg": 7.8,
+    "reference": "viking2-fns619",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1711 on viking2-fns619; 4 survey mosaics agree within 0.46\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm602",
+    "correction_deg": 6.2,
+    "reference": "viking2-fns603",
+    "method": "SIFT matches against the survey mosaics of the same camera: 2304 on viking2-fns603; 3 survey mosaics agree within 0.10\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm603",
+    "correction_deg": -0.7,
+    "reference": "viking2-fns622",
+    "method": "SIFT matches against the survey mosaics of the same camera: 3984 on viking2-fns622; 5 survey mosaics agree within 0.43\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm604",
+    "correction_deg": 11.9,
+    "reference": "viking2-fns620",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1723 on viking2-fns620; 3 survey mosaics agree within 0.25\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm605",
+    "correction_deg": 7.6,
+    "reference": "viking2-fns607",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1809 on viking2-fns607; 2 survey mosaics agree within 0.02\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm606",
+    "correction_deg": 6.3,
+    "reference": "viking2-fns609",
+    "method": "SIFT matches against the survey mosaics of the same camera: 3194 on viking2-fns609; 2 survey mosaics agree within 0.01\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm607",
+    "correction_deg": -1.2,
+    "reference": "viking2-fns611",
+    "method": "SIFT matches against the survey mosaics of the same camera: 1604 on viking2-fns611; 5 survey mosaics agree within 0.45\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm608",
+    "correction_deg": 11.9,
+    "reference": "viking2-fns612",
+    "method": "SIFT matches against the survey mosaics of the same camera: 2212 on viking2-fns612; 2 survey mosaics agree within 0.01\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm609",
+    "correction_deg": 7.6,
+    "reference": "viking2-fns623",
+    "method": "SIFT matches against the survey mosaics of the same camera: 2011 on viking2-fns623; 2 survey mosaics agree within 0.01\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm610",
+    "correction_deg": 6.3,
+    "reference": "viking2-fns623",
+    "method": "SIFT matches against the survey mosaics of the same camera: 3254 on viking2-fns623; 3 survey mosaics agree within 0.95\u00b0; checked by eye"
+  },
+  {
+    "id": "viking2-fnm611",
+    "correction_deg": -0.8,
+    "reference": "viking2-fns616",
+    "method": "SIFT matches against the survey mosaics of the same camera: 2087 on viking2-fns616; checked by eye"
+  },
+  {
+    "id": "viking2-fnm612",
+    "correction_deg": 11.9,
+    "reference": "viking2-fns618",
+    "method": "SIFT matches against the survey mosaics of the same camera: 2051 on viking2-fns618; checked by eye"
+  }
+]

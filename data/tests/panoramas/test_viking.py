@@ -2,7 +2,12 @@
 
 import pytest
 
-from space_map_data.panoramas.viking import capture_date, position, read_vicar
+from space_map_data.panoramas.viking import (
+    capture_date,
+    north_correction,
+    position,
+    read_vicar,
+)
 
 HEADER = (
     "LBLSIZE=4010            FORMAT='BYTE'  TYPE='IMAGE'  DIM=3  EOL=0  "
@@ -39,13 +44,14 @@ class TestReadingTheLabel:
 
         assert mosaic.zero_line == pytest.approx(126.0)
 
-    def test_the_frame_is_the_lander_and_claims_no_north(self):
-        """Nothing in the label ties the lander's own azimuth to north."""
+    def test_the_stated_azimuth_is_levelled_and_near_north(self):
+        """ "Mars local" is clockwise from north in a levelled frame, a few
+        degrees off, not the lander's own frame."""
         mosaic, _ = read_vicar(HEADER)
         mosaic.product_id, mosaic.start_time, mosaic.stop_time = "dnm207", "x", "x"
         mosaic.validate()
 
-        assert mosaic.frame == "LANDER_FRAME"
+        assert mosaic.frame == "LOCAL_LEVEL_FRAME"
 
     def test_the_lander_and_camera_are_read(self):
         _, who = read_vicar(HEADER)
@@ -106,3 +112,27 @@ class TestLandingSites:
 
     def test_longitude_is_stated_as_east(self):
         assert position(1)["longitude_direction"] == "east"
+
+
+def product(identity: str, lander: int, camera: int) -> dict:
+    return {
+        "id": f"viking{lander}-{identity}",
+        "lander": lander,
+        "camera": camera,
+        "mosaic": {"product_id": identity},
+    }
+
+
+class TestNorth:
+    """The stated azimuth takes a correction to reach north."""
+
+    def test_a_survey_mosaic_takes_its_camera_correction(self):
+        """The survey mosaics share one frame per camera."""
+        assert north_correction(product("dns604", 1, 2)) == 3.3
+        assert north_correction(product("fns602", 2, 1)) == -0.5
+
+    def test_another_mosaic_takes_its_measured_correction(self):
+        assert north_correction(product("dnm608", 1, 2)) == pytest.approx(15.2)
+
+    def test_a_mosaic_nobody_measured_claims_no_north(self):
+        assert north_correction(product("dnm999", 1, 1)) is None

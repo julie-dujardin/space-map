@@ -4,12 +4,15 @@ The imaging team assembled the lander frames into cylindrical mosaics and the
 archive kept them in VICAR form. Each one states where its first pixel points
 and how wide a pixel is, which is all the geometry a sphere needs.
 
-The azimuth is measured in the lander's own frame. Nothing in the label ties
-that frame to north, so these panoramas are placed and dated but claim no
-heading, and the viewer draws none.
+The stated azimuth is "Mars local": levelled and clockwise from north, but a
+few degrees off. The survey mosaics put Lander 1 at 138.0° where the imaging
+team published 141.91°, and none apply the cameras' bolt-down offsets, so they
+take one correction per camera. The other mosaics were assembled another way and
+each takes its own, measured against the survey's.
 """
 
 import argparse
+from dataclasses import replace
 from datetime import date, timedelta
 import json
 import logging
@@ -56,6 +59,19 @@ LANDERS = {
 # on is reckoned from the landing and checked against the day of year beside it.
 LANDED = {1: ("1976-07-20", 202), 2: ("1976-09-03", 247)}
 SOL_SECONDS = 88775.244
+
+# Degrees to add to a survey mosaic's stated azimuth to reach north, by lander
+# and camera: registration against the cameras' own frames, whose pointing
+# meets the Sun's true place to 0.3°. The two cameras stand 0.8 m apart and
+# matches across them disagree by up to a degree, so each is measured alone.
+SURVEY_CORRECTION_DEG = {(1, 1): 2.7, (1, 2): 3.3, (2, 1): -0.5, (2, 2): 0.0}
+SURVEY_PREFIXES = ("dns", "fns")
+# The other mosaics' corrections, each matched to the survey mosaics of its
+# camera and reviewed by eye.
+MEASURED = {
+    entry["id"]: entry
+    for entry in json.loads(Path(__file__).with_name("viking_north.json").read_text())
+}
 
 
 def vicar_field(header: str, key: str) -> str | None:
@@ -113,7 +129,7 @@ def read_vicar(header: str) -> tuple[Mosaic, dict]:
         scale_y=scale,
         # Line 1 points at `elevation`, and every line below it one pixel lower.
         zero_line=1 + elevation * scale,
-        frame="LANDER_FRAME",
+        frame="LOCAL_LEVEL_FRAME",
         # Mosaic canvas the frames never covered is left at zero, which the
         # stated range of real data sits well above.
         missing=(0.0,),
@@ -135,6 +151,15 @@ def capture_date(lander: int, sol: int, doy: int) -> str:
     if not 0 <= (doy - landing_doy) - (found - start).days <= 1:
         raise ValueError(f"Sol {sol} and day of year {doy} disagree")
     return found.isoformat()
+
+
+def north_correction(product: dict) -> float | None:
+    """Degrees to add to the stated azimuth to reach north, or None where no
+    measurement gives them."""
+    if product["mosaic"]["product_id"].startswith(SURVEY_PREFIXES):
+        return SURVEY_CORRECTION_DEG[(product["lander"], product["camera"])]
+    entry = MEASURED.get(product["id"])
+    return entry["correction_deg"] if entry else None
 
 
 def position(lander: int) -> dict:
@@ -185,6 +210,8 @@ def download(client: httpx.Client, source_dir: Path, *, refresh=False) -> list[d
                     "id": f"viking{who['lander']}-{mosaic.product_id}",
                     "mission": f"viking{who['lander']}",
                     "instrument": f"Facsimile camera {who['camera']}",
+                    "lander": who["lander"],
+                    "camera": who["camera"],
                     "mosaic": vars(mosaic).copy(),
                     "position": position(who["lander"]),
                     "image": str(image.relative_to(root)),
@@ -212,6 +239,9 @@ def download(client: httpx.Client, source_dir: Path, *, refresh=False) -> list[d
 def build_product(root: Path, output_dir: Path, product: dict, width: int) -> dict:
     mosaic = Mosaic(**product["mosaic"])
     mosaic.validate()
+    correction = north_correction(product)
+    if correction is not None:
+        mosaic = replace(mosaic, azimuth=(mosaic.azimuth + correction) % 360)
     image = root / product["image"]
     rgba, tone, grid_remains = read_pixels(image, mosaic)
     texture = sphere_texture(rgba, mosaic, width)
@@ -239,12 +269,19 @@ def build_product(root: Path, output_dir: Path, product: dict, width: int) -> di
         "height": width // 2,
         "hfov_deg": 360,
         "vfov_deg": 180,
-        # The lander frame is referenced to the spacecraft, and nothing in the
-        # label ties it to north, so no heading may be claimed.
-        "north_azimuth_offset_deg": None,
+        # A corrected azimuth renders the sphere north-first; an uncorrected
+        # one is off by an unknown amount, so no heading may be claimed.
+        "north_azimuth_offset_deg": None if correction is None else 0,
+        **(
+            {"orientation_status": "matched to an archival sphere"}
+            if product["id"] in MEASURED
+            else {}
+        ),
         "pixel_convention": (
             "pixel centers; left edge is the frame's zero azimuth; clockwise; "
             "top edge +90 degrees"
+            if correction is None
+            else "pixel centers; left edge north; clockwise; top edge +90 degrees"
         ),
         "source_coverage": {
             "hfov_deg": min(360, mosaic.width / mosaic.scale_x),
@@ -253,7 +290,8 @@ def build_product(root: Path, output_dir: Path, product: dict, width: int) -> di
             "elevation_min_deg": (mosaic.zero_line - mosaic.height - 0.5)
             / mosaic.scale_y,
             "frame": mosaic.frame,
-            "frame_is_north_referenced": False,
+            "frame_is_north_referenced": correction is not None,
+            "north_correction_deg": correction,
             "holes": "alpha=0; no synthetic sky or ground",
         },
         "coverage": {
@@ -267,7 +305,11 @@ def build_product(root: Path, output_dir: Path, product: dict, width: int) -> di
         "preview": "preview.webp",
         "tone_mapping": tone,
         "quality_notes": [
-            "Azimuth is measured in the lander frame; nothing ties it to north.",
+            *(
+                ["The stated azimuth is off by an unmeasured amount."]
+                if correction is None
+                else []
+            ),
             "Mosaic seams and near-lander parallax are retained.",
         ],
         "credit": "Courtesy NASA/JPL-Caltech",
