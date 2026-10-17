@@ -1,9 +1,12 @@
 # space-map live infra
 
-One container, deployed via docker-compose, that ships the tree the tracking
-service writes (`space-map-live`, the `tracking` service of
-[the scheduler stack](../../scheduler/docker-compose.yaml)) to the Workers
-static-assets project `space-map-live`, served at `live.spacemap.co`.
+Two containers, deployed via docker-compose:
+
+- `tracking` runs the scheduler's image as a poller (`space-map-tracking run`).
+  It samples the DSN feed every minute, ESTRACK and the DSN bot less often, and
+  writes `v1/activity.json` into the live tree (`space-map-live`).
+- `deploy` ships that tree to the Workers static-assets project
+  `space-map-live`, served at `live.spacemap.co`.
 
 The deploy script, `wrangler.jsonc` and `_headers` are inlined in the compose
 `configs`, so no host file is needed. Every minute the script copies the tree,
