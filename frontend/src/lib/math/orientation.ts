@@ -46,17 +46,14 @@ export interface NutPrec {
 /** The sums of {@link NutPrec} that belong to one body, as the export ships them. */
 export type NutPrecSums = Pick<NutPrec, 'ra' | 'dec' | 'pm'>;
 
-/**
- * Body-fixed quaternion (axial tilt + spin) in the scene frame, at an app (UTC)
- * Julian date. Local +Y is the north pole. Local +X is the prime meridian: the
- * IAU ascending node Q turned by W along the equator. This matches the
- * USGS/Blue Marble equirectangular textures. The IAU model counts TDB days.
- */
-export function bodyQuaternion(
+/** The IAU angles at an app (UTC) Julian date, in degrees: the pole's right
+ *  ascension and declination on equatorial J2000 axes, and the prime
+ *  meridian's W. The IAU model counts TDB days. */
+export function iauAngles(
 	orientation: Orientation,
 	currentJd: number,
 	nutPrec?: NutPrec
-): Quaternion {
+): { ra: number; dec: number; w: number } {
 	const dt = utcToTdb(currentJd) - J2000_JD;
 	const T = dt / DAYS_PER_CENTURY;
 
@@ -78,7 +75,21 @@ export function bodyQuaternion(
 			if (i < pm.length) wDeg += pm[i] * s;
 		}
 	}
+	return { ra: raDeg, dec: decDeg, w: wDeg };
+}
 
+/**
+ * Body-fixed quaternion (axial tilt + spin) in the scene frame, at an app (UTC)
+ * Julian date. Local +Y is the north pole. Local +X is the prime meridian: the
+ * IAU ascending node Q turned by W along the equator. This matches the
+ * USGS/Blue Marble equirectangular textures.
+ */
+export function bodyQuaternion(
+	orientation: Orientation,
+	currentJd: number,
+	nutPrec?: NutPrec
+): Quaternion {
+	const { ra: raDeg, dec: decDeg, w: wDeg } = iauAngles(orientation, currentJd, nutPrec);
 	const ra = raDeg * DEG2RAD;
 	const dec = decDeg * DEG2RAD;
 	const cosDec = Math.cos(dec);

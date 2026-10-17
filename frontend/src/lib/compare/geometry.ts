@@ -11,6 +11,9 @@
  */
 
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { loadSystemsGlobal, nutPrecFor } from '$lib/fetch/systems-global';
+import { iauAngles } from '$lib/math/orientation';
+import { dateToJD } from '$lib/time/jd';
 import { fetchModelIndex, type ModelIndexEntry } from '$lib/fetch/models';
 import type { LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 import { craftWidthRatio } from '../../components/detail/charts/lineup-fit';
@@ -135,10 +138,14 @@ export async function resolveObject(
 	}
 
 	const geometry: CompareObject['geometry'] = { polarRatio };
-	const pole = global?.orientation;
-	if (pole) {
-		geometry.poleRa = pole.pole_ra_0;
-		geometry.poleDec = pole.pole_dec_0;
+	if (global?.orientation) {
+		// Today's pole, with the nutation terms: Triton's leans 20° off its mean.
+		// Without the angles it falls back to the mean pole.
+		if (global.nut_prec) await loadSystemsGlobal().catch(() => {});
+		const nutPrec = nutPrecFor(id, global.nut_prec);
+		const pole = iauAngles(global.orientation, dateToJD(new Date()), nutPrec);
+		geometry.poleRa = pole.ra;
+		geometry.poleDec = pole.dec;
 	}
 	if (global?.model_name) geometry.model = global.model_name;
 	if (global?.displacement) geometry.displacement = global.displacement;

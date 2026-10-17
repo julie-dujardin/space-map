@@ -11,6 +11,9 @@
  */
 
 import { AU_KM } from '$lib/math/units';
+import { iauAngles } from '$lib/math/orientation';
+import { nutPrecFor } from '$lib/fetch/systems-global';
+import { dateToJD } from '$lib/time/jd';
 import { BODY_COLORS, DEFAULT_BODY_COLOR, dominantPlanetId } from '$lib/constants';
 import { systemTitle } from '$lib/state/page-name';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -41,14 +44,16 @@ export interface PlanetarySystem extends PlanetarySystemMapData {
 const DEG2RAD = Math.PI / 180;
 const ECLIPTIC_RAD = 23.4392911 * DEG2RAD;
 
-/** The primary's spin axis as an ecliptic-frame unit vector, from the IAU pole.
- *  Falls back to the ecliptic pole when the bundle carries no orientation, which
- *  makes the tilt degrade to the plain ecliptic inclination. */
-function poleVector(global: GlobalObjectData | null): [number, number, number] {
+/** The primary's spin axis today as an ecliptic-frame unit vector, from the
+ *  IAU pole with its nutation terms, as the scene turns the globe. Falls back
+ *  to the ecliptic pole when the bundle carries no orientation, which makes the
+ *  tilt degrade to the plain ecliptic inclination. */
+function poleVector(id: string, global: GlobalObjectData | null): [number, number, number] {
 	const o = global?.orientation;
 	if (!o) return [0, 0, 1];
-	const ra = o.pole_ra_0 * DEG2RAD;
-	const dec = o.pole_dec_0 * DEG2RAD;
+	const pole = iauAngles(o, dateToJD(new Date()), nutPrecFor(id, global.nut_prec));
+	const ra = pole.ra * DEG2RAD;
+	const dec = pole.dec * DEG2RAD;
 	const x = Math.cos(dec) * Math.cos(ra);
 	const y = Math.cos(dec) * Math.sin(ra);
 	const z = Math.sin(dec);
@@ -177,7 +182,7 @@ export class PlanetarySystemState {
 			const radiusKm = primaryRadiusKm(planet, global);
 			if (radiusKm <= 0) return null;
 			const names = detail?.localized?.notable_moon_names;
-			const pole = poleVector(global);
+			const pole = poleVector(planetId, global);
 
 			// SPICE hangs a system's moons off the barycenter, but a few sit on the
 			// planet itself; take both so no system draws short.

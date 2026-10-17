@@ -16,9 +16,9 @@ import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { getGmKm3s2 } from '$lib/fetch/systems-global';
-import { bodyQuaternion, type Orientation } from '$lib/math/orientation';
-import { J2000_JD } from '$lib/time/jd';
+import { getGmKm3s2, nutPrecFor } from '$lib/fetch/systems-global';
+import { bodyQuaternion, type NutPrec, type Orientation } from '$lib/math/orientation';
+import { dateToJD } from '$lib/time/jd';
 import { estimateMu, GM_SUN_KM3_S2, muFromElements, type TravelBody } from '$lib/math/travel';
 import { AU_KM } from '$lib/math/units';
 import type { Vec3 } from '$lib/math/travel/vec3';
@@ -36,11 +36,15 @@ function spinRadPerSec(orientation: Orientation | undefined): number | undefined
 
 /** The body's north pole as a unit vector in ecliptic J2000 axes. Taken from
  *  the same quaternion the globe is drawn with, so the equator the kernel
- *  measures against is the one the map shows. Read at J2000: the pole moves
- *  hundredths of a degree per century and all it feeds is a cosine. */
-function poleEcliptic(orientation: Orientation | undefined): Vec3 | undefined {
+ *  measures against is the one the map shows. Read today, as the map mostly
+ *  draws it: with its nutation terms Triton's pole turns 5° from J2000 to 2026. */
+function poleEcliptic(
+	orientation: Orientation | undefined,
+	nutPrec: NutPrec | undefined
+): Vec3 | undefined {
 	if (!orientation) return undefined;
-	const p = new Vector3(0, 1, 0).applyQuaternion(bodyQuaternion(orientation, J2000_JD));
+	const jd = dateToJD(new Date());
+	const p = new Vector3(0, 1, 0).applyQuaternion(bodyQuaternion(orientation, jd, nutPrec));
 	// Scene axes back to ecliptic: the inverse of `eclipticToScene`.
 	return [p.x, -p.z, p.y];
 }
@@ -229,7 +233,7 @@ export function toTravelBody(
 			aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.rayleighScaleHeightKm,
 		aeroShellTopKm: aeroPa === undefined ? undefined : getAtmosphereParams(body.id)?.topAltitudeKm,
 		spinRadPerSec: spinRadPerSec(detail?.orientation),
-		poleEcliptic: poleEcliptic(detail?.orientation),
+		poleEcliptic: poleEcliptic(detail?.orientation, nutPrecFor(body.id, detail?.nut_prec)),
 		parentId: body.parentId
 	};
 	travel.hillKm = hillRadiusKm(body, travel.mu, lookup);

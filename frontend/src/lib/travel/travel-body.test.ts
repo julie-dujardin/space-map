@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -220,6 +221,41 @@ describe('toTravelBody', () => {
 		expect(x).toBeCloseTo(0, 9);
 		expect(y).toBeCloseTo(Math.sin((23.4392911 * Math.PI) / 180), 6);
 		expect(z).toBeCloseTo(Math.cos((23.4392911 * Math.PI) / 180), 6);
+	});
+
+	// Triton's PCK pole, mean and nutation terms, and the angles of the Neptune system.
+	const TRITON_DETAIL = {
+		orientation: { ...EARTH_ORIENTATION, pole_ra_0: 299.36, pole_dec_0: 41.17 },
+		nut_prec: {
+			ra: [0, 0, 0, 0, 0, 0, 0, -32.35, 0, -6.28, -2.08, -0.74, -0.28, -0.11, -0.07, -0.02, -0.01],
+			dec: [0, 0, 0, 0, 0, 0, 0, 22.55, 0, 2.1, 0.55, 0.16, 0.05, 0.02, 0.01, 0, 0],
+			pm: []
+		}
+	};
+	const NEPTUNE_ANGLES = [
+		357.85, 52.316, 323.92, 62606.6, 220.51, 55064.2, 354.27, 46564.5, 75.31, 26109.4, 35.36,
+		14325.4, 142.61, 2824.6, 177.85, 52.316, 647.84, 125213.2, 355.7, 104.632, 533.55, 156.948,
+		711.4, 209.264, 889.25, 261.58, 1067.1, 313.896, 1244.95, 366.212, 1422.8, 418.528, 1600.65,
+		470.844
+	];
+
+	it("reads the pole on today's date, nutation terms included", async () => {
+		vi.stubGlobal('fetch', async () => Response.json({ nut_prec_angles: { 8: NEPTUNE_ANGLES } }));
+		await loadSystemsGlobal();
+		vi.unstubAllGlobals();
+		vi.useFakeTimers({ now: Date.parse('2026-10-27T00:00:00Z'), toFake: ['Date'] });
+		const triton = toTravelBody(
+			body('naif-801', 'naif-8'),
+			lookupIn(new Map()),
+			TRITON_DETAIL as never,
+			'own'
+		)!;
+		vi.useRealTimers();
+		// Back to equatorial axes: the terms move the pole from dec 41.17° to 20.7°.
+		const [, y, z] = triton.poleEcliptic!;
+		const eps = (23.4392911 * Math.PI) / 180;
+		const decDeg = (Math.asin(y * Math.sin(eps) + z * Math.cos(eps)) * 180) / Math.PI;
+		expect(decDeg).toBeCloseTo(20.67, 1);
 	});
 
 	it('leaves both absent for a body that ships no orientation', () => {
