@@ -67,6 +67,14 @@ def _height_fields(entry: dict, layer: dict) -> dict:
     return fields
 
 
+def _height_signature(fields: dict) -> dict:
+    """The fields of a height raster as part of a version. A file with fill
+    also counts how its fill is read."""
+    if "fill_block" in fields:
+        return {**fields, "fill_recipe": tiles.FILL_RECIPE}
+    return fields
+
+
 def _described_files(names: list[str]) -> dict:
     """A layer's files for the descriptor: listed, or counted past a few."""
     if len(names) <= 16:
@@ -815,13 +823,17 @@ class TextureProcessor:
             if coding is not None:
                 signature["recipe"] = patches.HEIGHT_RECIPE
                 signature["heights"] = [
-                    _height_fields(entry, layer) for layer in spec["files"]
+                    _height_signature(_height_fields(entry, layer))
+                    for layer in spec["files"]
                 ]
             copy_keys: dict[str, str] = {}
             if terrain is not None:
                 signature["deshade"] = [
                     deshade.RECIPE,
-                    [[path.name, path.stat().st_size, how] for path, how in terrain],
+                    [
+                        [path.name, path.stat().st_size, _height_signature(how)]
+                        for path, how in terrain
+                    ],
                 ]
                 for name in files:
                     copy_keys[name] = tiles.signature_version(

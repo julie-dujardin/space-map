@@ -35,7 +35,7 @@ from typing import Protocol
 import numpy as np
 import tifffile
 from PIL import Image
-from scipy import ndimage
+from scipy import ndimage, spatial
 
 from . import config
 from .encoding import linear_to_srgb, webp_kwargs
@@ -59,6 +59,8 @@ log = logging.getLogger(__name__)
 RECIPE = 1
 # The same, for the pyramids that take their detail from brightness layers.
 SHARPEN_RECIPE = 2
+# The same, for the terrain models that fill their gaps from a coarser one.
+FILL_RECIPE = 2
 
 # Bicubic reach in source pixels at unit scale; it widens when shrinking.
 _FILTER_SUPPORT = 2.0
@@ -66,6 +68,13 @@ _FILTER_SUPPORT = 2.0
 # few columns of a narrow grid, each thousands of source columns wide: read
 # whole, the squares of one row outgrow the build's memory.
 _WINDOW_PIXELS = 1 << 24
+# Sizes in blocks for the offset of a terrain model's fill from the measured
+# model at their border: the reach of the median of its samples, the blur
+# along the border, and the distance from the border where the fill keeps its
+# own heights.
+_FILL_SEAM_MEDIAN = 10.0
+_FILL_SEAM_BLUR = 5.0
+_FILL_SEAM_REACH = 15.0
 # Fewest output columns in a piece of a window: each piece reads the filter's
 # reach again on both sides.
 _WINDOW_COLUMNS = 32
@@ -358,29 +367,44 @@ def _bicubic(
 
 
 def _fill_pixels(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """The pixels that hold the value of a neighbour in their row and of a
-    neighbour in their column. A measured terrain model almost never does."""
-    out = []
+    """The pixels of blocks of one height. A pixel that holds the value of a
+    neighbour in its row and of a neighbour in its column is one; a measured
+    model almost never holds such values. So are the pixels joined to it by
+    neighbours of equal value: where a measured model cuts a block to a strip
+    one pixel wide, the strip has no equal neighbour across it."""
+    either = []
     for axis in (0, 1):
         ahead = [slice(None)] * 2
         behind = [slice(None)] * 2
         ahead[axis], behind[axis] = slice(1, None), slice(None, -1)
         a, b = tuple(ahead), tuple(behind)
         same = (values[a] == values[b]) & valid[a] & valid[b]
-        either = np.zeros(values.shape, dtype=bool)
-        either[a] |= same
-        either[b] |= same
-        out.append(either)
-    return out[0] & out[1]
+        out = np.zeros(values.shape, dtype=bool)
+        out[a] |= same
+        out[b] |= same
+        either.append(out)
+    labels, count = ndimage.label(either[0] | either[1])
+    keep = np.zeros(count + 1, dtype=bool)
+    keep[labels[either[0] & either[1]]] = True
+    keep[0] = False
+    return keep[labels]
 
 
 class SmoothedFill:
     """The samples of a terrain model that fills its gaps with a coarser
     model, enlarged to blocks of ``block`` pixels that hold one height. Each
-    block edge is a step in the ground. A pixel of the fill reads as the
-    smooth surface through the means of the blocks, and the other pixels read
-    as they are. ``nodata`` is the raw value of the file for no data.
+    block edge is a step in the ground, and where the two models meet they
+    can stand apart by metres. A pixel of the fill reads as the smooth surface
+    through the means of the blocks, moved to meet the measured model at
+    their border. Within a block of the fill, the measured model comes in
+    from that surface; further in it reads as it is. ``nodata`` is the raw
+    value of the file for no data.
     """
+
+    # Sums over the measured pixels of each block that a plane through them
+    # needs. A pixel's u is its column and its w its row from the block's
+    # centre, and v is its height.
+    _MOMENTS = ("n", "v", "u", "w", "uu", "uw", "ww", "uv", "wv")
 
     def __init__(
         self, samples: np.ndarray | ChunkedTiff, block: int, nodata: float | None
@@ -392,21 +416,50 @@ class SmoothedFill:
         self.shape = (height, width)
         self.dtype = np.dtype(np.float32)
         rows, columns = -(-height // block), -(-width // block)
-        total = np.zeros((rows, columns))
-        count = np.zeros((rows, columns))
+        fill_count = np.zeros((rows, columns))
+        fill_total = np.zeros((rows, columns))
+        moments = {name: np.zeros((rows, columns)) for name in self._MOMENTS}
+        offsets = np.arange(block) - (block - 1) / 2
+
+        def weigh(pixels: np.ndarray, row_power: int, column_power: int) -> np.ndarray:
+            return np.einsum(
+                "awbu,w,u->ab", pixels, offsets**row_power, offsets**column_power
+            )
+
         filled = seen = 0
         step = max(_WINDOW_PIXELS // width // block, 1) * block
         for top in range(0, height, step):
             values, valid = self._values(top, min(top + step, height), 0, width)
-            filled += int(_fill_pixels(values, valid).sum())
+            fill = _fill_pixels(values, valid)
+            filled += int(fill.sum())
             seen += int(valid.sum())
             pad = ((0, -values.shape[0] % block), (0, columns * block - width))
-            values = np.pad(np.where(valid, values, 0.0), pad)
-            valid = np.pad(valid, pad)
-            shape = (-1, block, columns, block)
-            band = slice(top // block, (top + values.shape[0]) // block)
-            total[band] = values.reshape(shape).sum(axis=(1, 3), dtype=np.float64)
-            count[band] = valid.reshape(shape).sum(axis=(1, 3))
+            band = slice(top // block, top // block + -(-values.shape[0] // block))
+
+            def blocks(pixels: np.ndarray) -> np.ndarray:
+                return np.pad(pixels, pad).reshape(-1, block, columns, block)
+
+            in_fill = blocks(fill.astype(np.float64))
+            measured = blocks((valid & ~fill).astype(np.float64))
+            heights = blocks(np.where(valid, values, 0.0).astype(np.float64))
+            fill_count[band] = weigh(in_fill, 0, 0)
+            fill_total[band] = weigh(in_fill * heights, 0, 0)
+            heights *= measured
+            for name, pixels in (("n", measured), ("v", heights)):
+                moments[name][band] = weigh(pixels, 0, 0)
+            for name, pixels, row_power, column_power in (
+                ("u", measured, 0, 1),
+                ("w", measured, 1, 0),
+                ("uu", measured, 0, 2),
+                ("uw", measured, 1, 1),
+                ("ww", measured, 2, 0),
+                ("uv", heights, 0, 1),
+                ("wv", heights, 1, 0),
+            ):
+                moments[name][band] = weigh(pixels, row_power, column_power)
+        rise, apart = self._rise(fill_count, fill_total, moments)
+        total = fill_total + rise * fill_count + moments["v"]
+        count = fill_count + moments["n"]
         # A block less than half in the model is no sample of it.
         means = np.full((rows, columns), np.nan, dtype=np.float32)
         np.divide(total, count, out=means, where=count >= block * block / 2)
@@ -418,11 +471,101 @@ class SmoothedFill:
             gaps, return_distances=False, return_indices=True
         )
         self._means = means[tuple(nearest)]
+        apart = np.abs(apart) if apart.size else np.zeros(1)
         log.info(
-            "terrain model fill in blocks of %d px: %.1f%% of its samples",
+            "terrain model fill in blocks of %d px: %.1f%% of its samples, "
+            "%.1f m from the measured model at their border (median), %.1f m at most",
             block,
             100.0 * filled / max(seen, 1),
+            float(np.median(apart)),
+            float(apart.max()),
         )
+
+    def _offsets(
+        self,
+        fill_count: np.ndarray,
+        fill_total: np.ndarray,
+        moments: dict[str, np.ndarray],
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The blocks of the fill at its border with the measured model, as
+        rows and columns, and how far the fill stands above it in each."""
+        block = self._block
+        rows, columns = fill_count.shape
+        near = ndimage.convolve(moments["n"], np.ones((3, 3)), mode="constant")
+        r, c = np.nonzero((fill_count >= block) & (near >= block * block))
+        # The moments of the measured pixels in the blocks around each block,
+        # about its centre.
+        s = {name: np.zeros(r.size) for name in self._MOMENTS}
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                rr, cc = r + dy, c + dx
+                inside = (rr >= 0) & (rr < rows) & (cc >= 0) & (cc < columns)
+                rr, cc = np.clip(rr, 0, rows - 1), np.clip(cc, 0, columns - 1)
+                m = {k: np.where(inside, a[rr, cc], 0.0) for k, a in moments.items()}
+                x, y = dx * block, dy * block
+                s["n"] += m["n"]
+                s["v"] += m["v"]
+                s["u"] += m["u"] + x * m["n"]
+                s["w"] += m["w"] + y * m["n"]
+                s["uu"] += m["uu"] + 2 * x * m["u"] + x * x * m["n"]
+                s["uw"] += m["uw"] + x * m["w"] + y * m["u"] + x * y * m["n"]
+                s["ww"] += m["ww"] + 2 * y * m["w"] + y * y * m["n"]
+                s["uv"] += m["uv"] + x * m["v"]
+                s["wv"] += m["wv"] + y * m["v"]
+        n = s["n"]
+        mu, mw, mv = s["u"] / n, s["w"] / n, s["v"] / n
+        cuu = s["uu"] / n - mu * mu
+        cww = s["ww"] / n - mw * mw
+        cuw = s["uw"] / n - mu * mw
+        cuv = s["uv"] / n - mu * mv
+        cwv = s["wv"] / n - mw * mv
+        det = cuu * cww - cuw * cuw
+        # A plane needs measured pixels spread both ways: across a thin strip
+        # its slope is by chance.
+        spread = det >= (block * block / 12) ** 2 / 4
+        r, c = r[spread], c[spread]
+        det = det[spread]
+        along_u = (cuv * cww - cwv * cuw)[spread] / det
+        along_w = (cwv * cuu - cuv * cuw)[spread] / det
+        # The slope of the ground is no offset: the fill is compared with the
+        # plane at its own place.
+        plane = mv[spread] - along_u * mu[spread] - along_w * mw[spread]
+        return r, c, fill_total[r, c] / fill_count[r, c] - plane
+
+    def _rise(
+        self,
+        fill_count: np.ndarray,
+        fill_total: np.ndarray,
+        moments: dict[str, np.ndarray],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """How far each block of the fill moves up to meet the measured model,
+        and how far the fill stood above it in each block at their border."""
+        rows, columns = fill_count.shape
+        r, c, apart = self._offsets(fill_count, fill_total, moments)
+        rise = np.zeros((rows, columns))
+        if not apart.size:
+            return rise, apart
+        # A bad patch at the edge of the measured model, as a pit filled in by
+        # interpolation, gives a few samples far from the rest.
+        places = np.column_stack([r, c])
+        near = spatial.KDTree(places).query_ball_point(places, _FILL_SEAM_MEDIAN)
+        typical = np.array([np.median(apart[group]) for group in near])
+        at = np.zeros((rows, columns))
+        at[r, c] = 1.0
+        sums = np.zeros((rows, columns))
+        sums[r, c] = -typical
+        # Smoothed along the border: the measured ground has relief of its own.
+        weight = ndimage.gaussian_filter(at, _FILL_SEAM_BLUR)
+        np.divide(
+            ndimage.gaussian_filter(sums, _FILL_SEAM_BLUR),
+            weight,
+            out=rise,
+            where=weight > 0,
+        )
+        # Away from the border the fill keeps its own heights.
+        reach = ndimage.distance_transform_edt(at == 0)
+        rise *= np.clip(1.0 - reach / _FILL_SEAM_REACH, 0.0, 1.0)
+        return rise, apart
 
     def _values(
         self, y0: int, y1: int, x0: int, x1: int
@@ -438,14 +581,26 @@ class SmoothedFill:
         height, width = self.shape
         y0, y1, _ = key[0].indices(height)
         x0, x1, _ = key[1].indices(width)
-        # The test for fill reads the neighbours of each pixel.
-        top, left = max(y0 - 1, 0), max(x0 - 1, 0)
-        values, valid = self._values(top, min(y1 + 1, height), left, min(x1 + 1, width))
+        # The test for fill reads the rest of the block of each pixel, and the
+        # fade of the measured model reads a block past it.
+        block = self._block
+        top, left = max(y0 - block, 0), max(x0 - block, 0)
+        values, valid = self._values(
+            top, min(y1 + block, height), left, min(x1 + block, width)
+        )
         inner = (slice(y0 - top, y1 - top), slice(x0 - left, x1 - left))
-        fill = _fill_pixels(values, valid)[inner]
+        fill = _fill_pixels(values, valid)
         out = values[inner]
-        if fill.any():
-            out[fill] = self._smooth(y0, y1, x0, x1)[fill]
+        if not fill.any():
+            return out
+        near = ndimage.distance_transform_edt(~fill)[inner]
+        fill = fill[inner]
+        smooth = self._smooth(y0, y1, x0, x1)
+        out[fill] = smooth[fill]
+        # The measured model comes in from the smooth surface over a block:
+        # its relief, cut at the border, would be a step.
+        edge = valid[inner] & ~fill & (near < block)
+        out[edge] = smooth[edge] + (out[edge] - smooth[edge]) * near[edge] / block
         return out
 
     def _smooth(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:

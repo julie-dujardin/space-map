@@ -22,7 +22,10 @@ from space_map_data.ingest.providers.textures.image_io import (
     ChunkedTiff,
     HeightRaster,
 )
-from space_map_data.ingest.providers.textures.processor import _height_fields
+from space_map_data.ingest.providers.textures.processor import (
+    _height_fields,
+    _height_signature,
+)
 
 from .test_texture_tiles import _write_pds_image
 
@@ -633,54 +636,103 @@ class TestHeightRegion:
 
 class TestSmoothedFill:
     """A terrain model that fills its gaps with blocks of one height reads as
-    a smooth surface there, and as it is elsewhere."""
+    a smooth surface there, moved to meet the measured model at their border,
+    and as it is elsewhere."""
 
     BLOCK = 4
+    # 96 by 192 px at the pixel size of the other rasters.
+    STEP = (BOUNDS[1] - BOUNDS[0]) / 64
+    SITE = (10.0, 10.0 + 192 * STEP, 20.0, 20.0 - 96 * STEP)
 
     @staticmethod
     def _ground(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-        return 500.0 + 40.0 * np.sin(x / 10.0) + 30.0 * np.cos(y / 12.0)
+        return 500.0 + 80.0 * np.sin(x / 40.0) + 60.0 * np.cos(y / 48.0)
 
-    def _site(self) -> tuple[np.ndarray, np.ndarray]:
-        """Metres of the ground, and of a model of it. The model is measured
-        in the west half and holds blocks of one height in the east half."""
-        y, x = np.mgrid[0:64, 0:64].astype(float)
+    def _site(
+        self, apart: float = 0.0, relief: float = 0.0
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Metres of the ground and of a model of it, and where the model is
+        measured: west of a slanted line, which cuts blocks as a strip does,
+        with bumps of ``relief`` that the fill does not hold. East of it the
+        model holds blocks of one height, ``apart`` above the ground."""
+        y, x = np.mgrid[0:96, 0:192].astype(float)
         ground = self._ground(y, x)
-        centre = (np.floor(np.mgrid[0:64, 0:64] / self.BLOCK) + 0.5) * self.BLOCK - 0.5
-        model = np.where(x < 32, ground, self._ground(*centre))
-        return ground, model.astype("f4")
+        centre = (np.floor(np.mgrid[0:96, 0:192] / self.BLOCK) + 0.5) * self.BLOCK - 0.5
+        measured = x < 48 + y / 3
+        bumps = relief * np.sin(x * 1.3) * np.cos(y * 1.1)
+        model = np.where(measured, ground + bumps, self._ground(*centre) + apart)
+        return ground, model.astype("f4"), measured
+
+    def _read(self, tmp_path, model: np.ndarray, nodata=None, **storage) -> np.ndarray:
+        _write_geotiff(tmp_path / "site.tif", model, self.SITE, **storage)
+        raster = tiles.open_height_region_layer(
+            tmp_path / "site.tif", nodata=nodata, fill_block=self.BLOCK
+        )
+        return raster.read(199, 295, 540, 732) * 1000.0
 
     def test_fill_reads_as_the_surface_through_its_blocks(self, tmp_path):
-        ground, model = self._site()
-        _write_geotiff(tmp_path / "site.tif", model, compression="zlib", tile=(16, 16))
-        raster = tiles.open_height_region_layer(
-            tmp_path / "site.tif", fill_block=self.BLOCK
-        )
-        metres = raster.read(199, 263, 540, 604) * 1000.0
-        assert np.abs(metres[:, :32] - model[:, :32]).max() < 1e-3
+        ground, model, measured = self._site()
+        metres = self._read(tmp_path, model, compression="zlib", tile=(16, 16))
+        y, x = np.mgrid[0:96, 0:192]
+        inside = x < 48 + y / 3 - self.BLOCK - 1
+        assert np.abs(metres[inside] - model[inside]).max() < 1e-3
         # The filter reads two blocks past each pixel.
-        inner = (slice(8, 56), slice(36, 56))
-        assert np.abs(model[inner] - ground[inner]).max() > 3.0
-        assert np.abs(metres[inner] - ground[inner]).max() < 0.3
+        inner = np.zeros(model.shape, dtype=bool)
+        inner[8:88, 8:184] = True
+        fill = inner & ~measured
+        assert np.abs(model[fill] - ground[fill]).max() > 3.0
+        assert np.abs(metres[fill] - ground[fill]).max() < 0.5
+
+    def test_fill_meets_the_measured_model_at_its_border(self, tmp_path):
+        ground, model, measured = self._site(apart=10.0)
+        metres = self._read(tmp_path, model)
+        y, x = np.mgrid[0:96, 0:192]
+        border = ~measured & (x < 48 + y / 3 + self.BLOCK)
+        border[:8] = border[88:] = False
+        assert np.abs(metres[border] - ground[border]).max() < 1.0
+        # Away from the border the fill keeps its own heights.
+        far = (slice(8, 88), slice(144, 184))
+        assert np.abs(metres[far] - ground[far] - 10.0).max() < 0.5
+
+    def test_measured_relief_comes_in_at_the_border(self, tmp_path):
+        ground, model, measured = self._site(relief=3.0)
+        metres = self._read(tmp_path, model)
+        across = measured[8:88, :-1] != measured[8:88, 1:]
+        step = np.abs(np.diff(metres - ground, axis=1)[8:88][across])
+        assert np.abs(np.diff(model - ground, axis=1)[8:88][across]).max() > 3.0
+        assert step.max() < 1.0
+
+    def test_bad_patch_at_the_border_does_not_move_the_fill(self, tmp_path):
+        ground, model, measured = self._site()
+        y, x = np.mgrid[0:96, 0:192]
+        pit = measured & (x >= 48 + y / 3 - 8) & (y >= 44) & (y < 52)
+        model[pit] -= 60.0
+        metres = self._read(tmp_path, model)
+        border = ~measured & (x < 48 + y / 3 + self.BLOCK)
+        border[:8] = border[88:] = False
+        border[36:60] = False
+        assert np.abs(metres[border] - ground[border]).max() < 1.0
 
     def test_gap_in_the_fill_stays_a_gap(self, tmp_path):
-        _, model = self._site()
-        model[8:24, 40:56] = -9999.0
-        _write_geotiff(tmp_path / "site.tif", model)
-        raster = tiles.open_height_region_layer(
-            tmp_path / "site.tif", nodata=-9999.0, fill_block=self.BLOCK
-        )
-        km = raster.read(199, 263, 540, 604)
+        _, model, _ = self._site()
+        model[16:32, 120:136] = -9999.0
+        km = self._read(tmp_path, model, nodata=-9999.0)
         # A read repairs 4 px in from the edge of a gap.
-        assert np.isnan(km[12:20, 44:52]).all()
-        assert np.isfinite(km[24:32, 40:56]).all()
+        assert np.isnan(km[20:28, 124:132]).all()
+        assert np.isfinite(km[32:40, 120:136]).all()
 
     def test_only_a_file_with_fill_states_it(self):
-        """The fields are part of a patch's version. Files without fill keep theirs."""
+        """The fields are part of a patch's version. Files without fill keep
+        theirs, and a file with fill also counts how its fill is read."""
         plain = {"unit": "m", "scale": None, "offset": None, "nodata": None}
         assert _height_fields({}, {"file": "site.tif"}) == plain
+        assert _height_signature(plain) == plain
         filled = _height_fields({}, {"file": "site.tif", "fill_block": 20})
         assert filled == {**plain, "fill_block": 20}
+        assert _height_signature(filled) == {
+            **filled,
+            "fill_recipe": tiles.FILL_RECIPE,
+        }
 
 
 class TestHeightPatchBuilder:
