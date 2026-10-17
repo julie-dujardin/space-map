@@ -1,0 +1,146 @@
+services:
+  deploy:
+    image: node:24-alpine
+    container_name: space-map-live-deploy
+    restart: unless-stopped
+    # Node as PID 1 ignores SIGTERM, so a stop would wait out the grace period.
+    init: true
+    user: node
+    working_dir: /home/node
+    command: node /config/deploy.mjs
+    environment:
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - WRANGLER_SEND_METRICS=false
+      - NPM_CONFIG_UPDATE_NOTIFIER=false
+    volumes:
+      - ${LIVE_HOST_DIR:-/srv/space-map/space-map-live}:/live:ro
+      # Keeps the npx copy of wrangler across container recreation.
+      - home:/home/node
+    configs:
+      - source: wrangler
+        target: /config/wrangler.jsonc
+      - source: headers
+        target: /config/_headers
+      - source: deploy
+        target: /config/deploy.mjs
+
+volumes:
+  home:
+
+# Inlined so the stack deploys from Portainer without the files present on host.
+configs:
+  wrangler:
+    content: |
+      {
+        // Its own project, separate from space-map-static: the tracking poller
+        // rewrites this tree every few minutes, while the export changes on a
+        // full pipeline run. A deploy here must not wait on 50k catalogue files.
+        "name": "space-map-live",
+        "compatibility_date": "2026-04-01",
+        "assets": {
+          "directory": "site"
+        }
+      }
+
+  headers:
+    content: |
+      # Same reasoning as the export: public data, embedded by the SDK from any
+      # origin, and static-asset egress is free.
+      /*
+        Access-Control-Allow-Origin: *
+
+      # No content-addressed URL to hang immutability on — the path is fixed and the
+      # body is what changes. A minute of edge cache keeps a busy page off the origin
+      # without letting "last active" drift visibly; serving the old copy while
+      # revalidating means a slow origin never blocks the answer.
+      /v1/activity.json
+        Cache-Control: public, max-age=60, stale-while-revalidate=600
+
+  deploy:
+    content: |
+      // Deploys the live tree whenever the tracking poller changes it. The
+      // poller rewrites the file only when its content changes, so an unchanged
+      // tree has nothing to deploy.
+      import { execFileSync } from 'node:child_process';
+      import { createHash } from 'node:crypto';
+      import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+      import { setTimeout as sleep } from 'node:timers/promises';
+
+      const WRANGLER = 'wrangler@4.148.0';
+      const SITE = 'site';
+      const ACTIVITY = 'v1/activity.json';
+      const CHECK_URL = 'https://live.spacemap.co/' + ACTIVITY;
+      const POLL = 60_000;
+      // A bad token or an outage then costs a deploy every few minutes instead
+      // of every minute.
+      const BACKOFF = 600_000;
+
+      if (!process.env.CLOUDFLARE_API_TOKEN || !process.env.CLOUDFLARE_ACCOUNT_ID) {
+      	throw new Error('CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set');
+      }
+
+      // wrangler keeps its state next to its config, and /config is read-only.
+      // Not in the home directory itself: wrangler takes a ~/.wrangler it finds
+      // there for its global config.
+      mkdirSync('live', { recursive: true });
+      process.chdir('live');
+      cpSync('/config/wrangler.jsonc', 'wrangler.jsonc');
+
+      // A copy, so that the poller cannot replace a file between the upload and
+      // the check. Returns a digest of the copy.
+      function snapshot() {
+      	rmSync(SITE, { recursive: true, force: true });
+      	cpSync('/live/v1', SITE + '/v1', {
+      		recursive: true,
+      		// The poller's half-written file, before its rename.
+      		filter: (src) => !src.endsWith('.tmp')
+      	});
+      	cpSync('/config/_headers', SITE + '/_headers');
+      	const files = readdirSync(SITE, { recursive: true, withFileTypes: true })
+      		.filter((entry) => entry.isFile())
+      		.map((entry) => entry.parentPath + '/' + entry.name)
+      		.sort();
+      	const hash = createHash('sha256');
+      	for (const file of files) hash.update(file + '\0').update(readFileSync(file));
+      	return hash.digest('hex');
+      }
+
+      // The query string keeps the edge's cached copy out of the check. A new
+      // version takes a few seconds to reach every location, so a mismatch is
+      // retried like a failed fetch.
+      async function check(expected) {
+      	for (let attempt = 0; attempt < 5; attempt++) {
+      		try {
+      			const response = await fetch(CHECK_URL + '?deploy-check=' + Date.now());
+      			if (response.ok && Buffer.from(await response.arrayBuffer()).equals(expected)) return;
+      		} catch {
+      			// Retried below.
+      		}
+      		await sleep(3000);
+      	}
+      	throw new Error('activity.json unreachable or differs from the uploaded copy');
+      }
+
+      // Not recorded until a deploy passes its check, so a failed one is retried.
+      let deployed = '';
+      for (;;) {
+      	try {
+      		// Deploying without it is worse than not deploying, since the page
+      		// states an age in days from it.
+      		if (!existsSync('/live/' + ACTIVITY)) {
+      			throw new Error('no activity.json in /live — is the tracking service running?');
+      		}
+      		const digest = snapshot();
+      		if (digest !== deployed) {
+      			execFileSync('npx', ['--yes', WRANGLER, 'deploy'], { stdio: 'inherit' });
+      			await check(readFileSync(SITE + '/' + ACTIVITY));
+      			deployed = digest;
+      			console.log('live deploy verified: activity.json matches the uploaded copy');
+      		}
+      		await sleep(POLL);
+      	} catch (e) {
+      		console.error('live deploy failed: ' + e.message);
+      		await sleep(BACKOFF);
+      	}
+      }
