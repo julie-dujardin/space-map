@@ -1,7 +1,7 @@
 """Download official Navcam mosaics and prepare masked sphere textures."""
 
 from bisect import bisect_left
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import csv
 import hashlib
 import io
@@ -776,6 +776,27 @@ def read_header(path: Path, mosaic: Mosaic) -> str:
         return stream.read(mosaic.offset).decode("latin-1")
 
 
+def lander_heading(header: str) -> float | None:
+    """Where the lander frame's zero azimuth points, clockwise from north, or
+    None where the header does not tie the lander frame to the site frame.
+
+    A lander frame turned onto the site frame is north-referenced, since the
+    site frame's X axis is north and its Y axis east. The quaternion is
+    scalar first, as the archive writes it.
+    """
+    group = re.search(
+        r"PROPERTY='LANDER_COORDINATE_SYSTEM'(.*?)(?:PROPERTY=|$)", header, re.S
+    )
+    if group is None or "REFERENCE_COORD_SYSTEM_NAME='SITE_FRAME'" not in group[1]:
+        return None
+    match = re.search(r"ORIGIN_ROTATION_QUATERNION=\(([^)]*)\)", group[1])
+    if match is None:
+        return None
+    s, x, y, z = (float(v) for v in match[1].split(","))
+    east, north = 2 * (x * y + s * z), 1 - 2 * (y * y + z * z)
+    return math.degrees(math.atan2(east, north)) % 360
+
+
 def coordinate_grid_dn(header: str) -> float | None:
     """The value an archive drew its coordinate overlay in, if it drew one.
 
@@ -1053,6 +1074,14 @@ def build_product(root, output_dir, collection, mission, product, width):
     """Render one mosaic to a sphere and write its metadata."""
     mosaic = Mosaic(**product["mosaic"])
     mosaic.validate()
+    heading = (
+        lander_heading(read_header(root / product["image"], mosaic))
+        if mosaic.frame == "LANDER_FRAME"
+        else None
+    )
+    north_referenced = mosaic.frame != "LANDER_FRAME" or heading is not None
+    if heading is not None:
+        mosaic = replace(mosaic, azimuth=(mosaic.azimuth + heading) % 360)
     rgba, tone, grid_remains = read_pixels(root / product["image"], mosaic)
     texture = sphere_texture(rgba, mosaic, width)
     directory = output_dir / collection / product["id"]
@@ -1096,15 +1125,16 @@ def build_product(root, output_dir, collection, mission, product, width):
         "height": width // 2,
         "hfov_deg": 360,
         "vfov_deg": 180,
-        # A site frame is referenced to north, so the sphere is already
-        # aligned. A lander frame is referenced to the lander, and nothing
-        # in the label ties it to north, so no heading may be claimed.
-        "north_azimuth_offset_deg": None if mosaic.frame == "LANDER_FRAME" else 0,
+        # A site frame is referenced to north, and a lander frame the header
+        # turns onto it is too, so the sphere is already aligned. A lander
+        # frame on its own is referenced to the lander, so no heading may be
+        # claimed.
+        "north_azimuth_offset_deg": 0 if north_referenced else None,
         "pixel_convention": (
-            "pixel centers; left edge is the frame's zero azimuth; clockwise; "
+            "pixel centers; left edge north; clockwise; top edge +90 degrees"
+            if north_referenced
+            else "pixel centers; left edge is the frame's zero azimuth; clockwise; "
             "top edge +90 degrees"
-            if mosaic.frame == "LANDER_FRAME"
-            else "pixel centers; left edge north; clockwise; top edge +90 degrees"
         ),
         "source_coverage": {
             "hfov_deg": min(360, mosaic.width / mosaic.scale_x),
@@ -1113,7 +1143,8 @@ def build_product(root, output_dir, collection, mission, product, width):
             "elevation_min_deg": (mosaic.zero_line - mosaic.height - 0.5)
             / mosaic.scale_y,
             "frame": mosaic.frame,
-            "frame_is_north_referenced": mosaic.frame != "LANDER_FRAME",
+            "frame_is_north_referenced": north_referenced,
+            **({"lander_heading_deg": heading} if heading is not None else {}),
             "holes": "alpha=0; no synthetic sky or ground",
         },
         "coverage_fraction": float(

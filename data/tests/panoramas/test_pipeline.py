@@ -23,6 +23,7 @@ from space_map_data.panoramas.pipeline import (
     download,
     fetch,
     fill_from_neighbours,
+    lander_heading,
     positions,
     process,
     resumable,
@@ -340,8 +341,9 @@ def test_pds4_rejects_moving_sources():
         read_pds4(label.replace("_n0030110ncam", "_n0030111ncam", 1))
 
 
-def _offline_curiosity(tmp_path):
-    """Download and process one small Curiosity mosaic from a mock archive."""
+def _offline_curiosity(tmp_path, header=""):
+    """Download and process one small Curiosity mosaic from a mock archive.
+    `header` is the VICAR header text the image starts with."""
     label = (FIXTURES / "curiosity.lbl").read_text()
     label = label.replace("7703", "360").replace("977", "90")
     label = (
@@ -352,7 +354,7 @@ def _offline_curiosity(tmp_path):
     metadata = read_pds3(label)
     name = metadata.product_id
     pixels = np.arange(360 * 90, dtype=">i2").reshape(90, 360)
-    payload = bytes(metadata.offset) + pixels.tobytes()
+    payload = header.encode().ljust(metadata.offset, b"\0") + pixels.tobytes()
     responses = {
         MSL: '<a href="SOL00024/">sol</a>',
         MSL + "SOL00024/": f'<a href="{name}.LBL">label</a>',
@@ -426,6 +428,44 @@ def test_a_lander_frame_sphere_claims_no_heading(tmp_path, monkeypatch):
     assert generated["north_azimuth_offset_deg"] is None
     assert not generated["source_coverage"]["frame_is_north_referenced"]
     assert "north" not in generated["pixel_convention"]
+
+
+def test_a_lander_frame_the_header_ties_to_the_site_frame_is_turned_north(
+    tmp_path, monkeypatch
+):
+    """InSight's headers state the lander frame's rotation from the site frame,
+    so the sphere is turned north-first like a site-frame one."""
+    import space_map_data.panoramas.pipeline as module
+
+    real = module.read_pds3
+    monkeypatch.setattr(
+        module,
+        "read_pds3",
+        lambda text, attached=None: replace(real(text, attached), frame="LANDER_FRAME"),
+    )
+    # A quarter turn about the vertical: the lander's zero azimuth faces east.
+    header = (
+        "PROPERTY='LANDER_COORDINATE_SYSTEM' COORDINATE_SYSTEM_NAME='LANDER_FRAME' "
+        "ORIGIN_ROTATION_QUATERNION=(0.7071068,0.0,0.0,0.7071068) "
+        "REFERENCE_COORD_SYSTEM_NAME='SITE_FRAME' PROPERTY='IMAGE_DATA'"
+    )
+    entries, _ = _offline_curiosity(tmp_path, header)
+    generated = json.loads((tmp_path / "derived" / entries[0]["metadata"]).read_text())
+
+    assert generated["north_azimuth_offset_deg"] == 0
+    assert generated["source_coverage"]["frame_is_north_referenced"]
+    assert generated["source_coverage"]["lander_heading_deg"] == pytest.approx(90)
+    assert generated["source_coverage"]["azimuth_start_deg"] == pytest.approx(90)
+
+
+def test_lander_heading_reads_the_lander_group_only():
+    site = "PROPERTY='SITE_COORDINATE_SYSTEM' ORIGIN_ROTATION_QUATERNION=(0,0,0,1) "
+    assert lander_heading(site) is None
+    assert lander_heading(
+        site + "PROPERTY='LANDER_COORDINATE_SYSTEM' "
+        "ORIGIN_ROTATION_QUATERNION=(-0.003713,0.023522,-0.02549,0.999391) "
+        "REFERENCE_COORD_SYSTEM_NAME='SITE_FRAME'"
+    ) == pytest.approx(180.49, abs=0.01)
 
 
 def strip_constants(label: str) -> str:

@@ -340,6 +340,14 @@ A lander has one published place for its whole mission: InSight from
 [Analyst's Notebook landing site page](https://an.rsl.wustl.edu/phx2008/help/landing_site.htm),
 Pathfinder from its own [PDS mission catalog](https://planetarydata.jpl.nasa.gov/img/data/mpf/imp/mpim_0001/catalog/mission.cat).
 
+Most of InSight's archive mosaics are measured in the lander frame, not the
+north-referenced site frame. The VICAR header of each one states the rotation
+between the two frames, so the sphere is turned north-first when it is built.
+The rotation puts the lander's zero azimuth at 180.5°, the same for all 85
+mosaics. The sol 14 panorama is archived in both frames, and SIFT matches
+between the two give 180.8°. The lander is about 3° off level, so a turned
+sphere's horizon is slightly wavy.
+
 Spirit and Opportunity gallery panoramas are placed by sol against the same
 corrected traverse the mosaics use, and only for a sol the rover spent standing
 in one place. A sol it drove on covers several stops and none of them is the one
