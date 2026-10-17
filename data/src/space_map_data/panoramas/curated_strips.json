@@ -20,7 +20,14 @@
     "source_sha256": "07dc8d8ae2fc60c886bd632c8775d61632bc90574c747fda37073a738f7e599c",
     "capture_time": "2012-08-08",
     "capture_stop_time": "2012-08-09",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 291.6,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000_0002_edr002cyltum0000_corr_m2",
+      "reference_sol": 2,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 21 agree on 291.6\u00b0; 4 other spheres within 60 m agree within 0.3\u00b0; checked by eye"
+    },
     "capture_sol": 2,
     "capture_sol_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=msl&feedtype=json&sol=3"
   },
@@ -33,7 +40,14 @@
     "source_sha256": "fe9565132e08df9e550c18844113fe76864ec3fa63058b6a7ededfdc028aa732",
     "capture_time": "2015-12-18",
     "capture_stop_time": "2015-12-18",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 261.3,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000_1196_edr052cylts_0000_drivem1",
+      "reference_sol": 1196,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2071 agree on 261.3\u00b0; 6 other spheres within 60 m agree within 0.8\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia20765",
@@ -44,7 +58,14 @@
     "source_sha256": "ea9131aa98669b9ee18421a638f3cf787c21bcba2193302d7c49906cf0f16fc0",
     "capture_time": "2016-08-05",
     "capture_stop_time": "2016-08-05",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 74.5,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000_1420xilt056cyl_s_1236_uncorm1",
+      "reference_sol": 1420,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1200 agree on 74.5\u00b0; 4 other spheres within 60 m agree within 1.0\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia20840",
@@ -97,7 +118,14 @@
     "source_sha256": "fb79bb52602f20dcd3e5ea5f1474ec5e54e292c079fa1af11c7275da2b2a678f",
     "capture_time": "2018-12-19",
     "capture_stop_time": "2018-12-19",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 180.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000_2257_ilt073cyl_s_1206_uncorm1",
+      "reference_sol": 2257,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 39 agree on 180.0\u00b0; 6 other spheres within 60 m agree within 0.1\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia23346",
@@ -108,7 +136,14 @@
     "source_sha256": "52580b56834f172eb8a0431b9c2a8a373b9d747dba38b80e1c2a5b5b5eeddeac",
     "capture_time": "2019-06-18",
     "capture_stop_time": "2019-06-18",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 65.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000_2439_ilt076cyl_s_0988_uncorm1",
+      "reference_sol": 2439,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1125 agree on 65.7\u00b0; 7 other spheres within 60 m agree within 0.6\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia23623",
@@ -119,7 +154,14 @@
     "source_sha256": "aa0cb3fd18fd3297331a749cdcbd1a166fcdf2e253bfacfcac80831f7aa322ed",
     "capture_time": "2019-11-24",
     "capture_stop_time": "2019-12-01",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 180.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000_2595_edr077cylasb2786_autolm1",
+      "reference_sol": 2595,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 241 agree on 180.2\u00b0; 7 other spheres within 60 m agree within 0.3\u00b0; checked by eye"
+    },
     "capture_sol": 2595,
     "capture_sol_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=msl&feedtype=json&sol=2595"
   },
@@ -168,7 +210,14 @@
     "source_sha256": "36d3e4f02c78f5dacd6ca0609edbccccb225850302d5719b5280787234ab718d",
     "capture_time": "2022-06-20",
     "capture_stop_time": "2022-06-20",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 327.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j3513xilt095cyl_s_3152_p1717m1",
+      "reference_sol": 3513,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2064 agree on 327.2\u00b0; 7 other spheres within 60 m agree within 0.1\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia25732",
@@ -179,7 +228,14 @@
     "source_sha256": "8d428718d7f55c2250532f2c12c532122f118aa203e7d64d5280d3829303fe0e",
     "capture_time": "2022-12-16",
     "capture_stop_time": "2022-12-16",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 180.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j3672xilt098cyl_s_2704_a1823m1",
+      "reference_sol": 3672,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 474 agree on 180.1\u00b0; 7 other spheres within 60 m agree within 0.1\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia26012",
@@ -201,7 +257,14 @@
     "source_sha256": "06555a07508bd4b33d90fdd6039667853cf780521205722c52208d60961e519d",
     "capture_time": "2023-07-25",
     "capture_stop_time": "2023-07-25",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 180.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j3898xilt102cyl_s_2164_a2018m1",
+      "reference_sol": 3898,
+      "distance_m": 21.4,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 188 agree on 180.2\u00b0; 3 other spheres within 60 m agree within 1.0\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia26019",
@@ -212,7 +275,14 @@
     "source_sha256": "9b710a7acee582127846844a82a8a2a6036e84223115bc871d1bd29ed0c5f7c3",
     "capture_time": "2023-08-19",
     "capture_stop_time": "2023-08-19",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 0.5,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j3922xilt103cyl_s_1528_a0113m1",
+      "reference_sol": 3922,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 794 agree on 0.5\u00b0; 7 other spheres within 60 m agree within 0.7\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia26363",
@@ -241,7 +311,14 @@
     "source_sha256": "f6ac8a049ac554571200e75af0ff5ad67169acb1328badab97d264eba1f073e3",
     "capture_time": "2023-04-30",
     "capture_stop_time": "2023-04-30",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 180.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "curiosity-n_l000j3818xilt101cyl_s_0774_a0013m1",
+      "reference_sol": 3818,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1082 agree on 180.2\u00b0; 7 other spheres within 60 m agree within 0.1\u00b0; checked by eye"
+    }
   },
   {
     "id": "curiosity-pia26559",
@@ -281,7 +358,14 @@
     "source_sha256": "c26e6233eaba7bd2e93e992745415d44ceadcb68efd3d7b38f5327b8c9ff2330",
     "capture_time": "2018-12-09",
     "capture_stop_time": "2018-12-09",
-    "start_azimuth_deg": null
+    "start_azimuth_deg": 324.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "insight-d_xrgb_0014_ras030100cyl_s__scipanqm1",
+      "reference_sol": 14,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 506 agree on 324.9\u00b0; the other site-frame mosaic of the same pan gives 324.8\u00b0 from 408"
+    }
   },
   {
     "id": "spirit-pancam-seminole",
@@ -292,7 +376,14 @@
     "source_sha256": "3512ce2377f5ce5b68e1c71656d820e28b6282a660e5b021e4e24314a621126b",
     "capture_time": "2005-11-23",
     "capture_stop_time": "2005-11-28",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 0.3,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2nn671ilfajcylqvp1805l000m1",
+      "reference_sol": 671,
+      "distance_m": 0.6,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2074 agree on 0.3\u00b0; 5 other spheres within 60 m agree within 0.9\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/seminole.html"
   },
   {
@@ -304,7 +395,14 @@
     "source_sha256": "7338d37fedeb243c27421672d46b062c3443c0bb2448209e9ef401f20a17e90f",
     "capture_time": "2005-10-01",
     "capture_stop_time": "2005-10-03",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 319.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2nn619ilfaecylrfp0750l000m2",
+      "reference_sol": 619,
+      "distance_m": 0.3,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 3191 agree on 319.7\u00b0; 5 other spheres within 60 m agree within 1.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/everest.html"
   },
   {
@@ -316,7 +414,14 @@
     "source_sha256": "d7250ec9d64ad1e4a97b56e455f222e7299cb99a1bc8579194299ceb99deb33a",
     "capture_time": "2005-02-27",
     "capture_stop_time": "2005-03-02",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 0.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2pp410rfda8cyl00p2267l222m3",
+      "reference_sol": 410,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 3116 agree on 360.0\u00b0; 7 other spheres within 60 m agree within 0.5\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/lookout.html"
   },
   {
@@ -328,7 +433,14 @@
     "source_sha256": "fa1e67a6d06c8d37f2d591879b6b232c8cd48d160a8b21ed7a455ed60e429e14",
     "capture_time": "2004-11-24",
     "capture_stop_time": "2004-12-02",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 0.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2pp318ilf94cyl00p2095l222m1",
+      "reference_sol": 318,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1165 agree on 360.0\u00b0; 7 other spheres within 60 m agree within 0.6\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/thanksgiving.html"
   },
   {
@@ -340,7 +452,14 @@
     "source_sha256": "a084caac3e3a97e7b0e7bcb061d08fe2321754f6dd7cb4e7df9591e2c19de040",
     "capture_time": "2004-05-21",
     "capture_stop_time": "2004-05-26",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 359.8,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2nn135ilf54cylcap1803l000m1",
+      "reference_sol": 135,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 398 agree on 359.8\u00b0; 1 other sphere within 60 m agrees within 0.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/santa_anita.html",
     "horizontal_source_url": "https://pancam.sese.asu.edu/panoramas.html"
   },
@@ -353,7 +472,14 @@
     "source_sha256": "bc7086004970c2aca0f7ff80b5f087e09b9cd027e56d0a096f86a92bca4428b4",
     "capture_time": "2004-03-03",
     "capture_stop_time": "2004-03-05",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 358.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2pp056ilf11cyl55p2111l222m1",
+      "reference_sol": 56,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 656 agree on 358.7\u00b0; 2 other spheres within 60 m agree within 0.5\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/legacy.html"
   },
   {
@@ -365,7 +491,14 @@
     "source_sha256": "be7b6b5a5a11595610bed5eb2a5db9dc8bd075b1ddbc6f5390aac48e3ba9163c",
     "capture_time": "2004-01-08",
     "capture_stop_time": "2004-01-12",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 179.3,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2pp010ilf02cyl11p2214r222m1",
+      "reference_sol": 10,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 498 agree on 179.3\u00b0; 2 other spheres within 60 m agree within 0.6\u00b0; the offset swings \u00b13\u00b0 with azimuth, the pattern a tilted frame gives; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/panoramas.html"
   },
   {
@@ -377,7 +510,14 @@
     "source_sha256": "bd8f095720e5c19bb0d5a05f83bd9997885a727275ee58217d9e4f0ceafefcb9",
     "capture_time": "2004-01-05",
     "capture_stop_time": "2004-01-07",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 179.5,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2pp002ilf02cyl00p2100r222m1",
+      "reference_sol": 2,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 515 agree on 179.5\u00b0; 2 other spheres within 60 m agree within 0.9\u00b0; the offset swings \u00b13\u00b0 with azimuth, the pattern a tilted frame gives; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/5A_P2218.html"
   },
   {
@@ -389,7 +529,14 @@
     "source_sha256": "985e5ace0032af07fbde9d1b40076d420a9f618be692f48f920a72a9e29f8e95",
     "capture_time": "2009-08-08",
     "capture_stop_time": "2009-08-29",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 0.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "opportunity-1ppj78ilfa5cylc4p2392l222m1",
+      "reference_sol": 1978,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 43 agree on 0.2\u00b0; 2 other spheres within 60 m agree within 0.2\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/block_island_pan.html"
   },
   {
@@ -401,7 +548,14 @@
     "source_sha256": "92ae5d278c7db3c732066fc52262c45966a3496f36799dbfb7318204c2326b40",
     "capture_time": "2009-03-13",
     "capture_stop_time": "2009-04-01",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 318.5,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "opportunity-1nni25ilf99cyle0p1979l000m3",
+      "reference_sol": 1825,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 317 agree on 318.5\u00b0; 3 other spheres within 60 m agree within 1.5\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/resolution_pan.html",
     "horizontal_source_url": "https://pancam.sese.asu.edu/panoramas.html"
   },
@@ -427,7 +581,14 @@
     "source_sha256": "15c6f3f9187898f508536d3b6eb759b43d1b90f4c49cbe0ec629fedc520c6752",
     "capture_time": "2004-03-23",
     "capture_stop_time": "2004-03-25",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 131.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "opportunity-1pp058iff08cyl30p2216r666m2",
+      "reference_sol": 58,
+      "distance_m": 4.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 374 agree on 131.0\u00b0; 6 other spheres within 60 m agree within 0.8\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/panoramas.html",
     "horizontal_source_url": "https://pancam.sese.asu.edu/panoramas.html"
   },
@@ -440,7 +601,14 @@
     "source_sha256": "602bd62664423c8b02c239d93adebd76d199634cea7edf53588b220b502612e5",
     "capture_time": "2004-01-25",
     "capture_stop_time": "2004-01-26",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 180.5,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "opportunity-1pp002ilf02cyl00p2217l222m1",
+      "reference_sol": 2,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 554 agree on 180.5\u00b0; 6 other spheres within 60 m agree within 1.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/panoramas.html"
   },
   {
@@ -452,7 +620,14 @@
     "source_sha256": "b8405b04eeaa1b803333656c90ea9dce77f06272aa37d1b3f8657c0d4449595e",
     "capture_time": "2005-09-24",
     "capture_stop_time": "2005-09-24",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 306.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "spirit-2nn612ilfaecylnlp0770l000m2",
+      "reference_sol": 612,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 205 agree on 306.2\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/614A_new.html"
   },
   {
@@ -476,7 +651,14 @@
     "source_sha256": "af03fc7d255609aaf467ba619ddf23a1ed31d82decf8ba11e94f3de6de8324e7",
     "capture_time": "2005-04-01",
     "capture_stop_time": "2005-04-01",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 55.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "opportunity-1nn421eff52cylb5p0627l000m2",
+      "reference_sol": 421,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 169 agree on 55.7\u00b0; 1 other sphere within 60 m agrees within 0.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://pancam.sese.asu.edu/viking_new.html"
   },
   {
@@ -538,7 +720,14 @@
     "source_sha256": "eb49dd6b4435ceb4ae9d3105c979845f1d39b999d317083b07ae91cac15ea872",
     "capture_time": "2021-04-14",
     "capture_stop_time": "2021-04-25",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 359.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0057_zcam08103_z110_van_zyl_hires_360_part4",
+      "reference_sol": 57,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 490 agree on 359.9\u00b0; 7 other spheres within 60 m agree within 0.4\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=53:sol:gte&condition_3=64:sol:lte"
   },
   {
@@ -550,7 +739,14 @@
     "source_sha256": "542ea5ebc93a6356f00e93633c5317342b11504bb10ed4e372dfe9c2dc7a58c2",
     "capture_time": "2021-05-05",
     "capture_stop_time": "2021-05-13",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 24.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0078_zcam08039_z034_dibahi_nataani_landscape",
+      "reference_sol": 78,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2423 agree on 24.7\u00b0; 2 other spheres within 60 m agree within 0.5\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=74:sol:gte&condition_3=82:sol:lte"
   },
   {
@@ -562,7 +758,14 @@
     "source_sha256": "62c49073b45b068064d97a0b4a825c8c12fa704fde802bced2034c87de455b18",
     "capture_time": "2021-06-15",
     "capture_stop_time": "2021-06-15",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 36.4,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0113_rzs_0041034_cyl_l_autogenj17",
+      "reference_sol": 113,
+      "distance_m": 4.9,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 17 agree on 36.4\u00b0; 3 other spheres within 60 m agree within 0.6\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=114:sol:gte&condition_3=114:sol:lte"
   },
   {
@@ -574,7 +777,14 @@
     "source_sha256": "22a289ad0a9e16ed665c55bbf9aadbd8deb9506a6d60da9d2bfb83e1ac5f7d91",
     "capture_time": "2021-07-25",
     "capture_stop_time": "2021-07-26",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 34.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0153_zcam07000_z110_drive_direction_pdi",
+      "reference_sol": 153,
+      "distance_m": 47.6,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 32 agree on 34.7\u00b0; 1 other sphere within 60 m agrees within 0.1\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=153:sol:gte&condition_3=153:sol:lte"
   },
   {
@@ -586,7 +796,14 @@
     "source_sha256": "0d2745c0c57f20cd2498a31e421a07652467fac04a369bfda504d10f20d67431",
     "capture_time": "2021-07-28",
     "capture_stop_time": "2021-07-28",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 42.3,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0157_rzs_0052530_cyl_l_autogenj03",
+      "reference_sol": 157,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 54 agree on 42.3\u00b0; 2 other spheres within 60 m agree within 0.3\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=156:sol:gte&condition_3=156:sol:lte"
   },
   {
@@ -598,7 +815,14 @@
     "source_sha256": "2a6d5d855bfcefa44d8161ab52ac9e5e027b469724f57248fc9b706bad43a4d9",
     "capture_time": "2021-08-23",
     "capture_stop_time": "2021-08-24",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 133.8,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0181_zcam08199_z034_south_terrain_180_degrees",
+      "reference_sol": 181,
+      "distance_m": 1.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1462 agree on 133.8\u00b0; 4 other spheres within 60 m agree within 0.2\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=181:sol:gte&condition_3=182:sol:lte"
   },
   {
@@ -610,7 +834,14 @@
     "source_sha256": "6b112b3a1d69ad46158442bf1cf3b3f78ed9153b44aef450c19a3948cd63b83a",
     "capture_time": "2021-09-17",
     "capture_stop_time": "2021-09-21",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 180.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0205_zcam08232_z034_val_de_graves_martre_bastide",
+      "reference_sol": 205,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 865 agree on 180.0\u00b0; 6 other spheres within 60 m agree within 0.5\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=205:sol:gte&condition_3=209:sol:lte"
   },
   {
@@ -622,7 +853,14 @@
     "source_sha256": "746cf89b82e9a4dcd2ed4b322c84dafcbcd276136179d38f565d3b1db8f202ed",
     "capture_time": "2021-09-19",
     "capture_stop_time": "2021-09-21",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 179.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0207_zcam08236_z110_martre_region_pan_part2",
+      "reference_sol": 207,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 939 agree on 179.9\u00b0; 6 other spheres within 60 m agree within 0.2\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=207:sol:gte&condition_3=209:sol:lte"
   },
   {
@@ -634,7 +872,14 @@
     "source_sha256": "15359cc6a4afec2202c548f873e4d9844cca7c538291b5eb762e05bebb05c1ae",
     "capture_time": "2021-09-25",
     "capture_stop_time": "2021-10-20",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 200.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0215_zcam08257_z110_village_360_part7",
+      "reference_sol": 215,
+      "distance_m": 15.7,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 459 agree on 200.2\u00b0; 4 other spheres within 60 m agree within 1.4\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=213:sol:gte&condition_3=237:sol:lte"
   },
   {
@@ -646,7 +891,14 @@
     "source_sha256": "b17a995d2e4afcfbff98f8aa7c798d5d9ddffcfdaf3045b590268f225d282516",
     "capture_time": "2021-09-26",
     "capture_stop_time": "2021-09-27",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 195.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0215_zcam08257_z110_village_360_part7",
+      "reference_sol": 215,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 512 agree on 195.9\u00b0; 4 other spheres within 60 m agree within 1.1\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=214:sol:gte&condition_3=215:sol:lte"
   },
   {
@@ -658,7 +910,14 @@
     "source_sha256": "228d715bcc511577dc655be22c279b6bcb435e18eb5f1a57dd5d59b0c35cc965",
     "capture_time": "2021-12-11",
     "capture_stop_time": "2022-01-05",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 19.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0300_zcam08329_z110_chens_workspace_ext",
+      "reference_sol": 300,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 311 agree on 19.9\u00b0; 7 other spheres within 60 m agree within 0.5\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=288:sol:gte&condition_3=312:sol:lte"
   },
   {
@@ -670,7 +929,14 @@
     "source_sha256": "c25a076e0ff393d6743f5fede086bb17059961190d8d64536ac549c94d10d6da",
     "capture_time": "2022-01-13",
     "capture_stop_time": "2022-01-13",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 20.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0324xrzs_0090000_cyl_l_autogenj01",
+      "reference_sol": 324,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 250 agree on 20.1\u00b0; 6 other spheres within 60 m agree within 0.2\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=320:sol:gte&condition_3=320:sol:lte"
   },
   {
@@ -682,7 +948,14 @@
     "source_sha256": "bbb17524106d9386421319b4a8f2ce2ec00ad1d3a7da879b361ca07a6c624604",
     "capture_time": "2022-02-19",
     "capture_stop_time": "2022-02-19",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 180.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0357xrzs_0099314_cyl_l_autogenj01",
+      "reference_sol": 357,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 302 agree on 180.1\u00b0; 1 other sphere within 60 m agrees within 0.5\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=356:sol:gte&condition_3=356:sol:lte"
   },
   {
@@ -694,7 +967,14 @@
     "source_sha256": "e2ebdbf6004b763661bde8bb2e7089980818427bd6fc3e61e5b0067a506d3b2f",
     "capture_time": "2022-02-26",
     "capture_stop_time": "2022-03-07",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 21.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0369_zcam08401_z034_sid_west_chal_terrain_360_part3",
+      "reference_sol": 369,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1684 agree on 21.7\u00b0; 7 other spheres within 60 m agree within 0.7\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=363:sol:gte&condition_3=372:sol:lte"
   },
   {
@@ -706,7 +986,14 @@
     "source_sha256": "54ac631a975487af0e42cf53ed2e7c079b4342d5380738defcda253c150b4d8b",
     "capture_time": "2022-05-31",
     "capture_stop_time": "2022-05-31",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 40.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0453xrzs_0260000_cyl_l_autogenj02",
+      "reference_sol": 453,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 114 agree on 40.2\u00b0; 4 other spheres within 60 m agree within 1.0\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=454:sol:gte&condition_3=454:sol:lte"
   },
   {
@@ -718,7 +1005,14 @@
     "source_sha256": "ed076614396c1f373b02781253cec523a8eca7c7ac304b1e2fde856f28a84fca",
     "capture_time": "2022-06-12",
     "capture_stop_time": "2022-06-20",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 180.4,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0472xrzs_0260756_cyl_l_autogenj02",
+      "reference_sol": 472,
+      "distance_m": 3.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1105 agree on 180.4\u00b0; 6 other spheres within 60 m agree within 0.7\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=466:sol:gte&condition_3=474:sol:lte"
   },
   {
@@ -730,7 +1024,14 @@
     "source_sha256": "56711b05bf9946c902d386420b91a6e4168d6b1f0637c6a1fdd95eb467b9f28b",
     "capture_time": "2022-07-01",
     "capture_stop_time": "2022-07-09",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 201.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0489_zcam08512_z034_skinner_ridge_hogwallow_flats_360_west",
+      "reference_sol": 489,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2499 agree on 201.7\u00b0; 4 other spheres within 60 m agree within 0.7\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=484:sol:gte&condition_3=492:sol:lte"
   },
   {
@@ -742,7 +1043,14 @@
     "source_sha256": "8db568a18bc4610907310aefcff328ca198424c4dcac1fbf9514501daa88d8d0",
     "capture_time": "2022-08-04",
     "capture_stop_time": "2022-08-21",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 180.4,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0518_zcam08542_z034_wildcat_ridge_hogwallow_flats",
+      "reference_sol": 518,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2048 agree on 180.4\u00b0; 1 other sphere within 60 m agrees within 0.3\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=518:sol:gte&condition_3=534:sol:lte"
   },
   {
@@ -754,7 +1062,14 @@
     "source_sha256": "f9fd3749ec645dd8a26010466a20e18602b22e5dd468a3aa86953464c053a710",
     "capture_time": "2022-09-23",
     "capture_stop_time": "2022-10-13",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 20.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0590xrzs_0290000_cyl_l_autogenj02",
+      "reference_sol": 590,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 252 agree on 20.2\u00b0; 5 other spheres within 60 m agree within 0.4\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=566:sol:gte&condition_3=586:sol:lte"
   },
   {
@@ -766,7 +1081,14 @@
     "source_sha256": "188e2e2c18573f4323d2bd2c07142e3cbad9ca916ef946c13ca6bb12d2d05641",
     "capture_time": "2022-11-11",
     "capture_stop_time": "2022-11-16",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 105.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0614_zcam08621_z034_hidden_harbor_yori_pass_whale_mountain_360_part1",
+      "reference_sol": 614,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1184 agree on 105.1\u00b0; 5 other spheres within 60 m agree within 0.2\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=614:sol:gte&condition_3=619:sol:lte"
   },
   {
@@ -778,7 +1100,14 @@
     "source_sha256": "784aa4ec6cfdd9db22a9fac9eddc10deff4873a0179ccc837219b7ba3196f3d7",
     "capture_time": "2023-01-08",
     "capture_stop_time": "2023-01-08",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 190.3,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0670_rzs_0320672_cyl_l_autogenj01",
+      "reference_sol": 670,
+      "distance_m": 2.8,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 298 agree on 190.3\u00b0; 7 other spheres within 60 m agree within 0.9\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=670:sol:gte&condition_3=670:sol:lte"
   },
   {
@@ -790,7 +1119,14 @@
     "source_sha256": "2d7a7523795f3d9c706bc81c489e36c8e490d427e550a8925f76ecd1206df7e7",
     "capture_time": "2023-01-28",
     "capture_stop_time": "2023-01-30",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 65.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0686_rzs_0321184_cyl_l_autogenj03",
+      "reference_sol": 686,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 144 agree on 65.0\u00b0; 7 other spheres within 60 m agree within 0.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=690:sol:gte&condition_3=692:sol:lte"
   },
   {
@@ -802,7 +1138,14 @@
     "source_sha256": "b7120078759b0ca71f9bcf52d33303c0e42926a23c10e6dcbd1bc2cfa9d2decc",
     "capture_time": "2023-05-10",
     "capture_stop_time": "2023-05-12",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 15.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0788xrzs_0390926_cyl_l_autogenj02",
+      "reference_sol": 788,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 307 agree on 15.9\u00b0; 7 other spheres within 60 m agree within 0.8\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=789:sol:gte&condition_3=791:sol:lte"
   },
   {
@@ -814,7 +1157,14 @@
     "source_sha256": "59c40b451f7abc13259aed3e2a5c8088ea3d5a130b7871758c5cfc4cd560caea",
     "capture_time": "2023-06-08",
     "capture_stop_time": "2023-06-08",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 134.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0816_rzs_0391418_cyl_l_autogenj01",
+      "reference_sol": 816,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 230 agree on 134.2\u00b0; 1 other sphere within 60 m agrees within 0.3\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=817:sol:gte&condition_3=817:sol:lte"
   },
   {
@@ -826,7 +1176,14 @@
     "source_sha256": "5d36f3d48de4f86168b1365b1b5f00823ef23edff6ca4d0f342f7a5e9f006a00",
     "capture_time": "2023-07-01",
     "capture_stop_time": "2023-07-01",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 253.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0840xrzs_0401608_cyl_l_autogenj02",
+      "reference_sol": 840,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 862 agree on 253.2\u00b0; 3 other spheres within 60 m agree within 0.6\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=840:sol:gte&condition_3=840:sol:lte"
   },
   {
@@ -838,7 +1195,14 @@
     "source_sha256": "a7ceff00ff731569e9f01acbbd0c34db7b7d5e7c39b92f3fc3edd397ef07b2b7",
     "capture_time": "2023-07-19",
     "capture_stop_time": "2023-07-28",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 55.8,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0866_zcam08870_z034_lookout_mountain",
+      "reference_sol": 866,
+      "distance_m": 48.2,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1090 agree on 55.8\u00b0; 6 other spheres within 60 m agree within 0.4\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=857:sol:gte&condition_3=866:sol:lte"
   },
   {
@@ -850,7 +1214,14 @@
     "source_sha256": "bbef95963c332f97f6f06adcfaf4c5960c694f5940525eb1f9fceebc02b55f33",
     "capture_time": "2023-08-04",
     "capture_stop_time": "2023-08-15",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 332.4,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol0884_zcam08887_z063_hunters_creek_dream_lake_bedding_workspace_ext_complete_360",
+      "reference_sol": 884,
+      "distance_m": 24.2,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 155 agree on 332.4\u00b0; 3 other spheres within 60 m agree within 0.2\u00b0; the reference's north is read off its printed azimuth grid; the reference covers only ground, so no check by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=873:sol:gte&condition_3=884:sol:lte"
   },
   {
@@ -874,7 +1245,14 @@
     "source_sha256": "92876b354d5f853493396dd54f830d684f99bf98b0d6b73d892383742aa0a1cd",
     "capture_time": "2023-10-05",
     "capture_stop_time": "2023-10-16",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 59.0,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0935xrzs_0460000_cyl_l_autogenj01",
+      "reference_sol": 935,
+      "distance_m": 3.7,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 176 agree on 59.0\u00b0; 6 other spheres within 60 m agree within 0.2\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=933:sol:gte&condition_3=944:sol:lte"
   },
   {
@@ -886,7 +1264,14 @@
     "source_sha256": "98f5b92eccfea114631100d0f7359f9f504ed4979d2b1b95df469e70c92bf367",
     "capture_time": "2023-11-03",
     "capture_stop_time": "2023-11-07",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 186.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0965xrzs_0470000_cyl_l_autogenj09",
+      "reference_sol": 965,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 576 agree on 186.1\u00b0; 7 other spheres within 60 m agree within 0.3\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=962:sol:gte&condition_3=965:sol:lte"
   },
   {
@@ -898,7 +1283,14 @@
     "source_sha256": "64c100b0377c4407f41df6d44a88f86805b305acbd09eb0dbd9e215b43b2eeb7",
     "capture_time": "2023-12-07",
     "capture_stop_time": "2023-12-09",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 150.3,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_0995xrzs_0471434_cyl_l_autogenj08",
+      "reference_sol": 995,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 101 agree on 150.3\u00b0; 1 other sphere within 60 m agrees within 0.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=995:sol:gte&condition_3=996:sol:lte"
   },
   {
@@ -910,7 +1302,14 @@
     "source_sha256": "08975c528ba1aa7254beeb0011b0b6ae47aec26c0b37f42d614c30843de938d8",
     "capture_time": "2023-12-22",
     "capture_stop_time": "2023-12-22",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 82.3,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1007_rzs_0482404_cyl_l_autogenj02",
+      "reference_sol": 1007,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1576 agree on 82.3\u00b0; 2 other spheres within 60 m agree within 0.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1009:sol:gte&condition_3=1009:sol:lte"
   },
   {
@@ -922,7 +1321,14 @@
     "source_sha256": "6e5cdc8853711009a3867d6f82a259b2e69cc340532235437affff5cb2a9b38b",
     "capture_time": "2024-01-06",
     "capture_stop_time": "2024-01-22",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 167.5,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1021_rzs_0490370_cyl_l_autogenj01",
+      "reference_sol": 1021,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1523 agree on 167.5\u00b0; 7 other spheres within 60 m agree within 0.4\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1024:sol:gte&condition_3=1039:sol:lte"
   },
   {
@@ -934,7 +1340,14 @@
     "source_sha256": "b21b549a18bdc29554f536702113b5babe9c8544a7e0ec49f1b4df7c14ea2304",
     "capture_time": "2024-01-10",
     "capture_stop_time": "2024-01-22",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 167.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol1032_zcam09038_z034_minga_margin_unit_arm_retakes_complete_360",
+      "reference_sol": 1032,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1697 agree on 167.2\u00b0; 7 other spheres within 60 m agree within 0.6\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1028:sol:gte&condition_3=1039:sol:lte"
   },
   {
@@ -946,7 +1359,14 @@
     "source_sha256": "104e3298407dcdf4fde133bb366d9066c91b8c7760691b381cbc7f7078469785",
     "capture_time": "2024-02-27",
     "capture_stop_time": "2024-03-06",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 190.4,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol1074_zcam09092_z034_bunsen_peak_neretva_vallis_ingenuity_cliff_geyser_giant_geyser_horizon_360",
+      "reference_sol": 1074,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2746 agree on 190.4\u00b0; 7 other spheres within 60 m agree within 0.5\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1074:sol:gte&condition_3=1082:sol:lte"
   },
   {
@@ -958,7 +1378,14 @@
     "source_sha256": "3a1cfa0c77c2ea67a1390b890f08e5f57f5652026e460aa44e04c8df84d812c5",
     "capture_time": "2024-05-20",
     "capture_stop_time": "2024-05-20",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 183.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol1155_zcam09194_z048_overlook_mountain_neretva_vallis_bright_angel_margin_unit_pt2_360",
+      "reference_sol": 1155,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2340 agree on 183.9\u00b0; 3 other spheres within 60 m agree within 0.4\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1155:sol:gte&condition_3=1155:sol:lte"
   },
   {
@@ -970,7 +1397,14 @@
     "source_sha256": "31341b92d0ffecaa453153f48283ba67127e5ec93e511bbfb346d277a4a5d5f9",
     "capture_time": "2024-06-13",
     "capture_stop_time": "2024-06-13",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 148.4,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1179xrzs_0540000_cyl_l_autogenj04",
+      "reference_sol": 1179,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1851 agree on 148.4\u00b0; 5 other spheres within 60 m agree within 0.8\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1178:sol:gte&condition_3=1178:sol:lte"
   },
   {
@@ -982,7 +1416,14 @@
     "source_sha256": "7851a4c46b64ede8f37aee872b5cef1e6cdd01e862707b1bee858c7805ba67d1",
     "capture_time": "2024-11-23",
     "capture_stop_time": "2024-11-23",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 17.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1334xrzs_0620634_cyl_l_autogenj01",
+      "reference_sol": 1334,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 748 agree on 17.1\u00b0; 2 other spheres within 60 m agree within 0.1\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1337:sol:gte&condition_3=1337:sol:lte"
   },
   {
@@ -994,7 +1435,14 @@
     "source_sha256": "b05764ba938e5447d4e5dd2b5a7ad1f0c28f8944290f335cb673b9d9a31a4b49",
     "capture_time": "2024-12-12",
     "capture_stop_time": "2024-12-15",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 181.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1355xrzs_0640000_cyl_l_autogenj01",
+      "reference_sol": 1355,
+      "distance_m": 53.8,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 43 agree on 181.2\u00b0; 2 other spheres within 60 m agree within 0.5\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1356:sol:gte&condition_3=1358:sol:lte"
   },
   {
@@ -1006,7 +1454,14 @@
     "source_sha256": "8f9b0e88a759d71f0eb364d4e7d5f3a26045598debcb34eb13e731e3f431f934",
     "capture_time": "2025-01-26",
     "capture_stop_time": "2025-01-26",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 287.6,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1397_rzs_0650802_cyl_l_autogenj02",
+      "reference_sol": 1397,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 299 agree on 287.6\u00b0; 7 other spheres within 60 m agree within 1.2\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1399:sol:gte&condition_3=1399:sol:lte"
   },
   {
@@ -1018,7 +1473,14 @@
     "source_sha256": "6f31fe2717e44d2a4519651b8b23fb110e2dfb4a1be592ee88bf548fae70b646",
     "capture_time": "2025-02-08",
     "capture_stop_time": "2025-02-08",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 92.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1414xrzs_0680142_cyl_l_autogenj02",
+      "reference_sol": 1414,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 530 agree on 92.9\u00b0; 5 other spheres within 60 m agree within 0.3\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1412:sol:gte&condition_3=1412:sol:lte"
   },
   {
@@ -1030,7 +1492,14 @@
     "source_sha256": "b94f123df67be32c9f2d9ebb34c1de40f50030f62b313da0a5e63495c28e6f8b",
     "capture_time": "2025-03-07",
     "capture_stop_time": "2025-03-12",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 99.9,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1435_rzs_0692124_cyl_l_autogenj04",
+      "reference_sol": 1435,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 674 agree on 99.9\u00b0; 6 other spheres within 60 m agree within 0.7\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1438:sol:gte&condition_3=1443:sol:lte"
   },
   {
@@ -1042,7 +1511,14 @@
     "source_sha256": "f2d355131562a6c67a9e6f3ea63a82c67a608342d6bc1e8cc02bcd106ca53bde",
     "capture_time": "2025-05-26",
     "capture_stop_time": "2025-05-26",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 140.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1515xrzs_0740000_cyl_l_autogenj01",
+      "reference_sol": 1515,
+      "distance_m": 1.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1094 agree on 140.1\u00b0; 7 other spheres within 60 m agree within 0.4\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1516:sol:gte&condition_3=1516:sol:lte"
   },
   {
@@ -1054,7 +1530,14 @@
     "source_sha256": "55d98c1562316d8e87a7b3b6ccefa28de193dc8cb1b7a9d6a36e30185b0ca613",
     "capture_time": "2025-08-23",
     "capture_stop_time": "2025-08-23",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 257.5,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1601_rzs_0784716_cyl_l_hrestopj01",
+      "reference_sol": 1601,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1312 agree on 257.5\u00b0; 6 other spheres within 60 m agree within 0.7\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1603:sol:gte&condition_3=1603:sol:lte"
   },
   {
@@ -1066,7 +1549,14 @@
     "source_sha256": "d026c763e58851848a5e271092df08f702a2a0ce6fe87065fad0fb66724f6094",
     "capture_time": "2025-09-08",
     "capture_stop_time": "2025-09-11",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 230.1,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1615_rzs_0790198_cyl_l_hrestopj10",
+      "reference_sol": 1615,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 1583 agree on 230.1\u00b0; 5 other spheres within 60 m agree within 0.9\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1618:sol:gte&condition_3=1621:sol:lte"
   },
   {
@@ -1078,7 +1568,14 @@
     "source_sha256": "01d2783ad06dc69a4168ff7880703e85034783a61d8a110b39e33b2882f423d9",
     "capture_time": "2025-10-21",
     "capture_stop_time": "2025-10-21",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 35.8,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol1660_zcam09740_z034_aitkenodden_plankeholmane_millervatnet_megablocks_breccia_360",
+      "reference_sol": 1660,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2925 agree on 35.8\u00b0; 5 other spheres within 60 m agree within 0.7\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1660:sol:gte&condition_3=1660:sol:lte"
   },
   {
@@ -1090,7 +1587,14 @@
     "source_sha256": "a09a8db0bf50d9b01a2c3df20979b698728267855e7aa7917d7aa15c0c33d5bd",
     "capture_time": "2025-11-26",
     "capture_stop_time": "2025-11-26",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 136.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol1695_zcam09783_z034_tatarka_bubenka_abrasion_workspace_360",
+      "reference_sol": 1695,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 2033 agree on 136.7\u00b0; 6 other spheres within 60 m agree within 0.2\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1695:sol:gte&condition_3=1695:sol:lte"
   },
   {
@@ -1102,7 +1606,14 @@
     "source_sha256": "2a501b16ff4ae1b00e14d327366efaa1b7c6e1b1c98e9033fb06889d3acec778",
     "capture_time": "2025-12-18",
     "capture_stop_time": "2026-01-25",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 189.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1711xrzs_0830000_cyl_l_hrestopjd4",
+      "reference_sol": 1711,
+      "distance_m": 0.1,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 240 agree on 189.2\u00b0; 7 other spheres within 60 m agree within 0.3\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1717:sol:gte&condition_3=1754:sol:lte"
   },
   {
@@ -1114,7 +1625,14 @@
     "source_sha256": "ea7e71999b250b98ce26b815e2c9a12a4aeebe35377ff3eecc338d8543b1e9a2",
     "capture_time": "2026-02-16",
     "capture_stop_time": "2026-02-16",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 259.7,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-mastcamz-czcam_sol1775_zcam09830_z034_sanford_asher_memorial_workspace_olifants_djuma_abrasion_360",
+      "reference_sol": 1775,
+      "distance_m": 15.6,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 3465 agree on 259.7\u00b0; 5 other spheres within 60 m agree within 0.8\u00b0; the reference's north is read off its printed azimuth grid; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1775:sol:gte&condition_3=1775:sol:lte"
   },
   {
@@ -1126,7 +1644,14 @@
     "source_sha256": "28004b57bbf78e0ff83abf02cbdf01e8a980bb85802ad35b8757a3031ec43eda",
     "capture_time": "2026-04-06",
     "capture_stop_time": "2026-04-06",
-    "start_azimuth_deg": null,
+    "start_azimuth_deg": 5.2,
+    "start_azimuth_basis": "feature match",
+    "start_azimuth_evidence": {
+      "reference": "perseverance-n_lrgb_1820xrzs_0874084_cyl_l_autogenj07",
+      "reference_sol": 1820,
+      "distance_m": 0.0,
+      "method": "SIFT matches over the band from +30\u00b0 to -45\u00b0: 799 agree on 5.2\u00b0; 7 other spheres within 60 m agree within 0.4\u00b0; checked by eye"
+    },
     "capture_date_source_url": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&condition_2=1823:sol:gte&condition_3=1823:sol:lte"
   },
   {

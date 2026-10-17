@@ -505,18 +505,27 @@ the Navcam mosaics that now cover the same sols. The published 360° extent come
 from the collection page; the horizon is visually estimated like every other
 curated strip.
 
-Only the two landing-site panoramas have a heading: Octavia E. Butler landing
-(sols 3–11) and Horizon 1 (sol 4). The rover did not move before sol 14, so the
-sol 2, 12 and 13 Navcam spheres share their spot. SIFT matches against these
-spheres give the heading (basis `feature match`):
+51 of the 53 have a heading (basis `feature match`). It comes from SIFT
+matches over the band from +30° to −45° against north-referenced spheres within
+60 m:
 
-- Butler landing: all three agree on 132° within 0.3°.
-- Horizon 1: 91.9°. This strip is only 6.6° tall, so there are few matches,
-  and the result was checked by eye.
+- Archive Navcam mosaics.
+- Mastcam-Z mosaics whose north is read off their printed azimuth grid. Where
+  both kinds reach the same stop, at 17 panoramas, they agree within 1°.
 
-The skyline matcher fails here. The sol 2 sphere stops 3° above the horizon,
-and the references disagree by up to 170°. The other 51 stay
-`orientation: unknown`.
+Each match was checked by eye on a board of the two horizons. The exception is
+Dream Lake, whose references show only ground. Thin horizon strips such as
+Horizon 1 (sol 4, 6.6° tall) give few matches, so the eye decided those.
+
+The skyline matcher fails on these panoramas. At the Octavia E. Butler landing
+site, the sol 2 sphere stops 3° above the horizon, and the references disagree
+by up to 170°.
+
+Two panoramas stay `orientation: unknown`:
+
+- Arbot (sol 1879): its only references are 35 m away and do not match the
+  terrain.
+- Howard Mountain: no sphere lies within 60 m.
 
 The gallery names a sol, not an Earth date. Each capture interval therefore comes
 from the Mars 2020 raw-image feed: the UTC dates of the frames returned for the
@@ -550,7 +559,12 @@ product captions and the [Pancam full-panorama gallery](https://pancam.sese.asu.
 its center; the renderer rotates that point to the sphere seam. The existing
 [Murray Buttes](https://science.nasa.gov/photojournal/rovers-panorama-taken-amid-murray-buttes-on-mars/)
 fit now has its September 4, 2016 capture date and published north alignment.
-Other new headings remain unknown. All new vertical fits remain approximate,
+The others are matched to the archive mosaics of the same stop, like the
+Mastcam-Z 360 collection below (basis `feature match`). Spirit sol 149 and
+Opportunity sol 21 have no reference that matches, so their headings remain
+unknown. Spirit's sol 5 and sol 10 panoramas were shot from the lander deck.
+Their offset varies ±3° with azimuth around the recorded heading, the pattern a
+tilted frame gives. All new vertical fits remain approximate,
 with transparent gaps and no local fill. Published mosaics can already contain
 blended sky. These are immersive previews, not calibrated map-ready products.
 
@@ -634,14 +648,17 @@ within 5° for 86–100% of pairs scoring 0.85 or better, and is no better than 
 coin flip below that. PIA11241, whose caption gives the answer independently,
 comes back 0.6° out at 0.90. Cross-instrument matches score lower than
 Navcam-against-Navcam ones, so the accepted five were each reviewed against the
-reference skyline rather than taken on score alone; the eight remaining stay
+reference skyline rather than taken on score alone. SIFT matches against the
+same spheres (basis `feature match`, each checked by eye) place 11 of the
+other 13. The last two have no reference that matches and stay
 `orientation_status: unknown`.
 
 | Heading | Panoramas |
 |---|---|
 | Published cardinal direction | PIA11241, PIA20840, PIA21719 |
 | Skyline match to an archival sphere | PIA22545, PIA24269, PIA25176, PIA26363, PIA26696 |
-| Unknown | the other 13 |
+| Feature match to an archival sphere | the other 11 |
+| Unknown | PIA26012, PIA26559 |
 
 An unknown north is exported as `orientation: "unknown"` with a zero offset. The
 viewer then draws no field-of-view wedge on the minimap and no traverse arrows
