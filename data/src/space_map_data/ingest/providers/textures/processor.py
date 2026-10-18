@@ -32,6 +32,7 @@ from . import config, deshade, patches, skybox, tiles
 from .alignment import align_cylindrical, entry_alignment
 from .encoding import resize, save_webp, size_target, tier_for_size
 from .image_io import (
+    mend_column,
     open_displacement_source,
     open_height_raster,
     open_image,
@@ -397,6 +398,8 @@ class TextureProcessor:
 
         out_dir.mkdir(parents=True, exist_ok=True)
         img = open_image(src)
+        if "dead_column" in entry:
+            img = mend_column(img, entry["dead_column"])
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
         exports = self._export(img, object_id, out_dir)
@@ -525,6 +528,11 @@ class TextureProcessor:
                     **signed_files(spec),
                     "lat_range": spec.get("lat_range"),
                     **{k: spec.get(k, v) for k, v in height_fields.items()},
+                    **(
+                        {"dead_column": spec["dead_column"]}
+                        if "dead_column" in spec
+                        else {}
+                    ),
                 }
                 for spec in base_specs
             ],
@@ -642,7 +650,9 @@ class TextureProcessor:
                     mask = np.asarray(open_specular_source(path))
                     layers.append(tiles.Layer(mask, placement))
                 else:
-                    layer = tiles.open_colour_grid(grid, placement)
+                    layer = tiles.open_colour_grid(
+                        grid, placement, spec.get("dead_column")
+                    )
                     if brightness_specs and entry.get("soften_colour"):
                         layer = tiles.softened(layer, sharpen_sigma)
                     layers.append(layer)

@@ -390,6 +390,28 @@ class TestLayerWindows:
         assert np.isnan(part[:, 0]).all()
         assert np.array_equal(part, whole[:, 3 * TILE : 7 * TILE], equal_nan=True)
 
+    @pytest.mark.parametrize(
+        "placement",
+        [
+            {},
+            {"lon_at_left_deg": 0.0},
+            {"west_positive": True, "lon_at_left_deg": 90.0},
+        ],
+    )
+    def test_dead_column_reads_as_the_mean_of_its_neighbours(self, placement):
+        """A blank column on the ±180° seam would draw a dark line along it."""
+        stored = np.array(self._layer().pixels)
+        stored[:, 0] = 0
+        dead = tiles.Layer(stored, tiles.Placement(**placement), dead_column=0)
+        mended = stored.copy()
+        mended[:, 0] = (stored[:, -1].astype(int) + stored[:, 1] + 1) // 2
+        expected = tiles.Layer(mended, tiles.Placement(**placement))
+        width = 8 * TILE
+        for c0, c1 in ((0, width), (-3, 3), (width - 1, width + 1), (5, 2 * width)):
+            assert np.array_equal(
+                dead.read(0, 2 * TILE, c0, c1), expected.read(0, 2 * TILE, c0, c1)
+            )
+
     def test_read_matches_flip_then_shift_of_the_stored_rows(self):
         layer = self._layer(west_positive=True, lon_at_left_deg=90.0)
         stored = np.asarray(layer.pixels)
@@ -740,6 +762,110 @@ class TestBlockBuild:
         assert tiles.resumable(tmp_path / "blocks", "v1")
         tiles.clear_state(tmp_path / "blocks")
         assert not (tmp_path / "blocks" / ".build").exists()
+
+
+class TestDeletedTiles:
+    """A build that picks up a save of the same inputs writes again the tiles
+    deleted from it, and leaves the others as they are."""
+
+    LEVEL = 5
+
+    @staticmethod
+    def _seam(columns: int) -> list[tuple[int, int]]:
+        """The tiles of a level on both sides of the ±180° seam."""
+        return [(x, y) for x in (0, columns - 1) for y in range(columns // 2)]
+
+    @staticmethod
+    def _delete(out: Path, gone: dict[int, list[tuple[int, int]]]) -> dict:
+        kept = {}
+        for level, at in gone.items():
+            for x, y in at:
+                path = out / str(level) / str(x) / f"{y}.webp"
+                kept[path] = np.asarray(Image.open(path).convert("RGB")).astype(int)
+                path.unlink()
+        return kept
+
+    def test_sharpened_colour_comes_back_at_the_seam(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(tiles, "MAX_BAND_LEVEL", 0)
+        width = tiles.level_width(self.LEVEL)
+        rng = np.random.default_rng(seed=5)
+        base = tiles.Layer(
+            rng.integers(60, 200, size=(width // 8, width // 4, 3), dtype=np.uint8),
+            tiles.Placement(),
+        )
+        fine = tiles.Layer(
+            rng.uniform(0.05, 0.3, size=(width // 2, width)).astype(np.float32),
+            tiles.Placement(lat_top=60.0, lat_bottom=-60.0),
+            to_values=tiles._brightness,
+        )
+        out = tmp_path / "out"
+
+        def build() -> tiles.PyramidStats:
+            return tiles.PyramidBuilder(
+                "t", [base], out, self.LEVEL, brightness=[fine], checkpoint="v1"
+            ).build()
+
+        first = build()
+        gone = {z: self._seam(2 << z) for z in range(self.LEVEL + 1)}
+        kept = self._delete(out, gone)
+        # A tile cut short by a stop never took its name.
+        (out / "5" / "0" / ".3.webp").write_bytes(b"cut")
+        untouched = out / "5" / "1" / "3.webp"
+        before = untouched.stat().st_mtime_ns
+
+        assert build().tiles == first.tiles
+        for path, values in kept.items():
+            again = np.asarray(Image.open(path).convert("RGB")).astype(int)
+            # Coarser than a block, a tile comes from the encoded ones under it.
+            if path.parts[-3] == "0":
+                assert np.abs(again - values).mean() < 2.5, path
+            else:
+                assert np.array_equal(again, values), path
+        assert untouched.stat().st_mtime_ns == before
+
+    def test_heights_come_back_within_a_step(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(tiles, "MAX_BAND_LEVEL", 0)
+        width = tiles.level_width(self.LEVEL)
+        layer = _height_layer(_terrain(width, width // 2))
+        coding = tiles.HeightCoding.for_range(-8.0, 21.0, 1e-3, None)
+        out = tmp_path / "out"
+
+        def build() -> tiles.PyramidStats:
+            return tiles.PyramidBuilder(
+                "t", [layer], out, self.LEVEL, coding, checkpoint="v1"
+            ).build()
+
+        build()
+        gone = {5: [(7, 3), (8, 3), (63, 31)], 3: [(0, 0), (15, 7)], 0: [(1, 0)]}
+        kept = self._delete(out, gone)
+        build()
+        for path, values in kept.items():
+            again = np.asarray(Image.open(path).convert("RGB"))
+            km = _decode_km(again, coding) - _decode_km(values, coding)
+            assert np.abs(km).max() <= coding.step_km + 1e-9, path
+
+    def test_cap_tiles_come_back(self, tmp_path):
+        coding = tiles.HeightCoding.for_range(-5.0, 5.0, 0.001, None)
+        out = tmp_path / "out"
+
+        def build() -> tiles.PyramidStats:
+            return tiles.CapBuilder(
+                "t",
+                True,
+                [TestCapPyramid._layer()],
+                out,
+                3,
+                coding,
+                checkpoint="v1",
+            ).build()
+
+        build()
+        kept = self._delete(out, {3: [(0, 1), (1, 1)], 2: [(0, 0)], 1: [(0, 0)]})
+        build()
+        for path, values in kept.items():
+            again = np.asarray(Image.open(path).convert("RGB"))
+            km = _decode_km(again, coding) - _decode_km(values, coding)
+            assert np.abs(km).max() <= coding.step_km + 1e-9, path
 
 
 class TestPolarLayer:
@@ -1107,6 +1233,25 @@ class TestProcessTiles:
         assert (out / "north" / "1" / "0" / "0.webp").exists()
         assert (out / "south" / "1" / "0" / "0.webp").exists()
         assert not list(out.rglob(".build"))
+
+    def test_dead_column_leaves_no_line_and_names_a_new_version(
+        self, tmp_path, monkeypatch
+    ):
+        entry = self._colour_entry(tmp_path)
+        proc = self._processor(monkeypatch, tmp_path, [entry])
+        meta_path = tmp_path / "meta" / "naif-499" / "metadata.json"
+        proc.process_tiles()
+        before = json.loads(meta_path.read_text())["version"]
+        pixels = np.asarray(Image.open(tmp_path / "raw" / "mars.png")).copy()
+        pixels[:, 0] = 0
+        Image.fromarray(pixels).save(tmp_path / "raw" / "mars.png")
+
+        entry["dead_column"] = 0
+        proc.process_tiles()
+
+        assert json.loads(meta_path.read_text())["version"] != before
+        seam = _stitch(tmp_path / "tiles" / "naif-499", 1)[:, [0, -1]].astype(int)
+        assert np.abs(seam - [200, 90, 40]).max() < 12
 
     def test_map_of_one_level_has_no_caps(self, tmp_path, monkeypatch):
         entry = self._colour_entry(tmp_path, tiles_max_level=0)

@@ -94,6 +94,23 @@ def open_image(path: Path, keep_alpha: bool = False) -> Image.Image:
     return Image.fromarray(arr, mode="RGB")
 
 
+def mean_column(west: np.ndarray, east: np.ndarray) -> np.ndarray:
+    """Rounded mean of two 8-bit columns, for a column with no data between
+    them."""
+    return ((west.astype(np.uint16) + east + 1) >> 1).astype(np.uint8)
+
+
+def mend_column(img: Image.Image, column: int) -> Image.Image:
+    """``img`` with ``column`` as the mean of its neighbours. They wrap around
+    the globe, as a dead edge column sits on the ±180° seam."""
+    pixels = np.array(img)
+    width = pixels.shape[1]
+    pixels[:, column] = mean_column(
+        pixels[:, (column - 1) % width], pixels[:, (column + 1) % width]
+    )
+    return Image.fromarray(pixels)
+
+
 def _gdal_scale_offset(page: tifffile.TiffPage) -> tuple[float, float]:
     """GDAL raw→native (scale, offset) from GDAL_METADATA; identity if absent."""
     tag = page.tags.get("GDAL_METADATA")

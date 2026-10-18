@@ -391,6 +391,8 @@ bodies:
   license: Public domain
   file: Mars_Viking_ClrMosaic_global_925m.tif
   type: cylindrical
+  # Black in every row, on the 180° meridian.
+  dead_column: 0
 # The 925 m colour, with detail from the Murray Lab's global mosaic of MRO
 # Context Camera images at 5 m. No open colour map of Mars is sharper than
 # Viking's; CTX is greyscale, so it supplies brightness only.
@@ -402,6 +404,7 @@ bodies:
   attribution: "NASA/JPL/MSSS/The Murray Lab. Detail: Global CTX Mosaic of Mars V01, 5 m/px (Dickson et al. 2024, doi:10.1029/2024EA003555). Colour: USGS Astrogeology Science Center, Viking Orbiter global colour mosaic."
   file: Mars_Viking_ClrMosaic_global_925m.tif
   type: cylindrical
+  dead_column: 0
   tiles: only
   # The colour map is far softer than its pixels, and CTX holds real shading
   # up to kilometres, so CTX takes over below about 3 km.

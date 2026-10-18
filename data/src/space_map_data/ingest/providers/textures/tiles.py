@@ -43,6 +43,7 @@ from .image_io import (
     ChunkedTiff,
     NODATA_THRESHOLD,
     HeightRaster,
+    mean_column,
     memmap_page,
     open_image,
     open_height_raster,
@@ -628,6 +629,8 @@ class Layer:
     # Raw samples → float32 values, gaps as NaN. Colour passes through. It may
     # give several fields per sample, as (H, W, n): each is resampled alone.
     to_values: Callable[[np.ndarray], np.ndarray] | None = None
+    # A stored colour column with no data, read as the mean of its neighbours.
+    dead_column: int | None = None
 
     @property
     def height(self) -> int:
@@ -682,16 +685,26 @@ class Layer:
         s0, s1 = a0, a1
         if self.placement.west_positive:
             s0, s1 = self.width - a1, self.width - a0
+        part = self._samples(y0, y1, s0, s1)
+        dead = self.dead_column
+        if dead is not None and s0 <= dead < s1:
+            west, east = (
+                self._samples(y0, y1, column, column + 1)
+                for column in ((dead - 1) % self.width, (dead + 1) % self.width)
+            )
+            part = np.array(part)
+            part[:, dead - s0] = mean_column(west, east)[:, 0]
+        return part[:, ::-1] if self.placement.west_positive else part
+
+    def _samples(self, y0: int, y1: int, s0: int, s1: int) -> np.ndarray:
         pixels = self.pixels
         if isinstance(pixels, (Mosaic, Region)):
-            part = pixels.read(y0, y1, s0, s1)
-        elif isinstance(pixels, ChunkedTiff):
-            part = pixels[y0:y1, s0:s1]
-        elif self.planar:
-            part = np.moveaxis(np.asarray(pixels[:, y0:y1, s0:s1]), 0, -1)
-        else:
-            part = np.asarray(pixels[y0:y1, s0:s1])
-        return part[:, ::-1] if self.placement.west_positive else part
+            return pixels.read(y0, y1, s0, s1)
+        if isinstance(pixels, ChunkedTiff):
+            return pixels[y0:y1, s0:s1]
+        if self.planar:
+            return np.moveaxis(np.asarray(pixels[:, y0:y1, s0:s1]), 0, -1)
+        return np.asarray(pixels[y0:y1, s0:s1])
 
     def source_row(self, lat: float) -> float:
         place = self.placement
@@ -976,7 +989,9 @@ def _load_whole(path: Path, channels: int) -> Image.Image:
     return open_image(path) if channels == 3 else Image.open(path).convert("L")
 
 
-def open_colour_layer(path: Path, placement: Placement) -> Layer:
+def open_colour_layer(
+    path: Path, placement: Placement, dead_column: int | None = None
+) -> Layer:
     """A colour source, memory-mapped when it is stored as plain 8-bit samples:
     RGB, or one grey band."""
     if path.suffix.lower() in (".tif", ".tiff"):
@@ -989,8 +1004,14 @@ def open_colour_layer(path: Path, placement: Placement) -> Layer:
             if page.dtype == np.uint8 and (grey or planar or chunky):
                 pixels = memmap_page(path, page)
                 if pixels is not None:
-                    return Layer(pixels, placement, planar=planar, grey=grey)
-    return Layer(np.asarray(_load_whole(path, 3)), placement)
+                    return Layer(
+                        pixels,
+                        placement,
+                        planar=planar,
+                        grey=grey,
+                        dead_column=dead_column,
+                    )
+    return Layer(np.asarray(_load_whole(path, 3)), placement, dead_column=dead_column)
 
 
 def _colour_cell(path: Path) -> np.ndarray | ChunkedTiff:
@@ -1009,12 +1030,16 @@ def _colour_cell(path: Path) -> np.ndarray | ChunkedTiff:
     return chunked
 
 
-def open_colour_grid(grid: Sequence[Sequence[Path]], placement: Placement) -> Layer:
+def open_colour_grid(
+    grid: Sequence[Sequence[Path]],
+    placement: Placement,
+    dead_column: int | None = None,
+) -> Layer:
     """A colour source in adjoining files, rows north to south: one file, or
-    a grid of them."""
+    a grid of them. ``dead_column`` counts across the whole grid."""
     if len(grid) == 1 and len(grid[0]) == 1:
-        return open_colour_layer(grid[0][0], placement)
-    return Layer(Mosaic(grid, _colour_cell), placement)
+        return open_colour_layer(grid[0][0], placement, dead_column)
+    return Layer(Mosaic(grid, _colour_cell), placement, dead_column=dead_column)
 
 
 def soften(pixels: np.ndarray, sigma: float, around: bool = False) -> np.ndarray:
@@ -1461,9 +1486,10 @@ class PyramidBuilder:
 
     ``checkpoint`` names the inputs. A block build saves its progress under
     that name after each row of blocks, any build when it is done, and a
-    build picks up from a save of the same name. The caller clears ``out_dir``
-    when there is none to pick up, and drops the saves with ``clear_state``
-    once the output is in place.
+    build picks up from a save of the same name, writing again the tiles
+    deleted from it: so a fix that touches few tiles rebuilds only those. The
+    caller clears ``out_dir`` when there is none to pick up, and drops the
+    saves with ``clear_state`` once the output is in place.
     """
 
     # Coarsest level: two tiles side by side.
@@ -1511,23 +1537,123 @@ class PyramidBuilder:
         blocked = self.max_level > MAX_BAND_LEVEL or wide_blur
         rows = self._rows(self.max_level - BLOCK_LEVELS if blocked else self.max_level)
         start = self._restore()
-        if start == rows:
-            return self._stats
+        with ThreadPoolExecutor(os.cpu_count()) as pool:
+            if start < rows:
+                self._write_levels(pool, blocked, start, rows)
+            if start:
+                self._fill(pool)
+        return self._stats
+
+    def _write_levels(
+        self, pool: ThreadPoolExecutor, blocked: bool, start: int, rows: int
+    ) -> None:
         for level in range(self.min_level, self.max_level + 1):
             for x in range(self._columns(level)):
                 (self.out_dir / str(level) / str(x)).mkdir(parents=True, exist_ok=True)
-        with ThreadPoolExecutor(os.cpu_count()) as pool:
-            if blocked:
-                if start:
-                    log.info("%s: resuming at block row %d", self.name, start + 1)
-                self._build_blocks(pool, start)
-            else:
-                for row, band in enumerate(self._finest_rows()):
-                    self._emit(pool, self.max_level, row, band)
-                    if (row + 1) % 8 == 0 or row + 1 == rows:
-                        log.info("%s: tile row %d of %d", self.name, row + 1, rows)
-                self._save(rows)
-        return self._stats
+        if blocked:
+            if start:
+                log.info("%s: resuming at block row %d", self.name, start + 1)
+            self._build_blocks(pool, start)
+            return
+        for row, band in enumerate(self._finest_rows()):
+            self._emit(pool, self.max_level, row, band)
+            if (row + 1) % 8 == 0 or row + 1 == rows:
+                log.info("%s: tile row %d of %d", self.name, row + 1, rows)
+        self._save(rows)
+
+    def _fill(self, pool: ThreadPoolExecutor) -> None:
+        """Write again the tiles deleted from a build of the same inputs. A
+        block that holds one is built again as the build built it; a tile
+        coarser than a block comes from the four on disk under it. The stats
+        still count them."""
+        present = {
+            level: self._present(pool, level)
+            for level in range(self.min_level, self.max_level + 1)
+        }
+        count = sum(int((~found).sum()) for found in present.values())
+        if not count:
+            return
+        log.info("%s: writing %d deleted tiles again", self.name, count)
+        for level, found in present.items():
+            for x in np.flatnonzero(~found.all(axis=1)).tolist():
+                (self.out_dir / str(level) / str(x)).mkdir(parents=True, exist_ok=True)
+        depth = min(BLOCK_LEVELS, self.max_level - self.min_level)
+        top = self.max_level - depth
+        blocks = {
+            (x >> (level - top), y >> (level - top))
+            for level in range(top, self.max_level + 1)
+            for x, y in np.argwhere(~present[level]).tolist()
+        }
+
+        def block(at: tuple[int, int]) -> None:
+            bx, by = at
+            side = config.TILE_SIZE << depth
+            values = self._window(
+                by * side, (by + 1) * side, bx * side, (bx + 1) * side
+            )
+            for level in range(self.max_level, top - 1, -1):
+                span = 1 << (level - top)
+                size = values.shape[0] // span
+                for i, j in np.argwhere(
+                    ~present[level][
+                        bx * span : (bx + 1) * span, by * span : (by + 1) * span
+                    ]
+                ).tolist():
+                    tile = values[j * size : (j + 1) * size, i * size : (i + 1) * size]
+                    self._put(level, bx * span + i, by * span + j, tile)
+                if level > top:
+                    values = _halve(values)
+
+        with ThreadPoolExecutor(BLOCK_WORKERS) as workers:
+            list(workers.map(block, sorted(blocks)))
+        missing = {level: np.argwhere(~found) for level, found in present.items()}
+        for level in range(top - 1, self.min_level - 1, -1):
+
+            def coarser(at: list[int], level: int = level) -> None:
+                x, y = at
+                under = [
+                    np.concatenate(
+                        [self._load(level + 1, 2 * x + i, 2 * y + j) for i in (0, 1)],
+                        axis=1,
+                    )
+                    for j in (0, 1)
+                ]
+                self._put(level, x, y, _halve(np.concatenate(under)))
+
+            list(pool.map(coarser, missing[level].tolist()))
+
+    def _present(self, pool: ThreadPoolExecutor, level: int) -> np.ndarray:
+        """Which tiles of ``level`` are on disk, as [column, row]."""
+        found = np.zeros((self._columns(level), self._rows(level)), dtype=bool)
+
+        def scan(x: int) -> None:
+            folder = self.out_dir / str(level) / str(x)
+            if folder.is_dir():
+                stems = (name.removesuffix(".webp") for name in os.listdir(folder))
+                found[x, [int(stem) for stem in stems if stem.isdigit()]] = True
+
+        list(pool.map(scan, range(found.shape[0])))
+        return found
+
+    def _load(self, level: int, x: int, y: int) -> np.ndarray:
+        """The values of a tile on disk."""
+        with Image.open(self._tile_path(level, x, y)) as image:
+            rgb = np.asarray(image.convert("RGB"))
+        return rgb if self.coding is None else self.coding.unpack(rgb)
+
+    def _tile_path(self, level: int, x: int, y: int) -> Path:
+        return self.out_dir / str(level) / str(x) / f"{y}.webp"
+
+    def _put(self, level: int, x: int, y: int, tile: np.ndarray) -> int:
+        """Encode one tile and return its size. It takes its name once whole:
+        a tile on disk is never cut short."""
+        if self.coding is not None:
+            tile = self.coding.pack(tile)
+        path = self._tile_path(level, x, y)
+        part = path.with_name(f".{path.name}")
+        Image.fromarray(tile).save(part, "webp", **self._save_kwargs)
+        part.replace(path)
+        return path.stat().st_size
 
     def _columns(self, level: int) -> int:
         return 2 << level
@@ -1789,12 +1915,7 @@ class PyramidBuilder:
             tile = values[
                 down * size : (down + 1) * size, right * size : (right + 1) * size
             ]
-            if self.coding is not None:
-                tile = self.coding.pack(tile)
-            folder = self.out_dir / str(level) / str(tile_x + right)
-            path = folder / f"{tile_y + down}.webp"
-            Image.fromarray(tile).save(path, "webp", **self._save_kwargs)
-            return path.stat().st_size
+            return self._put(level, tile_x + right, tile_y + down, tile)
 
         sizes = list(pool.map(save, range(across * (values.shape[0] // size))))
         with self._lock:

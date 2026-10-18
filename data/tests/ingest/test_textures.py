@@ -425,6 +425,34 @@ class TestProcessSingleFrame:
         expected = {f"{tier}.webp" for tier in meta["exports"]}
         assert {p.name for p in body_dir.glob("*.webp")} == expected
 
+    def test_dead_column_takes_the_mean_of_its_neighbours(self, tmp_path, monkeypatch):
+        """The neighbours of the first column wrap around to the last."""
+        entry = {
+            "body": "naif-499",
+            "body_name": "mars",
+            "source": "https://example.com",
+            "organisation": "USGS",
+            "attribution": "Test attribution",
+            "file": "mars.png",
+            "type": "cylindrical",
+            "dead_column": 0,
+        }
+        proc = TestProcessMonthly._make_processor(monkeypatch, tmp_path, entry)
+        pixels = np.full((128, 256, 3), 100, dtype=np.uint8)
+        pixels[:, -1] = 140
+        pixels[:, 0] = 0
+        Image.fromarray(pixels).save(config.RAW_DIR / entry["file"])
+
+        proc.process(config.RAW_DIR / entry["file"], force=True)
+
+        meta = json.loads(
+            (config.PROCESSED_DIR / "naif-499" / "metadata.json").read_text()
+        )
+        tier = next(iter(meta["exports"]))
+        with Image.open(config.PROCESSED_DIR / "naif-499" / f"{tier}.webp") as image:
+            first = np.asarray(image.convert("RGB"))[:, 0].astype(int)
+        assert np.abs(first - 120).max() < 12
+
     def test_file_also_listed_as_a_pyramid_source_still_gets_its_tiers(
         self, tmp_path, monkeypatch
     ):
