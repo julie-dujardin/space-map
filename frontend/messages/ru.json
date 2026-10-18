@@ -1286,6 +1286,7 @@
 	"tooltip_light_lag": "Время прохождения света в одну сторону между зондом и Землёй",
 	"tooltip_last_contact": "Последний контакт с {network}: {time}",
 	"tooltip_last_contact_month": "Отслеживался {network} в {month}",
+	"tooltip_last_contact_record": "Последний сигнал получен: {date}, по данным миссии",
 	"tooltip_orbital_speed": "Текущая скорость вдоль орбиты",
 	"tooltip_gravity_surface": "Гравитация на поверхности",
 	"tooltip_gravity_cloud_top": "Гравитация на уровне облаков",

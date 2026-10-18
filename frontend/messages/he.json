@@ -1275,6 +1275,7 @@
 	"tooltip_light_lag": "זמן מעבר האור בכיוון אחד בין הגשושית לכדור הארץ",
 	"tooltip_last_contact": "קשר אחרון עם {network} ב-{time}",
 	"tooltip_last_contact_month": "נעקב על ידי {network} ב{month}",
+	"tooltip_last_contact_record": "האות האחרון התקבל: {date}, לפי רישומי המשימה",
 	"tooltip_orbital_speed": "המהירות הנוכחית לאורך המסלול",
 	"tooltip_gravity_surface": "כבידה על פני השטח",
 	"tooltip_gravity_cloud_top": "כבידה בראשי העננים",

@@ -24,7 +24,7 @@ from datetime import timedelta
 
 import httpx
 
-from space_map_data.tracking import archive, publish
+from space_map_data.tracking import archive, history, publish
 from space_map_data.tracking.dsn.feed import (
     FeedError,
     SpacecraftInfo,
@@ -122,7 +122,11 @@ class Poller:
         self.estrack_names: dict[str, str] = {}
 
     def publish(self) -> None:
-        publish.write(publish.build(self.dsn_store, self.estrack_store, self.bot_store))
+        publish.write(
+            publish.build(
+                self.dsn_store, self.estrack_store, self.bot_store, history.load()
+            )
+        )
 
     def bot_refresh(self) -> None:
         posts = dsnbot.parse_posts(dsnbot.fetch_repo(self.client))
@@ -247,7 +251,9 @@ def cli():
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     if args.command == "publish":
-        publish.write(publish.build(ActivityStore(), EstrackStore(), BotStore()))
+        publish.write(
+            publish.build(ActivityStore(), EstrackStore(), BotStore(), history.load())
+        )
     elif args.command == "archive":
         archive.run(commit=args.commit)
     else:

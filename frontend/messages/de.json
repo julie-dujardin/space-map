@@ -1235,6 +1235,7 @@
 	"tooltip_light_lag": "Einweg-Lichtlaufzeit zwischen der Sonde und der Erde",
 	"tooltip_last_contact": "Letzter Kontakt mit {network} am {time}",
 	"tooltip_last_contact_month": "Verfolgt von {network} im {month}",
+	"tooltip_last_contact_record": "Letztes Signal empfangen: {date}, laut Missionsunterlagen",
 	"tooltip_orbital_speed": "Aktuelle Geschwindigkeit entlang der Bahn",
 	"tooltip_gravity_surface": "Schwerkraft an der Oberfläche",
 	"tooltip_gravity_cloud_top": "Schwerkraft an der Wolkenobergrenze",

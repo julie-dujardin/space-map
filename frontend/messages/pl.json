@@ -1275,6 +1275,7 @@
 	"tooltip_light_lag": "Jednokierunkowy czas podróży światła między sondą a Ziemią",
 	"tooltip_last_contact": "Ostatni kontakt z {network}: {time}",
 	"tooltip_last_contact_month": "Śledzony przez {network} w {month}",
+	"tooltip_last_contact_record": "Ostatni sygnał odebrano: {date}, według dokumentacji misji",
 	"tooltip_orbital_speed": "Aktualna prędkość wzdłuż orbity",
 	"tooltip_gravity_surface": "Grawitacja na powierzchni",
 	"tooltip_gravity_cloud_top": "Grawitacja na szczytach chmur",

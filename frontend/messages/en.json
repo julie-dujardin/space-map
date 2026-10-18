@@ -1387,6 +1387,7 @@
 	"tooltip_light_lag": "One-way light travel time between the probe and Earth",
 	"tooltip_last_contact": "Last contact with {network} on {time}",
 	"tooltip_last_contact_month": "Tracked by {network} in {month}",
+	"tooltip_last_contact_record": "Last signal received: {date}, according to mission records",
 	"network_dsn": "NASA Deep Space Network",
 	"network_estrack": "ESA ESTRACK",
 	"tooltip_orbital_speed": "Current speed along the orbit",

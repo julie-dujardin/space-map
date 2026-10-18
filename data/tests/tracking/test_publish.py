@@ -13,6 +13,7 @@ from space_map_data.tracking import publish
 from space_map_data.tracking.dsn.store import ActivityStore, SpacecraftState
 from space_map_data.tracking.dsnbot.store import BotState, BotStore
 from space_map_data.tracking.estrack.store import EstrackStore, MissionState
+from space_map_data.tracking.history import LastContact, load
 
 VOYAGER_1 = "probe-49065984"
 MARS_EXPRESS = "probe-93536256"
@@ -64,26 +65,26 @@ class TestObjects:
 
     def test_a_dsn_pass_is_reported_to_the_second(self, dsn, estrack, bot):
         _seen(dsn, "VGR1", "2026-09-17T08:44:22+00:00")
-        entry = publish.build(dsn, estrack, bot)["objects"][VOYAGER_1]
+        entry = publish.build(dsn, estrack, bot, {})["objects"][VOYAGER_1]
         assert entry["last_contact"] == "2026-09-17T08:44:22+00:00"
         assert entry["precision"] == "second"
         assert entry["network"] == "dsn"
 
     def test_an_estrack_mission_is_reported_by_month(self, dsn, estrack, bot):
         _volume(estrack, "GAIA", "2026-07")
-        entry = publish.build(dsn, estrack, bot)["objects"]["probe-103354368"]
+        entry = publish.build(dsn, estrack, bot, {})["objects"]["probe-103354368"]
         assert entry["last_contact"] == "2026-07"
         assert entry["precision"] == "month"
 
     def test_a_mission_with_no_active_month_is_left_out(self, dsn, estrack, bot):
         _volume(estrack, "GAIA", None)
-        assert publish.build(dsn, estrack, bot)["objects"] == {}
+        assert publish.build(dsn, estrack, bot, {})["objects"] == {}
 
     def test_an_unknown_code_is_reported_unresolved_rather_than_guessed(
         self, dsn, estrack, bot
     ):
         _seen(dsn, "ZZZZ", "2026-09-17T08:44:22+00:00")
-        document = publish.build(dsn, estrack, bot)
+        document = publish.build(dsn, estrack, bot, {})
         assert document["objects"] == {}
         assert document["unresolved"] == [
             {
@@ -96,7 +97,7 @@ class TestObjects:
 
     def test_radio_astronomy_is_neither_published_nor_reported(self, dsn, estrack, bot):
         _seen(dsn, "GBRA", "2026-09-17T08:44:22+00:00")
-        document = publish.build(dsn, estrack, bot)
+        document = publish.build(dsn, estrack, bot, {})
         assert document["objects"] == {} and document["unresolved"] == []
 
 
@@ -106,7 +107,7 @@ class TestBothNetworks:
     def test_the_timestamped_sighting_leads(self, dsn, estrack, bot):
         _seen(dsn, "MEX", "2026-09-17T14:44:22+00:00")
         _volume(estrack, "MEX", "2026-09")
-        entry = publish.build(dsn, estrack, bot)["objects"][MARS_EXPRESS]
+        entry = publish.build(dsn, estrack, bot, {})["objects"][MARS_EXPRESS]
         assert entry["precision"] == "second"
         assert entry["seen"]["estrack"] == {"code": "MEX", "last_contact": "2026-09"}
         assert entry["seen"]["dsn"]["last_contact"] == "2026-09-17T14:44:22+00:00"
@@ -119,13 +120,13 @@ class TestSources:
         _seen(dsn, "VGR1", "2026-09-17T08:44:22+00:00", first="2026-09-16T00:00:00")
         _seen(dsn, "MEX", "2026-09-17T14:44:22+00:00", first="2026-09-15T00:00:00")
         _posted(bot, "MVN", "2026-03-18T22:21:45+00:00", first="2024-12-06T00:00:00")
-        sources = publish.build(dsn, estrack, bot)["sources"]
+        sources = publish.build(dsn, estrack, bot, {})["sources"]
         assert sources["dsn"]["since"] == "2026-09-15T00:00:00"
         assert sources["dsn-bot"]["since"] == "2024-12-06T00:00:00"
         assert sources["estrack"]["since"] is None
 
     def test_someone_else_s_record_says_whose_it_is(self, dsn, estrack, bot):
-        source = publish.build(dsn, estrack, bot)["sources"]["dsn-bot"]
+        source = publish.build(dsn, estrack, bot, {})["sources"]["dsn-bot"]
         assert "Russ Garrett" in source["credit"]
         assert source["via"].startswith("https://bsky.app/")
         assert "carrier" in source["measures"]
@@ -138,7 +139,7 @@ class TestTheBotsRecord:
         self, dsn, estrack, bot
     ):
         _posted(bot, "MVN", "2026-03-18T22:21:45+00:00")
-        entry = publish.build(dsn, estrack, bot)["objects"]["probe-120983552"]
+        entry = publish.build(dsn, estrack, bot, {})["objects"]["probe-120983552"]
         assert entry["network"] == "dsn-bot"
         assert entry["precision"] == "minute"
         assert entry["last_contact"] == "2026-03-18T22:21:45+00:00"
@@ -148,7 +149,7 @@ class TestTheBotsRecord:
     ):
         _seen(dsn, "VGR1", "2026-09-17T08:44:22+00:00")
         _posted(bot, "VGR1", "2026-09-17T03:41:21+00:00")
-        entry = publish.build(dsn, estrack, bot)["objects"][VOYAGER_1]
+        entry = publish.build(dsn, estrack, bot, {})["objects"][VOYAGER_1]
         assert entry["network"] == "dsn"
         assert entry["seen"]["dsn-bot"]["last_contact"] == "2026-09-17T03:41:21+00:00"
 
@@ -157,8 +158,47 @@ class TestTheBotsRecord:
     ):
         _seen(dsn, "MEX", "2026-08-01T00:00:00+00:00")
         _volume(estrack, "MEX", "2026-09")
-        entry = publish.build(dsn, estrack, bot)["objects"][MARS_EXPRESS]
+        entry = publish.build(dsn, estrack, bot, {})["objects"][MARS_EXPRESS]
         assert entry["network"] == "estrack" and entry["last_contact"] == "2026-09"
+
+
+class TestTheRecord:
+    """The curated record answers for craft no network hears any more."""
+
+    PIONEER_10 = "probe-40910848"
+
+    def test_a_craft_no_network_heard_is_published_from_the_record(
+        self, dsn, estrack, bot
+    ):
+        history = {self.PIONEER_10: LastContact("2003-01-23", "day")}
+        document = publish.build(dsn, estrack, bot, history)
+        assert document["objects"] == {}
+        assert document["history"] == {
+            self.PIONEER_10: {"last_contact": "2003-01-23", "precision": "day"}
+        }
+
+    def test_a_craft_a_network_hears_is_left_to_the_network(self, dsn, estrack, bot):
+        _seen(dsn, "VGR1", "2026-09-17T08:44:22+00:00")
+        history = {VOYAGER_1: LastContact("2024", "year")}
+        document = publish.build(dsn, estrack, bot, history)
+        assert document["objects"][VOYAGER_1]["network"] == "dsn"
+        assert document["history"] == {}
+
+    def test_only_entries_with_a_legal_date_are_kept(self, tmp_path):
+        path = tmp_path / "last-contact.json"
+        path.write_text(
+            json.dumps(
+                {
+                    self.PIONEER_10: {"last_contact": "2003-01-23"},
+                    "probe-1": {"last_contact": "23 January 2003"},
+                    "probe-2": {"last_contact": None, "reason": "no radio"},
+                }
+            )
+        )
+        assert load(path) == {self.PIONEER_10: LastContact("2003-01-23", "day")}
+
+    def test_no_record_publishes_the_networks_alone(self, tmp_path):
+        assert load(tmp_path / "missing.json") == {}
 
 
 class TestWrite:
@@ -167,14 +207,14 @@ class TestWrite:
     def test_only_a_new_timestamp_is_not_a_change(self, dsn, estrack, bot, tmp_path):
         _seen(dsn, "VGR1", "2026-09-17T08:44:22+00:00")
         path = tmp_path / "activity.json"
-        assert publish.write(publish.build(dsn, estrack, bot), path) is True
-        assert publish.write(publish.build(dsn, estrack, bot), path) is False
+        assert publish.write(publish.build(dsn, estrack, bot, {}), path) is True
+        assert publish.write(publish.build(dsn, estrack, bot, {}), path) is False
 
     def test_a_later_pass_is_published(self, dsn, estrack, bot, tmp_path):
         _seen(dsn, "VGR1", "2026-09-17T08:44:22+00:00")
         path = tmp_path / "activity.json"
-        publish.write(publish.build(dsn, estrack, bot), path)
+        publish.write(publish.build(dsn, estrack, bot, {}), path)
         _seen(dsn, "VGR1", "2026-09-17T09:44:22+00:00")
-        assert publish.write(publish.build(dsn, estrack, bot), path) is True
+        assert publish.write(publish.build(dsn, estrack, bot, {}), path) is True
         written = json.loads(path.read_text())
         assert written["objects"][VOYAGER_1]["last_contact"].endswith("09:44:22+00:00")

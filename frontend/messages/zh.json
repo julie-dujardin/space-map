@@ -1236,6 +1236,7 @@
 	"tooltip_light_lag": "探测器与地球之间单向光传播时间",
 	"tooltip_last_contact": "与{network}的最后一次联络：{time}",
 	"tooltip_last_contact_month": "{network}于{month}进行了跟踪",
+	"tooltip_last_contact_record": "最后一次收到信号：{date}（据任务记录）",
 	"tooltip_orbital_speed": "当前沿轨道运行的速度",
 	"tooltip_gravity_surface": "表面重力",
 	"tooltip_gravity_cloud_top": "云顶重力",

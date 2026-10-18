@@ -1255,6 +1255,7 @@
 	"tooltip_light_lag": "Tiempo de viaje de la luz en un sentido entre la sonda y la Tierra",
 	"tooltip_last_contact": "Último contacto con {network} el {time}",
 	"tooltip_last_contact_month": "Seguido por {network} en {month}",
+	"tooltip_last_contact_record": "Última señal recibida: {date}, según los registros de la misión",
 	"tooltip_orbital_speed": "Velocidad actual a lo largo de la órbita",
 	"tooltip_gravity_surface": "Gravedad en la superficie",
 	"tooltip_gravity_cloud_top": "Gravedad en la cima de las nubes",

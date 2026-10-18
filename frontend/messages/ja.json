@@ -1341,6 +1341,7 @@
 	"tooltip_light_lag": "探査機と地球の間の片道の光伝播時間",
 	"tooltip_last_contact": "{network}との最終交信: {time}",
 	"tooltip_last_contact_month": "{month}に{network}が追跡",
+	"tooltip_last_contact_record": "最後に信号を受信：{date}（ミッション記録による）",
 	"tooltip_orbital_speed": "現在の軌道上の速度",
 	"tooltip_gravity_surface": "表面での重力",
 	"tooltip_gravity_cloud_top": "雲頂での重力",

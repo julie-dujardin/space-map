@@ -145,13 +145,15 @@
 		partial: m.ops_status_card_partial
 	};
 
-	// A probe's first card, once the live feed has heard from it: when that was,
-	// and whether it still answers. The catalogue's status leads, the curated
-	// record fills in for craft the catalogue never listed. Without a sighting,
-	// or with the feed down, the altitude card stands as before.
+	// A probe's first card, once the live feed or the record of last contacts
+	// knows when it was last heard: when that was, and whether it still answers.
+	// The catalogue's status leads, the curated mission record fills in for
+	// craft the catalogue never listed. Without a contact, or with the feed
+	// down, the altitude card stands as before.
 	let statusCard = $derived.by<Stat | null>(() => {
 		if (!isProbe || !global) return null;
-		const contact = activityFeed()?.objects[global.id];
+		const feed = activityFeed();
+		const contact = feed?.objects[global.id] ?? feed?.history[global.id];
 		if (!contact) return null;
 		const ops = global.celestrak?.ops_status;
 		const curated = global.events?.status;

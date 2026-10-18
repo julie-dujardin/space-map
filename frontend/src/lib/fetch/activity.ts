@@ -1,8 +1,9 @@
 /**
  * When each spacecraft was last talked to, from `{liveUrl}/v1/activity.json`.
  * The poller rewrites the file every few minutes, so it is fetched on demand
- * and kept only briefly; an object absent from it has not been seen since its
- * network's feed started, which is not the same as silence.
+ * and kept only briefly. An object no network has seen since its feed started
+ * may still be in the curated record of last contacts; absent from both,
+ * nothing is known, which is not the same as silence.
  */
 
 import { host } from '$lib/host';
@@ -10,9 +11,10 @@ import { fetchWithTimeout } from './fetch-timeout';
 
 export type ActivityNetwork = 'dsn' | 'dsn-bot' | 'estrack';
 
-/** How much of the timestamp the network stands behind: ESTRACK publishes
- *  its schedule by month, so `last_contact` is then a bare `YYYY-MM`. */
-export type ActivityPrecision = 'second' | 'minute' | 'month';
+/** How much of the timestamp the source stands behind: ESTRACK publishes its
+ *  schedule by month, so `last_contact` is then a bare `YYYY-MM`, and the
+ *  record states a day or a year as often as a time. */
+export type ActivityPrecision = 'second' | 'minute' | 'day' | 'month' | 'year';
 
 export interface ActivitySource {
 	network: string;
@@ -33,10 +35,21 @@ export interface ActivityEntry {
 	seen: Partial<Record<ActivityNetwork, { code: string; last_contact: string }>>;
 }
 
+/** A last contact from the curated record, which names no network. */
+export interface HistoryEntry {
+	last_contact: string;
+	precision: ActivityPrecision;
+}
+
 export interface ActivityFile {
 	generated_at: string;
-	sources: Record<ActivityNetwork, ActivitySource>;
+	sources: Record<ActivityNetwork, ActivitySource> & {
+		history: { measures: string; via: string };
+	};
 	objects: Record<string, ActivityEntry>;
+	/** Only objects absent from `objects`: a network that hears a craft is
+	 *  more recent than the record. */
+	history: Record<string, HistoryEntry>;
 }
 
 /** Past this the edge has a newer copy; a reader who keeps a panel open for

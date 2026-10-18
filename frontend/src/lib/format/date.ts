@@ -132,7 +132,7 @@ function formatterFor(
  * rendering; negative years render with the locale's era (locale mode) or a
  * minus sign (ISO mode).
  */
-export function formatIsoDate(raw: string): string {
+export function formatIsoDate(raw: string, monthStyle: 'long' | 'short' = 'long'): string {
 	const parsed = parseIsoDate(raw);
 	if (!parsed) return raw;
 	const { date, month, day, isBCE, hasTime, hasSeconds } = parsed;
@@ -142,7 +142,7 @@ export function formatIsoDate(raw: string): string {
 	}
 
 	const opts: Intl.DateTimeFormatOptions = { year: 'numeric' };
-	if (month > 0) opts.month = 'long';
+	if (month > 0) opts.month = monthStyle;
 	if (day > 0) opts.day = 'numeric';
 	if (isBCE) opts.era = 'short';
 	// Calendar-only inputs (no time component) are anchored to UTC midnight by

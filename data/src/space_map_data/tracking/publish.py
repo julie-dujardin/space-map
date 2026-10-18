@@ -12,6 +12,10 @@ Two things a reader needs and cannot reconstruct from the dates alone:
 * ``precision`` — the DSN resolves a pass to the second, the bot's posts to the
   minute, ESTRACK only to the month that carried traffic. All three are "last
   contact"; only two are a time.
+
+``history`` answers for craft no network hears any more, from a curated
+record. It sits beside ``objects`` rather than in it: shipped clients name the
+network of every entry there, and the record has none.
 """
 
 import json
@@ -31,6 +35,7 @@ from space_map_data.tracking.dsn.store import ActivityStore
 from space_map_data.tracking.dsnbot.repo import BOT_HANDLE
 from space_map_data.tracking.dsnbot.store import BotStore
 from space_map_data.tracking.estrack.store import EstrackStore
+from space_map_data.tracking.history import LastContact
 from space_map_data.utils.paths import LIVE_DIR
 
 logger = logging.getLogger(__name__)
@@ -60,6 +65,11 @@ SOURCES = {
         "via": "https://estracknow.esa.int/",
     },
 }
+# The record has no network, and its precision varies by entry.
+HISTORY_SOURCE = {
+    "measures": "the last signal received, directly or by relay, as mission records state it",
+    "via": "curated from mission records",
+}
 # Ties go to the source that saw the most: a month and a timestamp inside it
 # compare as "2026-09" < "2026-09-17T...", which is already the order we want.
 RANK = {"dsn": 3, "dsn-bot": 2, "estrack": 1}
@@ -76,8 +86,13 @@ class Sighting:
     precision: str
 
 
-def build(dsn: ActivityStore, estrack: EstrackStore, bot: BotStore) -> dict:
-    """The published document, from the three stores as they currently stand."""
+def build(
+    dsn: ActivityStore,
+    estrack: EstrackStore,
+    bot: BotStore,
+    history: dict[str, LastContact],
+) -> dict:
+    """The published document, from the stores and the record as they stand."""
     sightings: dict[str, list[Sighting]] = {}
     unresolved: list[dict] = []
 
@@ -122,13 +137,21 @@ def build(dsn: ActivityStore, estrack: EstrackStore, bot: BotStore) -> dict:
         "dsn-bot": _earliest(s.first_event for s in bot.codes.values()),
         "estrack": _earliest(s.first_seen for s in estrack.missions.values()),
     }
+    objects = {
+        object_id: _entry(found) for object_id, found in sorted(sightings.items())
+    }
     return {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "sources": {
             name: source | {"since": since[name]} for name, source in SOURCES.items()
-        },
-        "objects": {
-            object_id: _entry(found) for object_id, found in sorted(sightings.items())
+        }
+        | {"history": HISTORY_SOURCE},
+        "objects": objects,
+        # A network that hears the craft is more recent than any record.
+        "history": {
+            object_id: {"last_contact": c.last_contact, "precision": c.precision}
+            for object_id, c in sorted(history.items())
+            if object_id not in objects
         },
         "unresolved": unresolved,
     }
@@ -194,8 +217,9 @@ def write(document: dict, path: Path = ACTIVITY_FILE) -> bool:
     tmp.write_text(text)
     os.replace(tmp, path)
     logger.info(
-        "Published %d object(s), %d unresolved code(s) to %s",
+        "Published %d object(s), %d from the record, %d unresolved code(s) to %s",
         len(document["objects"]),
+        len(document["history"]),
         len(document["unresolved"]),
         path,
     )

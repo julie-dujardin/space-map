@@ -1329,6 +1329,7 @@
 	"tooltip_light_lag": "زمن انتقال الضوء في اتجاه واحد بين المسبار والأرض",
 	"tooltip_last_contact": "آخر اتصال مع {network} في {time}",
 	"tooltip_last_contact_month": "تتبّعته {network} في {month}",
+	"tooltip_last_contact_record": "آخر إشارة استُقبلت: {date}، وفق سجلات البعثة",
 	"tooltip_orbital_speed": "السرعة الحالية على طول المدار",
 	"tooltip_gravity_surface": "الجاذبية عند السطح",
 	"tooltip_gravity_cloud_top": "الجاذبية عند قمم السحب",
