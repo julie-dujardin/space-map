@@ -1048,8 +1048,6 @@
 	"ops_status_spare": "Spare",
 	"ops_status_extended": "Extended mission",
 	"ops_status_decayed": "Decayed",
-	"ops_status_card_extended": "Extended",
-	"ops_status_card_nonoperational": "Inactive",
 	"ops_status_card_partial": "Partial",
 	"object_type_payload": "Payload",
 	"object_type_rocket_body": "Rocket body",

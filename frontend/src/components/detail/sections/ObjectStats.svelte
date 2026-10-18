@@ -25,7 +25,7 @@
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatQuantity } from '$lib/format/quantities';
-	import { formatOpsStatus } from '$lib/format/satellite';
+	import { formatProbeState, probeState, type ProbeState } from '$lib/format/satellite';
 	import { describeLastContact, formatLastContact } from '$lib/format/contact';
 	import { activityFeed } from '$lib/state/activity.svelte';
 
@@ -131,55 +131,29 @@
 
 	let stats = $derived(probeStats ?? earthSatStats);
 
-	// Green only while something answers; a lost craft is the one outcome worth
-	// a warning colour, and a finished mission is neither.
-	const OPS_DOT: Record<string, string> = {
-		operational: 'bg-emerald-400',
-		extended_mission: 'bg-emerald-400',
-		partial: 'bg-amber-400'
-	};
-	// The card holds one word; the Mission row below keeps the full wording.
-	const OPS_SHORT: Record<string, () => string> = {
-		extended_mission: m.ops_status_card_extended,
-		nonoperational: m.ops_status_card_nonoperational,
-		partial: m.ops_status_card_partial
+	// Green while it answers. A failure is the one silence worth a warning
+	// colour; a finished mission is not.
+	const STATE_DOT: Partial<Record<ProbeState, string>> = {
+		operating: 'bg-emerald-400',
+		partial: 'bg-amber-400',
+		lost: 'bg-rose-400'
 	};
 
 	// A probe's first card, once the live feed or the record of last contacts
 	// knows when it was last heard: when that was, and whether it still answers.
-	// The catalogue's status leads, the curated mission record fills in for
-	// craft the catalogue never listed. Without a contact, or with the feed
-	// down, the altitude card stands as before.
+	// A craft whose state nobody knows keeps the date. Without a contact, or
+	// with the feed down, the altitude card stands.
 	let statusCard = $derived.by<Stat | null>(() => {
 		if (!isProbe || !global) return null;
 		const feed = activityFeed();
 		const contact = feed?.objects[global.id] ?? feed?.history[global.id];
 		if (!contact) return null;
-		const ops = global.celestrak?.ops_status;
-		const curated = global.events?.status;
-		const landed = curated?.where === 'landed';
-		let status: string;
-		let dot: string | undefined;
-		if (ops) {
-			status =
-				ops === 'decayed' && landed
-					? m.ops_status_landed()
-					: (OPS_SHORT[ops]?.() ?? formatOpsStatus(ops));
-			dot = OPS_DOT[ops];
-		} else if (curated?.alive === true) {
-			status = m.ops_status_operational();
-			dot = 'bg-emerald-400';
-		} else if (curated?.alive === false && curated.lost) {
-			status = m.group_status_lost();
-			dot = 'bg-rose-400';
-		} else if (curated?.alive === false) {
-			status = landed ? m.ops_status_landed() : m.group_status_ended();
-		} else return null;
+		const state = probeState(global.events?.status, global.celestrak?.ops_status);
 		return {
 			label: m.last_contact(),
 			value: formatLastContact(contact),
-			note: status,
-			dot,
+			note: state ? formatProbeState(state) : undefined,
+			dot: state ? STATE_DOT[state] : undefined,
 			tooltip: describeLastContact(contact)
 		};
 	});

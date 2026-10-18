@@ -945,8 +945,6 @@
 	"ops_status_spare": "Zapasowy",
 	"ops_status_extended": "Misja przedłużona",
 	"ops_status_decayed": "Spalony w atmosferze",
-	"ops_status_card_extended": "Przedłużona",
-	"ops_status_card_nonoperational": "Nieaktywna",
 	"ops_status_card_partial": "Częściowa",
 	"object_type_payload": "Ładunek",
 	"object_type_rocket_body": "Człon rakiety",

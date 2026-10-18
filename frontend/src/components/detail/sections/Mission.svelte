@@ -9,7 +9,13 @@
 	} from '$lib/fetch/objects/object-data';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatCurrency, formatNumber } from '$lib/format/quantities';
-	import { countryFlag, formatCountry, formatOpsStatus } from '$lib/format/satellite';
+	import {
+		countryFlag,
+		formatCountry,
+		formatOpsStatus,
+		formatProbeState,
+		probeState
+	} from '$lib/format/satellite';
 	import { sameRef } from '$lib/format/entity-refs';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { groupClick, groupHref } from '$lib/state/focus-link';
@@ -59,6 +65,14 @@
 	// landing day as its decay date; the curated record says which it was.
 	let landed = $derived(ct?.ops_status === 'decayed' && global?.events?.status.where === 'landed');
 
+	// A probe reads as its stat card does. The catalogue's wording stays for
+	// Earth satellites, where it is kept current.
+	let status = $derived.by(() => {
+		if (!global?.id.startsWith('probe-')) return ct?.ops_status && formatOpsStatus(ct.ops_status);
+		const state = probeState(global.events?.status, ct?.ops_status);
+		return state ? formatProbeState(state) : undefined;
+	});
+
 	let hasFields = $derived(
 		!!(
 			launchDate ||
@@ -75,7 +89,7 @@
 			namedAfter ||
 			mergedPartOf.length > 0 ||
 			capitalCost ||
-			ct?.ops_status ||
+			status ||
 			ct?.rcs != null ||
 			countries.length > 0
 		)
@@ -94,11 +108,8 @@
 				<EntityLinks entities={mergedPartOf} />
 			</Row>
 		{/if}
-		{#if ct?.ops_status}
-			<Row
-				label={m.ops_status()}
-				value={landed ? m.ops_status_landed() : formatOpsStatus(ct.ops_status)}
-			/>
+		{#if status}
+			<Row label={m.ops_status()} value={status} />
 		{/if}
 		{#if launchDate}
 			<Row label={m.launch_date()} value={formatIsoDate(launchDate)} />

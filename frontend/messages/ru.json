@@ -887,8 +887,6 @@
 	"ops_status_spare": "Запасной",
 	"ops_status_extended": "Продлённая миссия",
 	"ops_status_decayed": "Сошёл с орбиты",
-	"ops_status_card_extended": "Продлена",
-	"ops_status_card_nonoperational": "Неактивен",
 	"ops_status_card_partial": "Частично",
 	"object_type_payload": "Полезная нагрузка",
 	"object_type_rocket_body": "Ступень ракеты-носителя",

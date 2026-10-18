@@ -1,4 +1,5 @@
 import type { SatelliteCategory } from '$lib/fetch/groups/registry';
+import type { ProbeEventStatus } from '$lib/fetch/objects/object-data';
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 
@@ -15,6 +16,50 @@ const OPS_STATUS_NAME: Record<string, () => string> = {
 
 export function formatOpsStatus(value: string): string {
 	return OPS_STATUS_NAME[value]?.() ?? m.unknown();
+}
+
+/** Whether a probe still answers, and if not, how it went silent. */
+export type ProbeState = 'operating' | 'partial' | 'ended' | 'lost' | 'landed';
+
+/** The curated record leads: the catalogue's code goes stale once a craft
+ *  leaves Earth orbit, and it cannot tell a failure from a retirement. The
+ *  code answers only where the record does not know. */
+export function probeState(
+	status: ProbeEventStatus | undefined,
+	ops: string | undefined
+): ProbeState | null {
+	const landed = status?.where === 'landed';
+	if (status?.alive === false) {
+		if (status.lost) return 'lost';
+		return landed ? 'landed' : 'ended';
+	}
+	if (status?.alive) return ops === 'partial' ? 'partial' : 'operating';
+	switch (ops) {
+		case 'operational':
+		case 'extended_mission':
+		case 'backup':
+		case 'spare':
+			return 'operating';
+		case 'partial':
+			return 'partial';
+		case 'nonoperational':
+		case 'decayed':
+			return landed ? 'landed' : 'ended';
+		default:
+			return null;
+	}
+}
+
+const PROBE_STATE_NAME: Record<ProbeState, () => string> = {
+	operating: m.group_status_operating,
+	partial: m.ops_status_card_partial,
+	ended: m.group_status_ended,
+	lost: m.group_status_lost,
+	landed: m.ops_status_landed
+};
+
+export function formatProbeState(state: ProbeState): string {
+	return PROBE_STATE_NAME[state]();
 }
 
 // SatcatObjectType enum values

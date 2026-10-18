@@ -946,8 +946,6 @@
 	"ops_status_spare": "予備機",
 	"ops_status_extended": "延長運用",
 	"ops_status_decayed": "落下済",
-	"ops_status_card_extended": "延長中",
-	"ops_status_card_nonoperational": "停止",
 	"ops_status_card_partial": "一部稼働",
 	"object_type_payload": "ペイロード",
 	"object_type_rocket_body": "ロケット機体",

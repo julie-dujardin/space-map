@@ -841,8 +841,6 @@
 	"ops_status_spare": "在轨备份",
 	"ops_status_extended": "扩展任务",
 	"ops_status_decayed": "已再入",
-	"ops_status_card_extended": "延长任务",
-	"ops_status_card_nonoperational": "已停用",
 	"ops_status_card_partial": "部分运行",
 	"object_type_payload": "有效载荷",
 	"object_type_rocket_body": "火箭箭体",

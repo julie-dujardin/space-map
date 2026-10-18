@@ -926,8 +926,6 @@
 	"ops_status_spare": "احتياطي",
 	"ops_status_extended": "مهمة موسعة",
 	"ops_status_decayed": "سقط",
-	"ops_status_card_extended": "ممتدة",
-	"ops_status_card_nonoperational": "غير نشطة",
 	"ops_status_card_partial": "جزئية",
 	"object_type_payload": "حمولة",
 	"object_type_rocket_body": "جسم صاروخ",

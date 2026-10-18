@@ -926,8 +926,6 @@
 	"ops_status_spare": "Repuesto",
 	"ops_status_extended": "Misión ampliada",
 	"ops_status_decayed": "Reentrado",
-	"ops_status_card_extended": "Extendida",
-	"ops_status_card_nonoperational": "Inactiva",
 	"ops_status_card_partial": "Parcial",
 	"object_type_payload": "Carga útil",
 	"object_type_rocket_body": "Cuerpo de cohete",

@@ -945,8 +945,6 @@
 	"ops_status_spare": "רזרבי",
 	"ops_status_extended": "משימה מורחבת",
 	"ops_status_decayed": "התפורר",
-	"ops_status_card_extended": "מורחבת",
-	"ops_status_card_nonoperational": "לא פעילה",
 	"ops_status_card_partial": "חלקית",
 	"object_type_payload": "מטען",
 	"object_type_rocket_body": "גוף רקטה",
