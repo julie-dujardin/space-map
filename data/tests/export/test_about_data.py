@@ -116,8 +116,10 @@ def _craft(slug: str, kind: str = "probe", **extra) -> dict:
     return {
         "slug": slug,
         "kind": kind,
-        "exports": {"high": _mesh(900, 30), "low": _mesh(300, 10)},
-        "scale_meters": 8.3,
+        "exports": {
+            "high": _mesh(900, 30) | {"scale_meters": 8.3},
+            "low": _mesh(300, 10) | {"scale_meters": 6.1},
+        },
         **extra,
     }
 
@@ -356,7 +358,7 @@ class TestModelRows:
         assert "object" not in row
 
     def test_unmeasured_craft_has_no_extent(self):
-        row = craft_row(_craft("smile", scale_meters=None), [])
+        row = craft_row(_craft("smile", exports={"high": _mesh(900, 30)}), [])
         assert "extent_m" not in row
 
     def test_shape_has_its_extent_and_its_citation(self):

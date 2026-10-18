@@ -353,8 +353,8 @@ def craft_row(meta: dict, objects: list[tuple[str, str]]) -> dict:
     """One model of a craft or of another object. ``objects`` are the ids and
     names of the objects that the map draws with it."""
     row: dict = {"slug": meta["slug"], "tiers": model_tiers(meta)}
-    if meta.get("scale_meters") is not None:
-        row["extent_m"] = meta["scale_meters"]
+    if (extent := meta["exports"]["high"].get("scale_meters")) is not None:
+        row["extent_m"] = extent
     row["sources"] = craft_sources(meta)
     row["objects"] = len(objects)
     if len(objects) == 1:

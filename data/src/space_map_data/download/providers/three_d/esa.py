@@ -319,8 +319,9 @@ class ESA3DDownloader(Downloader):
         """Build a metadata entry, preserving hand-edits across rewrites.
 
         Downloader-owned (always refreshed): ``slug``, ``esa_catalog``. The
-        ``files`` list is API-derived but carries over foreign-stem entries
-        from ``existing`` (e.g. ``rosetta`` keeps its folded-in
+        ``files`` list is API-derived but keeps each file's hand-added keys
+        (``scale_meters``) and carries over foreign-stem entries from
+        ``existing`` (e.g. ``rosetta`` keeps its folded-in
         ``rosetta_sc.fbx``) — otherwise the fold erodes and the foreign slug
         pops back as standalone next run. ``kind``/``wikidata_qid``/
         ``missions`` are defaulted if absent but preserved if set; everything
@@ -342,6 +343,10 @@ class ESA3DDownloader(Downloader):
             "category_filter": raw.get("category_filter") or None,
             "description": _strip_html(raw.get("description")),
         }
+        existing_files = {f.get("path"): f for f in existing.get("files") or []}
+        for nf in files:
+            for k, v in existing_files.get(nf["path"], {}).items():
+                nf.setdefault(k, v)
         # Carry over folded-in files (basename ≠ own slug) so the fold relation
         # survives rewrites. Without this, _load_claimed_esa_slugs loses its
         # only signal that the foreign slug is claimed.

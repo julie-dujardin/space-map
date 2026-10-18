@@ -12,6 +12,7 @@ import {
 	cheapTier,
 	craftTier,
 	modelTierCredit,
+	tierSpanRatio,
 	type ModelBundleMeta,
 	type ModelTierExport
 } from './model';
@@ -58,6 +59,28 @@ describe('modelTierCredit', () => {
 		expect(modelTierCredit(meta, 'high').name).toBe('ESA');
 		expect(modelTierCredit(meta, 'low').name).toBe('NASA');
 		expect(modelTierCredit(bundle(0, false), 'low').name).toBe('ESA');
+	});
+});
+
+describe('tierSpanRatio', () => {
+	const lm = (low?: number): ModelBundleMeta => ({
+		tiers: ['high', 'low'],
+		exports: {
+			high: { credit: nasa, scale_meters: 6.9 },
+			low: { credit: nasa, ...(low ? { scale_meters: low } : {}) }
+		}
+	});
+
+	it("scales a low tier that is another mesh to the high tier's slot", () => {
+		// The full LM's high mesh spans its box between pads on the diagonals,
+		// NASA's low mesh from pad to pad on the axes.
+		expect(tierSpanRatio(lm(9.4), 'low')).toBeCloseTo(9.4 / 6.9);
+		expect(tierSpanRatio(lm(9.4), 'high')).toBe(1);
+	});
+
+	it('leaves a tier with no span of its own as it is', () => {
+		expect(tierSpanRatio(lm(), 'low')).toBe(1);
+		expect(tierSpanRatio(bundle(710_532), 'low')).toBe(1);
 	});
 });
 

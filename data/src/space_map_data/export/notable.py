@@ -243,8 +243,8 @@ class CraftModel(NamedTuple):
     it."""
 
     slug: str
-    #: ``scale_meters`` — the model's longest real dimension, everything it
-    #: draws included. What the mesh is scaled by.
+    #: The high tier's ``scale_meters`` — its mesh's longest real dimension,
+    #: everything it draws included. What the mesh is scaled by.
     length_m: float
     #: The craft body within that span, booms and wire antennas excluded. A
     #: spacecraft has no radius, so this is the size a lineup places it on.
@@ -269,7 +269,7 @@ def craft_model_slugs(
         meta = model_metadata.get(slug)
         if meta is None or meta.get("kind") == "shape_model":
             continue
-        if length := meta.get("scale_meters"):
+        if length := meta["exports"]["high"].get("scale_meters"):
             ratio = meta.get("body_span_ratio") or 1.0
             out[object_id] = CraftModel(slug, float(length), float(length) * ratio)
     return out

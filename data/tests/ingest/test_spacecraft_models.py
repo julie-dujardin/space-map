@@ -1,5 +1,6 @@
 """Manifest-field validation for the spacecraft model processor."""
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -128,3 +129,60 @@ class TestCatalogByTier:
         )
         assert tiers["high"]["distribution"] == "non-commercial"
         assert "distribution" not in tiers["low"]
+
+
+class TestTierSpan:
+    """Each tier carries its own mesh's span, since the two can be different
+    meshes: the full LM's high tier has its pads on the box's diagonals, its
+    NASA low tier on the axes."""
+
+    @staticmethod
+    def _processor():
+        p = ModelProcessor.__new__(ModelProcessor)
+        p._satcat_norad_to_object_id = {}
+        return p
+
+    @staticmethod
+    def _pick(tmp_path: Path, name: str, **file):
+        glb = tmp_path / name
+        glb.write_bytes(b"glb")
+        cached = SimpleNamespace(
+            file_id=name, source_sha256="0", pose_frame=None, source_type="glb"
+        )
+        return glb, ({"path": name, **file}, cached)
+
+    def _metadata(self, tmp_path: Path, high_span, low_span) -> dict:
+        p = self._processor()
+        high_glb, high = self._pick(tmp_path, "high.glb", scale_meters=high_span)
+        low_glb, low = self._pick(tmp_path, "low.glb", scale_meters=low_span)
+        exports = {
+            "high": p._tier_record(high_glb, high, {}),
+            "low": p._tier_record(low_glb, low, {}),
+        }
+        p._write_prod_metadata(
+            out_dir=tmp_path / "lm", slug="lm", entry={}, exports=exports
+        )
+        return json.loads((tmp_path / "lm" / "metadata.json").read_text())
+
+    def test_each_tier_carries_its_own_span(self, tmp_path):
+        meta = self._metadata(tmp_path, 6.9, 9.4)
+        assert meta["exports"]["high"]["scale_meters"] == 6.9
+        assert meta["exports"]["low"]["scale_meters"] == 9.4
+
+    def test_the_top_level_span_is_the_high_tiers(self, tmp_path):
+        assert self._metadata(tmp_path, 6.9, 9.4)["scale_meters"] == 6.9
+
+    def test_an_unmeasured_file_gives_its_tier_no_span(self, tmp_path):
+        meta = self._metadata(tmp_path, None, 9.4)
+        assert "scale_meters" not in meta["exports"]["high"]
+        assert "scale_meters" not in meta
+
+    def test_a_picked_files_span_invalidates_the_bundle(self, tmp_path):
+        p = self._processor()
+        _, high = self._pick(tmp_path, "high.glb", scale_meters=6.9)
+        _, low = self._pick(tmp_path, "low.glb", scale_meters=9.4)
+        _, relabelled = self._pick(tmp_path, "low.glb", scale_meters=9.5)
+        catalog = {"high": {}, "low": {}}
+        before = p._cap_hash([high, low], high, low, catalog, {})
+        after = p._cap_hash([high, relabelled], high, relabelled, catalog, {})
+        assert before != after

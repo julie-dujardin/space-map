@@ -124,7 +124,7 @@ Notes:
 - A bundle whose id is not an object, such as the star map, has no row.
 - **`km_per_sample` counts the two edges of a ring bundle as samples**: `(outer_radius_km - inner_radius_km) / (samples - 1)`.
 - **The `high` file of a model gives the page its triangles.** The ingest picks `low` and `high` by size on disk, so `low` can have more triangles than `high`. The two files can be equal.
-- **`extent_m` is `true_scale.max_extent_km` for a shape and `scale_meters` for a craft.**
+- **`extent_m` is `true_scale.max_extent_km` for a shape and the high tier's `scale_meters` for a craft.**
 - **The credit of a shape is that of its metadata**, with the citation of the data set as the credit line. A craft model has one credit for each author of its files, the author of `high` first, with the page of the highest file of that author.
 - **`craft` holds each model that is not the shape of a world**, in the order of the page: `probe`, `earth_sat`, `station`, `lander`, `robot`, `rocket`, `generic_sat`, `comparable`, then other kinds by name. `objects` counts the `Object` rows that the map draws with the model. Rockets and scale references have none.
 - **The shapes from light curves have no rows of their own.** They are too many to list, so `lightcurve` gives their totals. Their credit comes from `MODEL_CATALOGS`.

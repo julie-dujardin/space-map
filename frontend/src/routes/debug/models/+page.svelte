@@ -272,6 +272,7 @@
 	let viewerError = $state<string | null>(null);
 	const viewerMeta = $derived(selected ? metas[selected.slug] : undefined);
 	const viewerCredit = $derived(tierCredit(viewerMeta, viewerTier));
+	const viewerSpan = $derived(viewerMeta?.exports[viewerTier as ModelTier]?.scale_meters);
 
 	function open(b: Bundle) {
 		selected = b;
@@ -479,7 +480,7 @@
 			<h2>{selected.slug}</h2>
 			<span class="facts">
 				{selected.kind ?? '—'}
-				{#if selected.scale_meters}· {selected.scale_meters} m{/if}
+				{#if viewerSpan}· {viewerTier} {viewerSpan} m{/if}
 				{#if selected.scale_meters && selected.body_span_ratio}
 					· body {(selected.scale_meters * selected.body_span_ratio).toFixed(2)} m
 				{/if}

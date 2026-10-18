@@ -60,12 +60,14 @@ export interface ModelTierExport {
 	/** Who may serve this mesh, on the textures' ladder (`textureAllowed` in
 	 *  `$lib/host`). Absent is anyone. */
 	distribution?: string;
+	/** This mesh's real longest dimension (m), for sizing it against scene
+	 *  units. Per tier because the two tiers can be different meshes. */
+	scale_meters?: number;
 }
 
-/** Subset of `metadata.json` the scene needs: the high-tier credit block and,
- *  when set, `scale_meters` — the model's real longest dimension, for sizing
- *  the mesh against scene units — beside the body-vs-deployed split that sizes
- *  the halo and seats the mesh. Other exporter fields are ignored. */
+/** Subset of `metadata.json` the scene needs: each tier's credit and span,
+ *  beside the body-vs-deployed split that sizes the halo and seats the mesh.
+ *  Other exporter fields are ignored. */
 export interface ModelBundleMeta {
 	/** `shape_model` for natural bodies; absent/other for spacecraft. */
 	kind?: string;
@@ -78,7 +80,6 @@ export interface ModelBundleMeta {
 		 *  credits this one. */
 		low?: ModelTierExport;
 	};
-	scale_meters?: number;
 	/** The craft body's longest dimension as a fraction of the mesh's. Below 1
 	 *  where the model draws booms or wire antennas around a much smaller craft
 	 *  (Ulysses: a 63 m dipole around a 2 m bus). */
@@ -170,6 +171,14 @@ export function prefetchCraftModel(slug: string): void {
 		.then((meta) => fetch(craftModelUrl(slug, meta)))
 		.then((r) => r.arrayBuffer())
 		.catch(() => _prefetched.delete(slug));
+}
+
+/** The drawn tier's span against the high tier's. A lineup slot is sized off
+ *  the high tier, so a low tier that is another mesh needs this to match it. */
+export function tierSpanRatio(meta: ModelBundleMeta, tier: ModelTier): number {
+	const high = meta.exports.high.scale_meters;
+	const drawn = meta.exports[tier]?.scale_meters;
+	return high && drawn ? drawn / high : 1;
 }
 
 /** Credit for the tier actually drawn — the two can name different catalogues. */
@@ -322,8 +331,9 @@ async function loadSpacecraftModel(
 		// body radius is the craft itself — a boom or a wire dipole is drawn,
 		// but it is not how big the craft reads, so the halo, the label and
 		// the camera's closest approach stay off the body.
-		if (meta.scale_meters) {
-			const spanKm = meta.scale_meters / 2000; // half the longest dim, km
+		const spanM = meta.exports[tier]?.scale_meters;
+		if (spanM) {
+			const spanKm = spanM / 2000; // half the longest dim, km
 			bo.body.data.radiusKm = spanKm * (meta.body_span_ratio ?? 1);
 			bo.radiusScene = kmToScene(effectiveRadiusKm(bo.body.data));
 			bo.modelUnitOverride = meta.body_span_ratio ? kmToScene(spanKm) : undefined;

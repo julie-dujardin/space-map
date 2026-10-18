@@ -548,7 +548,7 @@ class ModelProcessor:
             bundles[slug_dir.name] = {
                 "kind": meta.get("kind"),
                 "tiers": meta.get("tiers") or [],
-                "scale_meters": meta.get("scale_meters"),
+                "scale_meters": meta["exports"]["high"].get("scale_meters"),
                 "body_span_ratio": meta.get("body_span_ratio"),
                 "span_ratios": meta.get("span_ratios"),
                 "objects": sorted(attached[slug_dir.name], key=lambda o: o["id"]),
@@ -747,8 +747,8 @@ class ModelProcessor:
         retune of MAX_FILE_BYTES forces a re-link, the resolved per-tier
         catalog dict so any change to ``_catalog_by_tier`` output
         (source/attribution/url) re-emits the bundle, and the manifest
-        fields copied verbatim into prod metadata (scale/frame) so hand
-        edits propagate without ``--force``.
+        fields copied verbatim into prod metadata (the picks' scales, the
+        frame) so hand edits propagate without ``--force``.
         """
         frame_map = _validated_frame_map(entry, entry.get("slug", "?"))
         return {
@@ -764,8 +764,11 @@ class ModelProcessor:
                 "high": sorted(catalog_by_tier["high"].items()),
                 "low": sorted(catalog_by_tier["low"].items()),
             },
+            "scale_meters": {
+                "high": high_pick[0].get("scale_meters"),
+                "low": low_pick[0].get("scale_meters"),
+            },
             "entry": {
-                "scale_meters": entry.get("scale_meters"),
                 "frame_map": sorted(frame_map.items()) if frame_map else None,
                 "body_span_ratio": entry.get("body_span_ratio"),
                 "model_anchor": entry.get("model_anchor"),
@@ -792,10 +795,13 @@ class ModelProcessor:
         pick: tuple[dict, cache.Cached],
         catalog: dict,
     ) -> dict:
-        """Per-tier prod metadata: file stats + per-tier catalog provenance.
+        """Per-tier prod metadata: file stats, catalog provenance and span.
 
-        Catalog fields live per-tier (not at the top level) because high
-        and low may originate in different catalogs for merged entries.
+        These live per-tier (not at the top level) because high and low may
+        be different meshes from different catalogs. ``scale_meters`` is the
+        real length of the mesh's longest dimension, hand-maintained on each
+        manifest file: a mesh normally draws the deployed craft, so this spans
+        the arrays/dishes/booms rather than the stowed bus.
         """
         f, c = pick
         record: dict = {
@@ -804,6 +810,8 @@ class ModelProcessor:
             "source_type": c.source_type,
             **catalog,
         }
+        if f.get("scale_meters"):
+            record["scale_meters"] = f["scale_meters"]
         stats = metadata.gltf_stats(glb_path)
         if stats:
             record["stats"] = stats
@@ -922,17 +930,16 @@ class ModelProcessor:
             "exports": exports,
             "processed_at": datetime.now(UTC).isoformat(),
         }
-        # Real length (metres) of the model's longest dimension, so the
-        # frontend can size the mesh against scene units. Hand-maintained per
-        # entry in the manifests; a mesh normally draws the deployed craft, so
-        # this spans the arrays/dishes/booms rather than the stowed bus.
-        if entry.get("scale_meters"):
-            payload["scale_meters"] = entry["scale_meters"]
-        # The craft body inside that span: ``body_span_ratio`` is its longest
-        # dimension as a fraction of the mesh's, ``model_anchor`` its centre's
-        # offset from the bounding-box centre in post-fit units. The mesh is
-        # drawn on the full span; the halo, label and lineup slot use the body.
-        # ``span_ratios`` is the whole mesh's three extents against its longest.
+        # Published SDK 0.1.x builds and tabs on an older frontend size every
+        # tier by this one.
+        if exports["high"].get("scale_meters"):
+            payload["scale_meters"] = exports["high"]["scale_meters"]
+        # The craft body inside the high tier's span: ``body_span_ratio`` is its
+        # longest dimension as a fraction of the mesh's, ``model_anchor`` its
+        # centre's offset from the bounding-box centre in post-fit units. The
+        # mesh is drawn on the full span; the halo, label and lineup slot use
+        # the body. ``span_ratios`` is the whole mesh's three extents against
+        # its longest.
         payload.update(body or {})
         # Model axis → spacecraft-body axis; corrects models authored in a
         # different convention (usually Y-up) than the CK/pointing body frame.

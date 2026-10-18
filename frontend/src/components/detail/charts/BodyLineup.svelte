@@ -98,9 +98,11 @@
 	import {
 		cheapTier,
 		craftModelUrl,
+		craftTier,
 		disposeGltf,
 		fetchBundleMeta,
-		modelLoader
+		modelLoader,
+		tierSpanRatio
 	} from '$lib/scene/objects/body/model';
 	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 	import {
@@ -1095,7 +1097,11 @@
 			const fitted = new Group();
 			fitted.add(gltf.scene);
 			const anchor = meta.model_anchor ? new Vector3(...meta.model_anchor) : null;
-			fitUnitRadius(fitted, anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor);
+			fitUnitRadius(
+				fitted,
+				anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor,
+				tierSpanRatio(meta, craftTier(meta))
+			);
 			const root = new Group();
 			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
 			root.add(fitted);
@@ -1111,14 +1117,15 @@
 	/** Scale + recentre `group`'s contents so its bounding box spans 2 units on
 	 *  its longest axis, origin at the craft body (`anchor`) or else the box
 	 *  centre — the same normalisation the main scene applies, so `scale_meters`
-	 *  means the same thing in both. */
-	function fitUnitRadius(group: Group, anchor: Vector3 | null = null): void {
+	 *  means the same thing in both. `span` scales the result, for a tier whose
+	 *  real span differs from the one the slot was sized on. */
+	function fitUnitRadius(group: Group, anchor: Vector3 | null = null, span = 1): void {
 		group.updateMatrixWorld(true);
 		// Precise, for the reason the scene's fitToUnitRadius gives.
 		const bbox = new Box3().setFromObject(group, true);
 		const maxDim = Math.max(...bbox.getSize(new Vector3()).toArray());
 		if (maxDim <= 0) return;
-		const k = 2 / maxDim;
+		const k = (2 * span) / maxDim;
 		const centre = bbox.getCenter(new Vector3());
 		if (anchor) centre.addScaledVector(anchor, maxDim / 2);
 		group.scale.setScalar(k);

@@ -278,6 +278,11 @@ class TestProbeMembers:
         assert [m.object_id for m in members] == ["probe-2", "probe-1", "probe-3"]
 
 
+def _craft_meta(span: float | None) -> dict:
+    high = {} if span is None else {"scale_meters": span}
+    return {"kind": "probe", "exports": {"high": high, "low": {"scale_meters": 1.0}}}
+
+
 class _StubEntityCache:
     """Minimal WikidataEntityCache stand-in: ``get_entity`` from a dict."""
 
@@ -334,8 +339,8 @@ class TestCraftModelSlugs:
         models = notable.craft_model_slugs(
             session,
             {
-                "bepi_mpo": {"kind": "probe", "scale_meters": 7.5},
-                "bepi_mcs": {"kind": "probe", "scale_meters": 30.0},
+                "bepi_mpo": _craft_meta(7.5),
+                "bepi_mcs": _craft_meta(30.0),
             },
         )
         assert models == {"probe-1": notable.CraftModel("bepi_mpo", 7.5, 7.5)}
@@ -348,13 +353,7 @@ class TestCraftModelSlugs:
         self._bundle(session, "probe-1", "ulysses")
         models = notable.craft_model_slugs(
             session,
-            {
-                "ulysses": {
-                    "kind": "probe",
-                    "scale_meters": 63.1,
-                    "body_span_ratio": 0.05,
-                }
-            },
+            {"ulysses": _craft_meta(63.1) | {"body_span_ratio": 0.05}},
         )
         assert models["probe-1"].length_m == 63.1
         assert models["probe-1"].body_length_m == pytest.approx(3.155)
@@ -365,8 +364,8 @@ class TestCraftModelSlugs:
         models = notable.craft_model_slugs(
             session,
             {
-                "eros": {"kind": "shape_model", "scale_meters": 16.8},
-                "teapot": {"kind": "probe"},
+                "eros": {"kind": "shape_model"},
+                "teapot": _craft_meta(None),
             },
         )
         assert models == {}

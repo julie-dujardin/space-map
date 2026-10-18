@@ -43,7 +43,8 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
         "name": "NASA",
         "url": "https://science.nasa.gov/resource/curiosity-rover-3d-model/"
       },
-      "stats": { "triangles": 51305, "meshes": 1, "nodes": 1, "textures": 7, "animations": 0 }
+      "stats": { "triangles": 51305, "meshes": 1, "nodes": 1, "textures": 7, "animations": 0 },
+      "scale_meters": 2.9
     },
     "low": {
       "size_bytes": 648820,
@@ -56,7 +57,8 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
       },
       "catalog": "NASA-3D-Resources",
       "downloaded_at": "2025-06-03T09:00:30-07:00",
-      "stats": { "triangles": 50228, "meshes": 6, "nodes": 6, "textures": 2, "animations": 0 }
+      "stats": { "triangles": 50228, "meshes": 6, "nodes": 6, "textures": 2, "animations": 0 },
+      "scale_meters": 3.0
     }
   },
   "processed_at": "2026-06-04T12:37:45+00:00",
@@ -74,8 +76,9 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
 - `exports.{tier}.catalog` — present only when the file came from a key in `MODEL_CATALOGS` (`"NASA-3D-Resources"`, `"ESA SciFleet"`). The credits page uses the union across all tiers to pick which primary catalogs to surface; one-off resources (NASA Science pages, Google rehosts) omit this and credit through `credit.name` alone.
 - `exports.{tier}.downloaded_at` — when the source bytes were last fetched, when known. ESA's downloader stamps this when it writes the per-root `metadata.yaml`; NASA falls back to the git HEAD commit time of the `NASA-3D-Resources` checkout.
 - `exports.{tier}.stats` — content stats parsed from the .glb's JSON chunk: `triangles` counts only primitives with mode 4 (TRIANGLES); the rest are top-level array lengths. A handy LOD-impact sanity check (high vs low triangle counts) and a cheap "deployable parts?" hint via `animations > 0`.
-- `scale_meters` — optional, manifest-set (spacecraft only): the real length (metres) of the model's longest dimension. Present only when the manifest entry supplies it; source models otherwise use arbitrary authoring units with no reliable auto-conversion. The frontend normalises every spacecraft GLB to unit-radius and sizes it off the body's scene radius, so it uses this to set that radius (`radius = scale_meters / 2`), making the mesh render to scale against the rest of the scene. Absent → the frontend falls back to a generic spacecraft size.
-- `body_span_ratio`, `model_anchor` — measured (spacecraft only), from the exported high tier. A model normally draws the craft deployed, so `scale_meters` can be set by a magnetometer boom or a wire dipole rather than the craft: Ulysses draws a 63 m dipole around a 2 m bus. `body_span_ratio` is the craft body's longest dimension as a fraction of the mesh's, and `model_anchor` is the body centre's offset from the bounding-box centre in post-fit units (the mesh spans 2 of them, so `1.0` is a full half-span). The frontend draws the mesh on the full span but sizes the halo, the label and the lineup slot on the body, and seats the mesh on the anchor so the craft — not the middle of what it deploys — sits where the orbit puts it. Body and appendage are told apart by cross-sectional perimeter: surface area per unit length along an axis, which is centimetres for a boom and metres for a wing or a bus. A manifest `body_span_ratio`/`model_anchor` overrides the measurement.
+- `exports.{tier}.scale_meters` — optional, manifest-set (spacecraft only): the real length (metres) of that tier's mesh's longest dimension. Present only when the manifest file the tier came from supplies it; source models otherwise use arbitrary authoring units with no reliable auto-conversion. It is per tier because the two tiers can be different meshes with different proportions: the full Apollo LM's `high` spans its box between footpads on the diagonals (6.9 m), its NASA `low` runs pad to pad on the axes (9.4 m). The frontend normalises every spacecraft GLB to unit-radius and sizes it off the body's scene radius, so it uses the drawn tier's value to set that radius (`radius = scale_meters / 2`), making the mesh render to scale against the rest of the scene. Absent → the frontend falls back to a generic spacecraft size.
+- `scale_meters` — `exports.high.scale_meters` again, for readers that predate the per-tier field (SDK 0.1.x) and size every tier by it.
+- `body_span_ratio`, `model_anchor` — measured (spacecraft only), from the exported high tier, so they pair with `exports.high.scale_meters`. A model normally draws the craft deployed, so `scale_meters` can be set by a magnetometer boom or a wire dipole rather than the craft: Ulysses draws a 63 m dipole around a 2 m bus. `body_span_ratio` is the craft body's longest dimension as a fraction of the mesh's, and `model_anchor` is the body centre's offset from the bounding-box centre in post-fit units (the mesh spans 2 of them, so `1.0` is a full half-span). The frontend draws the mesh on the full span but sizes the halo, the label and the lineup slot on the body, and seats the mesh on the anchor so the craft — not the middle of what it deploys — sits where the orbit puts it. Body and appendage are told apart by cross-sectional perimeter: surface area per unit length along an axis, which is centimetres for a boom and metres for a wing or a bus. A manifest `body_span_ratio`/`model_anchor` overrides the measurement.
 - `frame_map` — optional, manifest-set (spacecraft only): model axis → spacecraft-body axis, 1–2 pairs, e.g. `{"+y": "+z"}` or `{"+y": "-z", "+z": "-y"}`. Corrects models authored in a different axis convention (usually Y-up) than the frame the CK attitude quaternions and `pointing` specs are expressed in. One pair = minimal rotation with free roll (fine for spinners); two perpendicular pairs pin the full frame, the third axis following right-handedness. The frontend bakes this rotation between the per-frame body-frame quaternion and the mesh.
 
 ## Natural-body shape models (`kind: "shape_model"`)
