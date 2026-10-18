@@ -12,6 +12,10 @@
  * HTML) instead of the vite proxy. A real network request to the origin hits
  * the proxy in dev and the CDN in prod.
  *
+ * A page of the sitemap reads its record from the site's own static assets
+ * instead: one file of a few KB in place of buckets of a few MB, whose parsing
+ * was most of the Worker's CPU time (`scripts/seo-pages.mjs`).
+ *
  * Nothing here comes from the name in the request path: a subject the export
  * does not hold is a 404, and its name is the export's, in the language of the
  * request. The canonical link is built from that name too, so a made-up URL
@@ -37,6 +41,7 @@ import { heroImage } from '$lib/fetch/objects/galleries';
 import { diameterKmFromH } from '$lib/math/h-magnitude';
 import { formatKm } from '$lib/format/distance';
 import type {
+	EntityRef,
 	GlobalObjectData,
 	LocalizedObjectData,
 	ObjectImage
@@ -66,6 +71,101 @@ export interface SeoMeta {
 	/** Absolute OG image URL, when the object has one. */
 	image?: string;
 	ogType: 'website' | 'article';
+}
+
+/** What this file reads of an image. */
+type SeoImage = Pick<ObjectImage, 'file' | 'kind' | 'attr' | 'variants'>;
+
+// What this file reads of each bundle entry. A page record carries these
+// fields alone, so `export/seo_pages.py` keeps the same lists.
+type SeoObjectGlobal = Pick<
+	GlobalObjectData,
+	'name' | 'type' | 'parent_name' | 'discovery_year'
+> & {
+	images?: SeoImage[];
+	sbdb?: Pick<
+		NonNullable<GlobalObjectData['sbdb']>,
+		'class' | 'first_obs' | 'diameter' | 'H' | 'spec_B' | 'spec_T'
+	>;
+	wikidata?: Pick<NonNullable<GlobalObjectData['wikidata']>, 'discovery_date' | 'launch_date'>;
+	celestrak?: Pick<
+		NonNullable<GlobalObjectData['celestrak']>,
+		'object_type' | 'launch_date' | 'orbit_center'
+	>;
+	part_of_mission?: Pick<NonNullable<GlobalObjectData['part_of_mission']>, 'name'>;
+	mission?: Pick<NonNullable<GlobalObjectData['mission']>, 'name'>;
+};
+type SeoObjectLocalized = Pick<LocalizedObjectData, 'name' | 'description'> & {
+	discoverers?: Pick<EntityRef, 'name'>[];
+};
+type SeoGroupGlobal = { images?: SeoImage[]; galleries?: { images?: SeoImage[] }[] };
+type SeoGroupLocalized = Pick<LocalizedGroupData, 'name' | 'description'>;
+type SeoFeatureGlobal = Pick<FeatureGlobalData, 'origin'> & { images?: SeoImage[] };
+type SeoFeatureLocalized = Pick<FeatureLocalizedData, 'description'>;
+
+/** The credit metadata an image embeds. */
+type ImageCreditMeta = { license?: { name?: string }; artist?: string | Record<string, string> };
+
+/**
+ * A page's record, which the build writes into the site's static assets for
+ * each page of the sitemap. Any other page reads the bundles.
+ */
+interface SeoPage<G, L> {
+	/** `images` version token of the export the record comes from. */
+	v?: string;
+	global: G | null;
+	localized: Record<string, L>;
+	/** Of the card images that need a credit, by file. */
+	credits: Record<string, ImageCreditMeta>;
+	/** Features only: the page's name, by language. */
+	names?: Record<string, string>;
+}
+
+/** Reads a file of the site's static assets; null where the platform has none. */
+let readAsset: ((path: string) => Promise<Response>) | null = null;
+
+/** Point the lookups at the site's static assets, which hold the page records. */
+export function configureSeoPages(read: ((path: string) => Promise<Response>) | null): void {
+	readAsset = read;
+}
+
+async function readSeoPage<G, L>(key: string): Promise<SeoPage<G, L> | null> {
+	if (!readAsset) return null;
+	const res = await readAsset(`/_seo/${key}.json`);
+	return res.ok ? ((await res.json()) as SeoPage<G, L>) : null;
+}
+
+/** Where a card image resolves: its URL, and its credit when it needs one. */
+interface CardSource {
+	/** The request the meta is for. */
+	url: URL;
+	lang: string;
+	/** `images` version token. */
+	imagesVersion: string | undefined;
+	/** Null when the credit cannot be read. */
+	credit: (image: SeoImage) => Promise<string | null>;
+}
+
+/** A page's bundle entries, and where its card image resolves. */
+interface SeoSubject<G, L> extends BundlePair<G, L> {
+	cards: CardSource;
+}
+
+function pageSubject<G, L>(page: SeoPage<G, L>, url: URL): SeoSubject<G, L> {
+	const lang = getLocale();
+	return {
+		global: page.global,
+		localized: page.localized[lang] ?? null,
+		cards: {
+			url,
+			lang,
+			imagesVersion: page.v,
+			credit: async (image) => {
+				const meta = page.credits[image.file];
+				return meta ? buildCredit(meta, lang) : null;
+			}
+		}
+	};
 }
 
 // OG images want ~1200px; prefer the medium bucket, fall back either way.
@@ -119,13 +219,22 @@ async function openExport(url: URL): Promise<SeoExport> {
 	return { url, base, meta: (await res.json()) as BundleMetadata, lang: getLocale(), signal };
 }
 
+function exportCards(exp: SeoExport): CardSource {
+	return {
+		url: exp.url,
+		lang: exp.lang,
+		imagesVersion: exp.meta.versions?.images,
+		credit: (image) => fetchImageCredit(image, exp)
+	};
+}
+
 function versioned(url: string, token: string | undefined): string {
 	return token ? `${url}?v=${token}` : url;
 }
 
 interface OgPick {
 	url: string;
-	image: ObjectImage;
+	image: SeoImage;
 	attr: 'free' | 'credit';
 }
 
@@ -135,7 +244,7 @@ const CREDIT_ARTIST_MAX = 60;
 // Prefer attribution-free images; fall back to a credit-tier image, which the
 // caller must attribute in the description. `other` (uncreditable) is skipped.
 // Keeps ingest rank order; prefers photo over logo.
-function pickOgImage(images: ObjectImage[] | undefined, exp: SeoExport): OgPick | undefined {
+function pickOgImage(images: SeoImage[] | undefined, cards: CardSource): OgPick | undefined {
 	const pick = (tier: 'free' | 'credit') =>
 		images?.find((i) => i.kind === 'photo' && i.attr === tier) ??
 		images?.find((i) => i.kind === 'logo' && i.attr === tier);
@@ -146,10 +255,7 @@ function pickOgImage(images: ObjectImage[] | undefined, exp: SeoExport): OgPick 
 		if (!ext) continue;
 		const path = `/v1/images/${encodeURIComponent(img.file)}/${label}.${ext}`;
 		return {
-			url: absolutize(
-				versioned(`${imagesBase()}${path}`, exp.meta.versions?.images),
-				exp.url.origin
-			),
+			url: absolutize(versioned(`${imagesBase()}${path}`, cards.imagesVersion), cards.url.origin),
 			image: img,
 			attr: img.attr
 		};
@@ -167,10 +273,7 @@ function pickLocale(
 
 /** Front-loadable credit for a `credit`-tier card image, or null when the
  *  author is missing — a license name alone can't attribute it. */
-function buildCredit(
-	meta: { license?: { name?: string }; artist?: string | Record<string, string> },
-	lang: string
-): string | null {
+function buildCredit(meta: ImageCreditMeta, lang: string): string | null {
 	const license = meta.license?.name;
 	const artistRaw = pickLocale(meta.artist, lang);
 	if (!license || !artistRaw) return null;
@@ -183,7 +286,7 @@ function buildCredit(
  * Metadata is embedded in the variants' EXIF; the imported helpers are pure
  * functions, so no client cache is touched. The sidecar fallback covers bundles
  * that couldn't embed. */
-async function fetchImageCredit(image: ObjectImage, exp: SeoExport): Promise<string | null> {
+async function fetchImageCredit(image: SeoImage, exp: SeoExport): Promise<string | null> {
 	const base = `${imagesBase()}/v1/images/${encodeURIComponent(image.file)}`;
 	const file = (name: string) =>
 		fetchExport(
@@ -206,15 +309,15 @@ async function fetchImageCredit(image: ObjectImage, exp: SeoExport): Promise<str
  *  used when we can front-load its attribution; otherwise it's dropped so the
  *  card degrades to no image rather than an uncredited one. */
 async function resolveOgCard(
-	images: ObjectImage[] | undefined,
+	images: SeoImage[] | undefined,
 	baseDescription: string,
-	exp: SeoExport
+	cards: CardSource
 ): Promise<{ image?: string; description: string }> {
-	const pick = pickOgImage(images, exp);
+	const pick = pickOgImage(images, cards);
 	if (!pick) return { description: baseDescription };
 	if (pick.attr === 'free') return { image: pick.url, description: baseDescription };
 	// An image whose credit cannot be read is one that cannot be credited.
-	const credit = await fetchImageCredit(pick.image, exp).catch(() => null);
+	const credit = await cards.credit(pick.image).catch(() => null);
 	if (!credit) return { description: baseDescription };
 	return { image: pick.url, description: `${credit}. ${baseDescription}` };
 }
@@ -324,8 +427,8 @@ function joinNames(names: string[]): string {
 }
 
 function smallBodyDescription(
-	global: GlobalObjectData,
-	localized: LocalizedObjectData | null
+	global: SeoObjectGlobal,
+	localized: SeoObjectLocalized | null
 ): string | null {
 	const sbdb = global.sbdb;
 	if (!sbdb) return null;
@@ -351,7 +454,7 @@ function smallBodyDescription(
 	return `${parts.join(', ')}.`;
 }
 
-function moonDescription(global: GlobalObjectData): string | null {
+function moonDescription(global: SeoObjectGlobal): string | null {
 	if (global.type !== 'moon') return null;
 	const parent = global.parent_name?.replace(/\s*Barycenter$/i, '').trim();
 	const noun = parent ? m.seo_noun_moon_of({ parent }) : m.seo_noun_moon();
@@ -360,7 +463,7 @@ function moonDescription(global: GlobalObjectData): string | null {
 		: `${noun}.`;
 }
 
-function satelliteDescription(global: GlobalObjectData): string | null {
+function satelliteDescription(global: SeoObjectGlobal): string | null {
 	const ct = global.celestrak;
 	if (!ct) return null;
 	const noun = (CELESTRAK_NOUN[ct.object_type ?? ''] ?? m.seo_noun_orbiting_object)();
@@ -370,7 +473,7 @@ function satelliteDescription(global: GlobalObjectData): string | null {
 	return `${parts.join(', ')}.`;
 }
 
-function spacecraftDescription(global: GlobalObjectData): string | null {
+function spacecraftDescription(global: SeoObjectGlobal): string | null {
 	if (global.type !== 'spacecraft') return null;
 	const noun = m.seo_noun_spacecraft();
 	const year = yearOf(global.wikidata?.launch_date);
@@ -381,8 +484,8 @@ function spacecraftDescription(global: GlobalObjectData): string | null {
 }
 
 function dynamicObjectDescription(
-	global: GlobalObjectData,
-	localized: LocalizedObjectData | null
+	global: SeoObjectGlobal,
+	localized: SeoObjectLocalized | null
 ): string | null {
 	return (
 		smallBodyDescription(global, localized) ??
@@ -396,8 +499,8 @@ function dynamicObjectDescription(
  *  exported data, else the generic fallback. */
 function describeObject(
 	name: string,
-	global: GlobalObjectData,
-	localized: LocalizedObjectData | null
+	global: SeoObjectGlobal,
+	localized: SeoObjectLocalized | null
 ): string {
 	const raw = localized?.description;
 	if (raw) return ucfirst(cleanDescription(raw));
@@ -475,20 +578,37 @@ function loadObjectPair(exp: SeoExport, fileId: string): Promise<ObjectPair> {
 	return loadSeoPair<GlobalObjectData, LocalizedObjectData>(exp, OBJECT_BUNDLES, fileId);
 }
 
-/** Fetch one object's global + localized bundles server-side and build its meta.
- *  Null when the export holds no such object. */
-export async function loadObjectSeo(fileId: string, url: URL): Promise<SeoMeta | null> {
+/** An object's subject from the bundles, with the pair of its primary when it
+ *  is a planetary barycenter: that page is named off its primary. */
+async function exportObject(
+	fileId: string,
+	url: URL
+): Promise<[SeoSubject<GlobalObjectData, LocalizedObjectData>, ObjectPair | null]> {
 	const exp = await openExport(url);
 	const own = await loadObjectPair(exp, fileId);
+	const planetId = dominantPlanetId(fileId);
+	const primary = own.global && planetId ? await loadObjectPair(exp, planetId) : null;
+	return [{ ...own, cards: exportCards(exp) }, primary];
+}
+
+/** Build one object's meta. Null when the export holds no such object. */
+export async function loadObjectSeo(fileId: string, url: URL): Promise<SeoMeta | null> {
+	const page = await readSeoPage<SeoObjectGlobal, SeoObjectLocalized>(`o/${fileId}`);
+	// No barycenter has a record: the sitemap lists none.
+	const [own, primary]: [SeoSubject<SeoObjectGlobal, SeoObjectLocalized>, ObjectPair | null] = page
+		? [pageSubject(page, url), null]
+		: await exportObject(fileId, url);
 	const { global, localized } = own;
 	// An object with no global entry is unknown, whatever a stray localized
 	// entry says.
 	if (!global) return null;
 
-	// The page of a planetary barycenter is named off its primary.
-	const planetId = dominantPlanetId(fileId);
-	const name = objectPageName(fileId, own, planetId ? await loadObjectPair(exp, planetId) : null);
-	const card = await resolveOgCard(global.images, describeObject(name, global, localized), exp);
+	const name = objectPageName(fileId, own, primary);
+	const card = await resolveOgCard(
+		global.images,
+		describeObject(name, global, localized),
+		own.cards
+	);
 	return {
 		title: pageTitle(name),
 		description: card.description,
@@ -522,6 +642,24 @@ async function featureName(
 	return features.find((f) => f.featureId === featureId)?.name ?? null;
 }
 
+/** A feature's subject and name from the bundles and the gazetteer. */
+async function exportFeature(
+	bodyId: string,
+	featureId: number,
+	url: URL
+): Promise<[SeoSubject<FeatureGlobalData, FeatureLocalizedData>, string | null]> {
+	const exp = await openExport(url);
+	const [pair, name] = await Promise.all([
+		loadSeoPair<FeatureGlobalData, FeatureLocalizedData>(
+			exp,
+			FEATURE_BUNDLES,
+			featureBucketKey(bodyId, featureId)
+		),
+		featureName(exp, bodyId, featureId)
+	]);
+	return [{ ...pair, cards: exportCards(exp) }, name];
+}
+
 /** Meta for a surface-feature page (`/<type>/<id>/f/<featureId>/<name>`).
  *  Null when the body has no such feature.
  *
@@ -534,15 +672,13 @@ export async function loadFeatureSeo(
 	featureId: number,
 	url: URL
 ): Promise<SeoMeta | null> {
-	const exp = await openExport(url);
-	const [{ global, localized }, name] = await Promise.all([
-		loadSeoPair<FeatureGlobalData, FeatureLocalizedData>(
-			exp,
-			FEATURE_BUNDLES,
-			featureBucketKey(bodyId, featureId)
-		),
-		featureName(exp, bodyId, featureId)
-	]);
+	const page = await readSeoPage<SeoFeatureGlobal, SeoFeatureLocalized>(`f/${bodyId}/${featureId}`);
+	const [{ global, localized, cards }, name]: [
+		SeoSubject<SeoFeatureGlobal, SeoFeatureLocalized>,
+		string | null
+	] = page
+		? [pageSubject(page, url), page.names?.[getLocale()] ?? null]
+		: await exportFeature(bodyId, featureId, url);
 	if (name === null) {
 		// In the bundles and not in the gazetteer: an export in the middle of an
 		// upload, not an unknown feature.
@@ -555,7 +691,7 @@ export async function loadFeatureSeo(
 		: global?.origin
 			? cleanDescription(ucfirst(global.origin.replace(/\.?$/, '.')))
 			: genericDescription(name);
-	const card = await resolveOgCard(global?.images, description, exp);
+	const card = await resolveOgCard(global?.images, description, cards);
 	return {
 		title: pageTitle(name),
 		description: card.description,
@@ -565,21 +701,28 @@ export async function loadFeatureSeo(
 	};
 }
 
+async function exportGroup(
+	slug: string,
+	url: URL
+): Promise<SeoSubject<GlobalGroupData, LocalizedGroupData>> {
+	const exp = await openExport(url);
+	const pair = await loadSeoPair<GlobalGroupData, LocalizedGroupData>(exp, GROUP_BUNDLES, slug);
+	return { ...pair, cards: exportCards(exp) };
+}
+
 /** Meta for a /g/<slug> collection page, or null when the export holds no such
  *  collection. The display name lives in the localized bundle; the global
  *  bundle carries images. Group bundles are unversioned. */
 export async function loadGroupSeo(slug: string, url: URL): Promise<SeoMeta | null> {
-	const exp = await openExport(url);
-	const { global, localized } = await loadSeoPair<GlobalGroupData, LocalizedGroupData>(
-		exp,
-		GROUP_BUNDLES,
-		slug
-	);
+	const page = await readSeoPage<SeoGroupGlobal, SeoGroupLocalized>(`g/${slug}`);
+	const { global, localized, cards }: SeoSubject<SeoGroupGlobal, SeoGroupLocalized> = page
+		? pageSubject(page, url)
+		: await exportGroup(slug, url);
 	if (!global && !localized) return null;
 
 	const name = groupPageName(slug, localized?.name);
 	const lead = heroImage(global);
-	const card = await resolveOgCard(lead ? [lead] : undefined, describe(name, localized), exp);
+	const card = await resolveOgCard(lead ? [lead] : undefined, describe(name, localized), cards);
 	return {
 		title: pageTitle(name),
 		description: card.description,

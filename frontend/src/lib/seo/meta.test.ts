@@ -14,7 +14,14 @@ vi.mock('$app/paths', () => ({
 }));
 
 import { configureHost } from '$lib/host';
-import { catalogueSeo, loadGroupSeo, loadObjectSeo, minimalSeo } from './meta';
+import {
+	catalogueSeo,
+	configureSeoPages,
+	loadFeatureSeo,
+	loadGroupSeo,
+	loadObjectSeo,
+	minimalSeo
+} from './meta';
 
 const ORIGIN = 'https://spacemap.test';
 /** A request for the page: the name in it is not the export's. */
@@ -55,6 +62,104 @@ beforeEach(() => {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	configureHost({});
+	configureSeoPages(null);
+});
+
+/** The site's static assets, holding these page records. */
+function stubPages(records: Record<string, unknown>) {
+	configureSeoPages(async (path) => {
+		const key = path.replace(/^\/_seo\//, '').replace(/\.json$/, '');
+		return key in records ? Response.json(records[key]) : new Response('', { status: 404 });
+	});
+}
+
+const EARTH_RECORD = {
+	v: 'img1',
+	global: {
+		name: 'Earth',
+		type: 'planet',
+		images: [{ file: 'Earth.jpg', kind: 'photo', attr: 'free', variants: { m: 'webp' } }]
+	},
+	localized: { en: { name: 'Earth', description: 'third planet' }, fr: { name: 'Terre' } },
+	credits: {}
+};
+
+describe('page records', () => {
+	it('builds the meta of a page from its record, without the export', async () => {
+		stubExport({});
+		stubPages({ 'o/naif-399': EARTH_RECORD });
+		expect(await loadObjectSeo('naif-399', request('/b/399'))).toEqual({
+			title: 'Earth - Space Map',
+			description: 'Third planet',
+			canonical: `${ORIGIN}/b/399/Earth`,
+			image: 'https://images.spacemap.co/v1/images/Earth.jpg/m.webp?v=img1',
+			ogType: 'article'
+		});
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it('names the page in the language of the request', async () => {
+		stubPages({ 'o/naif-399': EARTH_RECORD });
+		configureHost({ dataUrl: DATA, locale: () => 'fr' });
+		expect(await loadObjectSeo('naif-399', request('/b/399'))).toMatchObject({
+			title: 'Terre - Space Map',
+			canonical: `${ORIGIN}/b/399/Terre`
+		});
+	});
+
+	it('credits a card image from the record', async () => {
+		stubExport({});
+		stubPages({
+			'o/naif-499': {
+				global: {
+					name: 'Mars',
+					type: 'planet',
+					images: [{ file: 'Mars.png', kind: 'photo', attr: 'credit', variants: { m: 'webp' } }]
+				},
+				localized: { en: { name: 'Mars', description: 'fourth planet' } },
+				credits: { 'Mars.png': { license: { name: 'CC BY 4.0' }, artist: 'Kevin M. Gill' } }
+			}
+		});
+		const seo = await loadObjectSeo('naif-499', request('/b/499'));
+		expect(seo?.description).toBe('Image: Kevin M. Gill (CC BY 4.0). Fourth planet');
+		expect(seo?.image).toBe('https://images.spacemap.co/v1/images/Mars.png/m.webp');
+	});
+
+	it('reads the export for a page that has no record', async () => {
+		stubExport(EXPORT);
+		stubPages({});
+		expect(await loadObjectSeo('naif-399', request('/b/399'))).toMatchObject({
+			title: 'Earth - Space Map',
+			description: 'Third planet'
+		});
+	});
+
+	it('names a feature from its record', async () => {
+		stubExport({});
+		stubPages({
+			'f/naif-301/7': {
+				global: { origin: 'Tycho Brahe, Danish astronomer' },
+				localized: {},
+				credits: {},
+				names: { en: 'Tycho' }
+			}
+		});
+		expect(await loadFeatureSeo('naif-301', 7, request('/b/301/f/7'))).toMatchObject({
+			title: 'Tycho - Space Map',
+			description: 'Tycho Brahe, Danish astronomer.'
+		});
+	});
+
+	it('names a group from its record', async () => {
+		stubExport({});
+		stubPages({
+			'g/const-starlink': { global: {}, localized: { en: { name: 'Starlink' } }, credits: {} }
+		});
+		expect(await loadGroupSeo('const-starlink', request('/g/const-starlink'))).toMatchObject({
+			title: 'Starlink - Space Map',
+			canonical: `${ORIGIN}/g/const-starlink/Starlink`
+		});
+	});
 });
 
 describe('loadObjectSeo', () => {

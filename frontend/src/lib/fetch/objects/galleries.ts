@@ -75,7 +75,9 @@ export interface GallerySource {
  * shelf's. A collection owns no pictures of its subject: its members are the
  * subject, so the first member shelf is what it looks like.
  */
-export function heroImage(source: GallerySource | null | undefined): ObjectImage | undefined {
+export function heroImage<I = ObjectImage>(
+	source: { images?: I[]; galleries?: { images?: I[] }[] } | null | undefined
+): I | undefined {
 	return source?.images?.[0] ?? source?.galleries?.[0]?.images?.[0];
 }
 

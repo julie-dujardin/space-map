@@ -64,6 +64,10 @@ jobs:
       - name: Build
         run: cd frontend && pnpm build
 
+      # The SEO page records of the live export, into the Worker's assets.
+      - name: SEO page records
+        run: cd frontend && pnpm build:seo
+
       # PRs upload a preview-only version; main promotes the live Worker.
       - name: Deploy to Cloudflare Workers
         id: deploy

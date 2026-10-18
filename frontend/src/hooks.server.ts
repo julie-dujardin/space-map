@@ -4,10 +4,18 @@ import { configureHost } from '$lib/host';
 import { KIT_HOST } from '$lib/state/kit-host';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import { getTextDirection } from '$lib/paraglide/runtime';
+import { configureSeoPages } from '$lib/seo/meta';
 
 // Data origins and language for the core's server-side callers (SEO meta).
 export const init: ServerInit = () => {
 	configureHost(KIT_HOST);
+};
+
+// The build puts the SEO page records into the Worker's static assets.
+const handleSeoPages: Handle = ({ event, resolve }) => {
+	const assets = event.platform?.env.ASSETS;
+	if (assets) configureSeoPages((path) => assets.fetch(new URL(path, event.url)));
+	return resolve(event);
 };
 
 // Resolve the request locale (cookie → Accept-Language) and stamp it onto the
@@ -45,4 +53,4 @@ const handleHeaders: Handle = async ({ event, resolve }) => {
 	return response;
 };
 
-export const handle = sequence(handleParaglide, handleHeaders);
+export const handle = sequence(handleSeoPages, handleParaglide, handleHeaders);

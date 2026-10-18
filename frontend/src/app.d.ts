@@ -8,7 +8,12 @@ declare global {
 		interface PageState {
 			view?: import('$lib/state/view').MapViewState;
 		}
-		// interface Platform {}
+		interface Platform {
+			env: {
+				/** The Worker's static assets, which hold the SEO page records. */
+				ASSETS: { fetch: (url: URL) => Promise<Response> };
+			};
+		}
 	}
 }
 
