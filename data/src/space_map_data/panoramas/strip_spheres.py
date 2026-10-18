@@ -19,6 +19,8 @@ ORIENTATION = {
     "skyline match": "matched to an archival sphere",
     "feature match": "matched to an archival sphere",
     "controlled mosaic match": "matched to a controlled mosaic",
+    "skyline match to a terrain model": "matched to a terrain model",
+    "sun and shadow": "fitted to the Sun",
 }
 
 

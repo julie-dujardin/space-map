@@ -1,0 +1,133 @@
+[
+  {
+    "id": "apollo11-landing",
+    "start_azimuth_deg": 209.8,
+    "horizontal_degrees": 360,
+    "basis": "sun and shadow",
+    "evidence": {
+      "method": "Photographer's shadow at the antisolar azimuth; Sun from DE440 at the frames' MET",
+      "antisolar_azimuth_deg": 268.84,
+      "shadow_px": 2525,
+      "checks_deg": {
+        "TV camera, 22 m": 0.7,
+        "solar wind sheet, 15 m": -0.8,
+        "LM centre, 15 m": 0.0,
+        "flag, 13 m": -3.1
+      },
+      "checks_basis": "LROC positions of the equipment, Apollo 11 spatio-temporal mapping shapefile",
+      "skyline_heading_deg": 210.4
+    }
+  },
+  {
+    "id": "apollo12-landing",
+    "start_azimuth_deg": 309.7,
+    "horizontal_degrees": 360,
+    "basis": "sun and shadow",
+    "evidence": {
+      "method": "Mean of the Sun disc and the photographer's shadow; Sun from DE440 at the frames' MET",
+      "sun_azimuth_deg": 90.98,
+      "sun_px": 6290,
+      "shadow_px": 14182,
+      "sun_and_shadow_spread_deg": 1.65,
+      "checks_deg": {
+        "flag, 11 m": 0.5,
+        "LM centre, 14 m": 0.0
+      },
+      "checks_basis": "LROC positions of the equipment, Apollo 12 spatio-temporal mapping shapefile"
+    }
+  },
+  {
+    "id": "apollo14-landing",
+    "start_azimuth_deg": 247.4,
+    "horizontal_degrees": 345.3,
+    "basis": "sun and shadow",
+    "evidence": {
+      "method": "Photographer's shadow and the centroid of the Sun's glare, 180° apart, fix both the heading and the strip's sweep; Sun from DE440 at the frames' MET",
+      "sun_azimuth_deg": 89.32,
+      "sun_px": 8770,
+      "shadow_px": 950,
+      "checks_deg": {
+        "LM centre from its footpads, 13 m": -1.1,
+        "flag, 18 m": 2.7
+      },
+      "checks_basis": "LROC positions of the equipment, Apollo 14 spatio-temporal mapping shapefile"
+    }
+  },
+  {
+    "id": "apollo15-landing",
+    "start_azimuth_deg": 303.7,
+    "horizontal_degrees": 327.6,
+    "basis": "skyline match to a terrain model",
+    "evidence": {
+      "method": "Skyline correlated with the horizon rendered from the LROC NAC DTMs APOLLO15, APOLLO15_2 and MONSHADLEY1 within SLDEM2015; heading and sweep fitted, LM masked",
+      "correlation": 0.944,
+      "runner_up_correlation": 0.587,
+      "heading_range_deg": [
+        302.7,
+        304.8
+      ],
+      "sweep_range_deg": [
+        325.8,
+        329.4
+      ]
+    }
+  },
+  {
+    "id": "apollo15-station9a",
+    "start_azimuth_deg": 275.1,
+    "horizontal_degrees": 360,
+    "basis": "skyline match to a terrain model",
+    "evidence": {
+      "method": "Skyline correlated with the horizon rendered from the LROC NAC DTMs APOLLO15, APOLLO15_2 and MONSHADLEY1 within SLDEM2015; Mount Hadley and Hadley Delta dominate",
+      "correlation": 0.609,
+      "runner_up_correlation": 0.31,
+      "heading_range_deg": [
+        274.6,
+        275.7
+      ]
+    }
+  },
+  {
+    "id": "apollo16-station1",
+    "start_azimuth_deg": 256.3,
+    "horizontal_degrees": 348.1,
+    "basis": "sun and shadow",
+    "evidence": {
+      "method": "Photographer's shadow at the strip's left end fixes the heading; the sweep is the one whose skyline best matches the horizon rendered from the LROC NAC DTM APOLLO16 within SLDEM2015, beyond 1.5 km",
+      "antisolar_azimuth_deg": 264.14,
+      "shadow_px": 225,
+      "correlation": 0.66,
+      "sweep_range_deg": [
+        345,
+        352
+      ],
+      "note": "The bright disc at the top of the strip is a lens flare: the Sun stood 24.5° high, above the frames."
+    }
+  },
+  {
+    "id": "apollo17-landing",
+    "start_azimuth_deg": 228.1,
+    "horizontal_degrees": 360,
+    "basis": "skyline match to a terrain model",
+    "evidence": {
+      "method": "Skyline correlated with the horizon rendered from the LROC NAC DTMs APOLLO17 and APOLLO17_2M within SLDEM2015, LM masked; the Sun and the photographer's shadow agree",
+      "correlation": 0.957,
+      "skyline_heading_deg": 227.9,
+      "free_sweep_deg": 360.0,
+      "sun_and_shadow_heading_deg": 228.3
+    }
+  },
+  {
+    "id": "surveyor3-stooke",
+    "start_azimuth_deg": 274.0,
+    "horizontal_degrees": 354,
+    "basis": "skyline match to a terrain model",
+    "evidence": {
+      "method": "Two independent fits agree: the mosaic's ends are the TV camera's azimuth stops (+132° and -222°), which the spacecraft's roll (theta 44.2°, SP-184 Table 3-8) puts at 272.2°; the crater-rim skyline against the LROC NAC DTM APOLLO12 gives 275.9° at the same 354° sweep",
+      "camera_stop_heading_deg": 272.2,
+      "skyline_heading_deg": 275.9,
+      "correlation": 0.469,
+      "note": "The same two fits disagree on Surveyors 1, 5, 6 and 7, whose horizons are too low for the global DEM; they stay unoriented."
+    }
+  }
+]

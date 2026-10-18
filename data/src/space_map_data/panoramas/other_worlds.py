@@ -14,46 +14,90 @@ from space_map_data.download.common import load_config
 
 from .pipeline import fetch, sha256, write_json
 from .releases import refresh_catalog
-from .strip_spheres import project_strip
+from .strip_spheres import ORIENTATION, project_strip
 
 LPI = "https://www.lpi.usra.edu/resources/apollopanoramas/"
 ESA_TERMS = (
     "https://www.esa.int/ESA_Multimedia/"
     "Terms_and_conditions_of_use_of_images_and_videos_available_on_the_esa_website"
 )
-ALSJ_COORDS = "https://apollojournals.org/alsj/alsjcoords.html"
 NASA_POLICY = "https://www.nasa.gov/nasa-brand-center/images-and-media/"
 NSSDCA = "https://web.archive.org/web/2024/https://nssdc.gsfc.nasa.gov/nmc/"
 LPI_VENUS = "https://www.flickr.com/photos/lunarandplanetaryinstitute/4089158361/"
 ESA_IMAGES = "https://www.esa.int/var/esa/storage/images/esa_multimedia/images/"
 LANDING_RECORD = "published landing site, as the probe's own landing record carries it"
+LROC_OBJECTS = "https://www.lroc.asu.edu/data/support/downloads/2016_LROC_Coordinates_of_Human_Features.pdf"
+LROC_SHAPEFILE = "https://data.lroc.im-ldi.com/lroc/view_rdr/SHAPEFILE_APOLLO_{}"
+HASSELBLAD_STATION = "Hasselblad camera position LROC mapped for these frames"
+RESECTED = (
+    "resected from the bearings of two LM footpads in the pan, with the LM at "
+    "its LROC coordinates and its yaw from the mission report"
+)
 BODY_IDS = {
     "moon": "naif-301",
     "venus": "naif-299",
     "titan": "naif-606",
     "67p": "spkid-1000012",
 }
-# Where each panorama was taken. An Apollo pan shot away from the lander is
-# placed at the lander with the traverse distance as its uncertainty: the
-# journal maps the stations against local landmarks, not against coordinates.
+# Where each panorama was taken: the camera station where it is known, in the
+# LROC frame of the map's own imagery.
 SITES: dict[str, dict[str, Any]] = {
-    "apollo11-landing": {"latitude": 0.67409, "longitude": 23.47298},
-    "apollo12-landing": {"latitude": -3.01381, "longitude": 336.58070},
-    "apollo14-landing": {"latitude": -3.64544, "longitude": 342.52861},
-    "apollo15-landing": {"latitude": 26.13224, "longitude": 3.63400},
+    "apollo11-landing": {
+        "latitude": 0.674061,
+        "longitude": 23.472674,
+        "uncertainty_m": 2,
+        "method": HASSELBLAD_STATION,
+        "source_url": LROC_SHAPEFILE.format(11),
+        "reference_point": "camera station",
+    },
+    "apollo12-landing": {
+        "latitude": -3.01241,
+        "longitude": 336.578264,
+        "uncertainty_m": 3,
+        "method": HASSELBLAD_STATION,
+        "source_url": LROC_SHAPEFILE.format(12),
+        "reference_point": "camera station",
+    },
+    "apollo14-landing": {
+        "latitude": -3.64632,
+        "longitude": 342.528059,
+        "uncertainty_m": 2,
+        "method": HASSELBLAD_STATION,
+        "source_url": LROC_SHAPEFILE.format(14),
+        "reference_point": "camera station",
+    },
+    "apollo15-landing": {
+        "latitude": 26.132893,
+        "longitude": 3.633652,
+        "uncertainty_m": 5,
+        "method": RESECTED,
+        "source_url": LROC_OBJECTS,
+        "reference_point": "camera station",
+    },
     "apollo15-station9a": {
-        "latitude": 26.13224,
-        "longitude": 3.63400,
-        "uncertainty_m": 3500,
-        "note": "Lunar Module; Station 9A is along Hadley Rille, not at the lander",
+        "latitude": 26.1318,
+        "longitude": 3.5641,
+        "uncertainty_m": 15,
+        "method": "the journal's annotated LROC frame of Station 9A, matched to the LROC NAC orthophoto of the site",
+        "source_url": "https://www.apollojournals.org/alsj/a15/a15.rille.html",
+        "reference_point": "camera station",
     },
     "apollo16-station1": {
-        "latitude": -8.97341,
-        "longitude": 15.49859,
-        "uncertainty_m": 1400,
-        "note": "Lunar Module; Station 1 is at Flag Crater, not at the lander",
+        "latitude": -8.97685,
+        "longitude": 15.45133,
+        "uncertainty_m": 8,
+        "method": "on the southwest rim of Plum crater, 17 m west and 13 m south of its centre as the journal's LROC planimetric map draws it; the centre measured on the LROC NAC orthophoto",
+        "source_url": "https://www.apollojournals.org/alsj/a16/images16.html",
+        "reference_point": "camera station",
     },
-    "apollo17-landing": {"latitude": 20.18809, "longitude": 30.77475},
+    "apollo17-landing": {
+        "latitude": 20.191529,
+        "longitude": 30.772517,
+        "uncertainty_m": 5,
+        "method": RESECTED,
+        "source_url": LROC_OBJECTS,
+        "reference_point": "camera station",
+    },
     "venera13-lpi": {
         "latitude": -7.5,
         "longitude": 303.0,
@@ -84,11 +128,10 @@ for view in ("15km", "pia08113", "2km", "400m"):
         "source_url": "https://science.nasa.gov/mission/cassini/huygens-probe/",
         "method": "published landing site; each view was taken above it during descent",
     }
-# Landing sites as the probe events record them, which follow the LROC images
-# of the craft.
+# The craft as LROC images show them (Wagner et al. 2017).
 SURVEYORS = {
     1: ("1966-06-02", "1967-01-07", -2.4745, -43.3398, 0.135, "surveyor-1-panorama-1"),
-    3: ("1967-04-20", "1967-05-04", -3.01239, -23.42157, 0.058, "surveyor-3-panorama"),
+    3: ("1967-04-20", "1967-05-04", -3.0162, -23.4180, 0.058, "surveyor-3-panorama"),
     5: ("1967-09-11", "1967-12-17", 1.4551, 23.1943, 0.057, "surveyor-5-1"),
     6: ("1967-11-10", "1967-12-14", 0.4742, -1.4275, 0.097, "surveyor-6-panorama"),
     7: (
@@ -105,8 +148,8 @@ for number, (_, _, latitude, longitude, _, _) in SURVEYORS.items():
         "latitude": latitude,
         "longitude": longitude,
         "uncertainty_m": None,
-        "source_url": None,
-        "method": LANDING_RECORD,
+        "source_url": LROC_OBJECTS,
+        "method": "the craft in LROC images",
     }
 
 
@@ -316,6 +359,11 @@ APOLLO = [
 SWEEP_CROPS = json.loads(
     Path(__file__).with_name("apollo_sweep_crops.json").read_text()
 )
+# North and the strip's sweep, measured on each pan; see moon_north.json.
+MOON_NORTH = {
+    entry["id"]: entry
+    for entry in json.loads(Path(__file__).with_name("moon_north.json").read_text())
+}
 for identity, mission, image_id, title, date, frames, met, horizon in APOLLO:
     PRODUCTS.append(
         {
@@ -343,13 +391,17 @@ for identity, mission, image_id, title, date, frames, met, horizon in APOLLO:
             "horizon_fraction": horizon,
             "sweep_crop": SWEEP_CROPS.get(identity),
             "mapping": "cylindrical",
-            "geometry_note": "Assumed 360° sweep and cylindrical scale; visual horizon estimate. Angular bounds and north uncalibrated; source seams and flares retained.",
+            "start_azimuth_deg": MOON_NORTH[identity]["start_azimuth_deg"],
+            "horizontal_degrees": MOON_NORTH[identity]["horizontal_degrees"],
+            "start_azimuth_basis": MOON_NORTH[identity]["basis"],
+            "start_azimuth_evidence": MOON_NORTH[identity]["evidence"],
+            "geometry_note": "Cylindrical scale over the measured sweep; visual horizon estimate. North and sweep fitted to the Sun, the photographer's shadow or the terrain (start_azimuth_evidence); source seams and flares retained.",
         }
     )
     if identity in SWEEP_CROPS:
         PRODUCTS[-1]["geometry_note"] = (
             "Repeated end terrain removed using a reviewed one-turn crop. "
-            "Cylindrical scale and horizon remain approximate; north and source seam alignment uncalibrated."
+            "Cylindrical scale and horizon remain approximate; north fitted (start_azimuth_evidence); source seam alignment uncalibrated."
         )
 # The six CIVA-P cameras look out 60° apart. Camera 7 is camera 6's stereo
 # twin, so it adds nothing to the ring. ESA's panorama sets the frames out
@@ -407,6 +459,20 @@ PRODUCTS.append(
         "initial_view": {"yaw": 0, "pitch": 0},
     }
 )
+
+
+def surveyor_north(identity: str) -> dict:
+    north = MOON_NORTH.get(identity)
+    if north is None:
+        return {}
+    return {
+        "start_azimuth_deg": north["start_azimuth_deg"],
+        "horizontal_degrees": north["horizontal_degrees"],
+        "start_azimuth_basis": north["basis"],
+        "start_azimuth_evidence": north["evidence"],
+    }
+
+
 for number, (landed, ended, _, _, horizon, slug) in SURVEYORS.items():
     page = f"https://www.planetary.org/space-images/{slug}"
     PRODUCTS.append(
@@ -435,9 +501,17 @@ for number, (landed, ended, _, _, horizon, slug) in SURVEYORS.items():
             "mapping": "cylindrical",
             "empty": "border",
             "left_edge_deg": 180,
+            **surveyor_north(f"surveyor{number}-stooke"),
             "geometry_note": "Hand-assembled mosaic, reconstructed by Philip Stooke. Assumed 360° sweep and cylindrical scale; horizon at the top of the imaged ground, which the camera's tilt bends. Spacecraft structure at both ends; angular bounds and north uncalibrated.",
         }
     )
+    if f"surveyor{number}-stooke" in MOON_NORTH:
+        PRODUCTS[-1]["geometry_note"] = (
+            "Hand-assembled mosaic, reconstructed by Philip Stooke. Cylindrical "
+            "scale over the camera's 354° azimuth range, whose stops are the "
+            "mosaic's ends; horizon at the top of the imaged ground, which the "
+            "camera's tilt bends. North fitted (start_azimuth_evidence)."
+        )
 
 
 def site_position(identity: str) -> dict | None:
@@ -452,12 +526,10 @@ def site_position(identity: str) -> dict | None:
         "latitude_type": "planetocentric",
         "longitude_direction": "east",
         "longitude_range": [0, 360],
-        "reference_point": "landing site",
+        "reference_point": site.get("reference_point", "landing site"),
         "uncertainty_m": site.get("uncertainty_m"),
-        "method": site.get(
-            "method", "Apollo Lunar Surface Journal landing coordinates"
-        ),
-        "source_url": site.get("source_url", ALSJ_COORDS),
+        "method": site["method"],
+        "source_url": site["source_url"],
         "note": site.get("note"),
     }
 
@@ -693,9 +765,10 @@ def process(root, output, *, offline=False, collections=None):
                         source, start_azimuth=heading or 0
                     )
                 else:
+                    horizontal = product.get("horizontal_degrees", 360)
                     sphere, percent = project_strip(
                         source,
-                        360,
+                        horizontal,
                         product["horizon_fraction"],
                         # Without a heading the viewer opens on 0°, so a
                         # strip whose ends are the spacecraft is drawn with
@@ -718,10 +791,12 @@ def process(root, output, *, offline=False, collections=None):
                 "image": "sphere.webp",
                 "projection": "equirectangular",
                 "geometry_status": "estimated",
-                # The sphere is rendered north-first where the source names a
-                # direction; elsewhere its azimuth is the source's own.
+                # The sphere is rendered north-first where a heading is known;
+                # elsewhere its azimuth is the source's own.
                 "orientation_status": "unknown"
                 if heading is None
+                else ORIENTATION[product["start_azimuth_basis"]]
+                if "start_azimuth_basis" in product
                 else "caption-aligned",
                 "north_azimuth_offset_deg": None if heading is None else 0,
                 "width": sphere.width,

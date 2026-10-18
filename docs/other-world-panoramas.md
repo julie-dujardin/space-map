@@ -24,7 +24,9 @@ entries in each catalog are preserved. No application/map integration.
 These are curated examples, not exhaustive coverage. Horizontal and solid-angle
 coverage are estimates (`estimated_horizontal_degrees`,
 `estimated_horizontal_percent`, `estimated_sphere_percent`); calibrated fields
-stay null. North and map coordinates remain unknown; `map_ready` is false.
+stay null. `map_ready` is false. Where north and the camera's position are
+known, [Map positions](#map-positions) and [North on the Moon](#north-on-the-moon)
+say how.
 Coverage describes the rendered source footprint, not proof that every pixel was
 directly measured: published mosaics can contain blended/interpolated regions.
 
@@ -87,9 +89,10 @@ and capture-date source. Activity timestamps identify the sequence, not exact
 shutter times. UTC dates can differ from dates in US-local mission captions.
 The [Apollo Lunar Surface Journal](https://apollojournals.org/alsj/) is now hosted
 at the site [linked by NASA](https://www.nasa.gov/history/alsj-and-afj/).
-These are approximate 360° cylindrical fits; horizontal bounds, horizon heights,
-and north remain uncalibrated. Source shadows, seams, and lens flares are retained,
-except near-black pixels removed by the existing mask.
+These are cylindrical fits; horizon heights remain estimates. North and each
+strip's sweep are measured ([North on the Moon](#north-on-the-moon)). Source
+shadows, seams, and lens flares are retained, except near-black pixels removed by
+the existing mask.
 
 ### Comet 67P: Philae at Abydos
 
@@ -124,11 +127,13 @@ policy, credit "NASA / Philip Stooke, University of Western Ontario". Each is a
 dates. They are fitted like the Apollo sweeps: 360°, cylindrical scale, and the
 horizon at the median top edge of the imaged ground (0.135, 0.058, 0.057, 0.097
 and 0.061 of the height). The camera's tilt bends the horizon, most on
-Surveyor 3. The strip is drawn with its ends behind the opening view, and no
-north is claimed. Only near-black areas that reach the edge of the image (sky,
-sectors never imaged) are made transparent, so the spacecraft's shadows stay.
-The capture time is the landing day; the metadata records the window up to the
-last transmission. Positions are the landing sites of the probe records.
+Surveyor 3. Surveyor 3 has a north
+([North on the Moon](#north-on-the-moon)); the others are drawn with their ends
+behind the opening view and claim none. Only near-black areas that reach the
+edge of the image (sky, sectors never imaged) are made transparent, so the
+spacecraft's shadows stay. The capture time is the landing day; the metadata
+records the window up to the last transmission. Positions are the craft as LROC
+images show them.
 
 ### Huygens: three more descent views
 
@@ -187,17 +192,17 @@ using the source/output paths above. Reload the preview page after rebuilding.
 
 ## Map positions
 
-Every product exports. Each carries a published landing site as its position
-and `geometry: "estimated"`. Only the Huygens Poster B views state a north; the
-others have `orientation: "unknown"`, so the viewer shows where they were taken
-without claiming which way they face.
+Every product exports with `geometry: "estimated"`. The Apollo pans sit at the
+camera station (`reference_point: "camera station"`), the others at the landing
+site. All lunar positions are in the LROC frame of the map's own imagery.
 
 | Product | Position | Source |
 |---|---|---|
-| Apollo 11, 12, 14, 15, 17 landing sites | Lunar Module coordinates | [ALSJ landing site coordinates](https://apollojournals.org/alsj/alsjcoords.html) |
-| Apollo 15 Station 9A | Lunar Module, `uncertainty_m` 3500 | as above |
-| Apollo 16 Station 1 | Lunar Module, `uncertainty_m` 1400 | as above |
-| Surveyor 1, 3, 5, 6, 7 | landing sites | the probes' own landing records |
+| Apollo 11, 12, 14 landing sites | Hasselblad camera position for the pan's frames, 2–3 m | LROC Apollo spatio-temporal mapping shapefiles ([Apollo 11](https://data.lroc.im-ldi.com/lroc/view_rdr/SHAPEFILE_APOLLO_11), 12, 14) |
+| Apollo 15 EVA 2, Apollo 17 EVA 1 landing sites | resected, 5 m: 19 m and 14 m north-northeast of the LM | bearings of two LM footpads in the pan, the LM at its [LROC coordinates](https://www.lroc.asu.edu/data/support/downloads/2016_LROC_Coordinates_of_Human_Features.pdf) |
+| Apollo 15 Station 9A | 15 m | the journal's [annotated LROC frame](https://www.apollojournals.org/alsj/a15/a15.rille.html), matched to the LROC NAC orthophoto |
+| Apollo 16 Station 1 | 8 m, southwest rim of Plum crater | the journal's LROC planimetric map ([images16](https://www.apollojournals.org/alsj/a16/images16.html)), Plum's centre measured on the LROC NAC orthophoto |
+| Surveyor 1, 3, 5, 6, 7 | the craft | [LROC coordinates](https://www.lroc.asu.edu/data/support/downloads/2016_LROC_Coordinates_of_Human_Features.pdf) (Wagner et al. 2017) |
 | Venera 13 | 7.5°S, 303°E | the probe's own landing record |
 | Venera 14 | 13.25°S, 310°E | the probe's own landing record |
 | Huygens, all four views | 10.25°S, 167.68°E | [NASA Huygens probe page](https://science.nasa.gov/mission/cassini/huygens-probe/) |
@@ -208,10 +213,44 @@ The Surveyor, Venera, Huygens and Philae traverses link to their probes in
 craft. 67P has no flat map: the viewer drops the minimap there and the gallery
 card shows the panorama instead.
 
-The two station panoramas are placed at their lander because the journal maps
-the traverse stations against local landmarks rather than coordinates; the
-uncertainty is the traverse distance, so both currently sit on top of their
-landing-site panorama. Station coordinates would be a worthwhile refinement.
+## North on the Moon
+
+`moon_north.json` holds each lunar pan's heading (the azimuth of the strip's
+left edge), its sweep, the basis and the evidence. Two bases:
+
+- **`sun and shadow`** (`orientation: "fitted to the Sun"`). The photographer's
+  shadow lies at the antisolar azimuth, and the Sun's disc at the Sun's. Both
+  come from DE440 at the frames' MET, converted through the landing's MET and
+  UTC. Where both are in the strip, 180° apart, they also fix the sweep.
+- **`skyline match to a terrain model`** (`orientation: "matched to a terrain
+  model"`). The strip's skyline is correlated, after a 20° high-pass, with the
+  horizon rendered from the camera station over the LROC NAC DTM and SLDEM2015.
+  The fit searches the heading and, for a strip that is not one turn, the
+  sweep. The LM and Sun glare are masked.
+
+| Pan | Heading | Sweep | Basis | Agreement |
+|---|---|---|---|---|
+| Apollo 11 landing site | 209.8° | 360° | shadow | TV camera 22 m off +0.7°, solar wind sheet −0.8°, LM ~0°, flag −3.1°; skyline 210.4° |
+| Apollo 12 landing site | 309.7° | 360° | Sun and shadow, 1.7° apart | flag +0.5°, LM ~0°; Surveyor crater on its bearing |
+| Apollo 14 landing site | 247.4° | 345.3° | shadow and Sun 180° apart | LM centre −1.1°, flag +2.7° |
+| Apollo 15 landing site | 303.7° | 327.6° | skyline, correlation 0.94 | next candidate 0.59 |
+| Apollo 15 Station 9A | 275.1° | 360° | skyline, correlation 0.61 | next candidate 0.31 |
+| Apollo 16 Station 1 | 256.3° | 348.1° | shadow; sweep from the skyline beyond 1.5 km | correlation 0.66, falling off by ±7° of sweep |
+| Apollo 17 landing site | 228.1° | 360° | skyline, correlation 0.96 | Sun and shadow 228.3°; free sweep 360.0° |
+| Surveyor 3 | 274° | 354° | skyline | camera azimuth stops 272.2° |
+
+The three Apollo strips that were not cropped to one turn fall short of it by
+12° to 32°: their ends do not meet, and the gap stays transparent. The bright
+disc at the top of the Apollo 16 strip is a lens flare, not the Sun, which stood
+24.5° high and above the frames.
+
+Surveyor's TV camera turns between azimuth stops at +132° and −222°, which are
+the mosaic's ends. A camera azimuth reads from the spacecraft's −Y axis,
+counterclockwise from above, so the spacecraft's roll θ (SP-184 Table 3-8)
+gives the heading θ − 132°. That agrees with the crater-rim skyline on
+Surveyor 3 only. On Surveyors 1, 5, 6 and 7 the two disagree: their horizons
+are a few degrees high and the 59 m SLDEM2015 cannot resolve them, so they stay
+unoriented. Surveyor 7 has one LROC NAC stereo pair to try next.
 
 The Huygens views are placed at the landing site although they were taken from
 15 km down to 400 m above it during descent, and stay labelled as descent views

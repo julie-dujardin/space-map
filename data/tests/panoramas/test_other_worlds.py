@@ -268,3 +268,45 @@ def test_the_ring_preview_is_a_grid_in_azimuth_order():
         50,
         60,
     ]
+
+
+def test_every_apollo_pan_states_north_and_how_it_was_found():
+    from space_map_data.panoramas.strip_spheres import ORIENTATION
+
+    for product in other_worlds.PRODUCTS:
+        if not product["mission"].startswith("apollo"):
+            continue
+        assert 0 <= product["start_azimuth_deg"] < 360
+        assert 0 < product["horizontal_degrees"] <= 360
+        assert product["start_azimuth_basis"] in ORIENTATION
+        assert product["start_azimuth_evidence"]["method"]
+
+
+def test_every_site_says_where_its_position_comes_from():
+    for identity in other_worlds.SITES:
+        position = other_worlds.site_position(identity)
+        assert position is not None
+        assert position["method"]
+        assert "source_url" in position
+
+
+def test_a_pan_short_of_a_turn_leaves_its_gap_empty(tmp_path, monkeypatch):
+    product = {
+        **next(p for p in other_worlds.PRODUCTS if p["id"] == "apollo14-landing"),
+        "start_azimuth_deg": 0,
+        "horizontal_degrees": 270,
+        "horizon_fraction": 0.5,
+    }
+    monkeypatch.setattr(other_worlds, "PRODUCTS", [product])
+    source, output = tmp_path / "sources", tmp_path / "output"
+    source.mkdir()
+    Image.new("RGB", (540, 80), (140, 120, 100)).save(source / f"{product['id']}.jpg")
+    other_worlds.process(source, output, offline=True)
+    metadata = json.loads((output / "moon/apollo14-landing/metadata.json").read_text())
+    assert metadata["orientation_status"] == "fitted to the Sun"
+    assert metadata["coverage"]["estimated_horizontal_degrees"] == 270
+    with Image.open(output / "moon/apollo14-landing/sphere.webp") as sphere:
+        alpha = np.asarray(sphere)[sphere.height // 2, :, 3]
+    # West round to north (270°–360°) was never imaged.
+    assert alpha[: sphere.width * 3 // 4].min() == 255
+    assert alpha[sphere.width * 3 // 4 + 2 :].max() == 0
