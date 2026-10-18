@@ -14,6 +14,8 @@ export class SystemDataLoader {
 	private readonly pendingUnloads = new Set<string>();
 	/** Systems warmed for the approaching trajectory craft, not yet focused. */
 	private readonly prefetched = new Set<string>();
+	/** System loads in flight. */
+	private loads = 0;
 
 	constructor(
 		private readonly scene: Scene,
@@ -76,6 +78,7 @@ export class SystemDataLoader {
 	}
 
 	private load(baryId: string): void {
+		this.loads++;
 		loadSystemData(
 			baryId,
 			this.bodyObjects,
@@ -84,10 +87,16 @@ export class SystemDataLoader {
 			this.clock.jd,
 			this.renderer.capabilities.maxTextureSize,
 			this.ctx
-		).then(() => {
-			this.onLoaded();
-			this.ctx.bodies.orientationVersion++;
-		});
+		)
+			.then(() => {
+				this.onLoaded();
+				this.ctx.bodies.orientationVersion++;
+			})
+			.finally(() => this.loads--);
+	}
+
+	isLoading(): boolean {
+		return this.loads > 0;
 	}
 
 	/** Release the GPU textures of every queued system. Gate on focus-fly settled. */

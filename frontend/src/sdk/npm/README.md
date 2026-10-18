@@ -123,6 +123,7 @@ hold.release();
 | `featureselect`                   | a nomenclature label was clicked                   |
 | `clock`                           | the date, play state, rate or direction changed    |
 | `loading` / `progress`            | data is coming in                                  |
+| `idle`                            | the camera is at rest and the view is fully loaded |
 | `error`                           | the data could not be loaded                       |
 | `notice` / `noticedismiss`        | a condition worth telling the reader about         |
 | `layerschange`                    | a layer was switched                               |

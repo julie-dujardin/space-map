@@ -260,6 +260,12 @@ export interface MapEvents {
 	loading: (loading: boolean) => void;
 	/** Boot progress, 0 to 1, monotonic within one load. */
 	progress: (fraction: number) => void;
+	/** The map is at rest. The camera does not move, and the view has every
+	 *  picture, model, tile and terrain grid that it needs. The event fires once
+	 *  each time that the map comes to rest after a change. The clock can run. A
+	 *  covered map is not at rest. The catalogue points and the star background
+	 *  do not count. */
+	idle: () => void;
 	/** The data could not be loaded. The map stays mounted and empty. */
 	error: (message: string) => void;
 	/** The export was republished while this map was open: its data is now a
@@ -381,6 +387,7 @@ export class SpaceMap {
 		clock: new Set(),
 		loading: new Set(),
 		progress: new Set(),
+		idle: new Set(),
 		error: new Set(),
 		datastale: new Set(),
 		notice: new Set(),
@@ -777,6 +784,7 @@ export class SpaceMap {
 			onFrame: (jd, dtMs) => {
 				if (this.listeners.frame.size > 0) this.emit('frame', { jd, dtMs });
 			},
+			onIdle: () => this.emit('idle'),
 			onCameraPosition: (latitude, longitude, zoom) => {
 				const body = this.focusedBody?.data.id;
 				// Nothing focused means nothing to measure the camera against, and

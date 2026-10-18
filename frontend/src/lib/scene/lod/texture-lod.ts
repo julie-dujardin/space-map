@@ -14,10 +14,12 @@ import {
 	swapDisplacementTier
 } from '$lib/scene/objects/surface/displacement';
 import { reliefTilesServe, updateReliefTiles } from '$lib/scene/objects/surface/relief-tiles';
+import { chainSettled } from '$lib/scene/objects/surface/tile-chain';
 import { tilesServe, updateTileOverlay } from '$lib/scene/objects/surface/tile-overlay';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { maxTextureTier } from '$lib/scene/render-tier';
 import type { BodyAppearances } from '$lib/scene/objects/body/appearance';
+import { terrainSettled } from './terrain-window';
 
 /** DEM tier by altitude (in body radii from the center, like `altitudeRadii`),
  *  with wide hysteresis — a swap is a multi-MB fetch + full CPU decode. */
@@ -27,6 +29,18 @@ function desiredDemTier(altitudeRadii: number, current: string): string {
 	const down = altitudeRadii > 7 ? 'low' : altitudeRadii > 1.15 ? 'medium' : 'high';
 	if (tierRank(down) < tierRank(current)) return down;
 	return current;
+}
+
+/** Whether a picture, a model, a tile or a terrain grid of the body is still
+ *  on its way. */
+export function bodyLoading(bo: BodyObjects): boolean {
+	if (bo.textureLoading || bo.displacementLoading || bo.clouds?.textureLoading) return true;
+	if (bo.appearance?.loading || bo.modelLoadPromise) return true;
+	const surface = bo.tileOverlay;
+	if (surface && bo.surfaceTiles && !chainSettled(surface.chain, bo.surfaceTiles)) return true;
+	const relief = bo.reliefTiles;
+	if (relief && !chainSettled(relief.chain, relief.tiles)) return true;
+	return !terrainSettled(bo);
 }
 
 /** Per-frame texture LOD: upgrade tier by screen-space radius. One-way — prior tier disposed. */

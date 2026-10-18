@@ -518,6 +518,14 @@ export function disposeChain(chain: TileChain): void {
 	chain.uniforms.mask.value = null;
 }
 
+/** Whether every tile of the windows the chain draws is in, or will not come.
+ *  A chain that draws no window has nothing to wait for. */
+export function chainSettled(chain: TileChain, tiles: TilesBlock): boolean {
+	const store = chain.store;
+	if (!store || chain.dead || chain.uniforms.window.value[0].w === 0) return true;
+	return store.windows.every((win) => settled(chain, store, tiles, win));
+}
+
 /** A frame that draws no window: free them once that has lasted. */
 export function restChain(chain: TileChain, now: number): void {
 	switchOff(chain);

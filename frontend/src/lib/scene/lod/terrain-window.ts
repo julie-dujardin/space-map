@@ -138,6 +138,15 @@ interface TiledState {
 
 const tiledStates = new WeakMap<BodyObjects, TiledState>();
 
+/** Bodies whose grid no longer fits the camera, held back by the rebuild rate cap. */
+const deferred = new WeakSet<BodyObjects>();
+
+/** Whether the grid of the body fits the camera. False while a grid is on its
+ *  way or held back. */
+export function terrainSettled(bo: BodyObjects): boolean {
+	return !tiledStates.get(bo)?.abort && !deferred.has(bo);
+}
+
 /** Failed builds after which the body's grid is left to the shader. */
 const MAX_BUILD_FAILURES = 2;
 
@@ -233,7 +242,10 @@ function updateTiledWindow(
 		const still = drift(centerTheta, centerPhi, held.centerTheta, held.centerPhi);
 		if (kept === stepLevel && still < RECENTER_FRAC * held.angRadius) return true;
 		// Rate cap: lagging a spinning body briefly beats rebuilding every frame.
-		if (performance.now() - held.builtAt < REBUILD_MIN_MS) return true;
+		if (performance.now() - held.builtAt < REBUILD_MIN_MS) {
+			deferred.add(bo);
+			return true;
+		}
 	}
 
 	const grid = planNestedGrid(
@@ -326,6 +338,7 @@ export function updateTerrainWindow(
 	eligible: boolean,
 	invalidate: () => void
 ): boolean {
+	deferred.delete(bo);
 	const mesh = bo.mesh;
 	const tex = bo.displacementMap;
 	if (!eligible || !mesh || !tex) {
@@ -389,7 +402,10 @@ export function updateTerrainWindow(
 			if (still < RECENTER_FRAC * w.angRadius) return true;
 		}
 		// Rate cap: lagging a spinning body briefly beats rebuilding every frame.
-		if (performance.now() - w.builtAt < REBUILD_MIN_MS) return true;
+		if (performance.now() - w.builtAt < REBUILD_MIN_MS) {
+			deferred.add(bo);
+			return true;
+		}
 	}
 
 	const thetaLo = Math.max(0, centerTheta - angRadius);

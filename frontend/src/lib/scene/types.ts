@@ -275,6 +275,8 @@ export interface Callbacks {
 	 *  camera has not been moved yet. `dtMs` is 0 on a frame that follows a
 	 *  skipped one. */
 	onFrame?(jd: number, dtMs: number): void;
+	/** End of a drawn frame that left the map at rest, once per rest. */
+	onIdle?(): void;
 	onCameraPosition?(latitude: number, longitude: number, zoom: number): void;
 	/** Number of user-promoted bodies that can be cleared (excludes the focused
 	 *  body — clearing it would leave the camera pointed at a torn-down mesh). */

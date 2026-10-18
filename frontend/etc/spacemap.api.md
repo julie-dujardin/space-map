@@ -782,6 +782,7 @@ export interface MapEvents {
 	// (undocumented)
 	focuschange: (e: FocusChange) => void;
 	frame: (e: { jd: number; dtMs: number }) => void;
+	idle: () => void;
 	layerschange: (visible: MapLayerId[]) => void;
 	loading: (loading: boolean) => void;
 	notice: (notice: Notice) => void;

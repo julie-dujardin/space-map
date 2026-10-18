@@ -128,7 +128,8 @@ import { disposeReliefTiles } from './objects/surface/relief-tiles';
 import { disposeTileOverlay } from './objects/surface/tile-overlay';
 import { updateSunShadowLight } from './shaders/sun-shadow-light';
 import { updateSphereLOD } from './lod/sphere-lod';
-import { updateTextureLOD } from './lod/texture-lod';
+import { bodyLoading, updateTextureLOD } from './lod/texture-lod';
+import { calibrationUi } from './perf/calibration-state.svelte';
 import {
 	isDrawn,
 	type BodyObjects,
@@ -372,6 +373,15 @@ export class SceneRenderer {
 	private lastRenderedFocusKey = '';
 	private readonly lastRenderedCamPos = new Vector3(NaN, NaN, NaN);
 	private readonly lastRenderedCamQuat = new Quaternion();
+	/** Camera and focus at the end of the last drawn frame. A frame that moves
+	 *  them is a change. */
+	private readonly restCamPos = new Vector3(NaN, NaN, NaN);
+	private readonly restCamQuat = new Quaternion();
+	private restFocusKey = '';
+	/** The map is at rest, and the host knows it. */
+	private atRest = false;
+	/** Texture, model and label loads in flight for the focused object. */
+	private focusLoads = 0;
 	private unsubscribeBodiesAdded: (() => void) | null = null;
 	/** Per-frame camera state for the trail rewrite gate; mutated in place. */
 	private readonly _trailView: TrailView = { camX: 0, camY: 0, camZ: 0, tolAngle: 0 };
@@ -1323,7 +1333,38 @@ export class SceneRenderer {
 				this.renderer.domElement.clientHeight
 			);
 		}
+		this.checkRest(nowMs);
 	};
+
+	/** Tell the host when a drawn frame leaves the map at rest. */
+	private checkRest(nowMs: number): void {
+		const moved =
+			this.cameraMovedFrom(this.restCamPos, this.restCamQuat) ||
+			this.focusKey() !== this.restFocusKey;
+		this.restCamPos.copy(this.camera.position);
+		this.restCamQuat.copy(this.camera.quaternion);
+		this.restFocusKey = this.focusKey();
+		if (moved || this.settling(nowMs)) {
+			this.atRest = false;
+		} else if (!this.atRest) {
+			this.atRest = true;
+			this.callbacks.onIdle?.();
+		}
+	}
+
+	/** Whether something that the view needs is still on its way. The catalogue
+	 *  points and the star background do not count. They load after the boot
+	 *  and can take minutes. */
+	private settling(nowMs: number): boolean {
+		if (this.covered || this.ctx.loading || calibrationUi.bootPending) return true;
+		if (nowMs - this.focus.focusStartTime < this.focus.focusDurationMs) return true;
+		if (this.jumpJd !== null || this.seekAwaitsData) return true;
+		if (this.focusLoads > 0 || this.systemData.isLoading()) return true;
+		for (const bo of this.bodyObjects.values()) {
+			if (bo.group.visible && bodyLoading(bo)) return true;
+		}
+		return false;
+	}
 
 	/** Give the scene's target the tier's sample count, or none inside a shell.
 	 *  The haze there stops at one depth for each pixel, and more samples put
@@ -1974,17 +2015,23 @@ export class SceneRenderer {
 		if (this.covered) return false;
 		if (this.frameIndex - this.lastRenderedFrame >= SceneRenderer.IDLE_HEARTBEAT_FRAMES)
 			return true;
-		// Damping never reaches exact rest, so motion counts once it could move a
-		// pixel: about 1e-3 of the distance, with two orders of margin.
-		const cam = this.camera;
-		const cameraMoved =
-			cam.position.distanceToSquared(this.lastRenderedCamPos) > cam.position.lengthSq() * 1e-10 ||
-			8 * (1 - Math.abs(cam.quaternion.dot(this.lastRenderedCamQuat))) > 1e-8;
+		const cameraMoved = this.cameraMovedFrom(this.lastRenderedCamPos, this.lastRenderedCamQuat);
 		if (cameraMoved || this.frameIndex < this.wakeUntilFrame || this.haloDebug.active) return true;
 		if (this.clock.jd === this.lastRenderedJd) return false;
 		return (
 			Math.abs(this.clock.timeScale) > 1 ||
 			nowMs - this.lastRenderMs >= SceneRenderer.REALTIME_FRAME_MS
+		);
+	}
+
+	/** Whether the camera moved from `pos` and `quat` by enough to move a pixel.
+	 *  Damping never stops exactly. The limit is about 1e-3 of the distance, with
+	 *  two orders of margin. A pose that is not known yet counts as moved. */
+	private cameraMovedFrom(pos: Vector3, quat: Quaternion): boolean {
+		const cam = this.camera;
+		return !(
+			cam.position.distanceToSquared(pos) <= cam.position.lengthSq() * 1e-10 &&
+			8 * (1 - Math.abs(cam.quaternion.dot(quat))) <= 1e-8
 		);
 	}
 
@@ -2014,6 +2061,8 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
+		this.focusLoads += 2;
+		const done = () => this.focusLoads--;
 		void loadBodyTexture(
 			bo,
 			this.textureLoader,
@@ -2021,18 +2070,20 @@ export class SceneRenderer {
 			this.scene,
 			this.renderer.capabilities.maxTextureSize,
 			this.ctx
-		).then(() => {
-			// Standalone focus (asteroids, comets) doesn't go through
-			// systemData.onLoaded, so the URL-load snap initially runs with an
-			// identity mesh quat and any queued pendingInitialView never gets
-			// replayed. Force-apply orientation now and trigger reapply so the
-			// camera lands on the body-fixed feature once orientation arrives.
-			if (this.focusController.current?.data.id !== body.data.id) return;
-			if (body.orientation && bo.mesh) {
-				applyOrientation(bo.mesh, body.orientation, this.sceneJd, body.nutPrec);
-				this.focusController.reapplyInitialViewIfPending();
-			}
-		});
+		)
+			.then(() => {
+				// Standalone focus (asteroids, comets) doesn't go through
+				// systemData.onLoaded, so the URL-load snap initially runs with an
+				// identity mesh quat and any queued pendingInitialView never gets
+				// replayed. Force-apply orientation now and trigger reapply so the
+				// camera lands on the body-fixed feature once orientation arrives.
+				if (this.focusController.current?.data.id !== body.data.id) return;
+				if (body.orientation && bo.mesh) {
+					applyOrientation(bo.mesh, body.orientation, this.sceneJd, body.nutPrec);
+					this.focusController.reapplyInitialViewIfPending();
+				}
+			})
+			.finally(done);
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		// On resolve the body's radius may have been true-sized from the model's
 		// scale_meters; refresh closest-approach so zoom-in tracks real size.
@@ -2054,7 +2105,8 @@ export class SceneRenderer {
 			})
 			.then(() => {
 				if (this.selectedFeatureId !== null) setActiveFeatureLabel(bo, this.selectedFeatureId);
-			});
+			})
+			.finally(done);
 	}
 
 	/** Debug: rebuild the focused body's render stack so the current body-layer
@@ -2761,7 +2813,9 @@ export class SceneRenderer {
 	setCovered(covered: boolean): void {
 		if (this.covered === covered) return;
 		this.covered = covered;
-		if (!covered) this.invalidate();
+		// Showing the view again is a change.
+		if (covered) this.atRest = false;
+		else this.invalidate();
 	}
 
 	isContextLost(): boolean {
