@@ -3,18 +3,17 @@
 ```mermaid
 flowchart LR
   user((User browser))
-  sources((CelesTrak - Space-Track - clouds.matteason.co.uk))
-  cftunnel((Cloudflare Tunnel<br/>search.spacemap.co))
-  cftiles((Homelab Cloudflare Tunnel<br/>+ edge cache<br/>tiles.spacemap.co))
-  tiletree[("NAS<br/>space-map-tiles")]
+  sources((Data sources<br/>CelesTrak, Space-Track, JPL,<br/>Wikidata, cloud maps, ...))
+  feeds((DSN Now - ESTRACK Now<br/>DSN bot on Bluesky))
 
-  subgraph repo["GitHub: julie-dujardin/space-map"]
+  subgraph repo["GitHub: space-map"]
     direction TB
     src_fe[frontend/]
     src_data[data/]
-    src_infra[infrastructure/scheduler/]
-    src_search[infrastructure/search/]
+    src_sched[infrastructure/scheduler/]
     src_tiles[infrastructure/tiles/]
+    src_search[infrastructure/search/]
+    src_live[infrastructure/live/]
   end
 
   subgraph ci["GitHub Actions"]
@@ -23,67 +22,89 @@ flowchart LR
     wf_data[data-deploy]
   end
 
-  subgraph hosts["Public artifact hosts"]
+  ghcr[("ghcr.io/.../space-map-data")]
+  ghrel[("GitHub Releases")]
+
+  subgraph cf["Cloudflare"]
     direction TB
-    cfpagesfront[("Cloudflare Pages<br/>spacemap.co")]
-    cfpagesstatic[("Workers static assets<br/>static.spacemap.co<br/>(data, minus images)")]
-    cfpagesimages[("Workers static assets<br/>images.spacemap.co<br/>(v1/images)")]
-    ghcr[("ghcr.io/.../space-map-data")]
-    ghrel[("GitHub Releases")]
+    live[("Workers static assets<br/>live.spacemap.co<br/>(v1/activity.json)")]
+    searchhost["search.spacemap.co"]
+    worker["Worker space-map<br/>spacemap.co<br/>(pages, /api/search-key)"]
+    edge["Edge cache<br/>tiles.spacemap.co"]
+    static[("Workers static assets<br/>static.spacemap.co: data<br/>images.spacemap.co: v1/images")]
   end
 
-  subgraph vm["eu-0<br/>Containers in Debian VM"]
+  subgraph lan["Home LAN"]
     direction TB
-    portainer[Portainer]
-    container["space-map-data container<br/>(daily scheduler)"]
-    grafana[Loki / Prometheus / Grafana<br/>Monitors stdout & metrics]
-
-    subgraph tiles["tiles stack"]
+    workstation["Workstation<br/>ingest, export, deploy.sh<br/>(by hand)"]
+    subgraph eu0["eu-0: homelab, Debian VM"]
       direction TB
-      tilescaddy["Caddy<br/>(:9752 read-only file server)"]
+      portainer[Portainer]
+      tilescaddy["tiles stack: Caddy<br/>(:9752, read-only file server)"]
+      scheduler["space-map-data<br/>(scheduled downloads)"]
+      grafana["Loki / Prometheus / Grafana<br/>(stdout and metrics)"]
     end
+    nas[("NAS<br/>space-map-downloads<br/>space-map-tiles")]
+  end
 
+  subgraph eu1["eu-1: OVH VPS"]
+    direction TB
+    sg["spaceguesser multiplayer<br/>(other repo)"]
     subgraph search["search stack"]
       direction TB
-      caddy["Caddy<br/>(:9750 search-only proxy)"]
-      meili["Meilisearch<br/>(:9751 admin, master-key)"]
+      caddy["Caddy<br/>(search-only proxy, no host port)"]
+      meili["Meilisearch<br/>(:9751 on loopback, master key)"]
     end
+    livestack["live stack<br/>(tracking poller, deploy on change)"]
   end
 
   src_fe --> wf_fe
   src_data --> wf_data
-  src_infra --> wf_data
-  src_infra -.->|deploy| portainer
-  src_search -.->|deploy| portainer
-  src_tiles -.->|deploy| portainer
-
-  wf_fe -->|"wrangler pages deploy"| cfpagesfront
+  src_sched --> wf_data
+  wf_fe -->|"wrangler deploy"| worker
   wf_data -->|"docker push :version :sha :latest"| ghcr
   wf_data --> ghrel
 
+  src_sched -.->|deploy| portainer
+  src_tiles -.->|deploy| portainer
+  src_search -.->|deploy| search
+  src_live -.->|deploy| livestack
   ghcr -.->|pull| portainer
-  portainer --> container
-  portainer --> search
+  ghcr -.->|pull| livestack
+  portainer --> scheduler
+  portainer --> tilescaddy
 
-  container -.->|regular fetch| sources
-  container -.->|TODO| cfpagesstatic
-  container -.->|TODO| cfpagesimages
+  scheduler -.->|regular fetch| sources
+  scheduler -->|NFS| nas
+  tilescaddy -->|"NFS, read-only"| nas
+  workstation -->|NFS| nas
+  workstation -->|"wrangler deploy"| static
+  workstation -->|"ssh -L 9751<br/>space-map-search push"| meili
 
-  container -.->|"space-map-search push<br/>:9751"| meili
+  livestack -.->|every minute| feeds
+  livestack -->|"wrangler deploy"| live
+  meili ~~~ sg
+  tilescaddy ~~~ scheduler
+
+  user -->|"pages, and a Turnstile proof<br/>for a one-hour search key"| worker
+  user --> static
+  user --> live
+  user -->|"search (using that key)"| searchhost
+  searchhost -->|"search stack's own tunnel"| caddy
   caddy --> meili
-  portainer --> tiles
-  tilescaddy -->|"NFS, read-only"| tiletree
-
-  user --> cfpagesfront
-  user --> cfpagesstatic
-  user --> cfpagesimages
-  user -->|"Turnstile proof for a one-hour search key"| cfpagesfront
-  user -->|"search (using that key)"| cftunnel
-  cftunnel -->|":9750"| caddy
-  user -->|"surface tiles"| cftiles
-  cftiles -->|":9752, tiles the edge does not hold"| tilescaddy
+  user -->|"surface tiles"| edge
+  edge -->|"homelab tunnel, :9752<br/>tiles the edge does not hold"| tilescaddy
 ```
 
 ## EU-0
 
-See [julie-dujardin/homelab](https://github.com/julie-dujardin/homelab) for sources
+The homelab server. See [julie-dujardin/homelab](https://github.com/julie-dujardin/homelab)
+for sources. It mounts the NAS, which holds the downloads and the tile tree.
+The export and its deploy are not scheduled yet: they run by hand from the
+workstation.
+
+## EU-1
+
+The OVH VPS. It has its own disk and no access to the NAS or the LAN, so data
+that it needs goes over by rsync. It also runs the multiplayer server of
+[spaceguesser](https://github.com/julie-dujardin/spaceguesser).
