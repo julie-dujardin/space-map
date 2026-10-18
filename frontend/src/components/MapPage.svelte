@@ -287,8 +287,8 @@
 		if (!ringPillShown) settings.setOverexposeRings(false);
 	});
 	// Camera-truth focus: stays set after the drawer closes since the renderer
-	// keeps tracking that body. Drives compass-north choices, which would
-	// otherwise drop to "Solar System only" the moment the drawer closes.
+	// keeps tracking that body. Drives what belongs to the body on screen, not
+	// to the drawer: compass-north choices and the panorama traces.
 	let cameraFocus = $state.raw<PositionedBody | undefined>();
 	let drawerHeightDvh = $state(0);
 	let searchExpanded = $state(false);
@@ -1079,7 +1079,7 @@
 					<SiteMenuButton />
 				{/if}
 				<LayersButton />
-				<PanoramaTraces {map} focused={selectedBody ?? null} />
+				<PanoramaTraces {map} focused={cameraFocus ?? null} />
 			</div>
 			{#if isNav && TravelDrawer}
 				<TravelDrawer
