@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { Object3D, Quaternion, Vector3 } from 'three';
-import { applyPointing, applySouthTowardParent, frameMapQuaternion } from './orientation';
+import {
+	applyPointing,
+	applySouthTowardParent,
+	applyUpVector,
+	frameMapQuaternion,
+	landedHeadingAt,
+	turnToHeading
+} from './orientation';
 
 /** World direction the body's local `axis` ends up aiming after `q`. */
 function aimed(q: Quaternion, axis: [number, number, number]): Vector3 {
@@ -104,5 +111,55 @@ describe('frameMapQuaternion', () => {
 		expect(frameMapQuaternion({ '+y': 'up' })).toBeNull();
 		expect(frameMapQuaternion({ '+y': '+z', '-y': '+x' })).toBeNull();
 		expect(frameMapQuaternion({ '+x': '+z', '+y': '-z' })).toBeNull();
+	});
+});
+
+describe('turnToHeading', () => {
+	// Body frame at 0°N 0°E: up +X, north +Y, east −Z.
+	const north = new Vector3(0, 1, 0);
+
+	function stood(up: Vector3, heading: number): Object3D {
+		const obj = new Object3D();
+		applyUpVector(obj, up);
+		turnToHeading(obj, north, heading);
+		return obj;
+	}
+
+	it('faces the front along the heading and keeps the up axis', () => {
+		for (const [heading, want] of [
+			[0, [0, 1, 0]],
+			[90, [0, 0, -1]],
+			[180, [0, -1, 0]],
+			[270, [0, 0, 1]]
+		] as const) {
+			const obj = stood(new Vector3(1, 0, 0), heading);
+			expectDir(aimed(obj.quaternion, [0, 0, 1]), [...want]);
+			expectDir(aimed(obj.quaternion, [0, 1, 0]), [1, 0, 0]);
+		}
+	});
+
+	it('keeps a tilted seat and faces the heading within it', () => {
+		const up = new Vector3(1, 0.2, 0.1).normalize();
+		const obj = stood(up, 45);
+		const front = aimed(obj.quaternion, [0, 0, 1]);
+		expectDir(aimed(obj.quaternion, [0, 1, 0]), [up.x, up.y, up.z]);
+		expect(front.dot(up)).toBeCloseTo(0, 6);
+		// Seen from above, the front sits halfway between north and east.
+		expect(front.y).toBeGreaterThan(0);
+		expect(-front.z).toBeCloseTo(front.y, 1);
+	});
+});
+
+describe('landedHeadingAt', () => {
+	const headings = [
+		{ jd: 10, deg: 120 },
+		{ jd: 20, deg: 115 }
+	];
+
+	it('takes the latest landing at or before the date', () => {
+		expect(landedHeadingAt(headings, 5)).toBeUndefined();
+		expect(landedHeadingAt(headings, 10)).toBe(120);
+		expect(landedHeadingAt(headings, 25)).toBe(115);
+		expect(landedHeadingAt(undefined, 25)).toBeUndefined();
 	});
 });

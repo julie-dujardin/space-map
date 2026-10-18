@@ -120,7 +120,12 @@ accident.
 
 Type-specific fields: `purpose` (`flyby`), `outcome` and `intentional`
 (`landing`), `site` (`landing`, `reentry` — `lat_deg`, `lon_deg`, optional
-`name`).
+`name`, optional `heading_deg`).
+
+`heading_deg` is where the landed craft's front faces, clockwise from north;
+the map turns the craft's model to it, whose front is its glTF +Z. For an
+Apollo LM the front is the +Z axis through the forward hatch and ladder. The
+event's `description` names the source.
 
 ## Where it ships
 

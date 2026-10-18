@@ -91,6 +91,8 @@ def _event_dict(event: ProbeEvent, known_ids: set[str]) -> dict:
         site: dict = {"lat_deg": event.site.lat_deg, "lon_deg": event.site.lon_deg}
         if event.site.name:
             site["name"] = event.site.name
+        if event.site.heading_deg is not None:
+            site["heading_deg"] = event.site.heading_deg
         out["site"] = site
     if event.stated:
         out["stated"] = event.stated

@@ -150,6 +150,50 @@ export function applyUpVector(obj: Object3D, dir: Vector3): void {
 	obj.quaternion.setFromUnitVectors(LOCAL_NORTH, dir);
 }
 
+/** A landing's stated heading: from `jd` on, the craft's front faces `deg`,
+ *  clockwise from north. */
+export interface LandedHeading {
+	jd: number;
+	deg: number;
+}
+
+/** The heading of the latest landing at or before `jd`. */
+export function landedHeadingAt(
+	headings: readonly LandedHeading[] | undefined,
+	jd: number
+): number | undefined {
+	let deg: number | undefined;
+	for (const h of headings ?? []) if (h.jd <= jd) deg = h.deg;
+	return deg;
+}
+
+const LOCAL_FRONT = new Vector3(0, 0, 1);
+const _up = new Vector3();
+const _front = new Vector3();
+const _north = new Vector3();
+const _east = new Vector3();
+const _target = new Vector3();
+const _cross = new Vector3();
+const _turn = new Quaternion();
+
+/**
+ * Turn an object that already stands on its up axis (local +Y) about that
+ * axis, so its local +Z faces `headingDeg` clockwise from `north`. +Z is
+ * glTF's front, which a lander model is baked to face. North is the radial
+ * frame's; on a tilted seat it is projected onto the seat's plane.
+ */
+export function turnToHeading(obj: Object3D, north: Vector3, headingDeg: number): void {
+	_up.copy(LOCAL_NORTH).applyQuaternion(obj.quaternion);
+	_north.copy(north).addScaledVector(_up, -north.dot(_up)).normalize();
+	_east.crossVectors(_north, _up);
+	const h = headingDeg * DEG2RAD;
+	_target.copy(_north).multiplyScalar(Math.cos(h)).addScaledVector(_east, Math.sin(h));
+	_front.copy(LOCAL_FRONT).applyQuaternion(obj.quaternion);
+	_front.addScaledVector(_up, -_front.dot(_up)).normalize();
+	const angle = Math.atan2(_cross.crossVectors(_front, _target).dot(_up), _front.dot(_target));
+	obj.quaternion.premultiply(_turn.setFromAxisAngle(_up, angle));
+}
+
 export type PointingAxis = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
 export type PointingTarget = 'parent' | 'sun' | 'velocity';
 

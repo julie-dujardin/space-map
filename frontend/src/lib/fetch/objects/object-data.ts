@@ -382,8 +382,9 @@ export interface ProbeEvent {
 	/** Landing only. */
 	outcome?: 'controlled' | 'destroyed_at_landing';
 	intentional?: boolean;
-	/** Landing/reentry only: where on the target it came down. */
-	site?: { lat_deg: number; lon_deg: number; name?: string };
+	/** Landing/reentry only: where on the target it came down. `heading_deg`:
+	 *  where the craft's front faces once down, clockwise from north. */
+	site?: { lat_deg: number; lon_deg: number; name?: string; heading_deg?: number };
 	/** What the published sources say, and what our kernels say. They share key
 	 *  names where they measure the same thing. */
 	stated?: Record<string, unknown>;
@@ -438,7 +439,9 @@ export interface PanoramaEntry {
 		| 'unknown'
 		| 'caption-aligned'
 		| 'matched to an archival sphere'
-		| 'matched to a controlled mosaic';
+		| 'matched to a controlled mosaic'
+		| 'matched to a terrain model'
+		| 'fitted to the Sun';
 	/** `estimated` where the sphere's angular bounds were fitted to a
 	 *  published flat image rather than read from an archive label. */
 	geometry?: 'estimated';

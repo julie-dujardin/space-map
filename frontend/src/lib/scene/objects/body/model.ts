@@ -12,14 +12,14 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { fetchObjectDetail, type ProbeEvent } from '$lib/fetch/objects/object-data';
 import { createAttitudeTrack } from '$lib/fetch/attitude/track';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { textureAllowed } from '$lib/host';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
-import { frameMapQuaternion } from '$lib/math/orientation';
+import { frameMapQuaternion, type LandedHeading } from '$lib/math/orientation';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
@@ -266,6 +266,7 @@ async function loadSpacecraftModel(
 		// Hand-edited pointing spec drives the focused model's attitude; the
 		// per-frame loop reads it off the body (default: south-toward-parent).
 		bo.body.pointing = detail.global?.pointing;
+		bo.body.landedHeadings = landedHeadings(detail.global?.events?.items);
 		// CK-refit attitude supersedes pointing over its window; chunks load
 		// lazily per playhead time, so building the track needs no I/O here.
 		const attitudeManifest = detail.global?.attitude;
@@ -472,6 +473,7 @@ export function unloadBodyModel(bo: BodyObjects): void {
 	bo.model = null;
 	bo.modelName = undefined;
 	bo.body.pointing = undefined;
+	bo.body.landedHeadings = undefined;
 	bo.body.attitudeTrack = undefined;
 	bo.body.modelBaseFrame = undefined;
 	if (bo.mesh && restoreSphere) bo.mesh.visible = true;
@@ -494,6 +496,16 @@ function setHaloLoading(bo: BodyObjects, loading: boolean): void {
 		bo.loadingEl = null;
 		bo.loadingShown = undefined;
 	}
+}
+
+/** The headings the curated landings state, in date order. */
+function landedHeadings(events: readonly ProbeEvent[] | undefined): LandedHeading[] | undefined {
+	const out: LandedHeading[] = [];
+	for (const e of events ?? []) {
+		const deg = e.type === 'landing' ? e.site?.heading_deg : undefined;
+		if (deg !== undefined) out.push({ jd: e.jd, deg });
+	}
+	return out.length ? out : undefined;
 }
 
 /** Bake the bundle's model→body base rotation (`frame_map`) into a wrapper

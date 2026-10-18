@@ -145,6 +145,10 @@ class TestValidator:
             ({"type": "flyby"}, "flyby with no target"),
             ({"end_date": "1977-09-01"}, "which is a moment"),
             ({"outcome": "controlled"}, "'outcome' on 'launch'"),
+            (
+                {"site": {"lat_deg": 0, "lon_deg": 0, "heading_deg": 360}},
+                "heading_deg 360 is not in [0, 360)",
+            ),
         ],
     )
     def test_event_contract(

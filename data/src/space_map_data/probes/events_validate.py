@@ -177,6 +177,11 @@ def _check_event(ev: dict[str, Any], where: str, errors: list[str], drift: list[
         site.get("lat_deg") is None or site.get("lon_deg") is None
     ):
         errors.append(f"{where}: site without coordinates")
+    heading = (site or {}).get("heading_deg")
+    if heading is not None and not (
+        isinstance(heading, int | float) and 0 <= heading < 360
+    ):
+        errors.append(f"{where}: site heading_deg {heading!r} is not in [0, 360)")
 
     for bag, known in (("stated", CORE_STATED_KEYS), ("computed", COMPUTED_KEYS)):
         values = ev.get(bag) or {}

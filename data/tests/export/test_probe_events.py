@@ -74,6 +74,39 @@ def test_events_ride_the_probe_bundle(events_root: Path) -> None:
     assert "description" not in launch
 
 
+def test_a_landing_site_carries_its_heading(events_root: Path) -> None:
+    _write(
+        events_root,
+        [
+            {
+                "probe_id": 1234,
+                "name": "Test Lander",
+                "events": [
+                    {
+                        "type": "landing",
+                        "date": "1969-07-20T20:17:40Z",
+                        "outcome": "controlled",
+                        "site": {
+                            "lat_deg": 0.67416,
+                            "lon_deg": 23.47314,
+                            "heading_deg": 257,
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+    chunk = _chunk(["probe-1234"])
+    attach_probe_events(chunk)
+
+    (landing,) = chunk.global_data["probe-1234"]["events"]["items"]
+    assert landing["site"] == {
+        "lat_deg": 0.67416,
+        "lon_deg": 23.47314,
+        "heading_deg": 257.0,
+    }
+
+
 @pytest.mark.parametrize(
     ("target", "object_id", "linked"),
     [

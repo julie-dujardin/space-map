@@ -1012,7 +1012,9 @@ export interface PanoramaEntry {
 		| 'unknown'
 		| 'caption-aligned'
 		| 'matched to an archival sphere'
-		| 'matched to a controlled mosaic';
+		| 'matched to a controlled mosaic'
+		| 'matched to a terrain model'
+		| 'fitted to the Sun';
 	position_uncertainty_m?: number;
 	// (undocumented)
 	sol?: number;

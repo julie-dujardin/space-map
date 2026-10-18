@@ -17,6 +17,7 @@ const lastSeat = new Map<
 >();
 
 const _upScene = new Vector3();
+const _northScene = new Vector3();
 
 /**
  * Seats a landed probe on the rendered surface via {@link renderedSeatAt} —
@@ -24,8 +25,9 @@ const _upScene = new Vector3();
  * The record's altitude is ignored (coarse height maps make it float/sink).
  *
  * Null when the body isn't loaded, has no place or lacks orientation data. `up` is the seat
- * normal in scene frame, null until surface data resolves. Scratch-backed —
- * consume within the frame. Mutates `d.parentId` so trail geometry follows.
+ * normal in scene frame, null until surface data resolves; `north` is the
+ * site's local north in scene frame. Scratch-backed — consume within the
+ * frame. Mutates `d.parentId` so trail geometry follows.
  */
 export function renderLandedProbe(
 	d: BodyData,
@@ -35,7 +37,14 @@ export function renderLandedProbe(
 	where: (id: string) => Readonly<Vec3> | null,
 	ctx: ContextManager,
 	bodyObjects: Map<string, BodyObjects>
-): { x: number; y: number; z: number; parentPos: Readonly<Vec3>; up: Vector3 | null } | null {
+): {
+	x: number;
+	y: number;
+	z: number;
+	parentPos: Readonly<Vec3>;
+	up: Vector3 | null;
+	north: Vector3;
+} | null {
 	const sample = landedPositionAt(landed, jd, landedOpenEnded(probe));
 	if (!sample) return null;
 	const bodyKey = `naif-${landed.bodyNaifId}`;
@@ -69,6 +78,10 @@ export function renderLandedProbe(
 	const up = eff
 		? _upScene.set(eff.normal[0], eff.normal[1], eff.normal[2]).applyQuaternion(quat)
 		: null;
+	// ∂/∂lat of the body-fixed position above.
+	const north = _northScene
+		.set(-Math.sin(latR) * Math.cos(lngR), Math.cos(latR), Math.sin(latR) * Math.sin(lngR))
+		.applyQuaternion(quat);
 	// `tmp` is body-relative km in scene-frame; no axis swap needed because
 	// `bodyQuaternion` already returns a Three.js-coords rotation.
 	d.parentId = bodyKey;
@@ -77,6 +90,7 @@ export function renderLandedProbe(
 		y: bodyWorldPos[1] + kmToScene(tmp.y),
 		z: bodyWorldPos[2] + kmToScene(tmp.z),
 		parentPos: bodyWorldPos,
-		up
+		up,
+		north
 	};
 }

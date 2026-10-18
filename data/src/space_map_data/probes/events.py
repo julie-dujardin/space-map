@@ -195,11 +195,14 @@ class EventTarget:
 
 @dataclass(frozen=True)
 class EventSite:
-    """Where on the target body the craft came down."""
+    """Where on the target body the craft came down. ``heading_deg``: where its
+    front then faced, clockwise from north (for an Apollo LM, the +Z axis
+    through the forward hatch)."""
 
     lat_deg: float
     lon_deg: float
     name: str | None = None
+    heading_deg: float | None = None
 
 
 @dataclass(frozen=True)
@@ -278,10 +281,12 @@ def _target(raw: dict[str, Any] | None) -> EventTarget | None:
 def _site(raw: dict[str, Any] | None) -> EventSite | None:
     if not raw:
         return None
+    heading = raw.get("heading_deg")
     return EventSite(
         lat_deg=float(raw["lat_deg"]),
         lon_deg=float(raw["lon_deg"]),
         name=raw.get("name"),
+        heading_deg=None if heading is None else float(heading),
     )
 
 

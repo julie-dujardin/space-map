@@ -12,6 +12,8 @@ import {
 	applyPointing,
 	applySouthTowardParent,
 	applyUpVector,
+	landedHeadingAt,
+	turnToHeading,
 	type PointingSpec
 } from '$lib/math/orientation';
 import { isModelBearing } from '$lib/scene/objects/body/model';
@@ -439,8 +441,9 @@ export class Placer {
 			body.orbitCenterId = d.parentId;
 			setOrbitCenter(body, landedRender.parentPos);
 			// Stand the lander on the terrain slope (seat facet's normal); radial
-			// nadir until the seat resolves. Camera-north stays radial either way
-			// (bodyNorthVector), only the model tilts.
+			// nadir until the seat resolves, then turn it to its stated heading.
+			// Camera-north stays radial either way (bodyNorthVector), only the
+			// model tilts.
 			const up = landedRender.up;
 			if (bo?.mesh) {
 				if (up) applyUpVector(bo.mesh, up);
@@ -449,6 +452,8 @@ export class Placer {
 			if (bo?.model) {
 				if (up) applyUpVector(bo.model, up);
 				else applySouthTowardParent(bo.model, pos, landedRender.parentPos);
+				const heading = landedHeadingAt(body.landedHeadings, jd);
+				if (heading !== undefined) turnToHeading(bo.model, landedRender.north, heading);
 			}
 			return pos;
 		}

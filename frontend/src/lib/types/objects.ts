@@ -2,7 +2,7 @@ import type { SatRec } from 'satellite.js';
 import type { SGP4Inputs } from '$lib/math/orbit/sgp4';
 import type { Quaternion } from 'three';
 import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
-import type { NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
+import type { LandedHeading, NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
 import type { AttitudeTrack } from '$lib/fetch/attitude/track';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
@@ -201,6 +201,9 @@ export interface PositionedBody {
 	/** Refit-from-CK attitude stream. Loaded lazily on focus; drives the model's
 	 *  orientation directly over its coverage window, ahead of `pointing`. */
 	attitudeTrack?: AttitudeTrack;
+	/** Where a landed craft's front faces, per landing that states it (curated
+	 *  events `site.heading_deg`), in date order. Set on focus with the model. */
+	landedHeadings?: LandedHeading[];
 	/** Model→body base rotation (`frame_map`) of the loaded model bundle. Set on
 	 *  focus when the model loads; the probe north reference reads it. Cleared on
 	 *  unfocus. */
