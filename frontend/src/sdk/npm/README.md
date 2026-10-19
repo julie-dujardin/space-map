@@ -1,14 +1,14 @@
 # spacemap
 
 The map of the Solar System from [spacemap.co](https://spacemap.co), on your
-website! There are flat maps too, 360 panoramas from the surface, and a
-diagram of the whole system to pick a body from.
+website! Also available: flat maps, 360 panoramas from the surface, and diagrams
+of the solar systems and satellite systems.
 
 Distances are kilometres and angles are degrees throughout. Objects are named
-by their export id — `naif-399` for Earth, `spkid-20000004` for Vesta,
+by their export id: `naif-399` for Earth, `spkid-20000004` for Vesta,
 `norad_satcat-25544` for the ISS.
 
-No key, no quota for now.
+No key or quota for now.
 
 ## Licensing
 
@@ -24,20 +24,14 @@ the SDK draws only what a page may use:
 - **Non-commercial** imagery and models are licensed for educational and
   non-commercial use: the Uranus map, the Huygens descent panorama of Titan,
   and the models of a few craft, most of them Soviet (Buran, Vostok, Lunokhod,
-  Salyut 1). A page that is not commercial turns them on:
+  Salyut 1). These can be turned on, for non-commmercial projects only, with:
 
   ```js
   const map = await createMap({ container: '#map', includeNonCommercial: true });
   ```
 
   Asking for it is accepting its terms, and the credit line naming each author
-  is part of those terms. Without the flag Uranus renders in a flat fallback
-  colour, the Huygens stop is a place on Titan with no panorama to open, and
-  those craft stay markers with no model. Mir is the exception: it has an open
-  model too, and the map draws that one.
-
-- **Site-only** imagery is licensed to spacemap.co alone and never reaches the
-  SDK.
+  is part of those terms. Do not hide it.
 
 ## Getting it
 
