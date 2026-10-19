@@ -1,7 +1,7 @@
 [project]
 name = "space-map-data"
 version = "0.1.7"
-requires-python = ">=3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "cbor2>=5.7.0",
