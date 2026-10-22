@@ -39,6 +39,8 @@ export class SimClock {
 	private prevScale = 1;
 	private stops: BoundaryStops | null = null;
 	private settleTimer: ReturnType<typeof setTimeout> | null = null;
+	/** The promises of {@link jumpTo} that wait for a frame at their date. */
+	private arrivals: { jumps: number; resolve: () => void }[] = [];
 
 	constructor(initialJd: number, live = false) {
 		this.jd = initialJd;
@@ -116,12 +118,27 @@ export class SimClock {
 		this.settleAfterPause();
 	}
 
-	/** Seek, and mark it as a discrete jump so listeners can react to the one
-	 *  move rather than to a stream of them. */
-	jumpTo(jd: number): void {
+	/** Move the clock to `jd` in one jump, so that listeners react to it once.
+	 *  The promise resolves when a frame shows the bodies at that date. Until
+	 *  the data of the date loads, the map shows the date before the jump, and
+	 *  the measures answer for that date. */
+	jumpTo(jd: number): Promise<void> {
 		this.setJD(jd);
 		this.jumps++;
 		this.settle();
+		const jumps = this.jumps;
+		return new Promise((resolve) => this.arrivals.push({ jumps, resolve }));
+	}
+
+	/** @internal A frame shows the date of jump `jumps`. This resolves the
+	 *  promises of that jump and of the jumps before it. */
+	placed(jumps: number): void {
+		if (this.arrivals.length === 0) return;
+		this.arrivals = this.arrivals.filter((arrival) => {
+			if (arrival.jumps > jumps) return true;
+			arrival.resolve();
+			return false;
+		});
 	}
 
 	/** Rest the settled date on where the clock stands now. */
@@ -179,8 +196,9 @@ export class SimClock {
 		return jdToDate(this.jd);
 	}
 
-	/** Show another moment, as one deliberate move. */
-	setDate(date: Date): void {
-		this.jumpTo(dateToJD(date));
+	/** Move the clock to `date` in one jump. The promise resolves as the promise
+	 *  of {@link jumpTo} does. */
+	setDate(date: Date): Promise<void> {
+		return this.jumpTo(dateToJD(date));
 	}
 }

@@ -1290,11 +1290,13 @@ export class SimClock {
 	jd: number;
 	// @internal
 	jumps: number;
-	jumpTo(jd: number): void;
+	jumpTo(jd: number): Promise<void>;
 	live: boolean;
 	now(): void;
 	// (undocumented)
 	pause(): void;
+	// @internal
+	placed(jumps: number): void;
 	// (undocumented)
 	play(): void;
 	// (undocumented)
@@ -1303,7 +1305,7 @@ export class SimClock {
 	seeked: boolean;
 	// @internal
 	setBoundaryStops(stops: BoundaryStops | null): void;
-	setDate(date: Date): void;
+	setDate(date: Date): Promise<void>;
 	// @internal
 	setJD(jd: number): void;
 	setTimeScale(magnitude: number): void;
@@ -1389,7 +1391,7 @@ export class SpaceMap {
 	readonly initialView: InitialView;
 	// (undocumented)
 	isLayerVisible(id: MapLayerId): boolean;
-	jumpTo(target: JumpTarget): this;
+	jumpTo(target: JumpTarget): Promise<void>;
 	readonly keyboard: GestureHandler;
 	// @internal
 	load(targetId?: string): Promise<void>;

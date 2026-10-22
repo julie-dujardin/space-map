@@ -1071,6 +1071,8 @@ export class SceneRenderer {
 
 		// Gate body updates on jd actually changing — skips work while paused.
 		this.applyJdUpdate(true);
+		// The bodies are at the clock's date. The clock jumps up to now are done.
+		if (!this.dateHeld() && !this.seekAwaitsData) this.clock.placed(this.seenJumps);
 		// After the bodies move, before the focus animation reads its target: the
 		// point is measured off a body that has just been advanced.
 		this.refreshTravelFocus();

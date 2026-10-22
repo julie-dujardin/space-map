@@ -1047,10 +1047,38 @@ export class SpaceMap {
 		return this.toFeature(this.targetBody(target), target.feature, 'pan');
 	}
 
-	/** Put the camera somewhere at once, with no flight: what a page restoring a
-	 *  stored view wants, where a flight from nowhere would read as a lurch. */
-	jumpTo(target: JumpTarget): this {
+	/**
+	 * Put the camera at a place at once, with no flight. Use it to restore a
+	 * stored view. A body that the map has not loaded loads first. The promise
+	 * resolves one frame after the camera is in its place. It rejects when the
+	 * data of the body does not load. A later move stops this move.
+	 */
+	async jumpTo(target: JumpTarget): Promise<void> {
 		const body = this.targetBody(target);
+		const resident =
+			this.placedNow(body) && (target.facing === undefined || this.placedNow(target.facing));
+		if (resident) {
+			// The moves before this one stop.
+			this.navigation++;
+		} else {
+			const loading = this.goTo(body, { clock: 'keep', camera: 'none' });
+			const token = this.navigation;
+			const arrival = await loading;
+			if (arrival.outcome === 'failed') throw arrival.error;
+			if (arrival.outcome !== 'placed' || token !== this.navigation) return;
+		}
+		this.snap(target, body);
+		return this.settled(0);
+	}
+
+	/** Whether `id` is in the scene, with a place at the date it shows. */
+	private placedNow(id: string): boolean {
+		const body = this.ctx.getBody(id);
+		return !!body && !!this.renderer?.placeOf(body);
+	}
+
+	/** The placement of {@link jumpTo}, on a body in the scene. */
+	private snap(target: JumpTarget, body: string): void {
 		if (target.facing !== undefined) {
 			this.snapToBodyFacing(
 				body,
@@ -1058,12 +1086,12 @@ export class SpaceMap {
 				target.elevationDeg ?? 0,
 				this.framing(target, body)
 			);
-			return this;
+			return;
 		}
 		if (target.feature) {
 			const { featureId, lat, lon, diameterM } = target.feature;
 			this.focusOnFeature(body, featureId, lat, lon, diameterM, null, 'snap');
-			return this;
+			return;
 		}
 		const camera = this.getCamera();
 		this.snapToBody(
@@ -1072,7 +1100,6 @@ export class SpaceMap {
 			target.lon ?? camera?.lon ?? DEFAULT_FRAMING_LON,
 			this.framing(target, body)
 		);
-		return this;
 	}
 
 	/** Where the camera is now. Null before the first frame, and while nothing

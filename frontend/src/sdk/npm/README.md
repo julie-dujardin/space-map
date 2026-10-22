@@ -80,13 +80,15 @@ const map = await createMap({
 
 ```js
 await map.flyTo({ body: 'naif-599' }); // fly, framing it for you
-map.jumpTo({ body: 'naif-599', distanceKm: 2e6 }); // no flight
-map.jumpTo({ body: 'naif-399', facing: 'naif-10', elevationDeg: 30 });
+await map.jumpTo({ body: 'naif-599', distanceKm: 2e6 }); // no flight
+await map.jumpTo({ body: 'naif-399', facing: 'naif-10', elevationDeg: 30 });
 map.getCamera(); // { body, lat, lon, distanceKm }
 ```
 
-`flyTo` resolves when the flight lands. What a target leaves out the map frames
-itself, so `{ body }` alone is the ordinary way to move.
+`flyTo` resolves when the flight lands, and `jumpTo` one frame after the camera
+is in its place. Both load a body the map does not hold yet. What a target
+leaves out the map frames itself, so `{ body }` alone is the ordinary way to
+move.
 
 Clicking a named surface feature reports it; `panTo` turns to one without
 travelling:
@@ -135,15 +137,18 @@ map was opened on a date.
 map.clock.pause();
 map.clock.setTimeScale(86400); // a day a second
 map.clock.toggleDirection();
-map.clock.setDate(new Date('2035-06-01'));
+await map.clock.setDate(new Date('2035-06-01'));
 map.clock.now();
 ```
+
+`setDate` resolves when a frame shows the bodies at the new date. The data for
+a date can take time to load, and until then the map shows the date before.
 
 ### Measuring
 
 Some things can be read off the scene instead of drawn on it. All take the
-bodies where the last frame put them, so after `setDate` wait for a `frame`
-before asking.
+bodies where the last frame put them, so after `setDate` wait for the promise
+it returns before asking.
 
 ```js
 // Kilometres between two anchors: centres, places on a surface, or one of each.
