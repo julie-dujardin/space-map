@@ -1485,10 +1485,11 @@ class PyramidBuilder:
     ``sharpen_sigma`` base pixels.
 
     ``checkpoint`` names the inputs. A block build saves its progress under
-    that name after each row of blocks, any build when it is done, and a
-    build picks up from a save of the same name, writing again the tiles
-    deleted from it: so a fix that touches few tiles rebuilds only those. The
-    caller clears ``out_dir`` when there is none to pick up, and drops the
+    that name after each row of blocks, and any build saves when it is done.
+    A build picks up from a save of the same name and writes again the tiles
+    deleted from it, so a fix that touches few tiles rebuilds only those. To
+    find them it lists only the folders that changed after the save. The
+    caller clears ``out_dir`` when there is no save to pick up, and drops the
     saves with ``clear_state`` once the output is in place.
     """
 
@@ -1523,6 +1524,9 @@ class PyramidBuilder:
         )
         # One tile row per level, waiting for the row below it.
         self._held: dict[int, np.ndarray] = {}
+        # Per level, the change time of each column folder when it was whole.
+        self._listed: dict[int, np.ndarray] = {}
+        self._settled = 0
         self._stats = PyramidStats.empty(max_level)
         self._lock = threading.Lock()
 
@@ -1542,6 +1546,11 @@ class PyramidBuilder:
                 self._write_levels(pool, blocked, start, rows)
             if start:
                 self._fill(pool)
+            self._listed = {
+                level: self._changed_at(pool, level)
+                for level in range(self.min_level, self.max_level + 1)
+            }
+        self._save(rows)
         return self._stats
 
     def _write_levels(
@@ -1559,7 +1568,6 @@ class PyramidBuilder:
             self._emit(pool, self.max_level, row, band)
             if (row + 1) % 8 == 0 or row + 1 == rows:
                 log.info("%s: tile row %d of %d", self.name, row + 1, rows)
-        self._save(rows)
 
     def _fill(self, pool: ThreadPoolExecutor) -> None:
         """Write again the tiles deleted from a build of the same inputs. A
@@ -1623,17 +1631,33 @@ class PyramidBuilder:
             list(pool.map(coarser, missing[level].tolist()))
 
     def _present(self, pool: ThreadPoolExecutor, level: int) -> np.ndarray:
-        """Which tiles of ``level`` are on disk, as [column, row]."""
+        """Which tiles of ``level`` are on disk, as [column, row]. A folder
+        that has not changed since the save is whole."""
         found = np.zeros((self._columns(level), self._rows(level)), dtype=bool)
+        listed = self._listed.get(level)
 
         def scan(x: int) -> None:
             folder = self.out_dir / str(level) / str(x)
-            if folder.is_dir():
-                stems = (name.removesuffix(".webp") for name in os.listdir(folder))
-                found[x, [int(stem) for stem in stems if stem.isdigit()]] = True
+            try:
+                changed = folder.stat().st_mtime_ns
+            except FileNotFoundError:
+                return
+            if listed is not None and changed == listed[x] and changed < self._settled:
+                found[x] = True
+                return
+            stems = (name.removesuffix(".webp") for name in os.listdir(folder))
+            found[x, [int(stem) for stem in stems if stem.isdigit()]] = True
 
         list(pool.map(scan, range(found.shape[0])))
         return found
+
+    def _changed_at(self, pool: ThreadPoolExecutor, level: int) -> np.ndarray:
+        """The change time of each column folder of ``level``, in ns."""
+
+        def changed(x: int) -> int:
+            return (self.out_dir / str(level) / str(x)).stat().st_mtime_ns
+
+        return np.array(list(pool.map(changed, range(self._columns(level)))))
 
     def _load(self, level: int, x: int, y: int) -> np.ndarray:
         """The values of a tile on disk."""
@@ -1934,6 +1958,7 @@ class PyramidBuilder:
             "tiles": np.array(self._stats.tiles),
             "size_bytes": np.array(self._stats.size_bytes),
             **{f"held_{level}": band for level, band in self._held.items()},
+            **{f"listed_{level}": times for level, times in self._listed.items()},
         }
         np.savez(partial, allow_pickle=False, **arrays)
         partial.replace(state / _CHECKPOINT)
@@ -1942,13 +1967,22 @@ class PyramidBuilder:
         """Load a saved build of the same inputs; return its next row."""
         if not resumable(self.out_dir, self.checkpoint):
             return 0
-        with np.load(self.out_dir / _STATE_DIR / _CHECKPOINT) as saved:
+        path = self.out_dir / _STATE_DIR / _CHECKPOINT
+        # A folder that changed in the last second before the save can change
+        # again in the same tick of its clock.
+        self._settled = path.stat().st_mtime_ns - 10**9
+        with np.load(path) as saved:
             self._stats.tiles = saved["tiles"].tolist()
             self._stats.size_bytes = saved["size_bytes"].tolist()
             self._held = {
                 int(key.removeprefix("held_")): saved[key]
                 for key in saved.files
                 if key.startswith("held_")
+            }
+            self._listed = {
+                int(key.removeprefix("listed_")): saved[key]
+                for key in saved.files
+                if key.startswith("listed_")
             }
             return int(saved["next_row"])
 

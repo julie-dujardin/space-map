@@ -18,7 +18,7 @@ stamp=$(date +%s)
 # One tile per pyramid, end to end. A monthly map holds a pyramid per month,
 # one folder down.
 for pyramid in "$TILES_DIR"/v1/tiles/*/; do
-  [[ "$pyramid" == *.building/ ]] && continue
+  [[ "$pyramid" == *.building/ || "$pyramid" == *.retired/ ]] && continue
   tile=""
   for first in "$pyramid"0/0/0.webp "$pyramid"*/0/0/0.webp; do
     [[ -f "$first" ]] && { tile="${first#"$TILES_DIR"/}"; break; }

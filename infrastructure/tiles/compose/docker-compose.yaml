@@ -31,8 +31,8 @@ configs:
       	}
 
       	# Plain folder names only. That leaves out what a build keeps aside: a
-      	# pyramid (`{id}.building`), a patch (`.patch-{id}`) and the saves that a
-      	# build resumes from (`.build`).
+      	# pyramid (`{id}.building`), the pyramid it replaced (`{id}.retired`), a
+      	# patch (`.patch-{id}`) and the saves that a build resumes from (`.build`).
       	# $$ escapes Compose interpolation.
       	@tile {
       		method GET HEAD

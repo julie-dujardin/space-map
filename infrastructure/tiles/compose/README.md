@@ -61,6 +61,7 @@ deployed, a page asks for the new tiles with the old `?v=`, and the edge
 keeps them under it. For a height pyramid with a new range, those heights
 are wrong. Deploy the export soon after a rebuild.
 
-Between the removal of the old folder and the rename of the new one the
-pyramid is absent. Caddy marks each error `no-store`, so neither the edge nor
-a browser keeps the `404`.
+The old pyramid moves aside to `{id}.retired`, which is not served, and the
+new one takes its place. The two renames take a moment. A tile asked for
+between them gets a `404` that Caddy marks `no-store`, so neither the edge nor
+a browser keeps it. The end of the ingest run deletes the old pyramid.

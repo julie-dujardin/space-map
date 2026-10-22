@@ -1,7 +1,9 @@
 """Tests for the tile pyramid builder and its place in the texture processor."""
 
 import json
+import os
 import shutil
+import time
 from pathlib import Path
 
 import numpy as np
@@ -867,6 +869,36 @@ class TestDeletedTiles:
             km = _decode_km(again, coding) - _decode_km(values, coding)
             assert np.abs(km).max() <= coding.step_km + 1e-9, path
 
+    def test_only_the_folders_that_changed_are_listed(self, tmp_path, monkeypatch):
+        width = tiles.level_width(3)
+        rng = np.random.default_rng(seed=3)
+        layer = tiles.Layer(
+            rng.integers(0, 256, size=(width // 2, width, 3), dtype=np.uint8),
+            tiles.Placement(),
+        )
+        out = tmp_path / "out"
+
+        def build() -> None:
+            tiles.PyramidBuilder("t", [layer], out, 3, checkpoint="v1").build()
+
+        build()
+        # A folder that changed in the second before a save is listed again.
+        old = time.time_ns() - 100 * 10**9
+        for folder in out.glob("[0-9]*/*"):
+            os.utime(folder, ns=(old, old))
+        build()
+        kept = self._delete(out, {3: [(2, 1)]})
+        listed = []
+        listdir = os.listdir
+        monkeypatch.setattr(
+            os, "listdir", lambda path: listed.append(path) or listdir(path)
+        )
+        build()
+        assert listed == [out / "3" / "2"]
+        for path, values in kept.items():
+            again = np.asarray(Image.open(path).convert("RGB")).astype(int)
+            assert np.array_equal(again, values), path
+
 
 class TestPolarLayer:
     """A polar stereographic cap sampled into rows of latitude."""
@@ -1291,6 +1323,26 @@ class TestProcessTiles:
             tmp_path / "tiles" / "naif-499" / "south" / "1" / "0" / "0.webp"
         ).exists()
 
+    def test_old_pyramid_goes_once_the_new_one_is_in_place(self, tmp_path, monkeypatch):
+        entry = self._colour_entry(tmp_path)
+        proc = self._processor(monkeypatch, tmp_path, [entry])
+        proc.process_tiles()
+        out = tmp_path / "tiles" / "naif-499"
+        (out / "old").touch()
+        seen = []
+        real = shutil.rmtree
+
+        def look(path, *args, **kwargs):
+            served = (out / "1" / "0" / "0.webp").exists(), (out / "old").exists()
+            seen.append((Path(path).name, *served))
+            real(path, *args, **kwargs)
+
+        monkeypatch.setattr(shutil, "rmtree", look)
+        entry["tiles_max_level"] = 1
+        proc.process_tiles()
+        assert ("naif-499.retired", True, False) in seen
+        assert not (tmp_path / "tiles" / "naif-499.retired").exists()
+
     @pytest.mark.parametrize("force", [False, True])
     def test_stop_while_the_old_pyramid_goes_keeps_the_new_one(
         self, tmp_path, monkeypatch, force
@@ -1301,11 +1353,12 @@ class TestProcessTiles:
         if not force:
             entry["tiles_max_level"] = 1
         out = tmp_path / "tiles" / "naif-499"
+        retired = tmp_path / "tiles" / "naif-499.retired"
         stopped = []
         real = shutil.rmtree
 
         def stop_on_the_old_pyramid(path, *args, **kwargs):
-            if Path(path) == out and not stopped:
+            if Path(path) == retired and not stopped:
                 stopped.append(path)
                 raise RuntimeError("stopped")
             real(path, *args, **kwargs)
@@ -1313,12 +1366,38 @@ class TestProcessTiles:
         monkeypatch.setattr(shutil, "rmtree", stop_on_the_old_pyramid)
         with pytest.raises(RuntimeError):
             proc.process_tiles(force=force)
-        building = tmp_path / "tiles" / "naif-499.building"
-        (building / "1" / "0" / "0.webp").write_bytes(b"kept")
+        (out / "1" / "0" / "0.webp").write_bytes(b"kept")
         proc.process_tiles()
         assert (out / "1" / "0" / "0.webp").read_bytes() == b"kept"
-        assert not building.exists()
+        assert not retired.exists()
         assert not list(out.rglob(".build"))
+
+    def test_stop_between_the_renames_keeps_the_new_pyramid(
+        self, tmp_path, monkeypatch
+    ):
+        entry = self._colour_entry(tmp_path)
+        proc = self._processor(monkeypatch, tmp_path, [entry])
+        proc.process_tiles()
+        entry["tiles_max_level"] = 1
+        building = tmp_path / "tiles" / "naif-499.building"
+        stopped = []
+        real = Path.rename
+
+        def stop_on_the_new_pyramid(path, target):
+            if path == building and not stopped:
+                stopped.append(path)
+                raise RuntimeError("stopped")
+            return real(path, target)
+
+        monkeypatch.setattr(Path, "rename", stop_on_the_new_pyramid)
+        with pytest.raises(RuntimeError):
+            proc.process_tiles()
+        (building / "1" / "0" / "0.webp").write_bytes(b"kept")
+        proc.process_tiles()
+        out = tmp_path / "tiles" / "naif-499"
+        assert (out / "1" / "0" / "0.webp").read_bytes() == b"kept"
+        assert not building.exists()
+        assert not (tmp_path / "tiles" / "naif-499.retired").exists()
 
     def test_stop_before_the_descriptor_keeps_the_new_pyramid(
         self, tmp_path, monkeypatch

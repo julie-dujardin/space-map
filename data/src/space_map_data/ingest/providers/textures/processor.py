@@ -418,8 +418,8 @@ class TextureProcessor:
         return out_dir
 
     def process_tiles(self, force: bool = False) -> None:
-        """Build a tile pyramid for every map, and drop the pyramids of maps
-        that are gone."""
+        """Build a tile pyramid for every map. Drop the pyramids of maps that
+        are gone, and the ones that a new build replaced."""
         sources: dict[str, dict] = {}
         for entry in self._raw_meta:
             if entry.get("skip"):
@@ -448,8 +448,8 @@ class TextureProcessor:
             if not root.exists():
                 continue
             for child in root.iterdir():
-                # A stopped build of a map that is still there waits for its
-                # next run, which may be days of work in.
+                # A stopped build of a map waits for its next run: it can hold
+                # days of work. A pyramid that a new build replaced goes.
                 name = child.name.removesuffix(".building")
                 if child.is_dir() and name not in sources:
                     shutil.rmtree(child)
@@ -713,8 +713,13 @@ class TextureProcessor:
             for layer in layers:
                 layer.release()
         assert stats is not None and cap_stats is not None and max_level is not None
+        # The old pyramid serves until the new one takes its place. Its delete
+        # can take hours, so the sweep at the end of the run does it.
+        retired = out_dir.with_name(f"{out_dir.name}.retired")
         if out_dir.exists():
-            shutil.rmtree(out_dir)
+            if retired.exists():
+                shutil.rmtree(retired)
+            out_dir.rename(retired)
         building.rename(out_dir)
 
         metadata: dict = {
