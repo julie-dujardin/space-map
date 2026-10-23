@@ -111,7 +111,7 @@ def _fix_mojibake(text: str | None) -> str | None:
         return text
     try:
         return text.encode("latin-1").decode("utf-8")
-    except (UnicodeEncodeError, UnicodeDecodeError):
+    except UnicodeEncodeError, UnicodeDecodeError:
         return text
 
 

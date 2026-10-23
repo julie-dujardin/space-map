@@ -67,7 +67,7 @@ class SBDBMoonsDownloader(Downloader):
                 continue
             try:
                 obj = json.loads(path.read_text()).get("object") or {}
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 logger.warning("Unreadable satellite payload %s, ignoring", path.name)
                 continue
             des = obj.get("des")

@@ -104,7 +104,7 @@ def _refresh_credits(out_meta_path: Path, meta: dict) -> None:
     ship on a skip run, mirroring the textures ``refresh_metadata_from_yaml``."""
     try:
         current = json.loads(out_meta_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return
     desired = {
         "sources": meta["sources"],

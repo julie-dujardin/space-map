@@ -132,7 +132,7 @@ def _load_memo() -> dict[str, list]:
 def _read_memo_file() -> dict[str, list]:
     try:
         data = json.loads(_MEMO_PATH.read_bytes())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return {}
     if data.get("recipe") != _RECIPE_VERSION:
         return {}

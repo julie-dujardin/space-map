@@ -93,7 +93,7 @@ def read_sig(probe_id: int, zone_key: str, chunk_idx: int) -> dict | None:
         return None
     try:
         return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return None
 
 
@@ -108,7 +108,7 @@ def load(probe_id: int, zone_key: str, chunk_idx: int) -> ChunkProbeRecord | Non
     path = fit_path(probe_id, zone_key, chunk_idx)
     try:
         return pickle.loads(path.read_bytes())
-    except (OSError, pickle.UnpicklingError, EOFError, AttributeError):
+    except OSError, pickle.UnpicklingError, EOFError, AttributeError:
         return None
 
 
