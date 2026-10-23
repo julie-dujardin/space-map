@@ -9,7 +9,7 @@
  */
 
 import { tileUrl } from '$lib/fetch/data-base';
-import { mapTileVersion } from '$lib/scene/lod/tile-window';
+import { CHART_FOLDER, type Chart, tileVersion } from '$lib/scene/lod/tile-window';
 import type { TilesBlock } from '$lib/scene/types';
 import type { DetailCanvas, DetailRaster } from './raster';
 import { acquireBitmap, releaseBitmap } from './texture-cache';
@@ -154,12 +154,10 @@ export class LayerTiles {
 		}
 		for (const tile of windowTiles(spec, this.block)) {
 			// A patch is built apart from its pyramid, and has its own cache token.
-			// So have the tiles of the map that it is drawn over.
+			// So have the tiles of the pyramid that it is drawn over.
+			const chart = CHART_FOLDER.indexOf(tile.cap) as Chart;
 			const version =
-				tile.patch?.version ??
-				(tile.cap === ''
-					? mapTileVersion(this.block, tile.level, tile.x, tile.y)
-					: this.block.version);
+				tile.patch?.version ?? tileVersion(this.block, chart, tile.level, tile.x, tile.y);
 			const pyramid = { id: this.block.id, version };
 			const url = tileUrl(pyramid, tile.cap, tile.level, tile.x, tile.y, frame);
 			if (this.failed.has(url)) continue;

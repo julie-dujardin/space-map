@@ -60,11 +60,16 @@ interface Corner {
 
 const corner: Corner = { chart: MAP, level: 0, x0: 0, x1: 0, y0: 0, y1: 0, fx: 0, fy: 0 };
 
+/** The chart a vertex reads at `level`, over the unit direction with north
+ *  component `y`. A cap starts at level 1. */
+export function gridChart(level: number, y: number): Chart {
+	return level < 1 || Math.abs(y) <= CAP_SIN ? MAP : y > 0 ? NORTH : SOUTH;
+}
+
 /** Where the body-fixed unit direction `(x, y, z)` falls at `level`, on the
  *  chart a vertex there reads. */
 function locate(level: number, x: number, y: number, z: number, tileSize: number): Corner {
-	// A cap starts at level 1.
-	const chart = level < 1 || Math.abs(y) <= CAP_SIN ? MAP : y > 0 ? NORTH : SOUTH;
+	const chart = gridChart(level, y);
 	const width = chartColumns(chart, level) * tileSize;
 	const height = chartRows(chart, level) * tileSize;
 	const at = chartPoint(chart, x, y, z);

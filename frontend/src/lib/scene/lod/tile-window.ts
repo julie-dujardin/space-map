@@ -200,8 +200,10 @@ export function placeWindow(
 }
 
 /** The tiles of a patch: the levels of a pyramid past its finest, over the
- *  ground of one regional mosaic. Map chart only. */
+ *  ground of one regional mosaic, on the map or on a cap. */
 export interface PatchRange {
+	/** The cap the patch is on. None for the map. */
+	cap?: 'north' | 'south';
 	max_level: number;
 	/** First and last column, then first and last row, at `max_level`. */
 	x: [number, number];
@@ -211,11 +213,17 @@ export interface PatchRange {
 	map_levels?: number;
 }
 
-/** Whether map tile `(x, y)` of `level` is in the range of a patch. */
-function inRange(patch: PatchRange, level: number, x: number, y: number): boolean {
+/** The chart a patch is on. */
+export function patchChart(patch: PatchRange): Chart {
+	return patch.cap === 'north' ? NORTH : patch.cap === 'south' ? SOUTH : MAP;
+}
+
+/** Whether tile `(x, y)` of `level` of `chart` is in the range of a patch. */
+function inRange(patch: PatchRange, chart: Chart, level: number, x: number, y: number): boolean {
 	const up = patch.max_level - level;
 	return (
 		up >= 0 &&
+		patchChart(patch) === chart &&
 		x >= patch.x[0] >> up &&
 		x <= patch.x[1] >> up &&
 		y >= patch.y[0] >> up &&
@@ -223,32 +231,35 @@ function inRange(patch: PatchRange, level: number, x: number, y: number): boolea
 	);
 }
 
-/** The patch that has map tile `(x, y)` of `level`. No other tile exists past
- *  a pyramid's finest level, and a host would answer 404 for it. */
+/** The patch that has tile `(x, y)` of `level` of `chart`. No other tile
+ *  exists past a pyramid's finest level, and a host would answer 404 for it. */
 export function patchOfTile<P extends PatchRange>(
 	patches: readonly P[] | undefined,
+	chart: Chart,
 	level: number,
 	x: number,
 	y: number
 ): P | undefined {
-	return patches?.find((patch) => inRange(patch, level, x, y));
+	return patches?.find((patch) => inRange(patch, chart, level, x, y));
 }
 
-/** The cache token of map tile `(x, y)` of one of a pyramid's own levels. A
- *  patch is drawn over the tiles under it at the finest of these levels, so
- *  such a tile changes with the patch and not with the pyramid alone. */
-export function mapTileVersion(
+/** The cache token of tile `(x, y)` of one of a pyramid's own levels. A patch
+ *  is drawn over the tiles under it at the finest of these levels, so such a
+ *  tile changes with the patch and not with the pyramid alone. */
+export function tileVersion(
 	pyramid: {
 		version: string;
 		max_level: number;
 		patches?: readonly (PatchRange & { version: string })[];
 	},
+	chart: Chart,
 	level: number,
 	x: number,
 	y: number
 ): string {
 	const over = pyramid.patches?.filter(
-		(patch) => level > pyramid.max_level - (patch.map_levels ?? 0) && inRange(patch, level, x, y)
+		(patch) =>
+			level > pyramid.max_level - (patch.map_levels ?? 0) && inRange(patch, chart, level, x, y)
 	);
 	return over?.length ? over.map((patch) => patch.version).join('.') : pyramid.version;
 }
@@ -257,30 +268,32 @@ export function mapTileVersion(
  *  window, less the half tile its first column is rounded by. */
 const REACH_TILES = WINDOW_TILES / 2 - 0.5;
 
-/** The finest level whose window around the map point `(x, y)`, as
+/** The finest level whose window around the point `(x, y)` of `chart`, as
  *  `chartPoint` gives it, has a tile: the pyramid's own, or a level of a patch
  *  the window reaches. A coarser window reaches further, so the levels of a
  *  patch come in one by one on the way to it. */
 export function deepestLevel(
 	maxLevel: number,
 	patches: readonly PatchRange[] | undefined,
+	chart: Chart,
 	x: number,
 	y: number
 ): number {
 	let deepest = maxLevel;
 	if (!patches) return deepest;
 	for (const patch of patches) {
+		if (patchChart(patch) !== chart) continue;
 		for (let level = patch.max_level; level > deepest; level--) {
 			const up = patch.max_level - level;
-			const columns = chartColumns(MAP, level);
+			const columns = chartColumns(chart, level);
 			const x0 = patch.x[0] >> up;
 			const y0 = patch.y[0] >> up;
 			const halfWidth = ((patch.x[1] >> up) + 1 - x0) / 2;
 			const halfHeight = ((patch.y[1] >> up) + 1 - y0) / 2;
 			let east = x * columns - (x0 + halfWidth);
 			// The nearer way around the globe.
-			east -= columns * Math.round(east / columns);
-			const south = y * chartRows(MAP, level) - (y0 + halfHeight);
+			if (chart === MAP) east -= columns * Math.round(east / columns);
+			const south = y * chartRows(chart, level) - (y0 + halfHeight);
 			if (
 				Math.abs(east) - halfWidth <= REACH_TILES &&
 				Math.abs(south) - halfHeight <= REACH_TILES
@@ -294,10 +307,10 @@ export function deepestLevel(
 }
 
 /**
- * The map point `(x, y)` counted from a window's north-west corner, in tiles
- * of the window's level. The shader adds a fragment's own small offset from
- * the point to this, so a position keeps its digits at levels where a tile
- * index alone takes all a float has.
+ * The point `(x, y)` of the window's chart counted from its north-west
+ * corner, in tiles of the window's level. The shader adds a fragment's own
+ * small offset from the point to this, so a position keeps its digits at
+ * levels where a tile index alone takes all a float has.
  */
 export function windowHome(
 	placement: WindowPlacement,
@@ -307,7 +320,7 @@ export function windowHome(
 	const columns = chartColumns(placement.chart, placement.level);
 	let east = x * columns - placement.tx0;
 	// The nearer way around the globe.
-	east -= columns * Math.round(east / columns);
+	if (placement.chart === MAP) east -= columns * Math.round(east / columns);
 	return { x: east, y: y * chartRows(placement.chart, placement.level) - placement.ty0 };
 }
 

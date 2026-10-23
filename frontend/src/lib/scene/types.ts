@@ -41,6 +41,8 @@ export interface TextureBundleMeta extends CreditFields {
  *  one regional mosaic, with that mosaic's credit. */
 export interface TilePatch extends CreditFields {
 	id: string;
+	/** The cap the patch is on, past latitude 60°. None for the map. */
+	cap?: 'north' | 'south';
 	max_level: number;
 	/** First and last column, then first and last row, at `max_level`. */
 	x: [number, number];

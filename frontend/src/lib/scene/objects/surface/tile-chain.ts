@@ -33,10 +33,10 @@ import {
 	chartPoint,
 	chartRows,
 	deepestLevel,
-	mapTileVersion,
 	patchOfTile,
 	placeWindow,
 	slotTile,
+	tileVersion,
 	windowChain,
 	windowHome
 } from '$lib/scene/lod/tile-window';
@@ -193,9 +193,9 @@ void tileCap( vec3 dir, vec3 ddx, vec3 ddy, out float side, out mat3x2 cap ) {
 	);
 }
 
-// The point at + off on the map, counted from at, and on the cap of its own
-// hemisphere, which side gives. A position on the sphere has seven digits,
-// and a tile index of a patch takes them all; the offset keeps its own.
+// The point at + off on the map and on the cap of its own hemisphere, which
+// side gives, each counted from at. A position on the sphere has seven
+// digits, and a tile index of a patch takes them all. The offset keeps its own.
 void tileChartsFrom( vec3 at, vec3 off, out mat3x2 map, out mat3x2 cap, out float side ) {
 	vec3 pos = at + off;
 	vec3 ox = dFdx( off );
@@ -217,12 +217,19 @@ void tileChartsFrom( vec3 at, vec3 off, out mat3x2 map, out mat3x2 cap, out floa
 		( pos.z * oy.x - pos.x * oy.z ) * east, ( pos.y * ( pos.x * oy.x + pos.z * oy.z ) / flat1 - flat1 * oy.y ) * south
 	);
 
-	// A cap goes no deeper than the pyramid, so the direction itself will do.
 	float range = length( pos );
 	vec3 dir = pos / range;
 	vec3 ddx = ( ox - dir * dot( dir, ox ) ) / range;
 	vec3 ddy = ( oy - dir * dot( dir, oy ) ) / range;
 	tileCap( dir, ddx, ddy, side, cap );
+
+	// The point on the cap, counted from at.
+	float reach = length( at );
+	float foldAt = max( reach + side * at.y, 1e-6 * reach );
+	float grow = ( 2.0 * dot( at, off ) + dot( off, off ) ) / ( range + reach );
+	vec2 planeAt = vec2( at.x, side * at.z );
+	vec2 shift = vec2( off.x, side * off.z ) * foldAt - planeAt * ( grow + side * off.y );
+	cap[ 0 ] = shift / ( ( range + side * pos.y ) * foldAt ) * ( 0.5 / ${CAP_EDGE.toFixed(8)} );
 }
 
 // Long and short half-axes of the footprint whose sides are fx and fy. The
@@ -265,7 +272,7 @@ float tileWindowWeight( mat3x2 map, mat3x2 cap, float side, vec4 window, vec4 gr
 
 	float rows = ${WINDOW_TILES.toFixed(1)};
 	// Offset from the window's north-west corner, in tiles.
-	vec2 rel = onMap ? home + chart[ 0 ] * grid.xy : chart[ 0 ] * grid.xy - grid.zw;
+	vec2 rel = home + chart[ 0 ] * grid.xy;
 	if ( onMap ) {
 		// Half a pixel in from a pole of the map: past it the filter would
 		// read the far row. The map's longitude wraps.
@@ -393,8 +400,8 @@ function release(store: WindowStore, win: TileWindow): void {
 /** The patch a tile past the pyramid's finest level belongs to. Such a level
  *  has tiles on the ground of its patches only. */
 function patchOf(tiles: TilesBlock, win: TileWindow, tile: { x: number; y: number }) {
-	if (win.chart !== MAP || win.level <= tiles.max_level) return undefined;
-	return patchOfTile(tiles.patches, win.level, tile.x, tile.y);
+	if (win.level <= tiles.max_level) return undefined;
+	return patchOfTile(tiles.patches, win.chart, win.level, tile.x, tile.y);
 }
 
 /** Whether the tile of a slot exists at all. */
@@ -470,10 +477,10 @@ function pump(
 		chain.inflight++;
 		const folder = CHART_FOLDER[win.chart];
 		// A patch is built apart from its pyramid, and has its own cache token.
-		// So have the tiles of the map that it is drawn over.
+		// So have the tiles of the pyramid that it is drawn over.
 		const version =
 			patchOf(tiles, win, tile)?.version ??
-			(win.chart === MAP ? mapTileVersion(tiles, win.level, tile.x, tile.y) : tiles.version);
+			tileVersion(tiles, win.chart, win.level, tile.x, tile.y);
 		const pyramid = { id: tiles.id, version };
 		chain.kind
 			.load(tileUrl(pyramid, folder, win.level, tile.x, tile.y, win.frame), abort.signal)
@@ -545,15 +552,16 @@ export function pointUnderCamera(mesh: Object3D, camera: PerspectiveCamera): Vec
 }
 
 /** The finest level that has a tile near `over`, the point under the camera:
- *  past the pyramid's own where a window of the map reaches a patch. */
+ *  past the pyramid's own where a window of the camera's chart reaches a
+ *  patch. */
 export function finestLevelAt(
 	chain: TileChain | undefined,
 	tiles: TilesBlock,
 	over: Vector3
 ): number {
-	if (cameraChart(over.y, chain?.chart) !== MAP) return tiles.max_level;
-	const point = chartPoint(MAP, over.x, over.y, over.z);
-	return deepestLevel(tiles.max_level, tiles.patches, point.x, point.y);
+	const chart = cameraChart(over.y, chain?.chart);
+	const point = chartPoint(chart, over.x, over.y, over.z);
+	return deepestLevel(tiles.max_level, tiles.patches, chart, point.x, point.y);
 }
 
 /** Windows a chain of `tiles` holds on a device that affords `limit`. One
@@ -606,7 +614,9 @@ export function updateChain(
 	);
 	chain.uniforms.anchor.value.copy(anchor);
 	const range = anchor.length();
-	const home = chartPoint(MAP, anchor.x / range, anchor.y / range, anchor.z / range);
+	const homes = [MAP, NORTH, SOUTH].map((chart) =>
+		chartPoint(chart as Chart, anchor.x / range, anchor.y / range, anchor.z / range)
+	);
 
 	const windowOf = (link: { chart: Chart; level: number }) =>
 		store.windows.find((win) => win.chart === link.chart && win.level === link.level);
@@ -662,10 +672,9 @@ export function updateChain(
 			win.placement.tx0,
 			win.placement.ty0
 		);
-		if (win.chart === MAP) {
-			const from = windowHome(win.placement, home.x, home.y);
-			chain.uniforms.home.value[i].set(from.x, from.y);
-		}
+		const home = homes[win.chart];
+		const from = windowHome(win.placement, home.x, home.y);
+		chain.uniforms.home.value[i].set(from.x, from.y);
 		link.set(win.chart, win.layer, win.level, 1);
 		let loaded = 0;
 		for (let slot = 0; slot < SLOTS; slot++) {

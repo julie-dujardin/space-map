@@ -192,10 +192,10 @@ void reliefSight( int i, mat3x2 map, mat3x2 cap, float side, vec2 mapStep, vec2 
 	vec4 grid = uReliefGrid[ i ];
 	bool onMap = window.x < 0.5;
 	float rows = ${WINDOW_TILES.toFixed(1)};
-	// In tiles from the window's north-west corner. The map is counted from
-	// the point under the camera, so the fragment is on the side of the globe
-	// nearest the window.
-	vec2 rel = onMap ? uReliefHome[ i ] + map[ 0 ] * grid.xy : cap[ 0 ] * grid.xy - grid.zw;
+	// In tiles from the window's north-west corner, counted from the point
+	// under the camera. On the map the fragment is then on the side of the
+	// globe nearest the window.
+	vec2 rel = uReliefHome[ i ] + ( onMap ? map[ 0 ] : cap[ 0 ] ) * grid.xy;
 	vec2 rate = ( onMap ? mapStep : capStep ) * grid.xy;
 
 	// Half a pixel in from the window's sides: past it the filter reads the

@@ -13,11 +13,11 @@ import {
 	chartPoint,
 	chartRows,
 	deepestLevel,
-	mapTileVersion,
 	neededLevel,
 	patchOfTile,
 	placeWindow,
 	slotTile,
+	tileVersion,
 	windowChain,
 	windowHome
 } from './tile-window';
@@ -286,42 +286,42 @@ describe('patches', () => {
 	const inside = { x: 93700 / chartColumns(MAP, 16), y: 26000 / chartRows(MAP, 16) };
 
 	it('has the tiles of its range at its own level', () => {
-		expect(patchOfTile(patches, 16, 93652, 25970)).toBe(patches[0]);
-		expect(patchOfTile(patches, 16, 93783, 26102)).toBe(patches[0]);
-		expect(patchOfTile(patches, 16, 93651, 25970)).toBeUndefined();
-		expect(patchOfTile(patches, 16, 93652, 26103)).toBeUndefined();
+		expect(patchOfTile(patches, MAP, 16, 93652, 25970)).toBe(patches[0]);
+		expect(patchOfTile(patches, MAP, 16, 93783, 26102)).toBe(patches[0]);
+		expect(patchOfTile(patches, MAP, 16, 93651, 25970)).toBeUndefined();
+		expect(patchOfTile(patches, MAP, 16, 93652, 26103)).toBeUndefined();
 	});
 
 	it('has the tiles above those at each coarser level', () => {
-		expect(patchOfTile(patches, 11, 2926, 811)).toBe(patches[0]);
-		expect(patchOfTile(patches, 11, 2930, 815)).toBe(patches[0]);
-		expect(patchOfTile(patches, 11, 2925, 811)).toBeUndefined();
-		expect(patchOfTile(patches, 11, 2931, 815)).toBeUndefined();
+		expect(patchOfTile(patches, MAP, 11, 2926, 811)).toBe(patches[0]);
+		expect(patchOfTile(patches, MAP, 11, 2930, 815)).toBe(patches[0]);
+		expect(patchOfTile(patches, MAP, 11, 2925, 811)).toBeUndefined();
+		expect(patchOfTile(patches, MAP, 11, 2931, 815)).toBeUndefined();
 	});
 
 	it('has no tile past its finest level', () => {
-		expect(patchOfTile(patches, 17, 93700 * 2, 26000 * 2)).toBeUndefined();
+		expect(patchOfTile(patches, MAP, 17, 93700 * 2, 26000 * 2)).toBeUndefined();
 	});
 
 	it('takes a camera over it deeper than the pyramid goes', () => {
-		expect(deepestLevel(10, patches, inside.x, inside.y)).toBe(16);
-		expect(deepestLevel(10, patches, inside.x + 0.01, inside.y)).toBe(10);
-		expect(deepestLevel(10, undefined, inside.x, inside.y)).toBe(10);
+		expect(deepestLevel(10, patches, MAP, inside.x, inside.y)).toBe(16);
+		expect(deepestLevel(10, patches, MAP, inside.x + 0.01, inside.y)).toBe(10);
+		expect(deepestLevel(10, undefined, MAP, inside.x, inside.y)).toBe(10);
 	});
 
 	it('takes a camera beside it as deep as a window still reaches it', () => {
 		// Tiles of level 16 east of the last column.
 		const east = (tiles: number) => (93784 + tiles) / chartColumns(MAP, 16);
-		expect(deepestLevel(10, patches, east(1), inside.y)).toBe(16);
-		expect(deepestLevel(10, patches, east(2.5), inside.y)).toBe(15);
-		expect(deepestLevel(10, patches, east(20), inside.y)).toBe(12);
-		expect(deepestLevel(10, patches, east(100), inside.y)).toBe(10);
+		expect(deepestLevel(10, patches, MAP, east(1), inside.y)).toBe(16);
+		expect(deepestLevel(10, patches, MAP, east(2.5), inside.y)).toBe(15);
+		expect(deepestLevel(10, patches, MAP, east(20), inside.y)).toBe(12);
+		expect(deepestLevel(10, patches, MAP, east(100), inside.y)).toBe(10);
 	});
 
 	it('counts the reach the short way around the globe', () => {
 		const first: PatchRange[] = [{ max_level: 16, x: [0, 99], y: [25970, 26102] }];
 		const west = 1 - 1 / chartColumns(MAP, 16);
-		expect(deepestLevel(10, first, west, inside.y)).toBe(16);
+		expect(deepestLevel(10, first, MAP, west, inside.y)).toBe(16);
 	});
 
 	describe('in the levels of the map', () => {
@@ -333,19 +333,19 @@ describe('patches', () => {
 		};
 
 		it('gives its token to the tiles of the map under it', () => {
-			expect(mapTileVersion(pyramid, 10, 1463, 405)).toBe('jezero');
-			expect(mapTileVersion(pyramid, 7, 182, 50)).toBe('jezero');
+			expect(tileVersion(pyramid, MAP, 10, 1463, 405)).toBe('jezero');
+			expect(tileVersion(pyramid, MAP, 7, 182, 50)).toBe('jezero');
 		});
 
 		it('leaves the pyramid its token beside it and above its levels', () => {
-			expect(mapTileVersion(pyramid, 10, 1462, 405)).toBe('map');
-			expect(mapTileVersion(pyramid, 6, 91, 25)).toBe('map');
+			expect(tileVersion(pyramid, MAP, 10, 1462, 405)).toBe('map');
+			expect(tileVersion(pyramid, MAP, 6, 91, 25)).toBe('map');
 		});
 
 		it('leaves a pyramid whose patches stay out of the map its token', () => {
 			const plain = { ...pyramid, patches: [{ ...patches[0], version: 'jezero' }] };
-			expect(mapTileVersion(plain, 10, 1463, 405)).toBe('map');
-			expect(mapTileVersion({ version: 'map', max_level: 10 }, 10, 1463, 405)).toBe('map');
+			expect(tileVersion(plain, MAP, 10, 1463, 405)).toBe('map');
+			expect(tileVersion({ version: 'map', max_level: 10 }, MAP, 10, 1463, 405)).toBe('map');
 		});
 
 		it('names each patch on a tile that two share', () => {
@@ -354,9 +354,40 @@ describe('patches', () => {
 				...pyramid,
 				patches: [...pyramid.patches, { ...beside, version: 'beside', map_levels: 4 }]
 			};
-			expect(mapTileVersion(both, 7, 183, 50)).toBe('jezero.beside');
-			expect(mapTileVersion(both, 10, 1467, 405)).toBe('beside');
+			expect(tileVersion(both, MAP, 7, 183, 50)).toBe('jezero.beside');
+			expect(tileVersion(both, MAP, 10, 1467, 405)).toBe('beside');
 		});
+	});
+});
+
+describe('patches on a cap', () => {
+	// Phoenix's: levels 11 to 16 of the north cap, at u 0.362 and v 0.690.
+	const patches: PatchRange[] = [
+		{ cap: 'north', max_level: 16, x: [11860, 11935], y: [22610, 22685] }
+	];
+	const inside = { x: 11900 / chartColumns(NORTH, 16), y: 22650 / chartRows(NORTH, 16) };
+
+	it('has tiles of its own cap only', () => {
+		expect(patchOfTile(patches, NORTH, 16, 11860, 22610)).toBe(patches[0]);
+		expect(patchOfTile(patches, NORTH, 13, 11860 >> 3, 22610 >> 3)).toBe(patches[0]);
+		expect(patchOfTile(patches, MAP, 16, 11860, 22610)).toBeUndefined();
+		expect(patchOfTile(patches, SOUTH, 16, 11860, 22610)).toBeUndefined();
+	});
+
+	it('takes a camera over it deeper on its cap only', () => {
+		expect(deepestLevel(10, patches, NORTH, inside.x, inside.y)).toBe(16);
+		expect(deepestLevel(10, patches, MAP, inside.x, inside.y)).toBe(10);
+		expect(deepestLevel(10, patches, SOUTH, inside.x, inside.y)).toBe(10);
+	});
+
+	it('gives its token to the tiles of the cap under it', () => {
+		const pyramid = {
+			version: 'map',
+			max_level: 10,
+			patches: [{ ...patches[0], version: 'phoenix', map_levels: 4 }]
+		};
+		expect(tileVersion(pyramid, NORTH, 10, 11900 >> 6, 22650 >> 6)).toBe('phoenix');
+		expect(tileVersion(pyramid, MAP, 10, 11900 >> 6, 22650 >> 6)).toBe('map');
 	});
 });
 
@@ -368,6 +399,13 @@ describe('windowHome', () => {
 		expect(home.y).toBeCloseTo(0.3967 * chartRows(MAP, 16) - placement.ty0, 6);
 		expect(home.x).toBeGreaterThan(0);
 		expect(home.x).toBeLessThan(WINDOW_TILES);
+	});
+
+	it('does not wrap on a cap, which ends at its sides', () => {
+		const placement: WindowPlacement = { chart: NORTH, level: 3, tx0: 0, ty0: 0 };
+		const home = windowHome(placement, 0.8, 0.3);
+		expect(home.x).toBeCloseTo(3.2, 9);
+		expect(home.y).toBeCloseTo(1.2, 9);
 	});
 
 	it('goes the short way around for a window across the 180° meridian', () => {

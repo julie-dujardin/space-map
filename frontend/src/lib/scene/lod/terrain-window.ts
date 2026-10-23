@@ -15,7 +15,8 @@ import { buildTerrainGrid } from '$lib/scene/relief/client';
 import { currentRenderTier } from '$lib/scene/render-tier';
 import { effectiveRadiusKm } from '$lib/types/objects';
 import type { BodyObjects, TilesBlock } from '$lib/scene/types';
-import { deepestLevel } from './tile-window';
+import { gridChart } from '$lib/scene/relief/grid-heights';
+import { chartPoint, deepestLevel } from './tile-window';
 import {
 	BASE_WIDTH_PX,
 	COARSE_SEGS,
@@ -162,12 +163,11 @@ function heightTilesOf(bo: BodyObjects): TilesBlock | undefined {
  * the floats of a vertex on a sphere of `radius` still tell two cells apart.
  */
 function gridLevel(tiles: TilesBlock, theta: number, phi: number, radius: number): number {
-	const deepest = deepestLevel(
-		tiles.max_level,
-		tiles.patches,
-		phi / (2 * Math.PI),
-		theta / Math.PI
-	);
+	const y = Math.cos(theta);
+	const chart = gridChart(tiles.max_level, y);
+	const dir = [-Math.cos(phi) * Math.sin(theta), y, Math.sin(phi) * Math.sin(theta)] as const;
+	const point = chartPoint(chart, ...dir);
+	const deepest = deepestLevel(tiles.max_level, tiles.patches, chart, point.x, point.y);
 	if (deepest === tiles.max_level) return deepest;
 	const floatStep = 2 ** (Math.floor(Math.log2(radius)) - 23);
 	const cells = (2 * Math.PI * radius) / (CELL_FLOAT_STEPS * floatStep);
@@ -276,7 +276,8 @@ function updateTiledWindow(
 			root: tileRoot(tiles),
 			version: tiles.version,
 			maxLevel: tiles.max_level,
-			patches: (tiles.patches ?? []).map(({ max_level, x, y, version }) => ({
+			patches: (tiles.patches ?? []).map(({ cap, max_level, x, y, version }) => ({
+				cap,
 				max_level,
 				x,
 				y,

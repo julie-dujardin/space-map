@@ -11,7 +11,7 @@
 
 import { tilePath } from '$lib/fetch/tile-path';
 import { type GridAxis, buildGridArrays } from '$lib/scene/lod/terrain-grid';
-import { CHART_FOLDER, MAP, type PatchRange, patchOfTile } from '$lib/scene/lod/tile-window';
+import { CHART_FOLDER, type Chart, type PatchRange, patchOfTile } from '$lib/scene/lod/tile-window';
 import { gridHeights, gridTiles, tileOfKey } from './grid-heights';
 import { heightValues, packHeightBytes, packHeightValues } from './heights';
 
@@ -132,8 +132,8 @@ async function sendGrid(request: GridRequest, signal: AbortSignal): Promise<void
 	gridRoot = root;
 
 	// Past the pyramid's finest level, only the tiles of a patch exist.
-	const patchOf = (chart: number, level: number, x: number, y: number) =>
-		chart === MAP ? patchOfTile(patches, level, x, y) : undefined;
+	const patchOf = (chart: Chart, level: number, x: number, y: number) =>
+		patchOfTile(patches, chart, level, x, y);
 	const needed = gridTiles(
 		rows,
 		columns,

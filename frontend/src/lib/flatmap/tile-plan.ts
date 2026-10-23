@@ -15,6 +15,7 @@ import {
 	SOUTH,
 	chartColumns,
 	chartRows,
+	patchChart,
 	patchOfTile,
 	type Chart,
 	type PatchRange
@@ -119,15 +120,16 @@ export function stepOfLevel(level: number, tileSize: number): number {
 /** The finest level that has a tile at a place: the finest of the pyramid,
  *  or that of a patch over the place. */
 export function finestLevelAt(pyramid: Pyramid, lon: number, lat: number): number {
-	const [across, fy] = chartFraction(MAP, lon, lat);
-	// A longitude can be given past ±180°.
-	const fx = across - Math.floor(across);
 	let finest = pyramid.max_level;
 	for (const patch of pyramid.patches ?? []) {
 		if (patch.max_level <= finest) continue;
-		const x = Math.floor(fx * chartColumns(MAP, patch.max_level));
-		const y = Math.floor(fy * chartRows(MAP, patch.max_level));
-		if (patchOfTile([patch], patch.max_level, x, y)) finest = patch.max_level;
+		const chart = patchChart(patch);
+		const [across, fy] = chartFraction(chart, lon, lat);
+		// A longitude can be given past ±180°.
+		const fx = chart === MAP ? across - Math.floor(across) : across;
+		const x = Math.floor(fx * chartColumns(chart, patch.max_level));
+		const y = Math.floor(fy * chartRows(chart, patch.max_level));
+		if (patchOfTile([patch], chart, patch.max_level, x, y)) finest = patch.max_level;
 	}
 	return finest;
 }
@@ -223,15 +225,16 @@ function fitted(
 	return undefined;
 }
 
-/** Whether a tile of `patch` is in the extent of the frame on the map. */
+/** Whether a tile of `patch` is in the extent of the frame on its chart. */
 function reaches(patch: PatchRange, extent: Extent): boolean {
-	const columns = chartColumns(MAP, patch.max_level);
-	const rows = chartRows(MAP, patch.max_level);
+	const chart = patchChart(patch);
+	const columns = chartColumns(chart, patch.max_level);
+	const rows = chartRows(chart, patch.max_level);
 	const south = (patch.y[1] + 1) / rows;
 	if (patch.y[0] / rows > extent.maxY || south < extent.minY) return false;
 	let west = patch.x[0] / columns;
 	// The copy of the patch nearest the frame.
-	west -= Math.round(west - (extent.minX + extent.maxX) / 2);
+	if (chart === MAP) west -= Math.round(west - (extent.minX + extent.maxX) / 2);
 	const east = west + (patch.x[1] + 1 - patch.x[0]) / columns;
 	return west <= extent.maxX && east >= extent.minX;
 }
@@ -263,22 +266,29 @@ export function planWindows(
 		}
 	}
 	const onMap = extentOn(MAP, frame, places, centre)!;
+	const cap = centre[1] >= 0 ? NORTH : SOUTH;
+	const onCap = extentOn(cap, frame, places, centre);
 	const wanted = levelForStep(frame.step, pyramid.tile_size);
 	const specs: WindowSpec[] = [];
 
+	// The finest patch in the frame, on the map or on the frame's cap.
 	let finest = pyramid.max_level;
+	let finestOn: { chart: Chart; extent: Extent } = { chart: MAP, extent: onMap };
 	for (const patch of pyramid.patches ?? []) {
-		if (patch.max_level > finest && reaches(patch, onMap)) finest = patch.max_level;
+		const chart = patchChart(patch);
+		const extent = chart === MAP ? onMap : chart === cap ? onCap : null;
+		if (extent && patch.max_level > finest && reaches(patch, extent)) {
+			finest = patch.max_level;
+			finestOn = { chart, extent };
+		}
 	}
 	for (let level = Math.min(wanted, finest); level > pyramid.max_level; level--) {
-		const spec = fitted(MAP, level, pyramid.tile_size, onMap, margin);
+		const spec = fitted(finestOn.chart, level, pyramid.tile_size, finestOn.extent, margin);
 		if (!spec) continue;
 		specs.push(spec);
 		break;
 	}
 
-	const cap = centre[1] >= 0 ? NORTH : SOUTH;
-	const onCap = extentOn(cap, frame, places, centre);
 	for (let level = Math.min(wanted, pyramid.max_level); level >= firstLevel; level--) {
 		const map = fitted(MAP, level, pyramid.tile_size, onMap, margin);
 		const polar =
@@ -311,7 +321,7 @@ export function windowTiles<P extends PatchRange>(
 			const x = ((tx % columns) + columns) % columns;
 			const patch =
 				spec.level > pyramid.max_level
-					? patchOfTile(pyramid.patches, spec.level, x, ty)
+					? patchOfTile(pyramid.patches, spec.chart, spec.level, x, ty)
 					: undefined;
 			if (spec.level > pyramid.max_level && !patch) continue;
 			tiles.push({

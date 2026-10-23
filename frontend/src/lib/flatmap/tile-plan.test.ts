@@ -199,6 +199,38 @@ describe('planWindows', () => {
 	});
 });
 
+/** A patch on the north cap, around Phoenix's landing site. */
+describe('a patch on a cap', () => {
+	const PHOENIX = { lon: -125.75, lat: 68.22 };
+	const [u, v] = chartFraction(NORTH, PHOENIX.lon, PHOENIX.lat);
+	const columns = 2 ** 15;
+	const x = Math.floor(u * columns);
+	const y = Math.floor(v * columns);
+	const polar: Pyramid = {
+		tile_size: SIZE,
+		max_level: 10,
+		patches: [{ cap: 'north', max_level: 16, x: [x - 30, x + 30], y: [y - 30, y + 30] }]
+	};
+
+	it('is the finest level over its place', () => {
+		expect(finestLevelAt(polar, PHOENIX.lon, PHOENIX.lat)).toBe(16);
+		expect(finestLevelAt(polar, PHOENIX.lon + 10, PHOENIX.lat)).toBe(10);
+	});
+
+	it('gets a window of its cap, with one of the pyramid for the ground around', () => {
+		const specs = planWindows(polar, frame('orthographic', PHOENIX.lon, PHOENIX.lat, 0.5), 2);
+		expect(specs.map((spec) => [spec.chart, spec.level])).toEqual([
+			[NORTH, 15],
+			[NORTH, 10]
+		]);
+		const tiles = windowTiles(specs[0], polar);
+		expect(tiles.length).toBeGreaterThan(0);
+		expect(tiles.every((tile) => tile.cap === 'north' && tile.patch === polar.patches![0])).toBe(
+			true
+		);
+	});
+});
+
 /** The tiles of a window. */
 describe('windowTiles', () => {
 	it('gives each tile once, with its place in the window', () => {
