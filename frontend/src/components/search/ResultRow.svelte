@@ -12,6 +12,7 @@
 		serializeUrl,
 		urlTypeFromId
 	} from '$lib/state/url';
+	import { searchHitHref } from '$lib/state/page-href';
 	import { isModifiedClick } from '$lib/modified-click';
 
 	type Props = {
@@ -37,7 +38,8 @@
 	const appState = getContext<AppState | undefined>('appState');
 
 	let href = $derived.by(() => {
-		if (!appState) return undefined;
+		// Off the map there is no view to carry over.
+		if (!appState) return searchHitHref(hit, name);
 		const view = appState.view;
 		if (hit.kind === 'feature')
 			return serializeUrl(

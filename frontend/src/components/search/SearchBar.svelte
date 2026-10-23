@@ -60,20 +60,27 @@
 		/** Ends the collapsed pill, where the site row keeps its menu button; the
 		 *  magnifier goes since the placeholder already says what the field is. */
 		trailing?: Snippet;
+		/** Set where the search has a dialog of its own: it opens expanded, and
+		 *  collapsing it closes the dialog. */
+		onClose?: () => void;
 	};
 
-	let { onSelect, onExpandedChange, trailing }: Props = $props();
+	let { onSelect, onExpandedChange, trailing, onClose }: Props = $props();
 
-	const ctx = getContext<ContextManager>('ctx');
-	const appState = getContext<AppState>('appState');
+	// Both absent off the map: names then come from the catalog alone, and the
+	// URL belongs to the page.
+	const ctx = getContext<ContextManager | undefined>('ctx');
+	const appState = getContext<AppState | undefined>('appState');
 	const enabled = isSearchEnabled();
 
 	const model = new SearchModel();
 	// Hydrate from a shared link / reload: restore query+filters and open the
 	// panel. Ephemeral after this: popstate doesn't restore it, only a fresh load does.
-	const hydrated = enabled ? parseSearchSuffix(page.url.searchParams) : null;
+	const hydrated = enabled && appState ? parseSearchSuffix(page.url.searchParams) : null;
 	if (hydrated) model.applyUrlState(hydrated);
-	let expanded = $state(hydrated !== null);
+	// Whether the search has a dialog of its own is fixed for its life.
+	// svelte-ignore state_referenced_locally
+	let expanded = $state(hydrated !== null || onClose !== undefined);
 	// Let the parent raise the search panel above the detail drawer while it's
 	// open, and drop it back under the drawer once collapsed.
 	$effect(() => onExpandedChange?.(expanded));
@@ -82,7 +89,7 @@
 	// active; clear it once collapsed/picked. AppState writes via replaceState and
 	// dedups, so firing on every keystroke is cheap.
 	$effect(() => {
-		if (!enabled) return;
+		if (!enabled || !appState) return;
 		const active = expanded && model.hasResults;
 		appState.setSearch(
 			active
@@ -252,7 +259,7 @@
 	// it misses is looked up in the catalog (batched, cached, localized).
 	let catalogNames = $state(new Map<string, string>());
 	function bodyName(bodyId: string): string {
-		return ctx.getBody(bodyId)?.data.name ?? catalogNames.get(bodyId) ?? bodyId;
+		return ctx?.getBody(bodyId)?.data.name ?? catalogNames.get(bodyId) ?? bodyId;
 	}
 	// Ids the scene can't name, gathered from every facet that labels by body.
 	let unnamedBodyIds = $derived.by(() => {
@@ -260,7 +267,7 @@
 		const ids = (['moonHost', 'featureBody'] as ArrayFacet[]).flatMap((facet) =>
 			Object.keys(dist[ARRAY_FACETS[facet].attr] ?? {})
 		);
-		return ids.filter((id) => !ctx.getBody(id) && !catalogNames.has(id));
+		return ids.filter((id) => !ctx?.getBody(id) && !catalogNames.has(id));
 	});
 	$effect(() => {
 		const ids = unnamedBodyIds;
@@ -746,8 +753,11 @@
 
 	function pick(hit: SearchHit) {
 		onSelect(hit);
-		collapse();
-		model.setQuery('');
+		// A dialog stays over its page until the page the pick opens replaces it.
+		if (!onClose) {
+			collapse();
+			model.setQuery('');
+		}
 		inputEl?.blur();
 		// Picking collapses the combobox and blurs the input (focus falls to
 		// <body>); announce the choice so screen-reader users aren't left in
@@ -780,8 +790,10 @@
 	}
 
 	function collapse() {
-		expanded = false;
 		filterOpen = false;
+		// A dialog closes whole: collapsed first, its pill would show as it fades.
+		if (onClose) onClose();
+		else expanded = false;
 	}
 
 	// Opened from outside (the button beside an open sidebar): focusing the input

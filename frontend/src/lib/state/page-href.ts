@@ -8,6 +8,7 @@
  */
 
 import { resolve } from '$app/paths';
+import type { SearchHit } from '$lib/search/client';
 import { UrlType, urlTypeFromId, urlTypeToIdPrefix } from './view';
 
 function nameSegment(name: string): string | undefined {
@@ -41,4 +42,13 @@ export function featureHref(bodyId: string, featureId: number, name: string): st
 		featureId: String(featureId),
 		name: nameSegment(name)
 	});
+}
+
+/** The page a search hit opens. A pad has no page of its own, so the site that
+ *  holds it stands in. */
+export function searchHitHref(hit: SearchHit, name: string): string {
+	if (hit.kind === 'feature') return featureHref(hit.body_id, hit.feature_id, name);
+	if (hit.kind === 'group') return groupHref(hit.slug, name);
+	if (hit.kind === 'pad') return groupHref(hit.site_slug, hit.site_name);
+	return bodyHref(hit.id, name);
 }

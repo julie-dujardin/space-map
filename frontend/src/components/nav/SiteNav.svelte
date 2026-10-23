@@ -2,7 +2,7 @@
   The row that carries the site between its non-map pages. The map names itself
   through its own chrome, so this is only for the document pages behind it.
   Phones get the pages and the settings behind one menu button instead of the
-  tab strip.
+  tab strip, and the map's full search behind a button of its own.
 -->
 <script lang="ts">
 	import CheckIcon from '@lucide/svelte/icons/check';
@@ -14,6 +14,7 @@
 	import SettingsMenu from '../settings/SettingsMenu.svelte';
 	import SiteMark from './SiteMark.svelte';
 	import SiteMenu from './SiteMenu.svelte';
+	import SiteSearch from './SiteSearch.svelte';
 	import { ABOUT_LINKS, SITE_COLUMN, SITE_GUTTER, SITE_PAGES, type NavPage } from './site';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -125,6 +126,7 @@
 		</div>
 
 		<div class="flex flex-1 items-center justify-end md:hidden">
+			<SiteSearch />
 			<SiteMenu {current} />
 		</div>
 	</nav>
