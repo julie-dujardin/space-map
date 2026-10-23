@@ -9,24 +9,31 @@ from space_map_data.export.objects.satellites import (
     attach_featured_satellites,
 )
 from space_map_data.export.objects.writer import ChunkObjectData
+from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 
 
-class _StubCache:
+class _StubCache(WikidataEntityCache):
     """Minimal WikidataEntityCache: objects via get_entity, others referenced."""
 
     def __init__(self, by_qid: dict[str, dict[str, str]]) -> None:
         self._labels = by_qid
 
-    def _entity(self, qid: str | None) -> dict | None:
+    def _entity(self, qid: str | None) -> WikidataEntity | None:
         if qid is None or qid not in self._labels:
             return None
-        return {"labels": self._labels[qid]}
+        return WikidataEntity(
+            labels=self._labels[qid],
+            descriptions={},
+            aliases={},
+            claims={},
+            sitelinks={},
+        )
 
-    def get_entity(self, qid: str | None) -> dict | None:
+    def get_entity(self, qid: str | None) -> WikidataEntity | None:
         return self._entity(qid)
 
-    def get_referenced(self, qid: str | None) -> dict | None:
+    def get_referenced(self, qid: str | None) -> WikidataEntity | None:
         return self._entity(qid)
 
 
@@ -80,7 +87,7 @@ def test_attaches_objects_and_constellation(session: Session, monkeypatch) -> No
         }
     )
     chunk = _empty_chunk()
-    attach_featured_satellites(session, chunk, cache)  # type: ignore[arg-type]
+    attach_featured_satellites(session, chunk, cache)
 
     g = chunk.global_data[EARTH_ID]
     assert g["satellites_group"] == SATELLITES_SLUG
@@ -99,5 +106,5 @@ def test_attaches_objects_and_constellation(session: Session, monkeypatch) -> No
 
 def test_skips_when_earth_bundle_missing(session: Session) -> None:
     chunk = ChunkObjectData()  # no Earth bundle
-    attach_featured_satellites(session, chunk, _StubCache({}))  # type: ignore[arg-type]
+    attach_featured_satellites(session, chunk, _StubCache({}))
     assert EARTH_ID not in chunk.global_data

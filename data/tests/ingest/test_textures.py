@@ -278,8 +278,8 @@ class TestProcessMonthly:
         proc._raw_meta = [entry]
         # Skip the DB writes; the texture-availability flag is exercised by the
         # full ingest harness, not this unit test.
-        proc._mark_texture_available = lambda object_id: None  # noqa: ARG005
-        proc._reset_texture_available = lambda: None
+        monkeypatch.setattr(proc, "_mark_texture_available", lambda _object_id: None)
+        monkeypatch.setattr(proc, "_reset_texture_available", lambda: None)
         return proc
 
     def _seed_frames(self, raw_dir, template: str, months: int) -> None:
@@ -493,8 +493,8 @@ class TestProcessClouds:
         monkeypatch.setattr(config, "CLOUD_SOURCES", {"earth": cls.EARTH_BODY_ID})
         proc = TextureProcessor.__new__(TextureProcessor)
         proc._raw_meta = []
-        proc._mark_texture_available = lambda _object_id: None
-        proc._reset_texture_available = lambda: None
+        monkeypatch.setattr(proc, "_mark_texture_available", lambda _object_id: None)
+        monkeypatch.setattr(proc, "_reset_texture_available", lambda: None)
         return proc, src_dir
 
     @staticmethod

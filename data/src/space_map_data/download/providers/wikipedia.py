@@ -4,6 +4,7 @@ import json
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from itertools import islice
 from pathlib import Path
 from typing import Iterator, NamedTuple
@@ -196,10 +197,12 @@ class WikipediaDownloader(Downloader):
             )
         return by_lang
 
-    def _request(self, url: str, **kwargs: object) -> Response:
+    def _request(
+        self, url: str, params: Mapping[str, str | int | bool] | None = None
+    ) -> Response:
         """Make an HTTP request, with retry on 429 Too Many Requests."""
         while True:
-            response = self.client.get(url, timeout=30.0, **kwargs)  # type: ignore[arg-type]
+            response = self.client.get(url, params=params, timeout=30.0)
 
             if response.status_code == 429:
                 retry_after = int(response.headers.get("retry-after", 60))
@@ -254,7 +257,7 @@ class WikipediaDownloader(Downloader):
         to the article that took the subject over (en "Planetary ring" →
         "Ring system"), which is the page the blurb actually wants.
         """
-        params: dict[str, object] = {
+        params: dict[str, str | int | bool] = {
             "action": "query",
             "prop": "extracts|pageimages|description|info",
             "inprop": "url",

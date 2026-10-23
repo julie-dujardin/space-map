@@ -14,6 +14,9 @@ from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object.base import Base
 
 if TYPE_CHECKING:
+    from space_map_data.export.position.elements.celestrak_source import (
+        CelesTrakElements,
+    )
     from space_map_data.models.object.celestrak import CelesTrak
     from space_map_data.models.object.horizons import Horizons
     from space_map_data.models.object.launchlog import Launchlog
@@ -270,6 +273,14 @@ class Object(Base):
     johnston_system: Mapped["JohnstonSystem | None"] = relationship(
         foreign_keys="JohnstonSystem.object_id", back_populates="object"
     )
+
+    # Set on a row by the export and never stored; readers getattr them
+    # because a row that skipped the step has none. Under TYPE_CHECKING so
+    # the mapper does not see them.
+    if TYPE_CHECKING:
+        _daily_kepler: CelesTrakElements | None
+        _source_override: OrbitalSource | None
+        _moon_orbit: dict[str, float]
 
     __table_args__ = (
         Index("idx_objects_type", "object_type"),

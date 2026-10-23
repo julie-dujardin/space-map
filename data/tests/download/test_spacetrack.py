@@ -2,6 +2,7 @@
 
 import json
 from datetime import date, datetime, timezone
+from typing import cast
 
 import httpx
 import pytest
@@ -71,8 +72,8 @@ class _Resp:
         self.status_code = status_code
 
     def raise_for_status(self) -> None:
-        if self.status_code >= 400:
-            raise httpx.HTTPStatusError("err", request=None, response=None)  # type: ignore[arg-type]
+        request = httpx.Request("GET", "https://www.space-track.org")
+        httpx.Response(self.status_code, request=request).raise_for_status()
 
 
 class _Client:
@@ -99,6 +100,10 @@ class _Client:
         return self._gp
 
 
+def _downloader(client: _Client) -> SpaceTrackDownloader:
+    return SpaceTrackDownloader(cast(httpx.Client, client))
+
+
 @pytest.fixture
 def out_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(spacetrack, "SOURCES_POSITION_DIR", tmp_path)
@@ -110,14 +115,14 @@ def out_dir(tmp_path, monkeypatch):
 
 def test_missing_credentials_raises(out_dir, monkeypatch):
     monkeypatch.delenv("SPACETRACK_IDENTITY", raising=False)
-    dl = SpaceTrackDownloader(_Client(_Resp(), _Resp(_GP_CSV)))  # type: ignore[arg-type]
+    dl = _downloader(_Client(_Resp(), _Resp(_GP_CSV)))
     with pytest.raises(DownloadError, match="SPACETRACK_IDENTITY"):
         dl.download()
 
 
 def test_login_failure_raises(out_dir):
     client = _Client(_Resp('{"Login":"Failed"}'), _Resp(_GP_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     with pytest.raises(DownloadError, match="login failed"):
         dl.download()
 
@@ -125,7 +130,7 @@ def test_login_failure_raises(out_dir):
 def test_download_writes_catalogue_and_metadata(out_dir):
     # A successful Space-Track login returns an empty-string body (`""`).
     client = _Client(_Resp('""'), _Resp(_GP_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 0  # isolate the daily path
     dl.download()
 
@@ -140,7 +145,7 @@ def test_download_writes_catalogue_and_metadata(out_dir):
 
 def test_unexpected_gp_response_raises(out_dir):
     client = _Client(_Resp(), _Resp("<html>login</html>"))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 0
     with pytest.raises(DownloadError, match="Unexpected GP response"):
         dl.download()
@@ -158,7 +163,7 @@ def test_completed_year_mondays():
 
 def test_fetch_week_keeps_row_nearest_midpoint(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp(_HISTORY_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     dl._fetch_week(date(2026, 1, 5))
 
     written = (out_dir / "2026" / "01" / "05" / "gp-active.csv").read_text()
@@ -168,7 +173,7 @@ def test_fetch_week_keeps_row_nearest_midpoint(out_dir):
 
 def test_fetch_week_pulls_every_day_of_the_week(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp(_HISTORY_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     dl._fetch_week(date(2026, 1, 5))
 
     # One full-catalogue day per day of the week, each a single-day window and
@@ -181,7 +186,7 @@ def test_fetch_week_pulls_every_day_of_the_week(out_dir):
 
 def test_fetch_week_tops_up_a_legacy_snapshot(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp(_HISTORY_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     # No sidecar → written by the three-day scheme, which pulled Tue/Thu/Sat.
     day_dir = _seed_week(out_dir, date(2026, 1, 5), _LEGACY_CSV)
 
@@ -205,7 +210,7 @@ def test_fetch_week_tops_up_a_legacy_snapshot(out_dir):
 
 
 def test_incomplete_weeks_includes_a_legacy_snapshot(out_dir):
-    dl = SpaceTrackDownloader(_Client(_Resp('""'), _Resp(_GP_CSV)))  # type: ignore[arg-type]
+    dl = _downloader(_Client(_Resp('""'), _Resp(_GP_CSV)))
     _seed_week(out_dir, date(2026, 1, 5), _LEGACY_CSV)  # legacy, still owed days
     _seed_week(out_dir, date(2026, 1, 12), _LEGACY_CSV, offsets=list(range(7)))
 
@@ -217,7 +222,7 @@ def test_incomplete_weeks_includes_a_legacy_snapshot(out_dir):
 
 def test_download_skips_daily_when_present(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp(_HISTORY_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 0
     today = datetime.now(timezone.utc).date()
     daily = out_dir / f"{today.year:04d}" / f"{today.month:02d}" / f"{today.day:02d}"
@@ -232,14 +237,14 @@ def test_fetch_week_surfaces_error_body(out_dir):
     client = _Client(
         _Resp('""'), _Resp(_GP_CSV), _Resp("Query range out of bounds", 500)
     )
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     with pytest.raises(DownloadError, match="HTTP 500.*out of bounds"):
         dl._fetch_week(date(2026, 1, 5))
 
 
 def test_backfill_stops_on_first_error(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp("", 500))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     # today = Mon 2026-02-02 → 4 completed weeks, all missing.
     fetched, remaining = dl._backfill_weeks(date(2026, 2, 2))
     assert (fetched, remaining) == (0, 4)
@@ -248,7 +253,7 @@ def test_backfill_stops_on_first_error(out_dir):
 
 def test_backfill_caps_and_skips_existing(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp(_HISTORY_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 2
 
     # today = Mon 2026-02-02 → completed weeks: Jan 5, 12, 19, 26. Jan 12 already
@@ -268,7 +273,7 @@ def test_backfill_caps_and_skips_existing(out_dir):
 def test_daily_snapshot_is_not_treated_as_a_partial_week(out_dir):
     """A daily gp pull landing on a Monday must not be topped up as a weekly."""
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp(_HISTORY_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     monday = date(2026, 1, 5)
     day_dir = _seed_week(out_dir, monday, _GP_CSV)
     (day_dir / _DAYS_SIDECAR).write_text(json.dumps({"daily": True}))
@@ -279,7 +284,7 @@ def test_daily_snapshot_is_not_treated_as_a_partial_week(out_dir):
 
 def test_fetch_current_marks_its_snapshot_daily(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV))
-    dl = SpaceTrackDownloader(client)  # type: ignore[arg-type]
+    dl = _downloader(client)
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 0
     dl.download()
 

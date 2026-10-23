@@ -120,10 +120,12 @@ class DeepColumn(NamedTuple):
 
 _TITAN_THOLIN = AEROSOLS["titan_tholin"]
 # The shell aerosol's whole column, per channel.
-_TITAN_TAU: tuple[float, float, float] = tuple(
-    (s + a) * _TITAN_THOLIN.scale_height_km
-    for s, a in zip(_TITAN_THOLIN.scatter_per_km, _TITAN_THOLIN.absorption_per_km)
+_s, _a, _h = (
+    _TITAN_THOLIN.scatter_per_km,
+    _TITAN_THOLIN.absorption_per_km,
+    _TITAN_THOLIN.scale_height_km,
 )
+_TITAN_TAU = ((_s[0] + _a[0]) * _h, (_s[1] + _a[1]) * _h, (_s[2] + _a[2]) * _h)
 
 DEEP_COLUMNS: dict[str, DeepColumn] = {
     # Deck: the LCPS layers of layers.py at their mid-range τ (0.63 µm; the

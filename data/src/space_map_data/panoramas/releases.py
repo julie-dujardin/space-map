@@ -44,7 +44,7 @@ def mastcam_assets(post):
     """Retain variants as alternatives, not extra street-view locations."""
     soup = BeautifulSoup(post["content"]["rendered"], "html.parser")
     title = plain(post["title"]["rendered"])
-    groups = {}
+    groups: dict[str, dict] = {}
     for link in soup.find_all("a", href=True):
         url = str(link["href"])
         parsed = urlsplit(url)

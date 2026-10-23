@@ -1,11 +1,31 @@
 """Tests for the streaming Earth exporter's skip-before-parse + disk scan."""
 
 from types import SimpleNamespace
+from typing import cast
 
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.pipeline import zone as zone_mod
-from space_map_data.export.pipeline.zone import _scan_date_snapshots, export_earth_zone
+from space_map_data.export.pipeline.zone import (
+    ObjectDataContext,
+    _scan_date_snapshots,
+    export_earth_zone,
+)
+from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.export.position.layout import position_zone_dir
+from space_map_data.models.object import Object
+
+
+def _ctx() -> ObjectDataContext:
+    return cast(ObjectDataContext, SimpleNamespace(wikidata_entities=None, units=None))
+
+
+def _sat() -> Object:
+    return cast(Object, SimpleNamespace(norad_cat_id=25544, satcat=None))
+
+
+def _elements(**fields: float) -> CelesTrakElements:
+    """A day's row with only the fields the overlay reads."""
+    return cast(CelesTrakElements, fields)
 
 
 class TestScanDateSnapshots:
@@ -76,8 +96,8 @@ class TestSkipBeforeParse:
 
     def test_dirty_year_parsed_once(self, tmp_path, monkeypatch):
         calls = self._patch(monkeypatch)
-        ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        result = export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        ctx = _ctx()
+        result = export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)
         assert calls.parse_count == 1
         # The week shipped, stamped Space-Track.
         assert [(s.time, s.num_parts) for s in result.snapshots] == [("2024-01-01", 1)]
@@ -85,24 +105,24 @@ class TestSkipBeforeParse:
 
     def test_second_run_skips_parse(self, tmp_path, monkeypatch):
         calls = self._patch(monkeypatch)
-        ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        ctx = _ctx()
+        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)
         assert calls.parse_count == 1
         # Markers now match the stable fingerprint → no parse, week still ships.
-        r2 = export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        r2 = export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)
         assert calls.parse_count == 1  # unchanged — not parsed again
         assert [(s.time, s.num_parts) for s in r2.snapshots] == [("2024-01-01", 1)]
 
     def test_changed_fingerprint_reparses(self, tmp_path, monkeypatch):
         calls = self._patch(monkeypatch)
-        ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        ctx = _ctx()
+        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)
         assert calls.parse_count == 1
         # Fingerprint changes (e.g. re-downloaded zip) → marker mismatch → reparse.
         monkeypatch.setattr(
             zone_mod, "archive_zip_fingerprints", lambda years: [{"changed": True}]
         )
-        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)
         assert calls.parse_count == 2
 
 
@@ -133,16 +153,16 @@ class TestGlobalOrbitOverlay:
     def test_latest_daily_overlaid_before_metadata(self, tmp_path, monkeypatch):
         captured: list = []
         self._patch(monkeypatch, captured)
-        ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        sat = SimpleNamespace(norad_cat_id=25544, satcat=None)
-        old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
-        new = {25544: {"epoch_jd": 2.0, "n": 15.5}}
+        ctx = _ctx()
+        sat = _sat()
+        old = {25544: _elements(epoch_jd=1.0, n=15.0)}
+        new = {25544: _elements(epoch_jd=2.0, n=15.5)}
         export_earth_zone(
-            [sat],  # type: ignore[arg-type]
-            {"2026-06-02": old, "2026-06-18": new},  # type: ignore[arg-type]
+            [sat],
+            {"2026-06-02": old, "2026-06-18": new},
             [],
             tmp_path,
-            ctx=ctx,  # type: ignore[arg-type]
+            ctx=ctx,
         )
         # Metadata was built with the most recent daily's elements attached.
         assert captured == [new[25544]]
@@ -152,17 +172,17 @@ class TestGlobalOrbitOverlay:
     ):
         captured: list = []
         self._patch(monkeypatch, captured)
-        ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        sat = SimpleNamespace(norad_cat_id=25544, satcat=None)
-        only_old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
+        ctx = _ctx()
+        sat = _sat()
+        only_old = {25544: _elements(epoch_jd=1.0, n=15.0)}
         # The latest day has other sats but not this one.
-        latest = {99999: {"epoch_jd": 2.0, "n": 16.0}}
+        latest = {99999: _elements(epoch_jd=2.0, n=16.0)}
         export_earth_zone(
-            [sat],  # type: ignore[arg-type]
-            {"2026-06-01": only_old, "2026-06-02": latest},  # type: ignore[arg-type]
+            [sat],
+            {"2026-06-01": only_old, "2026-06-02": latest},
             [],
             tmp_path,
-            ctx=ctx,  # type: ignore[arg-type]
+            ctx=ctx,
         )
         # Absent from the newest day → falls back to the earlier day's elements.
         assert captured == [only_old[25544]]
@@ -172,9 +192,9 @@ class TestGlobalOrbitOverlay:
     ):
         captured: list = []
         self._patch(monkeypatch, captured)
-        ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        sat = SimpleNamespace(norad_cat_id=25544, satcat=None)
+        ctx = _ctx()
+        sat = _sat()
         with caplog.at_level("WARNING"):
-            export_earth_zone([sat], {}, [], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+            export_earth_zone([sat], {}, [], tmp_path, ctx=ctx)
         assert captured == [None]
         assert "no daily elements" in caplog.text

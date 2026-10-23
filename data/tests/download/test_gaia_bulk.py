@@ -116,10 +116,13 @@ class _InlinePool:
         return future
 
 
+_COLUMNS = ("source_id", "parallax", "parallax_over_error")
+
+
 class _Table(ChunkedTableDownloader):
     name = "test_table"
     table_path = "gdr3/test_table"
-    columns = ("source_id", "parallax", "parallax_over_error")
+    columns = _COLUMNS
     count_keys = ("rows_without_parallax",)
     select = staticmethod(_keep_strong)
 
@@ -237,7 +240,7 @@ class TestChunkedTableDownloader:
     def test_columns_file_describes_the_kept_columns(self, table):
         table.download()
         columns = json.loads((table.out_dir / "columns.json").read_text())
-        assert [c["name"] for c in columns] == list(_Table.columns)
+        assert [c["name"] for c in columns] == list(_COLUMNS)
         assert columns[1]["unit"] == "mas"
 
     def test_limit_stops_early_and_the_next_run_continues(self, table, monkeypatch):
@@ -260,7 +263,7 @@ class TestChunkedTableDownloader:
             pa.table({"source_id": [20]}).replace_schema_metadata(record), stale
         )
         table.download()
-        assert pq.read_schema(stale).names == list(_Table.columns)
+        assert pq.read_schema(stale).names == list(_COLUMNS)
 
     def test_chunk_without_its_companion_waits(self, table, tmp_path, monkeypatch):
         present = tmp_path / "companion.parquet"
@@ -280,7 +283,7 @@ class TestChunkedTableDownloader:
     ):
         table.download()
         assert table.is_complete(limit=None)
-        wider = (*_Table.columns, "mass_flame")
+        wider = (*_COLUMNS, "mass_flame")
         monkeypatch.setattr(_Table, "columns", wider)
         assert not table.is_complete(limit=None)
 

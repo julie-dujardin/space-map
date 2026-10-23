@@ -158,7 +158,8 @@ def _parse_detail(mapping: dict) -> Detail:
     """A `[species, fraction]` pair per entry, drawn in order — JSON's list
     stands in for the constants' tuple."""
     fields = _named(Detail, mapping)
-    return Detail(**fields | {"entries": tuple(tuple(e) for e in fields["entries"])})
+    fields["entries"] = tuple(tuple(e) for e in fields["entries"])
+    return Detail(**fields)
 
 
 def _named(cls, mapping: dict) -> dict:

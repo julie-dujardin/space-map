@@ -1589,7 +1589,8 @@ def build_category_data(
     # excluded — a subset can't hold a body its own class doesn't.
     def _largest_of(class_slugs: list[str]) -> LargestBody | None:
         candidates = [b for s in class_slugs if (b := largest_bodies.get(s))]
-        return max(candidates, key=lambda b: b.diameter_km, default=None)
+        # ty types the key's argument from default=None.
+        return max(candidates, key=lambda b: b.diameter_km, default=None)  # ty: ignore[unresolved-attribute]
 
     largest_out: dict[str, LargestBody | None] = {
         ASTEROIDS_SLUG: _largest_of(asteroid_classes),

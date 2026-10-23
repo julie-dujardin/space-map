@@ -212,7 +212,6 @@ class TestClaimedSpkids:
     def _ingestor(claimed):
         i = SBDBIngestor.__new__(SBDBIngestor)
         i.claimed_spkids = claimed
-        i.session = None
         return i
 
     @staticmethod

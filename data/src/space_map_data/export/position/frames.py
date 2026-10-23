@@ -127,7 +127,7 @@ def moon_orbit(obj: Object, source: OrbitalSource | None) -> dict[str, float]:
         if value is not None:
             out[key] = value
     # SBDB satellite orbits ship a period but never a mean motion.
-    if "n" not in out and getattr(moon, "per_h", None):
+    if "n" not in out and isinstance(moon, SBDBMoon) and moon.per_h:
         out["n"] = 360.0 * _HOURS_PER_DAY / moon.per_h
 
     if is_equatorial(moon.frame) and {"i", "om"} <= out.keys():
@@ -172,5 +172,5 @@ def moon_orbit_cached(obj: Object, source: OrbitalSource | None) -> dict[str, fl
     cached = getattr(obj, "_moon_orbit", None)
     if cached is None:
         cached = moon_orbit(obj, source)
-        obj._moon_orbit = cached  # type: ignore[attr-defined]
+        obj._moon_orbit = cached
     return cached

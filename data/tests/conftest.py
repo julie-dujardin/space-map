@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
+from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.models.object import (
     ElementsScale,
     Horizons,
@@ -39,7 +40,7 @@ def make_object(**overrides) -> Object:
     reads from: Horizons for spice/None, a transient `_daily_kepler` overlay for
     the Earth-sat sources. SBDB-source tests should set ``obj.sbdb`` themselves."""
     kepler = {k: overrides.pop(k) for k in list(overrides) if k in _KEPLER_KEYS}
-    daily_kepler = overrides.pop("daily_kepler", None)
+    daily_kepler: CelesTrakElements | None = overrides.pop("daily_kepler", None)
 
     defaults = {
         "id": "naif-399",
@@ -72,7 +73,7 @@ def make_object(**overrides) -> Object:
                 "ELEMENT_SET_NO": None,
                 "REV_AT_EPOCH": None,
             }
-        obj._daily_kepler = daily_kepler  # type: ignore[attr-defined]
+        obj._daily_kepler = daily_kepler
     elif src != OrbitalSource.sbdb:
         # spice / None — populate Horizons sub-table (historical name).
         obj.horizons = Horizons(

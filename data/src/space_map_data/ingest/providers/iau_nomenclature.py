@@ -8,8 +8,9 @@ import xml.etree.ElementTree as ET
 import zipfile
 from collections import defaultdict
 from pathlib import Path
+from typing import cast
 
-from sqlalchemy import case, delete, func, insert, update
+from sqlalchemy import CursorResult, case, delete, func, insert, update
 from tqdm import tqdm
 
 from space_map_data.constants.nomenclature.continents import Continent
@@ -357,12 +358,16 @@ class IAUNomenclatureIngestor:
                     "IAU nomenclature target %r didn't match any object", target
                 )
                 continue
-            matched += self.session.execute(
-                update(Feature)
-                .where(Feature.target == target)
-                .where(Feature.object_id.is_(None))
-                .values(object_id=obj.id)
-            ).rowcount  # type: ignore[union-attr]
+            # Session.execute is typed Result; an UPDATE returns a CursorResult.
+            matched += cast(
+                CursorResult,
+                self.session.execute(
+                    update(Feature)
+                    .where(Feature.target == target)
+                    .where(Feature.object_id.is_(None))
+                    .values(object_id=obj.id)
+                ),
+            ).rowcount
         self.session.commit()
         return matched
 

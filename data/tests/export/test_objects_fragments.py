@@ -7,18 +7,22 @@ from space_map_data.export.objects.fragments import (
     NOTABLE_FRAGMENT_COUNT,
     build_comet_families,
 )
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 
 
-class _NoWikidata:
+class _NoWikidata(WikidataEntityCache):
     """Stand-in cache: no entities on disk, so labels fall back to DB names."""
+
+    def __init__(self) -> None:  # skips the on-disk load
+        pass
 
     def get_entity(self, qid):  # noqa: ARG002
         return None
 
 
-class _FakeWikidata:
+class _FakeWikidata(WikidataEntityCache):
     """Cache returning canned English labels for given QIDs."""
 
     def __init__(self, labels: dict[str, str]) -> None:
@@ -77,7 +81,7 @@ def test_intact_parent_family(session: Session) -> None:
     _add(session, 1000081, "73P-C", CometPrefix.P, "73P/Schwassmann-Wachmann 3-C")
     session.commit()
 
-    families = build_comet_families(session, _NoWikidata())  # type: ignore[arg-type]
+    families = build_comet_families(session, _NoWikidata())
 
     assert set(families) == {"73P"}
     fam = families["73P"]
@@ -104,7 +108,7 @@ def test_parentless_family_reconstructs_name(session: Session) -> None:
     )
     session.commit()
 
-    families = build_comet_families(session, _NoWikidata())  # type: ignore[arg-type]
+    families = build_comet_families(session, _NoWikidata())
 
     fam = families["1882 R1"]
     assert fam.parent_object_id is None
@@ -119,7 +123,7 @@ def test_parentless_numbered_name(session: Session) -> None:
     _add(session, 1003465, "483P-B", CometPrefix.P, "483P/PANSTARRS-B")
     session.commit()
 
-    fam = build_comet_families(session, _NoWikidata())["483P"]  # type: ignore[arg-type]
+    fam = build_comet_families(session, _NoWikidata())["483P"]
     assert fam.parent_object_id is None
     assert fam.parent_name == "483P/PANSTARRS"
     assert fam.designation == "483P"  # numbered comets stay bare
@@ -132,7 +136,7 @@ def test_parentless_qid_picks_comet_over_fragment(session: Session) -> None:
     session.commit()
 
     cache = _FakeWikidata({"Qc": "C/2001 A2 (LINEAR)", "Qf": "C/2001 A2-B"})
-    fam = build_comet_families(session, cache)["2001 A2"]  # type: ignore[arg-type]
+    fam = build_comet_families(session, cache)["2001 A2"]
     assert fam.parent_qid == "Qc"
     assert fam.parent_name == "C/2001 A2 (LINEAR)"
 
@@ -146,7 +150,7 @@ def test_parentless_qid_all_fragments_declines(session: Session) -> None:
     cache = _FakeWikidata(
         {"Qa": "C/1996 J1-A (Evans-Drinkwater)", "Qb": "C/1996 J1-B (Evans-Drinkwater)"}
     )
-    fam = build_comet_families(session, cache)["1996 J1"]  # type: ignore[arg-type]
+    fam = build_comet_families(session, cache)["1996 J1"]
     assert fam.parent_qid is None
 
 
@@ -155,7 +159,7 @@ def test_fragment_ranking_prefers_image(session: Session) -> None:
     _add(session, 3, "51P-B", CometPrefix.P, "51P/Harrington-B", image=True)
     session.commit()
 
-    fam = build_comet_families(session, _NoWikidata())["51P"]  # type: ignore[arg-type]
+    fam = build_comet_families(session, _NoWikidata())["51P"]
     # Image availability outranks sitelinks.
     assert fam.fragments[0].object_id == "spkid-3"
 
@@ -169,7 +173,7 @@ def test_member_ids_covers_all_fragments_beyond_display_cap(session: Session) ->
         _add(session, 5000 + i, f"73P-{suffix}", CometPrefix.P, f"73P/SW3-{suffix}")
     session.commit()
 
-    fam = build_comet_families(session, _NoWikidata())["73P"]  # type: ignore[arg-type]
+    fam = build_comet_families(session, _NoWikidata())["73P"]
     assert len(fam.fragments) == NOTABLE_FRAGMENT_COUNT  # display list stays capped
     assert len(fam.member_ids) == n  # but every fragment is tracked
     assert fam.total == n
@@ -180,4 +184,4 @@ def test_non_comet_dash_excluded(session: Session) -> None:
     _add(session, 9, "6344 P-L", None, "(6344 P-L)")
     session.commit()
 
-    assert build_comet_families(session, _NoWikidata()) == {}  # type: ignore[arg-type]
+    assert build_comet_families(session, _NoWikidata()) == {}

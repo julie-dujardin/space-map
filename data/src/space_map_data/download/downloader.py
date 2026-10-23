@@ -5,7 +5,7 @@ import logging
 import re
 import ssl
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -67,8 +67,12 @@ class Downloader(ABC):
     def __init__(self, client: httpx.Client) -> None:
         self.client = client
 
+    # Every provider gets the run's epoch; one may add keyword options of its
+    # own, which only a direct caller passes.
     @abstractmethod
-    def download(self, limit: int | None = None, **kwargs: object) -> None: ...
+    def download(
+        self, limit: int | None = None, *, epoch: date | None = None
+    ) -> None: ...
 
     @property
     def metadata_file(self) -> Path:

@@ -453,7 +453,7 @@ def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity) -> str | None:
 
     shorter = [c for c in candidates if len(c) < len(label)]
     if shorter:
-        return min(shorter, key=len)  # type: ignore
+        return min(shorter, key=len)
 
     return None
 

@@ -26,6 +26,7 @@ from space_map_data.export.groups.categories import (
 )
 from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
 from space_map_data.export.objects.activity import collection_row
+from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.export.objects.radiation import (
     Place,
     radiation_block,
@@ -283,7 +284,7 @@ def _craft_meta(span: float | None) -> dict:
     return {"kind": "probe", "exports": {"high": high, "low": {"scale_meters": 1.0}}}
 
 
-class _StubEntityCache:
+class _StubEntityCache(WikidataEntityCache):
     """Minimal WikidataEntityCache stand-in: ``get_entity`` from a dict."""
 
     def __init__(
@@ -294,13 +295,16 @@ class _StubEntityCache:
         self._labels = labels_by_qid
         self._descriptions = descriptions_by_qid or {}
 
-    def get_entity(self, qid: str | None) -> dict | None:
+    def get_entity(self, qid: str | None) -> WikidataEntity | None:
         if qid is None or qid not in self._labels:
             return None
-        return {
-            "labels": self._labels[qid],
-            "descriptions": self._descriptions.get(qid, {}),
-        }
+        return WikidataEntity(
+            labels=self._labels[qid],
+            descriptions=self._descriptions.get(qid, {}),
+            aliases={},
+            claims={},
+            sitelinks={},
+        )
 
     # Group members (constellations) resolve their entity via get_referenced.
     get_referenced = get_entity
@@ -387,7 +391,7 @@ class TestNotableEntries:
         )
         entries = notable.notable_entries(
             [_obj("spkid-1", "Q1", "1 Ceres"), _obj("spkid-2", None, "Vesta fallback")],
-            cache,  # type: ignore[arg-type]
+            cache,
         )
         assert entries[0] == {
             "name": "Ceres",
@@ -407,7 +411,7 @@ class TestNotableEntries:
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),  # type: ignore[arg-type]
+            _StubEntityCache({}),
         )
         assert entry["diameter_km"] == 246.6
         assert entry["first_obs"] == "1804-09-01"
@@ -425,7 +429,7 @@ class TestNotableEntries:
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),  # type: ignore[arg-type]
+            _StubEntityCache({}),
         )
         assert entry["albedo"] == 0.42
         assert entry["spec"] == "V"
@@ -439,7 +443,7 @@ class TestNotableEntries:
         members = [_obj("probe-1", None, "Cassini"), _obj("spkid-2", None, "Eros")]
         entries = notable.notable_entries(
             members,
-            _StubEntityCache({}),  # type: ignore[arg-type]
+            _StubEntityCache({}),
             model_slugs={"probe-1": "eros", "spkid-2": "eros"},
             craft_models={"probe-1": notable.CraftModel("cassini", 6.7, 6.7)},
         )
@@ -456,7 +460,7 @@ class TestNotableEntries:
         monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
         entries = notable.notable_entries(
             [_obj("probe-1", None, "Ulysses")],
-            _StubEntityCache({}),  # type: ignore[arg-type]
+            _StubEntityCache({}),
             craft_models={"probe-1": notable.CraftModel("ulysses", 63.1, 3.155)},
         )
         assert entries[0]["length_m"] == 63.1
@@ -470,12 +474,12 @@ class TestNotableEntries:
         members = [_obj("spkid-1", None, "Ceres"), _obj("spkid-2", None, "Pallas")]
         entries = notable.notable_entries(
             members,
-            cache,  # type: ignore[arg-type]
+            cache,
             textured_ids={"spkid-1"},
         )
         assert entries[0]["texture"] is True
         assert entries[1]["texture"] is False
-        entries = notable.notable_entries(members, cache)  # type: ignore[arg-type]
+        entries = notable.notable_entries(members, cache)
         assert "texture" not in entries[0]
 
     def test_localized_names_only_when_differing(self, monkeypatch) -> None:
@@ -487,8 +491,8 @@ class TestNotableEntries:
             }
         )
         members = [_obj("spkid-1", "Q1", "1 Ceres"), _obj("spkid-2", "Q2", "4 Vesta")]
-        entries = notable.notable_entries(members, cache)  # type: ignore[arg-type]
-        names = notable.notable_names(members, entries, "ru", cache)  # type: ignore[arg-type]
+        entries = notable.notable_entries(members, cache)
+        names = notable.notable_names(members, entries, "ru", cache)
         assert names == {"spkid-1": "Церера"}
 
     def test_group_member_routes_to_group_page(self, monkeypatch) -> None:
@@ -513,7 +517,7 @@ class TestNotableEntries:
             group_slug="const-starlink",
             sitelinks_count=42,
         )
-        entries = notable.notable_entries([member], cache)  # type: ignore[arg-type]
+        entries = notable.notable_entries([member], cache)
         assert entries[0] == {
             "name": "Starlink",
             "group": "const-starlink",
@@ -524,7 +528,7 @@ class TestNotableEntries:
             [member],
             entries,
             "ru",
-            cache,  # type: ignore[arg-type]
+            cache,
         )
         assert names == {"const-starlink": "Старлинк"}
 
@@ -538,7 +542,7 @@ class TestNotableEntries:
             _obj("spkid-2", "Q2", "4 Vesta"),
             _obj("spkid-3", None, "no qid"),
         ]
-        descs = notable.notable_descriptions(members, "en", cache)  # type: ignore[arg-type]
+        descs = notable.notable_descriptions(members, "en", cache)
         assert descs == {"spkid-1": "dwarf planet"}
 
 
@@ -596,7 +600,7 @@ class TestRingSystemMembers:
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),  # type: ignore[arg-type]
+            _StubEntityCache({}),
         )
         assert entry["ring_mass"] == {"low_kg": 1.54e19, "uncertainty_kg": 4.9e18}
 
@@ -612,7 +616,7 @@ class TestRingSystemMembers:
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),  # type: ignore[arg-type]
+            _StubEntityCache({}),
         )
         assert "ring_mass" not in entry
 

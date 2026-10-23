@@ -234,7 +234,8 @@ def build_feature_type_groups(
         # The biggest named landform anywhere, whatever its kind.
         largest=max(
             (s.largest for s in out.stats.values() if s.largest),
-            key=lambda ref: ref["diameter_km"],
+            # ty types the key's argument from default=None.
+            key=lambda ref: ref["diameter_km"],  # ty: ignore[not-subscriptable]
             default=None,
         ),
     )

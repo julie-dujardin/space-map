@@ -77,7 +77,7 @@ def _overlay_celestrak_elements(
         )
         if elements is None:
             continue
-        obj._daily_kepler = elements  # type: ignore[attr-defined]
+        obj._daily_kepler = elements
         kept.append(obj)
     return kept
 

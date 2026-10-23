@@ -25,6 +25,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.notable import NotableObject
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.satcat import Satcat
 
@@ -202,7 +203,7 @@ class TestConstellationRefs:
         refs = _constellation_refs(
             {"long-march": 2055},
             "en",
-            _EmptyCache(),  # type: ignore[arg-type]
+            _EmptyCache(),
         )
         assert refs[0]["primary_id"] == f"{LAUNCH_VEHICLE_SLUG_PREFIX}long-march"
         assert refs[0]["n"] == 2055
@@ -211,7 +212,7 @@ class TestConstellationRefs:
         refs = _constellation_refs(
             {"starlink": 12221},
             "en",
-            _EmptyCache(),  # type: ignore[arg-type]
+            _EmptyCache(),
         )
         assert refs[0]["primary_id"] == f"{CONSTELLATION_SLUG_PREFIX}starlink"
 
@@ -221,14 +222,17 @@ class TestConstellationRefs:
         for ref in _constellation_refs(
             counts,
             "en",
-            _EmptyCache(),  # type: ignore[arg-type]
+            _EmptyCache(),
             limit=10,
         ):
             assert ref["primary_id"] in GROUP_BY_SLUG, ref
 
 
-class _EmptyCache:
+class _EmptyCache(WikidataEntityCache):
     """Wikidata cache stub: no entities, so refs fall back to their slug name."""
+
+    def __init__(self) -> None:  # skips the on-disk load
+        pass
 
     def get_entity(self, qid):
         return None

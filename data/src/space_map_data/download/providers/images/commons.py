@@ -17,6 +17,7 @@ recorded separately and skipped — see the TODO below.
 import json
 import logging
 import time
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from itertools import batched
 from pathlib import Path
@@ -305,10 +306,12 @@ class CommonsDownloader(Downloader):
         out_path.write_bytes(response.content)
         return True
 
-    def _request(self, url: str, **kwargs: object) -> Response:
+    def _request(
+        self, url: str, params: Mapping[str, str | int | bool] | None = None
+    ) -> Response:
         """HTTP request with retry on 429 Too Many Requests."""
         while True:
-            response = self.client.get(url, timeout=60.0, **kwargs)  # type: ignore[arg-type]
+            response = self.client.get(url, params=params, timeout=60.0)
             if response.status_code == 429:
                 retry_after = int(response.headers.get("retry-after", 60))
                 logger.warning("Commons 429 — sleeping %ds", retry_after)
@@ -521,7 +524,7 @@ class CommonsDownloader(Downloader):
         reached are retried one at a time.
         """
         titles = "|".join(f"File:{f}" for f in filenames)
-        params: dict[str, object] = {
+        params: dict[str, str | int | bool] = {
             "action": "query",
             "prop": "globalusage",
             "gulimit": "max",

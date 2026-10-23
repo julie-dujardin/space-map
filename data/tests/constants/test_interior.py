@@ -64,8 +64,9 @@ class TestBodies:
         fractions = [layer.mass_fraction for layer in INTERIOR_FACTS[object_id].layers]
         if all(f is None for f in fractions):
             return
-        assert None not in fractions
-        assert sum(fractions) == pytest.approx(1.0, abs=0.002)
+        masses = [f for f in fractions if f is not None]
+        assert len(masses) == len(fractions)
+        assert sum(masses) == pytest.approx(1.0, abs=0.002)
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_an_ocean_note_comes_with_an_ocean_layer(self, object_id: str):
@@ -119,10 +120,9 @@ class TestBodies:
         ]
         if len(crusts) < 2:
             return
-        assert all(layer.area_fraction is not None for layer in crusts)
-        assert sum(layer.area_fraction for layer in crusts) == pytest.approx(
-            1.0, abs=0.01
-        )
+        areas = [c.area_fraction for c in crusts if c.area_fraction is not None]
+        assert len(areas) == len(crusts)
+        assert sum(areas) == pytest.approx(1.0, abs=0.01)
 
     @pytest.mark.parametrize("object_id", BODY_IDS)
     def test_vocabularies_are_closed(self, object_id: str):

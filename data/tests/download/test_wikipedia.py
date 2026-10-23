@@ -1,7 +1,9 @@
 """Unit tests for the Wikipedia summary downloader."""
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 
 import httpx
 
@@ -32,8 +34,10 @@ class _Client:
         self.payload = payload
         self.params: list[dict] = []
 
-    def get(self, url: str, **kwargs: object) -> _Resp:
-        self.params.append(dict(kwargs.get("params") or {}))  # type: ignore[arg-type]
+    def get(
+        self, url: str, params: Mapping[str, object] | None = None, **_: object
+    ) -> _Resp:
+        self.params.append(dict(params or {}))
         return _Resp(self.payload)
 
 
@@ -43,7 +47,7 @@ def _page(title: str, extract: str = "", **extra: object) -> dict:
 
 def _downloader(payload: dict, out_dir: Path) -> tuple[WikipediaDownloader, _Client]:
     client = _Client(payload)
-    downloader = WikipediaDownloader(client)  # type: ignore[arg-type]
+    downloader = WikipediaDownloader(cast(httpx.Client, client))
     downloader.out_dir = out_dir
     return downloader, client
 

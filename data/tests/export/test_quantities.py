@@ -3,6 +3,7 @@
 import pytest
 
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.wikidata import WikidataEntityCache
 
 
 def _p31_stmt(qid: str, rank: str = "normal") -> dict:
@@ -101,8 +102,8 @@ def _make_unit_entity(
     }
 
 
-class FakeCache:  # duck-typed stand-in for WikidataEntityCache
-    """Minimal duck-typed cache for UnitConverter construction."""
+class FakeCache(WikidataEntityCache):
+    """Minimal cache for UnitConverter construction, skipping the on-disk init."""
 
     def __init__(self, units: dict):
         self._units = units
@@ -133,7 +134,7 @@ def _build_mass_converter() -> UnitConverter:
             "Q11570",  # base: kilogram (avoids synthetic "metre" entry)
         ),
     }
-    return UnitConverter(FakeCache(units))  # type: ignore[arg-type]
+    return UnitConverter(FakeCache(units))
 
 
 class TestBestUnit:

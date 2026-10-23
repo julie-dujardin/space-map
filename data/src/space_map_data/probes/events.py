@@ -104,10 +104,12 @@ STATUS_WHERE = frozenset(
     }
 )
 
+DatePrecision = Literal["year", "month", "day", "minute", "second"]
+
 # The five ISO-8601 forms the files use, coarsest first. Anything else is a
 # curation error: an offset or a fractional second implies a precision the
 # sources for this data do not have.
-_DATE_FORMS: tuple[tuple[str, re.Pattern[str]], ...] = (
+_DATE_FORMS: tuple[tuple[DatePrecision, re.Pattern[str]], ...] = (
     ("year", re.compile(r"^\d{4}$")),
     ("month", re.compile(r"^\d{4}-\d{2}$")),
     ("day", re.compile(r"^\d{4}-\d{2}-\d{2}$")),
@@ -115,14 +117,12 @@ _DATE_FORMS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("second", re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")),
 )
 
-DatePrecision = Literal["year", "month", "day", "minute", "second"]
-
 
 def date_precision(value: str) -> DatePrecision | None:
     """How much of ``value`` is a claim. ``None`` if it is not a legal form."""
     for name, pattern in _DATE_FORMS:
         if pattern.match(value):
-            return name  # type: ignore[return-value]
+            return name
     return None
 
 

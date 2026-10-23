@@ -264,7 +264,7 @@ class TestWriteSgp4Elements:
     def test_source_override_stamps_spacetrack(self, tmp_path):
         # `_source_override` stamps Space-Track provenance on a CelesTrak-sourced row.
         obj = self._sgp4_object()
-        obj._source_override = OrbitalSource.spacetrack  # type: ignore[attr-defined]
+        obj._source_override = OrbitalSource.spacetrack
         out = tmp_path / "spacetrack.bin.gz"
         write_sgp4_elements([obj], out, OrbitalSource.spacetrack, has_localized={})
         raw = gzip.decompress(out.read_bytes())

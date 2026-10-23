@@ -1332,10 +1332,10 @@ class TestProcessTiles:
         seen = []
         real = shutil.rmtree
 
-        def look(path, *args, **kwargs):
+        def look(path, ignore_errors=False):
             served = (out / "1" / "0" / "0.webp").exists(), (out / "old").exists()
             seen.append((Path(path).name, *served))
-            real(path, *args, **kwargs)
+            real(path, ignore_errors=ignore_errors)
 
         monkeypatch.setattr(shutil, "rmtree", look)
         entry["tiles_max_level"] = 1
@@ -1357,11 +1357,11 @@ class TestProcessTiles:
         stopped = []
         real = shutil.rmtree
 
-        def stop_on_the_old_pyramid(path, *args, **kwargs):
+        def stop_on_the_old_pyramid(path, ignore_errors=False):
             if Path(path) == retired and not stopped:
                 stopped.append(path)
                 raise RuntimeError("stopped")
-            real(path, *args, **kwargs)
+            real(path, ignore_errors=ignore_errors)
 
         monkeypatch.setattr(shutil, "rmtree", stop_on_the_old_pyramid)
         with pytest.raises(RuntimeError):

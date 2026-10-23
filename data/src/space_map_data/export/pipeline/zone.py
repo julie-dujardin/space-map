@@ -421,7 +421,7 @@ def export_earth_zone(
         if not kept:
             return
         for obj in kept:
-            obj._source_override = source  # type: ignore[attr-defined]  # transient
+            obj._source_override = source
         num_parts = _write_element_parts(
             kept,
             out_dir,
