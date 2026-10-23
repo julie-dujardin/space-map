@@ -201,6 +201,19 @@ class TestRegion:
         _write_geotiff(tmp_path / "site.tif", _texture(64))
         assert tiles._geotiff_bounds(tmp_path / "site.tif") == pytest.approx(BOUNDS)
 
+    def test_shift_moves_a_file_on_the_ground(self, tmp_path):
+        _write_geotiff(tmp_path / "site.tif", _texture(256))
+        per_degree = np.radians(RADIUS)
+        # 2° north, and 3° east at the middle latitude of 8.75°.
+        shift = (2 * per_degree, 3 * per_degree * np.cos(np.radians(8.75)))
+        region = tiles.open_region_layer(tmp_path / "site.tif", shift_m=shift).pixels
+        assert isinstance(region, tiles.Region)
+        west, east, north, south = region.bounds
+        # The grid of the region is that of the file's pixels, 0.09° wide.
+        assert (west, east, north, south) == pytest.approx(
+            (13.0, 35.5, 22.0, -0.5), abs=0.1
+        )
+
     @pytest.mark.parametrize(
         "origin",
         [
@@ -274,6 +287,66 @@ class TestRegion:
         raster = tiles.open_region_layer(tmp_path / "site.img")
         assert isinstance(raster.pixels, tiles.Region)
         assert raster.pixels.bounds == pytest.approx((-10.0, 12.5, 20.0, -2.5), abs=0.2)
+
+
+class TestZeroFill:
+    """An image that stores zero for some of its ground reads a wide zero as
+    shadow, a thin one as the ground around it, and zero outside its outline
+    as no data."""
+
+    @staticmethod
+    def _image() -> np.ndarray:
+        """Ground in a frame of zeros one block wide, with a shadow of two
+        blocks a side, a seam one pixel wide that resampling has darkened
+        the ground beside, and zeros at its edge."""
+        pixels = np.zeros((96, 128), dtype=np.uint16)
+        pixels[16:80, 16:112] = _texture()[:64, :96]
+        pixels[24:72, 87:90] = (5, 0, 5)
+        pixels[32:64, 48:80] = 0
+        pixels[16:20, 40:44] = 0
+        return pixels
+
+    def test_zeros_inside_the_outline_take_the_ground_around_them(self):
+        pixels = self._image()
+        read = tiles.ZeroFill(pixels)[0:96, 0:128]
+        seam = read[32:64, 87:90]
+        assert seam.min() > 60 and abs(seam.mean() - 155) < 10
+        assert (read[32:64, 48:80] == 1).all()
+        # The ground at the edge of the shadow is as it is.
+        assert (read[30:32, 48:80] == pixels[30:32, 48:80]).all()
+        assert (read[:16] == 0).all() and (read[16:20, 40:44] == 0).all()
+        assert (read[66:80, 16:80] == pixels[66:80, 16:80]).all()
+
+    @pytest.mark.parametrize(
+        "window",
+        [(30, 50, 40, 100), (0, 40, 0, 128), (33, 61, 47, 91), (50, 96, 85, 128)],
+    )
+    def test_window_reads_as_the_whole(self, window):
+        filled = tiles.ZeroFill(self._image())
+        y0, y1, x0, x1 = window
+        assert (filled[y0:y1, x0:x1] == filled[0:96, 0:128][y0:y1, x0:x1]).all()
+
+    def test_float_samples_are_refused(self):
+        with pytest.raises(ValueError, match="integers"):
+            tiles.ZeroFill(self._image().astype(np.float32))
+
+    def test_layer_of_a_compressed_file(self, tmp_path):
+        _write_geotiff(
+            tmp_path / "site.tif", self._image(), compression="zlib", tile=(16, 16)
+        )
+        layer = tiles.open_region_layer(tmp_path / "site.tif", 2.2, fill_zeros=True)
+        region = layer.pixels
+        assert isinstance(region, tiles.Region) and layer.to_values is not None
+        rows, columns = region.shape
+        west, _, north, _ = region.bounds
+        top = round((90.0 - north) / 180.0 * rows)
+        left = round((west + 180.0) / 360.0 * columns)
+        values = layer.to_values(region.read(top, top + 96, left, left + 128))
+        assert np.isnan(values[:16]).all()
+        assert np.isfinite(values[32:64, 88]).all()
+        shadow = values[32:64, 48:80]
+        assert np.isfinite(shadow).all()
+        assert shadow.max() < np.nanmin(values[16:32])
 
 
 class TestChunkedTiff:
@@ -1165,6 +1238,29 @@ class TestProcessPatches:
         proc.process_tiles()
         assert _bytes(pyramid) == own
 
+    def test_shift_builds_the_patch_again_where_it_puts_it(self, tmp_path, monkeypatch):
+        proc = self._processor(monkeypatch, tmp_path, [self._spec()])
+        _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        proc.process_tiles()
+        first = self._meta(tmp_path)["patches"][0]
+        shifted = {"file": "site.tif", "shift_m": [2 * np.radians(RADIUS), 0.0]}
+        proc._raw_meta[0]["patches"] = [self._spec(files=[shifted])]
+        proc.process_tiles()
+
+        (patch,) = self._meta(tmp_path)["patches"]
+        assert patch["version"] != first["version"]
+        assert patch["bounds"]["north"] == pytest.approx(22.0, abs=0.1)
+
+    def test_filled_zeros_build_the_patch_again(self, tmp_path, monkeypatch):
+        proc = self._processor(monkeypatch, tmp_path, [self._spec()])
+        _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        proc.process_tiles()
+        first = self._meta(tmp_path)["patches"][0]["version"]
+        filled = {"file": "site.tif", "fill_zeros": True}
+        proc._raw_meta[0]["patches"] = [self._spec(files=[filled])]
+        proc.process_tiles()
+        assert self._meta(tmp_path)["patches"][0]["version"] != first
+
     def test_patch_already_built_is_kept(self, tmp_path, monkeypatch):
         proc = self._processor(monkeypatch, tmp_path, [self._spec()])
         _write_geotiff(tmp_path / "raw" / "site.tif", _texture())
@@ -1494,6 +1590,22 @@ class TestPolarRegion:
         u, v = _cap_point(*target, 7)
         x0, y0 = int(u) - 40, int(v) - 40
         values = layer.cap(cap, y0, y0 + 80, x0, x0 + 80)
+        found = np.unravel_index(np.nanargmax(values), values.shape)
+        assert found == pytest.approx((v - y0, u - x0), abs=1.5)
+
+    @pytest.mark.parametrize(("lat", "meridian"), [(68.0, 90.0), (-68.0, 180.0)])
+    def test_shift_moves_a_file_on_the_ground(self, tmp_path, lat, meridian):
+        pixels = np.full((64, 64), 10, dtype=np.uint8)
+        # A spot around the middle, where the shift is measured.
+        pixels[31:33, 31:33] = 250
+        _write_polar_geotiff(tmp_path / "site.tif", pixels, (lat, 125.0), meridian)
+        # 8 m north and 6 m east, on the sphere of 1 km: 5 and 4 cap pixels.
+        layer = tiles.open_polar_region_layer(tmp_path / "site.tif", shift_m=(8.0, 6.0))
+        across = RADIUS * np.cos(np.radians(lat))
+        target = (lat + np.degrees(8.0 / RADIUS), 125.0 + np.degrees(6.0 / across))
+        u, v = _cap_point(*target, 7)
+        x0, y0 = int(u) - 40, int(v) - 40
+        values = layer.cap(tiles.Cap(lat > 0, 7), y0, y0 + 80, x0, x0 + 80)
         found = np.unravel_index(np.nanargmax(values), values.shape)
         assert found == pytest.approx((v - y0, u - x0), abs=1.5)
 

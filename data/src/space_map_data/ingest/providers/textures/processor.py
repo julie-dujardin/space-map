@@ -63,8 +63,9 @@ def _height_fields(entry: dict, layer: dict) -> dict:
         },
     }
     # The fields are part of the version of a patch. Other files keep theirs.
-    if layer.get("fill_block"):
-        fields["fill_block"] = layer["fill_block"]
+    for key in ("fill_block", "shift_m"):
+        if layer.get(key):
+            fields[key] = layer[key]
     return fields
 
 
@@ -81,15 +82,16 @@ def _patch_raster(
 ) -> patches.Raster:
     """A file of a patch: heights for a height pyramid, else brightness. A
     polar stereographic file is read on the cap of its pole."""
-    gamma = layer.get("gamma")
+    gamma, shift_m = layer.get("gamma"), layer.get("shift_m")
+    fill = bool(layer.get("fill_zeros"))
     if tiles.is_polar(path):
         if coding is None:
-            return tiles.open_polar_region_layer(path, gamma)
+            return tiles.open_polar_region_layer(path, gamma, shift_m, fill)
         return tiles.open_polar_height_region_layer(
             path, **_height_fields(entry, layer)
         )
     if coding is None:
-        return tiles.open_region_layer(path, gamma)
+        return tiles.open_region_layer(path, gamma, shift_m, fill)
     return tiles.open_height_region_layer(path, **_height_fields(entry, layer))
 
 
@@ -847,8 +849,15 @@ class TextureProcessor:
                 "pyramid": metadata["version"],
                 "sigma": sigma,
                 "max_level": spec.get("tiles_max_level"),
+                # A shift and the filling of zeros count only where they are
+                # given, so other patches keep their versions.
                 "files": [
                     [name, (source_dir / name).stat().st_size, layer.get("gamma")]
+                    + [
+                        layer[key]
+                        for key in ("shift_m", "fill_zeros")
+                        if layer.get(key)
+                    ]
                     for layer in spec["files"]
                     for name, _ in layer_files(layer)
                 ],

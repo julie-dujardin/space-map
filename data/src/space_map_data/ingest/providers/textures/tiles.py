@@ -82,6 +82,20 @@ _FILL_SEAM_REACH = 15.0
 _WINDOW_COLUMNS = 32
 # Source rows per chunk when scanning a DEM for its height range.
 _SCAN_ROWS = 1024
+# Side in pixels of the blocks that the outline of a ``ZeroFill`` image runs
+# along, 4 m on a HiRISE orthoimage: coarse enough to label a whole image at
+# once, fine enough that little shadow at its edge stays no data.
+_OUTLINE_BLOCK = 16
+# Half the width in pixels of the narrowest zeros of a ``ZeroFill`` image
+# that are shadow, 2.25 m on a HiRISE orthoimage: its seams are up to 7 px
+# wide, the shadows of its boulders from 8 px.
+_SHADOW_RADIUS = 4
+# Pixels from a seam of a ``ZeroFill`` image to the ground that fills it, 2 m
+# on a HiRISE orthoimage.
+_ZERO_REACH = 8
+# Pixels beside a seam that are filled with it: resampling has mixed its
+# zeros into them.
+_ZERO_EDGE = 2
 # Output columns reprojected or sharpened at a time, to bound the working
 # arrays: a whole row of the finest level is 131,072 px wide.
 _REPROJECT_COLUMNS = 16384
@@ -306,7 +320,7 @@ class Region:
 
     def __init__(
         self,
-        pixels: np.ndarray | ChunkedTiff | SmoothedFill,
+        pixels: np.ndarray | ChunkedTiff | SmoothedFill | ZeroFill,
         west: float,
         east: float,
         north: float,
@@ -407,6 +421,29 @@ class PolarPlacement:
         x_m, y_m = self.metres(x, y)
         return (x_m - self.left_m) / self.step_m, (self.top_m - y_m) / self.step_m
 
+    def moved(self, shift_m: Sequence[float], shape: tuple[int, ...]) -> PolarPlacement:
+        """The placement of a raster of ``shape`` moved ``shift_m`` metres
+        north and east on the ground, as at its middle."""
+        x_m = self.left_m + shape[1] * self.step_m / 2
+        y_m = self.top_m - shape[0] * self.step_m / 2
+        x, y = (float(v) for v in self.plane(np.array(x_m), np.array(y_m)))
+        # Colatitude from the cap's own pole.
+        colatitude = 2 * math.atan(math.hypot(x, y) * _CAP_EDGE)
+        sign = 1.0 if self.north else -1.0
+        east = math.atan2(sign * y, x) + shift_m[1] / (
+            self.radius_m * math.sin(colatitude)
+        )
+        colatitude -= sign * shift_m[0] / self.radius_m
+        reach = math.tan(colatitude / 2) / _CAP_EDGE
+        to_x, to_y = self.metres(
+            np.array(reach * math.cos(east)), np.array(sign * reach * math.sin(east))
+        )
+        return replace(
+            self,
+            left_m=self.left_m + float(to_x) - x_m,
+            top_m=self.top_m + float(to_y) - y_m,
+        )
+
 
 class PolarRegion:
     """A raster of the ground around a pole, in the polar stereographic
@@ -417,7 +454,7 @@ class PolarRegion:
 
     def __init__(
         self,
-        pixels: np.ndarray | ChunkedTiff | SmoothedFill,
+        pixels: np.ndarray | ChunkedTiff | SmoothedFill | ZeroFill,
         place: PolarPlacement,
         blank: float | None = None,
     ) -> None:
@@ -739,6 +776,98 @@ class SmoothedFill:
         a0, a1 = max(x0 // block - 2, 0), min(-(-x1 // block) + 2, columns)
         box = (x0 / block - a0, y0 / block - b0, x1 / block - a0, y1 / block - b0)
         return _bicubic(self._means[b0:b1, a0:a1], (x1 - x0, y1 - y0), box)
+
+
+class ZeroFill:
+    """The samples of an integer image that stores zero for the ground it
+    does not show and for some of the ground it does: its deepest shadows,
+    and the seams between its detectors, a few pixels wide. Inside the
+    outline of the image, zeros that are wide, or near zeros that are, are
+    shadow and read as one, the darkest step of ground. Narrower zeros are a
+    seam: they and the ground ``_ZERO_EDGE`` pixels around them read as a
+    mean of the other ground within ``_ZERO_REACH`` pixels, the nearest
+    weighing most. A mean of ground would light a shadow from the sunlit
+    slope at its edge, and a shadow's darkness would draw a seam as a line.
+
+    The outline runs along blocks of ``_OUTLINE_BLOCK`` pixels. A block of
+    zeros only, joined to the edge of the file by such blocks, is outside. A
+    zero in a block that touches one of them stays no data: the edge of the
+    image cuts through that block."""
+
+    def __init__(self, pixels: np.ndarray | ChunkedTiff) -> None:
+        if pixels.dtype.kind not in "iu":
+            raise ValueError("zeros to fill in samples that are not integers")
+        self._pixels = pixels
+        self.shape = pixels.shape
+        self.dtype = pixels.dtype
+        block = _OUTLINE_BLOCK
+        height, width = pixels.shape[:2]
+        rows, columns = -(-height // block), -(-width // block)
+        empty = np.zeros((rows, columns), dtype=bool)
+        step = max(_WINDOW_PIXELS // width // block, 1) * block
+        for top in range(0, height, step):
+            seen = np.asarray(pixels[top : min(top + step, height), 0:width]) != 0
+            seen = np.pad(
+                seen, ((0, -seen.shape[0] % block), (0, columns * block - width))
+            )
+            band = slice(top // block, top // block + seen.shape[0] // block)
+            empty[band] = ~seen.reshape(-1, block, columns, block).any(axis=(1, 3))
+        labels, _ = ndimage.label(empty)
+        edge = np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])
+        outside = np.isin(labels, edge[edge > 0])
+        self._outside = ndimage.binary_dilation(outside, np.ones((3, 3), dtype=bool))
+
+    def __getitem__(self, key: tuple[slice, slice]) -> np.ndarray:
+        height, width = self.shape[:2]
+        y0, y1, _ = key[0].indices(height)
+        x0, x1, _ = key[1].indices(width)
+        # How far the reading of a pixel looks around it: the width of the
+        # zeros, the shadow around them, the edge of a seam, and the mean.
+        pad = 3 * _SHADOW_RADIUS + _ZERO_EDGE + _ZERO_REACH
+        top, left = max(y0 - pad, 0), max(x0 - pad, 0)
+        bottom, right = min(y1 + pad, height), min(x1 + pad, width)
+        around = np.asarray(self._pixels[top:bottom, left:right])
+        inner = (slice(y0 - top, y1 - top), slice(x0 - left, x1 - left))
+        out = np.array(around[inner])
+        rows = np.arange(top, bottom) // _OUTLINE_BLOCK
+        columns = np.arange(left, right) // _OUTLINE_BLOCK
+        zeros = (around == 0) & ~self._outside[np.ix_(rows, columns)]
+        if not zeros.any():
+            return out
+        ground = around != 0
+        disc = _disc(_SHADOW_RADIUS)
+        wide = ndimage.binary_opening(zeros, disc)
+        shadow = zeros & ndimage.binary_dilation(wide, disc)
+        seam = zeros & ~shadow
+        near = ndimage.binary_dilation(
+            seam, np.ones((3, 3), dtype=bool), iterations=_ZERO_EDGE
+        )
+        holes = seam | (near & ground)
+        ground &= ~holes
+        out[shadow[inner]] = 1
+        here = holes[inner]
+        if not here.any():
+            return out
+
+        def spread(values: np.ndarray) -> np.ndarray:
+            # A Gaussian, not a box: a bright rock beside a seam would light
+            # a square around it. Past the edge of the file it weighs only
+            # the ground inside.
+            return ndimage.gaussian_filter(
+                values, _ZERO_REACH / 3, mode="constant", truncate=3.0
+            )[inner][here]
+
+        total = spread(np.where(ground, around, 0).astype(np.float64))
+        weight = spread(ground.astype(np.float64))
+        mean = np.ones(total.shape)
+        np.divide(total, weight, out=mean, where=weight > 0)
+        out[here] = np.maximum(np.rint(mean), 1).astype(out.dtype)
+        return out
+
+
+def _disc(radius: int) -> np.ndarray:
+    y, x = np.mgrid[-radius : radius + 1, -radius : radius + 1]
+    return np.hypot(y, x) <= radius
 
 
 @dataclass
@@ -1475,11 +1604,30 @@ def _pds_bounds(path: Path) -> tuple[float, float, float, float]:
     )
 
 
-def _region_bounds(path: Path) -> tuple[float, float, float, float]:
-    """West, east, north and south edge of an equirectangular file."""
+def _radius_m(path: Path) -> float:
+    """Radius of the sphere an equirectangular file is mapped on."""
     if path.suffix.lower() == ".img":
-        return _pds_bounds(path)
-    return _geotiff_bounds(path)
+        return float(read_pds_label(path)["A_AXIS_RADIUS"]) * 1000.0
+    with tifffile.TiffFile(str(path)) as tif:
+        page = tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        return (page.geotiff_tags or {})["GeogSemiMajorAxisGeoKey"]
+
+
+def _region_bounds(
+    path: Path, shift_m: Sequence[float] | None
+) -> tuple[float, float, float, float]:
+    """West, east, north and south edge of an equirectangular file, moved
+    ``shift_m`` metres north and east on the ground."""
+    west, east, north, south = (
+        _pds_bounds(path) if path.suffix.lower() == ".img" else _geotiff_bounds(path)
+    )
+    if not shift_m:
+        return west, east, north, south
+    per_degree = math.radians(_radius_m(path))
+    up = shift_m[0] / per_degree
+    across = shift_m[1] / (per_degree * math.cos(math.radians((north + south) / 2)))
+    return west + across, east + across, north + up, south + up
 
 
 def is_polar(path: Path) -> bool:
@@ -1487,28 +1635,48 @@ def is_polar(path: Path) -> bool:
     return path.suffix.lower() != ".img" and _polar_placement(path) is not None
 
 
-def open_region_layer(path: Path, gamma: float | None = None) -> Layer:
+def open_region_layer(
+    path: Path,
+    gamma: float | None = None,
+    shift_m: Sequence[float] | None = None,
+    fill_zeros: bool = False,
+) -> Layer:
     """A greyscale raster of a part of the globe, as a brightness layer: an
-    equirectangular GeoTIFF or PDS3 image."""
-    pixels: np.ndarray | ChunkedTiff
+    equirectangular GeoTIFF or PDS3 image. ``shift_m`` moves it north and
+    east, in metres. ``fill_zeros`` reads it as a ``ZeroFill``."""
+    pixels: np.ndarray | ChunkedTiff | ZeroFill
     if path.suffix.lower() == ".img":
         pixels = open_pds_image(path)
     else:
         # A site mosaic stored in compressed chunks is too large to decode whole.
         pixels = ChunkedTiff(path) if _compressed(path) else _open_grey(path)
-    region = Region(pixels, *_region_bounds(path))
+    if fill_zeros:
+        pixels = ZeroFill(pixels)
+    region = Region(pixels, *_region_bounds(path, shift_m))
     convert = brightness_values(gamma, region.calibrated)
     return Layer(region, Placement(), to_values=convert)
 
 
-def open_polar_region_layer(path: Path, gamma: float | None = None) -> PolarRegionLayer:
+def open_polar_region_layer(
+    path: Path,
+    gamma: float | None = None,
+    shift_m: Sequence[float] | None = None,
+    fill_zeros: bool = False,
+) -> PolarRegionLayer:
     """A greyscale GeoTIFF of the ground around a pole, in the polar
-    stereographic projection, as a brightness layer of that pole's cap."""
+    stereographic projection, as a brightness layer of that pole's cap.
+    ``shift_m`` and ``fill_zeros`` as for ``open_region_layer``."""
     polar = _polar_placement(path)
     if polar is None:
         raise ValueError(f"{path.name}: not a polar stereographic GeoTIFF")
     # A site mosaic stored in compressed chunks is too large to decode whole.
-    pixels = ChunkedTiff(path) if _compressed(path) else _open_grey(path)
+    pixels: np.ndarray | ChunkedTiff | ZeroFill = (
+        ChunkedTiff(path) if _compressed(path) else _open_grey(path)
+    )
+    if fill_zeros:
+        pixels = ZeroFill(pixels)
+    if shift_m:
+        polar = polar.moved(shift_m, pixels.shape)
     around = PolarRegion(pixels, polar)
     return PolarRegionLayer(around, brightness_values(gamma, around.calibrated))
 
@@ -1551,11 +1719,13 @@ def open_height_region_layer(
     offset: float | None = None,
     nodata: float | None = None,
     fill_block: int | None = None,
+    shift_m: Sequence[float] | None = None,
 ) -> Layer:
     """A height raster of a part of the globe: an equirectangular GeoTIFF or
     PDS3 image. ``scale``, ``offset`` and ``nodata`` default to what the file
     states. ``fill_block`` is the side of the blocks of one height with which
-    the raster fills its gaps from a coarser model: see ``SmoothedFill``."""
+    the raster fills its gaps from a coarser model: see ``SmoothedFill``.
+    ``shift_m`` moves it north and east, in metres."""
     if path.suffix.lower() == ".img":
         raster = open_pds_height_raster(path, unit=unit)
     else:
@@ -1564,7 +1734,7 @@ def open_height_region_layer(
     raster, samples, blank = _height_samples(
         raster, path.name, scale, offset, nodata, fill_block
     )
-    region = Region(samples, *_region_bounds(path), blank=blank)
+    region = Region(samples, *_region_bounds(path, shift_m), blank=blank)
     return Layer(region, Placement(), to_values=_height_values(raster))
 
 
@@ -1576,6 +1746,7 @@ def open_polar_height_region_layer(
     offset: float | None = None,
     nodata: float | None = None,
     fill_block: int | None = None,
+    shift_m: Sequence[float] | None = None,
 ) -> PolarRegionLayer:
     """A height GeoTIFF of the ground around a pole, in the polar
     stereographic projection, read as ``open_height_region_layer`` reads one."""
@@ -1586,6 +1757,8 @@ def open_polar_height_region_layer(
     raster, samples, blank = _height_samples(
         raster, path.name, scale, offset, nodata, fill_block
     )
+    if shift_m:
+        polar = polar.moved(shift_m, samples.shape)
     around = PolarRegion(samples, polar, blank=blank)
     return PolarRegionLayer(around, _height_values(raster))
 
