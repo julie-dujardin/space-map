@@ -12,6 +12,7 @@ import { DataTexture } from 'three';
 import { Group } from 'three';
 import { InstancedMesh } from 'three';
 import type { Line } from 'three';
+import { Material } from 'three';
 import { Mesh } from 'three';
 import { MeshStandardMaterial } from 'three';
 import { Object3D } from 'three';
@@ -1435,6 +1436,8 @@ export class SpaceMap {
 	setPinnedBodies(ids: readonly string[]): this;
 	// @internal (undocumented)
 	setSelectedFeature(featureId: number | null): void;
+	// @internal
+	setStarSelectEnabled(enabled: boolean): void;
 	// @internal (undocumented)
 	setTravelHover(id: string | null): void;
 	// @internal

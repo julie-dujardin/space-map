@@ -1,6 +1,7 @@
 /**
  * The starfield's walk of the render tree: which nodes it fetches, the
  * limit a point budget leaves, and the gates that keep it from fetching.
+ * Then what a pick pass draws, and how a picked row becomes an ID.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,8 @@ import { PerspectiveCamera, Scene, type ShaderMaterial } from 'three';
 import { Container } from '$lib/fetch/extrasolar/container';
 import type { ExtrasolarMetadata, ExtrasolarTree } from '$lib/fetch/extrasolar/files';
 import { LayerSet } from '$lib/scene/layers';
+import { PickRegistry } from '$lib/scene/interaction/pick-registry';
+import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { treeToScene, type Vec3 } from './tree';
 
@@ -78,6 +81,8 @@ const HALF = 1000;
 const C = 900;
 const nodes = new Map<string, FakeNode>();
 const fetched: string[] = [];
+/** ID of row i of node `name`: one per row, never 0. */
+const rowId = (name: string, row: number) => 1e9 * name.length + 1000 * row + 7;
 let allow = true;
 let metadataCalls = 0;
 /** Metadata fetches that throw before one succeeds. */
@@ -129,6 +134,15 @@ vi.mock('$lib/fetch/extrasolar/files', async (importActual) => {
 			};
 		},
 		fetchExtrasolarFile: async (path: string) => {
+			if (path.startsWith('mw/id/')) {
+				const name = path.replace('mw/id/', '').replace('.bin.gz', '');
+				fetched.push(`id:${name}`);
+				const node = nodes.get(name);
+				if (!node) throw new Error(`no ID file ${name}`);
+				const values = Array.from({ length: node.rows }, (_, i) => rowId(name, i));
+				const payload = encode(4, TOKEN, node.rows, [{ name: 'id', type: 'id', values }]);
+				return new Container(payload.buffer as ArrayBuffer);
+			}
 			const name = path.replace('mw/node/', '').replace('.bin.gz', '');
 			fetched.push(name);
 			const node = nodes.get(name);
@@ -215,7 +229,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		expect(new Set(fetched)).toEqual(new Set(['r', 'r0', 'r7']));
@@ -232,7 +247,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 150, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		expect(new Set(fetched)).toEqual(new Set(['r', 'r0']));
@@ -247,7 +263,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		expect(fetched).toEqual([]);
@@ -260,7 +277,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		expect(system.availability()).toBe('no');
 	});
@@ -274,7 +292,8 @@ describe('the starfield walk', () => {
 			ctx,
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		ctx.layers.setVisible('starfield', true);
@@ -292,7 +311,8 @@ describe('the starfield walk', () => {
 			ctx,
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		// Hidden, the nodes still follow the camera.
 		await settle(system, camera, focus);
@@ -321,7 +341,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, [0, 0, 0]);
 		expect(metadataCalls).toBe(0);
@@ -338,7 +359,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		expect(system.share()).toBeGreaterThan(0.99);
@@ -363,7 +385,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		expect(system.share()).toBe(0);
@@ -377,7 +400,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		expect(system.availability()).toBe('unknown');
 		await settle(system, camera, focus);
@@ -393,7 +417,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		expect(fetched).toEqual([]);
@@ -409,7 +434,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		const step = async (ms: number) => {
 			for (let t = 0; t < ms; t += 200) {
@@ -435,7 +461,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		const want = treeToScene(C - 500, C - 500, C - 500, { x: 0, y: 0, z: 0 });
@@ -452,7 +479,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		const hidden = () =>
@@ -499,7 +527,8 @@ describe('the starfield walk', () => {
 			fakeCtx(),
 			new Scene(),
 			{ points: 1e6, bytes: 1e9, fetches: 8 },
-			() => {}
+			() => {},
+			new PickRegistry()
 		);
 		await settle(system, camera, focus);
 		system.setFocusStar({
@@ -511,5 +540,97 @@ describe('the starfield walk', () => {
 			colour: null
 		});
 		expect(system.group.children.some((c) => c.userData.focusStar !== undefined)).toBe(false);
+	});
+});
+
+describe('picking a star', () => {
+	async function drawn(registry = new PickRegistry()) {
+		buildTree(new Array(8).fill(10));
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			registry
+		);
+		await settle(system, camera, focus);
+		return { system, registry };
+	}
+
+	it('draws each drawn node with its own range and the uniforms it drew with', async () => {
+		const { system, registry } = await drawn();
+		const draws = system.pickDraws();
+		expect(draws.length).toBeGreaterThan(0);
+		expect(draws.length).toBe(system.drawnNodes().filter((n) => n.points.visible).length);
+		const bases = new Set<number>();
+		for (const { points, material } of draws) {
+			const pick = (material as ShaderMaterial).uniforms;
+			const draw = (points.material as ShaderMaterial).uniforms;
+			// Same objects: the limit, the fade and the hidden row of the last draw.
+			expect(pick.uLimit).toBe(draw.uLimit);
+			expect(pick.uFade).toBe(draw.uFade);
+			expect(pick.uHidden).toBe(draw.uHidden);
+			// One pick pixel is one CSS pixel.
+			expect(pick.uPixelRatio.value).toBe(1);
+			expect((material as ShaderMaterial).vertexShader).toContain('vPick = uPickBase');
+			bases.add(pick.uPickBase.value);
+			const name = points.userData.starNode as string;
+			expect(system.pickedStar(pick.uPickBase.value + 3)).toEqual({ node: name, row: 3 });
+			expect(registry.resolve(pick.uPickBase.value + 3)).toBeNull();
+		}
+		expect(bases.size).toBe(draws.length);
+		// A second pick reuses the ranges and the materials.
+		const again = system.pickDraws();
+		expect(again.map((d) => d.material)).toEqual(draws.map((d) => d.material));
+	});
+
+	it('reads a row ID from the node ID file, loaded once', async () => {
+		const { system } = await drawn();
+		const before = system.stats().cachedBytes;
+		// Two clicks before the file is in share one load.
+		const [a, b] = await Promise.all([
+			system.starId({ node: 'r0', row: 5 }),
+			system.starId({ node: 'r0', row: 6 })
+		]);
+		expect([a, b]).toEqual([rowId('r0', 5), rowId('r0', 6)]);
+		expect(await system.starId({ node: 'r0', row: 0 })).toBe(rowId('r0', 0));
+		expect(fetched.filter((f) => f === 'id:r0')).toHaveLength(1);
+		expect(system.stats().cachedBytes).toBeGreaterThan(before);
+	});
+
+	it('picks the focused star as that star', async () => {
+		const { system } = await drawn();
+		system.setFocusStar({
+			id: 22137869,
+			record: null!,
+			scene: [0, 0, 0],
+			tree: [C - 500, C - 500, C - 500],
+			absMag: 10,
+			colour: null
+		});
+		const focusDraw = system.pickDraws().find((d) => d.points.userData.focusStar !== undefined);
+		const base = (focusDraw?.material as ShaderMaterial).uniforms.uPickBase.value;
+		expect(system.pickedStar(base)).toEqual({ id: 22137869 });
+		expect(await system.starId({ id: 22137869 })).toBe(22137869);
+		// A new focus takes a new range; the old one names nothing.
+		system.setFocusStar(null);
+		expect(system.pickedStar(base)).toBeNull();
+	});
+
+	it('draws nothing to pick where the stars do not draw', async () => {
+		const { system } = await drawn();
+		expect(system.pickDraws().length).toBeGreaterThan(0);
+		system.group.visible = false;
+		expect(system.pickDraws()).toEqual([]);
+	});
+
+	it('gives back every range when it goes', async () => {
+		const { system } = await drawn();
+		const bases = system
+			.pickDraws()
+			.map((d) => (d.material as ShaderMaterial).uniforms.uPickBase.value as number);
+		system.dispose();
+		for (const base of bases) expect(system.pickedStar(base)).toBeNull();
 	});
 });

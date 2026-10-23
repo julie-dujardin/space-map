@@ -29,7 +29,8 @@ export function resolveBodyColor(data: BodyData): string {
 		const planetId = `naif-${num}99`;
 		if (BODY_COLORS[planetId]) return BODY_COLORS[planetId];
 	}
-	if (objectType === ObjectType.STAR) return TYPE_COLOR_STAR;
+	if (objectType === ObjectType.STAR || objectType === ObjectType.EXTRASOLAR)
+		return TYPE_COLOR_STAR;
 	if (objectType === ObjectType.PLANET || objectType === ObjectType.DWARF_PLANET)
 		return TYPE_COLOR_PLANET;
 	if (objectType === ObjectType.MOON) return TYPE_COLOR_MOON;

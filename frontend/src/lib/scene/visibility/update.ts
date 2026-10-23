@@ -1,7 +1,7 @@
 import { Quaternion, Vector3 } from 'three';
 import type { PerspectiveCamera, Points, ShaderMaterial, WebGLRenderer } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { ObjectType, isMajorBody } from '$lib/types/objects';
+import { ObjectType, isExtrasolar, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
 import { host } from '$lib/host';
 import { setLabelAnnotation } from '../label/annotations';
@@ -106,6 +106,7 @@ export function updateBodyVisibility(
 	const layers = ctx.layers;
 	const hideOrbits = !layers.isVisible('orbits');
 	const systemShare = ctx.visibility.systemShare;
+	const starShare = ctx.visibility.starShare;
 	const showNomenclature = layers.isVisible('nomenclature');
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenW = renderer.domElement.clientWidth;
@@ -375,7 +376,13 @@ export function updateBodyVisibility(
 		// Major bodies (planets/moons/dwarfs/stars) always take the mesh path's
 		// type-aware gates even when sizeless and meshless — else they'd skip the
 		// moon-label cap and show every halo unbounded.
-		if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
+		if (isExtrasolar(body)) {
+			// Outside the solar system: it shows where the stars draw.
+			const visible = starShare > 0;
+			group.visible = visible;
+			showLabel = visible;
+			isClose = false;
+		} else if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
 			// Barycenters/Lagrange points: navigational aids, visible once built,
 			// except a barycenter sitting within a halo of its primary on screen —
 			// unseparated it reads as a stray marker over the planet (most
@@ -505,7 +512,9 @@ export function updateBodyVisibility(
 		if (applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId)) {
 			newlyShownLabel = true;
 		}
-		if (bo.label) fadeLabel(bo.label, bo.starPoint ? 1 : systemShare);
+		if (bo.label) {
+			fadeLabel(bo.label, bo.starPoint ? 1 : isExtrasolar(body) ? starShare : systemShare);
+		}
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const isNomFocused = showNomenclature && body.data.id === nomFocusedBodyId;

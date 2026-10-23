@@ -63,10 +63,12 @@ export function buildMajorBodies(
 		const id = body.data.id;
 		const isHalfPromoted = halfPromoteIds?.has(id) ?? false;
 		// Halo-only types render as label + halo, no sphere; per-frame loops
-		// skip entries with mesh === null. Trails are built separately.
+		// skip entries with mesh === null. Trails are built separately. The
+		// starfield draws an extrasolar object.
 		const t = body.data.objectType;
 		const isVirtual =
 			isHalfPromoted ||
+			t === ObjectType.EXTRASOLAR ||
 			t === ObjectType.BARYCENTER ||
 			t === ObjectType.LAGRANGE_POINT ||
 			t === ObjectType.COMET ||
@@ -142,7 +144,7 @@ export function buildMajorBodies(
 		}
 
 		const variant = getLabelVariant(body);
-		const isLarge = isStar || t === ObjectType.PLANET;
+		const isLarge = isStar || t === ObjectType.EXTRASOLAR || t === ObjectType.PLANET;
 		// Curated frontend list ∪ data-driven `m` flag for designation-only moons.
 		const isMinor = isHalfPromoted || MINOR_PROMOTED_IDS.has(id) || body.data.isMinor === true;
 		const label = createLabel(

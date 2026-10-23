@@ -1,7 +1,7 @@
 import { type CanvasTexture, type Points, type PointsMaterial, type Scene } from 'three';
 import { resolveBodyColor } from '$lib/body-color';
 import { BODY_COLORS } from '$lib/constants';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isExtrasolar, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '../../types';
@@ -46,14 +46,14 @@ export function buildTrails(
 	for (const [, bo] of bodyObjects) {
 		if (bo.trail !== null) continue;
 		const { body } = bo;
-		// STAR (the Sun) has no trail. Mesh-upgradable halo-only bodies (asteroids,
+		// A star has no trail. Mesh-upgradable halo-only bodies (asteroids,
 		// comets) defer trail build until focus upgrades the mesh — eager build
 		// would burn ~512 Kepler solves per body for nothing. `focusUpgraded`, not
 		// `mesh`, gates that, since a body with no measured size stays meshless
 		// regardless. Barycenters/Lagrange points are halo-only forever but still
 		// trail. Probes never get a sphere, so they trail as soon as promoted,
 		// unless minor-promoted (halo-only until focused).
-		if (body.data.objectType === ObjectType.STAR) continue;
+		if (body.data.objectType === ObjectType.STAR || isExtrasolar(body)) continue;
 		const isProbe = body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		if (isProbe) {
 			if (bo.isMinor && !bo.mesh) continue;

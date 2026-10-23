@@ -1,4 +1,5 @@
 import {
+	BufferGeometry,
 	Color,
 	LinearSRGBColorSpace,
 	NoBlending,
@@ -6,6 +7,7 @@ import {
 	RawShaderMaterial,
 	Scene,
 	WebGLRenderTarget,
+	type Material,
 	type PerspectiveCamera,
 	type WebGLRenderer
 } from 'three';
@@ -19,6 +21,12 @@ import {
  * No meshes in the pass, so no planet occlusion — the caller rejects any
  * candidate hidden behind a mesh on its own ray.
  */
+/** A `Points` of the pick pass and the material that writes its pick-ids. */
+export interface PickDraw {
+	points: Points;
+	material: Material;
+}
+
 export interface PickCandidate {
 	/** Decoded global pick-id; resolve via {@link PickRegistry}. */
 	pickId: number;
@@ -70,6 +78,8 @@ export class GpuPickPass {
 	private readonly prevClear = new Color();
 	/** Reused proxy Points wrapping live geometries, grown on demand. */
 	private readonly proxies: Points[] = [];
+	/** What a proxy holds between picks. */
+	private readonly idleGeometry = new BufferGeometry();
 
 	constructor(
 		private readonly renderer: WebGLRenderer,
@@ -99,17 +109,19 @@ export class GpuPickPass {
 	}
 
 	/** A proxy Points sharing `src`'s geometry, positioned at `src`'s world
-	 *  transform. Reused across picks to avoid per-click allocation. */
-	private proxyAt(index: number, src: Points): Points {
+	 *  transform. Reused across picks to avoid per-click allocation; the scene
+	 *  is empty between picks. */
+	private proxyAt(index: number, src: Points, material: Material): Points {
 		let p = this.proxies[index];
 		if (!p) {
-			p = new Points(src.geometry, this.material);
+			p = new Points(src.geometry, material);
 			p.frustumCulled = false;
 			p.matrixAutoUpdate = false;
 			p.matrixWorldAutoUpdate = false;
 			this.proxies[index] = p;
 		} else {
 			p.geometry = src.geometry;
+			p.material = material;
 		}
 		p.matrixWorld.copy(src.matrixWorld);
 		return p;
@@ -128,6 +140,24 @@ export class GpuPickPass {
 		rect: DOMRect,
 		radiusCss: number
 	): PickCandidate[] {
+		const draws: PickDraw[] = [];
+		for (const points of clouds) {
+			if (!points.geometry.getAttribute('pickColor')) continue;
+			draws.push({ points, material: this.material });
+		}
+		return this.pickDraws(draws, camera, clientX, clientY, rect, radiusCss);
+	}
+
+	/** {@link pick} for objects that bring their own pick material. One target
+	 *  pixel is one CSS pixel, so a material sizes its points in CSS px. */
+	pickDraws(
+		draws: Iterable<PickDraw>,
+		camera: PerspectiveCamera,
+		clientX: number,
+		clientY: number,
+		rect: DOMRect,
+		radiusCss: number
+	): PickCandidate[] {
 		const r = Math.max(1, Math.round(radiusCss));
 		const boxPx = r * 2 + 1;
 		this.ensureSize(boxPx);
@@ -138,13 +168,11 @@ export class GpuPickPass {
 		const offsetX = cx - r;
 		const offsetY = cy - r;
 
-		this.scene.clear();
 		let n = 0;
-		for (const pts of clouds) {
-			if (!pts.visible) continue;
-			if (!pts.geometry.getAttribute('pickColor')) continue;
-			if (pts.geometry.drawRange.count === 0) continue;
-			this.scene.add(this.proxyAt(n++, pts));
+		for (const { points, material } of draws) {
+			if (!points.visible) continue;
+			if (points.geometry.drawRange.count === 0) continue;
+			this.scene.add(this.proxyAt(n++, points, material));
 		}
 		if (n === 0) return [];
 
@@ -164,12 +192,26 @@ export class GpuPickPass {
 		this.renderer.clear(true, true, false);
 		this.renderer.render(this.scene, this.pickCamera);
 		this.renderer.readRenderTargetPixels(this.target, 0, 0, boxPx, boxPx, this.buffer);
+		this.letGo(n);
 		this.renderer.setRenderTarget(prevTarget);
 		this.renderer.autoClear = prevAutoClear;
 		this.renderer.setClearColor(this.prevClear, prevClearAlpha);
 		this.pickCamera.clearViewOffset();
 
 		return this.decode(boxPx, r, rect, offsetX, offsetY);
+	}
+
+	/** Drop the objects of the last pick. A star node can leave its cache
+	 *  before the next pick, and its geometry holds its whole payload. */
+	private letGo(n: number): void {
+		this.scene.clear();
+		for (let i = 0; i < n; i++) {
+			this.proxies[i].geometry = this.idleGeometry;
+			this.proxies[i].material = this.material;
+		}
+		// The renderer holds its last list of a scene until it draws that scene
+		// again. With autoClear off, this draws and clears no pixel.
+		this.renderer.render(this.scene, this.pickCamera);
 	}
 
 	/** Decode the framebuffer box into distinct nearest-first candidates. */
@@ -211,6 +253,7 @@ export class GpuPickPass {
 	dispose(): void {
 		this.target.dispose();
 		this.material.dispose();
+		this.idleGeometry.dispose();
 		this.proxies.length = 0;
 	}
 }

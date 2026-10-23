@@ -9,6 +9,7 @@
 import {
 	AddEquation,
 	CustomBlending,
+	NoBlending,
 	OneFactor,
 	OneMinusDstColorFactor,
 	ShaderMaterial,
@@ -46,8 +47,12 @@ const CORE_AT_LIMIT = 0.06;
 const DOT_PX = 2.5;
 const MAX_DOT_PX = 14;
 
-/** Built for each material, because the depth mode is set when three boots. */
-const vertexShader = (): string => /* glsl */ `
+/**
+ * Built for each material, because the depth mode is set when three boots.
+ * The pick pass draws with this same shader, so it tests and sizes a star as
+ * the draw does; `pick` only adds the star's pick-id.
+ */
+export const starVertexShader = (pick = false): string => /* glsl */ `
 uniform float uLimit;
 uniform float uPixelRatio;
 uniform float uGain;
@@ -57,8 +62,10 @@ uniform int uHidden;
 attribute float mag;
 attribute vec3 starColour;
 varying vec3 vColour;
+${pick ? 'uniform highp uint uPickBase;\nflat varying highp uint vPick;' : ''}
 
 void main() {
+	${pick ? 'vPick = uPickBase + uint(gl_VertexID);' : ''}
 	vec4 mv = modelViewMatrix * vec4(position, 1.0);
 	float pc = length(mv.xyz) / ${PC_SCENE.toFixed(4)};
 	float m = mag + 5.0 * log2(max(pc, 1e-9)) * 0.30103 - 5.0;
@@ -94,6 +101,32 @@ void main() {
 }
 `;
 
+/** Least light (linear, of 1) that a pick takes as a drawn star. A fainter
+ *  fragment is under one step of an 8-bit screen. */
+const PICK_MIN_LIGHT = 1 / 255;
+
+/** Writes the pick-id where the star puts light. Where dots overlap, the
+ *  depth test keeps the brighter light, as the screen shows it. */
+const pickFragment = (): string => /* glsl */ `
+varying vec3 vColour;
+flat varying highp uint vPick;
+
+void main() {
+	vec2 c = gl_PointCoord * 2.0 - 1.0;
+	float r2 = dot(c, c);
+	if (r2 > 1.0) discard;
+	float light = max(vColour.r, max(vColour.g, vColour.b)) * exp(-5.0 * r2);
+	if (light < ${PICK_MIN_LIGHT.toFixed(6)}) discard;
+	gl_FragDepth = ${isReversedDepth() ? 'light / (1.0 + light)' : '1.0 / (1.0 + light)'};
+	gl_FragColor = vec4(
+		float(vPick & 255u),
+		float((vPick >> 8) & 255u),
+		float((vPick >> 16) & 255u),
+		float(vPick >> 24)
+	) / 255.0;
+}
+`;
+
 /** No floor: a star under the limit draws nothing. */
 const NO_FLOOR = -1e9;
 
@@ -109,7 +142,7 @@ export function makeStarMaterial(shared: StarUniforms, floor = NO_FLOOR): Shader
 			uFloor: { value: floor },
 			uHidden: { value: -1 }
 		},
-		vertexShader: vertexShader(),
+		vertexShader: starVertexShader(),
 		fragmentShader: FRAGMENT,
 		// Screen blending: overlapping stars brighten toward white but never
 		// past it, so a dense field does not set off the bloom, which starts at 1.
@@ -120,5 +153,25 @@ export function makeStarMaterial(shared: StarUniforms, floor = NO_FLOOR): Shader
 		transparent: true,
 		depthTest: true,
 		depthWrite: false
+	});
+}
+
+/**
+ * The pick material of a drawn star material: its own uniform objects, so the
+ * limit, fade, floor and hidden row are the ones the stars last drew with.
+ * Rows take pick-ids from `base`. The pick target has one pixel per CSS pixel.
+ */
+export function makeStarPickMaterial(draw: ShaderMaterial, base: number): ShaderMaterial {
+	return new ShaderMaterial({
+		uniforms: {
+			...draw.uniforms,
+			uPixelRatio: { value: 1 },
+			uPickBase: { value: base }
+		},
+		vertexShader: starVertexShader(true),
+		fragmentShader: pickFragment(),
+		blending: NoBlending,
+		depthTest: true,
+		depthWrite: true
 	});
 }

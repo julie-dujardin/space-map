@@ -61,6 +61,9 @@ export class FocusController {
 	/** Answers whether a reader click may take the focus. Null until the
 	 *  renderer sets it, which is before there is anything to click. */
 	readerFocusFilter: ((body: PositionedBody) => boolean) | null = null;
+	/** Counts the times the focus was set, so a pick that loads late can tell
+	 *  that the focus moved after it. */
+	private focusSets = 0;
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
 	/** The opening view of the focused body, kept until its spin is on the mesh
@@ -97,6 +100,10 @@ export class FocusController {
 
 	get current(): PositionedBody | undefined {
 		return this.focusedBody;
+	}
+
+	get focusChanges(): number {
+		return this.focusSets;
 	}
 
 	/** Place of `body` at the scene date. Null when it has none. */
@@ -241,6 +248,7 @@ export class FocusController {
 			];
 		}
 		this.focusedBody = undefined;
+		this.promotion.releaseFocusPromoted(undefined);
 		prepareFocusTarget(
 			focus,
 			[...position],
@@ -277,10 +285,11 @@ export class FocusController {
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		const { ctx, bodyObjects, controls, callbacks, focus, camera, systemData, loadTexture } =
 			this.deps;
-		// Surface-feature bodies render nothing themselves — the host draws the
-		// terrain, and the starfield an extrasolar object. Skip halo/label allocation.
+		this.focusSets++;
+		// A surface feature renders nothing itself: the host draws the terrain.
+		// An extrasolar object takes only its halo and name: the starfield draws it.
 		const drawsItself = !isSurfaceFeature(body) && !isExtrasolar(body);
-		if (drawsItself) this.promotion.ensureBodyObjects(body);
+		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
 
 		// Unfocused bodies stay halo-only for cost; minDistance below reads the
 		// focused body's mesh radius, so swap focus first.
@@ -306,6 +315,7 @@ export class FocusController {
 
 		if (body.data.id !== prev?.data.id) this.pendingInitialView = null;
 		this.focusedBody = body;
+		this.promotion.releaseFocusPromoted(body.data.id);
 		// Retire the synthetic feature body so getBody stops resolving a stale id.
 		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
 		controls.minDistance = minCameraDistance(body, modelMinRadiusKm(bodyObjects.get(body.data.id)));

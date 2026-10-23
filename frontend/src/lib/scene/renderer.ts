@@ -68,6 +68,7 @@ import {
 	type RenderTierPreset
 } from './render-tier';
 import { StarfieldSystem } from './starfield/starfield';
+import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { systemShare } from './visibility/system-fade';
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
@@ -288,6 +289,11 @@ export class SceneRenderer {
 	private limitsArmed = false;
 	private bodySelectEnabled = true;
 	private featureSelectEnabled = true;
+	/** Whether a click on a star takes the focus. Off, the stars are out of the
+	 *  pick. */
+	private starSelectEnabled = false;
+	/** Counts the canvas picks. A star that loads after a later pick is dropped. */
+	private pickSerial = 0;
 
 	/**
 	 * Isolated overlay scene for spacecraft 3D models. Main scene's log depth
@@ -568,7 +574,13 @@ export class SceneRenderer {
 		);
 		this.pointClouds.seedBasis(focusPos);
 		this.pointClouds.setPointBudget(this.tier.pointBudget);
-		this.starfield = new StarfieldSystem(ctx, this.scene, starBudget(), this.invalidate);
+		this.starfield = new StarfieldSystem(
+			ctx,
+			this.scene,
+			starBudget(),
+			this.invalidate,
+			this.pointClouds.pickRegistry
+		);
 
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControlsClass(this.camera, canvas);
@@ -688,11 +700,13 @@ export class SceneRenderer {
 			this.focus,
 			this.clickables,
 			this.meshToBody,
-			(body) => this.focusController.handleFocus(body),
+			this.pickBody,
 			(ndcX, ndcY) => this.pickFocusedModel(ndcX, ndcY),
 			this.gpuPick,
 			() => [...this.pointClouds.asteroids().values(), ...this.pointClouds.spacecraft().values()],
-			this.pointClouds.pickRegistry
+			this.pointClouds.pickRegistry,
+			() => (this.starSelectEnabled && this.bodySelectEnabled ? this.starfield.pickDraws() : []),
+			(pickId) => this.pickStar(pickId)
 		);
 		this.pointerInteraction.attach();
 
@@ -1191,6 +1205,8 @@ export class SceneRenderer {
 			ctx: this.ctx
 		});
 
+		// The starfield's share from the frame before: it updates after this pass.
+		this.ctx.visibility.starShare = this.starfield.share();
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
 			this.camera,
@@ -1928,10 +1944,45 @@ export class SceneRenderer {
 		this.featureSelectEnabled = enabled;
 	}
 
+	/** @internal Whether a click on a star takes the focus. */
+	setStarSelectEnabled(enabled: boolean): void {
+		this.starSelectEnabled = enabled;
+	}
+
 	/** Every way a reader takes the focus runs through the focus controller, so
 	 *  the gesture and the host's list of focusable bodies are answered there. */
 	private readonly readerMayFocus = (body: PositionedBody): boolean =>
 		this.bodySelectEnabled && (this.focusableBodies?.has(body.data.id) ?? true);
+
+	/** A body, a dot or a star picked on the canvas takes the focus. */
+	private readonly pickBody = (body: PositionedBody): void => {
+		this.pickSerial++;
+		this.focusController.handleFocus(body);
+	};
+
+	/**
+	 * A click on a star. The node's ID file gives its ID, and the lookup that
+	 * a link to it uses gives its body. Then it is a picked body like a dot. A
+	 * later pick or any change of focus before the loads end drops it. False
+	 * when `pickId` names no star.
+	 */
+	private pickStar(pickId: number): boolean {
+		const star = this.starfield.pickedStar(pickId);
+		if (!star) return false;
+		const serial = ++this.pickSerial;
+		const focusChanges = this.focusController.focusChanges;
+		const current = (): boolean =>
+			serial === this.pickSerial && focusChanges === this.focusController.focusChanges;
+		void (async () => {
+			const objectId = extrasolarObjectId(await this.starfield.starId(star));
+			if (!current()) return;
+			await this.ctx.ensureBody(objectId, jdToDate(this.clock.jd));
+			const body = this.ctx.getBody(objectId);
+			if (!body) throw new Error(`no record for ${objectId}`);
+			if (current()) this.pickBody(body);
+		})().catch((err: unknown) => console.warn('[starfield] the picked star did not load:', err));
+		return true;
+	}
 
 	/** @internal One finger drags the page instead of the map: the camera answers
 	 *  to two fingers only, and the canvas lets the browser scroll on one. */

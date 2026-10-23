@@ -10,10 +10,13 @@
  *   date is in, and then the camera is on the body as before;
  * - a lander has its place before the page reads it, on a link and on a click;
  * - the ground under a lander holds still on screen while its body turns;
- * - a link with no camera opens framed on its body.
+ * - a link with no camera opens framed on its body;
+ * - a click on a star turns the camera to it as a click on a dot does, and a
+ *   star that loads after a later navigation does not take the focus.
  *
  * Needs a dev server (its build exposes `__smCtx`, `__smRenderer`, `__smMap`)
- * on an export that carries `coverage`, and a Chromium with remote debugging:
+ * on an export that carries `coverage` and the stars, and a Chromium with
+ * remote debugging:
  *
  *   chromium --headless=new --remote-debugging-port=9222 about:blank
  *   pnpm dev
@@ -97,6 +100,15 @@ class Tab {
 			await sleep(250);
 		}
 		throw new Error(`timed out waiting for ${what}`);
+	}
+
+	/** A mouse click at (x, y), in CSS px. */
+	async click(x, y) {
+		const at = { x, y, button: 'left', clickCount: 1 };
+		await this.send('Input.dispatchMouseEvent', { ...at, type: 'mouseMoved', buttons: 0 });
+		await this.send('Input.dispatchMouseEvent', { ...at, type: 'mousePressed', buttons: 1 });
+		await sleep(60);
+		await this.send('Input.dispatchMouseEvent', { ...at, type: 'mouseReleased', buttons: 0 });
 	}
 
 	async close() {
@@ -288,6 +300,79 @@ const frameChange = (frames) => `(async () => {
 	}
 	return { change: changes[changes.length >> 1], contrast: max - min };
 })()`;
+
+/** Runs in the page: the camera's place in the scene, in float64. */
+const CAMERA_PLACE = `(() => {
+	const r = window.__smRenderer, f = r.focus.focusTruePos, c = r.camera.position;
+	return [f[0] + c.x, f[1] + c.y, f[2] + c.z];
+})()`;
+
+/**
+ * Open Earth's page, take the camera 2,000 AU out with Orion ahead, and wait
+ * for the stars. Resolves with a bright drawn star right of the middle of the
+ * view that no other drawn star comes within 16 px of: its screen place, node
+ * and row.
+ */
+async function openOnStars(tab) {
+	await tab.goto('/b/399/Earth');
+	// The page frames Earth once the small bodies are in. The move comes after that.
+	await tab.until(
+		`${READY} && ${focusedIs('naif-399')} && window.__smCtx.bodies.minorStreaming === false`,
+		'Earth focused, the small bodies in'
+	);
+	await sleep(1500);
+	await tab.eval(`(() => {
+		const r = window.__smRenderer;
+		// Away from Betelgeuse (RA 88.8°, Dec 7.4°), in the scene's ecliptic axes.
+		const a = (268.8 * Math.PI) / 180, d = (-7.4 * Math.PI) / 180, e = (23.4393 * Math.PI) / 180;
+		const x = Math.cos(d) * Math.cos(a), y = Math.cos(d) * Math.sin(a), z = Math.sin(d);
+		r.camera.position.set(x, -y * Math.sin(e) + z * Math.cos(e), -(y * Math.cos(e) + z * Math.sin(e)));
+		r.camera.position.multiplyScalar(20000);
+		r.controls.update();
+		r.invalidate();
+	})()`);
+	await tab.until(
+		`window.__smRenderer.camera.position.length() > 19000 && window.__smRenderer.starfield.share() > 0.3 && window.__smRenderer.starfield.stats().loading === 0`,
+		'the camera 2,000 AU out and the stars drawn'
+	);
+	await sleep(1500);
+	const star = await tab.eval(`(() => {
+		const r = window.__smRenderer, cam = r.camera, s = r.starfield;
+		cam.updateMatrixWorld();
+		const rect = r.renderer.domElement.getBoundingClientRect();
+		const P = cam.projectionMatrix.elements, limit = s.stats().limit, PC = (648000 / Math.PI) * 10;
+		const stars = [];
+		for (const n of s.drawnNodes()) {
+			if (!n.points.visible) continue;
+			const mv = cam.matrixWorldInverse.clone().multiply(n.points.matrixWorld).elements;
+			const pos = n.points.geometry.getAttribute('position').array;
+			const mag = n.points.geometry.getAttribute('mag').array;
+			for (let i = 0; i < n.rows; i++) {
+				const [x, y, z] = [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]];
+				const ex = mv[0] * x + mv[4] * y + mv[8] * z + mv[12];
+				const ey = mv[1] * x + mv[5] * y + mv[9] * z + mv[13];
+				const ez = mv[2] * x + mv[6] * y + mv[10] * z + mv[14];
+				if (ez >= 0) continue;
+				const above = limit - mag[i] - 5 * Math.log10(Math.hypot(ex, ey, ez) / PC) + 5;
+				if (above <= 0) continue;
+				const sx = rect.left + ((P[0] * ex + P[8] * ez) / -ez + 1) / 2 * rect.width;
+				const sy = rect.top + (1 - (P[5] * ey + P[9] * ez) / -ez) / 2 * rect.height;
+				stars.push({ node: n.name, row: i, above, x: sx, y: sy });
+			}
+		}
+		// Clear of the solar system in the middle and of the panel on the left.
+		const off = (p) => Math.hypot(p.x - rect.left - rect.width / 2, p.y - rect.top - rect.height / 2);
+		const ring = (p) => off(p) > 200 && off(p) < 400 && p.x > rect.left + rect.width / 2;
+		const alone = (p) => stars.every((o) => o === p || Math.hypot(o.x - p.x, o.y - p.y) > 16);
+		return stars.filter((p) => p.above > 2 && ring(p)).sort((a, b) => b.above - a.above).find(alone) ?? null;
+	})()`);
+	if (!star) throw new Error('no drawn star stands alone in the middle of the view');
+	return star;
+}
+
+/** Runs in the page: the ID of the star `openOnStars` found. */
+const starIdOf = (star) =>
+	`window.__smRenderer.starfield.starId({ node: '${star.node}', row: ${star.row} })`;
 
 function check(failures, ok, message) {
 	if (!ok) failures.push(message);
@@ -698,6 +783,53 @@ const SCENARIOS = {
 			Math.abs(s.cameraOffKm / linkKm - 1) < 0.01,
 			`camera ${s.cameraOffKm} km from Saturn, ${linkKm} km in the link`
 		);
+		return s;
+	},
+
+	/** The camera stays where it is and turns to the star, as for a dot of a
+	 *  cloud: no flight to it. The URL and the panel follow the focus. */
+	async 'a click on a star turns the camera to it'(tab, f) {
+		const star = await openOnStars(tab);
+		const id = `x-${await tab.eval(starIdOf(star))}`;
+		const before = await tab.eval(CAMERA_PLACE);
+		await tab.click(star.x, star.y);
+		await tab.until(`${focusedIs(id)} && ${FLY_ENDED}`, `${id} focused`);
+		const name = await tab.eval(`window.__smCtx.getBody('${id}').data.name`);
+		await tab.until(
+			`document.querySelector('#detail-drawer-title')?.textContent.trim() === ${JSON.stringify(name)}`,
+			'the panel of the star'
+		);
+		const after = await tab.eval(CAMERA_PLACE);
+		const s = await tab.eval(`${SNAPSHOT}('${id}')`);
+		const moved = Math.hypot(...after.map((v, i) => v - before[i]));
+		check(f, moved < s.cameraOffKm / KM / 1e9, `the camera moved ${moved * KM} km`);
+		const path = await tab.eval('decodeURIComponent(location.pathname)');
+		check(f, path === `/x/${id.slice(2)}/${name}`, `URL ${path}`);
+		return s;
+	},
+
+	/** The ID file of the star comes 2 s late: a link followed in that time
+	 *  keeps the focus. */
+	async 'a star that loads after a later navigation does not take the focus'(tab, f) {
+		const star = await openOnStars(tab);
+		await tab.eval(`(() => {
+			const fetchNow = window.fetch;
+			window.__idAsked = false;
+			window.fetch = (...a) => {
+				if (!String(a[0]?.url ?? a[0]).includes('/mw/id/')) return fetchNow(...a);
+				window.__idAsked = true;
+				return new Promise((go) => setTimeout(go, 2000)).then(() => fetchNow(...a));
+			};
+		})()`);
+		await tab.click(star.x, star.y);
+		await tab.eval(`window.__smFocusObject('naif-499', 'Mars')`);
+		await tab.until(`${focusedIs('naif-499')} && ${FLY_ENDED}`, 'Mars focused');
+		await sleep(3000);
+		const s = await tab.eval(`${SNAPSHOT}('naif-499')`);
+		check(f, await tab.eval('window.__idAsked'), 'the click did not ask for the ID file');
+		check(f, s.focused === 'naif-499', `focused ${s.focused}`);
+		const path = await tab.eval('location.pathname');
+		check(f, path.startsWith('/b/499/'), `URL ${path}`);
 		return s;
 	},
 

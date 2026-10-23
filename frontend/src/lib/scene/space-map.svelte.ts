@@ -369,6 +369,9 @@ export class SpaceMap {
 	private controls: ControlHost<SpaceMap> | null = null;
 	private lostPanelTimer: ReturnType<typeof setTimeout> | undefined;
 	private cooperative: CooperativeGestures | null = null;
+	/** Whether a click on a star takes the focus. A host's map has no page to
+	 *  open for a star, so it is off unless the app turns it on. */
+	private starSelectEnabled = false;
 	private limits: CameraLimits = {};
 	private initialFocusPending = true;
 	private pendingFocusId: string | null = null;
@@ -1198,7 +1201,15 @@ export class SpaceMap {
 		renderer.setZoomEnabled(this.scrollZoom.isEnabled());
 		renderer.setBodySelectEnabled(this.bodySelect.isEnabled());
 		renderer.setFeatureSelectEnabled(this.featureSelect.isEnabled());
+		renderer.setStarSelectEnabled(this.starSelectEnabled);
 		renderer.setCooperativeTouch(cooperative);
+	}
+
+	/** @internal Whether a click on a star takes the focus, as a click on a
+	 *  body does. */
+	setStarSelectEnabled(enabled: boolean): void {
+		this.starSelectEnabled = enabled;
+		this.renderer?.setStarSelectEnabled(enabled);
 	}
 
 	/** A wheel the page is to keep never reaches the orbit controls. It is not

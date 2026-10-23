@@ -27,6 +27,9 @@
  * Loaded nodes stay in a cache with a byte budget. The node wanted least
  * recently goes first. Each drawn node is one `Points` in tree coordinates
  * (pc, ICRS axes), under a group that takes them to the floating-origin scene.
+ *
+ * A click picks a star as it is drawn: the pick pass draws each node with the
+ * same shader and uniforms. A node's ID file loads on the first pick in it.
  */
 
 import {
@@ -56,7 +59,9 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE } from '$lib/math/units';
 import { PREFETCH_AU, RELEASE_AU, bandShare } from './band';
 import { starColours } from './colour';
-import { makeStarMaterial, starUniforms } from './material';
+import { makeStarMaterial, makeStarPickMaterial, starUniforms } from './material';
+import type { PickDraw } from '$lib/scene/interaction/gpu-pick';
+import type { PickRegistry } from '$lib/scene/interaction/pick-registry';
 import type { StarAnchor } from '$lib/types/objects';
 import {
 	PC_SCENE,
@@ -104,6 +109,9 @@ const FOCUS_FLOOR_MAG = 3;
 const NO_MAGNITUDE = 99;
 /** First of the transparent objects, because the stars are behind everything. */
 const STAR_RENDER_ORDER = -1;
+/** Pick ranges: a node's rows, and the focused star's own point. */
+const NODE_PICK_PREFIX = 'star:';
+const FOCUS_PICK_GROUP = 'star-focus';
 
 export interface StarfieldBudget {
 	/** Stars drawn at once. */
@@ -131,6 +139,15 @@ interface Loaded {
 	bytes: number;
 }
 
+/** A pick range and the material that draws it, made on the first pick. */
+interface PickRange {
+	base: number;
+	material: ShaderMaterial | null;
+}
+
+/** A star a click picked: the focused star, or a row of a drawn node. */
+export type PickedStar = { id: number } | { node: string; row: number };
+
 interface StarNode {
 	name: string;
 	depth: number;
@@ -152,6 +169,9 @@ interface StarNode {
 	fade: number;
 	/** The row of the focused star in this node, for the star it was found for. */
 	hidden: { id: number; row: number } | null;
+	/** Kept while the node is cached. */
+	pick: PickRange | null;
+	ids: { column: Float64Array; bytes: number } | null;
 }
 
 /** Whether the stars can draw. `unknown` until the tree's metadata is in. */
@@ -183,6 +203,8 @@ export class StarfieldSystem {
 	private readonly nodes = new Map<string, StarNode>();
 	private readonly drawn = new Set<StarNode>();
 	private readonly retries = new RetryBackoff<string>(() => this.markDirty());
+	/** ID files on their way, by node: a second click in the node waits for the same one. */
+	private readonly idLoads = new Map<string, Promise<Float64Array>>();
 	private loading = 0;
 	private cachedBytes = 0;
 	/** `no` when the map has no extrasolar base, opened without the layer,
@@ -210,13 +232,15 @@ export class StarfieldSystem {
 	/** The focused extrasolar object, drawn on its own at its record's place. */
 	private focusStar: StarAnchor | null = null;
 	private focusPoints: Points | null = null;
+	private focusPick: PickRange | null = null;
 
 	constructor(
 		private readonly ctx: ContextManager,
 		scene: Scene,
 		private budget: StarfieldBudget,
 		/** Called when something arrives that the next frame should draw. */
-		private readonly onChange: () => void
+		private readonly onChange: () => void,
+		private readonly pickRegistry: PickRegistry
 	) {
 		this.group.name = 'starfield';
 		this.group.matrixAutoUpdate = false;
@@ -247,6 +271,8 @@ export class StarfieldSystem {
 			(this.focusPoints.material as ShaderMaterial).dispose();
 			this.focusPoints = null;
 		}
+		this.dropPick(this.focusPick, FOCUS_PICK_GROUP);
+		this.focusPick = null;
 		if (next) this.focusPoints = this.focusPoint(next);
 		for (const node of this.drawn) if (node.points) this.applyHidden(node);
 		this.onChange();
@@ -271,6 +297,94 @@ export class StarfieldSystem {
 	node(name: string): StarNodeView | undefined {
 		const node = this.nodes.get(name);
 		return node ? this.view(node) : undefined;
+	}
+
+	/** What a pick pass draws for the stars: each drawn node in view and the
+	 *  focused star. Empty while the starfield draws nothing. */
+	pickDraws(): PickDraw[] {
+		if (!this.group.visible) return [];
+		const out: PickDraw[] = [];
+		for (const node of this.drawn) {
+			const points = node.points;
+			if (!points?.visible || !node.data) continue;
+			node.pick ??= {
+				base: this.pickRegistry.allocateRows(
+					NODE_PICK_PREFIX + node.name,
+					node.data.container.rows
+				),
+				material: null
+			};
+			out.push({ points, material: this.pickMaterial(node.pick, points) });
+		}
+		const focus = this.focusPoints;
+		if (focus) {
+			this.focusPick ??= {
+				base: this.pickRegistry.allocateRows(FOCUS_PICK_GROUP, 1),
+				material: null
+			};
+			out.push({ points: focus, material: this.pickMaterial(this.focusPick, focus) });
+		}
+		return out;
+	}
+
+	/** The star of a pick-id from {@link pickDraws}, or null. */
+	pickedStar(pickId: number): PickedStar | null {
+		const at = this.pickRegistry.locate(pickId);
+		if (!at) return null;
+		if (at.groupId === FOCUS_PICK_GROUP) return this.focusStar ? { id: this.focusStar.id } : null;
+		if (!at.groupId.startsWith(NODE_PICK_PREFIX)) return null;
+		return { node: at.groupId.slice(NODE_PICK_PREFIX.length), row: at.row };
+	}
+
+	/** The ID of a picked star. A node's ID file loads on the first pick in it
+	 *  and stays while the node is cached. */
+	async starId(star: PickedStar): Promise<number> {
+		if ('id' in star) return star.id;
+		const ids = this.nodes.get(star.node)?.ids?.column ?? (await this.idsOf(star.node));
+		const id = ids[star.row];
+		if (!id) throw new Error(`[starfield] row ${star.row} of node ${star.node} has no ID`);
+		return id;
+	}
+
+	private idsOf(name: string): Promise<Float64Array> {
+		let load = this.idLoads.get(name);
+		if (!load) {
+			load = this.loadIds(name).finally(() => this.idLoads.delete(name));
+			this.idLoads.set(name, load);
+		}
+		return load;
+	}
+
+	private async loadIds(name: string): Promise<Float64Array> {
+		const tree = this.tree;
+		if (!tree) throw new Error('[starfield] no tree to read IDs from');
+		const container = await fetchExtrasolarFile(extrasolarPath(tree.ids, { name }), tree.token, {
+			priority: 'high'
+		});
+		const node = this.nodes.get(name);
+		const rows = node?.data?.container.rows;
+		if (rows !== undefined && container.rows !== rows) {
+			throw new Error(
+				`[starfield] ID file of node ${name} has ${container.rows} rows, not ${rows}`
+			);
+		}
+		const column = container.ids('id');
+		if (node?.data && !node.ids) {
+			node.ids = { column, bytes: container.buffer.byteLength };
+			this.cachedBytes += container.buffer.byteLength;
+		}
+		return column;
+	}
+
+	private pickMaterial(range: PickRange, points: Points): ShaderMaterial {
+		range.material ??= makeStarPickMaterial(points.material as ShaderMaterial, range.base);
+		return range.material;
+	}
+
+	private dropPick(range: PickRange | null, groupId: string): void {
+		if (!range) return;
+		range.material?.dispose();
+		this.pickRegistry.release(groupId);
 	}
 
 	/** Scene position (barycentre origin, scene units) of a row of a loaded
@@ -396,6 +510,7 @@ export class StarfieldSystem {
 		for (const node of this.nodes.values()) {
 			node.abort?.abort();
 			this.undraw(node);
+			this.dropPick(node.pick, NODE_PICK_PREFIX + node.name);
 			node.data?.geometry.dispose();
 		}
 		this.nodes.clear();
@@ -481,7 +596,9 @@ export class StarfieldSystem {
 			wanted: false,
 			lastWantedMs: -Infinity,
 			fade: 0,
-			hidden: null
+			hidden: null,
+			pick: null,
+			ids: null
 		};
 		this.nodes.set(name, node);
 		return node;
@@ -647,6 +764,10 @@ export class StarfieldSystem {
 		node.data = null;
 		node.state = 'idle';
 		node.hidden = null;
+		this.dropPick(node.pick, NODE_PICK_PREFIX + node.name);
+		node.pick = null;
+		if (node.ids) this.cachedBytes -= node.ids.bytes;
+		node.ids = null;
 		for (const child of node.children) this.forget(child);
 		node.children = [];
 	}
@@ -743,6 +864,11 @@ export class StarfieldSystem {
 		if (!points) return;
 		points.removeFromParent();
 		(points.material as ShaderMaterial).dispose();
+		// It holds the uniforms of the material that went; a redraw makes both again.
+		if (node.pick) {
+			node.pick.material?.dispose();
+			node.pick.material = null;
+		}
 		// Frees the GPU buffers; the arrays stay in the cache for a redraw.
 		node.data?.geometry.dispose();
 		node.points = null;

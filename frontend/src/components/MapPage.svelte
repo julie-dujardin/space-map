@@ -251,13 +251,13 @@
 					distance: framingDistanceFor(type, body),
 					...(craft ? { latitude: DEFAULT_FRAMING_LAT, longitude: DEFAULT_FRAMING_LON } : {})
 				}),
-				// An alias of the extrasolar catalogue lands on its live object, and
-				// the URL with it.
+				// An extrasolar object lands on its live object, an alias too, under
+				// the name of its record.
 				commit: (body) =>
 					appState.setFocus({
 						type,
 						id: body.extrasolar ? body.data.id : id,
-						name: body.extrasolar && body.data.id !== id ? '' : name,
+						name: body.extrasolar ? (body.data.name ?? '') : name,
 						tab: opts?.tab,
 						featureType: opts?.featureType
 					})
@@ -384,6 +384,9 @@
 	const navToFeature = $derived(isNav ? appState.view.navToFeature : null);
 	const navFromPlace = $derived(isNav ? appState.view.navFromPlace : null);
 	const navToPlace = $derived(isNav ? appState.view.navToPlace : null);
+	// A star has a page here, so a click on one takes the focus. Not on a trip,
+	// which would take the star as its end.
+	$effect(() => map.setStarSelectEnabled(!isNav));
 
 	// Group route wins over body focus: the camera may be parked on the anchor
 	// body. A trip owns the sidebar outright: the destination is focused, but

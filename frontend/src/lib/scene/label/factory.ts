@@ -73,6 +73,7 @@ export function getLabelVariant(body: PositionedBody): LabelVariant {
 	if (
 		isMajorBody(t) ||
 		t === ObjectType.STAR ||
+		t === ObjectType.EXTRASOLAR ||
 		isAsteroid(t) ||
 		t === ObjectType.COMET ||
 		t === ObjectType.BARYCENTER ||

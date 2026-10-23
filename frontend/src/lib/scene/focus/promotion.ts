@@ -84,6 +84,9 @@ export class PromotionRegistry {
 	private pinned: ReadonlySet<string> = new Set();
 	/** Bodies built for a pin, and taken down when the host lets go of it. */
 	private readonly pinPromoted = new Set<string>();
+	/** Extrasolar objects built for the focus alone: the halo and name of the
+	 *  focused star, taken down when the focus leaves it. */
+	private readonly focusPromoted = new Set<string>();
 	/** Active `/g/<slug>` membership filter, or null for the whole Earth-sat zone. */
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
@@ -210,9 +213,15 @@ export class PromotionRegistry {
 
 	/** Build mesh, label, halo, and trail for a body that only existed as a point-cloud dot. */
 	ensureBodyObjects(body: PositionedBody): void {
-		// The starfield draws an extrasolar object.
-		if (isExtrasolar(body) || !this.buildBodyInstance(body)) return;
+		if (!this.buildBodyInstance(body)) return;
 		this.finalizeBuilds();
+	}
+
+	/** Take down what was built for an extrasolar focus, but for `focusedId`. */
+	releaseFocusPromoted(focusedId: string | undefined): void {
+		if (this.focusPromoted.size === 0) return;
+		const ids = [...this.focusPromoted].filter((id) => id !== focusedId);
+		this.tearDownBodies(ids, this.focusPromoted);
 	}
 
 	/** Build mesh, label, halo, and dirty markers for one body. Returns false
@@ -234,6 +243,7 @@ export class PromotionRegistry {
 		if (
 			!body.orbitElements &&
 			!body.data.pageOnly &&
+			!isExtrasolar(body) &&
 			body.data.orbitalSource !== OrbitalSource.SPICE_PROBE
 		) {
 			body.orbitElements = body.data;
@@ -268,6 +278,8 @@ export class PromotionRegistry {
 		const id = body.data.id;
 		if (this.defaults.has(id)) {
 			// Curated default — no extra tracking.
+		} else if (isExtrasolar(body)) {
+			this.focusPromoted.add(id);
 		} else if (auto) {
 			this.autoPromoted.add(id);
 		} else {

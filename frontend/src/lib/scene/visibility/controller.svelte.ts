@@ -68,6 +68,9 @@ export class VisibilityController {
 	 *  the Sun draws, and every other body and cloud is hidden. Set by the
 	 *  renderer each frame. */
 	systemShare = 1;
+	/** The starfield's share of the sky, 0 to 1: an extrasolar object's halo
+	 *  and name show with the stars. Set by the renderer each frame. */
+	starShare = 0;
 
 	private focusedBodyIdPlain: string = SUN_ID;
 	private focusedSystemIdPlain: string | null = null;

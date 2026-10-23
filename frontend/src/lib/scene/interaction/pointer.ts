@@ -13,11 +13,20 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { attachedModelRoots } from '$lib/scene/objects/body/model';
-import { pickMoonDot } from './picking';
-import type { GpuPickPass } from './gpu-pick';
+import { isCoarsePointer, pickMoonDot, pickPlanetDot, pickRadiusPx, type DotPick } from './picking';
+import type { GpuPickPass, PickDraw } from './gpu-pick';
 import type { PickRegistry } from './pick-registry';
 
-const CLICK_DRAG_PX2 = 9; // 3px move tolerance — anything larger reads as a drag, not a click.
+/** How far (CSS px) a mouse may move and still click. More is a drag. */
+const CLICK_DRAG_PX = 3;
+/** The same for a finger or a pen, which moves a few px during a tap. */
+const TOUCH_SLOP_PX = 10;
+
+/** True when the pointer is past the distance a click may move. */
+function movedTooFar(e: PointerEvent, from: Vector2): boolean {
+	const limit = isCoarsePointer(e.pointerType) ? TOUCH_SLOP_PX : CLICK_DRAG_PX;
+	return Math.hypot(e.clientX - from.x, e.clientY - from.y) > limit;
+}
 
 /** One resolved point-cloud candidate, comparable to a moon CPU hit. */
 interface PointHit {
@@ -28,9 +37,6 @@ interface PointHit {
 	screenDist: number;
 }
 
-/** Pointer-down/up handlers that distinguish a click from a drag and pick the
- *  topmost body under the cursor. Moons and meshes resolve on the CPU; the
- *  asteroid/spacecraft clouds resolve on the GPU via {@link GpuPickPass}. */
 /** True when the top-level object that holds `obj` is hidden. A raycast does
  *  not read `visible`, and a body with no place is not there to click. */
 function inHiddenRoot(obj: Object3D): boolean {
@@ -39,8 +45,17 @@ function inHiddenRoot(obj: Object3D): boolean {
 	return !top.visible;
 }
 
+/** Pointer handlers that tell a click from a drag or a pinch and pick the
+ *  topmost body under the cursor. Moons and meshes resolve on the CPU; the
+ *  asteroid/spacecraft clouds and the stars resolve on the GPU via
+ *  {@link GpuPickPass}. */
 export class PointerInteraction {
 	private readonly downPos = new Vector2();
+	/** Pointers down now, by id. */
+	private readonly down = new Set<number>();
+	/** The gesture since the first pointer went down is not a click: a second
+	 *  pointer joined it, or one moved past the tolerance. */
+	private gesture = false;
 	private readonly pointer = new Vector2();
 	private readonly _tmpPointer = new Vector2();
 	private readonly raycaster = new Raycaster();
@@ -62,27 +77,53 @@ export class PointerInteraction {
 		private readonly gpuPick: GpuPickPass,
 		/** Live asteroid + spacecraft clouds to render in the GPU pick pass. */
 		private readonly getClouds: () => Iterable<Points>,
-		private readonly pickRegistry: PickRegistry
+		private readonly pickRegistry: PickRegistry,
+		/** The stars as the pick pass draws them; empty while none draw. */
+		private readonly getStars: () => PickDraw[],
+		/** Takes a star's pick-id; false when it names no star. */
+		private readonly onStarPick: (pickId: number) => boolean
 	) {}
 
 	attach(): void {
 		this.canvas.addEventListener('pointerdown', this.onDown);
+		this.canvas.addEventListener('pointermove', this.onMove);
 		this.canvas.addEventListener('pointerup', this.onUp);
+		this.canvas.addEventListener('pointercancel', this.onCancel);
 	}
 
 	detach(): void {
 		this.canvas.removeEventListener('pointerdown', this.onDown);
+		this.canvas.removeEventListener('pointermove', this.onMove);
 		this.canvas.removeEventListener('pointerup', this.onUp);
+		this.canvas.removeEventListener('pointercancel', this.onCancel);
 	}
 
 	private onDown = (e: PointerEvent): void => {
-		this.downPos.set(e.clientX, e.clientY);
+		// The first pointer starts a gesture, and drops any id whose up never came.
+		if (e.isPrimary) {
+			this.down.clear();
+			this.gesture = false;
+			this.downPos.set(e.clientX, e.clientY);
+		} else {
+			this.gesture = true;
+		}
+		this.down.add(e.pointerId);
+	};
+
+	/** A drag that comes back to where it started is still a drag. */
+	private onMove = (e: PointerEvent): void => {
+		if (this.gesture || !this.down.has(e.pointerId)) return;
+		if (movedTooFar(e, this.downPos)) this.gesture = true;
+	};
+
+	private onCancel = (e: PointerEvent): void => {
+		this.down.delete(e.pointerId);
+		this.gesture = true;
 	};
 
 	private onUp = (e: PointerEvent): void => {
-		const dx = e.clientX - this.downPos.x;
-		const dy = e.clientY - this.downPos.y;
-		if (dx * dx + dy * dy > CLICK_DRAG_PX2) return;
+		const known = this.down.delete(e.pointerId);
+		if (!known || this.gesture || movedTooFar(e, this.downPos)) return;
 
 		const rect = this.canvas.getBoundingClientRect();
 		this.pointer.set(
@@ -113,24 +154,54 @@ export class PointerInteraction {
 		// Moon dots (CPU — few hundred) and asteroid/spacecraft dots (GPU pick
 		// pass). The nearer-to-cursor of the two wins, depth breaking ties, so a
 		// clicked moon still outranks an asteroid dot drifting behind it.
-		const moonHit = pickMoonDot(
-			this.pointer,
-			this.camera,
-			this.ctx,
-			this.focus.focusTruePos,
-			this.canvas.clientWidth,
-			this.canvas.clientHeight,
-			this._tmpV3,
-			this.clock.jd,
-			e.pointerType,
-			this.isDotVisible
-		);
+		const dots: DotPick = {
+			pointer: this.pointer,
+			camera: this.camera,
+			ctx: this.ctx,
+			focusTruePos: this.focus.focusTruePos,
+			canvasWidth: this.canvas.clientWidth,
+			canvasHeight: this.canvas.clientHeight,
+			tmpV3: this._tmpV3,
+			jd: this.clock.jd,
+			pointerType: e.pointerType,
+			isVisible: this.isDotVisible
+		};
+		const moonHit = pickMoonDot(dots);
 		const gpuHit = this.gpuPickCloud(e, rect);
 		const pointHit = this.nearer(moonHit, gpuHit);
 
 		const bestBody = pointHit?.body ?? meshBody;
-		if (bestBody) this.onPick(bestBody);
+		if (bestBody) {
+			this.onPick(bestBody);
+			return;
+		}
+		this.pickStar(e, rect, dots);
 	};
+
+	/** The stars are behind everything: they pick only where nothing of the
+	 *  solar system does, the Sun's and the planets' points included. Then the
+	 *  nearest drawn star not hidden behind a body. */
+	private pickStar(e: PointerEvent, rect: DOMRect, dots: DotPick): void {
+		const stars = this.getStars();
+		if (stars.length === 0) return;
+		const planet = pickPlanetDot(dots);
+		if (planet) {
+			this.onPick(planet.body);
+			return;
+		}
+		const candidates = this.gpuPick.pickDraws(
+			stars,
+			this.camera,
+			e.clientX,
+			e.clientY,
+			rect,
+			pickRadiusPx(e.pointerType)
+		);
+		for (const c of candidates) {
+			if (!this.isDotVisible(c.ndcX, c.ndcY, Infinity)) continue;
+			if (this.onStarPick(c.pickId)) return;
+		}
+	}
 
 	/** Nearer of two point-cloud candidates: smaller cursor distance wins, depth
 	 *  breaks ties — matching the CPU picker's ranking across dot sources. */
@@ -145,7 +216,6 @@ export class PointerInteraction {
 	/** GPU-pick the asteroid/spacecraft clouds, then resolve the nearest candidate
 	 *  that isn't hidden behind a mesh on its own ray. */
 	private gpuPickCloud(e: PointerEvent, rect: DOMRect): PointHit | null {
-		const radius = e.pointerType === 'touch' || e.pointerType === 'pen' ? 48 : 24;
 		const jd = this.clock.jd;
 		const candidates = this.gpuPick.pick(
 			this.getClouds(),
@@ -153,7 +223,7 @@ export class PointerInteraction {
 			e.clientX,
 			e.clientY,
 			rect,
-			radius
+			pickRadiusPx(e.pointerType)
 		);
 		for (const c of candidates) {
 			const bodyId = this.pickRegistry.resolve(c.pickId);
