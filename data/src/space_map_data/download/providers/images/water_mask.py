@@ -18,6 +18,7 @@ or river narrower than a texel survives as a partial value instead of
 vanishing or blooming to full width.
 """
 
+import itertools
 import logging
 import time
 from collections.abc import Sequence
@@ -98,7 +99,7 @@ def _draw_polygons(
             continue
         bounds = list(shape.parts) + [len(shape.points)]
         outers, holes = [], []
-        for start, end in zip(bounds, bounds[1:]):
+        for start, end in itertools.pairwise(bounds):
             ring = shape.points[start:end]
             if len(ring) < 3:
                 continue
@@ -131,7 +132,7 @@ def _draw_rivers(
         if not shape.points or _wraps_antimeridian(shape.bbox):
             continue
         bounds = list(shape.parts) + [len(shape.points)]
-        for start, end in zip(bounds, bounds[1:]):
+        for start, end in itertools.pairwise(bounds):
             if end - start < 2:
                 continue
             draw.line(

@@ -6,6 +6,7 @@ The ReadMe of a catalogue lists each data file with its record count.
 import gzip
 import io
 import re
+from contextlib import nullcontext
 from pathlib import Path
 
 CDS_URL = "https://cdsarc.cds.unistra.fr/ftp"
@@ -34,8 +35,10 @@ def count_records(source: bytes | Path, name: str, *, data_only: bool = False) -
     `data_only` leaves out the blank lines and the `#` headlines. Some ReadMes
     do not count them.
     """
-    with io.BytesIO(source) if isinstance(source, bytes) else source.open("rb") as raw:
-        lines = gzip.open(raw) if name.endswith(".gz") else raw
+    with (
+        io.BytesIO(source) if isinstance(source, bytes) else source.open("rb") as raw,
+        gzip.open(raw) if name.endswith(".gz") else nullcontext(raw) as lines,
+    ):
         if data_only:
             return sum(1 for line in lines if line.strip() and line[:1] != b"#")
         return sum(1 for _ in lines)

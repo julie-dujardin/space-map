@@ -2,6 +2,7 @@
 
 import gzip
 import json
+from typing import Any, ClassVar
 
 import orjson
 import pytest
@@ -223,7 +224,7 @@ class TestLoadTextureMetadataFiltersClouds:
 class TestTilesBlock:
     """A bundle's tile pyramid rides inside its texture or displacement block."""
 
-    DESCRIPTOR = {
+    DESCRIPTOR: ClassVar[dict[str, Any]] = {
         "id": "naif-499",
         "type": "cylindrical",
         "source": "https://example.com/232m",
@@ -353,13 +354,13 @@ class TestPatchObjectBundles:
     """The scoped systems run restates the surface-map blocks on the object
     bundles, which are the only copy for a body outside every system."""
 
-    TEXTURE = {
+    TEXTURE: ClassVar[dict[str, Any]] = {
         "id": "spkid-20000004",
         "source": "https://example.com/vesta",
         "organisation": "NASA",
         "type": "cylindrical",
     }
-    HEIGHTS = {
+    HEIGHTS: ClassVar[dict[str, Any]] = {
         "id": "spkid-20000004_displacement",
         "source": "https://example.com/dtm",
         "organisation": "DLR",

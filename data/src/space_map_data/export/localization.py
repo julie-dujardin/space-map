@@ -344,6 +344,7 @@ def _format_messages() -> None:
             cwd=MESSAGES_DIR,
             capture_output=True,
             text=True,
+            check=False,
         )
     except OSError as exc:
         logger.warning("Could not run prettier on message files (%s)", exc)

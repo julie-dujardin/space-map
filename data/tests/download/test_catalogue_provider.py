@@ -396,11 +396,11 @@ class TestQueryAnswer:
 
     def test_a_server_error_is_tried_again(self, tmp_path):
         answers = [httpx.Response(503), httpx.Response(200, content=b"h\n")]
-        dest, post = self.run(tmp_path, answers)
+        _dest, post = self.run(tmp_path, answers)
         assert post() == 1
 
     def test_a_refused_query_is_not_tried_again(self, tmp_path):
-        dest, post = self.run(tmp_path, [httpx.Response(400)])
+        _dest, post = self.run(tmp_path, [httpx.Response(400)])
         with pytest.raises(DownloadError, match="HTTP 400"):
             post()
 

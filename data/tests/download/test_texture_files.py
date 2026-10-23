@@ -208,7 +208,7 @@ class TestDroppedConnection:
     """Over thousands of files a few requests always drop."""
 
     def test_size_request_is_retried(self, tmp_path, monkeypatch):
-        downloader, requests = _downloader(tmp_path, monkeypatch)
+        downloader, _requests = _downloader(tmp_path, monkeypatch)
         monkeypatch.setattr(texture_files, "RETRY_DELAY_SECONDS", 0.0)
         send = downloader.client.head
         calls = []

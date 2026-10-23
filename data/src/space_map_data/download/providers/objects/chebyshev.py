@@ -130,9 +130,7 @@ def _cache_is_valid(
         return False
     if abs(float(params[1]) - expected_end_jd) > 1e-6:
         return False
-    if abs(float(params[2]) - intlen_s) > 1e-6:
-        return False
-    return True
+    return abs(float(params[2]) - intlen_s) <= 1e-6
 
 
 def _sample_body(
@@ -157,7 +155,7 @@ def _sample_body(
     # Chebyshev–Lobatto extrema on [-1, 1]: x_k = cos(pi * k / N)
     nodes_tau = np.cos(np.pi * k / degree) if degree > 0 else np.zeros(1)
 
-    n_intervals = int(math.ceil((end_et - start_et) / intlen_s))
+    n_intervals = math.ceil((end_et - start_et) / intlen_s)
     start_jds = np.empty(n_intervals, dtype=np.float64)
     end_jds = np.empty(n_intervals, dtype=np.float64)
     coeffs = np.empty((n_intervals, 3, n_nodes), dtype=np.float64)

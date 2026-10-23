@@ -27,6 +27,7 @@ A waypoint is the first time the archive shows the rover at a place. The rover
 stays there until the next waypoint.
 """
 
+import itertools
 import json
 import logging
 import math
@@ -103,7 +104,7 @@ def _read(path: Path) -> Traverse:
         Waypoint(event_jd(w["time"]), float(w["lat_deg"]), float(w["lon_deg"]))
         for w in data["waypoints"]
     )
-    if any(a.jd >= b.jd for a, b in zip(waypoints, waypoints[1:])):
+    if any(a.jd >= b.jd for a, b in itertools.pairwise(waypoints)):
         raise ValueError(f"{path}: waypoints are not in time order")
     sources = tuple(data["sources"])
     _check_sources(sources, path)

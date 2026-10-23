@@ -115,12 +115,10 @@ def should_export(obj: Object, naif_id: int) -> bool:
     current whitelist immediately, regardless of disk state."""
     if naif_id in SMALL_BODY_TARGET_NAIF_IDS:
         return True
-    if (
-        obj.object_type in _SMALL_BODY_TYPES
-        and naif_id not in CHEBYSHEV_ASTEROID_WHITELIST
-    ):
-        return False
-    return True
+    return (
+        obj.object_type not in _SMALL_BODY_TYPES
+        or naif_id in CHEBYSHEV_ASTEROID_WHITELIST
+    )
 
 
 def _slice_segments(

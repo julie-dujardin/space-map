@@ -236,7 +236,7 @@ class TestTheShellReadsTheMeasurement:
 
     # Overridden for a different quantity, not a second opinion: Mars uses its
     # isothermal scale-height temperature, Pluto REX's near-surface air.
-    DIFFERENT_QUANTITY = {"naif-499", "naif-999"}
+    DIFFERENT_QUANTITY = frozenset({"naif-499", "naif-999"})
 
     @pytest.mark.parametrize(
         "object_id", sorted(set(ATMOSPHERE_BODIES) & set(TEMPERATURE_BODIES))

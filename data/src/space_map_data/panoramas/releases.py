@@ -219,7 +219,7 @@ def timeline_select(products, *, years=2):
         if not product.get("capture_time"):
             undated.append({**product, "timeline_reason": "capture date needs review"})
             continue
-        stamp = datetime.fromisoformat(product["capture_time"].replace("Z", "+00:00"))
+        stamp = datetime.fromisoformat(product["capture_time"])
         dated.append((stamp, product))
     dated.sort(key=lambda row: (row[0], row[1]["id"]))
     chosen = {}

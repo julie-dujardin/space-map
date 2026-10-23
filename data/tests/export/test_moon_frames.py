@@ -1,6 +1,7 @@
 """Tests for space_map_data.export.position.frames."""
 
 import math
+from typing import Any, ClassVar
 
 import pytest
 from sqlalchemy.orm import joinedload
@@ -138,7 +139,7 @@ class TestEquatorialToEcliptic:
 
     def test_ecliptic_plane_comes_out_flat(self):
         """An orbit lying in the ecliptic reads as i=0 once rotated."""
-        i, om, w = equatorial_to_ecliptic(math.degrees(_OBLIQUITY_RAD), 0.0, 0.0)
+        i, _om, _w = equatorial_to_ecliptic(math.degrees(_OBLIQUITY_RAD), 0.0, 0.0)
         assert i == pytest.approx(0.0, abs=1e-9)
 
     def test_equatorial_plane_tilts_by_the_obliquity(self):
@@ -303,7 +304,7 @@ class TestMeasuredMoonRadius:
 
     # What each zone's query eager-loads. The writers run in worker threads on
     # rows the session has expunged, so anything outside this raises.
-    _ZONE_LOADS = {
+    _ZONE_LOADS: ClassVar[dict[OrbitalSource, tuple[Any, ...]]] = {
         OrbitalSource.sbdb_moon: (Object.sbdb_moon, Object.johnston_moon),
         OrbitalSource.astersat: (Object.astersat_moon, Object.johnston_moon),
         OrbitalSource.sbdb: (Object.sbdb,),

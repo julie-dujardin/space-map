@@ -16,6 +16,8 @@ orange overcast with the Sun a smudge (Tomasko et al. 2005, Nature 438,
 each column; the shell above (Venus) or over it (Titan) stays the march.
 """
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import NamedTuple
 
 from space_map_data.constants.atmosphere.aerosols import AEROSOLS
@@ -114,7 +116,7 @@ class DeepColumn(NamedTuple):
     ground_albedo: tuple[float, float, float]
     cloud_layers: tuple[VenusCloudLayer, ...] = ()
     # Single-scattering albedo per channel at 680/550/440 nm, by layer name.
-    cloud_albedo: dict[str, tuple[float, float, float]] = {}
+    cloud_albedo: Mapping[str, tuple[float, float, float]] = MappingProxyType({})
     absorber: AbsorberTent | None = None
 
 

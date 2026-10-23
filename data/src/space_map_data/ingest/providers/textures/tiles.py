@@ -29,6 +29,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 from typing import Protocol
 
@@ -437,7 +438,7 @@ class SmoothedFill:
             pad = ((0, -values.shape[0] % block), (0, columns * block - width))
             band = slice(top // block, top // block + -(-values.shape[0] // block))
 
-            def blocks(pixels: np.ndarray) -> np.ndarray:
+            def blocks(pixels: np.ndarray, pad=pad) -> np.ndarray:
                 return np.pad(pixels, pad).reshape(-1, block, columns, block)
 
             in_fill = blocks(fill.astype(np.float64))
@@ -1715,9 +1716,7 @@ class PyramidBuilder:
         columns, rows = self._columns(band_level), self._rows(band_level)
         with ThreadPoolExecutor(BLOCK_WORKERS) as workers:
             for row in range(start, rows):
-                parts = workers.map(
-                    lambda col: self._block(pool, row, col), range(columns)
-                )
+                parts = workers.map(partial(self._block, pool, row), range(columns))
                 self._emit(pool, band_level, row, np.concatenate(list(parts), axis=1))
                 self._save(row + 1)
                 log.info("%s: block row %d of %d", self.name, row + 1, rows)

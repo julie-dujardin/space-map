@@ -212,7 +212,7 @@ class TestConstants:
     def test_sentinels(self):
         assert MISSING_INT32 == -1
         assert MISSING_UINT8 == 255
-        assert MISSING_FLOAT64 != MISSING_FLOAT64  # NaN
+        assert math.isnan(MISSING_FLOAT64)
 
 
 def test_landed_payload_flags_a_crash_site() -> None:

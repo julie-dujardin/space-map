@@ -125,7 +125,7 @@ class TestDeshade:
         self, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(deshade, "_GRID_PIXELS", 20_000)
-        mosaic, terrain, albedo = _site(tmp_path)
+        mosaic, terrain, _albedo = _site(tmp_path)
         light = deshade.write(mosaic, [terrain], tmp_path / "copy.img")
         assert light.azimuth == pytest.approx(SUN[0], abs=8.0)
         assert light.elevation == pytest.approx(SUN[1], abs=6.0)

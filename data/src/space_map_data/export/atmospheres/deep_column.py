@@ -138,7 +138,7 @@ def _solve_channel(
     the sublayer extinction per km, and the column's diffuse reflectance —
     for unit diffuse flux entering at the column's top."""
     top_km = column.top_km
-    n = int(round(top_km / _SUBLAYER_KM))
+    n = round(top_km / _SUBLAYER_KM)
     dz = top_km / n
     absorber = column.absorber
     weights = _slab_weights(column.hazes, density, extent_km)
@@ -218,7 +218,7 @@ def build_deep_column(
         )
     top_km = column.top_km
     composition = render_conditions(object_id, body).composition
-    n_sub = int(round(top_km / _SUBLAYER_KM))
+    n_sub = round(top_km / _SUBLAYER_KM)
     dz = top_km / n_sub
     density = mie_density_builder(object_id)
     # The profile-shaped slabs share the whole shipped profile's extent.

@@ -1,5 +1,7 @@
 """Tests for notable-member selection and shared bundle-entry building."""
 
+from typing import ClassVar
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -936,7 +938,7 @@ class TestRadiationCollection:
     """The Radiation page: its rows, its cards, and the note vocabulary the
     frontend has to keep up with."""
 
-    PLACES = {
+    PLACES: ClassVar[dict[str, Place]] = {
         body: Place(parent_id=f"naif-{body.removeprefix('naif-')[0]}", distance_au=au)
         for body, au in {
             "naif-199": 0.387,

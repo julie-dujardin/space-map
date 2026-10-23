@@ -39,6 +39,7 @@ returns the distinction has stopped mattering, because that is deterministic
 injury rather than a stochastic risk, and a sievert is a unit for the latter.
 """
 
+import itertools
 import math
 from typing import NamedTuple
 
@@ -172,7 +173,7 @@ def belt_rate_gy_per_day(profile: BeltProfile, l_shell: float) -> float:
         second_l, second_rate = samples[1]
         index = math.log(second_rate / first_rate) / math.log(second_l / first_l)
         return first_rate * (l_shell / first_l) ** index
-    for (low_l, low_rate), (high_l, high_rate) in zip(samples, samples[1:]):
+    for (low_l, low_rate), (high_l, high_rate) in itertools.pairwise(samples):
         if l_shell <= high_l:
             index = math.log(high_rate / low_rate) / math.log(high_l / low_l)
             return low_rate * (l_shell / low_l) ** index

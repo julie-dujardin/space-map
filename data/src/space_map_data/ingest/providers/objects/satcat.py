@@ -98,15 +98,15 @@ class SatcatIngestor:
 
         # Size and mass have no CelesTrak equivalent, so they are GCAT's or absent.
         physical = (
-            dict(
-                mass_kg=hardware.mass_kg,
-                dry_mass_kg=hardware.dry_mass_kg,
-                span_m=hardware.span_m,
-                length_m=hardware.length_m,
-                diameter_m=hardware.diameter_m,
-                mass_estimated=hardware.mass_estimated,
-                span_estimated=hardware.span_estimated,
-            )
+            {
+                "mass_kg": hardware.mass_kg,
+                "dry_mass_kg": hardware.dry_mass_kg,
+                "span_m": hardware.span_m,
+                "length_m": hardware.length_m,
+                "diameter_m": hardware.diameter_m,
+                "mass_estimated": hardware.mass_estimated,
+                "span_estimated": hardware.span_estimated,
+            }
             if hardware
             else {}
         )

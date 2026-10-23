@@ -285,11 +285,8 @@ def _fit_probe_keys(
                     )
                     if not chunk_sizing.sub_chunks:
                         continue
-                    first_offset = int(
-                        round(
-                            (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et)
-                            / sub_s
-                        )
+                    first_offset = round(
+                        (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et) / sub_s
                     )
                     if rec is None:
                         rec = ChunkProbeRecord(

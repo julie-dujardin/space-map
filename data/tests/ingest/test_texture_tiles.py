@@ -218,7 +218,7 @@ class TestHeightPyramid:
         metres = np.full((2 * TILE, 4 * TILE), 500, dtype=np.int16)
         metres[:, -1] = -32768
         layer = _height_layer(metres)
-        lo, hi, gaps = tiles.height_range_km([layer])
+        _lo, _hi, gaps = tiles.height_range_km([layer])
         coding = tiles.HeightCoding.for_range(-1.0, 1.0, 1e-3, None)
         tiles.PyramidBuilder("test", [layer], tmp_path / "out", 1, coding).build()
 

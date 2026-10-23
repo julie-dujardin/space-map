@@ -9,17 +9,14 @@ untouched.
 import logging
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import TypeVar
 
 from ..client import MeiliClient
 from ..indices import Index
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
 
-
-def _batched(it: Iterable[T], n: int) -> Iterator[list[T]]:
+def _batched[T](it: Iterable[T], n: int) -> Iterator[list[T]]:
     batch: list[T] = []
     for item in it:
         batch.append(item)

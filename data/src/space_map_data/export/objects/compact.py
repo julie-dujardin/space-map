@@ -52,8 +52,8 @@ class CompactMap(MutableMapping[str, dict]):
             yield key, (orjson.loads(value) if isinstance(value, bytes) else value)
 
     def values(self):
-        for _, value in self.items():
-            yield value
+        for value in self._data.values():
+            yield orjson.loads(value) if isinstance(value, bytes) else value
 
     def update(self, other=(), /, **kwargs) -> None:
         if isinstance(other, CompactMap):

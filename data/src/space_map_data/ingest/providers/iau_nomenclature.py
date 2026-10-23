@@ -117,26 +117,26 @@ def _parse_kml(kml_bytes: bytes, target: str) -> list[dict]:
         feature_id = int(link.rsplit("/", 1)[-1])
 
         rows.append(
-            dict(
-                feature_id=feature_id,
-                name=fields.get("clean_name", name_el.text),
-                unicode_name=name_el.text,
-                target=target,
-                approval_date=_parse_approval_date(fields.get("approvaldt", "")),
-                origin=string_or_none(fields.get("origin", "")),
-                diameter=float_or_none(fields.get("diameter", "")),
-                center_lon=float_or_none(fields.get("center_lon", "")),
-                center_lat=float_or_none(fields.get("center_lat", "")),
-                feature_type_code=string_or_none(fields.get("code", "")),
-                min_lon=float_or_none(fields.get("min_lon", "")),
-                max_lon=float_or_none(fields.get("max_lon", "")),
-                min_lat=float_or_none(fields.get("min_lat", "")),
-                max_lat=float_or_none(fields.get("max_lat", "")),
-                ethnicity=string_or_none(fields.get("ethnicity", "")),
-                continent=_parse_continent(fields.get("continent", "")),
-                quad_name=string_or_none(fields.get("quad_name", "")),
-                quad_code=string_or_none(fields.get("quad_code", "")),
-            )
+            {
+                "feature_id": feature_id,
+                "name": fields.get("clean_name", name_el.text),
+                "unicode_name": name_el.text,
+                "target": target,
+                "approval_date": _parse_approval_date(fields.get("approvaldt", "")),
+                "origin": string_or_none(fields.get("origin", "")),
+                "diameter": float_or_none(fields.get("diameter", "")),
+                "center_lon": float_or_none(fields.get("center_lon", "")),
+                "center_lat": float_or_none(fields.get("center_lat", "")),
+                "feature_type_code": string_or_none(fields.get("code", "")),
+                "min_lon": float_or_none(fields.get("min_lon", "")),
+                "max_lon": float_or_none(fields.get("max_lon", "")),
+                "min_lat": float_or_none(fields.get("min_lat", "")),
+                "max_lat": float_or_none(fields.get("max_lat", "")),
+                "ethnicity": string_or_none(fields.get("ethnicity", "")),
+                "continent": _parse_continent(fields.get("continent", "")),
+                "quad_name": string_or_none(fields.get("quad_name", "")),
+                "quad_code": string_or_none(fields.get("quad_code", "")),
+            }
         )
 
     return rows

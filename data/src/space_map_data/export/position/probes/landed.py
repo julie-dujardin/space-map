@@ -69,13 +69,13 @@ def sited_landed_chunk(
         body_id_type=body_id_type,
         is_static=not waypoints,
         is_destroyed=is_destroyed,
-        start_offset_s=int(round(c_start_et - chunk_start_et)),
-        end_offset_s=int(round(c_end_et - chunk_start_et)),
+        start_offset_s=round(c_start_et - chunk_start_et),
+        end_offset_s=round(c_end_et - chunk_start_et),
         lat_ref_deg=lat,
         lng_ref_deg=lng,
         alt_ref_m=0.0,
         samples=[
-            (int(round(et - chunk_start_et)), w_lat, w_lng, 0.0)
+            (round(et - chunk_start_et), w_lat, w_lng, 0.0)
             for et, w_lat, w_lng in waypoints
         ],
         peak_displacement_m=0.0,
@@ -135,7 +135,7 @@ def fit_landed_chunk(
         return None
 
     anchor_set = {c_start_et, c_end_et, *_daily_midnight_ets(c_start_et, c_end_et)}
-    n_fine = max(2, int(math.ceil((c_end_et - c_start_et) / _LANDED_FINE_DT_S)) + 1)
+    n_fine = max(2, math.ceil((c_end_et - c_start_et) / _LANDED_FINE_DT_S) + 1)
     fine_ets = np.linspace(c_start_et, c_end_et, n_fine).tolist()
     all_ets = sorted(anchor_set | set(fine_ets))
 
@@ -162,7 +162,7 @@ def fit_landed_chunk(
     if not fine_samples:
         return None
 
-    first_et, first_xyz_m, first_lat, first_lng, first_alt_m = fine_samples[0]
+    _first_et, first_xyz_m, first_lat, first_lng, first_alt_m = fine_samples[0]
     peak_disp = 0.0
     for et, xyz_m, _lat, _lng, _alt in fine_samples[1:]:
         d = float(np.linalg.norm(xyz_m - first_xyz_m))
@@ -180,7 +180,7 @@ def fit_landed_chunk(
             is_anchor = et in anchor_set
             d = float(np.linalg.norm(xyz_m - last_xyz))
             if is_anchor or d >= _LANDED_MOTION_M:
-                offset_s = int(round(et - chunk_start_et))
+                offset_s = round(et - chunk_start_et)
                 kept_samples.append((offset_s, lat, lng, alt_m))
                 last_xyz = xyz_m
 
@@ -189,8 +189,8 @@ def fit_landed_chunk(
         body_id_type=_NAIF_ORDINAL,
         is_static=is_static,
         is_destroyed=False,
-        start_offset_s=int(round(c_start_et - chunk_start_et)),
-        end_offset_s=int(round(c_end_et - chunk_start_et)),
+        start_offset_s=round(c_start_et - chunk_start_et),
+        end_offset_s=round(c_end_et - chunk_start_et),
         lat_ref_deg=first_lat,
         lng_ref_deg=first_lng,
         alt_ref_m=first_alt_m,

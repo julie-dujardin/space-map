@@ -56,13 +56,17 @@ def operator_overlaps(
     decay_date: str | None,
 ) -> bool:
     """Check whether a satellite's lifetime overlaps the operator's active period."""
-    if op.active_until is not None and launch_date is not None:
-        if _to_date(launch_date) > _active_as_date_upper(op.active_until):
-            return False
-    if op.active_from is not None and decay_date is not None:
-        if _to_date(decay_date) < _active_as_date_lower(op.active_from):
-            return False
-    return True
+    launched_after = (
+        op.active_until is not None
+        and launch_date is not None
+        and _to_date(launch_date) > _active_as_date_upper(op.active_until)
+    )
+    decayed_before = (
+        op.active_from is not None
+        and decay_date is not None
+        and _to_date(decay_date) < _active_as_date_lower(op.active_from)
+    )
+    return not (launched_after or decayed_before)
 
 
 OPERATORS: tuple[OperatorSpec, ...] = (

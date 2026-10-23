@@ -64,7 +64,7 @@ class TestBorrowingTheScaleFromTheOtherAxis:
         points = labelled(-0.04, 3.5, [20, 60, 100, 140, 180])
         points.append((90.0, 41.0))
 
-        slope, offset, count = fit_offset(points, -0.04)
+        _slope, offset, count = fit_offset(points, -0.04)
 
         assert offset == pytest.approx(3.5)
         assert count == 5

@@ -97,9 +97,16 @@ def _small_body(spkid: int, first_obs: str | None = None, **sbdb) -> Object:
         spkid=spkid,
         orbital_source=OrbitalSource.sbdb,
     )
-    elements = dict(
-        epoch=2460000.5, a=2.0, e=0.1, i=5.0, om=10.0, w=20.0, ma=30.0, n=0.5
-    )
+    elements = {
+        "epoch": 2460000.5,
+        "a": 2.0,
+        "e": 0.1,
+        "i": 5.0,
+        "om": 10.0,
+        "w": 20.0,
+        "ma": 30.0,
+        "n": 0.5,
+    }
     obj.sbdb = SBDB(
         spkid=str(spkid),
         object_id=obj.id,
@@ -641,7 +648,16 @@ class TestManualObjectCoverage:
     """A manual object is placed from its orbit block, at any date."""
 
     def _entry(self, **elements) -> dict:
-        orbit = dict(epoch=2451545.0, a=1.0, e=0.1, i=1.0, om=2.0, w=3.0, ma=4.0, n=1.0)
+        orbit = {
+            "epoch": 2451545.0,
+            "a": 1.0,
+            "e": 0.1,
+            "i": 1.0,
+            "om": 2.0,
+            "w": 3.0,
+            "ma": 4.0,
+            "n": 1.0,
+        }
         return {
             "id": "extra-1",
             "parent_id": "naif-10",

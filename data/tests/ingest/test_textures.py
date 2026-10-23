@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any, ClassVar
 
 import numpy as np
 import pytest
@@ -112,7 +113,7 @@ class TestSaveWebpCap:
 class TestRefreshMetadataFromYaml:
     """A skip run rewrites the yaml fields of an existing bundle in place."""
 
-    _ENTRY = {
+    _ENTRY: ClassVar[dict[str, Any]] = {
         "body": "naif-299",
         "source": "https://example.test/venus",
         "organisation": "USGS",

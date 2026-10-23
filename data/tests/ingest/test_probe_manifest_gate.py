@@ -58,9 +58,11 @@ class TestManifested:
             assert probes._manifested([pair]) == []
 
     def test_a_named_drop_is_counted_not_listed(self, mir, caplog):
-        with patch.object(probes, "manifest_probe_ids", return_value=frozenset()):
-            with caplog.at_level("INFO"):
-                probes._manifested([mir])
+        with (
+            patch.object(probes, "manifest_probe_ids", return_value=frozenset()),
+            caplog.at_level("INFO"),
+        ):
+            probes._manifested([mir])
         levels = {r.levelname for r in caplog.records}
         assert levels == {"INFO"}
         assert "1 spacecraft carry kernels but no manifest record" in caplog.text
@@ -69,8 +71,10 @@ class TestManifested:
         # `MGN/-18`: an agency folder whose registry row nobody ever curated,
         # so Magellan's own entry never claims these kernels.
         pair = _pair("MGN", -18, 71430144)
-        with patch.object(probes, "manifest_probe_ids", return_value=frozenset()):
-            with caplog.at_level("INFO"):
-                probes._manifested([pair])
+        with (
+            patch.object(probes, "manifest_probe_ids", return_value=frozenset()),
+            caplog.at_level("INFO"),
+        ):
+            probes._manifested([pair])
         assert "MGN/-18" in caplog.text
         assert "WARNING" in {r.levelname for r in caplog.records}

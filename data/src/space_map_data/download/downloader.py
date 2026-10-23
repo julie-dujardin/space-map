@@ -88,9 +88,7 @@ class Downloader(ABC):
         if meta.get("complete"):
             return True  # all available data already downloaded
         record_count = meta.get("record_count")
-        if record_count is not None and limit is not None and limit <= record_count:
-            return True
-        return False
+        return record_count is not None and limit is not None and limit <= record_count
 
     def _metadata_is_stale(self, meta: dict) -> bool:
         downloaded_at = meta.get("downloaded_at")

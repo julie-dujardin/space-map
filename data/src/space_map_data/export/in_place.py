@@ -47,8 +47,9 @@ def patch_global_bundles(out_dir: Path, patch: Callable[[str, dict], bool]) -> i
     rewritten = 0
     for bucket_path in sorted((out_dir / "objects" / "__global__").glob("*.json.gz")):
         bundle = orjson.loads(gzip.decompress(bucket_path.read_bytes()))
-        # A list, not a generator: every body is patched, also after a change.
-        if any([patch(body_id, data) for body_id, data in bundle.items()]):
+        # Every body is patched, also after a change.
+        changed = [patch(body_id, data) for body_id, data in bundle.items()]
+        if any(changed):
             write_atomic(bucket_path, gzip.compress(orjson.dumps(bundle), mtime=0))
             rewritten += 1
     return rewritten

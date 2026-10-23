@@ -476,9 +476,7 @@ LANDED_LATLNG_SCALE = 10_000_000  # 1e7
 
 def quantize_deg(deg: float) -> int:
     """Lat/lng degrees → int32 with 1e7 scale, clamped to int32 range."""
-    return max(
-        -2_147_483_647, min(2_147_483_647, int(round(deg * LANDED_LATLNG_SCALE)))
-    )
+    return max(-2_147_483_647, min(2_147_483_647, round(deg * LANDED_LATLNG_SCALE)))
 
 
 def _quantize_lng(deg: float) -> int:
@@ -488,7 +486,7 @@ def _quantize_lng(deg: float) -> int:
 
 def _quantize_alt_m(alt_m: float) -> int:
     """Altitude metres → int32 millimetres (range ±2,147 km — fits any body)."""
-    return max(-2_147_483_647, min(2_147_483_647, int(round(alt_m * 1000.0))))
+    return max(-2_147_483_647, min(2_147_483_647, round(alt_m * 1000.0)))
 
 
 def pack_landed_payload(

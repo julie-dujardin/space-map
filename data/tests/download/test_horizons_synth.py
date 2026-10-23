@@ -1,5 +1,6 @@
 """Unit tests for the Horizons synthetic-SPK download helpers."""
 
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import httpx
@@ -271,7 +272,7 @@ class TestDetectWindow:
 class TestIdentifyRefinementWindows:
     # Single-body stub Hill table — value is irrelevant for window-logic tests
     # since the proximity check below uses a body at (0,0,0) or 1e20 km away.
-    _STUB_HILL = {199: 1.0e6}
+    _STUB_HILL: ClassVar[dict[int, float]] = {199: 1.0e6}
 
     def _make_samples(self, n: int, day_step: float = 7.0) -> list[horizons_api.Sample]:
         """N samples spaced `day_step` apart starting at ET 0."""

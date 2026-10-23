@@ -163,12 +163,16 @@ def image_exclusion_reason(
     for cat in _image_categories(metadata):
         c = cat.lower()
         if (
-            c.startswith(("orbits of ", "orbit of "))
-            or c in ("orbits", "orbits in art")
-            or c.startswith(
-                ("animations of orbits", "animations of minor planet orbits")
+            c.startswith(
+                (
+                    "orbits of ",
+                    "orbit of ",
+                    "animations of orbits",
+                    "animations of minor planet orbits",
+                    "videos of orbits",
+                )
             )
-            or c.startswith("videos of orbits")
+            or c in ("orbits", "orbits in art")
             or "trajectory of" in c
         ):
             return "orbit-diagram"

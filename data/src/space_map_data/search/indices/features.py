@@ -40,7 +40,7 @@ _RECORD_STRUCT = struct.Struct("<IiII2sBB")
 def _read_positions(path: Path) -> list[tuple[int, float, float, int, str]]:
     """Decode an SMNF file into ``(feature_id, lat, lon, diameter_m, type_code)`` tuples."""
     data = gzip.decompress(path.read_bytes())
-    magic, version, _, _, count, _ = struct.unpack("<4sHBBII", data[:HEADER_SIZE])
+    magic, _version, _, _, count, _ = struct.unpack("<4sHBBII", data[:HEADER_SIZE])
     if magic != MAGIC:
         raise ValueError(f"Bad SMNF magic in {path}: {magic!r}")
     out: list[tuple[int, float, float, int, str]] = []

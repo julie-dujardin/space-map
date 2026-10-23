@@ -138,7 +138,7 @@ def _solve_from(
     other more closely, was measured across 56 phases with archive
     trajectories: fifteen improved, fifteen worsened, and the median did not
     move. Departure always, and the extra branch is not worth its complexity."""
-    solutions, failure = solve_anchor(
+    solutions, _failure = solve_anchor(
         elements,
         anchor.position_km,
         anchor.velocity_kms,

@@ -69,7 +69,7 @@ def tier_widths(meta: dict) -> dict[str, tuple[int, int]]:
     exports = meta.get("exports") or {}
     ttype = meta.get("type")
     if ttype == "cylindrical_monthly":
-        first = exports[sorted(exports)[0]]
+        first = exports[min(exports)]
         return {t: (e["width"], e["height"]) for t, e in first.items()}
     if ttype == "clouds_overlay":
         # No dims in metadata; read one frame per tier from disk.

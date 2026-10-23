@@ -52,7 +52,7 @@ def quantize_lon_e7(lon_deg: float) -> int:
     positive divisor) — any body's lon convention round-trips into the
     SMNF east-positive form.
     """
-    return int(round((lon_deg % 360.0) * 1e7))
+    return round((lon_deg % 360.0) * 1e7)
 
 
 def pack_header(feature_count: int) -> bytes:

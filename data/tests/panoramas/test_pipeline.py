@@ -2,6 +2,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 import re
+from typing import ClassVar
 
 import httpx
 import numpy as np
@@ -636,7 +637,7 @@ def test_one_unusable_mosaic_does_not_discard_the_run(tmp_path, monkeypatch):
     def explode(path, mosaic):
         raise ValueError("Mosaic has no displayable dynamic range")
 
-    entries, name = _offline_curiosity(tmp_path)
+    entries, _name = _offline_curiosity(tmp_path)
     assert entries, "fixture must produce a product to then reject"
 
     monkeypatch.setattr(module, "read_pixels", explode)
@@ -931,7 +932,7 @@ class TestBracketedPositions:
     """A stop the localization table skips still lies between the ones it
     records, which places the mosaic and states how wrong that can be."""
 
-    LOOKUP = {
+    LOOKUP: ClassVar[dict[tuple[int, int], dict[str, float | None]]] = {
         (2, 4): {"latitude": -1.0, "longitude": 354.0, "elevation_m": -1000.0},
         (2, 8): {"latitude": -1.0, "longitude": 354.002, "elevation_m": -1010.0},
         (3, 6): {"latitude": -1.5, "longitude": 355.0, "elevation_m": None},

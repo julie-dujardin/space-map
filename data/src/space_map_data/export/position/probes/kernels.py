@@ -25,7 +25,7 @@ from space_map_data.download.providers.spice.probes import (
 # download-side extraction can use it too; re-exported here because this module
 # is where the exporter and the diagnostic scripts already look for it.
 from space_map_data.download.providers.spice.probes.layout import (
-    collect_generic_kernels as collect_generic_kernels,
+    collect_generic_kernels as collect_generic_kernels,  # noqa: PLC0414
 )
 from space_map_data.download.providers.spice.synth import qid_deduped_synth_naifs
 from space_map_data.probes.probe_id import is_spacecraft_naif

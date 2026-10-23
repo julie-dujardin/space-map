@@ -232,7 +232,7 @@ def _build_positions(features: list[Feature]) -> bytes:
                 feature_id=f.feature_id,
                 center_lat_e7=quantize_deg(f.center_lat),
                 center_lon_e7=quantize_lon_e7(f.center_lon),
-                diameter_m=max(0, int(round(diameter_km * 1000.0))),
+                diameter_m=max(0, round(diameter_km * 1000.0)),
                 type_code=f.feature_type_code,
             )
         )

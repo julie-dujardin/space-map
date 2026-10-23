@@ -20,8 +20,8 @@ def landed_chunk_range(
     sub-chunk grid (landed records carry their own ET offsets)."""
     chunk_s = chunk_days * S_PER_DAY
     start_et_anchor = jd_to_et(start_jd_anchor)
-    first_idx = int(math.floor((t_start_et - start_et_anchor) / chunk_s))
-    last_idx = int(math.ceil((t_end_et - start_et_anchor) / chunk_s))
+    first_idx = math.floor((t_start_et - start_et_anchor) / chunk_s)
+    last_idx = math.ceil((t_end_et - start_et_anchor) / chunk_s)
     out: list[tuple[int, float, float]] = []
     for idx in range(first_idx, last_idx):
         cs = start_et_anchor + idx * chunk_s
@@ -54,13 +54,13 @@ def chunk_aligned_range(
     sub_s = subchunk_days * S_PER_DAY
     subs_per_chunk = round(chunk_days / subchunk_days)
     start_et_anchor = jd_to_et(start_jd_anchor)
-    first_idx = int(math.floor((t_start_et - start_et_anchor) / chunk_s))
-    last_idx = int(math.ceil((t_end_et - start_et_anchor) / chunk_s))
+    first_idx = math.floor((t_start_et - start_et_anchor) / chunk_s)
+    last_idx = math.ceil((t_end_et - start_et_anchor) / chunk_s)
     out: list[tuple[int, float, float]] = []
     for idx in range(first_idx, last_idx):
         cs = start_et_anchor + idx * chunk_s
-        s_offset = max(0, int(math.ceil((t_start_et - cs) / sub_s)))
-        e_offset = min(subs_per_chunk, int(math.floor((t_end_et - cs) / sub_s)))
+        s_offset = max(0, math.ceil((t_start_et - cs) / sub_s))
+        e_offset = min(subs_per_chunk, math.floor((t_end_et - cs) / sub_s))
         if s_offset >= e_offset:
             continue
         s = cs + s_offset * sub_s

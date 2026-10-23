@@ -37,9 +37,10 @@ def normalize_to_mesh(
     ``scale`` multiplies every coordinate — used to bring metre-unit archives
     into the km convention the rest of the shape-model pipeline assumes.
     """
-    if fmt in _BLENDER_NATIVE or fmt.endswith(".gz") or src.suffix == ".gz":
-        if scale != 1.0:
-            raise ValueError(f"scale unsupported for native mesh format {fmt!r}")
+    if scale != 1.0 and (
+        fmt in _BLENDER_NATIVE or fmt.endswith(".gz") or src.suffix == ".gz"
+    ):
+        raise ValueError(f"scale unsupported for native mesh format {fmt!r}")
     if fmt in _BLENDER_NATIVE:
         return src
     if fmt.endswith(".gz") or src.suffix == ".gz":

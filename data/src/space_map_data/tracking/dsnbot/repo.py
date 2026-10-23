@@ -85,7 +85,7 @@ def parse_posts(car: bytes) -> list[Post]:
     for block in _blocks(car):
         try:
             record = cbor2.loads(block)
-        except Exception:
+        except cbor2.CBORDecodeError:
             continue
         if not isinstance(record, dict) or record.get("$type") != POST_TYPE:
             continue

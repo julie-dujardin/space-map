@@ -7,6 +7,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import unquote_plus
 
 import httpx
@@ -134,15 +135,19 @@ class TestTapSync:
             calls += 1
             return httpx.Response(status, text=_TAP_ERROR)
 
-        with _client(handler) as client:
-            with pytest.raises(DownloadError, match="Table nope is not available"):
-                tap_sync(client, _URL, "q")
+        with (
+            _client(handler) as client,
+            pytest.raises(DownloadError, match="Table nope is not available"),
+        ):
+            tap_sync(client, _URL, "q")
         assert calls == 1
 
     def test_empty_answer_raises(self):
-        with _answer(200, "") as client:
-            with pytest.raises(DownloadError, match="empty answer"):
-                tap_sync(client, _URL, "q")
+        with (
+            _answer(200, "") as client,
+            pytest.raises(DownloadError, match="empty answer"),
+        ):
+            tap_sync(client, _URL, "q")
 
     def test_upload_goes_as_the_table_named_sent(self):
         seen: list[bytes] = []
@@ -177,9 +182,11 @@ class TestTapSync:
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ReadTimeout("no answer", request=request)
 
-        with _client(handler) as client:
-            with pytest.raises(DownloadError, match="did not answer: no answer"):
-                tap_sync(client, _URL, "q")
+        with (
+            _client(handler) as client,
+            pytest.raises(DownloadError, match="did not answer: no answer"),
+        ):
+            tap_sync(client, _URL, "q")
 
 
 class TestTapToFile:
@@ -192,9 +199,11 @@ class TestTapToFile:
 
     @pytest.mark.parametrize("status", [200, 400])
     def test_error_votable_raises(self, tmp_path, status):
-        with _answer(status, _TAP_ERROR) as client:
-            with pytest.raises(DownloadError, match="Table nope is not available"):
-                tap_to_file(client, _URL, "q", tmp_path / "t.csv")
+        with (
+            _answer(status, _TAP_ERROR) as client,
+            pytest.raises(DownloadError, match="Table nope is not available"),
+        ):
+            tap_to_file(client, _URL, "q", tmp_path / "t.csv")
 
 
 class TestTapJoin:
@@ -215,9 +224,11 @@ class TestTapJoin:
         assert rows == [["HD 1", "1"], ["HD 2", "2"], ["HD 3", "3"]]
 
     def test_nothing_to_send_raises(self):
-        with _answer(200, "name\n") as client:
-            with pytest.raises(DownloadError, match="No id to send"):
-                tap_join(client, _URL, "q", "id", "long", [], 2)
+        with (
+            _answer(200, "name\n") as client,
+            pytest.raises(DownloadError, match="No id to send"),
+        ):
+            tap_join(client, _URL, "q", "id", "long", [], 2)
 
 
 class TestCheckTable:
@@ -503,9 +514,9 @@ class TestSimbadHelpers:
 class TestSimbadDownload:
     """The four files agree on the objects they hold."""
 
-    oid_of = {"HD 1": "1", "HIP 5": "1", "HD 1 A b": "2"}
+    oid_of: ClassVar[dict[str, str]] = {"HD 1": "1", "HIP 5": "1", "HD 1 A b": "2"}
     # 3 is a planet that no catalogue names. 4 is its host. 7 is the parent of 1.
-    links = [("2", "", "", "1"), ("3", "", "", "4"), ("1", "", "", "7")]
+    links = (("2", "", "", "1"), ("3", "", "", "4"), ("1", "", "", "7"))
 
     def _handler(self, request: httpx.Request) -> httpx.Response:
         query, sent = _sent(request)

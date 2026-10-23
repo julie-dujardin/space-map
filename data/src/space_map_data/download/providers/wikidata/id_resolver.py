@@ -263,7 +263,7 @@ class WikidataIdResolver:
         """
         for id_type in ID_TYPES:
             prefix = str(id_type)
-            if object_id.startswith(f"{prefix}-") or object_id.startswith(f"{prefix}:"):
+            if object_id.startswith((f"{prefix}-", f"{prefix}:")):
                 return id_type
         return None
 

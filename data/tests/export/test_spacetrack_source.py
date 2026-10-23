@@ -155,9 +155,11 @@ class TestArchiveMember:
         zip_path = tmp_path / "tle.zip"
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr("readme.md", "nothing here")
-        with zipfile.ZipFile(zip_path) as zf:
-            with pytest.raises(ValueError, match="No TLE text member"):
-                _archive_member(zf, zip_path)
+        with (
+            zipfile.ZipFile(zip_path) as zf,
+            pytest.raises(ValueError, match="No TLE text member"),
+        ):
+            _archive_member(zf, zip_path)
 
 
 class TestBoundaryWeekOwnership:

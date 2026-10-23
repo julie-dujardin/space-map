@@ -569,7 +569,7 @@ def build_coverage(
     decay = _decay_table(decay_jd)
     layers: list[_Rows] = []
     for zone, entry in zones.items():
-        zooms = entry["zooms"] if "zooms" in entry else {"0": entry}
+        zooms = entry.get("zooms", {"0": entry})
         for zoom, layer in zooms.items():
             if layer["shape"] == "probes":
                 continue

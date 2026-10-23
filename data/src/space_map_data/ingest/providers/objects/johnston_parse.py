@@ -75,7 +75,7 @@ def _text_field(text: str, label: str) -> str | None:
 def _block(text: str, heading: str) -> str:
     """Text of one ``orbital data,``/``other data,`` block, else empty."""
     found = re.search(
-        r"\|%s:(.*?)(?=\|orbital data,|\|other data,|\|--|$)" % re.escape(heading), text
+        rf"\|{re.escape(heading)}:(.*?)(?=\|orbital data,|\|other data,|\|--|$)", text
     )
     return found.group(1) if found else ""
 
@@ -89,7 +89,7 @@ def companion_labels(text: str) -> list[str]:
     """
     labels: list[str] = []
     for kind in ("orbital data", "other data"):
-        for label in re.findall(r"\|%s, ([^:|]{1,40}):" % kind, text):
+        for label in re.findall(rf"\|{kind}, ([^:|]{{1,40}}):", text):
             label = label.strip()
             if label in ("primary", "system (combined)") or label.startswith(
                 "primary "
@@ -167,8 +167,8 @@ def parse_system(text: str) -> dict:
 
 def parse_companion(text: str, label: str) -> dict:
     """Mutual-orbit and component columns for one companion block."""
-    orbit = _block(text, "orbital data, %s" % label)
-    other = _block(text, "other data, %s" % label)
+    orbit = _block(text, f"orbital data, {label}")
+    other = _block(text, f"other data, {label}")
     row: dict = {"label": label}
 
     row["binary_type"] = _text_field(orbit, r"binary dynamical type\|:\|")

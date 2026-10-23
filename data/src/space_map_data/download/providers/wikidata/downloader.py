@@ -5,6 +5,7 @@ import logging
 import time
 from collections.abc import Collection
 from pathlib import Path
+from typing import ClassVar
 
 import httpx
 from tqdm import tqdm
@@ -61,7 +62,7 @@ class WikidataDownloader(Downloader):
         self.out_dir = SOURCES_METADATA_DIR / "wikidata"
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
-    _OBJECT_ID_TYPES = [
+    _OBJECT_ID_TYPES: ClassVar[list[ID_TYPES]] = [
         ID_TYPES.NAIF,
         ID_TYPES.SPKID,
         ID_TYPES.MPC_DESIGNATION,

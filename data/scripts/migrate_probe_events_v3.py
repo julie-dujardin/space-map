@@ -176,7 +176,7 @@ def normalize_date(value: str) -> str:
         return text
     if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z?$", text):
         return text.rstrip("Z") + "Z"
-    parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    parsed = datetime.datetime.fromisoformat(text)
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")

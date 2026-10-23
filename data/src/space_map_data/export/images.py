@@ -931,7 +931,7 @@ def _license_block(em: dict) -> dict | None:
 class _HTMLTextExtractor(HTMLParser):
     """Collect text nodes, turning <br> and block tags into newlines."""
 
-    _BLOCK = {"p", "div", "li", "tr", "ul", "ol", "table", "blockquote"}
+    _BLOCK = frozenset({"p", "div", "li", "tr", "ul", "ol", "table", "blockquote"})
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)

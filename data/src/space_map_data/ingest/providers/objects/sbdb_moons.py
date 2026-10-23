@@ -165,7 +165,7 @@ def _parse_orbit(orbit: dict | None) -> dict:
     """
     if not orbit:
         return {}
-    first_key = sorted(orbit.keys())[0]
+    first_key = min(orbit.keys())
     sol = orbit[first_key]
     elements = sol.get("elements") or []
     elem_map = {e["name"]: e for e in elements}
@@ -284,21 +284,21 @@ class SBDBMoonsIngestor:
         False (used for merges into existing Horizons/SPICE rows — their orbit
         data is canonical and SBDB's lower-accuracy Keplerian fit is dropped).
         """
-        sat_row = dict(
-            object_id=sat_object_id,
-            parent_object_id=parent_object_id,
-            parent_spkid=parent_spkid,
-            sat_index=sat_index,
-            fullname=string_or_none(sat.get("fullname")),
-            iau_num=_coerce_int(sat.get("iau_num")),
-            iau_name=string_or_none(sat.get("iau_name")),
-            prov_des=string_or_none(sat.get("prov_des")),
-            oid=_coerce_int(sat.get("oid")),
-            year=_coerce_int(sat.get("year")),
-            confirmed=_coerce_bool(sat.get("confirmed")),
-            discovery_ref=string_or_none(sat.get("ref")),
-            notes=string_or_none(sat.get("notes")),
-        )
+        sat_row = {
+            "object_id": sat_object_id,
+            "parent_object_id": parent_object_id,
+            "parent_spkid": parent_spkid,
+            "sat_index": sat_index,
+            "fullname": string_or_none(sat.get("fullname")),
+            "iau_num": _coerce_int(sat.get("iau_num")),
+            "iau_name": string_or_none(sat.get("iau_name")),
+            "prov_des": string_or_none(sat.get("prov_des")),
+            "oid": _coerce_int(sat.get("oid")),
+            "year": _coerce_int(sat.get("year")),
+            "confirmed": _coerce_bool(sat.get("confirmed")),
+            "discovery_ref": string_or_none(sat.get("ref")),
+            "notes": string_or_none(sat.get("notes")),
+        }
         if include_orbit:
             sat_row.update(_parse_orbit(sat.get("orbit")))
         return sat_row
@@ -328,21 +328,21 @@ class SBDBMoonsIngestor:
         # the elements writer needs so export queries can route orbit-less
         # rows into the bundle-only path without re-checking each column.
         has_position = all(sat_row.get(c) is not None for c in KEPLER_REQUIRED)
-        return dict(
-            id=sat_id,
-            name=display_name,
-            object_type=ObjectType.moon,
-            provisional_designation=designation,
+        return {
+            "id": sat_id,
+            "name": display_name,
+            "object_type": ObjectType.moon,
+            "provisional_designation": designation,
             # naif_id == spkid in the binary-satellite range (no Horizons offset);
             # populating both lets PCK lookups (keyed on naif_id) attach radii
             # for catalogued binaries like Dimorphos and Menoetius.
-            spkid=synth_spkid,
-            naif_id=synth_spkid,
-            scale=ElementsScale.system,
-            parent_id=tree_parent_object_id,
-            orbital_source=OrbitalSource.sbdb_moon.value,
-            has_position=has_position,
-        )
+            "spkid": synth_spkid,
+            "naif_id": synth_spkid,
+            "scale": ElementsScale.system,
+            "parent_id": tree_parent_object_id,
+            "orbital_source": OrbitalSource.sbdb_moon.value,
+            "has_position": has_position,
+        }
 
     def _flush(self, objects: list[dict], sats: list[dict]) -> None:
         if not objects and not sats:

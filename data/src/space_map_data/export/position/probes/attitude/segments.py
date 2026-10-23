@@ -11,6 +11,7 @@ samples fine, and an inverse spin would only add curvature. The spinner test
 is the same alias gate the extractor uses.
 """
 
+import itertools
 import logging
 import math
 from dataclasses import dataclass
@@ -71,7 +72,8 @@ def plan_segments(
 
     cuts = [t0, *_phase_boundaries(frame, ets, omegas), t1]
     segments = [
-        SpinSegment(a, b, _fit_segment(frame, a, b)) for a, b in zip(cuts, cuts[1:])
+        SpinSegment(a, b, _fit_segment(frame, a, b))
+        for a, b in itertools.pairwise(cuts)
     ]
     if len(segments) > 1:
         logger.info(

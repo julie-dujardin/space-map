@@ -134,9 +134,7 @@ def is_spacecraft_naif(naif: int, all_targets: set[int]) -> bool:
     n = -naif
     if n % 1000 == 900:
         return False
-    if n > 1000 and n % 1000 != 0 and -(n // 1000) in all_targets:
-        return False
-    return True
+    return not (n > 1000 and n % 1000 != 0 and -(n // 1000) in all_targets)
 
 
 def load_registry() -> list[dict]:
@@ -153,7 +151,7 @@ def load_registry() -> list[dict]:
         )
         return []
     if not isinstance(data, list):
-        raise ValueError(
+        raise TypeError(
             f"probe registry at {REGISTRY_PATH} must be a JSON list of entries"
         )
     return data

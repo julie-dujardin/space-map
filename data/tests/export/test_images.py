@@ -7,6 +7,7 @@ this only exercises bundle/render given a pre-selected entry.
 import gzip
 import io
 from pathlib import Path
+from typing import ClassVar
 
 import orjson
 import pytest
@@ -1051,7 +1052,7 @@ class TestEmbeddedMetadata:
         length, _, tail = rest.partition(b":")
         return orjson.loads(tail[: int(length)])
 
-    _EXTMETADATA = {
+    _EXTMETADATA: ClassVar[dict[str, dict[str, str]]] = {
         "LicenseShortName": {"value": "CC BY-SA 4.0"},
         "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-sa/4.0"},
         "Artist": {"value": "Jane Doe"},

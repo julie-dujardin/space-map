@@ -12,6 +12,7 @@ Mars from the 180° antimeridian, Venus from the prime meridian, Moon from
 near the western limb on a grid offset 10°E of the prime meridian.
 """
 
+import itertools
 from dataclasses import dataclass
 
 
@@ -152,7 +153,7 @@ def _validate() -> None:
     for body, (fmt, rows) in _GRIDS.items():
         ordered = sorted(rows, key=lambda r: r.lat_min)
         assert ordered[0].lat_min == -90 and ordered[-1].lat_max == 90, body
-        for lower, upper in zip(ordered, ordered[1:]):
+        for lower, upper in itertools.pairwise(ordered):
             assert lower.lat_max == upper.lat_min, (body, lower, upper)
         codes = [q.code for q in QUADRANGLES[body]]
         assert len(codes) == len(set(codes)), body

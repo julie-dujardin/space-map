@@ -12,7 +12,13 @@ import json
 import pytest
 
 from space_map_data.tracking.dsn.feed import SpacecraftInfo, codes_by_name
-from space_map_data.tracking.dsnbot.repo import Event, Post, parse_event, parse_posts
+from space_map_data.tracking.dsnbot.repo import (
+    BotError,
+    Event,
+    Post,
+    parse_event,
+    parse_posts,
+)
 from space_map_data.tracking.dsnbot.store import BotStore
 
 CONFIG = {
@@ -152,5 +158,5 @@ class TestCarFile:
     """The repository arrives as a CAR file, which nothing else here reads."""
 
     def test_a_repository_with_no_posts_is_an_error_not_an_empty_import(self):
-        with pytest.raises(Exception):
+        with pytest.raises(BotError):
             parse_posts(b"\x01\xa0")

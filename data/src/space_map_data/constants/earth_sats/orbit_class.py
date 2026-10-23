@@ -66,7 +66,7 @@ class EarthOrbitClass(_OrbitZone, Enum):
     VLEO = "Q118905801"  # very low Earth orbit
     GTO = "Q1138649"  # geostationary transfer orbit
     GEO = "Q192316"  # geostationary orbit
-    IGSO = None  # inclined geosynchronous: no page
+    IGSO = None  # inclined geosynchronous: no page  # noqa: PIE796
     GRA = "Q1457566"  # graveyard orbit
     HIGH = "Q218056"  # high Earth orbit
     MOL = "Q1063974"  # Molniya orbit

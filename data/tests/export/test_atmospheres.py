@@ -5,6 +5,7 @@ mixture/scale-height derivations vs published atmosphere numbers, and the
 assembled export payload's structural invariants.
 """
 
+import itertools
 import math
 
 import pytest
@@ -43,7 +44,7 @@ class TestGasCrossSections:
     2005, He et al. 2021, Dalgarno & Williams 1962 for H2). Tolerances reflect
     each measurement's error bar."""
 
-    MEASURED_CM2 = [
+    MEASURED_CM2 = (
         ("N2", 532.2e-9, 5.10e-27, 0.05),  # ±0.24e-27 → ~5%
         ("CO2", 532.2e-9, 13.3e-27, 0.02),
         ("CO2", 660.0e-9, 5.52e-27, 0.02),
@@ -52,7 +53,7 @@ class TestGasCrossSections:
         ("O2", 532.2e-9, 4.55e-27, 0.03),
         ("O2", 660.0e-9, 1.95e-27, 0.03),
         ("Ar", 532.2e-9, 4.45e-27, 0.03),  # ±0.30e-27
-    ]
+    )
 
     @pytest.mark.parametrize("gas,wl,measured,tol", MEASURED_CM2)
     def test_measured_cross_sections(self, gas, wl, measured, tol):
@@ -79,12 +80,12 @@ class TestMixtures:
 
     # Bodhaine et al. 1999 (J. Atmos. Ocean. Tech. 16, 1854) table 3: dry-air
     # cross sections at 360 ppm CO2, cm²/molecule.
-    BODHAINE_CM2 = [
+    BODHAINE_CM2 = (
         (450e-9, 1.0274e-26),
         (500e-9, 6.6614e-27),
         (550e-9, 4.5105e-27),
         (650e-9, 2.2856e-27),
-    ]
+    )
 
     @pytest.mark.parametrize("wl,sigma_cm2", BODHAINE_CM2)
     def test_air_beta_vs_bodhaine(self, wl, sigma_cm2):
@@ -125,13 +126,13 @@ class TestBodies:
     # NSSDCA fact-sheet check values, re-evaluated at each sheet's own T/g
     # (only composition comes from our constants). Jupiter's tolerance is
     # wider: NSSDCA's He row is Voyager-era, ours adopts Galileo's 13.59%.
-    NSSDCA = [
+    NSSDCA = (
         # (body, T_k, g_eff, published_H_km, published_M_g_mol, rel_tol)
         ("naif-499", 214.0, 3.73, 11.0, 43.49, 0.03),  # Mars datum
         ("naif-299", 737.0, 8.87, 15.9, 43.45, 0.03),  # Venus surface
         ("naif-799", 76.0, 8.69, 27.7, 2.64, 0.03),  # Uranus 1 bar
         ("naif-599", 165.0, 23.12, 27.0, 2.22, 0.07),  # Jupiter 1 bar
-    ]
+    )
 
     @pytest.mark.parametrize("object_id,t_k,g,h_km,m_pub,tol", NSSDCA)
     def test_scale_heights_at_published_conditions(
@@ -359,7 +360,7 @@ class TestDeepColumn:
         n = payload["deep_n"]
         for c in range(3):
             down = deep["flux_down"][c * n : (c + 1) * n]
-            assert all(b >= a for a, b in zip(down, down[1:]))
+            assert all(b >= a for a, b in itertools.pairwise(down))
 
     def test_venus_surface_light_is_orange_and_a_few_percent(self, payload):
         deep = payload["bodies"]["naif-299"]["deep_column"]
@@ -389,7 +390,7 @@ class TestDeepColumn:
         ground = DEEP_COLUMNS["naif-299"].ground_albedo
         for c in range(3):
             down = deep["flux_down"][c * n : (c + 1) * n]
-            assert all(b >= a for a, b in zip(down, down[1:]))
+            assert all(b >= a for a, b in itertools.pairwise(down))
             assert deep["flux_up_ratio"][c * n] == pytest.approx(ground[c], abs=1e-3)
         # Near-surface extinction: a few km of visibility, bluer is murkier.
         ext = [deep["extinction_per_km"][c * n] for c in range(3)]

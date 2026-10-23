@@ -6,6 +6,8 @@ ephemerides are stubbed: the geometry is covered in the solver tests, and what
 matters here is which phases are let through.
 """
 
+from typing import ClassVar
+
 import numpy as np
 import pytest
 
@@ -61,7 +63,7 @@ class TestPublishedArcs:
 
     # Venera 2's shape: Earth phases, the cruise, the Venus encounter, then
     # the derelict heliocentric orbit it is still on.
-    ROWS = [
+    ROWS: ClassVar[list[DeepPhase]] = [
         _phase(0, "Earth", "1965 Nov 12 0446"),
         _phase(4, "Sun", "1965 Nov 13", "1966 Feb 26", "Entered Venus sphere"),
         _phase(5, "Venus", "1966 Feb 26", "1966 Feb 27 0252", "Flyby Venus"),

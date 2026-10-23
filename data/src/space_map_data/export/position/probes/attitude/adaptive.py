@@ -64,7 +64,7 @@ def adaptive_sample(
         last_stream[0] = s
         return s
 
-    n_seed = max(2, int(round((t1 - t0) / seed_dt)) + 1)
+    n_seed = max(2, round((t1 - t0) / seed_dt) + 1)
     grid = np.linspace(t0, t1, n_seed)
     seed_q = [truth(float(grid[0]))]
     for i in range(1, n_seed):

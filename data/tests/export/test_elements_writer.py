@@ -430,9 +430,16 @@ class TestWriteSgp4Elements:
             spkid=2000001,
             orbital_source=OrbitalSource.sbdb,
         )
-        kepler_kw = dict(
-            epoch=2460000.5, a=2.0, e=0.1, i=5.0, om=10.0, w=20.0, ma=30.0, n=0.5
-        )
+        kepler_kw = {
+            "epoch": 2460000.5,
+            "a": 2.0,
+            "e": 0.1,
+            "i": 5.0,
+            "om": 10.0,
+            "w": 20.0,
+            "ma": 30.0,
+            "n": 0.5,
+        }
         pha.sbdb = SBDB(
             spkid="2000001",
             object_id="spkid-2000001",
@@ -481,9 +488,16 @@ class TestWriteSgp4Elements:
         to the SBDB first_obs discovery proxy, and NaN for rows with no date."""
         from space_map_data.models.object.sbdb import SBDB
 
-        kepler_kw = dict(
-            epoch=2460000.5, a=2.0, e=0.1, i=5.0, om=10.0, w=20.0, ma=30.0, n=0.5
-        )
+        kepler_kw = {
+            "epoch": 2460000.5,
+            "a": 2.0,
+            "e": 0.1,
+            "i": 5.0,
+            "om": 10.0,
+            "w": 20.0,
+            "ma": 30.0,
+            "n": 0.5,
+        }
         discovered = make_object(
             id="spkid-2000001",
             object_type=ObjectType.asteroid,

@@ -5,6 +5,7 @@ import hashlib
 import json
 from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
+from typing import ClassVar, Self
 
 import httpx
 import pyarrow as pa
@@ -101,7 +102,7 @@ class _InlinePool:
     def __init__(self, *args: object, **kwargs: object) -> None:
         pass
 
-    def __enter__(self) -> "_InlinePool":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -191,7 +192,7 @@ class TestReduceChunk:
 class TestChunkedTableDownloader:
     """Which chunks a run reduces, and what it records."""
 
-    CHUNKS = {
+    CHUNKS: ClassVar[dict[str, bytes]] = {
         "Chunk_0-1.csv.gz": _ecsv(*ROWS),
         "Chunk_2-3.csv.gz": _ecsv('1,20,3.0,30.0,"False","A",2.0'),
     }

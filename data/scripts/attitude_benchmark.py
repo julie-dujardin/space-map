@@ -70,7 +70,8 @@ def furnish(mission_dir: Path, index: dict) -> None:
 def decode_chunk(path: str) -> tuple[np.ndarray, np.ndarray]:
     """Decode one chunk → (jd[], residual_quat[w,x,y,z][]), mirroring the
     frontend `parseAttitudeChunk`. Quats are residuals when a baseline was fit."""
-    buf = gzip.open(path, "rb").read()
+    with gzip.open(path, "rb") as f:
+        buf = f.read()
     start_jd = struct.unpack_from("<d", buf, 8)[0]
     n = (len(buf) - HEADER_SIZE) // KEYFRAME_SIZE
     times: list[float] = []

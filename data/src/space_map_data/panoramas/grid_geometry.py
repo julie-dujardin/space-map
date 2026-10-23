@@ -18,6 +18,8 @@ from .labels import Mosaic
 from .pipeline import coverage, sphere_texture, write_json
 from .releases import refresh_catalog
 
+logger = logging.getLogger(__name__)
+
 
 def grid_words(path):
     with Image.open(path) as image:
@@ -290,7 +292,7 @@ def cli():
         accepted += process_grid(path.parent)
         count += 1
         if count % 25 == 0:
-            logging.info(
+            logger.info(
                 "Grid audit: %s images checked, %s new estimates", count, accepted
             )
     write_json(

@@ -7,6 +7,7 @@ mismatch makes the indexed URL point at another one.
 
 import gzip
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import orjson
@@ -142,7 +143,7 @@ class TestBundleNames:
 class TestObjectNames:
     """The page name of an object, as ``objectPageName`` gives it."""
 
-    BUCKETS = {BASE_LOCALE: 1, "global": 2}
+    BUCKETS: ClassVar[dict[str, int]] = {BASE_LOCALE: 1, "global": 2}
 
     def _export(self, out_dir: Path) -> None:
         objects = out_dir / "objects"
@@ -294,7 +295,7 @@ class TestFeaturePaths:
 class TestGroupName:
     """The page name of a group, as ``groupPageName`` gives it."""
 
-    LABELS = {
+    LABELS: ClassVar[dict[str, str]] = {
         "category_name_dwarf_planets": "Dwarf Planets",
         "orbit_class_APO": "Apollo",
     }

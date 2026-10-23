@@ -109,7 +109,7 @@ def _phase_export_size(
     `n_samples` evenly across chunks; motion-triggered extras are rare
     (10 over 87 yr for MSL), so the approximation is tight."""
     chunk_s = chunk_days * _S_PER_DAY
-    n_chunks = max(1, int(math.ceil((end_et - start_et) / chunk_s)))
+    n_chunks = max(1, math.ceil((end_et - start_et) / chunk_s))
     overhead = n_chunks * (_BYTES_SUBCHUNK_HDR + _BYTES_LANDED_HDR)
     if is_static:
         return overhead, n_chunks
@@ -253,7 +253,7 @@ def _sample_phase(
         return []
 
     anchor_ets = {start_et, end_et, *_daily_midnights(start_et, end_et)}
-    n_fine = max(2, int(math.ceil((end_et - start_et) / fine_dt_s)) + 1)
+    n_fine = max(2, math.ceil((end_et - start_et) / fine_dt_s) + 1)
     fine_ets = np.linspace(start_et, end_et, n_fine).tolist()
     all_ets = sorted(set(fine_ets) | anchor_ets)
 

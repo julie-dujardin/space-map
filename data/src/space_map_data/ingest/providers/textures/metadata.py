@@ -121,20 +121,18 @@ def stale_metadata_reason(existing: dict, entry: dict) -> str | None:
             and existing.get("source_file") != entry["file"]
         ):
             return "source file changed"
-    if type_ == "cylindrical_monthly":
-        if (
-            existing.get("type") != type_
-            or existing.get("frames") != entry.get("months", 12)
-            or existing.get("source_file") != entry["file"]
-        ):
-            return "yaml entry shape changed"
-    if type_ == "cubemap_skybox":
-        if (
-            existing.get("type") != type_
-            or tuple(existing.get("faces") or ()) != config.SKYBOX_FACES
-            or existing.get("tier_face_size") != config.SKYBOX_TIER_SIZES
-        ):
-            return "skybox entry shape changed"
+    if type_ == "cylindrical_monthly" and (
+        existing.get("type") != type_
+        or existing.get("frames") != entry.get("months", 12)
+        or existing.get("source_file") != entry["file"]
+    ):
+        return "yaml entry shape changed"
+    if type_ == "cubemap_skybox" and (
+        existing.get("type") != type_
+        or tuple(existing.get("faces") or ()) != config.SKYBOX_FACES
+        or existing.get("tier_face_size") != config.SKYBOX_TIER_SIZES
+    ):
+        return "skybox entry shape changed"
     return None
 
 

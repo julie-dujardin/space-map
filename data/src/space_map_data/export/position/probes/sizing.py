@@ -303,7 +303,7 @@ def _fit_center_max_radius_km(naif_id: int) -> float | None:
 
 
 def _chebyshev_sub_interval_count(intlen_s: float, chunk_s: float) -> int:
-    return max(1, int(math.ceil(chunk_s / intlen_s)))
+    return max(1, math.ceil(chunk_s / intlen_s))
 
 
 def _fit_chebyshev_subchunk(

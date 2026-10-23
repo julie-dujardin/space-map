@@ -139,11 +139,11 @@ def _pad_flying_grid(
     if not flying:
         return None
     sorted_flying = sorted(flying, key=lambda f: f.t_start_et)
-    first_offset = int(round((sorted_flying[0].t_start_et - chunk_start_et) / sub_s))
+    first_offset = round((sorted_flying[0].t_start_et - chunk_start_et) / sub_s)
     expected_offset = first_offset
     padded: list[SubChunkFit] = []
     for f in sorted_flying:
-        actual_offset = int(round((f.t_start_et - chunk_start_et) / sub_s))
+        actual_offset = round((f.t_start_et - chunk_start_et) / sub_s)
         while expected_offset < actual_offset:
             slot_start_et = chunk_start_et + expected_offset * sub_s
             padded.append(

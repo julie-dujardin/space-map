@@ -236,7 +236,7 @@ class TestAttitudeCache:
     def test_second_run_skips_extraction(self, monkeypatch, tmp_path) -> None:
         calls: list[int] = []
         stamps = {"ck/a.bc": {"size": 2, "digest": "aa"}}
-        gd1, s1 = self._run(monkeypatch, tmp_path, stamps, calls)
+        gd1, _s1 = self._run(monkeypatch, tmp_path, stamps, calls)
         gd2, s2 = self._run(monkeypatch, tmp_path, stamps, calls)
         assert len(calls) == 1  # second run served from cache
         assert s2["7"]["cached"] is True

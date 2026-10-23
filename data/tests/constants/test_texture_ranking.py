@@ -5,6 +5,8 @@ fallbacks beside it, so getting it wrong either loses a map or moves one that
 is already published.
 """
 
+from typing import Any, ClassVar
+
 from space_map_data.constants.manifests.textures import (
     ALT_INFIX,
     layer_files,
@@ -83,7 +85,7 @@ class TestRankByBody:
 class TestLayerFiles:
     """The files a pyramid layer names, and where each one is fetched from."""
 
-    QUADS = {
+    QUADS: ClassVar[dict[str, Any]] = {
         "dir": "ctx",
         "lat_range": [-8, 8],
         "quads": {

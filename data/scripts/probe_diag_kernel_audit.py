@@ -83,7 +83,7 @@ def _spacecraft_coverage(kernel: Path) -> dict[int, list[tuple[float, float]]]:
 
 def main() -> int:
     KR = DOWNLOAD_DIR / "spice" / "kernels"
-    lsk_pck, generic_spk = collect_generic_kernels(KR)
+    lsk_pck, _generic_spk = collect_generic_kernels(KR)
     for p in lsk_pck:
         spiceypy.furnsh(str(p))
 

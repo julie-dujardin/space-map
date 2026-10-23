@@ -157,41 +157,41 @@ class CelesTrakIngestor:
             claim_object_id = probe_object_id
         else:
             object_id = make_object_id(ID_TYPES.NORAD_SATCAT, row["NORAD_CAT_ID"])
-            obj = dict(
-                id=object_id,
-                name=name,
-                object_type=object_type,
-                norad_cat_id=norad,
-                cospar_id=cospar,
+            obj = {
+                "id": object_id,
+                "name": name,
+                "object_type": object_type,
+                "norad_cat_id": norad,
+                "cospar_id": cospar,
                 # CelesTrak row is being minted right now; satcat row may or
                 # may not exist for this NORAD.
-                celestrak_norad_cat_id=norad,
-                satcat_norad_cat_id=norad if has_satcat else None,
-                scale=ElementsScale.planet,
-                parent_id="naif-399",
-                orbital_source=OrbitalSource.spacetrack,
+                "celestrak_norad_cat_id": norad,
+                "satcat_norad_cat_id": norad if has_satcat else None,
+                "scale": ElementsScale.planet,
+                "parent_id": "naif-399",
+                "orbital_source": OrbitalSource.spacetrack,
                 # Earth sats live in the daily TLE snapshots; rows with no
                 # current TLE are dropped at overlay time, not here.
-                has_position=True,
-            )
+                "has_position": True,
+            }
             claim_object_id = object_id
         # Orbital elements proper (epoch, mean motion, eccentricity, etc.) are
         # not persisted: the export reads fresh values from the daily snapshot
         # files. Keep only metadata + SGP4 extras the writer reads at export
         # time (those get overwritten per-day too, but ingest seeds them so
         # consumers querying the DB outside export still see something).
-        ct = dict(
-            OBJECT_NAME=row["OBJECT_NAME"],
-            TRAK_OBJECT_ID=row["OBJECT_ID"],
-            EPHEMERIS_TYPE=int_or_none(row["EPHEMERIS_TYPE"]),
-            CLASSIFICATION_TYPE=string_or_none(row["CLASSIFICATION_TYPE"]),
-            NORAD_CAT_ID=norad,
-            ELEMENT_SET_NO=int_or_none(row["ELEMENT_SET_NO"]),
-            REV_AT_EPOCH=int_or_none(row["REV_AT_EPOCH"]),
-            BSTAR=float_or_none(row["BSTAR"]),
-            MEAN_MOTION_DOT=float_or_none(row["MEAN_MOTION_DOT"]),
-            MEAN_MOTION_DDOT=float_or_none(row["MEAN_MOTION_DDOT"]),
-        )
+        ct = {
+            "OBJECT_NAME": row["OBJECT_NAME"],
+            "TRAK_OBJECT_ID": row["OBJECT_ID"],
+            "EPHEMERIS_TYPE": int_or_none(row["EPHEMERIS_TYPE"]),
+            "CLASSIFICATION_TYPE": string_or_none(row["CLASSIFICATION_TYPE"]),
+            "NORAD_CAT_ID": norad,
+            "ELEMENT_SET_NO": int_or_none(row["ELEMENT_SET_NO"]),
+            "REV_AT_EPOCH": int_or_none(row["REV_AT_EPOCH"]),
+            "BSTAR": float_or_none(row["BSTAR"]),
+            "MEAN_MOTION_DOT": float_or_none(row["MEAN_MOTION_DOT"]),
+            "MEAN_MOTION_DDOT": float_or_none(row["MEAN_MOTION_DDOT"]),
+        }
         return {
             "object": obj,
             "celestrak": ct,
@@ -397,18 +397,18 @@ class CelesTrakIngestor:
             if in_archive:
                 archived += 1
             new_objects.append(
-                dict(
-                    id=object_id,
-                    name=name,
-                    object_type=object_type,
-                    norad_cat_id=norad,
-                    cospar_id=cospar,
-                    satcat_norad_cat_id=norad,
-                    scale=ElementsScale.planet,
-                    parent_id="naif-399",
-                    orbital_source=None,
-                    has_position=in_archive,
-                )
+                {
+                    "id": object_id,
+                    "name": name,
+                    "object_type": object_type,
+                    "norad_cat_id": norad,
+                    "cospar_id": cospar,
+                    "satcat_norad_cat_id": norad,
+                    "scale": ElementsScale.planet,
+                    "parent_id": "naif-399",
+                    "orbital_source": None,
+                    "has_position": in_archive,
+                }
             )
 
         for i in range(0, len(new_objects), self.BATCH):

@@ -83,9 +83,7 @@ def unpack_keyframe(buf: bytes, offset: int) -> tuple[float, int, int, int, int]
 
 def quantise_component(value: float) -> int:
     """Clamp a quaternion component (∈ [-1, 1]) and scale to int16 range."""
-    return max(
-        -COMPONENT_SCALE, min(COMPONENT_SCALE, int(round(value * COMPONENT_SCALE)))
-    )
+    return max(-COMPONENT_SCALE, min(COMPONENT_SCALE, round(value * COMPONENT_SCALE)))
 
 
 def dequantise_component(value: int) -> float:

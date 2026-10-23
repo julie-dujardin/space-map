@@ -183,9 +183,7 @@ def _cache_hit(
     # A run that had gltf-transform previously cached a `low`; if it's gone
     # now (user removed it), reuse high anyway. The opposite — needing low
     # but the cache was built without it — must trigger a rebuild.
-    if low_required and not existing.get("has_low"):
-        return False
-    return True
+    return not (low_required and not existing.get("has_low"))
 
 
 def _write_cache_meta(

@@ -165,11 +165,15 @@ def resolve_constellation(
             candidates.append((f"owner:{owner}", owner_slug))
 
     # Classified fallback: "OBJECT A" style names → country's classified constellation
-    if not candidates and name is not None and owner is not None:
-        if _CLASSIFIED_NAME.match(name):
-            classified_slug = CLASSIFIED_BY_OWNER.get(owner)
-            if classified_slug is not None:
-                return classified_slug
+    if (
+        not candidates
+        and name is not None
+        and owner is not None
+        and _CLASSIFIED_NAME.match(name)
+    ):
+        classified_slug = CLASSIFIED_BY_OWNER.get(owner)
+        if classified_slug is not None:
+            return classified_slug
 
     if not candidates:
         return None
@@ -251,14 +255,18 @@ def resolve_operator_qids(
             qids.add(org.wikidata_qid)
     if owner is not None:
         op = OPERATOR_BY_SOURCE.get(owner)
-        if op is not None and op.wikidata_qid is not None:
-            if operator_overlaps(op, launch_date, decay_date):
-                qids.add(op.wikidata_qid)
+        if (
+            op is not None
+            and op.wikidata_qid is not None
+            and operator_overlaps(op, launch_date, decay_date)
+        ):
+            qids.add(op.wikidata_qid)
     if constellation is not None:
         for op in OPERATOR_BY_CONSTELLATION.get(constellation, ()):
-            if op.wikidata_qid is not None:
-                if operator_overlaps(op, launch_date, decay_date):
-                    qids.add(op.wikidata_qid)
+            if op.wikidata_qid is not None and operator_overlaps(
+                op, launch_date, decay_date
+            ):
+                qids.add(op.wikidata_qid)
     return sorted(qids)
 
 
@@ -323,19 +331,19 @@ def parse_satcat_fields(sat: dict[str, str]) -> dict:
     launch_site_code = string_or_none(sat["LAUNCH_SITE"])
     if launch_site_code is not None and launch_site_code not in LAUNCH_SITE_CODES:
         raise ValueError(f"Unknown SATCAT LAUNCH_SITE code: {launch_site_code!r}")
-    return dict(
-        object_type=parse_object_type(sat["OBJECT_TYPE"]),
-        ops_status=parse_ops_status(sat["OPS_STATUS_CODE"]),
-        owner=parse_source(sat["OWNER"]),
-        launch_date=string_or_none(sat["LAUNCH_DATE"]),
-        launch_site_code=launch_site_code,
-        decay_date=string_or_none(sat["DECAY_DATE"]),
-        period=float_or_none(sat["PERIOD"]),
-        apogee=float_or_none(sat["APOGEE"]),
-        perigee=float_or_none(sat["PERIGEE"]),
-        rcs=float_or_none(sat["RCS"]),
-        data_status=parse_data_status(sat["DATA_STATUS_CODE"]),
-        orbit_center=orbit_center,
-        orbit_center_docked_to=docked_to,
-        orbit_type=parse_orbit_type(sat["ORBIT_TYPE"]),
-    )
+    return {
+        "object_type": parse_object_type(sat["OBJECT_TYPE"]),
+        "ops_status": parse_ops_status(sat["OPS_STATUS_CODE"]),
+        "owner": parse_source(sat["OWNER"]),
+        "launch_date": string_or_none(sat["LAUNCH_DATE"]),
+        "launch_site_code": launch_site_code,
+        "decay_date": string_or_none(sat["DECAY_DATE"]),
+        "period": float_or_none(sat["PERIOD"]),
+        "apogee": float_or_none(sat["APOGEE"]),
+        "perigee": float_or_none(sat["PERIGEE"]),
+        "rcs": float_or_none(sat["RCS"]),
+        "data_status": parse_data_status(sat["DATA_STATUS_CODE"]),
+        "orbit_center": orbit_center,
+        "orbit_center_docked_to": docked_to,
+        "orbit_type": parse_orbit_type(sat["ORBIT_TYPE"]),
+    }

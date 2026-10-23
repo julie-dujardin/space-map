@@ -18,6 +18,7 @@ Run from data/:
 
 import argparse
 import datetime
+import itertools
 import json
 import logging
 import sys
@@ -148,8 +149,8 @@ def main() -> int:
         merged = _merge_overlaps(intervals)
         if len(merged) < 2:
             continue  # zero or one merged run = no internal gaps
-        for (a_start, a_end, a_zones), (b_start, b_end, b_zones) in zip(
-            merged, merged[1:], strict=False
+        for (a_start, a_end, a_zones), (b_start, b_end, b_zones) in itertools.pairwise(
+            merged
         ):
             gap_days = b_start - a_end
             if gap_days < args.min_gap_days:
