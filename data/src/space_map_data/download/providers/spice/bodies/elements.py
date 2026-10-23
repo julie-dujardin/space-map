@@ -16,8 +16,8 @@ import tomllib
 import numpy as np
 import spiceypy
 
-from space_map_data.utils.time import S_PER_DAY, jd_to_et
 from space_map_data.utils.paths import CONFIG_FILE
+from space_map_data.utils.time import S_PER_DAY, jd_to_et
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +140,7 @@ def dominant_partner_mu(gm_self: float, candidate_naifs: list[int]) -> float | N
             gm = spiceypy.bodvrd(str(naif), "GM", 1)[1][0]
         except spiceypy.exceptions.SpiceyError:
             continue
-        if gm > best_gm:
-            best_gm = gm
+        best_gm = max(best_gm, gm)
     if best_gm <= 0:
         return None
     return best_gm**3 / (gm_self + best_gm) ** 2

@@ -16,20 +16,20 @@ from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATIONS,
     STATION_CONSTELLATION_SLUGS,
 )
+from space_map_data.constants.earth_sats.launch_sites import (
+    LAUNCH_SITE_SLUG_PREFIX,
+    LAUNCH_SITES,
+)
 from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_BY_CONSTELLATION,
     LAUNCH_VEHICLE_SLUG_PREFIX,
     LAUNCH_VEHICLES,
 )
-from space_map_data.constants.earth_sats.launch_sites import (
-    LAUNCH_SITE_SLUG_PREFIX,
-    LAUNCH_SITES,
-)
+from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_SLUG_PREFIX,
     ORGANIZATIONS,
 )
-from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.earth_sats.satellite_models import (
     BUS_SLUG_PREFIX,
     SATELLITE_BUSES,
@@ -94,15 +94,15 @@ __all__ = [
     "COUNTRY_SLUG_PREFIX",
     "GROUPS",
     "GROUP_BY_SLUG",
-    "Group",
-    "GroupCategory",
-    "GroupType",
     "LAUNCH_SITE_SLUG_PREFIX",
     "LAUNCH_VEHICLE_SLUG_PREFIX",
     "ORGANIZATION_BUS_CHILDREN",
     "ORGANIZATION_SLUG_PREFIX",
-    "SMALL_BODY_FLAG_SLUG_PREFIX",
     "SMALL_BODY_FLAGS",
+    "SMALL_BODY_FLAG_SLUG_PREFIX",
+    "Group",
+    "GroupCategory",
+    "GroupType",
 ]
 
 

@@ -14,7 +14,6 @@ so their numbers are the 2024-2025 editions. Nothing here feeds rendering.
 
 from typing import NamedTuple
 
-
 # `composition_unit` values. Thin envelopes have no mixing ratio — each species
 # is its own measurement, so shares of a column or number density are as close
 # to a composition as the observations get.

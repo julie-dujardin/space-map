@@ -29,10 +29,12 @@ from space_map_data.ingest.providers.objects.enrichment import (
     load_groups,
 )
 from space_map_data.models.object import (
+    CelesTrak as CelesTrakRow,
+)
+from space_map_data.models.object import (
+    ElementsScale,
     Object,
     ObjectType,
-    CelesTrak as CelesTrakRow,
-    ElementsScale,
     OrbitalSource,
     Satcat,
 )

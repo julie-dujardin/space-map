@@ -45,7 +45,7 @@ def _target_object_id(target: EventTarget, known_ids: set[str]) -> str | None:
     return next((c for c in target_object_ids(target.naif) if c in known_ids), None)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _target_thumbnail(object_id: str) -> dict | None:
     """Card thumbnail for a target, once per unique id — the Moon alone is
     named by ~190 events, and each image lookup touches the disk."""

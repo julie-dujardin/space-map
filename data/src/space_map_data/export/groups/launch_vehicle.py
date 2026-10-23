@@ -24,7 +24,7 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
 from space_map_data.constants.earth_sats.reusable_vehicles import (
     REUSABLE_VEHICLE_EXTRACTORS,
 )
-from space_map_data.models.object import LaunchVehicle, Launchlog
+from space_map_data.models.object import Launchlog, LaunchVehicle
 
 logger = logging.getLogger(__name__)
 

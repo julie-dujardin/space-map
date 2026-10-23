@@ -3,7 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -19,7 +19,7 @@ HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
 WINDOW_PROBE_START = "1957-10-04"  # Sputnik 1 launch — earliest plausible
 WINDOW_PROBE_END = "2100-01-01"
 
-_J2000_DATE = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+_J2000_DATE = datetime(2000, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 @dataclass
@@ -48,7 +48,7 @@ def _et_to_iso_dt(et: float) -> str:
 
 
 def _parse_horizons_csv(text: str) -> list[Sample]:
-    m = re.search(r"\$\$SOE\s*\n(.*?)\n\$\$EOE", text, re.S)
+    m = re.search(r"\$\$SOE\s*\n(.*?)\n\$\$EOE", text, re.DOTALL)
     if not m:
         return []
     rows: list[Sample] = []
@@ -85,11 +85,13 @@ def fetch_obj_data(client: httpx.Client, naif_id: int) -> HorizonsObj:
     )
     resp.raise_for_status()
     text = resp.json().get("result", "")
-    rev_m = re.search(r"^\s*Revised\s*:\s*([A-Za-z]{3}\s+\d{1,2},\s*\d{4})", text, re.M)
+    rev_m = re.search(
+        r"^\s*Revised\s*:\s*([A-Za-z]{3}\s+\d{1,2},\s*\d{4})", text, re.MULTILINE
+    )
     name_m = re.search(
         r"^\s*Revised\s*:\s*[A-Za-z]{3}\s+\d{1,2},\s*\d{4}\s+(.+?)\s+-?\d+\s*$",
         text,
-        re.M,
+        re.MULTILINE,
     )
     return HorizonsObj(
         name=name_m.group(1).strip() if name_m else f"NAIF {naif_id}",
@@ -184,7 +186,7 @@ def _parse_chunks(text: str) -> list[Sample]:
     """Concatenated multi-chunk CSV → flat sample list (dedup adjacent epochs)."""
     out: list[Sample] = []
     last_et: float | None = None
-    for block in re.findall(r"\$\$SOE\s*\n(.*?)\n\$\$EOE", text, re.S):
+    for block in re.findall(r"\$\$SOE\s*\n(.*?)\n\$\$EOE", text, re.DOTALL):
         for s in _parse_horizons_csv(f"$$SOE\n{block}\n$$EOE"):
             if last_et is not None and s.et == last_et:
                 continue

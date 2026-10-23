@@ -118,7 +118,7 @@ def _merged_intervals(
         try:
             cell = spiceypy.cell_double(2000)
             spiceypy.spkcov(path, naif_id, cell)
-            for i in range(0, spiceypy.wncard(cell)):
+            for i in range(spiceypy.wncard(cell)):
                 s, e = spiceypy.wnfetd(cell, i)
                 intervals.append((s, e))
         except spiceypy.exceptions.SpiceyError:

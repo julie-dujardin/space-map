@@ -23,7 +23,6 @@ import re
 
 from space_map_data.utils.commons_images import canonical_filename
 
-
 # Templates whose positional args list PARENT files (this file is derived from them).
 _PARENT_TEMPLATES_POSITIONAL = (
     "derived from",

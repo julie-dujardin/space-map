@@ -95,8 +95,8 @@ def _load_tct(tct_root: Path):
     TCT resolves ``spectra/`` and filter profiles relative to the cwd."""
     sys.path.insert(0, str(tct_root))
     os.chdir(tct_root)
-    import src.database as db  # noqa: E402  # ty: ignore[unresolved-import]  # TCT clone, not a project dep
-    from src.core import (  # noqa: E402  # ty: ignore[unresolved-import]  # TCT clone, not a project dep
+    import src.database as db  # ty: ignore[unresolved-import]  # TCT clone, not a project dep
+    from src.core import (  # ty: ignore[unresolved-import]  # TCT clone, not a project dep
         ColorPoint,
         ColorSystem,
         ObjectName,
@@ -195,7 +195,7 @@ def main() -> None:
         try:
             spectrum, _ = database_parser(name, entry).get_spectrum("geometric")
             taxon_linear.setdefault(cls, []).append(linear_of(spectrum))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  skip taxon {name}: {e}", file=sys.stderr)
 
     by_taxon = {
@@ -225,7 +225,7 @@ def main() -> None:
         spkid = str(_SPKID_ASTEROID_OFFSET + int(m.group(1)))
         try:
             by_spectrum[spkid] = entry_of(name, entry)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             skipped_named += 1
             print(f"  skip named {name}: {e}", file=sys.stderr)
 
@@ -256,7 +256,7 @@ def main() -> None:
                 ObjectName(f"sbdb-{spkid}"), entry
             ).get_spectrum("geometric")
             by_photometry[str(spkid)] = {"chroma": chroma(linear_of(spectrum))}
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             bv_skipped += 1
             print(f"  skip BV/UB {spkid}: {e}", file=sys.stderr)
 
@@ -298,7 +298,7 @@ def main() -> None:
             continue
         try:
             by_naif[str(naif)] = entry_of(best_name, best_entry)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             naif_skipped += 1
             print(f"  skip moon {naif} ({best_label}): {e}", file=sys.stderr)
 

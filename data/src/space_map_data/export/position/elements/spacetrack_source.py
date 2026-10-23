@@ -8,11 +8,11 @@ Earth-zone overlay/writer consume both identically.
 """
 
 import json
-from functools import cache
 import logging
 import zipfile
 from collections.abc import Iterable, Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from functools import cache
 from pathlib import Path
 
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
@@ -85,7 +85,7 @@ def _parse_epoch_jd(field: str) -> float | None:
     yy = int(s[:2])
     year = (2000 if yy < _TLE_YEAR_PIVOT else 1900) + yy
     doy = float(s[2:])  # 1-based day-of-year with fraction
-    dt = datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=doy - 1.0)
+    dt = datetime(year, 1, 1, tzinfo=UTC) + timedelta(days=doy - 1.0)
     return dt.timestamp() / 86400.0 + _JD_UNIX_EPOCH
 
 
@@ -140,7 +140,7 @@ def parse_tle_pair(
 
 
 def _jd_to_datetime(jd: float) -> datetime:
-    return datetime.fromtimestamp((jd - _JD_UNIX_EPOCH) * 86400.0, tz=timezone.utc)
+    return datetime.fromtimestamp((jd - _JD_UNIX_EPOCH) * 86400.0, tz=UTC)
 
 
 def _week_of(epoch_jd: float) -> tuple[str, float, int]:
@@ -152,9 +152,7 @@ def _week_of(epoch_jd: float) -> tuple[str, float, int]:
     """
     dt = _jd_to_datetime(epoch_jd)
     monday = dt.date() - timedelta(days=dt.weekday())
-    monday_midnight = datetime(
-        monday.year, monday.month, monday.day, tzinfo=timezone.utc
-    )
+    monday_midnight = datetime(monday.year, monday.month, monday.day, tzinfo=UTC)
     monday_jd = monday_midnight.timestamp() / 86400.0 + _JD_UNIX_EPOCH
     return monday.isoformat(), monday_jd + 3.5, (monday + timedelta(days=3)).year
 
@@ -172,7 +170,7 @@ def source_zips_for(year: int) -> list[Path]:
     """Physical archive zip(s) whose epochs cover output ``year``. Pre-2004
     history lives in the 2004 mega-dump, so every year ≤ 2004 resolves there.
     """
-    return year_zips(_MEGA_DUMP_YEAR if year <= _MEGA_DUMP_YEAR else year)
+    return year_zips(max(_MEGA_DUMP_YEAR, year))
 
 
 _source_zips_for = source_zips_for
@@ -366,8 +364,7 @@ def load_archive_tail(lookback_days: float) -> dict[str, dict[int, CelesTrakElem
         return {}
     # Last instant the archive year covers, minus the lookback.
     end_jd = (
-        datetime(newest + 1, 1, 1, tzinfo=timezone.utc).timestamp() / 86400.0
-        + _JD_UNIX_EPOCH
+        datetime(newest + 1, 1, 1, tzinfo=UTC).timestamp() / 86400.0 + _JD_UNIX_EPOCH
     )
     cutoff_jd = end_jd - lookback_days
     best: dict[str, dict[int, tuple[float, CelesTrakElements]]] = {}

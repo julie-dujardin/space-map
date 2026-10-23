@@ -31,8 +31,8 @@ from space_map_data.constants.manifests.textures import (
 )
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import (
-    DownloadError,
     Downloader,
+    DownloadError,
     user_agent_without_bot,
 )
 from space_map_data.utils.paths import CACHE_DIR, SOURCES_TEXTURES_DIR

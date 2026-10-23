@@ -2,8 +2,9 @@
 
 import gzip
 import math
-import orjson
 from unittest.mock import MagicMock
+
+import orjson
 
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.writer import (

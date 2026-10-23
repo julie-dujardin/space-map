@@ -41,17 +41,17 @@ from scipy import ndimage, spatial
 from . import config
 from .encoding import linear_to_srgb, webp_kwargs
 from .image_io import (
-    ChunkedTiff,
+    GAP_REPAIR_PASSES,
     NODATA_THRESHOLD,
+    ChunkedTiff,
     HeightRaster,
     mean_column,
     memmap_page,
-    open_image,
     open_height_raster,
+    open_image,
     open_pds_height_raster,
     open_pds_image,
     read_pds_label,
-    GAP_REPAIR_PASSES,
     repair_thin_gaps,
 )
 
@@ -306,7 +306,7 @@ class Region:
 
     def __init__(
         self,
-        pixels: "np.ndarray | ChunkedTiff | SmoothedFill",
+        pixels: np.ndarray | ChunkedTiff | SmoothedFill,
         west: float,
         east: float,
         north: float,
@@ -1342,7 +1342,7 @@ class HeightCoding:
     @classmethod
     def for_range(
         cls, lo_km: float, hi_km: float, quantum_km: float, fill_km: float | None
-    ) -> "HeightCoding":
+    ) -> HeightCoding:
         """Step at the source's own quantum when 16 bits span the range at it —
         a finer step only stores resampling noise, at a bit per pixel each
         halving."""
@@ -1443,10 +1443,10 @@ class PyramidStats:
     size_bytes: list[int] = field(default_factory=list)
 
     @classmethod
-    def empty(cls, max_level: int) -> "PyramidStats":
+    def empty(cls, max_level: int) -> PyramidStats:
         return cls(max_level, [0] * (max_level + 1), [0] * (max_level + 1))
 
-    def add(self, other: "PyramidStats") -> None:
+    def add(self, other: PyramidStats) -> None:
         for level in range(self.max_level + 1):
             self.tiles[level] += other.tiles[level]
             self.size_bytes[level] += other.size_bytes[level]

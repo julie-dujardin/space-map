@@ -34,13 +34,13 @@ import json
 import logging
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.download.providers.catalogues.fetch import post_lines_gz
 from space_map_data.download.providers.exoplanets.simbad import TAP_URL
 from space_map_data.download.providers.exoplanets.tap import tap_rows, tap_sync
@@ -202,7 +202,7 @@ class SimbadObjectsDownloader(Downloader):
     def _begin(self, types: list[str]) -> None:
         """Continue the export in progress, or delete the windows and start one."""
         state_file = self.out_dir / STATE_FILE
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if state_file.exists():
             state = json.loads(state_file.read_text())
             age = now - datetime.fromisoformat(state["started_at"])

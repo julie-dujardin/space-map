@@ -1,7 +1,7 @@
-from dataclasses import replace
 import json
-from pathlib import Path
 import re
+from dataclasses import replace
+from pathlib import Path
 from typing import ClassVar
 
 import httpx
@@ -10,36 +10,36 @@ import pytest
 
 from space_map_data.panoramas import pipeline
 from space_map_data.panoramas.labels import (
-    describes_raster,
     Mosaic,
     attached_constants,
+    describes_raster,
     read_pds3,
     read_pds4,
 )
 from space_map_data.panoramas.pipeline import (
-    bracketed,
-    coordinate_grid_dn,
-    degrees_east,
-    metres_apart,
-    download,
-    fetch,
-    fill_from_neighbours,
-    lander_heading,
-    positions,
-    process,
-    resumable,
-    revision_key,
-    read_pixels,
-    remove_coordinate_grid,
-    remove_coordinate_label_borders,
-    sphere_texture,
-    coverage,
-    m20_mosaic_listings,
-    m20_version,
     M20,
     M20_INVENTORY,
     MSL,
     PLACES,
+    bracketed,
+    coordinate_grid_dn,
+    coverage,
+    degrees_east,
+    download,
+    fetch,
+    fill_from_neighbours,
+    lander_heading,
+    m20_mosaic_listings,
+    m20_version,
+    metres_apart,
+    positions,
+    process,
+    read_pixels,
+    remove_coordinate_grid,
+    remove_coordinate_label_borders,
+    resumable,
+    revision_key,
+    sphere_texture,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -285,13 +285,15 @@ def test_atomic_download_and_offline_cache(tmp_path, monkeypatch):
 
 
 def test_streamed_error_body_remains_readable(tmp_path):
-    with httpx.Client(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(400, json={"code": "invalid_page"})
-        )
-    ) as client:
-        with pytest.raises(httpx.HTTPStatusError) as caught:
-            fetch(client, "https://example.test/page", tmp_path / "page.json")
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(400, json={"code": "invalid_page"})
+            )
+        ) as client,
+        pytest.raises(httpx.HTTPStatusError) as caught,
+    ):
+        fetch(client, "https://example.test/page", tmp_path / "page.json")
     assert caught.value.response.json() == {"code": "invalid_page"}
     assert not (tmp_path / "page.json").exists()
 
@@ -330,7 +332,7 @@ def test_pds4_site_frame_without_drive():
         r"<geom:Coordinate_Space_Index>\s*<geom:index_id>DRIVE</geom:index_id>.*?</geom:Coordinate_Space_Index>",
         "",
         label,
-        flags=re.S,
+        flags=re.DOTALL,
     )
     result = read_pds4(label)
     assert (result.site, result.drive, result.frame) == (3, 110, "SITE_FRAME")
@@ -470,7 +472,9 @@ def test_lander_heading_reads_the_lander_group_only():
 
 
 def strip_constants(label: str) -> str:
-    return re.sub(r"^\s*(?:INVALID|MISSING)_CONSTANT.*\n", "", label, flags=re.M)
+    return re.sub(
+        r"^\s*(?:INVALID|MISSING)_CONSTANT.*\n", "", label, flags=re.MULTILINE
+    )
 
 
 def test_constants_fall_back_to_attached_header():
@@ -533,13 +537,15 @@ def test_attached_constants_admit_later_navcam_mosaics(tmp_path):
     assert products[0]["mosaic"]["missing"] == (0.0, 0.0)
 
     bare = offline_navcam([24], strip_constants(label))
-    with httpx.Client(
-        transport=httpx.MockTransport(
-            lambda req: httpx.Response(200, content=bare[str(req.url)])
-        )
-    ) as client:
-        with pytest.raises(ValueError, match="No supported"):
-            download(client, tmp_path / "bare", "curiosity")
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(200, content=bare[str(req.url)])
+            )
+        ) as client,
+        pytest.raises(ValueError, match="No supported"),
+    ):
+        download(client, tmp_path / "bare", "curiosity")
 
 
 def m20_inventory(*identifiers):
@@ -607,11 +613,13 @@ def test_perseverance_release_probe_retries_a_flaky_mirror(tmp_path, monkeypatch
 def test_perseverance_release_probe_gives_up_loudly(tmp_path, monkeypatch):
     """An unreadable release stops the download rather than skipping a release."""
     monkeypatch.setattr(pipeline.time, "sleep", lambda _: None)
-    with httpx.Client(
-        transport=httpx.MockTransport(lambda request: httpx.Response(503))
-    ) as client:
-        with pytest.raises(httpx.HTTPError):
-            m20_mosaic_listings(client, tmp_path, refresh=False)
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(503))
+        ) as client,
+        pytest.raises(httpx.HTTPError),
+    ):
+        m20_mosaic_listings(client, tmp_path, refresh=False)
 
 
 def test_perseverance_version_field_carries_on_in_base_36():
@@ -1077,7 +1085,7 @@ class TestALabelThatOnlyPointsAtItsRaster:
         raster = re.search(
             r"^\s*OBJECT\s*=\s*IMAGE\s*$[\s\S]*?^\s*END_OBJECT\s*=\s*IMAGE\s*$",
             label,
-            re.M,
+            re.MULTILINE,
         )
         assert raster
         return label[: raster.start()] + label[raster.end() :], raster[0]

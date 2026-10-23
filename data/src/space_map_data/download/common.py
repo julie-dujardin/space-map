@@ -4,84 +4,12 @@ import logging
 import tomllib
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Type
+from typing import Any
 
 import httpx
 
-from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 from space_map_data.download.downloader import Downloader, tls_context
-from space_map_data.download.providers.objects.celestrak import CelesTrakDownloader
-from space_map_data.download.providers.objects.gcat import GCATDownloader
-from space_map_data.download.providers.objects.gcat_deep import GCATDeepDownloader
-from space_map_data.download.providers.spice import (
-    DeepcatSynthDownloader,
-    HorizonsSyntheticDownloader,
-    ProbesDownloader,
-    PropagationDownloader,
-    SmallBodyChebyshevDownloader,
-    SpacetrackTleDownloader,
-    SpiceDownloader,
-)
-from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
-from space_map_data.download.providers.objects.sbdb import SBDBDownloader
-from space_map_data.download.providers.objects.sbdb_moons import (
-    SBDBMoonsDownloader,
-)
-from space_map_data.download.providers.objects.astersat import AsterSatDownloader
-from space_map_data.download.providers.objects.johnston import JohnstonDownloader
-from space_map_data.download.providers.objects.ssodnet import SsODNetDownloader
-from space_map_data.download.providers.objects.jpl_satellite_discovery import (
-    JPLSatelliteDiscoveryDownloader,
-)
-from space_map_data.download.providers.objects.spacetrack import SpaceTrackDownloader
-from space_map_data.download.providers.exoplanets.nasa_archive import (
-    ExoplanetArchiveDownloader,
-)
-from space_map_data.download.providers.exoplanets.exoplanet_eu import (
-    ExoplanetEUDownloader,
-)
-from space_map_data.download.providers.exoplanets.open_catalogue import (
-    OpenExoplanetCatalogueDownloader,
-)
-from space_map_data.download.providers.exoplanets.simbad import (
-    ExoplanetSimbadDownloader,
-)
-from space_map_data.download.providers.exoplanets.gaia import ExoplanetGaiaDownloader
-from space_map_data.download.providers.wikidata import WikidataDownloader
-from space_map_data.download.providers.wikipedia import WikipediaDownloader
-from space_map_data.download.providers.manual import ManualDownloader
-from space_map_data.download.providers.images.commons import CommonsDownloader
-from space_map_data.download.providers.images.earth_clouds import (
-    EarthCloudsDownloader,
-)
-from space_map_data.download.providers.images.earth_water import (
-    EarthWaterDownloader,
-)
-from space_map_data.download.providers.images.texture_files import (
-    TextureFilesDownloader,
-)
-from space_map_data.download.providers.metadata.texture_sources import (
-    TextureSourcesDownloader,
-)
 from space_map_data.download.providers.bjj_rings import BJJRingsDownloader
-from space_map_data.download.providers.launch_performance import (
-    LaunchPerformanceDownloader,
-)
-from space_map_data.download.providers.psg import PSGAtmosphereDownloader
-from space_map_data.download.providers.gvp import GVPDownloader
-from space_map_data.download.providers.three_d.nasa import NASA3DResourcesDownloader
-from space_map_data.download.providers.three_d.esa import ESA3DDownloader
-from space_map_data.download.providers.three_d.body_shapes import BodyShapesDownloader
-from space_map_data.download.providers.three_d.damit import DAMITDownloader
-from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownloader
-from space_map_data.download.providers.stars.gaia_astrophysical_parameters import (
-    GaiaAstrophysicalParametersDownloader,
-)
-from space_map_data.download.providers.stars.gaia_cross_match import (
-    GaiaCrossMatchDownloader,
-)
-from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloader
-from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 from space_map_data.download.providers.catalogues.provider import (
     BlackHoleCataloguesDownloader,
     GalaxyCataloguesDownloader,
@@ -96,6 +24,78 @@ from space_map_data.download.providers.catalogues.simbad import (
 from space_map_data.download.providers.catalogues.wikidata_simbad import (
     WikidataSimbadIdsDownloader,
 )
+from space_map_data.download.providers.exoplanets.exoplanet_eu import (
+    ExoplanetEUDownloader,
+)
+from space_map_data.download.providers.exoplanets.gaia import ExoplanetGaiaDownloader
+from space_map_data.download.providers.exoplanets.nasa_archive import (
+    ExoplanetArchiveDownloader,
+)
+from space_map_data.download.providers.exoplanets.open_catalogue import (
+    OpenExoplanetCatalogueDownloader,
+)
+from space_map_data.download.providers.exoplanets.simbad import (
+    ExoplanetSimbadDownloader,
+)
+from space_map_data.download.providers.gvp import GVPDownloader
+from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
+from space_map_data.download.providers.images.commons import CommonsDownloader
+from space_map_data.download.providers.images.earth_clouds import (
+    EarthCloudsDownloader,
+)
+from space_map_data.download.providers.images.earth_water import (
+    EarthWaterDownloader,
+)
+from space_map_data.download.providers.images.texture_files import (
+    TextureFilesDownloader,
+)
+from space_map_data.download.providers.launch_performance import (
+    LaunchPerformanceDownloader,
+)
+from space_map_data.download.providers.manual import ManualDownloader
+from space_map_data.download.providers.metadata.texture_sources import (
+    TextureSourcesDownloader,
+)
+from space_map_data.download.providers.objects.astersat import AsterSatDownloader
+from space_map_data.download.providers.objects.celestrak import CelesTrakDownloader
+from space_map_data.download.providers.objects.gcat import GCATDownloader
+from space_map_data.download.providers.objects.gcat_deep import GCATDeepDownloader
+from space_map_data.download.providers.objects.johnston import JohnstonDownloader
+from space_map_data.download.providers.objects.jpl_satellite_discovery import (
+    JPLSatelliteDiscoveryDownloader,
+)
+from space_map_data.download.providers.objects.sbdb import SBDBDownloader
+from space_map_data.download.providers.objects.sbdb_moons import (
+    SBDBMoonsDownloader,
+)
+from space_map_data.download.providers.objects.spacetrack import SpaceTrackDownloader
+from space_map_data.download.providers.objects.ssodnet import SsODNetDownloader
+from space_map_data.download.providers.psg import PSGAtmosphereDownloader
+from space_map_data.download.providers.spice import (
+    DeepcatSynthDownloader,
+    HorizonsSyntheticDownloader,
+    ProbesDownloader,
+    PropagationDownloader,
+    SmallBodyChebyshevDownloader,
+    SpacetrackTleDownloader,
+    SpiceDownloader,
+)
+from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloader
+from space_map_data.download.providers.stars.gaia_astrophysical_parameters import (
+    GaiaAstrophysicalParametersDownloader,
+)
+from space_map_data.download.providers.stars.gaia_cross_match import (
+    GaiaCrossMatchDownloader,
+)
+from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownloader
+from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
+from space_map_data.download.providers.three_d.body_shapes import BodyShapesDownloader
+from space_map_data.download.providers.three_d.damit import DAMITDownloader
+from space_map_data.download.providers.three_d.esa import ESA3DDownloader
+from space_map_data.download.providers.three_d.nasa import NASA3DResourcesDownloader
+from space_map_data.download.providers.wikidata import WikidataDownloader
+from space_map_data.download.providers.wikipedia import WikipediaDownloader
+from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ PROVIDERS_CLASSES = [
     SimbadObjectsDownloader,
     WikidataSimbadIdsDownloader,
 ]
-SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
+SOURCES: dict[str, type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
 ALL_SOURCES = list(SOURCES)
 

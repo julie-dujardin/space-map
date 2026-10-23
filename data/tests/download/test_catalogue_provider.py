@@ -3,7 +3,7 @@
 import gzip
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -289,7 +289,7 @@ def age(tmp_path, key: str, days: int) -> None:
     """Move the fetch date of one catalogue into the past."""
     path = tmp_path / "test/metadata.json"
     meta = json.loads(path.read_text())
-    old = datetime.now(timezone.utc) - timedelta(days=days)
+    old = datetime.now(UTC) - timedelta(days=days)
     meta["catalogues"][key]["fetched_at"] = old.isoformat()
     path.write_text(json.dumps(meta))
 

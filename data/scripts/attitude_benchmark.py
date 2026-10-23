@@ -28,16 +28,16 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.export.position.probes.attitude.extractor import (  # noqa: E402
+from space_map_data.export.position.probes.attitude.extractor import (
     extract_attitude,
     manifest_entry,
 )
-from space_map_data.export.position.probes.attitude.quaternion import (  # noqa: E402
+from space_map_data.export.position.probes.attitude.quaternion import (
     angle_between,
     slerp,
 )
-from space_map_data.probes.probe_id import load_registry  # noqa: E402
-from space_map_data.utils.paths import SOURCES_POSITION_DIR  # noqa: E402
+from space_map_data.probes.probe_id import load_registry
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 KERNELS = SOURCES_POSITION_DIR / "spice-kernels"
 MISSIONS = KERNELS / "missions"
@@ -248,7 +248,7 @@ def main() -> int:
         t0 = time.time()
         try:
             res = extract_attitude(out_dir, ck_paths, naif * 1000, index["frame_name"])
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"{mission}: extraction failed: {exc}", file=sys.stderr, flush=True)
             continue
         extract_s = time.time() - t0

@@ -8,7 +8,6 @@ from, so the whole satellite catalogue reads as position-less.
 
 from space_map_data.export.objects.writer import _ORBIT_FIELDS, _orbit_elements
 from space_map_data.models.object import ObjectType, OrbitalSource
-
 from tests.conftest import make_object
 
 _DAILY = {

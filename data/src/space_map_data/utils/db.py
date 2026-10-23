@@ -19,9 +19,9 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from space_map_data.models.object import Base
-import space_map_data.models.feature  # noqa: F401 — register Feature on Base
+import space_map_data.models.feature
 import space_map_data.models.ingest_stamp  # noqa: F401 — register IngestStamp on Base
+from space_map_data.models.object import Base
 from space_map_data.utils.paths import DB_DIR, DB_FILE
 
 _session: Session | None = None

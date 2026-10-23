@@ -5,13 +5,13 @@ from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
     STATION_CONSTELLATION_SLUGS,
 )
-from space_map_data.constants.earth_sats.launch_vehicles import (
-    LAUNCH_VEHICLE_BY_CONSTELLATION,
-    LAUNCH_VEHICLE_SLUG_PREFIX,
-)
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_SLUG_PREFIX,
+)
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    LAUNCH_VEHICLE_BY_CONSTELLATION,
+    LAUNCH_VEHICLE_SLUG_PREFIX,
 )
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import (
@@ -29,7 +29,6 @@ from space_map_data.export.objects.wikidata_claims import EntityRef, resolve_ent
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, Satcat
-
 
 _GLOBAL_FIELDS = (
     "object_type",

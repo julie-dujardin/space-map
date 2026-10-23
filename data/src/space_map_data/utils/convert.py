@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 
 def date_to_julian(value: date | str) -> float | None:
@@ -14,5 +14,5 @@ def date_to_julian(value: date | str) -> float | None:
         return None
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.timestamp() / 86400.0 + 2440587.5

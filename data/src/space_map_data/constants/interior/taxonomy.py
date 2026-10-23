@@ -22,13 +22,13 @@ them.
 from typing import NamedTuple
 
 from space_map_data.constants.interior.schema import (
-    ClassComposition,
-    Component,
     METAL,
     ORGANIC,
     SILICATE,
     SULFIDE,
     WATER,
+    ClassComposition,
+    Component,
 )
 
 # Keyed by taxonomic class exactly as SsODNet reports it. Compound classes

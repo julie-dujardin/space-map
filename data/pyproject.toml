@@ -43,10 +43,15 @@ dev = [
     "ipython>=9.10.0",
     "pre-commit>=4.5.1",
     "pytest>=9.0.3",
-    "ruff>=0.15.5",
+    "ruff>=0.17.2",
     "ty>=0.0.91",
 ]
 
 [tool.pytest.ini_options]
 # Python hides ResourceWarning by default, so leaked connections and files went unnoticed.
 filterwarnings = ["default::ResourceWarning"]
+
+[tool.ruff.lint]
+# A batch logs the item that failed and goes on, so those handlers catch
+# every exception on purpose.
+ignore = ["BLE001"]

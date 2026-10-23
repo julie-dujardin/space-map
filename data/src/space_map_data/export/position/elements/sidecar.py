@@ -29,7 +29,6 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 )
 from space_map_data.utils.content_stamp import content_stamps
 
-
 # Bump for an encoding/row-membership change the binary VERSION bump doesn't
 # already cover. BINARY_VERSION is also in the signature, so any wire-format
 # bump invalidates every elements part too.

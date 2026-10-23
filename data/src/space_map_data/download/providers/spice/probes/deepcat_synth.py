@@ -302,10 +302,10 @@ class DeepcatSynthDownloader(Downloader):
 
 __all__ = [
     "MISSION_DIR_NAME",
-    "PROVENANCE_KEY",
-    "arc_segments",
     "OPEN_ARC_YEARS",
+    "PROVENANCE_KEY",
     "DeepcatSynthDownloader",
     "DeepcatSynthResult",
+    "arc_segments",
     "synthesise_all",
 ]

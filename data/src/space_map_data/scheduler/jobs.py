@@ -23,7 +23,7 @@ class DailyAt:
             hour=self.at.hour, minute=self.at.minute, second=0, microsecond=0
         )
         # Past today's slot → run immediately on startup.
-        return now if target <= now else target
+        return max(now, target)
 
     def advance(self, after: datetime) -> datetime:
         next_target = after.replace(

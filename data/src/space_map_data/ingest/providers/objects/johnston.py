@@ -19,6 +19,13 @@ from pathlib import Path
 from sqlalchemy import delete, insert
 from tqdm import tqdm
 
+from space_map_data.ingest.providers.objects.johnston_parse import (
+    companion_labels,
+    flatten,
+    parse_companion,
+    parse_discoveries,
+    parse_system,
+)
 from space_map_data.ingest.providers.objects.sbdb_moons import (
     resolve_parent_object_id,
 )
@@ -27,13 +34,6 @@ from space_map_data.ingest.providers.objects.small_body_match import (
     moons_by_parent,
     small_body_index,
     strip_tags,
-)
-from space_map_data.ingest.providers.objects.johnston_parse import (
-    companion_labels,
-    flatten,
-    parse_companion,
-    parse_discoveries,
-    parse_system,
 )
 from space_map_data.models.object import (
     JohnstonConfidence,
@@ -48,7 +48,7 @@ INDEX_PAGE = "asteroidmoons.html"
 CONFIDENCE_PAGE = "asteroidmoonslist3.html"
 
 # Index entries read `href=astmoons/am-01862.html> <b>(1862) Apollo</b></a>`.
-_INDEX_RE = re.compile(r"href=astmoons/(am-[0-9A-Za-z_-]+)\.html>(.*?)</a>", re.S)
+_INDEX_RE = re.compile(r"href=astmoons/(am-[0-9A-Za-z_-]+)\.html>(.*?)</a>", re.DOTALL)
 # The confidence table's four columns, in the order the page prints them.
 _CONFIDENCE_ORDER = (
     JohnstonConfidence.permanent,

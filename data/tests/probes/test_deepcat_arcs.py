@@ -18,8 +18,8 @@ from space_map_data.probes.deepcat import (
     parse_gcat_date,
     parse_solar_elements,
 )
-from space_map_data.probes.propagation import AU_KM
 from space_map_data.probes.deepcat_arcs import ArcClass, solve_object
+from space_map_data.probes.propagation import AU_KM
 
 OBJ = DeepObject("D00088", "S01730", "1965 091A", "Venera-2", "1965 Nov 12")
 ELEMENTS = parse_solar_elements("0.718 x 1.019 AU x 0.58")

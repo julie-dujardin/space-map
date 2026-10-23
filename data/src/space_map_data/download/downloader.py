@@ -5,7 +5,7 @@ import logging
 import re
 import ssl
 from abc import ABC, abstractmethod
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -98,7 +98,7 @@ class Downloader(ABC):
             )
             return True
         try:
-            age = datetime.now(timezone.utc) - datetime.fromisoformat(downloaded_at)
+            age = datetime.now(UTC) - datetime.fromisoformat(downloaded_at)
         except ValueError:
             logger.warning(
                 "%s: unparseable downloaded_at %r, treating as stale",
@@ -119,8 +119,8 @@ class Downloader(ABC):
             return False
         if self.max_age is None:
             return True
-        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        return datetime.now(timezone.utc) - mtime < self.max_age
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        return datetime.now(UTC) - mtime < self.max_age
 
     def _save_metadata(
         self,
@@ -131,7 +131,7 @@ class Downloader(ABC):
         **extra: object,
     ) -> None:
         data: dict[str, object] = {
-            "downloaded_at": datetime.now(timezone.utc).isoformat(),
+            "downloaded_at": datetime.now(UTC).isoformat(),
             "source_url": url,
             "record_count": record_count,
         }

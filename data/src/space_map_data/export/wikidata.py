@@ -1,13 +1,14 @@
 """Wikidata entity loading, types, and name resolution."""
 
-import re
-import orjson
 import logging
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TypedDict
+
+import orjson
 
 from space_map_data.models.object import Object
 from space_map_data.utils.mirror import local

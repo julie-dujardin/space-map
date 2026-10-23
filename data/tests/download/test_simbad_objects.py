@@ -2,7 +2,7 @@
 
 import gzip
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 
 import httpx
@@ -18,10 +18,10 @@ from space_map_data.download.providers.catalogues.simbad import (
     SimbadObjectsDownloader,
     kept_types,
 )
-from space_map_data.download.providers.exoplanets import tap
 from space_map_data.download.providers.catalogues.wikidata_simbad import (
     WikidataSimbadIdsDownloader,
 )
+from space_map_data.download.providers.exoplanets import tap
 
 OTYPEDEF = """otype,label,path
 G,Galaxy,G
@@ -204,7 +204,7 @@ class TestPasses:
     ):
         self.interrupt(downloader, service, monkeypatch)
         state = json.loads((tmp_path / "export.json").read_text())
-        old = datetime.now(timezone.utc) - timedelta(days=simbad.RESUME_DAYS + 1)
+        old = datetime.now(UTC) - timedelta(days=simbad.RESUME_DAYS + 1)
         state["started_at"] = old.isoformat()
         (tmp_path / "export.json").write_text(json.dumps(state))
         downloader.download()

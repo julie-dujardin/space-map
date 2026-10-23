@@ -14,7 +14,6 @@ primary papers.
 
 from typing import NamedTuple
 
-
 # Bruneton-convention RGB render wavelengths, metres.
 RENDER_WAVELENGTHS_M = {"r": 680e-9, "g": 550e-9, "b": 440e-9}
 

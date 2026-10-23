@@ -26,16 +26,14 @@ from space_map_data.constants.atmosphere.references import ATMOSPHERE_FACT_SOURC
 from space_map_data.constants.atmosphere.structure import (
     ATMOSPHERE_STRUCTURE,
     DATUMS,
+    AtmosphereLayer,
+    BodyStructure,
 )
 from space_map_data.constants.atmosphere.structure import (
     LAYER_ROLES as STRUCTURE_LAYER_ROLES,
 )
 from space_map_data.constants.atmosphere.structure import (
     NOTES as STRUCTURE_NOTES,
-)
-from space_map_data.constants.atmosphere.structure import (
-    AtmosphereLayer,
-    BodyStructure,
 )
 from space_map_data.constants.temperature.bodies import TEMPERATURE_BODIES
 from space_map_data.export.objects.sources import source_row

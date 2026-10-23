@@ -36,7 +36,7 @@ from space_map_data.utils.commons_images import (
     collect_qid_image_candidates,
     read_download_metadata,
 )
-from space_map_data.utils.db import session_scope, get_session
+from space_map_data.utils.db import get_session, session_scope
 
 
 def main() -> int:

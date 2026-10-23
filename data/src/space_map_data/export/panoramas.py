@@ -19,16 +19,16 @@ neighbours on the traverse.
 
 import hashlib
 import logging
-from collections import Counter
 import re
 import shutil
+from collections import Counter
 from functools import cache
 from pathlib import Path
 from typing import NamedTuple
 
 import orjson
-from tqdm import tqdm
 from PIL import Image
+from tqdm import tqdm
 
 from space_map_data.export.in_place import patch_global_bundles, refresh_versions
 from space_map_data.export.sidecar_io import write_atomic

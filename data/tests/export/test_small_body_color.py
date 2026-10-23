@@ -9,8 +9,8 @@ from space_map_data.export import small_body_color as sbc
 from space_map_data.export.small_body_color import (
     SurfaceColor,
     _encode,
-    albedo_beyond_hex,
     _taxon_key,
+    albedo_beyond_hex,
     resolve_major_body_color,
     resolve_small_body_color,
 )
@@ -214,7 +214,7 @@ class TestResolveMajorBodyColor:
         monkeypatch.setattr(
             sbc, "_table", lambda: _table(**{"607": {"chroma": NEUTRAL, "albedo": 0.4}})
         )
-        monkeypatch.setattr(sbc, "_moon_albedos", lambda: {})
+        monkeypatch.setattr(sbc, "_moon_albedos", dict)
         assert resolve_major_body_color(607).geometric_albedo == 0.4
 
     def test_neutral_grey_when_no_spectrum(
@@ -236,7 +236,7 @@ class TestResolveMajorBodyColor:
         monkeypatch.setattr(
             sbc, "_table", lambda: _table(**{"518": {"chroma": NEUTRAL}})
         )
-        monkeypatch.setattr(sbc, "_moon_albedos", lambda: {})
+        monkeypatch.setattr(sbc, "_moon_albedos", dict)
         assert resolve_major_body_color(518) == (None, None, None)
 
     def test_none_naif_is_none(self) -> None:

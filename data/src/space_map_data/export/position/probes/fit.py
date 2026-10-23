@@ -27,6 +27,10 @@ from pathlib import Path
 import spiceypy
 from tqdm import tqdm
 
+from space_map_data.export.position.format import (
+    MISSING_ID_TYPE,
+    MISSING_INT32,
+)
 from space_map_data.export.position.probes import fit_cache, sidecar
 from space_map_data.export.position.probes.landed import (
     fit_landed_chunk,
@@ -38,11 +42,6 @@ from space_map_data.export.position.probes.plan import (
     ProbePlan,
 )
 from space_map_data.export.position.probes.sizing import size_chunk
-from space_map_data.utils.time import S_PER_DAY, jd_to_et
-from space_map_data.export.position.format import (
-    MISSING_ID_TYPE,
-    MISSING_INT32,
-)
 from space_map_data.probes.fit_centers import (
     FitCenterCandidate,
     detect_fit_center,
@@ -51,6 +50,7 @@ from space_map_data.probes.fit_centers import (
 )
 from space_map_data.probes.small_bodies import SMALL_BODY_ZONE_RADIUS_KM
 from space_map_data.probes.zones import INTERPLANETARY, SMALL_BODIES, ZONES_BY_KEY
+from space_map_data.utils.time import S_PER_DAY, jd_to_et
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +64,8 @@ def _clip_system_intervals(
     any that fall entirely outside."""
     out: list[tuple[float, float, int]] = []
     for s, e, sn in intervals:
-        cs = s if s > chunk_start_et else chunk_start_et
-        ce = e if e < chunk_end_et else chunk_end_et
+        cs = max(chunk_start_et, s)
+        ce = min(chunk_end_et, e)
         if ce > cs:
             out.append((cs, ce, sn))
     return out

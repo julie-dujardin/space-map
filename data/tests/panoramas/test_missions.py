@@ -1,8 +1,7 @@
 import pytest
 
-from space_map_data.probes.probe_id import REGISTRY_PATH, load_registry
-
 from space_map_data.panoramas.missions import MISSION_PROBE, body_id, probe_id
+from space_map_data.probes.probe_id import REGISTRY_PATH, load_registry
 
 needs_registry = pytest.mark.skipif(
     not REGISTRY_PATH.exists(),

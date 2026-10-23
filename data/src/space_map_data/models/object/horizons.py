@@ -79,7 +79,7 @@ class Horizons(Base):
     om_dot: Mapped[float | None] = mapped_column(default=None)
     w_dot: Mapped[float | None] = mapped_column(default=None)
 
-    object: Mapped["Object"] = relationship(back_populates="horizons")
+    object: Mapped[Object] = relationship(back_populates="horizons")
 
     # Unified-name aliases so consumers can read kepler elements by the same
     # attribute names regardless of which sub-table they joined.

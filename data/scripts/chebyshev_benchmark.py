@@ -28,7 +28,7 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.export.position.format import (  # noqa: E402
+from space_map_data.export.position.format import (
     BODY_HEADER_SIZE,
     CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     FORMAT_CHEBYSHEV,
@@ -36,7 +36,7 @@ from space_map_data.export.position.format import (  # noqa: E402
     MAGIC,
     VERSION,
 )
-from space_map_data.utils.paths import EXPORT_DIR, SOURCES_POSITION_DIR  # noqa: E402
+from space_map_data.utils.paths import EXPORT_DIR, SOURCES_POSITION_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)

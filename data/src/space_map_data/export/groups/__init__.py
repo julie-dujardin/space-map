@@ -17,28 +17,37 @@ from space_map_data.constants.categories import (
     PROBES_SLUG,
     SATELLITES_SLUG,
 )
+from space_map_data.constants.comet_fragments import family_group_slug
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_BY_SLUG,
+    CONSTELLATION_SLUG_PREFIX,
+    ConstellationSpec,
+)
 from space_map_data.export.groups.bundles import (
     GallerySubject,
     write_group_bundles,
 )
 from space_map_data.export.groups.categories import build_category_data
-from space_map_data.export.groups.feature_type import build_feature_type_groups
-from space_map_data.export.groups.launch_site import build_launch_site_stats
-from space_map_data.export.groups.launch_vehicle import build_launch_vehicle_stats
 from space_map_data.export.groups.earth_sat import (
     NOTABLE_MEMBER_COUNT,
     EarthOrbitClassStats,
     build_earth_orbit_classes,
     write_earth_orbit_samples,
 )
-from space_map_data.constants.earth_sats.constellations import (
-    CONSTELLATION_BY_SLUG,
-    CONSTELLATION_SLUG_PREFIX,
-    ConstellationSpec,
-)
+from space_map_data.export.groups.feature_type import build_feature_type_groups
+from space_map_data.export.groups.launch_site import build_launch_site_stats
+from space_map_data.export.groups.launch_vehicle import build_launch_vehicle_stats
 from space_map_data.export.groups.membership import (
     build_earth_groups_data,
     write_earth_membership,
+)
+from space_map_data.export.groups.moon_discovery import (
+    build_moon_discovery,
+    write_moon_discovery,
+)
+from space_map_data.export.groups.planetary_systems_map import (
+    build_planetary_systems_map,
+    write_planetary_systems_map,
 )
 from space_map_data.export.groups.probe_targets import (
     LAGRANGE_ZONE_SLUGS,
@@ -55,19 +64,11 @@ from space_map_data.export.groups.small_body import (
     build_small_body_group_stats,
     write_orbit_samples,
 )
-from space_map_data.export.groups.moon_discovery import (
-    build_moon_discovery,
-    write_moon_discovery,
-)
-from space_map_data.export.groups.planetary_systems_map import (
-    build_planetary_systems_map,
-    write_planetary_systems_map,
-)
 from space_map_data.export.groups.solar_system_map import (
     build_solar_system_map,
     write_solar_system_map,
 )
-from space_map_data.constants.comet_fragments import family_group_slug
+from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import (
     NotableObject,
     craft_model_slugs,
@@ -76,7 +77,6 @@ from space_map_data.export.notable import (
     textured_object_ids,
 )
 from space_map_data.export.objects.fragments import build_comet_families
-from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label

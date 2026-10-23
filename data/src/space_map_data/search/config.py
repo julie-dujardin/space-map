@@ -15,7 +15,7 @@ class MeiliConfig:
     batch_size: int = 10_000
 
     @classmethod
-    def from_env(cls) -> "MeiliConfig":
+    def from_env(cls) -> MeiliConfig:
         url = os.environ.get("MEILI_URL", "http://127.0.0.1:7700")
         key = os.environ.get("MEILI_MASTER_KEY", "")
         if not key:

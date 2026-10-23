@@ -19,12 +19,12 @@ from space_map_data.download.providers.spice.probes.deepcat_synth import (
     matching_probe,
     probe_claimants,
 )
-from space_map_data.probes.deepcat import DeepObject
-from space_map_data.probes.probe_id import REGISTRY_PATH
 from space_map_data.download.providers.spice.probes.synthetic_index import write_type5
-from space_map_data.probes.propagation import AU_KM
+from space_map_data.probes.deepcat import DeepObject
 from space_map_data.probes.deepcat_arcs import ArcClass, SolvedArc
 from space_map_data.probes.deepcat_solve import GM_SUN, ConicSolution
+from space_map_data.probes.probe_id import REGISTRY_PATH
+from space_map_data.probes.propagation import AU_KM
 
 needs_registry = pytest.mark.skipif(
     not REGISTRY_PATH.exists(),

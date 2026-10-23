@@ -13,75 +13,75 @@ from dataclasses import dataclass, field, replace
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
+from space_map_data.constants.activity.tidal import TIDAL_HEATING
+from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
+from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
+from space_map_data.constants.atmosphere.structure import (
+    ATMOSPHERE_STRUCTURE,
+    CAPPED_ROLES,
+)
 from space_map_data.constants.categories import (
-    SURFACE_FEATURES_SLUG,
     ASTEROIDS_SLUG,
     ATMOSPHERES_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
     DEBRIS_SLUG,
     DWARF_PLANETS_SLUG,
+    MAGNETIC_FIELDS_SLUG,
     MOONS_SLUG,
     OCEANS_SLUG,
     PLANETS_SLUG,
     PROBES_SLUG,
+    RADIATION_SLUG,
     RING_SYSTEMS_SLUG,
-    SATELLITES_SLUG,
     SATELLITE_SYSTEMS_SLUG,
+    SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
     STRUCTURE_ACTIVITY_SLUG,
-    VOLCANISM_SLUG,
+    SURFACE_FEATURES_SLUG,
     TECTONICS_SLUG,
-    MAGNETIC_FIELDS_SLUG,
     TIDAL_HEATING_SLUG,
-    RADIATION_SLUG,
+    VOLCANISM_SLUG,
 )
-from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
-from space_map_data.constants.atmosphere.structure import (
-    ATMOSPHERE_STRUCTURE,
-    CAPPED_ROLES,
-)
-from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
-from space_map_data.constants.activity.tidal import TIDAL_HEATING
-from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
-from space_map_data.constants.interior.bodies import INTERIOR_FACTS
-from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
-from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
     DEBRIS_CONSTELLATION_SLUGS,
 )
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
+from space_map_data.constants.interior.bodies import INTERIOR_FACTS
+from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
+from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.export.groups.earth_sat import EarthOrbitClassStats
-from space_map_data.export.groups.registry import (
-    CLASS_SLUG_PREFIX,
-    SMALL_BODY_FLAG_SLUG_PREFIX,
-    GROUPS,
-    GroupType,
-)
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.probe_targets import build_probe_target_chart
+from space_map_data.export.groups.registry import (
+    CLASS_SLUG_PREFIX,
+    GROUPS,
+    SMALL_BODY_FLAG_SLUG_PREFIX,
+    GroupType,
+)
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject, render_geometry
-from space_map_data.export.objects.missions import probe_launch_year
+from space_map_data.export.objects import radiation
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import limb_profile, pressure_block
 from space_map_data.export.objects.interior import cutaway_layers, ocean_block
-from space_map_data.export.objects import radiation
+from space_map_data.export.objects.missions import probe_launch_year
 from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
 from space_map_data.export.objects.temperature import heliocentric_distance_au
-from space_map_data.export.small_body_color import (
-    albedo_beyond_hex,
-    resolve_major_body_color,
-    resolve_small_body_color,
-)
 from space_map_data.export.objects.wikidata_claims import (
     diameter_km_from_claims,
     discovery_year_from_claims,
     radius_km_from_claims,
 )
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.small_body_color import (
+    albedo_beyond_hex,
+    resolve_major_body_color,
+    resolve_small_body_color,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.ingest.providers.objects.sbdb import G_KM3_PER_KG_S2
 from space_map_data.models.object.main import Object, ObjectType, OrbitalSource

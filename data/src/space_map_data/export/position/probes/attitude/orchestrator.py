@@ -17,10 +17,10 @@ live at `v1/attitude/<probe>/`, outside `position/`, so `remove_old_outputs`
 spares them for reuse.
 """
 
-from collections.abc import MutableMapping
 import json
 import logging
 import multiprocessing
+from collections.abc import MutableMapping
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 

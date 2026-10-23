@@ -36,7 +36,7 @@ from datetime import timedelta
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_DIR
 
 logger = logging.getLogger(__name__)

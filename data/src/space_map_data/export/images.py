@@ -44,9 +44,11 @@ from PIL.ExifTags import Base as ExifBase
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.commons_images import (
-    clear_metadata_cache,
     IMAGES_DIR as DOWNLOADS_IMAGES_DIR,
+)
+from space_map_data.utils.commons_images import (
     canonical_filename,
+    clear_metadata_cache,
     is_excluded,
     is_servable_on_disk,
     read_download_metadata,
@@ -59,11 +61,10 @@ from space_map_data.utils.paths import EXPORT_DIR
 # logos on Commons) don't get dropped as "possible DoS".
 Image.MAX_IMAGE_PIXELS = None
 
-# Be permissive about mildly-malformed sources. Wikimedia Commons has a
-# handful of JPGs with missing trailing bytes and PNGs with truncated
-# chunks; rather than dropping them we accept the partial decode. Using
-# setattr because the PIL stubs type this attribute as Literal[False].
-setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+# Commons has a few JPGs with missing trailing bytes and PNGs with truncated
+# chunks; a partial decode beats dropping them. The PIL stubs type the flag
+# Literal[False].
+ImageFile.LOAD_TRUNCATED_IMAGES = True  # ty: ignore[invalid-assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -1104,12 +1105,12 @@ def clear_export_cache() -> None:
 
 
 __all__ = [
-    "collect_object_images",
+    "DOWNLOADS_IMAGES_DIR",
+    "clear_export_cache",
     "collect_feature_images",
     "collect_group_images",
+    "collect_object_images",
     "object_image_count",
     "pick_thumbnail",
     "prune_image_bundles",
-    "clear_export_cache",
-    "DOWNLOADS_IMAGES_DIR",
 ]

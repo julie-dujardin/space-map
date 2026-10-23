@@ -1,9 +1,9 @@
 """Count active catalog products and validate their local preview assets."""
 
 import argparse
-from collections import defaultdict
-from datetime import datetime, timezone
 import json
+from collections import defaultdict
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .pipeline import write_json
@@ -88,7 +88,7 @@ def audit(directory):
             }
         )
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "scope": "active catalogs; products are not unique locations",
         "collections": summaries,
         "errors": errors,

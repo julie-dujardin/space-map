@@ -28,7 +28,7 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402
+from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -180,7 +180,7 @@ def main() -> None:
                 entries[-1]["chunk_idx"],
                 len(entries[-1]["samples"]),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.error("  failed for %s: %s", body["name"], exc)
             raise
 

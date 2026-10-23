@@ -214,7 +214,7 @@ class _Site:
         around = 2 * math.pi * self.radius_m / tiles.level_width(0)
         return max(0, round(math.log2(around / metres)))
 
-    def light(self) -> tuple[Light, "_Grid", float]:
+    def light(self) -> tuple[Light, _Grid, float]:
         """The mosaic's Sun, the shadows its slopes cast, and the mosaic's
         typical brightness."""
         fine = self._level(_SHADOW_M)
@@ -270,7 +270,7 @@ class _Site:
         per_degree = tiles.level_width(level) / 360.0
         return (east - west) * (north - south) * per_degree**2
 
-    def _grid(self, level: int, multiple: int) -> "_Grid":
+    def _grid(self, level: int, multiple: int) -> _Grid:
         """The mosaic and the models over the area at ``level``, a whole number
         of ``multiple`` pixels a side."""
         width = tiles.level_width(level)
@@ -309,7 +309,7 @@ class _Site:
         to_values: Callable[[np.ndarray], np.ndarray],
         block: tuple[int, int, int, int],
         light: Light,
-        cast: "_Grid",
+        cast: _Grid,
         typical: float,
     ) -> None:
         """Take the shading out of one block of the mosaic."""
@@ -418,7 +418,7 @@ class _Grid:
     broad: np.ndarray | None = None
     broad_factor: int = 1
 
-    def coarser(self, factor: int) -> "_Grid":
+    def coarser(self, factor: int) -> _Grid:
         def mean(a: np.ndarray) -> np.ndarray:
             h, w = a.shape
             blocks = a.reshape(h // factor, factor, w // factor, factor)

@@ -5,43 +5,27 @@ from typing import ClassVar
 import pytest
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
+from space_map_data.constants.activity.tidal import TIDAL_HEATING
+from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
 from space_map_data.constants.atmosphere.structure import (
     ATMOSPHERE_STRUCTURE,
     CAPPED_ROLES,
 )
-from space_map_data.constants.activity.magnetism import MAGNETIC_FIELDS
-from space_map_data.constants.activity.tidal import TIDAL_HEATING
-from space_map_data.constants.activity.volcanism import GEOLOGIC_ACTIVITY
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
+from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.export import notable
 from space_map_data.export.groups.categories import (
     _atmosphere_stats,
     _magnetic_stats,
     _ocean_stats,
+    _probe_members,
     _radiation_stats,
+    _ring_system_stats,
     _tidal_stats,
     _volcanism_stats,
-    _probe_members,
-    _ring_system_stats,
-)
-from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
-from space_map_data.export.objects.activity import collection_row
-from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
-from space_map_data.export.objects.radiation import (
-    Place,
-    radiation_block,
-)
-from space_map_data.export.objects.radiation import (
-    collection_row as radiation_collection_row,
-)
-from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
-from space_map_data.export.objects.interior import ocean_block
-from space_map_data.export.objects.rings import (
-    ring_mass_block,
-    ring_sources_block,
-    ring_stats_block,
 )
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import (
@@ -50,6 +34,22 @@ from space_map_data.export.groups.small_body import (
     build_small_body_group_stats,
 )
 from space_map_data.export.notable import NotableObject
+from space_map_data.export.objects.activity import collection_row
+from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
+from space_map_data.export.objects.interior import ocean_block
+from space_map_data.export.objects.radiation import (
+    Place,
+    radiation_block,
+)
+from space_map_data.export.objects.radiation import (
+    collection_row as radiation_collection_row,
+)
+from space_map_data.export.objects.rings import (
+    ring_mass_block,
+    ring_sources_block,
+    ring_stats_block,
+)
+from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 

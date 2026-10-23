@@ -8,11 +8,11 @@ They have no DB row or position chunk, so we fold them into ``global_data``/
 import logging
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.objects.interior import interior_from_mapping
 from space_map_data.export.objects.wikidata_claims import (
     INSTANCE_OF_IGNORED,
     resolve_entity_ref,
 )
-from space_map_data.export.objects.interior import interior_from_mapping
 from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache

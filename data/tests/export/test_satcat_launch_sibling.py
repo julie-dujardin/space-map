@@ -17,7 +17,6 @@ from space_map_data.export.objects.celestrak import (
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
-
 from tests.conftest import make_object
 
 

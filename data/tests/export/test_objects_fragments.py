@@ -18,7 +18,7 @@ class _NoWikidata(WikidataEntityCache):
     def __init__(self) -> None:  # skips the on-disk load
         pass
 
-    def get_entity(self, qid):  # noqa: ARG002
+    def get_entity(self, qid):
         return None
 
 

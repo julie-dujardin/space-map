@@ -4,22 +4,21 @@ import json
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from itertools import islice
 from pathlib import Path
-from typing import Iterator, NamedTuple
+from typing import NamedTuple
 
 import httpx
 from httpx import Response
-from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
-from space_map_data.constants.providers import LANGUAGES
-from space_map_data.constants.wikidata_topics import topic_page_qids
-from space_map_data.export.groups.registry import GROUPS
-from space_map_data.utils.paths import SOURCES_METADATA_DIR
 from tqdm import tqdm
 
-from space_map_data.constants.providers import PROVIDERS
+from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
+from space_map_data.constants.providers import LANGUAGES, PROVIDERS
+from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
+from space_map_data.export.groups.registry import GROUPS
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +177,7 @@ class WikipediaDownloader(Downloader):
                         continue
                     refetched.append(f"{lang}/{qid}")
                 title = sitelinks[wiki_key]["title"]
-                by_lang[lang].append((Task(qid, title, qid in curated)))
+                by_lang[lang].append(Task(qid, title, qid in curated))
 
         total = sum(len(items) for items in by_lang.values())
         logger.info(

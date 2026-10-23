@@ -15,9 +15,9 @@ from pathlib import Path
 import httpx
 from tqdm import tqdm
 
-from ..layout import MISSIONS_DIR
-from ..sources import ESA_BASE, MissionSource, NAIF_BASE
 from ...naif_http import list_naif_dir, stream_to
+from ..layout import MISSIONS_DIR
+from ..sources import ESA_BASE, NAIF_BASE, MissionSource
 from .patterns import patterns_for
 
 logger = logging.getLogger(__name__)

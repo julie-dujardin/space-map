@@ -9,8 +9,8 @@ from typing import cast
 
 import pytest
 
-from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.earth_sats.satellite_models import SATELLITE_BUSES
+from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.celestrak import _bus_group_ref
 from space_map_data.export.wikidata import (
     WikidataEntity,

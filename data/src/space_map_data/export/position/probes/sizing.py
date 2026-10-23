@@ -282,8 +282,7 @@ def _kepler_max_err_km(
         if fitted is None:
             return float("inf")
         err = float(np.linalg.norm(fitted - truth[0][:3]))
-        if err > max_err:
-            max_err = err
+        max_err = max(max_err, err)
     return max_err
 
 
@@ -392,8 +391,7 @@ def _fit_chebyshev_subchunk(
             ]
         )
         err = float(np.linalg.norm(fitted - truth))
-        if err > max_err:
-            max_err = err
+        max_err = max(max_err, err)
     return coeffs, max_err
 
 

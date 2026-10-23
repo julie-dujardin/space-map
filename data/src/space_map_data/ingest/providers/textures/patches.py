@@ -294,7 +294,7 @@ class PatchBuilder:
         return out
 
     def _tile(
-        self, pool: ThreadPoolExecutor, ground: "_Ground", level: int, x: int, y: int
+        self, pool: ThreadPoolExecutor, ground: _Ground, level: int, x: int, y: int
     ) -> np.ndarray:
         """Write the tile and every tile under it that the rasters touch;
         return its pixels."""
@@ -337,7 +337,7 @@ class PatchBuilder:
         values = np.concatenate([np.concatenate(row, axis=1) for row in quads])
         return self._reduce(values, level + 1, 2 * x, 2 * y, 1)
 
-    def _block(self, ground: "_Ground", x: int, y: int) -> np.ndarray:
+    def _block(self, ground: _Ground, x: int, y: int) -> np.ndarray:
         depth = self.level - self._block_level
         side = 1 << depth
         values = ground.block(self.level, x << depth, y << depth, side, side)
@@ -584,7 +584,7 @@ class _Over:
     opaque where the rasters are: its tiles already fade into the map there,
     and a second fade would weaken the detail at the edge."""
 
-    def __init__(self, patch: PatchBuilder, ground: "_Ground") -> None:
+    def __init__(self, patch: PatchBuilder, ground: _Ground) -> None:
         self.patch = patch
         size = config.TILE_SIZE
         x0, x1, y0, y1 = patch.tile_range(patch.base_level)

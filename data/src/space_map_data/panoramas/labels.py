@@ -1,9 +1,9 @@
 """Read the supported PDS cylindrical intensity mosaics."""
 
-from dataclasses import dataclass
 import math
 import re
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 
 
 @dataclass
@@ -48,7 +48,7 @@ def optional(text: str, key: str) -> str | None:
     match = re.search(
         rf"^\s*{re.escape(key)}\s*=\s*(\([^)]*\)|\"[^\"]*\"|[^\r\n]+)",
         text,
-        re.M,
+        re.MULTILINE,
     )
     return match[1].strip().strip('"') if match else None
 
@@ -93,7 +93,7 @@ def block(text: str, kind: str, name: str) -> str:
     match = re.search(
         rf"^\s*{kind}\s*=\s*{name}\s*$([\s\S]*?)^\s*END_{kind}\s*=",
         text,
-        re.M,
+        re.MULTILINE,
     )
     if not match:
         raise ValueError(f"Missing PDS block: {name}")
@@ -136,7 +136,7 @@ NON_IMAGE_RASTERS = frozenset(
 
 def describes_raster(text: str) -> bool:
     """Whether a label says how its raster is stored, or only points at it."""
-    return re.search(r"^\s*OBJECT\s*=\s*IMAGE\s*$", text, re.M) is not None
+    return re.search(r"^\s*OBJECT\s*=\s*IMAGE\s*$", text, re.MULTILINE) is not None
 
 
 def cylindrical_blocks(text: str, attached: str | None = None) -> tuple[str, str]:

@@ -18,7 +18,7 @@ import json
 import logging
 import time
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from itertools import batched
 from pathlib import Path
 from urllib.parse import quote
@@ -251,7 +251,7 @@ class CommonsDownloader(Downloader):
             return
         out_path = self.out_dir / "non_commons_skipped.json"
         payload = {
-            "written_at": datetime.now(timezone.utc).isoformat(),
+            "written_at": datetime.now(UTC).isoformat(),
             "count": len(non_commons),
             "note": (
                 "Images found in Wikipedia pageimages but hosted on a specific language "
@@ -422,7 +422,7 @@ class CommonsDownloader(Downloader):
             n["to"]: n["from"] for n in data.get("query", {}).get("normalized", [])
         }
 
-        fetched_at = datetime.now(timezone.utc).isoformat()
+        fetched_at = datetime.now(UTC).isoformat()
         missing = 0
         links: set[str] = set()
         for page in pages:

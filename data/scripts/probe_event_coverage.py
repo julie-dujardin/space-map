@@ -33,19 +33,19 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.export.position.probes.kernels import (  # noqa: E402
+from space_map_data.export.position.probes.kernels import (
     collect_generic_kernels,
     enumerate_probes,
 )
-from space_map_data.export.position.probes.time_grid import (  # noqa: E402
+from space_map_data.export.position.probes.time_grid import (
     PROBE_EXPORT_END_YEAR,
 )
-from space_map_data.probes.events import EventProbe, events_by_probe_id  # noqa: E402
-from space_map_data.probes.landing_events import load_phases  # noqa: E402
-from space_map_data.probes.probe_id import load_registry  # noqa: E402
-from space_map_data.probes.trace import _merged_intervals  # noqa: E402
-from space_map_data.utils.paths import SOURCES_POSITION_DIR  # noqa: E402
-from space_map_data.utils.time import et_to_jd, jd_to_et, year_to_jd  # noqa: E402
+from space_map_data.probes.events import EventProbe, events_by_probe_id
+from space_map_data.probes.landing_events import load_phases
+from space_map_data.probes.probe_id import load_registry
+from space_map_data.probes.trace import _merged_intervals
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
+from space_map_data.utils.time import et_to_jd, jd_to_et, year_to_jd
 
 logger = logging.getLogger(__name__)
 

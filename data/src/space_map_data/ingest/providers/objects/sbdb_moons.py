@@ -88,7 +88,7 @@ def _coerce_int(val: int | str | None) -> int | None:
     return int(val)
 
 
-def _coerce_float(val: int | float | str | None) -> float | None:
+def _coerce_float(val: float | str | None) -> float | None:
     """SBDB satellite element values may use approximation/locale markers
     that ``float_or_none`` rejects: a leading ``~`` (approximate, e.g. ``~38``)
     or a comma decimal separator (e.g. ``119,7``). Strip those, then parse.

@@ -23,7 +23,7 @@ from space_map_data.constants.minor_planet_moons import (
 )
 from space_map_data.constants.providers import ID_TYPE_TO_WIKIDATA_PID, ID_TYPES
 from space_map_data.models.feature import Feature
-from space_map_data.models.object import Object, SBDB
+from space_map_data.models.object import SBDB, Object
 from space_map_data.models.object.satcat import Satcat
 
 # Massive constellations only: individual members lack meaningful Wikidata

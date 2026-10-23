@@ -18,18 +18,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 sys.path.insert(0, str(REPO_ROOT / "data"))
 
-import numpy as np  # noqa: E402
-import spiceypy  # noqa: E402
+import numpy as np
+import spiceypy
 
 # Reuse the benchmark's parsing and evaluation helpers.
-import scripts.probe_benchmark as pb  # noqa: E402
-from space_map_data.constants.providers import PROVIDERS  # noqa: E402
-from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
-from space_map_data.export.position.probes.kernels import (  # noqa: E402
+import scripts.probe_benchmark as pb
+from space_map_data.constants.providers import PROVIDERS
+from space_map_data.download.providers.spice.probes import MISSIONS_DIR
+from space_map_data.export.position.probes.kernels import (
     STATIONARY_PATTERNS,
     kernels_from_index,
 )
-from space_map_data.probes.probe_id import REGISTRY_PATH as PROBE_ID_CACHE  # noqa: E402
+from space_map_data.probes.probe_id import REGISTRY_PATH as PROBE_ID_CACHE
 
 
 def _glob_kernels(mdir: Path) -> list[Path]:
@@ -44,8 +44,8 @@ def _glob_kernels(mdir: Path) -> list[Path]:
     ]
 
 
-from space_map_data.probes.zones import ZONES_BY_KEY  # noqa: E402
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR  # noqa: E402
+from space_map_data.probes.zones import ZONES_BY_KEY
+from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 
 def _et_to_date(et):
@@ -132,7 +132,7 @@ def main() -> int:
         # Collect per-probe sub-chunks, wrapping each as a `_BenchSub` with
         # the resolved fit-center NAIF (a single probe can span chunks fit
         # against different centers).
-        per_probe: dict[int, list[tuple[int, "pb._BenchSub"]]] = {}
+        per_probe: dict[int, list[tuple[int, pb._BenchSub]]] = {}
         for cf in chunk_files:
             chunk_idx = int(cf.stem.split(".")[0])
             parsed = pb._parse_chunk(cf)

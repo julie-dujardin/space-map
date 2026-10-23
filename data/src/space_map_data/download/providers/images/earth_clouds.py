@@ -17,13 +17,13 @@ On-disk layout::
 
 import logging
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
 logger = logging.getLogger(__name__)
@@ -64,10 +64,10 @@ class EarthCloudsDownloader(Downloader):
         )
 
     def is_complete(self, limit: int | None) -> bool:
-        return self._slot_path(datetime.now(timezone.utc)).exists()
+        return self._slot_path(datetime.now(UTC)).exists()
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        self._fetch(SOURCE_URL, self._slot_path(datetime.now(timezone.utc)))
+        self._fetch(SOURCE_URL, self._slot_path(datetime.now(UTC)))
         self._save_metadata(
             SOURCE_URL,
             1,

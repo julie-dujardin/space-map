@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 
 from space_map_data.download.providers.bjj_rings import (
     INNER_RADIUS_KM as SATURN_RING_INNER_KM,
+)
+from space_map_data.download.providers.bjj_rings import (
     OUTER_RADIUS_KM as SATURN_RING_OUTER_KM,
 )
 from space_map_data.export.groups.categories import _wikidata_diameter_km

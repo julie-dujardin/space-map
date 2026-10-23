@@ -1,7 +1,7 @@
 """Cache-aware fetch loop: probe → coarse → auto-refine → meta.json."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import numpy as np
@@ -151,7 +151,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
         "revised": obj.revised,
         "window_start": win_start,
         "window_end": win_end,
-        "last_fetch": datetime.now(timezone.utc).isoformat(),
+        "last_fetch": datetime.now(UTC).isoformat(),
         "coarse": {
             "file": coarse_name,
             "cadence": coarse_tag,

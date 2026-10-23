@@ -3,6 +3,10 @@
 import logging
 from pathlib import Path
 
+from space_map_data.export.objects.wikidata_claims import (
+    radius_km_from_claims,
+    resolve_wikidata_qid,
+)
 from space_map_data.export.position.elements import sidecar
 from space_map_data.export.position.elements.writer import (
     write_elements,
@@ -15,10 +19,6 @@ from space_map_data.export.position.format import (
 )
 from space_map_data.export.position.frames import measured_moon_radius_km
 from space_map_data.export.position.layout import position_zone_dir
-from space_map_data.export.objects.wikidata_claims import (
-    radius_km_from_claims,
-    resolve_wikidata_qid,
-)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object, OrbitalSource

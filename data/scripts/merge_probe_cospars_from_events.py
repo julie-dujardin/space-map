@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from space_map_data.probes.probe_id import load_registry, save_registry  # noqa: E402
-from space_map_data.utils.paths import ARCHIVE_DIR  # noqa: E402
+from space_map_data.probes.probe_id import load_registry, save_registry
+from space_map_data.utils.paths import ARCHIVE_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("cospar")

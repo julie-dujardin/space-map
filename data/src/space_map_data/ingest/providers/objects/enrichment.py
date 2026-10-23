@@ -20,17 +20,22 @@ from space_map_data.constants.earth_sats.constellations import (
     UNPREFERRED_SLUGS,
     slug_from_name,
 )
+from space_map_data.constants.earth_sats.gcat_orgs import (
+    MANUFACTURER_BY_GCAT,
+    OPERATOR_BY_GCAT,
+)
+from space_map_data.constants.earth_sats.gcat_states import countries_for_state
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_CODES
 from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
     MANUFACTURER_BY_SLUG,
 )
-from space_map_data.constants.earth_sats.organizations import ORGANIZATION_BY_SLUG
 from space_map_data.constants.earth_sats.operators import (
     OPERATOR_BY_CONSTELLATION,
     OPERATOR_BY_SOURCE,
     operator_overlaps,
 )
+from space_map_data.constants.earth_sats.organizations import ORGANIZATION_BY_SLUG
 from space_map_data.constants.earth_sats.satcat import (
     parse_data_status,
     parse_object_type,
@@ -38,11 +43,6 @@ from space_map_data.constants.earth_sats.satcat import (
     parse_orbit_center,
     parse_orbit_type,
 )
-from space_map_data.constants.earth_sats.gcat_orgs import (
-    MANUFACTURER_BY_GCAT,
-    OPERATOR_BY_GCAT,
-)
-from space_map_data.constants.earth_sats.gcat_states import countries_for_state
 from space_map_data.constants.earth_sats.satellite_models import bus_for_object
 from space_map_data.constants.earth_sats.sources import SOURCE_BY_CODE, parse_source
 from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
@@ -60,7 +60,7 @@ _CLASSIFIED_NAME = re.compile(r"^OBJECT [A-Z]{1,2}$")
 class GroupData:
     """Result of loading CelesTrak group CSVs."""
 
-    __slots__ = ("by_norad", "by_cospar", "group_only_rows")
+    __slots__ = ("by_cospar", "by_norad", "group_only_rows")
 
     def __init__(self) -> None:
         self.by_norad: dict[int, set[str]] = {}

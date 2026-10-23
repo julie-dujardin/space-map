@@ -34,17 +34,17 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.constants.providers import PROVIDERS  # noqa: E402
-from space_map_data.download.providers.spice.probes import (  # noqa: E402
+from space_map_data.constants.providers import PROVIDERS
+from space_map_data.download.providers.spice.probes import (
     LANDED_MISSIONS_DIR,
 )
-from space_map_data.export.position.probes.kernels import (  # noqa: E402
+from space_map_data.export.position.probes.kernels import (
     collect_generic_kernels,
 )
-from space_map_data.probes.probe_id import load_registry as _load_probe_cache  # noqa: E402
-from space_map_data.probes.trace import _IAU_FRAME, classify_trace  # noqa: E402
-from space_map_data.probes.zones import PLANETARY_ZONES  # noqa: E402
-from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402
+from space_map_data.probes.probe_id import load_registry as _load_probe_cache
+from space_map_data.probes.trace import _IAU_FRAME, classify_trace
+from space_map_data.probes.zones import PLANETARY_ZONES
+from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)

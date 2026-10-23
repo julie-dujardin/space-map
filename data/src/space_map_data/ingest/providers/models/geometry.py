@@ -131,14 +131,10 @@ def _slice_widths(
             else:
                 area[i] += tri_area * (min(b, i + 1) - max(a, i)) / (b - a)
             bx = box[i]
-            if tlo[u] < bx[0]:
-                bx[0] = tlo[u]
-            if thi[u] > bx[1]:
-                bx[1] = thi[u]
-            if tlo[v] < bx[2]:
-                bx[2] = tlo[v]
-            if thi[v] > bx[3]:
-                bx[3] = thi[v]
+            bx[0] = min(bx[0], tlo[u])
+            bx[1] = max(bx[1], thi[u])
+            bx[2] = min(bx[2], tlo[v])
+            bx[3] = max(bx[3], thi[v])
     thickness = length / BINS
     return [
         (

@@ -9,7 +9,6 @@ the whole combo at once.
 
 from unittest.mock import MagicMock
 
-
 from space_map_data.export.pipeline import orchestrator, zone
 from space_map_data.export.pipeline.orchestrator import (
     _Aggregators,

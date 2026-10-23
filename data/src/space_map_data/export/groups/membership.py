@@ -17,11 +17,11 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.countries import COUNTRY_BY_CODE
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
+from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_BY_CONSTELLATION,
     LAUNCH_VEHICLE_SLUG_PREFIX,
 )
-from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.organizations import (

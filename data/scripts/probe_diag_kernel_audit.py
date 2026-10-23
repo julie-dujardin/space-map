@@ -21,14 +21,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-import spiceypy  # noqa: E402
+import spiceypy
 
-from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
-from space_map_data.export.position.probes.kernels import (  # noqa: E402
+from space_map_data.download.providers.spice.probes import MISSIONS_DIR
+from space_map_data.export.position.probes.kernels import (
     STATIONARY_PATTERNS,
     collect_generic_kernels,
 )
-from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402
+from space_map_data.utils.paths import DOWNLOAD_DIR
 
 
 def _index_files(mdir: Path) -> set[str]:
@@ -125,7 +125,7 @@ def main() -> int:
             if r["naif"] is not None
             else "(no -1..-999 coverage)"
         )
-        print(f"{r['mission']:<22} {r['kernel']:<44} {str(r['naif']):>5} {cov:<24}")
+        print(f"{r['mission']:<22} {r['kernel']:<44} {r['naif']!s:>5} {cov:<24}")
     print(f"\nTotal extra-kernel rows: {len(rows)}")
     print(
         f"  with spacecraft coverage: {sum(1 for r in rows if r['naif'] is not None)}"

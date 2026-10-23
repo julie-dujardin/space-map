@@ -16,7 +16,7 @@ import logging
 import sqlite3
 import time
 from bisect import bisect_left, bisect_right
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from tqdm import tqdm
@@ -354,7 +354,7 @@ class SBDBDownloader(Downloader):
 
     @staticmethod
     def _today() -> str:
-        return datetime.now(timezone.utc).date().isoformat()
+        return datetime.now(UTC).date().isoformat()
 
     def is_complete(self, limit: int | None) -> bool:
         if not self.metadata_file.exists():
@@ -362,9 +362,7 @@ class SBDBDownloader(Downloader):
         meta = json.loads(self.metadata_file.read_text())
         if meta.get("complete"):
             checked = meta.get("checked_at") or meta["downloaded_at"]
-            return (
-                datetime.now(timezone.utc) - datetime.fromisoformat(checked) < FRESHNESS
-            )
+            return datetime.now(UTC) - datetime.fromisoformat(checked) < FRESHNESS
         record_count = meta.get("record_count")
         return record_count is not None and limit is not None and limit <= record_count
 
@@ -374,7 +372,7 @@ class SBDBDownloader(Downloader):
         """``downloaded_at`` moves only when the mirror content changed (it
         feeds the export cache signature); ``checked_at`` tracks sync
         freshness and moves on every finished run."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         old = (
             json.loads(self.metadata_file.read_text())
             if self.metadata_file.exists()

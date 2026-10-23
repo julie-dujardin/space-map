@@ -7,7 +7,6 @@ from space_map_data.export.small_body_color import (
 )
 from space_map_data.models.object import SBDB
 
-
 _SBDB_FIELDS = (
     "neo",
     "pha",

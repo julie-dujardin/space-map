@@ -28,8 +28,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.probes.probe_id import load_probe_labels  # noqa: E402
-from space_map_data.utils.paths import EXPORT_DIR  # noqa: E402
+from space_map_data.probes.probe_id import load_probe_labels
+from space_map_data.utils.paths import EXPORT_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ def _collect_intervals(
             chunk_idx = int(meta_path.stem.split(".")[0])
             try:
                 data = json.loads(meta_path.read_text())
-            except (OSError, json.JSONDecodeError):
+            except OSError, json.JSONDecodeError:
                 continue
             t0 = start_jd + chunk_idx * chunk_days
             t1 = t0 + chunk_days

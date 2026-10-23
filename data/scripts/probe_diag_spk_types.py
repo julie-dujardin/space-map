@@ -13,9 +13,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-import spiceypy  # noqa: E402
+import spiceypy
 
-from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
+from space_map_data.download.providers.spice.probes import MISSIONS_DIR
 
 
 def _segments(kernel: Path) -> list[tuple[int, int, float, float]]:

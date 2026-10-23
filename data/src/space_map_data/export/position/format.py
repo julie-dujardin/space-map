@@ -41,7 +41,7 @@ import struct
 from typing import NamedTuple
 
 from space_map_data.constants.providers import ID_TYPES
-from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
+from space_map_data.models.object import ElementsScale, ObjectType, OrbitalSource
 
 MAGIC = b"SMAP"
 VERSION = 13

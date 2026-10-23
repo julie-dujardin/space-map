@@ -30,9 +30,9 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
-from space_map_data.constants.providers import ID_TYPES  # noqa: E402
-from space_map_data.export.position.format import (  # noqa: E402
+from space_map_data.constants.providers import ID_TYPES
+from space_map_data.download.providers.spice.probes import MISSIONS_DIR
+from space_map_data.export.position.format import (
     FORMAT_PROBES,
     HEADER_SIZE,
     ID_TYPE_ORDINAL,
@@ -50,18 +50,20 @@ from space_map_data.export.position.format import (  # noqa: E402
     SYSTEM_INTERVAL_SIZE,
     VERSION,
 )
-from space_map_data.export.position.probes.sizing import CHEBYSHEV_DEGREE  # noqa: E402
-from space_map_data.export.position.probes.kernels import (  # noqa: E402
+from space_map_data.export.position.probes.kernels import (
     collect_generic_kernels,
     kernels_from_index,
 )
-from space_map_data.probes.probe_id import (  # noqa: E402
+from space_map_data.export.position.probes.sizing import CHEBYSHEV_DEGREE
+from space_map_data.probes.probe_id import (
     REGISTRY_PATH as PROBE_ID_CACHE,
+)
+from space_map_data.probes.probe_id import (
     load_probe_labels,
 )
-from space_map_data.probes.zones import ZONES_BY_KEY  # noqa: E402
-from space_map_data.utils.naif import naif_id_from_spk  # noqa: E402
-from space_map_data.utils.paths import EXPORT_DIR, SOURCES_POSITION_DIR  # noqa: E402
+from space_map_data.probes.zones import ZONES_BY_KEY
+from space_map_data.utils.naif import naif_id_from_spk
+from space_map_data.utils.paths import EXPORT_DIR, SOURCES_POSITION_DIR
 
 _NAIF_ID_TYPE_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 _SPKID_ID_TYPE_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.SPKID]
@@ -413,7 +415,7 @@ def _bench_worker(
     naif_id: int,
     mission_kernels_str: list[str],
     generic_spk_paths_str: list[str],
-    sub_chunks: list["_BenchSub"],
+    sub_chunks: list[_BenchSub],
     float64: bool,
     samples_per_subchunk: int,
 ) -> tuple[int, list[float]]:
@@ -480,7 +482,7 @@ def _evaluate_subchunk(
                 fitted = _eval_chebyshev(
                     sub.payload, sub.t_start_et, sub.t_end_et, float64, float(et)
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: S112
                 continue
         else:
             assert elts is not None

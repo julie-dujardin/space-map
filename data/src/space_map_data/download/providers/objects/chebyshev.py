@@ -19,12 +19,12 @@ from jplephem.spk import SPK
 from tqdm import tqdm
 
 from space_map_data.models.object import ObjectType
-from space_map_data.utils.time import S_PER_DAY, et_to_jd
 from space_map_data.utils.naif import (
     CHEBYSHEV_ASTEROID_WHITELIST,
     CHEBYSHEV_MOON_WHITELIST,
     MajorBody,
 )
+from space_map_data.utils.time import S_PER_DAY, et_to_jd
 
 logger = logging.getLogger(__name__)
 

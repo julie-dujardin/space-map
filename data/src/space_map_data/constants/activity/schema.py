@@ -14,7 +14,6 @@ without its width or date, a bound would read as a measurement.
 
 from typing import NamedTuple
 
-
 # `Volcanism.kind` values. `both` is for bodies with silicate volcanism in the
 # past and cryovolcanism now — Ceres, whose domes are brine over a mantle
 # that once melted.

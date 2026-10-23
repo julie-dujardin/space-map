@@ -8,8 +8,8 @@ import gzip
 import logging
 import math
 from collections.abc import Callable, Sequence
-from typing import NamedTuple
 from pathlib import Path
+from typing import NamedTuple
 
 import orjson
 
@@ -36,6 +36,7 @@ from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
 )
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
+from space_map_data.constants.earth_sats.orbit_class import LAGRANGE_CLASSES
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_BY_SLUG,
     ORGANIZATION_SLUG_PREFIX,
@@ -53,11 +54,11 @@ from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
     CLASS_SLUG_PREFIX,
+    GROUP_BY_SLUG,
+    GROUPS,
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_VEHICLE_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
-    GROUP_BY_SLUG,
-    GROUPS,
     Group,
     GroupCategory,
     GroupType,
@@ -82,7 +83,6 @@ from space_map_data.export.objects.wikidata_claims import (
     extract_claims,
     resolve_entity_ref,
 )
-from space_map_data.constants.earth_sats.orbit_class import LAGRANGE_CLASSES
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_sections_for_qid,

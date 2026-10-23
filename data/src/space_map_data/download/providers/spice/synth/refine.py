@@ -9,7 +9,6 @@ import numpy as np
 import spiceypy
 
 from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
-
 from space_map_data.utils.time import et_to_jd
 
 from .horizons_api import Sample, _jd_to_iso

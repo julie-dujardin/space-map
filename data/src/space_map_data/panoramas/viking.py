@@ -12,13 +12,13 @@ each takes its own, measured against the survey's.
 """
 
 import argparse
-from dataclasses import replace
-from datetime import date, timedelta
 import json
 import logging
-from pathlib import Path
 import re
 import shutil
+from dataclasses import replace
+from datetime import date, timedelta
+from pathlib import Path
 
 import httpx
 from PIL import Image
@@ -26,6 +26,7 @@ from PIL import Image
 from .labels import Mosaic
 from .missions import FRAME
 from .pipeline import (
+    BUILD_VERSION,
     POLICY,
     coverage,
     fetch,
@@ -34,7 +35,6 @@ from .pipeline import (
     sha256,
     sphere_texture,
     write_json,
-    BUILD_VERSION,
 )
 
 logger = logging.getLogger(__name__)

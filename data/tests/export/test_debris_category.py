@@ -38,7 +38,7 @@ def no_inclinations(monkeypatch):
     """Skip the CelesTrak day-dir scan — these tests don't need overlay bands."""
     monkeypatch.setattr(
         "space_map_data.export.groups.earth_sat._load_latest_inclinations",
-        lambda: {},
+        dict,
     )
 
 

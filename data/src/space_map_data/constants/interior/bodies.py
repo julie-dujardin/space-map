@@ -21,24 +21,23 @@ from space_map_data.constants.interior.schema import (
     ANDESITE,
     ANORTHOSITE,
     BASALT,
-    BodyInterior,
     COMPOUND_VOLUME,
     COMPOUND_WEIGHT,
-    Component,
-    Detail,
     ELEMENT_WEIGHT,
     HEAVY_ELEMENTS,
     HELIUM,
     HYDROGEN,
-    Layer,
     METAL,
     OXIDE_WEIGHT,
     PERIDOTITE,
     SILICATE,
     VOLATILE,
     WATER,
+    BodyInterior,
+    Component,
+    Detail,
+    Layer,
 )
-
 
 # The base of a floating ice shell is a phase boundary rather than a modelled
 # temperature: it sits on the melting curve of ice I, which runs from 273 K at

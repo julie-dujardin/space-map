@@ -3,14 +3,14 @@
 import pytest
 
 from space_map_data.ingest.providers.objects.sbdb import (
+    _SBDB_COLUMNS,
+    G_KM3_PER_KG_S2,
     SBDBIngestor,
     _display_name,
     _object_type,
     _parent_id,
     _provisional_designation,
     _sbdb_dict,
-    _SBDB_COLUMNS,
-    G_KM3_PER_KG_S2,
 )
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.naif import naif_id_from_spk

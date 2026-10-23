@@ -12,13 +12,13 @@ import pytest
 import spiceypy
 
 from space_map_data.probes.deepcat import SolarElements
-from space_map_data.probes.propagation import AU_KM
 from space_map_data.probes.deepcat_solve import (
     GM_SUN,
     _node_solutions,
     _true_anomalies,
     solve_anchor,
 )
+from space_map_data.probes.propagation import AU_KM
 
 # 1 x 1.5 AU, inclined — a plain Earth-to-Mars-ish transfer.
 ELEMENTS = SolarElements(peri_au=1.0, apo_au=1.5, inc_deg=3.0, uncertain=False)

@@ -32,7 +32,7 @@ from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_SITES,
 )
-from space_map_data.models.object import LaunchPad, LaunchSite, Launchlog
+from space_map_data.models.object import Launchlog, LaunchPad, LaunchSite
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +112,7 @@ def _ucode_index(session: Session) -> tuple[dict[str, str], dict[str, LaunchSite
         ucode = row.ucode or row.code
         ucode_by_code[row.code] = ucode
         current = canonical.get(ucode)
-        if row.code == ucode:
-            canonical[ucode] = row
-        elif current is None and row.latitude is not None:
+        if row.code == ucode or current is None and row.latitude is not None:
             canonical[ucode] = row
     return ucode_by_code, canonical
 

@@ -27,7 +27,7 @@ import logging
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -41,8 +41,8 @@ from space_map_data.constants.manifests.catalogues import (
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.cds import CDS_URL, README, count_records, record_counts
 from space_map_data.download.downloader import (
-    DownloadError,
     Downloader,
+    DownloadError,
     user_agent_without_bot,
 )
 from space_map_data.download.providers.catalogues.fetch import md5_of
@@ -161,7 +161,7 @@ class CatalogueDownloader(Downloader):
             "fetched_at": (
                 previous["fetched_at"]
                 if previous and not wanted
-                else datetime.now(timezone.utc).isoformat()
+                else datetime.now(UTC).isoformat()
             ),
             "files": files,
         }
@@ -273,7 +273,7 @@ def _named_urls(catalogue: Catalogue) -> dict[str, str | None]:
 def _has_lapsed(catalogue: Catalogue, record: dict) -> bool:
     if catalogue.refresh_days is None:
         return False
-    age = datetime.now(timezone.utc) - datetime.fromisoformat(record["fetched_at"])
+    age = datetime.now(UTC) - datetime.fromisoformat(record["fetched_at"])
     return age >= timedelta(days=catalogue.refresh_days)
 
 

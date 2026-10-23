@@ -6,12 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from space_map_data.export.wikidata import active_statements
 from space_map_data.export.objects.wikidata_claims import (
-    extract_claims,
-    radius_km_from_claims,
-    resolve_entity_ref,
-    resolve_unit,
     _all_entity_qids,
     _all_strings,
     _all_times,
@@ -23,8 +18,12 @@ from space_map_data.export.objects.wikidata_claims import (
     _single_quantity,
     _single_time,
     _stmt_value,
+    extract_claims,
+    radius_km_from_claims,
+    resolve_entity_ref,
+    resolve_unit,
 )
-
+from space_map_data.export.wikidata import active_statements
 
 # Helpers to build realistic Wikidata claim structures.
 

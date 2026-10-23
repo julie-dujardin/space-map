@@ -1,8 +1,9 @@
 """Load and extract Wikipedia summaries for export."""
 
-import orjson
 import logging
 from dataclasses import dataclass
+
+import orjson
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.mirror import local

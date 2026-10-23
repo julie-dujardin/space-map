@@ -26,7 +26,7 @@ import yaml
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.constants.rings.attribution import NASA, NASA_LICENSE
 from space_map_data.constants.rings.catalog import SATURN_MEASURED_THICKNESS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
 logger = logging.getLogger(__name__)

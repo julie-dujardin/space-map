@@ -8,17 +8,17 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from space_map_data.constants.manifests.textures import layer_files, source_layers
 from space_map_data.ingest.providers.textures import (
     EARTH_CLOUDS_OBJECT_ID,
     MAX_FILE_BYTES,
     MIN_QUALITY,
     TextureProcessor,
     any_export_over_cap,
+    config,
     expand_entry_files,
     save_webp,
 )
-from space_map_data.constants.manifests.textures import layer_files, source_layers
-from space_map_data.ingest.providers.textures import config
 from space_map_data.ingest.providers.textures.image_io import repair_thin_gaps
 from space_map_data.ingest.providers.textures.metadata import refresh_metadata_from_yaml
 

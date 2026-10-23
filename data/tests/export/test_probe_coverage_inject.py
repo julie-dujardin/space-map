@@ -3,7 +3,6 @@ entry. Pins the key match and the missing-entry warning."""
 
 import logging
 
-
 from space_map_data.export.pipeline.orchestrator import _inject_probe_coverage
 
 

@@ -21,9 +21,9 @@ from space_map_data.export.images import (
     collect_object_images,
     pick_thumbnail,
 )
-from space_map_data.export.systems import displacement_block
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.systems import displacement_block
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
 from space_map_data.utils.naif import nut_prec_owner

@@ -17,7 +17,6 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-
 from space_map_data.probes.deepcat import (
     DatePrecision,
     DeepObject,

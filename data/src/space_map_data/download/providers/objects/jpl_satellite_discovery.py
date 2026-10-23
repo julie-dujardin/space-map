@@ -14,7 +14,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)

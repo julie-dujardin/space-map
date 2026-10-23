@@ -15,15 +15,18 @@ A missing or mismatched meta always falls back to doing the work.
 """
 
 import hashlib
-from functools import cache
 import json
 import logging
 import math
+from functools import cache
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.objects.position_sources import (
+    load_probe_position_sources,
+)
 from space_map_data.export.position.elements.celestrak_source import current_day_dirs
 from space_map_data.export.position.elements.sidecar import (
     build_earth_part_signature,
@@ -37,12 +40,11 @@ from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.position.probes.sidecar import (
     LANDED_VERSION as PROBES_LANDED_VERSION,
+)
+from space_map_data.export.position.probes.sidecar import (
     PACK_VERSION as PROBES_PACK_VERSION,
 )
 from space_map_data.export.sidecar_io import mirror_path, read_sidecar, write_sidecar
-from space_map_data.export.objects.position_sources import (
-    load_probe_position_sources,
-)
 from space_map_data.models.ingest_stamp import read_ingest_stamp
 from space_map_data.utils.content_stamp import content_stamp, content_stamps
 from space_map_data.utils.paths import (

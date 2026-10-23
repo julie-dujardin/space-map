@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.download.providers.spice.bodies.pck_extract import _canonical_naif
 from space_map_data.ingest.providers.objects.sbdb_moons import (
-    SBDBMoonsIngestor,
     _MAX_SAT_INDEX,
+    SBDBMoonsIngestor,
     _synth_satellite_designation,
 )
 from space_map_data.models.object import Object, ObjectType, OrbitalSource

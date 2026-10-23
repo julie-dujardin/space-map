@@ -79,10 +79,10 @@ class SBDBMoon(Base):
     sigma_per: Mapped[float | None] = mapped_column(default=None)
     sigma_tp: Mapped[float | None] = mapped_column(default=None)
 
-    object: Mapped["Object"] = relationship(
+    object: Mapped[Object] = relationship(
         foreign_keys=[object_id], back_populates="sbdb_moon"
     )
-    parent: Mapped["Object"] = relationship(
+    parent: Mapped[Object] = relationship(
         foreign_keys=[parent_object_id],
         back_populates="sbdb_moons",
     )

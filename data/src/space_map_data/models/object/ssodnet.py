@@ -40,4 +40,4 @@ class SsODNet(Base):
     density: Mapped[float | None] = mapped_column(default=None)  # kg/m³
     diameter_km: Mapped[float | None] = mapped_column(default=None)
 
-    object: Mapped["Object"] = relationship(back_populates="ssodnet")
+    object: Mapped[Object] = relationship(back_populates="ssodnet")

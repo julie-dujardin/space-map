@@ -15,8 +15,8 @@ from .index import qid_deduped_synth_naifs
 from .layout import SYNTH_CACHE_ROOT, SYNTH_KERNELS_DIR
 
 __all__ = [
-    "HorizonsSyntheticDownloader",
     "SYNTH_CACHE_ROOT",
     "SYNTH_KERNELS_DIR",
+    "HorizonsSyntheticDownloader",
     "qid_deduped_synth_naifs",
 ]

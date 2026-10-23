@@ -23,7 +23,6 @@ from typing import NamedTuple
 
 from space_map_data.constants.atmosphere.facts import Species
 
-
 # `AtmosphereLayer.role` values, lowest first.
 LAYER_ROLES = frozenset(
     {

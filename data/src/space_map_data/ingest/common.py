@@ -7,7 +7,6 @@ from pathlib import Path
 from sqlalchemy import func
 
 from space_map_data.ingest.checks import assert_no_namespace_collision
-from space_map_data.models.object import Object
 from space_map_data.ingest.providers import (
     iau_nomenclature,
     image_selection,
@@ -17,13 +16,13 @@ from space_map_data.ingest.providers import (
 from space_map_data.ingest.providers.objects import (
     astersat,
     celestrak,
+    johnston,
     jpl_satellite_discovery,
     launch_site,
     launch_vehicle,
     launchlog,
     probes,
     satcat,
-    johnston,
     sbdb,
     sbdb_moons,
     spice,
@@ -35,6 +34,7 @@ from space_map_data.ingest.providers.wikidata import (
     objects,
     objects_conflicts,
 )
+from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)

@@ -28,8 +28,8 @@ from space_map_data.constants.nomenclature.quadrangle_grid import (
     quadrangle_for,
 )
 from space_map_data.constants.nomenclature.quadrangles import QUADRANGLE_QIDS
-from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.nomenclature.writer import renderable_feature_filter
+from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.models.feature import Feature
 from space_map_data.utils.paths import EXPORT_DIR
 

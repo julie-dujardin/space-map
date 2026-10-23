@@ -30,7 +30,7 @@ from space_map_data.export.position.format import (
 )
 from space_map_data.models.object import ObjectType, OrbitalSource
 from space_map_data.models.object.main import Object
-from space_map_data.models.object.sbdb import OrbitClass, SBDB
+from space_map_data.models.object.sbdb import SBDB, OrbitClass
 from tests.conftest import make_object
 
 

@@ -3,7 +3,8 @@
 import os
 
 from space_map_data.utils import content_stamp
-from space_map_data.utils.content_stamp import content_stamps, content_stamp as stamp
+from space_map_data.utils.content_stamp import content_stamp as stamp
+from space_map_data.utils.content_stamp import content_stamps
 
 
 def _touch(path, mtime_ns):

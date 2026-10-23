@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from sqlalchemy import select, update
+from tqdm import tqdm
 
 from space_map_data.constants.minor_planet_moons import (
     MINOR_PLANET_MOON_QID_BY_DESIGNATION,
@@ -21,7 +22,6 @@ from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def _build_mappings(
                     continue
                 try:
                     key = converter(search_term)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     continue
                 converted.setdefault(key, []).extend(qids)
 
@@ -220,7 +220,7 @@ def _build_satcat_mappings(
                     continue
                 try:
                     key = converter(search_term)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     continue
                 converted.setdefault(key, []).extend(qids)
 

@@ -1,12 +1,12 @@
 """Associate Mastcam-Z observation sequences with exact PLACES positions."""
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 import csv
 import json
 import logging
-from pathlib import Path
 import re
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
@@ -30,7 +30,7 @@ def frame_counters(rows, sol, sequence):
     for row in rows:
         title = plain(row["title"]["rendered"])
         match = re.search(
-            r"^Z[LR]0\s+(\d+)\s+.*?\bN(\d{3})(\d{4})(ZCAM\d+)\b", title, re.I
+            r"^Z[LR]0\s+(\d+)\s+.*?\bN(\d{3})(\d{4})(ZCAM\d+)\b", title, re.IGNORECASE
         )
         if match and int(match[1]) == sol and match[4].upper() == sequence:
             result.add((int(match[2]), int(match[3])))
@@ -111,7 +111,9 @@ def localize(client, source_dir):
         pages = []
         try:
             if product["target"] == "360":
-                match = re.search(r"Sols?(\d+)(?:-(\d+))?", product["sequence"], re.I)
+                match = re.search(
+                    r"Sols?(\d+)(?:-(\d+))?", product["sequence"], re.IGNORECASE
+                )
                 if match is None:
                     raise ValueError("No complete capture-sol interval")
                 start, stop = int(match[1]), int(match[2] or match[1])

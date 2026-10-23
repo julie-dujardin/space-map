@@ -34,13 +34,21 @@ from space_map_data.export.position.probes.plan import (
 )
 from space_map_data.export.position.probes.sizing import (
     METHOD_CHEBYSHEV as SZ_METHOD_CHEBYSHEV,
+)
+from space_map_data.export.position.probes.sizing import (
     METHOD_KEPLER_DRIFT as SZ_METHOD_KEPLER_DRIFT,
+)
+from space_map_data.export.position.probes.sizing import (
     METHOD_KEPLER_PURE as SZ_METHOD_KEPLER_PURE,
+)
+from space_map_data.export.position.probes.sizing import (
     METHOD_UNCOVERABLE as SZ_METHOD_UNCOVERABLE,
+)
+from space_map_data.export.position.probes.sizing import (
     SubChunkFit,
 )
-from space_map_data.utils.time import S_PER_DAY, jd_to_et
 from space_map_data.probes.zones import ALL_ZONES, Zone
+from space_map_data.utils.time import S_PER_DAY, jd_to_et
 
 logger = logging.getLogger(__name__)
 

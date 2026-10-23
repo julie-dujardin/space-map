@@ -172,7 +172,7 @@ def rover_in_caption(description):
     matches = re.findall(
         r"\brover\s+(curiosity|spirit|opportunity)\b|\b(curiosity|spirit|opportunity)(?:\s+Mars)?\s+rover\b|\bNASA['’]s\s+(Curiosity|Spirit|Opportunity)\b",
         introduction,
-        re.I,
+        re.IGNORECASE,
     )
     missions = {value.lower() for pair in matches for value in pair if value}
     return next(iter(missions)) if len(missions) == 1 else None

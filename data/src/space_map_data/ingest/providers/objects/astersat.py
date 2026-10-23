@@ -39,7 +39,7 @@ from space_map_data.utils.db import get_session
 logger = logging.getLogger(__name__)
 
 # "Satellite orbit (geoequat J2000):" then the element block, as printed.
-_ORBIT_RE = re.compile(r"Satellite orbit \(([^)]*)\):(.{0,600})", re.S)
+_ORBIT_RE = re.compile(r"Satellite orbit \(([^)]*)\):(.{0,600})", re.DOTALL)
 _ELEMENTS = {
     "epoch_mjd": r"Epoch=\s*([\d.]+)",
     "a_km": r"a=\s*([\d.]+)\s*km",

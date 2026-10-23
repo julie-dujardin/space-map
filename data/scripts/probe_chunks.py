@@ -21,8 +21,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.probes.probe_id import load_probe_labels  # noqa: E402
-from space_map_data.utils.paths import EXPORT_DIR  # noqa: E402
+from space_map_data.probes.probe_id import load_probe_labels
+from space_map_data.utils.paths import EXPORT_DIR
 
 _JD_UNIX_EPOCH = 2440587.5  # JD of 1970-01-01 00:00 UTC
 
@@ -106,7 +106,7 @@ def main() -> int:
             chunk_idx = int(meta_path.stem.split(".")[0])
             try:
                 data = json.loads(meta_path.read_text())
-            except (OSError, json.JSONDecodeError):
+            except OSError, json.JSONDecodeError:
                 continue
             for pid_str in data.get("probes", {}):
                 coverage[int(pid_str)][zone_key].append(chunk_idx)

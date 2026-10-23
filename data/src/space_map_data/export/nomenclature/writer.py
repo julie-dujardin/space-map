@@ -37,15 +37,13 @@ import logging
 import math
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 import orjson
 from sqlalchemy.orm import Session
 
-from urllib.parse import quote
-
-from space_map_data.constants.providers import LANGUAGES
-from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.constants.nomenclature.quadrangles import QUADRANGLE_QIDS
+from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.export.images import collect_feature_images, localized_image_titles
 from space_map_data.export.nomenclature.format import (
     pack_header,
@@ -73,7 +71,6 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object
-
 
 # Wikidata claim keys folded into the unified ``inside_of`` list:
 # P706 (located_on_physical_feature) and P361 (part_of). P276

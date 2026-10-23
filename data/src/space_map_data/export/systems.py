@@ -7,11 +7,12 @@ planetary system.
 import csv
 import logging
 from collections import Counter
-import orjson
 from pathlib import Path
 
+import orjson
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.manifests.textures import ALT_INFIX
 from space_map_data.constants.measured_shapes import (
     measured_orientations,
     measured_radii,
@@ -20,7 +21,6 @@ from space_map_data.constants.orientation import (
     ORIENTATION_SOURCE_LIGHTCURVE,
     ORIENTATION_SOURCE_PCK,
 )
-from space_map_data.constants.manifests.textures import ALT_INFIX
 from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.in_place import patch_global_bundles, refresh_versions
 from space_map_data.export.sidecar_io import mirror_path

@@ -13,7 +13,6 @@ from tqdm import tqdm
 from space_map_data.constants.categories import CATEGORIES
 from space_map_data.constants.countries import COUNTRIES
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
-from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_VARIANTS,
     LAUNCH_VEHICLES,
@@ -23,6 +22,7 @@ from space_map_data.constants.earth_sats.reusable_vehicles import REUSABLE_VEHIC
 from space_map_data.constants.minor_planet_moons import minor_planet_moon_qids
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
+from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.spacecraft import CATALOGUE as SPACECRAFT_CATALOGUE

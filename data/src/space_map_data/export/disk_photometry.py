@@ -9,7 +9,7 @@ fit. A Minnaert fit becomes L by a least-squares fit of the lunar-Lambert law
 to the Minnaert disc, area-weighted, as McEwen (1991) fits laws to each other.
 """
 
-from functools import lru_cache
+from functools import cache
 
 import numpy as np
 
@@ -82,7 +82,7 @@ def weight_scale(fit: MinnaertFit | LunarLambertFit) -> float:
     return float(np.dot(ours, theirs) / np.dot(ours, ours))
 
 
-@lru_cache(maxsize=None)
+@cache
 def lunar_weight_scale(object_id: str) -> float | None:
     """Factor on the lunar weight of McEwen for this body, to 3 decimals, or
     None for a body with no published fit."""

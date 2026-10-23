@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
@@ -10,7 +10,7 @@ from space_map_data.constants.earth_sats.constellations import (
     GROUP_TO_SLUG,
 )
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class CelesTrakDownloader(Downloader):
         if not self.metadata_file.exists():
             return False
         meta = json.loads(self.metadata_file.read_text())
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = datetime.now(UTC).date().isoformat()
         return meta.get("day") == today
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
@@ -48,7 +48,7 @@ class CelesTrakDownloader(Downloader):
         # Elements are Space-Track's now — GROUP=active covers only ~18k of the
         # ~32k catalogue, so it stopped earning its place once the weekly
         # backfill closed the 2026 gap.
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         day_dir = self._day_dir(today)
         day_dir.mkdir(parents=True, exist_ok=True)
 

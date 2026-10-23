@@ -1,14 +1,14 @@
 """Inventory both official Pancam galleries, including small color mosaics."""
 
-from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import logging
-from pathlib import Path
 import re
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from bs4 import BeautifulSoup
 import httpx
+from bs4 import BeautifulSoup
 
 from .pipeline import POLICY, fetch, write_json
 from .releases import unknown_coverage
@@ -52,7 +52,7 @@ def color_assets(html, descriptor):
         re.search(
             r"(?:true|false|natural)[ -]colou?r|colou?r (?:image|mosaic)",
             introduction,
-            re.I,
+            re.IGNORECASE,
         )
     )
     primary_stem = None
@@ -112,20 +112,22 @@ def color_assets(html, descriptor):
         )
         groups.setdefault(family, []).append(variant)
     width = re.search(
-        r"(?:approximately\s+)?(\d+(?:\.\d+)?)\s*(?:degrees?|°)[ -]+wide", text, re.I
+        r"(?:approximately\s+)?(\d+(?:\.\d+)?)\s*(?:degrees?|°)[ -]+wide",
+        text,
+        re.IGNORECASE,
     )
     declared = re.search(
         r"(?:spans?|covers?)\s+(\d+(?:\.\d+)?)\s*(?:degrees?|°)|(\d+(?:\.\d+)?)[ -]*(?:degrees?|°)[, -]+(?:(?:false.color|true.color|color|high.resolution)[ -]+)?(?:view|panorama|mosaic|image|vista)",
         introduction,
-        re.I,
+        re.IGNORECASE,
     )
     products = []
     for family, alternatives in groups.items():
         identity = descriptor["mission"] + "-pancam-" + family
         sol = (
-            re.search(r"\bSols?\s+(\d+)", descriptor["caption"], re.I)
+            re.search(r"\bSols?\s+(\d+)", descriptor["caption"], re.IGNORECASE)
             if len(groups) == 1
-            else re.search(r"(?:sol)?(\d+)[ab]_", family, re.I)
+            else re.search(r"(?:sol)?(\d+)[ab]_", family, re.IGNORECASE)
         )
         horizontal = None
         if declared and (len(groups) == 1 or "cyl" in family):

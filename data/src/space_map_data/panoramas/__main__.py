@@ -6,7 +6,8 @@ from pathlib import Path
 
 import httpx
 
-from space_map_data.utils.paths import PANORAMA_SOURCES_DIR, PANORAMA_DERIVED_DIR
+from space_map_data.utils.paths import PANORAMA_DERIVED_DIR, PANORAMA_SOURCES_DIR
+
 from .pipeline import download, process
 
 

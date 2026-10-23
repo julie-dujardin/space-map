@@ -73,10 +73,10 @@ class JohnstonSystem(Base):
     pole_beta_deg: Mapped[float | None] = mapped_column(default=None)
     pole_lambda_deg: Mapped[float | None] = mapped_column(default=None)
 
-    object: Mapped["Object"] = relationship(
+    object: Mapped[Object] = relationship(
         foreign_keys=[object_id], back_populates="johnston_system"
     )
-    moons: Mapped[list["JohnstonMoon"]] = relationship(
+    moons: Mapped[list[JohnstonMoon]] = relationship(
         foreign_keys="JohnstonMoon.parent_object_id", back_populates="system"
     )
 
@@ -156,9 +156,9 @@ class JohnstonMoon(Base):
         default=None, index=True
     )
 
-    object: Mapped["Object"] = relationship(
+    object: Mapped[Object] = relationship(
         foreign_keys=[object_id], back_populates="johnston_moon"
     )
-    system: Mapped["JohnstonSystem"] = relationship(
+    system: Mapped[JohnstonSystem] = relationship(
         foreign_keys=[parent_object_id], back_populates="moons"
     )

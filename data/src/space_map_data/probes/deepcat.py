@@ -29,7 +29,21 @@ PHASES_FILE = "tab2.tsv"
 _MONTHS: dict[str, int] = {
     m: i
     for i, m in enumerate(
-        "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(), start=1
+        [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+        ],
+        start=1,
     )
 }
 

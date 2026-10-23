@@ -19,7 +19,7 @@ import httpx
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class AsterSatDownloader(Downloader):
         response = self.client.get(FORM_URL)
         response.raise_for_status()
         select = re.search(
-            r'<select name="satellite">(.*?)</select>', response.text, re.S
+            r'<select name="satellite">(.*?)</select>', response.text, re.DOTALL
         )
         if select is None:
             raise DownloadError("AsterSat form has no satellite list — layout changed")

@@ -1,19 +1,19 @@
 """Inventory and cache official color mosaics without inventing projection bounds."""
 
 import argparse
-from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-from pathlib import Path
-from typing import Any
 import re
 import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlsplit
 
-from bs4 import BeautifulSoup
 import httpx
 import numpy as np
+from bs4 import BeautifulSoup
 from PIL import Image
 
 from .pipeline import fetch, sha256, write_json
@@ -61,13 +61,13 @@ def mastcam_assets(post):
         match = re.search(
             r"(CZCAM_SOL\d+_ZCAM\d+_Z\d+)_([LR]0)_(NN|EE)_SCI_CYL_(.+)_(\d{2})\.(png|jpe?g|tiff?)$",
             name,
-            re.I,
+            re.IGNORECASE,
         )
         if not match:
             legacy = re.fullmatch(
                 r"(Mastcam-Z_360_.+_Sols?\d+[\d_-]*)_([LR]0)_(natural|enhanced)(?:_(?:half|2x))?\.(png|jpe?g|tiff?)",
                 name,
-                re.I,
+                re.IGNORECASE,
             )
             if not legacy:
                 continue
@@ -78,7 +78,7 @@ def mastcam_assets(post):
             prefix, eye, color, target, revision, extension = match.groups()
         key = f"{prefix}_{target}".lower()
         if key not in groups:
-            sol_match = re.search(r"SOLs?(\d+)", prefix, re.I)
+            sol_match = re.search(r"SOLs?(\d+)", prefix, re.IGNORECASE)
             assert sol_match is not None
             sol = int(sol_match[1])
             groups[key] = {
@@ -181,7 +181,7 @@ def discover_mastcam(client, root, *, refresh=False):
     for product in products.values():
         product["source_pages"] = sorted(set(product["source_pages"]))
         product["variants"] = list({v["url"]: v for v in product["variants"]}.values())
-        if re.search(r"360\D*panorama", product["title"], re.I):
+        if re.search(r"360\D*panorama", product["title"], re.IGNORECASE):
             product["coverage"] = unknown_coverage(360)
         product["variants"].sort(
             key=lambda v: (
@@ -198,7 +198,7 @@ def discover_mastcam(client, root, *, refresh=False):
     inventory = {
         "schema_version": 2,
         "collection": "mastcamz",
-        "discovered_at": datetime.now(timezone.utc).isoformat(),
+        "discovered_at": datetime.now(UTC).isoformat(),
         "discovery_complete": True,
         "source_post_count": post_count,
         "scope": "all public Mastcam-Z panoramas/mosaics gallery pages; supported RGB cylindrical filenames",

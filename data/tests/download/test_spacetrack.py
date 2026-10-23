@@ -1,7 +1,7 @@
 """Unit tests for the Space-Track GP downloader."""
 
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import cast
 
 import httpx
@@ -134,7 +134,7 @@ def test_download_writes_catalogue_and_metadata(out_dir):
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 0  # isolate the daily path
     dl.download()
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     day_dir = out_dir / f"{today.year:04d}" / f"{today.month:02d}" / f"{today.day:02d}"
     written = (day_dir / "gp-active.csv").read_text()
     assert "NORAD_CAT_ID" in written
@@ -224,7 +224,7 @@ def test_download_skips_daily_when_present(out_dir):
     client = _Client(_Resp('""'), _Resp(_GP_CSV), _Resp(_HISTORY_CSV))
     dl = _downloader(client)
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 0
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     daily = out_dir / f"{today.year:04d}" / f"{today.month:02d}" / f"{today.day:02d}"
     daily.mkdir(parents=True)
     (daily / "gp-active.csv").write_text(_GP_CSV)
@@ -288,6 +288,6 @@ def test_fetch_current_marks_its_snapshot_daily(out_dir):
     dl.MAX_BACKFILL_WEEKS_PER_RUN = 0
     dl.download()
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     day_dir = out_dir / f"{today.year:04d}" / f"{today.month:02d}" / f"{today.day:02d}"
     assert json.loads((day_dir / _DAYS_SIDECAR).read_text()) == {"daily": True}

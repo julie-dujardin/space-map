@@ -147,6 +147,7 @@ def test_curated_masters_bypass_thumbnail_transform(tmp_path):
 
 def test_preview_regenerated_when_master_changes(tmp_path):
     from PIL import Image
+
     from space_map_data.panoramas.pipeline import sha256, write_json
     from space_map_data.panoramas.releases import process_releases
 
@@ -290,6 +291,7 @@ def test_a_sequence_at_a_drive_places_never_recorded_is_still_placed():
 
 def test_release_reprocessing_retains_curated_sphere(tmp_path, monkeypatch):
     from PIL import Image
+
     from space_map_data.panoramas import strip_spheres
     from space_map_data.panoramas.pipeline import sha256, write_json
     from space_map_data.panoramas.releases import process_releases

@@ -25,8 +25,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.probes.trace import _merged_intervals  # noqa: E402
-from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402
+from space_map_data.probes.trace import _merged_intervals
+from space_map_data.utils.paths import DOWNLOAD_DIR
 
 _S_PER_DAY = 86400.0
 _J2000_UNIX = 946727935.816  # 2000-01-01 12:00:00 TDB in unix seconds (approx)
@@ -46,7 +46,7 @@ def _scan_mission(mdir: Path, skip_synth: bool) -> list[dict]:
         return []
     try:
         idx = json.loads(idx_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return []
 
     # Per-naif name hints from the synth downloader; agency dirs fall back
@@ -59,7 +59,7 @@ def _scan_mission(mdir: Path, skip_synth: bool) -> list[dict]:
         for t in f.get("targets", []):
             try:
                 name_hint[int(t)] = hint
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
 
     targets = idx.get("targets", {})

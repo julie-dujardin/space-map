@@ -31,8 +31,8 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.constants.providers import PROVIDERS  # noqa: E402
-from space_map_data.export.position.format import (  # noqa: E402
+from space_map_data.constants.providers import PROVIDERS
+from space_map_data.export.position.format import (
     FORMAT_ELEMENTS,
     HEADER_SIZE,
     MAGIC,
@@ -41,7 +41,7 @@ from space_map_data.export.position.format import (  # noqa: E402
     VERSION,
     align8,
 )
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR  # noqa: E402
+from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)

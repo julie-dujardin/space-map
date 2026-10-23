@@ -71,7 +71,7 @@ class CometPrefix(StrEnum):
     D = "Defunct"  # Defunct comet — no longer exists or disappeared (e.g. D/1993 F2 Shoemaker-Levy 9)
     X = "Uncertain"  # Uncertain comet — no meaningful orbit computable; typically historical
     A = "Asteroid"  # Minor planet with cometary designation — asteroidal object or near-parabolic/hyperbolic without cometary activity
-    I = "Interstellar"  # noqa:E741  # Interstellar object — not gravitationally bound to the solar system (e.g. 1I/ʻOumuamua); prefix introduced 2017
+    I = "Interstellar"  # Interstellar object — not gravitationally bound to the solar system (e.g. 1I/ʻOumuamua); prefix introduced 2017
 
 
 class SBDB(Base):
@@ -293,7 +293,7 @@ class SBDB(Base):
         default=None
     )  # non-grav. perihelion-maximum offset (1-σ) [d]
 
-    object: Mapped["Object"] = relationship(back_populates="sbdb")
+    object: Mapped[Object] = relationship(back_populates="sbdb")
 
     # Unified-name alias so consumers can read kepler elements by the same
     # attribute names regardless of which sub-table they joined. SBDB's

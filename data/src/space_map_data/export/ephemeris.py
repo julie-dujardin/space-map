@@ -15,13 +15,17 @@ from space_map_data.download.providers.spice.probes import (
 )
 from space_map_data.download.providers.spice.probes.deepcat_synth import (
     MISSION_DIR_NAME as DERIVED_MISSION,
+)
+from space_map_data.download.providers.spice.probes.deepcat_synth import (
     PROVENANCE_KEY as DERIVED_PROVENANCE_KEY,
 )
 from space_map_data.models.object import Object, OrbitalSource
 from space_map_data.probes.probe_id import (
     EVENTS_DB_MISSION,
-    REGISTRY_PATH as PROBE_IDS_REGISTRY,
     load_registry,
+)
+from space_map_data.probes.probe_id import (
+    REGISTRY_PATH as PROBE_IDS_REGISTRY,
 )
 from space_map_data.probes.propagation import AU_KM
 

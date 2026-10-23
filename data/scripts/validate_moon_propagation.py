@@ -37,16 +37,16 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.utils.naif import (  # noqa: E402
-    CHEBYSHEV_MOON_WHITELIST,
-    classify_object,
-)
-from space_map_data.models.object import ObjectType  # noqa: E402
-from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402
-from space_map_data.download.providers.objects.chebyshev import (  # noqa: E402
+from space_map_data.download.providers.objects.chebyshev import (
     _MOON_MIN_INTLEN_S,
     _native_params,
 )
+from space_map_data.models.object import ObjectType
+from space_map_data.utils.naif import (
+    CHEBYSHEV_MOON_WHITELIST,
+    classify_object,
+)
+from space_map_data.utils.paths import DOWNLOAD_DIR
 
 KERNEL_DIR = DOWNLOAD_DIR / "spice" / "kernels"
 EPOCH_UTC = "2026-01-01T00:00:00"

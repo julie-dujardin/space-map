@@ -38,7 +38,7 @@ import pyarrow.csv as pcsv
 import pyarrow.parquet as pq
 import yaml
 
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_STARS_DIR
 
 logger = logging.getLogger(__name__)
@@ -213,7 +213,7 @@ class ChunkJob:
     md5: str
     out: Path
     user_agent: str
-    select: "Select"
+    select: Select
     columns: tuple[str, ...] | None = None
     exclude: tuple[str, ...] = ()
     # A file that `select` reads, for a table that joins on another.

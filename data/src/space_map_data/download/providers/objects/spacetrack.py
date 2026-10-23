@@ -28,13 +28,13 @@ import json
 import logging
 import os
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ class SpaceTrackDownloader(Downloader):
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         self._login()
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         # Skip the daily fetch if today's snapshot is already down (e.g. a re-run
         # to continue the weekly backfill); the catalogue only changes once a day.
         daily_file = self._day_dir(today) / "gp-active.csv"
@@ -240,7 +240,7 @@ class SpaceTrackDownloader(Downloader):
         days it now covers. Objects with no TLE that week are left out; the
         export fills them from neighbouring weeks.
         """
-        midnight = datetime(monday.year, monday.month, monday.day, tzinfo=timezone.utc)
+        midnight = datetime(monday.year, monday.month, monday.day, tzinfo=UTC)
         midpoint = midnight + timedelta(days=_WEEK_MIDPOINT_DAYS)
         day_dir = self._day_dir(monday)
         out_file = day_dir / "gp-active.csv"
@@ -303,7 +303,7 @@ class SpaceTrackDownloader(Downloader):
             except ValueError, IndexError:
                 continue
             if epoch.tzinfo is None:
-                epoch = epoch.replace(tzinfo=timezone.utc)
+                epoch = epoch.replace(tzinfo=UTC)
             dist = abs((epoch - midpoint).total_seconds())
             norad = fields[norad_i]
             current = best.get(norad)

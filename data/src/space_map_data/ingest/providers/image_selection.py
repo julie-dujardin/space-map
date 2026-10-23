@@ -17,13 +17,14 @@ import json
 import logging
 from collections import Counter
 from collections.abc import Container, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
+from space_map_data.constants.atmosphere.wikidata import ATMOSPHERE_PAGES
 from space_map_data.constants.categories import (
     DEBRIS_SLUG,
     PROBES_SLUG,
@@ -31,7 +32,6 @@ from space_map_data.constants.categories import (
     SATELLITES_SLUG,
 )
 from space_map_data.constants.countries import COUNTRY_SLUG_PREFIX
-from space_map_data.constants.atmosphere.wikidata import ATMOSPHERE_PAGES
 from space_map_data.constants.interior.wikidata import INTERIOR_PAGES
 from space_map_data.constants.rings.wikidata import RING_SYSTEM_PAGES
 from space_map_data.export.groups.registry import (
@@ -492,7 +492,7 @@ def _write_cache(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         payload_key: dict(sorted(selections.items())),
     }
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))

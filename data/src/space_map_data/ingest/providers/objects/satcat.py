@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy import delete, insert
 from tqdm import tqdm
 
+from space_map_data.constants.earth_sats.satcat import SatcatObjectType
 from space_map_data.ingest.convert import count_csv_rows, int_or_none, string_or_none
 from space_map_data.ingest.providers.objects.enrichment import (
     GroupData,
@@ -26,7 +27,6 @@ from space_map_data.ingest.providers.objects.gcat_satcat import (
     GcatHardware,
     load_gcat_hardware,
 )
-from space_map_data.constants.earth_sats.satcat import SatcatObjectType
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
 

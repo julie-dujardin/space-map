@@ -12,33 +12,25 @@ reconstruct a bundle URL from an id alone (needed for deep links).
 """
 
 import gzip
-from collections.abc import Mapping
 import hashlib
-import math
-import orjson
 import logging
+import math
+from collections.abc import Mapping
 from pathlib import Path
 
-from space_map_data.constants.object_names import NAME_ENTITIES
+import orjson
+
 from space_map_data.constants.measured_shapes import measured_shape_references
+from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.ephemeris import (
     ephemeris_accuracy_for,
     ephemeris_archive_for,
 )
-from space_map_data.export.wikidata import (
-    clean_label,
-    WikidataEntity,
-    WikidataEntityCache,
-    active_statements,
-    entity_label,
-)
-from space_map_data.export.objects.wikipedia import (
-    WikipediaSummary,
-    load_wikipedia_summaries_for_qid,
-)
 from space_map_data.export.images import collect_object_images
-from space_map_data.export.objects.compact import CompactMap
+from space_map_data.export.objects.activity import activity_block
+from space_map_data.export.objects.atmosphere import atmosphere_block
 from space_map_data.export.objects.celestrak import (
     build_satcat_global,
     build_satcat_localized,
@@ -46,10 +38,11 @@ from space_map_data.export.objects.celestrak import (
     merge_operator_qids,
     satcat_describes,
 )
-from space_map_data.export.objects.activity import activity_block
-from space_map_data.export.objects.radiation import radiation_block
-from space_map_data.export.objects.atmosphere import atmosphere_block
+from space_map_data.export.objects.compact import CompactMap
 from space_map_data.export.objects.interior import interior_block
+from space_map_data.export.objects.moon_sources import MoonSourceBlocks
+from space_map_data.export.objects.pick import pick_attrs
+from space_map_data.export.objects.radiation import radiation_block
 from space_map_data.export.objects.rings import (
     ring_feature_localized,
     ring_features_block,
@@ -58,6 +51,7 @@ from space_map_data.export.objects.rings import (
     ring_stats_block,
     ring_system_localized,
 )
+from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.objects.temperature import (
     heliocentric_distance_au,
     temperature_block,
@@ -67,31 +61,38 @@ from space_map_data.export.objects.topic_pages import (
     exploration_page_localized,
     interior_page_localized,
 )
-from space_map_data.export.objects.moon_sources import MoonSourceBlocks
-from space_map_data.export.objects.pick import pick_attrs
-from space_map_data.export.objects.sbdb import build_sbdb
-from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit_cached
-from space_map_data.export.disk_photometry import lunar_weight_scale
-from space_map_data.export.small_body_color import resolve_major_body_color
-from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.systems import (
-    clouds_block,
-    displacement_block,
-    ring_block,
-    alternate_blocks,
-    texture_attribution,
-)
-from space_map_data.export.panoramas import panoramas_block
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
-    resolve_wikidata_qid,
     attach_country_group_link,
     attach_launch_vehicle_group_link,
     drop_covered_qids,
     extract_claims,
     resolve_entity_ref,
     resolve_unit,
+    resolve_wikidata_qid,
+)
+from space_map_data.export.objects.wikipedia import (
+    WikipediaSummary,
+    load_wikipedia_summaries_for_qid,
+)
+from space_map_data.export.panoramas import panoramas_block
+from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit_cached
+from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.small_body_color import resolve_major_body_color
+from space_map_data.export.systems import (
+    alternate_blocks,
+    clouds_block,
+    displacement_block,
+    ring_block,
+    texture_attribution,
+)
+from space_map_data.export.wikidata import (
+    WikidataEntity,
+    WikidataEntityCache,
+    active_statements,
+    clean_label,
+    entity_label,
 )
 from space_map_data.models.object import (
     ModelProvenance,
@@ -211,7 +212,7 @@ class ChunkObjectData:
     per-row in the binary chunk.
     """
 
-    __slots__ = ("global_data", "localized_data", "has_localized")
+    __slots__ = ("global_data", "has_localized", "localized_data")
 
     def __init__(self):
         self.global_data: CompactMap = CompactMap()

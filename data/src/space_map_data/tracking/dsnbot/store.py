@@ -19,8 +19,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from space_map_data.tracking.dailylog import DailyLog
 from space_map_data.constants.tracking import DSN_OBJECT_IDS
+from space_map_data.tracking.dailylog import DailyLog
 from space_map_data.tracking.dsn.feed import SpacecraftInfo, codes_by_name
 from space_map_data.tracking.dsnbot.repo import Post, parse_event, when
 from space_map_data.utils.paths import SOURCES_DIR

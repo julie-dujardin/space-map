@@ -16,11 +16,13 @@ from space_map_data.ingest.convert import (
     string_or_none,
 )
 from space_map_data.models.object import (
-    Horizons as HorizonsRow,
+    SBDB,
     Object,
     ObjectType,
     OrbitalSource,
-    SBDB,
+)
+from space_map_data.models.object import (
+    Horizons as HorizonsRow,
 )
 from space_map_data.utils.db import get_session
 from space_map_data.utils.naif import spk_id_from_naif

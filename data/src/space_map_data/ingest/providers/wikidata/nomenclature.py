@@ -11,11 +11,11 @@ from collections import defaultdict
 from pathlib import Path
 
 from sqlalchemy import update
+from tqdm import tqdm
 
 from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
 from space_map_data.models.feature import Feature
 from space_map_data.utils.db import get_session
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 

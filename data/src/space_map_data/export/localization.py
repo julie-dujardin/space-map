@@ -1,21 +1,22 @@
 """Merge generated localization entries into frontend/messages/{lang}.json."""
 
 import json
-import orjson
 import logging
 import subprocess
 from collections.abc import Callable
+
+import orjson
 
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_NAMES,
     CONSTELLATION_SLUG_PREFIX,
 )
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_SLUG
+from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_BY_SLUG
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_BY_SLUG,
     ORGANIZATION_SLUG_PREFIX,
 )
-from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_BY_SLUG
 from space_map_data.constants.earth_sats.satellite_models import (
     BUS_BY_SLUG,
     BUS_SLUG_PREFIX,
@@ -26,9 +27,9 @@ from space_map_data.constants.nomenclature.feature_types import (
 )
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.export.groups.registry import (
+    GROUPS,
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_VEHICLE_SLUG_PREFIX,
-    GROUPS,
     GroupType,
 )
 from space_map_data.export.objects.wikidata_claims import PID_TO_KEY, resolve_unit

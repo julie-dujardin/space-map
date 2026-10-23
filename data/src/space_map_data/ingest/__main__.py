@@ -6,21 +6,21 @@ import logging.config
 import time
 import tomllib
 
-from space_map_data.models.ingest_stamp import write_ingest_stamp
-from space_map_data.utils.paths import DATA_DIR, DB_FILE, DOWNLOAD_DIR
-from space_map_data.utils.db import get_session, session_scope
-from space_map_data.utils.mirror import sync_all
 from space_map_data.ingest.common import (
-    ingest_objects,
     ingest_features,
-    ingest_wikidata,
     ingest_images,
+    ingest_objects,
+    ingest_wikidata,
     ingest_wikipedia,
     log_db_summary,
 )
 from space_map_data.ingest.providers.models import ModelProcessor
 from space_map_data.ingest.providers.rings import RingProcessor
 from space_map_data.ingest.providers.textures import TextureProcessor
+from space_map_data.models.ingest_stamp import write_ingest_stamp
+from space_map_data.utils.db import get_session, session_scope
+from space_map_data.utils.mirror import sync_all
+from space_map_data.utils.paths import DATA_DIR, DB_FILE, DOWNLOAD_DIR
 
 TARGETS = [
     "objects",

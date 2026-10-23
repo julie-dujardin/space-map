@@ -14,6 +14,7 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPE_SLUGS,
     FEATURE_TYPES,
 )
+from space_map_data.export import notable
 from space_map_data.export.groups.feature_type import (
     build_feature_type_groups,
 )
@@ -22,7 +23,6 @@ from space_map_data.export.groups.registry import (
     GroupCategory,
     GroupType,
 )
-from space_map_data.export import notable
 from space_map_data.export.notable import feature_member_key, notable_entries
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType

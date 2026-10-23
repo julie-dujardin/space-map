@@ -32,7 +32,6 @@ from space_map_data.probes.traverses import TRAVERSES_DIR
 from space_map_data.probes.zones import Zone
 from space_map_data.utils.content_stamp import content_stamp, content_stamps
 
-
 # Bump for fit-internal changes at the same wire format. Wire-format bumps
 # travel via `BINARY_VERSION` in the signature dict — don't bump here for those.
 FIT_VERSION = 16

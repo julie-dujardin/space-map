@@ -30,7 +30,6 @@ from space_map_data.download.providers.spice.synth.cache import fetch_one
 from space_map_data.download.providers.spice.synth.spk import build_one
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
-
 # Planet equatorial radii (km) — IAU 2009 working group values, keyed by
 # planet NAIF ID (not barycenter). Using the planet itself rather than the
 # barycenter matters at the giants where moons offset the system barycenter

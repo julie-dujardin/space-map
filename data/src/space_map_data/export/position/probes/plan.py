@@ -8,9 +8,8 @@ in `landed.py` to keep SPICE deps out of this leaf module.
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -102,7 +101,7 @@ class ChunkProbeRecord:
     fit_center_id_value: int = MISSING_INT32
     fit_center_id_type: int = MISSING_ID_TYPE
     flying: list[SubChunkFit] = field(default_factory=list)
-    landed: "LandedFit | None" = None
+    landed: LandedFit | None = None
     system_intervals: list[tuple[float, float, int]] = field(default_factory=list)
 
 

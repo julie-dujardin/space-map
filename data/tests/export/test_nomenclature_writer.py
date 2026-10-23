@@ -241,7 +241,7 @@ class TestBucketKey:
         used = {
             hash_bucket(feature_bucket_key(f"naif-{body}", fid), n)
             for body in (199, 299, 301, 499, 599)
-            for fid in range(0, 200)
+            for fid in range(200)
         }
         assert len(used) >= n - 5  # allow a few empty buckets
 

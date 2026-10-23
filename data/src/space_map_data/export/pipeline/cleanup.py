@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 from space_map_data.export.pipeline.manifest import ZoomSnapshots
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.models.object import (
+    SBDB,
     CelesTrak,
     Horizons,
     Object,
     Satcat,
-    SBDB,
     SBDBMoon,
 )
 
@@ -200,10 +200,10 @@ def prune_small_bodies(
     sides are walked so a sidecar whose binary already vanished (e.g. partial
     deletion from a prior crash) is also cleaned up.
     """
+    from space_map_data.export.pipeline.incremental import ZONE_META_NAME
     from space_map_data.export.position.elements import (
         sidecar,
     )  # local import: avoid cycle
-    from space_map_data.export.pipeline.incremental import ZONE_META_NAME
 
     planned = _planned_small_body_paths(out_dir, zone_structure)
     planned_dirs = {p.parent for p in planned}

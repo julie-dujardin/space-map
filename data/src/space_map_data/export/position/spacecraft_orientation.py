@@ -7,8 +7,8 @@ a ``primary`` body axis is aimed exactly at a target direction, an optional
 file or unmatched ids degrade silently to the south-toward-parent default.
 """
 
-from collections.abc import MutableMapping
 import logging
+from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any
 

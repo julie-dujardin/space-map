@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 
 
 class InputReader(Downloader):

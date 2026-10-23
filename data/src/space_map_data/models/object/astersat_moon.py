@@ -66,9 +66,9 @@ class AsterSatMoon(Base):
     primary_radius_km: Mapped[float | None] = mapped_column(default=None)
     satellite_radius_km: Mapped[float | None] = mapped_column(default=None)
 
-    object: Mapped["Object"] = relationship(
+    object: Mapped[Object] = relationship(
         foreign_keys=[object_id], back_populates="astersat_moon"
     )
-    parent: Mapped["Object"] = relationship(
+    parent: Mapped[Object] = relationship(
         foreign_keys=[parent_object_id], back_populates="astersat_moons"
     )

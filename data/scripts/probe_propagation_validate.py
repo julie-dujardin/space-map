@@ -23,19 +23,19 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.download.providers.spice.probes.synthetic_index import (  # noqa: E402
+from space_map_data.download.providers.spice.probes.synthetic_index import (
     write_type5,
 )
-from space_map_data.export.position.probes.kernels import (  # noqa: E402
+from space_map_data.export.position.probes.kernels import (
     enumerate_probes,
 )
-from space_map_data.probes.propagation import (  # noqa: E402
+from space_map_data.probes.propagation import (
     AU_KM,
     classify_state,
     furnish_generic_kernels,
 )
-from space_map_data.probes.trace import _merged_intervals  # noqa: E402
-from space_map_data.utils.paths import SOURCES_POSITION_DIR  # noqa: E402
+from space_map_data.probes.trace import _merged_intervals
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 

@@ -30,7 +30,9 @@ _FIELDS = {
     "char": '<FIELD name="{}" datatype="char" arraysize="*"/>',
     "long": '<FIELD name="{}" datatype="long"/>',
 }
-_ERROR_RE = re.compile(r'<INFO name="QUERY_STATUS" value="ERROR">(.*?)</INFO>', re.S)
+_ERROR_RE = re.compile(
+    r'<INFO name="QUERY_STATUS" value="ERROR">(.*?)</INFO>', re.DOTALL
+)
 
 Rows = tuple[list[str], list[list[str]]]
 

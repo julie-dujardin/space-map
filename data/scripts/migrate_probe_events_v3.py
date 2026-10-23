@@ -24,9 +24,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from space_map_data.probes.events import EVENTS_DIR  # noqa: E402
-from space_map_data.probes.events_validate import validate_files  # noqa: E402
-from space_map_data.probes.probe_id import load_registry  # noqa: E402
+from space_map_data.probes.events import EVENTS_DIR
+from space_map_data.probes.events_validate import validate_files
+from space_map_data.probes.probe_id import load_registry
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("migrate")
@@ -178,7 +178,7 @@ def normalize_date(value: str) -> str:
         return text.rstrip("Z") + "Z"
     parsed = datetime.datetime.fromisoformat(text)
     if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        parsed = parsed.astimezone(datetime.UTC).replace(tzinfo=None)
     return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

@@ -61,4 +61,4 @@ class GCATDeepDownloader(Downloader):
         return rows
 
 
-__all__ = ["DEEPCAT_BASE", "GCATDeepDownloader", "TABLES"]
+__all__ = ["DEEPCAT_BASE", "TABLES", "GCATDeepDownloader"]

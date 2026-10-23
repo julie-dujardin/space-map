@@ -14,7 +14,6 @@ from space_map_data.export.objects.wikidata_claims import (
 )
 from space_map_data.export.wikidata import WikidataEntityCache
 
-
 # Quantity claims emitted into the per-feature global JSON.
 # P2043/P2049 overlap with the object spec (spacecraft length/width); the
 # disambiguation logic is shared via :func:`extract_claims`.

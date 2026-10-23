@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.download.providers.three_d.resumable import download_resumable
 from space_map_data.utils.paths import SOURCES_MODELS_BODIES_DIR
 

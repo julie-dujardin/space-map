@@ -5,10 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from space_map_data.export import notable
 from space_map_data.export.nomenclature.notable import NOTABLE_FEATURES
 from space_map_data.export.objects.features import attach_notable_features
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export import notable
 from space_map_data.models.feature import Feature
 
 

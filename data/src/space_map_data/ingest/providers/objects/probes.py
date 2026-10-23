@@ -34,16 +34,16 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
+from space_map_data.probes.events import manifest_probe_ids
 from space_map_data.probes.probe_id import (
     EVENTS_DB_MISSION,
     ProbeIdRecord,
-    record_from_entry,
     assign_many,
     et_to_mjd,
     is_spacecraft_naif,
     load_registry,
+    record_from_entry,
 )
-from space_map_data.probes.events import manifest_probe_ids
 from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
 

@@ -11,9 +11,9 @@ as a level plane below the mast, so a lens that moved still puts each piece of
 ground at one place on the sphere.
 """
 
-from dataclasses import dataclass
 import logging
 import math
+from dataclasses import dataclass
 
 import numpy as np
 

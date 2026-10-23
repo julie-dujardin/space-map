@@ -28,7 +28,6 @@ from dataclasses import dataclass, replace
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.probes.events import target_object_ids
 from space_map_data.export.notable import (
     CraftModel,
     NotableObject,
@@ -37,8 +36,9 @@ from space_map_data.export.notable import (
 )
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
-from space_map_data.probes.landing_events import EVENTS_DIR
 from space_map_data.models.object.main import Object, ObjectType
+from space_map_data.probes.events import target_object_ids
+from space_map_data.probes.landing_events import EVENTS_DIR
 from space_map_data.probes.probe_id import load_registry
 
 logger = logging.getLogger(__name__)

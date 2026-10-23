@@ -10,7 +10,6 @@ import json
 import pytest
 
 from space_map_data.export import ephemeris
-from space_map_data.probes import probe_id
 from space_map_data.export.ephemeris import (
     ARCHIVE_GCAT_DEEP,
     ARCHIVE_NAIF,
@@ -21,6 +20,7 @@ from space_map_data.export.ephemeris import (
     load_probe_kernel_sources,
     probe_archive,
 )
+from space_map_data.probes import probe_id
 from space_map_data.probes.propagation import AU_KM
 
 NAIF = -90000123

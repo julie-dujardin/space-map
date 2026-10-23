@@ -27,8 +27,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.export.sidecar_io import mirror_path  # noqa: E402
-from space_map_data.utils.paths import EXPORT_DIR, EXPORT_METADATA_DIR  # noqa: E402
+from space_map_data.export.sidecar_io import mirror_path
+from space_map_data.utils.paths import EXPORT_DIR, EXPORT_METADATA_DIR
 
 log = logging.getLogger("migrate_sidecar_metadata")
 

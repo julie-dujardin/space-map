@@ -11,8 +11,8 @@ import argparse
 import csv
 import json
 import logging
-from pathlib import Path
 import re
+from pathlib import Path
 
 from .pipeline import PLACES, sha256, write_json
 from .releases import refresh_catalog
@@ -22,9 +22,10 @@ logger = logging.getLogger(__name__)
 # "the 1,647th Martian day, or sol" and "(Sol 2137)"; the ordinal form wins
 # because captions also cite the sol of an earlier drive.
 ORDINAL = re.compile(
-    r"\b(\d{1,2},?\d{3}|\d{1,4})(?:st|nd|rd|th)\s+(?:Martian\s+day|sol)\b", re.I
+    r"\b(\d{1,2},?\d{3}|\d{1,4})(?:st|nd|rd|th)\s+(?:Martian\s+day|sol)\b",
+    re.IGNORECASE,
 )
-PLAIN = re.compile(r"\bsol\s+(\d{1,4})\b", re.I)
+PLAIN = re.compile(r"\bsol\s+(\d{1,4})\b", re.IGNORECASE)
 
 
 def caption_sol(text: str) -> int | None:

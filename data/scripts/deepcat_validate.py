@@ -26,9 +26,13 @@ from space_map_data.download.providers.spice.probes.deepcat_synth import (
 from space_map_data.export.position.probes.kernels import enumerate_probes
 from space_map_data.probes.deepcat import load_deepcat
 from space_map_data.probes.deepcat_arcs import ArcClass, solve_object
-from space_map_data.probes.propagation import AU_KM, GM_SUN, S_PER_YEAR
 from space_map_data.probes.probe_id import load_registry
-from space_map_data.probes.propagation import furnish_generic_kernels
+from space_map_data.probes.propagation import (
+    AU_KM,
+    GM_SUN,
+    S_PER_YEAR,
+    furnish_generic_kernels,
+)
 from space_map_data.probes.trace import _merged_intervals
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 

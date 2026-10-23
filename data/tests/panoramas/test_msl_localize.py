@@ -2,9 +2,7 @@ import json
 
 import pytest
 
-from space_map_data.panoramas import localize
-
-from space_map_data.panoramas import msl_localize
+from space_map_data.panoramas import localize, msl_localize
 
 HEADER = (
     "frame,site,drive,planetocentric_latitude,longitude,elevation,"

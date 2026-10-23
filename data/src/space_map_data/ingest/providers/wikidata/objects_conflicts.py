@@ -5,10 +5,10 @@ import logging
 from pathlib import Path
 
 from sqlalchemy import update
+from tqdm import tqdm
 
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 

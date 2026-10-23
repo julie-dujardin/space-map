@@ -32,8 +32,8 @@ from space_map_data.constants.earth_sats.orbit_class import (
 from space_map_data.constants.earth_sats.satcat import OrbitCenter, OrbitType
 from space_map_data.export.groups.membership import GroupSatcatStats, _accumulate
 from space_map_data.export.groups.probe_targets import build_lagrange_zones
-from space_map_data.export.notable import NotableObject
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
+from space_map_data.export.notable import NotableObject
 from space_map_data.export.position.elements.celestrak_source import iter_day_dirs
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.satcat import Satcat

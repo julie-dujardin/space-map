@@ -11,7 +11,6 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
     launch_vehicle_slug_for_qid,
 )
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.models.object import Object
 from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
@@ -20,6 +19,7 @@ from space_map_data.export.wikidata import (
     prefer_rank,
     undeprecated_statements,
 )
+from space_map_data.models.object import Object
 
 logger = logging.getLogger(__name__)
 

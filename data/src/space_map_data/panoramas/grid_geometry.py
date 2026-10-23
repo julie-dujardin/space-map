@@ -3,13 +3,13 @@
 import argparse
 import csv
 import io
-from itertools import combinations
 import json
 import logging
-from pathlib import Path
 import re
 import subprocess
 import tempfile
+from itertools import combinations
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageOps

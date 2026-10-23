@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -17,14 +16,14 @@ if TYPE_CHECKING:
     from space_map_data.export.position.elements.celestrak_source import (
         CelesTrakElements,
     )
+    from space_map_data.models.object.astersat_moon import AsterSatMoon
     from space_map_data.models.object.celestrak import CelesTrak
     from space_map_data.models.object.horizons import Horizons
+    from space_map_data.models.object.johnston import JohnstonMoon, JohnstonSystem
     from space_map_data.models.object.launchlog import Launchlog
     from space_map_data.models.object.satcat import Satcat
     from space_map_data.models.object.sbdb import SBDB
     from space_map_data.models.object.sbdb_moon import SBDBMoon
-    from space_map_data.models.object.astersat_moon import AsterSatMoon
-    from space_map_data.models.object.johnston import JohnstonMoon, JohnstonSystem
     from space_map_data.models.object.ssodnet import SsODNet
 
 
@@ -247,30 +246,30 @@ class Object(Base):
     has_position: Mapped[bool] = mapped_column(default=False, index=True)
 
     # Relationships
-    horizons: Mapped["Horizons | None"] = relationship(back_populates="object")
-    sbdb: Mapped["SBDB | None"] = relationship(back_populates="object")
-    ssodnet: Mapped["SsODNet | None"] = relationship(back_populates="object")
-    celestrak: Mapped["CelesTrak | None"] = relationship(
+    horizons: Mapped[Horizons | None] = relationship(back_populates="object")
+    sbdb: Mapped[SBDB | None] = relationship(back_populates="object")
+    ssodnet: Mapped[SsODNet | None] = relationship(back_populates="object")
+    celestrak: Mapped[CelesTrak | None] = relationship(
         foreign_keys=[celestrak_norad_cat_id]
     )
-    satcat: Mapped["Satcat | None"] = relationship(foreign_keys=[satcat_norad_cat_id])
-    launchlog: Mapped["Launchlog | None"] = relationship(foreign_keys=[launchlog_jcat])
-    sbdb_moon: Mapped["SBDBMoon | None"] = relationship(
+    satcat: Mapped[Satcat | None] = relationship(foreign_keys=[satcat_norad_cat_id])
+    launchlog: Mapped[Launchlog | None] = relationship(foreign_keys=[launchlog_jcat])
+    sbdb_moon: Mapped[SBDBMoon | None] = relationship(
         foreign_keys="SBDBMoon.object_id", back_populates="object"
     )
-    sbdb_moons: Mapped[list["SBDBMoon"]] = relationship(
+    sbdb_moons: Mapped[list[SBDBMoon]] = relationship(
         foreign_keys="SBDBMoon.parent_object_id", back_populates="parent"
     )
-    astersat_moon: Mapped["AsterSatMoon | None"] = relationship(
+    astersat_moon: Mapped[AsterSatMoon | None] = relationship(
         foreign_keys="AsterSatMoon.object_id", back_populates="object"
     )
-    astersat_moons: Mapped[list["AsterSatMoon"]] = relationship(
+    astersat_moons: Mapped[list[AsterSatMoon]] = relationship(
         foreign_keys="AsterSatMoon.parent_object_id", back_populates="parent"
     )
-    johnston_moon: Mapped["JohnstonMoon | None"] = relationship(
+    johnston_moon: Mapped[JohnstonMoon | None] = relationship(
         foreign_keys="JohnstonMoon.object_id", back_populates="object"
     )
-    johnston_system: Mapped["JohnstonSystem | None"] = relationship(
+    johnston_system: Mapped[JohnstonSystem | None] = relationship(
         foreign_keys="JohnstonSystem.object_id", back_populates="object"
     )
 

@@ -10,12 +10,12 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
     launch_vehicle_slug_for_qid,
     match_launch_vehicle_slug,
 )
+from space_map_data.export.groups.bundles import _fallback_group_name
+from space_map_data.export.groups.registry import GROUP_BY_SLUG, GroupType
 from space_map_data.export.objects.wikidata_claims import (
     EntityRef,
     attach_launch_vehicle_group_link,
 )
-from space_map_data.export.groups.bundles import _fallback_group_name
-from space_map_data.export.groups.registry import GROUP_BY_SLUG, GroupType
 
 
 class TestMatchLaunchVehicleSlug:

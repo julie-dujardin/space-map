@@ -8,7 +8,6 @@ frozen for the life of a spacecraft.
 
 from functools import cache
 
-
 # Panorama mission slug -> probe id. NAIF ids are recycled between missions
 # (-76 was Mariner 10 before Curiosity), so what a traverse is keyed on is the
 # probe registry's own frozen identifier. A mission with no entry simply has no

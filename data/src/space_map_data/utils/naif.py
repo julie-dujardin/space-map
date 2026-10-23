@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass
 
-from space_map_data.models.object import ObjectType, DWARF_PLANETS
-
+from space_map_data.models.object import DWARF_PLANETS, ObjectType
 
 # Moons that get full Chebyshev treatment, for two reasons:
 # 1. Surface-feature bodies — zoomed visualization needs pixel-accurate

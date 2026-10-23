@@ -12,7 +12,7 @@ import signal
 import sys
 import time
 import tomllib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from space_map_data.download.common import ProviderResult, download
 from space_map_data.scheduler.jobs import JOBS, Job
@@ -50,7 +50,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for job in JOBS:
         job.init(now)
         logger.info(
@@ -61,7 +61,7 @@ def main() -> None:
         )
 
     while True:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         next_job = min(JOBS, key=lambda j: j.next_run)
         wait = (next_job.next_run - now).total_seconds()
         if wait > 0:
@@ -73,7 +73,7 @@ def main() -> None:
             )
             time.sleep(wait)
         run_job(next_job)
-        next_job.next_run = next_job.schedule.advance(datetime.now(timezone.utc))
+        next_job.next_run = next_job.schedule.advance(datetime.now(UTC))
 
 
 if __name__ == "__main__":

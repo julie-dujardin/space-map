@@ -15,18 +15,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import orjson
-from space_map_data.export.position.probes.attitude.orchestrator import write_attitude
-from sqlalchemy import case, or_, true as sa_true
+from sqlalchemy import case, or_
+from sqlalchemy import true as sa_true
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.about_data import write_about_data
+from space_map_data.export.atmospheres import write_atmospheres
 from space_map_data.export.credits import write_credits
 from space_map_data.export.ephemeris import (
     load_probe_ephemeris_accuracy,
     load_probe_kernel_sources,
 )
 from space_map_data.export.groups import run_groups_tier
+from space_map_data.export.images import prune_image_bundles
+from space_map_data.export.in_place import content_token, refresh_versions
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
 from space_map_data.export.manual import inject_manual_objects
@@ -42,37 +45,34 @@ from space_map_data.export.nomenclature.writer import (
     write_nomenclature_labels,
     write_nomenclature_positions,
 )
-from space_map_data.export.objects.fragments import attach_comet_fragments
-from space_map_data.export.objects.missions import attach_probe_missions
-from space_map_data.export.objects.probe_events import attach_probe_events
-from space_map_data.export.objects.probe_targets import (
-    attach_probe_targets,
-    attach_system_probes,
-)
 from space_map_data.export.notable import (
     craft_model_slugs,
     j2000_poles,
     shape_model_slugs,
 )
-from space_map_data.probes.probe_id import load_registry
-from space_map_data.export.images import prune_image_bundles
-from space_map_data.export.seo_pages import write_seo_pages
-from space_map_data.export.sitemap import write_sitemap
 from space_map_data.export.objects.features import attach_notable_features
+from space_map_data.export.objects.fragments import attach_comet_fragments
 from space_map_data.export.objects.galleries import attach_galleries
-from space_map_data.export.objects.moons import attach_notable_moons
-from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.interior import load_taxonomy
+from space_map_data.export.objects.missions import attach_probe_missions
 from space_map_data.export.objects.moon_sources import load_moon_sources
+from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
 )
+from space_map_data.export.objects.probe_events import attach_probe_events
+from space_map_data.export.objects.probe_targets import (
+    attach_probe_targets,
+    attach_system_probes,
+)
 from space_map_data.export.objects.rings import load_ring_moon_ids
+from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_model_sources,
     write_object_bundles,
 )
+from space_map_data.export.panoramas import write_panorama_assets, write_panorama_index
 from space_map_data.export.pipeline import incremental
 from space_map_data.export.pipeline.cleanup import (
     precheck_tables,
@@ -119,18 +119,19 @@ from space_map_data.export.position.elements.spacetrack_source import (
 )
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.position.probes import write_probes
+from space_map_data.export.position.probes.attitude.orchestrator import write_attitude
 from space_map_data.export.position.probes.writer import ProbeCoverage, ProbeCoverageMap
 from space_map_data.export.position.spacecraft_orientation import (
     apply_orientation_config,
 )
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.seo_pages import write_seo_pages
+from space_map_data.export.sitemap import write_sitemap
 from space_map_data.export.small_body_color import log_color_stats
-from space_map_data.export.atmospheres import write_atmospheres
 from space_map_data.export.spacecraft import write_spacecraft
 from space_map_data.export.status import write_status
-from space_map_data.export.in_place import content_token, refresh_versions
-from space_map_data.export.panoramas import write_panorama_assets, write_panorama_index
 from space_map_data.export.systems import (
+    load_alternate_metadata,
     load_clouds_metadata,
     load_displacement_metadata,
     load_gms,
@@ -144,7 +145,6 @@ from space_map_data.export.systems import (
     load_ring_metadata,
     load_skybox_metadata,
     load_specular_metadata,
-    load_alternate_metadata,
     load_texture_metadata,
     skybox_block,
     write_system_metadata,
@@ -152,14 +152,15 @@ from space_map_data.export.systems import (
 )
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import (
+    SBDB,
     Object,
     ObjectType,
     OrbitalSource,
-    SBDB,
-    SBDBMoon,
     Satcat,
+    SBDBMoon,
 )
 from space_map_data.models.object.sbdb import CometPrefix
+from space_map_data.probes.probe_id import load_registry
 from space_map_data.utils.convert import date_to_julian
 from space_map_data.utils.paths import (
     DOWNLOAD_DIR,
@@ -374,7 +375,7 @@ def _iter_non_sbdb_zone_snapshots(
             .options(joinedload(Object.sbdb_moon), joinedload(Object.johnston_moon))
             .filter(
                 Object.orbital_source == OrbitalSource.sbdb_moon,
-                Object.has_position == True,  # noqa: E712
+                Object.has_position == True,
             ),
         ),
         (
@@ -390,7 +391,7 @@ def _iter_non_sbdb_zone_snapshots(
             )
             .filter(
                 Object.orbital_source == OrbitalSource.astersat,
-                Object.has_position == True,  # noqa: E712
+                Object.has_position == True,
             ),
         ),
     ]
@@ -758,7 +759,7 @@ def _build_non_zone_object_data(
         .options(joinedload(Object.sbdb_moon))
         .filter(
             Object.orbital_source == OrbitalSource.sbdb_moon,
-            Object.has_position == False,  # noqa: E712
+            Object.has_position == False,
         )
         .all()
     )
@@ -789,9 +790,7 @@ def _load_rendered_ids(session: Session, probe_coverage: ProbeCoverageMap) -> se
     """
     return {
         oid
-        for (oid,) in session.query(Object.id)
-        .filter(Object.has_position == True)  # noqa: E712
-        .all()
+        for (oid,) in session.query(Object.id).filter(Object.has_position == True).all()
     } | set(probe_coverage)
 
 

@@ -23,12 +23,12 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.download.providers.spice.bodies.pck_extract import (  # noqa: E402
+from space_map_data.download.providers.spice.bodies.pck_extract import (
     extract_nutation,
     extract_orientation,
 )
-from space_map_data.utils.paths import SOURCES_POSITION_DIR  # noqa: E402
-from space_map_data.utils.time import jd_to_et  # noqa: E402
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
+from space_map_data.utils.time import jd_to_et
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")

@@ -9,15 +9,15 @@ One geometry serves Mars and the Moon alike; only the naming around it differs,
 and not consistently even within a label.
 """
 
-from dataclasses import dataclass, asdict
 import argparse
 import json
 import logging
 import math
-from pathlib import Path
 import shutil
 import time
 import xml.etree.ElementTree as ET
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import httpx
 import numpy as np

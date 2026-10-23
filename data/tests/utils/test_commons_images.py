@@ -7,7 +7,6 @@ import pytest
 
 from space_map_data.utils import commons_images as ci
 
-
 _FIXTURES = Path(__file__).parent.parent / "export" / "fixtures" / "image_metadata"
 
 

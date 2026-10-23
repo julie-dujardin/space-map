@@ -214,7 +214,7 @@ def instrument(product_id: str) -> str:
 
 
 def index_fields(label: str) -> list[str]:
-    return re.findall(r"^\s*NAME\s*=\s*(\w+)\s*$", label, re.M)
+    return re.findall(r"^\s*NAME\s*=\s*(\w+)\s*$", label, re.MULTILINE)
 
 
 def mosaic_listings(index: str, label: str, base: str, cameras: tuple[str, ...]):

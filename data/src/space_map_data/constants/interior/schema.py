@@ -26,7 +26,6 @@ these fields the panel draws them the same way.
 
 from typing import NamedTuple
 
-
 # `Component.material` values. Coarse on purpose — this is the axis that has
 # to mean the same thing on Mercury and on Enceladus.
 METAL = "metal"  # Fe-Ni metal

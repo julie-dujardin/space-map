@@ -71,6 +71,7 @@ def test_named_empty_pixels_replace_the_black_rule():
 
 def test_curated_processing_is_dated_idempotent_and_ignores_inactive(tmp_path):
     import json
+
     from space_map_data.panoramas.strip_spheres import STRIPS, process
 
     spec = next(s for s in STRIPS if "santorini" in s["id"])

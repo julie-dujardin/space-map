@@ -31,19 +31,16 @@ def main() -> None:
     out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    with engine_scope():
-        with session_scope() as session:
-            # `has_localized` is the cross-Wikidata map of which probe rows
-            # have IAU-named landing sites; we don't need it here, empty dict
-            # means every probe is treated as un-localized (trajectory only).
-            zones, coverage = write_probes(
-                session, DOWNLOAD_DIR, out_dir, has_localized={}
-            )
-            log.info(
-                "Probe export complete: %d zones produced (%s)",
-                len(zones),
-                sorted(zones.keys()),
-            )
+    with engine_scope(), session_scope() as session:
+        # `has_localized` is the cross-Wikidata map of which probe rows
+        # have IAU-named landing sites; we don't need it here, empty dict
+        # means every probe is treated as un-localized (trajectory only).
+        zones, coverage = write_probes(session, DOWNLOAD_DIR, out_dir, has_localized={})
+        log.info(
+            "Probe export complete: %d zones produced (%s)",
+            len(zones),
+            sorted(zones.keys()),
+        )
 
     # Minimal manifest so probe-diagnostic scripts can find the zones.
     # `space-map-export` writes a much richer metadata.json but those extras

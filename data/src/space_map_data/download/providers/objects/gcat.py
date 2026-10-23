@@ -1,14 +1,13 @@
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import DownloadError, Downloader
-from pathlib import Path
-
+from space_map_data.download.downloader import Downloader, DownloadError
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
@@ -143,14 +142,14 @@ class GCATDownloader(Downloader):
         if not self.metadata_file.exists():
             return False
         meta = json.loads(self.metadata_file.read_text())
-        if meta.get("day") != datetime.now(timezone.utc).date().isoformat():
+        if meta.get("day") != datetime.now(UTC).date().isoformat():
             return False
         return all((self.out_dir / table.filename).exists() for table in TABLES)
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         counts = {table.filename: self._download_table(table) for table in TABLES}
 
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         self._save_metadata(
             f"{GCAT_BASE}/",
             counts["launchlog.tsv"],

@@ -22,12 +22,12 @@ from typing import Any
 from space_map_data.constants.nomenclature.quadrangle_grid import quadrangle_for
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
-from space_map_data.export.nomenclature.quadrangles import load_quadrangles
 from space_map_data.export.nomenclature.format import (
     HEADER_SIZE,
     MAGIC,
     RECORD_SIZE,
 )
+from space_map_data.export.nomenclature.quadrangles import load_quadrangles
 
 from .base import feature_pk
 

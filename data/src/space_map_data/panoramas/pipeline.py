@@ -1,22 +1,22 @@
 """Download official Navcam mosaics and prepare masked sphere textures."""
 
-from bisect import bisect_left
-from dataclasses import asdict, replace
 import csv
 import hashlib
 import io
 import json
 import logging
 import math
-from pathlib import Path
 import re
 import shutil
 import time
+from bisect import bisect_left
+from dataclasses import asdict, replace
+from pathlib import Path
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
 import httpx
 import numpy as np
+from bs4 import BeautifulSoup
 from PIL import Image
 
 from . import mer
@@ -24,8 +24,8 @@ from .labels import (
     Mosaic,
     attached_constants,
     describes_raster,
-    read_insight_pds4,
     read_attached_pds3,
+    read_insight_pds4,
     read_pds3,
     read_pds4,
 )
@@ -764,7 +764,7 @@ def download(
 
 def label_text(raw: str) -> str:
     """The label an archive attaches to the front of its raster."""
-    end = re.search(r"^END\s*$", raw, re.M)
+    end = re.search(r"^END\s*$", raw, re.MULTILINE)
     if end is None:
         raise ValueError("No attached PDS label")
     return raw[: end.end()]
@@ -785,7 +785,7 @@ def lander_heading(header: str) -> float | None:
     scalar first, as the archive writes it.
     """
     group = re.search(
-        r"PROPERTY='LANDER_COORDINATE_SYSTEM'(.*?)(?:PROPERTY=|$)", header, re.S
+        r"PROPERTY='LANDER_COORDINATE_SYSTEM'(.*?)(?:PROPERTY=|$)", header, re.DOTALL
     )
     if group is None or "REFERENCE_COORD_SYSTEM_NAME='SITE_FRAME'" not in group[1]:
         return None

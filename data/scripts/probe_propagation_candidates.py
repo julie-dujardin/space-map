@@ -20,7 +20,7 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.probes.propagation import (  # noqa: E402
+from space_map_data.probes.propagation import (
     Candidate,
     PropagationConfig,
     detect_all,
@@ -46,7 +46,7 @@ def _print_table(cands: list[Candidate]) -> None:
     rows = sorted(cands, key=lambda c: (c.verdict, -c.stale_yr))
     counts = {
         v: sum(1 for c in rows if c.verdict == v)
-        for v in {
+        for v in (
             "PROPAGATE_HYP",
             "PROPAGATE_HELIO",
             "PROPAGATE_FORCED_ON",
@@ -54,7 +54,7 @@ def _print_table(cands: list[Candidate]) -> None:
             "SKIP_IN_SOI",
             "SKIP_VETOED",
             "SKIP_FORCED_OFF",
-        }
+        )
     }
     print(
         f"\n{len(rows)} spacecraft scanned. "

@@ -166,8 +166,7 @@ def fit_landed_chunk(
     peak_disp = 0.0
     for et, xyz_m, _lat, _lng, _alt in fine_samples[1:]:
         d = float(np.linalg.norm(xyz_m - first_xyz_m))
-        if d > peak_disp:
-            peak_disp = d
+        peak_disp = max(peak_disp, d)
 
     is_static = peak_disp < _LANDED_STATIONARY_M
 

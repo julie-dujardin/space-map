@@ -26,11 +26,11 @@ import spiceypy
 from sqlalchemy.orm import Session
 
 from space_map_data.download.providers.spice.probes import MISSIONS_DIR
+from space_map_data.export.position.probes import fit_cache
 from space_map_data.export.position.probes.classify import classify_pass
 from space_map_data.export.position.probes.events_classify import (
     classify_events_phases,
 )
-from space_map_data.export.position.probes import fit_cache
 from space_map_data.export.position.probes.fit import (
     build_fits,
     collect_for_repack,
@@ -49,7 +49,7 @@ from space_map_data.export.position.probes.time_grid import (
     PROBE_EXPORT_START_YEAR,
 )
 from space_map_data.export.position.probes.write import write_pass
-from space_map_data.utils.time import et_to_jd, jd_to_et, year_to_jd
+from space_map_data.probes.attachments import resolve_attachments
 from space_map_data.probes.fit_centers import (
     FitCenterCandidate,
     candidates_for_zone,
@@ -58,10 +58,10 @@ from space_map_data.probes.fit_centers import (
     load_candidates,
     small_body_candidates,
 )
-from space_map_data.probes.attachments import resolve_attachments
 from space_map_data.probes.landing_events import load_phases as load_landing_phases
 from space_map_data.probes.probe_id import index_by_source, load_registry
 from space_map_data.probes.zones import ALL_ZONES, SMALL_BODIES
+from space_map_data.utils.time import et_to_jd, jd_to_et, year_to_jd
 
 logger = logging.getLogger(__name__)
 

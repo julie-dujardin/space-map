@@ -7,6 +7,12 @@ indexes and creates Object rows with `id_type=PROBE`.
 
 import json
 import logging
+
+# Cap on attitude bytes newly downloaded per run. Sized so a fresh run on
+# an empty disk targets ~100 GiB of CK data — enough to cover the smaller
+# Phase 2 missions in full before bumping up against the budget. Override
+# via env var `SPACE_MAP_ATTITUDE_MAX_GIB` for one-off larger runs.
+import os as _os
 from collections import defaultdict
 from pathlib import Path
 
@@ -20,7 +26,6 @@ from ..naif_http import merge_intervals, spk_coverage, spk_targets, stream_to
 from .attitude.ck_kernels import download_attitude_capped
 from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR
 from .listings import list_mission_pcks, list_mission_spks
-from .target_bodies import download_target_bodies
 from .sources import (
     ESA_BASE,
     NAIF_BASE,
@@ -28,12 +33,7 @@ from .sources import (
     MissionSource,
     discover_all_sources,
 )
-
-# Cap on attitude bytes newly downloaded per run. Sized so a fresh run on
-# an empty disk targets ~100 GiB of CK data — enough to cover the smaller
-# Phase 2 missions in full before bumping up against the budget. Override
-# via env var `SPACE_MAP_ATTITUDE_MAX_GIB` for one-off larger runs.
-import os as _os
+from .target_bodies import download_target_bodies
 
 _ATTITUDE_MAX_GIB = float(_os.environ.get("SPACE_MAP_ATTITUDE_MAX_GIB", "100"))
 
