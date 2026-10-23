@@ -75,3 +75,9 @@ TILES_DIR = PROJECT_ROOT.parent / "space-map-tiles"
 LIVE_DIR = PROJECT_ROOT.parent / "space-map-live"
 # Git working tree holding the ground-station archive (see tracking.archive).
 ACTIVITY_ARCHIVE_DIR = PROJECT_ROOT.parent / "space-map-activity"
+
+# The extrasolar ID registry and the tables built beside it. It cannot be
+# regenerated, so it is not in CACHE_DIR. Only the host that created it mints.
+REGISTRY_ROOT = PROJECT_ROOT.parent / "space-map-registry"
+# Copies of the registry after each ingest, one directory for each host.
+REGISTRY_BACKUP_DIR = DERIVED_DIR / "extrasolar" / "registry"

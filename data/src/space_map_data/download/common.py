@@ -87,6 +87,9 @@ from space_map_data.download.providers.stars.gaia_astrophysical_parameters impor
 from space_map_data.download.providers.stars.gaia_cross_match import (
     GaiaCrossMatchDownloader,
 )
+from space_map_data.download.providers.stars.gaia_fidelity import (
+    GaiaFidelityDownloader,
+)
 from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownloader
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 from space_map_data.download.providers.three_d.body_shapes import BodyShapesDownloader
@@ -141,9 +144,11 @@ PROVIDERS_CLASSES = [
     ESA3DDownloader,
     BodyShapesDownloader,
     DAMITDownloader,
-    # Ordered: the astrophysical parameters read the chunks gaia_source writes.
+    # Ordered: the astrophysical parameters and the fidelity read the chunks
+    # gaia_source writes.
     GaiaSourceDownloader,
     GaiaAstrophysicalParametersDownloader,
+    GaiaFidelityDownloader,
     GaiaCrossMatchDownloader,
     CDSStarCataloguesDownloader,
     IAUStarNamesDownloader,
