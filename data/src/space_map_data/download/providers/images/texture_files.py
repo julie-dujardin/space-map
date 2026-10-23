@@ -3,25 +3,32 @@
 Most maps are staged by hand from a browser. The multi-gigabyte mosaics carry
 their direct link instead, so a fresh machine can rebuild the tile pyramids
 and a dropped connection resumes rather than restarts. A link may also be a zip
-archive that holds the file, as for the 3,960 quads of the Mars CTX mosaic.
+archive that holds the file, as for the 3,960 quads of the Mars CTX mosaic, or
+a JPEG 2000 image that the builds cannot read in parts, made into a tiled
+GeoTIFF once.
 
 Writes to the entry's own source directory:
     sources/textures/<manifest dir>/<file>
     sources/textures/files-metadata.json
 """
 
+import io
 import json
 import logging
 import os
 import threading
 import time
+import uuid
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import BinaryIO
 
+import glymur
 import httpx
+import numpy as np
+import tifffile
 
 from space_map_data.constants.manifests.textures import (
     MANIFESTS_DIR,
@@ -54,6 +61,17 @@ SYNC_BYTES = 64 << 20
 # cross the network three times: written, read back to unpack, written again.
 ARCHIVE_DIR = CACHE_DIR / "texture-archives"
 
+# The box of a JPEG 2000 file that holds its GeoTIFF tags.
+GEOJP2_UUID = uuid.UUID("b14bf8bd-083d-4b43-a5ae-8cd7d5a6ce03")
+# The tags that place a GeoTIFF on its body: pixel scale, tiepoint, keys.
+_GEO_TAGS = (33550, 33922, 34735, 34736, 34737)
+GEOTIFF_TILE = 512
+# Rows of a JPEG 2000 image decoded at a time. Each decode reads the headers of
+# the whole image again, so a short band is slow. A band of 2048 rows of the
+# Opportunity mosaic takes about 3 GB.
+JPEG2000_BAND_ROWS = 2048
+JPEG2000_THREADS = 8
+
 
 def write_synced(chunks: Iterable[bytes], out: BinaryIO) -> int:
     """Write ``chunks``, flushing to disk as it goes; return the byte count.
@@ -69,11 +87,74 @@ def write_synced(chunks: Iterable[bytes], out: BinaryIO) -> int:
         written += len(chunk)
         pending += len(chunk)
         if pending >= SYNC_BYTES:
-            out.flush()
-            os.fdatasync(out.fileno())
-            os.posix_fadvise(out.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+            _sync(out)
             pending = 0
     return written
+
+
+def _sync(out: BinaryIO) -> None:
+    out.flush()
+    os.fdatasync(out.fileno())
+    os.posix_fadvise(out.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+
+
+def _geotiff_tags(jp2: glymur.Jp2k, name: str) -> list[tuple]:
+    """The GeoTIFF tags of a JPEG 2000 image, as its GeoJP2 box holds them."""
+    box = next(
+        (b for b in jp2.box if b.box_id == "uuid" and b.uuid == GEOJP2_UUID), None
+    )
+    if box is None:
+        raise ValueError(f"{name}: no GeoJP2 box places the image")
+    with tifffile.TiffFile(io.BytesIO(box.raw_data)) as tif:
+        page = tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        tags = page.tags
+        return [
+            (code, tags[code].dtype, tags[code].count, tags[code].value, True)
+            for code in _GEO_TAGS
+            if code in tags
+        ]
+
+
+def jpeg2000_to_geotiff(src: Path, dst: Path) -> None:
+    """Write the JPEG 2000 image ``src`` as a tiled, compressed GeoTIFF.
+
+    The image is decoded a band of rows at a time: a mosaic of tens of
+    gigapixels cannot be held whole, and the builds read it by window.
+    """
+    glymur.set_option("lib.num_threads", JPEG2000_THREADS)
+    jp2 = glymur.Jp2k(str(src))
+    height, width = jp2.shape[:2]
+    size = GEOTIFF_TILE
+
+    def tiles(out: BinaryIO) -> Iterator[np.ndarray]:
+        for top in range(0, height, JPEG2000_BAND_ROWS):
+            band = jp2[top : min(top + JPEG2000_BAND_ROWS, height), :]
+            for y in range(0, band.shape[0], size):
+                for x in range(0, width, size):
+                    tile = band[y : y + size, x : x + size]
+                    if tile.shape[:2] != (size, size):
+                        pad = [(0, size - tile.shape[0]), (0, size - tile.shape[1])]
+                        tile = np.pad(tile, pad + [(0, 0)] * (tile.ndim - 2))
+                    yield tile
+            _sync(out)
+            logger.info(
+                "%s: %d of %d rows", dst.name, min(top + band.shape[0], height), height
+            )
+
+    with dst.open("wb") as out, tifffile.TiffWriter(out, bigtiff=True) as writer:
+        writer.write(
+            tiles(out),
+            shape=jp2.shape,
+            dtype=jp2.dtype,
+            photometric="rgb" if jp2.ndim == 3 else "minisblack",
+            tile=(size, size),
+            compression="zlib",
+            predictor=True,
+            extratags=_geotiff_tags(jp2, src.name),
+            metadata=None,
+            maxworkers=4,
+        )
 
 
 class TextureFilesDownloader(Downloader):
@@ -135,7 +216,13 @@ class TextureFilesDownloader(Downloader):
                         sizes[key] = size
                         if len(sizes) % SAVE_EVERY == 0:
                             self._save(sizes)
-            except (httpx.HTTPError, DownloadError, zipfile.BadZipFile, OSError) as e:
+            except (
+                httpx.HTTPError,
+                DownloadError,
+                zipfile.BadZipFile,
+                OSError,
+                ValueError,
+            ) as e:
                 logger.error("%s: %s", path.name, e)
                 with lock:
                     failed.append(path.name)
@@ -156,7 +243,25 @@ class TextureFilesDownloader(Downloader):
         """Bring ``path`` up to the remote file; return its size in bytes."""
         if url.endswith(".zip") and path.suffix != ".zip":
             return self._fetch_from_archive(url, path)
+        if url.endswith(".jp2") and path.suffix == ".tif":
+            return self._fetch_converted(url, path)
         return self._download(url, path)
+
+    def _fetch_converted(self, url: str, path: Path) -> int:
+        """Convert ``path`` from the JPEG 2000 image at ``url``, then drop the
+        image."""
+        if path.exists():
+            return path.stat().st_size
+        ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+        source = ARCHIVE_DIR / url.rsplit("/", 1)[-1]
+        self._download(url, source)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        part = path.with_name(path.name + ".part")
+        jpeg2000_to_geotiff(source, part)
+        part.rename(path)
+        source.unlink()
+        logger.info("Converted %s (%.2f GiB)", path.name, path.stat().st_size / 2**30)
+        return path.stat().st_size
 
     def _fetch_from_archive(self, url: str, path: Path) -> int:
         """Unpack ``path`` from the zip archive at ``url``, then drop the

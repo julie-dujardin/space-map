@@ -4,8 +4,12 @@ import io
 import json
 import zipfile
 
+import glymur
 import httpx
+import numpy as np
 import pytest
+import tifffile
+from glymur.jp2box import UUIDBox
 
 from space_map_data.download.downloader import DownloadError
 from space_map_data.download.providers.images import texture_files
@@ -241,3 +245,92 @@ class TestWriteSynced:
         assert written == 2400
         assert (tmp_path / "out.bin").read_bytes() == b"x" * 2400
         assert len(flushed) == 2
+
+
+def _geojp2(path, pixels: np.ndarray) -> None:
+    """A JPEG 2000 image placed like the Opportunity mosaic: 25 cm pixels from
+    a corner at 333 km west and 112 km south."""
+    geo = io.BytesIO()
+    keys = (1, 1, 0, 4, 1024, 0, 1, 1, 1025, 0, 1, 1, 2057, 34736, 1, 0, 3075, 0, 1, 17)
+    tifffile.imwrite(
+        geo,
+        np.zeros((1, 1), np.uint8),
+        extratags=[
+            (33550, "d", 3, (0.25, 0.25, 0.0), True),
+            (33922, "d", 6, (0.0, 0.0, 0.0, -333000.0, -112000.0, 0.0), True),
+            (34735, "H", len(keys), keys, True),
+            (34736, "d", 1, (3396190.0,), True),
+        ],
+        metadata=None,
+    )
+    plain = path.with_suffix(".plain.jp2")
+    glymur.Jp2k(str(plain), data=pixels, tilesize=(128, 128))
+    box = UUIDBox(texture_files.GEOJP2_UUID, geo.getvalue())
+    boxes = glymur.Jp2k(str(plain)).box
+    glymur.Jp2k(str(plain)).wrap(str(path), boxes=[*boxes[:-1], box, boxes[-1]])
+    plain.unlink()
+
+
+class TestJpeg2000:
+    """A JPEG 2000 mosaic the builds cannot read in parts becomes a GeoTIFF."""
+
+    def test_pixels_and_placement_carry_over(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(texture_files, "JPEG2000_BAND_ROWS", 512)
+        monkeypatch.setattr(texture_files, "GEOTIFF_TILE", 256)
+        pixels = np.random.default_rng(1).integers(1, 255, (700, 1100), np.uint8)
+        _geojp2(tmp_path / "mosaic.jp2", pixels)
+        texture_files.jpeg2000_to_geotiff(
+            tmp_path / "mosaic.jp2", tmp_path / "mosaic.tif"
+        )
+
+        with tifffile.TiffFile(tmp_path / "mosaic.tif") as tif:
+            page = tif.pages[0]
+            assert isinstance(page, tifffile.TiffPage)
+            assert page.is_tiled and page.chunks == (256, 256)
+            assert np.array_equal(page.asarray(), pixels)
+            geo = page.geotiff_tags
+        assert geo is not None
+        assert geo["ModelTiepoint"][3:5] == [-333000.0, -112000.0]
+        assert geo["ProjCoordTransGeoKey"] == 17
+
+    def test_image_with_no_geojp2_box_is_refused(self, tmp_path):
+        glymur.Jp2k(str(tmp_path / "plain.jp2"), data=np.ones((64, 64), np.uint8))
+        with pytest.raises(ValueError, match="no GeoJP2 box"):
+            texture_files.jpeg2000_to_geotiff(
+                tmp_path / "plain.jp2", tmp_path / "plain.tif"
+            )
+
+    def test_linked_image_is_converted_and_dropped(self, tmp_path, monkeypatch):
+        pixels = np.full((300, 200), 90, np.uint8)
+        _geojp2(tmp_path / "source.jp2", pixels)
+        body = (tmp_path / "source.jp2").read_bytes()
+        downloader, _ = _downloader(tmp_path, monkeypatch, body=body)
+        monkeypatch.setattr(texture_files, "ARCHIVE_DIR", tmp_path / "archives")
+        monkeypatch.setattr(
+            texture_files,
+            "load_entries",
+            lambda _dir: [
+                {
+                    "file": "base.tif",
+                    "_source_dir": tmp_path / "surfaces",
+                    "patches": [
+                        {
+                            "id": "site",
+                            "files": [
+                                {
+                                    "file": "mosaic.tif",
+                                    "dir": "sites",
+                                    "download_url": "https://maps.test/mosaic.jp2",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        )
+        downloader.download()
+
+        target = tmp_path / "surfaces" / "sites" / "mosaic.tif"
+        assert np.array_equal(tifffile.imread(target), pixels)
+        assert list((tmp_path / "archives").iterdir()) == []
+        assert [p.name for p in target.parent.iterdir()] == ["mosaic.tif"]
