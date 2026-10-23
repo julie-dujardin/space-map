@@ -1,7 +1,7 @@
 <!--
-  The data tables: one row for each map, each ring bundle and each 3D model.
-  The page around them draws before they do, so the component takes the
-  payload already resolved.
+  The data tables: one row for each kind of object, each map, each ring bundle
+  and each 3D model. The page around them draws before they do, so the
+  component takes the payload already resolved.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -16,6 +16,7 @@
 	import { bodyHref } from '$lib/state/page-href';
 	import type { LabelMap } from '$lib/fetch/position/labels';
 	import PageContents, { type ContentsEntry } from '../nav/PageContents.svelte';
+	import ObjectTable from './ObjectTable.svelte';
 	import {
 		listedSources,
 		mapFigures,
@@ -310,6 +311,7 @@
 	}
 
 	const contents = $derived<ContentsEntry[]>([
+		{ id: 'objects', label: m.about_data_objects() },
 		{
 			id: 'maps',
 			label: m.about_data_maps(),
@@ -332,9 +334,10 @@
 		}
 	]);
 
+	// Six figures, so that every width shows full rows.
 	const stats = $derived([
-		{ label: m.about_data_worlds(), value: count(sum.worlds) },
-		{ label: m.about_data_maps(), value: count(sum.maps) },
+		{ label: m.about_data_objects(), value: count(sum.objects) },
+		{ label: m.about_data_mapped_worlds(), value: count(sum.worlds) },
 		{ label: m.about_data_column_tiles(), value: count(sum.tiles) },
 		{ label: m.tab_rings(), value: count(sum.rings) },
 		{ label: m.status_section_models(), value: count(sum.models) },
@@ -365,9 +368,11 @@
 	</div>
 {/snippet}
 
-{#snippet section(id: string, title: string, intro: string)}
+{#snippet section(id: string, title: string, intro = '')}
 	<h2 {id} class="mt-12 mb-1 scroll-mt-10 text-base font-semibold text-foreground">{title}</h2>
-	<p class="max-w-prose text-muted-foreground">{intro}</p>
+	{#if intro}
+		<p class="max-w-prose text-muted-foreground">{intro}</p>
+	{/if}
 {/snippet}
 
 <!-- `world` is false for a table whose names take the column of the world.
@@ -469,7 +474,6 @@
 	<p class="-mt-6 mb-2 text-xs text-muted-subtle">
 		{m.status_generated({ date: formatIsoDate(data.generated_at) })}
 	</p>
-	<p class="mt-1.5 max-w-prose text-muted-foreground">{m.about_data_intro()}</p>
 
 	<dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
 		{#each stats as stat (stat.label)}
@@ -481,6 +485,11 @@
 			</div>
 		{/each}
 	</dl>
+
+	{@render section('objects', m.about_data_objects())}
+	<div class={TABLE}>
+		<ObjectTable kinds={data.objects} />
+	</div>
 
 	{@render section('maps', m.about_data_maps(), m.about_data_maps_intro())}
 	<div class={TABLE}>

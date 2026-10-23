@@ -180,10 +180,38 @@ export interface DataModels {
 	lightcurve?: LightcurveModels;
 }
 
+/** A source of a kind of object, and the number of its items it feeds. */
+export interface ObjectSource {
+	/** An archive id, a provider key, `pck`, `damit` or `taxonomy:<id>`. */
+	key: string;
+	objects: number;
+}
+
+/** One kind of object: a type of the export, with the spacecraft split into
+ *  Earth satellites and probes. */
+export interface ObjectKind {
+	id: string;
+	count: number;
+	size_bytes: number;
+	/** The part of the size in position files. */
+	position_bytes?: number;
+	/** Items with a description or an article of their own, by language. `any`
+	 *  counts each item once. */
+	localized: Record<string, number>;
+	/** Most items first. */
+	sources: ObjectSource[];
+	/** The distinct works that the entries cite. */
+	works?: number;
+	/** Ring systems only. The count is of their rings, gaps and arcs. */
+	systems?: number;
+}
+
 export interface AboutData {
 	generated_at: string;
-	/** Bodies with a map, a ring or a shape model. */
+	/** Bodies with a map, a ring or a shape model. Shapes from light curves do
+	 *  not count. */
 	worlds: number;
+	objects: ObjectKind[];
 	/** The maps. */
 	systems: DataSystem[];
 	rings: RingWorld[];
@@ -291,6 +319,7 @@ export function listedSources(pyramid: MapPyramid): MapSource[] {
 }
 
 export interface DataTotals {
+	objects: number;
 	worlds: number;
 	maps: number;
 	patches: number;
@@ -302,6 +331,7 @@ export interface DataTotals {
 
 export function totals(data: AboutData): DataTotals {
 	const sum: DataTotals = {
+		objects: 0,
 		worlds: data.worlds,
 		maps: 0,
 		patches: 0,
@@ -310,6 +340,10 @@ export function totals(data: AboutData): DataTotals {
 		models: 0,
 		size_bytes: 0
 	};
+	for (const kind of data.objects) {
+		sum.objects += kind.count;
+		sum.size_bytes += kind.size_bytes;
+	}
 	for (const system of data.systems) {
 		for (const world of system.worlds) {
 			for (const map of world.maps) {

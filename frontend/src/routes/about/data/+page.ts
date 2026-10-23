@@ -21,8 +21,8 @@ export const load = ({
 		if (!res.ok) throw new Error(`Failed to load about-data.json: ${res.status}`);
 		const data = (await res.json()) as AboutData;
 		// A host or a cache can hold a file from an older export, which has no
-		// models. The page then states an error.
-		if (!data.models) throw new Error('about-data.json is older than the page');
+		// objects. The page then states an error.
+		if (!data.objects) throw new Error('about-data.json is older than the page');
 		return data;
 	})();
 	// Without the labels the page shows the English names of the report.

@@ -158,6 +158,10 @@ describe('totals', () => {
 		const data: AboutData = {
 			generated_at: '2026-10-13T18:00:00+00:00',
 			worlds: 12,
+			objects: [
+				{ id: 'asteroid', count: 4, size_bytes: 300, localized: {}, sources: [] },
+				{ id: 'probe', count: 2, size_bytes: 100, localized: {}, sources: [] }
+			],
 			rings: [
 				{
 					id: 'naif-699',
@@ -194,13 +198,14 @@ describe('totals', () => {
 			]
 		};
 		expect(totals(data)).toEqual({
+			objects: 6,
 			worlds: 12,
 			maps: 3,
 			patches: 1,
 			tiles: 72,
 			rings: 1,
 			models: 11,
-			size_bytes: 5040 + 500 + 40 + 40 + 7 + 40 + 40 + 90
+			size_bytes: 300 + 100 + 5040 + 500 + 40 + 40 + 7 + 40 + 40 + 90
 		});
 	});
 });

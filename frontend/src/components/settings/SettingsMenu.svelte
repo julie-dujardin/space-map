@@ -5,6 +5,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { getLocale, locales, type Locale } from '$lib/paraglide/runtime.js';
+	import { LOCALE_NAMES } from '$lib/format/locale-names';
 	import {
 		getSettings,
 		type Clock,
@@ -59,23 +60,6 @@
 			recalibrating = false;
 		}
 	}
-
-	// Native-name labels so users see their language in their language. Lookups
-	// fall back to the locale tag if the entry is missing.
-	const LOCALE_NAMES: Record<Locale, string> = {
-		en: 'English',
-		fr: 'Français',
-		ja: '日本語',
-		zh: '中文',
-		ar: 'العربية',
-		ru: 'Русский',
-		pt: 'Português',
-		de: 'Deutsch',
-		it: 'Italiano',
-		es: 'Español',
-		he: 'עברית',
-		pl: 'Polski'
-	};
 
 	const themeOptions: { value: Theme; label: () => string }[] = [
 		{ value: 'auto', label: () => m.settings_auto() },
