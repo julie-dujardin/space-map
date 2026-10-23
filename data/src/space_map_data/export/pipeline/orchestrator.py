@@ -1227,19 +1227,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             skybox_metadata,
             model_metadata,
         )
-        write_about_data(
-            session,
-            out_dir,
-            radii,
-            texture_metadata,
-            alternate_metadata,
-            clouds_metadata,
-            night_metadata,
-            specular_metadata,
-            displacement_metadata,
-            ring_metadata,
-            model_metadata,
-        )
         write_status(out_dir)
 
         if not tier_b_clean:
@@ -1382,6 +1369,21 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     prune_small_bodies(out_dir, agg.zone_structure)
     prune_nomenclature(out_dir, nomenclature_by_body.keys())
     prune_image_bundles()
+    # Runs last because its object rows measure the files of the other writers.
+    with Session(engine) as session:
+        write_about_data(
+            session,
+            out_dir,
+            radii,
+            texture_metadata,
+            alternate_metadata,
+            clouds_metadata,
+            night_metadata,
+            specular_metadata,
+            displacement_metadata,
+            ring_metadata,
+            model_metadata,
+        )
     _write_metadata_json(
         out_dir,
         position_metadata,

@@ -1,10 +1,11 @@
 """`v1/about-data.json` for the `/about/data` page.
 
-One row for each map, each ring bundle and each 3D model: how fine it is, and
-how many files and bytes it takes. A patch of a tile pyramid is a row of its
-own. The shapes that come from light curves are one row together. Each figure
-comes from the metadata that ingest writes for a bundle, so the file needs no
-pass over the tiles or the meshes.
+One row for each kind of object, each map, each ring bundle and each 3D model:
+how fine it is, and how many files and bytes it takes. A patch of a tile
+pyramid is a row of its own. The shapes that come from light curves are one
+row together. The figures of a map, a ring or a model come from the metadata
+that ingest writes for its bundle, so there is no pass over the tiles or the
+meshes. The objects are measured from their files, see `about_objects`.
 """
 
 import logging
@@ -18,6 +19,7 @@ from PIL import Image
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
+from space_map_data.export.about_objects import object_rows
 from space_map_data.export.system_groups import (
     body_name,
     load_system_lookup,
@@ -462,8 +464,9 @@ def build_about_data(
     rings: dict[str, list[dict]],
     models: dict[str, dict],
 ) -> dict:
-    """The payload. The maps are grouped by planetary system. The rings and
-    the shape models are lists of worlds in the same order."""
+    """The payload. The objects are one row for each kind. The maps are
+    grouped by planetary system. The rings and the shape models are lists of
+    worlds in the same order."""
     layers = (textures, alternates, clouds, night, specular, displacement)
     mapped = set().union(*layers)
     lightcurve = []
@@ -519,10 +522,10 @@ def build_about_data(
         model_block["lightcurve"] = lightcurve_block(lightcurve)
     return {
         "generated_at": datetime.now(UTC).isoformat(),
-        # The bodies with a map, a ring or a shape model.
-        "worlds": len(
-            {obj.id for obj, _ in placed} | {meta["object_id"] for meta in lightcurve}
-        ),
+        # The bodies with a map, a ring or a shape model. Shapes from light
+        # curves do not count: the models figure already holds them.
+        "worlds": len(placed),
+        "objects": object_rows(out_dir),
         "systems": systems,
         "rings": _world_rows(
             placed,
@@ -571,9 +574,11 @@ def write_about_data(
     maps = [row for world in worlds for row in world["maps"]]
     model_block = payload["models"]
     logger.info(
-        "Wrote about-data.json (%d worlds, %d maps, %d with tiles, %d patches, "
-        "%d ring bundles, %d shape models, %d from light curves, %d other models) "
-        "in %.1fs",
+        "Wrote about-data.json (%d objects in %d kinds, %d worlds, %d maps, "
+        "%d with tiles, %d patches, %d ring bundles, %d shape models, "
+        "%d from light curves, %d other models) in %.1fs",
+        sum(row["count"] for row in payload["objects"]),
+        len(payload["objects"]),
         payload["worlds"],
         len(maps),
         sum(1 for row in maps if "tiles" in row),

@@ -399,13 +399,14 @@ def pack_body_header(
 
 
 class BodyHeader(NamedTuple):
-    """The fields of a per-body chebyshev header that locate and gate it."""
+    """The fields of a per-body chebyshev header that the readers use."""
 
     obj_id_value: int
     id_type: int
     coeffs_per_axis: int
     segment_count: int
     visible_from_days: float
+    object_type: int
 
 
 def unpack_body_header(buf: bytes, offset: int) -> BodyHeader:
@@ -418,14 +419,19 @@ def unpack_body_header(buf: bytes, offset: int) -> BodyHeader:
         coeffs_per_axis,
         id_type,
         _has_localized,
-        _object_type,
+        object_type,
         _reserved,
         segment_count,
         visible_from_days,
         _pad,
     ) = _BODY_HEADER_STRUCT.unpack_from(buf, offset)
     return BodyHeader(
-        obj_id_value, id_type, coeffs_per_axis, segment_count, visible_from_days
+        obj_id_value,
+        id_type,
+        coeffs_per_axis,
+        segment_count,
+        visible_from_days,
+        object_type,
     )
 
 

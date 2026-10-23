@@ -576,8 +576,8 @@ class TestBuild:
         ] == [("Mimas", ["mimas"]), ("433 Eros", ["eros"])]
         assert payload["models"]["lightcurve"]["models"] == 2
         assert [group["kind"] for group in payload["models"]["craft"]] == ["probe"]
-        # Saturn, Mimas, Eros, and the asteroid that has only a light-curve shape.
-        assert payload["worlds"] == 4
+        # Saturn, Mimas and Eros. A light-curve shape does not count.
+        assert payload["worlds"] == 3
 
     def test_no_light_curve_shapes_gives_no_block(self, session, tmp_path):
         payload = self._build(session, tmp_path, {}, {}, {}, {"ace": _craft("ace")})
