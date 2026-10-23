@@ -56,3 +56,11 @@ export function equatorialToScene(xEq: number, yEq: number, zEq: number, out?: V
 	target.z = -(yEq * COS_OBL + zEq * SIN_OBL);
 	return target;
 }
+
+/** The inverse of {@link equatorialToScene}. */
+export function sceneToEquatorial<T extends Vec3Like>(x: number, y: number, z: number, out: T): T {
+	out.x = x;
+	out.y = -y * SIN_OBL - z * COS_OBL;
+	out.z = y * COS_OBL - z * SIN_OBL;
+	return out;
+}

@@ -62,6 +62,8 @@ export interface AttributionChips {
 	orbits: string[];
 	/** Who produced the maps, rings, clouds, terrain and models in view. */
 	imagery: string[];
+	/** The catalogues whose licence asks for credit, once stars have drawn. */
+	stars: string[];
 }
 
 /** Reads the credit stores' version counters, so a caller in a `$derived` or
@@ -87,5 +89,7 @@ export function attributionChips(
 	const model = bodyId ? credits.model.get(bodyId) : undefined;
 	if (model) organisations.add(model.organisation);
 
-	return { orbits, imagery: [...organisations].sort() };
+	const stars = [...new Set(credits.stars.filter((c) => c.license).map((c) => c.organisation))];
+
+	return { orbits, imagery: [...organisations].sort(), stars };
 }

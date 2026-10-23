@@ -53,9 +53,21 @@ import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { f64dist } from '$lib/scene/animation/math';
 import { TRAVEL_SYSTEM_PREFETCH_MULTIPLIER } from '$lib/scene/visibility/thresholds';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
-import { bootThree, CAMERA_FAR_DEFAULT } from './setup/three-boot';
+import {
+	bootThree,
+	CAMERA_FAR_DEFAULT,
+	CAMERA_MAX_DISTANCE,
+	SOLAR_MAX_DISTANCE
+} from './setup/three-boot';
 import { isReversedDepth } from './setup/depth-mode';
-import { currentRenderTier, renderPixelRatio, type RenderTierPreset } from './render-tier';
+import {
+	currentRenderTier,
+	renderPixelRatio,
+	starBudget,
+	type RenderTierPreset
+} from './render-tier';
+import { StarfieldSystem } from './starfield/starfield';
+import { systemShare } from './visibility/system-fade';
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
@@ -201,6 +213,10 @@ const _sunLiftDir = new Vector3();
 /** On-screen drift a trail may accumulate before it is rewritten. */
 const TRAIL_DRIFT_PX = 0.25;
 
+/** Past this share of the starfield the skybox does not draw. It is then
+ *  below 1/10,000 of its own brightness, which no pixel shows. */
+const SKY_GONE_SHARE = 1 - 1e-4;
+
 /** Focused mounted-model shadow frustum, in model units (× modelUnitScene per
  *  frame). Light at 10 with near 4 / far 28 reaches well past the silhouette
  *  so a grazing-Sun shadow streaking along the light axis isn't clipped. */
@@ -235,6 +251,8 @@ export class SceneRenderer {
 	private bodyObjects = new Map<string, BodyObjects>();
 	private circleTexture = makeCircleTexture();
 	private pointClouds!: PointCloudSystem;
+	/** @internal The stars of the Milky Way render tree. */
+	readonly starfield: StarfieldSystem;
 	private systemData!: SystemDataLoader;
 	private readonly positionDiagnostics = new PositionDiagnostics();
 	private readonly placer: Placer;
@@ -405,7 +423,7 @@ export class SceneRenderer {
 	private static readonly FPS_SAMPLE_FRAMES = 30;
 	private fpsSamples: number[] = [];
 	private fpsSampleHead = 0;
-	/** The sky while the `stars` layer is off. */
+	/** The sky while it does not draw (see updateSky). */
 	private stashedSky: Scene['background'] = null;
 	private namesShown = true;
 	private halosShown = true;
@@ -549,13 +567,15 @@ export class SceneRenderer {
 		);
 		this.pointClouds.seedBasis(focusPos);
 		this.pointClouds.setPointBudget(this.tier.pointBudget);
+		this.starfield = new StarfieldSystem(ctx, this.scene, starBudget(), this.invalidate);
 
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControlsClass(this.camera, canvas);
 		this.controls.enableDamping = true;
 		this.orbitDampingFactor = orbitDamping(sceneSettings().resolvedReducedMotion);
 		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
-		this.controls.maxDistance = 31_620.5 * AU_SCALE; // 0.5 light-year
+		// Read at each clamp, so the cap holds the camera where a placement put it.
+		Object.defineProperty(this.controls, 'maxDistance', { get: () => this.maxCameraDistance() });
 		this.controls.target.set(0, 0, 0);
 		this.controls.update();
 		this.controls.addEventListener('end', this.onControlsEnd);
@@ -1147,6 +1167,7 @@ export class SceneRenderer {
 
 		const { distance } = this.getCameraState();
 		this.updateTravelCraftSystem();
+		this.updateSystemShare();
 		this.ctx.visibility.updateCamera(distance, this.sceneJd);
 		this.updateTightFar(distance);
 
@@ -1234,9 +1255,6 @@ export class SceneRenderer {
 			this.sceneJd
 		);
 		recordAtmospherePerf(renderedDtMs, atmoState.shellProminent);
-		// Inside a shell, stars dim by the extinction of the air above the
-		// camera plus a daylight-aware exposure compensation (skyboxDimFactor).
-		this.scene.backgroundIntensity = atmoState.skyboxIntensity;
 		this.applyLayerChrome();
 		// Corona/star-point chroma through nearby air; the disc's per-fragment
 		// tint is aimed inside updateAtmosphereShaders.
@@ -1306,6 +1324,16 @@ export class SceneRenderer {
 
 		this.updateDepthFar();
 		this.updateSunProxy(atmoState.sunRefraction);
+		// The view cone the stars are culled to is this frame's.
+		this.camera.updateMatrixWorld();
+		this.starfield.update(
+			this.camera,
+			this.focus.focusTruePos,
+			this.renderer.getPixelRatio(),
+			atmoState.skyboxIntensity,
+			nowMs
+		);
+		this.updateSky(atmoState.skyboxIntensity);
 		// Only when the camera is inside a shell (surface zoom): supplies the
 		// opaque depth those shells clamp their march to, so haze stops at
 		// foreground terrain instead of painting over it.
@@ -1380,6 +1408,34 @@ export class SceneRenderer {
 		target.dispose();
 	}
 
+	/** Without stars to draw, the camera stays inside the solar system. Until
+	 *  the starfield knows, the camera goes no farther out than it is. */
+	private maxCameraDistance(): number {
+		switch (this.starfield.availability()) {
+			case 'yes':
+				return CAMERA_MAX_DISTANCE;
+			case 'no':
+				return SOLAR_MAX_DISTANCE;
+			case 'unknown':
+				return Math.max(SOLAR_MAX_DISTANCE, this.camera.position.distanceTo(this.controls.target));
+		}
+	}
+
+	/** How much of the planetary system draws. It follows the system's size on
+	 *  screen, from the camera's distance to the barycentre. Zones that stood
+	 *  still while only the Sun drew catch up with the clock when it comes back. */
+	private updateSystemShare(): void {
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const cam = this.camera.position;
+		const fromBarycentre = Math.hypot(fx + cam.x, fy + cam.y, fz + cam.z);
+		const share = systemShare(fromBarycentre, this.viewportH, this.camera.fov);
+		const visibility = this.ctx.visibility;
+		const wasHidden = visibility.systemShare === 0;
+		visibility.systemShare = share;
+		this.pointClouds.setFade(share);
+		if (wasHidden && share > 0) this.ctx.refreshTick(jdToDate(this.clock.jd));
+	}
+
 	/** Hysteresis gate for the tight-far regime (`distance` = camera to focus,
 	 *  scene units). A focused landed probe or surface feature has ~zero radius
 	 *  of its own — the host body whose terrain the camera orbits is the scale
@@ -1406,18 +1462,22 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Pull the far plane in when zoomed into a subsystem. Log-depth precision
-	 * scales as 1/log2(far+1), so collapsing far from the ~0.5 ly default
-	 * sharply cuts z-fighting in close-up terrain. Bodies outside the active
-	 * system are hidden and mustn't hold the plane out; the Sun (excluded in
-	 * tight-far, see updateSunProxy) and system-extent otherwise dominate.
+	 * The far plane of the logarithmic-depth fallback. Its precision scales as
+	 * 1/log2(far + 1). Zoomed into a subsystem, far comes in to what the
+	 * subsystem draws, so close-up terrain does not z-fight. Bodies outside the
+	 * active system are hidden and do not hold the plane out. The Sun and the
+	 * system's extent hold it out; in tight-far a proxy Sun stands in
+	 * (updateSunProxy). Outside a subsystem, far goes past the camera's target
+	 * and past the barycentre, so the Sun draws from a far star too.
 	 */
 	private updateDepthFar(): void {
 		if (isReversedDepth()) return;
-		let far = CAMERA_FAR_DEFAULT;
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const cam = this.camera.position;
+		const span = Math.max(cam.length(), Math.hypot(fx + cam.x, fy + cam.y, fz + cam.z));
+		let far = Math.max(CAMERA_FAR_DEFAULT, span * FAR_MARGIN);
 		const sysId = this.ctx.visibility.activeSystemId;
 		if (sysId) {
-			const [fx, fy, fz] = this.focus.focusTruePos;
 			// Seed with the camera's own reach so we never clip what we're looking at.
 			let maxDistSq = this.camera.position.lengthSq();
 			const consider = (pos: [number, number, number]) => {
@@ -1449,7 +1509,7 @@ export class SceneRenderer {
 				const p = bo.body.position;
 				if (p && this.ctx.visibility.hasFullRendering(bo.body)) consider(p);
 			}
-			far = Math.min(CAMERA_FAR_DEFAULT, Math.max(FAR_MIN, Math.sqrt(maxDistSq) * FAR_MARGIN));
+			far = Math.min(far, Math.max(FAR_MIN, Math.sqrt(maxDistSq) * FAR_MARGIN));
 		}
 		if (Math.abs(far - this.camera.far) > this.camera.far * FAR_UPDATE_EPS) {
 			this.camera.far = far;
@@ -2012,7 +2072,8 @@ export class SceneRenderer {
 			this.focusKey() !== this.lastRenderedFocusKey ||
 			this.ctx.bodies.minorStreaming ||
 			this.pointClouds.hasPendingSceneAdds() ||
-			this.systemData.hasPendingUnloads();
+			this.systemData.hasPendingUnloads() ||
+			this.starfield.busy();
 		if (loading) return true;
 		if (this.covered) return false;
 		if (this.frameIndex - this.lastRenderedFrame >= SceneRenderer.IDLE_HEARTBEAT_FRAMES)
@@ -2739,24 +2800,37 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * The two layers that are not objects in the scene. The sky is a texture on
-	 * it, so `stars` swaps that out and keeps it aside — the cube stays
-	 * uploaded, and switching back on costs nothing. Names are DOM, so `labels`
-	 * is a class on the layer they live in; the ring that marks a body too far
-	 * to have a disc is not a name and answers to `halos` the same way.
+	 * The skybox, under the starfield's share of the sky. `skyboxIntensity`
+	 * holds the extinction of the air above the camera and the daylight
+	 * exposure (skyboxDimFactor). The sky is a texture on the scene. With the
+	 * `stars` layer off, or the starfield past SKY_GONE_SHARE, the texture is
+	 * kept aside and the GPU does not draw it. The cube stays uploaded, and it
+	 * comes back at no cost.
 	 *
 	 * Run per frame, since the sky lands well after the map opens.
 	 */
-	private applyLayerChrome(): void {
-		if (this.ctx.layers.isVisible('stars')) {
+	private updateSky(skyboxIntensity: number): void {
+		const share = this.starfield.share();
+		if (this.ctx.layers.isVisible('stars') && share < SKY_GONE_SHARE) {
 			if (this.stashedSky) {
 				this.scene.background = this.stashedSky;
 				this.stashedSky = null;
 			}
 		} else if (this.scene.background) {
+			// A sky that loads while one is kept aside replaces it.
+			if (this.stashedSky !== this.scene.background) disposeTexture(this.stashedSky);
 			this.stashedSky = this.scene.background;
 			this.scene.background = null;
 		}
+		this.scene.backgroundIntensity = skyboxIntensity * (1 - share);
+	}
+
+	/**
+	 * The two layers that are DOM. Names are a class on the layer they live
+	 * in. The ring that marks a body too far to have a disc is not a name, and
+	 * answers to `halos` the same way.
+	 */
+	private applyLayerChrome(): void {
 		const names = this.ctx.layers.isVisible('labels');
 		if (names !== this.namesShown) {
 			this.namesShown = names;
@@ -2853,6 +2927,7 @@ export class SceneRenderer {
 			this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
 		}
 		this.pointClouds.setPointBudget(this.tier.pointBudget);
+		this.starfield.setBudget(starBudget());
 	}
 
 	resize(width: number, height: number): void {
@@ -2898,11 +2973,13 @@ export class SceneRenderer {
 		}
 		// Worker pool + cloud buffers — the biggest per-navigation leak.
 		this.pointClouds.dispose();
+		this.starfield.dispose();
 		// renderer.dispose() frees only its own caches, not our geometries/
 		// materials/textures. Env maps aren't scene children — dispose explicitly.
 		this.disposeScene(this.scene);
 		this.disposeScene(this.modelScene);
 		disposeTexture(this.scene.background);
+		disposeTexture(this.stashedSky);
 		disposeTexture(this.scene.environment);
 		disposeTexture(this.modelScene.environment);
 		this.circleTexture.dispose();

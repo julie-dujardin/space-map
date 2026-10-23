@@ -39,7 +39,16 @@ export interface RenderTierPreset {
 	terrainBandCells: number;
 	/** Largest skybox face edge, in pixels. */
 	maxSkyboxFace: number;
+	/** Stars drawn at once. Seen from the solar system, about 1.1 M must be in
+	 *  for the sky to be whole, whatever the tier. */
+	starPoints: number;
+	/** Bytes of star nodes kept loaded, drawn or not. */
+	starBytes: number;
+	/** Star node fetches at once. */
+	starFetches: number;
 }
+
+const MB = 1024 * 1024;
 
 export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 	low: {
@@ -54,7 +63,10 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		reliefWindows: 2,
 		reliefShadowSteps: 12,
 		terrainBandCells: 16,
-		maxSkyboxFace: 2048
+		maxSkyboxFace: 2048,
+		starPoints: 1_200_000,
+		starBytes: 80 * MB,
+		starFetches: 3
 	},
 	medium: {
 		maxPixelRatio: 1.5,
@@ -68,7 +80,10 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		reliefWindows: 3,
 		reliefShadowSteps: 16,
 		terrainBandCells: 24,
-		maxSkyboxFace: 2048
+		maxSkyboxFace: 2048,
+		starPoints: 1_600_000,
+		starBytes: 160 * MB,
+		starFetches: 4
 	},
 	high: {
 		maxPixelRatio: 2,
@@ -82,7 +97,10 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		reliefWindows: 4,
 		reliefShadowSteps: 32,
 		terrainBandCells: 32,
-		maxSkyboxFace: Infinity
+		maxSkyboxFace: Infinity,
+		starPoints: 2_500_000,
+		starBytes: 400 * MB,
+		starFetches: 6
 	}
 };
 
@@ -127,4 +145,12 @@ export function currentRenderTier(): RenderTierPreset {
 export function renderPixelRatio(): number {
 	if (typeof window === 'undefined') return 1;
 	return Math.min(window.devicePixelRatio, currentRenderTier().maxPixelRatio);
+}
+
+/** What the starfield may hold: the fill tier, and a smaller cache where
+ *  memory is short. */
+export function starBudget(): { points: number; bytes: number; fetches: number } {
+	const tier = currentRenderTier();
+	const bytes = isLowEndDevice() ? Math.min(tier.starBytes, 64 * MB) : tier.starBytes;
+	return { points: tier.starPoints, bytes, fetches: tier.starFetches };
 }

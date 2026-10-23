@@ -17,6 +17,7 @@ export interface CoreMessages {
 	scene_canvas_label: () => string;
 	attribution_orbits: () => string;
 	attribution_imagery: () => string;
+	attribution_stars: () => string;
 	credits_see_all: () => string;
 	layer_surface: () => string;
 	layer_clouds: () => string;
@@ -50,13 +51,17 @@ export interface Host {
 	 *  data export's host. Empty where none is served: bodies then draw their
 	 *  whole-globe tiers alone. */
 	tilesUrl: string;
+	/** Root of the extrasolar export, which holds the star render nodes and
+	 *  the record tiles. Empty where none is served, and the map then has no
+	 *  stars. */
+	extrasolarUrl: string;
 	/** BCP-47 tag of the reading language: picks localized names and drives Intl. */
 	locale: () => string;
 	messages: CoreMessages;
 	/** Link target of a body's scene label. */
 	bodyHref: (id: string, name: string) => string;
 	/** How far down the `distribution` ladder this embed may draw surface maps,
-	 *  panoramas and craft models (docs/export-format/textures.md). `open` is
+	 *  panoramas, craft models and stars (docs/export-format/textures.md). `open` is
 	 *  what anyone may serve, `non-commercial` adds works whose licence bars
 	 *  commercial reuse, and `site-only` adds those cleared for spacemap.co
 	 *  alone. A bare embed gets `open`: it cannot accept a licence for the page
@@ -79,6 +84,7 @@ const DEFAULT_HOST: Host = {
 	imagesUrl: 'https://images.spacemap.co',
 	liveUrl: 'https://live.spacemap.co',
 	tilesUrl: '',
+	extrasolarUrl: '',
 	locale: () => 'en',
 	messages: {
 		body_note_no_model: () => 'no model available',
@@ -88,6 +94,7 @@ const DEFAULT_HOST: Host = {
 		scene_canvas_label: () => 'Interactive 3D map of the Solar System',
 		attribution_orbits: () => 'Orbits',
 		attribution_imagery: () => 'Imagery',
+		attribution_stars: () => 'Stars',
 		credits_see_all: () => 'See full credits',
 		layer_surface: () => 'Surface',
 		layer_clouds: () => 'Clouds',
@@ -128,6 +135,7 @@ export function configureHost(overrides: HostOverrides): void {
 	current.imagesUrl = current.imagesUrl.replace(/\/$/, '');
 	current.liveUrl = current.liveUrl.replace(/\/$/, '');
 	current.tilesUrl = current.tilesUrl.replace(/\/$/, '');
+	current.extrasolarUrl = current.extrasolarUrl.replace(/\/$/, '');
 }
 
 export function host(): Host {

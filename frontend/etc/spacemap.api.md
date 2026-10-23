@@ -17,8 +17,9 @@ import { MeshStandardMaterial } from 'three';
 import { Object3D } from 'three';
 import { Object3DEventMap } from 'three';
 import { PerspectiveCamera } from 'three';
-import type { Points } from 'three';
+import { Points } from 'three';
 import { Quaternion } from 'three';
+import { Scene } from 'three';
 import { ShaderMaterial } from 'three';
 import type { Sprite } from 'three';
 import { Texture } from 'three';
@@ -196,6 +197,8 @@ export interface CoreMessages {
 	attribution_imagery: () => string;
 	// (undocumented)
 	attribution_orbits: () => string;
+	// (undocumented)
+	attribution_stars: () => string;
 	// (undocumented)
 	body_note_crash_site: () => string;
 	// (undocumented)
@@ -625,6 +628,7 @@ export function groundDistanceM(a: LonLat, b: LonLat, radiusKm: number): number;
 export interface Host {
 	bodyHref: (id: string, name: string) => string;
 	dataUrl: string;
+	extrasolarUrl: string;
 	imagesUrl: string;
 	liveUrl: string;
 	locale: () => string;
@@ -761,6 +765,7 @@ export const MAP_LAYERS: readonly [
 	'spacecraft',
 	'satellites',
 	'debris',
+	'starfield',
 	'orbits',
 	'labels',
 	'halos',

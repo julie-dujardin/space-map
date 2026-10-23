@@ -65,6 +65,7 @@ import type { LabelledHazard } from '$lib/travel/hazards';
 import { bodyView, type Body } from './body-view';
 import { LayerSet, MAP_LAYERS, type MapLayerId } from './layers';
 import { ControlHost, type Control, type ControlPosition } from './controls';
+import { onExtrasolarStale } from '$lib/fetch/extrasolar/files';
 import './map.css';
 
 export interface SpaceMapOptions {
@@ -364,6 +365,7 @@ export class SpaceMap {
 	private canvas: HTMLCanvasElement | null = null;
 	private labelLayer: HTMLDivElement | null = null;
 	private stopWatching: (() => void) | null = null;
+	private stopExtrasolarStale: (() => void) | null = null;
 	private controls: ControlHost<SpaceMap> | null = null;
 	private lostPanelTimer: ReturnType<typeof setTimeout> | undefined;
 	private cooperative: CooperativeGestures | null = null;
@@ -601,6 +603,8 @@ export class SpaceMap {
 		container.classList.add('sm-map');
 		mapsIn.set(container, (mapsIn.get(container) ?? 0) + 1);
 		this.controls = new ControlHost(this, container);
+		// A star file from another export than the tab's prompts a reload too.
+		this.stopExtrasolarStale = onExtrasolarStale(() => this.ctx.onDataStale?.());
 
 		const canvas = document.createElement('canvas');
 		canvas.className = 'sm-map__canvas';
@@ -696,6 +700,8 @@ export class SpaceMap {
 		this.controls = null;
 		this.stopWatching?.();
 		this.stopWatching = null;
+		this.stopExtrasolarStale?.();
+		this.stopExtrasolarStale = null;
 		clearTimeout(this.lostPanelTimer);
 		canvas.removeEventListener('keydown', this.onKeyDown);
 		canvas.removeEventListener('touchmove', this.onTouchMove);

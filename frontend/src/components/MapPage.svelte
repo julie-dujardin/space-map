@@ -286,6 +286,10 @@
 	$effect(() => {
 		if (!ringPillShown) settings.setOverexposeRings(false);
 	});
+	// A runtime switch: it hides the stars, and they go on loading as the camera moves.
+	$effect(() => {
+		map.setLayerVisible('starfield', settings.showStarfield);
+	});
 	// Camera-truth focus: stays set after the drawer closes since the renderer
 	// keeps tracking that body. Drives what belongs to the body on screen, not
 	// to the drawer: compass-north choices and the panorama traces.

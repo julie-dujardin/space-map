@@ -58,6 +58,10 @@ export class VisibilityController {
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: string | null = null;
 	isZoomedIn = false;
+	/** The planetary system's share of the view (`system-fade.ts`): at 0 only
+	 *  the Sun draws, and every other body and cloud is hidden. Set by the
+	 *  renderer each frame. */
+	systemShare = 1;
 
 	private focusedBodyIdPlain: string = SUN_ID;
 	private focusedSystemIdPlain: string | null = null;
@@ -230,6 +234,7 @@ export class VisibilityController {
 	 *  ungated moon pops in whenever the camera zooms close to anything.
 	 *  Asteroid moons skip the crowding cap (sparse per parent). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
+		if (this.systemShare === 0) return VISIBILITY.HIDE;
 		if (this.getLayers().hidesBody(moon.data.objectType, moon.data.parentId)) {
 			return VISIBILITY.HIDE;
 		}
@@ -281,6 +286,10 @@ export class VisibilityController {
 	/** {@link ratioVisibility}, except that a pinned body is never let drop out:
 	 *  neither its distance nor a hidden layer takes its halo and orbit away. */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
+		// Only the Sun is left: a pin does not keep a body either.
+		if (this.systemShare === 0 && body.data.objectType !== ObjectType.STAR) {
+			return VISIBILITY.HIDE;
+		}
 		const pinned = this.pinned.has(body.data.id);
 		const vis = this.ratioVisibility(body, camDistThreeJS, pinned);
 		return pinned && vis !== VISIBILITY.CLOSE ? VISIBILITY.FULL : vis;
@@ -452,6 +461,7 @@ export class VisibilityController {
 	 * Gated on the focused system and ratio to outermost moon (no zoom threshold).
 	 */
 	isMoonGroupVisible(parentId: string): boolean {
+		if (this.systemShare === 0) return false;
 		if (!this.getLayers().isVisible('moons')) return false;
 		if (!this.isInFocusedSystem(parentId)) return false;
 		const maxA = this.bodies.maxMoonA(parentId);
@@ -466,6 +476,7 @@ export class VisibilityController {
 	 * Planet-orbiting groups are only visible when in the active system.
 	 */
 	isSpacecraftGroupVisible(groupParentId: string): boolean {
+		if (this.systemShare === 0) return false;
 		if (this.getLayers().hidesSpacecraftGroup(groupParentId)) return false;
 		const parent = this.bodies.bodiesById.get(groupParentId);
 		// A cloud is drawn about its parent. With no place for the parent, there
@@ -484,6 +495,7 @@ export class VisibilityController {
 	 *  hides non-matching zones here; a `flag` filter (NEO/PHA) leaves every
 	 *  zone visible and masks points via `requiredFlags` in the worker instead. */
 	isAsteroidGroupVisible(zone: string): boolean {
+		if (this.systemShare === 0) return false;
 		if (this.getLayers().hidesZone(zone)) return false;
 		if (this.activeSystemId) return false;
 		// The asteroid clouds are drawn about the Sun.

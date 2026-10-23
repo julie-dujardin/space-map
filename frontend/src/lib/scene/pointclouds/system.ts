@@ -196,6 +196,9 @@ export class PointCloudSystem {
 		brightMult: 1,
 		opacity: EMPHASIS_BASE_OPACITY
 	};
+	/** The planetary system's share of the view. Each cloud draws at its own
+	 *  opacity (`userData.opacity`) times this. */
+	private fade = 1;
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -268,7 +271,32 @@ export class PointCloudSystem {
 		const { size, dim, opacity } = this.earthSatEmphasis;
 		mat.size = size;
 		mat.color.setRGB(dim, dim, dim);
-		mat.opacity = opacity;
+		this.setOpacity(pts, opacity);
+	}
+
+	/** Fade every cloud with the planetary system. */
+	setFade(fade: number): void {
+		if (fade === this.fade) return;
+		this.fade = fade;
+		for (const kind of WORKER_CLOUD_KINDS) {
+			for (const pts of this.workerPoints[kind].values()) this.applyOpacity(pts);
+		}
+		for (const pts of this.moonPoints.values()) this.applyOpacity(pts);
+	}
+
+	/** Set a cloud's own opacity. It draws at that times the fade. */
+	private setOpacity(pts: Points, opacity: number): void {
+		pts.userData.opacity = opacity;
+		this.applyOpacity(pts);
+	}
+
+	private applyOpacity(pts: Points): void {
+		(pts.material as PointsMaterial).opacity = (pts.userData.opacity as number) * this.fade;
+	}
+
+	/** Take a new cloud's opacity as its own, and give it the fade. */
+	private fadeNewCloud(pts: Points): void {
+		this.setOpacity(pts, (pts.material as PointsMaterial).opacity);
 	}
 
 	/** Emphasize a `small_bodies/<class>` zone — size/brightness/opacity ramp
@@ -319,7 +347,7 @@ export class PointCloudSystem {
 		const { sizeMult, brightMult, opacity } = this.smallBodyEmphasis;
 		mat.size = baseSize * sizeMult;
 		mat.color.copy(baseColor).multiplyScalar(brightMult);
-		mat.opacity = opacity;
+		this.setOpacity(pts, opacity);
 	}
 
 	private resetSmallBodyEmphasis(pts: Points): void {
@@ -327,7 +355,7 @@ export class PointCloudSystem {
 		const mat = pts.material as PointsMaterial;
 		mat.size = pts.userData.smallBodyBaseSize as number;
 		mat.color.copy(pts.userData.smallBodyBaseColor as Color);
-		mat.opacity = EMPHASIS_BASE_OPACITY;
+		this.setOpacity(pts, EMPHASIS_BASE_OPACITY);
 		pts.userData.smallBodyBaseSize = undefined;
 		pts.userData.smallBodyBaseColor = undefined;
 	}
@@ -356,9 +384,11 @@ export class PointCloudSystem {
 			for (const [key, p] of this.workerPoints[kind]) {
 				const bucketKey = parentIdFromSubkey(key);
 				p.userData.parentBodyId = this.cloudParentId(kind, bucketKey);
+				this.fadeNewCloud(p);
 				this.emphasiseNewCloud(kind, bucketKey, p);
 			}
 		}
+		for (const p of this.moonPoints.values()) this.fadeNewCloud(p);
 		this.assignMapLayer();
 	}
 
@@ -638,6 +668,7 @@ export class PointCloudSystem {
 		pts.userData.groupId = groupId;
 		pts.userData.parentBodyId = this.cloudParentId(kind, bucketKey);
 		pts.userData.parentVec = [0, 0, 0] as Vec3;
+		this.fadeNewCloud(pts);
 		this.emphasiseNewCloud(kind, bucketKey, pts);
 		this.workerPoints[kind].set(key, pts);
 		this.pendingSceneAdds.push(pts);

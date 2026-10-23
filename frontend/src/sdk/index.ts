@@ -51,6 +51,9 @@ interface CommonOptions {
 	 *  production CDN serves none: without it a body draws its whole-globe
 	 *  maps alone. */
 	tilesUrl?: string;
+	/** Root of the extrasolar export, for a mirror that serves it. Without it
+	 *  the map has no stars. */
+	extrasolarUrl?: string;
 	/** BCP-47 tag that picks localized names; English when omitted. */
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
@@ -60,8 +63,8 @@ interface CommonOptions {
 	 *  one. Turning it on covers the Uranus map, which otherwise renders in
 	 *  its fallback colour, the Huygens descent panorama of Titan, which is
 	 *  otherwise a place on the map with no sphere to open, and the models of
-	 *  a few craft (Buran, Vostok, Lunokhod), which otherwise stay markers;
-	 *  the page accepts each one's terms by asking for it, and the credit line
+	 *  a few craft (Buran, Vostok, Lunokhod), which otherwise stay markers, and
+	 *  the stars from Gaia, which otherwise stay off the map; the page accepts each one's terms by asking for it, and the credit line
 	 *  naming its author is a condition of them, not a courtesy. Some maps are
 	 *  ours for spacemap.co alone and this does not reach them. */
 	includeNonCommercial?: boolean;
@@ -113,6 +116,7 @@ export async function createMap(options: MapOptions): Promise<SpaceMap> {
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
+		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -121,7 +125,16 @@ export async function createMap(options: MapOptions): Promise<SpaceMap> {
 		...rest
 	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
+	applyHost({
+		dataUrl,
+		imagesUrl,
+		liveUrl,
+		tilesUrl,
+		extrasolarUrl,
+		locale,
+		messages,
+		includeNonCommercial
+	});
 
 	const map = new SpaceMap(rest);
 	map.mount(element);
@@ -151,6 +164,7 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
+		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -159,7 +173,16 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
 		...rest
 	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
+	applyHost({
+		dataUrl,
+		imagesUrl,
+		liveUrl,
+		tilesUrl,
+		extrasolarUrl,
+		locale,
+		messages,
+		includeNonCommercial
+	});
 
 	const map = new FlatMap(rest);
 	map.mount(element);
@@ -189,6 +212,7 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
+		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -197,7 +221,16 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
 		...rest
 	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
+	applyHost({
+		dataUrl,
+		imagesUrl,
+		liveUrl,
+		tilesUrl,
+		extrasolarUrl,
+		locale,
+		messages,
+		includeNonCommercial
+	});
 
 	const view = new PanoramaView(rest);
 	view.mount(element);
@@ -228,6 +261,7 @@ export async function createSystemMap(options: SystemMapCreateOptions): Promise<
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
+		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -235,7 +269,16 @@ export async function createSystemMap(options: SystemMapCreateOptions): Promise<
 		...rest
 	} = options;
 	const element = resolveContainer(container);
-	applyHost({ dataUrl, imagesUrl, liveUrl, tilesUrl, locale, messages, includeNonCommercial });
+	applyHost({
+		dataUrl,
+		imagesUrl,
+		liveUrl,
+		tilesUrl,
+		extrasolarUrl,
+		locale,
+		messages,
+		includeNonCommercial
+	});
 
 	const map = new SystemMap(rest);
 	map.mount(element);
@@ -268,6 +311,7 @@ function applyHost(
 		| 'imagesUrl'
 		| 'liveUrl'
 		| 'tilesUrl'
+		| 'extrasolarUrl'
 		| 'locale'
 		| 'messages'
 		| 'includeNonCommercial'
@@ -279,6 +323,7 @@ function applyHost(
 	if (options.imagesUrl !== undefined) overrides.imagesUrl = options.imagesUrl;
 	if (options.liveUrl !== undefined) overrides.liveUrl = options.liveUrl;
 	if (options.tilesUrl !== undefined) overrides.tilesUrl = options.tilesUrl;
+	if (options.extrasolarUrl !== undefined) overrides.extrasolarUrl = options.extrasolarUrl;
 	if (options.locale !== undefined) overrides.locale = () => options.locale as string;
 	if (options.messages !== undefined) overrides.messages = options.messages;
 	// The site-only tier is never reachable from here — it is not the SDK's to grant.

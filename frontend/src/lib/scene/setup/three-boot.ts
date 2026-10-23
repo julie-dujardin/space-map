@@ -17,7 +17,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { kmToScene } from '$lib/math/units';
+import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { PC_SCENE } from '$lib/scene/starfield/tree';
 import { currentRenderTier, renderPixelRatio } from '$lib/scene/render-tier';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
@@ -27,12 +28,24 @@ import { installBloomHighPass } from './bloom-high-pass';
 import { installLogDepthChunks, setReversedDepth } from './depth-mode';
 import { installOutputDither } from './output-dither';
 
-/** Solar-system-view far plane (scene units, ~0.5 ly). Under reversed-Z, far
- *  only defines clipping — depth precision is relative to distance and doesn't
- *  depend on it. Under the logarithmic-depth fallback, precision scales as
- *  1/log2(far), so the renderer pulls far in when zoomed into a subsystem —
- *  see `SceneRenderer.updateDepthFar`. */
+/** Solar-system-view far plane under the logarithmic-depth fallback (scene
+ *  units, ~0.5 ly). Its precision scales as 1/log2(far), so the renderer pulls
+ *  far in when zoomed into a subsystem and pushes it out with the camera when
+ *  zoomed past it: see `SceneRenderer.updateDepthFar`. */
 export const CAMERA_FAR_DEFAULT = 100000;
+
+/** Farthest the camera goes from its target while the stars can draw,
+ *  100 kpc. The Milky Way's disc fits in the view from there. */
+export const CAMERA_MAX_DISTANCE = 1e5 * PC_SCENE;
+
+/** Farthest the camera goes from its target when no stars can draw,
+ *  0.5 ly: the map stays inside the solar system. */
+export const SOLAR_MAX_DISTANCE = 31_620.5 * AU_SCALE;
+
+/** Far plane under reversed-Z, 1 Mpc. Every star is nearer than this from the
+ *  farthest zoom. Reversed-Z precision is relative to distance and does not
+ *  depend on far. */
+export const CAMERA_FAR_REVERSED = 1e6 * PC_SCENE;
 
 /** Reversed-Z needs EXT_clip_control, probed before renderer creation so the
  *  fallback can enable the logarithmic depth buffer instead — the two modes
@@ -138,7 +151,8 @@ export function bootThree(
 	scene.add(shadowLight.target);
 
 	const aspect = canvas.clientWidth / canvas.clientHeight;
-	const camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), CAMERA_FAR_DEFAULT);
+	const far = renderer.capabilities.reversedDepthBuffer ? CAMERA_FAR_REVERSED : CAMERA_FAR_DEFAULT;
+	const camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), far);
 
 	// The canvas's own antialiasing does not reach this target. The renderer sets its sample count.
 	const composerTarget = new WebGLRenderTarget(canvas.clientWidth, canvas.clientHeight, {

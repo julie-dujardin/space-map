@@ -4,6 +4,7 @@ import type { OrientationReference, OrientationSource } from '$lib/credits/orien
 import type { CreditFields, ImageryLayer } from '$lib/credits/imagery-layers';
 import { patchCredits, tileCredit, type TiledMap } from '$lib/credits/tile-credit';
 import type { PositionedBody } from '$lib/types/objects';
+import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 
 /** One credited work behind a body's imagery, recorded as the layer attaches.
  *  `systemId` scopes the bar to the focused system; the popover shows all. */
@@ -55,6 +56,8 @@ export class CreditsStore {
 	orientation = new Map<string, OrientationCredit>();
 	orientationVersion = $state(0);
 	skybox = $state<SkyboxCredit | null>(null);
+	/** The catalogues behind the starfield, set when its first stars draw. */
+	stars = $state.raw<readonly ExtrasolarCredit[]>([]);
 	/** Providers contributing to the loaded scene. Reassigned (not mutated) so
 	 *  `$derived` bar consumers recompute. `UNKNOWN` is never added — pre-v3
 	 *  chunks stay silent rather than showing a misleading label. */
@@ -107,6 +110,10 @@ export class CreditsStore {
 	/** Credits of one layer, in insertion order. */
 	imageryOf(layer: ImageryLayer): ImageryCredit[] {
 		return [...this.imagery.values()].filter((c) => c.layer === layer);
+	}
+
+	setStars(credits: readonly ExtrasolarCredit[]): void {
+		if (this.stars.length === 0) this.stars = credits;
 	}
 
 	registerOrientation(credit: OrientationCredit): void {

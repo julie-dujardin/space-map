@@ -238,6 +238,12 @@
 			label: 'Self-shadow',
 			get: () => settings.showSelfShadow,
 			set: (v) => settings.setShowSelfShadow(v)
+		},
+		{
+			label: 'Starfield',
+			hint: '(Gaia DR3 · Hipparcos)',
+			get: () => settings.showStarfield,
+			set: (v) => settings.setShowStarfield(v)
 		}
 	];
 

@@ -1,5 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import type { PerspectiveCamera, Points, ShaderMaterial, WebGLRenderer } from 'three';
+import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
 import { host } from '$lib/host';
@@ -73,6 +74,14 @@ const _modelSphereCenter = new Vector3();
 // Scratch for projecting a label anchor to NDC (off-screen-center test).
 const _anchorProj = new Vector3();
 
+/** Fade a body's name and halo with the planetary system. The opacity is
+ *  written only when it changes. */
+function fadeLabel(label: CSS2DObject, share: number): void {
+	if (label.userData.systemShare === share) return;
+	label.userData.systemShare = share;
+	label.element.style.opacity = share < 1 ? String(share) : '';
+}
+
 /**
  * Per-frame visibility update for all bodies, point clouds, labels, and trails.
  * Returns the updated cull frame counter and screen occluders (for shadow logic).
@@ -96,6 +105,7 @@ export function updateBodyVisibility(
 ): number {
 	const layers = ctx.layers;
 	const hideOrbits = !layers.isVisible('orbits');
+	const systemShare = ctx.visibility.systemShare;
 	const showNomenclature = layers.isVisible('nomenclature');
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenW = renderer.domElement.clientWidth;
@@ -374,7 +384,7 @@ export function updateBodyVisibility(
 			// system gate as the mesh path, so they fade with the point clouds they replace.
 			const ot = body.data.objectType;
 			if (ot === ObjectType.BARYCENTER || ot === ObjectType.LAGRANGE_POINT) {
-				let visible = true;
+				let visible = systemShare > 0;
 				const primaryId = !isFocused ? barycenterPrimaryId(body.data.id) : undefined;
 				if (primaryId) {
 					const primary = bodyObjects.get(primaryId)?.body ?? ctx.getBody(primaryId);
@@ -495,6 +505,7 @@ export function updateBodyVisibility(
 		if (applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId)) {
 			newlyShownLabel = true;
 		}
+		if (bo.label) fadeLabel(bo.label, bo.starPoint ? 1 : systemShare);
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const isNomFocused = showNomenclature && body.data.id === nomFocusedBodyId;
@@ -588,7 +599,7 @@ export function updateBodyVisibility(
 		);
 		const isFocused = bo.body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);
-		mat.uniforms.uAlphaMultiplier.value = isHovered ? 2 : isFocused ? 1.75 : 1.0;
+		mat.uniforms.uAlphaMultiplier.value = (isHovered ? 2 : isFocused ? 1.75 : 1.0) * systemShare;
 		// Fade open trails (sats, probe buffers) to 0 at the tail; the floor is
 		// only for closed ellipses, whose far side would otherwise vanish.
 		const isClosed = line.userData.isOpenCurve === false;

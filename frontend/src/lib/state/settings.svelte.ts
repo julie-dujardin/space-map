@@ -49,6 +49,7 @@ interface SettingValues {
 	atmoQualityOverrides: Partial<AtmosphereQualityConfig>;
 	highAmbient: boolean;
 	showPanoramaTraces: boolean;
+	showStarfield: boolean;
 	realisticLighting: boolean;
 	overexposeRings: boolean;
 	showShapeMesh: boolean;
@@ -92,6 +93,7 @@ const SETTING_SPEC = {
 	atmoQualityOverrides: { default: {}, persist: false },
 	highAmbient: { default: false, persist: true },
 	showPanoramaTraces: { default: true, persist: true },
+	showStarfield: { default: true, persist: true },
 	realisticLighting: { default: false, persist: true },
 	// The physical picture is the one the map opens on.
 	overexposeRings: { default: false, persist: false },
@@ -175,6 +177,8 @@ class SettingsState implements SceneSettings, SettingValues {
 	/** Flood the scene with flat ambient fill so night sides are fully lit. */
 	highAmbient = $state<boolean>(SETTING_SPEC.highAmbient.default);
 	showPanoramaTraces = $state<boolean>(SETTING_SPEC.showPanoramaTraces.default);
+	/** Debug menu only; an embed sets the `starfield` layer instead. */
+	showStarfield = $state<boolean>(SETTING_SPEC.showStarfield.default);
 	/** Scale sunlight with the true inverse-square distance from the Sun instead
 	 *  of lighting every body as if it sat at 1 AU. Debug menu only. */
 	realisticLighting = $state<boolean>(SETTING_SPEC.realisticLighting.default);
@@ -291,6 +295,10 @@ class SettingsState implements SceneSettings, SettingValues {
 
 	setShowPanoramaTraces(v: boolean) {
 		this.set('showPanoramaTraces', v);
+	}
+
+	setShowStarfield(v: boolean) {
+		this.set('showStarfield', v);
 	}
 
 	setRealisticLighting(v: boolean) {

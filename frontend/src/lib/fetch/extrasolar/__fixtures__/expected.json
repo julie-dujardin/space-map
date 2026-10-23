@@ -1,0 +1,136 @@
+{
+	"token": "0123456789abcdef",
+	"tile": {
+		"pixel": 335040,
+		"level": 8,
+		"table": 1,
+		"columns": {
+			"id": {
+				"type": "id",
+				"values": [22137869, 9007199254740991, 564339647]
+			},
+			"ra": {
+				"type": "float64",
+				"values": [101.287, null, -3.25]
+			},
+			"mag": {
+				"type": "float32",
+				"values": [-1.5, 2.25, null]
+			},
+			"flag": {
+				"type": "bool",
+				"values": [true, null, false]
+			},
+			"i8": {
+				"type": "int8",
+				"values": [-128, 0, 127]
+			},
+			"i16": {
+				"type": "int16",
+				"values": [null, -5, 7]
+			},
+			"i32": {
+				"type": "int32",
+				"values": [-2147483648, 1, 2147483647]
+			},
+			"u8": {
+				"type": "uint8",
+				"values": [0, 200, 255]
+			},
+			"u16": {
+				"type": "uint16",
+				"values": [65535, 1, null]
+			},
+			"mask": {
+				"type": "uint32",
+				"values": [2, 0, 4294967295]
+			},
+			"name": {
+				"type": "string",
+				"values": ["α Cen", null, ""]
+			},
+			"source": {
+				"type": "dict",
+				"values": ["gaia-dr3", "hipparcos-2007", null]
+			},
+			"cross_ids": {
+				"type": "cross_ids",
+				"values": [
+					[
+						{
+							"catalogue": "gaia",
+							"release": "dr3",
+							"catalogue_id": "123"
+						},
+						{
+							"catalogue": "hip",
+							"release": "2007",
+							"catalogue_id": "32349"
+						}
+					],
+					null,
+					[
+						{
+							"catalogue": "hip",
+							"release": "2007",
+							"catalogue_id": "7"
+						},
+						{
+							"catalogue": "iau",
+							"release": "wgsn",
+							"catalogue_id": "Sîrius"
+						},
+						{
+							"catalogue": "gaia",
+							"release": "dr3",
+							"catalogue_id": "9"
+						}
+					]
+				]
+			},
+			"alias_target": {
+				"type": "id",
+				"values": [null, null, 27468735]
+			}
+		}
+	},
+	"node": {
+		"centre": [-8.0, 8.0, -8.0],
+		"half": 8.0,
+		"min_range": 13.0,
+		"max_range": 40.0,
+		"child_range": [0.0, 12.5, 0.0, 0.0, 3.25, 0.0, 0.0, 0.0],
+		"depth": 14,
+		"columns": {
+			"x": {
+				"type": "float32",
+				"values": [0.5, -7.75, 1.0, 0.0, 3.0]
+			},
+			"y": {
+				"type": "float32",
+				"values": [-0.25, 6.5, 0.0, 2.0, -3.0]
+			},
+			"z": {
+				"type": "float32",
+				"values": [7.0, 0.125, -1.0, 0.0, 0.5]
+			},
+			"range": {
+				"type": "float32",
+				"values": [40.0, 30.0, 20.0, 15.0, 13.0]
+			},
+			"mag": {
+				"type": "float32",
+				"values": [1.4199999570846558, 4.829999923706055, 13.40999984741211, 9.0, 10.5]
+			},
+			"colour": {
+				"type": "float32",
+				"values": [0.0, 0.8199999928474426, 3.799999952316284, null, 1.5]
+			},
+			"class": {
+				"type": "uint8",
+				"values": [1, 1, 1, 1, 1]
+			}
+		}
+	},
+	"split": [true, false, false, true, false, true, true, false, true, false, false]
+}

@@ -1,0 +1,757 @@
+/**
+ * The stars of the Milky Way render tree. Nodes load and unload as the camera
+ * moves.
+ *
+ * A node holds the stars of its box that stay visible from farthest away. The
+ * magnitude of a box is the apparent magnitude, seen from the camera, of the
+ * brightest star that the box can hold (`boxMagnitude`). No star of the box is
+ * brighter. The magnitude of a parent is never above the magnitudes of its
+ * children, so the walk reaches each child through its parent.
+ *
+ * The walk takes the boxes under the limit magnitude, brightest first, until
+ * the point budget is full. The first box that the budget leaves out sets the
+ * drawn limit to its magnitude. Thus that box holds no star bright enough to
+ * show, and nothing pops in when it loads later. A box that can hold a very
+ * bright star loads whatever the budget.
+ *
+ * The limit increases with the camera's distance from the barycentre, as an
+ * exposure does. Near the Sun the sky stays light while the skybox shares
+ * it, and a zoom on another star keeps that star's sky. Zoomed out to the
+ * galaxy, the budget sets what draws.
+ *
+ * Inside the solar system the skybox is the sky and the starfield loads
+ * nothing. Past a distance from the barycentre it loads, and over a band of
+ * distance it takes the sky from the skybox (`band.ts`). It does so only once
+ * the nodes it wants are in, and only where it can draw.
+ *
+ * Loaded nodes stay in a cache with a byte budget. The node wanted least
+ * recently goes first. Each drawn node is one `Points` in tree coordinates
+ * (pc, ICRS axes), under a group that takes them to the floating-origin scene.
+ */
+
+import {
+	BufferAttribute,
+	BufferGeometry,
+	Group,
+	Points,
+	Vector3,
+	type PerspectiveCamera,
+	type Scene,
+	type ShaderMaterial
+} from 'three';
+import { Container, nodeInfo, type NodeInfo } from '$lib/fetch/extrasolar/container';
+import {
+	ExtrasolarStaleError,
+	extrasolarAllowed,
+	extrasolarBase,
+	extrasolarPath,
+	fetchExtrasolarFile,
+	fetchExtrasolarMetadata,
+	type ExtrasolarCredit,
+	type ExtrasolarTree
+} from '$lib/fetch/extrasolar/files';
+import { RetryBackoff } from '$lib/fetch/retry-backoff';
+import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { AU_SCALE } from '$lib/math/units';
+import { PREFETCH_AU, RELEASE_AU, bandShare } from './band';
+import { starColours } from './colour';
+import { makeStarMaterial, starUniforms } from './material';
+import {
+	PC_SCENE,
+	boxDistance,
+	boxMagnitude,
+	childCentre,
+	sceneToTree,
+	treeMatrixElements,
+	treeToScene,
+	type Vec3
+} from './tree';
+
+/** The tree the starfield draws. */
+const TREE = 'mw';
+const ROOT = 'r';
+/** Retry key of `metadata.json`. No node has this name. */
+const METADATA = 'metadata.json';
+
+/** Limit magnitude with the camera near its target. */
+const BASE_LIMIT_MAG = 7.5;
+/** Zoom distance (pc) past which the limit rises by 5 magnitudes per decade. */
+const EXPOSURE_PC = 1;
+/** A box that can hold a star this bright loads whatever the budget. The
+ *  boxes near the camera have magnitudes far below any limit, and a small
+ *  budget would leave the brightest stars out. */
+const MUST_LOAD_MAG = 1;
+/** A node's magnitude past the limit at which its load is dropped. */
+const ABORT_MARGIN_MAG = 1;
+/** Time constant of the drawn limit's approach to its target. */
+const LIMIT_EASE_MS = 300;
+/** Time constant of the starfield's share of the sky following the band. */
+const SHARE_EASE_MS = 300;
+/** Time for a node to fade in or out. */
+const NODE_FADE_MS = 400;
+/** Least time between two selections when nothing changed. */
+const SELECT_EVERY_MS = 100;
+/** Most nodes uploaded in one frame. */
+const ADDS_PER_FRAME = 4;
+/** Longest wait for the boot's minor bodies before the first node loads. */
+const BOOT_GATE_MS = 10_000;
+/** First of the transparent objects, because the stars are behind everything. */
+const STAR_RENDER_ORDER = -1;
+
+export interface StarfieldBudget {
+	/** Stars drawn at once. */
+	points: number;
+	/** Bytes of loaded nodes kept, drawn or not. */
+	bytes: number;
+	/** Node fetches at once. */
+	fetches: number;
+}
+
+/** A drawn node, for picking and focusing. Its `Points` draws the rows of its
+ *  file in file order, so a vertex index is a row of the node's ID file. */
+export interface StarNodeView {
+	name: string;
+	rows: number;
+	points: Points;
+	container: Container;
+	info: NodeInfo;
+}
+
+interface Loaded {
+	container: Container;
+	info: NodeInfo;
+	geometry: BufferGeometry;
+	bytes: number;
+}
+
+interface StarNode {
+	name: string;
+	depth: number;
+	centre: Vec3;
+	half: number;
+	/** Largest visibility range in the node, pc at the tree's limit magnitude. */
+	range: number;
+	parent: StarNode | null;
+	children: StarNode[];
+	state: 'idle' | 'loading' | 'loaded';
+	abort: AbortController | null;
+	data: Loaded | null;
+	points: Points | null;
+	/** Magnitude of the box from the camera at the last selection. */
+	magnitude: number;
+	wanted: boolean;
+	lastWantedMs: number;
+	/** 0 to 1; drawn while above 0. */
+	fade: number;
+}
+
+/** Whether the stars can draw. `unknown` until the tree's metadata is in. */
+export type StarfieldAvailability = 'unknown' | 'yes' | 'no';
+
+export interface StarfieldStats {
+	drawnNodes: number;
+	drawnPoints: number;
+	cachedNodes: number;
+	cachedBytes: number;
+	loading: number;
+	limit: number;
+	targetLimit: number;
+	/** Loading: the camera is past the prefetch distance. */
+	active: boolean;
+	/** The starfield's share of the sky. */
+	share: number;
+}
+
+const _view = new Vector3();
+
+export class StarfieldSystem {
+	/** Tree coordinates to the floating-origin scene. */
+	readonly group = new Group();
+	private readonly uniforms = starUniforms();
+	private tree: ExtrasolarTree | null = null;
+	private credits: ExtrasolarCredit[] = [];
+	private root: StarNode | null = null;
+	private readonly nodes = new Map<string, StarNode>();
+	private readonly drawn = new Set<StarNode>();
+	private readonly retries = new RetryBackoff<string>(() => this.markDirty());
+	private loading = 0;
+	private cachedBytes = 0;
+	/** `no` when the map has no extrasolar base, opened without the layer,
+	 *  or the metadata has no tree that this host may draw. */
+	private drawable: StarfieldAvailability;
+	private metadataLoading = false;
+	private bootGate: Promise<void> | null = null;
+	private stale = false;
+	private disposed = false;
+	private dirty = true;
+	private lastSelectMs = -Infinity;
+	private lastFrameMs = 0;
+	private targetLimit = BASE_LIMIT_MAG;
+	/** The limit that the wanted set allows. It is below the target when the budget is full. */
+	private allowedLimit = BASE_LIMIT_MAG;
+	private creditsShown = false;
+	/** The camera is far enough from the barycentre for the starfield to load. */
+	private active = false;
+	/** The nodes wanted since loading started have come in. */
+	private ready = false;
+	/** The starfield's share of the sky, and the share it eases to. */
+	private skyShare = 0;
+	private skyShareTarget = 0;
+	private readonly matrix: number[] = [];
+
+	constructor(
+		private readonly ctx: ContextManager,
+		scene: Scene,
+		private budget: StarfieldBudget,
+		/** Called when something arrives that the next frame should draw. */
+		private readonly onChange: () => void
+	) {
+		this.group.name = 'starfield';
+		this.group.matrixAutoUpdate = false;
+		this.group.visible = false;
+		scene.add(this.group);
+		const open = extrasolarBase() !== '' && !ctx.layers.skipped.has('starfield');
+		this.drawable = open ? 'unknown' : 'no';
+	}
+
+	setBudget(budget: StarfieldBudget): void {
+		this.budget = budget;
+		this.markDirty();
+	}
+
+	/** The tree being drawn, once its metadata is in. */
+	treeEntry(): ExtrasolarTree | null {
+		return this.tree;
+	}
+
+	/** Every drawn node. */
+	drawnNodes(): StarNodeView[] {
+		const out: StarNodeView[] = [];
+		for (const node of this.drawn) {
+			const view = this.view(node);
+			if (view) out.push(view);
+		}
+		return out;
+	}
+
+	/** A loaded node by name, drawn or only cached. */
+	node(name: string): StarNodeView | undefined {
+		const node = this.nodes.get(name);
+		return node ? this.view(node) : undefined;
+	}
+
+	/** Scene position (barycentre origin, scene units) of a row of a loaded
+	 *  node. Its float32 offset from the node centre limits it to about
+	 *  half · 2^-24 of the node; a close approach takes the record's position. */
+	rowPosition(name: string, row: number): Vec3 | null {
+		const data = this.nodes.get(name)?.data;
+		if (!data || row < 0 || row >= data.container.rows) return null;
+		const at = data.geometry.getAttribute('position').array as Float32Array;
+		const [cx, cy, cz] = data.info.centre;
+		const p = treeToScene(cx + at[3 * row], cy + at[3 * row + 1], cz + at[3 * row + 2], {
+			x: 0,
+			y: 0,
+			z: 0
+		});
+		return [p.x, p.y, p.z];
+	}
+
+	stats(): StarfieldStats {
+		let drawnPoints = 0;
+		for (const node of this.drawn) drawnPoints += node.data?.container.rows ?? 0;
+		let cachedNodes = 0;
+		for (const node of this.nodes.values()) if (node.data) cachedNodes++;
+		return {
+			drawnNodes: this.drawn.size,
+			drawnPoints,
+			cachedNodes,
+			cachedBytes: this.cachedBytes,
+			loading: this.loading,
+			limit: this.uniforms.uLimit.value,
+			targetLimit: this.targetLimit,
+			active: this.active,
+			share: this.skyShare
+		};
+	}
+
+	/** The starfield's share of the sky, 0 to 1. The skybox takes the rest. */
+	share(): number {
+		return this.skyShare;
+	}
+
+	/** Whether the stars can draw, so that the camera may leave the solar system. */
+	availability(): StarfieldAvailability {
+		return this.drawable;
+	}
+
+	/** True while a frame would change what draws. */
+	busy(): boolean {
+		if (this.loading > 0) return true;
+		if (this.skyShare !== this.skyShareTarget) return true;
+		if (this.drawn.size === 0) return false;
+		if (Math.abs(this.uniforms.uLimit.value - this.allowedLimit) > 0.01) return true;
+		for (const node of this.drawn) {
+			if (node.fade !== (node.wanted ? 1 : 0)) return true;
+			if (node.wanted && node.data && !node.points) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Per drawn frame. `focus` is the floating origin (scene units from the
+	 * barycentre); `gain` dims the stars with the sky.
+	 *
+	 * The layer switch only decides what draws, as for every other layer. The
+	 * nodes follow the camera while the layer is hidden, so a switch never
+	 * sends a request. A layer switched off before the map opened never
+	 * fetches.
+	 */
+	update(
+		camera: PerspectiveCamera,
+		focus: Vec3,
+		pixelRatio: number,
+		gain: number,
+		nowMs: number
+	): void {
+		const dtMs = this.lastFrameMs ? Math.min(nowMs - this.lastFrameMs, 250) : 0;
+		this.lastFrameMs = nowMs;
+		const wx = camera.position.x + focus[0];
+		const wy = camera.position.y + focus[1];
+		const wz = camera.position.z + focus[2];
+		const au = Math.hypot(wx, wy, wz) / AU_SCALE;
+		if (!this.active && au > PREFETCH_AU) this.active = true;
+		else if (this.active && au < RELEASE_AU) this.stopLoading();
+		if (this.active) this.start();
+
+		const shown = this.ctx.layers.isVisible('starfield');
+		this.skyShareTarget = shown && this.ready && this.root ? bandShare(au) : 0;
+		const shareEase = dtMs > 0 ? 1 - Math.exp(-dtMs / SHARE_EASE_MS) : 1;
+		this.skyShare += (this.skyShareTarget - this.skyShare) * shareEase;
+		if (Math.abs(this.skyShareTarget - this.skyShare) < 1e-3) this.skyShare = this.skyShareTarget;
+		this.group.visible = shown && this.root !== null && this.skyShare > 0;
+		if (!this.root) return;
+
+		this.group.matrix.fromArray(treeMatrixElements(focus, this.matrix));
+		this.group.matrixWorldNeedsUpdate = true;
+
+		const cam = sceneToTree(wx, wy, wz);
+		const fromSunPc = Math.hypot(wx, wy, wz) / PC_SCENE;
+		const target = BASE_LIMIT_MAG + 5 * Math.log10(Math.max(1, fromSunPc / EXPOSURE_PC));
+		if (target !== this.targetLimit) this.dirty = true;
+		this.targetLimit = target;
+
+		const due = this.dirty || nowMs - this.lastSelectMs >= SELECT_EVERY_MS;
+		if (this.active && !this.stale && due) {
+			this.select(cam, nowMs);
+		}
+
+		const limit = this.uniforms.uLimit;
+		const ease = dtMs > 0 ? 1 - Math.exp(-dtMs / LIMIT_EASE_MS) : 1;
+		limit.value += (this.allowedLimit - limit.value) * ease;
+		this.uniforms.uPixelRatio.value = pixelRatio;
+		this.uniforms.uGain.value = gain * this.skyShare;
+
+		this.applyFades(dtMs, camera, focus);
+		if (this.group.visible && !this.creditsShown && this.drawn.size > 0) {
+			this.creditsShown = true;
+			this.ctx.credits.setStars(this.credits);
+		}
+	}
+
+	dispose(): void {
+		this.disposed = true;
+		for (const node of this.nodes.values()) {
+			node.abort?.abort();
+			this.undraw(node);
+			node.data?.geometry.dispose();
+		}
+		this.nodes.clear();
+		this.group.removeFromParent();
+	}
+
+	/** Back in the solar system: load nothing more, and let every node fade out.
+	 *  The loaded ones stay in the cache. */
+	private stopLoading(): void {
+		this.active = false;
+		this.ready = false;
+		for (const node of this.nodes.values()) {
+			node.wanted = false;
+			node.abort?.abort();
+		}
+		this.markDirty();
+	}
+
+	/** Fetch the tree's metadata while the answer is unknown. A failed fetch
+	 *  gives no answer, and is tried again after a wait. */
+	private start(): void {
+		if (this.drawable !== 'unknown' || this.metadataLoading) return;
+		if (this.retries.waiting(METADATA)) return;
+		this.metadataLoading = true;
+		this.bootGate ??= Promise.race([
+			eagerMinorsDone,
+			new Promise<void>((resolve) => setTimeout(resolve, BOOT_GATE_MS))
+		]);
+		void (async () => {
+			await this.bootGate;
+			const meta = await fetchExtrasolarMetadata();
+			const tree = meta?.trees[TREE];
+			if (this.disposed) return;
+			this.retries.clear(METADATA);
+			if (!meta || !tree || !extrasolarAllowed(tree)) {
+				this.noStars();
+				return;
+			}
+			this.tree = tree;
+			this.credits = meta.credits;
+			this.root = this.record(ROOT, 0, tree.centre, tree.half_size, Infinity, null);
+			this.drawable = 'yes';
+			this.markDirty();
+		})()
+			.catch((err) => {
+				if (this.disposed) return;
+				console.warn('[starfield] metadata.json did not load:', err);
+				this.retries.fail(METADATA);
+			})
+			.finally(() => {
+				this.metadataLoading = false;
+			});
+	}
+
+	/** No star draws this session: the camera goes back inside the solar system. */
+	private noStars(): void {
+		this.drawable = 'no';
+		this.onChange();
+	}
+
+	private record(
+		name: string,
+		depth: number,
+		centre: Vec3,
+		half: number,
+		range: number,
+		parent: StarNode | null
+	): StarNode {
+		const node: StarNode = {
+			name,
+			depth,
+			centre,
+			half,
+			range,
+			parent,
+			children: [],
+			state: 'idle',
+			abort: null,
+			data: null,
+			points: null,
+			magnitude: Infinity,
+			wanted: false,
+			lastWantedMs: -Infinity,
+			fade: 0
+		};
+		this.nodes.set(name, node);
+		return node;
+	}
+
+	private markDirty(): void {
+		this.dirty = true;
+		this.onChange();
+	}
+
+	/** Walk the loaded tree from the root, brightest box first. */
+	private select(cam: Vec3, nowMs: number): void {
+		const tree = this.tree;
+		const root = this.root;
+		if (!tree || !root) return;
+		this.dirty = false;
+		this.lastSelectMs = nowMs;
+		for (const node of this.nodes.values()) node.wanted = false;
+
+		const magnitude = (node: StarNode) =>
+			node === root
+				? -Infinity
+				: boxMagnitude(boxDistance(cam, node.centre, node.half), node.range, tree.range_limit_mag);
+		const heap = new NodeHeap();
+		root.magnitude = magnitude(root);
+		heap.push(root);
+		let points = 0;
+		let allowed = this.targetLimit;
+		const wanted: StarNode[] = [];
+		for (let node = heap.pop(); node; node = heap.pop()) {
+			if (node.magnitude > this.targetLimit) break;
+			// Rows are known once a node is in; until then a full node is assumed.
+			const rows = node.data?.container.rows ?? tree.node_rows;
+			if (points + rows > this.budget.points && node.magnitude > MUST_LOAD_MAG) {
+				allowed = node.magnitude;
+				break;
+			}
+			points += rows;
+			node.wanted = true;
+			node.lastWantedMs = nowMs;
+			wanted.push(node);
+			for (const child of node.children) {
+				child.magnitude = magnitude(child);
+				heap.push(child);
+			}
+		}
+		this.allowedLimit = allowed;
+		if (wanted.every((node) => node.data || this.retries.waiting(node.name))) this.ready = true;
+
+		for (const node of wanted) {
+			if (this.loading >= this.budget.fetches) break;
+			if (node.state === 'idle' && !this.retries.waiting(node.name)) this.load(node);
+		}
+		for (const node of this.nodes.values()) {
+			if (node.state !== 'loading' || node.wanted) continue;
+			if (node.magnitude > allowed + ABORT_MARGIN_MAG || !node.parent?.wanted) {
+				node.abort?.abort();
+			}
+		}
+		for (const node of wanted) if (node.data) this.drawn.add(node);
+		this.evict();
+	}
+
+	private load(node: StarNode): void {
+		const tree = this.tree;
+		if (!tree) return;
+		node.state = 'loading';
+		this.loading++;
+		const abort = new AbortController();
+		node.abort = abort;
+		fetchExtrasolarFile(extrasolarPath(tree.node, { name: node.name }), tree.token, {
+			signal: abort.signal,
+			priority: 'low'
+		})
+			.then((container) => {
+				if (this.disposed) return;
+				this.retries.clear(node.name);
+				this.adopt(node, container);
+			})
+			.catch((err: unknown) => {
+				node.state = 'idle';
+				if (this.disposed || abort.signal.aborted) return;
+				if (err instanceof ExtrasolarStaleError) {
+					// The files are from a newer export than the tab's metadata. Load no more.
+					this.stale = true;
+					return;
+				}
+				this.retries.fail(node.name);
+				console.warn(`[starfield] node ${node.name} did not load:`, err);
+			})
+			.finally(() => {
+				this.loading--;
+				node.abort = null;
+				this.markDirty();
+			});
+	}
+
+	private adopt(node: StarNode, container: Container): void {
+		const info = nodeInfo(container);
+		const rows = container.rows;
+		const x = container.float32('x');
+		const y = container.float32('y');
+		const z = container.float32('z');
+		const position = new Float32Array(3 * rows);
+		for (let i = 0; i < rows; i++) {
+			position[3 * i] = x[i];
+			position[3 * i + 1] = y[i];
+			position[3 * i + 2] = z[i];
+		}
+		const colour = starColours(container.float32('colour'), new Uint8Array(3 * rows));
+		const geometry = new BufferGeometry();
+		geometry.setAttribute('position', new BufferAttribute(position, 3));
+		geometry.setAttribute('mag', new BufferAttribute(container.float32('mag'), 1));
+		geometry.setAttribute('starColour', new BufferAttribute(colour, 3, true));
+		const bytes = container.buffer.byteLength + position.byteLength + colour.byteLength;
+		node.data = { container, info, geometry, bytes };
+		node.state = 'loaded';
+		node.centre = info.centre;
+		node.half = info.half;
+		node.range = info.maxRange;
+		this.cachedBytes += bytes;
+		node.children = [];
+		for (let k = 0; k < 8; k++) {
+			if (!((info.childMask >> k) & 1)) continue;
+			node.children.push(
+				this.record(
+					node.name + k,
+					node.depth + 1,
+					childCentre(info.centre, info.half, k),
+					info.half / 2,
+					info.childRange[k],
+					node
+				)
+			);
+		}
+	}
+
+	/** Drop the least recently wanted nodes past the byte budget; a node goes
+	 *  after its children. */
+	private evict(): void {
+		if (this.cachedBytes <= this.budget.bytes) return;
+		const candidates = [...this.nodes.values()].filter(
+			(node) =>
+				node.data &&
+				!node.wanted &&
+				!node.points &&
+				node.children.every((child) => child.state === 'idle' && !child.data)
+		);
+		candidates.sort((a, b) => a.lastWantedMs - b.lastWantedMs || b.depth - a.depth);
+		for (const node of candidates) {
+			if (this.cachedBytes <= this.budget.bytes) break;
+			// A child dropped earlier in this pass leaves its parent free to go next time.
+			if (node.children.some((child) => child.data)) continue;
+			this.release(node);
+		}
+	}
+
+	private release(node: StarNode): void {
+		const data = node.data;
+		if (!data) return;
+		data.geometry.dispose();
+		this.cachedBytes -= data.bytes;
+		node.data = null;
+		node.state = 'idle';
+		for (const child of node.children) this.forget(child);
+		node.children = [];
+	}
+
+	/** Drop the records of a subtree that holds no data. */
+	private forget(node: StarNode): void {
+		for (const child of node.children) this.forget(child);
+		this.nodes.delete(node.name);
+	}
+
+	/** Step the fades, add the nodes that came in, cull the drawn ones to the
+	 *  view and take out the ones that faded away. */
+	private applyFades(dtMs: number, camera: PerspectiveCamera, focus: Vec3): void {
+		const step = dtMs / NODE_FADE_MS;
+		let adds = 0;
+		const view = new ViewCone(camera);
+		for (const node of [...this.drawn]) {
+			const target = node.wanted ? 1 : 0;
+			if (!node.points) {
+				if (!node.wanted || !node.data || adds >= ADDS_PER_FRAME) {
+					if (!node.wanted) this.drawn.delete(node);
+					continue;
+				}
+				adds++;
+				this.draw(node);
+			}
+			if (target > node.fade) node.fade = Math.min(node.fade + step, 1);
+			else if (target < node.fade) node.fade = Math.max(node.fade - step, 0);
+			if (node.fade === 0 && !node.wanted) {
+				this.undraw(node);
+				this.drawn.delete(node);
+				continue;
+			}
+			const points = node.points!;
+			(points.material as ShaderMaterial).uniforms.uFade.value = node.fade;
+			points.visible = view.sees(node, focus);
+		}
+	}
+
+	private draw(node: StarNode): void {
+		const data = node.data!;
+		const points = new Points(data.geometry, makeStarMaterial(this.uniforms));
+		points.position.set(...data.info.centre);
+		points.updateMatrix();
+		points.matrixAutoUpdate = false;
+		// Culled here against the view cone: three's frustum has a far plane,
+		// and a star past it draws on it.
+		points.frustumCulled = false;
+		points.renderOrder = STAR_RENDER_ORDER;
+		points.userData.starNode = node.name;
+		node.points = points;
+		node.fade = 0;
+		this.group.add(points);
+	}
+
+	private undraw(node: StarNode): void {
+		const points = node.points;
+		if (!points) return;
+		points.removeFromParent();
+		(points.material as ShaderMaterial).dispose();
+		// Frees the GPU buffers; the arrays stay in the cache for a redraw.
+		node.data?.geometry.dispose();
+		node.points = null;
+		node.fade = 0;
+	}
+
+	private view(node: StarNode): StarNodeView | undefined {
+		const data = node.data;
+		if (!data || !node.points) return undefined;
+		return {
+			name: node.name,
+			rows: data.container.rows,
+			points: node.points,
+			container: data.container,
+			info: data.info
+		};
+	}
+}
+
+/** The camera's view without its far plane, for culling node boxes. */
+class ViewCone {
+	private readonly tanY: number;
+	private readonly tanX: number;
+	private readonly inverse: PerspectiveCamera['matrixWorldInverse'];
+
+	constructor(camera: PerspectiveCamera) {
+		this.tanY = Math.tan(((camera.fov / 2) * Math.PI) / 180) / camera.zoom;
+		this.tanX = this.tanY * camera.aspect;
+		this.inverse = camera.matrixWorldInverse;
+	}
+
+	/** Whether the bounding sphere of a node's box meets the view. */
+	sees(node: StarNode, focus: Vec3): boolean {
+		const [cx, cy, cz] = node.centre;
+		const at = treeToScene(cx, cy, cz, _view);
+		_view.set(at.x - focus[0], at.y - focus[1], at.z - focus[2]).applyMatrix4(this.inverse);
+		const r = node.half * Math.sqrt(3) * PC_SCENE;
+		const depth = -_view.z;
+		if (depth < -r) return false;
+		// Distance from the centre to each side plane, along its normal.
+		const sideX = (Math.abs(_view.x) - depth * this.tanX) / Math.hypot(1, this.tanX);
+		const sideY = (Math.abs(_view.y) - depth * this.tanY) / Math.hypot(1, this.tanY);
+		return sideX <= r && sideY <= r;
+	}
+}
+
+/** A binary min-heap of nodes on their magnitude. */
+class NodeHeap {
+	private readonly items: StarNode[] = [];
+
+	push(node: StarNode): void {
+		const items = this.items;
+		items.push(node);
+		let i = items.length - 1;
+		while (i > 0) {
+			const up = (i - 1) >> 1;
+			if (items[up].magnitude <= items[i].magnitude) break;
+			[items[up], items[i]] = [items[i], items[up]];
+			i = up;
+		}
+	}
+
+	pop(): StarNode | undefined {
+		const items = this.items;
+		const top = items[0];
+		const last = items.pop();
+		if (items.length > 0 && last) {
+			items[0] = last;
+			let i = 0;
+			for (;;) {
+				const l = 2 * i + 1;
+				const r = l + 1;
+				let min = i;
+				if (l < items.length && items[l].magnitude < items[min].magnitude) min = l;
+				if (r < items.length && items[r].magnitude < items[min].magnitude) min = r;
+				if (min === i) break;
+				[items[min], items[i]] = [items[i], items[min]];
+				i = min;
+			}
+		}
+		return top;
+	}
+}

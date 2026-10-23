@@ -18,6 +18,7 @@ export const KIT_HOST: HostOverrides = {
 	...(IMAGES_URL ? { imagesUrl: IMAGES_URL } : {}),
 	...(env.PUBLIC_LIVE_URL ? { liveUrl: env.PUBLIC_LIVE_URL } : {}),
 	...(env.PUBLIC_TILES_URL ? { tilesUrl: env.PUBLIC_TILES_URL } : {}),
+	...(env.PUBLIC_EXTRASOLAR_URL ? { extrasolarUrl: env.PUBLIC_EXTRASOLAR_URL } : {}),
 	// Read through the live binding: the client swaps in a cached getLocale.
 	locale: () => getLocale(),
 	messages: m,

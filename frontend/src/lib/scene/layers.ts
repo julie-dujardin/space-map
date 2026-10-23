@@ -26,6 +26,7 @@ export const MAP_LAYERS = [
 	'spacecraft',
 	'satellites',
 	'debris',
+	'starfield',
 	'orbits',
 	'labels',
 	'halos',

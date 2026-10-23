@@ -192,6 +192,8 @@ export class ContextManager {
 	/** Per-frame hook, called when sim jd advances, driving hot-reload of
 	 *  time-segmented and chunk-indexed zones. */
 	refreshTick(date: Date): void {
+		// Only the Sun draws: no zone shows, so none loads.
+		if (this.visibility.systemShare === 0) return;
 		this.refresher?.tick(date);
 	}
 

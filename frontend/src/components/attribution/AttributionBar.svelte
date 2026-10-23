@@ -60,7 +60,8 @@
 		const chips = attributionChips(ctx, labels);
 		return [
 			{ label: m.attribution_orbits(), names: chips.orbits },
-			{ label: m.attribution_imagery(), names: chips.imagery }
+			{ label: m.attribution_imagery(), names: chips.imagery },
+			{ label: m.attribution_stars(), names: chips.stars }
 		];
 	});
 	const anyChip = $derived(shown.some((chip) => chip.names.length > 0));
