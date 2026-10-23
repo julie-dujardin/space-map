@@ -21,7 +21,7 @@
 	interface Props {
 		/** What the URL points at — it sets how many toolbar buttons the header
 		 *  row ends up carrying (see DetailDrawer's `drawerToolbar`). */
-		kind: 'body' | 'feature' | 'group';
+		kind: 'body' | 'feature' | 'group' | 'star';
 		/** The subject's name, empty until it is known. */
 		title: string;
 		onClose: () => void;
@@ -30,8 +30,10 @@
 	let { kind, title, onClose }: Props = $props();
 
 	// Zoom (bodies only) and travel (anything with a body) wait for the scene;
-	// share and close are drawn for real ahead of it.
-	let pendingButtons = $derived(kind === 'group' ? 0 : kind === 'feature' ? 1 : 2);
+	// share and close are drawn for real ahead of it. A star has neither.
+	let pendingButtons = $derived(
+		kind === 'group' || kind === 'star' ? 0 : kind === 'feature' ? 1 : 2
+	);
 
 	// The real sheet mounts off-screen and is only pinned to its snap point on
 	// the following frame, so dropping this one on the same tick leaves the

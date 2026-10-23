@@ -1,6 +1,11 @@
 import { Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ObjectType, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
+import {
+	ObjectType,
+	isExtrasolar,
+	isSurfaceFeature,
+	type PositionedBody
+} from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks, CameraView } from '$lib/scene/types';
@@ -273,8 +278,9 @@ export class FocusController {
 		const { ctx, bodyObjects, controls, callbacks, focus, camera, systemData, loadTexture } =
 			this.deps;
 		// Surface-feature bodies render nothing themselves — the host draws the
-		// terrain. Skip halo/label allocation.
-		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
+		// terrain, and the starfield an extrasolar object. Skip halo/label allocation.
+		const drawsItself = !isSurfaceFeature(body) && !isExtrasolar(body);
+		if (drawsItself) this.promotion.ensureBodyObjects(body);
 
 		// Unfocused bodies stay halo-only for cost; minDistance below reads the
 		// focused body's mesh radius, so swap focus first.
@@ -311,7 +317,7 @@ export class FocusController {
 		ctx.visibility.setFocused(featureHost ?? body);
 		callbacks.onFocusChange(body);
 		// The feature body has no detail bundle of its own; its host loads below.
-		if (!isSurfaceFeature(body)) loadTexture(body);
+		if (drawsItself) loadTexture(body);
 		// Landed probe / surface feature: also load the host for its nomenclature/terrain.
 		if (newNomBodyId && newNomBodyId !== body.data.id) {
 			const landingBody = ctx.getBody(newNomBodyId);
@@ -430,6 +436,30 @@ export class FocusController {
 		this.pendingInitialView = null; // scene-frame placement is final; skip the body-fixed replay
 	}
 
+	/** Snap focus onto a body with the camera `distance` from it on the line to
+	 *  `fromId`, looking away from that body: a star framed from the Sun's side,
+	 *  against the sky it is seen in from home. Scene-frame, like the home view. */
+	snapToBodyFrom(id: string, fromId: string, distance: number): void {
+		const { ctx, camera, controls, callbacks } = this.deps;
+		const body = ctx.getBody(id);
+		const from = ctx.getBody(fromId);
+		const pos = body && this.place(body);
+		const at = from && this.place(from);
+		if (!body || !pos || !at) return;
+		this.settleOnBodyInstant(body, pos);
+		const d = f64dist(at, pos);
+		const offset: Vec3 = [
+			((at[0] - pos[0]) / d) * distance,
+			((at[1] - pos[1]) / d) * distance,
+			((at[2] - pos[2]) / d) * distance
+		];
+		camera.position.set(offset[0], offset[1], offset[2]);
+		controls.update();
+		const settled = cartesianToSpherical(offset, [0, 0, 0]);
+		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
+		this.pendingInitialView = null;
+	}
+
 	/** Settle focus onto a resident body with no approach fly, nulling the cam-fly
 	 *  fields so stepFocusAnimation's settle branch leaves the snapped frame untouched. */
 	private settleOnBodyInstant(body: PositionedBody, pos: Readonly<Vec3>): void {
@@ -456,9 +486,9 @@ export class FocusController {
 		const body = this.focusedBody;
 		if (!body) return;
 		const { camera, controls, callbacks } = this.deps;
-		// Spacecraft use world coords (see focusedBodyQuat); natural bodies are
-		// body-fixed, falling back to identity until orientation loads.
-		const bodyFixed = !isModelBearing(body);
+		// Spacecraft and stars report in scene axes (see focusedBodyQuat). Other
+		// bodies are body-fixed, with identity until their spin loads.
+		const bodyFixed = !isModelBearing(body) && !isExtrasolar(body);
 		const quat = bodyFixed ? (this.focusedBodyQuat(body) ?? [0, 0, 0, 1]) : undefined;
 		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
 		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);

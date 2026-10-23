@@ -110,6 +110,13 @@
 	import { sceneToKm } from '$lib/math/units';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { jdToDate } from '$lib/time/jd';
+	import {
+		EXTRASOLAR_PREFIX,
+		extrasolarObjectId,
+		isExtrasolarObjectId
+	} from '$lib/fetch/extrasolar/ids';
+	import { extrasolarLookup } from '$lib/fetch/extrasolar/lookup';
+	import { STAR_VIEW_DISTANCE } from '$lib/scene/focus/star-focus';
 
 	const searchEnabled = isSearchEnabled();
 
@@ -142,10 +149,15 @@
 	/** The name the export gives `id`, or undefined when it gives none, or
 	 *  none in time when `hurried`. */
 	async function exportedName(id: string, hurried: boolean): Promise<string | undefined> {
-		const name = fetchObjectDetail(id).then(
-			(detail) => detail.localized?.name,
-			() => undefined
-		);
+		const name = isExtrasolarObjectId(id)
+			? fetchPageName({ kind: 'body', id }).then(
+					(found) => found || undefined,
+					() => undefined
+				)
+			: fetchObjectDetail(id).then(
+					(detail) => detail.localized?.name,
+					() => undefined
+				);
 		if (!hurried) return name;
 		return Promise.race([
 			name,
@@ -220,6 +232,7 @@
 	// Default camera distance: dive close to model/cuboid bodies, hold back for
 	// bare markers. Sync (isModelBearing, no fetch) so the camera moves at once.
 	function framingDistanceFor(type: string, body: PositionedBody): number {
+		if (type === UrlType.Extrasolar) return STAR_VIEW_DISTANCE;
 		if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
 			return isModelBearing(body) ? minCameraDistance(body) * 5 : 0.005;
 		}
@@ -238,13 +251,25 @@
 					distance: framingDistanceFor(type, body),
 					...(craft ? { latitude: DEFAULT_FRAMING_LAT, longitude: DEFAULT_FRAMING_LON } : {})
 				}),
-				commit: () =>
-					appState.setFocus({ type, id, name, tab: opts?.tab, featureType: opts?.featureType })
+				// An alias of the extrasolar catalogue lands on its live object, and
+				// the URL with it.
+				commit: (body) =>
+					appState.setFocus({
+						type,
+						id: body.extrasolar ? body.data.id : id,
+						name: body.extrasolar && body.data.id !== id ? '' : name,
+						tab: opts?.tab,
+						featureType: opts?.featureType
+					})
 			});
 			void reportArrival(arrival, id, name);
 		})();
 	};
 	setContext('focusObject', focusObject);
+	// Dev-only handle, beside the map's own: a headless test navigates the way a link does.
+	if (import.meta.env.DEV || import.meta.env.VITE_BENCH_HOOK) {
+		(window as unknown as Record<string, unknown>).__smFocusObject = focusObject;
+	}
 
 	// Feature picks from a collection page cross bodies: bring the host in and
 	// point selectedBody at it, then the resolve effect below fetches its
@@ -370,6 +395,8 @@
 		}
 		if (!selectedBody?.data.id) return null;
 		if (activeFeature) return { kind: 'feature', body: selectedBody, feature: activeFeature };
+		const star = selectedBody.extrasolar;
+		if (star) return { kind: 'star', body: selectedBody, record: star.record };
 		return { kind: 'body', body: selectedBody };
 	});
 
@@ -414,8 +441,14 @@
 	});
 	/** What the panel will be about, for chrome that has to guess before the
 	 *  focusable exists. */
-	const pendingKind = $derived<'body' | 'feature' | 'group'>(
-		appState.view.groupSlug ? 'group' : appState.view.featureId !== null ? 'feature' : 'body'
+	const pendingKind = $derived<'body' | 'feature' | 'group' | 'star'>(
+		appState.view.groupSlug
+			? 'group'
+			: appState.view.featureId !== null
+				? 'feature'
+				: isExtrasolarObjectId(appState.view.id)
+					? 'star'
+					: 'body'
 	);
 
 	// The drawer chunk loads the first time anything is focused — or the first
@@ -461,7 +494,8 @@
 				void prefetchFeatureDetail(bodyId, featureId);
 				subject = { kind: 'feature', bodyId, featureId };
 			} else {
-				void prefetchObjectDetail(bodyId);
+				// A star's records are the page's own lookup, already on their way.
+				if (!isExtrasolarObjectId(bodyId)) void prefetchObjectDetail(bodyId);
 				subject = { kind: 'body', id: bodyId, localized: ctx.getBody(bodyId)?.data.hasLocalized };
 			}
 			// The view takes the export's name as soon as it is read, and the title
@@ -788,6 +822,9 @@
 	});
 
 	async function openInitialView(): Promise<void> {
+		// An alias opens its live object, at that object's address. The server
+		// redirects it; this is for a page the server could not look up.
+		if (isExtrasolarObjectId(appState.view.id)) await followStarAlias(appState.view.id);
 		const initialId = appState.view.id;
 		// URL camera framing, restored onto the real target once it loads: the
 		// renderer settles its initial focus on the parent while the target's
@@ -816,6 +853,10 @@
 			if (initialId === EARTH_ID && !appState.view.framed) {
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
+			} else if (isExtrasolarObjectId(initialId) && !appState.view.framed) {
+				// A star seen from the Sun's side: behind it, the sky it is seen
+				// against from home.
+				map.snapToBodyFrom(initialId, SUN_ID, STAR_VIEW_DISTANCE);
 			} else if (!appState.view.framed) {
 				// No URL camera: frame by the target's size/model, same as search. The
 				// target's own type, since on a group page the view's is the group's.
@@ -848,6 +889,14 @@
 			// land on the default view instead, so an unknown URL opens home.
 			map.snapToBodyFacing(DEFAULT_VIEW.id, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 		}
+	}
+
+	/** Put the live object of an alias in the view, in place of the alias. */
+	async function followStarAlias(id: string): Promise<void> {
+		const found = await extrasolarLookup.live(id.slice(EXTRASOLAR_PREFIX.length)).catch(() => null);
+		if (found?.kind !== 'live') return;
+		const liveId = extrasolarObjectId(found.record.id);
+		if (liveId !== id) appState.replaceFocus(liveId, found.record.metadata.name ?? '');
 	}
 
 	// A primitive: `view` is replaced twice a second, and the filter is asked

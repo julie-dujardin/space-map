@@ -149,6 +149,9 @@ export function parentCrumb(
 		return null;
 	}
 
+	// A star has no page above it yet.
+	if (focusable.kind === 'star') return null;
+
 	const data = focusable.body.data;
 
 	// Dwarf planets climb to their category page; the orbit-class zone stays

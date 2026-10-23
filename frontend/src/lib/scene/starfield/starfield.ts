@@ -57,6 +57,7 @@ import { AU_SCALE } from '$lib/math/units';
 import { PREFETCH_AU, RELEASE_AU, bandShare } from './band';
 import { starColours } from './colour';
 import { makeStarMaterial, starUniforms } from './material';
+import type { StarAnchor } from '$lib/types/objects';
 import {
 	PC_SCENE,
 	boxDistance,
@@ -96,6 +97,11 @@ const SELECT_EVERY_MS = 100;
 const ADDS_PER_FRAME = 4;
 /** Longest wait for the boot's minor bodies before the first node loads. */
 const BOOT_GATE_MS = 10_000;
+/** The focused star draws at least this many magnitudes above the limit:
+ *  a dot half as bright as a full core, where the limit would hide it. */
+const FOCUS_FLOOR_MAG = 3;
+/** A magnitude no star reaches, for a focused star with none. */
+const NO_MAGNITUDE = 99;
 /** First of the transparent objects, because the stars are behind everything. */
 const STAR_RENDER_ORDER = -1;
 
@@ -144,6 +150,8 @@ interface StarNode {
 	lastWantedMs: number;
 	/** 0 to 1; drawn while above 0. */
 	fade: number;
+	/** The row of the focused star in this node, for the star it was found for. */
+	hidden: { id: number; row: number } | null;
 }
 
 /** Whether the stars can draw. `unknown` until the tree's metadata is in. */
@@ -199,6 +207,9 @@ export class StarfieldSystem {
 	private skyShare = 0;
 	private skyShareTarget = 0;
 	private readonly matrix: number[] = [];
+	/** The focused extrasolar object, drawn on its own at its record's place. */
+	private focusStar: StarAnchor | null = null;
+	private focusPoints: Points | null = null;
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -218,6 +229,27 @@ export class StarfieldSystem {
 	setBudget(budget: StarfieldBudget): void {
 		this.budget = budget;
 		this.markDirty();
+	}
+
+	/**
+	 * The extrasolar object at the focus, or null. It draws at its record's
+	 * place, which is exact where a node's float32 row is not, and whatever the
+	 * drawn limit or the budget. Its row in the tree draws nothing meanwhile,
+	 * so it is never drawn twice.
+	 */
+	setFocusStar(star: StarAnchor | null): void {
+		const next = star?.tree ? star : null;
+		if (next?.id === this.focusStar?.id) return;
+		this.focusStar = next;
+		if (this.focusPoints) {
+			this.focusPoints.removeFromParent();
+			this.focusPoints.geometry.dispose();
+			(this.focusPoints.material as ShaderMaterial).dispose();
+			this.focusPoints = null;
+		}
+		if (next) this.focusPoints = this.focusPoint(next);
+		for (const node of this.drawn) if (node.points) this.applyHidden(node);
+		this.onChange();
 	}
 
 	/** The tree being drawn, once its metadata is in. */
@@ -367,6 +399,7 @@ export class StarfieldSystem {
 			node.data?.geometry.dispose();
 		}
 		this.nodes.clear();
+		this.setFocusStar(null);
 		this.group.removeFromParent();
 	}
 
@@ -447,7 +480,8 @@ export class StarfieldSystem {
 			magnitude: Infinity,
 			wanted: false,
 			lastWantedMs: -Infinity,
-			fade: 0
+			fade: 0,
+			hidden: null
 		};
 		this.nodes.set(name, node);
 		return node;
@@ -612,6 +646,7 @@ export class StarfieldSystem {
 		this.cachedBytes -= data.bytes;
 		node.data = null;
 		node.state = 'idle';
+		node.hidden = null;
 		for (const child of node.children) this.forget(child);
 		node.children = [];
 	}
@@ -664,7 +699,43 @@ export class StarfieldSystem {
 		points.userData.starNode = node.name;
 		node.points = points;
 		node.fade = 0;
+		this.applyHidden(node);
 		this.group.add(points);
+	}
+
+	/** One point at the focused star's place, in the tree's frame. */
+	private focusPoint(star: StarAnchor): Points {
+		const geometry = new BufferGeometry();
+		geometry.setAttribute('position', new BufferAttribute(new Float32Array(3), 3));
+		// No magnitude in the record: it draws at the limit.
+		const mag = star.absMag ?? NO_MAGNITUDE;
+		geometry.setAttribute('mag', new BufferAttribute(new Float32Array([mag]), 1));
+		const colour = starColours(new Float32Array([star.colour ?? NaN]), new Uint8Array(3));
+		geometry.setAttribute('starColour', new BufferAttribute(colour, 3, true));
+		const material = makeStarMaterial(this.uniforms, FOCUS_FLOOR_MAG);
+		material.uniforms.uFade.value = 1;
+		const points = new Points(geometry, material);
+		points.position.set(...star.tree!);
+		points.updateMatrix();
+		points.matrixAutoUpdate = false;
+		points.frustumCulled = false;
+		points.renderOrder = STAR_RENDER_ORDER;
+		points.userData.focusStar = star.id;
+		this.group.add(points);
+		return points;
+	}
+
+	/** Hide the focused star's row in a drawn node, where the node holds it. */
+	private applyHidden(node: StarNode): void {
+		const star = this.focusStar;
+		let row = -1;
+		if (star && node.data) {
+			if (node.hidden?.id !== star.id) {
+				node.hidden = { id: star.id, row: findStarRow(node.data, star) };
+			}
+			row = node.hidden.row;
+		}
+		(node.points!.material as ShaderMaterial).uniforms.uHidden.value = row;
 	}
 
 	private undraw(node: StarNode): void {
@@ -689,6 +760,55 @@ export class StarfieldSystem {
 			info: data.info
 		};
 	}
+}
+
+/** Two float32 steps: the record's place, computed again here, can round
+ *  one step off the stored offset. */
+const ROW_STEPS = 2 ** -22;
+/** Floor of the match distance (pc) for a row at the node centre. */
+const ROW_FLOOR_PC = 1e-9;
+/** The tree rounds magnitudes to 1/1024. */
+const ROW_MAG = 0.01;
+
+/**
+ * The row of `star` in a node, or -1 when the node does not hold it. A row
+ * is the star when its float32 offset is the record's place to within the
+ * rounding, and its magnitude is the record's.
+ */
+export function findStarRow(
+	data: { container: Container; info: NodeInfo },
+	star: Pick<StarAnchor, 'tree' | 'absMag'>
+): number {
+	const tree = star.tree;
+	if (!tree) return -1;
+	const { centre, half } = data.info;
+	const ox = tree[0] - centre[0];
+	const oy = tree[1] - centre[1];
+	const oz = tree[2] - centre[2];
+	if (Math.max(Math.abs(ox), Math.abs(oy), Math.abs(oz)) > half * (1 + 1e-6)) return -1;
+	const tx = Math.abs(ox) * ROW_STEPS + ROW_FLOOR_PC;
+	const ty = Math.abs(oy) * ROW_STEPS + ROW_FLOOR_PC;
+	const tz = Math.abs(oz) * ROW_STEPS + ROW_FLOOR_PC;
+	const c = data.container;
+	const x = c.float32('x');
+	const y = c.float32('y');
+	const z = c.float32('z');
+	const mag = c.float32('mag');
+	let best = -1;
+	let bestDistance = Infinity;
+	for (let i = 0; i < c.rows; i++) {
+		const dx = Math.abs(x[i] - ox);
+		const dy = Math.abs(y[i] - oy);
+		const dz = Math.abs(z[i] - oz);
+		if (dx > tx || dy > ty || dz > tz) continue;
+		if (star.absMag !== null && Math.abs(mag[i] - star.absMag) > ROW_MAG) continue;
+		const distance = dx + dy + dz;
+		if (distance < bestDistance) {
+			best = i;
+			bestDistance = distance;
+		}
+	}
+	return best;
 }
 
 /** The camera's view without its far plane, for culling node boxes. */

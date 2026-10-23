@@ -1450,6 +1450,8 @@ export class SpaceMap {
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void;
 	// @internal
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void;
+	// @internal
+	snapToBodyFrom(id: string, fromId: string, distance: number): void;
 	tilesEnabled(): boolean;
 	// @internal
 	trackPathPoint(centerId: string, rKm: readonly [number, number, number]): void;

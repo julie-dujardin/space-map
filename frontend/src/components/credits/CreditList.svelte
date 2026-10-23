@@ -11,12 +11,15 @@
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { patchCredits, tileCredit } from '$lib/credits/tile-credit';
 	import PageContents, { type ContentsEntry } from '../nav/PageContents.svelte';
+	import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 
 	interface Props {
 		credits: Credits;
+		/** The catalogues of the extrasolar export, from its own metadata. */
+		stars?: readonly ExtrasolarCredit[];
 	}
 
-	let { credits }: Props = $props();
+	let { credits, stars = [] }: Props = $props();
 
 	// Merged imagery: one section per system, one row per body+layer. A layer
 	// qualifier only appears when a body contributes more than one.
@@ -103,7 +106,8 @@
 			children: [
 				{ id: 'orbits', label: m.attribution_section_orbits() },
 				{ id: 'rotation', label: m.attribution_section_rotation() },
-				{ id: 'metadata', label: m.attribution_section_metadata() }
+				{ id: 'metadata', label: m.attribution_section_metadata() },
+				...(stars.length ? [{ id: 'stars', label: m.attribution_section_stars() }] : [])
 			]
 		},
 		{
@@ -268,6 +272,28 @@
 				{/each}
 			</ul>
 		</section>
+
+		{#if stars.length > 0}
+			<section>
+				{@render sectionHeader('stars', m.attribution_section_stars())}
+				<ul class="space-y-1">
+					{#each stars as credit (credit.source)}
+						<li>
+							{@render link(credit.source, credit.name, credit.organisation)}
+							{#if credit.license}<span class="text-xs text-muted-foreground">
+									· {credit.license}</span
+								>{/if}
+							{#if credit.citation}
+								<div class="text-xs text-muted-foreground mt-0.5">{credit.citation}</div>
+							{/if}
+							{#if credit.attribution}
+								<div class="text-xs text-muted-foreground mt-0.5">{credit.attribution}</div>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 	</section>
 
 	<section>

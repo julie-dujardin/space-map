@@ -57,6 +57,16 @@ import { parseNomenclature } from '$lib/fetch/nomenclature/parse';
 import { gunzip, gunzipJson } from '$lib/fetch/gz';
 import { bodyHref, featureHref, groupHref } from '$lib/state/page-href';
 import { groupPageName, objectPageName } from '$lib/state/page-name';
+import { Container } from '$lib/fetch/extrasolar/container';
+import {
+	EXTRASOLAR_FORMAT,
+	ExtrasolarStaleError,
+	extrasolarAllowed,
+	extrasolarBase,
+	type ExtrasolarMetadata
+} from '$lib/fetch/extrasolar/files';
+import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { ExtrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 
 /** Localized shapes share this description source (object + group bundles).
  *  `description` is the CC0 Wikidata short description — the Wikipedia extract
@@ -729,5 +739,73 @@ export async function loadGroupSeo(slug: string, url: URL): Promise<SeoMeta | nu
 		canonical: absoluteHref(groupHref(slug, name), url),
 		image: card.image,
 		ogType: 'website'
+	};
+}
+
+/** What a star page's server render is: its meta, or where its alias goes. */
+export type StarPage = { kind: 'page'; seo: SeoMeta } | { kind: 'alias'; location: string };
+
+/**
+ * The extrasolar export as one request reads it, through the same lookup as
+ * the client: its own caches, and absolute URLs for the reason given at the
+ * top of this file. A file from another export throws, as a missing one does:
+ * neither says what the export holds.
+ */
+function requestLookup(url: URL): ExtrasolarLookup {
+	const signal = AbortSignal.timeout(LOOKUP_TIMEOUT_MS);
+	const base = `${absolutize(extrasolarBase(), url.origin)}/v1/x`;
+	let metadata: Promise<ExtrasolarMetadata> | null = null;
+	return new ExtrasolarLookup(
+		{
+			metadata: () =>
+				(metadata ??= (async () => {
+					const res = await fetchExport(`${base}/metadata.json`, signal);
+					if (!res) throw new Error(`${base}/metadata.json is missing`);
+					const meta = (await res.json()) as ExtrasolarMetadata;
+					if (meta.format !== EXTRASOLAR_FORMAT)
+						throw new Error(`extrasolar format ${meta.format}`);
+					return meta;
+				})()),
+			file: async (path, token) => {
+				const res = await fetchExport(`${base}/${path}?v=${token}`, signal);
+				if (!res) throw new Error(`${base}/${path} is missing`);
+				const file = new Container(await gunzip(res).arrayBuffer());
+				if (file.token !== token) throw new ExtrasolarStaleError(path, file.token, token);
+				return file;
+			},
+			allowed: extrasolarAllowed
+		},
+		{ tiles: 4, results: 4 }
+	);
+}
+
+function starDescription(name: string): string {
+	return m.seo_star_description({ name });
+}
+
+/**
+ * A star page's meta from its Metadata row, or the page its alias goes to.
+ * Null when the export has no live row for the ID: a 404. Throws when the
+ * export cannot be read.
+ */
+export async function loadStarSeo(idText: string, url: URL): Promise<StarPage | null> {
+	const lookup = requestLookup(url);
+	const found = await lookup.live(idText, { data: false });
+	if (found.kind !== 'live') return null;
+	const { id, metadata } = found.record;
+	const name = metadata.name ?? '';
+	const href = absoluteHref(bodyHref(extrasolarObjectId(id), name), url);
+	if (String(id) !== idText) {
+		const to = new URL(href);
+		return { kind: 'alias', location: `${to.pathname}${url.search}` };
+	}
+	return {
+		kind: 'page',
+		seo: {
+			title: pageTitle(name),
+			description: starDescription(name),
+			canonical: href,
+			ogType: 'article'
+		}
 	};
 }

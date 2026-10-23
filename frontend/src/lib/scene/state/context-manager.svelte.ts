@@ -8,6 +8,8 @@ import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import type { Placer } from '$lib/scene/position/placer';
 import { loadScene } from '$lib/scene/setup/scene-load';
+import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
 import {
@@ -206,6 +208,11 @@ export class ContextManager {
 	/** Add an object the scene does not hold yet (no reload). Call after
 	 *  {@link ready}. No-op before the first load phase ends, or if it is here. */
 	async ensureBody(targetId: string, date: Date): Promise<void> {
+		// An extrasolar object is in no zone: its record places it.
+		if (isExtrasolarObjectId(targetId)) {
+			await ensureExtrasolarBody(this, targetId);
+			return;
+		}
 		await this.refresher?.ensureBody(targetId, date);
 	}
 

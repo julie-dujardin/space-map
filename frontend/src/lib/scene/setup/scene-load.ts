@@ -35,6 +35,8 @@ import type { LayerSet } from '$lib/scene/layers';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 import { dateToJD } from '$lib/time/jd';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { ensureExtrasolarBody } from './extrasolar';
 
 interface MinorChunkArg {
 	zone: string;
@@ -256,6 +258,13 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// here rather than at the probe pass so its bundle rides along with the
 	// metadata and ephemeris fetches instead of adding a round trip to boot.
 	const passengerPromise = passengerFor(targetId);
+	// An extrasolar target is placed from its record, which rides along too.
+	const extrasolarTarget =
+		targetId && isExtrasolarObjectId(targetId)
+			? ensureExtrasolarBody(ctx, targetId).catch((e) =>
+					console.warn(`scene-load: ${targetId} did not load:`, e)
+				)
+			: null;
 
 	const metadata = await metadataPromise;
 	loadProgress.reach('metadata');
@@ -304,7 +313,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 
 	// If the target wasn't in majors/moons, route it into the same per-zone
 	// store its real chunk will land in, so phase 2 reconciles it in place.
-	if (targetId && !ctx.getBody(targetId)) {
+	if (extrasolarTarget) {
+		await extrasolarTarget;
+	} else if (targetId && !ctx.getBody(targetId)) {
 		// Ancestors the scene does not hold get the same routing pass.
 		const placeholders = await createPlaceholderBody(targetId, ctx);
 		const added = routePlaceholders(ctx, placeholders, labels);
@@ -327,7 +338,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// shows, so a navigation can wait on it from the first frame.
 	try {
 		ctx.refresher = new ZoneRefresher(ctx, metadata, loader, date);
-		if (targetId) ctx.refresher.want(targetId);
+		if (targetId && !extrasolarTarget) ctx.refresher.want(targetId);
 	} catch (e) {
 		console.error('scene-load: ZoneRefresher init failed; time-segmented zones stay empty:', e);
 	}

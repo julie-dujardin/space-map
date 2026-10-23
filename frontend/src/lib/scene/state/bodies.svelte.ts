@@ -33,6 +33,9 @@ export function adoptRow(held: PositionedBody, fresh: PositionedBody): void {
 	held.trailAnchorId = fresh.trailAnchorId;
 }
 
+/** Extrasolar objects kept for lookups by id. */
+const EXTRASOLAR_KEPT = 64;
+
 /**
  * The scene's body store: every loaded `PositionedBody` plus the parent/child
  * graph. Loaders write through it; visibility and per-frame loops read from it.
@@ -60,6 +63,11 @@ export class BodyIndex {
 	 *  `bodiesById`/`majorBodies` — the renderer re-seats it each frame — but
 	 *  resolvable via {@link getBody}. */
 	focusFeature: PositionedBody | null = null;
+
+	/** Extrasolar objects looked up for a page, by id and by any alias that led
+	 *  to one. Kept off `bodiesById` like {@link focusFeature}: they have a
+	 *  fixed place and nothing per frame. */
+	private readonly extrasolar = new Map<string, PositionedBody>();
 
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
@@ -115,6 +123,8 @@ export class BodyIndex {
 		const major = this.bodiesById.get(id);
 		if (major) return major;
 		if (this.focusFeature?.data.id === id) return this.focusFeature;
+		const star = this.extrasolar.get(id);
+		if (star) return star;
 		if (zone !== undefined) {
 			return (
 				this.spacecraftByParent.get(zone)?.get(id) ?? this.asteroidBodiesByZone.get(zone)?.get(id)
@@ -129,6 +139,18 @@ export class BodyIndex {
 			if (hit) return hit;
 		}
 		return undefined;
+	}
+
+	/** Keep an extrasolar object, under `ids` too (the aliases that named it).
+	 *  The oldest go past a few dozen. */
+	addExtrasolar(body: PositionedBody, ids: readonly string[] = []): void {
+		for (const id of [body.data.id, ...ids]) {
+			this.extrasolar.delete(id);
+			this.extrasolar.set(id, body);
+		}
+		while (this.extrasolar.size > EXTRASOLAR_KEPT) {
+			this.extrasolar.delete(this.extrasolar.keys().next().value as string);
+		}
 	}
 
 	/** Register a batch of bodies: updates `bodiesById`, the parent/child index,

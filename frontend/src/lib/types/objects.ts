@@ -5,6 +5,7 @@ import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
 import type { LandedHeading, NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
 import type { AttitudeTrack } from '$lib/fetch/attitude/track';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
+import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
@@ -212,6 +213,28 @@ export interface PositionedBody {
 	 *  (the seat); everything data-facing (terrain, nomenclature, attribution)
 	 *  defers to `featureAnchor.hostId`. */
 	featureAnchor?: FeatureAnchor;
+	/** Set on an object of the extrasolar catalogue (see {@link StarAnchor}). */
+	extrasolar?: StarAnchor;
+}
+
+/** An object of the extrasolar catalogue as a focus target. Its place is
+ *  fixed, from its record; the starfield draws it. */
+export interface StarAnchor {
+	id: number;
+	record: ExtrasolarRecord;
+	/** Scene position (barycentre origin) and tree position (pc); null when the
+	 *  record gives no distance. */
+	scene: [number, number, number] | null;
+	tree: [number, number, number] | null;
+	/** Absolute G as the render tree rounds it; null when the record has none. */
+	absMag: number | null;
+	/** BP − RP; null when unknown. */
+	colour: number | null;
+}
+
+/** An object of the extrasolar catalogue — see {@link StarAnchor}. */
+export function isExtrasolar(body: PositionedBody): boolean {
+	return body.data.objectType === ObjectType.EXTRASOLAR;
 }
 
 /** A synthetic surface-feature focus target — see {@link FeatureAnchor}. */
@@ -243,7 +266,9 @@ export enum ObjectType {
 	/** Frontend-only: a synthetic focus target for an IAU surface feature seated on
 	 *  a host body. Never appears in binary chunks (ordinals 0–15 are the wire
 	 *  format), so it can't collide with a real object type. */
-	SURFACE_FEATURE = 16
+	SURFACE_FEATURE = 16,
+	/** Frontend-only: an object of the extrasolar catalogue (`/x/<id>`). */
+	EXTRASOLAR = 17
 }
 
 /** Identifies a {@link PositionedBody} synthesised as an orbitable surface
@@ -324,7 +349,9 @@ const NOMINAL_RADIUS_KM_BY_TYPE: Partial<Record<ObjectType, number>> = {
 	[ObjectType.DEBRIS]: 0.005,
 	// Metres-scale so min-zoom lets the camera reach the surface at the feature;
 	// arrival framing is sized from the feature diameter separately.
-	[ObjectType.SURFACE_FEATURE]: 0.001
+	[ObjectType.SURFACE_FEATURE]: 0.001,
+	// The catalogue gives no size: the Sun's radius stands in.
+	[ObjectType.EXTRASOLAR]: 695_700
 };
 const NOMINAL_RADIUS_KM_DEFAULT = 0.1;
 

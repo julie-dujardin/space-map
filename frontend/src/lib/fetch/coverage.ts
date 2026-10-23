@@ -8,6 +8,8 @@
 import { fetchMetadata, isDateSegmented, lastCoveredMs, zoneLayers } from '$lib/fetch/metadata';
 import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { tdbToUtc, unixMsToJD } from '$lib/time/jd';
+import { EXTRASOLAR_PREFIX, isExtrasolarObjectId } from './extrasolar/ids';
+import { extrasolarLookup, hasDistance } from './extrasolar/lookup';
 
 /** A span of dates, in app (UTC) JD. An open side is infinite. */
 export type CoverageWindow = [start: number, end: number];
@@ -38,6 +40,12 @@ async function earthZoneEndJd(): Promise<number> {
  * as UTC, a TDB start is 69 s inside the true one.
  */
 export async function coverageOf(id: string): Promise<CoverageWindow[]> {
+	// A star's place does not move with the date; one without a distance has none.
+	if (isExtrasolarObjectId(id)) {
+		const result = await extrasolarLookup.live(id.slice(EXTRASOLAR_PREFIX.length));
+		const placed = result.kind === 'live' && hasDistance(result.record);
+		return placed ? [[-Infinity, Infinity]] : [];
+	}
 	const detail = await fetchObjectDetail(id, false);
 	const windows = detail.global?.coverage?.windows ?? [];
 	const tle = detail.global?.orbit?.scale === 'planet';

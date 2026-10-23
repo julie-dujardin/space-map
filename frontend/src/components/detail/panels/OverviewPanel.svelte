@@ -27,6 +27,11 @@
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
 	import type { PlanetarySystemState } from '../charts/planetary-system.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import StatCardRow from '../sections/kit/StatCardRow.svelte';
+	import StarSections from '../sections/star/StarSections.svelte';
+	import { starStats } from '../sections/star/star-rows';
+	import { starCredits } from '$lib/credits/star-sources';
+	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 
 	type FocusFeatureEntry = Extract<Focusable, { kind: 'feature' }>['feature'];
 
@@ -50,6 +55,8 @@
 		/** The object's action row, headed up by the drawer that knows what the
 		 *  page can do with it. Absent on a collection. */
 		actions?: Snippet;
+		/** The records of an extrasolar object, which has no detail bundle. */
+		star?: ExtrasolarRecord | null;
 	}
 
 	let {
@@ -66,7 +73,8 @@
 		parentBody,
 		planetarySystem,
 		mapHref,
-		actions
+		actions,
+		star = null
 	}: Props = $props();
 
 	let data = $derived(load.data);
@@ -140,6 +148,8 @@
 		}));
 		// Lineup members whose ellipsoid was fitted rather than tabulated.
 		out.push(...lineup.overviewCredits.shapeWorks);
+		// A star's values come from the catalogues its records name.
+		if (star) out.push(...starCredits(star));
 		if (cat.solarSystem)
 			out.push({
 				key: MASS_INVENTORY_URL,
@@ -177,6 +187,12 @@
 			<GroupStatCards global={groupDetail.global} />
 		{:else if feature}
 			<FeatureStatCards {feature} detail={load.featureDetail} />
+		{:else if star}
+			<div class="flex flex-col gap-2">
+				{#each starStats(star) as stats, i (i)}
+					<StatCardRow {stats} />
+				{/each}
+			</div>
 		{:else if body}
 			<ObjectStats
 				global={data?.global ?? null}
@@ -225,6 +241,8 @@
 				hostId={body?.data.id}
 				hostName={body?.data.name ?? undefined}
 			/>
+		{:else if star}
+			<StarSections record={star} />
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />
 		{:else if groupSlug !== null}

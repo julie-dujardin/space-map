@@ -1,4 +1,5 @@
 import { getLocale, textureAllowed, type TextureDistribution } from '$lib/host';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import type { Coverage } from '$lib/fetch/metadata';
 import {
 	fetchBundlePair,
@@ -1411,6 +1412,8 @@ export function fetchObjectDetail(
 	lang = getLocale(),
 	background = false
 ): Promise<ObjectDetailData> {
+	// The extrasolar catalogue has no object bundles: its records are tiles.
+	if (isExtrasolarObjectId(fileId)) return Promise.resolve({ global: null, localized: null });
 	return fetchBundlePair<GlobalObjectData, LocalizedObjectData>(
 		OBJECT_BUNDLES,
 		fileId,
@@ -1422,5 +1425,6 @@ export function fetchObjectDetail(
 
 /** Warm `fileId`'s detail bundle ahead of the drawer that will read it. */
 export function prefetchObjectDetail(fileId: string): Promise<void> {
+	if (isExtrasolarObjectId(fileId)) return Promise.resolve();
 	return prefetchBundlePair(OBJECT_BUNDLES, fileId);
 }

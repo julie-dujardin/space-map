@@ -5,6 +5,7 @@ import {
 	DEFAULT_ZOOM
 } from '$lib/scene/framing';
 import { DEFAULT_TRIP, type TripState } from '$lib/travel/trip';
+import { isExtrasolarObjectId, parseExtrasolarId } from '$lib/fetch/extrasolar/ids';
 
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
  *  sub-selection on top of a body and uses a nested route shape
@@ -19,6 +20,7 @@ export enum UrlType {
 	Feature = 'f', // IAU nomenclature feature on a body
 	Group = 'g', // /g/<slug>/<name> — constellation / operator / asteroid class / ...
 	Extra = 'u', // /u/<id>/<name> — hand-authored extra object addressed by its id
+	Extrasolar = 'x', // /x/<id>/<name> — object of the extrasolar catalogue
 	Nav = 'nav' // /nav/<fromId>/<toId> — trajectory planner between two bodies
 }
 
@@ -28,6 +30,7 @@ export function urlTypeToIdPrefix(urlType: string): string {
 	if (urlType === UrlType.EarthSatellite) return 'norad_satcat';
 	if (urlType === UrlType.Probe) return 'probe';
 	if (urlType === UrlType.Extra) return 'extra';
+	if (urlType === UrlType.Extrasolar) return 'x';
 	return 'naif'; // UrlType.Body
 }
 
@@ -40,6 +43,7 @@ export function urlTypeFromId(id: string): UrlType {
 	if (id.startsWith('norad_satcat-')) return UrlType.EarthSatellite;
 	if (id.startsWith('probe-')) return UrlType.Probe;
 	if (id.startsWith('extra-')) return UrlType.Extra;
+	if (isExtrasolarObjectId(id)) return UrlType.Extrasolar;
 	return UrlType.Body; // naif-
 }
 
@@ -51,6 +55,7 @@ export const BODY_ROUTE_TYPES: ReadonlySet<string> = new Set([
 	UrlType.EarthSatellite,
 	UrlType.Probe,
 	UrlType.Extra,
+	UrlType.Extrasolar,
 	UrlType.Group
 ]);
 
@@ -80,6 +85,10 @@ export function isIdNumber(segment: string): boolean {
  * on null, and the page takes its view from the same id.
  */
 export function objectIdOfRoute(type: string, id: string): string | null {
+	// The table check waits for the export's metadata: see `extrasolarLookup`.
+	if (type === UrlType.Extrasolar) {
+		return parseExtrasolarId(id) === null ? null : `${urlTypeToIdPrefix(type)}-${id}`;
+	}
 	if (!FEATURE_ROUTE_TYPES.has(type) || !isIdNumber(id)) return null;
 	return `${urlTypeToIdPrefix(type)}-${id}`;
 }

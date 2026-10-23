@@ -47,6 +47,11 @@ export class DetailLoad {
 				this.loading = false;
 				this.loadError = true;
 			};
+			// A star's records came with it.
+			if (current.kind === 'star') {
+				this.loading = false;
+				return;
+			}
 			if (current.kind === 'feature') {
 				const f = current.feature;
 				fetchFeatureDetail(current.body.data.id, f.featureId)

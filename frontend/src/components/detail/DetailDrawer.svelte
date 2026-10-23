@@ -65,6 +65,7 @@
 	import { PlanetarySystemState } from './charts/planetary-system.svelte';
 	import { MembersState } from './state/members-state.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
+	import { starClassLabel } from './sections/star/star-rows';
 
 	interface Props {
 		focusable: Focusable;
@@ -99,7 +100,11 @@
 		inPlace = false
 	}: Props = $props();
 
-	let body = $derived(focusable.kind === 'group' ? null : focusable.body);
+	// A star is no body of the solar system: its records stand in for a bundle.
+	let star = $derived(focusable.kind === 'star' ? focusable.record : null);
+	let body = $derived(
+		focusable.kind === 'group' || focusable.kind === 'star' ? null : focusable.body
+	);
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
@@ -204,7 +209,9 @@
 	let isMinimized = $derived(
 		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
 	);
-	let showCameraButtons = $derived(!isFeatureMode && !isGroupMode && !!onMaximize && !!onMinimize);
+	let showCameraButtons = $derived(
+		!isFeatureMode && !isGroupMode && !star && !!onMaximize && !!onMinimize
+	);
 	// The action row is the map's: elsewhere the panel heads its overview with
 	// the way back to the map instead, and a collection is not an object to act on.
 	let showActions = $derived(!mapHref && !isGroupMode && !!body);
@@ -444,6 +451,7 @@
 		{lineup}
 		{planetarySystem}
 		{traverse}
+		badges={star ? [starClassLabel(star.metadata.class)] : undefined}
 	/>
 {/snippet}
 
@@ -484,6 +492,7 @@
 		{planetarySystem}
 		{mapHref}
 		actions={showActions ? objectActions : undefined}
+		{star}
 	/>
 {/snippet}
 

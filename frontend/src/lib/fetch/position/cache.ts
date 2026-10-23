@@ -1,11 +1,7 @@
 /**
- * Tiny LRU cache for parsed-chunk promises. Map insertion order doubles as
- * access order: a hit re-sets the entry to move it to the tail; a miss
- * appends and drops the head past capacity. Failed promises are removed on
- * rejection so retries don't inherit a poisoned hit.
- *
- * Keep capacity modest — entries hold parsed typed arrays (Earth's ~25K-row
- * chunk is ~5–10 MB).
+ * A small LRU of promises. A rejected promise leaves the cache, so the next
+ * call tries again. Keep the capacity small: one entry can hold MBs of typed
+ * arrays (Earth's position chunk is 5–10 MB).
  */
 export class LruPromiseCache<V> {
 	private readonly map = new Map<string, Promise<V>>();

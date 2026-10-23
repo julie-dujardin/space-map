@@ -1268,6 +1268,12 @@ export class SpaceMap {
 		this.renderer?.snapToBody(id, latitude, longitude, zoom);
 	}
 
+	/** @internal Snap focus onto a body, the camera on the line to another
+	 *  body and looking away from it. */
+	snapToBodyFrom(id: string, fromId: string, distance: number): void {
+		this.renderer?.snapToBodyFrom(id, fromId, distance);
+	}
+
 	/** @internal Snap focus onto a body, framed looking toward another body (e.g.
 	 *  the Sun) above the ecliptic. */
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {

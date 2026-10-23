@@ -1,5 +1,11 @@
 import type { Mesh, Scene, WebGLRenderer } from 'three';
-import { ObjectType, isAsteroid, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
+import {
+	ObjectType,
+	isAsteroid,
+	isExtrasolar,
+	isSurfaceFeature,
+	type PositionedBody
+} from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { EARTH_ID, MINOR_PROMOTED_IDS } from '$lib/constants';
@@ -204,7 +210,8 @@ export class PromotionRegistry {
 
 	/** Build mesh, label, halo, and trail for a body that only existed as a point-cloud dot. */
 	ensureBodyObjects(body: PositionedBody): void {
-		if (!this.buildBodyInstance(body)) return;
+		// The starfield draws an extrasolar object.
+		if (isExtrasolar(body) || !this.buildBodyInstance(body)) return;
 		this.finalizeBuilds();
 	}
 

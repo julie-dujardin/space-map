@@ -1,4 +1,10 @@
-import { isAsteroid, ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
+import {
+	isAsteroid,
+	isExtrasolar,
+	ObjectType,
+	ZONE_A_RANGE,
+	type PositionedBody
+} from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_KM, AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
@@ -168,6 +174,7 @@ export class VisibilityController {
 	 * top-level bodies, which are in no system.
 	 */
 	resolveSystemId(body: PositionedBody): string | null {
+		if (isExtrasolar(body)) return null;
 		// A planetary barycenter IS the system root (planets/moons are its children),
 		// but the SSB (naif-0) is top-level, not a system.
 		const isSystemBarycenter =

@@ -626,3 +626,34 @@ describe('serializeUrl on a trip', () => {
 		expect(next.trip).toEqual(DEFAULT_TRIP);
 	});
 });
+
+describe('the x route of extrasolar objects', () => {
+	function open(url: string, id: string) {
+		page.params = { type: 'x', id };
+		page.route = { id: '/[type]/[id]/[[name]]' } as typeof page.route;
+		page.url = new URL(url) as typeof page.url;
+	}
+
+	it('parses /x/<id> as the object x-<id>, and writes it back', () => {
+		open('http://x/x/22137869/Whatever?at=now,1,2,10000', '22137869');
+		const view = parseUrl()!;
+		expect(view.type).toBe('x');
+		expect(view.id).toBe('x-22137869');
+		expect(view.zoom).toBe(10000);
+		expect(serializeUrl({ ...view, name: 'Sirius' })).toBe(
+			'/x/22137869/Sirius?at=now,1.00000,2.00000,10000'
+		);
+	});
+
+	it('has no view for an ID the URL check refuses', () => {
+		for (const id of ['022137869', '0', '9007199254740992', '1e7']) {
+			open(`http://x/x/${id}`, id);
+			expect(parseUrl()).toBeNull();
+		}
+	});
+
+	it('focuses an extrasolar object from its id', () => {
+		const view = applyFocus(baseView, { type: 'x', id: 'x-27424668', name: 'Proxima Centauri' });
+		expect(serializeUrl(view).startsWith('/x/27424668/Proxima%20Centauri?at=')).toBe(true);
+	});
+});

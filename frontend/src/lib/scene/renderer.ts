@@ -41,6 +41,7 @@ import {
 } from './framing';
 import {
 	effectiveRadiusKm,
+	isExtrasolar,
 	isSurfaceFeature,
 	ObjectType,
 	type FeatureAnchor,
@@ -1326,6 +1327,10 @@ export class SceneRenderer {
 		this.updateSunProxy(atmoState.sunRefraction);
 		// The view cone the stars are culled to is this frame's.
 		this.camera.updateMatrixWorld();
+		const focusedStar = this.focusController.current;
+		this.starfield.setFocusStar(
+			focusedStar && isExtrasolar(focusedStar) ? (focusedStar.extrasolar ?? null) : null
+		);
 		this.starfield.update(
 			this.camera,
 			this.focus.focusTruePos,
@@ -2630,6 +2635,11 @@ export class SceneRenderer {
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
 		this.disarmLimits();
 		this.focusController.snapToBody(id, latitude, longitude, zoom);
+	}
+
+	snapToBodyFrom(id: string, fromId: string, distance: number): void {
+		this.disarmLimits();
+		this.focusController.snapToBodyFrom(id, fromId, distance);
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {

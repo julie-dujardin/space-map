@@ -52,6 +52,8 @@ uniform float uLimit;
 uniform float uPixelRatio;
 uniform float uGain;
 uniform float uFade;
+uniform float uFloor;
+uniform int uHidden;
 attribute float mag;
 attribute vec3 starColour;
 varying vec3 vColour;
@@ -60,9 +62,9 @@ void main() {
 	vec4 mv = modelViewMatrix * vec4(position, 1.0);
 	float pc = length(mv.xyz) / ${PC_SCENE.toFixed(4)};
 	float m = mag + 5.0 * log2(max(pc, 1e-9)) * 0.30103 - 5.0;
-	float above = uLimit - m;
-	if (above <= 0.0 || mv.z >= 0.0) {
-		// Too faint, or behind the camera: put it off screen.
+	float above = max(uLimit - m, uFloor);
+	if (above <= 0.0 || mv.z >= 0.0 || gl_VertexID == uHidden) {
+		// Too faint, behind the camera, or drawn on its own: put it off screen.
 		gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 		gl_PointSize = 0.0;
 		vColour = vec3(0.0);
@@ -92,11 +94,21 @@ void main() {
 }
 `;
 
+/** No floor: a star under the limit draws nothing. */
+const NO_FLOOR = -1e9;
+
 /** A node's material. The program is shared; the uniforms other than the
- *  node's fade are the shared objects. */
-export function makeStarMaterial(shared: StarUniforms): ShaderMaterial {
+ *  node's fade, floor and hidden row are the shared objects. `uFloor` is the
+ *  least a star draws at, in magnitudes above the limit; `uHidden` is a row
+ *  that draws nothing, -1 for none. */
+export function makeStarMaterial(shared: StarUniforms, floor = NO_FLOOR): ShaderMaterial {
 	return new ShaderMaterial({
-		uniforms: { ...shared, uFade: { value: 0 } },
+		uniforms: {
+			...shared,
+			uFade: { value: 0 },
+			uFloor: { value: floor },
+			uHidden: { value: -1 }
+		},
 		vertexShader: vertexShader(),
 		fragmentShader: FRAGMENT,
 		// Screen blending: overlapping stars brighten toward white but never

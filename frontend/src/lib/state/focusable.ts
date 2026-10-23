@@ -7,13 +7,16 @@ import { FEATURE_TYPE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { categoryLabel } from '$lib/format/group';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PositionedBody } from '$lib/types/objects';
+import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import type { DrawerTab } from './view';
 import * as m from '$lib/paraglide/messages.js';
 
 export type Focusable =
 	| { kind: 'body'; body: PositionedBody }
 	| { kind: 'feature'; body: PositionedBody; feature: NomenclatureFeature }
-	| { kind: 'group'; slug: string };
+	| { kind: 'group'; slug: string }
+	/** An object of the extrasolar catalogue; its records come with it. */
+	| { kind: 'star'; body: PositionedBody; record: ExtrasolarRecord };
 
 /** Full in-session object navigation: coverage snap + URL focus + camera
  *  fly-to. Provided by MapPage via setContext('focusObject') — a bare
@@ -52,6 +55,7 @@ export function focusableKey(f: Focusable): string {
 export function focusableFallbackName(f: Focusable): string {
 	if (f.kind === 'feature') return f.feature.name;
 	if (f.kind === 'group') return groupSlugLabel(f.slug);
+	if (f.kind === 'star') return f.record.metadata.name ?? String(f.record.id);
 	return f.body.data.name ?? bodyIdNumber(f.body.data.id);
 }
 

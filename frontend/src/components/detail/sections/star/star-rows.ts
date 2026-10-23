@@ -1,0 +1,414 @@
+/**
+ * What a star's panel shows, from its records: the stat cards and the
+ * sections of rows. Every value comes from one column of the record (or a
+ * fixed formula of a few), at the precision of its uncertainty.
+ */
+
+import * as m from '$lib/paraglide/messages.js';
+import { getLocale } from '$lib/paraglide/runtime.js';
+import type { CrossId } from '$lib/fetch/extrasolar/container';
+import {
+	parallaxDistancePc,
+	type ExtrasolarRecord,
+	type TableRow
+} from '$lib/fetch/extrasolar/lookup';
+import { PC_AU } from '$lib/scene/starfield/tree';
+import {
+	fixed,
+	formatDeclination,
+	formatRightAscension,
+	plusMinus,
+	withBounds,
+	withError
+} from '$lib/format/star';
+import { formatBound, formatPercent, joinParts, sigFigures } from '$lib/format/quantities';
+import { ltrIsolate } from '$lib/format/bidi';
+import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
+import { starSourceName } from '$lib/credits/star-sources';
+import type { Stat } from '../kit/StatCard.svelte';
+
+export const POINT_SOURCE_SLUG = 'point-source';
+
+/** A class probability under this reads as a bound. */
+const SMALLEST_SHARE = 1e-4;
+/** Light years in one parsec. */
+const PC_LY = PC_AU / 63_241.077;
+/** Magnitudes per unit of a flux's relative error. */
+const MAG_PER_FLUX = 2.5 / Math.LN10;
+
+export interface StarRowEntry {
+	label: string;
+	value: string;
+	/** Where the value leads, off the site. */
+	href?: string;
+}
+
+export interface StarSection {
+	key: string;
+	title: string;
+	rows: StarRowEntry[];
+}
+
+const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
+	'gaia/dr3': { label: m.star_xid_gaia_dr3, prefix: 'Gaia DR3' },
+	'hip/2007': { label: m.star_xid_hip, prefix: 'HIP' },
+	'hd/1949': { label: m.star_xid_hd, prefix: 'HD' },
+	'iau/wgsn': { label: m.star_xid_iau }
+};
+
+const SIMBAD = 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=';
+
+function crossIdRow(x: CrossId): StarRowEntry {
+	const catalogue = CATALOGUES[`${x.catalogue}/${x.release}`];
+	if (!catalogue) return { label: `${x.catalogue} ${x.release}`, value: x.catalogueId };
+	const href = catalogue.prefix
+		? `${SIMBAD}${encodeURIComponent(`${catalogue.prefix} ${x.catalogueId}`)}`
+		: undefined;
+	return { label: catalogue.label(), value: x.catalogueId, href };
+}
+
+/** The class a Metadata row names, in words. */
+export function starClassLabel(cls: string | null): string {
+	return cls === 'star' ? m.star_class_star() : (cls ?? '');
+}
+
+function units() {
+	return {
+		mas: m.symbol_milliarcsecond(),
+		masPerYear: m.symbol_milliarcsecond_per_year(),
+		pc: m.symbol_parsec(),
+		kms: m.symbol_kilometre_per_second(),
+		dex: m.symbol_dex(),
+		perMicron: m.symbol_per_micrometre()
+	};
+}
+
+function magnitudeError(row: TableRow, fluxOverError: string): number | null {
+	const foe = row.number(fluxOverError);
+	return foe !== null && foe > 0 ? MAG_PER_FLUX / foe : null;
+}
+
+/** Rows whose value is there; a null value leaves its row out. */
+function rows(entries: (StarRowEntry | null)[]): StarRowEntry[] {
+	return entries.filter((entry): entry is StarRowEntry => entry !== null);
+}
+
+function row(label: string, value: string | null | undefined, href?: string): StarRowEntry | null {
+	return value ? { label, value, href } : null;
+}
+
+function measured(
+	ps: TableRow,
+	label: string,
+	name: string,
+	error: string | number | null,
+	unit = '',
+	decimals = 2
+): StarRowEntry | null {
+	const value = ps.number(name);
+	if (value === null) return null;
+	const err = typeof error === 'string' ? ps.number(error) : error;
+	return { label, value: plusMinus(value, err, unit, decimals) };
+}
+
+function bounded(ps: TableRow, label: string, name: string, unit = ''): StarRowEntry | null {
+	const value = ps.number(name);
+	if (value === null) return null;
+	return {
+		label,
+		value: withBounds(value, ps.number(`${name}_lower`), ps.number(`${name}_upper`), unit)
+	};
+}
+
+/** A temperature (K) and its percentiles, in the app's temperature unit. The
+ *  bounds go where they round to the value itself. */
+function temperatureWithBounds(kelvin: number, low: number | null, high: number | null): string {
+	const value = formatTemperature({ value: kelvin, unit: 'kelvin' });
+	if (low === null || high === null) return value;
+	const lowK = { value: low, unit: 'kelvin' };
+	const highK = { value: high, unit: 'kelvin' };
+	if (formatTemperature(lowK) === formatTemperature(highK)) return value;
+	return ltrIsolate(`${value} (${formatTemperatureRange(lowK, highK)})`);
+}
+
+function yesNo(value: boolean | null): string | null {
+	return value === null ? null : value ? m.star_flag_yes() : m.star_flag_no();
+}
+
+/** Free parameters of a Gaia astrometric solution: the bits set in its code. */
+function solutionParameters(code: number): number {
+	let n = 0;
+	for (let bits = code; bits > 0; bits >>= 1) n += bits & 1;
+	return n;
+}
+
+function epochLabel(epoch: number): string {
+	return `J${Number.isInteger(epoch) ? epoch.toFixed(1) : String(epoch)}`;
+}
+
+/** The items that are there, as one list in the reader's language. */
+function list(items: (string | null)[]): string | null {
+	const present = items.filter((item) => item !== null) as string[];
+	if (present.length === 0) return null;
+	return new Intl.ListFormat(getLocale(), { type: 'conjunction' }).format(present);
+}
+
+function pointSource(record: ExtrasolarRecord): TableRow | null {
+	return record.rows.get(POINT_SOURCE_SLUG) ?? null;
+}
+
+/** The spectral type, a catalogue code, as an LTR isolate. In RTL text the
+ *  punctuation at its ends ("A0m...", "B8Ia:") then stays in place. */
+function spectralType(ps: TableRow): string | null {
+	const code = ps.text('sp_type');
+	return code ? ltrIsolate(code) : null;
+}
+
+/** The stat cards, two to a row: the distance and the temperature (or the
+ *  spectral type), then both magnitudes. A card the record has no value for
+ *  is left out, and an odd count loses its last. */
+export function starStats(record: ExtrasolarRecord): Stat[][] {
+	const ps = pointSource(record);
+	if (!ps) return [];
+	const out: Stat[] = [];
+	const distance = parallaxDistancePc(ps);
+	if (distance !== null) {
+		out.push({
+			label: m.star_stat_distance(),
+			value: joinParts({ value: sigFigures(distance), unit: m.symbol_parsec() }),
+			note: joinParts({ value: sigFigures(distance * PC_LY), unit: m.symbol_light_year() })
+		});
+	}
+	const teff = ps.number('teff_gspphot');
+	const spType = spectralType(ps);
+	if (teff !== null) {
+		out.push({
+			label: m.star_stat_temperature(),
+			value: formatTemperature({ value: teff, unit: 'kelvin' })
+		});
+	} else if (spType) {
+		out.push({ label: m.star_stat_spectral_type(), value: spType });
+	}
+	const gaiaG = ps.number('phot_g_mean_mag');
+	const v = ps.number('v_mag');
+	if (gaiaG !== null || v !== null) {
+		out.push({
+			label: m.star_stat_apparent_magnitude(),
+			value: fixed(gaiaG ?? v!, 2),
+			note: gaiaG !== null ? 'G' : 'V'
+		});
+	}
+	// In the band of the apparent magnitude: a Hipparcos star has no G of its own.
+	const apparent = gaiaG ?? v;
+	const parallax = ps.number('parallax');
+	if (apparent !== null && parallax !== null && distance !== null) {
+		out.push({
+			label: m.star_stat_absolute_magnitude(),
+			value: fixed(apparent + 5 * Math.log10(parallax) - 10, 2),
+			note: gaiaG !== null ? 'G' : 'V'
+		});
+	}
+	const even = out.length % 2 === 1 && out.length > 1 ? out.slice(0, -1) : out;
+	const rowsOfTwo: Stat[][] = [];
+	for (let i = 0; i < even.length; i += 2) rowsOfTwo.push(even.slice(i, i + 2));
+	return rowsOfTwo;
+}
+
+/** The sections of rows, in panel order; an empty section is left out. */
+export function starSections(record: ExtrasolarRecord): StarSection[] {
+	const u = units();
+	const meta = record.metadata;
+	const sections: StarSection[] = [
+		{
+			key: 'identifiers',
+			title: m.star_section_identifiers(),
+			rows: rows([
+				...meta.crossIds.map(crossIdRow),
+				row(m.star_row_space_map_id(), String(record.id))
+			])
+		}
+	];
+	const ps = pointSource(record);
+	if (ps) sections.push(...pointSourceSections(ps, u));
+	return sections.filter((section) => section.rows.length > 0);
+}
+
+function pointSourceSections(ps: TableRow, u: ReturnType<typeof units>): StarSection[] {
+	const ra = ps.number('ra');
+	const dec = ps.number('dec');
+	const epoch = ps.number('epoch');
+	const parallax = ps.number('parallax');
+	const parallaxError = ps.number('parallax_error');
+	const distance = parallaxDistancePc(ps);
+	const astrometrySource = ps.text('astrometry_source');
+	const position: (StarRowEntry | null)[] = [
+		ra !== null && dec !== null
+			? {
+					label: m.star_row_ra(),
+					value: withError(
+						formatRightAscension(ra, dec, ps.number('ra_error')),
+						ps.number('ra_error'),
+						u.mas
+					)
+				}
+			: null,
+		dec !== null
+			? {
+					label: m.star_row_dec(),
+					value: withError(
+						formatDeclination(dec, ps.number('dec_error')),
+						ps.number('dec_error'),
+						u.mas
+					)
+				}
+			: null,
+		epoch !== null ? { label: m.orbit_epoch(), value: epochLabel(epoch) } : null,
+		measured(ps, m.star_row_parallax(), 'parallax', 'parallax_error', u.mas),
+		distance !== null && parallax !== null && parallaxError !== null
+			? {
+					label: m.star_row_distance(),
+					value: withBounds(
+						distance,
+						1000 / (parallax + parallaxError),
+						1000 / (parallax - parallaxError),
+						u.pc
+					)
+				}
+			: null,
+		measured(ps, m.star_row_pm_ra(), 'pmra', 'pmra_error', u.masPerYear),
+		measured(ps, m.star_row_pm_dec(), 'pmdec', 'pmdec_error', u.masPerYear),
+		measured(ps, m.star_row_radial_velocity(), 'radial_velocity', 'radial_velocity_error', u.kms),
+		row(m.star_row_astrometry_source(), astrometrySource && starSourceName(astrometrySource))
+	];
+
+	const g = ps.number('phot_g_mean_mag');
+	const bp = ps.number('phot_bp_mean_mag');
+	const rp = ps.number('phot_rp_mean_mag');
+	// Gaia's own colour only; the tree's estimate from V − I is not a measurement.
+	const colour = bp !== null && rp !== null ? bp - rp : null;
+	const brightness: (StarRowEntry | null)[] = [
+		g !== null
+			? {
+					label: m.star_band_g(),
+					value: plusMinus(g, magnitudeError(ps, 'phot_g_mean_flux_over_error'))
+				}
+			: null,
+		bp !== null
+			? {
+					label: m.star_band_bp(),
+					value: plusMinus(bp, magnitudeError(ps, 'phot_bp_mean_flux_over_error'))
+				}
+			: null,
+		rp !== null
+			? {
+					label: m.star_band_rp(),
+					value: plusMinus(rp, magnitudeError(ps, 'phot_rp_mean_flux_over_error'))
+				}
+			: null,
+		colour !== null ? { label: m.star_row_bp_rp(), value: plusMinus(colour, null, '', 3) } : null,
+		measured(ps, m.star_band_grvs(), 'grvs_mag', 'grvs_mag_error'),
+		measured(ps, m.star_band_hp(), 'hp_mag', 'hp_mag_error', '', 3),
+		measured(ps, m.star_band_v(), 'v_mag', null, '', 2),
+		measured(ps, m.star_row_b_v(), 'b_v', 'b_v_error', '', 3),
+		measured(ps, m.star_row_v_i(), 'v_i', 'v_i_error', '', 2),
+		row(m.star_stat_spectral_type(), spectralType(ps)),
+		row(
+			m.star_row_variability(),
+			ps.text('phot_variable_flag') === 'VARIABLE' ? m.star_variable() : null
+		)
+	];
+
+	const teff = ps.number('teff_gspphot');
+	const parameters: (StarRowEntry | null)[] = [
+		teff !== null
+			? {
+					label: m.star_row_teff(),
+					value: temperatureWithBounds(
+						teff,
+						ps.number('teff_gspphot_lower'),
+						ps.number('teff_gspphot_upper')
+					)
+				}
+			: null,
+		bounded(ps, m.star_row_logg(), 'logg_gspphot'),
+		bounded(ps, m.star_row_metallicity(), 'mh_gspphot', u.dex),
+		bounded(ps, m.star_row_distance_photometric(), 'distance_gspphot', u.pc),
+		bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
+		bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),
+		bounded(ps, m.star_row_reddening(), 'ebpminrp_gspphot'),
+		row(m.star_row_model_library(), ps.text('libname_gspphot')),
+		measured(ps, m.star_row_line_broadening(), 'vbroad', 'vbroad_error', u.kms)
+	];
+
+	const solved = ps.number('astrometric_params_solved');
+	const excessNoise = ps.number('astrometric_excess_noise');
+	const multiPeak = ps.number('ipd_frac_multi_peak');
+	const nonSingle = ps.number('non_single_star');
+	const share = (name: string) => {
+		const p = ps.number(name);
+		if (p === null) return null;
+		return p < SMALLEST_SHARE ? formatBound(formatPercent(SMALLEST_SHARE)) : formatPercent(p, 3);
+	};
+	const candidates = list([
+		ps.flag('in_qso_candidates') ? m.star_candidates_quasar() : null,
+		ps.flag('in_galaxy_candidates') ? m.star_candidates_galaxy() : null
+	]);
+	const products = list([
+		ps.flag('has_xp_continuous') ? m.star_product_xp_continuous() : null,
+		ps.flag('has_xp_sampled') ? m.star_product_xp_sampled() : null,
+		ps.flag('has_rvs') ? m.star_product_rvs() : null,
+		ps.flag('has_epoch_photometry') ? m.star_product_epoch_photometry() : null,
+		ps.flag('has_epoch_rv') ? m.star_product_epoch_rv() : null
+	]);
+	const number = (name: string, decimals: number) => {
+		const value = ps.number(name);
+		return value === null ? null : fixed(value, decimals);
+	};
+	const quality: (StarRowEntry | null)[] = [
+		row(m.star_row_ruwe(), number('ruwe', 3)),
+		row(m.star_row_fidelity(), number('fidelity_v2', 3)),
+		row(m.star_row_norm_dg(), number('norm_dg', 2)),
+		solved !== null
+			? row(
+					m.star_row_solution(),
+					m.star_solution_parameters({ count: solutionParameters(solved) })
+				)
+			: null,
+		excessNoise !== null
+			? row(m.star_row_excess_noise(), plusMinus(excessNoise, null, u.mas, 3))
+			: null,
+		row(m.star_row_excess_noise_significance(), number('astrometric_excess_noise_sig', 2)),
+		row(m.star_row_visibility_periods(), number('visibility_periods_used', 0)),
+		row(m.star_row_multi_peak(), multiPeak === null ? null : formatPercent(multiPeak / 100)),
+		row(m.star_row_image_asymmetry(), number('ipd_gof_harmonic_amplitude', 3)),
+		row(m.star_row_duplicated(), yesNo(ps.flag('duplicated_source'))),
+		row(m.star_row_flux_excess(), number('phot_bp_rp_excess_factor', 3)),
+		row(
+			m.star_row_wavenumber(),
+			ps.number('nu_eff_used_in_astrometry') === null
+				? null
+				: plusMinus(ps.number('nu_eff_used_in_astrometry')!, null, u.perMicron, 3)
+		),
+		row(
+			m.star_row_pseudocolour(),
+			ps.number('pseudocolour') === null
+				? null
+				: plusMinus(ps.number('pseudocolour')!, null, u.perMicron, 3)
+		),
+		row(m.star_row_rv_transits(), number('rv_nb_transits', 0)),
+		row(m.star_row_rv_signal_to_noise(), number('rv_expected_sig_to_noise', 1)),
+		row(m.star_row_non_single(), nonSingle === null ? null : yesNo(nonSingle > 0)),
+		row(m.star_row_probability_star(), share('classprob_dsc_combmod_star')),
+		row(m.star_row_probability_quasar(), share('classprob_dsc_combmod_quasar')),
+		row(m.star_row_probability_galaxy(), share('classprob_dsc_combmod_galaxy')),
+		row(m.star_row_candidates(), candidates),
+		row(m.star_row_products(), products)
+	];
+
+	return [
+		{ key: 'position', title: m.star_section_position(), rows: rows(position) },
+		{ key: 'brightness', title: m.star_section_brightness(), rows: rows(brightness) },
+		{ key: 'parameters', title: m.star_section_parameters(), rows: rows(parameters) },
+		{ key: 'quality', title: m.star_section_quality(), rows: rows(quality) }
+	];
+}

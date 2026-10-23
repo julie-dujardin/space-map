@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PerspectiveCamera, Scene } from 'three';
+import { PerspectiveCamera, Scene, type ShaderMaterial } from 'three';
 import { Container } from '$lib/fetch/extrasolar/container';
 import type { ExtrasolarMetadata, ExtrasolarTree } from '$lib/fetch/extrasolar/files';
 import { LayerSet } from '$lib/scene/layers';
@@ -443,5 +443,73 @@ describe('the starfield walk', () => {
 		expect(got?.[0]).toBeCloseTo(want.x, 0);
 		expect(got?.[2]).toBeCloseTo(want.z, 0);
 		expect(system.drawnNodes().map((n) => n.name)).toContain('r0');
+	});
+
+	it('draws the focused star on its own and hides its row in the node', async () => {
+		buildTree(new Array(8).fill(10));
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {}
+		);
+		await settle(system, camera, focus);
+		const hidden = () =>
+			Object.fromEntries(
+				system
+					.drawnNodes()
+					.map((n) => [n.name, (n.points.material as ShaderMaterial).uniforms.uHidden.value])
+			);
+		const points = () => system.group.children.filter((c) => c.userData.focusStar !== undefined);
+		// Every fake row sits at its node's centre with magnitude 10.
+		system.setFocusStar({
+			id: 7,
+			record: null!,
+			scene: [0, 0, 0],
+			tree: [C - 500, C - 500, C - 500],
+			absMag: 10,
+			colour: null
+		});
+		expect(hidden()).toMatchObject({ r: -1, r0: 0 });
+		expect(points()).toHaveLength(1);
+		expect(points()[0].position.toArray()).toEqual([C - 500, C - 500, C - 500]);
+
+		// Another magnitude is another star: nothing to hide.
+		system.setFocusStar({
+			id: 8,
+			record: null!,
+			scene: [0, 0, 0],
+			tree: [C - 500, C - 500, C - 500],
+			absMag: 3,
+			colour: null
+		});
+		expect(hidden()).toMatchObject({ r: -1, r0: -1 });
+		expect(points()).toHaveLength(1);
+
+		system.setFocusStar(null);
+		expect(hidden()).toMatchObject({ r: -1, r0: -1 });
+		expect(points()).toHaveLength(0);
+	});
+
+	it('draws no focus point for a star with no place', async () => {
+		buildTree(new Array(8).fill(10));
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {}
+		);
+		await settle(system, camera, focus);
+		system.setFocusStar({
+			id: 9,
+			record: null!,
+			scene: null,
+			tree: null,
+			absMag: null,
+			colour: null
+		});
+		expect(system.group.children.some((c) => c.userData.focusStar !== undefined)).toBe(false);
 	});
 });

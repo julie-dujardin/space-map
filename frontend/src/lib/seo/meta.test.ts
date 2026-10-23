@@ -20,8 +20,15 @@ import {
 	loadFeatureSeo,
 	loadGroupSeo,
 	loadObjectSeo,
+	loadStarSeo,
 	minimalSeo
 } from './meta';
+import {
+	ALIAS,
+	RETIRED,
+	STAR,
+	syntheticExport
+} from '$lib/fetch/extrasolar/__fixtures__/synthetic';
 
 const ORIGIN = 'https://spacemap.test';
 /** A request for the page: the name in it is not the export's. */
@@ -259,5 +266,74 @@ describe('catalogueSeo', () => {
 			canonical: `${ORIGIN}/b/399`,
 			ogType: 'website'
 		});
+	});
+});
+
+describe('loadStarSeo', () => {
+	const XS = 'https://xs.test';
+
+	/** The synthetic extrasolar export at XS; `broken` paths answer 503. */
+	function stubStars(
+		options: { metaDistribution?: string; broken?: string[]; stale?: string } = {}
+	) {
+		const { meta, payloads } = syntheticExport(options);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string) => {
+				const url = new URL(input);
+				expect(url.origin).toBe(XS);
+				const path = url.pathname.replace(/^\/v1\/x\//, '');
+				if (options.broken?.includes(path)) return new Response('', { status: 503 });
+				if (path === 'metadata.json') return Response.json(meta);
+				const payload = payloads[path];
+				if (!payload) return new Response('', { status: 404 });
+				const bytes = Uint8Array.from(payload);
+				if (options.stale === path) bytes.set(new TextEncoder().encode('f'.repeat(16)), 8);
+				return new Response(gzipSync(bytes));
+			})
+		);
+	}
+
+	beforeEach(() => configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'site-only' }));
+
+	it('takes the title and canonical link from the Metadata row', async () => {
+		stubStars();
+		const page = await loadStarSeo(String(STAR), request(`/x/${STAR}`));
+		expect(page).toEqual({
+			kind: 'page',
+			seo: {
+				title: 'Test Star - Space Map',
+				description: expect.stringContaining('Test Star'),
+				canonical: `${ORIGIN}/x/${STAR}/Test%20Star`,
+				ogType: 'article'
+			}
+		});
+		// The Metadata table alone: no data table is read for a title.
+		const paths = vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname);
+		expect(paths.some((p) => p.includes('point-source'))).toBe(false);
+	});
+
+	it("sends an alias to its live ID's page, query and all", async () => {
+		stubStars();
+		const url = new URL(`${ORIGIN}/x/${ALIAS}/Old?at=now,1,2,3`);
+		expect(await loadStarSeo(String(ALIAS), url)).toEqual({
+			kind: 'alias',
+			location: `/x/${STAR}/Test%20Star?at=now,1,2,3`
+		});
+	});
+
+	it('has no page for a retired ID, or where the host may not show the table', async () => {
+		stubStars();
+		expect(await loadStarSeo(String(RETIRED), request(`/x/${RETIRED}`))).toBeNull();
+		configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'open' });
+		stubStars({ metaDistribution: 'non-commercial' });
+		expect(await loadStarSeo(String(STAR), request(`/x/${STAR}`))).toBeNull();
+	});
+
+	it('throws where the export cannot be read, or a file is from another export', async () => {
+		stubStars({ broken: ['metadata.json'] });
+		await expect(loadStarSeo(String(STAR), request(`/x/${STAR}`))).rejects.toThrow();
+		stubStars({ stale: 'metadata/0/0.bin.gz' });
+		await expect(loadStarSeo(String(STAR), request(`/x/${STAR}`))).rejects.toThrow('token');
 	});
 });

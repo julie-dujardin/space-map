@@ -38,6 +38,8 @@
 		members: MembersState;
 		lineup: LineupHero;
 		planetarySystem: PlanetarySystemState;
+		/** Badges of a page that has no detail bundle to read them from. */
+		badges?: string[];
 	}
 
 	let {
@@ -51,7 +53,8 @@
 		traverse,
 		members,
 		lineup,
-		planetarySystem
+		planetarySystem,
+		badges
 	}: Props = $props();
 
 	const appState = getContext<AppState>('appState');
@@ -119,6 +122,7 @@
 		localized={data?.localized ?? null}
 		{fallbackName}
 		leadingBadges={groupHeaderBadges ??
+			badges ??
 			(planetarySystem.isSystemPage ? [m.satellite_system_badge()] : undefined)}
 		hero={cat.solarSystem
 			? solarSystemMapSnippet

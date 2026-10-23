@@ -158,6 +158,13 @@ export class AppState {
 		this.pushNow();
 	}
 
+	/** Put another object in the view in place of this one, in the same
+	 *  history entry: an alias whose live object the page opens instead. */
+	replaceFocus(id: string, name: string) {
+		this.view = applyFocus(this.view, { type: urlTypeFromId(id), id, name });
+		this.replaceNow();
+	}
+
 	/** Open the /g/<slug> group view over the body in view. `frame` parks
 	 *  `view.id` on the group's anchor for a caller about to fly there, so
 	 *  Scene's onFocusChange guard takes the landing as intended rather than
