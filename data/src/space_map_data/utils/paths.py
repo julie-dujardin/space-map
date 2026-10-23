@@ -81,3 +81,6 @@ ACTIVITY_ARCHIVE_DIR = PROJECT_ROOT.parent / "space-map-activity"
 REGISTRY_ROOT = PROJECT_ROOT.parent / "space-map-registry"
 # Copies of the registry after each ingest, one directory for each host.
 REGISTRY_BACKUP_DIR = DERIVED_DIR / "extrasolar" / "registry"
+# The extrasolar export, layout v1/x/. It has too many files for the host of
+# EXPORT_DIR, so it has its own base URL.
+EXTRASOLAR_DIR = PROJECT_ROOT.parent / "space-map-extrasolar"

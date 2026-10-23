@@ -6,6 +6,7 @@ services:
     volumes:
       - ../space-map-export:/usr/share/nginx/html:ro
       - ../space-map-tiles:/usr/share/nginx/tiles:ro
+      - ../space-map-extrasolar:/usr/share/nginx/extrasolar:ro
       - ./infrastructure/export/dev/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   meili:

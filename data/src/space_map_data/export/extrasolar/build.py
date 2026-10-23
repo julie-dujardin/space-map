@@ -1,0 +1,532 @@
+"""`space-map-export --only extrasolar`: the registry's tables as served files.
+
+The export builds into `v1/.x-staging/` beside the served `v1/x/` and swaps it
+into place only when every check passes. A failed run leaves the previous
+export as it was. The checks:
+
+- no ingest has merges that no one has reviewed;
+- every row holds an ID that the registry has, with the status the row shows;
+- every ID that the previous export serves is still served with all its
+  catalogue ids, or is an alias or retired in the registry. The previous
+  export stands for the live site until the serving is decided.
+
+The export holds a shared lock on the registry for the whole run, so no
+ingest starts and no table version changes under it. Every job gets the
+registry object that the export read under the lock, so all jobs read the
+table versions that metadata.json names.
+
+Render scratch goes in `.build/` beside `v1/` and is removed at the end.
+"""
+
+import fcntl
+import json
+import logging
+import multiprocessing
+import shutil
+import time
+from collections import Counter
+from collections.abc import Callable, Generator, Iterable
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+import numpy as np
+
+from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
+from space_map_data.export.extrasolar import container, render, tiles
+from space_map_data.export.extrasolar.container import Written
+from space_map_data.export.extrasolar.tiles import (
+    MAX_ROWS,
+    Previous,
+    Problems,
+    Split,
+    UnitJob,
+)
+from space_map_data.extrasolar.registry import Registry, RegistryError
+from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
+from space_map_data.extrasolar.store import fsync_dir
+from space_map_data.extrasolar.tables import METADATA, TABLES
+from space_map_data.utils.paths import EXTRASOLAR_DIR, REGISTRY_ROOT
+
+logger = logging.getLogger(__name__)
+
+METADATA_FILE = "metadata.json"
+# Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values.
+DISTRIBUTION = "non-commercial"
+FRAME = "ICRS equatorial axes, origin at the solar system barycentre, epoch J2016.0"
+CREDITS = (
+    {
+        "name": "Gaia Data Release 3",
+        "organisation": "ESA/Gaia/DPAC",
+        "source": "https://www.cosmos.esa.int/web/gaia/dr3",
+        "license": "CC BY-NC 3.0 IGO",
+        "attribution": (
+            "This work has made use of data from the European Space Agency (ESA)"
+            " mission Gaia (https://www.cosmos.esa.int/gaia), processed by the"
+            " Gaia Data Processing and Analysis Consortium (DPAC,"
+            " https://www.cosmos.esa.int/web/gaia/dpac/consortium)."
+        ),
+        "citation": "Gaia Collaboration, Vallenari et al. 2023, A&A 674, A1",
+    },
+    {
+        "name": "Astrometric fidelity of Gaia EDR3",
+        "organisation": "Rybizki et al. 2022",
+        "source": "https://doi.org/10.1093/mnras/stab3588",
+        "license": "CC BY-NC 3.0 IGO",
+        "citation": "Rybizki et al. 2022, MNRAS 510, 2597",
+    },
+    {
+        "name": "Hipparcos, the new reduction (I/311)",
+        "organisation": "ESA",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/I/311",
+        "citation": "van Leeuwen 2007, A&A 474, 653",
+    },
+    {
+        "name": "The Hipparcos and Tycho Catalogues (I/239)",
+        "organisation": "ESA",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/I/239",
+        "citation": "ESA 1997, ESA SP-1200",
+    },
+    {
+        "name": "Extended Hipparcos Compilation, XHIP (V/137D)",
+        "organisation": "Anderson & Francis 2012",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/V/137D",
+        "citation": "Anderson & Francis 2012, Astronomy Letters 38, 331",
+    },
+    {
+        "name": "IAU Catalog of Star Names",
+        "organisation": "IAU Working Group on Star Names",
+        "source": IAU_URL,
+    },
+)
+
+
+class ExportRefused(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Layout:
+    root: Path
+
+    @property
+    def live(self) -> Path:
+        return self.root / "v1" / "x"
+
+    @property
+    def staging(self) -> Path:
+        return self.root / "v1" / ".x-staging"
+
+    @property
+    def old(self) -> Path:
+        return self.root / "v1" / ".x-old"
+
+    @property
+    def scratch(self) -> Path:
+        return self.root / ".build"
+
+    @property
+    def lock(self) -> Path:
+        return self.root / ".lock"
+
+
+@contextmanager
+def _read_registry(root: Path) -> Generator[Registry]:
+    """The registry under its reader lock. An error of `reader` refuses the export."""
+    with ExitStack() as stack:
+        try:
+            registry = stack.enter_context(Registry(root).reader())
+        except RegistryError as error:
+            raise ExportRefused(str(error)) from None
+        yield registry
+
+
+@contextmanager
+def _locked(layout: Layout) -> Generator[None]:
+    layout.root.mkdir(parents=True, exist_ok=True)
+    with layout.lock.open("a+") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ExportRefused(f"another export writes to {layout.root}") from None
+        yield
+
+
+def _recover(layout: Layout) -> None:
+    """Undo what a stopped export left."""
+    if layout.old.exists():
+        if layout.live.exists():
+            logger.warning("removing the replaced export %s", layout.old)
+            shutil.rmtree(layout.old)
+        else:
+            logger.warning("restoring %s, which a stopped swap left", layout.old)
+            layout.old.rename(layout.live)
+    for path in (layout.staging, layout.scratch):
+        if path.exists():
+            logger.warning("removing what a failed export left: %s", path)
+            shutil.rmtree(path)
+
+
+@contextmanager
+def _pool(workers: int) -> Generator[ProcessPoolExecutor | None]:
+    if workers <= 1:
+        yield None
+        return
+    # spawn: the parent holds Arrow threads.
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(workers, mp_context=context) as pool:
+        yield pool
+
+
+def _run[J, R](
+    workers: int, task: Callable[[J], R], jobs: list[J], label: str
+) -> list[R]:
+    """`task` over `jobs` in worker processes, results in job order."""
+    started = time.monotonic()
+    results = []
+    with _pool(workers) as pool:
+        mapped: Iterable[R] = (
+            map(task, jobs) if pool is None else pool.map(task, jobs, chunksize=1)
+        )
+        step = max(1, len(jobs) // 10)
+        for done, result in enumerate(mapped, 1):
+            results.append(result)
+            if done % step == 0 or done == len(jobs):
+                logger.info(
+                    "%s: %d of %d, %.0f s",
+                    label,
+                    done,
+                    len(jobs),
+                    time.monotonic() - started,
+                )
+    return results
+
+
+def _previous(layout: Layout) -> tuple[dict | None, Split | None]:
+    """The metadata.json and the Metadata split table of the served export."""
+    path = layout.live / METADATA_FILE
+    if not path.exists():
+        return None, None
+    metadata = json.loads(path.read_text())
+    if metadata["format"] != container.VERSION:
+        raise ExportRefused(
+            f"the served export has format {metadata['format']}; this code reads"
+            f" {container.VERSION}"
+        )
+    path = layout.live / metadata["tables"][METADATA.slug]["split"]
+    split = Split.from_bits(container.read(path).numpy("split"), str(path))
+    return metadata, split
+
+
+def _previous_paths(split: Split, regions: tuple[int, ...]) -> tuple[str, ...]:
+    low = regions[0] << REGION_SHIFT
+    high = (regions[-1] + 1) << REGION_SHIFT
+    first, last = split.leaf_of(np.array([low, high - 1]))
+    return tuple(
+        tiles.tile_path(METADATA.slug, int(split.level[k]), int(split.pixel[k]))
+        for k in range(int(first), int(last) + 1)
+    )
+
+
+def _count_job(job: tuple[Registry, str, int]) -> np.ndarray:
+    return tiles.region_counts(*job)
+
+
+@dataclass
+class TableResult:
+    slug: str
+    split: Split
+    files: list[Written]
+    rows: int
+
+
+def _build_tables(
+    registry: Registry,
+    layout: Layout,
+    workers: int,
+    previous: Split | None,
+    problems: Problems,
+) -> list[TableResult]:
+    results = []
+    for table in (METADATA, *TABLES):
+        slug = table.slug
+        jobs = [(registry, slug, region) for region in range(REGION_COUNT)]
+        counts = _run(workers, _count_job, jobs, f"{slug}: cell counts")
+        split = Split.build(np.concatenate(counts), MAX_ROWS[slug])
+        logger.info(
+            "%s: %d tiles from %d split bits", slug, split.level.size, split.bits.size
+        )
+        split_file = container.write(
+            layout.staging, f"{slug}/{tiles.SPLIT_FILE}", split.payload()
+        )
+        unit_jobs = [
+            UnitJob(
+                registry,
+                slug,
+                unit,
+                layout.staging,
+                None
+                if previous is None or slug != METADATA.slug
+                else Previous(layout.live, _previous_paths(previous, unit.regions)),
+            )
+            for unit in tiles.units(split)
+        ]
+        built = _run(workers, tiles.build_unit, unit_jobs, f"{slug}: tiles")
+        files = [split_file]
+        rows = dropped = 0
+        for result in built:
+            files += result.files
+            rows += result.rows
+            dropped += result.dropped_aliases
+            problems.update(result.problems)
+        if dropped:
+            logger.warning("%s: %d aliases without a live end left out", slug, dropped)
+        results.append(TableResult(slug, split, files, rows))
+    return results
+
+
+@dataclass
+class TreeResult:
+    nodes: list[render.Node]
+    files: list[Written]
+    counts: Counter
+
+
+def _build_tree(registry: Registry, layout: Layout, workers: int) -> TreeResult:
+    scratch = layout.scratch
+    jobs = [render.RowsJob(registry, r, scratch) for r in range(REGION_COUNT)]
+    counts: Counter = Counter()
+    for _, region_counts in _run(workers, render.region_rows, jobs, "render rows"):
+        counts.update(region_counts)
+    for reason, count in counts.items():
+        logger.info("render rows: %s %d", reason, count)
+
+    started = time.monotonic()
+    sizes = [
+        np.load(render.scratch_file(scratch, r, "key"), mmap_mode="r").size
+        for r in range(REGION_COUNT)
+    ]
+    keys = np.empty(sum(sizes), np.uint64)
+    ranges = np.empty(sum(sizes), np.float32)
+    at = 0
+    for region, size in enumerate(sizes):
+        keys[at : at + size] = np.load(render.scratch_file(scratch, region, "key"))
+        ranges[at : at + size] = np.load(render.scratch_file(scratch, region, "range"))
+        at += size
+    node_of, nodes = render.assign(keys, ranges)
+    del keys, ranges
+    at = 0
+    for region, size in enumerate(sizes):
+        np.save(render.scratch_file(scratch, region, "node"), node_of[at : at + size])
+        at += size
+    del node_of
+    logger.info(
+        "render tree: %d nodes, depth %d, %.0f s",
+        len(nodes),
+        max(node.depth for node in nodes) if nodes else 0,
+        time.monotonic() - started,
+    )
+
+    groups = render.batches(nodes) if nodes else []
+    edges = tuple([group.start for group in groups] + [len(nodes)])
+    split_jobs = [render.SplitJob(scratch, r, edges) for r in range(REGION_COUNT)]
+    _run(workers, render.split_region, split_jobs, "render batches")
+    batch_jobs = [
+        render.BatchJob(
+            scratch, b, layout.staging, group.start, tuple(nodes[i] for i in group)
+        )
+        for b, group in enumerate(groups)
+    ]
+    files = [
+        item
+        for written in _run(workers, render.build_batch, batch_jobs, "render nodes")
+        for item in written
+    ]
+    shutil.rmtree(scratch)
+    return TreeResult(nodes, files, counts)
+
+
+def _patch_job(job: tuple[Path, str, list[str]]) -> int:
+    root, token, paths = job
+    for path in paths:
+        container.patch_token(root / path, token)
+    return len(paths)
+
+
+def _patch(root: Path, groups: dict[str, list[Written]], workers: int) -> dict:
+    tokens = {name: container.token_of(files) for name, files in groups.items()}
+    jobs = []
+    for name, files in groups.items():
+        paths = [item.path for item in files]
+        for at in range(0, len(paths), 5000):
+            jobs.append((root, tokens[name], paths[at : at + 5000]))
+    _run(workers, _patch_job, jobs, "tokens")
+    return tokens
+
+
+def _sizes(files: list[Written]) -> dict:
+    sizes = np.array([item.size for item in files], np.int64)
+    rows = np.array([item.rows for item in files], np.int64)
+    return {
+        "files": int(sizes.size),
+        "bytes": int(sizes.sum()),
+        "median_bytes": int(np.median(sizes)) if sizes.size else 0,
+        "p90_bytes": int(np.percentile(sizes, 90)) if sizes.size else 0,
+        "max_bytes": int(sizes.max()) if sizes.size else 0,
+        "median_rows": int(np.median(rows)) if rows.size else 0,
+    }
+
+
+def _metadata(
+    registry: Registry,
+    tables_built: list[TableResult],
+    tree: TreeResult,
+    tokens: dict[str, str],
+) -> dict:
+    tables_out = {}
+    for result in tables_built:
+        table = tiles.table_def(result.slug)
+        tables_out[result.slug] = {
+            "number": table.number,
+            "token": tokens[result.slug],
+            "split": f"{result.slug}/{tiles.SPLIT_FILE}",
+            "tile": f"{result.slug}/{{level}}/{{pixel}}.bin.gz",
+            "max_rows": MAX_ROWS[result.slug],
+            "rows": result.rows,
+            "tiles": int(result.split.level.size),
+            "columns": [
+                {"name": name, "type": kind} for name, kind in tiles.column_types(table)
+            ],
+            "distribution": DISTRIBUTION,
+        }
+    nodes = tree.nodes
+    return {
+        "format": container.VERSION,
+        "exported": datetime.now(UTC).isoformat(timespec="seconds"),
+        "registry": {"ingest": registry.last_ingest, "host": registry.manifest["host"]},
+        "tables": tables_out,
+        "trees": {
+            render.TREE: {
+                "token": tokens[render.TREE],
+                "root": render.node_path("r"),
+                "node": render.node_path("{name}"),
+                "ids": render.ids_path("{name}"),
+                "centre": list(render.ROOT_CENTRE),
+                "half_size": render.HALF_SIZE,
+                "node_rows": render.NODE_ROWS,
+                "range_limit_mag": render.RANGE_LIMIT_MAG,
+                "units": "pc",
+                "frame": FRAME,
+                "classes": dict(render.CLASSES),
+                "nodes": len(nodes),
+                "depth": max((node.depth for node in nodes), default=0),
+                "rows": sum(node.rows for node in nodes),
+                "columns": [
+                    {"name": name, "type": kind} for name, kind in render.NODE_COLUMNS
+                ],
+                "id_columns": [
+                    {"name": name, "type": kind} for name, kind in render.ID_COLUMNS
+                ],
+                "distribution": DISTRIBUTION,
+            }
+        },
+        "credits": list(CREDITS),
+    }
+
+
+def _swap(layout: Layout) -> None:
+    replaced = layout.live.exists()
+    if replaced:
+        layout.live.rename(layout.old)
+    try:
+        layout.staging.rename(layout.live)
+    except BaseException:
+        if replaced:
+            layout.old.rename(layout.live)
+        raise
+    fsync_dir(layout.live.parent)
+    if replaced:
+        shutil.rmtree(layout.old)
+
+
+def _export(
+    registry: Registry, layout: Layout, workers: int
+) -> tuple[list[TableResult], TreeResult, dict[str, str]]:
+    """Build into staging, check, and swap. Removes staging on a failure."""
+    _recover(layout)
+    previous_metadata, previous = _previous(layout)
+    if previous_metadata is None:
+        logger.info("no export at %s: nothing to compare with", layout.live)
+    try:
+        problems = Problems()
+        built = _build_tables(registry, layout, workers, previous, problems)
+        if problems:
+            for line in problems.lines():
+                logger.error("check failed: %s", line)
+            raise ExportRefused(
+                "the checks failed, the served export is unchanged:\n"
+                + "\n".join(problems.lines())
+            )
+        tree = _build_tree(registry, layout, workers)
+        groups = {result.slug: result.files for result in built}
+        groups[render.TREE] = tree.files
+        tokens = _patch(layout.staging, groups, workers)
+        metadata = _metadata(registry, built, tree, tokens)
+        (layout.staging / METADATA_FILE).write_text(
+            json.dumps(metadata, indent=1) + "\n"
+        )
+        _swap(layout)
+    except BaseException:
+        for path in (layout.staging, layout.scratch):
+            if path.exists():
+                shutil.rmtree(path)
+        raise
+    return built, tree, tokens
+
+
+def export_extrasolar(
+    registry_root: Path = REGISTRY_ROOT,
+    out_root: Path = EXTRASOLAR_DIR,
+    workers: int = 8,
+) -> dict:
+    """Export the registry's tables to `out_root/v1/x/`. Returns the report."""
+    started = time.monotonic()
+    with _read_registry(registry_root) as registry:
+        unreviewed = registry.unreviewed()
+        if unreviewed:
+            raise ExportRefused(
+                f"ingests {unreviewed} have merges that no one has reviewed; check"
+                " them, then run space-map-extrasolar review <ingest>"
+            )
+        layout = Layout(out_root)
+        with _locked(layout):
+            built, tree, tokens = _export(registry, layout, workers)
+    tile_files = {
+        r.slug: [f for f in r.files if not f.path.endswith(tiles.SPLIT_FILE)]
+        for r in built
+    }
+    report = {
+        "seconds": round(time.monotonic() - started),
+        "tokens": tokens,
+        "tables": {slug: _sizes(files) for slug, files in tile_files.items()},
+        "split_bytes": {
+            r.slug: next(f.size for f in r.files if f.path.endswith(tiles.SPLIT_FILE))
+            for r in built
+        },
+        "nodes": _sizes([f for f in tree.files if "/node/" in f.path]),
+        "ids": _sizes([f for f in tree.files if "/id/" in f.path]),
+        "render": dict(tree.counts),
+        "depths": dict(sorted(Counter(node.depth for node in tree.nodes).items())),
+    }
+    report["files"] = sum(len(r.files) for r in built) + len(tree.files) + 1
+    report["bytes"] = sum(f.size for r in built for f in r.files) + sum(
+        f.size for f in tree.files
+    )
+    return report
+
+
+def export_extrasolar_only(workers: int) -> None:
+    report = export_extrasolar(workers=workers)
+    logger.info("extrasolar export:\n%s", json.dumps(report, indent=1))

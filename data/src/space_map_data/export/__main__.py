@@ -15,6 +15,7 @@ from space_map_data.export.pipeline.orchestrator import export, export_probes_on
 # between export.ephemeris and export.objects.
 from space_map_data.export.credits import export_credits_only  # isort: skip
 from space_map_data.export.about_data import export_about_data_only
+from space_map_data.export.extrasolar.build import export_extrasolar_only
 from space_map_data.export.seo_pages import export_seo_only
 from space_map_data.export.spacecraft import export_spacecraft_only
 from space_map_data.export.status import export_status_only
@@ -42,15 +43,26 @@ def cli():
             "credits",
             "about-data",
             "seo",
+            "extrasolar",
         ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="Worker processes of the extrasolar export",
     )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
+    # It reads only the registry, so it needs no mirror and no DB.
+    if args.only == "extrasolar":
+        export_extrasolar_only(args.workers)
+        return
     sync_all()
     if args.only == "atmospheres":
         # Pure constants + derivation — no DB.
