@@ -5,7 +5,9 @@ import logging
 import logging.config
 import time
 import tomllib
+from pathlib import Path
 
+from space_map_data.extrasolar import stars
 from space_map_data.ingest.common import (
     ingest_features,
     ingest_images,
@@ -20,7 +22,13 @@ from space_map_data.ingest.providers.textures import TextureProcessor
 from space_map_data.models.ingest_stamp import write_ingest_stamp
 from space_map_data.utils.db import get_session, session_scope
 from space_map_data.utils.mirror import sync_all
-from space_map_data.utils.paths import DATA_DIR, DB_FILE, DOWNLOAD_DIR
+from space_map_data.utils.paths import (
+    DATA_DIR,
+    DB_FILE,
+    DOWNLOAD_DIR,
+    REGISTRY_BACKUP_DIR,
+    REGISTRY_ROOT,
+)
 
 TARGETS = [
     "objects",
@@ -32,10 +40,15 @@ TARGETS = [
     "tiles",
     "rings",
     "models",
+    "extrasolar",
 ]
-# A tile build runs for days and replaces the public pyramids, so "all" leaves
-# it out and it runs only when named.
-NAMED_ONLY = {"tiles"}
+# A tile build runs for days and replaces the public pyramids, and the
+# extrasolar ingest mints IDs that never go away. "all" leaves them out, so
+# they run only when named.
+NAMED_ONLY = {"tiles", "extrasolar"}
+# Targets that write no DB rows. A run of only these leaves the DB and its
+# ingest stamp alone, so the export keeps what it derived from the DB.
+DB_FREE = {"extrasolar"}
 
 
 def cli():
@@ -47,25 +60,55 @@ def cli():
         default=["all"],
         metavar="TARGET",
         help=f"Targets to ingest: {', '.join(TARGETS)}, all (default: all; "
-        "all leaves out tiles)",
+        "all leaves out tiles and extrasolar)",
     )
     parser.add_argument(
         "--force",
         action="store_true",
         help="Reprocess even if output already exists (textures, tiles, rings)",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="extrasolar: read only the first Gaia chunks that hold this many"
+        " stars; the ingest is partial, retires nothing and needs a"
+        " --registry-root other than the default",
+    )
+    parser.add_argument(
+        "--registry-root",
+        type=Path,
+        default=REGISTRY_ROOT,
+        help=f"extrasolar: the registry to write (default: {REGISTRY_ROOT});"
+        " another root backs up to <root>/backup",
+    )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
-    sync_all()
     full_rebuild = "all" in args.targets
     selected = [
         t
         for t in TARGETS
         if t in args.targets or (full_rebuild and t not in NAMED_ONLY)
     ]
+    db_targets = [t for t in selected if t not in DB_FREE]
+    if db_targets:
+        ingest_db(db_targets, full_rebuild, args.force)
+    if "extrasolar" in selected:
+        backup = (
+            REGISTRY_BACKUP_DIR
+            if args.registry_root.resolve() == REGISTRY_ROOT.resolve()
+            else args.registry_root / "backup"
+        )
+        result, summary = stars.ingest(args.registry_root, backup, args.limit)
+        print(result.report)
+        print(summary)
+
+
+def ingest_db(selected: list[str], full_rebuild: bool, force: bool) -> None:
+    """Run the targets that write the DB, then stamp it."""
+    sync_all()
     start_time = time.perf_counter()
 
     if full_rebuild:
@@ -90,15 +133,15 @@ def cli():
         ):
             log_db_summary(start_time=start_time)
         if "textures" in selected:
-            TextureProcessor().process_all(force=args.force)
+            TextureProcessor().process_all(force=force)
         if "tiles" in selected:
-            TextureProcessor().process_tiles(force=args.force)
+            TextureProcessor().process_tiles(force=force)
         if "rings" in selected:
-            RingProcessor().process_all(force=args.force)
+            RingProcessor().process_all(force=force)
         if "models" in selected:
-            ModelProcessor().process_all(force=args.force)
-        # Any target can write DB rows (models updates Object.model_name,
-        # textures flips map_texture_available, ...), so stamp unconditionally.
+            ModelProcessor().process_all(force=force)
+        # Any of these targets can write DB rows (models updates
+        # Object.model_name, textures flips map_texture_available, ...).
         write_ingest_stamp(get_session(), selected)
 
 

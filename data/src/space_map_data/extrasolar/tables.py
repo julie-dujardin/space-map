@@ -80,13 +80,22 @@ CROSS_ID = pa.struct(
     ]
 )
 
-# The source orders are placeholders until the Gaia and Hipparcos sources
-# exist.
+
+def _fields(kind: pa.DataType, *names: str) -> tuple[pa.Field, ...]:
+    return tuple(pa.field(name, kind) for name in names)
+
+
+# The name is the IAU proper name, else a Bayer or Flamsteed designation, HD,
+# HIP or Gaia DR3 number, in that order. Each source gives its best one.
 METADATA = TableDef(
     number=None,
     slug="metadata",
     groups=(
-        ColumnGroup("name", (pa.field("name", pa.string()),), ("iau-wgsn",)),
+        ColumnGroup(
+            "name",
+            (pa.field("name", pa.string()),),
+            ("iau-wgsn", "hipparcos-2007", "gaia-dr3"),
+        ),
         ColumnGroup(
             "class", (pa.field("class", pa.string()),), ("gaia-dr3", "hipparcos-2007")
         ),
@@ -100,25 +109,160 @@ METADATA = TableDef(
     ),
 )
 
-# Placeholder columns until the Gaia and Hipparcos sources exist.
+# Every Gaia DR3 field of the positionable stars with its error or range, and
+# the Hipparcos astrometry and photometry. A group that one catalogue fills
+# keeps that catalogue's names. The Gaia rows also carry the astrometric
+# fidelity of Rybizki et al. 2022.
 POINT_SOURCE = TableDef(
     number=1,
     slug="point-source",
     groups=(
+        # ICRS at `epoch` (Julian year): deg, errors in mas (ra_error is on
+        # ra·cos dec), parallax in mas, proper motions in mas/yr (pmra is
+        # on ra·cos dec).
         ColumnGroup(
             "astrometry",
             (
-                pa.field("ra", pa.float64()),
-                pa.field("dec", pa.float64()),
-                pa.field("parallax", pa.float32()),
-                pa.field("pmra", pa.float32()),
-                pa.field("pmdec", pa.float32()),
+                *_fields(pa.float64(), "ra", "dec"),
+                *_fields(
+                    pa.float32(),
+                    "ra_error",
+                    "dec_error",
+                    "parallax",
+                    "parallax_error",
+                    "pmra",
+                    "pmra_error",
+                    "pmdec",
+                    "pmdec_error",
+                    "epoch",
+                ),
             ),
             ("gaia-dr3", "hipparcos-2007"),
         ),
         ColumnGroup(
-            "photometry",
-            (pa.field("phot_g_mean_mag", pa.float32()),),
+            "gaia_photometry",
+            (
+                *_fields(
+                    pa.float32(),
+                    "phot_g_mean_mag",
+                    "phot_bp_mean_mag",
+                    "phot_rp_mean_mag",
+                    "phot_g_mean_flux_over_error",
+                    "phot_bp_mean_flux_over_error",
+                    "phot_rp_mean_flux_over_error",
+                    "phot_bp_rp_excess_factor",
+                ),
+                pa.field("phot_variable_flag", pa.string()),
+            ),
+            ("gaia-dr3",),
+        ),
+        # From the Hipparcos catalogue of 1997 (I/239): magnitudes in mag,
+        # sp_type as published.
+        ColumnGroup(
+            "hipparcos_photometry",
+            (
+                *_fields(
+                    pa.float32(),
+                    "hp_mag",
+                    "hp_mag_error",
+                    "v_mag",
+                    "b_v",
+                    "b_v_error",
+                    "v_i",
+                    "v_i_error",
+                ),
+                pa.field("sp_type", pa.string()),
+            ),
+            ("hipparcos-2007",),
+        ),
+        ColumnGroup(
+            "rvs",
+            (
+                *_fields(pa.float32(), "radial_velocity", "radial_velocity_error"),
+                pa.field("rv_nb_transits", pa.int16()),
+                *_fields(
+                    pa.float32(),
+                    "rv_expected_sig_to_noise",
+                    "vbroad",
+                    "vbroad_error",
+                    "grvs_mag",
+                    "grvs_mag_error",
+                ),
+            ),
+            ("gaia-dr3",),
+        ),
+        # Lower and upper are the 16th and 84th percentiles.
+        ColumnGroup(
+            "gspphot",
+            (
+                *_fields(
+                    pa.float32(),
+                    *(
+                        f"{name}_gspphot{bound}"
+                        for name in (
+                            "teff",
+                            "logg",
+                            "mh",
+                            "distance",
+                            "azero",
+                            "ag",
+                            "ebpminrp",
+                        )
+                        for bound in ("", "_lower", "_upper")
+                    ),
+                ),
+                pa.field("libname_gspphot", pa.string()),
+            ),
+            ("gaia-dr3",),
+        ),
+        ColumnGroup(
+            "astrometric_quality",
+            (
+                pa.field("ruwe", pa.float32()),
+                pa.field("astrometric_params_solved", pa.int8()),
+                *_fields(
+                    pa.float32(),
+                    "astrometric_excess_noise",
+                    "astrometric_excess_noise_sig",
+                ),
+                pa.field("visibility_periods_used", pa.int16()),
+                pa.field("ipd_frac_multi_peak", pa.int8()),
+                pa.field("ipd_gof_harmonic_amplitude", pa.float32()),
+                pa.field("duplicated_source", pa.bool_()),
+                *_fields(pa.float32(), "nu_eff_used_in_astrometry", "pseudocolour"),
+            ),
+            ("gaia-dr3",),
+        ),
+        ColumnGroup(
+            "gaia_classification",
+            (
+                pa.field("non_single_star", pa.int16()),
+                *_fields(pa.bool_(), "in_qso_candidates", "in_galaxy_candidates"),
+                *_fields(
+                    pa.float32(),
+                    "classprob_dsc_combmod_quasar",
+                    "classprob_dsc_combmod_galaxy",
+                    "classprob_dsc_combmod_star",
+                ),
+            ),
+            ("gaia-dr3",),
+        ),
+        ColumnGroup(
+            "gaia_products",
+            _fields(
+                pa.bool_(),
+                "has_xp_continuous",
+                "has_xp_sampled",
+                "has_rvs",
+                "has_epoch_photometry",
+                "has_epoch_rv",
+            ),
+            ("gaia-dr3",),
+        ),
+        # Under 0.5 marks a likely spurious astrometric solution.
+        ColumnGroup(
+            "fidelity",
+            _fields(pa.float32(), "fidelity_v2", "norm_dg"),
             ("gaia-dr3",),
         ),
     ),
