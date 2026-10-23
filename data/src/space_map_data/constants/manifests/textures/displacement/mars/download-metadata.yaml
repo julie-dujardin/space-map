@@ -48,3 +48,118 @@ bodies:
       # Around the HiRISE models, the file holds a 20 m model as blocks of
       # one height.
       fill_block: 20
+  # Each terrain model below is moved onto the CTX mosaic (`shift_m`,
+  # measured against CTX), so that its relief lies under the ground that the
+  # colour map shows.
+  # Meridiani Planum: terrain models of the plain where Opportunity landed,
+  # of Victoria crater, and of the western rim, centre and dune field of
+  # Endeavour. They stand up to 300 m apart from the mosaic and from each
+  # other, so each has its own shift.
+  - id: opportunity
+    name: Meridiani Planum
+    source: https://www.uahirise.org/dtm/
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain models DTEEC_001414_1780_001612_1780, DTEEC_021747_1780_022380_1780, DTEEC_018701_1775_018846_1775, DTEEC_028815_1780_028670_1780 and DTEEC_042674_1775_042740_1775, 1 m/px."
+    files:
+    - file: DTEEC_001414_1780_001612_1780_U01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_001414_1780_PSP_001612_1780/DTEEC_001414_1780_001612_1780_U01.tif
+      shift_m: [-73, -168]
+    - file: DTEEC_021747_1780_022380_1780_U01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/ESP_021747_1780_ESP_022380_1780/DTEEC_021747_1780_022380_1780_U01.tif
+      shift_m: [105, 49]
+    - file: DTEEC_018701_1775_018846_1775_U01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/ESP_018701_1775_ESP_018846_1775/DTEEC_018701_1775_018846_1775_U01.tif
+      shift_m: [172, 71]
+    - file: DTEEC_028815_1780_028670_1780_A01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/ESP_028815_1780_ESP_028670_1780/DTEEC_028815_1780_028670_1780_A01.tif
+      shift_m: [50, 190]
+    - file: DTEEC_042674_1775_042740_1775_A01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/ESP_042674_1775_ESP_042740_1775/DTEEC_042674_1775_042740_1775_A01.tif
+      shift_m: [60, 180]
+  # Terrain models of single landers, each made from one HiRISE stereo pair.
+  - id: viking-1
+    name: Viking 1
+    source: https://www.uahirise.org/dtm/PSP_001521_2025
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain model DTEEC_001521_2025_001719_2025, 1 m/px."
+    files:
+    - file: DTEEC_001521_2025_001719_2025_U01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_001521_2025_PSP_001719_2025/DTEEC_001521_2025_001719_2025_U01.tif
+      shift_m: [-87, 160]
+  - id: viking-2
+    name: Viking 2
+    source: https://www.uahirise.org/dtm/PSP_002055_2280
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain model DTEEC_002055_2280_001976_2280, 1 m/px."
+    files:
+    - file: DTEEC_002055_2280_001976_2280_A01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_002055_2280_PSP_001976_2280/DTEEC_002055_2280_001976_2280_A01.tif
+      shift_m: [168, -49]
+  - id: pathfinder
+    name: Mars Pathfinder
+    source: https://www.uahirise.org/dtm/PSP_002391_1995
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain model DTEEC_002391_1995_001890_1995, 1 m/px."
+    files:
+    - file: DTEEC_002391_1995_001890_1995_A01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_002391_1995_PSP_001890_1995/DTEEC_002391_1995_001890_1995_A01.tif
+      # The file puts the ground 1.4 km south and 0.6 km west of where the
+      # MOLA-HRSC map has it, and CTX has it 0.3 km further north-west.
+      shift_m: [1662, 391]
+  - id: spirit
+    name: Spirit
+    source: https://www.uahirise.org/dtm/PSP_001513_1655
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain model DTEEC_001513_1655_001777_1650, 1 m/px."
+    files:
+    - file: DTEEC_001513_1655_001777_1650_U01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_001513_1655_PSP_001777_1650/DTEEC_001513_1655_001777_1650_U01.tif
+      # Its orthoimage sits 150 m north of it: see the colour patch.
+      shift_m: [-308, 296]
+  - id: phoenix
+    name: Phoenix
+    source: https://www.uahirise.org/dtm/PSP_008591_2485
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain model DTEPC_008591_2485_008644_2485, 1 m/px."
+    files:
+    - file: DTEPC_008591_2485_008644_2485_U01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_008591_2485_PSP_008644_2485/DTEPC_008591_2485_008644_2485_U01.tif
+      shift_m: [180, -180]
+  - id: insight
+    name: InSight
+    source: https://www.uahirise.org/dtm/ESP_037262_1845
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain model DTEEC_037262_1845_036761_1845, 1 m/px."
+    files:
+    - file: DTEEC_037262_1845_036761_1845_U01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/ESP_037262_1845_ESP_036761_1845/DTEEC_037262_1845_036761_1845_U01.tif
+      shift_m: [-120, 105]
+  - id: zhurong
+    name: Zhurong
+    source: https://www.uahirise.org/dtm/ESP_069665_2055
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE terrain model DTEEC_069665_2055_069731_2055, 1 m/px."
+    files:
+    - file: DTEEC_069665_2055_069731_2055_A01.tif
+      dir: sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/ESP_069665_2055_ESP_069731_2055/DTEEC_069665_2055_069731_2055_A01.tif
+      shift_m: [-5, -105]

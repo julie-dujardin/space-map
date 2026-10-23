@@ -450,6 +450,128 @@ bodies:
       dir: mars-sites
       download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/MSL/MSL_Gale_Orthophoto_Mosaic_25cm_v3.tif
       gamma: 2.2
+  # Each patch below is moved onto the CTX mosaic (`shift_m`, measured by
+  # correlation), so that it meets the map around it: at these sites CTX has
+  # the ground 100-550 m from where HiRISE has it, a different way at each.
+  # Meridiani Planum, from Eagle crater, where Opportunity landed, to the
+  # rim of Endeavour, where it ended. Where the authors had no HiRISE image
+  # they filled in with CTX, enlarged.
+  - id: opportunity
+    name: Meridiani Planum
+    source: https://asc-pds-services.s3.us-west-2.amazonaws.com/pigpen/mars/hirise/MER_mosaics/index.html
+    organisation: USGS
+    license: Public domain
+    attribution: "NASA/JPL-Caltech/University of Arizona/MSSS. MER Opportunity basemap of HiRISE and CTX images, 25 cm/px (Parker and Calef)."
+    files:
+    - file: MER_Meridianni_Endeavor_Basemap_25cm.tif
+      dir: mars-sites
+      # JPEG 2000, made a tiled GeoTIFF on download.
+      download_url: https://asc-pds-services.s3.us-west-2.amazonaws.com/pigpen/mars/hirise/MER_mosaics/MER_Meridianni_Endeavor_Basemap_25cm.jp2
+      # 8-bit values stretched for display, not linear brightness.
+      gamma: 2.2
+      shift_m: [110, 70]
+  # The ground around single landers: the orthoimage of one HiRISE image on
+  # the terrain model made with it, a strip some 7 km wide. Its 8-bit values
+  # are stretched for display, as in the mosaics above. Read as reflectance
+  # by the scale and offset that each file states, they have a tenth of the
+  # contrast of the CTX map around them. Each stores zero for its deepest
+  # shadows and the seams between its detectors, as for the ground outside
+  # the strip.
+  # Chryse Planitia, where Viking 1 landed.
+  - id: viking-1
+    name: Viking 1
+    source: https://www.uahirise.org/dtm/PSP_001521_2025
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE orthoimage PSP_001521_2025 on the terrain model DTEEC_001521_2025_001719_2025, 25 cm/px."
+    files:
+    - file: PSP_001521_2025_RED_A_01_ORTHO.tif
+      dir: mars-sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_001521_2025_PSP_001719_2025/PSP_001521_2025_RED_A_01_ORTHO.tif
+      gamma: 2.2
+      fill_zeros: true
+      # CTX's offset turns along the strip, from 280 m at its north end to
+      # 100 m at its south end: this is its middle.
+      shift_m: [-87, 160]
+  # Utopia Planitia, where Viking 2 landed.
+  - id: viking-2
+    name: Viking 2
+    source: https://www.uahirise.org/dtm/PSP_002055_2280
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE orthoimage PSP_002055_2280 on the terrain model DTEEC_002055_2280_001976_2280, 25 cm/px."
+    files:
+    - file: PSP_002055_2280_RED_A_01_ORTHO.tif
+      dir: mars-sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_002055_2280_PSP_001976_2280/PSP_002055_2280_RED_A_01_ORTHO.tif
+      gamma: 2.2
+      fill_zeros: true
+      shift_m: [168, -49]
+  # Ares Vallis, where Mars Pathfinder and Sojourner landed.
+  - id: pathfinder
+    name: Mars Pathfinder
+    source: https://www.uahirise.org/dtm/PSP_002391_1995
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE orthoimage PSP_002391_1995 on the terrain model DTEEC_002391_1995_001890_1995, 25 cm/px."
+    files:
+    - file: PSP_002391_1995_RED_A_01_ORTHO.tif
+      dir: mars-sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_002391_1995_PSP_001890_1995/PSP_002391_1995_RED_A_01_ORTHO.tif
+      gamma: 2.2
+      fill_zeros: true
+      # The file puts the ground 1.4 km south and 0.6 km west of where the
+      # MOLA-HRSC map has it, and CTX has it 0.3 km further north-west.
+      shift_m: [1662, 391]
+  # Gusev crater, from where Spirit landed to the Columbia Hills, where it
+  # worked until 2010.
+  - id: spirit
+    name: Spirit
+    source: https://www.uahirise.org/dtm/PSP_001513_1655
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE orthoimage PSP_001513_1655 on the terrain model DTEEC_001513_1655_001777_1650, 25 cm/px."
+    files:
+    - file: PSP_001513_1655_RED_A_01_ORTHO.tif
+      dir: mars-sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_001513_1655_PSP_001777_1650/PSP_001513_1655_RED_A_01_ORTHO.tif
+      gamma: 2.2
+      fill_zeros: true
+      # This orthoimage puts the ground 150 m north of its own terrain
+      # model, so the two files move by different amounts.
+      shift_m: [-460, 292]
+  # Vastitas Borealis, where Phoenix landed. In the polar stereographic
+  # projection, so a patch of the north cap.
+  - id: phoenix
+    name: Phoenix
+    source: https://www.uahirise.org/dtm/PSP_008591_2485
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE orthoimage PSP_008591_2485 on the terrain model DTEPC_008591_2485_008644_2485, 25 cm/px."
+    files:
+    - file: PSP_008591_2485_RED_A_01_ORTHO.tif
+      dir: mars-sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/PSP_008591_2485_PSP_008644_2485/PSP_008591_2485_RED_A_01_ORTHO.tif
+      gamma: 2.2
+      fill_zeros: true
+      shift_m: [180, -180]
+  # InSight has its terrain model only: both orthoimages of its pair on USGS
+  # ARD index none of their full-resolution tiles, and hold only part of them.
+  # Utopia Planitia, where Tianwen-1 landed Zhurong. The pair's other
+  # orthoimage has the same fault.
+  - id: zhurong
+    name: Zhurong
+    source: https://www.uahirise.org/dtm/ESP_069665_2055
+    organisation: USGS
+    license: CC0 1.0
+    attribution: "NASA/JPL/University of Arizona/USGS Astrogeology Science Center. HiRISE orthoimage ESP_069731_2055 on the terrain model DTEEC_069665_2055_069731_2055, 25 cm/px."
+    files:
+    - file: ESP_069731_2055_RED_A_01_ORTHO.tif
+      dir: mars-sites
+      download_url: https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/controlled/dtm/ESP_069665_2055_ESP_069731_2055/ESP_069731_2055_RED_A_01_ORTHO.tif
+      gamma: 2.2
+      fill_zeros: true
+      shift_m: [-5, -105]
 - body: naif-401
   body_name: phobos
   source: https://astrogeology.usgs.gov/search/map/phobos_viking_global_mosaic_5m#open
