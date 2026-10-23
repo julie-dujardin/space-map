@@ -76,6 +76,23 @@ def _height_signature(fields: dict) -> dict:
     return fields
 
 
+def _patch_raster(
+    path: Path, layer: dict, entry: dict, coding: tiles.HeightCoding | None
+) -> patches.Raster:
+    """A file of a patch: heights for a height pyramid, else brightness. A
+    polar stereographic file is read on the cap of its pole."""
+    gamma = layer.get("gamma")
+    if tiles.is_polar(path):
+        if coding is None:
+            return tiles.open_polar_region_layer(path, gamma)
+        return tiles.open_polar_height_region_layer(
+            path, **_height_fields(entry, layer)
+        )
+    if coding is None:
+        return tiles.open_region_layer(path, gamma)
+    return tiles.open_height_region_layer(path, **_height_fields(entry, layer))
+
+
 def _described_files(names: list[str]) -> dict:
     """A layer's files for the descriptor: listed, or counted past a few."""
     if len(names) <= 16:
@@ -785,7 +802,8 @@ class TextureProcessor:
             meta_path.write_text(json.dumps(metadata, indent=2))
 
         for patch_id in built.keys() - wanted.keys():
-            patches.remove(out_dir, base_level, built.pop(patch_id))
+            gone = built.pop(patch_id)
+            patches.remove(out_dir / gone.get("cap", ""), base_level, gone)
             save()
             log.info("removed patch %s of %s", patch_id, pyramid_id)
 
@@ -877,11 +895,6 @@ class TextureProcessor:
                     save()
                 continue
 
-            # Built aside, and the tiles it replaces stay until it is whole: a
-            # stopped build leaves the pyramid as it was.
-            building = out_dir / f".patch-{patch_id}"
-            if building.exists():
-                shutil.rmtree(building)
             try:
                 models = [
                     tiles.open_height_region_layer(path, **how)
@@ -891,23 +904,21 @@ class TextureProcessor:
                 for layer in spec["files"]:
                     for name, _ in layer_files(layer):
                         path = source_dir / name
-                        if coding is not None:
-                            rasters.append(
-                                tiles.open_height_region_layer(
-                                    path, **_height_fields(entry, layer)
-                                )
-                            )
-                            continue
-                        if models:
+                        if models and coding is None:
                             path = deshade.deshaded(
                                 path, models, copy_keys[name], copies_dir
                             )
-                        rasters.append(
-                            tiles.open_region_layer(path, layer.get("gamma"))
-                        )
+                        rasters.append(_patch_raster(path, layer, entry, coding))
+                # A cap patch goes in the cap's folder.
+                chart_dir = out_dir / patches.chart(rasters)
+                # Built aside, and the tiles it replaces stay until it is
+                # whole: a stopped build leaves the pyramid as it was.
+                building = chart_dir / f".patch-{patch_id}"
+                if building.exists():
+                    shutil.rmtree(building)
                 builder = patches.PatchBuilder(
                     f"{pyramid_id} {patch_id}",
-                    out_dir,
+                    chart_dir,
                     base_level,
                     rasters,
                     building,
@@ -927,6 +938,7 @@ class TextureProcessor:
                 other["id"]
                 for other in built.values()
                 if other["id"] != patch_id
+                and other.get("cap", "") == builder.chart
                 and patches.share_tiles(
                     reach,
                     patches.first_range(
@@ -946,11 +958,12 @@ class TextureProcessor:
             if current:
                 del built[patch_id]
                 save()
-                patches.remove(out_dir, base_level, current)
-            patches.put_in_place(building, out_dir, patch_id)
+                patches.remove(out_dir / current.get("cap", ""), base_level, current)
+            patches.put_in_place(building, chart_dir, patch_id)
             x0, x1, y0, y1 = builder.tile_range(builder.level)
             built[patch_id] = {
                 **credit,
+                **({"cap": builder.chart} if builder.chart else {}),
                 "version": version,
                 "max_level": builder.level,
                 "map_levels": builder.map_levels,

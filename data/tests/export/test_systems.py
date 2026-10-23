@@ -285,6 +285,26 @@ class TestTilesBlock:
         block = texture_attribution(load_texture_metadata(tmp_path)["naif-499"])
         assert "tiles" not in block
 
+    def test_patch_states_its_tiles_and_its_cap(self):
+        patch = {
+            "id": "phoenix",
+            "name": "Phoenix",
+            "cap": "north",
+            "max_level": 16,
+            "map_levels": 4,
+            "x": [1, 2],
+            "y": [3, 4],
+            "version": "abcdef0123",
+            "source": "https://example.com/phoenix",
+            "organisation": "USGS",
+            "license": "CC0 1.0",
+            "files": ["site.tif"],
+            "bounds": {"west": 0.0, "east": 1.0, "south": 0.0, "north": 1.0},
+        }
+        (block,) = tiles_block({**self.DESCRIPTOR, "patches": [patch]})["patches"]
+        assert block["cap"] == "north"
+        assert "files" not in block and "bounds" not in block and "name" not in block
+
     def test_monthly_pyramid_states_its_frames(self):
         block = tiles_block({**self.DESCRIPTOR, "frames": 12})
         assert block["frames"] == 12

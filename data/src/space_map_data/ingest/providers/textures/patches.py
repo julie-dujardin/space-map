@@ -17,6 +17,9 @@ A patch of a height pyramid is built the same way from a terrain model of the
 site: the broad heights stay those of the pyramid, and the model gives the
 relief below that scale. The two are tied to the body by different
 measurements, and can stand some metres apart.
+
+A patch of rasters in the polar stereographic projection goes on the cap of
+their pole, with the same layout inside the cap's folder.
 """
 
 import logging
@@ -25,6 +28,7 @@ import shutil
 import threading
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -84,17 +88,35 @@ def _resized(
     return np.asarray(image.resize(size, filter_, box=box))
 
 
-def _region(raster: tiles.Layer) -> tiles.Region:
+type Raster = tiles.Layer | tiles.PolarRegionLayer
+
+
+def _region(raster: Raster) -> tiles.Region | tiles.PolarRegion:
     pixels = raster.pixels
-    assert isinstance(pixels, tiles.Region)
+    assert isinstance(pixels, (tiles.Region, tiles.PolarRegion))
     return pixels
 
 
-def _bounds(raster: tiles.Layer) -> tuple[float, float, float, float]:
+def _bounds(raster: Raster) -> tuple[float, float, float, float]:
     return _region(raster).bounds
 
 
-def fields(raster: tiles.Layer) -> tiles.Layer:
+def chart(rasters: Sequence[Raster]) -> str:
+    """The folder of the chart that a patch of ``rasters`` is on: ``""`` for
+    the map, or the cap of the pole that polar rasters are around."""
+    found = set()
+    for raster in rasters:
+        region = _region(raster)
+        if isinstance(region, tiles.PolarRegion):
+            found.add("north" if region.place.north else "south")
+        else:
+            found.add("")
+    if len(found) > 1:
+        raise ValueError("the files of one patch are on different charts")
+    return found.pop()
+
+
+def fields[R: tiles.Layer | tiles.PolarRegionLayer](raster: R) -> R:
     """A raster as two fields that can be resampled: its values with nothing
     where it has no data, and the share of data. A site mosaic is strips with
     gaps between them, and one missing pixel under a filter would otherwise
@@ -108,7 +130,7 @@ def fields(raster: tiles.Layer) -> tiles.Layer:
         filled = np.where(seen, values, np.float32(0.0))
         return np.stack([filled, seen.astype(np.float32)], axis=-1)
 
-    return tiles.Layer(raster.pixels, raster.placement, to_values=convert)
+    return replace(raster, to_values=convert)
 
 
 def _inside(here: np.ndarray) -> np.ndarray:
@@ -120,13 +142,13 @@ def _inside(here: np.ndarray) -> np.ndarray:
     return np.clip(deep / _SEAM, 0.0, 1.0).astype(np.float32)
 
 
-def map_levels(sigma: float, base_level: int) -> int:
+def map_levels(sigma: float, base_level: int, cap: bool = False) -> int:
     """How many of a pyramid's own levels a patch shows in, from the finest
     up. The blur is half as many pixels wide at each level: at one pixel the
-    rasters have no detail left that the map lacks."""
+    rasters have no detail left that the map lacks. A cap starts at level 1."""
     if sigma <= 1.0:
         return 0
-    return min(math.ceil(math.log2(sigma)), base_level + 1)
+    return min(math.ceil(math.log2(sigma)), base_level + (0 if cap else 1))
 
 
 def own_tile(pyramid: Path, level: int, x: int, y: int) -> Path:
@@ -167,7 +189,7 @@ class PatchBuilder:
         name: str,
         pyramid: Path,
         base_level: int,
-        rasters: Sequence[tiles.Layer],
+        rasters: Sequence[Raster],
         out_dir: Path,
         sigma: float,
         max_level: int | None = None,
@@ -180,8 +202,12 @@ class PatchBuilder:
         self.out_dir = out_dir
         self.sigma = sigma
         self.coding = coding
+        # ``pyramid`` is the folder of the patch's chart, a cap's for a cap patch.
+        self.chart = chart(rasters)
         # Heights in three bytes do not mix by alpha as colours do.
-        self.map_levels = map_levels(sigma, base_level) if coding is None else 0
+        self.map_levels = (
+            map_levels(sigma, base_level, bool(self.chart)) if coding is None else 0
+        )
         # A raster away from the equator has wider pixels in longitude than in
         # latitude: the finer of the two decides.
         self.full_width = max(
@@ -198,6 +224,15 @@ class PatchBuilder:
         self.east = max(edge[1] for edge in edges)
         self.north = max(edge[2] for edge in edges)
         self.south = min(edge[3] for edge in edges)
+        if self.chart:
+            planes = [_polar(raster).plane_bounds() for raster in rasters]
+            # Fractions of the cap's width and height from its top-left corner.
+            self._cap_box = (
+                (1.0 + min(plane[0] for plane in planes)) / 2,
+                (1.0 + max(plane[1] for plane in planes)) / 2,
+                (1.0 - max(plane[3] for plane in planes)) / 2,
+                (1.0 - min(plane[2] for plane in planes)) / 2,
+            )
         self.stats = tiles.PyramidStats.empty(self.level)
         self._lock = threading.Lock()
         self._save_kwargs = (
@@ -209,15 +244,26 @@ class PatchBuilder:
         self._block_level = max(self.level - _BLOCK_LEVELS, base_level + 1)
         self._group_level = max(self._block_level - _GROUP_LEVELS, base_level + 1)
 
+    def columns(self, level: int) -> int:
+        return 1 << (level - 1) if self.chart else 2 << level
+
+    def rows(self, level: int) -> int:
+        return 1 << (level - 1) if self.chart else 1 << level
+
     def tile_range(self, level: int) -> tuple[int, int, int, int]:
         """First and last column, then first and last row, of the tiles of
         ``level`` that the rasters touch."""
-        columns, rows = 2 << level, 1 << level
+        columns, rows = self.columns(level), self.rows(level)
+        if self.chart:
+            left, right, top, bottom = self._cap_box
+        else:
+            left, right = (self.west + 180.0) / 360.0, (self.east + 180.0) / 360.0
+            top, bottom = (90.0 - self.north) / 180.0, (90.0 - self.south) / 180.0
         return (
-            math.floor((self.west + 180.0) / 360.0 * columns),
-            math.ceil((self.east + 180.0) / 360.0 * columns) - 1,
-            math.floor((90.0 - self.north) / 180.0 * rows),
-            math.ceil((90.0 - self.south) / 180.0 * rows) - 1,
+            math.floor(left * columns),
+            math.ceil(right * columns) - 1,
+            math.floor(top * rows),
+            math.ceil(bottom * rows) - 1,
         )
 
     def _touched(self, level: int, x: int, y: int) -> bool:
@@ -265,8 +311,11 @@ class PatchBuilder:
         """Values of raster ``index`` over a pixel window of ``level``, NaN
         where less than half of a pixel has data. A window that takes many
         reads can share them out over ``pool``."""
+        if self.chart:
+            return self._fine_cap(index, level, y0, y1, x0, x1, pool)
         raster = self.rasters[index]
         fields = self._fields[index]
+        assert isinstance(fields, tiles.Layer)
         rows = config.TILE_SIZE << level
         width = tiles.level_width(level)
         out = np.full((y1 - y0, x1 - x0), np.nan, dtype=np.float32)
@@ -286,6 +335,43 @@ class PatchBuilder:
             bottom = min(top + step, last)
             lat_edges = 90.0 - np.arange(top, bottom + 1) * (180.0 / rows)
             both = fields.window(width, lat_edges, left, right)
+            total, seen = both[..., 0], both[..., 1]
+            held = out[top - y0 : bottom - y0, left - x0 : right - x0]
+            np.divide(total, seen, out=held, where=seen > 0.5)
+
+        list((pool.map if pool else map)(band, range(first, last, step)))
+        return out
+
+    def _fine_cap(
+        self,
+        index: int,
+        level: int,
+        y0: int,
+        y1: int,
+        x0: int,
+        x1: int,
+        pool: ThreadPoolExecutor | None = None,
+    ) -> np.ndarray:
+        """``fine`` on the grid of a cap."""
+        raster = _polar(self.rasters[index])
+        fields = self._fields[index]
+        assert isinstance(fields, tiles.PolarRegionLayer)
+        cap = tiles.Cap(self.chart == "north", level)
+        half = cap.size / 2
+        out = np.full((y1 - y0, x1 - x0), np.nan, dtype=np.float32)
+        plane_left, plane_right, plane_bottom, plane_top = raster.plane_bounds()
+        left = max(x0, math.floor((1.0 + plane_left) * half) - _MARGIN)
+        right = min(x1, math.ceil((1.0 + plane_right) * half) + _MARGIN)
+        first = max(y0, math.floor((1.0 - plane_top) * half) - _MARGIN)
+        last = min(y1, math.ceil((1.0 - plane_bottom) * half) + _MARGIN)
+        if left >= right or first >= last:
+            return out
+        per_row = (right - left) * fields.per_cap_pixel(cap) ** 2
+        step = max(int(_READ_PIXELS / max(per_row, 1.0)), 1)
+
+        def band(top: int) -> None:
+            bottom = min(top + step, last)
+            both = fields.cap(cap, top, bottom, left, right)
             total, seen = both[..., 0], both[..., 1]
             held = out[top - y0 : bottom - y0, left - x0 : right - x0]
             np.divide(total, seen, out=held, where=seen > 0.5)
@@ -402,7 +488,11 @@ class _Ground:
         self.left = x0 * half - reach
         self.top = max(y0 * half - reach, 0)
         right = (x1 + 1) * half + reach
-        bottom = min((y1 + 1) * half + reach, size << level)
+        bottom = min((y1 + 1) * half + reach, size * patch.rows(level))
+        if patch.chart:
+            # A cap ends at its sides. Only the map goes around.
+            self.left = max(self.left, 0)
+            right = min(right, size * patch.columns(level))
 
         plain = self._map(level, self.top, bottom, self.left, right)
         # Per raster, what the blocks need of it.
@@ -453,9 +543,10 @@ class _Ground:
         return np.asarray(tile.convert("RGB"))
 
     def _map(self, level: int, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
-        """Pixels of the pyramid's own tiles; columns wrap around the globe."""
+        """Pixels of the pyramid's own tiles; columns of the map wrap around
+        the globe."""
         size = config.TILE_SIZE
-        columns = 2 << level
+        columns = self.patch.columns(level)
         out: np.ndarray | None = None
         for ty in range(y0 // size, (y1 - 1) // size + 1):
             for tx in range(x0 // size, (x1 - 1) // size + 1):
@@ -644,6 +735,12 @@ class _Over:
                 image = np.pad(image, (*pad, (0, 0)))
             image, alpha = _coarser(image, alpha)
             x0, y0 = x0 // 2, y0 // 2
+
+
+def _polar(raster: Raster) -> tiles.PolarRegion:
+    region = raster.pixels
+    assert isinstance(region, tiles.PolarRegion)
+    return region
 
 
 def _coarser(image: np.ndarray, alpha: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

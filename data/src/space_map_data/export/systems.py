@@ -188,6 +188,7 @@ def _with_tiles(out_dir: Path, bundle_id: str, meta: dict) -> dict:
 # What the renderer needs of a patch: where its tiles are, and its credit.
 _PATCH_KEYS = (
     "id",
+    "cap",
     "max_level",
     "map_levels",
     "x",

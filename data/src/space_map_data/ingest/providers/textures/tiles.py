@@ -361,6 +361,130 @@ class Region:
         return out
 
 
+@dataclass(frozen=True)
+class PolarPlacement:
+    """Where a polar stereographic GeoTIFF sits on its plane: the corner of
+    its first pixel and the pixel's side in metres, the meridian that runs
+    from the pole down its columns, and the scale at the pole."""
+
+    north: bool
+    left_m: float
+    top_m: float
+    step_m: float
+    meridian_deg: float
+    scale: float
+    radius_m: float
+
+    @property
+    def unit_m(self) -> float:
+        """Metres of the plane from the pole to the middle of a cap's side."""
+        return 2 * self.radius_m * self.scale * _CAP_EDGE
+
+    def plane(self, x_m: np.ndarray, y_m: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Metres of the file's plane → the plane of a cap: ``x`` to the
+        prime meridian, ``y`` up, 1 at the middle of a side."""
+        turn = math.radians(self.meridian_deg)
+        cos, sin = math.cos(turn), math.sin(turn)
+        if self.north:
+            x, y = -x_m * sin - y_m * cos, x_m * cos - y_m * sin
+        else:
+            x, y = -x_m * sin + y_m * cos, -x_m * cos - y_m * sin
+        return x / self.unit_m, y / self.unit_m
+
+    def metres(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """The plane of a cap → metres of the file's plane."""
+        turn = math.radians(self.meridian_deg)
+        cos, sin = math.cos(turn), math.sin(turn)
+        if self.north:
+            x_m, y_m = y * cos - x * sin, -(x * cos + y * sin)
+        else:
+            x_m, y_m = -y * cos - x * sin, x * cos - y * sin
+        return x_m * self.unit_m, y_m * self.unit_m
+
+    def pixel(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """The plane of a cap → column and row of the file, from the corner of
+        its first pixel."""
+        x_m, y_m = self.metres(x, y)
+        return (x_m - self.left_m) / self.step_m, (self.top_m - y_m) / self.step_m
+
+
+class PolarRegion:
+    """A raster of the ground around a pole, in the polar stereographic
+    projection about it. A cap is that projection too, so the raster reads
+    on a cap's grid by a quarter turn, a flip and a scale.
+
+    Where it has nothing it reads as ``blank``, as a ``Region`` does."""
+
+    def __init__(
+        self,
+        pixels: np.ndarray | ChunkedTiff | SmoothedFill,
+        place: PolarPlacement,
+        blank: float | None = None,
+    ) -> None:
+        self._pixels = pixels
+        self.place = place
+        self._blank = blank
+        self.shape = pixels.shape
+
+    @property
+    def calibrated(self) -> bool:
+        return self._pixels.dtype.kind == "f"
+
+    def plane_bounds(self) -> tuple[float, float, float, float]:
+        """Left, right, bottom and top edge on the plane of a cap."""
+        rows, columns = self.shape[:2]
+        place = self.place
+        x_m = place.left_m + np.array([0, columns, 0, columns]) * place.step_m
+        y_m = place.top_m - np.array([0, 0, rows, rows]) * place.step_m
+        x, y = place.plane(x_m, y_m)
+        return float(x.min()), float(x.max()), float(y.min()), float(y.max())
+
+    @property
+    def bounds(self) -> tuple[float, float, float, float]:
+        """West, east, north and south edge in degrees, of the ground along
+        the raster's border."""
+        rows, columns = self.shape[:2]
+        place = self.place
+        edge = np.linspace(0.0, 1.0, 65)
+        across = np.concatenate([edge, np.ones(65), edge[::-1], np.zeros(65)])
+        down = np.concatenate([np.zeros(65), edge, np.ones(65), edge[::-1]])
+        x, y = place.plane(
+            place.left_m + across * columns * place.step_m,
+            place.top_m - down * rows * place.step_m,
+        )
+        reach = np.hypot(x, y)
+        colatitude = np.degrees(2 * np.arctan(reach * _CAP_EDGE))
+        latitude = 90.0 - colatitude if place.north else colatitude - 90.0
+        east = np.degrees(np.arctan2(y if place.north else -y, x))
+        left, right, bottom, top = self.plane_bounds()
+        if left <= 0.0 <= right and bottom <= 0.0 <= top:
+            pole = 90.0 if place.north else -90.0
+            return -180.0, 180.0, max(pole, latitude.max()), min(pole, latitude.min())
+        # Counted from the raster's own middle, so no edge jumps at ±180°.
+        middle = float(east[len(east) // 8])
+        east = middle + np.remainder(east - middle + 180.0, 360.0) - 180.0
+        return (
+            float(east.min()),
+            float(east.max()),
+            float(latitude.max()),
+            float(latitude.min()),
+        )
+
+    def read(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        blank = self._blank
+        if blank is None:
+            blank = np.nan if self.calibrated else 0
+        out = np.full((y1 - y0, x1 - x0), blank, dtype=self._pixels.dtype)
+        height, width = self.shape[:2]
+        top, bottom = max(y0, 0), min(y1, height)
+        left, right = max(x0, 0), min(x1, width)
+        if top < bottom and left < right:
+            out[top - y0 : bottom - y0, left - x0 : right - x0] = self._pixels[
+                top:bottom, left:right
+            ]
+        return out
+
+
 def _bicubic(
     band: np.ndarray, size: tuple[int, int], box: tuple[float, float, float, float]
 ) -> np.ndarray:
@@ -973,6 +1097,79 @@ class PolarLayer:
         self._values = None
 
 
+@dataclass
+class PolarRegionLayer:
+    """A ``PolarRegion`` read on a cap's grid, for a patch of that cap."""
+
+    pixels: PolarRegion
+    to_values: Callable[[np.ndarray], np.ndarray]
+
+    @property
+    def width(self) -> int:
+        """Pixels around the equator at the raster's own pixel size."""
+        place = self.pixels.place
+        return round(2 * math.pi * place.radius_m * place.scale / place.step_m)
+
+    @property
+    def height(self) -> int:
+        return self.width // 2
+
+    def per_cap_pixel(self, cap: Cap) -> float:
+        """Pixels of the raster along one pixel of ``cap``."""
+        return self.pixels.place.unit_m / self.pixels.place.step_m / (cap.size / 2)
+
+    def cap(self, cap: Cap, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        region = self.pixels
+        if cap.north != region.place.north:
+            raise ValueError("a polar raster read on the other pole's cap")
+        half = cap.size / 2
+
+        def at(column: float, row: float) -> tuple[float, float]:
+            u, v = region.place.pixel(
+                np.array(column / half - 1.0), np.array(1.0 - row / half)
+            )
+            return float(u), float(v)
+
+        u0, v0 = at(x0, y0)
+        u1, v1 = at(x1, y1)
+        along_u, along_v = at(x0 + 1, y0)
+        # Whether the cap's columns run along the raster's rows.
+        swap = abs(along_v - v0) > abs(along_u - u0)
+        if abs((along_v - v0) * (along_u - u0)) > 1e-9 * self.per_cap_pixel(cap) ** 2:
+            raise ValueError("a polar raster turned by other than a quarter turn")
+        step = self.per_cap_pixel(cap)
+        pad = math.ceil(_FILTER_SUPPORT * max(1.0, step)) + 1
+        top = math.floor(min(v0, v1)) - pad
+        left = math.floor(min(u0, u1)) - pad
+        bottom = math.ceil(max(v0, v1)) + pad
+        right = math.ceil(max(u0, u1)) + pad
+        values = self.to_values(region.read(top, bottom, left, right))
+        # The window's corners on the raster's pixels, from its first one.
+        box = [u0 - left, v0 - top, u1 - left, v1 - top]
+        if swap:
+            values = values.swapaxes(0, 1)
+            box = [box[1], box[0], box[3], box[2]]
+        # Now the cap's columns run along the second axis. Turn each axis the
+        # way the cap's run.
+        if box[2] < box[0]:
+            values = values[:, ::-1]
+            box[0], box[2] = values.shape[1] - box[0], values.shape[1] - box[2]
+        if box[3] < box[1]:
+            values = values[::-1]
+            box[1], box[3] = values.shape[0] - box[1], values.shape[0] - box[3]
+        size = (x1 - x0, y1 - y0)
+        corners = (box[0], box[1], box[2], box[3])
+        if values.ndim == 3:
+            return np.stack(
+                [
+                    _bicubic(np.ascontiguousarray(values[..., i]), size, corners)
+                    for i in range(values.shape[2])
+                ],
+                axis=-1,
+            )
+        return _bicubic(np.ascontiguousarray(values), size, corners)
+
+
 def _load_whole(path: Path, channels: int) -> Image.Image:
     """Refuse to decode an image that cannot be read in bands when it would
     take more memory than a build may hold."""
@@ -1210,6 +1407,53 @@ def _geotiff_bounds(path: Path) -> tuple[float, float, float, float]:
     )
 
 
+def _polar_placement(path: Path) -> PolarPlacement | None:
+    """Where a polar stereographic GeoTIFF sits, or None for a GeoTIFF in
+    another projection."""
+    with tifffile.TiffFile(str(path)) as tif:
+        page = tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always full
+        keys = page.geotiff_tags or {}
+    # 15: the polar stereographic projection.
+    if keys.get("ProjCoordTransGeoKey") != 15 or "ModelTiepoint" not in keys:
+        return None
+    pole = keys.get("ProjNatOriginLatGeoKey", 0.0)
+    origin = (
+        keys.get("ProjFalseEastingGeoKey", 0.0),
+        keys.get("ProjFalseNorthingGeoKey", 0.0),
+        *keys["ModelTiepoint"][:2],
+    )
+    # A latitude of true scale in place of a scale at the pole is not read here.
+    if (
+        abs(pole) != 90.0
+        or any(origin)
+        or "ProjStdParallel1GeoKey" in keys
+        or keys.get("ProjLinearUnitsGeoKey", 9001) != 9001
+    ):
+        raise ValueError(f"{path.name}: a projection origin or unit not read here")
+    meridian = keys.get(
+        "ProjStraightVertPoleLongGeoKey", keys.get("ProjNatOriginLongGeoKey", 0.0)
+    )
+    if meridian % 90.0:
+        raise ValueError(f"{path.name}: a central meridian not read here")
+    step_x, step_y = keys["ModelPixelScale"][:2]
+    if not math.isclose(step_x, step_y):
+        raise ValueError(f"{path.name}: pixels that are not square")
+    x0, y0 = keys["ModelTiepoint"][3:5]
+    # 2: the tiepoint is the centre of the first pixel, not its corner.
+    if keys.get("GTRasterTypeGeoKey") == 2:
+        x0, y0 = x0 - step_x / 2, y0 + step_y / 2
+    return PolarPlacement(
+        north=pole > 0,
+        left_m=x0,
+        top_m=y0,
+        step_m=step_x,
+        meridian_deg=meridian,
+        scale=keys.get("ProjScaleAtNatOriginGeoKey", 1.0),
+        radius_m=keys["GeogSemiMajorAxisGeoKey"],
+    )
+
+
 def _pds_bounds(path: Path) -> tuple[float, float, float, float]:
     """West, east, north and south edge of an equirectangular PDS3 image, in
     degrees, as its label states them."""
@@ -1231,20 +1475,72 @@ def _pds_bounds(path: Path) -> tuple[float, float, float, float]:
     )
 
 
+def _region_bounds(path: Path) -> tuple[float, float, float, float]:
+    """West, east, north and south edge of an equirectangular file."""
+    if path.suffix.lower() == ".img":
+        return _pds_bounds(path)
+    return _geotiff_bounds(path)
+
+
+def is_polar(path: Path) -> bool:
+    """Whether a file is a GeoTIFF in the polar stereographic projection."""
+    return path.suffix.lower() != ".img" and _polar_placement(path) is not None
+
+
 def open_region_layer(path: Path, gamma: float | None = None) -> Layer:
     """A greyscale raster of a part of the globe, as a brightness layer: an
     equirectangular GeoTIFF or PDS3 image."""
     pixels: np.ndarray | ChunkedTiff
     if path.suffix.lower() == ".img":
-        pixels, bounds = open_pds_image(path), _pds_bounds(path)
+        pixels = open_pds_image(path)
     else:
         # A site mosaic stored in compressed chunks is too large to decode whole.
         pixels = ChunkedTiff(path) if _compressed(path) else _open_grey(path)
-        bounds = _geotiff_bounds(path)
-    region = Region(pixels, *bounds)
-    return Layer(
-        region, Placement(), to_values=brightness_values(gamma, region.calibrated)
+    region = Region(pixels, *_region_bounds(path))
+    convert = brightness_values(gamma, region.calibrated)
+    return Layer(region, Placement(), to_values=convert)
+
+
+def open_polar_region_layer(path: Path, gamma: float | None = None) -> PolarRegionLayer:
+    """A greyscale GeoTIFF of the ground around a pole, in the polar
+    stereographic projection, as a brightness layer of that pole's cap."""
+    polar = _polar_placement(path)
+    if polar is None:
+        raise ValueError(f"{path.name}: not a polar stereographic GeoTIFF")
+    # A site mosaic stored in compressed chunks is too large to decode whole.
+    pixels = ChunkedTiff(path) if _compressed(path) else _open_grey(path)
+    around = PolarRegion(pixels, polar)
+    return PolarRegionLayer(around, brightness_values(gamma, around.calibrated))
+
+
+def _height_samples(
+    raster: HeightRaster,
+    name: str,
+    scale: float | None,
+    offset: float | None,
+    nodata: float | None,
+    fill_block: int | None,
+) -> tuple[HeightRaster, np.ndarray | ChunkedTiff | SmoothedFill, float]:
+    """A site's height raster with the manifest's overrides, its samples, and
+    what they read as outside it."""
+    raster = replace(
+        raster,
+        scale=raster.scale if scale is None else scale,
+        offset=raster.offset if offset is None else offset,
+        nodata=raster.nodata if nodata is None else nodata,
     )
+    blank = raster.nodata
+    if raster.samples.dtype.kind == "f":
+        blank = np.nan
+    elif blank is None:
+        # Zero outside the raster would read as ground at the datum.
+        raise ValueError(f"{name}: integer heights with no value for no data")
+    if isinstance(raster.samples, ChunkedTiff):
+        raster.samples.blank = blank
+    samples: np.ndarray | ChunkedTiff | SmoothedFill = raster.samples
+    if fill_block:
+        samples = SmoothedFill(samples, fill_block, raster.nodata)
+    return raster, samples, blank
 
 
 def open_height_region_layer(
@@ -1261,30 +1557,37 @@ def open_height_region_layer(
     states. ``fill_block`` is the side of the blocks of one height with which
     the raster fills its gaps from a coarser model: see ``SmoothedFill``."""
     if path.suffix.lower() == ".img":
-        raster, bounds = open_pds_height_raster(path, unit=unit), _pds_bounds(path)
+        raster = open_pds_height_raster(path, unit=unit)
     else:
         # A site DTM stored in compressed chunks is too large to decode whole.
         raster = open_height_raster(path, unit=unit, chunked=_compressed(path))
-        bounds = _geotiff_bounds(path)
-    raster = replace(
-        raster,
-        scale=raster.scale if scale is None else scale,
-        offset=raster.offset if offset is None else offset,
-        nodata=raster.nodata if nodata is None else nodata,
+    raster, samples, blank = _height_samples(
+        raster, path.name, scale, offset, nodata, fill_block
     )
-    blank = raster.nodata
-    if raster.samples.dtype.kind == "f":
-        blank = np.nan
-    elif blank is None:
-        # Zero outside the raster would read as ground at the datum.
-        raise ValueError(f"{path.name}: integer heights with no value for no data")
-    if isinstance(raster.samples, ChunkedTiff):
-        raster.samples.blank = blank
-    samples: np.ndarray | ChunkedTiff | SmoothedFill = raster.samples
-    if fill_block:
-        samples = SmoothedFill(samples, fill_block, raster.nodata)
-    region = Region(samples, *bounds, blank=blank)
+    region = Region(samples, *_region_bounds(path), blank=blank)
     return Layer(region, Placement(), to_values=_height_values(raster))
+
+
+def open_polar_height_region_layer(
+    path: Path,
+    *,
+    unit: str = "m",
+    scale: float | None = None,
+    offset: float | None = None,
+    nodata: float | None = None,
+    fill_block: int | None = None,
+) -> PolarRegionLayer:
+    """A height GeoTIFF of the ground around a pole, in the polar
+    stereographic projection, read as ``open_height_region_layer`` reads one."""
+    polar = _polar_placement(path)
+    if polar is None:
+        raise ValueError(f"{path.name}: not a polar stereographic GeoTIFF")
+    raster = open_height_raster(path, unit=unit, chunked=_compressed(path))
+    raster, samples, blank = _height_samples(
+        raster, path.name, scale, offset, nodata, fill_block
+    )
+    around = PolarRegion(samples, polar, blank=blank)
+    return PolarRegionLayer(around, _height_values(raster))
 
 
 def open_polar_brightness_layer(

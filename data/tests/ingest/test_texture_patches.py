@@ -1196,6 +1196,47 @@ class TestProcessPatches:
         assert "patches" not in self._meta(tmp_path)
         assert sorted(_files(tmp_path / "tiles" / "naif-499")) == [0, 1, 2, 3]
 
+    def test_patch_of_a_polar_raster_is_on_its_cap(self, tmp_path, monkeypatch):
+        proc = self._processor(monkeypatch, tmp_path, [])
+        _write_polar_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        proc.process_tiles()
+        cap = tmp_path / "tiles" / "naif-499" / "north"
+        own = _bytes(cap)
+
+        proc._raw_meta[0]["patches"] = [self._spec()]
+        proc.process_tiles()
+        (patch,) = self._meta(tmp_path)["patches"]
+        assert (patch["cap"], patch["max_level"]) == ("north", 7)
+        x0, x1 = patch["x"]
+        assert len(_files(cap)[7]) == patch["levels"][-1]["tiles"] > 0
+        assert 7 not in _files(tmp_path / "tiles" / "naif-499")
+        assert all(x0 <= x <= x1 for x, _ in _files(cap)[7])
+
+        proc._raw_meta[0]["patches"] = []
+        proc.process_tiles()
+        assert "patches" not in self._meta(tmp_path)
+        assert _bytes(cap) == own
+
+    def test_cap_patch_in_the_levels_of_the_cap(self, tmp_path, monkeypatch):
+        proc = self._processor(monkeypatch, tmp_path, [])
+        _write_polar_geotiff(tmp_path / "raw" / "site.tif", _texture())
+        proc.process_tiles()
+        cap = tmp_path / "tiles" / "naif-499" / "north"
+        own = _bytes(cap)
+
+        proc._raw_meta[0]["patches"] = [self._spec(sharpen_sigma=4.0)]
+        proc.process_tiles()
+        (patch,) = self._meta(tmp_path)["patches"]
+        assert patch["map_levels"] == 2
+        changed = {name for name, data in _bytes(cap).items() if own[name] != data}
+        assert changed and {name.split("/")[0] for name in changed} <= {"2", "3"}
+        assert (cap / ".map").is_dir() and (cap / ".over" / "site").is_dir()
+
+        proc._raw_meta[0]["patches"] = []
+        proc.process_tiles()
+        assert _bytes(cap) == own
+        assert not (cap / ".map").exists() and not (cap / ".over").exists()
+
     def test_missing_raster_leaves_the_pyramid_alone(
         self, tmp_path, monkeypatch, caplog
     ):
@@ -1361,3 +1402,186 @@ class TestProcessHeightPatches:
                 "files": [["site.tif", size, None]],
             }
         )
+
+
+# A polar raster this fine is as fine as level 7 of a pyramid of 16 px tiles.
+POLAR_STEP_M = 1.6
+
+
+def _cap_point(lat: float, lon: float, level: int) -> tuple[float, float]:
+    """Column and row of a cap pixel, as docs/export-format/tiles.md places
+    the point."""
+    r = np.tan(np.radians(90.0 - abs(lat)) / 2) / np.tan(np.radians(22.5))
+    u = (1 + r * np.cos(np.radians(lon))) / 2
+    sign = -1.0 if lat > 0 else 1.0
+    v = (1 + sign * r * np.sin(np.radians(lon))) / 2
+    side = TILE << (level - 1)
+    return u * side, v * side
+
+
+def _polar_metres(lat: float, lon: float, meridian: float) -> tuple[float, float]:
+    """The point on the plane of a polar stereographic file, by EPSG's formula
+    for a sphere with the scale 1 at the pole."""
+    rho = 2 * RADIUS * np.tan(np.radians(90.0 - abs(lat)) / 2)
+    turn = np.radians(lon - meridian)
+    return rho * np.sin(turn), (-1.0 if lat > 0 else 1.0) * rho * np.cos(turn)
+
+
+def _write_polar_geotiff(
+    path: Path,
+    pixels: np.ndarray,
+    centre: tuple[float, float] = (68.0, 125.0),
+    meridian: float = 0.0,
+    step_m: float = POLAR_STEP_M,
+    more_keys: tuple[int, ...] = (),
+) -> None:
+    """A polar stereographic GeoTIFF of a sphere of ``RADIUS`` metres, its
+    middle at the ``centre`` latitude and longitude."""
+    x, y = _polar_metres(*centre, meridian)
+    height, width = pixels.shape
+    corner = (0.0, 0.0, 0.0, x - width * step_m / 2, y + height * step_m / 2, 0.0)
+    keys = (
+        (1, 1, 0, 6 + len(more_keys) // 4)
+        + (1024, 0, 1, 1)
+        + (2057, 34736, 1, 0)
+        + (3075, 0, 1, 15)
+        + (3081, 34736, 1, 1)
+        + (3092, 34736, 1, 2)
+        + (3095, 34736, 1, 3)
+        + more_keys
+    )
+    pole = 90.0 if centre[0] > 0 else -90.0
+    extratags = [
+        (33550, "d", 3, (step_m, step_m, 0.0), True),
+        (33922, "d", 6, corner, True),
+        (34735, "H", len(keys), keys, True),
+        (34736, "d", 5, (RADIUS, pole, 1.0, meridian, 0.0), True),
+    ]
+    tifffile.imwrite(path, pixels, extratags=extratags)
+
+
+def _cap_pyramid(root: Path) -> Path:
+    """A flat map tiled to ``BASE``, with its caps."""
+    image = np.full((TILE << BASE, (2 * TILE) << BASE, 3), COLOUR, dtype=np.uint8)
+    out = _pyramid(root)
+    for folder, north in tiles.CAP_FOLDERS.items():
+        layer = tiles.Layer(image, tiles.Placement())
+        tiles.CapBuilder("cap", north, [layer], out / folder, BASE).build()
+    return out
+
+
+class TestPolarRegion:
+    """A polar stereographic raster reads on the grid of its pole's cap."""
+
+    @pytest.mark.parametrize(
+        ("lat", "meridian"), [(68.0, 0.0), (68.0, 90.0), (-68.0, 0.0), (-68.0, 180.0)]
+    )
+    def test_point_lands_where_the_cap_puts_it(self, tmp_path, lat, meridian):
+        pixels = np.full((64, 64), 10, dtype=np.uint8)
+        _write_polar_geotiff(tmp_path / "site.tif", pixels, (lat, 125.0), meridian)
+        # The pixel that holds a point 20 m away from the middle.
+        place = tiles._polar_placement(tmp_path / "site.tif")
+        assert place is not None
+        target = (lat + np.sign(lat) * 0.4 / np.pi, 125.6)
+        x, y = _polar_metres(*target, meridian)
+        column = int((x - place.left_m) / POLAR_STEP_M)
+        row = int((place.top_m - y) / POLAR_STEP_M)
+        pixels[row - 1 : row + 2, column - 1 : column + 2] = 250
+        _write_polar_geotiff(tmp_path / "site.tif", pixels, (lat, 125.0), meridian)
+
+        layer = tiles.open_polar_region_layer(tmp_path / "site.tif")
+        cap = tiles.Cap(lat > 0, 7)
+        u, v = _cap_point(*target, 7)
+        x0, y0 = int(u) - 40, int(v) - 40
+        values = layer.cap(cap, y0, y0 + 80, x0, x0 + 80)
+        found = np.unravel_index(np.nanargmax(values), values.shape)
+        assert found == pytest.approx((v - y0, u - x0), abs=1.5)
+
+    def test_bounds_are_the_ground_along_its_border(self, tmp_path):
+        _write_polar_geotiff(tmp_path / "site.tif", _texture())
+        layer = tiles.open_polar_region_layer(tmp_path / "site.tif")
+        west, east, north, south = layer.pixels.bounds
+        # 580 m corner to corner on a sphere of 1 km is 33° of arc.
+        assert south < 68.0 < north and north - south < 33.0
+        assert west < 125.0 < east
+
+    def test_raster_around_the_pole_reaches_it(self, tmp_path):
+        _write_polar_geotiff(tmp_path / "site.tif", _texture(), (89.9, 0.0))
+        layer = tiles.open_polar_region_layer(tmp_path / "site.tif")
+        assert layer.pixels.bounds[:3] == (-180.0, 180.0, 90.0)
+
+    def test_central_meridian_off_a_quarter_turn_is_refused(self, tmp_path):
+        _write_polar_geotiff(tmp_path / "site.tif", _texture(), meridian=45.0)
+        with pytest.raises(ValueError, match="central meridian"):
+            tiles.open_polar_region_layer(tmp_path / "site.tif")
+
+    def test_latitude_of_true_scale_is_refused(self, tmp_path):
+        _write_polar_geotiff(
+            tmp_path / "site.tif", _texture(), more_keys=(3078, 34736, 1, 4)
+        )
+        with pytest.raises(ValueError, match="origin or unit"):
+            tiles.open_polar_region_layer(tmp_path / "site.tif")
+
+    def test_heights_read_on_the_cap(self, tmp_path):
+        km = _relief(64)
+        tifffile.imwrite(tmp_path / "plain.tif", km)
+        _write_polar_geotiff(tmp_path / "dtm.tif", (km * 1000).astype("f4"))
+        layer = tiles.open_polar_height_region_layer(tmp_path / "dtm.tif")
+        u, v = _cap_point(68.0, 125.0, 7)
+        values = layer.cap(
+            tiles.Cap(True, 7), int(v) - 4, int(v) + 4, int(u) - 4, int(u) + 4
+        )
+        assert np.nanmean(values) == pytest.approx(km.mean(), abs=0.02)
+
+
+class TestCapPatchBuilder:
+    """A patch of polar rasters goes on the cap of their pole."""
+
+    @staticmethod
+    def _build(tmp_path, **kwargs) -> patches.PatchBuilder:
+        _write_polar_geotiff(tmp_path / "site.tif", _texture())
+        builder = patches.PatchBuilder(
+            "test",
+            _cap_pyramid(tmp_path / "tiles") / "north",
+            BASE,
+            [tiles.open_polar_region_layer(tmp_path / "site.tif")],
+            tmp_path / "patch",
+            1.0,
+            **kwargs,
+        )
+        builder.build()
+        return builder
+
+    def test_has_tiles_only_where_the_raster_is(self, tmp_path):
+        builder = self._build(tmp_path)
+        assert (builder.chart, builder.level) == ("north", 7)
+        found = _files(tmp_path / "patch")
+        assert sorted(found) == [4, 5, 6, 7]
+        for level, held in found.items():
+            x0, x1, y0, y1 = builder.tile_range(level)
+            assert held == {
+                (x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)
+            }
+        u, v = _cap_point(68.0, 125.0, 7)
+        x0, x1, y0, y1 = builder.tile_range(7)
+        assert x0 <= u / TILE <= x1 + 1 and y0 <= v / TILE <= y1 + 1
+
+    def test_detail_is_the_rasters_and_tone_is_the_caps(self, tmp_path):
+        self._build(tmp_path)
+        u, v = _cap_point(68.0, 125.0, 7)
+        inside = _tile(tmp_path / "patch", 7, int(u // TILE), int(v // TILE))
+        assert inside[..., 0].astype(float).std() > 12.0
+        assert abs(inside[..., 0].astype(float).mean() - COLOUR[0]) < 25.0
+
+    def test_files_on_two_charts_are_refused(self, tmp_path):
+        _write_polar_geotiff(tmp_path / "site.tif", _texture())
+        rasters = [
+            tiles.open_polar_region_layer(tmp_path / "site.tif"),
+            _raster(_texture()),
+        ]
+        with pytest.raises(ValueError, match="different charts"):
+            patches.chart(rasters)
+
+    def test_map_levels_stop_at_the_caps_first(self):
+        assert patches.map_levels(16.0, 3) == 4
+        assert patches.map_levels(16.0, 3, cap=True) == 3
