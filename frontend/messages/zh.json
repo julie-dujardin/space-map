@@ -233,6 +233,7 @@
 	"search_selected_announce": "正在显示 {name}",
 	"search_results_aria": "搜索结果",
 	"search_no_results_for": "没有与“{query}”匹配的结果",
+	"search_see_all": "查看“{query}”的全部结果",
 	"search_error": "搜索失败",
 	"search_error_hint": "请稍后重试",
 	"search_proof_prompt": "请确认您是真人以使用搜索",

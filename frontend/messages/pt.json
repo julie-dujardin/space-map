@@ -233,6 +233,7 @@
 	"search_selected_announce": "A mostrar {name}",
 	"search_results_aria": "Resultados da pesquisa",
 	"search_no_results_for": "Nada corresponde a “{query}”",
+	"search_see_all": "Ver todos os resultados para “{query}”",
 	"search_error": "Falha na pesquisa",
 	"search_error_hint": "Tente novamente mais tarde",
 	"search_proof_prompt": "Confirme que é humano para utilizar a pesquisa",

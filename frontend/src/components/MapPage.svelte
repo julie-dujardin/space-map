@@ -93,6 +93,7 @@
 	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
 	import { onOpenSearch } from '$lib/search/proof.svelte';
+	import { isSearchShortcut } from '$lib/search/shortcut';
 	import { coverageOf } from '$lib/fetch/coverage';
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { watchDataVersion } from '$lib/fetch/version-check';
@@ -679,14 +680,20 @@
 		searchBar?.open();
 	}
 
-	// The toast that asks for the human check opens search as the page does: the
-	// desktop sidebar covers the search bar, so it closes first.
-	$effect(() =>
-		onOpenSearch(() => {
-			if (sidebarOpen && !isMobileViewport) openSearchBesideSidebar();
-			else searchBar?.open();
-		})
-	);
+	// The desktop sidebar covers the search bar, so it closes first.
+	function openSearch() {
+		if (sidebarOpen && !isMobileViewport) openSearchBesideSidebar();
+		else searchBar?.open();
+	}
+
+	// The toast that asks for the human check opens search as the page does.
+	$effect(() => onOpenSearch(openSearch));
+
+	function onWindowKey(e: KeyboardEvent) {
+		if (!searchEnabled || !isSearchShortcut(e)) return;
+		e.preventDefault();
+		openSearch();
+	}
 
 	// `refocusMain` off when the caller takes focus itself; otherwise focus
 	// silently falls to <body> once the drawer unmounts.
@@ -974,6 +981,8 @@
 {#snippet phoneMenu()}
 	<SiteMenu current="map" scope="map" class="-my-2 -me-2 h-9 w-9 shrink-0 text-foreground" />
 {/snippet}
+
+<svelte:window onkeydown={onWindowKey} />
 
 <svelte:head>
 	<title

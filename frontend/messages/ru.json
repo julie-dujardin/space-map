@@ -232,6 +232,7 @@
 	"search_selected_announce": "Показано: {name}",
 	"search_results_aria": "Результаты поиска",
 	"search_no_results_for": "Нет совпадений для «{query}»",
+	"search_see_all": "Все результаты для «{query}»",
 	"search_error": "Ошибка поиска",
 	"search_error_hint": "Попробуйте позже",
 	"search_proof_prompt": "Подтвердите, что вы человек, чтобы пользоваться поиском",

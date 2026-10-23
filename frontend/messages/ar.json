@@ -233,6 +233,7 @@
 	"search_selected_announce": "عرض {name}",
 	"search_results_aria": "نتائج البحث",
 	"search_no_results_for": "لا توجد نتائج مطابقة لـ ”{query}“",
+	"search_see_all": "عرض كل النتائج لـ ”{query}“",
 	"search_error": "فشل البحث",
 	"search_error_hint": "يرجى المحاولة لاحقًا",
 	"search_proof_prompt": "تحقق من أنك إنسان لاستخدام البحث",

@@ -233,6 +233,7 @@
 	"search_selected_announce": "מוצג: {name}",
 	"search_results_aria": "תוצאות חיפוש",
 	"search_no_results_for": "אין התאמות ל־“{query}”",
+	"search_see_all": "כל התוצאות ל־“{query}”",
 	"search_error": "החיפוש נכשל",
 	"search_error_hint": "אנא נסה שוב מאוחר יותר",
 	"search_proof_prompt": "אמתו שאתם בני אדם כדי להשתמש בחיפוש",

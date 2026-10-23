@@ -167,6 +167,7 @@
 	"search_selected_announce": "Showing {name}",
 	"search_results_aria": "Search results",
 	"search_no_results_for": "Nothing matches “{query}”",
+	"search_see_all": "See all results for “{query}”",
 	"search_error": "Search failed",
 	"search_error_hint": "Please try again later",
 	"search_proof_prompt": "Verify you are human to use search",

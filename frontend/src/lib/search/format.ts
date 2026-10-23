@@ -1,6 +1,15 @@
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { localizedDescription, type SearchHit } from '$lib/search/client';
+import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
+import { CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import { featureTypeLabel } from '$lib/format/feature-type';
+import { categoryLabel } from '$lib/format/group';
+import {
+	localizedDescription,
+	localizedName,
+	type GroupHit,
+	type SearchHit
+} from '$lib/search/client';
 
 const messages = m as unknown as Record<
 	string,
@@ -43,6 +52,30 @@ const SELF_EXPLANATORY_TYPES = new Set(['star', 'spacecraft', 'undocumented']);
 export function typeLabel(type: string): string {
 	const key = type.startsWith('asteroid') ? 'type_asteroid' : `type_${type}`;
 	return messages[key]?.() ?? type.replace(/_/g, ' ');
+}
+
+/** A collection's name in the reader's locale. Categories, orbit classes and
+ *  feature types have messages of their own; the other kinds have a
+ *  `group_name_<slug>` message, else the exported name. */
+export function groupName(g: GroupHit, locale: string): string {
+	if (g.slug.startsWith(CATEGORY_SLUG_PREFIX)) return categoryLabel(g.slug);
+	const className = classNameFromSlug(g.slug);
+	if (className != null) {
+		const label = orbitClassLabel(className);
+		if (label !== className) return label;
+		const idx = localizedName(g, locale);
+		return idx && idx !== g.slug ? idx : className;
+	}
+	const featureType = featureTypeLabel(g.slug);
+	if (featureType) return featureType;
+	const fn = messages[`group_name_${g.slug}`];
+	if (fn) return fn();
+	return localizedName(g, locale);
+}
+
+/** The name on a result row. */
+export function hitName(hit: SearchHit, locale: string): string {
+	return hit.kind === 'group' ? groupName(hit, locale) : localizedName(hit, locale);
 }
 
 /** Names a hit's second line needs but cannot carry: parents and hosts arrive

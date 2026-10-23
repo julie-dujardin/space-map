@@ -8,7 +8,6 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import {
-		localizedName,
 		fetchGroupCatalog,
 		catalogCount,
 		catalogFacets,
@@ -26,7 +25,14 @@
 		type RangeBound,
 		hasBound
 	} from '$lib/search/client';
-	import { capitalize, optionDomId, secondaryText, typeLabel } from '$lib/search/format';
+	import {
+		capitalize,
+		groupName,
+		hitName,
+		optionDomId,
+		secondaryText,
+		typeLabel
+	} from '$lib/search/format';
 	import { formatCompactNumber, joinParts } from '$lib/format/quantities';
 	import { announce } from '$lib/a11y/announcer.svelte';
 	import { rangeDef } from '$lib/search/ranges';
@@ -34,10 +40,10 @@
 	import { parseSearchSuffix } from '$lib/search/url';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
-	import { groupTypeLabelPlural, categoryLabel } from '$lib/format/group';
+	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { ltrIsolate } from '$lib/format/bidi';
-	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
-	import { fetchGroupIndex, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import { classNameFromSlug } from '$lib/charts/orbit-zones';
+	import { fetchGroupIndex } from '$lib/fetch/groups/registry';
 	import { featureTypeLabel as featureTypeName } from '$lib/format/feature-type';
 	import {
 		smallBodyCategory,
@@ -284,29 +290,8 @@
 		if (k === 'group') return m.search_kind_group();
 		return k;
 	}
-	// Localized group name for filter leaves, tokens and rows. Categories use
-	// `category_name_*`, orbit classes `orbit_class_*` (then the index name, then
-	// the bare code), feature types `feature_type_label_*`; other kinds use
-	// `group_name_<slug>`, else the exported name.
-	function groupName(g: GroupHit, locale: string): string {
-		if (g.slug.startsWith(CATEGORY_SLUG_PREFIX)) return categoryLabel(g.slug);
-		const className = classNameFromSlug(g.slug);
-		if (className != null) {
-			const label = orbitClassLabel(className);
-			if (label !== className) return label;
-			const idx = localizedName(g, locale);
-			return idx && idx !== g.slug ? idx : className;
-		}
-		// Feature types own `feature_type_label_<stem>`; no group_name_ twin.
-		const featureType = featureTypeName(g.slug);
-		if (featureType) return featureType;
-		const fn = messages[`group_name_${g.slug}`];
-		if (fn) return fn();
-		return localizedName(g, locale);
-	}
 	function rowName(hit: SearchHit): string {
-		if (hit.kind === 'group') return groupName(hit, getLocale());
-		return localizedName(hit, getLocale());
+		return hitName(hit, getLocale());
 	}
 	function rowSecondary(hit: SearchHit): string {
 		return secondaryText(hit, { bodyName, featureTypeLabel });

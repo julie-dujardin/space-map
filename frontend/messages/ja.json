@@ -231,6 +231,7 @@
 	"search_selected_announce": "{name} を表示中",
 	"search_results_aria": "検索結果",
 	"search_no_results_for": "「{query}」に一致する結果はありません",
+	"search_see_all": "「{query}」のすべての結果を見る",
 	"search_error": "検索に失敗しました",
 	"search_error_hint": "しばらくしてから再度お試しください",
 	"search_proof_prompt": "検索を利用するには、人間であることを確認してください",
