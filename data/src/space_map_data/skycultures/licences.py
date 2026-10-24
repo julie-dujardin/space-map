@@ -2,9 +2,9 @@
 
 The tiers are those of the texture manifests (docs/export-format/textures.md):
 `open` when anyone may serve the data, `non-commercial` when the terms forbid
-commercial use. As in the catalogue manifests, `undecided` marks a culture
-that states no licence or a statement that this module cannot read. It is
-cleared for no export.
+commercial use. A culture that states no licence is `non-commercial`. As in
+the catalogue manifests, `undecided` marks a statement that this module cannot
+read. It is cleared for no export.
 
 A culture can give one licence for its text and data and another for its
 illustrations, so each of the two has its own tier.
@@ -13,7 +13,7 @@ Flags mark what the tiers do not hold:
 - `no-derivatives`: a CC ND licence. Only an unchanged copy may be served.
 - `non-commercial`: a CC NC licence or a Traditional Knowledge NC label.
 - `tk-labels`: Traditional Knowledge labels add terms to the licence.
-- `no-licence`: the culture states no licence.
+- `no-licence`: the culture states no licence, so it is non-commercial.
 - `unknown-licence`: a statement that this module cannot read.
 """
 
@@ -140,7 +140,8 @@ def read_licence(text: str | None) -> Licence:
         flags.append(NC)
     if _TK.search(statement):
         flags.append(TK_LABELS)
-    data = _part_tier(parts, DATA) or UNDECIDED
+    no_parts = NON_COMMERCIAL if not statement else UNDECIDED
+    data = _part_tier(parts, DATA) or no_parts
     illustrations = _part_tier(parts, ILLUSTRATIONS) or data
     # A TK NC label covers the whole culture, whatever its CC licence.
     if tk_nc and data != UNDECIDED:

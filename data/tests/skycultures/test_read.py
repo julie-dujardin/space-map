@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from space_map_data.skycultures import read
-from space_map_data.skycultures.licences import NO_LICENCE, UNDECIDED
+from space_map_data.skycultures.licences import NO_LICENCE, NON_COMMERCIAL
 
 DESCRIPTION = """# Test Sky
 
@@ -86,7 +86,7 @@ class TestStellarium:
 
     def test_culture_without_description_has_no_licence(self, cultures):
         culture = cultures["hidden"]
-        assert culture.licence.data == UNDECIDED
+        assert culture.licence.data == NON_COMMERCIAL
         assert culture.licence.flags == (NO_LICENCE,)
         assert not culture.packaged
 

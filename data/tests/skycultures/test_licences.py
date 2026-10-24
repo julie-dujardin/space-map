@@ -97,10 +97,14 @@ class TestReadLicence:
         assert (licence.data, licence.illustrations) == (NON_COMMERCIAL, NON_COMMERCIAL)
         assert TK_LABELS in licence.flags and NON_COMMERCIAL in licence.flags
 
-    def test_missing_statement_is_undecided(self):
+    def test_missing_statement_is_non_commercial_and_flagged(self):
         for text in (None, ""):
             licence = read_licence(text)
-            assert (licence.data, licence.flags) == (UNDECIDED, (NO_LICENCE,))
+            assert (licence.data, licence.illustrations) == (
+                NON_COMMERCIAL,
+                NON_COMMERCIAL,
+            )
+            assert licence.flags == (NO_LICENCE,)
 
     def test_unreadable_statement_is_undecided(self):
         licence = read_licence("Ask the author first.")
