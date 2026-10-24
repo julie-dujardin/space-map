@@ -368,6 +368,8 @@ export function updateBodyVisibility(
 		const isFocused = body.data.id === focusedBodyId;
 		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
 		let zoneShare = 1;
+		let labelThresholdShare = 1;
+		let orbitThresholdShare = 1;
 
 		// Major bodies (planets/moons/dwarfs/stars) always take the mesh path's
 		// type-aware gates even when sizeless and meshless — else they'd skip the
@@ -427,6 +429,16 @@ export function updateBodyVisibility(
 			isClose = vf.isClose;
 		}
 
+		if (focusedSystemId !== null && ctx.visibility.isBodyInSystem(body, focusedSystemId)) {
+			labelThresholdShare = ctx.visibility.labelThresholdShare(body.data.id, showLabel);
+			orbitThresholdShare = ctx.visibility.orbitThresholdShare(body.data.id, !!trail?.visible);
+			if (labelThresholdShare > 0) {
+				group.visible = true;
+				showLabel = true;
+			}
+			if (trail && orbitThresholdShare > 0) trail.visible = true;
+		}
+
 		if (!drawn) {
 			group.visible = false;
 			showLabel = false;
@@ -434,7 +446,10 @@ export function updateBodyVisibility(
 		}
 		// A curve whose centre body has no place has nowhere to be drawn.
 		if (trail && (!drawn || body.orbitCenter === null)) trail.visible = false;
-		if (trail) trail.userData.zoneShare = zoneShare;
+		if (trail) {
+			trail.userData.zoneShare = zoneShare;
+			trail.userData.thresholdShare = orbitThresholdShare;
+		}
 
 		// Star extras: the point takes over once the mesh disc shrinks to the
 		// point's own on-screen area, and the disc goes: that small, it is a few
@@ -514,7 +529,11 @@ export function updateBodyVisibility(
 		if (bo.label) {
 			fadeLabel(
 				bo.label,
-				bo.starPoint ? 1 : isExtrasolar(body) ? starShare : systemShare * zoneShare
+				bo.starPoint
+					? 1
+					: isExtrasolar(body)
+						? starShare
+						: systemShare * zoneShare * labelThresholdShare
 			);
 		}
 
@@ -599,7 +618,10 @@ export function updateBodyVisibility(
 		);
 		const isFocused = bo.body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);
-		const share = systemShare * ((line.userData.zoneShare as number | undefined) ?? 1);
+		const share =
+			systemShare *
+			((line.userData.zoneShare as number | undefined) ?? 1) *
+			((line.userData.thresholdShare as number | undefined) ?? 1);
 		mat.uniforms.uAlphaMultiplier.value = (isHovered ? 2 : isFocused ? 1.75 : 1.0) * share;
 		// Fade open trails (sats, probe buffers) to 0 at the tail; the floor is
 		// only for closed ellipses, whose far side would otherwise vanish.

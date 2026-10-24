@@ -31,6 +31,7 @@ import {
 	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
 import { ZoneFades } from '$lib/scene/visibility/zone-fade';
+import { VisibilityThresholdFades } from '$lib/scene/visibility/threshold-fade';
 
 /** What a controller built without a map draws: everything. */
 const ALL_LAYERS = new LayerSet();
@@ -67,6 +68,7 @@ export class VisibilityController {
 	isZoomedIn = false;
 	/** The main zone and the satellite systems, faded to `activeSystemId`. */
 	readonly zones = new ZoneFades();
+	private readonly thresholds = new VisibilityThresholdFades();
 	/** The planetary system's share of the view (`system-fade.ts`): at 0 only
 	 *  the Sun draws, and every other body and cloud is hidden. Set by the
 	 *  renderer each frame. */
@@ -156,9 +158,22 @@ export class VisibilityController {
 		}
 	}
 
-	/** Advances after camera visibility selects `activeSystemId`. */
+	/** Advances after camera visibility selects this frame's targets. */
 	stepZones(dtMs: number): void {
 		this.zones.step(this.activeSystemId, dtMs);
+		this.thresholds.beginFrame(dtMs);
+	}
+
+	labelThresholdShare(id: string, shown: boolean): number {
+		return this.thresholds.labelShare(id, shown);
+	}
+
+	orbitThresholdShare(id: string, shown: boolean): number {
+		return this.thresholds.orbitShare(id, shown);
+	}
+
+	get fading(): boolean {
+		return this.zones.fading || this.thresholds.fading;
 	}
 
 	/** Probe focus reads the `systemIntervals` annotation instead of walking

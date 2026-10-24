@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SWITCH_FADE_MS, SwitchFade } from './switch-fade';
+import { SYSTEM_SWITCH_FADE_MS, SwitchFade } from './switch-fade';
 
 describe('a switch fade', () => {
 	it('with no start, starts where its first step asks', () => {
@@ -11,17 +11,17 @@ describe('a switch fade', () => {
 
 	it('with a start, fades from it on its first step', () => {
 		const fade = new SwitchFade(false);
-		fade.step(true, SWITCH_FADE_MS / 2);
+		fade.step(true, SYSTEM_SWITCH_FADE_MS / 2);
 		expect(fade.share).toBeCloseTo(0.5, 12);
 		expect(fade.fading).toBe(true);
 	});
 
 	it('runs out over its time once the switch flips, with no further change', () => {
 		const fade = new SwitchFade(true);
-		fade.step(false, SWITCH_FADE_MS / 2);
+		fade.step(false, SYSTEM_SWITCH_FADE_MS / 2);
 		expect(fade.share).toBeCloseTo(0.5, 12);
 		expect(fade.fading).toBe(true);
-		fade.step(false, SWITCH_FADE_MS / 2);
+		fade.step(false, SYSTEM_SWITCH_FADE_MS / 2);
 		expect(fade.share).toBe(0);
 		expect(fade.fading).toBe(false);
 	});
@@ -37,12 +37,12 @@ describe('a switch fade', () => {
 
 	it('turns back from where it is', () => {
 		const fade = new SwitchFade(false);
-		fade.step(true, SWITCH_FADE_MS / 4);
+		fade.step(true, SYSTEM_SWITCH_FADE_MS / 4);
 		const part = fade.share;
 		expect(part).toBeGreaterThan(0);
-		fade.step(false, SWITCH_FADE_MS / 8);
+		fade.step(false, SYSTEM_SWITCH_FADE_MS / 8);
 		expect(fade.share).toBeLessThan(part);
-		fade.step(false, SWITCH_FADE_MS);
+		fade.step(false, SYSTEM_SWITCH_FADE_MS);
 		expect(fade.share).toBe(0);
 	});
 });

@@ -5,7 +5,7 @@ import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import { LayerSet } from '$lib/scene/layers';
 import { VisibilityController } from './controller.svelte';
-import { SWITCH_FADE_MS } from './switch-fade';
+import { SYSTEM_SWITCH_FADE_MS } from './switch-fade';
 import { ZoneFades } from './zone-fade';
 
 const SUN = 'naif-10';
@@ -26,19 +26,19 @@ describe('the zones of the view', () => {
 	it('cross over when the camera enters a satellite system, and back', () => {
 		const zones = new ZoneFades();
 		zones.step(null, 16);
-		zones.step(EARTH_SYSTEM, SWITCH_FADE_MS / 4);
+		zones.step(EARTH_SYSTEM, SYSTEM_SWITCH_FADE_MS / 4);
 		const [earth] = zones.systems;
 		expect(zones.mainShare).toBeGreaterThan(0.5);
 		expect(zones.mainShare + earth.fade.share).toBeCloseTo(1, 12);
 		expect(zones.fading).toBe(true);
-		zones.step(EARTH_SYSTEM, SWITCH_FADE_MS);
+		zones.step(EARTH_SYSTEM, SYSTEM_SWITCH_FADE_MS);
 		expect(zones.mainShare).toBe(0);
 		expect(earth.fade.share).toBe(1);
 		expect(zones.fading).toBe(false);
 
-		zones.step(null, SWITCH_FADE_MS / 2);
+		zones.step(null, SYSTEM_SWITCH_FADE_MS / 2);
 		expect(zones.mainShare + earth.fade.share).toBeCloseTo(1, 12);
-		zones.step(null, SWITCH_FADE_MS / 2);
+		zones.step(null, SYSTEM_SWITCH_FADE_MS / 2);
 		expect(zones.mainShare).toBe(1);
 		expect(zones.systems).toEqual([]);
 	});
@@ -104,7 +104,7 @@ describe('what the zones draw', () => {
 		expect(vis.asteroidGroupShare('small_bodies/TEST')).toBe(1);
 		expect(vis.spacecraftGroupShare(EARTH)).toBe(0);
 
-		at(0.002, SWITCH_FADE_MS / 2);
+		at(0.002, SYSTEM_SWITCH_FADE_MS / 2);
 		expect(vis.activeSystemId).toBe(EARTH_SYSTEM);
 		expect(vis.asteroidGroupShare('small_bodies/TEST')).toBeCloseTo(0.5, 12);
 		expect(vis.spacecraftGroupShare('naif-0')).toBeCloseTo(0.5, 12);
@@ -114,7 +114,7 @@ describe('what the zones draw', () => {
 		// Earth stays whole because it belongs to both zones.
 		expect(vis.fullRenderingShare(earth)).toBe(1);
 
-		at(0.002, SWITCH_FADE_MS / 2);
+		at(0.002, SYSTEM_SWITCH_FADE_MS / 2);
 		expect(vis.isAsteroidGroupVisible('small_bodies/TEST')).toBe(false);
 		expect(vis.isSpacecraftGroupVisible('naif-0')).toBe(false);
 		expect(vis.spacecraftGroupShare(EARTH)).toBe(1);

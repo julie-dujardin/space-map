@@ -1,5 +1,6 @@
 /** Keeps switch-driven visibility changes independent of camera speed. */
-export const SWITCH_FADE_MS = 500;
+export const SYSTEM_SWITCH_FADE_MS = 300;
+export const WITHIN_SYSTEM_SWITCH_FADE_MS = 100;
 
 export class SwitchFade {
 	private progress: number;
@@ -7,7 +8,10 @@ export class SwitchFade {
 	private started: boolean;
 
 	/** An omitted initial state snaps the first update to avoid a startup fade. */
-	constructor(on?: boolean) {
+	constructor(
+		on?: boolean,
+		private readonly durationMs = SYSTEM_SWITCH_FADE_MS
+	) {
 		this.started = on !== undefined;
 		this.progress = this.target = on ? 1 : 0;
 	}
@@ -19,7 +23,7 @@ export class SwitchFade {
 			this.progress = this.target;
 			return;
 		}
-		const delta = dtMs / SWITCH_FADE_MS;
+		const delta = dtMs / this.durationMs;
 		this.progress =
 			this.target === 1 ? Math.min(this.progress + delta, 1) : Math.max(this.progress - delta, 0);
 	}

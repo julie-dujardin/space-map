@@ -1414,7 +1414,7 @@ export class SceneRenderer {
 		if (nowMs - this.focus.focusStartTime < this.focus.focusDurationMs) return true;
 		if (this.jumpJd !== null || this.seekAwaitsData) return true;
 		if (this.focusLoads > 0 || this.systemData.isLoading()) return true;
-		if (this.systemFade.fading || this.ctx.visibility.zones.fading) return true;
+		if (this.systemFade.fading || this.ctx.visibility.fading) return true;
 		if (this.pointClouds.fading) return true;
 		for (const bo of this.bodyObjects.values()) {
 			if (bo.group.visible && bodyLoading(bo)) return true;
@@ -2135,7 +2135,7 @@ export class SceneRenderer {
 			this.pointClouds.hasPendingSceneAdds() ||
 			this.systemData.hasPendingUnloads() ||
 			this.systemFade.fading ||
-			this.ctx.visibility.zones.fading ||
+			this.ctx.visibility.fading ||
 			this.pointClouds.fading ||
 			this.starfield.busy();
 		if (loading) return true;

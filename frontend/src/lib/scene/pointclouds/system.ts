@@ -24,7 +24,7 @@ import { resolveBodyColor } from '$lib/body-color';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { PickRegistry } from '$lib/scene/interaction/pick-registry';
 import { drawnSpacecraft } from '$lib/scene/layers';
-import { SwitchFade } from '$lib/scene/visibility/switch-fade';
+import { SwitchFade, WITHIN_SYSTEM_SWITCH_FADE_MS } from '$lib/scene/visibility/switch-fade';
 
 const REBASE_THRESHOLD_AU = 0.01;
 
@@ -313,7 +313,7 @@ export class PointCloudSystem {
 		for (const [parentId, pts] of this.moonPoints) {
 			let fade = this.moonFades.get(parentId);
 			if (!fade) {
-				fade = new SwitchFade();
+				fade = new SwitchFade(undefined, WITHIN_SYSTEM_SWITCH_FADE_MS);
 				this.moonFades.set(parentId, fade);
 			}
 			fade.step(vis.isMoonGroupVisible(parentId), dtMs);
