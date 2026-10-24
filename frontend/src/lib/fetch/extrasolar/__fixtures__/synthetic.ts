@@ -57,7 +57,7 @@ interface MetaRow {
 	crossIds?: CrossId[];
 }
 
-function metadataTile(token: string, rows: MetaRow[]): Uint8Array {
+function metadataTile(token: string, rows: MetaRow[], objectFile = true): Uint8Array {
 	const sorted = [...rows].sort((a, b) => a.id - b.id);
 	const col = (
 		name: string,
@@ -76,7 +76,7 @@ function metadataTile(token: string, rows: MetaRow[]): Uint8Array {
 			col('class_source', 'dict', (r) => (r.alias ? null : 'gaia-dr3')),
 			col('cross_ids', 'cross_ids', (r) => (r.alias ? null : (r.crossIds ?? []))),
 			col('mask', 'uint32', (r) => r.mask ?? (r.alias ? 0 : 2)),
-			col('object_file', 'string', () => null),
+			...(objectFile ? [col('object_file', 'string', () => null)] : []),
 			col('alias_target', 'id', (r) => r.alias ?? null)
 		],
 		tileInfoBytes(0, 0, 0)
@@ -107,7 +107,9 @@ export interface SyntheticExport {
 	payloads: Record<string, Uint8Array>;
 }
 
-export function syntheticExport(options: { metaDistribution?: string } = {}): SyntheticExport {
+export function syntheticExport(
+	options: { metaDistribution?: string; objectFile?: boolean } = {}
+): SyntheticExport {
 	const meta: ExtrasolarMetadata = {
 		format: 1,
 		exported: '',
@@ -124,16 +126,20 @@ export function syntheticExport(options: { metaDistribution?: string } = {}): Sy
 		'metadata/split.bin.gz': split(TOKENS.metadata),
 		'point-source/split.bin.gz': split(TOKENS.points),
 		'redshift/split.bin.gz': split(TOKENS.redshift),
-		'metadata/0/0.bin.gz': metadataTile(TOKENS.metadata, [
-			{
-				id: STAR,
-				name: 'Test Star',
-				crossIds: [{ catalogue: 'gaia', release: 'dr3', catalogueId: '42' }]
-			},
-			{ id: SECOND },
-			{ id: ALIAS, alias: STAR },
-			{ id: WITH_TABLE_2, mask: 2 | 4 }
-		]),
+		'metadata/0/0.bin.gz': metadataTile(
+			TOKENS.metadata,
+			[
+				{
+					id: STAR,
+					name: 'Test Star',
+					crossIds: [{ catalogue: 'gaia', release: 'dr3', catalogueId: '42' }]
+				},
+				{ id: SECOND },
+				{ id: ALIAS, alias: STAR },
+				{ id: WITH_TABLE_2, mask: 2 | 4 }
+			],
+			options.objectFile
+		),
 		'point-source/0/0.bin.gz': dataTile(TOKENS.points, 1, [
 			{ id: STAR, parallax: 379.21 },
 			{ id: SECOND, parallax: 0.3 },

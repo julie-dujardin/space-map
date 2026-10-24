@@ -192,7 +192,7 @@ export function readMetadataRow(c: Container, row: number): MetadataRow {
 		classSource: c.dict('class_source').get(row),
 		crossIds: c.crossIds('cross_ids').get(row) ?? [],
 		mask: c.uint32('mask')[row],
-		objectFile: c.strings('object_file').get(row),
+		objectFile: c.has('object_file') ? c.strings('object_file').get(row) : null,
 		aliasTarget: alias > 0 ? alias : null
 	};
 }

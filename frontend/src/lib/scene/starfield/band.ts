@@ -11,7 +11,7 @@ export const STARS_OUT_AU = 1_800;
 
 /** Keeps the prior state between thresholds to provide hysteresis. */
 export function starsTakeSky(distanceAu: number, taken: boolean): boolean {
-	if (distanceAu > STARS_IN_AU) return true;
+	if (distanceAu + 1e-9 >= STARS_IN_AU) return true;
 	if (distanceAu < STARS_OUT_AU) return false;
 	return taken;
 }

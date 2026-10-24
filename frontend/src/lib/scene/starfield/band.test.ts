@@ -5,7 +5,7 @@ describe('the skybox to starfield switch', () => {
 	it('leaves the sky to the skybox inside it and gives it to the stars past it', () => {
 		expect(starsTakeSky(1, true)).toBe(false);
 		expect(starsTakeSky(STARS_OUT_AU * 0.99, true)).toBe(false);
-		expect(starsTakeSky(STARS_IN_AU * 1.01, false)).toBe(true);
+		expect(starsTakeSky(STARS_IN_AU * (1 - Number.EPSILON), false)).toBe(true);
 		expect(starsTakeSky(1e9, false)).toBe(true);
 	});
 

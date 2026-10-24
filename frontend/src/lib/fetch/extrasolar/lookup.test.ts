@@ -26,7 +26,9 @@ interface Synthetic {
 }
 
 /** The synthetic export behind a lookup source. */
-function synthetic(options: { metaDistribution?: string; tokenOff?: string } = {}): Synthetic {
+function synthetic(
+	options: { metaDistribution?: string; tokenOff?: string; objectFile?: boolean } = {}
+): Synthetic {
 	const { meta, payloads } = syntheticExport(options);
 	const files = Object.fromEntries(
 		Object.entries(payloads).map(([path, payload]) => [path, new Container(own(payload))])
@@ -133,6 +135,11 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		const result = await new ExtrasolarLookup(source).lookup(STAR, { data: false });
 		expect(result.kind === 'live' && result.record.rows.size).toBe(0);
 		expect(source.reads.sort()).toEqual(['metadata/0/0.bin.gz', 'metadata/split.bin.gz']);
+	});
+
+	it('reads exports from before object files were added', async () => {
+		const result = await new ExtrasolarLookup(synthetic({ objectFile: false }).source).lookup(STAR);
+		expect(result.kind === 'live' && result.record.metadata.objectFile).toBeNull();
 	});
 
 	it('keeps the split tables and tiles, and a result', async () => {

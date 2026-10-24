@@ -466,12 +466,13 @@ export class StarfieldSystem {
 		const wy = camera.position.y + focus[1];
 		const wz = camera.position.z + focus[2];
 		const au = Math.hypot(wx, wy, wz) / AU_SCALE;
+		const switchAu = Math.max(au, camera.position.length() / AU_SCALE);
 		if (!this.active && au > PREFETCH_AU) this.active = true;
 		else if (this.active && au < RELEASE_AU) this.stopLoading();
 		if (this.active) this.start();
 
 		const shown = this.ctx.layers.isVisible('starfield');
-		this.skyTaken = starsTakeSky(au, this.skyTaken);
+		this.skyTaken = starsTakeSky(switchAu, this.skyTaken);
 		this.sky.step(shown && this.ready && this.root !== null && this.skyTaken, dtMs);
 		const skyShare = this.sky.share;
 		this.group.visible = shown && this.root !== null && skyShare > 0;
