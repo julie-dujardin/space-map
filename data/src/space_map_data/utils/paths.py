@@ -42,6 +42,9 @@ SOURCES_CATALOGUES_DIR = SOURCES_DIR / "catalogues"
 SOURCES_LAUNCH_PERFORMANCE_DIR = SOURCES_DIR / "launch-performance"
 # Exoplanet catalogues and the star identifiers that join them.
 SOURCES_EXOPLANETS_DIR = SOURCES_DIR / "exoplanets"
+# Constellation figures and star names of the sky cultures, one tree for each
+# dataset.
+SOURCES_SKYCULTURES_DIR = SOURCES_DIR / "skycultures"
 
 # Hand-authored supplemental overlays the automated providers can't discover
 # (mirrors sources/models/spacecraft/manual + Commons manual-extra.json). See

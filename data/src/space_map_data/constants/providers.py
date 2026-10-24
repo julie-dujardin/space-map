@@ -54,6 +54,9 @@ class PROVIDERS(StrEnum):
     TRANSIENT_CATALOGUES = "transient_catalogues"
     SIMBAD_OBJECTS = "simbad_objects"
     WIKIDATA_SIMBAD_IDS = "wikidata_simbad_ids"
+    STELLARIUM_SKYCULTURES = "stellarium_skycultures"
+    BUCUR_CONSTELLATIONS = "bucur_constellations"
+    SKYCULTURE_SIMBAD = "skyculture_simbad"
     MANUAL = "manual"
 
 

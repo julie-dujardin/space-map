@@ -213,6 +213,17 @@ JOBS: list[Job] = [
         ),
         schedule=Every(timedelta(days=7)),
     ),
+    # Sky cultures, each at a pinned commit, so a pass fetches only after a
+    # change of the commit. Ordered: the SIMBAD names come from Bucur's files.
+    Job(
+        name="skycultures",
+        sources=(
+            PROVIDERS.STELLARIUM_SKYCULTURES,
+            PROVIDERS.BUCUR_CONSTELLATIONS,
+            PROVIDERS.SKYCULTURE_SIMBAD,
+        ),
+        schedule=Every(timedelta(days=7)),
+    ),
 ]
 
 

@@ -71,6 +71,15 @@ from space_map_data.download.providers.objects.sbdb_moons import (
 from space_map_data.download.providers.objects.spacetrack import SpaceTrackDownloader
 from space_map_data.download.providers.objects.ssodnet import SsODNetDownloader
 from space_map_data.download.providers.psg import PSGAtmosphereDownloader
+from space_map_data.download.providers.skycultures.bucur import (
+    BucurConstellationsDownloader,
+)
+from space_map_data.download.providers.skycultures.simbad import (
+    SkycultureSimbadDownloader,
+)
+from space_map_data.download.providers.skycultures.stellarium import (
+    StellariumSkyculturesDownloader,
+)
 from space_map_data.download.providers.spice import (
     DeepcatSynthDownloader,
     HorizonsSyntheticDownloader,
@@ -160,6 +169,10 @@ PROVIDERS_CLASSES = [
     TransientCataloguesDownloader,
     SimbadObjectsDownloader,
     WikidataSimbadIdsDownloader,
+    StellariumSkyculturesDownloader,
+    # Ordered: the SIMBAD names come from Bucur's files.
+    BucurConstellationsDownloader,
+    SkycultureSimbadDownloader,
 ]
 SOURCES: dict[str, type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
