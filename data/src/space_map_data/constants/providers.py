@@ -44,6 +44,8 @@ class PROVIDERS(StrEnum):
     GAIA_ASTROPHYSICAL_PARAMETERS = "gaia_astrophysical_parameters"
     GAIA_FIDELITY = "gaia_fidelity"
     GAIA_CROSS_MATCH = "gaia_cross_match"
+    GAIA_TWO_BODY_ORBIT = "gaia_two_body_orbit"
+    GAIA_BINARY_MASSES = "gaia_binary_masses"
     CDS_STAR_CATALOGUES = "cds_star_catalogues"
     IAU_STAR_NAMES = "iau_star_names"
     GALAXY_CATALOGUES = "galaxy_catalogues"

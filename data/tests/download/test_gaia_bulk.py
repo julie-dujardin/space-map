@@ -23,6 +23,7 @@ from space_map_data.download.providers.stars.gaia_bulk import (
     ChunkedTableDownloader,
     ChunkJob,
     fetch_note,
+    keep_all,
     read_chunk_record,
     read_header,
     read_table,
@@ -338,7 +339,17 @@ class TestChunkedTableDownloader:
 
 
 class TestGaiaProviders:
-    """The two tables that share the chunk reducer."""
+    """The tables that share the chunk reducer."""
+
+    def test_small_table_keeps_every_row_and_column(self, tmp_path):
+        out = tmp_path / "out.parquet"
+        job = ChunkJob("https://x.test/c.csv.gz", "abc", out, "ua", keep_all)
+        stats = reduce_chunk(_ecsv(*ROWS), job)
+
+        kept = pq.read_table(out)
+        assert kept.column_names == NAMES.split(",")
+        assert kept["source_id"].to_pylist() == [10, 11, 12, 13]
+        assert (stats["rows_in"], stats["rows_kept"]) == (4, 4)
 
     def test_source_columns_are_unique(self):
         assert len(set(COLUMNS)) == len(COLUMNS)

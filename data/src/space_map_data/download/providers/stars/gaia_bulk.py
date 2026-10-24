@@ -224,6 +224,11 @@ class ChunkJob:
 Select = Callable[[pa.Table, ChunkJob], tuple[pa.Table, dict[str, float]]]
 
 
+def keep_all(table: pa.Table, job: ChunkJob) -> tuple[pa.Table, dict[str, float]]:
+    """Keep every row, for a table small enough to keep whole."""
+    return table, {}
+
+
 def reduce_chunk(raw: bytes, job: ChunkJob) -> dict[str, object]:
     """Write the selected rows of one ECSV chunk to `job.out`."""
     table = read_table(raw, job.columns, job.exclude)

@@ -93,6 +93,9 @@ from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloa
 from space_map_data.download.providers.stars.gaia_astrophysical_parameters import (
     GaiaAstrophysicalParametersDownloader,
 )
+from space_map_data.download.providers.stars.gaia_binary_masses import (
+    GaiaBinaryMassesDownloader,
+)
 from space_map_data.download.providers.stars.gaia_cross_match import (
     GaiaCrossMatchDownloader,
 )
@@ -100,6 +103,9 @@ from space_map_data.download.providers.stars.gaia_fidelity import (
     GaiaFidelityDownloader,
 )
 from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownloader
+from space_map_data.download.providers.stars.gaia_two_body_orbit import (
+    GaiaTwoBodyOrbitDownloader,
+)
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 from space_map_data.download.providers.three_d.body_shapes import BodyShapesDownloader
 from space_map_data.download.providers.three_d.damit import DAMITDownloader
@@ -159,6 +165,8 @@ PROVIDERS_CLASSES = [
     GaiaAstrophysicalParametersDownloader,
     GaiaFidelityDownloader,
     GaiaCrossMatchDownloader,
+    GaiaTwoBodyOrbitDownloader,
+    GaiaBinaryMassesDownloader,
     CDSStarCataloguesDownloader,
     IAUStarNamesDownloader,
     GalaxyCataloguesDownloader,
