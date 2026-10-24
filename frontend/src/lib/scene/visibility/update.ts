@@ -1,5 +1,5 @@
 import { Quaternion, Vector3 } from 'three';
-import type { PerspectiveCamera, Points, ShaderMaterial, WebGLRenderer } from 'three';
+import type { PerspectiveCamera, ShaderMaterial, WebGLRenderer } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isExtrasolar, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
@@ -35,7 +35,6 @@ import {
 import { f64dist, type Vec3 } from '../animation/math';
 import { AU_SCALE } from '$lib/math/units';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
-import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import { fadeStarCorona, STAR_POINT_SIZE_PX } from '../objects/sun';
 
 /** Screen radius (CSS px) at which the photosphere mesh hands off to the star
@@ -74,8 +73,7 @@ const _modelSphereCenter = new Vector3();
 // Scratch for projecting a label anchor to NDC (off-screen-center test).
 const _anchorProj = new Vector3();
 
-/** Fade a body's name and halo with the planetary system. The opacity is
- *  written only when it changes. */
+/** Avoids redundant label style writes. */
 function fadeLabel(label: CSS2DObject, share: number): void {
 	if (label.userData.systemShare === share) return;
 	label.userData.systemShare = share;
@@ -94,9 +92,6 @@ export function updateBodyVisibility(
 	focusedBodyId: string | undefined,
 	hideCappedMoonLabels: boolean,
 	hoveredBodyIds: Set<string>,
-	asteroidPoints: Map<string, Points>,
-	spacecraftPoints: Map<string, Points>,
-	moonPoints: Map<string, Points>,
 	cullFrameCounter: number,
 	renderer: WebGLRenderer,
 	tmpV3: Vector3,
@@ -372,6 +367,7 @@ export function updateBodyVisibility(
 		let isClose: boolean;
 		const isFocused = body.data.id === focusedBodyId;
 		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
+		let zoneShare = 1;
 
 		// Major bodies (planets/moons/dwarfs/stars) always take the mesh path's
 		// type-aware gates even when sizeless and meshless — else they'd skip the
@@ -408,7 +404,8 @@ export function updateBodyVisibility(
 				isClose = false;
 			} else {
 				const vis = ctx.visibility.getPlanetVisibility(body, dist);
-				const visible = vis !== VISIBILITY.HIDE && ctx.visibility.hasFullRendering(body);
+				zoneShare = ctx.visibility.fullRenderingShare(body);
+				const visible = vis !== VISIBILITY.HIDE && zoneShare > 0;
 				group.visible = visible;
 				if (trail) trail.visible = visible;
 				showLabel = visible;
@@ -420,9 +417,10 @@ export function updateBodyVisibility(
 			const vis = isMoon
 				? ctx.visibility.getMoonVisibility(body)
 				: ctx.visibility.getPlanetVisibility(body, dist);
+			if (!isMoon) zoneShare = ctx.visibility.fullRenderingShare(body);
 			const vf = isMoon
 				? moonVisFlags(vis, hideCappedMoonLabels, isFocused)
-				: bodyVisFlags(vis, ctx.visibility.hasFullRendering(body), isFocused || isSystemRoot);
+				: bodyVisFlags(vis, zoneShare > 0, isFocused || isSystemRoot);
 			group.visible = vf.groupVisible;
 			if (trail) trail.visible = vf.orbitVisible;
 			showLabel = vf.showLabel;
@@ -436,6 +434,7 @@ export function updateBodyVisibility(
 		}
 		// A curve whose centre body has no place has nowhere to be drawn.
 		if (trail && (!drawn || body.orbitCenter === null)) trail.visible = false;
+		if (trail) trail.userData.zoneShare = zoneShare;
 
 		// Star extras: the point takes over once the mesh disc shrinks to the
 		// point's own on-screen area, and the disc goes: that small, it is a few
@@ -513,23 +512,15 @@ export function updateBodyVisibility(
 			newlyShownLabel = true;
 		}
 		if (bo.label) {
-			fadeLabel(bo.label, bo.starPoint ? 1 : isExtrasolar(body) ? starShare : systemShare);
+			fadeLabel(
+				bo.label,
+				bo.starPoint ? 1 : isExtrasolar(body) ? starShare : systemShare * zoneShare
+			);
 		}
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const isNomFocused = showNomenclature && body.data.id === nomFocusedBodyId;
 		updateNomenclatureVisibility(bo, isNomFocused, nomScreenR, camera, screenW, screenH);
-	}
-
-	// Keys are subgroup keys (`${zone}#${i}`) from PointCloudSystem's hash-split.
-	for (const [key, pts] of asteroidPoints) {
-		pts.visible = ctx.visibility.isAsteroidGroupVisible(parentIdFromSubkey(key));
-	}
-	for (const [key, pts] of spacecraftPoints) {
-		pts.visible = ctx.visibility.isSpacecraftGroupVisible(parentIdFromSubkey(key));
-	}
-	for (const [parentId, pts] of moonPoints) {
-		pts.visible = ctx.visibility.isMoonGroupVisible(parentId);
 	}
 
 	// Screen-space label occlusion runs every frame (cheap: typically 0-2 occluders).
@@ -608,7 +599,8 @@ export function updateBodyVisibility(
 		);
 		const isFocused = bo.body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);
-		mat.uniforms.uAlphaMultiplier.value = (isHovered ? 2 : isFocused ? 1.75 : 1.0) * systemShare;
+		const share = systemShare * ((line.userData.zoneShare as number | undefined) ?? 1);
+		mat.uniforms.uAlphaMultiplier.value = (isHovered ? 2 : isFocused ? 1.75 : 1.0) * share;
 		// Fade open trails (sats, probe buffers) to 0 at the tail; the floor is
 		// only for closed ellipses, whose far side would otherwise vanish.
 		const isClosed = line.userData.isOpenCurve === false;

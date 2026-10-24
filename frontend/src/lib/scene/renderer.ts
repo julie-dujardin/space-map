@@ -1188,6 +1188,7 @@ export class SceneRenderer {
 		this.updateTravelCraftSystem();
 		this.updateSystemShare(renderedDtMs);
 		this.ctx.visibility.updateCamera(distance, this.sceneJd);
+		this.ctx.visibility.stepZones(renderedDtMs);
 		this.updateTightFar(distance);
 
 		// A flyby probe entering a planet's system mid-play (time advancing, not a
@@ -1219,9 +1220,6 @@ export class SceneRenderer {
 			this.focusController.current?.data.id,
 			this.hideCappedMoonLabels,
 			this.hoveredBodyIds,
-			this.pointClouds.asteroids(),
-			this.pointClouds.spacecraft(),
-			this.pointClouds.moons(),
 			this.cullFrameCounter,
 			this.renderer,
 			this._tmpV3,
@@ -1233,6 +1231,7 @@ export class SceneRenderer {
 			!controlsSettled,
 			this.tightFar
 		);
+		this.pointClouds.updateVisibility(renderedDtMs);
 
 		// Point visibility just changed above; the budget spreads over what shows.
 		this.pointClouds.applyPointBudget();
@@ -1415,7 +1414,8 @@ export class SceneRenderer {
 		if (nowMs - this.focus.focusStartTime < this.focus.focusDurationMs) return true;
 		if (this.jumpJd !== null || this.seekAwaitsData) return true;
 		if (this.focusLoads > 0 || this.systemData.isLoading()) return true;
-		if (this.systemFade.fading) return true;
+		if (this.systemFade.fading || this.ctx.visibility.zones.fading) return true;
+		if (this.pointClouds.fading) return true;
 		for (const bo of this.bodyObjects.values()) {
 			if (bo.group.visible && bodyLoading(bo)) return true;
 		}
@@ -2135,6 +2135,8 @@ export class SceneRenderer {
 			this.pointClouds.hasPendingSceneAdds() ||
 			this.systemData.hasPendingUnloads() ||
 			this.systemFade.fading ||
+			this.ctx.visibility.zones.fading ||
+			this.pointClouds.fading ||
 			this.starfield.busy();
 		if (loading) return true;
 		if (this.covered) return false;

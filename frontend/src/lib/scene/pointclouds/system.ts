@@ -24,6 +24,7 @@ import { resolveBodyColor } from '$lib/body-color';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { PickRegistry } from '$lib/scene/interaction/pick-registry';
 import { drawnSpacecraft } from '$lib/scene/layers';
+import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 
 const REBASE_THRESHOLD_AU = 0.01;
 
@@ -196,9 +197,10 @@ export class PointCloudSystem {
 		brightMult: 1,
 		opacity: EMPHASIS_BASE_OPACITY
 	};
-	/** The planetary system's share of the view. Each cloud draws at its own
-	 *  opacity (`userData.opacity`) times this. */
+	/** Planetary visibility multiplier applied alongside opacity and zone share. */
 	private fade = 1;
+	/** Moon clouds need independent fades because zoom gates them outside zone changes. */
+	private readonly moonFades = new Map<string, SwitchFade>();
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -222,21 +224,23 @@ export class PointCloudSystem {
 		this.applyPointBudget();
 	}
 
-	/** Size the drawn prefix of every cloud so the visible ones fit the budget. */
+	/** Leaving clouds keep their density stable during a zone cross-fade. */
 	applyPointBudget(): void {
 		let total = 0;
 		for (const kind of WORKER_CLOUD_KINDS) {
 			for (const pts of this.workerPoints[kind].values()) {
-				if (pts.visible) total += (pts.userData.solvedCount as number | undefined) ?? 0;
+				if (pts.visible && !pts.userData.leaving) {
+					total += (pts.userData.solvedCount as number | undefined) ?? 0;
+				}
 			}
 		}
-		const fraction = total > this.pointBudget ? this.pointBudget / total : 1;
-		if (fraction === this.drawFraction) return;
-		this.drawFraction = fraction;
+		this.drawFraction = total > this.pointBudget ? this.pointBudget / total : 1;
 		for (const kind of WORKER_CLOUD_KINDS) {
 			for (const pts of this.workerPoints[kind].values()) {
+				if (pts.userData.leaving || pts.userData.drawFraction === this.drawFraction) continue;
+				pts.userData.drawFraction = this.drawFraction;
 				const n = pts.userData.solvedCount as number | undefined;
-				if (n !== undefined) pts.geometry.setDrawRange(0, Math.ceil(n * fraction));
+				if (n !== undefined) pts.geometry.setDrawRange(0, Math.ceil(n * this.drawFraction));
 			}
 		}
 	}
@@ -291,7 +295,45 @@ export class PointCloudSystem {
 	}
 
 	private applyOpacity(pts: Points): void {
-		(pts.material as PointsMaterial).opacity = (pts.userData.opacity as number) * this.fade;
+		(pts.material as PointsMaterial).opacity =
+			(pts.userData.opacity as number) *
+			this.fade *
+			((pts.userData.share as number | undefined) ?? 1);
+	}
+
+	/** Applies zone shares after the visibility controller advances its fades. */
+	updateVisibility(dtMs: number): void {
+		const vis = this.ctx.visibility;
+		for (const [key, pts] of this.workerPoints.asteroid) {
+			this.setShare(pts, vis.asteroidGroupShare(parentIdFromSubkey(key)));
+		}
+		for (const [key, pts] of this.workerPoints.spacecraft) {
+			this.setShare(pts, vis.spacecraftGroupShare(parentIdFromSubkey(key)));
+		}
+		for (const [parentId, pts] of this.moonPoints) {
+			let fade = this.moonFades.get(parentId);
+			if (!fade) {
+				fade = new SwitchFade();
+				this.moonFades.set(parentId, fade);
+			}
+			fade.step(vis.isMoonGroupVisible(parentId), dtMs);
+			this.setShare(pts, fade.share);
+		}
+	}
+
+	/** Keeps frames rendering until moon cross-fades finish. */
+	get fading(): boolean {
+		for (const fade of this.moonFades.values()) if (fade.fading) return true;
+		return false;
+	}
+
+	private setShare(pts: Points, share: number): void {
+		pts.visible = share > 0;
+		const was = pts.userData.share as number | undefined;
+		if (was === share) return;
+		pts.userData.leaving = was !== undefined && share < was;
+		pts.userData.share = share;
+		this.applyOpacity(pts);
 	}
 
 	/** Take a new cloud's opacity as its own, and give it the fade. */
@@ -769,7 +811,8 @@ export class PointCloudSystem {
 		posAttr.needsUpdate = true;
 		this.bindPickIds(pts, pickIds);
 		pts.userData.solvedCount = count;
-		pts.geometry.setDrawRange(0, Math.ceil(count * this.drawFraction));
+		const fraction = (pts.userData.drawFraction as number | undefined) ?? this.drawFraction;
+		pts.geometry.setDrawRange(0, Math.ceil(count * fraction));
 		// The front buffer now reflects this jd; the gate measures drift from here.
 		this.lastSolvedJd.set(groupId, jd);
 		// Record the basis the worker used so reposition() can use it per-group:
@@ -957,8 +1000,8 @@ export class PointCloudSystem {
 		for (const [parentId, moons] of this.moonsByParent()) {
 			const pts = this.moonPoints.get(parentId);
 			if (!pts) continue;
-			// Skip hidden groups — saves a vertex-buffer rewrite + GPU upload per parent in any non-focused system.
-			if (!this.ctx.visibility.isMoonGroupVisible(parentId)) continue;
+			// Hidden groups skip GPU uploads unless they are still fading out.
+			if (!pts.visible && !this.ctx.visibility.isMoonGroupVisible(parentId)) continue;
 			const posAttr = pts.geometry.getAttribute('position');
 			const arr = posAttr.array as Float32Array;
 			const n = Math.min(moons.length, arr.length / 3);

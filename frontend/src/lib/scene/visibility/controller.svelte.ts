@@ -30,6 +30,7 @@ import {
 	MOONLESS_SYSTEM_HILL_FRACTION,
 	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
+import { ZoneFades } from '$lib/scene/visibility/zone-fade';
 
 /** What a controller built without a map draws: everything. */
 const ALL_LAYERS = new LayerSet();
@@ -64,6 +65,8 @@ export class VisibilityController {
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: string | null = null;
 	isZoomedIn = false;
+	/** The main zone and the satellite systems, faded to `activeSystemId`. */
+	readonly zones = new ZoneFades();
 	/** The planetary system's share of the view (`system-fade.ts`): at 0 only
 	 *  the Sun draws, and every other body and cloud is hidden. Set by the
 	 *  renderer each frame. */
@@ -151,6 +154,11 @@ export class VisibilityController {
 			this.lastRecomputeDist = dist;
 			this.recomputeFullMoons();
 		}
+	}
+
+	/** Advances after camera visibility selects `activeSystemId`. */
+	stepZones(dtMs: number): void {
+		this.zones.step(this.activeSystemId, dtMs);
 	}
 
 	/** Probe focus reads the `systemIntervals` annotation instead of walking
@@ -447,23 +455,34 @@ export class VisibilityController {
 		return sysNaif !== null && this.isInFocusedSystem(`naif-${sysNaif}`);
 	}
 
-	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in.
-	 *  Probes also pass via the `systemIntervals` annotation, so a flyby probe stays
-	 *  visible even when its parentId hasn't flipped yet (chunk-load gap). */
+	/** Full rendering = halo + trail. */
 	hasFullRendering(body: PositionedBody): boolean {
-		const sysId = this.activeSystemId;
-		if (!sysId || this.pinned.has(body.data.id)) return true;
-		if (
-			this.isInActiveSystem(
-				isTopLevelParent(body.data.parentId) ? body.data.id : body.data.parentId
-			)
-		)
-			return true;
-		if (body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return false;
-		const ps = this.getProbeStore();
-		if (!ps) return false;
-		const sysNaif = ps.containingSystemAt(body.data.id, this.currentJd);
-		return sysNaif !== null && this.isInActiveSystem(`naif-${sysNaif}`);
+		return this.fullRenderingShare(body) > 0;
+	}
+
+	/** Combines overlapping zones; probe intervals bridge parent-ID load gaps. */
+	fullRenderingShare(body: PositionedBody): number {
+		const main = this.zones.mainShare;
+		if (main === 1 || this.pinned.has(body.data.id)) return 1;
+		const home = isTopLevelParent(body.data.parentId) ? body.data.id : body.data.parentId;
+		const probeSystem = this.probeSystemId(body);
+		let share = main;
+		for (const { id, fade } of this.zones.systems) {
+			if (
+				this.bodies.isInSystem(home, id) ||
+				(probeSystem !== null && this.bodies.isInSystem(probeSystem, id))
+			) {
+				share += fade.share;
+			}
+		}
+		return Math.min(share, 1);
+	}
+
+	/** Uses probe intervals because parent IDs can lag during chunk loads. */
+	private probeSystemId(body: PositionedBody): string | null {
+		if (body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return null;
+		const sysNaif = this.getProbeStore()?.containingSystemAt(body.data.id, this.currentJd);
+		return sysNaif === null || sysNaif === undefined ? null : `naif-${sysNaif}`;
 	}
 
 	/**
@@ -480,24 +499,29 @@ export class VisibilityController {
 		return ratio <= this.scaledPlanetary[VISIBILITY.FAR];
 	}
 
-	/**
-	 * Whether a spacecraft point-cloud group should be shown.
-	 * Sun-level groups (parentId=0 or parent is STAR) are always visible.
-	 * Planet-orbiting groups are only visible when in the active system.
-	 */
 	isSpacecraftGroupVisible(groupParentId: string): boolean {
-		if (this.systemShare === 0) return false;
-		if (this.getLayers().hidesSpacecraftGroup(groupParentId)) return false;
+		return this.spacecraftGroupShare(groupParentId) > 0;
+	}
+
+	/** Returns the share of the cloud's solar or satellite zone. */
+	spacecraftGroupShare(groupParentId: string): number {
+		if (this.systemShare === 0) return 0;
+		if (this.getLayers().hidesSpacecraftGroup(groupParentId)) return 0;
 		const parent = this.bodies.bodiesById.get(groupParentId);
 		// A cloud is drawn about its parent. With no place for the parent, there
 		// is nowhere to draw it.
-		if (groupParentId !== SSB_ID && !parent?.position) return false;
-		const sysId = this.activeSystemId;
-		if (isTopLevelParent(groupParentId)) return !sysId;
-		if (parent?.data.objectType === ObjectType.STAR) return !sysId;
-		if (!sysId) return false;
-		if (groupParentId === sysId) return true;
-		return this.bodies.getChildren(sysId)?.has(groupParentId) ?? false;
+		if (groupParentId !== SSB_ID && !parent?.position) return 0;
+		if (isTopLevelParent(groupParentId)) return this.zones.mainShare;
+		if (parent?.data.objectType === ObjectType.STAR) return this.zones.mainShare;
+		for (const { id, fade } of this.zones.systems) {
+			if (this.bodies.isInSystem(groupParentId, id)) return fade.share;
+		}
+		return 0;
+	}
+
+	/** Asteroids fade with the main zone while their ordinary gates pass. */
+	asteroidGroupShare(zone: string): number {
+		return this.isAsteroidGroupVisible(zone) ? this.zones.mainShare : 0;
 	}
 
 	/** Whether an asteroid zone's point-cloud is visible: camera distance vs. the
@@ -507,7 +531,7 @@ export class VisibilityController {
 	isAsteroidGroupVisible(zone: string): boolean {
 		if (this.systemShare === 0) return false;
 		if (this.getLayers().hidesZone(zone)) return false;
-		if (this.activeSystemId) return false;
+		if (this.zones.mainShare === 0) return false;
 		// The asteroid clouds are drawn about the Sun.
 		if (!this.bodies.bodiesById.get(SUN_ID)?.position) return false;
 		const filter = this.getSmallBodyFilter();
