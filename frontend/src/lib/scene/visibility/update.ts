@@ -35,12 +35,8 @@ import {
 import { f64dist, type Vec3 } from '../animation/math';
 import { AU_SCALE } from '$lib/math/units';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
-import { fadeStarCorona, STAR_POINT_SIZE_PX } from '../objects/sun';
-
-/** Screen radius (CSS px) at which the photosphere mesh hands off to the star
- *  point: disc and dot cover the same area there. `makeStarPoint` has the
- *  brightness side. */
-const STAR_POINT_HANDOFF_R = STAR_POINT_SIZE_PX / 2;
+import { updateStarTransition } from '../objects/sun';
+import { PC_SCENE } from '../starfield/tree';
 
 /** Orbit-centre distance (from focus) past which a trail counts as
  *  heliocentric for tight-far suppression: 0.1 AU clears every planetary
@@ -451,21 +447,21 @@ export function updateBodyVisibility(
 			trail.userData.thresholdShare = orbitThresholdShare;
 		}
 
-		// Star extras: the point takes over once the mesh disc shrinks to the
-		// point's own on-screen area, and the disc goes: that small, it is a few
-		// HDR samples that change as the star crosses pixels, and the bloom
-		// flickers with them. Light goes as 1/d², and screenR as 1/d.
+		// A small photosphere flickers as its HDR samples cross the pixel grid.
 		let starIsPoint = false;
+		let starLabelShare = 1;
 		if (bo.starPoint && drawn) {
-			const t = ((bo.radiusScene / dist) * projScale) / STAR_POINT_HANDOFF_R;
-			starIsPoint = t < 1;
-			bo.starPoint.visible = starIsPoint;
-			if (starIsPoint) {
-				(bo.starPoint.material as ShaderMaterial).uniforms.uFlux.value = t * t;
-			}
-			fadeStarCorona(bo.corona, t);
+			const discShare = updateStarTransition(
+				bo.mesh?.material as ShaderMaterial | undefined,
+				bo.corona,
+				bo.starPoint,
+				(bo.radiusScene / dist) * projScale
+			);
+			starIsPoint = discShare === 0;
+			starLabelShare = 1 - discShare;
+			(bo.starPoint.material as ShaderMaterial).uniforms.uDistancePc.value = dist / PC_SCENE;
 			group.visible = true;
-			isClose = !starIsPoint;
+			isClose = discShare === 1;
 			showLabel = !isClose;
 		}
 
@@ -530,7 +526,7 @@ export function updateBodyVisibility(
 			fadeLabel(
 				bo.label,
 				bo.starPoint
-					? 1
+					? starLabelShare
 					: isExtrasolar(body)
 						? starShare
 						: systemShare * zoneShare * labelThresholdShare

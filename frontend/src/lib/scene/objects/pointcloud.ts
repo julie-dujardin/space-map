@@ -11,10 +11,8 @@ import type { PositionedBody } from '$lib/types/objects';
 
 const F32_MAX = 3.4028235e38;
 
-// Render after clouds (order 1) and atmosphere (order 2): clouds write no
-// depth, so earlier points would get painted over by dark-side fragments.
-// The atmosphere shell does write depth, so it still sorts dots correctly.
-const POINT_CLOUD_RENDER_ORDER = 3;
+/** Prevents transparent clouds and atmosphere from painting over the dots. */
+export const POINT_CLOUD_RENDER_ORDER = 3;
 
 // Point-cloud dots read directly as the body's halo colour under ACES; scale
 // down so they render as a darker shade rather than matching the halo.

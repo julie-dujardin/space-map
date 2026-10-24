@@ -60,7 +60,13 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE } from '$lib/math/units';
 import { PREFETCH_AU, RELEASE_AU, starsTakeSky } from './band';
 import { starColours } from './colour';
-import { makeStarMaterial, makeStarPickMaterial, starUniforms } from './material';
+import {
+	FOCUS_FLOOR_MAG,
+	NO_FLOOR,
+	makeStarMaterial,
+	makeStarPickMaterial,
+	starUniforms
+} from './material';
 import type { PickDraw } from '$lib/scene/interaction/gpu-pick';
 import type { PickRegistry } from '$lib/scene/interaction/pick-registry';
 import type { StarAnchor } from '$lib/types/objects';
@@ -101,9 +107,6 @@ const SELECT_EVERY_MS = 100;
 const ADDS_PER_FRAME = 4;
 /** Longest wait for the boot's minor bodies before the first node loads. */
 const BOOT_GATE_MS = 10_000;
-/** The focused star draws at least this many magnitudes above the limit:
- *  a dot half as bright as a full core, where the limit would hide it. */
-const FOCUS_FLOOR_MAG = 3;
 /** A magnitude no star reaches, for a focused star with none. */
 const NO_MAGNITUDE = 99;
 /** First of the transparent objects, because the stars are behind everything. */
@@ -426,6 +429,14 @@ export class StarfieldSystem {
 		return this.sky.share;
 	}
 
+	/** Local stars share exposure, but stay visible independently of the sky layer. */
+	updateLocalStar(points: Points, focused: boolean): void {
+		const uniforms = (points.material as ShaderMaterial).uniforms;
+		uniforms.uLimit.value = this.uniforms.uLimit.value;
+		uniforms.uPixelRatio.value = this.uniforms.uPixelRatio.value;
+		uniforms.uFloor.value = focused ? FOCUS_FLOOR_MAG : NO_FLOOR;
+	}
+
 	/** Whether the stars can draw, so that the camera may leave the solar system. */
 	availability(): StarfieldAvailability {
 		return this.drawable;
@@ -476,6 +487,7 @@ export class StarfieldSystem {
 		this.sky.step(shown && this.ready && this.root !== null && this.skyTaken, dtMs);
 		const skyShare = this.sky.share;
 		this.group.visible = shown && this.root !== null && skyShare > 0;
+		this.uniforms.uPixelRatio.value = pixelRatio;
 		if (!this.root) return;
 
 		this.group.matrix.fromArray(treeMatrixElements(focus, this.matrix));
@@ -495,7 +507,6 @@ export class StarfieldSystem {
 		const limit = this.uniforms.uLimit;
 		const ease = dtMs > 0 ? 1 - Math.exp(-dtMs / LIMIT_EASE_MS) : 1;
 		limit.value += (this.allowedLimit - limit.value) * ease;
-		this.uniforms.uPixelRatio.value = pixelRatio;
 		this.uniforms.uGain.value = gain * skyShare;
 
 		this.applyFades(dtMs, camera, focus);

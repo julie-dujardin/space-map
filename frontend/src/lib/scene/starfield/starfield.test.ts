@@ -5,7 +5,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PerspectiveCamera, Scene, type ShaderMaterial } from 'three';
+import { BufferGeometry, PerspectiveCamera, Points, Scene, type ShaderMaterial } from 'three';
+import { FOCUS_FLOOR_MAG, NO_FLOOR, makeStarMaterial, starUniforms } from './material';
 import { Container } from '$lib/fetch/extrasolar/container';
 import type { ExtrasolarMetadata, ExtrasolarTree } from '$lib/fetch/extrasolar/files';
 import { LayerSet } from '$lib/scene/layers';
@@ -518,6 +519,60 @@ describe('the starfield walk', () => {
 		system.setFocusStar(null);
 		expect(hidden()).toMatchObject({ r: -1, r0: -1 });
 		expect(points()).toHaveLength(0);
+	});
+
+	it('keeps local stars independent of the sky fade and layer switch', async () => {
+		buildTree(new Array(8).fill(10));
+		const { camera, focus } = setup();
+		const ctx = fakeCtx();
+		const system = new StarfieldSystem(
+			ctx,
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry()
+		);
+		const material = makeStarMaterial(starUniforms());
+		material.uniforms.uFade.value = 1;
+		material.uniforms.uDistancePc.value = 0.01;
+		const point = new Points(new BufferGeometry(), material);
+		await settle(system, camera, focus);
+		ctx.layers.setVisible('starfield', false);
+		system.update(camera, focus, 2, 0.25, clock + 200);
+		system.updateLocalStar(point, true);
+		expect(material.uniforms.uLimit.value).toBe(system.stats().limit);
+		expect(material.uniforms.uPixelRatio.value).toBe(2);
+		expect(material.uniforms.uFloor.value).toBe(FOCUS_FLOOR_MAG);
+		expect(material.uniforms.uGain.value).toBe(1);
+		expect(material.uniforms.uFade.value).toBe(1);
+		expect(material.uniforms.uDistancePc.value).toBe(0.01);
+		system.updateLocalStar(point, false);
+		expect(material.uniforms.uFloor.value).toBe(NO_FLOOR);
+		system.dispose();
+		point.geometry.dispose();
+		material.dispose();
+	});
+
+	it('updates local star resolution without an extrasolar export', () => {
+		base = '';
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry()
+		);
+		const material = makeStarMaterial(starUniforms());
+		const point = new Points(new BufferGeometry(), material);
+		system.update(camera, focus, 3, 0, clock + 200);
+		system.updateLocalStar(point, false);
+		expect(material.uniforms.uPixelRatio.value).toBe(3);
+		expect(material.uniforms.uGain.value).toBe(1);
+		expect(system.share()).toBe(0);
+		system.dispose();
+		point.geometry.dispose();
+		material.dispose();
 	});
 
 	it('draws no focus point for a star with no place', async () => {

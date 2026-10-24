@@ -13,6 +13,7 @@ import {
 	OneFactor,
 	OneMinusDstColorFactor,
 	ShaderMaterial,
+	Vector3,
 	type IUniform
 } from 'three';
 import { isReversedDepth } from '$lib/scene/setup/depth-mode';
@@ -58,6 +59,8 @@ uniform float uPixelRatio;
 uniform float uGain;
 uniform float uFade;
 uniform float uFloor;
+uniform float uDistancePc;
+uniform vec3 uTint;
 uniform int uHidden;
 attribute float mag;
 attribute vec3 starColour;
@@ -67,7 +70,7 @@ ${pick ? 'uniform highp uint uPickBase;\nflat varying highp uint vPick;' : ''}
 void main() {
 	${pick ? 'vPick = uPickBase + uint(gl_VertexID);' : ''}
 	vec4 mv = modelViewMatrix * vec4(position, 1.0);
-	float pc = length(mv.xyz) / ${PC_SCENE.toFixed(4)};
+	float pc = uDistancePc > 0.0 ? uDistancePc : length(mv.xyz) / ${PC_SCENE.toFixed(4)};
 	float m = mag + 5.0 * log2(max(pc, 1e-9)) * 0.30103 - 5.0;
 	float above = max(uLimit - m, uFloor);
 	if (above <= 0.0 || mv.z >= 0.0 || gl_VertexID == uHidden) {
@@ -82,7 +85,7 @@ void main() {
 	float energy = ${CORE_AT_LIMIT.toFixed(3)} * exp2(above * ${(0.4 * CONTRAST * Math.log2(10)).toFixed(5)});
 	float core = min(energy, 1.0);
 	float size = ${DOT_PX.toFixed(2)} * sqrt(max(energy, 1.0));
-	vColour = starColour * core * fade * uGain;
+	vColour = starColour * uTint * core * fade * uGain;
 	gl_Position = projectionMatrix * mv;
 	// Past the far plane a star stays on it, behind everything else.
 	${isReversedDepth() ? 'gl_Position.z = max(gl_Position.z, 0.0);' : 'gl_Position.z = min(gl_Position.z, gl_Position.w);'}
@@ -128,18 +131,21 @@ void main() {
 `;
 
 /** No floor: a star under the limit draws nothing. */
-const NO_FLOOR = -1e9;
+export const NO_FLOOR = -1e9;
 
-/** A node's material. The program is shared; the uniforms other than the
- *  node's fade, floor and hidden row are the shared objects. `uFloor` is the
- *  least a star draws at, in magnitudes above the limit; `uHidden` is a row
- *  that draws nothing, -1 for none. */
+/** Keeps the selected star visible even below the magnitude limit. */
+export const FOCUS_FLOOR_MAG = 3;
+
+/** Shared exposure keeps local stars and catalogue nodes on the same brightness scale. */
 export function makeStarMaterial(shared: StarUniforms, floor = NO_FLOOR): ShaderMaterial {
 	return new ShaderMaterial({
 		uniforms: {
 			...shared,
 			uFade: { value: 0 },
 			uFloor: { value: floor },
+			// A local star's proxy must retain its true photometric distance.
+			uDistancePc: { value: 0 },
+			uTint: { value: new Vector3(1, 1, 1) },
 			uHidden: { value: -1 }
 		},
 		vertexShader: starVertexShader(),

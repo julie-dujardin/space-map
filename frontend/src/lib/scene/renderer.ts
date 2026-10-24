@@ -1358,6 +1358,9 @@ export class SceneRenderer {
 			nowMs
 		);
 		this.updateSky(atmoState.skyboxIntensity);
+		if (sunBo?.starPoint) {
+			this.starfield.updateLocalStar(sunBo.starPoint, focusedStar?.data.id === SUN_ID);
+		}
 		// Only when the camera is inside a shell (surface zoom): supplies the
 		// opaque depth those shells clamp their march to, so haze stops at
 		// foreground terrain instead of painting over it.
