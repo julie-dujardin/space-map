@@ -20,6 +20,7 @@ from space_map_data.ingest.providers.models import ModelProcessor
 from space_map_data.ingest.providers.rings import RingProcessor
 from space_map_data.ingest.providers.textures import TextureProcessor
 from space_map_data.models.ingest_stamp import write_ingest_stamp
+from space_map_data.skycultures import build as skycultures
 from space_map_data.utils.db import get_session, session_scope
 from space_map_data.utils.mirror import sync_all
 from space_map_data.utils.paths import (
@@ -41,14 +42,16 @@ TARGETS = [
     "rings",
     "models",
     "extrasolar",
+    "skycultures",
 ]
 # A tile build runs for days and replaces the public pyramids, and the
-# extrasolar ingest mints IDs that never go away. "all" leaves them out, so
-# they run only when named.
-NAMED_ONLY = {"tiles", "extrasolar"}
+# extrasolar ingest mints IDs that never go away. The sky cultures read the
+# registry that the extrasolar ingest writes. "all" leaves them out, so they
+# run only when named.
+NAMED_ONLY = {"tiles", "extrasolar", "skycultures"}
 # Targets that write no DB rows. A run of only these leaves the DB and its
 # ingest stamp alone, so the export keeps what it derived from the DB.
-DB_FREE = {"extrasolar"}
+DB_FREE = {"extrasolar", "skycultures"}
 
 
 def cli():
@@ -60,7 +63,7 @@ def cli():
         default=["all"],
         metavar="TARGET",
         help=f"Targets to ingest: {', '.join(TARGETS)}, all (default: all; "
-        "all leaves out tiles and extrasolar)",
+        "all leaves out tiles, extrasolar and skycultures)",
     )
     parser.add_argument(
         "--force",
@@ -79,7 +82,8 @@ def cli():
         type=Path,
         default=REGISTRY_ROOT,
         help=f"extrasolar: the registry to write (default: {REGISTRY_ROOT});"
-        " another root backs up to <root>/backup",
+        " another root backs up to <root>/backup. skycultures: the registry"
+        " to read",
     )
     args = parser.parse_args()
 
@@ -104,6 +108,8 @@ def cli():
         result, summary = stars.ingest(args.registry_root, backup, args.limit)
         print(result.report)
         print(summary)
+    if "skycultures" in selected:
+        print(skycultures.ingest(args.registry_root))
 
 
 def ingest_db(selected: list[str], full_rebuild: bool, force: bool) -> None:

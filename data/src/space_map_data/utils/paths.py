@@ -54,6 +54,8 @@ SOURCES_MANUAL_DIR = SOURCES_METADATA_DIR / "manual"
 DERIVED_POSITION_DIR = DERIVED_DIR / "position"
 DERIVED_TEXTURES_DIR = DERIVED_DIR / "textures"
 DERIVED_MODELS_DIR = DERIVED_DIR / "models"
+# The sky cultures with their stars matched to extrasolar IDs.
+DERIVED_SKYCULTURES_DIR = DERIVED_DIR / "skycultures"
 
 # Rover/lander imagery downloads (per-sol frames, official mosaic releases,
 # other-world stills) and the sphere textures `space_map_data.panoramas` builds
