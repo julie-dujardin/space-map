@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { planckianRgb, starColours, teffFromBpRp } from './colour';
+import { photosphereColour, planckianRgb, starColours, teffFromBpRp } from './colour';
 
 describe('star colour', () => {
+	it('prefers photospheric temperature, then photometry, then neutral white', () => {
+		expect(photosphereColour(3000, -0.12)).toEqual(planckianRgb(3000, [0, 0, 0]));
+		for (const temperature of [null, NaN, Infinity, 0, -10]) {
+			expect(photosphereColour(temperature, 0.823)).toEqual(planckianRgb(5770, [0, 0, 0]));
+		}
+		expect(photosphereColour(null, null)).toEqual([1, 1, 1]);
+		expect(photosphereColour(null, NaN)).toEqual([1, 1, 1]);
+	});
+
 	it('reads the dwarf sequence and clamps at its ends', () => {
 		expect(teffFromBpRp(0.823)).toBe(5770);
 		expect(teffFromBpRp(0.8275)).toBeCloseTo(5745, 6);

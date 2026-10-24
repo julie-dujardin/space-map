@@ -81,19 +81,14 @@ const PHOTOSPHERE_CENTRE_COLOR = '#fff5eb';
  */
 const PHOTOSPHERE_LIMB_COLOR = '#ffd9a8';
 
-/**
- * Photosphere material. Per-channel power-law limb darkening I(μ) = μ^α(λ)
- * (Hestroffer & Magnan 1998) — α rises toward blue, physically warming the
- * rim — plus the artistic thin-rim tint below. α ships in atmospheres.json
- * ({@link setStarLimbAlpha}); neutral α = 0.5 until it lands. Output is HDR
- * (×6) so bloom + ACES saturate the centre to white and bleed light outward.
- */
-export function makeStarSurfaceMaterial(): ShaderMaterial {
-	const centre = new Color(PHOTOSPHERE_CENTRE_COLOR);
-	const limb = new Color(PHOTOSPHERE_LIMB_COLOR);
+/** Other stars use neutral limb darkening; the Sun retains its calibrated tint. */
+export function makeStarSurfaceMaterial(colour?: Color): ShaderMaterial {
+	const centre = colour ?? new Color(PHOTOSPHERE_CENTRE_COLOR);
+	const limb = colour ?? new Color(PHOTOSPHERE_LIMB_COLOR);
 	return new ShaderMaterial({
 		uniforms: {
 			uFade: { value: 1 },
+			uGain: { value: 1 },
 			uCentreColor: { value: new Vector3(centre.r, centre.g, centre.b) },
 			uLimbColor: { value: new Vector3(limb.r, limb.g, limb.b) },
 			uLimbAlpha: { value: new Vector3(0.5, 0.5, 0.5) },
@@ -121,6 +116,7 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 			#include <common>
 			#include <logdepthbuf_pars_fragment>
 			uniform float uFade;
+			uniform float uGain;
 			uniform vec3 uCentreColor;
 			uniform vec3 uLimbColor;
 			uniform vec3 uLimbAlpha;
@@ -139,7 +135,7 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 				vec3 tint = mix(uCentreColor, uLimbColor, warm);
 				// HDR over-bright: anything past 1.0 blooms and tone-maps via ACES,
 				// saturating the centre to white with bleeding light, like a camera on the Sun.
-				vec3 hdr = tint * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)};
+				vec3 hdr = tint * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)} * uGain;
 				gl_FragColor = vec4(atmoViewTint(vWorldPos) * hdr, uFade);
 			}
 		`
@@ -206,13 +202,7 @@ export function applyStarTint(
 	}
 }
 
-/** Avoids a brightness step while the photosphere becomes too small to sample. */
-export function updateStarTransition(
-	surface: ShaderMaterial | undefined,
-	corona: Sprite | null,
-	point: Points,
-	radiusPx: number
-): number {
+export function starDiscShare(radiusPx: number): number {
 	const t = Math.min(
 		Math.max(
 			(radiusPx - STAR_DISC_MIN_RADIUS_PX) / (STAR_DISC_FULL_RADIUS_PX - STAR_DISC_MIN_RADIUS_PX),
@@ -220,7 +210,17 @@ export function updateStarTransition(
 		),
 		1
 	);
-	const discShare = t * t * (3 - 2 * t);
+	return t * t * (3 - 2 * t);
+}
+
+/** Avoids a brightness step while the photosphere becomes too small to sample. */
+export function updateStarTransition(
+	surface: ShaderMaterial | undefined,
+	corona: Sprite | null,
+	point: Points,
+	radiusPx: number
+): number {
+	const discShare = starDiscShare(radiusPx);
 	if (surface) {
 		surface.uniforms.uFade.value = discShare;
 		surface.transparent = discShare < 1;

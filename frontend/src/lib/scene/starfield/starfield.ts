@@ -35,8 +35,11 @@
 import {
 	BufferAttribute,
 	BufferGeometry,
+	Color,
 	Group,
+	Mesh,
 	Points,
+	SphereGeometry,
 	Vector3,
 	type PerspectiveCamera,
 	type Scene,
@@ -57,9 +60,10 @@ import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { AU_SCALE } from '$lib/math/units';
+import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { makeStarSurfaceMaterial, updateStarTransition } from '../objects/sun';
 import { PREFETCH_AU, RELEASE_AU, starsTakeSky } from './band';
-import { starColours } from './colour';
+import { photosphereColour, starColours } from './colour';
 import {
 	FOCUS_FLOOR_MAG,
 	NO_FLOOR,
@@ -237,6 +241,7 @@ export class StarfieldSystem {
 	/** The focused extrasolar object, drawn on its own at its record's place. */
 	private focusStar: StarAnchor | null = null;
 	private focusPoints: Points | null = null;
+	private focusSurface: Mesh<SphereGeometry, ShaderMaterial> | null = null;
 	private focusPick: PickRange | null = null;
 
 	constructor(
@@ -270,6 +275,12 @@ export class StarfieldSystem {
 		const next = star?.tree ? star : null;
 		if (next?.id === this.focusStar?.id) return;
 		this.focusStar = next;
+		if (this.focusSurface) {
+			this.focusSurface.removeFromParent();
+			this.focusSurface.geometry.dispose();
+			this.focusSurface.material.dispose();
+			this.focusSurface = null;
+		}
 		if (this.focusPoints) {
 			this.focusPoints.removeFromParent();
 			this.focusPoints.geometry.dispose();
@@ -278,7 +289,24 @@ export class StarfieldSystem {
 		}
 		this.dropPick(this.focusPick, FOCUS_PICK_GROUP);
 		this.focusPick = null;
-		if (next) this.focusPoints = this.focusPoint(next);
+		if (next) {
+			this.focusPoints = this.focusPoint(next);
+			if (next.radiusKm !== null && Number.isFinite(next.radiusKm) && next.radiusKm > 0) {
+				const colour = new Color(...photosphereColour(next.teff, next.colour));
+				const surface = new Mesh(
+					new SphereGeometry(kmToScene(next.radiusKm) / PC_SCENE, 96, 64),
+					makeStarSurfaceMaterial(colour)
+				);
+				surface.name = 'star-photosphere';
+				surface.position.copy(this.focusPoints.position);
+				surface.updateMatrix();
+				surface.matrixAutoUpdate = false;
+				surface.visible = false;
+				surface.renderOrder = STAR_RENDER_ORDER - 1;
+				this.group.add(surface);
+				this.focusSurface = surface;
+			}
+		}
 		for (const node of this.drawn) if (node.points) this.applyHidden(node);
 		this.onChange();
 	}
@@ -322,7 +350,7 @@ export class StarfieldSystem {
 			out.push({ points, material: this.pickMaterial(node.pick, points) });
 		}
 		const focus = this.focusPoints;
-		if (focus) {
+		if (focus?.visible) {
 			this.focusPick ??= {
 				base: this.pickRegistry.allocateRows(FOCUS_PICK_GROUP, 1),
 				material: null
@@ -476,7 +504,8 @@ export class StarfieldSystem {
 		focus: Vec3,
 		pixelRatio: number,
 		gain: number,
-		nowMs: number
+		nowMs: number,
+		viewportHeight = 1
 	): void {
 		const dtMs = this.lastFrameMs ? Math.min(nowMs - this.lastFrameMs, 250) : 0;
 		this.lastFrameMs = nowMs;
@@ -516,12 +545,33 @@ export class StarfieldSystem {
 		const ease = dtMs > 0 ? 1 - Math.exp(-dtMs / LIMIT_EASE_MS) : 1;
 		limit.value += (this.allowedLimit - limit.value) * ease;
 		this.uniforms.uGain.value = gain * skyShare;
+		this.updateFocusSurface(camera, focus, viewportHeight);
 
 		this.applyFades(dtMs, camera, focus);
 		if (this.group.visible && !this.creditsShown && this.drawn.size > 0) {
 			this.creditsShown = true;
 			this.ctx.credits.setStars(this.credits);
 		}
+	}
+
+	private updateFocusSurface(camera: PerspectiveCamera, focus: Vec3, viewportHeight: number): void {
+		const star = this.focusStar;
+		const surface = this.focusSurface;
+		const point = this.focusPoints;
+		if (!surface || !point || !star?.scene || star.radiusKm === null) return;
+		const distance = Math.hypot(
+			star.scene[0] - focus[0] - camera.position.x,
+			star.scene[1] - focus[1] - camera.position.y,
+			star.scene[2] - focus[2] - camera.position.z
+		);
+		const radiusPx =
+			((kmToScene(star.radiusKm) / distance) *
+				camera.projectionMatrix.elements[5] *
+				viewportHeight) /
+			2;
+		const share = updateStarTransition(surface.material, null, point, radiusPx);
+		surface.visible = share > 0;
+		surface.material.uniforms.uGain.value = this.uniforms.uGain.value;
 	}
 
 	dispose(): void {

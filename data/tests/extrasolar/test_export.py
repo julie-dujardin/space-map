@@ -70,6 +70,30 @@ def _expected_position(row: dict) -> np.ndarray:
 class TestExport:
     """Tiles, the render tree and metadata.json of a synthetic registry."""
 
+    def test_photosphere_radius_bounds_and_provenance_round_trip(self, tmp_path, out):
+        physical = {
+            "radius_gspphot": 0.2,
+            "radius_gspphot_lower": 0.18,
+            "radius_gspphot_upper": 0.22,
+            "teff_gspphot": 3000.0,
+            "gspphot_source": "gaia-dr3",
+        }
+        built = write_registry(
+            tmp_path / "reg", [star(10.0, 5.0) | physical, star(11.0, 5.0)]
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        measured_record = reader.lookup(str(built.ids[0]))
+        unknown_record = reader.lookup(str(built.ids[1]))
+        assert measured_record is not None and unknown_record is not None
+        measured = measured_record.rows["point-source"]
+        unknown = unknown_record.rows["point-source"]
+        for name, value in physical.items():
+            assert measured[name] == (
+                value if isinstance(value, str) else pytest.approx(value)
+            )
+            assert unknown[name] is None
+
     def test_every_star_is_found_as_a_client_finds_it(self, tmp_path, out):
         stars = random_stars(150, around=(100, 20)) + random_stars(60) + _special()
         built = write_registry(tmp_path / "reg", stars)

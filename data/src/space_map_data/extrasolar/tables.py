@@ -201,6 +201,7 @@ POINT_SOURCE = TableDef(
                         f"{name}_gspphot{bound}"
                         for name in (
                             "teff",
+                            "radius",
                             "logg",
                             "mh",
                             "distance",

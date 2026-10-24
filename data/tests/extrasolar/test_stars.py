@@ -8,6 +8,7 @@ from pathlib import Path
 import astropy.units as u
 import numpy as np
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
@@ -40,7 +41,7 @@ def at(arcsec: float, angle: float = 0.0) -> tuple[float, float]:
 def gaia_stars(rows: list[dict]) -> pa.Table:
     """Gaia rows with every downloaded column; the others are null."""
     columns = {}
-    for name in gaia.COLUMNS:
+    for name in (*gaia.COLUMNS, *gaia.ASTROPHYSICAL_COLUMNS):
         kind = (
             pa.int64() if name == "source_id" else POINT_SOURCE.schema.field(name).type
         )
@@ -168,6 +169,51 @@ class TestGaiaRows:
             np.array([RA]), np.array([DEC]), [(0, 1), (pixel, pixel)]
         )
         assert inside.tolist() == [True]
+
+    def test_radius_join_preserves_order_missing_values_and_bounds(self, tmp_path):
+        reader = gaia.GaiaReader(
+            BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
+            source_dir=tmp_path,
+            fidelity_dir=tmp_path,
+            astrophysical_dir=tmp_path,
+        )
+        path = tmp_path / "GaiaSource_000001-000002.parquet"
+        stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
+        pq.write_table(stars.select(gaia.COLUMNS), path)
+        pq.write_table(
+            fidelity([(1, 0.9), (2, 0.9), (3, 0.9)]), reader.fidelity_path(path)
+        )
+        parameters = pa.table(
+            {
+                "source_id": pa.array([3, 1], pa.int64()),
+                "radius_gspphot": pa.array([0.2, 2.0], pa.float32()),
+                "radius_gspphot_lower": pa.array([0.1, 1.8], pa.float32()),
+                "radius_gspphot_upper": pa.array([0.3, 2.2], pa.float32()),
+            }
+        )
+        pq.write_table(parameters, reader.astrophysical_path(path))
+        (rows,) = reader.batches([path])
+        assert rows["catalogue_id"].to_pylist() == ["1", "2", "3"]
+        assert rows["radius_gspphot"].to_pylist() == pytest.approx([2.0, None, 0.2])
+        assert rows["radius_gspphot_lower"].to_pylist() == pytest.approx(
+            [1.8, None, 0.1]
+        )
+        assert rows["radius_gspphot_upper"].to_pylist() == pytest.approx(
+            [2.2, None, 0.3]
+        )
+
+    def test_missing_radius_chunk_fails_before_reading(self, tmp_path):
+        reader = gaia.GaiaReader(
+            BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
+            fidelity_dir=tmp_path,
+            astrophysical_dir=tmp_path,
+        )
+        path = tmp_path / "GaiaSource_000001-000002.parquet"
+        pq.write_table(fidelity([]), reader.fidelity_path(path))
+        with pytest.raises(
+            FileNotFoundError, match="no astrophysical parameters chunk"
+        ):
+            list(reader.batches([path]))
 
 
 class TestHipparcos:

@@ -12,6 +12,18 @@ import { icrsToTree, treeToScene, type Vec3 } from './tree';
 export const RENDER_EPOCH = 2016.0;
 /** Magnitudes in the tree are multiples of this. */
 const MAG_STEP = 1 / 1024;
+const SOLAR_RADIUS_KM = 695_700;
+
+export function positiveNumber(row: TableRow, name: string): number | null {
+	const value = row.number(name);
+	return value !== null && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** GSP-Phot radii are in nominal solar radii, not kilometres. */
+export function starRadiusKm(row: TableRow): number | null {
+	const radius = positiveNumber(row, 'radius_gspphot');
+	return radius === null ? null : radius * SOLAR_RADIUS_KM;
+}
 
 /** G − V from B − V, ascending powers (Gaia DR2 documentation §5.3.7). */
 const G_MINUS_V = [-0.02907, -0.02385, -0.2297, -0.001768];

@@ -127,6 +127,16 @@ export function planckianRgb(
 	return out;
 }
 
+/** Prefer intrinsic temperature; photometry is the fallback for incomplete records. */
+export function photosphereColour(
+	teff: number | null,
+	bpRp: number | null
+): [number, number, number] {
+	if (teff !== null && Number.isFinite(teff) && teff > 0) return planckianRgb(teff, [0, 0, 0]);
+	if (bpRp !== null && Number.isFinite(bpRp)) return planckianRgb(teffFromBpRp(bpRp), [0, 0, 0]);
+	return [1, 1, 1];
+}
+
 const LUT_LO = BP_RP_TEFF[0][0];
 const LUT_HI = BP_RP_TEFF[BP_RP_TEFF.length - 1][0];
 const LUT_SIZE = 512;

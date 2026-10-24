@@ -5,7 +5,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BufferGeometry, PerspectiveCamera, Points, Scene, type ShaderMaterial } from 'three';
+import {
+	BufferGeometry,
+	Mesh,
+	PerspectiveCamera,
+	Points,
+	Scene,
+	Vector3,
+	type ShaderMaterial,
+	type SphereGeometry
+} from 'three';
+import { kmToScene } from '$lib/math/units';
+import { photosphereColour } from './colour';
 import { FOCUS_FLOOR_MAG, NO_FLOOR, makeStarMaterial, starUniforms } from './material';
 import { Container } from '$lib/fetch/extrasolar/container';
 import type { ExtrasolarMetadata, ExtrasolarTree } from '$lib/fetch/extrasolar/files';
@@ -13,7 +24,7 @@ import { LayerSet } from '$lib/scene/layers';
 import { PickRegistry } from '$lib/scene/interaction/pick-registry';
 import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { treeToScene, type Vec3 } from './tree';
+import { PC_SCENE, treeToScene, type Vec3 } from './tree';
 
 const TOKEN = '0123456789abcdef';
 
@@ -521,7 +532,9 @@ describe('the starfield walk', () => {
 			scene: [0, 0, 0],
 			tree: [C - 500, C - 500, C - 500],
 			absMag: 10,
-			colour: null
+			colour: null,
+			radiusKm: null,
+			teff: null
 		});
 		expect(hidden()).toMatchObject({ r: -1, r0: 0 });
 		expect(points()).toHaveLength(1);
@@ -534,7 +547,9 @@ describe('the starfield walk', () => {
 			scene: [0, 0, 0],
 			tree: [C - 500, C - 500, C - 500],
 			absMag: 3,
-			colour: null
+			colour: null,
+			radiusKm: null,
+			teff: null
 		});
 		expect(hidden()).toMatchObject({ r: -1, r0: -1 });
 		expect(points()).toHaveLength(1);
@@ -543,6 +558,105 @@ describe('the starfield walk', () => {
 		expect(hidden()).toMatchObject({ r: -1, r0: -1 });
 		expect(points()).toHaveLength(0);
 	});
+
+	it('sizes and colours the focused photosphere and reverses its CSS-pixel handoff', async () => {
+		buildTree(new Array(8).fill(10));
+		const { camera, focus } = setup();
+		const ctx = fakeCtx();
+		const scene = new Scene();
+		const system = new StarfieldSystem(
+			ctx,
+			scene,
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry()
+		);
+		await settle(system, camera, focus);
+		const radiusKm = 2 * 695_700;
+		system.setFocusStar({
+			id: 7,
+			record: null!,
+			scene: focus,
+			tree: [0.1, 0, 0],
+			absMag: 5,
+			colour: -0.12,
+			radiusKm,
+			teff: 3000
+		});
+		const surface = system.group.getObjectByName('star-photosphere') as Mesh<
+			SphereGeometry,
+			ShaderMaterial
+		>;
+		const point = system.group.children.find((c) => c.userData.focusStar === 7) as Points;
+		expect(surface.geometry.parameters.radius * PC_SCENE).toBeCloseTo(kmToScene(radiusKm), 12);
+		expect(surface.material.uniforms.uCentreColor.value.toArray()).toEqual(
+			photosphereColour(3000, -0.12)
+		);
+		expect(surface.material.uniforms.uLimbColor.value.toArray()).toEqual(
+			photosphereColour(3000, -0.12)
+		);
+		const projection = (camera.projectionMatrix.elements[5] * 900) / 2;
+		for (const dpr of [1, 2]) {
+			for (const [radiusPx, share] of [
+				[1, 0],
+				[2, 0],
+				[4, 0.5],
+				[6, 1],
+				[100, 1],
+				[4, 0.5],
+				[1, 0]
+			]) {
+				camera.position.set(0, 0, (kmToScene(radiusKm) * projection) / radiusPx);
+				system.update(camera, focus, dpr, 1, (clock += 200), 900);
+				scene.updateMatrixWorld(true);
+				expect(surface.getWorldPosition(new Vector3()).length()).toBeLessThan(1e-8);
+				expect(surface.visible).toBe(share > 0);
+				expect(surface.material.uniforms.uFade.value).toBeCloseTo(share, 10);
+				expect((point.material as ShaderMaterial).uniforms.uFade.value).toBeCloseTo(1 - share, 10);
+				expect(point.visible).toBe(share < 1);
+				expect(surface.material.depthWrite).toBe(share === 1);
+				expect(surface.material.transparent).toBe(share < 1);
+				expect(system.pickDraws().some((d) => d.points === point)).toBe(share < 1);
+			}
+		}
+		ctx.layers.setVisible('starfield', false);
+		system.update(camera, focus, 1, 0.25, (clock += 200), 900);
+		expect(system.group.visible).toBe(false);
+		expect(surface.material.uniforms.uGain.value).toBeCloseTo(system.share() * 0.25);
+		const geometryDispose = vi.spyOn(surface.geometry, 'dispose');
+		const materialDispose = vi.spyOn(surface.material, 'dispose');
+		system.setFocusStar(null);
+		expect(geometryDispose).toHaveBeenCalledOnce();
+		expect(materialDispose).toHaveBeenCalledOnce();
+		expect(system.group.getObjectByName('star-photosphere')).toBeUndefined();
+		system.dispose();
+	});
+
+	it.each([null, 0, -1, NaN, Infinity])(
+		'does not invent a photosphere for radius %s',
+		(radiusKm) => {
+			const system = new StarfieldSystem(
+				fakeCtx(),
+				new Scene(),
+				{ points: 1e6, bytes: 1e9, fetches: 8 },
+				() => {},
+				new PickRegistry()
+			);
+			system.setFocusStar({
+				id: 7,
+				record: null!,
+				scene: [0, 0, 0],
+				tree: [0.1, 0, 0],
+				absMag: 5,
+				colour: 1,
+				radiusKm,
+				teff: 5000
+			});
+			expect(system.group.getObjectByName('star-photosphere')).toBeUndefined();
+			expect(system.group.children.find((c) => c.userData.focusStar === 7)?.visible).toBe(true);
+			system.dispose();
+		}
+	);
 
 	it('keeps local stars independent of the sky fade and layer switch', async () => {
 		buildTree(new Array(8).fill(10));
@@ -615,7 +729,9 @@ describe('the starfield walk', () => {
 			scene: null,
 			tree: null,
 			absMag: null,
-			colour: null
+			colour: null,
+			radiusKm: null,
+			teff: null
 		});
 		expect(system.group.children.some((c) => c.userData.focusStar !== undefined)).toBe(false);
 	});
@@ -685,7 +801,9 @@ describe('picking a star', () => {
 			scene: [0, 0, 0],
 			tree: [C - 500, C - 500, C - 500],
 			absMag: 10,
-			colour: null
+			colour: null,
+			radiusKm: null,
+			teff: null
 		});
 		const focusDraw = system.pickDraws().find((d) => d.points.userData.focusStar !== undefined);
 		const base = (focusDraw?.material as ShaderMaterial).uniforms.uPickBase.value;

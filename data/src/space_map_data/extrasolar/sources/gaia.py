@@ -1,11 +1,7 @@
-"""Gaia DR3 as an ingest source: the positionable stars with their fidelity.
+"""Gaia DR3 positions, fidelity and GSP-Phot radii, joined by source_id.
 
-Each gaia_source chunk has a fidelity chunk with the same pixel range. Both are
-read together and joined on `source_id`. Every star is a row of the pass. A
-star with `fidelity_v2` under 0.5 has `mint` false: it gets an ID only when
-another catalogue matches it. A star without a fidelity row mints.
-
-A star that `hipparcos2_best_neighbour` names claims its Hipparcos number.
+Low-fidelity stars mint only when matched by another catalogue. Missing
+companion rows preserve the star, with null fidelity or radius.
 
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
 2022, MNRAS 510, 2597.
@@ -26,6 +22,7 @@ import pyarrow.csv as pcsv
 import pyarrow.parquet as pq
 
 from space_map_data.download.providers.stars import (
+    gaia_astrophysical_parameters,
     gaia_bulk,
     gaia_cross_match,
     gaia_fidelity,
@@ -43,6 +40,7 @@ HIP = ("hip", "2007")
 
 SOURCE_DIR = gaia_bulk.OUT_DIR / gaia_source.TABLE_PATH
 FIDELITY_DIR = gaia_bulk.OUT_DIR / gaia_fidelity.TABLE_PATH
+ASTROPHYSICAL_DIR = gaia_bulk.OUT_DIR / gaia_astrophysical_parameters.TABLE_PATH
 BEST_NEIGHBOUR = (
     gaia_bulk.OUT_DIR
     / gaia_cross_match.TREE
@@ -55,6 +53,11 @@ MIN_FIDELITY = 0.5
 # parallax_over_error is parallax / parallax_error, so it is not kept.
 COLUMNS = tuple(name for name in gaia_source.COLUMNS if name != "parallax_over_error")
 FIDELITY_COLUMNS = ("fidelity_v2", "norm_dg")
+ASTROPHYSICAL_COLUMNS = (
+    "radius_gspphot",
+    "radius_gspphot_lower",
+    "radius_gspphot_upper",
+)
 PIXEL_LEVEL = 8
 _PIXELS = re.compile(r"_(\d+)-(\d+)\.parquet$")
 
@@ -117,8 +120,16 @@ def join_fidelity(stars: pa.Table, fidelity: pa.Table) -> pa.Table:
     return stars
 
 
+def join_astrophysical(stars: pa.Table, parameters: pa.Table) -> pa.Table:
+    """Keep stars without a radius; absence must not become a solar radius."""
+    at = pc.index_in(stars["source_id"], value_set=parameters["source_id"])
+    for name in ASTROPHYSICAL_COLUMNS:
+        stars = stars.append_column(name, parameters[name].take(at))
+    return stars
+
+
 def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
-    """The pass rows of Gaia stars that carry their fidelity columns."""
+    """Pass rows with fidelity, radii and Hipparcos claims."""
     source_id = stars["source_id"].to_numpy()
     ids = pc.cast(stars["source_id"], pa.string())
     error = np.hypot(
@@ -145,6 +156,7 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     }
     columns |= {name: stars[name] for name in COLUMNS if name != "source_id"}
     columns |= {name: stars[name] for name in FIDELITY_COLUMNS}
+    columns |= {name: stars[name] for name in ASTROPHYSICAL_COLUMNS}
     return pa.table(columns)
 
 
@@ -192,6 +204,7 @@ class GaiaReader:
     best: BestNeighbours
     source_dir: Path = SOURCE_DIR
     fidelity_dir: Path = FIDELITY_DIR
+    astrophysical_dir: Path = ASTROPHYSICAL_DIR
     workers: int = 8
     counts: dict[str, int] = field(default_factory=dict)
 
@@ -219,7 +232,18 @@ class GaiaReader:
         fidelity = pq.read_table(
             self.fidelity_path(path), columns=["source_id", *FIDELITY_COLUMNS]
         )
-        return engine_rows(join_fidelity(stars, fidelity), self.best)
+        parameters = pq.read_table(
+            self.astrophysical_path(path), columns=["source_id", *ASTROPHYSICAL_COLUMNS]
+        )
+        return engine_rows(
+            join_astrophysical(join_fidelity(stars, fidelity), parameters), self.best
+        )
+
+    def astrophysical_path(self, path: Path) -> Path:
+        name = path.name.replace(
+            gaia_source.CHUNK_PREFIX, gaia_astrophysical_parameters.CHUNK_PREFIX
+        )
+        return self.astrophysical_dir / name
 
     def batches(self, chunks: list[Path]) -> Iterator[pa.Table]:
         """The pass rows of `chunks`, one table per chunk."""
@@ -228,6 +252,12 @@ class GaiaReader:
             raise FileNotFoundError(
                 f"{len(missing)} Gaia chunks have no fidelity chunk, first"
                 f" {self.fidelity_path(missing[0])}"
+            )
+        missing = [p for p in chunks if not self.astrophysical_path(p).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"{len(missing)} Gaia chunks have no astrophysical parameters chunk, first"
+                f" {self.astrophysical_path(missing[0])}"
             )
         counts = dict.fromkeys(
             ("chunks", "rows", "flagged", "without_fidelity", "claims"), 0

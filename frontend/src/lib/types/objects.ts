@@ -230,6 +230,9 @@ export interface StarAnchor {
 	absMag: number | null;
 	/** BP − RP; null when unknown. */
 	colour: number | null;
+	/** GSP-Phot radius in km and effective temperature in K; null when unknown. */
+	radiusKm: number | null;
+	teff: number | null;
 }
 
 /** An object of the extrasolar catalogue — see {@link StarAnchor}. */

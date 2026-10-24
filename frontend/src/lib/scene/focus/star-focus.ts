@@ -2,26 +2,29 @@ import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objec
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { homeRow, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
-import { absoluteG, colourBpRp, starPlace } from '$lib/scene/starfield/record';
+import {
+	absoluteG,
+	colourBpRp,
+	positiveNumber,
+	starPlace,
+	starRadiusKm
+} from '$lib/scene/starfield/record';
 
 /** The camera's distance from a star it frames, scene units: 1,000 AU. A
  *  star there outshines the sky around it, and its neighbours stay a sky. */
 export const STAR_VIEW_DISTANCE = 1e4;
 
-/**
- * The focus body of an extrasolar object. It hangs off nothing and its
- * elements are inert: the placer gives it the fixed place of its record. It
- * carries no mesh, halo or label; the starfield draws it.
- */
+/** The starfield draws extrasolar bodies at their catalogue positions. */
 export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 	const home = homeRow(record);
 	const place = home ? starPlace(home) : null;
+	const radiusKm = home ? starRadiusKm(home) : null;
 	const data: BodyData = {
 		id: extrasolarObjectId(record.id),
 		name: record.metadata.name,
 		objectType: ObjectType.EXTRASOLAR,
 		parentId: '',
-		radiusKm: NaN,
+		radiusKm: radiusKm ?? NaN,
 		hasLocalized: false,
 		a: 0,
 		e: 0,
@@ -44,7 +47,9 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 			scene: place?.scene ?? null,
 			tree: place?.tree ?? null,
 			absMag: home ? absoluteG(home) : null,
-			colour: home ? colourBpRp(home) : null
+			colour: home ? colourBpRp(home) : null,
+			radiusKm,
+			teff: home ? positiveNumber(home, 'teff_gspphot') : null
 		}
 	};
 }

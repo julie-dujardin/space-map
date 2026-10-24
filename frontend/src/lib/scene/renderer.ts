@@ -1355,7 +1355,8 @@ export class SceneRenderer {
 			this.focus.focusTruePos,
 			this.renderer.getPixelRatio(),
 			atmoState.skyboxIntensity,
-			nowMs
+			nowMs,
+			this.viewportH
 		);
 		this.updateSky(atmoState.skyboxIntensity);
 		if (sunBo?.starPoint) {

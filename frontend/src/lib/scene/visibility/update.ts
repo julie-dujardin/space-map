@@ -35,7 +35,7 @@ import {
 import { f64dist, type Vec3 } from '../animation/math';
 import { AU_SCALE } from '$lib/math/units';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
-import { updateStarTransition } from '../objects/sun';
+import { starDiscShare, updateStarTransition } from '../objects/sun';
 import { PC_SCENE } from '../starfield/tree';
 
 /** Orbit-centre distance (from focus) past which a trail counts as
@@ -366,16 +366,20 @@ export function updateBodyVisibility(
 		let zoneShare = 1;
 		let labelThresholdShare = 1;
 		let orbitThresholdShare = 1;
+		let starLabelShare = 1;
 
 		// Major bodies (planets/moons/dwarfs/stars) always take the mesh path's
 		// type-aware gates even when sizeless and meshless — else they'd skip the
 		// moon-label cap and show every halo unbounded.
 		if (isExtrasolar(body)) {
-			// Outside the solar system: it shows where the stars draw.
+			// Only the focused star can replace its point with a photosphere.
 			const visible = starShare > 0;
 			group.visible = visible;
-			showLabel = visible;
-			isClose = false;
+			if (isFocused && Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0) {
+				starLabelShare = 1 - starDiscShare((bo.radiusScene / dist) * projScale);
+			}
+			isClose = starLabelShare === 0;
+			showLabel = visible && !isClose;
 		} else if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
 			// Barycenters/Lagrange points: navigational aids, visible once built,
 			// except a barycenter sitting within a halo of its primary on screen —
@@ -449,7 +453,6 @@ export function updateBodyVisibility(
 
 		// A small photosphere flickers as its HDR samples cross the pixel grid.
 		let starIsPoint = false;
-		let starLabelShare = 1;
 		if (bo.starPoint && drawn) {
 			const discShare = updateStarTransition(
 				bo.mesh?.material as ShaderMaterial | undefined,
@@ -528,7 +531,7 @@ export function updateBodyVisibility(
 				bo.starPoint
 					? starLabelShare
 					: isExtrasolar(body)
-						? starShare
+						? starShare * starLabelShare
 						: systemShare * zoneShare * labelThresholdShare
 			);
 		}
