@@ -23,7 +23,11 @@ from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES
 from space_map_data.ingest import __main__ as ingest_cli
-from space_map_data.utils.paths import REGISTRY_BACKUP_DIR, REGISTRY_ROOT
+from space_map_data.utils.paths import (
+    DERIVED_SKYCULTURES_DIR,
+    REGISTRY_BACKUP_DIR,
+    REGISTRY_ROOT,
+)
 from tests.extrasolar.conftest import centre, offset, table_rows
 
 RA, DEC = centre(6_000_321)
@@ -528,20 +532,27 @@ class TestStarIngest:
 
 
 class TestIngestTarget:
-    """The extrasolar target of space-map-ingest."""
+    """The extrasolar and skycultures targets of space-map-ingest."""
 
     @pytest.fixture
     def calls(self, monkeypatch):
-        found: dict[str, list] = {"db": [], "stars": []}
+        found: dict[str, list] = {"db": [], "stars": [], "skycultures": [], "order": []}
         monkeypatch.setattr(
             ingest_cli, "ingest_db", lambda *args: found["db"].append(args)
         )
 
         def fake_ingest(root, backup, limit):
             found["stars"].append((root, backup, limit))
+            found["order"].append("extrasolar")
             return IngestResult(1, {}, "the report\n"), "the summary\n"
 
+        def fake_match(root, out):
+            found["skycultures"].append((root, out))
+            found["order"].append("skycultures")
+            return "the cultures\n"
+
         monkeypatch.setattr(ingest_cli.stars, "ingest", fake_ingest)
+        monkeypatch.setattr(ingest_cli.skycultures, "ingest", fake_match)
         return found
 
     def cli(self, monkeypatch, *args: str) -> None:
@@ -570,9 +581,34 @@ class TestIngestTarget:
         self.cli(monkeypatch, "--targets", "extrasolar")
         assert calls["stars"] == [(REGISTRY_ROOT, REGISTRY_BACKUP_DIR, None)]
 
+    def test_extrasolar_matches_the_sky_cultures_after_it(
+        self, monkeypatch, calls, capsys
+    ):
+        self.cli(monkeypatch, "--targets", "extrasolar")
+        assert calls["order"] == ["extrasolar", "skycultures"]
+        assert calls["skycultures"] == [(REGISTRY_ROOT, DERIVED_SKYCULTURES_DIR)]
+        assert "the cultures" in capsys.readouterr().out
+
+    def test_another_root_keeps_its_matched_cultures(
+        self, monkeypatch, calls, tmp_path
+    ):
+        root = tmp_path / "root"
+        self.cli(monkeypatch, "--targets", "extrasolar", "--registry-root", str(root))
+        assert calls["skycultures"] == [(root, root / "skycultures")]
+
+    def test_skycultures_alone_reads_the_registry_only(self, monkeypatch, calls):
+        self.cli(monkeypatch, "--targets", "skycultures")
+        assert calls["order"] == ["skycultures"]
+        assert calls["db"] == []
+
+    def test_naming_both_matches_once(self, monkeypatch, calls):
+        self.cli(monkeypatch, "--targets", "skycultures", "extrasolar")
+        assert calls["order"] == ["extrasolar", "skycultures"]
+
     def test_all_leaves_extrasolar_out(self, monkeypatch, calls):
         self.cli(monkeypatch, "--targets", "all")
         assert calls["stars"] == []
+        assert calls["skycultures"] == []
         ((selected, full_rebuild, _),) = calls["db"]
         assert "extrasolar" not in selected and "tiles" not in selected
         assert full_rebuild

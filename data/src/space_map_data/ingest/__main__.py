@@ -26,6 +26,7 @@ from space_map_data.utils.mirror import sync_all
 from space_map_data.utils.paths import (
     DATA_DIR,
     DB_FILE,
+    DERIVED_SKYCULTURES_DIR,
     DOWNLOAD_DIR,
     REGISTRY_BACKUP_DIR,
     REGISTRY_ROOT,
@@ -46,8 +47,8 @@ TARGETS = [
 ]
 # A tile build runs for days and replaces the public pyramids, and the
 # extrasolar ingest mints IDs that never go away. The sky cultures read the
-# registry that the extrasolar ingest writes. "all" leaves them out, so they
-# run only when named.
+# registry that the extrasolar ingest writes, so extrasolar runs them after
+# it. "all" leaves these out, so they run only when named.
 NAMED_ONLY = {"tiles", "extrasolar", "skycultures"}
 # Targets that write no DB rows. A run of only these leaves the DB and its
 # ingest stamp alone, so the export keeps what it derived from the DB.
@@ -82,8 +83,9 @@ def cli():
         type=Path,
         default=REGISTRY_ROOT,
         help=f"extrasolar: the registry to write (default: {REGISTRY_ROOT});"
-        " another root backs up to <root>/backup. skycultures: the registry"
-        " to read",
+        " another root backs up to <root>/backup. skycultures, also run after"
+        " extrasolar: the registry to read; another root writes the matched"
+        " cultures to <root>/skycultures",
     )
     args = parser.parse_args()
 
@@ -99,17 +101,21 @@ def cli():
     db_targets = [t for t in selected if t not in DB_FREE]
     if db_targets:
         ingest_db(db_targets, full_rebuild, args.force)
+    default_root = args.registry_root.resolve() == REGISTRY_ROOT.resolve()
     if "extrasolar" in selected:
-        backup = (
-            REGISTRY_BACKUP_DIR
-            if args.registry_root.resolve() == REGISTRY_ROOT.resolve()
-            else args.registry_root / "backup"
-        )
+        backup = REGISTRY_BACKUP_DIR if default_root else args.registry_root / "backup"
         result, summary = stars.ingest(args.registry_root, backup, args.limit)
         print(result.report)
         print(summary)
-    if "skycultures" in selected:
-        print(skycultures.ingest(args.registry_root))
+    # The matched cultures hold the IDs of one registry ingest, so each
+    # extrasolar ingest matches them again.
+    if "extrasolar" in selected or "skycultures" in selected:
+        matched = (
+            DERIVED_SKYCULTURES_DIR
+            if default_root
+            else args.registry_root / "skycultures"
+        )
+        print(skycultures.ingest(args.registry_root, matched))
 
 
 def ingest_db(selected: list[str], full_rebuild: bool, force: bool) -> None:
