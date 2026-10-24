@@ -98,10 +98,13 @@ export class Viewport {
 		return plane ? this.toScreen(plane[0], plane[1]) : null;
 	}
 
-	/** Place under a screen pixel, or null where the pixel is off the world. */
+	/** Place under a screen pixel, including repeated copies of the world. */
 	unproject(px: number, py: number): [number, number] | null {
 		const [x, y] = this.fromScreen(px, py);
-		return this.projection.inverse(x, y);
+		if (!this.repeatsHorizontally) return this.projection.inverse(x, y);
+		const { minX, maxX } = this.projection.extent;
+		const worldW = maxX - minX;
+		return this.projection.inverse(((((x - minX) % worldW) + worldW) % worldW) + minX, y);
 	}
 
 	/** How wide the whole world is in pixels — the jump that tells a drawn line
@@ -124,6 +127,11 @@ export class Viewport {
 		const w = this.worldWidthPx;
 		const left = this.toScreen(this.projection.extent.minX, 0)[0];
 		return [0, -w, w].filter((shift) => left + shift < this.width && left + shift + w > 0);
+	}
+
+	/** Offset that places this world position in the frame. */
+	shiftInFrame(x: number): number {
+		return this.repeatShifts.find((shift) => x + shift >= 0 && x + shift <= this.width) ?? 0;
 	}
 }
 

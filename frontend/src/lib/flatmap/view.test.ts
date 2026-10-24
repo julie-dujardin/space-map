@@ -111,6 +111,26 @@ describe('Viewport', () => {
 			0
 		]);
 	});
+
+	it('reads a pixel on a copy of the world as the same place on the world', () => {
+		const projection = createProjection('equirectangular');
+		const seam = new Viewport(projection, WIDTH, HEIGHT, { ...whole, centerX: Math.PI });
+		const [lon, lat] = seam.unproject(WIDTH * 0.75, HEIGHT / 2)!;
+		expect(lon).toBeCloseTo(-90);
+		expect(lat).toBeCloseTo(0);
+
+		const wide = new Viewport(projection, WIDTH * 2, HEIGHT, whole);
+		expect(wide.unproject(10, HEIGHT / 2)).toBeNull();
+	});
+
+	it('finds the copy of the world that shows a place in the frame', () => {
+		const projection = createProjection('equirectangular');
+		const seam = new Viewport(projection, WIDTH, HEIGHT, { ...whole, centerX: Math.PI });
+		const west = seam.project(-90, 0)![0];
+		expect(west).toBeCloseTo(-WIDTH / 4);
+		expect(seam.shiftInFrame(west)).toBe(WIDTH);
+		expect(seam.shiftInFrame(seam.project(90, 0)![0])).toBe(0);
+	});
 });
 
 /** The rule a globe's centre is held to, which cannot go through the plane. */

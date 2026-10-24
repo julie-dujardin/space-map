@@ -699,9 +699,11 @@ export class FlatMap {
 		await this.adopt(bodyId);
 	}
 
-	/** Screen pixel for a place, relative to the map's own box. */
+	/** Screen pixel for the visible copy of a place. */
 	project(lon: number, lat: number): [number, number] | null {
-		return this.viewport().project(lon, lat);
+		const viewport = this.viewport();
+		const screen = viewport.project(lon, lat);
+		return screen ? [screen[0] + viewport.shiftInFrame(screen[0]), screen[1]] : null;
 	}
 
 	/** The place under a pixel of the map's box, or null off the world. */

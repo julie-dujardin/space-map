@@ -1673,6 +1673,7 @@ export class Viewport {
 	get repeatShifts(): number[];
 	get repeatsHorizontally(): boolean;
 	readonly scale: number;
+	shiftInFrame(x: number): number;
 	// (undocumented)
 	toScreen(x: number, y: number): [number, number];
 	unproject(px: number, py: number): [number, number] | null;
