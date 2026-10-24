@@ -58,7 +58,7 @@
 		"typescript-eslint": "^8.57.0",
 		"vaul-svelte": "1.0.0-next.7",
 		"vite": "^8.0.10",
-		"vitest": "^4.1.11"
+		"vitest": "^4.1.12"
 	},
 	"dependencies": {
 		"d3-scale": "^4.0.2",
