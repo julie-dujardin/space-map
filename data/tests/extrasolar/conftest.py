@@ -9,6 +9,7 @@ import pyarrow as pa
 import pytest
 from cdshealpix import nested
 
+from space_map_data.export.extrasolar import skycultures
 from space_map_data.extrasolar import engine, sky
 from space_map_data.extrasolar.engine import IngestResult, IngestRun, Source
 from space_map_data.extrasolar.match import PositionMatcher
@@ -143,6 +144,12 @@ def claim(catalogue: str, release: str, id_: object) -> dict:
 @pytest.fixture(autouse=True)
 def _no_git(monkeypatch):
     monkeypatch.setattr(engine, "code_version", lambda: ("test-commit", False))
+
+
+@pytest.fixture(autouse=True)
+def _no_sky_cultures(monkeypatch, tmp_path):
+    """An export reads no matched sky cultures unless a test gives some."""
+    monkeypatch.setattr(skycultures, "CULTURES_DIR", tmp_path / "no-skycultures")
 
 
 @pytest.fixture

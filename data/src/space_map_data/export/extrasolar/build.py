@@ -8,7 +8,9 @@ export as it was. The checks:
 - every row holds an ID that the registry has, with the status the row shows;
 - every ID that the previous export serves is still served with all its
   catalogue ids, or is an alias or retired in the registry. The previous
-  export stands for the live site until the serving is decided.
+  export stands for the live site until the serving is decided;
+- the matched sky cultures come from the registry ingest that the export
+  reads.
 
 The export holds a shared lock on the registry for the whole run, so no
 ingest starts and no table version changes under it. Every job gets the
@@ -35,7 +37,7 @@ from pathlib import Path
 import numpy as np
 
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
-from space_map_data.export.extrasolar import container, render, tiles
+from space_map_data.export.extrasolar import container, render, skycultures, tiles
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.tiles import (
     MAX_ROWS,
@@ -384,6 +386,7 @@ def _metadata(
     tables_built: list[TableResult],
     tree: TreeResult,
     tokens: dict[str, str],
+    cultures: skycultures.Result | None,
 ) -> dict:
     tables_out = {}
     for result in tables_built:
@@ -402,7 +405,7 @@ def _metadata(
             "distribution": DISTRIBUTION,
         }
     nodes = tree.nodes
-    return {
+    metadata = {
         "format": container.VERSION,
         "exported": datetime.now(UTC).isoformat(timespec="seconds"),
         "registry": {"ingest": registry.last_ingest, "host": registry.manifest["host"]},
@@ -434,6 +437,9 @@ def _metadata(
         },
         "credits": list(CREDITS),
     }
+    if cultures is not None:
+        metadata[skycultures.TABLE] = {**cultures.entry, "frame": FRAME}
+    return metadata
 
 
 def _swap(layout: Layout) -> None:
@@ -452,10 +458,13 @@ def _swap(layout: Layout) -> None:
 
 
 def _export(
-    registry: Registry, layout: Layout, workers: int
-) -> tuple[list[TableResult], TreeResult, dict[str, str]]:
+    registry: Registry, layout: Layout, workers: int, cultures_dir: Path | None
+) -> tuple[list[TableResult], TreeResult, skycultures.Result | None, dict[str, str]]:
     """Build into staging, check, and swap. Removes staging on a failure."""
     _recover(layout)
+    stale = skycultures.check(registry, cultures_dir or skycultures.CULTURES_DIR)
+    if stale is not None:
+        raise ExportRefused(stale)
     previous_metadata, previous = _previous(layout)
     if previous_metadata is None:
         logger.info("no export at %s: nothing to compare with", layout.live)
@@ -470,10 +479,13 @@ def _export(
                 + "\n".join(problems.lines())
             )
         tree = _build_tree(registry, layout, workers)
+        cultures = skycultures.build(registry, layout.staging, cultures_dir)
         groups = {result.slug: result.files for result in built}
         groups[render.TREE] = tree.files
         tokens = _patch(layout.staging, groups, workers)
-        metadata = _metadata(registry, built, tree, tokens)
+        if cultures is not None:
+            tokens[skycultures.TABLE] = cultures.entry["token"]
+        metadata = _metadata(registry, built, tree, tokens, cultures)
         (layout.staging / METADATA_FILE).write_text(
             json.dumps(metadata, indent=1) + "\n"
         )
@@ -483,15 +495,19 @@ def _export(
             if path.exists():
                 shutil.rmtree(path)
         raise
-    return built, tree, tokens
+    return built, tree, cultures, tokens
 
 
 def export_extrasolar(
     registry_root: Path = REGISTRY_ROOT,
     out_root: Path = EXTRASOLAR_DIR,
     workers: int = 8,
+    cultures_dir: Path | None = None,
 ) -> dict:
-    """Export the registry's tables to `out_root/v1/x/`. Returns the report."""
+    """Export the registry's tables to `out_root/v1/x/`. Returns the report.
+
+    `cultures_dir` holds the matched sky cultures; None reads the default.
+    """
     started = time.monotonic()
     with _read_registry(registry_root) as registry:
         unreviewed = registry.unreviewed()
@@ -502,7 +518,9 @@ def export_extrasolar(
             )
         layout = Layout(out_root)
         with _locked(layout):
-            built, tree, tokens = _export(registry, layout, workers)
+            built, tree, cultures, tokens = _export(
+                registry, layout, workers, cultures_dir
+            )
     tile_files = {
         r.slug: [f for f in r.files if not f.path.endswith(tiles.SPLIT_FILE)]
         for r in built
@@ -520,9 +538,16 @@ def export_extrasolar(
         "render": dict(tree.counts),
         "depths": dict(sorted(Counter(node.depth for node in tree.nodes).items())),
     }
-    report["files"] = sum(len(r.files) for r in built) + len(tree.files) + 1
-    report["bytes"] = sum(f.size for r in built for f in r.files) + sum(
-        f.size for f in tree.files
+    culture_files = [] if cultures is None else cultures.files
+    report["skycultures"] = _sizes(culture_files)
+    report["skycultures_left_out"] = [] if cultures is None else cultures.left_out
+    report["files"] = (
+        sum(len(r.files) for r in built) + len(tree.files) + len(culture_files) + 1
+    )
+    report["bytes"] = (
+        sum(f.size for r in built for f in r.files)
+        + sum(f.size for f in tree.files)
+        + sum(f.size for f in culture_files)
     )
     return report
 

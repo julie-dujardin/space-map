@@ -1,6 +1,6 @@
 # Extrasolar objects (`v1/x/`)
 
-The objects outside the solar system: their record tiles, one tree per table, and the Milky Way render tree. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to `space-map-extrasolar/v1/x/` and are served from their own base URL, `PUBLIC_EXTRASOLAR_URL`. Without that URL a client has no stars and no `/x/` pages.
+The objects outside the solar system: their record tiles, one tree per table, the Milky Way render tree, and the constellation figures of the sky cultures. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to `space-map-extrasolar/v1/x/` and are served from their own base URL, `PUBLIC_EXTRASOLAR_URL`. Without that URL a client has no stars and no `/x/` pages.
 
 An object has one ID for all its files. The ID, its URL form and its check are in the design of the registry: `id = serial·2^29 + table·2^24 + cell`, with `cell` the HEALPix level-10 nested cell (ICRS) and `table` the home table. A client decodes it with division, never with bit operators: `cell = id % 2^24`, `table = floor(id / 2^24) % 32`, `serial = floor(id / 2^29)`.
 
@@ -15,9 +15,10 @@ v1/x/
   point-source/{level}/{pixel}.bin.gz    Point source record tiles (table 1)
   mw/node/{name}.bin.gz                  Milky Way render nodes
   mw/id/{name}.bin.gz                    the ID column of each render node
+  skycultures/{key}.json.gz              a sky culture: figures, members and star names
 ```
 
-Each `.bin.gz` file is gzip around one payload in the container format below. The server sends it as `application/octet-stream` with no `Content-Encoding`, and the client decodes it with `DecompressionStream('gzip')`. A client fetches each file as `{PUBLIC_EXTRASOLAR_URL}/v1/x/{path}?v={token}`, with the token of its table or tree.
+Each `.bin.gz` file is gzip around one payload in the container format below. A `.json.gz` file is gzip around UTF-8 JSON. The server sends it as `application/octet-stream` with no `Content-Encoding`, and the client decodes it with `DecompressionStream('gzip')`. A client fetches each file as `{PUBLIC_EXTRASOLAR_URL}/v1/x/{path}?v={token}`, with the token of its table or tree.
 
 ## Container
 
@@ -185,6 +186,64 @@ An octree by visibility range for the objects of the Milky Way. It holds the sta
 
 Which stars are drawn: `parallax / parallax_error > 5`, and `fidelity_v2 ≥ 0.5`, or no fidelity, or a Hipparcos match (`hipparcos_photometry_source` not null), and a magnitude. Positions are at J2016.0: Hipparcos stars are moved from J1991.25 by their proper motion. Distance is `1000 / parallax`. The absolute magnitude comes from `phot_g_mean_mag`, or for a star without Gaia photometry from the estimate of G from V and B − V that the ingest uses for matching (`g_estimate` of the Hipparcos source), with no correction for extinction. The colour is `phot_bp_mean_mag − phot_rp_mean_mag`, or for a star without Gaia colours BP − RP from the Hipparcos V − I (Riello et al. 2021, Table C.2: −0.01612 + 1.274 x − 0.08143 x², x = V − I from −0.5 to 3.5). A star without a distance has an ID and a record, but no render row.
 
+## Sky cultures (`skycultures`)
+
+The constellations and asterisms of the sky cultures, with their lines and the star names of each culture. One file per culture, at `skycultures/{key}.json.gz`. `skycultures` in `metadata.json` lists them, and the `dataset` of each says where it comes from: `stellarium` (Stellarium desktop's sky cultures) or `bucur` (Doina Bucur's constellation-lines dataset). Stellarium's international star names, which a culture with `fallback_to_international_names` falls back to, are in `skycultures/common_star_names.json.gz`, a file with names and no figures.
+
+All files share one directory, so a key names one culture:
+
+- A Bucur culture with the key of a Stellarium culture, in any case, is left out: Stellarium's wins.
+- A Bucur culture that is a copy of a Stellarium culture under another key is left out. A copy shares at least half of its line segments with the Stellarium culture (Jaccard: shared segments over all segments of the two), and the Stellarium culture has at least half of its figure names (English or native, in any case). A Bucur culture that adds figures of its own shares less and stays.
+
+The export logs each culture that it leaves out, with the reason and the two shares. The matched cultures of the ingest keep them all. In the export of 2026-10-24, three Bucur cultures are copies: `anuta` of `anutan` (0.78 of the segments, 0.81 of the names), `iau` of `modern_iau` (0.98, 0.99) and `romania` of `romanian` (0.83, 0.66). Each of their figures has a figure of the same name in the Stellarium culture, and the segments they do not share join other stars within those figures. No other Bucur culture shares more than 0.38 of its segments with a Stellarium culture.
+
+A file is gzip around one JSON object:
+
+```json
+{
+  "token": "495f0eea0c17aae7",
+  "dataset": "stellarium",
+  "key": "modern",
+  "name": "Modern",
+  "members": [
+    { "id": 24592883, "position": [6.517253887958679, -11.840880957963618, 1.517162498208393] },
+    { "id": 26486783 },
+    { "ref": "DSO:M44", "reason": "deep-sky", "designation": "M44" },
+    { "ra_hours": 19.43791, "dec": -23.807 }
+  ],
+  "figures": [
+    {
+      "id": "CON modern Aql",
+      "kind": "constellation",
+      "names": [{ "native": "Aquila", "english": "Eagle" }],
+      "lines": [[0, 1, 2], [1, 3]]
+    }
+  ],
+  "names": [{ "member": 0, "names": [{ "native": "Altair", "english": "Altair" }] }]
+}
+```
+
+- **`members`.** Each object that a figure or a star name points to, once, in order of first use. It is one of:
+  - a star: `id` is its extrasolar ID, and `position` its position in parsecs, in the frame of the render tree (ICRS axes, origin at the barycentre, J2016.0), as float64. The position is the one that the tree build computes for the star, from the same code over the same rows, so a line ends on the rendered star: it is the float64 value that the node stores as the node's centre plus a float32 offset. A star that the tree does not draw (no 5-sigma parallax, a flagged fidelity, no magnitude) has an `id` and no `position`.
+  - an object with no ID: `ref` as the source writes it, `reason` (below), and `designation` for a deep-sky object or a planet. A line that passes through it keeps its index, so no line is cut; a client skips the segments to a member without a position.
+  - a point of the sky that a Stellarium figure gives in place of a star: `ra_hours` and `dec` (degrees) as published. It has no distance.
+- **`figures`.** `kind` is `constellation` or `asterism`. `names` lists the names of the figure, each with the fields that the source gives of `native` (in the culture's script), `english`, `pronounce`, `transliteration` and `IPA`. `lines` is a list of chains; each chain is a list of member indexes, joined in order. A Bucur figure can have `group`, member indexes of a star group with no lines, and `iau`, the IAU constellation that holds a figure whose stars are not known. A Stellarium asterism with `ray_helper` is a line that helps find stars (a pointer), which Stellarium draws apart from the figures.
+- **`names`.** The star names of the culture: `member` is a member index, and `names` lists its names with the same fields as a figure's.
+
+| `reason` | |
+|----------|-|
+| `deep-sky` | a cluster, nebula or galaxy; the registry has no deep-sky objects yet |
+| `solar-system` | the Sun, the Moon or a planet |
+| `not-in-registry` | a HIP, Gaia DR3 or HD number with no live ID: not in Hipparcos 2007, or a Gaia source with no 5-sigma parallax |
+| `component` | a component letter other than A after a HIP number |
+| `not-in-simbad` | SIMBAD has no object with this identifier |
+| `no-star-number` | a SIMBAD star with no HIP, Gaia DR3 or HD number |
+| `unknown-designation` | a designation of no known form |
+
+The matching runs at ingest: the `extrasolar` target of `space-map-ingest` ends with it, and `--targets skycultures` runs it alone. A HIP number goes through the registry's `hip/2007` catalogue ids and a Gaia DR3 source_id through `gaia/dr3`. Bucur names stars by SIMBAD identifier; SIMBAD gives the star's HIP number, else its Gaia DR3 or HD number, else the HIP number of the star system that holds it.
+
+The token of `skycultures` covers all its files: SHA-256 over each file's path, a zero byte and the SHA-256 of its JSON with `token` set to 16 zeros (`"0000000000000000"`), as for the containers. Each file's `token` field holds the token; a client checks it as it checks a container header.
+
 ## `metadata.json`
 
 ```json
@@ -227,6 +286,40 @@ Which stars are drawn: `parallax / parallax_error > 5`, and `fidelity_v2 ≥ 0.5
       "distribution": "non-commercial"
     }
   },
+  "skycultures": {
+    "token": "495f0eea0c17aae7",
+    "file": "skycultures/{key}.json.gz",
+    "international_names": "skycultures/common_star_names.json.gz",
+    "international_names_distribution": "non-commercial",
+    "units": "pc",
+    "frame": "ICRS equatorial axes, origin at the solar system barycentre, epoch J2016.0",
+    "commits": { "stellarium": "0d956aacee305c29a92498860bc394ed21e0e731", "bucur": "711e06943f342e9340807885016b4ea14e2fe45e" },
+    "cultures": [
+      {
+        "dataset": "stellarium",
+        "key": "modern_chinese",
+        "name": "Modern (Chinese)",
+        "region": "Eastern Asia",
+        "subregion": null,
+        "packaged": true,
+        "fallback_to_international_names": false,
+        "file": "skycultures/modern_chinese.json.gz",
+        "licence": {
+          "parts": [{ "applies_to": "data", "licence": "CC BY-SA 4.0" }, { "applies_to": "illustrations", "licence": "Free Art License" }],
+          "distribution": "open"
+        },
+        "distribution": "non-commercial",
+        "flags": [],
+        "credit": { "name": "Modern (Chinese)", "organisation": "Stellarium", "source": "https://github.com/Stellarium/stellarium/tree/0d956aa…/skycultures/modern_chinese", "license": "CC BY-SA 4.0 (data); Free Art License (illustrations)", "authors": ["Sun Shuwei"] },
+        "figures": 415,
+        "members": 3131,
+        "positioned": 3095,
+        "unresolved": 11
+      },
+      "…"
+    ],
+    "credits": [{ "name": "Stellarium sky cultures", "…": "…" }, { "name": "Constellation line figures in sky cultures across the world", "…": "…" }, { "name": "SIMBAD astronomical database", "…": "…" }]
+  },
   "credits": [
     { "name": "Gaia Data Release 3", "organisation": "ESA/Gaia/DPAC", "source": "https://www.cosmos.esa.int/web/gaia/dr3", "license": "CC BY-NC 3.0 IGO", "attribution": "…", "citation": "…" },
     "…"
@@ -238,6 +331,14 @@ Which stars are drawn: `parallax / parallax_error > 5`, and `fidelity_v2 ≥ 0.5
 - `trees`: keyed by name; `mw` is the Milky Way.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)). Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values, so all are `non-commercial`.
 - `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, Hipparcos I/311 and I/239, XHIP V/137D, the IAU Catalog of Star Names.
+- `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
+  - `licence`: the licence of the culture's data and illustrations as it states it (`applies_to` is `all`, `data` or `illustrations`; the files hold no illustrations yet), and the tier that this licence alone allows. A culture that states no licence has no parts and the tier `non-commercial`, with the flag `no-licence`. A statement that the ingest cannot read gives the tier `undecided`, which no client may serve.
+  - `distribution`: the tier of the file, the strictest of the culture's licence and of Gaia DR3 (`non-commercial`), because the positions come from Gaia. `undecided` stays `undecided`.
+  - `flags`: `no-derivatives` (a CC ND licence: only unchanged copies), `non-commercial` (a CC NC licence or a Traditional Knowledge NC label), `tk-labels` (Traditional Knowledge labels add terms to the licence), `no-licence` (the culture states no licence, so it is non-commercial), `unknown-licence`.
+  - `packaged`: false for a culture that Stellarium leaves out of its standard package.
+  - `credit`: the culture's own credit: its source at the pinned commit, its licence, and for Stellarium `authors`, the plain names of the people that the culture's description names as its makers, with no Markdown, addresses or links.
+  - `figures`, `members`, `positioned` (members with a position) and `unresolved` (members with no ID, sky points left out).
+  - `credits` of the section: Stellarium, Bucur's dataset and SIMBAD, which matched Bucur's identifiers.
 
 ## Sizes
 
@@ -251,6 +352,8 @@ The export of 2026-10-23 (registry ingest 2, 180,949,689 IDs, all live):
 | Render nodes | 61,487 | 2.8 GB | 24 kB, 1,372 rows | 141 kB | 160 kB |
 | Render IDs | 61,487 | 0.63 GB | 5 kB | 34 kB | 42 kB |
 
+The sky cultures of registry ingest 4 (Stellarium at `0d956aa`, Bucur at `711e069`): 101 culture files (64 from Stellarium, 37 from Bucur) and the international names, 1.76 MB together. The median culture file is 3.7 kB; the largest are `chinese` (166 kB, 312 figures, 3,079 members) and `modern_chinese` (141 kB). 4,820 of the 4,864 stars of all cultures have a position.
+
 A full render node of 10,000 stars is about 143 kB, of which the float32 positions take about 107 kB. 180,923,672 stars are in the tree, at depths 0 to 14. A plain octree gives 61,487 nodes against a minimum of 18,093; 7,761 nodes are full and 26,246 hold under 1,000 rows.
 
 With a limit of 7.5 mag, a client at the barycentre loads 59 nodes and 581,094 stars by the loading rule above. At 10 pc from it, it loads 57 to 62 nodes, and at 1 kpc, 22 to 47 nodes (0.21 M to 0.45 M stars), depending on the direction.
@@ -261,7 +364,8 @@ The export builds into `v1/.x-staging/` and replaces `v1/x/` only when all check
 
 - no ingest of the registry has merges that no one has reviewed (`space-map-extrasolar review`);
 - every row holds an ID that the registry has, with the status that the row shows (live, or alias for an alias row), and every alias target is live;
-- every ID that the previous export serves is still served with all its catalogue ids, or is an alias or retired in the registry. The previous export stands for the live site until the serving is decided.
+- every ID that the previous export serves is still served with all its catalogue ids, or is an alias or retired in the registry. The previous export stands for the live site until the serving is decided;
+- the matched sky cultures come from the registry ingest that the export reads. Each extrasolar ingest matches them at its end, so this fails only when that step failed; `space-map-ingest --targets skycultures` matches them again.
 
 A failed run leaves the served export as it was.
 

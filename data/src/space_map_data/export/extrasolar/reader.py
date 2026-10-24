@@ -7,6 +7,7 @@ the row by binary search on the ID column. An alias row sends the lookup on to
 its target. The mask names the other tables with a row, at the same cell.
 """
 
+import gzip
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -119,6 +120,16 @@ class ExportReader:
                 if row is not None:
                     found.rows[slug] = row
         return found
+
+    # The sky cultures
+
+    def culture(self, path: str) -> dict:
+        """A sky-culture file, checked against the token of its table."""
+        content = json.loads(gzip.decompress((self.root / path).read_bytes()))
+        token = self.metadata["skycultures"]["token"]
+        if content["token"] != token:
+            raise TokenMismatch(f"{path}: token {content['token']}, expected {token}")
+        return content
 
     # The render tree
 
