@@ -1,25 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { BAND_END_AU, BAND_START_AU, PREFETCH_AU, RELEASE_AU, bandShare } from './band';
+import { PREFETCH_AU, RELEASE_AU, STARS_IN_AU, STARS_OUT_AU, starsTakeSky } from './band';
 
-describe('the skybox to starfield band', () => {
-	it('is all skybox up to its start and all starfield past its end', () => {
-		expect(bandShare(1)).toBe(0);
-		expect(bandShare(BAND_START_AU)).toBe(0);
-		expect(bandShare(BAND_END_AU)).toBe(1);
-		expect(bandShare(1e9)).toBe(1);
+describe('the skybox to starfield switch', () => {
+	it('leaves the sky to the skybox inside it and gives it to the stars past it', () => {
+		expect(starsTakeSky(1, true)).toBe(false);
+		expect(starsTakeSky(STARS_OUT_AU * 0.99, true)).toBe(false);
+		expect(starsTakeSky(STARS_IN_AU * 1.01, false)).toBe(true);
+		expect(starsTakeSky(1e9, false)).toBe(true);
 	});
 
-	it('is half way at the middle of its log scale, and rises all along', () => {
-		expect(bandShare(Math.sqrt(BAND_START_AU * BAND_END_AU))).toBeCloseTo(0.5, 12);
-		let last = 0;
-		for (let au = BAND_START_AU; au <= BAND_END_AU; au *= 1.05) {
-			expect(bandShare(au)).toBeGreaterThanOrEqual(last);
-			last = bandShare(au);
-		}
+	it('keeps the last answer between its two distances', () => {
+		const between = Math.sqrt(STARS_OUT_AU * STARS_IN_AU);
+		expect(starsTakeSky(between, true)).toBe(true);
+		expect(starsTakeSky(between, false)).toBe(false);
 	});
 
-	it('starts loading before the band and stops a little nearer in', () => {
-		expect(PREFETCH_AU).toBeLessThan(BAND_START_AU);
+	it('starts loading before the switch and stops a little nearer in', () => {
+		expect(PREFETCH_AU).toBeLessThan(STARS_OUT_AU);
 		expect(RELEASE_AU).toBeLessThan(PREFETCH_AU);
 	});
 });

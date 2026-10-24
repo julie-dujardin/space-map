@@ -1,18 +1,13 @@
-/**
- * Zoomed far out, the solar system is a few pixels across, and only the Sun
- * draws. The size on screen sets the switch, so a phone, a 1080p screen and a
- * 4K screen switch at the same look.
- */
+/** Uses apparent size so the switch is resolution-independent. */
 
 import { AU_SCALE } from '$lib/math/units';
 
-/** Neptune's semi-major axis (AU): the radius of the planetary system. */
+/** Neptune defines the visible planetary system's radius. */
 const SYSTEM_RADIUS_AU = 30.07;
-/** Diameter (CSS px) of Neptune's orbit at which only the Sun is left. It is
- *  Julie's zoom 1.8455e5 (18,455 AU) on a view 1080 px tall. */
-export const SYSTEM_HIDDEN_PX = 3.05;
-/** Diameter (CSS px) at which the planetary system starts to fade out. */
-export const SYSTEM_FADE_PX = 6.1;
+/** Hides planets before the far-view reference zoom. */
+export const SYSTEM_OUT_PX = 4.3;
+/** Restores planets later to prevent flicker near the switch. */
+export const SYSTEM_IN_PX = 4.75;
 
 /** The diameter of Neptune's orbit on screen, CSS px. */
 export function systemDiameterPx(
@@ -24,11 +19,15 @@ export function systemDiameterPx(
 	return ((2 * SYSTEM_RADIUS_AU * AU_SCALE) / distanceScene) * pxPerRad;
 }
 
-/** The planetary system's share of the view: 1 draws it, 0 leaves the Sun
- *  alone. `distanceScene` is the camera's distance from the barycentre. */
-export function systemShare(distanceScene: number, viewportPx: number, fovDeg: number): number {
+/** Keeps the prior state between thresholds to provide hysteresis. */
+export function systemShown(
+	distanceScene: number,
+	viewportPx: number,
+	fovDeg: number,
+	shown: boolean
+): boolean {
 	const px = systemDiameterPx(distanceScene, viewportPx, fovDeg);
-	const t = Math.log(px / SYSTEM_HIDDEN_PX) / Math.log(SYSTEM_FADE_PX / SYSTEM_HIDDEN_PX);
-	const c = Math.min(Math.max(t, 0), 1);
-	return c * c * (3 - 2 * c);
+	if (px < SYSTEM_OUT_PX) return false;
+	if (px > SYSTEM_IN_PX) return true;
+	return shown;
 }

@@ -69,7 +69,8 @@ import {
 } from './render-tier';
 import { StarfieldSystem } from './starfield/starfield';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
-import { systemShare } from './visibility/system-fade';
+import { systemShown } from './visibility/system-fade';
+import { SwitchFade } from './visibility/switch-fade';
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
@@ -432,6 +433,9 @@ export class SceneRenderer {
 	private fpsSampleHead = 0;
 	/** The sky while it does not draw (see updateSky). */
 	private stashedSky: Scene['background'] = null;
+	/** Whether the planetary system draws (`system-fade.ts`), and its fade. */
+	private systemOn = true;
+	private readonly systemFade = new SwitchFade();
 	private namesShown = true;
 	private halosShown = true;
 	private readonly textureLoader = new TextureLoader();
@@ -1182,7 +1186,7 @@ export class SceneRenderer {
 
 		const { distance } = this.getCameraState();
 		this.updateTravelCraftSystem();
-		this.updateSystemShare();
+		this.updateSystemShare(renderedDtMs);
 		this.ctx.visibility.updateCamera(distance, this.sceneJd);
 		this.updateTightFar(distance);
 
@@ -1411,6 +1415,7 @@ export class SceneRenderer {
 		if (nowMs - this.focus.focusStartTime < this.focus.focusDurationMs) return true;
 		if (this.jumpJd !== null || this.seekAwaitsData) return true;
 		if (this.focusLoads > 0 || this.systemData.isLoading()) return true;
+		if (this.systemFade.fading) return true;
 		for (const bo of this.bodyObjects.values()) {
 			if (bo.group.visible && bodyLoading(bo)) return true;
 		}
@@ -1442,14 +1447,14 @@ export class SceneRenderer {
 		}
 	}
 
-	/** How much of the planetary system draws. It follows the system's size on
-	 *  screen, from the camera's distance to the barycentre. Zones that stood
-	 *  still while only the Sun drew catch up with the clock when it comes back. */
-	private updateSystemShare(): void {
+	/** Refreshes hidden zones when the size-triggered fade brings them back. */
+	private updateSystemShare(dtMs: number): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const cam = this.camera.position;
 		const fromBarycentre = Math.hypot(fx + cam.x, fy + cam.y, fz + cam.z);
-		const share = systemShare(fromBarycentre, this.viewportH, this.camera.fov);
+		this.systemOn = systemShown(fromBarycentre, this.viewportH, this.camera.fov, this.systemOn);
+		this.systemFade.step(this.systemOn, dtMs);
+		const share = this.systemFade.share;
 		const visibility = this.ctx.visibility;
 		const wasHidden = visibility.systemShare === 0;
 		visibility.systemShare = share;
@@ -2129,6 +2134,7 @@ export class SceneRenderer {
 			this.ctx.bodies.minorStreaming ||
 			this.pointClouds.hasPendingSceneAdds() ||
 			this.systemData.hasPendingUnloads() ||
+			this.systemFade.fading ||
 			this.starfield.busy();
 		if (loading) return true;
 		if (this.covered) return false;

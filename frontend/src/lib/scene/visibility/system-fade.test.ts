@@ -6,7 +6,7 @@ import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import { LayerSet } from '$lib/scene/layers';
 import { VisibilityController } from './controller.svelte';
 import { VISIBILITY } from './thresholds';
-import { SYSTEM_FADE_PX, SYSTEM_HIDDEN_PX, systemDiameterPx, systemShare } from './system-fade';
+import { SYSTEM_IN_PX, SYSTEM_OUT_PX, systemDiameterPx, systemShown } from './system-fade';
 
 /**
  * Zoomed far out, only the Sun draws. The switch follows the solar system's
@@ -65,23 +65,26 @@ function buildScene() {
 const vname = (v: VISIBILITY) => VISIBILITY[v];
 
 describe('the solar system on screen', () => {
-	it("is 3 px across at Julie's zoom on a 1080 px view", () => {
-		expect(systemDiameterPx(1.8455e5, 1080, 60)).toBeCloseTo(SYSTEM_HIDDEN_PX, 2);
-		expect(systemShare(1.8455e5, 1080, 60)).toBe(0);
+	it("is 3 px across at Julie's zoom on a 1080 px view, where it is gone", () => {
+		expect(systemDiameterPx(1.8455e5, 1080, 60)).toBeCloseTo(3.05, 2);
+		expect(systemShown(1.8455e5, 1080, 60, true)).toBe(false);
 	});
 
-	it('is whole until it shrinks to the fade, and gone past it', () => {
-		expect(systemShare(1e3 * AU_SCALE, 1080, 60)).toBe(1);
+	it('goes under its switch, and comes back only a little larger', () => {
+		expect(systemShown(1e3 * AU_SCALE, 1080, 60, false)).toBe(true);
+		expect(systemShown(1e6, 1080, 60, true)).toBe(false);
 		// Twice the size on screen is half the distance.
-		const fadeStart = (1.8455e5 * SYSTEM_HIDDEN_PX) / SYSTEM_FADE_PX;
-		expect(systemShare(fadeStart, 1080, 60)).toBeCloseTo(1, 4);
-		expect(systemShare(Math.sqrt(fadeStart * 1.8455e5), 1080, 60)).toBeCloseTo(0.5, 2);
-		expect(systemShare(1e6, 1080, 60)).toBe(0);
+		const at = (px: number) => (1.8455e5 * 3.05) / px;
+		const between = at(Math.sqrt(SYSTEM_OUT_PX * SYSTEM_IN_PX));
+		expect(systemShown(between, 1080, 60, true)).toBe(true);
+		expect(systemShown(between, 1080, 60, false)).toBe(false);
+		expect(systemShown(at(SYSTEM_OUT_PX * 0.99), 1080, 60, true)).toBe(false);
+		expect(systemShown(at(SYSTEM_IN_PX * 1.01), 1080, 60, false)).toBe(true);
 	});
 
 	it('switches at the same look on a taller view', () => {
-		expect(systemShare(2 * 1.8455e5, 2160, 60)).toBe(0);
-		expect(systemShare(1.8455e5, 2160, 60)).toBeGreaterThan(0);
+		expect(systemShown(2 * 1.8455e5, 2160, 60, true)).toBe(false);
+		expect(systemShown(1.8455e5 / 2, 2160, 60, false)).toBe(true);
 	});
 });
 

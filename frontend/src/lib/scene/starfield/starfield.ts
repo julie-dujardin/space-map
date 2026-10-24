@@ -15,14 +15,14 @@
  * bright star loads whatever the budget.
  *
  * The limit increases with the camera's distance from the barycentre, as an
- * exposure does. Near the Sun the sky stays light while the skybox shares
- * it, and a zoom on another star keeps that star's sky. Zoomed out to the
- * galaxy, the budget sets what draws.
+ * exposure does. Near the Sun the sky stays as light as the skybox it takes
+ * over from, and a zoom on another star keeps that star's sky. Zoomed out to
+ * the galaxy, the budget sets what draws.
  *
  * Inside the solar system the skybox is the sky and the starfield loads
- * nothing. Past a distance from the barycentre it loads, and over a band of
- * distance it takes the sky from the skybox (`band.ts`). It does so only once
- * the nodes it wants are in, and only where it can draw.
+ * nothing. Past a distance from the barycentre it loads, and past a farther
+ * one it takes the sky from the skybox in a fade (`band.ts`). It does so only
+ * once the nodes it wants are in, and only where it can draw.
  *
  * Loaded nodes stay in a cache with a byte budget. The node wanted least
  * recently goes first. Each drawn node is one `Points` in tree coordinates
@@ -55,9 +55,10 @@ import {
 } from '$lib/fetch/extrasolar/files';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
+import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE } from '$lib/math/units';
-import { PREFETCH_AU, RELEASE_AU, bandShare } from './band';
+import { PREFETCH_AU, RELEASE_AU, starsTakeSky } from './band';
 import { starColours } from './colour';
 import { makeStarMaterial, makeStarPickMaterial, starUniforms } from './material';
 import type { PickDraw } from '$lib/scene/interaction/gpu-pick';
@@ -92,8 +93,6 @@ const MUST_LOAD_MAG = 1;
 const ABORT_MARGIN_MAG = 1;
 /** Time constant of the drawn limit's approach to its target. */
 const LIMIT_EASE_MS = 300;
-/** Time constant of the starfield's share of the sky following the band. */
-const SHARE_EASE_MS = 300;
 /** Time for a node to fade in or out. */
 const NODE_FADE_MS = 400;
 /** Least time between two selections when nothing changed. */
@@ -225,9 +224,10 @@ export class StarfieldSystem {
 	private active = false;
 	/** The nodes wanted since loading started have come in. */
 	private ready = false;
-	/** The starfield's share of the sky, and the share it eases to. */
-	private skyShare = 0;
-	private skyShareTarget = 0;
+	/** The camera is far enough out for the starfield to take the sky. */
+	private skyTaken = false;
+	/** The starfield's share of the sky. */
+	private readonly sky = new SwitchFade();
 	private readonly matrix: number[] = [];
 	/** The focused extrasolar object, drawn on its own at its record's place. */
 	private focusStar: StarAnchor | null = null;
@@ -417,13 +417,13 @@ export class StarfieldSystem {
 			limit: this.uniforms.uLimit.value,
 			targetLimit: this.targetLimit,
 			active: this.active,
-			share: this.skyShare
+			share: this.sky.share
 		};
 	}
 
 	/** The starfield's share of the sky, 0 to 1. The skybox takes the rest. */
 	share(): number {
-		return this.skyShare;
+		return this.sky.share;
 	}
 
 	/** Whether the stars can draw, so that the camera may leave the solar system. */
@@ -434,7 +434,7 @@ export class StarfieldSystem {
 	/** True while a frame would change what draws. */
 	busy(): boolean {
 		if (this.loading > 0) return true;
-		if (this.skyShare !== this.skyShareTarget) return true;
+		if (this.sky.fading) return true;
 		if (this.drawn.size === 0) return false;
 		if (Math.abs(this.uniforms.uLimit.value - this.allowedLimit) > 0.01) return true;
 		for (const node of this.drawn) {
@@ -471,11 +471,10 @@ export class StarfieldSystem {
 		if (this.active) this.start();
 
 		const shown = this.ctx.layers.isVisible('starfield');
-		this.skyShareTarget = shown && this.ready && this.root ? bandShare(au) : 0;
-		const shareEase = dtMs > 0 ? 1 - Math.exp(-dtMs / SHARE_EASE_MS) : 1;
-		this.skyShare += (this.skyShareTarget - this.skyShare) * shareEase;
-		if (Math.abs(this.skyShareTarget - this.skyShare) < 1e-3) this.skyShare = this.skyShareTarget;
-		this.group.visible = shown && this.root !== null && this.skyShare > 0;
+		this.skyTaken = starsTakeSky(au, this.skyTaken);
+		this.sky.step(shown && this.ready && this.root !== null && this.skyTaken, dtMs);
+		const skyShare = this.sky.share;
+		this.group.visible = shown && this.root !== null && skyShare > 0;
 		if (!this.root) return;
 
 		this.group.matrix.fromArray(treeMatrixElements(focus, this.matrix));
@@ -496,7 +495,7 @@ export class StarfieldSystem {
 		const ease = dtMs > 0 ? 1 - Math.exp(-dtMs / LIMIT_EASE_MS) : 1;
 		limit.value += (this.allowedLimit - limit.value) * ease;
 		this.uniforms.uPixelRatio.value = pixelRatio;
-		this.uniforms.uGain.value = gain * this.skyShare;
+		this.uniforms.uGain.value = gain * skyShare;
 
 		this.applyFades(dtMs, camera, focus);
 		if (this.group.visible && !this.creditsShown && this.drawn.size > 0) {
