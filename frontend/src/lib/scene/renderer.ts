@@ -216,9 +216,9 @@ const _sunLiftDir = new Vector3();
 /** On-screen drift a trail may accumulate before it is rewritten. */
 const TRAIL_DRIFT_PX = 0.25;
 
-/** Past this share of the starfield the skybox does not draw. It is then
- *  below 1/10,000 of its own brightness, which no pixel shows. */
-const SKY_GONE_SHARE = 1 - 1e-4;
+/** Below this share the skybox does not draw: no pixel shows 1/10,000 of
+ *  its brightness. */
+const SKY_GONE_SHARE = 1e-4;
 
 /** Focused mounted-model shadow frustum, in model units (× modelUnitScene per
  *  frame). Light at 10 with near 4 / far 28 reaches well past the silhouette
@@ -2872,18 +2872,17 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * The skybox, under the starfield's share of the sky. `skyboxIntensity`
-	 * holds the extinction of the air above the camera and the daylight
-	 * exposure (skyboxDimFactor). The sky is a texture on the scene. With the
-	 * `stars` layer off, or the starfield past SKY_GONE_SHARE, the texture is
-	 * kept aside and the GPU does not draw it. The cube stays uploaded, and it
-	 * comes back at no cost.
+	 * The skybox, which is the sky only inside the solar system.
+	 * `skyboxIntensity` holds the extinction of the air above the camera and
+	 * the daylight exposure (skyboxDimFactor). With the `stars` layer off, or
+	 * the skybox's share below SKY_GONE_SHARE, the texture is kept aside so
+	 * the GPU does not draw it, but stays uploaded so it comes back at no cost.
 	 *
 	 * Run per frame, since the sky lands well after the map opens.
 	 */
 	private updateSky(skyboxIntensity: number): void {
-		const share = this.starfield.share();
-		if (this.ctx.layers.isVisible('stars') && share < SKY_GONE_SHARE) {
+		const share = this.starfield.skyboxShare();
+		if (this.ctx.layers.isVisible('stars') && share > SKY_GONE_SHARE) {
 			if (this.stashedSky) {
 				this.scene.background = this.stashedSky;
 				this.stashedSky = null;
@@ -2894,7 +2893,7 @@ export class SceneRenderer {
 			this.stashedSky = this.scene.background;
 			this.scene.background = null;
 		}
-		this.scene.backgroundIntensity = skyboxIntensity * (1 - share);
+		this.scene.backgroundIntensity = skyboxIntensity * share;
 	}
 
 	/**

@@ -21,8 +21,8 @@
  *
  * Inside the solar system the skybox is the sky and the starfield loads
  * nothing. Past a distance from the barycentre it loads, and past a farther
- * one it takes the sky from the skybox in a fade (`band.ts`). It does so only
- * once the nodes it wants are in, and only where it can draw.
+ * one the skybox fades out (`band.ts`): it is the sky seen from the Sun. The
+ * stars fade in once the nodes they want are in, and only where they can draw.
  *
  * Loaded nodes stay in a cache with a byte budget. The node wanted least
  * recently goes first. Each drawn node is one `Points` in tree coordinates
@@ -227,8 +227,10 @@ export class StarfieldSystem {
 	private active = false;
 	/** The nodes wanted since loading started have come in. */
 	private ready = false;
-	/** The camera is far enough out for the starfield to take the sky. */
-	private skyTaken = false;
+	/** The camera is out of the solar system. */
+	private outside = false;
+	/** The skybox leaves with this fade, whether the stars are in or not. */
+	private readonly outsideFade = new SwitchFade();
 	/** The starfield's share of the sky. */
 	private readonly sky = new SwitchFade();
 	private readonly matrix: number[] = [];
@@ -424,9 +426,14 @@ export class StarfieldSystem {
 		};
 	}
 
-	/** The starfield's share of the sky, 0 to 1. The skybox takes the rest. */
+	/** The starfield's share of the sky, 0 to 1. */
 	share(): number {
 		return this.sky.share;
+	}
+
+	/** The skybox's share of the sky, 0 to 1. Out of the solar system it is 0. */
+	skyboxShare(): number {
+		return 1 - this.outsideFade.share;
 	}
 
 	/** Local stars share exposure, but stay visible independently of the sky layer. */
@@ -445,7 +452,7 @@ export class StarfieldSystem {
 	/** True while a frame would change what draws. */
 	busy(): boolean {
 		if (this.loading > 0) return true;
-		if (this.sky.fading) return true;
+		if (this.sky.fading || this.outsideFade.fading) return true;
 		if (this.drawn.size === 0) return false;
 		if (Math.abs(this.uniforms.uLimit.value - this.allowedLimit) > 0.01) return true;
 		for (const node of this.drawn) {
@@ -483,8 +490,9 @@ export class StarfieldSystem {
 		if (this.active) this.start();
 
 		const shown = this.ctx.layers.isVisible('starfield');
-		this.skyTaken = starsTakeSky(switchAu, this.skyTaken);
-		this.sky.step(shown && this.ready && this.root !== null && this.skyTaken, dtMs);
+		this.outside = starsTakeSky(switchAu, this.outside);
+		this.outsideFade.step(this.outside, dtMs);
+		this.sky.step(shown && this.ready && this.root !== null && this.outside, dtMs);
 		const skyShare = this.sky.share;
 		this.group.visible = shown && this.root !== null && skyShare > 0;
 		this.uniforms.uPixelRatio.value = pixelRatio;

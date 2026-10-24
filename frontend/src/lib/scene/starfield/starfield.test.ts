@@ -327,8 +327,9 @@ describe('the starfield walk', () => {
 		ctx.layers.setVisible('starfield', false);
 		await settle(system, camera, focus);
 		expect(system.group.visible).toBe(false);
-		// Switched off, the stars leave the sky to the skybox at any distance.
 		expect(system.share()).toBe(0);
+		// The skybox is the sky seen from the Sun, so it does not come back.
+		expect(system.skyboxShare()).toBe(0);
 		expect(fetched.length).toBe(requests);
 	});
 
@@ -349,6 +350,7 @@ describe('the starfield walk', () => {
 		expect(metadataCalls).toBe(0);
 		expect(fetched).toEqual([]);
 		expect(system.share()).toBe(0);
+		expect(system.skyboxShare()).toBe(1);
 		// Nothing to draw: the scene may rest.
 		expect(system.busy()).toBe(false);
 	});
@@ -365,6 +367,7 @@ describe('the starfield walk', () => {
 		);
 		await settle(system, camera, focus);
 		expect(system.share()).toBeGreaterThan(0.99);
+		expect(system.skyboxShare()).toBe(0);
 		expect(system.stats().active).toBe(true);
 		const requests = fetched.length;
 		// Back to 1 AU from the barycentre.
@@ -372,13 +375,14 @@ describe('the starfield walk', () => {
 		await settle(system, camera, [0, 0, 0]);
 		expect(system.stats().active).toBe(false);
 		expect(system.share()).toBe(0);
+		expect(system.skyboxShare()).toBe(1);
 		expect(system.stats().drawnNodes).toBe(0);
 		// What came in stays cached for the way out again.
 		expect(system.stats().cachedNodes).toBe(3);
 		expect(fetched.length).toBe(requests);
 	});
 
-	it('leaves the sky to the skybox where it may not draw', async () => {
+	it('draws no star where it may not draw', async () => {
 		allow = false;
 		buildTree(new Array(8).fill(10));
 		const { camera, focus } = setup();
@@ -391,6 +395,25 @@ describe('the starfield walk', () => {
 		);
 		await settle(system, camera, focus);
 		expect(system.share()).toBe(0);
+		expect(system.skyboxShare()).toBe(0);
+	});
+
+	it('leaves no skybox while the stars load out of the solar system', async () => {
+		buildTree(new Array(8).fill(10));
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry()
+		);
+		system.update(camera, focus, 1, 1, (clock += 200));
+		expect(system.stats().cachedNodes).toBe(0);
+		expect(system.share()).toBe(0);
+		expect(system.skyboxShare()).toBe(0);
+		await settle(system, camera, focus);
+		expect(system.share()).toBeGreaterThan(0.99);
 	});
 
 	it('fetches no node when the host may not serve the tree', async () => {
