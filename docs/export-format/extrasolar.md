@@ -134,7 +134,7 @@ Every live ID has a row. The ID is in the `id` column; there is no table number.
 | `name_source` | dict | the source of the name: `iau-wgsn`, `wikidata`, `hipparcos-2007` (designations from XHIP), `gaia-dr3` |
 | `class` | dict | what the object is: `star` for every row now |
 | `class_source` | dict | |
-| `cross_ids` | cross_ids | every catalogue id of the object: catalogues `gaia/dr3`, `hip/2007`, `hd/1949`, `iau/wgsn`, `wikidata/qid` now |
+| `cross_ids` | cross_ids | every catalogue id of the object: catalogues `gaia/dr3`, `hip/2007`, `hd/1949`, `iau/wgsn`, `wikidata/qid` now. An object has at most one `wikidata/qid` id: of the items that reach one star, the item with the most articles in the site's languages keeps it, then the lowest QID |
 | `mask` | uint32 | bit `n` is set when data table `n` has a row for the ID |
 | `object` | bool | true when the site's object bundles hold an entry `x-<id>` for the ID ([objects.md](objects.md)): today, when it has a `wikidata/qid` id |
 | `alias_target` | id | null for a live ID |
@@ -366,7 +366,7 @@ The export builds into `v1/.x-staging/` and replaces `v1/x/` only when all check
 
 - no ingest of the registry has merges that no one has reviewed (`space-map-extrasolar review`);
 - every row holds an ID that the registry has, with the status that the row shows (live, or alias for an alias row), and every alias target is live;
-- every ID that the previous export serves is still served with all its catalogue ids, or is an alias or retired in the registry. The previous export stands for the live site until the serving is decided;
+- every ID that the previous export serves is still served with all its catalogue ids, or is an alias or retired in the registry. The `wikidata/qid` ids are not checked: each ingest links the Wikidata items again, so an item can move to another star. The previous export stands for the live site until the serving is decided;
 - the matched sky cultures come from the registry ingest that the export reads. Each extrasolar ingest matches them at its end, so this fails only when that step failed; `space-map-ingest --targets skycultures` matches them again.
 
 A failed run leaves the served export as it was.

@@ -195,9 +195,11 @@ def summary(registry: Registry, name_ids: list[str], items: int) -> str:
     unplaced = sorted(set(name_ids) - found)
     lines += ["", f"IAU names: {len(found):,} placed, {len(unplaced):,} unplaced"]
     lines += [f"  {name}" for name in unplaced]
-    # The items that reach no star are mostly galaxies and quasars.
+    # Only the links of the last ingest hold for a source that is not permanent.
+    latest = registry.segment_dir(registry.last_ingest) / "xids"
+    latest = sorted(latest.glob("*.parquet"))
     placed = sum(
-        len(qids) for qids in _scan(files, _catalogue_part(WIKIDATA.catalogue))
+        len(qids) for qids in _scan(latest, _catalogue_part(WIKIDATA.catalogue))
     )
     lines += ["", f"Wikidata items: {placed:,} placed of {items:,} with a claim"]
     return "\n".join(lines) + "\n"

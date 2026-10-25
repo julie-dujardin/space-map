@@ -111,7 +111,9 @@ def iau_entry(name: str, **more: str) -> dict:
     return entry | more
 
 
-def item(qid: str, label: str | None = None, **ids: tuple[str, ...]) -> StarItem:
+def item(
+    qid: str, label: str | None = None, articles: int = 1, **ids: tuple[str, ...]
+) -> StarItem:
     return StarItem(
         qid=qid,
         gaia_dr3=ids.get("gaia", ()),
@@ -119,7 +121,7 @@ def item(qid: str, label: str | None = None, **ids: tuple[str, ...]) -> StarItem
         hd=ids.get("hd", ()),
         label_en=label,
         label_mul=None,
-        articles=1,
+        articles=articles,
     )
 
 
@@ -489,25 +491,39 @@ class TestWikidata:
             item("Q4", "D", hip=("99",), gaia=(str(proxima),)),
             item("Q5", "E", hip=("10", "11")),
             item("Q6", "F", hd=("404",)),
-            # The system item with more articles keeps the claim of its star.
-            dataclasses.replace(item("Q7", "Gamma", hd=("300",)), articles=9),
+            # A second item of HD 300 with more articles: the engine gives the
+            # star to the first row, so it comes first.
+            item("Q7", "Gamma", articles=9, hd=("300",)),
         ]
         rows = wikidata.engine_rows(items, hip, hd)
-        assert rows["catalogue_id"].to_pylist() == ["Q1", "Q7", "Q3", "Q4"]
+        assert rows["catalogue_id"].to_pylist() == ["Q7", "Q1", "Q2", "Q3", "Q4"]
+        hd_300 = {"catalogue": "hd", "release": "1949", "catalogue_id": "300"}
         assert [claims[0] for claims in rows["claims"].to_pylist()] == [
+            hd_300,
             {"catalogue": "hip", "release": "2007", "catalogue_id": "10"},
-            {"catalogue": "hd", "release": "1949", "catalogue_id": "300"},
+            hd_300,
             {"catalogue": "gaia", "release": "dr3", "catalogue_id": str(proxima + 1)},
             {"catalogue": "gaia", "release": "dr3", "catalogue_id": str(proxima)},
         ]
         assert (
-            rows["match_ra"][0].as_py() == 1.0 and rows["match_dec"][1].as_py() == 6.0
+            rows["match_ra"][1].as_py() == 1.0 and rows["match_dec"][0].as_py() == 6.0
         )
         # The centre of the Gaia id's level-12 pixel, 0.03° from Proxima.
-        assert rows["match_ra"][2].as_py() == pytest.approx(217.43, abs=0.1)
-        assert rows["match_dec"][2].as_py() == pytest.approx(-62.68, abs=0.05)
-        assert rows["mint"].to_pylist() == [False] * 4
-        assert rows["name"].to_pylist() == ["A", "Gamma", "C", "D"]
+        assert rows["match_ra"][3].as_py() == pytest.approx(217.43, abs=0.1)
+        assert rows["match_dec"][3].as_py() == pytest.approx(-62.68, abs=0.05)
+        assert rows["mint"].to_pylist() == [False] * 5
+        assert rows["name"].to_pylist() == ["Gamma", "A", "B", "C", "D"]
+
+    def test_most_articles_first_then_lowest_qid(self):
+        hip = {str(n): (1.0, 2.0) for n in range(1, 5)}
+        items = [
+            item("Q100", articles=2, hip=("1",)),
+            item("Q20", articles=2, hip=("2",)),
+            item("Q3", articles=1, hip=("3",)),
+            item("Q9", articles=12, hip=("4",)),
+        ]
+        rows = wikidata.engine_rows(items, hip, {})
+        assert rows["catalogue_id"].to_pylist() == ["Q9", "Q20", "Q100", "Q3"]
 
     def test_hd_positions(self):
         rows = pa.table(
@@ -685,14 +701,17 @@ class TestStarIngest:
             item("Q2", "Betelgeuse", hip=("20",)),
             item("Q3", "HD 300", hip=("30",)),
             item("Q4", "Teegarden's Star", gaia=("6",)),
-            # A second item of the star of Q1, by its Gaia id: a conflict.
+            # A second item of the star of Q1, by its Gaia id. Of two items
+            # with as many articles, the lower QID keeps the star.
             item("Q5", "Alpha", gaia=("1",)),
             # Gaia 4 is not stored: the item reaches no star and mints nothing.
             item("Q6", "Faint", gaia=("4",)),
         ]
         result = self.run(root, names_path, items)
         counts = result.entry["counts"]
-        assert counts["minted"] == 6 and counts["conflicts"] == 1
+        assert counts["minted"] == 6 and counts["conflicts"] == 0
+        assert result.entry["sources"][3]["outranked"] == 1
+        assert result.entry["sources"][3]["permanent"] is False
         registry = Registry(root)
 
         def id_of(catalogue: str, release: str, value: object) -> int:
@@ -733,6 +752,86 @@ class TestStarIngest:
             ("Q4", "Teegarden's Star"),
         ]
         assert found[1].id == id_of("hip", "2007", 20)
+
+    def test_the_item_with_most_articles_keeps_its_star(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(wikidata, "_gaia_position", lambda source_id: at(60))
+        root = tmp_path / "root"
+        names_path = write_names(tmp_path / "names.json", [])
+        items = [
+            # HIP 10 and Gaia 1 are one star; the HD 300 of HIP 30 is Gaia 3's.
+            item("Q1", "Gamma2 Arietis", articles=1, hip=("10",)),
+            item("Q2", "Gamma Arietis", articles=11, gaia=("1",)),
+            item("Q3", "Sirius A", articles=2, hip=("30",)),
+            item("Q4", "Sirius", articles=12, hd=("300",)),
+        ]
+        result = self.run(root, names_path, items)
+        assert result.entry["counts"]["conflicts"] == 0
+        assert result.entry["sources"][3]["outranked"] == 2
+        registry = Registry(root)
+
+        def id_of(catalogue: str, release: str, value: object) -> int:
+            return int(registry.lookup(catalogue, release, [str(value)])[0])
+
+        assert id_of("wikidata", "qid", "Q2") == id_of("hip", "2007", 10) != 0
+        assert id_of("wikidata", "qid", "Q4") == id_of("hip", "2007", 30) != 0
+        assert id_of("wikidata", "qid", "Q1") == id_of("wikidata", "qid", "Q3") == 0
+        meta = {row["id"]: row for row in table_rows(root, "metadata").to_pylist()}
+        assert meta[id_of("hip", "2007", 10)]["name"] == "Gamma Arietis"
+        assert meta[id_of("hip", "2007", 30)]["name"] == "Sirius"
+
+    def test_wikidata_links_are_made_again_at_each_ingest(self, tmp_path):
+        root = tmp_path / "root"
+        names_path = write_names(tmp_path / "names.json", [])
+        self.run(
+            root,
+            names_path,
+            [
+                item("Q1", "Betelgeuse", hip=("10",)),
+                item("Q2", "Rigel", hip=("20",)),
+                item("Q3", "Old", hip=("30",)),
+            ],
+        )
+        registry = Registry(root)
+        hip_10, hip_20, hip_30 = (
+            int(registry.lookup("hip", "2007", [n])[0]) for n in ("10", "20", "30")
+        )
+        # Q1 moves to HIP 20, Q4 takes HIP 10, Q3 is gone.
+        again = self.run(
+            root,
+            names_path,
+            [
+                item("Q1", "Betelgeuse", hip=("20",)),
+                item("Q2", "Rigel", hip=("20",)),
+                item("Q4", "Bellatrix", hip=("10",)),
+            ],
+        )
+        counts = again.entry["counts"]
+        assert (counts["minted"], counts["merged"], counts["conflicts"]) == (0, 0, 0)
+        registry = Registry(root)
+        assert registry.lookup(
+            "wikidata", "qid", ["Q1", "Q2", "Q3", "Q4"]
+        ).tolist() == [
+            hip_20,
+            0,
+            0,
+            hip_10,
+        ]
+        meta = {row["id"]: row for row in table_rows(root, "metadata").to_pylist()}
+
+        def qids(id_: int) -> list[str]:
+            return [
+                x["catalogue_id"]
+                for x in meta[id_]["cross_ids"]
+                if x["catalogue"] == "wikidata"
+            ]
+
+        assert (qids(hip_10), qids(hip_20), qids(hip_30)) == (["Q4"], ["Q1"], [])
+        assert (meta[hip_10]["name"], meta[hip_30]["name"]) == ("Bellatrix", "HD 300")
+        assert not meta[hip_30]["object"]
+        summary = stars.summary(registry, [], 3)
+        assert "Wikidata items: 2 placed of 3 with a claim" in summary
+        found = sorted((star.qid, star.id) for star in read_star_objects(root))
+        assert found == [("Q1", hip_20), ("Q4", hip_10)]
 
     def test_a_partial_ingest_refuses_a_complete_registry(self, tmp_path):
         root = tmp_path / "root"

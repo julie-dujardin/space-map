@@ -9,6 +9,10 @@ import pytest
 from space_map_data.download.downloader import DownloadError
 from space_map_data.download.providers.stars import wikidata_stars
 from space_map_data.download.providers.stars.wikidata_stars import (
+    COUNT_QUERY,
+    ITEMS_QUERY,
+    NOT_STAR_QIDS,
+    STAR_QIDS,
     StarItem,
     WikidataStarsDownloader,
     parse_term,
@@ -98,6 +102,25 @@ class TestReadItems:
         ]
         assert wikidata_stars.star_qids(path) == {"Q14266", "Q1146698"}
 
+    @pytest.mark.parametrize(
+        ("hd", "expected"),
+        [
+            ('"HD 48915A"', ("48915",)),
+            ('"HD 48915 A"', ("48915",)),
+            ('"HD 48915A|HD 48915"', ("48915",)),
+            ('"HD 48915B"', ()),
+            ('"HD 189733 b"', ()),
+            ('"HD 126614Ab"', ()),
+            ('"HD 1|HD 2"', ("1", "2")),
+        ],
+    )
+    def test_the_component_a_of_an_hd_number(self, tmp_path, hd, expected):
+        path = tmp_path / "items.tsv.gz"
+        row = f'<http://www.wikidata.org/entity/Q3409>\t\t"HIP 7A"\t{hd}\t\t\t12'
+        path.write_bytes(gzip.compress(f"{HEADER}\n{row}\n".encode()))
+        (found,) = read_items(path)
+        assert (found.hd, found.hip) == (expected, ())
+
     def test_a_gaia_id_off_the_sky_is_skipped(self, tmp_path, caplog):
         # 12 * 4**12 << 35 is the first id past the last level-12 pixel.
         path = tmp_path / "items.tsv.gz"
@@ -118,6 +141,16 @@ class TestReadItems:
 
     def test_no_list_yet(self, tmp_path):
         assert wikidata_stars.star_qids(tmp_path / "items.tsv.gz") == set()
+
+
+class TestQuery:
+    """The list and its count leave out the same objects that are not stars."""
+
+    def test_both_queries_filter_by_type(self):
+        for query in (ITEMS_QUERY, COUNT_QUERY):
+            assert query.count("MINUS") == 2
+            for qid in (*NOT_STAR_QIDS, *STAR_QIDS):
+                assert f"wd:{qid} " in query
 
 
 class TestDownloader:

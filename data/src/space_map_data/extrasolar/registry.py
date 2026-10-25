@@ -23,7 +23,9 @@ Parts, each sorted by cell and then ID inside a region file:
 - ids: (id, status, alias_target, ingest). Status is live, alias or retired.
 - xids: (catalogue, release, catalogue_id) → id, with how it was linked
   (mint, claim or position), the match score of a position link and the
-  ingest.
+  ingest. The links of a source that the ingest log marks as not permanent
+  hold until the next ingest, which makes them again. Read xids with
+  `read_xids`, which leaves out the links that no longer hold.
 - positions: the J2016.0 ICRS position, proper motion, magnitude, position
   error, size and kind of each minted ID, for matching.
 - planets: (host, number) and the catalogue ids of a planet. Defined, empty.
@@ -195,6 +197,15 @@ class IdStates:
         return (at >= 0) & (self.status[np.maximum(at, 0)] == STATUS_CODES[status])
 
 
+def _temporary(entry: dict) -> list[tuple[str, str]]:
+    """(catalogue, release) of the sources that the ingest ran as not permanent."""
+    return [
+        (source["catalogue"], source["release"])
+        for source in entry["sources"]
+        if not source["permanent"]
+    ]
+
+
 def latest_index(catalogue_id: pa.Array, value_set: pa.Array) -> np.ndarray:
     """For each catalogue id, the position of its last copy in `value_set`."""
     reverse = pc.index_in(catalogue_id, value_set=value_set[::-1])
@@ -233,6 +244,12 @@ class Registry:
     def last_ingest(self) -> int:
         return self.ingests[-1]["ingest"] if self.ingests else 0
 
+    @property
+    def temporary_catalogues(self) -> set[tuple[str, str]]:
+        """(catalogue, release) of each source that an ingest ran as not
+        permanent. Their links can change at each ingest."""
+        return {pair for entry in self.ingests for pair in _temporary(entry)}
+
     def segment_dir(self, ingest: int) -> Path:
         return self.dir / "segments" / ingest_name(ingest)
 
@@ -256,6 +273,32 @@ class Registry:
     ) -> pa.Table:
         """Every record of `part` in `region`, oldest ingest first."""
         return read_parquet(self.part_files(part, region), PARTS[part], columns)
+
+    def read_xids(
+        self, region: int, columns: list[str] | None = None, *, rebuild: bool = False
+    ) -> pa.Table:
+        """The xids of `region` that hold, oldest ingest first.
+
+        `rebuild` also leaves out the links that the next ingest makes again.
+        """
+        wanted = XIDS.names if columns is None else columns
+        read = list(dict.fromkeys([*wanted, "catalogue", "release"]))
+        tables = []
+        for entry in self.ingests:
+            path = region_file(self.segment_dir(entry["ingest"]) / "xids", region)
+            if not path.exists():
+                continue
+            table = pq.read_table(path, columns=read)
+            temporary = [f"{c}/{r}" for c, r in _temporary(entry)]
+            if temporary and (rebuild or entry["ingest"] != self.last_ingest):
+                named = pc.binary_join_element_wise(
+                    table["catalogue"], table["release"], "/"
+                )
+                table = table.filter(pc.invert(pc.is_in(named, pa.array(temporary))))
+            tables.append(table.select(wanted))
+        if not tables:
+            return pa.schema([XIDS.field(name) for name in wanted]).empty_table()
+        return pa.concat_tables(tables)
 
     def id_states(self, regions: Iterable[int]) -> IdStates:
         tables = [self.read_part("ids", region) for region in regions]
@@ -317,7 +360,7 @@ class Registry:
         best = np.zeros(len(query), np.int64)
         best_ingest = np.full(len(query), -1, np.int64)
         for region in self.part_regions("xids") if regions is None else regions:
-            xids = self.read_part("xids", region)
+            xids = self.read_xids(region)
             xids = xids.filter(
                 pc.and_(
                     pc.equal(xids["catalogue"], catalogue),

@@ -3,8 +3,12 @@
 An item is in the list when it carries a Gaia DR3 id (`P13228`), a Hipparcos
 or an HD number (`P528` with the catalogue in qualifier `P972`), and has an
 article in at least one of the site's languages. The list gives each item its
-ids, its English and multilingual labels, and its count of articles. Items
-of galaxies and quasars with a Gaia id are in it too: no star matches them.
+ids, its English and multilingual labels, and its count of articles.
+
+An item whose types (`P31/P279*`) reach a galaxy, a nebula, a cluster or
+another object that is not a star is not in the list, unless its types also
+reach a star or a star system. Wikidata puts binary and double stars below
+asterism, and gives some nebulae the type of their central star.
 
 The list comes from QLever, a mirror of Wikidata at the University of
 Freiburg. The Wikidata query service cannot scan this many items.
@@ -18,6 +22,7 @@ Licence: CC0. https://www.wikidata.org/wiki/Wikidata:Licensing
 
 import gzip
 import logging
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -42,6 +47,24 @@ ITEMS_FILE = OUT_DIR / "items.tsv.gz"
 HIPPARCOS_QID = "Q537199"
 HENRY_DRAPER_QID = "Q111130"
 SEPARATOR = "|"
+# Galaxy, nebula, planetary nebula, reflection nebula, star cluster, quasar,
+# active galactic nucleus, H II region, interstellar medium, galaxy cluster,
+# asterism.
+NOT_STAR_QIDS = (
+    "Q318",
+    "Q42372",
+    "Q13632",
+    "Q203958",
+    "Q168845",
+    "Q83373",
+    "Q46587",
+    "Q11282",
+    "Q41872",
+    "Q204107",
+    "Q9262",
+)
+# Star, binary star, double star, multiple star, star system, brown dwarf.
+STAR_QIDS = ("Q523", "Q50053", "Q13890", "Q878367", "Q595871", "Q101600")
 
 _PREFIXES = """\
 PREFIX wd: <http://www.wikidata.org/entity/>
@@ -54,6 +77,8 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX schema: <http://schema.org/>
 """
 _WIKIS = " ".join(f"<https://{lang}.wikipedia.org/>" for lang in LANGUAGES)
+_NOT_STARS = " ".join(f"wd:{qid}" for qid in NOT_STAR_QIDS)
+_STARS = " ".join(f"wd:{qid}" for qid in STAR_QIDS)
 
 
 def _not_deprecated(statement: str) -> str:
@@ -70,6 +95,11 @@ SELECT ?item (COUNT(DISTINCT ?wiki) AS ?n) WHERE {{
   UNION {{ ?item p:P528 ?s . ?s pq:P972 wd:{HENRY_DRAPER_QID} . {_not_deprecated("?s")} }}
   ?article schema:about ?item ; schema:isPartOf ?wiki .
   VALUES ?wiki {{ {_WIKIS} }}
+  MINUS {{
+    ?item wdt:P31/wdt:P279* ?other .
+    VALUES ?other {{ {_NOT_STARS} }}
+    MINUS {{ ?item wdt:P31/wdt:P279* ?star . VALUES ?star {{ {_STARS} }} }}
+  }}
 }} GROUP BY ?item"""
 ITEMS_QUERY = f"""{_PREFIXES}\
 SELECT ?item
@@ -112,6 +142,8 @@ _ESCAPES = {
     "'": "'",
     "\\": "\\",
 }
+# HD gives one number to a system. Its component A is the star of that number.
+_HD_PRIMARY = re.compile(r"^(\d+) ?A$")
 
 
 @dataclass(frozen=True)
@@ -155,14 +187,20 @@ def parse_term(text: str) -> str | None:
     return "".join(out)
 
 
-def _numbers(text: str | None, prefix: str) -> tuple[str, ...]:
+def _numbers(
+    text: str | None, prefix: str, primary: re.Pattern[str] | None = None
+) -> tuple[str, ...]:
+    """The ids that are numbers, each once. An id that `primary` matches
+    gives the number in its first group."""
     if not text:
         return ()
-    out = []
+    out: dict[str, None] = {}
     for value in text.split(SEPARATOR):
         number = value.strip().removeprefix(prefix).strip()
+        if primary is not None and (match := primary.match(number)):
+            number = match[1]
         if number.isdigit():
-            out.append(number)
+            out[number] = None
         else:
             logger.debug("Skipped the catalogue id %r", value)
     return tuple(out)
@@ -195,7 +233,7 @@ def read_items(path: Path = ITEMS_FILE) -> list[StarItem]:
                 qid=item,
                 gaia_dr3=_gaia_ids(gaia, item),
                 hip=_numbers(hip, "HIP"),
-                hd=_numbers(hd, "HD"),
+                hd=_numbers(hd, "HD", _HD_PRIMARY),
                 label_en=en,
                 label_mul=mul,
                 articles=int(articles),

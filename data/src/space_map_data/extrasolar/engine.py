@@ -24,6 +24,13 @@ registry and the earlier passes, the neighbouring regions included:
 4. A row that is still free becomes a new object of the run. A row with
    `mint` false gets an ID only when a minting row joins its object.
 
+A source that is not permanent, such as Wikidata, adds data to the objects
+that its claims reach, and does nothing else: it never mints, never matches by
+position and never joins objects. Its links hold until the next ingest, which
+makes them again from its rows and ignores the old ones. Of its rows that
+claim one object, the first in input order keeps it. The others lose their
+claims, and the ingest logs each one.
+
 A row that links two objects joins them. When both are minted IDs, the older
 one survives (the earlier ingest, then the lower number) and the other becomes
 its alias. Each merge is logged with both IDs and its evidence, kept in the
@@ -128,6 +135,8 @@ REQUIRED = ("catalogue_id", "mint", "match_ra", "match_dec")
 MATCH_NAMES = [f.name for f in MATCH_FIELDS]
 CELL = "_cell"
 KEY = "key"
+# The input order of the rows of a source that is not permanent.
+SEQ = "_seq"
 
 # Rows held in memory before the staging writes them out.
 FLUSH_ROWS = 2_000_000
@@ -282,6 +291,9 @@ class Source:
     # None: its rows are never matched by position.
     matcher: Matcher | None = None
     kind: str | None = None
+    # False: its rows only add data to the objects that they claim, and its
+    # links hold until the next ingest.
+    permanent: bool = True
 
 
 @dataclass
@@ -295,6 +307,10 @@ class PassState:
     counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # Keys that a row of this pass took by a claim, with that row.
     claimed: dict[int, str] = field(default_factory=dict)
+    # Catalogue ids of the rows whose claims another row keeps.
+    lost: set[str] = field(default_factory=set)
+    # The key of each claim, by region, that `_settle` looked up.
+    hits: dict[int, np.ndarray] = field(default_factory=dict)
     next_seq: dict[int, int] = field(default_factory=dict)
     # Position pairs: (region << 32 | sorted row), candidate key, score.
     pair_rows: list[np.ndarray] = field(default_factory=list)
@@ -472,6 +488,14 @@ class IngestRun:
         """
         if source.name in self.sources:
             raise ValueError(f"{source.name} is already in this ingest")
+        if not source.permanent and source.matcher is not None:
+            raise ValueError(f"{source.name} is not permanent and has a matcher")
+        # A source that is not permanent settles its claims on the joins of
+        # the passes before it.
+        if source.permanent and not all(s.permanent for s in self.sources.values()):
+            raise ValueError(
+                f"{source.name} is permanent and comes after a source that is not"
+            )
         self.sources[source.name] = source
         state = PassState(
             len(self.passes), source, complete, self._source_fields(source)
@@ -480,6 +504,8 @@ class IngestRun:
         self._stage(state, batches)
         self._run_cache.clear()
         self._run_cache_rows = 0
+        if not source.permanent:
+            self._settle(state)
         for region in sorted(state.regions):
             self._resolve(state, region)
         self._finish_pass(state)
@@ -492,7 +518,7 @@ class IngestRun:
         for table in self.all_tables:
             for group in table.groups_of(source.name):
                 for column in group.columns:
-                    if column.name in (*MATCH_NAMES, CELL, KEY):
+                    if column.name in (*MATCH_NAMES, CELL, KEY, SEQ):
                         raise ValueError(f"{column.name} is a name the engine uses")
                     if fields.setdefault(column.name, column).type != column.type:
                         raise ValueError(f"{column.name} has two types")
@@ -545,6 +571,16 @@ class IngestRun:
             state.counts["invalid"] += dropped
             table = table.filter(pa.array(valid))
             ra, dec = ra[valid], dec[valid]
+        if not source.permanent:
+            if pc.any(table["mint"]).as_py() or table["catalogue_id"].null_count:
+                raise ValueError(
+                    f"{source.name}: a row mints or has no catalogue id,"
+                    " and the source is not permanent"
+                )
+            start = state.counts["rows"]
+            table = table.append_column(
+                SEQ, pa.array(np.arange(start, start + table.num_rows))
+            )
         state.counts["rows"] += table.num_rows
         return table.append_column(CELL, pa.array(sky.cells(ra, dec)))
 
@@ -565,12 +601,15 @@ class IngestRun:
         paths = sorted(directory.glob("*.parquet"))
         return pa.concat_tables([pq.read_table(p, columns=columns) for p in paths])
 
-    def _match_rows(self, number: int, region: int) -> tuple[pa.Table, np.ndarray]:
-        """The match columns of a staged region sorted by catalogue id, and the order.
+    def _match_rows(
+        self, number: int, region: int, columns: list[str] | None = None
+    ) -> tuple[pa.Table, np.ndarray]:
+        """The match columns, or `columns`, of a staged region sorted by
+        catalogue id, and the order.
 
         The sort makes the run keys independent of the batch order.
         """
-        rows = self._staged(number, region, [*MATCH_NAMES, CELL])
+        rows = self._staged(number, region, columns or [*MATCH_NAMES, CELL])
         order = pc.sort_indices(
             rows, sort_keys=[("catalogue_id", "ascending", "at_end")]
         ).to_numpy()
@@ -602,8 +641,10 @@ class IngestRun:
             return self._cache[region]
         registry = self.registry
         states = registry.id_states([region])
-        xids = registry.read_part(
-            "xids", region, ["catalogue", "release", "catalogue_id", "id", "ingest"]
+        xids = registry.read_xids(
+            region,
+            ["catalogue", "release", "catalogue_id", "id", "ingest"],
+            rebuild=True,
         )
         keys = registry.live_end(xids["id"].to_numpy())
         view_xids = pa.table(
@@ -684,9 +725,13 @@ class IngestRun:
         ids = rows["catalogue_id"].combine_chunks()
         if pc.count(ids).as_py() != pc.count_distinct(ids).as_py():
             raise ValueError(f"{source.name}: a catalogue id is in the input twice")
-        view = self._view(state, self._hood(region))
+        # A source that is not permanent looked up its claims in `_settle`.
+        view = self._view(state, self._hood(region)) if source.permanent else None
 
-        keys, dead = view.lookup(source.catalogue, source.release, ids)
+        if view is not None:
+            keys, dead = view.lookup(source.catalogue, source.release, ids)
+        else:
+            keys, dead = np.zeros(len(ids), np.int64), np.zeros(len(ids), bool)
         if dead.any():
             logger.warning(
                 "%s: %d catalogue ids belong to retired IDs and get new ones",
@@ -698,11 +743,16 @@ class IngestRun:
         mints = _bools(rows, "mint")
         self.mintable_joins.update(keys[(keys < 0) & mints].tolist())
 
-        claim_hit, misses = self._claims(state, view, rows, keys, mints)
+        claim_hit, misses = self._claims(state, region, view, rows, keys, mints)
         state.counts["by_claim"] += int(claim_hit.sum())
         free = np.flatnonzero(keys == 0)
         deferred = np.zeros(0, np.int64)
-        if free.size and source.matcher is not None and view.candidates.num_rows:
+        if (
+            free.size
+            and view is not None
+            and source.matcher is not None
+            and view.candidates.num_rows
+        ):
             deferred = self._pairs(state, region, view, rows, free, misses)
         if misses is not None:
             misses = misses.set_column(
@@ -731,13 +781,15 @@ class IngestRun:
     def _claims(
         self,
         state: PassState,
-        view: _View,
+        region: int,
+        view: _View | None,
         rows: pa.Table,
         keys: np.ndarray,
         mints: np.ndarray,
     ) -> tuple[np.ndarray, pa.Table | None]:
         """Link rows through their claims; `keys` is updated in place.
 
+        Without a view, the claims take the keys that `_settle` found.
         Returns the rows that a claim alone linked, and the claimed ids that
         nothing holds yet, with their sorted row.
         """
@@ -747,27 +799,19 @@ class IngestRun:
         claims = rows["claims"].combine_chunks()
         if not pc.sum(pc.list_value_length(claims)).as_py():
             return claim_hit, None
-        flat = pc.list_flatten(claims)
-        parent = pc.list_parent_indices(claims).to_numpy()
+        flat, parent, hit, usable = self._claim_hits(source, view, claims)
+        if view is None:
+            hit = state.hits.pop(region)
         catalogue, release = flat.field("catalogue"), flat.field("release")
         claimed_id = flat.field("catalogue_id")
-        hit = np.zeros(len(flat), np.int64)
-        usable = claimed_id.is_valid().to_numpy(zero_copy_only=False)
-        for pair in sorted(set(zip(catalogue.to_pylist(), release.to_pylist()))):
-            picked = np.flatnonzero(
-                pc.and_(pc.equal(catalogue, pair[0]), pc.equal(release, pair[1]))
-                .fill_null(False)
-                .to_numpy(zero_copy_only=False)
-            )
-            if pair == own or None in pair:
-                logger.debug(
-                    "%s: %d claims to %s ignored", source.name, picked.size, pair
-                )
-                usable[picked] = False
-                continue
-            hit[picked], _ = view.lookup(pair[0], pair[1], claimed_id.take(picked))
+        if state.lost:
+            lost = pc.is_in(rows["catalogue_id"], pa.array(sorted(state.lost)))
+            lost = lost.fill_null(False).to_numpy(zero_copy_only=False)[parent]
+            hit[lost] = 0
+            usable[lost] = False
 
-        holders = set(view.holders(*own).tolist())
+        # No old link of a source that is not permanent holds.
+        holders = set(view.holders(*own).tolist()) if view is not None else set()
         starts = np.flatnonzero(np.r_[True, parent[1:] != parent[:-1]])
         ends = np.r_[starts[1:], parent.size]
         row_ids = rows["catalogue_id"].take(parent[starts]).to_pylist()
@@ -812,10 +856,13 @@ class IngestRun:
             )
             for target in links:
                 if target != primary:
+                    # Without a view, `_settle` left one target per row.
+                    assert view is not None
                     self._union(view, primary, target, own, evidence)
 
         missed = np.flatnonzero((hit == 0) & usable)
-        if not missed.size:
+        # A row that never mints has no use for the ids that nothing holds.
+        if not missed.size or not source.permanent:
             return claim_hit, None
         misses = pa.table(
             [
@@ -827,6 +874,92 @@ class IngestRun:
             schema=CLAIM_MISSES,
         )
         return claim_hit, misses
+
+    def _claim_hits(
+        self, source: Source, view: _View | None, claims: pa.ListArray
+    ) -> tuple[pa.StructArray, np.ndarray, np.ndarray, np.ndarray]:
+        """The claims, flat, with the row of each, the key that holds its id
+        (0 for none, and for all without a view) and whether it can link."""
+        own = (source.catalogue, source.release)
+        flat = pc.list_flatten(claims)
+        parent = pc.list_parent_indices(claims).to_numpy()
+        catalogue, release = flat.field("catalogue"), flat.field("release")
+        claimed_id = flat.field("catalogue_id")
+        hit = np.zeros(len(flat), np.int64)
+        usable = claimed_id.is_valid().to_numpy(zero_copy_only=False)
+        for pair in sorted(set(zip(catalogue.to_pylist(), release.to_pylist()))):
+            picked = np.flatnonzero(
+                pc.and_(pc.equal(catalogue, pair[0]), pc.equal(release, pair[1]))
+                .fill_null(False)
+                .to_numpy(zero_copy_only=False)
+            )
+            if pair == own or None in pair:
+                logger.debug(
+                    "%s: %d claims to %s ignored", source.name, picked.size, pair
+                )
+                usable[picked] = False
+                continue
+            if view is not None:
+                hit[picked], _ = view.lookup(pair[0], pair[1], claimed_id.take(picked))
+        return flat, parent, hit, usable
+
+    def _settle(self, state: PassState) -> None:
+        """Give each object that rows of the pass claim to the first such row.
+
+        For a source that is not permanent. The other rows lose their claims.
+        A row whose claims reach two keys loses them too, because such a
+        source never joins objects. Keys that the earlier passes join are one
+        object. The keys that the claims reach are kept for `_claims`.
+        """
+        source = state.source
+        roots = self._join()[0]
+        claimants: dict[int, list[tuple[int, str, int]]] = defaultdict(list)
+        for region in sorted(state.regions):
+            rows, _ = self._match_rows(
+                state.number, region, ["catalogue_id", "claims", SEQ]
+            )
+            claims = rows["claims"].combine_chunks()
+            if not pc.sum(pc.list_value_length(claims)).as_py():
+                continue
+            view = self._view(state, self._hood(region))
+            _, parent, hit, _ = self._claim_hits(source, view, claims)
+            state.hits[region] = hit
+            targets: dict[int, set[int]] = defaultdict(set)
+            for row, key in zip(parent.tolist(), hit.tolist()):
+                if key:
+                    targets[row].add(key)
+            ids = rows["catalogue_id"].to_pylist()
+            seqs = rows[SEQ].to_pylist()
+            for row in sorted(targets, key=seqs.__getitem__):
+                keys = targets[row]
+                name = f"{source.catalogue}/{source.release}/{ids[row]}"
+                if len(keys) > 1:
+                    self._conflict(
+                        f"{name} claims {len(keys)} objects, and a {source.name}"
+                        " row never joins objects"
+                    )
+                    state.lost.add(ids[row])
+                    continue
+                key = keys.pop()
+                claimants[roots.get(key, key)].append((seqs[row], ids[row], key))
+        prefix = f"{source.catalogue}/{source.release}"
+        for rows_of in claimants.values():
+            (_, first, kept), *others = sorted(rows_of)
+            for _, other, key in others:
+                logger.warning(
+                    "%s: %s/%s keeps %d, which %s/%s also claims%s",
+                    source.name,
+                    prefix,
+                    first,
+                    kept,
+                    prefix,
+                    other,
+                    ""
+                    if key == kept
+                    else f" through {key}, which this ingest joins to it",
+                )
+                state.lost.add(other)
+                state.counts["outranked"] += 1
 
     def _union(
         self,
@@ -1164,6 +1297,7 @@ class IngestRun:
                     "source": state.source.name,
                     "catalogue": state.source.catalogue,
                     "release": state.source.release,
+                    "permanent": state.source.permanent,
                     "complete": state.complete,
                     **dict(state.counts),
                 }
@@ -1236,11 +1370,12 @@ class IngestRun:
                 if version.name != ingest_name(self.ingest):
                     shutil.rmtree(version)
 
-    def _groups(self) -> tuple[dict[int, int], list[tuple[int, int, str]]]:
-        """Join the keys that rows link.
+    def _join(self) -> tuple[dict[int, int], dict[int, list[str]], list[str]]:
+        """Join the keys that rows link, in the order of the links.
 
-        Returns each joined key → the key kept for its object, and the merges
-        as (survivor, loser, evidence).
+        Returns each joined key → the root of its object, the evidence of each
+        root, and the links refused because both objects hold an id of one
+        catalogue release.
         """
         parent: dict[int, int] = {}
 
@@ -1251,13 +1386,14 @@ class IngestRun:
 
         catalogues = {key: set(found) for key, found in self.union_catalogues.items()}
         evidence: dict[int, list[str]] = defaultdict(list)
+        refused: list[str] = []
         for a, b, text in self.unions:
             root_a, root_b = find(a), find(b)
             if root_a == root_b:
                 continue
             shared = catalogues.get(root_a, set()) & catalogues.get(root_b, set())
             if shared:
-                self._conflict(
+                refused.append(
                     f"{text}: both objects hold {sorted(shared)}, not joined"
                 )
                 continue
@@ -1267,9 +1403,20 @@ class IngestRun:
                 root_b, set()
             )
             evidence[root_a] += evidence.pop(root_b, []) + [text]
+        return {key: find(key) for key in parent}, evidence, refused
+
+    def _groups(self) -> tuple[dict[int, int], list[tuple[int, int, str]]]:
+        """Join the keys that rows link.
+
+        Returns each joined key → the key kept for its object, and the merges
+        as (survivor, loser, evidence).
+        """
+        roots, evidence, refused = self._join()
+        for text in refused:
+            self._conflict(text)
         members: dict[int, list[int]] = defaultdict(list)
-        for key in parent:
-            members[find(key)].append(key)
+        for key, root in roots.items():
+            members[root].append(key)
 
         kept: dict[int, int] = {}
         merges: list[tuple[int, int, str]] = []
@@ -1345,7 +1492,7 @@ class IngestRun:
         aliases.update({loser: survivor for survivor, loser, _ in merges})
         losers = np.array(sorted(aliases), np.int64)
         for region in np.unique(key_region(losers)).tolist():
-            xids = self.registry.read_part("xids", region)
+            xids = self.registry.read_xids(region, rebuild=True)
             xids = xids.filter(pc.is_in(xids["id"], pa.array(losers)))
             ends = self._kept(self.registry.live_end(xids["id"].to_numpy()))
             target = key_region(ends)
@@ -1698,8 +1845,8 @@ class IngestRun:
         self, region: int, live_ids: np.ndarray, new_xids: pa.Table
     ) -> pa.Array:
         """The catalogue ids of each live ID, as a list per ID."""
-        old = self.registry.read_part(
-            "xids", region, ["catalogue", "release", "catalogue_id", "id"]
+        old = self.registry.read_xids(
+            region, ["catalogue", "release", "catalogue_id", "id"], rebuild=True
         )
         ends = self._kept(self.registry.live_end(old["id"].to_numpy()))
         parts = [

@@ -297,7 +297,8 @@ def check_previous(
     registry: Registry, regions: tuple[int, ...], rows: pa.Table, previous: Previous
 ) -> Problems:
     """Each ID that the previous export serves is still served with its
-    catalogue ids, or is an alias or retired in the registry."""
+    catalogue ids, or is an alias or retired in the registry. The ids of a
+    source that is not permanent may change."""
     problems = Problems()
     tables = []
     for path in previous.paths:
@@ -323,6 +324,16 @@ def check_previous(
     lost = _flat_cross_ids(old.filter(pa.array(both))).join(
         _flat_cross_ids(rows.filter(pa.array(new_live))), keys, join_type="left anti"
     )
+    # The links of a source that is not permanent can change at each ingest.
+    for catalogue, release in sorted(registry.temporary_catalogues):
+        lost = lost.filter(
+            pc.invert(
+                pc.and_(
+                    pc.equal(lost["catalogue"], catalogue),
+                    pc.equal(lost["release"], release),
+                )
+            )
+        )
     changed = np.unique(lost["id"].to_numpy())
     problems.add("served ID lost catalogue ids", changed, int(changed.size))
     return problems

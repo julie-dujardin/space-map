@@ -7,7 +7,8 @@ export as it was. The checks:
 - no ingest has merges that no one has reviewed;
 - every row holds an ID that the registry has, with the status the row shows;
 - every ID that the previous export serves is still served with all its
-  catalogue ids, or is an alias or retired in the registry. The previous
+  catalogue ids, or is an alias or retired in the registry. The ids of a
+  source that is not permanent, such as Wikidata, may change. The previous
   export stands for the live site until the serving is decided;
 - the matched sky cultures come from the registry ingest that the export
   reads.

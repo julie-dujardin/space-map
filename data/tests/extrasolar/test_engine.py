@@ -586,3 +586,119 @@ class TestFailures:
         }
         cells = ids.cell_of(np.array(id_records["id"].to_pylist()))
         assert (np.diff(cells) >= 0).all()
+
+
+NOTES = Source("notes", "notes", "1", home=1, permanent=False)
+
+
+class TestNotPermanent:
+    """A source that only adds to the objects that it claims, again each time."""
+
+    def test_the_first_row_in_input_order_keeps_an_object(self, root, ingest):
+        a, b = straddle(100)
+        gaia = gaia_rows([{"id": 1, "ra": a[0], "dec": a[1], "mag": 3.0}])
+        region = {
+            p: sky.region_of(int(sky.cells(np.array([p[0]]), np.array([p[1]]))[0]))
+            for p in (a, b)
+        }
+        # The first row in the input sits in the region that resolves last.
+        late, early = sorted((a, b), key=lambda p: region[p], reverse=True)
+        claims = [claim("gaia", "dr3", 1)]
+        notes = name_rows(
+            [
+                {"id": "first", "ra": late[0], "dec": late[1], "claims": claims},
+                {"id": "second", "ra": early[0], "dec": early[1], "claims": claims},
+            ]
+        )
+        result = ingest([(GAIA, gaia), (NOTES, notes)])
+        assert result.entry["counts"]["conflicts"] == 0
+        assert result.entry["sources"][1]["outranked"] == 1
+        assert id_of(root, NOTES, "first") == id_of(root, GAIA, 1) != 0
+        assert id_of(root, NOTES, "second") == 0
+
+    def test_a_row_that_reaches_two_objects_joins_nothing(self, root, ingest):
+        gaia = gaia_rows([star(1, mag=3.0)])
+        hip = hip_rows([star(7, 360, mag=4.0)])
+        ra, dec = near(100)
+        both = [claim("gaia", "dr3", 1), claim("hip", "2007", 7)]
+        notes = name_rows([{"id": "n", "ra": ra, "dec": dec, "claims": both}])
+        result = ingest([(GAIA, gaia), (HIP, hip), (NOTES, notes)])
+        counts = result.entry["counts"]
+        assert (counts["minted"], counts["merged"], counts["conflicts"]) == (2, 0, 1)
+        assert id_of(root, NOTES, "n") == 0
+
+    def test_old_links_do_not_hold(self, root, ingest):
+        gaia = gaia_rows([star(1, mag=3.0)])
+        hip = hip_rows([star(7, 360, mag=4.0)])
+        ra, dec = near(100)
+        note: dict = {"id": "n", "ra": ra, "dec": dec}
+        note["claims"] = [claim("gaia", "dr3", 1)]
+        ingest([(GAIA, gaia), (HIP, hip), (NOTES, name_rows([note]))])
+        gaia_id, hip_id = id_of(root, GAIA, 1), id_of(root, HIP, 7)
+        assert id_of(root, NOTES, "n") == gaia_id
+
+        # The note now claims hip 7. Its old link joins nothing.
+        note["claims"] = [claim("hip", "2007", 7)]
+        result = ingest([(GAIA, gaia), (HIP, hip), (NOTES, name_rows([note]))])
+        counts = result.entry["counts"]
+        assert (counts["merged"], counts["conflicts"]) == (0, 0)
+        assert id_of(root, NOTES, "n") == hip_id
+        meta = by_id(table_rows(root, "metadata"))
+        assert {c["catalogue"] for c in meta[gaia_id]["cross_ids"]} == {"gaia"}
+        assert {c["catalogue"] for c in meta[hip_id]["cross_ids"]} == {"hip", "notes"}
+        # The next ingest makes every link of the source again.
+        region = int(sky.region_of(ids.cell_of(np.array([hip_id])))[0])
+        held = Registry(root).read_xids(region)["catalogue"].to_pylist()
+        rebuilt = Registry(root).read_xids(region, rebuild=True)["catalogue"]
+        assert held.count("notes") == 1 and "notes" not in rebuilt.to_pylist()
+
+    @pytest.mark.parametrize("first_claims", ["hip", "gaia"])
+    def test_objects_that_the_ingest_joins_keep_one_row(
+        self, root, ingest, caplog, first_claims
+    ):
+        g_ra, g_dec = centre(4_000_000)
+        h_ra, h_dec = centre(4_000_001)
+        hip = hip_rows([{"id": 42, "ra": h_ra, "dec": h_dec, "mag": 2.0}])
+        gaia: list[dict] = [{"id": 1, "ra": g_ra, "dec": g_dec, "mag": 2.1}]
+        ingest([(HIP, hip)])
+        ingest([(GAIA, gaia_rows(gaia)), (HIP, hip)])
+        # Gaia 1 now claims hip 42, so this ingest joins the two objects.
+        gaia[0]["claims"] = [claim("hip", "2007", 42)]
+        by_hip = {"ra": h_ra, "dec": h_dec, "claims": [claim("hip", "2007", 42)]}
+        by_gaia = {"ra": g_ra, "dec": g_dec, "claims": [claim("gaia", "dr3", 1)]}
+        first, second = (
+            (by_hip, by_gaia) if first_claims == "hip" else (by_gaia, by_hip)
+        )
+        notes = name_rows([{"id": "first", **first}, {"id": "second", **second}])
+        with caplog.at_level(logging.WARNING):
+            result = ingest([(GAIA, gaia_rows(gaia)), (HIP, hip), (NOTES, notes)])
+        counts = result.entry["counts"]
+        assert (counts["merged"], counts["conflicts"]) == (1, 0)
+        assert result.entry["sources"][2]["outranked"] == 1
+        survivor = id_of(root, HIP, 42)
+        assert id_of(root, GAIA, 1) == survivor
+        assert id_of(root, NOTES, "first") == survivor
+        assert id_of(root, NOTES, "second") == 0
+        cross_ids = by_id(table_rows(root, "metadata"))[survivor]["cross_ids"]
+        assert [c["catalogue_id"] for c in cross_ids if c["catalogue"] == "notes"] == [
+            "first"
+        ]
+        assert "which this ingest joins to it" in caplog.text
+
+    def test_a_permanent_source_comes_first(self, root, backup):
+        ra, dec = near(0)
+        with IngestRun.start(root, backup, (POINT,), META) as run:
+            run.add(NOTES, [name_rows([{"id": "n", "ra": ra, "dec": dec}])])
+            with pytest.raises(ValueError, match="after"):
+                run.add(GAIA, [gaia_rows([star(1, mag=3.0)])])
+
+    def test_a_matcher_or_a_minting_row_is_refused(self, root, backup):
+        matched = Source("m", "m", "1", home=1, matcher=HIP.matcher, permanent=False)
+        ra, dec = near(0)
+        minting = name_rows([{"id": "n", "ra": ra, "dec": dec}])
+        minting = minting.set_column(1, "mint", pa.array([True]))
+        with IngestRun.start(root, backup, (POINT,), META) as run:
+            with pytest.raises(ValueError, match="matcher"):
+                run.add(matched, [minting])
+            with pytest.raises(ValueError, match="mints"):
+                run.add(NOTES, [minting])

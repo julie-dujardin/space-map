@@ -174,9 +174,14 @@ def write_registry(
                         "release": "dr3",
                         "catalogue_id": row.get("_xid") or str(id_ * 7),
                     }
-                ],
+                ]
+                + (
+                    [{"catalogue": "wikidata", "release": "qid", "catalogue_id": qid}]
+                    if (qid := row.get("_qid"))
+                    else []
+                ),
                 "mask": 2,
-                "object": False,
+                "object": bool(row.get("_qid")),
                 "alias_target": None,
             }
         )
@@ -197,7 +202,15 @@ def write_registry(
         "commit": "test",
         "dirty": False,
         "complete": True,
-        "sources": [],
+        "sources": [
+            {
+                "source": "wikidata",
+                "catalogue": "wikidata",
+                "release": "qid",
+                "permanent": False,
+                "complete": True,
+            }
+        ],
         "counts": {"merged": len(alias_map), "live": len(data)},
         "reviewed": "2026-10-23T00:00:00+00:00" if reviewed or not alias_map else None,
     }

@@ -285,6 +285,13 @@ class TestChecks:
         merged = write_registry(tmp_path / "c", stars, aliases=[(3, 4)])
         export_extrasolar(merged.root, out, workers=1)
 
+    def test_a_wikidata_item_may_move(self, tmp_path, out):
+        stars = random_stars(20, seed=6)
+        stars[3]["_qid"] = "Q1"
+        export_extrasolar(write_registry(tmp_path / "a", stars).root, out, workers=1)
+        stars[3]["_qid"], stars[5]["_qid"] = None, "Q1"
+        export_extrasolar(write_registry(tmp_path / "b", stars).root, out, workers=1)
+
     def test_a_failed_build_keeps_the_served_export(self, tmp_path, out, monkeypatch):
         built = write_registry(tmp_path / "reg", random_stars(30, seed=7))
         export_extrasolar(built.root, out, workers=1)

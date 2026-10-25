@@ -988,7 +988,9 @@ places it from its `orbit` block, so it carries `windows: [[null, null]]`.
 
 An object of the extrasolar catalogue ([extrasolar.md](extrasolar.md)) has an
 entry when its Metadata row has `object`: today, when a Wikidata item with an
-article in one of the site's languages names it. The id is `x-` and its
+article in one of the site's languages names it. An item of a galaxy, a
+nebula, a cluster or another object that is not a star names none, unless
+Wikidata also gives it the type of a star or a star system. The id is `x-` and its
 extrasolar ID. The global entry holds `id`, `type` (`star`), `name` (the name
 of its Metadata row) and `cross_refs.wikidata_qid`; no orbit and no coverage,
 because its place is in its record. The localized entry holds `name` where

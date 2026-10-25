@@ -1,11 +1,16 @@
 """The Wikidata items of stars as an ingest source.
 
-An item never mints and never matches by position. It reaches its star by one
-claim: its Hipparcos number, else its Gaia DR3 id, else its HD number, each
-only when the item gives one value of it. One claim, because a row that links
-two objects joins them, and an item that lists two Gaia sources or a whole
-system is no proof that they are one star. Hipparcos first, because the Gaia
-id on the item of a bright star is often a duplicate or a companion.
+The source is not permanent: each ingest links the items again. An item never
+mints and never matches by position. It reaches its star by one claim: its
+Hipparcos number, else its Gaia DR3 id, else its HD number, each only when the
+item gives one value of it. One claim, because an item that lists two Gaia
+sources or a whole system is no proof that they are one star. Hipparcos
+first, because the Gaia id on the item of a bright star is often a duplicate
+or a companion.
+
+When several items reach one star, often a system and one of its stars, the
+item with the most articles keeps it, then the lowest QID. Readers look for
+that one.
 
 Its English label (else its multilingual one) names the star unless it is a
 bare catalogue number or a SIMBAD identifier.
@@ -13,7 +18,6 @@ bare catalogue number or a SIMBAD identifier.
 
 import logging
 import re
-from collections import defaultdict
 from collections.abc import Iterable
 
 import numpy as np
@@ -33,7 +37,9 @@ from space_map_data.extrasolar.tables import CROSS_ID
 
 logger = logging.getLogger(__name__)
 
-WIKIDATA = Source(name="wikidata", catalogue="wikidata", release="qid", home=1)
+WIKIDATA = Source(
+    name="wikidata", catalogue="wikidata", release="qid", home=1, permanent=False
+)
 
 # The SIMBAD prefix of a name; the rest is the name.
 _SIMBAD_NAME = "NAME "
@@ -106,36 +112,19 @@ def engine_rows(
     hip_positions: dict[str, tuple[float, float]],
     hd_positions: dict[str, tuple[float, float]],
 ) -> pa.Table:
-    """The pass rows of the items, one per item with a claim.
+    """The pass rows of the items with a claim, the most articles first.
 
-    Of the items with the same claim, often a system and one of its stars, the
-    one with the most articles keeps it: it is the one readers look for.
+    The engine gives a star that several rows claim to the first of them.
     """
-    by_claim: dict[tuple[str, str, str], list[tuple[StarItem, tuple[float, float]]]]
-    by_claim = defaultdict(list)
+    rows = []
     unclaimed = 0
-    for item in items:
+    for item in sorted(items, key=lambda i: (-i.articles, int(i.qid[1:]))):
         found = _claim(item, hip_positions, hd_positions)
         if found is None:
             unclaimed += 1
             logger.debug("%s: no single id of a star", item.qid)
             continue
-        claim, position = found
-        by_claim[claim].append((item, position))
-    rows = []
-    for claim, claimants in by_claim.items():
-        claimants.sort(key=lambda c: (-c[0].articles, int(c[0].qid[1:])))
-        (item, (ra, dec)), *dropped = claimants
-        for other, _ in dropped:
-            logger.warning(
-                "Wikidata: %s and %s claim %s; %s keeps it (%d articles to %d)",
-                item.qid,
-                other.qid,
-                "/".join(claim),
-                item.qid,
-                item.articles,
-                other.articles,
-            )
+        claim, (ra, dec) = found
         rows.append(
             {
                 "catalogue_id": item.qid,
