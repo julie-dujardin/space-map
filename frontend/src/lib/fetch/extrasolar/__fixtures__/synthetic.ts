@@ -1,6 +1,6 @@
 /**
  * Test-only synthetic extrasolar export: Metadata, table 1 (Point source) and
- * table 2, each one level-0 tile, written with the test writer.
+ * table 2 (Binary orbit), each one level-0 tile, written with the test writer.
  */
 
 import { KIND_SPLIT, KIND_TILE, type CrossId } from '../container';
@@ -20,8 +20,11 @@ export const WITH_TABLE_2 = idOf(3, 1);
 export const TOKENS = {
 	metadata: 'a'.repeat(16),
 	points: 'b'.repeat(16),
-	redshift: 'c'.repeat(16)
+	orbits: 'c'.repeat(16)
 };
+
+/** Bits 6 and 57 of a Gaia DR3 `flags`, past the range of a double. */
+export const ORBIT_FLAGS = (1n << 57n) | (1n << 6n);
 
 function table(
 	slug: string,
@@ -99,7 +102,8 @@ function metadataTile(
 function dataTile(
 	token: string,
 	number: number,
-	rows: { id: number; parallax: number }[]
+	rows: { id: number; parallax: number }[],
+	more: ColumnSpec[] = []
 ): Uint8Array {
 	return encode(
 		KIND_TILE,
@@ -108,7 +112,8 @@ function dataTile(
 		[
 			{ name: 'id', type: 'id', values: rows.map((r) => r.id) },
 			{ name: 'parallax', type: 'float32', values: rows.map((r) => r.parallax) },
-			{ name: 'parallax_error', type: 'float32', values: rows.map(() => 0.1) }
+			{ name: 'parallax_error', type: 'float32', values: rows.map(() => 0.1) },
+			...more
 		],
 		tileInfoBytes(0, 0, number)
 	);
@@ -130,7 +135,7 @@ export function syntheticExport(
 		tables: {
 			metadata: table('metadata', null, TOKENS.metadata, options.metaDistribution),
 			'point-source': table('point-source', 1, TOKENS.points),
-			redshift: table('redshift', 2, TOKENS.redshift, 'site-only')
+			'binary-orbit': table('binary-orbit', 2, TOKENS.orbits, 'site-only')
 		},
 		trees: {},
 		credits: [{ name: 'Test catalogue', organisation: 'Test', source: 'https://example.org/' }]
@@ -138,7 +143,7 @@ export function syntheticExport(
 	const payloads: Record<string, Uint8Array> = {
 		'metadata/split.bin.gz': split(TOKENS.metadata),
 		'point-source/split.bin.gz': split(TOKENS.points),
-		'redshift/split.bin.gz': split(TOKENS.redshift),
+		'binary-orbit/split.bin.gz': split(TOKENS.orbits),
 		'metadata/0/0.bin.gz': metadataTile(
 			TOKENS.metadata,
 			[
@@ -162,7 +167,16 @@ export function syntheticExport(
 			{ id: SECOND, parallax: 0.3 },
 			{ id: WITH_TABLE_2, parallax: 2 }
 		]),
-		'redshift/0/0.bin.gz': dataTile(TOKENS.redshift, 2, [{ id: WITH_TABLE_2, parallax: 7 }])
+		'binary-orbit/0/0.bin.gz': dataTile(
+			TOKENS.orbits,
+			2,
+			[{ id: WITH_TABLE_2, parallax: 7 }],
+			[
+				{ name: 'nss_solution_type', type: 'dict', values: ['Orbital'] },
+				{ name: 'flags', type: 'uint64', values: [ORBIT_FLAGS] },
+				{ name: 'corr_vec', type: 'float32_list', values: [[0.5, NaN, -0.25]] }
+			]
+		)
 	};
 	return { meta, payloads };
 }

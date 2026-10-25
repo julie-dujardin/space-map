@@ -72,6 +72,13 @@ function read(c: Container, name: string): unknown[] {
 			case 'dict':
 				out.push(c.dict(name).get(i));
 				break;
+			case 'uint64':
+				// expected.json holds them as decimal strings.
+				out.push(String(c.uint64(name)[i]));
+				break;
+			case 'float32_list':
+				out.push(Array.from(c.float32List(name).get(i) ?? [], (x) => (Number.isNaN(x) ? null : x)));
+				break;
 			case 'cross_ids':
 				out.push(
 					c
@@ -122,6 +129,17 @@ describe('Container', () => {
 		expect(ids[1]).toBe(2 ** 53 - 1);
 		expect(Number.isNaN(tile.float64('ra')[1])).toBe(true);
 		expect(tile.ids('alias_target')[0]).toBe(0);
+	});
+
+	it('keeps uint64 bits past 2^53 and float32 lists with their NaN entries', async () => {
+		const tile = await load('tile.bin.gz');
+		expect(tile.uint64('flags')[0]).toBe((1n << 57n) + 64n);
+		expect(tile.uint64('flags')[2]).toBe(2n ** 64n - 1n);
+		const lists = tile.float32List('corr_vec');
+		expect(lists.get(0)?.buffer).toBe(tile.buffer);
+		expect(Number.isNaN(lists.get(0)![1])).toBe(true);
+		expect(lists.get(1)).toBeNull();
+		expect(lists.get(2)?.length).toBe(0);
 	});
 
 	it('gives typed-array views on the payload, not copies', async () => {

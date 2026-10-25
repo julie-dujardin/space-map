@@ -20,6 +20,7 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'andrae-2023': m.source_andrae_2023_name,
 	'gaia-dr3-gspphot': m.source_gaia_dr3_gspphot_name,
 	'gaia-dr3-gspspec': m.source_gaia_dr3_gspspec_name,
+	'gaia-dr3-nss': m.source_gaia_dr3_nss_name,
 	'pastel-2020': m.source_pastel_name,
 	'apogee-dr17': m.source_apogee_dr17_name,
 	'lamost-dr10': m.source_lamost_dr10_name,
@@ -36,6 +37,7 @@ export function starSourceName(source: string): string {
 export const CREDIT_PAGES = {
 	gaia: '/web/gaia/dr3',
 	fidelity: '/stab3588',
+	orbits: '/2023A&A...674A..34G',
 	xpMetallicity: '/zenodo.7945154',
 	pastel: '/B/pastel',
 	simbad: '/simbad.cds.unistra.fr/',
@@ -75,6 +77,7 @@ export function starCredits(record: ExtrasolarRecord): StarCredit[] {
 			pages.add('gaia');
 		if (row.text('hipparcos_photometry_source')) pages.add('hipparcosPhotometry');
 		if (row.text('fidelity_source')) pages.add('fidelity');
+		if (row.text('orbit_source')) pages.add('gaia').add('orbits');
 		if (row.text('xgboost_source')) pages.add('xpMetallicity');
 		// These rows join by ids from SIMBAD and from the LAMOST M-star catalogue.
 		if (row.text('pastel_source')) pages.add('pastel').add('simbad');

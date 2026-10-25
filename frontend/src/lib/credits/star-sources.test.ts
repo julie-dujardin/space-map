@@ -10,6 +10,7 @@ describe('star sources', () => {
 		expect(starSourceName('hipparcos-2007')).toBe('Hipparcos (2007)');
 		expect(starSourceName('andrae-2023')).toBe('Gaia XP (Andrae et al. 2023)');
 		expect(starSourceName('gaia-dr3-gspphot')).toBe('Gaia DR3 GSP-Phot');
+		expect(starSourceName('gaia-dr3-nss')).toBe('Gaia DR3 orbit solution');
 		expect(starSourceName('unknown')).toBe('unknown');
 	});
 
@@ -37,6 +38,25 @@ describe('star sources', () => {
 			[credit]
 		);
 		expect(starCredits(without)).toEqual([]);
+	});
+
+	it('credits Gaia and the orbit paper where the record has an orbit', () => {
+		const gaia = {
+			name: 'Gaia Data Release 3',
+			organisation: 'ESA/Gaia/DPAC',
+			source: 'https://www.cosmos.esa.int/web/gaia/dr3'
+		};
+		const orbits = {
+			name: 'Gaia DR3 binary orbits and masses',
+			organisation: 'Gaia Collaboration, Arenou et al. 2023',
+			source: 'https://ui.adsabs.harvard.edu/abs/2023A&A...674A..34G'
+		};
+		const record = pointSourceRecord(
+			[{ name: 'parallax', type: 'float32', values: [10] }],
+			[gaia, orbits],
+			[{ name: 'orbit_source', type: 'dict', values: ['gaia-dr3'] }]
+		);
+		expect(starCredits(record).map((c) => c.label)).toEqual([gaia.name, orbits.name]);
 	});
 
 	it('credits the catalogues of the joined rows and their ids', () => {

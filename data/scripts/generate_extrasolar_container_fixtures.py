@@ -68,6 +68,12 @@ def tile_columns() -> list[Column]:
         Column("source", "dict", pa.array(["gaia-dr3", "hipparcos-2007", None])),
         Column("cross_ids", "cross_ids", cross),
         Column("alias_target", "id", pa.array([None, None, 27468735], pa.int64())),
+        Column("flags", "uint64", pa.array([2**57 + 64, None, 2**64 - 1], pa.uint64())),
+        Column(
+            "corr_vec",
+            "float32_list",
+            pa.array([[0.5, float("nan"), -0.25], None, []], pa.list_(pa.float32())),
+        ),
     ]
 
 
@@ -121,13 +127,25 @@ def main() -> None:
         ),
     )
 
+    def json_value(kind: str, value):
+        # JSON numbers lose integers past 2^53 and hold no NaN.
+        if value is None:
+            return None
+        if kind == "uint64":
+            return str(value)
+        if kind == "float32_list":
+            return [None if np.isnan(x) else x for x in value]
+        return value
+
     def values(columns: list[Column]) -> dict:
         out = {}
         for column in columns:
             assert isinstance(column.values, pa.Array)
             out[column.name] = {
                 "type": column.kind,
-                "values": column.values.to_pylist(),
+                "values": [
+                    json_value(column.kind, v) for v in column.values.to_pylist()
+                ],
             }
         return out
 

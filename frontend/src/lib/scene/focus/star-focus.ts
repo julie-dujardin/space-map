@@ -1,7 +1,7 @@
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
-import { homeRow, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { astrometricOrbit, homeRow, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import {
 	absoluteG,
 	colourBpRp,
@@ -18,7 +18,8 @@ export const STAR_VIEW_DISTANCE = 1e4;
  *  Metadata row says whether the object bundles hold a localized entry. */
 export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 	const home = homeRow(record);
-	const place = home ? starPlace(home) : null;
+	const orbit = astrometricOrbit(record);
+	const place = home ? starPlace(home, orbit) : null;
 	const radiusKm = home ? starRadiusKm(home) : null;
 	const data: BodyData = {
 		id: extrasolarObjectId(record.id),
@@ -47,7 +48,7 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 			record,
 			scene: place?.scene ?? null,
 			tree: place?.tree ?? null,
-			absMag: home ? absoluteG(home) : null,
+			absMag: home ? absoluteG(home, orbit) : null,
 			colour: home ? colourBpRp(home) : null,
 			radiusKm,
 			teff: home ? positiveNumber(home, 'teff_gspphot') : null

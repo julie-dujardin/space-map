@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TableRow } from '$lib/fetch/extrasolar/lookup';
+import { astrometricOrbit, homeRow, type TableRow } from '$lib/fetch/extrasolar/lookup';
 import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import { chooseMetallicity, starKind } from './metallicity';
@@ -13,17 +13,21 @@ type Value = number | string | boolean | null;
 const STRINGS = new Set(['flags_gspspec', 'feh_xhip_quality']);
 const BOOLS = new Set(['in_vetted_rgb_sample', 'in_oba_golden_sample', 'activity_lamost']);
 
-/** A Point source row at 10 pc with these values. */
-function row(values: Record<string, Value>): TableRow {
+/** The Point source columns of a star at 10 pc with these values. */
+function columns(values: Record<string, Value>): ColumnSpec[] {
 	const all: Record<string, Value> = { parallax: 100, parallax_error: 0.1, ...values };
-	const columns = Object.entries(all).map(
+	return Object.entries(all).map(
 		([name, value]): ColumnSpec => ({
 			name,
 			type: STRINGS.has(name) ? 'string' : BOOLS.has(name) ? 'bool' : 'float32',
 			values: [value]
 		})
 	);
-	return pointSourceRecord(columns).rows.get('point-source')!;
+}
+
+/** A Point source row at 10 pc with these values. */
+function row(values: Record<string, Value>): TableRow {
+	return pointSourceRecord(columns(values)).rows.get('point-source')!;
 }
 
 /** G and a BP − RP colour, as Gaia gives them. */
@@ -40,17 +44,31 @@ const OBA = colour(1, 0.1);
 const GOOD_FLAGS = '0'.repeat(41);
 
 const chosen = (values: Record<string, Value>) => {
-	const result = chooseMetallicity(row(values), 'dex');
+	const result = chooseMetallicity(row(values), null, 'dex');
 	return result && { value: plain(result.value), source: result.source };
 };
 
 describe('the kind of a star', () => {
 	it('splits by colour and absolute magnitude', () => {
-		expect(starKind(row(OBA))).toBe('oba');
-		expect(starKind(row(DWARF))).toBe('fgkDwarf');
-		expect(starKind(row(GIANT))).toBe('giant');
-		expect(starKind(row(M_DWARF))).toBe('mDwarf');
-		expect(starKind(row({ parallax: null, ...DWARF }))).toBe(null);
+		expect(starKind(row(OBA), null)).toBe('oba');
+		expect(starKind(row(DWARF), null)).toBe('fgkDwarf');
+		expect(starKind(row(GIANT), null)).toBe('giant');
+		expect(starKind(row(M_DWARF), null)).toBe('mDwarf');
+		expect(starKind(row({ parallax: null, ...DWARF }), null)).toBe(null);
+	});
+
+	it('takes the distance of an astrometric orbit solution', () => {
+		// The orbit parallax puts the star at 40 pc, so it is brighter than the giant line.
+		const binary = pointSourceRecord(
+			columns(DWARF),
+			[],
+			[
+				{ name: 'nss_solution_type', type: 'dict', values: ['Orbital'] },
+				{ name: 'parallax_nss', type: 'float32', values: [25] },
+				{ name: 'parallax_nss_error', type: 'float32', values: [0.1] }
+			]
+		);
+		expect(starKind(homeRow(binary)!, astrometricOrbit(binary))).toBe('giant');
 	});
 });
 
@@ -136,7 +154,7 @@ describe('the metallicity of each kind', () => {
 
 	it('gives the quantity of the column it takes', () => {
 		const quantity = (values: Record<string, Value>) =>
-			chooseMetallicity(row(values), 'dex')?.quantity;
+			chooseMetallicity(row(values), null, 'dex')?.quantity;
 		expect(quantity({ ...DWARF, ...pastel })).toBe('feh');
 		expect(quantity({ ...DWARF, ...apogee })).toBe('feh');
 		expect(quantity({ ...M_DWARF, ...apogee })).toBe('mh');

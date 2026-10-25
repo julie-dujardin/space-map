@@ -91,6 +91,14 @@
 			"alias_target": {
 				"type": "id",
 				"values": [null, null, 27468735]
+			},
+			"flags": {
+				"type": "uint64",
+				"values": ["144115188075855936", null, "18446744073709551615"]
+			},
+			"corr_vec": {
+				"type": "float32_list",
+				"values": [[0.5, null, -0.25], null, []]
 			}
 		}
 	},

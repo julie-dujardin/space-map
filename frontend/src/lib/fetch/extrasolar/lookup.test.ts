@@ -3,6 +3,8 @@ import { Container } from './container';
 import { ExtrasolarStaleError } from './files';
 import {
 	ExtrasolarLookup,
+	astrometricOrbit,
+	distanceParallax,
 	hasDistance,
 	homeRow,
 	parallaxDistancePc,
@@ -10,6 +12,7 @@ import {
 } from './lookup';
 import {
 	ALIAS,
+	ORBIT_FLAGS,
 	RETIRED,
 	SECOND,
 	STAR,
@@ -19,6 +22,8 @@ import {
 	type ObjectColumn
 } from './__fixtures__/synthetic';
 import { HAS_EXPORT, diskSource, own } from './__fixtures__/export';
+import { pointSourceRecord } from './__fixtures__/record';
+import type { ColumnSpec } from './__fixtures__/writer';
 
 // In level-0 pixel 0, the one tile of each synthetic table.
 interface Synthetic {
@@ -71,7 +76,7 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		expect(record.metadata.object).toBe(true);
 		expect(record.home).toBe('point-source');
 		expect(homeRow(record)?.number('parallax')).toBeCloseTo(379.21, 4);
-		expect(parallaxDistancePc(homeRow(record)!)).toBeCloseTo(1000 / 379.21, 4);
+		expect(parallaxDistancePc(homeRow(record)!, null)).toBeCloseTo(1000 / 379.21, 4);
 		expect(hasDistance(record)).toBe(true);
 		expect(record.credits).toHaveLength(1);
 		expect(new Set(source.reads)).toEqual(
@@ -89,17 +94,26 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		source.allowed = () => true;
 		const result = await new ExtrasolarLookup(source).lookup(WITH_TABLE_2);
 		expect(result.kind === 'live' && [...result.record.rows.keys()].sort()).toEqual([
-			'point-source',
-			'redshift'
+			'binary-orbit',
+			'point-source'
 		]);
-		expect(result.kind === 'live' && result.record.rows.get('redshift')?.number('parallax')).toBe(
-			7
-		);
+		const orbit = result.kind === 'live' ? result.record.rows.get('binary-orbit') : undefined;
+		expect(orbit?.number('parallax')).toBe(7);
+		expect(orbit?.text('nss_solution_type')).toBe('Orbital');
+		expect(orbit?.bigint('flags')).toBe(ORBIT_FLAGS);
+		const vector = orbit?.floats('corr_vec');
+		expect(vector && [vector[0], Number.isNaN(vector[1]), vector[2], vector.length]).toEqual([
+			0.5,
+			true,
+			-0.25,
+			3
+		]);
+		expect(orbit?.floats('no_such_column')).toBeNull();
 
 		const barred = synthetic();
 		const second = await new ExtrasolarLookup(barred.source).lookup(WITH_TABLE_2);
 		expect(second.kind === 'live' && [...second.record.rows.keys()]).toEqual(['point-source']);
-		expect(barred.source.reads).not.toContain('redshift/0/0.bin.gz');
+		expect(barred.source.reads).not.toContain('binary-orbit/0/0.bin.gz');
 	});
 
 	it('answers an alias with its live ID, and live() follows it', async () => {
@@ -185,6 +199,49 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 	it('rejects a file from another export', async () => {
 		const lookup = new ExtrasolarLookup(synthetic({ tokenOff: 'metadata/0/0.bin.gz' }).source);
 		await expect(lookup.lookup(STAR)).rejects.toBeInstanceOf(ExtrasolarStaleError);
+	});
+});
+
+describe('the distance of a binary star', () => {
+	const single = (parallax: number, error: number): ColumnSpec[] => [
+		{ name: 'parallax', type: 'float32', values: [parallax] },
+		{ name: 'parallax_error', type: 'float32', values: [error] }
+	];
+	const orbit = (type: string, parallax: number, error: number): ColumnSpec[] => [
+		{ name: 'nss_solution_type', type: 'dict', values: [type] },
+		{ name: 'parallax_nss', type: 'float32', values: [parallax] },
+		{ name: 'parallax_nss_error', type: 'float32', values: [error] }
+	];
+
+	it('takes the parallax of an astrometric orbit solution', () => {
+		for (const type of ['Orbital', 'AstroSpectroSB1', 'OrbitalTargetedSearchValidated']) {
+			const record = pointSourceRecord(single(10, 0.125), [], orbit(type, 12.5, 0.0625));
+			const solution = astrometricOrbit(record);
+			expect(solution, type).not.toBeNull();
+			expect(distanceParallax(homeRow(record)!, solution)).toEqual({
+				parallax: 12.5,
+				error: 0.0625,
+				fromOrbit: true
+			});
+			expect(parallaxDistancePc(homeRow(record)!, solution)).toBe(80);
+		}
+	});
+
+	it('keeps the single-star parallax for another solution or a weak orbit parallax', () => {
+		const spectroscopic = pointSourceRecord(single(10, 0.125), [], orbit('SB1', 12.5, 0.0625));
+		expect(astrometricOrbit(spectroscopic)).toBeNull();
+		const weak = pointSourceRecord(single(10, 0.125), [], orbit('Orbital', 0.5, 0.125));
+		expect(distanceParallax(homeRow(weak)!, astrometricOrbit(weak))).toEqual({
+			parallax: 10,
+			error: 0.125,
+			fromOrbit: false
+		});
+		expect(parallaxDistancePc(homeRow(weak)!, null)).toBe(100);
+	});
+
+	it('gives no distance where the single-star parallax gives none, as the tree draws none', () => {
+		const record = pointSourceRecord(single(0.5, 0.125), [], orbit('Orbital', 12.5, 0.0625));
+		expect(parallaxDistancePc(homeRow(record)!, astrometricOrbit(record))).toBeNull();
 	});
 });
 

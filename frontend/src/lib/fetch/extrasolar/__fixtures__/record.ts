@@ -1,6 +1,7 @@
 /**
- * Test-only star record with one Point source row of the given columns, for
- * panel code that needs no lookup.
+ * Test-only star record with one Point source row of the given columns, and a
+ * Binary orbit row where `orbit` gives its columns, for panel code that needs
+ * no lookup.
  */
 
 import { Container, KIND_TILE } from '../container';
@@ -10,20 +11,28 @@ import { own } from './export';
 import { encode, tileInfoBytes, type ColumnSpec } from './writer';
 
 const SLUG = 'point-source';
+const ORBIT_SLUG = 'binary-orbit';
 const TOKEN = 'b'.repeat(16);
 
-export function pointSourceRecord(
-	columns: ColumnSpec[],
-	credits: ExtrasolarCredit[] = []
-): ExtrasolarRecord {
+function tableRow(slug: string, number: number, columns: ColumnSpec[]): TableRow {
 	const bytes = encode(
 		KIND_TILE,
 		TOKEN,
 		1,
 		[{ name: 'id', type: 'id', values: [1] }, ...columns],
-		tileInfoBytes(0, 0, 1)
+		tileInfoBytes(0, 0, number)
 	);
-	const table = { number: 1, token: TOKEN, columns: [] } as unknown as ExtrasolarTable;
+	const table = { number, token: TOKEN, columns: [] } as unknown as ExtrasolarTable;
+	return new TableRow(slug, table, new Container(own(bytes)), 0);
+}
+
+export function pointSourceRecord(
+	columns: ColumnSpec[],
+	credits: ExtrasolarCredit[] = [],
+	orbit?: ColumnSpec[]
+): ExtrasolarRecord {
+	const rows = new Map([[SLUG, tableRow(SLUG, 1, columns)]]);
+	if (orbit) rows.set(ORBIT_SLUG, tableRow(ORBIT_SLUG, 2, orbit));
 	return {
 		id: 1,
 		metadata: {
@@ -33,11 +42,11 @@ export function pointSourceRecord(
 			class: 'star',
 			classSource: null,
 			crossIds: [],
-			mask: 2,
+			mask: orbit ? 6 : 2,
 			object: false,
 			aliasTarget: null
 		},
-		rows: new Map([[SLUG, new TableRow(SLUG, table, new Container(own(bytes)), 0)]]),
+		rows,
 		home: SLUG,
 		credits
 	};

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { nodeInfo, type Container, type NodeInfo } from '$lib/fetch/extrasolar/container';
-import { ExtrasolarLookup, homeRow } from '$lib/fetch/extrasolar/lookup';
+import { ExtrasolarLookup, astrometricOrbit, homeRow } from '$lib/fetch/extrasolar/lookup';
 import { HAS_EXPORT, diskSource, readExportFile } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { absoluteG, colourBpRp, gEstimate, propagate, starPlace } from './record';
 import { findStarRow } from './starfield';
@@ -66,8 +66,9 @@ describe.skipIf(!HAS_EXPORT)('a star from its record, against the render tree', 
 		const result = await lookup.lookup(String(id));
 		if (result.kind !== 'live') throw new Error(`${id} not found`);
 		const row = homeRow(result.record)!;
-		const place = starPlace(row)!;
-		const absMag = absoluteG(row);
+		const orbit = astrometricOrbit(result.record);
+		const place = starPlace(row, orbit)!;
+		const absMag = absoluteG(row, orbit);
 		const found = findRender(id, place.tree)!;
 		expect(found).not.toBeNull();
 		const { container, info } = found.node;
@@ -89,10 +90,13 @@ describe.skipIf(!HAS_EXPORT)('a star from its record, against the render tree', 
 		const proxima = await lookup.lookup('27424668');
 		if (sirius.kind !== 'live' || proxima.kind !== 'live') throw new Error('not found');
 		const siriusRow = homeRow(sirius.record)!;
-		const place = starPlace(homeRow(proxima.record)!)!;
+		const place = starPlace(homeRow(proxima.record)!, null)!;
 		const node = findRender(27424668, place.tree)!.node;
 		expect(
-			findStarRow(node, { tree: starPlace(siriusRow)!.tree, absMag: absoluteG(siriusRow) })
+			findStarRow(node, {
+				tree: starPlace(siriusRow, null)!.tree,
+				absMag: absoluteG(siriusRow, null)
+			})
 		).toBe(-1);
 		// Proxima's place with another magnitude is another star.
 		expect(findStarRow(node, { tree: place.tree, absMag: 3 })).toBe(-1);
@@ -101,7 +105,7 @@ describe.skipIf(!HAS_EXPORT)('a star from its record, against the render tree', 
 	it('has no place for a Hipparcos star with a parallax under 5σ', async () => {
 		const result = await lookup.lookup('16799379');
 		if (result.kind !== 'live') throw new Error('not found');
-		expect(starPlace(homeRow(result.record)!)).toBeNull();
-		expect(absoluteG(homeRow(result.record)!)).toBeNull();
+		expect(starPlace(homeRow(result.record)!, null)).toBeNull();
+		expect(absoluteG(homeRow(result.record)!, null)).toBeNull();
 	});
 });

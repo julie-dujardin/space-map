@@ -2,10 +2,11 @@
  * A star's place, magnitude and colour from its Point source row, by the
  * rules the render tree is built with (`docs/export-format/extrasolar.md`,
  * "Milky Way render tree"). So the star a page focuses is the one the tree
- * draws, at the record's full precision.
+ * draws, at the record's full precision. `orbit` is the star's astrometric
+ * table-2 row, which gives the distance where it has one.
  */
 
-import { parallaxDistancePc, type TableRow } from '$lib/fetch/extrasolar/lookup';
+import { distanceParallax, parallaxDistancePc, type TableRow } from '$lib/fetch/extrasolar/lookup';
 import { icrsToTree, treeToScene, type Vec3 } from './tree';
 
 /** Epoch of the render tree's positions (Julian year). */
@@ -81,8 +82,8 @@ export function propagate(
 }
 
 /** Where the star is drawn; null when it has no distance. */
-export function starPlace(row: TableRow): StarPlace | null {
-	const distancePc = parallaxDistancePc(row);
+export function starPlace(row: TableRow, orbit: TableRow | null): StarPlace | null {
+	const distancePc = parallaxDistancePc(row, orbit);
 	let ra = row.number('ra');
 	let dec = row.number('dec');
 	if (distancePc === null || ra === null || dec === null) return null;
@@ -111,11 +112,11 @@ export function apparentG(row: TableRow): number | null {
 }
 
 /** Absolute G at the parallax distance, with no extinction, as the tree rounds it. */
-export function absoluteG(row: TableRow): number | null {
+export function absoluteG(row: TableRow, orbit: TableRow | null): number | null {
 	const g = apparentG(row);
-	const parallax = row.number('parallax');
-	if (g === null || parallaxDistancePc(row) === null || parallax === null) return null;
-	return Math.round((g + 5 * Math.log10(parallax) - 10) / MAG_STEP) * MAG_STEP;
+	const used = distanceParallax(row, orbit);
+	if (g === null || used === null) return null;
+	return Math.round((g + 5 * Math.log10(used.parallax) - 10) / MAG_STEP) * MAG_STEP;
 }
 
 /** Gaia BP − RP, else from the Hipparcos V − I; null where neither. */

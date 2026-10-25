@@ -33,10 +33,11 @@ const GIANT_INTERCEPT = 0.3;
 
 export type StarKind = 'oba' | 'fgkDwarf' | 'giant' | 'mDwarf';
 
-/** The kind of a star; null without a colour or a distance. */
-export function starKind(ps: TableRow): StarKind | null {
+/** The kind of a star; null without a colour or a distance. `orbit` is the
+ *  record's `astrometricOrbit`, which can give the distance. */
+export function starKind(ps: TableRow, orbit: TableRow | null): StarKind | null {
 	const colour = colourBpRp(ps);
-	const mag = absoluteG(ps);
+	const mag = absoluteG(ps, orbit);
 	if (colour === null || mag === null) return null;
 	if (colour < OBA_MAX_COLOUR) return 'oba';
 	if (mag < GIANT_SLOPE * colour + GIANT_INTERCEPT) return 'giant';
@@ -204,9 +205,10 @@ export const METALLICITY_ORDER: Record<StarKind, readonly MetallicitySource[]> =
 /** The metallicity to show and its source; null where no source has one. */
 export function chooseMetallicity(
 	ps: TableRow,
+	orbit: TableRow | null,
 	dex: string
 ): (Metallicity & { source: string }) | null {
-	const kind = starKind(ps);
+	const kind = starKind(ps, orbit);
 	for (const { source, value } of kind ? METALLICITY_ORDER[kind] : FGK_DWARF_ORDER) {
 		const found = value(ps, dex);
 		if (found !== null) return { ...found, source };

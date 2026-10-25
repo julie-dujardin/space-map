@@ -112,6 +112,20 @@ export class TableRow {
 		if (!c.has(name) || !c.isValid(name, this.row)) return null;
 		return c.bool(name)[this.row] === 1;
 	}
+
+	/** A `uint64` column, exact past 2^53. */
+	bigint(name: string): bigint | null {
+		const c = this.container;
+		if (!c.has(name) || !c.isValid(name, this.row)) return null;
+		return c.uint64(name)[this.row];
+	}
+
+	/** A `float32_list` column, as a view on the tile; NaN entries stay. */
+	floats(name: string): Float32Array | null {
+		const c = this.container;
+		if (!c.has(name)) return null;
+		return c.float32List(name).get(this.row);
+	}
 }
 
 export interface ExtrasolarRecord {
@@ -164,13 +178,56 @@ const DEFAULT_LIMITS: LookupLimits = { tiles: 32, results: 64 };
 /** A parallax under this many times its error gives no distance. */
 const MIN_PARALLAX_SNR = 5;
 
-/** Distance from a row's parallax, pc; null when it gives none. The render
- *  tree places a star by the same rule. */
-export function parallaxDistancePc(row: TableRow): number | null {
+export const BINARY_ORBIT_SLUG = 'binary-orbit';
+/** Orbit solutions that fit the light centre's motion on the sky, with a
+ *  parallax of their own. */
+const ASTROMETRIC_SOLUTIONS = new Set([
+	'AstroSpectroSB1',
+	'OrbitalTargetedSearchValidated',
+	'OrbitalAlternativeValidated',
+	'Orbital',
+	'OrbitalTargetedSearch',
+	'OrbitalAlternative'
+]);
+
+/** The parallax that gives a star its distance, mas. */
+export interface DistanceParallax {
+	parallax: number;
+	error: number;
+	/** True when it is the parallax of the star's orbit solution. */
+	fromOrbit: boolean;
+}
+
+/** The table-2 row of a record whose orbit solution is astrometric. */
+export function astrometricOrbit(record: ExtrasolarRecord): TableRow | null {
+	const orbit = record.rows.get(BINARY_ORBIT_SLUG);
+	const type = orbit?.text('nss_solution_type');
+	return orbit && type && ASTROMETRIC_SOLUTIONS.has(type) ? orbit : null;
+}
+
+/**
+ * The render tree's rule: the row's own parallax over 5 times its error gives
+ * the star a distance, and an astrometric orbit solution's parallax, also over
+ * 5 times its error, gives its value. Null when the star has no distance.
+ * `orbit` is the record's `astrometricOrbit`. It has no default, so that no
+ * caller gets the single-star distance by omission.
+ */
+export function distanceParallax(row: TableRow, orbit: TableRow | null): DistanceParallax | null {
 	const parallax = row.number('parallax');
 	const error = row.number('parallax_error');
 	if (parallax === null || error === null || !(parallax / error > MIN_PARALLAX_SNR)) return null;
-	return 1000 / parallax;
+	const nss = orbit?.number('parallax_nss') ?? null;
+	const nssError = orbit?.number('parallax_nss_error') ?? null;
+	if (nss !== null && nssError !== null && nss / nssError > MIN_PARALLAX_SNR) {
+		return { parallax: nss, error: nssError, fromOrbit: true };
+	}
+	return { parallax, error, fromOrbit: false };
+}
+
+/** Distance from `distanceParallax`, pc; null when it gives none. */
+export function parallaxDistancePc(row: TableRow, orbit: TableRow | null): number | null {
+	const used = distanceParallax(row, orbit);
+	return used === null ? null : 1000 / used.parallax;
 }
 
 /** The home row of a record, where it has one. */
@@ -181,7 +238,7 @@ export function homeRow(record: ExtrasolarRecord): TableRow | null {
 /** Whether the record places the object in 3D. */
 export function hasDistance(record: ExtrasolarRecord): boolean {
 	const home = homeRow(record);
-	return home !== null && parallaxDistancePc(home) !== null;
+	return home !== null && parallaxDistancePc(home, astrometricOrbit(record)) !== null;
 }
 
 export function readMetadataRow(c: Container, row: number): MetadataRow {

@@ -3,6 +3,7 @@ import { Container } from '$lib/fetch/extrasolar/container';
 import { TableRow, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import type { ExtrasolarTable } from '$lib/fetch/extrasolar/files';
 import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
+import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
 import { makeStarBody } from './star-focus';
 
 function record(radius: number | null | undefined): ExtrasolarRecord {
@@ -36,6 +37,34 @@ function record(radius: number | null | undefined): ExtrasolarRecord {
 		credits: []
 	};
 }
+
+describe('a focused binary star', () => {
+	const star = [
+		{ name: 'ra', type: 'float64' as const, values: [45] },
+		{ name: 'dec', type: 'float64' as const, values: [30] },
+		{ name: 'parallax', type: 'float32' as const, values: [10] },
+		{ name: 'parallax_error', type: 'float32' as const, values: [0.125] },
+		{ name: 'phot_g_mean_mag', type: 'float32' as const, values: [8] }
+	];
+	const orbit = (type: string) => [
+		{ name: 'nss_solution_type', type: 'dict' as const, values: [type] },
+		{ name: 'parallax_nss', type: 'float32' as const, values: [12.5] },
+		{ name: 'parallax_nss_error', type: 'float32' as const, values: [0.0625] }
+	];
+	const distance = (tree: number[] | null | undefined) => Math.hypot(...(tree ?? [NaN]));
+
+	it('is placed and graded by the parallax of an astrometric orbit solution', () => {
+		const body = makeStarBody(pointSourceRecord(star, [], orbit('AstroSpectroSB1')));
+		expect(distance(body.extrasolar?.tree)).toBeCloseTo(80, 9);
+		expect(body.extrasolar?.absMag).toBeCloseTo(8 + 5 * Math.log10(12.5) - 10, 2);
+	});
+
+	it('keeps the single-star parallax beside an eclipsing solution', () => {
+		const body = makeStarBody(pointSourceRecord(star, [], orbit('EclipsingBinary')));
+		expect(distance(body.extrasolar?.tree)).toBeCloseTo(100, 9);
+		expect(body.extrasolar?.absMag).toBeCloseTo(8 + 5 * Math.log10(10) - 10, 2);
+	});
+});
 
 describe('a focused stellar photosphere', () => {
 	it('converts solar radii to km for both the camera and renderer', () => {

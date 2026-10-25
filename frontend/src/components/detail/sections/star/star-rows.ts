@@ -8,7 +8,9 @@ import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import type { CrossId } from '$lib/fetch/extrasolar/container';
 import {
-	parallaxDistancePc,
+	astrometricOrbit,
+	distanceParallax,
+	type DistanceParallax,
 	type ExtrasolarRecord,
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
@@ -29,6 +31,8 @@ import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
 
 export const POINT_SOURCE_SLUG = 'point-source';
+/** The source name of a parallax from an orbit solution. */
+const ORBIT_PARALLAX_SOURCE = 'gaia-dr3-nss';
 
 /** A class probability under this reads as a bound. */
 const SMALLEST_SHARE = 1e-4;
@@ -136,8 +140,8 @@ const METALLICITY_LABELS: Record<MetallicityQuantity, () => string> = {
 };
 
 /** The metallicity row and its source row; none where no source has a value. */
-function metallicityRows(ps: TableRow, dex: string): StarRowEntry[] {
-	const chosen = chooseMetallicity(ps, dex);
+function metallicityRows(ps: TableRow, orbit: TableRow | null, dex: string): StarRowEntry[] {
+	const chosen = chooseMetallicity(ps, orbit, dex);
 	if (chosen === null) return [];
 	return [
 		{ label: METALLICITY_LABELS[chosen.quantity](), value: chosen.value },
@@ -196,7 +200,8 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const ps = pointSource(record);
 	if (!ps) return [];
 	const out: Stat[] = [];
-	const distance = parallaxDistancePc(ps);
+	const used = distanceParallax(ps, astrometricOrbit(record));
+	const distance = used && 1000 / used.parallax;
 	if (distance !== null) {
 		out.push({
 			label: m.star_stat_distance(),
@@ -225,11 +230,10 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	}
 	// In the band of the apparent magnitude: a Hipparcos star has no G of its own.
 	const apparent = gaiaG ?? v;
-	const parallax = ps.number('parallax');
-	if (apparent !== null && parallax !== null && distance !== null) {
+	if (apparent !== null && used !== null) {
 		out.push({
 			label: m.star_stat_absolute_magnitude(),
-			value: fixed(apparent + 5 * Math.log10(parallax) - 10, 2),
+			value: fixed(apparent + 5 * Math.log10(used.parallax) - 10, 2),
 			note: gaiaG !== null ? 'G' : 'V'
 		});
 	}
@@ -255,18 +259,30 @@ export function starSections(record: ExtrasolarRecord): StarSection[] {
 			])
 		}
 	];
-	if (ps) sections.push(...pointSourceSections(ps, u));
+	if (ps) sections.push(...pointSourceSections(ps, astrometricOrbit(record), u));
 	return sections.filter((section) => section.rows.length > 0);
 }
 
-function pointSourceSections(ps: TableRow, u: ReturnType<typeof units>): StarSection[] {
+/** The astrometry source, and the orbit solution where its parallax is used. */
+function astrometrySourceName(source: string | null, used: DistanceParallax | null): string | null {
+	if (!source) return null;
+	if (!used?.fromOrbit) return starSourceName(source);
+	return m.star_astrometry_orbit_parallax({
+		source: starSourceName(source),
+		orbit: starSourceName(ORBIT_PARALLAX_SOURCE)
+	});
+}
+
+function pointSourceSections(
+	ps: TableRow,
+	orbit: TableRow | null,
+	u: ReturnType<typeof units>
+): StarSection[] {
 	const ra = ps.number('ra');
 	const dec = ps.number('dec');
 	const epoch = ps.number('epoch');
-	const parallax = ps.number('parallax');
-	const parallaxError = ps.number('parallax_error');
-	const distance = parallaxDistancePc(ps);
-	const astrometrySource = ps.text('astrometry_source');
+	const used = distanceParallax(ps, orbit);
+	const distance = used && 1000 / used.parallax;
 	const position: (StarRowEntry | null)[] = [
 		ra !== null && dec !== null
 			? {
@@ -289,14 +305,16 @@ function pointSourceSections(ps: TableRow, u: ReturnType<typeof units>): StarSec
 				}
 			: null,
 		epoch !== null ? { label: m.orbit_epoch(), value: epochLabel(epoch) } : null,
-		measured(ps, m.star_row_parallax(), 'parallax', 'parallax_error', u.mas),
-		distance !== null && parallax !== null && parallaxError !== null
+		used
+			? { label: m.star_row_parallax(), value: plusMinus(used.parallax, used.error, u.mas, 2) }
+			: measured(ps, m.star_row_parallax(), 'parallax', 'parallax_error', u.mas),
+		used && distance !== null
 			? {
 					label: m.star_row_distance(),
 					value: withBounds(
 						distance,
-						1000 / (parallax + parallaxError),
-						1000 / (parallax - parallaxError),
+						1000 / (used.parallax + used.error),
+						1000 / (used.parallax - used.error),
 						u.pc
 					)
 				}
@@ -304,7 +322,7 @@ function pointSourceSections(ps: TableRow, u: ReturnType<typeof units>): StarSec
 		measured(ps, m.star_row_pm_ra(), 'pmra', 'pmra_error', u.masPerYear),
 		measured(ps, m.star_row_pm_dec(), 'pmdec', 'pmdec_error', u.masPerYear),
 		measured(ps, m.star_row_radial_velocity(), 'radial_velocity', 'radial_velocity_error', u.kms),
-		row(m.star_row_astrometry_source(), astrometrySource && starSourceName(astrometrySource))
+		row(m.star_row_astrometry_source(), astrometrySourceName(ps.text('astrometry_source'), used))
 	];
 
 	const g = ps.number('phot_g_mean_mag');
@@ -357,7 +375,7 @@ function pointSourceSections(ps: TableRow, u: ReturnType<typeof units>): StarSec
 				}
 			: null,
 		bounded(ps, m.star_row_logg(), 'logg_gspphot'),
-		...metallicityRows(ps, u.dex),
+		...metallicityRows(ps, orbit, u.dex),
 		bounded(ps, m.star_row_distance_photometric(), 'distance_gspphot', u.pc),
 		bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
 		bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),

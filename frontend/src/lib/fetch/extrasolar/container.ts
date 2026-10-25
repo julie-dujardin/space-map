@@ -36,7 +36,9 @@ export type ColumnType =
 	| 'string'
 	| 'dict'
 	| 'cross_ids'
-	| 'bits';
+	| 'bits'
+	| 'uint64'
+	| 'float32_list';
 
 const TYPE_CODES: Record<number, ColumnType> = {
 	1: 'bool',
@@ -52,7 +54,9 @@ const TYPE_CODES: Record<number, ColumnType> = {
 	11: 'string',
 	12: 'dict',
 	13: 'cross_ids',
-	14: 'bits'
+	14: 'bits',
+	15: 'uint64',
+	16: 'float32_list'
 };
 
 export class ContainerFormatError extends Error {
@@ -152,6 +156,24 @@ export class CrossIdsColumn {
 			});
 		}
 		return out;
+	}
+}
+
+/** A list of float32 values per row, as views on one buffer. */
+export class Float32ListColumn {
+	constructor(
+		readonly offsets: Uint32Array,
+		readonly values: Float32Array,
+		private readonly validity: Uint8Array | null
+	) {}
+
+	get length(): number {
+		return this.offsets.length - 1;
+	}
+
+	get(i: number): Float32Array | null {
+		if (this.validity && !bitAt(this.validity, i)) return null;
+		return this.values.subarray(this.offsets[i], this.offsets[i + 1]);
 	}
 }
 
@@ -303,6 +325,20 @@ export class Container {
 	/** Integer IDs below 2^53 as exact numbers. A null reads as 0. */
 	ids(name: string): Float64Array {
 		return this.numbers(name, 'id', Float64Array);
+	}
+
+	/** Integers that can pass 2^53, such as bit fields. A null reads as 0. */
+	uint64(name: string): BigUint64Array {
+		return this.numbers(name, 'uint64', BigUint64Array);
+	}
+
+	float32List(name: string): Float32ListColumn {
+		const { validity, places } = this.typed(name, 'float32_list');
+		return new Float32ListColumn(
+			this.view(places[0], Uint32Array),
+			this.view(places[1], Float32Array),
+			validity
+		);
 	}
 
 	strings(name: string): StringColumn {

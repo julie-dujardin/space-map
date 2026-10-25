@@ -7,11 +7,22 @@
 import { gzipSync } from 'node:zlib';
 import type { CrossId } from '../container';
 
-type Value = number | string | boolean | CrossId[] | null;
+type Value = number | bigint | string | boolean | CrossId[] | number[] | null;
 
 export interface ColumnSpec {
 	name: string;
-	type: 'bool' | 'uint32' | 'float32' | 'float64' | 'id' | 'string' | 'dict' | 'cross_ids' | 'bits';
+	type:
+		| 'bool'
+		| 'uint32'
+		| 'float32'
+		| 'float64'
+		| 'id'
+		| 'string'
+		| 'dict'
+		| 'cross_ids'
+		| 'bits'
+		| 'uint64'
+		| 'float32_list';
 	values: Value[];
 }
 
@@ -24,7 +35,9 @@ const CODES: Record<ColumnSpec['type'], number> = {
 	string: 11,
 	dict: 12,
 	cross_ids: 13,
-	bits: 14
+	bits: 14,
+	uint64: 15,
+	float32_list: 16
 };
 
 const encoder = new TextEncoder();
@@ -75,6 +88,14 @@ function buffers(spec: ColumnSpec): Uint8Array[] {
 			return [new Uint8Array(Float64Array.from(v.map((x) => (x as number | null) ?? NaN)).buffer)];
 		case 'id':
 			return [new Uint8Array(Float64Array.from(v.map((x) => (x as number | null) ?? 0)).buffer)];
+		case 'uint64':
+			return [new Uint8Array(BigUint64Array.from(v.map((x) => (x as bigint | null) ?? 0n)).buffer)];
+		case 'float32_list': {
+			const lists = v.map((x) => (x as number[] | null) ?? []);
+			const offsets = [0];
+			for (const list of lists) offsets.push(offsets[offsets.length - 1] + list.length);
+			return [u32(offsets), new Uint8Array(Float32Array.from(lists.flat()).buffer)];
+		}
 		case 'string':
 			return strings(v as (string | null)[]);
 		case 'dict': {

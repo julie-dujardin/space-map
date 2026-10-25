@@ -101,6 +101,51 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 	});
 });
 
+describe("a binary star's distance", () => {
+	const star = (parallax: number, error: number): ColumnSpec[] => [
+		{ name: 'ra', type: 'float64', values: [45] },
+		{ name: 'dec', type: 'float64', values: [30] },
+		{ name: 'parallax', type: 'float32', values: [parallax] },
+		{ name: 'parallax_error', type: 'float32', values: [error] },
+		{ name: 'phot_g_mean_mag', type: 'float32', values: [8] },
+		{ name: 'astrometry_source', type: 'dict', values: ['gaia-dr3'] }
+	];
+	const orbit = (type: string): ColumnSpec[] => [
+		{ name: 'nss_solution_type', type: 'dict', values: [type] },
+		{ name: 'parallax_nss', type: 'float32', values: [12.5] },
+		{ name: 'parallax_nss_error', type: 'float32', values: [0.0625] },
+		{ name: 'orbit_source', type: 'dict', values: ['gaia-dr3'] }
+	];
+	const position = (record: ExtrasolarRecord) =>
+		Object.fromEntries(
+			starSections(record)
+				.find((s) => s.key === 'position')!
+				.rows.map((x) => [x.label, plain(x.value)])
+		);
+	const stats = (record: ExtrasolarRecord) =>
+		starStats(record).map((row) => row.map((s) => [s.label, s.value, s.note]));
+
+	it('shows the parallax of an astrometric orbit solution and names it', () => {
+		const binary = pointSourceRecord(star(10, 0.125), [], orbit('Orbital'));
+		// The same as a single star with the orbit's parallax.
+		const same = pointSourceRecord(star(12.5, 0.0625));
+		expect(stats(binary)).toEqual(stats(same));
+		const rows = position(binary);
+		const expected = position(same);
+		expect(rows.Parallax).toBe(expected.Parallax);
+		expect(rows.Distance).toBe(expected.Distance);
+		expect(rows.Astrometry).toBe('Gaia DR3, parallax from Gaia DR3 orbit solution');
+		expect(expected.Astrometry).toBe('Gaia DR3');
+	});
+
+	it('keeps the single-star parallax beside a spectroscopic solution', () => {
+		const binary = pointSourceRecord(star(10, 0.125), [], orbit('SB1'));
+		const single = pointSourceRecord(star(10, 0.125));
+		expect(stats(binary)).toEqual(stats(single));
+		expect(position(binary)).toEqual(position(single));
+	});
+});
+
 describe('the metallicity row', () => {
 	const gspphot: ColumnSpec[] = [
 		{ name: 'mh_gspphot', type: 'float32', values: [-0.8] },
