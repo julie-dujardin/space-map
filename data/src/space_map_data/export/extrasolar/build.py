@@ -81,6 +81,13 @@ CREDITS = (
         "citation": "Rybizki et al. 2022, MNRAS 510, 2597",
     },
     {
+        "name": "Metallicities from Gaia XP spectra",
+        "organisation": "Andrae, Rix & Chandra 2023",
+        "source": "https://doi.org/10.5281/zenodo.7945154",
+        "license": "CC BY 4.0",
+        "citation": "Andrae, Rix & Chandra 2023, ApJS 267, 8",
+    },
+    {
         "name": "Hipparcos, the new reduction (I/311)",
         "organisation": "ESA",
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/I/311",

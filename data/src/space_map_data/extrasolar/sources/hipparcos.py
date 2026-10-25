@@ -3,7 +3,8 @@
 The star list and the astrometry come from the new reduction (van Leeuwen
 2007, I/311) at epoch J1991.25. The magnitudes, colours, spectral type and HD
 number come from the catalogue of 1997 (I/239), and the Bayer or Flamsteed
-designation from XHIP (Anderson & Francis 2012, V/137D).
+designation and the iron abundance [Fe/H] from XHIP (Anderson & Francis 2012,
+V/137D).
 
 A star matches Gaia DR3 by its best neighbour first: the Gaia row claims the
 HIP number, and the Hipparcos row claims the DR3 id. The DR3 id is then kept
@@ -58,6 +59,15 @@ XHIP_DIR = cds_stars.OUT_DIR / "V/137D"
 HIP2_FILE = "hip2.dat.gz"
 HIP_MAIN_FILE = "hip_main.dat"
 XHIP_FILE = "biblio.dat.gz"
+XHIP_MAIN_FILE = "main.dat.gz"
+XHIP_METALLICITY_FIELDS = {
+    "HIP": "hip",
+    "[Fe/H]": "feh_xhip",
+    "e_[Fe/H]": "feh_xhip_error",
+    "q_[Fe/H]": "feh_xhip_quality",
+}
+# XHIP writes this error where it has none (its note 14).
+NO_FEH_ERROR = 9.99
 
 EPOCH = 1991.25
 
@@ -222,7 +232,21 @@ def read_stars(
         if name != "hip":
             stars = stars.append_column(name, main[name].take(at))
     at = pc.index_in(stars["hip"], value_set=names["hip"])
-    return stars.append_column("xhip_name", names["xhip_name"].take(at))
+    stars = stars.append_column("xhip_name", names["xhip_name"].take(at))
+    feh = read_fixed_width(
+        xhip_dir / XHIP_MAIN_FILE, _readme(xhip_dir), XHIP_METALLICITY_FIELDS
+    )
+    error = feh["feh_xhip_error"]
+    feh = feh.set_column(
+        feh.schema.get_field_index("feh_xhip_error"),
+        "feh_xhip_error",
+        pc.if_else(pc.equal(error, NO_FEH_ERROR), pa.scalar(None, error.type), error),
+    )
+    at = pc.index_in(stars["hip"], value_set=feh["hip"])
+    for name in XHIP_METALLICITY_FIELDS.values():
+        if name != "hip":
+            stars = stars.append_column(name, feh[name].take(at))
+    return stars
 
 
 def _claims(rows: list[list[tuple[str, str, str]]]) -> pa.Array:
@@ -300,7 +324,11 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
         "name": pa.array(names, pa.string()),
         "class": pa.array(np.full(n, "star"), pa.string()),
     }
-    copied = set(HIP2_FIELDS.values()) | set(HIP_MAIN_FIELDS.values())
+    copied = (
+        set(HIP2_FIELDS.values())
+        | set(HIP_MAIN_FIELDS.values())
+        | set(XHIP_METALLICITY_FIELDS.values())
+    )
     columns |= {
         name: stars[name]
         for name in sorted(copied - {"hip", "hd", "ra_rad", "dec_rad"})

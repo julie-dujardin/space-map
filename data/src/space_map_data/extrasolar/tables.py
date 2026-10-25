@@ -118,7 +118,9 @@ OBJECT_CATALOGUES = frozenset({"wikidata"})
 # Every Gaia DR3 field of the positionable stars with its error or range, and
 # the Hipparcos astrometry and photometry. A group that one catalogue fills
 # keeps that catalogue's names. The Gaia rows also carry the astrometric
-# fidelity of Rybizki et al. 2022.
+# fidelity of Rybizki et al. 2022 and the XP metallicities of Andrae et al.
+# 2023. The metallicity groups after them come from spectra, one catalogue
+# each.
 POINT_SOURCE = TableDef(
     number=1,
     slug="point-source",
@@ -221,6 +223,60 @@ POINT_SOURCE = TableDef(
                 pa.field("libname_gspphot", pa.string()),
             ),
             ("gaia-dr3",),
+        ),
+        # Table 1 of Andrae et al. 2023, with no quality cut: [M/H] in dex,
+        # Teff in K, log g in log(cm/s²), CatWISE W1 and W2 in Vega mag.
+        # The flags mark their vetted Table 2 and the Gaia golden sample of
+        # OBA stars, the inputs of their validity cuts.
+        ColumnGroup(
+            "xgboost",
+            (
+                *_fields(
+                    pa.float32(),
+                    "mh_xgboost",
+                    "teff_xgboost",
+                    "logg_xgboost",
+                    "catwise_w1",
+                    "catwise_w2",
+                ),
+                *_fields(
+                    pa.bool_(),
+                    "in_training_sample",
+                    "in_vetted_rgb_sample",
+                    "in_oba_golden_sample",
+                ),
+            ),
+            ("gaia-dr3",),
+        ),
+        # GSP-Spec from the RVS spectra, with the calibrations of
+        # Recio-Blanco et al. 2023: [M/H] and [Fe/M] in dex, log g in
+        # log(cm/s²), and the 41-character flag chain as published.
+        ColumnGroup(
+            "gspspec",
+            (
+                *_fields(
+                    pa.float32(),
+                    *(
+                        f"{name}_gspspec{bound}"
+                        for name in ("mh", "fem", "logg")
+                        for bound in ("", "_lower", "_upper")
+                    ),
+                    "mh_gspspec_calibrated",
+                    "feh_gspspec_calibrated",
+                ),
+                pa.field("flags_gspspec", pa.string()),
+            ),
+            ("gaia-dr3",),
+        ),
+        # XHIP [Fe/H] (Anderson & Francis 2012). Quality A and B are
+        # calibrated, C is not.
+        ColumnGroup(
+            "xhip_metallicity",
+            (
+                *_fields(pa.float32(), "feh_xhip", "feh_xhip_error"),
+                pa.field("feh_xhip_quality", pa.string()),
+            ),
+            ("hipparcos-2007",),
         ),
         ColumnGroup(
             "astrometric_quality",

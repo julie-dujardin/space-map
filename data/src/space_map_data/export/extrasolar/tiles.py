@@ -41,7 +41,9 @@ ROOTS = 12
 # median tiles are about 64 kB and 73 kB.
 MAX_ROWS = {METADATA.slug: 7_500, "point-source": 900}
 # String columns with few distinct values, besides the group source columns.
-DICTIONARY = frozenset({"class", "phot_variable_flag", "libname_gspphot"})
+DICTIONARY = frozenset(
+    {"class", "phot_variable_flag", "libname_gspphot", "feh_xhip_quality"}
+)
 TILE_INFO = struct.Struct("<IBBxx")
 SPLIT_FILE = "split.bin.gz"
 EXAMPLES = 10

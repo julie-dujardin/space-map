@@ -45,7 +45,12 @@ def at(arcsec: float, angle: float = 0.0) -> tuple[float, float]:
 def gaia_stars(rows: list[dict]) -> pa.Table:
     """Gaia rows with every downloaded column; the others are null."""
     columns = {}
-    for name in (*gaia.COLUMNS, *gaia.ASTROPHYSICAL_COLUMNS):
+    for name in (
+        *gaia.COLUMNS,
+        *gaia.ASTROPHYSICAL_COLUMNS,
+        *gaia.GSPSPEC_CALIBRATED,
+        *gaia.XGBOOST_COLUMNS,
+    ):
         kind = (
             pa.int64() if name == "source_id" else POINT_SOURCE.schema.field(name).type
         )
@@ -78,6 +83,26 @@ def fidelity(rows: list[tuple[int, float]]) -> pa.Table:
     )
 
 
+def astrophysical(ids: list[int], **values: list) -> pa.Table:
+    """An astrophysical parameters chunk; the columns not given are null."""
+    columns = {"source_id": pa.array(ids, pa.int64())}
+    for name in gaia.ASTROPHYSICAL_COLUMNS:
+        kind = POINT_SOURCE.schema.field(name).type
+        columns[name] = pa.array(values.get(name, [None] * len(ids)), kind)
+    return pa.table(columns)
+
+
+def xgboost(rows: list[tuple[int, float, bool]]) -> pa.Table:
+    """XGBoost rows: source_id, [M/H] and the vetted flag; the rest are null."""
+    columns = {"source_id": pa.array([r[0] for r in rows], pa.int64())}
+    for name in gaia.XGBOOST_COLUMNS:
+        kind = POINT_SOURCE.schema.field(name).type
+        columns[name] = pa.nulls(len(rows), kind)
+    columns["mh_xgboost"] = pa.array([r[1] for r in rows], pa.float32())
+    columns["in_vetted_rgb_sample"] = pa.array([r[2] for r in rows])
+    return pa.table(columns)
+
+
 def hip_stars(rows: list[dict]) -> pa.Table:
     """Rows as `hipparcos.read_stars` gives them, at rest at J1991.25."""
     float_names = [
@@ -102,6 +127,11 @@ def hip_stars(rows: list[dict]) -> pa.Table:
     columns["sp_type"] = pa.array([r.get("sp_type") for r in rows], pa.string())
     columns["hd"] = pa.array([r.get("hd") for r in rows], pa.int64())
     columns["xhip_name"] = pa.array([r.get("xhip_name") for r in rows], pa.string())
+    for name in ("feh_xhip", "feh_xhip_error"):
+        columns[name] = pa.array([r.get(name) for r in rows], pa.float64())
+    columns["feh_xhip_quality"] = pa.array(
+        [r.get("feh_xhip_quality") for r in rows], pa.string()
+    )
     return pa.table(columns)
 
 
@@ -197,6 +227,7 @@ class TestGaiaRows:
             source_dir=tmp_path,
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            xgboost_dir=tmp_path,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
@@ -204,15 +235,14 @@ class TestGaiaRows:
         pq.write_table(
             fidelity([(1, 0.9), (2, 0.9), (3, 0.9)]), reader.fidelity_path(path)
         )
-        parameters = pa.table(
-            {
-                "source_id": pa.array([3, 1], pa.int64()),
-                "radius_gspphot": pa.array([0.2, 2.0], pa.float32()),
-                "radius_gspphot_lower": pa.array([0.1, 1.8], pa.float32()),
-                "radius_gspphot_upper": pa.array([0.3, 2.2], pa.float32()),
-            }
+        parameters = astrophysical(
+            [3, 1],
+            radius_gspphot=[0.2, 2.0],
+            radius_gspphot_lower=[0.1, 1.8],
+            radius_gspphot_upper=[0.3, 2.2],
         )
         pq.write_table(parameters, reader.astrophysical_path(path))
+        pq.write_table(xgboost([]), reader.xgboost_path(path))
         (rows,) = reader.batches([path])
         assert rows["catalogue_id"].to_pylist() == ["1", "2", "3"]
         assert rows["radius_gspphot"].to_pylist() == pytest.approx([2.0, None, 0.2])
@@ -228,12 +258,50 @@ class TestGaiaRows:
             BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            xgboost_dir=tmp_path,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         pq.write_table(fidelity([]), reader.fidelity_path(path))
+        pq.write_table(xgboost([]), reader.xgboost_path(path))
         with pytest.raises(
             FileNotFoundError, match="no astrophysical parameters chunk"
         ):
+            list(reader.batches([path]))
+
+    def test_xgboost_join_keeps_stars_without_a_row(self, tmp_path):
+        reader = gaia.GaiaReader(
+            BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
+            source_dir=tmp_path,
+            fidelity_dir=tmp_path,
+            astrophysical_dir=tmp_path,
+            xgboost_dir=tmp_path,
+        )
+        path = tmp_path / "GaiaSource_000001-000002.parquet"
+        stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
+        pq.write_table(stars.select(gaia.COLUMNS), path)
+        pq.write_table(
+            fidelity([(1, 0.9), (2, 0.9), (3, 0.9)]), reader.fidelity_path(path)
+        )
+        pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(
+            xgboost([(3, -1.25, True), (1, 0.125, False)]), reader.xgboost_path(path)
+        )
+        [rows] = list(reader.batches([path]))
+        assert rows["mh_xgboost"].to_pylist() == [0.125, None, -1.25]
+        assert rows["in_vetted_rgb_sample"].to_pylist() == [False, None, True]
+        assert reader.counts["xgboost"] == 2
+
+    def test_missing_xgboost_chunk_fails_before_reading(self, tmp_path):
+        reader = gaia.GaiaReader(
+            BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
+            fidelity_dir=tmp_path,
+            astrophysical_dir=tmp_path,
+            xgboost_dir=tmp_path,
+        )
+        path = tmp_path / "GaiaSource_000001-000002.parquet"
+        pq.write_table(fidelity([]), reader.fidelity_path(path))
+        pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        with pytest.raises(FileNotFoundError, match="no XGBoost parameters chunk"):
             list(reader.batches([path]))
 
 
@@ -345,31 +413,35 @@ class TestHipparcos:
         assert moved * 3600 == pytest.approx(24.75, rel=1e-3)
 
     def test_read_stars_joins_the_three_catalogues(self, tmp_path):
-        def catalogue(directory: str, file: str, fields: list[str], lines: list[str]):
-            readme = [
-                f"Byte-by-byte Description of file: {file.removesuffix('.gz')}",
-                "-" * 80,
-                "Bytes",
-                "-" * 80,
-            ]
-            for at, label in enumerate(fields):
-                start = 1 + 12 * at
-                kind = (
-                    "I6"
-                    if label in ("HIP", "HD")
-                    else "A11"
-                    if label in ("SpType", "Name")
-                    else "F11.4"
-                )
-                readme.append(f"{start:4d}-{start + 10:3d}  {kind:6s} ---  {label}  x")
-            readme.append("-" * 80)
+        def catalogue(directory: str, *files: tuple[str, list[str], list[str]]):
+            readme = []
             path = tmp_path / directory
             path.mkdir()
+            for file, fields, lines in files:
+                readme += [
+                    f"Byte-by-byte Description of file: {file.removesuffix('.gz')}",
+                    "-" * 80,
+                    "Bytes",
+                    "-" * 80,
+                ]
+                for at, label in enumerate(fields):
+                    start = 1 + 12 * at
+                    kind = (
+                        "I6"
+                        if label in ("HIP", "HD")
+                        else "A11"
+                        if label in ("SpType", "Name", "q_[Fe/H]")
+                        else "F11.4"
+                    )
+                    readme.append(
+                        f"{start:4d}-{start + 10:3d}  {kind:6s} ---  {label}  x"
+                    )
+                readme.append("-" * 80)
+                content = ("\n".join(lines) + "\n").encode()
+                if file.endswith(".gz"):
+                    content = gzip.compress(content)
+                (path / file).write_bytes(content)
             (path / README).write_text("\n".join(readme) + "\n")
-            content = ("\n".join(lines) + "\n").encode()
-            if file.endswith(".gz"):
-                content = gzip.compress(content)
-            (path / file).write_bytes(content)
             return path
 
         def line(*values: object) -> str:
@@ -379,22 +451,32 @@ class TestHipparcos:
         main_fields = list(hipparcos.HIP_MAIN_FIELDS)
         hip2 = catalogue(
             "hip2",
-            hipparcos.HIP2_FILE,
-            hip2_fields,
-            [line(1, 0.1, 0.2, *[1.0] * 8), line(2, 0.3, 0.4, *[2.0] * 8)],
+            (
+                hipparcos.HIP2_FILE,
+                hip2_fields,
+                [line(1, 0.1, 0.2, *[1.0] * 8), line(2, 0.3, 0.4, *[2.0] * 8)],
+            ),
         )
         main = catalogue(
             "main",
-            hipparcos.HIP_MAIN_FILE,
-            main_fields,
-            [
-                line(2, 4.0, 0.01, 4.1, 0.5, 0.01, 0.6, 0.01, "G2V", 200),
-                line(1, 3.0, 0.01, 3.1, 0.4, 0.01, 0.5, 0.01, "K0III", None),
-                line(9, 1.0, 0.01, 1.1, 0.1, 0.01, 0.1, 0.01, "B0", 900),
-            ],
+            (
+                hipparcos.HIP_MAIN_FILE,
+                main_fields,
+                [
+                    line(2, 4.0, 0.01, 4.1, 0.5, 0.01, 0.6, 0.01, "G2V", 200),
+                    line(1, 3.0, 0.01, 3.1, 0.4, 0.01, 0.5, 0.01, "K0III", None),
+                    line(9, 1.0, 0.01, 1.1, 0.1, 0.01, 0.1, 0.01, "B0", 900),
+                ],
+            ),
         )
         xhip = catalogue(
-            "xhip", hipparcos.XHIP_FILE, ["HIP", "Name"], [line(2, "Tau Ceti")]
+            "xhip",
+            (hipparcos.XHIP_FILE, ["HIP", "Name"], [line(2, "Tau Ceti")]),
+            (
+                hipparcos.XHIP_MAIN_FILE,
+                list(hipparcos.XHIP_METALLICITY_FIELDS),
+                [line(2, -0.5, 9.99, "C"), line(1, 0.1, 0.05, "A")],
+            ),
         )
         table = hipparcos.read_stars(hip2, main, xhip)
         assert table["hip"].to_pylist() == [1, 2]
@@ -402,6 +484,10 @@ class TestHipparcos:
         assert table["hd"].to_pylist() == [None, 200]
         assert table["xhip_name"].to_pylist() == [None, "Tau Ceti"]
         assert table["ra_rad"].to_pylist() == [0.1, 0.3]
+        assert table["feh_xhip"].to_pylist() == [0.1, -0.5]
+        # 9.99 means no error.
+        assert table["feh_xhip_error"].to_pylist() == [0.05, None]
+        assert table["feh_xhip_quality"].to_pylist() == ["A", "C"]
 
 
 class TestNames:

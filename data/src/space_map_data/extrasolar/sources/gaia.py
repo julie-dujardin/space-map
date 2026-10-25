@@ -1,10 +1,13 @@
-"""Gaia DR3 positions, fidelity and GSP-Phot radii, joined by source_id.
+"""Gaia DR3 positions, fidelity, GSP-Phot radii, GSP-Spec and XP metallicities.
 
-Low-fidelity stars mint only when matched by another catalogue. Missing
-companion rows preserve the star, with null fidelity or radius.
+The companion tables join by source_id. Low-fidelity stars mint only when
+matched by another catalogue. A star without a companion row stays, with null
+values for that table. GSP-Spec gets the calibrations of Recio-Blanco et al.
+2023 (A&A 674, A29); its flag chain stays as published, for the reader's cut.
 
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
-2022, MNRAS 510, 2597.
+2022, MNRAS 510, 2597. XP metallicities: Andrae, Rix & Chandra 2023, ApJS 267,
+8, CC BY 4.0.
 """
 
 import logging
@@ -26,11 +29,12 @@ from space_map_data.download.providers.stars import (
     gaia_cross_match,
     gaia_fidelity,
     gaia_source,
+    gaia_xp_metallicity,
 )
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.tables import CROSS_ID
-from space_map_data.utils.arrays import map_sorted
+from space_map_data.utils.arrays import floats, map_sorted
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ HIP = ("hip", "2007")
 SOURCE_DIR = gaia_bulk.OUT_DIR / gaia_source.TABLE_PATH
 FIDELITY_DIR = gaia_bulk.OUT_DIR / gaia_fidelity.TABLE_PATH
 ASTROPHYSICAL_DIR = gaia_bulk.OUT_DIR / gaia_astrophysical_parameters.TABLE_PATH
+XGBOOST_DIR = gaia_bulk.OUT_DIR / gaia_xp_metallicity.TABLE_PATH
 BEST_NEIGHBOUR = (
     gaia_bulk.OUT_DIR
     / gaia_cross_match.TREE
@@ -52,10 +57,30 @@ MIN_FIDELITY = 0.5
 # parallax_over_error is parallax / parallax_error, so it is not kept.
 COLUMNS = tuple(name for name in gaia_source.COLUMNS if name != "parallax_over_error")
 FIDELITY_COLUMNS = ("fidelity_v2", "norm_dg")
+GSPSPEC_COLUMNS = (
+    *(
+        f"{name}_gspspec{bound}"
+        for name in ("mh", "fem", "logg")
+        for bound in ("", "_lower", "_upper")
+    ),
+    "flags_gspspec",
+)
 ASTROPHYSICAL_COLUMNS = (
     "radius_gspphot",
     "radius_gspphot_lower",
     "radius_gspphot_upper",
+    *GSPSPEC_COLUMNS,
+)
+GSPSPEC_CALIBRATED = ("mh_gspspec_calibrated", "feh_gspspec_calibrated")
+# Recio-Blanco et al. 2023: [M/H] from the literature fit of Table 3, [Fe I/H]
+# from Table 4, both polynomials of the uncalibrated log g in ascending powers.
+MH_CALIBRATION = (0.274, -0.1373, -0.0050, 0.0048)
+FEH_CALIBRATION = (0.3699, -0.0680, 0.0028, -0.0004)
+FEH_LOGG_RANGE = (1.01, 4.85)
+# Characters of flags_gspspec, from 0: extrapol, FeUpLim, FeUncer (Table 2).
+EXTRAPOL, FE_UPPER_LIMIT, FE_UNCERTAINTY = 7, 27, 28
+XGBOOST_COLUMNS = tuple(
+    name for name in gaia_xp_metallicity.SCHEMA.names if name != "source_id"
 )
 
 
@@ -109,24 +134,63 @@ def single_claims(catalogue: str, release: str, ids: np.ndarray) -> pa.Array:
     )
 
 
-def join_fidelity(stars: pa.Table, fidelity: pa.Table) -> pa.Table:
-    """`stars` with the fidelity columns of the same source, null where none."""
-    at = pc.index_in(stars["source_id"], value_set=fidelity["source_id"])
-    for name in FIDELITY_COLUMNS:
-        stars = stars.append_column(name, fidelity[name].take(at))
+def join_rows(stars: pa.Table, rows: pa.Table, names: Iterable[str]) -> pa.Table:
+    """`stars` with the columns `names` of the row of the same source.
+
+    A star without a row stays, with null values: no default may stand in for
+    a missing radius or metallicity.
+    """
+    at = pc.index_in(stars["source_id"], value_set=rows["source_id"])
+    for name in names:
+        stars = stars.append_column(name, rows[name].take(at))
     return stars
 
 
-def join_astrophysical(stars: pa.Table, parameters: pa.Table) -> pa.Table:
-    """Keep stars without a radius; absence must not become a solar radius."""
-    at = pc.index_in(stars["source_id"], value_set=parameters["source_id"])
-    for name in ASTROPHYSICAL_COLUMNS:
-        stars = stars.append_column(name, parameters[name].take(at))
+def join_fidelity(stars: pa.Table, fidelity: pa.Table) -> pa.Table:
+    return join_rows(stars, fidelity, FIDELITY_COLUMNS)
+
+
+def _flag(flags: pa.ChunkedArray, at: int) -> np.ndarray:
+    """One character of each flag chain as a number, 9 where there is none."""
+    padded = pc.utf8_rpad(flags.fill_null(""), at + 1, "9")
+    chars = pc.utf8_slice_codeunits(padded, at, at + 1)
+    return pc.cast(chars, pa.int8()).to_numpy()
+
+
+def calibrate_gspspec(stars: pa.Table) -> pa.Table:
+    """`stars` with the calibrated GSP-Spec [M/H] and [Fe/H].
+
+    [Fe/H] is [Fe/M] + [M/H] with the Fe I correction, null outside the log g
+    range of the correction, or when the flags mark an extrapolation, an
+    upper limit or a poor [Fe/M].
+    """
+    logg = floats(stars, "logg_gspspec")
+    mh = floats(stars, "mh_gspspec") + np.polynomial.polynomial.polyval(
+        logg, MH_CALIBRATION
+    )
+    flags = stars["flags_gspspec"]
+    holds = (
+        (logg >= FEH_LOGG_RANGE[0])
+        & (logg <= FEH_LOGG_RANGE[1])
+        & (_flag(flags, EXTRAPOL) == 0)
+        & (_flag(flags, FE_UPPER_LIMIT) == 0)
+        & (_flag(flags, FE_UNCERTAINTY) <= 1)
+    )
+    feh = (
+        floats(stars, "fem_gspspec")
+        + floats(stars, "mh_gspspec")
+        + np.polynomial.polynomial.polyval(logg, FEH_CALIBRATION)
+    )
+    feh = np.where(holds, feh, np.nan)
+    for name, values in zip(GSPSPEC_CALIBRATED, (mh, feh)):
+        stars = stars.append_column(
+            name, pa.array(values, pa.float32(), from_pandas=True)
+        )
     return stars
 
 
 def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
-    """Pass rows with fidelity, radii and Hipparcos claims."""
+    """Pass rows with the companion columns and the Hipparcos claims."""
     source_id = stars["source_id"].to_numpy()
     ids = pc.cast(stars["source_id"], pa.string())
     error = np.hypot(
@@ -154,6 +218,8 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     columns |= {name: stars[name] for name in COLUMNS if name != "source_id"}
     columns |= {name: stars[name] for name in FIDELITY_COLUMNS}
     columns |= {name: stars[name] for name in ASTROPHYSICAL_COLUMNS}
+    columns |= {name: stars[name] for name in GSPSPEC_CALIBRATED}
+    columns |= {name: stars[name] for name in XGBOOST_COLUMNS}
     return pa.table(columns)
 
 
@@ -194,6 +260,7 @@ class GaiaReader:
     source_dir: Path = SOURCE_DIR
     fidelity_dir: Path = FIDELITY_DIR
     astrophysical_dir: Path = ASTROPHYSICAL_DIR
+    xgboost_dir: Path = XGBOOST_DIR
     workers: int = 8
     counts: dict[str, int] = field(default_factory=dict)
 
@@ -224,9 +291,13 @@ class GaiaReader:
         parameters = pq.read_table(
             self.astrophysical_path(path), columns=["source_id", *ASTROPHYSICAL_COLUMNS]
         )
-        return engine_rows(
-            join_astrophysical(join_fidelity(stars, fidelity), parameters), self.best
+        xgboost = pq.read_table(
+            self.xgboost_path(path), columns=["source_id", *XGBOOST_COLUMNS]
         )
+        stars = join_rows(stars, fidelity, FIDELITY_COLUMNS)
+        stars = calibrate_gspspec(join_rows(stars, parameters, ASTROPHYSICAL_COLUMNS))
+        stars = join_rows(stars, xgboost, XGBOOST_COLUMNS)
+        return engine_rows(stars, self.best)
 
     def astrophysical_path(self, path: Path) -> Path:
         name = path.name.replace(
@@ -234,22 +305,28 @@ class GaiaReader:
         )
         return self.astrophysical_dir / name
 
+    def xgboost_path(self, path: Path) -> Path:
+        name = path.name.replace(
+            gaia_source.CHUNK_PREFIX, gaia_xp_metallicity.CHUNK_PREFIX
+        )
+        return self.xgboost_dir / name
+
     def batches(self, chunks: list[Path]) -> Iterator[pa.Table]:
         """The pass rows of `chunks`, one table per chunk."""
-        missing = [p for p in chunks if not self.fidelity_path(p).exists()]
-        if missing:
-            raise FileNotFoundError(
-                f"{len(missing)} Gaia chunks have no fidelity chunk, first"
-                f" {self.fidelity_path(missing[0])}"
-            )
-        missing = [p for p in chunks if not self.astrophysical_path(p).exists()]
-        if missing:
-            raise FileNotFoundError(
-                f"{len(missing)} Gaia chunks have no astrophysical parameters chunk, first"
-                f" {self.astrophysical_path(missing[0])}"
-            )
+        companions = (
+            ("fidelity", self.fidelity_path),
+            ("astrophysical parameters", self.astrophysical_path),
+            ("XGBoost parameters", self.xgboost_path),
+        )
+        for kind, companion in companions:
+            missing = [p for p in chunks if not companion(p).exists()]
+            if missing:
+                raise FileNotFoundError(
+                    f"{len(missing)} Gaia chunks have no {kind} chunk, first"
+                    f" {companion(missing[0])}"
+                )
         counts = dict.fromkeys(
-            ("chunks", "rows", "flagged", "without_fidelity", "claims"), 0
+            ("chunks", "rows", "flagged", "without_fidelity", "claims", "xgboost"), 0
         )
         with ThreadPoolExecutor(self.workers) as pool:
             for rows in _ordered(pool, self.read_chunk, chunks, 2 * self.workers):
@@ -262,6 +339,7 @@ class GaiaReader:
                     logger.warning("Gaia DR3 stars without a fidelity row: %s", ids)
                     counts["without_fidelity"] += len(ids)
                 counts["claims"] += rows.num_rows - rows["claims"].null_count
+                counts["xgboost"] += rows.num_rows - rows["mh_xgboost"].null_count
                 if counts["chunks"] % 200 == 0:
                     logger.info(
                         "Gaia: %d/%d chunks read", counts["chunks"], len(chunks)
@@ -270,9 +348,10 @@ class GaiaReader:
         self.counts = {key: int(value) for key, value in counts.items()}
         logger.info(
             "Gaia: %d rows, %d flagged as spurious (mint false), %d without a"
-            " fidelity row, %d claim a Hipparcos number",
+            " fidelity row, %d claim a Hipparcos number, %d have an XP metallicity",
             self.counts["rows"],
             self.counts["flagged"],
             self.counts["without_fidelity"],
             self.counts["claims"],
+            self.counts["xgboost"],
         )
