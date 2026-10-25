@@ -12,7 +12,7 @@ vi.mock('$lib/fetch/position/labels', () => ({ fetchLabels: () => Promise.resolv
 vi.mock('$lib/scene/objects/body/lifecycle', () => ({
 	buildMajorBodies: (bodies: PositionedBody[], ...rest: unknown[]) => {
 		const bodyObjects = rest[3] as Map<string, unknown>;
-		for (const b of bodies) bodyObjects.set(b.data.id, { body: { position: [0, 0, 0] } });
+		for (const b of bodies) bodyObjects.set(b.data.id, { body: b });
 	},
 	disposeMaterial: () => {}
 }));
@@ -73,21 +73,28 @@ function buildRegistry(jd: number) {
 		onSmallBodyFilterChange: () => () => {},
 		earthSatFilter: null,
 		smallBodyFilter: null,
-		getBody: () => undefined
+		getBody: () => undefined,
+		place: (body: PositionedBody) => body.position
 	} as unknown as ContextManager;
 	const pointClouds = {
 		setEarthSatEmphasis,
 		setEmphasizedSmallBodyZone: vi.fn(),
-		rebuildMinor: vi.fn()
+		rebuildMinor: vi.fn(),
+		basis: () => null
 	} as unknown as PointCloudSystem;
 	const deps = {
 		bodyObjects: new Map(),
 		ctx,
 		clock,
 		pointClouds,
-		getFocusedId: () => undefined
+		getFocusedId: () => undefined,
+		onUserPromotedChange: vi.fn(),
+		scene: { remove: vi.fn() },
+		renderer: { domElement: {} },
+		assignMapLayerToTrails: () => {},
+		repositionAll: () => {}
 	} as unknown as PromotionDeps;
-	return { registry: new PromotionRegistry(deps), clock, setEarthSatEmphasis };
+	return { registry: new PromotionRegistry(deps), deps, clock, setEarthSatEmphasis };
 }
 
 describe('earth-sat emphasis across sim time', () => {
@@ -181,5 +188,43 @@ describe('asteroid-moon auto-promotion', () => {
 
 	it('promotes a moon and its host only when the host is curated', async () => {
 		expect(await promotedIds()).toEqual(new Set([CURATED_HOST, 'spkid-120000031']));
+	});
+});
+
+describe('persistent star promotion', () => {
+	it('keeps previously focused stars clearable and preserves the current focus', async () => {
+		const { registry, deps } = buildRegistry(WINDOW_START + 1);
+		await Promise.resolve();
+		let focusedId: string | undefined;
+		deps.getFocusedId = () => focusedId;
+		const first = mkBody({ id: 'extrasolar-1', objectType: ObjectType.EXTRASOLAR });
+		const second = mkBody({ id: 'extrasolar-2', objectType: ObjectType.EXTRASOLAR });
+
+		registry.ensureBodyObjects(first);
+		focusedId = first.data.id;
+		registry.emitUserPromotedCount();
+		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(0);
+
+		registry.ensureBodyObjects(second);
+		focusedId = second.data.id;
+		registry.emitUserPromotedCount();
+		expect(deps.bodyObjects.has(first.data.id)).toBe(true);
+		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(1);
+
+		registry.clearUserPromoted();
+		expect([...deps.bodyObjects.keys()]).toEqual([second.data.id]);
+		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(0);
+
+		focusedId = undefined;
+		registry.emitUserPromotedCount();
+		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(1);
+		registry.clearUserPromoted();
+		expect(deps.bodyObjects.size).toBe(0);
+		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(0);
+
+		registry.ensureBodyObjects(first);
+		registry.ensureBodyObjects(first);
+		expect([...deps.bodyObjects.keys()]).toEqual([first.data.id]);
+		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(1);
 	});
 });

@@ -248,7 +248,7 @@ export class FocusController {
 			];
 		}
 		this.focusedBody = undefined;
-		this.promotion.releaseFocusPromoted(undefined);
+		this.promotion.emitUserPromotedCount();
 		prepareFocusTarget(
 			focus,
 			[...position],
@@ -315,7 +315,6 @@ export class FocusController {
 
 		if (body.data.id !== prev?.data.id) this.pendingInitialView = null;
 		this.focusedBody = body;
-		this.promotion.releaseFocusPromoted(body.data.id);
 		// Retire the synthetic feature body so getBody stops resolving a stale id.
 		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
 		controls.minDistance = minCameraDistance(body, modelMinRadiusKm(bodyObjects.get(body.data.id)));

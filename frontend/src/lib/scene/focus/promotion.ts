@@ -84,9 +84,6 @@ export class PromotionRegistry {
 	private pinned: ReadonlySet<string> = new Set();
 	/** Bodies built for a pin, and taken down when the host lets go of it. */
 	private readonly pinPromoted = new Set<string>();
-	/** Extrasolar objects built for the focus alone: the halo and name of the
-	 *  focused star, taken down when the focus leaves it. */
-	private readonly focusPromoted = new Set<string>();
 	/** Active `/g/<slug>` membership filter, or null for the whole Earth-sat zone. */
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
@@ -217,13 +214,6 @@ export class PromotionRegistry {
 		this.finalizeBuilds();
 	}
 
-	/** Take down what was built for an extrasolar focus, but for `focusedId`. */
-	releaseFocusPromoted(focusedId: string | undefined): void {
-		if (this.focusPromoted.size === 0) return;
-		const ids = [...this.focusPromoted].filter((id) => id !== focusedId);
-		this.tearDownBodies(ids, this.focusPromoted);
-	}
-
 	/** Build mesh, label, halo, and dirty markers for one body. Returns false
 	 *  if the body was already promoted (caller can skip `finalizeBuilds`).
 	 *  `halfPromoteIds`, when non-null, asks `buildMajorBodies` to render the
@@ -279,8 +269,6 @@ export class PromotionRegistry {
 		const id = body.data.id;
 		if (this.defaults.has(id)) {
 			// Curated default — no extra tracking.
-		} else if (isExtrasolar(body)) {
-			this.focusPromoted.add(id);
 		} else if (auto) {
 			this.autoPromoted.add(id);
 		} else {
