@@ -120,7 +120,8 @@ OBJECT_CATALOGUES = frozenset({"wikidata"})
 # keeps that catalogue's names. The Gaia rows also carry the astrometric
 # fidelity of Rybizki et al. 2022 and the XP metallicities of Andrae et al.
 # 2023. The metallicity groups after them come from spectra, one catalogue
-# each.
+# each. APOGEE and LAMOST join the Gaia rows by source_id at each ingest, so
+# they hold no catalogue id in the registry.
 POINT_SOURCE = TableDef(
     number=1,
     slug="point-source",
@@ -277,6 +278,47 @@ POINT_SOURCE = TableDef(
                 pa.field("feh_xhip_quality", pa.string()),
             ),
             ("hipparcos-2007",),
+        ),
+        # APOGEE DR17: the APOGEE id and the named ASPCAP values, [M/H] and
+        # [Fe/H] in dex, Teff in K, log g in log(cm/s²), with their errors,
+        # and the S/N per pixel.
+        ColumnGroup(
+            "apogee",
+            (
+                pa.field("apogee_id", pa.string()),
+                *_fields(
+                    pa.float32(),
+                    *(
+                        f"{name}_apogee{suffix}"
+                        for name in ("mh", "feh", "teff", "logg")
+                        for suffix in ("", "_error")
+                    ),
+                    "snr_apogee",
+                ),
+            ),
+            ("gaia-dr3",),
+        ),
+        # The LAMOST DR10 M dwarfs of Zhang et al. 2025, from the spectrum
+        # with the best S/N in i: its LAMOST designation, [M/H] in dex, Teff
+        # in K, log g in log(cm/s²), with their errors, the Hα activity flag
+        # and the variability or binarity flag (0 none, 1 variable, 2 binary).
+        ColumnGroup(
+            "lamost",
+            (
+                pa.field("lamost_id", pa.string()),
+                *_fields(
+                    pa.float32(),
+                    *(
+                        f"{name}_lamost{suffix}"
+                        for name in ("mh", "teff", "logg")
+                        for suffix in ("", "_error")
+                    ),
+                    "snr_i_lamost",
+                ),
+                pa.field("activity_lamost", pa.bool_()),
+                pa.field("vbflag_lamost", pa.int8()),
+            ),
+            ("gaia-dr3",),
         ),
         ColumnGroup(
             "astrometric_quality",

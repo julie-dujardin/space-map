@@ -88,6 +88,38 @@ CREDITS = (
         "citation": "Andrae, Rix & Chandra 2023, ApJS 267, 8",
     },
     {
+        "name": "APOGEE DR17",
+        "organisation": "SDSS-IV",
+        "source": "https://www.sdss4.org/dr17/irspec/",
+        "attribution": (
+            "Funding for the Sloan Digital Sky Survey IV has been provided by the"
+            " Alfred P. Sloan Foundation, the U.S. Department of Energy Office of"
+            " Science, and the Participating Institutions."
+        ),
+        "citation": "Abdurro'uf et al. 2022, ApJS 259, 35",
+    },
+    {
+        "name": "M dwarfs of LAMOST DR10 via Cycle-StarNet",
+        "organisation": "Zhang et al. 2025",
+        "source": "https://doi.org/10.5281/zenodo.14030249",
+        "license": "CC BY 4.0",
+        "citation": "Zhang, Zhang, Ting et al. 2025, ApJS 277, 47",
+    },
+    # The Gaia DR3 id of each LAMOST spectrum.
+    {
+        "name": "LAMOST DR10 v2.0 LRS catalogue of M stars",
+        "organisation": "National Astronomical Observatories, Chinese Academy of Sciences",
+        "source": "https://www.lamost.org/dr10/v2.0/",
+        "attribution": (
+            "Guoshoujing Telescope (the Large Sky Area Multi-Object Fiber"
+            " Spectroscopic Telescope LAMOST) is a National Major Scientific Project"
+            " built by the Chinese Academy of Sciences. Funding for the project has"
+            " been provided by the National Development and Reform Commission."
+            " LAMOST is operated and managed by the National Astronomical"
+            " Observatories, Chinese Academy of Sciences."
+        ),
+    },
+    {
         "name": "Hipparcos, the new reduction (I/311)",
         "organisation": "ESA",
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/I/311",

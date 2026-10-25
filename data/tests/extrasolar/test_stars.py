@@ -21,7 +21,14 @@ from space_map_data.export.objects.stars import read_star_objects
 from space_map_data.extrasolar import stars
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.registry import Registry, RegistryError
-from space_map_data.extrasolar.sources import gaia, hipparcos, names, wikidata
+from space_map_data.extrasolar.sources import (
+    apogee,
+    gaia,
+    hipparcos,
+    lamost,
+    names,
+    wikidata,
+)
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3, BestNeighbours
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.names import IAU_WGSN
@@ -184,6 +191,15 @@ class TestTables:
             HIPPARCOS.name,
             GAIA_DR3.name,
         )
+
+    def test_the_joined_catalogues_fill_their_groups(self):
+        groups = {group.name: group for group in POINT_SOURCE.groups}
+        for name, columns in (
+            ("apogee", apogee.COLUMNS),
+            ("lamost", lamost.COLUMNS),
+        ):
+            assert groups[name].names == list(columns)
+        assert gaia.JOINED_COLUMNS == (*apogee.COLUMNS, *lamost.COLUMNS)
 
 
 class TestGaiaRows:

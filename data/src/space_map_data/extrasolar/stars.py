@@ -1,8 +1,10 @@
 """The star ingest: Gaia DR3, then Hipparcos, the IAU star names and Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
-Gaia. `limit` reads only the first Gaia chunks that hold that many stars, and
-the Hipparcos stars and names in the same pixels. Such an ingest is partial:
+Gaia. The metallicity catalogues (APOGEE DR17, the LAMOST DR10 M dwarfs) are
+no pass: their rows join the Gaia rows by source_id. `limit` reads only the
+first Gaia chunks that hold that many stars, and the Hipparcos stars and names
+in the same pixels. Such an ingest is partial:
 it retires nothing, but it still rebuilds the tables from what it read. It
 never goes to REGISTRY_ROOT, because every later ingest keeps the IDs that it
 mints.
@@ -11,6 +13,7 @@ mints.
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
 
@@ -23,11 +26,12 @@ from space_map_data.download.providers.stars import wikidata_stars
 from space_map_data.download.providers.stars.gaia_source import pixel_range
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.registry import Registry, RegistryError
-from space_map_data.extrasolar.sources import hipparcos, names, wikidata
+from space_map_data.extrasolar.sources import apogee, hipparcos, lamost, names, wikidata
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
     BestNeighbours,
     GaiaReader,
+    SourceTable,
     in_ranges,
 )
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
@@ -73,6 +77,13 @@ def ingest(
     reader = GaiaReader(best, workers=workers)
     chunks = reader.chunks(limit)
     ranges = None if limit is None else [pixel_range(path.name) for path in chunks]
+    reader = replace(
+        reader,
+        joined=(
+            SourceTable.of(apogee.read_stars(), apogee.COLUMNS),
+            SourceTable.of(lamost.read_stars(), lamost.COLUMNS),
+        ),
+    )
     stars = hipparcos.engine_rows(hipparcos.read_stars(), best)
     positions = dict(
         zip(

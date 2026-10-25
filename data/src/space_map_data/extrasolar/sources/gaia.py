@@ -4,6 +4,8 @@ The companion tables join by source_id. Low-fidelity stars mint only when
 matched by another catalogue. A star without a companion row stays, with null
 values for that table. GSP-Spec gets the calibrations of Recio-Blanco et al.
 2023 (A&A 674, A29); its flag chain stays as published, for the reader's cut.
+The spectroscopic catalogues that name a Gaia DR3 id (APOGEE, LAMOST) join
+the same way, as `SourceTable`s held in memory.
 
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
 2022, MNRAS 510, 2597. XP metallicities: Andrae, Rix & Chandra 2023, ApJS 267,
@@ -33,7 +35,7 @@ from space_map_data.download.providers.stars import (
 )
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import Source
-from space_map_data.extrasolar.tables import CROSS_ID
+from space_map_data.extrasolar.tables import CROSS_ID, POINT_SOURCE
 from space_map_data.utils.arrays import floats, map_sorted
 
 logger = logging.getLogger(__name__)
@@ -81,6 +83,14 @@ FEH_LOGG_RANGE = (1.01, 4.85)
 EXTRAPOL, FE_UPPER_LIMIT, FE_UNCERTAINTY = 7, 27, 28
 XGBOOST_COLUMNS = tuple(
     name for name in gaia_xp_metallicity.SCHEMA.names if name != "source_id"
+)
+# Groups whose values join from a `SourceTable`; null where none does.
+JOINED_GROUPS = ("apogee", "lamost")
+JOINED_COLUMNS = tuple(
+    field.name
+    for group in POINT_SOURCE.groups
+    if group.name in JOINED_GROUPS
+    for field in group.columns
 )
 
 
@@ -189,6 +199,43 @@ def calibrate_gspspec(stars: pa.Table) -> pa.Table:
     return stars
 
 
+def joined_columns(stars: pa.Table, names: Iterable[str]) -> dict[str, pa.Array]:
+    """The columns `names` of `stars`, typed as Point source; null where absent."""
+    n = stars.num_rows
+    return {
+        name: (
+            stars[name].cast(POINT_SOURCE.schema.field(name).type)
+            if name in stars.column_names
+            else pa.nulls(n, POINT_SOURCE.schema.field(name).type)
+        )
+        for name in names
+    }
+
+
+@dataclass(frozen=True)
+class SourceTable:
+    """Rows of one catalogue keyed by Gaia DR3 source_id, for the chunk joins."""
+
+    rows: pa.Table
+    columns: tuple[str, ...]
+
+    @classmethod
+    def of(cls, rows: pa.Table, columns: Iterable[str]) -> SourceTable:
+        rows = rows.take(pc.sort_indices(rows["source_id"]))
+        ids = rows["source_id"].to_numpy()
+        if np.any(ids[1:] == ids[:-1]):
+            raise ValueError("a source_id has two rows")
+        return cls(rows, tuple(columns))
+
+    def part(self, path: Path) -> pa.Table:
+        """The rows of the sources in one gaia_source chunk."""
+        low, high = gaia_source.pixel_range(path.name)
+        ids = self.rows["source_id"].to_numpy()
+        start = np.searchsorted(ids, low << gaia_source.PIXEL_SHIFT)
+        end = np.searchsorted(ids, (high + 1) << gaia_source.PIXEL_SHIFT)
+        return self.rows.slice(start, end - start)
+
+
 def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     """Pass rows with the companion columns and the Hipparcos claims."""
     source_id = stars["source_id"].to_numpy()
@@ -220,6 +267,7 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     columns |= {name: stars[name] for name in ASTROPHYSICAL_COLUMNS}
     columns |= {name: stars[name] for name in GSPSPEC_CALIBRATED}
     columns |= {name: stars[name] for name in XGBOOST_COLUMNS}
+    columns |= joined_columns(stars, JOINED_COLUMNS)
     return pa.table(columns)
 
 
@@ -261,6 +309,8 @@ class GaiaReader:
     fidelity_dir: Path = FIDELITY_DIR
     astrophysical_dir: Path = ASTROPHYSICAL_DIR
     xgboost_dir: Path = XGBOOST_DIR
+    # The catalogues that join by source_id from memory.
+    joined: tuple[SourceTable, ...] = ()
     workers: int = 8
     counts: dict[str, int] = field(default_factory=dict)
 
@@ -297,6 +347,8 @@ class GaiaReader:
         stars = join_rows(stars, fidelity, FIDELITY_COLUMNS)
         stars = calibrate_gspspec(join_rows(stars, parameters, ASTROPHYSICAL_COLUMNS))
         stars = join_rows(stars, xgboost, XGBOOST_COLUMNS)
+        for table in self.joined:
+            stars = join_rows(stars, table.part(path), table.columns)
         return engine_rows(stars, self.best)
 
     def astrophysical_path(self, path: Path) -> Path:
@@ -325,9 +377,10 @@ class GaiaReader:
                     f"{len(missing)} Gaia chunks have no {kind} chunk, first"
                     f" {companion(missing[0])}"
                 )
+        joined = [table.columns[0] for table in self.joined]
         counts = dict.fromkeys(
             ("chunks", "rows", "flagged", "without_fidelity", "claims", "xgboost"), 0
-        )
+        ) | dict.fromkeys(joined, 0)
         with ThreadPoolExecutor(self.workers) as pool:
             for rows in _ordered(pool, self.read_chunk, chunks, 2 * self.workers):
                 counts["chunks"] += 1
@@ -340,6 +393,8 @@ class GaiaReader:
                     counts["without_fidelity"] += len(ids)
                 counts["claims"] += rows.num_rows - rows["claims"].null_count
                 counts["xgboost"] += rows.num_rows - rows["mh_xgboost"].null_count
+                for name in joined:
+                    counts[name] += rows.num_rows - rows[name].null_count
                 if counts["chunks"] % 200 == 0:
                     logger.info(
                         "Gaia: %d/%d chunks read", counts["chunks"], len(chunks)
@@ -355,3 +410,8 @@ class GaiaReader:
             self.counts["claims"],
             self.counts["xgboost"],
         )
+        if joined:
+            logger.info(
+                "Gaia: rows with a joined value: %s",
+                {name: self.counts[name] for name in joined},
+            )
