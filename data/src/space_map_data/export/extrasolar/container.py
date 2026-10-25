@@ -61,7 +61,8 @@ TOKEN_IN_FILE = len(GZIP_HEADER) + len(STORED_BLOCK) + TOKEN_AT
 HAS_VALIDITY = 1
 
 # Type codes. "id" is an integer ID below 2^53 in a float64, so a browser
-# gets an exact number without BigInt.
+# gets an exact number without BigInt. "uint64" holds the integers that can be
+# larger, so a browser reads them as BigInt.
 TYPES = {
     "bool": 1,
     "int8": 2,
@@ -77,6 +78,8 @@ TYPES = {
     "dict": 12,
     "cross_ids": 13,
     "bits": 14,
+    "uint64": 15,
+    "float32_list": 16,
 }
 TYPE_NAMES = {code: name for name, code in TYPES.items()}
 NUMPY = {
@@ -90,6 +93,7 @@ NUMPY = {
     "float32": np.float32,
     "float64": np.float64,
     "id": np.float64,
+    "uint64": np.uint64,
 }
 ARROW = {
     "bool": pa.bool_(),
@@ -106,6 +110,8 @@ ARROW = {
     "dict": pa.string(),
     "cross_ids": pa.list_(CROSS_ID),
     "bits": pa.bool_(),
+    "uint64": pa.uint64(),
+    "float32_list": pa.list_(pa.float32()),
 }
 _FROM_ARROW = {
     pa.bool_(): "bool",
@@ -118,7 +124,9 @@ _FROM_ARROW = {
     pa.float32(): "float32",
     pa.float64(): "float64",
     pa.int64(): "id",
+    pa.uint64(): "uint64",
     pa.string(): "string",
+    pa.list_(pa.float32()): "float32_list",
 }
 
 
@@ -208,6 +216,13 @@ def _buffers(column: Column, rows: int) -> tuple[int, list[bytes]]:
     elif kind == "dict":
         codes, values = _dictionary(array)
         out += [codes.tobytes(), *_strings(values)]
+    elif kind == "float32_list":
+        lengths = pc.list_value_length(array).fill_null(0).to_numpy()
+        values = pc.list_flatten(array).to_numpy(zero_copy_only=False)
+        out += [
+            np.r_[0, np.cumsum(lengths)].astype(np.uint32).tobytes(),
+            np.ascontiguousarray(values, np.float32).tobytes(),
+        ]
     elif kind == "cross_ids":
         offsets = array.offsets.to_numpy().astype(np.int64)
         items = array.values.slice(offsets[0], offsets[-1] - offsets[0])
@@ -408,6 +423,12 @@ def _decode(
             None,
         )
         return values.take(pa.array(codes.astype(np.int32), mask=mask))
+    if kind == "float32_list":
+        offsets = _view(data, places[0], np.uint32).astype(np.int32)
+        values = pa.array(_view(data, places[1], np.float32), pa.float32())
+        return pa.ListArray.from_arrays(
+            pa.array(offsets), values, mask=None if mask is None else pa.array(mask)
+        )
     if kind == "cross_ids":
         list_offsets = _view(data, places[0], np.uint32).astype(np.int32)
         codes = _view(data, places[1], np.uint16).astype(np.int32)

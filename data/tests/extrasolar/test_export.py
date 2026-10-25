@@ -21,6 +21,7 @@ def _small(monkeypatch):
     """Tiles, nodes and batches small enough to split a few hundred stars."""
     monkeypatch.setitem(tiles.MAX_ROWS, "metadata", 12)
     monkeypatch.setitem(tiles.MAX_ROWS, "point-source", 4)
+    monkeypatch.setitem(tiles.MAX_ROWS, "binary-orbit", 2)
     monkeypatch.setattr(render, "NODE_ROWS", 6)
     monkeypatch.setattr(render, "BATCH_ROWS", 40)
 
@@ -49,7 +50,8 @@ def _files(root):
     }
 
 
-def _expected_position(row: dict) -> np.ndarray:
+def _expected_position(row: dict, parallax: float | None = None) -> np.ndarray:
+    """`parallax` stands for the row's own, as an orbit solution's does."""
     ra, dec = np.array([row["ra"]]), np.array([row["dec"]])
     if row["epoch"] != render.EPOCH:
         ra, dec = propagate(
@@ -60,7 +62,7 @@ def _expected_position(row: dict) -> np.ndarray:
             render.EPOCH - row["epoch"],
         )
     # The table stores parallax as float32.
-    d = 1000 / float(np.float32(row["parallax"]))
+    d = 1000 / float(np.float32(row["parallax"] if parallax is None else parallax))
     ra, dec = np.radians(ra[0]), np.radians(dec[0])
     return d * np.array(
         [np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec)]
@@ -101,7 +103,7 @@ class TestExport:
         reader = ExportReader(out / "v1" / "x")
         meta = reader.metadata
         assert meta["registry"] == {"ingest": 1, "host": "test-host"}
-        assert set(meta["tables"]) == {"metadata", "point-source"}
+        assert set(meta["tables"]) == {"metadata", "point-source", "binary-orbit"}
         assert meta["tables"]["point-source"]["number"] == 1
         assert meta["tables"]["metadata"]["number"] is None
         assert meta["trees"]["mw"]["range_limit_mag"] == render.RANGE_LIMIT_MAG
@@ -141,6 +143,99 @@ class TestExport:
         assert reader.lookup(str(ids.encode(5, 1, 1234))) is None
         assert reader.lookup(str(ids.encode(0, 2, 1234))) is None
         assert reader.lookup("0" + str(built.ids[0])) is None
+
+    def test_table_2_rows_are_found_by_the_mask(self, tmp_path, out):
+        orbit = {
+            "solution_id": 4338096422163308546,
+            "nss_solution_type": "Orbital",
+            "ra_nss": 101.25,
+            "parallax_nss": 10.5,
+            "period": 773.0921101652751,
+            "flags": 2**57 + 64,
+            "bit_index": 8191,
+            "corr_vec": [0.5, float("nan"), -0.25],
+            "m1": 1.25,
+            "combination_method": "Orbital+M1",
+            "orbit_source": "gaia-dr3",
+            "masses_source": "gaia-dr3",
+        }
+        sb1 = {
+            "nss_solution_type": "SB1",
+            "corr_vec": [],
+            "orbit_source": "gaia-dr3",
+        }
+        stars = random_stars(40, seed=21, around=(100, 20))
+        built = write_registry(tmp_path / "reg", stars, orbits={3: orbit, 7: sb1})
+        report = export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        entry = reader.metadata["tables"]["binary-orbit"]
+        assert entry["number"] == 2 and entry["rows"] == 2
+        assert entry["max_rows"] == 2 and entry["distribution"] == "non-commercial"
+        assert entry["split"] == "binary-orbit/split.bin.gz"
+        types = {c["name"]: c["type"] for c in entry["columns"]}
+        assert types["corr_vec"] == "float32_list"
+        assert types["flags"] == types["solution_id"] == "uint64"
+        assert types["nss_solution_type"] == types["orbit_source"] == "dict"
+        assert report["tables"]["binary-orbit"]["files"] == entry["tiles"] >= 12
+        assert (out / "v1" / "x" / entry["split"]).exists()
+
+        found = reader.lookup(str(built.ids[3]))
+        assert found is not None and found.metadata["mask"] == 6
+        row = found.rows["binary-orbit"]
+        assert row["period"] == orbit["period"] and row["flags"] == orbit["flags"]
+        assert row["solution_id"] == orbit["solution_id"]
+        assert row["corr_vec"][0] == 0.5 and np.isnan(row["corr_vec"][1])
+        assert row["m1"] == 1.25 and row["combination_method"] == "Orbital+M1"
+        assert row["ra_nss"] == 101.25 and found.rows["point-source"]["ra"] != 101.25
+        spectroscopic = reader.lookup(str(built.ids[7]))
+        assert spectroscopic is not None
+        assert spectroscopic.rows["binary-orbit"]["corr_vec"] == []
+        plain = reader.lookup(str(built.ids[0]))
+        assert plain is not None and set(plain.rows) == {"point-source"}
+        assert plain.metadata["mask"] == 2
+
+    def test_an_astrometric_orbit_gives_the_distance(self, tmp_path, out):
+        stars = random_stars(30, seed=31, around=(60, -10))
+
+        def solution(kind: str, parallax: float | None, error: float | None) -> dict:
+            return {
+                "nss_solution_type": kind,
+                "parallax_nss": parallax,
+                "parallax_nss_error": error,
+                "orbit_source": "gaia-dr3",
+            }
+
+        orbits = {
+            2: solution("Orbital", stars[2]["parallax"] * 1.25, 0.01),
+            5: solution("AstroSpectroSB1", stars[5]["parallax"] * 0.8, 0.01),
+            # No parallax of its own, or one under 5σ: the single-star one stays.
+            7: solution("SB1", None, None),
+            9: solution("OrbitalTargetedSearch", 0.4, 0.2),
+        }
+        built = write_registry(tmp_path / "reg", stars, orbits=orbits)
+        report = export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert report["render"]["rendered"] == len(stars)
+        assert report["render"]["distance from an orbit solution"] == 2
+        for index, (id_, row) in enumerate(zip(built.ids, stars)):
+            used = {2: orbits[2], 5: orbits[5]}.get(index, {}).get("parallax_nss")
+            position = _expected_position(row, used)
+            hit = reader.find_render(id_, tuple(position))
+            assert hit is not None, index
+            name, at = hit
+            node = reader.node(name)
+            info = NodeInfo.of(node)
+            drawn = [node.column(a)[at].as_py() + c for a, c in zip("xyz", info.centre)]
+            assert np.abs(np.array(drawn) - position).max() <= info.half * 2**-23
+            parallax = float(np.float32(row["parallax"] if used is None else used))
+            absolute = row["phot_g_mean_mag"] + 5 * np.log10(parallax) - 10
+            assert node.column("mag")[at].as_py() == pytest.approx(absolute, abs=1e-3)
+            # The record keeps Gaia's single-star parallax.
+            found = reader.lookup(str(id_))
+            assert found is not None
+            assert found.rows["point-source"]["parallax"] == pytest.approx(
+                row["parallax"], rel=1e-6
+            )
 
     def test_tree_invariants(self, tmp_path, out):
         built = write_registry(tmp_path / "reg", random_stars(300, seed=4))
@@ -228,6 +323,9 @@ class TestExport:
             ("point-source", ("id",)),
             ("point-source", None),
             ("point-source", render.COLUMNS),
+            ("binary-orbit", ("id",)),
+            ("binary-orbit", None),
+            ("binary-orbit", render.ORBIT_COLUMNS),
         }
 
     def test_worker_processes_give_the_same_files(self, tmp_path, out):

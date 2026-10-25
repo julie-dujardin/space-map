@@ -1567,6 +1567,15 @@ class IngestRun:
                 if not groups:
                     continue
                 fed = {column.name for group in groups for column in group.columns}
+                # A row with no value here gives no row. Dropping it first keeps
+                # the merge of a sparse table small.
+                has = np.zeros(rows.num_rows, bool)
+                for column_name in fed:
+                    has |= rows[column_name].is_valid().to_numpy(zero_copy_only=False)
+                if not has.any():
+                    continue
+                if not has.all():
+                    rows = rows.filter(pa.array(has))
                 columns = {
                     "id": rows[KEY],
                     SOURCE_COLUMN: pa.array([name] * rows.num_rows, pa.string()),

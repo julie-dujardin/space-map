@@ -1,11 +1,13 @@
-"""Gaia DR3 positions, fidelity, GSP-Phot radii, GSP-Spec and XP metallicities.
+"""Gaia DR3 positions, fidelity, GSP-Phot radii, GSP-Spec, XP metallicities and
+binary orbits.
 
 The companion tables join by source_id. Low-fidelity stars mint only when
 matched by another catalogue. A star without a companion row stays, with null
 values for that table. GSP-Spec gets the calibrations of Recio-Blanco et al.
 2023 (A&A 674, A29); its flag chain stays as published, for the reader's cut.
 The spectroscopic catalogues that name a Gaia DR3 id (PASTEL, APOGEE, LAMOST)
-join the same way, as `SourceTable`s held in memory.
+join the same way, as `SourceTable`s held in memory. The orbits and masses
+fill table 2 (`gaia_orbits`).
 
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
 2022, MNRAS 510, 2597. XP metallicities: Andrae, Rix & Chandra 2023, ApJS 267,
@@ -17,6 +19,7 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +38,8 @@ from space_map_data.download.providers.stars import (
 )
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import Source
+from space_map_data.extrasolar.sources import gaia_orbits
+from space_map_data.extrasolar.sources.gaia_orbits import Orbits
 from space_map_data.extrasolar.tables import CROSS_ID, POINT_SOURCE
 from space_map_data.utils.arrays import floats, map_sorted
 
@@ -272,6 +277,7 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     columns |= {name: stars[name] for name in ASTROPHYSICAL_COLUMNS}
     columns |= {name: stars[name] for name in GSPSPEC_CALIBRATED}
     columns |= {name: stars[name] for name in XGBOOST_COLUMNS}
+    columns |= {name: stars[name] for name in gaia_orbits.COLUMNS}
     columns |= joined_columns(stars, JOINED_COLUMNS)
     return pa.table(columns)
 
@@ -314,10 +320,14 @@ class GaiaReader:
     fidelity_dir: Path = FIDELITY_DIR
     astrophysical_dir: Path = ASTROPHYSICAL_DIR
     xgboost_dir: Path = XGBOOST_DIR
+    orbit_dir: Path = gaia_orbits.ORBIT_DIR
+    masses_dir: Path = gaia_orbits.MASSES_DIR
     # The catalogues that join by source_id from memory.
     joined: tuple[SourceTable, ...] = ()
     workers: int = 8
     counts: dict[str, int] = field(default_factory=dict)
+    orbits: Orbits | None = None
+    orbit_report: dict = field(default_factory=dict)
 
     def chunks(self, limit: int | None = None) -> list[Path]:
         """Every chunk in pixel order, or the first ones that hold `limit` rows."""
@@ -338,7 +348,7 @@ class GaiaReader:
         name = path.name.replace(gaia_source.CHUNK_PREFIX, gaia_fidelity.CHUNK_PREFIX)
         return self.fidelity_dir / name
 
-    def read_chunk(self, path: Path) -> pa.Table:
+    def read_chunk(self, path: Path, orbits: Orbits) -> pa.Table:
         stars = pq.read_table(path, columns=list(COLUMNS))
         fidelity = pq.read_table(
             self.fidelity_path(path), columns=["source_id", *FIDELITY_COLUMNS]
@@ -354,7 +364,7 @@ class GaiaReader:
         stars = join_rows(stars, xgboost, XGBOOST_COLUMNS)
         for table in self.joined:
             stars = join_rows(stars, table.part(path), table.columns)
-        return engine_rows(stars, self.best)
+        return engine_rows(orbits.join(stars), self.best)
 
     def astrophysical_path(self, path: Path) -> Path:
         name = path.name.replace(
@@ -382,12 +392,27 @@ class GaiaReader:
                     f"{len(missing)} Gaia chunks have no {kind} chunk, first"
                     f" {companion(missing[0])}"
                 )
+        if self.orbits is None:
+            self.orbits = Orbits.read(self.orbit_dir, self.masses_dir)
+        orbits = self.orbits
         joined = [table.columns[0] for table in self.joined]
         counts = dict.fromkeys(
-            ("chunks", "rows", "flagged", "without_fidelity", "claims", "xgboost"), 0
+            (
+                "chunks",
+                "rows",
+                "flagged",
+                "without_fidelity",
+                "claims",
+                "xgboost",
+                "orbits",
+                "flagged_orbits",
+            ),
+            0,
         ) | dict.fromkeys(joined, 0)
+        orbit_ids = []
         with ThreadPoolExecutor(self.workers) as pool:
-            for rows in _ordered(pool, self.read_chunk, chunks, 2 * self.workers):
+            read = partial(self.read_chunk, orbits=orbits)
+            for rows in _ordered(pool, read, chunks, 2 * self.workers):
                 counts["chunks"] += 1
                 counts["rows"] += rows.num_rows
                 counts["flagged"] += rows.num_rows - pc.sum(rows["mint"]).as_py()
@@ -398,6 +423,14 @@ class GaiaReader:
                     counts["without_fidelity"] += len(ids)
                 counts["claims"] += rows.num_rows - rows["claims"].null_count
                 counts["xgboost"] += rows.num_rows - rows["mh_xgboost"].null_count
+                orbit = rows["solution_id"].is_valid()
+                counts["orbits"] += pc.sum(orbit).as_py() or 0
+                counts["flagged_orbits"] += (
+                    pc.sum(pc.and_(orbit, pc.invert(rows["mint"]))).as_py() or 0
+                )
+                orbit_ids.append(
+                    pc.cast(rows["catalogue_id"].filter(orbit), pa.int64()).to_numpy()
+                )
                 for name in joined:
                     counts[name] += rows.num_rows - rows[name].null_count
                 if counts["chunks"] % 200 == 0:
@@ -408,12 +441,19 @@ class GaiaReader:
         self.counts = {key: int(value) for key, value in counts.items()}
         logger.info(
             "Gaia: %d rows, %d flagged as spurious (mint false), %d without a"
-            " fidelity row, %d claim a Hipparcos number, %d have an XP metallicity",
+            " fidelity row, %d claim a Hipparcos number, %d have an XP metallicity,"
+            " %d an orbit (%d of them flagged)",
             self.counts["rows"],
             self.counts["flagged"],
             self.counts["without_fidelity"],
             self.counts["claims"],
             self.counts["xgboost"],
+            self.counts["orbits"],
+            self.counts["flagged_orbits"],
+        )
+        self.orbit_report = orbits.report(
+            np.concatenate([np.zeros(0, np.int64), *orbit_ids]),
+            [gaia_source.pixel_range(path.name) for path in chunks],
         )
         if joined:
             logger.info(

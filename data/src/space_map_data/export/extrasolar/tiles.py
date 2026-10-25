@@ -36,13 +36,24 @@ from space_map_data.extrasolar.tables import METADATA, TABLES, TableDef
 logger = logging.getLogger(__name__)
 
 ROOTS = 12
-# A table's tile splits while it holds more rows than this. A Point source
-# row takes about 185 B after gzip and a Metadata row about 22 B, so the
-# median tiles are about 64 kB and 73 kB.
-MAX_ROWS = {METADATA.slug: 7_500, "point-source": 900}
+# A table's tile splits while it holds more rows than this. After gzip a
+# Point source row takes about 185 B, a Metadata row about 22 B and a Binary
+# orbit row about 300 B. So the median tiles are about 64 kB, 73 kB and 34 kB.
+# The Binary orbit rows are sparse on the sky, and at 300 rows its largest
+# tile, 111 kB, stays under the largest Point source tile.
+MAX_ROWS = {METADATA.slug: 7_500, "point-source": 900, "binary-orbit": 300}
 # String columns with few distinct values, besides the group source columns.
 DICTIONARY = frozenset(
-    {"class", "phot_variable_flag", "libname_gspphot", "feh_xhip_quality"}
+    {
+        "class",
+        "phot_variable_flag",
+        "libname_gspphot",
+        "feh_xhip_quality",
+        "nss_solution_type",
+        "combination_method",
+        "m1_ref",
+        "flag",
+    }
 )
 TILE_INFO = struct.Struct("<IBBxx")
 SPLIT_FILE = "split.bin.gz"

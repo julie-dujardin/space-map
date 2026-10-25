@@ -13,6 +13,8 @@ v1/x/
   metadata/{level}/{pixel}.bin.gz        Metadata record tiles
   point-source/split.bin.gz              split table of the Point source tiles
   point-source/{level}/{pixel}.bin.gz    Point source record tiles (table 1)
+  binary-orbit/split.bin.gz              split table of the Binary orbit tiles
+  binary-orbit/{level}/{pixel}.bin.gz    Binary orbit record tiles (table 2)
   mw/node/{name}.bin.gz                  Milky Way render nodes
   mw/id/{name}.bin.gz                    the ID column of each render node
   skycultures/{key}.json.gz              a sky culture: figures, members and star names
@@ -67,6 +69,8 @@ The validity bitmap has `ceil(n / 8)` bytes. Row `i` has a value when bit `i & 7
 | 12 | `dict` | codes (`n` × uint16), dictionary offsets (`k + 1` × uint32), dictionary UTF-8 | row `i` is dictionary string `codes[i]` |
 | 13 | `cross_ids` | list offsets (`n + 1` × uint32), codes (`m` × uint16), id offsets (`m + 1` × uint32), id UTF-8, pair offsets (`2k + 1` × uint32), pair UTF-8 | see below |
 | 14 | `bits` | `ceil(n / 8)` bytes, bit `i & 7` of byte `i >> 3` | the split table |
+| 15 | `uint64` | `n` values | `BigUint64Array`: exact integers past 2^53, as BigInt |
+| 16 | `float32_list` | offsets (`n + 1` × uint32), values (`m` × float32) | row `i` is values `offsets[i]` to `offsets[i + 1]`: `values.subarray(offsets[i], offsets[i + 1])` |
 
 A `cross_ids` column lists the catalogue ids of each row, as (catalogue, release, catalogue id). The entries of row `i` are `j = list[i]` to `list[i + 1] − 1`. Entry `j` has catalogue `pair[2·codes[j]]`, release `pair[2·codes[j] + 1]` and catalogue id string `j` of the id strings. `pair` is the string list of the last two buffers. The entries of a row are sorted by catalogue, release and catalogue id.
 
@@ -164,6 +168,35 @@ Five more groups hold metallicities from spectra. Each group keeps the published
 
 PASTEL, APOGEE and the LAMOST catalogue of M stars state no licence, so they are `non-commercial`, as the whole table is.
 
+### Binary orbit (table 2)
+
+The Gaia DR3 orbit of a binary star: one solution of `nss_two_body_orbit` for each star that has one, and the masses of its two stars from `binary_masses` (Gaia Collaboration, Arenou et al. 2023, A&A 674, A34). The table never mints. A row joins its star in the Gaia pass by `source_id`, so the row has the star's ID, the home table is 1, and bit 2 of the star's `mask` is set. A solution of a source that is not one of the stars has no row: a source without a 5σ parallax, or one with `fidelity_v2` under 0.5 and no Hipparcos match.
+
+Of the 437,275 sources with a solution, 394,046 are positionable stars: 169,096 with an astrometric solution, 179,186 spectroscopic and 45,764 eclipsing, and 195,224 of them with masses. 3,022 of these have `fidelity_v2` under 0.5. The other 43,229 sources have no 5σ parallax; 40,989 of them are eclipsing.
+
+The columns keep the names of the Gaia DR3 documentation of `nss_two_body_orbit` and `binary_masses`, so a reader finds each one there. Two groups: `orbit`, every published column of the solution, with provenance `orbit_source`, and `masses`, with provenance `masses_source`. The solution has its own astrometry at J2016.0, the position, parallax and proper motion of the system's barycentre in the orbit model. Point source holds the single-star solution of `gaia_source` under the same names, so here these columns have the suffix `_nss`: `ra_nss`, `dec_nss`, `parallax_nss`, `pmra_nss`, `pmdec_nss`, each with its `_error` (as `ra_nss_error`).
+
+The distance of a star with an astrometric solution (`Orbital…`, `AstroSpectroSB1`) comes from `parallax_nss`, where `parallax_nss / parallax_nss_error > 5`. The orbit fit takes out the motion of the light centre, which the single-star fit of `gaia_source` takes as noise or as part of the parallax, and its parallax error is about half as large. The render tree places the star by this parallax, and a client takes the star's distance and absolute magnitude from it too. Point source keeps Gaia's single-star values, and they still decide which stars are drawn. A star with a spectroscopic or eclipsing solution keeps its Point source parallax.
+
+Units are as published: angles in degrees, times and periods in days, `t_periastron` from J2016.0, Thiele-Innes `A`, `B`, `F`, `G` in mas and `C`, `H` in AU, velocities in km/s, masses in solar masses. A column is `float32` where float32 rounding stays under 1% of each published error. `ra_nss`, `dec_nss`, `period`, `inclination` and `temperature_ratio` are `float64`. `solution_id` and `flags` are `uint64`: `flags` is a bit field that uses bits up to 57, past 2^53. `bit_index` is `uint32`. `corr_vec` is a `float32_list`: the published upper triangle of the correlation matrix, column by column, over the parameters that `bit_index` names, NaN entries included. It has 6 to 190 entries, and it takes about half of the bytes of the table.
+
+A star with more than one solution keeps one. The order is: `AstroSpectroSB1`; `OrbitalTargetedSearchValidated`, `OrbitalAlternativeValidated`, `Orbital`, `OrbitalTargetedSearch`, `OrbitalAlternative`; `SB2`, `SB2C`, `SB1`, `SB1C`; `EclipsingSpectro`; `EclipsingBinary`. Astrometric solutions come first, because only they give the orbit in space. The ingest logs the solutions it leaves out by type pair; most are the `SB1` solution of a star with an `Orbital` one.
+
+`m1`, `m2` and `fluxratio` (the secondary over the primary in G) have bounds `_lower` and `_upper`, for the masses the 16th and 84th percentiles. `combination_method` names the solutions that gave the masses, as `Orbital+M1`: the astrometric orbit with a primary mass from isochrones (`m1_ref` `IsocLum`). Where a source has two mass rows, the row keeps the one whose method names the kept solution. A star can keep masses from another of its solutions: `SB1+M1` beside an `Orbital` solution.
+
+What each kind of solution lets a client draw:
+
+| `nss_solution_type` | Gives | A client can draw |
+|---|---|---|
+| `Orbital`, `OrbitalAlternative…`, `OrbitalTargetedSearch…` | `a_thiele_innes`, `b_…`, `f_…`, `g_…`, `period`, `t_periastron`, `eccentricity` | the full orbit of the light centre about the barycentre, with its orientation on the sky |
+| `AstroSpectroSB1` | the same, and `c_thiele_innes`, `h_thiele_innes`, `center_of_mass_velocity` | the full orbit, with its depth along the line of sight |
+| `SB1`, `SB1C`, `SB2`, `SB2C` | `period`, `eccentricity`, `arg_periastron`, `t_periastron`, `semi_amplitude_primary` (and `_secondary` for SB2); `C` forms are circular | the shape and phase of the orbit and its size along the line of sight (a sin i). No orientation on the sky |
+| `EclipsingBinary`, `EclipsingSpectro` | the light-curve fit: `period`, `inclination`, `eccentricity`, radii and eclipse times; `EclipsingSpectro` adds the velocities | the inclination; with the velocities also the size. No orientation on the sky |
+
+The astrometric orbit from the Thiele-Innes elements: at time `t` (days from J2016.0), solve `E − e sin E = 2π (t − t_periastron) / period` and take `X = cos E − e`, `Y = √(1 − e²) sin E`. The light centre is then `Δα* = B X + G Y` and `Δδ = A X + F Y` (mas) from the barycentre, and `C X + H Y` (AU) along the line of sight for `AstroSpectroSB1`. Divide by `parallax_nss` (mas) to get AU.
+
+The masses place the companion. With the mass fraction `μ = m2 / (m1 + m2)` and the light fraction `β = fluxratio / (1 + fluxratio)` (0 for a dark companion), the light centre is at `(β − μ)` times the separation from the primary to the secondary. So the primary is at `μ / (μ − β)` times the light-centre offset, and the secondary at `−(1 − μ) / (μ − β)` times it, on the other side of the barycentre.
+
 ## Lookup of an ID
 
 For a URL `/x/{id}/{name}` or a click:
@@ -203,7 +236,7 @@ An octree by visibility range for the objects of the Milky Way. It holds the sta
 - **IDs.** The ID file of a node has the same token and row count as the node file. A client loads it on the first click in the node; row `i` of both files is the same object.
 - **Precision.** A float32 position relative to the centre is off by up to half · 2^-24: about 13 AU for a star in a node of half size 1,024 pc, 0.8 AU in a node of half size 64 pc. A client that goes near one star takes its position from the star's record.
 
-Which stars are drawn: `parallax / parallax_error > 5`, and `fidelity_v2 ≥ 0.5`, or no fidelity, or a Hipparcos match (`hipparcos_photometry_source` not null), and a magnitude. Positions are at J2016.0: Hipparcos stars are moved from J1991.25 by their proper motion. Distance is `1000 / parallax`. The absolute magnitude comes from `phot_g_mean_mag`, or for a star without Gaia photometry from the estimate of G from V and B − V that the ingest uses for matching (`g_estimate` of the Hipparcos source), with no correction for extinction. The colour is `phot_bp_mean_mag − phot_rp_mean_mag`, or for a star without Gaia colours BP − RP from the Hipparcos V − I (Riello et al. 2021, Table C.2: −0.01612 + 1.274 x − 0.08143 x², x = V − I from −0.5 to 3.5). A star without a distance has an ID and a record, but no render row.
+Which stars are drawn: `parallax / parallax_error > 5`, and `fidelity_v2 ≥ 0.5`, or no fidelity, or a Hipparcos match (`hipparcos_photometry_source` not null), and a magnitude. Positions are at J2016.0: Hipparcos stars are moved from J1991.25 by their proper motion. Distance is `1000 / parallax`, with `parallax_nss` of table 2 for a star with an astrometric orbit solution whose `parallax_nss` is over 5 times its error (see Binary orbit). The absolute magnitude, and so the visibility range, uses the same parallax. Its apparent magnitude is `phot_g_mean_mag`, or for a star without Gaia photometry the estimate of G from V and B − V that the ingest uses for matching (`g_estimate` of the Hipparcos source), with no correction for extinction. The colour is `phot_bp_mean_mag − phot_rp_mean_mag`, or for a star without Gaia colours BP − RP from the Hipparcos V − I (Riello et al. 2021, Table C.2: −0.01612 + 1.274 x − 0.08143 x², x = V − I from −0.5 to 3.5). A star without a distance has an ID and a record, but no render row.
 
 ## Sky cultures (`skycultures`)
 
@@ -349,7 +382,7 @@ The token of `skycultures` covers all its files: SHA-256 over each file's path, 
 - `tables`: keyed by slug. `number` is the table number in the IDs, null for Metadata. `max_rows` is the split threshold. `rows` counts the rows of all tiles.
 - `trees`: keyed by name; `mw` is the Milky Way.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)). Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values, so all are `non-commercial`.
-- `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, Hipparcos I/311 and I/239, XHIP V/137D, the IAU Catalog of Star Names, Wikidata.
+- `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, Hipparcos I/311 and I/239, XHIP V/137D, the IAU Catalog of Star Names, Wikidata.
 - `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
   - `licence`: the licence of the culture's data and illustrations as it states it (`applies_to` is `all`, `data` or `illustrations`; the files hold no illustrations yet), and the tier that this licence alone allows. A culture that states no licence has no parts and the tier `non-commercial`, with the flag `no-licence`. A statement that the ingest cannot read gives the tier `undecided`, which no client may serve.
   - `distribution`: the tier of the file, the strictest of the culture's licence and of Gaia DR3 (`non-commercial`), because the positions come from Gaia. `undecided` stays `undecided`.
@@ -370,6 +403,8 @@ The export of 2026-10-23 (registry ingest 2, 180,949,689 IDs, all live):
 | Split tables | 2 | 1.7 kB and 11.6 kB (69,604 and 583,256 bits) | | | |
 | Render nodes | 61,487 | 2.8 GB | 24 kB, 1,372 rows | 141 kB | 160 kB |
 | Render IDs | 61,487 | 0.63 GB | 5 kB | 34 kB | 42 kB |
+
+Binary orbit tiles (`max_rows` 300), an estimate from the tile writer and the split rule over the 394,046 orbits of the positionable stars: 3,045 tiles, 118 MB, median 34 kB and 112 rows, p90 64 kB, max 111 kB.
 
 The sky cultures of registry ingest 4 (Stellarium at `0d956aa`, Bucur at `711e069`): 101 culture files (64 from Stellarium, 37 from Bucur) and the international names, 1.76 MB together. The median culture file is 3.7 kB; the largest are `chinese` (166 kB, 312 figures, 3,079 members) and `modern_chinese` (141 kB). 4,820 of the 4,864 stars of all cultures have a position.
 

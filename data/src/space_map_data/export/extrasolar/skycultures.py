@@ -287,10 +287,7 @@ def positions(registry: Registry, ids: Iterable[int]) -> dict[int, list[float]]:
     found: dict[int, list[float]] = {}
     regions = region_of(cell_of(wanted))
     for region in np.unique(regions).tolist():
-        table = registry.read_table("point-source", region, list(render.COLUMNS))
-        if table is None:
-            continue
-        rows, _ = render.render_rows(table)
+        rows, _ = render.render_rows(render.region_table(registry, region))
         hit = np.isin(rows["id"], wanted[regions == region])
         for id_, x, y, z in zip(
             rows["id"][hit].tolist(),

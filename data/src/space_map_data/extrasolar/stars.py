@@ -1,11 +1,11 @@
 """The star ingest: Gaia DR3, then Hipparcos, the IAU star names and Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
-Gaia. The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M
-dwarfs) are no pass: their rows join the Gaia rows by source_id, and PASTEL
-also the Hipparcos rows by HIP number. `limit` reads only the first Gaia
-chunks that hold that many stars, and the Hipparcos stars and names in the
-same pixels. Such an ingest is partial:
+Gaia. Its rows also carry the binary orbits of table 2. The metallicity
+catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs) are no pass: their
+rows join the Gaia rows by source_id, and PASTEL also the Hipparcos rows by HIP
+number. `limit` reads only the first Gaia chunks that hold that many stars, and
+the Hipparcos stars and names in the same pixels. Such an ingest is partial:
 it retires nothing, but it still rebuilds the tables from what it read. It
 never goes to REGISTRY_ROOT, because every later ingest keeps the IDs that it
 mints.
@@ -45,7 +45,7 @@ from space_map_data.extrasolar.sources.gaia import (
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
-from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
+from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, POINT_SOURCE
 from space_map_data.utils.paths import REGISTRY_BACKUP_DIR, REGISTRY_ROOT
 
 logger = logging.getLogger(__name__)
@@ -156,6 +156,10 @@ def _point_part(path: Path) -> tuple[int, np.ndarray]:
     return rows.num_rows, alone["hp_mag"].to_numpy(zero_copy_only=False)
 
 
+def _rows(path: Path) -> int:
+    return pq.ParquetFile(path).metadata.num_rows
+
+
 def _metadata_part(path: Path) -> tuple[int, np.ndarray]:
     """The rows of a metadata file, and its live IDs counted by length."""
     rows = pq.read_table(path, columns=["id", "alias_target"])
@@ -177,6 +181,7 @@ def summary(registry: Registry, name_ids: list[str], items: int) -> str:
     """Rows per table, ID lengths, Hipparcos-only stars, names and items placed."""
     point = _scan(_table_paths(registry, POINT_SOURCE.slug), _point_part)
     metadata = _scan(_table_paths(registry, METADATA.slug), _metadata_part)
+    orbits = _scan(_table_paths(registry, BINARY_ORBIT.slug), _rows)
     # numpy types `np.sum` of a list as a scalar.
     lengths = np.asarray(
         np.sum([counts for _, counts in metadata], axis=0, dtype=np.int64)
@@ -185,6 +190,7 @@ def summary(registry: Registry, name_ids: list[str], items: int) -> str:
     lines = [
         "Extrasolar stars",
         f"point-source rows: {sum(n for n, _ in point):,}",
+        f"binary-orbit rows: {sum(orbits):,}",
         f"metadata rows: {sum(n for n, _ in metadata):,} ({live:,} live)",
         "",
         "ID length (digits) of live IDs:",

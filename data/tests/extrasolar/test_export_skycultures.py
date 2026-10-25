@@ -177,10 +177,7 @@ class TestCultureFile:
         registry = Registry(tmp_path / "reg")
         with registry.reader():
             for region in sorted({int(region_of(cell_of(i))) for i in found}):
-                table = registry.read_table(
-                    "point-source", region, list(render.COLUMNS)
-                )
-                rows, _ = render.render_rows(table)
+                rows, _ = render.render_rows(render.region_table(registry, region))
                 for at, id_ in enumerate(rows["id"].tolist()):
                     if id_ in found:
                         xyz = [float(rows[axis][at]) for axis in "xyz"]

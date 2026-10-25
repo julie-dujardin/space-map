@@ -1,9 +1,9 @@
-"""A small registry with real Point source and Metadata tables, written
-directly in the layout of `extrasolar.registry`."""
+"""A small registry with real Metadata, Point source and Binary orbit tables,
+written directly in the layout of `extrasolar.registry`."""
 
 import json
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,7 +22,7 @@ from space_map_data.extrasolar.registry import (
     sort_by_cell,
 )
 from space_map_data.extrasolar.store import region_file
-from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
+from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, POINT_SOURCE
 from space_map_data.utils.files import write_parquet
 
 HOST = "test-host"
@@ -93,12 +93,14 @@ def write_registry(
     reviewed: bool = True,
     extra_table_ids: Sequence[int] = (),
     missing: Sequence[int] = (),
+    orbits: Mapping[int, dict] | None = None,
 ) -> Built:
     """Write a registry of one ingest. `aliases` are (loser, survivor) pairs of
     star indexes: the loser's ID is an alias and has no data rows. A `retired`
     star index has a retired record and no rows. A `missing` star index takes
     its serial but has no record and no rows, as in a registry rolled back.
-    `extra_table_ids` get rows but no registry record."""
+    `extra_table_ids` get rows but no registry record. `orbits` gives the
+    Binary orbit row of a star index; without it the registry has no table 2."""
     serials: dict[int, int] = defaultdict(int)
     minted = []
     for row in stars:
@@ -160,6 +162,13 @@ def write_registry(
         for name, column in point.items():
             column.append(id_ if name == "id" else row.get(name))
     point_table = pa.table(point, schema=POINT_SOURCE.schema)
+    orbit_of = {minted[i]: values for i, values in (orbits or {}).items()}
+    orbit = {f.name: [] for f in BINARY_ORBIT.schema}
+    for id_, _ in data:
+        if id_ in orbit_of:
+            for name, column in orbit.items():
+                column.append(id_ if name == "id" else orbit_of[id_].get(name))
+    orbit_table = pa.table(orbit, schema=BINARY_ORBIT.schema)
     meta_rows = []
     for id_, row in data:
         meta_rows.append(
@@ -181,7 +190,7 @@ def write_registry(
                     if (qid := row.get("_qid"))
                     else []
                 ),
-                "mask": 2,
+                "mask": 2 | (4 if id_ in orbit_of else 0),
                 "object": bool(row.get("_qid")),
                 "alias_target": None,
             }
@@ -193,7 +202,10 @@ def write_registry(
             | {"cross_ids": None, "object": None}
         )
     meta_table = pa.Table.from_pylist(meta_rows, schema=METADATA.schema)
-    for slug, table in (("point-source", point_table), ("metadata", meta_table)):
+    tables = {"point-source": point_table, "metadata": meta_table}
+    if orbits is not None:
+        tables["binary-orbit"] = orbit_table
+    for slug, table in tables.items():
         for region, part in by_region(table).items():
             write_parquet(part, region_file(root / "tables" / slug / "000001", region))
 
@@ -220,7 +232,7 @@ def write_registry(
         "created": entry["date"],
         "region_level": sky.REGION_LEVEL,
         "ingests": [entry],
-        "tables": {"metadata": 1, "point-source": 1},
+        "tables": dict.fromkeys(tables, 1),
     }
     (root / "registry").mkdir(parents=True, exist_ok=True)
     (root / "registry" / "manifest.json").write_text(json.dumps(manifest))

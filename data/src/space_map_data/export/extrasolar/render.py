@@ -18,6 +18,10 @@ The visibility range of a light source is the distance at which its apparent
 magnitude reaches RANGE_LIMIT_MAG. The rows of a node file are in order of
 range, the largest first, then by ID.
 
+A star with an astrometric orbit solution in table 2 takes its distance from
+the solution's parallax, which fits the motion of the light centre. The
+single-star parallax of Point source still decides which stars are drawn.
+
 The build works in three steps with scratch files on disk: render rows per
 region, the node of each row from the whole sky, then the node files in
 batches of nodes.
@@ -36,8 +40,10 @@ import pyarrow.compute as pc
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
-from space_map_data.extrasolar.tables import POINT_SOURCE
+from space_map_data.extrasolar.tables import BINARY_ORBIT, POINT_SOURCE
+from space_map_data.utils.arrays import find_sorted
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +96,9 @@ COLUMNS = (
     "astrometry_source",
     "hipparcos_photometry_source",
 )
+ORBIT_COLUMNS = ("id", "nss_solution_type", "parallax_nss", "parallax_nss_error")
+# The parallax of an astrometric orbit solution, null for any other star.
+ORBIT_PARALLAX = ("orbit_parallax", "orbit_parallax_error")
 # Arrays of one render row, in the scratch files.
 ROW_ARRAYS = {
     "id": np.int64,
@@ -166,8 +175,48 @@ def _floats(table: pa.Table, name: str) -> np.ndarray:
     return table[name].to_numpy().astype(np.float64)
 
 
+def with_orbit_parallax(table: pa.Table, orbits: pa.Table | None) -> pa.Table:
+    """Point source rows with ORBIT_PARALLAX from the table-2 rows `orbits`."""
+    ids = table["id"].to_numpy()
+    at = np.full(ids.size, -1, np.int64)
+    if orbits is not None and orbits.num_rows:
+        astrometric = pc.is_in(
+            orbits["nss_solution_type"], value_set=pa.array(sorted(ASTROMETRIC))
+        )
+        orbits = orbits.filter(astrometric)
+        order = np.argsort(orbits["id"].to_numpy())
+        orbits = orbits.take(pa.array(order))
+        at = find_sorted(orbits["id"].to_numpy(), ids)
+    index = pa.array(at, mask=at < 0)
+    for name, source in zip(ORBIT_PARALLAX, ORBIT_COLUMNS[2:]):
+        values = (
+            pa.nulls(ids.size, pa.float32())
+            if orbits is None or not orbits.num_rows
+            else orbits[source].take(index)
+        )
+        table = table.append_column(name, values)
+    return table
+
+
+def region_table(registry: Registry, region: int) -> pa.Table:
+    """The Point source rows of a region that `render_rows` reads."""
+    table = registry.read_table("point-source", region, list(COLUMNS))
+    if table is None:
+        table = POINT_SOURCE.schema.empty_table().select(list(COLUMNS))
+    orbits = registry.read_table(BINARY_ORBIT.slug, region, list(ORBIT_COLUMNS))
+    return with_orbit_parallax(table, orbits)
+
+
+def distance_parallax(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
+    """The parallax (mas) that gives each star its distance, and whether it is
+    the orbit solution's. An orbit parallax under 5 times its error gives none."""
+    orbit = _floats(table, "orbit_parallax")
+    used = orbit / _floats(table, "orbit_parallax_error") > MIN_PARALLAX_SNR
+    return np.where(used, orbit, _floats(table, "parallax")), used
+
+
 def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
-    """The render rows of Point source rows, and what was dropped and why."""
+    """The render rows of `region_table` rows, and what was dropped and why."""
     counts: Counter = Counter()
     counts["rows"] = table.num_rows
     parallax = _floats(table, "parallax")
@@ -215,7 +264,8 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
         ra[moving], dec[moving] = moved
     counts[f"moved to J{EPOCH}"] = int(moving.sum())
 
-    distance = 1000.0 / _floats(table, "parallax")
+    parallax, orbit = distance_parallax(table)
+    distance = 1000.0 / parallax
     ra_rad, dec_rad = np.radians(ra), np.radians(dec)
     x = distance * np.cos(dec_rad) * np.cos(ra_rad)
     y = distance * np.cos(dec_rad) * np.sin(ra_rad)
@@ -223,8 +273,9 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
     offsets = [np.abs(v - c) for v, c in zip((x, y, z), ROOT_CENTRE)]
     inside = np.maximum.reduce(offsets) < HALF_SIZE
     counts["outside the root cube"] = int((~inside).sum())
+    counts["distance from an orbit solution"] = int((orbit & inside).sum())
 
-    abs_mag = _round(mag[keep] + 5 * np.log10(_floats(table, "parallax")) - 10)
+    abs_mag = _round(mag[keep] + 5 * np.log10(parallax) - 10)
     bp_rp = _floats(table, "phot_bp_mean_mag") - _floats(table, "phot_rp_mean_mag")
     from_v_i = bp_rp_from_v_i(_floats(table, "v_i"))
     colour = _round(np.where(np.isfinite(bp_rp), bp_rp, from_v_i))
@@ -262,11 +313,7 @@ class RowsJob:
 
 def region_rows(job: RowsJob) -> tuple[int, Counter]:
     """Write the render rows of one region to the scratch directory."""
-    columns = list(COLUMNS)
-    table = job.registry.read_table("point-source", job.region, columns)
-    if table is None:
-        table = POINT_SOURCE.schema.empty_table().select(columns)
-    rows, counts = render_rows(table)
+    rows, counts = render_rows(region_table(job.registry, job.region))
     for name, values in rows.items():
         path = scratch_file(job.scratch, job.region, name)
         path.parent.mkdir(parents=True, exist_ok=True)

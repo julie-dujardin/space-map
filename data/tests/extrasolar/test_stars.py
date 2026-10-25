@@ -24,6 +24,7 @@ from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import (
     apogee,
     gaia,
+    gaia_orbits,
     hipparcos,
     lamost,
     names,
@@ -34,7 +35,12 @@ from space_map_data.extrasolar.sources.gaia import GAIA_DR3, BestNeighbours
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
-from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES
+from space_map_data.extrasolar.tables import (
+    BINARY_ORBIT,
+    METADATA,
+    POINT_SOURCE,
+    TABLES,
+)
 from space_map_data.ingest import __main__ as ingest_cli
 from space_map_data.utils.paths import (
     DERIVED_SKYCULTURES_DIR,
@@ -42,6 +48,8 @@ from space_map_data.utils.paths import (
     REGISTRY_ROOT,
 )
 from tests.extrasolar.conftest import centre, offset, table_rows
+from tests.extrasolar.test_gaia_orbits import build as build_orbits
+from tests.extrasolar.test_gaia_orbits import solution
 
 RA, DEC = centre(6_000_321)
 
@@ -50,8 +58,11 @@ def at(arcsec: float, angle: float = 0.0) -> tuple[float, float]:
     return offset(RA, DEC, arcsec, angle)
 
 
+NO_ORBITS = build_orbits([])
+
+
 def gaia_stars(rows: list[dict]) -> pa.Table:
-    """Gaia rows with every downloaded column; the others are null."""
+    """Gaia rows with every downloaded and joined column; the others are null."""
     columns = {}
     for name in (
         *gaia.COLUMNS,
@@ -62,6 +73,9 @@ def gaia_stars(rows: list[dict]) -> pa.Table:
         kind = (
             pa.int64() if name == "source_id" else POINT_SOURCE.schema.field(name).type
         )
+        columns[name] = pa.array([row.get(name) for row in rows], kind)
+    for name in gaia_orbits.COLUMNS:
+        kind = BINARY_ORBIT.schema.field(name).type
         columns[name] = pa.array([row.get(name) for row in rows], kind)
     return pa.table(columns)
 
@@ -252,6 +266,7 @@ class TestGaiaRows:
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
             xgboost_dir=tmp_path,
+            orbits=NO_ORBITS,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
@@ -283,6 +298,7 @@ class TestGaiaRows:
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
             xgboost_dir=tmp_path,
+            orbits=NO_ORBITS,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         pq.write_table(fidelity([]), reader.fidelity_path(path))
@@ -299,6 +315,7 @@ class TestGaiaRows:
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
             xgboost_dir=tmp_path,
+            orbits=NO_ORBITS,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
@@ -315,12 +332,48 @@ class TestGaiaRows:
         assert rows["in_vetted_rgb_sample"].to_pylist() == [False, None, True]
         assert reader.counts["xgboost"] == 2
 
+    def test_orbit_join_and_counts(self, tmp_path):
+        orbits = build_orbits(
+            [
+                solution(3, "Orbital", parallax=10.5),
+                solution(3, "SB1"),
+                solution(2, "SB1"),
+                # Not among the stars.
+                solution(4, "EclipsingBinary"),
+            ]
+        )
+        reader = gaia.GaiaReader(
+            BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
+            source_dir=tmp_path,
+            fidelity_dir=tmp_path,
+            astrophysical_dir=tmp_path,
+            xgboost_dir=tmp_path,
+            orbits=orbits,
+        )
+        path = tmp_path / "GaiaSource_000000-000002.parquet"
+        stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
+        pq.write_table(stars.select(gaia.COLUMNS), path)
+        pq.write_table(
+            fidelity([(1, 0.9), (2, 0.2), (3, 0.9)]), reader.fidelity_path(path)
+        )
+        pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(xgboost([]), reader.xgboost_path(path))
+        [rows] = list(reader.batches([path]))
+        assert rows["nss_solution_type"].to_pylist() == [None, "SB1", "Orbital"]
+        assert rows["parallax_nss"].to_pylist() == [None, None, 10.5]
+        assert rows["parallax"].to_pylist() == [10.0] * 3
+        assert (reader.counts["orbits"], reader.counts["flagged_orbits"]) == (2, 1)
+        assert reader.orbit_report["joined"] == 2
+        assert reader.orbit_report["left_out_by_pair"] == {"Orbital over SB1": 1}
+        assert reader.orbit_report["outside"] == 1
+
     def test_missing_xgboost_chunk_fails_before_reading(self, tmp_path):
         reader = gaia.GaiaReader(
             BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
             xgboost_dir=tmp_path,
+            orbits=NO_ORBITS,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         pq.write_table(fidelity([]), reader.fidelity_path(path))
@@ -679,6 +732,8 @@ class TestStarIngest:
         )
         best = BestNeighbours(np.array([1, 2, 99]), np.array([10, 20, 40]))
         flags = fidelity([(1, 0.9), (2, 0.2), (3, 0.9), (4, 0.3), (6, 0.9)])
+        orbits = build_orbits([solution(3, "Orbital", parallax=10.25)])
+        table = orbits.join(table.drop_columns(list(gaia_orbits.COLUMNS)))
         gaia_rows = gaia.engine_rows(gaia.join_fidelity(table, flags), best)
         hip = hipparcos.engine_rows(
             hip_stars(
@@ -786,9 +841,18 @@ class TestStarIngest:
         alone = point[hip_40]
         assert alone["astrometry_source"] == "hipparcos-2007"
         assert alone["epoch"] == 1991.25 and alone["phot_g_mean_mag"] is None
+        assert {i: meta[i]["mask"] for i in meta} == {
+            i: 6 if i == id_of("gaia", "dr3", 3) else 2 for i in meta
+        }
+        [orbit] = table_rows(root, "binary-orbit").to_pylist()
+        assert orbit["id"] == id_of("gaia", "dr3", 3)
+        assert orbit["nss_solution_type"] == "Orbital"
+        assert orbit["parallax_nss"] == 10.25 and orbit["orbit_source"] == "gaia-dr3"
+        assert orbit["corr_vec"][0] == 0.5 and orbit["masses_source"] is None
 
         summary = stars.summary(registry, names.read_names(names_path), 0)
         assert "point-source rows: 6" in summary
+        assert "binary-orbit rows: 1" in summary
         assert "Hipparcos stars without a Gaia DR3 row: 1" in summary
         assert "IAU names: 2 placed, 1 unplaced\n  Gamma" in summary
         assert not any(row["object"] for row in meta.values())

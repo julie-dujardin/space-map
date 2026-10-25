@@ -34,6 +34,12 @@ def _sample() -> list[Column]:
         Column("name", "string", pa.array(["α Cen", None, ""])),
         Column("source", "dict", pa.array(["gaia-dr3", "hipparcos-2007", None])),
         Column("cross_ids", "cross_ids", cross),
+        Column("flags", "uint64", pa.array([2**57 + 64, None, 2**64 - 1], pa.uint64())),
+        Column(
+            "corr_vec",
+            "float32_list",
+            pa.array([[0.5, -0.25], None, []], pa.list_(pa.float32())),
+        ),
     ]
 
 
@@ -56,7 +62,7 @@ class TestContainer:
     def test_buffers_are_aligned_views(self):
         payload = container.encode(container.KIND_TILE, 3, _sample())
         magic, _, _, _, _, rows, count, info = container.HEADER.unpack_from(payload)
-        assert magic == b"SMXS" and rows == 3 and count == 9
+        assert magic == b"SMXS" and rows == 3 and count == 11
         at = container.HEADER.size + info
         for _ in range(count):
             code, _, nbuf, size = struct.unpack_from("<BBBB", payload, at)
@@ -83,6 +89,17 @@ class TestContainer:
             container.encode(container.KIND_SPLIT, 21, [Column("split", "bits", bits)])
         )
         assert out.numpy("split").tolist() == bits.tolist()
+
+    def test_float32_lists_keep_nan_and_sliced_input(self):
+        lists = pa.array(
+            [[9.0], [1.5, float("nan")], None, [], [2.0]], pa.list_(pa.float32())
+        )
+        column = Column("corr_vec", "float32_list", lists.slice(1, 4))
+        out = container.decode(container.encode(container.KIND_TILE, 4, [column]))
+        values = out.column("corr_vec").to_pylist()
+        assert values[0][0] == 1.5 and np.isnan(values[0][1])
+        assert values[1:] == [None, [], [2.0]]
+        assert out.columns["corr_vec"][0] == "float32_list"
 
     def test_ids_past_2_53_are_refused(self):
         with pytest.raises(container.FormatError):

@@ -389,7 +389,143 @@ POINT_SOURCE = TableDef(
     ),
 )
 
-TABLES: tuple[TableDef, ...] = (POINT_SOURCE,)
+# Point source holds these names, so the orbit solution's astrometry takes the
+# suffix `_nss`. A column of a source feeds every table that has its name.
+NSS_ASTROMETRY = {
+    name: name.replace(base, f"{base}_nss")
+    for base in ("ra", "dec", "parallax", "pmra", "pmdec")
+    for name in (base, f"{base}_error")
+}
+
+# One Gaia DR3 orbit solution per star (nss_two_body_orbit) and the masses of
+# its two stars (binary_masses), with the published names and units: angles in
+# deg, times in d, Thiele-Innes A, B, F, G in mas and C, H in AU. `corr_vec` is
+# the published correlation vector with its NaN entries. A value is float32
+# when float32 rounding stays under 1% of each published error, else float64.
+BINARY_ORBIT = TableDef(
+    number=2,
+    slug="binary-orbit",
+    groups=(
+        ColumnGroup(
+            "orbit",
+            (
+                pa.field("solution_id", pa.uint64()),
+                pa.field("nss_solution_type", pa.string()),
+                pa.field(NSS_ASTROMETRY["ra"], pa.float64()),
+                pa.field(NSS_ASTROMETRY["ra_error"], pa.float32()),
+                pa.field(NSS_ASTROMETRY["dec"], pa.float64()),
+                *_fields(
+                    pa.float32(),
+                    *(
+                        NSS_ASTROMETRY[name]
+                        for name in (
+                            "dec_error",
+                            "parallax",
+                            "parallax_error",
+                            "pmra",
+                            "pmra_error",
+                            "pmdec",
+                            "pmdec_error",
+                        )
+                    ),
+                    *(
+                        f"{element}_thiele_innes{suffix}"
+                        for element in "abfgch"
+                        for suffix in ("", "_error")
+                    ),
+                ),
+                pa.field("period", pa.float64()),
+                *_fields(
+                    pa.float32(),
+                    "period_error",
+                    *(
+                        f"{name}{suffix}"
+                        for name in (
+                            "t_periastron",
+                            "eccentricity",
+                            "center_of_mass_velocity",
+                            "semi_amplitude_primary",
+                            "semi_amplitude_secondary",
+                            "mass_ratio",
+                            "fill_factor_primary",
+                            "fill_factor_secondary",
+                        )
+                        for suffix in ("", "_error")
+                    ),
+                ),
+                pa.field("inclination", pa.float64()),
+                *_fields(
+                    pa.float32(),
+                    "inclination_error",
+                    "arg_periastron",
+                    "arg_periastron_error",
+                ),
+                pa.field("temperature_ratio", pa.float64()),
+                pa.field("temperature_ratio_error", pa.float32()),
+                pa.field("temperature_ratio_definition", pa.int8()),
+                *_fields(
+                    pa.int32(),
+                    *(
+                        f"{kind}_n_{good}obs_{side}"
+                        for kind, side in (
+                            ("astrometric", "al"),
+                            ("rv", "primary"),
+                            ("rv", "secondary"),
+                        )
+                        for good in ("", "good_")
+                    ),
+                    "phot_g_n_obs",
+                    "phot_g_n_good_obs",
+                ),
+                pa.field("bit_index", pa.uint32()),
+                pa.field("corr_vec", pa.list_(pa.float32())),
+                *_fields(
+                    pa.float32(),
+                    "obj_func",
+                    "goodness_of_fit",
+                    "efficiency",
+                    "significance",
+                ),
+                pa.field("flags", pa.uint64()),
+                *_fields(
+                    pa.float32(),
+                    "conf_spectro_period",
+                    "r_pole_sum",
+                    "r_l1_point_sum",
+                    "r_spher_sum",
+                    "ecl_time_primary",
+                    "ecl_time_secondary",
+                    "ecl_dur_primary",
+                    "ecl_dur_secondary",
+                    "g_luminosity_ratio",
+                    "input_period_error",
+                    "g_rank",
+                    "astrometric_jitter",
+                ),
+            ),
+            ("gaia-dr3",),
+        ),
+        # Masses in solar masses, bounds at the 16th and 84th percentiles. The
+        # flux ratio is the secondary over the primary in G.
+        ColumnGroup(
+            "masses",
+            (
+                *_fields(
+                    pa.float32(),
+                    *(
+                        f"{name}{bound}"
+                        for name in ("m1", "m2", "fluxratio")
+                        for bound in ("", "_lower", "_upper")
+                    ),
+                ),
+                *_fields(pa.string(), "combination_method", "m1_ref", "flag"),
+            ),
+            ("gaia-dr3",),
+        ),
+    ),
+)
+
+TABLES: tuple[TableDef, ...] = (POINT_SOURCE, BINARY_ORBIT)
 
 
 def merge_by_source_order(table: TableDef, rows: pa.Table) -> pa.Table:

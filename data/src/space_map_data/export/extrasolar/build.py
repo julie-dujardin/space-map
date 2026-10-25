@@ -81,6 +81,13 @@ CREDITS = (
         "citation": "Rybizki et al. 2022, MNRAS 510, 2597",
     },
     {
+        "name": "Gaia DR3 binary orbits and masses",
+        "organisation": "Gaia Collaboration, Arenou et al. 2023",
+        "source": "https://ui.adsabs.harvard.edu/abs/2023A&A...674A..34G",
+        "license": "CC BY-NC 3.0 IGO",
+        "citation": "Gaia Collaboration, Arenou et al. 2023, A&A 674, A34",
+    },
+    {
         "name": "Metallicities from Gaia XP spectra",
         "organisation": "Andrae, Rix & Chandra 2023",
         "source": "https://doi.org/10.5281/zenodo.7945154",
