@@ -26,6 +26,7 @@ import { ltrIsolate } from '$lib/format/bidi';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { starSourceName } from '$lib/credits/star-sources';
 import type { Stat } from '../kit/StatCard.svelte';
+import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
 
 export const POINT_SOURCE_SLUG = 'point-source';
 
@@ -55,6 +56,13 @@ const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
 	'hd/1949': { label: m.star_xid_hd, prefix: 'HD' },
 	'iau/wgsn': { label: m.star_xid_iau }
 };
+
+/** The catalogues that join the Point source row hold their ids in its columns. */
+const JOINED_IDS: [column: string, label: () => string][] = [
+	['pastel_designation', m.star_xid_pastel],
+	['apogee_id', m.star_xid_apogee],
+	['lamost_id', m.star_xid_lamost]
+];
 
 const SIMBAD = 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=';
 /** The links section shows the Wikidata item, from the object entry. */
@@ -120,6 +128,21 @@ function bounded(ps: TableRow, label: string, name: string, unit = ''): StarRowE
 		label,
 		value: withBounds(value, ps.number(`${name}_lower`), ps.number(`${name}_upper`), unit)
 	};
+}
+
+const METALLICITY_LABELS: Record<MetallicityQuantity, () => string> = {
+	mh: m.star_row_metallicity,
+	feh: m.star_row_metallicity_feh
+};
+
+/** The metallicity row and its source row; none where no source has a value. */
+function metallicityRows(ps: TableRow, dex: string): StarRowEntry[] {
+	const chosen = chooseMetallicity(ps, dex);
+	if (chosen === null) return [];
+	return [
+		{ label: METALLICITY_LABELS[chosen.quantity](), value: chosen.value },
+		{ label: m.star_row_metallicity_source(), value: starSourceName(chosen.source) }
+	];
 }
 
 /** A temperature (K) and its percentiles, in the app's temperature unit. The
@@ -220,17 +243,18 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 export function starSections(record: ExtrasolarRecord): StarSection[] {
 	const u = units();
 	const meta = record.metadata;
+	const ps = pointSource(record);
 	const sections: StarSection[] = [
 		{
 			key: 'identifiers',
 			title: m.star_section_identifiers(),
 			rows: rows([
 				...meta.crossIds.filter((x) => !LINKED_CATALOGUES.has(x.catalogue)).map(crossIdRow),
+				...JOINED_IDS.map(([column, label]) => row(label(), ps?.text(column))),
 				row(m.star_row_space_map_id(), String(record.id))
 			])
 		}
 	];
-	const ps = pointSource(record);
 	if (ps) sections.push(...pointSourceSections(ps, u));
 	return sections.filter((section) => section.rows.length > 0);
 }
@@ -333,7 +357,7 @@ function pointSourceSections(ps: TableRow, u: ReturnType<typeof units>): StarSec
 				}
 			: null,
 		bounded(ps, m.star_row_logg(), 'logg_gspphot'),
-		bounded(ps, m.star_row_metallicity(), 'mh_gspphot', u.dex),
+		...metallicityRows(ps, u.dex),
 		bounded(ps, m.star_row_distance_photometric(), 'distance_gspphot', u.pc),
 		bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
 		bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),

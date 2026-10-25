@@ -17,10 +17,17 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'gaia-dr3': m.source_gaia_dr3_name,
 	'hipparcos-2007': m.source_hipparcos_name,
 	'iau-wgsn': m.source_iau_wgsn_name,
+	'andrae-2023': m.source_andrae_2023_name,
+	'gaia-dr3-gspphot': m.source_gaia_dr3_gspphot_name,
+	'gaia-dr3-gspspec': m.source_gaia_dr3_gspspec_name,
+	'pastel-2020': m.source_pastel_name,
+	'apogee-dr17': m.source_apogee_dr17_name,
+	'lamost-dr10': m.source_lamost_dr10_name,
+	xhip: m.source_xhip_name,
 	wikidata: m.source_wikidata_name
 };
 
-/** The catalogue a `*_source` column names, as a reader knows it. */
+/** The catalogue a `*_source` column or a panel row names, as a reader knows it. */
 export function starSourceName(source: string): string {
 	return SOURCE_NAMES[source]?.() ?? source;
 }
@@ -29,6 +36,12 @@ export function starSourceName(source: string): string {
 export const CREDIT_PAGES = {
 	gaia: '/web/gaia/dr3',
 	fidelity: '/stab3588',
+	xpMetallicity: '/zenodo.7945154',
+	pastel: '/B/pastel',
+	simbad: '/simbad.cds.unistra.fr/',
+	apogee: 'sdss4.org/dr17/',
+	lamost: '/zenodo.14030249',
+	lamostMStars: 'lamost.org/dr10/',
 	hipparcos: '/I/311',
 	hipparcosPhotometry: '/I/239',
 	xhip: '/V/137D',
@@ -54,9 +67,20 @@ export function starCredits(record: ExtrasolarRecord): StarCredit[] {
 	for (const row of record.rows.values()) {
 		if (row.text('astrometry_source') === 'gaia-dr3') pages.add('gaia');
 		if (row.text('astrometry_source') === 'hipparcos-2007') pages.add('hipparcos');
-		if (row.text('gaia_photometry_source') || row.text('gspphot_source')) pages.add('gaia');
+		if (
+			row.text('gaia_photometry_source') ||
+			row.text('gspphot_source') ||
+			row.text('gspspec_source')
+		)
+			pages.add('gaia');
 		if (row.text('hipparcos_photometry_source')) pages.add('hipparcosPhotometry');
 		if (row.text('fidelity_source')) pages.add('fidelity');
+		if (row.text('xgboost_source')) pages.add('xpMetallicity');
+		// These rows join by ids from SIMBAD and from the LAMOST M-star catalogue.
+		if (row.text('pastel_source')) pages.add('pastel').add('simbad');
+		if (row.text('apogee_source')) pages.add('apogee');
+		if (row.text('lamost_source')) pages.add('lamost').add('lamostMStars');
+		if (row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
 	const out: StarCredit[] = [];
 	for (const page of Object.keys(CREDIT_PAGES) as CreditPage[]) {

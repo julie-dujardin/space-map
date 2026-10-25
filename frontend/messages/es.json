@@ -1351,6 +1351,8 @@
 	"star_row_teff": "Temperatura efectiva",
 	"star_row_logg": "Gravedad superficial (log g)",
 	"star_row_metallicity": "Metalicidad [M/H]",
+	"star_row_metallicity_feh": "Metalicidad [Fe/H]",
+	"star_row_metallicity_source": "Fuente de la metalicidad",
 	"star_row_distance_photometric": "Distancia fotométrica",
 	"star_row_extinction_a0": "Extinción (A₀)",
 	"star_row_extinction_g": "Extinción en G (A_G)",

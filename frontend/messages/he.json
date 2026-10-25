@@ -1371,6 +1371,8 @@
 	"star_row_teff": "טמפרטורה אפקטיבית",
 	"star_row_logg": "כבידה על פני השטח (log g)",
 	"star_row_metallicity": "מתכתיות [M/H]",
+	"star_row_metallicity_feh": "מתכתיות [Fe/H]",
+	"star_row_metallicity_source": "מקור המתכתיות",
 	"star_row_distance_photometric": "מרחק פוטומטרי",
 	"star_row_extinction_a0": "בליעה (A₀)",
 	"star_row_extinction_g": "בליעה ב-G (A_G)",

@@ -1382,6 +1382,8 @@
 	"star_row_teff": "Эффективная температура",
 	"star_row_logg": "Ускорение силы тяжести (log g)",
 	"star_row_metallicity": "Металличность [M/H]",
+	"star_row_metallicity_feh": "Металличность [Fe/H]",
+	"star_row_metallicity_source": "Источник металличности",
 	"star_row_distance_photometric": "Фотометрическое расстояние",
 	"star_row_extinction_a0": "Поглощение (A₀)",
 	"star_row_extinction_g": "Поглощение в G (A_G)",

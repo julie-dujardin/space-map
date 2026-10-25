@@ -1427,6 +1427,8 @@
 	"star_row_teff": "درجة الحرارة الفعالة",
 	"star_row_logg": "الجاذبية السطحية (log g)",
 	"star_row_metallicity": "المعدنية [M/H]",
+	"star_row_metallicity_feh": "المعدنية [Fe/H]",
+	"star_row_metallicity_source": "مصدر المعدنية",
 	"star_row_distance_photometric": "المسافة الضوئية",
 	"star_row_extinction_a0": "الخبو (A₀)",
 	"star_row_extinction_g": "الخبو في G (A_G)",

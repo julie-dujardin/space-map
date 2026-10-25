@@ -1332,6 +1332,8 @@
 	"star_row_teff": "有效温度",
 	"star_row_logg": "表面重力 (log g)",
 	"star_row_metallicity": "金属丰度 [M/H]",
+	"star_row_metallicity_feh": "金属丰度 [Fe/H]",
+	"star_row_metallicity_source": "金属丰度来源",
 	"star_row_distance_photometric": "测光距离",
 	"star_row_extinction_a0": "消光 (A₀)",
 	"star_row_extinction_g": "G 波段消光 (A_G)",

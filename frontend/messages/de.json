@@ -1331,6 +1331,8 @@
 	"star_row_teff": "Effektivtemperatur",
 	"star_row_logg": "Schwerebeschleunigung (log g)",
 	"star_row_metallicity": "Metallizität [M/H]",
+	"star_row_metallicity_feh": "Metallizität [Fe/H]",
+	"star_row_metallicity_source": "Quelle der Metallizität",
 	"star_row_distance_photometric": "Photometrische Entfernung",
 	"star_row_extinction_a0": "Extinktion (A₀)",
 	"star_row_extinction_g": "Extinktion in G (A_G)",

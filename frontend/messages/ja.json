@@ -1437,6 +1437,8 @@
 	"star_row_teff": "有効温度",
 	"star_row_logg": "表面重力 (log g)",
 	"star_row_metallicity": "金属量 [M/H]",
+	"star_row_metallicity_feh": "金属量 [Fe/H]",
+	"star_row_metallicity_source": "金属量の出典",
 	"star_row_distance_photometric": "測光距離",
 	"star_row_extinction_a0": "減光 (A₀)",
 	"star_row_extinction_g": "Gバンドの減光 (A_G)",
