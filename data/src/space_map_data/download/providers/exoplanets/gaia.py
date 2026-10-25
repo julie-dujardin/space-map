@@ -22,9 +22,11 @@ https://www.cosmos.esa.int/web/gaia-users/license
 The XP metallicities: CC BY 4.0, cite Andrae, Rix & Chandra 2023, ApJS 267, 8.
 """
 
+import csv
 import logging
 import re
 from collections.abc import Iterable
+from pathlib import Path
 
 import httpx
 
@@ -105,6 +107,11 @@ XGBOOST_FILE = "xgboost.csv"
 FILES = (SOURCE_FILE, FIDELITY_FILE, ASTROPHYSICAL_FILE, XGBOOST_FILE)
 
 
+def _header(path: Path) -> list[str]:
+    with path.open(newline="") as f:
+        return next(csv.reader(f), [])
+
+
 def xgboost_rows(header: list[str], rows: list[list[str]]) -> list[list[str]]:
     """The rows with the two membership flags, as the bulk chunks hold them."""
     vetted, oba = header.index("vetted_id"), header.index("oba_id")
@@ -141,9 +148,13 @@ class ExoplanetGaiaDownloader(InputReader):
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def is_complete(self, limit: int | None) -> bool:
-        # A file added since the last run forces a refetch.
-        return super().is_complete(limit) and all(
-            (self.out_dir / name).exists() for name in FILES
+        # A file or an astrophysical column added since the last run forces a
+        # refetch: the ingest reads every column.
+        return (
+            super().is_complete(limit)
+            and all((self.out_dir / name).exists() for name in FILES)
+            and _header(self.out_dir / ASTROPHYSICAL_FILE)
+            == ["source_id", *ASTROPHYSICAL_COLUMNS]
         )
 
     def _by_id(self, query: str, ids: list[int]) -> Rows:

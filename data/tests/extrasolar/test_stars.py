@@ -327,7 +327,7 @@ class TestGaiaRows:
         )
         assert inside.tolist() == [True]
 
-    def test_radius_join_preserves_order_missing_values_and_bounds(self, tmp_path):
+    def test_parameter_join_preserves_order_missing_values_and_bounds(self, tmp_path):
         reader = gaia.GaiaReader(
             BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
             source_dir=tmp_path,
@@ -342,23 +342,25 @@ class TestGaiaRows:
         pq.write_table(
             fidelity([(1, 0.9), (2, 0.9), (3, 0.9)]), reader.fidelity_path(path)
         )
-        parameters = astrophysical(
-            [3, 1],
-            radius_gspphot=[0.2, 2.0],
-            radius_gspphot_lower=[0.1, 1.8],
-            radius_gspphot_upper=[0.3, 2.2],
-        )
-        pq.write_table(parameters, reader.astrophysical_path(path))
+        given = {
+            "radius_gspphot": [0.2, 2.0],
+            "radius_gspphot_lower": [0.1, 1.8],
+            "radius_gspphot_upper": [0.3, 2.2],
+            "lum_flame": [0.004, 30.0],
+            "mass_flame": [None, 1.4],
+            "evolstage_flame": [None, 512],
+            "flags_flame": ["20", "10"],
+        }
+        pq.write_table(astrophysical([3, 1], **given), reader.astrophysical_path(path))
         pq.write_table(xgboost([]), reader.xgboost_path(path))
         (rows,) = reader.batches([path])
         assert rows["catalogue_id"].to_pylist() == ["1", "2", "3"]
-        assert rows["radius_gspphot"].to_pylist() == pytest.approx([2.0, None, 0.2])
-        assert rows["radius_gspphot_lower"].to_pylist() == pytest.approx(
-            [1.8, None, 0.1]
-        )
-        assert rows["radius_gspphot_upper"].to_pylist() == pytest.approx(
-            [2.2, None, 0.3]
-        )
+        for name, (third, first) in given.items():
+            expected = [first, None, third]
+            if isinstance(first, float):
+                expected = pytest.approx(expected)
+            assert rows[name].to_pylist() == expected, name
+        assert rows["radius_flame"].to_pylist() == [None, None, None]
 
     def test_missing_radius_chunk_fails_before_reading(self, tmp_path):
         reader = gaia.GaiaReader(

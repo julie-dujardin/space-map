@@ -1,5 +1,5 @@
-"""Gaia DR3 positions, fidelity, GSP-Phot radii, GSP-Spec, XP metallicities and
-binary orbits.
+"""Gaia DR3 positions, fidelity, GSP-Phot radii, FLAME, GSP-Spec, XP
+metallicities and binary orbits.
 
 The companion tables join by source_id. Low-fidelity stars mint only when
 matched by another catalogue. A star without a companion row stays, with null
@@ -91,10 +91,12 @@ GSPSPEC_COLUMNS = (
     ),
     "flags_gspspec",
 )
+FLAME_COLUMNS = tuple(POINT_SOURCE.group("flame").names)
 ASTROPHYSICAL_COLUMNS = (
     "radius_gspphot",
     "radius_gspphot_lower",
     "radius_gspphot_upper",
+    *FLAME_COLUMNS,
     *GSPSPEC_COLUMNS,
 )
 GSPSPEC_CALIBRATED = ("mh_gspspec_calibrated", "feh_gspspec_calibrated")

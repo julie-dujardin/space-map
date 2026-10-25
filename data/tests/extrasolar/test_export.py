@@ -90,13 +90,21 @@ def _expected_position(row: dict, parallax: float | None = None) -> np.ndarray:
 class TestExport:
     """Tiles, the render tree and metadata.json of a synthetic registry."""
 
-    def test_photosphere_radius_bounds_and_provenance_round_trip(self, tmp_path, out):
+    def test_physical_parameters_bounds_and_provenance_round_trip(self, tmp_path, out):
         physical = {
             "radius_gspphot": 0.2,
             "radius_gspphot_lower": 0.18,
             "radius_gspphot_upper": 0.22,
             "teff_gspphot": 3000.0,
             "gspphot_source": "gaia-dr3",
+            "radius_flame": 0.21,
+            "lum_flame": 0.0031,
+            "mass_flame": 0.25,
+            "mass_flame_lower": 0.24,
+            "age_flame": 8.5,
+            "evolstage_flame": 105,
+            "flags_flame": "00",
+            "flame_source": "gaia-dr3",
         }
         built = write_registry(
             tmp_path / "reg", [star(10.0, 5.0) | physical, star(11.0, 5.0)]

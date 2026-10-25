@@ -71,6 +71,10 @@ class TableDef:
     def groups_of(self, source: str) -> list[ColumnGroup]:
         return [group for group in self.groups if source in group.sources]
 
+    def group(self, name: str) -> ColumnGroup:
+        (group,) = (group for group in self.groups if group.name == name)
+        return group
+
 
 CROSS_ID = pa.struct(
     [
@@ -83,6 +87,27 @@ CROSS_ID = pa.struct(
 
 def _fields(kind: pa.DataType, *names: str) -> tuple[pa.Field, ...]:
     return tuple(pa.field(name, kind) for name in names)
+
+
+def _flame(run: str) -> tuple[pa.Field, ...]:
+    """The columns of one FLAME run, whose names end in `run`, with the 16th
+    and 84th percentiles: radius in nominal solar radii, luminosity in nominal
+    solar luminosities, mass in solar masses, age in Gyr, gravitational
+    redshift in km/s, the bolometric correction in mag. The stage and the
+    flags are as published."""
+    return (
+        *_fields(
+            pa.float32(),
+            *(
+                f"{name}_flame{run}{bound}"
+                for name in ("radius", "lum", "mass", "age", "gravredshift")
+                for bound in ("", "_lower", "_upper")
+            ),
+            f"bc_flame{run}",
+        ),
+        pa.field(f"evolstage_flame{run}", pa.int16()),
+        pa.field(f"flags_flame{run}", pa.string()),
+    )
 
 
 # The exoplanet catalogues, in their source order.
@@ -300,6 +325,8 @@ POINT_SOURCE = TableDef(
             ),
             ("gaia-dr3", "gaia-dr3-named"),
         ),
+        # FLAME, from the GSP-Phot temperature and the G luminosity.
+        ColumnGroup("flame", _flame(""), ("gaia-dr3", "gaia-dr3-named")),
         # Table 1 of Andrae et al. 2023, with no quality cut: [M/H] in dex,
         # Teff in K, log g in log(cm/s²), CatWISE W1 and W2 in Vega mag.
         # The flags mark their vetted Table 2 and the Gaia golden sample of

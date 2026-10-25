@@ -474,6 +474,7 @@ class TestInputReader:
         (tmp_path / "ids.csv").write_text("Gaia DR3 5")
         for name in gaia.FILES:
             (out / name).write_text("source_id\n")
+        (out / gaia.ASTROPHYSICAL_FILE).write_text(",".join(ASTROPHYSICAL_HEADER))
         downloader._save_metadata(_URL, 1, complete=True)
         return downloader
 
@@ -645,6 +646,17 @@ class TestGaiaIds:
         assert dr3 == [5, 20]
 
 
+# The astrophysical parameters as the archive answers them for one source.
+ASTROPHYSICAL_HEADER = ["source_id", *gaia.ASTROPHYSICAL_COLUMNS]
+ASTROPHYSICAL_ROW = [
+    "6",
+    "1.1",
+    "1.0",
+    "1.2",
+    *[""] * (len(gaia.ASTROPHYSICAL_COLUMNS) - 3),
+]
+
+
 class TestGaiaDownload:
     """The orbit table holds each solution once, under the table's header."""
 
@@ -665,10 +677,7 @@ class TestGaiaDownload:
             )
         elif "gaiadr3.astrophysical_parameters" in query:
             cls.queries["astrophysical_parameters"] = sent
-            body = (
-                "source_id,radius_gspphot,radius_gspphot_lower,radius_gspphot_upper\n"
-                "6,1.1,1.0,1.2\n"
-            )
+            body = f"{','.join(ASTROPHYSICAL_HEADER)}\n{','.join(ASTROPHYSICAL_ROW)}\n"
         elif "gaiadr3.gaia_source" in query:
             cls.queries["gaia_source"] = sent
             assert "parallax_over_error <= 5.0" in query
@@ -715,13 +724,8 @@ class TestGaiaDownload:
             ["6", "0.7", "0.1"],
         ]
         assert _read(out / gaia.ASTROPHYSICAL_FILE) == [
-            [
-                "source_id",
-                "radius_gspphot",
-                "radius_gspphot_lower",
-                "radius_gspphot_upper",
-            ],
-            ["6", "1.1", "1.0", "1.2"],
+            ASTROPHYSICAL_HEADER,
+            ASTROPHYSICAL_ROW,
         ]
         # The ids of the joined rows become the two flags.
         assert _read(out / gaia.XGBOOST_FILE) == [
@@ -746,6 +750,18 @@ class TestGaiaDownload:
         os.utime(ids, (0, 0))
         assert downloader.is_complete(None)
         (tmp_path / "gaia" / gaia.ASTROPHYSICAL_FILE).unlink()
+        assert not downloader.is_complete(None)
+
+    def test_a_missing_astrophysical_column_forces_a_run(self, monkeypatch, tmp_path):
+        ids = tmp_path / "ids.csv"
+        ids.write_text("1,HD 1|Gaia DR3 5|Gaia DR2 10\n")
+        monkeypatch.setattr(gaia, "OUT_DIR", tmp_path / "gaia")
+        monkeypatch.setattr(ExoplanetGaiaDownloader, "inputs", (ids,))
+        downloader = ExoplanetGaiaDownloader(_client(self._handler))
+        downloader.download()
+        os.utime(ids, (0, 0))
+        file = tmp_path / "gaia" / gaia.ASTROPHYSICAL_FILE
+        file.write_text("source_id,radius_gspphot\n6,1.1\n")
         assert not downloader.is_complete(None)
 
     def test_input_without_a_gaia_id_raises(self, monkeypatch, tmp_path):

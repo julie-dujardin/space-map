@@ -55,6 +55,7 @@ DICTIONARY = frozenset(
         "combination_method",
         "m1_ref",
         "flag",
+        "flags_flame",
     }
 )
 TILE_INFO = struct.Struct("<IBBxx")
