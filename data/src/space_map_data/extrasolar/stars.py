@@ -1,10 +1,12 @@
-"""The star ingest: Gaia DR3, then Hipparcos, the IAU star names and Wikidata.
+"""The star ingest: Gaia DR3, then Hipparcos, the IAU star names, the
+exoplanet catalogues with their planets, and Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
 Gaia. Its rows also carry the binary orbits of table 2. The metallicity
 catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs) are no pass: their
 rows join the Gaia rows by source_id, and PASTEL also the Hipparcos rows by HIP
-number. `limit` reads only the first Gaia chunks that hold that many stars, and
+number. The Gaia rows of planet hosts without a 5σ parallax, which the chunks
+do not hold, get the same joins. `limit` reads only the first Gaia chunks that hold that many stars, and
 the Hipparcos stars and names in the same pixels. Such an ingest is partial:
 it retires nothing, but it still rebuilds the tables from what it read. It
 never goes to REGISTRY_ROOT, because every later ingest keeps the IDs that it
@@ -15,7 +17,7 @@ import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from itertools import pairwise
+from itertools import chain, pairwise
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +28,7 @@ import pyarrow.parquet as pq
 from space_map_data.download.providers.stars import wikidata_stars
 from space_map_data.download.providers.stars.gaia_source import pixel_range
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
+from space_map_data.extrasolar.exoplanets import ingest as exoplanets
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import (
     apogee,
@@ -68,6 +71,7 @@ def ingest(
     backup_root: Path = REGISTRY_BACKUP_DIR,
     limit: int | None = None,
     workers: int = READ_WORKERS,
+    exoplanet_inputs: exoplanets.Inputs = exoplanets.DEFAULT_INPUTS,
 ) -> tuple[IngestResult, str]:
     """Run the star ingest; returns its result and a summary of the stars."""
     if limit is not None:
@@ -99,6 +103,9 @@ def ingest(
     stars = hipparcos.engine_rows(
         hip_stars, best, pastel_stars.filter(pc.invert(by_gaia))
     )
+    hip_names = dict(
+        zip(map(int, stars["catalogue_id"].to_pylist()), stars["name"].to_pylist())
+    )
     positions = dict(
         zip(
             stars["catalogue_id"].to_pylist(),
@@ -126,9 +133,18 @@ def ingest(
         )
     complete = limit is None
     with IngestRun.start(root, backup_root) as run:
-        run.add(GAIA_DR3, reader.batches(chunks), complete)
+        # Under the run's lock: the hosts look for twins in the registry.
+        planets = exoplanets.prepare(reader, run.registry, hip_names, exoplanet_inputs)
+        planets.host_rows = {
+            name: _keep(rows, ranges) for name, rows in planets.host_rows.items()
+        }
+        planets.gaia_rows = _keep(planets.gaia_rows, ranges)
+        gaia_batches = chain(reader.batches(chunks), [planets.gaia_rows])
+        run.add(GAIA_DR3, gaia_batches, complete)
         run.add(HIPPARCOS, [stars], complete)
         run.add(IAU_WGSN, [name_rows], complete)
+        exoplanets.add_passes(run, planets, complete)
+        # A source that is not permanent comes after the permanent sources.
         run.add(WIKIDATA, [item_rows], complete)
         result = run.commit()
     return result, summary(Registry(root), name_ids, item_rows.num_rows)
