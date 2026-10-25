@@ -133,6 +133,10 @@ class RegistryBusy(RegistryError):
     pass
 
 
+class NoRegistry(RegistryError):
+    pass
+
+
 class WrongHost(RegistryError):
     pass
 
@@ -385,7 +389,7 @@ class Registry:
         of `self`, so the registry can be pickled while the lock is held.
         """
         if not self.dir.is_dir():
-            raise RegistryError(f"no registry in {self.root}")
+            raise NoRegistry(f"no registry in {self.root}")
         with (self.dir / "lock").open("a+") as handle:
             try:
                 fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
@@ -396,7 +400,7 @@ class Registry:
             self.manifest = self._read_manifest()
             self._aliases = None
             if not self.manifest:
-                raise RegistryError(f"no registry in {self.root}")
+                raise NoRegistry(f"no registry in {self.root}")
             yield self
 
     # Writing

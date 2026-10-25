@@ -85,8 +85,9 @@ def _fields(kind: pa.DataType, *names: str) -> tuple[pa.Field, ...]:
     return tuple(pa.field(name, kind) for name in names)
 
 
-# The name is the IAU proper name, else a Bayer or Flamsteed designation, HD,
-# HIP or Gaia DR3 number, in that order. Each source gives its best one.
+# The name is the IAU proper name, else the Wikidata label, else a Bayer or
+# Flamsteed designation, HD, HIP or Gaia DR3 number, in that order. Each
+# source gives its best one.
 METADATA = TableDef(
     number=None,
     slug="metadata",
@@ -94,7 +95,7 @@ METADATA = TableDef(
         ColumnGroup(
             "name",
             (pa.field("name", pa.string()),),
-            ("iau-wgsn", "hipparcos-2007", "gaia-dr3"),
+            ("iau-wgsn", "wikidata", "hipparcos-2007", "gaia-dr3"),
         ),
         ColumnGroup(
             "class", (pa.field("class", pa.string()),), ("gaia-dr3", "hipparcos-2007")
@@ -104,10 +105,15 @@ METADATA = TableDef(
         pa.field("cross_ids", pa.list_(CROSS_ID)),
         # Bit n is set when data table n has a row for the ID.
         pa.field("mask", pa.uint32()),
-        pa.field("object_file", pa.string()),
+        # True when the site's object files hold an entry for the ID.
+        pa.field("object", pa.bool_()),
         pa.field("alias_target", pa.int64()),
     ),
 )
+
+# An ID with an id of one of these catalogues has an entry in the site's
+# object files, which is built from that catalogue.
+OBJECT_CATALOGUES = frozenset({"wikidata"})
 
 # Every Gaia DR3 field of the positionable stars with its error or range, and
 # the Hipparcos astrometry and photometry. A group that one catalogue fills

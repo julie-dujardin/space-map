@@ -93,6 +93,7 @@ from space_map_data.extrasolar.store import read_parquet, region_file, write_par
 from space_map_data.extrasolar.tables import (
     CROSS_ID,
     METADATA,
+    OBJECT_CATALOGUES,
     SOURCE_COLUMN,
     TABLES,
     TableDef,
@@ -244,6 +245,16 @@ def code_version() -> tuple[str | None, bool]:
         logger.warning("no git commit for the ingest log: %s", error)
         return None, True
     return commit, bool(status.strip())
+
+
+def _has_catalogue(cross_ids: pa.Array, catalogues: frozenset[str]) -> pa.Array:
+    """For each list of cross-ids, whether one is of `catalogues`."""
+    flat = pc.list_flatten(cross_ids)
+    found = pc.is_in(flat.field("catalogue"), pa.array(sorted(catalogues)))
+    parents = pc.list_parent_indices(cross_ids).to_numpy()
+    has = np.zeros(len(cross_ids), bool)
+    has[parents[found.to_numpy(zero_copy_only=False)]] = True
+    return pa.array(has)
 
 
 def _bools(table: pa.Table, name: str) -> np.ndarray:
@@ -1657,7 +1668,7 @@ class IngestRun:
                     columns[name] = named[name].take(at)
         columns["cross_ids"] = self._cross_ids(region, live_ids, new_xids)
         columns["mask"] = pa.array(mask, pa.uint32())
-        columns["object_file"] = pa.nulls(n, pa.string())
+        columns["object"] = _has_catalogue(columns["cross_ids"], OBJECT_CATALOGUES)
         columns["alias_target"] = pa.nulls(n, pa.int64())
         live = pa.table(columns, schema=schema)
 

@@ -21,12 +21,16 @@ import httpx
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader, DownloadError
-from space_map_data.download.providers.catalogues.fetch import post_lines_gz
+from space_map_data.download.providers.catalogues.fetch import (
+    QLEVER_TSV,
+    QLEVER_URL,
+    post_lines_gz,
+    qlever_count,
+)
 from space_map_data.utils.paths import SOURCES_CATALOGUES_DIR
 
 logger = logging.getLogger(__name__)
 
-QLEVER_URL = "https://qlever.dev/api/wikidata"
 OUT_DIR = SOURCES_CATALOGUES_DIR / "wikidata-simbad-ids"
 IDS_FILE = "simbad-ids.tsv.gz"
 
@@ -34,7 +38,6 @@ _PREFIX = "PREFIX wdt: <http://www.wikidata.org/prop/direct/> "
 _PATTERN = "WHERE { ?item wdt:P3083 ?simbad }"
 IDS_QUERY = _PREFIX + "SELECT ?item ?simbad " + _PATTERN
 COUNT_QUERY = _PREFIX + "SELECT (COUNT(*) AS ?n) " + _PATTERN
-_TSV = {"Accept": "text/tab-separated-values"}
 
 
 class WikidataSimbadIdsDownloader(Downloader):
@@ -48,7 +51,7 @@ class WikidataSimbadIdsDownloader(Downloader):
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        counted = self._count()
+        counted = qlever_count(self.client, COUNT_QUERY)
 
         def check(part: Path, lines: int) -> None:
             if lines - 1 != counted:
@@ -61,15 +64,8 @@ class WikidataSimbadIdsDownloader(Downloader):
             QLEVER_URL,
             self.out_dir / IDS_FILE,
             data={"query": IDS_QUERY, "action": "tsv_export"},
-            headers=_TSV,
+            headers=QLEVER_TSV,
             check=check,
         )
         logger.info("%s: %d identifiers", IDS_FILE, counted)
         self._save_metadata(QLEVER_URL, counted, complete=True)
-
-    def _count(self) -> int:
-        response = self.client.post(
-            QLEVER_URL, data={"query": COUNT_QUERY}, headers=_TSV, timeout=120.0
-        )
-        response.raise_for_status()
-        return int(response.text.split()[1])

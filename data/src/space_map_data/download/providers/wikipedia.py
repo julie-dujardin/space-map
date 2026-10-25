@@ -61,9 +61,9 @@ class WikipediaDownloader(Downloader):
 
     # Wikidata entity subdirs to scan for sitelinks. Each holds a different
     # primary entity class (objects / IAU nomenclature features / hand-authored
-    # manual objects); all expose `sitelinks.<lang>wiki`, so the task collector
-    # treats them uniformly.
-    _ENTITY_SUBDIRS = ("objects", "nomenclature", "manual")
+    # manual objects / stars); all expose `sitelinks.<lang>wiki`, so the task
+    # collector treats them uniformly.
+    _ENTITY_SUBDIRS = ("objects", "nomenclature", "manual", "stars")
 
     def __init__(self, client: httpx.Client) -> None:
         self.client = client

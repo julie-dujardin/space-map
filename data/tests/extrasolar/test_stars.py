@@ -1,5 +1,6 @@
-"""Tests for the Gaia, Hipparcos and IAU name sources and the star ingest."""
+"""Tests for the Gaia, Hipparcos, IAU name and Wikidata sources and the star ingest."""
 
+import dataclasses
 import gzip
 import json
 import sys
@@ -15,13 +16,15 @@ from astropy.time import Time
 
 from space_map_data.download.cds import README
 from space_map_data.download.providers.stars import gaia_source
+from space_map_data.download.providers.stars.wikidata_stars import StarItem
 from space_map_data.extrasolar import stars
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.registry import Registry, RegistryError
-from space_map_data.extrasolar.sources import gaia, hipparcos, names
+from space_map_data.extrasolar.sources import gaia, hipparcos, names, wikidata
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3, BestNeighbours
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.names import IAU_WGSN
+from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES
 from space_map_data.ingest import __main__ as ingest_cli
 from space_map_data.utils.paths import (
@@ -107,6 +110,18 @@ def iau_entry(name: str, **more: str) -> dict:
     return entry | more
 
 
+def item(qid: str, label: str | None = None, **ids: tuple[str, ...]) -> StarItem:
+    return StarItem(
+        qid=qid,
+        gaia_dr3=ids.get("gaia", ()),
+        hip=ids.get("hip", ()),
+        hd=ids.get("hd", ()),
+        label_en=label,
+        label_mul=None,
+        articles=1,
+    )
+
+
 def write_names(path: Path, entries: list[dict]) -> Path:
     path.write_text(json.dumps(entries))
     return path
@@ -128,9 +143,11 @@ class TestTables:
                     GAIA_DR3.name,
                     HIPPARCOS.name,
                     IAU_WGSN.name,
+                    WIKIDATA.name,
                 }
         assert METADATA.groups[0].sources == (
             IAU_WGSN.name,
+            WIKIDATA.name,
             HIPPARCOS.name,
             GAIA_DR3.name,
         )
@@ -425,10 +442,102 @@ class TestNames:
         assert rows["name"].to_pylist() == rows["catalogue_id"].to_pylist()
 
 
-class TestStarIngest:
-    """Gaia, Hipparcos and the names through the engine."""
+class TestWikidata:
+    """The claim, position and name of each Wikidata item."""
 
-    def run(self, root: Path, names_path: Path) -> IngestResult:
+    @pytest.mark.parametrize(
+        ("label", "expected"),
+        [
+            ("Teegarden's Star", "Teegarden's Star"),
+            ("NAME Barnard's Star", "Barnard's Star"),
+            ("T Tauri", "T Tauri"),
+            ("Gliese 105", "Gliese 105"),
+            ("CD Ceti", "CD Ceti"),
+            ("Gaia BH1", "Gaia BH1"),
+            ("HD 19121", None),
+            ("HR 926", None),
+            ("HIP 17453", None),
+            ("BD +20°307", None),
+            ("BD+21 255", None),
+            ("2MASS J03140344+1603056", None),
+            ("2MASSW J0208183+254253", None),
+            ("TYC 1234-567-1", None),
+            ("Gaia DR3 4472832130942575872", None),
+            ("V* R Leo", None),
+            ("** STF 123", None),
+            (None, None),
+        ],
+    )
+    def test_label_name(self, label, expected):
+        assert wikidata.label_name(item("Q1", label)) == expected
+
+    def test_the_multilingual_label_stands_in_for_english(self):
+        named = dataclasses.replace(item("Q1", None), label_mul="Wolf 359")
+        assert wikidata.label_name(named) == "Wolf 359"
+
+    def test_one_claim_hipparcos_first(self):
+        hip = {"10": (1.0, 2.0)}
+        hd = {"300": (5.0, 6.0)}
+        proxima = 5853498713190525696
+        items = [
+            item("Q1", "A", hip=("10",), gaia=(str(proxima),)),
+            # Two Gaia sources: the HD number decides.
+            item("Q2", "B", gaia=("1", "2"), hd=("300",)),
+            item("Q3", "C", gaia=(str(proxima + 1),)),
+            # A HIP number with no Hipparcos row gives way to the Gaia id.
+            item("Q4", "D", hip=("99",), gaia=(str(proxima),)),
+            item("Q5", "E", hip=("10", "11")),
+            item("Q6", "F", hd=("404",)),
+            # The system item with more articles keeps the claim of its star.
+            dataclasses.replace(item("Q7", "Gamma", hd=("300",)), articles=9),
+        ]
+        rows = wikidata.engine_rows(items, hip, hd)
+        assert rows["catalogue_id"].to_pylist() == ["Q1", "Q7", "Q3", "Q4"]
+        assert [claims[0] for claims in rows["claims"].to_pylist()] == [
+            {"catalogue": "hip", "release": "2007", "catalogue_id": "10"},
+            {"catalogue": "hd", "release": "1949", "catalogue_id": "300"},
+            {"catalogue": "gaia", "release": "dr3", "catalogue_id": str(proxima + 1)},
+            {"catalogue": "gaia", "release": "dr3", "catalogue_id": str(proxima)},
+        ]
+        assert (
+            rows["match_ra"][0].as_py() == 1.0 and rows["match_dec"][1].as_py() == 6.0
+        )
+        # The centre of the Gaia id's level-12 pixel, 0.03° from Proxima.
+        assert rows["match_ra"][2].as_py() == pytest.approx(217.43, abs=0.1)
+        assert rows["match_dec"][2].as_py() == pytest.approx(-62.68, abs=0.05)
+        assert rows["mint"].to_pylist() == [False] * 4
+        assert rows["name"].to_pylist() == ["A", "Gamma", "C", "D"]
+
+    def test_hd_positions(self):
+        rows = pa.table(
+            {
+                "match_ra": [1.0, 3.0],
+                "match_dec": [2.0, 4.0],
+                "claims": pa.array(
+                    [
+                        [
+                            {
+                                "catalogue": "gaia",
+                                "release": "dr3",
+                                "catalogue_id": "7",
+                            },
+                            {"catalogue": "hd", "release": "1949", "catalogue_id": "8"},
+                        ],
+                        None,
+                    ],
+                    pa.list_(wikidata.CROSS_ID),
+                ),
+            }
+        )
+        assert wikidata.hd_positions(rows) == {"8": (1.0, 2.0)}
+
+
+class TestStarIngest:
+    """Gaia, Hipparcos, the names and Wikidata through the engine."""
+
+    def run(
+        self, root: Path, names_path: Path, items: list[StarItem] | None = None
+    ) -> IngestResult:
         p = {key: at(60 * key) for key in range(1, 8)}
         table = gaia_stars(
             [
@@ -489,10 +598,14 @@ class TestStarIngest:
             )
         )
         name_rows = names.engine_rows(positions, names_path)
+        item_rows = wikidata.engine_rows(
+            items or [], positions, wikidata.hd_positions(hip)
+        )
         with IngestRun.start(root, root / "backup") as run:
             run.add(GAIA_DR3, [gaia_rows])
             run.add(HIPPARCOS, [hip])
             run.add(IAU_WGSN, [name_rows])
+            run.add(WIKIDATA, [item_rows])
             return run.commit()
 
     def test_ids_names_and_summary(self, tmp_path):
@@ -546,10 +659,11 @@ class TestStarIngest:
         assert alone["astrometry_source"] == "hipparcos-2007"
         assert alone["epoch"] == 1991.25 and alone["phot_g_mean_mag"] is None
 
-        summary = stars.summary(registry, names.read_names(names_path))
+        summary = stars.summary(registry, names.read_names(names_path), 0)
         assert "point-source rows: 6" in summary
         assert "Hipparcos stars without a Gaia DR3 row: 1" in summary
         assert "IAU names: 2 placed, 1 unplaced\n  Gamma" in summary
+        assert not any(row["object"] for row in meta.values())
 
         # A rerun mints nothing and keeps every ID.
         again = self.run(root, names_path)
@@ -557,6 +671,58 @@ class TestStarIngest:
         assert {row["id"] for row in table_rows(root, "metadata").to_pylist()} == set(
             meta
         )
+
+    def test_wikidata_items_name_and_flag_their_stars(self, tmp_path, monkeypatch):
+        # The test's Gaia ids hold no pixel: they are placed by hand.
+        monkeypatch.setattr(wikidata, "_gaia_position", lambda source_id: at(360))
+        root = tmp_path / "root"
+        names_path = write_names(
+            tmp_path / "names.json", [iau_entry("Alpha", HIP="10")]
+        )
+        items = [
+            item("Q1", "Alpha Ceti", hip=("10",)),
+            item("Q2", "Betelgeuse", hip=("20",)),
+            item("Q3", "HD 300", hip=("30",)),
+            item("Q4", "Teegarden's Star", gaia=("6",)),
+            # A second item of the star of Q1, by its Gaia id: a conflict.
+            item("Q5", "Alpha", gaia=("1",)),
+            # Gaia 4 is not stored: the item reaches no star and mints nothing.
+            item("Q6", "Faint", gaia=("4",)),
+        ]
+        result = self.run(root, names_path, items)
+        counts = result.entry["counts"]
+        assert counts["minted"] == 6 and counts["conflicts"] == 1
+        registry = Registry(root)
+
+        def id_of(catalogue: str, release: str, value: object) -> int:
+            return int(registry.lookup(catalogue, release, [str(value)])[0])
+
+        assert id_of("wikidata", "qid", "Q1") == id_of("hip", "2007", 10) != 0
+        assert id_of("wikidata", "qid", "Q4") == id_of("gaia", "dr3", 6) != 0
+        assert id_of("wikidata", "qid", "Q5") == 0
+        assert id_of("wikidata", "qid", "Q6") == 0
+        meta = {row["id"]: row for row in table_rows(root, "metadata").to_pylist()}
+
+        def row(catalogue: str, release: str, value: object) -> dict:
+            return meta[id_of(catalogue, release, value)]
+
+        # The IAU name comes first, the Wikidata label before Hipparcos.
+        assert row("hip", "2007", 10)["name"] == "Alpha"
+        assert row("hip", "2007", 20)["name"] == "Betelgeuse"
+        assert row("hip", "2007", 20)["name_source"] == "wikidata"
+        assert row("hip", "2007", 30)["name"] == "HD 300"
+        assert row("gaia", "dr3", 6)["name"] == "Teegarden's Star"
+        assert {id_ for id_, r in meta.items() if r["object"]} == {
+            id_of("wikidata", "qid", q) for q in ("Q1", "Q2", "Q3", "Q4")
+        }
+        assert {
+            "catalogue": "wikidata",
+            "release": "qid",
+            "catalogue_id": "Q2",
+        } in row("hip", "2007", 20)["cross_ids"]
+
+        summary = stars.summary(registry, names.read_names(names_path), 6)
+        assert "Wikidata items: 4 placed of 6 with a claim" in summary
 
     def test_a_partial_ingest_refuses_a_complete_registry(self, tmp_path):
         root = tmp_path / "root"

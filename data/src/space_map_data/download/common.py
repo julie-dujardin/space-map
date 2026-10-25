@@ -107,6 +107,9 @@ from space_map_data.download.providers.stars.gaia_two_body_orbit import (
     GaiaTwoBodyOrbitDownloader,
 )
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
+from space_map_data.download.providers.stars.wikidata_stars import (
+    WikidataStarsDownloader,
+)
 from space_map_data.download.providers.three_d.body_shapes import BodyShapesDownloader
 from space_map_data.download.providers.three_d.damit import DAMITDownloader
 from space_map_data.download.providers.three_d.esa import ESA3DDownloader
@@ -142,6 +145,8 @@ PROVIDERS_CLASSES = [
     SmallBodyChebyshevDownloader,
     DeepcatSynthDownloader,
     SpacetrackTleDownloader,
+    # Ordered: Wikidata fetches the entities of the star items.
+    WikidataStarsDownloader,
     WikidataDownloader,
     ManualDownloader,
     WikipediaDownloader,

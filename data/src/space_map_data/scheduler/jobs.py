@@ -160,12 +160,18 @@ JOBS: list[Job] = [
         ),
         schedule=DailyAt(dtime(hour=4, minute=0)),
     ),
-    # Ordered: Wikipedia reads the entity files Wikidata writes, and Commons
-    # reads both. Wikidata resolves its QIDs against the ingest database, so
-    # this job only finds new entities where that database is current.
+    # Ordered: Wikidata fetches the entities of the star items, Wikipedia
+    # reads the entity files Wikidata writes, and Commons reads both. Wikidata
+    # resolves its other QIDs against the ingest database, so this job only
+    # finds new entities where that database is current.
     Job(
         name="wiki",
-        sources=(PROVIDERS.WIKIDATA, PROVIDERS.WIKIPEDIA, PROVIDERS.COMMONS),
+        sources=(
+            PROVIDERS.WIKIDATA_STARS,
+            PROVIDERS.WIKIDATA,
+            PROVIDERS.WIKIPEDIA,
+            PROVIDERS.COMMONS,
+        ),
         schedule=DailyAt(dtime(hour=5, minute=0)),
     ),
     # Large mirrors that never expire — scheduled for the first fill and for

@@ -130,13 +130,13 @@ Every live ID has a row. The ID is in the `id` column; there is no table number.
 | Column | Type | |
 |--------|------|-|
 | `id` | id | |
-| `name` | string | IAU proper name, else a Bayer or Flamsteed designation with the Greek letter spelled out ("Alpha Canis Majoris"), else `HD n`, `HIP n` or `Gaia DR3 n` |
-| `name_source` | dict | the source of the name: `iau-wgsn`, `hipparcos-2007` (designations from XHIP), `gaia-dr3` |
+| `name` | string | IAU proper name, else the English label of its Wikidata item when that is no bare catalogue number ("T Tauri", "Teegarden's Star", "Gliese 105"), else a Bayer or Flamsteed designation with the Greek letter spelled out ("Alpha Canis Majoris"), else `HD n`, `HIP n` or `Gaia DR3 n` |
+| `name_source` | dict | the source of the name: `iau-wgsn`, `wikidata`, `hipparcos-2007` (designations from XHIP), `gaia-dr3` |
 | `class` | dict | what the object is: `star` for every row now |
 | `class_source` | dict | |
-| `cross_ids` | cross_ids | every catalogue id of the object: catalogues `gaia/dr3`, `hip/2007`, `hd/1949`, `iau/wgsn` now |
+| `cross_ids` | cross_ids | every catalogue id of the object: catalogues `gaia/dr3`, `hip/2007`, `hd/1949`, `iau/wgsn`, `wikidata/qid` now |
 | `mask` | uint32 | bit `n` is set when data table `n` has a row for the ID |
-| `object_file` | string | the object file, null for now |
+| `object` | bool | true when the site's object bundles hold an entry `x-<id>` for the ID ([objects.md](objects.md)): today, when it has a `wikidata/qid` id |
 | `alias_target` | id | null for a live ID |
 
 An alias is a row at the alias's own cell with only `id`, `mask` 0 and `alias_target`, which is the live ID at the end of its chain: a chain A → B → C is written A → C. A retired ID has no row, and its URL is a 404. An alias whose chain ends at an ID that is not live has no row either.
@@ -332,7 +332,7 @@ The token of `skycultures` covers all its files: SHA-256 over each file's path, 
 - `tables`: keyed by slug. `number` is the table number in the IDs, null for Metadata. `max_rows` is the split threshold. `rows` counts the rows of all tiles.
 - `trees`: keyed by name; `mw` is the Milky Way.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)). Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values, so all are `non-commercial`.
-- `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, Hipparcos I/311 and I/239, XHIP V/137D, the IAU Catalog of Star Names.
+- `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, Hipparcos I/311 and I/239, XHIP V/137D, the IAU Catalog of Star Names, Wikidata.
 - `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
   - `licence`: the licence of the culture's data and illustrations as it states it (`applies_to` is `all`, `data` or `illustrations`; the files hold no illustrations yet), and the tier that this licence alone allows. A culture that states no licence has no parts and the tier `non-commercial`, with the flag `no-licence`. A statement that the ingest cannot read gives the tier `undecided`, which no client may serve.
   - `distribution`: the tier of the file, the strictest of the culture's licence and of Gaia DR3 (`non-commercial`), because the positions come from Gaia. `undecided` stays `undecided`.

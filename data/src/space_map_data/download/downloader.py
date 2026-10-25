@@ -142,3 +142,9 @@ class Downloader(ABC):
         data.update(extra)
         self.metadata_file.write_text(json.dumps(data, indent=2))
         logger.info("Metadata written -> %s", self.metadata_file.name)
+
+    def _previous_count(self) -> int:
+        """The record count of the last download, 0 before the first."""
+        if not self.metadata_file.exists():
+            return 0
+        return json.loads(self.metadata_file.read_text())["record_count"]

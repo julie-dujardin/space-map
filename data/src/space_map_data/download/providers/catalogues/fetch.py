@@ -1,4 +1,5 @@
-"""Write the answer to one query to disk, and hash a file."""
+"""Write the answer to one query to disk, count the answers of a QLever query,
+and hash a file."""
 
 import gzip
 import hashlib
@@ -19,6 +20,17 @@ CHUNK_BYTES = 1 << 20
 # A slow server gets ten minutes between two chunks.
 TIMEOUT = httpx.Timeout(60.0, read=600.0)
 _RETRIED = (429, 500, 502, 503, 504)
+QLEVER_URL = "https://qlever.dev/api/wikidata"
+QLEVER_TSV = {"Accept": "text/tab-separated-values"}
+
+
+def qlever_count(client: httpx.Client, query: str) -> int:
+    """The number that a QLever query of one COUNT returns."""
+    response = client.post(
+        QLEVER_URL, data={"query": query}, headers=QLEVER_TSV, timeout=120.0
+    )
+    response.raise_for_status()
+    return int(response.text.split()[1])
 
 
 def post_lines_gz(

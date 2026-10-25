@@ -48,6 +48,7 @@ class PROVIDERS(StrEnum):
     GAIA_BINARY_MASSES = "gaia_binary_masses"
     CDS_STAR_CATALOGUES = "cds_star_catalogues"
     IAU_STAR_NAMES = "iau_star_names"
+    WIKIDATA_STARS = "wikidata_stars"
     GALAXY_CATALOGUES = "galaxy_catalogues"
     STAR_CLUSTER_CATALOGUES = "star_cluster_catalogues"
     NEBULA_CATALOGUES = "nebula_catalogues"

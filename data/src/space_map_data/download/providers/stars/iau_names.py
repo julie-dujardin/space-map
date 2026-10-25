@@ -85,8 +85,3 @@ class IAUStarNamesDownloader(Downloader):
         )
         logger.info("%d star names", len(names))
         self._save_metadata(PAGE_URL, len(names), complete=True)
-
-    def _previous_count(self) -> int:
-        if not self.metadata_file.exists():
-            return 0
-        return json.loads(self.metadata_file.read_text())["record_count"]

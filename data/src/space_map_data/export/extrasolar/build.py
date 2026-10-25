@@ -102,6 +102,12 @@ CREDITS = (
         "organisation": "IAU Working Group on Star Names",
         "source": IAU_URL,
     },
+    {
+        "name": "Wikidata",
+        "organisation": "Wikidata contributors",
+        "source": "https://www.wikidata.org/",
+        "license": "CC0 1.0",
+    },
 )
 
 

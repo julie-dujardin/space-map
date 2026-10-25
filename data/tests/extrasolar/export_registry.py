@@ -176,7 +176,7 @@ def write_registry(
                     }
                 ],
                 "mask": 2,
-                "object_file": None,
+                "object": False,
                 "alias_target": None,
             }
         )
@@ -184,7 +184,7 @@ def write_registry(
         meta_rows.append(
             {"id": loser, "mask": 0, "alias_target": target}
             | {name: None for name in ("name", "name_source", "class", "class_source")}
-            | {"cross_ids": None, "object_file": None}
+            | {"cross_ids": None, "object": None}
         )
     meta_table = pa.Table.from_pylist(meta_rows, schema=METADATA.schema)
     for slug, table in (("point-source", point_table), ("metadata", meta_table)):

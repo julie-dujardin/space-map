@@ -1,4 +1,4 @@
-"""The star ingest: Gaia DR3, then Hipparcos, then the IAU star names.
+"""The star ingest: Gaia DR3, then Hipparcos, the IAU star names and Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
 Gaia. `limit` reads only the first Gaia chunks that hold that many stars, and
@@ -19,9 +19,10 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from space_map_data.download.providers.stars import wikidata_stars
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.registry import Registry, RegistryError
-from space_map_data.extrasolar.sources import hipparcos, names
+from space_map_data.extrasolar.sources import hipparcos, names, wikidata
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
     BestNeighbours,
@@ -31,6 +32,7 @@ from space_map_data.extrasolar.sources.gaia import (
 )
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.names import IAU_WGSN
+from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
 from space_map_data.utils.paths import REGISTRY_BACKUP_DIR, REGISTRY_ROOT
 
@@ -79,25 +81,32 @@ def ingest(
         )
     )
     name_rows = names.engine_rows(positions)
+    item_rows = wikidata.engine_rows(
+        wikidata_stars.read_items(), positions, wikidata.hd_positions(stars)
+    )
     stars, name_rows = _keep(stars, ranges), _keep(name_rows, ranges)
+    item_rows = _keep(item_rows, ranges)
     # A partial ingest expects only the names in its pixels.
     name_ids = (
         names.read_names() if ranges is None else name_rows["catalogue_id"].to_pylist()
     )
     if ranges is not None:
         logger.info(
-            "partial ingest: %d Gaia chunks, %d Hipparcos stars, %d names",
+            "partial ingest: %d Gaia chunks, %d Hipparcos stars, %d names,"
+            " %d Wikidata items",
             len(chunks),
             stars.num_rows,
             name_rows.num_rows,
+            item_rows.num_rows,
         )
     complete = limit is None
     with IngestRun.start(root, backup_root) as run:
         run.add(GAIA_DR3, reader.batches(chunks), complete)
         run.add(HIPPARCOS, [stars], complete)
         run.add(IAU_WGSN, [name_rows], complete)
+        run.add(WIKIDATA, [item_rows], complete)
         result = run.commit()
-    return result, summary(Registry(root), name_ids)
+    return result, summary(Registry(root), name_ids, item_rows.num_rows)
 
 
 def _scan[T](paths: list[Path], work: Callable[[Path], T]) -> list[T]:
@@ -129,17 +138,18 @@ def _metadata_part(path: Path) -> tuple[int, np.ndarray]:
     return rows.num_rows, np.bincount(_digits(live), minlength=18)
 
 
-def _names_part(path: Path) -> list[str]:
-    rows = pq.read_table(
-        path,
-        columns=["catalogue_id"],
-        filters=[("catalogue", "=", IAU_WGSN.catalogue)],
-    )
-    return rows["catalogue_id"].to_pylist()
+def _catalogue_part(catalogue: str) -> Callable[[Path], list[str]]:
+    def read(path: Path) -> list[str]:
+        rows = pq.read_table(
+            path, columns=["catalogue_id"], filters=[("catalogue", "=", catalogue)]
+        )
+        return rows["catalogue_id"].to_pylist()
+
+    return read
 
 
-def summary(registry: Registry, name_ids: list[str]) -> str:
-    """Rows per table, ID lengths, Hipparcos-only stars and names placed."""
+def summary(registry: Registry, name_ids: list[str], items: int) -> str:
+    """Rows per table, ID lengths, Hipparcos-only stars, names and items placed."""
     point = _scan(_table_paths(registry, POINT_SOURCE.slug), _point_part)
     metadata = _scan(_table_paths(registry, METADATA.slug), _metadata_part)
     # numpy types `np.sum` of a list as a scalar.
@@ -177,8 +187,17 @@ def summary(registry: Registry, name_ids: list[str]) -> str:
         for region in registry.part_regions("xids")
         for path in registry.part_files("xids", region)
     ]
-    found = {name for names_of in _scan(files, _names_part) for name in names_of}
+    found = {
+        name
+        for names_of in _scan(files, _catalogue_part(IAU_WGSN.catalogue))
+        for name in names_of
+    }
     unplaced = sorted(set(name_ids) - found)
     lines += ["", f"IAU names: {len(found):,} placed, {len(unplaced):,} unplaced"]
     lines += [f"  {name}" for name in unplaced]
+    # The items that reach no star are mostly galaxies and quasars.
+    placed = sum(
+        len(qids) for qids in _scan(files, _catalogue_part(WIKIDATA.catalogue))
+    )
+    lines += ["", f"Wikidata items: {placed:,} placed of {items:,} with a claim"]
     return "\n".join(lines) + "\n"
