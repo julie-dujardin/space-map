@@ -18,9 +18,16 @@ The visibility range of a light source is the distance at which its apparent
 magnitude reaches RANGE_LIMIT_MAG. The rows of a node file are in order of
 range, the largest first, then by ID.
 
-A star with an astrometric orbit solution in table 2 takes its distance from
-the solution's parallax, which fits the motion of the light centre. The
-single-star parallax of Point source still decides which stars are drawn.
+A star is drawn when it has a 5σ parallax that the fidelity cut keeps. Else a
+planet host is drawn when its exoplanet catalogue gives a distance, and any
+other star has no render row. The rule is `extrasolar.placement`, which the
+ingest report also uses. A planet host with no magnitude takes
+HOST_PLACEHOLDER_MAG, so every placed host has a row.
+
+A drawn star with a 5σ astrometric orbit solution in table 2 takes its
+distance from the solution's parallax, which fits the motion of the light
+centre. Else the single-star parallax of Point source gives the distance, or
+for a host that it does not place, the exoplanet catalogue.
 
 The build works in three steps with scratch files on disk: render rows per
 region, the node of each row from the whole sky, then the node files in
@@ -39,7 +46,9 @@ import pyarrow.compute as pc
 
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.container import Column, Written
+from space_map_data.extrasolar import placement
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.sources.gaia import MIN_FIDELITY
 from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
 from space_map_data.extrasolar.tables import BINARY_ORBIT, POINT_SOURCE
@@ -62,8 +71,6 @@ KEY_LEVELS = 21
 # every range by 10^((its limit - RANGE_LIMIT_MAG) / 5).
 RANGE_LIMIT_MAG = 6.5
 EPOCH = 2016.0
-MIN_PARALLAX_SNR = 5.0
-MIN_FIDELITY = 0.5
 CLASS_STAR = 1
 # Magnitudes and colours in the render tree are rounded to this step. The
 # step is too small to see, and rounded values compress better.
@@ -73,6 +80,76 @@ CLASSES = {"star": CLASS_STAR}
 # Table C.2), valid for V - I from -0.5 to 3.5 with a scatter of 0.082 mag.
 BP_RP_FROM_V_I = (-0.01612, 1.274, -0.08143)
 V_I_RANGE = (-0.5, 3.5)
+# (Teff in K, BP − RP) of the dwarf sequence of Pecaut & Mamajek (2013, ApJS
+# 208, 9), table version 2022.04.16, B9V to M8.5V. The frontend gets a Teff
+# from a colour by the same rows. Linear between rows; outside them, the
+# nearest end. It colours a star with no Gaia colour and no Hipparcos V − I.
+TEFF_BP_RP = (
+    (2420, 5.1),
+    (2570, 4.86),
+    (2630, 4.72),
+    (2680, 4.65),
+    (2740, 4.5),
+    (2810, 4.16),
+    (2930, 3.71),
+    (3060, 3.35),
+    (3110, 3.16),
+    (3210, 2.94),
+    (3270, 2.78),
+    (3430, 2.5),
+    (3470, 2.39),
+    (3560, 2.23),
+    (3620, 2.13),
+    (3660, 2.09),
+    (3770, 1.97),
+    (3850, 1.84),
+    (3930, 1.79),
+    (3990, 1.73),
+    (4100, 1.7),
+    (4300, 1.53),
+    (4440, 1.43),
+    (4600, 1.34),
+    (4830, 1.21),
+    (5100, 1.1),
+    (5170, 1.01),
+    (5270, 0.983),
+    (5380, 0.95),
+    (5480, 0.9),
+    (5550, 0.88),
+    (5600, 0.869),
+    (5660, 0.85),
+    (5680, 0.841),
+    (5720, 0.832),
+    (5770, 0.823),
+    (5860, 0.803),
+    (5930, 0.784),
+    (5990, 0.767),
+    (6050, 0.719),
+    (6180, 0.694),
+    (6280, 0.67),
+    (6350, 0.64),
+    (6550, 0.587),
+    (6670, 0.546),
+    (6750, 0.518),
+    (6820, 0.49),
+    (7020, 0.434),
+    (7220, 0.377),
+    (7400, 0.327),
+    (7590, 0.32),
+    (7760, 0.263),
+    (7910, 0.222),
+    (8100, 0.194),
+    (8250, 0.166),
+    (8600, 0.11),
+    (8800, 0.068),
+    (9300, 0.005),
+    (9700, -0.037),
+    (10400, -0.087),
+    (10700, -0.12),
+)
+# Absolute G of a planet host with no magnitude. It is faint, so the host
+# draws only near its system.
+HOST_PLACEHOLDER_MAG = 15.0
 NODE_INFO = struct.Struct("<4d2f8fBB6x")
 BATCH_ROWS = 4_000_000
 
@@ -95,6 +172,12 @@ COLUMNS = (
     "fidelity_v2",
     "astrometry_source",
     "hipparcos_photometry_source",
+    "teff_gspphot",
+    "host_distance",
+    "host_teff",
+    "host_v_mag",
+    "host_g_mag",
+    "host_star_source",
 )
 ORBIT_COLUMNS = ("id", "nss_solution_type", "parallax_nss", "parallax_nss_error")
 # The parallax of an astrometric orbit solution, null for any other star.
@@ -135,6 +218,14 @@ def ids_path(name: str) -> str:
 
 def bp_rp_from_v_i(v_i: np.ndarray) -> np.ndarray:
     return np.polynomial.polynomial.polyval(np.clip(v_i, *V_I_RANGE), BP_RP_FROM_V_I)
+
+
+def bp_rp_from_teff(teff: np.ndarray) -> np.ndarray:
+    """BP − RP of a dwarf of this Teff (K); NaN where Teff is NaN."""
+    table = np.array(TEFF_BP_RP)
+    return np.where(
+        np.isfinite(teff), np.interp(teff, table[:, 0], table[:, 1]), np.nan
+    )
 
 
 def visibility_range(abs_mag: np.ndarray) -> np.ndarray:
@@ -211,31 +302,52 @@ def distance_parallax(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
     """The parallax (mas) that gives each star its distance, and whether it is
     the orbit solution's. An orbit parallax under 5 times its error gives none."""
     orbit = _floats(table, "orbit_parallax")
-    used = orbit / _floats(table, "orbit_parallax_error") > MIN_PARALLAX_SNR
+    used = orbit / _floats(table, "orbit_parallax_error") > placement.MIN_PARALLAX_SNR
     return np.where(used, orbit, _floats(table, "parallax")), used
+
+
+def star_distance(
+    table: pa.Table, by_parallax: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """The distance (pc) of each placed row, and whether the orbit parallax
+    gives it. `by_parallax` is from `placement`; a placed row without it is a
+    planet host, which takes its catalogue distance only when no orbit
+    parallax gives one."""
+    parallax, orbit = distance_parallax(table)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        distance = np.where(
+            orbit | by_parallax, 1000.0 / parallax, _floats(table, "host_distance")
+        )
+    return distance, orbit
+
+
+def _valid(table: pa.Table, name: str) -> np.ndarray:
+    return table[name].is_valid().to_numpy(zero_copy_only=False)
 
 
 def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
     """The render rows of `region_table` rows, and what was dropped and why."""
     counts: Counter = Counter()
     counts["rows"] = table.num_rows
-    parallax = _floats(table, "parallax")
-    snr = parallax / _floats(table, "parallax_error")
-    positioned = snr > MIN_PARALLAX_SNR
-    hipparcos = (
-        table["hipparcos_photometry_source"].is_valid().to_numpy(zero_copy_only=False)
-    )
-    fidelity = _floats(table, "fidelity_v2")
-    trusted = ~(fidelity < MIN_FIDELITY) | hipparcos
-    gaia = pc.equal(table["astrometry_source"], "gaia-dr3").to_numpy(
-        zero_copy_only=False
-    )
+    positioned, by_parallax, by_catalogue = placement.placement(table)
+    source = table["astrometry_source"]
+    gaia = pc.equal(source, "gaia-dr3").to_numpy(zero_copy_only=False)
+    hipparcos_only = pc.equal(source, "hipparcos-2007").to_numpy(zero_copy_only=False)
     counts["no 5-sigma parallax, Gaia"] = int((~positioned & gaia).sum())
-    counts["no 5-sigma parallax, Hipparcos only"] = int((~positioned & ~gaia).sum())
-    counts["flagged by fidelity"] = int((positioned & ~trusted).sum())
-    counts["flagged by fidelity, kept for a Hipparcos match"] = int(
-        (positioned & (fidelity < MIN_FIDELITY) & hipparcos).sum()
+    counts["no 5-sigma parallax, Hipparcos only"] = int(
+        (~positioned & hipparcos_only).sum()
     )
+    counts["no 5-sigma parallax, exoplanet catalogue"] = int(
+        (~positioned & ~gaia & ~hipparcos_only).sum()
+    )
+    counts["flagged by fidelity"] = int((positioned & ~by_parallax).sum())
+    # A row under the fidelity cut that the parallax places has a Hipparcos match.
+    counts["flagged by fidelity, kept for a Hipparcos match"] = int(
+        (by_parallax & (_floats(table, "fidelity_v2") < MIN_FIDELITY)).sum()
+    )
+    placed = by_parallax | by_catalogue
+    host = _valid(table, "host_star_source")
+    counts["planet host with no distance"] = int((host & ~placed).sum())
 
     g = _floats(table, "phot_g_mean_mag")
     estimate = g_estimate(
@@ -243,12 +355,22 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
     )
     mag = np.where(np.isfinite(g), g, estimate)
     counts["G estimated from Hipparcos"] = int(
-        (positioned & trusted & ~np.isfinite(g) & np.isfinite(mag)).sum()
+        (placed & ~np.isfinite(g) & np.isfinite(mag)).sum()
     )
+    host_g = _floats(table, "host_g_mag")
+    catalogue = np.where(np.isfinite(host_g), host_g, _floats(table, "host_v_mag"))
+    counts["magnitude from an exoplanet catalogue"] = int(
+        (placed & ~np.isfinite(mag) & np.isfinite(catalogue)).sum()
+    )
+    mag = np.where(np.isfinite(mag), mag, catalogue)
     bright = np.isfinite(mag)
-    counts["no magnitude"] = int((positioned & trusted & ~bright).sum())
-    keep = positioned & trusted & bright
+    counts["planet host with no magnitude, placeholder"] = int(
+        (placed & host & ~bright).sum()
+    )
+    counts["no magnitude"] = int((placed & ~host & ~bright).sum())
+    keep = placed & (bright | host)
     table = table.filter(pa.array(keep))
+    mag, by_parallax, bright = mag[keep], by_parallax[keep], bright[keep]
 
     ra, dec = _floats(table, "ra"), _floats(table, "dec")
     years = EPOCH - _floats(table, "epoch")
@@ -264,8 +386,10 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
         ra[moving], dec[moving] = moved
     counts[f"moved to J{EPOCH}"] = int(moving.sum())
 
-    parallax, orbit = distance_parallax(table)
-    distance = 1000.0 / parallax
+    distance, orbit = star_distance(table, by_parallax)
+    counts["planet host at a catalogue distance"] = int((~by_parallax & ~orbit).sum())
+    abs_mag = mag - 5 * np.log10(distance) + 5
+    abs_mag = _round(np.where(bright, abs_mag, HOST_PLACEHOLDER_MAG))
     ra_rad, dec_rad = np.radians(ra), np.radians(dec)
     x = distance * np.cos(dec_rad) * np.cos(ra_rad)
     y = distance * np.cos(dec_rad) * np.sin(ra_rad)
@@ -275,13 +399,19 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
     counts["outside the root cube"] = int((~inside).sum())
     counts["distance from an orbit solution"] = int((orbit & inside).sum())
 
-    abs_mag = _round(mag[keep] + 5 * np.log10(parallax) - 10)
     bp_rp = _floats(table, "phot_bp_mean_mag") - _floats(table, "phot_rp_mean_mag")
     from_v_i = bp_rp_from_v_i(_floats(table, "v_i"))
-    colour = _round(np.where(np.isfinite(bp_rp), bp_rp, from_v_i))
+    host_teff = _floats(table, "host_teff")
+    teff = np.where(np.isfinite(host_teff), host_teff, _floats(table, "teff_gspphot"))
+    from_teff = bp_rp_from_teff(teff)
+    colour = np.where(np.isfinite(bp_rp), bp_rp, from_v_i)
     counts["BP - RP from Hipparcos V - I"] = int(
         (~np.isfinite(bp_rp) & np.isfinite(from_v_i))[inside].sum()
     )
+    counts["BP - RP from Teff"] = int(
+        (~np.isfinite(colour) & np.isfinite(from_teff))[inside].sum()
+    )
+    colour = _round(np.where(np.isfinite(colour), colour, from_teff))
     counts["no colour"] = int((~np.isfinite(colour))[inside].sum())
 
     rows = {
