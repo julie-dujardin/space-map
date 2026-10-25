@@ -54,6 +54,23 @@ class TestResumable:
         download_resumable(client, "https://example.test/file.bin", dest, replace=True)
         assert dest.read_bytes() == b"new"
 
+    def test_sync_bytes_flushes_as_the_file_arrives(self, tmp_path, monkeypatch):
+        body = bytes(range(256)) * (3 * resumable.CHUNK // 256)
+        sizes: list[int] = []
+        monkeypatch.setattr(
+            resumable, "flush_to_disk", lambda fh: sizes.append(fh.tell())
+        )
+        client = httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, content=body))
+        )
+        dest = tmp_path / "file.bin"
+        assert download_resumable(
+            client, "https://example.test/f", dest, sync_bytes=resumable.CHUNK
+        )
+        assert dest.read_bytes() == body
+        chunk = resumable.CHUNK
+        assert sizes == [chunk, 2 * chunk, 3 * chunk, 3 * chunk]
+
     def test_a_failed_check_keeps_the_file_on_disk(self, tmp_path):
         def refuse(path):
             raise DownloadError("bad")

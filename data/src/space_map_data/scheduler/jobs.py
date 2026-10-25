@@ -188,19 +188,21 @@ JOBS: list[Job] = [
         schedule=Every(timedelta(days=7)),
     ),
     # Star catalogues. Only the IAU name list changes. The scheduler's record
-    # limit stops a Gaia table after its first chunks, so fill those three
-    # from the CLI. Ordered: the astrophysical parameters and the fidelity
-    # read the chunks gaia_source writes.
+    # limit stops a Gaia table after its first chunks, and the XP metallicities
+    # fetch nothing under it, so fill the Gaia tables from the CLI. Ordered:
+    # the tables after gaia_source read its chunks.
     Job(
         name="stars",
         sources=(
             PROVIDERS.GAIA_SOURCE,
             PROVIDERS.GAIA_ASTROPHYSICAL_PARAMETERS,
             PROVIDERS.GAIA_FIDELITY,
+            PROVIDERS.GAIA_XP_METALLICITY,
             PROVIDERS.GAIA_CROSS_MATCH,
             PROVIDERS.GAIA_TWO_BODY_ORBIT,
             PROVIDERS.GAIA_BINARY_MASSES,
             PROVIDERS.CDS_STAR_CATALOGUES,
+            PROVIDERS.STELLAR_PARAMETER_CATALOGUES,
             PROVIDERS.IAU_STAR_NAMES,
         ),
         schedule=Every(timedelta(days=7)),

@@ -46,6 +46,7 @@ class TestManifests:
             "galaxies",
             "nebulae",
             "star-clusters",
+            "stellar-parameters",
             "stellar-remnants",
             "transients",
         ]
@@ -55,11 +56,12 @@ class TestManifests:
         assert load_catalogues(group)
 
     @pytest.mark.parametrize("group", GROUPS)
-    def test_a_source_with_no_licence_is_undecided(self, group):
+    def test_a_source_with_no_licence_is_not_open(self, group):
         cleared = [
             c.key
             for c in load_catalogues(group)
-            if c.license.startswith("None stated") and c.distribution != "undecided"
+            if c.license.startswith("None stated")
+            and c.distribution not in ("undecided", "non-commercial")
         ]
         assert not cleared
 

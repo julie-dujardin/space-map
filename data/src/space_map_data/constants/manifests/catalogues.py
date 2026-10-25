@@ -10,7 +10,8 @@ are. The fields:
 - `terms_url`: the page that carries that wording.
 - `distribution`: who may serve data made from the catalogue. `open`,
   `non-commercial` and `site-only` are the tiers of the texture manifests.
-  `undecided` marks a source that states no licence.
+  A source that states no licence is never `open`: it is `non-commercial`,
+  or `undecided` until someone decides.
 - `cds`: `catalogue` is the CDS identifier, `files` the files to take.
 - `zenodo`: `record` is the record number, `files` the files to take. No
   `files` takes every file.
@@ -32,8 +33,8 @@ import yaml
 
 MANIFESTS_DIR = Path(__file__).parent / "catalogues"
 
-# `undecided` marks a source that states no licence. It is not cleared for
-# any export.
+# `undecided` marks a source that states no licence and has no tier yet. It
+# is not cleared for any export.
 DISTRIBUTIONS = frozenset({"open", "non-commercial", "site-only", "undecided"})
 # The provider writes these two files itself.
 _PROVIDER_FILES = frozenset({"ReadMe", "record.json"})

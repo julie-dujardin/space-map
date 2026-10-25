@@ -23,11 +23,14 @@ def flush_to_disk(out: BinaryIO) -> None:
     os.posix_fadvise(out.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
 
 
-def write_parquet(table: pa.Table, path: Path, sync: bool = False) -> None:
-    """Write `table` through a temporary file. `sync` flushes it to disk."""
+def write_parquet(
+    table: pa.Table, path: Path, sync: bool = False, level: int | None = None
+) -> None:
+    """Write `table` through a temporary file, zstd at `level`. `sync` flushes
+    it to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
     part = path.with_name(path.name + ".part")
-    pq.write_table(table, part, compression="zstd")
+    pq.write_table(table, part, compression="zstd", compression_level=level)
     if sync:
         with part.open("rb+") as handle:
             os.fsync(handle.fileno())

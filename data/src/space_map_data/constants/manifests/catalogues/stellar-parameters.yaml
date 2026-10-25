@@ -1,0 +1,52 @@
+# Stellar parameters that fill the gaps of the Gaia XP metallicities: bright
+# FGK stars and M dwarfs. `constants/manifests/catalogues.py` describes the
+# fields.
+catalogues:
+- key: pastel
+  title: The PASTEL catalogue, 2020 version (B/pastel)
+  reference: Soubiran et al. 2016, A&A 591, A118
+  license: >-
+    None stated. The ReadMe names its contact under "Acknowledgements" and
+    gives the paper to cite.
+  terms_url: https://cdsarc.cds.unistra.fr/viz-bin/cat/B/pastel
+  distribution: non-commercial
+  cds:
+    catalogue: B/pastel
+    files:
+    - pastel.dat.gz
+
+- key: lamost-dr10-m-dwarfs
+  title: Atmospheric parameters and abundances for half a million M dwarfs via Cycle-StarNet
+  reference: Zhang, Zhang, Ting et al. 2025, ApJS 277, 47, doi:10.5281/zenodo.14030249
+  license: CC BY 4.0.
+  terms_url: https://zenodo.org/records/14030249
+  distribution: open
+  zenodo:
+    record: 14030249
+    files:
+    - DR10_Cycle-SN_M_dwarfs.csv
+
+- key: lamost-dr10-mstellar
+  title: LAMOST DR10 v2.0 LRS catalogue of M stars
+  reference: LAMOST DR10 v2.0, National Astronomical Observatories, Chinese Academy of Sciences
+  license: >-
+    None stated. "If you download or use any LAMOST data from this website,
+    you must include the following acknowledgment in your published work",
+    with the wording that the data policy gives.
+  terms_url: https://www.lamost.org/lmusers/cms/documents/1
+  distribution: non-commercial
+  urls:
+  - url: https://www.lamost.org/dr10/v2.0/catdl?name=dr10_v2.0_LRS_mstellar.fits.gz
+    name: dr10_v2.0_LRS_mstellar.fits.gz
+
+- key: apogee-dr17
+  title: APOGEE DR17 allStarLite, ASPCAP parameters (synspec_rev1)
+  reference: Abdurro'uf et al. 2022, ApJS 259, 35
+  license: >-
+    None stated. SDSS asks users of public SDSS data to "cite the following
+    papers" for the instruments, the survey and the data release, and to put
+    the SDSS-IV acknowledgement in the acknowledgements section.
+  terms_url: https://www.sdss4.org/collaboration/citing-sdss/
+  distribution: non-commercial
+  urls:
+  - https://data.sdss.org/sas/dr17/apogee/spectro/aspcap/dr17/synspec_rev1/allStarLite-dr17-synspec_rev1.fits

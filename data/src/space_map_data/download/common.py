@@ -15,6 +15,7 @@ from space_map_data.download.providers.catalogues.provider import (
     GalaxyCataloguesDownloader,
     NebulaCataloguesDownloader,
     StarClusterCataloguesDownloader,
+    StellarParameterCataloguesDownloader,
     StellarRemnantCataloguesDownloader,
     TransientCataloguesDownloader,
 )
@@ -106,6 +107,9 @@ from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownlo
 from space_map_data.download.providers.stars.gaia_two_body_orbit import (
     GaiaTwoBodyOrbitDownloader,
 )
+from space_map_data.download.providers.stars.gaia_xp_metallicity import (
+    GaiaXpMetallicityDownloader,
+)
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 from space_map_data.download.providers.stars.wikidata_stars import (
     WikidataStarsDownloader,
@@ -164,15 +168,17 @@ PROVIDERS_CLASSES = [
     ESA3DDownloader,
     BodyShapesDownloader,
     DAMITDownloader,
-    # Ordered: the astrophysical parameters and the fidelity read the chunks
-    # gaia_source writes.
+    # Ordered: the astrophysical parameters, the fidelity and the XP
+    # metallicities read the chunks gaia_source writes.
     GaiaSourceDownloader,
     GaiaAstrophysicalParametersDownloader,
     GaiaFidelityDownloader,
+    GaiaXpMetallicityDownloader,
     GaiaCrossMatchDownloader,
     GaiaTwoBodyOrbitDownloader,
     GaiaBinaryMassesDownloader,
     CDSStarCataloguesDownloader,
+    StellarParameterCataloguesDownloader,
     IAUStarNamesDownloader,
     GalaxyCataloguesDownloader,
     StarClusterCataloguesDownloader,

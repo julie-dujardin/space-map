@@ -11,6 +11,8 @@ from pathlib import Path
 
 import httpx
 
+from space_map_data.utils.files import flush_to_disk
+
 logger = logging.getLogger(__name__)
 
 CHUNK = 1 << 16
@@ -29,12 +31,15 @@ def download_resumable(
     replace: bool = False,
     html: bool = False,
     check: Callable[[Path], None] | None = None,
+    sync_bytes: int | None = None,
 ) -> bool:
     """Fetch ``url`` → ``dest``. Returns False on a non-retryable failure.
 
     ``replace`` fetches when ``dest`` exists. ``html`` accepts an HTML body.
     ``check`` reads the partial file before it becomes ``dest``. When it
     raises, the partial file is removed and ``dest`` stays as it was.
+    ``sync_bytes`` flushes the file to disk each time that many bytes arrive.
+    Unflushed data on a network mount counts against a memory cap.
     """
     if not replace and dest.exists() and dest.stat().st_size > 0:
         return True
@@ -77,11 +82,18 @@ def download_resumable(
                 if validator and not offset:
                     meta.write_text(validator)
                 done = offset
+                pending = 0
                 started = time.monotonic()
                 with part.open("ab" if offset else "wb") as fh:
                     for chunk in resp.iter_bytes(CHUNK):
                         fh.write(chunk)
                         done += len(chunk)
+                        pending += len(chunk)
+                        if sync_bytes is not None and pending >= sync_bytes:
+                            flush_to_disk(fh)
+                            pending = 0
+                    if sync_bytes is not None:
+                        flush_to_disk(fh)
                 rate = (done - offset) / max(time.monotonic() - started, 0.01) / 1024
                 logger.info(
                     "got %s (%.1f MiB, %.0f KiB/s)", dest.name, done / 2**20, rate

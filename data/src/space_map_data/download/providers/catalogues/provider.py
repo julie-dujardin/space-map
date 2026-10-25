@@ -1,6 +1,7 @@
 """Download the published catalogues that a manifest lists.
 
-One provider covers one object class. Its manifest is
+One provider covers one object class, or one kind of data such as the
+stellar parameters. Its manifest is
 `constants/manifests/catalogues/<group>.yaml`, and that file records the reuse
 terms of each catalogue.
 
@@ -47,6 +48,7 @@ from space_map_data.download.downloader import (
 )
 from space_map_data.download.providers.catalogues.fetch import md5_of
 from space_map_data.download.providers.three_d.resumable import download_resumable
+from space_map_data.utils.files import SYNC_BYTES
 from space_map_data.utils.paths import SOURCES_CATALOGUES_DIR
 
 logger = logging.getLogger(__name__)
@@ -180,6 +182,7 @@ class CatalogueDownloader(Downloader):
             replace=True,
             html=item.name.endswith(_HTML_NAMES),
             check=_accept(item),
+            sync_bytes=SYNC_BYTES,
         )
         if not fetched:
             raise DownloadError(f"{item.url}: the fetch failed")
@@ -351,3 +354,8 @@ class BlackHoleCataloguesDownloader(CatalogueDownloader):
 class TransientCataloguesDownloader(CatalogueDownloader):
     name = PROVIDERS.TRANSIENT_CATALOGUES
     group = "transients"
+
+
+class StellarParameterCataloguesDownloader(CatalogueDownloader):
+    name = PROVIDERS.STELLAR_PARAMETER_CATALOGUES
+    group = "stellar-parameters"
