@@ -1,8 +1,8 @@
 """Unified catalog search index.
 
 A single Meili index over every searchable entity — objects, surface features,
-group/collection pages and launch pads — discriminated by the root ``kind``
-field. Shared
+group/collection pages, launch pads and exoplanets — discriminated by the root
+``kind`` field. Shared
 fields (name, descriptions, thumbnail, diameter_km, sitelinks_count) live at the
 document root; per-kind fields nest under ``object`` / ``feature`` / ``group``
 (see base.py for the primary-key scheme).
@@ -20,6 +20,7 @@ from typing import Any
 from space_map_data.constants.providers import LANGUAGES
 
 from .base import Index
+from .extrasolar import build_extrasolar_documents
 from .features import build_feature_documents
 from .groups import build_group_documents
 from .objects import build_object_documents
@@ -37,7 +38,8 @@ def _catalog_settings() -> dict[str, Any]:
         "searchableAttributes": (
             name_fields
             + alias_fields
-            + ["object.designations", "pad.code"]
+            + ["object.designations", "planet.designation", "planet.aliases"]
+            + ["pad.code"]
             + description_fields
             + ["group.slug"]
         ),
@@ -56,6 +58,12 @@ def _catalog_settings() -> dict[str, Any]:
             "object.render_quality",
             "object.magnitude",
             "object.inception",
+            "object.extrasolar",
+            "planet.host_id",
+            "planet.system_id",
+            "planet.class",
+            "planet.status",
+            "planet.discovery_method",
             "group.type",
             "group.applies_to",
             "group.member_count",
@@ -75,6 +83,8 @@ def _catalog_settings() -> dict[str, Any]:
             "object.inception",
             "group.member_count",
             "pad.launches",
+            "planet.number",
+            "planet.discovery_year",
         ],
         "localizedAttributes": [
             {
@@ -105,9 +115,13 @@ def _catalog_settings() -> dict[str, Any]:
 
 
 class CatalogIndex(Index):
-    def build_documents(self, export_dir: Path) -> Iterator[dict[str, Any]]:
+    def build_documents(
+        self, export_dir: Path, extrasolar_dir: Path
+    ) -> Iterator[dict[str, Any]]:
         return chain(
-            build_object_documents(export_dir),
+            build_extrasolar_documents(
+                extrasolar_dir, build_object_documents(export_dir)
+            ),
             build_feature_documents(export_dir),
             build_group_documents(export_dir),
             build_pad_documents(export_dir),

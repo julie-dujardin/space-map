@@ -27,8 +27,11 @@ def _batched[T](it: Iterable[T], n: int) -> Iterator[list[T]]:
         yield batch
 
 
-def push_index(client: MeiliClient, index: Index, export_dir: Path) -> int:
-    """Reindex ``index`` from ``export_dir``. Returns the doc count pushed."""
+def push_index(
+    client: MeiliClient, index: Index, export_dir: Path, extrasolar_dir: Path
+) -> int:
+    """Reindex ``index`` from ``export_dir`` and the extrasolar export in
+    ``extrasolar_dir``. Returns the doc count pushed."""
     tmp_uid = f"{index.uid}_tmp"
 
     logger.info("Resetting tmp index %s", tmp_uid)
@@ -37,7 +40,8 @@ def push_index(client: MeiliClient, index: Index, export_dir: Path) -> int:
     client.update_settings(tmp_uid, index.settings)
 
     count = 0
-    for batch in _batched(index.build_documents(export_dir), client.config.batch_size):
+    documents = index.build_documents(export_dir, extrasolar_dir)
+    for batch in _batched(documents, client.config.batch_size):
         client.add_documents(tmp_uid, batch)
         count += len(batch)
         logger.info("Pushed %d docs to %s", count, tmp_uid)

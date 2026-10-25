@@ -1,4 +1,5 @@
-"""SEO page records: one per page of the sitemap, in ``v1/seo/pages.json.gz``.
+"""SEO page records, in ``v1/seo/pages.json.gz``: one per page of the sitemap
+other than the planets and their hosts.
 
 A record holds what the SSR meta of its page reads from the bundles
 (``frontend/src/lib/seo/meta.ts``), in every language, with the credit of its
@@ -19,7 +20,12 @@ from sqlalchemy.orm import Session
 
 from space_map_data.export.nomenclature.writer import feature_bucket_key, feature_label
 from space_map_data.export.objects.stars import available_star_objects
-from space_map_data.export.sitemap import SitemapPages, bundle_entries, write_sitemap
+from space_map_data.export.sitemap import (
+    SitemapPages,
+    available_planet_pages,
+    bundle_entries,
+    write_sitemap,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
 from space_map_data.utils.paths import EXPORT_DIR
@@ -276,8 +282,9 @@ def write_seo_pages(
 def export_seo_only(engine: Engine) -> None:
     """`space-map-export --only seo` — rewrites the sitemap and the page records.
 
-    Both come from the bundles, so a change of their rules reaches the files
-    without re-running the whole export.
+    They come from the bundles, and the planet pages from the served
+    extrasolar export, so a change of their rules reaches the files without
+    re-running the whole export.
     """
     out_dir = EXPORT_DIR / "v1"
     metadata = orjson.loads((out_dir / "metadata.json").read_bytes())
@@ -290,6 +297,7 @@ def export_seo_only(engine: Engine) -> None:
             metadata["object_bundles"],
             metadata["group_bundles"],
             available_star_objects(),
+            available_planet_pages(),
         )
         write_seo_pages(
             out_dir,

@@ -16,11 +16,14 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.export import sitemap
+from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.groups.registry import GROUPS, GroupType
 from space_map_data.export.localization import MESSAGES_DIR
+from space_map_data.export.objects.stars import StarObject
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.sitemap import (
     SITELINKS_THRESHOLD,
+    PlanetPages,
     _bundle_names,
     _feature_paths,
     _group_name,
@@ -29,10 +32,15 @@ from space_map_data.export.sitemap import (
     _notable_paths,
     _object_names,
     _object_path,
+    _planet_paths,
+    available_planet_pages,
 )
+from space_map_data.extrasolar.registry import ALIAS
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from tests.conftest import make_object
+from tests.extrasolar.export_registry import write_registry
+from tests.extrasolar.test_export_planets import PLANETS, STARS
 
 
 def _entities(sitelinks: dict[str, int]) -> MagicMock:
@@ -407,6 +415,7 @@ class TestWriteSitemap:
             {BASE_LOCALE: 0, "global": 1},
             {BASE_LOCALE: 0},
             [],
+            PlanetPages([], {}),
         )
         assert sorted(p.name for p in seo.iterdir()) == [
             "sitemap-1.xml",
@@ -418,3 +427,126 @@ class TestWriteSitemap:
         assert f"<loc>{sitemap.SITE_ORIGIN}/sitemap-2.xml</loc>" in index
         assert (seo / "sitemap-1.xml").read_text().count("<url>") == 2
         assert (seo / "sitemap-2.xml").read_text().count("<url>") == 1
+
+    def test_lists_each_planet_and_host_after_the_other_pages(
+        self, session: Session, tmp_path: Path
+    ):
+        """A host with an entry is listed once, under the name of its entry."""
+        _write_bundles(
+            tmp_path / "objects" / "__global__", 1, {"x-7": {"name": "Sirius"}}
+        )
+        planets = PlanetPages(
+            [(7, 1, "Sirius b"), (9, 1, "Nine b")], {7: "Sir", 9: "Nine"}
+        )
+
+        pages = sitemap.write_sitemap(
+            session,
+            tmp_path,
+            _entities({}),
+            {BASE_LOCALE: 0, "global": 1},
+            {BASE_LOCALE: 0},
+            [StarObject(7, "Sir", "Q7")],
+            planets,
+        )
+        assert pages.objects == {"x-7": "/x/7/Sirius"}
+        text = (tmp_path / "seo" / "sitemap-1.xml").read_text()
+        locs = [
+            line.split("<loc>")[1].split("</loc>")[0]
+            for line in text.splitlines()
+            if "<loc>" in line
+        ]
+        assert locs == [
+            f"{sitemap.SITE_ORIGIN}/x/7/Sirius",
+            f"{sitemap.SITE_ORIGIN}/x/9/Nine",
+            f"{sitemap.SITE_ORIGIN}/x/7/b/1/Sirius%20b",
+            f"{sitemap.SITE_ORIGIN}/x/9/b/1/Nine%20b",
+        ]
+
+
+class TestPlanetPaths:
+    """The pages of the planets and of their hosts."""
+
+    def test_names_each_host_and_planet_as_the_app_does(self):
+        planets = PlanetPages(
+            [(5, 1, "HD 1 b"), (5, 2, "Lucky"), (6, 1, None)], {5: "HD 1", 6: None}
+        )
+        assert _planet_paths(planets, {}) == [
+            "/x/5/HD%201",
+            "/x/6",
+            "/x/5/b/1/HD%201%20b",
+            "/x/5/b/2/Lucky",
+            "/x/6/b/1",
+        ]
+
+    def test_leaves_out_a_host_with_an_entry(self):
+        """The star's own path, with the name of its entry, lists it."""
+        planets = PlanetPages([(5, 1, "Sirius b")], {5: "Sir"})
+        assert _planet_paths(planets, {"x-5": "/x/5/Sirius"}) == ["/x/5/b/1/Sirius%20b"]
+
+
+def _export_planets(registry_root: Path, out: Path) -> None:
+    export_extrasolar(
+        registry_root, out, workers=1, cultures_dir=out.parent / "no-cultures"
+    )
+
+
+class TestAvailablePlanetPages:
+    """The planets and their hosts' names, from the served extrasolar export."""
+
+    def test_reads_each_planet_and_its_host_name(self, tmp_path: Path):
+        """A host in another region than its system; a star with no planet is
+        no host."""
+        built = write_registry(tmp_path / "reg", STARS, planets=PLANETS)
+        _export_planets(built.root, tmp_path / "out")
+        ids = built.ids
+
+        pages = available_planet_pages(tmp_path / "out")
+        assert pages.planets == sorted(
+            (ids[p["_host"]], p["number"], p["name"]) for p in PLANETS
+        )
+        assert pages.hosts == {
+            ids[0]: "Host A",
+            ids[1]: "Lit B",
+            ids[2]: "OGLE-1L",
+            ids[3]: "PSR 1",
+            ids[4]: "Host A B",
+        }
+
+    def test_follows_the_served_export_not_the_registry(self, tmp_path: Path):
+        """An export that refuses the registry leaves the served pages."""
+        out = tmp_path / "out"
+        built = write_registry(tmp_path / "reg", STARS, planets=PLANETS)
+        _export_planets(built.root, out)
+        served = available_planet_pages(out)
+        changed = write_registry(tmp_path / "reg2", STARS, planets=PLANETS[:1])
+        with pytest.raises(ExportRefused):
+            _export_planets(changed.root, out)
+        assert available_planet_pages(out) == served
+
+    def test_an_alias_number_has_no_page(self, tmp_path: Path):
+        out = tmp_path / "out"
+        _export_planets(
+            write_registry(tmp_path / "reg", STARS, planets=PLANETS).root, out
+        )
+        dropped = [p for p in PLANETS if (p["_host"], p["number"]) != (0, 2)]
+        built = write_registry(
+            tmp_path / "reg2",
+            STARS,
+            planets=dropped,
+            planet_status=[(0, 2, ALIAS, (0, 1))],
+        )
+        _export_planets(built.root, out)
+        numbers = [
+            (host, number) for host, number, _ in available_planet_pages(out).planets
+        ]
+        assert (built.ids[0], 1) in numbers
+        assert (built.ids[0], 2) not in numbers
+
+    def test_an_export_without_planets_gives_none(self, tmp_path: Path):
+        built = write_registry(tmp_path / "reg", STARS)
+        _export_planets(built.root, tmp_path / "out")
+        assert available_planet_pages(tmp_path / "out") == PlanetPages([], {})
+
+    def test_no_export_gives_none(self, tmp_path: Path, caplog):
+        assert available_planet_pages(tmp_path) == PlanetPages([], {})
+        assert "No planet pages" in caplog.text

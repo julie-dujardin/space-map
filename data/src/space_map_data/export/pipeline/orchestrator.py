@@ -130,7 +130,7 @@ from space_map_data.export.position.spacecraft_orientation import (
 )
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.seo_pages import write_seo_pages
-from space_map_data.export.sitemap import write_sitemap
+from space_map_data.export.sitemap import available_planet_pages, write_sitemap
 from space_map_data.export.small_body_color import log_color_stats
 from space_map_data.export.spacecraft import write_spacecraft
 from space_map_data.export.status import write_status
@@ -1081,6 +1081,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     # One read for the star entries and the sitemap. A registry that an ingest
     # holds stops the export here, before it removes anything.
     star_objects = available_star_objects()
+    planet_pages = available_planet_pages()
     with Session(engine) as session:
         precheck_tables(session)
         nomenclature_by_body = build_nomenclature(session)
@@ -1370,6 +1371,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             bundle_ns,
             group_bundle_ns,
             star_objects,
+            planet_pages,
         )
         write_seo_pages(
             out_dir,

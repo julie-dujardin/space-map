@@ -1,6 +1,6 @@
 # Extrasolar objects (`v1/x/`)
 
-The objects outside the solar system: their record tiles, one tree per table, the Milky Way render tree, and the constellation figures of the sky cultures. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to `space-map-extrasolar/v1/x/` and are served from their own base URL, `PUBLIC_EXTRASOLAR_URL`. Without that URL a client has no stars and no `/x/` pages.
+The objects outside the solar system: their record tiles, one tree per table, the Milky Way render tree, the constellation figures of the sky cultures, and the exoplanets with one file per planetary system. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to `space-map-extrasolar/v1/x/` and are served from their own base URL, `PUBLIC_EXTRASOLAR_URL`. Without that URL a client has no stars and no `/x/` pages.
 
 An object has one ID for all its files. The ID, its URL form and its check are in the design of the registry: `id = serial·2^29 + table·2^24 + cell`, with `cell` the HEALPix level-10 nested cell (ICRS) and `table` the home table. A client decodes it with division, never with bit operators: `cell = id % 2^24`, `table = floor(id / 2^24) % 32`, `serial = floor(id / 2^29)`.
 
@@ -18,6 +18,8 @@ v1/x/
   mw/node/{name}.bin.gz                  Milky Way render nodes
   mw/id/{name}.bin.gz                    the ID column of each render node
   skycultures/{key}.json.gz              a sky culture: figures, members and star names
+  planets/index.json.gz                  every planet host: its system, planet numbers, place and outer orbit
+  planets/{key}.json.gz                  one planetary system: its hosts and planets, with orbits in the scene's frame
 ```
 
 Each `.bin.gz` file is gzip around one payload in the container format below. A `.json.gz` file is gzip around UTF-8 JSON. The server sends it as `application/octet-stream` with no `Content-Encoding`, and the client decodes it with `DecompressionStream('gzip')`. A client fetches each file as `{PUBLIC_EXTRASOLAR_URL}/v1/x/{path}?v={token}`, with the token of its table or tree.
@@ -147,7 +149,9 @@ An alias is a row at the alias's own cell with only `id`, `mask` 0 and `alias_ta
 
 ### Point source (table 1)
 
-Gaia DR3 and Hipparcos, with every field and its uncertainty. The columns come in groups. Each group comes from one source, named in its `*_source` column; all columns of a group are null when no source has a value. Units: positions in degrees (ICRS at `epoch`, a Julian year: 2016.0 for Gaia, 1991.25 for Hipparcos), position errors in mas (`ra_error` on ra·cos dec), parallax in mas, proper motion in mas/yr (`pmra` on ra·cos dec), magnitudes in mag, radial velocity and broadening in km/s, temperature in K, `logg` in log(cm/s²), metallicity in dex, GSP-Phot distance in pc and radius in nominal solar radii (695,700 km), `nu_eff_used_in_astrometry` and `pseudocolour` in 1/µm. `*_lower` and `*_upper` are the 16th and 84th percentiles. `fidelity_v2` under 0.5 marks a likely spurious astrometric solution (Rybizki et al. 2022). `metadata.json` lists the columns in order.
+Gaia DR3, Hipparcos and the host stars of the exoplanet catalogues, with every field and its uncertainty. The columns come in groups. Each group comes from one source, named in its `*_source` column; all columns of a group are null when no source has a value. Units: positions in degrees (ICRS at `epoch`, a Julian year: 2016.0 for Gaia, 1991.25 for Hipparcos), position errors in mas (`ra_error` on ra·cos dec), parallax in mas, proper motion in mas/yr (`pmra` on ra·cos dec), magnitudes in mag, radial velocity and broadening in km/s, temperature in K, `logg` in log(cm/s²), metallicity in dex, GSP-Phot distance in pc and radius in nominal solar radii (695,700 km), `nu_eff_used_in_astrometry` and `pseudocolour` in 1/µm. `*_lower` and `*_upper` are the 16th and 84th percentiles. `fidelity_v2` under 0.5 marks a likely spurious astrometric solution (Rybizki et al. 2022). `metadata.json` lists the columns in order.
+
+A planet host also has the group `host_star`, the star as its exoplanet catalogue gives it (`host_star_source`: `nasa-exoplanet-archive`, else `exoplanet-eu`, else `open-exoplanet-catalogue`): `host_name`, `host_distance` and `host_distance_error` (pc, the larger of the two errors), `host_teff` (K), `host_radius` and `host_mass` (solar), `host_metallicity` (dex), `host_logg` (cgs), `host_age` (Gyr), `host_v_mag`, `host_g_mag`, `host_k_mag` (mag) and `host_spectral_type`. Every other star has nulls there. A host that no other catalogue gives is a literature star: its astrometry group comes from the exoplanet catalogue (`astrometry_source`), with RA, Dec, parallax and proper motion as the catalogue gives them and epoch 2015.5 for the archive (its positions are Gaia DR2's) or 2000.0 for exoplanet.eu and OEC. A planet host can also take its Metadata name and class from these catalogues (`name_source`, `class_source`); a literature star's class is `star`, `brown dwarf`, `white dwarf` or `pulsar`.
 
 `radius_gspphot` and its bounds come from Gaia DR3's `astrophysical_parameters`, joined to `gaia_source` by `source_id`; their provenance is `gspphot_source`. They are model estimates, not resolved measurements. Missing radii stay null. Close rendering uses the radius and `teff_gspphot` for a smooth, limb-darkened photosphere, with photometric colour as a fallback. Stars without a radius remain points. Existing exports need an extrasolar ingest and export before these columns are available.
 
@@ -176,7 +180,7 @@ Of the 437,275 sources with a solution, 394,046 are positionable stars: 169,096 
 
 The columns keep the names of the Gaia DR3 documentation of `nss_two_body_orbit` and `binary_masses`, so a reader finds each one there. Two groups: `orbit`, every published column of the solution, with provenance `orbit_source`, and `masses`, with provenance `masses_source`. The solution has its own astrometry at J2016.0, the position, parallax and proper motion of the system's barycentre in the orbit model. Point source holds the single-star solution of `gaia_source` under the same names, so here these columns have the suffix `_nss`: `ra_nss`, `dec_nss`, `parallax_nss`, `pmra_nss`, `pmdec_nss`, each with its `_error` (as `ra_nss_error`).
 
-The distance of a star with an astrometric solution (`Orbital…`, `AstroSpectroSB1`) comes from `parallax_nss`, where `parallax_nss / parallax_nss_error > 5`. The orbit fit takes out the motion of the light centre, which the single-star fit of `gaia_source` takes as noise or as part of the parallax, and its parallax error is about half as large. The render tree places the star by this parallax, and a client takes the star's distance and absolute magnitude from it too. Point source keeps Gaia's single-star values, and they still decide which stars are drawn. A star with a spectroscopic or eclipsing solution keeps its Point source parallax.
+The distance of a star with an astrometric solution (`Orbital…`, `AstroSpectroSB1`) comes from `parallax_nss`, where `parallax_nss / parallax_nss_error > 5`. The orbit fit takes out the motion of the light centre, which the single-star fit of `gaia_source` takes as noise or as part of the parallax, and its parallax error is about half as large. The render tree places the star by this parallax, and a client takes the star's distance and absolute magnitude from it too. Point source keeps Gaia's single-star values, and they still decide which stars are drawn by parallax (see the render tree). A star with a spectroscopic or eclipsing solution keeps its Point source parallax.
 
 Units are as published: angles in degrees, times and periods in days, `t_periastron` from J2016.0, Thiele-Innes `A`, `B`, `F`, `G` in mas and `C`, `H` in AU, velocities in km/s, masses in solar masses. A column is `float32` where float32 rounding stays under 1% of each published error. `ra_nss`, `dec_nss`, `period`, `inclination` and `temperature_ratio` are `float64`. `solution_id` and `flags` are `uint64`: `flags` is a bit field that uses bits up to 57, past 2^53. `bit_index` is `uint32`. `corr_vec` is a `float32_list`: the published upper triangle of the correlation matrix, column by column, over the parameters that `bit_index` names, NaN entries included. It has 6 to 190 entries, and it takes about half of the bytes of the table.
 
@@ -236,7 +240,15 @@ An octree by visibility range for the objects of the Milky Way. It holds the sta
 - **IDs.** The ID file of a node has the same token and row count as the node file. A client loads it on the first click in the node; row `i` of both files is the same object.
 - **Precision.** A float32 position relative to the centre is off by up to half · 2^-24: about 13 AU for a star in a node of half size 1,024 pc, 0.8 AU in a node of half size 64 pc. A client that goes near one star takes its position from the star's record.
 
-Which stars are drawn: `parallax / parallax_error > 5`, and `fidelity_v2 ≥ 0.5`, or no fidelity, or a Hipparcos match (`hipparcos_photometry_source` not null), and a magnitude. Positions are at J2016.0: Hipparcos stars are moved from J1991.25 by their proper motion. Distance is `1000 / parallax`, with `parallax_nss` of table 2 for a star with an astrometric orbit solution whose `parallax_nss` is over 5 times its error (see Binary orbit). The absolute magnitude, and so the visibility range, uses the same parallax. Its apparent magnitude is `phot_g_mean_mag`, or for a star without Gaia photometry the estimate of G from V and B − V that the ingest uses for matching (`g_estimate` of the Hipparcos source), with no correction for extinction. The colour is `phot_bp_mean_mag − phot_rp_mean_mag`, or for a star without Gaia colours BP − RP from the Hipparcos V − I (Riello et al. 2021, Table C.2: −0.01612 + 1.274 x − 0.08143 x², x = V − I from −0.5 to 3.5). A star without a distance has an ID and a record, but no render row.
+Which stars are drawn, and where:
+
+- **By parallax**: `parallax / parallax_error > 5`, and `fidelity_v2 ≥ 0.5`, or no fidelity, or a Hipparcos match (`hipparcos_photometry_source` not null).
+- **At a catalogue distance**: a planet host that fails the rule above and has a `host_distance` is drawn along its catalogue's RA and Dec. Its planet files say `placement: "catalogue distance"`. A host is drawn once, by the first rule that places it. The ingest report counts the hosts by the same rule.
+- **Not drawn**: any other star. It has an ID and a record, but no render row.
+
+The distance of a drawn star is `1000 / parallax_nss` when it has an astrometric orbit solution in table 2 whose `parallax_nss` is over 5 times its error (see Binary orbit). Else it is `1000 / parallax` for a star drawn by parallax, and `host_distance` for a host at a catalogue distance. The absolute magnitude, and so the visibility range, uses the same distance.
+
+Positions are at J2016.0: a star whose `epoch` differs and that has a proper motion is moved by it. The absolute magnitude comes from `phot_g_mean_mag`; for a star without Gaia photometry, from the estimate of G from V and B − V that the ingest uses for matching (`g_estimate` of the Hipparcos source); for a planet host without either, from `host_g_mag`, else `host_v_mag` taken as G. There is no correction for extinction. A planet host with no magnitude at all (most microlensing and pulsar hosts) takes absolute G 15.0, a placeholder that keeps it in the tree and draws it only near its system. A star without a planet and with no magnitude is not drawn. The colour is `phot_bp_mean_mag − phot_rp_mean_mag`; for a star without Gaia colours, BP − RP from the Hipparcos V − I (Riello et al. 2021, Table C.2: −0.01612 + 1.274 x − 0.08143 x², x = V − I from −0.5 to 3.5); else BP − RP of a dwarf of the star's Teff (`host_teff`, else `teff_gspphot`) by the dwarf sequence of Pecaut & Mamajek (2013, table version 2022.04.16, B9V to M8.5V, linear between rows, the nearest end outside them); else NaN.
 
 ## Sky cultures (`skycultures`)
 
@@ -295,6 +307,132 @@ A file is gzip around one JSON object:
 The matching runs at ingest: the `extrasolar` target of `space-map-ingest` ends with it, and `--targets skycultures` runs it alone. A HIP number goes through the registry's `hip/2007` catalogue ids and a Gaia DR3 source_id through `gaia/dr3`. Bucur names stars by SIMBAD identifier; SIMBAD gives the star's HIP number, else its Gaia DR3 or HD number, else the HIP number of the star system that holds it.
 
 The token of `skycultures` covers all its files: SHA-256 over each file's path, a zero byte and the SHA-256 of its JSON with `token` set to 16 zeros (`"0000000000000000"`), as for the containers. Each file's `token` field holds the token; a client checks it as it checks a container header.
+
+## Planets (`planets`)
+
+The planets and the substellar companions up to 60 Jupiter masses that the NASA Exoplanet Archive, exoplanet.eu and the Open Exoplanet Catalogue (OEC) list as confirmed or controversial around a star. Candidates, retracted objects and free-floating objects are not in it. A planet's page is `/x/{host}/b/{n}`: `host` is the extrasolar ID of the star it orbits, and `n` its number within that host, from 1. A number is never given twice: a planet that every catalogue drops retires, and its number then is a 404. A number can become an alias of another planet: when two numbers turn out to be one planet, or when the planet's host merges into another ID, which gives the planet a number on its live host. The old page then redirects.
+
+The planets of one planetary system share one file, keyed by the ID of the system's key star (`system`). For a single star, that is the host. For a binary or a wider system it is the first star in OEC's hierarchy that has planets, else the star without a component letter or with `A`. So a planet around each star of a binary is in one file, and each orbits its own host. A planet around both stars of a binary (P-type) orbits the pair's star: the Gaia source of the pair when Gaia sees one. The hosts of one system can be in two regions of the sky, and their file is the same.
+
+### Index
+
+`planets/index.json.gz` is gzip around one JSON object:
+
+```json
+{
+  "token": "3f0c…",
+  "hosts": [
+    { "id": 27424668, "system": 27424668, "planets": [1], "position": [-0.4732, -0.3644, -1.1576], "outer_orbit": 0.04848 },
+    { "id": 564339647, "system": 27424668, "planets": [1], "position": […], "outer_orbit": null },
+    { "id": 1234567890, "system": 1234567890, "planets": [1, 3], "position": null, "outer_orbit": 1.2 }
+  ],
+  "aliases": { "1234567890/2": [1234567890, 1], "987654321/1": [1234567890, 3] }
+}
+```
+
+- `hosts`: every star with a planet, sorted by `id`. A key star with no planets of its own is in its system file and not here.
+- `system`: the key of the host's system file.
+- `planets`: the live numbers of the host, ascending.
+- `aliases`: every alias number, keyed `"{host}/{n}"`, with the live planet it leads to as `[host, n]`. The target can be on another host (the second example: host 987654321 merged into 1234567890). The target is always a planet that the index lists, so there is one redirect; an alias whose end is not served is left out (a 404). The host of an alias key can be missing from `hosts`: a merged ID has no live planets.
+- `position`: in parsecs, in the frame of the render tree (ICRS axes, origin at the barycentre, J2016.0), the float64 position that the tree build computes for the host. The node stores it as its centre plus a float32 offset, so the drawn point is off by up to half · 2^-24 of the node. Null when the host has no distance (not drawn).
+- `outer_orbit`: in AU, the largest semi-major axis of the host's planets; null when none has one.
+
+To find a planet `/x/{host}/b/{n}`: load the index once; when `aliases` has `"{host}/{n}"`, redirect to `/x/{target host}/b/{target n}`; else find the host in `hosts` and check that `n` is in its `planets` (else a 404); load `planets/{system}.json.gz` and take the planet with that `host` and `number`.
+
+### System file
+
+`planets/{key}.json.gz`, with `key` the ID of the system's key star:
+
+```json
+{
+  "token": "3f0c…",
+  "system": 27424668,
+  "hosts": [ { "id": 27424668, "name": "Proxima Centauri", "…": "…" }, { "id": 564339647, "…": "…" } ],
+  "planets": [ { "host": 27424668, "number": 1, "name": "Proxima Cen b", "…": "…" }, { "host": 564339647, "number": 1, "…": "…" } ]
+}
+```
+
+`hosts` has the key star first, then the other hosts by ID. `planets` is sorted by host, then number. A float with no value is `null`.
+
+A host:
+
+| Field | | |
+|-------|-|-|
+| `id` | number | extrasolar ID |
+| `name`, `name_source` | string | the Metadata name and its source |
+| `class` | string | the Metadata class: `star`, `brown dwarf`, `white dwarf` or `pulsar` |
+| `cross_ids` | list | the Metadata cross-ids, each `{catalogue, release, catalogue_id}` |
+| `planets` | list | its live numbers; empty for a key star with no planets |
+| `placement` | string | how its distance is known: `parallax` (its own, or a 5σ orbit parallax), `catalogue distance`, or null when it has no distance and is not drawn |
+| `position` | [x, y, z] | as in the index (pc) |
+| `distance` | number | pc, as the render tree has it: `1000 / parallax_nss` with a 5σ astrometric orbit solution, else `1000 / parallax` for `parallax` and `host_distance` for `catalogue distance` |
+| `ra`, `dec`, `epoch` | number | the Point source astrometry: degrees, ICRS at `epoch` (Julian year) |
+| `teff`, `teff_source` | number, string | K: `host_teff` (the catalogue), else `teff_gspphot` (`gaia-dr3`) |
+| `radius`, `radius_source` | number, string | solar radii: `host_radius`, else `radius_gspphot` (`gaia-dr3`) |
+| `mass` | number | solar masses, `host_mass` |
+| `metallicity` | number | dex, `host_metallicity` |
+| `spectral_type` | string | `host_spectral_type` |
+| `bp_rp` | number | Gaia BP − RP, when Gaia measured both |
+| `catalogue`, `catalogue_name` | string | `host_star_source`, and the star's name in that catalogue (`host_name`) |
+
+A planet:
+
+| Field | | |
+|-------|-|-|
+| `host`, `number` | number | its page `/x/{host}/b/{number}` |
+| `name`, `name_source` | string | the IAU name (`iau-nameexoworlds`), else the designation and its catalogue |
+| `designation` | string | the archive's name, else exoplanet.eu's, else OEC's |
+| `letter` | string | `b`, `c`, … or null |
+| `aliases` | list | the IAU name and every catalogue name of the planet |
+| `cross_ids` | list | `{catalogue, release, catalogue_id}`: the archive's `objectid`, exoplanet.eu's name, OEC's first name, and `iau/nameexoworlds/<name>` |
+| `class` | string | after the IAU: `planet` (under 13 MJ, mass ratio to its star under 2/(25+√621) ≈ 0.04), `brown dwarf` (13 MJ or more), `sub-brown dwarf` (under 13 MJ with a larger mass ratio) |
+| `class_basis` | string | `true mass`, `minimum mass`, `estimated mass`, `no mass` |
+| `mass_ratio` | number | planet over central object, null without a star mass |
+| `status` | string | `confirmed` or `controversial` |
+| `elements` | object | the orbit in the scene's frame (below), or null when the planet has no semi-major axis: the client draws it as a fixed dot |
+| `values` | object | every other value of the planets table that the planet has (below) |
+| `sources` | object | the source of each group: `status`, `discovery`, `orbit`, `sky`, `mass`, `radius`, `physical`, `atmosphere`, `stellar`, `binary` → `nasa-exoplanet-archive`, `exoplanet-eu`, `open-exoplanet-catalogue`, or `gaia-dr3` for `sky` |
+| `assumed` | list | the values that are defaults, not published: `eccentricity` (0, also an exact 0 with no error), `omega` (90°), `inclination` (a transiting planet of the same host, else 90°), `node` (one angle per system, from a hash of the ID of its key star), `periastron_time` (J2000.0: the position on the orbit is unknown) |
+| `estimated` | list | values that a catalogue estimates (the archive's "Calculated Value", a mass–radius relation, exoplanet.eu's "Theoretical") |
+| `computed` | list | `period` or `semi_major_axis` from Kepler's third law, or `semi_major_axis` from an angular separation and the distance |
+| `limits` | list | `<name><` for an upper limit, `<name>>` for a lower limit |
+
+`values` has the columns of the planets table with a value, by these names and units: `discovery_method`, `discovery_year`, `discovery_facility`; `period` (d), `semi_major_axis` (AU), `eccentricity`, `inclination` (deg), `omega` (deg), `periastron_time` and `transit_time` (JD, as published, mostly BJD), `time_system` (the archive's system of the transit time: `BJD`, `BJD-TDB`, `HJD`, `JD`, …); `node` (deg), `node_inclination` (deg) and `node_solution` (Gaia's `nss_solution_type`); `mass` (Jupiter masses), `mass_kind` (`true`, `minimum`, `estimate`); `radius` (Jupiter radii); `equilibrium_temperature` (K), `insolation` (Earth's), `density` (g/cm³); `molecules` (a list); `star_mass` (solar), `star_radius` (solar), `star_teff` (K), `star_metallicity` (dex), the star of the fits; `binary_type` (`S-type` or `P-type`). A measured value `x` can have `x_error_upper` and `x_error_lower`, both positive. The defaults of `assumed` are in `values` too. `eccentricity` is as published, also when it is outside [0, 1).
+
+### Elements
+
+`elements` is the orbit of the planet around its host on the ecliptic and mean equinox of J2000, the frame of the scene, with the obliquity 23.4392911° (`elements_frame` in `metadata.json`):
+
+| Field | |
+|-------|-|
+| `a` | semi-major axis (AU) |
+| `e` | eccentricity |
+| `i` | inclination to the ecliptic (deg) |
+| `om` | longitude of the ascending node on the ecliptic (deg) |
+| `w` | argument of periastron (deg) |
+| `ma` | mean anomaly at `epoch` (deg) |
+| `n` | mean motion, 360 / period (deg/day); 0 when the period is unknown, and the planet then stays at its place at `epoch` |
+| `epoch` | JD TDB |
+| `phase` | what fixes `ma`: `transit`, `periastron`, or `assumed` when the position on the orbit is unknown |
+| `replaced` | present only when an element is not as published: `["eccentricity"]` when the published eccentricity is outside [0, 1), and the orbit is drawn with `e` 0 |
+
+These are the fields of the frontend's `OrbitalElements` (`orbitalElementsToPositionJD`), relative to the host. The conversion from the catalogues:
+
+- **The plane of the sky.** The catalogues give `inclination` i to the plane of the sky, `node` Ω as a position angle from north through east, and `omega` ω. The axes are north, east, and the line of sight away from us: the ascending node is where the body moves away from us, and an orbit with i < 90° turns from north to east. The export turns this plane at the host's direction (its `position`, else its RA and Dec) into the ecliptic, once per planet.
+- **ω is the star's.** Most radial-velocity and transit fits give the argument of periastron of the star; the planet's is ω + 180°, with the same Ω and i. The elements use ω + 180°, except for a planet found by imaging (`discovery_method` `Imaging`), whose ω is fitted to the planet's own positions and is taken as is. ω and Ω are reduced to [0°, 360°).
+- **Inclination.** `inclination`, but when it is assumed and the sky solution has one (`node_inclination`, from Gaia or OEC), that one.
+- **Node.** `node`: Gaia's photocentre orbit (in [0°, 180°), as astrometry gives it) when its period matches the planet's within 5%, else OEC's, else the assumed angle of the system.
+- **Phase.** With a `transit_time`, `epoch` is that time and `ma` is the mean anomaly of the inferior conjunction, where the planet is nearest us (ω + ν = 270° for the planet's ω): for a transiting planet the planet is in front of its star at `epoch`. Else `epoch` is the `periastron_time` and `ma` is 0. A planet with neither has the assumed periastron at J2000.0, and `phase` is `assumed`. Times are as observed from the solar system, so light time is not removed; the time systems of the catalogues differ by minutes and all are taken as JD TDB.
+
+### Token and checks
+
+The token of `planets` covers the index and every system file, as for the sky cultures: SHA-256 over each file's path, a zero byte and the SHA-256 of its JSON with `token` set to 16 zeros. Each file's `token` field holds it, and a client fetches each file with `?v={token}`. A file whose token is not the one in `metadata.json` comes from another export: the client shows the reload prompt.
+
+The export refuses to publish when a planet number is given twice, when a host is in two systems, when a host or a system key is not a live ID or has no Metadata or Point source row, or when a planet or alias that the served index lists is gone and the registry's Planets part does not say it retired or became an alias, and its host is still live.
+
+### Sitemap
+
+The site's sitemap lists the page of every planet and of every planet host that this export serves, from the planet index and the system files: see [sitemap.md](sitemap.md). An alias number has no page in it.
 
 ## `metadata.json`
 
@@ -372,6 +510,18 @@ The token of `skycultures` covers all its files: SHA-256 over each file's path, 
     ],
     "credits": [{ "name": "Stellarium sky cultures", "…": "…" }, { "name": "Constellation line figures in sky cultures across the world", "…": "…" }, { "name": "SIMBAD astronomical database", "…": "…" }]
   },
+  "planets": {
+    "token": "3f0c…",
+    "index": "planets/index.json.gz",
+    "system": "planets/{key}.json.gz",
+    "systems": 5801,
+    "hosts": 5809,
+    "planets": 7595,
+    "units": { "position": "pc", "distance": "pc", "a": "AU", "angles": "deg", "n": "deg/day", "epoch": "JD TDB" },
+    "elements_frame": "ecliptic and mean equinox of J2000, the planet around its host; obliquity 23.4392911 deg",
+    "frame": "ICRS equatorial axes, origin at the solar system barycentre, epoch J2016.0",
+    "distribution": "non-commercial"
+  },
   "credits": [
     { "name": "Gaia Data Release 3", "organisation": "ESA/Gaia/DPAC", "source": "https://www.cosmos.esa.int/web/gaia/dr3", "license": "CC BY-NC 3.0 IGO", "attribution": "…", "citation": "…" },
     "…"
@@ -382,7 +532,8 @@ The token of `skycultures` covers all its files: SHA-256 over each file's path, 
 - `tables`: keyed by slug. `number` is the table number in the IDs, null for Metadata. `max_rows` is the split threshold. `rows` counts the rows of all tiles.
 - `trees`: keyed by name; `mw` is the Milky Way.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)). Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values, so all are `non-commercial`.
-- `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, Hipparcos I/311 and I/239, XHIP V/137D, the IAU Catalog of Star Names, Wikidata.
+- `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, Hipparcos I/311 and I/239, XHIP V/137D, the IAU Catalog of Star Names, Wikidata; with planets also the NASA Exoplanet Archive (its acknowledgement, and the DOI of Planetary Systems Composite Parameters, 10.26133/NEA13), exoplanet.eu (CC BY 4.0), the Open Exoplanet Catalogue (MIT) and the IAU's NameExoWorlds. The planet catalogues also fill the host rows of Point source and Metadata, so their credits are in this list.
+- `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `distribution` is `non-commercial`: the host positions come from Gaia DR3.
 - `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
   - `licence`: the licence of the culture's data and illustrations as it states it (`applies_to` is `all`, `data` or `illustrations`; the files hold no illustrations yet), and the tier that this licence alone allows. A culture that states no licence has no parts and the tier `non-commercial`, with the flag `no-licence`. A statement that the ingest cannot read gives the tier `undecided`, which no client may serve.
   - `distribution`: the tier of the file, the strictest of the culture's licence and of Gaia DR3 (`non-commercial`), because the positions come from Gaia. `undecided` stays `undecided`.
@@ -408,6 +559,8 @@ Binary orbit tiles (`max_rows` 300), an estimate from the tile writer and the sp
 
 The sky cultures of registry ingest 4 (Stellarium at `0d956aa`, Bucur at `711e069`): 101 culture files (64 from Stellarium, 37 from Bucur) and the international names, 1.76 MB together. The median culture file is 3.7 kB; the largest are `chinese` (166 kB, 312 figures, 3,079 members) and `modern_chinese` (141 kB). 4,820 of the 4,864 stars of all cultures have a position.
 
+A test export of 2026-10-25 (about 7,600 planets on 5,800 hosts): about 5,800 system files, 6.8 MB together, median 1.2 kB, largest 3.6 kB; the index 256 kB.
+
 A full render node of 10,000 stars is about 143 kB, of which the float32 positions take about 107 kB. 180,923,672 stars are in the tree, at depths 0 to 14. A plain octree gives 61,487 nodes against a minimum of 18,093; 7,761 nodes are full and 26,246 hold under 1,000 rows.
 
 With a limit of 7.5 mag, a client at the barycentre loads 59 nodes and 581,094 stars by the loading rule above. At 10 pc from it, it loads 57 to 62 nodes, and at 1 kpc, 22 to 47 nodes (0.21 M to 0.45 M stars), depending on the direction.
@@ -419,7 +572,8 @@ The export builds into `v1/.x-staging/` and replaces `v1/x/` only when all check
 - no ingest of the registry has merges that no one has reviewed (`space-map-extrasolar review`);
 - every row holds an ID that the registry has, with the status that the row shows (live, or alias for an alias row), and every alias target is live;
 - every ID that the previous export serves is still served with all its catalogue ids, or is an alias or retired in the registry. The `wikidata/qid` ids are not checked: each ingest links the Wikidata items again, so an item can move to another star. The previous export stands for the live site until the serving is decided;
-- the matched sky cultures come from the registry ingest that the export reads. Each extrasolar ingest matches them at its end, so this fails only when that step failed; `space-map-ingest --targets skycultures` matches them again.
+- the matched sky cultures come from the registry ingest that the export reads. Each extrasolar ingest matches them at its end, so this fails only when that step failed; `space-map-ingest --targets skycultures` matches them again;
+- the planet checks (see Planets, "Token and checks").
 
 A failed run leaves the served export as it was.
 

@@ -13,7 +13,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from space_map_data.utils.paths import CONFIG_FILE, DATA_DIR, EXPORT_DIR
+from space_map_data.utils.paths import CONFIG_FILE, DATA_DIR, EXPORT_DIR, EXTRASOLAR_DIR
 
 from .client import MeiliClient
 from .config import MeiliConfig
@@ -55,7 +55,7 @@ def cmd_push(args: argparse.Namespace) -> int:
         print(f"Available: {', '.join(ALL_INDICES.keys())}", file=sys.stderr)
         return 2
     for uid in requested:
-        push_index(client, ALL_INDICES[uid], export_dir)
+        push_index(client, ALL_INDICES[uid], export_dir, args.extrasolar_dir)
     return 0
 
 
@@ -80,6 +80,13 @@ def cli() -> int:
     push.add_argument(
         "--export-dir",
         help="Override EXPORT_DIR (defaults to the project's standard location)",
+    )
+    push.add_argument(
+        "--extrasolar-dir",
+        type=Path,
+        default=EXTRASOLAR_DIR,
+        help=f"The extrasolar export, which holds the planets (default:"
+        f" {EXTRASOLAR_DIR})",
     )
     push.set_defaults(func=cmd_push)
 

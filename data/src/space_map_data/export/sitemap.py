@@ -1,16 +1,18 @@
 """Sitemap generation for the notable-object subset.
 
-Enumerates the promoted set, anything with a real Wikidata presence and the
-stars of the extrasolar catalogue with an entry. Writes the sitemap index
-``v1/seo/sitemap.xml`` and its files ``sitemap-<n>.xml``. The same pages get
-the records of ``seo_pages.py``.
+Enumerates the promoted set, anything with a real Wikidata presence, the
+stars of the extrasolar catalogue with an entry, and every planet that the
+extrasolar export serves, with its host. Writes the sitemap index
+``v1/seo/sitemap.xml`` and its files ``sitemap-<n>.xml``. The pages other than
+the planets and their hosts get the records of ``seo_pages.py``.
 
 A page states its canonical link with the name the app gives it in the base
 locale. Each path here carries that name, taken from the files the app reads,
 so that no listed URL names another one as canonical. The names follow
 ``frontend/src/lib/state/page-name.ts`` and the paths ``page-href.ts``:
 ``/<type>/<id>/<name>`` for objects, ``/g/<slug>/<name>`` for groups,
-``/<type>/<id>/f/<featureId>/<name>`` for features.
+``/<type>/<id>/f/<featureId>/<name>`` for features, ``/x/<host>/b/<n>/<name>``
+for planets.
 """
 
 import datetime
@@ -29,6 +31,7 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.categories import CATEGORY_SLUG_PREFIX
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS
 from space_map_data.constants.providers import BASE_LOCALE
+from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.localization import MESSAGES_DIR
 from space_map_data.export.nomenclature.writer import (
@@ -41,6 +44,7 @@ from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
+from space_map_data.utils.paths import EXTRASOLAR_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +93,8 @@ def _named(path: str, name: str | None) -> str:
 
 
 class SitemapPages(NamedTuple):
-    """The pages the sitemap lists: each subject with its path."""
+    """The pages of the sitemap that get a record: each subject with its
+    path."""
 
     objects: dict[str, str]
     groups: dict[str, str]
@@ -289,6 +294,60 @@ def _urlset(paths: list[str], lastmod: str) -> bytes:
     return "\n".join(lines).encode()
 
 
+class PlanetPages(NamedTuple):
+    """The served planets as (host, number, name), and the Metadata name of
+    each host."""
+
+    planets: list[tuple[int, int, str | None]]
+    hosts: dict[int, str | None]
+
+
+def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages:
+    """Every planet of the served extrasolar export below *extrasolar_dir*, and
+    the name of each host, or none with no planets served.
+
+    The served files, not the registry: the extrasolar export refuses some
+    registry changes, and the site has a page only for what it serves. An
+    alias number has no page of its own.
+    """
+    root = extrasolar_dir / "v1" / "x"
+    if not (root / "metadata.json").exists():
+        logger.warning("No planet pages: no extrasolar export at %s", root)
+        return PlanetPages([], {})
+    reader = ExportReader(root)
+    if "planets" not in reader.metadata:
+        logger.warning("No planet pages: the extrasolar export has no planets")
+        return PlanetPages([], {})
+    planets: list[tuple[int, int, str | None]] = []
+    hosts: dict[int, str | None] = {}
+    for key in sorted({host["system"] for host in reader.planet_index()["hosts"]}):
+        system = reader.system(key)
+        hosts.update((h["id"], h["name"]) for h in system["hosts"] if h["planets"])
+        planets.extend((p["host"], p["number"], p["name"]) for p in system["planets"])
+    return PlanetPages(
+        sorted(planets, key=lambda p: p[:2]), dict(sorted(hosts.items()))
+    )
+
+
+def _planet_paths(planets: PlanetPages, objects: dict[str, str]) -> list[str]:
+    """The canonical path of each planet host, then of each planet, with the
+    name the app gives it: the host's entry name, else its Metadata name; the
+    planet's own name. A host with an entry is in ``objects`` already."""
+    hosts = [
+        _named(f"/x/{host}", name)
+        for host, name in planets.hosts.items()
+        if f"{STAR_PREFIX}{host}" not in objects
+    ]
+    logger.info(
+        "sitemap: %d planets and %d hosts without an entry",
+        len(planets.planets),
+        len(hosts),
+    )
+    return hosts + [
+        _named(f"/x/{host}/b/{number}", name) for host, number, name in planets.planets
+    ]
+
+
 def write_sitemap(
     session: Session,
     out_dir: Path,
@@ -296,13 +355,15 @@ def write_sitemap(
     object_buckets: dict[str, int],
     group_buckets: dict[str, int],
     stars: list[StarObject],
+    planets: PlanetPages,
 ) -> SitemapPages:
     """Write the sitemap index ``v1/seo/sitemap.xml`` and its files
-    ``sitemap-<n>.xml``, and return the pages they list.
+    ``sitemap-<n>.xml``, and return the pages that get a record.
 
     Reads the object and group bundles and the group index already in
     ``out_dir``; the bucket counts are those of ``metadata.json``. ``stars``
-    are the registry's stars with an entry, read once for the export.
+    are the registry's stars with an entry and ``planets`` the served planet
+    pages, each read once for the export.
     """
     pages = SitemapPages(
         objects=_notable_paths(
@@ -318,6 +379,7 @@ def write_sitemap(
         *pages.objects.values(),
         *pages.groups.values(),
         *(path for _, path in pages.features),
+        *_planet_paths(planets, pages.objects),
     ]
     lastmod = datetime.date.today().isoformat()
     seo_dir = out_dir / "seo"

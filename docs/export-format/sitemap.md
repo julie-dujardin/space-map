@@ -26,12 +26,20 @@ unique content. An object earns a URL when it is any of:
 An object the export leaves out has no page and is not listed. Every exported
 group is included.
 
+**Planets of the extrasolar catalogue** are all listed, each with its host
+star, from the served extrasolar export (`space-map-extrasolar/v1/x/`): the
+planet index gives the systems, and the system files the planets and the hosts'
+names ([extrasolar.md](extrasolar.md#planets-planets)). The site has a page only
+for what that export serves, so a registry change that the extrasolar export
+refused is not listed. No served export, or one without planets, gives no
+planet URLs. A host that is a star with an entry is listed once, as that star.
+
 **Surface features** clear the same sitelink floor, counted on the feature's own
 Wikidata entity: 3.5 k of the 9 k features that have a QID, out of a 16 k
 gazetteer. The rest are anonymous craters whose page would be a name and a
 coordinate. A feature the gazetteer does not export (no position or no type
 code) is not listed: its page would answer 404. Together this yields ~42 k
-URLs, and the stars ~14 k more.
+URLs, the stars ~14 k more, and the planets and their hosts ~13 k.
 
 ## URL shape
 
@@ -52,14 +60,21 @@ name, read from the files the app reads it from. The paths follow
   export does not name (`orbit_class_*`);
 - features → `/<type>/<id>/f/<featureId>/<name>` — `<type>/<id>` is the host
   body, `<name>` is the feature's line in the base-locale label file, which is
-  the IAU `name`.
+  the IAU `name`;
+- planet hosts → `/x/<id>/<name>` — a host with an entry is listed as an
+  object, under the name of its entry; for any other host `<name>` is its
+  Metadata `name`, as in its system file;
+- planets → `/x/<host>/b/<number>/<name>` — `<name>` is the planet's `name` in
+  its system file. An alias number has no URL.
 
 Every name is percent-encoded like `encodeURIComponent`. A page with no name
 has no name segment, and the writer warns about a group in that case: its page
 calls itself by a name the sitemap cannot give.
 
-The names come from the bundles, so `space-map-export --only seo` rewrites
-the file from an export that is already there, with the page records below.
+The names come from the bundles, the registry and the served extrasolar
+export, so
+`space-map-export --only seo` rewrites the files from an export that is already
+there, with the page records below.
 
 Each of these pages builds its own SSR title/description/OG card in
 `frontend/src/lib/seo/meta.ts`. A feature's description is its CC0 Wikidata
@@ -67,12 +82,14 @@ short description, falling back to the public-domain IAU name-origin blurb —
 never the Wikipedia extract, which is CC BY-SA with no credit surface on a card.
 
 `lastmod` is the export date (uniform — the export is when content last
-changed). The URLs fill the files in order: objects, groups, features.
+changed). The URLs fill the files in order: objects, groups, features, planet
+hosts, planets.
 
 ## Page records — `seo/pages.json.gz`
 
-One record for each page of the sitemap, keyed by the path of its file in the
-site's assets:
+One record for each object, group and feature page of the sitemap, keyed by
+the path of its file in the site's assets. The planets and their hosts have
+none:
 
 - `o/<object id>` — `{global, localized, credits}`;
 - `g/<slug>` — `{global, localized, credits}`, where `global.images` holds the

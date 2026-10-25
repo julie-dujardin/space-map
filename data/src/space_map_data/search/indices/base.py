@@ -1,14 +1,15 @@
 """Search-index base + shared primary-key helpers.
 
 The catalog is a single Meili index of heterogeneous documents discriminated
-by ``kind`` ("object" | "feature" | "group" | "pad"). Primary keys mirror the frontend
-URL scheme (lib/state/url.ts) so they're globally unique across kinds by
-construction:
+by ``kind`` ("object" | "feature" | "group" | "pad" | "planet"). Primary keys
+mirror the frontend URL scheme (lib/state/url.ts) so they're globally unique
+across kinds by construction:
 
-    object   <letter>-<id>          b-399 / s-123 / e-7 / p-x
+    object   <letter>-<id>          b-399 / s-123 / e-7 / p-x / x-27424668
     feature  <letter>-<id>-f-<fid>  b-499-f-1234
     group    g-<slug>               g-starlink
     pad      g-<slug>-p-<code>      g-site-cape-canaveral-p-LC39A
+    planet   x-<host>-b-<n>         x-27424668-b-1
 
 The natural per-kind identifier (object id, feature body_id+feature_id, group
 slug) also rides on the document's nested key, so the frontend can route a hit
@@ -45,6 +46,16 @@ def feature_pk(body_id: str, feature_id: int) -> str:
     return f"{object_pk(body_id)}-f-{feature_id}"
 
 
+def extrasolar_pk(id_: int) -> str:
+    """Primary key of an extrasolar object (`27424668` → `x-27424668`)."""
+    return f"x-{id_}"
+
+
+def planet_pk(host: int, number: int) -> str:
+    """Primary key of a planet, as its URL `/x/<host>/b/<n>` (`x-27424668-b-1`)."""
+    return f"{extrasolar_pk(host)}-b-{number}"
+
+
 def group_pk(slug: str) -> str:
     """Primary key for a group (``starlink`` → ``g-starlink``)."""
     return f"g-{slug}"
@@ -66,5 +77,7 @@ class Index:
     primary_key: str
     settings: dict[str, Any]
 
-    def build_documents(self, export_dir: Path) -> Iterator[dict[str, Any]]:
+    def build_documents(
+        self, export_dir: Path, extrasolar_dir: Path
+    ) -> Iterator[dict[str, Any]]:
         raise NotImplementedError

@@ -21,7 +21,7 @@ v1/
   status.json                                     (not gzipped) per-source download dates for the /status page
   about-data.json                                 (not gzipped) count, size and sources of each kind of object, resolution and size of each map, ring bundle and 3D model, for the /about/data page
   seo/sitemap.xml                                 (not gzipped) sitemap index of the files below
-  seo/sitemap-<n>.xml                             (not gzipped) notable-object + group URLs for search engines
+  seo/sitemap-<n>.xml                             (not gzipped) notable-object, group and planet URLs for search engines
   seo/pages.json.gz                               SSR meta inputs of each sitemap page, for the site's build
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
@@ -55,7 +55,7 @@ v1/
   textures/stars/{tier}_{face}.webp               cubemap-skybox faces (type = cubemap_skybox), face ∈ px|nx|py|ny|pz|nz
   textures/stars/metadata.json                    skybox source + per-face exports
   tiles/{id}/metadata.json                        tile-pyramid descriptor; the tiles are published apart from the export, see tiles.md
-  x/…                                             extrasolar record tiles, render tree and sky cultures, published apart from the export, see extrasolar.md
+  x/…                                             extrasolar record tiles, render tree, sky cultures and planets, published apart from the export, see extrasolar.md
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   models/{slug}/{tier}.glb                        tier = low | high — Meshopt geometry + WebP textures
@@ -88,7 +88,7 @@ v1/
 | [images.md](images.md) | Per-image thumbnail bundles, size variants, and image metadata. |
 | [textures.md](textures.md) | Surface/cloud/specular/skybox textures, tiers, and metadata. |
 | [tiles.md](tiles.md) | Surface tile pyramids of all layers: grid, colour and height tiles, sources, descriptor. |
-| [extrasolar.md](extrasolar.md) | Objects outside the solar system, published apart under `v1/x/`: the container, record tiles and split tables, the Milky Way render tree, the sky cultures, tokens, the lookup of an ID. |
+| [extrasolar.md](extrasolar.md) | Objects outside the solar system, published apart under `v1/x/`: the container, record tiles and split tables, the Milky Way render tree, the sky cultures, the planets and their systems, tokens, the lookup of an ID. |
 | [rings.md](rings.md) | Ring radial-profile channels and metadata. |
 | [models.md](models.md) | 3D spacecraft/satellite glTF bundles and metadata. |
 | [systems.md](systems.md) | `systems/global.json` lookups + per-system `systems/{barycenter_id}.json`. |
@@ -97,5 +97,5 @@ v1/
 | [credits.md](credits.md) | `credits.json` aggregated attribution manifest. |
 | [status.md](status.md) | `status.json` per-source download-freshness report. |
 | [about-data.md](about-data.md) | `about-data.json` count, size and sources of each kind of object, and resolution and size of each map, each ring bundle and each 3D model. |
-| [sitemap.md](sitemap.md) | `seo/sitemap.xml` index and `seo/sitemap-<n>.xml` notable-object + group URL set and its selection rule; `seo/pages.json.gz` page records. |
+| [sitemap.md](sitemap.md) | `seo/sitemap.xml` index and `seo/sitemap-<n>.xml` notable-object, group and planet URL set and its selection rule; `seo/pages.json.gz` page records. |
 | [consuming.md](consuming.md) | End-to-end consumer walkthrough. |
