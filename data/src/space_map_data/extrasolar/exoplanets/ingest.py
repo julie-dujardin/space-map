@@ -85,6 +85,7 @@ class Inputs:
     gaia_source: Path = gaia_provider.OUT_DIR / gaia_provider.SOURCE_FILE
     fidelity: Path = gaia_provider.OUT_DIR / gaia_provider.FIDELITY_FILE
     astrophysical: Path = gaia_provider.OUT_DIR / gaia_provider.ASTROPHYSICAL_FILE
+    flame_spec: Path = gaia_provider.OUT_DIR / gaia_provider.FLAME_SPEC_FILE
     xgboost: Path = gaia_provider.OUT_DIR / gaia_provider.XGBOOST_FILE
     names: Path = names.NAMES_FILE
 
@@ -182,6 +183,7 @@ def read_gaia_rows(
         stars,
         _read_typed(inputs.fidelity, gaia.FIDELITY_COLUMNS),
         _read_typed(inputs.astrophysical, gaia.ASTROPHYSICAL_COLUMNS),
+        _read_typed(inputs.flame_spec, gaia.FLAME_SPEC_COLUMNS),
         _read_typed(inputs.xgboost, gaia.XGBOOST_COLUMNS),
         [table.rows for table in reader.joined],
         reader.read_orbits(),

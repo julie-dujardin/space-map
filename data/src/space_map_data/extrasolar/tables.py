@@ -327,6 +327,8 @@ POINT_SOURCE = TableDef(
         ),
         # FLAME, from the GSP-Phot temperature and the G luminosity.
         ColumnGroup("flame", _flame(""), ("gaia-dr3", "gaia-dr3-named")),
+        # FLAME again, from the GSP-Spec parameters of the RVS spectra.
+        ColumnGroup("flame_spec", _flame("_spec"), ("gaia-dr3", "gaia-dr3-named")),
         # Table 1 of Andrae et al. 2023, with no quality cut: [M/H] in dex,
         # Teff in K, log g in log(cm/s²), CatWISE W1 and W2 in Vega mag.
         # The flags mark their vetted Table 2 and the Gaia golden sample of

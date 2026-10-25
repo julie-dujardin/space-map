@@ -92,6 +92,7 @@ def gaia_stars(rows: list[dict]) -> pa.Table:
     for name in (
         *gaia.COLUMNS,
         *gaia.ASTROPHYSICAL_COLUMNS,
+        *gaia.FLAME_SPEC_COLUMNS,
         *gaia.GSPSPEC_CALIBRATED,
         *gaia.XGBOOST_COLUMNS,
     ):
@@ -147,6 +148,15 @@ def xgboost(rows: list[tuple[int, float, bool]]) -> pa.Table:
         columns[name] = pa.nulls(len(rows), kind)
     columns["mh_xgboost"] = pa.array([r[1] for r in rows], pa.float32())
     columns["in_vetted_rgb_sample"] = pa.array([r[2] for r in rows])
+    return pa.table(columns)
+
+
+def flame_spec(ids: list[int], **values: list) -> pa.Table:
+    """A chunk of FLAME on GSP-Spec; the columns not given are null."""
+    columns = {"source_id": pa.array(ids, pa.int64())}
+    for name in gaia.FLAME_SPEC_COLUMNS:
+        kind = POINT_SOURCE.schema.field(name).type
+        columns[name] = pa.array(values.get(name, [None] * len(ids)), kind)
     return pa.table(columns)
 
 
@@ -333,6 +343,7 @@ class TestGaiaRows:
             source_dir=tmp_path,
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
         )
@@ -352,6 +363,8 @@ class TestGaiaRows:
             "flags_flame": ["20", "10"],
         }
         pq.write_table(astrophysical([3, 1], **given), reader.astrophysical_path(path))
+        spec = {"mass_flame_spec": [1.1], "flags_flame_spec": ["0"]}
+        pq.write_table(flame_spec([2], **spec), reader.flame_spec_path(path))
         pq.write_table(xgboost([]), reader.xgboost_path(path))
         (rows,) = reader.batches([path])
         assert rows["catalogue_id"].to_pylist() == ["1", "2", "3"]
@@ -361,17 +374,22 @@ class TestGaiaRows:
                 expected = pytest.approx(expected)
             assert rows[name].to_pylist() == expected, name
         assert rows["radius_flame"].to_pylist() == [None, None, None]
+        assert rows["mass_flame_spec"].to_pylist() == pytest.approx([None, 1.1, None])
+        assert rows["flags_flame_spec"].to_pylist() == [None, "0", None]
+        assert reader.counts["flame_spec"] == 1
 
     def test_missing_radius_chunk_fails_before_reading(self, tmp_path):
         reader = gaia.GaiaReader(
             BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         pq.write_table(fidelity([]), reader.fidelity_path(path))
+        pq.write_table(flame_spec([]), reader.flame_spec_path(path))
         pq.write_table(xgboost([]), reader.xgboost_path(path))
         with pytest.raises(
             FileNotFoundError, match="no astrophysical parameters chunk"
@@ -384,6 +402,7 @@ class TestGaiaRows:
             source_dir=tmp_path,
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
         )
@@ -394,6 +413,7 @@ class TestGaiaRows:
             fidelity([(1, 0.9), (2, 0.9), (3, 0.9)]), reader.fidelity_path(path)
         )
         pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(flame_spec([]), reader.flame_spec_path(path))
         pq.write_table(
             xgboost([(3, -1.25, True), (1, 0.125, False)]), reader.xgboost_path(path)
         )
@@ -417,6 +437,7 @@ class TestGaiaRows:
             source_dir=tmp_path,
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=orbits,
         )
@@ -427,6 +448,7 @@ class TestGaiaRows:
             fidelity([(1, 0.9), (2, 0.2), (3, 0.9)]), reader.fidelity_path(path)
         )
         pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(flame_spec([]), reader.flame_spec_path(path))
         pq.write_table(xgboost([]), reader.xgboost_path(path))
         [rows] = list(reader.batches([path]))
         assert rows["nss_solution_type"].to_pylist() == [None, "SB1", "Orbital"]
@@ -442,12 +464,14 @@ class TestGaiaRows:
             BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         pq.write_table(fidelity([]), reader.fidelity_path(path))
         pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(flame_spec([]), reader.flame_spec_path(path))
         with pytest.raises(FileNotFoundError, match="no XGBoost parameters chunk"):
             list(reader.batches([path]))
 

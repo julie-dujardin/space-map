@@ -1373,6 +1373,7 @@
 	"star_row_gravitational_redshift": "Corrimiento al rojo gravitacional",
 	"star_row_bolometric_correction": "Corrección bolométrica",
 	"star_row_flame_distance": "Distancia usada",
+	"star_section_physical_spec": "Propiedades físicas a partir de los espectros",
 	"star_flame_single_star_parallax": "Paralaje de la solución de estrella única",
 	"star_row_fidelity": "Fiabilidad astrométrica",
 	"star_row_norm_dg": "Brillo de las vecinas (ΔG norm.)",

@@ -29,10 +29,15 @@ from space_map_data.download.providers.stars.gaia_bulk import (
     read_table,
     reduce_chunk,
 )
+from space_map_data.download.providers.stars.gaia_flame_spec import (
+    FLAME_SPEC_COLUMNS,
+    GaiaFlameSpecDownloader,
+)
 from space_map_data.download.providers.stars.gaia_source import (
     COLUMNS,
     GaiaSourceDownloader,
 )
+from space_map_data.extrasolar.tables import POINT_SOURCE
 
 HEADER = """# %ECSV 1.0
 # ---
@@ -398,6 +403,57 @@ class TestGaiaProviders:
         pq.write_table(stars.replace_schema_metadata({STATS_KEY: other}), companion)
         with pytest.raises(DownloadError, match="another threshold"):
             reduce_chunk(_ecsv(*ROWS), job)
+
+    def test_flame_spec_keeps_the_kept_stars_with_a_value(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(gaia_bulk, "OUT_DIR", tmp_path)
+        downloader = GaiaFlameSpecDownloader.__new__(GaiaFlameSpecDownloader)
+        companion = downloader.companion(
+            "AstrophysicalParametersSupp_000000-003111.csv.gz"
+        )
+        assert companion == (
+            tmp_path / "gdr3/gaia_source/GaiaSource_000000-003111.parquet"
+        )
+        companion.parent.mkdir(parents=True)
+        record = json.dumps({"min_parallax_over_error": 5.0}).encode()
+        stars = pa.table({"source_id": pa.array([10, 11, 13], pa.int64())})
+        pq.write_table(stars.replace_schema_metadata({STATS_KEY: record}), companion)
+
+        # 10 has a mass, 11 only its flags, 12 is not a kept star, 13 has nothing.
+        values = {name: [None] * 4 for name in FLAME_SPEC_COLUMNS}
+        values["mass_flame_spec"] = [1.25, None, 2.0, None]
+        values["flags_flame_spec"] = [None, "2", "0", None]
+        chunk = pa.table(
+            {
+                "source_id": pa.array([10, 11, 12, 13], pa.int64()),
+                **{
+                    name: pa.array(
+                        column,
+                        pa.string() if name.startswith("flags") else pa.float32(),
+                    )
+                    for name, column in values.items()
+                },
+            }
+        )
+        job = ChunkJob(
+            "https://x.test/c.csv.gz",
+            "abc",
+            tmp_path / "out.parquet",
+            "ua",
+            GaiaFlameSpecDownloader.select,
+            companion=companion,
+        )
+        kept, stats = GaiaFlameSpecDownloader.select(chunk, job)
+
+        assert kept["source_id"].to_pylist() == [10, 11]
+        assert kept["mass_flame_spec"].to_pylist() == [1.25, None]
+        assert (stats["stars"], stats["stars_without_row"]) == (3, 0)
+        assert downloader.is_current(stats)
+
+    def test_flame_spec_writes_the_columns_the_ingest_reads(self):
+        assert GaiaFlameSpecDownloader.columns == (
+            "source_id",
+            *POINT_SOURCE.group("flame_spec").names,
+        )
 
     def test_html_in_place_of_a_note_fails(self):
         page = httpx.Response(200, html="<html>Sign in</html>")

@@ -538,6 +538,11 @@ function pointSourceSections(
 		{ key: 'position', title: m.star_section_position(), rows: rows(position) },
 		{ key: 'brightness', title: m.star_section_brightness(), rows: rows(brightness) },
 		{ key: 'physical', title: m.physical_properties(), rows: rows(flameRows(ps, used, u, '')) },
+		{
+			key: 'physical_spec',
+			title: m.star_section_physical_spec(),
+			rows: rows(flameRows(ps, used, u, '_spec'))
+		},
 		{ key: 'parameters', title: m.star_section_parameters(), rows: rows(parameters) },
 		{ key: 'quality', title: m.star_section_quality(), rows: rows(quality) }
 	];

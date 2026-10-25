@@ -43,6 +43,7 @@ class PROVIDERS(StrEnum):
     DAMIT = "damit"
     GAIA_SOURCE = "gaia_source"
     GAIA_ASTROPHYSICAL_PARAMETERS = "gaia_astrophysical_parameters"
+    GAIA_FLAME_SPEC = "gaia_flame_spec"
     GAIA_FIDELITY = "gaia_fidelity"
     GAIA_XP_METALLICITY = "gaia_xp_metallicity"
     GAIA_CROSS_MATCH = "gaia_cross_match"

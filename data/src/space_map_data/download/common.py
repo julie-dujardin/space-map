@@ -109,6 +109,9 @@ from space_map_data.download.providers.stars.gaia_cross_match import (
 from space_map_data.download.providers.stars.gaia_fidelity import (
     GaiaFidelityDownloader,
 )
+from space_map_data.download.providers.stars.gaia_flame_spec import (
+    GaiaFlameSpecDownloader,
+)
 from space_map_data.download.providers.stars.gaia_named import (
     GaiaNamedStarsDownloader,
 )
@@ -187,10 +190,11 @@ PROVIDERS_CLASSES = [
     ESA3DDownloader,
     BodyShapesDownloader,
     DAMITDownloader,
-    # Ordered: the astrophysical parameters, the fidelity and the XP
-    # metallicities read the chunks gaia_source writes.
+    # Ordered: the astrophysical parameters, FLAME on GSP-Spec, the fidelity
+    # and the XP metallicities read the chunks gaia_source writes.
     GaiaSourceDownloader,
     GaiaAstrophysicalParametersDownloader,
+    GaiaFlameSpecDownloader,
     GaiaFidelityDownloader,
     GaiaXpMetallicityDownloader,
     GaiaCrossMatchDownloader,

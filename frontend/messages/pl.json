@@ -1393,6 +1393,7 @@
 	"star_row_gravitational_redshift": "Grawitacyjne przesunięcie ku czerwieni",
 	"star_row_bolometric_correction": "Poprawka bolometryczna",
 	"star_row_flame_distance": "Użyta odległość",
+	"star_section_physical_spec": "Właściwości fizyczne z widm",
 	"star_flame_single_star_parallax": "Paralaksa z rozwiązania dla pojedynczej gwiazdy",
 	"star_row_fidelity": "Wiarygodność astrometrii",
 	"star_row_norm_dg": "Jasność sąsiadów (norm. ΔG)",

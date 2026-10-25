@@ -1353,6 +1353,7 @@
 	"star_row_gravitational_redshift": "Gravitative Rotverschiebung",
 	"star_row_bolometric_correction": "Bolometrische Korrektur",
 	"star_row_flame_distance": "Verwendete Entfernung",
+	"star_section_physical_spec": "Physikalische Eigenschaften aus Spektren",
 	"star_flame_single_star_parallax": "Parallaxe der Einzelsternlösung",
 	"star_row_fidelity": "Astrometrische Verlässlichkeit",
 	"star_row_norm_dg": "Nachbarhelligkeit (norm. ΔG)",

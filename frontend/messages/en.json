@@ -1511,6 +1511,7 @@
 	"star_row_gravitational_redshift": "Gravitational redshift",
 	"star_row_bolometric_correction": "Bolometric correction",
 	"star_row_flame_distance": "Distance used",
+	"star_section_physical_spec": "Physical properties from spectra",
 	"star_flame_single_star_parallax": "Single-star parallax",
 	"star_row_fidelity": "Astrometric fidelity",
 	"star_row_norm_dg": "Neighbour brightness (norm. ΔG)",

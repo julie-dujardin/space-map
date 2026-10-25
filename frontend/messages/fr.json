@@ -1471,6 +1471,7 @@
 	"star_row_gravitational_redshift": "Décalage gravitationnel vers le rouge",
 	"star_row_bolometric_correction": "Correction bolométrique",
 	"star_row_flame_distance": "Distance utilisée",
+	"star_section_physical_spec": "Propriétés physiques d'après les spectres",
 	"star_flame_single_star_parallax": "Parallaxe de la solution à une étoile",
 	"star_row_fidelity": "Fiabilité astrométrique",
 	"star_row_norm_dg": "Éclat des voisines (ΔG norm.)",

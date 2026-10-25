@@ -59,6 +59,7 @@ def select_kept_stars(
 class GaiaAstrophysicalParametersDownloader(ChunkedTableDownloader):
     name = PROVIDERS.GAIA_ASTROPHYSICAL_PARAMETERS
     table_path = TABLE_PATH
+    chunk_prefix = CHUNK_PREFIX
     exclude = (
         "solution_id",
         *(column for column in gaia_source.COLUMNS if column != "source_id"),
@@ -67,7 +68,7 @@ class GaiaAstrophysicalParametersDownloader(ChunkedTableDownloader):
     select = staticmethod(select_kept_stars)
 
     def companion(self, chunk: str) -> Path:
-        pixels = chunk.removeprefix(CHUNK_PREFIX).removesuffix(CHUNK_SUFFIX)
+        pixels = chunk.removeprefix(self.chunk_prefix).removesuffix(CHUNK_SUFFIX)
         return (
             gaia_bulk.OUT_DIR
             / gaia_source.TABLE_PATH

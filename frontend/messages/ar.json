@@ -1449,6 +1449,7 @@
 	"star_row_gravitational_redshift": "الانزياح الأحمر الثقالي",
 	"star_row_bolometric_correction": "التصحيح البولومتري",
 	"star_row_flame_distance": "المسافة المستخدمة",
+	"star_section_physical_spec": "الخصائص الفيزيائية من الأطياف",
 	"star_flame_single_star_parallax": "اختلاف المنظر من حل النجم المفرد",
 	"star_row_fidelity": "موثوقية القياس الفلكي",
 	"star_row_norm_dg": "سطوع الجيران (ΔG معيّر)",

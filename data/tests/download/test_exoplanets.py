@@ -675,6 +675,9 @@ class TestGaiaDownload:
                 "in_training_sample,vetted_id,oba_id\n"
                 "6,-0.2,5700.0,4.4,9.1,9.2,false,6,\n"
             )
+        elif "gaiadr3.astrophysical_parameters_supp" in query:
+            cls.queries["flame_spec"] = sent
+            body = "source_id,mass_flame_spec,flags_flame_spec\n6,1.1,0\n"
         elif "gaiadr3.astrophysical_parameters" in query:
             cls.queries["astrophysical_parameters"] = sent
             body = f"{','.join(ASTROPHYSICAL_HEADER)}\n{','.join(ASTROPHYSICAL_ROW)}\n"
@@ -713,6 +716,7 @@ class TestGaiaDownload:
             "gaia_source": ["5", "6"],
             "fidelity": ["6"],
             "astrophysical_parameters": ["6"],
+            "flame_spec": ["6"],
             "xgboost": ["6"],
         }
         assert _read(out / gaia.SOURCE_FILE) == [
@@ -726,6 +730,10 @@ class TestGaiaDownload:
         assert _read(out / gaia.ASTROPHYSICAL_FILE) == [
             ASTROPHYSICAL_HEADER,
             ASTROPHYSICAL_ROW,
+        ]
+        assert _read(out / gaia.FLAME_SPEC_FILE) == [
+            ["source_id", "mass_flame_spec", "flags_flame_spec"],
+            ["6", "1.1", "0"],
         ]
         # The ids of the joined rows become the two flags.
         assert _read(out / gaia.XGBOOST_FILE) == [

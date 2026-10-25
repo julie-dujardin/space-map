@@ -11,6 +11,7 @@ from space_map_data.download.providers.stars import gaia_source
 from space_map_data.extrasolar.exoplanets.ingest import Inputs
 from space_map_data.extrasolar.sources.gaia import (
     ASTROPHYSICAL_COLUMNS,
+    FLAME_SPEC_COLUMNS,
     XGBOOST_COLUMNS,
 )
 
@@ -85,6 +86,7 @@ class Downloads:
     gaia_sources: list[dict] = field(default_factory=list)
     fidelity: list[dict] = field(default_factory=list)
     astrophysical: list[dict] = field(default_factory=list)
+    flame_spec: list[dict] = field(default_factory=list)
     xgboost: list[dict] = field(default_factory=list)
     names: list[dict] = field(default_factory=list)
 
@@ -178,6 +180,11 @@ class Downloads:
                 root / "astrophysical_parameters.csv",
                 self.astrophysical,
                 ("source_id", *ASTROPHYSICAL_COLUMNS),
+            ),
+            flame_spec=write_csv(
+                root / "flame_spec.csv",
+                self.flame_spec,
+                ("source_id", *FLAME_SPEC_COLUMNS),
             ),
             xgboost=write_csv(
                 root / "xgboost.csv", self.xgboost, ("source_id", *XGBOOST_COLUMNS)

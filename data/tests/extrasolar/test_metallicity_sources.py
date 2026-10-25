@@ -29,6 +29,7 @@ from tests.extrasolar.test_stars import (
     astrophysical,
     at,
     fidelity,
+    flame_spec,
     gaia_star,
     gaia_stars,
     hip_stars,
@@ -699,6 +700,7 @@ class TestJoins:
             source_dir=tmp_path,
             fidelity_dir=tmp_path,
             astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             joined=joined,
             orbits=NO_ORBITS,
@@ -710,6 +712,7 @@ class TestJoins:
             fidelity([(1, 0.9), (2, 0.9), (3, 0.9)]), reader.fidelity_path(path)
         )
         pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(flame_spec([]), reader.flame_spec_path(path))
         pq.write_table(xgboost([]), reader.xgboost_path(path))
         gaia_rows = list(reader.batches([path]))
         assert {k: reader.counts[k] for k in ("pastel_designation", "apogee_id")} == {

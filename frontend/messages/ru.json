@@ -1404,6 +1404,7 @@
 	"star_row_gravitational_redshift": "Гравитационное красное смещение",
 	"star_row_bolometric_correction": "Болометрическая поправка",
 	"star_row_flame_distance": "Использованное расстояние",
+	"star_section_physical_spec": "Физические свойства по спектрам",
 	"star_flame_single_star_parallax": "Параллакс из решения для одиночной звезды",
 	"star_row_fidelity": "Надёжность астрометрии",
 	"star_row_norm_dg": "Блеск соседей (норм. ΔG)",

@@ -1,4 +1,4 @@
-"""Gaia DR3 positions, fidelity, GSP-Phot radii, FLAME, GSP-Spec, XP
+"""Gaia DR3 positions, fidelity, GSP-Phot radii, both FLAME runs, GSP-Spec, XP
 metallicities and binary orbits.
 
 The companion tables join by source_id. Low-fidelity stars mint only when
@@ -24,7 +24,7 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from functools import partial
+from functools import partial, reduce
 from pathlib import Path
 
 import numpy as np
@@ -38,6 +38,7 @@ from space_map_data.download.providers.stars import (
     gaia_bulk,
     gaia_cross_match,
     gaia_fidelity,
+    gaia_flame_spec,
     gaia_named,
     gaia_source,
     gaia_xp_metallicity,
@@ -70,6 +71,7 @@ HIP = ("hip", "2007")
 SOURCE_DIR = gaia_bulk.OUT_DIR / gaia_source.TABLE_PATH
 FIDELITY_DIR = gaia_bulk.OUT_DIR / gaia_fidelity.TABLE_PATH
 ASTROPHYSICAL_DIR = gaia_bulk.OUT_DIR / gaia_astrophysical_parameters.TABLE_PATH
+FLAME_SPEC_DIR = gaia_bulk.OUT_DIR / gaia_flame_spec.TABLE_PATH
 XGBOOST_DIR = gaia_bulk.OUT_DIR / gaia_xp_metallicity.TABLE_PATH
 BEST_NEIGHBOUR = (
     gaia_bulk.OUT_DIR
@@ -92,6 +94,7 @@ GSPSPEC_COLUMNS = (
     "flags_gspspec",
 )
 FLAME_COLUMNS = tuple(POINT_SOURCE.group("flame").names)
+FLAME_SPEC_COLUMNS = tuple(POINT_SOURCE.group("flame_spec").names)
 ASTROPHYSICAL_COLUMNS = (
     "radius_gspphot",
     "radius_gspphot_lower",
@@ -301,6 +304,7 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     columns |= {name: stars[name] for name in COLUMNS if name != "source_id"}
     columns |= {name: stars[name] for name in FIDELITY_COLUMNS}
     columns |= {name: stars[name] for name in ASTROPHYSICAL_COLUMNS}
+    columns |= {name: stars[name] for name in FLAME_SPEC_COLUMNS}
     columns |= {name: stars[name] for name in GSPSPEC_CALIBRATED}
     columns |= {name: stars[name] for name in XGBOOST_COLUMNS}
     columns |= {name: stars[name] for name in gaia_orbits.COLUMNS}
@@ -364,6 +368,7 @@ class GaiaReader:
     source_dir: Path = SOURCE_DIR
     fidelity_dir: Path = FIDELITY_DIR
     astrophysical_dir: Path = ASTROPHYSICAL_DIR
+    flame_spec_dir: Path = FLAME_SPEC_DIR
     xgboost_dir: Path = XGBOOST_DIR
     orbit_dir: Path = gaia_orbits.ORBIT_DIR
     masses_dir: Path = gaia_orbits.MASSES_DIR
@@ -401,17 +406,23 @@ class GaiaReader:
         parameters = pq.read_table(
             self.astrophysical_path(path), columns=["source_id", *ASTROPHYSICAL_COLUMNS]
         )
+        flame_spec = pq.read_table(
+            self.flame_spec_path(path), columns=["source_id", *FLAME_SPEC_COLUMNS]
+        )
         xgboost = pq.read_table(
             self.xgboost_path(path), columns=["source_id", *XGBOOST_COLUMNS]
         )
         joined = [table.part(path) for table in self.joined]
-        return self.pass_rows(stars, fidelity, parameters, xgboost, joined, orbits)
+        return self.pass_rows(
+            stars, fidelity, parameters, flame_spec, xgboost, joined, orbits
+        )
 
     def pass_rows(
         self,
         stars: pa.Table,
         fidelity: pa.Table,
         parameters: pa.Table,
+        flame_spec: pa.Table,
         xgboost: pa.Table,
         joined: list[pa.Table],
         orbits: Orbits,
@@ -424,6 +435,7 @@ class GaiaReader:
         """
         stars = join_rows(stars, fidelity, FIDELITY_COLUMNS)
         stars = calibrate_gspspec(join_rows(stars, parameters, ASTROPHYSICAL_COLUMNS))
+        stars = join_rows(stars, flame_spec, FLAME_SPEC_COLUMNS)
         stars = join_rows(stars, xgboost, XGBOOST_COLUMNS)
         for table, rows in zip(self.joined, joined, strict=True):
             stars = join_rows(stars, rows, table.columns)
@@ -436,6 +448,7 @@ class GaiaReader:
             named.select(list(COLUMNS)),
             named.select(["source_id", *FIDELITY_COLUMNS]),
             _no_rows(ASTROPHYSICAL_COLUMNS),
+            _no_rows(FLAME_SPEC_COLUMNS),
             _no_rows(XGBOOST_COLUMNS),
             [table.rows for table in self.joined],
             self.read_orbits(),
@@ -453,6 +466,10 @@ class GaiaReader:
         )
         return self.astrophysical_dir / name
 
+    def flame_spec_path(self, path: Path) -> Path:
+        name = path.name.replace(gaia_source.CHUNK_PREFIX, gaia_flame_spec.CHUNK_PREFIX)
+        return self.flame_spec_dir / name
+
     def xgboost_path(self, path: Path) -> Path:
         name = path.name.replace(
             gaia_source.CHUNK_PREFIX, gaia_xp_metallicity.CHUNK_PREFIX
@@ -464,6 +481,7 @@ class GaiaReader:
         companions = (
             ("fidelity", self.fidelity_path),
             ("astrophysical parameters", self.astrophysical_path),
+            ("FLAME on GSP-Spec", self.flame_spec_path),
             ("XGBoost parameters", self.xgboost_path),
         )
         for kind, companion in companions:
@@ -483,6 +501,7 @@ class GaiaReader:
                 "without_fidelity",
                 "claims",
                 "xgboost",
+                "flame_spec",
                 "orbits",
                 "flagged_orbits",
             ),
@@ -502,6 +521,11 @@ class GaiaReader:
                     counts["without_fidelity"] += len(ids)
                 counts["claims"] += rows.num_rows - rows["claims"].null_count
                 counts["xgboost"] += rows.num_rows - rows["mh_xgboost"].null_count
+                # The rule the download keeps a row by.
+                flame_spec = reduce(
+                    pc.or_, (rows[name].is_valid() for name in FLAME_SPEC_COLUMNS)
+                )
+                counts["flame_spec"] += pc.sum(flame_spec).as_py() or 0
                 orbit = rows["solution_id"].is_valid()
                 counts["orbits"] += pc.sum(orbit).as_py() or 0
                 counts["flagged_orbits"] += (
@@ -521,12 +545,13 @@ class GaiaReader:
         logger.info(
             "Gaia: %d rows, %d flagged as spurious (mint false), %d without a"
             " fidelity row, %d claim a Hipparcos number, %d have an XP metallicity,"
-            " %d an orbit (%d of them flagged)",
+            " %d FLAME on GSP-Spec, %d an orbit (%d of them flagged)",
             self.counts["rows"],
             self.counts["flagged"],
             self.counts["without_fidelity"],
             self.counts["claims"],
             self.counts["xgboost"],
+            self.counts["flame_spec"],
             self.counts["orbits"],
             self.counts["flagged_orbits"],
         )

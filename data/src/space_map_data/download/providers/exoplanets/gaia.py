@@ -11,8 +11,10 @@ Reads the Gaia ids that the NASA archive and SIMBAD give. Writes:
                               not positionable. The bulk download holds the
                               others.
 - fidelity.csv                the astrometric fidelity of those rows
-- astrophysical_parameters.csv  the GSP-Phot radii and GSP-Spec values of
-                              those rows, as the bulk Gaia ingest reads them
+- astrophysical_parameters.csv  the GSP-Phot radii, FLAME and GSP-Spec
+                              values of those rows, as the bulk Gaia ingest
+                              reads them
+- flame_spec.csv              FLAME's run on GSP-Spec for those rows
 - xgboost.csv                 the XP metallicities of those rows (Andrae, Rix
                               & Chandra 2023), with the vetted red-giant and
                               OBA golden sample flags of the bulk download
@@ -44,6 +46,9 @@ from space_map_data.download.providers.stars import (
     gaia_fidelity,
     gaia_source,
     gaia_xp_metallicity,
+)
+from space_map_data.download.providers.stars.gaia_flame_spec import (
+    FLAME_SPEC_COLUMNS,
 )
 from space_map_data.extrasolar.sources.gaia import ASTROPHYSICAL_COLUMNS
 from space_map_data.utils.paths import SOURCES_EXOPLANETS_DIR
@@ -85,6 +90,11 @@ _ASTROPHYSICAL = (
     " from TAP_UPLOAD.sent as s"
     " join gaiadr3.astrophysical_parameters as a on a.source_id = s.id"
 )
+_FLAME_SPEC = (
+    f"select a.source_id, {', '.join(f'a.{c}' for c in FLAME_SPEC_COLUMNS)}"
+    " from TAP_UPLOAD.sent as s"
+    " join gaiadr3.astrophysical_parameters_supp as a on a.source_id = s.id"
+)
 # The archive has no CASE, so the two flags come as the ids of the joined rows.
 _XGBOOST = (
     f"select {', '.join(f'x.{c}' for c in gaia_xp_metallicity.TABLE_COLUMNS)},"
@@ -103,8 +113,9 @@ XGBOOST_HEADER = [
 SOURCE_FILE = "gaia_source.csv"
 FIDELITY_FILE = "fidelity.csv"
 ASTROPHYSICAL_FILE = "astrophysical_parameters.csv"
+FLAME_SPEC_FILE = "flame_spec.csv"
 XGBOOST_FILE = "xgboost.csv"
-FILES = (SOURCE_FILE, FIDELITY_FILE, ASTROPHYSICAL_FILE, XGBOOST_FILE)
+FILES = (SOURCE_FILE, FIDELITY_FILE, ASTROPHYSICAL_FILE, FLAME_SPEC_FILE, XGBOOST_FILE)
 
 
 def _header(path: Path) -> list[str]:
@@ -195,11 +206,16 @@ class ExoplanetGaiaDownloader(InputReader):
             if source_ids
             else (["source_id", *ASTROPHYSICAL_COLUMNS], [])
         )
+        flame_spec_header, flame_spec = (
+            self._by_id(_FLAME_SPEC, source_ids)
+            if source_ids
+            else (["source_id", *FLAME_SPEC_COLUMNS], [])
+        )
         xgboost = xgboost_rows(*self._by_id(_XGBOOST, source_ids)) if source_ids else []
         logger.info(
             "  %d DR2 neighbours, %d orbits (%d from the planet search), %d transits,"
             " %d unpositionable sources (%d with a fidelity, %d with astrophysical"
-            " parameters, %d with an XP metallicity)",
+            " parameters, %d with FLAME on GSP-Spec, %d with an XP metallicity)",
             len(neighbours),
             len(orbits),
             len(search_orbits),
@@ -207,6 +223,7 @@ class ExoplanetGaiaDownloader(InputReader):
             len(sources),
             len(fidelity),
             len(astrophysical),
+            len(flame_spec),
             len(xgboost),
         )
 
@@ -219,6 +236,7 @@ class ExoplanetGaiaDownloader(InputReader):
         write_csv(
             self.out_dir / ASTROPHYSICAL_FILE, astrophysical_header, astrophysical
         )
+        write_csv(self.out_dir / FLAME_SPEC_FILE, flame_spec_header, flame_spec)
         write_csv(self.out_dir / XGBOOST_FILE, XGBOOST_HEADER, xgboost)
         self._save_metadata(
             TAP_URL,
@@ -231,5 +249,6 @@ class ExoplanetGaiaDownloader(InputReader):
             unpositionable_sources=len(sources),
             fidelity_rows=len(fidelity),
             astrophysical_rows=len(astrophysical),
+            flame_spec_rows=len(flame_spec),
             xgboost_rows=len(xgboost),
         )

@@ -1459,6 +1459,7 @@
 	"star_row_gravitational_redshift": "重力赤方偏移",
 	"star_row_bolometric_correction": "放射補正",
 	"star_row_flame_distance": "使用した距離",
+	"star_section_physical_spec": "スペクトルによる物理的性質",
 	"star_flame_single_star_parallax": "単独星解の年周視差",
 	"star_row_fidelity": "アストロメトリの信頼度",
 	"star_row_norm_dg": "近傍星の明るさ（正規化ΔG）",

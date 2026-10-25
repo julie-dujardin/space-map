@@ -1354,6 +1354,7 @@
 	"star_row_gravitational_redshift": "引力红移",
 	"star_row_bolometric_correction": "热改正",
 	"star_row_flame_distance": "所用距离",
+	"star_section_physical_spec": "基于光谱的物理性质",
 	"star_flame_single_star_parallax": "单星解视差",
 	"star_row_fidelity": "天体测量可信度",
 	"star_row_norm_dg": "邻星亮度（归一化 ΔG）",

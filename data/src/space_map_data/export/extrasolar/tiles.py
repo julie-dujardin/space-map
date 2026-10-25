@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 ROOTS = 12
 # A table's tile splits while it holds more rows than this. After gzip a
-# Point source row takes about 185 B, a Metadata row about 22 B and a Binary
-# orbit row about 300 B. So the median tiles are about 64 kB, 73 kB and 34 kB.
+# Point source row takes about 250 B, a Metadata row about 22 B and a Binary
+# orbit row about 300 B. So the median tiles are about 86 kB, 73 kB and 34 kB.
 # The Binary orbit rows are sparse on the sky, and at 300 rows its largest
 # tile, 111 kB, stays under the largest Point source tile.
 MAX_ROWS = {METADATA.slug: 7_500, "point-source": 900, "binary-orbit": 300}
@@ -56,6 +56,7 @@ DICTIONARY = frozenset(
         "m1_ref",
         "flag",
         "flags_flame",
+        "flags_flame_spec",
     }
 )
 TILE_INFO = struct.Struct("<IBBxx")

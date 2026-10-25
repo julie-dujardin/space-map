@@ -361,9 +361,45 @@ describe("a star's FLAME values", () => {
 		expect(physical({ ...dwarf, evolstage_flame: stage })['Evolutionary stage']).toBe(name);
 	});
 
+	it('shows the run on GSP-Spec in its own section, with the same giant rule', () => {
+		const spec = {
+			...dwarf,
+			radius_flame_spec: 0.95,
+			lum_flame_spec: 0.8,
+			mass_flame_spec: 0.97,
+			age_flame_spec: 3.9,
+			evolstage_flame_spec: 300,
+			bc_flame_spec: -0.04,
+			flags_flame_spec: '0'
+		};
+		const section = (values: Record<string, number | string | null>) =>
+			Object.fromEntries(
+				(starSections(synthetic(values)).find((s) => s.key === 'physical_spec')?.rows ?? []).map(
+					(r) => [r.label, plain(r.value)]
+				)
+			);
+		expect(section(spec)).toEqual({
+			Radius: '0.95 R☉',
+			Luminosity: '0.80 L☉',
+			Mass: '0.97 M☉',
+			Age: '3.90 Ga',
+			'Evolutionary stage': 'Main sequence',
+			'Bolometric correction': '-0.04'
+		});
+		const giant = section({ ...spec, mass_flame_spec: 2.5, flags_flame_spec: '1' });
+		expect(giant.Mass).toBeUndefined();
+		expect(giant.Age).toBeUndefined();
+		// The run on GSP-Phot keeps its own values.
+		expect(physical(spec).Mass).toBe('0.950 M☉ (0.900–1.020 M☉)');
+		expect(section(dwarf)).toEqual({});
+	});
+
 	it('shows no stage where FLAME fitted no mass', () => {
 		const noMass = { ...dwarf, mass_flame: null, age_flame: null, flags_flame: '20' };
 		expect(physical(noMass)['Evolutionary stage']).toBeUndefined();
+		const spec = { ...dwarf, evolstage_flame_spec: 0, flags_flame_spec: '2', lum_flame_spec: 1 };
+		const rows = starSections(synthetic(spec)).find((s) => s.key === 'physical_spec')?.rows;
+		expect(rows?.map((r) => r.label)).toEqual(['Luminosity']);
 	});
 
 	it("names the single-star parallax where an orbit gives the star's own", () => {
