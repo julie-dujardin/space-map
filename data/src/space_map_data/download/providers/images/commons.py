@@ -80,6 +80,7 @@ class CommonsDownloader(Downloader):
         objects_dir = wikidata_root / "objects"
         nomenclature_dir = wikidata_root / "nomenclature"
         referenced_dir = wikidata_root / "referenced"
+        stars_dir = wikidata_root / "stars"
         if not objects_dir.exists() and not nomenclature_dir.exists():
             raise FileNotFoundError(
                 f"None of the Wikidata entity dirs exist under {wikidata_root} "
@@ -92,6 +93,7 @@ class CommonsDownloader(Downloader):
             objects_dir if objects_dir.exists() else None,
             nomenclature_dir if nomenclature_dir.exists() else None,
             referenced_dir if referenced_dir.exists() else None,
+            stars_dir if stars_dir.exists() else None,
         )
         self._write_non_commons_skipped(non_commons)
 
@@ -118,6 +120,7 @@ class CommonsDownloader(Downloader):
         objects_dir: Path | None,
         nomenclature_dir: Path | None,
         referenced_dir: Path | None,
+        stars_dir: Path | None,
     ) -> tuple[set[str], dict[str, dict]]:
         """Collect image filenames from Wikidata claims and Wikipedia summaries.
 
@@ -151,6 +154,8 @@ class CommonsDownloader(Downloader):
             )
             # Topic pages carry a single illustrative P18 and no logo.
             scans.append(("topics", self._topic_entity_files(referenced_dir), ("P18",)))
+        if stars_dir is not None:
+            scans.append(("stars", sorted(stars_dir.glob("Q*.json")), ("P18",)))
         for label, entity_files, pids in scans:
             for entity_file in tqdm(
                 entity_files,

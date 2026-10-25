@@ -20,7 +20,8 @@ v1/
   credits.json                                    (not gzipped) aggregated attribution for the /credits page
   status.json                                     (not gzipped) per-source download dates for the /status page
   about-data.json                                 (not gzipped) count, size and sources of each kind of object, resolution and size of each map, ring bundle and 3D model, for the /about/data page
-  seo/sitemap.xml                                 (not gzipped) notable-object + group URLs for search engines
+  seo/sitemap.xml                                 (not gzipped) sitemap index of the files below
+  seo/sitemap-<n>.xml                             (not gzipped) notable-object + group URLs for search engines
   seo/pages.json.gz                               SSR meta inputs of each sitemap page, for the site's build
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
@@ -96,5 +97,5 @@ v1/
 | [credits.md](credits.md) | `credits.json` aggregated attribution manifest. |
 | [status.md](status.md) | `status.json` per-source download-freshness report. |
 | [about-data.md](about-data.md) | `about-data.json` count, size and sources of each kind of object, and resolution and size of each map, each ring bundle and each 3D model. |
-| [sitemap.md](sitemap.md) | `seo/sitemap.xml` notable-object + group URL set and its selection rule; `seo/pages.json.gz` page records. |
+| [sitemap.md](sitemap.md) | `seo/sitemap.xml` index and `seo/sitemap-<n>.xml` notable-object + group URL set and its selection rule; `seo/pages.json.gz` page records. |
 | [consuming.md](consuming.md) | End-to-end consumer walkthrough. |

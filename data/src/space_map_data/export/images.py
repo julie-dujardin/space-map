@@ -149,6 +149,15 @@ def collect_object_images(object_id: str) -> list[dict] | None:
     return _collect_images_from_cache(object_id, _object_images_cache)
 
 
+def collect_star_images(qid: str) -> list[dict] | None:
+    """Build the ``images`` array of an extrasolar star's entry.
+
+    The selection is keyed by the star's QID: each registry ingest links the
+    items to the stars again.
+    """
+    return _collect_images_from_cache(qid, _star_images_cache)
+
+
 def collect_feature_images(feature_id: int | str) -> list[dict] | None:
     """Build the ``images`` array for a single IAU nomenclature feature.
 
@@ -231,6 +240,18 @@ def _object_images_cache() -> dict[str, list[dict]]:
     return _OBJECT_IMAGES_CACHE
 
 
+def _star_images_cache() -> dict[str, list[dict]]:
+    """Lazy-load and cache ``star_images.json`` for the export run."""
+    global _STAR_IMAGES_CACHE
+    if _STAR_IMAGES_CACHE is None:
+        from space_map_data.ingest.providers.image_selection import (
+            read_star_images,
+        )
+
+        _STAR_IMAGES_CACHE = read_star_images()
+    return _STAR_IMAGES_CACHE
+
+
 def _feature_images_cache() -> dict[str, list[dict]]:
     """Lazy-load and cache ``feature_images.json`` for the export run."""
     global _FEATURE_IMAGES_CACHE
@@ -300,6 +321,7 @@ def _ring_images_cache() -> dict[str, list[dict]]:
 
 
 _OBJECT_IMAGES_CACHE: dict[str, list[dict]] | None = None
+_STAR_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _FEATURE_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _GROUP_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _RING_IMAGES_CACHE: dict[str, list[dict]] | None = None
@@ -1060,6 +1082,7 @@ def prune_image_bundles() -> None:
     keep: set[str] = set()
     for cache_loader in (
         _object_images_cache,
+        _star_images_cache,
         _feature_images_cache,
         _group_images_cache,
         _ring_images_cache,
@@ -1089,11 +1112,13 @@ def clear_export_cache() -> None:
     """Reset per-export caches. For tests that monkeypatch paths."""
     global \
         _OBJECT_IMAGES_CACHE, \
+        _STAR_IMAGES_CACHE, \
         _FEATURE_IMAGES_CACHE, \
         _GROUP_IMAGES_CACHE, \
         _RING_IMAGES_CACHE, \
         _TOPIC_IMAGES_CACHE
     _OBJECT_IMAGES_CACHE = None
+    _STAR_IMAGES_CACHE = None
     _FEATURE_IMAGES_CACHE = None
     _GROUP_IMAGES_CACHE = None
     _RING_IMAGES_CACHE = None
@@ -1110,6 +1135,7 @@ __all__ = [
     "collect_feature_images",
     "collect_group_images",
     "collect_object_images",
+    "collect_star_images",
     "object_image_count",
     "pick_thumbnail",
     "prune_image_bundles",

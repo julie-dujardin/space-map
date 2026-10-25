@@ -20,6 +20,7 @@ import numpy as np
 import orjson
 
 from space_map_data.constants.providers import ID_TYPES, LANGUAGES
+from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.export.position.format import (
     BODY_HEADER_SIZE,
     FORMAT_CHEBYSHEV,
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 # The rows in the order of the page. A kind that is not listed follows by name.
 KINDS = (
     "star",
+    "extrasolar_star",
     "planet",
     "dwarf_planet",
     "moon",
@@ -85,6 +87,14 @@ def kind_of(object_type: str, satcat: bool) -> str:
     if object_type == ObjectType.spacecraft:
         return "satellite" if satcat else "probe"
     return object_type
+
+
+def _entry_kind(object_id: str, object_type: str) -> str:
+    """The row of an object entry. A star of the extrasolar catalogue has its
+    own row: the catalogue holds many more stars than those with an entry."""
+    if object_id.startswith(STAR_PREFIX):
+        return "extrasolar_star"
+    return kind_of(object_type, object_id.startswith(_SATCAT_PREFIX))
 
 
 def has_own_text(entry: dict) -> bool:
@@ -248,7 +258,7 @@ def _scan_objects(objects_dir: Path, tally: _Tally) -> None:
         size, entries = _bundle(path)
         raw: Counter[str] = Counter()
         for object_id, entry in entries.items():
-            kind = kind_of(entry["type"], object_id.startswith(_SATCAT_PREFIX))
+            kind = _entry_kind(object_id, entry["type"])
             kinds[object_id] = kind
             tally.count[kind] += 1
             rings = _field_bytes(entry, _RING_KEYS)

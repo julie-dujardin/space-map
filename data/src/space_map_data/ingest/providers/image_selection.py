@@ -7,7 +7,8 @@ metadata, and pick the highest-scoring file per tree (assessment >
 pageimage-frequency > globalusage, see :mod:`space_map_data.utils.image_scoring`).
 
 Cached at ``OBJECT_IMAGES_PATH`` (keyed by ``Object.id``, drives
-``image_available``), ``FEATURE_IMAGES_PATH`` (by ``Feature.feature_id``),
+``image_available``), ``STAR_IMAGES_PATH`` (by the QID of each extrasolar
+star with an object entry), ``FEATURE_IMAGES_PATH`` (by ``Feature.feature_id``),
 ``GROUP_IMAGES_PATH`` (by ``Group.slug``), and ``RING_IMAGES_PATH`` (by the
 ringed body's ``Object.id`` — pictures of the ring system, not the planet).
 Exports read these caches instead of re-walking sources.
@@ -39,6 +40,8 @@ from space_map_data.export.groups.registry import (
     GroupCategory,
 )
 from space_map_data.export.objects.missions import build_probe_missions
+from space_map_data.export.objects.stars import read_star_objects
+from space_map_data.extrasolar.registry import NoRegistry
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils import image_scoring
@@ -57,6 +60,7 @@ from space_map_data.utils.paths import SOURCES_METADATA_DIR
 logger = logging.getLogger(__name__)
 
 OBJECT_IMAGES_PATH = COMMONS_DIR / "object_images.json"
+STAR_IMAGES_PATH = COMMONS_DIR / "star_images.json"
 FEATURE_IMAGES_PATH = COMMONS_DIR / "feature_images.json"
 GROUP_IMAGES_PATH = COMMONS_DIR / "group_images.json"
 RING_IMAGES_PATH = COMMONS_DIR / "ring_images.json"
@@ -88,6 +92,8 @@ def ingest() -> None:
     session = get_session()
     metadata_cache: dict[str, dict | None] = {}
     wikidata_root = SOURCES_METADATA_DIR / "wikidata"
+    # Before the long work, so that a busy registry stops the ingest early.
+    star_qids = _star_qids()
 
     object_rows = (
         session.query(Object.id, Object.wikidata_qid, Object.object_type)
@@ -114,6 +120,12 @@ def ingest() -> None:
     _write_cache(OBJECT_IMAGES_PATH, "objects", selections)
     _update_image_available_flag(session, set(selections))
     _log_written(OBJECT_IMAGES_PATH, "objects", selections, objects)
+    if star_qids is not None:
+        _write_cache(
+            STAR_IMAGES_PATH,
+            "stars",
+            _select_star_images(star_qids, metadata_cache, wikidata_root / "stars"),
+        )
 
     # Nomenclature features key by feature_id and use P242 (locator map) as aux.
     features = [
@@ -174,6 +186,59 @@ def ingest() -> None:
     )
     _write_cache(GROUP_IMAGES_PATH, "groups", group_selections)
     _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
+
+
+# A picture that more stars share shows a constellation or a cluster. Most
+# are the constellation chart of a Wikipedia infobox.
+_MAX_STARS_PER_IMAGE = 2
+
+
+def _star_qids() -> list[str] | None:
+    """The QIDs of the extrasolar stars with an object entry. None on a host
+    without the registry, which then keeps the star selections it has.
+
+    Raises RegistryBusy while an ingest holds the registry.
+    """
+    try:
+        return [star.qid for star in read_star_objects()]
+    except NoRegistry as error:
+        logger.warning("%s is kept: %s", STAR_IMAGES_PATH.name, error)
+        return None
+
+
+def _select_star_images(
+    qids: list[str], metadata_cache: dict[str, dict | None], wikidata_dir: Path
+) -> dict[str, list[dict]]:
+    """The images of the extrasolar stars with an object entry, by QID.
+
+    These stars have no row in the database.
+    """
+    stars = [(qid, qid) for qid in qids]
+    selections = _select_for_qids(
+        stars,
+        metadata_cache,
+        wikidata_dir,
+        aux_pid="P154",
+        aux_kind="logo",
+        desc="Selecting per-star images",
+        unit="star",
+    )
+    uses = Counter(
+        entry["file"] for entries in selections.values() for entry in entries
+    )
+    shared = {file for file, n in uses.items() if n > _MAX_STARS_PER_IMAGE}
+    selections = {
+        key: kept
+        for key, entries in selections.items()
+        if (kept := [entry for entry in entries if entry["file"] not in shared])
+    }
+    logger.info(
+        "Dropped %d star images that more than %d stars share",
+        len(shared),
+        _MAX_STARS_PER_IMAGE,
+    )
+    _log_written(STAR_IMAGES_PATH, "stars", selections, stars)
+    return selections
 
 
 def _select_for_qids(
@@ -517,6 +582,11 @@ def read_object_images() -> dict[str, list[dict]]:
     runs before ingest; or a fresh checkout).
     """
     return _read_cache(OBJECT_IMAGES_PATH, "objects")
+
+
+def read_star_images() -> dict[str, list[dict]]:
+    """Return the cached ``{qid: [{file, kind}, ...]}`` mapping of the stars."""
+    return _read_cache(STAR_IMAGES_PATH, "stars")
 
 
 def read_feature_images() -> dict[str, list[dict]]:

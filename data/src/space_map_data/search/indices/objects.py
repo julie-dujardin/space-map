@@ -12,6 +12,9 @@ the 1.5M global entries are bare SBDB designations like "2018 XY" whose only
 translation is the word "asteroid" — pure noise in a name search. Notable
 ones (Ceres, Vesta, Pallas, …) carry aliases, a Wikipedia article, or a
 `named_after` field and survive the cut.
+
+The stars of the extrasolar catalogue that have an entry (`x-<id>`) are in
+the same bundles. All of them are indexed, as every object of type `star` is.
 """
 
 import gzip

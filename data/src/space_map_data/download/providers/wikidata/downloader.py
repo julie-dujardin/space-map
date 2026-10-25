@@ -39,6 +39,7 @@ from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
     PID_TO_KEY,
+    STAR_ENTITY_REF_CLAIMS,
 )
 from space_map_data.probes.probe_id import (
     load_mission_qids as load_probe_mission_qids,
@@ -259,6 +260,7 @@ class WikidataDownloader(Downloader):
         primary_scans = [
             (objects_dir, shared_follow),
             (nomenclature_dir, feature_follow),
+            (stars_dir, tuple(c.pid for c in STAR_ENTITY_REF_CLAIMS)),
         ]
         all_dirs = [objects_dir, nomenclature_dir, referenced_dir, units_dir]
         referenced_qids, unit_qids = self._collect_secondary_qids(

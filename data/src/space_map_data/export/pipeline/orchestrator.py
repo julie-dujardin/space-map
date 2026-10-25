@@ -1078,8 +1078,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     """Run the full export pipeline."""
     t0 = time.monotonic()
     out_dir = EXPORT_DIR / "v1"
-    # A registry that an ingest holds stops the export here, before it removes
-    # anything.
+    # One read for the star entries and the sitemap. A registry that an ingest
+    # holds stops the export here, before it removes anything.
     star_objects = available_star_objects()
     with Session(engine) as session:
         precheck_tables(session)
@@ -1364,7 +1364,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
     with Session(engine) as session:
         pages = write_sitemap(
-            session, out_dir, wikidata_entities, bundle_ns, group_bundle_ns
+            session,
+            out_dir,
+            wikidata_entities,
+            bundle_ns,
+            group_bundle_ns,
+            star_objects,
         )
         write_seo_pages(
             out_dir,

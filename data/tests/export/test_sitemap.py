@@ -91,6 +91,7 @@ class TestObjectPath:
         assert _object_path("naif-499") == "/b/499"
         assert _object_path("spkid-2000001") == "/s/2000001"
         assert _object_path("norad_satcat-25544") == "/e/25544"
+        assert _object_path("x-22137869") == "/x/22137869"
 
     def test_rejects_an_unknown_scheme(self):
         assert _object_path("bogus-1") is None
@@ -204,7 +205,7 @@ class TestNotablePaths:
             {"spkid-20000001": {"name": "1 Ceres"}, "spkid-29999999": {"name": "X"}},
         )
 
-        paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 1, "global": 1})
+        paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 1, "global": 1}, [])
         assert paths == {
             "naif-399": "/b/399/Earth",
             "spkid-20000001": "/s/20000001/1%20Ceres",
@@ -219,8 +220,19 @@ class TestNotablePaths:
         session.flush()
         _write_bundles(tmp_path / "objects" / "__global__", 1, {"spkid-1000005": {}})
 
-        paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 1})
+        paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 1}, [])
         assert paths == {"spkid-1000005": "/s/1000005"}
+
+    def test_lists_each_star_with_an_entry(self, session: Session, tmp_path: Path):
+        """A star with an entry has no row in the catalogue."""
+        _write_bundles(
+            tmp_path / "objects" / "__global__", 1, {"x-22137869": {"name": "Sirius"}}
+        )
+
+        paths = _notable_paths(
+            session, tmp_path, {BASE_LOCALE: 0, "global": 1}, ["x-22137869", "x-5"]
+        )
+        assert paths == {"x-22137869": "/x/22137869/Sirius"}
 
     def test_never_lists_a_barycenter(self, session: Session, tmp_path: Path):
         """Its page is named by an app label, which no bundle carries."""
@@ -234,7 +246,8 @@ class TestNotablePaths:
         )
         session.flush()
 
-        assert _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 0}) == {}
+        paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 0}, [])
+        assert paths == {}
 
 
 class TestFeaturePaths:
@@ -366,3 +379,42 @@ class TestGroupPaths:
 
     def test_lists_no_group_without_the_index(self, tmp_path: Path):
         assert _group_paths(tmp_path, 1) == {}
+
+
+class TestWriteSitemap:
+    """The sitemap index and its files."""
+
+    def test_splits_the_urls_over_files_of_the_index(
+        self, session: Session, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(sitemap, "_MAX_URLS_PER_FILE", 2)
+        _write_bundles(
+            tmp_path / "objects" / "__global__",
+            1,
+            {f"spkid-{n}": {"name": f"A{n}"} for n in range(1, 4)},
+        )
+        for n in range(1, 4):
+            session.add(_asteroid(f"spkid-{n}", sitelinks_count=SITELINKS_THRESHOLD))
+        session.flush()
+        seo = tmp_path / "seo"
+        seo.mkdir()
+        (seo / "sitemap-9.xml").write_text("stale")
+
+        sitemap.write_sitemap(
+            session,
+            tmp_path,
+            _entities({}),
+            {BASE_LOCALE: 0, "global": 1},
+            {BASE_LOCALE: 0},
+            [],
+        )
+        assert sorted(p.name for p in seo.iterdir()) == [
+            "sitemap-1.xml",
+            "sitemap-2.xml",
+            "sitemap.xml",
+        ]
+        index = (seo / "sitemap.xml").read_text()
+        assert "<sitemapindex" in index
+        assert f"<loc>{sitemap.SITE_ORIGIN}/sitemap-2.xml</loc>" in index
+        assert (seo / "sitemap-1.xml").read_text().count("<url>") == 2
+        assert (seo / "sitemap-2.xml").read_text().count("<url>") == 1

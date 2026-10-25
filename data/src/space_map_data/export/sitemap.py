@@ -1,8 +1,9 @@
 """Sitemap generation for the notable-object subset.
 
-Enumerates the promoted set plus anything with a real Wikidata presence, and
-writes a single ``v1/seo/sitemap.xml``. The same pages get the records of
-``seo_pages.py``.
+Enumerates the promoted set, anything with a real Wikidata presence and the
+stars of the extrasolar catalogue with an entry. Writes the sitemap index
+``v1/seo/sitemap.xml`` and its files ``sitemap-<n>.xml``. The same pages get
+the records of ``seo_pages.py``.
 
 A page states its canonical link with the name the app gives it in the base
 locale. Each path here carries that name, taken from the files the app reads,
@@ -34,6 +35,8 @@ from space_map_data.export.nomenclature.writer import (
     feature_label,
     renderable_feature_filter,
 )
+from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
+from space_map_data.export.objects.stars import StarObject
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
@@ -44,9 +47,7 @@ logger = logging.getLogger(__name__)
 SITE_ORIGIN = "https://spacemap.co"
 SITELINKS_THRESHOLD = 5
 
-# Sitemaps allow 50k URLs per file; the notable subset is well under, so a
-# single file suffices. Split into an index above this and the frontend proxy
-# will need matching chunk routes.
+# Sitemaps allow 50k URLs per file.
 _MAX_URLS_PER_FILE = 45_000
 
 # Promoted types minus barycenter (a math point, not a landing page).
@@ -64,6 +65,7 @@ _PREFIX_TO_TYPE = {
     "norad_satcat": "e",
     "probe": "p",
     "extra": "u",
+    "x": "x",
 }
 
 # encodeURIComponent's unreserved set, so Python-built name segments byte-match
@@ -144,15 +146,19 @@ def _object_names(
 
 
 def _notable_paths(
-    session: Session, out_dir: Path, object_buckets: dict[str, int]
+    session: Session,
+    out_dir: Path,
+    object_buckets: dict[str, int],
+    star_ids: Collection[str],
 ) -> dict[str, str]:
     """The canonical path of every notable object the export has, by id:
-    promoted types, curated extras, or a Wikidata presence at or above the
-    sitelink floor.
+    promoted types, curated extras, a Wikidata presence at or above the
+    sitelink floor, or a star of the extrasolar catalogue with an entry
+    (``star_ids``).
 
     Never a barycenter: its page takes its title from an app label.
     """
-    ids = session.scalars(
+    catalogue = session.scalars(
         select(Object.id).where(
             Object.object_type != ObjectType.barycenter,
             or_(
@@ -162,6 +168,7 @@ def _notable_paths(
             ),
         )
     ).all()
+    ids = [*catalogue, *star_ids]
     names = _object_names(out_dir, object_buckets, ids)
     # The catalogue has objects the export leaves out; they have no page.
     if len(names) < len(ids):
@@ -256,6 +263,20 @@ def _group_paths(out_dir: Path, n_buckets: int) -> dict[str, str]:
     return {slug: _named(f"/g/{slug}", name) for slug, name in names.items()}
 
 
+def _index(files: list[str], lastmod: str) -> bytes:
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    for file in files:
+        loc = escape(f"{SITE_ORIGIN}/{file}")
+        lines.append(
+            f"  <sitemap><loc>{loc}</loc><lastmod>{lastmod}</lastmod></sitemap>"
+        )
+    lines.append("</sitemapindex>\n")
+    return "\n".join(lines).encode()
+
+
 def _urlset(paths: list[str], lastmod: str) -> bytes:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -274,14 +295,22 @@ def write_sitemap(
     wikidata_entities: WikidataEntityCache,
     object_buckets: dict[str, int],
     group_buckets: dict[str, int],
+    stars: list[StarObject],
 ) -> SitemapPages:
-    """Write ``v1/seo/sitemap.xml`` and return the pages it lists.
+    """Write the sitemap index ``v1/seo/sitemap.xml`` and its files
+    ``sitemap-<n>.xml``, and return the pages they list.
 
     Reads the object and group bundles and the group index already in
-    ``out_dir``; the bucket counts are those of ``metadata.json``.
+    ``out_dir``; the bucket counts are those of ``metadata.json``. ``stars``
+    are the registry's stars with an entry, read once for the export.
     """
     pages = SitemapPages(
-        objects=_notable_paths(session, out_dir, object_buckets),
+        objects=_notable_paths(
+            session,
+            out_dir,
+            object_buckets,
+            [f"{STAR_PREFIX}{star.id}" for star in stars],
+        ),
         groups=_group_paths(out_dir, group_buckets[BASE_LOCALE]),
         features=_feature_paths(session, wikidata_entities),
     )
@@ -290,15 +319,16 @@ def write_sitemap(
         *pages.groups.values(),
         *(path for _, path in pages.features),
     ]
-    if len(paths) > _MAX_URLS_PER_FILE:
-        logger.warning(
-            "sitemap: %d URLs exceeds single-file budget (%d) — add chunking",
-            len(paths),
-            _MAX_URLS_PER_FILE,
-        )
     lastmod = datetime.date.today().isoformat()
     seo_dir = out_dir / "seo"
     seo_dir.mkdir(parents=True, exist_ok=True)
-    (seo_dir / "sitemap.xml").write_bytes(_urlset(paths, lastmod))
-    logger.info("Sitemap: %d URLs written to %s", len(paths), seo_dir / "sitemap.xml")
+    for stale in seo_dir.glob("sitemap-*.xml"):
+        stale.unlink()
+    files: list[str] = []
+    for start in range(0, len(paths), _MAX_URLS_PER_FILE):
+        files.append(f"sitemap-{len(files) + 1}.xml")
+        chunk = paths[start : start + _MAX_URLS_PER_FILE]
+        (seo_dir / files[-1]).write_bytes(_urlset(chunk, lastmod))
+    (seo_dir / "sitemap.xml").write_bytes(_index(files, lastmod))
+    logger.info("Sitemap: %d URLs in %d files in %s", len(paths), len(files), seo_dir)
     return pages

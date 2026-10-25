@@ -229,6 +229,36 @@ ENTITY_REF_CLAIMS = (
     EntityRefClaim("part_of", "P361", multiple=True),  # Nasa programs
 )
 
+# Types that say nothing about a star: the generic ones, the surveys that
+# detected it, and the types of another kind of object.
+STAR_INSTANCE_OF_IGNORED = INSTANCE_OF_IGNORED | {
+    "Q523",  # star
+    "Q67206691",  # infrared source
+    "Q67206785",  # near-infrared source
+    "Q138783146",  # mid-infrared source
+    "Q71798788",  # ultraviolet source
+    "Q2154519",  # astrophysical X-ray source
+    "Q1931185",  # astronomical radio source
+    "Q71798532",  # blue object
+    "Q44559",  # exoplanet
+    "Q18611609",  # unconfirmed exoplanet
+    "Q318",  # galaxy
+}
+
+# The Wikidata metadata of a star. Catalogue values, such as a mass or a
+# spectral type, come from the catalogues and never from these claims.
+STAR_GLOBAL_CLAIMS = (GlobalClaim("discovery_date", "P575", "time", multiple=True),)
+STAR_ENTITY_REF_CLAIMS = (
+    EntityRefClaim(
+        "instance_of", "P31", multiple=True, exclude_set=STAR_INSTANCE_OF_IGNORED
+    ),
+    EntityRefClaim("named_after", "P138", multiple=True),
+    EntityRefClaim("discoverers", "P61", multiple=True),
+    EntityRefClaim("discovery_site", "P65", multiple=True),
+    EntityRefClaim("part_of", "P361", multiple=True),
+    EntityRefClaim("iau_constellation", "P59"),
+)
+
 PID_TO_KEY: dict[str, str] = {
     c.pid: c.key for c in (*GLOBAL_CLAIMS, *ENTITY_REF_CLAIMS)
 } | {

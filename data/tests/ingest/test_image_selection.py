@@ -11,6 +11,8 @@ import orjson
 import pytest
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.objects.stars import StarObject
+from space_map_data.extrasolar.registry import NoRegistry, RegistryBusy
 from space_map_data.ingest.providers import image_selection
 from space_map_data.utils import commons_images as ci
 
@@ -32,6 +34,9 @@ def layout(tmp_path, monkeypatch):
         image_selection,
         "OBJECT_IMAGES_PATH",
         commons_dir / "object_images.json",
+    )
+    monkeypatch.setattr(
+        image_selection, "STAR_IMAGES_PATH", commons_dir / "star_images.json"
     )
     monkeypatch.setattr(ci, "IMAGES_DIR", images_dir)
     return {
@@ -253,6 +258,60 @@ class TestReadObjectImages:
         assert "naif-399" in payload["objects"]
         assert "399" not in payload["objects"]
         assert payload["schema_version"] == image_selection.SCHEMA_VERSION
+
+
+class TestStarImages:
+    """The selections of the extrasolar stars, by QID."""
+
+    def test_keyed_by_qid(self, layout):
+        _stage_wikidata(layout, "Q3409", p18=["Sirius.jpg"])
+        _stage_metadata(layout, "Sirius.jpg")
+        selections = image_selection._select_star_images(
+            ["Q3409", "Q14266"], {}, layout["wikidata"]
+        )
+        assert selections == {"Q3409": [{"file": "Sirius.jpg", "kind": "photo"}]}
+
+    def test_a_picture_of_more_than_two_stars_is_dropped(self, layout):
+        for qid in ("Q1", "Q2", "Q3"):
+            _stage_wikidata(layout, qid, p18=["Orion.jpg"])
+        _stage_wikidata(layout, "Q4", p18=["Orion.jpg", "Rigel.jpg"])
+        _stage_metadata(layout, "Orion.jpg")
+        _stage_metadata(layout, "Rigel.jpg")
+        selections = image_selection._select_star_images(
+            ["Q1", "Q2", "Q3", "Q4"], {}, layout["wikidata"]
+        )
+        assert selections == {"Q4": [{"file": "Rigel.jpg", "kind": "photo"}]}
+
+    def test_the_qids_come_from_the_registry(self, monkeypatch):
+        monkeypatch.setattr(
+            image_selection,
+            "read_star_objects",
+            lambda: [StarObject(5, "Hamal", "Q2"), StarObject(7, "Vega", "Q9")],
+        )
+        assert image_selection._star_qids() == ["Q2", "Q9"]
+
+    def test_no_registry_keeps_the_selection(self, monkeypatch, caplog):
+        def no_registry():
+            raise NoRegistry("no registry in /x")
+
+        monkeypatch.setattr(image_selection, "read_star_objects", no_registry)
+        assert image_selection._star_qids() is None
+        assert "star_images.json is kept" in caplog.text
+
+    def test_a_busy_registry_fails(self, monkeypatch):
+        def busy():
+            raise RegistryBusy("locked")
+
+        monkeypatch.setattr(image_selection, "read_star_objects", busy)
+        with pytest.raises(RegistryBusy):
+            image_selection._star_qids()
+
+    def test_round_trip_via_write_cache(self, layout):
+        selections = {"Q3409": [{"file": "Sirius.jpg", "kind": "photo"}]}
+        image_selection._write_cache(
+            image_selection.STAR_IMAGES_PATH, "stars", selections
+        )
+        assert image_selection.read_star_images() == selections
 
 
 class TestMergeManualExtras:

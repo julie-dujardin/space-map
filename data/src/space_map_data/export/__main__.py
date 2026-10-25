@@ -65,10 +65,10 @@ def cli():
     if args.only == "extrasolar":
         export_extrasolar_only(args.workers)
         return
+    sync_all()
     if args.only == "star-objects":
         export_star_objects_only()
         return
-    sync_all()
     if args.only == "atmospheres":
         # Pure constants + derivation — no DB.
         export_atmospheres_only()

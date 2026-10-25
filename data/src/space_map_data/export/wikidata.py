@@ -6,7 +6,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 import orjson
 
@@ -45,6 +45,14 @@ def load_json_dir(directory: Path, glob: str = "Q*.json") -> Iterator[tuple[str,
 # few times in a row, so a bounded LRU serves that locality; keeping every
 # one of the 256k object entities (raw claims included) held ~10 GB.
 _ENTITY_LRU_SIZE = 20_000
+
+
+class StarEntity(NamedTuple):
+    """The entity of a star, and its count of sitelinks to every project as
+    the bodies count them."""
+
+    entity: WikidataEntity | None
+    sitelinks: int
 
 
 class WikidataEntityCache:
@@ -123,13 +131,20 @@ class WikidataEntityCache:
             return None
         return self._load(qid, self._nomenclature_dir)
 
-    def get_star_entity(self, qid: str | None) -> WikidataEntity | None:
-        """Look up an extrasolar object's own Wikidata entity (from stars/)."""
+    def get_star_entity(self, qid: str | None) -> StarEntity | None:
+        """Look up an extrasolar object's own Wikidata entity (from stars/).
+        None when it is not downloaded."""
         if not qid:
             return None
         # Each star is read once, so its entity stays out of the LRU: 14k of
         # them would push out the object entities and hold ~4 GB.
-        return _read_entity(self._stars_dir, qid)
+        raw = _read_raw(self._stars_dir, qid)
+        if raw is None:
+            return None
+        sitelinks = raw.get("sitelinks")
+        return StarEntity(
+            _parse_entity(raw), len(sitelinks) if isinstance(sitelinks, dict) else 0
+        )
 
     def get_referenced(self, qid: str | None) -> WikidataEntity | None:
         """Look up a referenced entity from claims (from referenced/ or units)."""
@@ -153,15 +168,19 @@ class WikidataEntityCache:
         return entity
 
 
-def _read_entity(directory: Path, qid: str) -> WikidataEntity | None:
+def _read_raw(directory: Path, qid: str) -> dict | None:
     path = local(directory / f"{qid}.json")
     if not path.exists():
         return None
     try:
-        raw = orjson.loads(path.read_bytes())
+        return orjson.loads(path.read_bytes())
     except (orjson.JSONDecodeError, OSError) as exc:
         raise ValueError(f"Failed to load {path}") from exc
-    return _parse_entity(raw)
+
+
+def _read_entity(directory: Path, qid: str) -> WikidataEntity | None:
+    raw = _read_raw(directory, qid)
+    return None if raw is None else _parse_entity(raw)
 
 
 def _parse_entity(entity: dict) -> WikidataEntity | None:

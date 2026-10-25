@@ -3,6 +3,8 @@
 import gzip
 import json
 
+from space_map_data.search.indices import objects
+from space_map_data.search.indices.base import object_pk
 from space_map_data.search.indices.objects import (
     _date_to_int,
     _inception,
@@ -127,3 +129,42 @@ class TestLoadEarthMembership:
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert _load_earth_membership(tmp_path) == {}
+
+
+class TestExtrasolarStars:
+    """A star of the extrasolar catalogue with an entry is a document."""
+
+    def test_document(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en", "ru"))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        bundles = {
+            "__global__": {
+                "x-7": {
+                    "id": "x-7",
+                    "type": "star",
+                    "name": "Vega",
+                    "sitelinks_count": 120,
+                },
+            },
+            "en": {"x-7": {"aliases": ["Alpha Lyrae"]}},
+            "ru": {"x-7": {"name": "Вега"}},
+        }
+        for tier, entries in bundles.items():
+            directory = tmp_path / "v1" / "objects" / tier
+            directory.mkdir(parents=True)
+            (directory / "0.json.gz").write_bytes(
+                gzip.compress(json.dumps(entries).encode())
+            )
+        docs = {doc["id"]: doc for doc in objects.build_object_documents(tmp_path)}
+        vega = docs["x-7"]
+        assert vega["name"] == "Vega"
+        assert vega["name_ru"] == "Вега"
+        assert vega["sitelinks_count"] == 120
+        assert vega["object"] == {
+            "id": "x-7",
+            "type": "star",
+            "aliases_en": ["Alpha Lyrae"],
+        }
+
+    def test_primary_key_mirrors_the_url(self):
+        assert object_pk("x-22137869") == "x-22137869"

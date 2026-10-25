@@ -19,31 +19,60 @@ from space_map_data.export.objects.stars import (
 )
 from space_map_data.export.objects.wikipedia import WikipediaSummary
 from space_map_data.export.objects.writer import hash_bucket
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import StarEntity, WikidataEntityCache
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.tables import CROSS_ID
 
 
-def entity(labels: dict, descriptions: dict | None = None, aliases: dict | None = None):
+def entity(
+    labels: dict,
+    descriptions: dict | None = None,
+    aliases: dict | None = None,
+    claims: dict | None = None,
+    sitelinks: dict | None = None,
+):
     return {
         "labels": labels,
         "descriptions": descriptions or {},
         "aliases": aliases or {},
-        "claims": {},
-        "sitelinks": {},
+        "claims": claims or {},
+        "sitelinks": sitelinks or {},
     }
 
 
+def statement(value) -> dict:
+    return {"rank": "normal", "mainsnak": {"datavalue": {"value": value}}}
+
+
+def items(*qids: str) -> list[dict]:
+    return [statement({"id": qid}) for qid in qids]
+
+
 class _Entities:
-    def __init__(self, by_qid: dict) -> None:
+    def __init__(
+        self,
+        by_qid: dict,
+        referenced: dict | None = None,
+        sitelinks: dict | None = None,
+    ) -> None:
         self.by_qid = by_qid
+        self.referenced = referenced or {}
+        self.sitelinks = sitelinks or {}
+        self.star_reads: list[str] = []
 
     def get_star_entity(self, qid):
-        return self.by_qid.get(qid)
+        self.star_reads.append(qid)
+        found = self.by_qid.get(qid)
+        return None if found is None else StarEntity(found, self.sitelinks.get(qid, 0))
+
+    def get_referenced(self, qid):
+        return self.referenced.get(qid)
 
 
-def fake_entities(by_qid: dict) -> WikidataEntityCache:
-    return cast(WikidataEntityCache, _Entities(by_qid))
+def fake_entities(
+    by_qid: dict, referenced: dict | None = None, sitelinks: dict | None = None
+) -> WikidataEntityCache:
+    return cast(WikidataEntityCache, _Entities(by_qid, referenced, sitelinks))
 
 
 def bundle(path: Path) -> dict:
@@ -63,20 +92,58 @@ class TestStarEntries:
             "load_wikipedia_summaries_for_qid",
             lambda qid: summaries.get(qid, {}),
         )
+        monkeypatch.setattr(
+            stars,
+            "collect_star_images",
+            lambda qid: [{"file": "Sirius.jpg"}] if qid == "Q1" else None,
+        )
+        claims = {
+            # Binary star; infrared source; A-type main-sequence star.
+            "P31": items("Q50053", "Q67206691", "Q471805"),
+            "P59": items("Q10538"),
+            "P361": items("Q2"),
+            "P575": [
+                statement(
+                    {
+                        "time": "+1862-01-31T00:00:00Z",
+                        "precision": 11,
+                        "calendarmodel": "http://www.wikidata.org/entity/Q1985727",
+                    }
+                )
+            ],
+        }
+        referenced = {
+            "Q50053": entity(
+                {"en": "binary star", "ru": "двойная звезда"},
+                sitelinks={"en": "Binary star"},
+            ),
+            # A subclass of A-type star, a spectral class.
+            "Q471805": entity(
+                {"en": "A-type main sequence star"},
+                claims={"P279": items("Q14745284")},
+            ),
+            "Q10538": entity(
+                {"en": "Canis Major", "ru": "Большой Пёс"},
+                sitelinks={"en": "Canis Major"},
+            ),
+        }
         entities = fake_entities(
             {
                 "Q1": entity(
                     {"en": "Sirius", "fr": "Sirius", "ru": "Сириус", "ja": "HD 48915"},
                     {"en": "brightest star in the night sky"},
                     {"de": ["Hundsstern"]},
+                    claims,
                 ),
                 # Wikidata calls Hamal by its Bayer designation.
                 "Q2": entity(
                     {"en": "Alpha Arietis", "fr": "Alpha Arietis", "zh": "婁宿三"}
                 ),
-            }
+            },
+            referenced,
+            {"Q1": 120},
         )
-        return star_entries(
+        found = star_entries(
             [
                 StarObject(22137869, "Sirius", "Q1"),
                 StarObject(5, "Hamal", "Q2"),
@@ -84,6 +151,9 @@ class TestStarEntries:
             ],
             entities,
         )
+        # Each star entity is read once.
+        assert cast(_Entities, entities).star_reads == ["Q1", "Q2", "Q3"]
+        return found
 
     def test_global(self, entries):
         global_data, _ = entries
@@ -92,20 +162,51 @@ class TestStarEntries:
             "type": "star",
             "name": "Sirius",
             "cross_refs": {"wikidata_qid": "Q1"},
+            "sitelinks_count": 120,
+            "images": [{"file": "Sirius.jpg"}],
+            "wikidata": {"discovery_date": ["+1862-01-31T00:00:00Z"]},
+        }
+        assert global_data["x-5"] == {
+            "id": "x-5",
+            "type": "star",
+            "name": "Hamal",
+            "cross_refs": {"wikidata_qid": "Q2"},
         }
         assert set(global_data) == {"x-22137869", "x-5", "x-6"}
 
     def test_localized(self, entries):
         _, localized = entries
+        hamal = {"name": "Hamal", "primary_id": "5", "primary_type": "x"}
         assert localized["en"]["x-22137869"] == {
             "description": "brightest star in the night sky",
+            "instance_of": [
+                {
+                    "name": "binary star",
+                    "wikipedia": "https://en.wikipedia.org/wiki/Binary%20star",
+                }
+            ],
+            "part_of": [hamal],
+            "iau_constellation": {
+                "name": "Canis Major",
+                "wikipedia": "https://en.wikipedia.org/wiki/Canis%20Major",
+            },
             "wikipedia": {"extract": "Sirius is…", "url": "https://en…"},
         }
-        assert localized["ru"]["x-22137869"] == {"name": "Сириус"}
-        assert localized["de"]["x-22137869"] == {"aliases": ["Hundsstern"]}
+        assert localized["ru"]["x-22137869"] == {
+            "name": "Сириус",
+            "instance_of": [{"name": "двойная звезда"}],
+            "part_of": [hamal],
+            "iau_constellation": {"name": "Большой Пёс"},
+        }
+        assert localized["de"]["x-22137869"] == {
+            "aliases": ["Hundsstern"],
+            "part_of": [hamal],
+        }
+        # A link to a star with an entry takes the name of its page.
+        assert localized["zh"]["x-22137869"]["part_of"] == [{**hamal, "name": "婁宿三"}]
         # The same label as in English, or a catalogue number, is no name.
-        assert "x-22137869" not in localized["fr"]
-        assert "x-22137869" not in localized["ja"]
+        assert "name" not in localized["fr"]["x-22137869"]
+        assert "name" not in localized["ja"]["x-22137869"]
         assert localized["zh"]["x-5"] == {"name": "婁宿三"}
         assert "x-5" not in localized["fr"]
         # No entity downloaded: a global entry only.
@@ -212,6 +313,7 @@ class TestOnlyStarObjects:
             lambda: fake_entities({"Q9": entity({"en": "Vega", "ru": "Вега"})}),
         )
         monkeypatch.setattr(stars, "load_wikipedia_summaries_for_qid", lambda qid: {})
+        monkeypatch.setattr(stars, "collect_star_images", lambda qid: None)
         stars.export_star_objects_only(out)
         assert (
             bundle(out / "objects" / "__global__" / "0.json.gz")["x-7"]["name"]

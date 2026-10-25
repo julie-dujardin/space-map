@@ -28,6 +28,7 @@ _OBJECT_ID_PREFIX_TO_LETTER: dict[str, str] = {
     "norad_satcat-": "e",
     "probe-": "p",
     "extra-": "u",
+    "x-": "x",
 }
 
 

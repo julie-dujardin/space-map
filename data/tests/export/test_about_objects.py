@@ -195,9 +195,19 @@ class TestObjectRows:
             "spkid-2": {"id": "spkid-2", "type": "asteroid_tno"},
             "norad_satcat-1": {"id": "norad_satcat-1", "type": "spacecraft"},
             "probe-1": {"id": "probe-1", "type": "spacecraft"},
+            "naif-10": {"id": "naif-10", "type": "star"},
+            "x-7": {
+                "id": "x-7",
+                "type": "star",
+                "cross_refs": {"wikidata_qid": "Q9"},
+                "images": [{}],
+            },
         }
         localized = {
-            "en": {"spkid-1": {"name": "x", "description": "asteroid"}},
+            "en": {
+                "spkid-1": {"name": "x", "description": "asteroid"},
+                "x-7": {"wikipedia": {"url": "https://en.wikipedia.org/wiki/Vega"}},
+            },
             "fr": {
                 "spkid-2": {"name": "y", "instance_of": [{"name": "TNO"}]},
                 "naif-699": {
@@ -230,6 +240,8 @@ class TestObjectRows:
 
     def test_rows_in_page_order(self, rows):
         assert list(rows) == [
+            "star",
+            "extrasolar_star",
             "planet",
             "asteroid",
             "ring_system",
@@ -240,6 +252,8 @@ class TestObjectRows:
 
     def test_counts(self, rows):
         assert rows["asteroid"]["count"] == 2
+        assert rows["star"]["count"] == 1
+        assert rows["extrasolar_star"]["count"] == 1
         assert rows["ring_system"]["count"] == 2
         assert rows["ring_system"]["systems"] == 1
         assert rows["surface_feature"]["count"] == 2
@@ -259,6 +273,8 @@ class TestObjectRows:
         assert rows["surface_feature"]["localized"]["de"] == 1
 
     def test_sources(self, rows):
+        stars = {s["key"]: s["objects"] for s in rows["extrasolar_star"]["sources"]}
+        assert stars == {"wikidata": 1, "commons": 1, "wikipedia": 1}
         planet = {s["key"]: s["objects"] for s in rows["planet"]["sources"]}
         assert planet == {"naif": 1, "wikidata": 1, "wikipedia": 1}
         rings = {s["key"]: s["objects"] for s in rows["ring_system"]["sources"]}

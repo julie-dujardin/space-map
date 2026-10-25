@@ -1,9 +1,11 @@
 # Sitemap — `seo/sitemap.xml`
 
-A single, uncompressed [sitemap](https://www.sitemaps.org/protocol.html) listing
-the URLs worth surfacing to search engines. The frontend proxies it on the app
-host (`https://spacemap.co/sitemap.xml`) so the `<loc>` origin matches the
-sitemap's own, and `robots.txt` points crawlers at that path.
+An uncompressed [sitemap index](https://www.sitemaps.org/protocol.html) and its
+files `seo/sitemap-<n>.xml` (`n` from 1), which list the URLs worth surfacing
+to search engines, at most 45 k in each file. The frontend proxies them on the
+app host (`https://spacemap.co/sitemap.xml`, `https://spacemap.co/sitemap-1.xml`,
+…) so the `<loc>` origin matches the sitemap's own, and `robots.txt` points
+crawlers at the index. The index lists each file under its app URL.
 
 ## Selection rule
 
@@ -16,7 +18,10 @@ unique content. An object earns a URL when it is any of:
   famous asteroids/comets);
 - backed by a **Wikidata presence** at or above `SITELINKS_THRESHOLD`
   (`export/sitemap.py`, default 5 — at which ~99.9 % also carry a Wikipedia
-  description, keeping thin pages out).
+  description, keeping thin pages out);
+- a **star of the extrasolar catalogue with an entry** (`x-<id>`, see
+  [objects.md](objects.md)): its item has an article in one of the site's
+  languages. The registry's Metadata rows list them.
 
 An object the export leaves out has no page and is not listed. Every exported
 group is included.
@@ -26,7 +31,7 @@ Wikidata entity: 3.5 k of the 9 k features that have a QID, out of a 16 k
 gazetteer. The rest are anonymous craters whose page would be a name and a
 coordinate. A feature the gazetteer does not export (no position or no type
 code) is not listed: its page would answer 404. Together this yields ~42 k
-URLs; raise the threshold to trim the tail.
+URLs, and the stars ~14 k more.
 
 ## URL shape
 
@@ -37,7 +42,8 @@ name, read from the files the app reads it from. The paths follow
 `frontend/src/lib/state/page-name.ts`:
 
 - objects → `/<type>/<id>/<name>` — type letter from the id prefix
-  (`naif`→`b`, `spkid`→`s`, `norad_satcat`→`e`, `probe`→`p`, `extra`→`u`),
+  (`naif`→`b`, `spkid`→`s`, `norad_satcat`→`e`, `probe`→`p`, `extra`→`u`,
+  `x`→`x`),
   `<name>` is the name of the object's base-locale bundle entry, else that of
   its `__global__` entry;
 - groups → `/g/<slug>/<name>` — `<name>` is the name of the group's
@@ -61,8 +67,7 @@ short description, falling back to the public-domain IAU name-origin blurb —
 never the Wikipedia extract, which is CC BY-SA with no credit surface on a card.
 
 `lastmod` is the export date (uniform — the export is when content last
-changed). Above 45 k URLs the writer warns; splitting into a sitemap index
-would then also need matching chunk routes in the frontend proxy.
+changed). The URLs fill the files in order: objects, groups, features.
 
 ## Page records — `seo/pages.json.gz`
 

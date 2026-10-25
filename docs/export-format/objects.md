@@ -990,15 +990,42 @@ An object of the extrasolar catalogue ([extrasolar.md](extrasolar.md)) has an
 entry when its Metadata row has `object`: today, when a Wikidata item with an
 article in one of the site's languages names it. An item of a galaxy, a
 nebula, a cluster or another object that is not a star names none, unless
-Wikidata also gives it the type of a star or a star system. The id is `x-` and its
-extrasolar ID. The global entry holds `id`, `type` (`star`), `name` (the name
-of its Metadata row) and `cross_refs.wikidata_qid`; no orbit and no coverage,
-because its place is in its record. The localized entry holds `name` where
-the item's label in that language is a name and differs from its English
-label, `description` and `aliases` from Wikidata, and `wikipedia`. The entries
-hold no catalogue values: those stay in the record tiles, under their own
-terms. `space-map-export --only star-objects` rewrites them in the written
-bundles, with the bundle counts as they are.
+Wikidata also gives it the type of a star or a star system. The id is `x-` and
+its extrasolar ID. An entry holds metadata only: no orbit and no coverage,
+because its place is in its record, and no catalogue values, which stay in the
+record tiles under their own terms. Wikidata gives no quantity, spectral type
+or distance here.
+
+The global entry holds:
+
+- `id`, `type` (`star`), `name` (the name of its Metadata row) and
+  `cross_refs.wikidata_qid`;
+- `sitelinks_count`, the item's sitelinks on all Wikimedia projects, as for a
+  body;
+- `images`, from the item's P18 and the lead images of its Wikipedia
+  articles, chosen as a body's are (`space-map-ingest --targets images` keys
+  them by QID in `star_images.json`). An image that more than two
+  stars would share is left out: it shows a constellation or a cluster, most
+  often the constellation chart of a Wikipedia infobox;
+- `wikidata.discovery_date` (P575).
+
+The localized entry holds `name` where the item's label in that language is a
+name and differs from its English label, `description` and `aliases` from
+Wikidata, and `wikipedia`. It holds these references, as `EntityRef`:
+
+- `instance_of` (P31), without the generic types, the survey detections
+  ("infrared source") and the types of another kind of object ("exoplanet").
+  A type that is a spectral or luminosity class, or a direct subclass of one
+  ("G-type main-sequence star"), restates a catalogue value and is left out;
+- `named_after` (P138), `discoverers` (P61), `discovery_site` (P65) and
+  `part_of` (P361);
+- `iau_constellation` (P59), the IAU constellation the star lies in. It is not
+  `constellation`, which names a satellite constellation.
+
+A reference to a star that has an entry links to its page (`primary_type`
+`x`) under the name that page takes. `space-map-export --only star-objects`
+rewrites the entries in the written bundles, with the bundle counts as they
+are.
 
 `host_id` goes on an object with no `coverage` when the catalogue says what
 it sits at or orbits: the primary of an asteroid moon, the station a docked
@@ -1034,6 +1061,7 @@ interface LocalizedObjectData {
   asteroid_family?: EntityRef;
   operators?: EntityRef[];        // merged from Wikidata P137 + CelesTrak, deduped; links to /g/org-<slug>
   constellation?: EntityRef;      // CelesTrak-derived; ROCKET constellations link to /g/lv-<slug> (a spent stage's vehicle), others to /g/const-<slug>
+  iau_constellation?: EntityRef;  // extrasolar stars only: Wikidata P59, the IAU constellation the star lies in
   bus?: EntityRef;                // CelesTrak-derived; links to /g/bus-<slug>
   manufacturer?: EntityRef;       // CelesTrak-derived; links to /g/org-<slug>
   launch_vehicle?: EntityRef;     // Wikidata P375; links to the family /g/lv-<slug> for both family QIDs and known specific configurations (name stays the variant, e.g. "Atlas V 401"), else a plain Wikipedia ref

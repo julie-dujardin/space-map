@@ -1190,9 +1190,16 @@ class TestPruneImageBundles:
     """Orphan-bundle pruning against the union of the selection caches."""
 
     def _seed_caches(
-        self, objects=None, features=None, groups=None, rings=None, topics=None
+        self,
+        objects=None,
+        features=None,
+        groups=None,
+        rings=None,
+        topics=None,
+        stars=None,
     ):
         images_mod._OBJECT_IMAGES_CACHE = objects or {}
+        images_mod._STAR_IMAGES_CACHE = stars or {}
         images_mod._FEATURE_IMAGES_CACHE = features or {}
         images_mod._GROUP_IMAGES_CACHE = groups or {}
         images_mod._RING_IMAGES_CACHE = rings or {}
@@ -1232,6 +1239,13 @@ class TestPruneImageBundles:
         images_mod.prune_image_bundles()
         assert kept_ring.exists() and kept_topic.exists()
         assert not orphan.exists()
+
+    def test_star_pictures_are_kept(self, layout):
+        kept = self._make_bundle(layout, "Sirius.jpg")
+        orphan = self._make_bundle(layout, "orphan.jpg")
+        self._seed_caches(stars={"Q3409": [{"file": "Sirius.jpg", "kind": "photo"}]})
+        images_mod.prune_image_bundles()
+        assert kept.exists() and not orphan.exists()
 
     def test_reference_is_canonicalized(self, layout):
         # Cache entries may carry the space form; bundle dirs use underscores.

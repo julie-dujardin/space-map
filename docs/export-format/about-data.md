@@ -38,7 +38,8 @@ interface AboutData {
 }
 
 interface ObjectKind {
-  id: string;                      // "star" | "planet" | "dwarf_planet" | "moon" | "asteroid" | "comet" | "ring_system" | "surface_feature" | "satellite" | "probe" | "debris" | "barycenter", then other kinds by name
+  id: string;                      // "star" | "extrasolar_star" | "planet" | "dwarf_planet" | "moon" | "asteroid" | "comet" | "ring_system" | "surface_feature" | "satellite" | "probe" | "debris" | "barycenter", then other kinds by name
+                                   // "extrasolar_star" counts the object entries of the extrasolar catalogue (`x-<id>`), not its stars: the catalogue holds many more
   count: number;
   size_bytes: number;              // its object entries, global and localized, and its part of the position files
   position_bytes?: number;         // the part of `size_bytes` in position files

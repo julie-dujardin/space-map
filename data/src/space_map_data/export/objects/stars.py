@@ -1,9 +1,10 @@
 """Object entries of the extrasolar objects with a Wikidata item.
 
 They live in the object bundles, under `x-<id>` like the `/x/<id>` pages, so
-a star page reads its text as a body page does. They hold Wikidata and
-Wikipedia text only, no catalogue values: the record tiles of the extrasolar
-export hold those, under their own terms.
+a star page reads its text as a body page does. They hold metadata only:
+names, descriptions, references and discovery dates from Wikidata, Wikipedia
+extracts and Commons images. The record tiles of the extrasolar export hold
+the catalogue values, under their own terms.
 
 The registry's Metadata rows say which IDs have an entry (`object`), and give
 their English name and QID.
@@ -16,19 +17,32 @@ from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 import orjson
 import pyarrow.parquet as pq
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.images import collect_star_images
 from space_map_data.export.in_place import refresh_versions
+from space_map_data.export.objects.wikidata_claims import (
+    STAR_ENTITY_REF_CLAIMS,
+    STAR_GLOBAL_CLAIMS,
+    extract_claims,
+    make_body_entityref,
+    resolve_entity_ref,
+)
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_summaries_for_qid,
 )
 from space_map_data.export.objects.writer import ChunkObjectData, hash_bucket
 from space_map_data.export.sidecar_io import write_atomic
-from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
+from space_map_data.export.wikidata import (
+    WikidataEntity,
+    WikidataEntityCache,
+    active_statements,
+)
 from space_map_data.extrasolar.registry import NoRegistry, Registry
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA, usable_name
 from space_map_data.extrasolar.tables import METADATA
@@ -39,12 +53,55 @@ logger = logging.getLogger(__name__)
 PREFIX = "x-"
 TYPE = "star"
 
+# Spectral and luminosity classes. A star type that is one of them, or a
+# direct subclass of one, restates a catalogue value, so the entry leaves it
+# out.
+SPECTRAL_CLASSES = frozenset(
+    {
+        "Q1222876",  # O-type star
+        "Q14745279",  # B-type star
+        "Q14745284",  # A-type star
+        "Q995268",  # F-type star
+        "Q1007122",  # G-type star
+        "Q1103085",  # K-type star
+        "Q1161161",  # M-type star
+        "Q244393",  # dwarf star
+        "Q6220",  # subdwarf star
+        "Q6227",  # subgiant
+        "Q5875",  # giant star
+        "Q50081",  # red giant
+        "Q3929897",  # red giant branch
+        "Q50089",  # asymptotic giant branch
+        "Q5881",  # bright giant
+        "Q193599",  # supergiant
+        "Q231982",  # hypergiant
+    }
+)
+
 
 @dataclass(frozen=True)
 class StarObject:
     id: int
     name: str
     qid: str
+
+
+class _Page(NamedTuple):
+    """The page of a star: its entry id, its global name and its names by
+    language where they differ."""
+
+    obj_id: str
+    name: str
+    names: dict[str, str]
+
+
+class _Read(NamedTuple):
+    """What the entries of a star keep of its entity."""
+
+    claims: dict
+    descriptions: dict[str, str]
+    aliases: dict[str, list[str]]
+    sitelinks: int | None
 
 
 def _read_part(path: Path) -> list[StarObject]:
@@ -87,24 +144,134 @@ def available_star_objects(root: Path = REGISTRY_ROOT) -> list[StarObject]:
         return []
 
 
+def _page_name(entity: WikidataEntity | None, lang: str) -> str | None:
+    """The name the star's page takes in ``lang`` when it differs from the
+    global one: a label that repeats the English one, or a catalogue number,
+    leaves the global name in place."""
+    if entity is None or lang == "en":
+        return None
+    labels = entity["labels"]
+    name = usable_name(labels.get(lang))
+    return name if name and name != (labels.get("en") or labels.get("mul")) else None
+
+
+def _restates_spectral_class(qid: str, entities: WikidataEntityCache) -> bool:
+    if qid in SPECTRAL_CLASSES:
+        return True
+    entity = entities.get_referenced(qid)
+    if entity is None:
+        return False
+    parents = {
+        value["id"]
+        for statement in active_statements(entity["claims"], "P279")
+        if isinstance(
+            value := statement["mainsnak"].get("datavalue", {}).get("value"), dict
+        )
+    }
+    return not parents.isdisjoint(SPECTRAL_CLASSES)
+
+
+def _ref(
+    qid: str, lang: str, entities: WikidataEntityCache, pages: Mapping[str, _Page]
+) -> dict | None:
+    """The entity reference to ``qid``. A star with an entry links to its page,
+    under the name that page takes."""
+    page = pages.get(qid)
+    if page is None:
+        ref = resolve_entity_ref(qid, lang, entities)
+        return ref.to_dict() if ref else None
+    return make_body_entityref(page.obj_id, page.names.get(lang) or page.name).to_dict()
+
+
+def _claims(
+    star: StarObject, entity: WikidataEntity, entities: WikidataEntityCache
+) -> dict:
+    claims = extract_claims(
+        entity["claims"],
+        star.qid,
+        entities,
+        global_claims=STAR_GLOBAL_CLAIMS,
+        entity_ref_claims=STAR_ENTITY_REF_CLAIMS,
+        route_temperature=False,
+    )
+    types = [
+        qid
+        for qid in claims.pop("instance_of", ())
+        if not _restates_spectral_class(qid, entities)
+    ]
+    if types:
+        claims["instance_of"] = types
+    return claims
+
+
+def _read(
+    star: StarObject,
+    entity: WikidataEntity | None,
+    sitelinks: int | None,
+    entities: WikidataEntityCache,
+) -> _Read:
+    if entity is None:
+        return _Read({}, {}, {}, sitelinks)
+    return _Read(
+        _claims(star, entity, entities),
+        {
+            lang: text
+            for lang in LANGUAGES
+            if (text := entity["descriptions"].get(lang))
+        },
+        {lang: names for lang in LANGUAGES if (names := entity["aliases"].get(lang))},
+        sitelinks,
+    )
+
+
 def _localized(
-    entity: WikidataEntity | None, summary: WikipediaSummary | None, lang: str
+    star: StarObject,
+    read: _Read,
+    summary: WikipediaSummary | None,
+    lang: str,
+    entities: WikidataEntityCache,
+    pages: Mapping[str, _Page],
 ) -> dict:
     data: dict = {}
-    if entity is not None:
-        labels = entity["labels"]
-        english = labels.get("en") or labels.get("mul")
-        # A label that repeats the English one, or a catalogue number, leaves
-        # the global name in place: the IAU name or our designation.
-        name = usable_name(labels.get(lang))
-        if lang != "en" and name and name != english:
-            data["name"] = name
-        if desc := entity["descriptions"].get(lang):
-            data["description"] = desc
-        if aliases := entity["aliases"].get(lang):
-            data["aliases"] = aliases
+    if name := pages[star.qid].names.get(lang):
+        data["name"] = name
+    if desc := read.descriptions.get(lang):
+        data["description"] = desc
+    if aliases := read.aliases.get(lang):
+        data["aliases"] = aliases
+    claims = read.claims
+    for claim in STAR_ENTITY_REF_CLAIMS:
+        value = claims.get(claim.key)
+        if value is None:
+            continue
+        qids = value if claim.multiple else [value]
+        refs = [
+            ref
+            for qid in qids
+            if qid != star.qid and (ref := _ref(qid, lang, entities, pages))
+        ]
+        if refs:
+            data[claim.key] = refs if claim.multiple else refs[0]
     if summary:
         data["wikipedia"] = summary.to_dict()
+    return data
+
+
+def _global(obj_id: str, star: StarObject, read: _Read) -> dict:
+    data: dict = {
+        "id": obj_id,
+        "type": TYPE,
+        "name": star.name,
+        "cross_refs": {"wikidata_qid": star.qid},
+    }
+    if read.sitelinks:
+        data["sitelinks_count"] = read.sitelinks
+    if images := collect_star_images(star.qid):
+        data["images"] = images
+    claims = read.claims
+    wikidata = {c.key: claims[c.key] for c in STAR_GLOBAL_CLAIMS if c.key in claims}
+    if wikidata:
+        data["wikidata"] = wikidata
     return data
 
 
@@ -112,28 +279,38 @@ def star_entries(
     stars: list[StarObject], entities: WikidataEntityCache
 ) -> tuple[dict[str, dict], dict[str, dict[str, dict]]]:
     """The global entries and the localized ones by language."""
-    global_data: dict[str, dict] = {}
-    localized: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
+    # References to a star with an entry link to its page, so every page is
+    # known before the first entry.
+    pages: dict[str, _Page] = {}
+    reads: dict[str, _Read] = {}
     missing = 0
     for star in stars:
-        obj_id = f"{PREFIX}{star.id}"
-        global_data[obj_id] = {
-            "id": obj_id,
-            "type": TYPE,
-            "name": star.name,
-            "cross_refs": {"wikidata_qid": star.qid},
-        }
-        entity = entities.get_star_entity(star.qid)
+        found = entities.get_star_entity(star.qid)
+        entity = found.entity if found else None
         missing += entity is None
-        summaries = load_wikipedia_summaries_for_qid(star.qid)
-        for lang in LANGUAGES:
-            if block := _localized(entity, summaries.get(lang), lang):
-                localized[lang][obj_id] = block
+        names = {lang: name for lang in LANGUAGES if (name := _page_name(entity, lang))}
+        pages[star.qid] = _Page(f"{PREFIX}{star.id}", star.name, names)
+        reads[star.qid] = _read(
+            star, entity, found.sitelinks if found else None, entities
+        )
     if missing:
         logger.warning("%d star items have no downloaded entity", missing)
+
+    global_data: dict[str, dict] = {}
+    localized: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
+    for star in stars:
+        obj_id = pages[star.qid].obj_id
+        read = reads[star.qid]
+        global_data[obj_id] = _global(obj_id, star, read)
+        summaries = load_wikipedia_summaries_for_qid(star.qid)
+        for lang in LANGUAGES:
+            block = _localized(star, read, summaries.get(lang), lang, entities, pages)
+            if block:
+                localized[lang][obj_id] = block
     logger.info(
-        "Star entries: %d, localized: %s",
+        "Star entries: %d, with images: %d, localized: %s",
         len(global_data),
+        sum("images" in entry for entry in global_data.values()),
         ", ".join(f"{lang}={len(localized[lang])}" for lang in LANGUAGES),
     )
     return global_data, localized

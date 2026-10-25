@@ -18,6 +18,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.nomenclature.writer import feature_bucket_key, feature_label
+from space_map_data.export.objects.stars import available_star_objects
 from space_map_data.export.sitemap import SitemapPages, bundle_entries, write_sitemap
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
@@ -288,6 +289,7 @@ def export_seo_only(engine: Engine) -> None:
             wikidata_entities,
             metadata["object_bundles"],
             metadata["group_bundles"],
+            available_star_objects(),
         )
         write_seo_pages(
             out_dir,
