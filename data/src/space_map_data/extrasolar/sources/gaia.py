@@ -359,12 +359,35 @@ class GaiaReader:
         xgboost = pq.read_table(
             self.xgboost_path(path), columns=["source_id", *XGBOOST_COLUMNS]
         )
+        joined = [table.part(path) for table in self.joined]
+        return self.pass_rows(stars, fidelity, parameters, xgboost, joined, orbits)
+
+    def pass_rows(
+        self,
+        stars: pa.Table,
+        fidelity: pa.Table,
+        parameters: pa.Table,
+        xgboost: pa.Table,
+        joined: list[pa.Table],
+        orbits: Orbits,
+    ) -> pa.Table:
+        """Pass rows of `stars` with the companion rows and the orbits joined.
+
+        `joined` holds the rows of each table of `self.joined`, in that order.
+        Gaia rows that are not in the chunks also come through here, so they
+        get the same columns.
+        """
         stars = join_rows(stars, fidelity, FIDELITY_COLUMNS)
         stars = calibrate_gspspec(join_rows(stars, parameters, ASTROPHYSICAL_COLUMNS))
         stars = join_rows(stars, xgboost, XGBOOST_COLUMNS)
-        for table in self.joined:
-            stars = join_rows(stars, table.part(path), table.columns)
+        for table, rows in zip(self.joined, joined, strict=True):
+            stars = join_rows(stars, rows, table.columns)
         return engine_rows(orbits.join(stars), self.best)
+
+    def read_orbits(self) -> Orbits:
+        if self.orbits is None:
+            self.orbits = Orbits.read(self.orbit_dir, self.masses_dir)
+        return self.orbits
 
     def astrophysical_path(self, path: Path) -> Path:
         name = path.name.replace(
@@ -392,9 +415,7 @@ class GaiaReader:
                     f"{len(missing)} Gaia chunks have no {kind} chunk, first"
                     f" {companion(missing[0])}"
                 )
-        if self.orbits is None:
-            self.orbits = Orbits.read(self.orbit_dir, self.masses_dir)
-        orbits = self.orbits
+        orbits = self.read_orbits()
         joined = [table.columns[0] for table in self.joined]
         counts = dict.fromkeys(
             (
