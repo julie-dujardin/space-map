@@ -57,6 +57,7 @@ class WikidataEntityCache:
         wikidata_dir = SOURCES_METADATA_DIR / "wikidata"
         self._entities_dir = wikidata_dir / "objects"
         self._nomenclature_dir = wikidata_dir / "nomenclature"
+        self._stars_dir = wikidata_dir / "stars"
         self._referenced_dir = wikidata_dir / "referenced"
         self._units: dict[str, WikidataEntity] = {}
         self._properties: dict[str, WikidataEntity] = {}
@@ -122,6 +123,14 @@ class WikidataEntityCache:
             return None
         return self._load(qid, self._nomenclature_dir)
 
+    def get_star_entity(self, qid: str | None) -> WikidataEntity | None:
+        """Look up an extrasolar object's own Wikidata entity (from stars/)."""
+        if not qid:
+            return None
+        # Each star is read once, so its entity stays out of the LRU: 14k of
+        # them would push out the object entities and hold ~4 GB.
+        return _read_entity(self._stars_dir, qid)
+
     def get_referenced(self, qid: str | None) -> WikidataEntity | None:
         """Look up a referenced entity from claims (from referenced/ or units)."""
         if not qid:
@@ -136,20 +145,23 @@ class WikidataEntityCache:
             if key in self._loaded:
                 self._loaded.move_to_end(key)
                 return self._loaded[key]
-        path = local(directory / f"{qid}.json")
-        if not path.exists():
-            entity = None
-        else:
-            try:
-                raw = orjson.loads(path.read_bytes())
-            except (orjson.JSONDecodeError, OSError) as exc:
-                raise ValueError(f"Failed to load {path}") from exc
-            entity = _parse_entity(raw)
+        entity = _read_entity(directory, qid)
         with self._lock:
             self._loaded[key] = entity
             if len(self._loaded) > _ENTITY_LRU_SIZE:
                 self._loaded.popitem(last=False)
         return entity
+
+
+def _read_entity(directory: Path, qid: str) -> WikidataEntity | None:
+    path = local(directory / f"{qid}.json")
+    if not path.exists():
+        return None
+    try:
+        raw = orjson.loads(path.read_bytes())
+    except (orjson.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Failed to load {path}") from exc
+    return _parse_entity(raw)
 
 
 def _parse_entity(entity: dict) -> WikidataEntity | None:

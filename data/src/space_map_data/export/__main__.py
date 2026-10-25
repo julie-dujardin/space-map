@@ -8,6 +8,7 @@ import tomllib
 from space_map_data.export.atmospheres import export_atmospheres_only
 from space_map_data.export.groups import export_groups_only
 from space_map_data.export.nomenclature.quadrangles import export_quadrangles_only
+from space_map_data.export.objects.stars import export_star_objects_only
 from space_map_data.export.panoramas import export_panoramas_only
 from space_map_data.export.pipeline.orchestrator import export, export_probes_only
 
@@ -44,6 +45,7 @@ def cli():
             "about-data",
             "seo",
             "extrasolar",
+            "star-objects",
         ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
@@ -62,6 +64,9 @@ def cli():
     # It reads only the registry, so it needs no mirror and no DB.
     if args.only == "extrasolar":
         export_extrasolar_only(args.workers)
+        return
+    if args.only == "star-objects":
+        export_star_objects_only()
         return
     sync_all()
     if args.only == "atmospheres":

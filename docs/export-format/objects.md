@@ -984,6 +984,20 @@ Three cases get no `coverage` although the catalogue knows the object:
 A hand-authored object (`extra-<n>`) is in no position file. The frontend
 places it from its `orbit` block, so it carries `windows: [[null, null]]`.
 
+### Extrasolar objects (`x-<id>`)
+
+An object of the extrasolar catalogue ([extrasolar.md](extrasolar.md)) has an
+entry when its Metadata row has `object`: today, when a Wikidata item with an
+article in one of the site's languages names it. The id is `x-` and its
+extrasolar ID. The global entry holds `id`, `type` (`star`), `name` (the name
+of its Metadata row) and `cross_refs.wikidata_qid`; no orbit and no coverage,
+because its place is in its record. The localized entry holds `name` where
+the item's label in that language is a name and differs from its English
+label, `description` and `aliases` from Wikidata, and `wikipedia`. The entries
+hold no catalogue values: those stay in the record tiles, under their own
+terms. `space-map-export --only star-objects` rewrites them in the written
+bundles, with the bundle counts as they are.
+
 `host_id` goes on an object with no `coverage` when the catalogue says what
 it sits at or orbits: the primary of an asteroid moon, the station a docked
 craft is docked to (`norad_satcat-<orbit_center_docked_to>`), else the body

@@ -17,6 +17,7 @@ from astropy.time import Time
 from space_map_data.download.cds import README
 from space_map_data.download.providers.stars import gaia_source
 from space_map_data.download.providers.stars.wikidata_stars import StarItem
+from space_map_data.export.objects.stars import read_star_objects
 from space_map_data.extrasolar import stars
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.registry import Registry, RegistryError
@@ -723,6 +724,15 @@ class TestStarIngest:
 
         summary = stars.summary(registry, names.read_names(names_path), 6)
         assert "Wikidata items: 4 placed of 6 with a claim" in summary
+
+        found = sorted(read_star_objects(root), key=lambda star: star.qid)
+        assert [(star.qid, star.name) for star in found] == [
+            ("Q1", "Alpha"),
+            ("Q2", "Betelgeuse"),
+            ("Q3", "HD 300"),
+            ("Q4", "Teegarden's Star"),
+        ]
+        assert found[1].id == id_of("hip", "2007", 20)
 
     def test_a_partial_ingest_refuses_a_complete_registry(self, tmp_path):
         root = tmp_path / "root"

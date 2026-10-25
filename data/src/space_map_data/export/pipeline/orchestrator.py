@@ -67,6 +67,10 @@ from space_map_data.export.objects.probe_targets import (
 )
 from space_map_data.export.objects.rings import load_ring_moon_ids
 from space_map_data.export.objects.satellites import attach_featured_satellites
+from space_map_data.export.objects.stars import (
+    available_star_objects,
+    inject_star_objects,
+)
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_model_sources,
@@ -1074,12 +1078,15 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     """Run the full export pipeline."""
     t0 = time.monotonic()
     out_dir = EXPORT_DIR / "v1"
+    # A registry that an ingest holds stops the export here, before it removes
+    # anything.
+    star_objects = available_star_objects()
     with Session(engine) as session:
         precheck_tables(session)
         nomenclature_by_body = build_nomenclature(session)
         moon_hosts = _load_moon_hosts(session)
         moon_parent_names = _load_moon_parent_names(session, moon_hosts)
-        tier_b_fp = incremental.tier_b_fingerprint(session)
+        tier_b_fp = incremental.tier_b_fingerprint(session, star_objects)
     tier_b_meta = incremental.read_tier_b_meta(out_dir)
     tier_b_clean = (
         tier_b_fp["ingest_stamp"] is not None
@@ -1305,6 +1312,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Before the pointing config below, which addresses objects by id and
         # would report these as missing if they had not arrived yet.
         inject_manual_objects(agg.all_objects, wikidata_entities)
+        inject_star_objects(agg.all_objects, wikidata_entities, star_objects)
         # Hand-edited per-spacecraft pointing config; injects `pointing` into
         # matching object entries for the frontend's focused-model attitude.
         apply_orientation_config(agg.all_objects.global_data)

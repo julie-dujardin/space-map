@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import math
+from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
 )
+from space_map_data.export.objects.stars import StarObject
 from space_map_data.export.position.elements.celestrak_source import current_day_dirs
 from space_map_data.export.position.elements.sidecar import (
     build_earth_part_signature,
@@ -106,13 +108,14 @@ def kernels_digest() -> str:
     return _tree_digest(SOURCES_POSITION_DIR / "spice-kernels")
 
 
-def tier_b_fingerprint(session: Session) -> dict:
+def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> dict:
     """Inputs that feed bundles/labels/features/messages.
 
     `ingest_stamp` covers all DB content; the source stamps cover files the
     export reads directly from the downloads tree; `kernels` covers the
     attitude blocks injected into object bundles. `position_sources` is what
     the traverses add to bundles, so a route that only grows rewrites none.
+    `stars` covers the star entries, which each registry ingest links again.
     """
     return {
         "version": TIER_B_VERSION,
@@ -131,6 +134,7 @@ def tier_b_fingerprint(session: Session) -> dict:
             str(probe_id): works
             for probe_id, works in sorted(load_probe_position_sources().items())
         },
+        "stars": _digest([(star.id, star.qid, star.name) for star in star_objects]),
     }
 
 
