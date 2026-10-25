@@ -85,9 +85,17 @@ def _fields(kind: pa.DataType, *names: str) -> tuple[pa.Field, ...]:
     return tuple(pa.field(name, kind) for name in names)
 
 
-# The name is the IAU proper name, else the Wikidata label, else a Bayer or
-# Flamsteed designation, HD, HIP or Gaia DR3 number, in that order. Each
-# source gives its best one.
+# The exoplanet catalogues, in their source order.
+EXOPLANET_SOURCES = (
+    "nasa-exoplanet-archive",
+    "exoplanet-eu",
+    "open-exoplanet-catalogue",
+)
+
+# The name is the IAU proper name. A planet host then takes the name of its
+# exoplanet catalogues, since its planets' designations come from it. Other
+# stars take the Wikidata label, else a Bayer or Flamsteed designation, HD or
+# HIP number, else the Gaia DR3 number. Each source gives its best one.
 METADATA = TableDef(
     number=None,
     slug="metadata",
@@ -95,10 +103,12 @@ METADATA = TableDef(
         ColumnGroup(
             "name",
             (pa.field("name", pa.string()),),
-            ("iau-wgsn", "wikidata", "hipparcos-2007", "gaia-dr3"),
+            ("iau-wgsn", *EXOPLANET_SOURCES, "wikidata", "hipparcos-2007", "gaia-dr3"),
         ),
         ColumnGroup(
-            "class", (pa.field("class", pa.string()),), ("gaia-dr3", "hipparcos-2007")
+            "class",
+            (pa.field("class", pa.string()),),
+            ("gaia-dr3", "hipparcos-2007", *EXOPLANET_SOURCES),
         ),
     ),
     computed=(
@@ -147,7 +157,7 @@ POINT_SOURCE = TableDef(
                     "epoch",
                 ),
             ),
-            ("gaia-dr3", "hipparcos-2007"),
+            ("gaia-dr3", "hipparcos-2007", *EXOPLANET_SOURCES),
         ),
         ColumnGroup(
             "gaia_photometry",
@@ -385,6 +395,32 @@ POINT_SOURCE = TableDef(
             "fidelity",
             _fields(pa.float32(), "fidelity_v2", "norm_dg"),
             ("gaia-dr3",),
+        ),
+        # The star as an exoplanet catalogue gives it: its name there, the
+        # distance (pc) with its larger error, Teff (K), radius and mass
+        # (solar), metallicity (dex), log g (cgs), age (Gyr) and V, G and K
+        # magnitudes. The distance places a star without a 5σ parallax.
+        ColumnGroup(
+            "host_star",
+            (
+                pa.field("host_name", pa.string()),
+                *_fields(
+                    pa.float32(),
+                    "host_distance",
+                    "host_distance_error",
+                    "host_teff",
+                    "host_radius",
+                    "host_mass",
+                    "host_metallicity",
+                    "host_logg",
+                    "host_age",
+                    "host_v_mag",
+                    "host_g_mag",
+                    "host_k_mag",
+                ),
+                pa.field("host_spectral_type", pa.string()),
+            ),
+            EXOPLANET_SOURCES,
         ),
     ),
 )

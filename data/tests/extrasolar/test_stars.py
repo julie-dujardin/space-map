@@ -20,6 +20,7 @@ from space_map_data.download.providers.stars.wikidata_stars import StarItem
 from space_map_data.export.objects.stars import read_star_objects
 from space_map_data.extrasolar import stars
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
+from space_map_data.extrasolar.exoplanets.sources import SOURCES as EXOPLANET_SOURCES
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import (
     apogee,
@@ -198,10 +199,13 @@ class TestTables:
                     GAIA_DR3.name,
                     HIPPARCOS.name,
                     IAU_WGSN.name,
+                    *(source.name for source in EXOPLANET_SOURCES),
                     WIKIDATA.name,
                 }
+        # A planet host shows the name that its planets' designations use.
         assert METADATA.groups[0].sources == (
             IAU_WGSN.name,
+            *(source.name for source in EXOPLANET_SOURCES),
             WIKIDATA.name,
             HIPPARCOS.name,
             GAIA_DR3.name,
@@ -1100,6 +1104,19 @@ class TestIngestTarget:
     def test_naming_both_matches_once(self, monkeypatch, calls):
         self.cli(monkeypatch, "--targets", "skycultures", "extrasolar")
         assert calls["order"] == ["extrasolar", "skycultures"]
+
+    def test_a_named_backup_root(self, monkeypatch, calls, tmp_path):
+        root, backup = tmp_path / "root", tmp_path / "elsewhere"
+        self.cli(
+            monkeypatch,
+            "--targets",
+            "extrasolar",
+            "--registry-root",
+            str(root),
+            "--backup-root",
+            str(backup),
+        )
+        assert calls["stars"] == [(root, backup, None)]
 
     def test_all_leaves_extrasolar_out(self, monkeypatch, calls):
         self.cli(monkeypatch, "--targets", "all")
