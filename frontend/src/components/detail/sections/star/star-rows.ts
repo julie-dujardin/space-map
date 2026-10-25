@@ -57,6 +57,8 @@ const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
 };
 
 const SIMBAD = 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=';
+/** The links section shows the Wikidata item, from the object entry. */
+const LINKED_CATALOGUES = new Set(['wikidata']);
 
 function crossIdRow(x: CrossId): StarRowEntry {
 	const catalogue = CATALOGUES[`${x.catalogue}/${x.release}`];
@@ -223,7 +225,7 @@ export function starSections(record: ExtrasolarRecord): StarSection[] {
 			key: 'identifiers',
 			title: m.star_section_identifiers(),
 			rows: rows([
-				...meta.crossIds.map(crossIdRow),
+				...meta.crossIds.filter((x) => !LINKED_CATALOGUES.has(x.catalogue)).map(crossIdRow),
 				row(m.star_row_space_map_id(), String(record.id))
 			])
 		}

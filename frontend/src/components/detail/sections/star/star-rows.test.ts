@@ -78,6 +78,8 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			'parameters',
 			'quality'
 		]);
+		// Its Wikidata item is in the links section, not here.
+		expect(Object.keys(rows.identifiers)).toEqual(['Gaia DR3', 'HIP', 'IAU name', 'Space Map ID']);
 		expect(rows.position.Parallax).toBe('768.067 ± 0.050 mas');
 		expect(rows.position['Right ascension']).toMatch(/^14ʰ 29ᵐ 34\.\d+ˢ ± 0\.024 mas$/);
 		expect(rows.position['Radial velocity']).toBe('-21.94 ± 0.22 km/s');

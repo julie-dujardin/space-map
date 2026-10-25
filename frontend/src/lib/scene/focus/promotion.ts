@@ -264,9 +264,10 @@ export class PromotionRegistry {
 				hovered ? this.deps.hoveredBodyIds.add(id) : this.deps.hoveredBodyIds.delete(id),
 			halfPromoteIds
 		);
-		// Click-promoted minor bodies start unnamed; fire-and-forget the bundle fetch.
+		// A minor body starts unnamed and a star with its catalogue name: the
+		// bundle names them later.
 		const bo = bodyObjects.get(body.data.id);
-		if (bo && !body.data.name) loadBodyLabel(bo);
+		if (bo) void loadBodyLabel(bo);
 		// Mark the body's point-cloud group dirty so its dot disappears on the
 		// next `rebuildMinor` pass.
 		if (body.data.objectType === ObjectType.SPACECRAFT) {

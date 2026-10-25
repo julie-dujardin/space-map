@@ -13,7 +13,11 @@ import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { categoryLabel } from '$lib/format/group';
 import { groupSlugLabel } from './focusable';
-import { EXTRASOLAR_PREFIX, isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import {
+	EXTRASOLAR_PREFIX,
+	extrasolarObjectId,
+	isExtrasolarObjectId
+} from '$lib/fetch/extrasolar/ids';
 import { extrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 
 /** The Earth–Moon barycenter and Earth itself. */
@@ -77,10 +81,19 @@ export async function fetchPageName(subject: PageSubject): Promise<string> {
 		const features = await fetchBodyNomenclature(subject.bodyId);
 		return features.find((f) => f.featureId === subject.featureId)?.name ?? '';
 	}
-	// A star is named by its Metadata row, from the lookup the page made.
+	// A star is named by the object entry of its live ID, in the reader's
+	// language, else by its Metadata row.
 	if (isExtrasolarObjectId(subject.id)) {
 		const found = await extrasolarLookup.live(subject.id.slice(EXTRASOLAR_PREFIX.length));
-		return found.kind === 'live' ? (found.record.metadata.name ?? '') : '';
+		if (found.kind !== 'live') return '';
+		const meta = found.record.metadata;
+		const own = await fetchObjectDetail(
+			extrasolarObjectId(found.record.id),
+			meta.object,
+			undefined,
+			true
+		).catch(() => null);
+		return own?.localized?.name ?? meta.name ?? '';
 	}
 	const planetId = dominantPlanetId(subject.id);
 	// In the background: at boot these bundles would take the link from the

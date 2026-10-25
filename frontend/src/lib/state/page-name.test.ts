@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { groupPageName, objectPageName } from './page-name';
+import { describe, expect, it, vi } from 'vitest';
+import { fetchPageName, groupPageName, objectPageName } from './page-name';
+
+const { live, fetchObjectDetail } = vi.hoisted(() => ({
+	live: vi.fn(),
+	fetchObjectDetail: vi.fn()
+}));
+vi.mock('$lib/fetch/extrasolar/lookup', () => ({ extrasolarLookup: { live } }));
+vi.mock('$lib/fetch/objects/object-data', () => ({ fetchObjectDetail }));
 
 const pair = (global: string | undefined, localized?: string) => ({
 	global: global === undefined ? null : { name: global },
@@ -43,5 +50,23 @@ describe('groupPageName', () => {
 
 	it('falls back on the label of the slug', () => {
 		expect(groupPageName('class-APO', undefined)).toBe('Apollo');
+	});
+});
+
+describe('fetchPageName of a star', () => {
+	// The alias 9 names the live ID 7.
+	const vega = { kind: 'live', record: { id: 7, metadata: { name: 'Vega', object: true } } };
+
+	it('takes the name of the object entry of the live ID', async () => {
+		live.mockResolvedValue(vega);
+		fetchObjectDetail.mockResolvedValue({ global: null, localized: { name: 'Вега' } });
+		expect(await fetchPageName({ kind: 'body', id: 'x-9' })).toBe('Вега');
+		expect(fetchObjectDetail).toHaveBeenCalledWith('x-7', true, undefined, true);
+	});
+
+	it('takes the Metadata name when the object entry does not load', async () => {
+		live.mockResolvedValue(vega);
+		fetchObjectDetail.mockRejectedValue(new Error('503'));
+		expect(await fetchPageName({ kind: 'body', id: 'x-9' })).toBe('Vega');
 	});
 });

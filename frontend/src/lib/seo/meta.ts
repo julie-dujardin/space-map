@@ -784,27 +784,41 @@ function starDescription(name: string): string {
 }
 
 /**
- * A star page's meta from its Metadata row, or the page its alias goes to.
- * Null when the export has no live row for the ID: a 404. Throws when the
- * export cannot be read.
+ * A star page's meta from its Metadata row and its object entry, or the page
+ * its alias goes to. Null when the export has no live row for the ID: a 404.
+ * Throws when the extrasolar export cannot be read. Without the object bundles
+ * the Metadata row alone gives the meta.
  */
 export async function loadStarSeo(idText: string, url: URL): Promise<StarPage | null> {
 	const lookup = requestLookup(url);
 	const found = await lookup.live(idText, { data: false });
 	if (found.kind !== 'live') return null;
 	const { id, metadata } = found.record;
-	const name = metadata.name ?? '';
-	const href = absoluteHref(bodyHref(extrasolarObjectId(id), name), url);
+	const fileId = extrasolarObjectId(id);
 	if (String(id) !== idText) {
-		const to = new URL(href);
+		const to = new URL(absoluteHref(bodyHref(fileId, metadata.name ?? ''), url));
 		return { kind: 'alias', location: `${to.pathname}${url.search}` };
 	}
+	// A star with an object entry takes its name and the Wikidata description
+	// in the reader's language from it, as a body does.
+	const localized = metadata.object
+		? await exportObject(fileId, url).then(
+				([own]) => own.localized,
+				(e: unknown) => {
+					console.warn(`[seo] ${url.pathname}: object bundles not readable:`, e);
+					return null;
+				}
+			)
+		: null;
+	const name = localized?.name ?? metadata.name ?? '';
 	return {
 		kind: 'page',
 		seo: {
 			title: pageTitle(name),
-			description: starDescription(name),
-			canonical: href,
+			description: localized?.description
+				? ucfirst(cleanDescription(localized.description))
+				: starDescription(name),
+			canonical: absoluteHref(bodyHref(fileId, name), url),
 			ogType: 'article'
 		}
 	};

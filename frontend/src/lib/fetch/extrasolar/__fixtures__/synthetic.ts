@@ -55,9 +55,18 @@ interface MetaRow {
 	mask?: number;
 	alias?: number;
 	crossIds?: CrossId[];
+	object?: boolean;
 }
 
-function metadataTile(token: string, rows: MetaRow[], objectFile = true): Uint8Array {
+/** The column of the Metadata tile that says whether an ID has an object
+ *  entry: `object`, the `object_file` of deployed exports, or none. */
+export type ObjectColumn = 'object' | 'object_file' | 'none';
+
+function metadataTile(
+	token: string,
+	rows: MetaRow[],
+	objectColumn: ObjectColumn = 'object'
+): Uint8Array {
 	const sorted = [...rows].sort((a, b) => a.id - b.id);
 	const col = (
 		name: string,
@@ -76,7 +85,11 @@ function metadataTile(token: string, rows: MetaRow[], objectFile = true): Uint8A
 			col('class_source', 'dict', (r) => (r.alias ? null : 'gaia-dr3')),
 			col('cross_ids', 'cross_ids', (r) => (r.alias ? null : (r.crossIds ?? []))),
 			col('mask', 'uint32', (r) => r.mask ?? (r.alias ? 0 : 2)),
-			...(objectFile ? [col('object_file', 'string', () => null)] : []),
+			...(objectColumn === 'object'
+				? [col('object', 'bool', (r) => (r.alias ? null : (r.object ?? false)))]
+				: objectColumn === 'object_file'
+					? [col('object_file', 'string', () => null)]
+					: []),
 			col('alias_target', 'id', (r) => r.alias ?? null)
 		],
 		tileInfoBytes(0, 0, 0)
@@ -108,7 +121,7 @@ export interface SyntheticExport {
 }
 
 export function syntheticExport(
-	options: { metaDistribution?: string; objectFile?: boolean } = {}
+	options: { metaDistribution?: string; objectColumn?: ObjectColumn } = {}
 ): SyntheticExport {
 	const meta: ExtrasolarMetadata = {
 		format: 1,
@@ -132,13 +145,17 @@ export function syntheticExport(
 				{
 					id: STAR,
 					name: 'Test Star',
-					crossIds: [{ catalogue: 'gaia', release: 'dr3', catalogueId: '42' }]
+					crossIds: [
+						{ catalogue: 'gaia', release: 'dr3', catalogueId: '42' },
+						{ catalogue: 'wikidata', release: 'qid', catalogueId: 'Q86' }
+					],
+					object: true
 				},
 				{ id: SECOND },
 				{ id: ALIAS, alias: STAR },
 				{ id: WITH_TABLE_2, mask: 2 | 4 }
 			],
-			options.objectFile
+			options.objectColumn
 		),
 		'point-source/0/0.bin.gz': dataTile(TOKENS.points, 1, [
 			{ id: STAR, parallax: 379.21 },

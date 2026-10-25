@@ -15,7 +15,8 @@ import {
 	STAR,
 	WITH_TABLE_2,
 	idOf,
-	syntheticExport
+	syntheticExport,
+	type ObjectColumn
 } from './__fixtures__/synthetic';
 import { HAS_EXPORT, diskSource, own } from './__fixtures__/export';
 
@@ -27,7 +28,7 @@ interface Synthetic {
 
 /** The synthetic export behind a lookup source. */
 function synthetic(
-	options: { metaDistribution?: string; tokenOff?: string; objectFile?: boolean } = {}
+	options: { metaDistribution?: string; tokenOff?: string; objectColumn?: ObjectColumn } = {}
 ): Synthetic {
 	const { meta, payloads } = syntheticExport(options);
 	const files = Object.fromEntries(
@@ -63,9 +64,11 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		const { record } = result;
 		expect(record.metadata.name).toBe('Test Star');
 		expect(record.metadata.crossIds).toEqual([
-			{ catalogue: 'gaia', release: 'dr3', catalogueId: '42' }
+			{ catalogue: 'gaia', release: 'dr3', catalogueId: '42' },
+			{ catalogue: 'wikidata', release: 'qid', catalogueId: 'Q86' }
 		]);
 		expect(record.metadata.mask).toBe(2);
+		expect(record.metadata.object).toBe(true);
 		expect(record.home).toBe('point-source');
 		expect(homeRow(record)?.number('parallax')).toBeCloseTo(379.21, 4);
 		expect(parallaxDistancePc(homeRow(record)!)).toBeCloseTo(1000 / 379.21, 4);
@@ -137,9 +140,18 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		expect(source.reads.sort()).toEqual(['metadata/0/0.bin.gz', 'metadata/split.bin.gz']);
 	});
 
+	it('reads exports from before the object column', async () => {
+		const result = await new ExtrasolarLookup(
+			synthetic({ objectColumn: 'object_file' }).source
+		).lookup(STAR);
+		expect(result.kind === 'live' && result.record.metadata.object).toBe(false);
+	});
+
 	it('reads exports from before object files were added', async () => {
-		const result = await new ExtrasolarLookup(synthetic({ objectFile: false }).source).lookup(STAR);
-		expect(result.kind === 'live' && result.record.metadata.objectFile).toBeNull();
+		const result = await new ExtrasolarLookup(synthetic({ objectColumn: 'none' }).source).lookup(
+			STAR
+		);
+		expect(result.kind === 'live' && result.record.metadata.object).toBe(false);
 	});
 
 	it('keeps the split tables and tiles, and a result', async () => {

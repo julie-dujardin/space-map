@@ -16,7 +16,8 @@ import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 const SOURCE_NAMES: Record<string, () => string> = {
 	'gaia-dr3': m.source_gaia_dr3_name,
 	'hipparcos-2007': m.source_hipparcos_name,
-	'iau-wgsn': m.source_iau_wgsn_name
+	'iau-wgsn': m.source_iau_wgsn_name,
+	wikidata: m.source_wikidata_name
 };
 
 /** The catalogue a `*_source` column names, as a reader knows it. */

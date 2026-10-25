@@ -3,6 +3,7 @@
 
 import { untrack } from 'svelte';
 import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
+import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 import type { Focusable } from '$lib/state/focusable';
@@ -47,9 +48,23 @@ export class DetailLoad {
 				this.loading = false;
 				this.loadError = true;
 			};
-			// A star's records came with it.
+			// A star's records came with it; its text, when it has any, is an
+			// object entry. Without the text the records still show.
 			if (current.kind === 'star') {
-				this.loading = false;
+				if (!current.record.metadata.object) {
+					this.loading = false;
+					return;
+				}
+				fetchObjectDetail(extrasolarObjectId(current.record.id))
+					.catch((err: unknown) => {
+						console.warn(`[detail] no object entry for ${key}:`, err);
+						return null;
+					})
+					.then((result) => {
+						if (d.focusableId() !== key) return;
+						this.data = result;
+						this.loading = false;
+					});
 				return;
 			}
 			if (current.kind === 'feature') {

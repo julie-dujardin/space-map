@@ -38,7 +38,9 @@ export interface MetadataRow {
 	crossIds: CrossId[];
 	/** Bit n is set when data table n has a row for the ID. */
 	mask: number;
-	objectFile: string | null;
+	/** True when the site's object bundles hold an entry for the ID: its
+	 *  names in other languages, its Wikidata and Wikipedia text. */
+	object: boolean;
 	/** The live ID of an alias; null for a live ID. */
 	aliasTarget: number | null;
 }
@@ -192,7 +194,7 @@ export function readMetadataRow(c: Container, row: number): MetadataRow {
 		classSource: c.dict('class_source').get(row),
 		crossIds: c.crossIds('cross_ids').get(row) ?? [],
 		mask: c.uint32('mask')[row],
-		objectFile: c.has('object_file') ? c.strings('object_file').get(row) : null,
+		object: c.has('object') && c.isValid('object', row) && c.bool('object')[row] === 1,
 		aliasTarget: alias > 0 ? alias : null
 	};
 }

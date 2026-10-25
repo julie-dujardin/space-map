@@ -68,6 +68,12 @@ export function setLabelName(
 	syncLabelAria(bo);
 }
 
+/** Stars and planets carry the large label. */
+export function hasLargeLabel(body: PositionedBody): boolean {
+	const t = body.data.objectType;
+	return t === ObjectType.STAR || t === ObjectType.EXTRASOLAR || t === ObjectType.PLANET;
+}
+
 export function getLabelVariant(body: PositionedBody): LabelVariant {
 	const t = body.data.objectType;
 	if (

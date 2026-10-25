@@ -1,12 +1,12 @@
 import { MeshStandardMaterial, type Scene, type Texture, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
-import { ObjectType } from '$lib/types/objects';
+import { isExtrasolar } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
-import { pickTexture } from '$lib/host';
+import { getLocale, pickTexture } from '$lib/host';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { getLabelVariant, setLabelName } from '../../label/factory';
+import { getLabelVariant, hasLargeLabel, setLabelName } from '../../label/factory';
 import { syncAtmosphereEllipsoid } from '../surface/atmosphere';
 import { attachRingBundles } from '../surface/ring-attach';
 import { syncSunTransmittanceUniforms } from '../surface/sun-transmittance';
@@ -244,23 +244,26 @@ export async function loadBodyTexture(
 }
 
 /**
- * Fill in a click-promoted body's label name by lazily fetching its detail
- * bundle — e.g. a random asteroid swaps blank → Wikidata name a bit later.
- * No-op if already named, or labeled with `variant: 'none'` (debris, etc.).
+ * Give a promoted body's label the name from its detail bundle, after the body
+ * shows. An unnamed minor body gets its Wikidata name. A star replaces its
+ * catalogue name with its name in the reader's language. No-op for a label
+ * with `variant: 'none'` (debris, etc.).
  */
 export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
 	if (!bo.label) return;
 	const data = bo.body.data;
-	if (data.name) return;
-	const detail = await fetchObjectDetail(data.id, data.hasLocalized);
-	const resolved = detail.localized?.name ?? detail.global?.name;
+	const star = isExtrasolar(bo.body);
+	if (data.name && !star) return;
+	// A star's English name is its Metadata name, which its label has already.
+	if (star && getLocale() === 'en') return;
+	const detail = await fetchObjectDetail(data.id, data.hasLocalized).catch(() => null);
+	const resolved = detail?.localized?.name ?? detail?.global?.name;
 	if (!resolved) return;
-	// Don't clobber a name that arrived via another path (e.g. focus drawer
-	// already wrote it onto data.name) while the bundle was in flight.
-	data.name ??= resolved;
-	const variant = getLabelVariant(bo.body);
-	const isLarge = data.objectType === ObjectType.STAR || data.objectType === ObjectType.PLANET;
-	setLabelName(bo, resolved, variant, isLarge);
+	// A star's catalogue name gives way. A minor body keeps a name that another
+	// path wrote while the bundle was in flight.
+	if (star) data.name = resolved;
+	else data.name ??= resolved;
+	setLabelName(bo, resolved, getLabelVariant(bo.body), hasLargeLabel(bo.body));
 }
 
 /** Drop a body's loaded texture, reverting its material to base tint. No-op if nothing is loaded. */

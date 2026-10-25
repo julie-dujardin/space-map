@@ -26,6 +26,7 @@ import {
 import {
 	ALIAS,
 	RETIRED,
+	SECOND,
 	STAR,
 	syntheticExport
 } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
@@ -272,15 +273,34 @@ describe('catalogueSeo', () => {
 describe('loadStarSeo', () => {
 	const XS = 'https://xs.test';
 
-	/** The synthetic extrasolar export at XS; `broken` paths answer 503. */
+	/** The object entry of STAR, whose Metadata row has `object`. */
+	const STAR_ENTRY: Record<string, () => Response> = {
+		'/v1/metadata.json': () => Response.json(METADATA),
+		'/v1/objects/__global__/0.json.gz': () =>
+			gz({ [`x-${STAR}`]: { id: `x-${STAR}`, type: 'star', name: 'Test Star' } }),
+		'/v1/objects/en/0.json.gz': () =>
+			gz({ [`x-${STAR}`]: { name: 'Teststern', description: 'star near the Sun' } })
+	};
+
+	/** The synthetic extrasolar export at XS, and the object entries at DATA;
+	 *  `broken` paths answer 503, and all of DATA with `entryDown`. */
 	function stubStars(
-		options: { metaDistribution?: string; broken?: string[]; stale?: string } = {}
+		options: {
+			metaDistribution?: string;
+			broken?: string[];
+			stale?: string;
+			entryDown?: boolean;
+		} = {}
 	) {
 		const { meta, payloads } = syntheticExport(options);
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (input: string) => {
 				const url = new URL(input);
+				if (url.origin === DATA) {
+					if (options.entryDown) return new Response('', { status: 503 });
+					return STAR_ENTRY[url.pathname]?.() ?? new Response('', { status: 404 });
+				}
 				expect(url.origin).toBe(XS);
 				const path = url.pathname.replace(/^\/v1\/x\//, '');
 				if (options.broken?.includes(path)) return new Response('', { status: 503 });
@@ -298,6 +318,39 @@ describe('loadStarSeo', () => {
 
 	it('takes the title and canonical link from the Metadata row', async () => {
 		stubStars();
+		const page = await loadStarSeo(String(SECOND), request(`/x/${SECOND}`));
+		expect(page).toEqual({
+			kind: 'page',
+			seo: {
+				title: `Star ${SECOND} - Space Map`,
+				description: expect.stringContaining(`Star ${SECOND}`),
+				canonical: `${ORIGIN}/x/${SECOND}/Star%20${SECOND}`,
+				ogType: 'article'
+			}
+		});
+		// The Metadata table alone: no data table and no object entry is read.
+		const urls = vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)));
+		expect(urls.some((u) => u.pathname.includes('point-source'))).toBe(false);
+		expect(urls.some((u) => u.origin === DATA)).toBe(false);
+	});
+
+	it('takes the name and the Wikidata description of its object entry', async () => {
+		stubStars();
+		const page = await loadStarSeo(String(STAR), request(`/x/${STAR}`));
+		expect(page).toEqual({
+			kind: 'page',
+			seo: {
+				title: 'Teststern - Space Map',
+				description: 'Star near the Sun',
+				canonical: `${ORIGIN}/x/${STAR}/Teststern`,
+				ogType: 'article'
+			}
+		});
+	});
+
+	it('takes the Metadata row when its object entry does not load', async () => {
+		stubStars({ entryDown: true });
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const page = await loadStarSeo(String(STAR), request(`/x/${STAR}`));
 		expect(page).toEqual({
 			kind: 'page',
@@ -308,9 +361,6 @@ describe('loadStarSeo', () => {
 				ogType: 'article'
 			}
 		});
-		// The Metadata table alone: no data table is read for a title.
-		const paths = vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname);
-		expect(paths.some((p) => p.includes('point-source'))).toBe(false);
 	});
 
 	it("sends an alias to its live ID's page, query and all", async () => {

@@ -14,7 +14,8 @@ import {
  *  star there outshines the sky around it, and its neighbours stay a sky. */
 export const STAR_VIEW_DISTANCE = 1e4;
 
-/** The starfield draws extrasolar bodies at their catalogue positions. */
+/** The starfield draws extrasolar bodies at their catalogue positions. The
+ *  Metadata row says whether the object bundles hold a localized entry. */
 export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 	const home = homeRow(record);
 	const place = home ? starPlace(home) : null;
@@ -25,7 +26,7 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 		objectType: ObjectType.EXTRASOLAR,
 		parentId: '',
 		radiusKm: radiusKm ?? NaN,
-		hasLocalized: false,
+		hasLocalized: record.metadata.object,
 		a: 0,
 		e: 0,
 		i: 0,

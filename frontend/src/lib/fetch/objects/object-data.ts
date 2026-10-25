@@ -1412,8 +1412,11 @@ export function fetchObjectDetail(
 	lang = getLocale(),
 	background = false
 ): Promise<ObjectDetailData> {
-	// The extrasolar catalogue has no object bundles: its records are tiles.
-	if (isExtrasolarObjectId(fileId)) return Promise.resolve({ global: null, localized: null });
+	// A star's entry holds text and images only. A caller that skips the
+	// localized half wants orbits, shapes or maps, which no star has.
+	if (!fetchLocalized && isExtrasolarObjectId(fileId)) {
+		return Promise.resolve({ global: null, localized: null });
+	}
 	return fetchBundlePair<GlobalObjectData, LocalizedObjectData>(
 		OBJECT_BUNDLES,
 		fileId,

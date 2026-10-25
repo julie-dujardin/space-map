@@ -10,7 +10,7 @@ import {
 	type PositionedBody
 } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { createLabel, getLabelVariant } from '../../label/factory';
+import { createLabel, getLabelVariant, hasLargeLabel } from '../../label/factory';
 import { host } from '$lib/host';
 import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
@@ -144,7 +144,7 @@ export function buildMajorBodies(
 		}
 
 		const variant = getLabelVariant(body);
-		const isLarge = isStar || t === ObjectType.EXTRASOLAR || t === ObjectType.PLANET;
+		const isLarge = hasLargeLabel(body);
 		// Curated frontend list ∪ data-driven `m` flag for designation-only moons.
 		const isMinor = isHalfPromoted || MINOR_PROMOTED_IDS.has(id) || body.data.isMinor === true;
 		const label = createLabel(
