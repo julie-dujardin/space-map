@@ -243,8 +243,8 @@ export interface BodyObjects {
 	meshSubPixel?: boolean;
 	/** Frame slot this body moves on while hidden (see `updatePositions`). */
 	staggerSlot?: number;
-	/** Halo `visibility` as last written by `applyLabelDisplay`. */
-	haloHidden?: boolean;
+	/** Cached to avoid redundant halo style writes. */
+	haloShare?: number;
 	/** `loadingEl` display as last written by `applyLabelDisplay`. */
 	loadingShown?: boolean;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */

@@ -147,20 +147,16 @@ export function applyLabelDisplay(
 	bo: BodyObjects,
 	show: boolean,
 	isClose: boolean,
-	distToBody: number,
-	projScale: number,
+	screenR: number,
+	haloShare: number,
 	focusedBodyId: string | undefined
 ): boolean {
-	const { label, labelHalo, radiusScene } = bo;
+	const { label, labelHalo } = bo;
 	if (!label) return false;
 	const wasVisible = label.visible;
 
-	// noPhysical bodies have no disc — halo never yields to a sphere, label stays centered.
-	const screenR = !bo.noPhysical && radiusScene > 0 ? (radiusScene / distToBody) * projScale : 0;
 	const isFocused = bo.body.data.id === focusedBodyId;
-	// Hide the halo ring (and its accompanying trail) whenever the rendered
-	// sphere is at least the halo's size — the sphere itself substitutes for
-	// both indicators. Applies to any body type regardless of visibility tier.
+	// The resolved disc replaces the halo; its name stays on the limb.
 	const hideHaloRing = screenR >= HALO_RADIUS_PX;
 
 	if (!show && isClose) {
@@ -176,12 +172,12 @@ export function applyLabelDisplay(
 	// that limb has left the viewport the name would be off screen anyway (the body
 	// fills the view or sits past the right edge) — drop it.
 	if (hideHaloRing && bo.labelAnchorOffscreen) show = false;
-	if (bo.trail && hideHaloRing) bo.trail.visible = false;
 
 	label.visible = show;
-	if (labelHalo && bo.haloHidden !== hideHaloRing) {
-		labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
-		bo.haloHidden = hideHaloRing;
+	if (labelHalo && bo.haloShare !== haloShare) {
+		labelHalo.style.opacity = haloShare < 1 ? String(haloShare) : '';
+		labelHalo.style.visibility = haloShare === 0 ? 'hidden' : '';
+		bo.haloShare = haloShare;
 	}
 	// Loader DOM node only exists while a model is loading (managed by
 	// `setHaloLoading`). Show it exactly when the halo would be hidden by

@@ -5,8 +5,9 @@ interface FadeEntry {
 	frame: number;
 }
 
-/** Keeps label and orbit threshold changes independent of camera speed. */
+/** Keeps visibility threshold changes independent of camera speed. */
 export class VisibilityThresholdFades {
+	private readonly halos = new Map<string, FadeEntry>();
 	private readonly labels = new Map<string, FadeEntry>();
 	private readonly orbits = new Map<string, FadeEntry>();
 	private frame = 0;
@@ -15,8 +16,13 @@ export class VisibilityThresholdFades {
 	beginFrame(dtMs: number): void {
 		this.frame++;
 		this.dtMs = dtMs;
+		this.prune(this.halos);
 		this.prune(this.labels);
 		this.prune(this.orbits);
+	}
+
+	haloShare(id: string, shown: boolean): number {
+		return this.share(this.halos, id, shown);
 	}
 
 	labelShare(id: string, shown: boolean): number {
@@ -28,7 +34,7 @@ export class VisibilityThresholdFades {
 	}
 
 	get fading(): boolean {
-		return this.anyFading(this.labels) || this.anyFading(this.orbits);
+		return this.anyFading(this.halos) || this.anyFading(this.labels) || this.anyFading(this.orbits);
 	}
 
 	private share(entries: Map<string, FadeEntry>, id: string, shown: boolean): number {

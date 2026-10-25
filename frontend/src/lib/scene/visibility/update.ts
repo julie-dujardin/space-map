@@ -35,7 +35,7 @@ import {
 import { f64dist, type Vec3 } from '../animation/math';
 import { AU_SCALE } from '$lib/math/units';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
-import { starDiscShare, updateStarTransition } from '../objects/sun';
+import { updateStarTransition } from '../objects/sun';
 import { PC_SCENE } from '../starfield/tree';
 
 /** Orbit-centre distance (from focus) past which a trail counts as
@@ -366,20 +366,15 @@ export function updateBodyVisibility(
 		let zoneShare = 1;
 		let labelThresholdShare = 1;
 		let orbitThresholdShare = 1;
-		let starLabelShare = 1;
 
 		// Major bodies (planets/moons/dwarfs/stars) always take the mesh path's
 		// type-aware gates even when sizeless and meshless — else they'd skip the
 		// moon-label cap and show every halo unbounded.
 		if (isExtrasolar(body)) {
-			// Only the focused star can replace its point with a photosphere.
 			const visible = starShare > 0;
 			group.visible = visible;
-			if (isFocused && Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0) {
-				starLabelShare = 1 - starDiscShare((bo.radiusScene / dist) * projScale);
-			}
-			isClose = starLabelShare === 0;
-			showLabel = visible && !isClose;
+			isClose = false;
+			showLabel = visible;
 		} else if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
 			// Barycenters/Lagrange points: navigational aids, visible once built,
 			// except a barycenter sitting within a halo of its primary on screen —
@@ -461,11 +456,10 @@ export function updateBodyVisibility(
 				(bo.radiusScene / dist) * projScale
 			);
 			starIsPoint = discShare === 0;
-			starLabelShare = 1 - discShare;
 			(bo.starPoint.material as ShaderMaterial).uniforms.uDistancePc.value = dist / PC_SCENE;
 			group.visible = true;
-			isClose = discShare === 1;
-			showLabel = !isClose;
+			isClose = false;
+			showLabel = true;
 		}
 
 		// Minor-promoted halos: ring stays (label.visible left alone so the DOM
@@ -522,16 +516,22 @@ export function updateBodyVisibility(
 			}
 		}
 
-		if (applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId)) {
+		const screenR = !bo.noPhysical && bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
+		const haloShare = ctx.visibility.haloThresholdShare(body.data.id, screenR < HALO_RADIUS_PX);
+		if (trail) {
+			trail.userData.haloShare = haloShare;
+			if (haloShare === 0) trail.visible = false;
+		}
+		if (applyLabelDisplay(bo, showLabel, isClose, screenR, haloShare, focusedBodyId)) {
 			newlyShownLabel = true;
 		}
 		if (bo.label) {
 			fadeLabel(
 				bo.label,
 				bo.starPoint
-					? starLabelShare
+					? 1
 					: isExtrasolar(body)
-						? starShare * starLabelShare
+						? starShare
 						: systemShare * zoneShare * labelThresholdShare
 			);
 		}
@@ -620,12 +620,13 @@ export function updateBodyVisibility(
 		const share =
 			systemShare *
 			((line.userData.zoneShare as number | undefined) ?? 1) *
-			((line.userData.thresholdShare as number | undefined) ?? 1);
+			((line.userData.thresholdShare as number | undefined) ?? 1) *
+			((line.userData.haloShare as number | undefined) ?? 1);
 		mat.uniforms.uAlphaMultiplier.value = (isHovered ? 2 : isFocused ? 1.75 : 1.0) * share;
 		// Fade open trails (sats, probe buffers) to 0 at the tail; the floor is
 		// only for closed ellipses, whose far side would otherwise vanish.
 		const isClosed = line.userData.isOpenCurve === false;
-		mat.uniforms.uAlphaMin.value = isFocused && isClosed ? 0.15 : 0.0;
+		mat.uniforms.uAlphaMin.value = isFocused && isClosed ? 0.15 * share : 0.0;
 		mat.uniforms.uShowFull.value = isFocused ? 1.0 : 0.0;
 	}
 

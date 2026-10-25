@@ -164,6 +164,10 @@ export class VisibilityController {
 		this.thresholds.beginFrame(dtMs);
 	}
 
+	haloThresholdShare(id: string, shown: boolean): number {
+		return this.thresholds.haloShare(id, shown);
+	}
+
 	labelThresholdShare(id: string, shown: boolean): number {
 		return this.thresholds.labelShare(id, shown);
 	}
