@@ -264,3 +264,130 @@ describe('the identifiers of the metallicity catalogues', () => {
 		]);
 	});
 });
+
+/** A record with one Point source row of these columns and nothing else. */
+function synthetic(
+	values: Record<string, number | string | null>,
+	orbit?: ColumnSpec[]
+): ExtrasolarRecord {
+	return pointSourceRecord(
+		Object.entries(values).map(([name, value]) => ({
+			name,
+			type: typeof value === 'string' ? 'string' : 'float32',
+			values: [value]
+		})),
+		[],
+		orbit
+	);
+}
+
+describe("a star's FLAME values", () => {
+	const dwarf = {
+		parallax: 100,
+		parallax_error: 0.1,
+		phot_g_mean_mag: 5,
+		teff_gspphot: 5600,
+		radius_gspphot: 0.8,
+		radius_flame: 0.9,
+		radius_flame_lower: 0.88,
+		radius_flame_upper: 0.92,
+		lum_flame: 0.75,
+		mass_flame: 0.95,
+		mass_flame_lower: 0.9,
+		mass_flame_upper: 1.02,
+		age_flame: 4.5,
+		age_flame_lower: 2,
+		age_flame_upper: 8,
+		evolstage_flame: 250,
+		gravredshift_flame: 0.67,
+		bc_flame: -0.05,
+		flags_flame: '00'
+	};
+	const physical = (values: Record<string, number | string | null>) =>
+		Object.fromEntries(
+			(starSections(synthetic(values)).find((s) => s.key === 'physical')?.rows ?? []).map((r) => [
+				r.label,
+				plain(r.value)
+			])
+		);
+	const cards = (values: Record<string, number | string | null>) =>
+		starStats(synthetic(values))
+			.flat()
+			.map((s) => [s.label, plain(s.value)]);
+
+	it("shows a dwarf's whole fit, and draws its radius from FLAME", () => {
+		expect(physical(dwarf)).toEqual({
+			Radius: '0.900 ± 0.020 R☉',
+			Luminosity: '0.75 L☉',
+			Mass: '0.950 M☉ (0.900–1.020 M☉)',
+			Age: '4.5 Ga (2.0–8.0 Ga)',
+			'Evolutionary stage': 'Main sequence',
+			'Gravitational redshift': '0.67 km/s',
+			'Bolometric correction': '-0.05',
+			'Distance used': 'Parallax'
+		});
+		expect(cards(dwarf).slice(-2)).toEqual([
+			['Radius', '0.9 R☉'],
+			['Mass', '0.95 M☉']
+		]);
+		const parameters = starSections(synthetic(dwarf)).find((s) => s.key === 'parameters');
+		expect(parameters?.rows.find((r) => r.label === 'Radius from photometry')?.value).toBe(
+			'0.80 R☉'
+		);
+	});
+
+	it("drops a giant's mass, age and stage outside 1 to 2 solar masses", () => {
+		const giant = { ...dwarf, mass_flame: 3, evolstage_flame: 600, flags_flame: '10' };
+		expect(Object.keys(physical(giant))).toEqual([
+			'Radius',
+			'Luminosity',
+			'Gravitational redshift',
+			'Bolometric correction',
+			'Distance used'
+		]);
+		expect(cards(giant).at(-1)).toEqual(['Luminosity', '0.75 L☉']);
+		const kept = physical({ ...giant, mass_flame: 1.5, flags_flame: '11' });
+		expect(kept['Evolutionary stage']).toBe('Red giant');
+		expect(kept['Distance used']).toBe('Distance from photometry');
+	});
+
+	it.each([
+		[389, 'Main sequence'],
+		[390, 'Main-sequence turn-off'],
+		[420, 'Subgiant'],
+		[489, 'Subgiant'],
+		[490, 'Red giant']
+	])('names stage %i %s', (stage, name) => {
+		expect(physical({ ...dwarf, evolstage_flame: stage })['Evolutionary stage']).toBe(name);
+	});
+
+	it('shows no stage where FLAME fitted no mass', () => {
+		const noMass = { ...dwarf, mass_flame: null, age_flame: null, flags_flame: '20' };
+		expect(physical(noMass)['Evolutionary stage']).toBeUndefined();
+	});
+
+	it("names the single-star parallax where an orbit gives the star's own", () => {
+		const orbit: ColumnSpec[] = [
+			{ name: 'nss_solution_type', type: 'dict', values: ['Orbital'] },
+			{ name: 'parallax_nss', type: 'float32', values: [99] },
+			{ name: 'parallax_nss_error', type: 'float32', values: [0.5] }
+		];
+		const section = starSections(synthetic(dwarf, orbit)).find((s) => s.key === 'physical');
+		expect(section?.rows.find((r) => r.label === 'Distance used')?.value).toBe(
+			'Single-star parallax'
+		);
+	});
+
+	it('leaves the section out without FLAME, and the lone radius card by the even rule', () => {
+		const plainStar = Object.fromEntries(
+			Object.entries(dwarf).filter(([name]) => !name.includes('_flame'))
+		);
+		expect(physical(plainStar)).toEqual({});
+		expect(cards(plainStar).map(([label]) => label)).toEqual([
+			'Distance',
+			'Temperature',
+			'Apparent magnitude',
+			'Absolute magnitude'
+		]);
+	});
+});

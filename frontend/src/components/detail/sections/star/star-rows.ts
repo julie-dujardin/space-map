@@ -15,6 +15,7 @@ import {
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
 import { PC_AU } from '$lib/scene/starfield/tree';
+import { starRadiusSolar } from '$lib/scene/starfield/record';
 import {
 	fixed,
 	formatDeclination,
@@ -40,6 +41,9 @@ const SMALLEST_SHARE = 1e-4;
 const PC_LY = PC_AU / 63_241.077;
 /** Magnitudes per unit of a flux's relative error. */
 const MAG_PER_FLUX = 2.5 / Math.LN10;
+/** Gaia's validation trusts the FLAME mass of a giant only in this range, in
+ *  solar masses (Creevey et al. 2023, A&A 674, A26, Sect. 8). */
+const GIANT_MASS_RANGE: [number, number] = [1, 2];
 
 export interface StarRowEntry {
 	label: string;
@@ -93,7 +97,11 @@ function units() {
 		pc: m.symbol_parsec(),
 		kms: m.symbol_kilometre_per_second(),
 		dex: m.symbol_dex(),
-		perMicron: m.symbol_per_micrometre()
+		perMicron: m.symbol_per_micrometre(),
+		solarRadius: m.symbol_solar_radius(),
+		solarMass: m.symbol_solar_mass(),
+		solarLuminosity: m.symbol_solar_luminosity(),
+		gigayear: m.symbol_gigaannum()
 	};
 }
 
@@ -193,9 +201,64 @@ function spectralType(ps: TableRow): string | null {
 	return code ? ltrIsolate(code) : null;
 }
 
+/** FLAME's run on the GSP-Phot parameters (`''`) or on the GSP-Spec ones
+ *  (`'_spec'`), as its column names end. */
+type FlameRun = '' | '_spec';
+
+/** Whether FLAME fitted a mass that holds. The age and the stage come from the
+ *  same fit, so they stand or fall with it. A giant's first flag digit is 1. */
+function flameFitHolds(ps: TableRow, run: FlameRun = ''): boolean {
+	const mass = ps.number(`mass_flame${run}`);
+	if (mass === null) return false;
+	if (ps.text(`flags_flame${run}`)?.[0] !== '1') return true;
+	return mass >= GIANT_MASS_RANGE[0] && mass <= GIANT_MASS_RANGE[1];
+}
+
+/** FLAME's phase index on the BaSTI tracks (Creevey et al. 2023, Sect. 4.4).
+ *  Gaia flags nearly every star at 490 as a giant. */
+function evolutionaryStage(index: number): string {
+	if (index < 390) return m.star_stage_main_sequence();
+	if (index < 420) return m.star_stage_turn_off();
+	if (index < 490) return m.star_stage_subgiant();
+	return m.star_stage_giant();
+}
+
+/** The distance FLAME's luminosity rests on, from the second flag digit:
+ *  1 is GSP-Phot's distance, 0 and 2 the parallax of the single-star
+ *  solution, which the panel's own parallax is not when an orbit gives it.
+ *  The run on GSP-Spec has one digit only. */
+function flameDistance(ps: TableRow, run: FlameRun, used: DistanceParallax | null): string | null {
+	const digit = ps.text(`flags_flame${run}`)?.[1];
+	if (digit === '1') return m.star_row_distance_photometric();
+	if (digit !== '0' && digit !== '2') return null;
+	return used?.fromOrbit ? m.star_flame_single_star_parallax() : m.star_row_parallax();
+}
+
+function flameRows(
+	ps: TableRow,
+	used: DistanceParallax | null,
+	u: ReturnType<typeof units>,
+	run: FlameRun
+): (StarRowEntry | null)[] {
+	const column = (name: string) => `${name}_flame${run}`;
+	const fit = flameFitHolds(ps, run);
+	const stage = ps.number(column('evolstage'));
+	return [
+		bounded(ps, m.star_stat_radius(), column('radius'), u.solarRadius),
+		bounded(ps, m.star_stat_luminosity(), column('lum'), u.solarLuminosity),
+		fit ? bounded(ps, m.star_stat_mass(), column('mass'), u.solarMass) : null,
+		fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
+		fit && stage !== null ? row(m.star_row_evolutionary_stage(), evolutionaryStage(stage)) : null,
+		bounded(ps, m.star_row_gravitational_redshift(), column('gravredshift'), u.kms),
+		measured(ps, m.star_row_bolometric_correction(), column('bc'), null),
+		row(m.star_row_flame_distance(), flameDistance(ps, run, used))
+	];
+}
+
 /** The stat cards, two to a row: the distance and the temperature (or the
- *  spectral type), then both magnitudes. A card the record has no value for
- *  is left out, and an odd count loses its last. */
+ *  spectral type), both magnitudes, then the radius and the mass (or the
+ *  luminosity). A card the record has no value for is left out, and an odd
+ *  count loses its last. */
 export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const ps = pointSource(record);
 	if (!ps) return [];
@@ -235,6 +298,27 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 			label: m.star_stat_absolute_magnitude(),
 			value: fixed(apparent + 5 * Math.log10(used.parallax) - 10, 2),
 			note: gaiaG !== null ? 'G' : 'V'
+		});
+	}
+	// The radius the scene draws the star with.
+	const radius = starRadiusSolar(ps);
+	if (radius !== null) {
+		out.push({
+			label: m.star_stat_radius(),
+			value: joinParts({ value: sigFigures(radius), unit: m.symbol_solar_radius() })
+		});
+	}
+	const mass = flameFitHolds(ps) ? ps.number('mass_flame') : null;
+	const luminosity = ps.number('lum_flame');
+	if (mass !== null) {
+		out.push({
+			label: m.star_stat_mass(),
+			value: joinParts({ value: sigFigures(mass), unit: m.symbol_solar_mass() })
+		});
+	} else if (luminosity !== null) {
+		out.push({
+			label: m.star_stat_luminosity(),
+			value: joinParts({ value: sigFigures(luminosity), unit: m.symbol_solar_luminosity() })
 		});
 	}
 	const even = out.length % 2 === 1 && out.length > 1 ? out.slice(0, -1) : out;
@@ -377,6 +461,7 @@ function pointSourceSections(
 		bounded(ps, m.star_row_logg(), 'logg_gspphot'),
 		...metallicityRows(ps, orbit, u.dex),
 		bounded(ps, m.star_row_distance_photometric(), 'distance_gspphot', u.pc),
+		bounded(ps, m.star_row_radius_photometric(), 'radius_gspphot', u.solarRadius),
 		bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
 		bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),
 		bounded(ps, m.star_row_reddening(), 'ebpminrp_gspphot'),
@@ -452,6 +537,7 @@ function pointSourceSections(
 	return [
 		{ key: 'position', title: m.star_section_position(), rows: rows(position) },
 		{ key: 'brightness', title: m.star_section_brightness(), rows: rows(brightness) },
+		{ key: 'physical', title: m.physical_properties(), rows: rows(flameRows(ps, used, u, '')) },
 		{ key: 'parameters', title: m.star_section_parameters(), rows: rows(parameters) },
 		{ key: 'quality', title: m.star_section_quality(), rows: rows(quality) }
 	];

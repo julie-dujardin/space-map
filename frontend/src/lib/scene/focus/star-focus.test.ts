@@ -6,7 +6,10 @@ import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
 import { makeStarBody } from './star-focus';
 
-function record(radius: number | null | undefined): ExtrasolarRecord {
+function record(
+	radius: number | null | undefined,
+	extra: Record<string, number | null> = {}
+): ExtrasolarRecord {
 	const values: Record<string, number | null> = {
 		ra: 45,
 		dec: 30,
@@ -17,6 +20,7 @@ function record(radius: number | null | undefined): ExtrasolarRecord {
 		phot_rp_mean_mag: 5
 	};
 	if (radius !== undefined) values.radius_gspphot = radius;
+	Object.assign(values, extra);
 	const bytes = encode(
 		1,
 		'test',
@@ -74,6 +78,11 @@ describe('a focused stellar photosphere', () => {
 		expect(body.extrasolar?.teff).toBe(3000);
 		expect(body.extrasolar?.colour).toBe(3);
 		expect(body.extrasolar?.scene).not.toBeNull();
+	});
+
+	it("takes FLAME's radius before GSP-Phot's, and GSP-Phot's where FLAME has none", () => {
+		expect(makeStarBody(record(2, { radius_flame: 3 })).data.radiusKm).toBe(2_087_100);
+		expect(makeStarBody(record(2, { radius_flame: null })).data.radiusKm).toBe(1_391_400);
 	});
 
 	it.each([undefined, null, 0, -1, NaN, Infinity])(

@@ -20,9 +20,15 @@ export function positiveNumber(row: TableRow, name: string): number | null {
 	return value !== null && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-/** GSP-Phot radii are in nominal solar radii, not kilometres. */
+/** In nominal solar radii. FLAME's radius comes first: for most stars it
+ *  rests on the parallax, where GSP-Phot's always rests on its own
+ *  photometric distance. */
+export function starRadiusSolar(row: TableRow): number | null {
+	return positiveNumber(row, 'radius_flame') ?? positiveNumber(row, 'radius_gspphot');
+}
+
 export function starRadiusKm(row: TableRow): number | null {
-	const radius = positiveNumber(row, 'radius_gspphot');
+	const radius = starRadiusSolar(row);
 	return radius === null ? null : radius * SOLAR_RADIUS_KM;
 }
 
