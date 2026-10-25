@@ -7,21 +7,22 @@ Source files, in the extrasolar export (`space-map-extrasolar/v1/x/`):
     planets/{system}.json.gz    the hosts and planets of one system
 
 A host is an object document with the ID `x-<id>`, which the app routes as
-any star of the catalogue. A host with an entry already has main's object
-document under that ID, so it gets the planet facts on that document instead:
-a second document with the same ID replaces the first, and main's has the
-localized names, the image and the sitelinks. A planet is a document of its
-own kind, keyed as its page is: `x-<host>-b-<n>`.
+any star of the catalogue. A host with an entry has main's object document
+under that ID, with or without a description, so it gets the planet facts on
+that document instead: a second document with the same ID replaces the
+first, and main's has the localized names, the image and the sitelinks. A
+planet is a document of its own kind, keyed as its page is: `x-<host>-b-<n>`.
 """
 
 import gzip
 import json
 import logging
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from .base import extrasolar_pk, planet_pk
+from .objects import build_object_documents
 
 logger = logging.getLogger(__name__)
 
@@ -116,12 +117,15 @@ def _add_planet_facts(obj: dict[str, Any], host: dict[str, Any]) -> None:
 
 
 def build_extrasolar_documents(
-    extrasolar_dir: Path, objects: Iterable[dict[str, Any]] = ()
+    extrasolar_dir: Path, export_dir: Path | None = None
 ) -> Iterator[dict[str, Any]]:
-    """The object documents `objects`, then the host and planet documents of
-    the extrasolar export. A host in `objects` gets its planet facts there and
-    no document of its own."""
+    """The object documents of the main export in `export_dir`, then the host
+    and planet documents of the extrasolar export. A host with an object
+    document gets its planet facts there and no document of its own."""
     hosts, planets = _read_documents(extrasolar_dir)
+    objects = (
+        () if export_dir is None else build_object_documents(export_dir, set(hosts))
+    )
     merged = 0
     for doc in objects:
         host = hosts.pop(doc["id"], None)

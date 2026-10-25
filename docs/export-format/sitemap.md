@@ -19,9 +19,12 @@ unique content. An object earns a URL when it is any of:
 - backed by a **Wikidata presence** at or above `SITELINKS_THRESHOLD`
   (`export/sitemap.py`, default 5 — at which ~99.9 % also carry a Wikipedia
   description, keeping thin pages out);
-- a **star of the extrasolar catalogue with an entry** (`x-<id>`, see
-  [objects.md](objects.md)): its item has an article in one of the site's
-  languages. The registry's Metadata rows list them.
+- a **star of the extrasolar catalogue with a description** (`x-<id>`, see
+  [objects.md](objects.md)): its entry in the base locale has a Wikipedia
+  extract (`wikipedia.extract`). A crawler reads a page in the base locale, so
+  an extract in another language only does not list the star. The registry's
+  Metadata rows list the stars with an entry. The search index takes the
+  same stars, and the planet hosts with an entry.
 
 An object the export leaves out has no page and is not listed. Every exported
 group is included.
@@ -32,14 +35,16 @@ planet index gives the systems, and the system files the planets and the hosts'
 names ([extrasolar.md](extrasolar.md#planets-planets)). The site has a page only
 for what that export serves, so a registry change that the extrasolar export
 refused is not listed. No served export, or one without planets, gives no
-planet URLs. A host that is a star with an entry is listed once, as that star.
+planet URLs. A host that is a star with an entry is listed once, as that star,
+with or without a description, and gets its record.
 
 **Surface features** clear the same sitelink floor, counted on the feature's own
 Wikidata entity: 3.5 k of the 9 k features that have a QID, out of a 16 k
 gazetteer. The rest are anonymous craters whose page would be a name and a
 coordinate. A feature the gazetteer does not export (no position or no type
 code) is not listed: its page would answer 404. Together this yields ~42 k
-URLs, the stars ~14 k more, and the planets and their hosts ~13 k.
+URLs, the stars ~5 k more (of ~14 k star entries), and the planets and their
+hosts ~13 k.
 
 ## URL shape
 

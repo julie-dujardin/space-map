@@ -1,13 +1,15 @@
-"""Object entries of the extrasolar objects with a Wikidata item.
+"""Object entries of the extrasolar objects with a Wikidata item or a value
+from a paper.
 
 They live in the object bundles, under `x-<id>` like the `/x/<id>` pages, so
 a star page reads its text as a body page does. They hold metadata only:
 names, descriptions, references and discovery dates from Wikidata, Wikipedia
-extracts and Commons images. The record tiles of the extrasolar export hold
-the catalogue values, under their own terms.
+extracts, Commons images, and the works that the literature table cites for
+a value. The record tiles of the extrasolar export hold the values, under
+their own terms.
 
 The registry's Metadata rows say which IDs have an entry (`object`), and give
-their English name and QID.
+their English name, QID and literature key.
 """
 
 import gzip
@@ -22,7 +24,8 @@ from typing import NamedTuple
 import orjson
 import pyarrow.parquet as pq
 
-from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
+from space_map_data.constants.stars.literature import DISTANCES, REFERENCES, StarKey
 from space_map_data.export.images import collect_star_images
 from space_map_data.export.in_place import refresh_versions
 from space_map_data.export.objects.wikidata_claims import (
@@ -44,6 +47,7 @@ from space_map_data.export.wikidata import (
     active_statements,
 )
 from space_map_data.extrasolar.registry import NoRegistry, Registry
+from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA, usable_name
 from space_map_data.extrasolar.tables import METADATA
 from space_map_data.utils.paths import EXPORT_DIR, REGISTRY_ROOT
@@ -83,7 +87,10 @@ SPECTRAL_CLASSES = frozenset(
 class StarObject:
     id: int
     name: str
-    qid: str
+    # None for a star with no Wikidata item.
+    qid: str | None = None
+    # The key of the star in the literature table.
+    literature: StarKey | None = None
 
 
 class _Page(NamedTuple):
@@ -112,12 +119,23 @@ def _read_part(path: Path) -> list[StarObject]:
     for id_, name, cross_ids in zip(
         rows["id"].to_pylist(), rows["name"].to_pylist(), rows["cross_ids"].to_pylist()
     ):
-        qids = [
-            x["catalogue_id"] for x in cross_ids if x["catalogue"] == WIKIDATA.catalogue
-        ]
-        if len(qids) != 1:
-            raise ValueError(f"{path}: ID {id_} has the Wikidata items {qids}")
-        out.append(StarObject(id_, name, qids[0]))
+        ids = defaultdict(list)
+        for x in cross_ids:
+            ids[x["catalogue"]].append(x["catalogue_id"])
+        qids, keys = ids[WIKIDATA.catalogue], ids[LITERATURE.catalogue]
+        if len(qids) > 1 or len(keys) > 1 or not (qids or keys):
+            raise ValueError(
+                f"{path}: ID {id_} has the Wikidata items {qids} and the"
+                f" literature keys {keys}"
+            )
+        out.append(
+            StarObject(
+                id_,
+                name,
+                qids[0] if qids else None,
+                key_of(keys[0]) if keys else None,
+            )
+        )
     return out
 
 
@@ -183,12 +201,10 @@ def _ref(
     return make_body_entityref(page.obj_id, page.names.get(lang) or page.name).to_dict()
 
 
-def _claims(
-    star: StarObject, entity: WikidataEntity, entities: WikidataEntityCache
-) -> dict:
+def _claims(qid: str, entity: WikidataEntity, entities: WikidataEntityCache) -> dict:
     claims = extract_claims(
         entity["claims"],
-        star.qid,
+        qid,
         entities,
         global_claims=STAR_GLOBAL_CLAIMS,
         entity_ref_claims=STAR_ENTITY_REF_CLAIMS,
@@ -205,7 +221,7 @@ def _claims(
 
 
 def _read(
-    star: StarObject,
+    qid: str,
     entity: WikidataEntity | None,
     sitelinks: int | None,
     entities: WikidataEntityCache,
@@ -213,7 +229,7 @@ def _read(
     if entity is None:
         return _Read({}, {}, {}, sitelinks)
     return _Read(
-        _claims(star, entity, entities),
+        _claims(qid, entity, entities),
         {
             lang: text
             for lang in LANGUAGES
@@ -225,7 +241,7 @@ def _read(
 
 
 def _localized(
-    star: StarObject,
+    qid: str,
     read: _Read,
     summary: WikipediaSummary | None,
     lang: str,
@@ -233,7 +249,7 @@ def _localized(
     pages: Mapping[str, _Page],
 ) -> dict:
     data: dict = {}
-    if name := pages[star.qid].names.get(lang):
+    if name := pages[qid].names.get(lang):
         data["name"] = name
     if desc := read.descriptions.get(lang):
         data["description"] = desc
@@ -247,8 +263,8 @@ def _localized(
         qids = value if claim.multiple else [value]
         refs = [
             ref
-            for qid in qids
-            if qid != star.qid and (ref := _ref(qid, lang, entities, pages))
+            for other in qids
+            if other != qid and (ref := _ref(other, lang, entities, pages))
         ]
         if refs:
             data[claim.key] = refs if claim.multiple else refs[0]
@@ -257,21 +273,34 @@ def _localized(
     return data
 
 
+def star_references(star: StarObject) -> dict[str, list[dict]]:
+    """The works that the literature table cites for the values of the star,
+    by column group."""
+    distance = DISTANCES.get(star.literature) if star.literature else None
+    if distance is None:
+        return {}
+    return {"distance": [REFERENCES[distance.reference]._asdict()]}
+
+
+def has_description(localized: dict | None) -> bool:
+    """Whether a localized entry has a Wikipedia extract."""
+    return bool(((localized or {}).get("wikipedia") or {}).get("extract"))
+
+
 def _global(obj_id: str, star: StarObject, read: _Read) -> dict:
-    data: dict = {
-        "id": obj_id,
-        "type": TYPE,
-        "name": star.name,
-        "cross_refs": {"wikidata_qid": star.qid},
-    }
+    data: dict = {"id": obj_id, "type": TYPE, "name": star.name}
+    if star.qid:
+        data["cross_refs"] = {"wikidata_qid": star.qid}
     if read.sitelinks:
         data["sitelinks_count"] = read.sitelinks
-    if images := collect_star_images(star.qid):
+    if star.qid and (images := collect_star_images(star.qid)):
         data["images"] = images
     claims = read.claims
     wikidata = {c.key: claims[c.key] for c in STAR_GLOBAL_CLAIMS if c.key in claims}
     if wikidata:
         data["wikidata"] = wikidata
+    if references := star_references(star):
+        data["references"] = references
     return data
 
 
@@ -281,17 +310,22 @@ def star_entries(
     """The global entries and the localized ones by language."""
     # References to a star with an entry link to its page, so every page is
     # known before the first entry.
+    # Keyed by QID.
     pages: dict[str, _Page] = {}
-    reads: dict[str, _Read] = {}
+    # Keyed by ID.
+    reads: dict[int, _Read] = {}
     missing = 0
     for star in stars:
+        if star.qid is None:
+            reads[star.id] = _Read({}, {}, {}, None)
+            continue
         found = entities.get_star_entity(star.qid)
         entity = found.entity if found else None
         missing += entity is None
         names = {lang: name for lang in LANGUAGES if (name := _page_name(entity, lang))}
         pages[star.qid] = _Page(f"{PREFIX}{star.id}", star.name, names)
-        reads[star.qid] = _read(
-            star, entity, found.sitelinks if found else None, entities
+        reads[star.id] = _read(
+            star.qid, entity, found.sitelinks if found else None, entities
         )
     if missing:
         logger.warning("%d star items have no downloaded entity", missing)
@@ -299,18 +333,25 @@ def star_entries(
     global_data: dict[str, dict] = {}
     localized: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
     for star in stars:
-        obj_id = pages[star.qid].obj_id
-        read = reads[star.qid]
+        obj_id = f"{PREFIX}{star.id}"
+        read = reads[star.id]
         global_data[obj_id] = _global(obj_id, star, read)
+        if star.qid is None:
+            continue
         summaries = load_wikipedia_summaries_for_qid(star.qid)
         for lang in LANGUAGES:
-            block = _localized(star, read, summaries.get(lang), lang, entities, pages)
+            block = _localized(
+                star.qid, read, summaries.get(lang), lang, entities, pages
+            )
             if block:
                 localized[lang][obj_id] = block
     logger.info(
-        "Star entries: %d, with images: %d, localized: %s",
+        "Star entries: %d, with images: %d, with references: %d, described: %d,"
+        " localized: %s",
         len(global_data),
         sum("images" in entry for entry in global_data.values()),
+        sum("references" in entry for entry in global_data.values()),
+        sum(has_description(entry) for entry in localized[BASE_LOCALE].values()),
         ", ".join(f"{lang}={len(localized[lang])}" for lang in LANGUAGES),
     )
     return global_data, localized

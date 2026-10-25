@@ -988,18 +988,20 @@ places it from its `orbit` block, so it carries `windows: [[null, null]]`.
 
 An object of the extrasolar catalogue ([extrasolar.md](extrasolar.md)) has an
 entry when its Metadata row has `object`: today, when a Wikidata item with an
-article in one of the site's languages names it. An item of a galaxy, a
-nebula, a cluster or another object that is not a star names none, unless
-Wikidata also gives it the type of a star or a star system. The id is `x-` and
-its extrasolar ID. An entry holds metadata only: no orbit and no coverage,
-because its place is in its record, and no catalogue values, which stay in the
-record tiles under their own terms. Wikidata gives no quantity, spectral type
-or distance here.
+article in one of the site's languages names it, or when the literature table
+of the repo (`constants/stars/literature.py`) gives it a value. An item of a
+galaxy, a nebula, a cluster or another object that is not a star names none,
+unless Wikidata also gives it the type of a star or a star system. The id is
+`x-` and its extrasolar ID. An entry holds metadata only: no orbit and no
+coverage, because its place is in its record, and no catalogue values, which
+stay in the record tiles under their own terms. Wikidata gives no quantity,
+spectral type or distance here. A star with no Wikidata item has a global
+entry only.
 
 The global entry holds:
 
 - `id`, `type` (`star`), `name` (the name of its Metadata row) and
-  `cross_refs.wikidata_qid`;
+  `cross_refs.wikidata_qid` when it has an item;
 - `sitelinks_count`, the item's sitelinks on all Wikimedia projects, as for a
   body;
 - `images`, from the item's P18 and the lead images of its Wikipedia
@@ -1007,7 +1009,12 @@ The global entry holds:
   them by QID in `star_images.json`). An image that more than two
   stars would share is left out: it shows a constellation or a cluster, most
   often the constellation chart of a Wikipedia infobox;
-- `wikidata.discovery_date` (P575).
+- `wikidata.discovery_date` (P575);
+- `references`, the works that the literature table cites for the values of
+  the record, by column group: `{"distance": [{"short": "Smith 2006",
+  "title": "…", "url": "https://doi.org/…"}]}`. A value from a paper has the
+  source `literature` in its `*_source` column; the star page cites the work
+  beside it.
 
 The localized entry holds `name` where the item's label in that language is a
 name and differs from its English label, `description` and `aliases` from

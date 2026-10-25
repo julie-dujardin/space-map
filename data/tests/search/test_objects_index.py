@@ -132,7 +132,8 @@ class TestLoadEarthMembership:
 
 
 class TestExtrasolarStars:
-    """A star of the extrasolar catalogue with an entry is a document."""
+    """A star of the extrasolar catalogue is a document when its entry in the
+    base locale has a Wikipedia extract, or when it hosts planets."""
 
     def test_document(self, tmp_path, monkeypatch):
         monkeypatch.setattr(objects, "LANGUAGES", ("en", "ru"))
@@ -145,9 +146,18 @@ class TestExtrasolarStars:
                     "name": "Vega",
                     "sitelinks_count": 120,
                 },
+                "x-8": {"id": "x-8", "type": "star", "name": "HD 8"},
+                "x-9": {"id": "x-9", "type": "star", "name": "HD 9"},
+                "naif-10": {"id": "naif-10", "type": "star", "name": "Sun"},
             },
-            "en": {"x-7": {"aliases": ["Alpha Lyrae"]}},
-            "ru": {"x-7": {"name": "Вега"}},
+            "en": {
+                "x-7": {
+                    "aliases": ["Alpha Lyrae"],
+                    "wikipedia": {"extract": "Vega is…"},
+                },
+                "x-8": {"description": "star in the constellation Lyra"},
+            },
+            "ru": {"x-7": {"name": "Вега"}, "x-8": {"wikipedia": {"extract": "…"}}},
         }
         for tier, entries in bundles.items():
             directory = tmp_path / "v1" / "objects" / tier
@@ -156,6 +166,9 @@ class TestExtrasolarStars:
                 gzip.compress(json.dumps(entries).encode())
             )
         docs = {doc["id"]: doc for doc in objects.build_object_documents(tmp_path)}
+        assert set(docs) == {"x-7", "b-10"}
+        hosted = objects.build_object_documents(tmp_path, {"x-8"})
+        assert {doc["id"] for doc in hosted} == {"x-7", "x-8", "b-10"}
         vega = docs["x-7"]
         assert vega["name"] == "Vega"
         assert vega["name_ru"] == "Вега"

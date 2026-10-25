@@ -1,10 +1,11 @@
 """Sitemap generation for the notable-object subset.
 
 Enumerates the promoted set, anything with a real Wikidata presence, the
-stars of the extrasolar catalogue with an entry, and every planet that the
-extrasolar export serves, with its host. Writes the sitemap index
-``v1/seo/sitemap.xml`` and its files ``sitemap-<n>.xml``. The pages other than
-the planets and their hosts get the records of ``seo_pages.py``.
+stars of the extrasolar catalogue whose entry in the base locale has a
+Wikipedia extract, and every planet that the extrasolar export serves, with
+its host. Writes the sitemap index ``v1/seo/sitemap.xml`` and its files
+``sitemap-<n>.xml``. The pages other than the planets and the hosts without
+an entry get the records of ``seo_pages.py``.
 
 A page states its canonical link with the name the app gives it in the base
 locale. Each path here carries that name, taken from the files the app reads,
@@ -39,7 +40,7 @@ from space_map_data.export.nomenclature.writer import (
     renderable_feature_filter,
 )
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
-from space_map_data.export.objects.stars import StarObject
+from space_map_data.export.objects.stars import StarObject, has_description
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
@@ -138,16 +139,24 @@ def _bundle_names(
 
 
 def _object_names(
-    out_dir: Path, object_buckets: dict[str, int], ids: Collection[str]
+    out_dir: Path,
+    object_buckets: dict[str, int],
+    ids: Collection[str],
+    localized: dict[str, dict],
 ) -> dict[str, str | None]:
     """The page name of each of *ids* that the export has. Mirror of
-    ``objectPageName``: the localized name, else the catalogue's."""
-    objects = out_dir / "objects"
-    localized = _bundle_names(objects / BASE_LOCALE, object_buckets[BASE_LOCALE], ids)
-    named = {obj_id: name for obj_id, name in localized.items() if name}
+    ``objectPageName``: the localized name, else the catalogue's.
+    *localized* has the entries of the base locale."""
+    named = {
+        obj_id: name
+        for obj_id in ids
+        if (name := (localized.get(obj_id) or {}).get("name"))
+    }
     # Each exported object has a global entry.
     rest = [obj_id for obj_id in ids if obj_id not in named]
-    return named | _bundle_names(objects / "__global__", object_buckets["global"], rest)
+    return named | _bundle_names(
+        out_dir / "objects" / "__global__", object_buckets["global"], rest
+    )
 
 
 def _notable_paths(
@@ -155,11 +164,14 @@ def _notable_paths(
     out_dir: Path,
     object_buckets: dict[str, int],
     star_ids: Collection[str],
+    hosts: Collection[str] = frozenset(),
 ) -> dict[str, str]:
     """The canonical path of every notable object the export has, by id:
     promoted types, curated extras, a Wikidata presence at or above the
-    sitelink floor, or a star of the extrasolar catalogue with an entry
-    (``star_ids``).
+    sitelink floor, or a star of the extrasolar catalogue (``star_ids``)
+    with a description or with planets (``hosts``). A star has a description
+    when its entry in the base locale has a Wikipedia extract: a crawler
+    reads a page in the base locale.
 
     Never a barycenter: its page takes its title from an app label.
     """
@@ -173,8 +185,20 @@ def _notable_paths(
             ),
         )
     ).all()
-    ids = [*catalogue, *star_ids]
-    names = _object_names(out_dir, object_buckets, ids)
+    localized = bundle_entries(
+        out_dir / "objects" / BASE_LOCALE,
+        object_buckets[BASE_LOCALE],
+        [*catalogue, *star_ids],
+    )
+    described = [key for key in star_ids if has_description(localized.get(key))]
+    logger.info(
+        "sitemap: %d of %d star entries have a description",
+        len(described),
+        len(star_ids),
+    )
+    listed = set(described) | set(hosts)
+    ids = [*catalogue, *(key for key in star_ids if key in listed)]
+    names = _object_names(out_dir, object_buckets, ids, localized)
     # The catalogue has objects the export leaves out; they have no page.
     if len(names) < len(ids):
         logger.info(
@@ -363,7 +387,8 @@ def write_sitemap(
     Reads the object and group bundles and the group index already in
     ``out_dir``; the bucket counts are those of ``metadata.json``. ``stars``
     are the registry's stars with an entry and ``planets`` the served planet
-    pages, each read once for the export.
+    pages, each read once for the export. Of the stars, only the ones with a
+    description or with planets are listed.
     """
     pages = SitemapPages(
         objects=_notable_paths(
@@ -371,6 +396,7 @@ def write_sitemap(
             out_dir,
             object_buckets,
             [f"{STAR_PREFIX}{star.id}" for star in stars],
+            {f"{STAR_PREFIX}{host}" for host in planets.hosts},
         ),
         groups=_group_paths(out_dir, group_buckets[BASE_LOCALE]),
         features=_feature_paths(session, wikidata_entities),

@@ -14,14 +14,15 @@ ones (Ceres, Vesta, Pallas, …) carry aliases, a Wikipedia article, or a
 `named_after` field and survive the cut.
 
 The stars of the extrasolar catalogue that have an entry (`x-<id>`) are in
-the same bundles. All of them are indexed, as every object of type `star` is.
+the same bundles. A star is indexed when its entry in the base locale has a
+Wikipedia extract, as the sitemap lists it, or when it hosts planets.
 """
 
 import gzip
 import json
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,10 @@ from space_map_data.constants.categories import (
     PROBES_SLUG,
     SATELLITES_SLUG,
 )
-from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.export.images import pick_thumbnail
+from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
+from space_map_data.export.objects.stars import has_description
 from space_map_data.utils.designations import (
     format_provisional_designation,
     is_iau_named,
@@ -248,7 +251,11 @@ def _display_name(g: dict[str, Any], obj_id: str, otype: str) -> str:
     return name or obj_id
 
 
-def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
+def build_object_documents(
+    export_dir: Path, hosts: Collection[str] = frozenset()
+) -> Iterator[dict[str, Any]]:
+    """The object documents of the export. `hosts` are the IDs of the planet
+    hosts."""
     objects_dir = export_dir / "v1" / "objects"
     global_dir = objects_dir / "__global__"
     if not global_dir.exists():
@@ -265,6 +272,7 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     total_indexed = 0
     named_moons = 0
     skipped_no_translation = 0
+    skipped_stars = 0
     # Minor-planet moons carry no orbit, so their host only shows up on the
     # parent's `notable_moons`. Collected while streaming, applied at the end.
     moon_host_by_child: dict[str, str] = {}
@@ -285,6 +293,13 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                     moon_host_by_child[child_id] = obj_id
             if otype not in _ALWAYS_INDEX and not _is_notable(obj_id, localized):
                 skipped_no_translation += 1
+                continue
+            if (
+                obj_id.startswith(STAR_PREFIX)
+                and obj_id not in hosts
+                and not has_description(localized[BASE_LOCALE].get(obj_id))
+            ):
+                skipped_stars += 1
                 continue
 
             sbdb = g.get("sbdb") or {}
@@ -424,8 +439,10 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
 
     logger.info("Indexed %d IAU-named moons", named_moons)
     logger.info(
-        "Built %d object documents (saw %d, skipped %d asteroids without translation)",
+        "Built %d object documents (saw %d, skipped %d asteroids without"
+        " translation and %d stars without a description)",
         total_indexed,
         total_seen,
         skipped_no_translation,
+        skipped_stars,
     )

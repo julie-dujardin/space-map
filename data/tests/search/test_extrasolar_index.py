@@ -101,15 +101,10 @@ class TestExtrasolarDocuments:
 
 
 class TestHostWithAnEntry:
-    """A host that main indexes as a star with an entry keeps that document."""
+    """A host with an entry keeps main's star document, with or without a
+    description."""
 
-    def test_the_planet_facts_go_on_the_star_document(
-        self, exported, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(objects, "LANGUAGES", ("en", "ru"))
-        monkeypatch.setattr(objects, "read_manual_aliases", dict)
-        built, out = exported
-        star = f"x-{built.ids[0]}"
+    def _write(self, tmp_path, star: str, english: dict) -> None:
         bundles = {
             "__global__": {
                 star: {
@@ -120,7 +115,7 @@ class TestHostWithAnEntry:
                     "cross_refs": {"wikidata_qid": "Q1"},
                 },
             },
-            "en": {star: {"aliases": ["HD 1"], "description": "a star"}},
+            "en": {star: english},
             "ru": {star: {"name": "Альфа"}},
         }
         for tier, entries in bundles.items():
@@ -129,6 +124,35 @@ class TestHostWithAnEntry:
             (directory / "0.json.gz").write_bytes(
                 gzip.compress(json.dumps(entries).encode())
             )
+
+    def test_without_a_description(self, exported, tmp_path, monkeypatch):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en", "ru"))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        built, out = exported
+        star = f"x-{built.ids[0]}"
+        self._write(tmp_path, star, {"aliases": ["HD 1"], "description": "a star"})
+
+        docs = list(CATALOG_INDEX.build_documents(tmp_path / "export", out))
+        alpha = [doc for doc in docs if doc["id"] == star]
+        assert len(alpha) == 1
+        assert alpha[0]["name"] == "Alpha"
+        assert alpha[0]["name_ru"] == "Альфа"
+        assert alpha[0]["sitelinks_count"] == 40
+        assert alpha[0]["object"]["planets"] == 2
+
+    def test_the_planet_facts_go_on_the_star_document(
+        self, exported, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en", "ru"))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        built, out = exported
+        star = f"x-{built.ids[0]}"
+        english = {
+            "aliases": ["HD 1"],
+            "description": "a star",
+            "wikipedia": {"extract": "Alpha is a star."},
+        }
+        self._write(tmp_path, star, english)
 
         docs = list(CATALOG_INDEX.build_documents(tmp_path / "export", out))
         keys = [doc["id"] for doc in docs]

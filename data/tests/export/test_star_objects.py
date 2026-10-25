@@ -1,4 +1,5 @@
-"""Tests for the object entries of the stars with a Wikidata item."""
+"""Tests for the object entries of the stars with a Wikidata item or a value
+from a paper."""
 
 import gzip
 from pathlib import Path
@@ -14,14 +15,26 @@ from space_map_data.export.objects.stars import (
     StarObject,
     _read_part,
     available_star_objects,
+    has_description,
     replace_bundle_entries,
     star_entries,
+    star_references,
 )
 from space_map_data.export.objects.wikipedia import WikipediaSummary
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import StarEntity, WikidataEntityCache
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.tables import CROSS_ID
+
+ETA_CAR = ("gaia", "dr3", "5350358584482202880")
+SMITH_2006 = {
+    "short": "Smith 2006",
+    "title": (
+        "The Structure of the Homunculus. I. Shape and Latitude Dependence from"
+        " H2 and [Fe II] Velocity Maps of η Carinae (ApJ 644, 1151)"
+    ),
+    "url": "https://doi.org/10.1086/503766",
+}
 
 
 def entity(
@@ -148,6 +161,8 @@ class TestStarEntries:
                 StarObject(22137869, "Sirius", "Q1"),
                 StarObject(5, "Hamal", "Q2"),
                 StarObject(6, "HD 7", "Q3"),
+                # A distance from a paper, and no Wikidata item.
+                StarObject(7, "η Carinae", None, ETA_CAR),
             ],
             entities,
         )
@@ -172,7 +187,13 @@ class TestStarEntries:
             "name": "Hamal",
             "cross_refs": {"wikidata_qid": "Q2"},
         }
-        assert set(global_data) == {"x-22137869", "x-5", "x-6"}
+        assert global_data["x-7"] == {
+            "id": "x-7",
+            "type": "star",
+            "name": "η Carinae",
+            "references": {"distance": [SMITH_2006]},
+        }
+        assert set(global_data) == {"x-22137869", "x-5", "x-6", "x-7"}
 
     def test_localized(self, entries):
         _, localized = entries
@@ -209,8 +230,23 @@ class TestStarEntries:
         assert "name" not in localized["ja"]["x-22137869"]
         assert localized["zh"]["x-5"] == {"name": "婁宿三"}
         assert "x-5" not in localized["fr"]
-        # No entity downloaded: a global entry only.
+        # No entity downloaded, or no item: a global entry only.
         assert not any("x-6" in entries for entries in localized.values())
+        assert not any("x-7" in entries for entries in localized.values())
+
+    def test_references(self):
+        assert star_references(StarObject(7, "η Carinae", "Q1", ETA_CAR)) == {
+            "distance": [SMITH_2006]
+        }
+        assert star_references(StarObject(5, "Hamal", "Q2")) == {}
+        # A key that the table no longer has cites nothing.
+        assert star_references(StarObject(8, "X", None, ("hip", "2007", "1"))) == {}
+
+    def test_description(self):
+        assert has_description({"wikipedia": {"extract": "Sirius is…"}})
+        assert not has_description({"wikipedia": {"url": "https://en…"}})
+        assert not has_description({"description": "star"})
+        assert not has_description(None)
 
 
 class TestReadStarObjects:
@@ -247,6 +283,37 @@ class TestReadStarObjects:
             _read_part(path)
         pq.write_table(pa.Table.from_pylist(rows[:1], schema), path)
         assert _read_part(path) == [StarObject(5, "Vega", "Q2")]
+
+    def test_an_id_with_a_literature_key(self, tmp_path):
+        path = tmp_path / "part.parquet"
+        key = {
+            "catalogue": "literature",
+            "release": "star",
+            "catalogue_id": "gaia/dr3/5350358584482202880",
+        }
+        item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q9"}
+        gaia = {"catalogue": "gaia", "release": "dr3", "catalogue_id": "1"}
+        rows = [
+            {"id": 7, "name": "η Car", "cross_ids": [gaia, key], "object": True},
+            {"id": 8, "name": "Vega", "cross_ids": [key, item], "object": True},
+            {"id": 9, "name": "Deneb", "cross_ids": [gaia], "object": True},
+        ]
+        schema = pa.schema(
+            [
+                ("id", pa.int64()),
+                ("name", pa.string()),
+                ("cross_ids", pa.list_(CROSS_ID)),
+                ("object", pa.bool_()),
+            ]
+        )
+        pq.write_table(pa.Table.from_pylist(rows, schema), path)
+        with pytest.raises(ValueError, match="ID 9 has the Wikidata items"):
+            _read_part(path)
+        pq.write_table(pa.Table.from_pylist(rows[:2], schema), path)
+        assert _read_part(path) == [
+            StarObject(7, "η Car", None, ETA_CAR),
+            StarObject(8, "Vega", "Q9", ETA_CAR),
+        ]
 
 
 class TestReplaceBundleEntries:

@@ -34,6 +34,7 @@ from space_map_data.export.sitemap import (
     _object_path,
     _planet_paths,
     available_planet_pages,
+    bundle_entries,
 )
 from space_map_data.extrasolar.registry import ALIAS
 from space_map_data.models.feature import Feature
@@ -171,27 +172,29 @@ class TestObjectNames:
             },
         )
 
+    def _names(self, out_dir: Path, ids: list[str]) -> dict[str, str | None]:
+        localized = bundle_entries(out_dir / "objects" / BASE_LOCALE, 1, ids)
+        return _object_names(out_dir, self.BUCKETS, ids, localized)
+
     def test_prefers_the_localized_name(self, tmp_path: Path):
         self._export(tmp_path)
 
-        names = _object_names(tmp_path, self.BUCKETS, ["spkid-1"])
-        assert names == {"spkid-1": "Ceres"}
+        assert self._names(tmp_path, ["spkid-1"]) == {"spkid-1": "Ceres"}
 
     def test_falls_back_to_the_catalogue_name(self, tmp_path: Path):
         self._export(tmp_path)
 
-        names = _object_names(tmp_path, self.BUCKETS, ["spkid-2"])
-        assert names == {"spkid-2": "2 Pallas"}
+        assert self._names(tmp_path, ["spkid-2"]) == {"spkid-2": "2 Pallas"}
 
     def test_keeps_an_exported_object_that_has_no_name(self, tmp_path: Path):
         self._export(tmp_path)
 
-        assert _object_names(tmp_path, self.BUCKETS, ["spkid-3"]) == {"spkid-3": None}
+        assert self._names(tmp_path, ["spkid-3"]) == {"spkid-3": None}
 
     def test_leaves_out_an_object_the_export_does_not_have(self, tmp_path: Path):
         self._export(tmp_path)
 
-        assert _object_names(tmp_path, self.BUCKETS, ["spkid-4"]) == {}
+        assert self._names(tmp_path, ["spkid-4"]) == {}
 
 
 class TestNotablePaths:
@@ -231,16 +234,29 @@ class TestNotablePaths:
         paths = _notable_paths(session, tmp_path, {BASE_LOCALE: 0, "global": 1}, [])
         assert paths == {"spkid-1000005": "/s/1000005"}
 
-    def test_lists_each_star_with_an_entry(self, session: Session, tmp_path: Path):
+    def test_lists_each_star_with_a_description_or_planets(
+        self, session: Session, tmp_path: Path
+    ):
         """A star with an entry has no row in the catalogue."""
         _write_bundles(
-            tmp_path / "objects" / "__global__", 1, {"x-22137869": {"name": "Sirius"}}
+            tmp_path / "objects" / "__global__",
+            1,
+            {f"x-{n}": {"name": f"S{n}"} for n in (5, 6, 7)},
+        )
+        _write_bundles(
+            tmp_path / "objects" / BASE_LOCALE,
+            1,
+            {"x-5": {"name": "Sirius", "wikipedia": {"extract": "Sirius is…"}}},
         )
 
         paths = _notable_paths(
-            session, tmp_path, {BASE_LOCALE: 0, "global": 1}, ["x-22137869", "x-5"]
+            session,
+            tmp_path,
+            {BASE_LOCALE: 1, "global": 1},
+            ["x-5", "x-6", "x-7", "x-8"],
+            {"x-6", "x-8"},
         )
-        assert paths == {"x-22137869": "/x/22137869/Sirius"}
+        assert paths == {"x-5": "/x/5/Sirius", "x-6": "/x/6/S6"}
 
     def test_never_lists_a_barycenter(self, session: Session, tmp_path: Path):
         """Its page is named by an app label, which no bundle carries."""
@@ -428,16 +444,77 @@ class TestWriteSitemap:
         assert (seo / "sitemap-1.xml").read_text().count("<url>") == 2
         assert (seo / "sitemap-2.xml").read_text().count("<url>") == 1
 
+    def test_lists_a_star_with_a_description(self, session: Session, tmp_path: Path):
+        """A star is listed when its entry in the base locale has a Wikipedia
+        extract."""
+        _write_bundles(
+            tmp_path / "objects" / "__global__",
+            1,
+            {f"x-{n}": {"name": f"S{n}"} for n in (1, 2, 3)},
+        )
+        _write_bundles(
+            tmp_path / "objects" / BASE_LOCALE,
+            1,
+            {
+                "x-1": {"name": "Sirius", "wikipedia": {"extract": "Sirius is…"}},
+                "x-2": {"description": "star", "wikipedia": {"url": "https://en…"}},
+            },
+        )
+        # An extract in another language only.
+        _write_bundles(
+            tmp_path / "objects" / "fr", 1, {"x-3": {"wikipedia": {"extract": "…"}}}
+        )
+
+        pages = sitemap.write_sitemap(
+            session,
+            tmp_path,
+            _entities({}),
+            {BASE_LOCALE: 1, "fr": 1, "global": 1},
+            {BASE_LOCALE: 0},
+            [StarObject(n, f"S{n}", f"Q{n}") for n in (1, 2, 3)],
+            PlanetPages([], {}),
+        )
+        assert pages.objects == {"x-1": "/x/1/Sirius"}
+
     def test_lists_each_planet_and_host_after_the_other_pages(
         self, session: Session, tmp_path: Path
     ):
-        """A host with an entry is listed once, under the name of its entry."""
+        """A host with a description is listed once, under the name of its
+        entry."""
         _write_bundles(
-            tmp_path / "objects" / "__global__", 1, {"x-7": {"name": "Sirius"}}
+            tmp_path / "objects" / BASE_LOCALE,
+            1,
+            {"x-7": {"name": "Sirius", "wikipedia": {"extract": "Sirius is…"}}},
         )
         planets = PlanetPages(
             [(7, 1, "Sirius b"), (9, 1, "Nine b")], {7: "Sir", 9: "Nine"}
         )
+
+        pages = sitemap.write_sitemap(
+            session,
+            tmp_path,
+            _entities({}),
+            {BASE_LOCALE: 1, "global": 0},
+            {BASE_LOCALE: 0},
+            [StarObject(7, "Sir", "Q7")],
+            planets,
+        )
+        assert pages.objects == {"x-7": "/x/7/Sirius"}
+        assert _locs(tmp_path) == [
+            f"{sitemap.SITE_ORIGIN}/x/7/Sirius",
+            f"{sitemap.SITE_ORIGIN}/x/9/Nine",
+            f"{sitemap.SITE_ORIGIN}/x/7/b/1/Sirius%20b",
+            f"{sitemap.SITE_ORIGIN}/x/9/b/1/Nine%20b",
+        ]
+
+    def test_lists_a_host_without_a_description_with_its_record(
+        self, session: Session, tmp_path: Path
+    ):
+        """Its path has the name of its entry."""
+        _write_bundles(
+            tmp_path / "objects" / "__global__", 1, {"x-7": {"name": "Sirius"}}
+        )
+        planets = PlanetPages([(7, 1, "Sirius b")], {7: "Sir"})
 
         pages = sitemap.write_sitemap(
             session,
@@ -449,18 +526,19 @@ class TestWriteSitemap:
             planets,
         )
         assert pages.objects == {"x-7": "/x/7/Sirius"}
-        text = (tmp_path / "seo" / "sitemap-1.xml").read_text()
-        locs = [
-            line.split("<loc>")[1].split("</loc>")[0]
-            for line in text.splitlines()
-            if "<loc>" in line
-        ]
-        assert locs == [
+        assert _locs(tmp_path) == [
             f"{sitemap.SITE_ORIGIN}/x/7/Sirius",
-            f"{sitemap.SITE_ORIGIN}/x/9/Nine",
             f"{sitemap.SITE_ORIGIN}/x/7/b/1/Sirius%20b",
-            f"{sitemap.SITE_ORIGIN}/x/9/b/1/Nine%20b",
         ]
+
+
+def _locs(out_dir: Path) -> list[str]:
+    text = (out_dir / "seo" / "sitemap-1.xml").read_text()
+    return [
+        line.split("<loc>")[1].split("</loc>")[0]
+        for line in text.splitlines()
+        if "<loc>" in line
+    ]
 
 
 class TestPlanetPaths:

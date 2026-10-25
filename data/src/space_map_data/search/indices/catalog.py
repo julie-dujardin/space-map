@@ -23,7 +23,6 @@ from .base import Index
 from .extrasolar import build_extrasolar_documents
 from .features import build_feature_documents
 from .groups import build_group_documents
-from .objects import build_object_documents
 from .pads import build_pad_documents
 
 
@@ -119,9 +118,7 @@ class CatalogIndex(Index):
         self, export_dir: Path, extrasolar_dir: Path
     ) -> Iterator[dict[str, Any]]:
         return chain(
-            build_extrasolar_documents(
-                extrasolar_dir, build_object_documents(export_dir)
-            ),
+            build_extrasolar_documents(extrasolar_dir, export_dir),
             build_feature_documents(export_dir),
             build_group_documents(export_dir),
             build_pad_documents(export_dir),

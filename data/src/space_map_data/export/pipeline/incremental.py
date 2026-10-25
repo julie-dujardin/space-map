@@ -28,7 +28,7 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
 )
-from space_map_data.export.objects.stars import StarObject
+from space_map_data.export.objects.stars import StarObject, star_references
 from space_map_data.export.position.elements.celestrak_source import current_day_dirs
 from space_map_data.export.position.elements.sidecar import (
     build_earth_part_signature,
@@ -115,7 +115,8 @@ def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> 
     export reads directly from the downloads tree; `kernels` covers the
     attitude blocks injected into object bundles. `position_sources` is what
     the traverses add to bundles, so a route that only grows rewrites none.
-    `stars` covers the star entries, which each registry ingest links again.
+    `stars` covers the star entries, which each registry ingest links again,
+    and the works that the literature table cites for them.
     """
     return {
         "version": TIER_B_VERSION,
@@ -134,7 +135,12 @@ def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> 
             str(probe_id): works
             for probe_id, works in sorted(load_probe_position_sources().items())
         },
-        "stars": _digest([(star.id, star.qid, star.name) for star in star_objects]),
+        "stars": _digest(
+            [
+                (star.id, star.qid, star.name, star_references(star))
+                for star in star_objects
+            ]
+        ),
     }
 
 
