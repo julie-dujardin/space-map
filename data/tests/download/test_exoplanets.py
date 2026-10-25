@@ -2,10 +2,13 @@
 
 import csv
 import gzip
+import io
+import json
 import logging
 import os
 import re
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 from typing import ClassVar
 from urllib.parse import unquote_plus
@@ -18,6 +21,7 @@ from space_map_data.download.downloader import DownloadError
 from space_map_data.download.providers.exoplanets import (
     exoplanet_eu,
     gaia,
+    name_exo_worlds,
     names,
     nasa_archive,
     simbad,
@@ -468,6 +472,8 @@ class TestInputReader:
         monkeypatch.setattr(ExoplanetGaiaDownloader, "inputs", (tmp_path / "ids.csv",))
         downloader = ExoplanetGaiaDownloader(_answer(200, ""))
         (tmp_path / "ids.csv").write_text("Gaia DR3 5")
+        for name in gaia.FILES:
+            (out / name).write_text("source_id\n")
         downloader._save_metadata(_URL, 1, complete=True)
         return downloader
 
@@ -642,12 +648,34 @@ class TestGaiaIds:
 class TestGaiaDownload:
     """The orbit table holds each solution once, under the table's header."""
 
-    @staticmethod
-    def _handler(request: httpx.Request) -> httpx.Response:
+    queries: ClassVar[dict[str, list[str]]] = {}
+
+    @classmethod
+    def _handler(cls, request: httpx.Request) -> httpx.Response:
         query, sent = _sent(request)
         orbits = "source_id,nss_solution_type\n"
         if "dr2_neighbourhood" in query:
-            body = "dr2_source_id,dr3_source_id\n" + "".join(f"{i},5\n" for i in sent)
+            body = "dr2_source_id,dr3_source_id\n" + "".join(f"{i},6\n" for i in sent)
+        elif "external.xgboost_table1" in query:
+            cls.queries["xgboost"] = sent
+            body = (
+                "source_id,mh_xgboost,teff_xgboost,logg_xgboost,catwise_w1,catwise_w2,"
+                "in_training_sample,vetted_id,oba_id\n"
+                "6,-0.2,5700.0,4.4,9.1,9.2,false,6,\n"
+            )
+        elif "gaiadr3.astrophysical_parameters" in query:
+            cls.queries["astrophysical_parameters"] = sent
+            body = (
+                "source_id,radius_gspphot,radius_gspphot_lower,radius_gspphot_upper\n"
+                "6,1.1,1.0,1.2\n"
+            )
+        elif "gaiadr3.gaia_source" in query:
+            cls.queries["gaia_source"] = sent
+            assert "parallax_over_error <= 5.0" in query
+            body = "source_id,parallax_over_error\n6,1.5\n"
+        elif "gaiaedr3_spurious" in query:
+            cls.queries["fidelity"] = sent
+            body = "source_id,fidelity_v2,norm_dg\n6,0.7,0.1\n"
         elif "nss_two_body_orbit as o" in query:
             body = orbits + "5,OrbitalTargetedSearch\n5,SB1\n"
         elif "nss_solution_type like" in query:
@@ -669,7 +697,36 @@ class TestGaiaDownload:
         out = tmp_path / "gaia"
         assert _read(out / "dr2_neighbourhood.csv") == [
             ["dr2_source_id", "dr3_source_id"],
-            ["10", "5"],
+            ["10", "6"],
+        ]
+        # The DR3 ids and the DR3 neighbours of the DR2 ids.
+        assert self.queries == {
+            "gaia_source": ["5", "6"],
+            "fidelity": ["6"],
+            "astrophysical_parameters": ["6"],
+            "xgboost": ["6"],
+        }
+        assert _read(out / gaia.SOURCE_FILE) == [
+            ["source_id", "parallax_over_error"],
+            ["6", "1.5"],
+        ]
+        assert _read(out / gaia.FIDELITY_FILE) == [
+            ["source_id", "fidelity_v2", "norm_dg"],
+            ["6", "0.7", "0.1"],
+        ]
+        assert _read(out / gaia.ASTROPHYSICAL_FILE) == [
+            [
+                "source_id",
+                "radius_gspphot",
+                "radius_gspphot_lower",
+                "radius_gspphot_upper",
+            ],
+            ["6", "1.1", "1.0", "1.2"],
+        ]
+        # The ids of the joined rows become the two flags.
+        assert _read(out / gaia.XGBOOST_FILE) == [
+            gaia.XGBOOST_HEADER,
+            ["6", "-0.2", "5700.0", "4.4", "9.1", "9.2", "false", "true", "false"],
         ]
         assert _read(out / "nss_two_body_orbit.csv") == [
             ["source_id", "nss_solution_type"],
@@ -679,6 +736,18 @@ class TestGaiaDownload:
         ]
         assert _read(out / "vari_planetary_transit.csv") == [["source_id"], ["8"]]
 
+    def test_a_missing_file_forces_a_run(self, monkeypatch, tmp_path):
+        ids = tmp_path / "ids.csv"
+        ids.write_text("1,HD 1|Gaia DR3 5|Gaia DR2 10\n")
+        monkeypatch.setattr(gaia, "OUT_DIR", tmp_path / "gaia")
+        monkeypatch.setattr(ExoplanetGaiaDownloader, "inputs", (ids,))
+        downloader = ExoplanetGaiaDownloader(_client(self._handler))
+        downloader.download()
+        os.utime(ids, (0, 0))
+        assert downloader.is_complete(None)
+        (tmp_path / "gaia" / gaia.ASTROPHYSICAL_FILE).unlink()
+        assert not downloader.is_complete(None)
+
     def test_input_without_a_gaia_id_raises(self, monkeypatch, tmp_path):
         ids = tmp_path / "ids.csv"
         ids.write_text("1,HD 1|TIC 3\n")
@@ -686,3 +755,106 @@ class TestGaiaDownload:
         monkeypatch.setattr(ExoplanetGaiaDownloader, "inputs", (ids,))
         with pytest.raises(DownloadError, match="No id to send"):
             ExoplanetGaiaDownloader(_client(self._handler)).download()
+
+
+def _xlsx(rows: list[list[str]]) -> bytes:
+    """A one-sheet XLSX with shared strings, as the IAU tables are."""
+    strings = sorted({cell for row in rows for cell in row if cell})
+    shared = "".join(f"<si><t>{s}</t></si>" for s in strings)
+    sheet = ""
+    for r, row in enumerate(rows, start=1):
+        cells = "".join(
+            f'<c r="{chr(65 + c)}{r}" t="s"><v>{strings.index(v)}</v></c>'
+            for c, v in enumerate(row)
+            if v
+        )
+        sheet += f'<row r="{r}">{cells}</row>'
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as book:
+        book.writestr("xl/sharedStrings.xml", f"<sst {ns}>{shared}</sst>")
+        book.writestr(
+            "xl/worksheets/sheet1.xml",
+            f"<worksheet {ns}><sheetData>{sheet}</sheetData></worksheet>",
+        )
+    return out.getvalue()
+
+
+_HEADER = ["Name Star", "Star catalog ID", "Name Exoplanet", "Exoplanet catalog ID"]
+_PRESS_RELEASE = """<html><table>
+<tr><th>Type</th><th>Designation</th><th>Name</th></tr>
+<tr><td>Star<br/>Planet<br/>Planet</td>
+<td>55 Cancri<br/>55 Cancri b<br/>55 Cancri c</td>
+<td>Copernicus<br/>Galileo<br/>Brahe*</td><td>NL<br/></td></tr>
+<tr></tr>
+<tr><td>Planet</td><td>Ain b (epsilon Tauri b)</td><td>Amateru*</td><td>JP</td></tr>
+</table></html>"""
+
+
+class TestNameExoWorlds:
+    """The three editions become one list of names by row."""
+
+    def test_press_release(self):
+        found = name_exo_worlds.press_release_names(_PRESS_RELEASE)
+        assert [(n.row, n.kind, n.designation, n.name) for n in found] == [
+            (1, "star", "55 Cancri", "Copernicus"),
+            (1, "planet", "55 Cancri b", "Galileo"),
+            (1, "planet", "55 Cancri c", "Brahe"),
+            (3, "planet", "Ain b (epsilon Tauri b)", "Amateru"),
+        ]
+
+    def test_press_release_rows_must_line_up(self):
+        broken = _PRESS_RELEASE.replace("Galileo<br/>", "")
+        with pytest.raises(DownloadError, match="does not line up"):
+            name_exo_worlds.press_release_names(broken)
+
+    def test_table(self):
+        content = _xlsx(
+            [
+                _HEADER,
+                ["Illyrian", "HD 82886", "Arber ", "HD 82886 b"],
+                ["", "", "", ""],
+            ]
+        )
+        found = name_exo_worlds.table_names(2019, content)
+        assert [(n.row, n.kind, n.designation, n.name) for n in found] == [
+            (0, "star", "HD 82886", "Illyrian"),
+            (0, "planet", "HD 82886 b", "Arber"),
+        ]
+
+    def test_table_without_its_columns(self):
+        with pytest.raises(DownloadError, match="has no columns"):
+            name_exo_worlds.table_names(2019, _xlsx([["Country"], ["x"]]))
+
+    def test_download(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(name_exo_worlds, "OUT_DIR", tmp_path)
+        monkeypatch.setattr(
+            name_exo_worlds,
+            "EXPECTED",
+            {(2015, "star"): 1, (2015, "planet"): 3, (2022, "planet"): 1},
+        )
+        table = _xlsx([_HEADER, ["Orkaria", "GJ 1214", "Enaiposha", "GJ 1214 b"]])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "iau1514" in str(request.url):
+                return httpx.Response(200, text=_PRESS_RELEASE)
+            return httpx.Response(200, content=table)
+
+        name_exo_worlds.NameExoWorldsDownloader(_client(handler)).download()
+        names = json.loads((tmp_path / name_exo_worlds.NAMES_FILE).read_text())
+        assert len(names) == 8
+        assert names[-1] == {
+            "edition": 2022,
+            "row": 0,
+            "kind": "planet",
+            "designation": "GJ 1214 b",
+            "name": "Enaiposha",
+        }
+        assert (tmp_path / "2019.xlsx").read_bytes() == table
+
+    def test_a_short_list_fails(self, monkeypatch):
+        monkeypatch.setattr(name_exo_worlds, "EXPECTED", {(2015, "planet"): 2})
+        with pytest.raises(DownloadError, match="1 planet names of 2015"):
+            name_exo_worlds.check_counts(
+                [name_exo_worlds.ExoWorldName(2015, 0, "planet", "X b", "Y")]
+            )

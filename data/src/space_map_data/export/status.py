@@ -147,6 +147,9 @@ SOURCE_CATALOG: dict[str, SourceInfo] = {
         "https://gea.esac.esa.int/archive/",
         "orbits",
     ),
+    PROVIDERS.NAME_EXO_WORLDS: SourceInfo(
+        "IAU NameExoWorlds", "https://nameexoworlds.iau.org/", "reference"
+    ),
     PROVIDERS.SPICE: SourceInfo(
         "NAIF generic kernels",
         "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/",

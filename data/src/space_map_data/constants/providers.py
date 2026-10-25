@@ -16,6 +16,7 @@ class PROVIDERS(StrEnum):
     OPEN_EXOPLANET_CATALOGUE = "open_exoplanet_catalogue"
     EXOPLANET_SIMBAD = "exoplanet_simbad"
     EXOPLANET_GAIA = "exoplanet_gaia"
+    NAME_EXO_WORLDS = "name_exo_worlds"
     SPACETRACK = "spacetrack"
     SPICE = "spice"
     SPICE_PROBES = "spice_probes"

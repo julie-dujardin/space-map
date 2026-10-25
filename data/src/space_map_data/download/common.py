@@ -29,6 +29,9 @@ from space_map_data.download.providers.exoplanets.exoplanet_eu import (
     ExoplanetEUDownloader,
 )
 from space_map_data.download.providers.exoplanets.gaia import ExoplanetGaiaDownloader
+from space_map_data.download.providers.exoplanets.name_exo_worlds import (
+    NameExoWorldsDownloader,
+)
 from space_map_data.download.providers.exoplanets.nasa_archive import (
     ExoplanetArchiveDownloader,
 )
@@ -145,6 +148,7 @@ PROVIDERS_CLASSES = [
     OpenExoplanetCatalogueDownloader,
     ExoplanetSimbadDownloader,
     ExoplanetGaiaDownloader,
+    NameExoWorldsDownloader,
     SpiceDownloader,
     ProbesDownloader,
     HorizonsSyntheticDownloader,

@@ -138,6 +138,7 @@ JOBS: list[Job] = [
             PROVIDERS.OPEN_EXOPLANET_CATALOGUE,
             PROVIDERS.EXOPLANET_SIMBAD,
             PROVIDERS.EXOPLANET_GAIA,
+            PROVIDERS.NAME_EXO_WORLDS,
         ),
         schedule=DailyAt(dtime(hour=6, minute=0)),
     ),
