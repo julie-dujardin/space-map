@@ -11,7 +11,6 @@ for each directory level of its prefixes. The raw files use none.
 import hashlib
 import json
 import logging
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -22,6 +21,7 @@ from urllib.parse import quote
 import httpx
 
 from space_map_data.download.downloader import Downloader, DownloadError
+from space_map_data.utils.files import flush_to_disk
 
 logger = logging.getLogger(__name__)
 
@@ -103,19 +103,12 @@ def list_files(
 
 
 def write_synced(path: Path, content: bytes) -> None:
-    """Replace `path` with `content`, flushed to disk.
-
-    Unwritten data for a network mount stays in memory, and a run under a
-    memory cap is killed for it. Nothing reads the pages back, so they are
-    dropped from the cache.
-    """
+    """Replace `path` with `content`, flushed to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
     part = path.with_name(path.name + ".part")
     with part.open("wb") as out:
         out.write(content)
-        out.flush()
-        os.fdatasync(out.fileno())
-        os.posix_fadvise(out.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        flush_to_disk(out)
     part.replace(path)
 
 

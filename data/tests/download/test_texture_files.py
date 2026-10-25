@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import zipfile
 
 import glymur
@@ -236,9 +237,7 @@ class TestWriteSynced:
     def test_flushes_to_disk_every_few_megabytes(self, tmp_path, monkeypatch):
         flushed: list[int] = []
         monkeypatch.setattr(texture_files, "SYNC_BYTES", 1000)
-        monkeypatch.setattr(
-            texture_files.os, "fdatasync", lambda fd: flushed.append(fd)
-        )
+        monkeypatch.setattr(os, "fdatasync", lambda fd: flushed.append(fd))
         with (tmp_path / "out.bin").open("wb") as out:
             written = texture_files.write_synced([b"x" * 400] * 6, out)
 

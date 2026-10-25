@@ -20,6 +20,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from space_map_data.download.providers.stars import wikidata_stars
+from space_map_data.download.providers.stars.gaia_source import pixel_range
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import hipparcos, names, wikidata
@@ -28,7 +29,6 @@ from space_map_data.extrasolar.sources.gaia import (
     BestNeighbours,
     GaiaReader,
     in_ranges,
-    pixel_range,
 )
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.names import IAU_WGSN
@@ -72,7 +72,7 @@ def ingest(
     best = BestNeighbours.read()
     reader = GaiaReader(best, workers=workers)
     chunks = reader.chunks(limit)
-    ranges = None if limit is None else [pixel_range(path) for path in chunks]
+    ranges = None if limit is None else [pixel_range(path.name) for path in chunks]
     stars = hipparcos.engine_rows(hipparcos.read_stars(), best)
     positions = dict(
         zip(

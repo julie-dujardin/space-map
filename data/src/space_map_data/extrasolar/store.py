@@ -7,8 +7,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-# Bytes written to the NAS between two flushes to disk.
-SYNC_BYTES = 64 << 20
+from space_map_data.utils.files import SYNC_BYTES, flush_to_disk
+
 COPY_BLOCK = 8 << 20
 
 
@@ -22,17 +22,6 @@ def fsync_dir(directory: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
-
-
-def write_parquet(table: pa.Table, path: Path, sync: bool = False) -> None:
-    """Write `table` through a temporary file. `sync` flushes it to disk."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    part = path.with_name(path.name + ".part")
-    pq.write_table(table, part, compression="zstd")
-    if sync:
-        with part.open("rb+") as handle:
-            os.fsync(handle.fileno())
-    part.replace(path)
 
 
 def read_parquet(
@@ -59,12 +48,7 @@ def write_json(path: Path, data: object) -> None:
 
 
 def copy_synced(source: Path, target: Path) -> None:
-    """Copy a file and flush it to disk as it goes.
-
-    A writer that outruns a network mount keeps the unwritten data in memory,
-    and a run under a memory cap is then killed. Flushed pages are dropped
-    from the cache, because nothing reads them back.
-    """
+    """Copy a file and flush it to disk as it goes."""
     target.parent.mkdir(parents=True, exist_ok=True)
     pending = 0
     with source.open("rb") as inp, target.open("wb") as out:
@@ -72,10 +56,6 @@ def copy_synced(source: Path, target: Path) -> None:
             out.write(block)
             pending += len(block)
             if pending >= SYNC_BYTES:
-                out.flush()
-                os.fdatasync(out.fileno())
-                os.posix_fadvise(out.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+                flush_to_disk(out)
                 pending = 0
-        out.flush()
-        os.fdatasync(out.fileno())
-        os.posix_fadvise(out.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        flush_to_disk(out)

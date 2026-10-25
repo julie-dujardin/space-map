@@ -21,12 +21,12 @@ import pyarrow.compute as pc
 
 from space_map_data.download.cds import README, read_fixed_width
 from space_map_data.download.providers.stars import cds as cds_stars
-from space_map_data.extrasolar.arrays import floats
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.sources.gaia import EPOCH as GAIA_EPOCH
 from space_map_data.extrasolar.sources.gaia import BestNeighbours
 from space_map_data.extrasolar.tables import CROSS_ID
+from space_map_data.utils.arrays import floats
 
 logger = logging.getLogger(__name__)
 

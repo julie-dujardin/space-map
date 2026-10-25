@@ -15,7 +15,6 @@ Writes to the entry's own source directory:
 import io
 import json
 import logging
-import os
 import threading
 import time
 import uuid
@@ -42,6 +41,7 @@ from space_map_data.download.downloader import (
     DownloadError,
     user_agent_without_bot,
 )
+from space_map_data.utils.files import SYNC_BYTES, flush_to_disk
 from space_map_data.utils.paths import CACHE_DIR, SOURCES_TEXTURES_DIR
 
 logger = logging.getLogger(__name__)
@@ -54,8 +54,6 @@ RETRY_DELAY_SECONDS = 10.0
 WORKERS = 4
 # Files between two saves of the record, so a long run killed midway keeps it.
 SAVE_EVERY = 25
-# Bytes written between two flushes to disk.
-SYNC_BYTES = 64 << 20
 
 # Archives land on local disk first. On the downloads mount each one would
 # cross the network three times: written, read back to unpack, written again.
@@ -74,28 +72,16 @@ JPEG2000_THREADS = 8
 
 
 def write_synced(chunks: Iterable[bytes], out: BinaryIO) -> int:
-    """Write ``chunks``, flushing to disk as it goes; return the byte count.
-
-    Nothing slows a writer that outruns a network mount: the unwritten data
-    piles up in memory, by gigabytes for a file this size, and a run under a
-    memory cap is killed for it. Flushed pages are also dropped from the
-    cache, since nothing here reads them back.
-    """
+    """Write ``chunks``, flushing to disk as it goes; return the byte count."""
     written = pending = 0
     for chunk in chunks:
         out.write(chunk)
         written += len(chunk)
         pending += len(chunk)
         if pending >= SYNC_BYTES:
-            _sync(out)
+            flush_to_disk(out)
             pending = 0
     return written
-
-
-def _sync(out: BinaryIO) -> None:
-    out.flush()
-    os.fdatasync(out.fileno())
-    os.posix_fadvise(out.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
 
 
 def _geotiff_tags(jp2: glymur.Jp2k, name: str) -> list[tuple]:
@@ -137,7 +123,7 @@ def jpeg2000_to_geotiff(src: Path, dst: Path) -> None:
                         pad = [(0, size - tile.shape[0]), (0, size - tile.shape[1])]
                         tile = np.pad(tile, pad + [(0, 0)] * (tile.ndim - 2))
                     yield tile
-            _sync(out)
+            flush_to_disk(out)
             logger.info(
                 "%s: %d of %d rows", dst.name, min(top + band.shape[0], height), height
             )

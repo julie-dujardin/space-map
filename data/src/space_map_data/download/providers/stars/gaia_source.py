@@ -16,6 +16,7 @@ https://www.cosmos.esa.int/web/gaia-users/license
 """
 
 import logging
+import re
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -34,6 +35,11 @@ logger = logging.getLogger(__name__)
 RELEASE = "gdr3"
 TABLE_PATH = f"{RELEASE}/gaia_source"
 CHUNK_PREFIX = "GaiaSource_"
+# A chunk name gives a closed range of HEALPix level-8 pixels, and
+# source_id >> 43 is the level-8 pixel of a source.
+PIXEL_LEVEL = 8
+PIXEL_SHIFT = 43
+_PIXELS = re.compile(r"_(\d+)-(\d+)\.(?:csv\.gz|parquet)$")
 RELEASE_NOTES = ("_citation.txt", "_disclaimer.txt", "_license.txt", "_readme.txt")
 
 MIN_PARALLAX_OVER_ERROR = 5.0
@@ -115,6 +121,14 @@ COLUMNS = (
     "ebpminrp_gspphot_upper",
     "libname_gspphot",
 )
+
+
+def pixel_range(chunk: str) -> tuple[int, int]:
+    """The level-8 pixels of a chunk, from its name, as a closed range."""
+    match = _PIXELS.search(chunk)
+    if match is None:
+        raise ValueError(f"{chunk} names no pixel range")
+    return int(match[1]), int(match[2])
 
 
 def select_positionable(

@@ -183,7 +183,8 @@ class TestGaiaRows:
         ]
 
     def test_pixel_ranges(self):
-        assert gaia.pixel_range(Path("GaiaSource_000012-003111.parquet")) == (12, 3111)
+        assert gaia_source.pixel_range("GaiaSource_000012-003111.parquet") == (12, 3111)
+        assert gaia_source.pixel_range("GaiaSource_000000-000001.csv.gz") == (0, 1)
         pixel = int(gaia.sky.cells(np.array([RA]), np.array([DEC]), 8)[0])
         inside = gaia.in_ranges(
             np.array([RA]), np.array([DEC]), [(0, 1), (pixel, pixel)]

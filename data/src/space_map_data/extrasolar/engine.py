@@ -64,7 +64,6 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from space_map_data.extrasolar import sky
-from space_map_data.extrasolar.arrays import find_sorted, floats, map_sorted
 from space_map_data.extrasolar.ids import (
     CELL_BITS,
     cell_of,
@@ -96,7 +95,7 @@ from space_map_data.extrasolar.registry import (
 )
 from space_map_data.extrasolar.report import render_report
 from space_map_data.extrasolar.sky import region_of
-from space_map_data.extrasolar.store import read_parquet, region_file, write_parquet
+from space_map_data.extrasolar.store import read_parquet, region_file
 from space_map_data.extrasolar.tables import (
     CROSS_ID,
     METADATA,
@@ -106,6 +105,8 @@ from space_map_data.extrasolar.tables import (
     TableDef,
     merge_by_source_order,
 )
+from space_map_data.utils.arrays import find_sorted, floats, map_sorted
+from space_map_data.utils.files import write_parquet
 from space_map_data.utils.paths import PROJECT_ROOT, REGISTRY_BACKUP_DIR, REGISTRY_ROOT
 
 logger = logging.getLogger(__name__)

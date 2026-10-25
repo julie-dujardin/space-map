@@ -8,7 +8,6 @@ Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
 """
 
 import logging
-import re
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -29,9 +28,9 @@ from space_map_data.download.providers.stars import (
     gaia_source,
 )
 from space_map_data.extrasolar import sky
-from space_map_data.extrasolar.arrays import map_sorted
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.tables import CROSS_ID
+from space_map_data.utils.arrays import map_sorted
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +57,6 @@ ASTROPHYSICAL_COLUMNS = (
     "radius_gspphot_lower",
     "radius_gspphot_upper",
 )
-PIXEL_LEVEL = 8
-_PIXELS = re.compile(r"_(\d+)-(\d+)\.parquet$")
 
 
 @dataclass(frozen=True)
@@ -160,19 +157,11 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     return pa.table(columns)
 
 
-def pixel_range(path: Path) -> tuple[int, int]:
-    """The level-8 pixels of a chunk, from its name, as a closed range."""
-    match = _PIXELS.search(path.name)
-    if match is None:
-        raise ValueError(f"{path.name} names no pixel range")
-    return int(match[1]), int(match[2])
-
-
 def in_ranges(
     ra: np.ndarray, dec: np.ndarray, ranges: list[tuple[int, int]]
 ) -> np.ndarray:
     """Whether each position is in one of the closed level-8 pixel ranges."""
-    pixel = sky.cells(ra, dec, PIXEL_LEVEL)
+    pixel = sky.cells(ra, dec, gaia_source.PIXEL_LEVEL)
     inside = np.zeros(pixel.size, bool)
     for low, high in ranges:
         inside |= (pixel >= low) & (pixel <= high)

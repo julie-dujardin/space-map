@@ -58,7 +58,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from space_map_data.extrasolar.arrays import find_sorted
 from space_map_data.extrasolar.ids import CELL_MASK, cell_of
 from space_map_data.extrasolar.sky import REGION_LEVEL, region_of
 from space_map_data.extrasolar.store import (
@@ -67,6 +66,7 @@ from space_map_data.extrasolar.store import (
     region_file,
     write_json,
 )
+from space_map_data.utils.arrays import find_sorted
 from space_map_data.utils.paths import REGISTRY_BACKUP_DIR, REGISTRY_ROOT
 
 logger = logging.getLogger(__name__)

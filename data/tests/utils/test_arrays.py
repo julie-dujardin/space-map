@@ -1,7 +1,7 @@
 import numpy as np
 import pyarrow as pa
 
-from space_map_data.extrasolar.arrays import find_sorted, floats, map_sorted
+from space_map_data.utils.arrays import find_sorted, floats, map_sorted
 
 SORTED = np.array([3, 7, 9], np.int64)
 

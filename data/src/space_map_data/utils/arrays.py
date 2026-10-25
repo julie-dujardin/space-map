@@ -1,4 +1,4 @@
-"""Array helpers for the extrasolar modules."""
+"""Array helpers."""
 
 import numpy as np
 import pyarrow as pa

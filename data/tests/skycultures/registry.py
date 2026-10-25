@@ -16,7 +16,8 @@ from space_map_data.extrasolar.registry import (
     ingest_name,
     sort_by_cell,
 )
-from space_map_data.extrasolar.store import region_file, write_parquet
+from space_map_data.extrasolar.store import region_file
+from space_map_data.utils.files import write_parquet
 
 
 def write_registry(
