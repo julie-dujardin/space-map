@@ -25,8 +25,8 @@ from space_map_data.download.providers.stars import cds as cds_stars
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.sources.gaia import EPOCH as GAIA_EPOCH
-from space_map_data.extrasolar.sources.gaia import BestNeighbours
-from space_map_data.extrasolar.tables import CROSS_ID
+from space_map_data.extrasolar.sources.gaia import BestNeighbours, joined_columns
+from space_map_data.extrasolar.tables import CROSS_ID, POINT_SOURCE
 from space_map_data.utils.arrays import floats
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,13 @@ XHIP_METALLICITY_FIELDS = {
 }
 # XHIP writes this error where it has none (its note 14).
 NO_FEH_ERROR = 9.99
+# PASTEL joins by HIP number the stars it reaches by no Gaia source.
+PASTEL_COLUMNS = tuple(
+    field.name
+    for group in POINT_SOURCE.groups
+    if group.name == "pastel"
+    for field in group.columns
+)
 
 EPOCH = 1991.25
 
@@ -259,8 +266,11 @@ def _claims(rows: list[list[tuple[str, str, str]]]) -> pa.Array:
     )
 
 
-def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
-    """The pass rows of the stars that `read_stars` gives."""
+def engine_rows(
+    stars: pa.Table, best: BestNeighbours, pastel: pa.Table | None = None
+) -> pa.Table:
+    """The pass rows of the stars that `read_stars` gives, with the PASTEL
+    rows of `pastel` joined by HIP number."""
     hip = stars["hip"].to_numpy()
     ra = np.degrees(floats(stars, "ra_rad"))
     dec = np.degrees(floats(stars, "dec_rad"))
@@ -333,4 +343,10 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
         name: stars[name]
         for name in sorted(copied - {"hip", "hd", "ra_rad", "dec_rad"})
     }
+    # Without PASTEL rows the columns come out null.
+    joined = stars
+    if pastel is not None:
+        at = pc.index_in(stars["hip"], value_set=pastel["hip"])
+        joined = pa.table({name: pastel[name].take(at) for name in PASTEL_COLUMNS})
+    columns |= joined_columns(joined, PASTEL_COLUMNS)
     return pa.table(columns)

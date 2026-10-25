@@ -1,10 +1,11 @@
 """The star ingest: Gaia DR3, then Hipparcos, the IAU star names and Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
-Gaia. The metallicity catalogues (APOGEE DR17, the LAMOST DR10 M dwarfs) are
-no pass: their rows join the Gaia rows by source_id. `limit` reads only the
-first Gaia chunks that hold that many stars, and the Hipparcos stars and names
-in the same pixels. Such an ingest is partial:
+Gaia. The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M
+dwarfs) are no pass: their rows join the Gaia rows by source_id, and PASTEL
+also the Hipparcos rows by HIP number. `limit` reads only the first Gaia
+chunks that hold that many stars, and the Hipparcos stars and names in the
+same pixels. Such an ingest is partial:
 it retires nothing, but it still rebuilds the tables from what it read. It
 never goes to REGISTRY_ROOT, because every later ingest keeps the IDs that it
 mints.
@@ -26,7 +27,14 @@ from space_map_data.download.providers.stars import wikidata_stars
 from space_map_data.download.providers.stars.gaia_source import pixel_range
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.registry import Registry, RegistryError
-from space_map_data.extrasolar.sources import apogee, hipparcos, lamost, names, wikidata
+from space_map_data.extrasolar.sources import (
+    apogee,
+    hipparcos,
+    lamost,
+    names,
+    pastel,
+    wikidata,
+)
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
     BestNeighbours,
@@ -77,14 +85,20 @@ def ingest(
     reader = GaiaReader(best, workers=workers)
     chunks = reader.chunks(limit)
     ranges = None if limit is None else [pixel_range(path.name) for path in chunks]
+    hip_stars = hipparcos.read_stars()
+    pastel_stars = pastel.read_stars(chunks, hip_stars, best, workers)
+    by_gaia = pc.greater(pastel_stars["source_id"], 0)
     reader = replace(
         reader,
         joined=(
+            SourceTable.of(pastel_stars.filter(by_gaia), pastel.COLUMNS),
             SourceTable.of(apogee.read_stars(), apogee.COLUMNS),
             SourceTable.of(lamost.read_stars(), lamost.COLUMNS),
         ),
     )
-    stars = hipparcos.engine_rows(hipparcos.read_stars(), best)
+    stars = hipparcos.engine_rows(
+        hip_stars, best, pastel_stars.filter(pc.invert(by_gaia))
+    )
     positions = dict(
         zip(
             stars["catalogue_id"].to_pylist(),

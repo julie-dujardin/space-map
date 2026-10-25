@@ -120,8 +120,9 @@ OBJECT_CATALOGUES = frozenset({"wikidata"})
 # keeps that catalogue's names. The Gaia rows also carry the astrometric
 # fidelity of Rybizki et al. 2022 and the XP metallicities of Andrae et al.
 # 2023. The metallicity groups after them come from spectra, one catalogue
-# each. APOGEE and LAMOST join the Gaia rows by source_id at each ingest, so
-# they hold no catalogue id in the registry.
+# each. PASTEL, APOGEE and LAMOST join the Gaia rows by source_id at each
+# ingest (PASTEL also the Hipparcos rows by HIP number), so they hold no
+# catalogue id in the registry.
 POINT_SOURCE = TableDef(
     number=1,
     slug="point-source",
@@ -278,6 +279,21 @@ POINT_SOURCE = TableDef(
                 pa.field("feh_xhip_quality", pa.string()),
             ),
             ("hipparcos-2007",),
+        ),
+        # PASTEL: the designation, the median [Fe/H] of the star's
+        # determinations, their range and number, and the bibcode of each,
+        # space-separated.
+        ColumnGroup(
+            "pastel",
+            (
+                pa.field("pastel_designation", pa.string()),
+                *_fields(
+                    pa.float32(), "feh_pastel", "feh_pastel_min", "feh_pastel_max"
+                ),
+                pa.field("feh_pastel_count", pa.int16()),
+                pa.field("pastel_bibcodes", pa.string()),
+            ),
+            ("gaia-dr3", "hipparcos-2007"),
         ),
         # APOGEE DR17: the APOGEE id and the named ASPCAP values, [M/H] and
         # [Fe/H] in dex, Teff in K, log g in log(cm/s²), with their errors,

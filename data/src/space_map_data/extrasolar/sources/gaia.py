@@ -4,8 +4,8 @@ The companion tables join by source_id. Low-fidelity stars mint only when
 matched by another catalogue. A star without a companion row stays, with null
 values for that table. GSP-Spec gets the calibrations of Recio-Blanco et al.
 2023 (A&A 674, A29); its flag chain stays as published, for the reader's cut.
-The spectroscopic catalogues that name a Gaia DR3 id (APOGEE, LAMOST) join
-the same way, as `SourceTable`s held in memory.
+The spectroscopic catalogues that name a Gaia DR3 id (PASTEL, APOGEE, LAMOST)
+join the same way, as `SourceTable`s held in memory.
 
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
 2022, MNRAS 510, 2597. XP metallicities: Andrae, Rix & Chandra 2023, ApJS 267,
@@ -85,7 +85,7 @@ XGBOOST_COLUMNS = tuple(
     name for name in gaia_xp_metallicity.SCHEMA.names if name != "source_id"
 )
 # Groups whose values join from a `SourceTable`; null where none does.
-JOINED_GROUPS = ("apogee", "lamost")
+JOINED_GROUPS = ("pastel", "apogee", "lamost")
 JOINED_COLUMNS = tuple(
     field.name
     for group in POINT_SOURCE.groups
@@ -122,6 +122,11 @@ class BestNeighbours:
     def hip_of(self, source_id: np.ndarray) -> np.ndarray:
         """The Hipparcos number of each source, 0 where none."""
         return map_sorted(self.source_id, self.hip, source_id, 0)
+
+    def source_of_hip(self, hip: np.ndarray) -> np.ndarray:
+        """The best Gaia source of each HIP number, 0 where none."""
+        order = np.argsort(self.hip)
+        return map_sorted(self.hip[order], self.source_id[order], hip, 0)
 
     def source_of(self) -> dict[int, int]:
         return dict(zip(self.hip.tolist(), self.source_id.tolist()))

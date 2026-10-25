@@ -1,5 +1,7 @@
-"""Tests for the metallicity sources: APOGEE, LAMOST, GSP-Spec, XHIP."""
+"""Tests for the metallicity sources: PASTEL, APOGEE, LAMOST, GSP-Spec, XHIP."""
 
+import csv
+import gzip
 from pathlib import Path
 
 import numpy as np
@@ -8,18 +10,20 @@ import pyarrow.parquet as pq
 import pytest
 from astropy.io import fits
 
+from space_map_data.download.cds import README
 from space_map_data.download.providers.stars import gaia_source
 from space_map_data.extrasolar.engine import IngestRun
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sources import apogee, gaia, hipparcos, lamost
+from space_map_data.extrasolar.sources import apogee, gaia, hipparcos, lamost, pastel
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
     BestNeighbours,
     SourceTable,
 )
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
+from space_map_data.extrasolar.sources.pastel import SimbadObject
 from space_map_data.extrasolar.tables import POINT_SOURCE
-from tests.extrasolar.conftest import table_rows
+from tests.extrasolar.conftest import offset, table_rows
 from tests.extrasolar.test_stars import (
     astrophysical,
     at,
@@ -32,6 +36,378 @@ from tests.extrasolar.test_stars import (
 
 # A chunk name that covers every level-8 pixel.
 ALL_SKY = "GaiaSource_000000-786431.parquet"
+
+
+def no_neighbours() -> BestNeighbours:
+    return BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64))
+
+
+def determinations(rows: list[tuple[str, float]]) -> pa.Table:
+    """PASTEL determinations: designation and [Fe/H]; a bibcode each."""
+    return pa.table(
+        {
+            "designation": [r[0] for r in rows],
+            "feh": [r[1] for r in rows],
+            "bibcode": [f"2020Test...{i:03d}" for i in range(len(rows))],
+        }
+    )
+
+
+# Byte ranges of the PASTEL fields that the source reads (its ReadMe).
+PASTEL_FIELDS = (
+    ("ID", 1, 33, "A33"),
+    ("RAdeg", 35, 49, "F15.11"),
+    ("DEdeg", 51, 65, "F15.11"),
+    ("Vmag", 83, 88, "F6.3"),
+    ("[Fe/H]", 167, 172, "F6.3"),
+    ("bibcode", 205, 223, "A19"),
+)
+
+
+def write_pastel(directory: Path, rows: list[tuple]) -> Path:
+    """A PASTEL ReadMe and data file with these determinations."""
+    directory.mkdir()
+    readme = [
+        "Byte-by-byte Description of file: pastel.dat",
+        "-" * 80,
+        "Bytes",
+        "-" * 80,
+    ]
+    for label, start, end, kind in PASTEL_FIELDS:
+        readme.append(f"{start:4d}-{end:3d}  {kind:6s} ---  {label}  x")
+    readme.append("-" * 80)
+    (directory / README).write_text("\n".join(readme) + "\n")
+    lines = []
+    for values in rows:
+        line = [" "] * 223
+        for (label, start, end, _), value in zip(PASTEL_FIELDS, values):
+            if value is None:
+                continue
+            text = str(value)
+            width = end - start + 1
+            text = (
+                text.ljust(width) if label in ("ID", "bibcode") else text.rjust(width)
+            )
+            line[start - 1 : end] = list(text[:width])
+        lines.append("".join(line))
+    (directory / pastel.PASTEL_FILE).write_bytes(
+        gzip.compress(("\n".join(lines) + "\n").encode("latin-1"))
+    )
+    return directory
+
+
+def write_simbad(path: Path, names: dict[str, SimbadObject | None]) -> Path:
+    """A names.csv; None is a name that SIMBAD does not resolve."""
+    with path.open("w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["name", "oid", "ra", "dec", "gaia_dr3"])
+        for name, found in names.items():
+            if found is None:
+                writer.writerow([name, "", "", "", ""])
+            else:
+                gaia_id = found.gaia or ""
+                writer.writerow([name, found.oid, found.ra, found.dec, gaia_id])
+    return path
+
+
+def placed(
+    rows: list[tuple[str, float | None]],
+    found: list[tuple[int, int, int, float, float]] | None = None,
+    simbad: dict[str, SimbadObject] | None = None,
+    hips: list[dict] | None = None,
+    best: BestNeighbours | None = None,
+) -> list[tuple[int, int, str]]:
+    """(source_id, hip, route) of each designation.
+
+    `rows` are (designation, V); `found` are the candidates as (row,
+    source_id, hip, separation, expected V).
+    """
+    stars = pa.table(
+        {
+            "designation": [r[0] for r in rows],
+            "v_mag": pa.array([r[1] for r in rows], pa.float64()),
+        }
+    )
+    columns = list(zip(*found)) if found else [()] * 5
+    candidates = pastel.Candidates(
+        *(np.array(c, np.int64) for c in columns[:3]),
+        *(np.array(c, np.float64) for c in columns[3:]),
+    )
+    out = pastel.place(
+        stars,
+        candidates,
+        simbad or {},
+        hip_stars(hips or []),
+        best or no_neighbours(),
+    )
+    return list(zip(out.source_id.tolist(), out.hip.tolist(), out.route))
+
+
+class TestPastelSummary:
+    """One row per star from the determinations of its designations."""
+
+    def test_median_range_count_and_bibcodes(self):
+        rows = determinations(
+            [
+                ("HD 4", 0.1),
+                ("HD 4", -0.3),
+                ("BD+01 2", 0.0),
+                ("HD 4", 0.2),
+                ("BD+05 9", -1.0),
+                ("Lost", 0.5),
+            ]
+        )
+        one = SimbadObject(1, 0.0, 0.0, 7)
+        stars = pastel.by_star(
+            rows,
+            {"HD 4": (7, 4), "BD+01 2": (7, 0), "BD+05 9": (0, 9)},
+            {"HD 4": one, "BD+01 2": one},
+        ).to_pylist()
+        # A designation that reaches no star has no row.
+        assert [s["pastel_designation"] for s in stars] == ["BD+05 9", "HD 4"]
+        assert (stars[0]["source_id"], stars[0]["hip"]) == (0, 9)
+        hd = stars[1]
+        # One SIMBAD object gives one row, named by its HD number.
+        assert (hd["source_id"], hd["hip"], hd["designations"]) == (7, 4, 2)
+        assert hd["feh_pastel"] == pytest.approx(0.05)
+        assert (hd["feh_pastel_min"], hd["feh_pastel_max"]) == pytest.approx(
+            (-0.3, 0.2)
+        )
+        assert hd["feh_pastel_count"] == 4
+        assert sorted(hd["pastel_bibcodes"].split()) == [
+            f"2020Test...{i:03d}" for i in range(4)
+        ]
+
+    def test_designations_that_simbad_keeps_apart(self):
+        rows = determinations(
+            [(name, 0.0) for name in ("HD 5", "BD+02 3", "HD 6", "BD+03 4")]
+            + [("HIP 13", 0.0), ("Twin", 0.0)]
+        )
+        simbad = {
+            "HD 5": SimbadObject(1, 0.0, 0.0, 8),
+            "BD+02 3": SimbadObject(2, 0.0, 0.0, 0),
+            "HD 6": SimbadObject(3, 0.0, 0.0, 99),
+            "BD+03 4": SimbadObject(4, 0.0, 0.0, 98),
+            "HIP 13": SimbadObject(5, 0.0, 0.0, 0),
+            "Twin": SimbadObject(6, 0.0, 0.0, 0),
+        }
+        stars = pastel.by_star(
+            rows,
+            {
+                "HD 5": (8, 0),
+                "BD+02 3": (8, 0),
+                "HD 6": (9, 0),
+                "BD+03 4": (9, 0),
+                "HIP 13": (0, 13),
+                "Twin": (0, 13),
+            },
+            simbad,
+        ).to_pylist()
+        # Only HD 5 has its SIMBAD object on its source. No member of source 9
+        # or of HIP 13 has, so these stars have no row.
+        assert [(s["pastel_designation"], s["designations"]) for s in stars] == [
+            ("HD 5", 1)
+        ]
+
+
+class TestPastelPlace:
+    """The routes from a designation to its star."""
+
+    def test_v_must_agree(self):
+        assert placed(
+            [("A", 10.0), ("B", 10.0), ("C", 10.0)],
+            [
+                (0, 5, 0, 0.5, 10.29),
+                (1, 6, 0, 0.5, 10.31),
+                # Outside the colour range of the G - V fit.
+                (2, 7, 0, 0.5, np.nan),
+            ],
+        ) == [(5, 0, "position"), (0, 0, "none"), (0, 0, "none")]
+
+    def test_without_v_a_single_candidate_within_1_arcsec(self):
+        assert placed(
+            [("A", None), ("B", None), ("C", None)],
+            [
+                (0, 5, 0, 0.8, 12.0),
+                (1, 6, 0, 1.5, 12.0),
+                (2, 7, 0, 0.2, 12.0),
+                (2, 8, 0, 2.5, 12.0),
+            ],
+        ) == [(5, 0, "position"), (0, 0, "none"), (0, 0, "none")]
+
+    def test_beyond_1_arcsec_fails_when_simbad_names_another_source(self):
+        far = SimbadObject(1, 0.0, 0.0, 99)
+        assert placed(
+            [("A", 10.0), ("B", 10.0)],
+            [(0, 5, 0, 2.0, 10.0), (1, 6, 0, 0.5, 10.0)],
+            {"A": far, "B": far},
+        ) == [(99, 0, "simbad"), (6, 0, "position")]
+
+    def test_simbad_source_wins_else_the_nearest(self):
+        found = [
+            (0, 5, 0, 0.3, 10.0),
+            (0, 6, 0, 1.2, 10.1),
+            (1, 5, 0, 0.3, 10.0),
+            (1, 6, 0, 1.2, 10.1),
+        ]
+        assert placed(
+            [("A", 10.0), ("B", 10.0)], found, {"A": SimbadObject(1, 0.0, 0.0, 6)}
+        ) == [(6, 0, "position"), (5, 0, "position")]
+
+    def test_a_hipparcos_candidate_keeps_its_hip_number(self):
+        assert placed([("A", 4.0)], [(0, 0, 7, 0.4, 4.1)]) == [(0, 7, "position")]
+
+    def test_without_a_candidate_simbad_gives_the_source(self):
+        assert placed(
+            [("A", 10.0), ("B", 10.0), ("C", 10.0)],
+            simbad={
+                "A": SimbadObject(1, 0.0, 0.0, 42),
+                "B": SimbadObject(2, 0.0, 0.0, 0),
+            },
+        ) == [(42, 0, "simbad"), (0, 0, "none"), (0, 0, "none")]
+
+    def test_hd_component_rule(self):
+        hips = [
+            {"hip": 10, "ra": 40.0, "dec": 10.0, "hd": 100},
+            {"hip": 20, "ra": 50.0, "dec": 10.0},
+            {"hip": 30, "ra": 60.0, "dec": 10.0},
+            # Two HIP stars share one HD number, so that number names neither.
+            {"hip": 40, "ra": 70.0, "dec": 10.0, "hd": 400},
+            {"hip": 41, "ra": 70.1, "dec": 10.0, "hd": 400},
+        ]
+        best = BestNeighbours(np.array([1000, 3000]), np.array([10, 20]))
+        simbad = {
+            "HD 100": SimbadObject(1, *offset(40.0, 10.0, 5, 0), 2000),
+            "HIP 10": SimbadObject(1, *offset(40.0, 10.0, 5, 0), 1000),
+            "HIP 20": SimbadObject(2, *offset(50.0, 10.0, 30, 0), 4000),
+            "HIP 30": SimbadObject(3, *offset(60.0, 10.0, 2, 0), 5000),
+            "HD 400": SimbadObject(4, 70.0, 10.0, 6000),
+        }
+        # Each source is a Gaia candidate of its row.
+        found = [(1, 1000, 0, 0.1, 9.0), (2, 3000, 0, 0.1, 9.0), (3, 5000, 0, 0.1, 9.0)]
+        assert placed(
+            [(name, None) for name in simbad],
+            found,
+            simbad=simbad,
+            hips=hips,
+            best=best,
+        ) == [
+            # Within 10″, SIMBAD's source is another component of the system.
+            (2000, 0, "name, component from SIMBAD"),
+            (1000, 10, "name"),
+            # Beyond 10″ it is another star, and the best neighbour stays.
+            (3000, 20, "name"),
+            # Without a best neighbour, SIMBAD's source keeps the HIP number.
+            (5000, 30, "name"),
+            (6000, 0, "simbad"),
+        ]
+
+    def test_a_source_that_is_no_candidate_leaves_the_hip_number(self):
+        # The best neighbours of HIP 10 and of HIP 20, which A reaches by
+        # position, are not among the stars read: those rows join the
+        # Hipparcos star. The source of HIP 30 is a candidate, so it stays.
+        hips = [
+            {"hip": 10, "ra": 40.0, "dec": 10.0},
+            {"hip": 20, "ra": 50.0, "dec": 10.0},
+            {"hip": 30, "ra": 60.0, "dec": 10.0},
+        ]
+        best = BestNeighbours(np.array([1000, 2000, 3000]), np.array([10, 20, 30]))
+        assert placed(
+            [("HIP 10", None), ("A", 9.0), ("HIP 30", None)],
+            [(1, 2000, 20, 0.2, 9.0), (2, 3000, 0, 0.1, 9.0)],
+            hips=hips,
+            best=best,
+        ) == [(0, 10, "name"), (0, 20, "position"), (3000, 30, "name")]
+
+    def test_the_designations_of_one_star_join_alike(self):
+        # HIP 100's source is a candidate of one designation, HIP 300's of none.
+        hips = [
+            {"hip": 100, "ra": 40.0, "dec": 10.0, "hd": 200},
+            {"hip": 300, "ra": 60.0, "dec": 10.0},
+        ]
+        best = BestNeighbours(np.array([1000, 3000]), np.array([100, 300]))
+        assert placed(
+            [("BD+01 1", None), ("HD 200", None), ("HIP 100", None), ("HIP 300", None)],
+            [(2, 1000, 0, 0.1, 9.0)],
+            simbad={"BD+01 1": SimbadObject(7, 60.0, 10.0, 3000)},
+            hips=hips,
+            best=best,
+        ) == [
+            (0, 300, "simbad"),
+            (1000, 100, "name"),
+            (1000, 100, "name"),
+            (0, 300, "name"),
+        ]
+
+    def test_a_name_without_a_gaia_id_in_simbad_takes_the_nearest(self):
+        # The farther candidate is a Hipparcos star without a best neighbour.
+        assert placed(
+            [("A", 10.0)],
+            [(0, 0, 7, 0.4, 10.0), (0, 5, 0, 0.2, 10.0)],
+            {"A": SimbadObject(1, 0.0, 0.0, 0)},
+        ) == [(5, 0, "position")]
+
+
+class TestPastelRead:
+    """From the PASTEL and SIMBAD files to one row per star."""
+
+    def test_positions_at_j2000_and_the_routes(self, tmp_path):
+        ra, dec = 40.0, 10.0
+        # It moves 1″/yr east, so it is 16″ from its J2000 position at J2016.0.
+        moved_ra = ra + 16 / 3600 / np.cos(np.radians(dec))
+        chunk = tmp_path / ALL_SKY
+        pq.write_table(
+            pa.table(
+                {
+                    "source_id": pa.array([5], pa.int64()),
+                    "ra": [moved_ra],
+                    "dec": [dec],
+                    "pmra": pa.array([1000.0], pa.float32()),
+                    "pmdec": pa.array([0.0], pa.float32()),
+                    "phot_g_mean_mag": pa.array([12.0], pa.float32()),
+                    "phot_bp_mean_mag": pa.array([12.4], pa.float32()),
+                    "phot_rp_mean_mag": pa.array([11.5], pa.float32()),
+                }
+            ),
+            chunk,
+        )
+        hip = hip_stars([{"hip": 7, "ra": 80.0, "dec": -5.0, "v_mag": 4.0}])
+        directory = write_pastel(
+            tmp_path / "pastel",
+            [
+                ("G   1-1", f"{ra:.11f}", f"{dec:.11f}", "12.200", "-0.500", "2001A"),
+                ("BD+10    1", f"{ra:.11f}", f"{dec:.11f}", None, "-0.300", "2002A"),
+                ("Faint", f"{ra + 0.1:.11f}", f"{dec:.11f}", "20.000", "-0.5", None),
+                (
+                    "*  lam Tst",
+                    "80.00000000000",
+                    "-5.00000000000",
+                    "4.100",
+                    "0.1",
+                    None,
+                ),
+                ("HD      1", "0.00000000000", "0.00000000000", "9.000", "0.0", None),
+            ],
+        )
+        simbad = write_simbad(
+            tmp_path / "names.csv",
+            {"Faint": None, "HD 1": SimbadObject(3, 0.0, 0.0, 77)},
+        )
+        stars = pastel.read_stars(
+            [chunk],
+            hip,
+            BestNeighbours(np.array([5]), np.array([8])),
+            workers=1,
+            directory=directory,
+            simbad_file=simbad,
+        ).to_pylist()
+        keys = {s["pastel_designation"]: (s["source_id"], s["hip"]) for s in stars}
+        # G 1-1 agrees in V. Source 5 is the only star within 1″ of BD+10 1.
+        # The two make one star. HIP 7 has no Gaia source.
+        assert keys == {"* lam Tst": (0, 7), "BD+10 1": (5, 0), "HD 1": (77, 0)}
+        merged = next(s for s in stars if s["pastel_designation"] == "BD+10 1")
+        assert (merged["designations"], merged["feh_pastel_count"]) == (2, 2)
+        assert merged["feh_pastel"] == pytest.approx(-0.4)
 
 
 # Plain values of the allStarLite columns that the source reads.
@@ -266,7 +642,7 @@ def catalogue_rows(
 
 
 class TestJoins:
-    """The catalogues join the Gaia rows by source_id."""
+    """The catalogues join the Gaia rows by source_id, PASTEL also by HIP."""
 
     def test_a_chunk_takes_the_rows_of_its_own_pixels(self):
         low = 1 << gaia_source.PIXEL_SHIFT
@@ -291,9 +667,18 @@ class TestJoins:
             SourceTable.of(catalogue_rows([4, 4], apogee.COLUMNS), apogee.COLUMNS)
 
     def test_the_values_reach_known_stars_and_mint_nothing(self, tmp_path):
-        p = {k: at(60 * k) for k in range(1, 4)}
+        p = {k: at(60 * k) for k in range(1, 5)}
         best = BestNeighbours(np.array([1]), np.array([10]))
         joined = (
+            SourceTable.of(
+                catalogue_rows(
+                    [1, 999],
+                    pastel.COLUMNS,
+                    pastel_designation=["HD 100", "Elsewhere"],
+                    feh_pastel=[-0.3, 0.0],
+                ),
+                pastel.COLUMNS,
+            ),
             SourceTable.of(
                 catalogue_rows(
                     [3, 999],
@@ -325,7 +710,14 @@ class TestJoins:
         pq.write_table(astrophysical([]), reader.astrophysical_path(path))
         pq.write_table(xgboost([]), reader.xgboost_path(path))
         gaia_rows = list(reader.batches([path]))
-        assert reader.counts["apogee_id"] == 1
+        assert {k: reader.counts[k] for k in ("pastel_designation", "apogee_id")} == {
+            "pastel_designation": 1,
+            "apogee_id": 1,
+        }
+        # HIP 40 has no Gaia source, so its PASTEL row joins by HIP number.
+        by_hip = catalogue_rows(
+            [0], pastel.COLUMNS, pastel_designation=["HD 400"], feh_pastel=[-0.7]
+        ).append_column("hip", pa.array([40], pa.int64()))
         hip = hipparcos.engine_rows(
             hip_stars(
                 [
@@ -339,25 +731,31 @@ class TestJoins:
                         "feh_xhip": -0.4,
                         "feh_xhip_quality": "A",
                     },
+                    {"hip": 40, "ra": p[4][0], "dec": p[4][1], "v_mag": 7.0},
                 ]
             ),
             best,
+            by_hip,
         )
         root = tmp_path / "root"
         with IngestRun.start(root, root / "backup") as run:
             run.add(GAIA_DR3, gaia_rows)
             run.add(HIPPARCOS, [hip])
             result = run.commit()
-        assert result.entry["counts"]["minted"] == 3
+        assert result.entry["counts"]["minted"] == 4
         registry = Registry(root)
 
         def id_of(catalogue: str, release: str, value: object) -> int:
             return int(registry.lookup(catalogue, release, [str(value)])[0])
 
         first, second, third = (id_of("gaia", "dr3", k) for k in (1, 2, 3))
+        fourth = id_of("hip", "2007", 40)
         assert id_of("apogee", "dr17", "2M3") == 0
         point = {r["id"]: r for r in table_rows(root, "point-source").to_pylist()}
-        assert len(point) == 3
+        assert len(point) == 4
+        assert point[first]["pastel_designation"] == "HD 100"
+        assert point[first]["feh_pastel"] == pytest.approx(-0.3)
+        assert point[first]["pastel_source"] == GAIA_DR3.name
         assert point[first]["feh_xhip"] == pytest.approx(-0.4)
         assert point[first]["xhip_metallicity_source"] == HIPPARCOS.name
         assert point[second]["lamost_id"] == "J2"
@@ -367,3 +765,6 @@ class TestJoins:
         assert point[third]["apogee_id"] == "2M3"
         assert point[third]["mh_apogee"] == pytest.approx(0.5)
         assert point[third]["apogee_source"] == GAIA_DR3.name
+        assert point[fourth]["pastel_designation"] == "HD 400"
+        assert point[fourth]["feh_pastel"] == pytest.approx(-0.7)
+        assert point[fourth]["pastel_source"] == HIPPARCOS.name

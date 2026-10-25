@@ -88,6 +88,22 @@ CREDITS = (
         "citation": "Andrae, Rix & Chandra 2023, ApJS 267, 8",
     },
     {
+        "name": "The PASTEL catalogue, 2020 version (B/pastel)",
+        "organisation": "Soubiran et al. 2016",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/B/pastel",
+        "citation": "Soubiran et al. 2016, A&A 591, A118",
+    },
+    # SIMBAD places the PASTEL designations.
+    {
+        "name": "SIMBAD astronomical database",
+        "organisation": "CDS, Strasbourg Astronomical Observatory, France",
+        "source": "https://simbad.cds.unistra.fr/simbad/",
+        "license": "ODbL",
+        "attribution": "This research has made use of the SIMBAD database,"
+        " operated at CDS, Strasbourg, France.",
+        "citation": "Wenger et al. 2000, A&AS 143, 9",
+    },
+    {
         "name": "APOGEE DR17",
         "organisation": "SDSS-IV",
         "source": "https://www.sdss4.org/dr17/irspec/",

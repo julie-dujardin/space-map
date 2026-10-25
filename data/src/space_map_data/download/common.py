@@ -111,6 +111,9 @@ from space_map_data.download.providers.stars.gaia_xp_metallicity import (
     GaiaXpMetallicityDownloader,
 )
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
+from space_map_data.download.providers.stars.pastel_simbad import (
+    PastelSimbadDownloader,
+)
 from space_map_data.download.providers.stars.wikidata_stars import (
     WikidataStarsDownloader,
 )
@@ -179,6 +182,7 @@ PROVIDERS_CLASSES = [
     GaiaBinaryMassesDownloader,
     CDSStarCataloguesDownloader,
     StellarParameterCataloguesDownloader,
+    PastelSimbadDownloader,
     IAUStarNamesDownloader,
     GalaxyCataloguesDownloader,
     StarClusterCataloguesDownloader,

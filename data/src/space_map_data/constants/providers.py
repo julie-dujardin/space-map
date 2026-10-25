@@ -57,6 +57,7 @@ class PROVIDERS(StrEnum):
     BLACK_HOLE_CATALOGUES = "black_hole_catalogues"
     TRANSIENT_CATALOGUES = "transient_catalogues"
     STELLAR_PARAMETER_CATALOGUES = "stellar_parameter_catalogues"
+    PASTEL_SIMBAD = "pastel_simbad"
     SIMBAD_OBJECTS = "simbad_objects"
     WIKIDATA_SIMBAD_IDS = "wikidata_simbad_ids"
     STELLARIUM_SKYCULTURES = "stellarium_skycultures"

@@ -1,6 +1,6 @@
 # Stellar parameters that fill the gaps of the Gaia XP metallicities: bright
-# FGK stars and M dwarfs. `constants/manifests/catalogues.py` describes the
-# fields.
+# FGK stars and M dwarfs. The extrasolar ingest reads them.
+# `constants/manifests/catalogues.py` describes the fields.
 catalogues:
 - key: pastel
   title: The PASTEL catalogue, 2020 version (B/pastel)

@@ -203,6 +203,7 @@ JOBS: list[Job] = [
             PROVIDERS.GAIA_BINARY_MASSES,
             PROVIDERS.CDS_STAR_CATALOGUES,
             PROVIDERS.STELLAR_PARAMETER_CATALOGUES,
+            PROVIDERS.PASTEL_SIMBAD,
             PROVIDERS.IAU_STAR_NAMES,
         ),
         schedule=Every(timedelta(days=7)),

@@ -27,6 +27,7 @@ from space_map_data.extrasolar.sources import (
     hipparcos,
     lamost,
     names,
+    pastel,
     wikidata,
 )
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3, BestNeighbours
@@ -195,11 +196,18 @@ class TestTables:
     def test_the_joined_catalogues_fill_their_groups(self):
         groups = {group.name: group for group in POINT_SOURCE.groups}
         for name, columns in (
+            ("pastel", pastel.COLUMNS),
             ("apogee", apogee.COLUMNS),
             ("lamost", lamost.COLUMNS),
         ):
             assert groups[name].names == list(columns)
-        assert gaia.JOINED_COLUMNS == (*apogee.COLUMNS, *lamost.COLUMNS)
+        assert gaia.JOINED_COLUMNS == (
+            *pastel.COLUMNS,
+            *apogee.COLUMNS,
+            *lamost.COLUMNS,
+        )
+        assert hipparcos.PASTEL_COLUMNS == pastel.COLUMNS
+        assert groups["pastel"].sources == (GAIA_DR3.name, HIPPARCOS.name)
 
 
 class TestGaiaRows:
