@@ -9,6 +9,7 @@ import pytest
 from space_map_data.extrasolar import __main__ as cli_module
 from space_map_data.extrasolar import engine, ids, sky
 from space_map_data.extrasolar.engine import IngestRun, Source
+from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from tests.extrasolar.conftest import (
     GAIA,
@@ -29,6 +30,7 @@ from tests.extrasolar.conftest import (
 
 CELL = 5_000_123
 RA, DEC = centre(CELL)
+GAIA_SUBSET = Source("gaia", "gaia", "dr3", home=1, kind="star", subset=True)
 
 
 def near(arcsec: float, angle: float = 0.0) -> tuple[float, float]:
@@ -211,6 +213,41 @@ class TestMatching:
         assert result.entry["counts"]["minted"] == 2
         assert id_of(root, HIP, 7) not in (0, id_of(root, GAIA, 1))
         assert id_of(root, GAIA, 99) == id_of(root, HIP, 7)
+
+    def test_a_missed_claim_of_a_subset_joins_the_match(self, root, ingest):
+        gaia = gaia_rows([star(1, mag=5.0)])
+        hip = hip_rows([star(7, 0.2, mag=5.0, claims=[claim("gaia", "dr3", 99)])])
+        result = ingest([(GAIA_SUBSET, gaia), (HIP, hip)])
+        counts = result.entry["counts"]
+        assert (counts["minted"], counts["conflicts"]) == (1, 0)
+        id_ = id_of(root, GAIA, 1)
+        assert id_ != 0 and id_of(root, HIP, 7) == id_ == id_of(root, GAIA, 99)
+        meta = by_id(table_rows(root, "metadata"))[id_]
+        assert {(c["catalogue"], c["catalogue_id"]) for c in meta["cross_ids"]} == {
+            ("gaia", "1"),
+            ("gaia", "99"),
+            ("hip", "7"),
+        }
+
+        result = ingest([(GAIA_SUBSET, gaia), (HIP, hip)])
+        counts = result.entry["counts"]
+        assert (counts["minted"], counts["conflicts"]) == (0, 0)
+        assert result.entry["sources"][1]["by_id"] == 1
+
+    def test_a_subset_keeps_the_block_of_other_catalogues(self, root, ingest):
+        names = Source("names", "iau", "wgsn", home=1, matcher=PositionMatcher())
+        ra, dec = near(0.1)
+        lost = {"id": "lost", "ra": ra, "dec": dec}
+        lost["claims"] = [claim("hip", "2007", 55)]
+        ingest(
+            [
+                (GAIA_SUBSET, gaia_rows([star(1, mag=5.0)])),
+                (HIP, hip_rows([star(7, 0.2, mag=5.0)])),
+                (names, name_rows([lost])),
+            ]
+        )
+        assert id_of(root, HIP, 7) == id_of(root, GAIA, 1) != 0
+        assert id_of(root, names, "lost") == 0
 
     def test_small_caches_give_the_same_ids(self, tmp_path, monkeypatch, ingest):
         cells = [CELL + n * (1 << sky.REGION_SHIFT) for n in range(6)]
@@ -674,6 +711,9 @@ class TestNotPermanent:
             result = ingest([(GAIA, gaia_rows(gaia)), (HIP, hip), (NOTES, notes)])
         counts = result.entry["counts"]
         assert (counts["merged"], counts["conflicts"]) == (1, 0)
+        # The notes pass sees the join too, but the ingest records it once.
+        assert counts["joined"] == 1
+        assert caplog.text.count("join: ") == 1
         assert result.entry["sources"][2]["outranked"] == 1
         survivor = id_of(root, HIP, 42)
         assert id_of(root, GAIA, 1) == survivor

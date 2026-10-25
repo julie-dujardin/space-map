@@ -26,9 +26,10 @@ import pyarrow.compute as pc
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sources.gaia import GAIA_DR3
-from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
+from space_map_data.extrasolar.sources.gaia import GAIA_DR3, GAIA_DR3_NAMED
+from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS, HIPPARCOS_1997
 from space_map_data.extrasolar.sources.names import IAU_WGSN
+from space_map_data.extrasolar.sources.simbad import SIMBAD
 
 RADIUS = 5.0
 NEAR = 3.0
@@ -41,9 +42,9 @@ MAG_TOLERANCE = 0.5
 G_MINUS_V = ((-0.02704, 0.01424, -0.2156, 0.01426), (-0.5, 5.0))
 G_MINUS_K = ((-0.0981, 2.089, -0.1579), (-0.5, 2.5))
 
-TWIN_SOURCES = (GAIA_DR3.name, HIPPARCOS.name)
+TWIN_SOURCES = (GAIA_DR3.name, GAIA_DR3_NAMED.name, HIPPARCOS.name)
 # Stars that count as candidates but are never twins.
-OTHER_SOURCES = (IAU_WGSN.name,)
+OTHER_SOURCES = (IAU_WGSN.name, SIMBAD.name, HIPPARCOS_1997.name)
 CLAIMS = (
     (GAIA_DR3.catalogue, GAIA_DR3.release),
     (HIPPARCOS.catalogue, HIPPARCOS.release),

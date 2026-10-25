@@ -6,15 +6,16 @@ Gaia DR3 rows of the hosts that no positionable Gaia row holds. `add_passes`
 runs the three catalogue passes and adds `PlanetsExtension`, which numbers
 the planets and writes the Planets part and the planets table at commit.
 
-A host whose Gaia DR3 source is the best neighbour of a Hipparcos star gets
-no Gaia row here: the Hipparcos star already holds that DR3 id, and a Gaia
-row would replace its Hipparcos astrometry. For the same reason a host with
-an unpositionable DR3 source and a HIP number claims its HIP number.
+The Gaia rows of the hosts go to the gaia-dr3-named pass, whose astrometry
+ranks below Hipparcos. A host with a HIP number and an unpositionable DR3
+source that is not the best neighbour of a Hipparcos star claims its HIP
+number: its Gaia row would make a second star.
 """
 
 import logging
 import re
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -115,8 +116,10 @@ class Prepared:
     gaia_rows: pa.Table
     gaia_counts: Counter
     hosts: list[int]
-    # Names in the IAU lists.
+    # Names in the IAU lists, and their star names that the IAU WGSN pass
+    # places instead.
     nameexoworlds: int
+    wgsn_stars: int
     twins: TwinSearch
     # Hosts that claim their HIP number for an unpositionable DR3 source.
     by_hip: list[str]
@@ -174,7 +177,7 @@ def read_gaia_rows(
     claimed = np.isin(source_id, np.array(sorted(wanted), np.int64))
     counts["unpositionable Gaia sources of hosts"] = int(claimed.sum())
     counts["of which a Hipparcos star holds"] = int((claimed & hipparcos).sum())
-    stars = stars.filter(pa.array(claimed & ~hipparcos))
+    stars = stars.filter(pa.array(claimed))
     rows = reader.pass_rows(
         stars,
         _read_typed(inputs.fidelity, gaia.FIDELITY_COLUMNS),
@@ -184,9 +187,7 @@ def read_gaia_rows(
         reader.read_orbits(),
     )
     # Each row gets an ID only when a host row claims it.
-    return rows.set_column(
-        rows.schema.get_field_index("mint"), "mint", pa.array(np.zeros(len(rows), bool))
-    ), counts
+    return gaia.never_mint(rows), counts
 
 
 DEFAULT_INPUTS = Inputs()
@@ -197,12 +198,15 @@ def prepare(
     registry: Registry,
     hip_names: dict[int, str],
     inputs: Inputs = DEFAULT_INPUTS,
+    wgsn: Iterable[names.WgsnName] = (),
 ) -> Prepared:
     """Read and join the catalogues, and build the pass rows.
 
     `reader` joins the Gaia rows of the hosts as it joins its chunks.
     `registry` gives the stars that a host without ids may be a twin of, and
-    `hip_names` the Hipparcos name of each HIP number.
+    `hip_names` the Hipparcos name of each HIP number. `wgsn` gives the names
+    of the IAU WGSN pass: a host row leaves out a name that this pass claims
+    on its star.
     """
     cats = [
         catalogues.read_archive(inputs.archive),
@@ -255,7 +259,7 @@ def prepare(
     star_of = {at: record.star for at, record in enumerate(records)}
     iau_names = names.read_names(inputs.names)
     named = names.place_names(
-        iau_names, [record.joined for record in records], stars, star_of
+        iau_names, [record.joined for record in records], stars, star_of, wgsn
     )
     for at, name in named.planets.items():
         table.name_planet(records[at], name)
@@ -317,6 +321,7 @@ def prepare(
         gaia_counts,
         host_list,
         sum(len(system) for system in iau_names),
+        len(named.wgsn),
         search,
         by_hip,
     )
@@ -798,7 +803,8 @@ class PlanetsExtension:
             (
                 f"NameExoWorlds: {len(named.planets):,} planet names and"
                 f" {len(named.stars):,} star names placed of"
-                f" {prepared.nameexoworlds:,}"
+                f" {prepared.nameexoworlds:,}; {prepared.wgsn_stars:,} star names"
+                " left to the IAU WGSN pass"
             ),
         ]
         lines += _listed("not placed", named.unplaced)
@@ -875,14 +881,14 @@ class PlanetsExtension:
             rows = rows.filter(pc.is_in(rows["id"], pa.array(here)))
             where = placement(rows)
             for at, row in enumerate(rows.to_pylist()):
-                fidelity = row["fidelity_v2"]
-                flagged = fidelity is not None and fidelity < gaia.MIN_FIDELITY
                 source = row["astrometry_source"]
                 if row["id"] in new:
-                    if source == gaia.GAIA_DR3.name and not where.positioned[at]:
+                    if source in GAIA_SOURCES and not where.positioned[at]:
                         kind = "Gaia, no 5σ parallax"
-                    elif source == gaia.GAIA_DR3.name:
-                        kind = "Gaia, flagged by fidelity" if flagged else "Gaia"
+                    elif source in GAIA_SOURCES:
+                        kind = (
+                            "Gaia, flagged by fidelity" if where.flagged[at] else "Gaia"
+                        )
                     elif source in BY_NAME:
                         kind = f"literature star, {source}"
                     else:
@@ -890,8 +896,12 @@ class PlanetsExtension:
                     kinds[kind] += 1
                 if where.by_parallax[at]:
                     placed["5σ parallax"] += 1
+                elif where.by_group[at]:
+                    placed[f"distance group, {row['distance_source']}"] += 1
                 elif where.by_catalogue[at]:
-                    placed["catalogue distance (flagged)"] += 1
+                    placed["catalogue distance"] += 1
+                elif where.by_suspect[at]:
+                    placed["5σ parallax, fidelity under 0.5"] += 1
                 else:
                     placed["no distance"] += 1
                     no_distance.append(f"{row['id']} {names.get(row['id'], '')}")
@@ -905,7 +915,9 @@ class PlanetsExtension:
         ]
 
 
-HOST_COLUMNS = ["id", "astrometry_source", *COLUMNS]
+HOST_COLUMNS = ["id", *COLUMNS]
+# The Gaia passes, the chunk rows and the rows outside the chunks.
+GAIA_SOURCES = (gaia.GAIA_DR3.name, gaia.GAIA_DR3_NAMED.name)
 
 
 def doubles(planets: pa.Table) -> list[str]:

@@ -42,8 +42,18 @@ def star(
     snr: float = 50.0,
     v_i: float | None = None,
     name: str | None = None,
+    simbad: bool = False,
+    distance: float | None = None,
 ) -> dict:
-    """A Point source row; a row without `gaia` is a Hipparcos-only star."""
+    """A Point source row. `simbad` adds SIMBAD photometry, with `g` as its
+    G. A row without `gaia` takes its astrometry from SIMBAD when `simbad`,
+    else it is a Hipparcos-only star. `distance` fills the distance group."""
+    if gaia:
+        epoch, astrometry = 2016.0, "gaia-dr3"
+    elif simbad:
+        epoch, astrometry = 2000.0, "simbad"
+    else:
+        epoch, astrometry = 1991.25, "hipparcos-2007"
     row: dict = {
         "ra": ra,
         "dec": dec,
@@ -51,8 +61,8 @@ def star(
         "parallax_error": parallax / snr,
         "pmra": 100.0,
         "pmdec": -50.0,
-        "epoch": 2016.0 if gaia else 1991.25,
-        "astrometry_source": "gaia-dr3" if gaia else "hipparcos-2007",
+        "epoch": epoch,
+        "astrometry_source": astrometry,
     }
     if gaia:
         row |= {
@@ -63,13 +73,29 @@ def star(
             "fidelity_v2": fidelity,
             "fidelity_source": "gaia-dr3",
         }
-    if hipparcos or not gaia:
+    if hipparcos or not (gaia or simbad):
         row |= {
             "hp_mag": 6.0,
             "v_mag": 5.9,
             "b_v": 0.6,
             "v_i": v_i,
             "hipparcos_photometry_source": "hipparcos-2007",
+        }
+    if simbad:
+        row |= {
+            "simbad_b_mag": 9.0,
+            "simbad_v_mag": 8.4,
+            "simbad_g_mag": g,
+            "simbad_sp_type": "K0V",
+            "simbad_photometry_source": "simbad",
+        }
+    if distance is not None:
+        row |= {
+            "distance": distance,
+            "distance_lower": 0.9 * distance,
+            "distance_upper": 1.1 * distance,
+            "distance_method": "cluster",
+            "distance_source": "hunt-reffert-2024",
         }
     row["_name"] = name
     return row

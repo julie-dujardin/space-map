@@ -200,7 +200,7 @@ def _star_qids() -> list[str] | None:
     Raises RegistryBusy while an ingest holds the registry.
     """
     try:
-        return [star.qid for star in read_star_objects()]
+        return [star.qid for star in read_star_objects() if star.qid]
     except NoRegistry as error:
         logger.warning("%s is kept: %s", STAR_IMAGES_PATH.name, error)
         return None

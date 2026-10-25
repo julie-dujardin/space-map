@@ -55,12 +55,13 @@ class PositionMatcher:
     """Distance over the combined error and size, plus magnitude agreement.
 
     Errors and sizes are in arcsec; a size is the radius of the object's
-    extent. A pair farther than `near_sigma` must have a magnitude on both
-    sides.
+    extent. A pair farther than `near_sigma` and than `near_arcsec` must have
+    a magnitude on both sides.
     """
 
     n_sigma: float = 5.0
     near_sigma: float = 3.0
+    near_arcsec: float = 0.0
     # The smallest error that either side counts.
     min_error: float = 0.1
     reach: float = 1.0
@@ -87,7 +88,8 @@ class PositionMatcher:
         both_mags = np.isfinite(mag_diff)
         ok = sigma <= self.n_sigma
         ok &= ~both_mags | (mag_diff <= self.max_mag_diff)
-        ok &= (sigma <= self.near_sigma) | both_mags
+        near = (sigma <= self.near_sigma) | (pairs.separation <= self.near_arcsec)
+        ok &= near | both_mags
         ok &= self._kinds_agree(pairs.row_kind, pairs.key_kind)
         mag_term = np.where(both_mags, (mag_diff / self.mag_sigma) ** 2, 0)
         return np.where(ok, sigma**2 + mag_term, np.nan)

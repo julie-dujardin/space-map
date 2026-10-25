@@ -32,9 +32,23 @@ from space_map_data.extrasolar.sources import (
     pastel,
     wikidata,
 )
-from space_map_data.extrasolar.sources.gaia import GAIA_DR3, BestNeighbours
-from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
+from space_map_data.extrasolar.sources.distances import (
+    BAILER_JONES_2021,
+    HUNT_REFFERT_2024,
+    MAGELLANIC_CLOUDS,
+    REYLE_2021,
+    SIMBAD_PARALLAX,
+    ULTRACOOLSHEET,
+)
+from space_map_data.extrasolar.sources.gaia import (
+    GAIA_DR3,
+    GAIA_DR3_NAMED,
+    BestNeighbours,
+)
+from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS, HIPPARCOS_1997
+from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.extrasolar.sources.names import IAU_WGSN
+from space_map_data.extrasolar.sources.simbad import SIMBAD
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.tables import (
     BINARY_ORBIT,
@@ -53,6 +67,16 @@ from tests.extrasolar.test_gaia_orbits import build as build_orbits
 from tests.extrasolar.test_gaia_orbits import solution
 
 RA, DEC = centre(6_000_321)
+# In the order of the distance group.
+DISTANCE_SOURCES = (
+    LITERATURE,
+    SIMBAD_PARALLAX,
+    REYLE_2021,
+    ULTRACOOLSHEET,
+    HUNT_REFFERT_2024,
+    MAGELLANIC_CLOUDS,
+    BAILER_JONES_2021,
+)
 
 
 def at(arcsec: float, angle: float = 0.0) -> tuple[float, float]:
@@ -127,35 +151,61 @@ def xgboost(rows: list[tuple[int, float, bool]]) -> pa.Table:
 
 
 def hip_stars(rows: list[dict]) -> pa.Table:
-    """Rows as `hipparcos.read_stars` gives them, at rest at J1991.25."""
+    """Rows as `hipparcos.read_stars` gives them, at rest at J1991.25.
+
+    A row without "ra" is an entry that the new reduction drops: it has
+    "ra_hms" and "dec_dms", and no astrometry.
+    """
     float_names = [
         name
         for name in (
             *hipparcos.HIP2_FIELDS.values(),
             *hipparcos.HIP_MAIN_FIELDS.values(),
+            "hp_max",
+            "hp_min",
         )
         if name not in ("hip", "hd", "sp_type")
     ]
+    astrometry = set(hipparcos.HIP2_FIELDS.values())
     columns = {"hip": pa.array([r["hip"] for r in rows], pa.int64())}
     for name in float_names:
         columns[name] = pa.array(
             [
-                r.get(name, 0.0 if "error" in name or "pm" in name else None)
+                None
+                if name in astrometry and "ra" not in r
+                else r.get(name, 0.0 if "error" in name or "pm" in name else None)
                 for r in rows
             ],
             pa.float64(),
         )
-    columns["ra_rad"] = pa.array([np.radians(r["ra"]) for r in rows])
-    columns["dec_rad"] = pa.array([np.radians(r["dec"]) for r in rows])
-    columns["sp_type"] = pa.array([r.get("sp_type") for r in rows], pa.string())
+    for name in ("ra", "dec"):
+        columns[f"{name}_rad"] = pa.array(
+            [np.radians(r[name]) if name in r else None for r in rows], pa.float64()
+        )
+    for name in ("sp_type", "ra_hms", "dec_dms", "hvar_type", "xhip_name"):
+        columns[name] = pa.array([r.get(name) for r in rows], pa.string())
     columns["hd"] = pa.array([r.get("hd") for r in rows], pa.int64())
-    columns["xhip_name"] = pa.array([r.get("xhip_name") for r in rows], pa.string())
     for name in ("feh_xhip", "feh_xhip_error"):
         columns[name] = pa.array([r.get(name) for r in rows], pa.float64())
     columns["feh_xhip_quality"] = pa.array(
         [r.get("feh_xhip_quality") for r in rows], pa.string()
     )
     return pa.table(columns)
+
+
+def hms(ra: float) -> str:
+    """RA in degrees as the "h m s" text of hip_main."""
+    hours, rest = divmod(round(ra / 15 * 3600, 2), 3600)
+    minutes, seconds = divmod(rest, 60)
+    return f"{int(hours):02d} {int(minutes):02d} {seconds:05.2f}"
+
+
+def dms(dec: float) -> str:
+    """Dec in degrees as the "±d m s" text of hip_main."""
+    degrees, rest = divmod(round(abs(dec) * 3600, 1), 3600)
+    minutes, seconds = divmod(rest, 60)
+    sign = "-" if dec < 0 else "+"
+    return f"{sign}{int(degrees):02d} {int(minutes):02d} {seconds:04.1f}"
 
 
 def iau_entry(name: str, **more: str) -> dict:
@@ -197,18 +247,27 @@ class TestTables:
             for group in table.groups:
                 assert set(group.sources) <= {
                     GAIA_DR3.name,
+                    GAIA_DR3_NAMED.name,
                     HIPPARCOS.name,
+                    HIPPARCOS_1997.name,
+                    SIMBAD.name,
                     IAU_WGSN.name,
                     *(source.name for source in EXOPLANET_SOURCES),
                     WIKIDATA.name,
+                    *(source.name for source in DISTANCE_SOURCES),
                 }
+        distance = {g.name: g for g in POINT_SOURCE.groups}["distance"]
+        assert distance.sources == tuple(source.name for source in DISTANCE_SOURCES)
         # A planet host shows the name that its planets' designations use.
         assert METADATA.groups[0].sources == (
             IAU_WGSN.name,
             *(source.name for source in EXOPLANET_SOURCES),
             WIKIDATA.name,
+            SIMBAD.name,
             HIPPARCOS.name,
+            HIPPARCOS_1997.name,
             GAIA_DR3.name,
+            GAIA_DR3_NAMED.name,
         )
 
     def test_the_joined_catalogues_fill_their_groups(self):
@@ -225,7 +284,12 @@ class TestTables:
             *lamost.COLUMNS,
         )
         assert hipparcos.PASTEL_COLUMNS == pastel.COLUMNS
-        assert groups["pastel"].sources == (GAIA_DR3.name, HIPPARCOS.name)
+        assert groups["pastel"].sources == (
+            GAIA_DR3.name,
+            GAIA_DR3_NAMED.name,
+            HIPPARCOS.name,
+            HIPPARCOS_1997.name,
+        )
 
 
 class TestGaiaRows:
@@ -473,7 +537,8 @@ class TestHipparcos:
             ]
         )
         best = BestNeighbours(np.array([77]), np.array([2]))
-        rows = hipparcos.engine_rows(table, best)
+        rows, rough = hipparcos.engine_rows(table, best)
+        assert rough.num_rows == 0
         assert rows["name"].to_pylist() == ["Alpha Orionis", "HD 200", "HIP 3", "HIP 4"]
         claims = [
             [
@@ -493,6 +558,115 @@ class TestHipparcos:
         moved = rows["match_dec"].to_pylist()[3] - DEC
         assert moved * 3600 == pytest.approx(24.75, rel=1e-3)
 
+    def test_a_red_or_variable_star_matches_without_its_magnitude(self):
+        table = hip_stars(
+            [
+                {"hip": 1, "ra": RA, "dec": DEC, "v_mag": 5.0, "b_v": 1.4, "v_i": 3.2},
+                {
+                    "hip": 2,
+                    "ra": RA,
+                    "dec": DEC,
+                    "v_mag": 5.0,
+                    "b_v": 0.0,
+                    "hp_max": 4.0,
+                    "hp_min": 6.0,
+                    "hvar_type": "P",
+                },
+                # The change of Hp comes from duplicity.
+                {
+                    "hip": 3,
+                    "ra": RA,
+                    "dec": DEC,
+                    "v_mag": 5.0,
+                    "b_v": 0.0,
+                    "hp_max": 4.0,
+                    "hp_min": 6.0,
+                    "hvar_type": "D",
+                },
+                {
+                    "hip": 4,
+                    "ra": RA,
+                    "dec": DEC,
+                    "v_mag": 5.0,
+                    "b_v": 0.0,
+                    "hp_max": 4.0,
+                    "hp_min": 6.0,
+                },
+                {"hip": 5, "ra": RA, "dec": DEC, "v_mag": 5.0, "b_v": 0.0, "v_i": 2.4},
+                # A rough row keeps its estimate.
+                {
+                    "hip": 6,
+                    "ra_hms": hms(RA),
+                    "dec_dms": dms(DEC),
+                    "v_mag": 5.0,
+                    "b_v": 0.0,
+                    "v_i": 3.2,
+                },
+            ]
+        )
+        rows, rough = hipparcos.engine_rows(
+            table, BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64))
+        )
+        estimate = pytest.approx(5.0 - 0.02907)
+        assert rows["match_mag"].to_pylist() == [None, None, *[estimate] * 3]
+        assert rough["match_mag"].to_pylist() == [estimate]
+
+    def test_sexagesimal(self):
+        values = hipparcos.sexagesimal(
+            pa.array(["06 45 08.92", "-16 42 58.0", "-00 30 00.0", " +00 00 36.0"])
+        )
+        assert values == pytest.approx(
+            [6 + 45 / 60 + 8.92 / 3600, -(16 + 42 / 60 + 58 / 3600), -0.5, 0.01]
+        )
+
+    def test_rough_rows_of_the_dropped_entries(self):
+        table = hip_stars(
+            [
+                {"hip": 1, "ra": RA, "dec": DEC, "v_mag": 5.0, "b_v": 0.0, "hd": 300},
+                {
+                    "hip": 2,
+                    "ra_hms": hms(RA),
+                    "dec_dms": dms(DEC),
+                    "v_mag": 6.0,
+                    "b_v": 0.0,
+                    "hd": 200,
+                },
+                # HD 300 is on a star of the new reduction too.
+                {
+                    "hip": 3,
+                    "ra_hms": hms(RA),
+                    "dec_dms": dms(-DEC),
+                    "v_mag": 7.0,
+                    "hp_mag": 7.3,
+                    "hd": 300,
+                },
+            ]
+        )
+        best = BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64))
+        rows, rough = hipparcos.engine_rows(table, best)
+        assert rows["catalogue_id"].to_pylist() == ["1"]
+        assert rough["catalogue_id"].to_pylist() == ["2", "3"]
+        apart = gaia.sky.separation(
+            rough["match_ra"].to_numpy(),
+            rough["match_dec"].to_numpy(),
+            np.array([RA, RA]),
+            np.array([DEC, -DEC]),
+        )
+        assert (apart < 0.1).all()
+        assert rough["ra"].to_pylist() == pytest.approx(rough["match_ra"].to_pylist())
+        assert rough["match_error"].to_pylist() == [4.0, 4.0]
+        assert rough["match_mag"].to_pylist() == pytest.approx(
+            [6.0 - 0.02907, 7.3 - 0.28]
+        )
+        assert rough["parallax"].null_count == rough["pmra"].null_count == 2
+        assert rough["epoch"].to_pylist() == [1991.25] * 2
+        assert rough["name"].to_pylist() == ["HD 200", "HIP 3"]
+        assert rough["claims"].to_pylist() == [
+            [{"catalogue": "hd", "release": "1949", "catalogue_id": "200"}],
+            None,
+        ]
+        assert rows["claims"].to_pylist() == [None]
+
     def test_read_stars_joins_the_three_catalogues(self, tmp_path):
         def catalogue(directory: str, *files: tuple[str, list[str], list[str]]):
             readme = []
@@ -511,7 +685,8 @@ class TestHipparcos:
                         "I6"
                         if label in ("HIP", "HD")
                         else "A11"
-                        if label in ("SpType", "Name", "q_[Fe/H]")
+                        if label
+                        in ("SpType", "Name", "q_[Fe/H]", "RAhms", "DEdms", "HvarType")
                         else "F11.4"
                     )
                     readme.append(
@@ -529,7 +704,7 @@ class TestHipparcos:
             return " ".join(f"{'' if v is None else v:>11}" for v in values)
 
         hip2_fields = list(hipparcos.HIP2_FIELDS)
-        main_fields = list(hipparcos.HIP_MAIN_FIELDS)
+        main_fields = [*hipparcos.HIP_MAIN_FIELDS, *hipparcos.HIP_MAIN_MATCH_FIELDS]
         hip2 = catalogue(
             "hip2",
             (
@@ -544,9 +719,40 @@ class TestHipparcos:
                 hipparcos.HIP_MAIN_FILE,
                 main_fields,
                 [
-                    line(2, 4.0, 0.01, 4.1, 0.5, 0.01, 0.6, 0.01, "G2V", 200),
-                    line(1, 3.0, 0.01, 3.1, 0.4, 0.01, 0.5, 0.01, "K0III", None),
-                    line(9, 1.0, 0.01, 1.1, 0.1, 0.01, 0.1, 0.01, "B0", 900),
+                    line(
+                        2, 4.0, 0.01, 4.1, 0.5, 0.01, 0.6, 0.01, "G2V", 200, *[None] * 5
+                    ),
+                    line(
+                        1,
+                        3.0,
+                        0.01,
+                        3.1,
+                        0.4,
+                        0.01,
+                        0.5,
+                        0.01,
+                        "K0III",
+                        None,
+                        *[None] * 5,
+                    ),
+                    # The new reduction drops it.
+                    line(
+                        9,
+                        1.0,
+                        0.01,
+                        1.1,
+                        0.1,
+                        0.01,
+                        0.1,
+                        0.01,
+                        "B0",
+                        900,
+                        "12 00 00.00",
+                        "-45 00 00.0",
+                        0.9,
+                        1.3,
+                        "D",
+                    ),
                 ],
             ),
         )
@@ -560,15 +766,18 @@ class TestHipparcos:
             ),
         )
         table = hipparcos.read_stars(hip2, main, xhip)
-        assert table["hip"].to_pylist() == [1, 2]
-        assert table["sp_type"].to_pylist() == ["K0III", "G2V"]
-        assert table["hd"].to_pylist() == [None, 200]
-        assert table["xhip_name"].to_pylist() == [None, "Tau Ceti"]
-        assert table["ra_rad"].to_pylist() == [0.1, 0.3]
-        assert table["feh_xhip"].to_pylist() == [0.1, -0.5]
+        assert table["hip"].to_pylist() == [1, 2, 9]
+        assert table["sp_type"].to_pylist() == ["K0III", "G2V", "B0"]
+        assert table["hd"].to_pylist() == [None, 200, 900]
+        assert table["xhip_name"].to_pylist() == [None, "Tau Ceti", None]
+        assert table["ra_rad"].to_pylist() == [0.1, 0.3, None]
+        assert table["ra_hms"].to_pylist() == [None, None, "12 00 00.00"]
+        assert table["hp_min"].to_pylist() == [None, None, 1.3]
+        assert table["hvar_type"].to_pylist() == [None, None, "D"]
+        assert table["feh_xhip"].to_pylist() == [0.1, -0.5, None]
         # 9.99 means no error.
-        assert table["feh_xhip_error"].to_pylist() == [0.05, None]
-        assert table["feh_xhip_quality"].to_pylist() == ["A", "C"]
+        assert table["feh_xhip_error"].to_pylist() == [0.05, None, None]
+        assert table["feh_xhip_quality"].to_pylist() == ["A", "C", None]
 
 
 class TestNames:
@@ -723,7 +932,7 @@ class TestStarIngest:
     def run(
         self, root: Path, names_path: Path, items: list[StarItem] | None = None
     ) -> IngestResult:
-        p = {key: at(60 * key) for key in range(1, 8)}
+        p = {key: at(60 * key) for key in range(1, 10)}
         table = gaia_stars(
             [
                 gaia_star(1, *p[1], 5.0),
@@ -732,14 +941,21 @@ class TestStarIngest:
                 gaia_star(4, *p[4], 8.0),
                 gaia_star(5, *p[5], 9.0),
                 gaia_star(6, *p[6], 4.0),
+                # 6″ from the rough position of HIP 70, 0.4 mag under its light.
+                gaia_star(7, *offset(*p[7], 6, 90), 6.4),
+                # 0.1″ from HIP 50, 1.5 mag over its estimate.
+                gaia_star(8, *offset(*p[8], 0.1, 0), 3.0),
             ]
         )
         best = BestNeighbours(np.array([1, 2, 99]), np.array([10, 20, 40]))
-        flags = fidelity([(1, 0.9), (2, 0.2), (3, 0.9), (4, 0.3), (6, 0.9)])
+        flags = fidelity(
+            [(1, 0.9), (2, 0.2), (3, 0.9), (4, 0.3), (6, 0.9), (7, 0.9), (8, 0.9)]
+        )
         orbits = build_orbits([solution(3, "Orbital", parallax=10.25)])
         table = orbits.join(table.drop_columns(list(gaia_orbits.COLUMNS)))
         gaia_rows = gaia.engine_rows(gaia.join_fidelity(table, flags), best)
-        hip = hipparcos.engine_rows(
+        far = at(900)
+        hip, rough = hipparcos.engine_rows(
             hip_stars(
                 [
                     {
@@ -774,23 +990,59 @@ class TestStarIngest:
                         "v_mag": 4.0,
                         "b_v": 0.0,
                     },
+                    {
+                        "hip": 50,
+                        "ra": p[8][0],
+                        "dec": p[8][1],
+                        "v_mag": 5.0,
+                        "b_v": 1.4,
+                        "v_i": 3.2,
+                    },
+                    {
+                        "hip": 60,
+                        "ra": p[9][0],
+                        "dec": p[9][1],
+                        "v_mag": 8.0,
+                        "b_v": 0.0,
+                    },
+                    {
+                        "hip": 70,
+                        "ra_hms": hms(p[7][0]),
+                        "dec_dms": dms(p[7][1]),
+                        "v_mag": 6.0,
+                        "b_v": 0.0,
+                        "hd": 700,
+                    },
+                    {
+                        "hip": 80,
+                        "ra_hms": hms(far[0]),
+                        "dec_dms": dms(far[1]),
+                        "v_mag": 3.8,
+                        "b_v": 0.6,
+                    },
                 ]
             ),
             best,
         )
-        positions = dict(
-            zip(
-                hip["catalogue_id"].to_pylist(),
-                zip(hip["match_ra"].to_pylist(), hip["match_dec"].to_pylist()),
+        positions = {
+            hip_id: (ra, dec)
+            for rows in (hip, rough)
+            for hip_id, ra, dec in zip(
+                rows["catalogue_id"].to_pylist(),
+                rows["match_ra"].to_pylist(),
+                rows["match_dec"].to_pylist(),
             )
-        )
+        }
         name_rows = names.engine_rows(positions, names_path)
         item_rows = wikidata.engine_rows(
-            items or [], positions, wikidata.hd_positions(hip)
+            items or [],
+            positions,
+            {**wikidata.hd_positions(hip), **wikidata.hd_positions(rough)},
         )
         with IngestRun.start(root, root / "backup") as run:
             run.add(GAIA_DR3, [gaia_rows])
             run.add(HIPPARCOS, [hip])
+            run.add(HIPPARCOS_1997, [rough])
             run.add(IAU_WGSN, [name_rows])
             run.add(WIKIDATA, [item_rows])
             return run.commit()
@@ -804,61 +1056,81 @@ class TestStarIngest:
                 iau_entry("Alpha", HIP="10"),
                 iau_entry("Beta", RA=str(five[0]), DEC=str(five[1]), mag="9.1"),
                 iau_entry("Gamma", RA=str(at(600)[0]), DEC=str(at(600)[1]), mag="3"),
+                iau_entry("Delta", HIP="80"),
             ],
         )
         result = self.run(root, names_path)
         counts = result.entry["counts"]
-        # Gaia 1, 2 (by HIP 20), 3, 5, 6 and HIP 40; Gaia 4 and Gamma stay out.
-        assert counts["minted"] == 6 and counts["unminted"] == 2
+        # Gaia 1, 2 (by HIP 20), 3, 5 to 8 and HIP 60 and 80; Gaia 4 and
+        # Gamma stay out.
+        assert counts["minted"] == 9 and counts["unminted"] == 2
         assert counts["conflicts"] == 0
         registry = Registry(root)
 
         def id_of(catalogue: str, release: str, value: object) -> int:
             return int(registry.lookup(catalogue, release, [str(value)])[0])
 
-        assert id_of("hip", "2007", 10) == id_of("gaia", "dr3", 1) != 0
-        assert id_of("hip", "2007", 20) == id_of("gaia", "dr3", 2) != 0
-        assert id_of("hip", "2007", 30) == id_of("gaia", "dr3", 3) != 0
-        assert id_of("hd", "1949", 300) == id_of("gaia", "dr3", 3)
-        assert id_of("gaia", "dr3", 4) == 0
-        hip_40 = id_of("hip", "2007", 40)
-        assert hip_40 not in (0, id_of("gaia", "dr3", 6))
-        assert id_of("gaia", "dr3", 99) == hip_40
-        assert id_of("iau", "wgsn", "Beta") == id_of("gaia", "dr3", 5)
+        def gaia_id(value: int) -> int:
+            return id_of("gaia", "dr3", value)
+
+        assert id_of("hip", "2007", 10) == gaia_id(1) != 0
+        assert id_of("hip", "2007", 20) == gaia_id(2) != 0
+        assert id_of("hip", "2007", 30) == gaia_id(3) != 0
+        assert id_of("hd", "1949", 300) == gaia_id(3)
+        assert gaia_id(4) == 0
+        # The best neighbour that is not stored joins the stored star.
+        assert id_of("hip", "2007", 40) == gaia_id(6) == gaia_id(99) != 0
+        assert id_of("hip", "2007", 50) == gaia_id(8) != 0
+        assert id_of("hip", "2007", 70) == gaia_id(7) == id_of("hd", "1949", 700) != 0
+        hip_60, hip_80 = id_of("hip", "2007", 60), id_of("hip", "2007", 80)
+        gaia_ids = {gaia_id(n) for n in (1, 2, 3, 5, 6, 7, 8)}
+        assert hip_60 not in gaia_ids | {0} and hip_80 not in gaia_ids | {0, hip_60}
+        assert id_of("iau", "wgsn", "Beta") == gaia_id(5)
+        assert id_of("iau", "wgsn", "Delta") == hip_80
 
         meta = {row["id"]: row for row in table_rows(root, "metadata").to_pylist()}
         point = {row["id"]: row for row in table_rows(root, "point-source").to_pylist()}
-        assert {meta[id_of("gaia", "dr3", n)]["name"] for n in (1, 2, 3, 5, 6)} == {
-            "Alpha",
-            "Alpha Orionis",
-            "HD 300",
-            "Beta",
-            "Gaia DR3 6",
+        assert {n: meta[gaia_id(n)]["name"] for n in (1, 2, 3, 5, 6, 7, 8)} == {
+            1: "Alpha",
+            2: "Alpha Orionis",
+            3: "HD 300",
+            5: "Beta",
+            6: "HIP 40",
+            7: "HD 700",
+            8: "HIP 50",
         }
-        assert meta[hip_40]["name"] == "HIP 40"
-        assert meta[hip_40]["class"] == "star"
-        flagged = point[id_of("gaia", "dr3", 2)]
+        assert meta[hip_60]["name"] == "HIP 60"
+        assert meta[hip_60]["class"] == "star"
+        assert meta[hip_80]["name"] == "Delta"
+        flagged = point[gaia_id(2)]
         assert flagged["astrometry_source"] == "gaia-dr3"
         assert flagged["fidelity_v2"] == pytest.approx(0.2)
         assert flagged["v_mag"] == 6.0 and flagged["epoch"] == 2016.0
-        assert point[id_of("gaia", "dr3", 5)]["fidelity_v2"] is None
-        alone = point[hip_40]
+        assert point[gaia_id(5)]["fidelity_v2"] is None
+        alone = point[hip_60]
         assert alone["astrometry_source"] == "hipparcos-2007"
         assert alone["epoch"] == 1991.25 and alone["phot_g_mean_mag"] is None
+        matched = point[gaia_id(7)]
+        assert matched["astrometry_source"] == "gaia-dr3"
+        assert matched["hipparcos_photometry_source"] == "hipparcos-1997"
+        rough = point[hip_80]
+        assert rough["astrometry_source"] == "hipparcos-1997"
+        assert rough["epoch"] == 1991.25 and rough["parallax"] is None
+        assert rough["ra"] == pytest.approx(at(900)[0], abs=1e-4)
         assert {i: meta[i]["mask"] for i in meta} == {
-            i: 6 if i == id_of("gaia", "dr3", 3) else 2 for i in meta
+            i: 6 if i == gaia_id(3) else 2 for i in meta
         }
         [orbit] = table_rows(root, "binary-orbit").to_pylist()
-        assert orbit["id"] == id_of("gaia", "dr3", 3)
+        assert orbit["id"] == gaia_id(3)
         assert orbit["nss_solution_type"] == "Orbital"
         assert orbit["parallax_nss"] == 10.25 and orbit["orbit_source"] == "gaia-dr3"
         assert orbit["corr_vec"][0] == 0.5 and orbit["masses_source"] is None
 
         summary = stars.summary(registry, names.read_names(names_path), 0)
-        assert "point-source rows: 6" in summary
+        assert "point-source rows: 9" in summary
         assert "binary-orbit rows: 1" in summary
-        assert "Hipparcos stars without a Gaia DR3 row: 1" in summary
-        assert "IAU names: 2 placed, 1 unplaced\n  Gamma" in summary
+        assert "Hipparcos stars without a Gaia DR3 row: 2" in summary
+        assert "IAU names: 3 placed, 1 unplaced\n  Gamma" in summary
         assert not any(row["object"] for row in meta.values())
 
         # A rerun mints nothing and keeps every ID.
@@ -870,7 +1142,7 @@ class TestStarIngest:
 
     def test_wikidata_items_name_and_flag_their_stars(self, tmp_path, monkeypatch):
         # The test's Gaia ids hold no pixel: they are placed by hand.
-        monkeypatch.setattr(wikidata, "_gaia_position", lambda source_id: at(360))
+        monkeypatch.setattr(wikidata, "gaia_position", lambda source_id: at(360))
         root = tmp_path / "root"
         names_path = write_names(
             tmp_path / "names.json", [iau_entry("Alpha", HIP="10")]
@@ -888,9 +1160,9 @@ class TestStarIngest:
         ]
         result = self.run(root, names_path, items)
         counts = result.entry["counts"]
-        assert counts["minted"] == 6 and counts["conflicts"] == 0
-        assert result.entry["sources"][3]["outranked"] == 1
-        assert result.entry["sources"][3]["permanent"] is False
+        assert counts["minted"] == 9 and counts["conflicts"] == 0
+        assert result.entry["sources"][-1]["outranked"] == 1
+        assert result.entry["sources"][-1]["permanent"] is False
         registry = Registry(root)
 
         def id_of(catalogue: str, release: str, value: object) -> int:
@@ -923,7 +1195,7 @@ class TestStarIngest:
         summary = stars.summary(registry, names.read_names(names_path), 6)
         assert "Wikidata items: 4 placed of 6 with a claim" in summary
 
-        found = sorted(read_star_objects(root), key=lambda star: star.qid)
+        found = sorted(read_star_objects(root), key=lambda star: star.qid or "")
         assert [(star.qid, star.name) for star in found] == [
             ("Q1", "Alpha"),
             ("Q2", "Betelgeuse"),
@@ -933,7 +1205,7 @@ class TestStarIngest:
         assert found[1].id == id_of("hip", "2007", 20)
 
     def test_the_item_with_most_articles_keeps_its_star(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(wikidata, "_gaia_position", lambda source_id: at(60))
+        monkeypatch.setattr(wikidata, "gaia_position", lambda source_id: at(60))
         root = tmp_path / "root"
         names_path = write_names(tmp_path / "names.json", [])
         items = [
@@ -945,7 +1217,7 @@ class TestStarIngest:
         ]
         result = self.run(root, names_path, items)
         assert result.entry["counts"]["conflicts"] == 0
-        assert result.entry["sources"][3]["outranked"] == 2
+        assert result.entry["sources"][-1]["outranked"] == 2
         registry = Registry(root)
 
         def id_of(catalogue: str, release: str, value: object) -> int:

@@ -67,8 +67,8 @@ SIMBAD = {
     "organisation": "CDS, Strasbourg Astronomical Observatory, France",
     "source": "https://simbad.cds.unistra.fr/simbad/",
     "license": "ODbL",
-    "attribution": "This research has made use of the SIMBAD database,"
-    " operated at CDS, Strasbourg, France.",
+    "attribution": "This research has made use of the SIMBAD database, CDS,"
+    " Strasbourg Astronomical Observatory, France.",
     "citation": "Wenger et al. 2000, A&AS 143, 9",
 }
 CREDITS = (

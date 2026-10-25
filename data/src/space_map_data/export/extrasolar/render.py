@@ -18,16 +18,16 @@ The visibility range of a light source is the distance at which its apparent
 magnitude reaches RANGE_LIMIT_MAG. The rows of a node file are in order of
 range, the largest first, then by ID.
 
-A star is drawn when it has a 5σ parallax that the fidelity cut keeps. Else a
-planet host is drawn when its exoplanet catalogue gives a distance, and any
-other star has no render row. The rule is `extrasolar.placement`, which the
-ingest report also uses. A planet host with no magnitude takes
-HOST_PLACEHOLDER_MAG, so every placed host has a row.
-
-A drawn star with a 5σ astrometric orbit solution in table 2 takes its
-distance from the solution's parallax, which fits the motion of the light
-centre. Else the single-star parallax of Point source gives the distance, or
-for a host that it does not place, the exoplanet catalogue.
+A star renders at the distance that `extrasolar.placement` gives it: a
+distance from a paper, a trusted 5σ parallax, the distance group, the distance
+of a planet host's exoplanet catalogue, then a 5σ parallax with fidelity under
+0.5. The ingest report uses the same rule. The parallax of an astrometric
+orbit solution in table 2, where it is over 5 times its error, stands for the
+parallax where a parallax places a star, and for the catalogue distance of a
+planet host: the orbit fit takes out the motion of the light centre. The
+single-star parallax of Point source still decides whether a parallax places
+the star. A planet host with no magnitude takes HOST_PLACEHOLDER_MAG, so every
+placed host has a row.
 
 The build works in three steps with scratch files on disk: render rows per
 region, the node of each row from the whole sky, then the node files in
@@ -48,7 +48,6 @@ from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar import placement
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sources.gaia import MIN_FIDELITY
 from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
 from space_map_data.extrasolar.tables import BINARY_ORBIT, POINT_SOURCE
@@ -150,6 +149,19 @@ TEFF_BP_RP = (
 # Absolute G of a planet host with no magnitude. It is faint, so the host
 # draws only near its system.
 HOST_PLACEHOLDER_MAG = 15.0
+# The sources of G in the render tree, first wins. Measured G comes before
+# the estimates of G from V and B − V.
+MAG_SOURCES = (
+    "Gaia G",
+    "SIMBAD G",
+    "G estimated from Hipparcos",
+    "G estimated from SIMBAD V and B - V",
+    "magnitude from an exoplanet catalogue",
+)
+# How a star is placed, besides the source of its distance group.
+PARALLAX = "parallax"
+SUSPECT_PARALLAX = "parallax with fidelity under 0.5"
+CATALOGUE_DISTANCE = "catalogue distance"
 NODE_INFO = struct.Struct("<4d2f8fBB6x")
 BATCH_ROWS = 4_000_000
 
@@ -162,6 +174,8 @@ COLUMNS = (
     "pmra",
     "pmdec",
     "epoch",
+    "distance",
+    "distance_source",
     "phot_g_mean_mag",
     "phot_bp_mean_mag",
     "phot_rp_mean_mag",
@@ -169,9 +183,13 @@ COLUMNS = (
     "v_mag",
     "b_v",
     "v_i",
+    "simbad_b_mag",
+    "simbad_v_mag",
+    "simbad_g_mag",
     "fidelity_v2",
     "astrometry_source",
     "hipparcos_photometry_source",
+    "simbad_photometry_source",
     "teff_gspphot",
     "host_distance",
     "host_teff",
@@ -307,103 +325,137 @@ def distance_parallax(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
 
 
 def star_distance(
-    table: pa.Table, by_parallax: np.ndarray
+    table: pa.Table, where: placement.Placement
 ) -> tuple[np.ndarray, np.ndarray]:
-    """The distance (pc) of each placed row, and whether the orbit parallax
-    gives it. `by_parallax` is from `placement`; a placed row without it is a
-    planet host, which takes its catalogue distance only when no orbit
-    parallax gives one."""
+    """The distance (pc) of each row that `where` places, NaN for the others,
+    and whether an orbit parallax gives it. A 5σ orbit parallax stands for the
+    parallax where a parallax places the row, and for the catalogue distance
+    of a planet host."""
     parallax, orbit = distance_parallax(table)
+    from_parallax = where.by_parallax | where.by_suspect | (where.by_catalogue & orbit)
     with np.errstate(divide="ignore", invalid="ignore"):
-        distance = np.where(
-            orbit | by_parallax, 1000.0 / parallax, _floats(table, "host_distance")
+        distance = np.select(
+            [from_parallax, where.by_group, where.by_catalogue],
+            [
+                1000.0 / parallax,
+                _floats(table, "distance"),
+                _floats(table, "host_distance"),
+            ],
+            np.nan,
         )
-    return distance, orbit
+    return distance, orbit & from_parallax
 
 
 def _valid(table: pa.Table, name: str) -> np.ndarray:
     return table[name].is_valid().to_numpy(zero_copy_only=False)
 
 
+def _magnitudes(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
+    """G of each row from the first source in MAG_SOURCES that has one, and
+    the index of that source, -1 for none."""
+    simbad_v = _floats(table, "simbad_v_mag")
+    host_g = _floats(table, "host_g_mag")
+    candidates = (
+        _floats(table, "phot_g_mean_mag"),
+        _floats(table, "simbad_g_mag"),
+        g_estimate(
+            _floats(table, "v_mag"), _floats(table, "b_v"), _floats(table, "hp_mag")
+        ),
+        g_estimate(
+            simbad_v,
+            _floats(table, "simbad_b_mag") - simbad_v,
+            np.full(simbad_v.size, np.nan),
+        ),
+        np.where(np.isfinite(host_g), host_g, _floats(table, "host_v_mag")),
+    )
+    mag = np.full(table.num_rows, np.nan)
+    source = np.full(table.num_rows, -1, np.int8)
+    for index, values in enumerate(candidates):
+        take = np.isnan(mag) & np.isfinite(values)
+        mag[take] = values[take]
+        source[take] = index
+    return mag, source
+
+
 def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
-    """The render rows of `region_table` rows, and what was dropped and why."""
+    """The render rows of `region_table` rows, with counts of how each row was
+    placed or why it was dropped. The module docstring gives the order of the
+    distances."""
     counts: Counter = Counter()
     counts["rows"] = table.num_rows
-    positioned, by_parallax, by_catalogue = placement.placement(table)
-    source = table["astrometry_source"]
-    gaia = pc.equal(source, "gaia-dr3").to_numpy(zero_copy_only=False)
-    hipparcos_only = pc.equal(source, "hipparcos-2007").to_numpy(zero_copy_only=False)
-    counts["no 5-sigma parallax, Gaia"] = int((~positioned & gaia).sum())
-    counts["no 5-sigma parallax, Hipparcos only"] = int(
-        (~positioned & hipparcos_only).sum()
-    )
-    counts["no 5-sigma parallax, exoplanet catalogue"] = int(
-        (~positioned & ~gaia & ~hipparcos_only).sum()
-    )
-    counts["flagged by fidelity"] = int((positioned & ~by_parallax).sum())
-    # A row under the fidelity cut that the parallax places has a Hipparcos match.
-    counts["flagged by fidelity, kept for a Hipparcos match"] = int(
-        (by_parallax & (_floats(table, "fidelity_v2") < MIN_FIDELITY)).sum()
-    )
-    placed = by_parallax | by_catalogue
+    where = placement.placement(table)
+    placed = where.placed
+    astrometry = table["astrometry_source"].to_numpy(zero_copy_only=False)
+    hipparcos = _valid(table, "hipparcos_photometry_source")
+    simbad = _valid(table, "simbad_photometry_source")
     host = _valid(table, "host_star_source")
+    counts["dropped: flagged by fidelity, no Hipparcos, SIMBAD or planet match"] = int(
+        (~where.seen & ~placed).sum()
+    )
+    for name, n in Counter(astrometry[where.seen & ~placed].tolist()).items():
+        counts[f"dropped: no distance, {name} astrometry"] = n
     counts["planet host with no distance"] = int((host & ~placed).sum())
 
-    g = _floats(table, "phot_g_mean_mag")
-    estimate = g_estimate(
-        _floats(table, "v_mag"), _floats(table, "b_v"), _floats(table, "hp_mag")
-    )
-    mag = np.where(np.isfinite(g), g, estimate)
-    counts["G estimated from Hipparcos"] = int(
-        (placed & ~np.isfinite(g) & np.isfinite(mag)).sum()
-    )
-    host_g = _floats(table, "host_g_mag")
-    catalogue = np.where(np.isfinite(host_g), host_g, _floats(table, "host_v_mag"))
-    counts["magnitude from an exoplanet catalogue"] = int(
-        (placed & ~np.isfinite(mag) & np.isfinite(catalogue)).sum()
-    )
-    mag = np.where(np.isfinite(mag), mag, catalogue)
+    mag, mag_source = _magnitudes(table)
     bright = np.isfinite(mag)
+    counts["dropped: no magnitude"] = int((placed & ~host & ~bright).sum())
     counts["planet host with no magnitude, placeholder"] = int(
         (placed & host & ~bright).sum()
     )
-    counts["no magnitude"] = int((placed & ~host & ~bright).sum())
     keep = placed & (bright | host)
+    distance, orbit = star_distance(table, where)
+    how = table["distance_source"].to_numpy(zero_copy_only=False).astype(object)
+    how[where.by_catalogue] = CATALOGUE_DISTANCE
+    # An orbit parallax measures the distance as a parallax does.
+    how[where.by_parallax | orbit] = PARALLAX
+    how[where.by_suspect] = SUSPECT_PARALLAX
+    kept_for = np.select(
+        [hipparcos, simbad, host],
+        ["a Hipparcos match", "a SIMBAD match", "a planet catalogue"],
+        "a literature distance",
+    )[keep & where.flagged]
+    flagged = where.flagged[keep]
+    how, distance, orbit = how[keep], distance[keep], orbit[keep]
+    mag, mag_source, bright = mag[keep], mag_source[keep], bright[keep]
     table = table.filter(pa.array(keep))
-    mag, by_parallax, bright = mag[keep], by_parallax[keep], bright[keep]
 
     ra, dec = _floats(table, "ra"), _floats(table, "dec")
     years = EPOCH - _floats(table, "epoch")
-    moving = (years != 0) & np.isfinite(_floats(table, "pmra"))
+    pmra, pmdec = _floats(table, "pmra"), _floats(table, "pmdec")
+    off_epoch = np.isfinite(years) & (years != 0)
+    moving = off_epoch & np.isfinite(pmra) & np.isfinite(pmdec)
     if moving.any():
-        moved = propagate(
-            ra[moving],
-            dec[moving],
-            _floats(table, "pmra")[moving],
-            _floats(table, "pmdec")[moving],
-            years[moving],
+        ra[moving], dec[moving] = propagate(
+            ra[moving], dec[moving], pmra[moving], pmdec[moving], years[moving]
         )
-        ra[moving], dec[moving] = moved
-    counts[f"moved to J{EPOCH}"] = int(moving.sum())
 
-    distance, orbit = star_distance(table, by_parallax)
-    counts["planet host at a catalogue distance"] = int((~by_parallax & ~orbit).sum())
-    abs_mag = mag - 5 * np.log10(distance) + 5
-    abs_mag = _round(np.where(bright, abs_mag, HOST_PLACEHOLDER_MAG))
     ra_rad, dec_rad = np.radians(ra), np.radians(dec)
     x = distance * np.cos(dec_rad) * np.cos(ra_rad)
     y = distance * np.cos(dec_rad) * np.sin(ra_rad)
     z = distance * np.sin(dec_rad)
     offsets = [np.abs(v - c) for v, c in zip((x, y, z), ROOT_CENTRE)]
     inside = np.maximum.reduce(offsets) < HALF_SIZE
-    counts["outside the root cube"] = int((~inside).sum())
+    counts["dropped: outside the root cube"] = int((~inside).sum())
+    for name, n in Counter(how[inside].tolist()).items():
+        counts[f"placed by {name}"] = n
     counts["distance from an orbit solution"] = int((orbit & inside).sum())
+    for name, n in Counter(kept_for[inside[flagged]].tolist()).items():
+        counts[f"fidelity under 0.5, kept for {name}"] = n
+    counts[f"moved to J{EPOCH}"] = int((moving & inside).sum())
+    counts["not moved, no proper motion"] = int((off_epoch & ~moving & inside).sum())
+    # Index 0 is a host with no magnitude, index 1 Gaia G: neither is counted.
+    found = np.bincount(mag_source[inside] + 1, minlength=len(MAG_SOURCES) + 1)
+    for index, n in enumerate(found[2:], 1):
+        counts[MAG_SOURCES[index]] = int(n)
 
+    abs_mag = mag - 5 * np.log10(distance) + 5
+    abs_mag = _round(np.where(bright, abs_mag, HOST_PLACEHOLDER_MAG))
     bp_rp = _floats(table, "phot_bp_mean_mag") - _floats(table, "phot_rp_mean_mag")
     from_v_i = bp_rp_from_v_i(_floats(table, "v_i"))
     host_teff = _floats(table, "host_teff")
     teff = np.where(np.isfinite(host_teff), host_teff, _floats(table, "teff_gspphot"))
     from_teff = bp_rp_from_teff(teff)
+    # Riello et al. 2021 give no BP − RP from B − V, so SIMBAD gives no colour.
     colour = np.where(np.isfinite(bp_rp), bp_rp, from_v_i)
     counts["BP - RP from Hipparcos V - I"] = int(
         (~np.isfinite(bp_rp) & np.isfinite(from_v_i))[inside].sum()

@@ -10,10 +10,15 @@ from space_map_data.extrasolar.engine import ExtensionResult, IngestRun
 from space_map_data.extrasolar.exoplanets import ingest as exoplanets
 from space_map_data.extrasolar.exoplanets import twins
 from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
+from space_map_data.extrasolar.exoplanets.names import WgsnName
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sources import gaia
-from space_map_data.extrasolar.sources.gaia import GAIA_DR3, BestNeighbours
+from space_map_data.extrasolar.sources.gaia import (
+    GAIA_DR3,
+    GAIA_DR3_NAMED,
+    BestNeighbours,
+)
 from tests.extrasolar.conftest import (
     GAIA,
     META,
@@ -302,7 +307,8 @@ def ingest(root, backup, inputs, complete=True):
     with IngestRun.start(root, backup) as run:
         reader = gaia.GaiaReader(NO_NEIGHBOURS, orbits=HOST_ORBITS)
         prepared = exoplanets.prepare(reader, run.registry, {}, inputs)
-        run.add(GAIA_DR3, [gaia_pass(), prepared.gaia_rows], complete)
+        run.add(GAIA_DR3, [gaia_pass()], complete)
+        run.add(GAIA_DR3_NAMED, [prepared.gaia_rows], complete)
         exoplanets.add_passes(run, prepared, complete)
         return run.commit(), prepared
 
@@ -334,7 +340,7 @@ class TestExoplanetIngest:
         assert meta[alpha]["name"] == "Prima"
         assert meta[beta]["name"] == "Beta"
         assert meta[lens]["name"] == "OGLE-2020-BLG-7L"
-        assert point[beta]["astrometry_source"] == GAIA_DR3.name
+        assert point[beta]["astrometry_source"] == GAIA_DR3_NAMED.name
         assert point[beta]["host_distance"] == 300
         assert point[beta]["radius_gspphot"] == pytest.approx(1.1)
         assert point[beta]["feh_gspspec_calibrated"] is not None
@@ -439,6 +445,36 @@ class TestExoplanetIngest:
         assert (alpha, 2) not in planets
         assert again.entry["extensions"]["planets"]["retired"] == 1
         assert Registry(root).unreviewed() == []
+
+
+class TestWgsnStarNames:
+    """A host row leaves out a NameExoWorlds star name only when the IAU WGSN
+    pass claims that name on its star."""
+
+    @pytest.mark.parametrize(
+        ("wgsn", "left"),
+        [
+            ([WgsnName("Prima", "Alpha", gaia_dr3=101)], True),
+            ([WgsnName("PRIMA", "HD 1", hip=7, gaia_dr3=101)], True),
+            # The pass places it by position, or on another star.
+            ([WgsnName("Prima", "Alpha")], False),
+            ([WgsnName("Prima", "Alpha", gaia_dr3=303)], False),
+            ([WgsnName("Secunda", "HD 2", gaia_dr3=101)], False),
+        ],
+    )
+    def test_route(self, root, backup, tmp_path, wgsn, left):
+        inputs = downloads().write(tmp_path / "in")
+        with IngestRun.start(root, backup) as run:
+            reader = gaia.GaiaReader(NO_NEIGHBOURS, orbits=HOST_ORBITS)
+            prepared = exoplanets.prepare(reader, run.registry, {}, inputs, wgsn)
+        host_names = {
+            name
+            for rows in prepared.host_rows.values()
+            for name in rows["name"].to_pylist()
+        }
+        assert ("Prima" in host_names) is not left
+        assert prepared.named.wgsn == (["Prima"] if left else [])
+        assert prepared.wgsn_stars == int(left)
 
 
 def sunlike(source_id: int, ra: float, dec: float) -> dict:

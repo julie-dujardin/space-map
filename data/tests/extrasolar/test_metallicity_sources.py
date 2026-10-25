@@ -720,7 +720,7 @@ class TestJoins:
         by_hip = catalogue_rows(
             [0], pastel.COLUMNS, pastel_designation=["HD 400"], feh_pastel=[-0.7]
         ).append_column("hip", pa.array([40], pa.int64()))
-        hip = hipparcos.engine_rows(
+        hip, _ = hipparcos.engine_rows(
             hip_stars(
                 [
                     {

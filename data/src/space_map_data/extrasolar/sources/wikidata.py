@@ -85,7 +85,7 @@ def hd_positions(hipparcos_rows: pa.Table) -> dict[str, tuple[float, float]]:
     return dict(zip(numbers, zip(ra.tolist(), dec.tolist())))
 
 
-def _gaia_position(source_id: str) -> tuple[float, float]:
+def gaia_position(source_id: str) -> tuple[float, float]:
     """The centre of the source's pixel, good to a region for the claim lookup."""
     pixel = np.array([int(source_id) >> GAIA_PIXEL_SHIFT], np.uint64)
     lon, lat = nested.healpix_to_lonlat(pixel, GAIA_PIXEL_LEVEL)
@@ -101,7 +101,7 @@ def _claim(
     if len(item.hip) == 1 and item.hip[0] in hip_positions:
         return (*HIP, item.hip[0]), hip_positions[item.hip[0]]
     if len(item.gaia_dr3) == 1:
-        return (*GAIA_DR3, item.gaia_dr3[0]), _gaia_position(item.gaia_dr3[0])
+        return (*GAIA_DR3, item.gaia_dr3[0]), gaia_position(item.gaia_dr3[0])
     if len(item.hd) == 1 and item.hd[0] in hd_positions:
         return (*HD, item.hd[0]), hd_positions[item.hd[0]]
     return None

@@ -69,6 +69,10 @@ METADATA_FILE = "metadata.json"
 # Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values.
 DISTRIBUTION = "non-commercial"
 FRAME = "ICRS equatorial axes, origin at the solar system barycentre, epoch J2016.0"
+LITERATURE_URL = (
+    "https://github.com/julie-dujardin/space-map/blob/main/data/src/space_map_data"
+    "/constants/stars/literature.py"
+)
 CREDITS = (
     {
         "name": "Gaia Data Release 3",
@@ -110,7 +114,8 @@ CREDITS = (
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/B/pastel",
         "citation": "Soubiran et al. 2016, A&A 591, A118",
     },
-    # SIMBAD places the PASTEL designations and joins the planet catalogues.
+    # SIMBAD places the PASTEL designations, joins the planet catalogues and
+    # gives the named stars.
     skycultures.SIMBAD,
     {
         "name": "APOGEE DR17",
@@ -161,6 +166,53 @@ CREDITS = (
         "organisation": "Anderson & Francis 2012",
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/V/137D",
         "citation": "Anderson & Francis 2012, Astronomy Letters 38, 331",
+    },
+    {
+        "name": "The 10 parsec sample in the Gaia era (J/A+A/650/A201)",
+        "organisation": "Reylé et al. 2021",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/J/A+A/650/A201",
+        "license": "CC BY 4.0",
+        "citation": "Reylé et al. 2021, A&A 650, A201",
+    },
+    {
+        "name": "The UltracoolSheet 2.1.0",
+        "organisation": "Best et al. 2025",
+        "source": "https://doi.org/10.5281/zenodo.4169085",
+        "license": "CC BY 4.0",
+        "citation": "Best et al. 2025, The UltracoolSheet, Zenodo",
+    },
+    {
+        "name": "Cleaned open cluster catalogue (J/A+A/686/A42)",
+        "organisation": "Hunt & Reffert 2024",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/J/A+A/686/A42",
+        "license": "CC BY-NC 3.0 IGO",
+        "citation": "Hunt & Reffert 2024, A&A 686, A42",
+    },
+    {
+        "name": "Distance to the Large Magellanic Cloud",
+        "organisation": "Pietrzyński et al. 2019",
+        "source": "https://doi.org/10.1038/s41586-019-0999-4",
+        "citation": "Pietrzyński et al. 2019, Nature 567, 200",
+    },
+    {
+        "name": "Distance to the Small Magellanic Cloud",
+        "organisation": "Graczyk et al. 2020",
+        "source": "https://doi.org/10.3847/1538-4357/abbb2b",
+        "citation": "Graczyk et al. 2020, ApJ 904, 13",
+    },
+    {
+        "name": "Geometric distances to Gaia EDR3 stars",
+        "organisation": "Bailer-Jones et al. 2021",
+        "source": "https://doi.org/10.3847/1538-3881/abd806",
+        "license": "CC BY-NC 3.0 IGO",
+        "citation": "Bailer-Jones et al. 2021, AJ 161, 147",
+    },
+    # One credit for every paper of the literature table. Each star's page
+    # cites the paper of its value.
+    {
+        "name": "Published papers",
+        "organisation": "Cited on each star's page",
+        "source": LITERATURE_URL,
     },
     {
         "name": "IAU Catalog of Star Names",

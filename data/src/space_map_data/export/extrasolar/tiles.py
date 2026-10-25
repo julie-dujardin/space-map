@@ -48,6 +48,8 @@ DICTIONARY = frozenset(
         "class",
         "phot_variable_flag",
         "libname_gspphot",
+        "distance_method",
+        "simbad_otype",
         "feh_xhip_quality",
         "nss_solution_type",
         "combination_method",

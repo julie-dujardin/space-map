@@ -94,8 +94,10 @@ EXOPLANET_SOURCES = (
 
 # The name is the IAU proper name. A planet host then takes the name of its
 # exoplanet catalogues, since its planets' designations come from it. Other
-# stars take the Wikidata label, else a Bayer or Flamsteed designation, HD or
-# HIP number, else the Gaia DR3 number. Each source gives its best one.
+# stars take the Wikidata label, else a Bayer or Flamsteed designation, a WR
+# number, a GCVS name, an HD or HIP number, a SIMBAD NAME, SIMBAD's main
+# identifier or the Gaia DR3 number, in that order. Each source gives its best
+# one. SIMBAD comes before Hipparcos: it knows more designations.
 METADATA = TableDef(
     number=None,
     slug="metadata",
@@ -103,12 +105,28 @@ METADATA = TableDef(
         ColumnGroup(
             "name",
             (pa.field("name", pa.string()),),
-            ("iau-wgsn", *EXOPLANET_SOURCES, "wikidata", "hipparcos-2007", "gaia-dr3"),
+            (
+                "iau-wgsn",
+                *EXOPLANET_SOURCES,
+                "wikidata",
+                "simbad",
+                "hipparcos-2007",
+                "hipparcos-1997",
+                "gaia-dr3",
+                "gaia-dr3-named",
+            ),
         ),
         ColumnGroup(
             "class",
             (pa.field("class", pa.string()),),
-            ("gaia-dr3", "hipparcos-2007", *EXOPLANET_SOURCES),
+            (
+                "gaia-dr3",
+                "hipparcos-2007",
+                "hipparcos-1997",
+                "gaia-dr3-named",
+                *EXOPLANET_SOURCES,
+                "simbad",
+            ),
         ),
     ),
     computed=(
@@ -123,7 +141,7 @@ METADATA = TableDef(
 
 # An ID with an id of one of these catalogues has an entry in the site's
 # object files, which is built from that catalogue.
-OBJECT_CATALOGUES = frozenset({"wikidata"})
+OBJECT_CATALOGUES = frozenset({"wikidata", "literature"})
 
 # Every Gaia DR3 field of the positionable stars with its error or range, and
 # the Hipparcos astrometry and photometry. A group that one catalogue fills
@@ -132,14 +150,17 @@ OBJECT_CATALOGUES = frozenset({"wikidata"})
 # 2023. The metallicity groups after them come from spectra, one catalogue
 # each. PASTEL, APOGEE and LAMOST join the Gaia rows by source_id at each
 # ingest (PASTEL also the Hipparcos rows by HIP number), so they hold no
-# catalogue id in the registry.
+# catalogue id in the registry. gaia-dr3-named are the Gaia rows of SIMBAD
+# stars and planet hosts without a 5σ parallax, so their astrometry ranks
+# below Hipparcos.
 POINT_SOURCE = TableDef(
     number=1,
     slug="point-source",
     groups=(
         # ICRS at `epoch` (Julian year): deg, errors in mas (ra_error is on
         # ra·cos dec), parallax in mas, proper motions in mas/yr (pmra is
-        # on ra·cos dec).
+        # on ra·cos dec). A row of hipparcos-1997 has only a rough ra and dec.
+        # SIMBAD's errors are the major axis of its error ellipses.
         ColumnGroup(
             "astrometry",
             (
@@ -157,7 +178,37 @@ POINT_SOURCE = TableDef(
                     "epoch",
                 ),
             ),
-            ("gaia-dr3", "hipparcos-2007", *EXOPLANET_SOURCES),
+            (
+                "gaia-dr3",
+                "hipparcos-2007",
+                "gaia-dr3-named",
+                *EXOPLANET_SOURCES,
+                "simbad",
+                "hipparcos-1997",
+            ),
+        ),
+        # A distance in pc from a paper, a SIMBAD parallax or a distance
+        # catalogue, with its 16th and 84th percentiles or the value ∓ its
+        # error. `distance_method`: `parallax`, `photometric`, `cluster` (of
+        # the host cluster), `galaxy` (of the host galaxy), `geometric`
+        # (parallax with a Galaxy prior) or `expansion` (expansion parallax of
+        # a nebula). A value from a paper comes first: it is chosen for that
+        # star.
+        ColumnGroup(
+            "distance",
+            (
+                *_fields(pa.float32(), "distance", "distance_lower", "distance_upper"),
+                pa.field("distance_method", pa.string()),
+            ),
+            (
+                "literature",
+                "simbad-parallax",
+                "reyle-2021",
+                "ultracoolsheet",
+                "hunt-reffert-2024",
+                "magellanic-clouds",
+                "bailer-jones-2021",
+            ),
         ),
         ColumnGroup(
             "gaia_photometry",
@@ -174,7 +225,7 @@ POINT_SOURCE = TableDef(
                 ),
                 pa.field("phot_variable_flag", pa.string()),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # From the Hipparcos catalogue of 1997 (I/239): magnitudes in mag,
         # sp_type as published.
@@ -193,7 +244,20 @@ POINT_SOURCE = TableDef(
                 ),
                 pa.field("sp_type", pa.string()),
             ),
-            ("hipparcos-2007",),
+            ("hipparcos-2007", "hipparcos-1997"),
+        ),
+        # Compiled by SIMBAD from the literature: B, V and Gaia G in mag, the
+        # spectral type as SIMBAD gives it, and SIMBAD's object type. Every
+        # SIMBAD row has an object type, so the source column marks the stars
+        # that SIMBAD lists.
+        ColumnGroup(
+            "simbad_photometry",
+            (
+                *_fields(pa.float32(), "simbad_b_mag", "simbad_v_mag", "simbad_g_mag"),
+                pa.field("simbad_sp_type", pa.string()),
+                pa.field("simbad_otype", pa.string()),
+            ),
+            ("simbad",),
         ),
         ColumnGroup(
             "rvs",
@@ -209,7 +273,7 @@ POINT_SOURCE = TableDef(
                     "grvs_mag_error",
                 ),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # Lower and upper are the 16th and 84th percentiles.
         ColumnGroup(
@@ -234,7 +298,7 @@ POINT_SOURCE = TableDef(
                 ),
                 pa.field("libname_gspphot", pa.string()),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # Table 1 of Andrae et al. 2023, with no quality cut: [M/H] in dex,
         # Teff in K, log g in log(cm/s²), CatWISE W1 and W2 in Vega mag.
@@ -258,7 +322,7 @@ POINT_SOURCE = TableDef(
                     "in_oba_golden_sample",
                 ),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # GSP-Spec from the RVS spectra, with the calibrations of
         # Recio-Blanco et al. 2023: [M/H] and [Fe/M] in dex, log g in
@@ -278,7 +342,7 @@ POINT_SOURCE = TableDef(
                 ),
                 pa.field("flags_gspspec", pa.string()),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # XHIP [Fe/H] (Anderson & Francis 2012). Quality A and B are
         # calibrated, C is not.
@@ -288,7 +352,7 @@ POINT_SOURCE = TableDef(
                 *_fields(pa.float32(), "feh_xhip", "feh_xhip_error"),
                 pa.field("feh_xhip_quality", pa.string()),
             ),
-            ("hipparcos-2007",),
+            ("hipparcos-2007", "hipparcos-1997"),
         ),
         # PASTEL: the designation, the median [Fe/H] of the star's
         # determinations, their range and number, and the bibcode of each,
@@ -303,7 +367,7 @@ POINT_SOURCE = TableDef(
                 pa.field("feh_pastel_count", pa.int16()),
                 pa.field("pastel_bibcodes", pa.string()),
             ),
-            ("gaia-dr3", "hipparcos-2007"),
+            ("gaia-dr3", "gaia-dr3-named", "hipparcos-2007", "hipparcos-1997"),
         ),
         # APOGEE DR17: the APOGEE id and the named ASPCAP values, [M/H] and
         # [Fe/H] in dex, Teff in K, log g in log(cm/s²), with their errors,
@@ -322,7 +386,7 @@ POINT_SOURCE = TableDef(
                     "snr_apogee",
                 ),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # The LAMOST DR10 M dwarfs of Zhang et al. 2025, from the spectrum
         # with the best S/N in i: its LAMOST designation, [M/H] in dex, Teff
@@ -344,7 +408,7 @@ POINT_SOURCE = TableDef(
                 pa.field("activity_lamost", pa.bool_()),
                 pa.field("vbflag_lamost", pa.int8()),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         ColumnGroup(
             "astrometric_quality",
@@ -362,7 +426,7 @@ POINT_SOURCE = TableDef(
                 pa.field("duplicated_source", pa.bool_()),
                 *_fields(pa.float32(), "nu_eff_used_in_astrometry", "pseudocolour"),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         ColumnGroup(
             "gaia_classification",
@@ -376,7 +440,7 @@ POINT_SOURCE = TableDef(
                     "classprob_dsc_combmod_star",
                 ),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         ColumnGroup(
             "gaia_products",
@@ -388,18 +452,19 @@ POINT_SOURCE = TableDef(
                 "has_epoch_photometry",
                 "has_epoch_rv",
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # Under 0.5 marks a likely spurious astrometric solution.
         ColumnGroup(
             "fidelity",
             _fields(pa.float32(), "fidelity_v2", "norm_dg"),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # The star as an exoplanet catalogue gives it: its name there, the
         # distance (pc) with its larger error, Teff (K), radius and mass
         # (solar), metallicity (dex), log g (cgs), age (Gyr) and V, G and K
-        # magnitudes. The distance places a star without a 5σ parallax.
+        # magnitudes. The distance places a star that neither a 5σ parallax
+        # nor the distance group places.
         ColumnGroup(
             "host_star",
             (
@@ -539,7 +604,7 @@ BINARY_ORBIT = TableDef(
                     "astrometric_jitter",
                 ),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
         # Masses in solar masses, bounds at the 16th and 84th percentiles. The
         # flux ratio is the secondary over the primary in G.
@@ -556,7 +621,7 @@ BINARY_ORBIT = TableDef(
                 ),
                 *_fields(pa.string(), "combination_method", "m1_ref", "flag"),
             ),
-            ("gaia-dr3",),
+            ("gaia-dr3", "gaia-dr3-named"),
         ),
     ),
 )

@@ -20,7 +20,8 @@ registry and the earlier passes, the neighbouring regions included:
    positions of the registry and of the earlier passes. The pairs of the
    whole pass are assigned together, so the result does not depend on the
    order of the regions. A row that claims an id nobody holds does not match
-   an object that holds another id of that catalogue.
+   an object that holds another id of that catalogue, unless the source of
+   that catalogue is a subset. The claimed id then joins the matched object.
 4. A row that is still free becomes a new object of the run. A row with
    `mint` false gets an ID only when a minting row joins its object.
 
@@ -31,9 +32,10 @@ makes them again from its rows and ignores the old ones. Of its rows that
 claim one object, the first in input order keeps it. The others lose their
 claims, and the ingest logs each one.
 
-A row that links two objects joins them. When both are minted IDs, the older
-one survives (the earlier ingest, then the lower number) and the other becomes
-its alias. Each merge is logged with both IDs and its evidence, kept in the
+A row that links two objects joins them. Each join is logged with its
+evidence and shown in the report. When both are minted IDs, the older one
+survives (the earlier ingest, then the lower number) and the other becomes its
+alias. Each merge is logged with both IDs and its evidence, kept in the
 ingest log and shown in the report. It stays unreviewed until
 `space-map-extrasolar review`.
 
@@ -300,6 +302,9 @@ class Source:
     # False: its rows only add data to the objects that they claim, and its
     # links hold until the next ingest.
     permanent: bool = True
+    # True: the ingest stores only part of the catalogue, so an id that no
+    # object holds can name a stored object under another id.
+    subset: bool = False
 
 
 @dataclass
@@ -457,6 +462,8 @@ class IngestRun:
         # Run keys that a minting row joined after their own pass.
         self.mintable_joins: set[int] = set()
         self.conflicts: list[str] = []
+        # The evidence of each join of two objects.
+        self.joins: list[str] = []
         self._cache: dict[int, tuple[pa.Table, pa.Table, np.ndarray]] = {}
         self._cache_rows = 0
         self._run_cache: dict[int, tuple[pa.Table, pa.Table]] = {}
@@ -1086,7 +1093,10 @@ class IngestRun:
             missed_row = misses["row"].to_numpy()
             catalogues = misses["catalogue"].to_pylist()
             releases = misses["release"].to_pylist()
-            for catalogue, release in sorted(set(zip(catalogues, releases))):
+            subsets = {
+                (s.catalogue, s.release) for s in self.sources.values() if s.subset
+            }
+            for catalogue, release in sorted(set(zip(catalogues, releases)) - subsets):
                 picked = [
                     c == catalogue and r == release
                     for c, r in zip(catalogues, releases)
@@ -1375,6 +1385,7 @@ class IngestRun:
                     for state in self.passes
                 ),
                 "absorbed": totals["absorbed"],
+                "joined": len(self.joins),
                 "merged": len(merges),
                 "retired": len(retired),
                 "unminted": totals["unminted"],
@@ -1391,7 +1402,9 @@ class IngestRun:
                 extension.name: {**result.counts, "unreviewed": result.unreviewed}
                 for extension, result in zip(self.extensions, built)
             }
-        report = render_report(entry, merges, retired, self.conflicts, examples)
+        report = render_report(
+            entry, merges, retired, self.conflicts, examples, self.joins
+        )
         report += "".join(result.report for result in built)
         (segment / REPORT_FILE).write_text(report)
         self.registry.commit(entry, {slug: self.ingest for slug in self._slugs()})
@@ -1474,12 +1487,15 @@ class IngestRun:
                 )
         return result
 
-    def _join(self) -> tuple[dict[int, int], dict[int, list[str]], list[str]]:
+    def _join(
+        self,
+    ) -> tuple[dict[int, int], dict[int, list[str]], list[str], list[str]]:
         """Join the keys that rows link, in the order of the links.
 
         Returns each joined key → the root of its object, the evidence of each
-        root, and the links refused because both objects hold an id of one
-        catalogue release.
+        root, the links refused because both objects hold an id of one
+        catalogue release, and the evidence of each join. It records nothing.
+        Each pass calls it again.
         """
         parent: dict[int, int] = {}
 
@@ -1491,6 +1507,7 @@ class IngestRun:
         catalogues = {key: set(found) for key, found in self.union_catalogues.items()}
         evidence: dict[int, list[str]] = defaultdict(list)
         refused: list[str] = []
+        joined: list[str] = []
         for a, b, text in self.unions:
             root_a, root_b = find(a), find(b)
             if root_a == root_b:
@@ -1503,19 +1520,22 @@ class IngestRun:
                 continue
             parent[root_b] = root_a
             parent.setdefault(root_a, root_a)
+            joined.append(text)
             catalogues[root_a] = catalogues.get(root_a, set()) | catalogues.pop(
                 root_b, set()
             )
             evidence[root_a] += evidence.pop(root_b, []) + [text]
-        return {key: find(key) for key in parent}, evidence, refused
+        return {key: find(key) for key in parent}, evidence, refused, joined
 
     def _groups(self) -> tuple[dict[int, int], list[tuple[int, int, str]]]:
-        """Join the keys that rows link.
+        """Join the keys that rows link, and record each join and conflict.
 
         Returns each joined key → the key kept for its object, and the merges
         as (survivor, loser, evidence).
         """
-        roots, evidence, refused = self._join()
+        roots, evidence, refused, self.joins = self._join()
+        for text in self.joins:
+            logger.warning("join: %s", text)
         for text in refused:
             self._conflict(text)
         members: dict[int, list[int]] = defaultdict(list)

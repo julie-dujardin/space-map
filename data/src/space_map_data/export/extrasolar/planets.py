@@ -52,7 +52,6 @@ logger = logging.getLogger(__name__)
 SECTION = "planets"
 INDEX_FILE = f"{SECTION}/index.json.gz"
 ZERO_TOKEN = "0" * container.TOKEN_SIZE
-PARALLAX, CATALOGUE_DISTANCE = "parallax", "catalogue distance"
 EXAMPLES = 10
 
 KEY_COLUMNS = ("host", "number", "system")
@@ -79,7 +78,11 @@ POINT_COLUMNS = [
     "parallax",
     "parallax_error",
     "fidelity_v2",
+    "astrometry_source",
     "hipparcos_photometry_source",
+    "simbad_photometry_source",
+    "distance",
+    "distance_source",
     "phot_bp_mean_mag",
     "phot_rp_mean_mag",
     "teff_gspphot",
@@ -246,25 +249,25 @@ def host_rows(job: HostJob) -> HostRows:
         )
         point_table = render.with_orbit_parallax(point_table, orbit_table)
         where = placement(point_table)
-        distance, orbit = render.star_distance(point_table, where.by_parallax)
-        for row, parallax, catalogue, by_orbit, parsecs in zip(
-            point_table.to_pylist(),
-            where.by_parallax.tolist(),
-            where.by_catalogue.tolist(),
-            orbit.tolist(),
-            distance.tolist(),
-        ):
+        distance, orbit = render.star_distance(point_table, where)
+        for at, row in enumerate(point_table.to_pylist()):
             points[row["id"]] = row
-            # An orbit parallax measures the distance as a parallax does, so a
-            # catalogue host that has one is placed by parallax.
-            measured = parallax or (catalogue and by_orbit)
-            placed[row["id"]] = (
-                PARALLAX if measured else CATALOGUE_DISTANCE if catalogue else None
-            )
-            if measured:
-                distances[row["id"]] = parsecs
-            elif catalogue:
-                distances[row["id"]] = _f32(parsecs)
+            # An orbit parallax measures the distance as a parallax does.
+            if where.by_parallax[at] or (orbit[at] and not where.by_suspect[at]):
+                label = render.PARALLAX
+            elif where.by_suspect[at]:
+                label = render.SUSPECT_PARALLAX
+            elif where.by_group[at]:
+                label = row["distance_source"]
+            elif where.by_catalogue[at]:
+                label = render.CATALOGUE_DISTANCE
+            else:
+                continue
+            placed[row["id"]] = label
+            parsecs = float(distance[at])
+            # A parallax distance is a quotient. The other distances are float32.
+            measured = label in (render.PARALLAX, render.SUSPECT_PARALLAX)
+            distances[row["id"]] = parsecs if measured else _f32(parsecs)
     positions: dict[int, list[float]] = {}
     ids_file = render.scratch_file(job.scratch, job.region, "id")
     if ids_file.exists():
@@ -286,7 +289,7 @@ def host_rows(job: HostJob) -> HostRows:
             out.hosts[id_] = _host(
                 metadata[id_],
                 points[id_],
-                placed[id_],
+                placed.get(id_),
                 distances.get(id_),
                 positions.get(id_),
             )

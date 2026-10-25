@@ -149,13 +149,13 @@ class TestPlanetFiles:
         host = reader.system(built.ids[0])["hosts"][0]
         assert host["name"] == "Host A"
         assert host["catalogue_name"] == "HD 1"
-        assert host["placement"] == planets.PARALLAX
+        assert host["placement"] == render.PARALLAX
         assert host["distance"] == pytest.approx(20.0, rel=1e-6)
         assert (host["teff"], host["teff_source"]) == (5800.0, "nasa-exoplanet-archive")
         assert (host["radius"], host["mass"]) == (1.1, 1.05)
         assert host["bp_rp"] == pytest.approx(0.9)
         literature = reader.system(built.ids[1])["hosts"][0]
-        assert literature["placement"] == planets.CATALOGUE_DISTANCE
+        assert literature["placement"] == render.CATALOGUE_DISTANCE
         assert literature["distance"] == 500.0
         assert reader.system(built.ids[3])["hosts"][0]["placement"] is None
 
@@ -300,9 +300,10 @@ class TestHostsInTheTree:
         report = export_extrasolar(built.root, out, workers=1)
         reader = ExportReader(out / "v1" / "x")
         assert report["render"]["distance from an orbit solution"] == 2
-        assert report["render"]["planet host at a catalogue distance"] == 0
+        assert report["render"]["placed by parallax"] == 2
+        assert "placed by catalogue distance" not in report["render"]
         index = reader.planet_hosts()
-        expected = ((planets.PARALLAX, 25.0), (planets.PARALLAX, 40.0))
+        expected = ((render.PARALLAX, 25.0), (render.PARALLAX, 40.0))
         for id_, (placed, distance) in zip(built.ids, expected):
             host = reader.system(id_)["hosts"][0]
             assert host["placement"] == placed
@@ -321,8 +322,9 @@ class TestHostsInTheTree:
     def test_a_host_with_no_distance_is_not_drawn(self, tmp_path, out):
         built, report, reader = _export(tmp_path, out)
         assert report["render"]["planet host with no distance"] == 1
-        assert report["render"]["no 5-sigma parallax, exoplanet catalogue"] == 3
-        assert report["render"]["no 5-sigma parallax, Hipparcos only"] == 0
+        assert report["render"]["placed by catalogue distance"] == 2
+        dropped = "dropped: no distance, nasa-exoplanet-archive astrometry"
+        assert report["render"][dropped] == 1
         assert reader.find_render(built.ids[3], (0.0, 0.0, 0.0)) is None
 
     def test_bp_rp_from_teff(self):

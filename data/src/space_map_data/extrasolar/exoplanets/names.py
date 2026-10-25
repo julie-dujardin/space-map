@@ -8,19 +8,23 @@ IAU abbreviation. A designation in brackets after another, as in "Ain b
 (epsilon Tauri b)", is a second try.
 
 A star name goes to the star of the planets named in the same row. A star
-whose planets are not found goes by its own designation.
+whose planets are not found goes by its own designation. A star name that the
+IAU star-name list (WGSN) also has is left to the pass of that list when that
+pass claims the same star, so each name has one route.
 """
 
 import json
 import logging
 import re
+import unicodedata
 from collections import defaultdict
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from space_map_data.download.providers.exoplanets import name_exo_worlds
 from space_map_data.extrasolar.exoplanets.catalogues import GREEK, reduced
-from space_map_data.extrasolar.exoplanets.hosts import Stars
+from space_map_data.extrasolar.exoplanets.hosts import Identity, Stars
 from space_map_data.extrasolar.exoplanets.join import Joined
 
 logger = logging.getLogger(__name__)
@@ -134,6 +138,56 @@ def read_names(path: Path = NAMES_FILE) -> list[list[ExoWorld]]:
     return [rows[at] for at in sorted(rows)]
 
 
+def _folded(name: str) -> str:
+    """A name without case and accents."""
+    return (
+        unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    )
+
+
+@dataclass(frozen=True)
+class WgsnName:
+    """An IAU WGSN name, with the ids of the star that its pass claims."""
+
+    name: str
+    designation: str
+    hip: int | None = None
+    oid: str | None = None
+    gaia_dr3: int | None = None
+
+    def claims(self, identity: Identity) -> bool:
+        return any(
+            mine is not None and mine == theirs
+            for mine, theirs in (
+                (self.hip, identity.hip),
+                (self.oid, identity.oid),
+                (self.gaia_dr3, identity.gaia_dr3),
+            )
+        )
+
+
+class _Wgsn:
+    """The WGSN names by folded name and by designation key. The two lists
+    spell some names and designations differently."""
+
+    def __init__(self, wgsn: Iterable[WgsnName]) -> None:
+        self.by_name: dict[str, list[WgsnName]] = defaultdict(list)
+        self.by_key: dict[str, list[WgsnName]] = defaultdict(list)
+        for entry in wgsn:
+            self.by_name[_folded(entry.name)].append(entry)
+            for k in tries(entry.designation):
+                if k:
+                    self.by_key[k].append(entry)
+
+    def claims(self, world: ExoWorld, identity: Identity) -> bool:
+        """Whether the WGSN pass claims the star of `identity` under this name."""
+        found = [
+            *self.by_name.get(_folded(world.name), ()),
+            *(e for k in tries(world.designation) for e in self.by_key.get(k, ())),
+        ]
+        return any(entry.claims(identity) for entry in found)
+
+
 @dataclass
 class Named:
     # Joined planet index → IAU name.
@@ -141,6 +195,8 @@ class Named:
     # Identity index → IAU star name.
     stars: dict[int, str]
     unplaced: list[str]
+    # Star names that the IAU WGSN pass gives.
+    wgsn: list[str] = field(default_factory=list)
 
 
 def place_names(
@@ -148,11 +204,14 @@ def place_names(
     planets: list[Joined],
     stars: Stars,
     star_of: dict[int, int],
+    wgsn: Iterable[WgsnName] = (),
 ) -> Named:
     """Give the names to the joined planets and to their stars.
 
-    `star_of` maps a joined planet index to the identity of its star.
+    `star_of` maps a joined planet index to the identity of its star. `wgsn`
+    gives the names of the IAU WGSN pass.
     """
+    listed = _Wgsn(wgsn)
     by_key: dict[str, set[int]] = defaultdict(set)
     for at, joined in enumerate(planets):
         for row in joined.rows.values():
@@ -194,7 +253,11 @@ def place_names(
                     set(),
                 )
             if len(found_stars) == 1:
-                named.stars[next(iter(found_stars))] = world.name
+                at = next(iter(found_stars))
+                if listed.claims(world, stars.identities[at]):
+                    named.wgsn.append(world.name)
+                else:
+                    named.stars[at] = world.name
             else:
                 named.unplaced.append(f"{world.name} ({world.designation})")
     for text in named.unplaced:

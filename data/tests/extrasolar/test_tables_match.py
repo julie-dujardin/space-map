@@ -93,6 +93,12 @@ class TestMatcher:
         assert np.isfinite(far_with_mags) and far_with_mags > near
         assert np.isnan(matcher.score(_pairs([0.1], 10.0, 12.0))[0])
 
+    def test_a_close_pair_needs_no_magnitudes(self):
+        matcher = PositionMatcher(near_sigma=0.0, near_arcsec=0.3)
+        close, far = matcher.score(_pairs([0.2, 0.4]))
+        assert np.isfinite(close) and np.isnan(far)
+        assert np.isfinite(matcher.score(_pairs([0.4], 10.0, 10.2))[0])
+
     def test_kinds(self):
         matcher = PositionMatcher(kinds=frozenset({("quasar", "star")}))
         assert np.isnan(

@@ -9,6 +9,11 @@ The spectroscopic catalogues that name a Gaia DR3 id (PASTEL, APOGEE, LAMOST)
 join the same way, as `SourceTable`s held in memory. The orbits and masses
 fill table 2 (`gaia_orbits`).
 
+GAIA_DR3_NAMED gives the Gaia rows that gaia_source leaves out for want of a
+5σ parallax: the SIMBAD stars and the planet hosts. They get the joins of the
+chunk rows. They never mint: a minting catalogue that claims one gives it an
+ID.
+
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
 2022, MNRAS 510, 2597. XP metallicities: Andrae, Rix & Chandra 2023, ApJS 267,
 8, CC BY 4.0.
@@ -33,6 +38,7 @@ from space_map_data.download.providers.stars import (
     gaia_bulk,
     gaia_cross_match,
     gaia_fidelity,
+    gaia_named,
     gaia_source,
     gaia_xp_metallicity,
 )
@@ -45,7 +51,20 @@ from space_map_data.utils.arrays import floats, map_sorted
 
 logger = logging.getLogger(__name__)
 
-GAIA_DR3 = Source(name="gaia-dr3", catalogue="gaia", release="dr3", home=1, kind="star")
+# Only the positionable stars are stored. A best neighbour can be a duplicate
+# source without a 5σ parallax, beside the stored source of the same star.
+GAIA_DR3 = Source(
+    name="gaia-dr3", catalogue="gaia", release="dr3", home=1, kind="star", subset=True
+)
+# The catalogue and release of GAIA_DR3. No id is in both passes.
+GAIA_DR3_NAMED = Source(
+    name="gaia-dr3-named",
+    catalogue="gaia",
+    release="dr3",
+    home=1,
+    kind="star",
+    subset=True,
+)
 HIP = ("hip", "2007")
 
 SOURCE_DIR = gaia_bulk.OUT_DIR / gaia_source.TABLE_PATH
@@ -135,6 +154,11 @@ class BestNeighbours:
 
     def source_of(self) -> dict[int, int]:
         return dict(zip(self.hip.tolist(), self.source_id.tolist()))
+
+    def without(self, hips: frozenset[int]) -> BestNeighbours:
+        """The pairs whose HIP number is not in `hips`."""
+        keep = ~np.isin(self.hip, np.array(sorted(hips), np.int64))
+        return BestNeighbours(self.source_id[keep], self.hip[keep])
 
 
 def single_claims(catalogue: str, release: str, ids: np.ndarray) -> pa.Array:
@@ -282,6 +306,25 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     return pa.table(columns)
 
 
+def read_named(directory: Path = gaia_named.OUT_DIR) -> pa.Table:
+    """The rows of gaia_named with their fidelity columns."""
+    stars = pq.read_table(directory / gaia_named.SOURCE_FILE, columns=list(COLUMNS))
+    fidelity = pq.read_table(directory / gaia_named.FIDELITY_FILE)
+    return join_rows(stars, fidelity, FIDELITY_COLUMNS)
+
+
+def never_mint(rows: pa.Table) -> pa.Table:
+    """Pass rows that get an ID only when a minting catalogue claims them."""
+    mint = pa.array(np.zeros(rows.num_rows, bool))
+    return rows.set_column(rows.schema.get_field_index("mint"), "mint", mint)
+
+
+def _no_rows(names: Iterable[str]) -> pa.Table:
+    """A companion table with no rows."""
+    fields = [POINT_SOURCE.schema.field(name) for name in names]
+    return pa.schema([pa.field("source_id", pa.int64()), *fields]).empty_table()
+
+
 def in_ranges(
     ra: np.ndarray, dec: np.ndarray, ranges: list[tuple[int, int]]
 ) -> np.ndarray:
@@ -383,6 +426,19 @@ class GaiaReader:
         for table, rows in zip(self.joined, joined, strict=True):
             stars = join_rows(stars, rows, table.columns)
         return engine_rows(orbits.join(stars), self.best)
+
+    def named_rows(self, named: pa.Table) -> pa.Table:
+        """Pass rows of the `read_named` rows. The download has no
+        astrophysical parameters or XP metallicities, so those stay null."""
+        rows = self.pass_rows(
+            named.select(list(COLUMNS)),
+            named.select(["source_id", *FIDELITY_COLUMNS]),
+            _no_rows(ASTROPHYSICAL_COLUMNS),
+            _no_rows(XGBOOST_COLUMNS),
+            [table.rows for table in self.joined],
+            self.read_orbits(),
+        )
+        return never_mint(rows)
 
     def read_orbits(self) -> Orbits:
         if self.orbits is None:

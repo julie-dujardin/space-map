@@ -1,23 +1,34 @@
-"""The star ingest: Gaia DR3, then Hipparcos, the IAU star names, the
-exoplanet catalogues with their planets, and Wikidata.
+"""The star ingest: Gaia DR3, Hipparcos, SIMBAD, the IAU star names, the
+exoplanet catalogues with their planets, the distance catalogues, the
+literature table, then Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
-Gaia. Its rows also carry the binary orbits of table 2. The metallicity
-catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs) are no pass: their
-rows join the Gaia rows by source_id, and PASTEL also the Hipparcos rows by HIP
-number. The Gaia rows of planet hosts without a 5σ parallax, which the chunks
-do not hold, get the same joins. `limit` reads only the first Gaia chunks that hold that many stars, and
-the Hipparcos stars and names in the same pixels. Such an ingest is partial:
-it retires nothing, but it still rebuilds the tables from what it read. It
-never goes to REGISTRY_ROOT, because every later ingest keeps the IDs that it
-mints.
+Gaia. Gaia DR3 is two passes: the positionable stars of the chunks, then the
+rows that the chunks leave out for want of a 5σ parallax, of the SIMBAD stars
+and the planet hosts. Both get the same joins, and the rows carry the binary
+orbits of table 2. Hipparcos is two passes: the new reduction, then the
+entries of 1997 that it drops. SIMBAD is two passes: its stars, then the HIP
+numbers of its stars with a Gaia DR3 id. A HIP number whose Gaia best
+neighbour SIMBAD gives to another star has no best neighbour. The distance
+passes never mint, so they come after every pass that matches by position.
+Wikidata goes last: it is not permanent, so its claims settle on the joins of
+all the other passes.
+
+The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs) are
+no pass: their rows join the Gaia rows by source_id, and PASTEL also the
+Hipparcos rows by HIP number. `limit` reads only the first Gaia chunks that
+hold that many stars, and the Hipparcos stars and names in the same pixels.
+Such an ingest is partial: it retires nothing, but it still rebuilds the
+tables from what it read. It never goes to REGISTRY_ROOT, because every later
+ingest keeps the IDs that it mints.
 """
 
 import logging
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from itertools import chain, pairwise
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -32,21 +43,27 @@ from space_map_data.extrasolar.exoplanets import ingest as exoplanets
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import (
     apogee,
+    distances,
+    gaia,
     hipparcos,
     lamost,
+    literature,
     names,
     pastel,
+    simbad,
     wikidata,
 )
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
+    GAIA_DR3_NAMED,
     BestNeighbours,
     GaiaReader,
     SourceTable,
     in_ranges,
 )
-from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
+from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS, HIPPARCOS_1997
 from space_map_data.extrasolar.sources.names import IAU_WGSN
+from space_map_data.extrasolar.sources.simbad import SIMBAD, SIMBAD_HIP
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, POINT_SOURCE
 from space_map_data.utils.paths import REGISTRY_BACKUP_DIR, REGISTRY_ROOT
@@ -64,6 +81,10 @@ def _keep(table: pa.Table, ranges: list[tuple[int, int]] | None) -> pa.Table:
     ra = table["match_ra"].to_numpy(zero_copy_only=False)
     dec = table["match_dec"].to_numpy(zero_copy_only=False)
     return table.filter(pa.array(in_ranges(ra, dec, ranges)))
+
+
+def _hip_best(best: BestNeighbours) -> dict[str, str]:
+    return {str(hip): str(gaia) for hip, gaia in best.source_of().items()}
 
 
 def ingest(
@@ -85,12 +106,16 @@ def ingest(
                 f"{root} holds a complete ingest, and a partial one would rebuild"
                 " its tables from part of the input: use another root"
             )
+    simbad_list = simbad.SimbadList.read()
     best = BestNeighbours.read()
+    best = best.without(simbad.disputed_hip(simbad_list, _hip_best(best)))
     reader = GaiaReader(best, workers=workers)
     chunks = reader.chunks(limit)
     ranges = None if limit is None else [pixel_range(path.name) for path in chunks]
     hip_stars = hipparcos.read_stars()
-    pastel_stars = pastel.read_stars(chunks, hip_stars, best, workers)
+    # PASTEL needs astrometry. The 1997 entries that hip2 drops have none.
+    astrometric = hip_stars.filter(pc.is_valid(hip_stars["ra_rad"]))
+    pastel_stars = pastel.read_stars(chunks, astrometric, best, workers)
     by_gaia = pc.greater(pastel_stars["source_id"], 0)
     reader = replace(
         reader,
@@ -100,24 +125,39 @@ def ingest(
             SourceTable.of(lamost.read_stars(), lamost.COLUMNS),
         ),
     )
-    stars = hipparcos.engine_rows(
+    stars, rough = hipparcos.engine_rows(
         hip_stars, best, pastel_stars.filter(pc.invert(by_gaia))
     )
-    hip_names = dict(
-        zip(map(int, stars["catalogue_id"].to_pylist()), stars["name"].to_pylist())
-    )
-    positions = dict(
-        zip(
-            stars["catalogue_id"].to_pylist(),
-            zip(stars["match_ra"].to_pylist(), stars["match_dec"].to_pylist()),
+    hip_names = {
+        int(hip): name
+        for rows in (stars, rough)
+        for hip, name in zip(rows["catalogue_id"].to_pylist(), rows["name"].to_pylist())
+    }
+    positions = {
+        hip: (ra, dec)
+        for rows in (stars, rough)
+        for hip, ra, dec in zip(
+            rows["catalogue_id"].to_pylist(),
+            rows["match_ra"].to_pylist(),
+            rows["match_dec"].to_pylist(),
         )
+    }
+    hipparcos_hd = {str(hd) for hd in hip_stars["hd"].drop_null().to_pylist()}
+    simbad_rows, simbad_hip_rows = simbad.engine_rows(
+        simbad_list, hipparcos_hd, _hip_best(best), positions
     )
-    name_rows = names.engine_rows(positions)
+    iau_rows = simbad.iau_rows(simbad_list, simbad_rows)
+    name_rows = names.engine_rows(positions, simbad=iau_rows)
+    hd_positions = {**wikidata.hd_positions(stars), **wikidata.hd_positions(rough)}
     item_rows = wikidata.engine_rows(
-        wikidata_stars.read_items(), positions, wikidata.hd_positions(stars)
+        wikidata_stars.read_items(), positions, hd_positions
     )
-    stars, name_rows = _keep(stars, ranges), _keep(name_rows, ranges)
+    stars, rough = _keep(stars, ranges), _keep(rough, ranges)
+    simbad_rows, name_rows = _keep(simbad_rows, ranges), _keep(name_rows, ranges)
+    simbad_hip_rows = _keep(simbad_hip_rows, ranges)
     item_rows = _keep(item_rows, ranges)
+    named = gaia.read_named()
+    named_rows = _keep(reader.named_rows(named), ranges)
     # A partial ingest expects only the names in its pixels.
     name_ids = (
         names.read_names() if ranges is None else name_rows["catalogue_id"].to_pylist()
@@ -127,23 +167,62 @@ def ingest(
             "partial ingest: %d Gaia chunks, %d Hipparcos stars, %d names,"
             " %d Wikidata items",
             len(chunks),
-            stars.num_rows,
+            stars.num_rows + rough.num_rows,
             name_rows.num_rows,
             item_rows.num_rows,
         )
     complete = limit is None
     with IngestRun.start(root, backup_root) as run:
         # Under the run's lock: the hosts look for twins in the registry.
-        planets = exoplanets.prepare(reader, run.registry, hip_names, exoplanet_inputs)
+        planets = exoplanets.prepare(
+            reader,
+            run.registry,
+            hip_names,
+            exoplanet_inputs,
+            names.claimed(name_rows, iau_rows),
+        )
         planets.host_rows = {
             name: _keep(rows, ranges) for name, rows in planets.host_rows.items()
         }
         planets.gaia_rows = _keep(planets.gaia_rows, ranges)
-        gaia_batches = chain(reader.batches(chunks), [planets.gaia_rows])
-        run.add(GAIA_DR3, gaia_batches, complete)
+        # The Gaia row of a host has its astrophysical parameters, so it wins.
+        hosts = planets.gaia_rows["catalogue_id"]
+        named_rows = named_rows.filter(
+            pc.invert(pc.is_in(named_rows["catalogue_id"], value_set=hosts))
+        )
+        stored = distances.StoredGaia(
+            np.concatenate(
+                [named["source_id"].to_numpy(), np.array(hosts.to_pylist(), np.int64)]
+            )
+        )
+        distance_rows = [
+            (source, _keep(rows, ranges))
+            for source, rows in (
+                (distances.REYLE_2021, distances.reyle_rows(stored)),
+                (distances.ULTRACOOLSHEET, distances.ultracool_rows(stored)),
+                (distances.HUNT_REFFERT_2024, distances.cluster_rows(stored)),
+                (distances.MAGELLANIC_CLOUDS, distances.magellanic_rows(named)),
+                (distances.BAILER_JONES_2021, distances.bailer_jones_rows(named)),
+                (
+                    literature.LITERATURE,
+                    literature.engine_rows(positions, hd_positions),
+                ),
+                (
+                    distances.SIMBAD_PARALLAX,
+                    distances.simbad_parallax_rows(simbad_list, named),
+                ),
+            )
+        ]
+        run.add(GAIA_DR3, reader.batches(chunks), complete)
+        run.add(GAIA_DR3_NAMED, [named_rows, planets.gaia_rows], complete)
         run.add(HIPPARCOS, [stars], complete)
+        run.add(HIPPARCOS_1997, [rough], complete)
+        run.add(SIMBAD, [simbad_rows], complete)
+        run.add(SIMBAD_HIP, [simbad_hip_rows], complete)
         run.add(IAU_WGSN, [name_rows], complete)
         exoplanets.add_passes(run, planets, complete)
+        for source, rows in distance_rows:
+            run.add(source, [rows], complete)
         # A source that is not permanent comes after the permanent sources.
         run.add(WIKIDATA, [item_rows], complete)
         result = run.commit()
@@ -165,11 +244,27 @@ def _digits(ids: np.ndarray) -> np.ndarray:
     return np.searchsorted(10 ** np.arange(1, 17, dtype=np.int64), ids, "right") + 1
 
 
-def _point_part(path: Path) -> tuple[int, np.ndarray]:
-    """The rows of a point-source file, and the Hp of its Hipparcos-only stars."""
-    rows = pq.read_table(path, columns=["astrometry_source", "hp_mag"])
-    alone = rows.filter(pc.equal(rows["astrometry_source"], HIPPARCOS.name))
-    return rows.num_rows, alone["hp_mag"].to_numpy(zero_copy_only=False)
+def _point_part(path: Path) -> tuple[int, np.ndarray, Counter]:
+    """The rows of a point-source file, the Hp of its Hipparcos-only stars,
+    and its distances by source."""
+    rows = pq.read_table(
+        path,
+        columns=[
+            "astrometry_source",
+            "gaia_photometry_source",
+            "hp_mag",
+            "distance_source",
+        ],
+    )
+    hipparcos_names = pa.array([HIPPARCOS.name, HIPPARCOS_1997.name])
+    alone = rows.filter(
+        pc.and_(
+            pc.is_in(rows["astrometry_source"], hipparcos_names),
+            pc.is_null(rows["gaia_photometry_source"]),
+        )
+    )
+    sources = Counter(rows["distance_source"].drop_null().to_pylist())
+    return rows.num_rows, alone["hp_mag"].to_numpy(zero_copy_only=False), sources
 
 
 def _rows(path: Path) -> int:
@@ -194,7 +289,8 @@ def _catalogue_part(catalogue: str) -> Callable[[Path], list[str]]:
 
 
 def summary(registry: Registry, name_ids: list[str], items: int) -> str:
-    """Rows per table, ID lengths, Hipparcos-only stars, names and items placed."""
+    """Rows per table, ID lengths, distances by source, Hipparcos-only stars,
+    names and items placed."""
     point = _scan(_table_paths(registry, POINT_SOURCE.slug), _point_part)
     metadata = _scan(_table_paths(registry, METADATA.slug), _metadata_part)
     orbits = _scan(_table_paths(registry, BINARY_ORBIT.slug), _rows)
@@ -205,7 +301,7 @@ def summary(registry: Registry, name_ids: list[str], items: int) -> str:
     live = int(lengths.sum())
     lines = [
         "Extrasolar stars",
-        f"point-source rows: {sum(n for n, _ in point):,}",
+        f"point-source rows: {sum(n for n, _, _ in point):,}",
         f"binary-orbit rows: {sum(orbits):,}",
         f"metadata rows: {sum(n for n, _ in metadata):,} ({live:,} live)",
         "",
@@ -215,7 +311,12 @@ def summary(registry: Registry, name_ids: list[str], items: int) -> str:
         count = int(lengths[length])
         lines.append(f"  {length:>2}: {count:>12,} ({count / live:.1%})")
 
-    hp = np.concatenate([np.zeros(0)] + [found for _, found in point])
+    distances_by_source = sum((found for _, _, found in point), Counter())
+    lines += ["", "Distances by source:"]
+    lines += [
+        f"  {name}: {count:,}" for name, count in distances_by_source.most_common()
+    ]
+    hp = np.concatenate([np.zeros(0)] + [found for _, found, _ in point])
     lines += ["", f"Hipparcos stars without a Gaia DR3 row: {hp.size:,}"]
     edges = (-np.inf, *MAGNITUDE_BINS, np.inf)
     for low, high in pairwise(edges):

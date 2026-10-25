@@ -8,8 +8,14 @@ V/137D).
 
 A star matches Gaia DR3 by its best neighbour first: the Gaia row claims the
 HIP number, and the Hipparcos row claims the DR3 id. The DR3 id is then kept
-even when that source is not stored. A star without a best neighbour matches
-by position at J2016.0 and by an estimate of G from V and B-V.
+even when that source is not stored. A star without a best neighbour, or
+whose HIP number SIMBAD gives to another Gaia source, matches by position at
+J2016.0 and by an estimate of G from V and B-V.
+
+The new reduction drops the 263 entries of 1997 that have no astrometric
+solution, most of them in double or multiple systems. HIPPARCOS_1997 gives
+them in a later pass, with the rough position of 1997 and no astrometry, so
+the stars of the new reduction take their Gaia stars first.
 """
 
 import logging
@@ -48,6 +54,29 @@ HIPPARCOS = Source(
     release="2007",
     home=1,
     matcher=MATCHER,
+    kind="star",
+)
+# A rough position needs the magnitudes to agree at any separation. The 1997
+# magnitude is the light of the whole system. It is a median 0.4 mag brighter
+# than the Gaia star that matches.
+ROUGH_MATCHER = PositionMatcher(
+    n_sigma=5.0,
+    near_sigma=0.0,
+    min_error=0.3,
+    reach=0.1,
+    max_mag_diff=1.0,
+    mag_offset=-0.4,
+    mag_sigma=0.3,
+)
+# The entries of 1997 that the new reduction drops. Both releases use one
+# numbering, and the claims and lookups of HIP numbers use the release of
+# 2007, so these numbers go under it too.
+HIPPARCOS_1997 = Source(
+    name="hipparcos-1997",
+    catalogue="hip",
+    release="2007",
+    home=1,
+    matcher=ROUGH_MATCHER,
     kind="star",
 )
 GAIA_DR3 = ("gaia", "dr3")
@@ -103,6 +132,14 @@ HIP_MAIN_FIELDS = {
     "SpType": "sp_type",
     "HD": "hd",
 }
+# Read for matching, not stored.
+HIP_MAIN_MATCH_FIELDS = {
+    "RAhms": "ra_hms",
+    "DEdms": "dec_dms",
+    "Hpmax": "hp_max",
+    "HPmin": "hp_min",
+    "HvarType": "hvar_type",
+}
 
 # G − V from B − V: Gaia DR2 documentation release 1.2, section 5.3.7, table
 # 5.8 (Carrasco, from Landolt 2009 standards). On the 95k Hipparcos stars with
@@ -115,6 +152,19 @@ G_MINUS_V = (-0.02907, -0.02385, -0.2297, -0.001768)
 B_V_RANGE = (-0.3, 2.4)
 # The median G − Hp of the 95k stars, for a star without V or B − V.
 G_MINUS_HP = -0.28
+# The estimate misses G by over 1 mag for 529 of the 97,751 stars with a
+# stored best neighbour. 467 of them are very red or vary, so such a star
+# matches without its magnitude, within near_sigma. On the 2,197 such stars,
+# that match finds the best neighbour every time.
+MAX_V_I = 2.5
+# Hpmin − Hpmax, the 5th to 95th percentile of Hp. Only the HvarType periodic
+# (P) and unsolved (U) mark a star that varies. D marks duplicity.
+MAX_AMPLITUDE = 0.5
+VARIABLE_TYPES = ("P", "U")
+# An entry of 1997 that the new reduction drops has its position at J1991.25
+# and no proper motion. On the 12,691 doubles of the new reduction, such a
+# position is within 20″ (5σ) of the Gaia position at J2016.0 for 99.5%.
+ROUGH_ERROR = 4.0
 
 GREEK = frozenset(
     [
@@ -178,11 +228,47 @@ def propagate(
     )
 
 
+def to_gaia_epoch(
+    ra: np.ndarray,
+    dec: np.ndarray,
+    pmra: np.ndarray,
+    pmdec: np.ndarray,
+    epoch: float | np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Positions at `epoch` moved to the Gaia epoch. A position without a
+    proper motion stays."""
+    years = GAIA_EPOCH - np.broadcast_to(np.asarray(epoch, np.float64), ra.shape)
+    ra, dec = ra.copy(), dec.copy()
+    moving = np.isfinite(pmra) & np.isfinite(pmdec) & (years != 0)
+    if moving.any():
+        ra[moving], dec[moving] = propagate(
+            ra[moving], dec[moving], pmra[moving], pmdec[moving], years[moving]
+        )
+    return ra, dec
+
+
 def g_estimate(v: np.ndarray, b_v: np.ndarray, hp: np.ndarray) -> np.ndarray:
     """Gaia G from Johnson V and B − V, else from Hp. NaN where neither."""
     x = np.clip(b_v, *B_V_RANGE)
     from_v = v + np.polynomial.polynomial.polyval(x, G_MINUS_V)
     return np.where(np.isfinite(from_v), from_v, hp + G_MINUS_HP)
+
+
+def unreliable_estimate(
+    v_i: np.ndarray, hp_max: np.ndarray, hp_min: np.ndarray, hvar_type: np.ndarray
+) -> np.ndarray:
+    """Whether the G estimate of a star is unreliable: very red, or variable."""
+    variable = (hp_min - hp_max > MAX_AMPLITUDE) & np.isin(hvar_type, VARIABLE_TYPES)
+    return (v_i > MAX_V_I) | variable
+
+
+def sexagesimal(text: pa.Array | pa.ChunkedArray) -> np.ndarray:
+    """Hours or degrees from text as "h m s" or "±d m s"."""
+    text = pc.utf8_trim_whitespace(text)
+    sign = np.where(pc.starts_with(text, "-").to_numpy(zero_copy_only=False), -1, 1)
+    parts = pc.split_pattern_regex(pc.utf8_ltrim(text, "+-"), r"\s+")
+    values = pc.list_flatten(parts).cast(pa.float64()).to_numpy().reshape(-1, 3)
+    return sign * (values @ np.array([1, 1 / 60, 1 / 3600]))
 
 
 def designation(name: str | None) -> str | None:
@@ -222,20 +308,38 @@ def read_stars(
     hip_main_dir: Path = HIP_MAIN_DIR,
     xhip_dir: Path = XHIP_DIR,
 ) -> pa.Table:
-    """The new reduction joined to the 1997 catalogue and the XHIP names."""
-    stars = read_fixed_width(hip2_dir / HIP2_FILE, _readme(hip2_dir), HIP2_FIELDS)
+    """The new reduction joined to the 1997 catalogue and the XHIP names.
+
+    The entries of 1997 that the new reduction drops come last, with no
+    astrometry.
+    """
+    hip2 = read_fixed_width(hip2_dir / HIP2_FILE, _readme(hip2_dir), HIP2_FIELDS)
     main = read_fixed_width(
-        hip_main_dir / HIP_MAIN_FILE, _readme(hip_main_dir), HIP_MAIN_FIELDS
+        hip_main_dir / HIP_MAIN_FILE,
+        _readme(hip_main_dir),
+        HIP_MAIN_FIELDS | HIP_MAIN_MATCH_FIELDS,
     )
     names = read_fixed_width(
         xhip_dir / XHIP_FILE, _readme(xhip_dir), {"HIP": "hip", "Name": "xhip_name"}
     )
+    dropped = main["hip"].filter(
+        pc.invert(pc.is_in(main["hip"], value_set=hip2["hip"]))
+    )
+    logger.info(
+        "%d entries of %s are not in %s: they keep the rough position of 1997",
+        len(dropped),
+        HIP_MAIN_FILE,
+        HIP2_FILE,
+    )
+    hip = pa.concat_arrays([hip2["hip"].combine_chunks(), dropped.combine_chunks()])
+    stars = hip2.take(pc.index_in(hip, value_set=hip2["hip"]))
+    stars = stars.set_column(stars.schema.get_field_index("hip"), "hip", hip)
     at = pc.index_in(stars["hip"], value_set=main["hip"])
     if at.null_count:
         logger.warning(
             "%d stars of %s are not in %s", at.null_count, HIP2_FILE, HIP_MAIN_FILE
         )
-    for name in HIP_MAIN_FIELDS.values():
+    for name in (*HIP_MAIN_FIELDS.values(), *HIP_MAIN_MATCH_FIELDS.values()):
         if name != "hip":
             stars = stars.append_column(name, main[name].take(at))
     at = pc.index_in(stars["hip"], value_set=names["hip"])
@@ -256,7 +360,8 @@ def read_stars(
     return stars
 
 
-def _claims(rows: list[list[tuple[str, str, str]]]) -> pa.Array:
+def claim_lists(rows: list[list[tuple[str, str, str]]]) -> pa.Array:
+    """The claims column of pass rows, null for a row without a claim."""
     return pa.array(
         [
             [dict(zip(CROSS_ID.names, claim)) for claim in claims] or None
@@ -268,24 +373,41 @@ def _claims(rows: list[list[tuple[str, str, str]]]) -> pa.Array:
 
 def engine_rows(
     stars: pa.Table, best: BestNeighbours, pastel: pa.Table | None = None
-) -> pa.Table:
-    """The pass rows of the stars that `read_stars` gives, with the PASTEL
-    rows of `pastel` joined by HIP number."""
+) -> tuple[pa.Table, pa.Table]:
+    """The pass rows of HIPPARCOS and of HIPPARCOS_1997 from `read_stars`,
+    with the PASTEL rows of `pastel` joined by HIP number."""
     hip = stars["hip"].to_numpy()
+    rough = stars["ra_rad"].is_null().to_numpy(zero_copy_only=False)
     ra = np.degrees(floats(stars, "ra_rad"))
     dec = np.degrees(floats(stars, "dec_rad"))
+    ra[rough] = 15 * sexagesimal(stars["ra_hms"].filter(rough))
+    dec[rough] = sexagesimal(stars["dec_dms"].filter(rough))
     years = GAIA_EPOCH - EPOCH
+    # A rough entry has no proper motion. Its error covers the motion since 1991.
     ra_now, dec_now = propagate(
-        ra, dec, floats(stars, "pmra"), floats(stars, "pmdec"), years
+        ra,
+        dec,
+        np.where(rough, 0, floats(stars, "pmra")),
+        np.where(rough, 0, floats(stars, "pmdec")),
+        years,
     )
     # The position error at J2016.0 grows with the proper-motion error.
     error = np.hypot(
         np.hypot(floats(stars, "ra_error"), years * floats(stars, "pmra_error")),
         np.hypot(floats(stars, "dec_error"), years * floats(stars, "pmdec_error")),
     )
+    error = np.where(rough, ROUGH_ERROR * 1000, error)
     mag = g_estimate(
         floats(stars, "v_mag"), floats(stars, "b_v"), floats(stars, "hp_mag")
     )
+    unreliable = unreliable_estimate(
+        floats(stars, "v_i"),
+        floats(stars, "hp_max"),
+        floats(stars, "hp_min"),
+        stars["hvar_type"].to_numpy(zero_copy_only=False),
+    )
+    # A rough row cannot match without its magnitude, so it keeps it.
+    mag[unreliable & ~rough] = np.nan
 
     # An HD number on two Hipparcos stars names their system. It gives them
     # no claim and no name.
@@ -327,7 +449,7 @@ def engine_rows(
         "match_pmdec": stars["pmdec"],
         "match_mag": pa.array(mag, pa.float32(), from_pandas=True),
         "match_error": pa.array(error / 1000, pa.float32()),
-        "claims": _claims(claims),
+        "claims": claim_lists(claims),
         "ra": pa.array(ra),
         "dec": pa.array(dec),
         "epoch": pa.array(np.full(n, EPOCH, np.float32)),
@@ -349,4 +471,5 @@ def engine_rows(
         at = pc.index_in(stars["hip"], value_set=pastel["hip"])
         joined = pa.table({name: pastel[name].take(at) for name in PASTEL_COLUMNS})
     columns |= joined_columns(joined, PASTEL_COLUMNS)
-    return pa.table(columns)
+    rows = pa.table(columns)
+    return rows.filter(pa.array(~rough)), rows.filter(pa.array(rough))
