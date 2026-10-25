@@ -16,6 +16,7 @@ import numpy as np
 
 from space_map_data.export.extrasolar import container, render, tiles
 from space_map_data.export.extrasolar.container import Container
+from space_map_data.export.extrasolar.planets import alias_key
 from space_map_data.export.extrasolar.tiles import Split
 from space_map_data.extrasolar.ids import cell_of, parse, table_of
 from space_map_data.extrasolar.tables import METADATA
@@ -121,15 +122,42 @@ class ExportReader:
                     found.rows[slug] = row
         return found
 
-    # The sky cultures
-
-    def culture(self, path: str) -> dict:
-        """A sky-culture file, checked against the token of its table."""
+    def json_file(self, path: str, section: str) -> dict:
+        """A JSON file, checked against the token of its section."""
         content = json.loads(gzip.decompress((self.root / path).read_bytes()))
-        token = self.metadata["skycultures"]["token"]
+        token = self.metadata[section]["token"]
         if content["token"] != token:
             raise TokenMismatch(f"{path}: token {content['token']}, expected {token}")
         return content
+
+    # The sky cultures
+
+    def culture(self, path: str) -> dict:
+        return self.json_file(path, "skycultures")
+
+    # The planets
+
+    def planet_index(self) -> dict:
+        return self.json_file(self.metadata["planets"]["index"], "planets")
+
+    def planet_hosts(self) -> dict[int, dict]:
+        """The index entry of each host, by host ID."""
+        return {host["id"]: host for host in self.planet_index()["hosts"]}
+
+    def system(self, key: int) -> dict:
+        pattern = self.metadata["planets"]["system"]
+        return self.json_file(pattern.replace("{key}", str(key)), "planets")
+
+    def planet(self, host: int, number: int) -> dict | None:
+        """The planet of `/x/{host}/b/{number}`, through an alias number,
+        which can lead to another host, or None for a 404."""
+        index = self.planet_index()
+        host, number = index["aliases"].get(alias_key((host, number)), (host, number))
+        entry = {h["id"]: h for h in index["hosts"]}.get(host)
+        if entry is None or number not in entry["planets"]:
+            return None
+        planets = self.system(entry["system"])["planets"]
+        return next(p for p in planets if (p["host"], p["number"]) == (host, number))
 
     # The render tree
 

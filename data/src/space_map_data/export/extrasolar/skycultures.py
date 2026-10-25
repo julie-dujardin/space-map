@@ -62,6 +62,15 @@ DATASET_URLS = {
     "stellarium": "https://github.com/Stellarium/stellarium",
     "bucur": "https://github.com/doinab/constellation-lines",
 }
+SIMBAD = {
+    "name": "SIMBAD astronomical database",
+    "organisation": "CDS, Strasbourg Astronomical Observatory, France",
+    "source": "https://simbad.cds.unistra.fr/simbad/",
+    "license": "ODbL",
+    "attribution": "This research has made use of the SIMBAD database,"
+    " operated at CDS, Strasbourg, France.",
+    "citation": "Wenger et al. 2000, A&AS 143, 9",
+}
 CREDITS = (
     {
         "name": "Stellarium sky cultures",
@@ -74,15 +83,7 @@ CREDITS = (
         "source": "https://github.com/doinab/constellation-lines",
         "license": "CC BY-SA",
     },
-    {
-        "name": "SIMBAD astronomical database",
-        "organisation": "CDS, Strasbourg Astronomical Observatory, France",
-        "source": "https://simbad.cds.unistra.fr/simbad/",
-        "license": "ODbL",
-        "attribution": "This research has made use of the SIMBAD database,"
-        " operated at CDS, Strasbourg, France.",
-        "citation": "Wenger et al. 2000, A&AS 143, 9",
-    },
+    SIMBAD,
 )
 
 

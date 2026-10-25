@@ -4,6 +4,7 @@ import argparse
 import logging
 import logging.config
 import tomllib
+from pathlib import Path
 
 from space_map_data.export.atmospheres import export_atmospheres_only
 from space_map_data.export.groups import export_groups_only
@@ -23,7 +24,7 @@ from space_map_data.export.status import export_status_only
 from space_map_data.export.systems import export_systems_only
 from space_map_data.utils.db import engine_scope
 from space_map_data.utils.mirror import sync_all
-from space_map_data.utils.paths import DATA_DIR
+from space_map_data.utils.paths import DATA_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
 
 
 def cli():
@@ -56,6 +57,20 @@ def cli():
         default=8,
         help="Worker processes of the extrasolar export",
     )
+    parser.add_argument(
+        "--registry-root",
+        type=Path,
+        default=REGISTRY_ROOT,
+        help=f"extrasolar: the registry to read (default: {REGISTRY_ROOT}); another"
+        " root reads its matched sky cultures from <root>/skycultures",
+    )
+    parser.add_argument(
+        "--extrasolar-root",
+        type=Path,
+        default=EXTRASOLAR_DIR,
+        help=f"extrasolar: where v1/x/ goes (default: {EXTRASOLAR_DIR}, only for"
+        " the default registry)",
+    )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
@@ -63,7 +78,7 @@ def cli():
 
     # It reads only the registry, so it needs no mirror and no DB.
     if args.only == "extrasolar":
-        export_extrasolar_only(args.workers)
+        export_extrasolar_only(args.workers, args.registry_root, args.extrasolar_root)
         return
     sync_all()
     if args.only == "star-objects":

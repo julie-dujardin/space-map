@@ -1,5 +1,5 @@
-"""A small registry with real Metadata, Point source and Binary orbit tables,
-written directly in the layout of `extrasolar.registry`."""
+"""A small registry with real Metadata, Point source, Binary orbit and planets
+tables, written directly in the layout of `extrasolar.registry`."""
 
 import json
 from collections import defaultdict
@@ -11,12 +11,14 @@ import numpy as np
 import pyarrow as pa
 
 from space_map_data.extrasolar import ids, sky
+from space_map_data.extrasolar.exoplanets.table import SCHEMA as PLANETS_TABLE
 from space_map_data.extrasolar.registry import (
     ALIAS,
     IDS,
     LIVE,
     MERGES,
     MERGES_FILE,
+    PLANETS,
     RETIRED,
     ingest_name,
     sort_by_cell,
@@ -73,6 +75,52 @@ def star(
     return row
 
 
+def planet(host: int, number: int, system: int | None = None, **values) -> dict:
+    """A planets table row of star index `host`, around star index `system`
+    (the host by default), with a 10-day circular orbit unless `values` say
+    otherwise."""
+    row: dict = {
+        "_host": host,
+        "_system": host if system is None else system,
+        "number": number,
+        "name": f"Planet {host} {number}",
+        "name_source": "nasa-exoplanet-archive",
+        "designation": f"Planet {host} {number}",
+        "letter": "b",
+        "aliases": [f"Planet {host} {number}"],
+        "cross_ids": [
+            {
+                "catalogue": "nasa-exoplanet-archive",
+                "release": "pscomppars",
+                "catalogue_id": f"3.{host}{number}",
+            }
+        ],
+        "class": "planet",
+        "class_basis": "true mass",
+        "status": "confirmed",
+        "status_source": "nasa-exoplanet-archive",
+        "discovery_method": "Radial Velocity",
+        "discovery_year": 2000,
+        "discovery_source": "nasa-exoplanet-archive",
+        "period": 10.0,
+        "semi_major_axis": 0.09,
+        "eccentricity": 0.0,
+        "inclination": 90.0,
+        "omega": 90.0,
+        "periastron_time": 2451545.0,
+        "orbit_source": "nasa-exoplanet-archive",
+        "node": 30.0,
+        "mass": 1.0,
+        "mass_kind": "true",
+        "mass_source": "nasa-exoplanet-archive",
+        "assumed": ["node", "periastron_time"],
+        "estimated": [],
+        "computed": [],
+        "limits": [],
+    }
+    return row | values
+
+
 @dataclass
 class Built:
     root: Path
@@ -94,13 +142,19 @@ def write_registry(
     extra_table_ids: Sequence[int] = (),
     missing: Sequence[int] = (),
     orbits: Mapping[int, dict] | None = None,
+    planets: Sequence[dict] = (),
+    planet_status: Sequence[tuple[int, int, str, tuple[int, int] | None]] = (),
 ) -> Built:
     """Write a registry of one ingest. `aliases` are (loser, survivor) pairs of
     star indexes: the loser's ID is an alias and has no data rows. A `retired`
     star index has a retired record and no rows. A `missing` star index takes
     its serial but has no record and no rows, as in a registry rolled back.
     `extra_table_ids` get rows but no registry record. `orbits` gives the
-    Binary orbit row of a star index; without it the registry has no table 2."""
+    Binary orbit row of a star index; without it the registry has no table 2.
+    `planets` are rows of `planet`, each with a link record of its first
+    cross-id in the Planets part; `planet_status` are (star index, number,
+    status, alias target) status records there, the target a (star index,
+    number)."""
     serials: dict[int, int] = defaultdict(int)
     minted = []
     for row in stars:
@@ -209,6 +263,50 @@ def write_registry(
         for region, part in by_region(table).items():
             write_parquet(part, region_file(root / "tables" / slug / "000001", region))
 
+    versions = dict.fromkeys(tables, 1)
+    if planets:
+        rows = []
+        for row in planets:
+            values = {k: v for k, v in row.items() if not k.startswith("_")}
+            values |= {"host": minted[row["_host"]], "system": minted[row["_system"]]}
+            rows.append(values)
+        table = pa.Table.from_pylist(
+            [{name: r.get(name) for name in PLANETS_TABLE.names} for r in rows],
+            schema=PLANETS_TABLE,
+        )
+        region = sky.region_of(table["host"].to_numpy() & ids.CELL_MASK)
+        for r in np.unique(region):
+            part = table.filter(pa.array(region == r))
+            write_parquet(part, region_file(root / "tables" / "planets" / "000001", r))
+        versions["planets"] = 1
+    part = [
+        {
+            "host": minted[row["_host"]],
+            "number": row["number"],
+            "status": LIVE,
+            **row["cross_ids"][0],
+            "ingest": 1,
+        }
+        for row in planets
+    ]
+    part += [
+        {
+            "host": minted[host],
+            "number": number,
+            "status": status,
+            "alias_host": None if target is None else minted[target[0]],
+            "alias_target": None if target is None else target[1],
+            "ingest": 1,
+        }
+        for host, number, status, target in planet_status
+    ]
+    if part:
+        records = pa.Table.from_pylist(part, schema=PLANETS)
+        region = sky.region_of(records["host"].to_numpy() & ids.CELL_MASK)
+        for r in np.unique(region):
+            piece = records.filter(pa.array(region == r))
+            write_parquet(piece, region_file(segment / "planets", r))
+
     entry = {
         "ingest": 1,
         "date": "2026-10-23T00:00:00+00:00",
@@ -232,7 +330,7 @@ def write_registry(
         "created": entry["date"],
         "region_level": sky.REGION_LEVEL,
         "ingests": [entry],
-        "tables": dict.fromkeys(tables, 1),
+        "tables": versions,
     }
     (root / "registry").mkdir(parents=True, exist_ok=True)
     (root / "registry" / "manifest.json").write_text(json.dumps(manifest))

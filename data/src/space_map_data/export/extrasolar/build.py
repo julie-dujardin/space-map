@@ -11,14 +11,18 @@ export as it was. The checks:
   source that is not permanent, such as Wikidata, may change. The previous
   export stands for the live site until the serving is decided;
 - the matched sky cultures come from the registry ingest that the export
-  reads.
+  reads;
+- every planet host and system is live with its rows, and every planet that
+  the previous export serves is still served, or its number is retired or an
+  alias, or its host is no longer live.
 
 The export holds a shared lock on the registry for the whole run, so no
 ingest starts and no table version changes under it. Every job gets the
 registry object that the export read under the lock, so all jobs read the
 table versions that metadata.json names.
 
-Render scratch goes in `.build/` beside `v1/` and is removed at the end.
+Render scratch goes in `.build/` beside `v1/`. The planets read the render
+rows of their hosts from it, and then it is removed.
 """
 
 import fcntl
@@ -38,7 +42,13 @@ from pathlib import Path
 import numpy as np
 
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
-from space_map_data.export.extrasolar import container, render, skycultures, tiles
+from space_map_data.export.extrasolar import (
+    container,
+    planets,
+    render,
+    skycultures,
+    tiles,
+)
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.tiles import (
     MAX_ROWS,
@@ -100,16 +110,8 @@ CREDITS = (
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/B/pastel",
         "citation": "Soubiran et al. 2016, A&A 591, A118",
     },
-    # SIMBAD places the PASTEL designations.
-    {
-        "name": "SIMBAD astronomical database",
-        "organisation": "CDS, Strasbourg Astronomical Observatory, France",
-        "source": "https://simbad.cds.unistra.fr/simbad/",
-        "license": "ODbL",
-        "attribution": "This research has made use of the SIMBAD database,"
-        " operated at CDS, Strasbourg, France.",
-        "citation": "Wenger et al. 2000, A&AS 143, 9",
-    },
+    # SIMBAD places the PASTEL designations and joins the planet catalogues.
+    skycultures.SIMBAD,
     {
         "name": "APOGEE DR17",
         "organisation": "SDSS-IV",
@@ -366,6 +368,7 @@ class TreeResult:
 
 
 def _build_tree(registry: Registry, layout: Layout, workers: int) -> TreeResult:
+    """The render tree. Its render rows stay in the scratch for the planets."""
     scratch = layout.scratch
     jobs = [render.RowsJob(registry, r, scratch) for r in range(REGION_COUNT)]
     counts: Counter = Counter()
@@ -415,7 +418,6 @@ def _build_tree(registry: Registry, layout: Layout, workers: int) -> TreeResult:
         for written in _run(workers, render.build_batch, batch_jobs, "render nodes")
         for item in written
     ]
-    shutil.rmtree(scratch)
     return TreeResult(nodes, files, counts)
 
 
@@ -456,6 +458,7 @@ def _metadata(
     tree: TreeResult,
     tokens: dict[str, str],
     cultures: skycultures.Result | None,
+    planet_files: planets.Result | None,
 ) -> dict:
     tables_out = {}
     for result in tables_built:
@@ -508,6 +511,15 @@ def _metadata(
     }
     if cultures is not None:
         metadata[skycultures.TABLE] = {**cultures.entry, "frame": FRAME}
+    if planet_files is not None:
+        entry = dict(planet_files.entry)
+        # The planet catalogues also fill the host rows of Point source.
+        metadata["credits"] += entry.pop("credits")
+        metadata[planets.SECTION] = {
+            **entry,
+            "frame": FRAME,
+            "distribution": DISTRIBUTION,
+        }
     return metadata
 
 
@@ -526,9 +538,28 @@ def _swap(layout: Layout) -> None:
         shutil.rmtree(layout.old)
 
 
+@dataclass
+class Built:
+    tables: list[TableResult]
+    tree: TreeResult
+    cultures: skycultures.Result | None
+    planet_files: planets.Result | None
+    tokens: dict[str, str]
+
+
+def _refuse(problems: Problems) -> None:
+    if problems:
+        for line in problems.lines():
+            logger.error("check failed: %s", line)
+        raise ExportRefused(
+            "the checks failed, the served export is unchanged:\n"
+            + "\n".join(problems.lines())
+        )
+
+
 def _export(
     registry: Registry, layout: Layout, workers: int, cultures_dir: Path | None
-) -> tuple[list[TableResult], TreeResult, skycultures.Result | None, dict[str, str]]:
+) -> Built:
     """Build into staging, check, and swap. Removes staging on a failure."""
     _recover(layout)
     stale = skycultures.check(registry, cultures_dir or skycultures.CULTURES_DIR)
@@ -540,21 +571,29 @@ def _export(
     try:
         problems = Problems()
         built = _build_tables(registry, layout, workers, previous, problems)
-        if problems:
-            for line in problems.lines():
-                logger.error("check failed: %s", line)
-            raise ExportRefused(
-                "the checks failed, the served export is unchanged:\n"
-                + "\n".join(problems.lines())
-            )
+        _refuse(problems)
         tree = _build_tree(registry, layout, workers)
+        planet_files = planets.build(
+            registry,
+            layout.staging,
+            layout.scratch,
+            lambda task, jobs, label: _run(workers, task, jobs, label),
+            layout.live,
+        )
+        shutil.rmtree(layout.scratch)
+        if planet_files is not None:
+            _refuse(planet_files.problems)
+            for reason, count in sorted(planet_files.counts.items()):
+                logger.info("planets: %s %d", reason, count)
         cultures = skycultures.build(registry, layout.staging, cultures_dir)
         groups = {result.slug: result.files for result in built}
         groups[render.TREE] = tree.files
         tokens = _patch(layout.staging, groups, workers)
         if cultures is not None:
             tokens[skycultures.TABLE] = cultures.entry["token"]
-        metadata = _metadata(registry, built, tree, tokens, cultures)
+        if planet_files is not None:
+            tokens[planets.SECTION] = planet_files.entry["token"]
+        metadata = _metadata(registry, built, tree, tokens, cultures, planet_files)
         (layout.staging / METADATA_FILE).write_text(
             json.dumps(metadata, indent=1) + "\n"
         )
@@ -564,7 +603,7 @@ def _export(
             if path.exists():
                 shutil.rmtree(path)
         raise
-    return built, tree, cultures, tokens
+    return Built(built, tree, cultures, planet_files, tokens)
 
 
 def export_extrasolar(
@@ -587,16 +626,15 @@ def export_extrasolar(
             )
         layout = Layout(out_root)
         with _locked(layout):
-            built, tree, cultures, tokens = _export(
-                registry, layout, workers, cultures_dir
-            )
+            result = _export(registry, layout, workers, cultures_dir)
+    built, tree, cultures = result.tables, result.tree, result.cultures
     tile_files = {
         r.slug: [f for f in r.files if not f.path.endswith(tiles.SPLIT_FILE)]
         for r in built
     }
     report = {
         "seconds": round(time.monotonic() - started),
-        "tokens": tokens,
+        "tokens": result.tokens,
         "tables": {slug: _sizes(files) for slug, files in tile_files.items()},
         "split_bytes": {
             r.slug: next(f.size for f in r.files if f.path.endswith(tiles.SPLIT_FILE))
@@ -610,17 +648,46 @@ def export_extrasolar(
     culture_files = [] if cultures is None else cultures.files
     report["skycultures"] = _sizes(culture_files)
     report["skycultures_left_out"] = [] if cultures is None else cultures.left_out
+    planet_files = [] if result.planet_files is None else result.planet_files.files
+    report["planet_systems"] = _sizes(
+        [f for f in planet_files if f.path != planets.INDEX_FILE]
+    )
+    report["planet_index_bytes"] = sum(
+        f.size for f in planet_files if f.path == planets.INDEX_FILE
+    )
+    report["planets"] = (
+        {} if result.planet_files is None else dict(result.planet_files.counts)
+    )
     report["files"] = (
-        sum(len(r.files) for r in built) + len(tree.files) + len(culture_files) + 1
+        sum(len(r.files) for r in built)
+        + len(tree.files)
+        + len(culture_files)
+        + len(planet_files)
+        + 1
     )
     report["bytes"] = (
         sum(f.size for r in built for f in r.files)
         + sum(f.size for f in tree.files)
         + sum(f.size for f in culture_files)
+        + sum(f.size for f in planet_files)
     )
     return report
 
 
-def export_extrasolar_only(workers: int) -> None:
-    report = export_extrasolar(workers=workers)
+def export_extrasolar_only(
+    workers: int,
+    registry_root: Path = REGISTRY_ROOT,
+    out_root: Path = EXTRASOLAR_DIR,
+) -> None:
+    """The CLI run. A registry other than the default one writes its matched
+    sky cultures to `<root>/skycultures`, as the ingest does, and may not
+    write to the served export."""
+    default_root = registry_root.resolve() == REGISTRY_ROOT.resolve()
+    if not default_root and out_root.resolve() == EXTRASOLAR_DIR.resolve():
+        raise ExportRefused(
+            f"{registry_root} is not the default registry: name an output root"
+            f" other than {EXTRASOLAR_DIR}"
+        )
+    cultures_dir = None if default_root else registry_root / "skycultures"
+    report = export_extrasolar(registry_root, out_root, workers, cultures_dir)
     logger.info("extrasolar export:\n%s", json.dumps(report, indent=1))
