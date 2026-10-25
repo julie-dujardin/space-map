@@ -93,6 +93,9 @@ from space_map_data.download.providers.spice import (
     SpacetrackTleDownloader,
     SpiceDownloader,
 )
+from space_map_data.download.providers.stars.bailer_jones import (
+    BailerJonesDistancesDownloader,
+)
 from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloader
 from space_map_data.download.providers.stars.gaia_astrophysical_parameters import (
     GaiaAstrophysicalParametersDownloader,
@@ -106,6 +109,9 @@ from space_map_data.download.providers.stars.gaia_cross_match import (
 from space_map_data.download.providers.stars.gaia_fidelity import (
     GaiaFidelityDownloader,
 )
+from space_map_data.download.providers.stars.gaia_named import (
+    GaiaNamedStarsDownloader,
+)
 from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownloader
 from space_map_data.download.providers.stars.gaia_two_body_orbit import (
     GaiaTwoBodyOrbitDownloader,
@@ -116,6 +122,12 @@ from space_map_data.download.providers.stars.gaia_xp_metallicity import (
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 from space_map_data.download.providers.stars.pastel_simbad import (
     PastelSimbadDownloader,
+)
+from space_map_data.download.providers.stars.simbad_stars import (
+    SimbadStarsDownloader,
+)
+from space_map_data.download.providers.stars.ultracoolsheet import (
+    UltracoolSheetDownloader,
 )
 from space_map_data.download.providers.stars.wikidata_stars import (
     WikidataStarsDownloader,
@@ -187,7 +199,13 @@ PROVIDERS_CLASSES = [
     CDSStarCataloguesDownloader,
     StellarParameterCataloguesDownloader,
     PastelSimbadDownloader,
+    # Ordered: SIMBAD resolves the IAU names, the Gaia rows of the named
+    # stars come from the SIMBAD list, and their distances from those rows.
     IAUStarNamesDownloader,
+    SimbadStarsDownloader,
+    GaiaNamedStarsDownloader,
+    BailerJonesDistancesDownloader,
+    UltracoolSheetDownloader,
     GalaxyCataloguesDownloader,
     StarClusterCataloguesDownloader,
     NebulaCataloguesDownloader,

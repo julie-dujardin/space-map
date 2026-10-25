@@ -147,6 +147,14 @@ class TestReadFixedWidth:
             "Flag": ["A", "B", None]
         }
 
+    def test_null_markers(self, tmp_path):
+        path = tmp_path / "stars.dat"
+        path.write_text("    12    --- A ---\n    34   2.00 - B\n")
+        table = read_fixed_width(
+            path, FORMAT_README, {"Vmag": "v", "SpType": "sp"}, nulls=("---", "-")
+        )
+        assert table.to_pydict() == {"v": [None, 2.0], "sp": [None, "B"]}
+
     def test_a_record_ends_only_at_a_newline(self, tmp_path):
         # Latin-1 0x85 is NEL and 0x0c is a form feed: str.splitlines breaks on both.
         path = tmp_path / "stars.dat"

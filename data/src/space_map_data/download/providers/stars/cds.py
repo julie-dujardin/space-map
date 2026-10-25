@@ -72,6 +72,9 @@ CATALOGUES: dict[str, tuple[str, ...]] = {
     # Fifth Catalogue of Nearby Stars (Golovin+ 2023): stars and brown dwarfs
     # within 25 pc.
     "J/A+A/670/A19": ("cns5.dat",),
+    # The 10 pc sample (Reylé+ 2021, update of 2023): distances of the nearest
+    # stars and brown dwarfs, Gaia or not. CC BY 4.0 on Zenodo (record 7576096).
+    "J/A+A/650/A201": ("tablea1.dat.gz",),
     # The 20 pc census (Kirkpatrick+ 2024).
     "J/ApJS/271/55": (
         "table1.dat",

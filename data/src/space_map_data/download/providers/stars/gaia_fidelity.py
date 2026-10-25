@@ -22,12 +22,12 @@ https://www.cosmos.esa.int/web/gaia-users/license
 import json
 import logging
 import time
+from collections.abc import Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
 import httpx
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.csv as pcsv
 import pyarrow.parquet as pq
 
@@ -52,7 +52,6 @@ COLUMNS: dict[str, pa.DataType] = {
     "fidelity_v2": pa.float32(),
     "norm_dg": pa.float32(),
 }
-SCHEMA = pa.schema(COLUMNS)
 QUERY = (
     f"select {', '.join(f's.{column}' for column in COLUMNS)}"
     " from TAP_UPLOAD.sent as u"
@@ -62,15 +61,54 @@ QUERY = (
 # rows the archive sends by default.
 PIECE = 20_000
 WORKERS = 4
+# A cut answer comes with no error. It has DEFAULT_ROWS rows, or k·CUT_ROWS + 1
+# rows when the query runs too long.
+DEFAULT_ROWS = 50_000
+CUT_ROWS = 8192
 
 
-def read_rows(body: str) -> pa.Table:
+def read_rows(body: str, types: dict[str, pa.DataType]) -> pa.Table:
     return pcsv.read_csv(
         pa.py_buffer(body.encode()),
         convert_options=pcsv.ConvertOptions(
-            column_types=COLUMNS, include_columns=list(COLUMNS)
+            column_types=types,
+            include_columns=list(types),
+            null_values=["", "null"],
+            strings_can_be_null=True,
         ),
     )
+
+
+def can_be_cut(rows: int) -> bool:
+    """Whether an answer of `rows` rows can be one that the archive cut."""
+    return rows >= DEFAULT_ROWS or (rows > CUT_ROWS and rows % CUT_ROWS == 1)
+
+
+def ask_ids(
+    client: httpx.Client,
+    query: str,
+    ids: Sequence[int],
+    types: dict[str, pa.DataType],
+) -> pa.Table:
+    """The rows that `query` gives for `ids`, uploaded as `source_id`, PIECE
+    ids at a time.
+
+    A piece whose answer can be cut is asked again for its ids without a row,
+    until an answer adds none.
+    """
+    found = [pa.schema(types).empty_table()]
+    pieces = [list(ids[i : i + PIECE]) for i in range(0, len(ids), PIECE)]
+    while pieces:
+        again = []
+        for piece in pieces:
+            upload = votable("source_id", "long", piece)
+            rows = read_rows(tap_sync(client, TAP_URL, query, upload=upload), types)
+            found.append(rows)
+            if can_be_cut(rows.num_rows):
+                got = set(rows["source_id"].to_pylist())
+                again.append([i for i in piece if i not in got])
+        pieces = [piece for piece in again if piece]
+    return pa.concat_tables(found)
 
 
 class GaiaFidelityDownloader(ChunkedTableDownloader):
@@ -109,7 +147,7 @@ class GaiaFidelityDownloader(ChunkedTableDownloader):
         selection = json.loads(stars.schema.metadata[STATS_KEY])
         if selection["min_parallax_over_error"] != gaia_source.MIN_PARALLAX_OVER_ERROR:
             raise DownloadError(f"{chunk} is from another threshold: run gaia_source")
-        rows = self.rows_of(stars)
+        rows = ask_ids(self.client, QUERY, stars["source_id"].to_pylist(), COLUMNS)
         stats: dict[str, object] = {
             "source": chunk,
             "stars": stars.num_rows,
@@ -127,31 +165,6 @@ class GaiaFidelityDownloader(ChunkedTableDownloader):
         )
         part.replace(out)
         return stats
-
-    def rows_of(self, stars: pa.Table) -> pa.Table:
-        """The rows of `stars`. A star that the table lacks gets none."""
-        found = [SCHEMA.empty_table()]
-        # The archive stops a query that runs too long and can still send the
-        # rows it has as a whole answer, so the stars without a row are asked
-        # for again until an answer adds none.
-        asked = stars
-        while asked.num_rows:
-            added = pa.concat_tables(
-                [
-                    self._ask(piece.column("source_id").to_pylist())
-                    for piece in asked.to_batches(PIECE)
-                ]
-            )
-            if not added.num_rows:
-                break
-            found.append(added)
-            ids = added["source_id"].combine_chunks()
-            asked = asked.filter(~pc.field("source_id").isin(ids))
-        return pa.concat_tables(found)
-
-    def _ask(self, ids: list[int]) -> pa.Table:
-        upload = votable("source_id", "long", ids)
-        return read_rows(tap_sync(self.client, TAP_URL, QUERY, upload=upload))
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         md5_file = self.source_dir / MD5_FILE

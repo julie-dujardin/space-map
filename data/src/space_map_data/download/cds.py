@@ -127,14 +127,17 @@ def _fields(lines: list[str], name: str) -> list[Field]:
 
 
 def read_fixed_width(
-    path: Path, readme: str, labels: Mapping[str, str] | list[str]
+    path: Path,
+    readme: str,
+    labels: Mapping[str, str] | list[str],
+    nulls: tuple[str, ...] = (),
 ) -> pa.Table:
     """Read the fields with these labels from a CDS file, plain or gzip.
 
     `labels` maps each label to its column name, or lists labels kept as
-    names. A blank field is null. A is a string, I is int64, F, E and D are
-    float64. A file is read as Latin-1, so a character is one byte and the
-    byte positions hold.
+    names. A blank field is null, and so is a field equal to one of `nulls`.
+    A is a string, I is int64, F, E and D are float64. A file is read as
+    Latin-1, so a character is one byte and the byte positions hold.
     """
     names = dict(labels) if isinstance(labels, Mapping) else {k: k for k in labels}
     fields = byte_by_byte(readme, path.name)
@@ -159,7 +162,11 @@ def read_fixed_width(
         values = pc.utf8_trim_whitespace(
             pa.array([line[field.start : field.end] for line in lines], pa.string())
         )
-        values = pc.if_else(pc.equal(values, ""), None, values)
+        values = pc.if_else(
+            pc.is_in(values, value_set=pa.array(["", *nulls], pa.string())),
+            None,
+            values,
+        )
         if field.kind == "I":
             # Arrow cannot parse a plus sign in an integer.
             values = pc.replace_substring_regex(values, r"^\+", "").cast(pa.int64())

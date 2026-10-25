@@ -96,11 +96,17 @@ class TestGaiaFidelityDownloader:
         assert max(len(ids) for ids in self.asked) == 2
         assert self._rows(downloader)["source_id"] == [10, 11]
 
-    def test_cut_answer_is_completed(self, downloader):
+    def test_cut_answer_is_completed(self, downloader, monkeypatch):
+        # One row is an answer at the row limit.
+        monkeypatch.setattr(gaia_fidelity, "DEFAULT_ROWS", 1)
         self.cut = True
         downloader.download()
         assert self._rows(downloader)["source_id"] == [10, 11]
         assert self._metadata(downloader)["stars_without_row"] == 1
+
+    def test_a_complete_answer_is_not_asked_again(self, downloader):
+        downloader.download()
+        assert sorted(self.asked) == [[10, 11, 12], [20]]
 
     def test_failed_query_fails_only_its_chunk(self, downloader):
         self.failing = {10}
@@ -128,7 +134,7 @@ class TestGaiaFidelityDownloader:
         )
         self.asked.clear()
         downloader.download()
-        assert self.asked == [[10, 11, 12], [12]]
+        assert self.asked == [[10, 11, 12]]
         assert downloader.is_complete(None)
 
     def test_chunk_waits_for_gaia_source(self, downloader):
@@ -154,3 +160,23 @@ class TestGaiaFidelityDownloader:
         (self.source / "_MD5SUM.txt").unlink()
         with pytest.raises(DownloadError, match="run gaia_source first"):
             downloader.download()
+
+
+class TestCutAnswers:
+    """The row counts of an answer that the archive can have cut."""
+
+    @pytest.mark.parametrize(
+        ("rows", "cut"),
+        [
+            (0, False),
+            (1, False),
+            (8192, False),
+            (8193, True),
+            (16385, True),
+            (20_000, False),
+            (49_999, False),
+            (50_000, True),
+        ],
+    )
+    def test_can_be_cut(self, rows, cut):
+        assert gaia_fidelity.can_be_cut(rows) is cut

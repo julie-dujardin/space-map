@@ -54,8 +54,11 @@ def votable(
     ).encode()
 
 
-def _form(query: str) -> dict[str, str]:
-    return {"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query}
+def _form(query: str, max_rows: int | None = None) -> dict[str, str]:
+    form = {"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query}
+    if max_rows is not None:
+        form["MAXREC"] = str(max_rows)
+    return form
 
 
 def _check(url: str, status: int, body: str) -> None:
@@ -93,10 +96,18 @@ def _with_retry[T](url: str, send: Callable[[], T]) -> T:
 
 
 def tap_sync(
-    client: httpx.Client, url: str, query: str, *, upload: bytes | None = None
+    client: httpx.Client,
+    url: str,
+    query: str,
+    *,
+    upload: bytes | None = None,
+    max_rows: int | None = None,
 ) -> str:
-    """Run one ADQL query and return the CSV body."""
-    data = _form(query)
+    """Run one ADQL query and return the CSV body.
+
+    Without `max_rows`, a service can cut the answer at its default limit.
+    """
+    data = _form(query, max_rows)
     files = None
     if upload is not None:
         data["UPLOAD"] = f"{_UPLOAD_NAME},param:{_UPLOAD_NAME}"
@@ -138,9 +149,17 @@ def parse_csv(body: str) -> Rows:
     return header, list(reader)
 
 
-def tap_rows(client: httpx.Client, url: str, query: str) -> Rows:
-    """Run one ADQL query and return the header and the rows."""
-    return parse_csv(tap_sync(client, url, query))
+def tap_rows(
+    client: httpx.Client, url: str, query: str, *, max_rows: int | None = None
+) -> Rows:
+    """Run one ADQL query and return the header and the rows.
+
+    An answer of `max_rows` rows can be cut, so it is an error.
+    """
+    header, rows = parse_csv(tap_sync(client, url, query, max_rows=max_rows))
+    if max_rows is not None and len(rows) >= max_rows:
+        raise DownloadError(f"TAP answer from {url} reached {max_rows} rows")
+    return header, rows
 
 
 def tap_join(
