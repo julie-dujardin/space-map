@@ -14,6 +14,7 @@ import {
 	FEATURE_TYPE_SLUG_PREFIX,
 	featureTypeCode
 } from '$lib/fetch/groups/registry';
+import { SUN_ID } from '$lib/constants';
 
 /** Pre-resolved thumbnail descriptor written by the search indexer.
  *  Already narrowed to a single emitted variant — the frontend doesn't pick
@@ -279,11 +280,19 @@ export async function search(
 }
 
 /**
+ * Leaves out the stars of the extrasolar catalogue: the Sun is the one star
+ * with an orbit the kernel can read. It uses only attributes that every
+ * deployed index can filter on.
+ */
+const NOT_EXTRASOLAR = `(object.type != "star" OR object.id = "${SUN_ID}")`;
+
+/**
  * Everywhere a trip can start or end, for the planner's endpoint pickers.
  *
  * Collections are excluded because you cannot depart from or arrive at one —
  * ranking them alongside would spend a short result list on rows that can't be
  * chosen. Pads stay: leaving from one is the whole reason they are indexed.
+ * The stars of the extrasolar catalogue have no orbit to plan a trip on.
  */
 export async function searchEndpoints(
 	query: string,
@@ -295,7 +304,7 @@ export async function searchEndpoints(
 	const res = await c.index(INDEX).search(query, {
 		limit,
 		locales: [locale],
-		filter: 'kind != "group"'
+		filter: `kind != "group" AND ${NOT_EXTRASOLAR}`
 	});
 	return (res.hits ?? []).map((h) => toHit(h as RawHit)) as EndpointHit[];
 }
@@ -306,7 +315,8 @@ export async function searchEndpoints(
  * A well to climb out of and an orbit the kernel can read are what a stop on
  * the map needs, so this is the natural bodies. A spacecraft or a piece of
  * debris is carried by a trip rather than being one end of it, and a
- * barycentre is a place rather than a body.
+ * barycentre is a place rather than a body. A star of the extrasolar
+ * catalogue has no orbit the kernel can read.
  */
 const NAVIGABLE_TYPES = [
 	'star',
@@ -338,7 +348,7 @@ export async function searchBodies(
 	const res = await c.index(INDEX).search(query, {
 		limit,
 		locales: [locale],
-		filter: `kind = "object" AND object.type IN [${NAVIGABLE_TYPES.map(quote).join(', ')}]`
+		filter: `kind = "object" AND object.type IN [${NAVIGABLE_TYPES.map(quote).join(', ')}] AND ${NOT_EXTRASOLAR}`
 	});
 	return (res.hits ?? []).map((h) => toObjectHit(h as RawHit));
 }

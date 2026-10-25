@@ -799,27 +799,38 @@ export async function loadStarSeo(idText: string, url: URL): Promise<StarPage | 
 		const to = new URL(absoluteHref(bodyHref(fileId, metadata.name ?? ''), url));
 		return { kind: 'alias', location: `${to.pathname}${url.search}` };
 	}
-	// A star with an object entry takes its name and the Wikidata description
-	// in the reader's language from it, as a body does.
-	const localized = metadata.object
-		? await exportObject(fileId, url).then(
-				([own]) => own.localized,
-				(e: unknown) => {
-					console.warn(`[seo] ${url.pathname}: object bundles not readable:`, e);
-					return null;
-				}
-			)
+	// A star with an object entry takes its name, the Wikidata description in
+	// the reader's language and its card image from it, as a body does.
+	const entry = metadata.object
+		? await starSubject(fileId, url).catch((e: unknown) => {
+				console.warn(`[seo] ${url.pathname}: object bundles not readable:`, e);
+				return null;
+			})
 		: null;
-	const name = localized?.name ?? metadata.name ?? '';
+	const name = entry?.localized?.name ?? metadata.name ?? '';
+	const description = entry?.localized?.description
+		? ucfirst(cleanDescription(entry.localized.description))
+		: starDescription(name);
+	const card: { image?: string; description: string } = entry
+		? await resolveOgCard(entry.global?.images, description, entry.cards)
+		: { description };
 	return {
 		kind: 'page',
 		seo: {
 			title: pageTitle(name),
-			description: localized?.description
-				? ucfirst(cleanDescription(localized.description))
-				: starDescription(name),
+			description: card.description,
 			canonical: absoluteHref(bodyHref(fileId, name), url),
+			image: card.image,
 			ogType: 'article'
 		}
 	};
+}
+
+/** A star's object entry from its page record, else from the bundles. */
+async function starSubject(
+	fileId: string,
+	url: URL
+): Promise<SeoSubject<SeoObjectGlobal, SeoObjectLocalized>> {
+	const page = await readSeoPage<SeoObjectGlobal, SeoObjectLocalized>(`o/${fileId}`);
+	return page ? pageSubject(page, url) : (await exportObject(fileId, url))[0];
 }

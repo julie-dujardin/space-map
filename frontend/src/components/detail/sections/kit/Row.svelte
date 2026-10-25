@@ -13,10 +13,13 @@
 		 *  belongs to, what it comes to against Earth. Hangs off the value
 		 *  because it changes with the value. */
 		valueTooltip?: string;
+		/** Keeps the value on one line, such as a catalogue number. The label
+		 *  wraps instead. */
+		whole?: boolean;
 		children?: Snippet;
 	}
 
-	let { label, tooltip, value, valueTooltip, children }: Props = $props();
+	let { label, tooltip, value, valueTooltip, whole = false, children }: Props = $props();
 </script>
 
 {#snippet hinted(text: string, hint: string)}
@@ -39,7 +42,7 @@
 		{ucfirst(label)}
 	{/if}
 </dt>
-<dd class="min-w-0 text-end">
+<dd class="text-end [overflow-wrap:anywhere] {whole ? 'min-w-max' : 'min-w-0'}">
 	{#if children}
 		{@render children()}
 	{:else if valueTooltip && value}

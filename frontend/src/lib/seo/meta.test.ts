@@ -363,6 +363,33 @@ describe('loadStarSeo', () => {
 		});
 	});
 
+	it('takes its card image from its page record, without the bundles', async () => {
+		stubStars();
+		stubPages({
+			[`o/x-${STAR}`]: {
+				v: 'img1',
+				global: {
+					name: 'Test Star',
+					type: 'star',
+					images: [{ file: 'Star.jpg', kind: 'photo', attr: 'free', variants: { m: 'webp' } }]
+				},
+				localized: { en: { description: 'star near the Sun' } },
+				credits: {}
+			}
+		});
+		const page = await loadStarSeo(String(STAR), request(`/x/${STAR}`));
+		expect(page).toMatchObject({
+			kind: 'page',
+			seo: {
+				title: 'Test Star - Space Map',
+				description: 'Star near the Sun',
+				image: expect.stringContaining('/v1/images/Star.jpg/m.webp?v=img1')
+			}
+		});
+		const urls = vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)));
+		expect(urls.some((u) => u.origin === DATA)).toBe(false);
+	});
+
 	it("sends an alias to its live ID's page, query and all", async () => {
 		stubStars();
 		const url = new URL(`${ORIGIN}/x/${ALIAS}/Old?at=now,1,2,3`);

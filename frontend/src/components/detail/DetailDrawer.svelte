@@ -451,7 +451,9 @@
 		{lineup}
 		{planetarySystem}
 		{traverse}
-		badges={star ? [starClassLabel(star.metadata.class)] : undefined}
+		badges={star && !data?.localized?.instance_of?.length
+			? [starClassLabel(star.metadata.class)]
+			: undefined}
 	/>
 {/snippet}
 

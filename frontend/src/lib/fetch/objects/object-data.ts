@@ -1256,7 +1256,10 @@ export interface LocalizedObjectData {
 	spectral_type?: EntityRef[];
 	asteroid_family?: EntityRef;
 	operators?: EntityRef[];
+	/** A satellite constellation (CelesTrak-derived). */
 	constellation?: EntityRef;
+	/** The IAU constellation a star lies in (Wikidata P59). */
+	iau_constellation?: EntityRef;
 	/** Satellite bus / platform (CelesTrak-derived); links to /g/bus-<slug>. */
 	bus?: EntityRef;
 	manufacturer?: EntityRef[];

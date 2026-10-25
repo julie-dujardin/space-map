@@ -29,6 +29,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import StatCardRow from '../sections/kit/StatCardRow.svelte';
 	import StarSections from '../sections/star/StarSections.svelte';
+	import Discovery from '../sections/Discovery.svelte';
 	import { starStats } from '../sections/star/star-rows';
 	import { starCredits } from '$lib/credits/star-sources';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
@@ -242,7 +243,8 @@
 				hostName={body?.data.name ?? undefined}
 			/>
 		{:else if star}
-			<StarSections record={star} />
+			<StarSections record={star} localized={data?.localized ?? null} />
+			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />
 		{:else if groupSlug !== null}

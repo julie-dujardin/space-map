@@ -53,6 +53,7 @@
 
 	const NAMES: Record<string, () => string> = {
 		star: () => ucfirst(m.search_cat_star()),
+		extrasolar_star: m.about_data_kind_star_entries,
 		barycenter: () => ucfirst(m.search_cat_barycenter())
 	};
 

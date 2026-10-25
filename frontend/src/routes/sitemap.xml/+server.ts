@@ -1,20 +1,7 @@
 import type { RequestHandler } from './$types';
-import { dataBase } from '$lib/fetch/data-base';
+import { proxySitemap } from '$lib/seo/sitemap';
 
-// Serve the export-built sitemap from the app origin so every <loc> host matches
-// the sitemap's own, avoiding Search Console cross-host verification.
 export const prerender = false;
 
-export const GET: RequestHandler = async ({ fetch }) => {
-	const upstream = await fetch(`${dataBase()}/v1/seo/sitemap.xml`);
-	if (!upstream.ok) {
-		return new Response('sitemap unavailable', { status: 502 });
-	}
-	return new Response(upstream.body, {
-		headers: {
-			'content-type': 'application/xml; charset=utf-8',
-			// Sitemap only changes on export; let the edge hold it a day.
-			'cache-control': 'public, max-age=3600, s-maxage=86400'
-		}
-	});
-};
+/** The sitemap index. Its files are `sitemap-<n>.xml`. */
+export const GET: RequestHandler = ({ fetch }) => proxySitemap(fetch, 'sitemap.xml');
