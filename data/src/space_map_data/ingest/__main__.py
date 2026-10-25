@@ -87,6 +87,12 @@ def cli():
         " extrasolar: the registry to read; another root writes the matched"
         " cultures to <root>/skycultures",
     )
+    parser.add_argument(
+        "--backup-root",
+        type=Path,
+        help="extrasolar: where the registry backs up after the ingest"
+        f" (default: {REGISTRY_BACKUP_DIR} for the default root)",
+    )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
@@ -103,7 +109,9 @@ def cli():
         ingest_db(db_targets, full_rebuild, args.force)
     default_root = args.registry_root.resolve() == REGISTRY_ROOT.resolve()
     if "extrasolar" in selected:
-        backup = REGISTRY_BACKUP_DIR if default_root else args.registry_root / "backup"
+        backup = args.backup_root or (
+            REGISTRY_BACKUP_DIR if default_root else args.registry_root / "backup"
+        )
         result, summary = stars.ingest(args.registry_root, backup, args.limit)
         print(result.report)
         print(summary)

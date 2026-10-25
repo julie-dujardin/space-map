@@ -46,6 +46,11 @@ failure before that leaves the previous registry and tables in force.
 
 Input batches are Arrow tables with the columns of MATCH_FIELDS, plus the
 columns of every group whose source order names the source.
+
+An extension adds content that hangs on the IDs, such as the planets of the
+host stars. At commit the engine gives it the ID of each row of the sources
+it names, writes the registry parts and tables it returns in the region of
+their key ID, and commits them with the rest.
 """
 
 import logging
@@ -56,7 +61,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Self
+from typing import Protocol, Self
 
 import numpy as np
 import pyarrow as pa
@@ -329,6 +334,46 @@ class IngestResult:
 
 
 @dataclass
+class ExtensionResult:
+    """What an extension adds to the ingest."""
+
+    # Registry part name → records, and table slug → rows. The ID in the
+    # column that `key` names gives the region of a row. Rows keep their
+    # order inside a region.
+    parts: dict[str, pa.Table]
+    tables: dict[str, pa.Table]
+    key: str
+    # Counts for the ingest log.
+    counts: dict[str, int]
+    report: str
+    # Changes that a person checks before the export publishes them.
+    unreviewed: int = 0
+
+
+class Extension(Protocol):
+    """Content of an ingest that hangs on the IDs of the rows of some sources."""
+
+    name: str
+    sources: tuple[str, ...]
+
+    def build(
+        self,
+        registry: Registry,
+        ids: dict[str, pa.Table],
+        ingest: int,
+        complete: bool,
+    ) -> ExtensionResult:
+        """`ids` holds, per source, the `catalogue_id` and `id` of each row.
+
+        The ID is 0 for a row whose object got none.
+        """
+        ...
+
+
+ROW_IDS = pa.schema([("catalogue_id", pa.string()), ("id", pa.int64())])
+
+
+@dataclass
 class _View:
     """What the registry and the earlier passes hold in some regions."""
 
@@ -417,6 +462,9 @@ class IngestRun:
         self._run_cache: dict[int, tuple[pa.Table, pa.Table]] = {}
         self._run_cache_rows = 0
         self._kept = _Kept({})
+        self.extensions: list[Extension] = []
+        self._row_ids: dict[str, list[pa.Table]] = defaultdict(list)
+        self._extension_slugs: list[str] = []
         self._writer = None
         self._committed = False
         self._done = False
@@ -458,8 +506,11 @@ class IngestRun:
             )
             shutil.rmtree(self.staging, ignore_errors=True)
             shutil.rmtree(self.registry.segment_dir(self.ingest), ignore_errors=True)
-            for table in self.all_tables:
-                shutil.rmtree(self._table_dir(table), ignore_errors=True)
+            for slug in self._slugs():
+                shutil.rmtree(
+                    self.registry.tables_dir / slug / ingest_name(self.ingest),
+                    ignore_errors=True,
+                )
         self._release()
 
     def _release(self) -> None:
@@ -467,6 +518,16 @@ class IngestRun:
         if self._writer is not None:
             self._writer.__exit__(None, None, None)
             self._writer = None
+
+    def _slugs(self) -> list[str]:
+        return [table.slug for table in self.all_tables] + self._extension_slugs
+
+    def extend(self, extension: Extension) -> None:
+        """Add an extension, which builds its content at commit."""
+        unknown = set(extension.sources) - set(self.sources)
+        if unknown:
+            raise ValueError(f"{extension.name}: no pass of {sorted(unknown)}")
+        self.extensions.append(extension)
 
     def _pass_dir(self, number: int) -> Path:
         return self.staging / f"p{number:02d}"
@@ -1273,6 +1334,9 @@ class IngestRun:
 
         segment = self.registry.segment_dir(self.ingest)
         segment.mkdir(parents=True, exist_ok=True)
+        built = [
+            self._build_extension(extension, complete) for extension in self.extensions
+        ]
         if merges:
             write_parquet(
                 pa.table(
@@ -1322,13 +1386,22 @@ class IngestRun:
             },
             "reviewed": None,
         }
+        if built:
+            entry["extensions"] = {
+                extension.name: {**result.counts, "unreviewed": result.unreviewed}
+                for extension, result in zip(self.extensions, built)
+            }
         report = render_report(entry, merges, retired, self.conflicts, examples)
+        report += "".join(result.report for result in built)
         (segment / REPORT_FILE).write_text(report)
-        self.registry.commit(entry, {t.slug: self.ingest for t in self.all_tables})
+        self.registry.commit(entry, {slug: self.ingest for slug in self._slugs()})
         self._committed = True
         self._remove_old_tables()
         shutil.rmtree(self.staging, ignore_errors=True)
-        level = logging.WARNING if merges or self.conflicts else logging.INFO
+        unreviewed = any(result.unreviewed for result in built)
+        level = (
+            logging.WARNING if merges or self.conflicts or unreviewed else logging.INFO
+        )
         for line in report.splitlines():
             logger.log(level, "%s", line)
         backup_error = self._backup()
@@ -1366,10 +1439,40 @@ class IngestRun:
         return " ".join([*command, "backup"])
 
     def _remove_old_tables(self) -> None:
-        for table in self.all_tables:
-            for version in sorted((self.registry.tables_dir / table.slug).glob("*")):
+        for slug in self._slugs():
+            for version in sorted((self.registry.tables_dir / slug).glob("*")):
                 if version.name != ingest_name(self.ingest):
                     shutil.rmtree(version)
+
+    def _build_extension(self, extension: Extension, complete: bool) -> ExtensionResult:
+        """Build an extension and write its parts and tables by region."""
+        ids = {
+            name: pa.concat_tables(self._row_ids[name])
+            if self._row_ids[name]
+            else ROW_IDS.empty_table()
+            for name in extension.sources
+        }
+        result = extension.build(self.registry, ids, self.ingest, complete)
+        segment = self.registry.segment_dir(self.ingest)
+        outputs = [(segment / part, rows) for part, rows in result.parts.items()]
+        for slug, rows in result.tables.items():
+            if slug in self._slugs():
+                raise ValueError(f"{extension.name}: table {slug} exists")
+            self._extension_slugs.append(slug)
+            directory = self.registry.tables_dir / slug / ingest_name(self.ingest)
+            directory.mkdir(parents=True, exist_ok=True)
+            outputs.append((directory, rows))
+        for directory, rows in outputs:
+            if not rows.num_rows:
+                continue
+            regions = region_of(cell_of(rows[result.key].to_numpy()))
+            for region in np.unique(regions).tolist():
+                write_parquet(
+                    rows.filter(pa.array(regions == region)),
+                    region_file(directory, region),
+                    sync=True,
+                )
+        return result
 
     def _join(self) -> tuple[dict[int, int], dict[int, list[str]], list[str]]:
         """Join the keys that rows link, in the order of the links.
@@ -1612,7 +1715,15 @@ class IngestRun:
         old_live = states.id[states.status == STATUS_CODES[LIVE]]
         totals["live_before"] += old_live.size
 
-        merged = self._merge_tables(self._region_rows(region))
+        rows_of = self._region_rows(region)
+        merged = self._merge_tables(rows_of)
+        wanted = {name for e in self.extensions for name in e.sources}
+        extension_rows = {
+            name: rows.select(["catalogue_id", KEY])
+            for name, rows in rows_of.items()
+            if name in wanted
+        }
+        del rows_of
         with_data = np.unique(
             np.concatenate(
                 [np.zeros(0, np.int64)]
@@ -1650,6 +1761,14 @@ class IngestRun:
 
         def to_ids(keys: np.ndarray) -> np.ndarray:
             return map_sorted(final_keys, final_ids, keys, 0)
+
+        for name, rows in extension_rows.items():
+            self._row_ids[name].append(
+                pa.table(
+                    [rows["catalogue_id"], pa.array(to_ids(rows[KEY].to_numpy()))],
+                    schema=ROW_IDS,
+                )
+            )
 
         out: dict[str, pa.Table] = {}
         for slug, rows in merged.items():

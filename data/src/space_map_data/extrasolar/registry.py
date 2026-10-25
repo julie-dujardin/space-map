@@ -28,7 +28,8 @@ Parts, each sorted by cell and then ID inside a region file:
   `read_xids`, which leaves out the links that no longer hold.
 - positions: the J2016.0 ICRS position, proper motion, magnitude, position
   error, size and kind of each minted ID, for matching.
-- planets: (host, number) and the catalogue ids of a planet. Defined, empty.
+- planets: (host, number) and the catalogue ids of a planet, filed by the
+  cell of its host. The exoplanet ingest writes it.
 - the ingest log: the manifest's `ingests`, with each ingest's merges in its
   merges.parquet.
 
@@ -109,10 +110,15 @@ POSITIONS = pa.schema(
         ("ingest", pa.uint32()),
     ]
 )
+# A link (status live, with a catalogue id) or a status change of a planet.
 PLANETS = pa.schema(
     [
         ("host", pa.int64()),
         ("number", pa.uint16()),
+        ("status", pa.string()),
+        # The planet that an alias points to: its number and its host.
+        ("alias_target", pa.uint16()),
+        ("alias_host", pa.int64()),
         ("catalogue", pa.string()),
         ("release", pa.string()),
         ("catalogue_id", pa.string()),
@@ -122,7 +128,7 @@ PLANETS = pa.schema(
 MERGES = pa.schema(
     [("survivor", pa.int64()), ("loser", pa.int64()), ("evidence", pa.string())]
 )
-PARTS = {"ids": IDS, "xids": XIDS, "positions": POSITIONS}
+PARTS = {"ids": IDS, "xids": XIDS, "positions": POSITIONS, "planets": PLANETS}
 MERGES_FILE = "merges.parquet"
 REPORT_FILE = "report.txt"
 
@@ -391,7 +397,14 @@ class Registry:
         return [
             entry["ingest"]
             for entry in self.ingests
-            if entry["counts"]["merged"] and entry["reviewed"] is None
+            if entry["reviewed"] is None
+            and (
+                entry["counts"]["merged"]
+                or any(
+                    extension.get("unreviewed")
+                    for extension in entry.get("extensions", {}).values()
+                )
+            )
         ]
 
     def report(self, ingest: int) -> str:

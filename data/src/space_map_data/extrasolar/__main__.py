@@ -15,15 +15,14 @@ def _status(registry: Registry) -> None:
         print(f"no registry in {registry.root}")
         return
     print(f"registry {registry.root}, minting host {registry.manifest['host']}")
+    unreviewed = set(registry.unreviewed())
     for entry in registry.ingests:
         counts = " · ".join(f"{k} {v:,}" for k, v in entry["counts"].items())
         review = ""
-        if entry["counts"]["merged"]:
-            review = (
-                f", reviewed {entry['reviewed']}"
-                if entry["reviewed"]
-                else ", UNREVIEWED"
-            )
+        if entry["ingest"] in unreviewed:
+            review = ", UNREVIEWED"
+        elif entry["reviewed"]:
+            review = f", reviewed {entry['reviewed']}"
         print(f"{entry['ingest']:>4} {entry['date'][:19]} {counts}{review}")
 
 
