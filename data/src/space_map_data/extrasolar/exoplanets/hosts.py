@@ -5,8 +5,9 @@ DR3 id, then its HIP number, then its SIMBAD object, then its name, and two
 stars that have neither a Gaia DR3 id nor a HIP number by a position within
 3″ (microlensing events and pulsars go by several names). Names compare
 without the lens letter of a microlensing event (`KMT-2021-BLG-0240L`). The
-Gaia DR3 id is the catalogue's own, else SIMBAD's, else the DR3 source
-nearest to its Gaia DR2 id.
+Gaia DR3 id is SIMBAD's, else the catalogue's own, else the DR3 source
+nearest to its Gaia DR2 id. SIMBAD comes first because a catalogue can match
+an old position of a fast star to a background source.
 
 A join is refused when it would put in one identity two Gaia DR3 ids, two HIP
 numbers, or two stars of one catalogue with other component letters: `HD 1 A`
@@ -130,6 +131,8 @@ class Stars:
     dropped_ids: list[str]
     # Stars that one catalogue lists under a second name.
     duplicates: list[str] = field(default_factory=list)
+    # Catalogue Gaia DR3 ids that SIMBAD's id of the star replaces.
+    overruled: list[str] = field(default_factory=list)
 
     def identity(self, catalogue: str, key: str | None) -> Identity | None:
         if key is None:
@@ -169,13 +172,20 @@ def build_stars(
     registry twin.
     """
     entries: list[tuple[str, Star, str | None, int | None, int | None, bool]] = []
+    overruled: list[str] = []
     for catalogue in catalogues:
         for star in catalogue.stars.values():
             oid = simbad.star(catalogue.name, star.name)
             dr3 = star.gaia_dr3
             from_catalogue = dr3 is not None
-            if dr3 is None and oid is not None:
-                dr3 = simbad.gaia_dr3.get(oid)
+            by_simbad = simbad.gaia_dr3.get(oid) if oid is not None else None
+            if by_simbad is not None and by_simbad != dr3:
+                if dr3 is not None:
+                    overruled.append(
+                        f"{star.name} ({catalogue.name}): Gaia DR3 {dr3},"
+                        f" SIMBAD {oid} gives {by_simbad}"
+                    )
+                dr3, from_catalogue = by_simbad, False
             if dr3 is None:
                 dr2 = star.gaia_dr2 or (simbad.gaia_dr2.get(oid) if oid else None)
                 dr3 = neighbours.get(dr2) if dr2 else None
@@ -288,6 +298,8 @@ def build_stars(
         identity.hip = identity.hip or hip
         identity.oid = identity.oid or oid
     dropped = _drop_shared_ids(identities)
+    for text in overruled:
+        logger.warning("catalogue Gaia DR3 id replaced by SIMBAD's: %s", text)
     logger.info(
         "%d stars in %d identities, %d joins refused, %d second names",
         len(entries),
@@ -295,7 +307,7 @@ def build_stars(
         len(refused),
         len(duplicates),
     )
-    return Stars(identities, of, refused, dropped, duplicates)
+    return Stars(identities, of, refused, dropped, duplicates, overruled)
 
 
 def _close_pairs(stars: list[Star]) -> list[tuple[int, int]]:

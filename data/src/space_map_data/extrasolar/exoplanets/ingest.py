@@ -780,6 +780,11 @@ class PlanetsExtension:
         lines += _listed("star joins refused", stars.refused)
         lines += _listed("second names of one star in one catalogue", stars.duplicates)
         lines += _listed("ids on several stars, kept by none", stars.dropped_ids)
+        lines += _listed(
+            "check: catalogue Gaia DR3 ids that SIMBAD's replaces",
+            stars.overruled,
+            limit=None,
+        )
         lines += _listed("host rows of one star with several IDs", disagree)
         lines += _listed(
             "check: IDs that several stars of the join share (a position match)",

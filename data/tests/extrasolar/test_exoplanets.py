@@ -352,6 +352,30 @@ class TestStars:
         assert identity(stars, OEC, "Delta").gaia_dr3 == 77
         assert len(stars.identities) == 4
 
+    def test_simbad_gaia_id_replaces_the_catalogue_id(self):
+        cats = [
+            catalogue(ARCHIVE, [star(ARCHIVE, "2.1", "Luhman 16 A", gaia_dr3=5)], []),
+            catalogue(EU, [star(EU, "Luhman 16 A")], []),
+        ]
+        simbad = hub(
+            resolved={
+                (source, table, "star", "Luhman 16 A"): {"printed": Counter({"11": 1})}
+                for source, table in (
+                    ("exoplanet_eu", "catalog"),
+                    ("exoplanet_archive", "stellarhosts"),
+                )
+            },
+            otype={"11": "BD*"},
+            gaia_dr3={"11": 6},
+        )
+        stars = hosts.build_stars(cats, simbad, {})
+        luhman = identity(stars, ARCHIVE, "2.1")
+        assert luhman is stars.identity(EU, "Luhman 16 A")
+        assert luhman.gaia_dr3 == 6 and not luhman.gaia_from_catalogue
+        assert stars.overruled == [
+            "Luhman 16 A (nasa-exoplanet-archive): Gaia DR3 5, SIMBAD 11 gives 6"
+        ]
+
     def test_refusals_and_second_names(self):
         cats = [
             catalogue(
