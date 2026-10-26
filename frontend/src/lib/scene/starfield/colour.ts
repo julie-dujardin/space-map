@@ -95,6 +95,25 @@ export function teffFromBpRp(bpRp: number): number {
 	return t0 + ((bpRp - c0) / (c1 - c0)) * (t1 - t0);
 }
 
+/** BP−RP of a dwarf of this effective temperature (K), by the same rows; the
+ *  render tree colours a star with no colour of its own by it. */
+export function bpRpFromTeff(teff: number): number {
+	const table = BP_RP_TEFF;
+	if (teff >= table[0][1]) return table[0][0];
+	const last = table[table.length - 1];
+	if (teff <= last[1]) return last[0];
+	let lo = 0;
+	let hi = table.length - 1;
+	while (hi - lo > 1) {
+		const mid = (lo + hi) >> 1;
+		if (table[mid][1] >= teff) lo = mid;
+		else hi = mid;
+	}
+	const [c0, t0] = table[lo];
+	const [c1, t1] = table[hi];
+	return c0 + ((teff - t0) / (t1 - t0)) * (c1 - c0);
+}
+
 /** Linear sRGB of a black body at `teff` K, its largest channel at 1. */
 export function planckianRgb(
 	teff: number,

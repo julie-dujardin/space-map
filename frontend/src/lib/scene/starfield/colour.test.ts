@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { photosphereColour, planckianRgb, starColours, teffFromBpRp } from './colour';
+import { bpRpFromTeff, photosphereColour, planckianRgb, starColours, teffFromBpRp } from './colour';
 
 describe('star colour', () => {
 	it('prefers photospheric temperature, then photometry, then neutral white', () => {
@@ -45,5 +45,17 @@ describe('star colour', () => {
 		expect([...out.subarray(0, 3)]).toEqual([255, 255, 255]);
 		expect(out[3]).toBe(255);
 		expect(out[8]).toBeLessThan(out[6]);
+	});
+});
+
+describe('BP−RP from Teff', () => {
+	it('inverts the dwarf rows, linear between them, the nearest end outside', () => {
+		for (const c of [-0.12, 0.005, 0.5, 0.823, 1.53, 2.94, 4.5, 5.1]) {
+			expect(bpRpFromTeff(teffFromBpRp(c))).toBeCloseTo(c, 9);
+		}
+		// Between 5770 K (0.823) and 5720 K (0.832).
+		expect(bpRpFromTeff(5745)).toBeCloseTo(0.8275, 9);
+		expect(bpRpFromTeff(40000)).toBe(-0.12);
+		expect(bpRpFromTeff(1000)).toBe(5.1);
 	});
 });

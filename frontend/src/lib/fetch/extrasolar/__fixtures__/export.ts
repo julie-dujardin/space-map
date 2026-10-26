@@ -21,6 +21,11 @@ export function readExportFile(path: string): Container {
 	return new Container(own(gunzipSync(readFileSync(new URL(path, EXPORT)))));
 }
 
+/** A `.json.gz` file of the export, decoded. */
+export function readExportJson<T>(path: string): T {
+	return JSON.parse(gunzipSync(readFileSync(new URL(path, EXPORT))).toString('utf8')) as T;
+}
+
 export function exportMetadata(): ExtrasolarMetadata {
 	return JSON.parse(readFileSync(new URL('metadata.json', EXPORT), 'utf8')) as ExtrasolarMetadata;
 }

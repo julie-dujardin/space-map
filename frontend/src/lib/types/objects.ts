@@ -6,6 +6,7 @@ import type { LandedHeading, NutPrec, Orientation, PointingSpec } from '$lib/mat
 import type { AttitudeTrack } from '$lib/fetch/attitude/track';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import type { Planet, PlanetHost } from '$lib/fetch/extrasolar/planets';
 
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
@@ -215,6 +216,8 @@ export interface PositionedBody {
 	featureAnchor?: FeatureAnchor;
 	/** Set on an object of the extrasolar catalogue (see {@link StarAnchor}). */
 	extrasolar?: StarAnchor;
+	/** Set on a planet of the extrasolar catalogue (see {@link PlanetAnchor}). */
+	exoplanet?: PlanetAnchor;
 }
 
 /** An object of the extrasolar catalogue as a focus target. Its place is
@@ -238,6 +241,23 @@ export interface StarAnchor {
 /** An object of the extrasolar catalogue — see {@link StarAnchor}. */
 export function isExtrasolar(body: PositionedBody): boolean {
 	return body.data.objectType === ObjectType.EXTRASOLAR;
+}
+
+/** A planet of the extrasolar catalogue, from its system file. It orbits the
+ *  body `x-<host>`; its page is `/x/<host>/b/<number>`. */
+export interface PlanetAnchor {
+	host: number;
+	number: number;
+	/** Key of the system file. */
+	system: number;
+	planet: Planet;
+	/** The star it orbits, as the system file gives it. */
+	hostRecord: PlanetHost;
+}
+
+/** A planet of the extrasolar catalogue — see {@link PlanetAnchor}. */
+export function isExoplanet(body: PositionedBody): boolean {
+	return body.data.objectType === ObjectType.EXOPLANET;
 }
 
 /** A synthetic surface-feature focus target — see {@link FeatureAnchor}. */
@@ -271,7 +291,9 @@ export enum ObjectType {
 	 *  format), so it can't collide with a real object type. */
 	SURFACE_FEATURE = 16,
 	/** Frontend-only: an object of the extrasolar catalogue (`/x/<id>`). */
-	EXTRASOLAR = 17
+	EXTRASOLAR = 17,
+	/** Frontend-only: a planet of the extrasolar catalogue (`/x/<host>/b/<n>`). */
+	EXOPLANET = 18
 }
 
 /** Identifies a {@link PositionedBody} synthesised as an orbitable surface
@@ -354,7 +376,9 @@ const NOMINAL_RADIUS_KM_BY_TYPE: Partial<Record<ObjectType, number>> = {
 	// arrival framing is sized from the feature diameter separately.
 	[ObjectType.SURFACE_FEATURE]: 0.001,
 	// The catalogue gives no size: the Sun's radius stands in.
-	[ObjectType.EXTRASOLAR]: 695_700
+	[ObjectType.EXTRASOLAR]: 695_700,
+	// Jupiter's radius stands in for a planet with no radius.
+	[ObjectType.EXOPLANET]: 71_492
 };
 const NOMINAL_RADIUS_KM_DEFAULT = 0.1;
 

@@ -10,7 +10,7 @@
  */
 
 import { host, textureAllowed } from '$lib/host';
-import { gunzip } from '$lib/fetch/gz';
+import { gunzip, gunzipJson } from '$lib/fetch/gz';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { Container, type ColumnType } from './container';
 
@@ -72,6 +72,19 @@ export interface ExtrasolarCredit {
 	citation?: string;
 }
 
+/** The planet files: the index and one file per planetary system. */
+export interface ExtrasolarPlanets {
+	token: string;
+	/** Path of the planet index. */
+	index: string;
+	/** Path pattern of a system file, with `{key}`. */
+	system: string;
+	systems: number;
+	hosts: number;
+	planets: number;
+	distribution?: string;
+}
+
 export interface ExtrasolarMetadata {
 	format: number;
 	exported: string;
@@ -79,6 +92,8 @@ export interface ExtrasolarMetadata {
 	tables: Record<string, ExtrasolarTable>;
 	trees: Record<string, ExtrasolarTree>;
 	credits: ExtrasolarCredit[];
+	/** Absent when the export has no planets. */
+	planets?: ExtrasolarPlanets;
 }
 
 /** A file whose header token is not the one `metadata.json` lists. */
@@ -186,4 +201,24 @@ export async function fetchExtrasolarFile(
 		throw new ExtrasolarStaleError(path, container.token, token);
 	}
 	return container;
+}
+
+/**
+ * Fetch one `.json.gz` file and check the `token` field of its object.
+ * Rejects with {@link ExtrasolarStaleError} on a token from another export.
+ */
+export async function fetchExtrasolarJson<T extends { token: string }>(
+	path: string,
+	token: string,
+	options: ExtrasolarFetchOptions = {}
+): Promise<T> {
+	const url = extrasolarUrl(path, token);
+	const res = await fetchWithTimeout(url, { signal: options.signal, priority: options.priority });
+	if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+	const value = await gunzipJson<T>(res);
+	if (value.token !== token) {
+		reportStale();
+		throw new ExtrasolarStaleError(path, value.token, token);
+	}
+	return value;
 }

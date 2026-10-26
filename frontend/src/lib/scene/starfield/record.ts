@@ -7,6 +7,7 @@
  */
 
 import { starDistance, type TableRow } from '$lib/fetch/extrasolar/lookup';
+import { bpRpFromTeff } from './colour';
 import { icrsToTree, treeToScene, type Vec3 } from './tree';
 
 /** Epoch of the render tree's positions (Julian year). */
@@ -27,9 +28,16 @@ export function starRadiusSolar(row: TableRow): number | null {
 	return positiveNumber(row, 'radius_flame') ?? positiveNumber(row, 'radius_gspphot');
 }
 
+/** The drawn radius. A planet host's exoplanet catalogue comes first: its
+ *  planets' sizes and orbits rest on that radius. */
 export function starRadiusKm(row: TableRow): number | null {
-	const radius = starRadiusSolar(row);
+	const radius = positiveNumber(row, 'host_radius') ?? starRadiusSolar(row);
 	return radius === null ? null : radius * SOLAR_RADIUS_KM;
+}
+
+/** Effective temperature (K): a planet host's catalogue's, else GSP-Phot's. */
+export function starTeff(row: TableRow): number | null {
+	return positiveNumber(row, 'host_teff') ?? positiveNumber(row, 'teff_gspphot');
 }
 
 /** G − V from B − V, ascending powers (Gaia DR2 documentation §5.3.7). */
@@ -145,11 +153,14 @@ export function drawnAbsoluteG(row: TableRow, orbit: TableRow | null): number | 
 	return starDistance(row, orbit) === null ? null : HOST_PLACEHOLDER_ABS_MAG;
 }
 
-/** Gaia BP − RP, else from the Hipparcos V − I; null where neither. */
+/** Gaia BP − RP, else from the Hipparcos V − I, else that of a dwarf of the
+ *  star's Teff; null where none. */
 export function colourBpRp(row: TableRow): number | null {
 	const bp = row.number('phot_bp_mean_mag');
 	const rp = row.number('phot_rp_mean_mag');
 	if (bp !== null && rp !== null) return bp - rp;
 	const vi = row.number('v_i');
-	return vi === null ? null : poly(clamp(vi, V_I_RANGE), BP_RP_FROM_V_I);
+	if (vi !== null) return poly(clamp(vi, V_I_RANGE), BP_RP_FROM_V_I);
+	const teff = starTeff(row);
+	return teff === null ? null : bpRpFromTeff(teff);
 }

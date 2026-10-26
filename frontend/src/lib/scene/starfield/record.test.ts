@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { nodeInfo, type Container, type NodeInfo } from '$lib/fetch/extrasolar/container';
 import { ExtrasolarLookup, astrometricOrbit, homeRow } from '$lib/fetch/extrasolar/lookup';
-import { HAS_EXPORT, diskSource, readExportFile } from '$lib/fetch/extrasolar/__fixtures__/export';
+import {
+	HAS_EXPORT,
+	diskSource,
+	readExportFile,
+	readExportJson
+} from '$lib/fetch/extrasolar/__fixtures__/export';
 import { pointSourceRow } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
+import type { PlanetHost, PlanetIndexFile, PlanetSystem } from '$lib/fetch/extrasolar/planets';
+import { bpRpFromTeff } from './colour';
 import {
 	absoluteG,
 	apparentG,
@@ -10,7 +17,9 @@ import {
 	drawnAbsoluteG,
 	gEstimate,
 	propagate,
-	starPlace
+	starPlace,
+	starRadiusKm,
+	starTeff
 } from './record';
 import { findStarRow } from './starfield';
 import type { Vec3 } from './tree';
@@ -151,5 +160,70 @@ describe.skipIf(!HAS_EXPORT)('a star from its record, against the render tree', 
 		if (result.kind !== 'live') throw new Error('not found');
 		expect(starPlace(homeRow(result.record)!, null)).toBeNull();
 		expect(absoluteG(homeRow(result.record)!, null)).toBeNull();
+	});
+});
+
+describe('a planet host with no Gaia or Hipparcos colour', () => {
+	it('takes the colour of a dwarf of its Teff, the catalogue Teff first', () => {
+		expect(colourBpRp(pointSourceRow({ host_teff: 6395, teff_gspphot: 5000 }))).toBeCloseTo(
+			bpRpFromTeff(6395),
+			9
+		);
+		expect(colourBpRp(pointSourceRow({ teff_gspphot: 5000 }))).toBeCloseTo(bpRpFromTeff(5000), 9);
+		expect(colourBpRp(pointSourceRow({}))).toBeNull();
+	});
+});
+
+describe.skipIf(!HAS_EXPORT)('planet hosts from their records, against the planet files', () => {
+	const lookup = new ExtrasolarLookup(diskSource());
+	const index = HAS_EXPORT ? readExportJson<PlanetIndexFile>('planets/index.json.gz') : null!;
+
+	/** The first drawn host of the index that `wanted` takes, with its system's
+	 *  record of it. */
+	function firstHost(wanted: (host: PlanetHost) => boolean): PlanetHost {
+		for (const entry of index.hosts) {
+			if (entry.position === null) continue;
+			const file = readExportJson<PlanetSystem>(`planets/${entry.system}.json.gz`);
+			const host = file.hosts.find((h) => h.id === entry.id && wanted(h));
+			if (host) return host;
+		}
+		throw new Error('no such host');
+	}
+
+	it.each<[string, (host: PlanetHost) => boolean]>([
+		['Proxima Centauri, by its parallax', (h) => h.id === 27424668],
+		[
+			'at its catalogue distance, with a Teff',
+			(h) => h.placement === 'catalogue distance' && h.teff !== null
+		],
+		['at a distance of its distance group', (h) => h.placement === 'bailer-jones-2021'],
+		['by a SIMBAD parallax', (h) => h.placement === 'simbad-parallax']
+	])('%s: the place of its system file and the row of the tree', async (_, wanted) => {
+		const host = firstHost(wanted);
+		const result = await lookup.lookup(String(host.id));
+		if (result.kind !== 'live') throw new Error(`${host.id} not found`);
+		const row = homeRow(result.record)!;
+		const orbit = astrometricOrbit(result.record);
+		const place = starPlace(row, orbit)!;
+		for (let k = 0; k < 3; k++) {
+			expect(Math.abs(place.tree[k] - host.position![k])).toBeLessThan(1e-9 * host.distance!);
+		}
+		// The file writes a float32 distance as its shortest decimal.
+		expect(Math.abs(place.distancePc / host.distance! - 1)).toBeLessThan(1e-7);
+		const absMag = drawnAbsoluteG(row, orbit);
+		const found = findRender(host.id, place.tree)!;
+		expect(found).not.toBeNull();
+		expect(found.node.container.float32('mag')[found.row]).toBe(absMag);
+		const colour = colourBpRp(row);
+		const stored = found.node.container.float32('colour')[found.row];
+		if (colour === null) expect(stored).toBeNaN();
+		else expect(stored).toBeCloseTo(colour, 2);
+		expect(findStarRow(found.node, { tree: place.tree, absMag })).toBe(found.row);
+		// The disc takes the radius and Teff that the system file gives.
+		if (host.teff === null) expect(starTeff(row)).toBeNull();
+		else expect(starTeff(row)).toBeCloseTo(host.teff, 0);
+		if (host.radius !== null && host.radius_source !== 'gaia-dr3') {
+			expect(starRadiusKm(row)! / 695_700).toBeCloseTo(host.radius, 4);
+		}
 	});
 });

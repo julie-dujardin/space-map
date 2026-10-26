@@ -6,7 +6,10 @@ import {
 	extrasolarIdOf,
 	extrasolarObjectId,
 	isExtrasolarObjectId,
+	isStarObjectId,
 	parseExtrasolarId,
+	planetObjectId,
+	planetOfObjectId,
 	tableOf
 } from './ids';
 
@@ -62,5 +65,36 @@ describe('extrasolar IDs', () => {
 		expect(extrasolarIdOf('x-22137869')).toBe(SIRIUS);
 		expect(extrasolarIdOf('x-022137869')).toBeNull();
 		expect(extrasolarIdOf('naif-399')).toBeNull();
+	});
+
+	it('maps a planet to its scene id and back', () => {
+		expect(planetObjectId(27424668, 3)).toBe('x-27424668-b-3');
+		expect(planetOfObjectId('x-27424668-b-3')).toEqual({ host: 27424668, n: 3 });
+		// A planet is in the x namespace, but it names no star.
+		expect(isExtrasolarObjectId('x-27424668-b-3')).toBe(true);
+		expect(extrasolarIdOf('x-27424668-b-3')).toBeNull();
+	});
+
+	it('tells a star from a planet in the x namespace', () => {
+		expect(isStarObjectId('x-22137869')).toBe(true);
+		expect(isStarObjectId('x-27424668-b-3')).toBe(false);
+		// Malformed ids go to the star lookup, which refuses them.
+		expect(isStarObjectId('x-abc')).toBe(true);
+		expect(isStarObjectId('x-27424668-b-0')).toBe(true);
+		expect(isStarObjectId('naif-399')).toBe(false);
+		expect(isStarObjectId('extra-1')).toBe(false);
+	});
+
+	it.each([
+		['x-27424668'],
+		['x-27424668-b-0'],
+		['x-27424668-b-01'],
+		['x-027424668-b-1'],
+		['x-5-b-1'], // table 0
+		['x-27424668-c-1'],
+		['naif-399'],
+		['x-27424668-b-1-b-2']
+	])('reads no planet in %j', (id) => {
+		expect(planetOfObjectId(id)).toBeNull();
 	});
 });

@@ -59,8 +59,16 @@ export function parseExtrasolarId(text: string, tables?: ReadonlySet<number>): n
 	return id;
 }
 
+/** An id of the extrasolar export's namespace: a star (`x-<id>`) or a
+ *  planet (`x-<host>-b-<n>`). Neither has an object bundle. */
 export function isExtrasolarObjectId(objectId: string): boolean {
 	return objectId.startsWith(EXTRASOLAR_PREFIX);
+}
+
+/** An object of the extrasolar catalogue that is not a planet: the id its
+ *  lookup reads. A malformed `x-` id counts, so that the lookup refuses it. */
+export function isStarObjectId(objectId: string): boolean {
+	return isExtrasolarObjectId(objectId) && planetOfObjectId(objectId) === null;
 }
 
 export function extrasolarObjectId(id: number): string {
@@ -71,4 +79,19 @@ export function extrasolarObjectId(id: number): string {
 export function extrasolarIdOf(objectId: string): number | null {
 	if (!isExtrasolarObjectId(objectId)) return null;
 	return parseExtrasolarId(objectId.slice(EXTRASOLAR_PREFIX.length));
+}
+
+/** A planet's scene id, `x-<host>-b-<n>`, after its page `/x/<host>/b/<n>`. */
+export function planetObjectId(host: number, n: number): string {
+	return `${EXTRASOLAR_PREFIX}${host}-b-${n}`;
+}
+
+const PLANET_ID = /^x-([1-9][0-9]{0,15})-b-([1-9][0-9]{0,4})$/;
+
+/** The host ID and number of a planet's scene id, or null when it names none. */
+export function planetOfObjectId(objectId: string): { host: number; n: number } | null {
+	const m = PLANET_ID.exec(objectId);
+	if (!m) return null;
+	const host = parseExtrasolarId(m[1]);
+	return host === null ? null : { host, n: Number(m[2]) };
 }

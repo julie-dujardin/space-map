@@ -62,7 +62,8 @@ const TYPES: Record<ObjectType, BodyType> = {
 	[ObjectType.DEBRIS]: 'debris',
 	[ObjectType.UNDOCUMENTED]: 'unknown',
 	[ObjectType.SURFACE_FEATURE]: 'surface-feature',
-	[ObjectType.EXTRASOLAR]: 'star'
+	[ObjectType.EXTRASOLAR]: 'star',
+	[ObjectType.EXOPLANET]: 'planet'
 };
 
 const ORBIT_CLASSES: Partial<Record<ObjectType, OrbitClass>> = {

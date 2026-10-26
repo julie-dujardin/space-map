@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configureHost } from '$lib/host';
 import {
@@ -7,6 +8,7 @@ import {
 	extrasolarPath,
 	extrasolarUrl,
 	fetchExtrasolarFile,
+	fetchExtrasolarJson,
 	fetchExtrasolarMetadata,
 	onExtrasolarStale
 } from './files';
@@ -72,5 +74,22 @@ describe('extrasolar files', () => {
 		);
 		expect(stale).toHaveBeenCalledTimes(1);
 		off();
+	});
+
+	it('decodes a JSON file and checks its token field', async () => {
+		configureHost({ extrasolarUrl: '/data' });
+		const body = gzipSync(JSON.stringify({ token: TOKEN, hosts: [] }));
+		const fetch = vi.fn<(url: string) => Promise<Response>>(
+			async () => new Response(body, { status: 200 })
+		);
+		vi.stubGlobal('fetch', fetch);
+		expect(await fetchExtrasolarJson('planets/index.json.gz', TOKEN)).toEqual({
+			token: TOKEN,
+			hosts: []
+		});
+		expect(fetch.mock.calls[0][0]).toBe(`/data/v1/x/planets/index.json.gz?v=${TOKEN}`);
+		await expect(fetchExtrasolarJson('planets/index.json.gz', 'ffffffffffffffff')).rejects.toThrow(
+			ExtrasolarStaleError
+		);
 	});
 });
