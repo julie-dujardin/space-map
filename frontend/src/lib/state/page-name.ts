@@ -13,8 +13,15 @@ import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { categoryLabel } from '$lib/format/group';
 import { groupSlugLabel } from './focusable';
-import { EXTRASOLAR_PREFIX, extrasolarObjectId, isStarObjectId } from '$lib/fetch/extrasolar/ids';
-import { extrasolarLookup } from '$lib/fetch/extrasolar/lookup';
+import {
+	EXTRASOLAR_PREFIX,
+	extrasolarObjectId,
+	isStarObjectId,
+	planetObjectId,
+	planetOfObjectId
+} from '$lib/fetch/extrasolar/ids';
+import { extrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { planetCatalogue } from '$lib/fetch/extrasolar/planets';
 
 /** The Earth–Moon barycenter and Earth itself. */
 const EARTH_MOON_IDS = new Set(['naif-3', 'naif-399']);
@@ -67,6 +74,40 @@ export type PageSubject =
 	| { kind: 'feature'; bodyId: string; featureId: number }
 	| { kind: 'group'; slug: string };
 
+/** A star's name: the one of its object entry in the reader's language, else
+ *  the one of its Metadata row. */
+async function starPageName(record: ExtrasolarRecord): Promise<string> {
+	const meta = record.metadata;
+	const own = await fetchObjectDetail(
+		extrasolarObjectId(record.id),
+		meta.object,
+		undefined,
+		true
+	).catch(() => null);
+	return own?.localized?.name ?? meta.name ?? '';
+}
+
+/**
+ * The live object an alias of the extrasolar catalogue leads to, and the name
+ * of its page: a star's live ID, or a planet's live number, maybe on another
+ * host. Null when `id` is live, when it has no page, or when a file does not
+ * load. A live ID gets no name: the opening view waits on this, and a star's
+ * name needs its object bundle.
+ */
+export async function extrasolarAlias(id: string): Promise<{ id: string; name: string } | null> {
+	const planet = planetOfObjectId(id);
+	if (planet) {
+		const live = await planetCatalogue.planet(planet.host, planet.n).catch(() => null);
+		if (!live) return null;
+		const liveId = planetObjectId(live.planet.host, live.planet.number);
+		return liveId === id ? null : { id: liveId, name: live.planet.name };
+	}
+	const found = await extrasolarLookup.live(id.slice(EXTRASOLAR_PREFIX.length)).catch(() => null);
+	if (found?.kind !== 'live') return null;
+	const liveId = extrasolarObjectId(found.record.id);
+	return liveId === id ? null : { id: liveId, name: await starPageName(found.record) };
+}
+
 /** The name of a page, read from the export in the reader's language. Empty
  *  when the export gives none. */
 export async function fetchPageName(subject: PageSubject): Promise<string> {
@@ -77,19 +118,13 @@ export async function fetchPageName(subject: PageSubject): Promise<string> {
 		const features = await fetchBodyNomenclature(subject.bodyId);
 		return features.find((f) => f.featureId === subject.featureId)?.name ?? '';
 	}
-	// A star is named by the object entry of its live ID, in the reader's
-	// language, else by its Metadata row.
+	// A planet is named by its system file. A star is named by the object
+	// entry of its live ID, else by its Metadata row.
+	const planet = planetOfObjectId(subject.id);
+	if (planet) return (await planetCatalogue.planet(planet.host, planet.n))?.planet.name ?? '';
 	if (isStarObjectId(subject.id)) {
 		const found = await extrasolarLookup.live(subject.id.slice(EXTRASOLAR_PREFIX.length));
-		if (found.kind !== 'live') return '';
-		const meta = found.record.metadata;
-		const own = await fetchObjectDetail(
-			extrasolarObjectId(found.record.id),
-			meta.object,
-			undefined,
-			true
-		).catch(() => null);
-		return own?.localized?.name ?? meta.name ?? '';
+		return found.kind === 'live' ? starPageName(found.record) : '';
 	}
 	const planetId = dominantPlanetId(subject.id);
 	// In the background: at boot these bundles would take the link from the

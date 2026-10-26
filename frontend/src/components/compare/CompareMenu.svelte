@@ -118,7 +118,8 @@
 			search(q, getLocale(), 12)
 				.then((found) => {
 					if (mine !== token) return;
-					hits = found.filter((h): h is ObjectHit => h.kind === 'object');
+					// A star of another system has no bundle for the comparison to draw.
+					hits = found.filter((h): h is ObjectHit => h.kind === 'object' && !h.extrasolar);
 					searching = false;
 				})
 				.catch((err) => {

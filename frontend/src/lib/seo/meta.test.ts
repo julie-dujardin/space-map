@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gzipSync } from 'node:zlib';
 
-// As on the server: a path is relative to the request, and each request here
-// is three segments deep.
+// As on the server: a path is relative to the request. Each request here is
+// three segments deep, and a planet's five.
 vi.mock('$app/paths', () => ({
 	resolve: (route: string, params: Record<string, string | undefined>) =>
-		'../..' +
+		(route.includes('[n]') ? '../../../..' : '../..') +
 		route
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
+			.replace('[n]', params.n ?? '')
 			.replace('[featureId]', params.featureId ?? '')
 			.replace('/[[name]]', params.name ? `/${params.name}` : '')
 }));
@@ -20,9 +21,12 @@ import {
 	loadFeatureSeo,
 	loadGroupSeo,
 	loadObjectSeo,
+	loadPlanetSeo,
 	loadStarSeo,
 	minimalSeo
 } from './meta';
+import { ALPHA_CEN, INDEX, MERGED_HOST, planet } from '$lib/scene/exoplanets/__fixtures__/system';
+import type { PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import {
 	ALIAS,
 	RETIRED,
@@ -412,5 +416,111 @@ describe('loadStarSeo', () => {
 		await expect(loadStarSeo(String(STAR), request(`/x/${STAR}`))).rejects.toThrow();
 		stubStars({ stale: 'metadata/0/0.bin.gz' });
 		await expect(loadStarSeo(String(STAR), request(`/x/${STAR}`))).rejects.toThrow('token');
+	});
+});
+
+describe('loadPlanetSeo', () => {
+	const XS = 'https://xs.test';
+	const TOKEN = '0000000000000000';
+	const META = {
+		format: 1,
+		exported: '',
+		registry: { ingest: 1, host: 'test' },
+		tables: {},
+		trees: {},
+		credits: [],
+		planets: {
+			token: TOKEN,
+			index: 'planets/index.json.gz',
+			system: 'planets/{key}.json.gz',
+			systems: 2,
+			hosts: 3,
+			planets: 5,
+			distribution: 'non-commercial'
+		}
+	};
+	/** The pulsar of the index, whose number 3 is an alias of 2. */
+	const PULSAR: PlanetSystem = {
+		token: TOKEN,
+		system: 1091633172,
+		hosts: [{ ...ALPHA_CEN.hosts[0], id: 1091633172, name: 'PSR B0943+10', planets: [1, 2] }],
+		planets: [planet(1091633172, 1, null), planet(1091633172, 2, null)]
+	};
+	const FILES: Record<string, unknown> = {
+		'planets/index.json.gz': INDEX,
+		'planets/27424668.json.gz': ALPHA_CEN,
+		'planets/1091633172.json.gz': PULSAR
+	};
+
+	/** The planet files at XS; `broken` paths answer 503, `stale` ones carry another token. */
+	function stubPlanets(options: { broken?: string[]; stale?: string } = {}) {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string) => {
+				const url = new URL(input);
+				expect(url.origin).toBe(XS);
+				const path = url.pathname.replace(/^\/v1\/x\//, '');
+				if (options.broken?.includes(path)) return new Response('', { status: 503 });
+				if (path === 'metadata.json') return Response.json(META);
+				const file = FILES[path] as { token: string } | undefined;
+				if (!file) return new Response('', { status: 404 });
+				const token = options.stale === path ? 'f'.repeat(16) : file.token;
+				return gz({ ...file, token });
+			})
+		);
+	}
+	const planetRequest = (path: string, query = '') =>
+		new URL(`${ORIGIN}${path}/Planet%20Nine%20Found${query}`);
+
+	beforeEach(() => configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'site-only' }));
+
+	it('takes the title and canonical link from the system file', async () => {
+		stubPlanets();
+		expect(await loadPlanetSeo(27424668, 1, planetRequest('/x/27424668/b/1'))).toEqual({
+			kind: 'page',
+			seo: {
+				title: 'Planet 27424668 1 - Space Map',
+				description: expect.stringContaining('Planet 27424668 1'),
+				canonical: `${ORIGIN}/x/27424668/b/1/Planet%2027424668%201`,
+				ogType: 'article'
+			}
+		});
+		// The second star of a system file has pages of its own.
+		const toliman = await loadPlanetSeo(564339647, 1, planetRequest('/x/564339647/b/1'));
+		expect(toliman).toMatchObject({ seo: { title: 'Planet 564339647 1 - Space Map' } });
+	});
+
+	it("sends an alias number to its live planet's page, query and all", async () => {
+		stubPlanets();
+		const url = planetRequest('/x/1091633172/b/3', '?at=now,1,2,3');
+		expect(await loadPlanetSeo(1091633172, 3, url)).toEqual({
+			kind: 'alias',
+			location: '/x/1091633172/b/2/Planet%201091633172%202?at=now,1,2,3'
+		});
+	});
+
+	it('sends an alias to its live planet on another host', async () => {
+		stubPlanets();
+		const url = planetRequest(`/x/${MERGED_HOST}/b/1`, '?at=now,1,2,3');
+		expect(await loadPlanetSeo(MERGED_HOST, 1, url)).toEqual({
+			kind: 'alias',
+			location: '/x/27424668/b/2/Planet%2027424668%202?at=now,1,2,3'
+		});
+		expect(await loadPlanetSeo(MERGED_HOST, 2, planetRequest(`/x/${MERGED_HOST}/b/2`))).toBeNull();
+	});
+
+	it('has no page for a number the star never had, or a star with no planets', async () => {
+		stubPlanets();
+		expect(await loadPlanetSeo(27424668, 9, planetRequest('/x/27424668/b/9'))).toBeNull();
+		expect(await loadPlanetSeo(22137869, 1, planetRequest('/x/22137869/b/1'))).toBeNull();
+	});
+
+	it('throws where the export cannot be read, or a file is from another export', async () => {
+		stubPlanets({ broken: ['planets/index.json.gz'] });
+		await expect(loadPlanetSeo(27424668, 1, planetRequest('/x/27424668/b/1'))).rejects.toThrow();
+		stubPlanets({ stale: 'planets/27424668.json.gz' });
+		await expect(loadPlanetSeo(27424668, 1, planetRequest('/x/27424668/b/1'))).rejects.toThrow(
+			'token'
+		);
 	});
 });

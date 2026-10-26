@@ -33,7 +33,7 @@
 	import { prefetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { prefetchFeatureDetail } from '$lib/fetch/nomenclature/details';
 	import { prefetchGroupDetail } from '$lib/fetch/groups/details';
-	import { fetchPageName, type PageSubject } from '$lib/state/page-name';
+	import { extrasolarAlias, fetchPageName, type PageSubject } from '$lib/state/page-name';
 	// Not lazy: the placeholder's whole job is to be on screen before the drawer
 	// chunk is.
 	import DrawerSkeleton from './detail/DrawerSkeleton.svelte';
@@ -111,13 +111,7 @@
 	import { sceneToKm } from '$lib/math/units';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { jdToDate } from '$lib/time/jd';
-	import {
-		EXTRASOLAR_PREFIX,
-		extrasolarObjectId,
-		isExtrasolarObjectId,
-		isStarObjectId
-	} from '$lib/fetch/extrasolar/ids';
-	import { extrasolarLookup } from '$lib/fetch/extrasolar/lookup';
+	import { isExtrasolarObjectId, isStarObjectId } from '$lib/fetch/extrasolar/ids';
 	import { STAR_VIEW_DISTANCE } from '$lib/scene/focus/star-focus';
 
 	const searchEnabled = isSearchEnabled();
@@ -404,6 +398,8 @@
 		if (activeFeature) return { kind: 'feature', body: selectedBody, feature: activeFeature };
 		const star = selectedBody.extrasolar;
 		if (star) return { kind: 'star', body: selectedBody, record: star.record };
+		const planet = selectedBody.exoplanet;
+		if (planet) return { kind: 'planet', body: selectedBody, anchor: planet };
 		return { kind: 'body', body: selectedBody };
 	});
 
@@ -837,7 +833,7 @@
 	async function openInitialView(): Promise<void> {
 		// An alias opens its live object, at that object's address. The server
 		// redirects it; this is for a page the server could not look up.
-		if (isExtrasolarObjectId(appState.view.id)) await followStarAlias(appState.view.id);
+		if (isExtrasolarObjectId(appState.view.id)) await followAlias(appState.view.id);
 		const initialId = appState.view.id;
 		// URL camera framing, restored onto the real target once it loads: the
 		// renderer settles its initial focus on the parent while the target's
@@ -910,11 +906,9 @@
 	}
 
 	/** Put the live object of an alias in the view, in place of the alias. */
-	async function followStarAlias(id: string): Promise<void> {
-		const found = await extrasolarLookup.live(id.slice(EXTRASOLAR_PREFIX.length)).catch(() => null);
-		if (found?.kind !== 'live') return;
-		const liveId = extrasolarObjectId(found.record.id);
-		if (liveId !== id) appState.replaceFocus(liveId, found.record.metadata.name ?? '');
+	async function followAlias(id: string): Promise<void> {
+		const live = await extrasolarAlias(id);
+		if (live) appState.replaceFocus(live.id, live.name);
 	}
 
 	// A primitive: `view` is replaced twice a second, and the filter is asked

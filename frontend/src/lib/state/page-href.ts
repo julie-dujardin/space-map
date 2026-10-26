@@ -9,6 +9,7 @@
 
 import { resolve } from '$app/paths';
 import type { SearchHit } from '$lib/search/client';
+import { planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { UrlType, urlTypeFromId, urlTypeToIdPrefix } from './view';
 
 function nameSegment(name: string): string | undefined {
@@ -21,9 +22,20 @@ function bodySegments(id: string): { type: UrlType; id: string } {
 	return { type, id: id.slice(`${urlTypeToIdPrefix(type)}-`.length) };
 }
 
-/** A body's page: `/<type>/<id>/<name>`. */
+/** A body's page: `/<type>/<id>/<name>`, or a planet's page for a planet id. */
 export function bodyHref(id: string, name: string): string {
+	const planet = planetOfObjectId(id);
+	if (planet) return planetHref(planet.host, planet.n, name);
 	return resolve('/[type]/[id]/[[name]]', { ...bodySegments(id), name: nameSegment(name) });
+}
+
+/** A planet's page: `/x/<host>/b/<n>/<name>`. */
+export function planetHref(host: number, n: number, name: string): string {
+	return resolve('/x/[id]/b/[n]/[[name]]', {
+		id: String(host),
+		n: String(n),
+		name: nameSegment(name)
+	});
 }
 
 /** A group's page: `/g/<slug>/<name>`, opening on the group's anchor. */

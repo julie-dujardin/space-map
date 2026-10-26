@@ -5,7 +5,12 @@ import {
 	DEFAULT_ZOOM
 } from '$lib/scene/framing';
 import { DEFAULT_TRIP, type TripState } from '$lib/travel/trip';
-import { isExtrasolarObjectId, parseExtrasolarId } from '$lib/fetch/extrasolar/ids';
+import {
+	EXTRASOLAR_PREFIX,
+	isExtrasolarObjectId,
+	parseExtrasolarId,
+	planetOfObjectId
+} from '$lib/fetch/extrasolar/ids';
 
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
  *  sub-selection on top of a body and uses a nested route shape
@@ -91,6 +96,14 @@ export function objectIdOfRoute(type: string, id: string): string | null {
 	}
 	if (!FEATURE_ROUTE_TYPES.has(type) || !isIdNumber(id)) return null;
 	return `${urlTypeToIdPrefix(type)}-${id}`;
+}
+
+/** The scene id of the planet a planet route names (`/x/<host>/b/<n>` is
+ *  `x-<host>-b-<n>`), or null when its segments name none. The planet index
+ *  decides later whether the planet has a page. */
+export function planetIdOfRoute(host: string, n: string): string | null {
+	const objectId = `${EXTRASOLAR_PREFIX}${host}-b-${n}`;
+	return planetOfObjectId(objectId) === null ? null : objectId;
 }
 
 /** The IAU feature id a feature route names, or null. */

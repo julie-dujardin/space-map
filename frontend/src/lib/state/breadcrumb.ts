@@ -8,6 +8,7 @@ import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { SSB_ID, dominantPlanetId } from '$lib/constants';
+import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import {
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
@@ -149,8 +150,13 @@ export function parentCrumb(
 		return null;
 	}
 
-	// A star has no page above it yet.
+	// A star has no page above it yet; a planet climbs to its star.
 	if (focusable.kind === 'star') return null;
+	if (focusable.kind === 'planet') {
+		const host = focusable.anchor.hostRecord;
+		const name = host.name ?? String(host.id);
+		return { label: name, target: { kind: 'focus', id: extrasolarObjectId(host.id), name } };
+	}
 
 	const data = focusable.body.data;
 

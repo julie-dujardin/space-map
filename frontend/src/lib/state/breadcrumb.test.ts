@@ -10,6 +10,7 @@ import { parentCrumb } from './breadcrumb';
 import { CAT_SATELLITE_SYSTEMS, CAT_SURFACE_FEATURES } from '$lib/fetch/groups/registry';
 import { ObjectType } from '$lib/types/objects';
 import type { Focusable } from './focusable';
+import { ALPHA_CEN } from '$lib/scene/exoplanets/__fixtures__/system';
 
 const MOON = { data: { id: 'naif-301', name: 'Moon' } } as never;
 
@@ -85,5 +86,23 @@ describe('parentCrumb: planetary systems', () => {
 			null
 		);
 		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
+	});
+});
+
+describe('parentCrumb: planets of other stars', () => {
+	it('climbs from a planet to the star it orbits', () => {
+		const p = ALPHA_CEN.planets[2];
+		const anchor = {
+			host: p.host,
+			number: p.number,
+			system: ALPHA_CEN.system,
+			planet: p,
+			hostRecord: ALPHA_CEN.hosts[1]
+		};
+		const crumb = parentCrumb({ kind: 'planet', body: MOON, anchor }, undefined, null, null);
+		expect(crumb).toEqual({
+			label: 'Star 564339647',
+			target: { kind: 'focus', id: 'x-564339647', name: 'Star 564339647' }
+		});
 	});
 });

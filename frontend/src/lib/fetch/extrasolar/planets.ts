@@ -191,6 +191,30 @@ export class PlanetCatalogue {
 		return p;
 	}
 
+	/** The system file of the star `host`; null when it has no planets. */
+	async hostSystem(host: number): Promise<PlanetSystem | null> {
+		const entry = (await this.index())?.host(host);
+		return entry ? this.system(entry.system) : null;
+	}
+
+	/** The live planet of the page `/x/{host}/b/{n}` and its system file: the
+	 *  planet itself, or the one its alias leads to, which can be on another
+	 *  host. Its `host` and `number` are the live ones. Null for a 404. */
+	async planet(host: number, n: number): Promise<{ planet: Planet; system: PlanetSystem } | null> {
+		const index = await this.index();
+		const live = index?.live(host, n) ?? null;
+		if (live === null) return null;
+		const entry = index!.host(live.host);
+		if (!entry)
+			throw new Error(`[planets] ${host}/b/${n} leads to host ${live.host}, not in the index`);
+		const system = await this.system(entry.system);
+		const planet = system.planets.find((p) => p.host === live.host && p.number === live.n);
+		if (!planet) {
+			throw new Error(`[planets] ${live.host}/b/${live.n} is not in system ${system.system}`);
+		}
+		return { planet, system };
+	}
+
 	/** The system file keyed by the star `key`. */
 	system(key: number): Promise<PlanetSystem> {
 		return this.systems.getOrCompute(String(key), async () => {

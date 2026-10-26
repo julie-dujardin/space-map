@@ -288,6 +288,7 @@
 		if (k === 'object') return m.search_kind_object();
 		if (k === 'feature') return m.search_kind_feature();
 		if (k === 'group') return m.search_kind_group();
+		if (k === 'planet') return m.search_kind_planet();
 		return k;
 	}
 	function rowName(hit: SearchHit): string {
@@ -456,6 +457,18 @@
 			label: typeLabelPlural(type),
 			count: sumType([type])
 		}));
+		// The planets of other stars are a kind of their own.
+		const exoplanets = kindDist['planet'] ?? 0;
+		if (exoplanets > 0 || (model.filters.kind ?? []).includes('planet')) {
+			rootLeaves.push({
+				id: 'root-exoplanet',
+				kind: 'array',
+				facet: 'kind',
+				values: ['planet'],
+				label: m.search_kind_planet(),
+				count: exoplanets
+			});
+		}
 
 		// Asteroids: All / NEO / PHA + SBDB orbit class (asteroid subset).
 		{
@@ -656,11 +669,12 @@
 			});
 		}
 
-		// Other long-tail types (star, barycenter): kept reachable, hidden at 0.
+		// Other long-tail types (stars, barycenters, the other bodies that hold
+		// planets): kept reachable, hidden at 0.
 		{
-			const others = (['star', 'barycenter'] as const).filter(
-				(t) => (typeDist[t] ?? 0) > 0 || (model.filters.type ?? []).includes(t)
-			);
+			const others = (
+				['star', 'brown_dwarf', 'white_dwarf', 'pulsar', 'barycenter'] as const
+			).filter((t) => (typeDist[t] ?? 0) > 0 || (model.filters.type ?? []).includes(t));
 			if (others.length)
 				children.push({
 					id: 'other',

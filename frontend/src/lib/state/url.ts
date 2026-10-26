@@ -22,6 +22,7 @@ import {
 	UrlType,
 	featureIdOfRoute,
 	objectIdOfRoute,
+	planetIdOfRoute,
 	urlTypeFromId,
 	urlTypeToIdPrefix,
 	type DrawerTab,
@@ -169,6 +170,22 @@ export function parseUrl(): MapViewState | null {
 				page.url.searchParams.get('tp')
 			),
 			trip: parseTrip(page.url.searchParams)
+		});
+	}
+
+	// The planet route has a static `x` and no type segment.
+	const planetN = page.params.n;
+	if (planetN !== undefined) {
+		const id = planetIdOfRoute(page.params.id ?? '', planetN);
+		if (id === null) {
+			console.warn(`parseUrl: no planet at /x/${page.params.id}/b/${planetN}`);
+			return null;
+		}
+		return applyAtParam({
+			...DEFAULT_VIEW,
+			type: UrlType.Extrasolar,
+			id,
+			tab: parseTab(page.url.searchParams.get('tab'))
 		});
 	}
 
@@ -481,7 +498,8 @@ export function applyFeature(
 
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
  *  for bodies and groups (groups carry a slug in the id slot, and `&focus=`
- *  the member the camera is on when it is not the anchor), or
+ *  the member the camera is on when it is not the anchor),
+ *  `/x/<host>/b/<n>/<name>` for planets, or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
  *  `?at=<date>,<lat>,<lon>,<zoom>` query block. */
 export function serializeUrl(state: MapViewState): string {

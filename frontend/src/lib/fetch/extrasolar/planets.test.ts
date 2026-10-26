@@ -86,6 +86,42 @@ describe('PlanetCatalogue', () => {
 		expect(src.reads).toEqual(['planets/index.json.gz', 'planets/27424668.json.gz']);
 	});
 
+	it('finds a planet and its system through the index, an alias too', async () => {
+		const catalogue = new PlanetCatalogue(source(FILES));
+		const toliman = await catalogue.planet(564339647, 1);
+		expect(toliman?.planet.name).toBe('Planet 564339647 1');
+		expect(toliman?.system.system).toBe(27424668);
+		expect(await catalogue.planet(27424668, 9)).toBeNull();
+		expect(await catalogue.planet(5, 1)).toBeNull();
+		expect((await catalogue.hostSystem(564339647))?.system).toBe(27424668);
+		expect(await catalogue.hostSystem(5)).toBeNull();
+		// An alias number gives the live planet, whose number says it is another.
+		const pulsar: PlanetSystem = {
+			token: INDEX.token,
+			system: 1091633172,
+			hosts: [],
+			planets: [{ ...ALPHA_CEN.planets[0], host: 1091633172, number: 2 }]
+		};
+		const aliased = new PlanetCatalogue(source({ ...FILES, 'planets/1091633172.json.gz': pulsar }));
+		expect(await aliased.planet(1091633172, 3)).toMatchObject({
+			planet: { host: 1091633172, number: 2 }
+		});
+	});
+
+	it("follows an alias to a planet on another host, in that host's system file", async () => {
+		const src = source(FILES);
+		const moved = await new PlanetCatalogue(src).planet(MERGED_HOST, 1);
+		expect(moved?.planet).toMatchObject({ host: 27424668, number: 2, name: 'Planet 27424668 2' });
+		expect(moved?.system.system).toBe(27424668);
+		expect(src.reads).toEqual(['planets/index.json.gz', 'planets/27424668.json.gz']);
+	});
+
+	it('refuses an alias to a host the index does not list', async () => {
+		const broken: PlanetIndexFile = { ...INDEX, aliases: { '5/1': [6, 1] } };
+		const catalogue = new PlanetCatalogue(source({ ...FILES, 'planets/index.json.gz': broken }));
+		await expect(catalogue.planet(5, 1)).rejects.toThrow('host 6');
+	});
+
 	it('has no index where the export has no planets or the host may not show them', async () => {
 		expect(await new PlanetCatalogue(source(FILES, null)).index()).toBeNull();
 		const barred = source(FILES, ENTRY, false);

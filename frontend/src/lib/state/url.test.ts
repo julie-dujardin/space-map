@@ -5,6 +5,7 @@ vi.mock('$app/paths', () => ({
 		route
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
+			.replace('[n]', params.n ?? '')
 			.replace('[featureId]', params.featureId ?? '')
 			.replace('/[[from]]', params.from ? `/${params.from}` : '')
 			.replace('/[[to]]', params.to ? `/${params.to}` : '')
@@ -655,5 +656,39 @@ describe('the x route of extrasolar objects', () => {
 	it('focuses an extrasolar object from its id', () => {
 		const view = applyFocus(baseView, { type: 'x', id: 'x-27424668', name: 'Proxima Centauri' });
 		expect(serializeUrl(view).startsWith('/x/27424668/Proxima%20Centauri?at=')).toBe(true);
+	});
+});
+
+describe('a planet in the URL', () => {
+	function open(params: Record<string, string>, search = '') {
+		page.params = params;
+		page.url = new URL(`http://x/${search}`) as typeof page.url;
+	}
+
+	it('reads the planet route into the view, and not its name', () => {
+		open({ id: '27424668', n: '1', name: 'Planet Nine Found' }, '?at=now,1,2,3');
+		expect(parseUrl()).toMatchObject({
+			type: 'x',
+			id: 'x-27424668-b-1',
+			name: '',
+			latitude: 1,
+			longitude: 2,
+			zoom: 3,
+			framed: true
+		});
+	});
+
+	it('reads no planet out of a bad number', () => {
+		for (const n of ['0', '01', 'b', '1.5']) {
+			open({ id: '27424668', n });
+			expect(parseUrl(), n).toBeNull();
+		}
+	});
+
+	it('writes the planet route back, with its name', () => {
+		const view = applyFocus(baseView, { type: 'x', id: 'x-27424668-b-1', name: 'Proxima Cen b' });
+		expect(serializeUrl(view)).toBe(
+			'/x/27424668/b/1/Proxima%20Cen%20b?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430'
+		);
 	});
 });

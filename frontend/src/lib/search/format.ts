@@ -48,6 +48,11 @@ const HELIOCENTRIC_TYPES = new Set([
 ]);
 const SELF_EXPLANATORY_TYPES = new Set(['star', 'spacecraft', 'undocumented']);
 
+/** A class as a type key: "brown dwarf" is `brown_dwarf`. */
+function slug(cls: string | null): string {
+	return (cls ?? 'planet').replace(/[ -]/g, '_');
+}
+
 /** Localized object type, sentence-case for inline use ("moon of Saturn"). */
 export function typeLabel(type: string): string {
 	const key = type.startsWith('asteroid') ? 'type_asteroid' : `type_${type}`;
@@ -100,6 +105,16 @@ export function secondaryText(hit: SearchHit, resolve: HitLabelResolvers): strin
 	if (hit.kind === 'group') return '';
 	// A pad says where it is; its own name is only ever a complex number.
 	if (hit.kind === 'pad') return hit.site_name;
+	// A planet of another system names its star, a star of one its planets.
+	if (hit.kind === 'planet') {
+		return m.search_secondary_orbiting({ type: typeLabel(slug(hit.class)), parent: hit.host_name });
+	}
+	if (hit.extrasolar) {
+		return m.search_secondary_planet_host({
+			type: typeLabel(hit.type),
+			planets: m.exoplanet_planet_count({ count: hit.planets ?? 0 })
+		});
+	}
 	if (hit.id.startsWith('norad_satcat-')) {
 		return hit.type === 'debris' ? m.type_earth_debris() : m.type_earth_satellite();
 	}

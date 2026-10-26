@@ -183,10 +183,11 @@ export class Placer {
 	}
 
 	/** Why a body has no place when the body `aboveId` it is placed from has
-	 *  none. A load passes down: the body comes back with the data. */
+	 *  none. A load passes down: the body comes back with the data. So does
+	 *  `never`. A planet of a star with no place has none at any date. */
 	private under(aboveId: string): Unplaced {
-		const above = this.ctx.getBody(aboveId) ?? this.bodyObjects.get(aboveId)?.body;
-		return above?.unplaced === 'loading' ? 'loading' : 'parent';
+		const why = (this.ctx.getBody(aboveId) ?? this.bodyObjects.get(aboveId)?.body)?.unplaced;
+		return why === 'loading' || why === 'never' ? why : 'parent';
 	}
 
 	/** A surface feature sits on its host. */

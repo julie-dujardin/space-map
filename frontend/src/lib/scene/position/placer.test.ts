@@ -118,6 +118,13 @@ describe('Placer.place', () => {
 		expect(orphan.unplaced).toBe('parent');
 	});
 
+	it('gives no place at any date to a body under one that has none at any date', () => {
+		const page = mkBody({ id: 'page', parentId: 'naif-0', pageOnly: true, a: NaN });
+		const moon = mkBody({ id: 'moon', parentId: 'page' });
+		expect(placerFor(page, moon).place(moon, JD)).toBeNull();
+		expect(moon.unplaced).toBe('never');
+	});
+
 	it('gives no place to a page-only stand-in', () => {
 		const page = mkBody({ id: 'page', parentId: 'naif-0', pageOnly: true, a: NaN });
 		expect(placerFor(page).place(page, JD)).toBeNull();

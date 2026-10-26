@@ -6,7 +6,7 @@ import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/chart
 import { FEATURE_TYPE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { categoryLabel } from '$lib/format/group';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
-import type { PositionedBody } from '$lib/types/objects';
+import type { PlanetAnchor, PositionedBody } from '$lib/types/objects';
 import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import type { DrawerTab } from './view';
 import * as m from '$lib/paraglide/messages.js';
@@ -16,7 +16,9 @@ export type Focusable =
 	| { kind: 'feature'; body: PositionedBody; feature: NomenclatureFeature }
 	| { kind: 'group'; slug: string }
 	/** An object of the extrasolar catalogue; its records come with it. */
-	| { kind: 'star'; body: PositionedBody; record: ExtrasolarRecord };
+	| { kind: 'star'; body: PositionedBody; record: ExtrasolarRecord }
+	/** A planet of the extrasolar catalogue, with its system file's records. */
+	| { kind: 'planet'; body: PositionedBody; anchor: PlanetAnchor };
 
 /** Full in-session object navigation: coverage snap + URL focus + camera
  *  fly-to. Provided by MapPage via setContext('focusObject') — a bare
@@ -56,6 +58,7 @@ export function focusableFallbackName(f: Focusable): string {
 	if (f.kind === 'feature') return f.feature.name;
 	if (f.kind === 'group') return groupSlugLabel(f.slug);
 	if (f.kind === 'star') return f.record.metadata.name ?? String(f.record.id);
+	if (f.kind === 'planet') return f.anchor.planet.name;
 	return f.body.data.name ?? bodyIdNumber(f.body.data.id);
 }
 

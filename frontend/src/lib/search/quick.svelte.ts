@@ -20,7 +20,8 @@ const KINDS: { kind: SearchHit['kind']; label: () => string }[] = [
 	{ kind: 'object', label: m.search_kind_object },
 	{ kind: 'feature', label: m.search_kind_feature },
 	{ kind: 'group', label: m.search_kind_group },
-	{ kind: 'pad', label: m.group_pads }
+	{ kind: 'pad', label: m.group_pads },
+	{ kind: 'planet', label: m.search_kind_planet }
 ];
 
 export interface HitGroup {

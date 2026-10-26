@@ -22,7 +22,7 @@
  * cannot put its own words on this site.
  */
 
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import * as m from '$lib/paraglide/messages.js';
 import { dominantPlanetId } from '$lib/constants';
 import { getLocale } from '$lib/host';
@@ -55,7 +55,7 @@ import {
 import { nameFeatures } from '$lib/fetch/nomenclature/fetch';
 import { parseNomenclature } from '$lib/fetch/nomenclature/parse';
 import { gunzip, gunzipJson } from '$lib/fetch/gz';
-import { bodyHref, featureHref, groupHref } from '$lib/state/page-href';
+import { bodyHref, featureHref, groupHref, planetHref } from '$lib/state/page-href';
 import { groupPageName, objectPageName } from '$lib/state/page-name';
 import { Container } from '$lib/fetch/extrasolar/container';
 import {
@@ -67,6 +67,7 @@ import {
 } from '$lib/fetch/extrasolar/files';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { ExtrasolarLookup } from '$lib/fetch/extrasolar/lookup';
+import { PlanetCatalogue } from '$lib/fetch/extrasolar/planets';
 
 /** Localized shapes share this description source (object + group bundles).
  *  `description` is the CC0 Wikidata short description — the Wikipedia extract
@@ -742,34 +743,74 @@ export async function loadGroupSeo(slug: string, url: URL): Promise<SeoMeta | nu
 	};
 }
 
-/** What a star page's server render is: its meta, or where its alias goes. */
-export type StarPage = { kind: 'page'; seo: SeoMeta } | { kind: 'alias'; location: string };
+/** What the server render of an extrasolar page is: its meta, or where its
+ *  alias goes. */
+export type ExtrasolarPage = { kind: 'page'; seo: SeoMeta } | { kind: 'alias'; location: string };
 
 /**
- * The extrasolar export as one request reads it, through the same lookup as
- * the client: its own caches, and absolute URLs for the reason given at the
- * top of this file. A file from another export throws, as a missing one does:
- * neither says what the export holds.
+ * Meta for a page of the extrasolar catalogue, from one of the loaders below:
+ * a 404 for a subject with no live page, a permanent redirect for an alias,
+ * and bare meta at `href` when the export cannot be read.
  */
-function requestLookup(url: URL): ExtrasolarLookup {
+export async function extrasolarSeo(
+	lookup: Promise<ExtrasolarPage | null>,
+	url: URL,
+	href: string
+): Promise<SeoMeta> {
+	let page: ExtrasolarPage | null;
+	try {
+		page = await lookup;
+	} catch (e) {
+		console.warn(`[seo] ${url.pathname}: extrasolar export not readable, bare meta:`, e);
+		return minimalSeo(url, href);
+	}
+	if (!page) error(404, 'Not found');
+	if (page.kind === 'alias') redirect(301, page.location);
+	return page.seo;
+}
+
+/** The files of the extrasolar export as one request reads them. */
+interface RequestFiles {
+	metadata(): Promise<ExtrasolarMetadata>;
+	response(path: string, token: string): Promise<Response>;
+}
+
+/**
+ * The files of the extrasolar export for one request. The URLs are absolute
+ * (see the top of this file), the fetches share one deadline, and
+ * `metadata.json` is read once. A missing file throws, as an unreadable one
+ * does: neither says what the export holds.
+ */
+function requestFiles(url: URL): RequestFiles {
 	const signal = AbortSignal.timeout(LOOKUP_TIMEOUT_MS);
 	const base = `${absolutize(extrasolarBase(), url.origin)}/v1/x`;
 	let metadata: Promise<ExtrasolarMetadata> | null = null;
+	return {
+		metadata: () =>
+			(metadata ??= (async () => {
+				const res = await fetchExport(`${base}/metadata.json`, signal);
+				if (!res) throw new Error(`${base}/metadata.json is missing`);
+				const meta = (await res.json()) as ExtrasolarMetadata;
+				if (meta.format !== EXTRASOLAR_FORMAT) throw new Error(`extrasolar format ${meta.format}`);
+				return meta;
+			})()),
+		response: async (path, token) => {
+			const res = await fetchExport(`${base}/${path}?v=${token}`, signal);
+			if (!res) throw new Error(`${base}/${path} is missing`);
+			return res;
+		}
+	};
+}
+
+/** The lookup of the client over one request's files, with its own caches. A
+ *  file from another export throws. */
+function requestLookup(url: URL): ExtrasolarLookup {
+	const files = requestFiles(url);
 	return new ExtrasolarLookup(
 		{
-			metadata: () =>
-				(metadata ??= (async () => {
-					const res = await fetchExport(`${base}/metadata.json`, signal);
-					if (!res) throw new Error(`${base}/metadata.json is missing`);
-					const meta = (await res.json()) as ExtrasolarMetadata;
-					if (meta.format !== EXTRASOLAR_FORMAT)
-						throw new Error(`extrasolar format ${meta.format}`);
-					return meta;
-				})()),
+			metadata: files.metadata,
 			file: async (path, token) => {
-				const res = await fetchExport(`${base}/${path}?v=${token}`, signal);
-				if (!res) throw new Error(`${base}/${path} is missing`);
-				const file = new Container(await gunzip(res).arrayBuffer());
+				const file = new Container(await gunzip(await files.response(path, token)).arrayBuffer());
 				if (file.token !== token) throw new ExtrasolarStaleError(path, file.token, token);
 				return file;
 			},
@@ -779,8 +820,31 @@ function requestLookup(url: URL): ExtrasolarLookup {
 	);
 }
 
+/** The planet files of one request, as the client reads them. */
+function requestPlanets(url: URL): PlanetCatalogue {
+	const files = requestFiles(url);
+	return new PlanetCatalogue(
+		{
+			metadata: files.metadata,
+			json: async <T extends { token: string }>(path: string, token: string) => {
+				const value = await gunzipJson<T>(await files.response(path, token));
+				if (value.token !== token) throw new ExtrasolarStaleError(path, value.token, token);
+				return value;
+			},
+			allowed: extrasolarAllowed
+		},
+		1
+	);
+}
+
 function starDescription(name: string): string {
 	return m.seo_star_description({ name });
+}
+
+/** Where an alias goes: the live page, with the query of the request. */
+function aliasPage(href: string, url: URL): ExtrasolarPage {
+	const to = new URL(href);
+	return { kind: 'alias', location: `${to.pathname}${url.search}` };
 }
 
 /**
@@ -789,15 +853,14 @@ function starDescription(name: string): string {
  * Throws when the extrasolar export cannot be read. Without the object bundles
  * the Metadata row alone gives the meta.
  */
-export async function loadStarSeo(idText: string, url: URL): Promise<StarPage | null> {
+export async function loadStarSeo(idText: string, url: URL): Promise<ExtrasolarPage | null> {
 	const lookup = requestLookup(url);
 	const found = await lookup.live(idText, { data: false });
 	if (found.kind !== 'live') return null;
 	const { id, metadata } = found.record;
 	const fileId = extrasolarObjectId(id);
 	if (String(id) !== idText) {
-		const to = new URL(absoluteHref(bodyHref(fileId, metadata.name ?? ''), url));
-		return { kind: 'alias', location: `${to.pathname}${url.search}` };
+		return aliasPage(absoluteHref(bodyHref(fileId, metadata.name ?? ''), url), url);
 	}
 	// A star with an object entry takes its name, the Wikidata description in
 	// the reader's language and its card image from it, as a body does.
@@ -833,4 +896,32 @@ async function starSubject(
 ): Promise<SeoSubject<SeoObjectGlobal, SeoObjectLocalized>> {
 	const page = await readSeoPage<SeoObjectGlobal, SeoObjectLocalized>(`o/${fileId}`);
 	return page ? pageSubject(page, url) : (await exportObject(fileId, url))[0];
+}
+
+/**
+ * A planet page's meta from its system file, found through the planet index,
+ * or the page of the live planet an alias names, maybe on another host. Null
+ * when the host has no planet of that number: a 404. Throws when the export
+ * cannot be read.
+ */
+export async function loadPlanetSeo(
+	host: number,
+	n: number,
+	url: URL
+): Promise<ExtrasolarPage | null> {
+	const found = await requestPlanets(url).planet(host, n);
+	if (!found) return null;
+	const { planet, system } = found;
+	const hostName = system.hosts.find((h) => h.id === planet.host)?.name ?? '';
+	const href = absoluteHref(planetHref(planet.host, planet.number, planet.name), url);
+	if (planet.host !== host || planet.number !== n) return aliasPage(href, url);
+	return {
+		kind: 'page',
+		seo: {
+			title: pageTitle(planet.name),
+			description: m.seo_planet_description({ name: planet.name, host: hostName }),
+			canonical: href,
+			ogType: 'article'
+		}
+	};
 }

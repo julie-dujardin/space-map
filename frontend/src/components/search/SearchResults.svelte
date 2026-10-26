@@ -38,9 +38,9 @@
 	// Right-aligned value tied to the active sort. Objects/features only — group
 	// rows show their member count instead (handled inside ResultRow).
 	function metricFor(hit: SearchHit): { value: string; unit?: string } | undefined {
-		// Neither has a figure of its own: a group shows its member count inside
-		// ResultRow, and a pad is a slab with a name.
-		if (hit.kind === 'group' || hit.kind === 'pad') return undefined;
+		// A group shows its member count inside ResultRow. A pad and a planet
+		// have no figure here.
+		if (hit.kind === 'group' || hit.kind === 'pad' || hit.kind === 'planet') return undefined;
 		switch (model.sort) {
 			case 'size':
 				return hit.diameter_km != null

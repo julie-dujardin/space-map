@@ -60,6 +60,28 @@ export interface ObjectHit extends BaseHit {
 	magnitude?: number;
 	/** Sortable YYYYMMDD int: discovery/launch/inception. */
 	inception?: number;
+	/** A star of the extrasolar catalogue that has planets. */
+	extrasolar?: boolean;
+	/** How many planets it has. */
+	planets?: number;
+}
+
+/** A planet of the extrasolar catalogue. `id` is its scene id, `x-<host>-b-<n>`. */
+export interface PlanetHit extends BaseHit {
+	kind: 'planet';
+	/** Scene id of the star it orbits, `x-<host>`. */
+	host_id: string;
+	number: number;
+	/** Scene id of the key star of its system file. */
+	system_id: string;
+	host_name: string;
+	designation: string | null;
+	/** planet | brown dwarf | sub-brown dwarf */
+	class: string | null;
+	status: string | null;
+	aliases?: string[];
+	discovery_year?: number;
+	discovery_method?: string;
 }
 
 /** Constellation / organization / asteroid-class collection. The Meili primary
@@ -95,9 +117,9 @@ export interface PadHit extends BaseHit {
 	launches: number;
 }
 
-export type SearchHit = FeatureHit | ObjectHit | GroupHit | PadHit;
+export type SearchHit = FeatureHit | ObjectHit | GroupHit | PadHit | PlanetHit;
 
-/** What a trip can start or end at — everything but a collection. */
+/** What a trip can start or end at: no collection, and nothing of another system. */
 export type EndpointHit = ObjectHit | FeatureHit | PadHit;
 
 // A dead search bar is indistinguishable from a healthy site: the UI renders its
@@ -258,11 +280,26 @@ function toPadHit(d: RawHit): PadHit {
 	return { ...d, ...p, kind: 'pad', id: String(d.id) } as PadHit;
 }
 
-function toHit(d: RawHit): SearchHit {
+/** The planet's fields lift out of `planet`; its key is its scene id. */
+export function toPlanetHit(d: RawHit): PlanetHit {
+	const p = (d.planet ?? {}) as RawHit;
+	return { ...d, ...p, kind: 'planet', id: String(d.id) } as PlanetHit;
+}
+
+export function toHit(d: RawHit): SearchHit {
 	if (d.kind === 'group') return toGroupHit(d);
 	if (d.kind === 'feature') return toFeatureHit(d);
 	if (d.kind === 'pad') return toPadHit(d);
+	if (d.kind === 'planet') return toPlanetHit(d);
 	return toObjectHit(d);
+}
+
+/** Whether a hit is a star or a planet of another system. Neither is an end
+ *  of a trip or a part of a comparison. A query can leave out the stars by
+ *  type, but a host of another class (a pulsar, a white dwarf) only by
+ *  `object.extrasolar`, which needs that setting in the index. */
+export function isExtrasolarHit(hit: SearchHit): boolean {
+	return hit.kind === 'planet' || (hit.kind === 'object' && hit.extrasolar === true);
 }
 
 /** Full-text search across the unified catalog. Objects, surface features and
@@ -304,9 +341,11 @@ export async function searchEndpoints(
 	const res = await c.index(INDEX).search(query, {
 		limit,
 		locales: [locale],
-		filter: `kind != "group" AND ${NOT_EXTRASOLAR}`
+		filter: `kind != "group" AND kind != "planet" AND ${NOT_EXTRASOLAR}`
 	});
-	return (res.hits ?? []).map((h) => toHit(h as RawHit)) as EndpointHit[];
+	return (res.hits ?? [])
+		.map((h) => toHit(h as RawHit))
+		.filter((h) => !isExtrasolarHit(h)) as EndpointHit[];
 }
 
 /**
@@ -392,9 +431,10 @@ async function searchMemberPage(
 	});
 	// A pad belongs to no group's member list — it is part of a site page rather
 	// than listed by one — so anything that comes back is a mis-tag, not a row.
+	// Nor does a planet of another system.
 	const hits = (res.hits ?? [])
 		.map((h) => toHit(h as RawHit))
-		.filter((h): h is MemberHit => h.kind !== 'pad');
+		.filter((h): h is MemberHit => h.kind !== 'pad' && h.kind !== 'planet');
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 
