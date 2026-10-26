@@ -2,6 +2,7 @@ import type { Mesh, Scene, WebGLRenderer } from 'three';
 import {
 	ObjectType,
 	isAsteroid,
+	isExoplanet,
 	isExtrasolar,
 	isSurfaceFeature,
 	type PositionedBody
@@ -84,6 +85,9 @@ export class PromotionRegistry {
 	private pinned: ReadonlySet<string> = new Set();
 	/** Bodies built for a pin, and taken down when the host lets go of it. */
 	private readonly pinPromoted = new Set<string>();
+	/** Planets of the drawn planetary systems and their host stars, taken
+	 *  down when their system leaves the view. */
+	private readonly systemPromoted = new Set<string>();
 	/** Active `/g/<slug>` membership filter, or null for the whole Earth-sat zone. */
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
@@ -214,15 +218,35 @@ export class PromotionRegistry {
 		this.finalizeBuilds();
 	}
 
+	/** Build the bodies of the drawn planetary systems, and take down the
+	 *  others built for a system. A focused body stays until it is cleared,
+	 *  as a focused star does. */
+	syncSystemBodies(bodies: readonly PositionedBody[]): void {
+		const focusedId = this.deps.getFocusedId();
+		if (focusedId !== undefined && this.systemPromoted.delete(focusedId)) {
+			this.userPromoted.add(focusedId);
+		}
+		const wanted = new Set(bodies.map((b) => b.data.id));
+		const dropped = [...this.systemPromoted].filter((id) => !wanted.has(id));
+		this.tearDownBodies(dropped, this.systemPromoted);
+		let built = false;
+		for (const body of bodies) {
+			if (this.buildBodyInstance(body, undefined, false, this.systemPromoted)) built = true;
+		}
+		if (built) this.finalizeBuilds();
+	}
+
 	/** Build mesh, label, halo, and dirty markers for one body. Returns false
 	 *  if the body was already promoted (caller can skip `finalizeBuilds`).
 	 *  `halfPromoteIds`, when non-null, asks `buildMajorBodies` to render the
 	 *  body as a halo-only minor entry — used for half-promotion. `auto` tracks
-	 *  the build in `autoPromoted` rather than `userPromoted`. */
+	 *  the build in `autoPromoted` rather than `userPromoted`; `tracker` in a
+	 *  set of the caller's. */
 	private buildBodyInstance(
 		body: PositionedBody,
 		halfPromoteIds?: ReadonlySet<string>,
-		auto = false
+		auto = false,
+		tracker?: Set<string>
 	): boolean {
 		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, renderer } = this.deps;
 		if (bodyObjects.has(body.data.id)) return false;
@@ -234,6 +258,7 @@ export class PromotionRegistry {
 			!body.orbitElements &&
 			!body.data.pageOnly &&
 			!isExtrasolar(body) &&
+			!isExoplanet(body) &&
 			body.data.orbitalSource !== OrbitalSource.SPICE_PROBE
 		) {
 			body.orbitElements = body.data;
@@ -269,6 +294,10 @@ export class PromotionRegistry {
 		const id = body.data.id;
 		if (this.defaults.has(id)) {
 			// Curated default — no extra tracking.
+		} else if (tracker) {
+			tracker.add(id);
+		} else if (isExoplanet(body)) {
+			this.systemPromoted.add(id);
 		} else if (auto) {
 			this.autoPromoted.add(id);
 		} else {
@@ -503,6 +532,10 @@ export class PromotionRegistry {
 			if (bo.trail) {
 				bo.trail.geometry.dispose();
 				disposeMaterial(bo.trail.material);
+			}
+			if (bo.planetDot) {
+				bo.planetDot.geometry.dispose();
+				disposeMaterial(bo.planetDot.material);
 			}
 			const objectType = bo.body.data.objectType;
 			if (objectType === ObjectType.SPACECRAFT) {

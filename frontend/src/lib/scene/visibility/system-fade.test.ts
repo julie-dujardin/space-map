@@ -6,7 +6,13 @@ import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import { LayerSet } from '$lib/scene/layers';
 import { VisibilityController } from './controller.svelte';
 import { VISIBILITY } from './thresholds';
-import { SYSTEM_IN_PX, SYSTEM_OUT_PX, systemDiameterPx, systemShown } from './system-fade';
+import {
+	SYSTEM_IN_PX,
+	SYSTEM_OUT_PX,
+	systemDiameterPx,
+	systemShown,
+	systemShownWithin
+} from './system-fade';
 
 /**
  * Zoomed far out, only the Sun draws. The switch follows the solar system's
@@ -112,5 +118,35 @@ describe('only the Sun past the switch', () => {
 		expect(vname(vis.getPlanetVisibility(bodies.bodiesById.get(EARTH)!, 5 * AU_SCALE))).not.toBe(
 			'HIDE'
 		);
+	});
+});
+
+describe("another star's planetary system", () => {
+	it('switches by its own outer orbit, at the same size on screen', () => {
+		// Proxima c's 1.5 AU orbit at 1/20 of Neptune's distance from the switch.
+		const neptune = 1.8455e5;
+		const scale = 1.5 / 30.07;
+		expect(systemDiameterPx(neptune * scale, 1080, 60, 1.5)).toBeCloseTo(3.05, 2);
+		const within = systemShownWithin(1.5, 1080, 60);
+		expect(systemDiameterPx(within, 1080, 60, 1.5)).toBeCloseTo(SYSTEM_IN_PX, 9);
+		expect(systemShown(within * 0.99, 1080, 60, false, 1.5)).toBe(true);
+		expect(systemShown(within * 1.01, 1080, 60, false, 1.5)).toBe(false);
+	});
+
+	it('takes a planet of another star out of the solar system zones, by its system share', () => {
+		const { vis } = buildScene();
+		const planet = mkBody({
+			id: 'x-27424668-b-1',
+			objectType: ObjectType.EXOPLANET,
+			parentId: 'x-27424668',
+			a: 0.0485
+		});
+		expect(vis.resolveSystemId(planet)).toBeNull();
+		expect(vis.exoplanetShare(planet)).toBe(0);
+		vis.systemShares = new Map([['x-27424668', 0.25]]);
+		expect(vis.exoplanetShare(planet)).toBe(0.25);
+		// It does not go with the Sun's own system.
+		vis.systemShare = 0;
+		expect(vis.exoplanetShare(planet)).toBe(0.25);
 	});
 });

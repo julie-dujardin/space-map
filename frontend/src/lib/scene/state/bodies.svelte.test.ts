@@ -120,3 +120,44 @@ describe('BodyIndex.addBodies', () => {
 		expect(held.data.epoch).toBe(2);
 	});
 });
+
+describe('BodyIndex, the stars and planets of other systems', () => {
+	const star = (n: number) =>
+		mkBody({
+			id: `x-${2 ** 24 + n}`,
+			orbitalSource: OrbitalSource.UNKNOWN,
+			objectType: ObjectType.EXTRASOLAR
+		});
+
+	it('keeps a pinned star past the LRU of a few dozen', () => {
+		const bodies = new BodyIndex();
+		bodies.addExtrasolar(star(0));
+		bodies.pinExtrasolar(new Set([star(0).data.id]));
+		for (let n = 1; n <= 100; n++) bodies.addExtrasolar(star(n));
+		expect(bodies.getBody(star(0).data.id)).toBeDefined();
+		expect(bodies.getBody(star(1).data.id)).toBeUndefined();
+		expect(bodies.getBody(star(100).data.id)).toBeDefined();
+		bodies.pinExtrasolar(new Set());
+		bodies.addExtrasolar(star(101));
+		expect(bodies.getBody(star(0).data.id)).toBeUndefined();
+	});
+
+	it('holds planets apart from bodiesById, and refreshes one it holds', () => {
+		const bodies = new BodyIndex();
+		const planet = mkBody({
+			id: 'x-27424668-b-1',
+			orbitalSource: OrbitalSource.UNKNOWN,
+			objectType: ObjectType.EXOPLANET,
+			parentId: 'x-27424668'
+		});
+		bodies.addExoplanets([planet]);
+		expect(bodies.getBody(planet.data.id)).toBe(planet);
+		expect(bodies.bodiesById.has(planet.data.id)).toBe(false);
+		const fresh = { ...planet, data: { ...planet.data, a: 0.05 } };
+		bodies.addExoplanets([fresh]);
+		expect(bodies.getBody(planet.data.id)).toBe(planet);
+		expect(planet.data.a).toBe(0.05);
+		bodies.dropExoplanets([planet.data.id]);
+		expect(bodies.getBody(planet.data.id)).toBeUndefined();
+	});
+});

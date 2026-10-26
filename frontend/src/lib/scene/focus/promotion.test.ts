@@ -21,6 +21,8 @@ vi.mock('$lib/scene/objects/body/textures', () => ({
 	loadBodyLabel: () => {},
 	unloadBodyTexture: () => {}
 }));
+vi.mock('$lib/scene/objects/body/model', () => ({ unloadBodyModel: () => {} }));
+vi.mock('$lib/scene/objects/surface/nomenclature', () => ({ disposeNomenclatureLabels: () => {} }));
 
 // Earth-sat emphasis ramps off members valid at sim time; scrubbing across a
 // snapshot's validity window loads no data, so the registry must recount on
@@ -226,5 +228,100 @@ describe('persistent star promotion', () => {
 		registry.ensureBodyObjects(first);
 		expect([...deps.bodyObjects.keys()]).toEqual([first.data.id]);
 		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(1);
+	});
+});
+
+describe('the bodies of a drawn planetary system', () => {
+	const HOST = 'x-27424668';
+	const B = 'x-27424668-b-1';
+	const C = 'x-27424668-b-2';
+
+	function harness() {
+		const bodies = new Map<string, PositionedBody>([
+			[HOST, mkBody({ id: HOST, objectType: ObjectType.EXTRASOLAR, parentId: '' })],
+			[B, mkBody({ id: B, objectType: ObjectType.EXOPLANET, parentId: HOST })],
+			[C, mkBody({ id: C, objectType: ObjectType.EXOPLANET, parentId: HOST })]
+		]);
+		const ctx = {
+			bodies: {
+				spacecraftByParent: new Map(),
+				asteroidBodiesByZone: new Map(),
+				dirtySpacecraftGroups: new Set<string>(),
+				dirtyAsteroidZones: new Set<string>(),
+				onBodiesAdded: () => () => {}
+			},
+			onEarthSatRollover: () => () => {},
+			onGroupFilterChange: () => () => {},
+			onSmallBodyFilterChange: () => () => {},
+			earthSatFilter: null,
+			smallBodyFilter: null,
+			getBody: (id: string) => bodies.get(id),
+			place: (body: PositionedBody) => body.position
+		} as unknown as ContextManager;
+		const bodyObjects = new Map<string, unknown>();
+		let focused: string | undefined;
+		const onUserPromotedChange = vi.fn();
+		const registry = new PromotionRegistry({
+			bodyObjects,
+			ctx,
+			clock: { jd: WINDOW_START },
+			scene: { remove: () => {} },
+			clickables: [],
+			meshToBody: new Map(),
+			pointClouds: {
+				setEarthSatEmphasis: vi.fn(),
+				setEmphasizedSmallBodyZone: vi.fn(),
+				rebuildMinor: vi.fn(),
+				basis: () => null
+			},
+			renderer: { domElement: {} },
+			assignMapLayerToTrails: () => {},
+			repositionAll: () => {},
+			getFocusedId: () => focused,
+			onUserPromotedChange
+		} as unknown as PromotionDeps);
+		return {
+			registry,
+			bodies,
+			built: () => new Set(bodyObjects.keys()),
+			focus: (id: string | undefined) => (focused = id),
+			onUserPromotedChange
+		};
+	}
+
+	it('builds them, and takes down the ones that left', () => {
+		const h = harness();
+		h.registry.syncSystemBodies([...h.bodies.values()]);
+		expect(h.built()).toEqual(new Set([HOST, B, C]));
+		// A planet keeps no orbit it was not given.
+		expect(h.bodies.get(B)!.orbitElements).toBeUndefined();
+		// They are not the reader's: the clear button does not count them.
+		h.registry.emitUserPromotedCount();
+		expect(h.onUserPromotedChange).toHaveBeenLastCalledWith(0);
+		h.registry.syncSystemBodies([]);
+		expect(h.built()).toEqual(new Set());
+	});
+
+	it('keeps a focused planet until it is cleared, as a focused star', () => {
+		const h = harness();
+		h.registry.syncSystemBodies([...h.bodies.values()]);
+		h.focus(B);
+		h.registry.syncSystemBodies([]);
+		expect(h.built()).toEqual(new Set([B]));
+		h.focus(undefined);
+		h.registry.syncSystemBodies([]);
+		expect(h.built()).toEqual(new Set([B]));
+		h.registry.clearUserPromoted();
+		expect(h.built()).toEqual(new Set());
+	});
+
+	it('keeps a focused host while its system draws, after the focus moves to a planet', () => {
+		const h = harness();
+		h.focus(HOST);
+		h.registry.ensureBodyObjects(h.bodies.get(HOST)!);
+		h.registry.syncSystemBodies([...h.bodies.values()]);
+		h.focus(B);
+		h.registry.syncSystemBodies([...h.bodies.values()]);
+		expect(h.built()).toEqual(new Set([HOST, B, C]));
 	});
 });

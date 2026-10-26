@@ -68,6 +68,15 @@ export class BodyIndex {
 	 *  to one. Kept off `bodiesById` like {@link focusFeature}: they have a
 	 *  fixed place and nothing per frame. */
 	private readonly extrasolar = new Map<string, PositionedBody>();
+	/** Extrasolar objects that planets orbit now: they stay past the LRU. */
+	private pinnedExtrasolar: ReadonlySet<string> = new Set();
+
+	/** Planets of the loaded planetary systems, by id. Off `bodiesById` too:
+	 *  the renderer draws the ones of the focused system. */
+	private readonly exoplanets = new Map<string, PositionedBody>();
+	/** Alias planet IDs that a navigation named → the live planet ID. By ID, so
+	 *  an alias follows its planet when the system drops and loads again. */
+	private readonly exoplanetAliases = new Map<string, string>();
 
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
@@ -123,7 +132,8 @@ export class BodyIndex {
 		const major = this.bodiesById.get(id);
 		if (major) return major;
 		if (this.focusFeature?.data.id === id) return this.focusFeature;
-		const star = this.extrasolar.get(id);
+		const star =
+			this.extrasolar.get(id) ?? this.exoplanets.get(this.exoplanetAliases.get(id) ?? id);
 		if (star) return star;
 		if (zone !== undefined) {
 			return (
@@ -142,15 +152,49 @@ export class BodyIndex {
 	}
 
 	/** Keep an extrasolar object, under `ids` too (the aliases that named it).
-	 *  The oldest go past a few dozen. */
+	 *  The oldest go past a few dozen, but for the pinned ones. */
 	addExtrasolar(body: PositionedBody, ids: readonly string[] = []): void {
 		for (const id of [body.data.id, ...ids]) {
 			this.extrasolar.delete(id);
 			this.extrasolar.set(id, body);
 		}
-		while (this.extrasolar.size > EXTRASOLAR_KEPT) {
-			this.extrasolar.delete(this.extrasolar.keys().next().value as string);
+		this.trimExtrasolar();
+	}
+
+	/** Keep these extrasolar objects past the LRU: the hosts of the planets drawn. */
+	pinExtrasolar(ids: ReadonlySet<string>): void {
+		this.pinnedExtrasolar = ids;
+		this.trimExtrasolar();
+	}
+
+	private trimExtrasolar(): void {
+		for (const id of this.extrasolar.keys()) {
+			if (this.extrasolar.size - this.pinnedExtrasolar.size <= EXTRASOLAR_KEPT) break;
+			if (!this.pinnedExtrasolar.has(id)) this.extrasolar.delete(id);
 		}
+	}
+
+	/** Hold the bodies of planets, refreshing the ones held under the same id. */
+	addExoplanets(bodies: readonly PositionedBody[]): void {
+		for (const body of bodies) {
+			const held = this.exoplanets.get(body.data.id);
+			if (!held) {
+				this.exoplanets.set(body.data.id, body);
+				continue;
+			}
+			adoptRow(held, body);
+			held.exoplanet = body.exoplanet;
+		}
+		this.dataVersion++;
+	}
+
+	/** Resolve the planet ID `aliasId` to the live planet `liveId`. */
+	aliasExoplanet(aliasId: string, liveId: string): void {
+		this.exoplanetAliases.set(aliasId, liveId);
+	}
+
+	dropExoplanets(ids: Iterable<string>): void {
+		for (const id of ids) this.exoplanets.delete(id);
 	}
 
 	/** Register a batch of bodies: updates `bodiesById`, the parent/child index,

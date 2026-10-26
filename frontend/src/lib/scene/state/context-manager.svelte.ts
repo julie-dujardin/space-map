@@ -9,7 +9,8 @@ import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import type { Placer } from '$lib/scene/position/placer';
 import { loadScene } from '$lib/scene/setup/scene-load';
 import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
-import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { ExoplanetStore } from '$lib/scene/exoplanets/store';
+import { extrasolarIdOf, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
 import {
@@ -46,6 +47,9 @@ export class ContextManager {
 	bodies = new BodyIndex();
 
 	credits = new CreditsStore();
+
+	/** The planetary systems of other stars that the scene holds. */
+	exoplanets = new ExoplanetStore(this);
 
 	/** Which layers this map draws, and which it never downloaded. The map
 	 *  replaces it from its options before `load()`; this default draws
@@ -208,9 +212,22 @@ export class ContextManager {
 	/** Add an object the scene does not hold yet (no reload). Call after
 	 *  {@link ready}. No-op before the first load phase ends, or if it is here. */
 	async ensureBody(targetId: string, date: Date): Promise<void> {
-		// An extrasolar object is in no zone: its record places it.
-		if (isExtrasolarObjectId(targetId)) {
-			await ensureExtrasolarBody(this, targetId);
+		// A planet of another star comes with its system and its host.
+		if (planetOfObjectId(targetId)) {
+			await this.exoplanets.ensurePlanet(targetId);
+			return;
+		}
+		// An extrasolar object is in no zone: its record places it. A star with
+		// planets brings its system, so a link can frame it.
+		if (isStarObjectId(targetId)) {
+			const host = extrasolarIdOf(targetId);
+			const system =
+				host === null
+					? null
+					: this.exoplanets.ensureHost(host).catch((e) => {
+							console.warn(`[planets] the system of ${targetId} did not load:`, e);
+						});
+			await Promise.all([ensureExtrasolarBody(this, targetId), system]);
 			return;
 		}
 		await this.refresher?.ensureBody(targetId, date);

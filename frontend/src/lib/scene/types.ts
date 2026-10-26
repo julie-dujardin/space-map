@@ -115,6 +115,8 @@ export interface BodyObjects {
 	carried?: boolean;
 	corona: Sprite | null;
 	starPoint: Points | null;
+	/** The dot of a planet of another star, in its label group. */
+	planetDot?: Points;
 	/** Thin trails use `Line`; wider trails use a `Mesh` of expanded quads. */
 	trail: Line | Mesh | null;
 	radiusScene: number;

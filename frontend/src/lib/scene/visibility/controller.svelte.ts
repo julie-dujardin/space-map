@@ -1,5 +1,6 @@
 import {
 	isAsteroid,
+	isExoplanet,
 	isExtrasolar,
 	ObjectType,
 	ZONE_A_RANGE,
@@ -76,6 +77,9 @@ export class VisibilityController {
 	/** The starfield's share of the sky, 0 to 1: an extrasolar object's halo
 	 *  and name show with the stars. Set by the renderer each frame. */
 	starShare = 0;
+	/** The share of each planetary system of another star that draws, by its
+	 *  host's scene id. Set by the renderer each frame. */
+	systemShares: ReadonlyMap<string, number> = new Map();
 
 	private focusedBodyIdPlain: string = SUN_ID;
 	private focusedSystemIdPlain: string | null = null;
@@ -204,7 +208,8 @@ export class VisibilityController {
 	 * top-level bodies, which are in no system.
 	 */
 	resolveSystemId(body: PositionedBody): string | null {
-		if (isExtrasolar(body)) return null;
+		// Another star's system has no barycentre or zone of the solar system.
+		if (isExtrasolar(body) || isExoplanet(body)) return null;
 		// A planetary barycenter IS the system root (planets/moons are its children),
 		// but the SSB (naif-0) is top-level, not a system.
 		const isSystemBarycenter =
@@ -310,6 +315,13 @@ export class VisibilityController {
 		}
 		this.moonVisibilityCache.set(moon.data.id, vis);
 		return vis;
+	}
+
+	/** The share of a planet of another star: its system's, unless the planets
+	 *  layer is hidden. */
+	exoplanetShare(body: PositionedBody): number {
+		if (this.getLayers().hidesBody(body.data.objectType, body.data.parentId)) return 0;
+		return this.systemShares.get(body.data.parentId) ?? 0;
 	}
 
 	setPinned(ids: Iterable<string>): void {
