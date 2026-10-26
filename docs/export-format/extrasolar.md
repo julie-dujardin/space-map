@@ -577,6 +577,8 @@ The export of 2026-10-23 (registry ingest 2, 180,949,689 IDs, all live):
 | Render nodes | 61,487 | 2.8 GB | 24 kB, 1,372 rows | 141 kB | 160 kB |
 | Render IDs | 61,487 | 0.63 GB | 5 kB | 34 kB | 42 kB |
 
+The export of 2026-10-26 (a new registry, 180,980,643 IDs) adds both FLAME groups and the metallicity groups to Point source: 437,532 tiles, 47.0 GB, median 92 kB and 349 rows, p90 178 kB, max 237 kB, about 260 B per row.
+
 Binary orbit tiles (`max_rows` 300), an estimate from the tile writer and the split rule over the 394,046 orbits of the positionable stars: 3,045 tiles, 118 MB, median 34 kB and 112 rows, p90 64 kB, max 111 kB.
 
 The sky cultures of registry ingest 4 (Stellarium at `0d956aa`, Bucur at `711e069`): 101 culture files (64 from Stellarium, 37 from Bucur) and the international names, 1.76 MB together. The median culture file is 3.7 kB; the largest are `chinese` (166 kB, 312 figures, 3,079 members) and `modern_chinese` (141 kB). 4,820 of the 4,864 stars of all cultures have a position.
