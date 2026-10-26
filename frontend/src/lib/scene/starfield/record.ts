@@ -6,7 +6,7 @@
  * table-2 row, which gives the distance where it has one.
  */
 
-import { distanceParallax, parallaxDistancePc, type TableRow } from '$lib/fetch/extrasolar/lookup';
+import { starDistance, type TableRow } from '$lib/fetch/extrasolar/lookup';
 import { icrsToTree, treeToScene, type Vec3 } from './tree';
 
 /** Epoch of the render tree's positions (Julian year). */
@@ -89,7 +89,7 @@ export function propagate(
 
 /** Where the star is drawn; null when it has no distance. */
 export function starPlace(row: TableRow, orbit: TableRow | null): StarPlace | null {
-	const distancePc = parallaxDistancePc(row, orbit);
+	const distancePc = starDistance(row, orbit)?.pc ?? null;
 	let ra = row.number('ra');
 	let dec = row.number('dec');
 	if (distancePc === null || ra === null || dec === null) return null;
@@ -109,20 +109,40 @@ export function gEstimate(v: number | null, bv: number | null, hp: number | null
 	return hp === null ? null : hp + G_MINUS_HP;
 }
 
-/** Apparent G: Gaia's, else the estimate from Hipparcos photometry. */
+/** Apparent G: Gaia's, then SIMBAD's, then the estimate from Hipparcos, then
+ *  the estimate from SIMBAD's V and B − V, then a planet host's G or V from
+ *  its exoplanet catalogue. */
 export function apparentG(row: TableRow): number | null {
+	const simbadV = row.number('simbad_v_mag');
+	const simbadB = row.number('simbad_b_mag');
 	return (
 		row.number('phot_g_mean_mag') ??
-		gEstimate(row.number('v_mag'), row.number('b_v'), row.number('hp_mag'))
+		row.number('simbad_g_mag') ??
+		gEstimate(row.number('v_mag'), row.number('b_v'), row.number('hp_mag')) ??
+		gEstimate(simbadV, simbadV !== null && simbadB !== null ? simbadB - simbadV : null, null) ??
+		row.number('host_g_mag') ??
+		row.number('host_v_mag')
 	);
 }
 
-/** Absolute G at the parallax distance, with no extinction, as the tree rounds it. */
+/** Absolute G at the star's distance, with no extinction, as the tree rounds it. */
 export function absoluteG(row: TableRow, orbit: TableRow | null): number | null {
 	const g = apparentG(row);
-	const used = distanceParallax(row, orbit);
-	if (g === null || used === null) return null;
-	return Math.round((g + 5 * Math.log10(used.parallax) - 10) / MAG_STEP) * MAG_STEP;
+	const distance = starDistance(row, orbit);
+	if (g === null || distance === null) return null;
+	return Math.round((g - 5 * Math.log10(distance.pc) + 5) / MAG_STEP) * MAG_STEP;
+}
+
+/** Absolute G of a planet host with no magnitude: faint, so the host draws
+ *  only near its system. */
+const HOST_PLACEHOLDER_ABS_MAG = 15;
+
+/** Absolute G as the tree draws the star: a placed planet host with no
+ *  magnitude takes HOST_PLACEHOLDER_ABS_MAG. */
+export function drawnAbsoluteG(row: TableRow, orbit: TableRow | null): number | null {
+	const absolute = absoluteG(row, orbit);
+	if (absolute !== null || row.text('host_star_source') === null) return absolute;
+	return starDistance(row, orbit) === null ? null : HOST_PLACEHOLDER_ABS_MAG;
 }
 
 /** Gaia BP − RP, else from the Hipparcos V − I; null where neither. */

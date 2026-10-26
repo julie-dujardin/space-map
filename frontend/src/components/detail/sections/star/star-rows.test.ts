@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ExtrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import { HAS_EXPORT, diskSource } from '$lib/fetch/extrasolar/__fixtures__/export';
-import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
+import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
+import { STAR } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
 import { ltrIsolate } from '$lib/format/bidi';
 import { starSections, starStats } from './star-rows';
 
@@ -10,6 +11,163 @@ import { starSections, starStats } from './star-rows';
 const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
 const NO_BREAK = new RegExp('\\u00a0', 'g');
 const plain = (s: string) => s.replace(ISOLATES, '').replace(NO_BREAK, ' ');
+
+describe("a star's distance", () => {
+	const UNCERTAIN =
+		'Uncertain. This star has no reliable parallax, so the distance comes from another source.';
+	const record = (values: Record<string, number | string>) =>
+		pointSourceRecord(valueColumns(values));
+	const position = (r: ExtrasolarRecord) =>
+		starSections(r).find((s) => s.key === 'position')?.rows ?? [];
+
+	it('comes from the distance group where the parallax is under 5σ', () => {
+		const star = record({
+			parallax: 0.012,
+			parallax_error: 0.02,
+			distance: 6267,
+			distance_lower: 4826,
+			distance_upper: 8535,
+			distance_source: 'bailer-jones-2021',
+			teff_gspphot: 5000,
+			phot_g_mean_mag: 12
+		});
+		const cards = starStats(star).flat();
+		expect(cards.map((s) => [s.label, plain(s.value), s.tooltip])).toEqual([
+			['Distance', '6,270 pc', UNCERTAIN],
+			['Temperature', expect.any(String), undefined],
+			['Apparent magnitude', '12.00', undefined],
+			['Absolute magnitude', (12 - 5 * Math.log10(6267) + 5).toFixed(2), UNCERTAIN]
+		]);
+		const rows = position(star);
+		const distance = rows.find((r) => r.label === 'Distance');
+		expect(plain(distance!.value)).toBe('6,267 pc (4,826–8,535 pc)');
+		expect(distance!.tooltip).toBe(UNCERTAIN);
+		expect(rows.find((r) => r.label === 'Distance source')?.value).toBe('Bailer-Jones et al. 2021');
+	});
+
+	it('comes from a 5σ parallax before the distance group', () => {
+		const star = record({
+			parallax: 500,
+			parallax_error: 0.1,
+			distance: 2.5,
+			distance_source: 'reyle-2021'
+		});
+		expect(starStats(star)[0][0].tooltip).toBeUndefined();
+		const rows = position(star);
+		expect(plain(rows.find((r) => r.label === 'Distance')!.value)).toBe('2.00000 ± 0.00040 pc');
+		expect(rows.find((r) => r.label === 'Distance')!.tooltip).toBeUndefined();
+		expect(rows.find((r) => r.label === 'Distance source')).toBeUndefined();
+	});
+
+	it('marks a parallax under 0.5 fidelity, where the group has no value', () => {
+		const star = record({
+			parallax: 10,
+			parallax_error: 0.1,
+			astrometry_source: 'gaia-dr3',
+			fidelity_v2: 0.1,
+			hipparcos_photometry_source: 'hipparcos-2007'
+		});
+		const distance = position(star).find((r) => r.label === 'Distance');
+		expect(distance?.tooltip).toBe('Uncertain. The astrometry of this star may be spurious.');
+		expect(position(star).find((r) => r.label === 'Distance source')).toBeUndefined();
+	});
+
+	it('shows the value alone where the group has no bounds', () => {
+		const star = record({ distance: 1.994, distance_source: 'reyle-2021' });
+		expect(plain(position(star).find((r) => r.label === 'Distance')!.value)).toBe('1.99 pc');
+	});
+
+	it('rounds a distance with one bound as its card does', () => {
+		const star = record({ distance: 2350, distance_upper: 2400, distance_source: 'literature' });
+		expect(plain(position(star).find((r) => r.label === 'Distance')!.value)).toBe('2,350 pc');
+	});
+
+	it('trusts a 5σ SIMBAD parallax and names SIMBAD', () => {
+		const star = record({
+			parallax: 0.1,
+			parallax_error: 0.2,
+			distance: 500,
+			distance_lower: 476,
+			distance_upper: 526,
+			distance_source: 'simbad-parallax'
+		});
+		const rows = position(star);
+		expect(rows.find((r) => r.label === 'Distance')!.tooltip).toBeUndefined();
+		expect(rows.find((r) => r.label === 'Distance source')?.value).toBe('SIMBAD');
+	});
+
+	it('shows the magnitudes of a star that only SIMBAD measured', () => {
+		const star = record({
+			simbad_v_mag: 7,
+			sp_type: 'K0',
+			distance: 100,
+			distance_source: 'reyle-2021'
+		});
+		const cards = starStats(star).flat().slice(2);
+		expect(cards.map((s) => [s.label, plain(s.value), s.note])).toEqual([
+			['Apparent magnitude', '7.00', 'V'],
+			['Absolute magnitude', '2.00', 'V']
+		]);
+	});
+
+	it('names the paper of a distance from the literature table', () => {
+		const star = record({
+			distance: 2350,
+			distance_lower: 2300,
+			distance_upper: 2400,
+			distance_method: 'expansion',
+			distance_source: 'literature'
+		});
+		const smith = { short: 'Smith 2006', title: 'The Homunculus', url: 'https://doi.org/x' };
+		const rows = starSections(star, { distance: [smith] }).find((s) => s.key === 'position')!.rows;
+		const distance = rows.find((r) => r.label === 'Distance')!;
+		expect(plain(distance.value)).toBe('2,350 ± 50 pc');
+		// A paper's distance was chosen for the star, so it is not marked uncertain.
+		expect(distance.tooltip).toBeUndefined();
+		expect(rows.filter((r) => r.label === 'Distance source')).toEqual([
+			{ label: 'Distance source', value: 'Smith 2006', href: 'https://doi.org/x' }
+		]);
+		// Before the object entry loads.
+		expect(position(star).find((r) => r.label === 'Distance source')?.value).toBe(
+			'Published paper'
+		);
+	});
+});
+
+describe("a star's identifiers", () => {
+	it('leaves out the SIMBAD oid and the literature key', () => {
+		const star: ExtrasolarRecord = {
+			id: STAR,
+			metadata: {
+				id: STAR,
+				name: 'Westerlund 1 W 26',
+				nameSource: 'simbad',
+				class: 'star',
+				classSource: null,
+				crossIds: [
+					{ catalogue: 'gaia', release: 'dr3', catalogueId: '5940106041452150272' },
+					{ catalogue: 'simbad', release: 'oid', catalogueId: '3521966' },
+					{
+						catalogue: 'literature',
+						release: 'star',
+						catalogueId: 'gaia/dr3/5940106041452150272'
+					}
+				],
+				mask: 2,
+				object: false,
+				aliasTarget: null
+			},
+			rows: new Map(),
+			home: null,
+			credits: []
+		};
+		const identifiers = starSections(star).find((s) => s.key === 'identifiers')!.rows;
+		expect(identifiers.map((r) => [r.label, r.value])).toEqual([
+			['Gaia DR3', '5940106041452150272'],
+			['Space Map ID', String(STAR)]
+		]);
+	});
+});
 
 describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 	const lookup = new ExtrasolarLookup(diskSource());
@@ -40,7 +198,8 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			]
 		]);
 		const rows = rowsOf(sirius);
-		expect(Object.keys(rows)).toEqual(['identifiers', 'position', 'brightness']);
+		expect(Object.keys(rows)).toEqual(['identifiers', 'position', 'brightness', 'parameters']);
+		expect(rows.parameters['Metallicity source']).toBe('PASTEL (Soubiran et al. 2016)');
 		expect(rows.identifiers).toMatchObject({
 			HD: '48915',
 			HIP: '32349',
@@ -71,22 +230,41 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			starStats(proxima)
 				.flat()
 				.map((s) => s.label)
-		).toEqual(['Distance', 'Temperature', 'Apparent magnitude', 'Absolute magnitude']);
+		).toEqual([
+			'Distance',
+			'Temperature',
+			'Apparent magnitude',
+			'Absolute magnitude',
+			'Radius',
+			'Luminosity'
+		]);
 		const rows = rowsOf(proxima);
 		expect(Object.keys(rows)).toEqual([
 			'identifiers',
 			'position',
 			'brightness',
+			'physical',
 			'parameters',
 			'quality'
 		]);
-		// Its Wikidata item is in the links section, not here.
-		expect(Object.keys(rows.identifiers)).toEqual(['Gaia DR3', 'HIP', 'IAU name', 'Space Map ID']);
+		// Its Wikidata item is in the links section, and the planet catalogues'
+		// keys are not shown.
+		expect(Object.keys(rows.identifiers)).toEqual([
+			'Gaia DR3',
+			'HIP',
+			'IAU name',
+			'PASTEL',
+			'Space Map ID'
+		]);
 		expect(rows.position.Parallax).toBe('768.067 ± 0.050 mas');
 		expect(rows.position['Right ascension']).toMatch(/^14ʰ 29ᵐ 34\.\d+ˢ ± 0\.024 mas$/);
 		expect(rows.position['Radial velocity']).toBe('-21.94 ± 0.22 km/s');
 		expect(rows.brightness['Gaia G']).toMatch(/^8\.98\d* ± 0\.000\d+$/);
 		expect(rows.quality.RUWE).toMatch(/^\d\.\d{3}$/);
+		// FLAME fits its radius from the parallax, and gives it no mass.
+		expect(rows.physical.Radius).toMatch(/^0\.16\d+ ± 0\.00\d+ R☉$/);
+		expect(rows.physical.Mass).toBeUndefined();
+		expect(rows.physical['Distance used']).toBe('Parallax');
 		expect(rows.quality['Probability: quasar']).toMatch(/^(< )?\d/);
 	});
 
@@ -143,6 +321,17 @@ describe("a binary star's distance", () => {
 		const single = pointSourceRecord(star(10, 0.125));
 		expect(stats(binary)).toEqual(stats(single));
 		expect(position(binary)).toEqual(position(single));
+	});
+
+	it("names the orbit parallax that places a planet host by its catalogue's distance", () => {
+		const host: ColumnSpec[] = [
+			...star(0.5, 0.125),
+			{ name: 'host_distance', type: 'float32', values: [70] },
+			{ name: 'host_star_source', type: 'dict', values: ['nasa-exoplanet-archive'] }
+		];
+		const rows = position(pointSourceRecord(host, [], orbit('Orbital')));
+		expect(rows.Parallax).toBe(position(pointSourceRecord(star(12.5, 0.0625))).Parallax);
+		expect(rows.Astrometry).toBe('Gaia DR3, parallax from Gaia DR3 orbit solution');
 	});
 });
 

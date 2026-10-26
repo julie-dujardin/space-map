@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { nodeInfo, type Container, type NodeInfo } from '$lib/fetch/extrasolar/container';
 import { ExtrasolarLookup, astrometricOrbit, homeRow } from '$lib/fetch/extrasolar/lookup';
 import { HAS_EXPORT, diskSource, readExportFile } from '$lib/fetch/extrasolar/__fixtures__/export';
-import { absoluteG, colourBpRp, gEstimate, propagate, starPlace } from './record';
+import { pointSourceRow } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
+import {
+	absoluteG,
+	apparentG,
+	colourBpRp,
+	drawnAbsoluteG,
+	gEstimate,
+	propagate,
+	starPlace
+} from './record';
 import { findStarRow } from './starfield';
 import type { Vec3 } from './tree';
 
@@ -31,6 +40,41 @@ describe('gEstimate', () => {
 		expect(gEstimate(-1.44, 0.009, -1.0876)).toBeCloseTo(-1.44 - 0.02907 - 0.02385 * 0.009, 4);
 		expect(gEstimate(null, null, 9)).toBeCloseTo(8.72, 6);
 		expect(gEstimate(5, null, null)).toBeNull();
+	});
+});
+
+describe('a star from SIMBAD at a group distance', () => {
+	it('takes G from SIMBAD, else from its V and B − V', () => {
+		expect(apparentG(pointSourceRow({ simbad_g_mag: 9, simbad_v_mag: 8 }))).toBe(9);
+		const vb = { simbad_v_mag: 8, simbad_b_mag: 9 };
+		expect(apparentG(pointSourceRow(vb))).toBeCloseTo(gEstimate(8, 1, null)!, 6);
+		expect(apparentG(pointSourceRow({ simbad_v_mag: 8 }))).toBeNull();
+	});
+
+	it('is placed and has its absolute G at the group distance', () => {
+		const row = pointSourceRow({
+			ra: 80,
+			dec: -69,
+			parallax: 0.01,
+			parallax_error: 0.05,
+			distance: 50_000,
+			distance_source: 'magellanic-clouds',
+			simbad_g_mag: 12
+		});
+		expect(starPlace(row, null)?.distancePc).toBe(50_000);
+		expect(absoluteG(row, null)).toBeCloseTo(12 - 5 * Math.log10(50_000) + 5, 3);
+	});
+});
+
+describe('a planet host with no magnitude', () => {
+	it("is drawn as the tree draws it: at its catalogue's distance, at absolute G 15", () => {
+		const place = { ra: 80, dec: -69 };
+		const row = pointSourceRow({ ...place, host_distance: 40, host_star_source: 'exoplanet-eu' });
+		expect(starPlace(row, null)?.distancePc).toBe(40);
+		expect(absoluteG(row, null)).toBeNull();
+		expect(drawnAbsoluteG(row, null)).toBe(15);
+		// A star with no magnitude that hosts no planet has no tree row.
+		expect(drawnAbsoluteG(pointSourceRow({ ...place, distance: 40 }), null)).toBeNull();
 	});
 });
 

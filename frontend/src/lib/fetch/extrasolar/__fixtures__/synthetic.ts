@@ -3,9 +3,11 @@
  * table 2 (Binary orbit), each one level-0 tile, written with the test writer.
  */
 
-import { KIND_SPLIT, KIND_TILE, type CrossId } from '../container';
+import { Container, KIND_SPLIT, KIND_TILE, type CrossId } from '../container';
 import type { ExtrasolarMetadata, ExtrasolarTable } from '../files';
+import { TableRow } from '../lookup';
 import { encode, tileInfoBytes, type ColumnSpec } from './writer';
+import { valueColumns } from './record';
 
 /** In level-0 pixel 0, the one tile of each table. */
 export const CELL = 123_456;
@@ -179,4 +181,15 @@ export function syntheticExport(
 		)
 	};
 	return { meta, payloads };
+}
+
+/** One Point source row of STAR. A number is a float32 column, a string a dict column. */
+export function pointSourceRow(values: Record<string, number | string>): TableRow {
+	const columns: ColumnSpec[] = [
+		{ name: 'id', type: 'id', values: [STAR] },
+		...valueColumns(values)
+	];
+	const bytes = encode(KIND_TILE, TOKENS.points, 1, columns, tileInfoBytes(0, 0, 1));
+	const tile = new Container(bytes.buffer as ArrayBuffer);
+	return new TableRow('point-source', table('point-source', 1, TOKENS.points), tile, 0);
 }

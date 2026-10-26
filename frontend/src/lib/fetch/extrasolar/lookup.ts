@@ -39,7 +39,8 @@ export interface MetadataRow {
 	/** Bit n is set when data table n has a row for the ID. */
 	mask: number;
 	/** True when the site's object bundles hold an entry for the ID: its
-	 *  names in other languages, its Wikidata and Wikipedia text. */
+	 *  names in other languages, its Wikidata and Wikipedia text, the papers
+	 *  of its values. */
 	object: boolean;
 	/** The live ID of an alias; null for a live ID. */
 	aliasTarget: number | null;
@@ -177,6 +178,13 @@ const DEFAULT_LIMITS: LookupLimits = { tiles: 32, results: 64 };
 
 /** A parallax under this many times its error gives no distance. */
 const MIN_PARALLAX_SNR = 5;
+/** A Gaia row under this astrometric fidelity has a suspect parallax. */
+const MIN_FIDELITY = 0.5;
+/** The source of the values that the literature table gives. */
+export const LITERATURE = 'literature';
+
+/** The astrometry sources that the fidelity rates. */
+const GAIA_ASTROMETRY = new Set(['gaia-dr3', 'gaia-dr3-named']);
 
 export const BINARY_ORBIT_SLUG = 'binary-orbit';
 /** Orbit solutions that fit the light centre's motion on the sky, with a
@@ -205,29 +213,113 @@ export function astrometricOrbit(record: ExtrasolarRecord): TableRow | null {
 	return orbit && type && ASTROMETRIC_SOLUTIONS.has(type) ? orbit : null;
 }
 
+/** The parallax of an orbit solution, where it is over 5 times its error. */
+function orbitParallax(orbit: TableRow | null): DistanceParallax | null {
+	const parallax = orbit?.number('parallax_nss') ?? null;
+	const error = orbit?.number('parallax_nss_error') ?? null;
+	if (parallax === null || error === null || !(parallax / error > MIN_PARALLAX_SNR)) return null;
+	return { parallax, error, fromOrbit: true };
+}
+
 /**
- * The render tree's rule: the row's own parallax over 5 times its error gives
- * the star a distance, and an astrometric orbit solution's parallax, also over
- * 5 times its error, gives its value. Null when the star has no distance.
- * `orbit` is the record's `astrometricOrbit`. It has no default, so that no
- * caller gets the single-star distance by omission.
+ * The parallax of the row, where it is over 5 times its error, with the
+ * parallax of the astrometric orbit solution in its place where that is also
+ * over 5 times its error. `orbit` is the record's `astrometricOrbit`. It has
+ * no default, so that no caller gets the single-star parallax by omission.
  */
 export function distanceParallax(row: TableRow, orbit: TableRow | null): DistanceParallax | null {
 	const parallax = row.number('parallax');
 	const error = row.number('parallax_error');
 	if (parallax === null || error === null || !(parallax / error > MIN_PARALLAX_SNR)) return null;
-	const nss = orbit?.number('parallax_nss') ?? null;
-	const nssError = orbit?.number('parallax_nss_error') ?? null;
-	if (nss !== null && nssError !== null && nss / nssError > MIN_PARALLAX_SNR) {
-		return { parallax: nss, error: nssError, fromOrbit: true };
-	}
-	return { parallax, error, fromOrbit: false };
+	return orbitParallax(orbit) ?? { parallax, error, fromOrbit: false };
 }
 
-/** Distance from `distanceParallax`, pc; null when it gives none. */
-export function parallaxDistancePc(row: TableRow, orbit: TableRow | null): number | null {
+/** A star's distance in pc and the bounds of its uncertainty. */
+export interface StarDistance {
+	pc: number;
+	lower: number | null;
+	upper: number | null;
+	/** `suspect parallax`: a 5σ Gaia parallax with an astrometric fidelity
+	 *  under 0.5. `catalogue`: a planet host's distance in its exoplanet
+	 *  catalogue. */
+	from: 'parallax' | 'suspect parallax' | 'group' | 'catalogue';
+	/** The catalogue of a distance from the distance group or of a planet host. */
+	source: string | null;
+	/** The parallax that gives the distance, where one does. */
+	parallax: DistanceParallax | null;
+}
+
+function fromParallax(used: DistanceParallax, from: StarDistance['from']): StarDistance {
+	const { parallax, error } = used;
+	return {
+		pc: 1000 / parallax,
+		lower: 1000 / (parallax + error),
+		upper: 1000 / (parallax - error),
+		from,
+		source: null,
+		parallax: used
+	};
+}
+
+/**
+ * The distance of a star by the rule of the render tree
+ * (`docs/export-format/extrasolar.md`): a distance from a paper, a 5σ
+ * parallax that is not flagged, the distance group, a planet host's
+ * catalogue distance, then a flagged 5σ parallax. A row is flagged when its
+ * Gaia astrometry has a fidelity under 0.5. A flagged row has a distance only
+ * from a paper or when Hipparcos, SIMBAD or an exoplanet catalogue saw it.
+ * `orbit` is the record's `astrometricOrbit`, whose 5σ parallax stands for
+ * the row's.
+ */
+export function starDistance(row: TableRow, orbit: TableRow | null): StarDistance | null {
+	const group = groupDistance(row);
+	// A distance from a paper was chosen on purpose, so it beats any parallax.
+	if (group?.source === LITERATURE) return group;
+	const fidelity = row.number('fidelity_v2');
+	const flagged =
+		GAIA_ASTROMETRY.has(row.text('astrometry_source') ?? '') &&
+		fidelity !== null &&
+		fidelity < MIN_FIDELITY;
 	const used = distanceParallax(row, orbit);
-	return used === null ? null : 1000 / used.parallax;
+	if (used && !flagged) return fromParallax(used, 'parallax');
+	const seen =
+		!flagged ||
+		row.text('hipparcos_photometry_source') !== null ||
+		row.text('simbad_photometry_source') !== null ||
+		row.text('host_star_source') !== null;
+	if (!seen) return null;
+	return group ?? hostDistance(row, orbit) ?? (used && fromParallax(used, 'suspect parallax'));
+}
+
+function groupDistance(row: TableRow): StarDistance | null {
+	const distance = row.number('distance');
+	if (distance === null || distance <= 0) return null;
+	return {
+		pc: distance,
+		lower: row.number('distance_lower'),
+		upper: row.number('distance_upper'),
+		from: 'group',
+		source: row.text('distance_source'),
+		parallax: null
+	};
+}
+
+/** A planet host's distance in its exoplanet catalogue. A 5σ orbit parallax
+ *  measures it better. */
+function hostDistance(row: TableRow, orbit: TableRow | null): StarDistance | null {
+	const pc = row.number('host_distance');
+	if (pc === null || pc <= 0) return null;
+	const fromOrbit = orbitParallax(orbit);
+	if (fromOrbit) return fromParallax(fromOrbit, 'parallax');
+	const error = row.number('host_distance_error');
+	return {
+		pc,
+		lower: error === null || error >= pc ? null : pc - error,
+		upper: error === null ? null : pc + error,
+		from: 'catalogue',
+		source: row.text('host_star_source'),
+		parallax: null
+	};
 }
 
 /** The home row of a record, where it has one. */
@@ -238,7 +330,7 @@ export function homeRow(record: ExtrasolarRecord): TableRow | null {
 /** Whether the record places the object in 3D. */
 export function hasDistance(record: ExtrasolarRecord): boolean {
 	const home = homeRow(record);
-	return home !== null && parallaxDistancePc(home, astrometricOrbit(record)) !== null;
+	return home !== null && starDistance(home, astrometricOrbit(record)) !== null;
 }
 
 export function readMetadataRow(c: Container, row: number): MetadataRow {

@@ -19,6 +19,7 @@
 	import type { ImageryCredit, ModelCredit } from '$lib/scene/state/credits.svelte';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { orientationCredits } from '$lib/credits/orientation-sources';
+	import { localizedStarCredit } from '$lib/credits/star-sources';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
 	import { creditedOrbitArchives, scopedCredits } from '$lib/scene/state/attribution';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -244,7 +245,7 @@
 				<section class="space-y-1">
 					{@render sectionHeader(m.attribution_section_stars())}
 					<ul class="space-y-0.5">
-						{#each ctx.credits.stars as credit (credit.source)}
+						{#each ctx.credits.stars.map(localizedStarCredit) as credit (credit.source)}
 							<li>
 								{@render link(credit.source, credit.name, credit.organisation)}
 								{#if credit.license}<span class="text-muted-foreground">

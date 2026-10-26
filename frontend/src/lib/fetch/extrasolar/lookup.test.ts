@@ -7,7 +7,7 @@ import {
 	distanceParallax,
 	hasDistance,
 	homeRow,
-	parallaxDistancePc,
+	starDistance,
 	type LookupSource
 } from './lookup';
 import {
@@ -18,6 +18,7 @@ import {
 	STAR,
 	WITH_TABLE_2,
 	idOf,
+	pointSourceRow,
 	syntheticExport,
 	type ObjectColumn
 } from './__fixtures__/synthetic';
@@ -76,7 +77,7 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		expect(record.metadata.object).toBe(true);
 		expect(record.home).toBe('point-source');
 		expect(homeRow(record)?.number('parallax')).toBeCloseTo(379.21, 4);
-		expect(parallaxDistancePc(homeRow(record)!, null)).toBeCloseTo(1000 / 379.21, 4);
+		expect(starDistance(homeRow(record)!, null)?.pc).toBeCloseTo(1000 / 379.21, 4);
 		expect(hasDistance(record)).toBe(true);
 		expect(record.credits).toHaveLength(1);
 		expect(new Set(source.reads)).toEqual(
@@ -223,7 +224,7 @@ describe('the distance of a binary star', () => {
 				error: 0.0625,
 				fromOrbit: true
 			});
-			expect(parallaxDistancePc(homeRow(record)!, solution)).toBe(80);
+			expect(starDistance(homeRow(record)!, solution)?.pc).toBe(80);
 		}
 	});
 
@@ -236,12 +237,24 @@ describe('the distance of a binary star', () => {
 			error: 0.125,
 			fromOrbit: false
 		});
-		expect(parallaxDistancePc(homeRow(weak)!, null)).toBe(100);
+		expect(starDistance(homeRow(weak)!, null)?.pc).toBe(100);
 	});
 
 	it('gives no distance where the single-star parallax gives none, as the tree draws none', () => {
 		const record = pointSourceRecord(single(0.5, 0.125), [], orbit('Orbital', 12.5, 0.0625));
-		expect(parallaxDistancePc(homeRow(record)!, astrometricOrbit(record))).toBeNull();
+		expect(starDistance(homeRow(record)!, astrometricOrbit(record))).toBeNull();
+	});
+
+	it("gives a planet host the orbit parallax before its catalogue's distance", () => {
+		const host: ColumnSpec[] = [
+			...single(0.5, 0.125),
+			{ name: 'host_distance', type: 'float32', values: [70] },
+			{ name: 'host_star_source', type: 'dict', values: ['nasa-exoplanet-archive'] }
+		];
+		const record = pointSourceRecord(host, [], orbit('Orbital', 12.5, 0.0625));
+		const distance = starDistance(homeRow(record)!, astrometricOrbit(record));
+		expect(distance && [distance.from, distance.pc]).toEqual(['parallax', 80]);
+		expect(starDistance(homeRow(record)!, null)?.from).toBe('catalogue');
 	});
 });
 
@@ -284,7 +297,7 @@ describe.skipIf(!HAS_EXPORT)('ExtrasolarLookup on the real export', () => {
 
 	it.each([
 		[String(999 * 2 ** 29 + 22137869), 'no-row'],
-		[String(2 * 2 ** 24 + 5), 'id'],
+		[String(30 * 2 ** 24 + 5), 'id'],
 		['022137869', 'id'],
 		['9007199254740992', 'id']
 	])('has no page for %s', async (text, reason) => {
@@ -294,5 +307,67 @@ describe.skipIf(!HAS_EXPORT)('ExtrasolarLookup on the real export', () => {
 	it('bars the IDs where the host may not show non-commercial tables', async () => {
 		const barred = new ExtrasolarLookup(diskSource((entry) => entry.distribution === undefined));
 		expect(await barred.lookup('22137869')).toEqual({ kind: 'missing', reason: 'barred' });
+	});
+});
+
+describe("a star's distance, by the render tree's rule", () => {
+	const from = (values: Record<string, number | string>) => {
+		const distance = starDistance(pointSourceRow(values), null);
+		return distance && [distance.from, distance.pc, distance.source];
+	};
+	const parallax = { parallax: 10, parallax_error: 0.1 };
+	const group = { distance: 50, distance_source: 'hunt-reffert-2024' };
+	const suspect = { astrometry_source: 'gaia-dr3', fidelity_v2: 0.1 };
+	const flagged = { ...suspect, simbad_photometry_source: 'simbad' };
+
+	it('takes a trusted 5σ parallax before the group', () => {
+		expect(from({ ...parallax, ...group })).toEqual(['parallax', 100, null]);
+		expect(from({ ...parallax, ...group, fidelity_v2: 0.5 })).toEqual(['parallax', 100, null]);
+	});
+
+	it('takes a distance from a paper before any parallax', () => {
+		const paper = { distance: 2350, distance_source: 'literature' };
+		expect(from({ ...parallax, ...paper })).toEqual(['group', 2350, 'literature']);
+		expect(from({ ...parallax, ...paper, ...flagged })).toEqual(['group', 2350, 'literature']);
+	});
+
+	it('takes the group where the parallax is under 5σ', () => {
+		const weak = { parallax: 0.1, parallax_error: 0.1 };
+		expect(from({ ...weak, ...group })).toEqual(['group', 50, 'hunt-reffert-2024']);
+		expect(from(weak)).toBeNull();
+	});
+
+	it('takes the group before a parallax under 0.5 fidelity, then the parallax', () => {
+		expect(from({ ...parallax, ...group, ...flagged })).toEqual(['group', 50, 'hunt-reffert-2024']);
+		expect(from({ ...parallax, ...flagged })).toEqual(['suspect parallax', 100, null]);
+	});
+
+	it('gives no distance under 0.5 fidelity without a Hipparcos, SIMBAD or planet match', () => {
+		expect(from({ ...parallax, ...group, ...suspect })).toBeNull();
+		const hipparcos = { ...suspect, hipparcos_photometry_source: 'hipparcos-2007' };
+		expect(from({ ...parallax, ...hipparcos })?.[0]).toBe('suspect parallax');
+		const paper = { distance: 2350, distance_source: 'literature' };
+		expect(from({ ...parallax, ...suspect, ...paper })).toEqual(['group', 2350, 'literature']);
+	});
+
+	it('flags only a Gaia parallax', () => {
+		const hipparcos = { astrometry_source: 'hipparcos-2007', fidelity_v2: 0.1 };
+		expect(from({ ...parallax, ...group, ...hipparcos })).toEqual(['parallax', 100, null]);
+	});
+
+	it("takes a planet host's catalogue distance after the group, before a suspect parallax", () => {
+		const host = {
+			host_distance: 40,
+			host_distance_error: 2,
+			host_star_source: 'nasa-exoplanet-archive'
+		};
+		expect(from({ ...host })).toEqual(['catalogue', 40, 'nasa-exoplanet-archive']);
+		expect(starDistance(pointSourceRow(host), null)).toMatchObject({ lower: 38, upper: 42 });
+		expect(from({ ...host, ...group })).toEqual(['group', 50, 'hunt-reffert-2024']);
+		expect(from({ ...host, ...parallax, ...suspect })).toEqual([
+			'catalogue',
+			40,
+			'nasa-exoplanet-archive'
+		]);
 	});
 });

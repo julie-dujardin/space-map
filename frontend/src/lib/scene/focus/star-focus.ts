@@ -3,8 +3,8 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { astrometricOrbit, homeRow, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import {
-	absoluteG,
 	colourBpRp,
+	drawnAbsoluteG,
 	positiveNumber,
 	starPlace,
 	starRadiusKm
@@ -48,7 +48,7 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 			record,
 			scene: place?.scene ?? null,
 			tree: place?.tree ?? null,
-			absMag: home ? absoluteG(home, orbit) : null,
+			absMag: home ? drawnAbsoluteG(home, orbit) : null,
 			colour: home ? colourBpRp(home) : null,
 			radiusKm,
 			teff: home ? positiveNumber(home, 'teff_gspphot') : null

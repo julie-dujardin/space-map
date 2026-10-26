@@ -471,6 +471,14 @@ export function isViewable(entry: PanoramaEntry): boolean {
 	return textureAllowed(entry.distribution);
 }
 
+/** A paper cited for a value of a star's record. */
+export interface ValueReference {
+	/** Authors and year. */
+	short: string;
+	title: string;
+	url: string;
+}
+
 export interface GlobalObjectData {
 	id: string;
 	type: string;
@@ -532,6 +540,9 @@ export interface GlobalObjectData {
 	ring_features?: Record<string, RingFeature>;
 	/** The tables and papers the catalogue was read off — credited under the tab. */
 	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
+	/** Stars: the papers cited for values of the record, by column group
+	 *  (`distance`). Such a value has the source `literature`. */
+	references?: Partial<Record<string, ValueReference[]>>;
 	/** System-wide figures for the Rings tab's stat cards. Not to be confused
 	 *  with the *localized* `ring_system`, which is the "Rings of X" article. */
 	ring_stats?: RingStats;

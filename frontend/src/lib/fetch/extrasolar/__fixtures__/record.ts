@@ -26,6 +26,15 @@ function tableRow(slug: string, number: number, columns: ColumnSpec[]): TableRow
 	return new TableRow(slug, table, new Container(own(bytes)), 0);
 }
 
+/** The columns of one row: a number is a float32, a string a dict value. */
+export function valueColumns(values: Record<string, number | string>): ColumnSpec[] {
+	return Object.entries(values).map(([name, value]) => ({
+		name,
+		type: typeof value === 'number' ? 'float32' : 'dict',
+		values: [value]
+	}));
+}
+
 export function pointSourceRecord(
 	columns: ColumnSpec[],
 	credits: ExtrasolarCredit[] = [],

@@ -149,8 +149,9 @@
 		}));
 		// Lineup members whose ellipsoid was fitted rather than tabulated.
 		out.push(...lineup.overviewCredits.shapeWorks);
-		// A star's values come from the catalogues its records name.
-		if (star) out.push(...starCredits(star));
+		// A star's values come from the catalogues its records name, or from
+		// the papers its object entry cites.
+		if (star) out.push(...starCredits(star, data?.global?.references));
 		if (cat.solarSystem)
 			out.push({
 				key: MASS_INVENTORY_URL,
@@ -243,7 +244,11 @@
 				hostName={body?.data.name ?? undefined}
 			/>
 		{:else if star}
-			<StarSections record={star} localized={data?.localized ?? null} />
+			<StarSections
+				record={star}
+				global={data?.global ?? null}
+				localized={data?.localized ?? null}
+			/>
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />

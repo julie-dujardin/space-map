@@ -1,7 +1,8 @@
 /**
  * What a star's panel shows, from its records: the stat cards and the
  * sections of rows. Every value comes from one column of the record (or a
- * fixed formula of a few), at the precision of its uncertainty.
+ * fixed formula of a few), at the precision of its uncertainty. A value from
+ * the literature table names its paper, from the star's object entry.
  */
 
 import * as m from '$lib/paraglide/messages.js';
@@ -11,7 +12,10 @@ import {
 	astrometricOrbit,
 	distanceParallax,
 	type DistanceParallax,
+	LITERATURE,
+	starDistance,
 	type ExtrasolarRecord,
+	type StarDistance,
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
 import { PC_AU } from '$lib/scene/starfield/tree';
@@ -28,6 +32,7 @@ import { formatBound, formatPercent, joinParts, sigFigures } from '$lib/format/q
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { starSourceName } from '$lib/credits/star-sources';
+import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
 
@@ -50,6 +55,8 @@ export interface StarRowEntry {
 	value: string;
 	/** Where the value leads, off the site. */
 	href?: string;
+	/** What this particular value is. */
+	tooltip?: string;
 }
 
 export interface StarSection {
@@ -72,12 +79,25 @@ const JOINED_IDS: [column: string, label: () => string][] = [
 	['lamost_id', m.star_xid_lamost]
 ];
 
+/** Cross-ids not shown. A SIMBAD oid and a NASA Exoplanet Archive row are
+ *  internal keys; a literature key and the other planet catalogues' keys
+ *  repeat another id or the name of the star. */
+const HIDDEN_CATALOGUES = new Set([
+	'simbad/oid',
+	'literature/star',
+	'nasa-exoplanet-archive/pscomppars',
+	'exoplanet-eu/catalog',
+	'open-exoplanet-catalogue/systems'
+]);
+
 const SIMBAD = 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=';
 /** The links section shows the Wikidata item, from the object entry. */
 const LINKED_CATALOGUES = new Set(['wikidata']);
 
-function crossIdRow(x: CrossId): StarRowEntry {
-	const catalogue = CATALOGUES[`${x.catalogue}/${x.release}`];
+function crossIdRow(x: CrossId): StarRowEntry | null {
+	const key = `${x.catalogue}/${x.release}`;
+	if (HIDDEN_CATALOGUES.has(key)) return null;
+	const catalogue = CATALOGUES[key];
 	if (!catalogue) return { label: `${x.catalogue} ${x.release}`, value: x.catalogueId };
 	const href = catalogue.prefix
 		? `${SIMBAD}${encodeURIComponent(`${catalogue.prefix} ${x.catalogueId}`)}`
@@ -255,6 +275,39 @@ function flameRows(
 	];
 }
 
+/** Distance group sources as sure as a 5σ parallax: a distance chosen from a
+ *  paper, and a 5σ SIMBAD parallax. */
+const SURE_SOURCES = new Set([LITERATURE, 'simbad-parallax']);
+
+/** Why a distance is uncertain; undefined for one from a 5σ parallax or a paper. */
+function uncertainty(distance: StarDistance | null): string | undefined {
+	if (!distance || distance.from === 'parallax' || SURE_SOURCES.has(distance.source ?? '')) {
+		return undefined;
+	}
+	return distance.from === 'suspect parallax'
+		? m.star_distance_suspect()
+		: m.star_distance_uncertain();
+}
+
+/** The measured magnitudes the stat cards can show, the first found, in its own
+ *  band: a Hipparcos star has no G of its own. */
+const APPARENT_MAGNITUDES: [column: string, band: 'G' | 'V'][] = [
+	['phot_g_mean_mag', 'G'],
+	['v_mag', 'V'],
+	['simbad_g_mag', 'G'],
+	['simbad_v_mag', 'V'],
+	['host_g_mag', 'G'],
+	['host_v_mag', 'V']
+];
+
+function apparentMagnitude(ps: TableRow): { value: number; band: 'G' | 'V' } | null {
+	for (const [column, band] of APPARENT_MAGNITUDES) {
+		const value = ps.number(column);
+		if (value !== null) return { value, band };
+	}
+	return null;
+}
+
 /** The stat cards, two to a row: the distance and the temperature (or the
  *  spectral type), both magnitudes, then the radius and the mass (or the
  *  luminosity). A card the record has no value for is left out, and an odd
@@ -263,13 +316,14 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const ps = pointSource(record);
 	if (!ps) return [];
 	const out: Stat[] = [];
-	const used = distanceParallax(ps, astrometricOrbit(record));
-	const distance = used && 1000 / used.parallax;
+	const distance = starDistance(ps, astrometricOrbit(record));
+	const uncertain = uncertainty(distance);
 	if (distance !== null) {
 		out.push({
 			label: m.star_stat_distance(),
-			value: joinParts({ value: sigFigures(distance), unit: m.symbol_parsec() }),
-			note: joinParts({ value: sigFigures(distance * PC_LY), unit: m.symbol_light_year() })
+			value: joinParts({ value: sigFigures(distance.pc), unit: m.symbol_parsec() }),
+			note: joinParts({ value: sigFigures(distance.pc * PC_LY), unit: m.symbol_light_year() }),
+			tooltip: uncertain
 		});
 	}
 	const teff = ps.number('teff_gspphot');
@@ -282,22 +336,20 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	} else if (spType) {
 		out.push({ label: m.star_stat_spectral_type(), value: spType });
 	}
-	const gaiaG = ps.number('phot_g_mean_mag');
-	const v = ps.number('v_mag');
-	if (gaiaG !== null || v !== null) {
+	const apparent = apparentMagnitude(ps);
+	if (apparent) {
 		out.push({
 			label: m.star_stat_apparent_magnitude(),
-			value: fixed(gaiaG ?? v!, 2),
-			note: gaiaG !== null ? 'G' : 'V'
+			value: fixed(apparent.value, 2),
+			note: apparent.band
 		});
 	}
-	// In the band of the apparent magnitude: a Hipparcos star has no G of its own.
-	const apparent = gaiaG ?? v;
-	if (apparent !== null && used !== null) {
+	if (apparent && distance !== null) {
 		out.push({
 			label: m.star_stat_absolute_magnitude(),
-			value: fixed(apparent + 5 * Math.log10(used.parallax) - 10, 2),
-			note: gaiaG !== null ? 'G' : 'V'
+			value: fixed(apparent.value - 5 * Math.log10(distance.pc) + 5, 2),
+			note: apparent.band,
+			tooltip: uncertain
 		});
 	}
 	// The radius the scene draws the star with.
@@ -327,8 +379,12 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	return rowsOfTwo;
 }
 
-/** The sections of rows, in panel order; an empty section is left out. */
-export function starSections(record: ExtrasolarRecord): StarSection[] {
+/** The sections of rows, in panel order; an empty section is left out.
+ *  `references` are the papers of the object entry. */
+export function starSections(
+	record: ExtrasolarRecord,
+	references?: GlobalObjectData['references']
+): StarSection[] {
 	const u = units();
 	const meta = record.metadata;
 	const ps = pointSource(record);
@@ -343,7 +399,7 @@ export function starSections(record: ExtrasolarRecord): StarSection[] {
 			])
 		}
 	];
-	if (ps) sections.push(...pointSourceSections(ps, astrometricOrbit(record), u));
+	if (ps) sections.push(...pointSourceSections(ps, astrometricOrbit(record), u, references));
 	return sections.filter((section) => section.rows.length > 0);
 }
 
@@ -357,16 +413,40 @@ function astrometrySourceName(source: string | null, used: DistanceParallax | nu
 	});
 }
 
+/** A distance with its bounds; with one bound or none, at the precision of a
+ *  stat card rather than as an exact value. */
+function distanceValue(distance: StarDistance, pc: string): string {
+	const { lower, upper } = distance;
+	if (lower !== null && upper !== null) return withBounds(distance.pc, lower, upper, pc);
+	return joinParts({ value: sigFigures(distance.pc), unit: pc });
+}
+
+/** The source of a distance that no parallax gives: each paper that the
+ *  object entry cites for it, else the name of its catalogue. */
+function distanceSources(
+	distance: StarDistance | null,
+	references: GlobalObjectData['references']
+): (StarRowEntry | null)[] {
+	const label = m.star_row_distance_source();
+	const papers = distance?.source === LITERATURE ? (references?.distance ?? []) : [];
+	if (papers.length > 0) {
+		return papers.map((paper) => ({ label, value: paper.short, href: paper.url }));
+	}
+	return [row(label, distance?.source && starSourceName(distance.source))];
+}
+
 function pointSourceSections(
 	ps: TableRow,
 	orbit: TableRow | null,
-	u: ReturnType<typeof units>
+	u: ReturnType<typeof units>,
+	references: GlobalObjectData['references']
 ): StarSection[] {
 	const ra = ps.number('ra');
 	const dec = ps.number('dec');
 	const epoch = ps.number('epoch');
-	const used = distanceParallax(ps, orbit);
-	const distance = used && 1000 / used.parallax;
+	const distance = starDistance(ps, orbit);
+	// The parallax behind the distance, else the 5σ parallax the row has.
+	const used = distance?.parallax ?? distanceParallax(ps, orbit);
 	const position: (StarRowEntry | null)[] = [
 		ra !== null && dec !== null
 			? {
@@ -392,21 +472,18 @@ function pointSourceSections(
 		used
 			? { label: m.star_row_parallax(), value: plusMinus(used.parallax, used.error, u.mas, 2) }
 			: measured(ps, m.star_row_parallax(), 'parallax', 'parallax_error', u.mas),
-		used && distance !== null
+		distance !== null
 			? {
 					label: m.star_row_distance(),
-					value: withBounds(
-						distance,
-						1000 / (used.parallax + used.error),
-						1000 / (used.parallax - used.error),
-						u.pc
-					)
+					value: distanceValue(distance, u.pc),
+					tooltip: uncertainty(distance)
 				}
 			: null,
 		measured(ps, m.star_row_pm_ra(), 'pmra', 'pmra_error', u.masPerYear),
 		measured(ps, m.star_row_pm_dec(), 'pmdec', 'pmdec_error', u.masPerYear),
 		measured(ps, m.star_row_radial_velocity(), 'radial_velocity', 'radial_velocity_error', u.kms),
-		row(m.star_row_astrometry_source(), astrometrySourceName(ps.text('astrometry_source'), used))
+		row(m.star_row_astrometry_source(), astrometrySourceName(ps.text('astrometry_source'), used)),
+		...distanceSources(distance, references)
 	];
 
 	const g = ps.number('phot_g_mean_mag');

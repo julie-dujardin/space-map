@@ -1,16 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { ExtrasolarLookup } from '$lib/fetch/extrasolar/lookup';
+import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+import { ExtrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import { HAS_EXPORT, diskSource, exportMetadata } from '$lib/fetch/extrasolar/__fixtures__/export';
-import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
-import { CREDIT_PAGES, starCredits, starSourceName } from './star-sources';
+import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
+import { CREDIT_PAGES, localizedStarCredit, starCredits, starSourceName } from './star-sources';
 
 describe('star sources', () => {
 	it('names the sources the tables name', () => {
 		expect(starSourceName('gaia-dr3')).toBe('Gaia DR3');
+		expect(starSourceName('gaia-dr3-named')).toBe('Gaia DR3');
 		expect(starSourceName('hipparcos-2007')).toBe('Hipparcos (2007)');
 		expect(starSourceName('andrae-2023')).toBe('Gaia XP (Andrae et al. 2023)');
 		expect(starSourceName('gaia-dr3-gspphot')).toBe('Gaia DR3 GSP-Phot');
 		expect(starSourceName('gaia-dr3-nss')).toBe('Gaia DR3 orbit solution');
+		expect(starSourceName('hipparcos-1997')).toBe('Hipparcos (1997)');
+		expect(starSourceName('simbad')).toBe('SIMBAD');
+		expect(starSourceName('simbad-hip')).toBe('SIMBAD');
+		expect(starSourceName('reyle-2021')).toBe('Reylé et al. 2021');
+		expect(starSourceName('ultracoolsheet')).toBe('UltracoolSheet');
+		expect(starSourceName('hunt-reffert-2024')).toBe('Hunt & Reffert 2024');
+		expect(starSourceName('magellanic-clouds')).toBe('Magellanic Clouds');
+		expect(starSourceName('bailer-jones-2021')).toBe('Bailer-Jones et al. 2021');
+		expect(starSourceName('literature')).toBe('Published paper');
 		expect(starSourceName('unknown')).toBe('unknown');
 	});
 
@@ -85,6 +96,88 @@ describe('star sources', () => {
 	});
 });
 
+describe('star credits', () => {
+	// One credit per page, labelled with its page's key.
+	const credits: ExtrasolarCredit[] = Object.entries(CREDIT_PAGES).map(([key, page]) => ({
+		name: key,
+		organisation: 'Test',
+		source: `https://example.org${page}`
+	}));
+	const record = (
+		values: Record<string, number | string>,
+		nameSource: string | null
+	): ExtrasolarRecord => {
+		const star = pointSourceRecord(valueColumns(values), credits);
+		return { ...star, metadata: { ...star.metadata, nameSource } };
+	};
+	const labels = (values: Record<string, number | string>, nameSource: string | null) =>
+		starCredits(record(values, nameSource)).map((c) => c.label);
+	const noParallax = { parallax: 0.01, parallax_error: 0.05 };
+	const smith = { short: 'Smith 2006', title: 'The Homunculus', url: 'https://doi.org/x' };
+
+	it('credits SIMBAD and the paper of the cloud', () => {
+		const smc = { distance: 62_440, distance_source: 'magellanic-clouds' };
+		expect(labels({ ...noParallax, ...smc, astrometry_source: 'simbad' }, 'simbad')).toEqual([
+			'simbad',
+			'smc'
+		]);
+		const lmc = { distance: 49_590, distance_source: 'magellanic-clouds' };
+		const gaia = { astrometry_source: 'gaia-dr3-named', gaia_photometry_source: 'gaia-dr3-named' };
+		expect(labels({ ...noParallax, ...lmc, ...gaia }, 'gaia-dr3-named')).toEqual(['gaia', 'lmc']);
+	});
+
+	it('credits each distance catalogue when the panel shows its distance', () => {
+		const pages = {
+			'simbad-parallax': 'simbad',
+			'reyle-2021': 'reyle',
+			ultracoolsheet: 'ultracoolsheet',
+			'hunt-reffert-2024': 'huntReffert',
+			'bailer-jones-2021': 'bailerJones'
+		};
+		for (const [source, page] of Object.entries(pages)) {
+			const row = { ...noParallax, distance: 20, distance_source: source };
+			expect(labels(row, null)).toEqual([page]);
+		}
+	});
+
+	it('leaves out the distance catalogue where a 5σ parallax gives the distance', () => {
+		const row = { parallax: 500, parallax_error: 0.1, distance: 2, distance_source: 'reyle-2021' };
+		expect(labels({ ...row, astrometry_source: 'gaia-dr3' }, 'gaia-dr3')).toEqual(['gaia']);
+	});
+
+	it('credits the Hipparcos catalogue of 1997 for its entries', () => {
+		const row = {
+			astrometry_source: 'hipparcos-1997',
+			hipparcos_photometry_source: 'hipparcos-1997'
+		};
+		expect(labels(row, 'hipparcos-1997')).toEqual(['hipparcosPhotometry']);
+	});
+
+	it('cites the papers of a distance from the literature table', () => {
+		const row = { ...noParallax, distance: 2350, distance_source: 'literature' };
+		const found = starCredits(record(row, null), { distance: [smith] });
+		expect(found).toEqual([
+			{ key: smith.url, label: smith.title, url: smith.url, note: 'Smith 2006' }
+		]);
+		// The entry has not loaded.
+		expect(starCredits(record(row, null))).toEqual([]);
+		// A paper's distance beats a 5σ parallax, so it is still cited.
+		const parallax = { ...row, parallax: 500, parallax_error: 0.1 };
+		expect(starCredits(record(parallax, null), { distance: [smith] })).toEqual(found);
+	});
+
+	it("names the credit of the literature table in the reader's language", () => {
+		const literature = credits.find((c) => c.name === 'literature')!;
+		expect(localizedStarCredit(literature)).toEqual({
+			...literature,
+			name: 'Published papers',
+			organisation: "cited on each star's page"
+		});
+		const gaia = credits.find((c) => c.name === 'gaia')!;
+		expect(localizedStarCredit(gaia)).toBe(gaia);
+	});
+});
+
 describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 	const lookup = new ExtrasolarLookup(diskSource());
 	const labels = async (id: number) => {
@@ -101,14 +194,20 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 	});
 
 	it('credits the catalogues behind each star', async () => {
+		// Sirius's [Fe/H] is from PASTEL, by its SIMBAD id, beside XHIP's.
 		expect(await labels(22137869)).toEqual([
+			'The PASTEL catalogue, 2020 version (B/pastel)',
+			'SIMBAD astronomical database',
 			'Hipparcos, the new reduction (I/311)',
 			'The Hipparcos and Tycho Catalogues (I/239)',
+			'Extended Hipparcos Compilation, XHIP (V/137D)',
 			'IAU Catalog of Star Names'
 		]);
 		expect(await labels(27424668)).toEqual([
 			'Gaia Data Release 3',
 			'Astrometric fidelity of Gaia EDR3',
+			'The PASTEL catalogue, 2020 version (B/pastel)',
+			'SIMBAD astronomical database',
 			'The Hipparcos and Tycho Catalogues (I/239)',
 			'IAU Catalog of Star Names'
 		]);
