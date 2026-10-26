@@ -233,6 +233,20 @@ class TestNames:
         assert rows["name"].to_pylist() == ["V1610 Cygni", None]
         assert rows["simbad_otype"].to_pylist() == ["*", "*"]
 
+    def test_a_catalogued_system_keeps_its_designation(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "* a Lup", "HIP 71500", "HD 128266"),
+                star(2, RA, DEC, "HD 128267", "HIP 71502", "Gaia DR3 21", G=8.0),
+            ],
+            links=[(1, 2)],
+        )
+        stars = SimbadList.read(directory)
+        assert stars.handed() == {}
+        rows, _ = simbad.engine_rows(stars, set(), {}, {})
+        assert rows["name"].to_pylist() == ["HD 128267"]
+
 
 class TestSimbadList:
     """Systems, their primary component and the numbers they hand down."""

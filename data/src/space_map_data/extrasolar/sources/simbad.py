@@ -6,8 +6,10 @@ below it and no object with a Gaia id is above it. A system without a Gaia id
 is not a row: its components are the points. A component below an object
 with a Gaia id is inside that point when its light adds to that of the point.
 A system gives its HIP and HD numbers and its designation to its brightest
-component row, when that row has none of its own. A row does not claim the
-number of a Hipparcos star that is far from it.
+component row, when that row has none of its own. A system that has other
+HIP or HD numbers than that row is a catalogued star itself, and keeps its
+designation. A row does not claim the number of a Hipparcos star that is far
+from it.
 
 A row with a Gaia DR3 id claims it. A row without one claims its HIP number.
 A row claims its HD number only when no Hipparcos star has that number:
@@ -545,9 +547,18 @@ class SimbadList:
                 number = getattr(system, kind)
                 if number and not getattr(target, kind) and kind not in given[primary]:
                     given[primary][kind] = number
+            # A system with a HIP or HD number of its own, where its primary
+            # has another, is itself a catalogued star ("* a Lup" is HIP 71500,
+            # its component HIP 71502), so the designation is that star's.
+            apart = any(
+                (number := getattr(system, kind))
+                and getattr(target, kind) not in (None, number)
+                for kind in ("hip", "hd")
+            )
             name = _designated(system.identifiers)
             if (
                 name
+                and not apart
                 and not _designated(target.identifiers)
                 and "designation" not in given[primary]
             ):

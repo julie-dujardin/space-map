@@ -890,7 +890,12 @@ class IngestRun:
         for start, end, row_id in zip(starts, ends, row_ids):
             at = int(parent[start])
             own_key = int(keys[at])
-            name = f"{source.catalogue}/{source.release}/{row_id}"
+            # A row of a distance catalogue has no id of its own.
+            name = (
+                f"a {source.catalogue}/{source.release} row"
+                if row_id is None
+                else f"{source.catalogue}/{source.release}/{row_id}"
+            )
             # A rejected link is a conflict. It never joins two objects.
             links: dict[int, str] = {}
             for c in range(start, end):
