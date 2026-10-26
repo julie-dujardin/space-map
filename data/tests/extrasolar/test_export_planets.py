@@ -446,22 +446,15 @@ class TestChecks:
 
 
 class TestHostMerge:
-    """A literature host that the second ingest joins to its Gaia twin."""
+    """A literature host that the second ingest joins to its Gaia twin, since
+    only then does the catalogue give the values to compare."""
 
     def test_the_old_url_leads_to_the_planet_on_its_new_host(
         self, root, backup, tmp_path, out
     ):
         files = downloads()
-        files.eu.append(
-            eu_planet(
-                "Zeta b",
-                "Zeta",
-                *offset(*ZETA, 0.8, 30),
-                orbital_period="7",
-                mag_v="11.2",
-                star_distance="100",
-            )
-        )
+        zeta = eu_planet("Zeta b", "Zeta", *offset(*ZETA, 0.8, 30), orbital_period="7")
+        files.eu.append(zeta)
         ingest(root, backup, files.write(tmp_path / "one"))
         registry = Registry(root)
         literature = int(registry.lookup(EU, "catalog", ["Zeta"])[0])
@@ -471,6 +464,7 @@ class TestHostMerge:
         first = ExportReader(out / "v1" / "x").planet(literature, 1)
         assert first is not None and first["designation"] == "Zeta b"
 
+        zeta |= {"mag_v": "11.2", "star_distance": "100"}
         ingest(root, backup, files.write(tmp_path / "two"))
         assert Registry(root).lookup(EU, "catalog", ["Zeta"])[0] == twin
         with Registry(root).writer() as writer:

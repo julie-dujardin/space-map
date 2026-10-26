@@ -1,10 +1,12 @@
 """The exoplanet part of the extrasolar ingest.
 
-`prepare` reads the catalogues, joins the stars and planets, classes the
-planets and builds the pass rows: the host rows of each catalogue, and the
-Gaia DR3 rows of the hosts that no positionable Gaia row holds. `add_passes`
-runs the three catalogue passes and adds `PlanetsExtension`, which numbers
-the planets and writes the Planets part and the planets table at commit.
+`read` comes before the star passes: it reads the catalogues and the Gaia DR3
+rows of the hosts that no positionable Gaia row holds. `prepare` comes after
+the star passes, so the hosts without ids find their twins among the stars of
+this ingest too. It joins the stars and planets, classes the planets and
+builds the host rows of each catalogue. `add_passes` runs the three catalogue
+passes and adds `PlanetsExtension`, which numbers the planets and writes the
+Planets part and the planets table at commit.
 
 The Gaia rows of the hosts go to the gaia-dr3-named pass, whose astrometry
 ranks below Hipparcos. A host with a HIP number and an unpositionable DR3
@@ -124,6 +126,8 @@ class Prepared:
     twins: TwinSearch
     # Hosts that claim their HIP number for an unpositionable DR3 source.
     by_hip: list[str]
+    # Unpositionable DR3 ids of hosts that `read` did not read a row for.
+    unread: list[int]
 
     def batches(self, source: str) -> list[pa.Table]:
         return [self.host_rows[source]]
@@ -195,20 +199,33 @@ def read_gaia_rows(
 DEFAULT_INPUTS = Inputs()
 
 
-def prepare(
-    reader: GaiaReader,
-    registry: Registry,
-    hip_names: dict[int, str],
-    inputs: Inputs = DEFAULT_INPUTS,
-    wgsn: Iterable[names.WgsnName] = (),
-) -> Prepared:
-    """Read and join the catalogues, and build the pass rows.
+@dataclass
+class Read:
+    """What the ingest reads before the star passes."""
 
-    `reader` joins the Gaia rows of the hosts as it joins its chunks.
-    `registry` gives the stars that a host without ids may be a twin of, and
-    `hip_names` the Hipparcos name of each HIP number. `wgsn` gives the names
-    of the IAU WGSN pass: a host row leaves out a name that this pass claims
-    on its star.
+    catalogues: list[Catalogue]
+    hub: simbad.Simbad
+    neighbours: dict[int, int]
+    # The identities before the twin search.
+    stars: Stars
+    orbits: dict[int, list[table.SkyOrbit]]
+    # DR3 ids of the hosts' sources without a 5σ parallax, and of those that
+    # are no Hipparcos best neighbour.
+    sources: set[int]
+    unpositionable: set[int]
+    # The rows of the gaia-dr3-named pass, and the DR3 ids they are for.
+    gaia_rows: pa.Table
+    gaia_counts: Counter
+    wanted: set[int]
+
+
+def read(reader: GaiaReader, inputs: Inputs = DEFAULT_INPUTS) -> Read:
+    """Read the catalogues, and the Gaia rows of the hosts' unpositionable
+    sources.
+
+    `reader` joins the Gaia rows as it joins its chunks. The hosts are those
+    before the twin search: a twin joins a star without ids to one with ids,
+    so it adds no DR3 id. `prepare` lists any that it adds.
     """
     cats = [
         catalogues.read_archive(inputs.archive),
@@ -218,16 +235,51 @@ def prepare(
     hub = simbad.read_simbad(inputs.simbad)
     neighbours = hosts.read_neighbours(inputs.neighbourhood)
     stars = hosts.build_stars(cats, hub, neighbours)
-    search = _search_twins(stars, cats, hub, registry)
-    if search.joins:
-        stars = hosts.build_stars(cats, hub, neighbours, search.joins)
-    # A companion at its primary's position is a star of the primary's system.
-    systems = hosts.group_systems(
-        stars, [(stars.of[a], stars.of[b]) for a, b in search.links]
-    )
-    joined = join_planets(cats, stars, systems, hub)
+    systems = hosts.group_systems(stars, [])
     orbits = table.read_sky_orbits(inputs.orbits)
+    records, _ = _records(
+        join_planets(cats, stars, systems, hub), stars, systems, orbits
+    )
+    sources = unpositionable_ids(inputs)
+    unpositionable = sources - set(reader.best.source_id.tolist())
+    wanted = _wanted(
+        [stars.identities[i] for i in {record.star for record in records}],
+        unpositionable,
+    )
+    gaia_rows, gaia_counts = read_gaia_rows(inputs, wanted, reader)
+    return Read(
+        cats,
+        hub,
+        neighbours,
+        stars,
+        orbits,
+        sources,
+        unpositionable,
+        gaia_rows,
+        gaia_counts,
+        wanted,
+    )
 
+
+def _wanted(
+    host_identities: list[hosts.Identity], unpositionable: set[int]
+) -> set[int]:
+    """The DR3 ids of hosts that their Gaia row places: a host with a HIP
+    number and an unpositionable source claims the HIP number instead."""
+    return {
+        i.gaia_dr3
+        for i in host_identities
+        if i.gaia_dr3 and not (i.hip and i.gaia_dr3 in unpositionable)
+    }
+
+
+def _records(
+    joined: JoinResult,
+    stars: Stars,
+    systems: Systems,
+    orbits: dict[int, list[table.SkyOrbit]],
+) -> tuple[list[Record], Counter]:
+    """The table records of the joined planets, and the planets left out."""
     records: list[Record] = []
     excluded: Counter = Counter()
     for planet in joined.planets:
@@ -249,6 +301,34 @@ def prepare(
             excluded["above 60 MJ"] += 1
             continue
         records.append(record)
+    return records, excluded
+
+
+def prepare(
+    read: Read,
+    run: IngestRun,
+    hip_names: dict[int, str],
+    inputs: Inputs = DEFAULT_INPUTS,
+    wgsn: Iterable[names.WgsnName] = (),
+) -> Prepared:
+    """Join the stars and planets, and build the host rows.
+
+    It comes after the star passes: `run` gives the stars that a host without
+    ids may be a twin of. `hip_names` gives the Hipparcos name of each HIP
+    number. `wgsn` gives the names of the IAU WGSN pass: a host row leaves out
+    a name that this pass claims on its star.
+    """
+    cats, hub = read.catalogues, read.hub
+    stars = read.stars
+    search = _search_twins(stars, cats, hub, run)
+    if search.joins:
+        stars = hosts.build_stars(cats, hub, read.neighbours, search.joins)
+    # A companion at its primary's position is a star of the primary's system.
+    systems = hosts.group_systems(
+        stars, [(stars.of[a], stars.of[b]) for a, b in search.links]
+    )
+    joined = join_planets(cats, stars, systems, hub)
+    records, excluded = _records(joined, stars, systems, read.orbits)
 
     host_set = {record.star for record in records}
     systems.choose_keys(stars, host_set)
@@ -271,10 +351,9 @@ def prepare(
     classes = {i: hub.star_class(stars.identities[i].oid) for i in host_list}
     lensed = hosts.found_by(stars, cats, {catalogues.MICROLENSING})
     claims: dict[int, tuple[str, str, str]] = {}
-    unpositionable = unpositionable_ids(inputs) - set(reader.best.source_id.tolist())
     by_hip = []
     for identity in host_identities:
-        if identity.hip and identity.gaia_dr3 in unpositionable:
+        if identity.hip and identity.gaia_dr3 in read.unpositionable:
             claims[identity.index] = (*hosts.HIP, str(identity.hip))
             by_hip.append(f"{identity.name}: HIP {identity.hip}")
     for member, twin in search.claims.items():
@@ -294,17 +373,18 @@ def prepare(
         )
         for source in SOURCES
     }
-    wanted = {
-        i.gaia_dr3 for i in host_identities if i.gaia_dr3 and i.index not in claims
-    }
-    gaia_rows, gaia_counts = read_gaia_rows(inputs, wanted, reader)
+    unread = sorted(
+        (_wanted(host_identities, read.unpositionable) - read.wanted) & read.sources
+    )
+    for dr3 in unread:
+        logger.warning("exoplanets: no Gaia row read for the host source %d", dr3)
     logger.info(
         "exoplanets: %d planets around %d stars, %d Gaia rows for unpositionable"
         " hosts, %d hosts by their HIP number, %d twins and %d joins of %d stars"
         " without ids",
         len(records),
         len(host_list),
-        gaia_rows.num_rows,
+        read.gaia_rows.num_rows,
         len(by_hip),
         len(search.claims),
         len(search.joined),
@@ -319,13 +399,14 @@ def prepare(
         excluded,
         named,
         host_rows,
-        gaia_rows,
-        gaia_counts,
+        read.gaia_rows,
+        read.gaia_counts,
         host_list,
         sum(len(system) for system in iau_names),
         len(named.wgsn),
         search,
         by_hip,
+        unread,
     )
 
 
@@ -356,7 +437,7 @@ def _component(name: str) -> str:
 
 
 def _search_twins(
-    stars: Stars, cats: list[Catalogue], hub: simbad.Simbad, registry: Registry
+    stars: Stars, cats: list[Catalogue], hub: simbad.Simbad, run: IngestRun
 ) -> TwinSearch:
     """The twins of the planet hosts without a Gaia DR3 id or HIP number.
 
@@ -393,7 +474,7 @@ def _search_twins(
             holder[(*hosts.GAIA_DR3, str(identity.gaia_dr3))] = identity.index
         if identity.hip:
             holder[(*hosts.HIP, str(identity.hip))] = identity.index
-    found = twins.find(registry, targets, holder.keys())
+    found = twins.find(run, targets, holder.keys())
     first = {
         identity.index: (identity.first.catalogue, identity.first.key)
         for identity in stars.identities
@@ -766,8 +847,14 @@ class PlanetsExtension:
             limit=None,
         )
         lines += _listed(
-            "check: twins (hosts without ids that claim a registry star by position,"
-            " parallax and magnitude)",
+            "check: unpositionable host sources that the twin search added, with no"
+            " Gaia row",
+            [f"Gaia DR3 {dr3}" for dr3 in prepared.unread],
+            limit=None,
+        )
+        lines += _listed(
+            "check: twins (hosts without ids that claim a star by position, parallax"
+            " and magnitude)",
             found.listed(search.targets),
             limit=None,
         )

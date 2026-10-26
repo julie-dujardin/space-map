@@ -173,20 +173,10 @@ def ingest(
         )
     complete = limit is None
     with IngestRun.start(root, backup_root) as run:
-        # Under the run's lock: the hosts look for twins in the registry.
-        planets = exoplanets.prepare(
-            reader,
-            run.registry,
-            hip_names,
-            exoplanet_inputs,
-            names.claimed(name_rows, iau_rows),
-        )
-        planets.host_rows = {
-            name: _keep(rows, ranges) for name, rows in planets.host_rows.items()
-        }
-        planets.gaia_rows = _keep(planets.gaia_rows, ranges)
+        read = exoplanets.read(reader, exoplanet_inputs)
+        read.gaia_rows = _keep(read.gaia_rows, ranges)
         # The Gaia row of a host has its astrophysical parameters, so it wins.
-        hosts = planets.gaia_rows["catalogue_id"]
+        hosts = read.gaia_rows["catalogue_id"]
         named_rows = named_rows.filter(
             pc.invert(pc.is_in(named_rows["catalogue_id"], value_set=hosts))
         )
@@ -214,12 +204,19 @@ def ingest(
             )
         ]
         run.add(GAIA_DR3, reader.batches(chunks), complete)
-        run.add(GAIA_DR3_NAMED, [named_rows, planets.gaia_rows], complete)
+        run.add(GAIA_DR3_NAMED, [named_rows, read.gaia_rows], complete)
         run.add(HIPPARCOS, [stars], complete)
         run.add(HIPPARCOS_1997, [rough], complete)
         run.add(SIMBAD, [simbad_rows], complete)
         run.add(SIMBAD_HIP, [simbad_hip_rows], complete)
         run.add(IAU_WGSN, [name_rows], complete)
+        # The hosts without ids look for twins among the stars of these passes.
+        planets = exoplanets.prepare(
+            read, run, hip_names, exoplanet_inputs, names.claimed(name_rows, iau_rows)
+        )
+        planets.host_rows = {
+            name: _keep(rows, ranges) for name, rows in planets.host_rows.items()
+        }
         exoplanets.add_passes(run, planets, complete)
         for source, rows in distance_rows:
             run.add(source, [rows], complete)

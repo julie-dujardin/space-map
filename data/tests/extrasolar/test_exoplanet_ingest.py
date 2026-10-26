@@ -13,12 +13,13 @@ from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
 from space_map_data.extrasolar.exoplanets.names import WgsnName
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sources import gaia
+from space_map_data.extrasolar.sources import gaia, hipparcos
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
     GAIA_DR3_NAMED,
     BestNeighbours,
 )
+from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from tests.extrasolar.conftest import (
     GAIA,
     META,
@@ -31,7 +32,7 @@ from tests.extrasolar.conftest import (
 from tests.extrasolar.exoplanet_files import Downloads, archive_planet, eu_planet
 from tests.extrasolar.test_gaia_orbits import build as build_orbits
 from tests.extrasolar.test_gaia_orbits import solution
-from tests.extrasolar.test_stars import fidelity, gaia_star, gaia_stars
+from tests.extrasolar.test_stars import fidelity, gaia_star, gaia_stars, hip_stars
 
 RA, DEC = centre(4_000_777)
 NO_NEIGHBOURS = BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64))
@@ -306,9 +307,10 @@ def gaia_pass() -> pa.Table:
 def ingest(root, backup, inputs, complete=True):
     with IngestRun.start(root, backup) as run:
         reader = gaia.GaiaReader(NO_NEIGHBOURS, orbits=HOST_ORBITS)
-        prepared = exoplanets.prepare(reader, run.registry, {}, inputs)
+        read = exoplanets.read(reader, inputs)
         run.add(GAIA_DR3, [gaia_pass()], complete)
-        run.add(GAIA_DR3_NAMED, [prepared.gaia_rows], complete)
+        run.add(GAIA_DR3_NAMED, [read.gaia_rows], complete)
+        prepared = exoplanets.prepare(read, run, {}, inputs)
         exoplanets.add_passes(run, prepared, complete)
         return run.commit(), prepared
 
@@ -470,7 +472,8 @@ class TestWgsnStarNames:
         inputs = downloads().write(tmp_path / "in")
         with IngestRun.start(root, backup) as run:
             reader = gaia.GaiaReader(NO_NEIGHBOURS, orbits=HOST_ORBITS)
-            prepared = exoplanets.prepare(reader, run.registry, {}, inputs, wgsn)
+            read = exoplanets.read(reader, inputs)
+            prepared = exoplanets.prepare(read, run, {}, inputs, wgsn)
         host_names = {
             name
             for rows in prepared.host_rows.values()
@@ -490,9 +493,9 @@ def sunlike(source_id: int, ra: float, dec: float) -> dict:
 
 
 class TestTwins:
-    """A host without ids claims a lone registry star that agrees with it."""
+    """A host without ids claims a lone star that agrees with it."""
 
-    def registry(self, root, backup) -> Registry:
+    def rows(self) -> pa.Table:
         stars = gaia_stars(
             [
                 sunlike(1, *at(0)),
@@ -503,30 +506,27 @@ class TestTwins:
                 sunlike(6, *at(60, 180)),
             ]
         )
-        rows = gaia.engine_rows(gaia.join_fidelity(stars, fidelity([])), NO_NEIGHBOURS)
-        with IngestRun.start(root, backup) as run:
-            run.add(GAIA_DR3, [rows])
-            run.commit()
-        return Registry(root)
+        return gaia.engine_rows(gaia.join_fidelity(stars, fidelity([])), NO_NEIGHBOURS)
 
     def target(self, key, centre, arcsec, **values) -> twins.Target:
         ra, dec = offset(*centre, arcsec, 45)
         return twins.Target(key, f"T{key}", ra, dec, **values)
 
-    def test_checks(self, root, backup):
-        registry = self.registry(root, backup)
-        found = twins.find(
-            registry,
-            [
-                self.target(1, at(0), 0.5, v_mag=11.2, distance=100.0),
-                # Two stars within 5″.
-                self.target(2, at(60), 1.0, v_mag=11.2),
-                self.target(3, at(120), 0.5, parallax=50.0, parallax_error=1.0),
-                self.target(4, at(180), 4.0, parallax=10.0),
-                self.target(5, at(240), 0.5, v_mag=11.2),
-                self.target(6, at(60, 180), 0.5, parallax=10.0, companion=True),
-            ],
-        )
+    def targets(self) -> list[twins.Target]:
+        return [
+            self.target(1, at(0), 0.5, v_mag=11.2, distance=100.0),
+            # Two stars within 5″.
+            self.target(2, at(60), 1.0, v_mag=11.2),
+            self.target(3, at(120), 0.5, parallax=50.0, parallax_error=1.0),
+            self.target(4, at(180), 4.0, parallax=10.0),
+            self.target(5, at(240), 0.5, v_mag=11.2),
+            self.target(6, at(60, 180), 0.5, parallax=10.0, companion=True),
+        ]
+
+    def test_checks_in_a_first_ingest(self, root, backup):
+        with IngestRun.start(root, backup) as run:
+            run.add(GAIA_DR3, [self.rows()])
+            found = twins.find(run, self.targets())
         assert set(found.twins) == {1}
         twin = found.twins[1]
         assert twin.claim == ("gaia", "dr3", "1")
@@ -540,13 +540,48 @@ class TestTwins:
         )
         assert any("companion star" in text for text in found.refused)
 
+    def test_the_next_ingest_finds_the_same_twins(self, root, backup):
+        with IngestRun.start(root, backup) as run:
+            run.add(GAIA_DR3, [self.rows()])
+            first = twins.find(run, self.targets())
+            run.commit()
+        with IngestRun.start(root, backup) as run:
+            run.add(GAIA_DR3, [self.rows()])
+            again = twins.find(run, self.targets())
+        assert again.twins == first.twins
+        assert again.counts == first.counts
+
+    def test_a_star_of_two_passes_is_one_candidate(self, root, backup):
+        """The Hipparcos row joins the Gaia star, so the target has one star
+        within 5″, with Gaia's values."""
+        table = hip_stars(
+            [
+                {
+                    "hip": 77,
+                    "ra": at(0)[0],
+                    "dec": at(0)[1],
+                    "parallax": 10.0,
+                    "v_mag": 11.3,
+                }
+            ]
+        )
+        hip, _ = hipparcos.engine_rows(
+            table, BestNeighbours(np.array([1]), np.array([77]))
+        )
+        with IngestRun.start(root, backup) as run:
+            run.add(GAIA_DR3, [self.rows()])
+            run.add(HIPPARCOS, [hip])
+            found = twins.find(run, self.targets()[:1])
+        assert found.counts["stars within 5″: 1"] == 1
+        assert found.twins[1].claim == ("gaia", "dr3", "1")
+
     def test_a_held_or_wanted_star_is_no_twin(self, root, backup):
-        registry = self.registry(root, backup)
         both = [
             self.target(1, at(0), 0.5, v_mag=11.2),
             self.target(2, at(0), 1.0, v_mag=11.0),
         ]
-        assert twins.find(registry, both).twins == {}
-        held = twins.find(registry, both[:1], {("gaia", "dr3", "1")})
-        assert held.refused == ["T1 → " + held.refused[0].split(" → ")[1]]
-        assert "another host holds it" in held.refused[0]
+        with IngestRun.start(root, backup) as run:
+            run.add(GAIA_DR3, [self.rows()])
+            assert twins.find(run, both).twins == {}
+            held = twins.find(run, both[:1], {("gaia", "dr3", "1")})
+        assert held.refused == ["T1 → gaia/dr3/1 (0.50″): another host holds it"]

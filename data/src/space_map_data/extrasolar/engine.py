@@ -469,6 +469,7 @@ class IngestRun:
         self._run_cache: dict[int, tuple[pa.Table, pa.Table]] = {}
         self._run_cache_rows = 0
         self._kept = _Kept({})
+        self._roots: _Kept | None = None
         self.extensions: list[Extension] = []
         self._row_ids: dict[str, list[pa.Table]] = defaultdict(list)
         self._extension_slugs: list[str] = []
@@ -573,6 +574,7 @@ class IngestRun:
         self._stage(state, batches)
         self._run_cache.clear()
         self._run_cache_rows = 0
+        self._roots = None
         if not source.permanent:
             self._settle(state)
         for region in sorted(state.regions):
@@ -785,6 +787,65 @@ class IngestRun:
         all_candidates = pa.concat_tables(candidates)
         all_candidates = all_candidates.take(pc.sort_indices(all_candidates["fine"]))
         return _View(all_xids, np.concatenate(dead), all_candidates)
+
+    # The objects so far, for a source that reads them before its pass
+
+    def _object_root(self, keys: np.ndarray) -> np.ndarray:
+        """The key of the object that each key joined so far."""
+        if self._roots is None:
+            self._roots = _Kept(self._join()[0])
+        return self._roots(np.asarray(keys, np.int64))
+
+    def objects(self, region: int) -> pa.Table:
+        """The objects of `region` so far: the live registry positions, then
+        the new objects of the passes run. Columns `key`, `ra`, `dec` and
+        `source`, the source of the position. A key joined to another counts
+        as that object, with the position of its first row here."""
+        columns = [KEY, "ra", "dec", "source"]
+        registry = self.registry.positions(region)
+        parts = [registry.select(["id", *columns[1:]]).rename_columns(columns)]
+        for state in self.passes:
+            directory = self._pass_dir(state.number) / "pending" / f"{region:03d}"
+            parts.append(
+                read_parquet(sorted(directory.glob("*.parquet")), PENDING, columns)
+            )
+        found = pa.concat_tables(parts)
+        roots = self._object_root(found[KEY].to_numpy())
+        first = np.sort(np.unique(roots, return_index=True)[1])
+        return found.take(first).set_column(0, KEY, pa.array(roots[first]))
+
+    def pass_rows(
+        self, keys: np.ndarray, columns: Sequence[str]
+    ) -> dict[str, pa.Table]:
+        """The staged rows of each pass so far that link to these objects, by
+        source: `key` (as `objects` gives it), `catalogue_id`, and the
+        `columns` that the source carries."""
+        wanted = np.unique(self._object_root(keys))
+        regions = sorted(
+            {
+                near
+                for region in key_region(wanted).tolist()
+                for near in self._hood(region)
+            }
+        )
+        found: dict[str, pa.Table] = {}
+        for state in self.passes:
+            carried = [f.name for f in state.fields if f.name in columns]
+            parts = []
+            for region in regions:
+                if region not in state.regions:
+                    continue
+                roots = self._object_root(self._read_keys(state.number, region))
+                at = np.flatnonzero(np.isin(roots, wanted))
+                if not at.size:
+                    continue
+                rows = self._staged(state.number, region, ["catalogue_id", *carried])
+                parts.append(
+                    rows.take(at).append_column(KEY, pa.array(roots[at], pa.int64()))
+                )
+            if parts:
+                found[state.source.name] = pa.concat_tables(parts)
+        return found
 
     # Resolving
 
