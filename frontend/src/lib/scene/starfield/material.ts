@@ -61,7 +61,7 @@ uniform float uFade;
 uniform float uFloor;
 uniform float uDistancePc;
 uniform vec3 uTint;
-uniform int uHidden;
+uniform ivec4 uHidden;
 attribute float mag;
 attribute vec3 starColour;
 varying vec3 vColour;
@@ -73,7 +73,7 @@ void main() {
 	float pc = uDistancePc > 0.0 ? uDistancePc : length(mv.xyz) / ${PC_SCENE.toFixed(4)};
 	float m = mag + 5.0 * log2(max(pc, 1e-9)) * 0.30103 - 5.0;
 	float above = max(uLimit - m, uFloor);
-	if (above <= 0.0 || mv.z >= 0.0 || gl_VertexID == uHidden) {
+	if (above <= 0.0 || mv.z >= 0.0 || any(equal(ivec4(gl_VertexID), uHidden))) {
 		// Too faint, behind the camera, or drawn on its own: put it off screen.
 		gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 		gl_PointSize = 0.0;
@@ -146,7 +146,8 @@ export function makeStarMaterial(shared: StarUniforms, floor = NO_FLOOR): Shader
 			// A local star's proxy must retain its true photometric distance.
 			uDistancePc: { value: 0 },
 			uTint: { value: new Vector3(1, 1, 1) },
-			uHidden: { value: -1 }
+			// Rows drawn on their own, -1 for none.
+			uHidden: { value: new Int32Array([-1, -1, -1, -1]) }
 		},
 		vertexShader: starVertexShader(),
 		fragmentShader: FRAGMENT,

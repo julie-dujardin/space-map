@@ -13,7 +13,14 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { attachedModelRoots } from '$lib/scene/objects/body/model';
-import { isCoarsePointer, pickMoonDot, pickPlanetDot, pickRadiusPx, type DotPick } from './picking';
+import {
+	isCoarsePointer,
+	pickMoonDot,
+	pickPlanetDot,
+	pickRadiusPx,
+	pickSystemDot,
+	type DotPick
+} from './picking';
 import type { GpuPickPass, PickDraw } from './gpu-pick';
 import type { PickRegistry } from './pick-registry';
 
@@ -151,9 +158,10 @@ export class PointerInteraction {
 			this.raycaster.intersectObjects<Object3D>([...this.clickables, ...attachedModelRoots])
 		)?.body;
 
-		// Moon dots (CPU — few hundred) and asteroid/spacecraft dots (GPU pick
-		// pass). The nearer-to-cursor of the two wins, depth breaking ties, so a
-		// clicked moon still outranks an asteroid dot drifting behind it.
+		// Moon dots and the planets and host stars of other stars' systems (CPU,
+		// a few hundred), and asteroid/spacecraft dots (GPU pick pass). The
+		// nearest to the cursor wins, depth breaking ties, so a clicked moon
+		// still outranks an asteroid dot drifting behind it.
 		const dots: DotPick = {
 			pointer: this.pointer,
 			camera: this.camera,
@@ -167,8 +175,9 @@ export class PointerInteraction {
 			isVisible: this.isDotVisible
 		};
 		const moonHit = pickMoonDot(dots);
+		const systemHit = pickSystemDot(dots);
 		const gpuHit = this.gpuPickCloud(e, rect);
-		const pointHit = this.nearer(moonHit, gpuHit);
+		const pointHit = this.nearer(this.nearer(moonHit, systemHit), gpuHit);
 
 		const bestBody = pointHit?.body ?? meshBody;
 		if (bestBody) {

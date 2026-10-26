@@ -114,7 +114,8 @@
 	import {
 		EXTRASOLAR_PREFIX,
 		extrasolarObjectId,
-		isExtrasolarObjectId
+		isExtrasolarObjectId,
+		isStarObjectId
 	} from '$lib/fetch/extrasolar/ids';
 	import { extrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 	import { STAR_VIEW_DISTANCE } from '$lib/scene/focus/star-focus';
@@ -248,10 +249,12 @@
 			const arrival = await map.goTo(id, {
 				// `moveCamera: false` re-anchors the focus with no fly (comet fragments).
 				camera: opts?.moveCamera === false ? 'pan' : 'fly',
-				view: (body) => ({
-					distance: framingDistanceFor(type, body),
-					...(craft ? { latitude: DEFAULT_FRAMING_LAT, longitude: DEFAULT_FRAMING_LON } : {})
-				}),
+				// A star with planets, or a planet, frames its planetary system.
+				view: (body) =>
+					ctx.exoplanets.view(body.data.id) ?? {
+						distance: framingDistanceFor(type, body),
+						...(craft ? { latitude: DEFAULT_FRAMING_LAT, longitude: DEFAULT_FRAMING_LON } : {})
+					},
 				// An extrasolar object lands on its live object, an alias too, under
 				// the name of its record.
 				commit: (body) =>
@@ -450,7 +453,7 @@
 			? 'group'
 			: appState.view.featureId !== null
 				? 'feature'
-				: isExtrasolarObjectId(appState.view.id)
+				: isStarObjectId(appState.view.id)
 					? 'star'
 					: 'body'
 	);
@@ -864,9 +867,14 @@
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (isExtrasolarObjectId(initialId) && !appState.view.framed) {
-				// A star seen from the Sun's side: behind it, the sky it is seen
-				// against from home.
-				map.snapToBodyFrom(initialId, SUN_ID, STAR_VIEW_DISTANCE);
+				// A planetary system from above its plane. A star without planets
+				// from the Sun's side: behind it, the sky it is seen against from home.
+				const system = ctx.exoplanets.view(initialId);
+				if (system) {
+					map.snapToBody(initialId, system.latitude, system.longitude, system.distance);
+				} else {
+					map.snapToBodyFrom(initialId, SUN_ID, STAR_VIEW_DISTANCE);
+				}
 			} else if (!appState.view.framed) {
 				// No URL camera: frame by the target's size/model, same as search. The
 				// target's own type, since on a group page the view's is the group's.

@@ -25,7 +25,7 @@ function scene() {
 			return [];
 		}
 	};
-	const ctx = { bodies: { majorBodies: [] } };
+	const ctx = { bodies: { majorBodies: [] }, visibility: { systemShares: new Map() } };
 	const pointer = new PointerInteraction(
 		canvas as unknown as HTMLCanvasElement,
 		new PerspectiveCamera(),

@@ -43,6 +43,7 @@ const LAYER_IDS: ReadonlySet<string> = new Set(MAP_LAYERS);
  *  other two are navigational marks rather than objects. */
 const LAYER_BY_TYPE: Partial<Record<ObjectType, MapLayerId>> = {
 	[ObjectType.PLANET]: 'planets',
+	[ObjectType.EXOPLANET]: 'planets',
 	[ObjectType.DWARF_PLANET]: 'dwarfPlanets',
 	[ObjectType.MOON]: 'moons',
 	[ObjectType.ASTEROID]: 'asteroids',

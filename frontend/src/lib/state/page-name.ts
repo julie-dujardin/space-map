@@ -13,11 +13,7 @@ import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { categoryLabel } from '$lib/format/group';
 import { groupSlugLabel } from './focusable';
-import {
-	EXTRASOLAR_PREFIX,
-	extrasolarObjectId,
-	isExtrasolarObjectId
-} from '$lib/fetch/extrasolar/ids';
+import { EXTRASOLAR_PREFIX, extrasolarObjectId, isStarObjectId } from '$lib/fetch/extrasolar/ids';
 import { extrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 
 /** The Earth–Moon barycenter and Earth itself. */
@@ -83,7 +79,7 @@ export async function fetchPageName(subject: PageSubject): Promise<string> {
 	}
 	// A star is named by the object entry of its live ID, in the reader's
 	// language, else by its Metadata row.
-	if (isExtrasolarObjectId(subject.id)) {
+	if (isStarObjectId(subject.id)) {
 		const found = await extrasolarLookup.live(subject.id.slice(EXTRASOLAR_PREFIX.length));
 		if (found.kind !== 'live') return '';
 		const meta = found.record.metadata;

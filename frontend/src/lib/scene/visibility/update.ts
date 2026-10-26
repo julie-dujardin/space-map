@@ -1,7 +1,7 @@
 import { Quaternion, Vector3 } from 'three';
-import type { PerspectiveCamera, ShaderMaterial, WebGLRenderer } from 'three';
+import type { PerspectiveCamera, PointsMaterial, ShaderMaterial, WebGLRenderer } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { ObjectType, isExtrasolar, isMajorBody } from '$lib/types/objects';
+import { ObjectType, isExoplanet, isExtrasolar, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
 import { host } from '$lib/host';
 import { setLabelAnnotation } from '../label/annotations';
@@ -371,10 +371,21 @@ export function updateBodyVisibility(
 		// type-aware gates even when sizeless and meshless — else they'd skip the
 		// moon-label cap and show every halo unbounded.
 		if (isExtrasolar(body)) {
-			const visible = starShare > 0;
+			// A host that is not the focus shows with its planetary system.
+			zoneShare = isFocused ? 1 : (ctx.visibility.systemShares.get(body.data.id) ?? 1);
+			const visible = starShare > 0 && zoneShare > 0;
 			group.visible = visible;
 			isClose = false;
 			showLabel = visible;
+		} else if (isExoplanet(body)) {
+			// Its system's share, from the camera's distance to its host star.
+			zoneShare = ctx.visibility.exoplanetShare(body);
+			const visible = zoneShare > 0;
+			group.visible = visible;
+			if (bo.planetDot) (bo.planetDot.material as PointsMaterial).opacity = zoneShare;
+			if (trail) trail.visible = visible;
+			showLabel = visible;
+			isClose = false;
 		} else if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
 			// Barycenters/Lagrange points: navigational aids, visible once built,
 			// except a barycenter sitting within a halo of its primary on screen —
@@ -531,8 +542,10 @@ export function updateBodyVisibility(
 				bo.starPoint
 					? 1
 					: isExtrasolar(body)
-						? starShare
-						: systemShare * zoneShare * labelThresholdShare
+						? starShare * zoneShare
+						: isExoplanet(body)
+							? zoneShare
+							: systemShare * zoneShare * labelThresholdShare
 			);
 		}
 
@@ -617,8 +630,9 @@ export function updateBodyVisibility(
 		);
 		const isFocused = bo.body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);
+		// Another star's planets fade with their own system, not with the Sun's.
 		const share =
-			systemShare *
+			(isExoplanet(bo.body) ? 1 : systemShare) *
 			((line.userData.zoneShare as number | undefined) ?? 1) *
 			((line.userData.thresholdShare as number | undefined) ?? 1) *
 			((line.userData.haloShare as number | undefined) ?? 1);

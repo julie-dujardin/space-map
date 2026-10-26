@@ -5,9 +5,9 @@ import { astrometricOrbit, homeRow, type ExtrasolarRecord } from '$lib/fetch/ext
 import {
 	colourBpRp,
 	drawnAbsoluteG,
-	positiveNumber,
 	starPlace,
-	starRadiusKm
+	starRadiusKm,
+	starTeff
 } from '$lib/scene/starfield/record';
 
 /** The camera's distance from a star it frames, scene units: 1,000 AU. A
@@ -51,7 +51,7 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 			absMag: home ? drawnAbsoluteG(home, orbit) : null,
 			colour: home ? colourBpRp(home) : null,
 			radiusKm,
-			teff: home ? positiveNumber(home, 'teff_gspphot') : null
+			teff: home ? starTeff(home) : null
 		}
 	};
 }

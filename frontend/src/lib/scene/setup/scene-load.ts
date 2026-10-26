@@ -35,7 +35,7 @@ import type { LayerSet } from '$lib/scene/layers';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 import { dateToJD } from '$lib/time/jd';
-import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
 import { ensureExtrasolarBody } from './extrasolar';
 
 interface MinorChunkArg {
@@ -260,7 +260,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	const passengerPromise = passengerFor(targetId);
 	// An extrasolar target is placed from its record, which rides along too.
 	const extrasolarTarget =
-		targetId && isExtrasolarObjectId(targetId)
+		targetId && isStarObjectId(targetId)
 			? ensureExtrasolarBody(ctx, targetId).catch((e) =>
 					console.warn(`scene-load: ${targetId} did not load:`, e)
 				)

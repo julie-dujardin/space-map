@@ -34,6 +34,7 @@ import { isModelBearing, unloadBodyModel } from './model';
 import { disposeReliefTiles } from '../surface/relief-tiles';
 import { disposeTileOverlay } from '../surface/tile-overlay';
 import type { BodyObjects } from '../../types';
+import { makePlanetDot } from '../../exoplanets/dot';
 
 export function disposeMaterial(mat: Material | Material[]): void {
 	if (Array.isArray(mat)) for (const m of mat) m.dispose();
@@ -69,13 +70,15 @@ export function buildMajorBodies(
 		const isVirtual =
 			isHalfPromoted ||
 			t === ObjectType.EXTRASOLAR ||
+			t === ObjectType.EXOPLANET ||
 			t === ObjectType.BARYCENTER ||
 			t === ObjectType.LAGRANGE_POINT ||
 			t === ObjectType.COMET ||
 			isAsteroid(t) ||
 			body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		const color = resolveBodyColor(body.data);
-		const radius = kmToScene(effectiveRadiusKm(body.data));
+		// A planet of another star draws no disc, so nothing anchors to its size.
+		const radius = t === ObjectType.EXOPLANET ? 0 : kmToScene(effectiveRadiusKm(body.data));
 		const isStar = t === ObjectType.STAR;
 		// No measured size → halo only, no fallback sphere (model-bearing types
 		// use the overlay instead, so an unknown radius there is expected).
@@ -90,6 +93,8 @@ export function buildMajorBodies(
 		root.visible = false;
 		const group = new Group();
 		root.add(group);
+		const planetDot = t === ObjectType.EXOPLANET ? makePlanetDot(color) : undefined;
+		if (planetDot) group.add(planetDot);
 
 		let mesh: Mesh | null = null;
 		let starExtras: StarExtras | null = null;
@@ -178,6 +183,7 @@ export function buildMajorBodies(
 			loadingEl: null,
 			corona: starExtras?.corona ?? null,
 			starPoint: starExtras?.starPoint ?? null,
+			planetDot,
 			// Trail is built later via buildTrails() to defer 100K+ Kepler solves.
 			trail: null,
 			radiusScene: radius,

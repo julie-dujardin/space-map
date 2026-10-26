@@ -71,7 +71,12 @@ export function setLabelName(
 /** Stars and planets carry the large label. */
 export function hasLargeLabel(body: PositionedBody): boolean {
 	const t = body.data.objectType;
-	return t === ObjectType.STAR || t === ObjectType.EXTRASOLAR || t === ObjectType.PLANET;
+	return (
+		t === ObjectType.STAR ||
+		t === ObjectType.EXTRASOLAR ||
+		t === ObjectType.PLANET ||
+		t === ObjectType.EXOPLANET
+	);
 }
 
 export function getLabelVariant(body: PositionedBody): LabelVariant {
@@ -80,6 +85,7 @@ export function getLabelVariant(body: PositionedBody): LabelVariant {
 		isMajorBody(t) ||
 		t === ObjectType.STAR ||
 		t === ObjectType.EXTRASOLAR ||
+		t === ObjectType.EXOPLANET ||
 		isAsteroid(t) ||
 		t === ObjectType.COMET ||
 		t === ObjectType.BARYCENTER ||

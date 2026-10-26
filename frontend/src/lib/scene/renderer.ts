@@ -41,7 +41,6 @@ import {
 } from './framing';
 import {
 	effectiveRadiusKm,
-	isExtrasolar,
 	isSurfaceFeature,
 	ObjectType,
 	type FeatureAnchor,
@@ -69,6 +68,7 @@ import {
 } from './render-tier';
 import { StarfieldSystem } from './starfield/starfield';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { ExoplanetSystems } from '$lib/scene/exoplanets/systems';
 import { systemShown } from './visibility/system-fade';
 import { SwitchFade } from './visibility/switch-fade';
 import { PointerInteraction } from './interaction/pointer';
@@ -256,6 +256,8 @@ export class SceneRenderer {
 	private pointClouds!: PointCloudSystem;
 	/** @internal The stars of the Milky Way render tree. */
 	readonly starfield: StarfieldSystem;
+	/** The planetary system of another star that draws. */
+	private readonly exoplanetSystems: ExoplanetSystems;
 	private systemData!: SystemDataLoader;
 	private readonly positionDiagnostics = new PositionDiagnostics();
 	private readonly placer: Placer;
@@ -640,6 +642,12 @@ export class SceneRenderer {
 			focusBody,
 			this.hoveredBodyIds,
 			this.renderer
+		);
+
+		this.exoplanetSystems = new ExoplanetSystems(
+			ctx,
+			this.focusController.promotion,
+			this.invalidate
 		);
 
 		this.coverageWatch = new ProbeCoverageWatch(clock, callbacks.notices);
@@ -1212,6 +1220,7 @@ export class SceneRenderer {
 
 		// The starfield's share from the frame before: it updates after this pass.
 		this.ctx.visibility.starShare = this.starfield.share();
+		this.updateExoplanetSystems(renderedDtMs);
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
 			this.camera,
@@ -1347,9 +1356,7 @@ export class SceneRenderer {
 		// The view cone the stars are culled to is this frame's.
 		this.camera.updateMatrixWorld();
 		const focusedStar = this.focusController.current;
-		this.starfield.setFocusStar(
-			focusedStar && isExtrasolar(focusedStar) ? (focusedStar.extrasolar ?? null) : null
-		);
+		this.starfield.setExactStars(this.exoplanetSystems.exactStars(focusedStar));
 		this.starfield.update(
 			this.camera,
 			this.focus.focusTruePos,
@@ -1419,7 +1426,7 @@ export class SceneRenderer {
 		if (this.jumpJd !== null || this.seekAwaitsData) return true;
 		if (this.focusLoads > 0 || this.systemData.isLoading()) return true;
 		if (this.systemFade.fading || this.ctx.visibility.fading) return true;
-		if (this.pointClouds.fading) return true;
+		if (this.pointClouds.fading || this.exoplanetSystems.fading) return true;
 		for (const bo of this.bodyObjects.values()) {
 			if (bo.group.visible && bodyLoading(bo)) return true;
 		}
@@ -1449,6 +1456,21 @@ export class SceneRenderer {
 			case 'unknown':
 				return Math.max(SOLAR_MAX_DISTANCE, this.camera.position.distanceTo(this.controls.target));
 		}
+	}
+
+	/** The planetary system of the focused star or planet. It draws only out
+	 *  of the solar system, where the stars take the sky. */
+	private updateExoplanetSystems(dtMs: number): void {
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const cam = this.camera.position;
+		this.exoplanetSystems.update({
+			camera: [fx + cam.x, fy + cam.y, fz + cam.z],
+			viewportPx: this.viewportH,
+			fovDeg: this.camera.fov,
+			dtMs,
+			outside: 1 - this.starfield.skyboxShare(),
+			focused: this.focusController.current
+		});
 	}
 
 	/** Refreshes hidden zones when the size-triggered fade brings them back. */
@@ -2141,6 +2163,7 @@ export class SceneRenderer {
 			this.systemFade.fading ||
 			this.ctx.visibility.fading ||
 			this.pointClouds.fading ||
+			this.exoplanetSystems.fading ||
 			this.starfield.busy();
 		if (loading) return true;
 		if (this.covered) return false;

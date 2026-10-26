@@ -24,6 +24,7 @@ import { LayerSet } from '$lib/scene/layers';
 import { PickRegistry } from '$lib/scene/interaction/pick-registry';
 import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { StarAnchor } from '$lib/types/objects';
 import { PC_SCENE, treeToScene, type Vec3 } from './tree';
 
 const TOKEN = '0123456789abcdef';
@@ -35,6 +36,8 @@ interface FakeNode {
 	range: number;
 	childRange: number[];
 	rows: number;
+	/** Magnitudes of the first rows; the others are 10. */
+	mags?: number[];
 }
 
 /** A render node payload: the container header, the 80-byte info block and
@@ -83,7 +86,8 @@ function encodeNode(node: FakeNode, depth: number): ArrayBuffer {
 		view.setUint32(d + 4, places[c].length, true);
 		d += 8;
 	});
-	new Float32Array(buffer, places[4].offset, n).fill(10);
+	const mags = new Float32Array(buffer, places[4].offset, n).fill(10);
+	node.mags?.forEach((m, i) => (mags[i] = m));
 	return buffer;
 }
 
@@ -522,41 +526,87 @@ describe('the starfield walk', () => {
 			Object.fromEntries(
 				system
 					.drawnNodes()
-					.map((n) => [n.name, (n.points.material as ShaderMaterial).uniforms.uHidden.value])
+					.map((n) => [n.name, [...(n.points.material as ShaderMaterial).uniforms.uHidden.value]])
 			);
-		const points = () => system.group.children.filter((c) => c.userData.focusStar !== undefined);
+		const points = () => system.group.children.filter((c) => c.userData.exactStar !== undefined);
 		// Every fake row sits at its node's centre with magnitude 10.
-		system.setFocusStar({
-			id: 7,
-			record: null!,
-			scene: [0, 0, 0],
-			tree: [C - 500, C - 500, C - 500],
-			absMag: 10,
-			colour: null,
-			radiusKm: null,
-			teff: null
-		});
-		expect(hidden()).toMatchObject({ r: -1, r0: 0 });
+		system.setExactStars([
+			{
+				id: 7,
+				record: null!,
+				scene: [0, 0, 0],
+				tree: [C - 500, C - 500, C - 500],
+				absMag: 10,
+				colour: null,
+				radiusKm: null,
+				teff: null
+			}
+		]);
+		expect(hidden()).toMatchObject({ r: [-1, -1, -1, -1], r0: [0, -1, -1, -1] });
 		expect(points()).toHaveLength(1);
 		expect(points()[0].position.toArray()).toEqual([C - 500, C - 500, C - 500]);
 
 		// Another magnitude is another star: nothing to hide.
-		system.setFocusStar({
-			id: 8,
+		system.setExactStars([
+			{
+				id: 8,
+				record: null!,
+				scene: [0, 0, 0],
+				tree: [C - 500, C - 500, C - 500],
+				absMag: 3,
+				colour: null,
+				radiusKm: null,
+				teff: null
+			}
+		]);
+		expect(hidden()).toMatchObject({ r: [-1, -1, -1, -1], r0: [-1, -1, -1, -1] });
+		expect(points()).toHaveLength(1);
+
+		system.setExactStars([]);
+		expect(hidden()).toMatchObject({ r: [-1, -1, -1, -1], r0: [-1, -1, -1, -1] });
+		expect(points()).toHaveLength(0);
+	});
+
+	it('draws a host and the focus on their own, each hiding its row', async () => {
+		buildTree(new Array(8).fill(10));
+		nodes.get('r0')!.mags = [10, 11, 12];
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry()
+		);
+		await settle(system, camera, focus);
+		const star = (id: number, absMag: number): StarAnchor => ({
+			id,
 			record: null!,
 			scene: [0, 0, 0],
 			tree: [C - 500, C - 500, C - 500],
-			absMag: 3,
+			absMag,
 			colour: null,
 			radiusKm: null,
 			teff: null
 		});
-		expect(hidden()).toMatchObject({ r: -1, r0: -1 });
-		expect(points()).toHaveLength(1);
+		const r0 = () => {
+			const node = system.drawnNodes().find((n) => n.name === 'r0')!;
+			return [...(node.points.material as ShaderMaterial).uniforms.uHidden.value];
+		};
+		const points = () => system.group.children.filter((c) => c.userData.exactStar !== undefined);
+		system.setExactStars([star(7, 10), star(8, 12), star(7, 10)]);
+		expect(r0()).toEqual([0, 2, -1, -1]);
+		expect(points().map((p) => p.userData.exactStar)).toEqual([7, 8]);
+		const picks = system.pickDraws().filter((d) => d.points.userData.exactStar !== undefined);
+		expect(picks).toHaveLength(2);
+		const base = (picks[1].material as ShaderMaterial).uniforms.uPickBase.value as number;
+		expect(system.pickedStar(base)).toEqual({ id: 8 });
 
-		system.setFocusStar(null);
-		expect(hidden()).toMatchObject({ r: -1, r0: -1 });
-		expect(points()).toHaveLength(0);
+		system.setExactStars([star(8, 12)]);
+		expect(r0()).toEqual([2, -1, -1, -1]);
+		expect(points().map((p) => p.userData.exactStar)).toEqual([8]);
+		expect(system.pickedStar(base)).toEqual({ id: 8 });
+		system.dispose();
 	});
 
 	it('sizes and colours the focused photosphere and reverses its CSS-pixel handoff', async () => {
@@ -573,21 +623,23 @@ describe('the starfield walk', () => {
 		);
 		await settle(system, camera, focus);
 		const radiusKm = 2 * 695_700;
-		system.setFocusStar({
-			id: 7,
-			record: null!,
-			scene: focus,
-			tree: [0.1, 0, 0],
-			absMag: 5,
-			colour: -0.12,
-			radiusKm,
-			teff: 3000
-		});
+		system.setExactStars([
+			{
+				id: 7,
+				record: null!,
+				scene: focus,
+				tree: [0.1, 0, 0],
+				absMag: 5,
+				colour: -0.12,
+				radiusKm,
+				teff: 3000
+			}
+		]);
 		const surface = system.group.getObjectByName('star-photosphere') as Mesh<
 			SphereGeometry,
 			ShaderMaterial
 		>;
-		const point = system.group.children.find((c) => c.userData.focusStar === 7) as Points;
+		const point = system.group.children.find((c) => c.userData.exactStar === 7) as Points;
 		expect(surface.geometry.parameters.radius * PC_SCENE).toBeCloseTo(kmToScene(radiusKm), 12);
 		expect(surface.material.uniforms.uCentreColor.value.toArray()).toEqual(
 			photosphereColour(3000, -0.12)
@@ -625,7 +677,7 @@ describe('the starfield walk', () => {
 		expect(surface.material.uniforms.uGain.value).toBeCloseTo(system.share() * 0.25);
 		const geometryDispose = vi.spyOn(surface.geometry, 'dispose');
 		const materialDispose = vi.spyOn(surface.material, 'dispose');
-		system.setFocusStar(null);
+		system.setExactStars([]);
 		expect(geometryDispose).toHaveBeenCalledOnce();
 		expect(materialDispose).toHaveBeenCalledOnce();
 		expect(system.group.getObjectByName('star-photosphere')).toBeUndefined();
@@ -642,18 +694,20 @@ describe('the starfield walk', () => {
 				() => {},
 				new PickRegistry()
 			);
-			system.setFocusStar({
-				id: 7,
-				record: null!,
-				scene: [0, 0, 0],
-				tree: [0.1, 0, 0],
-				absMag: 5,
-				colour: 1,
-				radiusKm,
-				teff: 5000
-			});
+			system.setExactStars([
+				{
+					id: 7,
+					record: null!,
+					scene: [0, 0, 0],
+					tree: [0.1, 0, 0],
+					absMag: 5,
+					colour: 1,
+					radiusKm,
+					teff: 5000
+				}
+			]);
 			expect(system.group.getObjectByName('star-photosphere')).toBeUndefined();
-			expect(system.group.children.find((c) => c.userData.focusStar === 7)?.visible).toBe(true);
+			expect(system.group.children.find((c) => c.userData.exactStar === 7)?.visible).toBe(true);
 			system.dispose();
 		}
 	);
@@ -723,17 +777,19 @@ describe('the starfield walk', () => {
 			new PickRegistry()
 		);
 		await settle(system, camera, focus);
-		system.setFocusStar({
-			id: 9,
-			record: null!,
-			scene: null,
-			tree: null,
-			absMag: null,
-			colour: null,
-			radiusKm: null,
-			teff: null
-		});
-		expect(system.group.children.some((c) => c.userData.focusStar !== undefined)).toBe(false);
+		system.setExactStars([
+			{
+				id: 9,
+				record: null!,
+				scene: null,
+				tree: null,
+				absMag: null,
+				colour: null,
+				radiusKm: null,
+				teff: null
+			}
+		]);
+		expect(system.group.children.some((c) => c.userData.exactStar !== undefined)).toBe(false);
 	});
 });
 
@@ -795,22 +851,24 @@ describe('picking a star', () => {
 
 	it('picks the focused star as that star', async () => {
 		const { system } = await drawn();
-		system.setFocusStar({
-			id: 22137869,
-			record: null!,
-			scene: [0, 0, 0],
-			tree: [C - 500, C - 500, C - 500],
-			absMag: 10,
-			colour: null,
-			radiusKm: null,
-			teff: null
-		});
-		const focusDraw = system.pickDraws().find((d) => d.points.userData.focusStar !== undefined);
+		system.setExactStars([
+			{
+				id: 22137869,
+				record: null!,
+				scene: [0, 0, 0],
+				tree: [C - 500, C - 500, C - 500],
+				absMag: 10,
+				colour: null,
+				radiusKm: null,
+				teff: null
+			}
+		]);
+		const focusDraw = system.pickDraws().find((d) => d.points.userData.exactStar !== undefined);
 		const base = (focusDraw?.material as ShaderMaterial).uniforms.uPickBase.value;
 		expect(system.pickedStar(base)).toEqual({ id: 22137869 });
 		expect(await system.starId({ id: 22137869 })).toBe(22137869);
 		// A new focus takes a new range; the old one names nothing.
-		system.setFocusStar(null);
+		system.setExactStars([]);
 		expect(system.pickedStar(base)).toBeNull();
 	});
 

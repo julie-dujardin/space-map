@@ -1,5 +1,6 @@
 import type { PerspectiveCamera, Vector2, Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { extrasolarIdOf } from '$lib/fetch/extrasolar/ids';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { VISIBILITY } from '$lib/scene/visibility/thresholds';
@@ -55,6 +56,24 @@ export function pickMoonDot(pick: DotPick): DotHit | null {
 		),
 		pick
 	);
+}
+
+/** The planets of other stars and their host stars, in the systems that
+ *  draw. The nearest to the pointer wins, so a host stays clickable among
+ *  its planets. */
+export function pickSystemDot(pick: DotPick): DotHit | null {
+	const { ctx } = pick;
+	const bodies: PositionedBody[] = [];
+	for (const hostId of ctx.visibility.systemShares.keys()) {
+		const host = ctx.getBody(hostId);
+		if (host && ctx.visibility.starShare > 0) bodies.push(host);
+		const id = extrasolarIdOf(hostId);
+		const planets = id === null ? undefined : ctx.exoplanets.held(id)?.planets.get(id);
+		for (const planet of planets ?? []) {
+			if (ctx.visibility.exoplanetShare(planet) > 0) bodies.push(planet);
+		}
+	}
+	return bodies.length > 0 ? pickDot(bodies, pick) : null;
 }
 
 /** The Sun and the planets as dots, where they draw. The stars draw behind

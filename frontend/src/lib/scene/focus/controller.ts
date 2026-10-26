@@ -2,6 +2,7 @@ import { Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
 	ObjectType,
+	isExoplanet,
 	isExtrasolar,
 	isSurfaceFeature,
 	type PositionedBody
@@ -287,8 +288,9 @@ export class FocusController {
 			this.deps;
 		this.focusSets++;
 		// A surface feature renders nothing itself: the host draws the terrain.
-		// An extrasolar object takes only its halo and name: the starfield draws it.
-		const drawsItself = !isSurfaceFeature(body) && !isExtrasolar(body);
+		// An extrasolar object takes only its halo and name: the starfield draws
+		// it. A planet of another star is a dot, a halo, a name and an orbit line.
+		const drawsItself = !isSurfaceFeature(body) && !isExtrasolar(body) && !isExoplanet(body);
 		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
 
 		// Unfocused bodies stay halo-only for cost; minDistance below reads the
@@ -495,9 +497,9 @@ export class FocusController {
 		const body = this.focusedBody;
 		if (!body) return;
 		const { camera, controls, callbacks } = this.deps;
-		// Spacecraft and stars report in scene axes (see focusedBodyQuat). Other
-		// bodies are body-fixed, with identity until their spin loads.
-		const bodyFixed = !isModelBearing(body) && !isExtrasolar(body);
+		// Spacecraft, stars and the planets of stars report in scene axes (see
+		// focusedBodyQuat). Other bodies are body-fixed, with identity until their spin loads.
+		const bodyFixed = !isModelBearing(body) && !isExtrasolar(body) && !isExoplanet(body);
 		const quat = bodyFixed ? (this.focusedBodyQuat(body) ?? [0, 0, 0, 1]) : undefined;
 		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
 		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);

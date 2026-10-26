@@ -111,13 +111,15 @@ const SELECT_EVERY_MS = 100;
 const ADDS_PER_FRAME = 4;
 /** Longest wait for the boot's minor bodies before the first node loads. */
 const BOOT_GATE_MS = 10_000;
-/** A magnitude no star reaches, for a focused star with none. */
+/** A magnitude no star reaches, for an exact star with none. */
 const NO_MAGNITUDE = 99;
 /** First of the transparent objects, because the stars are behind everything. */
 const STAR_RENDER_ORDER = -1;
-/** Pick ranges: a node's rows, and the focused star's own point. */
+/** Pick ranges: a node's rows, and the point of each exact star. */
 const NODE_PICK_PREFIX = 'star:';
-const FOCUS_PICK_GROUP = 'star-focus';
+const EXACT_PICK_PREFIX = 'star-exact:';
+/** Rows a node hides at once (`uHidden`): exact stars past this draw twice. */
+export const HIDDEN_ROWS = 4;
 
 export interface StarfieldBudget {
 	/** Stars drawn at once. */
@@ -151,8 +153,16 @@ interface PickRange {
 	material: ShaderMaterial | null;
 }
 
-/** A star a click picked: the focused star, or a row of a drawn node. */
+/** A star a click picked: an exact star, or a row of a drawn node. */
 export type PickedStar = { id: number } | { node: string; row: number };
+
+/** A star drawn on its own at its record's place, with its photosphere. */
+interface ExactStar {
+	star: StarAnchor;
+	points: Points;
+	surface: Mesh<SphereGeometry, ShaderMaterial> | null;
+	pick: PickRange | null;
+}
 
 interface StarNode {
 	name: string;
@@ -173,8 +183,8 @@ interface StarNode {
 	lastWantedMs: number;
 	/** 0 to 1; drawn while above 0. */
 	fade: number;
-	/** The row of the focused star in this node, for the star it was found for. */
-	hidden: { id: number; row: number } | null;
+	/** The row of each exact star in this node, -1 where it has none, by star ID. */
+	hidden: Map<number, number>;
 	/** Kept while the node is cached. */
 	pick: PickRange | null;
 	ids: { column: Float64Array; bytes: number } | null;
@@ -238,11 +248,8 @@ export class StarfieldSystem {
 	/** The starfield's share of the sky. */
 	private readonly sky = new SwitchFade();
 	private readonly matrix: number[] = [];
-	/** The focused extrasolar object, drawn on its own at its record's place. */
-	private focusStar: StarAnchor | null = null;
-	private focusPoints: Points | null = null;
-	private focusSurface: Mesh<SphereGeometry, ShaderMaterial> | null = null;
-	private focusPick: PickRange | null = null;
+	/** Stars drawn on their own at their record's place, by ID. */
+	private readonly exact = new Map<number, ExactStar>();
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -266,49 +273,62 @@ export class StarfieldSystem {
 	}
 
 	/**
-	 * The extrasolar object at the focus, or null. It draws at its record's
-	 * place, which is exact where a node's float32 row is not, and whatever the
-	 * drawn limit or the budget. Its row in the tree draws nothing meanwhile,
-	 * so it is never drawn twice.
+	 * The stars to draw on their own: the focused one, and the hosts of the
+	 * planets drawn. Each draws at its record's place, which is exact where a
+	 * node's float32 row is not, whatever the drawn limit or the budget. Its
+	 * row in the tree draws nothing meanwhile, so it is never drawn twice.
 	 */
-	setFocusStar(star: StarAnchor | null): void {
-		const next = star?.tree ? star : null;
-		if (next?.id === this.focusStar?.id) return;
-		this.focusStar = next;
-		if (this.focusSurface) {
-			this.focusSurface.removeFromParent();
-			this.focusSurface.geometry.dispose();
-			this.focusSurface.material.dispose();
-			this.focusSurface = null;
+	setExactStars(stars: readonly StarAnchor[]): void {
+		const next = new Map<number, StarAnchor>();
+		for (const star of stars) if (star.tree && !next.has(star.id)) next.set(star.id, star);
+		let changed = false;
+		for (const [id, exact] of this.exact) {
+			if (next.has(id)) continue;
+			this.dropExact(exact);
+			this.exact.delete(id);
+			changed = true;
 		}
-		if (this.focusPoints) {
-			this.focusPoints.removeFromParent();
-			this.focusPoints.geometry.dispose();
-			(this.focusPoints.material as ShaderMaterial).dispose();
-			this.focusPoints = null;
+		for (const [id, star] of next) {
+			if (this.exact.has(id)) continue;
+			this.exact.set(id, this.makeExact(star));
+			changed = true;
 		}
-		this.dropPick(this.focusPick, FOCUS_PICK_GROUP);
-		this.focusPick = null;
-		if (next) {
-			this.focusPoints = this.focusPoint(next);
-			if (next.radiusKm !== null && Number.isFinite(next.radiusKm) && next.radiusKm > 0) {
-				const colour = new Color(...photosphereColour(next.teff, next.colour));
-				const surface = new Mesh(
-					new SphereGeometry(kmToScene(next.radiusKm) / PC_SCENE, 96, 64),
-					makeStarSurfaceMaterial(colour)
-				);
-				surface.name = 'star-photosphere';
-				surface.position.copy(this.focusPoints.position);
-				surface.updateMatrix();
-				surface.matrixAutoUpdate = false;
-				surface.visible = false;
-				surface.renderOrder = STAR_RENDER_ORDER - 1;
-				this.group.add(surface);
-				this.focusSurface = surface;
-			}
-		}
+		if (!changed) return;
 		for (const node of this.drawn) if (node.points) this.applyHidden(node);
 		this.onChange();
+	}
+
+	private makeExact(star: StarAnchor): ExactStar {
+		const points = this.exactPoint(star);
+		let surface: ExactStar['surface'] = null;
+		if (star.radiusKm !== null && Number.isFinite(star.radiusKm) && star.radiusKm > 0) {
+			const colour = new Color(...photosphereColour(star.teff, star.colour));
+			surface = new Mesh(
+				new SphereGeometry(kmToScene(star.radiusKm) / PC_SCENE, 96, 64),
+				makeStarSurfaceMaterial(colour)
+			);
+			surface.name = 'star-photosphere';
+			surface.position.copy(points.position);
+			surface.updateMatrix();
+			surface.matrixAutoUpdate = false;
+			surface.visible = false;
+			surface.renderOrder = STAR_RENDER_ORDER - 1;
+			this.group.add(surface);
+		}
+		return { star, points, surface, pick: null };
+	}
+
+	private dropExact(exact: ExactStar): void {
+		if (exact.surface) {
+			exact.surface.removeFromParent();
+			exact.surface.geometry.dispose();
+			exact.surface.material.dispose();
+		}
+		exact.points.removeFromParent();
+		exact.points.geometry.dispose();
+		(exact.points.material as ShaderMaterial).dispose();
+		this.dropPick(exact.pick, EXACT_PICK_PREFIX + exact.star.id);
+		for (const node of this.nodes.values()) node.hidden.delete(exact.star.id);
 	}
 
 	/** The tree being drawn, once its metadata is in. */
@@ -333,7 +353,7 @@ export class StarfieldSystem {
 	}
 
 	/** What a pick pass draws for the stars: each drawn node in view and the
-	 *  focused star. Empty while the starfield draws nothing. */
+	 *  exact stars. Empty while the starfield draws nothing. */
 	pickDraws(): PickDraw[] {
 		if (!this.group.visible) return [];
 		const out: PickDraw[] = [];
@@ -349,13 +369,13 @@ export class StarfieldSystem {
 			};
 			out.push({ points, material: this.pickMaterial(node.pick, points) });
 		}
-		const focus = this.focusPoints;
-		if (focus?.visible) {
-			this.focusPick ??= {
-				base: this.pickRegistry.allocateRows(FOCUS_PICK_GROUP, 1),
+		for (const exact of this.exact.values()) {
+			if (!exact.points.visible) continue;
+			exact.pick ??= {
+				base: this.pickRegistry.allocateRows(EXACT_PICK_PREFIX + exact.star.id, 1),
 				material: null
 			};
-			out.push({ points: focus, material: this.pickMaterial(this.focusPick, focus) });
+			out.push({ points: exact.points, material: this.pickMaterial(exact.pick, exact.points) });
 		}
 		return out;
 	}
@@ -364,7 +384,10 @@ export class StarfieldSystem {
 	pickedStar(pickId: number): PickedStar | null {
 		const at = this.pickRegistry.locate(pickId);
 		if (!at) return null;
-		if (at.groupId === FOCUS_PICK_GROUP) return this.focusStar ? { id: this.focusStar.id } : null;
+		if (at.groupId.startsWith(EXACT_PICK_PREFIX)) {
+			const id = Number(at.groupId.slice(EXACT_PICK_PREFIX.length));
+			return this.exact.has(id) ? { id } : null;
+		}
 		if (!at.groupId.startsWith(NODE_PICK_PREFIX)) return null;
 		return { node: at.groupId.slice(NODE_PICK_PREFIX.length), row: at.row };
 	}
@@ -545,7 +568,8 @@ export class StarfieldSystem {
 		const ease = dtMs > 0 ? 1 - Math.exp(-dtMs / LIMIT_EASE_MS) : 1;
 		limit.value += (this.allowedLimit - limit.value) * ease;
 		this.uniforms.uGain.value = gain * skyShare;
-		this.updateFocusSurface(camera, focus, viewportHeight);
+		for (const exact of this.exact.values())
+			this.updateSurface(exact, camera, focus, viewportHeight);
 
 		this.applyFades(dtMs, camera, focus);
 		if (this.group.visible && !this.creditsShown && this.drawn.size > 0) {
@@ -554,11 +578,14 @@ export class StarfieldSystem {
 		}
 	}
 
-	private updateFocusSurface(camera: PerspectiveCamera, focus: Vec3, viewportHeight: number): void {
-		const star = this.focusStar;
-		const surface = this.focusSurface;
-		const point = this.focusPoints;
-		if (!surface || !point || !star?.scene || star.radiusKm === null) return;
+	private updateSurface(
+		exact: ExactStar,
+		camera: PerspectiveCamera,
+		focus: Vec3,
+		viewportHeight: number
+	): void {
+		const { star, surface, points: point } = exact;
+		if (!surface || !star.scene || star.radiusKm === null) return;
 		const distance = Math.hypot(
 			star.scene[0] - focus[0] - camera.position.x,
 			star.scene[1] - focus[1] - camera.position.y,
@@ -583,7 +610,7 @@ export class StarfieldSystem {
 			node.data?.geometry.dispose();
 		}
 		this.nodes.clear();
-		this.setFocusStar(null);
+		this.setExactStars([]);
 		this.group.removeFromParent();
 	}
 
@@ -665,7 +692,7 @@ export class StarfieldSystem {
 			wanted: false,
 			lastWantedMs: -Infinity,
 			fade: 0,
-			hidden: null,
+			hidden: new Map(),
 			pick: null,
 			ids: null
 		};
@@ -832,7 +859,7 @@ export class StarfieldSystem {
 		this.cachedBytes -= data.bytes;
 		node.data = null;
 		node.state = 'idle';
-		node.hidden = null;
+		node.hidden.clear();
 		this.dropPick(node.pick, NODE_PICK_PREFIX + node.name);
 		node.pick = null;
 		if (node.ids) this.cachedBytes -= node.ids.bytes;
@@ -893,8 +920,8 @@ export class StarfieldSystem {
 		this.group.add(points);
 	}
 
-	/** One point at the focused star's place, in the tree's frame. */
-	private focusPoint(star: StarAnchor): Points {
+	/** One point at an exact star's place, in the tree's frame. */
+	private exactPoint(star: StarAnchor): Points {
 		const geometry = new BufferGeometry();
 		geometry.setAttribute('position', new BufferAttribute(new Float32Array(3), 3));
 		// No magnitude in the record: it draws at the limit.
@@ -910,22 +937,25 @@ export class StarfieldSystem {
 		points.matrixAutoUpdate = false;
 		points.frustumCulled = false;
 		points.renderOrder = STAR_RENDER_ORDER;
-		points.userData.focusStar = star.id;
+		points.userData.exactStar = star.id;
 		this.group.add(points);
 		return points;
 	}
 
-	/** Hide the focused star's row in a drawn node, where the node holds it. */
+	/** Hide the rows of the exact stars in a drawn node, where the node holds them. */
 	private applyHidden(node: StarNode): void {
-		const star = this.focusStar;
-		let row = -1;
-		if (star && node.data) {
-			if (node.hidden?.id !== star.id) {
-				node.hidden = { id: star.id, row: findStarRow(node.data, star) };
+		const rows = (node.points!.material as ShaderMaterial).uniforms.uHidden.value as Int32Array;
+		rows.fill(-1);
+		if (!node.data) return;
+		let k = 0;
+		for (const { star } of this.exact.values()) {
+			let row = node.hidden.get(star.id);
+			if (row === undefined) {
+				row = findStarRow(node.data, star);
+				node.hidden.set(star.id, row);
 			}
-			row = node.hidden.row;
+			if (row >= 0 && k < HIDDEN_ROWS) rows[k++] = row;
 		}
-		(node.points!.material as ShaderMaterial).uniforms.uHidden.value = row;
 	}
 
 	private undraw(node: StarNode): void {

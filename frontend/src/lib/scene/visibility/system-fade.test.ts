@@ -149,4 +149,22 @@ describe("another star's planetary system", () => {
 		vis.systemShare = 0;
 		expect(vis.exoplanetShare(planet)).toBe(0.25);
 	});
+
+	it('hides a planet of another star with the planets layer', () => {
+		const layers = new LayerSet({ planets: false });
+		const vis = new VisibilityController(
+			new BodyIndex(),
+			() => null,
+			() => null,
+			() => null,
+			() => layers
+		);
+		vis.systemShares = new Map([['x-27424668', 1]]);
+		const planet = mkBody({
+			id: 'x-27424668-b-1',
+			objectType: ObjectType.EXOPLANET,
+			parentId: 'x-27424668'
+		});
+		expect(vis.exoplanetShare(planet)).toBe(0);
+	});
 });

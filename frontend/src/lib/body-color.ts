@@ -31,7 +31,11 @@ export function resolveBodyColor(data: BodyData): string {
 	}
 	if (objectType === ObjectType.STAR || objectType === ObjectType.EXTRASOLAR)
 		return TYPE_COLOR_STAR;
-	if (objectType === ObjectType.PLANET || objectType === ObjectType.DWARF_PLANET)
+	if (
+		objectType === ObjectType.PLANET ||
+		objectType === ObjectType.DWARF_PLANET ||
+		objectType === ObjectType.EXOPLANET
+	)
 		return TYPE_COLOR_PLANET;
 	if (objectType === ObjectType.MOON) return TYPE_COLOR_MOON;
 	if (isAsteroid(objectType)) return TYPE_COLOR_ASTEROID;
