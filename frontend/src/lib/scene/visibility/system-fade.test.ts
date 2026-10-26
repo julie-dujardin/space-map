@@ -150,6 +150,16 @@ describe("another star's planetary system", () => {
 		expect(vis.exoplanetShare(planet)).toBe(0.25);
 	});
 
+	it('is inside the planetary system that draws the most', () => {
+		const { vis } = buildScene();
+		expect(vis.planetarySystemShare()).toBe(0);
+		vis.systemShares = new Map([
+			['x-27424668', 0.25],
+			['x-564339647', 0.75]
+		]);
+		expect(vis.planetarySystemShare()).toBe(0.75);
+	});
+
 	it('hides a planet of another star with the planets layer', () => {
 		const layers = new LayerSet({ planets: false });
 		const vis = new VisibilityController(

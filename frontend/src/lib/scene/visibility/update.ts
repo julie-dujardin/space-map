@@ -98,6 +98,7 @@ export function updateBodyVisibility(
 	const hideOrbits = !layers.isVisible('orbits');
 	const systemShare = ctx.visibility.systemShare;
 	const starShare = ctx.visibility.starShare;
+	const insideShare = ctx.visibility.planetarySystemShare();
 	const showNomenclature = layers.isVisible('nomenclature');
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenW = renderer.domElement.clientWidth;
@@ -371,8 +372,12 @@ export function updateBodyVisibility(
 		// type-aware gates even when sizeless and meshless — else they'd skip the
 		// moon-label cap and show every halo unbounded.
 		if (isExtrasolar(body)) {
-			// A host that is not the focus shows with its planetary system.
-			zoneShare = isFocused ? 1 : (ctx.visibility.systemShares.get(body.data.id) ?? 1);
+			// A host that is not the focus shows with its planetary system. Inside
+			// a system the other stars are its sky, with no halo or name, as the
+			// stars are in the solar system.
+			zoneShare = isFocused
+				? 1
+				: (ctx.visibility.systemShares.get(body.data.id) ?? 1 - insideShare);
 			const visible = starShare > 0 && zoneShare > 0;
 			group.visible = visible;
 			isClose = false;

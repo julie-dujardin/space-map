@@ -717,7 +717,14 @@ export class SceneRenderer {
 			this.gpuPick,
 			() => [...this.pointClouds.asteroids().values(), ...this.pointClouds.spacecraft().values()],
 			this.pointClouds.pickRegistry,
-			() => (this.starSelectEnabled && this.bodySelectEnabled ? this.starfield.pickDraws() : []),
+			// Inside another star's planetary system the other stars are its sky,
+			// as the skybox is in the solar system: they take no clicks.
+			() =>
+				this.starSelectEnabled &&
+				this.bodySelectEnabled &&
+				this.ctx.visibility.planetarySystemShare() === 0
+					? this.starfield.pickDraws()
+					: [],
 			(pickId) => this.pickStar(pickId)
 		);
 		this.pointerInteraction.attach();

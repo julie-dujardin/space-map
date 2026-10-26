@@ -317,6 +317,14 @@ export class VisibilityController {
 		return vis;
 	}
 
+	/** The largest share of a planetary system of another star that draws; 0
+	 *  when none does. Inside one, the other stars are its sky. */
+	planetarySystemShare(): number {
+		let largest = 0;
+		for (const share of this.systemShares.values()) largest = Math.max(largest, share);
+		return largest;
+	}
+
 	/** The share of a planet of another star: its system's, unless the planets
 	 *  layer is hidden. */
 	exoplanetShare(body: PositionedBody): number {
