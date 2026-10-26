@@ -182,7 +182,7 @@ The distance group and the SIMBAD photometry:
 |---|---|---|
 | `distance` | float32 | distance (pc) from a paper, a SIMBAD parallax or a distance catalogue |
 | `distance_lower`, `distance_upper` | float32 | the 16th and 84th percentiles, or `distance` ∓ its error (pc); either can be null. For `galaxy`, the error of the galaxy's distance, not its depth |
-| `distance_method` | dict | `parallax`, `photometric`, `cluster` (the distance of the host cluster), `galaxy` (the distance of the host galaxy), `geometric` (parallax with a Galaxy prior) or `expansion` (expansion parallax of a nebula) |
+| `distance_method` | dict | `parallax`, `photometric`, `cluster` (the distance of the host cluster), `association` (the distance of the star's OB association), `galaxy` (the distance of the host galaxy), `geometric` (parallax with a Galaxy prior) or `expansion` (expansion parallax of a nebula) |
 | `distance_source` | dict | the first of `literature` (a paper chosen for the star, cited in its object entry), `simbad-parallax` (a 5σ parallax that SIMBAD gives a `gaia-dr3-named` star, which has no 5σ Gaia parallax), `reyle-2021` (the 10 pc sample, Reylé et al. 2021), `ultracoolsheet` (Best et al.), `hunt-reffert-2024` (cluster members), `magellanic-clouds` (LMC and SMC members after Luri et al. 2021, at the distances of Pietrzyński et al. 2019 and Graczyk et al. 2020), `bailer-jones-2021` (Bailer-Jones et al. 2021) that has the star |
 | `simbad_b_mag`, `simbad_v_mag`, `simbad_g_mag` | float32 | B, V and Gaia G that SIMBAD compiles from the literature (mag) |
 | `simbad_sp_type` | string | the spectral type as SIMBAD gives it |

@@ -20,7 +20,15 @@ from tests.extrasolar.conftest import table_rows
 from tests.extrasolar.test_simbad import NO_BEST
 from tests.extrasolar.test_stars import at, fidelity, gaia_star, gaia_stars
 
-METHODS = {"parallax", "photometric", "cluster", "galaxy", "geometric", "expansion"}
+METHODS = {
+    "parallax",
+    "photometric",
+    "cluster",
+    "association",
+    "galaxy",
+    "geometric",
+    "expansion",
+}
 
 
 def gaia_id(ra: float, dec: float, n: int) -> int:
@@ -47,6 +55,12 @@ class TestTable:
     def test_eta_car(self):
         eta_car = DISTANCES[("gaia", "dr3", "5350358584482202880")]
         assert eta_car == Distance(2350, 2300, 2400, "expansion", "smith_2006")
+
+    def test_stars_that_no_catalogue_places(self):
+        alnilam = DISTANCES[("hip", "2007", "26311")]
+        assert (alnilam.value, alnilam.method) == (384, "association")
+        wr_104 = DISTANCES[("gaia", "dr3", "4069167258796371712")]
+        assert (wr_104.lower, wr_104.upper) == (1900, 3300)
 
 
 class TestRows:
