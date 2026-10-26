@@ -344,8 +344,10 @@ class TestSimbadList:
         kappa, luhman = found["Kappa"], found["Luhman"]
         assert (kappa.oid, kappa.own, kappa.hip) == ("3", False, "100")
         assert (luhman.oid, luhman.own, luhman.hip) == ("4", False, None)
-        # Only a star with its own HIP number and Gaia id disputes.
+        # A star with a Gaia id disputes its own HIP number, or the one its
+        # system hands it, where Gaia pairs that number with another source.
         assert simbad.disputed_hip(stars, best) == {800}
+        assert simbad.disputed_hip(stars, best | {"100": "21"}) == {100, 800}
 
     def test_positions_errors_and_magnitudes(self, tmp_path):
         directory = write_simbad(

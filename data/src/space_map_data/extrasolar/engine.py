@@ -892,7 +892,7 @@ class IngestRun:
             own_key = int(keys[at])
             # A row of a distance catalogue has no id of its own.
             name = (
-                f"a {source.catalogue}/{source.release} row"
+                f"a row of {source.catalogue}/{source.release}"
                 if row_id is None
                 else f"{source.catalogue}/{source.release}/{row_id}"
             )

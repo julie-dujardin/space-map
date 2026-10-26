@@ -701,17 +701,21 @@ def engine_rows(
 
 
 def disputed_hip(stars: SimbadList, best: dict[str, str]) -> frozenset[int]:
-    """The HIP numbers that SIMBAD gives to another source than `best` does.
+    """The HIP numbers that SIMBAD gives to another source than `best` does:
+    a star's own, or the one its system hands it.
 
     Where the two disagree, the source of SIMBAD has the magnitude of the
-    Hipparcos star in most cases. So such a Hipparcos star goes by position
-    and magnitude.
+    Hipparcos star in most cases. A system's best neighbour is often its
+    fainter component. So such a Hipparcos star goes by position and
+    magnitude.
     """
-    return frozenset(
-        int(found.hip)
-        for found in stars.objects.values()
-        if found.hip and found.gaia and best.get(found.hip) not in (None, found.gaia)
-    )
+    handed = stars.handed()
+    disputed = set()
+    for found in stars.objects.values():
+        hip = found.hip or handed.get(found.oid, {}).get("hip")
+        if hip and found.gaia and best.get(hip) not in (None, found.gaia):
+            disputed.add(int(hip))
+    return frozenset(disputed)
 
 
 class IauRow(NamedTuple):
