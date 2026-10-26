@@ -66,6 +66,7 @@
 	import { MembersState } from './state/members-state.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import { starClassLabel } from './sections/star/star-rows';
+	import { planetBadges } from './sections/planet/planet-rows';
 
 	interface Props {
 		focusable: Focusable;
@@ -100,10 +101,13 @@
 		inPlace = false
 	}: Props = $props();
 
-	// A star is no body of the solar system: its records stand in for a bundle.
+	// A star or a planet of another system has no bundle. Its records stand in for one.
 	let star = $derived(focusable.kind === 'star' ? focusable.record : null);
+	let planet = $derived(focusable.kind === 'planet' ? focusable.anchor : null);
 	let body = $derived(
-		focusable.kind === 'group' || focusable.kind === 'star' ? null : focusable.body
+		focusable.kind === 'group' || focusable.kind === 'star' || focusable.kind === 'planet'
+			? null
+			: focusable.body
 	);
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
@@ -210,7 +214,7 @@
 		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
 	);
 	let showCameraButtons = $derived(
-		!isFeatureMode && !isGroupMode && !star && !!onMaximize && !!onMinimize
+		!isFeatureMode && !isGroupMode && !!body && !!onMaximize && !!onMinimize
 	);
 	// The action row is the map's: elsewhere the panel heads its overview with
 	// the way back to the map instead, and a collection is not an object to act on.
@@ -453,7 +457,9 @@
 		{traverse}
 		badges={star && !data?.localized?.instance_of?.length
 			? [starClassLabel(star.metadata.class)]
-			: undefined}
+			: planet
+				? planetBadges(planet.planet)
+				: undefined}
 	/>
 {/snippet}
 
@@ -495,6 +501,7 @@
 		{mapHref}
 		actions={showActions ? objectActions : undefined}
 		{star}
+		{planet}
 	/>
 {/snippet}
 

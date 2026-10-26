@@ -32,6 +32,7 @@ import { formatBound, formatPercent, joinParts, sigFigures } from '$lib/format/q
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { starSourceName } from '$lib/credits/star-sources';
+import { catalogueQuantity } from '../planet/planet-rows';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
@@ -118,9 +119,16 @@ function joinedIdRow(
 	return row(label(), id.replace(SIMBAD_TYPE_PREFIX, ''), SIMBAD + encodeURIComponent(id));
 }
 
+const CLASS_LABELS: Record<string, () => string> = {
+	star: m.star_class_star,
+	pulsar: m.star_class_pulsar,
+	'white dwarf': m.star_class_white_dwarf,
+	'brown dwarf': m.exoplanet_class_brown_dwarf
+};
+
 /** The class a Metadata row names, in words. */
 export function starClassLabel(cls: string | null): string {
-	return cls === 'star' ? m.star_class_star() : (cls ?? '');
+	return (cls && CLASS_LABELS[cls]?.()) || (cls ?? '');
 }
 
 function units() {
@@ -414,8 +422,59 @@ export function starSections(
 			])
 		}
 	];
-	if (ps) sections.push(...pointSourceSections(ps, astrometricOrbit(record), u, references));
+	if (ps) {
+		sections.push(
+			...pointSourceSections(ps, astrometricOrbit(record), u, references),
+			hostStarSection(ps, u)
+		);
+	}
 	return sections.filter((section) => section.rows.length > 0);
+}
+
+/** Significant figures a float32 column holds: 1.4 reads back 1.39999998. */
+const FLOAT32_DIGITS = 7;
+
+function float32Value(value: number | null): number | null {
+	return value === null ? null : Number(value.toPrecision(FLOAT32_DIGITS));
+}
+
+/** A value of an exoplanet catalogue, at the digits it gave. */
+function catalogued(
+	ps: TableRow,
+	label: string,
+	name: string,
+	unit = '',
+	error: string | null = null
+): StarRowEntry | null {
+	const value = float32Value(ps.number(name));
+	if (value === null) return null;
+	const err = error === null ? null : float32Value(ps.number(error));
+	return { label, value: catalogueQuantity(value, err, err, unit) };
+}
+
+/** The star as the exoplanet catalogues give it. */
+function hostStarSection(ps: TableRow, u: ReturnType<typeof units>): StarSection {
+	const teff = ps.number('host_teff');
+	const source = ps.text('host_star_source');
+	const spType = ps.text('host_spectral_type');
+	const hostRows: (StarRowEntry | null)[] = [
+		row(m.star_row_catalogue_name(), ps.text('host_name')),
+		catalogued(ps, m.star_row_distance(), 'host_distance', u.pc, 'host_distance_error'),
+		teff !== null
+			? { label: m.star_row_teff(), value: formatTemperature({ value: teff, unit: 'kelvin' }) }
+			: null,
+		catalogued(ps, m.exoplanet_radius(), 'host_radius', m.exoplanet_symbol_solar_radius()),
+		catalogued(ps, m.exoplanet_mass(), 'host_mass', m.exoplanet_symbol_solar_mass()),
+		catalogued(ps, m.exoplanet_row_metallicity(), 'host_metallicity', u.dex),
+		catalogued(ps, m.star_row_logg(), 'host_logg'),
+		catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),
+		catalogued(ps, m.star_band_v(), 'host_v_mag'),
+		catalogued(ps, m.star_band_g(), 'host_g_mag'),
+		catalogued(ps, m.star_band_k(), 'host_k_mag'),
+		row(m.star_stat_spectral_type(), spType && ltrIsolate(spType)),
+		row(m.star_row_source(), source && starSourceName(source))
+	];
+	return { key: 'host-star', title: m.star_section_exoplanet_catalogues(), rows: rows(hostRows) };
 }
 
 /** The astrometry source, and the orbit solution where its parallax is used. */

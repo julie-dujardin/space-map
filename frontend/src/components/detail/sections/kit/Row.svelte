@@ -16,10 +16,25 @@
 		/** Keeps the value on one line, such as a catalogue number. The label
 		 *  wraps instead. */
 		whole?: boolean;
+		/** A word after the value on how it was had: assumed, estimated. */
+		note?: string;
+		/** The label is a name, kept as written: "exoplanet.eu". */
+		labelIsName?: boolean;
 		children?: Snippet;
 	}
 
-	let { label, tooltip, value, valueTooltip, whole = false, children }: Props = $props();
+	let {
+		label,
+		tooltip,
+		value,
+		valueTooltip,
+		whole = false,
+		note,
+		labelIsName = false,
+		children
+	}: Props = $props();
+
+	let shownLabel = $derived(labelIsName ? label : ucfirst(label));
 </script>
 
 {#snippet hinted(text: string, hint: string)}
@@ -37,9 +52,9 @@
 
 <dt class="text-muted-foreground">
 	{#if tooltip}
-		{@render hinted(ucfirst(label), tooltip)}
+		{@render hinted(shownLabel, tooltip)}
 	{:else}
-		{ucfirst(label)}
+		{shownLabel}
 	{/if}
 </dt>
 <dd class="text-end [overflow-wrap:anywhere] {whole ? 'min-w-max' : 'min-w-0'}">
@@ -50,4 +65,5 @@
 	{:else}
 		{value}
 	{/if}
+	{#if note}<span class="text-muted-foreground ms-1 text-xs whitespace-nowrap">{note}</span>{/if}
 </dd>

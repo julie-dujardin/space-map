@@ -48,6 +48,11 @@ export class DetailLoad {
 				this.loading = false;
 				this.loadError = true;
 			};
+			// A planet's records came with it.
+			if (current.kind === 'planet') {
+				this.loading = false;
+				return;
+			}
 			// A star's records came with it; its text, when it has any, is an
 			// object entry. Without the text the records still show.
 			if (current.kind === 'star') {

@@ -164,6 +164,11 @@ export function formatBound(text: string): string {
 	return `< ${text}`;
 }
 
+/** The same space for a lower bound. */
+export function formatLowerBound(text: string): string {
+	return `> ${text}`;
+}
+
 /**
  * An angle. The sign binds to the digits, and the figure is the caller's: a
  * published measurement keeps its own digits where a stat cell rounds.

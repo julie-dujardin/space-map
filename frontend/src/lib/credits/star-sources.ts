@@ -1,7 +1,7 @@
 /**
- * The catalogues behind a star's records: the name of each source a table
- * column names, and the export's credit for each catalogue that gave the
- * values a panel shows. A credit is picked by its source page, which the
+ * The catalogues behind a star's records and a planet's: the name of each
+ * source a column names, and the export's credit for each catalogue that gave
+ * the values a panel shows. A credit is picked by its source page, which the
  * export writes once per catalogue. A value from the literature table cites
  * its paper, from the star's object entry.
  */
@@ -20,6 +20,7 @@ import {
 	type ExtrasolarRecord,
 	type StarDistance
 } from '$lib/fetch/extrasolar/lookup';
+import type { Planet } from '$lib/fetch/extrasolar/planets';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 
 const SOURCE_NAMES: Record<string, () => string> = {
@@ -48,7 +49,8 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	[LITERATURE]: m.source_literature_name,
 	'nasa-exoplanet-archive': m.source_nasa_exoplanet_archive_name,
 	'exoplanet-eu': m.source_exoplanet_eu_name,
-	'open-exoplanet-catalogue': m.source_open_exoplanet_catalogue_name
+	'open-exoplanet-catalogue': m.source_open_exoplanet_catalogue_name,
+	'iau-nameexoworlds': m.source_nameexoworlds_name
 };
 
 /** The catalogue a `*_source` column or a panel row names, as a reader knows it. */
@@ -79,6 +81,7 @@ export const CREDIT_PAGES = {
 	nasaExoplanetArchive: '//exoplanetarchive.ipac.caltech.edu/',
 	exoplanetEu: '//exoplanet.eu/',
 	openExoplanetCatalogue: '/OpenExoplanetCatalogue/',
+	nameExoWorlds: '//nameexoworlds.iau.org/',
 	literature: '/constants/stars/literature.py',
 	starNames: '/star-names/'
 } as const;
@@ -101,7 +104,8 @@ const SOURCE_PAGES: Partial<Record<string, CreditPage>> = {
 	'bailer-jones-2021': 'bailerJones',
 	'nasa-exoplanet-archive': 'nasaExoplanetArchive',
 	'exoplanet-eu': 'exoplanetEu',
-	'open-exoplanet-catalogue': 'openExoplanetCatalogue'
+	'open-exoplanet-catalogue': 'openExoplanetCatalogue',
+	'iau-nameexoworlds': 'nameExoWorlds'
 };
 
 /** The LMC is at 49.6 kpc and the SMC at 62.4 kpc. */
@@ -138,6 +142,7 @@ export function starCredits(
 	else if (name) pages.add(SOURCE_PAGES[name]);
 	for (const row of record.rows.values()) {
 		pages.add(SOURCE_PAGES[row.text('astrometry_source') ?? '']);
+		pages.add(SOURCE_PAGES[row.text('host_star_source') ?? '']);
 		if (
 			row.text('gaia_photometry_source') ||
 			row.text('gspphot_source') ||
@@ -154,15 +159,32 @@ export function starCredits(
 		if (row.text('lamost_source')) pages.add('lamost').add('lamostMStars');
 		if (row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
-	const out: StarCredit[] = [];
-	for (const page of Object.keys(CREDIT_PAGES) as CreditPage[]) {
-		if (!pages.has(page)) continue;
-		const credit = findCredit(record.credits, CREDIT_PAGES[page]);
-		if (credit) out.push(starCredit(credit));
-	}
+	const out = creditsOf(pages, record.credits);
 	const papers = distance?.source === LITERATURE ? (references?.distance ?? []) : [];
 	for (const paper of papers) {
 		out.push({ key: paper.url, label: paper.title, url: paper.url, note: paper.short });
+	}
+	return out;
+}
+
+/** The credits of the catalogues that gave a planet its name and values. A
+ *  sky solution from Gaia credits Gaia. */
+export function planetCredits(planet: Planet, credits: readonly ExtrasolarCredit[]): StarCredit[] {
+	const pages = new Set([SOURCE_PAGES[planet.name_source ?? '']]);
+	for (const source of Object.values(planet.sources)) pages.add(SOURCE_PAGES[source]);
+	return creditsOf(pages, credits);
+}
+
+/** The export's credits of these pages, in the order of CREDIT_PAGES. */
+function creditsOf(
+	pages: ReadonlySet<CreditPage | undefined>,
+	credits: readonly ExtrasolarCredit[]
+): StarCredit[] {
+	const out: StarCredit[] = [];
+	for (const page of Object.keys(CREDIT_PAGES) as CreditPage[]) {
+		if (!pages.has(page)) continue;
+		const credit = findCredit(credits, CREDIT_PAGES[page]);
+		if (credit) out.push(starCredit(credit));
 	}
 	return out;
 }

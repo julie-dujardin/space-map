@@ -5,7 +5,7 @@ import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixture
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import { STAR } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
 import { ltrIsolate } from '$lib/format/bidi';
-import { starSections, starStats } from './star-rows';
+import { starClassLabel, starSections, starStats } from './star-rows';
 
 /** The text without its bidi isolates and with plain spaces. */
 const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
@@ -245,7 +245,8 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			'brightness',
 			'physical',
 			'parameters',
-			'quality'
+			'quality',
+			'host-star'
 		]);
 		// Its Wikidata item is in the links section, and the planet catalogues'
 		// keys are not shown.
@@ -629,5 +630,29 @@ describe("a star's FLAME values", () => {
 			'Apparent magnitude',
 			'Absolute magnitude'
 		]);
+	});
+});
+
+describe('the class of a star', () => {
+	it('names the classes the catalogues give a host', () => {
+		expect(starClassLabel('star')).toBe('Star');
+		expect(starClassLabel('pulsar')).toBe('Pulsar');
+		expect(starClassLabel('white dwarf')).toBe('White dwarf');
+		expect(starClassLabel('brown dwarf')).toBe('Brown dwarf');
+	});
+});
+
+describe.skipIf(!HAS_EXPORT)("a planet host's catalogue rows from the real export", () => {
+	it('shows the star as its exoplanet catalogue gives it, at the digits given', async () => {
+		const lookup = new ExtrasolarLookup(diskSource());
+		const lich = await lookup.lookup('1634188199');
+		if (lich.kind !== 'live') throw new Error('Lich not found');
+		const host = starSections(lich.record).find((section) => section.key === 'host-star')!;
+		expect(Object.fromEntries(host.rows.map((x) => [x.label, plain(x.value)]))).toMatchObject({
+			'Name in the catalogue': 'PSR B1257+12',
+			// A float32 1.4, at the digits the catalogue gave.
+			Mass: '1.4 M☉',
+			Source: 'NASA Exoplanet Archive'
+		});
 	});
 });

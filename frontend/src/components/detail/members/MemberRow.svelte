@@ -17,6 +17,8 @@
 	interface Props extends HTMLAttributes<HTMLElement> {
 		name: string;
 		thumbnail?: PickedThumbnail;
+		/** What the tile shows with no thumbnail; the name's first letter by default. */
+		tile?: string;
 		href?: string;
 		onclick?: (e: MouseEvent) => void;
 		/** Extra classes on the right-hand column (e.g. tabular-nums). */
@@ -30,6 +32,7 @@
 	let {
 		name,
 		thumbnail,
+		tile,
 		href,
 		onclick,
 		valuesClass = '',
@@ -66,7 +69,7 @@
 		<div
 			class="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-medium"
 		>
-			{name.charAt(0)}
+			{tile ?? name.charAt(0)}
 		</div>
 	{/if}
 	<span class="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
@@ -92,7 +95,10 @@
 			{@render content()}
 		</a>
 	{:else}
-		<div class="-mx-1 flex items-center gap-3 px-1 py-2">
+		<div
+			class="-mx-1 flex items-center gap-3 rounded-md px-1 py-2 aria-[current=page]:bg-muted/40"
+			{...rest}
+		>
 			{@render content()}
 		</div>
 	{/if}

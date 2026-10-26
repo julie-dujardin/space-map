@@ -31,8 +31,14 @@
 	import StarSections from '../sections/star/StarSections.svelte';
 	import Discovery from '../sections/Discovery.svelte';
 	import { starStats } from '../sections/star/star-rows';
-	import { starCredits } from '$lib/credits/star-sources';
+	import PlanetSections from '../sections/planet/PlanetSections.svelte';
+	import { planetSections, planetStats } from '../sections/planet/planet-rows';
+	import PlanetList from '../members/PlanetList.svelte';
+	import { planetCredits, starCredits } from '$lib/credits/star-sources';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+	import { fetchExtrasolarMetadata, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+	import { planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
+	import type { PlanetAnchor } from '$lib/types/objects';
 
 	type FocusFeatureEntry = Extract<Focusable, { kind: 'feature' }>['feature'];
 
@@ -58,6 +64,8 @@
 		actions?: Snippet;
 		/** The records of an extrasolar object, which has no detail bundle. */
 		star?: ExtrasolarRecord | null;
+		/** A planet of the extrasolar catalogue, which has none either. */
+		planet?: PlanetAnchor | null;
 	}
 
 	let {
@@ -75,11 +83,35 @@
 		planetarySystem,
 		mapHref,
 		actions,
-		star = null
+		star = null,
+		planet = null
 	}: Props = $props();
 
 	let data = $derived(load.data);
 	let groupDetail = $derived(load.groupDetail);
+
+	// The system file of the star, or of the planet's star, lists the planets.
+	// The export's credits name the catalogues of a planet.
+	let systemHost = $derived(star?.id ?? planet?.host ?? null);
+	let hostSystem = $state.raw<PlanetSystem | null>(null);
+	let exportCredits = $state.raw<readonly ExtrasolarCredit[]>([]);
+	$effect(() => {
+		const id = systemHost;
+		hostSystem = null;
+		if (id === null) return;
+		let current = true;
+		untrack(() => Promise.all([planetCatalogue.hostSystem(id), fetchExtrasolarMetadata()])).then(
+			([system, meta]) => {
+				if (!current) return;
+				hostSystem = system;
+				exportCredits = meta?.credits ?? [];
+			},
+			(e: unknown) => console.warn(`[planets] no system for ${id}:`, e)
+		);
+		return () => {
+			current = false;
+		};
+	});
 
 	// Features sit below the moons strip, above fragments, mission craft and probes.
 	let overviewStrips = $derived(
@@ -150,8 +182,9 @@
 		// Lineup members whose ellipsoid was fitted rather than tabulated.
 		out.push(...lineup.overviewCredits.shapeWorks);
 		// A star's values come from the catalogues its records name, or from
-		// the papers its object entry cites.
+		// the papers its object entry cites; a planet's from those its file names.
 		if (star) out.push(...starCredits(star, data?.global?.references));
+		if (planet) out.push(...planetCredits(planet.planet, exportCredits));
 		if (cat.solarSystem)
 			out.push({
 				key: MASS_INVENTORY_URL,
@@ -195,6 +228,18 @@
 					<StatCardRow {stats} />
 				{/each}
 			</div>
+		{:else if planet}
+			<div class="flex flex-col gap-2">
+				{#each planetStats(planet.planet) as stats, i (i)}
+					<StatCardRow {stats} />
+				{/each}
+			</div>
+			<p class="text-sm leading-relaxed text-muted-foreground">
+				{m.exoplanet_summary({ name: planet.planet.name })}
+				<span class="font-mono text-xs text-blue-600 dark:text-blue-400"
+					>{m.exoplanet_summary_intent()}</span
+				>
+			</p>
 		{:else if body}
 			<ObjectStats
 				global={data?.global ?? null}
@@ -224,6 +269,9 @@
 		{#if planetarySystem.discoveryHistogram}
 			<SystemDiscovery histogram={planetarySystem.discoveryHistogram} />
 		{/if}
+		{#if star && hostSystem}
+			<PlanetList system={hostSystem} hostId={star.id} />
+		{/if}
 		{#each overviewStrips as strip (strip.heading)}
 			<MemberStrip
 				members={strip.members}
@@ -250,6 +298,11 @@
 				localized={data?.localized ?? null}
 			/>
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
+		{:else if planet}
+			<PlanetSections sections={planetSections(planet)} />
+			{#if hostSystem}
+				<PlanetList system={hostSystem} hostId={planet.host} current={planet.number} />
+			{/if}
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />
 		{:else if groupSlug !== null}
