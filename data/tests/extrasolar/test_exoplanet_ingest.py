@@ -343,6 +343,10 @@ class TestExoplanetIngest:
         assert point[beta]["astrometry_source"] == GAIA_DR3_NAMED.name
         assert point[beta]["host_distance"] == 300
         assert point[beta]["radius_gspphot"] == pytest.approx(1.1)
+        # An empty cell of the companion files is no value, also in a text column.
+        assert point[beta]["libname_gspphot"] is None
+        assert point[beta]["flame_source"] is None
+        assert point[beta]["flame_spec_source"] is None
         assert point[beta]["feh_gspspec_calibrated"] is not None
         assert point[beta]["mh_xgboost"] == pytest.approx(-0.3)
         assert point[beta]["in_vetted_rgb_sample"] is False

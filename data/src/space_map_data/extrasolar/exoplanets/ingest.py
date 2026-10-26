@@ -140,15 +140,20 @@ def unpositionable_ids(inputs: Inputs) -> set[int]:
     return set(table["source_id"].to_pylist())
 
 
+def _convert(types: dict[str, pa.DataType]) -> pcsv.ConvertOptions:
+    # An empty cell is no value, also in a text column, as in the bulk chunks:
+    # an empty string would fill its column group.
+    return pcsv.ConvertOptions(
+        column_types={"source_id": pa.int64(), **types},
+        null_values=[""],
+        strings_can_be_null=True,
+    )
+
+
 def _read_typed(path: Path, names: tuple[str, ...]) -> pa.Table:
     """A companion CSV with the Point source type of each column in `names`."""
     types = {name: POINT_SOURCE.schema.field(name).type for name in names}
-    return pcsv.read_csv(
-        path,
-        convert_options=pcsv.ConvertOptions(
-            column_types={"source_id": pa.int64(), **types}
-        ),
-    )
+    return pcsv.read_csv(path, convert_options=_convert(types))
 
 
 def read_gaia_rows(
@@ -161,12 +166,7 @@ def read_gaia_rows(
     """
     counts: Counter = Counter()
     strings = {name: pa.string() for name in ("phot_variable_flag", "libname_gspphot")}
-    stars = pcsv.read_csv(
-        inputs.gaia_source,
-        convert_options=pcsv.ConvertOptions(
-            column_types={"source_id": pa.int64(), **strings}
-        ),
-    )
+    stars = pcsv.read_csv(inputs.gaia_source, convert_options=_convert(strings))
     # A column that the CSV leaves empty reads as nulls without a type.
     for name in gaia.COLUMNS[1:]:
         at = stars.schema.get_field_index(name)
