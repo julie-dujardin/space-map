@@ -435,11 +435,26 @@ describe('the identifiers of the metallicity catalogues', () => {
 			{ name: 'lamost_id', type: 'string', values: ['J112838.67+551809.8'] }
 		]);
 		expect(identifiers(record)).toEqual([
-			['PASTEL', 'HD 4', undefined],
+			['PASTEL', 'HD 4', 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=HD%204'],
 			['APOGEE DR17', '2M03003170+0008161', undefined],
 			['LAMOST DR10', 'J112838.67+551809.8', undefined],
 			['Space Map ID', '1', undefined]
 		]);
+	});
+
+	it("shows a PASTEL designation without SIMBAD's object-type prefix", () => {
+		const pastel = (designation: string) =>
+			identifiers(
+				pointSourceRecord([{ name: 'pastel_designation', type: 'string', values: [designation] }])
+			)[0];
+		expect(pastel('* alf CMa')).toEqual([
+			'PASTEL',
+			'alf CMa',
+			'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=*%20alf%20CMa'
+		]);
+		expect(pastel('V* V645 Cen')[1]).toBe('V645 Cen');
+		expect(pastel('Cl* Berkeley 18 K 1383')[1]).toBe('Berkeley 18 K 1383');
+		expect(pastel('BD+49 435')[1]).toBe('BD+49 435');
 	});
 
 	it('leaves out the ones the row does not have', () => {

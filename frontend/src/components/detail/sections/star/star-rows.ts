@@ -72,11 +72,12 @@ const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
 	'iau/wgsn': { label: m.star_xid_iau }
 };
 
-/** The catalogues that join the Point source row hold their ids in its columns. */
-const JOINED_IDS: [column: string, label: () => string][] = [
-	['pastel_designation', m.star_xid_pastel],
-	['apogee_id', m.star_xid_apogee],
-	['lamost_id', m.star_xid_lamost]
+/** The catalogues that join the Point source row hold their ids in its columns.
+ *  PASTEL names a star as SIMBAD does, so SIMBAD finds the star by it. */
+const JOINED_IDS: [column: string, label: () => string, simbad: boolean][] = [
+	['pastel_designation', m.star_xid_pastel, true],
+	['apogee_id', m.star_xid_apogee, false],
+	['lamost_id', m.star_xid_lamost, false]
 ];
 
 /** Cross-ids not shown. A SIMBAD oid and a NASA Exoplanet Archive row are
@@ -91,6 +92,9 @@ const HIDDEN_CATALOGUES = new Set([
 ]);
 
 const SIMBAD = 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=';
+/** SIMBAD's object-type prefix, as in "* alf CMa" or "Cl* NGC 188 1": not part
+ *  of the name. */
+const SIMBAD_TYPE_PREFIX = /^(?:[A-Za-z]*\*+|NAME) /;
 /** The links section shows the Wikidata item, from the object entry. */
 const LINKED_CATALOGUES = new Set(['wikidata']);
 
@@ -103,6 +107,15 @@ function crossIdRow(x: CrossId): StarRowEntry | null {
 		? `${SIMBAD}${encodeURIComponent(`${catalogue.prefix} ${x.catalogueId}`)}`
 		: undefined;
 	return { label: catalogue.label(), value: x.catalogueId, href };
+}
+
+function joinedIdRow(
+	id: string | null | undefined,
+	label: () => string,
+	simbad: boolean
+): StarRowEntry | null {
+	if (!id || !simbad) return row(label(), id);
+	return row(label(), id.replace(SIMBAD_TYPE_PREFIX, ''), SIMBAD + encodeURIComponent(id));
 }
 
 /** The class a Metadata row names, in words. */
@@ -394,7 +407,9 @@ export function starSections(
 			title: m.star_section_identifiers(),
 			rows: rows([
 				...meta.crossIds.filter((x) => !LINKED_CATALOGUES.has(x.catalogue)).map(crossIdRow),
-				...JOINED_IDS.map(([column, label]) => row(label(), ps?.text(column))),
+				...JOINED_IDS.map(([column, label, simbad]) =>
+					joinedIdRow(ps?.text(column), label, simbad)
+				),
 				row(m.star_row_space_map_id(), String(record.id))
 			])
 		}
