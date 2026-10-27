@@ -249,6 +249,36 @@ class TestMatching:
         assert id_of(root, HIP, 7) == id_of(root, GAIA, 1) != 0
         assert id_of(root, names, "lost") == 0
 
+    def test_a_claim_only_catalogue_is_never_matched_by_position(self, root, ingest):
+        names = Source(
+            "names",
+            "iau",
+            "wgsn",
+            home=1,
+            matcher=PositionMatcher(),
+            claim_only=(("gaia", "dr3"),),
+        )
+        rows = [
+            {"id": id_, "ra": ra, "dec": dec, **more}
+            for id_, (ra, dec), more in (
+                ("free", near(0.1), {}),
+                ("claimed", near(60.1), {"claims": [claim("gaia", "dr3", 2)]}),
+                ("hip only", near(30.1), {}),
+            )
+        ]
+        ingest(
+            [
+                (GAIA, gaia_rows([star(1, mag=5.0), star(2, 60, mag=5.0)])),
+                (HIP, hip_rows([star(7, 30, mag=5.0)])),
+                (names, name_rows(rows)),
+            ]
+        )
+        hip = id_of(root, HIP, 7)
+        assert hip not in (0, id_of(root, GAIA, 1), id_of(root, GAIA, 2))
+        assert id_of(root, names, "free") == 0
+        assert id_of(root, names, "claimed") == id_of(root, GAIA, 2) != 0
+        assert id_of(root, names, "hip only") == hip
+
     def test_small_caches_give_the_same_ids(self, tmp_path, monkeypatch, ingest):
         cells = [CELL + n * (1 << sky.REGION_SHIFT) for n in range(6)]
         gaia, hip = [], []

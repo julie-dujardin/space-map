@@ -18,8 +18,9 @@ matches by position could take it.
   (Zenodo 7576096).
 - ULTRACOOLSHEET: Best, Liu, Magnier & Dupuy, The UltracoolSheet 2.1.0,
   doi:10.5281/zenodo.4169085. The distance comes from a parallax, else from
-  photometry. A row claims its Gaia DR3 id, else it goes by position. Imaged
-  exoplanets are left out. CC BY 4.0.
+  photometry. A row claims its Gaia DR3 id, else it goes by position to a
+  star with no Gaia DR3 id: the sheet names the Gaia star of each row that
+  Gaia detects. Imaged exoplanets are left out. CC BY 4.0.
 - HUNT_REFFERT_2024: the distance of the host cluster (Hunt & Reffert 2024,
   A&A 686, A42; the catalogue of 2023 with classes and Jacobi radii). A member
   counts when it is inside the tidal or the Jacobi radius with a probability
@@ -74,6 +75,7 @@ from space_map_data.utils.paths import SOURCES_CATALOGUES_DIR
 
 logger = logging.getLogger(__name__)
 
+GAIA_DR3, HIP = ("gaia", "dr3"), ("hip", "2007")
 # Beyond 3σ the magnitudes must agree. The rows have no kind, so they also
 # match a SIMBAD star that has no optical magnitude, such as a cool brown
 # dwarf.
@@ -98,6 +100,7 @@ ULTRACOOLSHEET = Source(
     release="2.1.0",
     home=1,
     matcher=MATCHER,
+    claim_only=(GAIA_DR3,),
 )
 HUNT_REFFERT_2024 = Source(
     name="hunt-reffert-2024", catalogue="hunt-reffert", release="2024", home=1
@@ -111,8 +114,6 @@ BAILER_JONES_2021 = Source(
 SIMBAD_PARALLAX = Source(
     name="simbad-parallax", catalogue="simbad", release="parallax", home=1
 )
-GAIA_DR3, HIP = ("gaia", "dr3"), ("hip", "2007")
-
 REYLE_DIR = cds_stars.OUT_DIR / "J/A+A/650/A201"
 REYLE_FILE = "tablea1.dat.gz"
 HUNT_REFFERT_DIR = SOURCES_CATALOGUES_DIR / "star-clusters" / "hunt-reffert-2024"

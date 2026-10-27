@@ -22,6 +22,8 @@ registry and the earlier passes, the neighbouring regions included:
    order of the regions. A row that claims an id nobody holds does not match
    an object that holds another id of that catalogue, unless the source of
    that catalogue is a subset. The claimed id then joins the matched object.
+   A source can name catalogues that its rows reach only by a claim; its
+   rows never match an object that holds an id of one.
 4. A row that is still free becomes a new object of the run. A row with
    `mint` false gets an ID only when a minting row joins its object.
 
@@ -305,6 +307,9 @@ class Source:
     # True: the ingest stores only part of the catalogue, so an id that no
     # object holds can name a stored object under another id.
     subset: bool = False
+    # Catalogue releases that its rows reach only by a claim: a row with a
+    # counterpart there claims it, so a row without a claim has none.
+    claim_only: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -1151,6 +1156,7 @@ class IngestRun:
         excluded = np.concatenate(
             [
                 view.holders(source.catalogue, source.release),
+                *(view.holders(*catalogue) for catalogue in source.claim_only),
                 np.array(list(state.claimed), np.int64),
             ]
         )
