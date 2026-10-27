@@ -8,7 +8,7 @@ pageimage-frequency > globalusage, see :mod:`space_map_data.utils.image_scoring`
 
 Cached at ``OBJECT_IMAGES_PATH`` (keyed by ``Object.id``, drives
 ``image_available``), ``STAR_IMAGES_PATH`` (by the QID of each extrasolar
-star with an object entry), ``FEATURE_IMAGES_PATH`` (by ``Feature.feature_id``),
+star and planet with an object entry), ``FEATURE_IMAGES_PATH`` (by ``Feature.feature_id``),
 ``GROUP_IMAGES_PATH`` (by ``Group.slug``), and ``RING_IMAGES_PATH`` (by the
 ringed body's ``Object.id`` — pictures of the ring system, not the planet).
 Exports read these caches instead of re-walking sources.
@@ -40,7 +40,7 @@ from space_map_data.export.groups.registry import (
     GroupCategory,
 )
 from space_map_data.export.objects.missions import build_probe_missions
-from space_map_data.export.objects.stars import read_star_objects
+from space_map_data.export.objects.stars import read_extrasolar_objects
 from space_map_data.extrasolar.registry import NoRegistry
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
@@ -188,19 +188,22 @@ def ingest() -> None:
     _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
 
 
-# A picture that more stars share shows a constellation or a cluster. Most
-# are the constellation chart of a Wikipedia infobox.
+# A picture that more stars or planets share shows a constellation, a
+# cluster or a whole planetary system. Most are the constellation chart of a
+# Wikipedia infobox.
 _MAX_STARS_PER_IMAGE = 2
 
 
 def _star_qids() -> list[str] | None:
-    """The QIDs of the extrasolar stars with an object entry. None on a host
+    """The QIDs of the stars and planets with an object entry. None on a host
     without the registry, which then keeps the star selections it has.
 
     Raises RegistryBusy while an ingest holds the registry.
     """
     try:
-        return [star.qid for star in read_star_objects() if star.qid]
+        stars, planets = read_extrasolar_objects()
+        qids = [star.qid for star in stars if star.qid] + [p.qid for p in planets]
+        return list(dict.fromkeys(qids))
     except NoRegistry as error:
         logger.warning("%s is kept: %s", STAR_IMAGES_PATH.name, error)
         return None
@@ -209,9 +212,9 @@ def _star_qids() -> list[str] | None:
 def _select_star_images(
     qids: list[str], metadata_cache: dict[str, dict | None], wikidata_dir: Path
 ) -> dict[str, list[dict]]:
-    """The images of the extrasolar stars with an object entry, by QID.
+    """The images of the stars and planets with an entry, by QID.
 
-    These stars have no row in the database.
+    These objects have no row in the database.
     """
     stars = [(qid, qid) for qid in qids]
     selections = _select_for_qids(

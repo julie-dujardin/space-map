@@ -79,7 +79,10 @@ from space_map_data.export.notable import (
 )
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
-from space_map_data.export.objects.stars import StarObject, available_star_objects
+from space_map_data.export.objects.stars import (
+    StarObject,
+    available_extrasolar_objects,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
@@ -648,7 +651,7 @@ def export_groups_only(engine: Engine) -> None:
         gms,
         displacement_metadata,
         load_model_metadata(out_dir),
-        available_star_objects(),
+        available_extrasolar_objects()[0],
     )
     update_metadata_group_bundles(out_dir, group_bundles)
     write_group_messages(wikidata_entities)

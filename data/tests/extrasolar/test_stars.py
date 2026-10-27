@@ -17,7 +17,7 @@ from astropy.time import Time
 from space_map_data.download.cds import README
 from space_map_data.download.providers.stars import gaia_source
 from space_map_data.download.providers.stars.wikidata_stars import StarItem
-from space_map_data.export.objects.stars import read_star_objects
+from space_map_data.export.objects.stars import read_extrasolar_objects
 from space_map_data.extrasolar import stars
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.exoplanets.sources import SOURCES as EXOPLANET_SOURCES
@@ -1221,7 +1221,9 @@ class TestStarIngest:
         summary = stars.summary(registry, names.read_names(names_path), 6)
         assert "Wikidata items: 4 placed of 6 with a claim" in summary
 
-        found = sorted(read_star_objects(root), key=lambda star: star.qid or "")
+        found = sorted(
+            read_extrasolar_objects(root)[0], key=lambda star: star.qid or ""
+        )
         assert [(star.qid, star.name) for star in found] == [
             ("Q1", "Alpha"),
             ("Q2", "Betelgeuse"),
@@ -1307,7 +1309,7 @@ class TestStarIngest:
         assert not meta[hip_30]["object"]
         summary = stars.summary(registry, [], 3)
         assert "Wikidata items: 2 placed of 3 with a claim" in summary
-        found = sorted((star.qid, star.id) for star in read_star_objects(root))
+        found = sorted((star.qid, star.id) for star in read_extrasolar_objects(root)[0])
         assert found == [("Q1", hip_20), ("Q4", hip_10)]
 
     def test_a_partial_ingest_refuses_a_complete_registry(self, tmp_path):

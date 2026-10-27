@@ -19,7 +19,7 @@ for planets.
 import datetime
 import gzip
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import quote
@@ -40,7 +40,11 @@ from space_map_data.export.nomenclature.writer import (
     renderable_feature_filter,
 )
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
-from space_map_data.export.objects.stars import StarObject, has_description
+from space_map_data.export.objects.stars import (
+    PlanetObject,
+    StarObject,
+    has_description,
+)
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
@@ -95,11 +99,12 @@ def _named(path: str, name: str | None) -> str:
 
 class SitemapPages(NamedTuple):
     """The pages of the sitemap that get a record: each subject with its
-    path."""
+    path, and the entry ids of the planets with an entry."""
 
     objects: dict[str, str]
     groups: dict[str, str]
     features: list[tuple[Feature, str]]
+    planets: tuple[str, ...] = ()
 
 
 def bundle_entries(
@@ -325,6 +330,11 @@ class PlanetPages(NamedTuple):
     planets: list[tuple[int, int, str | None]]
     hosts: dict[int, str | None]
 
+    def served(self, objects: Iterable[PlanetObject]) -> list[PlanetObject]:
+        """The planets of `objects` that have a page."""
+        pages = {(host, number) for host, number, _ in self.planets}
+        return [p for p in objects if (p.host, p.number) in pages]
+
 
 def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages:
     """Every planet of the served extrasolar export below *extrasolar_dir*, and
@@ -380,15 +390,17 @@ def write_sitemap(
     group_buckets: dict[str, int],
     stars: list[StarObject],
     planets: PlanetPages,
+    planet_entries: list[PlanetObject],
 ) -> SitemapPages:
     """Write the sitemap index ``v1/seo/sitemap.xml`` and its files
     ``sitemap-<n>.xml``, and return the pages that get a record.
 
     Reads the object and group bundles and the group index already in
     ``out_dir``; the bucket counts are those of ``metadata.json``. ``stars``
-    are the registry's stars with an entry and ``planets`` the served planet
-    pages, each read once for the export. Of the stars, only the ones with a
-    description or with planets are listed.
+    are the registry's stars with an entry, ``planets`` the served planet
+    pages and ``planet_entries`` the served planets with an entry, each read
+    once for the export. Of the stars, only the ones with a description or
+    with planets are listed. Each planet with an entry gets a record.
     """
     pages = SitemapPages(
         objects=_notable_paths(
@@ -400,6 +412,7 @@ def write_sitemap(
         ),
         groups=_group_paths(out_dir, group_buckets[BASE_LOCALE]),
         features=_feature_paths(session, wikidata_entities),
+        planets=tuple(planet.obj_id for planet in planet_entries),
     )
     paths = [
         *pages.objects.values(),

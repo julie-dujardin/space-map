@@ -1,5 +1,5 @@
 """Tests for the object entries of the stars with a Wikidata item or a value
-from a paper."""
+from a paper, and of the planets with an item."""
 
 import gzip
 from pathlib import Path
@@ -12,10 +12,12 @@ import pytest
 
 from space_map_data.export.objects import stars
 from space_map_data.export.objects.stars import (
+    PlanetObject,
     StarObject,
     _read_part,
-    available_star_objects,
+    available_extrasolar_objects,
     has_description,
+    read_extrasolar_objects,
     replace_bundle_entries,
     star_entries,
     star_references,
@@ -25,6 +27,7 @@ from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import StarEntity, WikidataEntityCache
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.tables import CROSS_ID
+from tests.extrasolar.export_registry import planet, star, write_registry
 
 ETA_CAR = ("gaia", "dr3", "5350358584482202880")
 SMITH_2006 = {
@@ -249,16 +252,113 @@ class TestStarEntries:
         assert not has_description(None)
 
 
+class TestPlanetEntries:
+    """Planets take the entries of stars, under their scene ids."""
+
+    @pytest.fixture
+    def entries(self, monkeypatch):
+        summaries = {
+            "Q1": {"en": WikipediaSummary(extract="51 Pegasi b is…", url="https://en…")}
+        }
+        monkeypatch.setattr(
+            stars,
+            "load_wikipedia_summaries_for_qid",
+            lambda qid: summaries.get(qid, {}),
+        )
+        monkeypatch.setattr(
+            stars,
+            "collect_star_images",
+            lambda qid: [{"file": "51 Peg b.jpg"}] if qid == "Q1" else None,
+        )
+        entities = fake_entities(
+            {
+                # The host star, whose page the planet's part_of links to.
+                "Q9": entity({"en": "51 Pegasi"}),
+                "Q1": entity(
+                    {
+                        "en": "51 Pegasi b",
+                        "ja": "ペガスス座51番星b",
+                        "ru": "51 Пегаса b",
+                    },
+                    {"en": "exoplanet orbiting 51 Pegasi"},
+                    {"en": ["Bellerophon", "NAME Bellerophon", "* 51 Peg b"]},
+                    {"P361": items("Q9")},
+                ),
+                "Q2": entity(
+                    {
+                        "en": "Kepler-34 b",
+                        "de": "Kepler-34b",
+                        "ja": "ケプラー34b",
+                        # Wikidata gives the name of the star, or a nickname.
+                        "pt": "Kepler-34",
+                        "fr": "Gliese 34 Ab",
+                        "ru": "Осирис",
+                    }
+                ),
+            },
+            sitelinks={"Q1": 20},
+        )
+        return star_entries(
+            [StarObject(9, "51 Peg", "Q9")],
+            entities,
+            [
+                PlanetObject(9, 1, "Dimidium", "Q1", ("51 Peg b",), "b", True),
+                PlanetObject(
+                    4, 2, "Kepler-34 b", "Q2", ("Kepler-34 b", "GJ 34 A b"), "b"
+                ),
+            ],
+        )
+
+    def test_global(self, entries):
+        global_data, _ = entries
+        assert global_data["x-9-b-1"] == {
+            "id": "x-9-b-1",
+            "type": "exoplanet",
+            "name": "Dimidium",
+            "cross_refs": {"wikidata_qid": "Q1"},
+            "sitelinks_count": 20,
+            "images": [{"file": "51 Peg b.jpg"}],
+        }
+        assert set(global_data) == {"x-9", "x-9-b-1", "x-4-b-2"}
+
+    def test_localized(self, entries):
+        _, localized = entries
+        assert localized["en"]["x-9-b-1"] == {
+            "description": "exoplanet orbiting 51 Pegasi",
+            # Without SIMBAD's prefixes, each once.
+            "aliases": ["Bellerophon", "51 Peg b"],
+            "part_of": [{"name": "51 Peg", "primary_id": "9", "primary_type": "x"}],
+            "wikipedia": {"extract": "51 Pegasi b is…", "url": "https://en…"},
+        }
+
+    def test_an_iau_name_stays_in_every_language(self, entries):
+        _, localized = entries
+        assert "name" not in localized["ja"]["x-9-b-1"]
+        assert "name" not in localized["ru"]["x-9-b-1"]
+
+    def test_a_designation_spelled_another_way_is_no_name(self, entries):
+        _, localized = entries
+        assert "x-4-b-2" not in localized["de"]
+        # Gliese numbers go by GJ too.
+        assert "x-4-b-2" not in localized["fr"]
+        assert localized["ja"]["x-4-b-2"] == {"name": "ケプラー34b"}
+
+    def test_a_name_ends_in_the_letter_of_the_planet(self, entries):
+        _, localized = entries
+        assert "x-4-b-2" not in localized["pt"]
+        assert "x-4-b-2" not in localized["ru"]
+
+
 class TestReadStarObjects:
     """The IDs with an entry, from the registry."""
 
     def test_no_registry_gives_none(self, tmp_path, caplog):
-        assert available_star_objects(tmp_path) == []
-        assert "No star entries" in caplog.text
+        assert available_extrasolar_objects(tmp_path) == ([], [])
+        assert "No star or planet entries" in caplog.text
 
     def test_a_registry_that_an_ingest_holds_fails(self, tmp_path):
         with Registry(tmp_path).writer(), pytest.raises(RegistryBusy):
-            available_star_objects(tmp_path)
+            available_extrasolar_objects(tmp_path)
 
     def test_an_id_with_two_items_fails(self, tmp_path):
         path = tmp_path / "part.parquet"
@@ -313,6 +413,39 @@ class TestReadStarObjects:
         assert _read_part(path) == [
             StarObject(7, "η Car", None, ETA_CAR),
             StarObject(8, "Vega", "Q9", ETA_CAR),
+        ]
+
+
+class TestReadPlanetObjects:
+    """The planets with an entry: those whose row holds a Wikidata QID."""
+
+    def test_a_qid_in_the_cross_ids(self, tmp_path):
+        archive = {
+            "catalogue": "nasa-exoplanet-archive",
+            "release": "pscomppars",
+            "catalogue_id": "3.1",
+        }
+        item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q1"}
+        built = write_registry(
+            tmp_path / "registry",
+            [star(10, 20, 50, name="51 Peg")],
+            planets=[
+                planet(
+                    0,
+                    1,
+                    name="Dimidium",
+                    name_source="iau-nameexoworlds",
+                    designation="51 Peg b",
+                    aliases=["Dimidium", "51 Peg b"],
+                    cross_ids=[archive, item],
+                ),
+                planet(0, 2),
+            ],
+        )
+        assert read_extrasolar_objects(built.root)[1] == [
+            PlanetObject(
+                built.ids[0], 1, "Dimidium", "Q1", ("51 Peg b", "Dimidium"), "b", True
+            )
         ]
 
 
@@ -372,7 +505,9 @@ class TestOnlyStarObjects:
         (out / "metadata.json").write_bytes(orjson.dumps(metadata))
         monkeypatch.setattr(stars, "LANGUAGES", ("en", "ru"))
         monkeypatch.setattr(
-            stars, "read_star_objects", lambda: [StarObject(7, "Vega", "Q9")]
+            stars,
+            "read_extrasolar_objects",
+            lambda: ([StarObject(7, "Vega", "Q9")], []),
         )
         monkeypatch.setattr(
             stars,

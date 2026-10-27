@@ -19,7 +19,7 @@ from space_map_data.export import sitemap
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.groups.registry import GROUPS, GroupType
 from space_map_data.export.localization import MESSAGES_DIR
-from space_map_data.export.objects.stars import StarObject
+from space_map_data.export.objects.stars import PlanetObject, StarObject
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.sitemap import (
     SITELINKS_THRESHOLD,
@@ -432,6 +432,7 @@ class TestWriteSitemap:
             {BASE_LOCALE: 0},
             [],
             PlanetPages([], {}),
+            [],
         )
         assert sorted(p.name for p in seo.iterdir()) == [
             "sitemap-1.xml",
@@ -473,6 +474,7 @@ class TestWriteSitemap:
             {BASE_LOCALE: 0},
             [StarObject(n, f"S{n}", f"Q{n}") for n in (1, 2, 3)],
             PlanetPages([], {}),
+            [],
         )
         assert pages.objects == {"x-1": "/x/1/Sirius"}
 
@@ -498,6 +500,7 @@ class TestWriteSitemap:
             {BASE_LOCALE: 0},
             [StarObject(7, "Sir", "Q7")],
             planets,
+            [],
         )
         assert pages.objects == {"x-7": "/x/7/Sirius"}
         assert _locs(tmp_path) == [
@@ -524,6 +527,7 @@ class TestWriteSitemap:
             {BASE_LOCALE: 0},
             [StarObject(7, "Sir", "Q7")],
             planets,
+            [],
         )
         assert pages.objects == {"x-7": "/x/7/Sirius"}
         assert _locs(tmp_path) == [
@@ -589,6 +593,11 @@ class TestAvailablePlanetPages:
             ids[3]: "PSR 1",
             ids[4]: "Host A B",
         }
+
+    def test_the_served_planets_with_an_entry(self):
+        pages = PlanetPages([(7, 1, "Sirius b"), (7, 2, None)], {7: "Sirius"})
+        objects = [PlanetObject(7, 2, "c", "Q1"), PlanetObject(7, 3, "d", "Q2")]
+        assert pages.served(objects) == [PlanetObject(7, 2, "c", "Q1")]
 
     def test_follows_the_served_export_not_the_registry(self, tmp_path: Path):
         """An export that refuses the registry leaves the served pages."""

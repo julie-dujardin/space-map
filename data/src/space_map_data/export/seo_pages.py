@@ -1,5 +1,5 @@
 """SEO page records, in ``v1/seo/pages.json.gz``: one per page of the sitemap
-other than the planets and their hosts.
+other than the planets and their hosts, and one per planet with an entry.
 
 A record holds what the SSR meta of its page reads from the bundles
 (``frontend/src/lib/seo/meta.ts``), in every language, with the credit of its
@@ -19,7 +19,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.nomenclature.writer import feature_bucket_key, feature_label
-from space_map_data.export.objects.stars import available_star_objects
+from space_map_data.export.objects.stars import available_extrasolar_objects
 from space_map_data.export.sitemap import (
     SitemapPages,
     available_planet_pages,
@@ -255,7 +255,15 @@ def write_seo_pages(
     langs = [lang for lang in object_buckets if lang != "global"]
     credits = _Credits(out_dir)
     records = {
-        **dict(_object_records(out_dir, pages.objects, object_buckets, langs, credits)),
+        **dict(
+            _object_records(
+                out_dir,
+                [*pages.objects, *pages.planets],
+                object_buckets,
+                langs,
+                credits,
+            )
+        ),
         **dict(_group_records(out_dir, pages.groups, group_buckets, langs, credits)),
         **dict(
             _feature_records(
@@ -289,6 +297,8 @@ def export_seo_only(engine: Engine) -> None:
     out_dir = EXPORT_DIR / "v1"
     metadata = orjson.loads((out_dir / "metadata.json").read_bytes())
     wikidata_entities = WikidataEntityCache()
+    stars, planets = available_extrasolar_objects()
+    planet_pages = available_planet_pages()
     with Session(engine) as session:
         pages = write_sitemap(
             session,
@@ -296,8 +306,9 @@ def export_seo_only(engine: Engine) -> None:
             wikidata_entities,
             metadata["object_bundles"],
             metadata["group_bundles"],
-            available_star_objects(),
-            available_planet_pages(),
+            stars,
+            planet_pages,
+            planet_pages.served(planets),
         )
         write_seo_pages(
             out_dir,

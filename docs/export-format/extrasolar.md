@@ -426,6 +426,7 @@ A planet:
 | Field | | |
 |-------|-|-|
 | `host`, `number` | number | its page `/x/{host}/b/{number}` |
+| `object` | bool | true when the site's object bundles hold an entry `x-{host}-b-{number}` for the planet ([objects.md](objects.md)): when it has a `wikidata/qid` id |
 | `name`, `name_source` | string | the IAU name (`iau-nameexoworlds`), else the designation and its catalogue |
 | `designation` | string | the archive's name, else exoplanet.eu's, else OEC's |
 | `letter` | string | `b`, `c`, … or null |

@@ -11,7 +11,7 @@ import orjson
 import pytest
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.objects.stars import StarObject
+from space_map_data.export.objects.stars import PlanetObject, StarObject
 from space_map_data.extrasolar.registry import NoRegistry, RegistryBusy
 from space_map_data.ingest.providers import image_selection
 from space_map_data.utils import commons_images as ci
@@ -283,18 +283,22 @@ class TestStarImages:
         assert selections == {"Q4": [{"file": "Rigel.jpg", "kind": "photo"}]}
 
     def test_the_qids_come_from_the_registry(self, monkeypatch):
+        # An item that a star and a planet both hold is selected once.
         monkeypatch.setattr(
             image_selection,
-            "read_star_objects",
-            lambda: [StarObject(5, "Hamal", "Q2"), StarObject(7, "Vega", "Q9")],
+            "read_extrasolar_objects",
+            lambda: (
+                [StarObject(5, "Hamal", "Q2"), StarObject(7, "Vega", "Q9")],
+                [PlanetObject(5, 1, "b", "Q4"), PlanetObject(7, 1, "b", "Q9")],
+            ),
         )
-        assert image_selection._star_qids() == ["Q2", "Q9"]
+        assert image_selection._star_qids() == ["Q2", "Q9", "Q4"]
 
     def test_no_registry_keeps_the_selection(self, monkeypatch, caplog):
         def no_registry():
             raise NoRegistry("no registry in /x")
 
-        monkeypatch.setattr(image_selection, "read_star_objects", no_registry)
+        monkeypatch.setattr(image_selection, "read_extrasolar_objects", no_registry)
         assert image_selection._star_qids() is None
         assert "star_images.json is kept" in caplog.text
 
@@ -302,7 +306,7 @@ class TestStarImages:
         def busy():
             raise RegistryBusy("locked")
 
-        monkeypatch.setattr(image_selection, "read_star_objects", busy)
+        monkeypatch.setattr(image_selection, "read_extrasolar_objects", busy)
         with pytest.raises(RegistryBusy):
             image_selection._star_qids()
 

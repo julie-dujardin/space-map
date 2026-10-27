@@ -20,6 +20,7 @@ import numpy as np
 import orjson
 
 from space_map_data.constants.providers import ID_TYPES, LANGUAGES
+from space_map_data.export.objects.stars import PLANET_ID
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.export.position.format import (
     BODY_HEADER_SIZE,
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 KINDS = (
     "star",
     "extrasolar_star",
+    "extrasolar_planet",
     "planet",
     "dwarf_planet",
     "moon",
@@ -90,8 +92,11 @@ def kind_of(object_type: str, satcat: bool) -> str:
 
 
 def _entry_kind(object_id: str, object_type: str) -> str:
-    """The row of an object entry. A star of the extrasolar catalogue has its
-    own row: the catalogue holds many more stars than those with an entry."""
+    """The row of an object entry. A star or a planet of the extrasolar
+    catalogue has a row of its own: the catalogue holds many more of them than
+    those with an entry."""
+    if PLANET_ID.match(object_id):
+        return "extrasolar_planet"
     if object_id.startswith(STAR_PREFIX):
         return "extrasolar_star"
     return kind_of(object_type, object_id.startswith(_SATCAT_PREFIX))

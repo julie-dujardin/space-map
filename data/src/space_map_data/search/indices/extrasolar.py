@@ -12,6 +12,9 @@ under that ID, with or without a description, so it gets the planet facts on
 that document instead: a second document with the same ID replaces the
 first, and main's has the localized names, the image and the sitelinks. A
 planet is a document of its own kind, keyed as its page is: `x-<host>-b-<n>`.
+A planet with an entry takes the localized names, descriptions and aliases,
+the sitelinks and the thumbnail of main's document of that entry, which is
+not indexed on its own.
 """
 
 import gzip
@@ -20,6 +23,8 @@ import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+from space_map_data.export.objects.stars import PLANET_ID
 
 from .base import extrasolar_pk, planet_pk
 from .objects import build_object_documents
@@ -105,6 +110,22 @@ def planet_document(planet: dict, system: int, host_name: str) -> dict[str, Any]
     }
 
 
+# Root fields of an object document that a planet document takes from it.
+_ENTRY_FIELDS = ("sitelinks_count", "thumbnail")
+_ENTRY_PREFIXES = ("name_", "description_")
+
+
+def _add_entry(planet: dict[str, Any], doc: dict[str, Any]) -> None:
+    """Put the fields of main's object document `doc` of a planet's entry on
+    the planet document `planet`."""
+    for key, value in doc.items():
+        if key in _ENTRY_FIELDS or key.startswith(_ENTRY_PREFIXES):
+            planet[key] = value
+    for key, value in doc["object"].items():
+        if key.startswith("aliases_"):
+            planet["planet"][key] = value
+
+
 def _add_planet_facts(obj: dict[str, Any], host: dict[str, Any]) -> None:
     """Put the planet facts of the host object `host` on main's object `obj`.
     Main's type and names stay."""
@@ -121,40 +142,55 @@ def build_extrasolar_documents(
 ) -> Iterator[dict[str, Any]]:
     """The object documents of the main export in `export_dir`, then the host
     and planet documents of the extrasolar export. A host with an object
-    document gets its planet facts there and no document of its own."""
+    document gets its planet facts there and no document of its own; a planet
+    with an entry gets the entry's names on its own document."""
     hosts, planets = _read_documents(extrasolar_dir)
     objects = (
-        () if export_dir is None else build_object_documents(export_dir, set(hosts))
+        ()
+        if export_dir is None
+        else build_object_documents(export_dir, set(hosts) | set(planets))
     )
     merged = 0
+    entries = 0
     for doc in objects:
+        if PLANET_ID.match(doc["id"]):
+            # The entry of a planet the extrasolar export does not serve has no page.
+            if (planet := planets.get(doc["id"])) is not None:
+                _add_entry(planet, doc)
+                entries += 1
+            continue
         host = hosts.pop(doc["id"], None)
         if host is not None:
             _add_planet_facts(doc["object"], host["object"])
             merged += 1
         yield doc
-    logger.info("Put the planet facts of %d hosts on their star documents", merged)
+    logger.info(
+        "Put the planet facts of %d hosts on their star documents, and the"
+        " entries of %d planets on their planet documents",
+        merged,
+        entries,
+    )
     yield from hosts.values()
-    yield from planets
+    yield from planets.values()
 
 
 def _read_documents(
     extrasolar_dir: Path,
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
-    """The host documents by ID and the planet documents of the export."""
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """The host and the planet documents of the export, by ID."""
     root = extrasolar_dir / "v1" / "x"
     metadata_path = root / "metadata.json"
     if not metadata_path.exists():
         logger.warning("No extrasolar export at %s: no planets to index", root)
-        return {}, []
+        return {}, {}
     section = json.loads(metadata_path.read_text()).get("planets")
     if section is None:
         logger.warning("The extrasolar export at %s has no planets", root)
-        return {}, []
+        return {}, {}
     token = section["token"]
     index = _read(root, section["index"], token)
     hosts: dict[str, dict[str, Any]] = {}
-    planets: list[dict[str, Any]] = []
+    planets: dict[str, dict[str, Any]] = {}
     for key in sorted({host["system"] for host in index["hosts"]}):
         system = _read(root, section["system"].replace("{key}", str(key)), token)
         names = {host["id"]: host["name"] for host in system["hosts"]}
@@ -163,6 +199,7 @@ def _read_documents(
                 doc = host_document(host)
                 hosts[doc["id"]] = doc
         for planet in system["planets"]:
-            planets.append(planet_document(planet, key, names[planet["host"]]))
+            doc = planet_document(planet, key, names[planet["host"]])
+            planets[doc["id"]] = doc
     logger.info("Indexing %d planets and %d host stars", len(planets), len(hosts))
     return hosts, planets

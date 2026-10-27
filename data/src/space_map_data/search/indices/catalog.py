@@ -28,7 +28,9 @@ from .pads import build_pad_documents
 
 def _catalog_settings() -> dict[str, Any]:
     name_fields = ["name"] + [f"name_{lang}" for lang in LANGUAGES]
-    alias_fields = [f"object.aliases_{lang}" for lang in LANGUAGES]
+    alias_fields = [
+        f"{kind}.aliases_{lang}" for lang in LANGUAGES for kind in ("object", "planet")
+    ]
     description_fields = [f"description_{lang}" for lang in LANGUAGES]
     return {
         # Order matters — earlier attributes outrank later ones via the
@@ -91,6 +93,7 @@ def _catalog_settings() -> dict[str, Any]:
                 "attributePatterns": [
                     f"name_{lang}",
                     f"object.aliases_{lang}",
+                    f"planet.aliases_{lang}",
                     f"description_{lang}",
                 ],
             }

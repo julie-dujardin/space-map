@@ -41,6 +41,7 @@ from space_map_data.export.extrasolar.tiles import Problems
 from space_map_data.extrasolar.exoplanets import numbering
 from space_map_data.extrasolar.exoplanets.ingest import hosts_with_several_systems
 from space_map_data.extrasolar.exoplanets.table import SCHEMA, SLUG
+from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.placement import placement
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
@@ -310,8 +311,13 @@ def _direction(host: dict) -> np.ndarray:
 
 
 def planet_record(row: dict, direction: np.ndarray) -> dict:
-    """The planet entry of a system file from its planets table row."""
-    record: dict = {"host": row["host"], "number": row["number"]}
+    """The planet entry of a system file from its planets table row. A planet
+    with a Wikidata item has an object entry."""
+    record: dict = {
+        "host": row["host"],
+        "number": row["number"],
+        "object": planet_qid(row["cross_ids"]) is not None,
+    }
     for name in TOP_COLUMNS:
         record[name] = _finite(row[name])
     record["elements"] = orbits.elements(row, direction)
@@ -542,6 +548,9 @@ def build(
     counts["systems"] = len(contents)
     counts["hosts"] = len(index_hosts)
     counts["planets"] = len(rows)
+    counts["planets with an object entry"] = sum(
+        planet["object"] for planets in planets_of.values() for planet in planets
+    )
     entry = {
         "token": token,
         "index": INDEX_FILE,

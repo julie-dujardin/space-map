@@ -150,10 +150,10 @@ def collect_object_images(object_id: str) -> list[dict] | None:
 
 
 def collect_star_images(qid: str) -> list[dict] | None:
-    """Build the ``images`` array of an extrasolar star's entry.
+    """Build the ``images`` array of an extrasolar star's or planet's entry.
 
-    The selection is keyed by the star's QID: each registry ingest links the
-    items to the stars again.
+    The selection is keyed by the item's QID: the items are linked to the
+    stars and planets again at each registry ingest and export.
     """
     return _collect_images_from_cache(qid, _star_images_cache)
 

@@ -29,7 +29,11 @@ from space_map_data.export.groups.star_family import served_families_stamp
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
 )
-from space_map_data.export.objects.stars import StarObject, star_references
+from space_map_data.export.objects.stars import (
+    PlanetObject,
+    StarObject,
+    star_references,
+)
 from space_map_data.export.position.elements.celestrak_source import current_day_dirs
 from space_map_data.export.position.elements.sidecar import (
     build_earth_part_signature,
@@ -109,7 +113,11 @@ def kernels_digest() -> str:
     return _tree_digest(SOURCES_POSITION_DIR / "spice-kernels")
 
 
-def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> dict:
+def tier_b_fingerprint(
+    session: Session,
+    star_objects: Sequence[StarObject],
+    planet_objects: Sequence[PlanetObject],
+) -> dict:
     """Inputs that feed bundles/labels/features/messages.
 
     `ingest_stamp` covers all DB content; the source stamps cover files the
@@ -117,9 +125,10 @@ def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> 
     attitude blocks injected into object bundles. `position_sources` is what
     the traverses add to bundles, so a route that only grows rewrites none.
     `stars` covers the star entries, which each registry ingest links again,
-    and the works that the literature table cites for them. `star_families`
-    covers the family counts of the served extrasolar export, which the star
-    family pages read.
+    and the works that the literature table cites for them; `planets` the
+    planet entries, which each registry ingest links again too.
+    `star_families` covers the family counts of the served extrasolar export,
+    which the star family pages read.
     """
     return {
         "version": TIER_B_VERSION,
@@ -142,6 +151,19 @@ def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> 
             [
                 (star.id, star.qid, star.name, star_references(star))
                 for star in star_objects
+            ]
+        ),
+        "planets": _digest(
+            [
+                (
+                    planet.obj_id,
+                    planet.qid,
+                    planet.name,
+                    planet.designations,
+                    planet.letter,
+                    planet.iau_named,
+                )
+                for planet in planet_objects
             ]
         ),
         "star_families": served_families_stamp(),

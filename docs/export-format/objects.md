@@ -984,41 +984,54 @@ Three cases get no `coverage` although the catalogue knows the object:
 A hand-authored object (`extra-<n>`) is in no position file. The frontend
 places it from its `orbit` block, so it carries `windows: [[null, null]]`.
 
-### Extrasolar objects (`x-<id>`)
+### Extrasolar objects (`x-<id>`, `x-<host>-b-<n>`)
 
 An object of the extrasolar catalogue ([extrasolar.md](extrasolar.md)) has an
-entry when its Metadata row has `object`: today, when a Wikidata item with an
-article in one of the site's languages names it, or when the literature table
-of the repo (`constants/stars/literature.py`) gives it a value. An item of a
-galaxy, a nebula, a cluster or another object that is not a star names none,
-unless Wikidata also gives it the type of a star or a star system. The id is
-`x-` and its extrasolar ID. An entry holds metadata only: no orbit and no
-coverage, because its place is in its record, and no catalogue values, which
-stay in the record tiles under their own terms. Wikidata gives no quantity,
-spectral type or distance here. A star with no Wikidata item has a global
-entry only.
+entry when a Wikidata item with an article in one of the site's languages
+names it, or, for a star, when the literature table of the repo
+(`constants/stars/literature.py`) gives it a value. The entry holds metadata
+only: no orbit and no coverage, because its place is in its record, and no
+catalogue values, which stay in the record tiles and the planet files under
+their own terms. Wikidata gives no quantity, spectral type or distance here.
+
+- A star's id is `x-` and its extrasolar ID. Its Metadata row has `object`.
+  An item of a galaxy, a nebula, a cluster or another object that is not a
+  star names none, unless Wikidata also gives it the type of a star or a star
+  system. A star with no Wikidata item has a global entry only.
+- A planet's id is `x-<host>-b-<number>`, as its scene id. Its row in the
+  planets table has a `wikidata/qid` id and its entry in its system file has
+  `object` ([extrasolar.md](extrasolar.md)). Only a planet that the extrasolar
+  export serves has an entry.
 
 The global entry holds:
 
-- `id`, `type` (`star`), `name` (the name of its Metadata row) and
-  `cross_refs.wikidata_qid` when it has an item;
+- `id`, `type` (`star` or `exoplanet`), `name` (the name of its Metadata row,
+  or of its planets table row) and `cross_refs.wikidata_qid` when it has an
+  item;
 - `sitelinks_count`, the item's sitelinks on all Wikimedia projects, as for a
   body;
 - `images`, from the item's P18 and the lead images of its Wikipedia
   articles, chosen as a body's are (`space-map-ingest --targets images` keys
-  them by QID in `star_images.json`). An image that more than two
-  stars would share is left out: it shows a constellation or a cluster, most
-  often the constellation chart of a Wikipedia infobox;
+  them by QID in `star_images.json`). An image that more than two stars or
+  planets would share is left out: it shows a constellation, a cluster or a
+  whole planetary system, most often the constellation chart of a Wikipedia
+  infobox;
 - `wikidata.discovery_date` (P575);
-- `references`, the works that the literature table cites for the values of
-  the record, by column group: `{"distance": [{"short": "Smith 2006",
-  "title": "…", "url": "https://doi.org/…"}]}`. A value from a paper has the
-  source `literature` in its `*_source` column; the star page cites the work
-  beside it.
+- on a star, `references`, the works that the literature table cites for the
+  values of the record, by column group: `{"distance": [{"short": "Smith
+  2006", "title": "…", "url": "https://doi.org/…"}]}`. A value from a paper
+  has the source `literature` in its `*_source` column; the star page cites
+  the work beside it.
 
 The localized entry holds `name` where the item's label in that language is a
 name and differs from its English label, `description` and `aliases` from
-Wikidata, and `wikipedia`. It holds these references, as `EntityRef`:
+Wikidata (an alias without SIMBAD's `NAME`, `*`, `**`, `V*` or `Cl*`
+prefix), and `wikipedia`. A planet takes no `name` when it has an IAU name,
+which every language keeps, when the label does not end in the planet's
+letter (it names the star, or is a nickname), or when the label is one of its
+designations spelled another way ("Kepler-34b" for "Kepler-34 b", "Gliese"
+for "GJ"). The entry holds these
+references, as `EntityRef`:
 
 - `instance_of` (P31), without the generic types, the survey detections
   ("infrared source") and the types of another kind of object ("exoplanet").
@@ -1029,10 +1042,10 @@ Wikidata, and `wikipedia`. It holds these references, as `EntityRef`:
 - `iau_constellation` (P59), the IAU constellation the star lies in. It is not
   `constellation`, which names a satellite constellation.
 
-A reference to a star that has an entry links to its page (`primary_type`
-`x`) under the name that page takes. `space-map-export --only star-objects`
-rewrites the entries in the written bundles, with the bundle counts as they
-are.
+A reference to a star or a planet with an entry links to its page
+(`primary_type` `x`) under the name that page takes. `space-map-export --only
+star-objects` rewrites the star and planet entries in the written bundles,
+with the bundle counts as they are.
 
 `host_id` goes on an object with no `coverage` when the catalogue says what
 it sits at or orbits: the primary of an asteroid moon, the station a docked

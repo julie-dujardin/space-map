@@ -13,9 +13,11 @@ translation is the word "asteroid" — pure noise in a name search. Notable
 ones (Ceres, Vesta, Pallas, …) carry aliases, a Wikipedia article, or a
 `named_after` field and survive the cut.
 
-The stars of the extrasolar catalogue that have an entry (`x-<id>`) are in
-the same bundles. A star is indexed when its entry in the base locale has a
-Wikipedia extract, as the sitemap lists it, or when it hosts planets.
+The stars and planets of the extrasolar catalogue that have an entry
+(`x-<id>`, `x-<host>-b-<n>`) are in the same bundles. A star is indexed when
+its entry in the base locale has a Wikipedia extract, as the sitemap lists it,
+or when it hosts planets. A planet's document is built in `extrasolar`, which
+puts the names of its entry on it.
 """
 
 import gzip
@@ -54,6 +56,7 @@ _ALWAYS_INDEX = frozenset(
         "barycenter",
         "star",
         "planet",
+        "exoplanet",
         "dwarf_planet",
         "moon",
         "comet",
@@ -252,10 +255,10 @@ def _display_name(g: dict[str, Any], obj_id: str, otype: str) -> str:
 
 
 def build_object_documents(
-    export_dir: Path, hosts: Collection[str] = frozenset()
+    export_dir: Path, keep: Collection[str] = frozenset()
 ) -> Iterator[dict[str, Any]]:
-    """The object documents of the export. `hosts` are the IDs of the planet
-    hosts."""
+    """The object documents of the export. An extrasolar entry in `keep`, a
+    planet host or a planet, is indexed without a description too."""
     objects_dir = export_dir / "v1" / "objects"
     global_dir = objects_dir / "__global__"
     if not global_dir.exists():
@@ -296,7 +299,7 @@ def build_object_documents(
                 continue
             if (
                 obj_id.startswith(STAR_PREFIX)
-                and obj_id not in hosts
+                and obj_id not in keep
                 and not has_description(localized[BASE_LOCALE].get(obj_id))
             ):
                 skipped_stars += 1

@@ -108,7 +108,8 @@ class TestWriteSeoPages:
                     "type": "planet",
                     "orbit": {"a": 1.52},
                     "images": [_image("Mars.png", attr="credit"), _image("Mars.jpg")],
-                }
+                },
+                "x-5-b-2": {"name": "Dimidium", "type": "exoplanet"},
             },
         )
         _write_bundles(
@@ -155,6 +156,7 @@ class TestWriteSeoPages:
                 objects={"naif-499": "/b/499/Mars"},
                 groups={"cat-planets": "/g/cat-planets/Planets"},
                 features=[(tycho, "/b/301/f/7/Tycho")],
+                planets=("x-5-b-2",),
             ),
             MagicMock(),
             {"global": 2, "en": 1, "fr": 1},
@@ -170,6 +172,7 @@ class TestWriteSeoPages:
             "f/naif-301/7",
             "g/cat-planets",
             "o/naif-499",
+            "o/x-5-b-2",
         ]
 
     def test_holds_an_object_in_every_language_with_its_card_credits(

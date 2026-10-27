@@ -68,7 +68,7 @@ from space_map_data.export.objects.probe_targets import (
 from space_map_data.export.objects.rings import load_ring_moon_ids
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.stars import (
-    available_star_objects,
+    available_extrasolar_objects,
     inject_star_objects,
 )
 from space_map_data.export.objects.writer import (
@@ -1078,16 +1078,20 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     """Run the full export pipeline."""
     t0 = time.monotonic()
     out_dir = EXPORT_DIR / "v1"
-    # One read for the star entries and the sitemap. A registry that an ingest
-    # holds stops the export here, before it removes anything.
-    star_objects = available_star_objects()
+    # One read for the star and planet entries and the sitemap. A registry that
+    # an ingest holds stops the export here, before it removes anything.
+    star_objects, planet_objects = available_extrasolar_objects()
     planet_pages = available_planet_pages()
+    # A planet that the extrasolar export does not serve has no page.
+    planet_objects = planet_pages.served(planet_objects)
     with Session(engine) as session:
         precheck_tables(session)
         nomenclature_by_body = build_nomenclature(session)
         moon_hosts = _load_moon_hosts(session)
         moon_parent_names = _load_moon_parent_names(session, moon_hosts)
-        tier_b_fp = incremental.tier_b_fingerprint(session, star_objects)
+        tier_b_fp = incremental.tier_b_fingerprint(
+            session, star_objects, planet_objects
+        )
     tier_b_meta = incremental.read_tier_b_meta(out_dir)
     tier_b_clean = (
         tier_b_fp["ingest_stamp"] is not None
@@ -1313,7 +1317,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Before the pointing config below, which addresses objects by id and
         # would report these as missing if they had not arrived yet.
         inject_manual_objects(agg.all_objects, wikidata_entities)
-        inject_star_objects(agg.all_objects, wikidata_entities, star_objects)
+        inject_star_objects(
+            agg.all_objects, wikidata_entities, star_objects, planet_objects
+        )
         # Hand-edited per-spacecraft pointing config; injects `pointing` into
         # matching object entries for the frontend's focused-model attitude.
         apply_orientation_config(agg.all_objects.global_data)
@@ -1373,6 +1379,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             group_bundle_ns,
             star_objects,
             planet_pages,
+            planet_objects,
         )
         write_seo_pages(
             out_dir,

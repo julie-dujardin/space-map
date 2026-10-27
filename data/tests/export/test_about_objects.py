@@ -202,6 +202,11 @@ class TestObjectRows:
                 "cross_refs": {"wikidata_qid": "Q9"},
                 "images": [{}],
             },
+            "x-7-b-1": {
+                "id": "x-7-b-1",
+                "type": "exoplanet",
+                "cross_refs": {"wikidata_qid": "Q8"},
+            },
         }
         localized = {
             "en": {
@@ -242,6 +247,7 @@ class TestObjectRows:
         assert list(rows) == [
             "star",
             "extrasolar_star",
+            "extrasolar_planet",
             "planet",
             "asteroid",
             "ring_system",
@@ -254,6 +260,7 @@ class TestObjectRows:
         assert rows["asteroid"]["count"] == 2
         assert rows["star"]["count"] == 1
         assert rows["extrasolar_star"]["count"] == 1
+        assert rows["extrasolar_planet"]["count"] == 1
         assert rows["ring_system"]["count"] == 2
         assert rows["ring_system"]["systems"] == 1
         assert rows["surface_feature"]["count"] == 2

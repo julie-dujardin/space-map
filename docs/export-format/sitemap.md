@@ -92,11 +92,12 @@ hosts, planets.
 
 ## Page records — `seo/pages.json.gz`
 
-One record for each object, group and feature page of the sitemap, keyed by
-the path of its file in the site's assets. The planets and their hosts have
-none:
+One record for each object, group and feature page of the sitemap, and for
+each served planet with an entry, keyed by the path of its file in the site's
+assets. The other planets and the hosts with no entry have none:
 
-- `o/<object id>` — `{global, localized, credits}`;
+- `o/<object id>` — `{global, localized, credits}`; a planet's object id is
+  `x-<host>-b-<number>`;
 - `g/<slug>` — `{global, localized, credits}`, where `global.images` holds the
   group's lead image only;
 - `f/<body id>/<feature id>` — `{global, localized, credits, names}`.

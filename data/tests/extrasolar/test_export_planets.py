@@ -177,6 +177,19 @@ class TestPlanetFiles:
         assert lucky["elements"].pop("phase") == expected.pop("phase")
         assert lucky["elements"] == pytest.approx(expected)
 
+    def test_marks_the_planets_with_an_entry(self, tmp_path, out):
+        item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q1"}
+        rows = [
+            row | {"cross_ids": [*row["cross_ids"], item]}
+            if (row["_host"], row["number"]) == (0, 2)
+            else row
+            for row in PLANETS
+        ]
+        built, report, reader = _export(tmp_path, out, rows)
+        assert reader.planet(built.ids[0], 1)["object"] is False
+        assert reader.planet(built.ids[0], 2)["object"] is True
+        assert report["planets"]["planets with an object entry"] == 1
+
     def test_the_orbits_of_the_odd_planets(self, tmp_path, out):
         built, report, reader = _export(tmp_path, out)
         assert reader.planet(built.ids[1], 1)["elements"] is None

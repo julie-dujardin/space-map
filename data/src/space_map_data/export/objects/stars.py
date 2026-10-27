@@ -1,21 +1,24 @@
 """Object entries of the extrasolar objects with a Wikidata item or a value
-from a paper.
+from a paper: stars, and planets with an item.
 
-They live in the object bundles, under `x-<id>` like the `/x/<id>` pages, so
-a star page reads its text as a body page does. They hold metadata only:
-names, descriptions, references and discovery dates from Wikidata, Wikipedia
-extracts, Commons images, and the works that the literature table cites for
-a value. The record tiles of the extrasolar export hold the values, under
+They live in the object bundles, under `x-<id>` like the `/x/<id>` pages and
+`x-<host>-b-<n>` like the `/x/<host>/b/<n>` ones, so these pages read their
+text as a body page does. They hold metadata only: names, descriptions,
+references and discovery dates from Wikidata, Wikipedia extracts, Commons
+images, and the works that the literature table cites for a value. The record
+tiles and the planet files of the extrasolar export hold the values, under
 their own terms.
 
-The registry's Metadata rows say which IDs have an entry (`object`), and give
-their English name, QID and literature key.
+The registry's Metadata rows say which stars have an entry (`object`), and
+give their English name, QID and literature key. A planet has an entry when
+its planets table row has a Wikidata QID among its cross ids.
 """
 
 import gzip
 import logging
+import re
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +29,7 @@ import pyarrow.parquet as pq
 
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.constants.stars.literature import DISTANCES, REFERENCES, StarKey
+from space_map_data.export.extrasolar.planets import read_planets
 from space_map_data.export.images import collect_star_images
 from space_map_data.export.in_place import refresh_versions
 from space_map_data.export.objects.wikidata_claims import (
@@ -46,6 +50,9 @@ from space_map_data.export.wikidata import (
     WikidataEntityCache,
     active_statements,
 )
+from space_map_data.extrasolar.exoplanets.join import designation_key
+from space_map_data.extrasolar.exoplanets.table import IAU_NAMES
+from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.extrasolar.registry import NoRegistry, Registry
 from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA, usable_name
@@ -56,6 +63,12 @@ logger = logging.getLogger(__name__)
 
 PREFIX = "x-"
 TYPE = "star"
+PLANET_TYPE = "exoplanet"
+# The id of a planet's entry, as its scene id.
+PLANET_ID = re.compile(r"^x-\d+-b-\d+$")
+# The prefixes of SIMBAD's identifiers that Wikidata copies into some aliases:
+# "NAME Proxima Centauri b", "* 51 Peg b", "V* V645 Cen".
+_SIMBAD_PREFIX = re.compile(r"^(NAME|V\*|\*\*|\*|Cl\*) +")
 
 # Spectral and luminosity classes. A star type that is one of them, or a
 # direct subclass of one, restates a catalogue value, so the entry leaves it
@@ -93,9 +106,26 @@ class StarObject:
     literature: StarKey | None = None
 
 
+@dataclass(frozen=True)
+class PlanetObject:
+    host: int
+    number: int
+    # The planet's name in its planets table row.
+    name: str
+    qid: str
+    # Its designation and the other names its catalogues give it.
+    designations: tuple[str, ...] = ()
+    letter: str | None = None
+    iau_named: bool = False
+
+    @property
+    def obj_id(self) -> str:
+        return f"{PREFIX}{self.host}-b-{self.number}"
+
+
 class _Page(NamedTuple):
-    """The page of a star: its entry id, its global name and its names by
-    language where they differ."""
+    """The page of a star or a planet: its entry id, its global name and its
+    names by language where they differ."""
 
     obj_id: str
     name: str
@@ -139,27 +169,71 @@ def _read_part(path: Path) -> list[StarObject]:
     return out
 
 
-def read_star_objects(root: Path = REGISTRY_ROOT) -> list[StarObject]:
-    """The IDs with an entry, from the current Metadata table."""
-    with Registry(root).reader() as registry:
-        directory = registry.table_dir(METADATA.slug)
-        paths = [] if directory is None else sorted(directory.glob("*.parquet"))
-        with ThreadPoolExecutor(8) as pool:
-            parts = list(pool.map(_read_part, paths))
+def _star_objects(registry: Registry) -> list[StarObject]:
+    directory = registry.table_dir(METADATA.slug)
+    paths = [] if directory is None else sorted(directory.glob("*.parquet"))
+    with ThreadPoolExecutor(8) as pool:
+        parts = list(pool.map(_read_part, paths))
     return [star for part in parts for star in part]
 
 
-def available_star_objects(root: Path = REGISTRY_ROOT) -> list[StarObject]:
-    """The IDs with an entry, or none on a host without the registry.
+def _planet_objects(registry: Registry) -> list[PlanetObject]:
+    table = read_planets(registry)
+    if table is None:
+        return []
+    columns = [
+        "host",
+        "number",
+        "name",
+        "name_source",
+        "designation",
+        "letter",
+        "aliases",
+        "cross_ids",
+    ]
+    out = []
+    for row in table.select(columns).to_pylist():
+        qid = planet_qid(row["cross_ids"])
+        if qid is None:
+            continue
+        names = (row["designation"], *(row["aliases"] or ()))
+        out.append(
+            PlanetObject(
+                row["host"],
+                row["number"],
+                row["name"],
+                qid,
+                tuple(dict.fromkeys(n for n in names if n)),
+                row["letter"],
+                row["name_source"] == IAU_NAMES,
+            )
+        )
+    return out
+
+
+def read_extrasolar_objects(
+    root: Path = REGISTRY_ROOT,
+) -> tuple[list[StarObject], list[PlanetObject]]:
+    """The stars and the planets with an entry, from one version of the
+    registry: the Metadata table and the planets table."""
+    with Registry(root).reader() as registry:
+        return _star_objects(registry), _planet_objects(registry)
+
+
+def available_extrasolar_objects(
+    root: Path = REGISTRY_ROOT,
+) -> tuple[list[StarObject], list[PlanetObject]]:
+    """The stars and the planets with an entry, or none on a host without
+    the registry.
 
     Raises RegistryBusy while an ingest holds the registry, so that no export
-    loses its star pages.
+    loses its star and planet pages.
     """
     try:
-        return read_star_objects(root)
+        return read_extrasolar_objects(root)
     except NoRegistry as error:
-        logger.warning("No star entries: %s", error)
-        return []
+        logger.warning("No star or planet entries: %s", error)
+        return [], []
 
 
 def _page_name(entity: WikidataEntity | None, lang: str) -> str | None:
@@ -171,6 +245,31 @@ def _page_name(entity: WikidataEntity | None, lang: str) -> str | None:
     labels = entity["labels"]
     name = usable_name(labels.get(lang))
     return name if name and name != (labels.get("en") or labels.get("mul")) else None
+
+
+# Gliese numbers go by `GJ`, `Gl` or `Gliese`.
+_GLIESE = re.compile(r"^(gliese|gl)(?=\d)")
+
+
+def _same_designation(name: str) -> str:
+    return _GLIESE.sub("gj", designation_key(name))
+
+
+def _planet_page_name(
+    entity: WikidataEntity | None, lang: str, planet: PlanetObject
+) -> str | None:
+    """The name the planet's page takes in ``lang``, as a star's would, but
+    only a name that ends in the planet's letter and is not one of its
+    designations spelled another way ("Kepler-34b"). Another label names its
+    star ("Lalande 21185" for GJ 411 b) or is a nickname. A planet with an IAU
+    name keeps it: the labels in most languages are its designation."""
+    if planet.iau_named or not planet.letter:
+        return None
+    name = _page_name(entity, lang)
+    if name is None or not name.rstrip().endswith(planet.letter):
+        return None
+    own = {_same_designation(n) for n in (planet.name, *planet.designations)}
+    return None if _same_designation(name) in own else name
 
 
 def _restates_spectral_class(qid: str, entities: WikidataEntityCache) -> bool:
@@ -220,6 +319,11 @@ def _claims(qid: str, entity: WikidataEntity, entities: WikidataEntityCache) -> 
     return claims
 
 
+def _aliases(names: list[str]) -> list[str]:
+    """The aliases without SIMBAD's prefixes, each once."""
+    return list(dict.fromkeys(_SIMBAD_PREFIX.sub("", name) for name in names))
+
+
 def _read(
     qid: str,
     entity: WikidataEntity | None,
@@ -235,7 +339,11 @@ def _read(
             for lang in LANGUAGES
             if (text := entity["descriptions"].get(lang))
         },
-        {lang: names for lang in LANGUAGES if (names := entity["aliases"].get(lang))},
+        {
+            lang: _aliases(names)
+            for lang in LANGUAGES
+            if (names := entity["aliases"].get(lang))
+        },
         sitelinks,
     )
 
@@ -247,9 +355,10 @@ def _localized(
     lang: str,
     entities: WikidataEntityCache,
     pages: Mapping[str, _Page],
+    page: _Page,
 ) -> dict:
     data: dict = {}
-    if name := pages[qid].names.get(lang):
+    if name := page.names.get(lang):
         data["name"] = name
     if desc := read.descriptions.get(lang):
         data["description"] = desc
@@ -287,81 +396,146 @@ def has_description(localized: dict | None) -> bool:
     return bool(((localized or {}).get("wikipedia") or {}).get("extract"))
 
 
-def _global(obj_id: str, star: StarObject, read: _Read) -> dict:
-    data: dict = {"id": obj_id, "type": TYPE, "name": star.name}
-    if star.qid:
-        data["cross_refs"] = {"wikidata_qid": star.qid}
+def _global(
+    obj_id: str,
+    name: str,
+    object_type: str,
+    qid: str | None,
+    read: _Read,
+    references: dict[str, list[dict]] | None = None,
+) -> dict:
+    data: dict = {"id": obj_id, "type": object_type, "name": name}
+    if qid:
+        data["cross_refs"] = {"wikidata_qid": qid}
     if read.sitelinks:
         data["sitelinks_count"] = read.sitelinks
-    if star.qid and (images := collect_star_images(star.qid)):
+    if qid and (images := collect_star_images(qid)):
         data["images"] = images
     claims = read.claims
     wikidata = {c.key: claims[c.key] for c in STAR_GLOBAL_CLAIMS if c.key in claims}
     if wikidata:
         data["wikidata"] = wikidata
-    if references := star_references(star):
+    if references:
         data["references"] = references
     return data
 
 
+def _log_entries(
+    kind: str,
+    ids: Sequence[str],
+    global_data: Mapping[str, dict],
+    localized: Mapping[str, Mapping[str, dict]],
+) -> None:
+    entries = [global_data[obj_id] for obj_id in ids]
+    logger.info(
+        "%s entries: %d, with images: %d, with references: %d, described: %d,"
+        " localized: %s",
+        kind,
+        len(entries),
+        sum("images" in entry for entry in entries),
+        sum("references" in entry for entry in entries),
+        sum(has_description(localized[BASE_LOCALE].get(obj_id)) for obj_id in ids),
+        ", ".join(
+            f"{lang}={sum(obj_id in localized[lang] for obj_id in ids)}"
+            for lang in LANGUAGES
+        ),
+    )
+
+
 def star_entries(
-    stars: list[StarObject], entities: WikidataEntityCache
+    stars: Sequence[StarObject],
+    entities: WikidataEntityCache,
+    planets: Sequence[PlanetObject] = (),
 ) -> tuple[dict[str, dict], dict[str, dict[str, dict]]]:
-    """The global entries and the localized ones by language."""
-    # References to a star with an entry link to its page, so every page is
-    # known before the first entry.
+    """The global entries and the localized ones by language, of the stars
+    and the planets."""
+    # References to an object with an entry link to its page, so every page is
+    # known before the first entry. A star's page takes the references to an
+    # item that a star and a planet both hold.
     # Keyed by QID.
     pages: dict[str, _Page] = {}
-    # Keyed by ID.
-    reads: dict[int, _Read] = {}
+    # Keyed by entry id.
+    own_pages: dict[str, _Page] = {}
+    reads: dict[str, _Read] = {}
+    global_data: dict[str, dict] = {}
     missing = 0
-    for star in stars:
-        if star.qid is None:
-            reads[star.id] = _Read({}, {}, {}, None)
-            continue
-        found = entities.get_star_entity(star.qid)
+
+    def read(obj_id: str, qid: str, name: str, planet: PlanetObject | None) -> None:
+        nonlocal missing
+        found = entities.get_star_entity(qid)
         entity = found.entity if found else None
         missing += entity is None
-        names = {lang: name for lang in LANGUAGES if (name := _page_name(entity, lang))}
-        pages[star.qid] = _Page(f"{PREFIX}{star.id}", star.name, names)
-        reads[star.id] = _read(
-            star.qid, entity, found.sitelinks if found else None, entities
-        )
-    if missing:
-        logger.warning("%d star items have no downloaded entity", missing)
+        names = {
+            lang: page_name
+            for lang in LANGUAGES
+            if (
+                page_name := _planet_page_name(entity, lang, planet)
+                if planet
+                else _page_name(entity, lang)
+            )
+        }
+        page = _Page(obj_id, name, names)
+        own_pages[obj_id] = page
+        pages.setdefault(qid, page)
+        reads[obj_id] = _read(qid, entity, found.sitelinks if found else None, entities)
 
-    global_data: dict[str, dict] = {}
-    localized: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
     for star in stars:
         obj_id = f"{PREFIX}{star.id}"
-        read = reads[star.id]
-        global_data[obj_id] = _global(obj_id, star, read)
         if star.qid is None:
-            continue
-        summaries = load_wikipedia_summaries_for_qid(star.qid)
+            reads[obj_id] = _Read({}, {}, {}, None)
+        else:
+            read(obj_id, star.qid, star.name, None)
+        global_data[obj_id] = _global(
+            obj_id, star.name, TYPE, star.qid, reads[obj_id], star_references(star)
+        )
+    shared = sum(planet.qid in pages for planet in planets)
+    for planet in planets:
+        read(planet.obj_id, planet.qid, planet.name, planet)
+        global_data[planet.obj_id] = _global(
+            planet.obj_id, planet.name, PLANET_TYPE, planet.qid, reads[planet.obj_id]
+        )
+    if missing:
+        logger.warning("%d star and planet items have no downloaded entity", missing)
+    if shared:
+        logger.info("%d planet items are star items too", shared)
+
+    localized: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
+    qids = [(f"{PREFIX}{star.id}", star.qid) for star in stars if star.qid] + [
+        (planet.obj_id, planet.qid) for planet in planets
+    ]
+    for obj_id, qid in qids:
+        summaries = load_wikipedia_summaries_for_qid(qid)
         for lang in LANGUAGES:
             block = _localized(
-                star.qid, read, summaries.get(lang), lang, entities, pages
+                qid,
+                reads[obj_id],
+                summaries.get(lang),
+                lang,
+                entities,
+                pages,
+                own_pages[obj_id],
             )
             if block:
                 localized[lang][obj_id] = block
-    logger.info(
-        "Star entries: %d, with images: %d, with references: %d, described: %d,"
-        " localized: %s",
-        len(global_data),
-        sum("images" in entry for entry in global_data.values()),
-        sum("references" in entry for entry in global_data.values()),
-        sum(has_description(entry) for entry in localized[BASE_LOCALE].values()),
-        ", ".join(f"{lang}={len(localized[lang])}" for lang in LANGUAGES),
+    _log_entries(
+        "Star", [f"{PREFIX}{star.id}" for star in stars], global_data, localized
     )
+    if planets:
+        _log_entries(
+            "Planet", [planet.obj_id for planet in planets], global_data, localized
+        )
     return global_data, localized
 
 
 def inject_star_objects(
-    data: ChunkObjectData, entities: WikidataEntityCache, stars: list[StarObject]
+    data: ChunkObjectData,
+    entities: WikidataEntityCache,
+    stars: Sequence[StarObject],
+    planets: Sequence[PlanetObject],
 ) -> None:
-    """Fold the entries of ``stars`` into the object-bundle accumulators."""
-    global_data, localized = star_entries(stars, entities)
+    """Fold the entries of ``stars`` and ``planets`` into the object-bundle
+    accumulators."""
+    global_data, localized = star_entries(stars, entities, planets)
     data.global_data.update(global_data)
     for lang, entries in localized.items():
         data.localized_data[lang].update(entries)
@@ -394,9 +568,11 @@ def replace_bundle_entries(
 
 
 def export_star_objects_only(out_dir: Path = EXPORT_DIR / "v1") -> None:
-    """`space-map-export --only star-objects`: the star entries of the object
-    bundles, in place. The other entries and the bucket counts stay."""
-    global_data, localized = star_entries(read_star_objects(), WikidataEntityCache())
+    """`space-map-export --only star-objects`: the star and planet entries of
+    the object bundles, in place. The other entries and the bucket counts
+    stay."""
+    stars, planets = read_extrasolar_objects()
+    global_data, localized = star_entries(stars, WikidataEntityCache(), planets)
     counts = orjson.loads((out_dir / "metadata.json").read_bytes())["object_bundles"]
     tiers: Mapping[str, Mapping[str, dict]] = {"global": global_data, **localized}
     changed: dict[str, int] = defaultdict(int)
@@ -405,4 +581,4 @@ def export_star_objects_only(out_dir: Path = EXPORT_DIR / "v1") -> None:
         changed[tier] = replace_bundle_entries(directory, counts[tier], PREFIX, entries)
     if any(changed.values()):
         refresh_versions(out_dir, "objects")
-    logger.info("Star entries rewrote bundle files: %s", dict(changed))
+    logger.info("Star and planet entries rewrote bundle files: %s", dict(changed))

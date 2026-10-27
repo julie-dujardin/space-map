@@ -179,6 +179,56 @@ class TestHostWithAnEntry:
         assert "sitelinks_count" not in lit
 
 
+class TestPlanetWithAnEntry:
+    """A planet with an entry keeps its planet document, with the entry's
+    names on it."""
+
+    def test_the_entry_goes_on_the_planet_document(
+        self, exported, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en", "ru"))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        built, out = exported
+        lucky = f"x-{built.ids[0]}-b-2"
+        # The extrasolar export does not serve this one.
+        gone = f"x-{built.ids[0]}-b-9"
+        bundles = {
+            "__global__": {
+                key: {"id": key, "type": "exoplanet", "name": "Lucky"}
+                | ({"sitelinks_count": 30} if key == lucky else {})
+                for key in (lucky, gone)
+            },
+            "en": {
+                key: {
+                    "aliases": ["Planet Lucky"],
+                    "description": "a planet",
+                    "wikipedia": {"extract": "Lucky is a planet."},
+                }
+                for key in (lucky, gone)
+            },
+            "ru": {lucky: {"name": "Счастливая"}},
+        }
+        for tier, entries in bundles.items():
+            directory = tmp_path / "export" / "v1" / "objects" / tier
+            directory.mkdir(parents=True)
+            (directory / "0.json.gz").write_bytes(
+                gzip.compress(json.dumps(entries).encode())
+            )
+
+        docs = list(CATALOG_INDEX.build_documents(tmp_path / "export", out))
+        keys = [doc["id"] for doc in docs]
+        assert len(keys) == len(set(keys))
+        assert gone not in keys
+        doc = dict(zip(keys, docs))[lucky]
+        assert doc["kind"] == "planet"
+        assert doc["name"] == "Lucky"
+        assert doc["name_ru"] == "Счастливая"
+        assert doc["description_en"] == "a planet"
+        assert doc["sitelinks_count"] == 30
+        assert doc["planet"]["aliases_en"] == ["Planet Lucky"]
+        assert doc["planet"]["designation"] == "Planet 0 2"
+
+
 class TestDesignations:
     def test_names_and_numbers(self):
         host = {
