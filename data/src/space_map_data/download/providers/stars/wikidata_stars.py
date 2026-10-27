@@ -30,12 +30,10 @@ from pathlib import Path
 import httpx
 
 from space_map_data.constants.providers import LANGUAGES, PROVIDERS
-from space_map_data.download.downloader import Downloader, DownloadError
+from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.catalogues.fetch import (
-    QLEVER_TSV,
     QLEVER_URL,
-    post_lines_gz,
-    qlever_count,
+    download_item_list,
 )
 from space_map_data.utils.paths import SOURCES_STARS_DIR
 
@@ -260,30 +258,12 @@ class WikidataStarsDownloader(Downloader):
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        counted = qlever_count(self.client, COUNT_QUERY)
-        floor = int(self._previous_count() * MIN_SHARE_OF_PREVIOUS)
-        if counted < floor:
-            raise DownloadError(
-                f"QLever counts {counted} items, at least {floor} expected"
-            )
-
-        def check(part: Path, lines: int) -> None:
-            if lines - 1 != counted:
-                raise DownloadError(
-                    f"QLever returned {lines - 1} items and counts {counted}"
-                )
-            try:
-                read_items(part)
-            except ValueError as error:
-                raise DownloadError(f"{part.name}: {error}") from error
-
-        post_lines_gz(
+        counted = download_item_list(
             self.client,
-            QLEVER_URL,
             ITEMS_FILE,
-            data={"query": ITEMS_QUERY, "action": "tsv_export"},
-            headers=QLEVER_TSV,
-            check=check,
+            COUNT_QUERY,
+            ITEMS_QUERY,
+            int(self._previous_count() * MIN_SHARE_OF_PREVIOUS),
+            read_items,
         )
-        logger.info("%s: %d items", ITEMS_FILE.name, counted)
         self._save_metadata(QLEVER_URL, counted, complete=True)

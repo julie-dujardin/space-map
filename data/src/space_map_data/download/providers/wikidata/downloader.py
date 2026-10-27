@@ -29,6 +29,7 @@ from space_map_data.constants.spacecraft import CATALOGUE as SPACECRAFT_CATALOGU
 from space_map_data.constants.stars.families import STAR_FAMILY_PAGES
 from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
+from space_map_data.download.providers.exoplanets import wikidata as wikidata_exoplanets
 from space_map_data.download.providers.stars import wikidata_stars
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.export.localization import SEEDED_UNIT_QIDS
@@ -102,12 +103,19 @@ class WikidataDownloader(Downloader):
             nomenclature_qids, nomenclature_dir, limit=limit, fetch_desc="nomenclature"
         )
 
-        # Stars match by catalogue id at the extrasolar ingest, not through
-        # the database, so their items come from their own list.
+        # Stars and planets match by catalogue id at the extrasolar ingest and
+        # export, not through the database, so their items come from their own
+        # lists. Both keep their entities in stars/.
         star_qids = wikidata_stars.star_qids()
+        exoplanet_qids = wikidata_exoplanets.exoplanet_qids()
         stars_dir = self.out_dir / "stars"
         stars_dir.mkdir(exist_ok=True)
-        self._fetch_entities(star_qids, stars_dir, limit=limit, fetch_desc="stars")
+        self._fetch_entities(
+            star_qids | exoplanet_qids,
+            stars_dir,
+            limit=limit,
+            fetch_desc="stars and planets",
+        )
 
         # Fetch IAU feature-type entities (one per 2-letter IAU code that has a
         # Wikidata counterpart). Used at export time to emit localized
@@ -301,7 +309,9 @@ class WikidataDownloader(Downloader):
                 property_pids, properties_dir, limit=None, fetch_desc="properties"
             )
 
-        all_count = len(object_qids) + len(nomenclature_qids) + len(star_qids)
+        all_count = (
+            len(object_qids) + len(nomenclature_qids) + len(star_qids | exoplanet_qids)
+        )
         self._save_metadata(
             API_URL,
             all_count,

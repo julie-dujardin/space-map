@@ -212,6 +212,9 @@ SOURCE_CATALOG: dict[str, SourceInfo] = {
     PROVIDERS.WIKIDATA_STARS: SourceInfo(
         "Wikidata — star items", "https://www.wikidata.org/", "reference"
     ),
+    PROVIDERS.WIKIDATA_EXOPLANETS: SourceInfo(
+        "Wikidata — exoplanet items", "https://www.wikidata.org/", "reference"
+    ),
     PROVIDERS.IAU_STAR_NAMES: SourceInfo(
         "IAU Catalog of Star Names",
         "https://exopla.net/star-names/modern-iau-star-names/",

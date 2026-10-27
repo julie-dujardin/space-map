@@ -41,6 +41,9 @@ from space_map_data.download.providers.exoplanets.open_catalogue import (
 from space_map_data.download.providers.exoplanets.simbad import (
     ExoplanetSimbadDownloader,
 )
+from space_map_data.download.providers.exoplanets.wikidata import (
+    WikidataExoplanetsDownloader,
+)
 from space_map_data.download.providers.gvp import GVPDownloader
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 from space_map_data.download.providers.images.commons import CommonsDownloader
@@ -171,8 +174,9 @@ PROVIDERS_CLASSES = [
     SmallBodyChebyshevDownloader,
     DeepcatSynthDownloader,
     SpacetrackTleDownloader,
-    # Ordered: Wikidata fetches the entities of the star items.
+    # Ordered: Wikidata fetches the entities of the star and planet items.
     WikidataStarsDownloader,
+    WikidataExoplanetsDownloader,
     WikidataDownloader,
     ManualDownloader,
     WikipediaDownloader,

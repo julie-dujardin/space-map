@@ -430,7 +430,7 @@ A planet:
 | `designation` | string | the archive's name, else exoplanet.eu's, else OEC's |
 | `letter` | string | `b`, `c`, … or null |
 | `aliases` | list | the IAU name and every catalogue name of the planet |
-| `cross_ids` | list | `{catalogue, release, catalogue_id}`: the archive's `objectid`, exoplanet.eu's name, OEC's first name, and `iau/nameexoworlds/<name>` |
+| `cross_ids` | list | `{catalogue, release, catalogue_id}`: the archive's `objectid`, exoplanet.eu's name, OEC's first name, `iau/nameexoworlds/<name>`, and `wikidata/qid/<QID>`. Each ingest links the Wikidata items with an article in one of the site's languages again: an item names a planet by its NASA archive name (P5667), which is the planet's designation, or by its exoplanet.eu page (P5653). An item whose ids name two planets names none, and of the items that name one planet, the item with the most articles keeps it, then the lowest QID |
 | `class` | string | after the IAU: `planet` (under 13 MJ, mass ratio to its star under 2/(25+√621) ≈ 0.04), `brown dwarf` (13 MJ or more), `sub-brown dwarf` (under 13 MJ with a larger mass ratio) |
 | `class_basis` | string | `true mass`, `minimum mass`, `estimated mass`, `no mass` |
 | `mass_ratio` | number | planet over central object, null without a star mass |

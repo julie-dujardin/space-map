@@ -28,6 +28,9 @@ import pyarrow.csv as pcsv
 import pyarrow.parquet as pq
 
 from space_map_data.download.providers.exoplanets import gaia as gaia_provider
+from space_map_data.download.providers.exoplanets import (
+    wikidata as wikidata_provider,
+)
 from space_map_data.extrasolar.engine import ExtensionResult, IngestRun
 from space_map_data.extrasolar.exoplanets import (
     catalogues,
@@ -37,9 +40,11 @@ from space_map_data.extrasolar.exoplanets import (
     simbad,
     table,
     twins,
+    wikidata,
 )
 from space_map_data.extrasolar.exoplanets.catalogues import (
     ARCHIVE,
+    CATALOGUES,
     EU,
     LENS,
     OEC,
@@ -90,6 +95,7 @@ class Inputs:
     flame_spec: Path = gaia_provider.OUT_DIR / gaia_provider.FLAME_SPEC_FILE
     xgboost: Path = gaia_provider.OUT_DIR / gaia_provider.XGBOOST_FILE
     names: Path = names.NAMES_FILE
+    wikidata: Path = wikidata_provider.ITEMS_FILE
 
 
 @dataclass
@@ -128,6 +134,8 @@ class Prepared:
     by_hip: list[str]
     # Unpositionable DR3 ids of hosts that `read` did not read a row for.
     unread: list[int]
+    # The Wikidata items of planets, which link to them at the commit.
+    items: list[wikidata_provider.ExoplanetItem]
 
     def batches(self, source: str) -> list[pa.Table]:
         return [self.host_rows[source]]
@@ -378,6 +386,11 @@ def prepare(
     )
     for dr3 in unread:
         logger.warning("exoplanets: no Gaia row read for the host source %d", dr3)
+    if inputs.wikidata.exists():
+        items = wikidata_provider.read_items(inputs.wikidata)
+    else:
+        items = []
+        logger.warning("exoplanets: no Wikidata items at %s", inputs.wikidata)
     logger.info(
         "exoplanets: %d planets around %d stars, %d Gaia rows for unpositionable"
         " hosts, %d hosts by their HIP number, %d twins and %d joins of %d stars"
@@ -407,6 +420,7 @@ def prepare(
         search,
         by_hip,
         unread,
+        items,
     )
 
 
@@ -684,16 +698,26 @@ class PlanetsExtension:
         ]
         planets = pa.Table.from_pylist(rows, schema=table.SCHEMA)
         planets = numbering.sort_records(planets)
+        links = wikidata.link_items(planets, prepared.items)
+        planets = wikidata.with_items(planets, links)
         report, counts = self._report(
             registry, ingest, assignment, planets, identity_id, disagree, without_host
         )
         report += "".join(
             line + "\n"
-            for line in _listed(
-                "check: systems joined, since one ID is a host of both",
-                joined_systems,
-                limit=None,
-            )
+            for line in [
+                *_listed(
+                    "check: systems joined, since one ID is a host of both",
+                    joined_systems,
+                    limit=None,
+                ),
+                f"Wikidata: {len(links.qid)} planets have an item",
+                *_listed(
+                    "check: Wikidata items whose ids name several planets",
+                    links.several,
+                    limit=None,
+                ),
+            ]
         )
         return ExtensionResult(
             parts={numbering.PART: assignment.records},
@@ -1118,7 +1142,7 @@ def named_twice(planets: pa.Table) -> list[str]:
 
 
 def _catalogues(row: dict) -> set[str]:
-    return {c["catalogue"] for c in row["cross_ids"] if c["catalogue"] != "iau"}
+    return {c["catalogue"] for c in row["cross_ids"] if c["catalogue"] in CATALOGUES}
 
 
 def _measured_period(row: dict) -> float | None:

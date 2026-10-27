@@ -322,6 +322,11 @@ class TestExoplanetIngest:
 
     def test_two_ingests(self, root, backup, tmp_path):
         files = downloads()
+        # One item names Alpha b; the other names two planets.
+        files.wikidata_items = [
+            ("Q100", ["Alpha b"], [], 3),
+            ("Q101", ["Alpha c", "Beta b"], [], 9),
+        ]
         result, _ = ingest(root, backup, files.write(tmp_path / "one"))
 
         def id_of(catalogue, release, value):
@@ -381,6 +386,17 @@ class TestExoplanetIngest:
             "Alpha b",
             alpha,
         )
+        assert b["cross_ids"][-1] == {
+            "catalogue": "wikidata",
+            "release": "qid",
+            "catalogue_id": "Q100",
+        }
+        assert not any(
+            c["catalogue"] == "wikidata"
+            for key, row in planets.items()
+            if key != (alpha, 1)
+            for c in row["cross_ids"]
+        )
         # Each planet of a binary is under its own star, in one system.
         assert planets[(delta_b, 1)]["designation"] == "Delta B b"
         assert planets[(delta_a, 1)]["system"] == delta_a
@@ -396,6 +412,10 @@ class TestExoplanetIngest:
         assert "node" in planets[(lens, 1)]["assumed"]
         assert result.entry["extensions"]["planets"]["new"] == 7
         assert "Exoplanets" in result.report and "above 60 MJ 1" in result.report
+        assert "Wikidata: 1 planets have an item" in result.report
+        assert "Wikidata items whose ids name several planets: 1\n  Q101" in (
+            result.report
+        )
 
         # The next ingest: Alpha c is gone, Alpha e is new, and Zeta, a host
         # without ids, is the Gaia star 0.8″ away.

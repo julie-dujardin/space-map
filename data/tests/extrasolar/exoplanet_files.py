@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from space_map_data.download.providers.exoplanets import wikidata
 from space_map_data.download.providers.stars import gaia_source
 from space_map_data.extrasolar.exoplanets.ingest import Inputs
 from space_map_data.extrasolar.sources.gaia import (
@@ -89,6 +90,10 @@ class Downloads:
     flame_spec: list[dict] = field(default_factory=list)
     xgboost: list[dict] = field(default_factory=list)
     names: list[dict] = field(default_factory=list)
+    # Wikidata items as (QID, archive names, exoplanet.eu pages, articles).
+    wikidata_items: list[tuple[str, list[str], list[str], int]] = field(
+        default_factory=list
+    )
 
     def write(self, root: Path) -> Inputs:
         simbad = root / "simbad"
@@ -140,6 +145,14 @@ class Downloads:
         )
         names = root / "names.json"
         names.write_text(json.dumps(self.names))
+        items = root / "wikidata_items.tsv.gz"
+        lines = ["\t".join(wikidata.COLUMNS)] + [
+            f"<http://www.wikidata.org/entity/{qid}>\t"
+            + "\t".join(f'"{"|".join(v)}"' if v else "" for v in (archive, eu))
+            + f"\t{articles}"
+            for qid, archive, eu, articles in self.wikidata_items
+        ]
+        items.write_bytes(gzip.compress(("\n".join(lines) + "\n").encode()))
         return Inputs(
             archive=write_csv(root / "pscomppars.csv", self.archive, ARCHIVE_COLUMNS),
             eu=write_csv(root / "catalog.csv", self.eu, EU_COLUMNS),
@@ -190,6 +203,7 @@ class Downloads:
                 root / "xgboost.csv", self.xgboost, ("source_id", *XGBOOST_COLUMNS)
             ),
             names=names,
+            wikidata=items,
         )
 
 

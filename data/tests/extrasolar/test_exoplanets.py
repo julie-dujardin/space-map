@@ -968,9 +968,10 @@ def test_doubles_in_one_system():
     planets = pa.Table.from_pylist(
         [
             row(1, "A b", "b", 10.0, [ARCHIVE, EU]),
-            row(1, "A c", "c", 30.0, [ARCHIVE]),
+            # A Wikidata item is no catalogue that lists both.
+            row(1, "A c", "c", 30.0, [ARCHIVE, "wikidata"]),
             row(1, "K b", "b", 99.0, [OEC]),
-            row(1, "K x", "x", 30.5, [EU]),
+            row(1, "K x", "x", 30.5, [EU, "wikidata"]),
             row(2, "B b", "b", None, [ARCHIVE]),
             row(2, "B c", "c", 50.0, [EU], computed=["period"]),
             row(2, "B d", "d", 50.5, [OEC]),

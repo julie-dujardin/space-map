@@ -56,6 +56,7 @@ class PROVIDERS(StrEnum):
     BAILER_JONES_DISTANCES = "bailer_jones_distances"
     ULTRACOOLSHEET = "ultracoolsheet"
     WIKIDATA_STARS = "wikidata_stars"
+    WIKIDATA_EXOPLANETS = "wikidata_exoplanets"
     GALAXY_CATALOGUES = "galaxy_catalogues"
     STAR_CLUSTER_CATALOGUES = "star_cluster_catalogues"
     NEBULA_CATALOGUES = "nebula_catalogues"

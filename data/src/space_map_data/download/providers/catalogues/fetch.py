@@ -33,6 +33,44 @@ def qlever_count(client: httpx.Client, query: str) -> int:
     return int(response.text.split()[1])
 
 
+def download_item_list(
+    client: httpx.Client,
+    dest: Path,
+    count_query: str,
+    items_query: str,
+    floor: int,
+    read: Callable[[Path], object],
+) -> int:
+    """Write the rows of a QLever list of Wikidata items to `dest` and return
+    their count. Fails when QLever counts fewer than `floor` items, when the
+    rows are not as many as the count, or when `read` raises ValueError on
+    them."""
+    counted = qlever_count(client, count_query)
+    if counted < floor:
+        raise DownloadError(f"QLever counts {counted} items, at least {floor} expected")
+
+    def check(part: Path, lines: int) -> None:
+        if lines - 1 != counted:
+            raise DownloadError(
+                f"QLever returned {lines - 1} items and counts {counted}"
+            )
+        try:
+            read(part)
+        except ValueError as error:
+            raise DownloadError(f"{part.name}: {error}") from error
+
+    post_lines_gz(
+        client,
+        QLEVER_URL,
+        dest,
+        data={"query": items_query, "action": "tsv_export"},
+        headers=QLEVER_TSV,
+        check=check,
+    )
+    logger.info("%s: %d items", dest.name, counted)
+    return counted
+
+
 def post_lines_gz(
     client: httpx.Client,
     url: str,
