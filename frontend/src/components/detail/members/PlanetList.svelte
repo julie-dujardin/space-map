@@ -1,7 +1,6 @@
 <!--
   The planets of a star, from the file of its planetary system, then the
-  other stars of that system that have planets. On a planet's page the
-  planet itself is the row with no link.
+  other stars of that system that have planets.
 -->
 <script lang="ts">
 	import { getContext } from 'svelte';
@@ -20,11 +19,9 @@
 		system: PlanetSystem;
 		/** The star whose planets lead the list. */
 		hostId: number;
-		/** The number of the planet whose page this is. */
-		current?: number;
 	}
 
-	let { system, hostId, current }: Props = $props();
+	let { system, hostId }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -61,10 +58,7 @@
 			<MemberRow
 				name={planet.name}
 				tile={planet.letter ?? String(planet.number)}
-				aria-current={planet.number === current ? 'page' : undefined}
-				{...planet.number === current
-					? {}
-					: link({ id: planetObjectId(planet.host, planet.number) }, planet.name)}
+				{...link({ id: planetObjectId(planet.host, planet.number) }, planet.name)}
 				valuesClass="tabular-nums"
 			>
 				<span>

@@ -8,6 +8,8 @@
 		label: string;
 		value: string;
 		href?: string;
+		/** The label is a catalogue's name, kept as written. */
+		labelIsName?: boolean;
 	}
 
 	interface Props {
@@ -90,8 +92,9 @@
 		<div class="flex flex-col gap-2.5 text-sm">
 			{#if identifiers.length}
 				<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5">
-					{#each identifiers as id (id.label)}
-						<Row label={id.label}>
+					<!-- A star that took another's IDs in a merge can list two of one catalogue. -->
+					{#each identifiers as id, i (`${id.label}-${i}`)}
+						<Row label={id.label} labelIsName={id.labelIsName} whole>
 							{#if id.href}
 								<Link href={id.href} external class="tabular-nums select-all">{id.value}</Link>
 							{:else}

@@ -123,9 +123,12 @@
 		exportCredits = [];
 		if (!planet) return;
 		let current = true;
-		untrack(fetchExtrasolarMetadata).then((meta) => {
-			if (current) exportCredits = meta?.credits ?? [];
-		});
+		untrack(fetchExtrasolarMetadata).then(
+			(meta) => {
+				if (current) exportCredits = meta?.credits ?? [];
+			},
+			(e: unknown) => console.warn('[planets] no export credits:', e)
+		);
 		return () => {
 			current = false;
 		};
