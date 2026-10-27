@@ -2,8 +2,7 @@
  * What a planet's panel shows, from its record in the system file: the badges,
  * the stat cards and the sections of rows. A value shows at the precision of
  * its error, or at the digits the catalogue gives. A value that is assumed,
- * estimated, computed or a limit says so, and so does a planet whose drawn
- * orbit or place on it is not as published.
+ * estimated, computed or a limit says so.
  */
 
 import * as m from '$lib/paraglide/messages.js';
@@ -14,7 +13,6 @@ import {
 	formatBound,
 	formatLowerBound,
 	formatMeasuredQuantity,
-	formatQuantity,
 	formatUnit,
 	fractionDigits,
 	joinParts,
@@ -252,7 +250,7 @@ function massKindNote(planet: Planet): string | undefined {
 	return undefined;
 }
 
-/** A mass or a radius in the planet's scale, with the other unit beside it. */
+/** A mass in the planet's scale, with the other unit beside it. */
 function scaledMass(planet: Planet, digits?: number): { value: string; other: string } | null {
 	const raw = num(planet, 'mass');
 	if (raw === null) return null;
@@ -284,26 +282,18 @@ function scaledMass(planet: Planet, digits?: number): { value: string; other: st
 	};
 }
 
-/** Planet radii use the same kilometre convention as Solar System sizes. */
+/** A radius in km, as the Solar System's sizes read, at the figures the
+ *  catalogue gives in Jupiter radii. */
 function radiusKm(planet: Planet, digits?: number): string | null {
 	const raw = num(planet, 'radius');
 	if (raw === null) return null;
 	const unit = units().km;
-	if (digits !== undefined) {
-		return bounded(
-			planet,
-			'radius',
-			formatQuantity({ value: raw * JUPITER_RADIUS_KM, unit: 'kilometre' }, true)
-		);
-	}
-	if (num(planet, 'radius_error_upper') === null && num(planet, 'radius_error_lower') === null) {
-		return bounded(
-			planet,
-			'radius',
-			formatQuantity({ value: raw * JUPITER_RADIUS_KM, unit: 'kilometre' }, true)
-		);
-	}
-	return measured(planet, 'radius', unit, JUPITER_RADIUS_KM);
+	if (digits === undefined) return measured(planet, 'radius', unit, JUPITER_RADIUS_KM);
+	return bounded(
+		planet,
+		'radius',
+		joinParts({ value: sigFigures(raw * JUPITER_RADIUS_KM, digits), ...unit })
+	);
 }
 
 /** Ramanujan's ellipse circumference, as a ratio to its semi-major axis. */

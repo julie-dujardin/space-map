@@ -63,7 +63,7 @@ describe("a planet's panel", () => {
 	it('gives the three preferred available stats for a giant', () => {
 		expect(statsOf(hot)).toEqual([
 			[
-				['Radius', '98,659 km', undefined],
+				['Radius', '98,700 km', undefined],
 				['Mean orbital speed', '147 km/s', 'computed'],
 				['Distance from star', '0.0475 AU', undefined]
 			]
@@ -91,7 +91,7 @@ describe("a planet's panel", () => {
 		expect(rows.orbit['Position on orbit']).toBeUndefined();
 		expect(rows.orbit['Orbit in the map']).toBeUndefined();
 		expect(rows.physical.Mass).toBe('0.73 ± 0.04 MJ');
-		expect(rows.physical.Radius).toBe('98,659 km');
+		expect(rows.physical.Radius).toBe('98,700 km');
 		expect(rows.discovery).toEqual({ 'Detection method': 'Transit', 'Year of discovery': '1999' });
 	});
 
@@ -105,13 +105,13 @@ describe("a planet's panel", () => {
 		expect(earthScale(small)).toBe(true);
 		const [cards] = statsOf(small);
 		expect(cards).toEqual([
-			['Radius', '6,527 km', 'estimated'],
+			['Radius', '6,530 km', 'estimated'],
 			['Class', 'Planet', undefined]
 		]);
 		expect(planetStats(small)[0][0].tooltip).toBeUndefined();
 		// The published digits carry over to the other unit.
 		expect(rowsOf(anchor(small)).physical.Mass).toBe('1.055 M⊕ [minimum (m sin i)]');
-		expect(rowsOf(anchor(small)).physical.Radius).toBe('6,527 km [estimated]');
+		expect(rowsOf(anchor(small)).physical.Radius).toBe('6,530 km [estimated]');
 	});
 
 	it('omits unknown stats and keeps limits', () => {

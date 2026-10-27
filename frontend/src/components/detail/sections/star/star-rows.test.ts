@@ -33,7 +33,7 @@ describe("a star's distance", () => {
 		});
 		const cards = starStats(star).flat();
 		expect(cards.map((s) => [s.label, plain(s.value), s.tooltip])).toEqual([
-			['Distance', '20,440 ly', UNCERTAIN],
+			['Distance', '20,400 ly', UNCERTAIN],
 			['Temperature', expect.any(String), undefined]
 		]);
 		const rows = position(star);
@@ -199,14 +199,14 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			Epoch: 'J1991.25'
 		});
 		// The spectral type is an LTR isolate, so in RTL its trailing dots stay at its end.
-		const brightness = starSections(sirius).find((s) => s.key === 'brightness');
-		expect(brightness?.rows.find((r) => r.label === 'Spectral type')?.value).toBe(
+		const classification = starSections(sirius).find((s) => s.key === 'classification');
+		expect(classification?.rows.find((r) => r.label === 'Spectral type')?.value).toBe(
 			ltrIsolate('A0m...')
 		);
 		// No Gaia colour: the tree's estimate from V − I is not shown as one.
 		expect(rows.brightness['Colour (BP − RP)']).toBeUndefined();
 		expect(rows.brightness['Colour (V − I)']).toBe('-0.02');
-		const hd = starSections(sirius)[0].rows.find((r) => r.label === 'HD');
+		const hd = starIdentifiers(sirius).find((r) => r.label === 'HD');
 		expect(hd?.href).toBe('https://simbad.cds.unistra.fr/simbad/sim-id?Ident=HD%2048915');
 	});
 
@@ -231,10 +231,10 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		expect(rows.position['Right ascension']).toMatch(/^14ʰ 29ᵐ 34\.\d+ˢ ± 0\.024 mas$/);
 		expect(rows.position['Radial velocity']).toBe('-21.94 ± 0.22 km/s');
 		expect(rows.brightness['Gaia G']).toMatch(/^8\.98\d* ± 0\.000\d+$/);
-		// FLAME fits its radius from the parallax, and gives it no mass.
+		// FLAME fits its radius from the parallax and gives it no mass; the planet
+		// catalogue does.
 		expect(rows.physical.Radius).toMatch(/^[\d,]+ ± [\d,]+ km$/);
-		expect(rows.physical.Mass).toBeUndefined();
-		expect(rows.physical['Distance used']).toBeUndefined();
+		expect(rows.physical.Mass).toBe('0.1221 M☉');
 	});
 
 	it('shows a lone available stat without padding', async () => {
@@ -503,7 +503,7 @@ describe("a star's FLAME values", () => {
 		expect(section(dwarf, 'classification')).toEqual({ 'Evolutionary stage': 'Main sequence' });
 		expect(section(dwarf, 'brightness')['Bolometric correction']).toBe('-0.05');
 		expect(cards(dwarf)).toEqual([
-			['Radius', '626,130 km'],
+			['Radius', '626,000 km'],
 			['Distance', '32.6 ly'],
 			['Temperature', expect.any(String)]
 		]);
@@ -518,7 +518,7 @@ describe("a star's FLAME values", () => {
 			'Luminosity',
 			'Gravitational redshift'
 		]);
-		expect(cards(giant)[0]).toEqual(['Radius', '626,130 km']);
+		expect(cards(giant)[0]).toEqual(['Radius', '626,000 km']);
 		const kept = section({ ...giant, mass_flame: 1.5, flags_flame: '11' }, 'classification');
 		expect(kept['Evolutionary stage']).toBe('Red giant');
 	});
@@ -548,7 +548,7 @@ describe("a star's FLAME values", () => {
 		};
 		expect(physical(spec)).toEqual({
 			'Effective temperature': expect.any(String),
-			Radius: '660,915 km',
+			Radius: '661,000 km',
 			Luminosity: '0.80 L☉',
 			Mass: '0.97 M☉',
 			Age: '3.90 Ga'
@@ -584,7 +584,7 @@ describe("a star's FLAME values", () => {
 		);
 		expect(physical(plainStar)).toMatchObject({
 			'Effective temperature': expect.any(String),
-			'Radius from photometry': '556,560 km'
+			'Radius from photometry': '557,000 km'
 		});
 		expect(cards(plainStar).map(([label]) => label)).toEqual(['Radius', 'Distance', 'Temperature']);
 	});

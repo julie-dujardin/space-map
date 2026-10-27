@@ -22,7 +22,6 @@ import {
 import {
 	formatCatalogueQuantity,
 	formatMeasuredQuantity,
-	formatNumber,
 	formatUnit,
 	joinParts,
 	sigFigures
@@ -191,24 +190,13 @@ function bounded(
 	if (value === null) return null;
 	const lower = ps.number(`${name}_lower`);
 	const upper = ps.number(`${name}_upper`);
-	if (scale !== 1) {
-		return {
-			label,
-			value:
-				lower === null || upper === null
-					? joinParts({ value: formatNumber(value * scale), unit })
-					: formatMeasuredQuantity({
-							value: value * scale,
-							upperError: (upper - value) * scale,
-							lowerError: (value - lower) * scale,
-							unit,
-							roundLargeErrors: true
-						})
-		};
-	}
+	if (scale === 1) return { label, value: withBounds(value, lower, upper, unit) };
 	return {
 		label,
-		value: withBounds(value, lower, upper, unit)
+		value:
+			lower === null || upper === null
+				? joinParts({ value: sigFigures(value * scale), unit })
+				: withBounds(value * scale, lower * scale, upper * scale, unit, true)
 	};
 }
 
@@ -277,27 +265,27 @@ function evolutionaryStage(index: number): string {
 	return m.star_stage_giant();
 }
 
-/** The distance FLAME's luminosity rests on, from the second flag digit:
- *  1 is GSP-Phot's distance, 0 and 2 the parallax of the single-star
- *  solution, which the panel's own parallax is not when an orbit gives it.
- *  The run on GSP-Spec has one digit only. */
-function flameRows(
-	ps: TableRow,
-	u: ReturnType<typeof units>,
-	run: FlameRun
-): (StarRowEntry | null)[] {
+type FlameRows = Record<
+	'radius' | 'luminosity' | 'mass' | 'age' | 'stage' | 'redshift' | 'correction',
+	StarRowEntry | null
+>;
+
+/** The rows of one FLAME run. A mass that does not hold takes its age and
+ *  stage with it. */
+function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): FlameRows {
 	const column = (name: string) => `${name}_flame${run}`;
 	const fit = flameFitHolds(ps, run);
 	const stage = ps.number(column('evolstage'));
-	return [
-		bounded(ps, m.star_stat_radius(), column('radius'), u.km, SOLAR_RADIUS_KM),
-		bounded(ps, m.star_stat_luminosity(), column('lum'), u.solarLuminosity),
-		fit ? bounded(ps, m.star_stat_mass(), column('mass'), u.solarMass) : null,
-		fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
-		fit && stage !== null ? row(m.star_row_evolutionary_stage(), evolutionaryStage(stage)) : null,
-		bounded(ps, m.star_row_gravitational_redshift(), column('gravredshift'), u.kms),
-		measured(ps, m.star_row_bolometric_correction(), column('bc'), null)
-	];
+	return {
+		radius: bounded(ps, m.star_stat_radius(), column('radius'), u.km, SOLAR_RADIUS_KM),
+		luminosity: bounded(ps, m.star_stat_luminosity(), column('lum'), u.solarLuminosity),
+		mass: fit ? bounded(ps, m.star_stat_mass(), column('mass'), u.solarMass) : null,
+		age: fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
+		stage:
+			fit && stage !== null ? row(m.star_row_evolutionary_stage(), evolutionaryStage(stage)) : null,
+		redshift: bounded(ps, m.star_row_gravitational_redshift(), column('gravredshift'), u.kms),
+		correction: measured(ps, m.star_row_bolometric_correction(), column('bc'), null)
+	};
 }
 
 /** Distance group sources as sure as a 5σ parallax: a distance chosen from a
@@ -332,7 +320,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	if (radius !== null) {
 		out.push({
 			label: m.star_stat_radius(),
-			value: joinParts({ value: formatNumber(radius * SOLAR_RADIUS_KM), unit: u.km })
+			value: joinParts({ value: sigFigures(radius * SOLAR_RADIUS_KM), unit: u.km })
 		});
 	} else if (mass !== null) {
 		out.push({
@@ -345,7 +333,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	if (distance !== null) {
 		out.push({
 			label: m.star_stat_distance(),
-			value: joinParts({ value: formatNumber(distance.pc * PC_LY), unit: u.ly }),
+			value: joinParts({ value: sigFigures(distance.pc * PC_LY), unit: u.ly }),
 			tooltip: uncertain
 		});
 	}
@@ -398,29 +386,19 @@ function catalogued(
 	const value = float32Value(ps.number(name));
 	if (value === null) return null;
 	const err = error === null ? null : float32Value(ps.number(error));
-	if (scale !== 1) {
-		return {
-			label,
-			value:
-				err === null
-					? joinParts({ value: formatNumber(value * scale), unit })
-					: formatMeasuredQuantity({
-							value: value * scale,
-							upperError: err * scale,
-							lowerError: err * scale,
-							unit,
-							roundLargeErrors: true
-						})
-		};
-	}
+	if (scale === 1) return { label, value: formatCatalogueQuantity(value, err, err, unit) };
+	// The catalogue's decimals hold in its own unit only; its figures hold in both.
+	const scaledError = err === null ? null : err * scale;
 	return {
 		label,
-		value: formatCatalogueQuantity(
-			value * scale,
-			err === null ? null : err * scale,
-			err === null ? null : err * scale,
-			unit
-		)
+		value: formatMeasuredQuantity({
+			value: value * scale,
+			upperError: scaledError,
+			lowerError: scaledError,
+			unit,
+			rawValue: value,
+			roundLargeErrors: true
+		})
 	};
 }
 
@@ -489,12 +467,10 @@ function pointSourceSections(
 	const v = ps.number('v_mag');
 	const spType = displayedSpectralType(ps);
 	// TODO: Replace this precedence when the export supplies one canonical stellar fit.
-	const photometricFit = rows(flameRows(ps, u, ''));
-	const spectroscopicFit = rows(flameRows(ps, u, '_spec'));
-	const fitted = (label: string) =>
-		photometricFit.find((entry) => entry.label === label) ??
-		spectroscopicFit.find((entry) => entry.label === label) ??
-		null;
+	const photometricFit = flameRows(ps, u, '');
+	const spectroscopicFit = flameRows(ps, u, '_spec');
+	const fitted = (quantity: keyof FlameRows) =>
+		photometricFit[quantity] ?? spectroscopicFit[quantity];
 	// Gaia's own colour only; the tree's estimate from V − I is not a measurement.
 	const colour = bp !== null && rp !== null ? bp - rp : null;
 	const brightness: (StarRowEntry | null)[] = [
@@ -533,7 +509,7 @@ function pointSourceSections(
 		bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
 		bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),
 		bounded(ps, m.star_row_reddening(), 'ebpminrp_gspphot'),
-		fitted(m.star_row_bolometric_correction())
+		fitted('correction')
 	];
 
 	const teff = ps.number('teff_gspphot');
@@ -561,21 +537,18 @@ function pointSourceSections(
 		metallicity.length === 0
 			? catalogued(ps, m.exoplanet_row_metallicity(), 'host_metallicity', u.dex)
 			: null,
-		fitted(m.star_stat_radius()) ??
+		fitted('radius') ??
 			bounded(ps, m.star_row_radius_photometric(), 'radius_gspphot', u.km, SOLAR_RADIUS_KM) ??
 			catalogued(ps, m.star_stat_radius(), 'host_radius', u.km, null, SOLAR_RADIUS_KM),
-		fitted(m.star_stat_luminosity()),
-		fitted(m.star_stat_mass()) ??
+		fitted('luminosity'),
+		fitted('mass') ??
 			catalogued(ps, m.star_stat_mass(), 'host_mass', m.exoplanet_symbol_solar_mass()),
-		fitted(m.star_row_age()) ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),
-		fitted(m.star_row_gravitational_redshift()),
+		fitted('age') ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),
+		fitted('redshift'),
 		measured(ps, m.star_row_line_broadening(), 'vbroad', 'vbroad_error', u.kms)
 	];
 
-	const classification = rows([
-		row(m.star_stat_spectral_type(), spType),
-		fitted(m.star_row_evolutionary_stage())
-	]);
+	const classification = rows([row(m.star_stat_spectral_type(), spType), fitted('stage')]);
 
 	return [
 		{ key: 'classification', title: m.classification(), rows: classification },
