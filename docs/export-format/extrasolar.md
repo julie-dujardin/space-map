@@ -144,8 +144,29 @@ Every live ID has a row. The ID is in the `id` column; there is no table number.
 | `mask` | uint32 | bit `n` is set when data table `n` has a row for the ID |
 | `object` | bool | true when the site's object bundles hold an entry `x-<id>` for the ID ([objects.md](objects.md)): today, when it has a `wikidata/qid` or a `literature/star` id |
 | `alias_target` | id | null for a live ID |
+| `families` | uint64 | the published families of the star: bit `n` is entry `n` of `families` in `metadata.json` (below) |
+| `families_estimated` | uint64 | the families that need a Gaia DR3 estimate and are not in `families` |
 
 An alias is a row at the alias's own cell with only `id`, `mask` 0 and `alias_target`, which is the live ID at the end of its chain: a chain A → B → C is written A → C. A retired ID has no row, and its URL is a 404. An alias whose chain ends at an ID that is not live has no row either.
+
+#### Families
+
+The export computes the two family masks from the Point source row and the Metadata class; the rules are in `constants/stars/families.py`. A star is in every family that its data supports, and a family adds its parents (a G-type main-sequence star is also `main-sequence` and `dwarf`). A row without a Point source row, such as an alias, has 0 in both. A client reads a mask as a `BigUint64Array` and tests bit `n` with `(mask >> BigInt(n)) & 1n`.
+
+A published family comes from catalogued classifications only:
+
+- the MK spectral type, the first of `simbad_sp_type`, `sp_type` (Hipparcos) and `host_spectral_type`. The letter and the luminosity class give the family (`K2 III` is `giant` and `red-giant`, `M4 V` is `red-dwarf`); a composite type gives its first star. A class without a luminosity class gives only the families of its letter: D (`white-dwarf`), W (`wolf-rayet`), C, R and N (`carbon-star`), S, MS and SC (`s-type-star`), L, T and Y. A white dwarf has no luminosity class: the V of `DAV` marks a pulsating star. `Ba` after an F to M type marks a `barium-star`;
+- `simbad_otype`, one listed code each (`Mi*` is `mira-variable`, `Psr` is `pulsar`); candidate types give none. A stage that the object type gives joins the MK letter as a luminosity class does (`K0` with `MS*` is `k-type-main-sequence`);
+- the Metadata class `white dwarf`, `brown dwarf` or `pulsar`.
+
+An estimated family uses at least one Gaia DR3 estimate:
+
+- the spectral type tag `spectraltype_esphs`, where the second digit of `flags_esphs` is 1 to 5. O, B and A count only for a star of the OBA golden sample (`in_oba_golden_sample`). `CSTAR` counts only with the digit 0, which marks the carbon stars that the validation confirmed;
+- the FLAME stage, from `flame_spec` before `flame`, where the fit holds as the star panel shows it: a mass, and for a giant (first flag digit 1) a mass from 1 to 2 M☉. Below 420 is `main-sequence`, below 490 `subgiant`, then `giant`;
+- `classprob_dsc_combmod_whitedwarf` over 0.5 (`white-dwarf`);
+- `classlabel_espels`: `TTauri`, `HerbigStar`, `RedDwarfEmStar` (`red-dwarf`), `wC` and `wN` (`wolf-rayet`).
+
+Each family states the spectral letter of a star, its stage, both or neither. A published family or MK value stops each estimate of what it states: a star typed `K2 III` gets no estimated letter or stage, and a star typed `K0` can get an estimated stage. An estimate joins the published value of the other: `MS*` with the Gaia tag K is an estimated `k-type-main-sequence`. A variable star states neither, so it stops nothing.
 
 ### Point source (table 1)
 
@@ -160,6 +181,8 @@ The `flame_spec` group is FLAME's second run, on the temperature, gravity and me
 Close rendering takes `radius_flame`, else `radius_gspphot`, and `teff_gspphot` for a smooth, limb-darkened photosphere, with photometric colour as a fallback. Stars without a radius remain points.
 
 The `xgboost` group is Table 1 of Andrae, Rix & Chandra (2023, ApJS 267, 8; [Zenodo 7945154](https://doi.org/10.5281/zenodo.7945154), CC BY 4.0), joined to `gaia_source` by `source_id`; its provenance is `xgboost_source`. `mh_xgboost`, `teff_xgboost` and `logg_xgboost` come from XGBoost on the XP spectra, the CatWISE photometry and the parallax, trained on APOGEE DR17. `catwise_w1` and `catwise_w2` are the CatWISE2020 magnitudes (Vega) that it used, and `in_training_sample` marks the stars of its training sample. `in_vetted_rgb_sample` is true for the stars of their Table 2, a vetted sample of red giants with the same values. `in_oba_golden_sample` is true for the stars of the Gaia DR3 golden sample of OBA stars (Gaia Collaboration, Creevey et al. 2023, A&A 674, A39; all 3,023,388 rows), the list that the authors use to remove OBA stars. The table has no quality cut and no uncertainty for each star. The authors give about 0.1 dex for [M/H] in the training range, 0.2 dex at G ≈ 16 and 0.4 dex at G ≈ 17.65. [M/H] is not valid for OBA stars. On the main sequence it is unbiased for 0.5 < BP − RP < 1.5, about 0.15 dex too low for 1.5 < BP − RP < 2.5, and not valid outside 0.5–2.5. `teff_xgboost` stays near the training range of 3,107 K to 6,867 K (the table spans 2,975 K to 7,076 K), so it cannot mark a hot star (their Sect. 3.5, 3.7 and 4.3). The ingest applies none of these cuts. Of the 180,949,689 stars of ingest 4, 62.8% have a row: 24.8% of those with G < 6.5 and 72.6% of those within 100 pc.
+
+The `gaia_classification` group also holds the class tags of Gaia DR3 from `astrophysical_parameters`, as published: `classprob_dsc_combmod_whitedwarf`, the spectral type tag `spectraltype_esphs` (O to M, `CSTAR` or `unknown`; ESP-ELS gives it, despite its name) with `flags_esphs`, whose second digit is the quality of the tag (1 best to 5, 0 for a confirmed carbon star, 9 for none), and the emission-line class `classlabel_espels` with `classlabel_espels_flag` (Creevey et al. 2023, A&A 674, A26, Sect. 6.1.3).
 
 Five more groups hold metallicities from spectra. Each group keeps the published values, and the reader applies the quality cuts. `gspspec` comes with the Gaia rows and `xhip_metallicity` with the Hipparcos rows. PASTEL, APOGEE and LAMOST join the Gaia rows by `source_id` at each ingest, and PASTEL also joins the Hipparcos rows by HIP number. A row that joins no star is left out. These three catalogues mint no ID and have no `cross_ids` entry. Their own ids are the columns `pastel_designation`, `apogee_id` and `lamost_id`. `pastel_source`, `apogee_source` and `lamost_source` name the row that the values joined: `gaia-dr3`, `gaia-dr3-named` (a SIMBAD star or a planet host without a 5σ parallax) or `hipparcos-2007`.
 
@@ -499,6 +522,10 @@ The site's sitemap lists the page of every planet and of every planet host that 
       "distribution": "non-commercial"
     }
   },
+  "families": [
+    { "slug": "a-type-main-sequence", "wikidata": ["Q471805"], "published": 5477, "estimated": 8264 },
+    "…"
+  ],
   "skycultures": {
     "token": "495f0eea0c17aae7",
     "file": "skycultures/{key}.json.gz",
@@ -554,6 +581,7 @@ The site's sitemap lists the page of every planet and of every planet host that 
 
 - `tables`: keyed by slug. `number` is the table number in the IDs, null for Metadata. `max_rows` is the split threshold. `rows` counts the rows of all tiles.
 - `trees`: keyed by name; `mw` is the Milky Way.
+- `families`: the star families in bit order: entry `n` is bit `n` of the Metadata masks. `wikidata` holds the topic items of the family, `published` and `estimated` count the stars with the bit set in `families` and in `families_estimated`.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)). Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values, so all are `non-commercial`.
 - `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, Hipparcos I/311 and I/239, XHIP V/137D, the distance catalogues (Reylé et al. 2021, the UltracoolSheet, Hunt & Reffert 2024, the LMC and SMC distances of Pietrzyński et al. 2019 and Graczyk et al. 2020, Bailer-Jones et al. 2021), one credit for the papers of the literature table (its `source` is the table in the repo; each star's object entry cites its own papers), the IAU Catalog of Star Names, Wikidata; with planets also the NASA Exoplanet Archive (its acknowledgement, and the DOI of Planetary Systems Composite Parameters, 10.26133/NEA13), exoplanet.eu (CC BY 4.0), the Open Exoplanet Catalogue (MIT) and the IAU's NameExoWorlds. The planet catalogues also fill the host rows of Point source and Metadata, so their credits are in this list. Each catalogue has one credit, and its `source` names it.
 - `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `distribution` is `non-commercial`: the host positions come from Gaia DR3.

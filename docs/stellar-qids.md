@@ -8,14 +8,15 @@ namesakes, languages, countries and disambiguation pages.
 
 These are standalone QID constants following the existing tuple-valued topic
 format. Constellations use `culture -> constellation -> tuple[QID, ...]`; the
-other tables use `slug -> tuple[QID, ...]`. The slugs name research subjects and
-are not dataset IDs. The tables are not registered in `TOPIC_PAGE_TABLES` and
-have no ingest, export, classification or frontend consumers.
+other tables use `slug -> tuple[QID, ...]`. The tables are not registered in
+`TOPIC_PAGE_TABLES`. The family slugs are the star families of the extrasolar
+export ([extrasolar.md](export-format/extrasolar.md), "Families"); the other
+slugs name research subjects and are not dataset IDs.
 
 | File under `data/src/space_map_data/constants/stars/` | Contents |
 | --- | --- |
 | `constellations.py` | 88 IAU, five historical Western, 32 Chinese and 27 Indian constellation topics |
-| `families.py` | 48 stellar-family and evolutionary-topic QIDs |
+| `families.py` | 48 star families: their QIDs and the rules that tag a star |
 | `cultures.py` | 14 sky-tradition topics and 75 cultural-group QIDs |
 
 The modern constellation set follows the [IAU list](https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx).

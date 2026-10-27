@@ -41,6 +41,7 @@ from pathlib import Path
 
 import numpy as np
 
+from space_map_data.constants.stars.families import FAMILIES, STAR_FAMILY_PAGES
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
 from space_map_data.export.extrasolar import (
     container,
@@ -365,6 +366,8 @@ class TableResult:
     split: Split
     files: list[Written]
     rows: int
+    # Metadata only: the stars of each family, published then estimated.
+    family_counts: np.ndarray | None = None
 
 
 def _build_tables(
@@ -401,14 +404,21 @@ def _build_tables(
         built = _run(workers, tiles.build_unit, unit_jobs, f"{slug}: tiles")
         files = [split_file]
         rows = dropped = 0
+        family_counts = None
         for result in built:
             files += result.files
             rows += result.rows
             dropped += result.dropped_aliases
             problems.update(result.problems)
+            if result.family_counts is not None:
+                family_counts = (
+                    result.family_counts
+                    if family_counts is None
+                    else family_counts + result.family_counts
+                )
         if dropped:
             logger.warning("%s: %d aliases without a live end left out", slug, dropped)
-        results.append(TableResult(slug, split, files, rows))
+        results.append(TableResult(slug, split, files, rows, family_counts))
     return results
 
 
@@ -528,6 +538,9 @@ def _metadata(
             ],
             "distribution": DISTRIBUTION,
         }
+    family_counts = next(
+        r.family_counts for r in tables_built if r.family_counts is not None
+    )
     nodes = tree.nodes
     metadata = {
         "format": container.VERSION,
@@ -559,6 +572,15 @@ def _metadata(
                 "distribution": DISTRIBUTION,
             }
         },
+        "families": [
+            {
+                "slug": slug,
+                "wikidata": list(STAR_FAMILY_PAGES[slug]),
+                "published": int(family_counts[0, bit]),
+                "estimated": int(family_counts[1, bit]),
+            }
+            for bit, slug in enumerate(FAMILIES)
+        ],
         "credits": list(CREDITS),
     }
     if cultures is not None:
@@ -695,6 +717,12 @@ def export_extrasolar(
         "nodes": _sizes([f for f in tree.files if "/node/" in f.path]),
         "ids": _sizes([f for f in tree.files if "/id/" in f.path]),
         "render": dict(tree.counts),
+        "families": {
+            slug: [int(n) for n in counts]
+            for r in built
+            if r.family_counts is not None
+            for slug, counts in zip(FAMILIES, r.family_counts.T)
+        },
         "depths": dict(sorted(Counter(node.depth for node in tree.nodes).items())),
     }
     culture_files = [] if cultures is None else cultures.files

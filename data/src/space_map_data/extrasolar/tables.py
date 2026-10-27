@@ -462,6 +462,9 @@ POINT_SOURCE = TableDef(
             ),
             ("gaia-dr3", "gaia-dr3-named"),
         ),
+        # The class tags of Gaia DR3 as published: the spectral type tag of
+        # ESP-ELS (`spectraltype_esphs`) with its quality in the second digit
+        # of `flags_esphs`, and the emission-line class with its flag.
         ColumnGroup(
             "gaia_classification",
             (
@@ -472,6 +475,14 @@ POINT_SOURCE = TableDef(
                     "classprob_dsc_combmod_quasar",
                     "classprob_dsc_combmod_galaxy",
                     "classprob_dsc_combmod_star",
+                    "classprob_dsc_combmod_whitedwarf",
+                ),
+                *_fields(
+                    pa.string(),
+                    "spectraltype_esphs",
+                    "flags_esphs",
+                    "classlabel_espels",
+                    "classlabel_espels_flag",
                 ),
             ),
             ("gaia-dr3", "gaia-dr3-named"),

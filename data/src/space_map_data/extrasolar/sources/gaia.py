@@ -1,5 +1,5 @@
-"""Gaia DR3 positions, fidelity, GSP-Phot radii, both FLAME runs, GSP-Spec, XP
-metallicities and binary orbits.
+"""Gaia DR3 positions, fidelity, GSP-Phot radii, both FLAME runs, GSP-Spec, class
+tags, XP metallicities and binary orbits.
 
 The companion tables join by source_id. Low-fidelity stars mint only when
 matched by another catalogue. A star without a companion row stays, with null
@@ -101,6 +101,11 @@ ASTROPHYSICAL_COLUMNS = (
     "radius_gspphot_upper",
     *FLAME_COLUMNS,
     *GSPSPEC_COLUMNS,
+    "classprob_dsc_combmod_whitedwarf",
+    "spectraltype_esphs",
+    "flags_esphs",
+    "classlabel_espels",
+    "classlabel_espels_flag",
 )
 GSPSPEC_CALIBRATED = ("mh_gspspec_calibrated", "feh_gspspec_calibrated")
 # Recio-Blanco et al. 2023: [M/H] from the literature fit of Table 3, [Fe I/H]

@@ -26,12 +26,12 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from space_map_data.export.extrasolar import container
+from space_map_data.export.extrasolar import container, families
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of
-from space_map_data.extrasolar.tables import METADATA, TABLES, TableDef
+from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES, TableDef
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +57,14 @@ DICTIONARY = frozenset(
         "flag",
         "flags_flame",
         "flags_flame_spec",
+        "spectraltype_esphs",
+        "flags_esphs",
+        "classlabel_espels",
+        "classlabel_espels_flag",
     }
 )
+# Columns that the export computes, after the columns of the table.
+COMPUTED = {METADATA.slug: families.FIELDS}
 TILE_INFO = struct.Struct("<IBBxx")
 SPLIT_FILE = "split.bin.gz"
 EXAMPLES = 10
@@ -72,9 +78,16 @@ def dictionary_columns(table: TableDef) -> frozenset[str]:
     return DICTIONARY | {group.source_column for group in table.groups}
 
 
+def tile_schema(table: TableDef) -> pa.Schema:
+    schema = table.schema
+    for computed in COMPUTED.get(table.slug, ()):
+        schema = schema.append(computed)
+    return schema
+
+
 def column_types(table: TableDef) -> list[tuple[str, str]]:
     names = dictionary_columns(table)
-    return [(f.name, container.column_type(f, names)) for f in table.schema]
+    return [(f.name, container.column_type(f, names)) for f in tile_schema(table)]
 
 
 def tile_path(slug: str, level: int, pixel: int) -> str:
@@ -232,6 +245,8 @@ class UnitResult:
     rows: int
     dropped_aliases: int
     problems: Problems
+    # Metadata only: the stars of each family, published then estimated.
+    family_counts: np.ndarray | None = None
 
 
 def _states_of(registry: Registry, ids: np.ndarray):
@@ -357,8 +372,9 @@ def check_previous(
 
 
 def tile_payload(table: TableDef, level: int, pixel: int, rows: pa.Table) -> bytes:
+    schema = tile_schema(table)
     columns = [
-        Column(name, kind, rows[name].cast(table.schema.field(name).type))
+        Column(name, kind, rows[name].cast(schema.field(name).type))
         for name, kind in column_types(table)
     ]
     info = TILE_INFO.pack(pixel, level, table.number or 0)
@@ -379,6 +395,9 @@ def build_unit(job: UnitJob) -> UnitResult:
     problems = check_ids(registry, job.slug, job.unit.regions, rows)
     if job.previous is not None:
         problems.update(check_previous(registry, job.unit.regions, rows, job.previous))
+    family_counts = None
+    if job.slug == METADATA.slug:
+        rows, family_counts = with_families(registry, job.unit.regions, rows, problems)
 
     ids = rows["id"].to_numpy()
     first = first_cell(job.unit.level, job.unit.pixel)
@@ -396,7 +415,36 @@ def build_unit(job: UnitJob) -> UnitResult:
                 job.out, tile_path(job.slug, int(level), int(pixel)), payload
             )
         )
-    return UnitResult(files, rows.num_rows, dropped, problems)
+    return UnitResult(files, rows.num_rows, dropped, problems, family_counts)
+
+
+def with_families(
+    registry: Registry, regions: tuple[int, ...], rows: pa.Table, problems: Problems
+) -> tuple[pa.Table, np.ndarray]:
+    """Metadata `rows` with their family masks, and the stars of each family.
+
+    A row without a Point source row, such as an alias, has no family.
+    """
+    parts = [
+        registry.read_table(POINT_SOURCE.slug, region, list(families.COLUMNS))
+        for region in regions
+    ]
+    kept = [part for part in parts if part is not None]
+    stars = pa.concat_tables(kept) if kept else None
+    published = np.zeros(rows.num_rows, np.uint64)
+    estimated = np.zeros(rows.num_rows, np.uint64)
+    if stars is not None and stars.num_rows:
+        at = pc.index_in(stars["id"], value_set=rows["id"].combine_chunks())
+        found = at.is_valid().to_numpy(zero_copy_only=False)
+        lost = stars["id"].to_numpy()[~found]
+        problems.add("Point source row without a Metadata row", lost, lost.size)
+        stars = stars.filter(pa.array(found))
+        at = at.filter(pa.array(found)).to_numpy()
+        classes = rows["class"].take(pa.array(at))
+        published[at], estimated[at] = families.masks(stars, classes)
+    for column, values in zip(families.FIELDS, (published, estimated)):
+        rows = rows.append_column(column, pa.array(values, column.type))
+    return rows, np.stack([families.counts(published), families.counts(estimated)])
 
 
 def region_counts(registry: Registry, slug: str, region: int) -> np.ndarray:

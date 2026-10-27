@@ -7,7 +7,8 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from space_map_data.export.extrasolar import build, container, render, tiles
+from space_map_data.constants.stars.families import FAMILIES
+from space_map_data.export.extrasolar import build, container, families, render, tiles
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
@@ -121,6 +122,42 @@ class TestExport:
                 value if isinstance(value, str) else pytest.approx(value)
             )
             assert unknown[name] is None
+
+    def test_families_of_each_star(self, tmp_path, out):
+        dwarf = {"evolstage_flame": 250, "mass_flame": 1.0, "flags_flame": "00"}
+        gaia_tag = {"spectraltype_esphs": "G", "flags_esphs": "01000"}
+        built = write_registry(
+            tmp_path / "reg",
+            [
+                star(10.0, 5.0, simbad=True) | dwarf,  # K0V
+                star(11.0, 5.0) | dwarf | gaia_tag,
+                star(12.0, 5.0),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        found = [reader.lookup(str(id_)) for id_ in built.ids]
+        assert all(record is not None for record in found)
+        rows = [record.metadata for record in found if record is not None]
+        main_sequence = families.BIT["k-type-main-sequence"]
+        assert rows[0]["families"] & main_sequence
+        assert rows[0]["families_estimated"] == 0
+        assert rows[1]["families"] == 0
+        assert rows[1]["families_estimated"] & families.BIT["g-type-main-sequence"]
+        assert rows[2]["families"] == rows[2]["families_estimated"] == 0
+
+        listed = reader.metadata["families"]
+        assert [entry["slug"] for entry in listed] == list(FAMILIES)
+        counts = {entry["slug"]: entry for entry in listed}
+        assert counts["k-type-main-sequence"]["published"] == 1
+        assert counts["g-type-main-sequence"]["estimated"] == 1
+        assert counts["dwarf"]["published"] == counts["dwarf"]["estimated"] == 1
+        assert counts["dwarf"]["wikidata"] == ["Q244393"]
+        types = {
+            c["name"]: c["type"]
+            for c in reader.metadata["tables"]["metadata"]["columns"]
+        }
+        assert types["families"] == types["families_estimated"] == "uint64"
 
     def test_every_star_is_found_as_a_client_finds_it(self, tmp_path, out):
         stars = random_stars(150, around=(100, 20)) + random_stars(60) + _special()
@@ -360,6 +397,7 @@ class TestExport:
             ("metadata", None),
             ("point-source", ("id",)),
             ("point-source", None),
+            ("point-source", families.COLUMNS),
             ("point-source", render.COLUMNS),
             ("binary-orbit", ("id",)),
             ("binary-orbit", None),
