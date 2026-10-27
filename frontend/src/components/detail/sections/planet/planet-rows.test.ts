@@ -83,6 +83,25 @@ describe("a planet's panel", () => {
 		expect(statsOf(eccentric)[0].some(([label]) => label === 'Mean orbital speed')).toBe(false);
 	});
 
+	it('bounds the mean speed as the limits it comes from bound it', () => {
+		const loose = planet(5, 10, elements(0.05), {
+			period: 3.52474859,
+			semi_major_axis: 0.04747,
+			eccentricity: 0.6
+		});
+		const speed = () => statsOf(loose)[0].find(([label]) => label === 'Mean orbital speed');
+		expect(speed()).toEqual(['Mean orbital speed', '132 km/s', 'computed']);
+		// A rounder orbit is longer, in the same period.
+		loose.limits = ['eccentricity<'];
+		expect(speed()).toEqual(['Mean orbital speed', '> 132 km/s', 'computed']);
+		loose.limits = ['eccentricity<', 'semi_major_axis>'];
+		expect(speed()?.[1]).toBe('> 132 km/s');
+		loose.limits = ['period>'];
+		expect(speed()?.[1]).toBe('< 132 km/s');
+		loose.limits = ['eccentricity<', 'period>'];
+		expect(speed()).toBeUndefined();
+	});
+
 	it('shows each value at the precision of its error, and what was assumed', () => {
 		const rows = rowsOf(anchor(hot));
 		expect(rows.orbit['Orbital period']).toBe('3.52474859 ± 0.00000038 d');

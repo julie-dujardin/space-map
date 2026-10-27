@@ -116,11 +116,16 @@ function measured(planet: Planet, name: string, unit: Unit = NO_UNIT, scale = 1)
 	return bounded(planet, name, out);
 }
 
-/** An upper or lower limit in place of a value. */
-function bounded(planet: Planet, name: string, out: string): string {
-	if (planet.limits.includes(`${name}<`)) return formatBound(out);
-	if (planet.limits.includes(`${name}>`)) return formatLowerBound(out);
+/** An upper ('<') or lower ('>') limit in place of a value. */
+function limitOn(side: '<' | '>' | '' | null, out: string): string {
+	if (side === '<') return formatBound(out);
+	if (side === '>') return formatLowerBound(out);
 	return out;
+}
+
+function bounded(planet: Planet, name: string, out: string): string {
+	const side = (['<', '>'] as const).find((s) => planet.limits.includes(`${name}${s}`)) ?? '';
+	return limitOn(side, out);
 }
 
 /** The word that says how a value was had, when it was not measured. */
@@ -303,6 +308,26 @@ function ellipseCircumferenceRatio(eccentricity: number): number {
 	return Math.PI * (1 + minorRatio) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
 }
 
+/** How the mean orbital speed goes with each value it comes from. */
+const SPEED_GROWS_WITH: [name: string, grows: boolean][] = [
+	['semi_major_axis', true],
+	['period', false],
+	['eccentricity', false]
+];
+
+/** The side a limit on a value the speed comes from bounds the speed on: '<'
+ *  at most, '>' at least, '' none. Null where two limits pull opposite ways. */
+function speedBound(planet: Planet): '<' | '>' | '' | null {
+	const sides = new Set<'<' | '>'>();
+	for (const [name, grows] of SPEED_GROWS_WITH) {
+		for (const side of ['<', '>'] as const) {
+			if (planet.limits.includes(`${name}${side}`)) sides.add(grows === (side === '<') ? '<' : '>');
+		}
+	}
+	if (sides.size > 1) return null;
+	return [...sides][0] ?? '';
+}
+
 /** The three most useful available facts. */
 export function planetStats(planet: Planet): Stat[][] {
 	const u = units();
@@ -311,7 +336,9 @@ export function planetStats(planet: Planet): Stat[][] {
 	const period = num(planet, 'period');
 	const a = num(planet, 'semi_major_axis');
 	const eccentricity = num(planet, 'eccentricity');
+	const speedSide = speedBound(planet);
 	const orbitalSpeed =
+		speedSide !== null &&
 		period !== null &&
 		period > 0 &&
 		a !== null &&
@@ -339,10 +366,13 @@ export function planetStats(planet: Planet): Stat[][] {
 		orbitalSpeed !== null
 			? {
 					label: m.exoplanet_mean_orbital_speed(),
-					value: joinParts({
-						value: sigFigures(orbitalSpeed, ROUNDED),
-						unit: formatUnit('kilometre_per_second', true)
-					}),
+					value: limitOn(
+						speedSide,
+						joinParts({
+							value: sigFigures(orbitalSpeed, ROUNDED),
+							unit: formatUnit('kilometre_per_second', true)
+						})
+					),
 					note: m.exoplanet_computed()
 				}
 			: null,
