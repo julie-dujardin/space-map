@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('$env/dynamic/public', () => ({ env: {} }));
 
-import { isExtrasolarHit, toHit } from './client';
+import { env } from '$env/dynamic/public';
+import { isExtrasolarHit, searchEndpoints, toHit } from './client';
 import { secondaryText } from './format';
 
 /** The search documents of the extrasolar export, as the index stores them. */
@@ -66,5 +67,32 @@ describe('extrasolar search hits', () => {
 			object: { id: 'naif-10', type: 'star' }
 		});
 		expect(isExtrasolarHit(sun)).toBe(false);
+	});
+});
+
+describe('endpoint search', () => {
+	it('leaves out every extrasolar class before the result limit, but the Sun', async () => {
+		const search = vi.fn().mockResolvedValue({ hits: [] });
+		Object.assign(env, {
+			PUBLIC_MEILI_URL: 'https://search.example',
+			PUBLIC_MEILI_SEARCH_KEY: 'test-key'
+		});
+		vi.doMock('meilisearch', () => ({
+			Meilisearch: class {
+				index() {
+					return { search };
+				}
+			}
+		}));
+
+		await searchEndpoints('PSR', 'en', 5);
+
+		expect(search).toHaveBeenLastCalledWith('PSR', {
+			limit: 5,
+			locales: ['en'],
+			filter:
+				'kind != "group" AND kind != "planet" AND ' +
+				'(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf"] OR object.id = "naif-10")'
+		});
 	});
 });
