@@ -182,6 +182,12 @@ const MIN_PARALLAX_SNR = 5;
 const MIN_FIDELITY = 0.5;
 /** The source of the values that the literature table gives. */
 export const LITERATURE = 'literature';
+/** The `distance_method` of a distance that a measured parallax gives. */
+const MEASURED_PARALLAX = 'parallax';
+/** How many times more precise than a Gaia parallax a group must be to win. */
+const GAIA_MARGIN = 2;
+/** SIMBAD's parallax, which on a row with its own is Gaia DR2's. */
+const SIMBAD_PARALLAX = 'simbad-parallax';
 
 /** The astrometry sources that the fidelity rates. */
 const GAIA_ASTROMETRY = new Set(['gaia-dr3', 'gaia-dr3-named']);
@@ -268,12 +274,12 @@ function fromParallax(used: DistanceParallax, from: StarDistance['from']): StarD
 /**
  * The distance of a star by the rule of the render tree
  * (`docs/export-format/extrasolar.md`): a distance from a paper, a 5σ
- * parallax that is not flagged, the distance group, a planet host's
- * catalogue distance, then a flagged 5σ parallax. A row is flagged when its
- * Gaia astrometry has a fidelity under 0.5. A flagged row has a distance only
- * from a paper or when Hipparcos, SIMBAD or an exoplanet catalogue saw it.
- * `orbit` is the record's `astrometricOrbit`, whose 5σ parallax stands for
- * the row's.
+ * parallax that is not flagged and that no more precise measured parallax in
+ * the group beats, the distance group, a planet host's catalogue distance,
+ * then a flagged 5σ parallax. A row is flagged when its Gaia astrometry has a
+ * fidelity under 0.5. A flagged row has a distance only from a paper or when
+ * Hipparcos, SIMBAD or an exoplanet catalogue saw it. `orbit` is the record's
+ * `astrometricOrbit`, whose 5σ parallax stands for the row's.
  */
 export function starDistance(row: TableRow, orbit: TableRow | null): StarDistance | null {
 	const group = groupDistance(row);
@@ -285,7 +291,9 @@ export function starDistance(row: TableRow, orbit: TableRow | null): StarDistanc
 		fidelity !== null &&
 		fidelity < MIN_FIDELITY;
 	const used = distanceParallax(row, orbit);
-	if (used && !flagged) return fromParallax(used, 'parallax');
+	if (used && !flagged && !(group && betterThanParallax(row, group))) {
+		return fromParallax(used, 'parallax');
+	}
 	const seen =
 		!flagged ||
 		row.text('hipparcos_photometry_source') !== null ||
@@ -293,6 +301,24 @@ export function starDistance(row: TableRow, orbit: TableRow | null): StarDistanc
 		row.text('host_star_source') !== null;
 	if (!seen) return null;
 	return group ?? hostDistance(row, orbit) ?? (used && fromParallax(used, 'suspect parallax'));
+}
+
+/** Whether the group is a measured parallax more precise than the row's own.
+ *  The distance catalogues copy Gaia's parallax with its error rounded down,
+ *  so against Gaia astrometry the group must be twice as precise. SIMBAD's
+ *  parallax and a distance from a prior or from a group of stars stay below
+ *  the star's parallax. The single-star values decide, as for the 5σ test. */
+function betterThanParallax(row: TableRow, group: StarDistance): boolean {
+	const parallax = row.number('parallax');
+	const error = row.number('parallax_error');
+	if (row.text('distance_method') !== MEASURED_PARALLAX || group.source === SIMBAD_PARALLAX) {
+		return false;
+	}
+	if (group.lower === null || group.upper === null || parallax === null || error === null) {
+		return false;
+	}
+	const margin = GAIA_ASTROMETRY.has(row.text('astrometry_source') ?? '') ? GAIA_MARGIN : 1;
+	return (margin * (group.upper - group.lower)) / (2 * group.pc) < error / parallax;
 }
 
 function groupDistance(row: TableRow): StarDistance | null {

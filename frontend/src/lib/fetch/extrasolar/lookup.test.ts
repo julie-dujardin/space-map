@@ -325,6 +325,57 @@ describe("a star's distance, by the render tree's rule", () => {
 		expect(from({ ...parallax, ...group, fidelity_v2: 0.5 })).toEqual(['parallax', 100, null]);
 	});
 
+	it("takes a measured parallax in the group that is more precise than the row's", () => {
+		// α Cen B: Hipparcos 2007 ±3%, the 10 pc sample ±0.2%.
+		const toliman = {
+			astrometry_source: 'hipparcos-2007',
+			parallax: 796.92,
+			parallax_error: 25.9,
+			distance: 1.3459,
+			distance_lower: 1.3435,
+			distance_upper: 1.3483,
+			distance_source: 'reyle-2021',
+			distance_method: 'parallax'
+		};
+		expect(from(toliman)?.[0]).toBe('group');
+		expect(from(toliman)?.[1]).toBeCloseTo(1.3459, 4);
+		const looser = { distance_lower: 45, distance_upper: 55, distance_method: 'parallax' };
+		expect(from({ ...parallax, ...group, ...looser })).toEqual(['parallax', 100, null]);
+	});
+
+	it('takes the group over a Gaia parallax only when it is twice as precise', () => {
+		const reyle = { distance: 50, distance_source: 'reyle-2021', distance_method: 'parallax' };
+		const gaia = { ...parallax, astrometry_source: 'gaia-dr3' };
+		const tight = { distance_lower: 49.8, distance_upper: 50.2 };
+		const close = { distance_lower: 49.6, distance_upper: 50.4 };
+		expect(from({ ...gaia, ...reyle, ...tight })?.[0]).toBe('group');
+		expect(from({ ...gaia, ...reyle, ...close })?.[0]).toBe('parallax');
+		const simbad = { ...parallax, astrometry_source: 'simbad' };
+		expect(from({ ...simbad, ...reyle, ...close })?.[0]).toBe('group');
+	});
+
+	it("never takes SIMBAD's parallax over the row's own", () => {
+		const simbadParallax = {
+			distance: 50,
+			distance_lower: 49.9,
+			distance_upper: 50.1,
+			distance_source: 'simbad-parallax',
+			distance_method: 'parallax'
+		};
+		expect(from({ ...parallax, ...simbadParallax })).toEqual(['parallax', 100, null]);
+	});
+
+	it('keeps the parallax before a more precise distance from a prior or a cluster', () => {
+		const tight = { distance_lower: 49.9, distance_upper: 50.1 };
+		for (const distance_method of ['geometric', 'cluster']) {
+			expect(from({ ...parallax, ...group, ...tight, distance_method })).toEqual([
+				'parallax',
+				100,
+				null
+			]);
+		}
+	});
+
 	it('takes a distance from a paper before any parallax', () => {
 		const paper = { distance: 2350, distance_source: 'literature' };
 		expect(from({ ...parallax, ...paper })).toEqual(['group', 2350, 'literature']);
