@@ -146,6 +146,13 @@ class WikidataEntityCache:
             _parse_entity(raw), len(sitelinks) if isinstance(sitelinks, dict) else 0
         )
 
+    def get_listed_star(self, qid: str | None) -> WikidataEntity | None:
+        """Look up the entity of a star that a list names. A list reads its
+        few stars many times, so they stay in the LRU."""
+        if not qid:
+            return None
+        return self._load(qid, self._stars_dir)
+
     def get_referenced(self, qid: str | None) -> WikidataEntity | None:
         """Look up a referenced entity from claims (from referenced/ or units)."""
         if not qid:

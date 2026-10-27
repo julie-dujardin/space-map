@@ -66,6 +66,9 @@ STAR_FAMILY_PAGES: dict[str, tuple[str, ...]] = {
 # Bit n of a family mask is family n.
 FAMILIES: tuple[str, ...] = tuple(STAR_FAMILY_PAGES)
 
+# The /g/ page of a family is /g/star-<family>.
+FAMILY_SLUG_PREFIX = "star-"
+
 LETTER, STAGE = 1, 2
 # What a family states about a star. A family that is not here states neither.
 STATES: dict[str, int] = {

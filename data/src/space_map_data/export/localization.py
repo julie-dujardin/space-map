@@ -250,6 +250,9 @@ def _collect_group_name_labels(
                     if label := (
                         entity["labels"].get(lang) or entity["labels"].get("mul")
                     ):
+                        # Wikidata labels star families lower case ("red giant").
+                        if group.type is GroupType.STAR_FAMILY:
+                            label = label[:1].upper() + label[1:]
                         result[lang][key] = label
         base.setdefault(key, _group_fallback_name(group))
 

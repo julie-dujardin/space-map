@@ -1,10 +1,10 @@
 # Group detail files
 
 Aggregation entities behind `/g/<slug>` pages (constellations, launch vehicles,
-organizations, launch sites, countries, orbit classes, small-body flags, and IAU
-surface-feature types).
+organizations, launch sites, countries, orbit classes, small-body flags, IAU
+surface-feature types, and star families).
 Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
-`bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`) so slugs
+`bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`, `star-`) so slugs
 never collide across types and a slug's type is recognizable on sight. A launch
 vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
 former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
@@ -30,9 +30,9 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission" | "feature_type"
-  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category" | "surface_feature"
-  n: number;                  // member count (surface features on a feature_type group)
+  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission" | "feature_type" | "star_family"
+  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category" | "surface_feature" | "star"
+  n: number;                  // member count (surface features on a feature_type group, stars on a star_family group)
   code?: string;              // feature_type groups only: the 2-letter IAU descriptor code (slug ↔ code without a duplicated table)
 }
 // File body: Record<slug, GroupIndexEntry>
@@ -406,6 +406,22 @@ interface GlobalGroupData {
     name: string;                             // IAU-supplied English label ("Germany", "Greek", …); not localized
     n: number;
   }[];
+
+  // Star families (star-<family>, one per family of the extrasolar export's
+  // Metadata `families` mask) only. The counts are the served extrasolar
+  // export's `metadata.json` `families` entry, read under the export's shared
+  // lock, so the pages count what the site serves; with no export served they
+  // are absent and the page has its text only, and a served export without
+  // `families` stops the tier. member_count is their sum: the two masks of a
+  // star never share a family. `notable_members` are the stars with a Wikipedia
+  // article in one of the site's languages that a *published* family puts
+  // here, most sitelinks first (top 20, `id` = `x-<id>`); the star's Wikidata
+  // entity and pictures are the ones its own entry uses, and `galleries` has a
+  // shelf for each that has pictures. `child_groups` (localized) lists the
+  // families it contains that have stars, most stars first.
+  parent_families?: string[];       // the star- pages of the families that contain this one; the breadcrumb takes the first
+  published_star_count?: number;    // stars that a catalogued classification puts in the family
+  estimated_star_count?: number;    // the other stars, which only a Gaia estimate puts there
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).
   primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"

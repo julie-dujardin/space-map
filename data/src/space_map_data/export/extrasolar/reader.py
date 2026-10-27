@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import pyarrow as pa
 
 from space_map_data.export.extrasolar import container, render, tiles
 from space_map_data.export.extrasolar.container import Container
@@ -99,6 +100,29 @@ class ExportReader:
         if at == ids.size or ids[at] != id_:
             return None
         return tile.table().slice(at, 1).to_pylist()[0]
+
+    def rows(self, slug: str, ids: list[int], columns: list[str]) -> dict[int, dict]:
+        """The `columns` of each of `ids` that has a row, reading each tile once."""
+        split = self.split(slug)
+        leaves = split.leaf_of(np.array([cell_of(id_) for id_ in ids], np.int64))
+        by_leaf: dict[int, list[int]] = {}
+        for id_, leaf in zip(ids, leaves.tolist()):
+            by_leaf.setdefault(leaf, []).append(id_)
+        token = self.metadata["tables"][slug]["token"]
+        out: dict[int, dict] = {}
+        for leaf, wanted in by_leaf.items():
+            path = tiles.tile_path(slug, int(split.level[leaf]), int(split.pixel[leaf]))
+            tile = self.read(path, token)
+            found = tile.numpy("id")
+            if found.size == 0:
+                continue
+            at = np.minimum(np.searchsorted(found, wanted), found.size - 1)
+            hit = found[at] == np.array(wanted)
+            at = pa.array(at[hit])
+            values = {name: tile.column(name).take(at).to_pylist() for name in columns}
+            for n, id_ in enumerate(np.array(wanted)[hit].tolist()):
+                out[id_] = {name: values[name][n] for name in columns}
+        return out
 
     def lookup(self, text: str) -> Lookup | None:
         """The records of the ID in a URL segment, or None for a 404."""

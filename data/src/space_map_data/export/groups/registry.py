@@ -2,7 +2,7 @@
 
 Every group type's ``/g/`` slug carries a prefix
 (``const-``/``org-``/``site-``/``country-``/``class-``/``flag-``/``cat-``/
-``bus-``/``comet-family-``/``ft-``) so the same entity can appear in multiple roles
+``bus-``/``comet-family-``/``ft-``/``star-``) so the same entity can appear in multiple roles
 without slug collisions and a slug's type is recognizable on sight.
 """
 
@@ -39,6 +39,10 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPES,
 )
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
+from space_map_data.constants.stars.families import (
+    FAMILY_SLUG_PREFIX,
+    STAR_FAMILY_PAGES,
+)
 from space_map_data.models.object.sbdb import OrbitClass
 
 CLASS_SLUG_PREFIX = "class-"
@@ -68,6 +72,8 @@ class GroupType(StrEnum):
     # One page per IAU feature-type code (crater, mons, vallis, ...); members are
     # surface features across every body, not objects.
     FEATURE_TYPE = "feature_type"
+    # One page per star family of the extrasolar export.
+    STAR_FAMILY = "star_family"
 
 
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
@@ -86,6 +92,7 @@ class GroupCategory(StrEnum):
     PROBE = "probe"  # mission pages; focus redirects to the primary probe
     CATEGORY = "category"  # browse-tree node; no scene filter
     SURFACE_FEATURE = "surface_feature"  # members are features, not objects
+    STAR = "star"  # members are stars of the extrasolar export
 
 
 __all__ = [
@@ -225,6 +232,15 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for code, ft in FEATURE_TYPES.items()
     )
+    star_families = tuple(
+        Group(
+            slug=f"{FAMILY_SLUG_PREFIX}{family}",
+            type=GroupType.STAR_FAMILY,
+            applies_to=GroupCategory.STAR,
+            wikidata_qid=qids[0],
+        )
+        for family, qids in STAR_FAMILY_PAGES.items()
+    )
     return (
         constellations
         + launch_vehicles
@@ -237,6 +253,7 @@ def _build_groups() -> tuple[Group, ...]:
         + earth_orbit_classes
         + categories
         + feature_types
+        + star_families
     )
 
 

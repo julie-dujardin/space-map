@@ -1,5 +1,7 @@
 """Tests for the member image shelves attached to a collection's bundle."""
 
+from dataclasses import replace
+
 import pytest
 
 from space_map_data.export.groups import bundles as bundles_mod
@@ -55,6 +57,16 @@ class TestMemberGalleries:
         out = _shelves([_notable("b"), _notable("a")], None, None)
         assert [g["key"] for g in out] == ["b", "a"]
         assert out[0]["subject"] == "b"
+
+    def test_a_star_shelf_takes_the_pictures_of_its_qid(self, pool, monkeypatch):
+        stars = {"Q1": [_image("Star.jpg")]}
+        monkeypatch.setattr(bundles_mod, "collect_star_images", stars.get)
+        pool["x-5"] = [_image("Wrong.jpg")]
+        star = replace(_notable("x-5", star=True), wikidata_qid="Q1")
+        out = _shelves([star], None, None)
+        assert [(g["key"], [i["file"] for i in g["images"]]) for g in out] == [
+            ("x-5", ["Star.jpg"])
+        ]
 
     def test_members_without_pictures_get_no_shelf(self, pool):
         pool["a"] = [_image("A.jpg")]

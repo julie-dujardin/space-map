@@ -101,5 +101,11 @@ class GroupExtraStats:
     # papers rather than from a catalogue, and no member bundle carries them.
     radiation_sources: list[dict] | None = None
 
+    # Star families: the stars that a catalogued classification puts in the
+    # family, and the others that a Gaia estimate puts there. member_count is
+    # their sum, as no star is in both.
+    published_star_count: int | None = None
+    estimated_star_count: int | None = None
+
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None}

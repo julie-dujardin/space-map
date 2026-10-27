@@ -68,6 +68,7 @@ from space_map_data.export.groups.solar_system_map import (
     build_solar_system_map,
     write_solar_system_map,
 )
+from space_map_data.export.groups.star_family import build_star_family_groups
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import (
     NotableObject,
@@ -78,6 +79,7 @@ from space_map_data.export.notable import (
 )
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
+from space_map_data.export.objects.stars import StarObject, available_star_objects
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
@@ -389,6 +391,7 @@ def run_groups_tier(
     gms: dict[int, float],
     displacement_metadata: dict[str, dict] | None = None,
     model_metadata: dict[str, dict] | None = None,
+    star_objects: list[StarObject] | None = None,
 ) -> dict[str, int]:
     """Build + write the groups tier; returns bucket counts for metadata.json.
 
@@ -477,6 +480,7 @@ def run_groups_tier(
             wikidata_entities,
         )
     missions = _mission_groups()
+    star_families = build_star_family_groups(star_objects or [], wikidata_entities)
 
     # Each constellation lists the buses its members fly, most-used first; the
     # chip count is the within-constellation tally, not the bus's global total.
@@ -489,6 +493,7 @@ def run_groups_tier(
     extra_member_counts.update(split_comets.member_counts)
     extra_member_counts.update(missions.member_counts)
     extra_member_counts.update(feature_types.member_counts)
+    extra_member_counts.update(star_families.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
     extra_named_counts.update(category_data.named_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
@@ -496,6 +501,7 @@ def run_groups_tier(
     extra_notable_members.update(split_comets.notable_members)
     extra_notable_members.update(missions.notable_members)
     extra_notable_members.update(feature_types.notable_members)
+    extra_notable_members.update(star_families.notable_members)
     extra_notable_members.update(
         _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
     )
@@ -528,6 +534,7 @@ def run_groups_tier(
         **category_data.extra_stats,
         **split_comets.extra_stats,
         **missions.extra_stats,
+        **star_families.extra_stats,
     }
     for slug, median in earth_orbit_stats.median_perigees.items():
         extra_stats.setdefault(slug, GroupExtraStats()).median_perigee_km = median
@@ -590,6 +597,7 @@ def run_groups_tier(
             **category_data.children,
             **ORGANIZATION_BUS_CHILDREN,
             **constellation_bus_children,
+            **star_families.children,
         },
         child_counts_by_group=build.constellation_bus_counts,
         extra_groups=(*split_comets.groups, *missions.groups),
@@ -640,6 +648,7 @@ def export_groups_only(engine: Engine) -> None:
         gms,
         displacement_metadata,
         load_model_metadata(out_dir),
+        available_star_objects(),
     )
     update_metadata_group_bundles(out_dir, group_bundles)
     write_group_messages(wikidata_entities)

@@ -10,8 +10,10 @@ These are standalone QID constants following the existing tuple-valued topic
 format. Constellations use `culture -> constellation -> tuple[QID, ...]`; the
 other tables use `slug -> tuple[QID, ...]`. The tables are not registered in
 `TOPIC_PAGE_TABLES`. The family slugs are the star families of the extrasolar
-export ([extrasolar.md](export-format/extrasolar.md), "Families"); the other
-slugs name research subjects and are not dataset IDs.
+export ([extrasolar.md](export-format/extrasolar.md), "Families"), and each
+has a `/g/star-<family>` page ([groups.md](export-format/groups.md)) on the
+first QID of its tuple; the other slugs name research subjects and are not
+dataset IDs.
 
 | File under `data/src/space_map_data/constants/stars/` | Contents |
 | --- | --- |

@@ -1359,6 +1359,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             gms,
             displacement_metadata,
             model_metadata,
+            star_objects,
         )
         incremental.write_tier_b_meta(
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns

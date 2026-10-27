@@ -26,6 +26,7 @@ from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.spacecraft import CATALOGUE as SPACECRAFT_CATALOGUE
+from space_map_data.constants.stars.families import STAR_FAMILY_PAGES
 from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.stars import wikidata_stars
@@ -233,6 +234,13 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="spacecraft catalogue",
+        )
+        # Star family pages. The type claims of stars reach only some of them.
+        self._fetch_entities(
+            {qid for qids in STAR_FAMILY_PAGES.values() for qid in qids},
+            referenced_dir,
+            limit=None,
+            fetch_desc="star families",
         )
         # Topic pages for the detail panels (atmosphere, interior, rings, and
         # the concepts the stat cards name). No object claim reaches them —

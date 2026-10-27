@@ -64,10 +64,12 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.small_body import LargestBody
+from space_map_data.export.groups.star_family import parent_slugs
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.images import (
     collect_group_images,
     collect_object_images,
+    collect_star_images,
     localized_image_titles,
     object_image_count,
 )
@@ -145,11 +147,21 @@ def _member_galleries(
     notable list the page already localizes cannot name them.
     """
     pools: dict[str, list[dict]] = {}
+    # A star's pictures go by its QID.
+    star_qids = {m.object_id: m.wikidata_qid for m in members or () if m.star}
 
     def pool(object_id: str) -> list[dict]:
         if object_id not in pools:
-            pools[object_id] = collect_object_images(object_id) or []
+            qid = star_qids.get(object_id)
+            pools[object_id] = (
+                collect_star_images(qid) if qid else collect_object_images(object_id)
+            ) or []
         return pools[object_id]
+
+    def picture_count(object_id: str) -> int:
+        if object_id in star_qids:
+            return len(pool(object_id))
+        return object_image_count(object_id)
 
     # Insertion order is the notable ranking.
     notable = [
@@ -161,7 +173,7 @@ def _member_galleries(
     # has no membership index of its own — they are the only pool it then has.
     ranked = sorted(
         dict.fromkeys((*notable, *(member_ids or ()))),
-        key=object_image_count,
+        key=picture_count,
         reverse=True,
     )
     chosen = dict.fromkeys(
@@ -251,6 +263,8 @@ def _build_global(
     }
     if parent_category := _category_parent(group):
         data["parent_category"] = parent_category
+    if group.type is GroupType.STAR_FAMILY and (parents := parent_slugs(group.slug)):
+        data["parent_families"] = parents
     if group.wikidata_qid:
         data["wikidata_qid"] = group.wikidata_qid
     # Wikidata prominence — the catalog index's cross-kind ranking tiebreaker,
@@ -510,6 +524,7 @@ def _build_localized(
                     if group.type in (
                         GroupType.EARTH_ORBIT_CLASS,
                         GroupType.FEATURE_TYPE,
+                        GroupType.STAR_FAMILY,
                     ):
                         name = name[:1].upper() + name[1:]
                     data["name"] = name
@@ -684,6 +699,7 @@ def _child_group_refs(
                         GroupType.ORBIT_CLASS,
                         GroupType.EARTH_ORBIT_CLASS,
                         GroupType.FEATURE_TYPE,
+                        GroupType.STAR_FAMILY,
                     ):
                         name = name[:1].upper() + name[1:]
             else:
@@ -805,14 +821,15 @@ def _extract_group_claims(
     """Run the shared object-claim extractor on the group's Wikidata entity."""
     # Country entities carry many object-style claims (population, area, …)
     # that the shared extractor can't disambiguate; none are surfaced on the
-    # country-page UI anyway. Orbit-class entities point to encyclopedic
-    # concept pages whose claims (e.g. discoverer, named after) describe the
-    # category, not its members.
+    # country-page UI anyway. Orbit-class and star-family entities point to
+    # encyclopedic concept pages whose claims (e.g. discoverer, named after)
+    # describe the category, not its members.
     if group.type in (
         GroupType.COUNTRY,
         GroupType.ORBIT_CLASS,
         GroupType.EARTH_ORBIT_CLASS,
         GroupType.CATEGORY,
+        GroupType.STAR_FAMILY,
     ):
         return None
     if not group.wikidata_qid:
@@ -1003,8 +1020,19 @@ def write_group_bundles(
         chart_rows = (extra_chart_rows or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)
+        # A star is no DB object, so its shelf takes the name of its entry.
+        subjects = gallery_subjects
+        if members and member_entries and any(m.star for m in members):
+            subjects = {
+                **(gallery_subjects or {}),
+                **{
+                    m.object_id: GallerySubject(entry["name"], m.wikidata_qid)
+                    for m, entry in zip(members, member_entries)
+                    if m.star
+                },
+            }
         galleries = _member_galleries(
-            members, images, member_ids.get(group.slug), gallery_subjects
+            members, images, member_ids.get(group.slug), subjects
         )
         picture_files = [
             entry["file"]
@@ -1057,7 +1085,7 @@ def write_group_bundles(
                 (extra_chart_qids or {}).get(group.slug),
             )
             member_names = _gallery_subject_names(
-                galleries, gallery_subjects, lang, wikidata_entities
+                galleries, subjects, lang, wikidata_entities
             )
             if members and member_entries:
                 member_names.update(

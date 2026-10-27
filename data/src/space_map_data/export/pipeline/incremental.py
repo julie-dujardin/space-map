@@ -25,6 +25,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.groups.star_family import served_families_stamp
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
 )
@@ -116,7 +117,9 @@ def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> 
     attitude blocks injected into object bundles. `position_sources` is what
     the traverses add to bundles, so a route that only grows rewrites none.
     `stars` covers the star entries, which each registry ingest links again,
-    and the works that the literature table cites for them.
+    and the works that the literature table cites for them. `star_families`
+    covers the family counts of the served extrasolar export, which the star
+    family pages read.
     """
     return {
         "version": TIER_B_VERSION,
@@ -141,6 +144,7 @@ def tier_b_fingerprint(session: Session, star_objects: Sequence[StarObject]) -> 
                 for star in star_objects
             ]
         ),
+        "star_families": served_families_stamp(),
     }
 
 

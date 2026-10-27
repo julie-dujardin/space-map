@@ -280,6 +280,20 @@ def _locked(layout: Layout) -> Generator[None]:
         yield
 
 
+@contextmanager
+def served(root: Path) -> Generator[None]:
+    """Read access to the served export below `root`: an export that starts
+    meanwhile refuses, and one that runs is waited for, so none swaps the
+    files under the reader."""
+    lock = Layout(root).lock
+    if not root.exists():
+        yield
+        return
+    with lock.open("a+") as handle:
+        fcntl.flock(handle, fcntl.LOCK_SH)
+        yield
+
+
 def _recover(layout: Layout) -> None:
     """Undo what a stopped export left."""
     if layout.old.exists():
