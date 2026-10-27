@@ -30,9 +30,14 @@
 	import StatCardRow from '../sections/kit/StatCardRow.svelte';
 	import StarSections from '../sections/star/StarSections.svelte';
 	import Discovery from '../sections/Discovery.svelte';
-	import { starStats } from '../sections/star/star-rows';
+	import { starAliases, starIdentifiers, starStats } from '../sections/star/star-rows';
 	import PlanetSections from '../sections/planet/PlanetSections.svelte';
-	import { planetSections, planetStats } from '../sections/planet/planet-rows';
+	import {
+		planetAliases,
+		planetIdentifiers,
+		planetSections,
+		planetStats
+	} from '../sections/planet/planet-rows';
 	import PlanetList from '../members/PlanetList.svelte';
 	import { planetCredits, starCredits } from '$lib/credits/star-sources';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
@@ -89,25 +94,38 @@
 
 	let data = $derived(load.data);
 	let groupDetail = $derived(load.groupDetail);
+	let linkIdentifiers = $derived(
+		star ? starIdentifiers(star) : planet ? planetIdentifiers(planet.planet) : []
+	);
+	let linkAliases = $derived(star ? starAliases(star) : planet ? planetAliases(planet.planet) : []);
 
-	// The system file of the star, or of the planet's star, lists the planets.
-	// The export's credits name the catalogues of a planet.
-	let systemHost = $derived(star?.id ?? planet?.host ?? null);
+	// A star's system file lists its planets. The export metadata names the
+	// catalogues behind a planet.
 	let hostSystem = $state.raw<PlanetSystem | null>(null);
 	let exportCredits = $state.raw<readonly ExtrasolarCredit[]>([]);
 	$effect(() => {
-		const id = systemHost;
+		const id = star?.id ?? null;
 		hostSystem = null;
 		if (id === null) return;
 		let current = true;
-		untrack(() => Promise.all([planetCatalogue.hostSystem(id), fetchExtrasolarMetadata()])).then(
-			([system, meta]) => {
+		untrack(() => planetCatalogue.hostSystem(id)).then(
+			(system) => {
 				if (!current) return;
 				hostSystem = system;
-				exportCredits = meta?.credits ?? [];
 			},
 			(e: unknown) => console.warn(`[planets] no system for ${id}:`, e)
 		);
+		return () => {
+			current = false;
+		};
+	});
+	$effect(() => {
+		exportCredits = [];
+		if (!planet) return;
+		let current = true;
+		untrack(fetchExtrasolarMetadata).then((meta) => {
+			if (current) exportCredits = meta?.credits ?? [];
+		});
 		return () => {
 			current = false;
 		};
@@ -234,12 +252,6 @@
 					<StatCardRow {stats} />
 				{/each}
 			</div>
-			<p class="text-sm leading-relaxed text-muted-foreground">
-				{m.exoplanet_summary({ name: planet.planet.name })}
-				<span class="font-mono text-xs text-blue-600 dark:text-blue-400"
-					>{m.exoplanet_summary_intent()}</span
-				>
-			</p>
 		{:else if body}
 			<ObjectStats
 				global={data?.global ?? null}
@@ -249,10 +261,12 @@
 				jd={sampledJd}
 			/>
 		{/if}
-		<ObjectDescription
-			extract={data?.localized?.wikipedia?.extract}
-			wikipediaUrl={data?.localized?.wikipedia?.url}
-		/>
+		{#if !planet}
+			<ObjectDescription
+				extract={data?.localized?.wikipedia?.extract}
+				wikipediaUrl={data?.localized?.wikipedia?.url}
+			/>
+		{/if}
 		{#if !isGroupMode}
 			<BodyCrossRefs
 				{body}
@@ -292,23 +306,21 @@
 				hostName={body?.data.name ?? undefined}
 			/>
 		{:else if star}
-			<StarSections
-				record={star}
-				global={data?.global ?? null}
-				localized={data?.localized ?? null}
-			/>
+			<StarSections record={star} localized={data?.localized ?? null} />
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 		{:else if planet}
 			<PlanetSections sections={planetSections(planet)} />
-			{#if hostSystem}
-				<PlanetList system={hostSystem} hostId={planet.host} current={planet.number} />
-			{/if}
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />
 		{:else if groupSlug !== null}
 			<GroupOverviewSections slug={groupSlug} {cat} {groupDetail} {members} />
 		{/if}
-		<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
+		<ObjectLinks
+			global={data?.global ?? null}
+			localized={data?.localized ?? null}
+			extraIdentifiers={linkIdentifiers}
+			extraAliases={linkAliases}
+		/>
 		<SourcesFooter
 			global={data?.global ?? null}
 			works={groupWorkCredits}

@@ -4,14 +4,68 @@ vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
 
 import {
 	formatCompactCurrency,
+	formatCatalogueQuantity,
 	formatCurrency,
+	formatMeasuredQuantity,
 	formatNumber,
 	formatPercent,
+	formatQuantity,
 	percentParts,
 	scientificNotation,
 	spanFields,
 	ucfirst
 } from './quantities';
+
+const plain = (value: string) => value.replace(/[\u2066-\u2069]/g, '').replace(/\u00a0/g, ' ');
+
+describe('formatMeasuredQuantity', () => {
+	it('uses the normal quantity path without uncertainty', () => {
+		const measured = formatMeasuredQuantity({ value: 0.693, unit: 'R⊕' });
+		expect(measured).toBe(formatQuantity({ value: 0.693, unit: 'R⊕' }, true));
+	});
+
+	it('formats symmetric and asymmetric uncertainty', () => {
+		expect(
+			plain(
+				formatMeasuredQuantity({
+					value: 1.055,
+					upperError: 0.055,
+					lowerError: 0.055,
+					unit: 'M⊕'
+				})
+			)
+		).toBe('1.055 ± 0.055 M⊕');
+		expect(
+			plain(
+				formatMeasuredQuantity({
+					value: 3.3,
+					upperError: 1.8,
+					lowerError: 2.3,
+					unit: '°',
+					tight: true
+				})
+			)
+		).toBe('3.3° (1.0–5.1°)');
+	});
+
+	it('keeps a catalogue value at its published precision', () => {
+		expect(plain(formatCatalogueQuantity(1.4, null, null, 'M☉'))).toBe('1.4 M☉');
+	});
+
+	it('rounds converted uncertainty at its significant place', () => {
+		expect(
+			plain(
+				formatMeasuredQuantity({
+					value: 626_130,
+					upperError: 13_914,
+					lowerError: 13_914,
+					unit: 'km',
+					roundLargeErrors: true
+				})
+			)
+		).toBe('626,000 ± 14,000 km');
+	});
+});
 
 describe('formatNumber', () => {
 	it.each([

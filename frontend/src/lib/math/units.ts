@@ -2,6 +2,10 @@
 export const AU_SCALE = 10;
 /** 1 AU in km */
 export const AU_KM = 149_597_870.7;
+/** IAU nominal solar radius in km. */
+export const SOLAR_RADIUS_KM = 695_700;
+/** Jupiter equatorial radius used by the exoplanet catalogue, in km. */
+export const JUPITER_RADIUS_KM = 71_492;
 /** Speed of light in km/s */
 export const SPEED_OF_LIGHT_KM_S = 299_792.458;
 /** Mean obliquity of the ecliptic at J2000 (IAU 2006), in degrees. */

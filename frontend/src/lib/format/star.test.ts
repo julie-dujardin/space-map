@@ -34,25 +34,25 @@ describe('star value formatting', () => {
 	});
 
 	it('isolates a value with an error as LTR, and writes a plain value and unit as the panels do', () => {
-		expect(plusMinus(379.20999, 1.58, 'mas')).toBe(ltrIsolate(`379.2 ±${NBSP}1.6${NBSP}mas`));
+		expect(plusMinus(379.20999, 1.58, 'mas')).toBe(ltrIsolate(`379.2 ±${NBSP}1.6 mas`));
 		expect(plusMinus(0.489, null, 'mas', 3)).toBe(joinParts({ value: '0.489', unit: 'mas' }));
 		expect(plusMinus(1.141, 0, 'µm⁻¹', 3)).toBe('1.141 µm⁻¹');
 		expect(plusMinus(3.805, null, '', 3)).toBe('3.805');
 		expect(withBounds(1.3, null, null, 'pc')).toBe('1.30 pc');
-		expect(withBounds(301, 258, 360, 'pc')).toBe(ltrIsolate(`301${NBSP}pc (258–360${NBSP}pc)`));
+		expect(withBounds(301, 258, 360, 'pc')).toBe(ltrIsolate('301 pc (258–360 pc)'));
 	});
 
 	it('puts an error in another unit after a coordinate', () => {
 		expect(withError('06ʰ 45ᵐ 09.25ˢ', 1.234, 'mas')).toBe(
-			ltrIsolate(`06ʰ 45ᵐ 09.25ˢ ±${NBSP}1.2${NBSP}mas`)
+			ltrIsolate(`06ʰ 45ᵐ 09.25ˢ ±${NBSP}1.2 mas`)
 		);
 		expect(withError('06ʰ 45ᵐ 09.25ˢ', null, 'mas')).toBe('06ʰ 45ᵐ 09.25ˢ');
 	});
 
-	it('breaks a line only before the ±', () => {
+	it('uses the shared spacing around units', () => {
 		const text = plusMinus(1.30197, 0.000085, 'pc');
 		expect(text).toContain(`±${NBSP}`);
-		expect(text).toContain(`${NBSP}pc`);
+		expect(text).toContain(' pc');
 	});
 
 	it('writes near-symmetric bounds as an error, the others as a span', () => {

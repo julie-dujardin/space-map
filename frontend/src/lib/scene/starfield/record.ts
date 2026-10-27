@@ -7,6 +7,7 @@
  */
 
 import { starDistance, type TableRow } from '$lib/fetch/extrasolar/lookup';
+import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import { bpRpFromTeff } from './colour';
 import { icrsToTree, treeToScene, type Vec3 } from './tree';
 
@@ -14,7 +15,6 @@ import { icrsToTree, treeToScene, type Vec3 } from './tree';
 export const RENDER_EPOCH = 2016.0;
 /** Magnitudes in the tree are multiples of this. */
 const MAG_STEP = 1 / 1024;
-const SOLAR_RADIUS_KM = 695_700;
 
 export function positiveNumber(row: TableRow, name: string): number | null {
 	const value = row.number(name);

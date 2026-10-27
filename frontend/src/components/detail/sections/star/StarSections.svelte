@@ -1,9 +1,4 @@
-<!--
-  The records of an extrasolar object, one section per group of columns. The
-  identifiers lead to SIMBAD, where the catalogue numbers are looked up. The
-  position section also names the constellation and the papers of its values
-  from the object entry.
--->
+<!-- An extrasolar object's values, grouped by meaning. -->
 <script lang="ts">
 	import Section from '../kit/Section.svelte';
 	import Row from '../kit/Row.svelte';
@@ -11,18 +6,17 @@
 	import EntityLinks from '../kit/EntityLinks.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
-	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
+	import type { LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { starSections } from './star-rows';
 
 	interface Props {
 		record: ExtrasolarRecord;
-		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
 	}
 
-	let { record, global, localized }: Props = $props();
+	let { record, localized }: Props = $props();
 
-	let sections = $derived(starSections(record, global?.references));
+	let sections = $derived(starSections(record));
 </script>
 
 {#each sections as section (section.key)}
@@ -34,16 +28,11 @@
 		{/if}
 		{#each section.rows as entry, i (`${entry.label}-${i}`)}
 			{#if entry.href}
-				<Row label={entry.label} whole={section.key === 'identifiers'}>
+				<Row label={entry.label}>
 					<Link href={entry.href} external class="tabular-nums">{entry.value}</Link>
 				</Row>
 			{:else}
-				<Row
-					label={entry.label}
-					value={entry.value}
-					valueTooltip={entry.tooltip}
-					whole={section.key === 'identifiers'}
-				/>
+				<Row label={entry.label} value={entry.value} valueTooltip={entry.tooltip} />
 			{/if}
 		{/each}
 	</Section>

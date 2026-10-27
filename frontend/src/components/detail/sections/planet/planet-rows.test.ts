@@ -8,7 +8,9 @@ import {
 	discoveryMethodLabel,
 	earthScale,
 	formatDays,
+	planetAliases,
 	planetBadges,
+	planetIdentifiers,
 	planetSections,
 	planetStats
 } from './planet-rows';
@@ -58,18 +60,27 @@ describe("a planet's panel", () => {
 	});
 	hot.assumed = ['eccentricity'];
 
-	it('gives the four stat cards in Jupiter units for a giant', () => {
+	it('gives the three preferred available stats for a giant', () => {
 		expect(statsOf(hot)).toEqual([
 			[
-				['Mass', '0.73 MJ', undefined],
-				['Radius', '1.38 RJ', undefined]
-			],
-			[
-				['Orbital period', '3.52 d', undefined],
+				['Radius', '98,659 km', undefined],
+				['Mean orbital speed', '147 km/s', 'computed'],
 				['Distance from star', '0.0475 AU', undefined]
 			]
 		]);
 		expect(earthScale(hot)).toBe(false);
+	});
+
+	it('uses the circumference of an eccentric orbit for its mean speed', () => {
+		const eccentric = planet(5, 9, elements(0.05, { e: 0.8 }), {
+			period: 3.52474859,
+			semi_major_axis: 0.04747,
+			eccentricity: 0.8
+		});
+		expect(statsOf(eccentric)[0][0]).toEqual(['Mean orbital speed', '119 km/s', 'computed']);
+
+		delete eccentric.values.eccentricity;
+		expect(statsOf(eccentric)[0].some(([label]) => label === 'Mean orbital speed')).toBe(false);
 	});
 
 	it('shows each value at the precision of its error, and what was assumed', () => {
@@ -77,9 +88,10 @@ describe("a planet's panel", () => {
 		expect(rows.orbit['Orbital period']).toBe('3.52474859 ± 0.00000038 d');
 		expect(rows.orbit.Eccentricity).toBe('0 [assumed]');
 		expect(rows.orbit.Inclination).toBe('86.71° (86.50–87.05°)');
-		expect(rows.orbit['Position on orbit']).toBe('From the time of transit');
+		expect(rows.orbit['Position on orbit']).toBeUndefined();
 		expect(rows.orbit['Orbit in the map']).toBeUndefined();
 		expect(rows.physical.Mass).toBe('0.73 ± 0.04 MJ');
+		expect(rows.physical.Radius).toBe('98,659 km');
 		expect(rows.discovery).toEqual({ 'Detection method': 'Transit', 'Year of discovery': '1999' });
 	});
 
@@ -91,62 +103,64 @@ describe("a planet's panel", () => {
 		});
 		small.estimated = ['radius'];
 		expect(earthScale(small)).toBe(true);
-		const [masses] = statsOf(small);
-		expect(masses).toEqual([
-			['Mass', '1.05 M⊕', 'minimum (m sin i)'],
-			['Radius', '1.02 R⊕', 'estimated']
+		const [cards] = statsOf(small);
+		expect(cards).toEqual([
+			['Radius', '6,527 km', 'estimated'],
+			['Class', 'Planet', undefined]
 		]);
-		const card = planetStats(small)[0][0];
-		expect(plain(card.tooltip!)).toBe('0.00332 MJ');
+		expect(planetStats(small)[0][0].tooltip).toBeUndefined();
 		// The published digits carry over to the other unit.
 		expect(rowsOf(anchor(small)).physical.Mass).toBe('1.055 M⊕ [minimum (m sin i)]');
+		expect(rowsOf(anchor(small)).physical.Radius).toBe('6,527 km [estimated]');
 	});
 
-	it('says that a value is unknown, or a limit', () => {
+	it('omits unknown stats and keeps limits', () => {
 		const bare = planet(5, 3, null, { mass: 2.1 });
 		bare.limits = ['mass<'];
 		expect(statsOf(bare)).toEqual([
 			[
 				['Mass', '< 2.1 MJ', undefined],
-				['Radius', 'Unknown', undefined]
-			],
-			[
-				['Orbital period', 'Unknown', undefined],
-				['Distance from star', 'Unknown', undefined]
+				['Class', 'Planet', undefined]
 			]
 		]);
 	});
 
-	it('says when the place on the orbit or the drawn orbit is not as published', () => {
+	it('leaves map-fit details for a later presentation', () => {
 		const assumed = planet(5, 4, elements(1, { phase: 'assumed' }), {
 			periastron_time: 2451545
 		});
 		assumed.assumed = ['periastron_time'];
 		const assumedRows = rowsOf(anchor(assumed)).orbit;
-		expect(assumedRows['Position on orbit']).toBe('Unknown');
+		expect(assumedRows['Position on orbit']).toBeUndefined();
 		expect(assumedRows['Time of periastron']).toBe('2451545 [assumed]');
 
 		const replaced = planet(5, 5, elements(1, { e: 0, replaced: ['eccentricity'] }), {
 			eccentricity: 280
 		});
-		expect(rowsOf(anchor(replaced)).orbit['Orbit in the map']).toBe(
-			'Circle (eccentricity out of range)'
-		);
+		expect(rowsOf(anchor(replaced)).orbit['Orbit in the map']).toBeUndefined();
 		expect(rowsOf(anchor(replaced)).orbit.Eccentricity).toBe('280');
 
 		const none = planet(5, 6, null, { period: 1500 });
-		expect(rowsOf(anchor(none)).orbit).toEqual({
-			'Orbital period': '1,500 d',
-			'Orbit in the map': 'None (no semi-major axis)'
-		});
+		expect(rowsOf(anchor(none)).orbit).toEqual({ 'Orbital period': '1,500 d' });
 	});
 
-	it('badges the class, and a controversial status', () => {
+	it('keeps the class badge and moves a controversial status into the stats', () => {
 		const dwarf = planet(5, 7, null);
 		dwarf.class = 'brown dwarf';
+		dwarf.class_basis = 'minimum mass';
 		dwarf.status = 'controversial';
-		expect(planetBadges(dwarf)).toEqual(['Brown dwarf', 'Controversial']);
+		expect(planetBadges(dwarf)).toEqual(['Brown dwarf']);
+		expect(statsOf(dwarf)[0][0]).toEqual(['Status', 'Controversial', undefined]);
+		expect(statsOf(dwarf)[0][1]).toEqual(['Class', 'Brown dwarf', 'Minimum mass']);
 		expect(planetBadges(hot)).toEqual(['Planet']);
+	});
+
+	it('shows a mass ratio only where no planet mass is available', () => {
+		const ratio = planet(5, 8, null);
+		ratio.mass_ratio = 0.001;
+		expect(rowsOf(anchor(ratio)).physical['Mass ratio to the star']).toBe('1×10⁻³');
+		ratio.values.mass = 1;
+		expect(rowsOf(anchor(ratio)).physical['Mass ratio to the star']).toBeUndefined();
 	});
 
 	it('writes a period in days with a space before its unit, as the cards do', () => {
@@ -160,7 +174,7 @@ describe("a planet's panel", () => {
 		expect(discoveryMethodLabel('Something new')).toBe('Something new');
 	});
 
-	it('links the host star, and the catalogues by the names they use', () => {
+	it('links the catalogues by the names they use', () => {
 		const named = planet(5, 1, elements(0.05));
 		named.name = 'Dimidium';
 		named.name_source = 'iau-nameexoworlds';
@@ -170,34 +184,21 @@ describe("a planet's panel", () => {
 			{ catalogue: 'nasa-exoplanet-archive', release: 'pscomppars', catalogue_id: '3.1' },
 			{ catalogue: 'exoplanet-eu', release: 'catalog', catalogue_id: '51 Pegasi b' }
 		];
-		named.sources = { orbit: 'nasa-exoplanet-archive', mass: 'exoplanet-eu' };
-		const sections = planetSections(anchor(named));
-		const identifiers = sections.find((s) => s.key === 'identifiers')!.rows;
+		const identifiers = planetIdentifiers(named);
 		expect(identifiers.map((r) => [r.label, r.value])).toEqual([
 			['IAU name', 'Dimidium'],
 			['Designation', '51 Peg b'],
 			['NASA Exoplanet Archive', '51 Peg b'],
-			['exoplanet.eu', '51 Pegasi b'],
-			['Other names', 'HD\u00a0217014\u00a0b'],
-			['Space Map ID', '5/b/1']
+			['exoplanet.eu', '51 Pegasi b']
 		]);
 		expect(identifiers[2].href).toBe(archiveOverview('51 Peg b'));
-		const star = sections.find((s) => s.key === 'host')!.rows[0];
-		expect(star).toMatchObject({ value: 'Star 5', target: { id: 'x-5' } });
-		expect(rowsOf(anchor(named)).sources).toEqual({
-			Name: 'IAU NameExoWorlds',
-			Orbit: 'NASA Exoplanet Archive',
-			Mass: 'exoplanet.eu'
-		});
+		expect(planetAliases(named)).toEqual(['HD 217014 b']);
 	});
 
-	it('keeps a short other name whole, and lets a long one wrap at its spaces', () => {
+	it('leaves other names to the shared links section', () => {
 		const p = planet(5, 1, elements(0.05));
 		p.aliases = ['Gl 229 Ba', 'Gaia DR2 2835207319109249920 b'];
-		const identifiers = planetSections(anchor(p)).find((s) => s.key === 'identifiers')!.rows;
-		expect(identifiers.find((r) => r.label === 'Other names')!.value).toBe(
-			'Gl 229 Ba and Gaia DR2 2835207319109249920 b'
-		);
+		expect(planetAliases(p)).toEqual(['Gl 229 Ba', 'Gaia DR2 2835207319109249920 b']);
 	});
 });
 
@@ -212,18 +213,18 @@ describe.skipIf(!HAS_EXPORT)("a planet's panel from the real export", () => {
 	it('shows Proxima b', () => {
 		const rows = rowsOf(anchorOf(27424668, 27424668, 1));
 		expect(rows.orbit['Orbital period']).toBe('11.18465 ± 0.00053 d');
-		expect(rows.orbit['Position on orbit']).toBe('From the time of transit');
+		expect(rows.orbit['Position on orbit']).toBeUndefined();
 		expect(rows.physical.Mass).toBe('1.055 ± 0.055 M⊕ [minimum (m sin i)]');
-		expect(rows.host.Star).toBe('Proxima Centauri');
-		expect(rows.host['Orbit in a binary']).toBe('Around one star (S-type)');
-		expect(rows.identifiers['NASA Exoplanet Archive']).toBe('Proxima Cen b');
+		expect(
+			planetIdentifiers(anchorOf(27424668, 27424668, 1).planet).find(
+				(row) => row.label === 'NASA Exoplanet Archive'
+			)?.value
+		).toBe('Proxima Cen b');
 	});
 
-	it('shows α Cen B c with no orbit, and TOI-1272 c drawn as a circle', () => {
-		expect(rowsOf(anchorOf(27424668, 564339647, 1)).orbit['Orbit in the map']).toBe(
-			'None (no semi-major axis)'
-		);
+	it('does not expose map-fit details', () => {
+		expect(rowsOf(anchorOf(27424668, 564339647, 1)).orbit['Orbit in the map']).toBeUndefined();
 		const toi = rowsOf(anchorOf(19608004, 19608004, 2));
-		expect(toi.orbit['Orbit in the map']).toBe('Circle (eccentricity out of range)');
+		expect(toi.orbit['Orbit in the map']).toBeUndefined();
 	});
 });

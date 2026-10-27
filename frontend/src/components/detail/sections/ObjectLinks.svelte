@@ -4,14 +4,22 @@
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import Row from './kit/Row.svelte';
 
+	export interface LinkIdentifier {
+		label: string;
+		value: string;
+		href?: string;
+	}
+
 	interface Props {
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
+		extraIdentifiers?: LinkIdentifier[];
+		extraAliases?: string[];
 	}
 
-	let { global, localized }: Props = $props();
+	let { global, localized, extraIdentifiers = [], extraAliases = [] }: Props = $props();
 
-	let aliases = $derived(localized?.aliases ?? []);
+	let aliases = $derived([...new Set([...(localized?.aliases ?? []), ...extraAliases])]);
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
 	let nasaScienceUrl = $derived(global?.nasa_science_url);
 	let websites = $derived(global?.wikidata?.website ?? []);
@@ -27,7 +35,7 @@
 	// first, then catalogue numbers in issuer order.
 	let identifiers = $derived.by(() => {
 		const x = global?.cross_refs;
-		const out: Array<{ label: string; value: string }> = [];
+		const out: LinkIdentifier[] = [...extraIdentifiers];
 		if (x?.mpc_designation) out.push({ label: m.id_mpc(), value: String(x.mpc_designation) });
 		if (global?.provisional_designation)
 			out.push({ label: m.id_provisional(), value: global.provisional_designation });
@@ -84,7 +92,11 @@
 				<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5">
 					{#each identifiers as id (id.label)}
 						<Row label={id.label}>
-							<span class="tabular-nums select-all">{id.value}</span>
+							{#if id.href}
+								<Link href={id.href} external class="tabular-nums select-all">{id.value}</Link>
+							{:else}
+								<span class="tabular-nums select-all">{id.value}</span>
+							{/if}
 						</Row>
 					{/each}
 				</dl>

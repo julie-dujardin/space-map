@@ -95,6 +95,23 @@ export function formatNumber(n: number): string {
 	return n.toLocaleString(getLocale(), precisionOptions(n));
 }
 
+/** Fraction digits that show an uncertainty to two significant figures. */
+export function errorDecimals(error: number): number {
+	if (!(error > 0) || !Number.isFinite(error)) return 2;
+	return Math.min(8, Math.max(0, 1 - Math.floor(Math.log10(error) + 1e-6)));
+}
+
+/** A value with exactly this many fraction digits. */
+export function fixed(value: number, decimals: number): string {
+	const scale = decimals < 0 ? 10 ** -decimals : 1;
+	const rounded = decimals < 0 ? Math.round(value / scale) * scale : value;
+	const fractionDigits = Math.max(0, decimals);
+	return new Intl.NumberFormat(getLocale(), {
+		minimumFractionDigits: fractionDigits,
+		maximumFractionDigits: fractionDigits
+	}).format(rounded);
+}
+
 /**
  * A percentage split from its sign, so a span can say the sign once.
  *
@@ -209,6 +226,104 @@ export function formatQuantity(q: { value: number; unit: string }, short_unit?: 
 	// The inflected names read as one phrase and cannot be split in two.
 	if (plural) return plural({ count: q.value, display: formatNumber(q.value) });
 	return joinParts(quantityParts(q, short_unit));
+}
+
+export interface MeasuredQuantity {
+	value: number;
+	/** Positive errors above and below the value. */
+	upperError?: number | null;
+	lowerError?: number | null;
+	/** A display-ready unit symbol. */
+	unit?: string;
+	tight?: boolean;
+	/** The catalogue value before unit conversion. */
+	rawValue?: number;
+	maxSignificantDigits?: number;
+	/** Caps digits at the precision published by the catalogue. */
+	publishedDecimals?: number | null;
+	/** Used when no uncertainty is available. */
+	fixedDecimals?: number;
+	/** Preserve significant error digits after converting to a much larger unit. */
+	roundLargeErrors?: boolean;
+}
+
+const SYMMETRIC_ERROR = 0.1;
+
+function publishedDigits(value: number): number {
+	const mantissa = Math.abs(value).toExponential().split('e')[0];
+	return Math.max(1, mantissa.replace('.', '').replace(/0+$/, '').length);
+}
+
+/** Fraction digits carried by a published decimal. */
+export function fractionDigits(value: number): number {
+	const [mantissa, exponent] = Math.abs(value).toExponential().split('e');
+	const digits = (mantissa.split('.')[1] ?? '').replace(/0+$/, '').length;
+	return Math.max(0, digits - Number(exponent));
+}
+
+/** A value with symmetric or asymmetric uncertainty, using the normal quantity path. */
+export function formatMeasuredQuantity(q: MeasuredQuantity): string {
+	const unit = q.unit ?? '';
+	const parts = (value: string) => joinParts({ value, unit, tight: q.tight });
+	const up =
+		q.upperError !== null && q.upperError !== undefined && q.upperError > 0 ? q.upperError : null;
+	const low =
+		q.lowerError !== null && q.lowerError !== undefined && q.lowerError > 0 ? q.lowerError : null;
+	if (up === null && low === null) {
+		const value =
+			q.fixedDecimals === undefined
+				? sigFigures(
+						q.value,
+						Math.min(publishedDigits(q.rawValue ?? q.value), q.maxSignificantDigits ?? 9)
+					)
+				: fixed(q.value, q.fixedDecimals);
+		return parts(value);
+	}
+
+	const hi = up ?? low!;
+	const lo = low ?? up!;
+	const half = (hi + lo) / 2;
+	const convertedDecimals = (error: number) =>
+		Math.min(8, 1 - Math.floor(Math.log10(error) + 1e-6));
+	const decimals = (error: number) =>
+		q.publishedDecimals === null || q.publishedDecimals === undefined
+			? q.roundLargeErrors
+				? convertedDecimals(error)
+				: errorDecimals(error)
+			: Math.min(errorDecimals(error), q.publishedDecimals);
+	if (Math.abs(hi - lo) <= SYMMETRIC_ERROR * half) {
+		const d = decimals(half);
+		const value = fixed(q.value, d);
+		const error = parts(fixed(half, d));
+		return ltrIsolate(q.tight ? `${parts(value)} ±\u00a0${error}` : `${value} ±\u00a0${error}`);
+	}
+
+	const d = decimals(Math.min(hi, lo));
+	const from = q.value - lo;
+	const to = q.value + hi;
+	const separator = from < 0 || to < 0 ? ' – ' : '–';
+	return ltrIsolate(
+		`${parts(fixed(q.value, d))} (${parts(`${fixed(from, d)}${separator}${fixed(to, d)}`)})`
+	);
+}
+
+/** A catalogue quantity at the precision of its published decimals. */
+export function formatCatalogueQuantity(
+	value: number,
+	upperError: number | null,
+	lowerError: number | null,
+	unit: string,
+	tight = false
+): string {
+	return formatMeasuredQuantity({
+		value,
+		upperError,
+		lowerError,
+		unit,
+		tight,
+		rawValue: value,
+		publishedDecimals: Math.max(...[value, upperError ?? 0, lowerError ?? 0].map(fractionDigits))
+	});
 }
 
 /** Density in g/cm³, whichever unit Wikidata stored it in.

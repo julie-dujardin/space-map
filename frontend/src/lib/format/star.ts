@@ -7,43 +7,29 @@
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { ltrIsolate } from './bidi';
-import { joinParts } from './quantities';
+import { errorDecimals, fixed, formatMeasuredQuantity, joinParts } from './quantities';
 
-/** Fraction digits that show `error` to two significant figures. */
-export function errorDecimals(error: number): number {
-	if (!(error > 0) || !Number.isFinite(error)) return 2;
-	// A float32 0.01 is 0.0099999998: its decade is still the hundredths.
-	return Math.min(8, Math.max(0, 1 - Math.floor(Math.log10(error) + 1e-6)));
-}
-
-/** `value` with exactly `decimals` fraction digits, in the reader's locale. */
-export function fixed(value: number, decimals: number): string {
-	return new Intl.NumberFormat(getLocale(), {
-		minimumFractionDigits: decimals,
-		maximumFractionDigits: decimals
-	}).format(value);
-}
-
-/** Bounds this close to symmetric read as one ± error. */
-const SYMMETRIC = 0.1;
-
-/** A figure and its unit, kept on one line. */
-function unitOf(text: string, unit: string): string {
-	return unit ? `${text}\u00a0${unit}` : text;
-}
+export { errorDecimals, fixed } from './quantities';
 
 /** `text` and its error, "06ʰ 45ᵐ 09.25ˢ ± 1.2 mas", as one LTR run that
  *  breaks only before the ±. With no error, `text` alone. */
 export function withError(text: string, error: number | null, unit = ''): string {
 	if (error === null || !(error > 0)) return text;
-	return ltrIsolate(`${text} ±\u00a0${unitOf(fixed(error, errorDecimals(error)), unit)}`);
+	return ltrIsolate(
+		`${text} ±\u00a0${joinParts({ value: fixed(error, errorDecimals(error)), unit })}`
+	);
 }
 
 /** "379.2 ± 1.6 mas". With no error, "0.489 mas" at `decimals` digits, in the
  *  order the other panels give a value and its unit. */
 export function plusMinus(value: number, error: number | null, unit = '', decimals = 2): string {
-	if (error === null || !(error > 0)) return joinParts({ value: fixed(value, decimals), unit });
-	return withError(fixed(value, errorDecimals(error)), error, unit);
+	return formatMeasuredQuantity({
+		value,
+		upperError: error,
+		lowerError: error,
+		unit,
+		fixedDecimals: decimals
+	});
 }
 
 /** "2.637 pc (2.626–2.648 pc)": a value and the bounds of its uncertainty, or
@@ -55,17 +41,14 @@ export function withBounds(
 	unit = ''
 ): string {
 	if (low === null || high === null || !(high > low)) {
-		return joinParts({ value: fixed(value, 2), unit });
+		return formatMeasuredQuantity({ value, unit, fixedDecimals: 2 });
 	}
-	const half = (high - low) / 2;
-	if (Math.abs(high - value - (value - low)) <= SYMMETRIC * half) {
-		return plusMinus(value, half, unit);
-	}
-	const d = errorDecimals(half);
-	// Spaced where an end is negative: "−0.18–−0.17" jams the dash against a sign.
-	const separator = low < 0 || high < 0 ? ' – ' : '–';
-	const span = unitOf(`${fixed(low, d)}${separator}${fixed(high, d)}`, unit);
-	return ltrIsolate(`${unitOf(fixed(value, d), unit)} (${span})`);
+	return formatMeasuredQuantity({
+		value,
+		upperError: high - value,
+		lowerError: value - low,
+		unit
+	});
 }
 
 /** Split `total` units of the last digit into whole parts and a remainder, so
