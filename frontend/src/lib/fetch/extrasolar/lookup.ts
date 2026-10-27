@@ -239,6 +239,8 @@ export interface StarDistance {
 	pc: number;
 	lower: number | null;
 	upper: number | null;
+	lowerPercentile: number | null;
+	upperPercentile: number | null;
 	/** `suspect parallax`: a 5σ Gaia parallax with an astrometric fidelity
 	 *  under 0.5. `catalogue`: a planet host's distance in its exoplanet
 	 *  catalogue. */
@@ -255,6 +257,8 @@ function fromParallax(used: DistanceParallax, from: StarDistance['from']): StarD
 		pc: 1000 / parallax,
 		lower: 1000 / (parallax + error),
 		upper: 1000 / (parallax - error),
+		lowerPercentile: null,
+		upperPercentile: null,
 		from,
 		source: null,
 		parallax: used
@@ -298,6 +302,8 @@ function groupDistance(row: TableRow): StarDistance | null {
 		pc: distance,
 		lower: row.number('distance_lower'),
 		upper: row.number('distance_upper'),
+		lowerPercentile: row.number('distance_lower_percentile'),
+		upperPercentile: row.number('distance_upper_percentile'),
 		from: 'group',
 		source: row.text('distance_source'),
 		parallax: null
@@ -316,6 +322,8 @@ function hostDistance(row: TableRow, orbit: TableRow | null): StarDistance | nul
 		pc,
 		lower: error === null || error >= pc ? null : pc - error,
 		upper: error === null ? null : pc + error,
+		lowerPercentile: null,
+		upperPercentile: null,
 		from: 'catalogue',
 		source: row.text('host_star_source'),
 		parallax: null

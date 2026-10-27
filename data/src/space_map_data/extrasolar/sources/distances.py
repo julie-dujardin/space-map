@@ -250,10 +250,16 @@ def rows(
     mag: np.ndarray | None = None,
     error: float | None = None,
     catalogue_ids: list[str] | None = None,
+    lower_percentile: float | np.ndarray | None = None,
+    upper_percentile: float | np.ndarray | None = None,
 ) -> pa.Table:
     """Pass rows: a position at J2016.0, at most one claim, and a distance."""
     n = len(claims)
     nan = np.full(n, np.nan)
+
+    def percentiles(value: float | np.ndarray | None) -> pa.Array:
+        return _f32(nan if value is None else np.broadcast_to(value, n))
+
     table = pa.table(
         {
             "catalogue_id": pa.array(catalogue_ids or [None] * n, pa.string()),
@@ -266,6 +272,8 @@ def rows(
             "distance": _f32(distance),
             "distance_lower": _f32(lower),
             "distance_upper": _f32(upper),
+            "distance_lower_percentile": percentiles(lower_percentile),
+            "distance_upper_percentile": percentiles(upper_percentile),
             "distance_method": pa.array(method, pa.string()),
         }
     )
@@ -463,6 +471,8 @@ def cluster_rows(stored: StoredGaia, directory: Path = HUNT_REFFERT_DIR) -> pa.T
         bounds[:, 0],
         bounds[:, 2],
         ["cluster"] * at.size,
+        lower_percentile=16,
+        upper_percentile=84,
     )
 
 
@@ -561,6 +571,8 @@ def bailer_jones_rows(
         found["r_lo_geo"].to_numpy(zero_copy_only=False),
         found["r_hi_geo"].to_numpy(zero_copy_only=False),
         ["geometric"] * found.num_rows,
+        lower_percentile=16,
+        upper_percentile=84,
     )
 
 

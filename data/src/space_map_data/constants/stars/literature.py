@@ -29,6 +29,8 @@ class Distance(NamedTuple):
     # A value of `distance_method`.
     method: str
     reference: str
+    lower_percentile: float | None = None
+    upper_percentile: float | None = None
 
 
 REFERENCES: dict[str, Reference] = {
@@ -77,7 +79,13 @@ DISTANCES: dict[StarKey, Distance] = {
     # (Humphreys 1978, Table 8), whose core M8 is at 1.22 kpc from Gaia EDR3
     # (Table D.1, 95% interval).
     ("gaia", "dr3", "4093933487636355968"): Distance(
-        1220, 1200, 1230, "association", "kuhn_2021"
+        1220,
+        1200,
+        1230,
+        "association",
+        "kuhn_2021",
+        lower_percentile=2.5,
+        upper_percentile=97.5,
     ),
     # Aludra (η CMa). No work measures its distance; the paper adopts the
     # Hipparcos parallax of 1.64 ± 0.40 mas, under 5σ, as 609 ± 148 pc

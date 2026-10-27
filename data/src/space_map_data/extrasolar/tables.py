@@ -213,8 +213,8 @@ POINT_SOURCE = TableDef(
             ),
         ),
         # A distance in pc from a paper, a SIMBAD parallax or a distance
-        # catalogue, with its 16th and 84th percentiles or the value ∓ its
-        # error. `distance_method`: `parallax`, `photometric`, `cluster` (of
+        # catalogue, with bounds and their percentiles where published.
+        # `distance_method`: `parallax`, `photometric`, `cluster` (of
         # the host cluster), `galaxy` (of the host galaxy), `geometric`
         # (parallax with a Galaxy prior) or `expansion` (expansion parallax of
         # a nebula). A value from a paper comes first: it is chosen for that
@@ -223,6 +223,11 @@ POINT_SOURCE = TableDef(
             "distance",
             (
                 *_fields(pa.float32(), "distance", "distance_lower", "distance_upper"),
+                *_fields(
+                    pa.float32(),
+                    "distance_lower_percentile",
+                    "distance_upper_percentile",
+                ),
                 pa.field("distance_method", pa.string()),
             ),
             (

@@ -46,6 +46,9 @@ class TestTable:
             assert distance.lower <= distance.value <= distance.upper
             assert distance.method in METHODS
             assert distance.reference in REFERENCES
+            assert (distance.lower_percentile is None) == (
+                distance.upper_percentile is None
+            )
 
     def test_references(self):
         for reference in REFERENCES.values():
@@ -55,6 +58,10 @@ class TestTable:
     def test_eta_car(self):
         eta_car = DISTANCES[("gaia", "dr3", "5350358584482202880")]
         assert eta_car == Distance(2350, 2300, 2400, "expansion", "smith_2006")
+
+    def test_polis_keeps_its_published_interval(self):
+        polis = DISTANCES[("gaia", "dr3", "4093933487636355968")]
+        assert (polis.lower_percentile, polis.upper_percentile) == (2.5, 97.5)
 
     def test_stars_that_no_catalogue_places(self):
         alnilam = DISTANCES[("hip", "2007", "26311")]
@@ -75,7 +82,15 @@ class TestRows:
         ra, dec = at(0)
         source = gaia_id(ra, dec, 7)
         table = {
-            ("gaia", "dr3", str(source)): Distance(10, 9, 11, "parallax", "smith_2006"),
+            ("gaia", "dr3", str(source)): Distance(
+                10,
+                9,
+                11,
+                "parallax",
+                "smith_2006",
+                lower_percentile=2.5,
+                upper_percentile=97.5,
+            ),
             ("hip", "2007", "5"): Distance(20, 19, 21, "parallax", "smith_2006"),
             ("hd", "1949", "6"): Distance(30, 29, 31, "parallax", "smith_2006"),
         }
@@ -98,6 +113,8 @@ class TestRows:
         )
         assert rows["match_ra"].to_pylist()[1:] == [1.0, 3.0]
         assert rows["distance"].to_pylist() == [10, 20, 30]
+        assert rows["distance_lower_percentile"].to_pylist() == [2.5, None, None]
+        assert rows["distance_upper_percentile"].to_pylist() == [97.5, None, None]
         assert [c[0]["catalogue_id"] for c in rows["claims"].to_pylist()] == [
             str(source),
             "5",

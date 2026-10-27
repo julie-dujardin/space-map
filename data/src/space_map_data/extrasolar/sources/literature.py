@@ -64,6 +64,9 @@ def engine_rows(
     values = np.array(
         [(d.value, d.lower, d.upper) for d in table.values()], np.float64
     ).reshape(-1, 3)
+    percentiles = np.array(
+        [(d.lower_percentile, d.upper_percentile) for d in table.values()], np.float64
+    ).reshape(-1, 2)
     return distances.rows(
         found[:, 0],
         found[:, 1],
@@ -73,4 +76,6 @@ def engine_rows(
         values[:, 2],
         [d.method for d in table.values()],
         catalogue_ids=[catalogue_id(key) for key in keys],
+        lower_percentile=percentiles[:, 0],
+        upper_percentile=percentiles[:, 1],
     )

@@ -337,6 +337,21 @@ describe("a star's distance, by the render tree's rule", () => {
 		expect(from(weak)).toBeNull();
 	});
 
+	it("keeps a distance group's published percentiles", () => {
+		const distance = starDistance(
+			pointSourceRow({
+				distance: 1220,
+				distance_lower: 1200,
+				distance_upper: 1230,
+				distance_lower_percentile: 2.5,
+				distance_upper_percentile: 97.5,
+				distance_source: 'literature'
+			}),
+			null
+		);
+		expect(distance).toMatchObject({ lowerPercentile: 2.5, upperPercentile: 97.5 });
+	});
+
 	it('takes the group before a parallax under 0.5 fidelity, then the parallax', () => {
 		expect(from({ ...parallax, ...group, ...flagged })).toEqual(['group', 50, 'hunt-reffert-2024']);
 		expect(from({ ...parallax, ...flagged })).toEqual(['suspect parallax', 100, null]);

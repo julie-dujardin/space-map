@@ -184,7 +184,8 @@ def _nearby(
     for at, a, b in zip(row.tolist(), low.tolist(), high.tolist()):
         for region in sky.regions_of_ranges(np.array([a]), np.array([b])):
             by_region.setdefault(region, set()).add(at)
-    found: dict[int, list[tuple[int, float, str]]] = {}
+    found: dict[int, dict[int, tuple[int, float, str]]] = {}
+    source_order = {source: i for i, source in enumerate(TWIN_SOURCES + OTHER_SOURCES)}
     for region in sorted(by_region):
         objects = run.objects(region)
         keep = pc.is_in(objects["source"], pa.array(TWIN_SOURCES + OTHER_SOURCES))
@@ -203,10 +204,19 @@ def _nearby(
                 ra[at], dec[at], star_ra[lo:hi], star_dec[lo:hi]
             )
             for j in np.flatnonzero(separation <= RADIUS).tolist():
-                found.setdefault(targets[at].key, []).append(
-                    (int(star_key[lo + j]), float(separation[j]), source[lo + j])
+                candidate = (
+                    int(star_key[lo + j]),
+                    float(separation[j]),
+                    source[lo + j],
                 )
-    return found
+                candidates = found.setdefault(targets[at].key, {})
+                previous = candidates.get(candidate[0])
+                if previous is None or (source_order[candidate[2]], candidate[1]) < (
+                    source_order[previous[2]],
+                    previous[1],
+                ):
+                    candidates[candidate[0]] = candidate
+    return {key: list(candidates.values()) for key, candidates in found.items()}
 
 
 def _candidates(

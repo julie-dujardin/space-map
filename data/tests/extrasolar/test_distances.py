@@ -377,6 +377,8 @@ class TestRows:
         assert rows["distance_lower"].to_pylist() == pytest.approx(
             [2290.0] * 3 + [990.0]
         )
+        assert rows["distance_lower_percentile"].to_pylist() == [16.0] * 4
+        assert rows["distance_upper_percentile"].to_pylist() == [84.0] * 4
         assert rows["distance_method"].to_pylist() == ["cluster"] * 4
 
 
@@ -472,6 +474,8 @@ class TestDistancePasses:
         )
         rows_bj = distances.bailer_jones_rows(named, bj)
         assert rows_bj.num_rows == 2
+        assert rows_bj["distance_lower_percentile"].to_pylist() == [16.0, 16.0]
+        assert rows_bj["distance_upper_percentile"].to_pylist() == [84.0, 84.0]
         simbad_list = SimbadList.read(
             write_simbad(
                 tmp_path / "simbad",

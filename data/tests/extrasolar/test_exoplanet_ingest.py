@@ -1,11 +1,13 @@
 """Tests for engine extensions and the exoplanet ingest through the engine."""
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pyarrow as pa
 import pytest
 
+from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import ExtensionResult, IngestRun
 from space_map_data.extrasolar.exoplanets import ingest as exoplanets
 from space_map_data.extrasolar.exoplanets import twins
@@ -574,6 +576,35 @@ class TestTwins:
             found = twins.find(run, self.targets()[:1])
         assert found.counts["stars within 5″: 1"] == 1
         assert found.twins[1].claim == ("gaia", "dr3", "1")
+
+    def test_a_root_in_two_regions_is_one_candidate(self, monkeypatch):
+        monkeypatch.setattr(
+            sky,
+            "disc_ranges",
+            lambda *args: (
+                np.array([0, 0]),
+                np.array([1, 2]),
+                np.array([2, 3]),
+            ),
+        )
+        monkeypatch.setattr(sky, "regions_of_ranges", lambda low, high: [int(low[0])])
+
+        class Run:
+            def objects(self, region):
+                source = GAIA_DR3.name if region == 1 else HIPPARCOS.name
+                return pa.table(
+                    {
+                        "key": [7],
+                        "ra": [0.0],
+                        "dec": [0.0],
+                        "source": [source],
+                    }
+                )
+
+        nearby = twins._nearby(
+            cast(IngestRun, Run()), [twins.Target(1, "T1", 0.0, 0.0)]
+        )
+        assert nearby == {1: [(7, 0.0, GAIA_DR3.name)]}
 
     def test_a_held_or_wanted_star_is_no_twin(self, root, backup):
         both = [
