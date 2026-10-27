@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-	errorDecimals,
-	fixed,
-	formatDeclination,
-	formatRightAscension,
-	plusMinus,
-	withBounds,
-	withError
-} from './star';
+import { formatDeclination, formatRightAscension, plusMinus, withBounds, withError } from './star';
 import { ltrIsolate } from './bidi';
-import { joinParts } from './quantities';
+import { errorDecimals, fixed, joinParts } from './quantities';
 
 /** The text without its bidi isolates and with plain spaces. */
 const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
@@ -62,6 +54,20 @@ describe('star value formatting', () => {
 			'-0.1806 dex (-0.1816 – -0.1786 dex)'
 		);
 		expect(plain(withBounds(5.1, null, 5.2))).toBe('5.10');
+	});
+
+	it('writes a value on a bound or past it as the span, not as a mirrored error', () => {
+		expect(plain(withBounds(10, 8, 10, 'Gyr'))).toBe('10.0 Gyr (8.0–10.0 Gyr)');
+		expect(plain(withBounds(0, 0, 0.12))).toBe('0.000 (0.000–0.120)');
+		expect(plain(withBounds(7.9, 8, 10, 'Gyr'))).toBe('7.9 Gyr (8.0–10.0 Gyr)');
+	});
+
+	it('rounds a large error to two figures only where asked', () => {
+		expect(plain(withBounds(731_000, 709_000, 752_000, 'km'))).toBe('731,000 ± 21,500 km');
+		expect(plain(withBounds(731_234, 709_123, 752_345, 'km', true))).toBe('731,000 ± 22,000 km');
+		expect(plain(withBounds(730_485, 600_000, 730_485, 'km', true))).toBe(
+			'730,000 km (600,000–730,000 km)'
+		);
 	});
 
 	it('writes right ascension in time and declination in arc, to their errors', () => {

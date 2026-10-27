@@ -95,13 +95,18 @@ export function formatNumber(n: number): string {
 	return n.toLocaleString(getLocale(), precisionOptions(n));
 }
 
-/** Fraction digits that show an uncertainty to two significant figures. */
-export function errorDecimals(error: number): number {
+/** Fraction digits that show an uncertainty to two significant figures. With
+ *  `roundLarge`, an error of 100 or more rounds to tens or more: a value
+ *  scaled into a much smaller unit has no more digits than its fit. */
+export function errorDecimals(error: number, roundLarge = false): number {
 	if (!(error > 0) || !Number.isFinite(error)) return 2;
-	return Math.min(8, Math.max(0, 1 - Math.floor(Math.log10(error) + 1e-6)));
+	// A float32 0.01 is 0.0099999998: its decade is still the hundredths.
+	const decimals = Math.min(8, 1 - Math.floor(Math.log10(error) + 1e-6));
+	return roundLarge ? decimals : Math.max(0, decimals);
 }
 
-/** A value with exactly this many fraction digits. */
+/** A value with exactly this many fraction digits; fewer than none rounds to
+ *  tens and more. */
 export function fixed(value: number, decimals: number): string {
 	const scale = decimals < 0 ? 10 ** -decimals : 1;
 	const rounded = decimals < 0 ? Math.round(value / scale) * scale : value;
@@ -243,7 +248,8 @@ export interface MeasuredQuantity {
 	publishedDecimals?: number | null;
 	/** Used when no uncertainty is available. */
 	fixedDecimals?: number;
-	/** Preserve significant error digits after converting to a much larger unit. */
+	/** Rounds an error of 100 or more to two figures, as `errorDecimals` does
+	 *  with `roundLarge`. */
 	roundLargeErrors?: boolean;
 }
 
@@ -283,13 +289,9 @@ export function formatMeasuredQuantity(q: MeasuredQuantity): string {
 	const hi = up ?? low!;
 	const lo = low ?? up!;
 	const half = (hi + lo) / 2;
-	const convertedDecimals = (error: number) =>
-		Math.min(8, 1 - Math.floor(Math.log10(error) + 1e-6));
 	const decimals = (error: number) =>
 		q.publishedDecimals === null || q.publishedDecimals === undefined
-			? q.roundLargeErrors
-				? convertedDecimals(error)
-				: errorDecimals(error)
+			? errorDecimals(error, q.roundLargeErrors)
 			: Math.min(errorDecimals(error), q.publishedDecimals);
 	if (Math.abs(hi - lo) <= SYMMETRIC_ERROR * half) {
 		const d = decimals(half);
@@ -298,13 +300,25 @@ export function formatMeasuredQuantity(q: MeasuredQuantity): string {
 		return ltrIsolate(q.tight ? `${parts(value)} ±\u00a0${error}` : `${value} ±\u00a0${error}`);
 	}
 
-	const d = decimals(Math.min(hi, lo));
-	const from = q.value - lo;
-	const to = q.value + hi;
+	return formatValueSpan(q.value, q.value - lo, q.value + hi, decimals(Math.min(hi, lo)), {
+		unit,
+		tight: q.tight
+	});
+}
+
+/** "301 pc (258–360 pc)": a value and the span of its uncertainty. */
+export function formatValueSpan(
+	value: number,
+	from: number,
+	to: number,
+	decimals: number,
+	unit: Omit<Parts, 'value'>
+): string {
+	const parts = (text: string) => joinParts({ ...unit, value: text });
+	// Spaced where an end is negative: "−0.18–−0.17" jams the dash against a sign.
 	const separator = from < 0 || to < 0 ? ' – ' : '–';
-	return ltrIsolate(
-		`${parts(fixed(q.value, d))} (${parts(`${fixed(from, d)}${separator}${fixed(to, d)}`)})`
-	);
+	const span = `${fixed(from, decimals)}${separator}${fixed(to, decimals)}`;
+	return ltrIsolate(`${parts(fixed(value, decimals))} (${parts(span)})`);
 }
 
 /** A catalogue quantity at the precision of its published decimals. */

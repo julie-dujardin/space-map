@@ -7,12 +7,16 @@
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { ltrIsolate } from './bidi';
-import { errorDecimals, fixed, formatMeasuredQuantity, joinParts } from './quantities';
+import {
+	errorDecimals,
+	fixed,
+	formatMeasuredQuantity,
+	formatValueSpan,
+	joinParts
+} from './quantities';
 
-export { errorDecimals, fixed } from './quantities';
-
-/** `text` and its error, "06ʰ 45ᵐ 09.25ˢ ± 1.2 mas", as one LTR run that
- *  breaks only before the ±. With no error, `text` alone. */
+/** `text` and its error, "06ʰ 45ᵐ 09.25ˢ ± 1.2 mas", as one LTR run. With no
+ *  error, `text` alone. */
 export function withError(text: string, error: number | null, unit = ''): string {
 	if (error === null || !(error > 0)) return text;
 	return ltrIsolate(
@@ -33,22 +37,29 @@ export function plusMinus(value: number, error: number | null, unit = '', decima
 }
 
 /** "2.637 pc (2.626–2.648 pc)": a value and the bounds of its uncertainty, or
- *  "1.30197 ± 0.00008 pc" where they are as good as symmetric. */
+ *  "1.30197 ± 0.00008 pc" where they are as good as symmetric. `roundLarge`
+ *  as for `errorDecimals`. */
 export function withBounds(
 	value: number,
 	low: number | null,
 	high: number | null,
-	unit = ''
+	unit = '',
+	roundLarge = false
 ): string {
 	if (low === null || high === null || !(high > low)) {
 		return formatMeasuredQuantity({ value, unit, fixedDecimals: 2 });
 	}
-	return formatMeasuredQuantity({
-		value,
-		upperError: high - value,
-		lowerError: value - low,
-		unit
-	});
+	if (low < value && value < high) {
+		return formatMeasuredQuantity({
+			value,
+			upperError: high - value,
+			lowerError: value - low,
+			unit,
+			roundLargeErrors: roundLarge
+		});
+	}
+	// A value on a bound or past it has no error on that side to mirror.
+	return formatValueSpan(value, low, high, errorDecimals((high - low) / 2, roundLarge), { unit });
 }
 
 /** Split `total` units of the last digit into whole parts and a remainder, so
