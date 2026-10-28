@@ -1,12 +1,41 @@
-"""Fakes for the star-system tests: source rows."""
+"""Fakes for the star-system tests: facts and source rows."""
 
 from collections import Counter
 from collections.abc import Sequence
 
 from space_map_data.extrasolar.sources.simbad import SimbadList, SimbadObject
 from space_map_data.extrasolar.systems import wds as wds_source
+from space_map_data.extrasolar.systems.resolve import FACTS
 from space_map_data.extrasolar.systems.simbad import SimbadIndex
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
+
+
+def fact(
+    key: int,
+    ra: float,
+    dec: float,
+    mag: float,
+    astrometry: str = "gaia-dr3",
+    parallax: float | None = None,
+    distance: float | None = None,
+    **values,
+) -> dict:
+    row = {name: None for name in FACTS.names}
+    error = None if parallax is None else parallax / 100
+    if distance is None and parallax is not None:
+        distance = 1000 / parallax
+    row |= {
+        "key": key,
+        "ra": ra,
+        "dec": dec,
+        "mag": mag,
+        "astrometry": astrometry,
+        "parallax": parallax,
+        "parallax_error": error,
+        "distance": distance,
+    }
+    row |= values
+    return row
 
 
 def simbad_object(

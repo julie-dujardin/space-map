@@ -1,5 +1,6 @@
 """Tests for the tree sources of the star systems: WDS, MSC and SIMBAD."""
 
+import pyarrow as pa
 import pytest
 
 from space_map_data.extrasolar import sky
@@ -12,8 +13,11 @@ from space_map_data.extrasolar.systems.nodes import (
     UNVERIFIED,
     VISUAL_ORBIT,
 )
+from space_map_data.extrasolar.systems.reduce import resolves, same_distance
+from space_map_data.extrasolar.systems.resolve import FACTS, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
 from tests.extrasolar.systems_fakes import (
+    fact,
     msc_comp,
     msc_pair,
     simbad_index,
@@ -301,3 +305,43 @@ class TestSimbadTree:
         assert index.components("gcvs", "name", "V* YY Gem") == [12]
         # The system object carries the HIP number but is no component.
         assert index.components("hip", "2007", "36850") == []
+
+
+class TestResolution:
+    """What the data of a point can split, and when two points agree."""
+
+    def test_gaia_splits_wide_pairs(self):
+        assert resolves("gaia-dr3", 5.4, 1.0) is True
+        assert resolves("gaia-dr3", 0.2, 0.0) is False
+        assert resolves("gaia-dr3", 1.0, 5.0) is False
+        assert resolves("gaia-dr3", None, 1.0) is None
+
+    def test_hipparcos_holds_close_pairs(self):
+        assert resolves("hipparcos-2007", 4.0, 0.3) is False
+        assert resolves("hipparcos-2007", 4.0, 10.0) is True
+        assert resolves("hipparcos-2007", 17.0, 1.3) is True
+
+    def test_a_catalogue_point_is_one_star(self):
+        assert resolves("simbad", 0.1, 0.0) is True
+
+    def test_same_distance(self):
+        facts = Facts(
+            pa.Table.from_pylist(
+                [
+                    fact(1, 0, 0, 5, parallax=20.0, pmra=10.0, pmdec=60.0),
+                    fact(2, 0, 0.01, 6, parallax=20.2, pmra=8.0, pmdec=55.0),
+                    fact(3, 0, 0.01, 6, parallax=5.0, pmra=8.0, pmdec=55.0),
+                    fact(4, 0, 0.01, 6, parallax=20.1, pmra=-7.0, pmdec=-4.0),
+                ],
+                schema=FACTS,
+            )
+        )
+        one, two, three, four = (facts.get(k) for k in (1, 2, 3, 4))
+        assert one is not None and two is not None
+        assert three is not None and four is not None
+        # 36″ at 50 pc: an orbit allows about 6 mas/yr.
+        assert same_distance(one, two)
+        assert not same_distance(one, three)
+        assert not same_distance(one, four)
+        # 1° at 50 pc is 180,000 AU: the motions must agree within 1.3 mas/yr.
+        assert not same_distance(one, two, separation=3600.0)
