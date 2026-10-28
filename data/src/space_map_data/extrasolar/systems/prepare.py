@@ -288,11 +288,10 @@ class Prepared:
 def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     counts: Counter = Counter()
     trees: list[pa.Table] = []
-    for table in (inputs.msc, inputs.simbad, inputs.planet_systems):
+    wds = None if inputs.wds is None else inputs.wds.nodes(inputs.refuted)
+    for table in (inputs.msc, inputs.simbad, inputs.planet_systems, wds):
         if table is not None and table.num_rows:
             trees.append(table)
-    if inputs.wds is not None:
-        trees.append(inputs.wds.nodes(inputs.refuted))
     for table in trees:
         counts[f"{table['source'][0].as_py()}: nodes"] = table.num_rows
     index = inputs.simbad_index or SimbadIndex.empty()

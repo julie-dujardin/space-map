@@ -67,12 +67,10 @@ def _counted(title: str, counts: Counter, indent: str = "  ") -> list[str]:
 def report_lines(
     systems: Systems,
     targets: Sequence[tuple[str, int]] = (),
-    ids: dict[str, int] | None = None,
     examples: int = EXAMPLES,
     classes: Counter | None = None,
 ) -> list[str]:
-    """The lines of the section. `ids` holds the System IDs that the ingest
-    minted, kept and retired. `classes` counts the class changes in the
+    """The lines of the section. `classes` counts the class changes in the
     merged Metadata, such as "star → binary star". Only the ingest has them."""
     lines = ["", "Systems", ""]
     counts = systems.counts
@@ -109,8 +107,6 @@ def report_lines(
     )
     resolved = nodes.filter(pc.invert(nodes["point"]))
     lines.append(f"new system nodes (resolved): {resolved.num_rows:,}")
-    if ids:
-        lines.append("  system IDs: " + ", ".join(f"{k} {v:,}" for k, v in ids.items()))
     events = systems.events
     kinds = Counter(events["kind"].to_pylist())
     lines += _counted("events", kinds)

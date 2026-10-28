@@ -31,7 +31,7 @@ from space_map_data.extrasolar.match import Pairs, assign
 from space_map_data.extrasolar.placement import COLUMNS, placement
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.nodes import GAIA_DR3
-from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, orbit_pairs
+from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, PAIRS, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
 from space_map_data.extrasolar.systems.resolve import FACTS
 from space_map_data.extrasolar.systems.wds import WDS_MATCHER
@@ -339,5 +339,7 @@ def registry_orbits(registry: Registry) -> pa.Table:
         for region in registry.table_regions("binary-orbit")
         if (table := registry.read_table("binary-orbit", region, columns)) is not None
     ]
+    if not tables:
+        return PAIRS.empty_table()
     rows = pa.concat_tables(tables).rename_columns(["key", *ORBIT_COLUMNS])
     return orbit_pairs(rows)

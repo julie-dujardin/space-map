@@ -10,6 +10,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.assemble import Systems
 from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.msc import msc_nodes
@@ -17,16 +18,22 @@ from space_map_data.extrasolar.systems.nodes import (
     EL_BADRY,
     GAIA_ORBITS,
     MSC,
+    NODES,
     PLANETS,
     SIMBAD,
     SIMBAD_TYPE,
+    UNVERIFIED,
     WDS,
 )
-from space_map_data.extrasolar.systems.pairs import el_badry_pairs, orbit_pairs
+from space_map_data.extrasolar.systems.pairs import PAIRS, el_badry_pairs, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
 from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.systems.reduce import Reduced, TreeReducer
+from space_map_data.extrasolar.systems.registry import registry_orbits
 from space_map_data.extrasolar.systems.report import report_lines, tree_lines
+from space_map_data.extrasolar.systems.resolve import FACTS, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
+from space_map_data.extrasolar.systems.wds import WdsCatalogue
 from tests.extrasolar.systems_fakes import (
     FakeResolver,
     fact,
@@ -118,7 +125,7 @@ def planets(rows: list[dict]) -> pa.Table:
 class TestAlphaCentauri:
     """MSC gives AB,C with A,B under AB; SIMBAD gives the pair AB."""
 
-    def systems(self) -> Systems:
+    def systems(self, wds: WdsCatalogue | None = None) -> Systems:
         comp = [
             msc_comp("14396-6050", "A", HIP=71683, HD=128620),
             msc_comp("14396-6050", "B", HIP=71681, HD=128621),
@@ -156,6 +163,7 @@ class TestAlphaCentauri:
             msc=msc_nodes(comp, pairs, []),
             simbad=read_simbad(index.stars),
             simbad_index=index,
+            wds=wds,
         )
         return build(inputs, resolver)
 
@@ -166,6 +174,11 @@ class TestAlphaCentauri:
             3,
             [12, ("binary star", 2, [10, 11])],
         )
+
+    def test_a_wds_with_no_nodes(self):
+        systems = self.systems(wds_catalogue({}))
+        assert shape(systems, 12) == shape(self.systems(), 12)
+        assert not any(name.startswith(f"{WDS}:") for name in systems.counts)
 
     def test_pair_values_and_sources(self):
         systems = self.systems()
@@ -808,3 +821,115 @@ class TestHashSeed:
             pc.equal(systems.members["node"], nodes["node"][0])
         )
         assert members["letter"].to_pylist() == ["AD", "BE"]
+
+
+class TestCrossMatchError:
+    """A and B of one WDS pair reach X, which they are too far apart to share.
+
+    B holds Ba and the unverified pair Bb, which leaves the tree as a group of
+    its own. B loses X, and Ba takes W.
+    """
+
+    def reduced(self) -> Reduced:
+        base = dict.fromkeys(NODES.names)
+        rows = [
+            ("AB", -1, None, None, None),
+            ("A", 0, None, 5.0, None),
+            ("B", 0, 5.0, 8.0, None),
+            ("Ba", 2, None, 8.0, None),
+            ("Bb", 2, 3.0, 9.0, UNVERIFIED),
+            ("Bb1", 4, None, 9.0, None),
+            ("Bb2", 4, 2.0, 9.5, None),
+        ]
+        table = pa.Table.from_pylist(
+            [
+                base
+                | {
+                    "source": WDS,
+                    "system": "01000+1000",
+                    "node": at,
+                    "label": label,
+                    "parent": parent,
+                    "separation": separation,
+                    "v_mag": mag,
+                    "evidence": evidence,
+                }
+                for at, (label, parent, separation, mag, evidence) in enumerate(rows)
+            ],
+            schema=NODES,
+        )
+        X, W, Y, Z = 100, 101, 102, 103
+        candidates = [[], [(X, 2)], [], [(X, 2), (W, 2)], [], [(Y, 2)], [(Z, 2)]]
+        facts = Facts(
+            pa.Table.from_pylist(
+                [
+                    fact(X, 10.0, 10.0, 5.1, parallax=10.0),
+                    fact(W, 10.0, 10.0014, 8.1, parallax=10.0),
+                    fact(Y, 10.0, 10.003, 9.0, parallax=10.0),
+                    fact(Z, 10.0, 10.0031, 9.5, parallax=10.0),
+                ],
+                schema=FACTS,
+            )
+        )
+        out = Reduced()
+        TreeReducer(table, 0, candidates, facts, 0, out).run()
+        return out
+
+    def test_each_subtree_counts_once(self):
+        out = self.reduced()
+        members = {
+            name: value
+            for name, value in out.counts.items()
+            if name.startswith(f"{WDS}: members ")
+        }
+        # The leaves A, Ba, Bb1 and Bb2.
+        assert sum(members.values()) == 4
+        assert out.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
+        assert out.counts[f"{WDS}: cross-match error"] == 1
+        assert [kind for kind, _, _ in out.events] == ["cross-match error"]
+        (tentative,) = out.tentative
+        assert tentative.keys == frozenset({101, 102, 103})
+
+    def test_no_duplicate_group(self):
+        out = self.reduced()
+        assert [(group.value, group.keys) for group in out.groups] == [
+            (4, frozenset({102, 103})),
+            (0, frozenset({100, 101})),
+        ]
+
+    def test_an_unverified_member_that_loses_its_object_leaves(self):
+        """B is unverified and reaches X with A. X stays with A, and B has no
+        other candidate: it has no point whose parallax could agree."""
+        base = dict.fromkeys(NODES.names)
+        rows = [("AB", -1, None, None, None), ("A", 0, None, 5.0, None)]
+        rows.append(("B", 0, 1.1, 5.3, UNVERIFIED))
+        table = pa.Table.from_pylist(
+            [
+                base
+                | {
+                    "source": WDS,
+                    "system": "01000+1000",
+                    "node": at,
+                    "label": label,
+                    "parent": parent,
+                    "separation": separation,
+                    "v_mag": mag,
+                    "evidence": evidence,
+                }
+                for at, (label, parent, separation, mag, evidence) in enumerate(rows)
+            ],
+            schema=NODES,
+        )
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        facts = Facts(pa.Table.from_pylist([x], schema=FACTS))
+        out = Reduced()
+        TreeReducer(table, 0, [[], [(100, 2)], [(100, 9)]], facts, 0, out).run()
+        assert out.groups == [] and out.interiors == []
+        assert out.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
+        assert f"{WDS}: unverified members kept by parallax" not in out.counts
+
+
+class TestRegistryInputs:
+    def test_no_gaia_orbits(self, tmp_path):
+        orbits = registry_orbits(Registry(tmp_path))
+        assert orbits.num_rows == 0 and orbits.schema == PAIRS

@@ -304,9 +304,7 @@ class TreeReducer:
             if not own:
                 self.counts[f"{self.source}: members with no object"] += 1
             return _Part(row, own, [row])
-        parts = [self.part(child, exclude) for child in kids]
-        parts = self._unverified(row, parts)
-        parts = self._shared(row, parts, exclude)
+        parts = self._children(row, exclude)
         parts = self._inside(parts)
         parts, own = self._own(row, own, parts)
         keys = {p.key for p in parts if p.key}
@@ -384,9 +382,50 @@ class TreeReducer:
             return set(self.out.groups[part.group].keys)
         return set()
 
+    def _children(self, row: int, exclude: frozenset[int]) -> list[_Part]:
+        """The parts of the children of `row`.
+
+        A child that loses a shared id to a sibling takes its next candidate.
+        Then the children are reduced again, and the unverified members are
+        checked against the objects that they hold now. Only the last pass
+        keeps its records. The loop ends, because each pass excludes one more
+        id for a child.
+        """
+        kids = self.children[row]
+        out = self.out
+        records = (out.groups, out.interiors, out.absorbed, out.tentative, out.events)
+        sizes = [len(items) for items in records]
+        counts = self.counts
+        lost: dict[int, frozenset[int]] = {}
+        errors: list[str] = []
+        while True:
+            self.counts = Counter()
+            parts = [
+                self.part(kid, exclude | lost.get(kid, frozenset())) for kid in kids
+            ]
+            parts, error = self._shared(row, self._unverified(row, parts))
+            if error is None:
+                break
+            for items, size in zip(records, sizes):
+                del items[size:]
+            key, losers, text = error
+            errors.append(text)
+            for loser in losers:
+                lost[loser] = lost.get(loser, frozenset()) | {key}
+        counts.update(self.counts)
+        self.counts = counts
+        for text in errors:
+            self._event("cross-match error", text)
+        return parts
+
     def _shared(
-        self, row: int, parts: list[_Part], exclude: frozenset[int]
-    ) -> list[_Part]:
+        self, row: int, parts: list[_Part]
+    ) -> tuple[list[_Part], tuple[int, list[int], str] | None]:
+        """Merge the siblings that reach one object that cannot split them.
+
+        The first object that splits them is a cross-match error. For it,
+        this gives the object, the rows that lose it and the event text.
+        """
         for _ in range(len(parts)):
             by_key: dict[int, list[_Part]] = {}
             for part in parts:
@@ -394,7 +433,7 @@ class TreeReducer:
                     by_key.setdefault(part.key, []).append(part)
             shared = [(key, ps) for key, ps in by_key.items() if len(ps) > 1]
             if not shared:
-                return parts
+                return parts, None
             key, same = shared[0]
             fact = self.facts.get(key)
             primary = parts[0]
@@ -423,19 +462,14 @@ class TreeReducer:
                     else math.inf
                 ),
             )
-            self._event(
-                "cross-match error",
+            text = (
                 f"{self.source} {self.system[row]}: "
                 + ", ".join(self.label[p.node] or "?" for p in same)
                 + f" reach {key} ({fact.astrometry if fact else None}),"
-                f" {distance}″ apart; it stays with {self.label[keep.node]}",
+                f" {distance}″ apart; it stays with {self.label[keep.node]}"
             )
-            again = [
-                p if p is keep or p not in same else self.part(p.node, exclude | {key})
-                for p in parts
-            ]
-            parts = again
-        return parts
+            return parts, (key, [p.node for p in same if p is not keep], text)
+        return parts, None
 
     def _inside(self, parts: list[_Part]) -> list[_Part]:
         """Merge a SIMBAD component into the sibling point that holds its light."""
