@@ -47,6 +47,7 @@ from space_map_data.constants.stars.families import FAMILIES, STAR_FAMILY_PAGES
 from space_map_data.download.providers.stars import el_badry, msc, wds
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
 from space_map_data.export.extrasolar import (
+    census,
     container,
     planets,
     render,
@@ -576,6 +577,7 @@ def _metadata(
     tokens: dict[str, str],
     cultures: skycultures.Result | None,
     planet_files: planets.Result | None,
+    counted: census.Census,
 ) -> dict:
     tables_out = {}
     for result in tables_built:
@@ -636,6 +638,12 @@ def _metadata(
             }
             for bit, slug in enumerate(FAMILIES)
         ],
+        "objects": census.with_bytes(
+            counted,
+            {r.slug: sum(f.size for f in r.files) for r in tables_built},
+            sum(f.size for f in tree.files),
+            0 if planet_files is None else sum(f.size for f in planet_files.files),
+        ),
         "credits": list(CREDITS),
     }
     if cultures is not None:
@@ -727,6 +735,15 @@ def _export(
             _refuse(planet_files.problems)
             for reason, count in sorted(planet_files.counts.items()):
                 logger.info("planets: %s %d", reason, count)
+        counted = census.census(
+            registry,
+            lambda task, jobs, label: _run(workers, task, jobs, label),
+            planets.read_planets(registry),
+        )
+        for kind, entry in counted.objects.items():
+            logger.info(
+                "census: %s %d, %d sources", kind, entry["count"], len(entry["sources"])
+            )
         cultures = skycultures.build(registry, layout.staging, cultures_dir)
         groups = {result.slug: result.files for result in built}
         groups[render.TREE] = tree.files
@@ -735,7 +752,9 @@ def _export(
             tokens[skycultures.TABLE] = cultures.entry["token"]
         if planet_files is not None:
             tokens[planets.SECTION] = planet_files.entry["token"]
-        metadata = _metadata(registry, built, tree, tokens, cultures, planet_files)
+        metadata = _metadata(
+            registry, built, tree, tokens, cultures, planet_files, counted
+        )
         (layout.staging / METADATA_FILE).write_text(
             json.dumps(metadata, indent=1) + "\n"
         )

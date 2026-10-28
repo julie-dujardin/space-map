@@ -10,6 +10,7 @@ import pytest
 from space_map_data.constants.stars.families import FAMILIES
 from space_map_data.export.extrasolar import (
     build,
+    census,
     container,
     families,
     render,
@@ -22,7 +23,12 @@ from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
 from space_map_data.extrasolar import ids
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
-from space_map_data.extrasolar.tables import POINT_SOURCE
+from space_map_data.extrasolar.tables import (
+    BINARY_ORBIT,
+    METADATA,
+    POINT_SOURCE,
+    SYSTEM,
+)
 from tests.extrasolar.export_registry import HOST, random_stars, star, write_registry
 
 
@@ -417,6 +423,10 @@ class TestExport:
             ("system", ("id",)),
             ("system", None),
             ("system", systems.READ_COLUMNS),
+            *(
+                (table.slug, census.read_columns(table))
+                for table in (METADATA, POINT_SOURCE, BINARY_ORBIT, SYSTEM)
+            ),
         }
 
     def test_worker_processes_give_the_same_files(self, tmp_path, out):
