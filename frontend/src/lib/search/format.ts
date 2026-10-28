@@ -3,7 +3,7 @@ import { getLocale } from '$lib/paraglide/runtime.js';
 import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 import { CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { featureTypeLabel } from '$lib/format/feature-type';
-import { categoryLabel } from '$lib/format/group';
+import { categoryLabel, groupNameMessage } from '$lib/format/group';
 import {
 	localizedDescription,
 	localizedName,
@@ -73,9 +73,7 @@ export function groupName(g: GroupHit, locale: string): string {
 	}
 	const featureType = featureTypeLabel(g.slug);
 	if (featureType) return featureType;
-	const fn = messages[`group_name_${g.slug}`];
-	if (fn) return fn();
-	return localizedName(g, locale);
+	return groupNameMessage(g.slug) ?? localizedName(g, locale);
 }
 
 /** The name on a result row. */

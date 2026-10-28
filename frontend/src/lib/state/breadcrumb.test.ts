@@ -60,6 +60,31 @@ describe('parentCrumb: surface features', () => {
 	});
 });
 
+describe('parentCrumb: star families', () => {
+	const family = (parents?: string[]) =>
+		({ slug: 'star-red-dwarf', type: 'star_family', parent_families: parents }) as never;
+
+	it('climbs to the first family that contains it', () => {
+		const crumb = parentCrumb(
+			{ kind: 'group', slug: 'star-rr-lyrae-variable' },
+			undefined,
+			null,
+			family(['star-horizontal-branch', 'star-variable-star'])
+		);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'star-horizontal-branch' });
+	});
+
+	it('has no crumb for the root family', () => {
+		const crumb = parentCrumb(
+			{ kind: 'group', slug: 'star-classification' },
+			undefined,
+			null,
+			family()
+		);
+		expect(crumb).toBeNull();
+	});
+});
+
 describe('parentCrumb: planetary systems', () => {
 	function barycenter(id: string): Focusable {
 		return {

@@ -12,6 +12,7 @@
 	import PlanetarySystemMap from '../charts/PlanetarySystemMap.svelte';
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import { ATMOSPHERE_GALLERY, MAIN_GALLERY, RINGS_GALLERY } from '$lib/fetch/objects/galleries';
+	import { STAR_CLASSIFICATION } from '$lib/fetch/groups/registry';
 	import { imageHref, tabHref } from '$lib/state/focus-link';
 	import type { CategoryConfig } from '$lib/state/category-config';
 	import type { PositionedBody } from '$lib/types/objects';
@@ -64,7 +65,8 @@
 	let groupHeaderBadges = $derived.by(() => {
 		const g = load.groupDetail?.global;
 		if (!g) return undefined;
-		const out: string[] = [groupTypeLabel(g.type)];
+		// The root of the star families is the category above them, not a family.
+		const out: string[] = [groupTypeLabel(g.slug === STAR_CLASSIFICATION ? 'category' : g.type)];
 		for (const role of g.roles ?? []) out.push(organizationRoleLabel(role));
 		for (const c of g.categories ?? []) out.push(satelliteCategoryLabel(c));
 		return out;

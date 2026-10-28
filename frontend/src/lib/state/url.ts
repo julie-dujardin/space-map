@@ -7,6 +7,7 @@ import {
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
 	FEATURE_TYPE_SLUG_PREFIX,
+	STAR_FAMILY_SLUG_PREFIX,
 	SMALL_BODY_FLAG_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
@@ -99,6 +100,10 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 	// Feature types span every body that carries them — frame the system, not
 	// one host.
 	if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) {
+		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
+	}
+	// A family's stars are all over the sky, with no one star to frame.
+	if (slug.startsWith(STAR_FAMILY_SLUG_PREFIX)) {
 		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };

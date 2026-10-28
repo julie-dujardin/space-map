@@ -39,6 +39,7 @@
 		formatDegrees,
 		formatNumber,
 		formatQuantity,
+		formatShare,
 		formatUnit,
 		joinParts
 	} from '$lib/format/quantities';
@@ -82,6 +83,24 @@
 	function count(label: string, n: number | undefined, tooltip?: string): Stat | null {
 		if (!n) return null;
 		return { label, value: formatNumber(n), tooltip };
+	}
+
+	/** A star count: tens of millions do not fit a card in full, so the card
+	 *  shows the compact figure and the tooltip the exact one. */
+	function stars(label: string, n: number | undefined): Stat | null {
+		if (!n) return null;
+		if (n < 1e6) return { label, value: formatNumber(n) };
+		return { label, value: formatCompactNumber(n), tooltip: formatNumber(n) };
+	}
+
+	/** The share of a family's stars that only a Gaia estimate puts there. */
+	function estimatedShare(g: GlobalGroupData): Stat | null {
+		if (!g.member_count || !g.estimated_star_count) return null;
+		return {
+			label: m.group_stat_estimated(),
+			value: formatShare(g.estimated_star_count / g.member_count),
+			tooltip: `${formatNumber(g.estimated_star_count)} — ${m.tooltip_group_stat_estimated()}`
+		};
 	}
 
 	/** Years are labels, not quantities — no thousands separator. */
@@ -473,6 +492,8 @@
 				];
 			case 'category':
 				return categoryStats(g);
+			case 'star_family':
+				return [stars(m.group_stat_stars(), g.member_count), estimatedShare(g)];
 		}
 	}
 

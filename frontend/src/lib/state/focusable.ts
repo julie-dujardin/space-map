@@ -3,8 +3,8 @@
  *  what renders. */
 
 import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
-import { FEATURE_TYPE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
-import { categoryLabel } from '$lib/format/group';
+import { FEATURE_TYPE_SLUG_PREFIX, STAR_FAMILY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import { categoryLabel, starFamilyLabel } from '$lib/format/group';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PlanetAnchor, PositionedBody } from '$lib/types/objects';
 import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
@@ -75,6 +75,7 @@ export function groupSlugLabel(slug: string): string {
 		const name = slug.slice(FEATURE_TYPE_SLUG_PREFIX.length).replace(/-/g, ' ');
 		return name.charAt(0).toUpperCase() + name.slice(1);
 	}
+	if (slug.startsWith(STAR_FAMILY_SLUG_PREFIX)) return starFamilyLabel(slug);
 	return categoryLabel(slug);
 }
 

@@ -102,6 +102,12 @@ export interface GlobalGroupData {
 	/** Earth-orbiter groups only: the `cat-` slug the breadcrumb climbs to.
 	 *  `applies_to` can't say — satellites and debris share it. */
 	parent_category?: string;
+	/** Star families only: the families that contain this one. The breadcrumb
+	 *  climbs to the first. */
+	parent_families?: string[];
+	/** Star families only: the stars that only a Gaia estimate puts in the
+	 *  family, of `member_count`. */
+	estimated_star_count?: number;
 	/** Organization-only: role tags (operator and/or manufacturer) for badges. */
 	roles?: OrganizationRole[];
 	/** IAU-named members; present (when > 0) on asteroid orbit_class groups and the Asteroids category. */

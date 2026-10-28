@@ -45,7 +45,8 @@ const GROUP_TYPE_NAME: Record<GroupType, { one: () => string; many: () => string
 	category: { one: m.group_type_category, many: m.group_type_plural_category },
 	split_comet: { one: m.group_type_split_comet, many: m.group_type_plural_split_comet },
 	mission: { one: m.mission, many: m.group_type_plural_mission },
-	feature_type: { one: m.group_type_feature_type, many: m.group_type_plural_feature_type }
+	feature_type: { one: m.group_type_feature_type, many: m.group_type_plural_feature_type },
+	star_family: { one: m.group_type_star_family, many: m.group_type_plural_star_family }
 };
 
 export function groupTypeLabel(type: GroupType): string {
@@ -112,4 +113,16 @@ const CATEGORY_NAME: Record<string, () => string> = {
 /** Localized display name for a `cat-` slug; the raw slug if unknown. */
 export function categoryLabel(slug: string): string {
 	return CATEGORY_NAME[slug]?.() ?? slug;
+}
+
+const messages = m as unknown as Record<string, (() => string) | undefined>;
+
+/** The `group_name_<slug>` message that the export writes, if it has. */
+export function groupNameMessage(slug: string): string | undefined {
+	return messages[`group_name_${slug}`]?.();
+}
+
+/** A star family's name; the slug before the export has written it. */
+export function starFamilyLabel(slug: string): string {
+	return groupNameMessage(slug) ?? slug;
 }
