@@ -12,7 +12,8 @@ import {
 	fixed,
 	formatMeasuredQuantity,
 	formatValueSpan,
-	joinParts
+	joinParts,
+	powerUnit
 } from './quantities';
 
 /** `text` and its error, "06ʰ 45ᵐ 09.25ˢ ± 1.2 mas", as one LTR run. With no
@@ -36,30 +37,44 @@ export function plusMinus(value: number, error: number | null, unit = '', decima
 	});
 }
 
+/** The errors a pair of bounds gives a value between them. Null for a value on
+ *  a bound or past it, which has no error on that side to mirror. */
+export function boundErrors(
+	value: number,
+	low: number | null,
+	high: number | null
+): { upperError: number; lowerError: number } | null {
+	return low !== null && high !== null && low < value && value < high
+		? { upperError: high - value, lowerError: value - low }
+		: null;
+}
+
 /** "2.637 pc (2.626–2.648 pc)": a value and the bounds of its uncertainty, or
  *  "1.30197 ± 0.00008 pc" where they are as good as symmetric. `roundLarge`
- *  as for `errorDecimals`. */
+ *  as for `errorDecimals`; `power` as for `formatMeasuredQuantity`. */
 export function withBounds(
 	value: number,
 	low: number | null,
 	high: number | null,
 	unit = '',
-	roundLarge = false
+	roundLarge = false,
+	power?: number
 ): string {
 	if (low === null || high === null || !(high > low)) {
-		return formatMeasuredQuantity({ value, unit, fixedDecimals: 2 });
+		return formatMeasuredQuantity({ value, unit, fixedDecimals: 2, power });
 	}
-	if (low < value && value < high) {
-		return formatMeasuredQuantity({
-			value,
-			upperError: high - value,
-			lowerError: value - low,
-			unit,
-			roundLargeErrors: roundLarge
-		});
+	const errors = boundErrors(value, low, high);
+	if (errors) {
+		return formatMeasuredQuantity({ value, ...errors, unit, roundLargeErrors: roundLarge, power });
 	}
-	// A value on a bound or past it has no error on that side to mirror.
-	return formatValueSpan(value, low, high, errorDecimals((high - low) / 2, roundLarge), { unit });
+	const scale = 10 ** -(power ?? 0);
+	return formatValueSpan(
+		value * scale,
+		low * scale,
+		high * scale,
+		errorDecimals(((high - low) * scale) / 2, roundLarge),
+		power === undefined ? { unit } : powerUnit(unit, power)
+	);
 }
 
 /** Split `total` units of the last digit into whole parts and a remainder, so

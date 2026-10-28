@@ -13,6 +13,7 @@ import {
 } from '$lib/fetch/extrasolar/lookup';
 import { PC_AU } from '$lib/scene/starfield/tree';
 import {
+	boundErrors,
 	formatDeclination,
 	formatRightAscension,
 	plusMinus,
@@ -24,10 +25,12 @@ import {
 	formatMeasuredQuantity,
 	formatUnit,
 	joinParts,
+	powerOfTen,
 	sigFigures
 } from '$lib/format/quantities';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
+import { formatMass, massComparison, SOLAR_MASS_KG } from '$lib/format/mass';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
@@ -145,7 +148,6 @@ function units() {
 		kms: m.symbol_kilometre_per_second(),
 		dex: m.symbol_dex(),
 		km: formatUnit('kilometre', true),
-		solarMass: m.symbol_solar_mass(),
 		solarLuminosity: m.symbol_solar_luminosity(),
 		gigayear: m.symbol_gigaannum()
 	};
@@ -179,12 +181,14 @@ function measured(
 	return { label, value: plusMinus(value, err, unit, decimals) };
 }
 
+/** `power` as for `formatMeasuredQuantity`. */
 function bounded(
 	ps: TableRow,
 	label: string,
 	name: string,
 	unit = '',
-	scale = 1
+	scale = 1,
+	power?: number
 ): StarRowEntry | null {
 	const value = ps.number(name);
 	if (value === null) return null;
@@ -195,8 +199,30 @@ function bounded(
 		label,
 		value:
 			lower === null || upper === null
-				? joinParts({ value: sigFigures(value * scale), unit })
-				: withBounds(value * scale, lower * scale, upper * scale, unit, true)
+				? formatMeasuredQuantity({ value: value * scale, unit, power, maxSignificantDigits: 3 })
+				: withBounds(value * scale, lower * scale, upper * scale, unit, true, power)
+	};
+}
+
+/**
+ * A mass in kilograms, from solar masses, and what it comes to against the
+ * Sun, Jupiter or Earth. A fit's percentiles bound it; a catalogue value keeps
+ * the figures it was published with.
+ */
+function massRow(ps: TableRow, name: string, catalogue = false): StarRowEntry | null {
+	const solar = ps.number(name);
+	if (solar === null) return null;
+	const kg = solar * SOLAR_MASS_KG;
+	const args = [ps, m.star_stat_mass(), name, formatUnit('kilogram', true)] as const;
+	const power = powerOfTen(kg, 3);
+	const row = catalogue
+		? catalogued(...args, null, SOLAR_MASS_KG, power)
+		: bounded(...args, SOLAR_MASS_KG, power);
+	const errors = boundErrors(solar, ps.number(`${name}_lower`), ps.number(`${name}_upper`));
+	const inKg = (error: number | undefined) => (error === undefined ? null : error * SOLAR_MASS_KG);
+	return {
+		...row!,
+		tooltip: massComparison(kg, inKg(errors?.upperError), inKg(errors?.lowerError))
 	};
 }
 
@@ -266,7 +292,7 @@ function evolutionaryStage(index: number): string {
 }
 
 type FlameRows = Record<
-	'radius' | 'luminosity' | 'mass' | 'age' | 'stage' | 'redshift' | 'correction',
+	'diameter' | 'luminosity' | 'mass' | 'age' | 'stage' | 'redshift' | 'correction',
 	StarRowEntry | null
 >;
 
@@ -277,9 +303,9 @@ function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): Fl
 	const fit = flameFitHolds(ps, run);
 	const stage = ps.number(column('evolstage'));
 	return {
-		radius: bounded(ps, m.star_stat_radius(), column('radius'), u.km, SOLAR_RADIUS_KM),
+		diameter: bounded(ps, m.diameter(), column('radius'), u.km, 2 * SOLAR_RADIUS_KM),
 		luminosity: bounded(ps, m.star_stat_luminosity(), column('lum'), u.solarLuminosity),
-		mass: fit ? bounded(ps, m.star_stat_mass(), column('mass'), u.solarMass) : null,
+		mass: fit ? massRow(ps, column('mass')) : null,
 		age: fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
 		stage:
 			fit && stage !== null ? row(m.star_row_evolutionary_stage(), evolutionaryStage(stage)) : null,
@@ -319,13 +345,14 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 		ps.number('host_mass');
 	if (radius !== null) {
 		out.push({
-			label: m.star_stat_radius(),
-			value: joinParts({ value: sigFigures(radius * SOLAR_RADIUS_KM), unit: u.km })
+			label: m.diameter(),
+			value: joinParts({ value: sigFigures(2 * radius * SOLAR_RADIUS_KM), unit: u.km })
 		});
 	} else if (mass !== null) {
 		out.push({
 			label: m.star_stat_mass(),
-			value: joinParts({ value: sigFigures(mass), unit: u.solarMass })
+			value: formatMass(mass * SOLAR_MASS_KG),
+			tooltip: massComparison(mass * SOLAR_MASS_KG)
 		});
 	}
 	const distance = starDistance(ps, astrometricOrbit(record));
@@ -381,7 +408,8 @@ function catalogued(
 	name: string,
 	unit = '',
 	error: string | null = null,
-	scale = 1
+	scale = 1,
+	power?: number
 ): StarRowEntry | null {
 	const value = float32Value(ps.number(name));
 	if (value === null) return null;
@@ -397,7 +425,8 @@ function catalogued(
 			lowerError: scaledError,
 			unit,
 			rawValue: value,
-			roundLargeErrors: true
+			roundLargeErrors: true,
+			power
 		})
 	};
 }
@@ -537,12 +566,11 @@ function pointSourceSections(
 		metallicity.length === 0
 			? catalogued(ps, m.exoplanet_row_metallicity(), 'host_metallicity', u.dex)
 			: null,
-		fitted('radius') ??
-			bounded(ps, m.star_row_radius_photometric(), 'radius_gspphot', u.km, SOLAR_RADIUS_KM) ??
-			catalogued(ps, m.star_stat_radius(), 'host_radius', u.km, null, SOLAR_RADIUS_KM),
+		fitted('diameter') ??
+			bounded(ps, m.star_row_diameter_photometric(), 'radius_gspphot', u.km, 2 * SOLAR_RADIUS_KM) ??
+			catalogued(ps, m.diameter(), 'host_radius', u.km, null, 2 * SOLAR_RADIUS_KM),
 		fitted('luminosity'),
-		fitted('mass') ??
-			catalogued(ps, m.star_stat_mass(), 'host_mass', m.exoplanet_symbol_solar_mass()),
+		fitted('mass') ?? massRow(ps, 'host_mass', true),
 		fitted('age') ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),
 		fitted('redshift'),
 		measured(ps, m.star_row_line_broadening(), 'vbroad', 'vbroad_error', u.kms)

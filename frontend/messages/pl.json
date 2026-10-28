@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "Magnetyczny moment dipolowy",
 	"earth_percent": "{value} ziemskiego",
 	"earth_times": "{value}× Ziemia",
+	"jupiter_times": "{value}× Jowisz",
+	"jupiter_percent": "{value} Jowisza",
+	"sun_times": "{value}× Słońce",
+	"sun_percent": "{value} Słońca",
 	"activity_dipole_tilt": "Nachylenie osi magnetycznej",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1377,7 +1381,6 @@
 	"exoplanet_mass_minimum": "minimalna (m sin i)",
 	"exoplanet_mass_estimate": "szacunek",
 	"exoplanet_mass": "Masa",
-	"exoplanet_radius": "Promień",
 	"exoplanet_stat_distance": "Odległość od gwiazdy",
 	"exoplanet_mean_orbital_speed": "Średnia prędkość orbitalna",
 	"classification": "Klasyfikacja",
@@ -1450,10 +1453,9 @@
 	"star_row_extinction_g": "Ekstynkcja w G (A_G)",
 	"star_row_reddening": "Poczerwienienie E(BP − RP)",
 	"star_row_line_broadening": "Poszerzenie linii",
-	"star_stat_radius": "Promień",
 	"star_stat_mass": "Masa",
 	"star_stat_luminosity": "Moc promieniowania",
-	"star_row_radius_photometric": "Promień fotometryczny",
+	"star_row_diameter_photometric": "Średnica fotometryczna",
 	"star_row_evolutionary_stage": "Etap ewolucji",
 	"star_stage_main_sequence": "Ciąg główny",
 	"star_stage_turn_off": "Punkt odejścia od ciągu głównego",
@@ -1465,7 +1467,6 @@
 	"symbol_milliarcsecond_per_year": "mas/rok",
 	"symbol_light_year": "lś",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "rozwiązanie orbitalne Gaia DR3",
 	"source_magellanic_clouds_name": "Obłoki Magellana",
@@ -1777,30 +1778,6 @@
 	"tooltip_temperature_scale": "Położenie na stałej skali od zera bezwzględnego do 1000 K. Zielony pas oznacza zakres, w którym woda jest ciekła przy ciśnieniu 1 atm.",
 	"tooltip_temperature_scale_stellar": "Położenie na skali logarytmicznej od 1000 K do 100 milionów K, zabarwione kolorem, jaki ciało doskonale czarne emituje w tej temperaturze.",
 	"attitude_source_estimated": "Orientacja szacowana",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masa Ziemi",
-				"countPlural=few": "{display} masy Ziemi",
-				"countPlural=many": "{display} mas Ziemi",
-				"countPlural=other": "{display} masy Ziemi"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masa Jowisza",
-				"countPlural=few": "{display} masy Jowisza",
-				"countPlural=many": "{display} mas Jowisza",
-				"countPlural=other": "{display} masy Jowisza"
-			}
-		}
-	],
 	"group_type_plural_launch_vehicle": "Rakiety nośne",
 	"pagination_go_to_page": "Przejdź do strony {n}",
 	"group_moons_per_planet": "Księżyce według planety",

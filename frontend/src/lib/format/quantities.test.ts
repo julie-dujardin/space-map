@@ -65,6 +65,16 @@ describe('formatMeasuredQuantity', () => {
 			)
 		).toBe('626,000 ± 14,000 km');
 	});
+
+	it('writes the figures on one power of ten', () => {
+		const kg = (upperError: number | null, lowerError: number | null) =>
+			plain(
+				formatMeasuredQuantity({ value: 8.206e24, upperError, lowerError, unit: 'kg', power: 24 })
+			);
+		expect(kg(null, null)).toBe('8.206×10²⁴ kg');
+		expect(kg(4.1e23, 4.1e23)).toBe('(8.21 ± 0.41)×10²⁴ kg');
+		expect(kg(4.1e23, 2e23)).toBe('8.21×10²⁴ kg (8.01–8.62×10²⁴ kg)');
+	});
 });
 
 describe('formatNumber', () => {

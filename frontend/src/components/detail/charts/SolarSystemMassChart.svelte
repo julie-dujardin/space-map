@@ -1,17 +1,12 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-	import {
-		MASS_RESERVOIRS,
-		SUN_MASS_EARTHS,
-		SUN_COLOR,
-		EARTH_MASS_KG
-	} from '$lib/data/solar-system-mass';
+	import { MASS_RESERVOIRS, SUN_MASS_EARTHS, SUN_COLOR } from '$lib/data/solar-system-mass';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { asPercent, formatNumber, joinParts } from '$lib/format/quantities';
-	import { formatMass, formatMassRange } from '$lib/format/mass';
+	import { EARTH_MASS_KG, formatMass, formatMassRange, massComparison } from '$lib/format/mass';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -58,6 +53,7 @@
 
 	let hoveredKey = $state<string | null>(null);
 	let hovered = $derived(segments.find((s) => s.key === hoveredKey) ?? null);
+	let hoveredComparison = $derived(hovered && massComparison(hovered.mass * EARTH_MASS_KG));
 
 	let tipWidth = $state(0);
 	let tipLeft = $derived.by(() => {
@@ -168,6 +164,9 @@
 						<div class="text-background/70 text-[11px] tabular-nums">
 							{formatMass(hovered.mass * EARTH_MASS_KG)} · {sharePct(hovered.share)}
 						</div>
+						{#if hoveredComparison}
+							<div class="text-background/70 text-[11px] tabular-nums">{hoveredComparison}</div>
+						{/if}
 					</div>
 				{/if}
 			{/if}
@@ -187,6 +186,12 @@
 			{#each MASS_RESERVOIRS as r (r.key)}
 				{@const lo = pct(r.lo)}
 				{@const hi = pct(r.hi)}
+				{@const wide = r.hi / r.lo >= MIN_INTERVAL_RATIO}
+				{@const comparison = massComparison(
+					r.central * EARTH_MASS_KG,
+					wide ? (r.hi - r.central) * EARTH_MASS_KG : null,
+					wide ? (r.central - r.lo) * EARTH_MASS_KG : null
+				)}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
@@ -206,7 +211,7 @@
 										style="width: {pct(r.central)}%; background: {r.color}"
 									></div>
 									<!-- 16th–84th percentile whisker -->
-									{#if r.hi / r.lo >= MIN_INTERVAL_RATIO}
+									{#if wide}
 										<div
 											class="absolute top-1/2 -translate-y-1/2"
 											style="inset-inline-start: {lo}%; width: {hi - lo}%; height: 8px"
@@ -228,7 +233,10 @@
 					<Tooltip.Content class="flex-col items-start gap-0.5">
 						<div class="font-medium">{r.label()}</div>
 						<div class="tabular-nums">{formatMass(r.central * EARTH_MASS_KG)}</div>
-						{#if r.hi / r.lo >= MIN_INTERVAL_RATIO}
+						{#if comparison}
+							<div class="text-background/70 tabular-nums">{comparison}</div>
+						{/if}
+						{#if wide}
 							<div class="text-background/70 tabular-nums">
 								{formatMassRange(r.lo * EARTH_MASS_KG, r.hi * EARTH_MASS_KG)}
 							</div>

@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "Magnetisches Dipolmoment",
 	"earth_percent": "{value} der Erde",
 	"earth_times": "{value}× Erde",
+	"jupiter_times": "{value}× Jupiter",
+	"jupiter_percent": "{value} des Jupiters",
+	"sun_times": "{value}× Sonne",
+	"sun_percent": "{value} der Sonne",
 	"activity_dipole_tilt": "Neigung der Magnetachse",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1337,7 +1341,6 @@
 	"exoplanet_mass_minimum": "Mindestwert (m sin i)",
 	"exoplanet_mass_estimate": "Schätzung",
 	"exoplanet_mass": "Masse",
-	"exoplanet_radius": "Radius",
 	"exoplanet_stat_distance": "Abstand zum Stern",
 	"exoplanet_mean_orbital_speed": "Mittlere Bahngeschwindigkeit",
 	"classification": "Klassifikation",
@@ -1408,10 +1411,9 @@
 	"star_row_extinction_g": "Extinktion in G (A_G)",
 	"star_row_reddening": "Verfärbung E(BP − RP)",
 	"star_row_line_broadening": "Linienverbreiterung",
-	"star_stat_radius": "Radius",
 	"star_stat_mass": "Masse",
 	"star_stat_luminosity": "Leuchtkraft",
-	"star_row_radius_photometric": "Photometrischer Radius",
+	"star_row_diameter_photometric": "Photometrischer Durchmesser",
 	"star_row_evolutionary_stage": "Entwicklungsstadium",
 	"star_stage_main_sequence": "Hauptreihe",
 	"star_stage_turn_off": "Abknickpunkt der Hauptreihe",
@@ -1423,7 +1425,6 @@
 	"symbol_milliarcsecond_per_year": "mas/a",
 	"symbol_light_year": "Lj",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "Gaia DR3 (Bahnlösung)",
 	"source_magellanic_clouds_name": "Magellansche Wolken",
@@ -1731,26 +1732,6 @@
 	"tooltip_temperature_scale": "Position auf einer festen Skala vom absoluten Nullpunkt bis 1000 K. Das grüne Band markiert den Bereich, in dem Wasser bei 1 atm flüssig ist.",
 	"tooltip_temperature_scale_stellar": "Position auf einer logarithmischen Skala von 1000 K bis 100 Millionen K, eingefärbt mit der Farbe, die ein Schwarzer Körper bei dieser Temperatur abstrahlt.",
 	"attitude_source_estimated": "Ausrichtung geschätzt",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} Erdmasse",
-				"countPlural=other": "{display} Erdmassen"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} Jupitermasse",
-				"countPlural=other": "{display} Jupitermassen"
-			}
-		}
-	],
 	"group_type_plural_launch_vehicle": "Trägerraketen",
 	"pagination_go_to_page": "Zu Seite {n} gehen",
 	"group_moons_per_planet": "Monde pro Planet",

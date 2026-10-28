@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "Магнитный дипольный момент",
 	"earth_percent": "{value} земного",
 	"earth_times": "{value}× Земли",
+	"jupiter_times": "{value}× Юпитера",
+	"jupiter_percent": "{value} от Юпитера",
+	"sun_times": "{value}× Солнца",
+	"sun_percent": "{value} от Солнца",
 	"activity_dipole_tilt": "Наклон магнитной оси",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1388,7 +1392,6 @@
 	"exoplanet_mass_minimum": "минимальная (m sin i)",
 	"exoplanet_mass_estimate": "оценка",
 	"exoplanet_mass": "Масса",
-	"exoplanet_radius": "Радиус",
 	"exoplanet_stat_distance": "Расстояние до звезды",
 	"exoplanet_mean_orbital_speed": "Средняя орбитальная скорость",
 	"classification": "Классификация",
@@ -1461,10 +1464,9 @@
 	"star_row_extinction_g": "Поглощение в G (A_G)",
 	"star_row_reddening": "Покраснение E(BP − RP)",
 	"star_row_line_broadening": "Уширение линий",
-	"star_stat_radius": "Радиус",
 	"star_stat_mass": "Масса",
 	"star_stat_luminosity": "Светимость",
-	"star_row_radius_photometric": "Фотометрический радиус",
+	"star_row_diameter_photometric": "Фотометрический диаметр",
 	"star_row_evolutionary_stage": "Стадия эволюции",
 	"star_stage_main_sequence": "Главная последовательность",
 	"star_stage_turn_off": "Точка поворота главной последовательности",
@@ -1476,7 +1478,6 @@
 	"symbol_milliarcsecond_per_year": "мсд/год",
 	"symbol_light_year": "св. г.",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "орбитальное решение Gaia DR3",
 	"source_magellanic_clouds_name": "Магеллановы Облака",
@@ -1734,30 +1735,6 @@
 	"credits_see_all": "Полный список авторов",
 	"credits_other_bodies": "Другие тела",
 	"credits_images_individual_note": "Авторство и лицензию смотрите у каждого изображения отдельно",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} масса Земли",
-				"countPlural=few": "{display} массы Земли",
-				"countPlural=many": "{display} масс Земли",
-				"countPlural=other": "{display} массы Земли"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} масса Юпитера",
-				"countPlural=few": "{display} массы Юпитера",
-				"countPlural=many": "{display} масс Юпитера",
-				"countPlural=other": "{display} массы Юпитера"
-			}
-		}
-	],
 	"featured_starlink": "Starlink",
 	"group_type_plural_launch_vehicle": "Ракеты-носители",
 	"pagination_go_to_page": "Перейти на страницу {n}",

@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "磁偶极矩",
 	"earth_percent": "地球的 {value}",
 	"earth_times": "地球的 {value} 倍",
+	"jupiter_times": "木星的 {value} 倍",
+	"jupiter_percent": "木星的 {value}",
+	"sun_times": "太阳的 {value} 倍",
+	"sun_percent": "太阳的 {value}",
 	"activity_dipole_tilt": "磁轴倾角",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1338,7 +1342,6 @@
 	"exoplanet_mass_minimum": "最小值 (m sin i)",
 	"exoplanet_mass_estimate": "估计值",
 	"exoplanet_mass": "质量",
-	"exoplanet_radius": "半径",
 	"exoplanet_stat_distance": "距恒星",
 	"exoplanet_mean_orbital_speed": "平均轨道速度",
 	"classification": "分类",
@@ -1409,10 +1412,9 @@
 	"star_row_extinction_g": "G 波段消光 (A_G)",
 	"star_row_reddening": "红化 E(BP − RP)",
 	"star_row_line_broadening": "谱线展宽",
-	"star_stat_radius": "半径",
 	"star_stat_mass": "质量",
 	"star_stat_luminosity": "光度",
-	"star_row_radius_photometric": "测光半径",
+	"star_row_diameter_photometric": "测光直径",
 	"star_row_evolutionary_stage": "演化阶段",
 	"star_stage_main_sequence": "主序",
 	"star_stage_turn_off": "主序拐点",
@@ -1424,7 +1426,6 @@
 	"symbol_milliarcsecond_per_year": "mas/年",
 	"symbol_light_year": "光年",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "Gaia DR3 轨道解",
 	"source_magellanic_clouds_name": "麦哲伦云",
@@ -1668,24 +1669,6 @@
 	"credits_see_all": "查看完整鸣谢",
 	"credits_other_bodies": "其他天体",
 	"credits_images_individual_note": "请查看各图片以获取署名和许可信息",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=other": "{display} 地球质量"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=other": "{display} 木星质量"
-			}
-		}
-	],
 	"group_type_plural_launch_vehicle": "运载火箭",
 	"pagination_go_to_page": "前往第 {n} 页",
 	"group_moons_per_planet": "各行星的卫星数",

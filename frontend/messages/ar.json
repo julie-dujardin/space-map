@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "العزم ثنائي القطب المغناطيسي",
 	"earth_percent": "{value} من قيمة الأرض",
 	"earth_times": "{value}× الأرض",
+	"jupiter_times": "{value}× المشتري",
+	"jupiter_percent": "{value} من قيمة المشتري",
+	"sun_times": "{value}× الشمس",
+	"sun_percent": "{value} من قيمة الشمس",
 	"activity_dipole_tilt": "ميل المحور المغناطيسي",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1418,9 +1422,6 @@
 	"star_section_position": "الموقع",
 	"star_constellation": "الكوكبة",
 	"star_section_brightness": "السطوع",
-	"exoplanet_symbol_jupiter_mass": "‎MJ‎",
-	"exoplanet_symbol_earth_mass": "‎M⊕‎",
-	"exoplanet_symbol_solar_mass": "‎M☉‎",
 	"exoplanet_symbol_earth_flux": "‎S⊕‎",
 	"seo_planet_description": "{name}، كوكب خارج المجموعة الشمسية يدور حول {host}.",
 	"exoplanet_class_planet": "كوكب",
@@ -1438,7 +1439,6 @@
 	"exoplanet_mass_minimum": "حد أدنى (m sin i)",
 	"exoplanet_mass_estimate": "تقدير",
 	"exoplanet_mass": "الكتلة",
-	"exoplanet_radius": "نصف القطر",
 	"exoplanet_stat_distance": "البعد عن النجم",
 	"exoplanet_mean_orbital_speed": "متوسط السرعة المدارية",
 	"classification": "التصنيف",
@@ -1513,10 +1513,9 @@
 	"star_row_extinction_g": "الخبو في G (A_G)",
 	"star_row_reddening": "الاحمرار E(BP − RP)",
 	"star_row_line_broadening": "اتساع الخطوط",
-	"star_stat_radius": "نصف القطر",
 	"star_stat_mass": "الكتلة",
 	"star_stat_luminosity": "الضيائية",
-	"star_row_radius_photometric": "نصف القطر الضوئي",
+	"star_row_diameter_photometric": "القطر الضوئي",
 	"star_row_evolutionary_stage": "المرحلة التطورية",
 	"star_stage_main_sequence": "النسق الأساسي",
 	"star_stage_turn_off": "نقطة الانعطاف عن النسق الأساسي",
@@ -1528,7 +1527,6 @@
 	"symbol_milliarcsecond_per_year": "‎mas/yr‎",
 	"symbol_light_year": "سنة ضوئية",
 	"symbol_dex": "‎dex‎",
-	"symbol_solar_mass": "‎M☉‎",
 	"symbol_solar_luminosity": "‎L☉‎",
 	"source_gaia_dr3_nss_name": "الحل المداري في Gaia DR3",
 	"source_magellanic_clouds_name": "سحابتا ماجلان",
@@ -1788,34 +1786,6 @@
 	"credits_see_all": "عرض الاعتمادات الكاملة",
 	"credits_other_bodies": "أجرام أخرى",
 	"credits_images_individual_note": "راجع كل صورة على حدة للاطلاع على الاعتمادات والترخيص",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=zero": "{display} كتلة الأرض",
-				"countPlural=one": "{display} كتلة الأرض",
-				"countPlural=two": "{display} كتلة الأرض",
-				"countPlural=few": "{display} كتل الأرض",
-				"countPlural=many": "{display} كتلة الأرض",
-				"countPlural=other": "{display} كتلة الأرض"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=zero": "{display} كتلة المشتري",
-				"countPlural=one": "{display} كتلة المشتري",
-				"countPlural=two": "{display} كتلة المشتري",
-				"countPlural=few": "{display} كتل المشتري",
-				"countPlural=many": "{display} كتلة المشتري",
-				"countPlural=other": "{display} كتلة المشتري"
-			}
-		}
-	],
 	"group_type_plural_launch_vehicle": "مركبات إطلاق",
 	"pagination_go_to_page": "الانتقال إلى الصفحة ‎{n}‎",
 	"group_moons_per_planet": "الأقمار لكل كوكب",

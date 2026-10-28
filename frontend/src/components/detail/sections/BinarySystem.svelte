@@ -14,7 +14,8 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatKm } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
-	import { formatNumber, formatQuantity } from '$lib/format/quantities';
+	import { formatNumber } from '$lib/format/quantities';
+	import { massReading } from '$lib/format/mass';
 
 	const CONFIDENCE_LABEL: Record<string, () => string> = {
 		permanent: m.binary_confidence_permanent,
@@ -134,7 +135,7 @@
 			m.binary_system_mass,
 			m.tooltip_binary_system_mass,
 			(g) => g.astersat?.system_mass ?? g.johnston?.mass,
-			(mass) => formatQuantity(mass)
+			(mass) => massReading(mass).value
 		)
 	];
 </script>

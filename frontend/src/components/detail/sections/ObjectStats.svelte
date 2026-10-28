@@ -25,6 +25,7 @@
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatQuantity } from '$lib/format/quantities';
+	import { massReading } from '$lib/format/mass';
 	import { formatProbeState, probeState, type ProbeState } from '$lib/format/satellite';
 	import { describeLastContact, formatLastContact } from '$lib/format/contact';
 	import { activityFeed } from '$lib/state/activity.svelte';
@@ -203,10 +204,7 @@
 				tooltip: m.tooltip_diameter_estimated()
 			});
 		else if (sbdb?.mass ?? wd?.mass)
-			out.push({
-				label: m.property_name_mass(),
-				value: formatQuantity((sbdb?.mass ?? wd?.mass)!)
-			});
+			out.push({ label: m.property_name_mass(), ...massReading((sbdb?.mass ?? wd?.mass)!) });
 
 		// Block 2 — orbital speed via vis-viva from the body's own elements.
 		// Skipped for the central star: its only motion is the barycentric wobble.

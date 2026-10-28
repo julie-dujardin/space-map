@@ -216,7 +216,7 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			starStats(proxima)
 				.flat()
 				.map((s) => s.label)
-		).toEqual(['Radius', 'Distance', 'Temperature']);
+		).toEqual(['Diameter', 'Distance', 'Temperature']);
 		const rows = rowsOf(proxima);
 		expect(Object.keys(rows)).toEqual(['classification', 'position', 'brightness', 'physical']);
 		// Its Wikidata item is in the links section, and the planet catalogues'
@@ -233,8 +233,8 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		expect(rows.brightness['Gaia G']).toMatch(/^8\.98\d* ± 0\.000\d+$/);
 		// FLAME fits its radius from the parallax and gives it no mass; the planet
 		// catalogue does.
-		expect(rows.physical.Radius).toMatch(/^[\d,]+ ± [\d,]+ km$/);
-		expect(rows.physical.Mass).toBe('0.1221 M☉');
+		expect(rows.physical.Diameter).toMatch(/^[\d,]+ ± [\d,]+ km$/);
+		expect(rows.physical.Mass).toBe('2.428×10²⁹ kg');
 	});
 
 	it('shows a lone available stat without padding', async () => {
@@ -494,31 +494,35 @@ describe("a star's FLAME values", () => {
 	it("combines a dwarf's preferred fit by meaning", () => {
 		expect(physical(dwarf)).toEqual({
 			'Effective temperature': expect.any(String),
-			Radius: '626,000 ± 14,000 km',
+			Diameter: '1,252,000 ± 28,000 km',
 			Luminosity: '0.75 L☉',
-			Mass: '0.950 M☉ (0.900–1.020 M☉)',
+			Mass: '1.889×10³⁰ kg (1.790–2.028×10³⁰ kg)',
 			Age: '4.5 Ga (2.0–8.0 Ga)',
 			'Gravitational redshift': '0.67 km/s'
 		});
 		expect(section(dwarf, 'classification')).toEqual({ 'Evolutionary stage': 'Main sequence' });
 		expect(section(dwarf, 'brightness')['Bolometric correction']).toBe('-0.05');
 		expect(cards(dwarf)).toEqual([
-			['Radius', '626,000 km'],
+			['Diameter', '1,250,000 km'],
 			['Distance', '32.6 ly'],
 			['Temperature', expect.any(String)]
 		]);
-		expect(physical(dwarf)['Radius from photometry']).toBeUndefined();
+		expect(physical(dwarf)['Diameter from photometry']).toBeUndefined();
+		const mass = starSections(synthetic(dwarf))
+			.find((s) => s.key === 'physical')!
+			.rows.find((r) => r.label === 'Mass')!;
+		expect(plain(mass.tooltip!)).toBe("95.0% (90.0–102.0%) of the Sun's");
 	});
 
 	it("drops a giant's mass, age and stage outside 1 to 2 solar masses", () => {
 		const giant = { ...dwarf, mass_flame: 3, evolstage_flame: 600, flags_flame: '10' };
 		expect(Object.keys(physical(giant))).toEqual([
 			'Effective temperature',
-			'Radius',
+			'Diameter',
 			'Luminosity',
 			'Gravitational redshift'
 		]);
-		expect(cards(giant)[0]).toEqual(['Radius', '626,000 km']);
+		expect(cards(giant)[0]).toEqual(['Diameter', '1,250,000 km']);
 		const kept = section({ ...giant, mass_flame: 1.5, flags_flame: '11' }, 'classification');
 		expect(kept['Evolutionary stage']).toBe('Red giant');
 	});
@@ -548,9 +552,9 @@ describe("a star's FLAME values", () => {
 		};
 		expect(physical(spec)).toEqual({
 			'Effective temperature': expect.any(String),
-			Radius: '661,000 km',
+			Diameter: '1,320,000 km',
 			Luminosity: '0.80 L☉',
-			Mass: '0.97 M☉',
+			Mass: '1.93×10³⁰ kg',
 			Age: '3.90 Ga'
 		});
 		expect(section(spec, 'classification')['Evolutionary stage']).toBe('Main sequence');
@@ -584,9 +588,13 @@ describe("a star's FLAME values", () => {
 		);
 		expect(physical(plainStar)).toMatchObject({
 			'Effective temperature': expect.any(String),
-			'Radius from photometry': '557,000 km'
+			'Diameter from photometry': '1,110,000 km'
 		});
-		expect(cards(plainStar).map(([label]) => label)).toEqual(['Radius', 'Distance', 'Temperature']);
+		expect(cards(plainStar).map(([label]) => label)).toEqual([
+			'Diameter',
+			'Distance',
+			'Temperature'
+		]);
 	});
 });
 
@@ -607,7 +615,7 @@ describe.skipIf(!HAS_EXPORT)("a planet host's catalogue rows from the real expor
 		const physical = starSections(lich.record).find((section) => section.key === 'physical')!;
 		expect(Object.fromEntries(physical.rows.map((x) => [x.label, plain(x.value)]))).toMatchObject({
 			// A float32 1.4, at the digits the catalogue gave.
-			Mass: '1.4 M☉'
+			Mass: '2.8×10³⁰ kg'
 		});
 		expect(starAliases(lich.record)).not.toContain(lich.record.metadata.name);
 	});

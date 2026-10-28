@@ -6,7 +6,6 @@ import type { PlanetAnchor } from '$lib/types/objects';
 import {
 	archiveOverview,
 	discoveryMethodLabel,
-	earthScale,
 	formatDays,
 	planetAliases,
 	planetBadges,
@@ -63,12 +62,11 @@ describe("a planet's panel", () => {
 	it('gives the three preferred available stats for a giant', () => {
 		expect(statsOf(hot)).toEqual([
 			[
-				['Radius', '98,700 km', undefined],
+				['Diameter', '197,000 km', undefined],
 				['Mean orbital speed', '147 km/s', undefined],
 				['Distance from star', '0.0475 AU', undefined]
 			]
 		]);
-		expect(earthScale(hot)).toBe(false);
 	});
 
 	it('uses the circumference of an eccentric orbit for its mean speed', () => {
@@ -109,28 +107,32 @@ describe("a planet's panel", () => {
 		expect(rows.orbit.Inclination).toBe('86.71° (86.50–87.05°)');
 		expect(rows.orbit['Position on orbit']).toBeUndefined();
 		expect(rows.orbit['Orbit in the map']).toBeUndefined();
-		expect(rows.physical.Mass).toBe('0.73 ± 0.04 MJ');
-		expect(rows.physical.Radius).toBe('98,700 km');
+		expect(rows.physical.Mass).toBe('(1.386 ± 0.076)×10²⁷ kg');
+		expect(rows.physical.Diameter).toBe('197,000 km');
 		expect(rows.discovery).toEqual({ 'Detection method': 'Transit', 'Year of discovery': '1999' });
 	});
 
-	it('reads a small planet in Earth units, with the kind of its mass', () => {
+	it('reads a mass in kilograms, against Jupiter or Earth, with its errors', () => {
+		const mass = planetSections(anchor(hot))
+			.find((s) => s.key === 'physical')!
+			.rows.find((r) => r.label === 'Mass')!;
+		expect(plain(mass.tooltip!)).toBe("73.0% ± 4.0% of Jupiter's");
+
 		const small = planet(5, 2, elements(0.05), {
 			mass: 0.0033194,
 			mass_kind: 'minimum',
 			radius: 0.0913
 		});
 		small.estimated = ['radius'];
-		expect(earthScale(small)).toBe(true);
 		const [cards] = statsOf(small);
 		expect(cards).toEqual([
-			['Radius', '6,530 km', 'estimated'],
+			['Diameter', '13,100 km', 'estimated'],
 			['Class', 'Planet', undefined]
 		]);
 		expect(planetStats(small)[0][0].tooltip).toBeUndefined();
-		// The published digits carry over to the other unit.
-		expect(rowsOf(anchor(small)).physical.Mass).toBe('1.055 M⊕ [minimum (m sin i)]');
-		expect(rowsOf(anchor(small)).physical.Radius).toBe('6,530 km [estimated]');
+		// The published digits carry over to kilograms.
+		expect(rowsOf(anchor(small)).physical.Mass).toBe('6.3007×10²⁴ kg [minimum (m sin i)]');
+		expect(rowsOf(anchor(small)).physical.Diameter).toBe('13,100 km [estimated]');
 	});
 
 	it('omits unknown stats and keeps limits', () => {
@@ -138,7 +140,7 @@ describe("a planet's panel", () => {
 		bare.limits = ['mass<'];
 		expect(statsOf(bare)).toEqual([
 			[
-				['Mass', '< 2.1 MJ', undefined],
+				['Mass', '< 3.99×10²⁷ kg', undefined],
 				['Class', 'Planet', undefined]
 			]
 		]);
@@ -233,7 +235,7 @@ describe.skipIf(!HAS_EXPORT)("a planet's panel from the real export", () => {
 		const rows = rowsOf(anchorOf(27424668, 27424668, 1));
 		expect(rows.orbit['Orbital period']).toBe('11.18465 ± 0.00053 d');
 		expect(rows.orbit['Position on orbit']).toBeUndefined();
-		expect(rows.physical.Mass).toBe('1.055 ± 0.055 M⊕ [minimum (m sin i)]');
+		expect(rows.physical.Mass).toBe('(6.30 ± 0.33)×10²⁴ kg [minimum (m sin i)]');
 		expect(
 			planetIdentifiers(anchorOf(27424668, 27424668, 1).planet).find(
 				(row) => row.label === 'NASA Exoplanet Archive'

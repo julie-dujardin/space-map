@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "磁気双極子モーメント",
 	"earth_percent": "地球の {value}",
 	"earth_times": "地球の {value} 倍",
+	"jupiter_times": "木星の {value} 倍",
+	"jupiter_percent": "木星の {value}",
+	"sun_times": "太陽の {value} 倍",
+	"sun_percent": "太陽の {value}",
 	"activity_dipole_tilt": "磁軸の傾き",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1446,7 +1450,6 @@
 	"exoplanet_mass_minimum": "最小 (m sin i)",
 	"exoplanet_mass_estimate": "推定値",
 	"exoplanet_mass": "質量",
-	"exoplanet_radius": "半径",
 	"exoplanet_stat_distance": "恒星からの距離",
 	"exoplanet_mean_orbital_speed": "平均軌道速度",
 	"classification": "分類",
@@ -1517,10 +1520,9 @@
 	"star_row_extinction_g": "Gバンドの減光 (A_G)",
 	"star_row_reddening": "赤化 E(BP − RP)",
 	"star_row_line_broadening": "線幅の広がり",
-	"star_stat_radius": "半径",
 	"star_stat_mass": "質量",
 	"star_stat_luminosity": "光度",
-	"star_row_radius_photometric": "測光半径",
+	"star_row_diameter_photometric": "測光直径",
 	"star_row_evolutionary_stage": "進化段階",
 	"star_stage_main_sequence": "主系列",
 	"star_stage_turn_off": "主系列転向点",
@@ -1532,7 +1534,6 @@
 	"symbol_milliarcsecond_per_year": "mas/年",
 	"symbol_light_year": "光年",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "Gaia DR3 軌道解",
 	"source_magellanic_clouds_name": "マゼラン雲",
@@ -1776,24 +1777,6 @@
 	"credits_see_all": "クレジットをすべて見る",
 	"credits_other_bodies": "その他の天体",
 	"credits_images_individual_note": "クレジットとライセンスは各画像をご覧ください",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=other": "{display} 地球質量"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=other": "{display} 木星質量"
-			}
-		}
-	],
 	"featured_iss": "ISS",
 	"featured_starlink": "スターリンク",
 	"time_scale_realtime": "1×",

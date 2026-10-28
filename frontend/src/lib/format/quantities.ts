@@ -73,15 +73,6 @@ export function spanFields(low: Parts, high: Parts): { low: string; high: string
 	return { low: once ? low.value : joinParts(low), high: joinParts(high) };
 }
 
-// Units whose long name inflects with the value (locale-aware plural, e.g.
-// "1 Earth mass" vs "2 Earth masses"). Others keep the invariant unit_name_*
-// label. Symbols never pluralize.
-type PluralName = (i: { count: number; display: string }) => string;
-const PLURAL_UNIT_NAMES: Record<string, PluralName> = {
-	earth_mass: m.unit_earth_mass_count,
-	jupiter_mass: m.unit_jupiter_mass_count
-};
-
 /** Intl rounding options that keep ~3 digits of precision (4+ digit integers unchanged). */
 export function precisionOptions(
 	n: number
@@ -227,9 +218,6 @@ export function quantityParts(q: { value: number; unit: string }, short_unit?: b
 }
 
 export function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {
-	const plural = short_unit ? undefined : PLURAL_UNIT_NAMES[q.unit];
-	// The inflected names read as one phrase and cannot be split in two.
-	if (plural) return plural({ count: q.value, display: formatNumber(q.value) });
 	return joinParts(quantityParts(q, short_unit));
 }
 
@@ -251,9 +239,19 @@ export interface MeasuredQuantity {
 	/** Rounds an error of 100 or more to two figures, as `errorDecimals` does
 	 *  with `roundLarge`. */
 	roundLargeErrors?: boolean;
+	/** Writes the figures as multiples of this power of ten: "(8.21 ± 0.41)×10²⁴ kg". */
+	power?: number;
+	/** Brackets a ± reading, for a factor that follows it: "(1.06 ± 0.06)× Earth". */
+	group?: boolean;
 }
 
 const SYMMETRIC_ERROR = 0.1;
+
+/** A unit after a power of ten the figures are multiples of: "×10²⁴ kg". The
+ *  power binds to the figures; the unit follows it after a space. */
+export function powerUnit(unit: string, power: number): Omit<Parts, 'value'> {
+	return { unit: joinParts({ value: `×10${superscript(power)}`, unit }), tight: true };
+}
 
 function publishedDigits(value: number): number {
 	const mantissa = Math.abs(value).toExponential().split('e')[0];
@@ -269,21 +267,25 @@ export function fractionDigits(value: number): number {
 
 /** A value with symmetric or asymmetric uncertainty, using the normal quantity path. */
 export function formatMeasuredQuantity(q: MeasuredQuantity): string {
-	const unit = q.unit ?? '';
-	const parts = (value: string) => joinParts({ value, unit, tight: q.tight });
-	const up =
-		q.upperError !== null && q.upperError !== undefined && q.upperError > 0 ? q.upperError : null;
-	const low =
-		q.lowerError !== null && q.lowerError !== undefined && q.lowerError > 0 ? q.lowerError : null;
+	const scale = 10 ** -(q.power ?? 0);
+	const { unit, tight } =
+		q.power === undefined
+			? { unit: q.unit ?? '', tight: q.tight }
+			: powerUnit(q.unit ?? '', q.power);
+	const parts = (value: string) => joinParts({ value, unit, tight });
+	const value = q.value * scale;
+	const error = (e: number | null | undefined) => (e != null && e > 0 ? e * scale : null);
+	const up = error(q.upperError);
+	const low = error(q.lowerError);
 	if (up === null && low === null) {
-		const value =
+		const figure =
 			q.fixedDecimals === undefined
 				? sigFigures(
-						q.value,
-						Math.min(publishedDigits(q.rawValue ?? q.value), q.maxSignificantDigits ?? 9)
+						value,
+						Math.min(publishedDigits(q.rawValue ?? value), q.maxSignificantDigits ?? 9)
 					)
-				: fixed(q.value, q.fixedDecimals);
-		return parts(value);
+				: fixed(value, q.fixedDecimals);
+		return parts(figure);
 	}
 
 	const hi = up ?? low!;
@@ -295,14 +297,17 @@ export function formatMeasuredQuantity(q: MeasuredQuantity): string {
 			: Math.min(errorDecimals(error), q.publishedDecimals);
 	if (Math.abs(hi - lo) <= SYMMETRIC_ERROR * half) {
 		const d = decimals(half);
-		const value = fixed(q.value, d);
-		const error = parts(fixed(half, d));
-		return ltrIsolate(q.tight ? `${parts(value)} ±\u00a0${error}` : `${value} ±\u00a0${error}`);
+		const figure = fixed(value, d);
+		const width = fixed(half, d);
+		if (q.power !== undefined || q.group) return ltrIsolate(parts(`(${figure} ±\u00a0${width})`));
+		return ltrIsolate(
+			tight ? `${parts(figure)} ±\u00a0${parts(width)}` : `${figure} ±\u00a0${parts(width)}`
+		);
 	}
 
-	return formatValueSpan(q.value, q.value - lo, q.value + hi, decimals(Math.min(hi, lo)), {
+	return formatValueSpan(value, value - lo, value + hi, decimals(Math.min(hi, lo)), {
 		unit,
-		tight: q.tight
+		tight
 	});
 }
 
@@ -378,15 +383,26 @@ export function sigFigures(value: number, digits = 3): string {
 
 const SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 
-/** "1.7×10⁻⁶" — Intl's own scientific notation renders as "1.7E-6". */
-export function scientificNotation(value: number, digits = 2): string {
-	let exponent = Math.floor(Math.log10(Math.abs(value)));
+/** The power of ten that leaves `value` one digit before the point at `digits`
+ *  significant figures. */
+export function powerOfTen(value: number, digits = 2): number {
+	const exponent = Math.floor(Math.log10(Math.abs(value)));
 	// Rounding the mantissa carries: Pluto's 9.96×10⁸ km³ of water at two
 	// figures is "10×10⁸", the right number written the wrong way.
-	if (Math.abs(Number((value / 10 ** exponent).toPrecision(digits))) >= 10) exponent += 1;
-	const mantissa = value / 10 ** exponent;
-	const superscript = [...String(Math.abs(exponent))].map((d) => SUPERSCRIPTS[Number(d)]).join('');
-	return `${sigFigures(mantissa, digits)}×10${exponent < 0 ? '⁻' : ''}${superscript}`;
+	return Math.abs(Number((value / 10 ** exponent).toPrecision(digits))) >= 10
+		? exponent + 1
+		: exponent;
+}
+
+function superscript(exponent: number): string {
+	const digits = [...String(Math.abs(exponent))].map((d) => SUPERSCRIPTS[Number(d)]).join('');
+	return `${exponent < 0 ? '⁻' : ''}${digits}`;
+}
+
+/** "1.7×10⁻⁶" — Intl's own scientific notation renders as "1.7E-6". */
+export function scientificNotation(value: number, digits = 2): string {
+	const exponent = powerOfTen(value, digits);
+	return `${sigFigures(value / 10 ** exponent, digits)}×10${superscript(exponent)}`;
 }
 
 /**
@@ -404,7 +420,7 @@ export function scientificNotation(value: number, digits = 2): string {
  * printed "1× Earth".
  */
 export function earthRatioParts(ratio: number): EarthRatio | null {
-	if (Math.abs(ratio - 1) < 5e-3) return null;
+	if (atParity(ratio)) return null;
 	if (ratio >= 1) return { multiple: ltrIsolate(sigFigures(ratio)) };
 	// Under a hundredth of a percent Intl spells out a row of leading zeros, and
 	// Mercury's exosphere is 5×10⁻¹³ of Earth's pressure.
@@ -412,13 +428,27 @@ export function earthRatioParts(ratio: number): EarthRatio | null {
 	return { percent: ltrIsolate(text) };
 }
 
+/** Within rounding of 1, where a comparison says nothing. */
+export function atParity(ratio: number): boolean {
+	return Math.abs(ratio - 1) < 5e-3;
+}
+
 export type EarthRatio = { multiple: string } | { percent: string };
 
-/** The wording that goes with it — "14× Earth", "0.63% of Earth's". */
-export function earthRatio(ratio: number): string | null {
+/** The words around a ratio: "{value}× Earth", "{value} of Earth's". */
+export interface RatioWords {
+	times: (inputs: { value: string }) => string;
+	percent: (inputs: { value: string }) => string;
+}
+
+const EARTH_WORDS: RatioWords = { times: m.earth_times, percent: m.earth_percent };
+
+/** The wording that goes with it — "14× Earth", "0.63% of Earth's" — against
+ *  Earth unless another body's words are given. */
+export function earthRatio(ratio: number, words: RatioWords = EARTH_WORDS): string | null {
 	const parts = earthRatioParts(ratio);
 	if (!parts) return null;
 	return 'multiple' in parts
-		? m.earth_times({ value: parts.multiple })
-		: m.earth_percent({ value: parts.percent });
+		? words.times({ value: parts.multiple })
+		: words.percent({ value: parts.percent });
 }

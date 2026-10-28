@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "Momento dipolar magnético",
 	"earth_percent": "{value} del de la Tierra",
 	"earth_times": "{value}× la Tierra",
+	"jupiter_times": "{value}× Júpiter",
+	"jupiter_percent": "{value} del valor de Júpiter",
+	"sun_times": "{value}× el Sol",
+	"sun_percent": "{value} del valor del Sol",
 	"activity_dipole_tilt": "Inclinación del eje magnético",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1357,7 +1361,6 @@
 	"exoplanet_mass_minimum": "mínima (m sin i)",
 	"exoplanet_mass_estimate": "estimación",
 	"exoplanet_mass": "Masa",
-	"exoplanet_radius": "Radio",
 	"exoplanet_stat_distance": "Distancia a la estrella",
 	"exoplanet_mean_orbital_speed": "Velocidad orbital media",
 	"classification": "Clasificación",
@@ -1429,10 +1432,9 @@
 	"star_row_extinction_g": "Extinción en G (A_G)",
 	"star_row_reddening": "Enrojecimiento E(BP − RP)",
 	"star_row_line_broadening": "Ensanchamiento de líneas",
-	"star_stat_radius": "Radio",
 	"star_stat_mass": "Masa",
 	"star_stat_luminosity": "Luminosidad",
-	"star_row_radius_photometric": "Radio fotométrico",
+	"star_row_diameter_photometric": "Diámetro fotométrico",
 	"star_row_evolutionary_stage": "Etapa evolutiva",
 	"star_stage_main_sequence": "Secuencia principal",
 	"star_stage_turn_off": "Punto de desvío de la secuencia principal",
@@ -1444,7 +1446,6 @@
 	"symbol_milliarcsecond_per_year": "mas/año",
 	"symbol_light_year": "al",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "Gaia DR3 (solución orbital)",
 	"source_magellanic_clouds_name": "Nubes de Magallanes",
@@ -1754,28 +1755,6 @@
 	"tooltip_temperature_scale": "Posición en una escala fija desde el cero absoluto hasta 1000 K. La banda verde marca donde el agua es líquida a 1 atm.",
 	"tooltip_temperature_scale_stellar": "Posición en una escala logarítmica de 1000 K a 100 millones de K, teñida con el color que emite un cuerpo negro a esa temperatura.",
 	"attitude_source_estimated": "Orientación estimada",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masa de la Tierra",
-				"countPlural=many": "{display} masas de la Tierra",
-				"countPlural=other": "{display} masas de la Tierra"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masa joviana",
-				"countPlural=many": "{display} masas jovianas",
-				"countPlural=other": "{display} masas jovianas"
-			}
-		}
-	],
 	"group_type_plural_launch_vehicle": "Vehículos de lanzamiento",
 	"pagination_go_to_page": "Ir a la página {n}",
 	"group_moons_per_planet": "Lunas por planeta",

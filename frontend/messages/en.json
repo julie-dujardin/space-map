@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "Magnetic dipole moment",
 	"earth_percent": "{value} of Earth's",
 	"earth_times": "{value}× Earth",
+	"jupiter_times": "{value}× Jupiter",
+	"jupiter_percent": "{value} of Jupiter's",
+	"sun_times": "{value}× the Sun",
+	"sun_percent": "{value} of the Sun's",
 	"activity_dipole_tilt": "Magnetic axis tilt",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1498,7 +1502,6 @@
 	"exoplanet_mass_minimum": "minimum (m sin i)",
 	"exoplanet_mass_estimate": "estimate",
 	"exoplanet_mass": "Mass",
-	"exoplanet_radius": "Radius",
 	"exoplanet_stat_distance": "Distance from star",
 	"exoplanet_mean_orbital_speed": "Mean orbital speed",
 	"classification": "Classification",
@@ -1569,10 +1572,9 @@
 	"star_row_extinction_g": "Extinction in G (A_G)",
 	"star_row_reddening": "Reddening E(BP − RP)",
 	"star_row_line_broadening": "Line broadening",
-	"star_stat_radius": "Radius",
 	"star_stat_mass": "Mass",
 	"star_stat_luminosity": "Luminosity",
-	"star_row_radius_photometric": "Radius from photometry",
+	"star_row_diameter_photometric": "Diameter from photometry",
 	"star_row_evolutionary_stage": "Evolutionary stage",
 	"star_stage_main_sequence": "Main sequence",
 	"star_stage_turn_off": "Main-sequence turn-off",
@@ -1584,7 +1586,6 @@
 	"symbol_milliarcsecond_per_year": "mas/yr",
 	"symbol_light_year": "ly",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"star_xid_gaia_dr3": "Gaia DR3",
 	"star_xid_hip": "HIP",
@@ -1625,9 +1626,6 @@
 	"seo_star_description": "Lorem ipsum dolor sit amet, {name} consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore. [meta description of a star page: what the star is, how far it is and how bright]",
 	"source_nameexoworlds_name": "IAU NameExoWorlds",
 	"star_band_k": "K",
-	"exoplanet_symbol_jupiter_mass": "MJ",
-	"exoplanet_symbol_earth_mass": "M⊕",
-	"exoplanet_symbol_solar_mass": "M☉",
 	"exoplanet_symbol_earth_flux": "S⊕",
 	"seo_planet_description": "{name}, an extrasolar planet orbiting {host}.",
 	"attribution_section_imagery_all": "Imagery",
@@ -1948,26 +1946,6 @@
 	"tooltip_temperature_scale": "Position on a fixed scale from absolute zero to 1000 K. The green band marks where water is liquid at 1 atm.",
 	"tooltip_temperature_scale_stellar": "Position on a logarithmic scale from 1000 K to 100 million K, tinted with the colour a blackbody glows at that temperature.",
 	"attitude_source_estimated": "Orientation estimated",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} Earth mass",
-				"countPlural=other": "{display} Earth masses"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} Jupiter mass",
-				"countPlural=other": "{display} Jupiter masses"
-			}
-		}
-	],
 	"mass_distribution_title": "Mass distribution",
 	"mass_distribution_rest": "Everything else",
 	"mass_budget_title": "Mass distribution (excluding the Sun)",

@@ -20,6 +20,7 @@ import {
 	sigFigures
 } from '$lib/format/quantities';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
+import { formatMass, formatMeasuredMass, JUPITER_MASS_KG, massComparison } from '$lib/format/mass';
 import { formatJulianDate } from '$lib/format/date';
 import { ltrIsolate } from '$lib/format/bidi';
 import { starSourceName } from '$lib/credits/star-sources';
@@ -28,10 +29,6 @@ import type { Stat } from '../kit/StatCard.svelte';
 import { AU_KM, JUPITER_RADIUS_KM } from '$lib/math/units';
 import { SECONDS_PER_DAY } from '$lib/time/jd';
 
-/** Earth masses in one Jupiter mass (IAU nominal GM ratio). */
-export const EARTH_MASSES_PER_JUPITER = 317.828;
-/** Under this mass (MJ) a planet reads in Earth units: Neptune is 0.054 MJ. */
-const EARTH_SCALE_MASS = 0.1;
 /** A card shows a period of at least this many days in years. */
 const PERIOD_YEARS_FROM = 1000;
 const DAYS_PER_YEAR = 365.25;
@@ -47,7 +44,7 @@ export interface PlanetRow {
 	value: string;
 	/** What this value is: assumed, estimated, computed. */
 	note?: string;
-	/** What it comes to in another unit. */
+	/** What it comes to against the Sun, Jupiter or Earth. */
 	tooltip?: string;
 	/** Where the value leads, off the site. */
 	href?: string;
@@ -164,8 +161,6 @@ function units() {
 		degree: { unit: m.symbol_degree(), tight: true },
 		au: { unit: formatUnit('astronomical_unit', true) },
 		day: { unit: daySymbol() },
-		jupiterMass: { unit: m.exoplanet_symbol_jupiter_mass() },
-		earthMass: { unit: m.exoplanet_symbol_earth_mass() },
 		km: { unit: formatUnit('kilometre', true) },
 		earthFlux: { unit: m.exoplanet_symbol_earth_flux() },
 		density: { unit: formatUnit('gram_per_cubic_centimetre', true) }
@@ -189,12 +184,6 @@ function daySymbol(): string {
 /** A period in days to three figures, as the cards and the planet lists write it. */
 export function formatDays(days: number): string {
 	return joinParts({ value: sigFigures(days, ROUNDED), unit: daySymbol() });
-}
-
-/** Whether the planet's mass reads more naturally in Earth masses. */
-export function earthScale(planet: Planet): boolean {
-	const mass = num(planet, 'mass');
-	return mass !== null && mass < EARTH_SCALE_MASS;
 }
 
 const CLASS_LABELS: Record<string, () => string> = {
@@ -255,50 +244,44 @@ function massKindNote(planet: Planet): string | undefined {
 	return undefined;
 }
 
-/** A mass in the planet's scale, with the other unit beside it. */
-function scaledMass(planet: Planet, digits?: number): { value: string; other: string } | null {
+/** A mass in kilograms, from the catalogue's Jupiter masses, and what it
+ *  comes to against the Sun, Jupiter or Earth. A card rounds it; a row gives
+ *  its errors. */
+function planetMass(planet: Planet, card = false): { value: string; tooltip?: string } | null {
 	const raw = num(planet, 'mass');
 	if (raw === null) return null;
-	const u = units();
-	const earth = earthScale(planet);
-	const factor = EARTH_MASSES_PER_JUPITER;
-	const jupiterUnit = u.jupiterMass;
-	const earthUnit = u.earthMass;
-	const [unit, scale, otherUnit, otherScale] = earth
-		? [earthUnit, factor, jupiterUnit, 1]
-		: [jupiterUnit, 1, earthUnit, factor];
-	if (digits !== undefined) {
-		return {
-			value: bounded(
-				planet,
-				'mass',
-				joinParts({ value: sigFigures(raw * scale, digits), ...unit })
-			),
-			other: bounded(
-				planet,
-				'mass',
-				joinParts({ value: sigFigures(raw * otherScale, digits), ...otherUnit })
-			)
-		};
-	}
+	const kg = raw * JUPITER_MASS_KG;
+	const error = (side: 'upper' | 'lower') => {
+		const value = num(planet, `mass_error_${side}`);
+		return value === null ? null : value * JUPITER_MASS_KG;
+	};
+	const [upperError, lowerError] = [error('upper'), error('lower')];
+	const value = card
+		? formatMass(kg)
+		: formatMeasuredMass({
+				value: kg,
+				upperError,
+				lowerError,
+				rawValue: raw,
+				maxSignificantDigits: digitsOf(planet, 'mass'),
+				roundLargeErrors: true
+			});
+	const comparison = massComparison(kg, upperError, lowerError);
 	return {
-		value: measured(planet, 'mass', unit, scale)!,
-		other: measured(planet, 'mass', otherUnit, otherScale)!
+		value: bounded(planet, 'mass', value),
+		tooltip: comparison && bounded(planet, 'mass', comparison)
 	};
 }
 
-/** A radius in km, as the Solar System's sizes read, at the figures the
+/** A diameter in km, as the Solar System's sizes read, at the figures the
  *  catalogue gives in Jupiter radii. */
-function radiusKm(planet: Planet, digits?: number): string | null {
+function diameterKm(planet: Planet, digits?: number): string | null {
 	const raw = num(planet, 'radius');
 	if (raw === null) return null;
 	const unit = units().km;
-	if (digits === undefined) return measured(planet, 'radius', unit, JUPITER_RADIUS_KM);
-	return bounded(
-		planet,
-		'radius',
-		joinParts({ value: sigFigures(raw * JUPITER_RADIUS_KM, digits), ...unit })
-	);
+	const scale = 2 * JUPITER_RADIUS_KM;
+	if (digits === undefined) return measured(planet, 'radius', unit, scale);
+	return bounded(planet, 'radius', joinParts({ value: sigFigures(raw * scale, digits), ...unit }));
 }
 
 /** Ramanujan's ellipse circumference, as a ratio to its semi-major axis. */
@@ -331,8 +314,8 @@ function speedBound(planet: Planet): '<' | '>' | '' | null {
 /** The three most useful available facts. */
 export function planetStats(planet: Planet): Stat[][] {
 	const u = units();
-	const mass = scaledMass(planet, ROUNDED);
-	const radius = radiusKm(planet, ROUNDED);
+	const mass = planetMass(planet, true);
+	const diameter = diameterKm(planet, ROUNDED);
 	const period = num(planet, 'period');
 	const a = num(planet, 'semi_major_axis');
 	const eccentricity = num(planet, 'eccentricity');
@@ -349,10 +332,10 @@ export function planetStats(planet: Planet): Stat[][] {
 			? (ellipseCircumferenceRatio(eccentricity) * a * AU_KM) / (period * SECONDS_PER_DAY)
 			: null;
 	const preferred: (Stat | null)[] = [
-		radius
+		diameter
 			? {
-					label: m.exoplanet_radius(),
-					value: radius,
+					label: m.diameter(),
+					value: diameter,
 					note: qualifier(planet, 'radius')
 				}
 			: mass
@@ -360,7 +343,7 @@ export function planetStats(planet: Planet): Stat[][] {
 						label: m.exoplanet_mass(),
 						value: mass.value,
 						note: massKindNote(planet),
-						tooltip: mass.other
+						tooltip: mass.tooltip
 					}
 				: null,
 		orbitalSpeed !== null
@@ -531,24 +514,24 @@ export function planetSections(anchor: PlanetAnchor): PlanetSection[] {
 		timeRow(m.exoplanet_row_transit_time(), julian(planet, 'transit_time'))
 	]);
 
-	const mass = scaledMass(planet);
-	const radius = radiusKm(planet);
+	const mass = planetMass(planet);
+	const diameter = diameterKm(planet);
 	const physical = rows([
 		mass
 			? {
 					label: m.exoplanet_mass(),
 					value: mass.value,
 					note: massKindNote(planet),
-					tooltip: mass.other
+					tooltip: mass.tooltip
 				}
 			: null,
 		num(planet, 'mass') === null && planet.mass_ratio !== null
 			? row(m.exoplanet_row_mass_ratio(), scientificNotation(planet.mass_ratio, 2))
 			: null,
-		radius
+		diameter
 			? {
-					label: m.exoplanet_radius(),
-					value: radius,
+					label: m.diameter(),
+					value: diameter,
 					note: qualifier(planet, 'radius')
 				}
 			: null,

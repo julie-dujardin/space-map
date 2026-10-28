@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "מומנט דיפול מגנטי",
 	"earth_percent": "{value} מזה של כדור הארץ",
 	"earth_times": "פי {value} מכדור הארץ",
+	"jupiter_times": "פי {value} מצדק",
+	"jupiter_percent": "{value} מזה של צדק",
+	"sun_times": "פי {value} מהשמש",
+	"sun_percent": "{value} מזה של השמש",
 	"activity_dipole_tilt": "הטיית הציר המגנטי",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1377,7 +1381,6 @@
 	"exoplanet_mass_minimum": "מינימלית (m sin i)",
 	"exoplanet_mass_estimate": "הערכה",
 	"exoplanet_mass": "מסה",
-	"exoplanet_radius": "רדיוס",
 	"exoplanet_stat_distance": "מרחק מהכוכב",
 	"exoplanet_mean_orbital_speed": "מהירות מסלולית ממוצעת",
 	"classification": "סיווג",
@@ -1450,10 +1453,9 @@
 	"star_row_extinction_g": "בליעה ב-G (A_G)",
 	"star_row_reddening": "האדמה E(BP − RP)",
 	"star_row_line_broadening": "הרחבת קווים",
-	"star_stat_radius": "רדיוס",
 	"star_stat_mass": "מסה",
 	"star_stat_luminosity": "בהירות",
-	"star_row_radius_photometric": "רדיוס פוטומטרי",
+	"star_row_diameter_photometric": "קוטר פוטומטרי",
 	"star_row_evolutionary_stage": "שלב אבולוציוני",
 	"star_stage_main_sequence": "הסדרה הראשית",
 	"star_stage_turn_off": "נקודת הפנייה מהסדרה הראשית",
@@ -1465,7 +1467,6 @@
 	"symbol_milliarcsecond_per_year": "mas/שנה",
 	"symbol_light_year": "שנות אור",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "פתרון המסלול של Gaia DR3",
 	"source_magellanic_clouds_name": "ענני מגלן",
@@ -1777,30 +1778,6 @@
 	"tooltip_temperature_scale": "המיקום על סולם קבוע מאפס מוחלט עד 1000 קלווין. הפס הירוק מסמן את הטווח שבו המים נוזליים בלחץ אטמוספרה אחת.",
 	"tooltip_temperature_scale_stellar": "המיקום על סולם לוגריתמי מ־1000 קלווין עד 100 מיליון קלווין, בצבע שגוף שחור פולט בטמפרטורה זו.",
 	"attitude_source_estimated": "כיוון משוער",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} מסת ארץ",
-				"countPlural=two": "{display} מסות ארץ",
-				"countPlural=many": "{display} מסת ארץ",
-				"countPlural=other": "{display} מסות ארץ"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} מסת צדק",
-				"countPlural=two": "{display} מסות צדק",
-				"countPlural=many": "{display} מסת צדק",
-				"countPlural=other": "{display} מסות צדק"
-			}
-		}
-	],
 	"group_type_plural_launch_vehicle": "משגרים",
 	"pagination_go_to_page": "מעבר לעמוד {n}",
 	"group_moons_per_planet": "ירחים לכל כוכב לכת",

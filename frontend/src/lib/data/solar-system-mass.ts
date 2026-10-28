@@ -5,6 +5,7 @@ import {
 	CLASS_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import * as m from '$lib/paraglide/messages.js';
+import { EARTH_MASS_KG, SOLAR_MASS_KG } from '$lib/format/mass';
 
 // Solar-system mass inventory: Menichella (2026), Table 3 (Earth masses; lo/hi
 // are the 16th/84th percentiles). Literature estimates, not in the body DB.
@@ -152,8 +153,5 @@ export const MASS_RESERVOIRS: MassReservoir[] = [
 ];
 
 // M_sun / M_earth, for the linear bar.
-export const SUN_MASS_EARTHS = 332946;
+export const SUN_MASS_EARTHS = SOLAR_MASS_KG / EARTH_MASS_KG;
 export const SUN_COLOR = '#ffdd44';
-
-/** One Earth mass (kg), to convert the figures for the unit ladder. */
-export const EARTH_MASS_KG = 5.97237e24;

@@ -5,7 +5,8 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusClick, focusHref } from '$lib/state/focus-link';
-	import { asPercent, formatNumber, formatQuantity, joinParts } from '$lib/format/quantities';
+	import { asPercent, formatNumber, joinParts } from '$lib/format/quantities';
+	import { formatMass, massComparison } from '$lib/format/mass';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -17,13 +18,10 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
-	// One Earth mass (kg) — the unit the chart expresses masses in.
-	const EARTH_MASS_KG = 5.97237e24;
-
 	interface Planet {
 		id: string;
 		name: string;
-		massEarths: number;
+		massKg: number;
 		share: number; // fraction of the 8-planet total
 	}
 
@@ -35,12 +33,10 @@
 			.map((mm) => ({
 				id: mm.id as string,
 				name: localizedNames?.[mm.id as string] ?? mm.name,
-				massEarths: (mm.mass_kg as number) / EARTH_MASS_KG
+				massKg: mm.mass_kg as number
 			}));
-		const total = raw.reduce((s, p) => s + p.massEarths, 0) || 1;
-		return raw
-			.map((p) => ({ ...p, share: p.massEarths / total }))
-			.sort((a, b) => b.massEarths - a.massEarths);
+		const total = raw.reduce((s, p) => s + p.massKg, 0) || 1;
+		return raw.map((p) => ({ ...p, share: p.massKg / total })).sort((a, b) => b.massKg - a.massKg);
 	});
 
 	const HEIGHT = 52;
@@ -66,6 +62,7 @@
 
 	let hoveredId = $state<string | null>(null);
 	let hovered = $derived(segments.find((s) => s.id === hoveredId) ?? null);
+	let hoveredComparison = $derived(hovered && massComparison(hovered.massKg));
 
 	// Clamp the tooltip's center by its own half-width so the whole box stays
 	// inside the graph (nowrap means clamping the center alone isn't enough).
@@ -155,10 +152,11 @@
 				>
 					<div class="text-xs font-medium">{hovered.name}</div>
 					<div class="text-background/70 text-[11px] tabular-nums">
-						{formatQuantity({ value: hovered.massEarths, unit: 'earth_mass' })} · {sharePct(
-							hovered.share
-						)}
+						{formatMass(hovered.massKg)} · {sharePct(hovered.share)}
 					</div>
+					{#if hoveredComparison}
+						<div class="text-background/70 text-[11px] tabular-nums">{hoveredComparison}</div>
+					{/if}
 				</div>
 			{/if}
 		{/if}

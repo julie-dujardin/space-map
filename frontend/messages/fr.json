@@ -51,6 +51,10 @@
 	"activity_dipole_moment": "Moment dipolaire magnétique",
 	"earth_percent": "{value} de celui de la Terre",
 	"earth_times": "{value}× la Terre",
+	"jupiter_times": "{value}× Jupiter",
+	"jupiter_percent": "{value} de celui de Jupiter",
+	"sun_times": "{value}× le Soleil",
+	"sun_percent": "{value} de celui du Soleil",
 	"activity_dipole_tilt": "Inclinaison de l’axe magnétique",
 	"symbol_degree": "°",
 	"symbol_arcsecond": "″",
@@ -1458,7 +1462,6 @@
 	"exoplanet_mass_minimum": "minimale (m sin i)",
 	"exoplanet_mass_estimate": "estimation",
 	"exoplanet_mass": "Masse",
-	"exoplanet_radius": "Rayon",
 	"exoplanet_stat_distance": "Distance à l'étoile",
 	"exoplanet_mean_orbital_speed": "Vitesse orbitale moyenne",
 	"classification": "Classification",
@@ -1530,10 +1533,9 @@
 	"star_row_extinction_g": "Extinction en G (A_G)",
 	"star_row_reddening": "Rougissement E(BP − RP)",
 	"star_row_line_broadening": "Élargissement des raies",
-	"star_stat_radius": "Rayon",
 	"star_stat_mass": "Masse",
 	"star_stat_luminosity": "Luminosité",
-	"star_row_radius_photometric": "Rayon photométrique",
+	"star_row_diameter_photometric": "Diamètre photométrique",
 	"star_row_evolutionary_stage": "Stade évolutif",
 	"star_stage_main_sequence": "Séquence principale",
 	"star_stage_turn_off": "Sortie de la séquence principale",
@@ -1545,7 +1547,6 @@
 	"symbol_milliarcsecond_per_year": "mas/an",
 	"symbol_light_year": "al",
 	"symbol_dex": "dex",
-	"symbol_solar_mass": "M☉",
 	"symbol_solar_luminosity": "L☉",
 	"source_gaia_dr3_nss_name": "Gaia DR3 (solution orbitale)",
 	"source_magellanic_clouds_name": "Nuages de Magellan",
@@ -1801,28 +1802,6 @@
 	"credits_see_all": "Voir tous les crédits",
 	"credits_other_bodies": "Autres corps",
 	"credits_images_individual_note": "Voir chaque image pour les crédits et la licence",
-	"unit_earth_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masse de la Terre",
-				"countPlural=many": "{display} masses de la Terre",
-				"countPlural=other": "{display} masses de la Terre"
-			}
-		}
-	],
-	"unit_jupiter_mass_count": [
-		{
-			"declarations": ["input count", "input display", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "{display} masse jovienne",
-				"countPlural=many": "{display} masses joviennes",
-				"countPlural=other": "{display} masses joviennes"
-			}
-		}
-	],
 	"category_name_satellites": "Satellites",
 	"featured_iss": "ISS",
 	"featured_mars": "Mars",
