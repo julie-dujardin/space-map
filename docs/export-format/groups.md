@@ -413,11 +413,16 @@ interface GlobalGroupData {
   // lock, so the pages count what the site serves; with no export served they
   // are absent and the page has its text only, and a served export without
   // `families` stops the tier. member_count is their sum: the two masks of a
-  // star never share a family. `notable_members` are the stars with a Wikipedia
-  // article in one of the site's languages that a *published* family puts
-  // here, most sitelinks first (top 20, `id` = `x-<id>`); the star's Wikidata
-  // entity and pictures are the ones its own entry uses, and `galleries` has a
-  // shelf for each that has pictures. `child_groups` (localized) lists the
+  // star never share a family. `notable_members` (top 20, `id` = `x-<id>`) are
+  // the stars that a *published* family puts here: first the stars with a
+  // Wikipedia article in one of the site's languages, most sitelinks first;
+  // then other stars of the family, in the order of the Metadata tiles,
+  // shallowest level first, from at most half of the Metadata rows. Those
+  // others can change from one export to the next, and a rare family can stay
+  // under 20. A star with an entry takes its Wikidata entity and pictures from
+  // that entry; a star without one has the `name` of its Metadata row, no
+  // thumbnail and no localized name. `galleries` has a shelf for each listed
+  // star that has pictures. `child_groups` (localized) lists the
   // families it contains that have stars, most stars first. `star-classification`
   // (stellar classification) is the root: every family without another parent
   // is below it, so it counts every star with a family, and it lists no stars.

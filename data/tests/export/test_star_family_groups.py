@@ -106,7 +106,6 @@ class TestBuild:
         assert groups.children["star-dwarf"] == ["star-main-sequence"]
         assert groups.member_counts["star-classification"] == 4
         assert groups.children["star-classification"] == ["star-dwarf"]
-        assert groups.notable_members == {}
 
     def test_stars_with_an_article_by_sitelinks(self, served):
         ids, out = served
@@ -121,15 +120,53 @@ class TestBuild:
         )
         groups = star_family.build_star_family_groups(stars, entities, out)
         members = groups.notable_members["star-k-type-main-sequence"]
-        assert [m.object_id for m in members] == [f"x-{ids[2]}", f"x-{ids[0]}"]
+        assert [m.object_id for m in members] == [
+            f"x-{ids[2]}",
+            f"x-{ids[0]}",
+            f"x-{ids[1]}",
+        ]
+        assert [m.sitelinks_count for m in members] == [40, 5, None]
         assert all(m.star for m in members)
         assert groups.notable_members["star-dwarf"] == members
         assert "star-classification" not in groups.notable_members
         assert "star-g-type-main-sequence" not in groups.notable_members
 
         entries = notable_entries(members, entities)
-        assert [e["name"] for e in entries] == ["Label Q3", "Label Q1"]
+        assert [e["name"] for e in entries] == ["Label Q3", "Label Q1", "Label Q2"]
         assert entries[0]["id"] == f"x-{ids[2]}"
+
+    def test_other_stars_fill_the_list(self, served):
+        ids, out = served
+        groups = star_family.build_star_family_groups([], _entities({}), out)
+        assert set(groups.notable_members) == {
+            "star-k-type-main-sequence",
+            "star-main-sequence",
+            "star-dwarf",
+        }
+        members = groups.notable_members["star-k-type-main-sequence"]
+        assert {m.object_id for m in members} == {f"x-{id_}" for id_ in ids[:3]}
+        assert all(m.star and m.wikidata_qid is None for m in members)
+
+        entries = notable_entries(members, _entities({}))
+        assert {e["name"] for e in entries} == {f"Star {id_}" for id_ in ids[:3]}
+        assert not any("thumbnail" in e for e in entries)
+
+    def test_fill_stops_at_the_list_size(self, served, monkeypatch):
+        ids, out = served
+        monkeypatch.setattr(star_family, "NOTABLE_STARS", 2)
+        stars = [StarObject(ids[0], "Few links", "Q1")]
+        entities = _entities({"Q1": (5, ["de"])})
+        groups = star_family.build_star_family_groups(stars, entities, out)
+        members = groups.notable_members["star-k-type-main-sequence"]
+        assert len(members) == 2
+        assert members[0].object_id == f"x-{ids[0]}"
+        assert members[1].object_id in {f"x-{ids[1]}", f"x-{ids[2]}"}
+
+    def test_fill_reads_a_share_of_the_rows(self, served, monkeypatch):
+        _, out = served
+        monkeypatch.setattr(star_family, "FILL_ROW_SHARE", 0)
+        groups = star_family.build_star_family_groups([], _entities({}), out)
+        assert groups.notable_members == {}
 
     def test_no_served_export(self, tmp_path):
         groups = star_family.build_star_family_groups(

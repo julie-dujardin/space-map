@@ -93,6 +93,12 @@ class ExportReader:
         path = tiles.tile_path(slug, int(split.level[leaf]), int(split.pixel[leaf]))
         return path, self.read(path, self.metadata["tables"][slug]["token"])
 
+    def leaf(self, slug: str, leaf: int) -> Container:
+        """The tile of leaf `leaf` of the split of `slug`."""
+        split = self.split(slug)
+        path = tiles.tile_path(slug, int(split.level[leaf]), int(split.pixel[leaf]))
+        return self.read(path, self.metadata["tables"][slug]["token"])
+
     def row(self, slug: str, id_: int) -> dict | None:
         _, tile = self.tile(slug, cell_of(id_))
         ids = tile.numpy("id")
@@ -108,11 +114,9 @@ class ExportReader:
         by_leaf: dict[int, list[int]] = {}
         for id_, leaf in zip(ids, leaves.tolist()):
             by_leaf.setdefault(leaf, []).append(id_)
-        token = self.metadata["tables"][slug]["token"]
         out: dict[int, dict] = {}
         for leaf, wanted in by_leaf.items():
-            path = tiles.tile_path(slug, int(split.level[leaf]), int(split.pixel[leaf]))
-            tile = self.read(path, token)
+            tile = self.leaf(slug, leaf)
             found = tile.numpy("id")
             if found.size == 0:
                 continue
