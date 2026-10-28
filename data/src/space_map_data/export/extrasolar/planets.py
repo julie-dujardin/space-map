@@ -80,30 +80,6 @@ FLAG_COLUMNS = ("assumed", "estimated", "computed", "limits")
 SOURCE_SUFFIX = "_source"
 METADATA_COLUMNS = ["id", "name", "name_source", "class", "cross_ids", "system", "mask"]
 SYSTEM_COLUMNS = ["id", "ra", "dec", "primary", "members"]
-# The fields of a host record, in their order, before its planets.
-HOST_FIELDS = (
-    "id",
-    "name",
-    "name_source",
-    "class",
-    "cross_ids",
-    "placement",
-    "position",
-    "distance",
-    "ra",
-    "dec",
-    "epoch",
-    "teff",
-    "teff_source",
-    "radius",
-    "radius_source",
-    "mass",
-    "metallicity",
-    "spectral_type",
-    "bp_rp",
-    "catalogue",
-    "catalogue_name",
-)
 POINT_COLUMNS = [
     "id",
     "ra",
@@ -273,21 +249,12 @@ def _host(
 
 
 def _system_host(meta: dict, node: dict) -> dict:
-    """The host record of a resolved star system. It has no point, so it is
-    not drawn as a star, and the values of its stars stay in their own
-    records. `build` gives it the place of one of its points."""
-    record = dict.fromkeys(HOST_FIELDS)
-    record |= {
-        "id": meta["id"],
-        "name": meta["name"],
-        "name_source": meta["name_source"],
-        "class": meta["class"],
-        "cross_ids": meta["cross_ids"] or [],
-        "ra": node["ra"],
-        "dec": node["dec"],
-        "epoch": render.EPOCH,
-    }
-    return record
+    """The host record of a resolved star system: the fields of a star's
+    record, of a point with no values. It is not drawn as a star, and the
+    values of its stars stay in their own records. `build` gives it the
+    place of one of its points."""
+    record = _host(meta, dict.fromkeys(POINT_COLUMNS), None, None, None)
+    return record | {"ra": node["ra"], "dec": node["dec"], "epoch": render.EPOCH}
 
 
 def _places(job: HostJob) -> Places:

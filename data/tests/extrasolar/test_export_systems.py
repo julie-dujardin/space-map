@@ -11,6 +11,7 @@ from space_map_data.download.providers.stars import el_badry, msc, wds
 from space_map_data.export.extrasolar import build, render, skycultures, tiles
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
+from space_map_data.export.extrasolar.systems import Refs, check_metadata
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import region_of
@@ -313,6 +314,20 @@ class TestChecks:
         changed = _registry(tmp_path / "c", tamper=relabel)
         with pytest.raises(ExportRefused, match="served ID lost catalogue ids"):
             export_extrasolar(changed.root, out, workers=1)
+
+
+class TestMetadataCheck:
+    def test_a_unit_with_no_rows(self):
+        """A unit of Metadata regions with no rows, where a tree holds IDs."""
+        refs = Refs(np.array([7, 9]), np.array([0, 7]), np.array([True, False]))
+        problems = check_metadata(refs, METADATA.schema.empty_table())
+        assert dict(problems.counts) == {
+            "node or member star with no live Metadata row": 2
+        }
+        assert problems.examples["node or member star with no live Metadata row"] == [
+            "7",
+            "9",
+        ]
 
 
 class TestPlanetFiles:

@@ -374,17 +374,17 @@ def check_metadata(refs: Refs, rows: pa.Table) -> Problems:
     found = at >= 0
     lost = refs.id[~found]
     problems.add("node or member star with no live Metadata row", lost, lost.size)
-    at = np.maximum(at, 0)
-    wrong = found & (system[at] != refs.system)
+    at, held_ids = at[found], refs.id[found]
+    wrong = system[at] != refs.system[found]
     problems.add(
         "Metadata system that is not the root of the ID's tree",
-        refs.id[wrong],
+        held_ids[wrong],
         int(wrong.sum()),
     )
-    unmarked = found & refs.node & (mask[at] & SYSTEM_BIT == 0)
+    unmarked = refs.node[found] & (mask[at] & SYSTEM_BIT == 0)
     problems.add(
         "node without the System bit of its mask",
-        refs.id[unmarked],
+        held_ids[unmarked],
         int(unmarked.sum()),
     )
     held = find_sorted(refs.id, ids) >= 0
