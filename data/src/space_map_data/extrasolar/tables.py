@@ -131,9 +131,10 @@ EXOPLANET_SOURCES = (
 # identifier or the Gaia DR3 number, in that order. Each source gives its best
 # one. SIMBAD comes before Hipparcos because it knows more designations. A
 # resolved system takes the Wikidata label, else the name of its trees.
-# The class is a specific class of any source first: white dwarf, brown dwarf
-# or pulsar. Else a node of a star system is a "binary star" or a "multiple
-# star". The generic "star" of any source comes last.
+# A node of a star system is a "binary star" or a "multiple star", also when
+# a catalogue gives its point another class. Its members tell what its
+# objects are. Else the class is a specific class of any source: white dwarf,
+# brown dwarf or pulsar. The generic "star" of any source comes last.
 METADATA = TableDef(
     number=None,
     slug="metadata",
@@ -157,13 +158,13 @@ METADATA = TableDef(
             "class",
             (pa.field("class", pa.string()),),
             (
+                STAR_SYSTEMS,
                 *EXOPLANET_SOURCES,
                 "simbad",
                 "gaia-dr3",
                 "hipparcos-2007",
                 "hipparcos-1997",
                 "gaia-dr3-named",
-                STAR_SYSTEMS,
             ),
             generic=frozenset({"star"}),
         ),

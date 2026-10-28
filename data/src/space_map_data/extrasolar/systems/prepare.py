@@ -3,7 +3,8 @@
 1. Each node of a tree source takes its candidate objects (`resolve`). A WDS
    component with no candidate takes the object of the MSC component of the
    same WDS id and letter, and the other way round. A WDS component that still
-   has none goes to `Resolver.match` by position.
+   has none goes to `Resolver.match` by position. It never takes the object
+   of a node above it, or of another node of its WDS system near it.
 2. A planet that is also a star of a star catalogue stays a planet: its
    object leaves every tree.
 3. Each source's trees become groups of points and interiors (`reduce`). El-
@@ -26,6 +27,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from space_map_data.extrasolar.sky import position_angle
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.sources.hipparcos import to_gaia_epoch
 from space_map_data.extrasolar.systems.merge import SetTable
@@ -58,7 +60,7 @@ from space_map_data.extrasolar.systems.resolve import (
     resolve_ids,
 )
 from space_map_data.extrasolar.systems.simbad import SimbadIndex
-from space_map_data.extrasolar.systems.wds import WdsCatalogue
+from space_map_data.extrasolar.systems.wds import WDS_MATCHER, WdsCatalogue
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +151,12 @@ def letter_links(
 
 
 def match_rows(table: pa.Table, found: list[list[tuple[int, int]]]) -> pa.Table:
-    """The MATCH rows of the leaves of `table` that have no candidate."""
+    """The MATCH rows of the WDS leaves of `table` that have no candidate.
+
+    A component never takes the object of a node above it, or of another
+    node of its WDS system within its match radius. That object is the point
+    of its pair, or the other star of the pair.
+    """
     parent = table["parent"].to_numpy()
     leaf = np.ones(table.num_rows, bool)
     leaf[parent[parent >= 0]] = False
@@ -157,6 +164,7 @@ def match_rows(table: pa.Table, found: list[list[tuple[int, int]]]) -> pa.Table:
     free &= table["ra"].is_valid().to_numpy(zero_copy_only=False)
     free &= table["epoch"].is_valid().to_numpy(zero_copy_only=False)
     rows = table.filter(pa.array(free))
+    exclude = _taken(table, found, np.flatnonzero(free))
     ids = _ids_by_row(rows, WDS_ID)
     floats = {
         name: rows[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
@@ -177,9 +185,40 @@ def match_rows(table: pa.Table, found: list[list[tuple[int, int]]]) -> pa.Table:
             "match_pmdec": pa.array(floats["pmdec"], pa.float32(), from_pandas=True),
             "match_mag": pa.array(mag, pa.float32(), from_pandas=True),
             "match_error": pa.array(np.full(n, WDS_POSITION_ERROR, np.float32)),
+            "match_exclude": pa.array(exclude, pa.list_(pa.int64())),
         },
         schema=MATCH,
     )
+
+
+def _taken(
+    table: pa.Table, found: list[list[tuple[int, int]]], rows: np.ndarray
+) -> list[list[int] | None]:
+    """For each of `rows`, the candidates of the nodes above it and of the
+    other nodes of its WDS system within its match radius."""
+    parent = table["parent"].to_numpy()
+    ra = table["ra"].fill_null(np.nan).to_numpy()
+    dec = table["dec"].fill_null(np.nan).to_numpy()
+    radius = float(WDS_MATCHER.radius(np.array([WDS_POSITION_ERROR]), np.zeros(1))[0])
+    held: dict[str, list[int]] = defaultdict(list)
+    wds_ids = [text.split(" ")[0] for text in table["system"].to_pylist()]
+    for row, (wds_id, items) in enumerate(zip(wds_ids, found)):
+        if items:
+            held[wds_id].append(row)
+    out: list[list[int] | None] = []
+    for row in rows.tolist():
+        above = set()
+        at = int(parent[row])
+        while at >= 0:
+            above.add(at)
+            at = int(parent[at])
+        others = held[wds_ids[row]]
+        apart = sky_separation(ra[row], dec[row], ra[others], dec[others])
+        near = [
+            o for o, d in zip(others, np.atleast_1d(apart)) if o in above or d <= radius
+        ]
+        out.append(sorted({key for o in near for key, _ in found[o]}) or None)
+    return out
 
 
 def pair_keys(pairs: pa.Table, resolver: Resolver) -> tuple[np.ndarray, np.ndarray]:
@@ -542,6 +581,15 @@ def separation_of(facts: Facts, first: int, second: int) -> float:
     if a is None or b is None:
         return math.nan
     return float(sky_separation(a.ra, a.dec, b.ra, b.dec))
+
+
+def position_angle_of(facts: Facts, first: int, second: int) -> float:
+    """The position angle of `second` from `first` in degrees, NaN where a
+    position is missing."""
+    a, b = facts.get(first), facts.get(second)
+    if a is None or b is None:
+        return math.nan
+    return float(position_angle(a.ra, a.dec, b.ra, b.dec))
 
 
 def close_interiors(

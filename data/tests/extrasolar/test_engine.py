@@ -279,6 +279,21 @@ class TestMatching:
         assert id_of(root, names, "claimed") == id_of(root, GAIA, 2) != 0
         assert id_of(root, names, "hip only") == hip
 
+    def test_a_row_never_matches_an_object_it_excludes(self, root, backup):
+        """Row 7 sits on star 1 but excludes it, so it takes star 2."""
+        with IngestRun.start(root, backup, (POINT,), META) as run:
+            run.add(GAIA, [gaia_rows([star(1, mag=5.0), star(2, 1.0, 90, mag=5.0)])])
+            found = run.row_keys(GAIA.name)
+            key_of = dict(
+                zip(found["catalogue_id"].to_pylist(), found["key"].to_pylist())
+            )
+            rows = hip_rows([star(7, 0.1, mag=5.0)])
+            exclude = pa.array([[key_of["1"]]], pa.list_(pa.int64()))
+            counts = run.add(HIP, [rows.append_column("match_exclude", exclude)])
+            run.commit()
+        assert counts["excluded"] == 1
+        assert id_of(root, HIP, 7) == id_of(root, GAIA, 2) != 0
+
     def test_small_caches_give_the_same_ids(self, tmp_path, monkeypatch, ingest):
         cells = [CELL + n * (1 << sky.REGION_SHIFT) for n in range(6)]
         gaia, hip = [], []

@@ -2,6 +2,7 @@
 
 import dataclasses
 from collections import Counter
+from collections.abc import Callable
 
 import numpy as np
 import pyarrow as pa
@@ -11,6 +12,7 @@ import pytest
 from space_map_data.export.extrasolar import systems as export_systems
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import IngestRun, Source
+from space_map_data.extrasolar.exoplanets.sources import ARCHIVE_SOURCE
 from space_map_data.extrasolar.ids import cell_of, table_of
 from space_map_data.extrasolar.match import SYSTEM_KIND, Pairs, PositionMatcher
 from space_map_data.extrasolar.placement import placement
@@ -36,6 +38,7 @@ from space_map_data.extrasolar.tables import (
     SYSTEM_TABLE,
     merge_by_source_order,
 )
+from tests.extrasolar.conftest import offset
 from tests.extrasolar.systems_fakes import (
     FakeResolver,
     msc_comp,
@@ -178,11 +181,12 @@ def ingest(
     host: str = "1002",
     simbad: dict | None = None,
     gaia: dict | None = None,
+    passes: tuple[tuple[Source, Callable[[IngestRun], pa.Table]], ...] = (),
     **more,
 ) -> tuple[systems_ingest.SystemsExtension, str]:
     """An ingest of `stars`, with a P-type planet of `host`, the SIMBAD rows
-    `simbad` (oid → ra, dec, V) and the Gaia DR3 rows `gaia`. `more` goes to
-    `inputs`."""
+    `simbad` (oid → ra, dec, V), the Gaia DR3 rows `gaia` and the rows of
+    `passes`. `more` goes to `inputs`."""
     with IngestRun.start(root, root / "backup") as run:
         if gaia:
             run.add(GAIA_DR3, [gaia_rows(run, gaia)])
@@ -190,6 +194,8 @@ def ingest(
         run.add(REYLE_2021, [reyle_rows(run)])
         if simbad:
             run.add(SIMBAD, [simbad_rows(run, simbad)])
+        for source, rows in passes:
+            run.add(source, [rows(run)])
         hip = run.row_keys(HIPPARCOS.name)
         key_of = dict(zip(hip["catalogue_id"].to_pylist(), hip["key"].to_pylist()))
         planets = pa.table(
@@ -749,7 +755,8 @@ class TestSystemsWithoutCatalogueIds:
 
 
 class TestClassOrder:
-    """A specific class wins over "binary star", which wins over "star"."""
+    """A node is a binary or multiple star. Else a specific class wins over
+    the generic "star"."""
 
     @staticmethod
     def merged(rows: list[tuple[str, str]]) -> tuple[str, str]:
@@ -772,13 +779,13 @@ class TestClassOrder:
         ]
         assert self.merged(rows) == ("white dwarf", "simbad")
 
-    def test_a_pulsar_that_holds_two_stars_stays_a_pulsar(self):
+    def test_a_pulsar_that_holds_two_stars_is_a_binary_star(self):
         rows = [
             ("nasa-exoplanet-archive", "pulsar"),
             ("gaia-dr3", "star"),
             ("star-systems", "binary star"),
         ]
-        assert self.merged(rows) == ("pulsar", "nasa-exoplanet-archive")
+        assert self.merged(rows) == ("binary star", "star-systems")
 
     def test_a_star_that_holds_two_stars_is_a_binary_star(self):
         rows = [("hipparcos-2007", "star"), ("star-systems", "binary star")]
@@ -852,3 +859,154 @@ class TestWikidataToSystems:
         # A system that is no node of the ingest keeps nothing.
         routed, moved = wikidata.to_systems(rows, stars, {})
         assert moved == []
+
+
+# Gaia DR3 points: ra, dec, G, parallax, fidelity. The first three hold two
+# stars by a Gaia orbit. The lone white dwarf has a companion of its own.
+CLASSED = {
+    "brown dwarfs": (120.0, -20.0, 17.0, 40.0, 0.9),
+    "white dwarf and M dwarf": (125.0, -20.0, 15.0, 40.0, 0.9),
+    "pulsar": (130.0, -20.0, 16.0, 40.0, 0.9),
+    "lone white dwarf": (135.0, -20.0, 15.0, 40.0, 0.9),
+    "companion": (135.002, -20.0, 12.0, 40.0, 0.9),
+}
+CLASSED_GAIA = {
+    name: source_id(*row[:2], 10 + n) for n, (name, row) in enumerate(CLASSED.items())
+}
+
+
+def class_rows(source: Source, classes: dict[str, str]) -> Callable:
+    """Rows of `source` at the CLASSED points, with these classes."""
+    names = list(classes)
+
+    def rows(run: IngestRun) -> pa.Table:
+        return rows_for(
+            run,
+            source,
+            {
+                "catalogue_id": names,
+                "mint": [False] * len(names),
+                "match_ra": [CLASSED[n][0] for n in names],
+                "match_dec": [CLASSED[n][1] for n in names],
+                "match_mag": [CLASSED[n][2] for n in names],
+                "match_error": [0.01] * len(names),
+                "class": [classes[n] for n in names],
+            },
+        )
+
+    return rows
+
+
+class TestNodeClass:
+    """A point that holds several objects is a binary or multiple star,
+    whatever class a catalogue gives it. Its members say what the objects
+    are. A point of one object keeps its class."""
+
+    @pytest.fixture(scope="class")
+    def classes(self, tmp_path_factory) -> tuple[dict[str, str | None], str]:
+        root = tmp_path_factory.mktemp("classes") / "registry"
+        held = ["brown dwarfs", "white dwarf and M dwarf", "pulsar"]
+        orbits = orbit_pairs(
+            pa.table(
+                {
+                    "source_id": [CLASSED_GAIA[n] for n in held],
+                    "nss_solution_type": ["SB1"] * 3,
+                    "period": [10.0] * 3,
+                    "eccentricity": [0.1] * 3,
+                    "m1": [0.07, 0.6, 1.4],
+                    "m2": [0.05, 0.3, 0.3],
+                }
+            )
+        )
+        pair = {
+            "source_id1": [CLASSED_GAIA["lone white dwarf"]],
+            "source_id2": [CLASSED_GAIA["companion"]],
+            "ra1": [135.0],
+            "dec1": [-20.0],
+            "ra2": [135.002],
+            "dec2": [-20.0],
+            "parallax1": [40.0],
+            "parallax2": [40.0],
+            "phot_g_mean_mag1": [15.0],
+            "phot_g_mean_mag2": [12.0],
+            "sep_arcsec": [6.77],
+            "R_chance_align": [1e-6],
+            "binary_type": ["WDMS"],
+        }
+        simbad = {
+            "brown dwarfs": "brown dwarf",
+            "white dwarf and M dwarf": "white dwarf",
+            "lone white dwarf": "white dwarf",
+        }
+        _, report = ingest(
+            root,
+            gaia={CLASSED_GAIA[n]: row for n, row in CLASSED.items()},
+            passes=(
+                (SIMBAD, class_rows(SIMBAD, simbad)),
+                (ARCHIVE_SOURCE, class_rows(ARCHIVE_SOURCE, {"pulsar": "pulsar"})),
+            ),
+            orbits=orbits,
+            el_badry=el_badry_pairs(pa.table(pair)),
+        )
+        registry = Registry(root)
+        names = list(CLASSED)
+        ids = registry.lookup("gaia", "dr3", [str(CLASSED_GAIA[n]) for n in names])
+        meta = {row["id"]: row for row in table(registry, METADATA.slug).to_pylist()}
+        return {n: meta[int(i)]["class"] for n, i in zip(names, ids)}, report
+
+    @pytest.mark.parametrize(
+        "name", ["brown dwarfs", "white dwarf and M dwarf", "pulsar"]
+    )
+    def test_a_point_of_two_stars_is_a_binary_star(self, classes, name):
+        assert classes[0][name] == "binary star"
+
+    def test_a_lone_white_dwarf_stays_a_white_dwarf(self, classes):
+        assert classes[0]["lone white dwarf"] == "white dwarf"
+        assert classes[0]["companion"] == "star"
+
+    def test_the_report_counts_the_changes(self, classes):
+        report = classes[1]
+        for before in ("brown dwarf", "white dwarf", "pulsar"):
+            assert f"  {before} → binary star: 1\n" in report
+
+
+class TestComponentOnItsPairsPoint:
+    """η CrB: Gaia sees A and B as one point, which A's Gaia id reaches. B's
+    position lands on it too, but B passes no id to it."""
+
+    W = "09200+3000"
+
+    def args(self) -> dict:
+        point = source_id(140.0, 30.0, 40)
+        b = offset(140.0, 30.0, 0.3, 0.0)
+        return {
+            "gaia": {point: (140.0, 30.0, 5.0, 50.0, 0.9)},
+            "wds_systems": WDS_SYSTEMS
+            | {self.W: [wds_pair("A", "B", 0.3, notes="NO", mag1=5.6, mag2=5.9)]},
+            "wds_components": WDS_COMPONENTS
+            | {
+                (self.W, "A"): wds_component(source_id=point, ra=140.0, dec=30.0),
+                (self.W, "B"): wds_component(ra=b[0], dec=b[1]),
+            },
+        }
+
+    def test_no_component_id_on_the_point(self, tmp_path):
+        root = tmp_path / "registry"
+        for _ in range(2):
+            _, report = ingest(root, **self.args())
+            registry = Registry(root)
+            assert registry.lookup("wds", "component", [f"{self.W} B"]).tolist() == [0]
+            (point,) = registry.lookup("gaia", "dr3", [str(source_id(140.0, 30.0, 40))])
+            meta = {
+                row["id"]: row for row in table(registry, METADATA.slug).to_pylist()
+            }
+            catalogues = {x["catalogue"] for x in meta[int(point)]["cross_ids"]}
+            assert "wds" not in catalogues
+            system = {
+                row["id"]: row for row in table(registry, SYSTEM.slug).to_pylist()
+            }
+            assert system[int(point)]["point"] and system[int(point)]["stars"] == 2
+            letters = [m["letter"] for m in system[int(point)]["members"]]
+            assert letters == ["A", "B"]
+        # The pair by position keeps its links.
+        assert "WDS components matched by position 2," in report

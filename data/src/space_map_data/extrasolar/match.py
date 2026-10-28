@@ -139,3 +139,18 @@ def assign(row: np.ndarray, key: np.ndarray, score: np.ndarray) -> np.ndarray:
             ~np.isin(row[alive], row[taken]) & ~np.isin(key[alive], key[taken])
         ]
     return np.sort(np.concatenate(kept)) if kept else np.zeros(0, np.int64)
+
+
+def excluded_pairs(rows: np.ndarray, keys: np.ndarray, exclude: pa.Array) -> np.ndarray:
+    """Whether each pair of a row and a key has the key in the row's list.
+
+    `exclude` holds a list of keys for each row, or null.
+    """
+    owner = pc.list_parent_indices(exclude).to_numpy()
+    banned = pc.list_flatten(exclude).to_numpy(zero_copy_only=False)
+    if not banned.size:
+        return np.zeros(rows.size, bool)
+    values, codes = np.unique(np.concatenate([banned, keys]), return_inverse=True)
+    wanted = owner.astype(np.int64) * values.size + codes[: banned.size]
+    found = rows.astype(np.int64) * values.size + codes[banned.size :]
+    return np.isin(found, wanted)

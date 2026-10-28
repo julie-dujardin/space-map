@@ -75,6 +75,8 @@ MATCH = pa.schema(
         ("match_pmdec", pa.float32()),
         ("match_mag", pa.float32()),
         ("match_error", pa.float32()),
+        # Keys that the row never matches.
+        ("match_exclude", pa.list_(pa.int64())),
     ]
 )
 GAIA_ASTROMETRY = frozenset({"gaia-dr3", "gaia-dr3-named"})
@@ -109,7 +111,8 @@ class Resolver(Protocol):
         ...
 
     def match(self, rows: pa.Table) -> np.ndarray:
-        """The key that each MATCH row matches by position, 0 where none."""
+        """The key that each MATCH row matches by position, 0 where none and
+        for a key of its `match_exclude`."""
         ...
 
     def facts(self, keys: np.ndarray) -> pa.Table:

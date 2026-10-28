@@ -44,7 +44,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
 from space_map_data.extrasolar.exoplanets.ingest import Prepared
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.ids import table_of
-from space_map_data.extrasolar.match import SYSTEM_KIND
+from space_map_data.extrasolar.match import SYSTEM_KIND, excluded_pairs
 from space_map_data.extrasolar.placement import COLUMNS, placement
 from space_map_data.extrasolar.registry import (
     LIVE,
@@ -320,7 +320,8 @@ class RunResolver:
 
     def match(self, rows: pa.Table) -> np.ndarray:
         """Run the wds-components pass. A row that made a new object, or
-        matched one that is not minted, has 0."""
+        matched one that is not minted, has 0. So does a row whose id an
+        earlier ingest linked to an object of its `match_exclude`."""
         ids = rows["catalogue_id"].combine_chunks()
         named = ids.is_valid().to_numpy(zero_copy_only=False)
         values = ids.to_numpy(zero_copy_only=False)
@@ -328,9 +329,18 @@ class RunResolver:
         unique = np.flatnonzero(named)[np.sort(first)]
         if (~named).any():
             logger.info("systems: %d WDS rows without an id", int((~named).sum()))
-        self.run.add(WDS_COMPONENTS, [rows.take(pa.array(unique))], self.complete)
+        sent = rows.take(pa.array(unique))
+        self.run.add(WDS_COMPONENTS, [sent], self.complete)
         found = self.run.row_keys(WDS_COMPONENTS.name)
         keys = np.where(found["new"].to_numpy(zero_copy_only=False), 0, found["key"])
+        at = pc.index_in(found["catalogue_id"], value_set=sent["catalogue_id"])
+        banned = excluded_pairs(
+            np.arange(keys.size), keys, sent["match_exclude"].take(at).combine_chunks()
+        )
+        self.counts["WDS components that an earlier ingest linked to their system"] += (
+            int(banned.sum())
+        )
+        keys[banned] = 0
         keys = self._drop_unminted(
             *WDS_ID, found["catalogue_id"].combine_chunks(), keys
         )

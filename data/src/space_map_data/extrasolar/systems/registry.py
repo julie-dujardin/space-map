@@ -28,7 +28,7 @@ from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.exoplanets.catalogues import EU, OEC
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.ids import CELL_LEVEL, cell_of
-from space_map_data.extrasolar.match import Pairs, assign
+from space_map_data.extrasolar.match import Pairs, assign, excluded_pairs
 from space_map_data.extrasolar.placement import COLUMNS, placement
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.nodes import GAIA_DR3
@@ -293,6 +293,13 @@ class RegistryResolver:
         )
         score = WDS_MATCHER.score(pairs)
         ids = candidates["id"].to_numpy()
+        banned = excluded_pairs(
+            pair_row, ids[pair_cand], rows["match_exclude"].combine_chunks()
+        )
+        self.counts["matches excluded"] += int(
+            np.unique(pair_row[banned & np.isfinite(score)]).size
+        )
+        score[banned] = np.nan
         kept = assign(pair_row, ids[pair_cand], score)
         keys = np.zeros(rows.num_rows, np.int64)
         keys[pair_row[kept]] = ids[pair_cand[kept]]

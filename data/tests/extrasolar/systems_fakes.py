@@ -26,6 +26,7 @@ class FakeResolver:
         self.rows = facts
         self.positions = positions or {}
         self.matched: list[str] = []
+        self.excluded: list[list[int] | None] = []
 
     def keys(self, catalogue: str, release: str, ids: pa.Array) -> np.ndarray:
         return np.array(
@@ -36,7 +37,13 @@ class FakeResolver:
     def match(self, rows: pa.Table) -> np.ndarray:
         texts = rows["catalogue_id"].to_pylist()
         self.matched += texts
-        return np.array([self.positions.get(t, 0) for t in texts], np.int64)
+        excluded = rows["match_exclude"].to_pylist()
+        self.excluded += excluded
+        keys = [self.positions.get(t, 0) for t in texts]
+        return np.array(
+            [0 if key in (out or []) else key for key, out in zip(keys, excluded)],
+            np.int64,
+        )
 
     def facts(self, keys: np.ndarray) -> pa.Table:
         wanted = set(np.asarray(keys).tolist())
@@ -195,6 +202,7 @@ def wds_pair(
     mag2: float | None = None,
     pm1: tuple[float | None, float | None] = (None, None),
     pm2: tuple[float | None, float | None] = (None, None),
+    position_angle: float | None = None,
 ) -> dict:
     found, known = wds_source.evidence(notes, pm1, pm2)
     return {
@@ -202,7 +210,7 @@ def wds_pair(
         "secondary": secondary,
         "discoverer": "TST   1",
         "separation": separation,
-        "position_angle": None,
+        "position_angle": position_angle,
         "mag1": mag1,
         "mag2": mag2,
         "v_band": True,

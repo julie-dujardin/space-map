@@ -104,6 +104,13 @@ class TestCells:
             np.logical_or.at(covered, row, inside)
             assert covered.all()
 
+    def test_position_angle(self):
+        for angle in (0.0, 45.0, 90.0, 200.0, 359.0):
+            ra, dec = offset(10.0, 20.0, 7.5, angle)
+            assert sky.position_angle(10.0, 20.0, ra, dec) == pytest.approx(
+                angle, abs=1e-6
+            )
+
     def test_separation(self):
         ra, dec = offset(10.0, 20.0, 7.5, 33.0)
         assert sky.separation(10.0, 20.0, ra, dec) == pytest.approx(7.5, rel=1e-6)

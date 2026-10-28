@@ -75,6 +75,22 @@ def separation(
     return np.degrees(2 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))) * 3600
 
 
+def position_angle(
+    ra1: np.ndarray | float,
+    dec1: np.ndarray | float,
+    ra2: np.ndarray | float,
+    dec2: np.ndarray | float,
+) -> np.ndarray:
+    """Position angle in degrees of the second position from the first, from
+    north through east, 0 to 360."""
+    ra1, dec1, ra2, dec2 = (np.radians(a) for a in (ra1, dec1, ra2, dec2))
+    east = np.sin(ra2 - ra1) * np.cos(dec2)
+    north = np.cos(dec1) * np.sin(dec2) - np.sin(dec1) * np.cos(dec2) * np.cos(
+        ra2 - ra1
+    )
+    return np.degrees(np.arctan2(east, north)) % 360
+
+
 def disc_ranges(
     ra: np.ndarray, dec: np.ndarray, radius: np.ndarray, level: int = MATCH_LEVEL
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

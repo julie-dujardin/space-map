@@ -8,6 +8,8 @@ position is that of its primary member, the first in the order of its first
 source, down to a point.
 
 The decisions for the ingest:
+- an entry, of a node or inside a point, that is another point of its
+  system leaves, so each star is listed once;
 - a composite spectral type of a point that holds one star moves to its
   system, and the point takes its own type from the trees, else none;
 - a point of a resolved system with a position and no distance takes the
@@ -23,7 +25,7 @@ import logging
 import math
 import time
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pyarrow as pa
@@ -53,6 +55,7 @@ from space_map_data.extrasolar.systems.prepare import (
     Inputs,
     Prepared,
     close_interiors,
+    position_angle_of,
     separation_of,
 )
 from space_map_data.extrasolar.systems.reduce import (
@@ -61,16 +64,23 @@ from space_map_data.extrasolar.systems.reduce import (
     POINT,
     Interior,
 )
+from space_map_data.extrasolar.systems.resolve import GAIA_ASTROMETRY
 from space_map_data.extrasolar.systems.simbad import LETTER
 from space_map_data.extrasolar.tables import CROSS_ID
 
 logger = logging.getLogger(__name__)
 
 BINARY, MULTIPLE = "binary star", "multiple star"
-# An entry is a point of its system within these: mag, arcsec, share.
-SAME_MAG = 1.0
-SAME_SEPARATION = 2.0
+# An entry is a point of its system when their separations from the entry's
+# primary agree within SAME_SEPARATION arcsec or SAME_SHARE of the entry's,
+# and so do their position angles within SAME_ANGLE deg. An angle agrees
+# either way round, because the catalogues can swap the two stars of a pair.
+# An orbit turns a pair between two epochs. So where the entry has no angle,
+# or a position is not from Gaia, magnitudes within SAME_MAG also suffice.
+SAME_SEPARATION = 0.15
 SAME_SHARE = 0.2
+SAME_ANGLE = 10.0
+SAME_MAG = 1.0
 STAR, SYSTEM = "star", "system"
 
 VALUES = pa.schema(
@@ -232,6 +242,9 @@ class Assembler:
         self.events += [(kind, "merge", text) for kind, text in merged.events]
         self.counts = prepared.counts
         self._columns: dict[int, dict[str, list]] = {}
+        # The points that each source lists in the system that `_system`
+        # builds, by source rank.
+        self.listed: dict[int, set[int]] = defaultdict(set)
 
     # Values of members
 
@@ -332,6 +345,41 @@ class Assembler:
     def entry_count(self, item: Interior | int) -> int:
         return 2 if isinstance(item, int) else len(item.entries)
 
+    def _known_interiors(
+        self, keys: np.ndarray, systems: np.ndarray, ranks: np.ndarray
+    ) -> None:
+        """Leave out the entries of a point that are another point of its
+        system. A point with one entry left holds one star.
+
+        `keys` are the points of the sets of `systems`, `ranks` the source
+        ranks of the sets.
+        """
+        held = [k for k, item in self.chosen.items() if isinstance(item, Interior)]
+        hit = np.isin(keys, np.array(held, np.int64))
+        pick = np.isin(systems, systems[hit])
+        points: dict[int, set[int]] = defaultdict(set)
+        listed: dict[tuple[int, int], set[int]] = defaultdict(set)
+        for key, system, rank in zip(
+            keys[pick].tolist(), systems[pick].tolist(), ranks[pick].tolist()
+        ):
+            points[system].add(key)
+            listed[(system, rank)].add(key)
+        system_of = dict(zip(keys[hit].tolist(), systems[hit].tolist()))
+        for key, system in sorted(system_of.items()):
+            item = self.chosen[key]
+            assert isinstance(item, Interior)
+            # A point that the interior's source lists is another star.
+            others = sorted(points[system] - listed[(system, item.rank)] - {key})
+            entries = [e for e in item.entries if not self._is_point(e[0], key, others)]
+            if len(entries) == len(item.entries):
+                continue
+            if len(entries) > 1:
+                self.chosen[key] = replace(item, entries=entries)
+                continue
+            del self.chosen[key]
+            self.counts[f"points holding several stars, by {item.source}"] -= 1
+            self.counts["points that hold one star once an entry leaves"] += 1
+
     # Systems
 
     def run(self) -> Systems:
@@ -375,6 +423,7 @@ class Assembler:
         self.p.reduced.interiors += close_interiors(self.p, system_of, points_of)
         self.p.reduced.interiors += self._circumbinary(sys_keys)
         self.chosen = self.interiors()
+        self._known_interiors(sys_keys, sys_ids, self.p.sets.rank[set_owner][in_system])
         logger.info(
             "systems: %d interiors, %d systems of several sets, %d lone pairs",
             len(self.chosen),
@@ -406,6 +455,9 @@ class Assembler:
         return systems
 
     def _system(self, set_ids: list[int]) -> None:
+        self.listed = defaultdict(set)
+        for s in set_ids:
+            self.listed[int(self.p.sets.rank[s])] |= self.p.sets.of(s)
         keyed: dict[frozenset[int], list[int]] = defaultdict(list)
         for s in set_ids:
             keyed[self.p.sets.of(s)].append(s)
@@ -493,52 +545,65 @@ class Assembler:
     def _known_entries(
         self, node: _Node, members: list[tuple[str, int, _Node | None, int, str | None]]
     ) -> list[tuple[str, int, _Node | None, int, str | None]]:
-        """Leave out the entries that are a point elsewhere in the system.
-
-        An entry is such a point when its magnitude and its separation from
-        the node's first point agree with that point's.
-        """
+        """Leave out the entries that are a point of the system. A point that
+        the entry's source lists is another star."""
         top = node
         while top.parent is not None:
             top = top.parent
-        others = sorted(top.keys - node.keys)
-        primary = next((m[1] for m in members if m[0] == POINT), 0)
-        if not others or not primary:
+        primary = _first_point(members)
+        if not primary:
             return members
         kept = []
         for member in members:
-            if member[0] != ENTRY or member[3] >= self.el_block:
-                kept.append(member)
-                continue
-            found = self._same_point(member[3], primary, others)
-            if found:
-                self.counts["entries that are a point of the system"] += 1
-                ref = member[3]
-                text = " ".join(
-                    str(self.value(ref, name)) for name in ("source", "system", "label")
-                )
-                self.events.append(
-                    ("entry is a point", "assemble", f"{text} is {found}")
-                )
-                continue
+            source = self.value(member[3], "source") if member[0] == ENTRY else None
+            if source is not None:
+                listed = self.listed[INTERIOR_SOURCES.index(source)]
+                others = sorted(top.keys - listed - {primary})
+                if self._is_point(member[3], primary, others):
+                    continue
             kept.append(member)
         return kept
 
+    def _is_point(self, ref: int, primary: int, others: list[int]) -> bool:
+        """Whether the entry `ref`, measured from `primary`, is one of
+        `others`. Logs each one that is."""
+        found = self._same_point(ref, primary, others)
+        if found:
+            self.counts["entries that are a point of the system"] += 1
+            text = " ".join(
+                str(self.value(ref, name)) for name in ("source", "system", "label")
+            )
+            self.events.append(("entry is a point", "assemble", f"{text} is {found}"))
+        return bool(found)
+
     def _same_point(self, ref: int, primary: int, others: list[int]) -> int:
         separation = self.value(ref, "separation")
+        angle = self.value(ref, "position_angle")
         mag = self.value(ref, "g_mag")
         if mag is None:
             mag = self.value(ref, "v_mag")
-        if separation is None or mag is None:
+        if not separation:
             return 0
+        reach = max(SAME_SEPARATION, SAME_SHARE * separation)
         for other in others:
-            fact = self.facts.get(other)
-            if fact is None or not abs(fact.mag - mag) <= SAME_MAG:
-                continue
             apart = separation_of(self.facts, primary, other)
-            if abs(apart - separation) <= max(SAME_SEPARATION, SAME_SHARE * separation):
+            if not abs(apart - separation) <= reach:
+                continue
+            if angle is not None:
+                turn = abs(position_angle_of(self.facts, primary, other) - angle) % 180
+                if min(turn, 180 - turn) <= SAME_ANGLE:
+                    return other
+                if self._gaia_epoch(primary, other):
+                    continue
+            fact = self.facts.get(other)
+            if mag is not None and fact is not None and abs(fact.mag - mag) <= SAME_MAG:
                 return other
         return 0
+
+    def _gaia_epoch(self, *keys: int) -> bool:
+        """Whether every one of `keys` has a Gaia position."""
+        facts = [self.facts.get(key) for key in keys]
+        return all(f is not None and f.astrometry in GAIA_ASTROMETRY for f in facts)
 
     def _mag(self, key: int) -> float:
         fact = self.facts.get(key)
@@ -582,7 +647,7 @@ class Assembler:
             else:
                 stars += 1
         node.stars = stars
-        node.primary = self._primary(node)
+        node.primary = _first_point(node.members)
         fact = self.facts.get(node.primary)
         catalogue_ids, sources, label = self._own_values(node)
         self.rows.append(
@@ -620,14 +685,6 @@ class Assembler:
         self._distances(node)
         self._names(node, catalogue_ids)
         return stars
-
-    def _primary(self, node: _Node) -> int:
-        for kind, key, child, _, _ in node.members:
-            if kind == POINT:
-                return key
-            if kind == SYSTEM and child is not None:
-                return child.primary
-        return 0
 
     def _own_values(self, node: _Node) -> tuple[list[dict], list[str], str | None]:
         ids: list[dict] = []
@@ -1146,6 +1203,16 @@ class Assembler:
 
 def _composite(spectral_type: str) -> bool:
     return COMPOSITE_SPECTRAL_TYPE.search(spectral_type) is not None
+
+
+def _first_point(members: list[tuple[str, int, _Node | None, int, str | None]]) -> int:
+    """The first point of the members, inside a system member too, else 0."""
+    for kind, key, child, _, _ in members:
+        if kind == POINT:
+            return key
+        if kind == SYSTEM and child is not None:
+            return _first_point(child.members)
+    return 0
 
 
 def system_name(identifiers: list[str], main_id: str) -> str | None:

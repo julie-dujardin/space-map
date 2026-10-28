@@ -5,10 +5,11 @@
 1. `prepare`: each node of a tree source takes its candidate objects. A WDS
    component with no candidate takes the object of the MSC component of the
    same WDS id and letter, and the other way round. A WDS component that
-   still has none goes to `Resolver.match` by position. A planet that is
-   also a star of a star catalogue stays a planet: its object leaves every
-   tree. Each source's trees become groups of points and interiors. El-
-   Badry's pairs become groups of two points, the Gaia orbits interiors of
+   still has none goes to `Resolver.match` by position, which never gives
+   it the object of a node above it or near it in its WDS system. A planet
+   that is also a star of a star catalogue stays a planet: its object leaves
+   every tree. Each source's trees become groups of points and interiors.
+   El-Badry's pairs become groups of two points, the Gaia orbits interiors of
    two stars. A SIMBAD component inside the light of another point joins
    that point in every source.
 2. `merge`: the groups merge into one tree per system.

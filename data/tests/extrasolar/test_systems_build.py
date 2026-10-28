@@ -35,6 +35,7 @@ from space_map_data.extrasolar.systems.report import report_lines, tree_lines
 from space_map_data.extrasolar.systems.resolve import FACTS, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
+from tests.extrasolar.conftest import offset
 from tests.extrasolar.systems_fakes import (
     FakeResolver,
     fact,
@@ -398,18 +399,22 @@ class TestProcyon:
         assert systems.distances["key"].to_pylist() == [111]
 
     def test_an_unmatched_entry_that_is_a_point(self):
-        """WDS B finds no object; the MSC has it as a point."""
+        """WDS B finds no object; the MSC has it as a point. The orbit has
+        turned B since the WDS measure, so only the magnitudes agree."""
         w = "07393+0514"
         resolver = FakeResolver(
             {("hip", "2007", "1"): 120, ("hd", "1949", "2"): 121},
             [
                 fact(120, 114.825, 5.225, 0.4, "hipparcos-2007", parallax=284.6),
-                fact(121, 114.8262, 5.2242, 10.7, "simbad"),
+                fact(121, 114.8262, 5.2246, 10.7, "simbad"),
             ],
             positions={f"{w} A": 120},
         )
+        pair = wds_pair(
+            "A", "B", 4.3, notes="NO", mag1=0.37, mag2=10.7, position_angle=302.0
+        )
         catalogue = wds_catalogue(
-            {w: [wds_pair("A", "B", 4.3, notes="NO", mag1=0.37, mag2=10.7)]},
+            {w: [pair]},
             {(w, "A"): wds_component(None, 114.825, 5.225)},
         )
         comp = [msc_comp(w, "A", HIP=1), msc_comp(w, "C", HD=2)]
@@ -1038,3 +1043,223 @@ class TestRegistryInputs:
     def test_no_gaia_orbits(self, tmp_path):
         orbits = registry_orbits(Registry(tmp_path))
         assert orbits.num_rows == 0 and orbits.schema == PAIRS
+
+
+class TestComponentOnItsPairsPoint:
+    """A WDS component never takes the object of another node of its WDS
+    system. η CrB: Gaia sees A and B as one point, A's Gaia id reaches it, and
+    B's position lands on it too."""
+
+    W = "15232+3017"
+
+    def build(self, separation: float, mag: float) -> tuple[Systems, FakeResolver]:
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 130},
+            [fact(130, 230.8, 30.29, mag, parallax=56.0)],
+            positions={f"{self.W} B": 130},
+        )
+        ra, dec = offset(230.8, 30.29, separation, 0.0)
+        catalogue = wds_catalogue(
+            {self.W: [wds_pair("A", "B", separation, mag1=5.6, mag2=5.9)]},
+            {
+                (self.W, "A"): wds_component(1, 230.8, 30.29),
+                (self.W, "B"): wds_component(None, ra, dec),
+            },
+        )
+        return build(Inputs(wds=catalogue), resolver), resolver
+
+    def test_the_point_holds_the_pair(self):
+        systems, resolver = self.build(0.3, 5.0)
+        assert resolver.matched == [f"{self.W} B"]
+        assert resolver.excluded == [[130]]
+        assert shape(systems, 130) == ("point", 130, 2)
+        assert systems.counts[f"{WDS}: members by position"] == 0
+        assert systems.counts[f"{WDS}: members with no object"] == 1
+
+    def test_the_point_keeps_the_letter_of_its_own_id(self):
+        """Gaia should split A and B. B's magnitude is nearer the point's, so
+        B took the point when its position reached it."""
+        systems, _ = self.build(1.1, 5.95)
+        assert shape(systems, 130) == ("binary star", 2, [130, "entry"])
+        letters = {
+            (m["kind"], m["key"]): m["letter"] for m in systems.members.to_pylist()
+        }
+        assert letters == {("star", 130): "A", ("entry", 0): "B"}
+        assert "cross-match error" not in systems.events["kind"].to_pylist()
+
+    def test_a_far_component_keeps_its_match(self):
+        """WDS 15591+5148: A has no Gaia id, and the Gaia id of B, 79″ away,
+        names the star at A's position. A still matches it."""
+        w = "15591+5148"
+        b = offset(239.77, 51.80, 79.2, 270.0)
+        resolver = FakeResolver(
+            {("gaia", "dr3", "2"): 140},
+            [fact(140, 239.77, 51.80, 14.2, parallax=60.0)],
+            positions={f"{w} A": 140},
+        )
+        catalogue = wds_catalogue(
+            {w: [wds_pair("A", "B", 79.2, notes="V", mag1=14.6, mag2=14.9)]},
+            {
+                (w, "A"): wds_component(None, 239.77, 51.80),
+                (w, "B"): wds_component(2, *b),
+            },
+        )
+        systems = build(Inputs(wds=catalogue), resolver)
+        assert resolver.excluded == [None]
+        letters = {
+            (m["kind"], m["key"]): m["letter"] for m in systems.members.to_pylist()
+        }
+        assert letters == {("star", 140): "A", ("entry", 0): "B"}
+
+
+class TestEntryIsAPoint:
+    """An entry and a point of one system at the same separation from the
+    same primary are one star: the entry leaves."""
+
+    def test_a_wds_entry_is_a_simbad_point(self):
+        """NAME Oph 11: WDS B finds no object, because its V is 2 mag fainter
+        than the G of SIMBAD's B. The position angles agree."""
+        w = "16224-2405"
+        b = offset(245.6, -24.08, 1.95, 178.0)
+        index = simbad_index(
+            [
+                simbad_object(1, "NAME Oph 11", 245.6, -24.08, otype="**"),
+                simbad_object(2, "NAME Oph 11A", 245.6, -24.08, v=21.1),
+                simbad_object(3, "NAME Oph 11B", *b, v=22.0),
+            ],
+            [(1, 2), (1, 3)],
+        )
+        resolver = FakeResolver(
+            {
+                ("simbad", "oid", "2"): 200,
+                ("simbad", "oid", "3"): 201,
+                ("gaia", "dr3", "11"): 200,
+            },
+            [fact(200, 245.6, -24.08, 20.0), fact(201, *b, 20.24)],
+        )
+        pair = wds_pair(
+            "A", "B", 1.9, notes="V", mag1=21.1, mag2=22.3, position_angle=178.0
+        )
+        catalogue = wds_catalogue(
+            {w: [pair]}, {(w, "A"): wds_component(11, 245.6, -24.08)}
+        )
+        inputs = Inputs(
+            simbad=read_simbad(index.stars), simbad_index=index, wds=catalogue
+        )
+        systems = build(inputs, resolver)
+        assert shape(systems, 200) == ("binary star", 2, [200, 201])
+        assert systems.counts["entries that are a point of the system"] == 1
+
+    def interior(self, b: tuple[float, float], position_angle: float) -> Systems:
+        """HD 141176: the MSC puts B inside the point of A, with Aa and Ab, and
+        El-Badry pairs A with a star at `b`."""
+        w = "15468+2505"
+        comp = [msc_comp(w, "A", HIP=1), msc_comp(w, "B", Vmag=13.77)]
+        pairs = [
+            msc_pair(w, "A", "B", "*", Sep=1.707, Sunit='"', PA=position_angle),
+            msc_pair(w, "Aa", "Ab", "A", Sep=0.738, Sunit="m", P=3, Punit="d"),
+        ]
+        resolver = FakeResolver(
+            {
+                ("hip", "2007", "1"): 300,
+                ("gaia", "dr3", "21"): 300,
+                ("gaia", "dr3", "22"): 301,
+            },
+            [
+                fact(300, 236.7, 25.08, 8.24, parallax=20.0),
+                fact(301, *b, 13.52, parallax=20.0),
+            ],
+        )
+        inputs = Inputs(
+            msc=msc_nodes(comp, pairs, []),
+            el_badry=el_badry([(21, 22, 1.707, 8.24, 13.52)]),
+        )
+        return build(inputs, resolver)
+
+    def test_an_entry_inside_a_point(self):
+        systems = self.interior(offset(236.7, 25.08, 1.707, 256.5), 256.5)
+        assert shape(systems, 301) == ("multiple star", 3, [301, ("point", 300, 2)])
+        assert systems.counts["entries that are a point of the system"] == 1
+
+    def test_a_close_triple_keeps_its_third_star(self):
+        """The El-Badry star is at the separation of B, at another angle. Gaia
+        gives both positions, so the angle decides."""
+        systems = self.interior(offset(236.7, 25.08, 1.707, 140.0), 256.5)
+        assert shape(systems, 301) == ("multiple star", 4, [301, ("point", 300, 3)])
+        assert "entries that are a point of the system" not in systems.counts
+
+    def test_a_component_of_the_same_catalogue_is_another_star(self):
+        """The WDS lists B, which finds no object, and C, a point at the same
+        place."""
+        w = "06000+3000"
+        c = offset(90.0, 30.0, 2.05, 92.0)
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 600, ("gaia", "dr3", "2"): 601},
+            [
+                fact(600, 90.0, 30.0, 9.0, parallax=10.0),
+                fact(601, *c, 11.0, parallax=10.0),
+            ],
+        )
+        catalogue = wds_catalogue(
+            {
+                w: [
+                    wds_pair(
+                        "A",
+                        "B",
+                        2.0,
+                        notes="V",
+                        mag1=9.0,
+                        mag2=11.0,
+                        position_angle=90.0,
+                    ),
+                    wds_pair(
+                        "A",
+                        "C",
+                        2.05,
+                        notes="V",
+                        mag1=9.0,
+                        mag2=11.0,
+                        position_angle=92.0,
+                    ),
+                ]
+            },
+            {(w, "A"): wds_component(1, 90.0, 30.0), (w, "C"): wds_component(2, *c)},
+        )
+        systems = build(Inputs(wds=catalogue), resolver)
+        assert shape(systems, 600) == ("multiple star", 3, [600, 601, "entry"])
+
+    def test_a_pair_the_wrong_way_round(self):
+        """The WDS gives A the Gaia id of SIMBAD's B, so its B, inside that
+        point, is at the opposite angle of SIMBAD's A. The point then holds
+        one star."""
+        w = "01345+3440"
+        a = offset(23.6, 34.67, 0.412, 123.0)
+        index = simbad_index(
+            [
+                simbad_object(1, "BD+33 257", 23.6, 34.67, otype="**"),
+                simbad_object(2, "BD+33 257A", *a, v=10.2),
+                simbad_object(3, "BD+33 257B", 23.6, 34.67, v=10.4),
+            ],
+            [(1, 2), (1, 3)],
+        )
+        resolver = FakeResolver(
+            {
+                ("simbad", "oid", "2"): 701,
+                ("simbad", "oid", "3"): 700,
+                ("gaia", "dr3", "41"): 700,
+            },
+            [fact(700, 23.6, 34.67, 10.24), fact(701, *a, 10.11)],
+        )
+        pair = wds_pair(
+            "A", "B", 0.4, notes="NO", mag1=10.46, mag2=10.68, position_angle=300.0
+        )
+        catalogue = wds_catalogue(
+            {w: [pair]}, {(w, "A"): wds_component(41, 23.6, 34.67)}
+        )
+        inputs = Inputs(
+            simbad=read_simbad(index.stars), simbad_index=index, wds=catalogue
+        )
+        systems = build(inputs, resolver)
+        assert shape(systems, 700) == ("binary star", 2, [700, 701])
+        assert systems.counts["points that hold one star once an entry leaves"] == 1
+        assert systems.counts[f"points holding several stars, by {WDS}"] == 0

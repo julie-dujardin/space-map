@@ -23,7 +23,8 @@ registry and the earlier passes, the neighbouring regions included:
    an object that holds another id of that catalogue, unless the source of
    that catalogue is a subset. The claimed id then joins the matched object.
    A source can name catalogues that its rows reach only by a claim; its
-   rows never match an object that holds an id of one.
+   rows never match an object that holds an id of one. A row never matches
+   an object that its `match_exclude` names.
 4. A row that is still free becomes a new object of the run. A row with
    `mint` false gets an ID only when a minting row joins its object.
 
@@ -80,7 +81,7 @@ from space_map_data.extrasolar.ids import (
     serial_of,
     table_of,
 )
-from space_map_data.extrasolar.match import Matcher, Pairs, assign
+from space_map_data.extrasolar.match import Matcher, Pairs, assign, excluded_pairs
 from space_map_data.extrasolar.registry import (
     ALIAS,
     CLAIM,
@@ -140,6 +141,9 @@ MATCH_FIELDS = (
     pa.field("match_kind", pa.string()),
     # Ids of the same object in other catalogues, from a certain cross-match.
     pa.field("claims", pa.list_(CROSS_ID)),
+    # Keys of objects of the run that the row is not. It never matches them
+    # by position.
+    pa.field("match_exclude", pa.list_(pa.int64())),
 )
 REQUIRED = ("catalogue_id", "mint", "match_ra", "match_dec")
 MATCH_NAMES = [f.name for f in MATCH_FIELDS]
@@ -1369,6 +1373,15 @@ class IngestRun:
             key_kind=candidates["kind"].combine_chunks().take(pair_cand),
         )
         score = matcher.score(pairs)
+        banned = excluded_pairs(
+            pair_row,
+            self._object_root(keys[pair_cand]),
+            sub["match_exclude"].combine_chunks(),
+        )
+        state.counts["excluded"] += int(
+            np.unique(pair_row[banned & np.isfinite(score)]).size
+        )
+        score[banned] = np.nan
         ok = np.isfinite(score)
         state.pair_rows.append((region << _ROW_BITS) | free[pair_row[ok]])
         state.pair_keys.append(keys[pair_cand[ok]])
