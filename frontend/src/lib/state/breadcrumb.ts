@@ -98,7 +98,9 @@ export function parentCrumb(
 	ctx: ContextManager | undefined,
 	detail: ObjectDetailData | null,
 	groupGlobal: GlobalGroupData | null,
-	featureType: { slug: string; label: string } | null = null
+	featureType: { slug: string; label: string } | null = null,
+	/** A planet's star by the name of its own page, once that is read. */
+	hostName: string | null = null
 ): Crumb | null {
 	// A surface feature climbs to its type's collection page; its host body is
 	// one of the two cross-ref tiles instead. Falls back to the body while the
@@ -163,7 +165,7 @@ export function parentCrumb(
 	if (focusable.kind === 'star') return null;
 	if (focusable.kind === 'planet') {
 		const host = focusable.anchor.hostRecord;
-		const name = host.name ?? String(host.id);
+		const name = hostName ?? host.name ?? String(host.id);
 		return { label: name, target: { kind: 'focus', id: extrasolarObjectId(host.id), name } };
 	}
 

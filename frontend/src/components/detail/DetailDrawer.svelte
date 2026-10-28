@@ -47,6 +47,8 @@
 	import { isLaunchSiteSlug } from '$lib/travel/launch-pad';
 	import { orbitZoneTarget } from '$lib/travel/orbit-zone-target';
 	import { parentCrumb, type Crumb } from '$lib/state/breadcrumb';
+	import { fetchPageName } from '$lib/state/page-name';
+	import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
 	import {
@@ -188,8 +190,35 @@
 		return () => window.removeEventListener('resize', update);
 	});
 
+	// The system file names a planet's star in English; its page, and so its
+	// label on the map, may go by another name in the reader's language.
+	let hostPage = $derived(
+		focusable.kind === 'planet' ? extrasolarObjectId(focusable.anchor.hostRecord.id) : null
+	);
+	let hostName = $state<{ id: string; name: string } | null>(null);
+	$effect(() => {
+		const id = hostPage;
+		if (id === null) return;
+		let live = true;
+		fetchPageName({ kind: 'body', id }).then(
+			(name) => {
+				if (live && name) hostName = { id, name };
+			},
+			() => {}
+		);
+		return () => {
+			live = false;
+		};
+	});
 	let crumb = $derived(
-		parentCrumb(focusable, ctx, data, groupDetail?.global ?? null, surface.featureType)
+		parentCrumb(
+			focusable,
+			ctx,
+			data,
+			groupDetail?.global ?? null,
+			surface.featureType,
+			hostName && hostName.id === hostPage ? hostName.name : null
+		)
 	);
 
 	let fallbackName = $derived(focusableFallbackName(focusable));
