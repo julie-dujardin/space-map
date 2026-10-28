@@ -15,4 +15,6 @@ Modules:
 - reduce: one source's trees as groups of points and interiors
 - merge: the groups of all sources as one tree per system
 - prepare, assemble, build: the builder
+- report: the "Systems" section of the ingest report
+- registry: a resolver over a committed registry, for a dry run
 """

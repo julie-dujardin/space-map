@@ -25,6 +25,7 @@ from space_map_data.extrasolar.systems.nodes import (
 from space_map_data.extrasolar.systems.pairs import el_badry_pairs, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
 from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.systems.report import report_lines, tree_lines
 from space_map_data.extrasolar.systems.simbad import read_simbad
 from tests.extrasolar.systems_fakes import (
     FakeResolver,
@@ -182,6 +183,21 @@ class TestAlphaCentauri:
         assert rows[11]["period"] == 79.92 * 365.25
         names = systems.names.filter(pc.equal(systems.names["node"], pair["node"]))
         assert names["name"].to_pylist()[0] == "Alpha Centauri"
+
+    def test_report(self):
+        systems = self.systems()
+        lines = report_lines(systems, [("α Cen", 10)])
+        assert "Systems" in lines
+        assert any("multiple star, 3 stars, resolved" in line for line in lines)
+        assert not any(line.startswith("class changes") for line in lines)
+        assert tree_lines(systems, 99) == ["99: in no system"]
+
+    def test_report_takes_the_class_changes(self):
+        systems = self.systems()
+        classes = Counter({"star → binary star": 2})
+        lines = report_lines(systems, classes=classes)
+        at = lines.index("class changes:")
+        assert lines[at + 1] == "  star → binary star: 2"
 
 
 class TestCastor:
