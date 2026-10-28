@@ -1,15 +1,21 @@
-"""Tests for the WDS and MSC downloads."""
+"""Tests for the WDS, MSC and El-Badry et al. 2021 downloads."""
 
+import hashlib
 import io
 import json
 import tarfile
 
 import httpx
+import numpy as np
 import pyarrow as pa
 import pytest
+from astropy.io import fits
 
 from space_map_data.download.downloader import DownloadError
-from space_map_data.download.providers.stars import msc, wds
+from space_map_data.download.providers.stars import el_badry, msc, wds
+from space_map_data.download.providers.stars.el_badry import (
+    ElBadryBinariesDownloader,
+)
 from space_map_data.download.providers.stars.msc import MSCDownloader
 from space_map_data.download.providers.stars.wds import WDSDownloader
 from space_map_data.download.providers.three_d import resumable
@@ -333,3 +339,108 @@ class TestMSC:
         with pytest.raises(DownloadError, match="the tarball has no orb.tsv"):
             downloader.download()
         assert not list(msc.OUT_DIR.iterdir())
+
+
+def catalogue(path, *, epoch: float = 2016.0) -> None:
+    """A FITS table with the columns that pairs.parquet takes, and one more."""
+    rows = 5
+    numbers = np.arange(rows, dtype=np.float64)
+    columns = [
+        fits.Column("source_id1", "K", array=np.arange(rows) + 100),
+        fits.Column("source_id2", "K", array=np.arange(rows) + 200),
+        fits.Column("solution_id1", "K", array=np.zeros(rows, np.int64)),
+        fits.Column("ref_epoch1", "D", array=np.full(rows, epoch)),
+        fits.Column("ref_epoch2", "D", array=np.full(rows, 2016.0)),
+        fits.Column("pairdistance", "D", array=numbers / 3600),
+        fits.Column("binary_type", "4A", array=np.array(["MSMS", "WD??"] * 2 + ["MS"])),
+    ]
+    for name, (kind, _, _) in el_badry.PAIR_COLUMNS.items():
+        if name in ("source_id1", "source_id2", "sep_arcsec", "binary_type"):
+            continue
+        values = numbers + 0.5
+        if name == "phot_bp_mean_mag2":
+            values[1] = np.nan
+        columns.append(
+            fits.Column(name, "E" if kind == pa.float32() else "D", array=values)
+        )
+    hdus = fits.HDUList([fits.PrimaryHDU(), fits.BinTableHDU.from_columns(columns)])
+    hdus.writeto(path)
+
+
+class TestElBadry:
+    """The FITS of the Zenodo record, and the columns it writes beside it."""
+
+    def test_writes_the_pairs_in_batches(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(el_badry, "BATCH_ROWS", 2)
+        source = tmp_path / el_badry.SOURCE_FILE
+        catalogue(source)
+        rows = el_badry.write_pairs(source, tmp_path / el_badry.PAIRS_FILE)
+        assert rows == 5
+        pairs = el_badry.read_pairs(tmp_path / el_badry.PAIRS_FILE)
+        assert pairs.schema == el_badry.PAIRS_SCHEMA
+        assert pairs["source_id1"].to_pylist() == [100, 101, 102, 103, 104]
+        assert pairs["sep_arcsec"].to_pylist() == pytest.approx([0, 1, 2, 3, 4])
+        assert pairs["binary_type"].to_pylist() == [
+            "MSMS",
+            "WD??",
+            "MSMS",
+            "WD??",
+            "MS",
+        ]
+        assert pairs["ruwe2"].to_pylist() == [0.5, 1.5, 2.5, 3.5, 4.5]
+        # A NaN of the FITS is null.
+        assert pairs["phot_bp_mean_mag2"].to_pylist()[:3] == [0.5, None, 2.5]
+        some = el_badry.read_pairs(tmp_path / el_badry.PAIRS_FILE, ["sep_AU"])
+        assert some.column_names == ["sep_AU"]
+
+    def test_a_position_at_another_epoch_fails(self, tmp_path):
+        source = tmp_path / el_badry.SOURCE_FILE
+        catalogue(source, epoch=2015.5)
+        with pytest.raises(DownloadError, match="ref_epoch1 is not 2016.0"):
+            el_badry.write_pairs(source, tmp_path / el_badry.PAIRS_FILE)
+        assert not (tmp_path / el_badry.PAIRS_FILE).exists()
+
+    def make(self, tmp_path, monkeypatch, content: bytes, checksum: str):
+        monkeypatch.setattr(el_badry, "OUT_DIR", tmp_path / "out")
+        record = {
+            "files": [
+                {
+                    "key": el_badry.SOURCE_FILE,
+                    "checksum": f"md5:{checksum}",
+                    "links": {"self": "https://zenodo.test/catalog"},
+                }
+            ]
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if str(request.url).endswith(str(el_badry.RECORD)):
+                return httpx.Response(200, json=record)
+            return httpx.Response(200, content=content)
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        return ElBadryBinariesDownloader(client)
+
+    def test_writes_the_catalogue_and_its_pairs(self, tmp_path, monkeypatch):
+        catalogue(tmp_path / "upstream.fits.gz")
+        content = (tmp_path / "upstream.fits.gz").read_bytes()
+        downloader = self.make(
+            tmp_path, monkeypatch, content, hashlib.md5(content).hexdigest()
+        )
+        downloader.download()
+        assert (el_badry.OUT_DIR / el_badry.SOURCE_FILE).read_bytes() == content
+        meta = json.loads(downloader.metadata_file.read_text())
+        assert (meta["record_count"], meta["record"]) == (5, el_badry.RECORD)
+        assert meta["terms"]["license"] == "CC BY 4.0"
+        columns = json.loads((el_badry.OUT_DIR / el_badry.COLUMNS_FILE).read_text())
+        assert [c["name"] for c in columns] == list(el_badry.PAIR_COLUMNS)
+        assert columns[0]["datatype"] == "int64"
+        assert downloader.is_complete(None)
+        # A new column list writes the pairs again.
+        monkeypatch.setitem(el_badry.PAIR_COLUMNS, "extra", (pa.int8(), None, ""))
+        assert not downloader.is_complete(None)
+
+    def test_a_wrong_checksum_writes_nothing(self, tmp_path, monkeypatch):
+        downloader = self.make(tmp_path, monkeypatch, b"not a catalogue", "0" * 32)
+        with pytest.raises(DownloadError, match="MD5"):
+            downloader.download()
+        assert not (el_badry.OUT_DIR / el_badry.SOURCE_FILE).exists()

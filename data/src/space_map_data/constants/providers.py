@@ -57,6 +57,7 @@ class PROVIDERS(StrEnum):
     ULTRACOOLSHEET = "ultracoolsheet"
     WDS = "wds"
     MSC = "msc"
+    EL_BADRY_BINARIES = "el_badry_binaries"
     WIKIDATA_STARS = "wikidata_stars"
     WIKIDATA_EXOPLANETS = "wikidata_exoplanets"
     GALAXY_CATALOGUES = "galaxy_catalogues"

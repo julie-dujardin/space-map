@@ -100,6 +100,9 @@ from space_map_data.download.providers.stars.bailer_jones import (
     BailerJonesDistancesDownloader,
 )
 from space_map_data.download.providers.stars.cds import CDSStarCataloguesDownloader
+from space_map_data.download.providers.stars.el_badry import (
+    ElBadryBinariesDownloader,
+)
 from space_map_data.download.providers.stars.gaia_astrophysical_parameters import (
     GaiaAstrophysicalParametersDownloader,
 )
@@ -218,6 +221,7 @@ PROVIDERS_CLASSES = [
     UltracoolSheetDownloader,
     WDSDownloader,
     MSCDownloader,
+    ElBadryBinariesDownloader,
     GalaxyCataloguesDownloader,
     StarClusterCataloguesDownloader,
     NebulaCataloguesDownloader,

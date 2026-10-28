@@ -42,7 +42,7 @@ from pathlib import Path
 import numpy as np
 
 from space_map_data.constants.stars.families import FAMILIES, STAR_FAMILY_PAGES
-from space_map_data.download.providers.stars import msc, wds
+from space_map_data.download.providers.stars import el_badry, msc, wds
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
 from space_map_data.export.extrasolar import (
     container,
@@ -222,6 +222,13 @@ CREDITS = (
         "organisation": "Tokovinin 2018",
         "source": msc.PAGE_URL,
         "citation": "Tokovinin 2018, ApJS 235, 6",
+    },
+    {
+        "name": "Wide binaries from Gaia EDR3",
+        "organisation": "El-Badry, Rix & Heintz 2021",
+        "source": el_badry.DOI_URL,
+        "license": "CC BY 4.0",
+        "citation": "El-Badry, Rix & Heintz 2021, MNRAS 506, 2269",
     },
     # One credit for every paper of the literature table. Each star's page
     # cites the paper of its value.

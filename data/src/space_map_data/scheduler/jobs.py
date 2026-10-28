@@ -216,6 +216,7 @@ JOBS: list[Job] = [
             PROVIDERS.ULTRACOOLSHEET,
             PROVIDERS.WDS,
             PROVIDERS.MSC,
+            PROVIDERS.EL_BADRY_BINARIES,
         ),
         schedule=Every(timedelta(days=7)),
     ),
