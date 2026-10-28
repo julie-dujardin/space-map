@@ -372,8 +372,7 @@ export function planetStats(planet: Planet): Stat[][] {
 							value: sigFigures(orbitalSpeed, ROUNDED),
 							unit: formatUnit('kilometre_per_second', true)
 						})
-					),
-					note: m.exoplanet_computed()
+					)
 				}
 			: null,
 		planet.status && planet.status !== 'confirmed'

@@ -64,7 +64,7 @@ describe("a planet's panel", () => {
 		expect(statsOf(hot)).toEqual([
 			[
 				['Radius', '98,700 km', undefined],
-				['Mean orbital speed', '147 km/s', 'computed'],
+				['Mean orbital speed', '147 km/s', undefined],
 				['Distance from star', '0.0475 AU', undefined]
 			]
 		]);
@@ -77,7 +77,7 @@ describe("a planet's panel", () => {
 			semi_major_axis: 0.04747,
 			eccentricity: 0.8
 		});
-		expect(statsOf(eccentric)[0][0]).toEqual(['Mean orbital speed', '119 km/s', 'computed']);
+		expect(statsOf(eccentric)[0][0]).toEqual(['Mean orbital speed', '119 km/s', undefined]);
 
 		delete eccentric.values.eccentricity;
 		expect(statsOf(eccentric)[0].some(([label]) => label === 'Mean orbital speed')).toBe(false);
@@ -90,10 +90,10 @@ describe("a planet's panel", () => {
 			eccentricity: 0.6
 		});
 		const speed = () => statsOf(loose)[0].find(([label]) => label === 'Mean orbital speed');
-		expect(speed()).toEqual(['Mean orbital speed', '132 km/s', 'computed']);
+		expect(speed()).toEqual(['Mean orbital speed', '132 km/s', undefined]);
 		// A rounder orbit is longer, in the same period.
 		loose.limits = ['eccentricity<'];
-		expect(speed()).toEqual(['Mean orbital speed', '> 132 km/s', 'computed']);
+		expect(speed()).toEqual(['Mean orbital speed', '> 132 km/s', undefined]);
 		loose.limits = ['eccentricity<', 'semi_major_axis>'];
 		expect(speed()?.[1]).toBe('> 132 km/s');
 		loose.limits = ['period>'];
