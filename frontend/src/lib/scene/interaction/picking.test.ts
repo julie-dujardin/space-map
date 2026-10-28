@@ -26,7 +26,7 @@ function pick(pointerNdc: [number, number], shares: Map<string, number>, starSha
 		exoplanets: { held: () => ({ planets: new Map([[27424668, planets]]) }) },
 		visibility: {
 			systemShares: shares,
-			starShare,
+			starShareOf: () => starShare,
 			getPlanetVisibility: (b: PositionedBody) =>
 				shares.has(b.data.parentId) ? VISIBILITY.FULL : VISIBILITY.HIDE
 		}

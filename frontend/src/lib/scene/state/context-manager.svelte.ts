@@ -10,7 +10,7 @@ import type { Placer } from '$lib/scene/position/placer';
 import { loadScene } from '$lib/scene/setup/scene-load';
 import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
 import { ExoplanetStore } from '$lib/scene/exoplanets/store';
-import { extrasolarIdOf, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
+import { extrasolarIdOf, isExtrasolarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
 import {
@@ -72,7 +72,17 @@ export class ContextManager {
 	/** Set by MapPage; fired when data looks stale mid-session so it can prompt a reload. */
 	onDataStale: (() => void) | null = null;
 
+	/** The small bodies, the Earth satellites and the skybox wait for this:
+	 *  none of them draw from another star. */
+	readonly solarSystemShown: Promise<void>;
+	/** Resolves {@link solarSystemShown}: when the map opens in the solar
+	 *  system, or when the solar system first shows. */
+	readonly showSolarSystem: () => void;
+
 	constructor() {
+		let show!: () => void;
+		this.solarSystemShown = new Promise((resolve) => (show = resolve));
+		this.showSolarSystem = show;
 		// DEV-only console handle for inspecting live scene state.
 		if (import.meta.env.DEV && typeof window !== 'undefined') {
 			(window as unknown as { __sm: ContextManager }).__sm = this;
@@ -209,28 +219,32 @@ export class ContextManager {
 		await this.refresher?.ready(date);
 	}
 
-	/** Add an object the scene does not hold yet (no reload). Call after
-	 *  {@link ready}. No-op before the first load phase ends, or if it is here. */
+	/** Add an object the scene does not hold yet (no reload). One of the solar
+	 *  system needs {@link ready} first. No-op before the first load phase ends,
+	 *  or if it is here. */
 	async ensureBody(targetId: string, date: Date): Promise<void> {
-		// A planet of another star comes with its system and its host.
+		if (isExtrasolarObjectId(targetId)) await this.ensureExtrasolar(targetId);
+		else await this.refresher?.ensureBody(targetId, date);
+	}
+
+	/** Add an object of another star. It needs no data of the solar system, so
+	 *  the first load phase can bring it too. */
+	async ensureExtrasolar(targetId: string): Promise<void> {
+		// A planet comes with its system and its host.
 		if (planetOfObjectId(targetId)) {
 			await this.exoplanets.ensurePlanet(targetId);
 			return;
 		}
-		// An extrasolar object is in no zone: its record places it. A star with
-		// planets brings its system, so a link can frame it.
-		if (isStarObjectId(targetId)) {
-			const host = extrasolarIdOf(targetId);
-			const system =
-				host === null
-					? null
-					: this.exoplanets.ensureHost(host).catch((e) => {
-							console.warn(`[planets] the system of ${targetId} did not load:`, e);
-						});
-			await Promise.all([ensureExtrasolarBody(this, targetId), system]);
-			return;
-		}
-		await this.refresher?.ensureBody(targetId, date);
+		// A star is in no zone: its record places it. A star with planets brings
+		// its system, so a link can frame it.
+		const host = extrasolarIdOf(targetId);
+		const system =
+			host === null
+				? null
+				: this.exoplanets.ensureHost(host).catch((e) => {
+						console.warn(`[planets] the system of ${targetId} did not load:`, e);
+					});
+		await Promise.all([ensureExtrasolarBody(this, targetId), system]);
 	}
 
 	/** Install or remove the active group filter, branching on the slug's

@@ -74,9 +74,11 @@ export class VisibilityController {
 	 *  the Sun draws, and every other body and cloud is hidden. Set by the
 	 *  renderer each frame. */
 	systemShare = 1;
-	/** The starfield's share of the sky, 0 to 1: an extrasolar object's halo
-	 *  and name show with the stars. Set by the renderer each frame. */
+	/** The starfield's share of the sky, 0 to 1. Set by the renderer each frame. */
 	starShare = 0;
+	/** The share of the stars the starfield draws on their own. Set by the
+	 *  renderer each frame. */
+	exactStarShare = 0;
 	/** The share of each planetary system of another star that draws, by its
 	 *  host's scene id. Set by the renderer each frame. */
 	systemShares: ReadonlyMap<string, number> = new Map();
@@ -329,6 +331,13 @@ export class VisibilityController {
 	 *  planet of another star, else the Sun's. */
 	systemShareOf(body: PositionedBody): number {
 		return isExoplanet(body) ? (this.systemShares.get(body.data.parentId) ?? 0) : this.systemShare;
+	}
+
+	/** The share of a star of another system that its halo and name show with.
+	 *  The focused star and the hosts of the drawn systems show with their
+	 *  planets, before the rest of the sky is in. */
+	starShareOf(id: string, focused: boolean): number {
+		return focused || this.systemShares.has(id) ? this.exactStarShare : this.starShare;
 	}
 
 	setPinned(ids: Iterable<string>): void {

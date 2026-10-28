@@ -97,7 +97,6 @@ export function updateBodyVisibility(
 	const layers = ctx.layers;
 	const hideOrbits = !layers.isVisible('orbits');
 	const systemShare = ctx.visibility.systemShare;
-	const starShare = ctx.visibility.starShare;
 	const insideShare = ctx.visibility.planetarySystemShare();
 	const showNomenclature = layers.isVisible('nomenclature');
 	const fovRad = (camera.fov * Math.PI) / 180;
@@ -378,7 +377,7 @@ export function updateBodyVisibility(
 			zoneShare = isFocused
 				? 1
 				: (ctx.visibility.systemShares.get(body.data.id) ?? 1 - insideShare);
-			const visible = starShare > 0 && zoneShare > 0;
+			const visible = ctx.visibility.starShareOf(body.data.id, isFocused) > 0 && zoneShare > 0;
 			group.visible = visible;
 			isClose = false;
 			showLabel = visible;
@@ -535,7 +534,7 @@ export function updateBodyVisibility(
 		const labelShare = bo.starPoint
 			? 1
 			: isExtrasolar(body)
-				? starShare * zoneShare
+				? ctx.visibility.starShareOf(body.data.id, isFocused) * zoneShare
 				: ctx.visibility.systemShareOf(body) * zoneShare * labelThresholdShare;
 		if (bo.label) fadeLabel(bo.label, labelShare);
 		// The dot sits in the halo and fades with it.

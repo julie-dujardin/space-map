@@ -142,7 +142,6 @@ export class ZoneRefresher {
 						cap
 					};
 					this.zones.push(state);
-					this.prefetchTimeNeighbors(state, initialDate);
 				} else if (isChunkIndexed(zoomData)) {
 					const state: ChunkZoneState = {
 						kind: 'chunk',
@@ -156,10 +155,18 @@ export class ZoneRefresher {
 						preloads: new Map()
 					};
 					this.zones.push(state);
-					this.preloadChunkNeighbors(state);
 				}
 			}
 		}
+		// No zone draws from another star.
+		void ctx.solarSystemShown.then(() => {
+			for (const state of this.zones) {
+				// A load under way warms its own neighbours when it lands.
+				if (state.inFlight) continue;
+				if (state.kind === 'time') this.prefetchTimeNeighbors(state, this.latestDate);
+				else this.preloadChunkNeighbors(state);
+			}
+		});
 	}
 
 	private recordSuccess(key: string): void {

@@ -35,8 +35,7 @@ import type { LayerSet } from '$lib/scene/layers';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { loadProgress } from '$lib/scene/state/load-progress.svelte';
 import { dateToJD } from '$lib/time/jd';
-import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
-import { ensureExtrasolarBody } from './extrasolar';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 
 interface MinorChunkArg {
 	zone: string;
@@ -215,6 +214,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		console.warn('scene-load: atmospheres failed to load — rendering without shells:', e)
 	);
 	const jd = dateToJD(date);
+	// Opened on another star, the map leaves what draws only in the solar system
+	// till the camera comes back to it.
+	const extrasolar = targetId !== undefined && isExtrasolarObjectId(targetId);
+	if (!extrasolar) ctx.showSolarSystem();
 	const metadataPromise = fetchMetadata();
 	// Needed by the major-body pass; started here so it rides with the
 	// metadata fetch instead of joining the queue once the chunks are in flight.
@@ -233,7 +236,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 
 	// Start fetching+decoding the skybox low tier as soon as the tier list is
 	// known, rather than waiting for renderer init.
-	metadataPromise.then((metadata) => {
+	Promise.all([metadataPromise, ctx.solarSystemShown]).then(([metadata]) => {
 		if (metadata.skybox && !ctx.layers.skipped.has('stars')) prefetchSkyboxTiers(metadata.skybox);
 	});
 
@@ -258,13 +261,13 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// here rather than at the probe pass so its bundle rides along with the
 	// metadata and ephemeris fetches instead of adding a round trip to boot.
 	const passengerPromise = passengerFor(targetId);
-	// An extrasolar target is placed from its record, which rides along too.
-	const extrasolarTarget =
-		targetId && isStarObjectId(targetId)
-			? ensureExtrasolarBody(ctx, targetId).catch((e) =>
-					console.warn(`scene-load: ${targetId} did not load:`, e)
-				)
-			: null;
+	// An extrasolar target is placed from its record, which rides along too, with
+	// its planetary system: the map opens on it, not on the default view.
+	const extrasolarTarget = extrasolar
+		? ctx
+				.ensureExtrasolar(targetId)
+				.catch((e) => console.warn(`scene-load: ${targetId} did not load:`, e))
+		: null;
 
 	const metadata = await metadataPromise;
 	loadProgress.reach('metadata');
@@ -313,8 +316,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 
 	// If the target wasn't in majors/moons, route it into the same per-zone
 	// store its real chunk will land in, so phase 2 reconciles it in place.
-	if (extrasolarTarget) {
+	if (extrasolar) {
 		await extrasolarTarget;
+		// Not loaded, the map opens on the default view, in the solar system.
+		if (!ctx.getBody(targetId)) ctx.showSolarSystem();
 	} else if (targetId && !ctx.getBody(targetId)) {
 		// Ancestors the scene does not hold get the same routing pass.
 		const placeholders = await createPlaceholderBody(targetId, ctx);
@@ -348,6 +353,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	performance.mark('sm-majors-done');
 
 	// Phase 2: minors, loaded in background, flushed to reactive state periodically.
+	await ctx.solarSystemShown;
 	const { eager: minorChunkArgs, deferred: deferredChunkArgs } = await minorChunkArgsPromise;
 
 	const moonArgs = minorChunkArgs.filter((a) => a.zone === 'small_body_moons');

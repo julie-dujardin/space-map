@@ -212,7 +212,10 @@ const _view = new Vector3();
 export class StarfieldSystem {
 	/** Tree coordinates to the floating-origin scene. */
 	readonly group = new Group();
+	/** The same, for the exact stars: they draw before the nodes are in. */
+	readonly exactGroup = new Group();
 	private readonly uniforms = starUniforms();
+	private readonly exactGain = { value: 0 };
 	private tree: ExtrasolarTree | null = null;
 	private credits: ExtrasolarCredit[] = [];
 	private root: StarNode | null = null;
@@ -247,6 +250,8 @@ export class StarfieldSystem {
 	private readonly outsideFade = new SwitchFade();
 	/** The starfield's share of the sky. */
 	private readonly sky = new SwitchFade();
+	/** The exact stars' share. They need the tree's place, not its nodes. */
+	private readonly exactFade = new SwitchFade();
 	private readonly matrix: number[] = [];
 	/** Stars drawn on their own at their record's place, by ID. */
 	private readonly exact = new Map<number, ExactStar>();
@@ -260,9 +265,12 @@ export class StarfieldSystem {
 		private readonly pickRegistry: PickRegistry
 	) {
 		this.group.name = 'starfield';
-		this.group.matrixAutoUpdate = false;
-		this.group.visible = false;
-		scene.add(this.group);
+		this.exactGroup.name = 'starfield-exact';
+		for (const group of [this.group, this.exactGroup]) {
+			group.matrixAutoUpdate = false;
+			group.visible = false;
+			scene.add(group);
+		}
 		const open = extrasolarBase() !== '' && !ctx.layers.skipped.has('starfield');
 		this.drawable = open ? 'unknown' : 'no';
 	}
@@ -313,7 +321,7 @@ export class StarfieldSystem {
 			surface.matrixAutoUpdate = false;
 			surface.visible = false;
 			surface.renderOrder = STAR_RENDER_ORDER - 1;
-			this.group.add(surface);
+			this.exactGroup.add(surface);
 		}
 		return { star, points, surface, pick: null };
 	}
@@ -355,11 +363,10 @@ export class StarfieldSystem {
 	/** What a pick pass draws for the stars: each drawn node in view and the
 	 *  exact stars. Empty while the starfield draws nothing. */
 	pickDraws(): PickDraw[] {
-		if (!this.group.visible) return [];
 		const out: PickDraw[] = [];
 		for (const node of this.drawn) {
 			const points = node.points;
-			if (!points?.visible || !node.data) continue;
+			if (!this.group.visible || !points?.visible || !node.data) continue;
 			node.pick ??= {
 				base: this.pickRegistry.allocateRows(
 					NODE_PICK_PREFIX + node.name,
@@ -370,7 +377,7 @@ export class StarfieldSystem {
 			out.push({ points, material: this.pickMaterial(node.pick, points) });
 		}
 		for (const exact of this.exact.values()) {
-			if (!exact.points.visible) continue;
+			if (!this.exactGroup.visible || !exact.points.visible) continue;
 			exact.pick ??= {
 				base: this.pickRegistry.allocateRows(EXACT_PICK_PREFIX + exact.star.id, 1),
 				material: null
@@ -482,6 +489,11 @@ export class StarfieldSystem {
 		return this.sky.share;
 	}
 
+	/** The exact stars' share, 0 to 1. */
+	exactShare(): number {
+		return this.exactFade.share;
+	}
+
 	/** The skybox's share of the sky, 0 to 1. Out of the solar system it is 0. */
 	skyboxShare(): number {
 		return 1 - this.outsideFade.share;
@@ -503,7 +515,7 @@ export class StarfieldSystem {
 	/** True while a frame would change what draws. */
 	busy(): boolean {
 		if (this.loading > 0) return true;
-		if (this.sky.fading || this.outsideFade.fading) return true;
+		if (this.sky.fading || this.exactFade.fading || this.outsideFade.fading) return true;
 		if (this.drawn.size === 0) return false;
 		if (Math.abs(this.uniforms.uLimit.value - this.allowedLimit) > 0.01) return true;
 		for (const node of this.drawn) {
@@ -545,13 +557,17 @@ export class StarfieldSystem {
 		this.outside = starsTakeSky(switchAu, this.outside);
 		this.outsideFade.step(this.outside, dtMs);
 		this.sky.step(shown && this.ready && this.root !== null && this.outside, dtMs);
+		this.exactFade.step(shown && this.root !== null && this.outside, dtMs);
 		const skyShare = this.sky.share;
 		this.group.visible = shown && this.root !== null && skyShare > 0;
+		this.exactGroup.visible = shown && this.exactFade.share > 0;
 		this.uniforms.uPixelRatio.value = pixelRatio;
 		if (!this.root) return;
 
 		this.group.matrix.fromArray(treeMatrixElements(focus, this.matrix));
 		this.group.matrixWorldNeedsUpdate = true;
+		this.exactGroup.matrix.copy(this.group.matrix);
+		this.exactGroup.matrixWorldNeedsUpdate = true;
 
 		const cam = sceneToTree(wx, wy, wz);
 		const fromSunPc = Math.hypot(wx, wy, wz) / PC_SCENE;
@@ -568,11 +584,15 @@ export class StarfieldSystem {
 		const ease = dtMs > 0 ? 1 - Math.exp(-dtMs / LIMIT_EASE_MS) : 1;
 		limit.value += (this.allowedLimit - limit.value) * ease;
 		this.uniforms.uGain.value = gain * skyShare;
+		this.exactGain.value = gain * this.exactFade.share;
 		for (const exact of this.exact.values())
 			this.updateSurface(exact, camera, focus, viewportHeight);
 
 		this.applyFades(dtMs, camera, focus);
-		if (this.group.visible && !this.creditsShown && this.drawn.size > 0) {
+		const drawing =
+			(this.group.visible && this.drawn.size > 0) ||
+			(this.exactGroup.visible && this.exact.size > 0);
+		if (drawing && !this.creditsShown) {
 			this.creditsShown = true;
 			this.ctx.credits.setStars(this.credits);
 		}
@@ -598,7 +618,7 @@ export class StarfieldSystem {
 			2;
 		const share = updateStarTransition(surface.material, null, point, radiusPx);
 		surface.visible = share > 0;
-		surface.material.uniforms.uGain.value = this.uniforms.uGain.value;
+		surface.material.uniforms.uGain.value = this.exactGain.value;
 	}
 
 	dispose(): void {
@@ -612,6 +632,7 @@ export class StarfieldSystem {
 		this.nodes.clear();
 		this.setExactStars([]);
 		this.group.removeFromParent();
+		this.exactGroup.removeFromParent();
 	}
 
 	/** Back in the solar system: load nothing more, and let every node fade out.
@@ -632,10 +653,15 @@ export class StarfieldSystem {
 		if (this.drawable !== 'unknown' || this.metadataLoading) return;
 		if (this.retries.waiting(METADATA)) return;
 		this.metadataLoading = true;
-		this.bootGate ??= Promise.race([
-			eagerMinorsDone,
-			new Promise<void>((resolve) => setTimeout(resolve, BOOT_GATE_MS))
-		]);
+		// The boot's minor bodies go first while they draw. Out of the solar
+		// system, the stars are what the view waits for.
+		this.bootGate ??=
+			this.ctx.visibility.systemShare === 0
+				? Promise.resolve()
+				: Promise.race([
+						eagerMinorsDone,
+						new Promise<void>((resolve) => setTimeout(resolve, BOOT_GATE_MS))
+					]);
 		void (async () => {
 			await this.bootGate;
 			const meta = await fetchExtrasolarMetadata();
@@ -929,7 +955,7 @@ export class StarfieldSystem {
 		geometry.setAttribute('mag', new BufferAttribute(new Float32Array([mag]), 1));
 		const colour = starColours(new Float32Array([star.colour ?? NaN]), new Uint8Array(3));
 		geometry.setAttribute('starColour', new BufferAttribute(colour, 3, true));
-		const material = makeStarMaterial(this.uniforms, FOCUS_FLOOR_MAG);
+		const material = makeStarMaterial({ ...this.uniforms, uGain: this.exactGain }, FOCUS_FLOOR_MAG);
 		material.uniforms.uFade.value = 1;
 		const points = new Points(geometry, material);
 		points.position.set(...star.tree!);
@@ -938,7 +964,7 @@ export class StarfieldSystem {
 		points.frustumCulled = false;
 		points.renderOrder = STAR_RENDER_ORDER;
 		points.userData.exactStar = star.id;
-		this.group.add(points);
+		this.exactGroup.add(points);
 		return points;
 	}
 

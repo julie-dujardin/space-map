@@ -437,6 +437,9 @@ export class SceneRenderer {
 	private stashedSky: Scene['background'] = null;
 	/** Whether the planetary system draws (`system-fade.ts`), and its fade. */
 	private systemOn = true;
+	/** False while a map mounted before its data waits for its opening view:
+	 *  its camera sits at the barycentre, which is no sight of the solar system. */
+	private viewOpen = false;
 	private readonly systemFade = new SwitchFade();
 	private namesShown = true;
 	private halosShown = true;
@@ -683,6 +686,11 @@ export class SceneRenderer {
 
 		if (focusBody) ctx.visibility.setFocused(focusBody);
 		ctx.visibility.updateCamera(framing.zoom, this.clock.jd);
+		// Built after the load, the map is on its opening view already.
+		this.viewOpen = !ctx.loading;
+		// Before the first pass asks for data: a map that opens at another star
+		// does not show the solar system, and loads none of its zones.
+		this.updateSystemShare(0);
 
 		callbacks.onFocusChange(focusBody);
 
@@ -1225,8 +1233,9 @@ export class SceneRenderer {
 			ctx: this.ctx
 		});
 
-		// The starfield's share from the frame before: it updates after this pass.
+		// The starfield's shares from the frame before: it updates after this pass.
 		this.ctx.visibility.starShare = this.starfield.share();
+		this.ctx.visibility.exactStarShare = this.starfield.exactShare();
 		this.updateExoplanetSystems(renderedDtMs);
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
@@ -1480,18 +1489,24 @@ export class SceneRenderer {
 		});
 	}
 
-	/** Refreshes hidden zones when the size-triggered fade brings them back. */
+	/** The solar system's share of the view. Its zones refresh when the fade
+	 *  brings it back, and the data that waits for it loads when it first shows. */
 	private updateSystemShare(dtMs: number): void {
+		const visibility = this.ctx.visibility;
+		if (!this.viewOpen) {
+			visibility.systemShare = 0;
+			return;
+		}
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const cam = this.camera.position;
 		const fromBarycentre = Math.hypot(fx + cam.x, fy + cam.y, fz + cam.z);
 		this.systemOn = systemShown(fromBarycentre, this.viewportH, this.camera.fov, this.systemOn);
 		this.systemFade.step(this.systemOn, dtMs);
 		const share = this.systemFade.share;
-		const visibility = this.ctx.visibility;
 		const wasHidden = visibility.systemShare === 0;
 		visibility.systemShare = share;
 		this.pointClouds.setFade(share);
+		if (share > 0) this.ctx.showSolarSystem();
 		if (wasHidden && share > 0) this.ctx.refreshTick(jdToDate(this.clock.jd));
 	}
 
@@ -2725,6 +2740,11 @@ export class SceneRenderer {
 		this.focusController.snapToBodyFacing(id, towardId, elevationDeg, distance);
 	}
 
+	/** The camera is on the map's opening view: the solar system's share reads it. */
+	openView(): void {
+		this.viewOpen = true;
+	}
+
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
 		this.disarmLimits();
 		this.focusController.snapToBody(id, latitude, longitude, zoom);
@@ -3007,8 +3027,11 @@ export class SceneRenderer {
 		this.composer.setPixelRatio(renderPixelRatio());
 		this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
 		// The skybox's decoded faces are freed after upload, so three cannot
-		// re-upload the old CubeTexture — refetch and rebuild it instead.
-		void loadSkybox(this.scene, this.renderer, this.ctx, () => this.disposed);
+		// re-upload the old CubeTexture — refetch and rebuild it instead. With
+		// none installed yet, the load under way installs it in the new context.
+		if (this.scene.background || this.stashedSky) {
+			void loadSkybox(this.scene, this.renderer, this.ctx, () => this.disposed);
+		}
 		this.resume();
 	}
 

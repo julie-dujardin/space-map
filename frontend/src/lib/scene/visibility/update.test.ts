@@ -70,7 +70,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 		visibility: {
 			systemShare: 1,
 			systemShareOf: () => 1,
-			starShare: 1,
+			starShareOf: () => 1,
 			systemShares: new Map(),
 			planetarySystemShare: () => 0,
 			focusedSystemId: null,

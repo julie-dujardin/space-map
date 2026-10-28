@@ -66,7 +66,7 @@ export function pickSystemDot(pick: DotPick): DotHit | null {
 	const bodies: PositionedBody[] = [];
 	for (const hostId of ctx.visibility.systemShares.keys()) {
 		const host = ctx.getBody(hostId);
-		if (host && ctx.visibility.starShare > 0) bodies.push(host);
+		if (host && ctx.visibility.starShareOf(hostId, false) > 0) bodies.push(host);
 		const id = extrasolarIdOf(hostId);
 		const planets = id === null ? undefined : ctx.exoplanets.held(id)?.planets.get(id);
 		for (const planet of planets ?? []) {

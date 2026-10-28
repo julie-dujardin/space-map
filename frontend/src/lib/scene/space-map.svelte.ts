@@ -66,6 +66,7 @@ import { bodyView, type Body } from './body-view';
 import { LayerSet, MAP_LAYERS, type MapLayerId } from './layers';
 import { ControlHost, type Control, type ControlPosition } from './controls';
 import { onExtrasolarStale } from '$lib/fetch/extrasolar/files';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import './map.css';
 
 export interface SpaceMapOptions {
@@ -541,7 +542,9 @@ export class SpaceMap {
 
 	/** @internal Fetch the scene's data for the clock's date. Resolves when all of it is
 	 *  in, small bodies included, which is well after there is something to
-	 *  look at — {@link open} is what a caller opening a map wants. */
+	 *  look at — {@link open} is what a caller opening a map wants. A map that
+	 *  opens at another star loads its small bodies when the solar system
+	 *  first shows. */
 	load(targetId: string = this.initialView.id): Promise<void> {
 		return this.ctx.load(jdToDate(this.clock.jd), targetId);
 	}
@@ -593,6 +596,7 @@ export class SpaceMap {
 	 *  it was built: no data had loaded yet, so it framed nothing and reported
 	 *  no focus. Call it once {@link open} resolves. */
 	applyInitialView(): void {
+		this.renderer?.openView();
 		const { id, latitude, longitude, zoom } = this.initialView;
 		if (this.focusedBody || !this.ctx.getBody(id)) return;
 		this.renderer?.snapToBody(id, latitude, longitude, zoom);
@@ -957,7 +961,8 @@ export class SpaceMap {
 				/* reported by the error effect */
 			});
 			const date = jdToDate(this.clock.jd);
-			await this.ctx.ready(date).catch(note);
+			// An object of another star is placed from its record alone.
+			if (!isExtrasolarObjectId(id)) await this.ctx.ready(date).catch(note);
 			await this.ctx.ensureBody(id, date).catch(note);
 			renderer = await this.rendering();
 		} finally {

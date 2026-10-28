@@ -282,6 +282,7 @@ export async function loadSkybox(
 	// Switched off before the map opened: the six faces are never fetched, so
 	// there is nothing to switch back on.
 	if (ctx?.layers.skipped.has('stars')) return;
+	await ctx?.solarSystemShown;
 	try {
 		const meta = await fetchMetadata();
 		if (!meta.skybox) return;

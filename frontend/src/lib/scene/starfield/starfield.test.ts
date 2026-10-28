@@ -106,6 +106,8 @@ let metadataFailures = 0;
 let treeListed = true;
 let skipStars = false;
 let base = '/x';
+/** Node and ID files wait for this. */
+let nodeGate: Promise<void> = Promise.resolve();
 
 const tree: ExtrasolarTree = {
 	token: TOKEN,
@@ -127,7 +129,13 @@ const tree: ExtrasolarTree = {
 	distribution: 'non-commercial'
 };
 
-vi.mock('$lib/scene/setup/load-gates', () => ({ eagerMinorsDone: Promise.resolve() }));
+/** The boot's eager minor bodies: in, unless a test holds them. */
+let minorsGate: Promise<void> = Promise.resolve();
+vi.mock('$lib/scene/setup/load-gates', () => ({
+	get eagerMinorsDone() {
+		return minorsGate;
+	}
+}));
 vi.mock('$lib/fetch/extrasolar/files', async (importActual) => {
 	const actual = await importActual<typeof import('$lib/fetch/extrasolar/files')>();
 	return {
@@ -150,6 +158,7 @@ vi.mock('$lib/fetch/extrasolar/files', async (importActual) => {
 			};
 		},
 		fetchExtrasolarFile: async (path: string) => {
+			await nodeGate;
 			if (path.startsWith('mw/id/')) {
 				const name = path.replace('mw/id/', '').replace('.bin.gz', '');
 				fetched.push(`id:${name}`);
@@ -170,12 +179,13 @@ vi.mock('$lib/fetch/extrasolar/files', async (importActual) => {
 
 const { StarfieldSystem } = await import('./starfield');
 
-function fakeCtx(): ContextManager {
+function fakeCtx(systemShare = 1): ContextManager {
 	const layers = new LayerSet(skipStars ? { starfield: false } : {});
 	return {
 		layers,
 		onDataStale: null,
-		credits: { setStars: vi.fn() }
+		credits: { setStars: vi.fn() },
+		visibility: { systemShare }
 	} as unknown as ContextManager;
 }
 
@@ -228,6 +238,8 @@ beforeEach(() => {
 	allow = true;
 	skipStars = false;
 	base = '/x';
+	nodeGate = Promise.resolve();
+	minorsGate = Promise.resolve();
 });
 
 afterEach(() => {
@@ -528,7 +540,8 @@ describe('the starfield walk', () => {
 					.drawnNodes()
 					.map((n) => [n.name, [...(n.points.material as ShaderMaterial).uniforms.uHidden.value]])
 			);
-		const points = () => system.group.children.filter((c) => c.userData.exactStar !== undefined);
+		const points = () =>
+			system.exactGroup.children.filter((c) => c.userData.exactStar !== undefined);
 		// Every fake row sits at its node's centre with magnitude 10.
 		system.setExactStars([
 			{
@@ -593,7 +606,8 @@ describe('the starfield walk', () => {
 			const node = system.drawnNodes().find((n) => n.name === 'r0')!;
 			return [...(node.points.material as ShaderMaterial).uniforms.uHidden.value];
 		};
-		const points = () => system.group.children.filter((c) => c.userData.exactStar !== undefined);
+		const points = () =>
+			system.exactGroup.children.filter((c) => c.userData.exactStar !== undefined);
 		system.setExactStars([star(7, 10), star(8, 12), star(7, 10)]);
 		expect(r0()).toEqual([0, 2, -1, -1]);
 		expect(points().map((p) => p.userData.exactStar)).toEqual([7, 8]);
@@ -635,11 +649,11 @@ describe('the starfield walk', () => {
 				teff: 3000
 			}
 		]);
-		const surface = system.group.getObjectByName('star-photosphere') as Mesh<
+		const surface = system.exactGroup.getObjectByName('star-photosphere') as Mesh<
 			SphereGeometry,
 			ShaderMaterial
 		>;
-		const point = system.group.children.find((c) => c.userData.exactStar === 7) as Points;
+		const point = system.exactGroup.children.find((c) => c.userData.exactStar === 7) as Points;
 		expect(surface.geometry.parameters.radius * PC_SCENE).toBeCloseTo(kmToScene(radiusKm), 12);
 		expect(surface.material.uniforms.uCentreColor.value.toArray()).toEqual(
 			photosphereColour(3000, -0.12)
@@ -674,13 +688,14 @@ describe('the starfield walk', () => {
 		ctx.layers.setVisible('starfield', false);
 		system.update(camera, focus, 1, 0.25, (clock += 200), 900);
 		expect(system.group.visible).toBe(false);
-		expect(surface.material.uniforms.uGain.value).toBeCloseTo(system.share() * 0.25);
+		expect(system.exactGroup.visible).toBe(false);
+		expect(surface.material.uniforms.uGain.value).toBeCloseTo(system.exactShare() * 0.25);
 		const geometryDispose = vi.spyOn(surface.geometry, 'dispose');
 		const materialDispose = vi.spyOn(surface.material, 'dispose');
 		system.setExactStars([]);
 		expect(geometryDispose).toHaveBeenCalledOnce();
 		expect(materialDispose).toHaveBeenCalledOnce();
-		expect(system.group.getObjectByName('star-photosphere')).toBeUndefined();
+		expect(system.exactGroup.getObjectByName('star-photosphere')).toBeUndefined();
 		system.dispose();
 	});
 
@@ -706,8 +721,10 @@ describe('the starfield walk', () => {
 					teff: 5000
 				}
 			]);
-			expect(system.group.getObjectByName('star-photosphere')).toBeUndefined();
-			expect(system.group.children.find((c) => c.userData.exactStar === 7)?.visible).toBe(true);
+			expect(system.exactGroup.getObjectByName('star-photosphere')).toBeUndefined();
+			expect(system.exactGroup.children.find((c) => c.userData.exactStar === 7)?.visible).toBe(
+				true
+			);
 			system.dispose();
 		}
 	);
@@ -766,6 +783,68 @@ describe('the starfield walk', () => {
 		material.dispose();
 	});
 
+	it('waits for the minor bodies only while the solar system shows', async () => {
+		buildTree(new Array(8).fill(10));
+		minorsGate = new Promise(() => {});
+		const { camera, focus } = setup();
+		const open = (systemShare: number) =>
+			new StarfieldSystem(
+				fakeCtx(systemShare),
+				new Scene(),
+				{ points: 1e6, bytes: 1e9, fetches: 8 },
+				() => {},
+				new PickRegistry()
+			);
+		const inSystem = open(1);
+		await settle(inSystem, camera, focus);
+		expect(metadataCalls).toBe(0);
+		expect(inSystem.share()).toBe(0);
+		const atStar = open(0);
+		await settle(atStar, camera, focus);
+		expect(metadataCalls).toBe(1);
+		expect(atStar.share()).toBeGreaterThan(0.99);
+		inSystem.dispose();
+		atStar.dispose();
+	});
+
+	it('draws the exact stars before the nodes are in', async () => {
+		buildTree(new Array(8).fill(10));
+		let release = () => {};
+		nodeGate = new Promise((resolve) => (release = resolve));
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry()
+		);
+		system.setExactStars([
+			{
+				id: 7,
+				record: null!,
+				scene: [0, 0, 0],
+				tree: [C - 500, C - 500, C - 500],
+				absMag: 10,
+				colour: null,
+				radiusKm: null,
+				teff: null
+			}
+		]);
+		await settle(system, camera, focus);
+		expect(system.stats().cachedNodes).toBe(0);
+		expect(system.share()).toBe(0);
+		expect(system.group.visible).toBe(false);
+		expect(system.exactShare()).toBeGreaterThan(0.99);
+		expect(system.exactGroup.visible).toBe(true);
+		expect(system.pickDraws().map((d) => d.points.userData.exactStar)).toEqual([7]);
+
+		release();
+		await settle(system, camera, focus);
+		expect(system.share()).toBeGreaterThan(0.99);
+		system.dispose();
+	});
+
 	it('draws no focus point for a star with no place', async () => {
 		buildTree(new Array(8).fill(10));
 		const { camera, focus } = setup();
@@ -789,7 +868,7 @@ describe('the starfield walk', () => {
 				teff: null
 			}
 		]);
-		expect(system.group.children.some((c) => c.userData.exactStar !== undefined)).toBe(false);
+		expect(system.exactGroup.children.some((c) => c.userData.exactStar !== undefined)).toBe(false);
 	});
 });
 
