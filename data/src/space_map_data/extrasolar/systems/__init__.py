@@ -9,5 +9,7 @@ on the registry: a `Resolver` gives it the objects.
 
 Modules:
 - nodes: the normal form of a tree source, and the source names
-- msc, wds: the tree sources
+- msc, simbad, planets, wds: the tree sources
+- pairs: El-Badry and the Gaia orbits, as pairs
+- resolve: the resolver interface and the object facts
 """

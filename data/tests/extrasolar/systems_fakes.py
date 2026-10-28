@@ -1,9 +1,59 @@
 """Fakes for the star-system tests: source rows."""
 
 from collections import Counter
+from collections.abc import Sequence
 
+from space_map_data.extrasolar.sources.simbad import SimbadList, SimbadObject
 from space_map_data.extrasolar.systems import wds as wds_source
+from space_map_data.extrasolar.systems.simbad import SimbadIndex
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
+
+
+def simbad_object(
+    oid: int,
+    main_id: str,
+    ra: float,
+    dec: float,
+    otype: str = "*",
+    v: float | None = None,
+    gaia: str | None = None,
+    hip: str | None = None,
+    hd: str | None = None,
+    identifiers: tuple[str, ...] = (),
+    sp_type: str = "",
+) -> SimbadObject:
+    row = {
+        "otype": otype,
+        "G": "",
+        "pmra": "",
+        "pmdec": "",
+        "plx_value": "",
+        "sp_type": sp_type,
+    }
+    return SimbadObject(
+        oid,
+        main_id,
+        ra,
+        dec,
+        [main_id, *identifiers],
+        gaia,
+        hip,
+        hd,
+        v,
+        row,
+    )
+
+
+def simbad_index(
+    objects: list[SimbadObject], links: Sequence[tuple[int, int]] = ()
+) -> SimbadIndex:
+    """`links` are (parent, child)."""
+    children: dict[int, list[int]] = {}
+    for parent, child in links:
+        children.setdefault(parent, []).append(child)
+    stars = SimbadList({o.oid: o for o in objects}, children, {})
+    return SimbadIndex.build(stars)
+
 
 MSC_COMP = [
     "WDS",

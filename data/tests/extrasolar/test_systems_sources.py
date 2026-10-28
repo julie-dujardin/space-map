@@ -1,7 +1,8 @@
-"""Tests for the tree sources of the star systems: WDS and MSC."""
+"""Tests for the tree sources of the star systems: WDS, MSC and SIMBAD."""
 
 import pytest
 
+from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.systems import wds as wds_source
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.nodes import (
@@ -11,9 +12,12 @@ from space_map_data.extrasolar.systems.nodes import (
     UNVERIFIED,
     VISUAL_ORBIT,
 )
+from space_map_data.extrasolar.systems.simbad import read_simbad
 from tests.extrasolar.systems_fakes import (
     msc_comp,
     msc_pair,
+    simbad_index,
+    simbad_object,
     wds_catalogue,
     wds_component,
     wds_pair,
@@ -247,3 +251,53 @@ class TestMsc:
         assert (rows["A"]["pmra"], rows["A"]["pmdec"]) == (0.0, -15.5)
         assert (rows["B"]["pmra"], rows["B"]["pmdec"]) == (None, None)
         assert rows["B"]["position_angle"] is None
+
+
+class TestSimbadTree:
+    """SIMBAD's hierarchy as nodes, and its index of ids."""
+
+    def test_tree_with_brightest_first(self):
+        index = simbad_index(
+            [
+                simbad_object(1, "* alf Cen", 219.9, -60.83, otype="SB*"),
+                simbad_object(
+                    2, "* alf Cen A", 219.9021, -60.8340, v=0.01, hip="71683"
+                ),
+                simbad_object(
+                    3, "* alf Cen B", 219.8961, -60.8375, v=1.33, hip="71681"
+                ),
+            ],
+            [(1, 3), (1, 2)],
+        )
+        nodes = read_simbad(index.stars)
+        assert nodes["label"].to_pylist() == ["* alf Cen", "* alf Cen A", "* alf Cen B"]
+        assert nodes["parent"].to_pylist() == [-1, 0, 0]
+        separation = nodes["separation"].to_pylist()
+        assert separation[1] is None
+        assert separation[2] == pytest.approx(
+            sky.separation(219.9021, -60.8340, 219.8961, -60.8375)
+        )
+
+    def test_index_reaches_components(self):
+        index = simbad_index(
+            [
+                simbad_object(10, "* alf Gem", 113.65, 31.89, otype="**", hip="36850"),
+                simbad_object(
+                    11,
+                    "* alf Gem A",
+                    113.65,
+                    31.889,
+                    hd="60179",
+                    identifiers=("HR 2891",),
+                ),
+                simbad_object(
+                    12, "V* YY Gem", 113.66, 31.87, identifiers=("V* YY Gem",)
+                ),
+            ],
+            [(10, 11)],
+        )
+        assert index.components("hd", "1949", "60179") == [11]
+        assert index.components("hr", "bsc", "2891") == [11]
+        assert index.components("gcvs", "name", "V* YY Gem") == [12]
+        # The system object carries the HIP number but is no component.
+        assert index.components("hip", "2007", "36850") == []
