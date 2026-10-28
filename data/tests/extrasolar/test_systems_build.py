@@ -823,6 +823,28 @@ class TestHashSeed:
         assert members["letter"].to_pylist() == ["AD", "BE"]
 
 
+def wds_tree(rows: list[tuple]) -> pa.Table:
+    """A WDS node table of (label, parent, separation, V, evidence) rows."""
+    base = dict.fromkeys(NODES.names)
+    return pa.Table.from_pylist(
+        [
+            base
+            | {
+                "source": WDS,
+                "system": "01000+1000",
+                "node": at,
+                "label": label,
+                "parent": parent,
+                "separation": separation,
+                "v_mag": mag,
+                "evidence": evidence,
+            }
+            for at, (label, parent, separation, mag, evidence) in enumerate(rows)
+        ],
+        schema=NODES,
+    )
+
+
 class TestCrossMatchError:
     """A and B of one WDS pair reach X, which they are too far apart to share.
 
@@ -831,32 +853,16 @@ class TestCrossMatchError:
     """
 
     def reduced(self) -> Reduced:
-        base = dict.fromkeys(NODES.names)
-        rows = [
-            ("AB", -1, None, None, None),
-            ("A", 0, None, 5.0, None),
-            ("B", 0, 5.0, 8.0, None),
-            ("Ba", 2, None, 8.0, None),
-            ("Bb", 2, 3.0, 9.0, UNVERIFIED),
-            ("Bb1", 4, None, 9.0, None),
-            ("Bb2", 4, 2.0, 9.5, None),
-        ]
-        table = pa.Table.from_pylist(
+        table = wds_tree(
             [
-                base
-                | {
-                    "source": WDS,
-                    "system": "01000+1000",
-                    "node": at,
-                    "label": label,
-                    "parent": parent,
-                    "separation": separation,
-                    "v_mag": mag,
-                    "evidence": evidence,
-                }
-                for at, (label, parent, separation, mag, evidence) in enumerate(rows)
-            ],
-            schema=NODES,
+                ("AB", -1, None, None, None),
+                ("A", 0, None, 5.0, None),
+                ("B", 0, 5.0, 8.0, None),
+                ("Ba", 2, None, 8.0, None),
+                ("Bb", 2, 3.0, 9.0, UNVERIFIED),
+                ("Bb1", 4, None, 9.0, None),
+                ("Bb2", 4, 2.0, 9.5, None),
+            ]
         )
         X, W, Y, Z = 100, 101, 102, 103
         candidates = [[], [(X, 2)], [], [(X, 2), (W, 2)], [], [(Y, 2)], [(Z, 2)]]
@@ -900,25 +906,12 @@ class TestCrossMatchError:
     def test_an_unverified_member_that_loses_its_object_leaves(self):
         """B is unverified and reaches X with A. X stays with A, and B has no
         other candidate: it has no point whose parallax could agree."""
-        base = dict.fromkeys(NODES.names)
-        rows = [("AB", -1, None, None, None), ("A", 0, None, 5.0, None)]
-        rows.append(("B", 0, 1.1, 5.3, UNVERIFIED))
-        table = pa.Table.from_pylist(
+        table = wds_tree(
             [
-                base
-                | {
-                    "source": WDS,
-                    "system": "01000+1000",
-                    "node": at,
-                    "label": label,
-                    "parent": parent,
-                    "separation": separation,
-                    "v_mag": mag,
-                    "evidence": evidence,
-                }
-                for at, (label, parent, separation, mag, evidence) in enumerate(rows)
-            ],
-            schema=NODES,
+                ("AB", -1, None, None, None),
+                ("A", 0, None, 5.0, None),
+                ("B", 0, 1.1, 5.3, UNVERIFIED),
+            ]
         )
         x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
         facts = Facts(pa.Table.from_pylist([x], schema=FACTS))
@@ -927,6 +920,37 @@ class TestCrossMatchError:
         assert out.groups == [] and out.interiors == []
         assert out.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
         assert f"{WDS}: unverified members kept by parallax" not in out.counts
+
+    def test_the_id_of_a_keeper_that_leaves_goes_back(self):
+        """A and B of AB reach X, and X's magnitude is nearer B's. B keeps X,
+        so A has no object, and B is unverified and leaves. X goes back to A,
+        and AB is a point of the system ABC."""
+        table = wds_tree(
+            [
+                ("ABC", -1, None, None, None),
+                ("AB", 0, None, None, None),
+                ("A", 1, None, 5.0, None),
+                ("B", 1, 1.1, 5.3, UNVERIFIED),
+                ("C", 0, 20.0, 7.0, None),
+            ]
+        )
+        x = fact(100, 10.0, 10.0, 5.3, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        q = fact(101, 10.0, 10.0 + 20 / 3600, 7.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        facts = Facts(pa.Table.from_pylist([x, q], schema=FACTS))
+        out = Reduced()
+        candidates = [[], [], [(100, 2)], [(100, 2)], [(101, 2)]]
+        TreeReducer(table, 0, candidates, facts, 0, out).run()
+        (group,) = out.groups
+        assert group.keys == frozenset({100, 101})
+        assert [(m.kind, m.key, m.value) for m in group.members] == [
+            ("point", 100, 1),
+            ("point", 101, 4),
+        ]
+        ((kind, _, text),) = out.events
+        assert kind == "cross-match error"
+        assert text.endswith("it stays with B; B leaves the tree, so it goes back to A")
+        assert out.counts[f"{WDS}: shared ids back from a member that left"] == 1
+        assert out.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
 
 
 class TestRegistryInputs:

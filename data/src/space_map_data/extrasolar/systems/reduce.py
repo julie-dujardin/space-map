@@ -6,7 +6,8 @@ and is a group:
 - Two siblings that reach one object are one point when the object's data
   cannot split them (`resolves`). Else the shared id is a cross-match error:
   the object goes to the sibling whose magnitude is nearer to the object's,
-  and the other takes its next candidate.
+  and the other takes its next candidate. When that sibling leaves the tree,
+  the object goes back to the other.
 - A SIMBAD component with no astrometry of its own, whose light a sibling's
   point holds, is inside that point: the builder makes its row an entry.
 - An id of a group that one of its members also reaches is the light of that
@@ -185,11 +186,46 @@ class _Part:
     key: int = 0
     # The rows of the members inside the point, or of the loose members.
     leaves: list[int] = field(default_factory=list)
+    # A group: its index in the records that hold it, and its objects.
     group: int = -1
+    group_keys: frozenset[int] = frozenset()
 
     @property
     def loose(self) -> bool:
         return not self.key and self.group < 0
+
+    @property
+    def held(self) -> frozenset[int]:
+        """The objects of the part."""
+        return frozenset({self.key}) if self.key else self.group_keys
+
+
+@dataclass
+class _Error:
+    """A shared id that splits the siblings that reach it."""
+
+    key: int
+    keeper: int
+    losers: list[int]
+    text: str
+    back: bool = False
+
+
+def _extend(out: Reduced, more: Reduced) -> int:
+    """Add the records of `more` to `out`. Gives the shift of the group
+    indices of `more`."""
+    shift = len(out.groups)
+    for group in more.groups:
+        for member in group.members:
+            if member.kind == GROUP:
+                member.group += shift
+    out.groups += more.groups
+    out.interiors += more.interiors
+    out.absorbed += more.absorbed
+    out.tentative += more.tentative
+    out.events += more.events
+    out.counts.update(more.counts)
+    return shift
 
 
 class TreeReducer:
@@ -228,23 +264,22 @@ class TreeReducer:
         for row, parent in enumerate(self.parent.tolist()):
             if parent >= 0:
                 self.children[parent].append(row)
-        self.counts = out.counts
 
     def run(self) -> None:
         for root in np.flatnonzero(self.parent < 0).tolist():
-            part = self.part(root, frozenset())
-            self._close(part, root)
+            part = self.part(root, frozenset(), self.out)
+            self._close(part, root, self.out)
 
-    def _event(self, kind: str, text: str) -> None:
-        self.out.events.append((kind, self.source, text))
-        self.counts[f"{self.source}: {kind}"] += 1
+    def _event(self, kind: str, text: str, out: Reduced) -> None:
+        out.events.append((kind, self.source, text))
+        out.counts[f"{self.source}: {kind}"] += 1
 
     def _name(self, row: int) -> str:
         return f"{self.source} {self.system[row]} {self.label[row]}"
 
     # Choosing a node's object
 
-    def _choose(self, row: int, exclude: frozenset[int]) -> int:
+    def _choose(self, row: int, exclude: frozenset[int], out: Reduced) -> int:
         found = [
             (key, rank)
             for key, rank in self.candidates[row]
@@ -261,15 +296,16 @@ class TreeReducer:
                     continue
                 for other, holder in zip(keys, facts):
                     if other != keys[at] and self._holds(holder, fact):
-                        self._absorb(keys[at], other, holder, fact)
+                        self._absorb(keys[at], other, holder, fact, out)
                         return other
             self._event(
                 "ids reach two objects",
                 f"{self._name(row)}: {keys[0]} ({HOW[found[0][1]]}) over"
                 f" {keys[1]} ({HOW[found[1][1]]})",
+                out,
             )
         if not self.children[row]:
-            self.counts[f"{self.source}: members {HOW[found[0][1]]}"] += 1
+            out.counts[f"{self.source}: members {HOW[found[0][1]]}"] += 1
         return found[0][0]
 
     def _holds(self, holder: Fact | None, inside: Fact | None) -> bool:
@@ -285,7 +321,12 @@ class TreeReducer:
         return resolves(holder.astrometry, apart, contrast) is False
 
     def _absorb(
-        self, key: int, into: int, holder: Fact | None, inside: Fact | None
+        self,
+        key: int,
+        into: int,
+        holder: Fact | None,
+        inside: Fact | None,
+        out: Reduced,
     ) -> None:
         assert holder is not None and inside is not None
         apart = float(sky_separation(holder.ra, holder.dec, inside.ra, inside.dec))
@@ -293,20 +334,21 @@ class TreeReducer:
             f"{apart:.1f}″ from {into} ({holder.astrometry}),"
             f" {inside.mag - holder.mag:+.1f} mag"
         )
-        self.out.absorbed.append(Absorbed(key, into, self.source, evidence))
+        out.absorbed.append(Absorbed(key, into, self.source, evidence))
 
     # Parts
 
-    def part(self, row: int, exclude: frozenset[int]) -> _Part:
-        own = self._choose(row, exclude)
+    def part(self, row: int, exclude: frozenset[int], out: Reduced) -> _Part:
+        """The part of the subtree of `row`. Its records go to `out`."""
+        own = self._choose(row, exclude, out)
         kids = self.children[row]
         if not kids:
             if not own:
-                self.counts[f"{self.source}: members with no object"] += 1
+                out.counts[f"{self.source}: members with no object"] += 1
             return _Part(row, own, [row])
-        parts = self._children(row, exclude)
-        parts = self._inside(parts)
-        parts, own = self._own(row, own, parts)
+        parts = self._children(row, exclude, out)
+        parts = self._inside(parts, out)
+        parts, own = self._own(row, own, parts, out)
         keys = {p.key for p in parts if p.key}
         groups = [p for p in parts if p.group >= 0]
         if not groups and not keys:
@@ -322,7 +364,7 @@ class TreeReducer:
             inside = [p for p in parts if p not in apart]
             merged = _Part(point.node, key, [leaf for p in inside for leaf in p.leaves])
             parts = [merged, *apart]
-        return self._group(row, parts)
+        return self._group(row, parts, out)
 
     def _apart(self, first: _Part, second: _Part, primary: _Part) -> float | None:
         """The separation of two members of a group, from the source."""
@@ -348,7 +390,7 @@ class TreeReducer:
         apart = self._apart(point, loose, primary)
         return bool(resolves(fact.astrometry, apart, contrast))
 
-    def _unverified(self, row: int, parts: list[_Part]) -> list[_Part]:
+    def _unverified(self, row: int, parts: list[_Part], out: Reduced) -> list[_Part]:
         primary = parts[0]
         kept = [primary]
         for part in parts[1:]:
@@ -364,67 +406,94 @@ class TreeReducer:
                 and second is not None
                 and same_distance(first, second, self.separation[part.node])
             ):
-                self.counts[f"{self.source}: unverified members kept by parallax"] += 1
+                out.counts[f"{self.source}: unverified members kept by parallax"] += 1
                 kept.append(part)
                 continue
-            self.counts[f"{self.source}: {evidence} members left for agreement"] += 1
-            keys = self._keys(primary) | self._keys(part)
-            if self._keys(part) and self._keys(primary):
-                self.out.tentative.append(
-                    Tentative(self.source, self.system[row], frozenset(keys), evidence)
+            out.counts[f"{self.source}: {evidence} members left for agreement"] += 1
+            if part.held and primary.held:
+                out.tentative.append(
+                    Tentative(
+                        self.source,
+                        self.system[row],
+                        primary.held | part.held,
+                        evidence,
+                    )
                 )
         return kept
 
-    def _keys(self, part: _Part) -> set[int]:
-        if part.key:
-            return {part.key}
-        if part.group >= 0:
-            return set(self.out.groups[part.group].keys)
-        return set()
-
-    def _children(self, row: int, exclude: frozenset[int]) -> list[_Part]:
+    def _children(self, row: int, exclude: frozenset[int], out: Reduced) -> list[_Part]:
         """The parts of the children of `row`.
 
-        A child that loses a shared id to a sibling takes its next candidate.
-        Then the children are reduced again, and the unverified members are
-        checked against the objects that they hold now. Only the last pass
-        keeps its records. The loop ends, because each pass excludes one more
-        id for a child.
+        The checks of the unverified members and of the shared ids depend on
+        the objects of the children, and a lost id changes these objects. So
+        the children pass again until no id is shared, and only the last pass
+        gives records. An id goes back from a keeper that leaves the tree, so
+        that its object keeps a member. The loop ends, because each error
+        excludes one more id for a child, and a keeper that leaves excludes
+        its id from then on.
         """
         kids = self.children[row]
-        out = self.out
-        records = (out.groups, out.interiors, out.absorbed, out.tentative, out.events)
-        sizes = [len(items) for items in records]
-        counts = self.counts
+        # The part of a child depends only on the ids that it excludes.
+        reduced: dict[tuple[int, frozenset[int]], tuple[_Part, Reduced]] = {}
         lost: dict[int, frozenset[int]] = {}
-        errors: list[str] = []
+        errors: list[_Error] = []
         while True:
-            self.counts = Counter()
-            parts = [
-                self.part(kid, exclude | lost.get(kid, frozenset())) for kid in kids
-            ]
-            parts, error = self._shared(row, self._unverified(row, parts))
+            done = []
+            for kid in kids:
+                at = (kid, exclude | lost.get(kid, frozenset()))
+                if at not in reduced:
+                    records = Reduced()
+                    reduced[at] = (self.part(kid, at[1], records), records)
+                done.append(reduced[at])
+            checked = Reduced()
+            parts = self._unverified(row, [part for part, _ in done], checked)
+            if self._give_back(errors, parts, lost):
+                continue
+            parts, error = self._shared(row, parts)
             if error is None:
                 break
-            for items, size in zip(records, sizes):
-                del items[size:]
-            key, losers, text = error
-            errors.append(text)
-            for loser in losers:
-                lost[loser] = lost.get(loser, frozenset()) | {key}
-        counts.update(self.counts)
-        self.counts = counts
-        for text in errors:
-            self._event("cross-match error", text)
+            errors.append(error)
+            for loser in error.losers:
+                lost[loser] = lost.get(loser, frozenset()) | {error.key}
+        shift = {part.node: _extend(out, records) for part, records in done}
+        _extend(out, checked)
+        for part in parts:
+            if part.group >= 0:
+                part.group += shift[part.node]
+        for error in errors:
+            self._event("cross-match error", error.text, out)
+            if error.back:
+                out.counts[
+                    f"{self.source}: shared ids back from a member that left"
+                ] += 1
         return parts
+
+    def _give_back(
+        self, errors: list[_Error], parts: list[_Part], lost: dict[int, frozenset[int]]
+    ) -> bool:
+        """Give the id of each keeper that is not in `parts` back to the
+        children that lost it. Gives whether any id went back."""
+        kept = {part.node for part in parts}
+        back = False
+        for error in errors:
+            if error.back or error.keeper in kept:
+                continue
+            error.back = back = True
+            lost[error.keeper] = lost.get(error.keeper, frozenset()) | {error.key}
+            for loser in error.losers:
+                lost[loser] -= {error.key}
+            error.text += (
+                f"; {self.label[error.keeper]} leaves the tree, so it goes back to "
+                + ", ".join(self.label[loser] or "?" for loser in error.losers)
+            )
+        return back
 
     def _shared(
         self, row: int, parts: list[_Part]
-    ) -> tuple[list[_Part], tuple[int, list[int], str] | None]:
+    ) -> tuple[list[_Part], _Error | None]:
         """Merge the siblings that reach one object that cannot split them.
 
-        The first object that splits them is a cross-match error. For it,
-        this gives the object, the rows that lose it and the event text.
+        The first object that splits them is a cross-match error.
         """
         for _ in range(len(parts)):
             by_key: dict[int, list[_Part]] = {}
@@ -468,10 +537,11 @@ class TreeReducer:
                 + f" reach {key} ({fact.astrometry if fact else None}),"
                 f" {distance}″ apart; it stays with {self.label[keep.node]}"
             )
-            return parts, (key, [p.node for p in same if p is not keep], text)
+            losers = [p.node for p in same if p is not keep]
+            return parts, _Error(key, keep.node, losers, text)
         return parts, None
 
-    def _inside(self, parts: list[_Part]) -> list[_Part]:
+    def _inside(self, parts: list[_Part], out: Reduced) -> list[_Part]:
         """Merge a SIMBAD component into the sibling point that holds its light."""
         points = [p for p in parts if p.key]
         for part in points:
@@ -487,33 +557,37 @@ class TreeReducer:
             if not holders:
                 continue
             holder = holders[0]
-            self._absorb(part.key, holder.key, self.facts.get(holder.key), fact)
+            self._absorb(part.key, holder.key, self.facts.get(holder.key), fact, out)
             holder.leaves = holder.leaves + part.leaves
             parts = [p for p in parts if p is not part]
             points = [p for p in points if p is not part]
         return parts
 
-    def _own(self, row: int, own: int, parts: list[_Part]) -> tuple[list[_Part], int]:
+    def _own(
+        self, row: int, own: int, parts: list[_Part], out: Reduced
+    ) -> tuple[list[_Part], int]:
         if not own:
             return parts, 0
-        held = set().union(*(self._keys(p) for p in parts))
+        held = frozenset().union(*(p.held for p in parts))
         if not held:
             return parts, own
         if own in held:
             self._event(
                 "group id held by a member",
                 f"{self._name(row)}: {own} is also a member's object",
+                out,
             )
             return parts, 0
-        merged = self._inside([*parts, _Part(row, own, [])])
+        merged = self._inside([*parts, _Part(row, own, [])], out)
         if any(p.key == own for p in merged):
             self._event(
                 "group object beside its members",
                 f"{self._name(row)}: {own} is a point of its own beside {sorted(held)}",
+                out,
             )
         return merged, 0
 
-    def _close(self, part: _Part, top: int) -> None:
+    def _close(self, part: _Part, top: int, out: Reduced) -> None:
         """Record the interior of a point part."""
         if part.key and len(part.leaves) > 1:
             entries = []
@@ -521,11 +595,11 @@ class TreeReducer:
                 parent = int(self.parent[leaf])
                 inner = self.label[parent] if parent >= 0 and parent != top else None
                 entries.append((self.offset + leaf, inner))
-            self.out.interiors.append(
+            out.interiors.append(
                 Interior(part.key, self.source, self.rank, self.system[top], entries)
             )
 
-    def _group(self, row: int, parts: list[_Part]) -> _Part:
+    def _group(self, row: int, parts: list[_Part], out: Reduced) -> _Part:
         members = []
         keys: set[int] = set()
         for part in parts:
@@ -533,19 +607,18 @@ class TreeReducer:
                 members.append(
                     Member(GROUP, group=part.group, value=self.offset + part.node)
                 )
-                keys |= self._keys(part)
             elif part.key:
-                self._close(part, part.node)
+                self._close(part, part.node, out)
                 members.append(
                     Member(POINT, key=part.key, value=self.offset + part.node)
                 )
-                keys.add(part.key)
             else:
                 for leaf in part.leaves:
                     parent = int(self.parent[leaf])
                     inner = self.label[parent] if parent != row else None
                     members.append(Member(ENTRY, value=self.offset + leaf, inner=inner))
-        self.out.groups.append(
+            keys |= part.held
+        out.groups.append(
             Group(
                 self.source,
                 self.rank,
@@ -555,4 +628,4 @@ class TreeReducer:
                 members,
             )
         )
-        return _Part(row, 0, [], len(self.out.groups) - 1)
+        return _Part(row, 0, [], len(out.groups) - 1, frozenset(keys))
