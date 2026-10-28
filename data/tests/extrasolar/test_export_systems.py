@@ -1,6 +1,9 @@
 """The star systems in the extrasolar export: the System tiles, their checks,
-the tier and the render tree."""
+the tier, the render tree and the planet files of systems."""
 
+import math
+
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -8,10 +11,13 @@ from space_map_data.download.providers.stars import el_badry, msc, wds
 from space_map_data.export.extrasolar import build, render, skycultures, tiles
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
+from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.sky import region_of
 from space_map_data.extrasolar.tables import METADATA, SYSTEM, TABLES
 from tests.extrasolar.export_registry import (
     Node,
+    planet,
     random_stars,
     star,
     write_registry,
@@ -79,6 +85,18 @@ def _registry_rows(root) -> dict[int, dict]:
         ]
     rows = pa.concat_tables([part for part in parts if part is not None])
     return {row["id"]: row for row in rows.to_pylist()}
+
+
+def _place(ra: float, dec: float, parallax: float) -> list:
+    """The render position of a Gaia star at J2016.0 with a 5σ parallax."""
+    distance = 1000 / parallax
+    ra, dec = math.radians(ra), math.radians(dec)
+    xyz = (
+        math.cos(dec) * math.cos(ra),
+        math.cos(dec) * math.sin(ra),
+        math.sin(dec),
+    )
+    return [pytest.approx(distance * v, rel=1e-9, abs=1e-9) for v in xyz]
 
 
 def _render_ids(reader: ExportReader) -> set[int]:
@@ -295,3 +313,95 @@ class TestChecks:
         changed = _registry(tmp_path / "c", tamper=relabel)
         with pytest.raises(ExportRefused, match="served ID lost catalogue ids"):
             export_extrasolar(changed.root, out, workers=1)
+
+
+class TestPlanetFiles:
+    def test_hosts_and_keys_of_star_systems(self, tmp_path, out):
+        planets = [
+            # Around Proxima, in the file of α Cen.
+            planet(2, 1, system=("node", ALPHA_CEN)),
+            # Around both stars of the point.
+            planet(3, 1, binary_type="P-type"),
+            # Around both stars of the resolved pair.
+            planet(("node", PAIR), 1, system=("node", PAIR), binary_type="P-type"),
+        ]
+        built = _registry(tmp_path / "reg", planets=planets)
+        report = export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        index = {host["id"]: host for host in reader.planet_index()["hosts"]}
+        alpha, pair = built.nodes[ALPHA_CEN], built.nodes[PAIR]
+        assert set(index) == {built.ids[2], built.ids[3], pair}
+        assert index[built.ids[2]]["system"] == alpha
+        assert index[built.ids[3]]["system"] == built.ids[3]
+
+        system = reader.system(alpha)
+        assert [host["id"] for host in system["hosts"]] == [alpha, built.ids[2]]
+        key = system["hosts"][0]
+        assert key["planets"] == [] and key["name"] == "Alpha Centauri"
+        assert key["class"] == "multiple star" and key["placement"] is None
+        # The place of α Cen A, the primary point of α Cen.
+        assert key["position"] == _place(219.902, -60.834, 750.0)
+        assert key["distance"] == pytest.approx(1000 / 750.0)
+        assert list(key) == list(system["hosts"][1])
+        proxima = system["hosts"][1]
+        assert proxima["placement"] == "star-systems"
+
+        circumbinary = reader.system(pair)
+        (host,) = circumbinary["hosts"]
+        assert host["id"] == pair and host["planets"] == [1]
+        assert host["epoch"] == render.EPOCH and host["class"] == "binary star"
+        # Not drawn as a star, but at its primary's place.
+        assert host["placement"] is None
+        assert host["position"] == _place(120.0, -30.0, 5.0)
+        assert host["distance"] == pytest.approx(200.0)
+        assert reader.planet(pair, 1) is not None
+        assert index[pair]["position"] == host["position"]
+        assert report["planets"]["resolved system placed at one of its points"] == 2
+
+    def test_a_resolved_host_without_a_drawn_primary(self, tmp_path, out):
+        """The pair takes the place of its first member point that the render
+        tree draws, which is in another region of the sky."""
+        stars = [
+            star(120.0, -30.0, 5.0, 9.0, snr=3),
+            star(135.0, -30.0, 20.0, 9.5),
+            *random_stars(30, seed=31),
+        ]
+        systems = [Node((("star", 0, "A"), ("star", 1, "B")))]
+        planets = [planet(("node", 0), 1, system=("node", 0), binary_type="P-type")]
+        built = write_registry(
+            tmp_path / "reg", stars, systems=systems, planets=planets
+        )
+        (pair,) = built.nodes
+        regions = region_of(cell_of(np.array([pair, built.ids[1]])))
+        assert regions[0] != regions[1]
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        drawn = _render_ids(reader)
+        assert built.ids[0] not in drawn and pair not in drawn
+        (host,) = reader.system(pair)["hosts"]
+        assert host["placement"] is None
+        assert host["position"] == _place(135.0, -30.0, 20.0)
+        assert host["distance"] == pytest.approx(50.0)
+        (entry,) = reader.planet_index()["hosts"]
+        assert entry["id"] == pair and entry["position"] == host["position"]
+
+    def test_a_host_keyed_by_another_star_than_its_root(self, tmp_path, out):
+        planets = [planet(2, 1)]
+        built = _registry(tmp_path / "reg", planets=planets)
+        with pytest.raises(ExportRefused, match="not keyed by its root"):
+            export_extrasolar(built.root, out, workers=1)
+
+    def test_every_host_off_its_root_is_counted(self, tmp_path, out):
+        """The count holds more hosts than the examples."""
+        systems = [
+            Node((("star", 2 * n, "A"), ("star", 2 * n + 1, "B"))) for n in range(12)
+        ]
+        planets = [planet(n, 1) for n in range(24)]
+        built = write_registry(
+            tmp_path / "reg",
+            random_stars(30, seed=31),
+            systems=systems,
+            planets=planets,
+        )
+        with pytest.raises(ExportRefused, match="not keyed by its root: 24 "):
+            export_extrasolar(built.root, out, workers=1)

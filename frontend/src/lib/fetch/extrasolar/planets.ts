@@ -42,7 +42,9 @@ export interface PlanetIndexHost {
 	system: number;
 	/** Live planet numbers, ascending. */
 	planets: number[];
-	/** pc, in the frame of the render tree; null when the host is not drawn. */
+	/** pc, in the frame of the render tree; null when the host has no place.
+	 *  A resolved star system is not drawn as a star, and has the place of
+	 *  one of its points. */
 	position: [number, number, number] | null;
 	/** AU, the largest semi-major axis of its planets; null when none has one. */
 	outer_orbit: number | null;

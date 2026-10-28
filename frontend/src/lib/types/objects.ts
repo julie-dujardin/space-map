@@ -225,9 +225,11 @@ export interface PositionedBody {
 export interface StarAnchor {
 	id: number;
 	record: ExtrasolarRecord;
-	/** Scene position (barycentre origin) and tree position (pc); null when the
-	 *  record gives no distance. */
+	/** Scene position (barycentre origin); null when the object has no place. */
 	scene: [number, number, number] | null;
+	/** Tree position (pc) of a star the starfield draws; null when the record
+	 *  gives no distance. A resolved star system that hosts planets has a
+	 *  scene place from the planet index, and no tree place. */
 	tree: [number, number, number] | null;
 	/** Absolute G as the render tree rounds it; null when the record has none. */
 	absMag: number | null;

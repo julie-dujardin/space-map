@@ -8,10 +8,14 @@ import type { ExtrasolarMetadata } from '$lib/fetch/extrasolar/files';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { sphericalToCartesian } from '$lib/math/spherical';
 import { AU_SCALE } from '$lib/math/units';
+import type { PromotionRegistry } from '$lib/scene/focus/promotion';
+import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
+import { treeToScene } from '$lib/scene/starfield/tree';
 import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { ExoplanetStore } from './store';
+import { ExoplanetSystems } from './systems';
 import { FRAME_ELEVATION_DEG, frameDirection, orbitNormal } from './view';
 import { ALPHA_CEN, INDEX, MERGED_HOST, elements, host, planet } from './__fixtures__/system';
 
@@ -20,15 +24,21 @@ import { ALPHA_CEN, INDEX, MERGED_HOST, elements, host, planet } from './__fixtu
 const PROXIMA = 27424668;
 const TOLIMAN = 564339647;
 const PLACE: [number, number, number] = [-2e6, 1e6, -2.4e6];
+/** A resolved star system: its record gives it no place. */
+const PAIR = 3 * 2 ** 24 + 5;
+/** A star of the pair, with planets of its own. */
+const PAIR_A = 2 ** 24 + 9;
+const PAIR_PLACE: [number, number, number] = [10, -20, 30];
 
 vi.mock('$lib/scene/setup/extrasolar', () => ({
 	// A star body at a fixed place, as the record lookup makes it.
 	ensureExtrasolarBody: vi.fn(async (ctx: ContextManager, objectId: string) => {
 		const id = Number(objectId.slice(2));
+		const place = id === PAIR ? null : PLACE;
 		const body = {
 			data: { id: objectId, objectType: ObjectType.EXTRASOLAR, parentId: '' },
 			position: null,
-			extrasolar: { id, scene: PLACE }
+			extrasolar: { id, scene: place, tree: place }
 		} as unknown as PositionedBody;
 		ctx.bodies.addExtrasolar(body);
 		return { kind: 'live' };
@@ -54,11 +64,43 @@ function setup(files: Record<string, { token: string }>) {
 		allowed: () => true
 	});
 	const bodies = new BodyIndex();
-	const ctx = { bodies, getBody: (id: string) => bodies.getBody(id) } as unknown as ContextManager;
-	return { store: new ExoplanetStore(ctx, catalogue), bodies, reads };
+	const ctx = {
+		bodies,
+		getBody: (id: string) => bodies.getBody(id),
+		visibility: {}
+	} as unknown as ContextManager;
+	const store = new ExoplanetStore(ctx, catalogue);
+	(ctx as { exoplanets: ExoplanetStore }).exoplanets = store;
+	return { store, bodies, reads, ctx };
 }
 
 const FILES = { 'planets/index.json.gz': INDEX, 'planets/27424668.json.gz': ALPHA_CEN };
+
+/** A resolved pair with a circumbinary planet, keyed by the pair, and a star
+ *  of the pair with a planet. The index places the pair at its primary. */
+const PAIR_INDEX: PlanetIndexFile = {
+	token: '0000000000000000',
+	hosts: [
+		{ id: PAIR_A, system: PAIR, planets: [1], position: [1, 2, 3], outer_orbit: 1 },
+		{ id: PAIR, system: PAIR, planets: [1], position: PAIR_PLACE, outer_orbit: 1 }
+	],
+	aliases: {}
+};
+const PAIR_SYSTEM: PlanetSystem = {
+	token: '0000000000000000',
+	system: PAIR,
+	hosts: [host(PAIR, [1]), host(PAIR_A, [1])],
+	planets: [planet(PAIR, 1, elements(1)), planet(PAIR_A, 1, elements(0.5))]
+};
+const PAIR_FILES = {
+	'planets/index.json.gz': PAIR_INDEX,
+	[`planets/${PAIR}.json.gz`]: PAIR_SYSTEM
+};
+
+function sceneOf(tree: [number, number, number]): [number, number, number] {
+	const at = treeToScene(...tree, { x: 0, y: 0, z: 0 });
+	return [at.x, at.y, at.z];
+}
 
 describe('ExoplanetStore', () => {
 	beforeEach(() => vi.clearAllMocks());
@@ -142,6 +184,37 @@ describe('ExoplanetStore', () => {
 		expect(toliman.view.distance).toBeCloseTo(4 * AU_SCALE, 9);
 		const flat = frameDirection(PLACE, [0, 1, 0], FRAME_ELEVATION_DEG);
 		for (let k = 0; k < 3; k++) expect(toliman.at[k]).toBeCloseTo(flat[k], 9);
+	});
+
+	it('places a host with no place of its own where the index puts it', async () => {
+		const { store, bodies } = setup(PAIR_FILES);
+		await store.ensureHost(PAIR);
+		const star = bodies.getBody(extrasolarObjectId(PAIR))?.extrasolar;
+		expect(star?.scene).toEqual(sceneOf(PAIR_PLACE));
+		// No tree place: the starfield does not draw it as a star.
+		expect(star?.tree).toBeNull();
+		expect(store.view(extrasolarObjectId(PAIR))).not.toBeNull();
+		// A host with a place of its own keeps it.
+		await store.ensureHost(PAIR_A);
+		expect(bodies.getBody(extrasolarObjectId(PAIR_A))?.extrasolar?.scene).toEqual(PLACE);
+	});
+
+	it('places a host whose body came before its system was held', async () => {
+		const { store, bodies, ctx } = setup(PAIR_FILES);
+		await store.ensureHost(PAIR_A);
+		// A lookup of the pair alone, as a link to its page makes it.
+		await ensureExtrasolarBody(ctx, extrasolarObjectId(PAIR));
+		const body = bodies.getBody(extrasolarObjectId(PAIR))!;
+		expect(body.extrasolar?.scene).toBeNull();
+		const promotion = { syncSystemBodies: vi.fn() } as unknown as PromotionRegistry;
+		const systems = new ExoplanetSystems(ctx, promotion, () => {});
+		const frame = { camera: [0, 0, 0] as const, viewportPx: 1000, fovDeg: 60, dtMs: 16 };
+		systems.update({ ...frame, outside: 1, focused: body });
+		await vi.waitFor(() =>
+			expect(bodies.getBody(extrasolarObjectId(PAIR))?.extrasolar?.scene).toEqual(
+				sceneOf(PAIR_PLACE)
+			)
+		);
 	});
 
 	it('drops the bodies of the oldest systems past a few, but not those in use', async () => {

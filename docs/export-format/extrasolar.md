@@ -420,7 +420,7 @@ The token of `skycultures` covers all its files: SHA-256 over each file's path, 
 
 The planets and the substellar companions up to 60 Jupiter masses that the NASA Exoplanet Archive, exoplanet.eu and the Open Exoplanet Catalogue (OEC) list as confirmed or controversial around a star. Candidates, retracted objects and free-floating objects are not in it. A planet's page is `/x/{host}/b/{n}`: `host` is the extrasolar ID of the star it orbits, and `n` its number within that host, from 1. A number is never given twice: a planet that every catalogue drops retires, and its number then is a 404. A number can become an alias of another planet: when two numbers turn out to be one planet, or when the planet's host merges into another ID, which gives the planet a number on its live host. The old page then redirects.
 
-The planets of one planetary system share one file, keyed by the ID of the system's key star (`system`). For a single star, that is the host. For a binary or a wider system it is the first star in OEC's hierarchy that has planets, else the star without a component letter or with `A`. So a planet around each star of a binary is in one file, and each orbits its own host. A planet around both stars of a binary (P-type) orbits the pair's star: the Gaia source of the pair when Gaia sees one. The hosts of one system can be in two regions of the sky, and their file is the same.
+The planets of one planetary system share one file, keyed by an ID (`system`). For a host in a star system (System, above), that is the root of its system, which can be a resolved system with an ID of table 3: α Cen's file holds the planets of Proxima and of α Cen B. For a single star, it is the host. For other hosts that a planet catalogue puts in one system, it is the first star in OEC's hierarchy that has planets, else the star without a component letter or with `A`. So a planet around each star of a binary is in one file, and each orbits its own host. A planet around both stars of a binary (P-type) orbits the node that holds both: a point when Gaia sees one source for the pair (Kepler-16), else the resolved pair, whose ID is of table 3 (`/x/<pair>/b/<n>`). The resolved pair is not drawn as a star, and its planets are drawn at the place of one of its stars (System file, below). The hosts of one system can be in two regions of the sky, and their file is the same.
 
 ### Index
 
@@ -438,18 +438,18 @@ The planets of one planetary system share one file, keyed by the ID of the syste
 }
 ```
 
-- `hosts`: every star with a planet, sorted by `id`. A key star with no planets of its own is in its system file and not here.
+- `hosts`: every host with a planet, sorted by `id`. A key with no planets of its own is in its system file and not here.
 - `system`: the key of the host's system file.
 - `planets`: the live numbers of the host, ascending.
 - `aliases`: every alias number, keyed `"{host}/{n}"`, with the live planet it leads to as `[host, n]`. The target can be on another host (the second example: host 987654321 merged into 1234567890). The target is always a planet that the index lists, so there is one redirect; an alias whose end is not served is left out (a 404). The host of an alias key can be missing from `hosts`: a merged ID has no live planets.
-- `position`: in parsecs, in the frame of the render tree (ICRS axes, origin at the barycentre, J2016.0), the float64 position that the tree build computes for the host. The node stores it as its centre plus a float32 offset, so the drawn point is off by up to half · 2^-24 of the node. Null when the host has no distance (not drawn).
+- `position`: in parsecs, in the frame of the render tree (ICRS axes, origin at the barycentre, J2016.0), the float64 position that the tree build computes for the host. The node stores it as its centre plus a float32 offset, so the drawn point is off by up to half · 2^-24 of the node. Null when the host has no distance (not drawn). A resolved star system has the position of one of its points (System file, below).
 - `outer_orbit`: in AU, the largest semi-major axis of the host's planets; null when none has one.
 
 To find a planet `/x/{host}/b/{n}`: load the index once; when `aliases` has `"{host}/{n}"`, redirect to `/x/{target host}/b/{target n}`; else find the host in `hosts` and check that `n` is in its `planets` (else a 404); load `planets/{system}.json.gz` and take the planet with that `host` and `number`.
 
 ### System file
 
-`planets/{key}.json.gz`, with `key` the ID of the system's key star:
+`planets/{key}.json.gz`, with `key` the key ID of the system:
 
 ```json
 {
@@ -460,7 +460,7 @@ To find a planet `/x/{host}/b/{n}`: load the index once; when `aliases` has `"{h
 }
 ```
 
-`hosts` has the key star first, then the other hosts by ID. `planets` is sorted by host, then number. A float with no value is `null`.
+`hosts` has the key first, then the other hosts by ID. `planets` is sorted by host, then number. A float with no value is `null`. A host or a key that is a resolved star system has no point, so the render tree does not draw it as a star. Its record has its Metadata values, `ra` and `dec` from its System row at `epoch` 2016.0, and the `position` and `distance` of its primary point, else of the first of its member points that the render tree draws, in member order. Every other field is null, `placement` too. Its planets are drawn about that place. With no such point, `position` and `distance` are null.
 
 A host:
 
@@ -468,10 +468,10 @@ A host:
 |-------|-|-|
 | `id` | number | extrasolar ID |
 | `name`, `name_source` | string | the Metadata name and its source |
-| `class` | string | the Metadata class: `star`, `brown dwarf`, `white dwarf` or `pulsar` |
+| `class` | string | the Metadata class: `star`, `brown dwarf`, `white dwarf`, `pulsar`, or `binary star` and `multiple star` for a node of a star system that no source gives a specific class |
 | `cross_ids` | list | the Metadata cross-ids, each `{catalogue, release, catalogue_id}` |
-| `planets` | list | its live numbers; empty for a key star with no planets |
-| `placement` | string | how its distance is known, by the steps of the render tree: `parallax` (its own, or a 5σ orbit parallax), the `distance_source` of its distance group (as `literature` or `bailer-jones-2021`), `catalogue distance`, `parallax with fidelity under 0.5`, or null when it has no distance and is not drawn |
+| `planets` | list | its live numbers; empty for a key with no planets |
+| `placement` | string | how its distance is known, by the steps of the render tree: `parallax` (its own, or a 5σ orbit parallax), the `distance_source` of its distance group (as `literature`, `bailer-jones-2021` or `star-systems`), `catalogue distance`, `parallax with fidelity under 0.5`, or null when the render tree does not draw it: it has no distance, or it is a resolved star system |
 | `position` | [x, y, z] | as in the index (pc) |
 | `distance` | number | pc, as the render tree has it: `1000 / parallax_nss` with a 5σ astrometric orbit solution, else `1000 / parallax` for `parallax` and `host_distance` for `catalogue distance` |
 | `ra`, `dec`, `epoch` | number | the Point source astrometry: degrees, ICRS at `epoch` (Julian year) |
@@ -501,7 +501,7 @@ A planet:
 | `elements` | object | the orbit in the scene's frame (below), or null when the planet has no semi-major axis: the client draws it as a fixed dot |
 | `values` | object | every other value of the planets table that the planet has (below) |
 | `sources` | object | the source of each group: `status`, `discovery`, `orbit`, `sky`, `mass`, `radius`, `physical`, `atmosphere`, `stellar`, `binary` → `nasa-exoplanet-archive`, `exoplanet-eu`, `open-exoplanet-catalogue`, or `gaia-dr3` for `sky` |
-| `assumed` | list | the values that are defaults, not published: `eccentricity` (0, also an exact 0 with no error), `omega` (90°), `inclination` (a transiting planet of the same host, else 90°), `node` (one angle per system, from a hash of the ID of its key star), `periastron_time` (J2000.0: the position on the orbit is unknown) |
+| `assumed` | list | the values that are defaults, not published: `eccentricity` (0, also an exact 0 with no error), `omega` (90°), `inclination` (a transiting planet of the same host, else 90°), `node` (one angle per system, from a hash of the ID of its key), `periastron_time` (J2000.0: the position on the orbit is unknown) |
 | `estimated` | list | values that a catalogue estimates (the archive's "Calculated Value", a mass–radius relation, exoplanet.eu's "Theoretical") |
 | `computed` | list | `period` or `semi_major_axis` from Kepler's third law, or `semi_major_axis` from an angular separation and the distance |
 | `limits` | list | `<name><` for an upper limit, `<name>>` for a lower limit |
@@ -537,7 +537,7 @@ These are the fields of the frontend's `OrbitalElements` (`orbitalElementsToPosi
 
 The token of `planets` covers the index and every system file, as for the sky cultures: SHA-256 over each file's path, a zero byte and the SHA-256 of its JSON with `token` set to 16 zeros. Each file's `token` field holds it, and a client fetches each file with `?v={token}`. A file whose token is not the one in `metadata.json` comes from another export: the client shows the reload prompt.
 
-The export refuses to publish when a planet number is given twice, when a host is in two systems, when a host or a system key is not a live ID or has no Metadata or Point source row, or when a planet or alias that the served index lists is gone and the registry's Planets part does not say it retired or became an alias, and its host is still live.
+The export refuses to publish when a planet number is given twice, when a host is in two systems, when a host or a system key is not a live ID, has no Metadata row, or has neither a Point source nor a System row, when the file of a host in a star system is not keyed by the root of that system, or when a planet or alias that the served index lists is gone and the registry's Planets part does not say it retired or became an alias, and its host is still live.
 
 ### Sitemap
 

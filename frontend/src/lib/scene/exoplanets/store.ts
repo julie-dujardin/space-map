@@ -3,6 +3,8 @@
  * system file loads when its system comes into view, or when one of its
  * stars or planets is the target of a navigation. Its planets go into the
  * body index; a host is looked up as a star, and its body places its planets.
+ * A host with no place of its own, such as a resolved star system, takes the
+ * place that the index gives it.
  */
 
 import {
@@ -15,9 +17,11 @@ import {
 	planetCatalogue,
 	type PlanetCatalogue,
 	type PlanetIndex,
+	type PlanetIndexHost,
 	type PlanetSystem
 } from '$lib/fetch/extrasolar/planets';
 import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
+import { treeToScene } from '$lib/scene/starfield/tree';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { PositionedBody } from '$lib/types/objects';
 import { NO_ORBIT_AU, makePlanetBodies, outerOrbitAU, outermostElements } from './bodies';
@@ -60,7 +64,17 @@ export class ExoplanetStore {
 			this.ensureSystem(entry.system),
 			ensureExtrasolarBody(this.ctx, extrasolarObjectId(hostId))
 		]);
+		this.placeHost(entry);
 		return held;
+	}
+
+	/** Give a host body with no place the index's place. It gets no tree
+	 *  place, so the starfield does not draw it as a star. */
+	private placeHost(entry: PlanetIndexHost): void {
+		const star = this.ctx.getBody(extrasolarObjectId(entry.id))?.extrasolar;
+		if (!star || star.scene || !entry.position) return;
+		const at = treeToScene(...entry.position, { x: 0, y: 0, z: 0 });
+		star.scene = [at.x, at.y, at.z];
 	}
 
 	/** Hold the system of the live planet a planet's scene ID leads to, maybe

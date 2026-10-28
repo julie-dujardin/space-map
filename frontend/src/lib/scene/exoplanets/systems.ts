@@ -146,10 +146,12 @@ export class ExoplanetSystems {
 		);
 	}
 
-	/** Whether a host's system and its body are held. */
+	/** Whether a host's system and its body are held, and the body has the
+	 *  place that the index gives a host with none of its own. */
 	private loaded(host: number): boolean {
-		const star = this.ctx.getBody(extrasolarObjectId(host));
-		return this.ctx.exoplanets.held(host) !== null && !!star?.extrasolar;
+		const star = this.ctx.getBody(extrasolarObjectId(host))?.extrasolar;
+		const placed = !!star?.scene || !this.ctx.exoplanets.index?.host(host)?.position;
+		return this.ctx.exoplanets.held(host) !== null && !!star && placed;
 	}
 
 	/** A host shows once its planets are in and it has a place. */

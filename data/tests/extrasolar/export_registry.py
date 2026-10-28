@@ -108,10 +108,15 @@ def star(
     return row
 
 
-def planet(host: int, number: int, system: int | None = None, **values) -> dict:
-    """A planets table row of star index `host`, around star index `system`
-    (the host by default), with a 10-day circular orbit unless `values` say
-    otherwise."""
+def planet(
+    host: int | tuple[str, int],
+    number: int,
+    system: int | tuple[str, int] | None = None,
+    **values,
+) -> dict:
+    """A planets table row of star index `host`, in the file of star index
+    `system` (the host by default), with a 10-day circular orbit unless
+    `values` say otherwise. ("node", n) stands for node n of the systems."""
     row: dict = {
         "_host": host,
         "_system": host if system is None else system,
@@ -478,11 +483,19 @@ def write_registry(
             write_parquet(part, region_file(root / "tables" / slug / "000001", region))
 
     versions = dict.fromkeys(tables, 1)
+
+    def object_id(index: int | tuple[str, int]) -> int:
+        """A star index, or ("node", n) for node n of `systems`."""
+        return node_ids[index[1]] if isinstance(index, tuple) else minted[index]
+
     if planets:
         rows = []
         for row in planets:
             values = {k: v for k, v in row.items() if not k.startswith("_")}
-            values |= {"host": minted[row["_host"]], "system": minted[row["_system"]]}
+            values |= {
+                "host": object_id(row["_host"]),
+                "system": object_id(row["_system"]),
+            }
             rows.append(values)
         table = pa.Table.from_pylist(
             [{name: r.get(name) for name in PLANETS_TABLE.names} for r in rows],
@@ -495,7 +508,7 @@ def write_registry(
         versions["planets"] = 1
     part = [
         {
-            "host": minted[row["_host"]],
+            "host": object_id(row["_host"]),
             "number": row["number"],
             "status": LIVE,
             **row["cross_ids"][0],

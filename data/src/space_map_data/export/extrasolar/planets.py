@@ -15,10 +15,17 @@ Files, JSON in gzip:
 Every file has the token of the section in its `token` field. The token
 hashes each file with 16 zeros in that field, as for the sky cultures.
 
-The checks: every host and system ID is live and has a Metadata and a Point
-source row, every host is in one system, and every planet of the served index
-is still served, or its number is retired or an alias, or its host is no
-longer live.
+A host or a key is a point with a Point source row, or a resolved star system
+with a System row: the host of a circumbinary planet whose pair Gaia resolves,
+or the root of a host's system, which keys the system's file. A resolved
+system is not drawn as a star. It takes the render position and distance of
+its primary point, else of its first member point that the render tree draws,
+so that its planets are drawn there.
+
+The checks: every host and system ID is live and has a Metadata row and a
+Point source or System row, every host is in one system, a host in a star
+system has its root as the key, and every planet of the served index is still
+served, or its number is retired or an alias, or its host is no longer live.
 """
 
 import gzip
@@ -37,6 +44,7 @@ import pyarrow.compute as pc
 
 from space_map_data.export.extrasolar import container, orbits, render
 from space_map_data.export.extrasolar.container import Written
+from space_map_data.export.extrasolar.systems import SYSTEM_BIT
 from space_map_data.export.extrasolar.tiles import Problems
 from space_map_data.extrasolar.exoplanets import numbering
 from space_map_data.extrasolar.exoplanets.ingest import hosts_with_several_systems
@@ -46,7 +54,7 @@ from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.placement import placement
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import region_of
-from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA
+from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, SYSTEM
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +78,32 @@ TOP_COLUMNS = (
 )
 FLAG_COLUMNS = ("assumed", "estimated", "computed", "limits")
 SOURCE_SUFFIX = "_source"
-METADATA_COLUMNS = ["id", "name", "name_source", "class", "cross_ids"]
+METADATA_COLUMNS = ["id", "name", "name_source", "class", "cross_ids", "system", "mask"]
+SYSTEM_COLUMNS = ["id", "ra", "dec", "primary", "members"]
+# The fields of a host record, in their order, before its planets.
+HOST_FIELDS = (
+    "id",
+    "name",
+    "name_source",
+    "class",
+    "cross_ids",
+    "placement",
+    "position",
+    "distance",
+    "ra",
+    "dec",
+    "epoch",
+    "teff",
+    "teff_source",
+    "radius",
+    "radius_source",
+    "mass",
+    "metallicity",
+    "spectral_type",
+    "bp_rp",
+    "catalogue",
+    "catalogue_name",
+)
 POINT_COLUMNS = [
     "id",
     "ra",
@@ -183,8 +216,22 @@ class HostJob:
 @dataclass
 class HostRows:
     hosts: dict[int, dict] = field(default_factory=dict)
+    # The root of the star system of each ID that is in one.
+    roots: dict[int, int] = field(default_factory=dict)
+    # The points whose place each resolved system takes, first choice first.
+    places: dict[int, list[int]] = field(default_factory=dict)
     # The rows the checks refuse, by kind.
     problems: dict[str, list[int]] = field(default_factory=dict)
+
+
+@dataclass
+class Places:
+    """The Point source rows of some IDs, and how the render tree places them."""
+
+    points: dict[int, dict] = field(default_factory=dict)
+    placed: dict[int, str | None] = field(default_factory=dict)
+    distances: dict[int, float | None] = field(default_factory=dict)
+    positions: dict[int, list[float]] = field(default_factory=dict)
 
 
 def _host(
@@ -225,6 +272,70 @@ def _host(
     }
 
 
+def _system_host(meta: dict, node: dict) -> dict:
+    """The host record of a resolved star system. It has no point, so it is
+    not drawn as a star, and the values of its stars stay in their own
+    records. `build` gives it the place of one of its points."""
+    record = dict.fromkeys(HOST_FIELDS)
+    record |= {
+        "id": meta["id"],
+        "name": meta["name"],
+        "name_source": meta["name_source"],
+        "class": meta["class"],
+        "cross_ids": meta["cross_ids"] or [],
+        "ra": node["ra"],
+        "dec": node["dec"],
+        "epoch": render.EPOCH,
+    }
+    return record
+
+
+def _places(job: HostJob) -> Places:
+    """The Point source rows of the job's IDs, and the place of each that the
+    render tree draws."""
+    wanted = pa.array(job.ids, pa.int64())
+    out = Places()
+    point_table = job.registry.read_table("point-source", job.region, POINT_COLUMNS)
+    if point_table is not None:
+        point_table = point_table.filter(pc.is_in(point_table["id"], wanted))
+        orbit_table = job.registry.read_table(
+            BINARY_ORBIT.slug, job.region, list(render.ORBIT_COLUMNS)
+        )
+        point_table = render.with_orbit_parallax(point_table, orbit_table)
+        where = placement(point_table)
+        distance, orbit = render.star_distance(point_table, where)
+        for at, row in enumerate(point_table.to_pylist()):
+            out.points[row["id"]] = row
+            # An orbit parallax measures the distance as a parallax does.
+            if where.by_parallax[at] or (orbit[at] and not where.by_suspect[at]):
+                label = render.PARALLAX
+            elif where.by_suspect[at]:
+                label = render.SUSPECT_PARALLAX
+            elif where.by_group[at]:
+                label = row["distance_source"]
+            elif where.by_catalogue[at]:
+                label = render.CATALOGUE_DISTANCE
+            else:
+                continue
+            out.placed[row["id"]] = label
+            parsecs = float(distance[at])
+            # A parallax distance is a quotient. The other distances are float32.
+            measured = label in (render.PARALLAX, render.SUSPECT_PARALLAX)
+            out.distances[row["id"]] = parsecs if measured else _f32(parsecs)
+    ids_file = render.scratch_file(job.scratch, job.region, "id")
+    if ids_file.exists():
+        tree_ids = np.load(ids_file)
+        hit = np.flatnonzero(np.isin(tree_ids, np.array(job.ids, np.int64)))
+        if hit.size:
+            xyz = [
+                np.load(render.scratch_file(job.scratch, job.region, axis))[hit]
+                for axis in "xyz"
+            ]
+            for at, id_ in enumerate(tree_ids[hit].tolist()):
+                out.positions[id_] = [float(v[at]) for v in xyz]
+    return out
+
+
 def host_rows(job: HostJob) -> HostRows:
     """The host records of one region, with the place each has in the tree."""
     wanted = pa.array(job.ids, pa.int64())
@@ -242,62 +353,88 @@ def host_rows(job: HostJob) -> HostRows:
         return {row["id"]: row for row in table.to_pylist()}
 
     metadata = rows(METADATA.slug, METADATA_COLUMNS)
-    point_table = job.registry.read_table("point-source", job.region, POINT_COLUMNS)
-    points: dict[int, dict] = {}
-    placed: dict[int, str | None] = {}
-    distances: dict[int, float | None] = {}
-    if point_table is not None:
-        point_table = point_table.filter(pc.is_in(point_table["id"], wanted))
-        orbit_table = job.registry.read_table(
-            BINARY_ORBIT.slug, job.region, list(render.ORBIT_COLUMNS)
-        )
-        point_table = render.with_orbit_parallax(point_table, orbit_table)
-        where = placement(point_table)
-        distance, orbit = render.star_distance(point_table, where)
-        for at, row in enumerate(point_table.to_pylist()):
-            points[row["id"]] = row
-            # An orbit parallax measures the distance as a parallax does.
-            if where.by_parallax[at] or (orbit[at] and not where.by_suspect[at]):
-                label = render.PARALLAX
-            elif where.by_suspect[at]:
-                label = render.SUSPECT_PARALLAX
-            elif where.by_group[at]:
-                label = row["distance_source"]
-            elif where.by_catalogue[at]:
-                label = render.CATALOGUE_DISTANCE
-            else:
-                continue
-            placed[row["id"]] = label
-            parsecs = float(distance[at])
-            # A parallax distance is a quotient. The other distances are float32.
-            measured = label in (render.PARALLAX, render.SUSPECT_PARALLAX)
-            distances[row["id"]] = parsecs if measured else _f32(parsecs)
-    positions: dict[int, list[float]] = {}
-    ids_file = render.scratch_file(job.scratch, job.region, "id")
-    if ids_file.exists():
-        tree_ids = np.load(ids_file)
-        hit = np.flatnonzero(np.isin(tree_ids, np.array(job.ids, np.int64)))
-        if hit.size:
-            xyz = [
-                np.load(render.scratch_file(job.scratch, job.region, axis))[hit]
-                for axis in "xyz"
-            ]
-            for at, id_ in enumerate(tree_ids[hit].tolist()):
-                positions[id_] = [float(v[at]) for v in xyz]
+    places = _places(job)
+    nodes = rows(SYSTEM.slug, SYSTEM_COLUMNS)
     for id_ in job.ids:
-        if id_ not in metadata:
+        meta = metadata.get(id_)
+        if meta is None:
             out.problems.setdefault("no Metadata row", []).append(id_)
-        elif id_ not in points:
-            out.problems.setdefault("no Point source row", []).append(id_)
-        else:
+            continue
+        # A root has no `system`.
+        if meta["system"] is not None or meta["mask"] & SYSTEM_BIT:
+            out.roots[id_] = meta["system"] or id_
+        if id_ in places.points:
             out.hosts[id_] = _host(
-                metadata[id_],
-                points[id_],
-                placed.get(id_),
-                distances.get(id_),
-                positions.get(id_),
+                meta,
+                places.points[id_],
+                places.placed.get(id_),
+                places.distances.get(id_),
+                places.positions.get(id_),
             )
+        elif id_ in nodes:
+            out.hosts[id_] = _system_host(meta, nodes[id_])
+            out.places[id_] = _system_points(nodes[id_])
+        else:
+            out.problems.setdefault("no Point source or System row", []).append(id_)
     return out
+
+
+def _system_points(node: dict) -> list[int]:
+    """The points whose place a resolved system takes: its primary, then its
+    members in member order. A member that is a resolved system has no place."""
+    found = [node["primary"], *(member["id"] for member in node["members"] or [])]
+    return list(dict.fromkeys(id_ for id_ in found if id_ is not None))
+
+
+def drawn_places(job: HostJob) -> dict[int, tuple[list[float], float | None]]:
+    """The render position and the distance of each of the job's IDs that the
+    render tree draws."""
+    places = _places(job)
+    return {
+        id_: (at, places.distances.get(id_)) for id_, at in places.positions.items()
+    }
+
+
+def _jobs(registry: Registry, ids: list[int], scratch: Path) -> list[HostJob]:
+    """One job per region of the IDs."""
+    regions = region_of(cell_of(np.array(ids, np.int64)))
+    by_region: dict[int, list[int]] = defaultdict(list)
+    for id_, region in zip(ids, regions.tolist()):
+        by_region[region].append(id_)
+    return [
+        HostJob(registry, region, tuple(found), scratch)
+        for region, found in sorted(by_region.items())
+    ]
+
+
+def _place_systems(
+    registry: Registry,
+    scratch: Path,
+    run: Runner,
+    hosts: dict[int, dict],
+    wanted: dict[int, list[int]],
+) -> int:
+    """Give each resolved system the render position and distance of the
+    first of its points that the render tree draws, so that its planets are
+    drawn there. It returns the number of systems that get a place."""
+    # The point hosts are read already. Most systems take the place of one.
+    places = {
+        id_: (host["position"], host["distance"])
+        for id_, host in hosts.items()
+        if id_ not in wanted and host["position"] is not None
+    }
+    points = sorted({id_ for found in wanted.values() for id_ in found} - hosts.keys())
+    if points:
+        jobs = _jobs(registry, points, scratch)
+        for found in run(drawn_places, jobs, "system places"):
+            places.update(found)
+    placed = 0
+    for id_, choices in wanted.items():
+        place = next((places[p] for p in choices if p in places), None)
+        if place is not None:
+            hosts[id_]["position"], hosts[id_]["distance"] = place
+            placed += 1
+    return placed
 
 
 def _direction(host: dict) -> np.ndarray:
@@ -421,19 +558,29 @@ def build(
     problems.add("a host in two systems", hosts_with_several_systems(table))
 
     host_ids = sorted({row["host"] for row in rows} | {row["system"] for row in rows})
-    regions = region_of(cell_of(np.array(host_ids, np.int64)))
-    by_region: dict[int, list[int]] = defaultdict(list)
-    for id_, region in zip(host_ids, regions.tolist()):
-        by_region[region].append(id_)
-    jobs = [
-        HostJob(registry, region, tuple(ids), scratch)
-        for region, ids in sorted(by_region.items())
-    ]
     hosts: dict[int, dict] = {}
-    for found in run(host_rows, jobs, "planet hosts"):
+    roots: dict[int, int] = {}
+    wanted: dict[int, list[int]] = {}
+    for found in run(host_rows, _jobs(registry, host_ids, scratch), "planet hosts"):
         hosts.update(found.hosts)
+        roots.update(found.roots)
+        wanted.update(found.places)
         for kind, ids in found.problems.items():
             problems.add(f"planet host or system: {kind}", ids, len(ids))
+    counts["resolved system placed at one of its points"] = _place_systems(
+        registry, scratch, run, hosts, wanted
+    )
+    # The planet files group the hosts as the star systems do.
+    astray = sorted(
+        {
+            f"{row['host']} in {row['system']}, root {roots[row['host']]}"
+            for row in rows
+            if row["host"] in roots and row["system"] != roots[row["host"]]
+        }
+    )
+    problems.add(
+        "a host whose system file is not keyed by its root", astray, len(astray)
+    )
 
     state = numbering.read_state(registry)
     served_numbers = set(numbers)
