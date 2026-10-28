@@ -76,8 +76,10 @@ export interface TilesBlock extends CreditFields {
 export function typePriority(type: ObjectType): number {
 	switch (type) {
 		case ObjectType.STAR:
+		case ObjectType.EXTRASOLAR:
 			return 0;
 		case ObjectType.PLANET:
+		case ObjectType.EXOPLANET:
 			return 1;
 		case ObjectType.DWARF_PLANET:
 			return 2;

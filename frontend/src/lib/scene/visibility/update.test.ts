@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	BufferGeometry,
 	Group,
 	Line,
 	Mesh,
 	Object3D,
 	PerspectiveCamera,
 	Points,
+	PointsMaterial,
 	ShaderMaterial,
 	Vector2,
 	Vector3,
@@ -67,6 +69,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 		layers: { isVisible: () => true },
 		visibility: {
 			systemShare: 1,
+			systemShareOf: () => 1,
 			starShare: 1,
 			systemShares: new Map(),
 			planetarySystemShare: () => 0,
@@ -83,6 +86,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 	const renderer = { domElement: { clientWidth: 1000, clientHeight: 1000 } } as WebGLRenderer;
 	return {
 		bo,
+		ctx,
 		fades,
 		frame(radiusPx: number, dtMs: number) {
 			bo.body.position![2] = -500 / radiusPx;
@@ -164,5 +168,30 @@ describe('close-range halos and labels', () => {
 		frame(20, 100);
 		expect(bo.haloShare).toBe(1);
 		expect(bo.label!.visible).toBe(true);
+	});
+});
+
+describe('a planet of another star', () => {
+	it('takes the distance tiers and the system share of a planet of the Sun', () => {
+		const { bo, ctx, frame } = scene(ObjectType.EXOPLANET);
+		bo.mesh = null;
+		bo.radiusScene = 0;
+		const dot = new Points(new BufferGeometry(), new PointsMaterial({ transparent: true }));
+		bo.planetDot = dot;
+		bo.group.add(dot);
+		const vis = ctx.visibility as unknown as {
+			getPlanetVisibility: () => VISIBILITY;
+			systemShareOf: () => number;
+		};
+		vis.systemShareOf = () => 0.5;
+		frame(5, 16);
+		expect(bo.group.visible).toBe(true);
+		expect(bo.trail!.visible).toBe(true);
+		expect(bo.label!.element.style.opacity).toBe('0.5');
+		expect((dot.material as PointsMaterial).opacity).toBe(0.5);
+		vis.getPlanetVisibility = () => VISIBILITY.FAR;
+		frame(5, 16);
+		expect(bo.group.visible).toBe(false);
+		expect(bo.trail!.visible).toBe(false);
 	});
 });

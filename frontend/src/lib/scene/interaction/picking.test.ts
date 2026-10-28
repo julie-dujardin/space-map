@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PerspectiveCamera, Vector2, Vector3 } from 'three';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { VISIBILITY } from '$lib/scene/visibility/thresholds';
 import { pickSystemDot, type DotPick } from './picking';
 
 /** A click near a planet of another star, or near its host, takes the nearer one. */
@@ -26,7 +27,8 @@ function pick(pointerNdc: [number, number], shares: Map<string, number>, starSha
 		visibility: {
 			systemShares: shares,
 			starShare,
-			exoplanetShare: (b: PositionedBody) => shares.get(b.data.parentId) ?? 0
+			getPlanetVisibility: (b: PositionedBody) =>
+				shares.has(b.data.parentId) ? VISIBILITY.FULL : VISIBILITY.HIDE
 		}
 	} as unknown as ContextManager;
 	const camera = new PerspectiveCamera(60, 1, 0.01, 1000);

@@ -70,7 +70,7 @@ export function pickSystemDot(pick: DotPick): DotHit | null {
 		const id = extrasolarIdOf(hostId);
 		const planets = id === null ? undefined : ctx.exoplanets.held(id)?.planets.get(id);
 		for (const planet of planets ?? []) {
-			if (ctx.visibility.exoplanetShare(planet) > 0) bodies.push(planet);
+			if (planetDraws(planet, pick)) bodies.push(planet);
 		}
 	}
 	return bodies.length > 0 ? pickDot(bodies, pick) : null;
@@ -79,22 +79,26 @@ export function pickSystemDot(pick: DotPick): DotHit | null {
 /** The Sun and the planets as dots, where they draw. The stars draw behind
  *  them, so a click by one of them is its own and not a star's. */
 export function pickPlanetDot(pick: DotPick): DotHit | null {
-	const { ctx, camera, focusTruePos } = pick;
-	const [fx, fy, fz] = focusTruePos;
-	const cam = camera.position;
 	return pickDot(
-		ctx.bodies.majorBodies.filter((body) => {
+		pick.ctx.bodies.majorBodies.filter((body) => {
 			const t = body.data.objectType;
 			if (t !== ObjectType.STAR && t !== ObjectType.PLANET && t !== ObjectType.DWARF_PLANET) {
 				return false;
 			}
-			const at = body.position;
-			if (!at) return false;
-			const dist = Math.hypot(at[0] - fx - cam.x, at[1] - fy - cam.y, at[2] - fz - cam.z);
-			return ctx.visibility.getPlanetVisibility(body, dist) !== VISIBILITY.HIDE;
+			return planetDraws(body, pick);
 		}),
 		pick
 	);
+}
+
+/** Whether a star or a planet of any star is in sight at its distance. */
+function planetDraws(body: PositionedBody, pick: DotPick): boolean {
+	const at = body.position;
+	if (!at) return false;
+	const [fx, fy, fz] = pick.focusTruePos;
+	const cam = pick.camera.position;
+	const dist = Math.hypot(at[0] - fx - cam.x, at[1] - fy - cam.y, at[2] - fz - cam.z);
+	return pick.ctx.visibility.getPlanetVisibility(body, dist) !== VISIBILITY.HIDE;
 }
 
 function pickDot(bodies: readonly PositionedBody[], pick: DotPick): DotHit | null {

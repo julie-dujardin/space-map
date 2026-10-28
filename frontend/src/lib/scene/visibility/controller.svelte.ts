@@ -325,11 +325,10 @@ export class VisibilityController {
 		return largest;
 	}
 
-	/** The share of a planet of another star: its system's, unless the planets
-	 *  layer is hidden. */
-	exoplanetShare(body: PositionedBody): number {
-		if (this.getLayers().hidesBody(body.data.objectType, body.data.parentId)) return 0;
-		return this.systemShares.get(body.data.parentId) ?? 0;
+	/** The share of the planetary system that `body` is in: its star's for a
+	 *  planet of another star, else the Sun's. */
+	systemShareOf(body: PositionedBody): number {
+		return isExoplanet(body) ? (this.systemShares.get(body.data.parentId) ?? 0) : this.systemShare;
 	}
 
 	setPinned(ids: Iterable<string>): void {
@@ -343,8 +342,8 @@ export class VisibilityController {
 	/** {@link ratioVisibility}, except that a pinned body is never let drop out:
 	 *  neither its distance nor a hidden layer takes its halo and orbit away. */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
-		// Only the Sun is left: a pin does not keep a body either.
-		if (this.systemShare === 0 && body.data.objectType !== ObjectType.STAR) {
+		// Only the star is left: a pin does not keep a body either.
+		if (this.systemShareOf(body) === 0 && body.data.objectType !== ObjectType.STAR) {
 			return VISIBILITY.HIDE;
 		}
 		const pinned = this.pinned.has(body.data.id);
@@ -354,8 +353,8 @@ export class VisibilityController {
 
 	/** Distance-ratio based visibility for non-moon, non-star bodies. Probes and
 	 *  other planet-orbiters get moon-style ratio gating (against distance-to-
-	 *  parent, or planet-relative `a`); sun-orbiting bodies use the solar-orbit
-	 *  semi-major axis ratio. */
+	 *  parent, or planet-relative `a`); bodies that orbit the Sun or another
+	 *  star use the ratio to their semi-major axis about the star. */
 	private ratioVisibility(
 		body: PositionedBody,
 		camDistThreeJS: number,
@@ -402,7 +401,8 @@ export class VisibilityController {
 			);
 		}
 
-		// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
+		// A planet of the Sun has its `a` about its barycentre, and the
+		// barycentre has the one about the Sun.
 		let refA = body.data.a;
 		if (!isTopLevelParent(body.data.parentId)) {
 			const parent = this.bodies.bodiesById.get(body.data.parentId);

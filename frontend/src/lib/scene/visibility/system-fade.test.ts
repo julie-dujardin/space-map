@@ -142,12 +142,38 @@ describe("another star's planetary system", () => {
 			a: 0.0485
 		});
 		expect(vis.resolveSystemId(planet)).toBeNull();
-		expect(vis.exoplanetShare(planet)).toBe(0);
+		expect(vis.systemShareOf(planet)).toBe(0);
 		vis.systemShares = new Map([['x-27424668', 0.25]]);
-		expect(vis.exoplanetShare(planet)).toBe(0.25);
+		expect(vis.systemShareOf(planet)).toBe(0.25);
 		// It does not go with the Sun's own system.
 		vis.systemShare = 0;
-		expect(vis.exoplanetShare(planet)).toBe(0.25);
+		expect(vis.systemShareOf(planet)).toBe(0.25);
+		expect(vname(vis.getPlanetVisibility(planet, 0.1 * AU_SCALE))).toBe('FULL');
+		vis.systemShares = new Map();
+		expect(vname(vis.getPlanetVisibility(planet, 0.1 * AU_SCALE))).toBe('HIDE');
+	});
+
+	it('takes the distance tiers of a planet of the Sun', () => {
+		const { vis } = buildScene();
+		const a = 0.0485;
+		const home = mkBody({ id: 'naif-2000001', parentId: SUN, a });
+		const planet = mkBody({
+			id: 'x-27424668-b-1',
+			objectType: ObjectType.EXOPLANET,
+			parentId: 'x-27424668',
+			a
+		});
+		vis.systemShares = new Map([['x-27424668', 1]]);
+		for (const [ratio, tier] of [
+			[5, 'FULL'],
+			[30, 'FAR'],
+			[200, 'HIDE']
+		] as const) {
+			expect(vname(vis.getPlanetVisibility(home, ratio * a * AU_SCALE))).toBe(tier);
+			expect(vname(vis.getPlanetVisibility(planet, ratio * a * AU_SCALE))).toBe(tier);
+		}
+		vis.setFocused(planet);
+		expect(vname(vis.getPlanetVisibility(planet, 200 * a * AU_SCALE))).toBe('FULL');
 	});
 
 	it('is inside the planetary system that draws the most', () => {
@@ -173,8 +199,9 @@ describe("another star's planetary system", () => {
 		const planet = mkBody({
 			id: 'x-27424668-b-1',
 			objectType: ObjectType.EXOPLANET,
-			parentId: 'x-27424668'
+			parentId: 'x-27424668',
+			a: 0.0485
 		});
-		expect(vis.exoplanetShare(planet)).toBe(0);
+		expect(vname(vis.getPlanetVisibility(planet, 0.1 * AU_SCALE))).toBe('HIDE');
 	});
 });

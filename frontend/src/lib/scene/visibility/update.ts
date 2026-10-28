@@ -368,9 +368,9 @@ export function updateBodyVisibility(
 		let labelThresholdShare = 1;
 		let orbitThresholdShare = 1;
 
-		// Major bodies (planets/moons/dwarfs/stars) always take the mesh path's
-		// type-aware gates even when sizeless and meshless — else they'd skip the
-		// moon-label cap and show every halo unbounded.
+		// Major bodies and planets of other stars take the mesh path's type-aware
+		// gates even when meshless, or they would skip the moon-label cap and the
+		// distance tiers and show every halo unbounded.
 		if (isExtrasolar(body)) {
 			// A host that is not the focus shows with its planetary system. Inside
 			// a system the other stars are its sky, with no halo or name, as the
@@ -382,16 +382,7 @@ export function updateBodyVisibility(
 			group.visible = visible;
 			isClose = false;
 			showLabel = visible;
-		} else if (isExoplanet(body)) {
-			// Its system's share, from the camera's distance to its host star.
-			zoneShare = ctx.visibility.exoplanetShare(body);
-			const visible = zoneShare > 0;
-			group.visible = visible;
-			if (bo.planetDot) (bo.planetDot.material as PointsMaterial).opacity = zoneShare;
-			if (trail) trail.visible = visible;
-			showLabel = visible;
-			isClose = false;
-		} else if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
+		} else if (bo.mesh === null && !isMajorBody(body.data.objectType) && !isExoplanet(body)) {
 			// Barycenters/Lagrange points: navigational aids, visible once built,
 			// except a barycenter sitting within a halo of its primary on screen —
 			// unseparated it reads as a stray marker over the planet (most
@@ -541,18 +532,14 @@ export function updateBodyVisibility(
 		if (applyLabelDisplay(bo, showLabel, isClose, screenR, haloShare, focusedBodyId)) {
 			newlyShownLabel = true;
 		}
-		if (bo.label) {
-			fadeLabel(
-				bo.label,
-				bo.starPoint
-					? 1
-					: isExtrasolar(body)
-						? starShare * zoneShare
-						: isExoplanet(body)
-							? zoneShare
-							: systemShare * zoneShare * labelThresholdShare
-			);
-		}
+		const labelShare = bo.starPoint
+			? 1
+			: isExtrasolar(body)
+				? starShare * zoneShare
+				: ctx.visibility.systemShareOf(body) * zoneShare * labelThresholdShare;
+		if (bo.label) fadeLabel(bo.label, labelShare);
+		// The dot sits in the halo and fades with it.
+		if (bo.planetDot) (bo.planetDot.material as PointsMaterial).opacity = labelShare;
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const isNomFocused = showNomenclature && body.data.id === nomFocusedBodyId;
@@ -635,9 +622,8 @@ export function updateBodyVisibility(
 		);
 		const isFocused = bo.body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);
-		// Another star's planets fade with their own system, not with the Sun's.
 		const share =
-			(isExoplanet(bo.body) ? 1 : systemShare) *
+			ctx.visibility.systemShareOf(bo.body) *
 			((line.userData.zoneShare as number | undefined) ?? 1) *
 			((line.userData.thresholdShare as number | undefined) ?? 1) *
 			((line.userData.haloShare as number | undefined) ?? 1);

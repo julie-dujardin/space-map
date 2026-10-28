@@ -1,4 +1,10 @@
-import { ObjectType, isAsteroid, type BodyData, type PositionedBody } from '$lib/types/objects';
+import {
+	ObjectType,
+	isAsteroid,
+	isExoplanet,
+	type BodyData,
+	type PositionedBody
+} from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { MinorBucket } from '$lib/fetch/position/minor-columns';
 import type { LabelMap } from '$lib/fetch/position/labels';
@@ -314,9 +320,9 @@ export class BodyIndex {
 		return this.moonMaxAByParent.get(sysId) ?? 0.01;
 	}
 
-	/** True if a body orbits within a planetary system, not directly around SSB/Sun. */
+	/** True if a body orbits within a planetary system, not directly around a star. */
 	isSystemBody(body: PositionedBody): boolean {
-		if (isTopLevelParent(body.data.parentId)) return false;
+		if (isTopLevelParent(body.data.parentId) || isExoplanet(body)) return false;
 		const parent = this.bodiesById.get(body.data.parentId);
 		return parent?.data.objectType !== ObjectType.BARYCENTER;
 	}
