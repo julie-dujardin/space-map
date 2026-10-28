@@ -116,7 +116,7 @@ describe("a planet's panel", () => {
 		const mass = planetSections(anchor(hot))
 			.find((s) => s.key === 'physical')!
 			.rows.find((r) => r.label === 'Mass')!;
-		expect(plain(mass.tooltip!)).toBe("73.0% ± 4.0% of Jupiter's");
+		expect(plain(mass.tooltip!)).toBe("73% ± 4% of Jupiter's");
 
 		const small = planet(5, 2, elements(0.05), {
 			mass: 0.0033194,
@@ -145,7 +145,7 @@ describe("a planet's panel", () => {
 			.find((s) => s.key === 'physical')!
 			.rows.find((r) => r.label === 'Insolation')!;
 		expect(plain(insolation.value)).toBe('872 ± 88 W/m²');
-		expect(plain(insolation.tooltip!)).toBe("64.1% ± 6.5% of Earth's");
+		expect(plain(insolation.tooltip!)).toBe("64% ± 7% of Earth's");
 		expect(insolation.definition).toBe(
 			"Power per unit area received from the star at the planet's distance"
 		);

@@ -6,6 +6,7 @@ import {
 	luminosityComparison,
 	SOLAR_LUMINOSITY_W
 } from './light';
+import { earthRatio } from './quantities';
 
 /** The text without its bidi isolates and with plain spaces. */
 const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
@@ -25,11 +26,26 @@ describe('a luminosity', () => {
 					0.4 * SOLAR_LUMINOSITY_W
 				)
 			)
-		).toBe('(25.40 ± 0.40)× the Sun');
+		).toBe('(25.4 ± 0.4)× the Sun');
+	});
+
+	it('leaves out an error finer than the comparison reads', () => {
+		// Proxima Centauri, from Gaia's fit.
+		const sun = SOLAR_LUMINOSITY_W;
+		expect(plain(luminosityComparison(0.00152215 * sun, 1.5e-9 * sun, 1.5e-9 * sun))).toBe(
+			"0.15% of the Sun's"
+		);
 	});
 });
 
 describe('an irradiance', () => {
+	it('rounds an error of 100 or more to two figures against Earth', () => {
+		// K2-30 b.
+		expect(plain(earthRatio(299, { upperError: 227, lowerError: 227 })!)).toBe(
+			'(300 ± 230)× Earth'
+		);
+	});
+
 	it.each([
 		[0.641, 'W/m²', 1],
 		[2.1, 'kW/m²', 1e3],

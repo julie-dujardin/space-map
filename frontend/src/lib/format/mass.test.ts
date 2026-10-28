@@ -36,7 +36,10 @@ describe('a mass', () => {
 
 	it('carries its errors into the comparison', () => {
 		const e = EARTH_MASS_KG;
-		expect(plain(massComparison(1.055 * e, 0.055 * e, 0.055 * e))).toBe('(1.055 ± 0.055)× Earth');
-		expect(plain(massComparison(1.37 * e, 0.07 * e, 0.2 * e))).toBe('1.370 (1.170–1.440)× Earth');
+		expect(plain(massComparison(1.055 * e, 0.055 * e, 0.055 * e))).toBe('(1.06 ± 0.06)× Earth');
+		// At the digits of the rounded figure: "10", not "10.00".
+		expect(plain(massComparison(9.996 * e, 0.7 * e, 0.7 * e))).toBe('(10.0 ± 0.7)× Earth');
+		expect(plain(massComparison(9.996 * e, 0.02 * e, 0.02 * e))).toBe('10× Earth');
+		expect(plain(massComparison(1.37 * e, 0.07 * e, 0.2 * e))).toBe('1.37 (1.17–1.44)× Earth');
 	});
 });

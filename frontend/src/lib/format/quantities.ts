@@ -431,12 +431,17 @@ export function scientificNotation(value: number, digits = 2): string {
  */
 export function earthRatioParts(ratio: number): EarthRatio | null {
 	if (atParity(ratio)) return null;
-	if (ratio >= 1) return { multiple: ltrIsolate(sigFigures(ratio)) };
+	if (ratio >= 1) return { multiple: ltrIsolate(sigFigures(ratio, MULTIPLE_DIGITS)) };
 	// Under a hundredth of a percent Intl spells out a row of leading zeros, and
 	// Mercury's exosphere is 5×10⁻¹³ of Earth's pressure.
-	const text = ratio >= 1e-4 ? formatPercent(ratio, 2) : formatTinyPercent(ratio);
+	const text =
+		ratio >= TINY_RATIO ? formatPercent(ratio, PERCENT_DIGITS) : formatTinyPercent(ratio);
 	return { percent: ltrIsolate(text) };
 }
+
+const MULTIPLE_DIGITS = 3;
+const PERCENT_DIGITS = 2;
+const TINY_RATIO = 1e-4;
 
 /** Within rounding of 1, where a comparison says nothing. */
 export function atParity(ratio: number): boolean {
@@ -455,9 +460,10 @@ const EARTH_WORDS: RatioWords = { times: m.earth_times, percent: m.earth_percent
 
 /**
  * The wording that goes with it — "14× Earth", "0.63% of Earth's" — against
- * Earth unless another body's words are given. With errors, at their
- * precision: "(1.055 ± 0.055)× Earth", the multiple bracketing its errors as
- * it applies to them too.
+ * Earth unless another body's words are given. With errors, at the digits of
+ * the reading without them: "(1.06 ± 0.06)× Earth", the multiple bracketing
+ * its errors as it applies to them too. A comparison is a feel for the size,
+ * so errors finer than its last digit are left out.
  */
 export function earthRatio(
 	ratio: number,
@@ -469,18 +475,25 @@ export function earthRatio(
 ): string | null {
 	const parts = earthRatioParts(ratio);
 	if (!parts) return null;
-	if (!upperError && !lowerError) {
-		return 'multiple' in parts
-			? words.times({ value: parts.multiple })
-			: words.percent({ value: parts.percent });
-	}
 	const percent = 'percent' in parts;
 	const scale = percent ? 100 : 1;
+	const digits = percent ? PERCENT_DIGITS : MULTIPLE_DIGITS;
+	// From the rounded figure: 9.996 reads "10", one decimal fewer than 9.99.
+	const decimals = digits - 1 - powerOfTen(ratio * scale, digits);
+	const errors = [upperError, lowerError]
+		.filter((e): e is number => !!e && e > 0)
+		.map((e) => e * scale);
+	if (ratio < TINY_RATIO || !errors.some((e) => Math.round(e * 10 ** decimals) !== 0)) {
+		return percent
+			? words.percent({ value: parts.percent })
+			: words.times({ value: parts.multiple });
+	}
 	const figure = formatMeasuredQuantity({
 		value: ratio * scale,
 		upperError: upperError && upperError * scale,
 		lowerError: lowerError && lowerError * scale,
-		roundLargeErrors: true,
+		// An error of 100 or more still rounds to two figures: "(300 ± 230)".
+		publishedDecimals: Math.min(decimals, errorDecimals(Math.min(...errors), true)),
 		...(percent ? { unit: percentParts(0).unit, tight: true } : { group: true })
 	});
 	return percent ? words.percent({ value: figure }) : words.times({ value: figure });

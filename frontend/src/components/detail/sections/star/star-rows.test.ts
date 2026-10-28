@@ -513,7 +513,7 @@ describe("a star's FLAME values", () => {
 		const mass = starSections(synthetic(dwarf))
 			.find((s) => s.key === 'physical')!
 			.rows.find((r) => r.label === 'Mass')!;
-		expect(plain(mass.tooltip!)).toBe("95.0% (90.0–102.0%) of the Sun's");
+		expect(plain(mass.tooltip!)).toBe("95% (90–102%) of the Sun's");
 		const luminosity = starSections(synthetic(dwarf))
 			.find((s) => s.key === 'physical')!
 			.rows.find((r) => r.label === 'Luminosity')!;
