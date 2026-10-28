@@ -19,8 +19,9 @@ entry when its planets table row has a Wikidata QID among its cross ids.
 import gzip
 import logging
 import re
+import unicodedata
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -285,6 +286,64 @@ def _planet_page_name(
     return None if _same_designation(name) in own else name
 
 
+# The qualifier of some labels: "Saffar (Exoplanet)".
+_QUALIFIER = re.compile(r"\s*\([^()]*\)$")
+
+
+def _latin(name: str) -> bool:
+    return all(unicodedata.name(c, "").startswith("LATIN") for c in name if c.isalpha())
+
+
+def _name_keys(names: Iterable[str]) -> set[str]:
+    """How names compare: as written without case, accents, spaces or
+    punctuation ("Kererū", "Kereru"; "MOA-2011-BLG-322LB", "MOA-2011-BLG-322L
+    b"), and, in Latin script, as designations ("BD−10°3166 b", "BD-10 3166
+    b"). A designation keeps only Latin letters and digits, so in another
+    script it is a fragment: "كليبر 102 بي" (Kepler-102 b) would be "102", as
+    its star is."""
+    keys = set()
+    for name in names:
+        folded = unicodedata.normalize("NFKD", name.casefold()).replace("æ", "ae")
+        keys.add("".join(c for c in folded if c.isalnum()))
+        if _latin(name) and (key := _same_designation(name).casefold()):
+            keys.add(key)
+    return keys
+
+
+def _planet_nickname(
+    entity: WikidataEntity | None,
+    lang: str,
+    planet: PlanetObject,
+    star_names: set[str],
+) -> str | None:
+    """A label in ``lang`` that the planet's page does not take, and that is
+    neither one of its designations nor a name of its star: a nickname
+    ("Osiris") or a name in another script, which the entry keeps as an
+    alias. Only an IAU name names the page."""
+    name = _page_name(entity, lang)
+    if name is None or _planet_page_name(entity, lang, planet) is not None:
+        return None
+    name = _QUALIFIER.sub("", name)
+    own = (planet.name, *planet.designations)
+    # A designation without the planet's letter names its star: "TrES-2".
+    star = [
+        n[: -len(planet.letter)]
+        for n in own
+        if planet.letter and n.endswith(planet.letter)
+    ]
+    others = star_names | _name_keys(own) | _name_keys(star)
+    return None if _name_keys([name]) & others else name
+
+
+def _star_names(name: str, entity: WikidataEntity | None) -> set[str]:
+    """The names of a star in every language, as they compare."""
+    names = [name]
+    if entity is not None:
+        names += entity["labels"].values()
+        names += (n for aliases in entity["aliases"].values() for n in aliases)
+    return _name_keys(n for n in names if n)
+
+
 def _restates_spectral_class(qid: str, entities: WikidataEntityCache) -> bool:
     if qid in SPECTRAL_CLASSES:
         return True
@@ -342,9 +401,13 @@ def _read(
     entity: WikidataEntity | None,
     sitelinks: int | None,
     entities: WikidataEntityCache,
+    nicknames: Mapping[str, str] = {},
 ) -> _Read:
     if entity is None:
         return _Read({}, {}, {}, sitelinks)
+    aliases = dict(entity["aliases"])
+    for lang, nickname in nicknames.items():
+        aliases[lang] = [nickname, *aliases.get(lang, ())]
     return _Read(
         _claims(qid, entity, entities),
         {
@@ -352,11 +415,7 @@ def _read(
             for lang in LANGUAGES
             if (text := entity["descriptions"].get(lang))
         },
-        {
-            lang: _aliases(names)
-            for lang in LANGUAGES
-            if (names := entity["aliases"].get(lang))
-        },
+        {lang: _aliases(names) for lang in LANGUAGES if (names := aliases.get(lang))},
         sitelinks,
     )
 
@@ -473,6 +532,9 @@ def star_entries(
     global_data: dict[str, dict] = {}
     missing = 0
 
+    # Keyed by entry id.
+    star_names: dict[str, set[str]] = {}
+
     def read(obj_id: str, qid: str, name: str, planet: PlanetObject | None) -> None:
         nonlocal missing
         found = entities.get_star_entity(qid)
@@ -487,15 +549,28 @@ def star_entries(
                 else _page_name(entity, lang)
             )
         }
+        nicknames = {}
+        if planet is None:
+            star_names[obj_id] = _star_names(name, entity)
+        else:
+            host = star_names.get(f"{PREFIX}{planet.host}", set())
+            nicknames = {
+                lang: nickname
+                for lang in LANGUAGES
+                if (nickname := _planet_nickname(entity, lang, planet, host))
+            }
         page = _Page(obj_id, name, names)
         own_pages[obj_id] = page
         pages.setdefault(qid, page)
-        reads[obj_id] = _read(qid, entity, found.sitelinks if found else None, entities)
+        reads[obj_id] = _read(
+            qid, entity, found.sitelinks if found else None, entities, nicknames
+        )
 
     for star in stars:
         obj_id = f"{PREFIX}{star.id}"
         if star.qid is None:
             reads[obj_id] = _Read({}, {}, {}, None)
+            star_names[obj_id] = _star_names(star.name, None)
         else:
             read(obj_id, star.qid, star.name, None)
         global_data[obj_id] = _global(

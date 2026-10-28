@@ -282,11 +282,15 @@ class TestPlanetEntries:
             {
                 # The host star, whose page the planet's part_of links to.
                 "Q9": entity({"en": "51 Pegasi"}),
+                "Q4": entity({"en": "Kepler-34 AB", "ar": "كبلر-34", "he": "קפלר-34"}),
                 "Q1": entity(
                     {
                         "en": "51 Pegasi b",
                         "ja": "ペガスス座51番星b",
                         "ru": "51 Пегаса b",
+                        "de": "Dimidium (Exoplanet)",
+                        "fr": "Bellérophon (planète)",
+                        "es": "Dimídium",
                     },
                     {"en": "exoplanet orbiting 51 Pegasi"},
                     {"en": ["Bellerophon", "NAME Bellerophon", "* 51 Peg b"]},
@@ -300,14 +304,18 @@ class TestPlanetEntries:
                         # Wikidata gives the name of the star, or a nickname.
                         "pt": "Kepler-34",
                         "fr": "Gliese 34 Ab",
+                        "es": "KEPLER-34B",
                         "ru": "Осирис",
+                        # Its designation where the star's label is "קפלר-34".
+                        "he": "קפלר-34 בי",
+                        "ar": "كبلر-34",
                     }
                 ),
             },
             sitelinks={"Q1": 20},
         )
         return star_entries(
-            [StarObject(9, "51 Peg", "Q9")],
+            [StarObject(9, "51 Peg", "Q9"), StarObject(4, "Kepler-34 AB", "Q4")],
             entities,
             [
                 PlanetObject(9, 1, "Dimidium", "Q1", ("51 Peg b",), "b", True),
@@ -327,7 +335,7 @@ class TestPlanetEntries:
             "sitelinks_count": 20,
             "images": [{"file": "51 Peg b.jpg"}],
         }
-        assert set(global_data) == {"x-9", "x-9-b-1", "x-4-b-2"}
+        assert set(global_data) == {"x-9", "x-4", "x-9-b-1", "x-4-b-2"}
 
     def test_localized(self, entries):
         _, localized = entries
@@ -354,7 +362,26 @@ class TestPlanetEntries:
     def test_a_name_ends_in_the_letter_of_the_planet(self, entries):
         _, localized = entries
         assert "x-4-b-2" not in localized["pt"]
-        assert "x-4-b-2" not in localized["ru"]
+        assert "name" not in localized["ru"]["x-4-b-2"]
+
+    def test_a_nickname_is_an_alias(self, entries):
+        _, localized = entries
+        assert localized["ru"]["x-4-b-2"] == {"aliases": ["Осирис"]}
+        # A name of the star in a script that has no designation key.
+        assert "x-4-b-2" not in localized["ar"]
+        assert localized["he"]["x-4-b-2"] == {"aliases": ["קפלר-34 בי"]}
+
+    def test_an_iau_named_planet_keeps_its_other_labels_as_aliases(self, entries):
+        _, localized = entries
+        assert localized["ja"]["x-9-b-1"]["aliases"] == ["ペガスス座51番星b"]
+        # Without Wikidata's qualifier.
+        assert localized["fr"]["x-9-b-1"]["aliases"] == ["Bellérophon"]
+
+    def test_a_label_that_is_its_name_spelled_another_way_is_no_alias(self, entries):
+        _, localized = entries
+        assert "x-4-b-2" not in localized["es"]
+        assert "aliases" not in localized["de"]["x-9-b-1"]
+        assert "aliases" not in localized["es"]["x-9-b-1"]
 
 
 class TestReadStarObjects:
