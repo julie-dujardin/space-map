@@ -181,7 +181,7 @@ def msc_pair(wds: str, primary: str, secondary: str, parent: str, **values) -> d
         "Primary": primary,
         "Secondary": secondary,
         "Parent": parent,
-        "Type": "C",
+        "Type": "Cmp",
     }
     return row | values
 

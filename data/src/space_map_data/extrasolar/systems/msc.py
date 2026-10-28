@@ -3,9 +3,10 @@
 A row of sys.tsv is one pair: its Primary and Secondary labels and the label
 of its Parent, the component one level up that the pair makes. `*` is the
 root and `t` a trapezium, a group of components with no hierarchy. A pair
-with parent `X`, or of type `X`, is refuted or optical, and is left out. A row
-of comp.tsv gives the catalogue values of one label, which can be a pair
-(Castor A is Aa and Ab).
+with parent `X`, or of type `X`, is refuted or optical, and is left out. A pair
+whose only evidence is common proper motion (`c`, or `C` with no criterion but
+`m`) is unverified, as in the WDS. A row of comp.tsv gives the catalogue values
+of one label, which can be a pair (Castor A is Aa and Ab).
 
 A zero in a numeric column means "unknown" (Readme note 4), with two
 exceptions. An eccentricity of 0 is a circular orbit. One axis of a proper
@@ -39,6 +40,7 @@ from space_map_data.extrasolar.systems.nodes import (
     PROPER_MOTION,
     SPECTROSCOPIC,
     SPECTROSCOPIC_ORBIT,
+    UNVERIFIED,
     VISUAL,
     VISUAL_ORBIT,
     NodeList,
@@ -63,6 +65,9 @@ TYPE_CODES = {
     "E": ECLIPSING,
     "e": ECLIPSING,
 }
+# The criterion of a C code that is common proper motion. The others (h, r, p)
+# are a distance or a radial velocity.
+MOTION_CRITERION = "m"
 OPTICAL = "X"
 _HR = re.compile(r"HR_(\d+)")
 _GCVS = re.compile(r"V\*_([A-Za-z0-9]+)_([A-Z][a-z]{2})")
@@ -76,6 +81,16 @@ def _known(text: str | None) -> list[str]:
         if known and known not in found:
             found.append(known)
     return found
+
+
+def _motion_only(text: str | None) -> bool:
+    """Whether common proper motion is the only evidence of the pair."""
+    tokens = [token.strip().rstrip("?") for token in (text or "").split(",")]
+    return all(
+        TYPE_CODES.get(token[:1]) == PROPER_MOTION
+        and set(token[1:]) <= {MOTION_CRITERION}
+        for token in tokens
+    )
 
 
 def _optical(text: str | None) -> bool:
@@ -241,6 +256,7 @@ def _add_system(
             eccentricity=orbit.get("e"),
             semi_major_axis=_positive(orbit.get("a")),
             known=_known(pair["Type"]) if pair else None,
+            evidence=UNVERIFIED if pair and _motion_only(pair["Type"]) else None,
         )
         for child in children.get(label, []):
             add(child, node)

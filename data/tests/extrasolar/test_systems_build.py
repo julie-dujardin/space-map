@@ -15,6 +15,7 @@ from space_map_data.extrasolar.systems.assemble import Systems
 from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.nodes import (
+    DUBIOUS,
     EL_BADRY,
     GAIA_ORBITS,
     MSC,
@@ -918,6 +919,7 @@ class TestCrossMatchError:
         out = Reduced()
         TreeReducer(table, 0, [[], [(100, 2)], [(100, 9)]], facts, 0, out).run()
         assert out.groups == [] and out.interiors == []
+        assert [kind for kind, _, _ in out.events] == ["cross-match error"]
         assert out.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
         assert f"{WDS}: unverified members kept by parallax" not in out.counts
 
@@ -951,6 +953,85 @@ class TestCrossMatchError:
         assert text.endswith("it stays with B; B leaves the tree, so it goes back to A")
         assert out.counts[f"{WDS}: shared ids back from a member that left"] == 1
         assert out.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
+
+
+class TestUnverifiedMembers:
+    """An unverified member B of the pair AB stays only where two points agree."""
+
+    def reduced(
+        self, separation: float, facts: list[dict], b: int, evidence: str = UNVERIFIED
+    ) -> Reduced:
+        table = wds_tree(
+            [
+                ("AB", -1, None, None, None),
+                ("A", 0, None, 5.0, None),
+                ("B", 0, separation, 5.3, evidence),
+            ]
+        )
+        out = Reduced()
+        found = Facts(pa.Table.from_pylist(facts, schema=FACTS))
+        TreeReducer(table, 0, [[], [(100, 2)], [(b, 2)]], found, 0, out).run()
+        return out
+
+    def test_two_points_that_agree(self):
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        y = fact(101, 10.0, 10.0 + 20 / 3600, 5.3, parallax=10.1, pmra=20.5, pmdec=-5.0)
+        out = self.reduced(20.0, [x, y], 101)
+        (group,) = out.groups
+        assert group.keys == frozenset({100, 101})
+        assert out.counts[f"{WDS}: unverified members kept by parallax"] == 1
+
+    def test_one_point_does_not_confirm_itself(self):
+        """A and B are 0.3″ apart and reach X, which cannot split them."""
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        out = self.reduced(0.3, [x], 100)
+        assert out.groups == [] and out.interiors == [] and out.tentative == []
+        assert out.events == []
+        assert out.counts[f"{WDS}: {UNVERIFIED} members on the primary's point"] == 1
+        assert f"{WDS}: unverified members kept by parallax" not in out.counts
+
+    def test_a_dubious_member_on_the_primary_point_leaves(self):
+        """X splits A and B at 1.1″, but B is dubious and cannot stay."""
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        out = self.reduced(1.1, [x], 100, DUBIOUS)
+        assert out.groups == [] and out.tentative == [] and out.events == []
+        assert out.counts[f"{WDS}: {DUBIOUS} members on the primary's point"] == 1
+
+
+class TestCommonProperMotion:
+    """A and C move together at 1,000″. The motion alone does not make them a
+    pair."""
+
+    def systems(self, parallax: float) -> Systems:
+        w = "12148-5547"
+        components = {(w, "A"): wds_component(1), (w, "C"): wds_component(3)}
+        pair = wds_pair("A", "C", 1000.0, notes="N", pm1=(-38, -12), pm2=(-39, -13))
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 10, ("gaia", "dr3", "3"): 12},
+            [
+                fact(10, 183.7, -55.79, 7.0, parallax=9.8, pmra=-38.5, pmdec=-12.5),
+                fact(
+                    12,
+                    183.7,
+                    -55.79 + 1000 / 3600,
+                    8.0,
+                    parallax=parallax,
+                    pmra=-38.5,
+                    pmdec=-12.5,
+                ),
+            ],
+        )
+        return build(Inputs(wds=wds_catalogue({w: [pair]}, components)), resolver)
+
+    def test_another_distance_is_no_pair(self):
+        systems = self.systems(parallax=8.8)
+        assert systems.points.num_rows == 0
+        assert systems.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
+
+    def test_the_same_distance_is_a_pair(self):
+        systems = self.systems(parallax=9.8)
+        assert shape(systems, 12) == ("binary star", 2, [10, 12])
+        assert systems.counts[f"{WDS}: unverified members kept by parallax"] == 1
 
 
 class TestRegistryInputs:

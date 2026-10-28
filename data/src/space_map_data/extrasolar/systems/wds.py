@@ -10,11 +10,14 @@ letters imply the tree:
   member when its separation is less than NEST_RATIO times the group's own,
   else the group and the new component make a new level.
 
-A pair is physical when its notes say so (T, V, Z), when it has an orbit (O,
-C), or when both components move together (CPM_RATIO). A pair noted optical
-(S, U, Y) is left out, unless a physical code says the opposite: then it is
-dubious, as X marks it. A pair with no evidence either way is unverified. The
-builder keeps an unverified or dubious member only where other data agree.
+A pair is physical when its notes say so (T, V, Z) or when it has an orbit (O,
+C). Common proper motion (CPM_RATIO) alone does not make a pair physical,
+because a background star can move as the pair does. Such a pair is
+unverified, as a pair with no evidence is. A pair noted optical (S, U, Y) is
+left out. When a physical code or common proper motion says the opposite, the
+pair is dubious, as X marks it. The builder keeps an unverified member only
+where the parallaxes or another source agree, and a dubious member only where
+another source agrees.
 
 The Gaia DR3 source of each component comes from wds_comp_dr3.txt. Its
 position is the J2000 position of the primary, offset by the last measure.
@@ -124,16 +127,16 @@ def evidence(
         known.append(PROPER_MOTION)
     if "Z" in codes or "T" in codes:
         known.append(PARALLAX)
+    together = False
     motions = [value for value in (*pm1, *pm2) if value is not None]
     if len(motions) == 4:
         ra1, dec1, ra2, dec2 = motions
         primary = math.hypot(ra1, dec1)
         apart = math.hypot(ra1 - ra2, dec1 - dec2)
-        if primary >= CPM_MIN and apart < CPM_RATIO * primary:
-            physical = True
-            if PROPER_MOTION not in known:
-                known.append(PROPER_MOTION)
-    if optical and physical:
+        together = primary >= CPM_MIN and apart < CPM_RATIO * primary
+        if together and PROPER_MOTION not in known:
+            known.append(PROPER_MOTION)
+    if optical and (physical or together):
         return DUBIOUS, known
     if optical:
         return OPTICAL, known
@@ -380,8 +383,8 @@ class WdsCatalogue:
 
 
 def _by_evidence(pair: dict) -> tuple[bool, float, str, str]:
-    """Physical pairs first, so that a pair with no evidence never makes a
-    level that a physical pair should make; then by separation."""
+    """Physical pairs first, then by separation. So an unverified or dubious
+    pair never makes a level that a physical pair should make."""
     separation = pair["separation"]
     return (
         pair["evidence"] is not None,

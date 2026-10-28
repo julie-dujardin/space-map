@@ -71,12 +71,20 @@ class TestWdsLetters:
         assert wds_source.evidence(" X", (None, None), (None, None))[0] == DUBIOUS
         assert wds_source.evidence("N", (None, None), (None, None))[0] == UNVERIFIED
 
-    def test_common_motion_is_physical(self):
+    def test_common_motion_alone_is_unverified(self):
         found, known = wds_source.evidence("N", (11, 61), (6, 52))
-        assert found is None and PROPER_MOTION in known
-        assert wds_source.evidence("N", (11, 61), (-7, -4))[0] == UNVERIFIED
+        assert found == UNVERIFIED and PROPER_MOTION in known
+        assert PROPER_MOTION not in wds_source.evidence("N", (11, 61), (-7, -4))[1]
         # A slow primary says nothing.
-        assert wds_source.evidence("N", (3, 2), (3, 2))[0] == UNVERIFIED
+        assert PROPER_MOTION not in wds_source.evidence("N", (3, 2), (3, 2))[1]
+
+    def test_common_motion_and_an_orbit_is_physical(self):
+        found, known = wds_source.evidence("NO", (11, 61), (6, 52))
+        assert found is None
+        assert VISUAL_ORBIT in known and PROPER_MOTION in known
+
+    def test_common_motion_against_an_optical_code_is_dubious(self):
+        assert wds_source.evidence("NU", (11, 61), (6, 52))[0] == DUBIOUS
 
     def test_wide_pair_nests(self):
         """AB at 5″ and AC at 70″: C orbits the pair AB."""
@@ -174,7 +182,7 @@ class TestWdsLetters:
 
 
 class TestMsc:
-    """The MSC tree: parents, refuted pairs and trapezia."""
+    """The MSC tree: parents, refuted pairs, trapezia and evidence."""
 
     def test_hierarchy(self):
         comp = [
@@ -222,6 +230,30 @@ class TestMsc:
         tree = _tree(msc_nodes([], pairs, []))
         assert "C" not in tree and "D" not in tree
         assert tree["CD"] == ["C", "D"]
+
+    @pytest.mark.parametrize(
+        ("code", "evidence"),
+        [
+            ("c", UNVERIFIED),
+            ("C?", UNVERIFIED),
+            ("Cm", UNVERIFIED),
+            ("Cmp", None),
+            ("Ch", None),
+            ("Cmr", None),
+            ("c,S1", None),
+            ("v", None),
+        ],
+    )
+    def test_common_motion_alone_is_unverified(self, code, evidence):
+        pairs = [msc_pair("1", "A", "B", "*", Type=code)]
+        rows = {row["label"]: row for row in msc_nodes([], pairs, []).to_pylist()}
+        assert rows["B"]["evidence"] == evidence
+        assert rows["A"]["evidence"] is None
+
+    def test_an_unverified_pair_keeps_its_motion(self):
+        pairs = [msc_pair("1", "A", "B", "*", Type="Cm")]
+        rows = {row["label"]: row for row in msc_nodes([], pairs, []).to_pylist()}
+        assert rows["B"]["known"] == [PROPER_MOTION]
 
     def test_trapezium_is_flat(self):
         pairs = [

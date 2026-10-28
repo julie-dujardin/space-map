@@ -14,9 +14,11 @@ and is a group:
   member, not the group's.
 - A member that reaches no object is an entry. It is inside its sibling's
   point when that point cannot split it, else an entry of the group.
-- A member that the source lists as unverified or dubious stays only when
-  the parallaxes and motions of both points agree. Else it leaves the tree,
-  and the pair waits for another source to agree.
+- A member that the source lists as unverified stays only when it and its
+  primary reach two points whose parallaxes and motions agree. A dubious
+  member never stays. A member that leaves waits for another source to agree.
+  A member that reaches its primary's point does not wait, because one point
+  cannot confirm itself.
 
 A point that holds two or more members gets an interior: its members as
 entries. A group gets the set of its points.
@@ -397,6 +399,14 @@ class TreeReducer:
             evidence = self.evidence[part.node]
             if evidence not in (UNVERIFIED, DUBIOUS):
                 kept.append(part)
+                continue
+            if part.key and part.key == primary.key:
+                if evidence == UNVERIFIED and self._shared(row, [primary, part])[1]:
+                    # The point splits them, so `_shared` finds the cross-match error.
+                    kept.append(part)
+                else:
+                    name = f"{self.source}: {evidence} members on the primary's point"
+                    out.counts[name] += 1
                 continue
             first = self.facts.get(primary.key) if primary.key else None
             second = self.facts.get(part.key) if part.key else None
