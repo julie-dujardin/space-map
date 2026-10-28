@@ -823,7 +823,7 @@ class TestSystemsOfSimbad:
         # A row that takes the number still disputes it.
         assert simbad.disputed_hip(stars, stars.handed(), {"900": "79"}) == {900}
 
-    def test_every_row_that_takes_a_number_is_checked(self, tmp_path):
+    def test_a_number_that_two_rows_take_is_disputed(self, tmp_path):
         stars = self.stars(
             tmp_path,
             [
@@ -835,10 +835,10 @@ class TestSystemsOfSimbad:
         )
         handed = stars.handed()
         assert handed == {2: {"hip": "910"}}
-        # The second row has another Gaia id.
+        # Neither row has the best neighbour.
         assert simbad.disputed_hip(stars, handed, {"910": "80"}) == {910}
         # The second row has the best neighbour.
-        assert simbad.disputed_hip(stars, handed, {"910": "81"}) == frozenset()
+        assert simbad.disputed_hip(stars, handed, {"910": "81"}) == {910}
 
     def test_a_simbad_type_gives_the_class(self, tmp_path):
         stars = self.stars(

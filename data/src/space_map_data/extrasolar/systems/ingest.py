@@ -54,7 +54,6 @@ from space_map_data.extrasolar.registry import (
 )
 from space_map_data.extrasolar.sources.gaia import GaiaReader
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
-from space_map_data.extrasolar.systems import assemble
 from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
 from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.msc import read_msc, refuted_pairs
@@ -174,7 +173,9 @@ class RunResolver:
     An object that the commit does not mint, such as a Gaia DR3 source under
     the fidelity cut that no minting row claims, has no ID to draw or to
     link. So the resolver gives no object for it, and the builder makes its
-    star an entry.
+    star an entry. Each key that it gives has a claim. A key of a lookup has
+    the id that the lookup asked for, and a planet host has at least the id
+    of its row in an exoplanet catalogue.
     """
 
     def __init__(self, run: IngestRun, complete: bool) -> None:
@@ -188,7 +189,7 @@ class RunResolver:
         self._found: list[tuple[str, str, pa.Array, np.ndarray]] = []
         self._own: list[tuple[str, str, pa.Array, np.ndarray]] = []
         # "<catalogue>/<release>/<id>" of each id whose object is not minted.
-        self._lost: list[pa.Array] = []
+        self._lost: set[str] = set()
         self.facts_table: pa.Table | None = None
         # The merged class of each fact key before the star-systems pass.
         self.classes = CLASS.schema.empty_table()
@@ -223,17 +224,16 @@ class RunResolver:
         lost = (keys != 0) & (minted == 0)
         if lost.any():
             texts = ids.filter(pa.array(lost)).cast(pa.string())
-            self._lost.append(
-                pc.binary_join_element_wise(f"{catalogue}/{release}", texts, "/")
-            )
+            new = set(_id_texts(catalogue, release, texts).to_pylist()) - self._lost
+            self._lost |= new
             name = f"ids of objects that are not minted {catalogue}/{release}"
-            self.counts[name] += int(lost.sum())
+            self.counts[name] += len(new)
         return minted
 
     @property
     def lost(self) -> pa.Array:
         """ "<catalogue>/<release>/<id>" of each id whose object is not minted."""
-        return pa.concat_arrays([pa.array([], pa.string()), *self._lost])
+        return pa.array(sorted(self._lost), pa.string())
 
     def keys(self, catalogue: str, release: str, ids: pa.Array) -> np.ndarray:
         others = self._links()
@@ -546,9 +546,7 @@ def _resolved_claims(
     primaries = rows["primary"].to_numpy()
     rank = _nesting_rank(primaries, rows["depth"].to_numpy())[lonely]
     found = resolver.claims(primaries[lonely])
-    text = pc.binary_join_element_wise(
-        *(found[name] for name in CROSS_ID.names), "/"
-    ).combine_chunks()
+    text = _id_texts(*found.select(CROSS_ID.names).columns)
     has = text.is_valid().to_numpy(zero_copy_only=False)
     counts["resolved systems that claim their primary"] += int(has.sum())
     counts["resolved systems with nothing to claim"] += int((~has).sum())
@@ -636,21 +634,16 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
 
     # The claim and the label of each point, by key.
     points = systems.points
-    point_keys = np.sort(points["key"].to_numpy())
+    point_index = np.argsort(points["key"].to_numpy(), kind="stable")
+    point_keys = points["key"].to_numpy()[point_index]
     point_claims = resolver.claims(point_keys)
-    point_labels = pc.binary_join_element_wise(
-        *(point_claims[name] for name in CROSS_ID.names), "/"
-    ).combine_chunks()
-    linked = point_labels.is_valid().to_numpy(zero_copy_only=False)
-    if not linked.all():
-        counts["points with no catalogue id, made entries"] += int((~linked).sum())
-        logger.warning("systems: %d points have no catalogue id", int((~linked).sum()))
-        systems = _as_entries(systems, point_keys[~linked])
-        points = systems.points
-        point_keys = point_keys[linked]
-        point_claims = point_claims.filter(pa.array(linked))
-        point_labels = point_labels.filter(pa.array(linked))
-    point_index = np.argsort(points["key"].to_numpy())
+    point_labels = _id_texts(*point_claims.select(CROSS_ID.names).columns)
+    unclaimed = point_labels.is_null().to_numpy(zero_copy_only=False)
+    if unclaimed.any():
+        raise ValueError(
+            f"systems: {int(unclaimed.sum())} points have no claim, such as"
+            f" {point_keys[unclaimed][:EXAMPLES].tolist()}"
+        )
 
     def point_at(keys: np.ndarray) -> np.ndarray:
         """The position of each key among the sorted points, -1 where none."""
@@ -672,13 +665,8 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     offsets = claimed.offsets.to_numpy()
     named = np.flatnonzero(np.diff(offsets) > 0)
     first = claimed.values.take(pa.array(offsets[named]))
-    text = pc.binary_join_element_wise(
-        "node ",
-        pc.binary_join_element_wise(
-            *(first.field(name) for name in CROSS_ID.names), "/"
-        ),
-        "",
-    ).to_numpy(zero_copy_only=False)
+    text = pc.binary_join_element_wise("node ", _id_texts(*first.flatten()), "")
+    text = text.to_numpy(zero_copy_only=False)
     _, unique = np.unique(text, return_index=True)
     resolved_labels = np.array([f"node {n}" for n in resolved_numbers.tolist()], object)
     resolved_labels[named[unique]] = text[unique]
@@ -836,51 +824,20 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     )
 
 
-def _as_entries(systems: Systems, keys: np.ndarray) -> Systems:
-    """`systems` with each point of `keys` as an entry of the node that lists
-    it, and no node of its own. Such a point has no row that links it, so it
-    gets no ID."""
-    wanted = pa.array(keys, pa.int64())
-    nodes, members = systems.nodes, systems.members
-    gone = nodes.filter(pc.is_in(nodes["key"], value_set=wanted))["node"]
-    gone = gone.combine_chunks()
-    demoted = pc.or_(
-        pc.and_(
-            pc.equal(members["kind"], assemble.STAR),
-            pc.is_in(members["key"], value_set=wanted),
-        ),
-        pc.and_(
-            pc.equal(members["kind"], assemble.SYSTEM),
-            pc.is_in(members["member"], value_set=gone),
-        ),
-    )
-    zero = pa.scalar(0, pa.int64())
-    for name, value in (("kind", pa.scalar(ENTRY)), ("key", zero), ("member", zero)):
-        at = members.schema.get_field_index(name)
-        members = members.set_column(
-            at, name, pc.if_else(demoted, value, members[name])
-        )
-
-    def without(table: pa.Table, column: str, values: pa.Array) -> pa.Table:
-        return table.filter(pc.invert(pc.is_in(table[column], value_set=values)))
-
-    return replace(
-        systems,
-        nodes=without(nodes, "node", gone),
-        members=without(members, "node", gone),
-        points=without(systems.points, "key", wanted),
-        distances=without(systems.distances, "key", wanted),
-        names=without(systems.names, "node", gone),
-    )
+def _id_texts(
+    catalogue: str | pa.Array | pa.ChunkedArray,
+    release: str | pa.Array | pa.ChunkedArray,
+    catalogue_id: pa.Array | pa.ChunkedArray,
+) -> pa.Array:
+    """ "<catalogue>/<release>/<id>" of each id, null where a part is null."""
+    texts = pc.binary_join_element_wise(catalogue, release, catalogue_id, "/")
+    return texts.combine_chunks() if isinstance(texts, pa.ChunkedArray) else texts
 
 
 def _lost_entries(members: pa.Table, lost: pa.Array) -> int:
     """The entries that hold an id of `lost` ("<catalogue>/<release>/<id>")."""
     ids = members.filter(pc.equal(members["kind"], ENTRY))["ids"].combine_chunks()
-    flat = pc.list_flatten(ids)
-    texts = pc.binary_join_element_wise(
-        *(flat.field(name) for name in CROSS_ID.names), "/"
-    )
+    texts = _id_texts(*pc.list_flatten(ids).flatten())
     hit = pc.is_in(texts, value_set=lost).fill_null(False)
     rows = pc.list_parent_indices(ids).to_numpy()
     return int(np.unique(rows[hit.to_numpy(zero_copy_only=False)]).size)

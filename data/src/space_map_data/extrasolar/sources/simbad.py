@@ -828,15 +828,16 @@ def disputed_hip(
     """The HIP numbers whose Gaia best neighbour SIMBAD gives to another star.
 
     The rows that take a HIP number are the rows with that number and the
-    rows that their systems hand it to. A number is disputed when one of
-    these rows has another Gaia DR3 id, or when SIMBAD gives the best
-    neighbour to an object that is not one of these rows. A number that no
-    row takes keeps its best neighbour. Where they disagree, the source of
-    SIMBAD has the magnitude of the Hipparcos star in most cases. A system's
-    best neighbour is often its fainter component, and the primary's light
-    would then take the companion's Gaia id, name and SIMBAD row. So such a
-    Hipparcos star goes by position and magnitude. `handed` is
-    `stars.handed()`.
+    rows that their systems hand it to. A number that two rows take is
+    disputed, since only position and magnitude can tell which row holds the
+    Hipparcos star. A number that one row takes is disputed when the row has
+    another Gaia DR3 id, or when SIMBAD gives the best neighbour to another
+    object. A number that no row takes keeps its best neighbour.
+    Where they disagree, the source of SIMBAD has the magnitude of the
+    Hipparcos star in most cases. A system's best neighbour is often its
+    fainter component, and the primary's light would then take the
+    companion's Gaia id, name and SIMBAD row. So such a Hipparcos star goes
+    by position and magnitude. `handed` is `stars.handed()`.
     """
     holder = {found.gaia: oid for oid, found in stars.objects.items() if found.gaia}
     takers: dict[str, list[int]] = defaultdict(list)
@@ -849,9 +850,11 @@ def disputed_hip(
     companions = 0
     for hip, source in best.items():
         rows = takers.get(hip, [])
-        if any(stars.objects[row].gaia not in (None, source) for row in rows):
+        if not rows:
+            continue
+        if len(rows) > 1 or stars.objects[rows[0]].gaia not in (None, source):
             disputed.add(int(hip))
-        elif rows and source in holder and holder[source] not in rows:
+        elif source in holder and holder[source] != rows[0]:
             disputed.add(int(hip))
             companions += 1
     logger.info(

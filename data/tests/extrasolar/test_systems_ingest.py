@@ -412,12 +412,11 @@ class TestHostInNoTree:
     def test_the_host_has_a_system_row(self, tmp_path):
         root = tmp_path / "registry"
         stars = STARS | {"2001": (50.0, 20.0, 9.0, 15.0, 0.2)}
-        extension, report = ingest(root, stars, host="2001")
+        extension, _ = ingest(root, stars, host="2001")
         registry = Registry(root)
         (lone,) = ids_of(registry, ["2001"])
         assert lone in table(registry, SYSTEM.slug)["id"].to_pylist()
         assert extension.host(0) == lone
-        assert "no catalogue id" not in report
 
 
 def source_id(ra: float, dec: float, n: int) -> int:
@@ -580,6 +579,9 @@ class TestUnmintedObjects:
         )
         # B of both new WDS pairs goes to the position pass.
         assert "ids of objects that are not minted wds/id 2," in report
+        # The pair's and the orbit's source, each once, though the builder
+        # looks up one of them twice.
+        assert "ids of objects that are not minted gaia/dr3 2," in report
 
     def test_second_ingest_keeps_the_ids_and_the_entries(self, unminted_two):
         registry, first, _, report_two = unminted_two
@@ -618,19 +620,19 @@ class TestUnmintedKeys:
             assert run.unminted().tolist() == [key[str(GAIA["orbit"])]]
 
 
-class TestPointsWithNoCatalogueId:
-    """A point that the run gives nothing to claim is an entry of its node."""
+class TestPointsWithNoClaim:
+    """A point that the run gives nothing to claim stops the step. The
+    resolver gives each key a claim, so such a point is a fault of the
+    resolver."""
 
-    def test_entries(self, tmp_path, monkeypatch):
+    def test_it_raises(self, tmp_path, monkeypatch):
         claims = systems_ingest.RunResolver.claims
 
         def without(resolver, keys):
             found = claims(resolver, keys)
             rows = resolver.run.row_keys(HIPPARCOS.name)
             hips = dict(zip(rows["catalogue_id"].to_pylist(), rows["key"].to_pylist()))
-            # B of the WDS pair, and A of the MSC pair, which holds Aa and Ab.
-            lost = pa.array([hips["1004"], hips["1001"]], pa.int64())
-            drop = pc.is_in(found["key"], value_set=lost)
+            drop = pc.equal(found["key"], hips["1004"])
             for name in CROSS_ID.names:
                 at = found.schema.get_field_index(name)
                 none = pa.scalar(None, found.schema.field(name).type)
@@ -638,17 +640,8 @@ class TestPointsWithNoCatalogueId:
             return found
 
         monkeypatch.setattr(systems_ingest.RunResolver, "claims", without)
-        root = tmp_path / "registry"
-        _, report = ingest(root)
-        registry = Registry(root)
-        system = table(registry, SYSTEM.slug)
-        assert not export_systems.Systems.of(system).check()
-        assert "pass: points with no catalogue id, made entries 2\n" in report
-        a, p2 = ids_of(registry, ["1003", "1002"])
-        for star in (a, p2):
-            node = node_of(system, star)
-            assert sorted(m["kind"] for m in node["members"]) == ["entry", "star"]
-        assert not system.filter(system["point"]).num_rows
+        with pytest.raises(ValueError, match="1 points have no claim"):
+            ingest(tmp_path / "registry")
 
 
 class TestReportTargets:
