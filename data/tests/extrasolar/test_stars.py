@@ -54,6 +54,7 @@ from space_map_data.extrasolar.tables import (
     BINARY_ORBIT,
     METADATA,
     POINT_SOURCE,
+    STAR_SYSTEMS,
     TABLES,
 )
 from space_map_data.ingest import __main__ as ingest_cli
@@ -265,14 +266,20 @@ class TestTables:
                     *(source.name for source in EXOPLANET_SOURCES),
                     WIKIDATA.name,
                     *(source.name for source in DISTANCE_SOURCES),
+                    STAR_SYSTEMS,
                 }
         distance = {g.name: g for g in POINT_SOURCE.groups}["distance"]
-        assert distance.sources == tuple(source.name for source in DISTANCE_SOURCES)
+        # The system distance comes last.
+        assert distance.sources == (
+            *(source.name for source in DISTANCE_SOURCES),
+            STAR_SYSTEMS,
+        )
         # A planet host shows the name that its planets' designations use.
         assert METADATA.groups[0].sources == (
             IAU_WGSN.name,
             *(source.name for source in EXOPLANET_SOURCES),
             WIKIDATA.name,
+            STAR_SYSTEMS,
             SIMBAD.name,
             HIPPARCOS.name,
             HIPPARCOS_1997.name,

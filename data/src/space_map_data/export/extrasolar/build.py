@@ -416,6 +416,9 @@ def _build_tables(
     results = []
     for table in (METADATA, *TABLES):
         slug = table.slug
+        if slug not in MAX_ROWS:
+            logger.warning("%s: the export has no tiles of this table", slug)
+            continue
         jobs = [(registry, slug, region) for region in range(REGION_COUNT)]
         counts = _run(workers, _count_job, jobs, f"{slug}: cell counts")
         split = Split.build(np.concatenate(counts), MAX_ROWS[slug])

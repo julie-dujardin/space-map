@@ -31,6 +31,7 @@ import numpy as np
 import pyarrow as pa
 
 from space_map_data.download.providers.stars import wds
+from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.systems.nodes import (
     DUBIOUS,
     GAIA_DR3,
@@ -47,6 +48,17 @@ from space_map_data.extrasolar.systems.nodes import (
 logger = logging.getLogger(__name__)
 
 EPOCH = 2000.0
+# Matches a WDS component to a stored star by position. G of the registry is
+# about 0.3 mag brighter than V of the WDS.
+WDS_MATCHER = PositionMatcher(
+    n_sigma=5.0,
+    near_sigma=3.0,
+    min_error=0.3,
+    reach=1.0,
+    max_mag_diff=1.5,
+    mag_offset=0.3,
+    mag_sigma=0.5,
+)
 # A pair moves together when the motions differ by less than this share of
 # the primary's, and the primary moves at least CPM_MIN mas/yr.
 CPM_RATIO = 0.2

@@ -21,7 +21,7 @@ def map_sorted(
     sorted_keys: np.ndarray,
     values: np.ndarray,
     keys: np.ndarray,
-    missing: int | np.ndarray,
+    missing: float | np.ndarray,
 ) -> np.ndarray:
     """The value of each of `keys`, by its position in `sorted_keys`.
 

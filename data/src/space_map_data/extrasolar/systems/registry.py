@@ -11,11 +11,12 @@ region at a time:
 - the ids of the other catalogues come from one pass over every region,
   kept in memory, since they are few;
 - a position match takes the registry positions of the row's region and its
-  neighbours, with MATCHER. The ingest uses the engine's matchers instead.
+  neighbours, with WDS_MATCHER. The ingest runs a pass of the engine instead.
 """
 
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 
 import numpy as np
 import pyarrow as pa
@@ -26,13 +27,14 @@ from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.exoplanets.catalogues import EU, OEC
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.ids import CELL_LEVEL, cell_of
-from space_map_data.extrasolar.match import Pairs, PositionMatcher, assign
+from space_map_data.extrasolar.match import Pairs, assign
 from space_map_data.extrasolar.placement import COLUMNS, placement
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.nodes import GAIA_DR3
 from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
 from space_map_data.extrasolar.systems.resolve import FACTS
+from space_map_data.extrasolar.systems.wds import WDS_MATCHER
 from space_map_data.extrasolar.tables import CROSS_ID
 from space_map_data.utils.arrays import find_sorted, floats
 
@@ -41,16 +43,6 @@ logger = logging.getLogger(__name__)
 # A Gaia DR3 source_id holds its level-12 HEALPix pixel above this bit.
 SOURCE_PIXEL_SHIFT = 35
 SOURCE_LEVEL = 12
-# G of the registry is about 0.3 mag brighter than V of the WDS.
-MATCHER = PositionMatcher(
-    n_sigma=5.0,
-    near_sigma=3.0,
-    min_error=0.3,
-    reach=1.0,
-    max_mag_diff=1.5,
-    mag_offset=0.3,
-    mag_sigma=0.5,
-)
 POINT_COLUMNS = [
     "id",
     *COLUMNS,
@@ -59,6 +51,110 @@ POINT_COLUMNS = [
     "host_spectral_type",
     "non_single_star",
 ]
+
+
+def gaia_keys(
+    values: np.ndarray, region_ids: Callable[[int], tuple[np.ndarray, np.ndarray]]
+) -> np.ndarray:
+    """The key of each Gaia DR3 source_id, 0 where none.
+
+    `region_ids` gives the sorted source_ids of a region and their keys. An
+    id goes to the region of its HEALPix cell. An ID's cell comes from the
+    J2016.0 position and can be the next cell over, so a miss on a region's
+    border looks in the next region.
+    """
+    keys = np.zeros(values.size, np.int64)
+    cell = values >> (SOURCE_PIXEL_SHIFT + 2 * (SOURCE_LEVEL - CELL_LEVEL))
+    home = sky.region_of(cell)
+    _lookup(
+        values,
+        keys,
+        {r: np.flatnonzero(home == r) for r in np.unique(home)},
+        region_ids,
+    )
+    missed = np.flatnonzero(keys == 0)
+    if not missed.size:
+        return keys
+    around = nested.neighbours(cell[missed].astype(np.uint64), CELL_LEVEL)
+    regions = np.where(around >= 0, sky.region_of(np.maximum(around, 0)), -1)
+    by_region: dict[int, list[int]] = defaultdict(list)
+    for at, row, mine in zip(missed.tolist(), regions.tolist(), home[missed].tolist()):
+        for region in set(row) - {mine, -1}:
+            by_region[region].append(at)
+    _lookup(
+        values,
+        keys,
+        {r: np.array(v, np.int64) for r, v in by_region.items()},
+        region_ids,
+    )
+    return keys
+
+
+def _lookup(
+    values: np.ndarray,
+    keys: np.ndarray,
+    by_region: dict[int, np.ndarray],
+    region_ids: Callable[[int], tuple[np.ndarray, np.ndarray]],
+) -> None:
+    for region in sorted(by_region):
+        rows = by_region[region]
+        rows = rows[keys[rows] == 0]
+        if not rows.size:
+            continue
+        sorted_ids, sorted_keys = region_ids(int(region))
+        at = find_sorted(sorted_ids, values[rows])
+        hit = at >= 0
+        keys[rows[hit]] = sorted_keys[at[hit]]
+
+
+def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Table:
+    """FACTS from the positions (`key`, `ra`, `dec`, `pmra`, `pmdec`, `mag`),
+    the Point source rows (POINT_COLUMNS) and the Metadata rows (`id`,
+    `name`, `name_source`) of some objects."""
+    point = point.take(pc.sort_indices(point["id"]))
+    meta = meta.take(pc.sort_indices(meta["id"]))
+    ids = positions["key"].to_numpy()
+    at_point = find_sorted(point["id"].to_numpy(), ids)
+    at_meta = find_sorted(meta["id"].to_numpy(), ids)
+    placed = placement(point)
+    parallax = floats(point, "parallax")
+    distance = np.full(point.num_rows, np.nan)
+    by_parallax = placed.by_parallax | placed.by_suspect
+    distance[by_parallax] = 1000.0 / parallax[by_parallax]
+    distance[placed.by_group] = floats(point, "distance")[placed.by_group]
+    distance[placed.by_catalogue] = floats(point, "host_distance")[placed.by_catalogue]
+
+    def pick(table: pa.Table, at: np.ndarray, name: str) -> pa.Array:
+        index = pa.array(at, mask=at < 0)
+        return table[name].take(index)
+
+    spectral = pc.coalesce(
+        pick(point, at_point, "simbad_sp_type"),
+        pick(point, at_point, "sp_type"),
+        pick(point, at_point, "host_spectral_type"),
+    )
+    point_distance = np.where(at_point >= 0, distance[np.maximum(at_point, 0)], np.nan)
+    return pa.table(
+        {
+            "key": positions["key"],
+            "ra": positions["ra"],
+            "dec": positions["dec"],
+            "pmra": positions["pmra"],
+            "pmdec": positions["pmdec"],
+            "mag": positions["mag"],
+            "astrometry": pick(point, at_point, "astrometry_source"),
+            "parallax": pick(point, at_point, "parallax"),
+            "parallax_error": pick(point, at_point, "parallax_error"),
+            "distance": pa.array(point_distance, from_pandas=True),
+            "spectral_type": spectral,
+            "non_single_star": pick(point, at_point, "non_single_star").cast(
+                pa.int16()
+            ),
+            "name": pick(meta, at_meta, "name"),
+            "name_source": pick(meta, at_meta, "name_source"),
+        },
+        schema=FACTS,
+    )
 
 
 class RegistryResolver:
@@ -124,43 +220,7 @@ class RegistryResolver:
         return ids[order], keys[order]
 
     def _gaia(self, ids: pa.Array) -> np.ndarray:
-        values = ids.cast(pa.int64()).to_numpy()
-        keys = np.zeros(values.size, np.int64)
-        cell = values >> (SOURCE_PIXEL_SHIFT + 2 * (SOURCE_LEVEL - CELL_LEVEL))
-        home = sky.region_of(cell)
-        self._lookup(
-            values, keys, {r: np.flatnonzero(home == r) for r in np.unique(home)}
-        )
-        # An ID's cell comes from the J2016.0 position and can be the next
-        # cell over, so a miss on a region's border looks in the next region.
-        missed = np.flatnonzero(keys == 0)
-        if not missed.size:
-            return keys
-        around = nested.neighbours(cell[missed].astype(np.uint64), CELL_LEVEL)
-        regions = np.where(around >= 0, sky.region_of(np.maximum(around, 0)), -1)
-        by_region: dict[int, list[int]] = defaultdict(list)
-        for at, row, mine in zip(
-            missed.tolist(), regions.tolist(), home[missed].tolist()
-        ):
-            for region in set(row) - {mine, -1}:
-                by_region[region].append(at)
-        self._lookup(
-            values, keys, {r: np.array(v, np.int64) for r, v in by_region.items()}
-        )
-        return keys
-
-    def _lookup(
-        self, values: np.ndarray, keys: np.ndarray, by_region: dict[int, np.ndarray]
-    ) -> None:
-        for region in sorted(by_region):
-            rows = by_region[region]
-            rows = rows[keys[rows] == 0]
-            if not rows.size:
-                continue
-            sorted_ids, sorted_keys = self._gaia_region(int(region))
-            at = find_sorted(sorted_ids, values[rows])
-            hit = at >= 0
-            keys[rows[hit]] = sorted_keys[at[hit]]
+        return gaia_keys(ids.cast(pa.int64()).to_numpy(), self._gaia_region)
 
     def facts(self, keys: np.ndarray) -> pa.Table:
         keys = np.unique(np.asarray(keys, np.int64))
@@ -182,57 +242,9 @@ class RegistryResolver:
             "metadata", region, ["id", "name", "name_source"]
         )
         assert point is not None and meta is not None
-        # The tables are sorted by cell, then ID.
         point = point.filter(pc.is_in(point["id"], value_set=keys))
-        point = point.take(pc.sort_indices(point["id"]))
         meta = meta.filter(pc.is_in(meta["id"], value_set=keys))
-        meta = meta.take(pc.sort_indices(meta["id"]))
-        ids = positions["id"].to_numpy()
-        at_point = find_sorted(point["id"].to_numpy(), ids)
-        at_meta = find_sorted(meta["id"].to_numpy(), ids)
-        placed = placement(point)
-        parallax = floats(point, "parallax")
-        distance = np.full(point.num_rows, np.nan)
-        by_parallax = placed.by_parallax | placed.by_suspect
-        distance[by_parallax] = 1000.0 / parallax[by_parallax]
-        distance[placed.by_group] = floats(point, "distance")[placed.by_group]
-        distance[placed.by_catalogue] = floats(point, "host_distance")[
-            placed.by_catalogue
-        ]
-
-        def pick(table: pa.Table, at: np.ndarray, name: str) -> pa.Array:
-            index = pa.array(at, mask=at < 0)
-            return table[name].take(index)
-
-        spectral = pc.coalesce(
-            pick(point, at_point, "simbad_sp_type"),
-            pick(point, at_point, "sp_type"),
-            pick(point, at_point, "host_spectral_type"),
-        )
-        point_distance = np.where(
-            at_point >= 0, distance[np.maximum(at_point, 0)], np.nan
-        )
-        return pa.table(
-            {
-                "key": positions["id"],
-                "ra": positions["ra"],
-                "dec": positions["dec"],
-                "pmra": positions["pmra"],
-                "pmdec": positions["pmdec"],
-                "mag": positions["mag"],
-                "astrometry": pick(point, at_point, "astrometry_source"),
-                "parallax": pick(point, at_point, "parallax"),
-                "parallax_error": pick(point, at_point, "parallax_error"),
-                "distance": pa.array(point_distance, from_pandas=True),
-                "spectral_type": spectral,
-                "non_single_star": pick(point, at_point, "non_single_star").cast(
-                    pa.int16()
-                ),
-                "name": pick(meta, at_meta, "name"),
-                "name_source": pick(meta, at_meta, "name_source"),
-            },
-            schema=FACTS,
-        )
+        return point_facts(positions.rename_columns({"id": "key"}), point, meta)
 
     def match(self, rows: pa.Table) -> np.ndarray:
         ra, dec = floats(rows, "match_ra"), floats(rows, "match_dec")
@@ -258,7 +270,7 @@ class RegistryResolver:
         fine, candidates = fine[order], candidates.take(pa.array(order))
         ra, dec = floats(rows, "match_ra"), floats(rows, "match_dec")
         error = floats(rows, "match_error")
-        radius = MATCHER.radius(error, np.full(ra.size, np.nan))
+        radius = WDS_MATCHER.radius(error, np.full(ra.size, np.nan))
         row, low, high = sky.disc_ranges(ra, dec, radius)
         first = np.searchsorted(fine, low)
         count = np.searchsorted(fine, high) - first
@@ -284,7 +296,7 @@ class RegistryResolver:
             key_mag=floats(candidates, "mag")[pair_cand],
             key_kind=candidates["kind"].combine_chunks().take(pa.array(pair_cand)),
         )
-        score = MATCHER.score(pairs)
+        score = WDS_MATCHER.score(pairs)
         ids = candidates["id"].to_numpy()
         kept = assign(pair_row, ids[pair_cand], score)
         keys = np.zeros(rows.num_rows, np.int64)

@@ -276,6 +276,49 @@ def _has_catalogue(cross_ids: pa.Array, catalogues: frozenset[str]) -> pa.Array:
     return pa.array(has)
 
 
+def _with_computed(table: TableDef, rows: pa.Table) -> pa.Table:
+    """`rows` in the column order of `table`, with null computed columns
+    where they are missing. An extension can set them later."""
+    for column in table.computed:
+        if column.name not in rows.column_names:
+            rows = rows.append_column(column, pa.nulls(rows.num_rows, column.type))
+    return rows.select(table.schema.names)
+
+
+def _merge_table(table: TableDef, rows_of: dict[str, pa.Table]) -> pa.Table | None:
+    """The rows of `table` from the rows of each source, keyed by `key`,
+    merged by source order. None when no source has a value."""
+    parts = []
+    for name, rows in rows_of.items():
+        groups = table.groups_of(name)
+        if not groups:
+            continue
+        fed = {column.name for group in groups for column in group.columns}
+        # A row with no value here gives no row. Dropping it first keeps the
+        # merge of a sparse table small.
+        has = np.zeros(rows.num_rows, bool)
+        for column_name in fed:
+            has |= rows[column_name].is_valid().to_numpy(zero_copy_only=False)
+        if not has.any():
+            continue
+        if not has.all():
+            rows = rows.filter(pa.array(has))
+        columns = {
+            "id": rows[KEY],
+            SOURCE_COLUMN: pa.array([name] * rows.num_rows, pa.string()),
+        }
+        for column in table.group_fields:
+            columns[column.name] = (
+                rows[column.name]
+                if column.name in fed
+                else pa.nulls(rows.num_rows, column.type)
+            )
+        parts.append(pa.table(columns))
+    if not parts:
+        return None
+    return merge_by_source_order(table, pa.concat_tables(parts))
+
+
 def _bools(table: pa.Table, name: str) -> np.ndarray:
     return table[name].fill_null(False).to_numpy()
 
@@ -310,6 +353,9 @@ class Source:
     # Catalogue releases that its rows reach only by a claim: a row with a
     # counterpart there claims it, so a row without a claim has none.
     claim_only: tuple[tuple[str, str], ...] = ()
+    # True: the catalogue id of a row only names the row in the run. It links
+    # nothing, and the registry does not keep it. The claims link the rows.
+    labels: bool = False
 
 
 @dataclass
@@ -358,6 +404,10 @@ class ExtensionResult:
     report: str
     # Changes that a person checks before the export publishes them.
     unreviewed: int = 0
+    # Table slug → `id` and computed columns of that table, which the engine
+    # sets on the rows of these IDs. A computed column can hold other IDs,
+    # which exist only once every region is minted.
+    patches: dict[str, pa.Table] = field(default_factory=dict)
 
 
 class Extension(Protocol):
@@ -829,7 +879,7 @@ class IngestRun:
         regions = sorted(
             {
                 near
-                for region in key_region(wanted).tolist()
+                for region in np.unique(key_region(wanted)).tolist()
                 for near in self._hood(region)
             }
         )
@@ -841,7 +891,7 @@ class IngestRun:
                 if region not in state.regions:
                     continue
                 roots = self._object_root(self._read_keys(state.number, region))
-                at = np.flatnonzero(np.isin(roots, wanted))
+                at = np.flatnonzero(find_sorted(wanted, roots) >= 0)
                 if not at.size:
                     continue
                 rows = self._staged(state.number, region, ["catalogue_id", *carried])
@@ -851,6 +901,96 @@ class IngestRun:
             if parts:
                 found[state.source.name] = pa.concat_tables(parts)
         return found
+
+    def merged(self, table: TableDef, rows_of: dict[str, pa.Table]) -> pa.Table:
+        """The rows of `table` from the rows of each source that `pass_rows`
+        gives, merged by source order. `id` holds the key."""
+        found = _merge_table(table, rows_of)
+        return (
+            found
+            if found is not None
+            else merge_by_source_order(
+                table, pa.table({"id": pa.array([], pa.int64())})
+            )
+        )
+
+    def links(
+        self, region: int, catalogues: Sequence[tuple[str, str]], exclude: bool = False
+    ) -> pa.Table:
+        """The catalogue ids of `region` in the registry and the passes so far,
+        with the key of their object (`catalogue`, `release`, `catalogue_id`,
+        `key`), oldest first. Only these catalogue releases, or all others when
+        `exclude`. A retired ID holds none."""
+        wanted = pa.array([f"{c}/{r}" for c, r in catalogues], pa.string())
+
+        def keep(xids: pa.Table) -> pa.Table:
+            named = pc.binary_join_element_wise(xids["catalogue"], xids["release"], "/")
+            hit = pc.is_in(named, value_set=wanted)
+            return xids.filter(pc.invert(hit) if exclude else hit)
+
+        names = VIEW_XIDS.names[:3]
+        xids = keep(self.registry.read_xids(region, [*names, "id"], rebuild=True))
+        keys = self.registry.live_end(xids["id"].to_numpy())
+        if keys.size:
+            dead = self._dead(keys, region, self.registry.id_states([region]))
+            alive = pa.array(~np.isin(keys, dead))
+            xids, keys = xids.filter(alive), keys[alive.to_numpy(zero_copy_only=False)]
+        parts = [xids.select(names).append_column(KEY, pa.array(keys, pa.int64()))]
+        for state in self.passes:
+            directory = self._pass_dir(state.number) / "xids" / f"{region:03d}"
+            files = sorted(directory.glob("*.parquet"))
+            parts.append(keep(read_parquet(files, RUN_XIDS, VIEW_XIDS.names[:4])))
+        found = pa.concat_tables(parts)
+        roots = self._object_root(found[KEY].to_numpy())
+        return found.set_column(3, KEY, pa.array(roots, pa.int64()))
+
+    def row_keys(self, name: str) -> pa.Table:
+        """The rows of the pass of source `name`: `catalogue_id`, `key` (as
+        `objects` gives it) and `new`, true where the row made a new object."""
+        (state,) = [s for s in self.passes if s.source.name == name]
+        parts = []
+        for region in sorted(state.regions):
+            keys = self._read_keys(state.number, region)
+            ids = self._staged(state.number, region, ["catalogue_id"])
+            made = (keys < 0) & (((-1 - keys) >> _PASS_SHIFT) == state.number)
+            parts.append(
+                ids.append_column(KEY, pa.array(self._object_root(keys))).append_column(
+                    "new", pa.array(made)
+                )
+            )
+        if not parts:
+            return pa.table(
+                {
+                    "catalogue_id": pa.array([], pa.string()),
+                    KEY: pa.array([], pa.int64()),
+                    "new": pa.array([], pa.bool_()),
+                }
+            )
+        return pa.concat_tables(parts)
+
+    def positions(self, keys: np.ndarray) -> pa.Table:
+        """The position of each object: `key`, `ra`, `dec` (J2016.0), `pmra`,
+        `pmdec`, `mag`. A minted ID has its registry position, a new object
+        the position of the row that made it."""
+        columns = [KEY, "ra", "dec", "pmra", "pmdec", "mag"]
+        schema = pa.schema([PENDING.field(name) for name in columns])
+        keys = np.unique(np.asarray(keys, np.int64))
+        regions = key_region(keys)
+        parts = [schema.empty_table()]
+        for region in np.unique(regions).tolist():
+            here = pa.array(keys[regions == region])
+            if pc.any(pc.greater(here, 0)).as_py():
+                found = self.registry.positions(region)
+                found = found.select(["id", *columns[1:]]).rename_columns(columns)
+                parts.append(found.filter(pc.is_in(found[KEY], here)).cast(schema))
+            if pc.any(pc.less(here, 0)).as_py():
+                for state in self.passes:
+                    base = self._pass_dir(state.number) / "pending" / f"{region:03d}"
+                    found = read_parquet(
+                        sorted(base.glob("*.parquet")), PENDING, columns
+                    )
+                    parts.append(found.filter(pc.is_in(found[KEY], here)))
+        return pa.concat_tables(parts)
 
     # Resolving
 
@@ -863,7 +1003,7 @@ class IngestRun:
         # A source that is not permanent looked up its claims in `_settle`.
         view = self._view(state, self._hood(region)) if source.permanent else None
 
-        if view is not None:
+        if view is not None and not source.labels:
             keys, dead = view.lookup(source.catalogue, source.release, ids)
         else:
             keys, dead = np.zeros(len(ids), np.int64), np.zeros(len(ids), bool)
@@ -899,7 +1039,7 @@ class IngestRun:
         fresh = np.setdiff1d(free, deferred)
         keys[fresh] = self._new_objects(state, region, rows, fresh, "0")
 
-        named = ids.is_valid().to_numpy(zero_copy_only=False)
+        named = ids.is_valid().to_numpy(zero_copy_only=False) & (not source.labels)
         by_claim = np.flatnonzero(claim_hit & named)
         new = fresh[named[fresh]]
         self._write_xids(
@@ -998,7 +1138,9 @@ class IngestRun:
                 if target != primary:
                     # Without a view, `_settle` left one target per row.
                     assert view is not None
-                    self._union(view, primary, target, own, evidence)
+                    self._union(
+                        view, primary, target, None if source.labels else own, evidence
+                    )
 
         missed = np.flatnonzero((hit == 0) & usable)
         # A row that never mints has no use for the ids that nothing holds.
@@ -1106,11 +1248,12 @@ class IngestRun:
         view: _View,
         primary: int,
         target: int,
-        own: tuple[str, str],
+        own: tuple[str, str] | None,
         evidence: str,
     ) -> None:
         found = view.catalogues([primary, target])
-        found[primary].add(own)
+        if own is not None:
+            found[primary].add(own)
         for key, catalogues in found.items():
             self.union_catalogues.setdefault(key, set()).update(catalogues)
         self.unions.append((primary, target, evidence))
@@ -1338,7 +1481,7 @@ class IngestRun:
             self.mintable_joins.update(joined[mints[got] & (joined < 0)].tolist())
             fresh = positions[won < 0]
             keys_here[fresh] = self._new_objects(state, region, rows, fresh, "1")
-            named = ids.is_valid().to_numpy(zero_copy_only=False)
+            named = ids.is_valid().to_numpy(zero_copy_only=False) & (not source.labels)
             matched = got[named[got]]
             self._write_xids(
                 state,
@@ -1419,6 +1562,9 @@ class IngestRun:
         built = [
             self._build_extension(extension, complete) for extension in self.extensions
         ]
+        for extension, result in zip(self.extensions, built):
+            for slug, rows in result.patches.items():
+                self._patch(extension.name, slug, rows)
         if merges:
             write_parquet(
                 pa.table(
@@ -1558,6 +1704,40 @@ class IngestRun:
                     sync=True,
                 )
         return result
+
+    def _patch(self, name: str, slug: str, rows: pa.Table) -> None:
+        """Set computed columns of a table of this ingest, region by region."""
+        (table,) = [t for t in self.all_tables if t.slug == slug]
+        computed = {field.name for field in table.computed}
+        columns = [c for c in rows.column_names if c != "id"]
+        if not set(columns) <= computed:
+            raise ValueError(
+                f"{name}: {slug} has no computed columns {set(columns) - computed}"
+            )
+        ids = rows["id"].to_numpy()
+        regions = region_of(cell_of(ids))
+        missing = 0
+        for region in np.unique(regions).tolist():
+            here = rows.filter(pa.array(regions == region))
+            path = region_file(self._table_dir(table), region)
+            if not path.exists():
+                missing += here.num_rows
+                continue
+            stored = pq.read_table(path)
+            at = pc.index_in(
+                stored["id"].combine_chunks(), value_set=here["id"].combine_chunks()
+            )
+            found = at.is_valid()
+            missing += here.num_rows - int(pc.sum(found).as_py() or 0)
+            for column in columns:
+                values = here[column].combine_chunks().take(at)
+                kept = pc.if_else(found, values, stored[column].combine_chunks())
+                stored = stored.set_column(
+                    stored.schema.get_field_index(column), column, kept
+                )
+            write_parquet(stored.cast(table.schema), path, sync=True)
+        if missing:
+            logger.warning("%s: %d rows of %s have no ID in it", name, missing, slug)
 
     def _join(
         self,
@@ -1756,36 +1936,9 @@ class IngestRun:
         """Each table's rows of `region`, merged by source order, by kept key."""
         merged: dict[str, pa.Table] = {}
         for table in self.all_tables:
-            parts = []
-            for name, rows in rows_of.items():
-                groups = table.groups_of(name)
-                if not groups:
-                    continue
-                fed = {column.name for group in groups for column in group.columns}
-                # A row with no value here gives no row. Dropping it first keeps
-                # the merge of a sparse table small.
-                has = np.zeros(rows.num_rows, bool)
-                for column_name in fed:
-                    has |= rows[column_name].is_valid().to_numpy(zero_copy_only=False)
-                if not has.any():
-                    continue
-                if not has.all():
-                    rows = rows.filter(pa.array(has))
-                columns = {
-                    "id": rows[KEY],
-                    SOURCE_COLUMN: pa.array([name] * rows.num_rows, pa.string()),
-                }
-                for column in table.group_fields:
-                    columns[column.name] = (
-                        rows[column.name]
-                        if column.name in fed
-                        else pa.nulls(rows.num_rows, column.type)
-                    )
-                parts.append(pa.table(columns))
-            if parts:
-                merged[table.slug] = merge_by_source_order(
-                    table, pa.concat_tables(parts)
-                )
+            found = _merge_table(table, rows_of)
+            if found is not None:
+                merged[table.slug] = found
         return merged
 
     def _build_region(
@@ -1950,6 +2103,7 @@ class IngestRun:
             rows = out.get(table.slug)
             if rows is not None and rows.num_rows:
                 path = region_file(self._table_dir(table), region)
+                rows = _with_computed(table, rows)
                 write_parquet(sort_by_cell(rows.cast(table.schema)), path, sync=True)
 
     def _run_xids(self, region: int) -> pa.Table:
@@ -2038,7 +2192,7 @@ class IngestRun:
         columns["mask"] = pa.array(mask, pa.uint32())
         columns["object"] = _has_catalogue(columns["cross_ids"], OBJECT_CATALOGUES)
         columns["alias_target"] = pa.nulls(n, pa.int64())
-        live = pa.table(columns, schema=schema)
+        live = _with_computed(self.metadata, pa.table(columns)).cast(schema)
 
         old = states.status == STATUS_CODES[ALIAS]
         alias_ids = np.concatenate(

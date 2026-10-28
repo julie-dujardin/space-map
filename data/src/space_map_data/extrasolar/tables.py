@@ -113,6 +113,10 @@ def _flame(run: str) -> tuple[pa.Field, ...]:
     )
 
 
+# The source of the star systems. It mints the resolved systems in the
+# System table.
+STAR_SYSTEMS = "star-systems"
+SYSTEM_TABLE = 3
 # The exoplanet catalogues, in their source order.
 EXOPLANET_SOURCES = (
     "nasa-exoplanet-archive",
@@ -125,9 +129,11 @@ EXOPLANET_SOURCES = (
 # Other stars take the Wikidata label, else a Bayer or Flamsteed designation,
 # a WR number, a GCVS name, an HD or HIP number, a SIMBAD NAME, SIMBAD's main
 # identifier or the Gaia DR3 number, in that order. Each source gives its best
-# one. SIMBAD comes before Hipparcos because it knows more designations.
+# one. SIMBAD comes before Hipparcos because it knows more designations. A
+# resolved system takes the Wikidata label, else the name of its trees.
 # The class is a specific class of any source first: white dwarf, brown dwarf
-# or pulsar. The generic "star" of any source comes last.
+# or pulsar. Else a node of a star system is a "binary star" or a "multiple
+# star". The generic "star" of any source comes last.
 METADATA = TableDef(
     number=None,
     slug="metadata",
@@ -139,6 +145,7 @@ METADATA = TableDef(
                 "iau-wgsn",
                 *EXOPLANET_SOURCES,
                 "wikidata",
+                STAR_SYSTEMS,
                 "simbad",
                 "hipparcos-2007",
                 "hipparcos-1997",
@@ -156,11 +163,15 @@ METADATA = TableDef(
                 "hipparcos-2007",
                 "hipparcos-1997",
                 "gaia-dr3-named",
+                STAR_SYSTEMS,
             ),
             generic=frozenset({"star"}),
         ),
     ),
     computed=(
+        # The root of the ID's star system. Null for a root and for an ID in
+        # no system.
+        pa.field("system", pa.int64()),
         pa.field("cross_ids", pa.list_(CROSS_ID)),
         # Bit n is set when data table n has a row for the ID.
         pa.field("mask", pa.uint32()),
@@ -222,9 +233,10 @@ POINT_SOURCE = TableDef(
         # catalogue, with bounds and their percentiles where published.
         # `distance_method`: `parallax`, `photometric`, `cluster` (of
         # the host cluster), `galaxy` (of the host galaxy), `geometric`
-        # (parallax with a Galaxy prior) or `expansion` (expansion parallax of
-        # a nebula). A value from a paper comes first: it is chosen for that
-        # star.
+        # (parallax with a Galaxy prior), `expansion` (expansion parallax of
+        # a nebula) or `system` (of the star's system). A value from a paper
+        # comes first: it is chosen for that star. The system distance comes
+        # last. Only a star that no other step places gets one.
         ColumnGroup(
             "distance",
             (
@@ -244,6 +256,7 @@ POINT_SOURCE = TableDef(
                 "hunt-reffert-2024",
                 "magellanic-clouds",
                 "bailer-jones-2021",
+                STAR_SYSTEMS,
             ),
         ),
         ColumnGroup(
@@ -538,6 +551,18 @@ POINT_SOURCE = TableDef(
             ),
             EXOPLANET_SOURCES,
         ),
+        # A star of a resolved system whose own spectral type is the
+        # composite type of its system. That type moves to the System row,
+        # and the star takes `member_spectral_type`, its type in the trees.
+        # Null: no type of its own.
+        ColumnGroup(
+            "member",
+            (
+                pa.field("composite_moved", pa.bool_()),
+                pa.field("member_spectral_type", pa.string()),
+            ),
+            (STAR_SYSTEMS,),
+        ),
     ),
 )
 
@@ -677,7 +702,85 @@ BINARY_ORBIT = TableDef(
     ),
 )
 
-TABLES: tuple[TableDef, ...] = (POINT_SOURCE, BINARY_ORBIT)
+# A direct member of a system node: a star (a point that holds one star), a
+# system (an inner node) or an entry (a star with no ID, inside its node's
+# point or known from a catalogue only). `id` is null for an entry. `letter`
+# is its component letter, `inner` the inner pair of an entry inside a point
+# ("Ca" in "Cab"). The values are those of the catalogue that `source` names:
+# V and G in mag, mass in solar masses, and the orbit about the node's
+# primary: separation and semi-major axis in arcsec, position angle in deg,
+# period in d. `known` says how the member is known (spectroscopic,
+# eclipsing, astrometric orbit, visual, common proper motion and so on).
+# `ids` are the catalogue ids of an entry.
+SYSTEM_MEMBER = pa.struct(
+    [
+        pa.field("id", pa.int64()),
+        pa.field("kind", pa.string()),
+        pa.field("letter", pa.string()),
+        pa.field("inner", pa.string()),
+        pa.field("label", pa.string()),
+        pa.field("source", pa.string()),
+        pa.field("spectral_type", pa.string()),
+        pa.field("v_mag", pa.float32()),
+        pa.field("g_mag", pa.float32()),
+        pa.field("mass", pa.float32()),
+        pa.field("separation", pa.float64()),
+        pa.field("position_angle", pa.float32()),
+        pa.field("period", pa.float64()),
+        pa.field("eccentricity", pa.float32()),
+        pa.field("semi_major_axis", pa.float32()),
+        pa.field("known", pa.list_(pa.string())),
+        pa.field("ids", pa.list_(CROSS_ID)),
+    ]
+)
+# A node of a whole system, in the root's row.
+SYSTEM_NODE = pa.struct(
+    [
+        pa.field("id", pa.int64()),
+        pa.field("parent", pa.int64()),
+        pa.field("point", pa.bool_()),
+        pa.field("stars", pa.int32()),
+        pa.field("class", pa.string()),
+        pa.field("label", pa.string()),
+    ]
+)
+
+# A node of a star system: a point that holds two or more stars, or a resolved
+# system, which has no point of its own. A point keeps its ID. A resolved
+# system has an ID of this table, with the cell of its primary point's
+# position. `depth` is 0 at the root, and `stars` counts the stars below the
+# node. `ra` and `dec` are the J2016.0 ICRS position of the primary point, in
+# deg. `label` holds the component letters ("AB"), `spectral_type` the
+# composite type of the stars, `evidence` the source that shows that a point
+# holds several stars, `sources` the trees that list the node, first in
+# source order. The links to other IDs come once every ID is minted: `parent`
+# (null at the root), `root`, `primary`, `members` and, in the root's row,
+# `tree`, every node of the system.
+SYSTEM = TableDef(
+    number=SYSTEM_TABLE,
+    slug="system",
+    groups=(
+        ColumnGroup(
+            "tree",
+            (
+                pa.field("point", pa.bool_()),
+                pa.field("depth", pa.int16()),
+                pa.field("stars", pa.int32()),
+                *_fields(pa.float64(), "ra", "dec"),
+                *_fields(pa.string(), "label", "spectral_type", "evidence"),
+                pa.field("sources", pa.list_(pa.string())),
+            ),
+            (STAR_SYSTEMS,),
+        ),
+    ),
+    computed=(
+        *_fields(pa.int64(), "parent", "root", "primary"),
+        pa.field("members", pa.list_(SYSTEM_MEMBER)),
+        pa.field("tree", pa.list_(SYSTEM_NODE)),
+    ),
+)
+
+TABLES: tuple[TableDef, ...] = (POINT_SOURCE, BINARY_ORBIT, SYSTEM)
 
 
 def merge_by_source_order(table: TableDef, rows: pa.Table) -> pa.Table:

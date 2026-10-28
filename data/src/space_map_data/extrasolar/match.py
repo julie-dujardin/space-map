@@ -23,6 +23,10 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
+# The kind of a system node. It sits at the position of its primary star, and
+# it agrees only with its own kind, also against a missing kind.
+SYSTEM_KIND = "system"
+
 
 @dataclass
 class Pairs:
@@ -70,7 +74,8 @@ class PositionMatcher:
     mag_offset: float = 0.0
     mag_sigma: float = 0.3
     # (row kind, candidate kind) pairs that agree, beside equal kinds. A pair
-    # with a kind missing on either side agrees.
+    # with a kind missing on either side agrees, unless one side is
+    # SYSTEM_KIND.
     kinds: frozenset[tuple[str, str]] = frozenset()
 
     def _error(self, error: np.ndarray) -> np.ndarray:
@@ -101,7 +106,14 @@ class PositionMatcher:
             allowed = pa.array(["\0".join(pair) for pair in self.kinds])
             agree = pc.or_(agree, pc.is_in(joined, value_set=allowed))
         # A null comparison means a kind is missing.
-        return agree.fill_null(True).to_numpy(zero_copy_only=False)
+        agree = agree.fill_null(True)
+        system = pc.or_(
+            pc.equal(row, SYSTEM_KIND).fill_null(False),
+            pc.equal(key, SYSTEM_KIND).fill_null(False),
+        )
+        same = pc.equal(row, key).fill_null(False)
+        agree = pc.and_(agree, pc.or_(pc.invert(system), same))
+        return agree.to_numpy(zero_copy_only=False)
 
 
 def assign(row: np.ndarray, key: np.ndarray, score: np.ndarray) -> np.ndarray:
