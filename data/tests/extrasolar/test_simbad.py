@@ -216,7 +216,21 @@ class TestNames:
         assert simbad.star_name(["V* V1611 Cyg"], main, given) == "V1611 Cygni"
         assert simbad.star_name(["HD 1A"], main, {"hd": "1"}) == "HD 1A"
 
-    def test_a_system_names_its_primary(self, tmp_path):
+    def test_a_system_names_its_only_point(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "V* V1610 Cyg", "HIP  100"),
+                star(2, RA, DEC, "2MASS J1", "Gaia DR3 21", G=8.0),
+                # Inside the Gaia point of its parent.
+                star(3, RA, DEC, "2MASS J2", G=9.0),
+            ],
+            links=[(1, 2), (2, 3)],
+        )
+        stars = SimbadList.read(directory)
+        assert stars.handed() == {2: {"hip": "100", "designation": "V1610 Cygni"}}
+
+    def test_a_system_of_two_points_keeps_its_designation(self, tmp_path):
         directory = write_simbad(
             tmp_path / "simbad",
             [
@@ -227,10 +241,11 @@ class TestNames:
             links=[(1, 2), (1, 3)],
         )
         stars = SimbadList.read(directory)
-        assert stars.handed() == {2: {"hip": "100", "designation": "V1610 Cygni"}}
+        # The designation names the system node.
+        assert stars.handed() == {2: {"hip": "100"}}
         rows, _ = simbad.engine_rows(stars, set(), {}, {})
         # The faint component has only a survey id, so its Gaia row names it.
-        assert rows["name"].to_pylist() == ["V1610 Cygni", None]
+        assert rows["name"].to_pylist() == ["HIP 100", None]
         assert rows["simbad_otype"].to_pylist() == ["*", "*"]
 
     def test_a_catalogued_system_keeps_its_designation(self, tmp_path):
@@ -346,8 +361,10 @@ class TestSimbadList:
         assert (luhman.oid, luhman.own, luhman.hip) == ("4", False, None)
         # A star with a Gaia id disputes its own HIP number, or the one its
         # system hands it, where Gaia pairs that number with another source.
-        assert simbad.disputed_hip(stars, best) == {800}
-        assert simbad.disputed_hip(stars, best | {"100": "21"}) == {100, 800}
+        # SIMBAD gives the best neighbour of HIP 900 to star 2, which does not
+        # take that number.
+        assert simbad.disputed_hip(stars, best) == {800, 900}
+        assert simbad.disputed_hip(stars, best | {"100": "21"}) == {100, 800, 900}
 
     def test_positions_errors_and_magnitudes(self, tmp_path):
         directory = write_simbad(
@@ -691,3 +708,116 @@ class TestStarsWithoutMagnitude:
         assert lookup("simbad", "oid", 101) == lookup("gaia", "dr3", 1)
         assert lookup("simbad", "oid", 102) != lookup("gaia", "dr3", 2)
         assert lookup("simbad", "oid", 103) != lookup("gaia", "dr3", 3)
+
+
+class TestSystemsOfSimbad:
+    """Components by designation, Hipparcos points, swapped best neighbours."""
+
+    def stars(self, tmp_path: Path, objects: list[dict]) -> SimbadList:
+        return SimbadList.read(write_simbad(tmp_path / "simbad", objects))
+
+    def test_a_designation_names_the_components_of_a_system(self, tmp_path):
+        stars = self.stars(
+            tmp_path,
+            [
+                star(1, RA, DEC, "* alf Gem", "HIP 36850", otype="**", V=1.6),
+                star(2, RA, DEC, "* alf Gem A", "HIP 36850A", V=1.9),
+                star(3, RA, DEC + 0.001, "* alf Gem B", "Gaia DR3 892", V=3.0),
+                # Without its A listed, the object is the primary star itself.
+                star(4, 10.0, 10.0, "* alf CMa", "HIP 32349", otype="SB*"),
+                star(5, 10.0, 10.001, "* alf CMa B", "Gaia DR3 294", otype="WD*"),
+                star(6, 20.0, 20.0, "* alf Cru", "HIP 60718", otype="SB*"),
+                star(7, 20.0, 20.0, "* alf01 Cru", V=1.3),
+                star(8, 20.0, 20.001, "* alf02 Cru", V=1.6),
+            ],
+        )
+        assert stars.children == {1: [2, 3], 6: [7, 8]}
+        assert stars.is_row(4) and not stars.is_row(1) and not stars.is_row(6)
+        # The system hands its HIP number to its brightest component.
+        assert stars.primary(1) == 2 and stars.primary(6) == 7
+        assert stars.handed() == {2: {"hip": "36850"}, 7: {"hip": "60718"}}
+
+    def test_a_hipparcos_point_holds_its_close_components(self, tmp_path):
+        stars = self.stars(
+            tmp_path,
+            [
+                star(6, 20.0, 20.0, "* alf Cru", "HIP 60718", otype="SB*"),
+                star(7, 20.0, 20.0, "* alf01 Cru", V=1.3),
+                # 3.6″ away: inside the Hipparcos point.
+                star(8, 20.0, 20.001, "* alf02 Cru", V=1.6),
+                # Too far, and too faint.
+                star(9, 20.0, 20.01, "* alf Cru C", V=4.0),
+                star(10, 20.0, 20.0005, "* alf Cru D", V=9.0),
+            ],
+        )
+        assert sorted(stars.children[6]) == [7, 8, 9, 10]
+        stars.hold({"60718": 0.8})
+        assert stars.inside == {8: 7}
+        assert not stars.is_row(8) and stars.primary(8) == 7
+        rows, _ = simbad.engine_rows(stars, set(), {}, {"60718": (20.0, 20.0)})
+        assert rows["catalogue_id"].to_pylist() == ["7", "9", "10"]
+        assert claims_of(rows)[0] == ["hip/2007/60718"]
+
+    def test_a_far_component_takes_no_number(self, tmp_path):
+        stars = self.stars(
+            tmp_path,
+            [
+                star(1, 300.0, -60.0, "L  119-21", "HIP 111766", otype="**"),
+                star(2, 300.0, -60.0, "L  119-21 A", V=11.9),
+                # 13″ away and brighter.
+                star(3, 300.0, -60.0036, "L  119-21 C", "Gaia DR3 639", G=10.9),
+            ],
+        )
+        assert stars.primary(1) == 3
+        assert stars.handed() == {}
+
+    def test_the_primary_light_keeps_its_best_neighbour(self, tmp_path):
+        stars = self.stars(
+            tmp_path,
+            [
+                star(1, RA, DEC, "* alf Gem", "HIP 36850", otype="**", V=1.6),
+                star(2, RA, DEC, "* alf Gem A", V=1.9),
+                star(3, RA, DEC + 0.001, "* alf Gem B", "Gaia DR3 892", V=3.0),
+                star(4, 10.0, 10.0, "* zet Her", "HIP 81693", otype="SB*"),
+                star(5, 10.0, 10.0, "* zet Her A", "Gaia DR3 345", G=2.7),
+                star(6, 10.0, 10.0001, "* zet Her B", "Gaia DR3 730", G=2.8),
+            ],
+        )
+        # Gaia pairs HIP 36850 with B, which SIMBAD keeps apart from it.
+        assert simbad.disputed_hip(stars, {"36850": "892"}) == {36850}
+        # HIP 81693 has no best neighbour: it takes its primary's source.
+        assert simbad.handed_neighbours(stars, {"36850": "892"}) == {81693: 345}
+        # A source that another HIP number has stays with that number.
+        assert simbad.handed_neighbours(stars, {"1": "345"}) == {}
+
+    def test_a_number_that_no_row_takes_keeps_its_best_neighbour(self, tmp_path):
+        stars = self.stars(
+            tmp_path,
+            [
+                # Two HIP numbers: the object takes neither.
+                star(1, RA, DEC, "HD   675A", "HIP 883", "HIP 884", "Gaia DR3 77"),
+                star(2, 10.0, 10.0, "HD 1", "HIP 900", "Gaia DR3 78"),
+                star(3, 10.0, 10.001, "HD 1B", "Gaia DR3 79"),
+            ],
+        )
+        assert simbad.disputed_hip(stars, {"883": "77"}) == frozenset()
+        # A row that takes the number still disputes it.
+        assert simbad.disputed_hip(stars, {"900": "79"}) == {900}
+
+    def test_a_simbad_type_gives_the_class(self, tmp_path):
+        stars = self.stars(
+            tmp_path,
+            [
+                star(1, RA, DEC, "* alf CMa B", "Gaia DR3 294", otype="WD*"),
+                star(2, RA, DEC + 1, "Luhman 16", "Gaia DR3 40", otype="BD*"),
+                star(3, RA, DEC + 2, "* alf CMa", "HIP 32349", otype="SB*"),
+            ],
+        )
+        rows, _ = simbad.engine_rows(stars, set(), {}, {})
+        assert rows["class"].to_pylist() == ["white dwarf", "brown dwarf", "star"]
+
+    def test_best_neighbours_with_pairs(self):
+        best = gaia.BestNeighbours(np.array([5, 9]), np.array([50, 90]))
+        found = best.with_pairs({70: 7})
+        assert found.source_id.tolist() == [5, 7, 9]
+        assert found.source_of() == {50: 5, 70: 7, 90: 9}

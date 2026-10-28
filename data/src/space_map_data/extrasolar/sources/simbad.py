@@ -62,6 +62,7 @@ import pyarrow as pa
 from space_map_data.download.providers.stars import simbad_stars
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import Source
+from space_map_data.extrasolar.exoplanets.simbad import CLASSES, PULSAR
 from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.sources.gaia import EPOCH as GAIA_EPOCH
 from space_map_data.extrasolar.sources.hipparcos import (
@@ -117,6 +118,17 @@ MAX_HIP_OFFSET = 300.0
 # A component below a Gaia point with a magnitude less than this much fainter
 # adds to the light of that point, so it is not a point of its own.
 MAX_INSIDE_MAG = 3.0
+# Arcsec. One Hipparcos entry holds the components of a pair closer than
+# this, and a system hands its numbers only to a component this close.
+HIP_PAIR_LIMIT = 10.0
+# A designation that names a component of another object.
+_COMPONENT = re.compile(r"(?P<base>.+?) (?P<letter>[A-H][a-z]?)")
+_BAYER_INDEX = re.compile(
+    r"(?P<head>\* [a-z]{2}[a-z.])(?P<index>\d\d)(?P<tail> [A-Z][A-Za-z]{2}.*)"
+)
+# The class of a SIMBAD type, where it says more than "star". Pulsars are
+# left out because the Gaia source near a pulsar is its companion.
+OTYPE_CLASSES = {otype: name for otype, name in CLASSES.items() if name != PULSAR}
 # Table columns from the columns of basic.csv and fluxes.csv. An error is the
 # major axis of SIMBAD's error ellipse.
 FLOAT_COLUMNS = {
@@ -444,6 +456,9 @@ class SimbadList:
     children: dict[int, list[int]]
     iau: dict[str, int]
     parents: dict[int, list[int]] = field(init=False)
+    # The components inside a Hipparcos point (`hold`), with the row that
+    # holds their light. They are not rows.
+    inside: dict[int, int] = field(init=False, default_factory=dict)
 
     @classmethod
     def read(cls, directory: Path = simbad_stars.OUT_DIR) -> SimbadList:
@@ -476,6 +491,27 @@ class SimbadList:
         return cls(objects, dict(children), iau)
 
     def __post_init__(self) -> None:
+        self.children = {k: list(v) for k, v in self.children.items()}
+        linked = {child for children in self.children.values() for child in children}
+        by_main = {found.main_id: oid for oid, found in self.objects.items()}
+        found: dict[int, list[tuple[int, bool]]] = defaultdict(list)
+        for oid in sorted(self.objects):
+            if oid in linked:
+                continue
+            for base, primary in _bases(self.objects[oid].main_id):
+                parent = by_main.get(base)
+                if parent is not None and parent != oid:
+                    found[parent].append((oid, primary))
+                    break
+        # Without its primary listed, the object is the primary star itself:
+        # "* alf CMa" is Sirius A beside "* alf CMa B".
+        added = 0
+        for parent, components in sorted(found.items()):
+            if any(primary for _, primary in components):
+                self.children.setdefault(parent, []).extend(c for c, _ in components)
+                added += len(components)
+        if added:
+            logger.info("SIMBAD: %d components linked by their designation", added)
         self.parents = defaultdict(list)
         for parent, children in self.children.items():
             for child in children:
@@ -495,7 +531,7 @@ class SimbadList:
     def is_row(self, oid: int) -> bool:
         if self.objects[oid].gaia is not None:
             return True
-        if oid in self.children:
+        if oid in self.children or oid in self.inside:
             return False
         point = self.gaia_point(oid)
         return point is None or not self._inside(oid, point)
@@ -506,22 +542,73 @@ class SimbadList:
         return bool(np.isfinite(mag) and mag - point_mag < MAX_INSIDE_MAG)
 
     def primary(self, oid: int, depth: int = 0) -> int | None:
-        """The row that stands for `oid`: itself, the Gaia point that holds
-        it, or the brightest component of a system."""
+        """The row that stands for `oid`: itself, the point that holds it, or
+        the brightest component of a system."""
         if self.is_row(oid):
             return oid
+        if oid in self.inside:
+            return self.inside[oid]
         if (point := self.gaia_point(oid)) is not None:
             return point
         if depth > MAX_DEPTH:
             return None
         rows = [
             found
-            for child in self.children[oid]
+            for child in self.children.get(oid, [])
             if (found := self.primary(child, depth + 1)) is not None
         ]
         if not rows:
             return None
         return min(rows, key=lambda r: (self._brightness(r), r))
+
+    def rows_of(self, oid: int, depth: int = 0) -> list[int]:
+        """The rows that stand for the components of `oid`."""
+        if self.is_row(oid):
+            return [oid]
+        if oid in self.inside:
+            return [self.inside[oid]]
+        if (point := self.gaia_point(oid)) is not None:
+            return [point]
+        if depth > MAX_DEPTH:
+            return []
+        found = [
+            row
+            for child in self.children.get(oid, [])
+            for row in self.rows_of(child, depth + 1)
+        ]
+        return sorted(set(found))
+
+    def hold(self, hip_mags: dict[str, float]) -> None:
+        """Find the components inside a Hipparcos point.
+
+        `hip_mags` gives the G estimate of each Hipparcos star. A system with
+        a HIP number and no Gaia DR3 id hands the number to its primary row.
+        Each other component without a Gaia DR3 id or a HIP number is inside
+        that point when it is within HIP_PAIR_LIMIT of the system and its
+        light adds to the star's.
+        """
+        inside: dict[int, int] = {}
+        for oid in sorted(self.children):
+            system = self.objects[oid]
+            mag = hip_mags.get(system.hip or "")
+            if system.gaia is not None or mag is None:
+                continue
+            primary = self.primary(oid)
+            if primary is None:
+                continue
+            for row in self.rows_of(oid):
+                found = self.objects[row]
+                if row == primary or found.gaia or found.hip:
+                    continue
+                apart = _apart(system, found)
+                if (
+                    apart is not None
+                    and apart <= HIP_PAIR_LIMIT
+                    and self._brightness(row) - mag < MAX_INSIDE_MAG
+                ):
+                    inside[row] = primary
+        self.inside = inside
+        logger.info("SIMBAD: %d components inside a Hipparcos point", len(inside))
 
     def _brightness(self, oid: int) -> float:
         """G, else V, else infinity."""
@@ -543,6 +630,10 @@ class SimbadList:
             if primary is None:
                 continue
             target = self.objects[primary]
+            # A component far from the system is not the star of its numbers.
+            apart = _apart(system, target)
+            if apart is not None and apart > HIP_PAIR_LIMIT:
+                continue
             for kind in ("hip", "hd"):
                 number = getattr(system, kind)
                 if number and not getattr(target, kind) and kind not in given[primary]:
@@ -555,15 +646,42 @@ class SimbadList:
                 and getattr(target, kind) not in (None, number)
                 for kind in ("hip", "hd")
             )
+            # A system of several points keeps its designation: it names
+            # the system node.
             name = _designated(system.identifiers)
             if (
                 name
                 and not apart
+                and len(self.rows_of(oid)) == 1
                 and not _designated(target.identifiers)
                 and "designation" not in given[primary]
             ):
                 given[primary]["designation"] = name
         return dict(given)
+
+
+def _apart(first: SimbadObject, second: SimbadObject) -> float | None:
+    """Arcsec between two objects at J2000, None when one has no position."""
+    if None in (first.ra, first.dec, second.ra, second.dec):
+        return None
+    assert first.ra is not None and first.dec is not None
+    assert second.ra is not None and second.dec is not None
+    return float(sky.separation(first.ra, first.dec, second.ra, second.dec))
+
+
+def _bases(main_id: str) -> list[tuple[str, bool]]:
+    """The main identifiers of the systems that a designation names it a
+    component of, and whether it is their primary: "* alf Gem Aa" of
+    "* alf Gem A", then of "* alf Gem"; "* alf01 Cru" of "* alf Cru"."""
+    if found := _COMPONENT.fullmatch(main_id):
+        base, letter = found["base"], found["letter"]
+        primary = letter[0] == "A"
+        if len(letter) > 1:
+            return [(f"{base} {letter[0]}", letter[1] == "a"), (base, primary)]
+        return [(base, primary)]
+    if found := _BAYER_INDEX.fullmatch(main_id):
+        return [(found["head"] + found["tail"], found["index"] == "01")]
+    return []
 
 
 def _floats(values: list[str | None]) -> np.ndarray:
@@ -598,8 +716,8 @@ def engine_rows(
         if oid not in stars.children and not stars.is_row(oid)
     )
     logger.info(
-        "SIMBAD: %d objects, %d rows, %d systems, %d components inside a Gaia"
-        " point, %d rows take numbers of a system",
+        "SIMBAD: %d objects, %d rows, %d systems, %d components inside a Gaia or"
+        " Hipparcos point, %d rows take numbers of a system",
         len(stars.objects),
         len(picked),
         systems,
@@ -691,7 +809,10 @@ def engine_rows(
                 [found.row["otype"] for found in picked], pa.string()
             ),
             "name": pa.array(names, pa.string()),
-            "class": pa.array(np.full(n, "star"), pa.string()),
+            "class": pa.array(
+                [OTYPE_CLASSES.get(found.row["otype"], "star") for found in picked],
+                pa.string(),
+            ),
         }
     )
     second = pa.array([bool(found) for found in hip_claims])
@@ -701,21 +822,62 @@ def engine_rows(
 
 
 def disputed_hip(stars: SimbadList, best: dict[str, str]) -> frozenset[int]:
-    """The HIP numbers that SIMBAD gives to another source than `best` does:
-    a star's own, or the one its system hands it.
+    """The HIP numbers whose Gaia best neighbour SIMBAD gives to another star.
 
-    Where the two disagree, the source of SIMBAD has the magnitude of the
+    The row that takes a HIP number is the row with that number, or the row
+    that its system hands it to. A number is disputed when that row has
+    another Gaia DR3 id, or when SIMBAD gives the best neighbour to another
+    listed object. A number that no row takes keeps its best neighbour.
+    Where they disagree, the source of SIMBAD has the magnitude of the
     Hipparcos star in most cases. A system's best neighbour is often its
-    fainter component. So such a Hipparcos star goes by position and
-    magnitude.
+    fainter component, and the primary's light would then take the
+    companion's Gaia id, name and SIMBAD row. So such a Hipparcos star goes
+    by position and magnitude.
     """
     handed = stars.handed()
+    holder = {found.gaia: oid for oid, found in stars.objects.items() if found.gaia}
+    taker: dict[str, int] = {}
+    for oid in sorted(stars.objects):
+        found = stars.objects[oid]
+        hip = found.hip or handed.get(oid, {}).get("hip")
+        if hip and stars.is_row(oid):
+            taker.setdefault(hip, oid)
     disputed = set()
-    for found in stars.objects.values():
-        hip = found.hip or handed.get(found.oid, {}).get("hip")
-        if hip and found.gaia and best.get(hip) not in (None, found.gaia):
+    companions = 0
+    for hip, source in best.items():
+        row = taker.get(hip)
+        own = stars.objects[row].gaia if row is not None else None
+        if own is not None and source != own:
             disputed.add(int(hip))
+        elif row is not None and source in holder and holder[source] != row:
+            disputed.add(int(hip))
+            companions += 1
+    logger.info(
+        "SIMBAD: %d HIP numbers lose their best neighbour, %d of them to the"
+        " SIMBAD star that has it",
+        len(disputed),
+        companions,
+    )
     return frozenset(disputed)
+
+
+def handed_neighbours(stars: SimbadList, best: dict[str, str]) -> dict[int, int]:
+    """The Gaia DR3 source of each HIP number that has no best neighbour and
+    that a system hands to its primary row with a Gaia DR3 id.
+
+    The Hipparcos star of a system is the primary's light. With no best
+    neighbour it would go by position, and a companion's Gaia source can be
+    the nearer one.
+    """
+    handed = stars.handed()
+    paired = set(best.values())
+    found: dict[int, int] = {}
+    for oid in sorted(handed):
+        hip, gaia = handed[oid].get("hip"), stars.objects[oid].gaia
+        if hip and gaia and hip not in best and gaia not in paired:
+            found.setdefault(int(hip), int(gaia))
+    logger.info("SIMBAD: %d HIP numbers take the Gaia id of their primary", len(found))
+    return found
 
 
 class IauRow(NamedTuple):

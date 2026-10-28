@@ -6,8 +6,11 @@ Gaia goes first, so a star that Gaia measured has its home and its cell from
 Gaia. Gaia DR3 is two passes: the positionable stars of the chunks, then the
 rows that the chunks leave out for want of a 5σ parallax, of the SIMBAD stars
 and the planet hosts. Both get the same joins, and the rows carry the binary
-orbits of table 2. Hipparcos is two passes: the new reduction, then the
-entries of 1997 that it drops. SIMBAD is two passes: its stars, then the HIP
+orbits of table 2. A Hipparcos star takes its Gaia best neighbour, unless
+SIMBAD gives that source to another star. A system's Hipparcos star with no
+best neighbour takes the Gaia source of the primary that SIMBAD hands its
+number to. Hipparcos is two passes: the new reduction, then the entries of
+1997 that it drops. SIMBAD is two passes: its stars, then the HIP
 numbers of its stars with a Gaia DR3 id. A HIP number whose Gaia best
 neighbour SIMBAD gives to another star has no best neighbour. The distance
 passes never mint, so they come after every pass that matches by position.
@@ -109,6 +112,7 @@ def ingest(
     simbad_list = simbad.SimbadList.read()
     best = BestNeighbours.read()
     best = best.without(simbad.disputed_hip(simbad_list, _hip_best(best)))
+    best = best.with_pairs(simbad.handed_neighbours(simbad_list, _hip_best(best)))
     reader = GaiaReader(best, workers=workers)
     chunks = reader.chunks(limit)
     ranges = None if limit is None else [pixel_range(path.name) for path in chunks]
@@ -143,6 +147,16 @@ def ingest(
         )
     }
     hipparcos_hd = {str(hd) for hd in hip_stars["hd"].drop_null().to_pylist()}
+    simbad_list.hold(
+        {
+            hip: mag
+            for rows in (stars, rough)
+            for hip, mag in zip(
+                rows["catalogue_id"].to_pylist(), rows["match_mag"].to_pylist()
+            )
+            if mag is not None
+        }
+    )
     simbad_rows, simbad_hip_rows = simbad.engine_rows(
         simbad_list, hipparcos_hd, _hip_best(best), positions
     )

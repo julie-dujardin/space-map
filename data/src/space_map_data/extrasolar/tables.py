@@ -30,6 +30,9 @@ class ColumnGroup:
     columns: tuple[pa.Field, ...]
     # The source names, first wins.
     sources: tuple[str, ...]
+    # Values of the first column that say nothing specific. They rank after
+    # every other value, then by source order.
+    generic: frozenset[str] = frozenset()
 
     @property
     def source_column(self) -> str:
@@ -117,12 +120,14 @@ EXOPLANET_SOURCES = (
     "open-exoplanet-catalogue",
 )
 
-# The name is the IAU proper name. A planet host then takes the name of its
-# exoplanet catalogues, since its planets' designations come from it. Other
-# stars take the Wikidata label, else a Bayer or Flamsteed designation, a WR
-# number, a GCVS name, an HD or HIP number, a SIMBAD NAME, SIMBAD's main
+# The name is the IAU proper name. Else a planet host takes the name of its
+# exoplanet catalogues, because its planets' designations come from them.
+# Other stars take the Wikidata label, else a Bayer or Flamsteed designation,
+# a WR number, a GCVS name, an HD or HIP number, a SIMBAD NAME, SIMBAD's main
 # identifier or the Gaia DR3 number, in that order. Each source gives its best
-# one. SIMBAD comes before Hipparcos: it knows more designations.
+# one. SIMBAD comes before Hipparcos because it knows more designations.
+# The class is a specific class of any source first: white dwarf, brown dwarf
+# or pulsar. The generic "star" of any source comes last.
 METADATA = TableDef(
     number=None,
     slug="metadata",
@@ -145,13 +150,14 @@ METADATA = TableDef(
             "class",
             (pa.field("class", pa.string()),),
             (
+                *EXOPLANET_SOURCES,
+                "simbad",
                 "gaia-dr3",
                 "hipparcos-2007",
                 "hipparcos-1997",
                 "gaia-dr3-named",
-                *EXOPLANET_SOURCES,
-                "simbad",
             ),
+            generic=frozenset({"star"}),
         ),
     ),
     computed=(
@@ -678,9 +684,10 @@ def merge_by_source_order(table: TableDef, rows: pa.Table) -> pa.Table:
     """One row per ID from the rows of several sources.
 
     `rows` has the columns `id`, `source` and every group column of `table`
-    (null where a source has no value). An ID with no value in any group gets
-    no row. The result is sorted by cell, then ID, and has the group columns
-    and source columns of `table.schema`; computed columns are left out.
+    (null where a source has no value). A group's generic values rank after
+    its other values. An ID with no value in any group gets no row. The
+    result is sorted by cell, then ID, and has the group columns and source
+    columns of `table.schema`; computed columns are left out.
     """
     if not rows.num_rows:
         return pa.schema(
@@ -697,15 +704,21 @@ def merge_by_source_order(table: TableDef, rows: pa.Table) -> pa.Table:
     columns: dict[str, pa.Array] = {}
     any_value = np.zeros(starts.size, bool)
     for group in table.groups:
-        rank = np.full(rows.num_rows, len(group.sources), np.int64)
+        last = 2 * len(group.sources)
+        rank = np.full(rows.num_rows, last, np.int64)
         for position, name in enumerate(group.sources):
             rank[pc.equal(sources, name).to_numpy(zero_copy_only=False)] = position
         has = np.zeros(rows.num_rows, bool)
         for name in group.names:
             has |= rows[name].is_valid().to_numpy(zero_copy_only=False)
-        has &= rank < len(group.sources)
+        has &= rank < last
+        if group.generic:
+            generic = pc.is_in(
+                rows[group.names[0]], value_set=pa.array(sorted(group.generic))
+            ).fill_null(False)
+            rank += len(group.sources) * generic.to_numpy(zero_copy_only=False)
         # In each ID, the row of the first eligible source comes first.
-        best = np.lexsort((np.where(has, rank, len(group.sources)), group_of_row))
+        best = np.lexsort((np.where(has, rank, last), group_of_row))
         pick = best[starts]
         chosen = has[pick]
         any_value |= chosen

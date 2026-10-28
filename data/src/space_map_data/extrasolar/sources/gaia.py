@@ -170,6 +170,13 @@ class BestNeighbours:
         keep = ~np.isin(self.hip, np.array(sorted(hips), np.int64))
         return BestNeighbours(self.source_id[keep], self.hip[keep])
 
+    def with_pairs(self, pairs: dict[int, int]) -> BestNeighbours:
+        """These pairs too: HIP number → Gaia DR3 source."""
+        source_id = np.r_[self.source_id, np.array(list(pairs.values()), np.int64)]
+        hip = np.r_[self.hip, np.array(list(pairs), np.int64)]
+        order = np.argsort(source_id)
+        return BestNeighbours(source_id[order], hip[order])
+
 
 def single_claims(catalogue: str, release: str, ids: np.ndarray) -> pa.Array:
     """A list of one claim for each row with an id, null where the id is 0."""
