@@ -688,7 +688,8 @@ class PlanetsExtension:
                 pair = self.systems.host(at)
                 circumbinary += bool(pair)
                 host = pair or host
-                system = self.systems.root(host) or system
+                # A host or a key in a star system goes to the file of its root.
+                system = self.systems.root(host) or self.systems.root(system) or system
             if not host or not system:
                 without_host.append(record.text("designation") or "")
                 continue

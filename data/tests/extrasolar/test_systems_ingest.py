@@ -14,7 +14,7 @@ from space_map_data.extrasolar.engine import IngestRun, Source
 from space_map_data.extrasolar.ids import cell_of, table_of
 from space_map_data.extrasolar.match import SYSTEM_KIND, Pairs, PositionMatcher
 from space_map_data.extrasolar.placement import placement
-from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.registry import IdStates, Registry
 from space_map_data.extrasolar.sources import wikidata
 from space_map_data.extrasolar.sources.distances import REYLE_2021
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3
@@ -33,6 +33,7 @@ from space_map_data.extrasolar.tables import (
     METADATA,
     POINT_SOURCE,
     SYSTEM,
+    SYSTEM_TABLE,
     merge_by_source_order,
 )
 from tests.extrasolar.systems_fakes import (
@@ -299,6 +300,25 @@ class TestSystemsIngest:
             assert cell_of(row["id"]) == primary
         assert "Systems at the commit" in report
         assert "system IDs: minted 4, kept 0" in report
+
+    def test_previous_systems_reads_only_system_ids(
+        self, registry_after_two, monkeypatch
+    ):
+        registry = registry_after_two[0]
+        seen: list[pa.Table] = []
+        build = IdStates.build
+
+        def spy(records: pa.Table) -> IdStates:
+            seen.append(records)
+            return build(records)
+
+        monkeypatch.setattr(IdStates, "build", spy)
+        system = table(registry, SYSTEM.slug)
+        resolved = system.filter(pc.invert(system["point"]))["id"].to_pylist()
+        found = systems_ingest._previous_systems(registry)
+        assert found.tolist() == sorted(resolved)
+        records = pa.concat_tables(seen)
+        assert set(table_of(records["id"].to_numpy()).tolist()) == {SYSTEM_TABLE}
 
     def test_ids_hold_across_ingests(self, registry_after_two):
         registry, first, _, report_two, _, _ = registry_after_two

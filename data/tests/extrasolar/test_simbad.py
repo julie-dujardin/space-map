@@ -243,7 +243,7 @@ class TestNames:
         stars = SimbadList.read(directory)
         # The designation names the system node.
         assert stars.handed() == {2: {"hip": "100"}}
-        rows, _ = simbad.engine_rows(stars, set(), {}, {})
+        rows, _ = simbad.engine_rows(stars, stars.handed(), set(), {}, {})
         # The faint component has only a survey id, so its Gaia row names it.
         assert rows["name"].to_pylist() == ["HIP 100", None]
         assert rows["simbad_otype"].to_pylist() == ["*", "*"]
@@ -259,7 +259,7 @@ class TestNames:
         )
         stars = SimbadList.read(directory)
         assert stars.handed() == {}
-        rows, _ = simbad.engine_rows(stars, set(), {}, {})
+        rows, _ = simbad.engine_rows(stars, stars.handed(), set(), {}, {})
         assert rows["name"].to_pylist() == ["HD 128267"]
 
 
@@ -314,7 +314,11 @@ class TestSimbadList:
         best = {"100": "22", "800": "81", "900": "21", "1000": "77"}
         positions = {"100": (RA, DEC), "1200": at(400)}
         rows, hip_rows = simbad.engine_rows(
-            stars, hipparcos_hd={"200"}, best=best, hip_positions=positions
+            stars,
+            stars.handed(),
+            hipparcos_hd={"200"},
+            best=best,
+            hip_positions=positions,
         )
         assert rows["catalogue_id"].to_pylist() == [
             "2",
@@ -354,7 +358,7 @@ class TestSimbadList:
         assert rows["mint"].to_pylist() == [True] * 10
         assert rows["simbad_v_mag"].to_pylist()[:2] == [6.0, 5.0]
 
-        found = simbad.iau_rows(stars, rows)
+        found = simbad.iau_rows(stars, stars.handed(), rows)
         # The system hands its HIP number to its brightest component.
         kappa, luhman = found["Kappa"], found["Luhman"]
         assert (kappa.oid, kappa.own, kappa.hip) == ("3", False, "100")
@@ -363,8 +367,12 @@ class TestSimbadList:
         # system hands it, where Gaia pairs that number with another source.
         # SIMBAD gives the best neighbour of HIP 900 to star 2, which does not
         # take that number.
-        assert simbad.disputed_hip(stars, best) == {800, 900}
-        assert simbad.disputed_hip(stars, best | {"100": "21"}) == {100, 800, 900}
+        assert simbad.disputed_hip(stars, stars.handed(), best) == {800, 900}
+        assert simbad.disputed_hip(stars, stars.handed(), best | {"100": "21"}) == {
+            100,
+            800,
+            900,
+        }
 
     def test_positions_errors_and_magnitudes(self, tmp_path):
         directory = write_simbad(
@@ -387,7 +395,8 @@ class TestSimbadList:
                 star(2, RA, DEC, G=12.0, V=11.0, B=11.5, coo_err_maj=""),
             ],
         )
-        rows, _ = simbad.engine_rows(SimbadList.read(directory), set(), {}, {})
+        listed = SimbadList.read(directory)
+        rows, _ = simbad.engine_rows(listed, listed.handed(), set(), {}, {})
         moved = (rows["match_dec"][0].as_py() - DEC) * 3600
         assert moved == pytest.approx(16.0, rel=1e-3)
         assert rows["match_ra"][1].as_py() == pytest.approx(RA)
@@ -564,12 +573,16 @@ class TestSimbadIngest:
             iau=[("Dilmun", 105)],
         )
         stars = SimbadList.read(directory)
-        assert simbad.disputed_hip(stars, {"10": "1", "60": "16"}) == {60}
-        simbad_rows, simbad_hip_rows = simbad.engine_rows(stars, set(), {"10": "1"}, {})
+        assert simbad.disputed_hip(stars, stars.handed(), {"10": "1", "60": "16"}) == {
+            60
+        }
+        simbad_rows, simbad_hip_rows = simbad.engine_rows(
+            stars, stars.handed(), set(), {"10": "1"}, {}
+        )
         name_rows = names.engine_rows(
             {},
             write_names(tmp_path / "names.json", [iau_entry("Dilmun")]),
-            simbad=simbad.iau_rows(stars, simbad_rows),
+            simbad=simbad.iau_rows(stars, stars.handed(), simbad_rows),
         )
         with IngestRun.start(root, root / "backup") as run:
             run.add(GAIA_DR3, [gaia_rows])
@@ -647,8 +660,9 @@ class TestSimbadIngest:
                 star(2, *b, "HD 1B", "Gaia DR3 2"),
             ],
         )
+        listed = SimbadList.read(directory)
         simbad_rows, simbad_hip_rows = simbad.engine_rows(
-            SimbadList.read(directory), set(), {}, {}
+            listed, listed.handed(), set(), {}, {}
         )
         with IngestRun.start(root, root / "backup") as run:
             run.add(GAIA_DR3, [gaia_rows])
@@ -693,7 +707,8 @@ class TestStarsWithoutMagnitude:
                 star(103, *offset(*p[3], 0.5, 0), "V* V762 Sco", otype="RR*"),
             ],
         )
-        rows, _ = simbad.engine_rows(SimbadList.read(directory), set(), {}, {})
+        listed = SimbadList.read(directory)
+        rows, _ = simbad.engine_rows(listed, listed.handed(), set(), {}, {})
         assert rows["match_kind"].to_pylist() == ["star", simbad.UNSEEN, "star"]
         root = tmp_path / "root"
         with IngestRun.start(root, root / "backup") as run:
@@ -754,7 +769,9 @@ class TestSystemsOfSimbad:
         stars.hold({"60718": 0.8})
         assert stars.inside == {8: 7}
         assert not stars.is_row(8) and stars.primary(8) == 7
-        rows, _ = simbad.engine_rows(stars, set(), {}, {"60718": (20.0, 20.0)})
+        rows, _ = simbad.engine_rows(
+            stars, stars.handed(), set(), {}, {"60718": (20.0, 20.0)}
+        )
         assert rows["catalogue_id"].to_pylist() == ["7", "9", "10"]
         assert claims_of(rows)[0] == ["hip/2007/60718"]
 
@@ -784,11 +801,13 @@ class TestSystemsOfSimbad:
             ],
         )
         # Gaia pairs HIP 36850 with B, which SIMBAD keeps apart from it.
-        assert simbad.disputed_hip(stars, {"36850": "892"}) == {36850}
+        assert simbad.disputed_hip(stars, stars.handed(), {"36850": "892"}) == {36850}
         # HIP 81693 has no best neighbour: it takes its primary's source.
-        assert simbad.handed_neighbours(stars, {"36850": "892"}) == {81693: 345}
+        assert simbad.handed_neighbours(stars, stars.handed(), {"36850": "892"}) == {
+            81693: 345
+        }
         # A source that another HIP number has stays with that number.
-        assert simbad.handed_neighbours(stars, {"1": "345"}) == {}
+        assert simbad.handed_neighbours(stars, stars.handed(), {"1": "345"}) == {}
 
     def test_a_number_that_no_row_takes_keeps_its_best_neighbour(self, tmp_path):
         stars = self.stars(
@@ -800,9 +819,26 @@ class TestSystemsOfSimbad:
                 star(3, 10.0, 10.001, "HD 1B", "Gaia DR3 79"),
             ],
         )
-        assert simbad.disputed_hip(stars, {"883": "77"}) == frozenset()
+        assert simbad.disputed_hip(stars, stars.handed(), {"883": "77"}) == frozenset()
         # A row that takes the number still disputes it.
-        assert simbad.disputed_hip(stars, {"900": "79"}) == {900}
+        assert simbad.disputed_hip(stars, stars.handed(), {"900": "79"}) == {900}
+
+    def test_every_row_that_takes_a_number_is_checked(self, tmp_path):
+        stars = self.stars(
+            tmp_path,
+            [
+                star(1, RA, DEC, "* nu Sco", "HIP 910", otype="**"),
+                # The system hands HIP 910 to its primary, which has no Gaia id.
+                star(2, RA, DEC, "* nu Sco A", V=4.0),
+                star(3, 10.0, 10.0, "HD 11", "HIP 910", "Gaia DR3 81"),
+            ],
+        )
+        handed = stars.handed()
+        assert handed == {2: {"hip": "910"}}
+        # The second row has another Gaia id.
+        assert simbad.disputed_hip(stars, handed, {"910": "80"}) == {910}
+        # The second row has the best neighbour.
+        assert simbad.disputed_hip(stars, handed, {"910": "81"}) == frozenset()
 
     def test_a_simbad_type_gives_the_class(self, tmp_path):
         stars = self.stars(
@@ -813,7 +849,7 @@ class TestSystemsOfSimbad:
                 star(3, RA, DEC + 2, "* alf CMa", "HIP 32349", otype="SB*"),
             ],
         )
-        rows, _ = simbad.engine_rows(stars, set(), {}, {})
+        rows, _ = simbad.engine_rows(stars, stars.handed(), set(), {}, {})
         assert rows["class"].to_pylist() == ["white dwarf", "brown dwarf", "star"]
 
     def test_best_neighbours_with_pairs(self):

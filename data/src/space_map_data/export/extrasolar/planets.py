@@ -570,12 +570,14 @@ def build(
     counts["resolved system placed at one of its points"] = _place_systems(
         registry, scratch, run, hosts, wanted
     )
-    # The planet files group the hosts as the star systems do.
+    # The planet files group the hosts as the star systems do. A host in no
+    # star system takes the root of its file key's system.
     astray = sorted(
         {
-            f"{row['host']} in {row['system']}, root {roots[row['host']]}"
+            f"{row['host']} in {row['system']}, root {root}"
             for row in rows
-            if row["host"] in roots and row["system"] != roots[row["host"]]
+            if (root := roots.get(row["host"], roots.get(row["system"]))) is not None
+            and row["system"] != root
         }
     )
     problems.add(

@@ -391,6 +391,12 @@ class TestPlanetFiles:
         with pytest.raises(ExportRefused, match="not keyed by its root"):
             export_extrasolar(built.root, out, workers=1)
 
+    def test_a_file_keyed_by_a_star_that_is_not_its_root(self, tmp_path, out):
+        """A host in no star system, in the file of Proxima, a star of α Cen."""
+        built = _registry(tmp_path / "reg", planets=[planet(6, 1, system=2)])
+        with pytest.raises(ExportRefused, match="not keyed by its root"):
+            export_extrasolar(built.root, out, workers=1)
+
     def test_every_host_off_its_root_is_counted(self, tmp_path, out):
         """The count holds more hosts than the examples."""
         systems = [

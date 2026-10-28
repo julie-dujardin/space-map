@@ -118,9 +118,12 @@ def ingest(
             )
     check_inputs()
     simbad_list = simbad.SimbadList.read()
+    handed = simbad_list.handed()
     best = BestNeighbours.read()
-    best = best.without(simbad.disputed_hip(simbad_list, _hip_best(best)))
-    best = best.with_pairs(simbad.handed_neighbours(simbad_list, _hip_best(best)))
+    best = best.without(simbad.disputed_hip(simbad_list, handed, _hip_best(best)))
+    best = best.with_pairs(
+        simbad.handed_neighbours(simbad_list, handed, _hip_best(best))
+    )
     reader = GaiaReader(best, workers=workers)
     chunks = reader.chunks(limit)
     ranges = None if limit is None else [pixel_range(path.name) for path in chunks]
@@ -165,10 +168,12 @@ def ingest(
             if mag is not None
         }
     )
+    # `hold` takes rows away, which changes what the systems hand down.
+    handed = simbad_list.handed()
     simbad_rows, simbad_hip_rows = simbad.engine_rows(
-        simbad_list, hipparcos_hd, _hip_best(best), positions
+        simbad_list, handed, hipparcos_hd, _hip_best(best), positions
     )
-    iau_rows = simbad.iau_rows(simbad_list, simbad_rows)
+    iau_rows = simbad.iau_rows(simbad_list, handed, simbad_rows)
     name_rows = names.engine_rows(positions, simbad=iau_rows)
     hd_positions = {**wikidata.hd_positions(stars), **wikidata.hd_positions(rough)}
     item_rows = wikidata.engine_rows(

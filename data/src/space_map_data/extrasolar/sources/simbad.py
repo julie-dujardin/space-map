@@ -641,7 +641,7 @@ class SimbadList:
             # A system with a HIP or HD number of its own, where its primary
             # has another, is itself a catalogued star ("* a Lup" is HIP 71500,
             # its component HIP 71502), so the designation is that star's.
-            apart = any(
+            catalogued = any(
                 (number := getattr(system, kind))
                 and getattr(target, kind) not in (None, number)
                 for kind in ("hip", "hd")
@@ -651,7 +651,7 @@ class SimbadList:
             name = _designated(system.identifiers)
             if (
                 name
-                and not apart
+                and not catalogued
                 and len(self.rows_of(oid)) == 1
                 and not _designated(target.identifiers)
                 and "designation" not in given[primary]
@@ -693,17 +693,18 @@ def _floats(values: list[str | None]) -> np.ndarray:
 
 def engine_rows(
     stars: SimbadList,
+    handed: dict[int, dict[str, str]],
     hipparcos_hd: set[str],
     best: dict[str, str],
     hip_positions: dict[str, tuple[float, float]],
 ) -> tuple[pa.Table, pa.Table]:
     """The pass rows of SIMBAD and of SIMBAD_HIP.
 
-    `hipparcos_hd` are the HD numbers of the Hipparcos stars. `best` gives the
-    Gaia DR3 best neighbour of a HIP number, and `hip_positions` the position
-    of a Hipparcos star as its pass rows have it.
+    `handed` is `stars.handed()`. `hipparcos_hd` are the HD numbers of the
+    Hipparcos stars. `best` gives the Gaia DR3 best neighbour of a HIP number,
+    and `hip_positions` the position of a Hipparcos star as its pass rows have
+    it.
     """
-    handed = stars.handed()
     picked = [
         found
         for oid, found in sorted(stars.objects.items())
@@ -821,35 +822,36 @@ def engine_rows(
     return rows, hip_rows
 
 
-def disputed_hip(stars: SimbadList, best: dict[str, str]) -> frozenset[int]:
+def disputed_hip(
+    stars: SimbadList, handed: dict[int, dict[str, str]], best: dict[str, str]
+) -> frozenset[int]:
     """The HIP numbers whose Gaia best neighbour SIMBAD gives to another star.
 
-    The row that takes a HIP number is the row with that number, or the row
-    that its system hands it to. A number is disputed when that row has
-    another Gaia DR3 id, or when SIMBAD gives the best neighbour to another
-    listed object. A number that no row takes keeps its best neighbour.
-    Where they disagree, the source of SIMBAD has the magnitude of the
-    Hipparcos star in most cases. A system's best neighbour is often its
-    fainter component, and the primary's light would then take the
-    companion's Gaia id, name and SIMBAD row. So such a Hipparcos star goes
-    by position and magnitude.
+    The rows that take a HIP number are the rows with that number and the
+    rows that their systems hand it to. A number is disputed when one of
+    these rows has another Gaia DR3 id, or when SIMBAD gives the best
+    neighbour to an object that is not one of these rows. A number that no
+    row takes keeps its best neighbour. Where they disagree, the source of
+    SIMBAD has the magnitude of the Hipparcos star in most cases. A system's
+    best neighbour is often its fainter component, and the primary's light
+    would then take the companion's Gaia id, name and SIMBAD row. So such a
+    Hipparcos star goes by position and magnitude. `handed` is
+    `stars.handed()`.
     """
-    handed = stars.handed()
     holder = {found.gaia: oid for oid, found in stars.objects.items() if found.gaia}
-    taker: dict[str, int] = {}
+    takers: dict[str, list[int]] = defaultdict(list)
     for oid in sorted(stars.objects):
         found = stars.objects[oid]
         hip = found.hip or handed.get(oid, {}).get("hip")
         if hip and stars.is_row(oid):
-            taker.setdefault(hip, oid)
+            takers[hip].append(oid)
     disputed = set()
     companions = 0
     for hip, source in best.items():
-        row = taker.get(hip)
-        own = stars.objects[row].gaia if row is not None else None
-        if own is not None and source != own:
+        rows = takers.get(hip, [])
+        if any(stars.objects[row].gaia not in (None, source) for row in rows):
             disputed.add(int(hip))
-        elif row is not None and source in holder and holder[source] != row:
+        elif rows and source in holder and holder[source] not in rows:
             disputed.add(int(hip))
             companions += 1
     logger.info(
@@ -861,15 +863,16 @@ def disputed_hip(stars: SimbadList, best: dict[str, str]) -> frozenset[int]:
     return frozenset(disputed)
 
 
-def handed_neighbours(stars: SimbadList, best: dict[str, str]) -> dict[int, int]:
+def handed_neighbours(
+    stars: SimbadList, handed: dict[int, dict[str, str]], best: dict[str, str]
+) -> dict[int, int]:
     """The Gaia DR3 source of each HIP number that has no best neighbour and
     that a system hands to its primary row with a Gaia DR3 id.
 
     The Hipparcos star of a system is the primary's light. With no best
     neighbour it would go by position, and a companion's Gaia source can be
-    the nearer one.
+    the nearer one. `handed` is `stars.handed()`.
     """
-    handed = stars.handed()
     paired = set(best.values())
     found: dict[int, int] = {}
     for oid in sorted(handed):
@@ -895,11 +898,13 @@ class IauRow(NamedTuple):
     gaia: str | None = None
 
 
-def iau_rows(stars: SimbadList, rows: pa.Table) -> dict[str, IauRow]:
-    """The row of each IAU name's object, with its position at J2016.0."""
+def iau_rows(
+    stars: SimbadList, handed: dict[int, dict[str, str]], rows: pa.Table
+) -> dict[str, IauRow]:
+    """The row of each IAU name's object, with its position at J2016.0.
+    `handed` is `stars.handed()`."""
     at = {oid: i for i, oid in enumerate(rows["catalogue_id"].to_pylist())}
     ra, dec = rows["match_ra"].to_pylist(), rows["match_dec"].to_pylist()
-    handed = stars.handed()
     found = {}
     for name, oid in sorted(stars.iau.items()):
         primary = stars.primary(oid)

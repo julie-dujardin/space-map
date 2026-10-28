@@ -306,7 +306,7 @@ def gaia_pass() -> pa.Table:
     )
 
 
-def ingest(root, backup, inputs, complete=True):
+def ingest(root, backup, inputs, complete=True, systems=None):
     with IngestRun.start(root, backup) as run:
         reader = gaia.GaiaReader(NO_NEIGHBOURS, orbits=HOST_ORBITS)
         read = exoplanets.read(reader, inputs)
@@ -314,8 +314,36 @@ def ingest(root, backup, inputs, complete=True):
         run.add(GAIA_DR3_NAMED, [read.gaia_rows], complete)
         prepared = exoplanets.prepare(read, run, {}, inputs)
         exoplanets.add_passes(run, prepared, complete)
-        run.extend(exoplanets.PlanetsExtension(prepared))
+        run.extend(exoplanets.PlanetsExtension(prepared, systems))
         return run.commit(), prepared
+
+
+@dataclass
+class StarSystems:
+    """Star systems with no circumbinary host, and the root of some IDs."""
+
+    roots: dict[int, int]
+
+    def host(self, record: int) -> int:
+        return 0
+
+    def root(self, id_: int) -> int:
+        return self.roots.get(id_, 0)
+
+
+class TestStarSystemRoots:
+    def test_the_key_of_a_planet_system_takes_its_root(self, root, backup, tmp_path):
+        """Delta A, the key of the Delta planets, is in a star system, and
+        Delta B is in none. The planets of both go to the file of the root."""
+        inputs = downloads().write(tmp_path / "one")
+        ingest(root, backup, inputs)
+        delta_a, delta_b = Registry(root).lookup("gaia", "dr3", ["404", "505"])
+        system = 999
+        ingest(root, backup, inputs, systems=StarSystems({int(delta_a): system}))
+        planets = {
+            r["host"]: r["system"] for r in table_rows(root, "planets").to_pylist()
+        }
+        assert planets[delta_a] == system and planets[delta_b] == system
 
 
 class TestExoplanetIngest:

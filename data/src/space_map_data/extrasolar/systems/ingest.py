@@ -45,7 +45,13 @@ from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.ids import table_of
 from space_map_data.extrasolar.match import SYSTEM_KIND
 from space_map_data.extrasolar.placement import COLUMNS, placement
-from space_map_data.extrasolar.registry import LIVE, Registry, latest_index
+from space_map_data.extrasolar.registry import (
+    LIVE,
+    STATUS_CODES,
+    IdStates,
+    Registry,
+    latest_index,
+)
 from space_map_data.extrasolar.sources.gaia import GaiaReader
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
 from space_map_data.extrasolar.systems import assemble
@@ -900,19 +906,16 @@ def _ids_of(labels: pa.Array, rows: pa.Table) -> np.ndarray:
 
 
 def _previous_systems(registry: Registry) -> np.ndarray:
-    """The live IDs of the System table before this ingest."""
+    """The live IDs of the System table before this ingest. It runs while
+    the commit holds the writer lock, so it builds the states of the System
+    IDs only."""
     found = [np.zeros(0, np.int64)]
     for region in registry.part_regions("ids"):
-        records = registry.read_part("ids", region, ["id", "status"])
-        ids = records["id"].to_numpy()
-        status = records["status"].to_numpy(zero_copy_only=False)
-        mine = table_of(ids) == SYSTEM_TABLE
-        if not mine.any():
-            continue
-        # The latest record of an ID holds.
-        ids, status = ids[mine][::-1], status[mine][::-1]
-        _, last = np.unique(ids, return_index=True)
-        found.append(ids[last][status[last] == LIVE])
+        records = registry.read_part("ids", region)
+        mine = table_of(records["id"].to_numpy()) == SYSTEM_TABLE
+        if mine.any():
+            states = IdStates.build(records.filter(pa.array(mine)))
+            found.append(states.id[states.status == STATUS_CODES[LIVE]])
     return np.unique(np.concatenate(found))
 
 
