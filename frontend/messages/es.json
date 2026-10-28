@@ -1383,6 +1383,7 @@
 	"tooltip_insolation": "Potencia recibida de la estrella por unidad de superficie, a la distancia del planeta",
 	"exoplanet_row_molecules": "Moléculas detectadas",
 	"exoplanet_row_discovery_year": "Año del descubrimiento",
+	"exoplanet_row_discovery_date": "Fecha del descubrimiento",
 	"exoplanet_row_discovery_facility": "Instalación",
 	"exoplanet_method_transit": "Tránsito",
 	"exoplanet_method_radial_velocity": "Velocidad radial",

@@ -1363,6 +1363,7 @@
 	"tooltip_insolation": "Vom Stern empfangene Leistung pro Flächeneinheit im Abstand des Planeten",
 	"exoplanet_row_molecules": "Nachgewiesene Moleküle",
 	"exoplanet_row_discovery_year": "Entdeckungsjahr",
+	"exoplanet_row_discovery_date": "Entdeckungsdatum",
 	"exoplanet_row_discovery_facility": "Einrichtung",
 	"exoplanet_method_transit": "Transit",
 	"exoplanet_method_radial_velocity": "Radialgeschwindigkeit",

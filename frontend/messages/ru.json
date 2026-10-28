@@ -1414,6 +1414,7 @@
 	"tooltip_insolation": "Мощность излучения звезды на единицу площади на расстоянии планеты",
 	"exoplanet_row_molecules": "Обнаруженные молекулы",
 	"exoplanet_row_discovery_year": "Год открытия",
+	"exoplanet_row_discovery_date": "Дата открытия",
 	"exoplanet_row_discovery_facility": "Инструмент",
 	"exoplanet_method_transit": "Транзит",
 	"exoplanet_method_radial_velocity": "Лучевая скорость",

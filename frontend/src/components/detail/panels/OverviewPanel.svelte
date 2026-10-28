@@ -311,7 +311,13 @@
 			<StarSections record={star} localized={data?.localized ?? null} />
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 		{:else if planet}
-			<PlanetSections sections={planetSections(planet)} />
+			<PlanetSections
+				sections={planetSections(planet, {
+					dates: data?.global?.wikidata?.discovery_date,
+					discoverers: data?.localized?.discoverers,
+					sites: data?.localized?.discovery_site
+				})}
+			/>
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />
 		{:else if groupSlug !== null}

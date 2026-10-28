@@ -1472,6 +1472,7 @@
 	"tooltip_insolation": "惑星の距離で単位時間・単位面積あたりに恒星から受けるエネルギー",
 	"exoplanet_row_molecules": "検出された分子",
 	"exoplanet_row_discovery_year": "発見年",
+	"exoplanet_row_discovery_date": "発見日",
 	"exoplanet_row_discovery_facility": "観測施設",
 	"exoplanet_method_transit": "トランジット法",
 	"exoplanet_method_radial_velocity": "視線速度法",

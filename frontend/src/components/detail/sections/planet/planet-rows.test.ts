@@ -207,6 +207,34 @@ describe("a planet's panel", () => {
 		expect(plain(formatDays(1928.7))).toBe('1,930 d');
 	});
 
+	it('takes the discovery from the catalogues, and what they lack from Wikidata', () => {
+		const mayor = { name: 'Michel Mayor' };
+		const site = { name: 'Haute-Provence Observatory' };
+		const discovery = (p: Planet, claims = {}) =>
+			planetSections(anchor(p), claims).find((s) => s.key === 'discovery')!.rows;
+		const found = discovery(hot, {
+			dates: ['+1998-02-01T00:00:00Z', '+1999-11-05T00:00:00Z'],
+			discoverers: [mayor],
+			sites: [site]
+		});
+		expect(found.map((r) => [r.label, r.value])).toEqual([
+			['Detection method', 'Transit'],
+			['Date of discovery', 'November 5, 1999'],
+			['Discoverer', ''],
+			['Facility', '']
+		]);
+		expect(found[2].entities).toEqual([mayor]);
+		expect(found[3].entities).toEqual([site]);
+		// A Wikidata date of another year does not overrule the catalogue's.
+		expect(discovery(hot, { dates: ['+2001-03-01T00:00:00Z'] })[1].value).toBe('1999');
+		const bare = planet(5, 2, elements(0.1), { discovery_facility: 'La Silla Observatory' });
+		const filled = discovery(bare, { dates: ['+2003-00-00T00:00:00Z'], sites: [site] });
+		expect(filled.map((r) => [r.label, r.value])).toEqual([
+			['Year of discovery', '2003'],
+			['Facility', 'La Silla Observatory']
+		]);
+	});
+
 	it('names the discovery methods the catalogues use, whatever their case', () => {
 		expect(discoveryMethodLabel('Radial Velocity')).toBe('Radial velocity');
 		expect(discoveryMethodLabel('disk kinematics')).toBe('Disk kinematics');

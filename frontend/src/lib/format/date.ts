@@ -256,3 +256,15 @@ function relativeDays(days: number, numeric: Intl.RelativeTimeFormatNumeric = 'a
 	}
 	return new Intl.RelativeTimeFormat(getLocale(), { numeric }).format(Math.round(value), unit);
 }
+
+/** A catalogue's year of discovery, made a day by a Wikidata date of the same
+ *  year. The catalogue is the authority, so a date of another year is left out. */
+export function sameYearDate(year: number, dates: readonly string[]): string {
+	return dates.find((d) => parseIsoDate(d)?.date.getUTCFullYear() === year) ?? String(year);
+}
+
+/** The earliest of some dates. */
+export function earliestDate(dates: readonly string[]): string | undefined {
+	const time = (d: string) => parseIsoDate(d)?.date.getTime() ?? Infinity;
+	return [...dates].sort((a, b) => time(a) - time(b))[0];
+}

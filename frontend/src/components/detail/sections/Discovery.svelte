@@ -2,7 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { withoutRefs } from '$lib/format/entity-refs';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
-	import { formatIsoDate, parseIsoDate } from '$lib/format/date';
+	import { earliestDate, formatIsoDate, sameYearDate } from '$lib/format/date';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import EntityLinks from './kit/EntityLinks.svelte';
@@ -17,22 +17,11 @@
 	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
 
 	// JPL `discovery_year` is authoritative for natural moons (drives the render
-	// gate); a Wikidata date is shown only when its year agrees, upgrading to
-	// day precision. Bodies without a JPL year fall back to the earliest date.
+	// gate). Bodies without a JPL year fall back to the earliest date.
 	function pickDiscoveryDate(g: GlobalObjectData | null): string | undefined {
 		const wdDates = g?.wikidata?.discovery_date ?? [];
-		const jplYear = g?.discovery_year;
-		if (jplYear != null) {
-			const agreeing = wdDates.find((d) => parseIsoDate(d)?.date.getUTCFullYear() === jplYear);
-			return agreeing ?? String(jplYear);
-		}
-		return [...wdDates, g?.sbdb?.first_obs]
-			.filter((d): d is string => !!d)
-			.sort((a, b) => {
-				const ta = parseIsoDate(a)?.date.getTime() ?? Infinity;
-				const tb = parseIsoDate(b)?.date.getTime() ?? Infinity;
-				return ta - tb;
-			})[0];
+		if (g?.discovery_year != null) return sameYearDate(g.discovery_year, wdDates);
+		return earliestDate([...wdDates, g?.sbdb?.first_obs].filter((d): d is string => !!d));
 	}
 
 	// Asteroid moons have almost no Wikidata item, so their whole discovery

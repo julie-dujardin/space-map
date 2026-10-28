@@ -8,6 +8,7 @@
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import type { Planet } from '$lib/fetch/extrasolar/planets';
+import type { EntityRef } from '$lib/fetch/objects/object-data';
 import {
 	earthRatio,
 	errorDecimals,
@@ -23,7 +24,13 @@ import {
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { formatMass, formatMeasuredMass, JUPITER_MASS_KG, massComparison } from '$lib/format/mass';
 import { EARTH_IRRADIANCE_W_M2, irradianceUnit } from '$lib/format/light';
-import { formatJulianDate } from '$lib/format/date';
+import {
+	earliestDate,
+	formatIsoDate,
+	formatJulianDate,
+	parseIsoDate,
+	sameYearDate
+} from '$lib/format/date';
 import { ltrIsolate } from '$lib/format/bidi';
 import { starSourceName } from '$lib/credits/star-sources';
 import type { PlanetAnchor } from '$lib/types/objects';
@@ -54,6 +61,16 @@ export interface PlanetRow {
 	href?: string;
 	/** The label is a catalogue's name, kept as written. */
 	labelIsName?: boolean;
+	/** People or places, linked, in place of the value. */
+	entities?: EntityRef[];
+}
+
+/** What the planet's Wikidata item adds to its catalogues: who found it, a
+ *  day where they give a year, and a site where they give none. */
+export interface PlanetDiscoveryClaims {
+	dates?: string[];
+	discoverers?: EntityRef[];
+	sites?: EntityRef[];
 }
 
 export interface PlanetSection {
@@ -518,7 +535,10 @@ export function planetAliases(planet: Planet): string[] {
 }
 
 /** The sections of rows, in panel order; an empty section is left out. */
-export function planetSections(anchor: PlanetAnchor): PlanetSection[] {
+export function planetSections(
+	anchor: PlanetAnchor,
+	claims: PlanetDiscoveryClaims = {}
+): PlanetSection[] {
 	const { planet } = anchor;
 	const u = units();
 
@@ -573,10 +593,26 @@ export function planetSections(anchor: PlanetAnchor): PlanetSection[] {
 
 	const method = text(planet, 'discovery_method');
 	const year = num(planet, 'discovery_year');
+	const dates = claims.dates ?? [];
+	const date = year === null ? earliestDate(dates) : sameYearDate(year, dates);
+	const discoverers = claims.discoverers ?? [];
+	const facility = text(planet, 'discovery_facility');
+	const sites = facility ? [] : (claims.sites ?? []);
+	const linked = (label: string, entities: EntityRef[]): PlanetRow | null =>
+		entities.length > 0 ? { label, value: '', entities } : null;
 	const discovery = rows([
 		row(m.discovery_method(), method && discoveryMethodLabel(method)),
-		row(m.exoplanet_row_discovery_year(), year === null ? null : String(year)),
-		row(m.exoplanet_row_discovery_facility(), text(planet, 'discovery_facility'))
+		date
+			? {
+					label: parseIsoDate(date)?.month
+						? m.exoplanet_row_discovery_date()
+						: m.exoplanet_row_discovery_year(),
+					value: formatIsoDate(date)
+				}
+			: null,
+		linked(discoverers.length > 1 ? m.discoverers() : m.discoverer(), discoverers),
+		row(m.exoplanet_row_discovery_facility(), facility),
+		linked(m.exoplanet_row_discovery_facility(), sites)
 	]);
 
 	return [

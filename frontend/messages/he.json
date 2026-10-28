@@ -1403,6 +1403,7 @@
 	"tooltip_insolation": "ההספק המתקבל מהכוכב ליחידת שטח במרחק של כוכב הלכת",
 	"exoplanet_row_molecules": "מולקולות שזוהו",
 	"exoplanet_row_discovery_year": "שנת הגילוי",
+	"exoplanet_row_discovery_date": "תאריך הגילוי",
 	"exoplanet_row_discovery_facility": "מתקן",
 	"exoplanet_method_transit": "מעבר",
 	"exoplanet_method_radial_velocity": "מהירות רדיאלית",

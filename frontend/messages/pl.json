@@ -1403,6 +1403,7 @@
 	"tooltip_insolation": "Moc promieniowania gwiazdy na jednostkę powierzchni w odległości planety",
 	"exoplanet_row_molecules": "Wykryte cząsteczki",
 	"exoplanet_row_discovery_year": "Rok odkrycia",
+	"exoplanet_row_discovery_date": "Data odkrycia",
 	"exoplanet_row_discovery_facility": "Placówka",
 	"exoplanet_method_transit": "Tranzyt",
 	"exoplanet_method_radial_velocity": "Prędkość radialna",

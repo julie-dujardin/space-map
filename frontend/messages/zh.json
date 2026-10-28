@@ -1364,6 +1364,7 @@
 	"tooltip_insolation": "行星所在距离处单位面积接收到的恒星辐射功率",
 	"exoplanet_row_molecules": "检测到的分子",
 	"exoplanet_row_discovery_year": "发现年份",
+	"exoplanet_row_discovery_date": "发现日期",
 	"exoplanet_row_discovery_facility": "观测设施",
 	"exoplanet_method_transit": "凌星法",
 	"exoplanet_method_radial_velocity": "径向速度法",

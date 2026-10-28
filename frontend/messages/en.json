@@ -1524,6 +1524,7 @@
 	"tooltip_insolation": "Power per unit area received from the star at the planet's distance",
 	"exoplanet_row_molecules": "Detected molecules",
 	"exoplanet_row_discovery_year": "Year of discovery",
+	"exoplanet_row_discovery_date": "Date of discovery",
 	"exoplanet_row_discovery_facility": "Facility",
 	"exoplanet_method_transit": "Transit",
 	"exoplanet_method_radial_velocity": "Radial velocity",

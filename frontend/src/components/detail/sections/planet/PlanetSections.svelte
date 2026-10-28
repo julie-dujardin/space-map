@@ -3,6 +3,7 @@
 	import Section from '../kit/Section.svelte';
 	import Row from '../kit/Row.svelte';
 	import Link from '../kit/Link.svelte';
+	import EntityLinks from '../kit/EntityLinks.svelte';
 	import type { PlanetSection } from './planet-rows';
 
 	interface Props {
@@ -15,7 +16,11 @@
 {#each sections as section (section.key)}
 	<Section title={section.title}>
 		{#each section.rows as entry, i (`${entry.label}-${i}`)}
-			{#if entry.href}
+			{#if entry.entities}
+				<Row label={entry.label}>
+					<EntityLinks entities={entry.entities} />
+				</Row>
+			{:else if entry.href}
 				<Row label={entry.label} note={entry.note} labelIsName={entry.labelIsName}>
 					<Link href={entry.href} external>{entry.value}</Link>
 				</Row>

@@ -1460,6 +1460,7 @@
 	"tooltip_insolation": "القدرة الواردة من النجم لكل وحدة مساحة على بعد الكوكب",
 	"exoplanet_row_molecules": "الجزيئات المكتشفة",
 	"exoplanet_row_discovery_year": "سنة الاكتشاف",
+	"exoplanet_row_discovery_date": "تاريخ الاكتشاف",
 	"exoplanet_row_discovery_facility": "المرفق",
 	"exoplanet_method_transit": "العبور",
 	"exoplanet_method_radial_velocity": "السرعة الشعاعية",
