@@ -517,7 +517,8 @@ interface ImageGallery {
   name?: string;              // the subject's base-language name; collections only, where the shelf subject is usually not a notable member
   images: ObjectImage[];
 }
-// Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")
+// Quantities use best-fit SI units (e.g. "ronnagram", "kilometre"); a value
+// Wikidata gives in Earth, Jupiter or solar masses or radii is converted
 interface QuantityWithUnit { value: number; unit: string; }
 // Currencies use ISO 4217 codes (e.g. "EUR", "USD")
 interface CurrencyQuantity { value: number; currency: string; }

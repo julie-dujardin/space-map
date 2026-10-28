@@ -43,15 +43,20 @@ _ACCEPTED_SYSTEM_P31: set[str] = {
     "Q110762942",  # decimal multiple of a unit (variant)
 }
 
-# Non-SI units explicitly allowed (astronomical units essential for display)
-_ASTRONOMICAL_ALLOWLIST: set[str] = {
+# Non-SI units the ladders also write in.
+_DISPLAY_ALLOWLIST: set[str] = {
+    "Q4243638",  # cubic kilometre
+    "Q3674704",  # kilometre per second
+}
+
+# Astronomical units that Wikidata gives some values in. They are read, never
+# written: the frontend shows every mass and size in SI units.
+_READ_ONLY_UNITS: set[str] = {
     "Q180892",  # solar mass
     "Q651336",  # Jupiter mass
     "Q681996",  # Earth mass
     "Q48440",  # solar radius
     "Q3421309",  # Jupiter radius
-    "Q4243638",  # cubic kilometre
-    "Q3674704",  # kilometre per second
 }
 
 # Units explicitly excluded (imperial/US customary that slip in via UCUM derived)
@@ -83,8 +88,8 @@ _TEMPERATURE_TO_KELVIN: dict[str, tuple[float, float]] = {
 
 
 class UnitEntry(NamedTuple):
-    label: str  # normalized English label, e.g. "solar_mass"
-    qid: str  # e.g. "Q180892"
+    label: str  # normalized English label, e.g. "kilogram"
+    qid: str  # e.g. "Q11570"
     factor: float  # conversion factor to the SI base unit for this type
 
 
@@ -109,7 +114,9 @@ class UnitConverter:
             if qid in _UNIT_DENYLIST:
                 continue
             in_accepted = bool(p31_ids & _ACCEPTED_SYSTEM_P31)
-            if not in_accepted and qid not in _ASTRONOMICAL_ALLOWLIST:
+            if not (
+                in_accepted or qid in _DISPLAY_ALLOWLIST or qid in _READ_ONLY_UNITS
+            ):
                 continue
 
             conv = self._extract_p2370(claims)
@@ -127,7 +134,8 @@ class UnitConverter:
 
             entry = UnitEntry(label=label, qid=qid, factor=factor)
             for qty_type in qty_types:
-                ladders.setdefault(qty_type, []).append(entry)
+                if qid not in _READ_ONLY_UNITS:
+                    ladders.setdefault(qty_type, []).append(entry)
                 qid_index[qid] = (qty_type, factor)
 
         # Add synthetic entries for base units not present in the unit files.

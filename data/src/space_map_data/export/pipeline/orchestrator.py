@@ -731,9 +731,9 @@ def _build_non_zone_object_data(
 
     * **Chebyshev-covered** majors/perturbers — excluded from the elements
       zones (no double-shipping), so their per-object metadata never lands in
-      `all_objects` through the zone path. Building it here also triggers the
-      large-scale unit ladder entries (solar_mass, earth_mass, …) that only
-      get pulled in via `units.convert` on those bodies' values.
+      `all_objects` through the zone path. Building it here also records the
+      units of the largest masses (ronnagram, …) in `units.used_units`, as
+      only these bodies' values reach them.
     * **Orbit-less SBDB satellites** — publication placeholders with no orbit
       (~95% of rows) or a partial Kepler set. Never appear in the
       small_body_moons position zone but still need bundles + a detail page.

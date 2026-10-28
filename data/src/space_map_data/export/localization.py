@@ -69,7 +69,6 @@ _ALWAYS_INCLUDE_UNITS: set[str] = {
     "astronomical_unit",  # system scale orbital elements
     "hour",  # sbdb rot_per - rotation period
     "year",  # sbdb per_y - orbital period
-    "jupiter_radius",  # exoplanet radii
     "kilometre_per_second",  # orbital speed readout
     "pascal",  # surface pressure readout (formatPressure)
     "bar",  # surface pressure readout (formatPressure)

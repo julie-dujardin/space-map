@@ -189,6 +189,36 @@ class TestConvert:
         assert len(conv.used_units) > 0
 
 
+class TestReadOnlyUnits:
+    """Values given in astronomical units are read, and written in SI units."""
+
+    def converter(self) -> UnitConverter:
+        units = {
+            "Q11570": _make_unit_entity(
+                "kilogram", ["Q3647172", "Q223662"], "+1000", "Q41803"
+            ),
+            "Q41803": _make_unit_entity(
+                "gram", ["Q3647172", "Q208469"], "+0.001", "Q11570"
+            ),
+            "Q1": _make_unit_entity(
+                "ronnagram", ["Q3647172", "Q12036470"], "+1e24", "Q11570"
+            ),
+            "Q681996": _make_unit_entity(
+                "Earth mass", ["Q3647172"], "+5.9722e24", "Q11570"
+            ),
+        }
+        return UnitConverter(FakeCache(units))
+
+    def test_an_earth_mass_is_read_and_written_in_grams(self):
+        result = self.converter().convert(17.1512, "Q681996")
+        assert result == {"value": 102.43, "unit": "ronnagram"}
+
+    def test_no_value_is_written_in_earth_masses(self):
+        result = self.converter().best_unit(5.9722e26, "mass")
+        assert result is not None
+        assert result["unit"] == "ronnagram"
+
+
 class TestConvertToBase:
     def test_converts_to_base(self):
         conv = _build_mass_converter()
