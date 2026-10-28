@@ -1,13 +1,48 @@
-"""Fakes for the star-system tests: facts and source rows."""
+"""Fakes for the star-system tests: a resolver, facts and source rows."""
 
 from collections import Counter
 from collections.abc import Sequence
+
+import numpy as np
+import pyarrow as pa
 
 from space_map_data.extrasolar.sources.simbad import SimbadList, SimbadObject
 from space_map_data.extrasolar.systems import wds as wds_source
 from space_map_data.extrasolar.systems.resolve import FACTS
 from space_map_data.extrasolar.systems.simbad import SimbadIndex
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
+
+
+class FakeResolver:
+    """Ids, positions and facts from dicts."""
+
+    def __init__(
+        self,
+        ids: dict[tuple[str, str, str], int],
+        facts: list[dict],
+        positions: dict[str, int] | None = None,
+    ) -> None:
+        self.ids = ids
+        self.rows = facts
+        self.positions = positions or {}
+        self.matched: list[str] = []
+
+    def keys(self, catalogue: str, release: str, ids: pa.Array) -> np.ndarray:
+        return np.array(
+            [self.ids.get((catalogue, release, i), 0) for i in ids.to_pylist()],
+            np.int64,
+        )
+
+    def match(self, rows: pa.Table) -> np.ndarray:
+        texts = rows["catalogue_id"].to_pylist()
+        self.matched += texts
+        return np.array([self.positions.get(t, 0) for t in texts], np.int64)
+
+    def facts(self, keys: np.ndarray) -> pa.Table:
+        wanted = set(np.asarray(keys).tolist())
+        return pa.Table.from_pylist(
+            [row for row in self.rows if row["key"] in wanted], schema=FACTS
+        )
 
 
 def fact(
