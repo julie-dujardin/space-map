@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import FragmentOf from '../../sections/FragmentOf.svelte';
 	import FeatureGroupLinks from '../../sections/crossref/FeatureGroupLinks.svelte';
 	import PlanetGroupLinks from '../../sections/crossref/PlanetGroupLinks.svelte';
@@ -10,7 +10,11 @@
 	import SystemGroupLinks from '../../sections/crossref/SystemGroupLinks.svelte';
 	import { STRIP_CAPACITY } from '../../members/MemberStrip.svelte';
 	import SatCrossRefs from '../../sections/SatCrossRefs.svelte';
-	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
+	import StarFamilyTile from '../../sections/crossref/StarFamilyTile.svelte';
+	import { fetchExtrasolarMetadata } from '$lib/fetch/extrasolar/files';
+	import { familiesOf, starFamilyLinks, type StarFamilyLink } from '$lib/fetch/extrasolar/families';
+	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+	import { CAT_SOLAR_SYSTEM, STAR_FAMILY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import { parentPlanet } from '$lib/state/breadcrumb';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -29,9 +33,11 @@
 		members: MembersState;
 		orbitElements: OrbitalElements | undefined;
 		planetarySystem: PlanetarySystemState;
+		/** The records of an extrasolar star. */
+		star: ExtrasolarRecord | null;
 	}
 
-	let { body, feature, featureType, data, members, orbitElements, planetarySystem }: Props =
+	let { body, feature, featureType, data, members, orbitElements, planetarySystem, star }: Props =
 		$props();
 
 	const ctx = getContext<ContextManager>('ctx');
@@ -59,6 +65,37 @@
 	// A planetary barycenter stands for its whole system, so it cross-refs the
 	// primary and the moon list rather than the barycenter's own (empty) pages.
 	let system = $derived(planetarySystem.isSystemPage ? planetarySystem.system : null);
+
+	// A star's most specific families. Two tiles at most, as three in a row
+	// look uneven; the Sun's Solar System tile takes one of them.
+	let sunLinks = $derived(
+		(isStarBody ? (data?.global?.star_families ?? []) : []).slice(0, 1).map((family) => ({
+			slug: `${STAR_FAMILY_SLUG_PREFIX}${family}`,
+			estimated: false
+		}))
+	);
+	let familyLinks = $state.raw<StarFamilyLink[]>([]);
+	$effect(() => {
+		const row = star?.metadata ?? null;
+		familyLinks = [];
+		if (!row) return;
+		let current = true;
+		untrack(fetchExtrasolarMetadata).then(
+			(meta) => {
+				if (!current) return;
+				const families = meta?.families ?? [];
+				familyLinks = starFamilyLinks(
+					familiesOf(row.families, families),
+					familiesOf(row.familiesEstimated, families),
+					families
+				).slice(0, 2);
+			},
+			(e: unknown) => console.warn('[star families] no export metadata:', e)
+		);
+		return () => {
+			current = false;
+		};
+	});
 </script>
 
 {#if fragmentOf}
@@ -101,7 +138,18 @@
 		hasRings={system.hasRingCatalog}
 	/>
 {:else if isStarBody}
-	<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} />
+	<div class="grid grid-cols-2 gap-2">
+		<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} class={sunLinks.length ? '' : 'col-span-2'} />
+		{#each sunLinks as link (link.slug)}
+			<StarFamilyTile {link} />
+		{/each}
+	</div>
+{:else if familyLinks.length}
+	<div class="grid grid-cols-2 gap-2">
+		{#each familyLinks as link (link.slug)}
+			<StarFamilyTile {link} class={familyLinks.length === 1 ? 'col-span-2' : ''} />
+		{/each}
+	</div>
 {:else if orbitClass}
 	<SmallBodyGroupLinks {orbitClass} flag={smallBodyFlag} />
 {/if}

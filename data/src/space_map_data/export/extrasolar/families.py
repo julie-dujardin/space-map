@@ -197,6 +197,20 @@ def _spectral_codes(text: str) -> tuple[int, int, np.uint64]:
     )
 
 
+def of_spectral_type(text: str) -> list[str]:
+    """The published families of a star of this MK spectral type, in bit order."""
+    letter, stage, extra = _spectral_codes(text)
+    mask = closure(np.array([extra | TABLE[letter, stage]], np.uint64))[0]
+    return [family for family in rules.FAMILIES if mask & BIT[family]]
+
+
+def most_specific(families: Iterable[str]) -> list[str]:
+    """The families that contain none of the others, in bit order."""
+    given = set(families)
+    contained = {parent for family in given for parent in rules.PARENTS.get(family, ())}
+    return [f for f in rules.FAMILIES if f in given and f not in contained]
+
+
 def _by_value(array: pa.Array | pa.ChunkedArray, map_one, null: tuple) -> np.ndarray:
     """`map_one` of each distinct value, one row per row of `array`, with
     `null` for a null value. Each result is a tuple of `len(null)` integers."""
@@ -281,9 +295,12 @@ def masks(
     published = parsed[:, 2] | TABLE[mk_letter, mk_stage]
     published |= _masks(rows["simbad_otype"], rules.OTYPE_FAMILIES)
     published |= _masks(classes, rules.CLASS_FAMILIES)
+    # A stage that an object type gives joins the MK letter as an MK stage
+    # does. A family that states a letter, such as red-giant, keeps its stage
+    # to that letter.
+    stage_given = _published_stage(closure(published & ~LETTER_MASK))
     published = closure(published)
-    # A stage that an object type gives joins the MK letter as an MK stage does.
-    stage_known = np.where(mk_stage > 0, mk_stage, _published_stage(published))
+    stage_known = np.where(mk_stage > 0, mk_stage, stage_given)
     published = closure(published | TABLE[mk_letter, stage_known])
 
     fixed = states_of(published)

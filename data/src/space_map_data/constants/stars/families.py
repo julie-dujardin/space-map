@@ -71,6 +71,8 @@ FAMILIES: tuple[str, ...] = tuple(STAR_FAMILY_PAGES)
 
 # The /g/ page of a family is /g/star-<family>.
 FAMILY_SLUG_PREFIX = "star-"
+# The Sun is in none of the catalogues that the rules read.
+SUN_SPECTRAL_TYPE = "G2V"
 # The root of the family tree, stellar classification: a star with a family
 # is in it.
 ROOT_FAMILY = "classification"
@@ -336,6 +338,7 @@ PARENTS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(
         ("main-sequence", "white-dwarf", "brown-dwarf", "subdwarf"), ("dwarf",)
     ),
+    **dict.fromkeys(("red-giant", "blue-giant", "bright-giant"), ("giant",)),
     "subdwarf-b": ("subdwarf",),
     "subdwarf-o": ("subdwarf",),
     "t-dwarf": ("brown-dwarf",),

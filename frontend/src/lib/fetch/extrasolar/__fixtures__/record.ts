@@ -52,6 +52,8 @@ export function pointSourceRecord(
 			classSource: null,
 			crossIds: [],
 			mask: orbit ? 6 : 2,
+			families: 0n,
+			familiesEstimated: 0n,
 			object: false,
 			aliasTarget: null
 		},

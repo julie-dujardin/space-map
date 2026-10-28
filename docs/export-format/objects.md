@@ -37,6 +37,7 @@ interface GlobalObjectData {
   color_method?: "spectrum" | "albedo"; // moons only — source of the hue (present iff color is): TCT measured reflectance, else neutral
   geometric_albedo?: number;          // planets and moons — V-band geometric albedo at phase 0; can be above 1 (Enceladus 1.375). A planet has it and no `color`. Small bodies carry theirs under `sbdb`
   lunar_weight_scale?: number;        // factor on the lunar weight of McEwen (1996) in the lunar-Lambert law of the ground, from a published disk-resolved fit (`constants/disk_photometry.py`). Absent → McEwen's weight
+  star_families?: string[];           // the Sun only — the most specific star families of its MK type (`SUN_SPECTRAL_TYPE` in `constants/stars/families.py`): those that contain none of the others
   map_texture_available?: boolean;    // only present if true
   texture?: {                         // only when map_texture_available; mirrors systems/{bary}.json
     source: string;                   // source page URL

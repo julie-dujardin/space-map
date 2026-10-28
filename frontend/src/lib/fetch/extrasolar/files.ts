@@ -85,6 +85,16 @@ export interface ExtrasolarPlanets {
 	distribution?: string;
 }
 
+/** A star family of the Metadata masks: entry n of `families` is bit n. */
+export interface ExtrasolarFamily {
+	slug: string;
+	wikidata: string[];
+	/** The families that contain this one; empty on the root. */
+	parents?: string[];
+	published: number;
+	estimated: number;
+}
+
 export interface ExtrasolarMetadata {
 	format: number;
 	exported: string;
@@ -92,6 +102,7 @@ export interface ExtrasolarMetadata {
 	tables: Record<string, ExtrasolarTable>;
 	trees: Record<string, ExtrasolarTree>;
 	credits: ExtrasolarCredit[];
+	families?: ExtrasolarFamily[];
 	/** Absent when the export has no planets. */
 	planets?: ExtrasolarPlanets;
 }

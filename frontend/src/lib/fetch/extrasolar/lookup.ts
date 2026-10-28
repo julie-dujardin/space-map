@@ -38,6 +38,11 @@ export interface MetadataRow {
 	crossIds: CrossId[];
 	/** Bit n is set when data table n has a row for the ID. */
 	mask: number;
+	/** The published star families: bit n is entry n of `families` in
+	 *  `metadata.json`. 0 where the tile has no such column. */
+	families: bigint;
+	/** The families that only a Gaia DR3 estimate gives. */
+	familiesEstimated: bigint;
 	/** True when the site's object bundles hold an entry for the ID: its
 	 *  names in other languages, its Wikidata and Wikipedia text, the papers
 	 *  of its values. */
@@ -377,6 +382,8 @@ export function readMetadataRow(c: Container, row: number): MetadataRow {
 		classSource: c.dict('class_source').get(row),
 		crossIds: c.crossIds('cross_ids').get(row) ?? [],
 		mask: c.uint32('mask')[row],
+		families: c.has('families') ? c.uint64('families')[row] : 0n,
+		familiesEstimated: c.has('families_estimated') ? c.uint64('families_estimated')[row] : 0n,
 		object: c.has('object') && c.isValid('object', row) && c.bool('object')[row] === 1,
 		aliasTarget: alias > 0 ? alias : null
 	};

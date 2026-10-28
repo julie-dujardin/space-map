@@ -125,6 +125,42 @@ class TestPublished:
         published, _ = classify({"host_spectral_type": "M4V"})
         assert "red-dwarf" in published[0]
 
+    def test_a_bright_giant_is_a_giant(self):
+        published, _ = classify({"sp_type": "K3IIb"}, {"sp_type": "B2II"})
+        assert published[0] == {"bright-giant", "red-giant", "giant"}
+        assert published[1] == {"bright-giant", "blue-giant", "giant"}
+
+    def test_an_object_type_red_giant_has_the_giant_stage(self):
+        published, estimated = classify(
+            {"simbad_otype": "RG*", "spectraltype_esphs": "K", "flags_esphs": "02000"}
+            | DWARF_FLAME
+        )
+        assert published[0] == {"red-giant", "giant"}
+        assert estimated[0] == set()
+
+    def test_a_letter_family_keeps_its_stage_to_its_letter(self):
+        published, _ = classify(
+            {"simbad_otype": "RG*", "sp_type": "B"},
+            {"simbad_otype": "RG*", "sp_type": "K"},
+        )
+        assert published[0] == {"red-giant", "giant"}
+        assert published[1] == {"red-giant", "giant"}
+
+    def test_of_a_spectral_type(self):
+        assert families.of_spectral_type("G2V") == [
+            "classification",
+            "dwarf",
+            "g-type-main-sequence",
+            "main-sequence",
+        ]
+        assert families.most_specific(families.of_spectral_type("G2V")) == [
+            "g-type-main-sequence"
+        ]
+        assert families.most_specific(families.of_spectral_type("K3IIb")) == [
+            "bright-giant",
+            "red-giant",
+        ]
+
     def test_colour_supergiants(self):
         published, _ = classify(
             {"sp_type": "M2Iab"}, {"sp_type": "B8Ia"}, {"sp_type": "G0Ia+"}

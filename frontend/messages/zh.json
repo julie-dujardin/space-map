@@ -427,6 +427,7 @@
 	"group_type_plural_feature_type": "地貌类型",
 	"group_type_star_family": "恒星类型",
 	"group_type_plural_star_family": "恒星类型",
+	"crossref_star_family_estimated": "恒星类型（估计）",
 	"group_stat_bodies": "天体数",
 	"group_stat_types": "类型数",
 	"group_stat_features": "地貌数",

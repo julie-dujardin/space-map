@@ -497,6 +497,8 @@ export interface GlobalObjectData {
 	/** Factor on the lunar weight of McEwen (1996) for the ground, from a
 	 *  published disk-resolved fit. Absent where none is published. */
 	lunar_weight_scale?: number;
+	/** The Sun only: its most specific star families. */
+	star_families?: string[];
 	/** True when this body has IAU planetary nomenclature features exported.
 	 *  Gates the per-body fetch of `v1/nomenclature/{positions,__global__}/{id}.*`. */
 	has_nomenclature?: true;

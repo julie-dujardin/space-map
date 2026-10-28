@@ -166,6 +166,8 @@ class TestExport:
         assert counts["g-type-main-sequence"]["estimated"] == 1
         assert counts["dwarf"]["published"] == counts["dwarf"]["estimated"] == 1
         assert counts["dwarf"]["wikidata"] == ["Q244393"]
+        assert counts["red-giant"]["parents"] == ["giant"]
+        assert counts["classification"]["parents"] == []
         types = {
             c["name"]: c["type"]
             for c in reader.metadata["tables"]["metadata"]["columns"]

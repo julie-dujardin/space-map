@@ -445,6 +445,7 @@
 	"group_type_plural_feature_type": "Типы деталей поверхности",
 	"group_type_star_family": "Семейство звёзд",
 	"group_type_plural_star_family": "Семейства звёзд",
+	"crossref_star_family_estimated": "Семейство звёзд (оценка)",
 	"group_stat_bodies": "Тела",
 	"group_stat_types": "Типы",
 	"group_stat_features": "Детали",

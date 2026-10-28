@@ -462,6 +462,7 @@
 	"group_type_plural_feature_type": "Feature types",
 	"group_type_star_family": "Star family",
 	"group_type_plural_star_family": "Star families",
+	"crossref_star_family_estimated": "Star family (estimate)",
 	"group_stat_bodies": "Bodies",
 	"group_stat_types": "Types",
 	"group_stat_features": "Features",

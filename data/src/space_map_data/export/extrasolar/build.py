@@ -43,7 +43,7 @@ from pathlib import Path
 
 import numpy as np
 
-from space_map_data.constants.stars.families import FAMILIES, STAR_FAMILY_PAGES
+from space_map_data.constants.stars.families import FAMILIES, PARENTS, STAR_FAMILY_PAGES
 from space_map_data.download.providers.stars import el_badry, msc, wds
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
 from space_map_data.export.extrasolar import (
@@ -633,6 +633,7 @@ def _metadata(
             {
                 "slug": slug,
                 "wikidata": list(STAR_FAMILY_PAGES[slug]),
+                "parents": list(PARENTS.get(slug, ())),
                 "published": int(family_counts[0, bit]),
                 "estimated": int(family_counts[1, bit]),
             }

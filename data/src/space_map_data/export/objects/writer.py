@@ -23,11 +23,13 @@ import orjson
 from space_map_data.constants.measured_shapes import measured_shape_references
 from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.stars.families import SUN_SPECTRAL_TYPE
 from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.ephemeris import (
     ephemeris_accuracy_for,
     ephemeris_archive_for,
 )
+from space_map_data.export.extrasolar.families import most_specific, of_spectral_type
 from space_map_data.export.images import collect_object_images
 from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
@@ -571,6 +573,9 @@ def _build_global(
             data["color_method"] = surface.method
         if surface.geometric_albedo is not None:
             data["geometric_albedo"] = surface.geometric_albedo
+    # The star families of the Sun, for the tiles of its page.
+    if obj.object_type == ObjectType.star:
+        data["star_families"] = most_specific(of_spectral_type(SUN_SPECTRAL_TYPE))
     # Factor on the lunar weight of the ground, where a disk-resolved fit is published.
     weight_scale = lunar_weight_scale(obj.id)
     if weight_scale is not None:

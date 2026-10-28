@@ -145,6 +145,8 @@ describe("a star's identifiers", () => {
 					}
 				],
 				mask: 2,
+				families: 0n,
+				familiesEstimated: 0n,
 				object: false,
 				aliasTarget: null
 			},
