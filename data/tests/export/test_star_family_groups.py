@@ -19,7 +19,7 @@ from space_map_data.export.groups.registry import (
     GroupCategory,
     GroupType,
 )
-from space_map_data.export.notable import notable_entries
+from space_map_data.export.notable import NotableObject, notable_entries
 from space_map_data.export.objects.stars import StarObject
 from space_map_data.export.wikidata import StarEntity
 from tests.extrasolar.export_registry import star, write_registry
@@ -50,6 +50,7 @@ def _entities(sitelinks: dict[str, tuple[int, list[str]]]) -> MagicMock:
     cache = MagicMock()
     cache.get_star_entity.side_effect = get_star_entity
     cache.get_listed_star.side_effect = entity
+    cache.get_entity.side_effect = entity
     return cache
 
 
@@ -134,6 +135,28 @@ class TestBuild:
         entries = notable_entries(members, entities)
         assert [e["name"] for e in entries] == ["Label Q3", "Label Q1", "Label Q2"]
         assert entries[0]["id"] == f"x-{ids[2]}"
+
+    def test_the_sun_is_in_the_families_of_its_type(self, served):
+        ids, out = served
+        sun = NotableObject("naif-10", "Q525", "Sun", None, None)
+        stars = [StarObject(ids[0], "Many links", "Q1")]
+        languages = ["en", *(f"x{n}" for n in range(59))]
+        entities = _entities({"Q1": (40, ["en"]), "Q525": (60, languages)})
+        groups = star_family.build_star_family_groups(stars, entities, out, sun)
+        g_type = groups.notable_members["star-g-type-main-sequence"]
+        assert [(m.object_id, m.sitelinks_count) for m in g_type] == [("naif-10", 60)]
+        assert groups.notable_members["star-main-sequence"][:2] == [
+            g_type[0],
+            groups.notable_members["star-k-type-main-sequence"][0],
+        ]
+        assert "naif-10" not in {
+            m.object_id for m in groups.notable_members["star-k-type-main-sequence"]
+        }
+        assert "star-classification" not in groups.notable_members
+        assert groups.member_counts["star-g-type-main-sequence"] == 1
+        assert groups.extra_stats["star-g-type-main-sequence"].published_star_count == 1
+        assert groups.member_counts["star-main-sequence"] == 5
+        assert groups.member_counts["star-classification"] == 5
 
     def test_other_stars_fill_the_list(self, served):
         ids, out = served

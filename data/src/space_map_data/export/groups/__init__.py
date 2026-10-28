@@ -27,7 +27,10 @@ from space_map_data.export.groups.bundles import (
     GallerySubject,
     write_group_bundles,
 )
-from space_map_data.export.groups.categories import build_category_data
+from space_map_data.export.groups.categories import (
+    build_category_data,
+    star_member,
+)
 from space_map_data.export.groups.earth_sat import (
     NOTABLE_MEMBER_COUNT,
     EarthOrbitClassStats,
@@ -434,6 +437,7 @@ def run_groups_tier(
         )
         earth_orbit_stats = build_earth_orbit_classes(session)
         feature_types = build_feature_type_groups(session, wikidata_entities)
+        sun = star_member(session, radii, gms, poles)
         build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
         build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats
 
@@ -483,7 +487,9 @@ def run_groups_tier(
             wikidata_entities,
         )
     missions = _mission_groups()
-    star_families = build_star_family_groups(star_objects or [], wikidata_entities)
+    star_families = build_star_family_groups(
+        star_objects or [], wikidata_entities, sun=sun
+    )
 
     # Each constellation lists the buses its members fly, most-used first; the
     # chip count is the within-constellation tally, not the bus's global total.

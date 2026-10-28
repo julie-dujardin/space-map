@@ -12,7 +12,7 @@ import json
 import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -24,8 +24,10 @@ from space_map_data.constants.stars.families import (
     FAMILY_SLUG_PREFIX,
     PARENTS,
     ROOT_FAMILY,
+    SUN_SPECTRAL_TYPE,
 )
 from space_map_data.export.extrasolar.build import served
+from space_map_data.export.extrasolar.families import of_spectral_type
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.notable import NotableObject
@@ -84,12 +86,16 @@ def build_star_family_groups(
     star_objects: list[StarObject],
     wikidata_entities: WikidataEntityCache,
     extrasolar_dir: Path = EXTRASOLAR_DIR,
+    sun: NotableObject | None = None,
 ) -> StarFamilyGroups:
     """Counts, child families and listed stars of every star- page.
 
-    With no extrasolar export served, the pages have their text only.
+    With no extrasolar export served, the pages have their text only. The
+    Sun is in no catalogue of that export, so `sun` adds it to the families
+    of its spectral type.
     """
     out = StarFamilyGroups()
+    sun_families = set(of_spectral_type(SUN_SPECTRAL_TYPE)) if sun else set()
     root = extrasolar_dir / "v1" / "x"
     with served(extrasolar_dir):
         if not (root / "metadata.json").exists():
@@ -98,14 +104,19 @@ def build_star_family_groups(
         reader = ExportReader(root)
         listed = reader.metadata["families"]
         out.notable_members = _notable_stars(
-            reader, [entry["slug"] for entry in listed], star_objects, wikidata_entities
+            reader,
+            [entry["slug"] for entry in listed],
+            star_objects,
+            wikidata_entities,
+            sun,
         )
 
     for entry in listed:
         slug = family_slug(entry["slug"])
-        out.member_counts[slug] = entry["published"] + entry["estimated"]
+        published = entry["published"] + (entry["slug"] in sun_families)
+        out.member_counts[slug] = published + entry["estimated"]
         out.extra_stats[slug] = GroupExtraStats(
-            published_star_count=entry["published"],
+            published_star_count=published,
             estimated_star_count=entry["estimated"],
         )
     children: dict[str, list[str]] = defaultdict(list)
@@ -131,12 +142,13 @@ def _notable_stars(
     bits: list[str],
     star_objects: list[StarObject],
     wikidata_entities: WikidataEntityCache,
+    sun: NotableObject | None,
 ) -> dict[str, list[NotableObject]]:
     """The stars that each family but the root lists. A published family
     only: a page lists what catalogues say.
 
-    The stars with a Wikipedia article come first, most sitelinks first.
-    Other stars of the family fill the rest of the list (`_fill`)."""
+    The stars with a Wikipedia article and the Sun come first, most sitelinks
+    first. Other stars of the family fill the rest of the list (`_fill`)."""
     entries = {star.id: star for star in star_objects}
     stars = {id_: star for id_, star in entries.items() if star.qid}
     rows = reader.rows(METADATA.slug, sorted(stars), ["families"])
@@ -153,14 +165,32 @@ def _notable_stars(
 
     with ThreadPoolExecutor(8) as pool:
         ranks = dict(zip(tagged, pool.map(rank, tagged)))
-    ranked = sorted(
-        ((sitelinks, id_) for id_, (sitelinks, article) in ranks.items() if article),
-        key=lambda pair: (-pair[0], pair[1]),
-    )
+    ranked = [
+        (
+            sitelinks,
+            rows[id_]["families"],
+            NotableObject(
+                object_id=f"{PREFIX}{id_}",
+                wikidata_qid=stars[id_].qid,
+                fallback_name=stars[id_].name,
+                diameter_km=None,
+                first_obs=None,
+                star=True,
+                sitelinks_count=sitelinks,
+            ),
+        )
+        for id_, (sitelinks, article) in ranks.items()
+        if article
+    ]
+    if sun is not None:
+        found = wikidata_entities.get_entity(sun.wikidata_qid)
+        sitelinks = len(found["sitelinks"]) if found else 0
+        families = set(of_spectral_type(SUN_SPECTRAL_TYPE))
+        mask = sum(1 << bit for bit, family in enumerate(bits) if family in families)
+        ranked.append((sitelinks, mask, replace(sun, sitelinks_count=sitelinks)))
+    ranked.sort(key=lambda each: (-each[0], each[2].object_id))
     out: dict[str, list[NotableObject]] = defaultdict(list)
-    for sitelinks, id_ in ranked:
-        mask = rows[id_]["families"]
-        star = stars[id_]
+    for _, mask, member in ranked:
         for bit, family in enumerate(bits):
             # Every star with a family is in the root, so its list would only
             # be the best-known stars.
@@ -168,17 +198,7 @@ def _notable_stars(
                 continue
             members = out[family_slug(family)]
             if mask >> bit & 1 and len(members) < NOTABLE_STARS:
-                members.append(
-                    NotableObject(
-                        object_id=f"{PREFIX}{id_}",
-                        wikidata_qid=star.qid,
-                        fallback_name=star.name,
-                        diameter_km=None,
-                        first_obs=None,
-                        star=True,
-                        sitelinks_count=sitelinks,
-                    )
-                )
+                members.append(member)
     _fill(reader, bits, out, entries)
     return {slug: members for slug, members in out.items() if members}
 

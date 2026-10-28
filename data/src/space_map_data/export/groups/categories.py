@@ -625,13 +625,14 @@ def _moon_data(session: Session, planet_elements: dict[int, dict]) -> MoonTallie
     )
 
 
-def _star_member(
+def star_member(
     session: Session,
     radii: dict[int, dict],
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> NotableObject | None:
-    """The Sun — pinned first on the Solar System root page."""
+    """The Sun, pinned first on the Solar System root page and listed on its
+    star family pages."""
     row = (
         session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
         .filter(Object.object_type == ObjectType.star)
@@ -1373,7 +1374,7 @@ def build_category_data(
     tidal_members = _tidal_members(session, radii, gms, poles)
     radiation_where = radiation_places(session)
     radiation_members = _radiation_members(session, radiation_where, radii, gms, poles)
-    star = _star_member(session, radii, gms, poles)
+    star = star_member(session, radii, gms, poles)
     system_members = _planetary_system_members(session, radii, gms, poles)
     probe_members, probes_total = _probe_members(session, radii, gms, poles)
     moons = _moon_data(session, planet_elements)

@@ -413,9 +413,12 @@ interface GlobalGroupData {
   // lock, so the pages count what the site serves; with no export served they
   // are absent and the page has its text only, and a served export without
   // `families` stops the tier. member_count is their sum: the two masks of a
-  // star never share a family. `notable_members` (top 20, `id` = `x-<id>`) are
-  // the stars that a *published* family puts here: first the stars with a
-  // Wikipedia article in one of the site's languages, most sitelinks first;
+  // star never share a family. The Sun is in no catalogue of that export, so
+  // it adds one published star to each family of its spectral type
+  // (`SUN_SPECTRAL_TYPE` in `constants/stars/families.py`). `notable_members`
+  // (top 20, `id` = `x-<id>`, or `naif-10` for the Sun) are the stars that a
+  // *published* family puts here: first the stars with a Wikipedia article in
+  // one of the site's languages and the Sun, most sitelinks first;
   // then other stars of the family, in the order of the Metadata tiles,
   // shallowest level first, from at most half of the Metadata rows. Those
   // others can change from one export to the next, and a rare family can stay
