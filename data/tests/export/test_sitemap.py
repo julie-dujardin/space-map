@@ -237,26 +237,33 @@ class TestNotablePaths:
     def test_lists_each_star_with_a_description_or_planets(
         self, session: Session, tmp_path: Path
     ):
-        """A star with an entry has no row in the catalogue."""
+        """A star or a star system with an entry has no row in the catalogue."""
         _write_bundles(
             tmp_path / "objects" / "__global__",
             1,
-            {f"x-{n}": {"name": f"S{n}"} for n in (5, 6, 7)},
+            {f"x-{n}": {"name": f"S{n}"} for n in (5, 6, 7, 9)},
         )
         _write_bundles(
             tmp_path / "objects" / BASE_LOCALE,
             1,
-            {"x-5": {"name": "Sirius", "wikipedia": {"extract": "Sirius is…"}}},
+            {
+                "x-5": {"name": "Sirius", "wikipedia": {"extract": "Sirius is…"}},
+                "x-9": {"name": "Castor", "wikipedia": {"extract": "Castor is…"}},
+            },
         )
 
         paths = _notable_paths(
             session,
             tmp_path,
             {BASE_LOCALE: 1, "global": 1},
-            ["x-5", "x-6", "x-7", "x-8"],
+            ["x-5", "x-6", "x-7", "x-8", "x-9"],
             {"x-6", "x-8"},
         )
-        assert paths == {"x-5": "/x/5/Sirius", "x-6": "/x/6/S6"}
+        assert paths == {
+            "x-5": "/x/5/Sirius",
+            "x-6": "/x/6/S6",
+            "x-9": "/x/9/Castor",
+        }
 
     def test_never_lists_a_barycenter(self, session: Session, tmp_path: Path):
         """Its page is named by an app label, which no bundle carries."""

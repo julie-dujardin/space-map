@@ -1,9 +1,9 @@
 """Sitemap generation for the notable-object subset.
 
 Enumerates the promoted set, anything with a real Wikidata presence, the
-stars of the extrasolar catalogue whose entry in the base locale has a
-Wikipedia extract, and every planet that the extrasolar export serves, with
-its host. Writes the sitemap index ``v1/seo/sitemap.xml`` and its files
+stars and star systems of the extrasolar catalogue whose entry in the base
+locale has a Wikipedia extract, and every planet that the extrasolar export
+serves, with its host. Writes the sitemap index ``v1/seo/sitemap.xml`` and its files
 ``sitemap-<n>.xml``. The pages other than the planets and the hosts without
 an entry get the records of ``seo_pages.py``.
 
@@ -173,10 +173,10 @@ def _notable_paths(
 ) -> dict[str, str]:
     """The canonical path of every notable object the export has, by id:
     promoted types, curated extras, a Wikidata presence at or above the
-    sitelink floor, or a star of the extrasolar catalogue (``star_ids``)
-    with a description or with planets (``hosts``). A star has a description
-    when its entry in the base locale has a Wikipedia extract: a crawler
-    reads a page in the base locale.
+    sitelink floor, or a star or star system of the extrasolar catalogue
+    (``star_ids``) with a description or with planets (``hosts``). It has a
+    description when its entry in the base locale has a Wikipedia extract: a
+    crawler reads a page in the base locale.
 
     Never a barycenter: its page takes its title from an app label.
     """
@@ -397,10 +397,11 @@ def write_sitemap(
 
     Reads the object and group bundles and the group index already in
     ``out_dir``; the bucket counts are those of ``metadata.json``. ``stars``
-    are the registry's stars with an entry, ``planets`` the served planet
-    pages and ``planet_entries`` the served planets with an entry, each read
-    once for the export. Of the stars, only the ones with a description or
-    with planets are listed. Each planet with an entry gets a record.
+    are the registry's stars and star systems with an entry, ``planets`` the
+    served planet pages and ``planet_entries`` the served planets with an
+    entry, each read once for the export. Of the stars and systems, only the
+    ones with a description or with planets are listed. Each planet with an
+    entry gets a record.
     """
     pages = SitemapPages(
         objects=_notable_paths(

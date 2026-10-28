@@ -92,7 +92,7 @@ describe('endpoint search', () => {
 			locales: ['en'],
 			filter:
 				'kind != "group" AND kind != "planet" AND ' +
-				'(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf"] OR object.id = "naif-10")'
+				'(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf", "binary_star", "multiple_star"] OR object.id = "naif-10")'
 		});
 	});
 });

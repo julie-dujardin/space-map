@@ -1,5 +1,5 @@
 """Object entries of the extrasolar objects with a Wikidata item or a value
-from a paper: stars, and planets with an item.
+from a paper: stars and star systems, and planets with an item.
 
 They live in the object bundles, under `x-<id>` like the `/x/<id>` pages and
 `x-<host>-b-<n>` like the `/x/<host>/b/<n>` ones, so these pages read their
@@ -9,9 +9,11 @@ images, and the works that the literature table cites for a value. The record
 tiles and the planet files of the extrasolar export hold the values, under
 their own terms.
 
-The registry's Metadata rows say which stars have an entry (`object`), and
-give their English name, QID and literature key. A planet has an entry when
-its planets table row has a Wikidata QID among its cross ids.
+The registry's Metadata rows say which stars and systems have an entry
+(`object`), and give their English name, class, QID and literature key. A
+node of a star system, a resolved system or a point that holds several stars,
+takes its class as its type, as a planet host does in search. A planet has an
+entry when its planets table row has a Wikidata QID among its cross ids.
 """
 
 import gzip
@@ -56,6 +58,7 @@ from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.extrasolar.registry import NoRegistry, Registry
 from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA, usable_name
+from space_map_data.extrasolar.systems.assemble import BINARY, MULTIPLE
 from space_map_data.extrasolar.tables import METADATA
 from space_map_data.utils.paths import EXPORT_DIR, REGISTRY_ROOT
 
@@ -64,6 +67,8 @@ logger = logging.getLogger(__name__)
 PREFIX = "x-"
 TYPE = "star"
 PLANET_TYPE = "exoplanet"
+# The type of the entry of a star system node, by its class.
+SYSTEM_TYPES = {cls: cls.replace(" ", "_") for cls in (BINARY, MULTIPLE)}
 # The id of a planet's entry, as its scene id.
 PLANET_ID = re.compile(r"^x-\d+-b-\d+$")
 # The prefixes of SIMBAD's identifiers that Wikidata copies into some aliases:
@@ -104,6 +109,8 @@ class StarObject:
     qid: str | None = None
     # The key of the star in the literature table.
     literature: StarKey | None = None
+    # The entry's type: a star, or the class of a node of a star system.
+    object_type: str = TYPE
 
 
 @dataclass(frozen=True)
@@ -143,11 +150,16 @@ class _Read(NamedTuple):
 
 def _read_part(path: Path) -> list[StarObject]:
     rows = pq.read_table(
-        path, columns=["id", "name", "cross_ids"], filters=[("object", "=", True)]
+        path,
+        columns=["id", "name", "class", "cross_ids"],
+        filters=[("object", "=", True)],
     )
     out = []
-    for id_, name, cross_ids in zip(
-        rows["id"].to_pylist(), rows["name"].to_pylist(), rows["cross_ids"].to_pylist()
+    for id_, name, cls, cross_ids in zip(
+        rows["id"].to_pylist(),
+        rows["name"].to_pylist(),
+        rows["class"].to_pylist(),
+        rows["cross_ids"].to_pylist(),
     ):
         ids = defaultdict(list)
         for x in cross_ids:
@@ -164,6 +176,7 @@ def _read_part(path: Path) -> list[StarObject]:
                 name,
                 qids[0] if qids else None,
                 key_of(keys[0]) if keys else None,
+                SYSTEM_TYPES.get(cls, TYPE),
             )
         )
     return out
@@ -486,7 +499,12 @@ def star_entries(
         else:
             read(obj_id, star.qid, star.name, None)
         global_data[obj_id] = _global(
-            obj_id, star.name, TYPE, star.qid, reads[obj_id], star_references(star)
+            obj_id,
+            star.name,
+            star.object_type,
+            star.qid,
+            reads[obj_id],
+            star_references(star),
         )
     shared = sum(planet.qid in pages for planet in planets)
     for planet in planets:
@@ -517,9 +535,11 @@ def star_entries(
             )
             if block:
                 localized[lang][obj_id] = block
-    _log_entries(
-        "Star", [f"{PREFIX}{star.id}" for star in stars], global_data, localized
-    )
+    star_ids = [f"{PREFIX}{star.id}" for star in stars if star.object_type == TYPE]
+    node_ids = [f"{PREFIX}{star.id}" for star in stars if star.object_type != TYPE]
+    _log_entries("Star", star_ids, global_data, localized)
+    if node_ids:
+        _log_entries("Star system", node_ids, global_data, localized)
     if planets:
         _log_entries(
             "Planet", [planet.obj_id for planet in planets], global_data, localized

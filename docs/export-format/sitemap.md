@@ -19,12 +19,13 @@ unique content. An object earns a URL when it is any of:
 - backed by a **Wikidata presence** at or above `SITELINKS_THRESHOLD`
   (`export/sitemap.py`, default 5 — at which ~99.9 % also carry a Wikipedia
   description, keeping thin pages out);
-- a **star of the extrasolar catalogue with a description** (`x-<id>`, see
-  [objects.md](objects.md)): its entry in the base locale has a Wikipedia
-  extract (`wikipedia.extract`). A crawler reads a page in the base locale, so
-  an extract in another language only does not list the star. The registry's
-  Metadata rows list the stars with an entry. The search index takes the
-  same stars, and the planet hosts with an entry.
+- a **star or star system of the extrasolar catalogue with a description**
+  (`x-<id>`, see [objects.md](objects.md)): its entry in the base locale has a
+  Wikipedia extract (`wikipedia.extract`). A crawler reads a page in the base
+  locale, so an extract in another language only does not list the star. The
+  registry's Metadata rows list the stars and systems with an entry. The
+  search index takes the same stars and systems, and the planet hosts with an
+  entry.
 
 An object the export leaves out has no page and is not listed. Every exported
 group is included.

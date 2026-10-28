@@ -318,12 +318,12 @@ export async function search(
 
 /**
  * Leaves out the objects of the extrasolar catalogue by type: a planet host
- * takes the type of its class, so pulsars and brown dwarfs go too. The Sun
- * is the one star with an orbit the kernel can read. It uses only attributes
- * that every deployed index can filter on; `object.extrasolar` is not one,
- * and only planet hosts carry it.
+ * and a star system take the type of their class, so pulsars, brown dwarfs
+ * and binary and multiple stars go too. The Sun is the one star with an orbit
+ * the kernel can read. It uses only attributes that every deployed index can
+ * filter on; `object.extrasolar` is not one, and only planet hosts carry it.
  */
-const NOT_EXTRASOLAR = `(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf"] OR object.id = "${SUN_ID}")`;
+const NOT_EXTRASOLAR = `(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf", "binary_star", "multiple_star"] OR object.id = "${SUN_ID}")`;
 
 /**
  * Everywhere a trip can start or end, for the planner's endpoint pickers.

@@ -995,6 +995,9 @@ catalogue values, which stay in the record tiles and the planet files under
 their own terms. Wikidata gives no quantity, spectral type or distance here.
 
 - A star's id is `x-` and its extrasolar ID. Its Metadata row has `object`.
+  A star system is an extrasolar object too, and has an entry when the
+  Wikidata item about the system names it (through its own ids, such as the
+  SIMBAD object of the system); the star that held that item loses it.
   An item of a galaxy, a nebula, a cluster or another object that is not a
   star names none, unless Wikidata also gives it the type of a star or a star
   system. A star with no Wikidata item has a global entry only.
@@ -1005,7 +1008,9 @@ their own terms. Wikidata gives no quantity, spectral type or distance here.
 
 The global entry holds:
 
-- `id`, `type` (`star` or `exoplanet`), `name` (the name of its Metadata row,
+- `id`, `type` (`star`; `binary_star` or `multiple_star` for a node of a star
+  system whose Metadata class is `binary star` or `multiple star`; or
+  `exoplanet`), `name` (the name of its Metadata row,
   or of its planets table row) and `cross_refs.wikidata_qid` when it has an
   item;
 - `sitelinks_count`, the item's sitelinks on all Wikimedia projects, as for a

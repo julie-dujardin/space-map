@@ -166,11 +166,13 @@ class TestStarEntries:
                 StarObject(6, "HD 7", "Q3"),
                 # A distance from a paper, and no Wikidata item.
                 StarObject(7, "η Carinae", None, ETA_CAR),
+                # A resolved star system.
+                StarObject(9, "Alpha Centauri", "Q4", object_type="multiple_star"),
             ],
             entities,
         )
         # Each star entity is read once.
-        assert cast(_Entities, entities).star_reads == ["Q1", "Q2", "Q3"]
+        assert cast(_Entities, entities).star_reads == ["Q1", "Q2", "Q3", "Q4"]
         return found
 
     def test_global(self, entries):
@@ -196,7 +198,13 @@ class TestStarEntries:
             "name": "η Carinae",
             "references": {"distance": [SMITH_2006]},
         }
-        assert set(global_data) == {"x-22137869", "x-5", "x-6", "x-7"}
+        assert global_data["x-9"] == {
+            "id": "x-9",
+            "type": "multiple_star",
+            "name": "Alpha Centauri",
+            "cross_refs": {"wikidata_qid": "Q4"},
+        }
+        assert set(global_data) == {"x-22137869", "x-5", "x-6", "x-7", "x-9"}
 
     def test_localized(self, entries):
         _, localized = entries
@@ -374,6 +382,7 @@ class TestReadStarObjects:
             [
                 ("id", pa.int64()),
                 ("name", pa.string()),
+                ("class", pa.string()),
                 ("cross_ids", pa.list_(CROSS_ID)),
                 ("object", pa.bool_()),
             ]
@@ -383,6 +392,29 @@ class TestReadStarObjects:
             _read_part(path)
         pq.write_table(pa.Table.from_pylist(rows[:1], schema), path)
         assert _read_part(path) == [StarObject(5, "Vega", "Q2")]
+
+    def test_a_node_of_a_star_system_takes_its_class_as_its_type(self, tmp_path):
+        path = tmp_path / "part.parquet"
+        rows = [
+            {"id": id_, "name": name, "class": cls, "object": True, "cross_ids": [item]}
+            for id_, name, cls, item in (
+                (5, "Capella", "binary star", self._item("Q1")),
+                (6, "Alpha Centauri", "multiple star", self._item("Q2")),
+                (7, "Vega", "star", self._item("Q3")),
+                (8, "Sirius B", "white dwarf", self._item("Q4")),
+            )
+        ]
+        pq.write_table(pa.Table.from_pylist(rows), path)
+        assert [star.object_type for star in _read_part(path)] == [
+            "binary_star",
+            "multiple_star",
+            "star",
+            "star",
+        ]
+
+    @staticmethod
+    def _item(qid: str) -> dict:
+        return {"catalogue": "wikidata", "release": "qid", "catalogue_id": qid}
 
     def test_an_id_with_a_literature_key(self, tmp_path):
         path = tmp_path / "part.parquet"
@@ -402,6 +434,7 @@ class TestReadStarObjects:
             [
                 ("id", pa.int64()),
                 ("name", pa.string()),
+                ("class", pa.string()),
                 ("cross_ids", pa.list_(CROSS_ID)),
                 ("object", pa.bool_()),
             ]

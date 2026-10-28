@@ -13,10 +13,10 @@ translation is the word "asteroid" — pure noise in a name search. Notable
 ones (Ceres, Vesta, Pallas, …) carry aliases, a Wikipedia article, or a
 `named_after` field and survive the cut.
 
-The stars and planets of the extrasolar catalogue that have an entry
-(`x-<id>`, `x-<host>-b-<n>`) are in the same bundles. A star is indexed when
-its entry in the base locale has a Wikipedia extract, as the sitemap lists it,
-or when it hosts planets. A planet's document is built in `extrasolar`, which
+The stars, star systems and planets of the extrasolar catalogue that have an
+entry (`x-<id>`, `x-<host>-b-<n>`) are in the same bundles. A star or a
+system is indexed when its entry in the base locale has a Wikipedia extract,
+as the sitemap lists it, or when it hosts planets. A planet's document is built in `extrasolar`, which
 puts the names of its entry on it.
 """
 
@@ -55,6 +55,8 @@ _ALWAYS_INDEX = frozenset(
     {
         "barycenter",
         "star",
+        "binary_star",
+        "multiple_star",
         "planet",
         "exoplanet",
         "dwarf_planet",
