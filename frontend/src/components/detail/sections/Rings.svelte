@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { buildRows, kindSummary, rootSlugs, type RingRow } from '$lib/rings/catalog';
 	import { ringBarWindow } from '$lib/rings/overview-bar';
 	import { formatRingMass } from '$lib/rings/stats';
 	import { formatKm } from '$lib/format/distance';
+	import { joinParts } from '$lib/format/quantities';
 	import { tabHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
 	import type { PositionedBody } from '$lib/types/objects';
@@ -79,25 +79,9 @@
 		<Row label={m.rings_width()} value={formatKm(extent.outer - extent.inner)} />
 		<Row label={m.rings_sections()} value={kindSummary(rows, roots)} />
 		{#if mass}
-			<Row label={m.property_name_mass()}>
-				<!-- The ± hangs off the figure, not the label: it qualifies that
-				     number rather than what the row is about. -->
-				{#if mass.note}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<span class="cursor-help underline decoration-dotted underline-offset-2" {...props}>
-									{mass.value}
-								</span>
-							{/snippet}
-						</Tooltip.Trigger>
-						<Tooltip.Content>{mass.note}</Tooltip.Content>
-					</Tooltip.Root>
-					{mass.unit}
-				{:else}
-					{mass.value} {mass.unit}
-				{/if}
-			</Row>
+			<!-- The ± hangs off the figure, not the label: it qualifies that number
+			     rather than what the row is about. -->
+			<Row label={m.property_name_mass()} value={joinParts(mass)} valueTooltip={mass.note} />
 		{/if}
 	</Section>
 {/if}

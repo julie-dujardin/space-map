@@ -4,29 +4,27 @@
  */
 
 import type { RingMass } from '$lib/fetch/objects/object-data';
-import { convertMass } from '$lib/format/mass';
 import {
 	formatBound,
 	formatNumber,
 	formatUnit,
 	joinParts,
+	powerOfTen,
+	powerUnit,
 	type Parts
 } from '$lib/format/quantities';
 
-/** Mass with the hedges its source published.
- *
- * Symbols not unit names ("15.4 Zg"): the drawer isn't wide enough for
- * "zettagrams". `note` carries only the published ± — every other hedge is
- * already in the value.
+/** Mass with the hedges its source published, in kilograms and a power of
+ *  ten as every body's is ("1.54×10¹⁹ kg"). `note` carries only the
+ *  published ± — every other hedge is already in the value.
  */
 export function formatRingMass(mass: RingMass): Parts & { note?: string } {
-	// Upper bound picks the unit; lower end is expressed in it, so a range
-	// isn't two quantities with two units.
+	// The upper end picks the power of ten and the lower end is written on it,
+	// so a range isn't two quantities.
 	const reference = mass.high_kg ?? mass.low_kg;
-	const scaled = convertMass(reference);
-	const perKg = reference / scaled.value;
-	const unit = formatUnit(scaled.unit, true);
-	const inUnit = (kg: number) => formatNumber(kg / perKg);
+	const power = powerOfTen(reference, 3);
+	const unit = powerUnit(formatUnit('kilogram', true), power);
+	const inUnit = (kg: number) => formatNumber(kg / 10 ** power);
 
 	// Same grammar as formatOpticalDepth: "< x" for a bound, "≈ x" for a
 	// rounded single figure, a bare range needs no hedge.
@@ -43,7 +41,7 @@ export function formatRingMass(mass: RingMass): Parts & { note?: string } {
 
 	const note =
 		mass.uncertainty_kg !== undefined
-			? joinParts({ value: `± ${inUnit(mass.uncertainty_kg)}`, unit })
+			? joinParts({ value: `± ${inUnit(mass.uncertainty_kg)}`, ...unit })
 			: undefined;
-	return { value, unit, note };
+	return { value, ...unit, note };
 }

@@ -18,8 +18,7 @@ export const EARTH_MASS_KG = 5.9722e24;
 export const JUPITER_MASS_KG = 1.89813e27;
 export const SOLAR_MASS_KG = 1.98841e30;
 
-// Mirrors the backend mass ladder (export/quantities.py UnitConverter): the
-// SI gram prefixes, sorted by factor (kg) descending.
+// The SI gram prefixes on the backend's mass ladder (export/quantities.py).
 const MASS_UNITS: { unit: string; kg: number }[] = [
 	{ unit: 'ronnagram', kg: 1e24 },
 	{ unit: 'yottagram', kg: 1e21 },
@@ -32,19 +31,12 @@ const MASS_UNITS: { unit: string; kg: number }[] = [
 	{ unit: 'gram', kg: 1e-3 }
 ];
 
-/** The astronomical masses the backend also exports in. Read only, never written. */
+/** The astronomical masses that deployed exports still hold a few values in. */
 const EXPORTED_UNITS = [
 	{ unit: 'jupiter_mass', kg: JUPITER_MASS_KG },
 	{ unit: 'earth_mass', kg: EARTH_MASS_KG },
 	...MASS_UNITS
 ];
-
-// Largest unit whose value reads above ~1, matching the backend's best_unit.
-export function convertMass(kg: number): { value: number; unit: string } {
-	const abs = Math.abs(kg);
-	const u = MASS_UNITS.find((x) => abs / x.kg > 1.1) ?? MASS_UNITS[MASS_UNITS.length - 1];
-	return { value: kg / u.kg, unit: u.unit };
-}
 
 /** Back to kilograms from whatever unit the source published — the export picks
  *  a unit per body off the same ladder, so neighbours arrive incomparable. */
