@@ -10,7 +10,7 @@ or a companion.
 
 When several items reach one star, often a system and one of its stars, the
 item with the most articles keeps it, then the lowest QID. Readers look for
-that one.
+that one. An item about a star system reaches the system (`to_systems`).
 
 Its English label (else its multilingual one) names the star unless it is a
 bare catalogue number or a SIMBAD identifier.
@@ -33,6 +33,7 @@ from space_map_data.download.providers.stars.wikidata_stars import (
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.sources.hipparcos import GAIA_DR3, HD
 from space_map_data.extrasolar.sources.names import HIP
+from space_map_data.extrasolar.sources.simbad import SimbadList
 from space_map_data.extrasolar.tables import CROSS_ID
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,42 @@ def _claim(
     if len(item.hd) == 1 and item.hd[0] in hd_positions:
         return (*HD, item.hd[0]), hd_positions[item.hd[0]]
     return None
+
+
+def to_systems(
+    rows: pa.Table, stars: SimbadList, system_claims: dict[str, dict]
+) -> tuple[pa.Table, list[str]]:
+    """The rows with the claim of a system where the item is about one.
+
+    An item that claims the own HIP or HD number of a SIMBAD system object is
+    about that system, when the system is a node of this ingest that claims
+    the object's oid. `system_claims` gives that claim by oid. The item then
+    makes the same claim, so it names the system, and its star keeps none of
+    it. Returns the rows and the items moved.
+    """
+    owner: dict[tuple[str, str], int] = {}
+    for oid in stars.children:
+        found = stars.objects[oid]
+        if str(oid) not in system_claims:
+            continue
+        for kind, number in ((HIP, found.hip), (HD, found.hd)):
+            if number:
+                owner.setdefault((kind[0], number), oid)
+    claims, moved = [], []
+    for qid, items in zip(rows["catalogue_id"].to_pylist(), rows["claims"].to_pylist()):
+        found = [
+            owner.get((item["catalogue"], item["catalogue_id"])) for item in items or []
+        ]
+        if len(found) == 1 and found[0] is not None:
+            claims.append([system_claims[str(found[0])]])
+            moved.append(f"{qid} → {stars.objects[found[0]].main_id}")
+        else:
+            claims.append(items)
+    logger.info("Wikidata: %d items are about a system", len(moved))
+    column = rows.schema.get_field_index("claims")
+    return rows.set_column(
+        column, "claims", pa.array(claims, pa.list_(CROSS_ID))
+    ), moved
 
 
 def engine_rows(

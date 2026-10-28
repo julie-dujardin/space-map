@@ -1,6 +1,6 @@
 """The star ingest: Gaia DR3, Hipparcos, SIMBAD, the IAU star names, the
 exoplanet catalogues with their planets, the distance catalogues, the
-literature table, then Wikidata.
+literature table, the star systems, then Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
 Gaia. Gaia DR3 is two passes: the positionable stars of the chunks, then the
@@ -14,8 +14,10 @@ number to. Hipparcos is two passes: the new reduction, then the entries of
 numbers of its stars with a Gaia DR3 id. A HIP number whose Gaia best
 neighbour SIMBAD gives to another star has no best neighbour. The distance
 passes never mint, so they come after every pass that matches by position.
-Wikidata goes last: it is not permanent, so its claims settle on the joins of
-all the other passes.
+The star systems come after them: they read the stars that the passes made,
+and a star that no pass places takes its system's distance. Wikidata goes
+last: it is not permanent, so its claims settle on the joins of all the
+other passes.
 
 The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs) are
 no pass: their rows join the Gaia rows by source_id, and PASTEL also the
@@ -68,6 +70,11 @@ from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS, HIPPARCOS_199
 from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SIMBAD_HIP
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
+from space_map_data.extrasolar.systems.ingest import (
+    add_systems,
+    check_inputs,
+    read_inputs,
+)
 from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, POINT_SOURCE
 from space_map_data.utils.paths import REGISTRY_BACKUP_DIR, REGISTRY_ROOT
 
@@ -109,6 +116,7 @@ def ingest(
                 f"{root} holds a complete ingest, and a partial one would rebuild"
                 " its tables from part of the input: use another root"
             )
+    check_inputs()
     simbad_list = simbad.SimbadList.read()
     best = BestNeighbours.read()
     best = best.without(simbad.disputed_hip(simbad_list, _hip_best(best)))
@@ -234,6 +242,15 @@ def ingest(
         exoplanets.add_passes(run, planets, complete)
         for source, rows in distance_rows:
             run.add(source, [rows], complete)
+        # The systems read the rows of every pass that places a star.
+        inputs, index = read_inputs(run, simbad_list, planets, read.hub, reader)
+        found = add_systems(run, inputs, index, complete)
+        del inputs, index
+        run.extend(exoplanets.PlanetsExtension(planets, found))
+        item_rows, moved = wikidata.to_systems(
+            item_rows, simbad_list, found.plan.system_claims
+        )
+        found.items_moved(moved)
         # A source that is not permanent comes after the permanent sources.
         run.add(WIKIDATA, [item_rows], complete)
         result = run.commit()

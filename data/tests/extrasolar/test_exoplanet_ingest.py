@@ -314,6 +314,7 @@ def ingest(root, backup, inputs, complete=True):
         run.add(GAIA_DR3_NAMED, [read.gaia_rows], complete)
         prepared = exoplanets.prepare(read, run, {}, inputs)
         exoplanets.add_passes(run, prepared, complete)
+        run.extend(exoplanets.PlanetsExtension(prepared))
         return run.commit(), prepared
 
 

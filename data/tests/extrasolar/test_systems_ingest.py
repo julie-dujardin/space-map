@@ -14,9 +14,10 @@ from space_map_data.extrasolar.ids import cell_of, table_of
 from space_map_data.extrasolar.match import SYSTEM_KIND, Pairs, PositionMatcher
 from space_map_data.extrasolar.placement import placement
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.sources import wikidata
 from space_map_data.extrasolar.sources.distances import REYLE_2021
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
-from space_map_data.extrasolar.sources.simbad import SIMBAD
+from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList, SimbadObject
 from space_map_data.extrasolar.systems import ingest as systems_ingest
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
@@ -501,3 +502,43 @@ class TestSystemKind:
         score = matcher.score(pairs)
         assert np.isnan(score[:2]).all()
         assert np.isfinite(score[2:]).all()
+
+
+class TestWikidataToSystems:
+    """An item that claims the HIP number of a system object names the system."""
+
+    def test_route(self):
+        stars = SimbadList(
+            {
+                1: SimbadObject(1, "* alf Gem", 113.6, 31.9, hip="36850"),
+                2: SimbadObject(2, "* alf Gem A", 113.6, 31.9),
+                3: SimbadObject(3, "* alf Gem B", 113.6, 31.9, gaia="892"),
+                4: SimbadObject(4, "* bet Gem", 116.3, 28.0, hip="37826"),
+            },
+            {1: [2, 3]},
+            {},
+        )
+        rows = pa.table(
+            {
+                "catalogue_id": ["Q1", "Q2", "Q3"],
+                "claims": pa.array(
+                    [
+                        [dict(zip(CROSS_ID.names, ("hip", "2007", "36850")))],
+                        [dict(zip(CROSS_ID.names, ("hip", "2007", "37826")))],
+                        [dict(zip(CROSS_ID.names, ("gaia", "dr3", "892")))],
+                    ],
+                    pa.list_(CROSS_ID),
+                ),
+            }
+        )
+        claim = dict(zip(CROSS_ID.names, ("star-system", "simbad", "1")))
+        routed, moved = wikidata.to_systems(rows, stars, {"1": claim})
+        claims = [
+            "/".join(c[0][name] for name in CROSS_ID.names)
+            for c in routed["claims"].to_pylist()
+        ]
+        assert claims == ["star-system/simbad/1", "hip/2007/37826", "gaia/dr3/892"]
+        assert moved == ["Q1 → * alf Gem"]
+        # A system that is no node of the ingest keeps nothing.
+        routed, moved = wikidata.to_systems(rows, stars, {})
+        assert moved == []

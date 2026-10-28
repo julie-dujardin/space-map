@@ -5,8 +5,10 @@ rows of the hosts that no positionable Gaia row holds. `prepare` comes after
 the star passes, so the hosts without ids find their twins among the stars of
 this ingest too. It joins the stars and planets, classes the planets and
 builds the host rows of each catalogue. `add_passes` runs the three catalogue
-passes and adds `PlanetsExtension`, which numbers the planets and writes the
-Planets part and the planets table at commit.
+passes. `PlanetsExtension` numbers the planets and writes the Planets part
+and the planets table at commit. It comes after the star systems: a
+circumbinary planet's host is the node of its pair, and a planetary system
+is the root of its host's star system.
 
 The Gaia rows of the hosts go to the gaia-dr3-named pass, whose astrometry
 ranks below Hipparcos. A host with a HIP number and an unpositionable DR3
@@ -20,6 +22,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 import pyarrow as pa
@@ -626,18 +629,31 @@ def _star_of(planet: Joined, stars: Stars) -> int | None:
 
 
 def add_passes(run: IngestRun, prepared: Prepared, complete: bool) -> None:
-    """Run the catalogue passes and add the planets extension."""
+    """Run the catalogue passes."""
     for source in SOURCES:
         run.add(source, prepared.batches(source.name), complete)
-    run.extend(PlanetsExtension(prepared))
 
 
 # The extension
 
 
+class SystemHosts(Protocol):
+    """What the star systems give the planets at the commit."""
+
+    def host(self, record: int) -> int:
+        """The ID of the circumbinary host of a planet record, else 0."""
+        ...
+
+    def root(self, id_: int) -> int:
+        """The root of the system of an ID, else 0."""
+        ...
+
+
 @dataclass
 class PlanetsExtension:
     prepared: Prepared
+    # Built before this extension.
+    systems: SystemHosts | None = None
     name: str = "planets"
     sources: tuple[str, ...] = tuple(source.name for source in SOURCES)
 
@@ -664,9 +680,15 @@ class PlanetsExtension:
         # key rule.
         rank: dict[int, tuple] = {}
         without_host = []
+        circumbinary = 0
         for at, record in enumerate(prepared.records):
             host = identity_id.get(record.star, 0)
             system = identity_id.get(record.key, 0)
+            if self.systems is not None and host and system:
+                pair = self.systems.host(at)
+                circumbinary += bool(pair)
+                host = pair or host
+                system = self.systems.root(host) or system
             if not host or not system:
                 without_host.append(record.text("designation") or "")
                 continue
@@ -712,6 +734,7 @@ class PlanetsExtension:
                     limit=None,
                 ),
                 f"Wikidata: {len(links.qid)} planets have an item",
+                f"circumbinary planets on the node of their pair: {circumbinary}",
                 *_listed(
                     "check: Wikidata items whose ids name several planets",
                     links.several,
