@@ -31,6 +31,7 @@ COLUMNS = (
     "in_oba_golden_sample",
     "classlabel_espels",
     "classprob_dsc_combmod_whitedwarf",
+    "teff_gspphot",
     *(
         f"{name}_flame{run}"
         for run in FLAME_RUNS
@@ -114,6 +115,8 @@ STAGES = tuple(
 )
 LETTER_CODE = {letter: code for code, letter in enumerate(LETTERS, 1)}
 STAGE_CODE = {stage: code for code, stage in enumerate(STAGES, 1)}
+# The FLAME temperature floor of each letter code; 0 is none.
+MIN_TEFF = np.array([rules.FLAME_MIN_TEFF.get(letter, 0) for letter in ("", *LETTERS)])
 
 
 def _table() -> np.ndarray:
@@ -222,10 +225,14 @@ def _numbers(rows: pa.Table, name: str) -> np.ndarray:
     return rows[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
 
 
-def _flame_stage(rows: pa.Table) -> np.ndarray:
-    """The FLAME stage code of each row, from the first run whose fit holds."""
+def _flame_stage(rows: pa.Table, letter: np.ndarray) -> np.ndarray:
+    """The FLAME stage code of each row, from the first run whose fit holds
+    for its `letter` code."""
     bounds = np.array([bound for bound, _ in rules.FLAME_STAGES])
     codes = np.array([STAGE_CODE[stage] for _, stage in rules.FLAME_STAGES])
+    need = MIN_TEFF[letter]
+    # Only the GSP-Phot temperature is stored. GSP-Spec fits no star that hot.
+    teff = {"": _numbers(rows, "teff_gspphot"), "_spec": np.full(rows.num_rows, np.nan)}
     out = np.zeros(rows.num_rows, np.int64)
     for run in reversed(FLAME_RUNS):
         stage = _numbers(rows, f"evolstage_flame{run}")
@@ -237,6 +244,7 @@ def _flame_stage(rows: pa.Table) -> np.ndarray:
         low, high = rules.FLAME_GIANT_MASS
         holds = ~np.isnan(mass) & (~giant | ((mass >= low) & (mass <= high)))
         holds &= stage >= rules.FLAME_MIN_STAGE
+        holds &= (need == 0) | (teff[run] >= need)
         at = np.minimum(np.searchsorted(bounds, stage, side="right"), bounds.size - 1)
         out = np.where(holds, codes[at], out)
     return out
@@ -293,6 +301,6 @@ def masks(
         fixed |= states_of(kept)
 
     letter = np.where(fixed & rules.LETTER, mk_letter, _esp_letter(rows))
-    stage = np.where(fixed & rules.STAGE, stage_known, _flame_stage(rows))
+    stage = np.where(fixed & rules.STAGE, stage_known, _flame_stage(rows, letter))
     every = closure(TABLE[letter, stage] | labels | published)
     return published, every & ~published

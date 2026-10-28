@@ -167,8 +167,8 @@ A published family comes from catalogued classifications only:
 
 An estimated family uses at least one Gaia DR3 estimate:
 
-- the spectral type tag `spectraltype_esphs`, where the second digit of `flags_esphs` is 1 to 5. O, B and A count only for a star of the OBA golden sample (`in_oba_golden_sample`). `CSTAR` counts only with the digit 0, which marks the carbon stars that the validation confirmed;
-- the FLAME stage, from `flame_spec` before `flame`, where the fit holds as the star panel shows it: a mass, and for a giant (first flag digit 1) a mass from 1 to 2 M☉. Below 420 is `main-sequence`, below 490 `subgiant`, then `giant`;
+- the spectral type tag `spectraltype_esphs`, where the second digit of `flags_esphs` is 1 to 4, and 1 for O and B: against catalogued MK letters, 1 agrees for 72–96% of the stars and 5 for 33–53%. O, B and A count only for a star of the OBA golden sample (`in_oba_golden_sample`). `CSTAR` counts only with the digit 0, which marks the carbon stars that the validation confirmed;
+- the FLAME stage, from `flame_spec` before `flame`, where the fit holds as the star panel shows it: a mass, and for a giant (first flag digit 1) a mass from 1 to 2 M☉. Below 420 is `main-sequence`, below 490 `subgiant`, then `giant`. For an O or B star, only the `flame` run counts, where `teff_gspphot` is at least 30,000 K (O) or 10,000 K (B): GSP-Phot often fits a hot star far too cool;
 - `classprob_dsc_combmod_whitedwarf` over 0.5 (`white-dwarf`);
 - `classlabel_espels`: `TTauri`, `HerbigStar`, `RedDwarfEmStar` (`red-dwarf`), `wC` and `wN` (`wolf-rayet`).
 

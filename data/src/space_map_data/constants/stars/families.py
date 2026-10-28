@@ -292,11 +292,14 @@ ELS_FAMILIES: dict[str, tuple[str, ...]] = {
 SUBDWARF_PREFIXES = frozenset({"sd", "esd", "usd"})
 # DSC-Combmod probability above which a star is an estimated white dwarf.
 MIN_WHITE_DWARF_PROBABILITY = 0.5
-# ESP-ELS spectral type tags, with the tag quality (second digit of
-# flags_esphs, 1 best to 5) that each needs. 0 marks the carbon stars that
+# ESP-ELS spectral type tags, with the tag qualities (second digit of
+# flags_esphs, 1 best to 5) that each needs. Against catalogued MK letters,
+# quality 1 agrees for 72-96% of the stars and quality 5 for 33-53%; an O or
+# B tag above quality 1 is often a white dwarf. 0 marks the carbon stars that
 # the validation confirmed. O, B and A also need the OBA golden sample.
 ESP_LETTERS: dict[str, tuple[str, frozenset[str]]] = {
-    **{letter: (letter, frozenset("12345")) for letter in "OBAFGKM"},
+    **{letter: (letter, frozenset("1")) for letter in "OB"},
+    **{letter: (letter, frozenset("1234")) for letter in "AFGKM"},
     "CSTAR": ("C", frozenset("0")),
 }
 GOLDEN_LETTERS = frozenset("OBA")
@@ -310,6 +313,10 @@ FLAME_STAGES: tuple[tuple[int, str], ...] = (
 FLAME_MIN_STAGE = 100
 # Gaia trusts the mass of a FLAME giant only in this range (solar masses).
 FLAME_GIANT_MASS = (1.0, 2.0)
+# FLAME fits a star at the temperature of its run, so its stage holds for a
+# star of these letters only from that temperature up (K). GSP-Phot often
+# fits a hot star far too cool: a median of 8,700 K for the O-tagged stars.
+FLAME_MIN_TEFF: dict[str, float] = {"O": 30_000, "B": 10_000}
 
 # Each family adds these. The closure is transitive. A family without a parent
 # here gets the root.

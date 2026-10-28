@@ -213,20 +213,44 @@ class TestEstimated:
         assert estimated[0] == {"g-type-main-sequence", "main-sequence", "dwarf"}
 
     def test_hot_letters_need_the_golden_sample(self):
-        star = {"spectraltype_esphs": "B", "flags_esphs": "01000"} | DWARF_FLAME
+        star = {
+            "spectraltype_esphs": "B",
+            "flags_esphs": "01000",
+            "teff_gspphot": 15_000,
+        } | DWARF_FLAME
         _, estimated = classify(star, star | {"in_oba_golden_sample": True})
         assert estimated[0] == {"main-sequence", "dwarf"}
         assert estimated[1] == {"b-type-main-sequence", "main-sequence", "dwarf"}
 
+    def test_a_hot_letter_needs_a_flame_temperature_that_fits(self):
+        hot = {"in_oba_golden_sample": True, "flags_esphs": "01000"} | DWARF_FLAME
+        published, estimated = classify(
+            hot | {"spectraltype_esphs": "B", "teff_gspphot": 8_000},
+            hot | {"spectraltype_esphs": "O", "teff_gspphot": 20_000},
+            hot | {"spectraltype_esphs": "A", "teff_gspphot": 8_000},
+            {"sp_type": "B5", "teff_gspphot": 8_000} | DWARF_FLAME,
+        )
+        assert estimated[0] == set()
+        assert estimated[1] == set()
+        assert estimated[2] == {"a-type-main-sequence", "main-sequence", "dwarf"}
+        assert (published[3], estimated[3]) == (set(), set())
+
     def test_tag_quality(self):
+        hot = {"in_oba_golden_sample": True, "teff_gspphot": 15_000}
         _, estimated = classify(
             {"spectraltype_esphs": "K", "flags_esphs": "09000"} | DWARF_FLAME,
             {"spectraltype_esphs": "CSTAR", "flags_esphs": "05000"},
             {"spectraltype_esphs": "CSTAR", "flags_esphs": "00000"},
+            {"spectraltype_esphs": "K", "flags_esphs": "05000"} | DWARF_FLAME,
+            {"spectraltype_esphs": "K", "flags_esphs": "04000"} | DWARF_FLAME,
+            {"spectraltype_esphs": "B", "flags_esphs": "02000"} | hot | DWARF_FLAME,
         )
         assert estimated[0] == {"main-sequence", "dwarf"}
         assert estimated[1] == set()
         assert estimated[2] == {"carbon-star"}
+        assert estimated[3] == {"main-sequence", "dwarf"}
+        assert estimated[4] == {"k-type-main-sequence", "main-sequence", "dwarf"}
+        assert estimated[5] == {"main-sequence", "dwarf"}
 
     def test_the_spectroscopic_flame_run_comes_first(self):
         _, estimated = classify(
