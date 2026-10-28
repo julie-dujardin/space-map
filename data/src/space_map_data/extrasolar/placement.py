@@ -8,6 +8,9 @@ A row takes its distance from the first of these that it has:
 3. the distance group;
 4. for a planet host, the distance of its exoplanet catalogue;
 5. a 5σ parallax of a flagged row.
+The distance of a star's system is the last source of the distance group.
+The ingest gives it only to a star of a system that no step places and that
+step 3 then places, so for that star it is the last step.
 A row is flagged when its astrometry comes from Gaia and its `fidelity_v2` is
 under 0.5. A Hipparcos or SIMBAD parallax has no fidelity. A flagged row
 renders only when Hipparcos, SIMBAD or an exoplanet catalogue saw it, or by

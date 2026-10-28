@@ -112,7 +112,12 @@ def report_lines(
     events = systems.events
     kinds = Counter(events["kind"].to_pylist())
     lines += _counted("events", kinds)
-    for kind in ("merge", "conflict", "cross-match error"):
+    for kind in (
+        "merge",
+        "conflict",
+        "cross-match error",
+        "group object beside its members",
+    ):
         picked = events.filter(pc.equal(events["kind"], kind))
         for text in picked["text"].to_pylist()[:examples]:
             lines.append(f"  {kind}: {text}")
