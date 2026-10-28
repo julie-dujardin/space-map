@@ -53,8 +53,9 @@ def _stage_wikidata(
     *,
     p18: Sequence[str] = (),
     p154: Sequence[str] = (),
+    p373: Sequence[str] = (),
 ):
-    """Write a stub Wikidata entity JSON with P18 / P154 claims."""
+    """Write a stub Wikidata entity JSON with P18 / P154 / P373 claims."""
     claims: dict = {}
     if p18:
         claims["P18"] = [
@@ -63,6 +64,10 @@ def _stage_wikidata(
     if p154:
         claims["P154"] = [
             {"rank": "normal", "mainsnak": {"datavalue": {"value": f}}} for f in p154
+        ]
+    if p373:
+        claims["P373"] = [
+            {"rank": "normal", "mainsnak": {"datavalue": {"value": c}}} for c in p373
         ]
     (layout["wikidata"] / f"{qid}.json").write_bytes(
         orjson.dumps({"id": qid, "claims": claims, "sitelinks": {}})
@@ -97,6 +102,8 @@ def _stage_metadata(
     globalusage: int = 0,
     width: int = 2000,
     height: int = 2000,
+    categories: Sequence[str] = (),
+    depicts: Sequence[str] = (),
 ):
     """Write a metadata.json under ``commons/images/<filename>/``."""
     d = layout["images"] / filename
@@ -106,6 +113,8 @@ def _stage_metadata(
     }
     if assessments is not None:
         em["Assessments"] = {"value": assessments}
+    if categories:
+        em["Categories"] = {"value": "|".join(categories)}
     payload = {
         "filename": filename,
         "imageinfo": {"extmetadata": em, "width": width, "height": height},
@@ -113,6 +122,19 @@ def _stage_metadata(
         "derived_from": list(derived_from),
         "other_versions": list(other_versions),
         "globalusage": [{"wiki": f"w{i}.example"} for i in range(globalusage)],
+        "sdc": {
+            "statements": {
+                "P180": [
+                    {
+                        "mainsnak": {
+                            "snaktype": "value",
+                            "datavalue": {"value": {"id": qid}},
+                        }
+                    }
+                    for qid in depicts
+                ]
+            }
+        },
     }
     (d / "metadata.json").write_bytes(orjson.dumps(payload))
 
@@ -267,7 +289,7 @@ class TestStarImages:
         _stage_wikidata(layout, "Q3409", p18=["Sirius.jpg"])
         _stage_metadata(layout, "Sirius.jpg")
         selections = image_selection._select_star_images(
-            ["Q3409", "Q14266"], {}, layout["wikidata"]
+            ["Q3409", "Q14266"], [], {}, layout["wikidata"]
         )
         assert selections == {"Q3409": [{"file": "Sirius.jpg", "kind": "photo"}]}
 
@@ -278,9 +300,46 @@ class TestStarImages:
         _stage_metadata(layout, "Orion.jpg")
         _stage_metadata(layout, "Rigel.jpg")
         selections = image_selection._select_star_images(
-            ["Q1", "Q2", "Q3", "Q4"], {}, layout["wikidata"]
+            ["Q1", "Q2", "Q3", "Q4"], [], {}, layout["wikidata"]
         )
         assert selections == {"Q4": [{"file": "Rigel.jpg", "kind": "photo"}]}
+
+    def test_a_picture_of_a_planet_of_another_host_is_dropped(self, layout):
+        _stage_wikidata(layout, "Q10", p18=["Own.jpg", "Depicted.jpg", "Filed.jpg"])
+        _stage_wikidata(layout, "Q20", p373=["Planet twenty"])
+        _stage_metadata(layout, "Own.jpg")
+        _stage_metadata(layout, "Depicted.jpg", depicts=["Q20"])
+        _stage_metadata(layout, "Filed.jpg", categories=["Planet twenty"])
+        planets = [PlanetObject(1, 1, "b", "Q10"), PlanetObject(2, 1, "b", "Q20")]
+        selections = image_selection._select_star_images(
+            ["Q10", "Q20"], planets, {}, layout["wikidata"]
+        )
+        assert selections == {"Q10": [{"file": "Own.jpg", "kind": "photo"}]}
+
+    def test_a_picture_of_the_same_host_stays(self, layout):
+        _stage_wikidata(layout, "Q10", p18=["Sibling.jpg", "Both.jpg"])
+        _stage_metadata(layout, "Sibling.jpg", depicts=["Q11"])
+        _stage_metadata(layout, "Both.jpg", depicts=["Q10", "Q20"])
+        planets = [
+            PlanetObject(1, 1, "b", "Q10"),
+            PlanetObject(1, 2, "c", "Q11"),
+            PlanetObject(2, 1, "b", "Q20"),
+        ]
+        selections = image_selection._select_star_images(
+            ["Q10", "Q11", "Q20"], planets, {}, layout["wikidata"]
+        )
+        assert [entry["file"] for entry in selections["Q10"]] == [
+            "Sibling.jpg",
+            "Both.jpg",
+        ]
+
+    def test_a_star_keeps_a_picture_of_a_planet(self, layout):
+        _stage_wikidata(layout, "Q5", p18=["Planet.jpg"])
+        _stage_metadata(layout, "Planet.jpg", depicts=["Q20"])
+        selections = image_selection._select_star_images(
+            ["Q5", "Q20"], [PlanetObject(2, 1, "b", "Q20")], {}, layout["wikidata"]
+        )
+        assert selections == {"Q5": [{"file": "Planet.jpg", "kind": "photo"}]}
 
     def test_the_qids_come_from_the_registry(self, monkeypatch):
         # An item that a star and a planet both hold is selected once.
@@ -292,14 +351,17 @@ class TestStarImages:
                 [PlanetObject(5, 1, "b", "Q4"), PlanetObject(7, 1, "b", "Q9")],
             ),
         )
-        assert image_selection._star_qids() == ["Q2", "Q9", "Q4"]
+        assert image_selection._extrasolar_objects() == (
+            ["Q2", "Q9", "Q4"],
+            [PlanetObject(5, 1, "b", "Q4"), PlanetObject(7, 1, "b", "Q9")],
+        )
 
     def test_no_registry_keeps_the_selection(self, monkeypatch, caplog):
         def no_registry():
             raise NoRegistry("no registry in /x")
 
         monkeypatch.setattr(image_selection, "read_extrasolar_objects", no_registry)
-        assert image_selection._star_qids() is None
+        assert image_selection._extrasolar_objects() is None
         assert "star_images.json is kept" in caplog.text
 
     def test_a_busy_registry_fails(self, monkeypatch):
@@ -308,7 +370,7 @@ class TestStarImages:
 
         monkeypatch.setattr(image_selection, "read_extrasolar_objects", busy)
         with pytest.raises(RegistryBusy):
-            image_selection._star_qids()
+            image_selection._extrasolar_objects()
 
     def test_round_trip_via_write_cache(self, layout):
         selections = {"Q3409": [{"file": "Sirius.jpg", "kind": "photo"}]}

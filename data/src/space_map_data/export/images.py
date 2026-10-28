@@ -49,9 +49,11 @@ from space_map_data.utils.commons_images import (
 from space_map_data.utils.commons_images import (
     canonical_filename,
     clear_metadata_cache,
+    image_depicts,
     is_excluded,
     is_servable_on_disk,
     read_download_metadata,
+    sdc_statements,
     source_path,
 )
 from space_map_data.utils.paths import EXPORT_DIR
@@ -771,7 +773,7 @@ def _aggregate_tree_metadata(
         if date is None:
             date = _extract_date(meta, em)
         if not depicts:
-            depicts = _extract_depicts(meta)
+            depicts = image_depicts(meta)
     return artist, description, date, depicts
 
 
@@ -782,7 +784,7 @@ def _extract_date(meta: dict, em: dict) -> str | None:
     free-form ``DateTimeOriginal``, so a year-only inception isn't dressed
     up as a fake day.
     """
-    for stmt in _sdc_statements(meta, "P571"):
+    for stmt in sdc_statements(meta, "P571"):
         snak = stmt.get("mainsnak") or {}
         if snak.get("snaktype") != "value":
             continue
@@ -827,30 +829,6 @@ def _truncate_wikibase_time(time_str: str, precision: int) -> str | None:
     if precision == _TIME_PRECISION_YEAR:
         return f"{sign}{year}"
     return None
-
-
-def _extract_depicts(meta: dict) -> list[str]:
-    """Wikidata QIDs from SDC P180 statements (deduplicated, deprecated dropped)."""
-    out: list[str] = []
-    seen: set[str] = set()
-    for stmt in _sdc_statements(meta, "P180"):
-        if stmt.get("rank") == "deprecated":
-            continue
-        snak = stmt.get("mainsnak") or {}
-        if snak.get("snaktype") != "value":
-            continue
-        value = (snak.get("datavalue") or {}).get("value") or {}
-        qid = value.get("id")
-        if isinstance(qid, str) and qid not in seen:
-            seen.add(qid)
-            out.append(qid)
-    return out
-
-
-def _sdc_statements(meta: dict, pid: str) -> list[dict]:
-    """Look up an SDC statement list by property id, returning ``[]`` if absent."""
-    sdc = meta.get("sdc") or {}
-    return (sdc.get("statements") or {}).get(pid) or []
 
 
 def _walk_tree(filename: str) -> list[str]:

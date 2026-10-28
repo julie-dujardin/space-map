@@ -1020,7 +1020,9 @@ The global entry holds:
   them by QID in `star_images.json`). An image that more than two stars or
   planets would share is left out: it shows a constellation, a cluster or a
   whole planetary system, most often the constellation chart of a Wikipedia
-  infobox;
+  infobox. A planet also leaves out an image that shows only planets of other
+  host stars: Commons names them by `depicts` (P180) or by the Commons
+  category (P373) of their item;
 - `wikidata.discovery_date` (P575);
 - on a star, `references`, the works that the literature table cites for the
   values of the record, by column group: `{"distance": [{"short": "Smith

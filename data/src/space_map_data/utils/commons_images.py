@@ -111,7 +111,7 @@ def is_excluded(filename: str) -> bool:
     return any(filename.startswith(p) for p in EXCLUDED_FILENAME_PREFIXES)
 
 
-def _image_categories(metadata: dict | None) -> list[str]:
+def image_categories(metadata: dict | None) -> list[str]:
     """Pipe-split ``extmetadata.Categories`` for a downloaded image, or ``[]``.
 
     Present on ~99.8% of Commons files — a far more reliable classifier than
@@ -124,6 +124,30 @@ def _image_categories(metadata: dict | None) -> list[str]:
     if not isinstance(raw, str):
         return []
     return [c.strip() for c in raw.split("|") if c.strip()]
+
+
+def sdc_statements(metadata: dict | None, pid: str) -> list[dict]:
+    """The structured-data statements of a downloaded image for one property."""
+    sdc = (metadata or {}).get("sdc") or {}
+    return (sdc.get("statements") or {}).get(pid) or []
+
+
+def image_depicts(metadata: dict | None) -> list[str]:
+    """Wikidata QIDs from SDC P180 statements (deduplicated, deprecated dropped)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for stmt in sdc_statements(metadata, "P180"):
+        if stmt.get("rank") == "deprecated":
+            continue
+        snak = stmt.get("mainsnak") or {}
+        if snak.get("snaktype") != "value":
+            continue
+        value = (snak.get("datavalue") or {}).get("value") or {}
+        qid = value.get("id")
+        if isinstance(qid, str) and qid not in seen:
+            seen.add(qid)
+            out.append(qid)
+    return out
 
 
 def image_exclusion_reason(
@@ -160,7 +184,7 @@ def image_exclusion_reason(
         or any(s in lname for s in _SUBJECT_DIAGRAM_FILENAME_SUBSTRINGS)
     ):
         return "subject-diagram"
-    for cat in _image_categories(metadata):
+    for cat in image_categories(metadata):
         c = cat.lower()
         if (
             c.startswith(
@@ -199,7 +223,7 @@ def is_radar_render(metadata: dict | None) -> bool:
     lands. Excludes planetary surface radar maps (Magellan/Venus, Cassini/Titan),
     which are real surface imagery and stay tagged as photos.
     """
-    return any(c.lower() in _RADAR_CATEGORIES for c in _image_categories(metadata))
+    return any(c.lower() in _RADAR_CATEGORIES for c in image_categories(metadata))
 
 
 def image_dir(filename: str) -> Path:

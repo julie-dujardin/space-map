@@ -16,7 +16,7 @@ Exports read these caches instead of re-walking sources.
 
 import json
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Container, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,14 +40,17 @@ from space_map_data.export.groups.registry import (
     GroupCategory,
 )
 from space_map_data.export.objects.missions import build_probe_missions
-from space_map_data.export.objects.stars import read_extrasolar_objects
+from space_map_data.export.objects.stars import PlanetObject, read_extrasolar_objects
 from space_map_data.extrasolar.registry import NoRegistry
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
     COMMONS_DIR,
+    canonical_filename,
     collect_qid_image_candidates,
+    image_categories,
+    image_depicts,
     image_exclusion_reason,
     is_radar_render,
     is_servable_on_disk,
@@ -55,6 +58,7 @@ from space_map_data.utils.commons_images import (
     read_manual_extras,
 )
 from space_map_data.utils.db import get_session
+from space_map_data.utils.mirror import local
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -93,7 +97,7 @@ def ingest() -> None:
     metadata_cache: dict[str, dict | None] = {}
     wikidata_root = SOURCES_METADATA_DIR / "wikidata"
     # Before the long work, so that a busy registry stops the ingest early.
-    star_qids = _star_qids()
+    extrasolar = _extrasolar_objects()
 
     object_rows = (
         session.query(Object.id, Object.wikidata_qid, Object.object_type)
@@ -120,11 +124,12 @@ def ingest() -> None:
     _write_cache(OBJECT_IMAGES_PATH, "objects", selections)
     _update_image_available_flag(session, set(selections))
     _log_written(OBJECT_IMAGES_PATH, "objects", selections, objects)
-    if star_qids is not None:
+    if extrasolar is not None:
+        qids, planets = extrasolar
         _write_cache(
             STAR_IMAGES_PATH,
             "stars",
-            _select_star_images(star_qids, metadata_cache, wikidata_root / "stars"),
+            _select_star_images(qids, planets, metadata_cache, wikidata_root / "stars"),
         )
 
     # Nomenclature features key by feature_id and use P242 (locator map) as aux.
@@ -194,23 +199,27 @@ def ingest() -> None:
 _MAX_STARS_PER_IMAGE = 2
 
 
-def _star_qids() -> list[str] | None:
-    """The QIDs of the stars and planets with an object entry. None on a host
-    without the registry, which then keeps the star selections it has.
+def _extrasolar_objects() -> tuple[list[str], list[PlanetObject]] | None:
+    """The QIDs of the stars and planets with an object entry, and the
+    planets. None on a host without the registry, which then keeps the star
+    selections it has.
 
     Raises RegistryBusy while an ingest holds the registry.
     """
     try:
         stars, planets = read_extrasolar_objects()
-        qids = [star.qid for star in stars if star.qid] + [p.qid for p in planets]
-        return list(dict.fromkeys(qids))
     except NoRegistry as error:
         logger.warning("%s is kept: %s", STAR_IMAGES_PATH.name, error)
         return None
+    qids = [star.qid for star in stars if star.qid] + [p.qid for p in planets]
+    return list(dict.fromkeys(qids)), planets
 
 
 def _select_star_images(
-    qids: list[str], metadata_cache: dict[str, dict | None], wikidata_dir: Path
+    qids: list[str],
+    planets: Sequence[PlanetObject],
+    metadata_cache: dict[str, dict | None],
+    wikidata_dir: Path,
 ) -> dict[str, list[dict]]:
     """The images of the stars and planets with an entry, by QID.
 
@@ -226,6 +235,7 @@ def _select_star_images(
         desc="Selecting per-star images",
         unit="star",
     )
+    _drop_other_hosts(selections, planets, metadata_cache, wikidata_dir)
     uses = Counter(
         entry["file"] for entries in selections.values() for entry in entries
     )
@@ -242,6 +252,67 @@ def _select_star_images(
     )
     _log_written(STAR_IMAGES_PATH, "stars", selections, stars)
     return selections
+
+
+def _drop_other_hosts(
+    selections: dict[str, list[dict]],
+    planets: Sequence[PlanetObject],
+    metadata_cache: dict[str, dict | None],
+    wikidata_dir: Path,
+) -> None:
+    """Drop, in place, the pictures of a planet that show only planets of
+    other host stars.
+
+    Some Wikipedia articles lead with a picture of another planet. Commons
+    names the planets that a file shows by `depicts` (P180), and by the
+    Commons category of their Wikidata item (P373). A picture of another
+    planet of the same host stays.
+    """
+    host = {planet.qid: planet.host for planet in planets}
+    by_category: dict[str, set[str]] = defaultdict(set)
+    for qid in host:
+        for category in _commons_categories(wikidata_dir / f"{qid}.json"):
+            by_category[category].add(qid)
+    metadata = _MetadataView(metadata_cache)
+    for qid in host.keys() & selections.keys():
+        kept = []
+        for entry in selections[qid]:
+            meta = metadata.get(entry["file"])
+            shown = host.keys() & {
+                *image_depicts(meta),
+                *(
+                    planet
+                    for category in image_categories(meta)
+                    for planet in by_category.get(canonical_filename(category), ())
+                ),
+            }
+            if shown and all(host[other] != host[qid] for other in shown):
+                logger.info(
+                    "%s: dropped the image %s, which shows %s",
+                    qid,
+                    entry["file"],
+                    ", ".join(sorted(shown)),
+                )
+            else:
+                kept.append(entry)
+        if kept:
+            selections[qid] = kept
+        else:
+            del selections[qid]
+
+
+def _commons_categories(entity_path: Path) -> list[str]:
+    """The Commons categories (P373) of a Wikidata item, in filename form."""
+    path = local(entity_path)
+    if not path.exists():
+        return []
+    claims = orjson.loads(path.read_bytes()).get("claims") or {}
+    out = []
+    for statement in claims.get("P373", ()):
+        value = (statement.get("mainsnak") or {}).get("datavalue", {}).get("value")
+        if statement.get("rank") != "deprecated" and isinstance(value, str):
+            out.append(canonical_filename(value))
+    return out
 
 
 def _select_for_qids(
