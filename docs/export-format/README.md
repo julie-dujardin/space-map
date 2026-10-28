@@ -88,7 +88,7 @@ v1/
 | [images.md](images.md) | Per-image thumbnail bundles, size variants, and image metadata. |
 | [textures.md](textures.md) | Surface/cloud/specular/skybox textures, tiers, and metadata. |
 | [tiles.md](tiles.md) | Surface tile pyramids of all layers: grid, colour and height tiles, sources, descriptor. |
-| [extrasolar.md](extrasolar.md) | Objects outside the solar system, published apart under `v1/x/`: the container, record tiles and split tables, the Milky Way render tree, the sky cultures, the planets and their systems, tokens, the lookup of an ID. |
+| [extrasolar.md](extrasolar.md) | Objects outside the solar system, published apart under `v1/x/`: the container, record tiles and split tables, the star systems, the Milky Way render tree, the sky cultures, the planets and their systems, tokens, the lookup of an ID. |
 | [rings.md](rings.md) | Ring radial-profile channels and metadata. |
 | [models.md](models.md) | 3D spacecraft/satellite glTF bundles and metadata. |
 | [systems.md](systems.md) | `systems/global.json` lookups + per-system `systems/{barycenter_id}.json`. |

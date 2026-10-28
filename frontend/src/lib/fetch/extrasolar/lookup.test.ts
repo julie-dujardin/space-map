@@ -12,10 +12,12 @@ import {
 } from './lookup';
 import {
 	ALIAS,
+	BINARY,
 	ORBIT_FLAGS,
 	RETIRED,
 	SECOND,
 	STAR,
+	SYSTEM,
 	WITH_TABLE_2,
 	idOf,
 	pointSourceRow,
@@ -117,6 +119,36 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		expect(barred.source.reads).not.toContain('binary-orbit/0/0.bin.gz');
 	});
 
+	it('reads a point that holds two stars, and a resolved system at home in table 3', async () => {
+		const lookup = new ExtrasolarLookup(synthetic().source);
+		const point = await lookup.lookup(BINARY);
+		expect(point.kind === 'live' && [...point.record.rows.keys()].sort()).toEqual([
+			'point-source',
+			'system'
+		]);
+		if (point.kind !== 'live') return;
+		expect(homeRow(point.record)?.slug).toBe('point-source');
+		expect(hasDistance(point.record)).toBe(true);
+
+		const resolved = await lookup.lookup(SYSTEM);
+		expect(resolved.kind).toBe('live');
+		if (resolved.kind !== 'live') return;
+		const { record } = resolved;
+		expect(record.home).toBe('system');
+		expect(record.metadata.class).toBe('multiple star');
+		expect(hasDistance(record)).toBe(false);
+		const row = homeRow(record)!;
+		const [start, end] = row.container.list('members').items(row.row)!;
+		const ids = row.container.ids('members.id');
+		const kinds = row.container.dict('members.kind');
+		expect([end - start, ids[start], kinds.get(start), kinds.get(start + 1)]).toEqual([
+			2,
+			BINARY,
+			'system',
+			'star'
+		]);
+	});
+
 	it('answers an alias with its live ID, and live() follows it', async () => {
 		const { source } = synthetic();
 		const lookup = new ExtrasolarLookup(source);
@@ -128,7 +160,7 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 	it('gives no page to an ID with no Metadata row, or one this export cannot hold', async () => {
 		const lookup = new ExtrasolarLookup(synthetic().source);
 		expect(await lookup.lookup(RETIRED)).toEqual({ kind: 'missing', reason: 'no-row' });
-		expect(await lookup.lookup(idOf(0, 3))).toEqual({ kind: 'missing', reason: 'id' });
+		expect(await lookup.lookup(idOf(0, 4))).toEqual({ kind: 'missing', reason: 'id' });
 		expect(await lookup.lookup('0')).toEqual({ kind: 'missing', reason: 'id' });
 		expect(await lookup.lookup('0' + STAR)).toEqual({ kind: 'missing', reason: 'id' });
 		expect(await lookup.lookup(1.5)).toEqual({ kind: 'missing', reason: 'id' });

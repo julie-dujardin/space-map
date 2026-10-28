@@ -62,6 +62,8 @@ TRAPEZIUM_PARENT = "t"
 # A pair that is optical or spurious. It is not in the hierarchy.
 REFUTED_PARENT = "X"
 
+# The tier that the terms allow; the extrasolar export takes the strictest.
+DISTRIBUTION = "non-commercial"
 TERMS = {
     "license": (
         "None stated. Tokovinin's page and the Readme state no terms. The MSC"
@@ -70,7 +72,7 @@ TERMS = {
         " open access. Whether this one is was not checked."
     ),
     "terms_url": "https://journals.aas.org/article-charges-and-copyright/",
-    "distribution": "non-commercial",
+    "distribution": DISTRIBUTION,
     "quotes": [
         {
             "url": "https://journals.aas.org/article-charges-and-copyright/",

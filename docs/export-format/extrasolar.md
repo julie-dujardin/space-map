@@ -1,6 +1,6 @@
 # Extrasolar objects (`v1/x/`)
 
-The objects outside the solar system: their record tiles, one tree per table, the Milky Way render tree, the constellation figures of the sky cultures, and the exoplanets with one file per planetary system. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to `space-map-extrasolar/v1/x/` and are served from their own base URL, `PUBLIC_EXTRASOLAR_URL`. Without that URL a client has no stars and no `/x/` pages.
+The objects outside the solar system: their record tiles, one tree per table, the Milky Way render tree, the constellation figures of the sky cultures, and the exoplanets with one file per planetary system. The star systems are a table of their own: a binary is a system of two, and the pairs inside a system are systems too. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to `space-map-extrasolar/v1/x/` and are served from their own base URL, `PUBLIC_EXTRASOLAR_URL`. Without that URL a client has no stars and no `/x/` pages.
 
 An object has one ID for all its files. The ID, its URL form and its check are in the design of the registry: `id = serial·2^29 + table·2^24 + cell`, with `cell` the HEALPix level-10 nested cell (ICRS) and `table` the home table. A client decodes it with division, never with bit operators: `cell = id % 2^24`, `table = floor(id / 2^24) % 32`, `serial = floor(id / 2^29)`.
 
@@ -15,6 +15,8 @@ v1/x/
   point-source/{level}/{pixel}.bin.gz    Point source record tiles (table 1)
   binary-orbit/split.bin.gz              split table of the Binary orbit tiles
   binary-orbit/{level}/{pixel}.bin.gz    Binary orbit record tiles (table 2)
+  system/split.bin.gz                    split table of the System tiles
+  system/{level}/{pixel}.bin.gz          System record tiles (table 3): the star systems
   mw/node/{name}.bin.gz                  Milky Way render nodes
   mw/id/{name}.bin.gz                    the ID column of each render node
   skycultures/{key}.json.gz              a sky culture: figures, members and star names
@@ -139,12 +141,13 @@ Every live ID has a row. The ID is in the `id` column; there is no table number.
 | Column | Type | |
 |--------|------|-|
 | `id` | id | |
-| `name` | string | IAU proper name (the WGSN list, which holds the NameExoWorlds star names; a NameExoWorlds star name outside that list comes with the host rows), else for a planet host the name in its exoplanet catalogue, else the English label of its Wikidata item when that is no bare catalogue number ("T Tauri", "Teegarden's Star", "Gliese 105"), else a Bayer or Flamsteed designation with the Greek letter spelled out ("Alpha Canis Majoris"), a WR number, a GCVS name, the designation of the star system that the star is the brightest component of (unless the system is itself a star with other HIP or HD numbers), `HD n` or `HIP n` (the star's, else its system's), a SIMBAD NAME, a designation in a cluster where SIMBAD's main identifier is from a survey, SIMBAD's main identifier, or `Gaia DR3 n`. A star with a Gaia DR3 id takes `Gaia DR3 n` over a main identifier from a survey (2MASS, Tycho, UCAC, WISE …). A name has no SIMBAD prefix: no `NAME` and no object type (`V*`, `**`, `EM*`, `Cl*`). Where the object type is the whole catalogue acronym (`C* 2905`), the identifier keeps it |
-| `name_source` | dict | the source of the name: `iau-wgsn`, `nasa-exoplanet-archive`, `exoplanet-eu`, `open-exoplanet-catalogue`, `wikidata`, `simbad`, `hipparcos-2007` (designations from XHIP), `hipparcos-1997`, `gaia-dr3`, `gaia-dr3-named` |
-| `class` | dict | what the object is: `star` for every row now |
-| `class_source` | dict | |
-| `cross_ids` | cross_ids | every catalogue id of the object: catalogues `gaia/dr3`, `hip/2007`, `hd/1949`, `simbad/oid`, `iau/wgsn`, `wikidata/qid`, `literature/star` now. An object has at most one `wikidata/qid` id: of the items that reach one star, the item with the most articles in the site's languages keeps it, then the lowest QID. A `literature/star` id is the key of the star in the literature table of the repo (`constants/stars/literature.py`): `gaia/dr3/<source_id>`, `hip/2007/<n>` or `hd/1949/<n>` |
-| `mask` | uint32 | bit `n` is set when data table `n` has a row for the ID |
+| `name` | string | IAU proper name (the WGSN list, which holds the NameExoWorlds star names; a NameExoWorlds star name outside that list comes with the host rows), else for a planet host the name in its exoplanet catalogue, else the English label of its Wikidata item when that is no bare catalogue number ("T Tauri", "Teegarden's Star", "Gliese 105"), else a Bayer or Flamsteed designation with the Greek letter spelled out ("Alpha Canis Majoris"), a WR number, a GCVS name, the designation of the star system that the star alone stands for (a SIMBAD system with one point), `HD n` or `HIP n` (the star's, else those of the system whose primary it is, within 10″), a SIMBAD NAME, a designation in a cluster where SIMBAD's main identifier is from a survey, SIMBAD's main identifier, or `Gaia DR3 n`. A star with a Gaia DR3 id takes `Gaia DR3 n` over a main identifier from a survey (2MASS, Tycho, UCAC, WISE …). A name has no SIMBAD prefix: no `NAME` and no object type (`V*`, `**`, `EM*`, `Cl*`). Where the object type is the whole catalogue acronym (`C* 2905`), the identifier keeps it. A resolved star system (System, below) takes the label of the Wikidata item about it, else SIMBAD's designation of the system object without a component letter ("Alpha Centauri", "Castor"), else `WDS J<WDS id><letters>`, else none: a client then composes a name from its primary. A point keeps its own name. An IAU name is the component's that the WGSN list names: Castor is the point that holds Castor Aa and Ab |
+| `name_source` | dict | the source of the name: `iau-wgsn`, `nasa-exoplanet-archive`, `exoplanet-eu`, `open-exoplanet-catalogue`, `wikidata`, `star-systems` (a resolved system's name from its trees), `simbad`, `hipparcos-2007` (designations from XHIP), `hipparcos-1997`, `gaia-dr3`, `gaia-dr3-named` |
+| `class` | dict | what the object is: `star`, `white dwarf`, `brown dwarf` or `pulsar`, and for a node of a star system, point or resolved, `binary star` (two stars below it) or `multiple star` (three or more). A specific class from any source comes first (`white dwarf`, `brown dwarf`, `pulsar`), then `binary star` or `multiple star` on a node, then `star`. So a node replaces only the class `star`: a pulsar point that holds two stars stays `pulsar`, and the default `star` of one source never replaces the specific class of another. A point that holds one object keeps the class of that object |
+| `class_source` | dict | the source of the class, in source order within each step of `class`: the exoplanet catalogues, `simbad` (its object type: `WD*` and `WD?` are white dwarfs, `BD*` and `BD?` brown dwarfs), `gaia-dr3`, `hipparcos-2007`, `hipparcos-1997`, `gaia-dr3-named`, `star-systems` (the class of a node) |
+| `system` | id | the root of the ID's star system, for every node but the root and every star of a system; null for a root and for an ID in no system. A client finds the whole system in the root's System row |
+| `cross_ids` | cross_ids | every catalogue id of the object: catalogues `gaia/dr3`, `hip/2007`, `hd/1949`, `simbad/oid`, `iau/wgsn`, `wikidata/qid`, `literature/star`, on a star that the WDS gives by position only `wds/component` (`<WDS id> <letter>`), and on a resolved star system its catalogue ids under the catalogue `star-system`, with the catalogue of the id as the release: `star-system/msc` (`14396-6050 AB`), `star-system/wds` (`14396-6050` or `14396-6050 AB`), `star-system/simbad` (the oid of SIMBAD's system object, such as `* alf Cen`), `star-system/el-badry` (the pair, `<source_id>+<source_id>`), and for a system that no catalogue names `star-system/primary` (`<catalogue>/<release>/<id> <rank>`: an id of its primary, and the number of resolved systems of that primary inside it, 0 for the innermost). A star never has a `star-system` id, so the row of a star never takes the ID of a system. A resolved system keeps its ID from one ingest to the next by these ids. An object has at most one `wikidata/qid` id: of the items that reach one star, the item with the most articles in the site's languages keeps it, then the lowest QID. A `literature/star` id is the key of the star in the literature table of the repo (`constants/stars/literature.py`): `gaia/dr3/<source_id>`, `hip/2007/<n>` or `hd/1949/<n>` |
+| `mask` | uint32 | bit `n` is set when data table `n` has a row for the ID: bit 3 for a node of a star system |
 | `object` | bool | true when the site's object bundles hold an entry `x-<id>` for the ID ([objects.md](objects.md)): today, when it has a `wikidata/qid` or a `literature/star` id |
 | `alias_target` | id | null for a live ID |
 | `families` | uint64 | the published families of the star: bit `n` is entry `n` of `families` in `metadata.json` (below) |
@@ -218,6 +221,8 @@ The distance group and the SIMBAD photometry:
 
 The distance group is also filled for some stars with a good parallax. The render tree places a star by its parallax first, unless the distance comes from the literature or is a more precise measured parallax; see below.
 
+A star of a star system can have the group `member` (`member_source` `star-systems`). `composite_moved` is true when the star's own spectral type in the catalogues (`simbad_sp_type`, `sp_type`) is the composite type of its system, which then is on the System row. `member_spectral_type` is the star's own type in the trees, null when none gives one. A client shows `member_spectral_type` in place of the catalogue type when `composite_moved` is true. The catalogue columns stay as published.
+
 ### Binary orbit (table 2)
 
 The Gaia DR3 orbit of a binary star: one solution of `nss_two_body_orbit` for each star that has one, and the masses of its two stars from `binary_masses` (Gaia Collaboration, Arenou et al. 2023, A&A 674, A34). The table never mints. A row joins its star in the `gaia-dr3` or `gaia-dr3-named` pass by `source_id`, so the row has the star's ID, the home table is 1, and bit 2 of the star's `mask` is set. A solution of a source that is not one of those stars has no row: a source without a 5σ parallax that is no `gaia-dr3-named` row, or one with `fidelity_v2` under 0.5 and no Hipparcos, SIMBAD or exoplanet catalogue match.
@@ -247,6 +252,60 @@ The astrometric orbit from the Thiele-Innes elements: at time `t` (days from J20
 
 The masses place the companion. With the mass fraction `μ = m2 / (m1 + m2)` and the light fraction `β = fluxratio / (1 + fluxratio)` (0 for a dark companion), the light centre is at `(β − μ)` times the separation from the primary to the secondary. So the primary is at `μ / (μ − β)` times the light-centre offset, and the secondary at `−(1 − μ) / (μ − β)` times it, on the other side of the barycentre.
 
+### System (table 3)
+
+The star systems. A system is a tree, and each node of the tree has a row:
+
+- a **point** that holds two or more stars (Capella, Mizar A, a star with a Gaia DR3 orbit). It keeps the ID of its point, so its home table is 1, and bit 3 of its `mask` is set;
+- a **resolved system**, which has no point of its own (α Cen AB; α Cen itself is AB and Proxima). Its ID has home table 3 and the cell of its primary's J2016.0 position. It has no Point source row, so the render tree does not draw it: its stars are drawn.
+
+The members of a node are stars (points that hold one star, which have no System row), nodes, and entries. An entry is a star with no ID: a star inside its node's point (Capella Aa and Ab), or one that only a catalogue gives. One type covers every level: a binary is a system of two, and a pair inside a system is a node too. A system whose hierarchy no source gives is a flat list of members. A star is a member of one node at most, and every node but the root has one parent. The root's row holds the whole tree, so one record gives the system.
+
+The trees come from these sources, in source order: Tokovinin's Multiple Star Catalogue (MSC), SIMBAD's hierarchy of objects, the systems of the planet catalogues, the Washington Double Star Catalog (WDS) without the pairs that it notes as optical or bogus, the wide binaries of El-Badry, Rix & Heintz 2021 with a chance-alignment probability under 0.1, and the Gaia DR3 orbits of table 2. A member joins its star by a catalogue id (Gaia DR3 `source_id`, HIP, HD, SIMBAD oid, WDS id), else by position and magnitude. A member that reaches no star is an entry. A point holds several stars when it has a Gaia DR3 orbit whose companion is no planet that the planet catalogues give it (a period within 5%), when a catalogue lists a pair inside it, or when its SIMBAD type is one that only a close pair shows (`EB*`, `SB*` …) and no companion of it is a point of its own. An acceleration solution of Gaia without an orbit adds no member.
+
+| Column | Type | |
+|---|---|---|
+| `id` | id | |
+| `point` | bool | true for a point, false for a resolved system |
+| `depth` | int16 | 0 at the root |
+| `stars` | int32 | the stars below the node: its member stars and entries, and those of its member nodes |
+| `ra`, `dec` | float64 | the ICRS position at J2016.0 of the node's primary point (deg) |
+| `label` | string | the component letters (`AB`, `Aab`), or the name that a source gives the pair |
+| `spectral_type` | string | the composite spectral type of the node's stars ("F5IV-V+DQZ") |
+| `evidence` | dict | a point: the source that shows that it holds several stars |
+| `sources` | list | the trees that list the node, first in source order: `msc`, `simbad`, `planet-catalogues`, `wds`, `el-badry-2021`, `gaia-dr3-orbits`, `simbad-type` (item column `sources.item`, dict) |
+| `tree_source` | dict | `star-systems` |
+| `parent` | id | the node that lists this one; null at the root |
+| `root` | id | the root of the system, its own ID at the root |
+| `primary` | id | the primary point of the node |
+| `members` | list | the direct members, in member order: item columns `members.<field>` (below) |
+| `tree` | list | in the root's row, every node of the system, sorted by ID; null in every other row: item columns `tree.<field>` (below) |
+
+A member:
+
+| Field | Type | |
+|---|---|---|
+| `id` | id | the ID of the star or of the node; null for an entry |
+| `kind` | dict | `star`, `system` or `entry` |
+| `letter` | dict | its component letter (`A`, `Ba`) |
+| `inner` | string | for an entry inside a point, its letters within the point (`Ca` of `Cab`) |
+| `label` | string | a name that the source gives it |
+| `source` | dict | the tree whose values the member has |
+| `spectral_type` | string | |
+| `v_mag`, `g_mag` | float32 | V and Gaia G (mag) |
+| `mass` | float32 | solar masses |
+| `separation` | float64 | from the node's primary (arcsec) |
+| `position_angle` | float32 | deg |
+| `period` | float64 | days |
+| `eccentricity` | float32 | |
+| `semi_major_axis` | float32 | arcsec |
+| `known` | list | how the member is known: `visual`, `visual orbit`, `common proper motion`, `common parallax`, `spectroscopic`, `spectroscopic orbit`, `eclipsing`, `astrometric`, `astrometric orbit`, `occultation`, `catalogue` (item column `members.known.item`, dict) |
+| `ids` | cross_ids | the catalogue ids of an entry |
+
+A node of the tree has `id`, `parent` (null at the root), `point`, `stars` and `label` as its own row has them, and `class`, its Metadata class.
+
+A client reads a system from the root's row: the tree gives every node and its parent, and the row of each node gives its members. From any star or node, Metadata `system` names the root. The row of a point in Point source keeps the fits that assume one star (FLAME, GSP-Phot). Its System row (bit 3 of `mask`) says that they do not hold, and so does its class `binary star` or `multiple star` where no source gives a specific class. A resolved system keeps its ID from one ingest to the next by the catalogue ids in its Metadata `cross_ids`, under the rule of every ID. A point keeps its own ID.
+
 ## Lookup of an ID
 
 For a URL `/x/{id}/{name}` or a click:
@@ -260,11 +319,11 @@ For a URL `/x/{id}/{name}` or a click:
 7. A row with an `alias_target`: go on with that ID (redirect to its URL). The target is live, so there is at most one redirect.
 8. Find the ID in the home tile. For each other bit `n` set in `mask`, fetch the tile of the same cell from table `n` in parallel and find the ID there.
 
-Most objects have rows only in their home table, so a lookup is one round trip after the split tables.
+Most objects have rows only in their home table, so a lookup is one round trip after the split tables. A point of a star system also has a System row (bit 3 of its mask), and a resolved system has its home in table 3 and no other row.
 
 ## Milky Way render tree (`mw`)
 
-An octree by visibility range for the objects of the Milky Way. It holds the stars of Point source with a distance.
+An octree by visibility range for the objects of the Milky Way. It holds the stars of Point source with a distance. A point that holds several stars is one row, as before. A resolved star system has no Point source row, so it has no render row: its stars have theirs, and a star with no distance of its own can take its system's (step 3 below).
 
 - **Frame.** Positions are in parsecs, in ICRS equatorial axes, with the origin at the solar system barycentre, at epoch J2016.0: x to RA 0° Dec 0°, y to RA 90° Dec 0°, z to Dec +90°. The client rotates them to its own frame.
 - **Root.** A cube with `half_size` 262,144 pc (2^18) from the centre to each face. Its `centre` is 87,381.33203125 pc on each axis (`half_size` / 3 to the nearest 1/256 pc), not the barycentre. So the Sun is about a third of a node from each face of its node at every depth, because 1/3 is 0.0101… in binary. With the root at the barycentre, the Sun would be on a corner of 8 nodes at every depth, and all of them would load from the solar system. The root holds from −174,762.67 pc to +349,525.33 pc on each axis, and every node centre is exact in float64.
@@ -586,7 +645,7 @@ The site's sitemap lists the page of every planet and of every planet host that 
 - `tables`: keyed by slug. `number` is the table number in the IDs, null for Metadata. `max_rows` is the split threshold. `rows` counts the rows of all tiles.
 - `trees`: keyed by name; `mw` is the Milky Way.
 - `families`: the star families in bit order: entry `n` is bit `n` of the Metadata masks. `wikidata` holds the topic items of the family, `published` and `estimated` count the stars with the bit set in `families` and in `families_estimated`.
-- `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)). Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values, so all are `non-commercial`.
+- `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)): the strictest tier of the sources whose values the files hold. Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values. The star system catalogues reach Metadata (`system`, the classes and names), Point source (the system distance, `member`), System, the render tree and the planet files: the WDS and the MSC state no licence, so they are `non-commercial`, and El-Badry, Rix & Heintz 2021 is CC BY 4.0, though it repeats Gaia EDR3 values, which come from Gaia here. So all are `non-commercial`.
 - `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, Hipparcos I/311 and I/239, XHIP V/137D, the distance catalogues (Reylé et al. 2021, the UltracoolSheet, Hunt & Reffert 2024, the LMC and SMC distances of Pietrzyński et al. 2019 and Graczyk et al. 2020, Bailer-Jones et al. 2021), the star system catalogues (the Washington Double Star Catalog with the acknowledgement it asks for, Tokovinin's Multiple Star Catalogue, the wide binaries of El-Badry, Rix & Heintz 2021), one credit for the papers of the literature table (its `source` is the table in the repo; each star's object entry cites its own papers), the IAU Catalog of Star Names, Wikidata; with planets also the NASA Exoplanet Archive (its acknowledgement, and the DOI of Planetary Systems Composite Parameters, 10.26133/NEA13), exoplanet.eu (CC BY 4.0), the Open Exoplanet Catalogue (MIT) and the IAU's NameExoWorlds. The planet catalogues also fill the host rows of Point source and Metadata, so their credits are in this list. Each catalogue has one credit, and its `source` names it.
 - `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `distribution` is `non-commercial`: the host positions come from Gaia DR3.
 - `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
@@ -614,6 +673,8 @@ The export of 2026-10-26 (a new registry, 180,980,643 IDs) adds both FLAME group
 
 Binary orbit tiles (`max_rows` 300), an estimate from the tile writer and the split rule over the 394,046 orbits of the positionable stars: 3,045 tiles, 118 MB, median 34 kB and 112 rows, p90 64 kB, max 111 kB.
 
+System tiles (`max_rows` 1,500), an estimate from the tile writer and the split rule over the 1,697,320 nodes of a dry run of the tree builder on registry ingest 1 (1,678,427 systems, 3,396,784 members): 2,385 tiles, 138 MB, median 51 kB and 624 rows, p90 94 kB, max 124 kB, about 82 B per row.
+
 The sky cultures of registry ingest 4 (Stellarium at `0d956aa`, Bucur at `711e069`): 101 culture files (64 from Stellarium, 37 from Bucur) and the international names, 1.76 MB together. The median culture file is 3.7 kB; the largest are `chinese` (166 kB, 312 figures, 3,079 members) and `modern_chinese` (141 kB). 4,820 of the 4,864 stars of all cultures have a position.
 
 A test export of 2026-10-25 (about 7,600 planets on 5,800 hosts): about 5,800 system files, 6.8 MB together, median 1.2 kB, largest 3.6 kB; the index 256 kB.
@@ -630,6 +691,7 @@ The export builds into `v1/.x-staging/` and replaces `v1/x/` only when all check
 - every row holds an ID that the registry has, with the status that the row shows (live, or alias for an alias row), and every alias target is live;
 - every ID that the previous export serves is still served with all its catalogue ids, or is an alias or retired in the registry. The `wikidata/qid` ids are not checked: each ingest links the Wikidata items again, so an item can move to another star. The previous export stands for the live site until the serving is decided;
 - the matched sky cultures come from the registry ingest that the export reads. Each extrasolar ingest matches them at its end, so this fails only when that step failed; `space-map-ingest --targets skycultures` matches them again;
+- the star systems hold together. A System ID has one row; a member star has no System row, a member node has one and names this node as its parent, and a node's parent lists it; an ID is a member of one node at most; the parents of a node lead to its `root` with no cycle, and `depth` counts the steps; only a root has a `tree`, and it holds every node with that root as their rows give them; a node's primary is in its system. In Metadata, every node and member star has a live row whose `system` is its root (null for the root itself), every node has bit 3 of its `mask`, and no other ID has a `system` or bit 3. These checks run before the tiles are written. The IDs of the systems are under the rule of every ID above;
 - the planet checks (see Planets, "Token and checks").
 
 A failed run leaves the served export as it was.

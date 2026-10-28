@@ -84,13 +84,15 @@ ACKNOWLEDGEMENT = (
     "This research has made use of the Washington Double Star Catalog"
     " maintained at the U.S. Naval Observatory."
 )
+# The tier that the terms allow; the extrasolar export takes the strictest.
+DISTRIBUTION = "non-commercial"
 TERMS = {
     "license": (
         "None stated. GSU asks for an acknowledgement and a notice of the papers"
         " that use the catalogue. The VizieR copy (B/wds) has no License line."
     ),
     "terms_url": "https://www.astro.gsu.edu/wds/wdstext.html",
-    "distribution": "non-commercial",
+    "distribution": DISTRIBUTION,
     "acknowledgement": ACKNOWLEDGEMENT,
     "quotes": [
         {

@@ -8,7 +8,14 @@ import pyarrow as pa
 import pytest
 
 from space_map_data.constants.stars.families import FAMILIES
-from space_map_data.export.extrasolar import build, container, families, render, tiles
+from space_map_data.export.extrasolar import (
+    build,
+    container,
+    families,
+    render,
+    systems,
+    tiles,
+)
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
@@ -166,7 +173,12 @@ class TestExport:
         reader = ExportReader(out / "v1" / "x")
         meta = reader.metadata
         assert meta["registry"] == {"ingest": 1, "host": "test-host"}
-        assert set(meta["tables"]) == {"metadata", "point-source", "binary-orbit"}
+        assert set(meta["tables"]) == {
+            "metadata",
+            "point-source",
+            "binary-orbit",
+            "system",
+        }
         assert meta["tables"]["point-source"]["number"] == 1
         assert meta["tables"]["metadata"]["number"] is None
         assert meta["trees"]["mw"]["range_limit_mag"] == render.RANGE_LIMIT_MAG
@@ -402,6 +414,9 @@ class TestExport:
             ("binary-orbit", ("id",)),
             ("binary-orbit", None),
             ("binary-orbit", render.ORBIT_COLUMNS),
+            ("system", ("id",)),
+            ("system", None),
+            ("system", systems.READ_COLUMNS),
         }
 
     def test_worker_processes_give_the_same_files(self, tmp_path, out):

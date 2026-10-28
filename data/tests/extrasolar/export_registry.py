@@ -1,11 +1,12 @@
-"""A small registry with real Metadata, Point source, Binary orbit and planets
-tables, written directly in the layout of `extrasolar.registry`."""
+"""A small registry with real Metadata, Point source, Binary orbit, System and
+planets tables, written directly in the layout of `extrasolar.registry`."""
 
 import json
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pyarrow as pa
@@ -24,7 +25,13 @@ from space_map_data.extrasolar.registry import (
     sort_by_cell,
 )
 from space_map_data.extrasolar.store import region_file
-from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, POINT_SOURCE
+from space_map_data.extrasolar.tables import (
+    BINARY_ORBIT,
+    METADATA,
+    POINT_SOURCE,
+    SYSTEM,
+    SYSTEM_TABLE,
+)
 from space_map_data.utils.files import write_parquet
 
 HOST = "test-host"
@@ -147,12 +154,143 @@ def planet(host: int, number: int, system: int | None = None, **values) -> dict:
     return row | values
 
 
+@dataclass(frozen=True)
+class Node:
+    """A node of a star system. A member is ("star", star index, letter),
+    ("system", node index, letter) or ("entry", None, letter). A point node
+    holds the star `point`, whose ID it keeps, and its members are entries.
+    A resolved node gets an ID of table 3 in the cell of its primary star."""
+
+    members: tuple[tuple[str, int | None, str], ...]
+    point: int | None = None
+    label: str = "AB"
+    name: str | None = None
+    qid: str | None = None
+
+
 @dataclass
 class Built:
     root: Path
     ids: list[int]
     aliases: dict[int, int] = field(default_factory=dict)
     retired: list[int] = field(default_factory=list)
+    # The ID of each node of `systems`.
+    nodes: list[int] = field(default_factory=list)
+
+
+def _primary(nodes: Sequence[Node], at: int) -> int:
+    """The star index of a node's primary: its point, else its first member's."""
+    node = nodes[at]
+    if node.point is not None:
+        return node.point
+    kind, index, _ = node.members[0]
+    assert index is not None
+    return index if kind == "star" else _primary(nodes, index)
+
+
+def _system_rows(
+    nodes: Sequence[Node], stars: list[dict], minted: list[int]
+) -> tuple[list[int], list[dict], dict[int, dict]]:
+    """The ID and System row of each node, and the Metadata values of the IDs
+    that the trees hold: `system`, and for a node its class and mask bit."""
+    serials: dict[int, int] = defaultdict(int)
+    node_ids = []
+    for at, node in enumerate(nodes):
+        if node.point is not None:
+            node_ids.append(minted[node.point])
+            continue
+        primary = stars[_primary(nodes, at)]
+        cell = _cell(primary["ra"], primary["dec"])
+        node_ids.append(ids.encode(serials[cell], SYSTEM_TABLE, cell))
+        serials[cell] += 1
+    parent: dict[int, int] = {}
+    for at, node in enumerate(nodes):
+        for kind, index, _ in node.members:
+            if kind == "system":
+                assert index is not None
+                parent[index] = at
+
+    def root(at: int) -> int:
+        return root(parent[at]) if at in parent else at
+
+    def depth(at: int) -> int:
+        return depth(parent[at]) + 1 if at in parent else 0
+
+    def count(at: int) -> int:
+        return sum(
+            count(index) if kind == "system" and index is not None else 1
+            for kind, index, _ in nodes[at].members
+        )
+
+    meta: dict[int, dict] = {}
+    rows: list[dict[str, Any]] = []
+    for at, node in enumerate(nodes):
+        primary = stars[_primary(nodes, at)]
+        top = node_ids[root(at)]
+        members = []
+        for kind, index, letter in node.members:
+            if kind == "star":
+                assert index is not None
+                member = minted[index]
+                meta[member] = {"system": top}
+            elif kind == "system":
+                assert index is not None
+                member = node_ids[index]
+            else:
+                member = None
+            members.append(
+                {
+                    "id": member,
+                    "kind": kind,
+                    "letter": letter,
+                    "source": "msc",
+                    "separation": 2.5,
+                    "known": ["visual"],
+                }
+            )
+        stars_below = count(at)
+        meta[node_ids[at]] = {
+            "system": None if at not in parent else top,
+            "class": "binary star" if stars_below == 2 else "multiple star",
+        }
+        rows.append(
+            {
+                "id": node_ids[at],
+                "point": node.point is not None,
+                "depth": depth(at),
+                "stars": stars_below,
+                "ra": primary["ra"],
+                "dec": primary["dec"],
+                "label": node.label,
+                "evidence": "msc" if node.point is not None else None,
+                "sources": ["msc"],
+                "tree_source": "star-systems",
+                "parent": node_ids[parent[at]] if at in parent else None,
+                "root": top,
+                "primary": minted[_primary(nodes, at)],
+                "members": members,
+            }
+        )
+    for at, row in enumerate(rows):
+        if at in parent:
+            row["tree"] = None
+            continue
+        row["tree"] = sorted(
+            (
+                {
+                    "id": other["id"],
+                    "parent": other["parent"],
+                    "point": other["point"],
+                    "stars": other["stars"],
+                    "class": meta[other["id"]]["class"],
+                    "label": other["label"],
+                }
+                for other in rows
+                if other["root"] == row["id"]
+            ),
+            key=lambda entry: entry["id"],
+        )
+    return node_ids, rows, meta
 
 
 def _cell(ra: float, dec: float) -> int:
@@ -170,6 +308,8 @@ def write_registry(
     orbits: Mapping[int, dict] | None = None,
     planets: Sequence[dict] = (),
     planet_status: Sequence[tuple[int, int, str, tuple[int, int] | None]] = (),
+    systems: Sequence[Node] = (),
+    tamper: Callable[[list[dict], list[dict]], None] | None = None,
 ) -> Built:
     """Write a registry of one ingest. `aliases` are (loser, survivor) pairs of
     star indexes: the loser's ID is an alias and has no data rows. A `retired`
@@ -180,7 +320,9 @@ def write_registry(
     `planets` are rows of `planet`, each with a link record of its first
     cross-id in the Planets part; `planet_status` are (star index, number,
     status, alias target) status records there, the target a (star index,
-    number)."""
+    number). `systems` are the nodes of star systems, with System rows, and
+    Metadata rows for the resolved ones. `tamper` may change the System rows
+    and the Metadata rows before they are written."""
     serials: dict[int, int] = defaultdict(int)
     minted = []
     for row in stars:
@@ -188,10 +330,12 @@ def write_registry(
         minted.append(ids.encode(serials[cell], 1, cell))
         serials[cell] += 1
 
+    node_ids, system_rows, system_meta = _system_rows(systems, stars, minted)
     records = []
     for index, id_ in enumerate(minted):
         if index not in missing:
             records.append((id_, RETIRED if index in retired else LIVE, None))
+    records += [(row["id"], LIVE, None) for row in system_rows if not row["point"]]
     alias_map = {}
     for loser, survivor in aliases:
         alias_map[minted[loser]] = minted[survivor]
@@ -249,7 +393,7 @@ def write_registry(
             for name, column in orbit.items():
                 column.append(id_ if name == "id" else orbit_of[id_].get(name))
     orbit_table = pa.table(orbit, schema=BINARY_ORBIT.schema)
-    meta_rows = []
+    meta_rows: list[dict[str, Any]] = []
     for id_, row in data:
         meta_rows.append(
             {
@@ -275,16 +419,60 @@ def write_registry(
                 "alias_target": None,
             }
         )
+    for row in meta_rows:
+        values = system_meta.get(row["id"], {})
+        row["system"] = values.get("system")
+        if "class" in values:
+            row |= {"class": values["class"], "class_source": "star-systems"}
+            row["mask"] |= 1 << SYSTEM_TABLE
+    for at, (node, row) in enumerate(zip(systems, system_rows)):
+        if node.point is not None:
+            continue
+        meta_rows.append(
+            {
+                "id": row["id"],
+                "name": node.name or f"System {at}",
+                "name_source": "star-systems",
+                "class": system_meta[row["id"]]["class"],
+                "class_source": "star-systems",
+                "cross_ids": [
+                    {
+                        "catalogue": "star-system",
+                        "release": "msc",
+                        "catalogue_id": f"S{at}",
+                    }
+                ]
+                + (
+                    [{"catalogue": "wikidata", "release": "qid", "catalogue_id": qid}]
+                    if (qid := node.qid)
+                    else []
+                ),
+                "mask": 1 << SYSTEM_TABLE,
+                "object": node.qid is not None,
+                "alias_target": None,
+                "system": system_meta[row["id"]]["system"],
+            }
+        )
     for loser, target in alias_map.items():
         meta_rows.append(
             {"id": loser, "mask": 0, "alias_target": target}
             | {name: None for name in ("name", "name_source", "class", "class_source")}
             | {"cross_ids": None, "object": None}
         )
+    if tamper is not None:
+        tamper(system_rows, meta_rows)
     meta_table = pa.Table.from_pylist(meta_rows, schema=METADATA.schema)
     tables = {"point-source": point_table, "metadata": meta_table}
     if orbits is not None:
         tables["binary-orbit"] = orbit_table
+    if systems:
+        tables["system"] = pa.Table.from_pylist(
+            [
+                {name: row.get(name) for name in SYSTEM.schema.names}
+                for row in system_rows
+            ],
+            schema=SYSTEM.schema,
+        )
     for slug, table in tables.items():
         for region, part in by_region(table).items():
             write_parquet(part, region_file(root / "tables" / slug / "000001", region))
@@ -360,7 +548,7 @@ def write_registry(
     }
     (root / "registry").mkdir(parents=True, exist_ok=True)
     (root / "registry" / "manifest.json").write_text(json.dumps(manifest))
-    return Built(root, minted, alias_map, [minted[i] for i in retired])
+    return Built(root, minted, alias_map, [minted[i] for i in retired], node_ids)
 
 
 def random_stars(count: int, seed: int = 1, around: tuple[float, float] | None = None):

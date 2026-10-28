@@ -19,6 +19,7 @@ whose chain ends at an ID that is not live has no row, as a retired ID.
 import logging
 import struct
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,11 +38,18 @@ logger = logging.getLogger(__name__)
 
 ROOTS = 12
 # A table's tile splits while it holds more rows than this. After gzip a
-# Point source row takes about 260 B, a Metadata row about 22 B and a Binary
-# orbit row about 300 B. So the median tiles are about 92 kB, 73 kB and 34 kB.
-# The Binary orbit rows are sparse on the sky, and at 300 rows its largest
-# tile, 111 kB, stays under the largest Point source tile.
-MAX_ROWS = {METADATA.slug: 7_500, "point-source": 900, "binary-orbit": 300}
+# Point source row takes about 260 B, a Metadata row about 22 B, a Binary
+# orbit row about 300 B and a System row about 82 B. So the median tiles are
+# about 92 kB, 73 kB, 34 kB and 51 kB. The Binary orbit and System rows are
+# sparse on the sky, and at these counts their largest tiles, 111 kB and
+# 124 kB, stay under the largest Point source tile. Every table needs an
+# entry: the export leaves out no table.
+MAX_ROWS = {
+    METADATA.slug: 7_500,
+    "point-source": 900,
+    "binary-orbit": 300,
+    "system": 1_500,
+}
 # String columns with few distinct values, besides the group source columns.
 DICTIONARY = frozenset(
     {
@@ -61,6 +69,13 @@ DICTIONARY = frozenset(
         "flags_esphs",
         "classlabel_espels",
         "classlabel_espels_flag",
+        "evidence",
+        "sources.item",
+        "members.kind",
+        "members.letter",
+        "members.source",
+        "members.known.item",
+        "tree.class",
     }
 )
 # Columns that the export computes, after the columns of the table.
@@ -243,6 +258,8 @@ class UnitJob:
     unit: Unit
     out: Path
     previous: Previous | None = None
+    # More checks of the unit's rows.
+    check: Callable[[pa.Table], Problems] | None = None
 
 
 @dataclass
@@ -402,6 +419,8 @@ def build_unit(job: UnitJob) -> UnitResult:
     if job.slug == METADATA.slug:
         rows, dropped = collapse_aliases(registry, rows)
     problems = check_ids(registry, job.slug, job.unit.regions, rows)
+    if job.check is not None:
+        problems.update(job.check(rows))
     if job.previous is not None:
         problems.update(check_previous(registry, job.unit.regions, rows, job.previous))
     family_counts = None

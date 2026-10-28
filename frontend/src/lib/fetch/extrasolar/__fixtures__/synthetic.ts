@@ -1,6 +1,7 @@
 /**
- * Test-only synthetic extrasolar export: Metadata, table 1 (Point source) and
- * table 2 (Binary orbit), each one level-0 tile, written with the test writer.
+ * Test-only synthetic extrasolar export: Metadata, table 1 (Point source),
+ * table 2 (Binary orbit) and table 3 (System), each one level-0 tile, written
+ * with the test writer.
  */
 
 import { Container, KIND_SPLIT, KIND_TILE, type CrossId } from '../container';
@@ -18,11 +19,15 @@ export const SECOND = idOf(1, 1);
 export const ALIAS = idOf(900, 1);
 export const RETIRED = idOf(2, 1);
 export const WITH_TABLE_2 = idOf(3, 1);
+/** A point that holds two stars, in the resolved system SYSTEM with SECOND. */
+export const BINARY = idOf(4, 1);
+export const SYSTEM = idOf(0, 3);
 
 export const TOKENS = {
 	metadata: 'a'.repeat(16),
 	points: 'b'.repeat(16),
-	orbits: 'c'.repeat(16)
+	orbits: 'c'.repeat(16),
+	systems: 'd'.repeat(16)
 };
 
 /** Bits 6 and 57 of a Gaia DR3 `flags`, past the range of a double. */
@@ -57,6 +62,7 @@ function split(token: string): Uint8Array {
 interface MetaRow {
 	id: number;
 	name?: string;
+	class?: string;
 	mask?: number;
 	alias?: number;
 	crossIds?: CrossId[];
@@ -86,7 +92,7 @@ function metadataTile(
 			col('id', 'id', (r) => r.id),
 			col('name', 'string', (r) => (r.alias ? null : (r.name ?? `Star ${r.id}`))),
 			col('name_source', 'dict', (r) => (r.alias ? null : 'gaia-dr3')),
-			col('class', 'dict', (r) => (r.alias ? null : 'star')),
+			col('class', 'dict', (r) => (r.alias ? null : (r.class ?? 'star'))),
 			col('class_source', 'dict', (r) => (r.alias ? null : 'gaia-dr3')),
 			col('cross_ids', 'cross_ids', (r) => (r.alias ? null : (r.crossIds ?? []))),
 			col('mask', 'uint32', (r) => r.mask ?? (r.alias ? 0 : 2)),
@@ -137,7 +143,8 @@ export function syntheticExport(
 		tables: {
 			metadata: table('metadata', null, TOKENS.metadata, options.metaDistribution),
 			'point-source': table('point-source', 1, TOKENS.points),
-			'binary-orbit': table('binary-orbit', 2, TOKENS.orbits, 'site-only')
+			'binary-orbit': table('binary-orbit', 2, TOKENS.orbits, 'site-only'),
+			system: table('system', 3, TOKENS.systems)
 		},
 		trees: {},
 		credits: [{ name: 'Test catalogue', organisation: 'Test', source: 'https://example.org/' }]
@@ -146,6 +153,7 @@ export function syntheticExport(
 		'metadata/split.bin.gz': split(TOKENS.metadata),
 		'point-source/split.bin.gz': split(TOKENS.points),
 		'binary-orbit/split.bin.gz': split(TOKENS.orbits),
+		'system/split.bin.gz': split(TOKENS.systems),
 		'metadata/0/0.bin.gz': metadataTile(
 			TOKENS.metadata,
 			[
@@ -160,14 +168,17 @@ export function syntheticExport(
 				},
 				{ id: SECOND },
 				{ id: ALIAS, alias: STAR },
-				{ id: WITH_TABLE_2, mask: 2 | 4 }
+				{ id: WITH_TABLE_2, mask: 2 | 4 },
+				{ id: BINARY, mask: 2 | 8, class: 'binary star' },
+				{ id: SYSTEM, mask: 8, name: 'Test System', class: 'multiple star' }
 			],
 			options.objectColumn
 		),
 		'point-source/0/0.bin.gz': dataTile(TOKENS.points, 1, [
 			{ id: STAR, parallax: 379.21 },
 			{ id: SECOND, parallax: 0.3 },
-			{ id: WITH_TABLE_2, parallax: 2 }
+			{ id: WITH_TABLE_2, parallax: 2 },
+			{ id: BINARY, parallax: 10 }
 		]),
 		'binary-orbit/0/0.bin.gz': dataTile(
 			TOKENS.orbits,
@@ -178,6 +189,20 @@ export function syntheticExport(
 				{ name: 'flags', type: 'uint64', values: [ORBIT_FLAGS] },
 				{ name: 'corr_vec', type: 'float32_list', values: [[0.5, NaN, -0.25]] }
 			]
+		),
+		'system/0/0.bin.gz': encode(
+			KIND_TILE,
+			TOKENS.systems,
+			2,
+			[
+				{ name: 'id', type: 'id', values: [SYSTEM, BINARY] },
+				{ name: 'point', type: 'bool', values: [false, true] },
+				{ name: 'members', type: 'list', values: [2, 2] },
+				{ name: 'members.id', type: 'id', values: [BINARY, SECOND, null, null] },
+				{ name: 'members.kind', type: 'dict', values: ['system', 'star', 'entry', 'entry'] },
+				{ name: 'members.letter', type: 'string', values: ['A', 'B', 'Aa', 'Ab'] }
+			],
+			tileInfoBytes(0, 0, 3)
 		)
 	};
 	return { meta, payloads };

@@ -22,7 +22,9 @@ export interface ColumnSpec {
 		| 'cross_ids'
 		| 'bits'
 		| 'uint64'
-		| 'float32_list';
+		| 'float32_list'
+		| 'list';
+	/** For a `list`, the item count of each row; its item columns follow it. */
 	values: Value[];
 }
 
@@ -37,7 +39,8 @@ const CODES: Record<ColumnSpec['type'], number> = {
 	cross_ids: 13,
 	bits: 14,
 	uint64: 15,
-	float32_list: 16
+	float32_list: 16,
+	list: 17
 };
 
 const encoder = new TextEncoder();
@@ -95,6 +98,12 @@ function buffers(spec: ColumnSpec): Uint8Array[] {
 			const offsets = [0];
 			for (const list of lists) offsets.push(offsets[offsets.length - 1] + list.length);
 			return [u32(offsets), new Uint8Array(Float32Array.from(lists.flat()).buffer)];
+		}
+		case 'list': {
+			const offsets = [0];
+			for (const count of v)
+				offsets.push(offsets[offsets.length - 1] + ((count as number | null) ?? 0));
+			return [u32(offsets)];
 		}
 		case 'string':
 			return strings(v as (string | null)[]);

@@ -12,6 +12,7 @@ export as it was. The checks:
   export stands for the live site until the serving is decided;
 - the matched sky cultures come from the registry ingest that the export
   reads;
+- the star systems hold together, with their Metadata links (`systems`);
 - every planet host and system is live with its rows, and every planet that
   the previous export serves is still served, or its number is retired or an
   alias, or its host is no longer live.
@@ -37,6 +38,7 @@ from concurrent.futures import ProcessPoolExecutor
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -49,6 +51,7 @@ from space_map_data.export.extrasolar import (
     planets,
     render,
     skycultures,
+    systems,
     tiles,
 )
 from space_map_data.export.extrasolar.container import Written
@@ -63,13 +66,18 @@ from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
 from space_map_data.extrasolar.store import fsync_dir
 from space_map_data.extrasolar.tables import METADATA, TABLES
+from space_map_data.skycultures.licences import NON_COMMERCIAL
 from space_map_data.utils.paths import EXTRASOLAR_DIR, REGISTRY_ROOT
 
 logger = logging.getLogger(__name__)
 
 METADATA_FILE = "metadata.json"
-# Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values.
-DISTRIBUTION = "non-commercial"
+# Every file holds values of Gaia DR3 (CC BY-NC 3.0 IGO) and of the star
+# system catalogues, whose trees reach Metadata, Point source, System, the
+# render tree and the planet files. A file takes the strictest of their tiers.
+DISTRIBUTION = skycultures.combined(
+    NON_COMMERCIAL, wds.DISTRIBUTION, msc.DISTRIBUTION, el_badry.DISTRIBUTION
+)
 FRAME = "ICRS equatorial axes, origin at the solar system barycentre, epoch J2016.0"
 LITERATURE_URL = (
     "https://github.com/julie-dujardin/space-map/blob/main/data/src/space_map_data"
@@ -412,13 +420,13 @@ def _build_tables(
     workers: int,
     previous: Split | None,
     problems: Problems,
+    refs: systems.Refs,
 ) -> list[TableResult]:
+    """The record tiles of every table. `refs` are the IDs of the system trees,
+    which the Metadata tiles check."""
     results = []
     for table in (METADATA, *TABLES):
         slug = table.slug
-        if slug not in MAX_ROWS:
-            logger.warning("%s: the export has no tiles of this table", slug)
-            continue
         jobs = [(registry, slug, region) for region in range(REGION_COUNT)]
         counts = _run(workers, _count_job, jobs, f"{slug}: cell counts")
         split = Split.build(np.concatenate(counts), MAX_ROWS[slug])
@@ -428,6 +436,13 @@ def _build_tables(
         split_file = container.write(
             layout.staging, f"{slug}/{tiles.SPLIT_FILE}", split.payload()
         )
+        units = tiles.units(split)
+        metadata = slug == METADATA.slug
+        unit_refs = (
+            systems.refs_by_unit(refs, [unit.regions for unit in units])
+            if metadata
+            else [None] * len(units)
+        )
         unit_jobs = [
             UnitJob(
                 registry,
@@ -435,10 +450,11 @@ def _build_tables(
                 unit,
                 layout.staging,
                 None
-                if previous is None or slug != METADATA.slug
+                if previous is None or not metadata
                 else Previous(layout.live, _previous_paths(previous, unit.regions)),
+                None if found is None else partial(systems.check_metadata, found),
             )
-            for unit in tiles.units(split)
+            for unit, found in zip(units, unit_refs, strict=True)
         ]
         built = _run(workers, tiles.build_unit, unit_jobs, f"{slug}: tiles")
         files = [split_file]
@@ -658,6 +674,8 @@ class Built:
     cultures: skycultures.Result | None
     planet_files: planets.Result | None
     tokens: dict[str, str]
+    # The nodes, members and trees of the System table.
+    systems: dict[str, int]
 
 
 def _refuse(problems: Problems) -> None:
@@ -682,8 +700,19 @@ def _export(
     if previous_metadata is None:
         logger.info("no export at %s: nothing to compare with", layout.live)
     try:
+        trees = systems.Systems.read(
+            registry, lambda task, jobs, label: _run(workers, task, jobs, label)
+        )
+        system_counts = trees.counts()
+        for name, count in system_counts.items():
+            logger.info("systems: %s %d", name, count)
+        # Before the tiles, which take the longest.
+        _refuse(trees.check())
+        refs = trees.refs()
+        del trees
         problems = Problems()
-        built = _build_tables(registry, layout, workers, previous, problems)
+        built = _build_tables(registry, layout, workers, previous, problems, refs)
+        del refs
         _refuse(problems)
         tree = _build_tree(registry, layout, workers)
         planet_files = planets.build(
@@ -716,7 +745,7 @@ def _export(
             if path.exists():
                 shutil.rmtree(path)
         raise
-    return Built(built, tree, cultures, planet_files, tokens)
+    return Built(built, tree, cultures, planet_files, tokens, system_counts)
 
 
 def export_extrasolar(
@@ -763,6 +792,7 @@ def export_extrasolar(
             for slug, counts in zip(FAMILIES, r.family_counts.T)
         },
         "depths": dict(sorted(Counter(node.depth for node in tree.nodes).items())),
+        "systems": result.systems,
     }
     culture_files = [] if cultures is None else cultures.files
     report["skycultures"] = _sizes(culture_files)

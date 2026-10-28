@@ -59,10 +59,12 @@ PAIRS_FILE, COLUMNS_FILE, RECORD_FILE = "pairs.parquet", "columns.json", "record
 BATCH_ROWS = 1 << 17
 EPOCH = 2016.0
 
+# The tier that the terms allow; the extrasolar export takes the strictest.
+DISTRIBUTION = "open"
 TERMS = {
     "license": "CC BY 4.0",
     "terms_url": "https://zenodo.org/records/4435257",
-    "distribution": "open",
+    "distribution": DISTRIBUTION,
     "note": (
         "The catalogue repeats Gaia EDR3 values, which are CC BY-NC 3.0 IGO."
         " The pairs, separations, R_chance_align and binary_type are the"
