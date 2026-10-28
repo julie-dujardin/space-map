@@ -184,11 +184,13 @@ class TestBuild:
         with pytest.raises(KeyError):
             star_family.build_star_family_groups([], _entities({}), tmp_path / "old")
 
-    def test_stamp_is_the_served_counts(self, served):
+    def test_stamp_is_the_served_counts_and_metadata_tiles(self, served):
         _, out = served
         stamp = star_family.served_families_stamp(out)
         assert stamp is not None
-        assert [entry["slug"] for entry in stamp] == list(FAMILIES)
+        assert [entry["slug"] for entry in stamp["families"]] == list(FAMILIES)
+        reader = ExportReader(out / "v1" / "x")
+        assert stamp["metadata"] == reader.metadata["tables"]["metadata"]["token"]
 
     def test_rows_skip_an_empty_tile(self, served, monkeypatch):
         ids, out = served

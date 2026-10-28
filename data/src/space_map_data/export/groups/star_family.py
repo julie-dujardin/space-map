@@ -55,14 +55,18 @@ def parent_slugs(slug: str) -> list[str]:
     return [family_slug(parent) for parent in PARENTS.get(family, ())]
 
 
-def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> list | None:
-    """The family counts of the served extrasolar export, None with no export
-    served. A change of the rules or of the registry that moves a star moves
-    a count, so the pages change with them."""
+def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
+    """The family counts and the Metadata token of the served extrasolar
+    export, None with no export served. The pages count the families and list
+    stars from the Metadata tiles, so they change with either."""
     path = extrasolar_dir / "v1" / "x" / "metadata.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text())["families"]
+    metadata = json.loads(path.read_text())
+    return {
+        "families": metadata["families"],
+        "metadata": metadata["tables"]["metadata"]["token"],
+    }
 
 
 @dataclass
@@ -261,7 +265,7 @@ def _fill(
         ", ".join(
             f"{bits[bit]} {len(listed[bit])}/{n}"
             for bit, n in sorted(wanted.items())
-            if len(listed[bit]) < NOTABLE_STARS
+            if len(listed[bit]) < n
         )
         or "none",
     )

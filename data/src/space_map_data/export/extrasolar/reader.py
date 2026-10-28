@@ -88,16 +88,17 @@ class ExportReader:
         return self._splits[slug]
 
     def tile(self, slug: str, cell: int) -> tuple[str, Container]:
-        split = self.split(slug)
-        leaf = int(split.leaf_of(np.array([cell]))[0])
-        path = tiles.tile_path(slug, int(split.level[leaf]), int(split.pixel[leaf]))
-        return path, self.read(path, self.metadata["tables"][slug]["token"])
+        leaf = int(self.split(slug).leaf_of(np.array([cell]))[0])
+        return self._leaf_path(slug, leaf), self.leaf(slug, leaf)
 
     def leaf(self, slug: str, leaf: int) -> Container:
         """The tile of leaf `leaf` of the split of `slug`."""
-        split = self.split(slug)
-        path = tiles.tile_path(slug, int(split.level[leaf]), int(split.pixel[leaf]))
+        path = self._leaf_path(slug, leaf)
         return self.read(path, self.metadata["tables"][slug]["token"])
+
+    def _leaf_path(self, slug: str, leaf: int) -> str:
+        split = self.split(slug)
+        return tiles.tile_path(slug, int(split.level[leaf]), int(split.pixel[leaf]))
 
     def row(self, slug: str, id_: int) -> dict | None:
         _, tile = self.tile(slug, cell_of(id_))

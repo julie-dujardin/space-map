@@ -127,8 +127,8 @@ def tier_b_fingerprint(
     `stars` covers the star entries, which each registry ingest links again,
     and the works that the literature table cites for them; `planets` the
     planet entries, which each registry ingest links again too.
-    `star_families` covers the family counts of the served extrasolar export,
-    which the star family pages read.
+    `star_families` covers the family counts and the Metadata tiles of the
+    served extrasolar export, which the star family pages read.
     """
     return {
         "version": TIER_B_VERSION,
