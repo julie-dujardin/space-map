@@ -14,6 +14,8 @@ services:
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - NOTIFY_EMAIL_FROM=${NOTIFY_EMAIL_FROM:-}
       - NOTIFY_EMAIL_TO=${NOTIFY_EMAIL_TO:-}
+      - SPACETRACK_IDENTITY=${SPACETRACK_IDENTITY:-}
+      - SPACETRACK_PASSWORD=${SPACETRACK_PASSWORD:-}
     volumes:
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
       - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
