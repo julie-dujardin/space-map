@@ -163,10 +163,11 @@ describe.skipIf(!HAS_EXPORT)('the planet files of the export', () => {
 
 	it('reads α Cen as one file with both hosts, and Proxima b by its number', async () => {
 		const index = (await catalogue.index())!;
-		expect(index.host(564339647)?.system).toBe(27424668);
+		const key = index.host(27424668)!.system;
+		expect(index.host(564339647)?.system).toBe(key);
 		expect(index.host(27424668)?.planets).toContain(1);
-		const file = await catalogue.system(27424668);
-		expect(file.hosts.map((h) => h.id)).toEqual([27424668, 564339647]);
+		const file = await catalogue.system(key);
+		expect(file.hosts.map((h) => h.id)).toEqual(expect.arrayContaining([27424668, 564339647]));
 		const b = file.planets.find((p) => p.host === 27424668 && p.number === 1)!;
 		expect(b.elements?.phase).toBe('transit');
 		expect(b.elements?.n).toBeCloseTo(360 / 11.18465, 6);

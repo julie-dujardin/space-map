@@ -26,6 +26,14 @@ export function readExportJson<T>(path: string): T {
 	return JSON.parse(gunzipSync(readFileSync(new URL(path, EXPORT))).toString('utf8')) as T;
 }
 
+/** The key of the system file that holds the planets of the star `host`. */
+export function systemKeyOf(host: number): number {
+	const index = readExportJson<{ hosts: { id: number; system: number }[] }>(
+		'planets/index.json.gz'
+	);
+	return index.hosts.find((h) => h.id === host)!.system;
+}
+
 export function exportMetadata(): ExtrasolarMetadata {
 	return JSON.parse(readFileSync(new URL('metadata.json', EXPORT), 'utf8')) as ExtrasolarMetadata;
 }

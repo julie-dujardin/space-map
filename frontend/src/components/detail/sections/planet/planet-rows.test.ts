@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { elements, host, planet } from '$lib/scene/exoplanets/__fixtures__/system';
-import { HAS_EXPORT, readExportJson } from '$lib/fetch/extrasolar/__fixtures__/export';
+import { HAS_EXPORT, readExportJson, systemKeyOf } from '$lib/fetch/extrasolar/__fixtures__/export';
 import type { Planet, PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import type { PlanetAnchor } from '$lib/types/objects';
 import {
@@ -242,28 +242,27 @@ describe("a planet's panel", () => {
 });
 
 describe.skipIf(!HAS_EXPORT)("a planet's panel from the real export", () => {
-	const system = (key: number) => readExportJson<PlanetSystem>(`planets/${key}.json.gz`);
-	const anchorOf = (key: number, hostId: number, n: number): PlanetAnchor => {
-		const file = system(key);
+	const anchorOf = (hostId: number, n: number): PlanetAnchor => {
+		const file = readExportJson<PlanetSystem>(`planets/${systemKeyOf(hostId)}.json.gz`);
 		const p = file.planets.find((x) => x.host === hostId && x.number === n)!;
 		return anchor(p, file.hosts.find((h) => h.id === hostId)!);
 	};
 
 	it('shows Proxima b', () => {
-		const rows = rowsOf(anchorOf(27424668, 27424668, 1));
+		const rows = rowsOf(anchorOf(27424668, 1));
 		expect(rows.orbit['Orbital period']).toBe('11.18465 ± 0.00053 d');
 		expect(rows.orbit['Position on orbit']).toBeUndefined();
 		expect(rows.physical.Mass).toBe('(6.30 ± 0.33)×10²⁴ kg [minimum (m sin i)]');
 		expect(
-			planetIdentifiers(anchorOf(27424668, 27424668, 1).planet).find(
+			planetIdentifiers(anchorOf(27424668, 1).planet).find(
 				(row) => row.label === 'NASA Exoplanet Archive'
 			)?.value
 		).toBe('Proxima Cen b');
 	});
 
 	it('does not expose map-fit details', () => {
-		expect(rowsOf(anchorOf(27424668, 564339647, 1)).orbit['Orbit in the map']).toBeUndefined();
-		const toi = rowsOf(anchorOf(19608004, 19608004, 2));
+		expect(rowsOf(anchorOf(564339647, 1)).orbit['Orbit in the map']).toBeUndefined();
+		const toi = rowsOf(anchorOf(19608004, 2));
 		expect(toi.orbit['Orbit in the map']).toBeUndefined();
 	});
 });

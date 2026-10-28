@@ -5,7 +5,8 @@ import {
 	HAS_EXPORT,
 	diskSource,
 	exportMetadata,
-	readExportJson
+	readExportJson,
+	systemKeyOf
 } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { PlanetSystem } from '$lib/fetch/extrasolar/planets';
@@ -252,7 +253,7 @@ describe.skipIf(!HAS_EXPORT)('planet credits from the real export', () => {
 	});
 
 	it('credits the catalogues behind a planet, and those behind its star', async () => {
-		const alphaCen = readExportJson<PlanetSystem>('planets/27424668.json.gz');
+		const alphaCen = readExportJson<PlanetSystem>(`planets/${systemKeyOf(27424668)}.json.gz`);
 		const proximaB = alphaCen.planets.find((p) => p.number === 1 && p.host === 27424668)!;
 		expect(planetCredits(proximaB, credits).map((c) => c.label)).toEqual([
 			'NASA Exoplanet Archive, Planetary Systems Composite Parameters',
