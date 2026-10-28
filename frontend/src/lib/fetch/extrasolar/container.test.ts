@@ -175,6 +175,45 @@ describe('Container', () => {
 		expect(Array.from({ length: bits.length }, (_, i) => bits.get(i))).toEqual(expected.split);
 	});
 
+	it('reads a list of structs through its item columns', async () => {
+		const tile = await load('lists.bin.gz');
+		expect(tile.rows).toBe(3);
+		expect(tile.names().map((name) => [name, tile.type(name)])).toEqual(expected.lists.columns);
+		const members = tile.list('members');
+		const ids = tile.ids('members.id');
+		const kinds = tile.dict('members.kind');
+		const separations = tile.float64('members.separation');
+		const known = tile.list('members.known');
+		const knownItems = tile.strings('members.known.item');
+		const rows = Array.from({ length: tile.rows }, (_, i) => {
+			const range = members.items(i);
+			if (!range) return null;
+			const out = [];
+			for (let j = range[0]; j < range[1]; j++) {
+				const words = known.items(j);
+				out.push({
+					id: tile.isValid('members.id', j) ? ids[j] : null,
+					kind: kinds.get(j),
+					separation: tile.isValid('members.separation', j) ? separations[j] : null,
+					known: words
+						? Array.from({ length: words[1] - words[0] }, (_, k) => knownItems.get(words[0] + k))
+						: null
+				});
+			}
+			return out;
+		});
+		expect(rows).toEqual(expected.lists.members);
+		const sources = tile.list('sources');
+		const names = tile.dict('sources.item');
+		const lists = Array.from({ length: tile.rows }, (_, i) => {
+			const range = sources.items(i);
+			return (
+				range && Array.from({ length: range[1] - range[0] }, (_, k) => names.get(range[0] + k))
+			);
+		});
+		expect(lists).toEqual(expected.lists.sources);
+	});
+
 	it('refuses a column read as the wrong type, and a payload that is not a container', async () => {
 		const tile = await load('tile.bin.gz');
 		expect(() => tile.float64('mag')).toThrow(ContainerFormatError);

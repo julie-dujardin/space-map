@@ -86,8 +86,14 @@ def tile_schema(table: TableDef) -> pa.Schema:
 
 
 def column_types(table: TableDef) -> list[tuple[str, str]]:
+    """Every column of a tile in file order, the item columns of a list after
+    the list."""
     names = dictionary_columns(table)
-    return [(f.name, container.column_type(f, names)) for f in tile_schema(table)]
+    return [
+        column
+        for field_ in tile_schema(table)
+        for column in container.column_types(field_, names)
+    ]
 
 
 def tile_path(slug: str, level: int, pixel: int) -> str:
@@ -372,10 +378,13 @@ def check_previous(
 
 
 def tile_payload(table: TableDef, level: int, pixel: int, rows: pa.Table) -> bytes:
-    schema = tile_schema(table)
+    kinds = dict(column_types(table))
     columns = [
-        Column(name, kind, rows[name].cast(schema.field(name).type))
-        for name, kind in column_types(table)
+        column
+        for field_ in tile_schema(table)
+        for column in container.columns_of(
+            field_, rows[field_.name].cast(field_.type), kinds
+        )
     ]
     info = TILE_INFO.pack(pixel, level, table.number or 0)
     return container.encode(container.KIND_TILE, rows.num_rows, columns, info)

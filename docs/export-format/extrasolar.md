@@ -73,6 +73,9 @@ The validity bitmap has `ceil(n / 8)` bytes. Row `i` has a value when bit `i & 7
 | 14 | `bits` | `ceil(n / 8)` bytes, bit `i & 7` of byte `i >> 3` | the split table |
 | 15 | `uint64` | `n` values | `BigUint64Array`: exact integers past 2^53, as BigInt |
 | 16 | `float32_list` | offsets (`n + 1` × uint32), values (`m` × float32) | row `i` is values `offsets[i]` to `offsets[i + 1]`: `values.subarray(offsets[i], offsets[i + 1])` |
+| 17 | `list` | offsets (`n + 1` × uint32) | row `i` is items `offsets[i]` to `offsets[i + 1] − 1` of its item columns (below) |
+
+A `list` column holds only the item offsets of its rows; `m = offsets[n]` is its item count. Its items are the columns that follow it in the directory, named with a dot after its name: `<list>.<field>` for each field of a struct item (`members.id`, `members.kind`, …), or `<list>.item` for a list of plain values (`sources.item`). An item column is a column of any type with `m` rows, and has its own validity bitmap of `ceil(m / 8)` bytes. It can be a `list` in turn: `members.known` lists the words of each member, in `members.known.item`. A client reads an item column with the reader of its type, at item rows: the members of row `i` are rows `offsets[i]` to `offsets[i + 1] − 1` of `members.id`, `members.kind` and the other `members.` columns. A null row has no items. `metadata.json` lists the item columns after their list, in file order.
 
 A `cross_ids` column lists the catalogue ids of each row, as (catalogue, release, catalogue id). The entries of row `i` are `j = list[i]` to `list[i + 1] − 1`. Entry `j` has catalogue `pair[2·codes[j]]`, release `pair[2·codes[j] + 1]` and catalogue id string `j` of the id strings. `pair` is the string list of the last two buffers. The entries of a row are sorted by catalogue, release and catalogue id.
 

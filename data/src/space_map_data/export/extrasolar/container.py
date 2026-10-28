@@ -20,6 +20,12 @@ count from the start of the payload, and each buffer starts at a multiple of
 first buffer is a validity bitmap (bit i of byte i >> 3 is 1 when row i has a
 value). A null float is also NaN, and a null integer is 0.
 
+A `list` column holds only the offsets of its items. Its item columns follow
+it, named with a dot after its name: `<list>.<field>` for each field of a
+struct item, else `<list>.item`. An item column has one row per item, and can
+be a list in turn. So nested values keep typed columns that a browser reads
+with the readers of the flat types.
+
 The first 32 bytes are a stored deflate block, so the token sits at a fixed
 place in the gzip file. A file is written with a zero token, which the
 payload hash of the token leaves out, and the token is written in afterwards.
@@ -29,6 +35,7 @@ import gzip
 import hashlib
 import struct
 import zlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,6 +66,8 @@ STORED_BLOCK = b"\x00" + struct.pack("<HH", HEADER.size, 0xFFFF ^ HEADER.size)
 TOKEN_IN_FILE = len(GZIP_HEADER) + len(STORED_BLOCK) + TOKEN_AT
 
 HAS_VALIDITY = 1
+# The name of the item column of a list whose items are not structs.
+LIST_ITEM = "item"
 
 # Type codes. "id" is an integer ID below 2^53 in a float64, so a browser
 # gets an exact number without BigInt. "uint64" holds the integers that can be
@@ -80,6 +89,7 @@ TYPES = {
     "bits": 14,
     "uint64": 15,
     "float32_list": 16,
+    "list": 17,
 }
 TYPE_NAMES = {code: name for name, code in TYPES.items()}
 NUMPY = {
@@ -138,8 +148,8 @@ def column_type(field: pa.Field, dictionary: frozenset[str] = frozenset()) -> st
     """The container type of an Arrow field. `dictionary` names string columns
     with few distinct values."""
     kind = _FROM_ARROW.get(field.type)
-    if pa.types.is_list(field.type) and field.type.value_type == CROSS_ID:
-        kind = "cross_ids"
+    if pa.types.is_list(field.type) and kind is None:
+        kind = "cross_ids" if field.type.value_type == CROSS_ID else "list"
     if kind is None:
         raise FormatError(f"{field.name}: no container type for {field.type}")
     if kind == "string" and field.name in dictionary:
@@ -153,6 +163,44 @@ class Column:
     kind: str
     # The values. Arrow for every type but "bits", which takes a numpy bool array.
     values: pa.Array | np.ndarray
+
+
+def items(field: pa.Field) -> list[pa.Field]:
+    """The item columns of a `list` field."""
+    value = field.type.value_type
+    if pa.types.is_struct(value):
+        return [pa.field(f"{field.name}.{f.name}", f.type) for f in value]
+    return [pa.field(f"{field.name}.{LIST_ITEM}", value)]
+
+
+def column_types(
+    field: pa.Field, dictionary: frozenset[str] = frozenset()
+) -> list[tuple[str, str]]:
+    """The container columns of an Arrow field: its own, then the item columns
+    of a list."""
+    kind = column_type(field, dictionary)
+    out = [(field.name, kind)]
+    if kind == "list":
+        for item in items(field):
+            out += column_types(item, dictionary)
+    return out
+
+
+def columns_of(
+    field: pa.Field, values: pa.Array | pa.ChunkedArray, kinds: Mapping[str, str]
+) -> list[Column]:
+    """The columns of one Arrow field, with the item columns of a list.
+    `kinds` gives the container type of each column name."""
+    if isinstance(values, pa.ChunkedArray):
+        values = values.combine_chunks()
+    out = [Column(field.name, kinds[field.name], values)]
+    if kinds[field.name] == "list":
+        # Without the values of null rows, as the offsets count them.
+        flat = values.flatten()
+        parts = flat.flatten() if pa.types.is_struct(flat.type) else [flat]
+        for item, part in zip(items(field), parts, strict=True):
+            out += columns_of(item, part, kinds)
+    return out
 
 
 def _validity(array: pa.Array) -> bytes | None:
@@ -182,6 +230,12 @@ def _dictionary(array: pa.Array) -> tuple[np.ndarray, pa.Array]:
         raise FormatError("a dictionary column holds over 65,535 values")
     codes = encoded.indices.fill_null(0).to_numpy().astype(np.uint16)
     return codes, encoded.dictionary
+
+
+def _offsets(array: pa.Array) -> np.ndarray:
+    """The uint32 item offsets of a list array, from 0. A null row has none."""
+    lengths = pc.list_value_length(array).fill_null(0).to_numpy()
+    return np.r_[0, np.cumsum(lengths)].astype(np.uint32)
 
 
 def _buffers(column: Column, rows: int) -> tuple[int, list[bytes]]:
@@ -217,12 +271,13 @@ def _buffers(column: Column, rows: int) -> tuple[int, list[bytes]]:
         codes, values = _dictionary(array)
         out += [codes.tobytes(), *_strings(values)]
     elif kind == "float32_list":
-        lengths = pc.list_value_length(array).fill_null(0).to_numpy()
         values = pc.list_flatten(array).to_numpy(zero_copy_only=False)
         out += [
-            np.r_[0, np.cumsum(lengths)].astype(np.uint32).tobytes(),
+            _offsets(array).tobytes(),
             np.ascontiguousarray(values, np.float32).tobytes(),
         ]
+    elif kind == "list":
+        out.append(_offsets(array).tobytes())
     elif kind == "cross_ids":
         offsets = array.offsets.to_numpy().astype(np.int64)
         items = array.values.slice(offsets[0], offsets[-1] - offsets[0])
@@ -243,6 +298,16 @@ def _buffers(column: Column, rows: int) -> tuple[int, list[bytes]]:
     return flags, out
 
 
+def _rows_of(name: str, rows: int, items_of: Mapping[str, int]) -> int:
+    """The row count of a column: the file's, or the items of its list."""
+    parent = name.rpartition(".")[0]
+    if not parent:
+        return rows
+    if parent not in items_of:
+        raise FormatError(f"{name}: no list column {parent} before it")
+    return items_of[parent]
+
+
 def _pad(size: int) -> int:
     return -size % 8
 
@@ -257,7 +322,14 @@ def encode(
     """The payload of one file."""
     if len(info) % 8:
         raise FormatError("the info block must be a multiple of 8 bytes")
-    encoded = [(column, *_buffers(column, rows)) for column in columns]
+    # The row count of each list column's items.
+    items_of: dict[str, int] = {}
+    encoded = []
+    for column in columns:
+        flags, bufs = _buffers(column, _rows_of(column.name, rows, items_of))
+        if column.kind == "list":
+            items_of[column.name] = int(_offsets(column.values)[-1])
+        encoded.append((column, flags, bufs))
     names = [column.name.encode() for column in columns]
     directory = sum(
         4 + len(name) + 8 * len(bufs) for name, (_, _, bufs) in zip(names, encoded)
@@ -429,6 +501,14 @@ def _decode(
         return pa.ListArray.from_arrays(
             pa.array(offsets), values, mask=None if mask is None else pa.array(mask)
         )
+    if kind == "list":
+        # The items come from the item columns, in `_nest`.
+        offsets = _view(data, places[0], np.uint32).astype(np.int32)
+        return pa.ListArray.from_arrays(
+            pa.array(offsets),
+            pa.nulls(int(offsets[-1])),
+            mask=None if mask is None else pa.array(mask),
+        )
     if kind == "cross_ids":
         list_offsets = _view(data, places[0], np.uint32).astype(np.int32)
         codes = _view(data, places[1], np.uint16).astype(np.int32)
@@ -459,7 +539,8 @@ def decode(payload: bytes) -> Container:
     at = HEADER.size
     info = payload[at : at + info_size]
     at += info_size
-    columns: dict[str, tuple[str, pa.Array | np.ndarray]] = {}
+    entries: list[tuple[str, str, pa.Array]] = []
+    items_of: dict[str, int] = {}
     for _ in range(count):
         code, flags, nbuf, name_size = struct.unpack_from("<BBBB", payload, at)
         at += 4
@@ -468,8 +549,43 @@ def decode(payload: bytes) -> Container:
         places = [struct.unpack_from("<II", payload, at + 8 * i) for i in range(nbuf)]
         at += 8 * nbuf
         type_name = TYPE_NAMES[code]
-        columns[name] = (type_name, _decode(payload, type_name, flags, places, rows))
-    return Container(kind, token.decode(), rows, info, columns)
+        values = _decode(
+            payload, type_name, flags, places, _rows_of(name, rows, items_of)
+        )
+        if type_name == "list":
+            items_of[name] = len(values.values)
+        entries.append((name, type_name, values))
+    return Container(kind, token.decode(), rows, info, _nest(entries))
+
+
+def _nest(entries: list[tuple[str, str, pa.Array]]) -> dict[str, tuple[str, pa.Array]]:
+    """The columns with the item columns folded into their lists, deepest
+    first."""
+    columns = {name: (kind, values) for name, kind, values in entries}
+    for name, kind, _ in reversed(entries):
+        if kind != "list":
+            continue
+        prefix = f"{name}."
+        children = [
+            other
+            for other in columns
+            if other.startswith(prefix) and "." not in other[len(prefix) :]
+        ]
+        if not children:
+            raise FormatError(f"{name}: a list column without item columns")
+        if children == [prefix + LIST_ITEM]:
+            values = columns.pop(children[0])[1]
+        else:
+            values = pa.StructArray.from_arrays(
+                [columns.pop(child)[1] for child in children],
+                names=[child[len(prefix) :] for child in children],
+            )
+        lists = columns[name][1]
+        columns[name] = (
+            kind,
+            pa.ListArray.from_arrays(lists.offsets, values, mask=lists.is_null()),
+        )
+    return columns
 
 
 def read(path: Path) -> Container:

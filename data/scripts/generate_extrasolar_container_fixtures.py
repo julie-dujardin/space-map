@@ -77,6 +77,55 @@ def tile_columns() -> list[Column]:
     ]
 
 
+LIST_ROWS = 3
+
+
+def list_values() -> tuple[pa.Array, pa.Array]:
+    """A list of structs, with a list in each item, and a list of strings."""
+    member = pa.struct(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("kind", pa.string()),
+            pa.field("separation", pa.float64()),
+            pa.field("known", pa.list_(pa.string())),
+        ]
+    )
+    members = pa.array(
+        [
+            [
+                {
+                    "id": 27424668,
+                    "kind": "star",
+                    "separation": 1.5,
+                    "known": ["visual"],
+                },
+                {"id": None, "kind": "entry", "separation": None, "known": []},
+            ],
+            None,
+            [{"id": 564339647, "kind": "system", "separation": 3.25, "known": None}],
+        ],
+        pa.list_(member),
+    )
+    sources = pa.array([["msc", "wds"], [], None], pa.list_(pa.string()))
+    return members, sources
+
+
+def list_columns() -> list[Column]:
+    members, sources = list_values()
+    fields = [pa.field("members", members.type), pa.field("sources", sources.type)]
+    dictionary = frozenset({"members.kind", "sources.item"})
+    kinds = {
+        name: kind
+        for f in fields
+        for name, kind in container.column_types(f, dictionary)
+    }
+    return [
+        column
+        for f, values in zip(fields, (members, sources))
+        for column in container.columns_of(f, values, kinds)
+    ]
+
+
 def node_columns() -> list[Column]:
     f32 = pa.float32()
     return [
@@ -118,6 +167,12 @@ def main() -> None:
     write(
         "node.bin.gz",
         container.encode(container.KIND_NODE, 5, node, node_info(), TOKEN),
+    )
+    write(
+        "lists.bin.gz",
+        container.encode(
+            container.KIND_TILE, LIST_ROWS, list_columns(), tile_info, TOKEN
+        ),
     )
     bits = np.array([1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0], bool)
     write(
@@ -167,10 +222,15 @@ def main() -> None:
             "columns": values(node),
         },
         "split": [bool(b) for b in bits],
+        "lists": {
+            "columns": [[c.name, c.kind] for c in list_columns()],
+            "members": list_values()[0].to_pylist(),
+            "sources": list_values()[1].to_pylist(),
+        },
     }
     text = json.dumps(expected, indent="\t", ensure_ascii=False) + "\n"
     (OUTPUT_DIR / "expected.json").write_text(text)
-    print(f"Wrote 3 files and expected.json to {OUTPUT_DIR}")
+    print(f"Wrote 4 files and expected.json to {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":

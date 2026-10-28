@@ -140,5 +140,43 @@
 			}
 		}
 	},
-	"split": [true, false, false, true, false, true, true, false, true, false, false]
+	"split": [true, false, false, true, false, true, true, false, true, false, false],
+	"lists": {
+		"columns": [
+			["members", "list"],
+			["members.id", "id"],
+			["members.kind", "dict"],
+			["members.separation", "float64"],
+			["members.known", "list"],
+			["members.known.item", "string"],
+			["sources", "list"],
+			["sources.item", "dict"]
+		],
+		"members": [
+			[
+				{
+					"id": 27424668,
+					"kind": "star",
+					"separation": 1.5,
+					"known": ["visual"]
+				},
+				{
+					"id": null,
+					"kind": "entry",
+					"separation": null,
+					"known": []
+				}
+			],
+			null,
+			[
+				{
+					"id": 564339647,
+					"kind": "system",
+					"separation": 3.25,
+					"known": null
+				}
+			]
+		],
+		"sources": [["msc", "wds"], [], null]
+	}
 }

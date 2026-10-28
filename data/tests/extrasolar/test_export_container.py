@@ -101,6 +101,65 @@ class TestContainer:
         assert values[1:] == [None, [], [2.0]]
         assert out.columns["corr_vec"][0] == "float32_list"
 
+    def test_lists_of_structs_and_strings_nest_through_item_columns(self):
+        member = pa.struct(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("kind", pa.string()),
+                pa.field("v_mag", pa.float32()),
+                pa.field("known", pa.list_(pa.string())),
+                pa.field("ids", pa.list_(CROSS_ID)),
+            ]
+        )
+        hip = {"catalogue": "hip", "release": "2007", "catalogue_id": "7"}
+        members = pa.array(
+            [
+                [],
+                [
+                    {"id": 5, "kind": "star", "v_mag": 1.5, "known": ["visual"]},
+                    {"id": None, "kind": "entry", "known": [], "ids": [hip]},
+                ],
+                None,
+                [{"id": 9, "kind": "system", "known": None}],
+            ],
+            pa.list_(member),
+        ).slice(1)
+        sources = pa.array([["x"], ["msc", "wds"], None, []], pa.list_(pa.string()))
+        sources = sources.slice(1)
+        fields = [pa.field("members", members.type), pa.field("sources", sources.type)]
+        dictionary = frozenset({"members.kind", "sources.item"})
+        kinds = {
+            name: kind
+            for f in fields
+            for name, kind in container.column_types(f, dictionary)
+        }
+        assert list(kinds.items()) == [
+            ("members", "list"),
+            ("members.id", "id"),
+            ("members.kind", "dict"),
+            ("members.v_mag", "float32"),
+            ("members.known", "list"),
+            ("members.known.item", "string"),
+            ("members.ids", "cross_ids"),
+            ("sources", "list"),
+            ("sources.item", "dict"),
+        ]
+        columns = [
+            column
+            for f, values in zip(fields, (members, sources))
+            for column in container.columns_of(f, values, kinds)
+        ]
+        payload = container.encode(container.KIND_TILE, 3, columns)
+        out = container.decode(payload)
+        assert list(out.columns) == ["members", "sources"]
+        assert out.column("members").to_pylist() == members.to_pylist()
+        assert out.column("members").type == members.type
+        assert out.column("sources").to_pylist() == [["msc", "wds"], None, []]
+        # An item column has a row per item: here the 3 members.
+        assert out.columns["members"][0] == "list"
+        with pytest.raises(container.FormatError, match="no list column"):
+            container.encode(container.KIND_TILE, 3, columns[1:])
+
     def test_ids_past_2_53_are_refused(self):
         with pytest.raises(container.FormatError):
             container.encode(

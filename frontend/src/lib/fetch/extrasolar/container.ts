@@ -5,6 +5,10 @@
  * column directory, then the buffers. Each buffer starts at a multiple of 8
  * bytes, so a column is a typed-array view on the payload and nothing is
  * copied. The payload must start its own `ArrayBuffer`.
+ *
+ * A `list` column holds the item offsets of each row. Its items are the
+ * columns named `<list>.<field>` (or `<list>.item`), read with the readers
+ * of their own types, with one row per item.
  */
 
 export const MAGIC = 'SMXS';
@@ -38,7 +42,8 @@ export type ColumnType =
 	| 'cross_ids'
 	| 'bits'
 	| 'uint64'
-	| 'float32_list';
+	| 'float32_list'
+	| 'list';
 
 const TYPE_CODES: Record<number, ColumnType> = {
 	1: 'bool',
@@ -56,7 +61,8 @@ const TYPE_CODES: Record<number, ColumnType> = {
 	13: 'cross_ids',
 	14: 'bits',
 	15: 'uint64',
-	16: 'float32_list'
+	16: 'float32_list',
+	17: 'list'
 };
 
 export class ContainerFormatError extends Error {
@@ -174,6 +180,24 @@ export class Float32ListColumn {
 	get(i: number): Float32Array | null {
 		if (this.validity && !bitAt(this.validity, i)) return null;
 		return this.values.subarray(this.offsets[i], this.offsets[i + 1]);
+	}
+}
+
+/** The items of each row of a `list` column: rows of its item columns. */
+export class ListColumn {
+	constructor(
+		readonly offsets: Uint32Array,
+		private readonly validity: Uint8Array | null
+	) {}
+
+	get length(): number {
+		return this.offsets.length - 1;
+	}
+
+	/** The item rows `[start, end)` of row `i`; null for a null row. */
+	items(i: number): [number, number] | null {
+		if (this.validity && !bitAt(this.validity, i)) return null;
+		return [this.offsets[i], this.offsets[i + 1]];
 	}
 }
 
@@ -339,6 +363,12 @@ export class Container {
 			this.view(places[1], Float32Array),
 			validity
 		);
+	}
+
+	/** A `list` column. Its item columns hold one row per item. */
+	list(name: string): ListColumn {
+		const { validity, places } = this.typed(name, 'list');
+		return new ListColumn(this.view(places[0], Uint32Array), validity);
 	}
 
 	strings(name: string): StringColumn {
