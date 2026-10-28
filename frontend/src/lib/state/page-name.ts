@@ -21,7 +21,7 @@ import {
 	planetOfObjectId
 } from '$lib/fetch/extrasolar/ids';
 import { extrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
-import { planetCatalogue } from '$lib/fetch/extrasolar/planets';
+import { planetCatalogue, type Planet } from '$lib/fetch/extrasolar/planets';
 
 /** The Earth–Moon barycenter and Earth itself. */
 const EARTH_MOON_IDS = new Set(['naif-3', 'naif-399']);
@@ -87,6 +87,19 @@ async function starPageName(record: ExtrasolarRecord): Promise<string> {
 	return own?.localized?.name ?? meta.name ?? '';
 }
 
+/** A planet's name: the one of its object entry in the reader's language, else
+ *  the one of its system file. */
+async function planetPageName(planet: Planet): Promise<string> {
+	if (!planet.object) return planet.name;
+	const own = await fetchObjectDetail(
+		planetObjectId(planet.host, planet.number),
+		true,
+		undefined,
+		true
+	).catch(() => null);
+	return own?.localized?.name ?? planet.name;
+}
+
 /**
  * The live object an alias of the extrasolar catalogue leads to, and the name
  * of its page: a star's live ID, or a planet's live number, maybe on another
@@ -100,7 +113,7 @@ export async function extrasolarAlias(id: string): Promise<{ id: string; name: s
 		const live = await planetCatalogue.planet(planet.host, planet.n).catch(() => null);
 		if (!live) return null;
 		const liveId = planetObjectId(live.planet.host, live.planet.number);
-		return liveId === id ? null : { id: liveId, name: live.planet.name };
+		return liveId === id ? null : { id: liveId, name: await planetPageName(live.planet) };
 	}
 	const found = await extrasolarLookup.live(id.slice(EXTRASOLAR_PREFIX.length)).catch(() => null);
 	if (found?.kind !== 'live') return null;
@@ -118,10 +131,13 @@ export async function fetchPageName(subject: PageSubject): Promise<string> {
 		const features = await fetchBodyNomenclature(subject.bodyId);
 		return features.find((f) => f.featureId === subject.featureId)?.name ?? '';
 	}
-	// A planet is named by its system file. A star is named by the object
-	// entry of its live ID, else by its Metadata row.
+	// A planet is named by its object entry, else by its system file. A star is
+	// named by the object entry of its live ID, else by its Metadata row.
 	const planet = planetOfObjectId(subject.id);
-	if (planet) return (await planetCatalogue.planet(planet.host, planet.n))?.planet.name ?? '';
+	if (planet) {
+		const found = await planetCatalogue.planet(planet.host, planet.n);
+		return found ? planetPageName(found.planet) : '';
+	}
 	if (isStarObjectId(subject.id)) {
 		const found = await extrasolarLookup.live(subject.id.slice(EXTRASOLAR_PREFIX.length));
 		return found.kind === 'live' ? starPageName(found.record) : '';

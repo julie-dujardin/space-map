@@ -21,7 +21,6 @@
 
 	let { global, localized, extraIdentifiers = [], extraAliases = [] }: Props = $props();
 
-	let aliases = $derived([...new Set([...(localized?.aliases ?? []), ...extraAliases])]);
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
 	let nasaScienceUrl = $derived(global?.nasa_science_url);
 	let websites = $derived(global?.wikidata?.website ?? []);
@@ -47,6 +46,13 @@
 		if (x?.cospar_id) out.push({ label: m.id_cospar(), value: x.cospar_id });
 		if (x?.wikidata_qid) out.push({ label: m.id_wikidata(), value: x.wikidata_qid });
 		return out;
+	});
+
+	// A name that an identifier row shows already is no alias.
+	let aliases = $derived.by(() => {
+		const shown = new Set(identifiers.map((x) => x.value));
+		const all = new Set([...(localized?.aliases ?? []), ...extraAliases]);
+		return [...all].filter((alias) => !shown.has(alias));
 	});
 
 	interface LinkRef {

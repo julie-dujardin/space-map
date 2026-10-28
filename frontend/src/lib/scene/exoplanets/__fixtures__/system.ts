@@ -59,6 +59,7 @@ export function planet(
 	return {
 		host: hostId,
 		number: n,
+		object: false,
 		name: `Planet ${hostId} ${n}`,
 		name_source: null,
 		designation: null,

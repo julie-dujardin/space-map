@@ -3,7 +3,7 @@
 
 import { untrack } from 'svelte';
 import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
-import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { extrasolarObjectId, planetObjectId } from '$lib/fetch/extrasolar/ids';
 import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 import type { Focusable } from '$lib/state/focusable';
@@ -48,19 +48,19 @@ export class DetailLoad {
 				this.loading = false;
 				this.loadError = true;
 			};
-			// A planet's records came with it.
-			if (current.kind === 'planet') {
-				this.loading = false;
-				return;
-			}
-			// A star's records came with it; its text, when it has any, is an
-			// object entry. Without the text the records still show.
-			if (current.kind === 'star') {
-				if (!current.record.metadata.object) {
+			// A star's or a planet's records came with it; its text, when it has
+			// any, is an object entry. Without the text the records still show.
+			if (current.kind === 'star' || current.kind === 'planet') {
+				const entry =
+					current.kind === 'star'
+						? current.record.metadata.object && extrasolarObjectId(current.record.id)
+						: current.anchor.planet.object &&
+							planetObjectId(current.anchor.planet.host, current.anchor.planet.number);
+				if (!entry) {
 					this.loading = false;
 					return;
 				}
-				fetchObjectDetail(extrasolarObjectId(current.record.id))
+				fetchObjectDetail(entry)
 					.catch((err: unknown) => {
 						console.warn(`[detail] no object entry for ${key}:`, err);
 						return null;

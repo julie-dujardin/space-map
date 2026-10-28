@@ -77,7 +77,7 @@ function planetBody(
 		objectType: ObjectType.EXOPLANET,
 		parentId,
 		radiusKm: typeof radiusRj === 'number' && radiusRj > 0 ? radiusRj * JUPITER_RADIUS_KM : NaN,
-		hasLocalized: false,
+		hasLocalized: planet.object,
 		a: elements.a,
 		e: elements.e,
 		i: elements.i,

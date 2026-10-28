@@ -95,6 +95,8 @@ export interface PlanetHost {
 export interface Planet {
 	host: number;
 	number: number;
+	/** The object bundles hold an entry for it, under its scene id. */
+	object: boolean;
 	name: string;
 	name_source: string | null;
 	designation: string | null;

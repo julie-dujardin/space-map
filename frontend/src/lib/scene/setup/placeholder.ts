@@ -1,5 +1,6 @@
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { bodyDataFromGlobal, pageOnlyBodyData } from '$lib/fetch/objects/global-body';
 import { fetchLabels, type LabelMap } from '$lib/fetch/position/labels';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -13,8 +14,10 @@ import { SSB_ID } from '$lib/constants';
  *
  * A target whose bundle has no elements comes back as a page-only stand-in:
  * it has a page to open. An object with no bundle at all (or a parent cycle)
- * yields an empty array. A bundle that does not load rejects: it says nothing
- * about the object, and "no such object" would be the wrong answer.
+ * yields an empty array, and so does a star or a planet of another system:
+ * its records place it, and its entry holds only text. A bundle that does not
+ * load rejects: it says nothing about the object, and "no such object" would
+ * be the wrong answer.
  *
  * Each entry's `zone` is the SBDB-class id (e.g. `"APO"`); null when the body
  * has no SBDB record, in which case the caller falls back to `parentId`-based
@@ -25,6 +28,7 @@ export async function createPlaceholderBody(
 	ctx: ContextManager,
 	visited: Set<string> = new Set()
 ): Promise<Array<{ body: PositionedBody; zone: string | null }>> {
+	if (isExtrasolarObjectId(targetId)) return [];
 	if (visited.has(targetId)) {
 		console.warn(`createPlaceholderBody: cycle detected at ${targetId} — hiding`);
 		return [];

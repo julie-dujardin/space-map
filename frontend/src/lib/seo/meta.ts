@@ -65,7 +65,7 @@ import {
 	extrasolarBase,
 	type ExtrasolarMetadata
 } from '$lib/fetch/extrasolar/files';
-import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { extrasolarObjectId, planetObjectId } from '$lib/fetch/extrasolar/ids';
 import { ExtrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 import { PlanetCatalogue } from '$lib/fetch/extrasolar/planets';
 
@@ -862,35 +862,55 @@ export async function loadStarSeo(idText: string, url: URL): Promise<ExtrasolarP
 	if (String(id) !== idText) {
 		return aliasPage(absoluteHref(bodyHref(fileId, metadata.name ?? ''), url), url);
 	}
-	// A star with an object entry takes its name, the Wikidata description in
-	// the reader's language and its card image from it, as a body does.
-	const entry = metadata.object
-		? await starSubject(fileId, url).catch((e: unknown) => {
-				console.warn(`[seo] ${url.pathname}: object bundles not readable:`, e);
-				return null;
-			})
-		: null;
-	const name = entry?.localized?.name ?? metadata.name ?? '';
-	const description = entry?.localized?.description
-		? ucfirst(cleanDescription(entry.localized.description))
-		: starDescription(name);
-	const card: { image?: string; description: string } = entry
-		? await resolveOgCard(entry.global?.images, description, entry.cards)
-		: { description };
+	const meta = await entryMeta(
+		metadata.object ? fileId : null,
+		metadata.name ?? '',
+		starDescription,
+		url
+	);
 	return {
 		kind: 'page',
 		seo: {
-			title: pageTitle(name),
-			description: card.description,
-			canonical: absoluteHref(bodyHref(fileId, name), url),
-			image: card.image,
+			title: pageTitle(meta.name),
+			description: meta.description,
+			canonical: absoluteHref(bodyHref(fileId, meta.name), url),
+			image: meta.image,
 			ogType: 'article'
 		}
 	};
 }
 
-/** A star's object entry from its page record, else from the bundles. */
-async function starSubject(
+/**
+ * The meta of a star or a planet page. With an object entry (`fileId`), it
+ * takes its name and its card image from it, as a body does, and with
+ * `wikidataDescription` the Wikidata description in the reader's language.
+ * Else `name`, and the description that `describe` writes. Without the object
+ * bundles the entry is left out.
+ */
+async function entryMeta(
+	fileId: string | null,
+	name: string,
+	describe: (name: string) => string,
+	url: URL,
+	wikidataDescription = true
+): Promise<{ name: string; description: string; image?: string }> {
+	const entry = fileId
+		? await entrySubject(fileId, url).catch((e: unknown) => {
+				console.warn(`[seo] ${url.pathname}: object bundles not readable:`, e);
+				return null;
+			})
+		: null;
+	const own = entry?.localized?.name ?? name;
+	const description =
+		wikidataDescription && entry?.localized?.description
+			? ucfirst(cleanDescription(entry.localized.description))
+			: describe(own);
+	if (!entry) return { name: own, description };
+	return { name: own, ...(await resolveOgCard(entry.global?.images, description, entry.cards)) };
+}
+
+/** An extrasolar object entry from its page record, else from the bundles. */
+async function entrySubject(
 	fileId: string,
 	url: URL
 ): Promise<SeoSubject<SeoObjectGlobal, SeoObjectLocalized>> {
@@ -900,9 +920,9 @@ async function starSubject(
 
 /**
  * A planet page's meta from its system file, found through the planet index,
- * or the page of the live planet an alias names, maybe on another host. Null
- * when the host has no planet of that number: a 404. Throws when the export
- * cannot be read.
+ * and its object entry, or the page of the live planet an alias names, maybe
+ * on another host. Null when the host has no planet of that number: a 404.
+ * Throws when the extrasolar export cannot be read.
  */
 export async function loadPlanetSeo(
 	host: number,
@@ -912,15 +932,26 @@ export async function loadPlanetSeo(
 	const found = await requestPlanets(url).planet(host, n);
 	if (!found) return null;
 	const { planet, system } = found;
+	if (planet.host !== host || planet.number !== n) {
+		return aliasPage(absoluteHref(planetHref(planet.host, planet.number, planet.name), url), url);
+	}
 	const hostName = system.hosts.find((h) => h.id === planet.host)?.name ?? '';
-	const href = absoluteHref(planetHref(planet.host, planet.number, planet.name), url);
-	if (planet.host !== host || planet.number !== n) return aliasPage(href, url);
+	// Wikidata describes nearly every planet as "extrasolar planet"; the
+	// sentence names its star.
+	const meta = await entryMeta(
+		planet.object ? planetObjectId(planet.host, planet.number) : null,
+		planet.name,
+		(name) => m.seo_planet_description({ name, host: hostName }),
+		url,
+		false
+	);
 	return {
 		kind: 'page',
 		seo: {
-			title: pageTitle(planet.name),
-			description: m.seo_planet_description({ name: planet.name, host: hostName }),
-			canonical: href,
+			title: pageTitle(meta.name),
+			description: meta.description,
+			canonical: absoluteHref(planetHref(planet.host, planet.number, meta.name), url),
+			image: meta.image,
 			ogType: 'article'
 		}
 	};

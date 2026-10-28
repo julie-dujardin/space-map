@@ -279,8 +279,8 @@ export class PromotionRegistry {
 				hovered ? this.deps.hoveredBodyIds.add(id) : this.deps.hoveredBodyIds.delete(id),
 			halfPromoteIds
 		);
-		// A minor body starts unnamed and a star with its catalogue name: the
-		// bundle names them later.
+		// A minor body starts unnamed, and a star or a planet of another system
+		// with its catalogue name: the bundle names them later.
 		const bo = bodyObjects.get(body.data.id);
 		if (bo) void loadBodyLabel(bo);
 		// Mark the body's point-cloud group dirty so its dot disappears on the

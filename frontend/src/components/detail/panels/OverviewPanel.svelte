@@ -264,12 +264,10 @@
 				jd={sampledJd}
 			/>
 		{/if}
-		{#if !planet}
-			<ObjectDescription
-				extract={data?.localized?.wikipedia?.extract}
-				wikipediaUrl={data?.localized?.wikipedia?.url}
-			/>
-		{/if}
+		<ObjectDescription
+			extract={data?.localized?.wikipedia?.extract}
+			wikipediaUrl={data?.localized?.wikipedia?.url}
+		/>
 		{#if !isGroupMode}
 			<BodyCrossRefs
 				{body}

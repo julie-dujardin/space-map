@@ -15,7 +15,8 @@ vi.mock('$lib/fetch/extrasolar/planets', async (importOriginal) => {
 		token: INDEX.token,
 		system: 1091633172,
 		hosts: [],
-		planets: [planet(1091633172, 1, null), planet(1091633172, 2, null)]
+		// Its first planet has an object entry.
+		planets: [{ ...planet(1091633172, 1, null), object: true }, planet(1091633172, 2, null)]
 	};
 	const files: Record<string, unknown> = {
 		'planets/index.json.gz': INDEX,
@@ -115,6 +116,16 @@ describe('the name of a planet page', () => {
 		);
 		expect(await fetchPageName({ kind: 'body', id: `x-${MERGED_HOST}-b-1` })).toBe(
 			'Planet 27424668 2'
+		);
+	});
+
+	it("is the name of its object entry in the reader's language", async () => {
+		fetchObjectDetail.mockResolvedValue({ global: null, localized: { name: 'Пульсар b' } });
+		expect(await fetchPageName({ kind: 'body', id: 'x-1091633172-b-1' })).toBe('Пульсар b');
+		expect(fetchObjectDetail).toHaveBeenCalledWith('x-1091633172-b-1', true, undefined, true);
+		fetchObjectDetail.mockRejectedValue(new Error('503'));
+		expect(await fetchPageName({ kind: 'body', id: 'x-1091633172-b-1' })).toBe(
+			'Planet 1091633172 1'
 		);
 	});
 

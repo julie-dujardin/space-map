@@ -60,7 +60,7 @@ export function parseExtrasolarId(text: string, tables?: ReadonlySet<number>): n
 }
 
 /** An id of the extrasolar export's namespace: a star (`x-<id>`) or a
- *  planet (`x-<host>-b-<n>`). Neither has an object bundle. */
+ *  planet (`x-<host>-b-<n>`). One with an object entry has it under this id. */
 export function isExtrasolarObjectId(objectId: string): boolean {
 	return objectId.startsWith(EXTRASOLAR_PREFIX);
 }

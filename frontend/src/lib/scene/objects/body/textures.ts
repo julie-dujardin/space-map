@@ -1,6 +1,6 @@
 import { MeshStandardMaterial, type Scene, type Texture, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
-import { isExtrasolar } from '$lib/types/objects';
+import { isExoplanet, isExtrasolar } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { getLocale, pickTexture } from '$lib/host';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
@@ -245,23 +245,23 @@ export async function loadBodyTexture(
 
 /**
  * Give a promoted body's label the name from its detail bundle, after the body
- * shows. An unnamed minor body gets its Wikidata name. A star replaces its
- * catalogue name with its name in the reader's language. No-op for a label
- * with `variant: 'none'` (debris, etc.).
+ * shows. An unnamed minor body gets its Wikidata name. A star or a planet of
+ * another system replaces its catalogue name with its name in the reader's
+ * language. No-op for a label with `variant: 'none'` (debris, etc.).
  */
 export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
 	if (!bo.label) return;
 	const data = bo.body.data;
-	const star = isExtrasolar(bo.body);
-	if (data.name && !star) return;
-	// A star's English name is its Metadata name, which its label has already.
-	if (star && getLocale() === 'en') return;
+	const extrasolar = isExtrasolar(bo.body) || isExoplanet(bo.body);
+	if (data.name && !extrasolar) return;
+	// Its English name is its catalogue name, which its label has already.
+	if (extrasolar && getLocale() === 'en') return;
 	const detail = await fetchObjectDetail(data.id, data.hasLocalized).catch(() => null);
 	const resolved = detail?.localized?.name ?? detail?.global?.name;
 	if (!resolved) return;
-	// A star's catalogue name gives way. A minor body keeps a name that another
-	// path wrote while the bundle was in flight.
-	if (star) data.name = resolved;
+	// A catalogue name gives way. A minor body keeps a name that another path
+	// wrote while the bundle was in flight.
+	if (extrasolar) data.name = resolved;
 	else data.name ??= resolved;
 	setLabelName(bo, resolved, getLabelVariant(bo.body), hasLargeLabel(bo.body));
 }
