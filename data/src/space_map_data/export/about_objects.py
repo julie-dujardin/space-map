@@ -5,6 +5,11 @@ language, and where their data comes from.
 Every figure is read off the files on disk, so a phase that the export skipped
 as unchanged counts for what it left there. A gzip file can hold several
 kinds. Its size is split between them by the raw bytes of their entries or rows.
+
+The stars, star systems and planets of the extrasolar catalogue are those of
+the census that the extrasolar export serves (`export/extrasolar/census.py`).
+Their object entries are a part of them, so an entry adds its bytes, text and
+sources but not to the count, and it goes to the row of its home table.
 """
 
 import gzip
@@ -20,6 +25,14 @@ import numpy as np
 import orjson
 
 from space_map_data.constants.providers import ID_TYPES, LANGUAGES
+from space_map_data.export.extrasolar.build import METADATA_FILE, served
+from space_map_data.export.extrasolar.census import (
+    KIND_OF_HOME,
+    PLANET,
+    STAR,
+    STAR_SYSTEM,
+)
+from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.objects.stars import PLANET_ID
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.export.position.format import (
@@ -35,16 +48,16 @@ from space_map_data.export.position.format import (
     unpack_chebyshev_header,
     unpack_elements_header,
 )
+from space_map_data.extrasolar.ids import table_of
 from space_map_data.models.object import ObjectType
 
 logger = logging.getLogger(__name__)
 
 # The rows in the order of the page. A kind that is not listed follows by name.
 KINDS = (
-    "star",
-    "extrasolar_star",
-    "extrasolar_planet",
-    "planet",
+    STAR,
+    STAR_SYSTEM,
+    PLANET,
     "dwarf_planet",
     "moon",
     "asteroid",
@@ -91,15 +104,15 @@ def kind_of(object_type: str, satcat: bool) -> str:
     return object_type
 
 
-def _entry_kind(object_id: str, object_type: str) -> str:
-    """The row of an object entry. A star or a planet of the extrasolar
-    catalogue has a row of its own: the catalogue holds many more of them than
-    those with an entry."""
+def catalogue_kind(object_id: str) -> str | None:
+    """The row of an entry of the extrasolar catalogue, by the home table of
+    its object as the census counts it. None for an object of the solar
+    system."""
+    if not object_id.startswith(STAR_PREFIX):
+        return None
     if PLANET_ID.match(object_id):
-        return "extrasolar_planet"
-    if object_id.startswith(STAR_PREFIX):
-        return "extrasolar_star"
-    return kind_of(object_type, object_id.startswith(_SATCAT_PREFIX))
+        return PLANET
+    return KIND_OF_HOME[table_of(int(object_id.removeprefix(STAR_PREFIX)))]
 
 
 def has_own_text(entry: dict) -> bool:
@@ -189,6 +202,8 @@ class _Tally:
         self.sources: defaultdict[str, Counter[str]] = defaultdict(Counter)
         self.works: defaultdict[str, set[str]] = defaultdict(set)
         self.systems = 0
+        # The entries of the extrasolar catalogue, which the census counts.
+        self.catalogue_entries: Counter[str] = Counter()
 
     def text(self, lang: str, kind: str, key, wikipedia: bool) -> None:
         """Count an item that has text of its own in ``lang``."""
@@ -263,9 +278,15 @@ def _scan_objects(objects_dir: Path, tally: _Tally) -> None:
         size, entries = _bundle(path)
         raw: Counter[str] = Counter()
         for object_id, entry in entries.items():
-            kind = _entry_kind(object_id, entry["type"])
+            in_catalogue = catalogue_kind(object_id)
+            kind = in_catalogue or kind_of(
+                entry["type"], object_id.startswith(_SATCAT_PREFIX)
+            )
             kinds[object_id] = kind
-            tally.count[kind] += 1
+            if in_catalogue is None:
+                tally.count[kind] += 1
+            else:
+                tally.catalogue_entries[kind] += 1
             rings = _field_bytes(entry, _RING_KEYS)
             raw[kind] += _entry_bytes(object_id, entry) - rings
             raw["ring_system"] += rings
@@ -396,12 +417,43 @@ def _ordered(kinds: Iterable[str]) -> list[str]:
     return listed + sorted(set(kinds) - set(KINDS))
 
 
-def object_rows(out_dir: Path) -> list[dict]:
-    """One row for each kind of object in the export at ``out_dir``."""
+def served_census(extrasolar_dir: Path) -> dict[str, dict] | None:
+    """The census of the extrasolar export below ``extrasolar_dir``, None
+    when none is served."""
+    root = extrasolar_dir / "v1" / "x"
+    with served(extrasolar_dir):
+        if not (root / METADATA_FILE).exists():
+            logger.warning("No extrasolar objects: nothing served at %s", root)
+            return None
+        metadata = ExportReader(root).metadata
+    if "objects" not in metadata:
+        raise ValueError(
+            f"{root / METADATA_FILE} has no census: export it again with"
+            " space-map-export --only extrasolar"
+        )
+    return metadata["objects"]
+
+
+def _add_census(tally: _Tally, extrasolar_dir: Path) -> None:
+    census = served_census(extrasolar_dir)
+    if census is None:
+        # The entries stand for their kinds, so that each share has its whole.
+        tally.count.update(tally.catalogue_entries)
+        return
+    for kind, entry in census.items():
+        tally.count[kind] += entry["count"]
+        tally.detail_bytes[kind] += entry["size_bytes"]
+        tally.sources[kind].update(entry["sources"])
+
+
+def object_rows(out_dir: Path, extrasolar_dir: Path) -> list[dict]:
+    """One row for each kind of object in the export at ``out_dir``, with the
+    extrasolar export below ``extrasolar_dir``."""
     tally = _Tally()
     _scan_objects(out_dir / "objects", tally)
     _scan_positions(out_dir / "position", tally)
     _scan_features(out_dir / "nomenclature", tally)
+    _add_census(tally, extrasolar_dir)
     kinds = {kind for kind, n in tally.count.items() if n} | {
         kind for kind, n in tally.position_bytes.items() if n
     }

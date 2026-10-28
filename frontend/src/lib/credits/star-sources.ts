@@ -46,6 +46,8 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'hunt-reffert-2024': m.source_hunt_reffert_2024_name,
 	'magellanic-clouds': m.source_magellanic_clouds_name,
 	'bailer-jones-2021': m.source_bailer_jones_2021_name,
+	'rybizki-2022': m.source_rybizki_2022_name,
+	'star-systems': m.source_star_systems_name,
 	[LITERATURE]: m.source_literature_name,
 	'nasa-exoplanet-archive': m.source_nasa_exoplanet_archive_name,
 	'exoplanet-eu': m.source_exoplanet_eu_name,

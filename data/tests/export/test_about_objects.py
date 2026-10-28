@@ -1,5 +1,6 @@
 """Checks for the objects table of `/about/data`: the kinds, the split of each
-file's bytes, the text counts and the sources."""
+file's bytes, the text counts and the sources, with the served extrasolar
+census."""
 
 import gzip
 import struct
@@ -9,6 +10,7 @@ import pytest
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.about_objects import (
+    catalogue_kind,
     entry_sources,
     has_own_text,
     kind_of,
@@ -26,6 +28,7 @@ from space_map_data.export.position.format import (
     pack_elements_header,
     pack_probes_header,
 )
+from space_map_data.extrasolar import ids
 from space_map_data.models.object import ObjectType, OrbitalSource
 from tests.conftest import make_object
 
@@ -80,6 +83,22 @@ class TestKindOf:
     def test_other_types_keep_their_name(self):
         assert kind_of("moon", False) == "moon"
         assert kind_of("debris", True) == "debris"
+
+
+# A star, a resolved star system and a planet of the star.
+STAR_ID = ids.encode(0, 1, 5)
+SYSTEM_ID = ids.encode(0, 3, 5)
+PLANET_ID = f"x-{STAR_ID}-b-1"
+
+
+class TestCatalogueKind:
+    def test_by_home_table(self):
+        assert catalogue_kind(f"x-{STAR_ID}") == "star"
+        assert catalogue_kind(f"x-{SYSTEM_ID}") == "star_system"
+        assert catalogue_kind(PLANET_ID) == "planet"
+
+    def test_solar_system(self):
+        assert catalogue_kind("naif-10") is None
 
 
 class TestHasOwnText:
@@ -171,83 +190,121 @@ class TestPositionFileBytes:
         assert position_file_bytes(path) == {"probe": path.stat().st_size}
 
 
+CENSUS: dict[str, dict] = {
+    "star": {"count": 3, "size_bytes": 300, "sources": {"gaia-dr3": 3}},
+    "star_system": {"count": 1, "size_bytes": 30, "sources": {"star-systems": 1}},
+    "planet": {
+        "count": 2,
+        "size_bytes": 20,
+        "sources": {"nasa-exoplanet-archive": 2},
+    },
+}
+
+
+def _serve(extrasolar_dir) -> int:
+    """A served `v1/x/` with the census. Its bytes."""
+    served = extrasolar_dir / "v1" / "x"
+    served.mkdir(parents=True)
+    (served / "metadata.json").write_bytes(orjson.dumps({"objects": CENSUS}))
+    return sum(entry["size_bytes"] for entry in CENSUS.values())
+
+
+def _sources(row: dict) -> dict[str, int]:
+    return {source["key"]: source["objects"] for source in row["sources"]}
+
+
+def _export(out) -> None:
+    """A small export tree with entries of the solar system and of the
+    extrasolar catalogue."""
+    saturn = {
+        "id": "naif-699",
+        "type": "planet",
+        "ephemeris_source": "naif",
+        "cross_refs": {"wikidata_qid": "Q193"},
+        "has_rings": True,
+        "ring_features": {
+            "a-ring": {"name": "A Ring", "wikidata_qid": "Q1"},
+            "b-ring": {"name": "B Ring"},
+        },
+        "ring_sources": [{"title": "PDS", "url": "https://pds-rings"}],
+    }
+    vega, pair = f"x-{STAR_ID}", f"x-{SYSTEM_ID}"
+    global_data = {
+        "naif-699": saturn,
+        "spkid-1": {"id": "spkid-1", "type": "asteroid_main_belt"},
+        "spkid-2": {"id": "spkid-2", "type": "asteroid_tno"},
+        "norad_satcat-1": {"id": "norad_satcat-1", "type": "spacecraft"},
+        "probe-1": {"id": "probe-1", "type": "spacecraft"},
+        "naif-10": {"id": "naif-10", "type": "star"},
+        vega: {
+            "id": vega,
+            "type": "star",
+            "cross_refs": {"wikidata_qid": "Q9"},
+            "images": [{}],
+        },
+        # Its class makes its entry a binary star, its home table a system.
+        pair: {"id": pair, "type": "binary_star", "cross_refs": {"wikidata_qid": "Q7"}},
+        PLANET_ID: {
+            "id": PLANET_ID,
+            "type": "exoplanet",
+            "cross_refs": {"wikidata_qid": "Q8"},
+        },
+    }
+    localized = {
+        "en": {
+            "spkid-1": {"name": "x", "description": "asteroid"},
+            vega: {"wikipedia": {"url": "https://en.wikipedia.org/wiki/Vega"}},
+        },
+        "fr": {
+            "spkid-2": {"name": "y", "instance_of": [{"name": "TNO"}]},
+            "naif-699": {
+                "wikipedia": {"url": "https://fr.wikipedia.org/wiki/Saturne"},
+                "ring_features": {
+                    "a-ring": {"name": "anneau A", "extract": "…"},
+                    "b-ring": {"name": "anneau B"},
+                },
+            },
+        },
+    }
+    write_object_bundles(out, global_data, localized)
+    _gzip(
+        out / "position" / "earth" / "0.bin.gz",
+        _satcat_elements([ObjectType.spacecraft]),
+    )
+    nomenclature = out / "nomenclature"
+    _gzip(nomenclature / "labels" / "en" / "naif-499.txt.gz", b"Olympus Mons\nGale")
+    _gzip(nomenclature / "positions" / "naif-499.bin.gz", bytes(40))
+    _gzip(
+        nomenclature / "details" / "__global__" / "0.json.gz",
+        orjson.dumps({"naif-499:1": {"wikidata_qid": "Q2", "images": [{}]}}),
+    )
+    _gzip(
+        nomenclature / "details" / "de" / "0.json.gz",
+        orjson.dumps({"naif-499:1": {"description": "Vulkan"}}),
+    )
+
+
 class TestObjectRows:
-    """A small export tree, read back row by row."""
+    """A small export tree and the census of the extrasolar export, read back
+    row by row."""
 
     @pytest.fixture
     def rows(self, tmp_path) -> dict[str, dict]:
         out = tmp_path / "v1"
-        saturn = {
-            "id": "naif-699",
-            "type": "planet",
-            "ephemeris_source": "naif",
-            "cross_refs": {"wikidata_qid": "Q193"},
-            "has_rings": True,
-            "ring_features": {
-                "a-ring": {"name": "A Ring", "wikidata_qid": "Q1"},
-                "b-ring": {"name": "B Ring"},
-            },
-            "ring_sources": [{"title": "PDS", "url": "https://pds-rings"}],
-        }
-        global_data = {
-            "naif-699": saturn,
-            "spkid-1": {"id": "spkid-1", "type": "asteroid_main_belt"},
-            "spkid-2": {"id": "spkid-2", "type": "asteroid_tno"},
-            "norad_satcat-1": {"id": "norad_satcat-1", "type": "spacecraft"},
-            "probe-1": {"id": "probe-1", "type": "spacecraft"},
-            "naif-10": {"id": "naif-10", "type": "star"},
-            "x-7": {
-                "id": "x-7",
-                "type": "star",
-                "cross_refs": {"wikidata_qid": "Q9"},
-                "images": [{}],
-            },
-            "x-7-b-1": {
-                "id": "x-7-b-1",
-                "type": "exoplanet",
-                "cross_refs": {"wikidata_qid": "Q8"},
-            },
-        }
-        localized = {
-            "en": {
-                "spkid-1": {"name": "x", "description": "asteroid"},
-                "x-7": {"wikipedia": {"url": "https://en.wikipedia.org/wiki/Vega"}},
-            },
-            "fr": {
-                "spkid-2": {"name": "y", "instance_of": [{"name": "TNO"}]},
-                "naif-699": {
-                    "wikipedia": {"url": "https://fr.wikipedia.org/wiki/Saturne"},
-                    "ring_features": {
-                        "a-ring": {"name": "anneau A", "extract": "…"},
-                        "b-ring": {"name": "anneau B"},
-                    },
-                },
-            },
-        }
-        write_object_bundles(out, global_data, localized)
-        _gzip(
-            out / "position" / "earth" / "0.bin.gz",
-            _satcat_elements([ObjectType.spacecraft]),
+        _export(out)
+        served = _serve(tmp_path / "space-map-extrasolar")
+        self.total = served + sum(
+            p.stat().st_size for p in out.rglob("*") if p.is_file()
         )
-        nomenclature = out / "nomenclature"
-        _gzip(nomenclature / "labels" / "en" / "naif-499.txt.gz", b"Olympus Mons\nGale")
-        _gzip(nomenclature / "positions" / "naif-499.bin.gz", bytes(40))
-        _gzip(
-            nomenclature / "details" / "__global__" / "0.json.gz",
-            orjson.dumps({"naif-499:1": {"wikidata_qid": "Q2", "images": [{}]}}),
-        )
-        _gzip(
-            nomenclature / "details" / "de" / "0.json.gz",
-            orjson.dumps({"naif-499:1": {"description": "Vulkan"}}),
-        )
-        self.total = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
-        return {row["id"]: row for row in object_rows(out)}
+        return {
+            row["id"]: row
+            for row in object_rows(out, tmp_path / "space-map-extrasolar")
+        }
 
     def test_rows_in_page_order(self, rows):
         assert list(rows) == [
             "star",
-            "extrasolar_star",
-            "extrasolar_planet",
+            "star_system",
             "planet",
             "asteroid",
             "ring_system",
@@ -258,9 +315,10 @@ class TestObjectRows:
 
     def test_counts(self, rows):
         assert rows["asteroid"]["count"] == 2
-        assert rows["star"]["count"] == 1
-        assert rows["extrasolar_star"]["count"] == 1
-        assert rows["extrasolar_planet"]["count"] == 1
+        # The Sun and the census; an entry is one of the census.
+        assert rows["star"]["count"] == 4
+        assert rows["star_system"]["count"] == 1
+        assert rows["planet"]["count"] == 3
         assert rows["ring_system"]["count"] == 2
         assert rows["ring_system"]["systems"] == 1
         assert rows["surface_feature"]["count"] == 2
@@ -271,21 +329,54 @@ class TestObjectRows:
         )
         assert rows["satellite"]["position_bytes"] > 0
         assert rows["ring_system"]["size_bytes"] > 0
+        assert rows["star_system"]["size_bytes"] > 30
 
     def test_text_in_each_language(self, rows):
         asteroid = rows["asteroid"]["localized"]
         assert (asteroid["en"], asteroid["fr"], asteroid["any"]) == (1, 0, 1)
         assert rows["planet"]["localized"]["fr"] == 1
+        assert rows["star"]["localized"]["en"] == 1
         assert rows["ring_system"]["localized"]["fr"] == 1
         assert rows["surface_feature"]["localized"]["de"] == 1
 
     def test_sources(self, rows):
-        stars = {s["key"]: s["objects"] for s in rows["extrasolar_star"]["sources"]}
-        assert stars == {"wikidata": 1, "commons": 1, "wikipedia": 1}
-        planet = {s["key"]: s["objects"] for s in rows["planet"]["sources"]}
-        assert planet == {"naif": 1, "wikidata": 1, "wikipedia": 1}
-        rings = {s["key"]: s["objects"] for s in rows["ring_system"]["sources"]}
+        assert _sources(rows["star"]) == {
+            "gaia-dr3": 3,
+            "wikidata": 1,
+            "commons": 1,
+            "wikipedia": 1,
+        }
+        assert _sources(rows["star_system"]) == {"star-systems": 1, "wikidata": 1}
+        assert _sources(rows["planet"]) == {
+            "nasa-exoplanet-archive": 2,
+            "naif": 1,
+            "wikidata": 2,
+            "wikipedia": 1,
+        }
+        rings = _sources(rows["ring_system"])
         assert rings == {"wikidata": 1, "wikipedia": 1}
         assert rows["ring_system"]["works"] == 1
-        features = {s["key"]: s["objects"] for s in rows["surface_feature"]["sources"]}
+        features = _sources(rows["surface_feature"])
         assert features == {"iau-naming": 2, "wikidata": 1, "commons": 1}
+
+
+class TestNoCensus:
+    def test_the_entries_stand_for_their_kinds(self, tmp_path, caplog):
+        out = tmp_path / "v1"
+        _export(out)
+        rows = {
+            row["id"]: row
+            for row in object_rows(out, tmp_path / "space-map-extrasolar")
+        }
+        counts = {
+            kind: rows[kind]["count"] for kind in ("star", "star_system", "planet")
+        }
+        assert counts == {"star": 2, "star_system": 1, "planet": 2}
+        assert "nothing served" in caplog.text
+
+    def test_an_export_without_a_census_refuses(self, tmp_path):
+        served = tmp_path / "space-map-extrasolar" / "v1" / "x"
+        served.mkdir(parents=True)
+        (served / "metadata.json").write_bytes(orjson.dumps({"format": 1}))
+        with pytest.raises(ValueError, match="no census"):
+            object_rows(tmp_path / "v1", tmp_path / "space-map-extrasolar")

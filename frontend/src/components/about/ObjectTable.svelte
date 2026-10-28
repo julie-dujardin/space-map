@@ -19,7 +19,6 @@
 		CAT_DEBRIS,
 		CAT_DWARF_PLANETS,
 		CAT_MOONS,
-		CAT_PLANETS,
 		CAT_PROBES,
 		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
@@ -37,9 +36,9 @@
 	const ANY = 'any';
 	let language = $state<string>(getLocale());
 
-	// The category page of each kind that has one.
+	// The category page of each kind that has one. The planets row links to
+	// none: it counts the exoplanets, and that page lists the solar system's.
 	const CATEGORIES: Record<string, string> = {
-		planet: CAT_PLANETS,
 		dwarf_planet: CAT_DWARF_PLANETS,
 		moon: CAT_MOONS,
 		asteroid: CAT_ASTEROIDS,
@@ -53,7 +52,8 @@
 
 	const NAMES: Record<string, () => string> = {
 		star: () => ucfirst(m.search_cat_star()),
-		extrasolar_star: m.about_data_kind_star_entries,
+		star_system: m.about_data_kind_star_systems,
+		planet: () => ucfirst(m.search_cat_planet()),
 		barycenter: () => ucfirst(m.search_cat_barycenter())
 	};
 

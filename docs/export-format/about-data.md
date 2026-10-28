@@ -38,14 +38,13 @@ interface AboutData {
 }
 
 interface ObjectKind {
-  id: string;                      // "star" | "extrasolar_star" | "extrasolar_planet" | "planet" | "dwarf_planet" | "moon" | "asteroid" | "comet" | "ring_system" | "surface_feature" | "satellite" | "probe" | "debris" | "barycenter", then other kinds by name
-                                   // "extrasolar_star" and "extrasolar_planet" count the object entries of the extrasolar catalogue (`x-<id>`, `x-<host>-b-<n>`), not its stars and planets: the catalogue holds many more
+  id: string;                      // "star" | "star_system" | "planet" | "dwarf_planet" | "moon" | "asteroid" | "comet" | "ring_system" | "surface_feature" | "satellite" | "probe" | "debris" | "barycenter", then other kinds by name
   count: number;
-  size_bytes: number;              // its object entries, global and localized, and its part of the position files
+  size_bytes: number;              // its object entries, global and localized, its part of the position files, and its part of the served extrasolar files
   position_bytes?: number;         // the part of `size_bytes` in position files
   localized: Record<string, number>;  // items with text of their own, by language; "any" counts each item once
   sources: Array<{                 // most items first, then by key
-    key: string;                   // an archive id, a provider key of the object panel, "pck", "damit", "wikipedia", "commons" or "taxonomy:<id>"
+    key: string;                   // an archive id, a provider key of the object panel, "pck", "damit", "wikipedia", "commons", "taxonomy:<id>" or a catalogue of the star panels ("gaia-dr3", "rybizki-2022", "nasa-exoplanet-archive", …)
     objects: number;               // items that the source feeds
   }>;
   works?: number;                  // distinct URLs of the works that the entries cite
@@ -133,8 +132,9 @@ interface Map extends Credit {
 
 Notes:
 
-- **A kind is the `type` of an object entry**, with two changes: all asteroid zones are one `asteroid` kind, and a spacecraft is a `satellite` when its id is a NORAD id, else a `probe`. A `ring_system` item is a catalogued ring, gap or arc. Its bytes are the ring fields of its body's entries. A `surface_feature` item is a line of a label file of `nomenclature/labels/en`.
-- **A gzip file can hold more than one kind.** The export splits its size between them by the raw bytes of their entries, rows or bodies. A probes file is all `probe`. The sizes of all the rows add up to the size of `objects/`, `position/` and `nomenclature/`. Image files are not counted.
+- **A kind is the `type` of an object entry**, with these changes: all asteroid zones are one `asteroid` kind, a spacecraft is a `satellite` when its id is a NORAD id, else a `probe`, and an entry of the extrasolar catalogue has the kind of its object in the census (below). A `ring_system` item is a catalogued ring, gap or arc. Its bytes are the ring fields of its body's entries. A `surface_feature` item is a line of a label file of `nomenclature/labels/en`.
+- **A gzip file can hold more than one kind.** The export splits its size between them by the raw bytes of their entries, rows or bodies. A probes file is all `probe`. The sizes of all the rows add up to the size of `objects/`, `position/` and `nomenclature/`, and the `size_bytes` of the census. Image files are not counted.
+- **The extrasolar catalogue counts its own objects**: `star`, `star_system` and `planet` add the `count`, `size_bytes` and `sources` of the census in the served `v1/x/metadata.json` (`objects`, [extrasolar.md](extrasolar.md)). An object entry of the catalogue (`x-<id>`, `x-<host>-b-<n>`) is one of them, so it adds its bytes, text and sources, not its count, and its kind is the home table of its ID: a point that holds two or more stars is a `star`, a resolved system a `star_system`. With no served `v1/x/`, the entries count for their kinds, and the export logs a warning.
 - **An item has text of its own in a language when its entry there has a `description` or a `wikipedia` block.** A name does not count, because a missing label falls back to another language. A ring feature counts when it has an `extract` or a `url`.
 - **`sources` follow the source list of the object panel.** A pole with no `source` is from the PCK kernels. Radii are from the PCK kernels unless an occultation or photometry fit gives them: that fit is a cited work, as are the `sources` of the atmosphere, temperature, interior, activity and radiation blocks and the `position_sources`. `wikipedia` counts the items with an article in at least one language.
 - **`m_per_px` is the ground size of one pixel at the equator**: `2π · radius_km / width`. It is absent where `radius_km` is absent.

@@ -1,11 +1,14 @@
 /**
  * Names and links for the source keys of `/about/data`'s objects. Mirror of
  * `entry_sources` in `data/src/space_map_data/export/about_objects.py`, which
- * uses the keys of the object panel's source list.
+ * uses the keys of the object panel's source list, and of `source_key` in
+ * `export/extrasolar/census.py`, which uses the catalogue keys of the star
+ * panels.
  */
 import * as m from '$lib/paraglide/messages.js';
 import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
 import { orientationCredits } from '$lib/credits/orientation-sources';
+import { starSourceName } from '$lib/credits/star-sources';
 import { PROVIDERS, type ProviderKey } from '$lib/credits/providers';
 import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 
@@ -23,8 +26,9 @@ const WIKIMEDIA_LINKS: Record<string, { label: () => string; url: string }> = {
 	commons: { label: m.source_wikimedia_commons_name, url: 'https://commons.wikimedia.org/' }
 };
 
-/** The links of a source key. A kernel pole credits two bodies. An unknown
- *  key shows as it is. */
+/** The links of a source key. A kernel pole credits two bodies. A catalogue
+ *  of the star panels has no link: its page is in the extrasolar credits,
+ *  which this page does not load. An unknown key shows as it is. */
 export function sourceLinks(key: string): SourceLink[] {
 	if (key === 'pck' || key === 'damit') {
 		return orientationCredits(key === 'pck' ? 'pck' : 'lightcurve').map((credit) => ({
@@ -44,5 +48,5 @@ export function sourceLinks(key: string): SourceLink[] {
 	}
 	const wikimedia = WIKIMEDIA_LINKS[key];
 	if (wikimedia) return [{ label: wikimedia.label(), url: wikimedia.url }];
-	return [{ label: key }];
+	return [{ label: starSourceName(key) }];
 }

@@ -40,7 +40,7 @@ from space_map_data.export.systems import (
 from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
 from space_map_data.ingest.providers.textures.tiles import HEIGHT_LEVELS
 from space_map_data.models.object import Object
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
+from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR, EXTRASOLAR_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -463,10 +463,12 @@ def build_about_data(
     displacement: dict[str, dict],
     rings: dict[str, list[dict]],
     models: dict[str, dict],
+    extrasolar_dir: Path,
 ) -> dict:
-    """The payload. The objects are one row for each kind. The maps are
-    grouped by planetary system. The rings and the shape models are lists of
-    worlds in the same order."""
+    """The payload. The objects are one row for each kind, with the
+    extrasolar export below `extrasolar_dir`.
+    The maps are grouped by planetary system. The rings and the shape models
+    are lists of worlds in the same order."""
     layers = (textures, alternates, clouds, night, specular, displacement)
     mapped = set().union(*layers)
     lightcurve = []
@@ -525,7 +527,7 @@ def build_about_data(
         # The bodies with a map, a ring or a shape model. Shapes from light
         # curves do not count: the models figure already holds them.
         "worlds": len(placed),
-        "objects": object_rows(out_dir),
+        "objects": object_rows(out_dir, extrasolar_dir),
         "systems": systems,
         "rings": _world_rows(
             placed,
@@ -566,6 +568,7 @@ def write_about_data(
         displacement,
         rings,
         models,
+        EXTRASOLAR_DIR,
     )
     (out_dir / "about-data.json").write_bytes(
         orjson.dumps(payload, option=orjson.OPT_INDENT_2)

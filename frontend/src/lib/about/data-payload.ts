@@ -182,13 +182,15 @@ export interface DataModels {
 
 /** A source of a kind of object, and the number of its items it feeds. */
 export interface ObjectSource {
-	/** An archive id, a provider key, `pck`, `damit` or `taxonomy:<id>`. */
+	/** An archive id, a provider key, `pck`, `damit`, `taxonomy:<id>` or a
+	 *  catalogue of the star panels. */
 	key: string;
 	objects: number;
 }
 
 /** One kind of object: a type of the export, with the spacecraft split into
- *  Earth satellites and probes. */
+ *  Earth satellites and probes. An object of the extrasolar catalogue is a
+ *  star, a resolved star system or a planet. */
 export interface ObjectKind {
 	id: string;
 	count: number;

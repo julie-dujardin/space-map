@@ -462,6 +462,7 @@ class TestBuild:
             {},
             rings or {},
             models or {},
+            tmp_path / "space-map-extrasolar",
         )
 
     def test_planet_before_its_moons_and_standalones_last(self, session, tmp_path):
