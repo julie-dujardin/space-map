@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 CHUNK = 1 << 16
 RETRIES = 5
 RETRY_WAIT_SECONDS = 30.0
+# A byte range needs the file as the server stores it.
+AS_STORED = {"Accept-Encoding": "identity"}
 
 
 def download_resumable(

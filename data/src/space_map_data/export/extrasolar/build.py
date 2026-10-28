@@ -42,6 +42,7 @@ from pathlib import Path
 import numpy as np
 
 from space_map_data.constants.stars.families import FAMILIES, STAR_FAMILY_PAGES
+from space_map_data.download.providers.stars import msc, wds
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
 from space_map_data.export.extrasolar import (
     container,
@@ -207,6 +208,20 @@ CREDITS = (
         "source": "https://doi.org/10.3847/1538-3881/abd806",
         "license": "CC BY-NC 3.0 IGO",
         "citation": "Bailer-Jones et al. 2021, AJ 161, 147",
+    },
+    # The star systems: their pairs, hierarchy and component letters.
+    {
+        "name": "The Washington Double Star Catalog",
+        "organisation": "U.S. Naval Observatory",
+        "source": wds.HOME_URL,
+        "attribution": wds.ACKNOWLEDGEMENT,
+        "citation": "Mason et al. 2001, AJ 122, 3466",
+    },
+    {
+        "name": "The Multiple Star Catalogue (MSC)",
+        "organisation": "Tokovinin 2018",
+        "source": msc.PAGE_URL,
+        "citation": "Tokovinin 2018, ApJS 235, 6",
     },
     # One credit for every paper of the literature table. Each star's page
     # cites the paper of its value.

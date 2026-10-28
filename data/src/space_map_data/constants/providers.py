@@ -55,6 +55,8 @@ class PROVIDERS(StrEnum):
     GAIA_NAMED_STARS = "gaia_named_stars"
     BAILER_JONES_DISTANCES = "bailer_jones_distances"
     ULTRACOOLSHEET = "ultracoolsheet"
+    WDS = "wds"
+    MSC = "msc"
     WIKIDATA_STARS = "wikidata_stars"
     WIKIDATA_EXOPLANETS = "wikidata_exoplanets"
     GALAXY_CATALOGUES = "galaxy_catalogues"

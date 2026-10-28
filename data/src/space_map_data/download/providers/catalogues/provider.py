@@ -47,7 +47,10 @@ from space_map_data.download.downloader import (
     user_agent_without_bot,
 )
 from space_map_data.download.providers.catalogues.fetch import md5_of
-from space_map_data.download.providers.three_d.resumable import download_resumable
+from space_map_data.download.providers.three_d.resumable import (
+    AS_STORED,
+    download_resumable,
+)
 from space_map_data.utils.files import SYNC_BYTES
 from space_map_data.utils.paths import SOURCES_CATALOGUES_DIR
 
@@ -57,8 +60,6 @@ ZENODO_URL = "https://zenodo.org/api/records"
 RECORD = "record.json"
 
 _HTML_NAMES = (".html", ".htm")
-# A byte range needs the file as the server stores it.
-_AS_STORED = {"Accept-Encoding": "identity"}
 
 
 @dataclass(frozen=True)
@@ -80,7 +81,7 @@ class CatalogueDownloader(Downloader):
         super().__init__(client)
         self.out_dir = SOURCES_CATALOGUES_DIR / self.group
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self._cds_headers = {**_AS_STORED, "User-Agent": user_agent_without_bot(client)}
+        self._cds_headers = {**AS_STORED, "User-Agent": user_agent_without_bot(client)}
 
     def is_complete(self, limit: int | None) -> bool:
         if not super().is_complete(limit):
@@ -178,7 +179,7 @@ class CatalogueDownloader(Downloader):
             dest,
             method=item.method,
             data=item.data or None,
-            headers=item.headers or _AS_STORED,
+            headers=item.headers or AS_STORED,
             replace=True,
             html=item.name.endswith(_HTML_NAMES),
             check=_accept(item),

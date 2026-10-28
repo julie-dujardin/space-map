@@ -126,6 +126,7 @@ from space_map_data.download.providers.stars.gaia_xp_metallicity import (
     GaiaXpMetallicityDownloader,
 )
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
+from space_map_data.download.providers.stars.msc import MSCDownloader
 from space_map_data.download.providers.stars.pastel_simbad import (
     PastelSimbadDownloader,
 )
@@ -135,6 +136,7 @@ from space_map_data.download.providers.stars.simbad_stars import (
 from space_map_data.download.providers.stars.ultracoolsheet import (
     UltracoolSheetDownloader,
 )
+from space_map_data.download.providers.stars.wds import WDSDownloader
 from space_map_data.download.providers.stars.wikidata_stars import (
     WikidataStarsDownloader,
 )
@@ -214,6 +216,8 @@ PROVIDERS_CLASSES = [
     GaiaNamedStarsDownloader,
     BailerJonesDistancesDownloader,
     UltracoolSheetDownloader,
+    WDSDownloader,
+    MSCDownloader,
     GalaxyCataloguesDownloader,
     StarClusterCataloguesDownloader,
     NebulaCataloguesDownloader,
