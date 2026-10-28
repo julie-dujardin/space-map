@@ -10,7 +10,12 @@ from space_map_data.extrasolar.tables import POINT_SOURCE
 
 
 def names(mask) -> set[str]:
-    return {f for f in rules.FAMILIES if int(mask) & int(families.BIT[f])}
+    """The families of `mask`. The root is in TestRoot only."""
+    return {
+        f
+        for f in rules.FAMILIES
+        if int(mask) & int(families.BIT[f]) and f != rules.ROOT_FAMILY
+    }
 
 
 def rows(*stars: dict) -> pa.Table:
@@ -288,6 +293,30 @@ class TestEstimated:
         )
         assert published[0] == {"variable-star"}
         assert not published[0] & estimated[0]
+
+
+class TestRoot:
+    """The root family of stellar classification."""
+
+    def test_every_other_family_is_below_the_root(self):
+        for family in rules.FAMILIES:
+            if family != rules.ROOT_FAMILY:
+                closed = int(families._closed(family))
+                assert closed & int(families.BIT[rules.ROOT_FAMILY]), family
+
+    def test_a_star_with_a_family_is_in_the_root(self):
+        root = families.BIT[rules.ROOT_FAMILY]
+        published, estimated = families.masks(
+            rows(
+                {"sp_type": "G2V"},
+                {"sp_type": "G2V"} | GIANT_FLAME,
+                GIANT_FLAME,
+                {},
+            ),
+            pa.array(["star"] * 4, pa.string()),
+        )
+        assert [bool(m & root) for m in published] == [True, True, False, False]
+        assert [bool(m & root) for m in estimated] == [False, False, True, False]
 
 
 class TestMasks:

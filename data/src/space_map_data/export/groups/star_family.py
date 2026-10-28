@@ -18,6 +18,7 @@ from space_map_data.constants.stars.families import (
     FAMILIES,
     FAMILY_SLUG_PREFIX,
     PARENTS,
+    ROOT_FAMILY,
 )
 from space_map_data.export.extrasolar.build import served
 from space_map_data.export.extrasolar.reader import ExportReader
@@ -117,8 +118,9 @@ def _notable_stars(
     star_objects: list[StarObject],
     wikidata_entities: WikidataEntityCache,
 ) -> dict[str, list[NotableObject]]:
-    """The stars with a Wikipedia article that each family has, most sitelinks
-    first. A published family only: a page lists what catalogues say."""
+    """The stars with a Wikipedia article that each family but the root has,
+    most sitelinks first. A published family only: a page lists what
+    catalogues say."""
     stars = {star.id: star for star in star_objects if star.qid}
     rows = reader.rows(METADATA.slug, sorted(stars), ["families"])
     if missing := len(stars) - len(rows):
@@ -143,6 +145,10 @@ def _notable_stars(
         mask = rows[id_]["families"]
         star = stars[id_]
         for bit, family in enumerate(bits):
+            # Every star with a family is in the root, so its list would only
+            # be the best-known stars.
+            if family == ROOT_FAMILY:
+                continue
             members = out[family_slug(family)]
             if mask >> bit & 1 and len(members) < NOTABLE_STARS:
                 members.append(

@@ -18,7 +18,7 @@ dataset IDs.
 | File under `data/src/space_map_data/constants/stars/` | Contents |
 | --- | --- |
 | `constellations.py` | 88 IAU, five historical Western, 32 Chinese and 27 Indian constellation topics |
-| `families.py` | 48 star families: their QIDs and the rules that tag a star |
+| `families.py` | 49 star families, with the root `classification`: their QIDs and the rules that tag a star |
 | `cultures.py` | 14 sky-tradition topics and 75 cultural-group QIDs |
 
 The modern constellation set follows the [IAU list](https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx).

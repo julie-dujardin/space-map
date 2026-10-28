@@ -418,8 +418,10 @@ interface GlobalGroupData {
   // here, most sitelinks first (top 20, `id` = `x-<id>`); the star's Wikidata
   // entity and pictures are the ones its own entry uses, and `galleries` has a
   // shelf for each that has pictures. `child_groups` (localized) lists the
-  // families it contains that have stars, most stars first.
-  parent_families?: string[];       // the star- pages of the families that contain this one; the breadcrumb takes the first
+  // families it contains that have stars, most stars first. `star-classification`
+  // (stellar classification) is the root: every family without another parent
+  // is below it, so it counts every star with a family, and it lists no stars.
+  parent_families?: string[];       // the star- pages of the families that contain this one; the breadcrumb takes the first; absent on the root
   published_star_count?: number;    // stars that a catalogued classification puts in the family
   estimated_star_count?: number;    // the other stars, which only a Gaia estimate puts there
 

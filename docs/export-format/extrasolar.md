@@ -157,7 +157,7 @@ An alias is a row at the alias's own cell with only `id`, `mask` 0 and `alias_ta
 
 #### Families
 
-The export computes the two family masks from the Point source row and the Metadata class; the rules are in `constants/stars/families.py`. A star is in every family that its data supports, and a family adds its parents (a G-type main-sequence star is also `main-sequence` and `dwarf`). A row without a Point source row, such as an alias, has 0 in both. A client reads a mask as a `BigUint64Array` and tests bit `n` with `(mask >> BigInt(n)) & 1n`.
+The export computes the two family masks from the Point source row and the Metadata class; the rules are in `constants/stars/families.py`. A star is in every family that its data supports, and a family adds its parents (a G-type main-sequence star is also `main-sequence` and `dwarf`). Every family is below the root family `classification` (stellar classification), so a star with a published family has it in `families`, and a star with only estimated families has it in `families_estimated`. A row without a Point source row, such as an alias, has 0 in both. A client reads a mask as a `BigUint64Array` and tests bit `n` with `(mask >> BigInt(n)) & 1n`.
 
 A published family comes from catalogued classifications only:
 
@@ -586,7 +586,7 @@ The site's sitemap lists the page of every planet and of every planet host that 
     }
   },
   "families": [
-    { "slug": "a-type-main-sequence", "wikidata": ["Q471805"], "published": 5477, "estimated": 8264 },
+    { "slug": "a-type-main-sequence", "wikidata": ["Q471805"], "published": 5469, "estimated": 919817 },
     "…"
   ],
   "objects": {

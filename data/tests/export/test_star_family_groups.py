@@ -71,7 +71,8 @@ class TestRegistry:
             "star-horizontal-branch",
             "star-variable-star",
         ]
-        assert star_family.parent_slugs("star-dwarf") == []
+        assert star_family.parent_slugs("star-dwarf") == ["star-classification"]
+        assert star_family.parent_slugs("star-classification") == []
 
 
 class TestBuild:
@@ -90,7 +91,7 @@ class TestBuild:
             ],
         )
         out = tmp_path / "space-map-extrasolar"
-        export_extrasolar(built.root, out, workers=1)
+        export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
         return built.ids, out
 
     def test_counts_and_children(self, served):
@@ -103,6 +104,8 @@ class TestBuild:
         assert set(groups.member_counts) == {f"star-{f}" for f in FAMILIES}
         assert groups.children["star-main-sequence"] == ["star-k-type-main-sequence"]
         assert groups.children["star-dwarf"] == ["star-main-sequence"]
+        assert groups.member_counts["star-classification"] == 4
+        assert groups.children["star-classification"] == ["star-dwarf"]
         assert groups.notable_members == {}
 
     def test_stars_with_an_article_by_sitelinks(self, served):
@@ -121,6 +124,7 @@ class TestBuild:
         assert [m.object_id for m in members] == [f"x-{ids[2]}", f"x-{ids[0]}"]
         assert all(m.star for m in members)
         assert groups.notable_members["star-dwarf"] == members
+        assert "star-classification" not in groups.notable_members
         assert "star-g-type-main-sequence" not in groups.notable_members
 
         entries = notable_entries(members, entities)

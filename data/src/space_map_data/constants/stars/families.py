@@ -9,6 +9,8 @@ DSC white-dwarf probability or the ESP-ELS emission-line class.
 A family states the spectral letter of a star, its stage, both or neither. A
 published family or MK value stops the Gaia estimate of what it states.
 
+Every family is below one root family, stellar classification.
+
 See docs/stellar-qids.md for the QID research.
 """
 
@@ -24,6 +26,7 @@ STAR_FAMILY_PAGES: dict[str, tuple[str, ...]] = {
     "brown-dwarf": ("Q101600",),
     "carbon-star": ("Q130019",),
     "cepheid-variable": ("Q188593",),
+    "classification": ("Q25377588",),
     "dwarf": ("Q244393",),
     "f-type-main-sequence": ("Q1353952",),
     "flare-star": ("Q285400",),
@@ -68,6 +71,9 @@ FAMILIES: tuple[str, ...] = tuple(STAR_FAMILY_PAGES)
 
 # The /g/ page of a family is /g/star-<family>.
 FAMILY_SLUG_PREFIX = "star-"
+# The root of the family tree, stellar classification: a star with a family
+# is in it.
+ROOT_FAMILY = "classification"
 
 LETTER, STAGE = 1, 2
 # What a family states about a star. A family that is not here states neither.
@@ -305,7 +311,8 @@ FLAME_MIN_STAGE = 100
 # Gaia trusts the mass of a FLAME giant only in this range (solar masses).
 FLAME_GIANT_MASS = (1.0, 2.0)
 
-# Each family adds these. The closure is transitive.
+# Each family adds these. The closure is transitive. A family without a parent
+# here gets the root.
 PARENTS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(
         (
@@ -339,4 +346,9 @@ PARENTS: dict[str, tuple[str, ...]] = {
     "cepheid-variable": ("variable-star",),
     "flare-star": ("variable-star",),
     "luminous-blue-variable": ("variable-star",),
+}
+PARENTS |= {
+    family: (ROOT_FAMILY,)
+    for family in FAMILIES
+    if family not in PARENTS and family != ROOT_FAMILY
 }
