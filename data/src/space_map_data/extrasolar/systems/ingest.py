@@ -6,7 +6,8 @@
    registry and of the passes. The WDS components with no other id are the
    rows of the wds-components pass, which never mints and matches by
    position. The facts of an object are its rows so far, merged by source
-   order.
+   order. An object that the commit does not mint is no object for the
+   builder, so a star of it is an entry.
 2. The star-systems pass gives a row to each node and to each star of a
    system. A resolved system mints an ID of the System table, in the cell of
    its primary's position. Its catalogue ids (the SIMBAD system object, WDS,
@@ -25,7 +26,7 @@ import logging
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -47,6 +48,7 @@ from space_map_data.extrasolar.placement import COLUMNS, placement
 from space_map_data.extrasolar.registry import LIVE, Registry, latest_index
 from space_map_data.extrasolar.sources.gaia import GaiaReader
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
+from space_map_data.extrasolar.systems import assemble
 from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
 from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.msc import read_msc, refuted_pairs
@@ -54,6 +56,7 @@ from space_map_data.extrasolar.systems.nodes import (
     GAIA_DR3,
     OBJECT_CATALOGUES,
     SIMBAD_OID,
+    WDS_ID,
 )
 from space_map_data.extrasolar.systems.pairs import (
     ORBIT_COLUMNS,
@@ -161,6 +164,11 @@ class RunResolver:
     per region, which the lookups map. The resolver keeps one catalogue id of
     each object that the builder holds, which the object's row of the
     star-systems pass claims.
+
+    An object that the commit does not mint, such as a Gaia DR3 source under
+    the fidelity cut that no minting row claims, has no ID to draw or to
+    link. So the resolver gives no object for it, and the builder makes its
+    star an entry.
     """
 
     def __init__(self, run: IngestRun, complete: bool) -> None:
@@ -169,9 +177,12 @@ class RunResolver:
         self.counts: Counter = Counter()
         self._links_dir = run.staging / "systems-links"
         self._others: dict[tuple[str, str], tuple[pa.Array, np.ndarray]] | None = None
+        self._unminted: np.ndarray | None = None
         # The ids that the lookups gave, then the own ids of the facts' rows.
         self._found: list[tuple[str, str, pa.Array, np.ndarray]] = []
         self._own: list[tuple[str, str, pa.Array, np.ndarray]] = []
+        # "<catalogue>/<release>/<id>" of each id whose object is not minted.
+        self._lost: list[pa.Array] = []
         self.facts_table: pa.Table | None = None
         # The merged class of each fact key before the star-systems pass.
         self.classes = CLASS.schema.empty_table()
@@ -183,6 +194,40 @@ class RunResolver:
         for state in self.run.passes:
             found |= state.regions
         return sorted(found)
+
+    def objects(self, keys: np.ndarray) -> np.ndarray:
+        """`keys` with 0 for each object that the commit does not mint."""
+        if self._unminted is None:
+            started = time.monotonic()
+            self._unminted = self.run.unminted()
+            logger.info(
+                "systems: %d objects of the run are not minted, in %.0f s",
+                self._unminted.size,
+                time.monotonic() - started,
+            )
+        keys = np.asarray(keys, np.int64)
+        return np.where(find_sorted(self._unminted, keys) >= 0, 0, keys)
+
+    def _drop_unminted(
+        self, catalogue: str, release: str, ids: pa.Array, keys: np.ndarray
+    ) -> np.ndarray:
+        """`keys` of `ids` with 0 for each object that is not minted. Keeps
+        the ids that lose their object."""
+        minted = self.objects(keys)
+        lost = (keys != 0) & (minted == 0)
+        if lost.any():
+            texts = ids.filter(pa.array(lost)).cast(pa.string())
+            self._lost.append(
+                pc.binary_join_element_wise(f"{catalogue}/{release}", texts, "/")
+            )
+            name = f"ids of objects that are not minted {catalogue}/{release}"
+            self.counts[name] += int(lost.sum())
+        return minted
+
+    @property
+    def lost(self) -> pa.Array:
+        """ "<catalogue>/<release>/<id>" of each id whose object is not minted."""
+        return pa.concat_arrays([pa.array([], pa.string()), *self._lost])
 
     def keys(self, catalogue: str, release: str, ids: pa.Array) -> np.ndarray:
         others = self._links()
@@ -196,6 +241,7 @@ class RunResolver:
             keys[at >= 0] = objects[at[at >= 0]]
         else:
             raise ValueError(f"systems: no links of {catalogue}/{release} are read")
+        keys = self._drop_unminted(catalogue, release, ids, keys)
         hit = keys != 0
         found = ids.filter(pa.array(hit)).cast(pa.string())
         self._found.append((catalogue, release, found, keys[hit]))
@@ -268,7 +314,8 @@ class RunResolver:
         return both[0], both[1]
 
     def match(self, rows: pa.Table) -> np.ndarray:
-        """Run the wds-components pass; a row that made a new object has 0."""
+        """Run the wds-components pass. A row that made a new object, or
+        matched one that is not minted, has 0."""
         ids = rows["catalogue_id"].combine_chunks()
         named = ids.is_valid().to_numpy(zero_copy_only=False)
         values = ids.to_numpy(zero_copy_only=False)
@@ -279,6 +326,9 @@ class RunResolver:
         self.run.add(WDS_COMPONENTS, [rows.take(pa.array(unique))], self.complete)
         found = self.run.row_keys(WDS_COMPONENTS.name)
         keys = np.where(found["new"].to_numpy(zero_copy_only=False), 0, found["key"])
+        keys = self._drop_unminted(
+            *WDS_ID, found["catalogue_id"].combine_chunks(), keys
+        )
         by_id = dict(zip(found["catalogue_id"].to_pylist(), keys.tolist()))
         out = np.array(
             [by_id.get(v, 0) if v is not None else 0 for v in ids.to_pylist()],
@@ -580,16 +630,21 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
 
     # The claim and the label of each point, by key.
     points = systems.points
-    point_index = np.argsort(points["key"].to_numpy())
-    point_keys = points["key"].to_numpy()[point_index]
+    point_keys = np.sort(points["key"].to_numpy())
     point_claims = resolver.claims(point_keys)
     point_labels = pc.binary_join_element_wise(
         *(point_claims[name] for name in CROSS_ID.names), "/"
     ).combine_chunks()
     linked = point_labels.is_valid().to_numpy(zero_copy_only=False)
     if not linked.all():
-        counts["points with no catalogue id, left out"] += int((~linked).sum())
+        counts["points with no catalogue id, made entries"] += int((~linked).sum())
         logger.warning("systems: %d points have no catalogue id", int((~linked).sum()))
+        systems = _as_entries(systems, point_keys[~linked])
+        points = systems.points
+        point_keys = point_keys[linked]
+        point_claims = point_claims.filter(pa.array(linked))
+        point_labels = point_labels.filter(pa.array(linked))
+    point_index = np.argsort(points["key"].to_numpy())
 
     def point_at(keys: np.ndarray) -> np.ndarray:
         """The position of each key among the sorted points, -1 where none."""
@@ -635,7 +690,6 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     point_rows = nodes.filter(pa.array(~resolved))
     at = point_at(point_rows["key"].to_numpy())
     has = at >= 0
-    has[has] = linked[at[has]]
     point_rows = point_rows.filter(pa.array(has))
     at = at[has]
     labels[np.flatnonzero(~resolved)[has]] = point_labels.take(pa.array(at)).to_numpy(
@@ -653,7 +707,12 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     # The distances of the stars that no step places, of seen rows only.
     distances = systems.distances
     placed = ~np.isin(distances["key"].to_numpy(), resolver.unseen)
-    counts["system distances of rows that no distance places"] = int((~placed).sum())
+    counts["system distances left out: flagged stars that no other catalogue sees"] = (
+        int((~placed).sum())
+    )
+    counts["entries whose id reaches an object that is not minted"] = _lost_entries(
+        systems.members, resolver.lost
+    )
     by_key = _sorted(
         distances["key"].to_numpy()[placed], distances["distance"].to_numpy()[placed]
     )
@@ -693,7 +752,7 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     )
 
     # A star of a system: its system distance and its own spectral type.
-    single = (points["node"].to_numpy()[point_index] == 0) & linked
+    single = points["node"].to_numpy()[point_index] == 0
     star_at = np.flatnonzero(single)
     star_keys = point_keys[star_at]
     star_points = points.take(pa.array(point_index[star_at]))
@@ -716,8 +775,11 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     counts["rows of stars"] = int(star_at.size)
     counts["stars placed by system distance"] = int(np.isfinite(distance).sum())
     counts["composite spectral types moved"] = int(moved.sum())
+    parts = [resolved_part, point_part, pa.table(star_table)]
+    # With an empty part, the engine's take of these rows fails (pyarrow 25).
     rows = pa.concat_tables(
-        [resolved_part, point_part, pa.table(star_table)], promote_options="default"
+        [part for part in parts if part.num_rows] or parts[:1],
+        promote_options="default",
     )
     for column in SOURCE_FIELDS:
         if column.name not in rows.column_names:
@@ -766,6 +828,56 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
         classes,
         counts,
     )
+
+
+def _as_entries(systems: Systems, keys: np.ndarray) -> Systems:
+    """`systems` with each point of `keys` as an entry of the node that lists
+    it, and no node of its own. Such a point has no row that links it, so it
+    gets no ID."""
+    wanted = pa.array(keys, pa.int64())
+    nodes, members = systems.nodes, systems.members
+    gone = nodes.filter(pc.is_in(nodes["key"], value_set=wanted))["node"]
+    gone = gone.combine_chunks()
+    demoted = pc.or_(
+        pc.and_(
+            pc.equal(members["kind"], assemble.STAR),
+            pc.is_in(members["key"], value_set=wanted),
+        ),
+        pc.and_(
+            pc.equal(members["kind"], assemble.SYSTEM),
+            pc.is_in(members["member"], value_set=gone),
+        ),
+    )
+    zero = pa.scalar(0, pa.int64())
+    for name, value in (("kind", pa.scalar(ENTRY)), ("key", zero), ("member", zero)):
+        at = members.schema.get_field_index(name)
+        members = members.set_column(
+            at, name, pc.if_else(demoted, value, members[name])
+        )
+
+    def without(table: pa.Table, column: str, values: pa.Array) -> pa.Table:
+        return table.filter(pc.invert(pc.is_in(table[column], value_set=values)))
+
+    return replace(
+        systems,
+        nodes=without(nodes, "node", gone),
+        members=without(members, "node", gone),
+        points=without(systems.points, "key", wanted),
+        distances=without(systems.distances, "key", wanted),
+        names=without(systems.names, "node", gone),
+    )
+
+
+def _lost_entries(members: pa.Table, lost: pa.Array) -> int:
+    """The entries that hold an id of `lost` ("<catalogue>/<release>/<id>")."""
+    ids = members.filter(pc.equal(members["kind"], ENTRY))["ids"].combine_chunks()
+    flat = pc.list_flatten(ids)
+    texts = pc.binary_join_element_wise(
+        *(flat.field(name) for name in CROSS_ID.names), "/"
+    )
+    hit = pc.is_in(texts, value_set=lost).fill_null(False)
+    rows = pc.list_parent_indices(ids).to_numpy()
+    return int(np.unique(rows[hit.to_numpy(zero_copy_only=False)]).size)
 
 
 def _method(distance: np.ndarray) -> pa.Array:
@@ -1109,7 +1221,10 @@ def add_systems(
     planets = (
         inputs.planets if inputs.planets is not None else PLANETS_INPUT.empty_table()
     )
-    systems = build(inputs, resolver)
+    at = planets.schema.get_field_index("host")
+    hosts = resolver.objects(planets["host"].to_numpy())
+    planets = planets.set_column(at, "host", pa.array(hosts, pa.int64()))
+    systems = build(replace(inputs, planets=planets), resolver)
     built = time.monotonic()
     targets = target_keys(index, resolver)
     plan = pass_rows(systems, resolver, planets)

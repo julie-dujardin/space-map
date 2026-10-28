@@ -2,7 +2,8 @@
 
 REPORT_TARGETS are the systems that the report shows as trees. Each is a
 star of the system by an id: a SIMBAD identifier (through the SIMBAD list)
-or a catalogue id that the resolver knows.
+or a catalogue id that the resolver knows. A SIMBAD system object is no row,
+so its primary row stands for it ("* alf Cru" by "* alf01 Cru").
 """
 
 from collections import Counter
@@ -45,10 +46,11 @@ def target_keys(index: SimbadIndex | None, resolver: Resolver) -> list[tuple[str
     for label, (catalogue, release, value) in REPORT_TARGETS:
         if (catalogue, release) == SIMBAD_IDENTIFIER:
             oid = by_identifier.get(value)
-            if oid is None:
+            row = None if index is None or oid is None else index.stars.primary(oid)
+            if row is None:
                 found.append((label, 0))
                 continue
-            catalogue, release, value = (*SIMBAD_OID, str(oid))
+            catalogue, release, value = (*SIMBAD_OID, str(row))
         keys = resolver.keys(catalogue, release, pa.array([value], pa.string()))
         found.append((label, int(keys[0])))
     return found

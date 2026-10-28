@@ -992,6 +992,33 @@ class IngestRun:
                     parts.append(found.filter(pc.is_in(found[KEY], here)))
         return pa.concat_tables(parts)
 
+    def unminted(self) -> np.ndarray:
+        """The objects so far, as `objects` gives them, that no minting row
+        made or joined, sorted. The commit gives them no ID unless a later
+        minting row joins them."""
+        joins = np.array(sorted(self.mintable_joins), np.int64)
+        self._object_root(np.zeros(0, np.int64))
+        assert self._roots is not None
+        grouped, roots = self._roots.keys, self._roots.values
+        alone, minting = [np.zeros(0, np.int64)], [np.zeros(0, np.int64)]
+        for state in self.passes:
+            for region in sorted(state.regions):
+                directory = self._pass_dir(state.number) / "pending" / f"{region:03d}"
+                files = sorted(directory.glob("*.parquet"))
+                pending = read_parquet(files, PENDING, [KEY, "mintable"])
+                keys = pending[KEY].to_numpy()
+                mints = _bools(pending, "mintable") | (find_sorted(joins, keys) >= 0)
+                joined = find_sorted(grouped, keys) >= 0
+                alone.append(keys[~joined & ~mints])
+                minting.append(keys[joined & mints])
+        # An object of several keys mints when one of them mints or is an ID.
+        minted = np.concatenate(
+            [roots[grouped > 0], self._roots(np.concatenate(minting))]
+        )
+        groups = np.unique(roots)
+        lost = groups[(groups < 0) & ~np.isin(groups, minted)]
+        return np.unique(np.concatenate([*alone, lost]))
+
     # Resolving
 
     def _resolve(self, state: PassState, region: int) -> None:
