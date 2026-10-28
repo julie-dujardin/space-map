@@ -31,6 +31,7 @@ import {
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { formatMass, massComparison, SOLAR_MASS_KG } from '$lib/format/mass';
+import { formatLuminosity, luminosityComparison, SOLAR_LUMINOSITY_W } from '$lib/format/light';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
@@ -52,6 +53,8 @@ export interface StarRowEntry {
 	href?: string;
 	/** What this particular value is. */
 	tooltip?: string;
+	/** What the quantity is, on the label. */
+	definition?: string;
 }
 
 export interface StarSection {
@@ -148,7 +151,6 @@ function units() {
 		kms: m.symbol_kilometre_per_second(),
 		dex: m.symbol_dex(),
 		km: formatUnit('kilometre', true),
-		solarLuminosity: m.symbol_solar_luminosity(),
 		gigayear: m.symbol_gigaannum()
 	};
 }
@@ -204,25 +206,55 @@ function bounded(
 	};
 }
 
-/**
- * A mass in kilograms, from solar masses, and what it comes to against the
- * Sun, Jupiter or Earth. A fit's percentiles bound it; a catalogue value keeps
- * the figures it was published with.
- */
-function massRow(ps: TableRow, name: string, catalogue = false): StarRowEntry | null {
+/** A quantity in solar units, in SI on the power of ten of its value, and the
+ *  comparison of that SI value and its errors. */
+interface SolarQuantity {
+	label: () => string;
+	definition?: () => string;
+	unit: () => string;
+	perSolar: number;
+	compare: (si: number, upperError: number | null, lowerError: number | null) => string | undefined;
+}
+
+const SOLAR_MASS: SolarQuantity = {
+	label: m.star_stat_mass,
+	unit: () => formatUnit('kilogram', true),
+	perSolar: SOLAR_MASS_KG,
+	compare: massComparison
+};
+
+const SOLAR_LUMINOSITY: SolarQuantity = {
+	label: m.star_stat_luminosity,
+	definition: m.tooltip_luminosity,
+	unit: m.symbol_watt,
+	perSolar: SOLAR_LUMINOSITY_W,
+	compare: luminosityComparison
+};
+
+/** A value in solar units, in SI, with what it comes to against the Sun (or
+ *  Jupiter or Earth, for a mass). A fit's percentiles bound it; a catalogue
+ *  value keeps the figures it was published with. */
+function solarRow(
+	ps: TableRow,
+	quantity: SolarQuantity,
+	name: string,
+	catalogue = false
+): StarRowEntry | null {
 	const solar = ps.number(name);
 	if (solar === null) return null;
-	const kg = solar * SOLAR_MASS_KG;
-	const args = [ps, m.star_stat_mass(), name, formatUnit('kilogram', true)] as const;
-	const power = powerOfTen(kg, 3);
+	const si = solar * quantity.perSolar;
+	const args = [ps, quantity.label(), name, quantity.unit()] as const;
+	const power = powerOfTen(si, 3);
 	const row = catalogue
-		? catalogued(...args, null, SOLAR_MASS_KG, power)
-		: bounded(...args, SOLAR_MASS_KG, power);
+		? catalogued(...args, null, quantity.perSolar, power)
+		: bounded(...args, quantity.perSolar, power);
 	const errors = boundErrors(solar, ps.number(`${name}_lower`), ps.number(`${name}_upper`));
-	const inKg = (error: number | undefined) => (error === undefined ? null : error * SOLAR_MASS_KG);
+	const inSi = (error: number | undefined) =>
+		error === undefined ? null : error * quantity.perSolar;
 	return {
 		...row!,
-		tooltip: massComparison(kg, inKg(errors?.upperError), inKg(errors?.lowerError))
+		tooltip: quantity.compare(si, inSi(errors?.upperError), inSi(errors?.lowerError)),
+		definition: quantity.definition?.()
 	};
 }
 
@@ -304,8 +336,8 @@ function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): Fl
 	const stage = ps.number(column('evolstage'));
 	return {
 		diameter: bounded(ps, m.diameter(), column('radius'), u.km, 2 * SOLAR_RADIUS_KM),
-		luminosity: bounded(ps, m.star_stat_luminosity(), column('lum'), u.solarLuminosity),
-		mass: fit ? massRow(ps, column('mass')) : null,
+		luminosity: solarRow(ps, SOLAR_LUMINOSITY, column('lum')),
+		mass: fit ? solarRow(ps, SOLAR_MASS, column('mass')) : null,
 		age: fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
 		stage:
 			fit && stage !== null ? row(m.star_row_evolutionary_stage(), evolutionaryStage(stage)) : null,
@@ -378,7 +410,8 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	if (out.length < 3 && luminosity !== null) {
 		out.push({
 			label: m.star_stat_luminosity(),
-			value: joinParts({ value: sigFigures(luminosity), unit: u.solarLuminosity })
+			value: formatLuminosity(luminosity * SOLAR_LUMINOSITY_W),
+			tooltip: luminosityComparison(luminosity * SOLAR_LUMINOSITY_W)
 		});
 	}
 	const cards = out.filter((card): card is Stat => card !== null).slice(0, 3);
@@ -570,7 +603,7 @@ function pointSourceSections(
 			bounded(ps, m.star_row_diameter_photometric(), 'radius_gspphot', u.km, 2 * SOLAR_RADIUS_KM) ??
 			catalogued(ps, m.diameter(), 'host_radius', u.km, null, 2 * SOLAR_RADIUS_KM),
 		fitted('luminosity'),
-		fitted('mass') ?? massRow(ps, 'host_mass', true),
+		fitted('mass') ?? solarRow(ps, SOLAR_MASS, 'host_mass', true),
 		fitted('age') ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),
 		fitted('redshift'),
 		measured(ps, m.star_row_line_broadening(), 'vbroad', 'vbroad_error', u.kms)

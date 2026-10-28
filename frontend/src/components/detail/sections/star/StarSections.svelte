@@ -32,7 +32,12 @@
 					<Link href={entry.href} external class="tabular-nums">{entry.value}</Link>
 				</Row>
 			{:else}
-				<Row label={entry.label} value={entry.value} valueTooltip={entry.tooltip} />
+				<Row
+					label={entry.label}
+					value={entry.value}
+					tooltip={entry.definition}
+					valueTooltip={entry.tooltip}
+				/>
 			{/if}
 		{/each}
 	</Section>

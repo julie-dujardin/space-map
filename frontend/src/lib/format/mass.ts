@@ -7,10 +7,9 @@ import {
 	formatSpan,
 	formatUnit,
 	joinParts,
-	percentParts,
 	powerOfTen,
-	type MeasuredQuantity,
-	type Parts
+	scientificParts,
+	type MeasuredQuantity
 } from './quantities';
 
 /** So a body's mass can be read against the one anyone has a feel for. */
@@ -61,10 +60,8 @@ export function massKg(q: { value: number; unit: string }): number | null {
  * scales a reader has to convert between. Kilograms and an exponent are the
  * same shape for all of them.
  */
-function massParts(kg: number): Parts {
-	// Three fixed figures: Jupiter's "1.9" beside Earth's "5.97" reads as less known.
-	const value = formatMeasuredQuantity({ value: kg, power: powerOfTen(kg, 3), fixedDecimals: 2 });
-	return { value, unit: formatUnit('kilogram', true) };
+function massParts(kg: number) {
+	return scientificParts(kg, formatUnit('kilogram', true));
 }
 
 export function formatMass(kg: number): string {
@@ -116,17 +113,11 @@ export function massComparison(
 ): string | undefined {
 	const ref = REFERENCES.find((r) => kg / r.kg >= r.floor && !atParity(kg / r.kg));
 	if (!ref) return undefined;
-	const ratio = kg / ref.kg;
-	if (!upperError && !lowerError) return earthRatio(ratio, ref) ?? undefined;
-	// A multiple applies to its errors too, so they go in brackets.
-	const percent = ratio < 1;
-	const scale = (percent ? 100 : 1) / ref.kg;
-	const figure = formatMeasuredQuantity({
-		value: kg * scale,
-		upperError: upperError && upperError * scale,
-		lowerError: lowerError && lowerError * scale,
-		roundLargeErrors: true,
-		...(percent ? { unit: percentParts(0).unit, tight: true } : { group: true })
-	});
-	return percent ? ref.percent({ value: figure }) : ref.times({ value: figure });
+	return (
+		earthRatio(kg / ref.kg, {
+			words: ref,
+			upperError: upperError && upperError / ref.kg,
+			lowerError: lowerError && lowerError / ref.kg
+		}) ?? undefined
+	);
 }

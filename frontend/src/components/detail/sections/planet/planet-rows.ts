@@ -9,6 +9,7 @@ import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import type { Planet } from '$lib/fetch/extrasolar/planets';
 import {
+	earthRatio,
 	errorDecimals,
 	formatBound,
 	formatLowerBound,
@@ -21,6 +22,7 @@ import {
 } from '$lib/format/quantities';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { formatMass, formatMeasuredMass, JUPITER_MASS_KG, massComparison } from '$lib/format/mass';
+import { EARTH_IRRADIANCE_W_M2, irradianceUnit } from '$lib/format/light';
 import { formatJulianDate } from '$lib/format/date';
 import { ltrIsolate } from '$lib/format/bidi';
 import { starSourceName } from '$lib/credits/star-sources';
@@ -46,6 +48,8 @@ export interface PlanetRow {
 	note?: string;
 	/** What it comes to against the Sun, Jupiter or Earth. */
 	tooltip?: string;
+	/** What the quantity is, on the label. */
+	definition?: string;
 	/** Where the value leads, off the site. */
 	href?: string;
 	/** The label is a catalogue's name, kept as written. */
@@ -162,7 +166,6 @@ function units() {
 		au: { unit: formatUnit('astronomical_unit', true) },
 		day: { unit: daySymbol() },
 		km: { unit: formatUnit('kilometre', true) },
-		earthFlux: { unit: m.exoplanet_symbol_earth_flux() },
 		density: { unit: formatUnit('gram_per_cubic_centimetre', true) }
 	} satisfies Record<string, Unit>;
 }
@@ -271,6 +274,27 @@ function planetMass(planet: Planet, card = false): { value: string; tooltip?: st
 		value: bounded(planet, 'mass', value),
 		tooltip: comparison && bounded(planet, 'mass', comparison)
 	};
+}
+
+/** The starlight on the planet in W/m², from the catalogue's multiples of
+ *  Earth's, and what it is against Earth's. */
+function insolationRow(planet: Planet): PlanetRow | null {
+	const raw = num(planet, 'insolation');
+	if (raw === null) return null;
+	const { unit, wm2 } = irradianceUnit(raw * EARTH_IRRADIANCE_W_M2);
+	const comparison = earthRatio(raw, {
+		upperError: num(planet, 'insolation_error_upper'),
+		lowerError: num(planet, 'insolation_error_lower')
+	});
+	return row(
+		m.exoplanet_row_insolation(),
+		measured(planet, 'insolation', { unit }, EARTH_IRRADIANCE_W_M2 / wm2),
+		{
+			note: qualifier(planet, 'insolation'),
+			tooltip: comparison ? bounded(planet, 'insolation', comparison) : undefined,
+			definition: m.tooltip_insolation()
+		}
+	);
 }
 
 /** A diameter in km, as the Solar System's sizes read, at the figures the
@@ -539,7 +563,7 @@ export function planetSections(anchor: PlanetAnchor): PlanetSection[] {
 		row(m.exoplanet_row_equilibrium_temperature(), temperature(planet, 'equilibrium_temperature'), {
 			note: qualifier(planet, 'equilibrium_temperature')
 		}),
-		valueRow(planet, m.exoplanet_row_insolation(), 'insolation', u.earthFlux)
+		insolationRow(planet)
 	]);
 
 	const molecules = planet.values.molecules;

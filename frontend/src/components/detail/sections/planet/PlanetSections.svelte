@@ -23,6 +23,7 @@
 				<Row
 					label={entry.label}
 					value={entry.value}
+					tooltip={entry.definition}
 					valueTooltip={entry.tooltip}
 					note={entry.note}
 					labelIsName={entry.labelIsName}

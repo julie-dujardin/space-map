@@ -135,6 +135,24 @@ describe("a planet's panel", () => {
 		expect(rowsOf(anchor(small)).physical.Diameter).toBe('13,100 km [estimated]');
 	});
 
+	it('reads insolation in W/m², against Earth with its errors', () => {
+		const lit = planet(5, 6, elements(0.05), {
+			insolation: 0.641,
+			insolation_error_upper: 0.065,
+			insolation_error_lower: 0.065
+		});
+		const insolation = planetSections(anchor(lit))
+			.find((s) => s.key === 'physical')!
+			.rows.find((r) => r.label === 'Insolation')!;
+		expect(plain(insolation.value)).toBe('872 ± 88 W/m²');
+		expect(plain(insolation.tooltip!)).toBe("64.1% ± 6.5% of Earth's");
+		expect(insolation.definition).toBe(
+			"Power per unit area received from the star at the planet's distance"
+		);
+		lit.values = { insolation: 2400 };
+		expect(rowsOf(anchor(lit)).physical.Insolation).toBe('3.3 MW/m²');
+	});
+
 	it('omits unknown stats and keeps limits', () => {
 		const bare = planet(5, 3, null, { mass: 2.1 });
 		bare.limits = ['mass<'];

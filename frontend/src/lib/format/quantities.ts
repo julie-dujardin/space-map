@@ -399,6 +399,16 @@ function superscript(exponent: number): string {
 	return `${exponent < 0 ? '⁻' : ''}${digits}`;
 }
 
+/** "1.90×10²⁷ kg": three fixed figures on the value's power of ten, for a
+ *  quantity whose neighbours run over many of them. Fixed, as Jupiter's "1.9"
+ *  beside Earth's "5.97" reads as less known. */
+export function scientificParts(value: number, unit: string): Parts {
+	return {
+		value: formatMeasuredQuantity({ value, power: powerOfTen(value, 3), fixedDecimals: 2 }),
+		unit
+	};
+}
+
 /** "1.7×10⁻⁶" — Intl's own scientific notation renders as "1.7E-6". */
 export function scientificNotation(value: number, digits = 2): string {
 	const exponent = powerOfTen(value, digits);
@@ -443,12 +453,35 @@ export interface RatioWords {
 
 const EARTH_WORDS: RatioWords = { times: m.earth_times, percent: m.earth_percent };
 
-/** The wording that goes with it — "14× Earth", "0.63% of Earth's" — against
- *  Earth unless another body's words are given. */
-export function earthRatio(ratio: number, words: RatioWords = EARTH_WORDS): string | null {
+/**
+ * The wording that goes with it — "14× Earth", "0.63% of Earth's" — against
+ * Earth unless another body's words are given. With errors, at their
+ * precision: "(1.055 ± 0.055)× Earth", the multiple bracketing its errors as
+ * it applies to them too.
+ */
+export function earthRatio(
+	ratio: number,
+	{
+		words = EARTH_WORDS,
+		upperError = null,
+		lowerError = null
+	}: { words?: RatioWords; upperError?: number | null; lowerError?: number | null } = {}
+): string | null {
 	const parts = earthRatioParts(ratio);
 	if (!parts) return null;
-	return 'multiple' in parts
-		? words.times({ value: parts.multiple })
-		: words.percent({ value: parts.percent });
+	if (!upperError && !lowerError) {
+		return 'multiple' in parts
+			? words.times({ value: parts.multiple })
+			: words.percent({ value: parts.percent });
+	}
+	const percent = 'percent' in parts;
+	const scale = percent ? 100 : 1;
+	const figure = formatMeasuredQuantity({
+		value: ratio * scale,
+		upperError: upperError && upperError * scale,
+		lowerError: lowerError && lowerError * scale,
+		roundLargeErrors: true,
+		...(percent ? { unit: percentParts(0).unit, tight: true } : { group: true })
+	});
+	return percent ? words.percent({ value: figure }) : words.times({ value: figure });
 }

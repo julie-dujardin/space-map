@@ -495,7 +495,7 @@ describe("a star's FLAME values", () => {
 		expect(physical(dwarf)).toEqual({
 			'Effective temperature': expect.any(String),
 			Diameter: '1,252,000 ± 28,000 km',
-			Luminosity: '0.75 L☉',
+			Luminosity: '2.87×10²⁶ W',
 			Mass: '1.889×10³⁰ kg (1.790–2.028×10³⁰ kg)',
 			Age: '4.5 Ga (2.0–8.0 Ga)',
 			'Gravitational redshift': '0.67 km/s'
@@ -512,6 +512,11 @@ describe("a star's FLAME values", () => {
 			.find((s) => s.key === 'physical')!
 			.rows.find((r) => r.label === 'Mass')!;
 		expect(plain(mass.tooltip!)).toBe("95.0% (90.0–102.0%) of the Sun's");
+		const luminosity = starSections(synthetic(dwarf))
+			.find((s) => s.key === 'physical')!
+			.rows.find((r) => r.label === 'Luminosity')!;
+		expect(plain(luminosity.tooltip!)).toBe("75% of the Sun's");
+		expect(luminosity.definition).toBe('Total power radiated by the star across all wavelengths');
 	});
 
 	it("drops a giant's mass, age and stage outside 1 to 2 solar masses", () => {
@@ -553,7 +558,7 @@ describe("a star's FLAME values", () => {
 		expect(physical(spec)).toEqual({
 			'Effective temperature': expect.any(String),
 			Diameter: '1,320,000 km',
-			Luminosity: '0.80 L☉',
+			Luminosity: '3.06×10²⁶ W',
 			Mass: '1.93×10³⁰ kg',
 			Age: '3.90 Ga'
 		});
@@ -569,7 +574,7 @@ describe("a star's FLAME values", () => {
 		expect(section(noMass, 'classification')['Evolutionary stage']).toBeUndefined();
 		const spec = { evolstage_flame_spec: 0, flags_flame_spec: '2', lum_flame_spec: 1 };
 		expect(section(spec, 'classification')['Evolutionary stage']).toBeUndefined();
-		expect(physical(spec).Luminosity).toBe('1.00 L☉');
+		expect(physical(spec).Luminosity).toBe('3.83×10²⁶ W');
 	});
 
 	it("does not expose a fit's distance input", () => {
