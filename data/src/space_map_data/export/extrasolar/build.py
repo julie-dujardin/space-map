@@ -44,7 +44,7 @@ from pathlib import Path
 import numpy as np
 
 from space_map_data.constants.stars.families import FAMILIES, PARENTS, STAR_FAMILY_PAGES
-from space_map_data.download.providers.stars import el_badry, msc, wds
+from space_map_data.download.providers.stars import el_badry, msc, orb6, sbx, wds
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
 from space_map_data.export.extrasolar import (
     census,
@@ -284,6 +284,24 @@ CREDITS = (
         "source": el_badry.DOI_URL,
         "license": "CC BY 4.0",
         "citation": "El-Badry, Rix & Heintz 2021, MNRAS 506, 2269",
+    },
+    # The orbits of the pairs.
+    {
+        "name": "Sixth Catalog of Orbits of Visual Binary Stars (ORB6)",
+        "organisation": "U.S. Naval Observatory",
+        "source": orb6.HOME_URL,
+        "attribution": wds.ACKNOWLEDGEMENT,
+        "citation": (
+            "Matson, Williams, Hartkopf & Mason, Sixth Catalog of Orbits of"
+            " Visual Binary Stars"
+        ),
+    },
+    {
+        "name": "The eXtended Catalogue of Spectroscopic Binary Orbits (SBX)",
+        "organisation": "Université libre de Bruxelles",
+        "source": sbx.HOME_URL,
+        "license": "CC BY 4.0",
+        "citation": "Merle et al. 2026, MNRAS 547, 2",
     },
     # One credit for every paper of the literature table. Each star's page
     # cites the paper of its value.
