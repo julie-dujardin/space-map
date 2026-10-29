@@ -8,7 +8,8 @@ import { makeStarBody } from './star-focus';
 
 function record(
 	radius: number | null | undefined,
-	extra: Record<string, number | null> = {}
+	extra: Record<string, number | null> = {},
+	cls = 'star'
 ): ExtrasolarRecord {
 	const values: Record<string, number | null> = {
 		ra: 45,
@@ -35,7 +36,7 @@ function record(
 	);
 	return {
 		id: 22137869,
-		metadata: { name: 'Test star' } as ExtrasolarRecord['metadata'],
+		metadata: { name: 'Test star', class: cls } as ExtrasolarRecord['metadata'],
 		home: 'point-source',
 		rows: new Map([['point-source', row]]),
 		credits: []
@@ -84,6 +85,16 @@ describe('a focused stellar photosphere', () => {
 		expect(makeStarBody(record(2, { radius_flame: 3 })).data.radiusKm).toBe(2_087_100);
 		expect(makeStarBody(record(2, { radius_flame: null })).data.radiusKm).toBe(1_391_400);
 	});
+
+	it.each(['binary star', 'multiple star'])(
+		'is not drawn for a point that holds several stars (%s)',
+		(cls) => {
+			const body = makeStarBody(record(2, { host_radius: 0.65 }, cls));
+			expect(body.data.radiusKm).toBeNaN();
+			expect(body.extrasolar?.radiusKm).toBeNull();
+			expect(body.extrasolar?.scene).not.toBeNull();
+		}
+	);
 
 	it.each([undefined, null, 0, -1, NaN, Infinity])(
 		'preserves an unknown radius (%s), including older exports',

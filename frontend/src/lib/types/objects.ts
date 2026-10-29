@@ -235,7 +235,8 @@ export interface StarAnchor {
 	absMag: number | null;
 	/** BP − RP; null when unknown. */
 	colour: number | null;
-	/** GSP-Phot radius in km and effective temperature in K; null when unknown. */
+	/** Radius in km of the sphere drawn, null for no sphere; effective
+	 *  temperature in K, null when unknown. */
 	radiusKm: number | null;
 	teff: number | null;
 }
@@ -377,7 +378,7 @@ const NOMINAL_RADIUS_KM_BY_TYPE: Partial<Record<ObjectType, number>> = {
 	// Metres-scale so min-zoom lets the camera reach the surface at the feature;
 	// arrival framing is sized from the feature diameter separately.
 	[ObjectType.SURFACE_FEATURE]: 0.001,
-	// The catalogue gives no size: the Sun's radius stands in.
+	// No drawn size: the Sun's radius stands in.
 	[ObjectType.EXTRASOLAR]: 695_700,
 	// Jupiter's radius stands in for a planet with no radius.
 	[ObjectType.EXOPLANET]: 71_492

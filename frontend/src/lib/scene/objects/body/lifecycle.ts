@@ -77,13 +77,15 @@ export function buildMajorBodies(
 			isAsteroid(t) ||
 			body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		const color = resolveBodyColor(body.data);
-		// A planet of another star draws no disc, so nothing anchors to its size.
-		const radius = t === ObjectType.EXOPLANET ? 0 : kmToScene(effectiveRadiusKm(body.data));
+		const radiusKnown = Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0;
+		// A planet of another star draws no disc, nor does an object of another
+		// star with no known size, so nothing anchors to their size.
+		const discless = t === ObjectType.EXOPLANET || (t === ObjectType.EXTRASOLAR && !radiusKnown);
+		const radius = discless ? 0 : kmToScene(effectiveRadiusKm(body.data));
 		const isStar = t === ObjectType.STAR;
 		// No measured size → halo only, no fallback sphere (model-bearing types
 		// use the overlay instead, so an unknown radius there is expected).
 		const modelBearing = isModelBearing(body);
-		const radiusKnown = Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0;
 		const noPhysical: 'model' | 'radius' | undefined =
 			!modelBearing && isNaturalBody(t) && !radiusKnown ? 'radius' : undefined;
 

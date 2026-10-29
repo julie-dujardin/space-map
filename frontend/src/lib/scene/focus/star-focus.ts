@@ -14,13 +14,17 @@ import {
  *  star there outshines the sky around it, and its neighbours stay a sky. */
 export const STAR_VIEW_DISTANCE = 1e4;
 
+/** The classes of a point that holds several stars. One sphere at the point
+ *  would show one star where there are more. */
+const SEVERAL_STARS: ReadonlySet<string | null> = new Set(['binary star', 'multiple star']);
+
 /** The starfield draws extrasolar bodies at their catalogue positions. The
  *  Metadata row says whether the object bundles hold a localized entry. */
 export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 	const home = homeRow(record);
 	const orbit = astrometricOrbit(record);
 	const place = home ? starPlace(home, orbit) : null;
-	const radiusKm = home ? starRadiusKm(home) : null;
+	const radiusKm = home && !SEVERAL_STARS.has(record.metadata.class) ? starRadiusKm(home) : null;
 	const data: BodyData = {
 		id: extrasolarObjectId(record.id),
 		name: record.metadata.name,
