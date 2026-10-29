@@ -3,10 +3,13 @@
 A star is in every family that its data supports. A published family comes
 from a catalogued classification only: an MK spectral type, a SIMBAD object
 type, the Metadata class or a GCVS variability type. An estimated family uses
-at least one estimate: the spectral type tag of ESP-ELS, the stage from the
-ESP-HS surface gravity (O and B stars) or from FLAME (other stars), the DSC
-white-dwarf probability, the ESP-ELS emission-line class or the class of a
-SPICY candidate.
+at least one estimate: a SIMBAD candidate type, the spectral type tag of
+ESP-ELS, the stage from the ESP-HS surface gravity (O and B stars) or from
+FLAME (other stars), the DSC white-dwarf probability, the ESP-ELS
+emission-line class or the class of a SPICY candidate.
+
+Where an object type and the MK class give stages that cannot both hold, one
+of them wins and the stage families of the other are dropped.
 
 A family states the spectral letter of a star, its stage, both or neither. A
 published family or MK value stops each estimate of what it states.
@@ -231,7 +234,8 @@ COMPOSITE_SPECTRAL_TYPE = re.compile(
 BARIUM_LETTERS = frozenset("FGKM")
 
 # SIMBAD object types (otypedef). SIMBAD's type tree does not follow these
-# families, so each code is listed. Candidate types (`?`) give no family.
+# families, so each code is listed. A candidate type (`?`) gives no
+# published family.
 OTYPE_FAMILIES: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(
         (
@@ -285,11 +289,58 @@ OTYPE_FAMILIES: dict[str, tuple[str, ...]] = {
     "WR*": ("wolf-rayet",),
 }
 
-# Metadata classes other than `star`.
+# SIMBAD candidate types. Each gives an estimated family only.
+CANDIDATE_OTYPE_FAMILIES: dict[str, tuple[str, ...]] = {
+    "BD?": ("brown-dwarf",),
+    "WD?": ("white-dwarf",),
+}
+# A brown dwarf has a Gaia M_G over this. All 244 BD* with a parallax do.
+# The 5 BD? stars with a G magnitude and a 5σ parallax do not, nor does the
+# bulge source star of OGLE-2012-BLG-0358L at its catalogue distance.
+BROWN_DWARF_MIN_ABSOLUTE_G = 13.0
+
+# Where an object type and the MK class give stages that cannot both hold,
+# the source that independent evidence finds right more often wins. The
+# loser drops its stage families. docs/export-format/extrasolar.md has the
+# numbers. A rule is the object type, the MK letters it covers (None for
+# all, "L3" for L3 and later) and the MK stages.
+_MAIN = frozenset({"main-sequence"})
+_SUBGIANT = frozenset({"subgiant"})
+_SUPERGIANT = frozenset({"supergiant", "hypergiant"})
+_GIANT = frozenset({"giant", "bright-giant"})
+_FGKM = tuple("FGKM")
+ConflictRule = tuple[str, tuple[str, ...] | None, frozenset[str]]
+# The object type wins.
+OTYPE_OVER_MK: tuple[ConflictRule, ...] = (
+    *((code, None, _MAIN | _SUBGIANT | _SUPERGIANT) for code in ("HB*", "RG*", "RR*")),
+    *((code, None, _SUPERGIANT) for code in ("AB*", "Mi*", "WV*")),
+    ("Or*", _FGKM, _MAIN),
+    ("TT*", _FGKM, _MAIN),
+    ("Ae*", ("B", "A", *_FGKM), _MAIN),
+    ("Ae*", ("A",), _SUBGIANT),
+    ("BD*", ("L3", "T", "Y"), _MAIN),
+)
+# The MK class wins.
+MK_OVER_OTYPE: tuple[ConflictRule, ...] = (
+    ("Y*O", ("B", "A", *_FGKM), _MAIN | _SUBGIANT),
+    ("Or*", ("B", "A"), _MAIN),
+    *((code, _FGKM, _SUBGIANT) for code in ("Or*", "TT*")),
+    *((code, None, _GIANT | _SUPERGIANT) for code in ("Y*O", "Or*", "TT*", "Ae*")),
+    ("s*b", None, _GIANT),
+)
+# An O or B first star with a WN class too (Ofpe/WN9, O2If*/WN5) is a
+# Wolf-Rayet star. Its object type wins over its MK letter and stage.
+WN_STAR_OTYPE = "WR*"
+WN_STAR_LETTERS = frozenset("OB")
+
+# Metadata classes other than `star`, by the object type that gives them.
+CLASS_OTYPES: dict[str, str] = {
+    "white dwarf": "WD*",
+    "brown dwarf": "BD*",
+    "pulsar": "Psr",
+}
 CLASS_FAMILIES: dict[str, tuple[str, ...]] = {
-    "white dwarf": ("white-dwarf",),
-    "brown dwarf": ("brown-dwarf",),
-    "pulsar": ("pulsar",),
+    name: OTYPE_FAMILIES[otype] for name, otype in CLASS_OTYPES.items()
 }
 
 # ESP-ELS emission-line classes. Be stars and planetary nebulae have no family.
@@ -366,10 +417,10 @@ ESPHS_MAX_LOGG = 4.5
 # such a star, and so does an "e" in one of its MK types (B2Ve).
 ESPHS_EXCLUDED_ELS = frozenset({"beStar"})
 ESPHS_EXCLUDED_OTYPES = frozenset({"Be*", "Be?", "Em*", "Ae*", "Ae?"})
-# A white-dwarf type of a system does not go to a row that Gaia finds redder
-# than this BP-RP and not a white dwarf (DSC). In a pair of a white dwarf and
-# an M dwarf, the M dwarf is often the brighter star. 1% of the catalogued
-# white dwarfs are this red.
+# A white-dwarf type of a system and the WD? type do not go to a row that
+# Gaia finds redder than this BP-RP and not a white dwarf (DSC). In a pair of
+# a white dwarf and an M dwarf, the M dwarf is often the brighter star. 1% of
+# the catalogued white dwarfs are this red.
 SYSTEM_WHITE_DWARF_MAX_BP_RP = 1.4
 
 # Each family adds these. The closure is transitive. A family without a parent

@@ -326,6 +326,15 @@ def identity(stars: hosts.Stars, catalogue: str, key: str) -> hosts.Identity:
     return found
 
 
+class TestStarClass:
+    """The Metadata class of a host from its SIMBAD type."""
+
+    def test_a_candidate_type_is_a_star(self):
+        found = hub(otype={"1": "WD*", "2": "WD?", "3": "BD?", "4": "Psr"})
+        classes = [found.star_class(oid) for oid in ("1", "2", "3", "4", None)]
+        assert classes == ["white dwarf", "star", "star", "pulsar", "star"]
+
+
 class TestStars:
     """Star identities across the catalogues."""
 
@@ -545,6 +554,7 @@ class TestStars:
                     stars.identities,
                     {0: "Prima"},
                     {},
+                    {lens: "BD?"},
                     lensed,
                     {lens: ("gaia", "dr3", "77")},
                     {},
@@ -563,6 +573,8 @@ class TestStars:
         assert archive["2.3"]["host_distance"] == 50.0
         assert archive["2.3"]["host_distance_error"] == 3.0
         assert archive["2.4"]["match_kind"] == hosts.UNMATCHED_KIND
+        assert archive["2.4"]["host_simbad_otype"] == "BD?"
+        assert archive["2.3"]["host_simbad_otype"] is None
         assert archive["2.4"]["claims"] == [
             {"catalogue": "gaia", "release": "dr3", "catalogue_id": "77"}
         ]

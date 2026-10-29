@@ -335,17 +335,29 @@ class TestNames:
         )
         assert SimbadList.read(directory).system_types() == {}
 
-    def test_a_candidate_with_a_class_keeps_its_type(self, tmp_path):
+    def test_a_candidate_takes_the_confirmed_type(self, tmp_path):
         directory = write_simbad(
             tmp_path / "simbad",
             [
-                star(1, RA, DEC, "V* X", otype="LP*", sp_type="M5III"),
+                star(1, RA, DEC, "X", otype="BD*"),
+                star(2, RA, DEC, "X A", otype="BD?", V=17.0),
+                star(3, RA, DEC, "X B", V=19.0),
+            ],
+            links=[(1, 2), (1, 3)],
+        )
+        assert SimbadList.read(directory).system_types() == {2: {"otype": "BD*"}}
+
+    def test_a_candidate_keeps_its_type_under_another_type(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "X", otype="RG*"),
                 star(2, RA, DEC, "X A", otype="WD?", V=7.0),
                 star(3, RA, DEC, "X B", V=9.0),
             ],
             links=[(1, 2), (1, 3)],
         )
-        assert SimbadList.read(directory).system_types() == {2: {"sp_type": "M5III"}}
+        assert SimbadList.read(directory).system_types() == {}
 
     def test_the_nearest_system_gives_the_types(self, tmp_path):
         directory = write_simbad(
@@ -972,10 +984,17 @@ class TestSystemsOfSimbad:
                 star(1, RA, DEC, "* alf CMa B", "Gaia DR3 294", otype="WD*"),
                 star(2, RA, DEC + 1, "Luhman 16", "Gaia DR3 40", otype="BD*"),
                 star(3, RA, DEC + 2, "* alf CMa", "HIP 32349", otype="SB*"),
+                # A candidate type is no class.
+                star(4, RA, DEC + 3, "WD 1", "Gaia DR3 41", otype="WD?"),
             ],
         )
         rows, _ = simbad.engine_rows(stars, stars.handed(), set(), {}, {})
-        assert rows["class"].to_pylist() == ["white dwarf", "brown dwarf", "star"]
+        assert rows["class"].to_pylist() == [
+            "white dwarf",
+            "brown dwarf",
+            "star",
+            "star",
+        ]
 
     def test_best_neighbours_with_pairs(self):
         best = gaia.BestNeighbours(np.array([5, 9]), np.array([50, 90]))

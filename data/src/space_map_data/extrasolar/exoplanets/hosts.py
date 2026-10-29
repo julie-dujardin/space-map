@@ -494,13 +494,15 @@ def host_rows(
     identities: list[Identity],
     names: dict[int, str],
     classes: dict[int, str],
+    otypes: dict[int, str],
     lensed: set[int],
     claims: dict[int, tuple[str, str, str]],
     long_names: dict[int, str],
 ) -> pa.Table:
     """The pass rows of one catalogue for these identities.
 
-    `names` holds the IAU name of a star, `classes` its class, `lensed` the
+    `names` holds the IAU name of a star, `classes` its class, `otypes` its
+    SIMBAD object type from the exoplanet name resolution, `lensed` the
     identities whose planets were found by microlensing, `claims` the claim
     that replaces the DR3 id or HIP number of an identity, and `long_names`
     the Hipparcos name of a star.
@@ -541,6 +543,7 @@ def host_rows(
                 "host_distance_error": _error(star, "distance"),
                 **{name: _value(star, name[5:]) for name in HOST_STAR_FIELDS},
                 "host_spectral_type": star.spectral_type,
+                "host_simbad_otype": otypes.get(identity.index),
                 "name": names.get(identity.index)
                 or long_form(star.name, long_names.get(identity.index)),
                 "class": classes.get(identity.index, "star"),
@@ -616,6 +619,7 @@ HOST_ROW_SCHEMA = pa.schema(
         ("host_distance_error", pa.float32()),
         *((name, pa.float32()) for name in HOST_STAR_FIELDS),
         ("host_spectral_type", pa.string()),
+        ("host_simbad_otype", pa.string()),
         ("name", pa.string()),
         ("class", pa.string()),
     ]

@@ -93,7 +93,7 @@
 		return { label, value: formatCompactNumber(n), tooltip: formatNumber(n) };
 	}
 
-	/** The share of a family's stars that only a Gaia estimate puts there. */
+	/** The share of a family's stars that only an estimate puts there. */
 	function estimatedShare(g: GlobalGroupData): Stat | null {
 		if (!g.member_count || !g.estimated_star_count) return null;
 		return {

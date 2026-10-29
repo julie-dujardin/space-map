@@ -360,6 +360,11 @@ def prepare(
     host_list = sorted(host_set)
     host_identities = [stars.identities[i] for i in host_list]
     classes = {i: hub.star_class(stars.identities[i].oid) for i in host_list}
+    otypes = {
+        i: hub.otype[oid]
+        for i in host_list
+        if (oid := stars.identities[i].oid) and oid in hub.otype
+    }
     lensed = hosts.found_by(stars, cats, {catalogues.MICROLENSING})
     claims: dict[int, tuple[str, str, str]] = {}
     by_hip = []
@@ -378,6 +383,7 @@ def prepare(
             host_identities,
             named.stars,
             classes,
+            otypes,
             lensed,
             claims,
             long_names,

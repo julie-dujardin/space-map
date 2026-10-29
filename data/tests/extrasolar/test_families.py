@@ -254,6 +254,56 @@ class TestPublished:
         assert published[2] == {"variable-star"}
         assert published[3] == set()
 
+    def test_candidate_types_are_estimates(self):
+        published, estimated = classify(
+            {"simbad_otype": "BD?"},
+            {"simbad_otype": "WD?"},
+            {"simbad_otype": "BD?", "sp_type": "M4V"},
+            {"host_simbad_otype": "WD?"},
+            {"host_simbad_otype": "WD*"},
+        )
+        assert published[:2] == [set(), set()]
+        assert estimated[0] == {"brown-dwarf", "dwarf"}
+        assert estimated[1] == {"white-dwarf", "dwarf"}
+        assert "brown-dwarf" not in published[2] | estimated[2]
+        assert estimated[3] == {"white-dwarf", "dwarf"}
+        # A host's confirmed type counts, also on a node, whose class does not.
+        assert published[4] == {"white-dwarf", "dwarf"}
+
+    def test_a_bright_candidate_is_no_brown_dwarf(self):
+        star = {"simbad_otype": "BD?", "parallax": 20.0, "parallax_error": 0.1}
+        star |= DWARF_FLAME
+        _, estimated = classify(
+            {**star, "phot_g_mean_mag": 11.0},
+            {**star, "phot_g_mean_mag": 17.0},
+            {**star, "phot_g_mean_mag": 11.0, "parallax_error": None},
+            {**star, "phot_g_mean_mag": 20.5, "parallax": 0.4, "parallax_error": 1.0},
+            # OGLE-2012-BLG-0358L: no 5σ parallax, but a catalogue distance.
+            {
+                "simbad_otype": "BD?",
+                "phot_g_mean_mag": 17.76,
+                "parallax": -0.15,
+                "parallax_error": 0.16,
+                "host_distance": 1760.0,
+            },
+            {**star, "phot_g_mean_mag": 17.0, "parallax": None, "distance": 20.0},
+        )
+        assert estimated[0] == {"main-sequence", "dwarf"}
+        assert "brown-dwarf" in estimated[1]
+        assert "brown-dwarf" in estimated[2]
+        assert "brown-dwarf" in estimated[3]
+        assert "brown-dwarf" not in estimated[4]
+        assert "brown-dwarf" in estimated[5]
+
+    def test_a_red_candidate_is_no_white_dwarf(self):
+        red = {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 13.2}
+        _, estimated = classify(
+            {"simbad_otype": "WD?"} | red,
+            {"simbad_otype": "WD?", "classprob_dsc_combmod_whitedwarf": 0.9} | red,
+        )
+        assert "white-dwarf" not in estimated[0]
+        assert "white-dwarf" in estimated[1]
+
     def test_an_object_type_stage_joins_the_mk_letter(self):
         published, _ = classify(
             {"simbad_sp_type": "K0", "simbad_otype": "MS*"},
@@ -265,6 +315,95 @@ class TestPublished:
     def test_metadata_class(self):
         published, _ = classify({}, classes=["brown dwarf"])
         assert published[0] == {"brown-dwarf", "dwarf"}
+
+    @pytest.mark.parametrize(
+        ("star", "families"),
+        [
+            ({"simbad_otype": "HB*", "simbad_sp_type": "A0V"}, {"horizontal-branch"}),
+            ({"simbad_otype": "RG*", "sp_type": "G8IV"}, {"red-giant", "giant"}),
+            ({"simbad_otype": "RG*", "sp_type": "G5Ib"}, {"red-giant", "giant"}),
+            (
+                {"simbad_otype": "TT*", "sp_type": "K3V"},
+                {"t-tauri", "pre-main-sequence", "variable-star"},
+            ),
+            (
+                {"simbad_otype": "Ae*", "sp_type": "B9V"},
+                {"herbig-ae-be", "pre-main-sequence"},
+            ),
+            (
+                {"simbad_otype": "BD*", "sp_type": "L3V"},
+                {"l-dwarf", "brown-dwarf", "dwarf"},
+            ),
+            (
+                {"simbad_otype": "BD*", "sp_type": "L3.V"},
+                {"l-dwarf", "brown-dwarf", "dwarf"},
+            ),
+            ({"simbad_otype": "WR*", "sp_type": "Ofpe/WN9"}, {"wolf-rayet"}),
+            ({"simbad_otype": "WR*", "sp_type": "O2If*/WN5"}, {"wolf-rayet"}),
+            ({"simbad_otype": "WR*", "sp_type": "O2.5If*/WN6+OB"}, {"wolf-rayet"}),
+            ({"simbad_system_otype": "WR*", "sp_type": "O2If*-WN6"}, {"wolf-rayet"}),
+        ],
+    )
+    def test_an_object_type_beats_an_mk_class(self, star, families):
+        published, estimated = classify(star)
+        assert published[0] == families
+        assert estimated[0] == set()
+
+    def test_a_class_beats_an_mk_class_as_its_object_type_does(self):
+        published, _ = classify({"sp_type": "L5V"}, classes=["brown dwarf"])
+        assert published[0] == {"l-dwarf", "brown-dwarf", "dwarf"}
+
+    @pytest.mark.parametrize(
+        ("star", "families"),
+        [
+            (
+                {"simbad_otype": "Y*O", "sp_type": "G8V"},
+                {"g-type-main-sequence", "main-sequence", "dwarf"},
+            ),
+            (
+                {"simbad_otype": "Or*", "sp_type": "B2Ve"},
+                {"b-type-main-sequence", "main-sequence", "dwarf", "variable-star"},
+            ),
+            ({"simbad_otype": "TT*", "sp_type": "G5IV"}, {"subgiant", "variable-star"}),
+            (
+                {"simbad_otype": "Or*", "sp_type": "B1III"},
+                {"blue-giant", "giant", "variable-star"},
+            ),
+            (
+                {"simbad_otype": "s*b", "sp_type": "B1II"},
+                {"blue-giant", "giant", "bright-giant"},
+            ),
+        ],
+    )
+    def test_an_mk_class_beats_an_object_type(self, star, families):
+        published, _ = classify(star)
+        assert published[0] == families
+
+    @pytest.mark.parametrize(
+        ("star", "kept"),
+        [
+            ({"simbad_otype": "BD*", "sp_type": "M8V"}, {"brown-dwarf", "red-dwarf"}),
+            (
+                {"simbad_otype": "BD*", "sp_type": "L1V"},
+                {"brown-dwarf", "main-sequence"},
+            ),
+            (
+                {"simbad_otype": "Or*", "sp_type": "O5V"},
+                {"pre-main-sequence", "main-sequence"},
+            ),
+            (
+                {"simbad_otype": "WR*", "sp_type": "O3If*"},
+                {"wolf-rayet", "blue-supergiant"},
+            ),
+            (
+                {"simbad_otype": "WR*", "sp_type": "B0I+WN"},
+                {"wolf-rayet", "blue-supergiant"},
+            ),
+        ],
+    )
+    def test_too_little_evidence_keeps_both(self, star, kept):
+        published, _ = classify(star)
+        assert kept <= published[0]
 
     def test_sources_add_up(self):
         published, _ = classify({"sp_type": "K1III", "simbad_otype": "LP*"})
@@ -579,6 +718,7 @@ class TestMasks:
             rules.LETTER_FAMILIES,
             rules.SPECTRAL_TYPE_WORDS,
             rules.OTYPE_FAMILIES,
+            rules.CANDIDATE_OTYPE_FAMILIES,
             rules.CLASS_FAMILIES,
             rules.ELS_FAMILIES,
             rules.GCVS_FAMILIES,
@@ -589,3 +729,18 @@ class TestMasks:
         named |= set(rules.STATES) | set(rules.PARENTS)
         named |= set(rules.LUMINOSITY_CLASSES.values())
         assert named <= set(rules.FAMILIES)
+
+    def test_every_conflict_rule_names_a_type_letter_and_stage(self):
+        conflicts = (*rules.OTYPE_OVER_MK, *rules.MK_OVER_OTYPE)
+        codes = {code for code, _, _ in conflicts} | {rules.WN_STAR_OTYPE}
+        assert codes <= set(rules.OTYPE_FAMILIES)
+        assert set(rules.CLASS_OTYPES.values()) <= set(rules.OTYPE_FAMILIES)
+        letters = {
+            letter.rstrip("0123456789.")
+            for _, given, _ in conflicts
+            for letter in given or ()
+        }
+        letters |= rules.WN_STAR_LETTERS
+        assert letters <= set(families.LETTER_CODE)
+        stages = {stage for _, _, given in conflicts for stage in given}
+        assert stages <= set(families.STAGE_CODE)

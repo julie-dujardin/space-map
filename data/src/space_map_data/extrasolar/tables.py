@@ -579,6 +579,7 @@ POINT_SOURCE = TableDef(
                     "host_k_mag",
                 ),
                 pa.field("host_spectral_type", pa.string()),
+                pa.field("host_simbad_otype", pa.string()),
             ),
             EXOPLANET_SOURCES,
         ),

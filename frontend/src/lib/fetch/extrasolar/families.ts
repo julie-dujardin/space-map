@@ -9,7 +9,7 @@ import type { ExtrasolarFamily } from './files';
 export interface StarFamilyLink {
 	/** The family's page, `star-<family>`. */
 	slug: string;
-	/** True when only a Gaia DR3 estimate puts the star in it. */
+	/** True when only an estimate puts the star in it. */
 	estimated: boolean;
 }
 

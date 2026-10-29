@@ -41,7 +41,7 @@ export interface MetadataRow {
 	/** The published star families: bit n is entry n of `families` in
 	 *  `metadata.json`. 0 where the tile has no such column. */
 	families: bigint;
-	/** The families that only a Gaia DR3 estimate gives. */
+	/** The families that only an estimate gives. */
 	familiesEstimated: bigint;
 	/** True when the site's object bundles hold an entry for the ID: its
 	 *  names in other languages, its Wikidata and Wikipedia text, the papers

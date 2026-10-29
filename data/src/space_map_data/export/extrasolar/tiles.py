@@ -83,8 +83,9 @@ DICTIONARY = frozenset(
 )
 # Columns that the export computes, after the columns of the table.
 COMPUTED = {METADATA.slug: families.FIELDS}
-# The Point source columns of the family masks and of the brightest stars.
-FAMILY_COLUMNS = (*families.COLUMNS, *render.MAG_COLUMNS)
+# The Point source columns of the family masks and of the brightest stars,
+# each once: the two share some.
+FAMILY_COLUMNS = tuple(dict.fromkeys((*families.COLUMNS, *render.MAG_COLUMNS)))
 # The length of each family list. A family page lists as many stars.
 LISTED_STARS = 20
 # The G, ID and name of a star of a family list.

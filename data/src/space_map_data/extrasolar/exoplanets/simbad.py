@@ -32,11 +32,11 @@ TABLES = {
     OEC: (PROVIDERS.OPEN_EXOPLANET_CATALOGUE.value, "systems", "systems"),
 }
 PULSAR = "pulsar"
+# The Metadata class of a SIMBAD type. A candidate type (BD?, WD?) gives no
+# class. The star families mark it as an estimate.
 CLASSES = {
     "BD*": "brown dwarf",
-    "BD?": "brown dwarf",
     "WD*": "white dwarf",
-    "WD?": "white dwarf",
     "Psr": PULSAR,
 }
 

@@ -432,7 +432,7 @@ interface GlobalGroupData {
   // below it, so it counts every star with a family, and it lists no stars.
   parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; absent on the root
   published_star_count?: number;    // stars that a catalogued classification puts in the family
-  estimated_star_count?: number;    // the other stars, which only a Gaia estimate puts there
+  estimated_star_count?: number;    // the other stars, which only an estimate (Gaia DR3 or a SIMBAD candidate type) puts there
 
   // Planet families (planet-<family>, one per family of the planet records'
   // `families` lists) only. The counts are the `families` entry of `planets`

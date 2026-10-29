@@ -14,8 +14,9 @@ from it.
 A row without a spectral type of its own takes the type of its nearest
 system that has one, when the row is the brightest component below that
 system and has a magnitude. A row whose object type is `*` or a candidate
-type without a class takes the object type of the same kind of system, when
-that is a type of one star. These types go to their own columns: "V* VY CMa"
+type takes the object type of the same kind of system, when that is a type
+of one star. A BD? or WD? row takes only a type that gives its family. These
+types go to their own columns: "V* VY CMa"
 (M5Iae, s*r) is the system of "NAME VY CMa A" (LP?). A composite spectral
 type names several stars, so a system that has one gives no type.
 
@@ -67,7 +68,11 @@ from typing import NamedTuple
 import numpy as np
 import pyarrow as pa
 
-from space_map_data.constants.stars.families import COMPOSITE_SPECTRAL_TYPE
+from space_map_data.constants.stars.families import (
+    CANDIDATE_OTYPE_FAMILIES,
+    COMPOSITE_SPECTRAL_TYPE,
+    OTYPE_FAMILIES,
+)
 from space_map_data.download.providers.stars import simbad_stars
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import Source
@@ -704,6 +709,7 @@ class SimbadList:
                 and otype not in self.candidates
                 and otype not in self.multiple
                 and not self._says_more(target.row["otype"])
+                and _confirms(otype, target.row["otype"])
             ):
                 offers["otype"] = otype
             for kind, value in offers.items():
@@ -729,9 +735,17 @@ class SimbadList:
         return levels
 
     def _says_more(self, otype: str) -> bool:
-        """Whether an object type says more than "star": not `*`, and not a
-        candidate type without a class."""
-        return otype != "*" and (otype not in self.candidates or otype in CLASSES)
+        """Whether an object type says more than "star": not `*` and not a
+        candidate type. A candidate type gives an estimate only, so the
+        confirmed type of its system says more."""
+        return otype != "*" and otype not in self.candidates
+
+
+def _confirms(otype: str, own: str) -> bool:
+    """Whether the object type `otype` gives every family of the candidate
+    type `own`. Another type does not replace the estimate of the candidate."""
+    wanted = CANDIDATE_OTYPE_FAMILIES.get(own, ())
+    return set(wanted) <= set(OTYPE_FAMILIES.get(otype, ()))
 
 
 def _apart(first: SimbadObject, second: SimbadObject) -> float | None:

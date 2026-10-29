@@ -3,9 +3,9 @@ Point source rows.
 
 Bit n of a mask is family n of `constants.stars.families.FAMILIES`.
 `families` holds the published families of a star, `families_estimated` the
-families that need an estimate, from Gaia or a list of candidates, and are
-not published. The rules are in that constants module. `spectral_type` is
-the MK type that the families read, so a client shows the type that gives
+families that need an estimate, from Gaia or a candidate type or list, and
+are not published. The rules are in that constants module. `spectral_type`
+is the MK type that the families read, so a client shows the type that gives
 them.
 """
 
@@ -17,6 +17,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from space_map_data.constants.stars import families as rules
+from space_map_data.extrasolar.placement import MIN_PARALLAX_SNR
 
 FIELDS = (
     pa.field("families", pa.uint64()),
@@ -31,7 +32,8 @@ SPECTRAL_TYPES = (
     "sp_type",
     "host_spectral_type",
 )
-OTYPES = ("simbad_otype", "simbad_system_otype")
+OTYPES = ("simbad_otype", "simbad_system_otype", "host_simbad_otype")
+CANDIDATE_OTYPES = ("simbad_otype", "host_simbad_otype")
 # The columns that `spectral_type` reads.
 SPECTRAL_COLUMNS = (
     *SPECTRAL_TYPES,
@@ -43,7 +45,12 @@ SPECTRAL_COLUMNS = (
 FLAME_RUNS = ("_spec", "")
 COLUMNS = (
     "id",
-    *dict.fromkeys((*SPECTRAL_COLUMNS, *OTYPES)),
+    *dict.fromkeys((*SPECTRAL_COLUMNS, *OTYPES, *CANDIDATE_OTYPES)),
+    "parallax",
+    "parallax_error",
+    "distance",
+    "host_distance",
+    "phot_g_mean_mag",
     "spectraltype_esphs",
     "flags_esphs",
     "in_oba_golden_sample",
@@ -170,7 +177,7 @@ _CLASS = re.compile(
     r"(?P<letter>MS|SC|OB|D[ABCOQZXP]*(?![a-z])|W[NCOR]|C(?=[-\d,(:\s]|$)"
     r"|S(?=[\d/:,\se]|$)|[RN](?=[\d\s:e.,]|$)|[LTY](?=\d)|[OBAFGKM](?!-rich))"
     r"(?:(?<=[OB])[NC](?=\d))?"
-    r"\(?[\d.]*\)?(?:[-/][OBAFGKM]?[\d.]+)?"
+    r"\(?(?P<subtype>[\d.]*)\)?(?:[-/][OBAFGKM]?[\d.]+)?"
     r"[\s:()\-_+]*"
     r"(?P<luminosity>0-Ia|Ia\+|Ia0|Iab|Ia|Ib|III|II|IV|VII|VI|V|I|0)?"
 )
@@ -179,6 +186,7 @@ _BARIUM = re.compile(r"Ba(?![a-z])")
 # B(0/3)ne, B1IV-Ve, B[e]). He, Fe, pec and weak are other marks.
 _EMISSION = re.compile(r"(?<![A-Za-z])[knpqv]*e[kpqv]*(?![a-z])")
 _ROMAN = re.compile(r"[IV]+[ab]*")
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
 def parse_spectral_type(text: str) -> tuple[str | None, str | None, np.uint64]:
@@ -187,15 +195,20 @@ def parse_spectral_type(text: str) -> tuple[str | None, str | None, np.uint64]:
     A composite type gives its first star. A letter is a key of LETTER_CODE,
     a stage a key of STAGE_CODE.
     """
+    return _parse(text)[:3]
+
+
+def _parse(text: str) -> tuple[str | None, str | None, np.uint64, float | None]:
+    """`parse_spectral_type` and the subtype of the letter."""
     for word, word_families in rules.SPECTRAL_TYPE_WORDS.items():
         if text.startswith(word):
-            return None, None, mask_of(word_families)
+            return None, None, mask_of(word_families), None
     am = _AM.match(text)
     if am is not None:
         text = am["hydrogen"] + text[am.end() :]
     found = _CLASS.match(text)
     if found is None:
-        return None, None, NONE
+        return None, None, NONE, None
     letter = found["letter"]
     if letter == "OB":
         letter = "B"
@@ -215,13 +228,19 @@ def parse_spectral_type(text: str) -> tuple[str | None, str | None, np.uint64]:
         and letter in rules.BARIUM_LETTERS
         and _BARIUM.search(text, found.end()) is not None
     )
-    return letter, stage, BIT["barium-star"] if barium else NONE
+    number = _NUMBER.match(found["subtype"])
+    subtype = None if number is None else float(number[0])
+    return letter, stage, BIT["barium-star"] if barium else NONE, subtype
+
+
+def _first_star(text: str) -> str:
+    second = rules.COMPOSITE_SPECTRAL_TYPE.search(text)
+    return text if second is None else text[: second.start()]
 
 
 def _emission_lines(text: str) -> tuple[int]:
     """1 when the first star of an MK spectral type has emission lines, else 0."""
-    second = rules.COMPOSITE_SPECTRAL_TYPE.search(text)
-    first = text if second is None else text[: second.start()]
+    first = _first_star(text)
     found = _CLASS.match(first)
     if found is None:
         return (0,)
@@ -229,18 +248,26 @@ def _emission_lines(text: str) -> tuple[int]:
     return (int(_EMISSION.search(tail) is not None),)
 
 
-def _spectral_codes(text: str) -> tuple[int, int, np.uint64]:
-    letter, stage, extra = parse_spectral_type(text)
+# The codes of `_spectral_codes` for a null type.
+NO_CODES = (0, 0, 0, 0, 0)
+
+
+def _spectral_codes(text: str) -> tuple[int, int, np.uint64, int, int]:
+    """The letter and stage codes, the other families, the subtype in tenths
+    and 1 when the first star has a WN class too (O2If*/WN5)."""
+    letter, stage, extra, subtype = _parse(text)
     return (
         0 if letter is None else LETTER_CODE[letter],
         0 if stage is None else STAGE_CODE[stage],
         extra,
+        0 if subtype is None else round(subtype * 10),
+        int("WN" in _first_star(text)),
     )
 
 
 def of_spectral_type(text: str) -> list[str]:
     """The published families of a star of this MK spectral type, in bit order."""
-    letter, stage, extra = _spectral_codes(text)
+    letter, stage, extra, *_ = _spectral_codes(text)
     mask = closure(np.array([extra | TABLE[letter, stage]], np.uint64))[0]
     return [family for family in rules.FAMILIES if mask & BIT[family]]
 
@@ -322,17 +349,22 @@ def _isin(column: pa.ChunkedArray, values: frozenset[str]) -> np.ndarray:
     return found.fill_null(False).to_numpy(zero_copy_only=False)
 
 
-def _system_types(rows: pa.Table) -> dict[str, pa.ChunkedArray]:
-    """The columns of the types of its SIMBAD system, null in each row that
-    they do not hold for. A white-dwarf type does not hold for a row that Gaia
-    finds red and not a white dwarf; the system's other column still can."""
-    sp_type, otype = rows["simbad_system_sp_type"], rows["simbad_system_otype"]
-    parsed = _by_value(sp_type, _spectral_codes, (0, 0, 0))
-    letter, stage = parsed[:, 0].astype(np.int64), parsed[:, 1].astype(np.int64)
+def _red(rows: pa.Table) -> np.ndarray:
+    """The rows that Gaia finds red and not a white dwarf."""
     colour = _numbers(rows, "phot_bp_mean_mag") - _numbers(rows, "phot_rp_mean_mag")
     found = _numbers(rows, "classprob_dsc_combmod_whitedwarf")
     red = colour > rules.SYSTEM_WHITE_DWARF_MAX_BP_RP
-    red &= ~(found > rules.MIN_WHITE_DWARF_PROBABILITY)
+    return red & ~(found > rules.MIN_WHITE_DWARF_PROBABILITY)
+
+
+def _system_types(rows: pa.Table) -> dict[str, pa.ChunkedArray]:
+    """The columns of the types of its SIMBAD system, null in each row that
+    they do not hold for. A white-dwarf type does not hold for a `_red` row;
+    the system's other column still can."""
+    sp_type, otype = rows["simbad_system_sp_type"], rows["simbad_system_otype"]
+    parsed = _by_value(sp_type, _spectral_codes, NO_CODES)
+    letter, stage = parsed[:, 0].astype(np.int64), parsed[:, 1].astype(np.int64)
+    red = _red(rows)
     none = pa.scalar(None, pa.string())
 
     def holding(column: pa.ChunkedArray, given: np.ndarray) -> pa.ChunkedArray:
@@ -356,18 +388,14 @@ def _first_type(rows: pa.Table, system: dict[str, pa.ChunkedArray]) -> pa.Chunke
 
 
 def _esphs_stage(
-    rows: pa.Table,
-    system: dict[str, pa.ChunkedArray],
-    letter: np.ndarray,
-    emission: np.ndarray,
+    rows: pa.Table, letter: np.ndarray, excluded: np.ndarray
 ) -> np.ndarray:
     """The ESP-HS stage code of each row with the `letter` code: main sequence
-    or giant by log g. `emission` marks an MK type with emission lines."""
+    or giant by log g. `excluded` marks an emission-line star by its MK type
+    or object type."""
     teff, logg = _numbers(rows, "teff_esphs"), _numbers(rows, "logg_esphs")
     low, high = ESPHS_TEFF[letter].T
-    excluded = emission | _isin(rows["classlabel_espels"], rules.ESPHS_EXCLUDED_ELS)
-    for name in OTYPES:
-        excluded |= _isin(system.get(name, rows[name]), rules.ESPHS_EXCLUDED_OTYPES)
+    excluded = excluded | _isin(rows["classlabel_espels"], rules.ESPHS_EXCLUDED_ELS)
     holds = (teff >= low) & (teff <= high) & (logg <= rules.ESPHS_MAX_LOGG)
     holds &= ~excluded
     main = logg >= rules.ESPHS_MIN_MAIN_SEQUENCE_LOGG
@@ -392,6 +420,106 @@ def _esp_letter(rows: pa.Table) -> np.ndarray:
     return np.where(needs & ~golden, 0, codes)
 
 
+# A bit for each object type of a conflict rule.
+CONFLICT_BIT = {
+    code: np.uint64(1 << n)
+    for n, code in enumerate(
+        sorted(
+            {code for code, _, _ in (*rules.OTYPE_OVER_MK, *rules.MK_OVER_OTYPE)}
+            | {rules.WN_STAR_OTYPE}
+        )
+    )
+}
+_UNCOVERED = np.iinfo(np.int64).max
+
+
+def _compiled(rule: rules.ConflictRule) -> tuple[np.uint64, np.ndarray, np.ndarray]:
+    """The object type bit of a rule, the lowest subtype in tenths that it
+    covers for each letter code, and the stage codes that it covers."""
+    code, letters, stages = rule
+    floor = np.full(len(LETTERS) + 1, _UNCOVERED if letters else 0, np.int64)
+    for entry in letters or ():
+        letter = entry.rstrip("0123456789.")
+        floor[LETTER_CODE[letter]] = round(float(entry[len(letter) :] or 0) * 10)
+    covered = np.zeros(len(STAGES) + 1, bool)
+    covered[[STAGE_CODE[stage] for stage in stages]] = True
+    return CONFLICT_BIT[code], floor, covered
+
+
+OTYPE_OVER_MK = tuple(_compiled(rule) for rule in rules.OTYPE_OVER_MK)
+MK_OVER_OTYPE = tuple(
+    (*_compiled(rule), ~(STAGE_MASK & mask_of(rules.OTYPE_FAMILIES[rule[0]])))
+    for rule in rules.MK_OVER_OTYPE
+)
+WN_LETTERS = [LETTER_CODE[letter] for letter in sorted(rules.WN_STAR_LETTERS)]
+
+
+def _settle(
+    otypes: np.ndarray, parsed: np.ndarray, families: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The MK letter and stage codes and the object type families of each
+    row, without the losing side of a conflict between them.
+
+    `otypes` holds the CONFLICT_BIT of each row, `parsed` its
+    `_spectral_codes`.
+    """
+    letter, stage = parsed[:, 0].astype(np.int64), parsed[:, 1].astype(np.int64)
+    subtype = parsed[:, 3].astype(np.int64)
+
+    def covers(bit: np.uint64, floor: np.ndarray, at: np.ndarray) -> np.ndarray:
+        return ((otypes & bit) != 0) & (subtype >= floor[letter]) & at[stage]
+
+    lost = np.zeros(len(letter), bool)
+    for bit, floor, at in OTYPE_OVER_MK:
+        lost |= covers(bit, floor, at)
+    for bit, floor, at, kept in MK_OVER_OTYPE:
+        families = np.where(covers(bit, floor, at), families & kept, families)
+    wn_star = (parsed[:, 4] != 0) & np.isin(letter, WN_LETTERS)
+    wolf_rayet = wn_star & ((otypes & CONFLICT_BIT[rules.WN_STAR_OTYPE]) != 0)
+    return (
+        np.where(wolf_rayet, 0, letter),
+        np.where(lost | wolf_rayet, 0, stage),
+        families,
+    )
+
+
+def _otype_codes(value: str) -> tuple[np.uint64, np.uint64, np.uint64, int]:
+    """The OTYPE_FAMILIES mask, the CONFLICT_BIT and the
+    CANDIDATE_OTYPE_FAMILIES mask of an object type, and 1 when it stops the
+    ESP-HS stage."""
+    return (
+        mask_of(rules.OTYPE_FAMILIES.get(value, ())),
+        CONFLICT_BIT.get(value, NONE),
+        mask_of(rules.CANDIDATE_OTYPE_FAMILIES.get(value, ())),
+        int(value in rules.ESPHS_EXCLUDED_OTYPES),
+    )
+
+
+def _class_codes(value: str) -> tuple[np.uint64, np.uint64]:
+    """The CLASS_FAMILIES mask of a Metadata class and the CONFLICT_BIT of the
+    object type that gives it."""
+    otype = rules.CLASS_OTYPES.get(value, "")
+    return mask_of(rules.CLASS_FAMILIES.get(value, ())), CONFLICT_BIT.get(otype, NONE)
+
+
+def _gaia_allows(rows: pa.Table, candidate: np.ndarray) -> np.ndarray:
+    """The families of the `candidate` masks that Gaia does not rule out. A
+    star brighter than BROWN_DWARF_MIN_ABSOLUTE_G is no brown dwarf. M_G comes
+    from a 5σ parallax, else from the distance group, else from the exoplanet
+    catalogue. A `_red` star is no white dwarf."""
+    parallax, error = _numbers(rows, "parallax"), _numbers(rows, "parallax_error")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        distance = np.where(
+            parallax / error > MIN_PARALLAX_SNR, 1000 / parallax, np.nan
+        )
+    for name in ("distance", "host_distance"):
+        distance = np.where(np.isnan(distance), _numbers(rows, name), distance)
+    absolute = _numbers(rows, "phot_g_mean_mag") - 5 * np.log10(distance / 10)
+    bright = absolute < rules.BROWN_DWARF_MIN_ABSOLUTE_G
+    candidate = np.where(bright, candidate & ~BIT["brown-dwarf"], candidate)
+    return np.where(_red(rows), candidate & ~BIT["white-dwarf"], candidate)
+
+
 def masks(
     rows: pa.Table, classes: pa.Array | pa.ChunkedArray
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -401,14 +529,23 @@ def masks(
     """
     n = rows.num_rows
     system = _system_types(rows)
-    spectral = _first_type(rows, system)
-    parsed = _by_value(spectral, _spectral_codes, (0, 0, 0))
-    mk_letter, mk_stage = parsed[:, 0].astype(np.int64), parsed[:, 1].astype(np.int64)
-    published = parsed[:, 2] | TABLE[mk_letter, mk_stage]
+    otype = {
+        name: _by_value(system.get(name, rows[name]), _otype_codes, (0, 0, 0, 0))
+        for name in dict.fromkeys((*OTYPES, *CANDIDATE_OTYPES))
+    }
+    parsed = _by_value(_first_type(rows, system), _spectral_codes, NO_CODES)
+    given, conflicts = _by_value(classes, _class_codes, (0, 0)).T
+    excluded = np.zeros(n, bool)
     for name in OTYPES:
-        published |= _masks(system.get(name, rows[name]), rules.OTYPE_FAMILIES)
-    published |= _masks(classes, rules.CLASS_FAMILIES)
-    published |= _gcvs(rows)
+        given |= otype[name][:, 0]
+        conflicts |= otype[name][:, 1]
+        excluded |= otype[name][:, 3] != 0
+    candidate = np.zeros(n, np.uint64)
+    for name in CANDIDATE_OTYPES:
+        candidate |= otype[name][:, 2]
+    candidate = _gaia_allows(rows, candidate)
+    mk_letter, mk_stage, given = _settle(conflicts, parsed, given)
+    published = parsed[:, 2] | TABLE[mk_letter, mk_stage] | given | _gcvs(rows)
     # A stage that an object type gives joins the MK letter as an MK stage
     # does. A family that states a letter, such as red-giant, keeps its stage
     # to that letter.
@@ -428,7 +565,12 @@ def masks(
     spicy = _masks(rows["class_spicy"], rules.SPICY_FAMILIES)
     labels = np.zeros(n, np.uint64)
     # Of two labels that state the same, the first in this order counts.
-    for label in (els, np.where(white_dwarf, BIT["white-dwarf"], NONE), spicy):
+    for label in (
+        candidate,
+        els,
+        np.where(white_dwarf, BIT["white-dwarf"], NONE),
+        spicy,
+    ):
         kept = np.where(states_of(label) & fixed, NONE, label)
         labels |= kept
         fixed |= states_of(kept)
@@ -436,14 +578,11 @@ def masks(
     # A tag that fails its quality check gives no letter, so FLAME gives the
     # stage. For such O and B tags, FLAME is right as often as ESP-HS.
     letter = np.where(fixed & rules.LETTER, mk_letter, _esp_letter(rows))
-    emission = np.zeros(n, bool)
     for name in SPECTRAL_TYPES:
-        found = _by_value(system.get(name, rows[name]), _emission_lines, (0,))
-        emission |= found[:, 0] != 0
+        emission = _by_value(system.get(name, rows[name]), _emission_lines, (0,))
+        excluded |= emission[:, 0] != 0
     estimate = np.where(
-        ESPHS_LETTER[letter],
-        _esphs_stage(rows, system, letter, emission),
-        _flame_stage(rows),
+        ESPHS_LETTER[letter], _esphs_stage(rows, letter, excluded), _flame_stage(rows)
     )
     stage = np.where(fixed & rules.STAGE, stage_known, estimate)
     every = closure(TABLE[letter, stage] | labels | published)

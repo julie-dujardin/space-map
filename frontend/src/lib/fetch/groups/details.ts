@@ -105,7 +105,7 @@ export interface GlobalGroupData {
 	/** Star families only: the families that contain this one. The breadcrumb
 	 *  climbs to the first. */
 	parent_families?: string[];
-	/** Star families only: the stars that only a Gaia estimate puts in the
+	/** Star families only: the stars that only an estimate puts in the
 	 *  family, of `member_count`. */
 	estimated_star_count?: number;
 	/** Organization-only: role tags (operator and/or manufacturer) for badges. */

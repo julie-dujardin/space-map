@@ -102,7 +102,7 @@ class GroupExtraStats:
     radiation_sources: list[dict] | None = None
 
     # Star families: the stars that a catalogued classification puts in the
-    # family, and the others that a Gaia estimate puts there. member_count is
+    # family, and the others that an estimate puts there. member_count is
     # their sum, as no star is in both.
     published_star_count: int | None = None
     estimated_star_count: int | None = None
