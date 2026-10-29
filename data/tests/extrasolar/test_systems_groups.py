@@ -94,14 +94,33 @@ class TestGroupKind:
         ] == [PRIMARY]
 
     def test_background_members(self):
-        """MSC 03494-4421 A at ϖ 11.1 mas beside two faint stars at 1.3 and 1.8."""
+        """MSC 03494-4421 A at ϖ 11.1 mas beside two faint stars at 1.3 and 1.8.
+        The veto takes B from its primary A first, so only A is beside the
+        point."""
         own = fact(OWN, 10.0, 10.0, 8.92, parallax=11.13)
         a = fact(A, 10.0, 10.0 + 162 / 3600, 18.06, parallax=1.29)
         b = fact(B, 10.0, 10.0 + 165 / 3600, 19.37, parallax=1.76)
+        out = reduce_group(own, a, b)
+        assert [kind for kind, _, _ in out.events] == [
+            "parallaxes disagree",
+            f"{GROUP_OBJECT}: {BACKGROUND}",
+        ]
+        ((_, text),) = group_events(out)
+        assert text == (
+            f"{SIMBAD} 76600 AB: {OWN} is a point of its own beside [{A}];"
+            " parallax 11.13 ± 0.11 mas, 101 1.29 ± 0.01 mas"
+        )
+
+    def test_background_members_that_agree(self):
+        """Two faint stars at one distance stay a pair. Both are beside the
+        point."""
+        own = fact(OWN, 10.0, 10.0, 8.92, parallax=11.13)
+        a = fact(A, 10.0, 10.0 + 162 / 3600, 18.06, parallax=1.29)
+        b = fact(B, 10.0, 10.0 + 165 / 3600, 19.37, parallax=1.30)
         ((kind, text),) = group_events(reduce_group(own, a, b))
         assert kind == BACKGROUND
         assert text.endswith(
-            "parallax 11.13 ± 0.11 mas, 101 1.29 ± 0.01 mas, 102 1.76 ± 0.02 mas"
+            "parallax 11.13 ± 0.11 mas, 101 1.29 ± 0.01 mas, 102 1.30 ± 0.01 mas"
         )
 
     def test_a_point_that_holds_each_member(self):

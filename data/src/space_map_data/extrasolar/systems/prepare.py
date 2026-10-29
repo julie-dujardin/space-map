@@ -44,12 +44,12 @@ from space_map_data.extrasolar.systems.nodes import (
     WDS,
     WDS_ID,
 )
+from space_map_data.extrasolar.systems.parallax import parallaxes_disagree
 from space_map_data.extrasolar.systems.reduce import (
     POINT,
     Interior,
     Reduced,
     TreeReducer,
-    parallaxes_disagree,
 )
 from space_map_data.extrasolar.systems.resolve import (
     LETTER,

@@ -14,11 +14,11 @@ from space_map_data.extrasolar.systems.nodes import (
     UNVERIFIED,
     VISUAL_ORBIT,
 )
-from space_map_data.extrasolar.systems.reduce import (
+from space_map_data.extrasolar.systems.parallax import (
     parallaxes_disagree,
-    resolves,
     same_distance,
 )
+from space_map_data.extrasolar.systems.reduce import resolves
 from space_map_data.extrasolar.systems.resolve import FACTS, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
 from tests.extrasolar.systems_fakes import (

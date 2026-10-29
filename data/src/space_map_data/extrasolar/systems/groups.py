@@ -4,8 +4,9 @@ SIMBAD, the MSC or WDS can have one object for a whole pair beside the
 objects of its stars. When that object has a point of its own, the point is
 one of three kinds:
 - PRIMARY: the primary star, or a point that holds the light of each member.
-- BACKGROUND: a member's parallax clearly disagrees with the point's. That
-  member is not of the system.
+- BACKGROUND: a member's parallax and the point's clearly disagree
+  (`disagree`). That member is not at the distance of the point. The veto
+  removes each member that disagrees with its primary before this test.
 - COMBINED: the light of its members. Its astrometry is not Gaia's, each
   member is a Gaia point, and its magnitude is the combined magnitude of the
   members within COMBINED_MAG. A Gaia source is one star, so it never holds
@@ -18,6 +19,7 @@ event and to the report.
 import math
 from collections.abc import Sequence
 
+from space_map_data.extrasolar.systems.parallax import disagree
 from space_map_data.extrasolar.systems.resolve import GAIA_ASTROMETRY, Fact
 
 GROUP_OBJECT = "group object beside its members"
@@ -26,26 +28,11 @@ KINDS = (PRIMARY, BACKGROUND, COMBINED)
 # A G estimate from Hipparcos and a variable star can be off by this many
 # magnitudes.
 COMBINED_MAG = 0.75
-# Two parallaxes clearly disagree when they differ by more than this many
-# combined errors and by more than this share of the larger one.
-DISAGREE_SIGMA = 5.0
-DISAGREE_SHARE = 0.1
 
 
 def combined_mag(mags: Sequence[float]) -> float:
     """The magnitude of the summed light."""
     return -2.5 * math.log10(sum(10 ** (-0.4 * mag) for mag in mags))
-
-
-def disagree(first: Fact, second: Fact) -> bool:
-    """Whether two measured parallaxes clearly disagree."""
-    if not (first.parallax_error > 0 and second.parallax_error > 0):
-        return False
-    apart = abs(first.parallax - second.parallax)
-    allowed = DISAGREE_SIGMA * math.hypot(first.parallax_error, second.parallax_error)
-    return apart > allowed and apart > DISAGREE_SHARE * max(
-        abs(first.parallax), abs(second.parallax)
-    )
 
 
 def group_kind(own: Fact | None, members: Sequence[Fact | None]) -> tuple[str, str]:
