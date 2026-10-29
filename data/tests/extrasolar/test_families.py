@@ -5,7 +5,7 @@ import pyarrow as pa
 import pytest
 
 from space_map_data.constants.stars import families as rules
-from space_map_data.export.extrasolar import families
+from space_map_data.extrasolar import families
 from space_map_data.extrasolar.tables import POINT_SOURCE
 
 

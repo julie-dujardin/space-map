@@ -29,7 +29,6 @@ from space_map_data.export.ephemeris import (
     ephemeris_accuracy_for,
     ephemeris_archive_for,
 )
-from space_map_data.export.extrasolar.families import most_specific, of_spectral_type
 from space_map_data.export.images import collect_object_images
 from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
@@ -96,6 +95,7 @@ from space_map_data.export.wikidata import (
     clean_label,
     entity_label,
 )
+from space_map_data.extrasolar.families import most_specific, of_spectral_type
 from space_map_data.models.object import (
     ModelProvenance,
     Object,

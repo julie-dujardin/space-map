@@ -29,8 +29,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from space_map_data.constants.stars.families import FAMILIES, ROOT_FAMILY
-from space_map_data.export.extrasolar import container, families, render
+from space_map_data.export.extrasolar import container, render
 from space_map_data.export.extrasolar.container import Column, Written
+from space_map_data.extrasolar import families
 from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of

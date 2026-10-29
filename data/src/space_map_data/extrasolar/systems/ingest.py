@@ -34,7 +34,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from space_map_data.download.providers.stars import el_badry, msc, wds
-from space_map_data.export.extrasolar import families
+from space_map_data.extrasolar import families
 from space_map_data.extrasolar.engine import (
     ExtensionResult,
     IngestRun,

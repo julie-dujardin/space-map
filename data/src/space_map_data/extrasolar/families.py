@@ -1,5 +1,6 @@
-"""The family masks and the spectral type of the Metadata tiles, from the
-Point source rows.
+"""The family masks and the spectral type of a star, from its Point source
+rows. The extrasolar export writes them to the Metadata tiles, and the star
+systems of the ingest read the spectral type.
 
 Bit n of a mask is family n of `constants.stars.families.FAMILIES`.
 `families` holds the published families of a star, `families_estimated` the

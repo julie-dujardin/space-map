@@ -23,7 +23,6 @@ from space_map_data.constants.stars.families import (
     SUN_SPECTRAL_TYPE,
 )
 from space_map_data.export.extrasolar.build import families_file, served
-from space_map_data.export.extrasolar.families import of_spectral_type
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.extrasolar.tiles import LISTED_STARS
 from space_map_data.export.groups.family_pages import (
@@ -35,6 +34,7 @@ from space_map_data.export.groups.family_pages import (
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX, StarObject
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.extrasolar.families import of_spectral_type
 from space_map_data.extrasolar.tables import METADATA
 from space_map_data.utils.content_stamp import content_stamp
 from space_map_data.utils.paths import EXTRASOLAR_DIR

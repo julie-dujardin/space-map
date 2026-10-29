@@ -23,8 +23,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from cdshealpix import nested
 
-from space_map_data.export.extrasolar import families
-from space_map_data.extrasolar import sky
+from space_map_data.extrasolar import families, sky
 from space_map_data.extrasolar.exoplanets.catalogues import EU, OEC
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.ids import CELL_LEVEL, cell_of

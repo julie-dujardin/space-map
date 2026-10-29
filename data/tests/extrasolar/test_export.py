@@ -12,7 +12,6 @@ from space_map_data.export.extrasolar import (
     build,
     census,
     container,
-    families,
     render,
     systems,
     tiles,
@@ -24,7 +23,7 @@ from space_map_data.export.extrasolar.build import (
 )
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
-from space_map_data.extrasolar import ids
+from space_map_data.extrasolar import families, ids
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
 from space_map_data.extrasolar.tables import (
