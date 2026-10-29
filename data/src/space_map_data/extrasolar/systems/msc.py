@@ -4,9 +4,10 @@ A row of sys.tsv is one pair: its Primary and Secondary labels and the label
 of its Parent, the component one level up that the pair makes. `*` is the
 root and `t` a trapezium, a group of components with no hierarchy. A pair
 with parent `X`, or of type `X`, is refuted or optical, and is left out. A pair
-whose only evidence is common proper motion (`c`, or `C` with no criterion but
-`m`) is unverified, as in the WDS. A row of comp.tsv gives the catalogue values
-of one label, which can be a pair (Castor A is Aa and Ab).
+whose only evidence is common proper motion (`c` or `C` with no criterion but
+`m`) is unverified, as in the WDS. The criteria `p`, `h` and `r` are other
+evidence. A row of comp.tsv gives the catalogue values of one label, which can
+be a pair (Castor A is Aa and Ab).
 
 A zero in a numeric column means "unknown" (Readme note 4), with two
 exceptions. An eccentricity of 0 is a circular orbit. One axis of a proper
