@@ -38,6 +38,7 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'lamost-dr10': m.source_lamost_dr10_name,
 	'gcvs-5.1': m.source_gcvs_name,
 	spicy: m.source_spicy_name,
+	'atnf-psrcat': m.source_atnf_name,
 	xhip: m.source_xhip_name,
 	simbad: m.source_simbad_name,
 	'simbad-hip': m.source_simbad_name,
@@ -75,6 +76,7 @@ export const CREDIT_PAGES = {
 	lamostMStars: 'lamost.org/dr10/',
 	gcvs: '//www.sai.msu.su/gcvs/',
 	spicy: '/10.26131/IRSA556',
+	atnf: '/research/pulsar/psrcat',
 	hipparcos: '/I/311',
 	hipparcosPhotometry: '/I/239',
 	xhip: '/V/137D',
@@ -159,12 +161,13 @@ export function starCredits(
 		if (row.text('fidelity_source')) pages.add('fidelity');
 		if (row.text('orbit_source')) pages.add('gaia').add('orbits');
 		if (row.text('xgboost_source')) pages.add('xpMetallicity');
-		// PASTEL and the GCVS join by SIMBAD ids, LAMOST by its M-star catalogue.
+		// PASTEL, the GCVS and ATNF join by SIMBAD ids, LAMOST by its M-star catalogue.
 		if (row.text('pastel_source')) pages.add('pastel').add('simbad');
 		if (row.text('apogee_source')) pages.add('apogee');
 		if (row.text('lamost_source')) pages.add('lamost').add('lamostMStars');
 		if (row.text('gcvs_source')) pages.add('gcvs').add('simbad');
 		if (row.text('spicy_source')) pages.add('spicy');
+		if (row.text('atnf_source')) pages.add('atnf').add('simbad');
 		if (row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
 	const out = creditsOf(pages, record.credits);

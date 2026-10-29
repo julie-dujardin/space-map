@@ -41,6 +41,7 @@ describe('star sources', () => {
 		expect(starSourceName('iau-nameexoworlds')).toBe('IAU NameExoWorlds');
 		expect(starSourceName('gcvs-5.1')).toBe('GCVS 5.1 (Samus et al. 2017)');
 		expect(starSourceName('spicy')).toBe('SPICY (Kuhn et al. 2021)');
+		expect(starSourceName('atnf-psrcat')).toBe('ATNF Pulsar Catalogue (Manchester et al. 2005)');
 		expect(starSourceName('unknown')).toBe('unknown');
 	});
 
@@ -105,7 +106,12 @@ describe('star sources', () => {
 			{ name: 'LAMOST M stars', organisation: 'd', source: 'https://www.lamost.org/dr10/v2.0/' },
 			{ name: 'APOGEE DR17', organisation: 'e', source: 'https://www.sdss4.org/dr17/irspec/' },
 			{ name: 'GCVS 5.1', organisation: 'f', source: 'http://www.sai.msu.su/gcvs/gcvs/' },
-			{ name: 'SPICY', organisation: 'g', source: 'https://doi.org/10.26131/IRSA556' }
+			{ name: 'SPICY', organisation: 'g', source: 'https://doi.org/10.26131/IRSA556' },
+			{
+				name: 'ATNF Pulsar Catalogue',
+				organisation: 'h',
+				source: 'https://www.atnf.csiro.au/research/pulsar/psrcat'
+			}
 		];
 		const labels = (column: string) =>
 			starCredits(
@@ -116,6 +122,7 @@ describe('star sources', () => {
 		expect(labels('apogee_source')).toEqual(['APOGEE DR17']);
 		expect(labels('gcvs_source')).toEqual(['SIMBAD', 'GCVS 5.1']);
 		expect(labels('spicy_source')).toEqual(['SPICY']);
+		expect(labels('atnf_source')).toEqual(['SIMBAD', 'ATNF Pulsar Catalogue']);
 	});
 });
 

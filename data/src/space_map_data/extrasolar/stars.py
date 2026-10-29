@@ -25,8 +25,8 @@ rows of a pass: the Gaia rows by source_id, PASTEL and the GCVS also the
 Hipparcos rows by HIP number, and ATNF only the SIMBAD rows by oid. `limit`
 reads only the first Gaia chunks that hold that many stars, and the Hipparcos
 stars and names in the same pixels. Such an ingest is partial: it retires
-nothing, but it still rebuilds the tables from what it read. It never goes to REGISTRY_ROOT, because every later
-ingest keeps the IDs that it mints.
+nothing, but it still rebuilds the tables from what it read. It never goes
+to REGISTRY_ROOT, because every later ingest keeps the IDs that it mints.
 """
 
 import logging

@@ -405,6 +405,7 @@ describe('the identifiers of the catalogues that join the Point source row', () 
 			{ name: 'apogee_id', type: 'string', values: ['2M03003170+0008161'] },
 			{ name: 'lamost_id', type: 'string', values: ['J112838.67+551809.8'] },
 			{ name: 'gcvs_name', type: 'string', values: ['V645 Cen'] },
+			{ name: 'atnf_name', type: 'string', values: ['J0146+6145'] },
 			{ name: 'spicy_id', type: 'uint32', values: [12345] }
 		]);
 		expect(identifiers(record)).toEqual([
@@ -412,6 +413,11 @@ describe('the identifiers of the catalogues that join the Point source row', () 
 			['APOGEE DR17', '2M03003170+0008161', undefined],
 			['LAMOST DR10', 'J112838.67+551809.8', undefined],
 			['GCVS', 'V645 Cen', 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=V*%20V645%20Cen'],
+			[
+				'ATNF',
+				'J0146+6145',
+				'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=PSR%20J0146%2B6145'
+			],
 			['SPICY', '12345', undefined]
 		]);
 	});

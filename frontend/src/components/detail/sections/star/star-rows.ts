@@ -71,13 +71,14 @@ const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
 };
 
 /** The catalogues that join the Point source row hold their ids in its columns.
- *  PASTEL and the GCVS name a star as SIMBAD does, so SIMBAD finds the star by
- *  that name. `simbad` is what SIMBAD writes before it, null for no link. */
+ *  PASTEL, the GCVS and ATNF name a star as SIMBAD does, so SIMBAD finds the
+ *  star by that name. `simbad` is what SIMBAD writes before it, null for no link. */
 const JOINED_IDS: [column: string, label: () => string, simbad: string | null][] = [
 	['pastel_designation', m.star_xid_pastel, ''],
 	['apogee_id', m.star_xid_apogee, null],
 	['lamost_id', m.star_xid_lamost, null],
-	['gcvs_name', m.star_xid_gcvs, 'V* ']
+	['gcvs_name', m.star_xid_gcvs, 'V* '],
+	['atnf_name', m.star_xid_atnf, 'PSR ']
 ];
 
 /** Cross-ids not shown. A SIMBAD oid and a NASA Exoplanet Archive row are
