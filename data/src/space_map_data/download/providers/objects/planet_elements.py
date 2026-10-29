@@ -1,11 +1,11 @@
 """Mean heliocentric orbital elements for the major planets, from JPL Horizons.
 
-The planets have no SBDB row, so the export reads their semi-major axis,
-inclination, eccentricity and sidereal period from here. Each value is the
-mean of the Horizons osculating elements over one orbital period, which
-removes the periodic terms. The export loads the JSON like a static table.
-The frame is heliocentric (CENTER=Sun), the ecliptic (REF_PLANE=ECLIPTIC) of
-J2000.
+The planets have no SBDB row, so the Solar System minimap and the planet
+family rules read their semi-major axis, inclination, eccentricity and
+sidereal period from here. Each value is the mean of the Horizons osculating
+elements over one orbital period, which removes the periodic terms. The
+export loads the JSON like a static table. The frame is heliocentric
+(CENTER=Sun), the ecliptic (REF_PLANE=ECLIPTIC) of J2000.
 """
 
 import csv

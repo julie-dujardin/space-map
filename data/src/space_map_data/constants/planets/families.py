@@ -25,6 +25,7 @@ PLANET_FAMILY_PAGES: dict[str, tuple[str, ...]] = {
     "mini-neptune": ("Q691537", "Q97359320"),
     "super-puff": ("Q83148567",),
     "giant-planet": ("Q21857994",),
+    "ice-giant": ("Q1319599",),
     "super-neptune": ("Q28453859",),
     "hot-neptune": ("Q420490",),
     "gas-giant": ("Q121750",),
@@ -54,7 +55,9 @@ ROOT_FAMILY = "classification"
 # here gets the root.
 PARENTS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(("sub-earth", "mega-earth"), ("terrestrial-planet",)),
-    **dict.fromkeys(("super-neptune", "hot-neptune", "gas-giant"), ("giant-planet",)),
+    **dict.fromkeys(
+        ("ice-giant", "super-neptune", "hot-neptune", "gas-giant"), ("giant-planet",)
+    ),
     **dict.fromkeys(
         (
             "super-jupiter",
@@ -106,10 +109,10 @@ SUB_EARTH_RADIUS = (0.0, 1.0)
 MEGA_EARTH_MASS = (10.0, INF)
 MEGA_EARTH_RADIUS = (2.1, _above(5.0))
 MEGA_EARTH_DENSITY = (_above(EARTH_DENSITY), INF)
-# Super-Earth: 1-10 M⊕ (Valencia et al. 2007), from Earth's radius to the
-# radius gap at 2 R⊕ (Borucki et al. 2011).
-SUPER_EARTH_MASS = (1.0, _above(10.0))
-SUPER_EARTH_RADIUS = (1.0, 2.0)
+# Super-Earth: 1.9-10 M⊕ (Charbonneau et al. 2009) and 1.25-2 R⊕, the
+# super-Earth size class of Borucki et al. 2011. Earth is not one.
+SUPER_EARTH_MASS = (1.9, _above(10.0))
+SUPER_EARTH_RADIUS = (1.25, 2.0)
 # Mini-Neptune: from the radius gap to Neptune's radius (Fulton et al. 2017).
 MINI_NEPTUNE_RADIUS = (2.0, NEPTUNE_RADIUS)
 # Super-puff: a few Earth masses in more than Neptune's radius (Libby-Roberts
@@ -120,6 +123,11 @@ SUPER_PUFF_RADIUS = (_above(NEPTUNE_RADIUS), INF)
 # Neptune's radius.
 GIANT_MASS = (10.0, INF)
 GIANT_RADIUS = (NEPTUNE_RADIUS, INF)
+# Ice giant: a giant planet that is more than half rock and ice by mass, the
+# Rock-Ice Giant class of Russell 2021 (arXiv:2108.03343, Table 1). Rock and
+# ice are everything but hydrogen and helium. Only the interior models of the
+# Solar System give this fraction.
+ICE_GIANT_HEAVY_ELEMENTS = (_above(0.5), _above(0.99))
 # Super-Neptune: 20-100 M⊕ and 4-8 R⊕ (Wikipedia, "Super-Neptune").
 SUPER_NEPTUNE_MASS = (20.0, _above(100.0))
 SUPER_NEPTUNE_RADIUS = (4.0, _above(8.0))
@@ -132,8 +140,9 @@ HOT_NEPTUNE_MASS = (10.0, GAS_GIANT_MASS[0])
 HOT_NEPTUNE_RADIUS = (NEPTUNE_RADIUS, 8.0)
 # Hot orbit: under 10 d (Wang et al. 2015; Dawson & Johnson 2018).
 HOT_PERIOD = (0.0, 10.0)
-# Super-Jupiter: more massive than Jupiter.
-SUPER_JUPITER_MASS = (_above(EARTH_MASSES_PER_JUPITER), INF)
+# Super-Jupiter: more than 2 MJ (Kanodia 2024, arXiv:2412.03416). Jupiter is
+# not one.
+SUPER_JUPITER_MASS = (_above(2 * EARTH_MASSES_PER_JUPITER), INF)
 # Warm Jupiter: 10-200 d (Huang, Wu & Triaud 2016; Dawson & Johnson 2018).
 WARM_PERIOD = (10.0, _above(200.0))
 # Cold Jupiter: beyond 1 AU.

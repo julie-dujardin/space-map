@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 # Bump to invalidate all tier-B outputs (bundle/label/feature/message shape
 # changes that no input fingerprint captures).
-TIER_B_VERSION = 11
+TIER_B_VERSION = 12
 
 _TIER_B_META = "tier_b.meta.json"
 _CHEB_META = "position/chebyshev.meta.json"
@@ -127,8 +127,8 @@ def tier_b_fingerprint(
       tree.
     - `kernels`: the attitude blocks of the object bundles, and the radii and
       GMs of the SPICE tables.
-    - `planet_elements`: the Horizons mean elements, which the minimap and the
-      moons chart read.
+    - `planet_elements`: the Horizons mean elements, which the minimap, the
+      moons chart and the planet families of the Solar System read.
     - `position_sources`: what the traverses add to the bundles. A route that
       only grows rewrites none.
     - `stars`: the star entries, which each registry ingest links again, and

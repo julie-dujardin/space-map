@@ -23,6 +23,8 @@ Evidence:
 - A rule of several parts is published when every part is published, and
   estimated when one part is estimated and none fails.
 - Only the IAU class `planet` gets families.
+- `heavy_element_fraction` is the mass fraction of everything but hydrogen
+  and helium. Only the records of the Solar System planets have it.
 """
 
 import math
@@ -194,6 +196,7 @@ def verdicts(record: dict, host: dict) -> dict[str, Verdict]:
     rho = density(record, m, r)
     period = known(record, "period")
     axis = known(record, "semi_major_axis")
+    giant = size(m, r, rules.GIANT_MASS, rules.GIANT_RADIUS)
     gas = size(m, r, rules.GAS_GIANT_MASS, rules.GAS_GIANT_RADIUS)
     return {
         "terrestrial-planet": terrestrial(m, r),
@@ -208,7 +211,13 @@ def verdicts(record: dict, host: dict) -> dict[str, Verdict]:
         "super-puff": max(
             judge(m, rules.SUPER_PUFF_MASS), judge(r, rules.SUPER_PUFF_RADIUS)
         ),
-        "giant-planet": size(m, r, rules.GIANT_MASS, rules.GIANT_RADIUS),
+        "giant-planet": giant,
+        "ice-giant": max(
+            giant,
+            judge(
+                known(record, "heavy_element_fraction"), rules.ICE_GIANT_HEAVY_ELEMENTS
+            ),
+        ),
         "super-neptune": size(
             m, r, rules.SUPER_NEPTUNE_MASS, rules.SUPER_NEPTUNE_RADIUS
         ),

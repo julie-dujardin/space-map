@@ -132,6 +132,7 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.seo_pages import write_seo_pages
 from space_map_data.export.sitemap import available_planet_pages, write_sitemap
 from space_map_data.export.small_body_color import log_color_stats
+from space_map_data.export.solar_planets import page_families, solar_planet_records
 from space_map_data.export.spacecraft import write_spacecraft
 from space_map_data.export.status import write_status
 from space_map_data.export.systems import (
@@ -145,6 +146,7 @@ from space_map_data.export.systems import (
     load_nut_prec_angles,
     load_nut_prec_phase_degrees,
     load_orientation,
+    load_planet_elements,
     load_radii,
     load_ring_metadata,
     load_skybox_metadata,
@@ -1159,6 +1161,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         moon_sources=load_moon_sources(session, units),
         ring_moon_ids=load_ring_moon_ids(session),
         ring_metadata=ring_metadata,
+        planet_families=page_families(
+            solar_planet_records(radii, gms, load_planet_elements(DOWNLOAD_DIR))
+        ),
     )
 
     write_systems_global(out_dir, gms, nut_prec_angles, nut_prec_phase_degrees)

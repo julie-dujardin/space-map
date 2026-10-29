@@ -248,6 +248,7 @@ def build_chunk_object_data(
     ring_moon_ids: dict[str, str],
     ring_metadata: dict[str, list[dict]],
     moon_sources: MoonSourceBlocks,
+    planet_families: dict[str, list[str]],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O)."""
     out = ChunkObjectData()
@@ -297,6 +298,7 @@ def build_chunk_object_data(
             ring_moon_ids,
             ring_metadata,
             moon_sources,
+            planet_families,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -512,6 +514,7 @@ def _build_global(
     ring_moon_ids: dict[str, str],
     ring_metadata: dict[str, list[dict]],
     moon_sources: MoonSourceBlocks,
+    planet_families: dict[str, list[str]],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -580,6 +583,9 @@ def _build_global(
             star_rules.FAMILIES,
             star_rules.PARENTS,
         )
+    # The planet families of a Solar System planet, for the tiles of its page.
+    if families := planet_families.get(obj.id):
+        data["planet_families"] = families
     # Factor on the lunar weight of the ground, where a disk-resolved fit is published.
     weight_scale = lunar_weight_scale(obj.id)
     if weight_scale is not None:

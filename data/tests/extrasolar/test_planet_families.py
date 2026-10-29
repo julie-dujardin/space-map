@@ -59,12 +59,23 @@ class TestFamilies:
         assert _published(record) == {ROOT_FAMILY, "super-earth"}
 
     def test_a_small_super_earth_is_terrestrial(self):
-        record = _planet(mass=1.2 * ME, radius=1.1 * RE)
+        record = _planet(mass=2.5 * ME, radius=1.3 * RE)
         assert _published(record) == {
             ROOT_FAMILY,
             "terrestrial-planet",
             "super-earth",
         }
+
+    def test_the_super_earth_bounds(self):
+        """From 1.9 M⊕ and from 1.25 R⊕: an Earth twin is no super-Earth."""
+        assert _published(_planet(mass=1.0 * ME, radius=1.0 * RE)) == {
+            ROOT_FAMILY,
+            "terrestrial-planet",
+        }
+        assert "super-earth" not in _published(_planet(mass=1.85 * ME))
+        assert "super-earth" in _published(_planet(mass=1.9 * ME))
+        assert "super-earth" not in _published(_planet(radius=1.24 * RE))
+        assert "super-earth" in _published(_planet(radius=1.25 * RE))
 
     def test_mega_earth(self):
         record = _planet(mass=20 * ME, radius=2.5 * RE)
@@ -97,7 +108,7 @@ class TestFamilies:
         }
 
     def test_a_hot_puffy_super_jupiter(self):
-        record = _planet(mass=1.5, radius=1.8, period=3.0, semi_major_axis=0.04)
+        record = _planet(mass=2.5, radius=2.2, period=3.0, semi_major_axis=0.04)
         assert _published(record) == {
             ROOT_FAMILY,
             "giant-planet",
@@ -127,8 +138,31 @@ class TestFamilies:
             "eccentric-jupiter",
         }
 
+    def test_super_jupiter_is_above_2_mj(self):
+        """Jupiter's mass, and 2 MJ, are not a super-Jupiter."""
+        for mass in (1.0, 2.0):
+            assert "super-jupiter" not in _published(_planet(mass=mass, radius=1.0))
+        assert "super-jupiter" in _published(_planet(mass=2.01, radius=1.0))
+
+    def test_ice_giant(self):
+        """A giant planet more than half and at most 99 % heavy elements by
+        mass."""
+        record = _planet(mass=15 * ME, radius=4 * RE, heavy_element_fraction=0.82)
+        assert _published(record) == {ROOT_FAMILY, "giant-planet", "ice-giant"}
+        record = _planet(mass=1.0, radius=1.0, heavy_element_fraction=0.07)
+        assert "ice-giant" not in _published(record)
+        record = _planet(mass=15 * ME, radius=4 * RE, heavy_element_fraction=1.0)
+        assert _published(record) == {ROOT_FAMILY, "giant-planet"}
+
+    def test_ice_giant_is_unknown_without_a_composition(self):
+        """No catalogue gives the heavy elements, so no exoplanet is one."""
+        record = _planet(mass=15 * ME, radius=4 * RE)
+        assert families_of(record, STAR) == ([ROOT_FAMILY, "giant-planet"], [])
+        record = _planet(mass=15 * ME, radius=4 * RE, estimated=("radius",))
+        assert "ice-giant" not in _estimated(record)
+
     def test_ultra_short_period(self):
-        record = _planet(radius=1.2 * RE, period=0.5)
+        record = _planet(radius=1.3 * RE, period=0.5)
         assert _published(record) == {
             ROOT_FAMILY,
             "terrestrial-planet",
@@ -259,7 +293,7 @@ class TestEvidence:
         assert "puffy-planet" not in _published(record)
 
     def test_a_minimum_mass_passes_at_least(self):
-        record = _planet(mass=2.0, mass_kind="minimum", period=3.0)
+        record = _planet(mass=2.5, mass_kind="minimum", period=3.0)
         assert _published(record) == {
             ROOT_FAMILY,
             "giant-planet",
@@ -277,7 +311,7 @@ class TestEvidence:
         record = _planet(mass=1.07 * ME, mass_kind="minimum", insolation=0.65)
         assert families_of(record, STAR | {"teff": 3000.0}) == (
             [ROOT_FAMILY, "goldilocks-planet"],
-            ["terrestrial-planet", "super-earth"],
+            ["terrestrial-planet"],
         )
 
     def test_an_upper_limit_on_a_minimum_mass_gives_no_bound(self):
@@ -293,7 +327,7 @@ class TestEvidence:
         assert families_of(record, STAR) == ([], [])
 
     def test_terrestrial_by_mass_when_the_radius_does_not_settle_it(self):
-        record = _planet(mass=1 * ME, radius=3 * RE, limits=("radius<",))
+        record = _planet(mass=1.95 * ME, radius=3 * RE, limits=("radius<",))
         assert _published(record) == {
             ROOT_FAMILY,
             "terrestrial-planet",
@@ -350,4 +384,5 @@ class TestListed:
         }
         assert by_slug["mini-neptune"]["wikidata"] == ["Q691537", "Q97359320"]
         assert by_slug[ROOT_FAMILY]["parents"] == []
+        assert by_slug["ice-giant"]["parents"] == ["giant-planet"]
         assert by_slug["hot-jupiter"]["published"] == 0

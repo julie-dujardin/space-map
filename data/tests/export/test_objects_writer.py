@@ -5,7 +5,9 @@ import math
 from unittest.mock import MagicMock
 
 import orjson
+import pytest
 
+from space_map_data.export.objects import writer
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.writer import (
     K_GLOBAL,
@@ -323,3 +325,57 @@ class TestRadiiBlock:
         # Bienor's pole is a 2017 paper, its ellipsoid a 2024 one — the size
         # rows must credit the latter.
         assert radii_block(2054598)["radii_reference"]["url"].endswith("202450833")
+
+
+class TestPlanetFamilies:
+    """A Solar System planet's page carries its planet families."""
+
+    @staticmethod
+    def _global(obj, planet_families: dict[str, list[str]]) -> dict:
+        entities = MagicMock()
+        entities.get_entity.return_value = None
+        entities.get_referenced.return_value = None
+        names = (
+            "nasa_science_urls",
+            "orientation",
+            "radii",
+            "gms",
+            "nut_prec",
+            "texture_metadata",
+            "alternate_metadata",
+            "clouds_metadata",
+            "displacement_metadata",
+            "model_sources",
+            "probe_kernel_sources",
+            "probe_ephemeris_accuracy",
+            "probe_position_sources",
+            "parent_names",
+            "taxonomy",
+            "ring_moon_ids",
+            "ring_metadata",
+            "moon_sources",
+        )
+        empty: dict = {name: {} for name in names}
+        return writer._build_global(
+            obj,
+            {},
+            entities,
+            MagicMock(),
+            nomenclature_body_ids=set(),
+            planet_families=planet_families,
+            **empty,
+        )
+
+    @pytest.fixture(autouse=True)
+    def _no_images(self, monkeypatch):
+        monkeypatch.setattr(writer, "collect_object_images", lambda object_id: None)
+
+    def test_a_planet(self):
+        families = {"naif-399": ["terrestrial-planet", "goldilocks-planet"]}
+        data = self._global(make_object(), families)
+        assert data["planet_families"] == ["terrestrial-planet", "goldilocks-planet"]
+
+    def test_another_body_has_none(self):
+        moon = make_object(id="naif-301", name="Moon", object_type=ObjectType.moon)
+        data = self._global(moon, {"naif-399": ["terrestrial-planet"]})
+        assert "planet_families" not in data

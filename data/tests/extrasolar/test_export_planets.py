@@ -234,6 +234,8 @@ class TestPlanetFiles:
             "published": 6,
             "estimated": 0,
         }
+        assert counts["ice-giant"]["parents"] == ["giant-planet"]
+        assert counts["ice-giant"]["published"] == 0
         assert counts["warm-jupiter"]["published"] == 5
         assert counts["cold-jupiter"]["published"] == 1
         assert counts["eccentric-jupiter"]["published"] == 2

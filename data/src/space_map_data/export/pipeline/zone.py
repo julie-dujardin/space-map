@@ -87,6 +87,8 @@ class ObjectDataContext:
     ring_metadata: dict[str, list[dict]]
     # SBDB / AsterSat / Johnston blocks for asteroid moons and their hosts.
     moon_sources: MoonSourceBlocks
+    # Object.id -> the most specific planet families of a Solar System planet.
+    planet_families: dict[str, list[str]]
 
 
 @dataclass
@@ -163,6 +165,7 @@ def build_zone_object_data(
         moon_sources=ctx.moon_sources,
         ring_moon_ids=ctx.ring_moon_ids,
         ring_metadata=ctx.ring_metadata,
+        planet_families=ctx.planet_families,
     )
 
 

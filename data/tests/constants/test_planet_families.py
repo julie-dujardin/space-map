@@ -44,6 +44,7 @@ class TestTree:
             ROOT_FAMILY,
         }
         assert _ancestors("sub-earth") == {"terrestrial-planet", ROOT_FAMILY}
+        assert _ancestors("ice-giant") == {"giant-planet", ROOT_FAMILY}
         assert _ancestors("super-earth") == {ROOT_FAMILY}
 
 
@@ -63,6 +64,9 @@ class TestPages:
 
     def test_the_root_page_is_exoplanet(self):
         assert PLANET_FAMILY_PAGES[ROOT_FAMILY] == ("Q44559",)
+
+    def test_ice_giant(self):
+        assert PLANET_FAMILY_PAGES["ice-giant"] == ("Q1319599",)
 
     def test_mini_neptune_is_before_sub_neptune(self):
         assert PLANET_FAMILY_PAGES["mini-neptune"] == ("Q691537", "Q97359320")

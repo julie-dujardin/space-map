@@ -565,14 +565,15 @@ The rules, in Earth masses (M⊕) and radii (R⊕), with 1 MJ = 317.828 M⊕ and
 | `terrestrial-planet` | root | R ≤ 1.5 R⊕; when the radius does not decide, M < 2 M⊕ |
 | `sub-earth` | `terrestrial-planet` | M < 1 M⊕ and R < 1 R⊕ |
 | `mega-earth` | `terrestrial-planet` | M ≥ 10 M⊕, 2.1 ≤ R ≤ 5 R⊕, density above Earth's (5.51 g/cm³) |
-| `super-earth` | root | 1 ≤ M ≤ 10 M⊕ and 1 ≤ R < 2 R⊕ |
+| `super-earth` | root | 1.9 ≤ M ≤ 10 M⊕ and 1.25 ≤ R < 2 R⊕ |
 | `mini-neptune` | root | 2 ≤ R < 3.88 R⊕ (Neptune's radius) |
 | `super-puff` | root | M < 10 M⊕ and R > 3.88 R⊕ |
 | `giant-planet` | root | M ≥ 10 M⊕ and R ≥ 3.88 R⊕ |
+| `ice-giant` | `giant-planet` | giant planet, more than half (to 99 %) of its mass heavier than helium; no catalogue gives this, so only the Solar System planets have it |
 | `super-neptune` | `giant-planet` | 20 ≤ M ≤ 100 M⊕ and 4 ≤ R ≤ 8 R⊕ |
 | `hot-neptune` | `giant-planet` | 10 M⊕ ≤ M < 0.25 MJ, 3.88 ≤ R < 8 R⊕, period under 10 days |
 | `gas-giant` | `giant-planet` | M ≥ 0.25 MJ and R ≥ 8 R⊕ |
-| `super-jupiter` | `gas-giant` | gas giant, M > 1 MJ |
+| `super-jupiter` | `gas-giant` | gas giant, M > 2 MJ |
 | `hot-jupiter` | `gas-giant` | gas giant, period under 10 days |
 | `warm-jupiter` | `gas-giant` | gas giant, period 10 to 200 days |
 | `cold-jupiter` | `gas-giant` | gas giant, semi-major axis above 1 AU |

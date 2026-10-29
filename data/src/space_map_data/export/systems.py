@@ -664,7 +664,8 @@ def load_planet_elements(download_dir: Path) -> dict[int, dict]:
     """Mean planet elements (Horizons) → {naif_id: {"a": AU, "i": deg, "e",
     "period": d}}.
 
-    The major planets have no SBDB row, so the minimap reads them here.
+    The major planets have no SBDB row, so the minimap and the planet family
+    rules read them here.
     """
     path = planet_elements_path(download_dir)
     if not path.exists():
