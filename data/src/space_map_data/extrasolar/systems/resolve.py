@@ -160,8 +160,20 @@ class Facts:
     def column(self, name: str, keys: np.ndarray) -> np.ndarray:
         """A numeric column for these keys, NaN where none."""
         at = self.at(keys)
-        values = self.table[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
-        return np.where(at >= 0, values[np.maximum(at, 0)], np.nan)
+        hit = at >= 0
+        found = np.full(at.shape, np.nan)
+        values = self.table[name].take(pa.array(at[hit]))
+        found[hit] = values.cast(pa.float64()).fill_null(np.nan).to_numpy()
+        return found
+
+    def has(self, name: str, keys: np.ndarray, values: frozenset[str]) -> np.ndarray:
+        """Whether the text column for each key is one of `values`."""
+        at = self.at(keys)
+        hit = at >= 0
+        found = np.zeros(at.shape, bool)
+        texts = self.table[name].take(pa.array(at[hit]))
+        found[hit] = pc.is_in(texts, value_set=pa.array(sorted(values))).to_numpy()
+        return found
 
     def texts(self, name: str, keys: np.ndarray) -> list[str | None]:
         at = self.at(keys)

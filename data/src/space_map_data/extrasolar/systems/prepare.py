@@ -9,8 +9,10 @@
    object leaves every tree.
 3. Each source's trees become groups of points and interiors (`reduce`). El-
    Badry's pairs become groups of two points, and the parallax veto of the
-   trees applies to them too. The Gaia orbits become interiors of two stars.
-   A Gaia orbit whose companion is a planet is no interior.
+   trees applies to them too. A close pair can throw off the astrometry of a
+   point, so the veto skips a point with a Gaia orbit, a SIMBAD close type or
+   an interior. The Gaia orbits become interiors of two stars. A Gaia orbit
+   whose companion is a planet is no interior.
 4. A SIMBAD component inside the light of another point joins that point,
    in every source.
 5. The groups merge into one tree per system (`merge`).
@@ -406,31 +408,35 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     if inputs.orbits is not None:
         orbit_kept = orbit_interiors(inputs.orbits, orbit_keys, periods, reduced)
         orbit_kept &= ~np.isin(orbit_keys, list(dropped_keys))
-    orbits = frozenset(orbit_keys[orbit_kept].tolist())
+    close_keys = np.array(sorted(close), np.int64)
     offsets = []
-    offset = 0
+    block = 0
     for table in trees:
         source = table["source"][0].as_py()
-        offsets.append(offset)
+        offsets.append(block)
         TreeReducer(
             table,
             _rank(source),
             found[source],
             facts,
-            offset,
+            block,
             reduced,
             dropped_keys,
-            orbits,
+            _close_pairs(orbit_keys[orbit_kept], close_keys),
         ).run()
-        offset += VALUE_BLOCK
+        block += VALUE_BLOCK
     remap = _absorptions(reduced)
     _apply(reduced, remap)
     el_keys = (_mapped(el_keys[0], remap), _mapped(el_keys[1], remap))
     orbit_keys = _mapped(orbit_keys, remap)
     for side in el_keys:
         side[np.isin(side, list(dropped_keys))] = 0
-    vetoed = vetoed_pairs(facts, *el_keys, orbits)
+    exempt = _close_pairs(orbit_keys[orbit_kept], _mapped(close_keys, remap))
+    exempt |= {interior.key for interior in reduced.interiors}
+    vetoed = vetoed_pairs(facts, *el_keys, exempt)
     counts[f"{EL_BADRY}: pairs that the parallaxes veto"] = int(vetoed.sum())
+    if inputs.el_badry is not None:
+        _veto_events(facts, inputs.el_badry, el_keys, vetoed, reduced)
     sets, origin = _set_table(reduced, inputs.el_badry, el_keys, vetoed, counts)
     counts.update(reduced.counts)
     return Prepared(
@@ -527,12 +533,19 @@ def _apply(reduced: Reduced, remap: dict[int, int]) -> None:
         item.keys = frozenset(remap.get(k, k) for k in item.keys)
 
 
+def _close_pairs(orbit_keys: np.ndarray, close_keys: np.ndarray) -> frozenset[int]:
+    """The points that a Gaia DR3 orbit or a SIMBAD close type shows as a
+    close pair."""
+    return frozenset(orbit_keys.tolist()) | frozenset(close_keys.tolist())
+
+
 def vetoed_pairs(
-    facts: Facts, first: np.ndarray, second: np.ndarray, orbits: frozenset[int]
+    facts: Facts, first: np.ndarray, second: np.ndarray, exempt: frozenset[int]
 ) -> np.ndarray:
     """Whether the parallaxes of each El-Badry pair of two objects disagree.
 
-    A star with a Gaia DR3 orbit is exempt.
+    A point of `exempt` can hold a close pair, which throws off its
+    astrometry.
     """
     separation = sky_separation(
         facts.column("ra", first),
@@ -549,10 +562,29 @@ def vetoed_pairs(
     )
     found &= (first != 0) & (second != 0) & (first != second)
     for keys in (first, second):
-        astrometry = np.array(facts.texts("astrometry", keys), object)
-        found &= np.isin(astrometry, sorted(OWN_ASTROMETRY))
-        found &= ~np.isin(keys, sorted(orbits))
+        found &= facts.has("astrometry", keys, OWN_ASTROMETRY)
+        found &= ~np.isin(keys, sorted(exempt))
     return found
+
+
+def _veto_events(
+    facts: Facts,
+    el_badry: pa.Table,
+    el_keys: tuple[np.ndarray, np.ndarray],
+    vetoed: np.ndarray,
+    reduced: Reduced,
+) -> None:
+    systems = el_badry["system"].to_pylist()
+    for at in np.flatnonzero(vetoed).tolist():
+        stars = [facts.get(int(side[at])) for side in el_keys]
+        text = ", ".join(
+            f"{star.key} {star.parallax:.3f} ± {star.parallax_error:.3f} mas"
+            for star in stars
+            if star is not None
+        )
+        reduced.events.append(
+            ("parallaxes disagree", EL_BADRY, f"{EL_BADRY} {systems[at]}: {text}")
+        )
 
 
 def _set_table(
@@ -617,7 +649,7 @@ def separation_of(facts: Facts, first: int, second: int) -> float:
     a, b = facts.get(first), facts.get(second)
     if a is None or b is None:
         return math.nan
-    return float(sky_separation(a.ra, a.dec, b.ra, b.dec))
+    return offset(a, b)[0]
 
 
 def offset(first: Fact, second: Fact) -> tuple[float, float]:

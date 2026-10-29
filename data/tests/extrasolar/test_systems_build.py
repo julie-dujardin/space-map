@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 from collections import Counter
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 
 import numpy as np
@@ -32,7 +32,7 @@ from space_map_data.extrasolar.systems.nodes import (
 from space_map_data.extrasolar.systems.pairs import PAIRS, el_badry_pairs, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
 from space_map_data.extrasolar.systems.prepare import Inputs, vetoed_pairs
-from space_map_data.extrasolar.systems.reduce import Reduced, TreeReducer
+from space_map_data.extrasolar.systems.reduce import Interior, Reduced, TreeReducer
 from space_map_data.extrasolar.systems.registry import registry_orbits
 from space_map_data.extrasolar.systems.report import report_lines, tree_lines
 from space_map_data.extrasolar.systems.resolve import FACTS, Facts
@@ -1069,6 +1069,86 @@ class TestUnverifiedMembers:
         assert out.counts[f"{WDS}: {DUBIOUS} members left for agreement"] == 1
 
 
+class TestMergedPoint:
+    """BCD is an unverified member of ABCD. Y holds B and C, its physical
+    companion at 0.1″. D is 5″ away and an entry."""
+
+    def interiors(self, c_evidence: str | None) -> list[Interior]:
+        table = wds_tree(
+            [
+                ("ABCD", -1, None, None, None),
+                ("A", 0, None, 5.0, None),
+                ("BCD", 0, 20.0, None, UNVERIFIED),
+                ("B", 2, None, 6.0, None),
+                ("C", 2, 0.1, 6.5, c_evidence),
+                ("D", 2, 5.0, 7.0, None),
+            ]
+        )
+        rows = [
+            fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0),
+            fact(
+                101, 10.0, 10.0 + 20 / 3600, 6.0, parallax=10.0, pmra=20.0, pmdec=-5.0
+            ),
+        ]
+        facts = Facts(pa.Table.from_pylist(rows, schema=FACTS))
+        out = Reduced()
+        candidates = [[], [(100, 2)], [], [(101, 2)], [], []]
+        TreeReducer(table, 0, candidates, facts, 0, out).run()
+        return out.interiors
+
+    def test_a_physical_companion(self):
+        (interior,) = self.interiors(None)
+        assert interior.key == 101 and len(interior.entries) == 2
+        assert not interior.unverified
+
+    def test_an_unverified_companion(self):
+        (interior,) = self.interiors(UNVERIFIED)
+        assert interior.unverified
+
+
+class TestUnverifiedInsideAGroup:
+    """B of ABC is unverified, has no object, and is 0.1″ from A. C is a
+    point 30″ away. B is inside A's point."""
+
+    def test_the_point_holds_b(self):
+        table = wds_tree(
+            [
+                ("ABC", -1, None, None, None),
+                ("A", 0, None, 5.0, None),
+                ("B", 0, 0.1, 5.5, UNVERIFIED),
+                ("C", 0, 30.0, 7.0, None),
+            ]
+        )
+        rows = [
+            fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0),
+            fact(
+                102, 10.0, 10.0 + 30 / 3600, 7.0, parallax=10.0, pmra=20.0, pmdec=-5.0
+            ),
+        ]
+        facts = Facts(pa.Table.from_pylist(rows, schema=FACTS))
+        out = Reduced()
+        TreeReducer(table, 0, [[], [(100, 2)], [], [(102, 2)]], facts, 0, out).run()
+        (group,) = out.groups
+        assert [(m.kind, m.key) for m in group.members] == [
+            ("point", 100),
+            ("point", 102),
+        ]
+        (interior,) = out.interiors
+        assert interior.key == 100 and [e[0] for e in interior.entries] == [1, 2]
+        assert interior.unverified
+
+
+class TestInteriorEvidence:
+    """An interior is of unverified members when each star beside the main
+    star is one."""
+
+    def test_an_entry_leaves(self):
+        item = Interior(100, WDS, 0, "x", [(1, None), (2, None), (3, None)])
+        item = replace(item, unverified_rows=frozenset({3}))
+        assert not item.unverified
+        assert replace(item, entries=[(1, None), (3, None)]).unverified
+
+
 class TestCommonProperMotion:
     """HD 106906 (C) and HD 106444 (A) move together at 1,000″. The motion
     alone does not make them a pair."""
@@ -1114,7 +1194,7 @@ class TestParallaxVeto:
         self,
         parallax: float,
         known: list[str] | None = None,
-        orbits: frozenset[int] = frozenset(),
+        close: frozenset[int] = frozenset(),
         astrometry: str = "gaia-dr3",
     ) -> Reduced:
         table = wds_tree(
@@ -1142,7 +1222,7 @@ class TestParallaxVeto:
         facts = Facts(pa.Table.from_pylist([a, b], schema=FACTS))
         out = Reduced()
         candidates = [[], [(100, 2)], [(101, 2)]]
-        TreeReducer(table, 0, candidates, facts, 0, out, orbits=orbits).run()
+        TreeReducer(table, 0, candidates, facts, 0, out, close=close).run()
         return out
 
     def test_a_physical_member_leaves(self):
@@ -1161,8 +1241,9 @@ class TestParallaxVeto:
         (group,) = self.reduced(9.767, known=[VISUAL, VISUAL_ORBIT]).groups
         assert group.keys == frozenset({100, 101})
 
-    def test_a_gaia_orbit_is_exempt(self):
-        (group,) = self.reduced(9.767, orbits=frozenset({101})).groups
+    def test_a_close_pair_is_exempt(self):
+        """A Gaia orbit or a SIMBAD close type shows 101 as a close pair."""
+        (group,) = self.reduced(9.767, close=frozenset({101})).groups
         assert group.keys == frozenset({100, 101})
 
     def test_only_own_astrometry(self):
@@ -1209,6 +1290,92 @@ class TestParallaxVeto:
         assert found.tolist() == [True, False, True, False]
         found = vetoed_pairs(facts, first, second, frozenset({101}))
         assert found.tolist() == [False, False, False, False]
+
+    def test_el_badry_pairs_with_no_facts(self):
+        found = vetoed_pairs(
+            Facts(FACTS.empty_table()),
+            np.array([0, 5], np.int64),
+            np.array([0, 0], np.int64),
+            frozenset(),
+        )
+        assert found.tolist() == [False, False]
+
+    def test_several_stars_in_another_tree(self):
+        """101 holds Xa and Xb in the first tree, and one star in the second.
+        So the veto applies in the second tree."""
+        table = wds_tree(
+            [
+                ("XY", -1, None, None, None),
+                ("Xa", 0, None, 8.0, None),
+                ("Xb", 0, 0.1, 8.5, None),
+                ("AB", -1, None, None, None),
+                ("A", 3, None, 7.0, None),
+                ("B", 3, 1000.0, 8.0, None),
+            ]
+        )
+        a = fact(100, 183.7, -55.79, 7.0, parallax=8.735)
+        b = fact(101, 183.7, -55.79 + 1000 / 3600, 8.0, parallax=9.767)
+        facts = Facts(pa.Table.from_pylist([a, b], schema=FACTS))
+        out = Reduced()
+        candidates = [[], [(101, 2)], [], [], [(100, 2)], [(101, 2)]]
+        TreeReducer(table, 0, candidates, facts, 0, out).run()
+        assert out.groups == []
+        assert [interior.key for interior in out.interiors] == [101]
+        assert out.counts[f"{WDS}: physical members that the parallaxes veto"] == 1
+
+
+class TestElBadryVeto:
+    """El-Badry pairs 100 and 101, whose parallaxes clearly disagree."""
+
+    def systems(self, otype: str | None = None, wds: bool = False) -> Systems:
+        resolver = FakeResolver(
+            {
+                ("gaia", "dr3", "21"): 100,
+                ("gaia", "dr3", "22"): 101,
+                ("simbad", "oid", "40"): 100,
+            },
+            [
+                fact(100, 183.7, -55.79, 7.0, parallax=8.735),
+                fact(101, 183.7, -55.79 + 1000 / 3600, 8.0, parallax=9.767),
+            ],
+        )
+        index = None
+        if otype:
+            index = simbad_index(
+                [simbad_object(40, "HD 1", 183.7, -55.79, otype=otype, v=7.0)]
+            )
+        catalogue = None
+        if wds:
+            w = "12148-5547"
+            catalogue = wds_catalogue(
+                {w: [wds_pair("A", "B", 0.1, mag1=7.0, mag2=8.0)]},
+                {(w, "A"): wds_component(21)},
+            )
+        inputs = Inputs(
+            el_badry=el_badry([(21, 22, 1000.0, 7.0, 8.0)]),
+            simbad_index=index,
+            wds=catalogue,
+        )
+        return build(inputs, resolver)
+
+    def test_the_veto_is_an_event(self):
+        systems = self.systems()
+        assert systems.counts[f"{EL_BADRY}: pairs that the parallaxes veto"] == 1
+        events = systems.events.filter(
+            pc.equal(systems.events["kind"], "parallaxes disagree")
+        )
+        assert events["source"].to_pylist() == [EL_BADRY]
+        (text,) = events["text"].to_pylist()
+        assert "100 8.735" in text and "101 9.767" in text
+
+    def test_a_close_type_is_exempt(self):
+        systems = self.systems(otype="EB*")
+        assert systems.counts[f"{EL_BADRY}: pairs that the parallaxes veto"] == 0
+
+    def test_a_point_with_an_interior_is_exempt(self):
+        """WDS B is inside the point of A, so the point holds two stars."""
+        systems = self.systems(wds=True)
+        assert systems.counts[f"{EL_BADRY}: pairs that the parallaxes veto"] == 0
 
 
 class TestGroupPrimary:

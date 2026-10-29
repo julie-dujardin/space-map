@@ -21,16 +21,17 @@ The main star is the first point down the tree and gives the group its
 position.
 - A member leaves when its parallax and its primary's clearly disagree
   (`parallaxes_disagree`). An orbit pair is exempt, and so is a point that
-  holds several stars in the tree or has a Gaia DR3 orbit, because a close
-  orbit can throw off the parallax.
+  holds several stars in its subtree or that a Gaia DR3 orbit or a SIMBAD
+  type shows as a close pair, because a close orbit can throw off the
+  parallax.
 - A member that the source lists as unverified stays only when it and its
   primary pass El-Badry's test of a bound pair (`same_distance`). It also
   stays when it reaches its primary's point and the source gives their
-  separation. It stays too when it reaches no object and its primary's point
-  cannot split them. A chance alignment that close is rare. A dubious member
-  never stays. When it reaches its primary's point and the point
-  splits them, the shared id is still a cross-match error. A member that
-  fails waits for another source to agree.
+  separation. It stays too, inside its primary's point, when it reaches no
+  object and that point cannot split them. A chance alignment that close is
+  rare. A dubious member never stays. When it reaches its primary's point
+  and the point splits them, the shared id is still a cross-match error. A
+  member that fails waits for another source to agree.
 - A member that leaves keeps its inner system as a system of its own.
 
 A point that holds two or more members gets an interior: its members as
@@ -142,8 +143,15 @@ class Interior:
     # The global value rows of its members, and the label of the inner pair
     # that holds each one.
     entries: list[tuple[int, str | None]]
-    # Each star beside the main star is an unverified member.
-    unverified: bool = False
+    # The entries that only an unverified member links to the main star.
+    unverified_rows: frozenset[int] = frozenset()
+
+    @property
+    def unverified(self) -> bool:
+        """Each star beside the main star is an unverified member."""
+        return len(self.entries) > 1 and all(
+            row in self.unverified_rows for row, _ in self.entries[1:]
+        )
 
 
 @dataclass
@@ -184,8 +192,10 @@ class _Part:
     # A group: its index in the records that hold it, and its objects.
     group: int = -1
     group_keys: frozenset[int] = frozenset()
-    # A group: its first point down the tree.
+    # A group: its first point down the tree, and its points that hold
+    # several stars.
     first_point: int = 0
+    several: frozenset[int] = frozenset()
 
     @property
     def main(self) -> int:
@@ -234,8 +244,9 @@ class TreeReducer:
     """Reduces the trees of one source.
 
     `candidates` holds the (key, rank) candidates of each row, best first.
-    `offset` turns a row of the source into a global value row. `orbits` are
-    the points that have a Gaia DR3 orbit.
+    `offset` turns a row of the source into a global value row. `close` are
+    the points that a close pair can hold, as a Gaia DR3 orbit or a SIMBAD
+    type shows.
     """
 
     def __init__(
@@ -247,7 +258,7 @@ class TreeReducer:
         offset: int,
         out: Reduced,
         dropped: frozenset[int] = frozenset(),
-        orbits: frozenset[int] = frozenset(),
+        close: frozenset[int] = frozenset(),
     ) -> None:
         self.source = table["source"][0].as_py() if table.num_rows else ""
         self.rank = rank
@@ -255,8 +266,7 @@ class TreeReducer:
         self.offset = offset
         self.out = out
         self.dropped = dropped
-        # The points that hold several stars, in this tree or by a Gaia orbit.
-        self.several = set(orbits)
+        self.close = close
         self.candidates = candidates
         self.system = table["system"].to_pylist()
         self.label = table["label"].to_pylist()
@@ -413,7 +423,6 @@ class TreeReducer:
                     or (evidence == UNVERIFIED and measured)
                     or self._shared(row, [primary, part])[1]
                 ):
-                    # `_shared` merges them or finds the cross-match error.
                     kept.append(part)
                 else:
                     name = f"{self.source}: {evidence} members on the primary's point"
@@ -425,11 +434,11 @@ class TreeReducer:
                 and evidence == UNVERIFIED
                 and self._split(primary, part, primary) is False
             ):
-                # `part` puts it inside the point.
                 out.counts[
                     f"{self.source}: unverified members inside the primary's point"
                 ] += 1
-                kept.append(part)
+                primary = _Part(primary.node, primary.key, primary.leaves + part.leaves)
+                kept[0] = primary
                 continue
             second = self.facts.get(part.main)
             pair = None if first is None or second is None else (first, second)
@@ -482,9 +491,11 @@ class TreeReducer:
         return True
 
     def _holds_several(self, part: _Part) -> bool:
+        """Whether a close pair can throw off the astrometry of the part's
+        point."""
         if part.key and len(part.leaves) > 1:
             return True
-        return part.main in self.several
+        return part.main in part.several or part.main in self.close
 
     def _leave(self, part: _Part, out: Reduced) -> None:
         """Keep the inner system of a member that leaves as a system of its own.
@@ -673,7 +684,6 @@ class TreeReducer:
     def _close(self, part: _Part, top: int, out: Reduced) -> None:
         """Record the interior of a point part."""
         if part.key and len(part.leaves) > 1:
-            self.several.add(part.key)
             entries = []
             for leaf in part.leaves:
                 parent = int(self.parent[leaf])
@@ -690,26 +700,37 @@ class TreeReducer:
                 )
             )
 
-    def _unverified(self, leaves: list[int], top: int) -> bool:
-        """Whether an unverified node links each of `leaves` to `top`."""
+    def _unverified(self, leaves: list[int], top: int) -> frozenset[int]:
+        """The global rows of the leaves that an unverified node links to the
+        point's star.
+
+        The leaves of a merged point are below `top` or below a sibling of
+        `top`, so the walk stops at `top` or at its parent.
+        """
+        stop = int(self.parent[top])
+        found = set()
         for leaf in leaves:
             row = leaf
-            while row >= 0 and row != top and self.evidence[row] != UNVERIFIED:
+            while row not in (top, stop) and self.evidence[row] != UNVERIFIED:
                 row = int(self.parent[row])
-            if row < 0 or row == top:
-                return False
-        return True
+            if row not in (top, stop):
+                found.add(self.offset + leaf)
+        return frozenset(found)
 
     def _group(self, row: int, parts: list[_Part], out: Reduced) -> _Part:
         members = []
         keys: set[int] = set()
+        several: set[int] = set()
         first_point = next((p.main for p in parts if p.main), 0)
         for part in parts:
             if part.group >= 0:
+                several |= part.several
                 members.append(
                     Member(GROUP, group=part.group, value=self.offset + part.node)
                 )
             elif part.key:
+                if len(part.leaves) > 1:
+                    several.add(part.key)
                 self._close(part, part.node, out)
                 members.append(
                     Member(POINT, key=part.key, value=self.offset + part.node)
@@ -730,4 +751,12 @@ class TreeReducer:
                 members,
             )
         )
-        return _Part(row, 0, [], len(out.groups) - 1, frozenset(keys), first_point)
+        return _Part(
+            row,
+            0,
+            [],
+            len(out.groups) - 1,
+            frozenset(keys),
+            first_point,
+            frozenset(several),
+        )
