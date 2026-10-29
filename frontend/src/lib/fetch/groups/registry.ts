@@ -21,7 +21,8 @@ export type GroupType =
 	| 'split_comet'
 	| 'mission'
 	| 'feature_type'
-	| 'star_family';
+	| 'star_family'
+	| 'planet_family';
 
 /** An organization's role tags, surfaced as badges on its /g/org-<slug> page. */
 export type OrganizationRole = 'operator' | 'manufacturer';
@@ -31,7 +32,8 @@ export type GroupCategory =
 	| 'category'
 	| 'probe'
 	| 'surface_feature'
-	| 'star';
+	| 'star'
+	| 'planet';
 
 /** Mirrors ``CONSTELLATION_SLUG_PREFIX`` in
  *  ``data/constants/earth_sats/constellations.py``. */
@@ -58,6 +60,17 @@ export const STAR_FAMILY_SLUG_PREFIX = 'star-';
 
 /** The page of ``ROOT_FAMILY`` in ``data/constants/stars/families.py``. */
 export const STAR_CLASSIFICATION = `${STAR_FAMILY_SLUG_PREFIX}classification`;
+
+/** Mirrors ``FAMILY_SLUG_PREFIX`` in ``data/constants/planets/families.py``. */
+export const PLANET_FAMILY_SLUG_PREFIX = 'planet-';
+
+/** The page of ``ROOT_FAMILY`` in ``data/constants/planets/families.py``. */
+export const PLANET_CLASSIFICATION = `${PLANET_FAMILY_SLUG_PREFIX}classification`;
+
+/** A star or planet family page. */
+export function isFamilySlug(slug: string): boolean {
+	return slug.startsWith(STAR_FAMILY_SLUG_PREFIX) || slug.startsWith(PLANET_FAMILY_SLUG_PREFIX);
+}
 
 /** Mirrors ``CATEGORY_SLUG_PREFIX`` in ``data/constants/categories.py``. */
 export const CATEGORY_SLUG_PREFIX = 'cat-';

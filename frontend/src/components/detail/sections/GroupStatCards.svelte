@@ -93,13 +93,18 @@
 		return { label, value: formatCompactNumber(n), tooltip: formatNumber(n) };
 	}
 
-	/** The share of a family's stars that only an estimate puts there. */
-	function estimatedShare(g: GlobalGroupData): Stat | null {
-		if (!g.member_count || !g.estimated_star_count) return null;
+	/** The share of a family's members that only an estimate puts there. */
+	function estimatedShare(
+		g: GlobalGroupData,
+		estimated: number | undefined,
+		label: string,
+		tooltip: string
+	): Stat | null {
+		if (!g.member_count || !estimated) return null;
 		return {
-			label: m.group_stat_estimated(),
-			value: formatShare(g.estimated_star_count / g.member_count),
-			tooltip: `${formatNumber(g.estimated_star_count)} — ${m.tooltip_group_stat_estimated()}`
+			label,
+			value: formatShare(estimated / g.member_count),
+			tooltip: `${formatNumber(estimated)} — ${tooltip}`
 		};
 	}
 
@@ -493,7 +498,25 @@
 			case 'category':
 				return categoryStats(g);
 			case 'star_family':
-				return [stars(m.group_stat_stars(), g.member_count), estimatedShare(g)];
+				return [
+					stars(m.group_stat_stars(), g.member_count),
+					estimatedShare(
+						g,
+						g.estimated_star_count,
+						m.group_stat_estimated(),
+						m.tooltip_group_stat_estimated()
+					)
+				];
+			case 'planet_family':
+				return [
+					members(g, m.group_stat_planets()),
+					estimatedShare(
+						g,
+						g.estimated_planet_count,
+						m.group_stat_estimated_planets(),
+						m.tooltip_group_stat_estimated_planets()
+					)
+				];
 		}
 	}
 

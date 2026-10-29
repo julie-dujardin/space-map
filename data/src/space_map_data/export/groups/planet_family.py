@@ -29,9 +29,13 @@ from space_map_data.export.groups.family_pages import (
     sitelink_rank,
 )
 from space_map_data.export.notable import NotableObject
-from space_map_data.export.objects.stars import PREFIX
+from space_map_data.export.objects.stars import (
+    PREFIX,
+    PlanetObject,
+    planet_object,
+    planet_page_names,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
-from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.utils.paths import EXTRASOLAR_DIR
 
 logger = logging.getLogger(__name__)
@@ -61,10 +65,15 @@ class _Planet:
 
     object_id: str
     name: str
-    qid: str | None
+    # Its page; None without one.
+    entry: PlanetObject | None
     families: tuple[str, ...]
     # pc; None when the render tree does not draw the host.
     distance: float | None
+
+    @property
+    def qid(self) -> str | None:
+        return self.entry.qid if self.entry else None
 
 
 def build_planet_family_groups(
@@ -118,7 +127,7 @@ def _served_planets(reader: ExportReader) -> list[_Planet]:
                 _Planet(
                     f"{PREFIX}{planet['host']}-b-{planet['number']}",
                     planet["name"],
-                    planet_qid(planet["cross_ids"]) if planet["object"] else None,
+                    planet_object(planet) if planet["object"] else None,
                     tuple(planet["families"]),
                     distances[planet["host"]],
                 )
@@ -155,6 +164,17 @@ def _notable_planets(
     )
     out: dict[str, list[NotableObject]] = defaultdict(list)
     for planet in (*first, *rest):
+        # Every planet with a family is in the root, so its list would only
+        # be the best-known planets.
+        lists = [
+            members
+            for family in planet.families
+            if family != ROOT_FAMILY
+            and len(members := out[PAGES.slug(family)]) < NOTABLE_PLANETS
+        ]
+        if not lists:
+            continue
+        # Only for a listed planet: the entities stay in a shared cache.
         member = NotableObject(
             object_id=planet.object_id,
             wikidata_qid=planet.qid,
@@ -162,14 +182,15 @@ def _notable_planets(
             diameter_km=None,
             first_obs=None,
             extrasolar=True,
+            page_names=(
+                planet_page_names(
+                    wikidata_entities.get_listed_star(planet.qid), planet.entry
+                )
+                if planet.entry
+                else {}
+            ),
             sitelinks_count=ranks[planet][0] if planet in chosen else None,
         )
-        for family in planet.families:
-            # Every planet with a family is in the root, so its list would
-            # only be the best-known planets.
-            if family == ROOT_FAMILY:
-                continue
-            members = out[PAGES.slug(family)]
-            if len(members) < NOTABLE_PLANETS:
-                members.append(member)
+        for members in lists:
+            members.append(member)
     return dict(out)

@@ -76,7 +76,9 @@ export function planet(
 		assumed: [],
 		estimated: [],
 		computed: [],
-		limits: []
+		limits: [],
+		families: [],
+		families_estimated: []
 	};
 }
 

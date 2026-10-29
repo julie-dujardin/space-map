@@ -115,6 +115,10 @@ export interface Planet {
 	estimated: string[];
 	computed: string[];
 	limits: string[];
+	/** The published families, with their parents and the root. */
+	families: string[];
+	/** The families that need an estimate and are not in `families`. */
+	families_estimated: string[];
 }
 
 export interface PlanetSystem {

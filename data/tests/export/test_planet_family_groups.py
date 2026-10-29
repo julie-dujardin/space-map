@@ -25,7 +25,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.stats import GroupExtraStats
-from space_map_data.export.notable import notable_entries
+from space_map_data.export.notable import notable_entries, notable_names
 from tests.export.test_star_family_groups import _entities
 from tests.extrasolar.export_registry import planet, star, write_registry
 
@@ -144,11 +144,28 @@ class TestBuild:
 
         entries = notable_entries(gas, entities)
         assert [e["name"] for e in entries] == [
-            "Label Q3",
-            "Label Q1",
-            "Label Q2",
+            "Planet 1 1",
+            "Planet 0 1",
+            "Planet 0 2",
             "Planet 1 3",
         ]
+
+    def test_a_planet_is_listed_by_its_page_names(self, served):
+        ids, out = served
+        entities = _entities({"Q2": (90, []), "Q3": (40, ["en"])})
+        labels = {"en": "Label Q3", "de": "Zeta b", "fr": "Osiris"}
+        listed = entities.get_listed_star.side_effect
+        entities.get_listed_star.side_effect = lambda qid: (
+            listed(qid) | {"labels": labels} if qid == "Q3" else listed(qid)
+        )
+        groups = planet_family.build_planet_family_groups(entities, out)
+        hot = groups.notable_members["planet-hot-jupiter"]
+        entries = notable_entries(hot, entities)
+        assert [e["name"] for e in entries] == ["Planet 1 1", "Planet 0 2"]
+        # A nickname is an alias of the page, not its name.
+        key = _id(ids[1], 1)
+        assert notable_names(hot, entries, "de", entities) == {key: "Zeta b"}
+        assert notable_names(hot, entries, "fr", entities) == {}
 
     def test_the_list_stops_at_its_size(self, served, monkeypatch):
         ids, out = served
@@ -185,9 +202,9 @@ class TestBuild:
 
 
 class TestBundles:
-    """The export writes no planet family page yet."""
+    """A page counts its planets and climbs to its parent family."""
 
-    def test_no_bundle(self, tmp_path, monkeypatch: pytest.MonkeyPatch):
+    def test_bundle(self, tmp_path, monkeypatch: pytest.MonkeyPatch):
         group = GROUP_BY_SLUG[f"{FAMILY_SLUG_PREFIX}hot-jupiter"]
         root = GROUP_BY_SLUG[f"{FAMILY_SLUG_PREFIX}{planet_constants.ROOT_FAMILY}"]
         monkeypatch.setattr(bundles, "GROUPS", (root, group))
@@ -212,8 +229,15 @@ class TestBundles:
         )
 
         index = json.loads((tmp_path / "groups" / "__index__.json").read_bytes())
-        assert index == {}
+        assert index == {
+            root.slug: {"type": "planet_family", "applies_to": "planet", "n": 7},
+            group.slug: {"type": "planet_family", "applies_to": "planet", "n": 3},
+        }
         found = {}
-        for path in (tmp_path / "groups").glob("*/*.json.gz"):
+        for path in (tmp_path / "groups" / "__global__").glob("*.json.gz"):
             found.update(_read_bundle(path))
-        assert found == {}
+        page = found[group.slug]
+        assert page["parent_families"] == [f"{FAMILY_SLUG_PREFIX}gas-giant"]
+        counts = page["published_planet_count"], page["estimated_planet_count"]
+        assert counts == (2, 1)
+        assert "parent_families" not in found[root.slug]

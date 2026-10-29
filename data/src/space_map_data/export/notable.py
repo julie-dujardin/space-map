@@ -53,6 +53,10 @@ class NotableObject:
     # Set → a star or a planet of the extrasolar export. Its entity and its
     # pictures are found by QID.
     extrasolar: bool = False
+    # Set → the names its page takes by language where they differ from
+    # `fallback_name`, its global one. A list then names it as its page does,
+    # not by its labels.
+    page_names: dict[str, str] | None = None
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
     mass_kg: float | None = None  # from PCK GM; major bodies only
     # Probe-on-target only: {kind, arrival, end?} — what the probe did there.
@@ -298,7 +302,11 @@ def notable_entries(
     entry: dict
     for member in members:
         wd = _member_entity(member, wikidata_entities)
-        name = entity_label(wd, "en") or member.fallback_name
+        name = (
+            member.fallback_name
+            if member.page_names is not None
+            else entity_label(wd, "en") or member.fallback_name
+        )
         # Group members route to /g/<slug>; object members focus their mesh.
         if member.group_slug is not None:
             entry = {"name": name, "group": member.group_slug}
@@ -398,13 +406,14 @@ def notable_names(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> dict[str, str]:
-    """Per-language label overrides keyed by object id, only where they differ."""
+    """Per-language name overrides keyed by object id, only where they differ."""
     out: dict[str, str] = {}
     for member, entry in zip(members, entries):
-        wd = _member_entity(member, wikidata_entities)
-        if not wd:
-            continue
-        label = entity_label(wd, lang)
+        if member.page_names is not None:
+            label = member.page_names.get(lang)
+        else:
+            wd = _member_entity(member, wikidata_entities)
+            label = entity_label(wd, lang) if wd else None
         if label and label != entry["name"]:
             out[_member_key(member)] = label
     return out

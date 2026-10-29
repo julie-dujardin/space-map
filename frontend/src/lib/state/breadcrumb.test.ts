@@ -85,6 +85,16 @@ describe('parentCrumb: star families', () => {
 	});
 });
 
+describe('parentCrumb: planet families', () => {
+	it('climbs to the first family that contains it', () => {
+		const crumb = parentCrumb({ kind: 'group', slug: 'planet-jupiter-analogue' }, undefined, null, {
+			slug: 'planet-jupiter-analogue',
+			parent_families: ['planet-cold-jupiter']
+		} as never);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'planet-cold-jupiter' });
+	});
+});
+
 describe('parentCrumb: planetary systems', () => {
 	function barycenter(id: string): Focusable {
 		return {

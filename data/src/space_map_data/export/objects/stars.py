@@ -205,24 +205,26 @@ def _planet_objects(registry: Registry) -> list[PlanetObject]:
         "aliases",
         "cross_ids",
     ]
-    out = []
-    for row in table.select(columns).to_pylist():
-        qid = planet_qid(row["cross_ids"])
-        if qid is None:
-            continue
-        names = (row["designation"], *(row["aliases"] or ()))
-        out.append(
-            PlanetObject(
-                row["host"],
-                row["number"],
-                row["name"],
-                qid,
-                tuple(dict.fromkeys(n for n in names if n)),
-                row["letter"],
-                row["name_source"] == IAU_NAMES,
-            )
-        )
-    return out
+    rows = table.select(columns).to_pylist()
+    return [planet for row in rows if (planet := planet_object(row))]
+
+
+def planet_object(row: Mapping) -> PlanetObject | None:
+    """The entry of a planets table row or a served planet, None without an
+    item."""
+    qid = planet_qid(row["cross_ids"])
+    if qid is None:
+        return None
+    names = (row["designation"], *(row["aliases"] or ()))
+    return PlanetObject(
+        row["host"],
+        row["number"],
+        row["name"],
+        qid,
+        tuple(dict.fromkeys(n for n in names if n)),
+        row["letter"],
+        row["name_source"] == IAU_NAMES,
+    )
 
 
 def read_extrasolar_objects(
@@ -284,6 +286,18 @@ def _planet_page_name(
         return None
     own = {_same_designation(n) for n in (planet.name, *planet.designations)}
     return None if _same_designation(name) in own else name
+
+
+def planet_page_names(
+    entity: WikidataEntity | None, planet: PlanetObject
+) -> dict[str, str]:
+    """The names the planet's page takes by language, where they differ
+    from its global one."""
+    return {
+        lang: name
+        for lang in LANGUAGES
+        if (name := _planet_page_name(entity, lang, planet))
+    }
 
 
 # The qualifier of some labels: "Saffar (Exoplanet)".
@@ -540,15 +554,15 @@ def star_entries(
         found = entities.get_star_entity(qid)
         entity = found.entity if found else None
         missing += entity is None
-        names = {
-            lang: page_name
-            for lang in LANGUAGES
-            if (
-                page_name := _planet_page_name(entity, lang, planet)
-                if planet
-                else _page_name(entity, lang)
-            )
-        }
+        names = (
+            planet_page_names(entity, planet)
+            if planet
+            else {
+                lang: page_name
+                for lang in LANGUAGES
+                if (page_name := _page_name(entity, lang))
+            }
+        )
         nicknames = {}
         if planet is None:
             star_names[obj_id] = _star_names(name, entity)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { familiesOf, starFamilyLinks } from './families';
+import { familiesOf, familyLinks } from './families';
 import type { ExtrasolarFamily } from './files';
 
 function family(slug: string, parents: string[], stars: number): ExtrasolarFamily {
@@ -22,18 +22,22 @@ describe('familiesOf', () => {
 	});
 });
 
-describe('starFamilyLinks', () => {
+describe('familyLinks', () => {
 	it('keeps the families that contain none of the others', () => {
-		const links = starFamilyLinks(
+		const links = familyLinks(
+			'star_family',
 			['classification', 'dwarf', 'main-sequence', 'g-type-main-sequence'],
 			[],
 			FAMILIES
 		);
-		expect(links).toEqual([{ slug: 'star-g-type-main-sequence', estimated: false }]);
+		expect(links).toEqual([
+			{ type: 'star_family', slug: 'star-g-type-main-sequence', estimated: false }
+		]);
 	});
 
 	it('puts the published first, then the families with fewer stars', () => {
-		const links = starFamilyLinks(
+		const links = familyLinks(
+			'star_family',
 			['classification', 'giant', 'red-giant'],
 			['barium-star', 'dwarf', 'main-sequence'],
 			FAMILIES
@@ -47,19 +51,33 @@ describe('starFamilyLinks', () => {
 	});
 
 	it('keeps a published family that only an estimate refines', () => {
-		const links = starFamilyLinks(
+		const links = familyLinks(
+			'star_family',
 			['classification', 'dwarf', 'main-sequence'],
 			['g-type-main-sequence'],
 			FAMILIES
 		);
 		expect(links).toEqual([
-			{ slug: 'star-main-sequence', estimated: false },
-			{ slug: 'star-g-type-main-sequence', estimated: true }
+			{ type: 'star_family', slug: 'star-main-sequence', estimated: false },
+			{ type: 'star_family', slug: 'star-g-type-main-sequence', estimated: true }
+		]);
+	});
+
+	it('links a planet to the planet- pages', () => {
+		const links = familyLinks(
+			'planet_family',
+			['classification', 'giant'],
+			['red-giant'],
+			FAMILIES
+		);
+		expect(links).toEqual([
+			{ type: 'planet_family', slug: 'planet-giant', estimated: false },
+			{ type: 'planet_family', slug: 'planet-red-giant', estimated: true }
 		]);
 	});
 
 	it('gives nothing without the tree', () => {
 		const old = FAMILIES.map((entry) => ({ ...entry, parents: undefined }));
-		expect(starFamilyLinks(['classification', 'giant'], [], old)).toEqual([]);
+		expect(familyLinks('star_family', ['classification', 'giant'], [], old)).toEqual([]);
 	});
 });

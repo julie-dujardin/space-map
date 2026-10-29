@@ -278,6 +278,7 @@
 				orbitElements={drawerOrbitElements}
 				{planetarySystem}
 				{star}
+				planet={planet?.planet ?? null}
 			/>
 		{/if}
 		<!-- When this system's moons were found; sits under its cross-refs, which

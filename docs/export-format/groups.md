@@ -6,8 +6,7 @@ surface-feature types, star families and planet families).
 Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
 `bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`, `star-`,
 `planet-`) so slugs never collide across types and a slug's type is
-recognizable on sight. The export builds the planet family pages, but does
-not publish them yet. A launch vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
+recognizable on sight. A launch vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
 former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
 constellations stay `const-`. Earth orbiters split across two category pages by
 object type: working payloads under `cat-satellites`, spent stages and breakup
@@ -444,9 +443,11 @@ interface GlobalGroupData {
   // *published* family puts here: first the planets with an object entry and
   // a Wikipedia article in one of the site's languages, most sitelinks first;
   // then other planets of the family, nearest host first (hosts with no
-  // distance last). A planet with an entry takes its Wikidata entity and
-  // pictures from that entry; a planet without one has the `name` of its
-  // planet record and no thumbnail. `galleries` has a shelf for each listed
+  // distance last). Each planet has the names of its page: the `name` of its
+  // planet record, and in `notable_member_names` the localized names of its
+  // object entry, not its Wikidata labels. A planet with an entry takes its
+  // Wikidata entity and pictures from that entry; a planet without one has no
+  // thumbnail. `galleries` has a shelf for each listed
   // planet that has pictures. `child_groups` (localized) lists the families
   // it contains that have planets, most planets first. `planet-classification`
   // (exoplanet) is the root: it counts every planet with a family, and it

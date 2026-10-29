@@ -46,7 +46,8 @@ const GROUP_TYPE_NAME: Record<GroupType, { one: () => string; many: () => string
 	split_comet: { one: m.group_type_split_comet, many: m.group_type_plural_split_comet },
 	mission: { one: m.mission, many: m.group_type_plural_mission },
 	feature_type: { one: m.group_type_feature_type, many: m.group_type_plural_feature_type },
-	star_family: { one: m.group_type_star_family, many: m.group_type_plural_star_family }
+	star_family: { one: m.group_type_star_family, many: m.group_type_plural_star_family },
+	planet_family: { one: m.group_type_planet_family, many: m.group_type_plural_planet_family }
 };
 
 export function groupTypeLabel(type: GroupType): string {
@@ -122,7 +123,7 @@ export function groupNameMessage(slug: string): string | undefined {
 	return messages[`group_name_${slug}`]?.();
 }
 
-/** A star family's name; the slug before the export has written it. */
-export function starFamilyLabel(slug: string): string {
+/** A star or planet family's name; the slug before the export has written it. */
+export function familyLabel(slug: string): string {
 	return groupNameMessage(slug) ?? slug;
 }

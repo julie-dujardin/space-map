@@ -148,12 +148,15 @@ export class MembersState {
 		this.memberDescriptions = $derived(
 			d.isGroupMode() ? d.groupDetail()?.localized?.notable_member_descriptions : undefined
 		);
-		// Search does not index the families of stars yet, so a family lists its
-		// baked stars only.
-		const isStarFamily = $derived(d.groupDetail()?.global?.type === 'star_family');
+		// Search does not index the families of stars and planets yet, so a
+		// family lists its baked members only.
+		const isFamily = $derived(
+			d.groupDetail()?.global?.type === 'star_family' ||
+				d.groupDetail()?.global?.type === 'planet_family'
+		);
 		this.memberTotal = $derived(
 			d.isGroupMode()
-				? isStarFamily
+				? isFamily
 					? (this.notableMembers?.length ?? 0)
 					: (d.groupDetail()?.global?.member_count ?? 0)
 				: (d.data()?.global?.moon_count ?? 0) +

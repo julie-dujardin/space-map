@@ -82,10 +82,13 @@ export interface ExtrasolarPlanets {
 	systems: number;
 	hosts: number;
 	planets: number;
+	/** The planet families of the planet records. */
+	families: ExtrasolarFamily[];
 	distribution?: string;
 }
 
-/** A star family of the Metadata masks: entry n of `families` is bit n. */
+/** A star family of the Metadata masks, where entry n of `families` is bit
+ *  n, or a planet family of the planet records. */
 export interface ExtrasolarFamily {
 	slug: string;
 	wikidata: string[];

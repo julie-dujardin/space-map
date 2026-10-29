@@ -25,10 +25,10 @@ import {
 	COMET_FAMILY_SLUG_PREFIX,
 	CAT_SURFACE_FEATURES,
 	FEATURE_TYPE_SLUG_PREFIX,
-	STAR_FAMILY_SLUG_PREFIX,
+	isFamilySlug,
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
-import { categoryLabel, starFamilyLabel } from '$lib/format/group';
+import { categoryLabel, familyLabel } from '$lib/format/group';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 import { isPropertyCollection } from './category-config';
 import type { Focusable } from './focusable';
@@ -135,12 +135,12 @@ export function parentCrumb(
 		// A split-comet family is always a comet, regardless of orbit class.
 		if (slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) return categoryCrumb(CAT_COMETS);
 		if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) return categoryCrumb(CAT_SURFACE_FEATURES);
-		// A family climbs to the first family that contains it; the root,
-		// stellar classification, has none.
-		if (slug.startsWith(STAR_FAMILY_SLUG_PREFIX)) {
+		// A family climbs to the first family that contains it; the roots,
+		// stellar classification and exoplanet, have none.
+		if (isFamilySlug(slug)) {
 			const parent = groupGlobal?.parent_families?.[0];
 			if (!parent) return null;
-			const label = starFamilyLabel(parent);
+			const label = familyLabel(parent);
 			return { label, target: { kind: 'group', slug: parent, name: label } };
 		}
 		const appliesTo = groupGlobal?.applies_to;

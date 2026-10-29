@@ -22,6 +22,7 @@ const ENTRY: ExtrasolarPlanets = {
 	systems: 2,
 	hosts: 3,
 	planets: 5,
+	families: [],
 	distribution: 'non-commercial'
 };
 
