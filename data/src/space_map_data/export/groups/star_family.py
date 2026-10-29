@@ -3,20 +3,17 @@
 One page per family of ``constants/stars/families.py``. The extrasolar export
 tags the stars, so the counts and the stars that a page lists come from its
 served files, as the planets of the sitemap do: a page then tells what the
-site serves. A page lists the stars with a Wikipedia article first, then other
-stars of the family from the Metadata tiles. Those other stars can change from
-one export to the next.
+site serves. A page lists the stars with a Wikipedia article first, then the
+brightest other stars of the family, which the extrasolar export picks.
 """
 
+import json
 import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
-
-import numpy as np
-import pyarrow as pa
 
 from space_map_data.constants.stars.families import (
     FAMILIES,
@@ -25,9 +22,10 @@ from space_map_data.constants.stars.families import (
     ROOT_FAMILY,
     SUN_SPECTRAL_TYPE,
 )
-from space_map_data.export.extrasolar.build import served
+from space_map_data.export.extrasolar.build import families_file, served
 from space_map_data.export.extrasolar.families import of_spectral_type
 from space_map_data.export.extrasolar.reader import ExportReader
+from space_map_data.export.extrasolar.tiles import LISTED_STARS
 from space_map_data.export.groups.family_pages import (
     FamilyGroups,
     FamilyPages,
@@ -38,17 +36,10 @@ from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX, StarObject
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.tables import METADATA
+from space_map_data.utils.content_stamp import content_stamp
 from space_map_data.utils.paths import EXTRASOLAR_DIR
 
 logger = logging.getLogger(__name__)
-
-# As many stars as the other collections list.
-NOTABLE_STARS = 20
-# The fill reads at most this share of the Metadata rows, so the tier stays
-# quick. A rare family can then list fewer stars than it has.
-FILL_ROW_SHARE = 0.5
-# Tiles read at a time, between two checks of the lists.
-FILL_BATCH = 64
 
 PAGES = FamilyPages(
     FAMILY_SLUG_PREFIX, PARENTS, "published_star_count", "estimated_star_count"
@@ -56,16 +47,20 @@ PAGES = FamilyPages(
 
 
 def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
-    """The family counts and the Metadata token of the served extrasolar
-    export, None with no export served. The pages count the families and list
-    stars from the Metadata tiles, so they change with either."""
-    metadata = served_metadata(extrasolar_dir)
-    if metadata is None:
-        return None
-    return {
-        "families": metadata["families"],
-        "metadata": metadata["tables"]["metadata"]["token"],
-    }
+    """The family counts, a stamp of the family lists and the Metadata token
+    of the served extrasolar export, None with no export served. The pages
+    read the counts and the lists, and the families of their Wikipedia stars
+    from the Metadata tiles."""
+    # Under the lock, so both files come from one export.
+    with served(extrasolar_dir):
+        metadata = served_metadata(extrasolar_dir)
+        if metadata is None:
+            return None
+        return {
+            "families": metadata["families"],
+            "lists": content_stamp(families_file(extrasolar_dir / "v1" / "x")),
+            "metadata": metadata["tables"]["metadata"]["token"],
+        }
 
 
 def build_star_family_groups(
@@ -128,7 +123,8 @@ def _notable_stars(
     only: a page lists what catalogues say.
 
     The stars with a Wikipedia article and the Sun come first, most sitelinks
-    first. Other stars of the family fill the rest of the list (`_fill`)."""
+    first. The brightest other stars of the family fill the rest of the list
+    (`_add_brightest`)."""
     entries = {star.id: star for star in star_objects}
     stars = {id_: star for id_, star in entries.items() if star.qid}
     rows = reader.rows(METADATA.slug, sorted(stars), ["families"])
@@ -170,95 +166,51 @@ def _notable_stars(
             if family == ROOT_FAMILY:
                 continue
             members = out[PAGES.slug(family)]
-            if mask >> bit & 1 and len(members) < NOTABLE_STARS:
+            if mask >> bit & 1 and len(members) < LISTED_STARS:
                 members.append(member)
-    _fill(reader, bits, out, entries)
+    _add_brightest(reader, out, entries)
     return {slug: members for slug, members in out.items() if members}
 
 
-def _fill(
+def _add_brightest(
     reader: ExportReader,
-    bits: list[str],
     out: dict[str, list[NotableObject]],
     entries: dict[int, StarObject],
 ) -> None:
-    """Fill each list but the root's up to NOTABLE_STARS with other stars of
-    the family, from the Metadata tiles in order of level, shallowest first.
-
-    A shallow tile covers more sky for its rows, so it holds more catalogued
-    stars per row read. The fill reads at most FILL_ROW_SHARE of the rows, so
-    a rare family can stay short. A star takes the name of its Metadata row,
-    as its own page does.
-    """
+    """Fill each list up to LISTED_STARS with the brightest stars of its
+    family in FAMILIES_FILE that it does not list yet. A star takes the name
+    of its Metadata row, as its own page does."""
+    brightest = json.loads(families_file(reader.root).read_text())["brightest"]
     published = {
         entry["slug"]: entry["published"] for entry in reader.metadata["families"]
     }
-    wanted = {
-        bit: min(NOTABLE_STARS, published[family])
-        for bit, family in enumerate(bits)
-        if family != ROOT_FAMILY
-    }
-    listed = {
-        bit: {member.object_id for member in out[PAGES.slug(bits[bit])]}
-        for bit in wanted
-    }
-    open_bits = {bit for bit, n in wanted.items() if len(listed[bit]) < n}
-    split = reader.split(METADATA.slug)
-    order = np.lexsort((split.pixel, split.level)).tolist()
-    budget = reader.metadata["tables"][METADATA.slug]["rows"] * FILL_ROW_SHARE
-
-    def read(leaf: int) -> tuple[int, list[tuple[int, int, str | None]]]:
-        """The rows of a tile, and the ID, families and name of each row
-        with a published family."""
-        tile = reader.leaf(METADATA.slug, leaf)
-        ids = tile.numpy("id")
-        if ids.size == 0:
-            return 0, []
-        families = tile.numpy("families")
-        at = np.flatnonzero(families != 0)
-        names = tile.column("name").take(pa.array(at)).to_pylist()
-        return ids.size, list(zip(ids[at].tolist(), families[at].tolist(), names))
-
-    read_rows = read_tiles = added = 0
-    with ThreadPoolExecutor(8) as pool:
-        for start in range(0, len(order), FILL_BATCH):
-            if not open_bits or read_rows >= budget:
+    added = 0
+    short = []
+    for family, stars in brightest.items():
+        members = out[PAGES.slug(family)]
+        known = {member.object_id for member in members}
+        for star in stars:
+            if len(members) >= LISTED_STARS:
                 break
-            batch = order[start : start + FILL_BATCH]
-            for size, found in pool.map(read, batch):
-                read_rows += size
-                for id_, mask, name in found:
-                    for bit in [bit for bit in open_bits if mask >> bit & 1]:
-                        object_id = f"{PREFIX}{id_}"
-                        if object_id in listed[bit]:
-                            continue
-                        entry = entries.get(id_)
-                        out[PAGES.slug(bits[bit])].append(
-                            NotableObject(
-                                object_id=object_id,
-                                wikidata_qid=entry.qid if entry else None,
-                                fallback_name=name or str(id_),
-                                diameter_km=None,
-                                first_obs=None,
-                                extrasolar=True,
-                            )
-                        )
-                        listed[bit].add(object_id)
-                        added += 1
-                        if len(listed[bit]) == wanted[bit]:
-                            open_bits.discard(bit)
-            read_tiles += len(batch)
-    logger.info(
-        "Star family pages: %d stars filled in from %d of %d Metadata tiles"
-        " (%d rows); short: %s",
-        added,
-        read_tiles,
-        len(order),
-        read_rows,
-        ", ".join(
-            f"{bits[bit]} {len(listed[bit])}/{n}"
-            for bit, n in sorted(wanted.items())
-            if len(listed[bit]) < n
-        )
-        or "none",
-    )
+            object_id = f"{PREFIX}{star['id']}"
+            if object_id in known:
+                continue
+            found = entries.get(star["id"])
+            members.append(
+                NotableObject(
+                    object_id=object_id,
+                    wikidata_qid=found.qid if found else None,
+                    fallback_name=star["name"] or str(star["id"]),
+                    diameter_km=None,
+                    first_obs=None,
+                    extrasolar=True,
+                )
+            )
+            added += 1
+        wanted = min(LISTED_STARS, published[family])
+        if len(members) < wanted:
+            short.append(f"{family} {len(members)}/{wanted}")
+    logger.info("Star family pages: %d of the brightest stars added", added)
+    # The export fills each list, so a short one means the two files disagree.
+    if short:
+        logger.warning("Star family pages short of their family: %s", ", ".join(short))

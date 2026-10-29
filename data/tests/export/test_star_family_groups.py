@@ -11,7 +11,7 @@ from space_map_data.constants.stars.families import (
     FAMILY_SLUG_PREFIX,
     STAR_FAMILY_PAGES,
 )
-from space_map_data.export.extrasolar.build import export_extrasolar
+from space_map_data.export.extrasolar.build import FAMILIES_FILE, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.groups import star_family
 from space_map_data.export.groups.registry import (
@@ -85,9 +85,9 @@ class TestBuild:
         built = write_registry(
             tmp_path / "reg",
             [
-                star(10.0, 5.0, simbad=True),  # K0V
-                star(11.0, 5.0, simbad=True) | {"simbad_sp_type": "K2V"},
-                star(12.0, 5.0, simbad=True) | {"simbad_sp_type": "K5V"},
+                star(10.0, 5.0, g=9.0, simbad=True),  # K0V
+                star(11.0, 5.0, g=7.0, simbad=True) | {"simbad_sp_type": "K2V"},
+                star(12.0, 5.0, g=8.0, simbad=True) | {"simbad_sp_type": "K5V"},
                 star(13.0, 5.0) | dwarf,
             ],
         )
@@ -158,7 +158,7 @@ class TestBuild:
         assert groups.member_counts["star-main-sequence"] == 5
         assert groups.member_counts["star-classification"] == 5
 
-    def test_other_stars_fill_the_list(self, served):
+    def test_the_brightest_stars_fill_the_list(self, served):
         ids, out = served
         groups = star_family.build_star_family_groups([], _entities({}), out)
         assert set(groups.notable_members) == {
@@ -167,29 +167,36 @@ class TestBuild:
             "star-dwarf",
         }
         members = groups.notable_members["star-k-type-main-sequence"]
-        assert {m.object_id for m in members} == {f"x-{id_}" for id_ in ids[:3]}
+        brightest = [ids[1], ids[2], ids[0]]
+        assert [m.object_id for m in members] == [f"x-{id_}" for id_ in brightest]
         assert all(m.extrasolar and m.wikidata_qid is None for m in members)
 
         entries = notable_entries(members, _entities({}))
-        assert {e["name"] for e in entries} == {f"Star {id_}" for id_ in ids[:3]}
+        assert [e["name"] for e in entries] == [f"Star {id_}" for id_ in brightest]
         assert not any("thumbnail" in e for e in entries)
+
+    def test_a_listed_star_is_listed_once(self, served):
+        ids, out = served
+        stars = [StarObject(ids[0], "Faintest", "Q1")]
+        groups = star_family.build_star_family_groups(
+            stars, _entities({"Q1": (5, ["de"])}), out
+        )
+        members = groups.notable_members["star-k-type-main-sequence"]
+        assert [m.object_id for m in members] == [
+            f"x-{ids[0]}",
+            f"x-{ids[1]}",
+            f"x-{ids[2]}",
+        ]
+        assert members[0].wikidata_qid == "Q1"
 
     def test_fill_stops_at_the_list_size(self, served, monkeypatch):
         ids, out = served
-        monkeypatch.setattr(star_family, "NOTABLE_STARS", 2)
-        stars = [StarObject(ids[0], "Few links", "Q1")]
+        monkeypatch.setattr(star_family, "LISTED_STARS", 2)
+        stars = [StarObject(ids[2], "Few links", "Q1")]
         entities = _entities({"Q1": (5, ["de"])})
         groups = star_family.build_star_family_groups(stars, entities, out)
         members = groups.notable_members["star-k-type-main-sequence"]
-        assert len(members) == 2
-        assert members[0].object_id == f"x-{ids[0]}"
-        assert members[1].object_id in {f"x-{ids[1]}", f"x-{ids[2]}"}
-
-    def test_fill_reads_a_share_of_the_rows(self, served, monkeypatch):
-        _, out = served
-        monkeypatch.setattr(star_family, "FILL_ROW_SHARE", 0)
-        groups = star_family.build_star_family_groups([], _entities({}), out)
-        assert groups.notable_members == {}
+        assert [m.object_id for m in members] == [f"x-{ids[2]}", f"x-{ids[1]}"]
 
     def test_no_served_export(self, tmp_path):
         groups = star_family.build_star_family_groups(
@@ -207,13 +214,29 @@ class TestBuild:
         with pytest.raises(KeyError):
             star_family.build_star_family_groups([], _entities({}), tmp_path / "old")
 
-    def test_stamp_is_the_served_counts_and_metadata_tiles(self, served):
+    def test_an_export_without_family_lists_is_refused(self, served):
+        _, out = served
+        (out / "v1" / "x" / FAMILIES_FILE).unlink()
+        with pytest.raises(FileNotFoundError, match="--only extrasolar"):
+            star_family.build_star_family_groups([], _entities({}), out)
+        with pytest.raises(FileNotFoundError, match="--only extrasolar"):
+            star_family.served_families_stamp(out)
+
+    def test_stamp_follows_the_counts_lists_and_metadata_tiles(self, served):
         _, out = served
         stamp = star_family.served_families_stamp(out)
         assert stamp is not None
-        assert [entry["slug"] for entry in stamp["families"]] == list(FAMILIES)
         reader = ExportReader(out / "v1" / "x")
+        assert stamp["families"] == reader.metadata["families"]
         assert stamp["metadata"] == reader.metadata["tables"]["metadata"]["token"]
+        path = out / "v1" / "x" / FAMILIES_FILE
+        lists = json.loads(path.read_text())
+        lists["brightest"]["dwarf"].reverse()
+        path.write_text(json.dumps(lists))
+        changed = star_family.served_families_stamp(out)
+        assert changed is not None
+        assert changed["lists"] != stamp["lists"]
+        assert changed["families"] == stamp["families"]
 
     def test_rows_skip_an_empty_tile(self, served, monkeypatch):
         ids, out = served

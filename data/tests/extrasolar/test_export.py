@@ -17,7 +17,11 @@ from space_map_data.export.extrasolar import (
     systems,
     tiles,
 )
-from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
+from space_map_data.export.extrasolar.build import (
+    FAMILIES_FILE,
+    ExportRefused,
+    export_extrasolar,
+)
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
 from space_map_data.extrasolar import ids
@@ -173,6 +177,39 @@ class TestExport:
             for c in reader.metadata["tables"]["metadata"]["columns"]
         }
         assert types["families"] == types["families_estimated"] == "uint64"
+
+    def test_the_brightest_stars_of_each_family(self, tmp_path, out, monkeypatch):
+        monkeypatch.setattr(tiles, "LISTED_STARS", 5)
+        typed = {"simbad_sp_type": "K0V"}
+        built = write_registry(
+            tmp_path / "reg",
+            [
+                star(10.0, 5.0, g=9.0, simbad=True, name="Faint"),
+                star(100.0, -40.0, g=6.0, simbad=True, name="Bright"),
+                star(200.0, 60.0, g=None) | typed,  # no magnitude
+                star(300.0, -10.0, g=7.0, simbad=True),
+                star(310.0, -10.0, g=7.0, simbad=True),
+                star(12.0, 5.0, g=1.0),  # no published family
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        listed = json.loads((out / "v1" / "x" / FAMILIES_FILE).read_text())
+        ids = built.ids
+        tie = sorted(ids[3:5])
+        expected = [
+            {"id": ids[1], "name": "Bright"},
+            {"id": tie[0], "name": f"Star {tie[0]}"},
+            {"id": tie[1], "name": f"Star {tie[1]}"},
+            {"id": ids[0], "name": "Faint"},
+            {"id": ids[2], "name": f"Star {ids[2]}"},
+        ]
+        assert listed == {
+            "brightest": {
+                "main-sequence": expected,
+                "dwarf": expected,
+                "k-type-main-sequence": expected,
+            }
+        }
 
     def test_every_star_is_found_as_a_client_finds_it(self, tmp_path, out):
         stars = random_stars(150, around=(100, 20)) + random_stars(60) + _special()
@@ -417,7 +454,7 @@ class TestExport:
             ("metadata", None),
             ("point-source", ("id",)),
             ("point-source", None),
-            ("point-source", families.COLUMNS),
+            ("point-source", tiles.FAMILY_COLUMNS),
             ("point-source", render.COLUMNS),
             ("binary-orbit", ("id",)),
             ("binary-orbit", None),
@@ -436,6 +473,52 @@ class TestExport:
         inline = export_extrasolar(built.root, tmp_path / "inline", workers=1)
         pooled = export_extrasolar(built.root, out, workers=2)
         assert inline["tokens"] == pooled["tokens"]
+
+
+class TestBrightest:
+    """The brightest stars of each family, per job and merged."""
+
+    BIT = FAMILIES.index("giant")
+
+    def _rows(self):
+        rows = pa.table({"id": [5, 4, 3, 2, 1], "name": ["e", "d", None, "b", "a"]})
+        bit = families.BIT["giant"] | families.BIT["classification"]
+        published = np.array([bit, bit, bit, bit, 0], np.uint64)
+        mag = np.array([np.nan, 7.0, 7.0, 3.0, 1.0])
+        return rows, published, mag
+
+    def test_brightest_first_then_by_id(self, monkeypatch):
+        monkeypatch.setattr(tiles, "LISTED_STARS", 3)
+        assert tiles.brightest(*self._rows()) == {
+            self.BIT: [(3.0, 2, "b"), (7.0, 3, None), (7.0, 4, "d")]
+        }
+
+    def test_a_tie_at_the_cut_goes_by_id(self, monkeypatch):
+        monkeypatch.setattr(tiles, "LISTED_STARS", 2)
+        assert tiles.brightest(*self._rows()) == {
+            self.BIT: [(3.0, 2, "b"), (7.0, 3, None)]
+        }
+
+    def test_a_star_without_magnitude_comes_last(self, monkeypatch):
+        monkeypatch.setattr(tiles, "LISTED_STARS", 5)
+        found = tiles.brightest(*self._rows())[self.BIT]
+        assert [id_ for _, id_, _ in found] == [2, 3, 4, 5]
+
+    def test_merged_jobs_give_the_stars_of_one_job(self, monkeypatch):
+        monkeypatch.setattr(tiles, "LISTED_STARS", 3)
+        rows, published, mag = self._rows()
+
+        def stars(at: slice) -> tiles.FamilyStars:
+            part = rows.slice(at.start, at.stop - at.start)
+            counts = np.stack([families.counts(published[at])] * 2)
+            return tiles.FamilyStars(
+                counts, tiles.brightest(part, published[at], mag[at])
+            )
+
+        merged = stars(slice(0, 2)).merge(stars(slice(2, 4))).merge(stars(slice(4, 5)))
+        whole = stars(slice(0, 5))
+        assert merged.brightest == whole.brightest
+        assert (merged.counts == whole.counts).all()
 
 
 class TestChecks:

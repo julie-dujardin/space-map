@@ -413,23 +413,23 @@ interface GlobalGroupData {
   // export's `metadata.json` `families` entry, read under the export's shared
   // lock, so the pages count what the site serves; with no export served they
   // are absent and the page has its text only, and a served export without
-  // `families` stops the tier. member_count is their sum: the two masks of a
-  // star never share a family. The Sun is in no catalogue of that export, so
-  // it adds one published star to each family of its spectral type
-  // (`SUN_SPECTRAL_TYPE` in `constants/stars/families.py`). `notable_members`
-  // (top 20, `id` = `x-<id>`, or `naif-10` for the Sun) are the stars that a
-  // *published* family puts here: first the stars with a Wikipedia article in
-  // one of the site's languages and the Sun, most sitelinks first;
-  // then other stars of the family, in the order of the Metadata tiles,
-  // shallowest level first, from at most half of the Metadata rows. Those
-  // others can change from one export to the next, and a rare family can stay
-  // under 20. A star with an entry takes its Wikidata entity and pictures from
-  // that entry; a star without one has the `name` of its Metadata row, no
-  // thumbnail and no localized name. `galleries` has a shelf for each listed
-  // star that has pictures. `child_groups` (localized) lists the
-  // families it contains that have stars, most stars first. `star-classification`
-  // (stellar classification) is the root: every family without another parent
-  // is below it, so it counts every star with a family, and it lists no stars.
+  // `families` or without `families.json` stops the tier. member_count is
+  // their sum: the two masks of a star never share a family. The Sun is in no
+  // catalogue of that export, so it adds one published star to each family of
+  // its spectral type (`SUN_SPECTRAL_TYPE` in `constants/stars/families.py`).
+  // `notable_members` (top 20, `id` = `x-<id>`, or `naif-10` for the Sun) are
+  // the stars that a *published* family puts here: first the stars with a
+  // Wikipedia article in one of the site's languages and the Sun, most
+  // sitelinks first; then the stars of the family in the export's
+  // `families.json` (extrasolar.md) that are not listed yet, brightest first.
+  // So a family with fewer than 20 published stars lists them all. A star
+  // with an entry takes its Wikidata entity and pictures from that entry; a
+  // star without one has the `name` of its Metadata row, no thumbnail and no
+  // localized name. `galleries` has a shelf for each listed star that has
+  // pictures. `child_groups` (localized) lists the families it contains that
+  // have stars, most stars first. `star-classification` (stellar
+  // classification) is the root: every family without another parent is
+  // below it, so it counts every star with a family, and it lists no stars.
   parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; absent on the root
   published_star_count?: number;    // stars that a catalogued classification puts in the family
   estimated_star_count?: number;    // the other stars, which only a Gaia estimate puts there

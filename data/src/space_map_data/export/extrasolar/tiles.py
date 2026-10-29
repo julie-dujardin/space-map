@@ -21,13 +21,15 @@ import struct
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from operator import itemgetter
 from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from space_map_data.export.extrasolar import container, families
+from space_map_data.constants.stars.families import FAMILIES, ROOT_FAMILY
+from space_map_data.export.extrasolar import container, families, render
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
@@ -81,6 +83,12 @@ DICTIONARY = frozenset(
 )
 # Columns that the export computes, after the columns of the table.
 COMPUTED = {METADATA.slug: families.FIELDS}
+# The Point source columns of the family masks and of the brightest stars.
+FAMILY_COLUMNS = (*families.COLUMNS, *render.MAG_COLUMNS)
+# The length of each family list. A family page lists as many stars.
+LISTED_STARS = 20
+# The G, ID and name of a star of a family list.
+type Listed = tuple[float, int, str | None]
 TILE_INFO = struct.Struct("<IBBxx")
 SPLIT_FILE = "split.bin.gz"
 EXAMPLES = 10
@@ -264,13 +272,36 @@ class UnitJob:
 
 
 @dataclass
+class FamilyStars:
+    """The stars of each family in some Metadata rows. `counts` holds the
+    number of published stars of each family, then of estimated stars.
+    `brightest` holds the brightest published stars of each family, by bit."""
+
+    counts: np.ndarray
+    brightest: dict[int, list[Listed]]
+
+    def merge(self, other: FamilyStars) -> FamilyStars:
+        """The family stars of both sets of rows."""
+        return FamilyStars(
+            self.counts + other.counts,
+            {
+                bit: sorted(
+                    self.brightest.get(bit, []) + other.brightest.get(bit, []),
+                    key=itemgetter(0, 1),
+                )[:LISTED_STARS]
+                for bit in self.brightest.keys() | other.brightest.keys()
+            },
+        )
+
+
+@dataclass
 class UnitResult:
     files: list[Written]
     rows: int
     dropped_aliases: int
     problems: Problems
-    # Metadata only: the stars of each family, published then estimated.
-    family_counts: np.ndarray | None = None
+    # Metadata only.
+    family_stars: FamilyStars | None = None
 
 
 def _states_of(registry: Registry, ids: np.ndarray):
@@ -424,9 +455,9 @@ def build_unit(job: UnitJob) -> UnitResult:
         problems.update(job.check(rows))
     if job.previous is not None:
         problems.update(check_previous(registry, job.unit.regions, rows, job.previous))
-    family_counts = None
+    family_stars = None
     if job.slug == METADATA.slug:
-        rows, family_counts = with_families(registry, job.unit.regions, rows, problems)
+        rows, family_stars = with_families(registry, job.unit.regions, rows, problems)
 
     ids = rows["id"].to_numpy()
     first = first_cell(job.unit.level, job.unit.pixel)
@@ -444,24 +475,25 @@ def build_unit(job: UnitJob) -> UnitResult:
                 job.out, tile_path(job.slug, int(level), int(pixel)), payload
             )
         )
-    return UnitResult(files, rows.num_rows, dropped, problems, family_counts)
+    return UnitResult(files, rows.num_rows, dropped, problems, family_stars)
 
 
 def with_families(
     registry: Registry, regions: tuple[int, ...], rows: pa.Table, problems: Problems
-) -> tuple[pa.Table, np.ndarray]:
+) -> tuple[pa.Table, FamilyStars]:
     """Metadata `rows` with their family masks, and the stars of each family.
 
     A row without a Point source row, such as an alias, has no family.
     """
     parts = [
-        registry.read_table(POINT_SOURCE.slug, region, list(families.COLUMNS))
+        registry.read_table(POINT_SOURCE.slug, region, list(FAMILY_COLUMNS))
         for region in regions
     ]
     kept = [part for part in parts if part is not None]
     stars = pa.concat_tables(kept) if kept else None
     published = np.zeros(rows.num_rows, np.uint64)
     estimated = np.zeros(rows.num_rows, np.uint64)
+    mag = np.full(rows.num_rows, np.nan)
     if stars is not None and stars.num_rows:
         at = pc.index_in(stars["id"], value_set=rows["id"].combine_chunks())
         found = at.is_valid().to_numpy(zero_copy_only=False)
@@ -471,9 +503,44 @@ def with_families(
         at = at.filter(pa.array(found)).to_numpy()
         classes = rows["class"].take(pa.array(at))
         published[at], estimated[at] = families.masks(stars, classes)
+        # Only a star with a published family can be listed.
+        listed = published[at] != 0
+        mag[at[listed]] = render.magnitudes(stars.filter(pa.array(listed)))[0]
     for column, values in zip(families.FIELDS, (published, estimated)):
         rows = rows.append_column(column, pa.array(values, column.type))
-    return rows, np.stack([families.counts(published), families.counts(estimated)])
+    counts = np.stack([families.counts(published), families.counts(estimated)])
+    return rows, FamilyStars(counts, brightest(rows, published, mag))
+
+
+def brightest(
+    rows: pa.Table, published: np.ndarray, mag: np.ndarray
+) -> dict[int, list[Listed]]:
+    """The LISTED_STARS brightest of the Metadata `rows` in each published
+    family but the root, by bit, brightest first.
+
+    `mag` is the G of each row. A row without G comes last, and a tie goes by
+    ID, so the lists do not depend on how the rows are cut into jobs.
+    """
+    tagged = np.flatnonzero(published)
+    masks = published[tagged]
+    ids = rows["id"].to_numpy()[tagged]
+    mag = mag[tagged]
+    mag[np.isnan(mag)] = np.inf
+    out = {}
+    for bit, family in enumerate(FAMILIES):
+        if family == ROOT_FAMILY:
+            continue
+        at = np.flatnonzero(masks & families.BIT[family])
+        if not at.size:
+            continue
+        if at.size > LISTED_STARS:
+            # The stars tied at the cut stay, so the ID picks among them.
+            cut = np.partition(mag[at], LISTED_STARS - 1)[LISTED_STARS - 1]
+            at = at[mag[at] <= cut]
+        at = at[np.lexsort((ids[at], mag[at]))[:LISTED_STARS]]
+        names = rows["name"].take(pa.array(tagged[at])).to_pylist()
+        out[bit] = list(zip(mag[at].tolist(), ids[at].tolist(), names))
+    return out
 
 
 def region_counts(registry: Registry, slug: str, region: int) -> np.ndarray:

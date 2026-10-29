@@ -158,6 +158,18 @@ MAG_SOURCES = (
     "G estimated from SIMBAD V and B - V",
     "magnitude from an exoplanet catalogue",
 )
+# The Point source columns that `magnitudes` reads.
+MAG_COLUMNS = (
+    "phot_g_mean_mag",
+    "simbad_g_mag",
+    "v_mag",
+    "b_v",
+    "hp_mag",
+    "simbad_v_mag",
+    "simbad_b_mag",
+    "host_g_mag",
+    "host_v_mag",
+)
 # How a star is placed, besides the source of its distance group.
 PARALLAX = "parallax"
 SUSPECT_PARALLAX = "parallax with fidelity under 0.5"
@@ -179,16 +191,10 @@ COLUMNS = (
     "distance_upper",
     "distance_source",
     "distance_method",
-    "phot_g_mean_mag",
+    *MAG_COLUMNS,
     "phot_bp_mean_mag",
     "phot_rp_mean_mag",
-    "hp_mag",
-    "v_mag",
-    "b_v",
     "v_i",
-    "simbad_b_mag",
-    "simbad_v_mag",
-    "simbad_g_mag",
     "fidelity_v2",
     "astrometry_source",
     "hipparcos_photometry_source",
@@ -196,8 +202,6 @@ COLUMNS = (
     "teff_gspphot",
     "host_distance",
     "host_teff",
-    "host_v_mag",
-    "host_g_mag",
     "host_star_source",
 )
 ORBIT_COLUMNS = ("id", "nss_solution_type", "parallax_nss", "parallax_nss_error")
@@ -353,7 +357,7 @@ def _valid(table: pa.Table, name: str) -> np.ndarray:
     return table[name].is_valid().to_numpy(zero_copy_only=False)
 
 
-def _magnitudes(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
+def magnitudes(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
     """G of each row from the first source in MAG_SOURCES that has one, and
     the index of that source, -1 for none."""
     simbad_v = _floats(table, "simbad_v_mag")
@@ -399,7 +403,7 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
         counts[f"dropped: no distance, {name} astrometry"] = n
     counts["planet host with no distance"] = int((host & ~placed).sum())
 
-    mag, mag_source = _magnitudes(table)
+    mag, mag_source = magnitudes(table)
     bright = np.isfinite(mag)
     counts["dropped: no magnitude"] = int((placed & ~host & ~bright).sum())
     counts["planet host with no magnitude, placeholder"] = int(

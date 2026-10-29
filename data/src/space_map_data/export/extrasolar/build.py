@@ -73,6 +73,22 @@ from space_map_data.utils.paths import EXTRASOLAR_DIR, REGISTRY_ROOT
 logger = logging.getLogger(__name__)
 
 METADATA_FILE = "metadata.json"
+# The brightest stars of each family, for the family pages of the main
+# export. Clients do not read it, so it is not in METADATA_FILE.
+FAMILIES_FILE = "families.json"
+
+
+def families_file(root: Path) -> Path:
+    """FAMILIES_FILE of the served export at `root` (its `v1/x`)."""
+    path = root / FAMILIES_FILE
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} is missing: run `space-map-export --only extrasolar` before"
+            " the full export"
+        )
+    return path
+
+
 # Every file holds values of Gaia DR3 (CC BY-NC 3.0 IGO) and of the star
 # system catalogues, whose trees reach Metadata, Point source, System, the
 # render tree and the planet files. A file takes the strictest of their tiers.
@@ -411,8 +427,6 @@ class TableResult:
     split: Split
     files: list[Written]
     rows: int
-    # Metadata only: the stars of each family, published then estimated.
-    family_counts: np.ndarray | None = None
 
 
 def _build_tables(
@@ -422,10 +436,11 @@ def _build_tables(
     previous: Split | None,
     problems: Problems,
     refs: systems.Refs,
-) -> list[TableResult]:
-    """The record tiles of every table. `refs` are the IDs of the system trees,
-    which the Metadata tiles check."""
+) -> tuple[list[TableResult], tiles.FamilyStars]:
+    """The record tiles of every table, and the stars of each family. `refs`
+    are the IDs of the system trees, which the Metadata tiles check."""
     results = []
+    family_stars = tiles.FamilyStars(np.zeros((2, len(FAMILIES)), np.int64), {})
     for table in (METADATA, *TABLES):
         slug = table.slug
         jobs = [(registry, slug, region) for region in range(REGION_COUNT)]
@@ -460,22 +475,17 @@ def _build_tables(
         built = _run(workers, tiles.build_unit, unit_jobs, f"{slug}: tiles")
         files = [split_file]
         rows = dropped = 0
-        family_counts = None
         for result in built:
             files += result.files
             rows += result.rows
             dropped += result.dropped_aliases
             problems.update(result.problems)
-            if result.family_counts is not None:
-                family_counts = (
-                    result.family_counts
-                    if family_counts is None
-                    else family_counts + result.family_counts
-                )
+            if result.family_stars is not None:
+                family_stars = family_stars.merge(result.family_stars)
         if dropped:
             logger.warning("%s: %d aliases without a live end left out", slug, dropped)
-        results.append(TableResult(slug, split, files, rows, family_counts))
-    return results
+        results.append(TableResult(slug, split, files, rows))
+    return results, family_stars
 
 
 @dataclass
@@ -573,6 +583,7 @@ def _sizes(files: list[Written]) -> dict:
 def _metadata(
     registry: Registry,
     tables_built: list[TableResult],
+    family_counts: np.ndarray,
     tree: TreeResult,
     tokens: dict[str, str],
     cultures: skycultures.Result | None,
@@ -595,9 +606,6 @@ def _metadata(
             ],
             "distribution": DISTRIBUTION,
         }
-    family_counts = next(
-        r.family_counts for r in tables_built if r.family_counts is not None
-    )
     nodes = tree.nodes
     metadata = {
         "format": container.VERSION,
@@ -661,6 +669,16 @@ def _metadata(
     return metadata
 
 
+def _family_lists(brightest: dict[int, list[tiles.Listed]]) -> dict:
+    """The content of FAMILIES_FILE."""
+    return {
+        "brightest": {
+            FAMILIES[bit]: [{"id": id_, "name": name} for _, id_, name in stars]
+            for bit, stars in sorted(brightest.items())
+        }
+    }
+
+
 def _swap(layout: Layout) -> None:
     replaced = layout.live.exists()
     if replaced:
@@ -685,6 +703,7 @@ class Built:
     tokens: dict[str, str]
     # The nodes, members and trees of the System table.
     systems: dict[str, int]
+    family_stars: tiles.FamilyStars
 
 
 def _refuse(problems: Problems) -> None:
@@ -720,7 +739,9 @@ def _export(
         refs = trees.refs()
         del trees
         problems = Problems()
-        built = _build_tables(registry, layout, workers, previous, problems, refs)
+        built, family_stars = _build_tables(
+            registry, layout, workers, previous, problems, refs
+        )
         del refs
         _refuse(problems)
         tree = _build_tree(registry, layout, workers)
@@ -754,10 +775,20 @@ def _export(
         if planet_files is not None:
             tokens[planets.SECTION] = planet_files.entry["token"]
         metadata = _metadata(
-            registry, built, tree, tokens, cultures, planet_files, counted
+            registry,
+            built,
+            family_stars.counts,
+            tree,
+            tokens,
+            cultures,
+            planet_files,
+            counted,
         )
         (layout.staging / METADATA_FILE).write_text(
             json.dumps(metadata, indent=1) + "\n"
+        )
+        (layout.staging / FAMILIES_FILE).write_text(
+            json.dumps(_family_lists(family_stars.brightest), indent=1) + "\n"
         )
         _swap(layout)
     except BaseException:
@@ -765,7 +796,9 @@ def _export(
             if path.exists():
                 shutil.rmtree(path)
         raise
-    return Built(built, tree, cultures, planet_files, tokens, system_counts)
+    return Built(
+        built, tree, cultures, planet_files, tokens, system_counts, family_stars
+    )
 
 
 def export_extrasolar(
@@ -807,9 +840,7 @@ def export_extrasolar(
         "render": dict(tree.counts),
         "families": {
             slug: [int(n) for n in counts]
-            for r in built
-            if r.family_counts is not None
-            for slug, counts in zip(FAMILIES, r.family_counts.T)
+            for slug, counts in zip(FAMILIES, result.family_stars.counts.T)
         },
         "depths": dict(sorted(Counter(node.depth for node in tree.nodes).items())),
         "systems": result.systems,
@@ -832,7 +863,8 @@ def export_extrasolar(
         + len(tree.files)
         + len(culture_files)
         + len(planet_files)
-        + 1
+        # METADATA_FILE and FAMILIES_FILE.
+        + 2
     )
     report["bytes"] = (
         sum(f.size for r in built for f in r.files)

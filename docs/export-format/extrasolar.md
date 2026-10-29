@@ -9,6 +9,7 @@ An object has one ID for all its files. The ID, its URL form and its check are i
 ```
 v1/x/
   metadata.json                          (not gzipped) entry point: format, tokens, tables, trees, credits
+  families.json                          (not gzipped) the brightest stars of each family, for the main export; clients do not read it
   metadata/split.bin.gz                  split table of the Metadata tiles
   metadata/{level}/{pixel}.bin.gz        Metadata record tiles
   point-source/split.bin.gz              split table of the Point source tiles
@@ -107,7 +108,7 @@ Info block of a render node:
 
 ## Tokens
 
-Each table and each tree has a token: the first 16 hex digits of SHA-256 over, for each of its files sorted by path, the path relative to `v1/x/`, a zero byte and the SHA-256 of the payload with the token field set to zeros. The split table is one of the files of its table, and the ID files are files of their tree. `metadata.json` is not in any token.
+Each table and each tree has a token: the first 16 hex digits of SHA-256 over, for each of its files sorted by path, the path relative to `v1/x/`, a zero byte and the SHA-256 of the payload with the token field set to zeros. The split table is one of the files of its table, and the ID files are files of their tree. `metadata.json` and `families.json` are not in any token.
 
 `metadata.json` lists the tokens, every URL carries its token as `?v=`, and every file repeats it in its header. A file whose header token is not the one that the client expects comes from another export: the client shows the reload prompt. This also catches an edge cache that serves a new file under an old URL. A table that did not change keeps its token, and its files stay cached. A table that changed gets a new token and new URLs for all its files.
 
@@ -706,8 +707,8 @@ The site's sitemap lists the page of every planet and of every planet host that 
 
 - `tables`: keyed by slug. `number` is the table number in the IDs, null for Metadata. `max_rows` is the split threshold. `rows` counts the rows of all tiles.
 - `trees`: keyed by name; `mw` is the Milky Way.
-- `families`: the star families in bit order: entry `n` is bit `n` of the Metadata masks. `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on the root), `published` and `estimated` count the stars with the bit set in `families` and in `families_estimated`.
-- `objects`: the census of the export for `/about/data` ([about-data.md](about-data.md)), by kind. An object's kind is its home table, so each ID counts once: `star` is a live ID of table 1, also a point that holds two or more stars, `star_system` one of table 3, and `planet` a row of the planets table. `size_bytes` holds the files of the kind: Point source, Binary orbit and the render tree for the stars, the planet files for the planets, and the Metadata and System tiles split between the stars and the star systems by their rows. The sky cultures and `metadata.json` are not counted. `sources` counts the objects that each source feeds with at least one value, most objects first. The source of a value is the source column of its group, with another pass of a catalogue as that catalogue (`gaia-dr3-named` is `gaia-dr3`; `simbad-hip` and `simbad-parallax` are `simbad`). A group of a star table that a pass carries for a catalogue of its own counts for that catalogue: `xgboost` for `andrae-2023`, `pastel` for `pastel-2020`, `apogee` for `apogee-dr17`, `lamost` for `lamost-dr10`, `xhip_metallicity` for `xhip`, `fidelity` for `rybizki-2022`, `orbit` and `masses` for `gaia-dr3-nss`. Wikidata is left out: every object with an item has an object entry, and the main export counts the items from the entries.
+- `families`: the star families in bit order: entry `n` is bit `n` of the Metadata masks. `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on the root), `published` and `estimated` count the stars with the bit set in `families` and in `families_estimated`. The brightest stars of each family are in `families.json` (below).
+- `objects`: the census of the export for `/about/data` ([about-data.md](about-data.md)), by kind. An object's kind is its home table, so each ID counts once: `star` is a live ID of table 1, also a point that holds two or more stars, `star_system` one of table 3, and `planet` a row of the planets table. `size_bytes` holds the files of the kind: Point source, Binary orbit and the render tree for the stars, the planet files for the planets, and the Metadata and System tiles split between the stars and the star systems by their rows. The sky cultures, `metadata.json` and `families.json` are not counted. `sources` counts the objects that each source feeds with at least one value, most objects first. The source of a value is the source column of its group, with another pass of a catalogue as that catalogue (`gaia-dr3-named` is `gaia-dr3`; `simbad-hip` and `simbad-parallax` are `simbad`). A group of a star table that a pass carries for a catalogue of its own counts for that catalogue: `xgboost` for `andrae-2023`, `pastel` for `pastel-2020`, `apogee` for `apogee-dr17`, `lamost` for `lamost-dr10`, `xhip_metallicity` for `xhip`, `fidelity` for `rybizki-2022`, `orbit` and `masses` for `gaia-dr3-nss`. Wikidata is left out: every object with an item has an object entry, and the main export counts the items from the entries.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)): the strictest tier of the sources whose values the files hold. Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values. The star system catalogues reach Metadata (`system`, the classes and names), Point source (the system distance, `member`), System, the render tree and the planet files: the WDS and the MSC state no licence, so they are `non-commercial`, and El-Badry, Rix & Heintz 2021 is CC BY 4.0, though it repeats Gaia EDR3 values, which come from Gaia here. So all are `non-commercial`.
 - `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, Hipparcos I/311 and I/239, XHIP V/137D, the distance catalogues (Reylé et al. 2021, the UltracoolSheet, Hunt & Reffert 2024, the LMC and SMC distances of Pietrzyński et al. 2019 and Graczyk et al. 2020, Bailer-Jones et al. 2021), the star system catalogues (the Washington Double Star Catalog with the acknowledgement it asks for, Tokovinin's Multiple Star Catalogue, the wide binaries of El-Badry, Rix & Heintz 2021), one credit for the papers of the literature table (its `source` is the table in the repo; each star's object entry cites its own papers), the IAU Catalog of Star Names, Wikidata; with planets also the NASA Exoplanet Archive (its acknowledgement, and the DOI of Planetary Systems Composite Parameters, 10.26133/NEA13), exoplanet.eu (CC BY 4.0), the Open Exoplanet Catalogue (MIT) and the IAU's NameExoWorlds. The planet catalogues also fill the host rows of Point source and Metadata, so their credits are in this list. Each catalogue has one credit, and its `source` names it.
 - `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `families` lists the planet families in the order of the planet records' lists, as the star families are listed: `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on the root), `published` and `estimated` count the planets with the family in `families` and in `families_estimated`. `distribution` is `non-commercial`: the host positions come from Gaia DR3.
@@ -719,6 +720,21 @@ The site's sitemap lists the page of every planet and of every planet host that 
   - `credit`: the culture's own credit: its source at the pinned commit, its licence, and for Stellarium `authors`, the plain names of the people that the culture's description names as its makers, with no Markdown, addresses or links.
   - `figures`, `members`, `positioned` (members with a position) and `unresolved` (members with no ID, sky points left out).
   - `credits` of the section: Stellarium, Bucur's dataset and SIMBAD, which matched Bucur's identifiers.
+
+## `families.json`
+
+```json
+{
+  "brightest": {
+    "a-type-main-sequence": [{ "id": 20593262, "name": "Vega" }, "…"],
+    "…": "…"
+  }
+}
+```
+
+The main export reads this file for the family pages ([groups.md](groups.md)). Clients do not read it, so it is apart from `metadata.json`, which a client fetches at each load. The export writes both files into the same staging directory, so they come from the same run. A full export stops when the served export has no `families.json`: run the extrasolar export first. Its IDs and names come from the Metadata tiles, so it is `non-commercial`, as they are.
+
+`brightest` has a key for each family with a published star, in bit order, except the root. Every star with a published family is in the root, so the root lists no stars. Each list holds the 20 brightest stars with the bit set in `families`, brightest first, each with its `id` and the `name` of its Metadata row (null when the row has none). The brightness is the G of the render tree (`MAG_SOURCES` in `export/extrasolar/render.py`): Gaia G, else SIMBAD G, else G estimated from Hipparcos or from SIMBAD V and B − V, else the G or V of an exoplanet catalogue. A star without any comes last, and a tie goes by ID.
 
 ## Sizes
 
