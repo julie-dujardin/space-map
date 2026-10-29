@@ -10,7 +10,8 @@ Files, JSON in gzip:
   and its outer orbit; and every alias number, with the planet it leads to,
   which can be on another host when the old host merged;
 - planets/{system}.json.gz: the hosts and the planets of one system, with
-  each planet's orbit in the scene's frame (`orbits`) and its catalogue values.
+  each planet's orbit in the scene's frame (`orbits`), its catalogue values
+  and its families (`families`, `families_estimated`).
 
 Every file has the token of the section in its `token` field. The token
 hashes each file with 16 zeros in that field, as for the sky cultures.
@@ -42,7 +43,12 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from space_map_data.export.extrasolar import container, orbits, render
+from space_map_data.export.extrasolar import (
+    container,
+    orbits,
+    planet_families,
+    render,
+)
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.systems import SYSTEM_BIT
 from space_map_data.export.extrasolar.tiles import Problems
@@ -414,9 +420,9 @@ def _direction(host: dict) -> np.ndarray:
     )
 
 
-def planet_record(row: dict, direction: np.ndarray) -> dict:
-    """The planet entry of a system file from its planets table row. A planet
-    with a Wikidata item has an object entry."""
+def planet_record(row: dict, host: dict) -> dict:
+    """The planet entry of a system file from its planets table row and its
+    host record. A planet with a Wikidata item has an object entry."""
     record: dict = {
         "host": row["host"],
         "number": row["number"],
@@ -424,7 +430,7 @@ def planet_record(row: dict, direction: np.ndarray) -> dict:
     }
     for name in TOP_COLUMNS:
         record[name] = _finite(row[name])
-    record["elements"] = orbits.elements(row, direction)
+    record["elements"] = orbits.elements(row, _direction(host))
     sources = {}
     values = {}
     for name, value in row.items():
@@ -441,6 +447,9 @@ def planet_record(row: dict, direction: np.ndarray) -> dict:
     record["sources"] = sources
     for name in FLAG_COLUMNS:
         record[name] = row[name] or []
+    record["families"], record["families_estimated"] = planet_families.families_of(
+        record, host
+    )
     return record
 
 
@@ -572,12 +581,18 @@ def build(
     )
 
     planets_of: dict[int, list[dict]] = defaultdict(list)
+    published: Counter = Counter()
+    estimated: Counter = Counter()
     for row in rows:
         host = hosts.get(row["host"])
         if host is None:
             continue
-        record = planet_record(row, _direction(host))
+        record = planet_record(row, host)
         planets_of[row["system"]].append(record)
+        published.update(record["families"])
+        estimated.update(record["families_estimated"])
+        if not record["families"] and not record["families_estimated"]:
+            counts[f"no family: {record['class']}"] += 1
         elements = record["elements"]
         if elements is None:
             counts["no semi-major axis, a fixed dot"] += 1
@@ -686,6 +701,7 @@ def build(
             "ecliptic and mean equinox of J2000, the planet around its host;"
             f" obliquity {orbits.OBLIQUITY} deg"
         ),
+        "families": planet_families.listed(published, estimated),
         "credits": list(CREDITS),
     }
     return Result(written, entry, problems, counts)

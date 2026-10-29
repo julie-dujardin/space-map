@@ -48,11 +48,14 @@ class TestTree:
 
 
 class TestPages:
-    """The QIDs and the bit order of the families."""
+    """The QIDs and the order of the families."""
 
-    def test_a_family_bit_fits_a_uint64_mask(self):
-        assert len(FAMILIES) <= 64
+    def test_a_parent_comes_before_its_children(self):
+        """A planet's lists then start at the root and go down the tree."""
         assert FAMILIES[0] == ROOT_FAMILY
+        for family, parents in PARENTS.items():
+            for parent in parents:
+                assert FAMILIES.index(parent) < FAMILIES.index(family), family
 
     def test_each_qid_is_in_one_family(self):
         qids = [qid for qids in PLANET_FAMILY_PAGES.values() for qid in qids]

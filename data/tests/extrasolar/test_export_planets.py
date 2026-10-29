@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from space_map_data.constants.planets.families import FAMILIES as PLANET_FAMILIES
 from space_map_data.export.extrasolar import build, orbits, planets, render
 from space_map_data.export.extrasolar.build import (
     ExportRefused,
@@ -189,6 +190,54 @@ class TestPlanetFiles:
         assert reader.planet(built.ids[0], 1)["object"] is False
         assert reader.planet(built.ids[0], 2)["object"] is True
         assert report["planets"]["planets with an object entry"] == 1
+
+    def test_the_families_of_a_planet(self, tmp_path, out):
+        rows = [
+            *PLANETS,
+            planet(5, 1, period=3.0, radius=1.2, mass_kind="minimum"),
+            planet(5, 2, period=3.0, radius=1.2, **{"class": "brown dwarf"}),
+            planet(5, 3, mass=None, radius=0.25, estimated=["radius"]),
+        ]
+        built, report, reader = _export(tmp_path, out, rows)
+        ids = built.ids
+        assert reader.planet(ids[0], 1)["families"] == [
+            "classification",
+            "giant-planet",
+            "gas-giant",
+            "warm-jupiter",
+            "eccentric-jupiter",
+        ]
+        assert reader.planet(ids[0], 1)["families_estimated"] == []
+        hot = reader.planet(ids[5], 1)
+        assert hot["families"] == [
+            "classification",
+            "giant-planet",
+            "gas-giant",
+            "hot-jupiter",
+        ]
+        dwarf = reader.planet(ids[5], 2)
+        assert dwarf["families"] == dwarf["families_estimated"] == []
+        estimated = reader.planet(ids[5], 3)
+        assert estimated["families"] == []
+        assert estimated["families_estimated"] == ["classification", "mini-neptune"]
+        assert report["planets"]["no family: brown dwarf"] == 1
+
+    def test_metadata_lists_the_planet_families(self, tmp_path, out):
+        _, _, reader = _export(tmp_path, out)
+        listed = reader.metadata["planets"]["families"]
+        assert [entry["slug"] for entry in listed] == list(PLANET_FAMILIES)
+        counts = {entry["slug"]: entry for entry in listed}
+        assert counts["classification"] == {
+            "slug": "classification",
+            "wikidata": ["Q44559"],
+            "parents": [],
+            "published": 6,
+            "estimated": 0,
+        }
+        assert counts["warm-jupiter"]["published"] == 5
+        assert counts["cold-jupiter"]["published"] == 1
+        assert counts["eccentric-jupiter"]["published"] == 2
+        assert counts["jupiter-analogue"]["parents"] == ["cold-jupiter"]
 
     def test_the_orbits_of_the_odd_planets(self, tmp_path, out):
         built, report, reader = _export(tmp_path, out)
