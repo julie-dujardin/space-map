@@ -1323,6 +1323,33 @@ class TestParallaxVeto:
         assert [interior.key for interior in out.interiors] == [101]
         assert out.counts[f"{WDS}: physical members that the parallaxes veto"] == 1
 
+    def test_several_stars_in_an_abandoned_pass(self):
+        """A and B reach X, and B keeps it, then leaves. So the members pass
+        three times. M holds Ma and Mb on Q and leaves in each pass. N holds
+        one star on Q, so the veto applies to N."""
+        table = wds_tree(
+            [
+                ("ABMN", -1, None, None, None),
+                ("A", 0, None, 5.0, None),
+                ("B", 0, 1.1, 5.3, UNVERIFIED),
+                ("N", 0, 1000.0, 8.0, None),
+                ("M", 0, 1000.0, 8.0, UNVERIFIED),
+                ("Ma", 4, None, 8.0, None),
+                ("Mb", 4, 0.1, 8.5, None),
+            ]
+        )
+        rows = [
+            fact(100, 10.0, 10.0, 5.3, parallax=10.0),
+            fact(103, 10.0, 10.0 + 1000 / 3600, 8.0, parallax=13.0),
+        ]
+        facts = Facts(pa.Table.from_pylist(rows, schema=FACTS))
+        out = Reduced()
+        candidates = [[], [(100, 2)], [(100, 2)], [(103, 2)], [], [(103, 2)], []]
+        TreeReducer(table, 0, candidates, facts, 0, out).run()
+        assert out.groups == []
+        assert [interior.key for interior in out.interiors] == [103]
+        assert out.counts[f"{WDS}: physical members that the parallaxes veto"] == 1
+
 
 class TestElBadryVeto:
     """El-Badry pairs 100 and 101, whose parallaxes clearly disagree."""
