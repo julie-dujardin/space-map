@@ -65,15 +65,15 @@ class TestRegistry:
             assert group.wikidata_qid == qids[0]
 
     def test_parents(self):
-        assert star_family.parent_slugs("star-g-type-main-sequence") == [
+        assert star_family.PAGES.parent_slugs("star-g-type-main-sequence") == [
             "star-main-sequence"
         ]
-        assert star_family.parent_slugs("star-rr-lyrae-variable") == [
+        assert star_family.PAGES.parent_slugs("star-rr-lyrae-variable") == [
             "star-horizontal-branch",
             "star-variable-star",
         ]
-        assert star_family.parent_slugs("star-dwarf") == ["star-classification"]
-        assert star_family.parent_slugs("star-classification") == []
+        assert star_family.PAGES.parent_slugs("star-dwarf") == ["star-classification"]
+        assert star_family.PAGES.parent_slugs("star-classification") == []
 
 
 class TestBuild:
@@ -127,7 +127,7 @@ class TestBuild:
             f"x-{ids[1]}",
         ]
         assert [m.sitelinks_count for m in members] == [40, 5, None]
-        assert all(m.star for m in members)
+        assert all(m.extrasolar for m in members)
         assert groups.notable_members["star-dwarf"] == members
         assert "star-classification" not in groups.notable_members
         assert "star-g-type-main-sequence" not in groups.notable_members
@@ -168,7 +168,7 @@ class TestBuild:
         }
         members = groups.notable_members["star-k-type-main-sequence"]
         assert {m.object_id for m in members} == {f"x-{id_}" for id_ in ids[:3]}
-        assert all(m.star and m.wikidata_qid is None for m in members)
+        assert all(m.extrasolar and m.wikidata_qid is None for m in members)
 
         entries = notable_entries(members, _entities({}))
         assert {e["name"] for e in entries} == {f"Star {id_}" for id_ in ids[:3]}

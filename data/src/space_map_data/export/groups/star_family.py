@@ -8,17 +8,16 @@ stars of the family from the Metadata tiles. Those other stars can change from
 one export to the next.
 """
 
-import json
 import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
 
-from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.stars.families import (
     FAMILIES,
     FAMILY_SLUG_PREFIX,
@@ -29,7 +28,12 @@ from space_map_data.constants.stars.families import (
 from space_map_data.export.extrasolar.build import served
 from space_map_data.export.extrasolar.families import of_spectral_type
 from space_map_data.export.extrasolar.reader import ExportReader
-from space_map_data.export.groups.stats import GroupExtraStats
+from space_map_data.export.groups.family_pages import (
+    FamilyGroups,
+    FamilyPages,
+    served_metadata,
+    sitelink_rank,
+)
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX, StarObject
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -46,40 +50,22 @@ FILL_ROW_SHARE = 0.5
 # Tiles read at a time, between two checks of the lists.
 FILL_BATCH = 64
 
-
-def family_slug(family: str) -> str:
-    return f"{FAMILY_SLUG_PREFIX}{family}"
-
-
-def parent_slugs(slug: str) -> list[str]:
-    """The pages of the families that contain the family of ``slug``."""
-    family = slug.removeprefix(FAMILY_SLUG_PREFIX)
-    return [family_slug(parent) for parent in PARENTS.get(family, ())]
+PAGES = FamilyPages(
+    FAMILY_SLUG_PREFIX, PARENTS, "published_star_count", "estimated_star_count"
+)
 
 
 def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
     """The family counts and the Metadata token of the served extrasolar
     export, None with no export served. The pages count the families and list
     stars from the Metadata tiles, so they change with either."""
-    path = extrasolar_dir / "v1" / "x" / "metadata.json"
-    if not path.exists():
+    metadata = served_metadata(extrasolar_dir)
+    if metadata is None:
         return None
-    metadata = json.loads(path.read_text())
     return {
         "families": metadata["families"],
         "metadata": metadata["tables"]["metadata"]["token"],
     }
-
-
-@dataclass
-class StarFamilyGroups:
-    """Everything the group tier needs for the star- pages."""
-
-    member_counts: dict[str, int] = field(default_factory=dict)
-    extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
-    notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
-    # The child families of each page that have stars, most stars first.
-    children: dict[str, list[str]] = field(default_factory=dict)
 
 
 def build_star_family_groups(
@@ -87,14 +73,14 @@ def build_star_family_groups(
     wikidata_entities: WikidataEntityCache,
     extrasolar_dir: Path = EXTRASOLAR_DIR,
     sun: NotableObject | None = None,
-) -> StarFamilyGroups:
+) -> FamilyGroups:
     """Counts, child families and listed stars of every star- page.
 
     With no extrasolar export served, the pages have their text only. The
     Sun is in no catalogue of that export, so `sun` adds it to the families
     of its spectral type.
     """
-    out = StarFamilyGroups()
+    out = FamilyGroups()
     sun_families = set(of_spectral_type(SUN_SPECTRAL_TYPE)) if sun else set()
     root = extrasolar_dir / "v1" / "x"
     with served(extrasolar_dir):
@@ -111,23 +97,17 @@ def build_star_family_groups(
             sun,
         )
 
-    for entry in listed:
-        slug = family_slug(entry["slug"])
-        published = entry["published"] + (entry["slug"] in sun_families)
-        out.member_counts[slug] = published + entry["estimated"]
-        out.extra_stats[slug] = GroupExtraStats(
-            published_star_count=published,
-            estimated_star_count=entry["estimated"],
-        )
-    children: dict[str, list[str]] = defaultdict(list)
-    for family, parents in PARENTS.items():
-        if out.member_counts.get(family_slug(family)):
-            for parent in parents:
-                children[family_slug(parent)].append(family_slug(family))
-    out.children = {
-        slug: sorted(kids, key=lambda kid: (-out.member_counts[kid], kid))
-        for slug, kids in children.items()
-    }
+    PAGES.count(
+        out,
+        (
+            (
+                entry["slug"],
+                entry["published"] + (entry["slug"] in sun_families),
+                entry["estimated"],
+            )
+            for entry in listed
+        ),
+    )
     logger.info(
         "Star family pages: %d families, %d with stars, %d with listed stars",
         len(FAMILIES),
@@ -155,16 +135,9 @@ def _notable_stars(
     if missing := len(stars) - len(rows):
         logger.info("Star family pages: %d stars with an entry are not served", missing)
     tagged = [id_ for id_, row in rows.items() if row["families"]]
-
-    def rank(id_: int) -> tuple[int, bool]:
-        """Sitelinks, and whether one is an article in a language of the site."""
-        found = wikidata_entities.get_star_entity(stars[id_].qid)
-        if found is None or found.entity is None:
-            return 0, False
-        return found.sitelinks, not set(found.entity["sitelinks"]).isdisjoint(LANGUAGES)
-
+    rank = partial(sitelink_rank, wikidata_entities)
     with ThreadPoolExecutor(8) as pool:
-        ranks = dict(zip(tagged, pool.map(rank, tagged)))
+        ranks = dict(zip(tagged, pool.map(rank, [stars[id_].qid for id_ in tagged])))
     ranked = [
         (
             sitelinks,
@@ -175,7 +148,7 @@ def _notable_stars(
                 fallback_name=stars[id_].name,
                 diameter_km=None,
                 first_obs=None,
-                star=True,
+                extrasolar=True,
                 sitelinks_count=sitelinks,
             ),
         )
@@ -196,7 +169,7 @@ def _notable_stars(
             # be the best-known stars.
             if family == ROOT_FAMILY:
                 continue
-            members = out[family_slug(family)]
+            members = out[PAGES.slug(family)]
             if mask >> bit & 1 and len(members) < NOTABLE_STARS:
                 members.append(member)
     _fill(reader, bits, out, entries)
@@ -226,7 +199,7 @@ def _fill(
         if family != ROOT_FAMILY
     }
     listed = {
-        bit: {member.object_id for member in out[family_slug(bits[bit])]}
+        bit: {member.object_id for member in out[PAGES.slug(bits[bit])]}
         for bit in wanted
     }
     open_bits = {bit for bit, n in wanted.items() if len(listed[bit]) < n}
@@ -260,14 +233,14 @@ def _fill(
                         if object_id in listed[bit]:
                             continue
                         entry = entries.get(id_)
-                        out[family_slug(bits[bit])].append(
+                        out[PAGES.slug(bits[bit])].append(
                             NotableObject(
                                 object_id=object_id,
                                 wikidata_qid=entry.qid if entry else None,
                                 fallback_name=name or str(id_),
                                 diameter_km=None,
                                 first_obs=None,
-                                star=True,
+                                extrasolar=True,
                             )
                         )
                         listed[bit].add(object_id)

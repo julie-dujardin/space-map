@@ -27,6 +27,7 @@ from space_map_data.constants.nomenclature.feature_types import (
 )
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.export.groups.registry import (
+    CAPITALIZED_LABEL_TYPES,
     GROUPS,
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_VEHICLE_SLUG_PREFIX,
@@ -249,11 +250,7 @@ def _collect_group_name_labels(
                     if label := (
                         entity["labels"].get(lang) or entity["labels"].get("mul")
                     ):
-                        # Wikidata labels families lower case ("hot Jupiter").
-                        if group.type in (
-                            GroupType.STAR_FAMILY,
-                            GroupType.PLANET_FAMILY,
-                        ):
+                        if group.type in CAPITALIZED_LABEL_TYPES:
                             label = label[:1].upper() + label[1:]
                         result[lang][key] = label
         base.setdefault(key, _group_fallback_name(group))

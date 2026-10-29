@@ -25,6 +25,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.groups.planet_family import served_planet_families_stamp
 from space_map_data.export.groups.star_family import served_families_stamp
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
@@ -128,7 +129,9 @@ def tier_b_fingerprint(
     and the works that the literature table cites for them; `planets` the
     planet entries, which each registry ingest links again too.
     `star_families` covers the family counts and the Metadata tiles of the
-    served extrasolar export, which the star family pages read.
+    served extrasolar export, which the star family pages read;
+    `planet_families` the family counts and the planet files, which the
+    planet family pages read.
     """
     return {
         "version": TIER_B_VERSION,
@@ -167,6 +170,7 @@ def tier_b_fingerprint(
             ]
         ),
         "star_families": served_families_stamp(),
+        "planet_families": served_planet_families_stamp(),
     }
 
 

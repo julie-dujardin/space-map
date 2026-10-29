@@ -48,6 +48,7 @@ from space_map_data.export.groups.moon_discovery import (
     build_moon_discovery,
     write_moon_discovery,
 )
+from space_map_data.export.groups.planet_family import build_planet_family_groups
 from space_map_data.export.groups.planetary_systems_map import (
     build_planetary_systems_map,
     write_planetary_systems_map,
@@ -490,6 +491,7 @@ def run_groups_tier(
     star_families = build_star_family_groups(
         star_objects or [], wikidata_entities, sun=sun
     )
+    planet_families = build_planet_family_groups(wikidata_entities)
 
     # Each constellation lists the buses its members fly, most-used first; the
     # chip count is the within-constellation tally, not the bus's global total.
@@ -503,6 +505,7 @@ def run_groups_tier(
     extra_member_counts.update(missions.member_counts)
     extra_member_counts.update(feature_types.member_counts)
     extra_member_counts.update(star_families.member_counts)
+    extra_member_counts.update(planet_families.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
     extra_named_counts.update(category_data.named_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
@@ -511,6 +514,7 @@ def run_groups_tier(
     extra_notable_members.update(missions.notable_members)
     extra_notable_members.update(feature_types.notable_members)
     extra_notable_members.update(star_families.notable_members)
+    extra_notable_members.update(planet_families.notable_members)
     extra_notable_members.update(
         _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
     )
@@ -544,6 +548,7 @@ def run_groups_tier(
         **split_comets.extra_stats,
         **missions.extra_stats,
         **star_families.extra_stats,
+        **planet_families.extra_stats,
     }
     for slug, median in earth_orbit_stats.median_perigees.items():
         extra_stats.setdefault(slug, GroupExtraStats()).median_perigee_km = median
@@ -607,6 +612,7 @@ def run_groups_tier(
             **ORGANIZATION_BUS_CHILDREN,
             **constellation_bus_children,
             **star_families.children,
+            **planet_families.children,
         },
         child_counts_by_group=build.constellation_bus_counts,
         extra_groups=(*split_comets.groups, *missions.groups),

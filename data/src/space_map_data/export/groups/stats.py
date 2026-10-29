@@ -106,6 +106,10 @@ class GroupExtraStats:
     # their sum, as no star is in both.
     published_star_count: int | None = None
     estimated_star_count: int | None = None
+    # Planet families: the planets that measured values put in the family,
+    # and the others that need an estimate. member_count is their sum.
+    published_planet_count: int | None = None
+    estimated_planet_count: int | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None}

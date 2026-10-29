@@ -50,8 +50,9 @@ class NotableObject:
     image_of: str | None = None
     group_slug: str | None = None  # set → a group member, routes to /g/<slug>
     feature_id: int | None = None  # set → a surface feature on `object_id`
-    # Set → a star of the extrasolar export, whose entity and pictures go by QID.
-    star: bool = False
+    # Set → a star or a planet of the extrasolar export. Its entity and its
+    # pictures are found by QID.
+    extrasolar: bool = False
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
     mass_kg: float | None = None  # from PCK GM; major bodies only
     # Probe-on-target only: {kind, arrival, end?} — what the probe did there.
@@ -189,7 +190,7 @@ def _member_entity(member: NotableObject, wikidata_entities: WikidataEntityCache
         return wikidata_entities.get_referenced(member.wikidata_qid)
     if member.feature_id is not None:
         return wikidata_entities.get_feature_entity(member.wikidata_qid)
-    if member.star:
+    if member.extrasolar:
         return wikidata_entities.get_listed_star(member.wikidata_qid)
     return wikidata_entities.get_entity(member.wikidata_qid)
 
@@ -382,7 +383,7 @@ def notable_entries(
             entry["texture"] = member.object_id in textured_ids
         thumbnail = pick_thumbnail(
             collect_star_images(member.wikidata_qid)
-            if member.star and member.wikidata_qid
+            if member.extrasolar and member.wikidata_qid
             else collect_object_images(member.image_of or member.object_id)
         )
         if thumbnail:

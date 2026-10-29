@@ -62,7 +62,7 @@ class TestMemberGalleries:
         stars = {"Q1": [_image("Star.jpg")]}
         monkeypatch.setattr(bundles_mod, "collect_star_images", stars.get)
         pool["x-5"] = [_image("Wrong.jpg")]
-        star = replace(_notable("x-5", star=True), wikidata_qid="Q1")
+        star = replace(_notable("x-5", extrasolar=True), wikidata_qid="Q1")
         out = _shelves([star], None, None)
         assert [(g["key"], [i["file"] for i in g["images"]]) for g in out] == [
             ("x-5", ["Star.jpg"])

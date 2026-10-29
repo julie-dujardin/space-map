@@ -79,6 +79,19 @@ class GroupType(StrEnum):
     PLANET_FAMILY = "planet_family"
 
 
+# Wikidata labels these lower case ("low Earth orbit", "hot Jupiter"). A name
+# from such a label starts with a capital letter.
+CAPITALIZED_LABEL_TYPES = frozenset(
+    {
+        GroupType.ORBIT_CLASS,
+        GroupType.EARTH_ORBIT_CLASS,
+        GroupType.FEATURE_TYPE,
+        GroupType.STAR_FAMILY,
+        GroupType.PLANET_FAMILY,
+    }
+)
+
+
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
 # resolved render-time from the per-point `flags` byte on elements tiles.
 SMALL_BODY_FLAGS: tuple[tuple[str, str], ...] = (
@@ -101,6 +114,7 @@ class GroupCategory(StrEnum):
 
 __all__ = [
     "BUS_SLUG_PREFIX",
+    "CAPITALIZED_LABEL_TYPES",
     "CLASS_SLUG_PREFIX",
     "COUNTRY_SLUG_PREFIX",
     "GROUPS",

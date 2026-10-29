@@ -47,12 +47,14 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPES,
 )
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.groups import planet_family, star_family
 from space_map_data.export.groups.feature_type import FeatureTypeStats
 from space_map_data.export.groups.launch_site import LaunchSiteStats
 from space_map_data.export.groups.launch_vehicle import LaunchVehicleStats
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
+    CAPITALIZED_LABEL_TYPES,
     CLASS_SLUG_PREFIX,
     GROUP_BY_SLUG,
     GROUPS,
@@ -64,7 +66,6 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.small_body import LargestBody
-from space_map_data.export.groups.star_family import parent_slugs
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.images import (
     collect_group_images,
@@ -107,6 +108,11 @@ _CATEGORY_TOP_CONSTELLATIONS = 40
 
 
 _FLAG_PHA_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"
+# The breadcrumb of a family page climbs its parent families.
+_FAMILY_PAGES = {
+    GroupType.STAR_FAMILY: star_family.PAGES,
+    GroupType.PLANET_FAMILY: planet_family.PAGES,
+}
 
 # Lagrange classes name from frontend i18n (Wikidata label is the bare "L1"/"L2").
 _LAGRANGE_CLASS_SLUGS = frozenset(
@@ -147,19 +153,19 @@ def _member_galleries(
     notable list the page already localizes cannot name them.
     """
     pools: dict[str, list[dict]] = {}
-    # A star's pictures go by its QID.
-    star_qids = {m.object_id: m.wikidata_qid for m in members or () if m.star}
+    # A star or a planet has its pictures by its QID.
+    qids = {m.object_id: m.wikidata_qid for m in members or () if m.extrasolar}
 
     def pool(object_id: str) -> list[dict]:
         if object_id not in pools:
-            qid = star_qids.get(object_id)
+            qid = qids.get(object_id)
             pools[object_id] = (
                 collect_star_images(qid) if qid else collect_object_images(object_id)
             ) or []
         return pools[object_id]
 
     def picture_count(object_id: str) -> int:
-        if object_id in star_qids:
+        if object_id in qids:
             return len(pool(object_id))
         return object_image_count(object_id)
 
@@ -263,7 +269,9 @@ def _build_global(
     }
     if parent_category := _category_parent(group):
         data["parent_category"] = parent_category
-    if group.type is GroupType.STAR_FAMILY and (parents := parent_slugs(group.slug)):
+    if (pages := _FAMILY_PAGES.get(group.type)) and (
+        parents := pages.parent_slugs(group.slug)
+    ):
         data["parent_families"] = parents
     if group.wikidata_qid:
         data["wikidata_qid"] = group.wikidata_qid
@@ -518,14 +526,7 @@ def _build_localized(
             ):
                 name = entity_label(wd, lang)
                 if name:
-                    # Wikidata labels orbit zones and landforms sentence-case
-                    # ("low Earth orbit", "crater"); the UI wants a capitalized
-                    # leading letter.
-                    if group.type in (
-                        GroupType.EARTH_ORBIT_CLASS,
-                        GroupType.FEATURE_TYPE,
-                        GroupType.STAR_FAMILY,
-                    ):
+                    if group.type in CAPITALIZED_LABEL_TYPES:
                         name = name[:1].upper() + name[1:]
                     data["name"] = name
             desc = wd["descriptions"].get(lang)
@@ -693,14 +694,7 @@ def _child_group_refs(
                 ref = resolve_entity_ref(child.wikidata_qid, lang, wikidata_entities)
                 if ref is not None and ref.name:
                     name = ref.name
-                    # Wikidata labels these sentence-case ("low Earth orbit",
-                    # "impact crater"); chips read as titles, same as the page.
-                    if child.type in (
-                        GroupType.ORBIT_CLASS,
-                        GroupType.EARTH_ORBIT_CLASS,
-                        GroupType.FEATURE_TYPE,
-                        GroupType.STAR_FAMILY,
-                    ):
+                    if child.type in CAPITALIZED_LABEL_TYPES:
                         name = name[:1].upper() + name[1:]
             else:
                 # QID-less children (7 buses, 4 feature types) carry no Wikidata
@@ -821,15 +815,16 @@ def _extract_group_claims(
     """Run the shared object-claim extractor on the group's Wikidata entity."""
     # Country entities carry many object-style claims (population, area, …)
     # that the shared extractor can't disambiguate; none are surfaced on the
-    # country-page UI anyway. Orbit-class and star-family entities point to
-    # encyclopedic concept pages whose claims (e.g. discoverer, named after)
-    # describe the category, not its members.
+    # country-page UI anyway. Orbit-class, star-family and planet-family
+    # entities point to encyclopedic concept pages whose claims (e.g.
+    # discoverer, named after) describe the category, not its members.
     if group.type in (
         GroupType.COUNTRY,
         GroupType.ORBIT_CLASS,
         GroupType.EARTH_ORBIT_CLASS,
         GroupType.CATEGORY,
         GroupType.STAR_FAMILY,
+        GroupType.PLANET_FAMILY,
     ):
         return None
     if not group.wikidata_qid:
@@ -980,7 +975,7 @@ def write_group_bundles(
     localized_by_slug: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
 
     for group in (*GROUPS, *extra_groups):
-        # No builder gives a planet family its members, so it gets no page.
+        # No page until the frontend knows the planet_family type.
         if group.type is GroupType.PLANET_FAMILY:
             continue
         wiki_summaries = (
@@ -1023,15 +1018,16 @@ def write_group_bundles(
         chart_rows = (extra_chart_rows or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)
-        # A star is no DB object, so its shelf takes the name of its entry.
+        # A star or a planet is no DB object, so its shelf takes the name of
+        # its entry.
         subjects = gallery_subjects
-        if members and member_entries and any(m.star for m in members):
+        if members and member_entries and any(m.extrasolar for m in members):
             subjects = {
                 **(gallery_subjects or {}),
                 **{
                     m.object_id: GallerySubject(entry["name"], m.wikidata_qid)
                     for m, entry in zip(members, member_entries)
-                    if m.star
+                    if m.extrasolar
                 },
             }
         galleries = _member_galleries(

@@ -2,13 +2,12 @@
 
 Aggregation entities behind `/g/<slug>` pages (constellations, launch vehicles,
 organizations, launch sites, countries, orbit classes, small-body flags, IAU
-surface-feature types, and star families).
+surface-feature types, star families and planet families).
 Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
-`bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`, `star-`) so slugs
-never collide across types and a slug's type is recognizable on sight. The
-registry also holds the planet families (`planet-`). The downloads and the
-image ingest read them, but the export writes no bundle for them. A launch
-vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
+`bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`, `star-`,
+`planet-`) so slugs never collide across types and a slug's type is
+recognizable on sight. The export builds the planet family pages, but does
+not publish them yet. A launch vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
 former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
 constellations stay `const-`. Earth orbiters split across two category pages by
 object type: working payloads under `cat-satellites`, spent stages and breakup
@@ -32,9 +31,9 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission" | "feature_type" | "star_family"
-  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category" | "surface_feature" | "star"
-  n: number;                  // member count (surface features on a feature_type group, stars on a star_family group)
+  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission" | "feature_type" | "star_family" | "planet_family"
+  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category" | "surface_feature" | "star" | "planet"
+  n: number;                  // member count (surface features on a feature_type group, stars on a star_family group, planets on a planet_family group)
   code?: string;              // feature_type groups only: the 2-letter IAU descriptor code (slug ↔ code without a duplicated table)
 }
 // File body: Record<slug, GroupIndexEntry>
@@ -431,9 +430,31 @@ interface GlobalGroupData {
   // families it contains that have stars, most stars first. `star-classification`
   // (stellar classification) is the root: every family without another parent
   // is below it, so it counts every star with a family, and it lists no stars.
-  parent_families?: string[];       // the star- pages of the families that contain this one; the breadcrumb takes the first; absent on the root
+  parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; absent on the root
   published_star_count?: number;    // stars that a catalogued classification puts in the family
   estimated_star_count?: number;    // the other stars, which only a Gaia estimate puts there
+
+  // Planet families (planet-<family>, one per family of the planet records'
+  // `families` lists) only. The counts are the `families` entry of `planets`
+  // in the served extrasolar export's `metadata.json`, read under the
+  // export's shared lock, as for the star families. With no planets served
+  // they are absent and the page has its text only, and served planets
+  // without `families` stop the tier. member_count is their sum.
+  // `notable_members` (top 20, `id` = `x-<host>-b-<n>`) are the planets that a
+  // *published* family puts here: first the planets with an object entry and
+  // a Wikipedia article in one of the site's languages, most sitelinks first;
+  // then other planets of the family, nearest host first (hosts with no
+  // distance last). A planet with an entry takes its Wikidata entity and
+  // pictures from that entry; a planet without one has the `name` of its
+  // planet record and no thumbnail. `galleries` has a shelf for each listed
+  // planet that has pictures. `child_groups` (localized) lists the families
+  // it contains that have planets, most planets first. `planet-classification`
+  // (exoplanet) is the root: it counts every planet with a family, and it
+  // lists no planets. `parent_families` names the parents, as above. Planet
+  // family pages have no counterpart of the Sun on the star family pages: the
+  // root is exoplanet, so the planets of the solar system are in no family.
+  published_planet_count?: number;  // planets that measured values put in the family
+  estimated_planet_count?: number;  // the other planets, whose family needs an estimate
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).
   primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"
