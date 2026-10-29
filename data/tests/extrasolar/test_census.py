@@ -4,7 +4,7 @@ the bytes of their files, and the objects that each source feeds."""
 import pytest
 
 from space_map_data.export.extrasolar import census
-from space_map_data.export.extrasolar.build import export_extrasolar
+from space_map_data.export.extrasolar.build import FAMILIES_FILE, export_extrasolar
 from space_map_data.export.extrasolar.planets import read_planets
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.extrasolar.registry import Registry
@@ -109,7 +109,7 @@ class TestServedCensus:
             path
             for path in root.rglob("*")
             if path.is_file()
-            and path.name != "metadata.json"
+            and path.name not in ("metadata.json", FAMILIES_FILE)
             and "skycultures" not in path.parts
         ]
         total = sum(path.stat().st_size for path in files)
