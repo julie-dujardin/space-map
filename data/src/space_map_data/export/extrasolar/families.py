@@ -165,10 +165,11 @@ def _table() -> np.ndarray:
 
 TABLE = _table()
 
-# Am stars: the K line, hydrogen and metal types. The hydrogen type stands
-# for the star.
+# Am stars: the K line, hydrogen and metal types (kA2hA5mA7V). The hydrogen
+# type stands for the star, or the one type before the metal type (A0mA1Va).
 _AM = re.compile(
-    r"(?:k[A-Z][\d.]*\s*)?h(?P<hydrogen>[OBAFGKM][\d.]*)\s*(?:m[A-Z][\d.]*)?"
+    r"(?:(?:k[A-Z][\d.]*\s*)?h|(?=[AF][\d.]*m[OBAFGKM]))"
+    r"(?P<hydrogen>[OBAFGKM][\d.]*)\s*(?:m[A-Z][\d.]*)?"
 )
 # The subtype can be in brackets (F(6)V) or have a "+" (K5+III). An O or B star
 # can have N or C (ON8.5V). SIMBAD writes class 0 as "_0" (G2_0).
