@@ -10,7 +10,8 @@ first source of an object gives it its home table and its cell. A pass stages
 its rows by sky region, then resolves them region by region against the
 registry and the earlier passes, the neighbouring regions included:
 
-1. A catalogue id seen before keeps its object.
+1. A catalogue id seen before keeps its object, unless the row's
+   `match_exclude` names that object. Such a row is free.
 2. A claim, a catalogue's own cross-match to an id of another catalogue,
    links the row to the object that holds that id. A claim of an object that
    another row of the pass took, or that holds another id of the row's own
@@ -1036,6 +1037,15 @@ class IngestRun:
 
         if view is not None and not source.labels:
             keys, dead = view.lookup(source.catalogue, source.release, ids)
+            linked = np.flatnonzero(keys)
+            excluded = linked[
+                self._excluded(
+                    linked, keys[linked], rows["match_exclude"].combine_chunks()
+                )
+            ]
+            if excluded.size:
+                state.counts["excluded_links"] += excluded.size
+                keys[excluded] = 0
         else:
             keys, dead = np.zeros(len(ids), np.int64), np.zeros(len(ids), bool)
         if dead.any():
@@ -1373,10 +1383,8 @@ class IngestRun:
             key_kind=candidates["kind"].combine_chunks().take(pair_cand),
         )
         score = matcher.score(pairs)
-        banned = excluded_pairs(
-            pair_row,
-            self._object_root(keys[pair_cand]),
-            sub["match_exclude"].combine_chunks(),
+        banned = self._excluded(
+            pair_row, keys[pair_cand], sub["match_exclude"].combine_chunks()
         )
         state.counts["excluded"] += int(
             np.unique(pair_row[banned & np.isfinite(score)]).size
@@ -1387,6 +1395,14 @@ class IngestRun:
         state.pair_keys.append(keys[pair_cand[ok]])
         state.pair_scores.append(score[ok])
         return np.unique(free[pair_row[ok]])
+
+    def _excluded(
+        self, rows: np.ndarray, keys: np.ndarray, exclude: pa.ListArray
+    ) -> np.ndarray:
+        """Whether the object of each key is in the `exclude` list of its row."""
+        if not pc.sum(pc.list_value_length(exclude)).as_py():
+            return np.zeros(rows.size, bool)
+        return excluded_pairs(rows, self._object_root(keys), exclude)
 
     def _new_objects(
         self, state: PassState, region: int, rows: pa.Table, at: np.ndarray, part: str

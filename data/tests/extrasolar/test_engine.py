@@ -294,6 +294,25 @@ class TestMatching:
         assert counts["excluded"] == 1
         assert id_of(root, HIP, 7) == id_of(root, GAIA, 2) != 0
 
+    def test_a_link_to_an_object_it_excludes_is_free(self, root, backup):
+        """Row 7 took star 1 in the first ingest. It now excludes star 1, so
+        it matches again by position."""
+        gaia = gaia_rows([star(1, mag=5.0), star(2, 1.0, 90, mag=5.0)])
+        rows = hip_rows([star(7, 0.1, mag=5.0)])
+
+        def ingest(exclude: list[int] | None) -> dict[str, int]:
+            with IngestRun.start(root, backup, (POINT,), META) as run:
+                run.add(GAIA, [gaia])
+                column = pa.array([exclude], pa.list_(pa.int64()))
+                counts = run.add(HIP, [rows.append_column("match_exclude", column)])
+                run.commit()
+            return counts
+
+        ingest(None)
+        assert id_of(root, HIP, 7) == id_of(root, GAIA, 1) != 0
+        assert ingest([id_of(root, GAIA, 1)])["excluded_links"] == 1
+        assert id_of(root, HIP, 7) == id_of(root, GAIA, 2) != 0
+
     def test_small_caches_give_the_same_ids(self, tmp_path, monkeypatch, ingest):
         cells = [CELL + n * (1 << sky.REGION_SHIFT) for n in range(6)]
         gaia, hip = [], []

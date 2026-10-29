@@ -976,7 +976,8 @@ class TestComponentOnItsPairsPoint:
 
     W = "09200+3000"
 
-    def args(self) -> dict:
+    def args(self, a: dict | None = None) -> dict:
+        """The ingest inputs. `a` replaces the WDS row of A."""
         point = source_id(140.0, 30.0, 40)
         b = offset(140.0, 30.0, 0.3, 0.0)
         return {
@@ -985,7 +986,7 @@ class TestComponentOnItsPairsPoint:
             | {self.W: [wds_pair("A", "B", 0.3, notes="NO", mag1=5.6, mag2=5.9)]},
             "wds_components": WDS_COMPONENTS
             | {
-                (self.W, "A"): wds_component(source_id=point, ra=140.0, dec=30.0),
+                (self.W, "A"): a or wds_component(source_id=point, ra=140.0, dec=30.0),
                 (self.W, "B"): wds_component(ra=b[0], dec=b[1]),
             },
         }
@@ -1010,3 +1011,34 @@ class TestComponentOnItsPairsPoint:
             assert letters == ["A", "B"]
         # The pair by position keeps its links.
         assert "WDS components matched by position 2," in report
+
+    def test_a_link_of_an_earlier_ingest_to_the_point(self, tmp_path):
+        """In the first ingest A has no Gaia id and no position, so B takes
+        the point by position. Then A's Gaia id reaches the point, so B's
+        row is free again: B is an entry inside the point."""
+        root = tmp_path / "registry"
+        ingest(root, **self.args(wds_component()))
+        point = str(source_id(140.0, 30.0, 40))
+        registry = Registry(root)
+        assert registry.lookup("wds", "component", [f"{self.W} B"]).tolist() == [
+            registry.lookup("gaia", "dr3", [point])[0]
+        ]
+        for _ in range(2):
+            _, report = ingest(root, **self.args())
+            # B's row makes its own object, which is not minted.
+            assert "WDS components matched by position 2," in report
+            registry = Registry(root)
+            (key,) = registry.lookup("gaia", "dr3", [point])
+            system = {
+                row["id"]: row for row in table(registry, SYSTEM.slug).to_pylist()
+            }
+            assert system[int(key)]["point"] and system[int(key)]["stars"] == 2
+            members = system[int(key)]["members"]
+            assert [(m["letter"], m["kind"]) for m in members] == [
+                ("A", "entry"),
+                ("B", "entry"),
+            ]
+            (wds,) = [
+                s for s in registry.ingests[-1]["sources"] if s["catalogue"] == "wds"
+            ]
+            assert wds["excluded_links"] == 1
