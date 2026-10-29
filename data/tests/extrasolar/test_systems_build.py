@@ -1350,7 +1350,10 @@ class TestUnverifiedInterior:
         assert systems.counts[name] == 1
 
     def test_a_close_type_wins(self):
-        assert self.point("EB*", False)[1] == [(80, 2, SIMBAD_TYPE)]
+        systems, points = self.point("EB*", False)
+        assert points == [(80, 2, SIMBAD_TYPE)]
+        name = f"{WDS}: interiors of unverified members that give way"
+        assert systems.counts[name] == 1
 
 
 class TestRegistryInputs:

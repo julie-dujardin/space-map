@@ -343,11 +343,11 @@ class Assembler:
             best = chosen.get(key)
             if best is None or order < best[0]:
                 chosen[key] = (order, row)
-        given = Counter(
-            interior.source
-            for interior in self.p.reduced.interiors
-            if interior.unverified and not chosen[interior.key][0][0]
-        )
+        given: Counter[str] = Counter()
+        for interior in self.p.reduced.interiors:
+            unverified, rank = chosen[interior.key][0]
+            if interior.unverified and not unverified and rank > interior.rank:
+                given[interior.source] += 1
         for source, value in given.items():
             self.counts[f"{source}: interiors of unverified members that give way"] = (
                 value
