@@ -1853,7 +1853,7 @@
 	"group_status_ended": "Zakończone",
 	"group_stat_of_total": "{n} z {total} ({percent}%)",
 	"tooltip_group_stat_moid": "Mediana najmniejszej odległości między orbitą członka a orbitą Ziemi.",
-	"tooltip_group_stat_estimated": "Gwiazdy zaliczone do tej rodziny wyłącznie na podstawie oszacowania Gaia DR3.",
+	"tooltip_group_stat_estimated": "Gwiazdy sklasyfikowane na podstawie szacunków.",
 	"tooltip_group_stat_estimated_planets": "Planety zaliczone do tej rodziny wyłącznie na podstawie wartości szacunkowej.",
 	"reload": "Odśwież",
 	"new_data_available": "Dostępne są nowe dane, odśwież, aby je zobaczyć.",

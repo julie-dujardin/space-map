@@ -598,7 +598,7 @@
 	"group_status_ended": "終了",
 	"group_stat_of_total": "{total} 中 {n}({percent}%)",
 	"tooltip_group_stat_moid": "各メンバーの軌道と地球の軌道との最接近距離の中央値。",
-	"tooltip_group_stat_estimated": "Gaia DR3 の推定値のみによってこの種類に分類された恒星。",
+	"tooltip_group_stat_estimated": "推定値に基づいて分類された恒星。",
 	"tooltip_group_stat_estimated_planets": "推定値のみによってこの種類に分類された惑星。",
 	"group_stat_launches": "打ち上げ回数",
 	"group_stat_success": "成功",

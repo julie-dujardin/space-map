@@ -1744,7 +1744,7 @@
 	"group_status_ended": "已结束",
 	"group_stat_of_total": "{n}/{total}（{percent}%）",
 	"tooltip_group_stat_moid": "各成员轨道与地球轨道最近距离的中位数。",
-	"tooltip_group_stat_estimated": "仅根据 Gaia DR3 估计值归入此类型的恒星。",
+	"tooltip_group_stat_estimated": "根据估计值分类的恒星。",
 	"tooltip_group_stat_estimated_planets": "仅根据估计值归入此类型的行星。",
 	"time_scale_realtime": "1×",
 	"reload": "重新加载",

@@ -97,10 +97,10 @@ describe("a star's distance", () => {
 	it('drops magnitudes from the stat bar', () => {
 		const star = record({
 			simbad_v_mag: 7,
-			sp_type: 'K0',
 			distance: 100,
 			distance_source: 'reyle-2021'
 		});
+		star.metadata.spectralType = 'K0';
 		const cards = starStats(star).flat();
 		expect(cards.map((s) => [s.label, plain(s.value)])).toEqual([
 			['Distance', '326 ly'],
@@ -147,6 +147,7 @@ describe("a star's identifiers", () => {
 				mask: 2,
 				families: 0n,
 				familiesEstimated: 0n,
+				spectralType: null,
 				object: false,
 				aliasTarget: null
 			},
@@ -182,7 +183,7 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		expect(stats).toEqual([
 			[
 				['Distance', '8.6 ly', undefined],
-				['Spectral type', ltrIsolate('A0m...'), undefined]
+				['Spectral type', ltrIsolate('A0mA1Va'), undefined]
 			]
 		]);
 		const rows = rowsOf(sirius);
@@ -200,10 +201,10 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			Distance: '8.601 ± 0.036 ly',
 			Epoch: 'J1991.25'
 		});
-		// The spectral type is an LTR isolate, so in RTL its trailing dots stay at its end.
+		// SIMBAD's type, which gives the families, as an LTR isolate for RTL text.
 		const classification = starSections(sirius).find((s) => s.key === 'classification');
 		expect(classification?.rows.find((r) => r.label === 'Spectral type')?.value).toBe(
-			ltrIsolate('A0m...')
+			ltrIsolate('A0mA1Va')
 		);
 		// No Gaia colour: the tree's estimate from V − I is not shown as one.
 		expect(rows.brightness['Colour (BP − RP)']).toBeUndefined();
@@ -613,6 +614,17 @@ describe("a star's FLAME values", () => {
 			'Distance',
 			'Temperature'
 		]);
+	});
+});
+
+describe("a star's spectral type", () => {
+	it('is the type that gives its families, not the Hipparcos one', () => {
+		const star = pointSourceRecord(valueColumns({ sp_type: 'M3/M4II:' }));
+		star.metadata.spectralType = 'M5Iae';
+		const classification = starSections(star).find((s) => s.key === 'classification');
+		expect(classification?.rows.find((r) => r.label === 'Spectral type')?.value).toBe(
+			ltrIsolate('M5Iae')
+		);
 	});
 });
 

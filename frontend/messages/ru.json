@@ -1811,7 +1811,7 @@
 	"group_status_ended": "Завершены",
 	"group_stat_of_total": "{n} из {total} ({percent}%)",
 	"tooltip_group_stat_moid": "Медиана наименьшего расстояния между орбитой члена группы и орбитой Земли.",
-	"tooltip_group_stat_estimated": "Звёзды, отнесённые к этому семейству только по оценке Gaia DR3.",
+	"tooltip_group_stat_estimated": "Звёзды, классифицированные по оценкам.",
 	"tooltip_group_stat_estimated_planets": "Планеты, отнесённые к этому семейству только по оценочному значению.",
 	"time_scale_realtime": "1×",
 	"reload": "Перезагрузить",

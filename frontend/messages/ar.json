@@ -1860,7 +1860,7 @@
 	"group_status_ended": "منتهية",
 	"group_stat_of_total": "{n} من {total} ({percent}%)",
 	"tooltip_group_stat_moid": "وسيط أقصر مسافة بين مدار أحد الأعضاء ومدار الأرض.",
-	"tooltip_group_stat_estimated": "نجوم صُنّفت ضمن هذه العائلة بحسب تقدير من Gaia DR3 فقط.",
+	"tooltip_group_stat_estimated": "نجوم صُنّفت استنادًا إلى تقديرات.",
 	"tooltip_group_stat_estimated_planets": "كواكب صُنّفت ضمن هذه العائلة بحسب قيمة تقديرية فقط.",
 	"time_scale_realtime": "‎1×‎",
 	"reload": "إعادة التحميل",

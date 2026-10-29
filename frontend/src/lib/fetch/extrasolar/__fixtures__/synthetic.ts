@@ -67,6 +67,7 @@ interface MetaRow {
 	alias?: number;
 	crossIds?: CrossId[];
 	object?: boolean;
+	spectralType?: string;
 }
 
 /** The column of the Metadata tile that says whether an ID has an object
@@ -101,7 +102,8 @@ function metadataTile(
 				: objectColumn === 'object_file'
 					? [col('object_file', 'string', () => null)]
 					: []),
-			col('alias_target', 'id', (r) => r.alias ?? null)
+			col('alias_target', 'id', (r) => r.alias ?? null),
+			col('spectral_type', 'string', (r) => r.spectralType ?? null)
 		],
 		tileInfoBytes(0, 0, 0)
 	);

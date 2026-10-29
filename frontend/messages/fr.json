@@ -596,7 +596,7 @@
 	"group_status_ended": "Terminés",
 	"group_stat_of_total": "{n} sur {total} ({percent}%)",
 	"tooltip_group_stat_moid": "Distance minimale médiane entre l'orbite d'un membre et celle de la Terre.",
-	"tooltip_group_stat_estimated": "Étoiles classées dans cette famille uniquement par une estimation de Gaia DR3.",
+	"tooltip_group_stat_estimated": "Étoiles classées à partir d'estimations.",
 	"tooltip_group_stat_estimated_planets": "Planètes classées dans cette famille uniquement par une valeur estimée.",
 	"group_stat_launches": "Lancements",
 	"group_stat_success": "Succès",

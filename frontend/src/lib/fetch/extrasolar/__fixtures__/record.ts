@@ -54,6 +54,7 @@ export function pointSourceRecord(
 			mask: orbit ? 6 : 2,
 			families: 0n,
 			familiesEstimated: 0n,
+			spectralType: null,
 			object: false,
 			aliasTarget: null
 		},
@@ -82,6 +83,7 @@ export function resolvedSystemRecord(id: number, primary: number | null): Extras
 			mask: 8,
 			families: 0n,
 			familiesEstimated: 0n,
+			spectralType: null,
 			object: false,
 			aliasTarget: null
 		},

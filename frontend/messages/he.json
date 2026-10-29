@@ -1853,7 +1853,7 @@
 	"group_status_ended": "הסתיימו",
 	"group_stat_of_total": "{n} מתוך {total} ({percent}%)",
 	"tooltip_group_stat_moid": "חציון המרחק הקצר ביותר בין מסלול של חבר לבין מסלול כדור הארץ.",
-	"tooltip_group_stat_estimated": "כוכבים שסווגו למשפחה זו רק לפי הערכה של Gaia DR3.",
+	"tooltip_group_stat_estimated": "כוכבים שסווגו על סמך הערכות.",
 	"tooltip_group_stat_estimated_planets": "כוכבי לכת שסווגו למשפחה זו רק לפי ערך משוער.",
 	"reload": "טען מחדש",
 	"new_data_available": "נתונים חדשים זמינים, טען מחדש כדי לראותם.",

@@ -1830,7 +1830,7 @@
 	"group_status_ended": "Terminados",
 	"group_stat_of_total": "{n} de {total} ({percent}%)",
 	"tooltip_group_stat_moid": "Mediana da distância mínima entre a órbita de um membro e a da Terra.",
-	"tooltip_group_stat_estimated": "Estrelas atribuídas a esta família apenas por uma estimativa do Gaia DR3.",
+	"tooltip_group_stat_estimated": "Estrelas classificadas com base em estimativas.",
 	"tooltip_group_stat_estimated_planets": "Planetas atribuídos a esta família apenas por um valor estimado.",
 	"reload": "Recarregar",
 	"new_data_available": "Há novos dados disponíveis, recarregue para os ver.",

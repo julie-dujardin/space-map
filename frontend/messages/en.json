@@ -507,7 +507,7 @@
 	"group_status_ended": "Ended",
 	"group_stat_of_total": "{n} of {total} ({percent}%)",
 	"tooltip_group_stat_moid": "Median closest distance between a member's orbit and Earth's.",
-	"tooltip_group_stat_estimated": "Stars placed in this family only by a Gaia DR3 estimate.",
+	"tooltip_group_stat_estimated": "Stars classified from estimates.",
 	"tooltip_group_stat_estimated_planets": "Planets placed in this family only by an estimated value.",
 	"group_pads": "Launch pads",
 	"group_variants": "Variants",

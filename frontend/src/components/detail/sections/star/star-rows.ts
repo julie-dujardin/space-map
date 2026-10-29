@@ -291,16 +291,12 @@ function pointSource(record: ExtrasolarRecord): TableRow | null {
 	return record.rows.get(POINT_SOURCE_SLUG) ?? null;
 }
 
-/** The spectral type, a catalogue code, as an LTR isolate. In RTL text the
- *  punctuation at its ends ("A0m...", "B8Ia:") then stays in place. */
-function spectralType(ps: TableRow): string | null {
-	const code = ps.text('sp_type');
+/** The spectral type that gives the star's families, a catalogue code, as an
+ *  LTR isolate. In RTL text the punctuation at its ends ("A0m...", "B8Ia:")
+ *  then stays in place. */
+function spectralType(record: ExtrasolarRecord): string | null {
+	const code = record.metadata.spectralType;
 	return code ? ltrIsolate(code) : null;
-}
-
-function displayedSpectralType(ps: TableRow): string | null {
-	const host = ps.text('host_spectral_type');
-	return spectralType(ps) ?? (host ? ltrIsolate(host) : null);
 }
 
 /** FLAME's phase index on the BaSTI tracks (Creevey et al. 2023, Sect. 4.4).
@@ -389,7 +385,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 		});
 	}
 	const teff = ps.number('teff_gspphot') ?? ps.number('host_teff');
-	const spType = displayedSpectralType(ps);
+	const spType = spectralType(record);
 	if (teff !== null) {
 		out.push({
 			label: m.star_stat_temperature(),
@@ -414,7 +410,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 export function starSections(record: ExtrasolarRecord): StarSection[] {
 	const ps = pointSource(record);
 	if (!ps) return [];
-	return pointSourceSections(ps, astrometricOrbit(record), units()).filter(
+	return pointSourceSections(ps, astrometricOrbit(record), spectralType(record), units()).filter(
 		(section) => section.rows.length > 0
 	);
 }
@@ -469,6 +465,7 @@ function distanceValue(distance: StarDistance, ly: string): string {
 function pointSourceSections(
 	ps: TableRow,
 	orbit: TableRow | null,
+	spType: string | null,
 	u: ReturnType<typeof units>
 ): StarSection[] {
 	const ra = ps.number('ra');
@@ -519,7 +516,6 @@ function pointSourceSections(
 	const bp = ps.number('phot_bp_mean_mag');
 	const rp = ps.number('phot_rp_mean_mag');
 	const v = ps.number('v_mag');
-	const spType = displayedSpectralType(ps);
 	// TODO: Replace this precedence when the export supplies one canonical stellar fit.
 	const photometricFit = flameRows(ps, u, '');
 	const spectroscopicFit = flameRows(ps, u, '_spec');
