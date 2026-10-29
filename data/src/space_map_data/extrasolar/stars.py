@@ -19,8 +19,9 @@ and a star that no pass places takes its system's distance. Wikidata goes
 last: it is not permanent, so its claims settle on the joins of all the
 other passes.
 
-The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs) are
-no pass: their rows join the Gaia rows by source_id, and PASTEL also the
+The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs)
+and the class catalogues (GCVS, SPICY) are no pass. Their rows join the Gaia
+rows by source_id, and the rows of PASTEL and the GCVS also join the
 Hipparcos rows by HIP number. `limit` reads only the first Gaia chunks that
 hold that many stars, and the Hipparcos stars and names in the same pixels.
 Such an ingest is partial: it retires nothing, but it still rebuilds the
@@ -50,12 +51,14 @@ from space_map_data.extrasolar.sources import (
     apogee,
     distances,
     gaia,
+    gcvs,
     hipparcos,
     lamost,
     literature,
     names,
     pastel,
     simbad,
+    spicy,
     wikidata,
 )
 from space_map_data.extrasolar.sources.gaia import (
@@ -170,6 +173,20 @@ def ingest(
     )
     # `hold` takes rows away, which changes what the systems hand down.
     handed = simbad_list.handed()
+    # A GCVS star takes the ids of its SIMBAD row, which `hold` can change.
+    gcvs_stars = gcvs.read_stars(simbad_list, handed, best.source_of())
+    gcvs_by_gaia = pc.greater(gcvs_stars["source_id"], 0)
+    reader = replace(
+        reader,
+        joined=(
+            *reader.joined,
+            SourceTable.of(gcvs_stars.filter(gcvs_by_gaia), gcvs.COLUMNS),
+            SourceTable.of(spicy.read_stars(), spicy.COLUMNS),
+        ),
+    )
+    gcvs_by_hip = gcvs_stars.filter(pc.invert(gcvs_by_gaia))
+    stars = hipparcos.join_by_hip(stars, gcvs_by_hip, gcvs.COLUMNS)
+    rough = hipparcos.join_by_hip(rough, gcvs_by_hip, gcvs.COLUMNS)
     simbad_rows, simbad_hip_rows = simbad.engine_rows(
         simbad_list, handed, hipparcos_hd, _hip_best(best), positions
     )

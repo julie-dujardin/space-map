@@ -5,9 +5,10 @@ The companion tables join by source_id. Low-fidelity stars mint only when
 matched by another catalogue. A star without a companion row stays, with null
 values for that table. GSP-Spec gets the calibrations of Recio-Blanco et al.
 2023 (A&A 674, A29); its flag chain stays as published, for the reader's cut.
-The spectroscopic catalogues that name a Gaia DR3 id (PASTEL, APOGEE, LAMOST)
-join the same way, as `SourceTable`s held in memory. The orbits and masses
-fill table 2 (`gaia_orbits`).
+The spectroscopic catalogues (PASTEL, APOGEE, LAMOST) and the class
+catalogues (GCVS, SPICY) also join by source_id, as `SourceTable`s held in
+memory. Each of their source modules finds the Gaia DR3 id of a row. The
+orbits and masses fill table 2 (`gaia_orbits`).
 
 GAIA_DR3_NAMED gives the Gaia rows that gaia_source leaves out for want of a
 5σ parallax: the SIMBAD stars and the planet hosts. They get the joins of the
@@ -121,7 +122,7 @@ XGBOOST_COLUMNS = tuple(
     name for name in gaia_xp_metallicity.SCHEMA.names if name != "source_id"
 )
 # Groups whose values join from a `SourceTable`; null where none does.
-JOINED_GROUPS = ("pastel", "apogee", "lamost")
+JOINED_GROUPS = ("pastel", "apogee", "lamost", "gcvs", "spicy")
 JOINED_COLUMNS = tuple(
     field.name
     for group in POINT_SOURCE.groups

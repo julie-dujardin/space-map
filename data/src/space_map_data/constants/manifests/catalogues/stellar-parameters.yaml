@@ -1,5 +1,6 @@
-# Stellar parameters that fill the gaps of the Gaia XP metallicities: bright
-# FGK stars and M dwarfs. The extrasolar ingest reads them.
+# Stellar parameters and classes that Gaia does not give: the metallicities of
+# bright FGK stars and M dwarfs, the variability types and the classes of
+# young stellar objects. The extrasolar ingest reads them.
 # `constants/manifests/catalogues.py` describes the fields.
 catalogues:
 - key: pastel
@@ -50,3 +51,28 @@ catalogues:
   distribution: non-commercial
   urls:
   - https://data.sdss.org/sas/dr17/apogee/spectro/aspcap/dr17/synspec_rev1/allStarLite-dr17-synspec_rev1.fits
+
+- key: gcvs
+  title: General Catalogue of Variable Stars, GCVS 5.1
+  reference: Samus et al. 2017, Astronomy Reports 61, 80
+  license: >-
+    None stated. "Whenever you use our catalogs, please, give full reference:
+    Samus N.N., Kazarovets E.V., Durlevich O.V., Kireeva N.N., Pastukhova
+    E.N., General Catalogue of Variable Stars: Version GCVS 5.1, Astronomy
+    Reports, 2017, vol. 61, No. 1, p. 80-88".
+  terms_url: http://www.sai.msu.su/gcvs/gcvs/
+  distribution: non-commercial
+  urls:
+  - http://www.sai.msu.su/gcvs/gcvs/gcvs5/gcvs5.txt
+
+- key: spicy
+  title: The Spitzer/IRAC Candidate YSO Catalog for the Inner Galactic Midplane (SPICY)
+  reference: Kuhn et al. 2021, ApJS 254, 33, doi:10.26131/IRSA556
+  license: >-
+    None stated. "If you use SPICY data, please cite both the journal article
+    Kuhn et al. (2021) and the dataset Digital Object Identifier (DOI):
+    10.26131/IRSA556."
+  terms_url: https://irsa.ipac.caltech.edu/data/SPITZER/SPICY/overview.html
+  distribution: non-commercial
+  urls:
+  - https://irsa.ipac.caltech.edu/data/SPITZER/SPICY/catalog/table1.fits

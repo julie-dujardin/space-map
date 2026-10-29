@@ -75,8 +75,9 @@ POSITION_RADIUS = 3.0
 _COMPONENT = re.compile(r"\s*(?:\(?([A-D])\)?|([A-D])[a-z]?)$")
 
 
-def read_neighbours(path: Path = NEIGHBOURHOOD) -> dict[int, int]:
-    """The nearest DR3 source of each Gaia DR2 id."""
+def read_nearest(path: Path = NEIGHBOURHOOD) -> dict[int, tuple[int, float]]:
+    """The nearest DR3 source of each Gaia DR2 id, with its angular distance
+    (mas): by distance, then magnitude difference."""
     best: dict[int, tuple[float, float, int]] = {}
     with path.open(newline="") as fh:
         for row in csv.DictReader(fh):
@@ -88,7 +89,12 @@ def read_neighbours(path: Path = NEIGHBOURHOOD) -> dict[int, int]:
             )
             if dr2 not in best or rank < best[dr2]:
                 best[dr2] = rank
-    return {dr2: rank[2] for dr2, rank in best.items()}
+    return {dr2: (rank[2], rank[0]) for dr2, rank in best.items()}
+
+
+def read_neighbours(path: Path = NEIGHBOURHOOD) -> dict[int, int]:
+    """The nearest DR3 source of each Gaia DR2 id."""
+    return {dr2: dr3 for dr2, (dr3, _) in read_nearest(path).items()}
 
 
 @dataclass

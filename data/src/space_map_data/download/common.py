@@ -128,6 +128,7 @@ from space_map_data.download.providers.stars.gaia_two_body_orbit import (
 from space_map_data.download.providers.stars.gaia_xp_metallicity import (
     GaiaXpMetallicityDownloader,
 )
+from space_map_data.download.providers.stars.gcvs_simbad import GcvsSimbadDownloader
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 from space_map_data.download.providers.stars.msc import MSCDownloader
 from space_map_data.download.providers.stars.pastel_simbad import (
@@ -136,6 +137,7 @@ from space_map_data.download.providers.stars.pastel_simbad import (
 from space_map_data.download.providers.stars.simbad_stars import (
     SimbadStarsDownloader,
 )
+from space_map_data.download.providers.stars.spicy_gaia import SpicyGaiaDownloader
 from space_map_data.download.providers.stars.ultracoolsheet import (
     UltracoolSheetDownloader,
 )
@@ -212,6 +214,8 @@ PROVIDERS_CLASSES = [
     CDSStarCataloguesDownloader,
     StellarParameterCataloguesDownloader,
     PastelSimbadDownloader,
+    GcvsSimbadDownloader,
+    SpicyGaiaDownloader,
     # Ordered: SIMBAD resolves the IAU names, the Gaia rows of the named
     # stars come from the SIMBAD list, and their distances from those rows.
     IAUStarNamesDownloader,

@@ -68,6 +68,8 @@ class PROVIDERS(StrEnum):
     TRANSIENT_CATALOGUES = "transient_catalogues"
     STELLAR_PARAMETER_CATALOGUES = "stellar_parameter_catalogues"
     PASTEL_SIMBAD = "pastel_simbad"
+    GCVS_SIMBAD = "gcvs_simbad"
+    SPICY_GAIA = "spicy_gaia"
     SIMBAD_OBJECTS = "simbad_objects"
     WIKIDATA_SIMBAD_IDS = "wikidata_simbad_ids"
     STELLARIUM_SKYCULTURES = "stellarium_skycultures"

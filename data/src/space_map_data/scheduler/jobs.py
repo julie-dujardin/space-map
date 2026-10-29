@@ -192,9 +192,10 @@ JOBS: list[Job] = [
     # Star catalogues. Only the IAU name list, SIMBAD, WDS and MSC change. The
     # scheduler's record limit stops a Gaia table after its first chunks, and
     # the XP metallicities fetch nothing under it, so fill the Gaia tables from
-    # the CLI. Ordered: the tables after gaia_source read its chunks, SIMBAD
-    # reads the IAU names, the Gaia rows of the named stars come from SIMBAD,
-    # and their distances from those rows.
+    # the CLI. Ordered: the tables after gaia_source read its chunks, the
+    # SIMBAD and Gaia queries of PASTEL, the GCVS and SPICY read the stellar
+    # parameter catalogues, SIMBAD reads the IAU names, the Gaia rows of the
+    # named stars come from SIMBAD, and their distances from those rows.
     Job(
         name="stars",
         sources=(
@@ -209,6 +210,8 @@ JOBS: list[Job] = [
             PROVIDERS.CDS_STAR_CATALOGUES,
             PROVIDERS.STELLAR_PARAMETER_CATALOGUES,
             PROVIDERS.PASTEL_SIMBAD,
+            PROVIDERS.GCVS_SIMBAD,
+            PROVIDERS.SPICY_GAIA,
             PROVIDERS.IAU_STAR_NAMES,
             PROVIDERS.SIMBAD_STARS,
             PROVIDERS.GAIA_NAMED_STARS,

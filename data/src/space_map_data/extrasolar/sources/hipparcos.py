@@ -31,7 +31,11 @@ from space_map_data.download.providers.stars import cds as cds_stars
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.sources.gaia import EPOCH as GAIA_EPOCH
-from space_map_data.extrasolar.sources.gaia import BestNeighbours, joined_columns
+from space_map_data.extrasolar.sources.gaia import (
+    JOINED_GROUPS,
+    BestNeighbours,
+    joined_columns,
+)
 from space_map_data.extrasolar.tables import CROSS_ID, POINT_SOURCE
 from space_map_data.utils.arrays import floats
 
@@ -97,12 +101,15 @@ XHIP_METALLICITY_FIELDS = {
 }
 # XHIP writes this error where it has none (its note 14).
 NO_FEH_ERROR = 9.99
-# PASTEL joins by HIP number the stars it reaches by no Gaia source.
-PASTEL_COLUMNS = tuple(
-    field.name
+PASTEL_COLUMNS = tuple(POINT_SOURCE.group("pastel").names)
+# The engine reads each column of the groups that a pass feeds. So the pass
+# rows have the columns of each joined group that takes Hipparcos rows, null
+# until `join_by_hip` sets them.
+HIP_JOINED_COLUMNS = tuple(
+    name
     for group in POINT_SOURCE.groups
-    if group.name == "pastel"
-    for field in group.columns
+    if group.name in JOINED_GROUPS and HIPPARCOS.name in group.sources
+    for name in group.names
 )
 
 EPOCH = 1991.25
@@ -465,11 +472,20 @@ def engine_rows(
         name: stars[name]
         for name in sorted(copied - {"hip", "hd", "ra_rad", "dec_rad"})
     }
-    # Without PASTEL rows the columns come out null.
-    joined = stars
-    if pastel is not None:
-        at = pc.index_in(stars["hip"], value_set=pastel["hip"])
-        joined = pa.table({name: pastel[name].take(at) for name in PASTEL_COLUMNS})
-    columns |= joined_columns(joined, PASTEL_COLUMNS)
+    columns |= joined_columns(stars, HIP_JOINED_COLUMNS)
     rows = pa.table(columns)
+    if pastel is not None:
+        rows = join_by_hip(rows, pastel, PASTEL_COLUMNS)
     return rows.filter(pa.array(~rough)), rows.filter(pa.array(rough))
+
+
+def join_by_hip(rows: pa.Table, joined: pa.Table, names: tuple[str, ...]) -> pa.Table:
+    """Pass rows of `engine_rows` with the columns `names` set from the row of
+    `joined` with the same HIP number; null where none has it."""
+    hip = pc.cast(rows["catalogue_id"], pa.int64())
+    at = pc.index_in(hip, value_set=pc.cast(joined["hip"], pa.int64()))
+    for name in names:
+        index = rows.schema.get_field_index(name)
+        column = joined[name].take(at).cast(rows.schema.field(name).type)
+        rows = rows.set_column(index, name, column)
+    return rows

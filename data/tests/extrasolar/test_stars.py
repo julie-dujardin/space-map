@@ -26,10 +26,12 @@ from space_map_data.extrasolar.sources import (
     apogee,
     gaia,
     gaia_orbits,
+    gcvs,
     hipparcos,
     lamost,
     names,
     pastel,
+    spicy,
     wikidata,
 )
 from space_map_data.extrasolar.sources.distances import (
@@ -293,20 +295,26 @@ class TestTables:
             ("pastel", pastel.COLUMNS),
             ("apogee", apogee.COLUMNS),
             ("lamost", lamost.COLUMNS),
+            ("gcvs", gcvs.COLUMNS),
+            ("spicy", spicy.COLUMNS),
         ):
             assert groups[name].names == list(columns)
         assert gaia.JOINED_COLUMNS == (
             *pastel.COLUMNS,
             *apogee.COLUMNS,
             *lamost.COLUMNS,
+            *gcvs.COLUMNS,
+            *spicy.COLUMNS,
         )
         assert hipparcos.PASTEL_COLUMNS == pastel.COLUMNS
-        assert groups["pastel"].sources == (
-            GAIA_DR3.name,
-            GAIA_DR3_NAMED.name,
-            HIPPARCOS.name,
-            HIPPARCOS_1997.name,
-        )
+        assert hipparcos.HIP_JOINED_COLUMNS == (*pastel.COLUMNS, *gcvs.COLUMNS)
+        for name in ("pastel", "gcvs"):
+            assert groups[name].sources == (
+                GAIA_DR3.name,
+                GAIA_DR3_NAMED.name,
+                HIPPARCOS.name,
+                HIPPARCOS_1997.name,
+            )
 
 
 class TestGaiaRows:
@@ -590,6 +598,29 @@ class TestHipparcos:
         assert rows["match_mag"].to_pylist()[3] is None
         moved = rows["match_dec"].to_pylist()[3] - DEC
         assert moved * 3600 == pytest.approx(24.75, rel=1e-3)
+
+    def test_the_gcvs_rows_join_by_hip_number(self):
+        table = hip_stars(
+            [
+                {"hip": 1, "ra": RA, "dec": DEC, "v_mag": 5.0},
+                {"hip": 2, "ra": RA, "dec": DEC, "v_mag": 6.0},
+            ]
+        )
+        rows, _ = hipparcos.engine_rows(
+            table, BestNeighbours(np.array([]), np.array([]))
+        )
+        assert rows["vartype_gcvs"].null_count == 2
+        found = pa.table(
+            {
+                "source_id": pa.array([0, 0], pa.int64()),
+                "hip": pa.array([2, 9], pa.int64()),
+                "gcvs_name": ["alf Lyr", "R And"],
+                "vartype_gcvs": ["DSCTC", "M"],
+            }
+        )
+        rows = hipparcos.join_by_hip(rows, found, gcvs.COLUMNS)
+        assert rows["gcvs_name"].to_pylist() == [None, "alf Lyr"]
+        assert rows["vartype_gcvs"].to_pylist() == [None, "DSCTC"]
 
     def test_a_red_or_variable_star_matches_without_its_magnitude(self):
         table = hip_stars(

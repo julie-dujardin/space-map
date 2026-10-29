@@ -61,7 +61,7 @@ ID_CHUNK = 1000
 
 _GAIA_ID_RE = re.compile(r"Gaia DR([23]) (\d+)")
 
-_DR2_NEIGHBOURHOOD = (
+DR2_NEIGHBOURHOOD = (
     "select n.* from TAP_UPLOAD.sent as s"
     " join gaiadr3.dr2_neighbourhood as n on n.dr2_source_id = s.id"
 )
@@ -179,7 +179,7 @@ class ExoplanetGaiaDownloader(InputReader):
             len(dr2_ids),
             len(dr3_ids),
         )
-        neighbour_header, neighbours = self._by_id(_DR2_NEIGHBOURHOOD, dr2_ids)
+        neighbour_header, neighbours = self._by_id(DR2_NEIGHBOURHOOD, dr2_ids)
         if not neighbours:
             raise DownloadError(f"Gaia has no neighbour for {len(dr2_ids)} DR2 ids")
         _, host_orbits = self._by_id(_HOST_ORBITS, dr3_ids)

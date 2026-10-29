@@ -190,12 +190,12 @@ OBJECT_CATALOGUES = frozenset({"wikidata", "literature"})
 # the Hipparcos astrometry and photometry. A group that one catalogue fills
 # keeps that catalogue's names. The Gaia rows also carry the astrometric
 # fidelity of Rybizki et al. 2022 and the XP metallicities of Andrae et al.
-# 2023. The metallicity groups after them come from spectra, one catalogue
-# each. PASTEL, APOGEE and LAMOST join the Gaia rows by source_id at each
-# ingest (PASTEL also the Hipparcos rows by HIP number), so they hold no
-# catalogue id in the registry. gaia-dr3-named are the Gaia rows of SIMBAD
-# stars and planet hosts without a 5σ parallax, so their astrometry ranks
-# below Hipparcos.
+# 2023. The groups after them hold metallicities from spectra, then classes,
+# one catalogue each. These catalogues join the Gaia rows by source_id at
+# each ingest, PASTEL and the GCVS also the Hipparcos rows by HIP number, so
+# they hold no catalogue id in the registry. gaia-dr3-named are the Gaia rows
+# of SIMBAD stars and planet hosts without a 5σ parallax, so their astrometry
+# ranks below Hipparcos.
 POINT_SOURCE = TableDef(
     number=1,
     slug="point-source",
@@ -472,6 +472,24 @@ POINT_SOURCE = TableDef(
                 ),
                 pa.field("activity_lamost", pa.bool_()),
                 pa.field("vbflag_lamost", pa.int8()),
+            ),
+            ("gaia-dr3", "gaia-dr3-named"),
+        ),
+        # GCVS 5.1: the designation in SIMBAD's spelling and the variability
+        # type as published.
+        ColumnGroup(
+            "gcvs",
+            _fields(pa.string(), "gcvs_name", "vartype_gcvs"),
+            ("gaia-dr3", "gaia-dr3-named", "hipparcos-2007", "hipparcos-1997"),
+        ),
+        # SPICY (Kuhn et al. 2021): the SPICY number, the YSO class as
+        # published and the spectral index of the SED that gives the class.
+        ColumnGroup(
+            "spicy",
+            (
+                pa.field("spicy_id", pa.int32()),
+                pa.field("class_spicy", pa.string()),
+                pa.field("alpha_spicy", pa.float32()),
             ),
             ("gaia-dr3", "gaia-dr3-named"),
         ),
