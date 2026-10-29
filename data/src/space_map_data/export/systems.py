@@ -655,18 +655,26 @@ def load_gms(download_dir: Path) -> dict[int, float]:
     return result
 
 
-def load_planet_elements(download_dir: Path) -> dict[int, dict]:
-    """Mean planet elements (Horizons) → {naif_id: {"a": AU, "i": deg}}.
+def planet_elements_path(download_dir: Path) -> Path:
+    """The file that `fetch_planet_elements` writes at download time."""
+    return download_dir / "derived" / "position" / "tables" / "planet_elements.json"
 
-    Baked at download time by `fetch_planet_elements`; the major planets carry no
-    SBDB row, so this is the minimap's source for their distance + inclination.
+
+def load_planet_elements(download_dir: Path) -> dict[int, dict]:
+    """Mean planet elements (Horizons) → {naif_id: {"a": AU, "i": deg, "e",
+    "period": d}}.
+
+    The major planets have no SBDB row, so the minimap reads them here.
     """
-    path = download_dir / "derived" / "position" / "tables" / "planet_elements.json"
+    path = planet_elements_path(download_dir)
     if not path.exists():
         logger.warning("No planet elements JSON at %s", path)
         return {}
     data = orjson.loads(path.read_bytes())
-    result = {int(k): {"a": v["a"], "i": v["i"]} for k, v in data.items()}
+    result = {
+        int(k): {"a": v["a"], "i": v["i"], "e": v["e"], "period": v["period"]}
+        for k, v in data.items()
+    }
     logger.info("Loaded %d planet element records", len(result))
     return result
 

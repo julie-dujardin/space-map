@@ -83,7 +83,7 @@ from space_map_data.export.small_body_color import (
     resolve_small_body_color,
 )
 from space_map_data.export.wikidata import WikidataEntityCache
-from space_map_data.ingest.providers.objects.sbdb import G_KM3_PER_KG_S2
+from space_map_data.ingest.providers.objects.sbdb import mass_kg_from_gm
 from space_map_data.models.object.main import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
 from space_map_data.models.object.sbdb_moon import SBDBMoon
@@ -162,17 +162,6 @@ def _merge_histograms(*histograms: dict[int, int]) -> dict[int, int]:
     return out
 
 
-def _mass_kg_from_gm(gm_km3_s2: float | None) -> float | None:
-    """Body mass from its PCK gravitational parameter: M = GM / G.
-
-    The planet-level GM (e.g. BODY599_GM, not the system barycenter) gives the
-    planet's own mass. Mirrors SBDB's GM→mass conversion.
-    """
-    if gm_km3_s2 is None:
-        return None
-    return gm_km3_s2 / G_KM3_PER_KG_S2
-
-
 def _body_member(
     obj_id: str,
     naif_id: int | None,
@@ -191,7 +180,7 @@ def _body_member(
         fallback_name=name or obj_id,
         diameter_km=None,
         first_obs=None,
-        mass_kg=_mass_kg_from_gm(gms.get(naif_id) if naif_id is not None else None),
+        mass_kg=mass_kg_from_gm(gms.get(naif_id) if naif_id is not None else None),
         radii=geo.radii,
         radius_km=geo.radius_km,
         pole=geo.pole,

@@ -28,6 +28,7 @@ from space_map_data.export.extrasolar.tiles import LISTED_STARS
 from space_map_data.export.groups.family_pages import (
     FamilyGroups,
     FamilyPages,
+    object_sitelink_rank,
     served_metadata,
     sitelink_rank,
 )
@@ -152,8 +153,7 @@ def _notable_stars(
         if article
     ]
     if sun is not None:
-        found = wikidata_entities.get_entity(sun.wikidata_qid)
-        sitelinks = len(found["sitelinks"]) if found else 0
+        sitelinks, _ = object_sitelink_rank(wikidata_entities, sun.wikidata_qid)
         families = set(of_spectral_type(SUN_SPECTRAL_TYPE))
         mask = sum(1 << bit for bit, family in enumerate(bits) if family in families)
         ranked.append((sitelinks, mask, replace(sun, sitelinks_count=sitelinks)))

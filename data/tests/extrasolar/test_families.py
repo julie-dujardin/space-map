@@ -225,10 +225,11 @@ class TestPublished:
             "g-type-main-sequence",
             "main-sequence",
         ]
-        assert families.most_specific(families.of_spectral_type("G2V")) == [
+        tree = rules.FAMILIES, rules.PARENTS
+        assert families.most_specific(families.of_spectral_type("G2V"), *tree) == [
             "g-type-main-sequence"
         ]
-        assert families.most_specific(families.of_spectral_type("K3IIb")) == [
+        assert families.most_specific(families.of_spectral_type("K3IIb"), *tree) == [
             "bright-giant",
             "red-giant",
         ]

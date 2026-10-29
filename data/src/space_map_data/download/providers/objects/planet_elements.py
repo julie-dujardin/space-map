@@ -1,11 +1,11 @@
 """Mean heliocentric orbital elements for the major planets, from JPL Horizons.
 
-The planets carry no SBDB row (they're SPICE-tracked), so the Solar System
-minimap needs their semi-major axis + inclination from elsewhere. We average
-Horizons osculating elements over one full orbital period — that cancels the
-periodic wobble and yields clean mean values — and bake them to a JSON the
-export loads like a static table. Inclination is referred to the ecliptic
-(REF_PLANE=ECLIPTIC), heliocentric (CENTER=Sun), J2000.
+The planets have no SBDB row, so the export reads their semi-major axis,
+inclination, eccentricity and sidereal period from here. Each value is the
+mean of the Horizons osculating elements over one orbital period, which
+removes the periodic terms. The export loads the JSON like a static table.
+The frame is heliocentric (CENTER=Sun), the ecliptic (REF_PLANE=ECLIPTIC) of
+J2000.
 """
 
 import csv
@@ -63,44 +63,53 @@ def _fetch_elements(client: httpx.Client, command: str, period_yr: float) -> str
     return resp.text
 
 
-def _mean_a_i(text: str) -> tuple[float, float, int]:
-    """Mean (a [AU], i [deg]) over the ELEMENTS rows in a Horizons CSV reply."""
+# Output key → Horizons ELEMENTS column: a [AU], i [deg], e, sidereal period [d].
+_COLUMNS = {"a": "A", "i": "IN", "e": "EC", "period": "PR"}
+
+
+def _mean_elements(text: str) -> tuple[dict[str, float], int]:
+    """The mean of each of `_COLUMNS` over the ELEMENTS rows in a Horizons CSV
+    reply, and the number of rows."""
     header = next(
         line for line in text[: text.index("$$SOE")].splitlines() if "JDTDB" in line
     )
     cols = [c.strip() for c in header.split(",")]
-    i_a, i_in = cols.index("A"), cols.index("IN")
+    index = {key: cols.index(col) for key, col in _COLUMNS.items()}
     block = text[text.index("$$SOE") + 5 : text.index("$$EOE")]
-    a_vals: list[float] = []
-    i_vals: list[float] = []
+    values: dict[str, list[float]] = {key: [] for key in _COLUMNS}
     for row in csv.reader(io.StringIO(block)):
         cells = [c.strip() for c in row]
-        if len(cells) <= max(i_a, i_in) or not cells[i_a]:
+        if len(cells) <= max(index.values()) or not cells[index["a"]]:
             continue
-        a_vals.append(float(cells[i_a]))
-        i_vals.append(float(cells[i_in]))
-    if not a_vals:
+        for key, i in index.items():
+            values[key].append(float(cells[i]))
+    if not values["a"]:
         raise ValueError("no element rows in Horizons reply")
-    return statistics.fmean(a_vals), statistics.fmean(i_vals), len(a_vals)
+    means = {key: statistics.fmean(found) for key, found in values.items()}
+    return means, len(values["a"])
 
 
 def fetch_planet_elements(client: httpx.Client, out_dir: Path) -> None:
     """Bake mean planet elements to ``<out_dir>/planet_elements.json``.
 
-    Shape: ``{"199": {"a": <AU>, "i": <deg>}, …}`` keyed by NAIF id.
+    Shape: ``{"199": {"a": <AU>, "i": <deg>, "e": <1>, "period": <d>}, …}``
+    keyed by NAIF id.
     """
     elements: dict[str, dict[str, float]] = {}
     for naif_id, (command, period_yr) in _PLANETS.items():
         try:
             text = _fetch_elements(client, command, period_yr)
-            a, i, n = _mean_a_i(text)
+            means, n = _mean_elements(text)
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("Horizons elements for %d failed: %s", naif_id, exc)
             continue
-        elements[str(naif_id)] = {"a": round(a, 6), "i": round(i, 4)}
-        logger.info(
-            "Horizons mean elements %d: a=%.4f AU, i=%.4f deg (n=%d)", naif_id, a, i, n
-        )
+        elements[str(naif_id)] = {
+            "a": round(means["a"], 6),
+            "i": round(means["i"], 4),
+            "e": round(means["e"], 6),
+            "period": round(means["period"], 4),
+        }
+        logger.info("Horizons mean elements %d: %s (n=%d)", naif_id, means, n)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "planet_elements.json"

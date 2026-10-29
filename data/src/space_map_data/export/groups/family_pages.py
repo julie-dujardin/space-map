@@ -85,3 +85,13 @@ def sitelink_rank(
     if found is None or found.entity is None:
         return 0, False
     return found.sitelinks, not set(found.entity["sitelinks"]).isdisjoint(LANGUAGES)
+
+
+def object_sitelink_rank(
+    wikidata_entities: WikidataEntityCache, qid: str | None
+) -> tuple[int, bool]:
+    """`sitelink_rank` of the item of a Solar System object."""
+    found = wikidata_entities.get_entity(qid)
+    if found is None:
+        return 0, False
+    return len(found["sitelinks"]), not set(found["sitelinks"]).isdisjoint(LANGUAGES)

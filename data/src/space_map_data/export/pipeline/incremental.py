@@ -53,6 +53,7 @@ from space_map_data.export.position.probes.sidecar import (
     PACK_VERSION as PROBES_PACK_VERSION,
 )
 from space_map_data.export.sidecar_io import mirror_path, read_sidecar, write_sidecar
+from space_map_data.export.systems import planet_elements_path
 from space_map_data.models.ingest_stamp import read_ingest_stamp
 from space_map_data.utils.content_stamp import content_stamp, content_stamps
 from space_map_data.utils.paths import (
@@ -119,20 +120,25 @@ def tier_b_fingerprint(
     star_objects: Sequence[StarObject],
     planet_objects: Sequence[PlanetObject],
 ) -> dict:
-    """Inputs that feed bundles/labels/features/messages.
+    """The inputs of the bundles, labels, features, messages and groups.
 
-    `ingest_stamp` covers all DB content; the source stamps cover files the
-    export reads directly from the downloads tree; `kernels` covers the
-    attitude blocks injected into object bundles. `position_sources` is what
-    the traverses add to bundles, so a route that only grows rewrites none.
-    `stars` covers the star entries, which each registry ingest links again,
-    and the works that the literature table cites for them; `planets` the
-    planet entries, which each registry ingest links again too.
-    `star_families` covers the family counts, the family lists and the
-    Metadata tiles of the served extrasolar export, which the star family
-    pages read;
-    `planet_families` the family counts and the planet files, which the
-    planet family pages read.
+    - `ingest_stamp`: all DB content.
+    - The source stamps: the files that the export reads from the downloads
+      tree.
+    - `kernels`: the attitude blocks of the object bundles, and the radii and
+      GMs of the SPICE tables.
+    - `planet_elements`: the Horizons mean elements, which the minimap and the
+      moons chart read.
+    - `position_sources`: what the traverses add to the bundles. A route that
+      only grows rewrites none.
+    - `stars`: the star entries, which each registry ingest links again, and
+      the works that the literature table cites for them.
+    - `planets`: the planet entries, which each registry ingest links again.
+    - `star_families`: the family counts, the family lists and the Metadata
+      tiles of the served extrasolar export, which the star family pages
+      read.
+    - `planet_families`: the family counts and the planet files, which the
+      planet family pages read.
     """
     return {
         "version": TIER_B_VERSION,
@@ -147,6 +153,7 @@ def tier_b_fingerprint(
             SOURCES_METADATA_DIR / "nasa-science-urls" / "pk-to-url.json"
         ),
         "kernels": kernels_digest(),
+        "planet_elements": _file_stamp(planet_elements_path(DOWNLOAD_DIR)),
         "position_sources": {
             str(probe_id): works
             for probe_id, works in sorted(load_probe_position_sources().items())

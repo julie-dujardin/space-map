@@ -11,7 +11,7 @@ them.
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 
 import numpy as np
 import pyarrow as pa
@@ -274,11 +274,16 @@ def of_spectral_type(text: str) -> list[str]:
     return [family for family in rules.FAMILIES if mask & BIT[family]]
 
 
-def most_specific(families: Iterable[str]) -> list[str]:
-    """The families that contain none of the others, in bit order."""
+def most_specific(
+    families: Iterable[str],
+    order: Sequence[str],
+    parents: Mapping[str, Sequence[str]],
+) -> list[str]:
+    """The families that contain none of the others, in `order`. `parents`
+    gives the parent families of each family of the tree."""
     given = set(families)
-    contained = {parent for family in given for parent in rules.PARENTS.get(family, ())}
-    return [f for f in rules.FAMILIES if f in given and f not in contained]
+    contained = {parent for family in given for parent in parents.get(family, ())}
+    return [f for f in order if f in given and f not in contained]
 
 
 def _by_value(array: pa.Array | pa.ChunkedArray, map_one, null: tuple) -> np.ndarray:
