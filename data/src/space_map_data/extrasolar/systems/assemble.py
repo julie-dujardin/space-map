@@ -326,19 +326,33 @@ class Assembler:
     # Interiors
 
     def interiors(self) -> dict[int, Interior | int]:
-        """The chosen interior of each point: an Interior, or an orbit row."""
-        chosen: dict[int, tuple[int, Interior | int]] = {}
+        """The chosen interior of each point: an Interior, or an orbit row.
+
+        An interior of unverified members comes after the others, then the
+        source rank decides.
+        """
+        chosen: dict[int, tuple[tuple[bool, int], Interior | int]] = {}
         for interior in self.p.reduced.interiors:
+            order = (interior.unverified, interior.rank)
             best = chosen.get(interior.key)
-            if best is None or interior.rank < best[0]:
-                chosen[interior.key] = (interior.rank, interior)
-        rank = INTERIOR_SOURCES.index(GAIA_ORBITS)
+            if best is None or order < best[0]:
+                chosen[interior.key] = (order, interior)
+        order = (False, INTERIOR_SOURCES.index(GAIA_ORBITS))
         kept = np.flatnonzero(self.p.orbit_kept)
         for row, key in zip(kept.tolist(), self.p.orbit_keys[kept].tolist()):
             best = chosen.get(key)
-            if best is None or rank < best[0]:
-                chosen[key] = (rank, row)
-        counts = Counter(INTERIOR_SOURCES[rank] for rank, _ in chosen.values())
+            if best is None or order < best[0]:
+                chosen[key] = (order, row)
+        given = Counter(
+            interior.source
+            for interior in self.p.reduced.interiors
+            if interior.unverified and not chosen[interior.key][0][0]
+        )
+        for source, value in given.items():
+            self.counts[f"{source}: interiors of unverified members that give way"] = (
+                value
+            )
+        counts = Counter(INTERIOR_SOURCES[rank] for (_, rank), _ in chosen.values())
         for source, value in counts.items():
             self.counts[f"points holding several stars, by {source}"] = value
         return {key: item for key, (_, item) in chosen.items()}

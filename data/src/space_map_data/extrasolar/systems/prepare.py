@@ -633,8 +633,12 @@ def close_interiors(
     prepared: Prepared, system_of: dict[int, int], points_of: dict[int, list[int]]
 ) -> list[Interior]:
     """Two stars for each close-pair point with no interior that no companion
-    explains."""
-    have = {interior.key for interior in prepared.reduced.interiors}
+    explains. An interior of unverified members does not count."""
+    have = {
+        interior.key
+        for interior in prepared.reduced.interiors
+        if not interior.unverified
+    }
     have |= set(prepared.orbit_keys[prepared.orbit_kept].tolist())
     found = []
     for key, otype in sorted(prepared.close.items()):

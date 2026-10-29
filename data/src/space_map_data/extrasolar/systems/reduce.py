@@ -34,7 +34,8 @@ position.
 - A member that leaves keeps its inner system as a system of its own.
 
 A point that holds two or more members gets an interior: its members as
-entries. A group gets the set of its points.
+entries. An interior of unverified members gives way to an interior from
+other evidence (`Interior.unverified`). A group gets the set of its points.
 """
 
 import logging
@@ -141,6 +142,8 @@ class Interior:
     # The global value rows of its members, and the label of the inner pair
     # that holds each one.
     entries: list[tuple[int, str | None]]
+    # Each star beside the main star is an unverified member.
+    unverified: bool = False
 
 
 @dataclass
@@ -677,8 +680,25 @@ class TreeReducer:
                 inner = self.label[parent] if parent >= 0 and parent != top else None
                 entries.append((self.offset + leaf, inner))
             out.interiors.append(
-                Interior(part.key, self.source, self.rank, self.system[top], entries)
+                Interior(
+                    part.key,
+                    self.source,
+                    self.rank,
+                    self.system[top],
+                    entries,
+                    self._unverified(part.leaves[1:], top),
+                )
             )
+
+    def _unverified(self, leaves: list[int], top: int) -> bool:
+        """Whether an unverified node links each of `leaves` to `top`."""
+        for leaf in leaves:
+            row = leaf
+            while row >= 0 and row != top and self.evidence[row] != UNVERIFIED:
+                row = int(self.parent[row])
+            if row < 0 or row == top:
+                return False
+        return True
 
     def _group(self, row: int, parts: list[_Part], out: Reduced) -> _Part:
         members = []

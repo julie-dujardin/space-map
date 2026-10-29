@@ -969,7 +969,7 @@ class TestUnverifiedMembers:
         separation: float | None,
         facts: list[dict],
         b: int,
-        evidence: str = UNVERIFIED,
+        evidence: str | None = UNVERIFIED,
         b_next: int = 0,
     ) -> Reduced:
         table = wds_tree(
@@ -1013,6 +1013,13 @@ class TestUnverifiedMembers:
         assert interior.key == 100 and interior.entries == [(1, None), (2, None)]
         name = f"{WDS}: unverified members inside the primary's point"
         assert out.counts[name] == 1
+
+    def test_an_interior_of_unverified_members(self):
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        assert [i.unverified for i in self.reduced(0.1, [x], 0).interiors] == [True]
+        assert [i.unverified for i in self.reduced(0.1, [x], 0, None).interiors] == [
+            False
+        ]
 
     def test_no_object_beside_the_primary_point(self):
         """X splits B from A at 1.1″, so B needs a point of its own."""
@@ -1290,6 +1297,60 @@ class TestInnerSystemStays:
         assert shape(systems, 11) == ("point", 11, 2)
         assert systems.counts[f"{WDS}: inner systems of members that left"] == 1
         assert systems.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
+
+
+class TestUnverifiedInterior:
+    """WDS B is unverified and inside the point of A at 0.1″. An orbit or a
+    close type of that point is better evidence, and its interior wins."""
+
+    w = "06451-1643"
+
+    def inputs(self, otype: str | None, orbit: bool) -> tuple[Inputs, FakeResolver]:
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 80, ("simbad", "oid", "40"): 80},
+            [fact(80, 101.287, -16.716, 7.0, parallax=10.0)],
+        )
+        catalogue = wds_catalogue(
+            {self.w: [wds_pair("A", "B", 0.1, notes="N", mag1=7.0, mag2=8.0)]},
+            {(self.w, "A"): wds_component(1)},
+        )
+        index = None
+        if otype:
+            index = simbad_index(
+                [simbad_object(40, "HD 1", 101.287, -16.716, otype=otype, v=7.0)]
+            )
+        orbits = None
+        if orbit:
+            orbits = orbit_pairs(
+                pa.table(
+                    {
+                        "key": [80],
+                        "nss_solution_type": ["SB1"],
+                        "period": [10.0],
+                        "eccentricity": [0.0],
+                        "m1": [1.0],
+                        "m2": [0.5],
+                    }
+                )
+            )
+        return Inputs(wds=catalogue, simbad_index=index, orbits=orbits), resolver
+
+    def point(self, otype: str | None, orbit: bool) -> tuple[Systems, list[tuple]]:
+        systems = build(*self.inputs(otype, orbit))
+        points = systems.nodes.filter(systems.nodes["point"]).to_pylist()
+        return systems, [(p["key"], p["stars"], p["evidence"]) for p in points]
+
+    def test_the_wds_interior_alone(self):
+        assert self.point(None, False)[1] == [(80, 2, WDS)]
+
+    def test_a_gaia_orbit_wins(self):
+        systems, points = self.point(None, True)
+        assert points == [(80, 2, GAIA_ORBITS)]
+        name = f"{WDS}: interiors of unverified members that give way"
+        assert systems.counts[name] == 1
+
+    def test_a_close_type_wins(self):
+        assert self.point("EB*", False)[1] == [(80, 2, SIMBAD_TYPE)]
 
 
 class TestRegistryInputs:
