@@ -71,11 +71,13 @@ const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
 };
 
 /** The catalogues that join the Point source row hold their ids in its columns.
- *  PASTEL names a star as SIMBAD does, so SIMBAD finds the star by it. */
-const JOINED_IDS: [column: string, label: () => string, simbad: boolean][] = [
-	['pastel_designation', m.star_xid_pastel, true],
-	['apogee_id', m.star_xid_apogee, false],
-	['lamost_id', m.star_xid_lamost, false]
+ *  PASTEL and the GCVS name a star as SIMBAD does, so SIMBAD finds the star by
+ *  that name. `simbad` is what SIMBAD writes before it, null for no link. */
+const JOINED_IDS: [column: string, label: () => string, simbad: string | null][] = [
+	['pastel_designation', m.star_xid_pastel, ''],
+	['apogee_id', m.star_xid_apogee, null],
+	['lamost_id', m.star_xid_lamost, null],
+	['gcvs_name', m.star_xid_gcvs, 'V* ']
 ];
 
 /** Cross-ids not shown. A SIMBAD oid and a NASA Exoplanet Archive row are
@@ -110,10 +112,10 @@ function crossIdRow(x: CrossId): StarRowEntry | null {
 function joinedIdRow(
 	id: string | null | undefined,
 	label: () => string,
-	simbad: boolean
+	simbad: string | null
 ): StarRowEntry | null {
-	if (!id || !simbad) return row(label(), id);
-	return row(label(), id.replace(SIMBAD_TYPE_PREFIX, ''), SIMBAD + encodeURIComponent(id));
+	if (!id || simbad === null) return row(label(), id);
+	return row(label(), id.replace(SIMBAD_TYPE_PREFIX, ''), SIMBAD + encodeURIComponent(simbad + id));
 }
 
 /** Catalogue identifiers shown with the object's other links. */
@@ -121,7 +123,8 @@ export function starIdentifiers(record: ExtrasolarRecord): StarRowEntry[] {
 	const ps = pointSource(record);
 	return rows([
 		...record.metadata.crossIds.filter((x) => !LINKED_CATALOGUES.has(x.catalogue)).map(crossIdRow),
-		...JOINED_IDS.map(([column, label, simbad]) => joinedIdRow(ps?.text(column), label, simbad))
+		...JOINED_IDS.map(([column, label, simbad]) => joinedIdRow(ps?.text(column), label, simbad)),
+		row(m.star_xid_spicy(), ps?.number('spicy_id')?.toString())
 	]);
 }
 

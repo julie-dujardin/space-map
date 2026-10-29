@@ -271,6 +271,57 @@ class TestPublished:
         assert published[0] == {"giant", "red-giant", "variable-star"}
 
 
+class TestCatalogued:
+    """The GCVS types give published families, the SPICY classes estimated
+    ones."""
+
+    @pytest.mark.parametrize(
+        "vartype", ["UV", "UVN", "BY+UV", "UV+BY:", "UVN(YY)", "INST(YY)+UV"]
+    )
+    def test_a_gcvs_flare_type(self, vartype):
+        published, _ = classify({"vartype_gcvs": vartype})
+        assert published[0] == {"flare-star", "variable-star"}
+
+    @pytest.mark.parametrize("vartype", ["UV:", "BY+UV:", "EA", "M", "UVN(YY):"])
+    def test_an_uncertain_or_other_gcvs_type_gives_none(self, vartype):
+        published, _ = classify({"vartype_gcvs": vartype})
+        assert published[0] == set()
+
+    @pytest.mark.parametrize(
+        ("spicy_class", "found"),
+        [
+            ("ClassI", {"protostar"}),
+            ("FS", {"protostar"}),
+            ("ClassII", set()),
+            ("uncertain", set()),
+        ],
+    )
+    def test_spicy_classes(self, spicy_class, found):
+        published, estimated = classify({"class_spicy": spicy_class})
+        assert published[0] == set()
+        assert estimated[0] == found
+
+    def test_a_spicy_protostar_stops_the_flame_stage(self):
+        published, estimated = classify({"class_spicy": "FS"} | DWARF_FLAME)
+        assert published[0] == set()
+        assert estimated[0] == {"protostar"}
+
+    @pytest.mark.parametrize(
+        ("label", "found"),
+        [
+            ("TTauri", {"t-tauri", "pre-main-sequence"}),
+            ("HerbigStar", {"herbig-ae-be", "pre-main-sequence"}),
+        ],
+    )
+    def test_an_esp_els_label_stops_a_spicy_protostar(self, label, found):
+        _, estimated = classify({"classlabel_espels": label, "class_spicy": "FS"})
+        assert estimated[0] == found
+
+    def test_a_catalogued_stage_stops_a_spicy_protostar(self):
+        published, estimated = classify({"sp_type": "K5V", "class_spicy": "ClassI"})
+        assert "protostar" not in published[0] | estimated[0]
+
+
 class TestEstimated:
     """Families that need a Gaia estimate."""
 
@@ -530,6 +581,8 @@ class TestMasks:
             rules.OTYPE_FAMILIES,
             rules.CLASS_FAMILIES,
             rules.ELS_FAMILIES,
+            rules.GCVS_FAMILIES,
+            rules.SPICY_FAMILIES,
             rules.PARENTS,
         )
         named = {f for table in tables for value in table.values() for f in value}

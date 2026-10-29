@@ -48,6 +48,8 @@ _CATALOGUE_OF_GROUP = {
     "pastel": "pastel-2020",
     "apogee": "apogee-dr17",
     "lamost": "lamost-dr10",
+    "gcvs": "gcvs-5.1",
+    "spicy": "spicy",
     "xhip_metallicity": "xhip",
     "fidelity": "rybizki-2022",
     "orbit": "gaia-dr3-nss",

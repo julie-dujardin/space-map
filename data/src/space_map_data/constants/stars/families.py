@@ -2,13 +2,14 @@
 
 A star is in every family that its data supports. A published family comes
 from a catalogued classification only: an MK spectral type, a SIMBAD object
-type or the Metadata class. An estimated family uses at least one Gaia DR3
-estimate: the spectral type tag of ESP-ELS, the stage from the ESP-HS surface
-gravity (O and B stars) or from FLAME (other stars), the DSC white-dwarf
-probability or the ESP-ELS emission-line class.
+type, the Metadata class or a GCVS variability type. An estimated family uses
+at least one estimate: the spectral type tag of ESP-ELS, the stage from the
+ESP-HS surface gravity (O and B stars) or from FLAME (other stars), the DSC
+white-dwarf probability, the ESP-ELS emission-line class or the class of a
+SPICY candidate.
 
 A family states the spectral letter of a star, its stage, both or neither. A
-published family or MK value stops the Gaia estimate of what it states.
+published family or MK value stops each estimate of what it states.
 
 Every family is below one root family, stellar classification.
 
@@ -298,6 +299,22 @@ ELS_FAMILIES: dict[str, tuple[str, ...]] = {
     "RedDwarfEmStar": ("red-dwarf",),
     "wC": ("wolf-rayet",),
     "wN": ("wolf-rayet",),
+}
+
+# GCVS variability types, each a part of `vartype_gcvs` between "+" signs. A
+# subtype in brackets keeps the type, so "UVN(YY)" is UVN. A type with ":" is
+# uncertain and gives no family. UVN is a flare star of a young association.
+GCVS_FAMILIES: dict[str, tuple[str, ...]] = {
+    "UV": ("flare-star",),
+    "UVN": ("flare-star",),
+}
+# SPICY YSO classes. The SED of a Class I or flat-spectrum source shows its
+# envelope. SPICY lists candidates, so these are estimated families. An
+# ESP-ELS label stops them, because the SIMBAD types of stars with both are
+# pre-main-sequence types.
+SPICY_FAMILIES: dict[str, tuple[str, ...]] = {
+    "ClassI": ("protostar",),
+    "FS": ("protostar",),
 }
 SUBDWARF_PREFIXES = frozenset({"sd", "esd", "usd"})
 # DSC-Combmod probability above which a star is an estimated white dwarf.

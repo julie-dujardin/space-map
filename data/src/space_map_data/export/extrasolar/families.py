@@ -3,9 +3,10 @@ Point source rows.
 
 Bit n of a mask is family n of `constants.stars.families.FAMILIES`.
 `families` holds the published families of a star, `families_estimated` the
-families that need a Gaia estimate and are not published. The rules are in
-that constants module. `spectral_type` is the MK type that the families read,
-so a client shows the type that gives them.
+families that need an estimate, from Gaia or a list of candidates, and are
+not published. The rules are in that constants module. `spectral_type` is
+the MK type that the families read, so a client shows the type that gives
+them.
 """
 
 import re
@@ -54,6 +55,8 @@ COLUMNS = (
         for run in FLAME_RUNS
         for name in ("evolstage", "mass", "flags")
     ),
+    "vartype_gcvs",
+    "class_spicy",
 )
 
 assert len(rules.FAMILIES) <= 64, "a family mask has 64 bits"
@@ -273,6 +276,23 @@ def _masks(array, table: dict[str, tuple[str, ...]]) -> np.ndarray:
     return _by_value(array, lambda value: (mask_of(table.get(value, ())),), (0,))[:, 0]
 
 
+# A GCVS subtype in brackets: "UVN(YY)", "RR(B)".
+_GCVS_SUBTYPE = re.compile(r"(?P<type>[^(]+)\([^)]*\)")
+
+
+def _gcvs_mask(vartype: str) -> tuple[np.uint64]:
+    types = [
+        found["type"] if (found := _GCVS_SUBTYPE.fullmatch(part)) else part
+        for part in vartype.split("+")
+    ]
+    return (mask_of(f for part in types for f in rules.GCVS_FAMILIES.get(part, ())),)
+
+
+def _gcvs(rows: pa.Table) -> np.ndarray:
+    """The families of the GCVS type of each row."""
+    return _by_value(rows["vartype_gcvs"], _gcvs_mask, (0,))[:, 0]
+
+
 def _numbers(rows: pa.Table, name: str) -> np.ndarray:
     return rows[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
 
@@ -388,6 +408,7 @@ def masks(
     for name in OTYPES:
         published |= _masks(system.get(name, rows[name]), rules.OTYPE_FAMILIES)
     published |= _masks(classes, rules.CLASS_FAMILIES)
+    published |= _gcvs(rows)
     # A stage that an object type gives joins the MK letter as an MK stage
     # does. A family that states a letter, such as red-giant, keeps its stage
     # to that letter.
@@ -404,8 +425,10 @@ def masks(
         _numbers(rows, "classprob_dsc_combmod_whitedwarf")
         > rules.MIN_WHITE_DWARF_PROBABILITY
     )
+    spicy = _masks(rows["class_spicy"], rules.SPICY_FAMILIES)
     labels = np.zeros(n, np.uint64)
-    for label in (els, np.where(white_dwarf, BIT["white-dwarf"], NONE)):
+    # Of two labels that state the same, the first in this order counts.
+    for label in (els, np.where(white_dwarf, BIT["white-dwarf"], NONE), spicy):
         kept = np.where(states_of(label) & fixed, NONE, label)
         labels |= kept
         fixed |= states_of(kept)

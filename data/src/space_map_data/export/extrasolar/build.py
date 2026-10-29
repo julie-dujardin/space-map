@@ -177,6 +177,23 @@ CREDITS = (
         ),
     },
     {
+        "name": "General Catalogue of Variable Stars, GCVS 5.1",
+        "organisation": "Samus et al. 2017",
+        "source": "http://www.sai.msu.su/gcvs/gcvs/",
+        # The full reference that the GCVS terms ask for.
+        "citation": (
+            "Samus N.N., Kazarovets E.V., Durlevich O.V., Kireeva N.N.,"
+            " Pastukhova E.N., General Catalogue of Variable Stars: Version GCVS"
+            " 5.1, Astronomy Reports, 2017, vol. 61, No. 1, p. 80-88"
+        ),
+    },
+    {
+        "name": "SPICY, the Spitzer/IRAC candidate YSO catalogue",
+        "organisation": "Kuhn et al. 2021",
+        "source": "https://doi.org/10.26131/IRSA556",
+        "citation": "Kuhn et al. 2021, ApJS 254, 33",
+    },
+    {
         "name": "Hipparcos, the new reduction (I/311)",
         "organisation": "ESA",
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/I/311",

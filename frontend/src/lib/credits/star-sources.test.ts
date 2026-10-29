@@ -39,6 +39,8 @@ describe('star sources', () => {
 		expect(starSourceName('exoplanet-eu')).toBe('exoplanet.eu');
 		expect(starSourceName('open-exoplanet-catalogue')).toBe('Open Exoplanet Catalogue');
 		expect(starSourceName('iau-nameexoworlds')).toBe('IAU NameExoWorlds');
+		expect(starSourceName('gcvs-5.1')).toBe('GCVS 5.1 (Samus et al. 2017)');
+		expect(starSourceName('spicy')).toBe('SPICY (Kuhn et al. 2021)');
 		expect(starSourceName('unknown')).toBe('unknown');
 	});
 
@@ -101,7 +103,9 @@ describe('star sources', () => {
 				source: 'https://doi.org/10.5281/zenodo.14030249'
 			},
 			{ name: 'LAMOST M stars', organisation: 'd', source: 'https://www.lamost.org/dr10/v2.0/' },
-			{ name: 'APOGEE DR17', organisation: 'e', source: 'https://www.sdss4.org/dr17/irspec/' }
+			{ name: 'APOGEE DR17', organisation: 'e', source: 'https://www.sdss4.org/dr17/irspec/' },
+			{ name: 'GCVS 5.1', organisation: 'f', source: 'http://www.sai.msu.su/gcvs/gcvs/' },
+			{ name: 'SPICY', organisation: 'g', source: 'https://doi.org/10.26131/IRSA556' }
 		];
 		const labels = (column: string) =>
 			starCredits(
@@ -110,6 +114,8 @@ describe('star sources', () => {
 		expect(labels('pastel_source')).toEqual(['PASTEL', 'SIMBAD']);
 		expect(labels('lamost_source')).toEqual(['LAMOST M dwarfs', 'LAMOST M stars']);
 		expect(labels('apogee_source')).toEqual(['APOGEE DR17']);
+		expect(labels('gcvs_source')).toEqual(['SIMBAD', 'GCVS 5.1']);
+		expect(labels('spicy_source')).toEqual(['SPICY']);
 	});
 });
 
