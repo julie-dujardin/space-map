@@ -2,8 +2,8 @@
 
 Every group type's ``/g/`` slug carries a prefix
 (``const-``/``org-``/``site-``/``country-``/``class-``/``flag-``/``cat-``/
-``bus-``/``comet-family-``/``ft-``/``star-``) so the same entity can appear in multiple roles
-without slug collisions and a slug's type is recognizable on sight.
+``bus-``/``comet-family-``/``ft-``/``star-``/``planet-``) so the same entity can appear in
+multiple roles without slug collisions and a slug's type is recognizable on sight.
 """
 
 from dataclasses import dataclass
@@ -38,6 +38,7 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPE_SLUGS,
     FEATURE_TYPES,
 )
+from space_map_data.constants.planets import families as planet_families
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.stars.families import (
     FAMILY_SLUG_PREFIX,
@@ -74,6 +75,8 @@ class GroupType(StrEnum):
     FEATURE_TYPE = "feature_type"
     # One page per star family of the extrasolar export.
     STAR_FAMILY = "star_family"
+    # One page per planet family of the extrasolar export.
+    PLANET_FAMILY = "planet_family"
 
 
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
@@ -93,6 +96,7 @@ class GroupCategory(StrEnum):
     CATEGORY = "category"  # browse-tree node; no scene filter
     SURFACE_FEATURE = "surface_feature"  # members are features, not objects
     STAR = "star"  # members are stars of the extrasolar export
+    PLANET = "planet"  # members are planets of the extrasolar export
 
 
 __all__ = [
@@ -241,6 +245,15 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for family, qids in STAR_FAMILY_PAGES.items()
     )
+    planet_family_groups = tuple(
+        Group(
+            slug=f"{planet_families.FAMILY_SLUG_PREFIX}{family}",
+            type=GroupType.PLANET_FAMILY,
+            applies_to=GroupCategory.PLANET,
+            wikidata_qid=qids[0],
+        )
+        for family, qids in planet_families.PLANET_FAMILY_PAGES.items()
+    )
     return (
         constellations
         + launch_vehicles
@@ -254,6 +267,7 @@ def _build_groups() -> tuple[Group, ...]:
         + categories
         + feature_types
         + star_families
+        + planet_family_groups
     )
 
 

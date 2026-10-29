@@ -980,6 +980,9 @@ def write_group_bundles(
     localized_by_slug: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
 
     for group in (*GROUPS, *extra_groups):
+        # No builder gives a planet family its members, so it gets no page.
+        if group.type is GroupType.PLANET_FAMILY:
+            continue
         wiki_summaries = (
             load_wikipedia_summaries_for_qid(group.wikidata_qid)
             if group.wikidata_qid

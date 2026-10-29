@@ -5,7 +5,9 @@ organizations, launch sites, countries, orbit classes, small-body flags, IAU
 surface-feature types, and star families).
 Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
 `bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`, `star-`) so slugs
-never collide across types and a slug's type is recognizable on sight. A launch
+never collide across types and a slug's type is recognizable on sight. The
+registry also holds the planet families (`planet-`). The downloads and the
+image ingest read them, but the export writes no bundle for them. A launch
 vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
 former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
 constellations stay `const-`. Earth orbiters split across two category pages by

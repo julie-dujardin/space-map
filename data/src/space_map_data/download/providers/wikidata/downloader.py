@@ -23,6 +23,7 @@ from space_map_data.constants.minor_planet_moons import minor_planet_moon_qids
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.object_names import NAME_ENTITIES
+from space_map_data.constants.planets.families import PLANET_FAMILY_PAGES
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.spacecraft import CATALOGUE as SPACECRAFT_CATALOGUE
@@ -56,6 +57,16 @@ API_URL = "https://www.wikidata.org/w/api.php"
 
 ENTITY_BATCH_SIZE = 50
 AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
+
+
+def family_page_qids() -> set[str]:
+    """Return the QIDs of the star and planet family pages."""
+    return {
+        qid
+        for pages in (STAR_FAMILY_PAGES, PLANET_FAMILY_PAGES)
+        for qids in pages.values()
+        for qid in qids
+    }
 
 
 class WikidataDownloader(Downloader):
@@ -243,12 +254,12 @@ class WikidataDownloader(Downloader):
             limit=None,
             fetch_desc="spacecraft catalogue",
         )
-        # Star family pages. The type claims of stars reach only some of them.
+        # Star and planet family pages. Type claims reach only some of them.
         self._fetch_entities(
-            {qid for qids in STAR_FAMILY_PAGES.values() for qid in qids},
+            family_page_qids(),
             referenced_dir,
             limit=None,
-            fetch_desc="star families",
+            fetch_desc="star and planet families",
         )
         # Topic pages for the detail panels (atmosphere, interior, rings, and
         # the concepts the stat cards name). No object claim reaches them —
