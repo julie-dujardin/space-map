@@ -12,6 +12,7 @@ import {
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
 import { PC_AU } from '$lib/scene/starfield/tree';
+import { flameFitHolds, starMass, type FlameRun } from '$lib/scene/starfield/record';
 import {
 	boundErrors,
 	formatDeclination,
@@ -42,9 +43,6 @@ export const POINT_SOURCE_SLUG = 'point-source';
 const PC_LY = PC_AU / 63_241.077;
 /** Magnitudes per unit of a flux's relative error. */
 const MAG_PER_FLUX = 2.5 / Math.LN10;
-/** Gaia's validation trusts the FLAME mass of a giant only in this range, in
- *  solar masses (Creevey et al. 2023, A&A 674, A26, Sect. 8). */
-const GIANT_MASS_RANGE: [number, number] = [1, 2];
 
 export interface StarRowEntry {
 	label: string;
@@ -305,19 +303,6 @@ function displayedSpectralType(ps: TableRow): string | null {
 	return spectralType(ps) ?? (host ? ltrIsolate(host) : null);
 }
 
-/** FLAME's run on the GSP-Phot parameters (`''`) or on the GSP-Spec ones
- *  (`'_spec'`), as its column names end. */
-type FlameRun = '' | '_spec';
-
-/** Whether FLAME fitted a mass that holds. The age and the stage come from the
- *  same fit, so they stand or fall with it. A giant's first flag digit is 1. */
-function flameFitHolds(ps: TableRow, run: FlameRun = ''): boolean {
-	const mass = ps.number(`mass_flame${run}`);
-	if (mass === null) return false;
-	if (ps.text(`flags_flame${run}`)?.[0] !== '1') return true;
-	return mass >= GIANT_MASS_RANGE[0] && mass <= GIANT_MASS_RANGE[1];
-}
-
 /** FLAME's phase index on the BaSTI tracks (Creevey et al. 2023, Sect. 4.4).
  *  Gaia flags nearly every star at 490 as a giant. */
 function evolutionaryStage(index: number): string {
@@ -328,12 +313,12 @@ function evolutionaryStage(index: number): string {
 }
 
 type FlameRows = Record<
-	'diameter' | 'luminosity' | 'mass' | 'age' | 'stage' | 'redshift' | 'correction',
+	'diameter' | 'luminosity' | 'age' | 'stage' | 'redshift' | 'correction',
 	StarRowEntry | null
 >;
 
 /** The rows of one FLAME run. A mass that does not hold takes its age and
- *  stage with it. */
+ *  stage with it. The mass row is {@link massRow}. */
 function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): FlameRows {
 	const column = (name: string) => `${name}_flame${run}`;
 	const fit = flameFitHolds(ps, run);
@@ -341,13 +326,19 @@ function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): Fl
 	return {
 		diameter: bounded(ps, m.diameter(), column('radius'), u.km, 2 * SOLAR_RADIUS_KM),
 		luminosity: solarRow(ps, SOLAR_LUMINOSITY, column('lum')),
-		mass: fit ? solarRow(ps, SOLAR_MASS, column('mass')) : null,
 		age: fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
 		stage:
 			fit && stage !== null ? row(m.star_row_evolutionary_stage(), evolutionaryStage(stage)) : null,
 		redshift: bounded(ps, m.star_row_gravitational_redshift(), column('gravredshift'), u.kms),
 		correction: measured(ps, m.star_row_bolometric_correction(), column('bc'), null)
 	};
+}
+
+/** The row of the mass that {@link starMass} chooses. A FLAME mass shows its
+ *  bounds. */
+function massRow(ps: TableRow): StarRowEntry | null {
+	const mass = starMass(ps);
+	return mass && solarRow(ps, SOLAR_MASS, mass.source, mass.source === 'host_mass');
 }
 
 /** Distance group sources as sure as a 5σ parallax: a distance chosen from a
@@ -375,10 +366,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 		ps.number('radius_flame_spec') ??
 		ps.number('radius_gspphot') ??
 		ps.number('host_radius');
-	const mass =
-		(flameFitHolds(ps) ? ps.number('mass_flame') : null) ??
-		(flameFitHolds(ps, '_spec') ? ps.number('mass_flame_spec') : null) ??
-		ps.number('host_mass');
+	const mass = starMass(ps)?.solar ?? null;
 	if (radius !== null) {
 		out.push({
 			label: m.diameter(),
@@ -607,7 +595,7 @@ function pointSourceSections(
 			bounded(ps, m.star_row_diameter_photometric(), 'radius_gspphot', u.km, 2 * SOLAR_RADIUS_KM) ??
 			catalogued(ps, m.diameter(), 'host_radius', u.km, null, 2 * SOLAR_RADIUS_KM),
 		fitted('luminosity'),
-		fitted('mass') ?? solarRow(ps, SOLAR_MASS, 'host_mass', true),
+		massRow(ps),
 		fitted('age') ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),
 		fitted('redshift'),
 		measured(ps, m.star_row_line_broadening(), 'vbroad', 'vbroad_error', u.kms)

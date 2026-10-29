@@ -21,10 +21,15 @@ import {
 	type PlanetSystem
 } from '$lib/fetch/extrasolar/planets';
 import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
-import { treeToScene } from '$lib/scene/starfield/tree';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { PositionedBody } from '$lib/types/objects';
-import { NO_ORBIT_AU, makePlanetBodies, outerOrbitAU, outermostElements } from './bodies';
+import {
+	NO_ORBIT_AU,
+	hostScene,
+	makePlanetBodies,
+	outerOrbitAU,
+	outermostElements
+} from './bodies';
 import { orbitNormal, systemView, type SystemView } from './view';
 
 /** System files held past the ones in use. */
@@ -72,9 +77,7 @@ export class ExoplanetStore {
 	 *  place, so the starfield does not draw it as a star. */
 	private placeHost(entry: PlanetIndexHost): void {
 		const star = this.ctx.getBody(extrasolarObjectId(entry.id))?.extrasolar;
-		if (!star || star.scene || !entry.position) return;
-		const at = treeToScene(...entry.position, { x: 0, y: 0, z: 0 });
-		star.scene = [at.x, at.y, at.z];
+		if (star && !star.scene) star.scene = hostScene(entry);
 	}
 
 	/** Hold the system of the live planet a planet's scene ID leads to, maybe

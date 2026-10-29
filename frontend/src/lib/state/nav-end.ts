@@ -7,6 +7,7 @@
  * re-exports what is here.
  */
 
+import { extrasolarIdOf, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { isIdNumber, type NavPlace } from './view';
 
 /** Path segment for an end of a trip that has not been chosen. The two ends are
@@ -14,15 +15,21 @@ import { isIdNumber, type NavPlace } from './view';
  *  or `/nav/<x>` would read as a departure. */
 export const NAV_UNSET = '-';
 
-/** Every id prefix the app addresses a body by. */
+/** Every id prefix the app addresses a body of the solar system by. */
 const ID_PREFIXES = ['naif-', 'spkid-', 'norad_satcat-', 'probe-', 'extra-'] as const;
 
-/** Whether a string is a well-formed prefixed body id. The nav route takes ids
- *  straight from the path, so it has to reject junk before the renderer is
- *  asked to frame it. */
+/** Whether a string is a well-formed prefixed id of a body of the solar system.
+ *  The nav route takes ids from the path, so it rejects junk before the
+ *  renderer frames it. */
 export function isBodyId(value: string): boolean {
 	const prefix = ID_PREFIXES.find((p) => value.startsWith(p));
 	return prefix !== undefined && isIdNumber(value.slice(prefix.length));
+}
+
+/** Whether a string is a well-formed id of the extrasolar catalogue: a star or
+ *  a star system (`x-<id>`), or a planet (`x-<host>-b-<n>`). */
+export function isExtrasolarEndId(value: string): boolean {
+	return extrasolarIdOf(value) !== null || planetOfObjectId(value) !== null;
 }
 
 /** Separator between a body id and the IAU feature refining it, mirroring the
@@ -81,7 +88,8 @@ export function formatNavEnd(
 	return place ? `${bodyId}${PLACE_INFIX}${formatPlace(place)}` : bodyId;
 }
 
-/** Inverse of formatNavEnd; null for anything that isn't a well-formed end. */
+/** Inverse of formatNavEnd; null for anything that isn't a well-formed end. An
+ *  end outside the solar system has no features and no surface points. */
 export function parseNavEnd(segment: string): ParsedNavEnd | null {
 	const placeCut = segment.indexOf(PLACE_INFIX);
 	if (placeCut !== -1) {
@@ -92,7 +100,9 @@ export function parseNavEnd(segment: string): ParsedNavEnd | null {
 	}
 	const cut = segment.indexOf(FEATURE_INFIX);
 	if (cut === -1) {
-		return isBodyId(segment) ? { bodyId: segment, featureId: null, place: null } : null;
+		return isBodyId(segment) || isExtrasolarEndId(segment)
+			? { bodyId: segment, featureId: null, place: null }
+			: null;
 	}
 	const bodyId = segment.slice(0, cut);
 	const featureId = Number(segment.slice(cut + FEATURE_INFIX.length));

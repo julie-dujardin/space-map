@@ -208,7 +208,7 @@ async function buildSubwayCatalogue(ids: readonly string[]): Promise<SubwayCatal
 	// Each pass can surface a primary the last one did not have; a chain is a
 	// few links long, so this settles in two or three.
 	while (pending.length > 0) {
-		const found = await resolveTripBodies(pending, (id) => rows.get(id));
+		const { bodies: found } = await resolveTripBodies(pending, (id) => rows.get(id));
 		for (const [id, row] of found) rows.set(id, row);
 		const missing = new Set<string>();
 		for (const row of found.values()) {

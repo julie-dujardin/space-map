@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$env/dynamic/public', () => ({ env: {} }));
 
 import { env } from '$env/dynamic/public';
-import { isExtrasolarHit, searchEndpoints, toHit } from './client';
+import { configureHost } from '$lib/host';
+import { isExtrasolarHit, searchBodies, searchEndpoints, toHit } from './client';
 import { secondaryText } from './format';
 
 /** The search documents of the extrasolar export, as the index stores them. */
@@ -71,21 +72,32 @@ describe('extrasolar search hits', () => {
 });
 
 describe('endpoint search', () => {
-	it('leaves out every extrasolar class before the result limit, but the Sun', async () => {
-		const search = vi.fn().mockResolvedValue({ hits: [] });
-		Object.assign(env, {
-			PUBLIC_MEILI_URL: 'https://search.example',
-			PUBLIC_MEILI_SEARCH_KEY: 'test-key'
-		});
-		vi.doMock('meilisearch', () => ({
-			Meilisearch: class {
-				index() {
-					return { search };
-				}
+	// The client is built once per module, so every test talks to this one mock.
+	const search = vi.fn();
+	Object.assign(env, {
+		PUBLIC_MEILI_URL: 'https://search.example',
+		PUBLIC_MEILI_SEARCH_KEY: 'test-key'
+	});
+	vi.doMock('meilisearch', () => ({
+		Meilisearch: class {
+			index() {
+				return { search };
 			}
-		}));
+		}
+	}));
+	const sun = {
+		id: 'naif-10',
+		kind: 'object',
+		name: 'Sun',
+		object: { id: 'naif-10', type: 'star' }
+	};
 
-		await searchEndpoints('PSR', 'en', 5);
+	afterEach(() => configureHost({}));
+
+	it('leaves out every extrasolar class before the result limit, but the Sun', async () => {
+		search.mockResolvedValue({ hits: [sun, HOST, PLANET] });
+
+		const hits = await searchEndpoints('PSR', 'en', 5);
 
 		expect(search).toHaveBeenLastCalledWith('PSR', {
 			limit: 5,
@@ -94,5 +106,39 @@ describe('endpoint search', () => {
 				'kind != "group" AND kind != "planet" AND ' +
 				'(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf", "binary_star", "multiple_star"] OR object.id = "naif-10")'
 		});
+		expect(hits.map((h) => h.id)).toEqual(['naif-10']);
+	});
+
+	it('offers the stars and planets of other systems where the host serves them', async () => {
+		configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+		const system = {
+			...HOST,
+			id: 'x-597894079',
+			object: { id: 'x-597894079', type: 'multiple_star' }
+		};
+		search.mockResolvedValue({ hits: [sun, HOST, system, PLANET] });
+
+		const hits = await searchEndpoints('Centauri', 'en', 5);
+
+		expect(search).toHaveBeenLastCalledWith('Centauri', {
+			limit: 5,
+			locales: ['en'],
+			filter: 'kind != "group"'
+		});
+		expect(hits.map((h) => [h.kind, h.id])).toEqual([
+			['object', 'naif-10'],
+			['object', 'x-27424668'],
+			['object', 'x-597894079'],
+			['planet', 'x-27424668-b-1']
+		]);
+	});
+
+	it('keeps the Δv map to the solar system where the host serves other stars', async () => {
+		configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+		search.mockResolvedValue({ hits: [] });
+
+		await searchBodies('Centauri', 'en', 5);
+
+		expect(search.mock.lastCall?.[1].filter).toContain('object.type NOT IN ["star"');
 	});
 });

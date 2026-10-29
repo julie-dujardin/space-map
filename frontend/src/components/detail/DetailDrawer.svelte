@@ -112,6 +112,8 @@
 			: focusable.body
 	);
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
+	/** The body of the panel's trip button. */
+	let tripTarget = $derived(focusable.kind === 'group' ? null : focusable.body);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
 	let groupSlug = $derived(focusable.kind === 'group' ? focusable.slug : null);
@@ -637,8 +639,8 @@
 	     to — except a launch site, which is a place, and one trips leave from
 	     rather than go to, and an Earth-orbit zone, which is where a trip ends
 	     without naming a body. -->
-	{#if body}
-		<TravelButton target={body.data} featureId={feature?.featureId ?? null} />
+	{#if tripTarget}
+		<TravelButton target={tripTarget.data} featureId={feature?.featureId ?? null} />
 	{:else if launchSiteSlug}
 		<LaunchSiteButton slug={launchSiteSlug} />
 	{:else if orbitZoneSlug}

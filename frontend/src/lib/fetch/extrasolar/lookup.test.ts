@@ -8,6 +8,7 @@ import {
 	hasDistance,
 	homeRow,
 	starDistance,
+	systemPrimary,
 	type LookupSource
 } from './lookup';
 import {
@@ -129,6 +130,7 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		if (point.kind !== 'live') return;
 		expect(homeRow(point.record)?.slug).toBe('point-source');
 		expect(hasDistance(point.record)).toBe(true);
+		expect(systemPrimary(point.record)).toBe(BINARY);
 
 		const resolved = await lookup.lookup(SYSTEM);
 		expect(resolved.kind).toBe('live');
@@ -137,6 +139,7 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		expect(record.home).toBe('system');
 		expect(record.metadata.class).toBe('multiple star');
 		expect(hasDistance(record)).toBe(false);
+		expect(systemPrimary(record)).toBe(BINARY);
 		const row = homeRow(record)!;
 		const [start, end] = row.container.list('members').items(row.row)!;
 		const ids = row.container.ids('members.id');

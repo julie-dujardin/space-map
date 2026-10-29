@@ -46,6 +46,7 @@
 	import {
 		aeroPressurePa,
 		lookupIn,
+		systemOf,
 		toTravelBody,
 		transferCenterId,
 		transferFrame,
@@ -69,6 +70,7 @@
 		type TripState
 	} from '$lib/travel/trip';
 	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
+	import { extrasolarTravelBody, type ExtrasolarEnd } from '$lib/travel/extrasolar-end';
 	import type { LaunchPad } from '$lib/travel/launch-pad';
 	import { surfaceSiteAt } from '$lib/travel/surface-site';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
@@ -122,6 +124,9 @@
 		/** Its detail bundle; null until it lands. Only the atmosphere is read, so
 		 *  a route just prices airless until then. */
 		detail: GlobalObjectData | null;
+		/** What the extrasolar export says about an end outside the solar system;
+		 *  null for any other end. */
+		extrasolar: ExtrasolarEnd | null;
 		/** Move it. The URL owns the ends, so the panel asks. */
 		onChange: (pick: TravelEndpointPick) => void;
 	}
@@ -343,6 +348,7 @@
 			: null
 	);
 	let frame = $derived(transferFrame(plan));
+	let interstellar = $derived(plan?.kind === 'interstellar');
 
 	/**
 	 * Which end a same-system transfer crosses to, when that end is measured
@@ -385,7 +391,8 @@
 	/** The kernel's view of one end, rebuilt whenever its body or its detail
 	 *  changes. */
 	function travelOf(role: TripRole): TravelBody | null {
-		const { body, detail } = ends[role];
+		const { body, detail, extrasolar } = ends[role];
+		if (extrasolar) return extrasolarTravelBody(extrasolar);
 		return measured(body ? toTravelBody(body, lookup, detail, frame.orbit) : null);
 	}
 	let travel = $derived.by(() => ({ origin: travelOf('origin'), target: travelOf('target') }));
@@ -408,11 +415,16 @@
 	}
 
 	/** What a body contributes to which orbits it can hold: its spin, from the
-	 *  detail bundle, and how much room it has, from the orbit it is itself on. */
+	 *  detail bundle, and how much room it has, from the orbit it is itself on.
+	 *  Between two systems the Sun is met as any other star is, so that both
+	 *  drives price it the same way. */
 	function factsOf(role: TripRole) {
 		const { body, detail } = ends[role];
 		const known = travel[role];
-		return body && known ? orbitFacts(body, known, detail) : null;
+		if (!body || !known) return null;
+		const facts = orbitFacts(body, known, detail);
+		const star = interstellar && systemOf(body.id) === body.id;
+		return star ? { ...facts, isStar: true } : facts;
 	}
 	let facts = $derived.by(() => ({ origin: factsOf('origin'), target: factsOf('target') }));
 
@@ -460,17 +472,17 @@
 	});
 
 	/**
-	 * A mode the body cannot hold is not a mode: a link naming a stationary orbit
-	 * at Venus falls back to the low one rather than pricing a trip it cannot fly.
+	 * Replace a mode that the body cannot hold, such as a stationary orbit at
+	 * Venus. The low orbit takes its place where the body has one.
 	 *
-	 * Guarded on the detail bundle having landed. The spin that says whether a
-	 * stationary orbit exists arrives with that bundle, so during the wait every
-	 * named orbit is missing — an unguarded check would read that as "no
-	 * geostationary orbit" and rewrite a shared link's mode on the way in.
+	 * The spin that gives a stationary orbit comes with the detail bundle, so
+	 * the check waits for the bundle. An end outside the solar system has no
+	 * bundle.
 	 */
 	function settleMode(role: TripRole) {
 		const list = choices[role];
-		if (!ends[role].detail || !list.length) return;
+		const settled = !!ends[role].detail || !!ends[role].extrasolar;
+		if (!settled || !list.length) return;
 		const end = panel.ends[role];
 		if (list.some((c) => c.kind === end.mode)) return;
 		// The low orbit wherever it is offered, and otherwise whatever is — a craft
@@ -688,6 +700,11 @@
 	 *  ground, or the one orbit named at both ends. */
 	let surfaceHop = $derived(panel.departureMode === 'surface' && panel.arrivalMode === 'landing');
 
+	/** Whether an end is a planet of another star with neither a mass nor a radius. */
+	function sizeless(role: TripRole): boolean {
+		return ends[role].extrasolar?.planet?.size === null;
+	}
+
 	// An end that never resolved is an end with no orbit, not an empty form. The
 	// destination is asked for first: it is the question the panel exists to
 	// answer, and a departure with nowhere to go prices nothing.
@@ -704,7 +721,9 @@
 					: 'same-place'
 				: plan.kind === 'blocked'
 					? plan.reason
-					: null
+					: sizeless('origin') || sizeless('target')
+						? 'unknown-size'
+						: null
 	);
 
 	// A trip out to a body's own moon waits for nothing: the satellite comes round
@@ -714,7 +733,9 @@
 		// A trip between two orbits about one body waits for nothing either: the
 		// pair of burns is there on every revolution.
 		const { origin, target } = travel;
-		if (!origin || !target || block || frame.systemPrimary || frame.orbitChange) return null;
+		if (!origin || !target || block || interstellar || frame.systemPrimary || frame.orbitChange) {
+			return null;
+		}
 		const windows = nextTransferWindows(origin, target, nowJd, 1, frame.centralMu);
 		return windows.length > 0 ? windows[0] : null;
 	});
@@ -723,7 +744,7 @@
 	// transfer out — the earliest date the trip could plausibly be held to.
 	function defaultPickedJd(mode: TimeMode): number {
 		const { origin, target } = travel;
-		if (mode !== 'arrive' || !origin || !target) return nowJd;
+		if (mode !== 'arrive' || !origin || !target || interstellar) return nowJd;
 		if (frame.orbitChange) {
 			// The half-ellipse between the two orbits is the slowest crossing here,
 			// and the only one a deadline has to admit.
@@ -767,33 +788,47 @@
 		return measured(toTravelBody(fresh, lookup, detail, frame.orbit));
 	}
 
-	/** What to put to the panel: one whole question, or the reason there isn't
-	 *  one. An end that never resolved has no orbit to leave from. */
-	let job = $derived<{ block: BlockReason } | { request: SolveRequest }>(
+	/** What to put to the panel: one whole question, a trip between two systems,
+	 *  or the reason there is no question. An end that never resolved has no
+	 *  orbit to leave from. */
+	let job = $derived<
+		| { block: BlockReason }
+		| { interstellar: { origin: TravelBody; target: TravelBody } }
+		| { request: SolveRequest }
+	>(
 		block
 			? { block }
 			: travel.origin && travel.target
-				? {
-						request: {
-							origin: travel.origin,
-							target: travel.target,
-							nowJd,
-							frame,
-							terms: panel.solveTerms
+				? interstellar
+					? { interstellar: { origin: travel.origin, target: travel.target } }
+					: {
+							request: {
+								origin: travel.origin,
+								target: travel.target,
+								nowJd,
+								frame,
+								terms: panel.solveTerms
+							}
 						}
-					}
 				: { block: 'unknown-orbit' }
 	);
 
 	// One effect owns re-solving, and it turns on this key alone. Content, not
 	// identity: the ends are rebuilt whenever the scene re-describes a body, and
 	// a porkchop is far too expensive to redo because an equal object arrived.
-	let solveKey = $derived('block' in job ? `blocked|${job.block}` : solveRequestKey(job.request));
+	let solveKey = $derived(
+		'block' in job
+			? `blocked|${job.block}`
+			: 'interstellar' in job
+				? `interstellar|${job.interstellar.origin.id}|${job.interstellar.target.id}`
+				: solveRequestKey(job.request)
+	);
 
 	$effect(() => {
 		void solveKey;
 		untrack(() => {
 			if ('block' in job) panel.block(job.block);
+			else if ('interstellar' in job) panel.offerNone();
 			else void panel.solve(job.request, refineEnd);
 		});
 	});
@@ -810,7 +845,7 @@
 		const siteLats = [panel.ends.origin.siteLatDeg, panel.ends.target.siteLatDeg];
 		void payloadKg;
 		void siteLats;
-		if (block || !from || !to) {
+		if (block || interstellar || !from || !to) {
 			panel.torchPresets = [];
 			panel.torchCustom = null;
 			panel.spiral = null;
@@ -827,7 +862,7 @@
 		const to = pathTarget;
 		const coast = panel.coastFraction;
 		void coast;
-		if (block || !from || !to) {
+		if (block || interstellar || !from || !to) {
 			panel.torchCustom = null;
 			return;
 		}
@@ -855,7 +890,7 @@
 
 		// A swing-by buys speed towards somewhere else; a trip that stays at one
 		// body has nowhere for it to buy speed towards.
-		if (block || !from || !to || vias.length === 0 || frame.orbitChange) {
+		if (block || interstellar || !from || !to || vias.length === 0 || frame.orbitChange) {
 			panel.clearAssist();
 			return;
 		}
@@ -1400,13 +1435,17 @@
 					<p class="text-muted-foreground text-xs">{m.travel_same_place()}</p>
 				{:else if panel.blocked === 'surface-hop'}
 					<p class="text-muted-foreground text-xs">{m.travel_surface_hop()}</p>
+				{:else if panel.blocked === 'same-system'}
+					<p class="text-muted-foreground text-xs">{m.travel_same_system()}</p>
 				{:else}
 					<p class="text-muted-foreground flex items-start gap-2 text-xs">
 						<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 						<span>
 							{panel.blocked === 'unknown-primary'
 								? m.travel_unknown_primary()
-								: m.travel_unknown_orbit()}
+								: panel.blocked === 'unknown-size'
+									? m.travel_unknown_size()
+									: m.travel_unknown_orbit()}
 						</span>
 					</p>
 				{/if}

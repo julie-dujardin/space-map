@@ -124,9 +124,10 @@
 	function bodyName(bodyId: string): string {
 		return ctx?.getBody(bodyId)?.data.name ?? catalogNames.get(bodyId) ?? bodyId;
 	}
+	// A planet of another star names its host in its own hit.
 	let unnamedBodyIds = $derived(
 		visible
-			.map((h) => (h.kind === 'feature' ? h.body_id : h.kind === 'pad' ? null : h.parent_id))
+			.map((h) => (h.kind === 'feature' ? h.body_id : h.kind === 'object' ? h.parent_id : null))
 			.filter((id): id is string => !!id && !ctx?.getBody(id) && !catalogNames.has(id))
 	);
 	$effect(() => {

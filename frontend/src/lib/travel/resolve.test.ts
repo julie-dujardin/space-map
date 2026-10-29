@@ -38,6 +38,18 @@ vi.mock('$lib/fetch/objects/object-data', () => ({
 	}
 }));
 
+/** Ends the fake extrasolar export can serve, keyed by scene id. */
+const away = new Map<string, BodyData>();
+const fetched: string[] = [];
+
+vi.mock('./extrasolar-end', () => ({
+	resolveExtrasolarEnd: (id: string) => {
+		fetched.push(id);
+		const body = away.get(id);
+		return Promise.resolve(body ? { body, systemId: id, star: {}, planet: null } : null);
+	}
+}));
+
 const { resolveTripBodies } = await import('./resolve');
 
 function residentBody(id: string, parentId: string): BodyData {
@@ -65,14 +77,14 @@ function residentBody(id: string, parentId: string): BodyData {
 describe('resolveTripBodies', () => {
 	it('reads a body the scene never loaded out of its bundle', async () => {
 		bundles.set('spkid-1', { parent: 'naif-10', a: 2.77 });
-		const bodies = await resolveTripBodies(['spkid-1'], () => undefined);
+		const { bodies } = await resolveTripBodies(['spkid-1'], () => undefined);
 		expect(bodies.get('spkid-1')!.a).toBe(2.77);
 	});
 
 	it('prefers what the scene already holds', async () => {
 		bundles.set('spkid-2', { parent: 'naif-10', a: 2.77 });
 		const resident = residentBody('spkid-2', 'naif-10');
-		const bodies = await resolveTripBodies(['spkid-2'], (id) =>
+		const { bodies } = await resolveTripBodies(['spkid-2'], (id) =>
 			id === 'spkid-2' ? resident : undefined
 		);
 		expect(bodies.get('spkid-2')).toBe(resident);
@@ -82,7 +94,7 @@ describe('resolveTripBodies', () => {
 		// A moon of an asteroid: neither it nor its host orbits the Sun directly.
 		bundles.set('spkid-3-moon', { parent: 'spkid-3', a: 0.00001 });
 		bundles.set('spkid-3', { parent: 'naif-10', a: 3.1 });
-		const bodies = await resolveTripBodies(['spkid-3-moon'], () => undefined);
+		const { bodies } = await resolveTripBodies(['spkid-3-moon'], () => undefined);
 		expect([...bodies.keys()].sort()).toEqual(['spkid-3', 'spkid-3-moon']);
 	});
 
@@ -90,20 +102,34 @@ describe('resolveTripBodies', () => {
 		bundles.set('spkid-4a', { parent: 'spkid-4host', a: 0.00002 });
 		bundles.set('spkid-4b', { parent: 'spkid-4host', a: 0.00003 });
 		bundles.set('spkid-4host', { parent: 'naif-10', a: 5.2 });
-		const bodies = await resolveTripBodies(['spkid-4a', 'spkid-4b'], () => undefined);
+		const { bodies } = await resolveTripBodies(['spkid-4a', 'spkid-4b'], () => undefined);
 		expect(bodies.size).toBe(3);
 	});
 
 	it('leaves out an end whose chain cannot be closed', async () => {
 		bundles.set('spkid-5', { parent: 'spkid-5-missing', a: 1 });
-		const bodies = await resolveTripBodies(['spkid-5'], () => undefined);
+		const { bodies } = await resolveTripBodies(['spkid-5'], () => undefined);
 		// The end itself resolved, but with no heliocentric ancestor above it the
 		// panel has nothing to price — that is the caller's read, not ours.
 		expect(bodies.has('spkid-5-missing')).toBe(false);
 	});
 
 	it('returns nothing for an object with no bundle at all', async () => {
-		const bodies = await resolveTripBodies(['spkid-nonexistent'], () => undefined);
+		const { bodies } = await resolveTripBodies(['spkid-nonexistent'], () => undefined);
 		expect(bodies.size).toBe(0);
+	});
+
+	it('reads an end outside the solar system from the extrasolar export', async () => {
+		const star = { ...residentBody('x-21238067', ''), objectType: ObjectType.EXTRASOLAR };
+		away.set('x-21238067', star);
+		const { bodies, extrasolar } = await resolveTripBodies(
+			['x-21238067', 'x-27424668'],
+			() => undefined
+		);
+		expect(bodies.get('x-21238067')).toBe(star);
+		expect([...extrasolar.keys()]).toEqual(['x-21238067']);
+		// Each end is asked of the export, and an end it does not know is left out.
+		expect(fetched).toEqual(['x-21238067', 'x-27424668']);
+		expect(bodies.has('x-27424668')).toBe(false);
 	});
 });

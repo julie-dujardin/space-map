@@ -386,6 +386,23 @@ describe('AppState.setNav', () => {
 	});
 });
 
+describe('AppState.replaceNav', () => {
+	it('names the star of a star system in the same history entry, and keeps the terms', () => {
+		const s = new AppState({ ...initialView });
+		s.setNav('naif-399', 'x-597894079');
+		s.setTrip({
+			...DEFAULT_TRIP,
+			ends: { ...DEFAULT_TRIP.ends, target: { ...DEFAULT_TRIP.ends.target, mode: 'flyby' } }
+		});
+		pushStateSpy.mockClear();
+		replaceStateSpy.mockClear();
+		s.replaceNav(navEndOf(s.view, 'from'), { id: 'x-27468735' });
+		expect(pushStateSpy).not.toHaveBeenCalled();
+		expect(s.view.navTo).toBe('x-27468735');
+		expect(replaceStateSpy.mock.calls[0][0]).toMatch(/\/nav\/naif-399\/x-27468735\b.*&tm=flyby/);
+	});
+});
+
 describe('AppState.setTrip', () => {
 	function onNav(): AppState {
 		const s = new AppState({ ...initialView });

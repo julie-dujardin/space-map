@@ -366,6 +366,14 @@ export function homeRow(record: ExtrasolarRecord): TableRow | null {
 	return (record.home && record.rows.get(record.home)) || null;
 }
 
+export const SYSTEM_SLUG = 'system';
+
+/** The ID of the primary point of a star system node. A point that holds
+ *  several stars is its own primary. Null for an ID that is not a node. */
+export function systemPrimary(record: ExtrasolarRecord): number | null {
+	return record.rows.get(SYSTEM_SLUG)?.number('primary') ?? null;
+}
+
 /** Whether the record places the object in 3D. */
 export function hasDistance(record: ExtrasolarRecord): boolean {
 	const home = homeRow(record);

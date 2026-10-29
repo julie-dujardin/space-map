@@ -7,6 +7,7 @@
  */
 
 import { starDistance, type TableRow } from '$lib/fetch/extrasolar/lookup';
+import type { Planet } from '$lib/fetch/extrasolar/planets';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import { bpRpFromTeff } from './colour';
 import { icrsToTree, treeToScene, type Vec3 } from './tree';
@@ -38,6 +39,48 @@ export function starRadiusKm(row: TableRow): number | null {
 /** Effective temperature (K): a planet host's catalogue's, else GSP-Phot's. */
 export function starTeff(row: TableRow): number | null {
 	return positiveNumber(row, 'host_teff') ?? positiveNumber(row, 'teff_gspphot');
+}
+
+/** Gaia's validation trusts the FLAME mass of a giant only in this range, in
+ *  solar masses (Creevey et al. 2023, A&A 674, A26, Sect. 8). */
+const GIANT_MASS_RANGE: [number, number] = [1, 2];
+
+/** FLAME's run on the GSP-Phot parameters (`''`) or on the GSP-Spec ones
+ *  (`'_spec'`), as its column names end. */
+export type FlameRun = '' | '_spec';
+
+/** Whether FLAME fitted a mass that holds. The age and the stage come from the
+ *  same fit, so they stand or fall with it. A giant's first flag digit is 1. */
+export function flameFitHolds(row: TableRow, run: FlameRun = ''): boolean {
+	const mass = row.number(`mass_flame${run}`);
+	if (mass === null) return false;
+	if (row.text(`flags_flame${run}`)?.[0] !== '1') return true;
+	return mass >= GIANT_MASS_RANGE[0] && mass <= GIANT_MASS_RANGE[1];
+}
+
+/** The column that gives a star's mass. */
+export type StarMassSource = 'mass_flame' | 'mass_flame_spec' | 'host_mass' | 'star_mass';
+
+export interface StarMass {
+	solar: number;
+	source: StarMassSource;
+}
+
+/**
+ * The mass of a star. Every view of a star uses this function. FLAME's mass
+ * comes first where its fit holds. Then comes the mass that the catalogue of a
+ * planet host gives, then the mass of the star in the fits of `planet`. `row`
+ * is the Point source row of the star.
+ */
+export function starMass(row: TableRow | null, planet: Planet | null = null): StarMass | null {
+	if (row && flameFitHolds(row)) return { solar: row.number('mass_flame')!, source: 'mass_flame' };
+	if (row && flameFitHolds(row, '_spec')) {
+		return { solar: row.number('mass_flame_spec')!, source: 'mass_flame_spec' };
+	}
+	const host = row && positiveNumber(row, 'host_mass');
+	if (host) return { solar: host, source: 'host_mass' };
+	const fit = planet?.values.star_mass;
+	return typeof fit === 'number' && fit > 0 ? { solar: fit, source: 'star_mass' } : null;
 }
 
 /** G − V from B − V, ascending powers (Gaia DR2 documentation §5.3.7). */

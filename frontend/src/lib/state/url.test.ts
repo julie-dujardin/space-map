@@ -476,6 +476,53 @@ describe('parseNavEnd', () => {
 		// Nothing sits at 91 degrees of latitude.
 		expect(parseNavEnd('naif-399-at-91,0')).toBeNull();
 	});
+
+	it('round-trips a star, a star system and a planet of another star', () => {
+		for (const id of ['x-21238067', 'x-597894079', 'x-558442032-b-4']) {
+			expect(parseNavEnd(formatNavEnd(id, null))).toEqual({
+				bodyId: id,
+				featureId: null,
+				place: null
+			});
+		}
+	});
+
+	it('rejects a malformed extrasolar end, or one with a place on it', () => {
+		for (const segment of [
+			'x-',
+			'x-021238067',
+			'x-0',
+			'x-9007199254740992',
+			'x-21238067-b-0',
+			'x-21238067-b-',
+			'x-21238067-f-3',
+			'x-21238067-b-1-f-3',
+			'x-21238067-at-1,2'
+		]) {
+			expect(parseNavEnd(segment), segment).toBeNull();
+		}
+	});
+});
+
+describe('a trip to another star', () => {
+	it('reads both ends out of the path and writes them back', () => {
+		page.params = { from: 'naif-399', to: 'x-558442032-b-4' };
+		page.route = { id: '/nav/[[from]]/[[to]]' } as typeof page.route;
+		page.url = new URL('http://x/nav/naif-399/x-558442032-b-4?at=now,1,2,3') as typeof page.url;
+		const view = parseUrl()!;
+		expect(view).toMatchObject({
+			type: 'nav',
+			id: 'x-558442032-b-4',
+			navFrom: 'naif-399',
+			navTo: 'x-558442032-b-4'
+		});
+		expect(serializeUrl(view).startsWith('/nav/naif-399/x-558442032-b-4?at=now,')).toBe(true);
+	});
+
+	it('writes a star-to-star trip', () => {
+		const url = serializeUrl(applyNav(baseView, 'x-27424668', 'x-21238067'));
+		expect(url.startsWith('/nav/x-27424668/x-21238067?at=')).toBe(true);
+	});
 });
 
 describe('applyNav', () => {

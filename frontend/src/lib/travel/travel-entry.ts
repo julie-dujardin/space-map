@@ -4,6 +4,7 @@
 
 import { EARTH_ID } from '$lib/constants';
 import { navHref } from '$lib/state/focus-link';
+import { extrasolarTravelBody, resolveExtrasolarEnd } from '$lib/travel/extrasolar-end';
 import { transferPlan } from '$lib/travel/travel-body';
 import type { AppState } from '$lib/state/app-state.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -17,8 +18,10 @@ export interface TravelEntry {
 	destination: { id: string; featureId: number | null };
 }
 
-/** The planner opened on a trip ending at `target`, or null where no trip
- *  reaches it — a dead-end entry point is worse than none. */
+/** The planner opened on a trip that ends at `target`. Null where no trip
+ *  reaches it, because an entry that leads nowhere is worse than none. For an
+ *  object of the extrasolar catalogue, `target` is the body that
+ *  {@link extrasolarTripTarget} gives. */
 export function travelEntry(
 	ctx: ContextManager | undefined,
 	appState: AppState | undefined,
@@ -38,4 +41,12 @@ export function travelEntry(
 	const destination = { id: target.id, featureId };
 	const href = navHref(appState, departure, destination);
 	return href ? { href, departure, destination } : null;
+}
+
+/** The body that a trip to an object of the extrasolar catalogue goes to, as
+ *  the planner resolves it. A star system gives its primary star. Null when the
+ *  planner cannot place the end, or cannot size a planet. */
+export async function extrasolarTripTarget(objectId: string): Promise<BodyData | null> {
+	const end = await resolveExtrasolarEnd(objectId);
+	return end && extrasolarTravelBody(end) ? end.body : null;
 }

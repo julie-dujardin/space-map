@@ -40,6 +40,9 @@ export interface OrbitFacts {
 	/** True for something built rather than found. Nothing orbits a spacecraft:
 	 *  it is met or passed, which is all {@link orbitChoices} then offers. */
 	isCraft?: boolean;
+	/** True for a star or a star system of the extrasolar catalogue. A trip
+	 *  holds station near one or passes it, and orbits none. */
+	isStar?: boolean;
 }
 
 /**
@@ -57,7 +60,12 @@ export function orbitFacts(
 		spinDegPerDay && Math.abs(spinDegPerDay) > 0
 			? (HOURS_PER_DAY * 360) / Math.abs(spinDegPerDay)
 			: undefined;
-	return { rotationHours, hillKm: travel.hillKm, isCraft: isCraft(body) };
+	return {
+		rotationHours,
+		hillKm: travel.hillKm,
+		isCraft: isCraft(body),
+		isStar: body.objectType === ObjectType.EXTRASOLAR
+	};
 }
 
 /**
@@ -137,12 +145,9 @@ export function maxRadiusKm(facts: OrbitFacts): number {
 /**
  * Every way this end can be met, in the order they are offered.
  *
- * `role` decides two things: only a destination can be flown past or arrived
- * at on a transfer orbit, and only a departure can be from a body with no
- * ground — which is why `hasSurface` is asked rather than assumed.
- *
- * A craft is met or passed and nothing else: it holds no orbit, has no ground
- * worth naming, and matching its state is the whole of arriving at one.
+ * Only a destination can be flown past or reached on a transfer orbit.
+ * `hasSurface` says whether the body has ground to land on or leave from. A
+ * craft or a star is met or passed, and has no orbit and no ground.
  */
 export function orbitChoices(
 	travel: TravelBody,
@@ -188,7 +193,7 @@ export function orbitChoices(
 		});
 	};
 
-	if (facts.isCraft) {
+	if (facts.isCraft || facts.isStar) {
 		add('rendezvous', 'meet');
 		if (target) add('flyby', 'pass');
 		return out;

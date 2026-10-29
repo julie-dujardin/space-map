@@ -77,6 +77,10 @@ export interface OfferedRoute {
 export type BlockReason =
 	| 'unknown-primary'
 	| 'unknown-orbit'
+	/** Both ends are in the system of one other star. */
+	| 'same-system'
+	/** A planet of another star has neither a mass nor a radius. */
+	| 'unknown-size'
 	| 'no-target'
 	| 'no-origin'
 	/** Both ends are the same orbit about one body, which is not a trip. */
@@ -1118,9 +1122,22 @@ export class TravelPanelState {
 	 *  one and dirties every reader of them. */
 	block(reason: BlockReason): void {
 		if (this.blocked === reason && this.status === 'blocked') return;
-		this.#token++;
+		this.#clear();
 		this.blocked = reason;
 		this.status = 'blocked';
+	}
+
+	/** Offer no route and run no search. Nothing here prices a trip between two
+	 *  systems. */
+	offerNone(): void {
+		this.#clear();
+		this.blocked = null;
+		this.status = 'empty';
+	}
+
+	/** Drop every route and every search in flight. */
+	#clear(): void {
+		this.#token++;
 		this.routes = [];
 		this.grid = null;
 		this.custom = null;

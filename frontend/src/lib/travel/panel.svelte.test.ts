@@ -1082,3 +1082,18 @@ describe('TravelPanelState blocking', () => {
 		expect(panel.blocked).toBe('no-origin');
 	});
 });
+
+describe('TravelPanelState between two systems', () => {
+	it('drops every route and offers none, blocked or not', async () => {
+		const panel = new TravelPanelState();
+		await solveTrip(panel, EARTH, MARS, J2000);
+		expect(panel.offered.length).toBeGreaterThan(0);
+		panel.block('same-system');
+		panel.offerNone();
+		expect(panel.blocked).toBeNull();
+		expect(panel.status).toBe('empty');
+		expect(panel.offered).toEqual([]);
+		expect(panel.grid).toBeNull();
+		expect(panel.pricedEnds).toBeNull();
+	});
+});

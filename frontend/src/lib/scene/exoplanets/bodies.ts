@@ -7,8 +7,14 @@
 
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { extrasolarObjectId, planetObjectId } from '$lib/fetch/extrasolar/ids';
-import type { Planet, PlanetElements, PlanetSystem } from '$lib/fetch/extrasolar/planets';
+import type {
+	Planet,
+	PlanetElements,
+	PlanetIndexHost,
+	PlanetSystem
+} from '$lib/fetch/extrasolar/planets';
 import { JUPITER_RADIUS_KM } from '$lib/math/units';
+import { treeToScene } from '$lib/scene/starfield/tree';
 import { J2000_JD } from '$lib/time/jd';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 
@@ -16,6 +22,16 @@ import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objec
 export const NO_ORBIT_AU = 1;
 /** A planet with no orbit sits still this many outer orbits from its host. */
 export const NO_ORBIT_FACTOR = 1.5;
+
+/** The scene place (barycentre origin) that the planet index or a system file
+ *  gives a host; null when it gives none. */
+export function hostScene(
+	entry: Pick<PlanetIndexHost, 'position'> | undefined
+): [number, number, number] | null {
+	if (!entry?.position) return null;
+	const at = treeToScene(...entry.position, { x: 0, y: 0, z: 0 });
+	return [at.x, at.y, at.z];
+}
 
 /** The largest semi-major axis (AU) of `planets`, or null when none has one. */
 export function outerOrbitAU(planets: readonly Planet[]): number | null {

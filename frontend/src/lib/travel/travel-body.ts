@@ -12,6 +12,11 @@
 
 import { Vector3 } from 'three';
 import { naifId } from '$lib/constants';
+import {
+	extrasolarObjectId,
+	isExtrasolarObjectId,
+	planetOfObjectId
+} from '$lib/fetch/extrasolar/ids';
 import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
@@ -170,9 +175,18 @@ function hillRadiusKm(body: BodyData, mu: number, lookup: BodyLookup): number | 
 	// About the Sun it's the heliocentric orbit, not the wobble; about a planet
 	// it's the body's own.
 	const orbit = primary === 'sun' ? (heliocentricAncestor(body, lookup) ?? body) : body;
+	return hillRadiusAboutKm(orbit, mu, primaryMu);
+}
+
+/** Hill radius, km, of a body of `mu` on `orbit` about a primary of
+ *  `primaryMu`; undefined when one of them is unknown. */
+export function hillRadiusAboutKm(
+	orbit: Pick<BodyData, 'a' | 'e'>,
+	mu: number,
+	primaryMu: number | undefined
+): number | undefined {
 	const aKm = orbit.a * AU_KM;
 	if (!primaryMu || !(primaryMu > 0) || !(aKm > 0) || !(mu > 0)) return undefined;
-
 	const e = Number.isFinite(orbit.e) ? Math.min(Math.max(orbit.e, 0), 0.99) : 0;
 	return aKm * (1 - e) * Math.cbrt(mu / (3 * primaryMu));
 }
@@ -259,28 +273,26 @@ function straysFromElements(chain: readonly BodyData[], travel: TravelBody): boo
 }
 
 /**
- * What kind of transfer a pair of bodies needs, or why it can't have one.
+ * What kind of transfer a pair of ends needs, or why it has none.
  *
- * Two bodies in different systems are connected by an arc about the Sun. Two
- * in the same one are not: Earth to its own Moon shares a heliocentric orbit,
- * so the transfer belongs about the body they both go round instead.
- *
- * Which of the two remaining kinds that is depends on where the ends sit. When
- * one end *is* the body at the centre, there's no escape to price there and
- * the trip is a transfer ellipse from its parking orbit. When neither is — Io
- * to Europa — the pair are siblings about a third body: an ordinary two-orbit
- * transfer again, just about a planet rather than the Sun.
- *
- * Both ends on one body is a trip too, and the shortest kind: the ellipse
- * joining two orbits about it. Nothing moves under it, so there is no window —
- * only how long the climb is given.
+ * - `interstellar`: the ends are in the systems of two different stars. Each
+ *   system is named by the scene id of its star (see {@link systemOf}).
+ * - `heliocentric`: the ends go round the Sun in two different orbits. The arc
+ *   goes round the Sun.
+ * - `system`: one end is the body that the other end goes round. The arc is an
+ *   ellipse from the parking orbit of that body.
+ * - `sibling`: both ends go round a third body, such as Io and Europa. The arc
+ *   goes round that body.
+ * - `orbit-change`: both ends are at one body. The arc joins two of its orbits
+ *   and has no window.
  */
 export type TransferPlan =
+	| { kind: 'interstellar'; originSystem: string; targetSystem: string }
 	| { kind: 'heliocentric' }
 	| { kind: 'system'; primary: 'origin' | 'target' }
 	| { kind: 'sibling'; centreId: string; centralMu: number }
 	| { kind: 'orbit-change' }
-	| { kind: 'blocked'; reason: 'unknown-orbit' | 'unknown-primary' };
+	| { kind: 'blocked'; reason: 'unknown-orbit' | 'unknown-primary' | 'same-system' };
 
 /** How the kernel is pointed at a pair: which orbit describes each end, which
  *  end the arc goes round when one of them does, and μ of whatever it goes
@@ -296,8 +308,8 @@ export interface TransferFrame {
 
 const HELIOCENTRIC_FRAME: TransferFrame = { orbit: 'heliocentric' };
 
-/** The frame a plan implies. Blocked plans never reach a solve, so they take the
- *  heliocentric default rather than a case of their own. */
+/** The frame a plan implies. A blocked or an interstellar plan never reaches a
+ *  solve, so it takes the heliocentric frame. */
 export function transferFrame(plan: TransferPlan | null): TransferFrame {
 	if (plan?.kind === 'system') {
 		return { orbit: 'own', systemPrimary: plan.primary === 'origin' ? 'departure' : 'target' };
@@ -328,6 +340,8 @@ export function transferCenterId(
 	lookup: BodyLookup
 ): string | null {
 	if (plan.kind === 'blocked') return null;
+	// The places of the stars are about the solar-system barycentre.
+	if (plan.kind === 'interstellar') return SSB_OBJECT_ID;
 	// One end is the centre, and `relativeState` differences the other against
 	// it, so the positions come out about the body itself.
 	if (plan.kind === 'system') return plan.primary === 'origin' ? origin.id : target.id;
@@ -417,7 +431,22 @@ function reportUnwalkableChain(id: string): void {
 	console.debug(`[travel] no heliocentric ancestor for ${id}`);
 }
 
+/**
+ * The system an end is in, as the scene id of its star: the Sun for a body of
+ * the solar system, the host for a planet of another star, and the star itself
+ * for a star or a star system. Two stars of one star system are two systems.
+ */
+export function systemOf(objectId: string): string {
+	if (!isExtrasolarObjectId(objectId)) return SUN_OBJECT_ID;
+	const planet = planetOfObjectId(objectId);
+	return planet ? extrasolarObjectId(planet.host) : objectId;
+}
+
 export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLookup): TransferPlan {
+	const originSystem = systemOf(origin.id);
+	const targetSystem = systemOf(target.id);
+	if (originSystem !== targetSystem) return { kind: 'interstellar', originSystem, targetSystem };
+	if (originSystem !== SUN_OBJECT_ID) return { kind: 'blocked', reason: 'same-system' };
 	// One body, both ends: nothing to cross, so the ends themselves are the trip.
 	if (origin.id === target.id) return { kind: 'orbit-change' };
 	const from = ancestry(origin, lookup);

@@ -17,10 +17,12 @@ import {
 	drawnAbsoluteG,
 	gEstimate,
 	propagate,
+	starMass,
 	starPlace,
 	starRadiusKm,
 	starTeff
 } from './record';
+import { planet } from '$lib/scene/exoplanets/__fixtures__/system';
 import { findStarRow } from './starfield';
 import type { Vec3 } from './tree';
 
@@ -49,6 +51,34 @@ describe('gEstimate', () => {
 		expect(gEstimate(-1.44, 0.009, -1.0876)).toBeCloseTo(-1.44 - 0.02907 - 0.02385 * 0.009, 4);
 		expect(gEstimate(null, null, 9)).toBeCloseTo(8.72, 6);
 		expect(gEstimate(5, null, null)).toBeNull();
+	});
+});
+
+describe('starMass', () => {
+	const fit = planet(1, 1, null, { star_mass: 0.7 });
+
+	it("takes FLAME's mass first, then the spectroscopic run's", () => {
+		const both = { mass_flame: 0.9, mass_flame_spec: 0.95, host_mass: 1 };
+		expect(starMass(pointSourceRow(both), fit)).toEqual({
+			solar: expect.closeTo(0.9, 6),
+			source: 'mass_flame'
+		});
+		const spec = { mass_flame_spec: 0.95, host_mass: 1 };
+		expect(starMass(pointSourceRow(spec))?.source).toBe('mass_flame_spec');
+	});
+
+	it("passes over a giant's FLAME mass outside 1 to 2 solar masses", () => {
+		const giant = pointSourceRow({ mass_flame: 3, flags_flame: '10', host_mass: 2.5 });
+		expect(starMass(giant)).toEqual({ solar: 2.5, source: 'host_mass' });
+	});
+
+	it("takes the mass of a planet's fits last, and with no row", () => {
+		expect(starMass(pointSourceRow({ parallax: 10 }), fit)).toEqual({
+			solar: 0.7,
+			source: 'star_mass'
+		});
+		expect(starMass(null, fit)?.solar).toBe(0.7);
+		expect(starMass(null, planet(1, 1, null))).toBeNull();
 	});
 });
 

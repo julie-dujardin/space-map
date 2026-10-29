@@ -1,21 +1,29 @@
 /**
  * Finding the bodies a trip is made of.
  *
- * The scene only holds what it's drawing, split across several places —
- * majors in one index, small bodies in per-zone buckets, spacecraft under
- * their parent. A trip end can be any object in the catalogue, so resolving
- * one can't go through the scene alone: what it has is used as-is, and
- * everything else is read from the global bundle, which describes every
- * object whether or not it's on screen.
+ * A trip end can be any object of the catalogue, and the scene holds only what
+ * it draws. A body of the solar system that the scene holds is used as it is.
+ * Any other body comes from its global bundle. The walk goes up to the orbit
+ * about the Sun, so a moon of an asteroid also gives the asteroid.
  *
- * The walk goes up to the heliocentric orbit, since that's what a transfer is
- * flown between — so a moon of an asteroid pulls in the asteroid too.
+ * An end outside the solar system has no bundle. It comes from the extrasolar
+ * export (see `extrasolar-end.ts`).
  */
 
 import type { BodyData } from '$lib/types/objects';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { bodyDataFromGlobal } from '$lib/fetch/objects/global-body';
+import type { ExtrasolarEnd } from './extrasolar-end';
 import { isHeliocentricRoot } from './travel-body';
+
+export interface TripBodies {
+	/** Each end and the chain above it up to the Sun. An end outside the solar
+	 *  system is its own row, by the id it was asked by. */
+	bodies: Map<string, BodyData>;
+	/** The ends outside the solar system, by the id they were asked by. */
+	extrasolar: Map<string, ExtrasolarEnd>;
+}
 
 /** Bundle-derived rows, kept for the session: the catalogue does not change
  *  under us, and a trip re-walks the same ancestors on every swap. */
@@ -53,10 +61,22 @@ function fromBundle(id: string): Promise<BodyData | null> {
 export async function resolveTripBodies(
 	ids: readonly string[],
 	resident: (id: string) => BodyData | null | undefined
-): Promise<Map<string, BodyData>> {
-	const out = new Map<string, BodyData>();
-	await Promise.all(ids.map((id) => walk(id, resident, out)));
-	return out;
+): Promise<TripBodies> {
+	const bodies = new Map<string, BodyData>();
+	const extrasolar = new Map<string, ExtrasolarEnd>();
+	// The Δv map also walks trips and never has an end outside the solar system,
+	// so its page does not load this module.
+	const outside = ids.some(isExtrasolarObjectId) ? await import('./extrasolar-end') : null;
+	await Promise.all(
+		ids.map(async (id) => {
+			if (!outside || !isExtrasolarObjectId(id)) return walk(id, resident, bodies);
+			const end = await outside.resolveExtrasolarEnd(id);
+			if (!end) return;
+			bodies.set(id, end.body);
+			extrasolar.set(id, end);
+		})
+	);
+	return { bodies, extrasolar };
 }
 
 async function walk(

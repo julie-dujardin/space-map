@@ -15,6 +15,7 @@ import {
 	featureTypeCode
 } from '$lib/fetch/groups/registry';
 import { SUN_ID } from '$lib/constants';
+import { extrasolarBase } from '$lib/fetch/extrasolar/files';
 
 /** Pre-resolved thumbnail descriptor written by the search indexer.
  *  Already narrowed to a single emitted variant — the frontend doesn't pick
@@ -120,7 +121,7 @@ export interface PadHit extends BaseHit {
 export type SearchHit = FeatureHit | ObjectHit | GroupHit | PadHit | PlanetHit;
 
 /** What a trip can start or end at: no collection, and nothing of another system. */
-export type EndpointHit = ObjectHit | FeatureHit | PadHit;
+export type EndpointHit = ObjectHit | FeatureHit | PadHit | PlanetHit;
 
 // A dead search bar is indistinguishable from a healthy site: the UI renders its
 // disabled state and nothing throws. Say why, once, so the cause is one console
@@ -294,10 +295,11 @@ export function toHit(d: RawHit): SearchHit {
 	return toObjectHit(d);
 }
 
-/** Whether a hit is a star or a planet of another system. Neither is an end
- *  of a trip or a part of a comparison. A query can leave out the stars by
- *  type, but a host of another class (a pulsar, a white dwarf) only by
- *  `object.extrasolar`, which needs that setting in the index. */
+/** Whether a hit is a star or a planet of another system. Neither is a part
+ *  of a comparison, nor a trip end where the host serves no extrasolar export.
+ *  A query can leave out the stars by type, but a host of another class (a
+ *  pulsar, a white dwarf) only by `object.extrasolar`, which needs that
+ *  setting in the index. */
 export function isExtrasolarHit(hit: SearchHit): boolean {
 	return hit.kind === 'planet' || (hit.kind === 'object' && hit.extrasolar === true);
 }
@@ -328,10 +330,10 @@ const NOT_EXTRASOLAR = `(object.type NOT IN ["star", "pulsar", "white_dwarf", "b
 /**
  * Everywhere a trip can start or end, for the planner's endpoint pickers.
  *
- * Collections are excluded because you cannot depart from or arrive at one —
- * ranking them alongside would spend a short result list on rows that can't be
- * chosen. Pads stay: leaving from one is the whole reason they are indexed.
- * The stars of the extrasolar catalogue have no orbit to plan a trip on.
+ * Collections are left out, because a trip cannot leave from one or go to
+ * one. Pads stay, because a trip can leave from one. The stars, star systems and planets
+ * of the extrasolar catalogue are trip ends only where the host serves the
+ * extrasolar export.
  */
 export async function searchEndpoints(
 	query: string,
@@ -340,14 +342,16 @@ export async function searchEndpoints(
 ): Promise<EndpointHit[]> {
 	const c = await getClient();
 	if (!c || !query.trim()) return [];
+	const extrasolar = extrasolarBase() !== '';
 	const res = await c.index(INDEX).search(query, {
 		limit,
 		locales: [locale],
-		filter: `kind != "group" AND kind != "planet" AND ${NOT_EXTRASOLAR}`
+		filter: extrasolar
+			? 'kind != "group"'
+			: `kind != "group" AND kind != "planet" AND ${NOT_EXTRASOLAR}`
 	});
-	return (res.hits ?? [])
-		.map((h) => toHit(h as RawHit))
-		.filter((h) => !isExtrasolarHit(h)) as EndpointHit[];
+	const hits = (res.hits ?? []).map((h) => toHit(h as RawHit)) as EndpointHit[];
+	return extrasolar ? hits : hits.filter((h) => !isExtrasolarHit(h));
 }
 
 /**

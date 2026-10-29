@@ -831,9 +831,9 @@
 	});
 
 	async function openInitialView(): Promise<void> {
-		// An alias opens its live object, at that object's address. The server
-		// redirects it; this is for a page the server could not look up.
-		if (isExtrasolarObjectId(appState.view.id)) await followAlias(appState.view.id);
+		// An alias opens its live object where the server could not redirect it.
+		// The planner moves the ends of a trip itself.
+		if (!isNav && isExtrasolarObjectId(appState.view.id)) await followAlias(appState.view.id);
 		const initialId = appState.view.id;
 		// URL camera framing, restored onto the real target once it loads: the
 		// renderer settles its initial focus on the parent while the target's

@@ -232,6 +232,14 @@ export class AppState {
 		this.pushNow();
 	}
 
+	/** Put in the view the objects that the trip's ends lead to, in the same
+	 *  history entry. An alias leads to its live object, and a star system to
+	 *  its primary star. */
+	replaceNav(from: NavEnd | null, to: NavEnd | null) {
+		this.view = applyNav(this.view, from, to);
+		this.replaceNow();
+	}
+
 	/**
 	 * Mirror the travel panel's terms into the URL, so a planned trip shares and
 	 * reloads as the trip that was planned.

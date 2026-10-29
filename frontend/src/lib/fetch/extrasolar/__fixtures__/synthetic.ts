@@ -197,6 +197,7 @@ export function syntheticExport(
 			[
 				{ name: 'id', type: 'id', values: [SYSTEM, BINARY] },
 				{ name: 'point', type: 'bool', values: [false, true] },
+				{ name: 'primary', type: 'id', values: [BINARY, BINARY] },
 				{ name: 'members', type: 'list', values: [2, 2] },
 				{ name: 'members.id', type: 'id', values: [BINARY, SECOND, null, null] },
 				{ name: 'members.kind', type: 'dict', values: ['system', 'star', 'entry', 'entry'] },

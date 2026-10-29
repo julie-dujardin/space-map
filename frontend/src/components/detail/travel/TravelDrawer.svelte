@@ -31,12 +31,15 @@
 	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
+	import type { ExtrasolarEnd } from '$lib/travel/extrasolar-end';
+	import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
 	import { fetchLaunchPads, padAt, type LaunchPad } from '$lib/travel/launch-pad';
 	import type { NavPlace } from '$lib/state/view';
 	import { navEndOf, type NavEnd } from '$lib/state/url';
+	import { fetchPageName } from '$lib/state/page-name';
 	import { landedEnd, type LandedEnd } from '$lib/travel/probe-end';
 	import { probeSamples } from '$lib/travel/probe-samples';
 	import type { Crumb } from '$lib/state/breadcrumb';
@@ -139,6 +142,8 @@
 	// trip end is any catalogue object, most of them nowhere near what is drawn.
 	// Keyed on the ids alone, so bodies streaming in do not re-solve the grid.
 	let tripBodies = $state(new Map<string, BodyData>());
+	/** The ends outside the solar system, by id. */
+	let extrasolarEnds = $state.raw(new Map<string, ExtrasolarEnd>());
 	let resolving = $state(true);
 
 	// What the scene already holds, as a row the kernel can use. A probe's chunk
@@ -241,21 +246,40 @@
 			// Untracked: `residentBody` reads the scene synchronously, which moves.
 			// Without this the effect depends on every body it looked up and re-runs
 			// forever as they change; the ids above are the whole real dependency.
-			const bodies = await untrack(() => resolveTripBodies(ids, residentBody));
-			if (cancelled) return;
-			// Kept when a later pass cannot find it: the scene's index is momentarily
-			// empty while it rebuilds, and losing a body the trip is built on would
-			// take the whole panel down.
+			const { bodies, extrasolar } = await untrack(() => resolveTripBodies(ids, residentBody));
+			if (cancelled || followEnds(extrasolar)) return;
+			// A later pass keeps a body that it cannot find. The scene's index is
+			// empty for a moment while it rebuilds, and a lost end stops the panel.
 			for (const [id, body] of tripBodies) {
 				if (ids.includes(id) && !bodies.has(id)) bodies.set(id, body);
 			}
+			for (const [id, end] of extrasolarEnds) {
+				if (ids.includes(id) && !extrasolar.has(id)) extrasolar.set(id, end);
+			}
 			tripBodies = bodies;
+			extrasolarEnds = extrasolar;
 			resolving = false;
 		})();
 		return () => {
 			cancelled = true;
 		};
 	});
+
+	/** Put in the URL the object that an extrasolar end leads to, when the end
+	 *  names another. The ends then resolve again. True when an end moved. */
+	function followEnds(extrasolar: ReadonlyMap<string, ExtrasolarEnd>): boolean {
+		if (!appState) return false;
+		const follow = (end: NavEnd | null): NavEnd | null => {
+			const live = end ? extrasolar.get(end.id)?.body.id : undefined;
+			return end && live && live !== end.id ? { ...end, id: live } : end;
+		};
+		const from = navEndOf(appState.view, 'from');
+		const to = navEndOf(appState.view, 'to');
+		const [nextFrom, nextTo] = [follow(from), follow(to)];
+		if (nextFrom === from && nextTo === to) return false;
+		appState.replaceNav(nextFrom, nextTo);
+		return true;
+	}
 
 	/** The body each end is priced against: the host when the end is parked on
 	 *  one, else the end itself. */
@@ -264,6 +288,8 @@
 
 	let origin = $derived(originId === null ? null : (tripBodies.get(originId) ?? null));
 	let target = $derived(targetId === null ? null : (tripBodies.get(targetId) ?? null));
+	let originAway = $derived(originId === null ? null : (extrasolarEnds.get(originId) ?? null));
+	let targetAway = $derived(targetId === null ? null : (extrasolarEnds.get(targetId) ?? null));
 
 	/** Where on its body each end sits, for the panel to aim the ground leg at. */
 	let originSite = $derived<EndSite | null>(siteOf(fromLanded, fromFeatureId, fromPlace));
@@ -317,8 +343,26 @@
 		};
 	});
 
+	// An end of another star has the name of its page, in the reader's language
+	// where the export has one.
+	let awayNames = $state<Record<string, string>>({});
+	function loadAwayName(id: string | null) {
+		if (id === null || untrack(() => awayNames[id])) return;
+		let cancelled = false;
+		fetchPageName({ kind: 'body', id })
+			.then((name) => {
+				if (name && !cancelled) awayNames = { ...awayNames, [id]: name };
+			})
+			.catch((e) => console.warn(`[travel] could not name ${id}:`, e));
+		return () => {
+			cancelled = true;
+		};
+	}
+	$effect(() => loadAwayName(originAway?.body.id ?? null));
+	$effect(() => loadAwayName(targetAway?.body.id ?? null));
+
 	function displayName(body: BodyData): string {
-		return names[body.id] ?? body.name ?? body.id;
+		return names[body.id] ?? awayNames[body.id] ?? body.name ?? body.id;
 	}
 
 	// Bodies the search must not offer for one end, given the other. Only loaded
@@ -525,8 +569,9 @@
 	// opened on the same origin. Which step that is comes off the trip's own
 	// terms, so nothing has to be handed up.
 	let reading = $derived(trip.profile);
+	// The Δv map holds the solar system only.
 	let mapHref = $derived(
-		originId === null
+		originId === null || isExtrasolarObjectId(originId)
 			? resolve('/nav')
 			: `${resolve('/nav')}?${new URLSearchParams({ from: originId })}`
 	);
@@ -672,6 +717,7 @@
 						picked: fromId !== null,
 						exclude: excludeForOrigin,
 						detail: originDetail,
+						extrasolar: originAway,
 						onChange: (pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'from')
 					},
 					target: {
@@ -691,6 +737,7 @@
 						picked: toId !== null,
 						exclude: excludeForTarget,
 						detail: targetDetail,
+						extrasolar: targetAway,
 						onChange: (pick: TravelEndpointPick) => moveNav(pickedEnd(pick), 'to')
 					}
 				}}
@@ -706,7 +753,7 @@
 				{onTimelineChange}
 				{onHazardsChange}
 				{onOrbitPreview}
-				resolveBodyName={(id) => names[id] ?? ctx?.getBody(id)?.data.name ?? id}
+				resolveBodyName={(id) => names[id] ?? awayNames[id] ?? ctx?.getBody(id)?.data.name ?? id}
 				onTripChange={(next) => appState?.setTrip(next)}
 				onSwap={() => {
 					if (!appState) return;

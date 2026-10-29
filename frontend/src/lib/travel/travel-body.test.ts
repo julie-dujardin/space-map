@@ -7,6 +7,7 @@ import { elementsToState } from '$lib/math/travel';
 import {
 	heliocentricAncestor,
 	lookupIn,
+	systemOf,
 	toTravelBody,
 	transferCenterId,
 	transferPlan
@@ -467,5 +468,49 @@ describe('transferPlan', () => {
 			kind: 'blocked',
 			reason: 'unknown-orbit'
 		});
+	});
+});
+
+describe('a trip to another star', () => {
+	const bodies = solarSystem();
+	const look = lookupIn(bodies);
+	const earth = bodies.get('naif-399')!;
+	// A star row has no orbit and no parent; a planet goes round its host.
+	const tauCeti = body('x-21238067', '', { objectType: ObjectType.EXTRASOLAR, a: 0, n: 0 });
+	const proxima = body('x-27424668', '', { objectType: ObjectType.EXTRASOLAR, a: 0, n: 0 });
+	const proximaB = body('x-27424668-b-1', 'x-27424668', { objectType: ObjectType.EXOPLANET });
+	const proximaD = body('x-27424668-b-3', 'x-27424668', { objectType: ObjectType.EXOPLANET });
+
+	it('names the system of an end by its star', () => {
+		expect(systemOf('naif-399')).toBe('naif-10');
+		expect(systemOf('spkid-20000004')).toBe('naif-10');
+		expect(systemOf('x-21238067')).toBe('x-21238067');
+		expect(systemOf('x-27424668-b-1')).toBe('x-27424668');
+	});
+
+	it('crosses between two systems, either way round', () => {
+		expect(transferPlan(earth, tauCeti, look)).toEqual({
+			kind: 'interstellar',
+			originSystem: 'naif-10',
+			targetSystem: 'x-21238067'
+		});
+		expect(transferPlan(proximaB, earth, look)).toEqual({
+			kind: 'interstellar',
+			originSystem: 'x-27424668',
+			targetSystem: 'naif-10'
+		});
+		expect(transferPlan(tauCeti, proximaB, look)).toMatchObject({ kind: 'interstellar' });
+	});
+
+	it('blocks a trip inside the system of another star', () => {
+		const inside = { kind: 'blocked', reason: 'same-system' };
+		expect(transferPlan(proximaB, proximaD, look)).toEqual(inside);
+		expect(transferPlan(proxima, proximaB, look)).toEqual(inside);
+		expect(transferPlan(proxima, proxima, look)).toEqual(inside);
+	});
+
+	it('measures an interstellar trip about the barycentre', () => {
+		const plan = transferPlan(earth, tauCeti, look);
+		expect(transferCenterId(plan, earth, tauCeti, look)).toBe('naif-0');
 	});
 });
