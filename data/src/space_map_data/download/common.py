@@ -121,6 +121,9 @@ from space_map_data.download.providers.stars.gaia_flame_spec import (
 from space_map_data.download.providers.stars.gaia_named import (
     GaiaNamedStarsDownloader,
 )
+from space_map_data.download.providers.stars.gaia_oba_golden_sample import (
+    GaiaOBAGoldenSampleDownloader,
+)
 from space_map_data.download.providers.stars.gaia_source import GaiaSourceDownloader
 from space_map_data.download.providers.stars.gaia_two_body_orbit import (
     GaiaTwoBodyOrbitDownloader,
@@ -211,6 +214,7 @@ PROVIDERS_CLASSES = [
     GaiaCrossMatchDownloader,
     GaiaTwoBodyOrbitDownloader,
     GaiaBinaryMassesDownloader,
+    GaiaOBAGoldenSampleDownloader,
     CDSStarCataloguesDownloader,
     StellarParameterCataloguesDownloader,
     PastelSimbadDownloader,

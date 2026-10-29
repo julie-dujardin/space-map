@@ -11,16 +11,15 @@ stars. On the main sequence it is unbiased for 0.5 < BP - RP < 1.5, about
 0.15 dex too low for 1.5 < BP - RP < 2.5, and not valid outside that. Stars
 with G > 17.65 are out of the training range. Teff cannot mark a hot star,
 because its values stay near the training range: 2975 K to 7076 K in Table 1.
-To remove the OBA stars they name the Gaia DR3 golden sample of OBA stars
-(Gaia Collaboration, Creevey et al. 2023), so its membership is kept too, as
-`in_oba_golden_sample`.
+To remove the OBA stars they name the Gaia DR3 golden sample of OBA stars,
+which `gaia_oba_golden_sample` downloads.
 
-A reduction reads the deposit: the two Zenodo tables and the golden sample
-file. The deposit is fetched only when a chunk needs a reduction, into
-zenodo/, which holds nothing else. It is removed when every chunk is written,
-as gaia_source never keeps its ECSV. Each output file holds the rows of the
-stars that one gaia_source chunk kept. A run with a record limit reduces
-nothing. Table 1 is one file, so any part of the table needs the whole deposit.
+A reduction reads the two tables of the Zenodo deposit. The deposit is fetched
+only when a chunk needs a reduction, into zenodo/, which holds nothing else.
+It is removed when every chunk is written, as gaia_source never keeps its
+ECSV. Each output file holds the rows of the stars that one gaia_source chunk
+kept. A run with a record limit reduces nothing. Table 1 is one file, so any
+part of the table needs the whole deposit.
 
 Writes, below sources/stars/gaia/gdr3/andrae2023_xgboost/:
 - XgboostParameters_<pixels>.parquet   the kept rows of one gaia_source chunk
@@ -29,8 +28,7 @@ Writes, below sources/stars/gaia/gdr3/andrae2023_xgboost/:
 - zenodo/                              the deposit, only while chunks are missing
 
 Licence: CC BY 4.0. Cite Andrae, Rix & Chandra 2023, ApJS 267, 8. The values
-derive from Gaia, CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. The golden sample is
-Gaia DR3 data, CC BY-NC 3.0 IGO.
+derive from Gaia, CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC.
 """
 
 import json
@@ -55,14 +53,11 @@ from space_map_data.download.providers.catalogues.fetch import md5_of
 from space_map_data.download.providers.stars import gaia_bulk, gaia_source
 from space_map_data.download.providers.stars.gaia_bulk import (
     ARROW_TYPES,
-    BULK_URL,
     CHUNK_SUFFIX,
     MD5_FILE,
     STATS_KEY,
     ChunkedTableDownloader,
     Column,
-    fetch_md5sums,
-    read_table,
 )
 from space_map_data.download.providers.three_d.resumable import download_resumable
 from space_map_data.utils.arrays import find_sorted
@@ -78,11 +73,6 @@ DEPOSIT_DIR = "zenodo"
 ALL_STARS = "table_1_catwise.csv.gz"
 VETTED_RGB = "table_2_catwise.csv.gz"
 VETTED = "in_vetted_rgb_sample"
-OBA_URL = (
-    f"{BULK_URL}/{gaia_source.RELEASE}/Performance_verification/gold_sample_oba_stars/"
-)
-OBA_FILE = "GoldSampleObaStars.csv.gz"
-OBA = "in_oba_golden_sample"
 # Type, unit and description of each column, from the paper's data model.
 COLUMNS: dict[str, tuple[pa.DataType, str | None, str]] = {
     "source_id": (pa.int64(), None, "Gaia DR3 source_id"),
@@ -101,15 +91,10 @@ COLUMNS: dict[str, tuple[pa.DataType, str | None, str]] = {
         None,
         "True for a star of Table 2, the vetted red-giant sample",
     ),
-    OBA: (
-        pa.bool_(),
-        None,
-        "True for a star of the Gaia DR3 golden sample of OBA stars",
-    ),
 }
 DATATYPES = {kind: name for name, kind in ARROW_TYPES.items()}
 SCHEMA = pa.schema([(name, kind) for name, (kind, _, _) in COLUMNS.items()])
-TABLE_COLUMNS = [name for name in SCHEMA.names if name not in (VETTED, OBA)]
+TABLE_COLUMNS = [name for name in SCHEMA.names if name != VETTED]
 WORKERS = 8
 # The Zenodo files as Zenodo stores them, for the MD5 check.
 _AS_STORED = {"Accept-Encoding": "identity"}
@@ -158,7 +143,6 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
             "columns": SCHEMA.names,
             "min_parallax_over_error": gaia_source.MIN_PARALLAX_OVER_ERROR,
             "zenodo_record": RECORD,
-            "oba_golden_sample": OBA_URL + OBA_FILE,
         }
 
     def is_current(self, stats: dict) -> bool:
@@ -210,7 +194,6 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
                 "stars",
                 "stars_without_row",
                 "vetted",
-                "oba",
             )
         }
         complete = len(done) == len(chunks)
@@ -253,10 +236,6 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
             ) from error
         self.deposit_dir.mkdir(exist_ok=True)
         (self.deposit_dir / "record.json").write_bytes(response.content)
-        oba_sums = fetch_md5sums(self.client, OBA_URL, self.deposit_dir)
-        if OBA_FILE not in oba_sums:
-            raise DownloadError(f"{OBA_URL}{MD5_FILE} does not list {OBA_FILE}")
-        wanted[OBA_FILE] = (OBA_URL + OBA_FILE, oba_sums[OBA_FILE])
         for name, (url, md5) in wanted.items():
             dest = self.deposit_dir / name
             # A file takes its name only after its MD5 check.
@@ -297,11 +276,6 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
     ) -> None:
         """Write the chunks of `todo` in one pass over Table 1."""
         vetted = read_ids(self.deposit_dir / VETTED_RGB)
-        oba = np.sort(
-            read_table((self.deposit_dir / OBA_FILE).read_bytes(), ["source_id"])[
-                "source_id"
-            ].to_numpy()
-        )
         ranges = np.array([gaia_source.pixel_range(c) for c in chunks], np.int64)
         if np.any(ranges[1:, 0] != ranges[:-1, 1] + 1):
             raise DownloadError("the gaia_source chunks leave a gap between pixels")
@@ -337,9 +311,7 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
                     chunk = chunks[current]
                     if chunk in todo:
                         rows = pa.concat_tables(parts) if parts else empty
-                        future = pool.submit(
-                            self._write_chunk, chunk, rows, vetted, oba
-                        )
+                        future = pool.submit(self._write_chunk, chunk, rows, vetted)
                         pending.append((chunk, future))
                         collect(wait_all=False)
                     parts = []
@@ -363,9 +335,7 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
             close_until(len(chunks))
             collect(wait_all=True)
 
-    def _write_chunk(
-        self, chunk: str, rows: pa.Table, vetted: np.ndarray, oba: np.ndarray
-    ) -> dict:
+    def _write_chunk(self, chunk: str, rows: pa.Table, vetted: np.ndarray) -> dict:
         """Write the rows of the stars that one gaia_source chunk kept."""
         stars = pq.read_table(self.source_path(chunk), columns=["source_id"])
         selection = json.loads(stars.schema.metadata[STATS_KEY])
@@ -376,9 +346,7 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
         )
         ids = kept["source_id"].to_numpy()
         flag = find_sorted(vetted, ids) >= 0
-        hot = find_sorted(oba, ids) >= 0
         kept = kept.append_column(VETTED, pa.array(flag))
-        kept = kept.append_column(OBA, pa.array(hot))
         stats: dict[str, object] = {
             "source": chunk,
             "zenodo_record": RECORD,
@@ -386,7 +354,6 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
             "stars": stars.num_rows,
             "stars_without_row": stars.num_rows - kept.num_rows,
             "vetted": int(flag.sum()),
-            "oba": int(hot.sum()),
             "min_parallax_over_error": selection["min_parallax_over_error"],
             "rows_kept": kept.num_rows,
         }

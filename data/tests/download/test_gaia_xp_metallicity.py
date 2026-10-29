@@ -15,8 +15,6 @@ from space_map_data.download.providers.stars import gaia_bulk, gaia_xp_metallici
 from space_map_data.download.providers.stars.gaia_bulk import STATS_KEY
 from space_map_data.download.providers.stars.gaia_xp_metallicity import (
     ALL_STARS,
-    OBA_FILE,
-    OBA_URL,
     RECORD_URL,
     VETTED_RGB,
     GaiaXpMetallicityDownloader,
@@ -49,13 +47,6 @@ TABLE_1 = {
     sid(3, 21): "14.0,14.1,False,0.3,3500.0,4.8",
 }
 TABLE_2 = (sid(1, 11),)
-OBA = (sid(3, 21), sid(5, 99))
-# The golden sample file is ECSV, with its column types in a YAML header.
-OBA_HEADER = (
-    "# %ECSV 1.0\n# ---\n# datatype:\n"
-    "# - {name: source_id, datatype: int64}\n"
-    "# - {name: vtan_flag, datatype: int8}\n"
-)
 
 
 def gz_csv(header: str, rows: list[str]) -> bytes:
@@ -92,7 +83,6 @@ class TestGaiaXpMetallicityDownloader:
             ALL_STARS: table_1(),
             VETTED_RGB: gz_csv("source_id,mh_xgboost\n", [f"{i},0" for i in TABLE_2]),
         }
-        oba = gz_csv(OBA_HEADER + "source_id,vtan_flag\n", [f"{i},0" for i in OBA])
         self.listed_md5: dict[str, str] = {}
         self.fetched: list[str] = []
         self.requests: list[str] = []
@@ -100,13 +90,6 @@ class TestGaiaXpMetallicityDownloader:
         def handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             self.requests.append(url)
-            if url == OBA_URL + "_MD5SUM.txt":
-                return httpx.Response(
-                    200, text=f"{hashlib.md5(oba).hexdigest()}  {OBA_FILE}\n"
-                )
-            if url == OBA_URL + OBA_FILE:
-                self.fetched.append(OBA_FILE)
-                return httpx.Response(200, content=oba)
             if url == RECORD_URL:
                 files = [
                     {
@@ -143,9 +126,7 @@ class TestGaiaXpMetallicityDownloader:
         assert rows["catwise_w2"] == pytest.approx([12.2, 9.6])
         assert rows["in_training_sample"] == [False, True]
         assert rows["in_vetted_rgb_sample"] == [False, True]
-        assert rows["in_oba_golden_sample"] == [False, False]
         assert self._rows(downloader, 1)["source_id"] == [sid(3, 21)]
-        assert self._rows(downloader, 1)["in_oba_golden_sample"] == [True]
         # A chunk with no row in Table 1 still has its file.
         assert self._rows(downloader, 2)["source_id"] == []
         schema = pq.read_schema(downloader.chunk_path(CHUNKS[2]))
@@ -154,8 +135,8 @@ class TestGaiaXpMetallicityDownloader:
         meta = self._metadata(downloader)
         assert meta["complete"] and meta["chunks"] == 3
         assert (meta["record_count"], meta["rows_in"], meta["vetted"]) == (3, 4, 1)
-        assert (meta["stars"], meta["stars_without_row"], meta["oba"]) == (6, 3, 1)
-        assert sorted(meta["files"]) == sorted([ALL_STARS, VETTED_RGB, OBA_FILE])
+        assert (meta["stars"], meta["stars_without_row"]) == (6, 3)
+        assert sorted(meta["files"]) == sorted([ALL_STARS, VETTED_RGB])
         assert downloader.is_complete(None)
         # Every chunk is written, so the deposit is gone.
         assert not downloader.deposit_dir.exists()
@@ -164,7 +145,7 @@ class TestGaiaXpMetallicityDownloader:
 
     def test_second_run_asks_for_nothing_and_writes_nothing(self, downloader):
         downloader.download()
-        assert self.fetched == [ALL_STARS, VETTED_RGB, OBA_FILE]
+        assert self.fetched == [ALL_STARS, VETTED_RGB]
         written = downloader.chunk_path(CHUNKS[0]).stat().st_mtime_ns
         files = self._metadata(downloader)["files"]
         self.requests.clear()
@@ -182,7 +163,7 @@ class TestGaiaXpMetallicityDownloader:
         source_chunk(source, KEPT[1])
         downloader.download()
         # The files on disk are read again, not fetched.
-        assert self.fetched == [ALL_STARS, VETTED_RGB, OBA_FILE]
+        assert self.fetched == [ALL_STARS, VETTED_RGB]
         assert self._rows(downloader, 1)["source_id"] == [sid(3, 21)]
         assert self._metadata(downloader)["complete"]
         assert not downloader.deposit_dir.exists()

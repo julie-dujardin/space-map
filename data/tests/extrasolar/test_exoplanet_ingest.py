@@ -40,6 +40,7 @@ RA, DEC = centre(4_000_777)
 NO_NEIGHBOURS = BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64))
 # An orbit of the unpositionable host source 202.
 HOST_ORBITS = build_orbits([solution(202, "SB1")])
+HOST_GOLDEN_SAMPLE = gaia.GoldenSample(np.array([202], np.int64))
 
 
 def at(arcsec: float, angle: float = 0.0) -> tuple[float, float]:
@@ -308,7 +309,9 @@ def gaia_pass() -> pa.Table:
 
 def ingest(root, backup, inputs, complete=True, systems=None):
     with IngestRun.start(root, backup) as run:
-        reader = gaia.GaiaReader(NO_NEIGHBOURS, orbits=HOST_ORBITS)
+        reader = gaia.GaiaReader(
+            NO_NEIGHBOURS, orbits=HOST_ORBITS, golden_sample=HOST_GOLDEN_SAMPLE
+        )
         read = exoplanets.read(reader, inputs)
         run.add(GAIA_DR3, [gaia_pass()], complete)
         run.add(GAIA_DR3_NAMED, [read.gaia_rows], complete)
@@ -388,6 +391,8 @@ class TestExoplanetIngest:
         assert point[beta]["feh_gspspec_calibrated"] is not None
         assert point[beta]["mh_xgboost"] == pytest.approx(-0.3)
         assert point[beta]["in_vetted_rgb_sample"] is False
+        assert point[beta]["in_oba_golden_sample"] is True
+        assert point[beta]["oba_golden_sample_source"] == GAIA_DR3_NAMED.name
         assert point[gamma]["radius_gspphot"] is None
         assert point[gamma]["mh_xgboost"] is None
         [orbit] = table_rows(root, "binary-orbit").to_pylist()
@@ -522,7 +527,9 @@ class TestWgsnStarNames:
     def test_route(self, root, backup, tmp_path, wgsn, left):
         inputs = downloads().write(tmp_path / "in")
         with IngestRun.start(root, backup) as run:
-            reader = gaia.GaiaReader(NO_NEIGHBOURS, orbits=HOST_ORBITS)
+            reader = gaia.GaiaReader(
+                NO_NEIGHBOURS, orbits=HOST_ORBITS, golden_sample=HOST_GOLDEN_SAMPLE
+            )
             read = exoplanets.read(reader, inputs)
             prepared = exoplanets.prepare(read, run, {}, inputs, wgsn)
         host_names = {

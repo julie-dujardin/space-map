@@ -49,6 +49,7 @@ class PROVIDERS(StrEnum):
     GAIA_CROSS_MATCH = "gaia_cross_match"
     GAIA_TWO_BODY_ORBIT = "gaia_two_body_orbit"
     GAIA_BINARY_MASSES = "gaia_binary_masses"
+    GAIA_OBA_GOLDEN_SAMPLE = "gaia_oba_golden_sample"
     CDS_STAR_CATALOGUES = "cds_star_catalogues"
     IAU_STAR_NAMES = "iau_star_names"
     SIMBAD_STARS = "simbad_stars"

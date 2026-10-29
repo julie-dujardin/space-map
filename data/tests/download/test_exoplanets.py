@@ -672,8 +672,8 @@ class TestGaiaDownload:
             cls.queries["xgboost"] = sent
             body = (
                 "source_id,mh_xgboost,teff_xgboost,logg_xgboost,catwise_w1,catwise_w2,"
-                "in_training_sample,vetted_id,oba_id\n"
-                "6,-0.2,5700.0,4.4,9.1,9.2,false,6,\n"
+                "in_training_sample,vetted_id\n"
+                "6,-0.2,5700.0,4.4,9.1,9.2,false,6\n"
             )
         elif "gaiadr3.astrophysical_parameters_supp" in query:
             cls.queries["flame_spec"] = sent
@@ -735,10 +735,10 @@ class TestGaiaDownload:
             ["source_id", "mass_flame_spec", "flags_flame_spec"],
             ["6", "1.1", "0"],
         ]
-        # The ids of the joined rows become the two flags.
+        # The id of the joined row becomes the flag.
         assert _read(out / gaia.XGBOOST_FILE) == [
             gaia.XGBOOST_HEADER,
-            ["6", "-0.2", "5700.0", "4.4", "9.1", "9.2", "false", "true", "false"],
+            ["6", "-0.2", "5700.0", "4.4", "9.1", "9.2", "false", "true"],
         ]
         assert _read(out / "nss_two_body_orbit.csv") == [
             ["source_id", "nss_solution_type"],

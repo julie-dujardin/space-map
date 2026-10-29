@@ -29,6 +29,7 @@ from space_map_data.extrasolar.sources.simbad import (
 from tests.extrasolar.conftest import offset, table_rows
 from tests.extrasolar.test_stars import (
     DEC,
+    NO_GOLDEN_SAMPLE,
     NO_ORBITS,
     RA,
     at,
@@ -79,9 +80,15 @@ OTYPEDEF = (
 )
 
 
-def named_rows(named: pa.Table, joined: tuple[gaia.SourceTable, ...] = ()) -> pa.Table:
+def named_rows(
+    named: pa.Table,
+    joined: tuple[gaia.SourceTable, ...] = (),
+    golden_sample: gaia.GoldenSample = NO_GOLDEN_SAMPLE,
+) -> pa.Table:
     """The pass rows of `read_named` rows, with no best neighbours or orbits."""
-    reader = gaia.GaiaReader(NO_BEST, joined=joined, orbits=NO_ORBITS)
+    reader = gaia.GaiaReader(
+        NO_BEST, joined=joined, orbits=NO_ORBITS, golden_sample=golden_sample
+    )
     return reader.named_rows(named)
 
 

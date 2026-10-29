@@ -25,6 +25,7 @@ from space_map_data.extrasolar.sources.pastel import SimbadObject
 from space_map_data.extrasolar.tables import POINT_SOURCE
 from tests.extrasolar.conftest import offset, table_rows
 from tests.extrasolar.test_stars import (
+    NO_GOLDEN_SAMPLE,
     NO_ORBITS,
     astrophysical,
     at,
@@ -704,6 +705,7 @@ class TestJoins:
             xgboost_dir=tmp_path,
             joined=joined,
             orbits=NO_ORBITS,
+            golden_sample=NO_GOLDEN_SAMPLE,
         )
         path = tmp_path / ALL_SKY
         stars = gaia_stars([gaia_star(k, *p[k], 5.0 + k) for k in (1, 2, 3)])

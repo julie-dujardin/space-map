@@ -13,7 +13,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from space_map_data.download.downloader import DownloadError
-from space_map_data.download.providers.stars import gaia_bulk
+from space_map_data.download.providers.stars import gaia_bulk, gaia_oba_golden_sample
 from space_map_data.download.providers.stars.gaia_astrophysical_parameters import (
     GaiaAstrophysicalParametersDownloader,
 )
@@ -32,6 +32,9 @@ from space_map_data.download.providers.stars.gaia_bulk import (
 from space_map_data.download.providers.stars.gaia_flame_spec import (
     FLAME_SPEC_COLUMNS,
     GaiaFlameSpecDownloader,
+)
+from space_map_data.download.providers.stars.gaia_oba_golden_sample import (
+    GaiaOBAGoldenSampleDownloader,
 )
 from space_map_data.download.providers.stars.gaia_source import (
     COLUMNS,
@@ -355,6 +358,43 @@ class TestGaiaProviders:
         assert kept.column_names == NAMES.split(",")
         assert kept["source_id"].to_pylist() == [10, 11, 12, 13]
         assert (stats["rows_in"], stats["rows_kept"]) == (4, 4)
+
+    def test_golden_sample_keeps_the_whole_table(self, tmp_path, monkeypatch):
+        header = (
+            "# %ECSV 1.0\n# ---\n# datatype:\n"
+            "# - {name: source_id, datatype: int64}\n"
+            "# - {name: vtan_flag, datatype: int32}\n"
+        )
+        raw = gzip.compress((header + "source_id,vtan_flag\n30,0\n10,1\n").encode())
+        table_url = f"{BULK_URL}/{gaia_oba_golden_sample.TABLE_PATH}/"
+        name = "GoldSampleObaStars.csv.gz"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if str(request.url) == table_url + "_MD5SUM.txt":
+                return httpx.Response(
+                    200, text=f"{hashlib.md5(raw).hexdigest()}  {name}\n"
+                )
+            assert str(request.url) == table_url + name
+            return httpx.Response(200, content=raw)
+
+        client = httpx.Client(
+            transport=httpx.MockTransport(handler), headers={"User-Agent": "test"}
+        )
+
+        def run_inline(job: ChunkJob) -> dict[str, object]:
+            return reduce_chunk(gaia_bulk.fetch_verified(client, job.url, job.md5), job)
+
+        monkeypatch.setattr(gaia_bulk, "OUT_DIR", tmp_path)
+        monkeypatch.setattr(gaia_bulk, "ProcessPoolExecutor", _InlinePool)
+        monkeypatch.setattr(gaia_bulk, "run_chunk", run_inline)
+        downloader = GaiaOBAGoldenSampleDownloader(client)
+        downloader.download()
+        out = downloader.out_dir / f"{gaia_oba_golden_sample.CHUNK_PREFIX}.parquet"
+        assert pq.read_table(out).to_pydict() == {
+            "source_id": [30, 10],
+            "vtan_flag": [0, 1],
+        }
+        assert downloader.is_complete(None)
 
     def test_source_columns_are_unique(self):
         assert len(set(COLUMNS)) == len(COLUMNS)

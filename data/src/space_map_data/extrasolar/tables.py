@@ -189,13 +189,13 @@ OBJECT_CATALOGUES = frozenset({"wikidata", "literature"})
 # Every Gaia DR3 field of the positionable stars with its error or range, and
 # the Hipparcos astrometry and photometry. A group that one catalogue fills
 # keeps that catalogue's names. The Gaia rows also carry the astrometric
-# fidelity of Rybizki et al. 2022 and the XP metallicities of Andrae et al.
-# 2023. The groups after them hold metallicities from spectra, then classes,
-# one catalogue each. These catalogues join the Gaia rows by source_id at
-# each ingest, PASTEL and the GCVS also the Hipparcos rows by HIP number, so
-# they hold no catalogue id in the registry. gaia-dr3-named are the Gaia rows
-# of SIMBAD stars and planet hosts without a 5σ parallax, so their astrometry
-# ranks below Hipparcos.
+# fidelity of Rybizki et al. 2022, the XP metallicities of Andrae et al. 2023
+# and the Gaia DR3 golden sample of OBA stars. The groups after them hold
+# metallicities from spectra, then classes, one catalogue each. These
+# catalogues join the Gaia rows by source_id at each ingest, PASTEL and the
+# GCVS also the Hipparcos rows by HIP number, so they hold no catalogue id in
+# the registry. gaia-dr3-named are the Gaia rows of SIMBAD stars and planet
+# hosts without a 5σ parallax, so their astrometry ranks below Hipparcos.
 POINT_SOURCE = TableDef(
     number=1,
     slug="point-source",
@@ -367,8 +367,7 @@ POINT_SOURCE = TableDef(
         ColumnGroup("flame_spec", _flame("_spec"), ("gaia-dr3", "gaia-dr3-named")),
         # Table 1 of Andrae et al. 2023, with no quality cut: [M/H] in dex,
         # Teff in K, log g in log(cm/s²), CatWISE W1 and W2 in Vega mag.
-        # The flags mark their vetted Table 2 and the Gaia golden sample of
-        # OBA stars, the inputs of their validity cuts.
+        # `in_vetted_rgb_sample` marks their vetted Table 2.
         ColumnGroup(
             "xgboost",
             (
@@ -380,12 +379,7 @@ POINT_SOURCE = TableDef(
                     "catwise_w1",
                     "catwise_w2",
                 ),
-                *_fields(
-                    pa.bool_(),
-                    "in_training_sample",
-                    "in_vetted_rgb_sample",
-                    "in_oba_golden_sample",
-                ),
+                *_fields(pa.bool_(), "in_training_sample", "in_vetted_rgb_sample"),
             ),
             ("gaia-dr3", "gaia-dr3-named"),
         ),
@@ -534,6 +528,13 @@ POINT_SOURCE = TableDef(
                     "classlabel_espels_flag",
                 ),
             ),
+            ("gaia-dr3", "gaia-dr3-named"),
+        ),
+        # True for a star of the Gaia DR3 golden sample of OBA stars
+        # (Creevey et al. 2023), false for every other Gaia DR3 star.
+        ColumnGroup(
+            "oba_golden_sample",
+            (pa.field("in_oba_golden_sample", pa.bool_()),),
             ("gaia-dr3", "gaia-dr3-named"),
         ),
         ColumnGroup(

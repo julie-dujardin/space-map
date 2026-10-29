@@ -412,6 +412,17 @@ class TestNamedStars:
         assert rows["fidelity_v2"].to_pylist() == [pytest.approx(0.9)]
         assert rows["mint"].to_pylist() == [False]
 
+    def test_read_named_has_the_golden_sample_flag(self, tmp_path):
+        ids = (11, 12)
+        stars = gaia_stars([gaia_star(i, *at(i), 9.0) for i in ids])
+        pq.write_table(
+            stars.select(list(gaia.COLUMNS)), tmp_path / gaia_named.SOURCE_FILE
+        )
+        pq.write_table(fidelity([]), tmp_path / gaia_named.FIDELITY_FILE)
+        golden = gaia.GoldenSample(np.array([12], np.int64))
+        rows = named_rows(gaia.read_named(tmp_path), golden_sample=golden)
+        assert rows["in_oba_golden_sample"].to_pylist() == [False, True]
+
     def test_read_named_joins_the_source_tables(self, tmp_path):
         stars = gaia_stars([gaia_star(11, *at(0), 9.0)]).select(list(gaia.COLUMNS))
         pq.write_table(stars, tmp_path / gaia_named.SOURCE_FILE)

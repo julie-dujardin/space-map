@@ -1,14 +1,15 @@
 """Gaia DR3 positions, fidelity, GSP-Phot radii, both FLAME runs, GSP-Spec, ESP-HS,
-class tags, XP metallicities and binary orbits.
+class tags, XP metallicities, the golden sample of OBA stars and binary orbits.
 
 The companion tables join by source_id. Low-fidelity stars mint only when
 matched by another catalogue. A star without a companion row stays, with null
-values for that table. GSP-Spec gets the calibrations of Recio-Blanco et al.
-2023 (A&A 674, A29); its flag chain stays as published, for the reader's cut.
-The spectroscopic catalogues (PASTEL, APOGEE, LAMOST) and the class
-catalogues (GCVS, SPICY) also join by source_id, as `SourceTable`s held in
-memory. Each of their source modules finds the Gaia DR3 id of a row. The
-orbits and masses fill table 2 (`gaia_orbits`).
+values for that table. The golden sample of OBA stars is a complete list, so
+every Gaia row is true or false for it. GSP-Spec gets the calibrations of
+Recio-Blanco et al. 2023 (A&A 674, A29); its flag chain stays as published,
+for the reader's cut. The spectroscopic catalogues (PASTEL, APOGEE, LAMOST)
+and the class catalogues (GCVS, SPICY) also join by source_id, as
+`SourceTable`s held in memory. Each of their source modules finds the Gaia
+DR3 id of a row. The orbits and masses fill table 2 (`gaia_orbits`).
 
 GAIA_DR3_NAMED gives the Gaia rows that gaia_source leaves out for want of a
 5σ parallax: the SIMBAD stars and the planet hosts. They get the joins of the
@@ -17,7 +18,8 @@ ID.
 
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC. Fidelity: Rybizki et al.
 2022, MNRAS 510, 2597. XP metallicities: Andrae, Rix & Chandra 2023, ApJS 267,
-8, CC BY 4.0.
+8, CC BY 4.0. Golden sample of OBA stars: Gaia Collaboration, Creevey et al.
+2023, A&A 674, A39.
 """
 
 import logging
@@ -41,15 +43,16 @@ from space_map_data.download.providers.stars import (
     gaia_fidelity,
     gaia_flame_spec,
     gaia_named,
+    gaia_oba_golden_sample,
     gaia_source,
     gaia_xp_metallicity,
 )
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.sources import gaia_orbits
-from space_map_data.extrasolar.sources.gaia_orbits import Orbits
+from space_map_data.extrasolar.sources.gaia_orbits import Orbits, part_paths
 from space_map_data.extrasolar.tables import CROSS_ID, POINT_SOURCE
-from space_map_data.utils.arrays import floats, map_sorted
+from space_map_data.utils.arrays import find_sorted, floats, map_sorted
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,7 @@ FIDELITY_DIR = gaia_bulk.OUT_DIR / gaia_fidelity.TABLE_PATH
 ASTROPHYSICAL_DIR = gaia_bulk.OUT_DIR / gaia_astrophysical_parameters.TABLE_PATH
 FLAME_SPEC_DIR = gaia_bulk.OUT_DIR / gaia_flame_spec.TABLE_PATH
 XGBOOST_DIR = gaia_bulk.OUT_DIR / gaia_xp_metallicity.TABLE_PATH
+GOLDEN_SAMPLE_DIR = gaia_bulk.OUT_DIR / gaia_oba_golden_sample.TABLE_PATH
 BEST_NEIGHBOUR = (
     gaia_bulk.OUT_DIR
     / gaia_cross_match.TREE
@@ -121,6 +125,7 @@ EXTRAPOL, FE_UPPER_LIMIT, FE_UNCERTAINTY = 7, 27, 28
 XGBOOST_COLUMNS = tuple(
     name for name in gaia_xp_metallicity.SCHEMA.names if name != "source_id"
 )
+(GOLDEN_SAMPLE,) = POINT_SOURCE.group("oba_golden_sample").names
 # Groups whose values join from a `SourceTable`; null where none does.
 JOINED_GROUPS = ("pastel", "apogee", "lamost", "gcvs", "spicy")
 JOINED_COLUMNS = tuple(
@@ -179,6 +184,27 @@ class BestNeighbours:
         hip = np.r_[self.hip, np.array(list(pairs), np.int64)]
         order = np.argsort(source_id)
         return BestNeighbours(source_id[order], hip[order])
+
+
+@dataclass(frozen=True)
+class GoldenSample:
+    """The sources of the Gaia DR3 golden sample of OBA stars, sorted."""
+
+    source_id: np.ndarray
+
+    @classmethod
+    def read(cls, directory: Path = GOLDEN_SAMPLE_DIR) -> GoldenSample:
+        paths = part_paths(directory, gaia_oba_golden_sample.CHUNK_PREFIX)
+        rows = pa.concat_tables(
+            [pq.read_table(p, columns=["source_id"]) for p in paths]
+        )
+        source_id = np.sort(rows["source_id"].to_numpy())
+        logger.info("%d stars in the OBA golden sample", source_id.size)
+        return cls(source_id)
+
+    def flags(self, source_id: pa.ChunkedArray) -> pa.Array:
+        """True for each source of the sample, false for every other source."""
+        return pa.array(find_sorted(self.source_id, source_id.to_numpy()) >= 0)
 
 
 def single_claims(catalogue: str, release: str, ids: np.ndarray) -> pa.Array:
@@ -322,6 +348,7 @@ def engine_rows(stars: pa.Table, best: BestNeighbours) -> pa.Table:
     columns |= {name: stars[name] for name in FLAME_SPEC_COLUMNS}
     columns |= {name: stars[name] for name in GSPSPEC_CALIBRATED}
     columns |= {name: stars[name] for name in XGBOOST_COLUMNS}
+    columns[GOLDEN_SAMPLE] = stars[GOLDEN_SAMPLE]
     columns |= {name: stars[name] for name in gaia_orbits.COLUMNS}
     columns |= joined_columns(stars, JOINED_COLUMNS)
     return pa.table(columns)
@@ -385,6 +412,7 @@ class GaiaReader:
     astrophysical_dir: Path = ASTROPHYSICAL_DIR
     flame_spec_dir: Path = FLAME_SPEC_DIR
     xgboost_dir: Path = XGBOOST_DIR
+    golden_sample_dir: Path = GOLDEN_SAMPLE_DIR
     orbit_dir: Path = gaia_orbits.ORBIT_DIR
     masses_dir: Path = gaia_orbits.MASSES_DIR
     # The catalogues that join by source_id from memory.
@@ -392,6 +420,7 @@ class GaiaReader:
     workers: int = 8
     counts: dict[str, int] = field(default_factory=dict)
     orbits: Orbits | None = None
+    golden_sample: GoldenSample | None = None
     orbit_report: dict = field(default_factory=dict)
 
     def chunks(self, limit: int | None = None) -> list[Path]:
@@ -442,7 +471,8 @@ class GaiaReader:
         joined: list[pa.Table],
         orbits: Orbits,
     ) -> pa.Table:
-        """Pass rows of `stars` with the companion rows and the orbits joined.
+        """Pass rows of `stars` with the companion rows, the golden sample flag
+        and the orbits joined.
 
         `joined` holds the rows of each table of `self.joined`, in that order.
         Gaia rows that are not in the chunks also come through here, so they
@@ -452,6 +482,8 @@ class GaiaReader:
         stars = calibrate_gspspec(join_rows(stars, parameters, ASTROPHYSICAL_COLUMNS))
         stars = join_rows(stars, flame_spec, FLAME_SPEC_COLUMNS)
         stars = join_rows(stars, xgboost, XGBOOST_COLUMNS)
+        golden = self.read_golden_sample().flags(stars["source_id"])
+        stars = stars.append_column(GOLDEN_SAMPLE, golden)
         for table, rows in zip(self.joined, joined, strict=True):
             stars = join_rows(stars, rows, table.columns)
         return engine_rows(orbits.join(stars), self.best)
@@ -474,6 +506,11 @@ class GaiaReader:
         if self.orbits is None:
             self.orbits = Orbits.read(self.orbit_dir, self.masses_dir)
         return self.orbits
+
+    def read_golden_sample(self) -> GoldenSample:
+        if self.golden_sample is None:
+            self.golden_sample = GoldenSample.read(self.golden_sample_dir)
+        return self.golden_sample
 
     def astrophysical_path(self, path: Path) -> Path:
         name = path.name.replace(
@@ -507,6 +544,8 @@ class GaiaReader:
                     f" {companion(missing[0])}"
                 )
         orbits = self.read_orbits()
+        # The threads share it, so it is read before they start.
+        self.read_golden_sample()
         joined = [table.columns[0] for table in self.joined]
         counts = dict.fromkeys(
             (
@@ -516,6 +555,7 @@ class GaiaReader:
                 "without_fidelity",
                 "claims",
                 "xgboost",
+                "oba_golden_sample",
                 "flame_spec",
                 "orbits",
                 "flagged_orbits",
@@ -536,6 +576,7 @@ class GaiaReader:
                     counts["without_fidelity"] += len(ids)
                 counts["claims"] += rows.num_rows - rows["claims"].null_count
                 counts["xgboost"] += rows.num_rows - rows["mh_xgboost"].null_count
+                counts["oba_golden_sample"] += pc.sum(rows[GOLDEN_SAMPLE]).as_py() or 0
                 # The rule the download keeps a row by.
                 flame_spec = reduce(
                     pc.or_, (rows[name].is_valid() for name in FLAME_SPEC_COLUMNS)
@@ -560,12 +601,14 @@ class GaiaReader:
         logger.info(
             "Gaia: %d rows, %d flagged as spurious (mint false), %d without a"
             " fidelity row, %d claim a Hipparcos number, %d have an XP metallicity,"
-            " %d FLAME on GSP-Spec, %d an orbit (%d of them flagged)",
+            " %d are in the OBA golden sample, %d have FLAME on GSP-Spec, %d an"
+            " orbit (%d of them flagged)",
             self.counts["rows"],
             self.counts["flagged"],
             self.counts["without_fidelity"],
             self.counts["claims"],
             self.counts["xgboost"],
+            self.counts["oba_golden_sample"],
             self.counts["flame_spec"],
             self.counts["orbits"],
             self.counts["flagged_orbits"],

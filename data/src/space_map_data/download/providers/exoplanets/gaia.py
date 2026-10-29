@@ -16,8 +16,8 @@ Reads the Gaia ids that the NASA archive and SIMBAD give. Writes:
                               reads them
 - flame_spec.csv              FLAME's run on GSP-Spec for those rows
 - xgboost.csv                 the XP metallicities of those rows (Andrae, Rix
-                              & Chandra 2023), with the vetted red-giant and
-                              OBA golden sample flags of the bulk download
+                              & Chandra 2023), with the vetted red-giant flag
+                              of the bulk download
 
 Licence: CC BY-NC 3.0 IGO, credit ESA/Gaia/DPAC.
 https://www.cosmos.esa.int/web/gaia-users/license
@@ -95,21 +95,15 @@ _FLAME_SPEC = (
     " from TAP_UPLOAD.sent as s"
     " join gaiadr3.astrophysical_parameters_supp as a on a.source_id = s.id"
 )
-# The archive has no CASE, so the two flags come as the ids of the joined rows.
+# The archive has no CASE, so the flag comes as the id of the joined row.
 _XGBOOST = (
     f"select {', '.join(f'x.{c}' for c in gaia_xp_metallicity.TABLE_COLUMNS)},"
-    " v.source_id as vetted_id, o.source_id as oba_id"
+    " v.source_id as vetted_id"
     " from TAP_UPLOAD.sent as s"
     " join external.xgboost_table1 as x on x.source_id = s.id"
     " left outer join external.xgboost_table2 as v on v.source_id = x.source_id"
-    " left outer join gaiadr3.gold_sample_oba_stars as o"
-    " on o.source_id = x.source_id"
 )
-XGBOOST_HEADER = [
-    *gaia_xp_metallicity.TABLE_COLUMNS,
-    gaia_xp_metallicity.VETTED,
-    gaia_xp_metallicity.OBA,
-]
+XGBOOST_HEADER = [*gaia_xp_metallicity.TABLE_COLUMNS, gaia_xp_metallicity.VETTED]
 SOURCE_FILE = "gaia_source.csv"
 FIDELITY_FILE = "fidelity.csv"
 ASTROPHYSICAL_FILE = "astrophysical_parameters.csv"
@@ -124,13 +118,10 @@ def _header(path: Path) -> list[str]:
 
 
 def xgboost_rows(header: list[str], rows: list[list[str]]) -> list[list[str]]:
-    """The rows with the two membership flags, as the bulk chunks hold them."""
-    vetted, oba = header.index("vetted_id"), header.index("oba_id")
+    """The rows with the vetted flag, as the bulk chunks hold them."""
+    vetted = header.index("vetted_id")
     width = len(gaia_xp_metallicity.TABLE_COLUMNS)
-    return [
-        [*row[:width], str(bool(row[vetted])).lower(), str(bool(row[oba])).lower()]
-        for row in rows
-    ]
+    return [[*row[:width], str(bool(row[vetted])).lower()] for row in rows]
 
 
 def gaia_ids(texts: Iterable[str]) -> tuple[list[int], list[int]]:

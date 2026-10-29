@@ -87,6 +87,7 @@ def at(arcsec: float, angle: float = 0.0) -> tuple[float, float]:
 
 
 NO_ORBITS = build_orbits([])
+NO_GOLDEN_SAMPLE = gaia.GoldenSample(np.zeros(0, np.int64))
 
 
 def gaia_stars(rows: list[dict]) -> pa.Table:
@@ -98,6 +99,7 @@ def gaia_stars(rows: list[dict]) -> pa.Table:
         *gaia.FLAME_SPEC_COLUMNS,
         *gaia.GSPSPEC_CALIBRATED,
         *gaia.XGBOOST_COLUMNS,
+        gaia.GOLDEN_SAMPLE,
     ):
         kind = (
             pa.int64() if name == "source_id" else POINT_SOURCE.schema.field(name).type
@@ -361,6 +363,7 @@ class TestGaiaRows:
             flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
+            golden_sample=NO_GOLDEN_SAMPLE,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
@@ -401,6 +404,7 @@ class TestGaiaRows:
             flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
+            golden_sample=NO_GOLDEN_SAMPLE,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         pq.write_table(fidelity([]), reader.fidelity_path(path))
@@ -420,6 +424,7 @@ class TestGaiaRows:
             flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
+            golden_sample=NO_GOLDEN_SAMPLE,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
@@ -436,6 +441,60 @@ class TestGaiaRows:
         assert rows["mh_xgboost"].to_pylist() == [0.125, None, -1.25]
         assert rows["in_vetted_rgb_sample"].to_pylist() == [False, None, True]
         assert reader.counts["xgboost"] == 2
+
+    def test_golden_sample_flags_every_star(self, tmp_path):
+        """Also the stars without an XGBoost row."""
+        golden = tmp_path / "golden"
+        golden.mkdir()
+        pq.write_table(
+            pa.table(
+                {
+                    "source_id": pa.array([9, 2, 3], pa.int64()),
+                    "vtan_flag": pa.array([0, 1, 0], pa.int32()),
+                }
+            ),
+            golden / "GoldSampleObaStars.parquet",
+        )
+        reader = gaia.GaiaReader(
+            BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
+            source_dir=tmp_path,
+            fidelity_dir=tmp_path,
+            astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
+            xgboost_dir=tmp_path,
+            golden_sample_dir=golden,
+            orbits=NO_ORBITS,
+        )
+        path = tmp_path / "GaiaSource_000001-000002.parquet"
+        stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
+        pq.write_table(stars.select(gaia.COLUMNS), path)
+        pq.write_table(
+            fidelity([(1, 0.9), (2, 0.9), (3, 0.9)]), reader.fidelity_path(path)
+        )
+        pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(flame_spec([]), reader.flame_spec_path(path))
+        pq.write_table(xgboost([(3, -1.25, False)]), reader.xgboost_path(path))
+        [rows] = list(reader.batches([path]))
+        assert rows["in_oba_golden_sample"].to_pylist() == [False, True, True]
+        assert reader.counts["oba_golden_sample"] == 2
+
+    def test_missing_golden_sample_fails_before_reading(self, tmp_path):
+        reader = gaia.GaiaReader(
+            BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64)),
+            fidelity_dir=tmp_path,
+            astrophysical_dir=tmp_path,
+            flame_spec_dir=tmp_path,
+            xgboost_dir=tmp_path,
+            golden_sample_dir=tmp_path,
+            orbits=NO_ORBITS,
+        )
+        path = tmp_path / "GaiaSource_000001-000002.parquet"
+        pq.write_table(fidelity([]), reader.fidelity_path(path))
+        pq.write_table(astrophysical([]), reader.astrophysical_path(path))
+        pq.write_table(flame_spec([]), reader.flame_spec_path(path))
+        pq.write_table(xgboost([]), reader.xgboost_path(path))
+        with pytest.raises(FileNotFoundError, match="GoldSampleObaStars"):
+            list(reader.batches([path]))
 
     def test_orbit_join_and_counts(self, tmp_path):
         orbits = build_orbits(
@@ -455,6 +514,7 @@ class TestGaiaRows:
             flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=orbits,
+            golden_sample=NO_GOLDEN_SAMPLE,
         )
         path = tmp_path / "GaiaSource_000000-000002.parquet"
         stars = gaia_stars([gaia_star(i, RA, DEC, 5.0) for i in (1, 2, 3)])
@@ -482,6 +542,7 @@ class TestGaiaRows:
             flame_spec_dir=tmp_path,
             xgboost_dir=tmp_path,
             orbits=NO_ORBITS,
+            golden_sample=NO_GOLDEN_SAMPLE,
         )
         path = tmp_path / "GaiaSource_000001-000002.parquet"
         pq.write_table(fidelity([]), reader.fidelity_path(path))
