@@ -27,7 +27,9 @@ position.
   primary pass El-Badry's test of a bound pair (`same_distance`). It also
   stays when it reaches its primary's point and the source gives their
   separation, because a chance alignment that close is rare. A dubious
-  member never stays. A member that fails waits for another source to agree.
+  member never stays. When it reaches its primary's point and the point
+  splits them, the shared id is still a cross-match error. A member that
+  fails waits for another source to agree.
 - A member that leaves keeps its inner system as a system of its own.
 
 A point that holds two or more members gets an interior: its members as
@@ -486,7 +488,11 @@ class TreeReducer:
             if part.key and part.key == primary.key:
                 separation = self.separation[part.node]
                 measured = separation is not None and math.isfinite(separation)
-                if evidence is None or (evidence == UNVERIFIED and measured):
+                if (
+                    evidence is None
+                    or (evidence == UNVERIFIED and measured)
+                    or self._shared(row, [primary, part])[1]
+                ):
                     # `_shared` merges them or finds the cross-match error.
                     kept.append(part)
                 else:

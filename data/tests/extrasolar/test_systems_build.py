@@ -970,6 +970,7 @@ class TestUnverifiedMembers:
         facts: list[dict],
         b: int,
         evidence: str = UNVERIFIED,
+        b_next: int = 0,
     ) -> Reduced:
         table = wds_tree(
             [
@@ -980,7 +981,8 @@ class TestUnverifiedMembers:
         )
         out = Reduced()
         found = Facts(pa.Table.from_pylist(facts, schema=FACTS))
-        TreeReducer(table, 0, [[], [(100, 2)], [(b, 2)]], found, 0, out).run()
+        b_candidates = [(b, 2)] + ([(b_next, 9)] if b_next else [])
+        TreeReducer(table, 0, [[], [(100, 2)], b_candidates], found, 0, out).run()
         return out
 
     def test_two_points_that_agree(self):
@@ -1008,12 +1010,38 @@ class TestUnverifiedMembers:
         assert out.groups == [] and out.interiors == []
         assert out.counts[f"{WDS}: {UNVERIFIED} members on the primary's point"] == 1
 
-    def test_a_dubious_member_on_the_primary_point_leaves(self):
-        """X splits A and B at 1.1″, but B is dubious and cannot stay."""
+    def test_a_dubious_member_on_a_point_that_cannot_split_them(self):
+        """X cannot split A and B at 0.3″, and B is dubious, so B leaves."""
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        out = self.reduced(0.3, [x], 100, DUBIOUS)
+        assert out.groups == [] and out.interiors == []
+        assert out.tentative == [] and out.events == []
+        assert out.counts[f"{WDS}: {DUBIOUS} members on the primary's point"] == 1
+
+    def test_a_dubious_member_on_a_point_that_splits_them(self):
+        """X splits A and B at 1.1″, so the shared id is a cross-match error.
+        B is dubious and has no other object, so it leaves."""
         x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
         out = self.reduced(1.1, [x], 100, DUBIOUS)
-        assert out.groups == [] and out.tentative == [] and out.events == []
-        assert out.counts[f"{WDS}: {DUBIOUS} members on the primary's point"] == 1
+        assert out.groups == [] and out.tentative == []
+        assert [kind for kind, _, _ in out.events] == ["cross-match error"]
+        assert out.counts[f"{WDS}: {DUBIOUS} members left for agreement"] == 1
+        assert f"{WDS}: {DUBIOUS} members on the primary's point" not in out.counts
+
+    def test_a_dubious_member_takes_its_next_candidate(self):
+        """B's id reaches A's point X by error. B takes its own star Y and
+        waits for another source to agree."""
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        y = fact(
+            101, 10.0, 10.0 + 1.1 / 3600, 5.3, parallax=10.0, pmra=20.0, pmdec=-5.0
+        )
+        out = self.reduced(1.1, [x, y], 100, DUBIOUS, b_next=101)
+        assert out.groups == []
+        assert [kind for kind, _, _ in out.events] == ["cross-match error"]
+        (tentative,) = out.tentative
+        assert tentative.keys == frozenset({100, 101})
+        assert tentative.evidence == DUBIOUS
+        assert out.counts[f"{WDS}: {DUBIOUS} members left for agreement"] == 1
 
 
 class TestCommonProperMotion:
