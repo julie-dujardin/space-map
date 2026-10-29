@@ -11,7 +11,8 @@ and is a group:
 - A SIMBAD component with no astrometry of its own, whose light a sibling's
   point holds, is inside that point: the builder makes its row an entry.
 - An id of a group that one of its members also reaches is the light of that
-  member, not the group's.
+  member, not the group's. A group's own point beside its members stays a
+  member, and its event gives its kind (`groups`).
 - A member that reaches no object is an entry. It is inside its sibling's
   point when that point cannot split it, else an entry of the group.
 - A member that the source lists as unverified stays only when it and its
@@ -34,6 +35,7 @@ import pyarrow as pa
 
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.sources.simbad import MAX_INSIDE_MAG
+from space_map_data.extrasolar.systems.groups import GROUP_OBJECT, group_kind
 from space_map_data.extrasolar.systems.nodes import DUBIOUS, UNVERIFIED
 from space_map_data.extrasolar.systems.resolve import (
     GAIA_ASTROMETRY,
@@ -590,9 +592,16 @@ class TreeReducer:
             return parts, 0
         merged = self._inside([*parts, _Part(row, own, [])], out)
         if any(p.key == own for p in merged):
+            others = sorted(
+                frozenset().union(*(p.held for p in merged if p.key != own))
+            )
+            kind, evidence = group_kind(
+                self.facts.get(own), [self.facts.get(key) for key in others]
+            )
             self._event(
-                "group object beside its members",
-                f"{self._name(row)}: {own} is a point of its own beside {sorted(held)}",
+                f"{GROUP_OBJECT}: {kind}",
+                f"{self._name(row)}: {own} is a point of its own beside"
+                f" {sorted(held)}; {evidence}",
                 out,
             )
         return merged, 0

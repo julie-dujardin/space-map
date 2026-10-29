@@ -15,6 +15,7 @@ import pyarrow.compute as pc
 
 from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
+from space_map_data.extrasolar.systems.groups import GROUP_OBJECT, KINDS
 from space_map_data.extrasolar.systems.nodes import INTERIOR_SOURCES, SIMBAD_OID
 from space_map_data.extrasolar.systems.resolve import Resolver
 from space_map_data.extrasolar.systems.simbad import SimbadIndex
@@ -110,11 +111,17 @@ def report_lines(
     events = systems.events
     kinds = Counter(events["kind"].to_pylist())
     lines += _counted("events", kinds)
+    groups = {kind: kinds[f"{GROUP_OBJECT}: {kind}"] for kind in KINDS}
+    lines.append(
+        f"{GROUP_OBJECT}: {sum(groups.values()):,} ("
+        + ", ".join(f"{kind} {count:,}" for kind, count in groups.items())
+        + ")"
+    )
     for kind in (
         "merge",
         "conflict",
         "cross-match error",
-        "group object beside its members",
+        *(f"{GROUP_OBJECT}: {kind}" for kind in KINDS),
     ):
         picked = events.filter(pc.equal(events["kind"], kind))
         for text in picked["text"].to_pylist()[:examples]:
