@@ -153,12 +153,13 @@ Every live ID has a row. The ID is in the `id` column; there is no table number.
 | `alias_target` | id | null for a live ID |
 | `families` | uint64 | the published families of the star: bit `n` is entry `n` of `families` in `metadata.json` (below) |
 | `families_estimated` | uint64 | the families that need a Gaia DR3 estimate and are not in `families` |
+| `spectral_type` | string | the MK spectral type that the families read (Families, below): the first of `simbad_sp_type`, `simbad_system_sp_type`, `sp_type` and `host_spectral_type` of the Point source row that holds; null where none holds and for a row without a Point source row |
 
 An alias is a row at the alias's own cell with only `id`, `mask` 0 and `alias_target`, which is the live ID at the end of its chain: a chain A → B → C is written A → C. A retired ID has no row, and its URL is a 404. An alias whose chain ends at an ID that is not live has no row either.
 
 #### Families
 
-The export computes the two family masks from the Point source row and the Metadata class; the rules are in `constants/stars/families.py`. A star is in every family that its data supports, and a family adds its parents (a G-type main-sequence star is also `main-sequence` and `dwarf`). Every family is below the root family `classification` (stellar classification), so a star with a published family has it in `families`, and a star with only estimated families has it in `families_estimated`. A row without a Point source row, such as an alias, has 0 in both. A client reads a mask as a `BigUint64Array` and tests bit `n` with `(mask >> BigInt(n)) & 1n`.
+The export computes the two family masks from the Point source row and the Metadata class; the rules are in `constants/stars/families.py`. A star is in every family that its data supports, and a family adds its parents (a G-type main-sequence star is also `main-sequence` and `dwarf`). Every family is below the root family `classification` (stellar classification), so a star with a published family has it in `families`, and a star with only estimated families has it in `families_estimated`. A row without a Point source row, such as an alias, has 0 in both. The export writes the MK type that the rules read as `spectral_type`, so a client shows the type that gives the families. A client reads a mask as a `BigUint64Array` and tests bit `n` with `(mask >> BigInt(n)) & 1n`.
 
 A published family comes from catalogued classifications only:
 

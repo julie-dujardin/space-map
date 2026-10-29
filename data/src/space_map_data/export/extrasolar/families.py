@@ -1,9 +1,11 @@
-"""The family masks of the Metadata tiles, from the Point source rows.
+"""The family masks and the spectral type of the Metadata tiles, from the
+Point source rows.
 
 Bit n of a mask is family n of `constants.stars.families.FAMILIES`.
 `families` holds the published families of a star, `families_estimated` the
 families that need a Gaia estimate and are not published. The rules are in
-that constants module.
+that constants module. `spectral_type` is the MK type that the families read,
+so a client shows the type that gives them.
 """
 
 import re
@@ -18,6 +20,7 @@ from space_map_data.constants.stars import families as rules
 FIELDS = (
     pa.field("families", pa.uint64()),
     pa.field("families_estimated", pa.uint64()),
+    pa.field("spectral_type", pa.string()),
 )
 # The spectral types in source order. The type of a SIMBAD system comes
 # before Hipparcos, which often has an older type ("V* VY CMa").

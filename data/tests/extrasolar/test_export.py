@@ -162,6 +162,7 @@ class TestExport:
         assert rows[1]["families"] == 0
         assert rows[1]["families_estimated"] & families.BIT["g-type-main-sequence"]
         assert rows[2]["families"] == rows[2]["families_estimated"] == 0
+        assert [row["spectral_type"] for row in rows] == ["K0V", None, None]
 
         listed = reader.metadata["families"]
         assert [entry["slug"] for entry in listed] == list(FAMILIES)
@@ -177,6 +178,7 @@ class TestExport:
             for c in reader.metadata["tables"]["metadata"]["columns"]
         }
         assert types["families"] == types["families_estimated"] == "uint64"
+        assert types["spectral_type"] == "string"
 
     def test_the_brightest_stars_of_each_family(self, tmp_path, out, monkeypatch):
         monkeypatch.setattr(tiles, "LISTED_STARS", 5)

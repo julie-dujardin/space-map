@@ -481,9 +481,11 @@ def build_unit(job: UnitJob) -> UnitResult:
 def with_families(
     registry: Registry, regions: tuple[int, ...], rows: pa.Table, problems: Problems
 ) -> tuple[pa.Table, FamilyStars]:
-    """Metadata `rows` with their family masks, and the stars of each family.
+    """Metadata `rows` with their family masks and spectral type, and the
+    stars of each family.
 
-    A row without a Point source row, such as an alias, has no family.
+    A row without a Point source row, such as an alias, has no family and no
+    type.
     """
     parts = [
         registry.read_table(POINT_SOURCE.slug, region, list(FAMILY_COLUMNS))
@@ -493,6 +495,7 @@ def with_families(
     stars = pa.concat_tables(kept) if kept else None
     published = np.zeros(rows.num_rows, np.uint64)
     estimated = np.zeros(rows.num_rows, np.uint64)
+    spectral = pa.nulls(rows.num_rows, pa.string())
     mag = np.full(rows.num_rows, np.nan)
     if stars is not None and stars.num_rows:
         at = pc.index_in(stars["id"], value_set=rows["id"].combine_chunks())
@@ -503,10 +506,15 @@ def with_families(
         at = at.filter(pa.array(found)).to_numpy()
         classes = rows["class"].take(pa.array(at))
         published[at], estimated[at] = families.masks(stars, classes)
+        star_of = np.full(rows.num_rows, -1)
+        star_of[at] = np.arange(at.size)
+        spectral = families.spectral_type(stars).take(
+            pa.array(star_of, mask=star_of < 0)
+        )
         # Only a star with a published family can be listed.
         listed = published[at] != 0
         mag[at[listed]] = render.magnitudes(stars.filter(pa.array(listed)))[0]
-    for column, values in zip(families.FIELDS, (published, estimated)):
+    for column, values in zip(families.FIELDS, (published, estimated, spectral)):
         rows = rows.append_column(column, pa.array(values, column.type))
     counts = np.stack([families.counts(published), families.counts(estimated)])
     return rows, FamilyStars(counts, brightest(rows, published, mag))
