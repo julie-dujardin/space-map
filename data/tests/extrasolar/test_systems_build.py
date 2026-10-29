@@ -981,7 +981,7 @@ class TestUnverifiedMembers:
         )
         out = Reduced()
         found = Facts(pa.Table.from_pylist(facts, schema=FACTS))
-        b_candidates = [(b, 2)] + ([(b_next, 9)] if b_next else [])
+        b_candidates = ([(b, 2)] if b else []) + ([(b_next, 9)] if b_next else [])
         TreeReducer(table, 0, [[], [(100, 2)], b_candidates], found, 0, out).run()
         return out
 
@@ -1002,6 +1002,24 @@ class TestUnverifiedMembers:
         (interior,) = out.interiors
         assert interior.key == 100 and interior.entries == [(1, None), (2, None)]
         assert f"{WDS}: {UNVERIFIED} members on the primary's point" not in out.counts
+
+    def test_no_object_inside_the_primary_point(self):
+        """B reaches no object, and X cannot split it from A at 0.1″ (HD
+        206136). X holds both stars."""
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        out = self.reduced(0.1, [x], 0)
+        assert out.groups == [] and out.tentative == []
+        (interior,) = out.interiors
+        assert interior.key == 100 and interior.entries == [(1, None), (2, None)]
+        name = f"{WDS}: unverified members inside the primary's point"
+        assert out.counts[name] == 1
+
+    def test_no_object_beside_the_primary_point(self):
+        """X splits B from A at 1.1″, so B needs a point of its own."""
+        x = fact(100, 10.0, 10.0, 5.0, parallax=10.0, pmra=20.0, pmdec=-5.0)
+        out = self.reduced(1.1, [x], 0)
+        assert out.groups == [] and out.interiors == []
+        assert out.counts[f"{WDS}: {UNVERIFIED} members left for agreement"] == 1
 
     def test_one_point_with_no_separation(self):
         """With no separation, nothing says that X cannot split them."""

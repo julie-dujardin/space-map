@@ -26,8 +26,9 @@ position.
 - A member that the source lists as unverified stays only when it and its
   primary pass El-Badry's test of a bound pair (`same_distance`). It also
   stays when it reaches its primary's point and the source gives their
-  separation, because a chance alignment that close is rare. A dubious
-  member never stays. When it reaches its primary's point and the point
+  separation. It stays too when it reaches no object and its primary's point
+  cannot split them. A chance alignment that close is rare. A dubious member
+  never stays. When it reaches its primary's point and the point
   splits them, the shared id is still a cross-match error. A member that
   fails waits for another source to agree.
 - A member that leaves keeps its inner system as a system of its own.
@@ -467,16 +468,17 @@ class TreeReducer:
         ]
         return max(known) if known else None
 
-    def _split(self, point: _Part, loose: _Part, primary: _Part) -> bool:
-        """Whether the point's data split a loose member from it."""
+    def _split(self, point: _Part, loose: _Part, primary: _Part) -> bool | None:
+        """Whether the point's data split a loose member from it, None when
+        unknown."""
         fact = self.facts.get(point.key)
         if fact is None:
-            return False
+            return None
         contrast = None
         if self.mag[loose.node] is not None and math.isfinite(fact.mag):
             contrast = self.mag[loose.node] - fact.mag
         apart = self._apart(point, loose, primary)
-        return bool(resolves(fact.astrometry, apart, contrast))
+        return resolves(fact.astrometry, apart, contrast)
 
     def _tested(self, row: int, parts: list[_Part], out: Reduced) -> list[_Part]:
         """The members that stay beside the primary `parts[0]`."""
@@ -498,6 +500,18 @@ class TreeReducer:
                 else:
                     name = f"{self.source}: {evidence} members on the primary's point"
                     out.counts[name] += 1
+                continue
+            if (
+                part.loose
+                and primary.key
+                and evidence == UNVERIFIED
+                and self._split(primary, part, primary) is False
+            ):
+                # `part` puts it inside the point.
+                out.counts[
+                    f"{self.source}: unverified members inside the primary's point"
+                ] += 1
+                kept.append(part)
                 continue
             second = self.facts.get(part.main)
             pair = None if first is None or second is None else (first, second)
