@@ -59,6 +59,7 @@ from space_map_data.export.names import (
     planet_names,
     served_host,
 )
+from space_map_data.extrasolar import frame
 from space_map_data.extrasolar.exoplanets import numbering
 from space_map_data.extrasolar.exoplanets.ingest import hosts_with_several_systems
 from space_map_data.extrasolar.exoplanets.table import SCHEMA, SLUG
@@ -729,7 +730,7 @@ def build(
         },
         "elements_frame": (
             "ecliptic and mean equinox of J2000, the planet around its host;"
-            f" obliquity {orbits.OBLIQUITY} deg"
+            f" obliquity {frame.OBLIQUITY} deg"
         ),
         "families": planet_families.listed(published, estimated),
         "credits": list(CREDITS),

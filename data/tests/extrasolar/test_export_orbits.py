@@ -7,8 +7,9 @@ import numpy as np
 import pytest
 
 from space_map_data.export.extrasolar import orbits
+from space_map_data.extrasolar import frame
 
-EPS = math.radians(orbits.OBLIQUITY)
+EPS = math.radians(frame.OBLIQUITY)
 
 
 def _row(**values) -> dict:
@@ -122,17 +123,17 @@ class TestEclipticAngles:
         # points back at us, along ICRS -x: on the ecliptic, i = 90° and the
         # node is at longitude 270°. Periastron is north, at ecliptic
         # (0, sin ε, cos ε): ω = 90° + ε.
-        i, om, w = orbits.ecliptic_angles(np.array([1.0, 0, 0]), 0.0, 0.0, 0.0)
+        i, om, w = frame.ecliptic_angles(np.array([1.0, 0, 0]), 0.0, 0.0, 0.0)
         assert i == pytest.approx(90.0)
         assert om == pytest.approx(270.0)
-        assert w == pytest.approx(90.0 + orbits.OBLIQUITY)
+        assert w == pytest.approx(90.0 + frame.OBLIQUITY)
 
     def test_a_face_on_orbit_at_the_north_ecliptic_pole(self):
         # Seen from below the ecliptic, an orbit that turns north to east turns
         # clockwise on the ecliptic.
         pole = np.array([0.0, -math.sin(EPS), math.cos(EPS)])
-        assert orbits.ecliptic_angles(pole, 0.0, 0.0, 0.0)[0] == pytest.approx(180.0)
-        assert orbits.ecliptic_angles(pole, 180.0, 0.0, 0.0)[0] == pytest.approx(0.0)
+        assert frame.ecliptic_angles(pole, 0.0, 0.0, 0.0)[0] == pytest.approx(180.0)
+        assert frame.ecliptic_angles(pole, 180.0, 0.0, 0.0)[0] == pytest.approx(0.0)
 
     def test_the_scene_draws_the_orbit_of_the_sky(self):
         rng = np.random.default_rng(4)
@@ -145,7 +146,7 @@ class TestEclipticAngles:
                 rng.uniform(0, 360),
             )
             el = {"a": 2.0, "e": e, "ma": 0.0, "n": 1.0, "epoch": 0.0}
-            el["i"], el["om"], el["w"] = orbits.ecliptic_angles(
+            el["i"], el["om"], el["w"] = frame.ecliptic_angles(
                 _direction(ra, dec), i, node, omega
             )
             for mean in (0.0, 37.0, 123.0, 250.0):
@@ -213,7 +214,7 @@ class TestElements:
         el = orbits.elements(row, _direction(0, 0))
         assert el is not None
         assert (el["epoch"], el["ma"], el["phase"]) == (
-            orbits.J2000,
+            frame.J2000,
             0.0,
             orbits.ASSUMED,
         )
@@ -238,7 +239,7 @@ class TestElements:
     def test_an_assumed_inclination_gives_way_to_the_sky_solution(self):
         direction = _direction(30, 40)
         row = _row(inclination=90.0, node_inclination=30.0, assumed=["inclination"])
-        expected = orbits.ecliptic_angles(direction, 30.0, 0.0, 270.0)
+        expected = frame.ecliptic_angles(direction, 30.0, 0.0, 270.0)
         el = orbits.elements(row, direction)
         assert el is not None
         assert (el["i"], el["om"], el["w"]) == pytest.approx(expected)
@@ -246,7 +247,7 @@ class TestElements:
         measured = orbits.elements(row | {"assumed": []}, direction)
         assert measured is not None
         assert measured["i"] == pytest.approx(
-            orbits.ecliptic_angles(direction, 90.0, 0.0, 270.0)[0]
+            frame.ecliptic_angles(direction, 90.0, 0.0, 270.0)[0]
         )
 
     def test_angles_beyond_a_turn(self):
