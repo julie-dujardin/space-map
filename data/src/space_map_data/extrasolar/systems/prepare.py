@@ -53,6 +53,7 @@ from space_map_data.extrasolar.systems.resolve import (
     LETTER,
     MATCH,
     POSITION,
+    Fact,
     Facts,
     Resolver,
     candidates,
@@ -583,13 +584,13 @@ def separation_of(facts: Facts, first: int, second: int) -> float:
     return float(sky_separation(a.ra, a.dec, b.ra, b.dec))
 
 
-def position_angle_of(facts: Facts, first: int, second: int) -> float:
-    """The position angle of `second` from `first` in degrees, NaN where a
-    position is missing."""
-    a, b = facts.get(first), facts.get(second)
-    if a is None or b is None:
-        return math.nan
-    return float(position_angle(a.ra, a.dec, b.ra, b.dec))
+def offset(first: Fact, second: Fact) -> tuple[float, float]:
+    """The separation of `second` from `first` in arcsec, and its position
+    angle in degrees."""
+    return (
+        float(sky_separation(first.ra, first.dec, second.ra, second.dec)),
+        float(position_angle(first.ra, first.dec, second.ra, second.dec)),
+    )
 
 
 def close_interiors(

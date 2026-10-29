@@ -399,22 +399,19 @@ class TestProcyon:
         assert systems.distances["key"].to_pylist() == [111]
 
     def test_an_unmatched_entry_that_is_a_point(self):
-        """WDS B finds no object; the MSC has it as a point. The orbit has
-        turned B since the WDS measure, so only the magnitudes agree."""
+        """WDS B finds no object; the MSC has it as a point. The orbit moved B
+        from 4.3″ to 5.2″ since the WDS measure, and the magnitudes agree."""
         w = "07393+0514"
         resolver = FakeResolver(
             {("hip", "2007", "1"): 120, ("hd", "1949", "2"): 121},
             [
                 fact(120, 114.825, 5.225, 0.4, "hipparcos-2007", parallax=284.6),
-                fact(121, 114.8262, 5.2246, 10.7, "simbad"),
+                fact(121, 114.8262, 5.2242, 10.7, "simbad"),
             ],
             positions={f"{w} A": 120},
         )
-        pair = wds_pair(
-            "A", "B", 4.3, notes="NO", mag1=0.37, mag2=10.7, position_angle=302.0
-        )
         catalogue = wds_catalogue(
-            {w: [pair]},
+            {w: [wds_pair("A", "B", 4.3, notes="NO", mag1=0.37, mag2=10.7)]},
             {(w, "A"): wds_component(None, 114.825, 5.225)},
         )
         comp = [msc_comp(w, "A", HIP=1), msc_comp(w, "C", HD=2)]
@@ -1150,15 +1147,23 @@ class TestEntryIsAPoint:
         assert shape(systems, 200) == ("binary star", 2, [200, 201])
         assert systems.counts["entries that are a point of the system"] == 1
 
-    def interior(self, b: tuple[float, float], position_angle: float) -> Systems:
-        """HD 141176: the MSC puts B inside the point of A, with Aa and Ab, and
-        El-Badry pairs A with a star at `b`."""
+    def interior(
+        self,
+        b: tuple[float, float],
+        position_angle: float,
+        mag: float = 13.52,
+        inner: bool = True,
+        orbits: pa.Table | None = None,
+    ) -> Systems:
+        """HD 141176: the MSC puts B inside the point of A, with Aa and Ab when
+        `inner`, and El-Badry pairs A with a star at `b`."""
         w = "15468+2505"
         comp = [msc_comp(w, "A", HIP=1), msc_comp(w, "B", Vmag=13.77)]
-        pairs = [
-            msc_pair(w, "A", "B", "*", Sep=1.707, Sunit='"', PA=position_angle),
-            msc_pair(w, "Aa", "Ab", "A", Sep=0.738, Sunit="m", P=3, Punit="d"),
-        ]
+        pairs = [msc_pair(w, "A", "B", "*", Sep=1.707, Sunit='"', PA=position_angle)]
+        if inner:
+            pairs.append(
+                msc_pair(w, "Aa", "Ab", "A", Sep=0.738, Sunit="m", P=3, Punit="d")
+            )
         resolver = FakeResolver(
             {
                 ("hip", "2007", "1"): 300,
@@ -1167,12 +1172,13 @@ class TestEntryIsAPoint:
             },
             [
                 fact(300, 236.7, 25.08, 8.24, parallax=20.0),
-                fact(301, *b, 13.52, parallax=20.0),
+                fact(301, *b, mag, parallax=20.0),
             ],
         )
         inputs = Inputs(
             msc=msc_nodes(comp, pairs, []),
-            el_badry=el_badry([(21, 22, 1.707, 8.24, 13.52)]),
+            el_badry=el_badry([(21, 22, 1.707, 8.24, mag)]),
+            orbits=orbits,
         )
         return build(inputs, resolver)
 
@@ -1182,11 +1188,33 @@ class TestEntryIsAPoint:
         assert systems.counts["entries that are a point of the system"] == 1
 
     def test_a_close_triple_keeps_its_third_star(self):
-        """The El-Badry star is at the separation of B, at another angle. Gaia
-        gives both positions, so the angle decides."""
-        systems = self.interior(offset(236.7, 25.08, 1.707, 140.0), 256.5)
+        """The El-Badry star is at the separation of B, at another angle, and
+        0.8 mag fainter. Gaia gives both positions, so the angle decides."""
+        systems = self.interior(offset(236.7, 25.08, 1.707, 140.0), 256.5, 14.6)
         assert shape(systems, 301) == ("multiple star", 4, [301, ("point", 300, 3)])
         assert "entries that are a point of the system" not in systems.counts
+
+    def test_the_point_takes_its_next_interior(self):
+        """The MSC gives point 300 the stars A and B, and B is the El-Badry
+        star. So the point takes its Gaia orbit."""
+        orbits = orbit_pairs(
+            pa.table(
+                {
+                    "key": [300],
+                    "nss_solution_type": ["SB1"],
+                    "period": [10.0],
+                    "eccentricity": [0.1],
+                    "m1": [1.0],
+                    "m2": [0.5],
+                }
+            )
+        )
+        b = offset(236.7, 25.08, 1.707, 256.5)
+        systems = self.interior(b, 256.5, inner=False, orbits=orbits)
+        assert shape(systems, 301) == ("multiple star", 3, [301, ("point", 300, 2)])
+        point = systems.nodes.filter(pc.equal(systems.nodes["key"], 300))
+        assert point["evidence"].to_pylist() == [GAIA_ORBITS]
+        assert systems.counts["interiors of one star once an entry leaves"] == 1
 
     def test_a_component_of_the_same_catalogue_is_another_star(self):
         """The WDS lists B, which finds no object, and C, a point at the same
@@ -1261,5 +1289,77 @@ class TestEntryIsAPoint:
         )
         systems = build(inputs, resolver)
         assert shape(systems, 700) == ("binary star", 2, [700, 701])
-        assert systems.counts["points that hold one star once an entry leaves"] == 1
+        assert systems.counts["interiors of one star once an entry leaves"] == 1
         assert systems.counts[f"points holding several stars, by {WDS}"] == 0
+
+    def orbiting(self, others: dict[int, tuple[float, float]]) -> Systems:
+        """WDS B finds no object. Its last measure is at 4.3″ and 200°, and the
+        MSC lists A and the stars `others` (key → J2016 angle, G)."""
+        w = "08000+1000"
+        points = {
+            k: offset(120.0, 10.0, 4.3, angle) for k, (angle, _) in others.items()
+        }
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 900} | {("hd", "1949", str(k)): k for k in others},
+            [fact(900, 120.0, 10.0, 8.0, parallax=50.0)]
+            + [fact(k, *points[k], g, parallax=50.0) for k, (_, g) in others.items()],
+            positions={f"{w} A": 900},
+        )
+        pair = wds_pair(
+            "A", "B", 4.3, notes="NO", mag1=8.0, mag2=10.7, position_angle=200.0
+        )
+        catalogue = wds_catalogue(
+            {w: [pair]}, {(w, "A"): wds_component(None, 120.0, 10.0)}
+        )
+        letters = dict(zip(others, "CD"))
+        comp = [msc_comp(w, "A", HIP=1)]
+        comp += [msc_comp(w, letters[k], HD=k) for k in others]
+        pairs = [msc_pair(w, "A", letters[k], "*") for k in others]
+        return build(Inputs(msc=msc_nodes(comp, pairs, []), wds=catalogue), resolver)
+
+    def test_an_orbit_turns_the_angle(self):
+        """Gaia sees B at 108°: the pair turned since the WDS measure. B is the
+        only point at that separation, and the magnitudes agree."""
+        systems = self.orbiting({901: (108.0, 10.7)})
+        assert shape(systems, 900) == ("binary star", 2, [900, 901])
+        assert systems.counts["entries that are a point of the system"] == 1
+
+    def test_two_points_at_the_separation(self):
+        """Two Gaia points at B's separation, at other angles: the angle stays
+        the guard, so B stays an entry."""
+        systems = self.orbiting({901: (108.0, 10.7), 902: (300.0, 10.8)})
+        assert shape(systems, 900)[:2] == ("multiple star", 4)
+        assert "entries that are a point of the system" not in systems.counts
+
+    def test_the_best_point_wins(self):
+        """WDS B is at 2″ and 90°. SIMBAD's C is at 2″ and 270°, which the
+        angle turned by 180° also fits. B's own point at 90° fits better."""
+        w = "09000+2000"
+        b, c = offset(135.0, 20.0, 2.0, 90.0), offset(135.0, 20.0, 2.0, 270.0)
+        resolver = FakeResolver(
+            {
+                ("hip", "2007", "1"): 800,
+                ("hd", "1949", "2"): 801,
+                ("hd", "1949", "3"): 802,
+            },
+            [
+                fact(800, 135.0, 20.0, 9.0, parallax=10.0),
+                fact(801, *c, 11.0, "simbad"),
+                fact(802, *b, 11.0, parallax=10.0),
+            ],
+            positions={f"{w} A": 800},
+        )
+        pair = wds_pair(
+            "A", "B", 2.0, notes="NO", mag1=9.0, mag2=11.0, position_angle=90.0
+        )
+        catalogue = wds_catalogue(
+            {w: [pair]}, {(w, "A"): wds_component(None, 135.0, 20.0)}
+        )
+        comp = [msc_comp(w, "A", HIP=1), msc_comp(w, "C", HD=2), msc_comp(w, "D", HD=3)]
+        pairs = [msc_pair(w, "A", "C", "*"), msc_pair(w, "A", "D", "*")]
+        systems = build(Inputs(msc=msc_nodes(comp, pairs, []), wds=catalogue), resolver)
+        assert shape(systems, 800)[:2] == ("multiple star", 3)
+        texts = systems.events.filter(
+            pc.equal(systems.events["kind"], "entry is a point")
+        )
+        assert [t.split(" is ")[-1] for t in texts["text"].to_pylist()] == ["802"]
