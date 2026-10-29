@@ -50,6 +50,8 @@ FACTS = pa.schema(
         ("dec", pa.float64()),
         ("pmra", pa.float32()),
         ("pmdec", pa.float32()),
+        ("pmra_error", pa.float32()),
+        ("pmdec_error", pa.float32()),
         # G, else an estimate of G.
         ("mag", pa.float32()),
         # The `astrometry_source` of Point source.
@@ -126,6 +128,8 @@ class Fact(NamedTuple):
     dec: float
     pmra: float
     pmdec: float
+    pmra_error: float
+    pmdec_error: float
     mag: float
     astrometry: str | None
     parallax: float
@@ -181,6 +185,8 @@ class Facts:
             dec=number("dec"),
             pmra=number("pmra"),
             pmdec=number("pmdec"),
+            pmra_error=number("pmra_error"),
+            pmdec_error=number("pmdec_error"),
             mag=number("mag"),
             astrometry=row["astrometry"],
             parallax=number("parallax"),

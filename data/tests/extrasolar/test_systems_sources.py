@@ -1,5 +1,6 @@
 """Tests for the tree sources of the star systems: WDS, MSC and SIMBAD."""
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -13,7 +14,11 @@ from space_map_data.extrasolar.systems.nodes import (
     UNVERIFIED,
     VISUAL_ORBIT,
 )
-from space_map_data.extrasolar.systems.reduce import resolves, same_distance
+from space_map_data.extrasolar.systems.reduce import (
+    parallaxes_disagree,
+    resolves,
+    same_distance,
+)
 from space_map_data.extrasolar.systems.resolve import FACTS, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
 from tests.extrasolar.systems_fakes import (
@@ -359,6 +364,7 @@ class TestResolution:
         assert resolves("simbad", 0.1, 0.0) is True
 
     def test_same_distance(self):
+        """El-Badry's test: 20 mas, 0.2 mas errors, 36″ apart."""
         facts = Facts(
             pa.Table.from_pylist(
                 [
@@ -366,16 +372,81 @@ class TestResolution:
                     fact(2, 0, 0.01, 6, parallax=20.2, pmra=8.0, pmdec=55.0),
                     fact(3, 0, 0.01, 6, parallax=5.0, pmra=8.0, pmdec=55.0),
                     fact(4, 0, 0.01, 6, parallax=20.1, pmra=-7.0, pmdec=-4.0),
+                    fact(5, 0, 0.01, 6, parallax=20.0, parallax_error=2.5),
                 ],
                 schema=FACTS,
             )
         )
-        one, two, three, four = (facts.get(k) for k in (1, 2, 3, 4))
-        assert one is not None and two is not None
-        assert three is not None and four is not None
-        # 36″ at 50 pc: an orbit allows about 6 mas/yr.
+        one, two, three, four, five = (facts.get(k) for k in (1, 2, 3, 4, 5))
+        assert one is not None and two is not None and three is not None
+        assert four is not None and five is not None
+        # An orbit allows 6.6 mas/yr; the motions differ by 5.4.
         assert same_distance(one, two)
         assert not same_distance(one, three)
         assert not same_distance(one, four)
-        # 1° at 50 pc is 180,000 AU: the motions must agree within 1.3 mas/yr.
-        assert not same_distance(one, two, separation=3600.0)
+        # Eq. 2 needs parallax errors under 2 mas.
+        assert not same_distance(one, five._replace(pmra=10.0, pmdec=60.0))
+
+    def test_motion_errors(self):
+        """1° apart at 50 pc, an orbit allows 0.66 mas/yr. The motions differ
+        by 5.4 mas/yr, which only large errors explain (eqs. 3-5)."""
+        first = fact(1, 0, 0, 5, parallax=20.0, pmra=10.0, pmdec=60.0)
+        second = fact(2, 0, 1.0, 6, parallax=20.2, pmra=8.0, pmdec=55.0)
+        tight = {"pmra_error": 0.05, "pmdec_error": 0.05}
+        loose = {"pmra_error": 2.0, "pmdec_error": 2.0}
+        facts = Facts(
+            pa.Table.from_pylist(
+                [
+                    first | tight,
+                    second | tight | {"key": 2},
+                    first | loose | {"key": 3},
+                    second | loose | {"key": 4},
+                ],
+                schema=FACTS,
+            )
+        )
+        a, b, c, d = (facts.get(k) for k in (1, 2, 3, 4))
+        assert a is not None and b is not None and c is not None and d is not None
+        assert not same_distance(a, b)
+        assert same_distance(c, d)
+
+    def test_projected_separation(self):
+        """Eq. 1: 2° at 50 pc is more than 1 pc."""
+        facts = Facts(
+            pa.Table.from_pylist(
+                [
+                    fact(1, 0, 0, 5, parallax=20.0, pmra=10.0, pmdec=60.0),
+                    fact(2, 0, 2.0, 6, parallax=20.0, pmra=10.0, pmdec=60.0),
+                ],
+                schema=FACTS,
+            )
+        )
+        one, two = facts.get(1), facts.get(2)
+        assert one is not None and two is not None
+        assert not same_distance(one, two)
+
+    def test_close_pairs_allow_six_sigma(self):
+        """Eq. 2: parallaxes 4.9σ apart agree at 3″, not at 10″."""
+        rows = [fact(1, 0, 0, 5, parallax=20.0, pmra=10.0, pmdec=60.0)]
+        for key, arcsec in ((2, 3.0), (3, 10.0)):
+            rows.append(
+                fact(key, 0, arcsec / 3600, 6, parallax=21.4, pmra=10.0, pmdec=60.0)
+                | {"parallax_error": 0.2}
+            )
+        rows[0]["parallax_error"] = 0.2
+        facts = Facts(pa.Table.from_pylist(rows, schema=FACTS))
+        one, close, wide = (facts.get(k) for k in (1, 2, 3))
+        assert one is not None and close is not None and wide is not None
+        assert same_distance(one, close)
+        assert not same_distance(one, wide)
+
+    def test_parallaxes_disagree(self):
+        """Over 5σ (6σ under 4″) and over 10% of the larger parallax."""
+        parallax = np.array([9.767, 9.767, 9.767, 9.767, 9.767, 9.767])
+        error = np.array([0.05, 0.05, 0.05, 0.3, 0.05, 0.0])
+        other = np.array([8.735, 9.0, 8.735, 8.735, 8.735, 8.735])
+        other_error = np.array([0.05, 0.05, 0.05, 0.05, 2.0, 0.05])
+        separation = np.array([1000.0, 1000.0, 2.0, 1000.0, 1000.0, 1000.0])
+        found = parallaxes_disagree(parallax, error, other, other_error, separation)
+        # 14.6σ and 10.6%; 8% only; 14.6σ under 4″; 3.4σ; SNR 4.4; no error.
+        assert found.tolist() == [True, False, True, False, False, False]

@@ -130,6 +130,8 @@ LINKED = tuple(pair for pair in OBJECT_CATALOGUES if pair != GAIA_DR3)
 FACT_COLUMNS = frozenset(
     {
         *COLUMNS,
+        "pmra_error",
+        "pmdec_error",
         *families.SPECTRAL_COLUMNS,
         "non_single_star",
     }

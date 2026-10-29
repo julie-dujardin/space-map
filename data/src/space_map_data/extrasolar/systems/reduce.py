@@ -15,11 +15,20 @@ and is a group:
   member, and its event gives its kind (`groups`).
 - A member that reaches no object is an entry. It is inside its sibling's
   point when that point cannot split it, else an entry of the group.
+
+Each member is tested against its primary. A group stands for its main star.
+The main star is the first point down the tree and gives the group its
+position.
+- A member leaves when its parallax and its primary's clearly disagree
+  (`parallaxes_disagree`). An orbit pair is exempt, and so is a point that
+  holds several stars in the tree or has a Gaia DR3 orbit, because a close
+  orbit can throw off the parallax.
 - A member that the source lists as unverified stays only when it and its
-  primary reach two points whose parallaxes and motions agree. A dubious
-  member never stays. A member that leaves waits for another source to agree.
-  A member that reaches its primary's point does not wait, because one point
-  cannot confirm itself.
+  primary pass El-Badry's test of a bound pair (`same_distance`). It also
+  stays when it reaches its primary's point and the source gives their
+  separation, because a chance alignment that close is rare. A dubious
+  member never stays. A member that fails waits for another source to agree.
+- A member that leaves keeps its inner system as a system of its own.
 
 A point that holds two or more members gets an interior: its members as
 entries. A group gets the set of its points.
@@ -36,11 +45,18 @@ import pyarrow as pa
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.sources.simbad import MAX_INSIDE_MAG
 from space_map_data.extrasolar.systems.groups import GROUP_OBJECT, group_kind
-from space_map_data.extrasolar.systems.nodes import DUBIOUS, UNVERIFIED
+from space_map_data.extrasolar.systems.nodes import (
+    ASTROMETRIC_ORBIT,
+    ECLIPSING,
+    SPECTROSCOPIC_ORBIT,
+    UNVERIFIED,
+    VISUAL_ORBIT,
+)
 from space_map_data.extrasolar.systems.resolve import (
     GAIA_ASTROMETRY,
     HIPPARCOS_ASTROMETRY,
     HOW,
+    OWN_ASTROMETRY,
     Fact,
     Facts,
 )
@@ -55,16 +71,24 @@ GAIA_SEPARATION_PER_MAG = 0.25
 # companion is less than HIPPARCOS_MAX_CONTRAST mag fainter.
 HIPPARCOS_SEPARATION = 10.0
 HIPPARCOS_MAX_CONTRAST = 4.0
-# Two parallaxes agree within this many combined errors.
-PARALLAX_SIGMA = 3.0
+# The bound-pair test of El-Badry, Rix & Heintz 2021 (MNRAS 506, 2269),
+# section 2, eqs. 1-6, with raw errors. ϖ is the brighter star's parallax.
 MIN_PARALLAX_SNR = 5.0
-# The difference of the proper motions that an orbit allows, in mas/yr, is
-# ORBIT_MOTION · parallax^1.5 · separation^-0.5 (mas, arcsec), plus
-# MOTION_FLOOR for the errors (El-Badry, Rix & Heintz 2021, eq. 2).
+MAX_PARALLAX_ERROR = 2.0
+# Eq. 1: θ/arcsec ≤ 206.265 · ϖ/mas, a projected separation of 1 pc.
+PARSEC_SEPARATION = 206.265
+# Eq. 2: parallaxes within 3σ, or 6σ at 4″ and closer.
+CLOSE_SEPARATION = 4.0
+WIDE_SIGMA, CLOSE_SIGMA = 3.0, 6.0
+# Eqs. 3-6: motions apart by at most 0.44 · ϖ^1.5 · θ^-0.5 mas/yr plus 2σ.
 ORBIT_MOTION = 0.44
-MOTION_FLOOR = 1.0
-# A pair farther apart than this on the sky, in AU, is not bound.
-MAX_PROJECTED_AU = 206_265.0
+MOTION_SIGMA = 2.0
+# Parallaxes clearly disagree beyond 5σ, or 6σ at CLOSE_SEPARATION and
+# closer, and by more than VETO_SHARE of the larger one.
+VETO_WIDE_SIGMA, VETO_CLOSE_SIGMA = 5.0, 6.0
+VETO_SHARE = 0.1
+# How a member is known when it has an orbit about its primary.
+ORBITS = frozenset({VISUAL_ORBIT, SPECTROSCOPIC_ORBIT, ASTROMETRIC_ORBIT, ECLIPSING})
 
 POINT, GROUP, ENTRY = "point", "group", "entry"
 
@@ -89,27 +113,73 @@ def resolves(
     return True
 
 
-def same_distance(first: Fact, second: Fact, separation: float | None = None) -> bool:
-    """Whether two points have parallaxes and motions that a bound pair has."""
+def same_distance(first: Fact, second: Fact) -> bool:
+    """Whether two points pass El-Badry's test of a bound pair."""
     for fact in (first, second):
-        if not fact.parallax_error > 0:
+        if not 0 < fact.parallax_error < MAX_PARALLAX_ERROR:
             return False
         if not fact.parallax / fact.parallax_error > MIN_PARALLAX_SNR:
             return False
-    allowed = PARALLAX_SIGMA * math.hypot(first.parallax_error, second.parallax_error)
-    if abs(first.parallax - second.parallax) > allowed:
+    bright = second if second.mag < first.mag else first
+    separation = float(sky_separation(first.ra, first.dec, second.ra, second.dec))
+    if not 0 < separation <= PARSEC_SEPARATION * bright.parallax:
         return False
-    if separation is None or not separation > 0:
-        separation = float(sky_separation(first.ra, first.dec, second.ra, second.dec))
-    parallax = max(first.parallax, second.parallax)
-    if not separation > 0 or separation * 1000 / parallax > MAX_PROJECTED_AU:
+    sigma = CLOSE_SIGMA if separation <= CLOSE_SEPARATION else WIDE_SIGMA
+    errors = math.hypot(first.parallax_error, second.parallax_error)
+    if not abs(first.parallax - second.parallax) < sigma * errors:
         return False
-    motions = (first.pmra, first.pmdec, second.pmra, second.pmdec)
-    if not all(math.isfinite(m) for m in motions):
+    ra, dec = first.pmra - second.pmra, first.pmdec - second.pmdec
+    apart = math.hypot(ra, dec)
+    orbit = ORBIT_MOTION * bright.parallax**1.5 / math.sqrt(separation)
+    if apart <= orbit:
+        return True
+    error = (
+        math.sqrt(
+            (first.pmra_error**2 + second.pmra_error**2) * ra**2
+            + (first.pmdec_error**2 + second.pmdec_error**2) * dec**2
+        )
+        / apart
+    )
+    return apart <= orbit + MOTION_SIGMA * error
+
+
+def parallaxes_disagree(
+    parallax: np.ndarray,
+    error: np.ndarray,
+    other: np.ndarray,
+    other_error: np.ndarray,
+    separation: np.ndarray,
+) -> np.ndarray:
+    """Whether two measured parallaxes, each over 5σ, clearly disagree."""
+    with np.errstate(invalid="ignore"):
+        measured = (error > 0) & (other_error > 0)
+        measured &= (parallax > MIN_PARALLAX_SNR * error) & (
+            other > MIN_PARALLAX_SNR * other_error
+        )
+        gap = np.abs(parallax - other)
+        sigma = np.where(
+            separation <= CLOSE_SEPARATION, VETO_CLOSE_SIGMA, VETO_WIDE_SIGMA
+        )
+        wide = gap > sigma * np.hypot(error, other_error)
+        return measured & wide & (gap > VETO_SHARE * np.maximum(parallax, other))
+
+
+def disagree(first: Fact, second: Fact) -> bool:
+    """Whether the own astrometry of two points puts them at two distances."""
+    if first.astrometry not in OWN_ASTROMETRY:
         return False
-    apart = math.hypot(motions[0] - motions[2], motions[1] - motions[3])
-    orbit = ORBIT_MOTION * parallax**1.5 / math.sqrt(separation)
-    return apart <= orbit + MOTION_FLOOR
+    if second.astrometry not in OWN_ASTROMETRY:
+        return False
+    separation = float(sky_separation(first.ra, first.dec, second.ra, second.dec))
+    return bool(
+        parallaxes_disagree(
+            np.asarray(first.parallax),
+            np.asarray(first.parallax_error),
+            np.asarray(second.parallax),
+            np.asarray(second.parallax_error),
+            np.asarray(separation),
+        )
+    )
 
 
 def simbad_only(fact: Fact | None) -> bool:
@@ -193,6 +263,13 @@ class _Part:
     # A group: its index in the records that hold it, and its objects.
     group: int = -1
     group_keys: frozenset[int] = frozenset()
+    # A group: its first point down the tree.
+    first_point: int = 0
+
+    @property
+    def main(self) -> int:
+        """The point of the part's position, 0 for loose members."""
+        return self.key or self.first_point
 
     @property
     def loose(self) -> bool:
@@ -236,7 +313,8 @@ class TreeReducer:
     """Reduces the trees of one source.
 
     `candidates` holds the (key, rank) candidates of each row, best first.
-    `offset` turns a row of the source into a global value row.
+    `offset` turns a row of the source into a global value row. `orbits` are
+    the points that have a Gaia DR3 orbit.
     """
 
     def __init__(
@@ -248,6 +326,7 @@ class TreeReducer:
         offset: int,
         out: Reduced,
         dropped: frozenset[int] = frozenset(),
+        orbits: frozenset[int] = frozenset(),
     ) -> None:
         self.source = table["source"][0].as_py() if table.num_rows else ""
         self.rank = rank
@@ -255,12 +334,15 @@ class TreeReducer:
         self.offset = offset
         self.out = out
         self.dropped = dropped
+        # The points that hold several stars, in this tree or by a Gaia orbit.
+        self.several = set(orbits)
         self.candidates = candidates
         self.system = table["system"].to_pylist()
         self.label = table["label"].to_pylist()
         self.parent = table["parent"].to_numpy()
         self.separation = table["separation"].to_pylist()
         self.evidence = table["evidence"].to_pylist()
+        self.known = table["known"].to_pylist()
         v = table["v_mag"].to_pylist()
         g = table["g_mag"].to_pylist()
         self.mag = [b if b is not None else a for a, b in zip(v, g)]
@@ -394,31 +476,36 @@ class TreeReducer:
         apart = self._apart(point, loose, primary)
         return bool(resolves(fact.astrometry, apart, contrast))
 
-    def _unverified(self, row: int, parts: list[_Part], out: Reduced) -> list[_Part]:
+    def _tested(self, row: int, parts: list[_Part], out: Reduced) -> list[_Part]:
+        """The members that stay beside the primary `parts[0]`."""
         primary = parts[0]
+        first = self.facts.get(primary.main)
         kept = [primary]
         for part in parts[1:]:
             evidence = self.evidence[part.node]
-            if evidence not in (UNVERIFIED, DUBIOUS):
-                kept.append(part)
-                continue
             if part.key and part.key == primary.key:
-                if evidence == UNVERIFIED and self._shared(row, [primary, part])[1]:
-                    # The point splits them, so `_shared` finds the cross-match error.
+                separation = self.separation[part.node]
+                measured = separation is not None and math.isfinite(separation)
+                if evidence is None or (evidence == UNVERIFIED and measured):
+                    # `_shared` merges them or finds the cross-match error.
                     kept.append(part)
                 else:
                     name = f"{self.source}: {evidence} members on the primary's point"
                     out.counts[name] += 1
                 continue
-            first = self.facts.get(primary.key) if primary.key else None
-            second = self.facts.get(part.key) if part.key else None
-            if (
-                evidence == UNVERIFIED
-                and first is not None
-                and second is not None
-                and same_distance(first, second, self.separation[part.node])
-            ):
+            second = self.facts.get(part.main)
+            pair = None if first is None or second is None else (first, second)
+            if pair and self._vetoed(primary, part, *pair, out):
+                self._leave(part, out)
+                continue
+            if evidence is None:
+                kept.append(part)
+                continue
+            if evidence == UNVERIFIED and pair and same_distance(*pair):
                 out.counts[f"{self.source}: unverified members kept by parallax"] += 1
+                if primary.group >= 0:
+                    name = f"{self.source}: unverified members of a group kept"
+                    out.counts[name] += 1
                 kept.append(part)
                 continue
             out.counts[f"{self.source}: {evidence} members left for agreement"] += 1
@@ -431,7 +518,46 @@ class TreeReducer:
                         evidence,
                     )
                 )
+            self._leave(part, out)
         return kept
+
+    def _vetoed(
+        self, primary: _Part, part: _Part, first: Fact, second: Fact, out: Reduced
+    ) -> bool:
+        """Whether the parallaxes of a member and its primary disagree."""
+        if set(self.known[part.node] or ()) & ORBITS:
+            return False
+        if self._holds_several(primary) or self._holds_several(part):
+            return False
+        if not disagree(first, second):
+            return False
+        evidence = self.evidence[part.node] or "physical"
+        out.counts[f"{self.source}: {evidence} members that the parallaxes veto"] += 1
+        self._event(
+            "parallaxes disagree",
+            f"{self._name(part.node)}: {second.key} {second.parallax:.3f}"
+            f" ± {second.parallax_error:.3f} mas, primary {self.label[primary.node]}"
+            f" {first.key} {first.parallax:.3f} ± {first.parallax_error:.3f} mas,"
+            f" {evidence}",
+            out,
+        )
+        return True
+
+    def _holds_several(self, part: _Part) -> bool:
+        if part.key and len(part.leaves) > 1:
+            return True
+        return part.main in self.several
+
+    def _leave(self, part: _Part, out: Reduced) -> None:
+        """Keep the inner system of a member that leaves as a system of its own.
+
+        A group's records stay in any case.
+        """
+        if part.key and len(part.leaves) > 1:
+            self._close(part, part.node, out)
+        elif part.group < 0:
+            return
+        out.counts[f"{self.source}: inner systems of members that left"] += 1
 
     def _children(self, row: int, exclude: frozenset[int], out: Reduced) -> list[_Part]:
         """The parts of the children of `row`.
@@ -458,7 +584,7 @@ class TreeReducer:
                     reduced[at] = (self.part(kid, at[1], records), records)
                 done.append(reduced[at])
             checked = Reduced()
-            parts = self._unverified(row, [part for part, _ in done], checked)
+            parts = self._tested(row, [part for part, _ in done], checked)
             if self._give_back(errors, parts, lost):
                 continue
             parts, error = self._shared(row, parts)
@@ -609,6 +735,7 @@ class TreeReducer:
     def _close(self, part: _Part, top: int, out: Reduced) -> None:
         """Record the interior of a point part."""
         if part.key and len(part.leaves) > 1:
+            self.several.add(part.key)
             entries = []
             for leaf in part.leaves:
                 parent = int(self.parent[leaf])
@@ -621,6 +748,7 @@ class TreeReducer:
     def _group(self, row: int, parts: list[_Part], out: Reduced) -> _Part:
         members = []
         keys: set[int] = set()
+        first_point = next((p.main for p in parts if p.main), 0)
         for part in parts:
             if part.group >= 0:
                 members.append(
@@ -647,4 +775,4 @@ class TreeReducer:
                 members,
             )
         )
-        return _Part(row, 0, [], len(out.groups) - 1, frozenset(keys))
+        return _Part(row, 0, [], len(out.groups) - 1, frozenset(keys), first_point)

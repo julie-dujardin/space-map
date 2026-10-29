@@ -47,6 +47,8 @@ SOURCE_LEVEL = 12
 POINT_COLUMNS = [
     "id",
     *COLUMNS,
+    "pmra_error",
+    "pmdec_error",
     *families.SPECTRAL_COLUMNS,
     "non_single_star",
 ]
@@ -136,6 +138,8 @@ def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Tabl
             "dec": positions["dec"],
             "pmra": positions["pmra"],
             "pmdec": positions["pmdec"],
+            "pmra_error": pick(point, at_point, "pmra_error"),
+            "pmdec_error": pick(point, at_point, "pmdec_error"),
             "mag": positions["mag"],
             "astrometry": pick(point, at_point, "astrometry_source"),
             "parallax": pick(point, at_point, "parallax"),

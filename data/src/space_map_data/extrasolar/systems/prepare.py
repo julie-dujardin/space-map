@@ -8,8 +8,9 @@
 2. A planet that is also a star of a star catalogue stays a planet: its
    object leaves every tree.
 3. Each source's trees become groups of points and interiors (`reduce`). El-
-   Badry's pairs become groups of two points, the Gaia orbits interiors of
-   two stars. A Gaia orbit whose companion is a planet is no interior.
+   Badry's pairs become groups of two points, and the parallax veto of the
+   trees applies to them too. The Gaia orbits become interiors of two stars.
+   A Gaia orbit whose companion is a planet is no interior.
 4. A SIMBAD component inside the light of another point joins that point,
    in every source.
 5. The groups merge into one tree per system (`merge`).
@@ -48,10 +49,12 @@ from space_map_data.extrasolar.systems.reduce import (
     Interior,
     Reduced,
     TreeReducer,
+    parallaxes_disagree,
 )
 from space_map_data.extrasolar.systems.resolve import (
     LETTER,
     MATCH,
+    OWN_ASTROMETRY,
     POSITION,
     Fact,
     Facts,
@@ -397,9 +400,15 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     logger.info("systems: facts of %d objects", len(facts))
 
     reduced = Reduced()
+    dropped_keys = frozenset(dropped)
+    periods = planet_periods(inputs.planets)
+    orbit_kept = np.zeros(orbit_keys.size, bool)
+    if inputs.orbits is not None:
+        orbit_kept = orbit_interiors(inputs.orbits, orbit_keys, periods, reduced)
+        orbit_kept &= ~np.isin(orbit_keys, list(dropped_keys))
+    orbits = frozenset(orbit_keys[orbit_kept].tolist())
     offsets = []
     offset = 0
-    dropped_keys = frozenset(dropped)
     for table in trees:
         source = table["source"][0].as_py()
         offsets.append(offset)
@@ -411,20 +420,18 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
             offset,
             reduced,
             dropped_keys,
+            orbits,
         ).run()
         offset += VALUE_BLOCK
-    periods = planet_periods(inputs.planets)
-    orbit_kept = np.zeros(orbit_keys.size, bool)
-    if inputs.orbits is not None:
-        orbit_kept = orbit_interiors(inputs.orbits, orbit_keys, periods, reduced)
-        orbit_kept &= ~np.isin(orbit_keys, list(dropped_keys))
     remap = _absorptions(reduced)
     _apply(reduced, remap)
     el_keys = (_mapped(el_keys[0], remap), _mapped(el_keys[1], remap))
     orbit_keys = _mapped(orbit_keys, remap)
     for side in el_keys:
         side[np.isin(side, list(dropped_keys))] = 0
-    sets, origin = _set_table(reduced, inputs.el_badry, el_keys, counts)
+    vetoed = vetoed_pairs(facts, *el_keys, orbits)
+    counts[f"{EL_BADRY}: pairs that the parallaxes veto"] = int(vetoed.sum())
+    sets, origin = _set_table(reduced, inputs.el_badry, el_keys, vetoed, counts)
     counts.update(reduced.counts)
     return Prepared(
         trees,
@@ -520,10 +527,39 @@ def _apply(reduced: Reduced, remap: dict[int, int]) -> None:
         item.keys = frozenset(remap.get(k, k) for k in item.keys)
 
 
+def vetoed_pairs(
+    facts: Facts, first: np.ndarray, second: np.ndarray, orbits: frozenset[int]
+) -> np.ndarray:
+    """Whether the parallaxes of each El-Badry pair of two objects disagree.
+
+    A star with a Gaia DR3 orbit is exempt.
+    """
+    separation = sky_separation(
+        facts.column("ra", first),
+        facts.column("dec", first),
+        facts.column("ra", second),
+        facts.column("dec", second),
+    )
+    found = parallaxes_disagree(
+        facts.column("parallax", first),
+        facts.column("parallax_error", first),
+        facts.column("parallax", second),
+        facts.column("parallax_error", second),
+        separation,
+    )
+    found &= (first != 0) & (second != 0) & (first != second)
+    for keys in (first, second):
+        astrometry = np.array(facts.texts("astrometry", keys), object)
+        found &= np.isin(astrometry, sorted(OWN_ASTROMETRY))
+        found &= ~np.isin(keys, sorted(orbits))
+    return found
+
+
 def _set_table(
     reduced: Reduced,
     el_badry: pa.Table | None,
     el_keys: tuple[np.ndarray, np.ndarray],
+    vetoed: np.ndarray,
     counts: Counter,
 ) -> tuple[SetTable, np.ndarray]:
     ranks, trees, sizes, keys, names, origin = [], [], [], [], [], []
@@ -554,7 +590,7 @@ def _set_table(
         counts[f"{EL_BADRY}: pairs of one object twice"] = int(
             ((first != 0) & (first == second)).sum()
         )
-        pick = np.flatnonzero(both | one)
+        pick = np.flatnonzero((both & ~vetoed) | one)
         n = pick.size
         lone = np.where(first[pick] != 0, first[pick], second[pick])
         pair_size = np.where(both[pick], 2, 1)
