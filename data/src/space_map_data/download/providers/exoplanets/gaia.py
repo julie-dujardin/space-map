@@ -11,7 +11,7 @@ Reads the Gaia ids that the NASA archive and SIMBAD give. Writes:
                               not positionable. The bulk download holds the
                               others.
 - fidelity.csv                the astrometric fidelity of those rows
-- astrophysical_parameters.csv  the GSP-Phot radii, FLAME and GSP-Spec
+- astrophysical_parameters.csv  the GSP-Phot radii, ESP-HS, FLAME and GSP-Spec
                               values of those rows, as the bulk Gaia ingest
                               reads them
 - flame_spec.csv              FLAME's run on GSP-Spec for those rows

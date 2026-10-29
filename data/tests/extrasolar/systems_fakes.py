@@ -115,7 +115,9 @@ def simbad_index(
     children: dict[int, list[int]] = {}
     for parent, child in links:
         children.setdefault(parent, []).append(child)
-    stars = SimbadList({o.oid: o for o in objects}, children, {})
+    stars = SimbadList(
+        {o.oid: o for o in objects}, children, {}, frozenset({"**"}), frozenset()
+    )
     return SimbadIndex.build(stars)
 
 

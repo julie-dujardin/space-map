@@ -58,6 +58,7 @@ DICTIONARY = frozenset(
         "libname_gspphot",
         "distance_method",
         "simbad_otype",
+        "simbad_system_otype",
         "feh_xhip_quality",
         "nss_solution_type",
         "combination_method",

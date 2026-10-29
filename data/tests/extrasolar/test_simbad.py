@@ -61,6 +61,22 @@ BASIC = (
     "nbref",
 )
 NO_BEST = BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64))
+# A part of SIMBAD's type tree: code, candidate, path.
+OTYPEDEF = (
+    ("*", 0, "*"),
+    ("**", 0, "* > **"),
+    ("SB*", 0, "* > ** > SB*"),
+    ("SB?", 1, "* > ** > SB*"),
+    ("EB*", 0, "* > ** > EB*"),
+    ("s*r", 0, "* > Ma* > sg* > s*r"),
+    ("WR*", 0, "* > Ma* > sg* > s*b > WR*"),
+    ("LP*", 0, "* > Ev* > LP*"),
+    ("LP?", 1, "* > Ev* > LP*"),
+    ("WD*", 0, "* > Ev* > WD*"),
+    ("WD?", 1, "* > Ev* > WD*"),
+    ("BD?", 1, "* > BD*"),
+    ("PM*", 0, "* > PM*"),
+)
 
 
 def named_rows(named: pa.Table, joined: tuple[gaia.SourceTable, ...] = ()) -> pa.Table:
@@ -113,6 +129,11 @@ def write_simbad(
         directory / simbad_stars.IAU_FILE,
         ["name", "identifier", "oid"],
         [[name, "x", oid] for name, oid in iau],
+    )
+    _write(
+        directory / simbad_stars.OTYPEDEF_FILE,
+        ["otype", "is_candidate", "path"],
+        [list(row) for row in OTYPEDEF],
     )
     return directory
 
@@ -247,6 +268,103 @@ class TestNames:
         # The faint component has only a survey id, so its Gaia row names it.
         assert rows["name"].to_pylist() == ["HIP 100", None]
         assert rows["simbad_otype"].to_pylist() == ["*", "*"]
+
+    def test_a_system_gives_its_types(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "V* VY CMa", "HIP  100", otype="s*r", sp_type="M5Iae"),
+                star(2, RA, DEC, "NAME VY CMa A", otype="LP?", V=7.0),
+                star(3, RA, DEC, "NAME VY CMa B"),
+                # A pair gives no type. A row keeps its own type.
+                star(4, RA, DEC, "** X", otype="**", sp_type="G2V+K1V"),
+                star(5, RA, DEC, "X A", otype="PM*", sp_type="G1V", V=5.0),
+                star(6, RA, DEC, "X B", V=6.0),
+            ],
+            links=[(1, 2), (1, 3), (4, 5), (4, 6)],
+        )
+        stars = SimbadList.read(directory)
+        assert stars.handed() == {2: {"hip": "100"}}
+        assert stars.system_types() == {2: {"sp_type": "M5Iae", "otype": "s*r"}}
+        rows, _ = simbad.engine_rows(stars, stars.handed(), set(), {}, {})
+        assert rows["simbad_sp_type"].to_pylist() == [None, None, "G1V", None]
+        assert rows["simbad_otype"].to_pylist() == ["LP?", "*", "PM*", "*"]
+        assert rows["simbad_system_sp_type"].to_pylist() == ["M5Iae", None, None, None]
+        assert rows["simbad_system_otype"].to_pylist() == ["s*r", None, None, None]
+
+    def test_a_composite_type_gives_no_types(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "PG 1", otype="WD*", sp_type="DA2+dM"),
+                star(2, RA, DEC, "PG 1A", V=15.0),
+                star(3, RA, DEC, "PG 1B", V=15.5),
+            ],
+            links=[(1, 2), (1, 3)],
+        )
+        assert SimbadList.read(directory).system_types() == {}
+
+    def test_a_plus_in_the_type_of_one_star_gives_the_type(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "LP 1", otype="**", sp_type="M1.5+V"),
+                star(2, RA, DEC, "LP 1A", V=11.0),
+                star(3, RA, DEC, "LP 1B", V=14.0),
+            ],
+            links=[(1, 2), (1, 3)],
+        )
+        assert SimbadList.read(directory).system_types() == {2: {"sp_type": "M1.5+V"}}
+
+    def test_a_primary_needs_a_magnitude(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "WR 1", otype="WR*", sp_type="WN6"),
+                star(2, RA, DEC, "X 1"),
+                star(3, RA, DEC, "X 2"),
+            ],
+            links=[(1, 2), (1, 3)],
+        )
+        assert SimbadList.read(directory).system_types() == {}
+
+    def test_a_candidate_with_a_class_keeps_its_type(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "V* X", otype="LP*", sp_type="M5III"),
+                star(2, RA, DEC, "X A", otype="WD?", V=7.0),
+                star(3, RA, DEC, "X B", V=9.0),
+            ],
+            links=[(1, 2), (1, 3)],
+        )
+        assert SimbadList.read(directory).system_types() == {2: {"sp_type": "M5III"}}
+
+    def test_the_nearest_system_gives_the_types(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "HD 1", otype="**", sp_type="B2V"),
+                star(2, RA, DEC, "HD 1C", sp_type="B7V", V=9.7),
+                star(3, RA, DEC, "NAME HD 1AB", otype="**", sp_type="B3V"),
+                star(4, RA, DEC, "HD 1A", V=8.5),
+                star(5, RA, DEC, "HD 1B", V=10.4),
+            ],
+            links=[(1, 2), (1, 3), (3, 4), (3, 5)],
+        )
+        assert SimbadList.read(directory).system_types() == {4: {"sp_type": "B3V"}}
+
+    def test_a_system_gives_no_types_up_to_its_gaia_point(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(1, RA, DEC, "HD 2A", "Gaia DR3 7", otype="PM*", G=8.9),
+                star(2, RA, DEC, "HD 2", otype="**", sp_type="K0", V=8.6),
+                star(3, RA, DEC, "HD 2B", "Gaia DR3 8", otype="PM*", G=9.2),
+            ],
+            links=[(1, 2), (2, 3)],
+        )
+        assert SimbadList.read(directory).system_types() == {}
 
     def test_a_catalogued_system_keeps_its_designation(self, tmp_path):
         directory = write_simbad(

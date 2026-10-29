@@ -190,6 +190,20 @@ def star_types(otypedef: str) -> list[str]:
     return sorted(set(found) - EXCLUDED_TYPES)
 
 
+def multiple_and_candidate_types(
+    otypedef: str,
+) -> tuple[frozenset[str], frozenset[str]]:
+    """The type codes of more than one star (`**` and below it, except the
+    candidate types) and the candidate type codes in the `otypedef` CSV."""
+    multiple, candidates = set(), set()
+    for row in csv.DictReader(io.StringIO(otypedef)):
+        if row["is_candidate"] == "1":
+            candidates.add(row["otype"])
+        elif row["path"].strip().split(" > ")[:2] == ["*", "**"]:
+            multiple.add(row["otype"])
+    return frozenset(multiple), frozenset(candidates)
+
+
 def simbad_bayer(text: str) -> str:
     """A Bayer or Flamsteed designation as SIMBAD writes it: "τ2 Aqr" is
     "* tau02 Aqr". Other text stays as it is."""

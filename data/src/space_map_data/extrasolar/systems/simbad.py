@@ -74,7 +74,7 @@ class SimbadIndex:
 
     @classmethod
     def empty(cls) -> SimbadIndex:
-        return cls(SimbadList({}, {}, {}), {})
+        return cls(SimbadList({}, {}, {}, frozenset(), frozenset()), {})
 
     def components(self, catalogue: str, release: str, value: str) -> list[int]:
         """The rows with no listed children that carry this id."""

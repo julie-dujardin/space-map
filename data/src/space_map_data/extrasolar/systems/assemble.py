@@ -29,6 +29,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from space_map_data.constants.stars.families import COMPOSITE_SPECTRAL_TYPE
 from space_map_data.extrasolar.sources.simbad import designation, normal
 from space_map_data.extrasolar.systems.merge import Merged
 from space_map_data.extrasolar.systems.nodes import (
@@ -670,10 +671,12 @@ class Assembler:
             if kind != POINT or key in self.chosen:
                 continue
             fact = self.facts.get(key)
-            if fact is None or not fact.spectral_type or "+" not in fact.spectral_type:
+            if fact is None or not fact.spectral_type:
+                continue
+            if not _composite(fact.spectral_type):
                 continue
             own = self.value(value, "spectral_type")
-            if own and "+" in own:
+            if own and _composite(own):
                 own = None
             self.moved[key] = (node.number, own)
             self.node_spectral.setdefault(node.number, fact.spectral_type)
@@ -1139,6 +1142,10 @@ class Assembler:
                 ] += 1
             else:
                 self.counts[f"{item.source}: {item.evidence} pairs left out"] += 1
+
+
+def _composite(spectral_type: str) -> bool:
+    return COMPOSITE_SPECTRAL_TYPE.search(spectral_type) is not None
 
 
 def system_name(identifiers: list[str], main_id: str) -> str | None:

@@ -41,6 +41,8 @@ def classify(*stars: dict, classes: list[str] | None = None):
 
 GIANT_FLAME = {"evolstage_flame": 600, "mass_flame": 1.5, "flags_flame": "10"}
 DWARF_FLAME = {"evolstage_flame": 250, "mass_flame": 1.0, "flags_flame": "00"}
+DWARF_ESPHS = {"teff_esphs": 15_000, "logg_esphs": 4.0}
+GIANT_ESPHS = {"teff_esphs": 15_000, "logg_esphs": 3.2}
 
 
 class TestParseSpectralType:
@@ -79,6 +81,15 @@ class TestParseSpectralType:
             ("L5", "L", None),
             ("T7.5", "T", None),
             ("K0III+A2V", "K", "giant"),
+            ("K5+III", "K", "giant"),
+            ("B5+K3III", "B", None),
+            ("G2_0", "G", "hypergiant"),
+            ("K2_0-Ia", "K", "hypergiant"),
+            ("F(6)V", "F", "main-sequence"),
+            ("K(2)(III)", "K", "giant"),
+            ("B(0/3)ne", "B", None),
+            ("ON8.5V", "O", "main-sequence"),
+            ("BC0.7Ia", "B", "supergiant"),
         ],
     )
     def test_letter_and_stage(self, text, letter, stage):
@@ -118,6 +129,64 @@ class TestPublished:
     def test_simbad_type_comes_before_hipparcos(self):
         published, _ = classify({"simbad_sp_type": "K2III", "sp_type": "K2V"})
         assert published[0] == {"giant", "red-giant"}
+
+    def test_the_type_of_the_simbad_system_comes_after_simbad(self):
+        system = {"simbad_system_sp_type": "M5Iae", "sp_type": "M3/M4II:"}
+        published, _ = classify(system, system | {"simbad_sp_type": "M2V"})
+        assert published[0] == {"supergiant", "red-supergiant"}
+        assert published[1] == {"red-dwarf", "main-sequence", "dwarf"}
+
+    def test_the_object_type_of_the_simbad_system(self):
+        published, _ = classify(
+            {"simbad_otype": "LP?", "simbad_system_otype": "s*r", "sp_type": "M3"}
+        )
+        assert published[0] == {"supergiant", "red-supergiant"}
+
+    def test_a_white_dwarf_type_of_the_system_needs_gaia_to_agree(self):
+        red = {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 13.2}
+        blue = {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 14.8}
+        system = {"simbad_system_sp_type": "DA2.4", "sp_type": "M1V"}
+        published, _ = classify(
+            system | red | {"classprob_dsc_combmod_whitedwarf": 0.0},
+            system | red | {"classprob_dsc_combmod_whitedwarf": 0.9},
+            system | blue,
+            {"simbad_system_otype": "WD*"} | red,
+        )
+        assert published[0] == {"red-dwarf", "main-sequence", "dwarf"}
+        assert published[1] == published[2] == {"white-dwarf", "dwarf"}
+        assert published[3] == set()
+
+    def test_a_white_dwarf_type_of_the_system_drops_only_its_own_column(self):
+        red = {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 12.5}
+        published, _ = classify(
+            {"simbad_system_otype": "WD*", "simbad_system_sp_type": "M4.5V"} | red
+        )
+        assert published[0] == {"red-dwarf", "main-sequence", "dwarf"}
+
+    @pytest.mark.parametrize(
+        ("text", "composite"),
+        [
+            ("DA2+dM", True),
+            ("G8/K0V+(F)", True),
+            ("B1.5IV+(B2V)", True),
+            ("sdB+?", True),
+            ("K5+III", False),
+            ("M2+V", False),
+            ("B1Ia+", False),
+        ],
+    )
+    def test_a_composite_type(self, text, composite):
+        found = rules.COMPOSITE_SPECTRAL_TYPE.search(text) is not None
+        assert found == composite
+
+    def test_the_spectral_type_of_a_row(self):
+        table = rows(
+            {"simbad_system_sp_type": "DA", "sp_type": "M1V"},
+            {"simbad_system_sp_type": "M5Iae", "sp_type": "M3/M4II:"},
+            {"simbad_system_sp_type": "DA", "sp_type": "M1V"}
+            | {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 13.2},
+        )
+        assert families.spectral_type(table).to_pylist() == ["DA", "M5Iae", "M1V"]
 
     def test_host_type_is_last(self):
         published, _ = classify({"sp_type": "M4V", "host_spectral_type": "K"})
@@ -249,30 +318,87 @@ class TestEstimated:
         assert estimated[0] == {"g-type-main-sequence", "main-sequence", "dwarf"}
 
     def test_hot_letters_need_the_golden_sample(self):
-        star = {
-            "spectraltype_esphs": "B",
-            "flags_esphs": "01000",
-            "teff_gspphot": 15_000,
-        } | DWARF_FLAME
+        star = {"spectraltype_esphs": "B", "flags_esphs": "01000"} | DWARF_FLAME
+        star |= DWARF_ESPHS
         _, estimated = classify(star, star | {"in_oba_golden_sample": True})
         assert estimated[0] == {"main-sequence", "dwarf"}
         assert estimated[1] == {"b-type-main-sequence", "main-sequence", "dwarf"}
 
-    def test_a_hot_letter_needs_a_flame_temperature_that_fits(self):
+    def test_o_and_b_stages_come_from_esphs(self):
         hot = {"in_oba_golden_sample": True, "flags_esphs": "01000"} | DWARF_FLAME
         published, estimated = classify(
-            hot | {"spectraltype_esphs": "B", "teff_gspphot": 8_000},
-            hot | {"spectraltype_esphs": "O", "teff_gspphot": 20_000},
-            hot | {"spectraltype_esphs": "A", "teff_gspphot": 8_000},
-            {"sp_type": "B5", "teff_gspphot": 8_000} | DWARF_FLAME,
+            hot | {"spectraltype_esphs": "B"} | GIANT_ESPHS,
+            hot | {"spectraltype_esphs": "O", "teff_esphs": 35_000, "logg_esphs": 4},
+            hot | {"spectraltype_esphs": "B"},
+            hot | {"spectraltype_esphs": "A"} | GIANT_ESPHS,
+            {"sp_type": "B5"} | DWARF_ESPHS,
+        )
+        assert estimated[0] == {"blue-giant", "giant"}
+        assert estimated[1] == {"o-type-main-sequence", "main-sequence", "dwarf"}
+        assert estimated[2] == set()
+        assert estimated[3] == {"a-type-main-sequence", "main-sequence", "dwarf"}
+        assert published[4] == set()
+        assert estimated[4] == {"b-type-main-sequence", "main-sequence", "dwarf"}
+
+    def test_esphs_needs_the_temperature_of_the_letter(self):
+        _, estimated = classify(
+            {"sp_type": "B2", "teff_esphs": 35_000, "logg_esphs": 4.0},
+            {"sp_type": "B9", "teff_esphs": 9_000, "logg_esphs": 4.0},
+            {"sp_type": "O9", "teff_esphs": 8_000, "logg_esphs": 4.0},
+            {"sp_type": "O9", "teff_esphs": 20_000, "logg_esphs": 4.0},
+            {"sp_type": "O9", "teff_esphs": 25_000, "logg_esphs": 4.0},
+        )
+        assert estimated[:4] == [set(), set(), set(), set()]
+        assert estimated[4] == {"o-type-main-sequence", "main-sequence", "dwarf"}
+
+    def test_esphs_gives_no_stage_above_the_main_sequence(self):
+        _, estimated = classify(
+            {"sp_type": "B2", "teff_esphs": 25_000, "logg_esphs": 4.6},
+            {"sp_type": "B2", "teff_esphs": 25_000, "logg_esphs": 4.5},
         )
         assert estimated[0] == set()
-        assert estimated[1] == set()
-        assert estimated[2] == {"a-type-main-sequence", "main-sequence", "dwarf"}
-        assert (published[3], estimated[3]) == (set(), set())
+        assert estimated[1] == {"b-type-main-sequence", "main-sequence", "dwarf"}
+
+    @pytest.mark.parametrize(
+        "star",
+        [
+            {"sp_type": "B2", "classlabel_espels": "beStar"},
+            {"sp_type": "B2", "simbad_otype": "Be*"},
+            {"sp_type": "B2", "simbad_otype": "Em*"},
+            {"sp_type": "B2", "simbad_otype": "Be?"},
+            {"simbad_sp_type": "B2", "sp_type": "B2Ve"},
+            {"sp_type": "B2e"},
+            {"sp_type": "B(0/3)ne"},
+            {"sp_type": "B[e]"},
+            {"sp_type": "B1:pe+K0"},
+        ],
+    )
+    def test_esphs_gives_an_emission_line_star_no_stage(self, star):
+        _, estimated = classify(star | DWARF_ESPHS)
+        assert estimated[0] == set()
+
+    @pytest.mark.parametrize(
+        ("text", "emission"),
+        [
+            ("B1IV-Ve", 1),
+            ("B1Iae", 1),
+            ("O9.5V((f))e", 1),
+            ("B2He-weak", 0),
+            ("B9pSiFe", 0),
+            ("B5pec", 0),
+            ("B5+K0e", 0),
+            ("B5+IIIe", 1),
+            ("B1Ia+e", 1),
+            ("B3+Ve", 1),
+            ("B2+Vne", 1),
+            ("B2Ve+K0III", 1),
+        ],
+    )
+    def test_emission_lines_of_a_type(self, text, emission):
+        assert families._emission_lines(text) == (emission,)
 
     def test_tag_quality(self):
-        hot = {"in_oba_golden_sample": True, "teff_gspphot": 15_000}
+        hot = {"in_oba_golden_sample": True}
         _, estimated = classify(
             {"spectraltype_esphs": "K", "flags_esphs": "09000"} | DWARF_FLAME,
             {"spectraltype_esphs": "CSTAR", "flags_esphs": "05000"},

@@ -11,6 +11,14 @@ HIP or HD numbers than that row is a catalogued star itself, and keeps its
 designation. A row does not claim the number of a Hipparcos star that is far
 from it.
 
+A row without a spectral type of its own takes the type of its nearest
+system that has one, when the row is the brightest component below that
+system and has a magnitude. A row whose object type is `*` or a candidate
+type without a class takes the object type of the same kind of system, when
+that is a type of one star. These types go to their own columns: "V* VY CMa"
+(M5Iae, s*r) is the system of "NAME VY CMa A" (LP?). A composite spectral
+type names several stars, so a system that has one gives no type.
+
 A row with a Gaia DR3 id claims it. A row without one claims its HIP number.
 A row claims its HD number only when no Hipparcos star has that number:
 Hipparcos and SIMBAD put the HD numbers of a close pair on different stars. A
@@ -59,6 +67,7 @@ from typing import NamedTuple
 import numpy as np
 import pyarrow as pa
 
+from space_map_data.constants.stars.families import COMPOSITE_SPECTRAL_TYPE
 from space_map_data.download.providers.stars import simbad_stars
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import Source
@@ -455,6 +464,9 @@ class SimbadList:
     objects: dict[int, SimbadObject]
     children: dict[int, list[int]]
     iau: dict[str, int]
+    # The object types of more than one star, and the candidate types.
+    multiple: frozenset[str]
+    candidates: frozenset[str]
     parents: dict[int, list[int]] = field(init=False)
     # The components inside a Hipparcos point (`hold`), with the row that
     # holds their light. They are not rows.
@@ -488,7 +500,13 @@ class SimbadList:
             for row in _rows(directory / simbad_stars.IAU_FILE)
             if row["oid"] and int(row["oid"]) in objects
         }
-        return cls(objects, dict(children), iau)
+        otypedef = (directory / simbad_stars.OTYPEDEF_FILE).read_text()
+        return cls(
+            objects,
+            dict(children),
+            iau,
+            *simbad_stars.multiple_and_candidate_types(otypedef),
+        )
 
     def __post_init__(self) -> None:
         self.children = {k: list(v) for k, v in self.children.items()}
@@ -659,6 +677,62 @@ class SimbadList:
                 given[primary]["designation"] = name
         return dict(given)
 
+    def system_types(self) -> dict[int, dict[str, str]]:
+        """The spectral type (`sp_type`) and the object type (`otype`) that
+        each row takes from its nearest system with one."""
+        nearest: dict[tuple[int, str], tuple[int, str]] = {}
+        for oid in sorted(self.objects):
+            if self.is_row(oid) or oid not in self.children:
+                continue
+            system = self.objects[oid]
+            sp_type, otype = system.row.get("sp_type") or "", system.row["otype"]
+            if COMPOSITE_SPECTRAL_TYPE.search(sp_type):
+                continue
+            primary = self.primary(oid)
+            levels = self._levels_below(oid)
+            if primary not in levels or not np.isfinite(self._brightness(primary)):
+                continue
+            target = self.objects[primary]
+            apart = _apart(system, target)
+            if apart is not None and apart > HIP_PAIR_LIMIT:
+                continue
+            offers = {}
+            if sp_type and not target.row.get("sp_type"):
+                offers["sp_type"] = sp_type
+            if (
+                otype != "*"
+                and otype not in self.candidates
+                and otype not in self.multiple
+                and not self._says_more(target.row["otype"])
+            ):
+                offers["otype"] = otype
+            for kind, value in offers.items():
+                best = nearest.get((primary, kind))
+                if best is None or levels[primary] < best[0]:
+                    nearest[(primary, kind)] = (levels[primary], value)
+        found: dict[int, dict[str, str]] = defaultdict(dict)
+        for (row, kind), (_, value) in sorted(nearest.items()):
+            found[row][kind] = value
+        return dict(found)
+
+    def _levels_below(self, oid: int) -> dict[int, int]:
+        """The objects below `oid`, each with the fewest levels down to it."""
+        levels, edge = {}, [oid]
+        for level in range(1, MAX_DEPTH + 2):
+            edge = [
+                child
+                for parent in edge
+                for child in self.children.get(parent, [])
+                if child not in levels and child != oid
+            ]
+            levels |= {child: level for child in edge if child not in levels}
+        return levels
+
+    def _says_more(self, otype: str) -> bool:
+        """Whether an object type says more than "star": not `*`, and not a
+        candidate type without a class."""
+        return otype != "*" and (otype not in self.candidates or otype in CLASSES)
+
 
 def _apart(first: SimbadObject, second: SimbadObject) -> float | None:
     """Arcsec between two objects at J2000, None when one has no position."""
@@ -703,7 +777,8 @@ def engine_rows(
     `handed` is `stars.handed()`. `hipparcos_hd` are the HD numbers of the
     Hipparcos stars. `best` gives the Gaia DR3 best neighbour of a HIP number,
     and `hip_positions` the position of a Hipparcos star as its pass rows have
-    it.
+    it. The types of `stars.system_types()` fill `simbad_system_sp_type` and
+    `simbad_system_otype`.
     """
     picked = [
         found
@@ -716,14 +791,20 @@ def engine_rows(
         for oid in stars.objects
         if oid not in stars.children and not stars.is_row(oid)
     )
+    types = stars.system_types()
+    given = [handed.get(found.oid, {}) for found in picked]
+    taken = [types.get(found.oid, {}) for found in picked]
     logger.info(
         "SIMBAD: %d objects, %d rows, %d systems, %d components inside a Gaia or"
-        " Hipparcos point, %d rows take numbers of a system",
+        " Hipparcos point, %d rows take numbers or a designation of a system,"
+        " %d a spectral type and %d an object type",
         len(stars.objects),
         len(picked),
         systems,
         inside,
-        len(handed),
+        sum(1 for found in given if found),
+        sum(1 for found in taken if "sp_type" in found),
+        sum(1 for found in taken if "otype" in found),
     )
 
     def column(name: str) -> np.ndarray:
@@ -737,9 +818,8 @@ def engine_rows(
     claims, hip_claims, names = [], [], []
     dropped = Counter()
     for at, found in enumerate(picked):
-        given = handed.get(found.oid, {})
-        hip = found.hip or given.get("hip")
-        hd = found.hd or given.get("hd")
+        hip = found.hip or given[at].get("hip")
+        hd = found.hd or given[at].get("hd")
         row_claims = []
         if found.gaia:
             row_claims.append((*GAIA_DR3, found.gaia))
@@ -765,7 +845,7 @@ def engine_rows(
         if hd and hd not in hipparcos_hd:
             row_claims.append((*HD, hd))
         claims.append(row_claims)
-        names.append(star_name(found.identifiers, found.main_id, given))
+        names.append(star_name(found.identifiers, found.main_id, given[at]))
     logger.info("SIMBAD: HIP claims left out: %s", dict(dropped))
     # mas at J2000, grown by the proper-motion error over the epochs.
     years = GAIA_EPOCH - EPOCH
@@ -809,7 +889,15 @@ def engine_rows(
             "simbad_otype": pa.array(
                 [found.row["otype"] for found in picked], pa.string()
             ),
+            "simbad_system_sp_type": pa.array(
+                [found.get("sp_type") for found in taken], pa.string()
+            ),
+            "simbad_system_otype": pa.array(
+                [found.get("otype") for found in taken], pa.string()
+            ),
             "name": pa.array(names, pa.string()),
+            # The class comes from the row's own type. A system's type can belong
+            # to a fainter component, and only the export checks it against Gaia.
             "class": pa.array(
                 [OTYPE_CLASSES.get(found.row["otype"], "star") for found in picked],
                 pa.string(),

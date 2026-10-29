@@ -23,6 +23,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from cdshealpix import nested
 
+from space_map_data.export.extrasolar import families
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.exoplanets.catalogues import EU, OEC
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
@@ -46,9 +47,7 @@ SOURCE_LEVEL = 12
 POINT_COLUMNS = [
     "id",
     *COLUMNS,
-    "simbad_sp_type",
-    "sp_type",
-    "host_spectral_type",
+    *families.SPECTRAL_COLUMNS,
     "non_single_star",
 ]
 
@@ -128,11 +127,7 @@ def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Tabl
         index = pa.array(at, mask=at < 0)
         return table[name].take(index)
 
-    spectral = pc.coalesce(
-        pick(point, at_point, "simbad_sp_type"),
-        pick(point, at_point, "sp_type"),
-        pick(point, at_point, "host_spectral_type"),
-    )
+    spectral = families.spectral_type(point).take(pa.array(at_point, mask=at_point < 0))
     point_distance = np.where(at_point >= 0, distance[np.maximum(at_point, 0)], np.nan)
     return pa.table(
         {

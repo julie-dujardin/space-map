@@ -825,6 +825,8 @@ class TestWikidataToSystems:
             },
             {1: [2, 3]},
             {},
+            frozenset({"**"}),
+            frozenset(),
         )
         rows = pa.table(
             {

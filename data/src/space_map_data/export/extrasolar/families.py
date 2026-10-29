@@ -19,19 +19,33 @@ FIELDS = (
     pa.field("families", pa.uint64()),
     pa.field("families_estimated", pa.uint64()),
 )
-# The spectral types in source order.
-SPECTRAL_TYPES = ("simbad_sp_type", "sp_type", "host_spectral_type")
+# The spectral types in source order. The type of a SIMBAD system comes
+# before Hipparcos, which often has an older type ("V* VY CMa").
+SPECTRAL_TYPES = (
+    "simbad_sp_type",
+    "simbad_system_sp_type",
+    "sp_type",
+    "host_spectral_type",
+)
+OTYPES = ("simbad_otype", "simbad_system_otype")
+# The columns that `spectral_type` reads.
+SPECTRAL_COLUMNS = (
+    *SPECTRAL_TYPES,
+    "simbad_system_otype",
+    "phot_bp_mean_mag",
+    "phot_rp_mean_mag",
+    "classprob_dsc_combmod_whitedwarf",
+)
 FLAME_RUNS = ("_spec", "")
 COLUMNS = (
     "id",
-    *SPECTRAL_TYPES,
-    "simbad_otype",
+    *dict.fromkeys((*SPECTRAL_COLUMNS, *OTYPES)),
     "spectraltype_esphs",
     "flags_esphs",
     "in_oba_golden_sample",
     "classlabel_espels",
-    "classprob_dsc_combmod_whitedwarf",
-    "teff_gspphot",
+    "teff_esphs",
+    "logg_esphs",
     *(
         f"{name}_flame{run}"
         for run in FLAME_RUNS
@@ -115,8 +129,11 @@ STAGES = tuple(
 )
 LETTER_CODE = {letter: code for code, letter in enumerate(LETTERS, 1)}
 STAGE_CODE = {stage: code for code, stage in enumerate(STAGES, 1)}
-# The FLAME temperature floor of each letter code; 0 is none.
-MIN_TEFF = np.array([rules.FLAME_MIN_TEFF.get(letter, 0) for letter in ("", *LETTERS)])
+# The letter codes whose stage comes from ESP-HS, with their temperature range.
+ESPHS_LETTER = np.array([letter in rules.ESPHS_LETTERS for letter in ("", *LETTERS)])
+ESPHS_TEFF = np.array(
+    [rules.ESPHS_TEFF.get(letter, (np.nan, np.nan)) for letter in ("", *LETTERS)]
+)
 
 
 def _table() -> np.ndarray:
@@ -140,15 +157,22 @@ TABLE = _table()
 _AM = re.compile(
     r"(?:k[A-Z][\d.]*\s*)?h(?P<hydrogen>[OBAFGKM][\d.]*)\s*(?:m[A-Z][\d.]*)?"
 )
+# The subtype can be in brackets (F(6)V) or have a "+" (K5+III). An O or B star
+# can have N or C (ON8.5V). SIMBAD writes class 0 as "_0" (G2_0).
 _CLASS = re.compile(
     r"\s*(?P<prefix>esd|usd|sd|d|g|c)?"
     r"(?P<letter>MS|SC|OB|D[ABCOQZXP]*(?![a-z])|W[NCOR]|C(?=[-\d,(:\s]|$)"
     r"|S(?=[\d/:,\se]|$)|[RN](?=[\d\s:e.,]|$)|[LTY](?=\d)|[OBAFGKM](?!-rich))"
-    r"[\d.]*(?:[-/][OBAFGKM]?[\d.]+)?"
-    r"[\s:()\-]*"
+    r"(?:(?<=[OB])[NC](?=\d))?"
+    r"\(?[\d.]*\)?(?:[-/][OBAFGKM]?[\d.]+)?"
+    r"[\s:()\-_+]*"
     r"(?P<luminosity>0-Ia|Ia\+|Ia0|Iab|Ia|Ib|III|II|IV|VII|VI|V|I|0)?"
 )
 _BARIUM = re.compile(r"Ba(?![a-z])")
+# Emission lines after the class: an "e" alone or with n, p, q, k or v (B2Ve,
+# B(0/3)ne, B1IV-Ve, B[e]). He, Fe, pec and weak are other marks.
+_EMISSION = re.compile(r"(?<![A-Za-z])[knpqv]*e[kpqv]*(?![a-z])")
+_ROMAN = re.compile(r"[IV]+[ab]*")
 
 
 def parse_spectral_type(text: str) -> tuple[str | None, str | None, np.uint64]:
@@ -186,6 +210,17 @@ def parse_spectral_type(text: str) -> tuple[str | None, str | None, np.uint64]:
         and _BARIUM.search(text, found.end()) is not None
     )
     return letter, stage, BIT["barium-star"] if barium else NONE
+
+
+def _emission_lines(text: str) -> tuple[int]:
+    """1 when the first star of an MK spectral type has emission lines, else 0."""
+    second = rules.COMPOSITE_SPECTRAL_TYPE.search(text)
+    first = text if second is None else text[: second.start()]
+    found = _CLASS.match(first)
+    if found is None:
+        return (0,)
+    tail = _ROMAN.sub(" ", first[found.end() :])
+    return (int(_EMISSION.search(tail) is not None),)
 
 
 def _spectral_codes(text: str) -> tuple[int, int, np.uint64]:
@@ -239,14 +274,10 @@ def _numbers(rows: pa.Table, name: str) -> np.ndarray:
     return rows[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
 
 
-def _flame_stage(rows: pa.Table, letter: np.ndarray) -> np.ndarray:
-    """The FLAME stage code of each row, from the first run whose fit holds
-    for its `letter` code."""
+def _flame_stage(rows: pa.Table) -> np.ndarray:
+    """The FLAME stage code of each row, from the first run whose fit holds."""
     bounds = np.array([bound for bound, _ in rules.FLAME_STAGES])
     codes = np.array([STAGE_CODE[stage] for _, stage in rules.FLAME_STAGES])
-    need = MIN_TEFF[letter]
-    # Only the GSP-Phot temperature is stored. GSP-Spec fits no star that hot.
-    teff = {"": _numbers(rows, "teff_gspphot"), "_spec": np.full(rows.num_rows, np.nan)}
     out = np.zeros(rows.num_rows, np.int64)
     for run in reversed(FLAME_RUNS):
         stage = _numbers(rows, f"evolstage_flame{run}")
@@ -258,10 +289,67 @@ def _flame_stage(rows: pa.Table, letter: np.ndarray) -> np.ndarray:
         low, high = rules.FLAME_GIANT_MASS
         holds = ~np.isnan(mass) & (~giant | ((mass >= low) & (mass <= high)))
         holds &= stage >= rules.FLAME_MIN_STAGE
-        holds &= (need == 0) | (teff[run] >= need)
         at = np.minimum(np.searchsorted(bounds, stage, side="right"), bounds.size - 1)
         out = np.where(holds, codes[at], out)
     return out
+
+
+def _isin(column: pa.ChunkedArray, values: frozenset[str]) -> np.ndarray:
+    found = pc.is_in(column, pa.array(sorted(values), pa.string()))
+    return found.fill_null(False).to_numpy(zero_copy_only=False)
+
+
+def _system_types(rows: pa.Table) -> dict[str, pa.ChunkedArray]:
+    """The columns of the types of its SIMBAD system, null in each row that
+    they do not hold for. A white-dwarf type does not hold for a row that Gaia
+    finds red and not a white dwarf; the system's other column still can."""
+    sp_type, otype = rows["simbad_system_sp_type"], rows["simbad_system_otype"]
+    parsed = _by_value(sp_type, _spectral_codes, (0, 0, 0))
+    letter, stage = parsed[:, 0].astype(np.int64), parsed[:, 1].astype(np.int64)
+    colour = _numbers(rows, "phot_bp_mean_mag") - _numbers(rows, "phot_rp_mean_mag")
+    found = _numbers(rows, "classprob_dsc_combmod_whitedwarf")
+    red = colour > rules.SYSTEM_WHITE_DWARF_MAX_BP_RP
+    red &= ~(found > rules.MIN_WHITE_DWARF_PROBABILITY)
+    none = pa.scalar(None, pa.string())
+
+    def holding(column: pa.ChunkedArray, given: np.ndarray) -> pa.ChunkedArray:
+        white_dwarf = (closure(given) & BIT["white-dwarf"]) != 0
+        return pc.if_else(pa.array(~(white_dwarf & red)), column, none)
+
+    return {
+        "simbad_system_sp_type": holding(sp_type, parsed[:, 2] | TABLE[letter, stage]),
+        "simbad_system_otype": holding(otype, _masks(otype, rules.OTYPE_FAMILIES)),
+    }
+
+
+def spectral_type(rows: pa.Table) -> pa.ChunkedArray:
+    """The MK spectral type of each row: the first one in SPECTRAL_TYPES that
+    holds. `rows` has SPECTRAL_COLUMNS."""
+    return _first_type(rows, _system_types(rows))
+
+
+def _first_type(rows: pa.Table, system: dict[str, pa.ChunkedArray]) -> pa.ChunkedArray:
+    return pc.coalesce(*(system.get(name, rows[name]) for name in SPECTRAL_TYPES))
+
+
+def _esphs_stage(
+    rows: pa.Table,
+    system: dict[str, pa.ChunkedArray],
+    letter: np.ndarray,
+    emission: np.ndarray,
+) -> np.ndarray:
+    """The ESP-HS stage code of each row with the `letter` code: main sequence
+    or giant by log g. `emission` marks an MK type with emission lines."""
+    teff, logg = _numbers(rows, "teff_esphs"), _numbers(rows, "logg_esphs")
+    low, high = ESPHS_TEFF[letter].T
+    excluded = emission | _isin(rows["classlabel_espels"], rules.ESPHS_EXCLUDED_ELS)
+    for name in OTYPES:
+        excluded |= _isin(system.get(name, rows[name]), rules.ESPHS_EXCLUDED_OTYPES)
+    holds = (teff >= low) & (teff <= high) & (logg <= rules.ESPHS_MAX_LOGG)
+    holds &= ~excluded
+    main = logg >= rules.ESPHS_MIN_MAIN_SEQUENCE_LOGG
+    stage = np.where(main, STAGE_CODE["main-sequence"], STAGE_CODE["giant"])
+    return np.where(holds, stage, 0)
 
 
 def _esp_letter(rows: pa.Table) -> np.ndarray:
@@ -289,11 +377,13 @@ def masks(
     `classes` is the Metadata class of each row.
     """
     n = rows.num_rows
-    spectral = pc.coalesce(*(rows[name] for name in SPECTRAL_TYPES))
+    system = _system_types(rows)
+    spectral = _first_type(rows, system)
     parsed = _by_value(spectral, _spectral_codes, (0, 0, 0))
     mk_letter, mk_stage = parsed[:, 0].astype(np.int64), parsed[:, 1].astype(np.int64)
     published = parsed[:, 2] | TABLE[mk_letter, mk_stage]
-    published |= _masks(rows["simbad_otype"], rules.OTYPE_FAMILIES)
+    for name in OTYPES:
+        published |= _masks(system.get(name, rows[name]), rules.OTYPE_FAMILIES)
     published |= _masks(classes, rules.CLASS_FAMILIES)
     # A stage that an object type gives joins the MK letter as an MK stage
     # does. A family that states a letter, such as red-giant, keeps its stage
@@ -317,7 +407,18 @@ def masks(
         labels |= kept
         fixed |= states_of(kept)
 
+    # A tag that fails its quality check gives no letter, so FLAME gives the
+    # stage. For such O and B tags, FLAME is right as often as ESP-HS.
     letter = np.where(fixed & rules.LETTER, mk_letter, _esp_letter(rows))
-    stage = np.where(fixed & rules.STAGE, stage_known, _flame_stage(rows, letter))
+    emission = np.zeros(n, bool)
+    for name in SPECTRAL_TYPES:
+        found = _by_value(system.get(name, rows[name]), _emission_lines, (0,))
+        emission |= found[:, 0] != 0
+    estimate = np.where(
+        ESPHS_LETTER[letter],
+        _esphs_stage(rows, system, letter, emission),
+        _flame_stage(rows),
+    )
+    stage = np.where(fixed & rules.STAGE, stage_known, estimate)
     every = closure(TABLE[letter, stage] | labels | published)
     return published, every & ~published

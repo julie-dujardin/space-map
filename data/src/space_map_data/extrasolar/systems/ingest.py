@@ -34,6 +34,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from space_map_data.download.providers.stars import el_badry, msc, wds
+from space_map_data.export.extrasolar import families
 from space_map_data.extrasolar.engine import (
     ExtensionResult,
     IngestRun,
@@ -129,9 +130,7 @@ LINKED = tuple(pair for pair in OBJECT_CATALOGUES if pair != GAIA_DR3)
 FACT_COLUMNS = frozenset(
     {
         *COLUMNS,
-        "simbad_sp_type",
-        "sp_type",
-        "host_spectral_type",
+        *families.SPECTRAL_COLUMNS,
         "non_single_star",
     }
 )

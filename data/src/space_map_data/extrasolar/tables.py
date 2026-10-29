@@ -298,13 +298,16 @@ POINT_SOURCE = TableDef(
         # Compiled by SIMBAD from the literature: B, V and Gaia G in mag, the
         # spectral type as SIMBAD gives it, and SIMBAD's object type. Every
         # SIMBAD row has an object type, so the source column marks the stars
-        # that SIMBAD lists.
+        # that SIMBAD lists. The system columns hold the types that the star
+        # takes from its SIMBAD system.
         ColumnGroup(
             "simbad_photometry",
             (
                 *_fields(pa.float32(), "simbad_b_mag", "simbad_v_mag", "simbad_g_mag"),
                 pa.field("simbad_sp_type", pa.string()),
                 pa.field("simbad_otype", pa.string()),
+                pa.field("simbad_system_sp_type", pa.string()),
+                pa.field("simbad_system_otype", pa.string()),
             ),
             ("simbad",),
         ),
@@ -347,6 +350,14 @@ POINT_SOURCE = TableDef(
                 ),
                 pa.field("libname_gspphot", pa.string()),
             ),
+            ("gaia-dr3", "gaia-dr3-named"),
+        ),
+        # ESP-HS, for the stars that ESP-ELS tags O, B or A and that are
+        # brighter than G = 17.65: Teff in K and log g in log(cm/s²), with a
+        # solar composition.
+        ColumnGroup(
+            "esphs",
+            _fields(pa.float32(), "teff_esphs", "logg_esphs"),
             ("gaia-dr3", "gaia-dr3-named"),
         ),
         # FLAME, from the GSP-Phot temperature and the G luminosity.

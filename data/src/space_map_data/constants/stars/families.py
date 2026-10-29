@@ -3,8 +3,9 @@
 A star is in every family that its data supports. A published family comes
 from a catalogued classification only: an MK spectral type, a SIMBAD object
 type or the Metadata class. An estimated family uses at least one Gaia DR3
-estimate: the spectral type tag of ESP-ELS, the FLAME evolutionary stage, the
-DSC white-dwarf probability or the ESP-ELS emission-line class.
+estimate: the spectral type tag of ESP-ELS, the stage from the ESP-HS surface
+gravity (O and B stars) or from FLAME (other stars), the DSC white-dwarf
+probability or the ESP-ELS emission-line class.
 
 A family states the spectral letter of a star, its stage, both or neither. A
 published family or MK value stops the Gaia estimate of what it states.
@@ -13,6 +14,8 @@ Every family is below one root family, stellar classification.
 
 See docs/stellar-qids.md for the QID research.
 """
+
+import re
 
 STAR_FAMILY_PAGES: dict[str, tuple[str, ...]] = {
     "a-type-main-sequence": ("Q471805",),
@@ -217,6 +220,11 @@ SPECTRAL_TYPE_WORDS: dict[str, tuple[str, ...]] = {
     "WD": ("white-dwarf",),
     "PG1159": ("white-dwarf",),
 }
+# A "+" and a second star after it (G2V+K1V, DA2+dM). In K5+III, M2+V and B1Ia+
+# the "+" is part of the type of one star.
+COMPOSITE_SPECTRAL_TYPE = re.compile(
+    r"\+\s*(?:\(?(?:esd|usd|sd|d|g|c)?[OBAFGKMLTYDWSC]|\?)"
+)
 # Letters whose "Ba" index marks a barium star. In an Am star or a carbon
 # star the index has another meaning.
 BARIUM_LETTERS = frozenset("FGKM")
@@ -315,10 +323,37 @@ FLAME_STAGES: tuple[tuple[int, str], ...] = (
 FLAME_MIN_STAGE = 100
 # Gaia trusts the mass of a FLAME giant only in this range (solar masses).
 FLAME_GIANT_MASS = (1.0, 2.0)
-# FLAME fits a star at the temperature of its run, so its stage holds for a
-# star of these letters only from that temperature up (K). GSP-Phot often
-# fits a hot star far too cool: a median of 8,700 K for the O-tagged stars.
-FLAME_MIN_TEFF: dict[str, float] = {"O": 30_000, "B": 10_000}
+# ESP-HS gives the stage of an O or B star. FLAME has models up to 10 M☉
+# only, and its GSP-Phot temperature is too low for hot stars (Gaia DR3
+# documentation, Sects. 11.3.6 and 11.3.8).
+ESPHS_LETTERS = frozenset("OB")
+# The ESP-HS temperature of each letter (K). Outside its range, the log g of a
+# star is less often right. B is the range of its ESP-ELS tag (Creevey et al.
+# 2023, A&A 674, A26, Table A.1). ESP-HS fits O stars 1,000 to 5,000 K too
+# cool, so the O range starts where 95% of the MK O stars are hotter.
+ESPHS_TEFF: dict[str, tuple[float, float]] = {
+    "O": (22_500, 50_000),
+    "B": (9_790, 30_000),
+}
+# The main sequence ends at log g 3.41 to 3.55 from 7,500 to 30,000 K (MIST
+# v1.2 solar tracks with rotation). A star with a lower log g is a giant.
+# ESP-HS gives supergiants the log g of giants, so it cannot tell them apart.
+ESPHS_MIN_MAIN_SEQUENCE_LOGG = 3.5
+# The MIST main sequence reaches log g 4.33 from 9,790 to 50,000 K, and ESP-HS
+# log g has a scatter of 0.2 to 0.4 dex. Above this log g, fewer than half of
+# the stars with an MK class are main-sequence stars. The others are mostly
+# hot subdwarfs and white dwarfs.
+ESPHS_MAX_LOGG = 4.5
+# ESP-HS gives an emission-line star a log g that is too low, because the
+# emission fills its Balmer lines. These ESP-ELS classes and SIMBAD types mark
+# such a star, and so does an "e" in one of its MK types (B2Ve).
+ESPHS_EXCLUDED_ELS = frozenset({"beStar"})
+ESPHS_EXCLUDED_OTYPES = frozenset({"Be*", "Be?", "Em*", "Ae*", "Ae?"})
+# A white-dwarf type of a system does not go to a row that Gaia finds redder
+# than this BP-RP and not a white dwarf (DSC). In a pair of a white dwarf and
+# an M dwarf, the M dwarf is often the brighter star. 1% of the catalogued
+# white dwarfs are this red.
+SYSTEM_WHITE_DWARF_MAX_BP_RP = 1.4
 
 # Each family adds these. The closure is transitive. A family without a parent
 # here gets the root.
