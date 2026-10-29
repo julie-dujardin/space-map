@@ -1522,6 +1522,15 @@ class TestUnverifiedInterior:
         name = f"{WDS}: interiors of unverified members that give way"
         assert systems.counts[name] == 1
 
+    def test_a_circumbinary_planet_wins(self):
+        inputs, resolver = self.inputs(None, False)
+        host = {"host": 80, "number": 1, "designation": "X b", "binary_type": "P-type"}
+        systems = build(replace(inputs, planets=planets([host])), resolver)
+        points = systems.nodes.filter(systems.nodes["point"]).to_pylist()
+        assert [(p["key"], p["stars"], p["evidence"]) for p in points] == [
+            (80, 2, PLANETS)
+        ]
+
 
 class TestRegistryInputs:
     def test_no_gaia_orbits(self, tmp_path):
@@ -1779,12 +1788,18 @@ class TestEntryIsAPoint:
         assert systems.counts["interiors of one star once an entry leaves"] == 1
         assert systems.counts[f"points holding several stars, by {WDS}"] == 0
 
-    def orbiting(self, others: dict[int, tuple[float, float]]) -> Systems:
-        """WDS B finds no object. Its last measure is at 4.3″ and 200°, and the
-        MSC lists A and the stars `others` (key → J2016 angle, G)."""
+    def orbiting(
+        self,
+        others: dict[int, tuple[float, float]],
+        separation: float = 4.3,
+        apart: float = 4.3,
+    ) -> Systems:
+        """WDS B finds no object. Its last measure is at `separation` and 200°,
+        and the MSC lists A and the stars `others` (key → J2016 angle, G) at
+        `apart`."""
         w = "08000+1000"
         points = {
-            k: offset(120.0, 10.0, 4.3, angle) for k, (angle, _) in others.items()
+            k: offset(120.0, 10.0, apart, angle) for k, (angle, _) in others.items()
         }
         resolver = FakeResolver(
             {("hip", "2007", "1"): 900} | {("hd", "1949", str(k)): k for k in others},
@@ -1793,7 +1808,7 @@ class TestEntryIsAPoint:
             positions={f"{w} A": 900},
         )
         pair = wds_pair(
-            "A", "B", 4.3, notes="NO", mag1=8.0, mag2=10.7, position_angle=200.0
+            "A", "B", separation, notes="NO", mag1=8.0, mag2=10.7, position_angle=200.0
         )
         catalogue = wds_catalogue(
             {w: [pair]}, {(w, "A"): wds_component(None, 120.0, 10.0)}
@@ -1810,6 +1825,16 @@ class TestEntryIsAPoint:
         systems = self.orbiting({901: (108.0, 10.7)})
         assert shape(systems, 900) == ("binary star", 2, [900, 901])
         assert systems.counts["entries that are a point of the system"] == 1
+
+    def test_the_slack_scales_with_the_separation(self):
+        """22248+2233 B: the WDS gives 1.315″, and Gaia sees it at 2.438″."""
+        systems = self.orbiting({901: (108.0, 10.7)}, 1.315, 2.438)
+        assert systems.counts["entries that are a point of the system"] == 1
+
+    def test_a_close_pair_is_no_wide_point(self):
+        """V1018 Cas Ab is 0.00005″ from Aa. A star 1.6″ away is another star."""
+        systems = self.orbiting({901: (108.0, 10.7)}, 0.00005, 1.64)
+        assert "entries that are a point of the system" not in systems.counts
 
     def test_two_points_at_the_separation(self):
         """Two Gaia points at B's separation, at other angles: the angle stays

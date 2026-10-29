@@ -55,6 +55,7 @@ from space_map_data.extrasolar.systems.prepare import (
     Inputs,
     Prepared,
     close_interiors,
+    evidence_interiors,
     offset,
 )
 from space_map_data.extrasolar.systems.reduce import (
@@ -77,15 +78,17 @@ BINARY, MULTIPLE = "binary star", "multiple star"
 #    entry's, and the position angle within SAME_ANGLE deg.
 # 1. The same, with the angle turned by 180 deg. The catalogues can swap the
 #    two stars of a pair.
-# 2. The separation agrees within ORBIT_SEPARATION arcsec or SAME_SHARE, and
-#    the magnitude within SAME_MAG. An orbit moves a pair between the epochs
-#    of two catalogues.
+# 2. The separation agrees within ORBIT_SHARE of the larger separation, at
+#    least SAME_SEPARATION and at most ORBIT_SEPARATION arcsec, and the
+#    magnitude within SAME_MAG. An orbit moves a pair between the epochs of
+#    two catalogues, by an amount that scales with the separation.
 # 3. The same, where both positions are from Gaia and the angle disagrees.
 #    The magnitude must agree within GAIA_MAG, and no other point of the
 #    system can be at that separation.
 SAME_SEPARATION = 0.15
 SAME_SHARE = 0.2
 SAME_ANGLE = 10.0
+ORBIT_SHARE = 0.5
 ORBIT_SEPARATION = 2.0
 SAME_MAG = 1.0
 GAIA_MAG = 0.5
@@ -268,6 +271,8 @@ class Assembler:
         self.events += [(kind, "merge", text) for kind, text in merged.events]
         self.counts = prepared.counts
         self._columns: dict[int, dict[str, list]] = {}
+        # The entries that leave each kept interior, with the point each is.
+        self.left_out: dict[int, list[tuple[int, int]]] = {}
 
     # Values of members
 
@@ -355,6 +360,9 @@ class Assembler:
         counts = Counter(INTERIOR_SOURCES[rank] for (_, rank), _ in chosen.values())
         for source, value in counts.items():
             self.counts[f"points holding several stars, by {source}"] = value
+        for _, item in chosen.values():
+            for ref, point in self.left_out.get(id(item), ()):
+                self._log_point(ref, point)
         return {key: item for key, (_, item) in chosen.items()}
 
     def _circumbinary(self, in_systems: np.ndarray) -> list[Interior]:
@@ -365,8 +373,7 @@ class Assembler:
             return []
         circling = pc.equal(planets["binary_type"], "P-type").fill_null(False)
         hosts = set(planets.filter(circling)["host"].to_pylist()) - {None, 0}
-        have = {interior.key for interior in self.p.reduced.interiors}
-        have |= set(self.p.orbit_keys[self.p.orbit_kept].tolist())
+        have = evidence_interiors(self.p)
         alone = sorted(hosts - have - set(np.unique(in_systems).tolist()))
         rank = INTERIOR_SOURCES.index(PLANETS)
         self.counts[
@@ -400,11 +407,14 @@ class Assembler:
             others = sorted(
                 set().union(*ranks.values()) - ranks[item.rank] - {item.key}
             )
-            entries = [
-                e for e in item.entries if not self._is_point(e[0], item.key, others)
+            found = [
+                (e, self._same_point(e[0], item.key, others)) for e in item.entries
             ]
+            entries = [e for e, point in found if not point]
             if len(entries) > 1:
-                kept.append(replace(item, entries=entries))
+                item = replace(item, entries=entries)
+                self.left_out[id(item)] = [(e[0], p) for e, p in found if p]
+                kept.append(item)
             elif len(entries) < len(item.entries):
                 self.counts["interiors of one star once an entry leaves"] += 1
             else:
@@ -607,12 +617,15 @@ class Assembler:
         `others`. Logs each one that is."""
         found = self._same_point(ref, primary, others)
         if found:
-            self.counts["entries that are a point of the system"] += 1
-            text = " ".join(
-                str(self.value(ref, name)) for name in ("source", "system", "label")
-            )
-            self.events.append(("entry is a point", "assemble", f"{text} is {found}"))
+            self._log_point(ref, found)
         return bool(found)
+
+    def _log_point(self, ref: int, point: int) -> None:
+        self.counts["entries that are a point of the system"] += 1
+        text = " ".join(
+            str(self.value(ref, name)) for name in ("source", "system", "label")
+        )
+        self.events.append(("entry is a point", "assemble", f"{text} is {point}"))
 
     def _same_point(self, ref: int, primary: int, others: list[int]) -> int:
         """The point of `others` that the entry `ref` is, else 0. See the
@@ -626,7 +639,6 @@ class Assembler:
         if not separation or first is None:
             return 0
         near = max(SAME_SEPARATION, SAME_SHARE * separation)
-        far = max(ORBIT_SEPARATION, SAME_SHARE * separation)
         found: list[tuple[int, float, float, int]] = []
         at_separation = 0
         for other in others:
@@ -640,10 +652,13 @@ class Assembler:
                 continue
             apart, towards = offset(first, fact)
             miss = abs(apart - separation)
-            if not miss <= far:
+            far = ORBIT_SHARE * max(apart, separation)
+            far = min(ORBIT_SEPARATION, max(SAME_SEPARATION, far))
+            if not miss <= max(near, far):
                 continue
             at_separation += 1
-            tier = 2 if step <= SAME_MAG else None
+            moved = miss <= far
+            tier = 2 if moved and step <= SAME_MAG else None
             if angle is not None:
                 turn = abs(towards - angle) % 360
                 turn = min(turn, 360 - turn)
@@ -651,7 +666,7 @@ class Assembler:
                     if miss <= near:
                         tier = 0 if turn <= SAME_ANGLE else 1
                 elif _gaia(first) and _gaia(fact):
-                    tier = 3 if step <= GAIA_MAG else None
+                    tier = 3 if moved and step <= GAIA_MAG else None
             if tier is not None:
                 found.append((tier, miss, step, other))
         found = [f for f in found if f[0] < 3 or at_separation == 1]

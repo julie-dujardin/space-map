@@ -661,17 +661,23 @@ def offset(first: Fact, second: Fact) -> tuple[float, float]:
     )
 
 
-def close_interiors(
-    prepared: Prepared, system_of: dict[int, int], points_of: dict[int, list[int]]
-) -> list[Interior]:
-    """Two stars for each close-pair point with no interior that no companion
-    explains. An interior of unverified members does not count."""
+def evidence_interiors(prepared: Prepared) -> set[int]:
+    """The points with an interior that an interior of unverified members
+    gives way to."""
     have = {
         interior.key
         for interior in prepared.reduced.interiors
         if not interior.unverified
     }
-    have |= set(prepared.orbit_keys[prepared.orbit_kept].tolist())
+    return have | set(prepared.orbit_keys[prepared.orbit_kept].tolist())
+
+
+def close_interiors(
+    prepared: Prepared, system_of: dict[int, int], points_of: dict[int, list[int]]
+) -> list[Interior]:
+    """Two stars for each close-pair point with no interior that no companion
+    explains. An interior of unverified members does not count."""
+    have = evidence_interiors(prepared)
     found = []
     for key, otype in sorted(prepared.close.items()):
         if key in have or key in prepared.dropped:
