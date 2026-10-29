@@ -192,9 +192,10 @@ OBJECT_CATALOGUES = frozenset({"wikidata", "literature"})
 # fidelity of Rybizki et al. 2022, the XP metallicities of Andrae et al. 2023
 # and the Gaia DR3 golden sample of OBA stars. The groups after them hold
 # metallicities from spectra, then classes, one catalogue each. These
-# catalogues join the Gaia rows by source_id at each ingest, PASTEL and the
-# GCVS also the Hipparcos rows by HIP number, so they hold no catalogue id in
-# the registry. gaia-dr3-named are the Gaia rows of SIMBAD stars and planet
+# catalogues join at each ingest, so they hold no catalogue id in the
+# registry. Most join the Gaia rows by source_id. PASTEL and the GCVS also
+# join the Hipparcos rows by HIP number, and the ATNF pulsars join the SIMBAD
+# rows by oid. gaia-dr3-named are the Gaia rows of SIMBAD stars and planet
 # hosts without a 5σ parallax, so their astrometry ranks below Hipparcos.
 POINT_SOURCE = TableDef(
     number=1,
@@ -486,6 +487,14 @@ POINT_SOURCE = TableDef(
                 pa.field("alpha_spicy", pa.float32()),
             ),
             ("gaia-dr3", "gaia-dr3-named"),
+        ),
+        # The ATNF Pulsar Catalogue: the J name and the type as published. A
+        # type is codes between commas, each with an optional reference in
+        # brackets.
+        ColumnGroup(
+            "atnf",
+            _fields(pa.string(), "atnf_name", "type_atnf"),
+            ("simbad",),
         ),
         ColumnGroup(
             "astrometric_quality",

@@ -225,7 +225,8 @@ JOBS: list[Job] = [
         schedule=Every(timedelta(days=7)),
     ),
     # Catalogues of the other objects outside the solar system. Each manifest
-    # entry carries its own refresh time, and most have none.
+    # entry carries its own refresh time, and most have none. Ordered: the
+    # SIMBAD query of the ATNF pulsars reads the stellar remnant catalogues.
     Job(
         name="deep_sky",
         sources=(
@@ -233,6 +234,7 @@ JOBS: list[Job] = [
             PROVIDERS.STAR_CLUSTER_CATALOGUES,
             PROVIDERS.NEBULA_CATALOGUES,
             PROVIDERS.STELLAR_REMNANT_CATALOGUES,
+            PROVIDERS.ATNF_SIMBAD,
             PROVIDERS.BLACK_HOLE_CATALOGUES,
             PROVIDERS.TRANSIENT_CATALOGUES,
             PROVIDERS.SIMBAD_OBJECTS,

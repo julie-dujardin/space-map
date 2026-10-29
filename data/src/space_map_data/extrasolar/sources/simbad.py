@@ -84,6 +84,7 @@ from space_map_data.extrasolar.sources.hipparcos import (
     g_estimate,
     to_gaia_epoch,
 )
+from space_map_data.extrasolar.tables import POINT_SOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,10 @@ FLOAT_COLUMNS = {
     "simbad_v_mag": "V",
     "simbad_g_mag": "G",
 }
+# The engine reads each column of the groups that a pass feeds. So the pass
+# rows have the columns of the ATNF pulsars, null until `atnf.join_by_oid`
+# sets them.
+ATNF_COLUMNS = tuple(POINT_SOURCE.group("atnf").names)
 
 GREEK = {
     "alf": "Alpha",
@@ -792,7 +797,7 @@ def engine_rows(
     Hipparcos stars. `best` gives the Gaia DR3 best neighbour of a HIP number,
     and `hip_positions` the position of a Hipparcos star as its pass rows have
     it. The types of `stars.system_types()` fill `simbad_system_sp_type` and
-    `simbad_system_otype`.
+    `simbad_system_otype`. The columns of the ATNF pulsars are null.
     """
     picked = [
         found
@@ -909,6 +914,10 @@ def engine_rows(
             "simbad_system_otype": pa.array(
                 [found.get("otype") for found in taken], pa.string()
             ),
+            **{
+                name: pa.nulls(n, POINT_SOURCE.schema.field(name).type)
+                for name in ATNF_COLUMNS
+            },
             "name": pa.array(names, pa.string()),
             # The class comes from the row's own type. A system's type can belong
             # to a fainter component, and only the export checks it against Gaia.

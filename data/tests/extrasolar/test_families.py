@@ -415,8 +415,8 @@ class TestPublished:
 
 
 class TestCatalogued:
-    """The GCVS types give published families, the SPICY classes estimated
-    ones."""
+    """The GCVS and ATNF types give published families, the SPICY classes
+    estimated ones."""
 
     @pytest.mark.parametrize(
         "vartype", ["UV", "UVN", "BY+UV", "UV+BY:", "UVN(YY)", "INST(YY)+UV"]
@@ -429,6 +429,34 @@ class TestCatalogued:
     def test_an_uncertain_or_other_gcvs_type_gives_none(self, vartype):
         published, _ = classify({"vartype_gcvs": vartype})
         assert published[0] == set()
+
+    @pytest.mark.parametrize(
+        "pulsar_type",
+        ["AXP", "AXP,NRAD", "AXP[esy+20],HE[kdk+20]", "AXP,HE[mgz+13],HE[efk+13]"],
+    )
+    def test_an_atnf_magnetar(self, pulsar_type):
+        published, _ = classify({"type_atnf": pulsar_type})
+        assert published[0] == {"magnetar", "neutron-star"}
+
+    @pytest.mark.parametrize(
+        "pulsar_type",
+        [
+            "NRAD,AXP(?)",
+            "AXP(?)",
+            "HE[wcp+18]",
+            ",HE[hpd+24]",
+            "RRAT(?)[bbc+22]",
+            "XINS",
+        ],
+    )
+    def test_an_uncertain_or_other_atnf_type_gives_none(self, pulsar_type):
+        published, _ = classify({"type_atnf": pulsar_type})
+        assert published[0] == set()
+
+    def test_a_magnetar_stops_the_flame_stage(self):
+        published, estimated = classify({"type_atnf": "AXP"} | DWARF_FLAME)
+        assert published[0] == {"magnetar", "neutron-star"}
+        assert estimated[0] == set()
 
     @pytest.mark.parametrize(
         ("spicy_class", "found"),

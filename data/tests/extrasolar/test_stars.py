@@ -24,6 +24,7 @@ from space_map_data.extrasolar.exoplanets.sources import SOURCES as EXOPLANET_SO
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import (
     apogee,
+    atnf,
     gaia,
     gaia_orbits,
     gcvs,
@@ -31,6 +32,7 @@ from space_map_data.extrasolar.sources import (
     lamost,
     names,
     pastel,
+    simbad,
     spicy,
     wikidata,
 )
@@ -299,6 +301,7 @@ class TestTables:
             ("lamost", lamost.COLUMNS),
             ("gcvs", gcvs.COLUMNS),
             ("spicy", spicy.COLUMNS),
+            ("atnf", atnf.COLUMNS),
         ):
             assert groups[name].names == list(columns)
         assert gaia.JOINED_COLUMNS == (
@@ -317,6 +320,8 @@ class TestTables:
                 HIPPARCOS.name,
                 HIPPARCOS_1997.name,
             )
+        assert groups["atnf"].sources == (SIMBAD.name,)
+        assert simbad.ATNF_COLUMNS == atnf.COLUMNS
 
 
 class TestGaiaRows:

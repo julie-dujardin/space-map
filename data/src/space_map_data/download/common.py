@@ -96,6 +96,7 @@ from space_map_data.download.providers.spice import (
     SpacetrackTleDownloader,
     SpiceDownloader,
 )
+from space_map_data.download.providers.stars.atnf_simbad import AtnfSimbadDownloader
 from space_map_data.download.providers.stars.bailer_jones import (
     BailerJonesDistancesDownloader,
 )
@@ -233,7 +234,10 @@ PROVIDERS_CLASSES = [
     GalaxyCataloguesDownloader,
     StarClusterCataloguesDownloader,
     NebulaCataloguesDownloader,
+    # Ordered: the SIMBAD query of the ATNF pulsars reads the stellar remnant
+    # catalogues.
     StellarRemnantCataloguesDownloader,
+    AtnfSimbadDownloader,
     BlackHoleCataloguesDownloader,
     TransientCataloguesDownloader,
     SimbadObjectsDownloader,

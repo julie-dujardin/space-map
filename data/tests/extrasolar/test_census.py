@@ -54,6 +54,7 @@ class TestSourceKey:
         assert census.source_key("hipparcos-2007", "pastel") == "pastel-2020"
         assert census.source_key("gaia-dr3", "fidelity") == "rybizki-2022"
         assert census.source_key("gaia-dr3", "masses") == "gaia-dr3-nss"
+        assert census.source_key("simbad", "atnf") == "atnf-psrcat"
 
     def test_a_planet_orbit_is_its_pass(self):
         assert census.source_key("nasa-exoplanet-archive") == "nasa-exoplanet-archive"

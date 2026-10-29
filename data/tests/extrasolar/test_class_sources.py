@@ -1,14 +1,23 @@
-"""Tests for the class catalogues that join the Gaia rows: GCVS and SPICY."""
+"""Tests for the class catalogues that join the rows of a pass: GCVS, SPICY
+and ATNF."""
 
+import io
+import tarfile
 from pathlib import Path
 
 import numpy as np
+import pyarrow.compute as pc
 import pytest
 from astropy.io import fits
 
-from space_map_data.extrasolar.sources import gcvs, spicy
-from space_map_data.extrasolar.sources.simbad import SimbadList
+from space_map_data.extrasolar.engine import IngestRun
+from space_map_data.extrasolar.sources import atnf, gcvs, simbad, spicy
+from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
+from space_map_data.extrasolar.tables import POINT_SOURCE
+from tests.extrasolar.conftest import id_of, offset, table_rows
 from tests.extrasolar.systems_fakes import simbad_object
+from tests.extrasolar.test_simbad import star, write_simbad
+from tests.extrasolar.test_stars import DEC, RA
 
 NO_DR2 = np.iinfo(np.int64).min
 
@@ -281,3 +290,164 @@ class TestSpicyStars:
         neighbourhood = write_neighbourhood(tmp_path / "n.csv", [(11, 111, 1.0)])
         with pytest.raises(ValueError, match="SPICY has"):
             spicy.read_stars(table, neighbourhood)
+
+
+# A psrcat.db with the cases of the SIMBAD join.
+PSRCAT = """#CATALOGUE 2.8.1
+#
+# Number of pulsars is 10
+#
+PSRJ     J0146+6145                    gk98
+RAJ      01:46:22.407             2    gk98
+TYPE     AXP,NRAD
+@-----------------------------------------------------------------
+PSRJ     J0534+2200                    tml93
+PSRB     B0531+21                      ss68
+# P_0, nc = 0 (lgw+13 versus lps93).
+TYPE     ,HE[cgm+11],HE[aab+22]
+@-----------------------------------------------------------------
+PSRJ     J0537-69
+@-----------------------------------------------------------------
+PSRJ     J0537-6910                    mgz+98
+@-----------------------------------------------------------------
+PSRJ     J1647+6608
+@-----------------------------------------------------------------
+PSRJ     J1647+6609
+@-----------------------------------------------------------------
+PSRJ     J1312+1810A                   kzhs99
+PSRB     B1310+18                      kzhs99
+@-----------------------------------------------------------------
+PSRJ     J1844-0346
+TYPE     NRAD,AXP(?)
+@-----------------------------------------------------------------
+PSRJ     J0104+6029_P                  yly+25
+@-----------------------------------------------------------------
+PSRB     B0000+00
+@-----------------------------------------------------------------
+"""
+# The names of PSRCAT that SIMBAD resolves, with their oid.
+RESOLVED = {
+    "J0146+6145": 10,
+    "B0531+21": 20,
+    "J0537-69": 30,
+    "J0537-6910": 30,
+    "J1647+6608": 40,
+    "J1647+6609": 40,
+    "J1312+1810A": 50,
+    "B1310+18": 51,
+    "J1844-0346": 60,
+}
+
+
+def write_psrcat(path: Path, text: str = PSRCAT) -> Path:
+    """The ATNF package with only its psrcat.db."""
+    data = text.encode()
+    info = tarfile.TarInfo(atnf.DB_MEMBER)
+    info.size = len(data)
+    with tarfile.open(path, "w:gz") as archive:
+        archive.addfile(info, io.BytesIO(data))
+    return path
+
+
+def write_pulsar_names(path: Path, names: list[str]) -> Path:
+    """A names.csv of atnf_simbad: each name with its oid, empty for none."""
+    lines = ["name,oid,main_id,otype"]
+    lines += [f"{name},{RESOLVED.get(name, '')},,Psr" for name in names]
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def pulsar_names() -> list[str]:
+    return [name for p in atnf.parse_pulsars(PSRCAT) for name in p.names]
+
+
+class TestAtnfPulsars:
+    """The entries of psrcat.db and their types as published."""
+
+    def test_parse_pulsars(self):
+        pulsars = atnf.parse_pulsars(PSRCAT)
+        # The entry without a J name is left out.
+        assert len(pulsars) == 9
+        assert pulsars[0] == atnf.Pulsar("J0146+6145", None, "AXP,NRAD")
+        assert pulsars[1] == atnf.Pulsar(
+            "J0534+2200", "B0531+21", ",HE[cgm+11],HE[aab+22]"
+        )
+        assert pulsars[2] == atnf.Pulsar("J0537-69")
+        assert pulsars[7].type == "NRAD,AXP(?)"
+
+    def test_read_pulsars_from_the_package(self, tmp_path):
+        path = write_psrcat(tmp_path / "psrcat_pkg.tar.gz")
+        assert atnf.read_pulsars(path) == atnf.parse_pulsars(PSRCAT)
+
+    @pytest.mark.parametrize(
+        ("psrj", "digits"),
+        [("J0537-69", 2), ("J0537-6910", 4), ("J1911+0101A", 4), ("J1858-0736_P", 4)],
+    )
+    def test_the_digits_of_a_j_name(self, psrj, digits):
+        assert atnf.Pulsar(psrj).precision == digits
+
+
+class TestAtnfStars:
+    """A pulsar takes the SIMBAD object of its names, one pulsar per object."""
+
+    def test_read_stars(self, tmp_path):
+        path = write_psrcat(tmp_path / "psrcat_pkg.tar.gz")
+        names = write_pulsar_names(tmp_path / "names.csv", pulsar_names())
+        rows = atnf.read_stars(path, names).to_pylist()
+        assert [(r["oid"], r["atnf_name"], r["type_atnf"]) for r in rows] == [
+            (10, "J0146+6145", "AXP,NRAD"),
+            # Only the B name resolves.
+            (20, "J0534+2200", ",HE[cgm+11],HE[aab+22]"),
+            # SIMBAD gives the short name to the pulsar of the full name.
+            (30, "J0537-6910", None),
+            # The J name wins over the B name. Object 40 has two pulsars
+            # whose names have equal digits, so neither keeps it.
+            (50, "J1312+1810A", None),
+            (60, "J1844-0346", "NRAD,AXP(?)"),
+        ]
+
+
+class TestAtnfJoin:
+    """The pulsars join the SIMBAD rows by oid and never mint."""
+
+    def test_join_by_oid(self, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad",
+            [
+                star(10, *offset(RA, DEC, 60, 0), "PSR J0146+6145", otype="Psr"),
+                star(20, *offset(RA, DEC, 120, 0), "PSR B0531+21", otype="Psr"),
+                star(70, *offset(RA, DEC, 180, 0), "HD 1"),
+            ],
+        )
+        listed = SimbadList.read(directory)
+        rows, _ = simbad.engine_rows(listed, listed.handed(), set(), {}, {})
+        assert rows["type_atnf"].null_count == rows.num_rows
+        pulsars = atnf.read_stars(
+            write_psrcat(tmp_path / "psrcat_pkg.tar.gz"),
+            write_pulsar_names(tmp_path / "names.csv", pulsar_names()),
+        )
+        # Objects 30, 50 and 60 have no SIMBAD row, so they add none.
+        joined = atnf.join_by_oid(rows, pulsars)
+        assert joined.num_rows == rows.num_rows
+        assert joined.drop_columns(list(atnf.COLUMNS)).equals(
+            rows.drop_columns(list(atnf.COLUMNS))
+        )
+        assert joined["atnf_name"].to_pylist() == ["J0146+6145", "J0534+2200", None]
+        assert joined["type_atnf"].to_pylist() == [
+            "AXP,NRAD",
+            ",HE[cgm+11],HE[aab+22]",
+            None,
+        ]
+
+        root = tmp_path / "root"
+        with IngestRun.start(root, root / "backup") as run:
+            run.add(SIMBAD, [joined])
+            result = run.commit()
+        assert result.entry["counts"]["minted"] == 3
+        point = table_rows(root, POINT_SOURCE.slug)
+        assert point.num_rows == 3
+        magnetar = point.filter(pc.equal(point["id"], id_of(root, SIMBAD, 10)))
+        assert magnetar["type_atnf"].to_pylist() == ["AXP,NRAD"]
+        assert magnetar["atnf_source"].to_pylist() == ["simbad"]
+        other = point.filter(pc.equal(point["id"], id_of(root, SIMBAD, 70)))
+        assert other["atnf_source"].to_pylist() == [None]

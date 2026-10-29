@@ -2,11 +2,11 @@
 
 A star is in every family that its data supports. A published family comes
 from a catalogued classification only: an MK spectral type, a SIMBAD object
-type, the Metadata class or a GCVS variability type. An estimated family uses
-at least one estimate: a SIMBAD candidate type, the spectral type tag of
-ESP-ELS, the stage from the ESP-HS surface gravity (O and B stars) or from
-FLAME (other stars), the DSC white-dwarf probability, the ESP-ELS
-emission-line class or the class of a SPICY candidate.
+type, the Metadata class, a GCVS variability type or an ATNF pulsar type. An
+estimated family uses at least one estimate: a SIMBAD candidate type, the
+spectral type tag of ESP-ELS, the stage from the ESP-HS surface gravity (O and
+B stars) or from FLAME (other stars), the DSC white-dwarf probability, the
+ESP-ELS emission-line class or the class of a SPICY candidate.
 
 Where an object type and the MK class give stages that cannot both hold, one
 of them wins and the stage families of the other are dropped.
@@ -358,6 +358,13 @@ ELS_FAMILIES: dict[str, tuple[str, ...]] = {
 GCVS_FAMILIES: dict[str, tuple[str, ...]] = {
     "UV": ("flare-star",),
     "UVN": ("flare-star",),
+}
+# ATNF pulsar types, each a code of `type_atnf` between commas, without its
+# reference in brackets. A code with "(?)" is uncertain and gives no family.
+# AXP is ATNF's code for a magnetar: an anomalous X-ray pulsar or a soft
+# gamma-ray repeater.
+ATNF_FAMILIES: dict[str, tuple[str, ...]] = {
+    "AXP": ("magnetar",),
 }
 # SPICY YSO classes. The SED of a Class I or flat-spectrum source shows its
 # envelope. SPICY lists candidates, so these are estimated families. An

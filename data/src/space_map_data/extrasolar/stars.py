@@ -20,12 +20,12 @@ last: it is not permanent, so its claims settle on the joins of all the
 other passes.
 
 The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs)
-and the class catalogues (GCVS, SPICY) are no pass. Their rows join the Gaia
-rows by source_id, and the rows of PASTEL and the GCVS also join the
-Hipparcos rows by HIP number. `limit` reads only the first Gaia chunks that
-hold that many stars, and the Hipparcos stars and names in the same pixels.
-Such an ingest is partial: it retires nothing, but it still rebuilds the
-tables from what it read. It never goes to REGISTRY_ROOT, because every later
+and the class catalogues (GCVS, SPICY, ATNF) are no pass. Their rows join the
+rows of a pass: the Gaia rows by source_id, PASTEL and the GCVS also the
+Hipparcos rows by HIP number, and ATNF only the SIMBAD rows by oid. `limit`
+reads only the first Gaia chunks that hold that many stars, and the Hipparcos
+stars and names in the same pixels. Such an ingest is partial: it retires
+nothing, but it still rebuilds the tables from what it read. It never goes to REGISTRY_ROOT, because every later
 ingest keeps the IDs that it mints.
 """
 
@@ -49,6 +49,7 @@ from space_map_data.extrasolar.exoplanets import ingest as exoplanets
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import (
     apogee,
+    atnf,
     distances,
     gaia,
     gcvs,
@@ -190,6 +191,7 @@ def ingest(
     simbad_rows, simbad_hip_rows = simbad.engine_rows(
         simbad_list, handed, hipparcos_hd, _hip_best(best), positions
     )
+    simbad_rows = atnf.join_by_oid(simbad_rows, atnf.read_stars())
     iau_rows = simbad.iau_rows(simbad_list, handed, simbad_rows)
     name_rows = names.engine_rows(positions, simbad=iau_rows)
     hd_positions = {**wikidata.hd_positions(stars), **wikidata.hd_positions(rough)}

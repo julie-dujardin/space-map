@@ -141,8 +141,8 @@ CREDITS = (
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/B/pastel",
         "citation": "Soubiran et al. 2016, A&A 591, A118",
     },
-    # SIMBAD places the PASTEL designations, joins the planet catalogues and
-    # gives the named stars.
+    # SIMBAD places the PASTEL designations, the GCVS names and the ATNF
+    # pulsars, joins the planet catalogues and gives the named stars.
     skycultures.SIMBAD,
     {
         "name": "APOGEE DR17",
@@ -192,6 +192,17 @@ CREDITS = (
         "organisation": "Kuhn et al. 2021",
         "source": "https://doi.org/10.26131/IRSA556",
         "citation": "Kuhn et al. 2021, ApJS 254, 33",
+    },
+    # The reference and the URL that the ATNF terms ask for.
+    {
+        "name": "ATNF Pulsar Catalogue",
+        "organisation": "Manchester et al. 2005",
+        "source": "https://www.atnf.csiro.au/research/pulsar/psrcat",
+        "license": "GPL v3 or later",
+        "citation": (
+            "Manchester R. N., Hobbs G. B., Teoh A. & Hobbs M., The ATNF Pulsar"
+            " Catalogue, Astronomical Journal, 129, 1993-2006 (2005)"
+        ),
     },
     {
         "name": "Hipparcos, the new reduction (I/311)",

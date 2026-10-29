@@ -65,6 +65,7 @@ COLUMNS = (
     ),
     "vartype_gcvs",
     "class_spicy",
+    "type_atnf",
 )
 
 assert len(rules.FAMILIES) <= 64, "a family mask has 64 bits"
@@ -327,6 +328,22 @@ def _gcvs(rows: pa.Table) -> np.ndarray:
     return _by_value(rows["vartype_gcvs"], _gcvs_mask, (0,))[:, 0]
 
 
+# The reference of an ATNF type code: "AXP[esy+20]".
+_ATNF_REFERENCE = re.compile(r"\[[^\]]*\]")
+
+
+def _atnf_mask(text: str) -> tuple[np.uint64]:
+    codes = _ATNF_REFERENCE.sub("", text).split(",")
+    return (
+        mask_of(f for code in codes for f in rules.ATNF_FAMILIES.get(code.strip(), ())),
+    )
+
+
+def _atnf(rows: pa.Table) -> np.ndarray:
+    """The families of the ATNF type of each row."""
+    return _by_value(rows["type_atnf"], _atnf_mask, (0,))[:, 0]
+
+
 def _numbers(rows: pa.Table, name: str) -> np.ndarray:
     return rows[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
 
@@ -552,7 +569,9 @@ def masks(
         candidate |= otype[name][:, 2]
     candidate = _gaia_allows(rows, candidate)
     mk_letter, mk_stage, given = _settle(conflicts, parsed, given)
-    published = parsed[:, 2] | TABLE[mk_letter, mk_stage] | given | _gcvs(rows)
+    published = (
+        parsed[:, 2] | TABLE[mk_letter, mk_stage] | given | _gcvs(rows) | _atnf(rows)
+    )
     # A stage that an object type gives joins the MK letter as an MK stage
     # does. A family that states a letter, such as red-giant, keeps its stage
     # to that letter.

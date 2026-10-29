@@ -50,6 +50,7 @@ _CATALOGUE_OF_GROUP = {
     "lamost": "lamost-dr10",
     "gcvs": "gcvs-5.1",
     "spicy": "spicy",
+    "atnf": "atnf-psrcat",
     "xhip_metallicity": "xhip",
     "fidelity": "rybizki-2022",
     "orbit": "gaia-dr3-nss",

@@ -71,6 +71,7 @@ class PROVIDERS(StrEnum):
     PASTEL_SIMBAD = "pastel_simbad"
     GCVS_SIMBAD = "gcvs_simbad"
     SPICY_GAIA = "spicy_gaia"
+    ATNF_SIMBAD = "atnf_simbad"
     SIMBAD_OBJECTS = "simbad_objects"
     WIKIDATA_SIMBAD_IDS = "wikidata_simbad_ids"
     STELLARIUM_SKYCULTURES = "stellarium_skycultures"

@@ -20,7 +20,8 @@ catalogues:
     A. Teoh & M. Hobbs, Astronomical Journal, 129, 1993-2006 (2005) and by
     quoting the web address https://www.atnf.csiro.au/research/pulsar/psrcat".
   terms_url: https://www.atnf.csiro.au/research/pulsar/psrcat/download.html
-  distribution: undecided
+  # The GPL v3 statement covers the database too.
+  distribution: open
   refresh_days: 30
   urls:
   - https://www.atnf.csiro.au/research/pulsar/psrcat/downloads/psrcat_pkg.tar.gz
