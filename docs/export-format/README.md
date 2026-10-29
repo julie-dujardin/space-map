@@ -37,6 +37,7 @@ v1/
   groups/{lang}/{bucket}.json.gz                  localized group details, hash-bucketed
   groups/__orbit_samples__.json.gz                small-body orbit-class scatter samples
   groups/__sat_orbit_samples__.json.gz            earth-sat orbit-class scatter samples
+  groups/__planet_plot__.json.gz                  every planet's mass, radius and semi-major axis (cat-planets charts)
   membership/earth.json.gz                        earth-sat group inverted index (slug → [object_id])
   nomenclature/positions/{body_id}.bin.gz         IAU surface-feature marker positions (SMNF format)
   nomenclature/labels/{lang}/{body_id}.txt.gz     per-body marker labels, one line per position record

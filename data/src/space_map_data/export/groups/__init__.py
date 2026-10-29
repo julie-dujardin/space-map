@@ -4,7 +4,7 @@ import csv
 import io
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import orjson
@@ -14,8 +14,10 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.categories import (
     COMETS_SLUG,
     DEBRIS_SLUG,
+    PLANETS_SLUG,
     PROBES_SLUG,
     SATELLITES_SLUG,
+    SOLAR_SYSTEM_SLUG,
 )
 from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.constants.earth_sats.constellations import (
@@ -48,7 +50,11 @@ from space_map_data.export.groups.moon_discovery import (
     build_moon_discovery,
     write_moon_discovery,
 )
-from space_map_data.export.groups.planet_family import build_planet_family_groups
+from space_map_data.export.groups.planet_family import (
+    SolarPlanets,
+    build_planet_family_groups,
+    write_planet_plot,
+)
 from space_map_data.export.groups.planetary_systems_map import (
     build_planetary_systems_map,
     write_planetary_systems_map,
@@ -88,6 +94,7 @@ from space_map_data.export.objects.stars import (
     available_extrasolar_objects,
 )
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.solar_planets import solar_planet_records
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB
@@ -491,7 +498,14 @@ def run_groups_tier(
     star_families = build_star_family_groups(
         star_objects or [], wikidata_entities, sun=sun
     )
-    planet_families = build_planet_family_groups(wikidata_entities)
+    planet_families = build_planet_family_groups(
+        wikidata_entities,
+        SolarPlanets(
+            category_data.notable_members.get(PLANETS_SLUG, []),
+            solar_planet_records(radii, gms, planet_elements),
+        ),
+    )
+    planets_page = planet_families.planets
 
     # Each constellation lists the buses its members fly, most-used first; the
     # chip count is the within-constellation tally, not the bus's global total.
@@ -550,6 +564,21 @@ def run_groups_tier(
         **star_families.extra_stats,
         **planet_families.extra_stats,
     }
+    # The Planets page lists every planet. It also lists its Solar System
+    # planets on their own, and the Solar System page's tile counts only those.
+    extra_member_lists: dict[str, dict[str, list[NotableObject]]] = {}
+    solar_planet_counts: dict[str, dict[str, int]] = {}
+    if planets_page is not None:
+        extra_member_counts[PLANETS_SLUG] = planets_page.member_count
+        extra_notable_members[PLANETS_SLUG] = planets_page.notable_members
+        extra_stats[PLANETS_SLUG] = replace(
+            extra_stats.get(PLANETS_SLUG, GroupExtraStats()),
+            **planets_page.stats.to_dict(),
+        )
+        extra_member_lists[PLANETS_SLUG] = {"solar_members": planets_page.solar_members}
+        solar_planet_counts[SOLAR_SYSTEM_SLUG] = {
+            PLANETS_SLUG: len(planets_page.solar_members)
+        }
     for slug, median in earth_orbit_stats.median_perigees.items():
         extra_stats.setdefault(slug, GroupExtraStats()).median_perigee_km = median
     for slug, moid in small_body_stats.median_moids.items():
@@ -588,6 +617,8 @@ def run_groups_tier(
     write_solar_system_map(out_dir, solar_system_map)
     write_planetary_systems_map(out_dir, planetary_systems_map)
     write_moon_discovery(out_dir, moon_discovery)
+    if planets_page is not None:
+        write_planet_plot(out_dir, planets_page.plot)
 
     return write_group_bundles(
         out_dir,
@@ -603,6 +634,7 @@ def run_groups_tier(
         gallery_subjects=gallery_subjects,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
+        extra_member_lists=extra_member_lists,
         extra_probes=group_probes.probes,
         extra_chart_rows=category_data.chart_rows,
         extra_chart_qids=extra_chart_qids,
@@ -614,7 +646,10 @@ def run_groups_tier(
             **star_families.children,
             **planet_families.children,
         },
-        child_counts_by_group=build.constellation_bus_counts,
+        child_counts_by_group={
+            **build.constellation_bus_counts,
+            **solar_planet_counts,
+        },
         extra_groups=(*split_comets.groups, *missions.groups),
         extra_group_names=split_comets.names,
         launch_vehicle_stats=launch_vehicle_stats,

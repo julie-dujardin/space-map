@@ -116,3 +116,10 @@ CATEGORIES: tuple[CategorySpec, ...] = (
 )
 
 CATEGORY_BY_SLUG: dict[str, CategorySpec] = {c.slug: c for c in CATEGORIES}
+
+# The tabs of a category page that show the text of another item, by page and
+# tab. The downloads fetch these items as topic pages.
+CATEGORY_TAB_PAGES: dict[str, dict[str, str]] = {
+    # "exoplanet": all 12 locales.
+    PLANETS_SLUG: {"exoplanets": "Q44559"},
+}

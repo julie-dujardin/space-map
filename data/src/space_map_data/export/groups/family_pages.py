@@ -31,24 +31,31 @@ class FamilyGroups:
 @dataclass(frozen=True)
 class FamilyPages:
     """The pages of one family tree. `published` and `estimated` are the
-    GroupExtraStats fields of the two member counts of a page."""
+    GroupExtraStats fields of the two member counts of a page. `root` is the
+    page above the families without a parent, None when the tree has its
+    root family in `parents`."""
 
     prefix: str
     parents: Mapping[str, tuple[str, ...]]
     published: str
     estimated: str
+    root: str | None = None
 
     def slug(self, family: str) -> str:
         return f"{self.prefix}{family}"
 
     def parent_slugs(self, slug: str) -> list[str]:
-        """The pages of the families that contain the family of ``slug``."""
+        """The pages of the families that contain the family of ``slug``,
+        else the root page."""
         family = slug.removeprefix(self.prefix)
-        return [self.slug(parent) for parent in self.parents.get(family, ())]
+        if family in self.parents:
+            return [self.slug(parent) for parent in self.parents[family]]
+        return [self.root] if self.root else []
 
     def count(self, out: FamilyGroups, counts: Iterable[tuple[str, int, int]]) -> None:
         """Set the member counts, the stats and the child families of `out`
         from the family, published count and estimated count of each page."""
+        children: dict[str, list[str]] = defaultdict(list)
         for family, published, estimated in counts:
             slug = self.slug(family)
             out.member_counts[slug] = published + estimated
@@ -56,11 +63,9 @@ class FamilyPages:
                 GroupExtraStats(),
                 **{self.published: published, self.estimated: estimated},
             )
-        children: dict[str, list[str]] = defaultdict(list)
-        for family, parents in self.parents.items():
-            if out.member_counts.get(self.slug(family)):
-                for parent in parents:
-                    children[self.slug(parent)].append(self.slug(family))
+            if published + estimated:
+                for parent in self.parent_slugs(slug):
+                    children[parent].append(slug)
         out.children = {
             slug: sorted(kids, key=lambda kid: (-out.member_counts[kid], kid))
             for slug, kids in children.items()

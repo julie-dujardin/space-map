@@ -320,9 +320,10 @@ interface GlobalGroupData {
   // family's fragments — the parentless counterpart to the `fragments` list a
   // catalogued parent comet carries on its own object page. On a `mission`
   // group (slug `mission-<slug>`) these are the mission's craft, primary first.
-  // On the `cat-planets` / `cat-dwarf-planets` / `cat-moons` category pages
-  // these are the bodies the lineup hero renders (planets in heliocentric
-  // order; dwarf planets and moons by prominence).
+  // On the `cat-dwarf-planets` / `cat-moons` category pages these are the
+  // bodies the lineup hero renders, by prominence. On `cat-planets` they are
+  // every planet as the planet family pages rank them (see Planets, below);
+  // the lineup hero takes `solar_members`.
   // On `cat-ring-systems` these are every body the ring catalogue covers, in
   // its curated order (the four giants outward, then the four small bodies);
   // the page tiles them onto their Rings tabs and charts their `ring_mass`
@@ -429,33 +430,63 @@ interface GlobalGroupData {
   // have stars, most stars first. `star-classification` (stellar
   // classification) is the root: every family without another parent is
   // below it, so it counts every star with a family, and it lists no stars.
-  parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; absent on the root
+  parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; absent on star-classification; `cat-planets` on a planet family without a parent family
   published_star_count?: number;    // stars that a catalogued classification puts in the family
   estimated_star_count?: number;    // the other stars, which only an estimate (Gaia DR3 or a SIMBAD candidate type) puts there
 
   // Planet families (planet-<family>, one per family of the planet records'
-  // `families` lists) only. The counts are the `families` entry of `planets`
-  // in the served extrasolar export's `metadata.json`, read under the
-  // export's shared lock, as for the star families. With no planets served
-  // they are absent and the page has its text only, and served planets
-  // without `families` stop the tier. member_count is their sum.
-  // `notable_members` (top 20, `id` = `x-<host>-b-<n>`) are the planets that a
-  // *published* family puts here: first the planets with an object entry and
-  // a Wikipedia article in one of the site's languages, most sitelinks first;
-  // then other planets of the family, nearest host first (hosts with no
-  // distance last). Each planet has the names of its page: the `name` of its
-  // planet record, and in `notable_member_names` the localized names of its
-  // object entry, not its Wikidata labels. A planet with an entry takes its
-  // Wikidata entity and pictures from that entry; a planet without one has no
-  // thumbnail. `galleries` has a shelf for each listed
-  // planet that has pictures. `child_groups` (localized) lists the families
-  // it contains that have planets, most planets first. `planet-classification`
-  // (exoplanet) is the root: it counts every planet with a family, and it
-  // lists no planets. `parent_families` names the parents, as above. Planet
-  // family pages have no counterpart of the Sun on the star family pages: the
-  // root is exoplanet, so the planets of the solar system are in no family.
-  published_planet_count?: number;  // planets that measured values put in the family
-  estimated_planet_count?: number;  // the other planets, whose family needs an estimate
+  // `families` lists) only. The exoplanet counts are the `families` entry of
+  // `planets` in the served extrasolar export's `metadata.json`, read under
+  // the export's shared lock, as for the star families; a served planet
+  // without `families` or `families_estimated` stops the tier. The eight
+  // Solar System planets get their families from the same rules
+  // (`export/solar_planets.py`: SPICE GM and equatorial radius, Horizons
+  // mean elements, insolation 1/a², the heavy-element fraction of the
+  // interior models, around the Sun) and add to the published count, as the
+  // Sun does on the star family pages. With no planets served, the pages
+  // count and list the Solar System only. member_count is the sum of the
+  // two counts.
+  // `notable_members` (top 20) are the planets that a *published* family
+  // puts here: first the planets with a Wikipedia article in one of the
+  // site's languages, most sitelinks first (so the Solar System planets
+  // lead); then other planets of the family, nearest host first (hosts with
+  // no distance last). An exoplanet (`id` = `x-<host>-b-<n>`) has the names
+  // of its page: the `name` of its planet record, and in
+  // `notable_member_names` the localized names of its object entry, not its
+  // Wikidata labels; it takes its Wikidata entity and pictures from that
+  // entry, and without one it has no thumbnail. A Solar System planet (`id` =
+  // `naif-<n>99`) is the entry of the `cat-planets` lineup, with its
+  // Wikidata labels. `galleries` has a shelf for each listed planet that has
+  // pictures. `child_groups` (localized) lists the families it contains that
+  // have planets, most planets first. There is no root family: a family
+  // without a parent family has `cat-planets` in `parent_families`, and
+  // `cat-planets` lists it in `child_groups`.
+  published_planet_count?: number;  // planets that measured values put in the family; on cat-planets, planets with a published family
+  estimated_planet_count?: number;  // the other planets, whose family needs an estimate; on cat-planets, planets with only estimated families
+
+  // Planets (`cat-planets`) only: every planet, the eight of the Solar
+  // System and every served exoplanet of the IAU class `planet` (dwarf
+  // planets are `cat-dwarf-planets`; brown dwarfs are in no category).
+  // member_count is solar_member_count + exoplanet_count, so it also counts
+  // the planets in no family. It is the root of the planet family tree and
+  // has no parent page. The `cat-solar-system` page still lists it in
+  // `child_groups`, with `n` = solar_member_count. `largest_body` and
+  // `moon_total` stay about the Solar System planets. The plot of all
+  // planets is `groups/__planet_plot__.json.gz`, below.
+  solar_members?: NotableEntry[];    // the eight Solar System planets in heliocentric order, with the lineup fields (mass_kg, radii, pole, …); their localized names are in notable_member_names
+  solar_member_count?: number;       // 8
+  exoplanet_count?: number;          // served exoplanets of the IAU class planet
+  largest_planet?: {                 // the largest measured radius (no estimate, no limit) of a planet whose true mass is measured too
+    primary_type: "object"; primary_id: string; name: string;  // id `naif-<n>99` or `x-<host>-b-<n>`; name is the global one
+    radius_earth: number;            // R⊕, 4 significant digits
+  };
+  most_massive_planet?: {            // the largest measured mass (no estimate, no limit) of any planet
+    primary_type: "object"; primary_id: string; name: string;
+    mass_earth: number;              // M⊕, 4 significant digits
+    mass_kind: "true" | "minimum";   // a minimum mass (m sin i) is a lower bound
+  };
+  planet_family_count?: number;      // planet families with at least one planet
+  exoplanets_qid?: "Q44559";         // the item of the Exoplanets tab; its text is the localized `exoplanets`
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).
   primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"
@@ -464,7 +495,7 @@ interface GlobalGroupData {
   // is optional and only the pages listed emit it.
   median_perigee_km?: number;   // earth_orbit_class — typical perigee of the zone's population
   median_moid_au?: number;      // flag-neo / flag-pha — typical Earth MOID
-  moon_total?: number;          // cat-planets / cat-dwarf-planets — moons hosted across the category
+  moon_total?: number;          // cat-planets (Solar System planets only) / cat-dwarf-planets — moons hosted across the category
   host_count?: number;          // cat-moons — planet/dwarf hosts that have at least one moon
   child_group_count?: number;   // cat-comets (split families), cat-probes (missions),
                                 // cat-debris (distinct fragment sources)
@@ -661,6 +692,30 @@ interface SolarSystemMapFile {
 }
 ```
 
+## `groups/__planet_plot__.json.gz`
+
+The two overview charts of `cat-planets`, mass–radius and mass–semi-major
+axis, for every planet the page counts: the Solar System planets first, in
+heliocentric order, then the served exoplanets of the IAU class `planet`, by
+system file and planet number. Columns, one row per planet; a value has 4
+significant digits.
+
+```typescript
+interface PlanetPlot {
+  mass: (number | null)[];                 // M⊕
+  mass_flag: (0 | 1 | 2 | null)[];         // 0 measured (true mass), 1 minimum mass, 2 estimated
+  radius: (number | null)[];               // R⊕ (equatorial for the Solar System)
+  radius_flag: (0 | 2 | null)[];           // 0 measured, 2 estimated
+  semi_major_axis: (number | null)[];      // AU
+  semi_major_axis_flag: (0 | 2 | null)[];  // 0 measured (a computed axis is measured), 2 estimated
+  solar: string[];                         // object ids of the first rows: the Solar System planets, for their labels
+}
+```
+
+A limit (`x<`, `x>`) and an assumed value are no value: the value and its
+flag are null. A row with no value at all still counts in the page's
+`member_count`.
+
 ## `groups/__sat_orbit_samples__.json.gz`
 
 Earth-sat scatter samples. Same role as `__orbit_samples__.json.gz` but for
@@ -741,7 +796,8 @@ interface LocalizedGroupData {
   variant_refs?: Record<string, EntityRef>;  // lv-<slug> only: GCAT variant name (from the global `variants` list) → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. The breakdown keeps the GCAT name as its label and uses this only for the per-variant link; absent for family-level / unmatched variants.
   reusable_vehicle_refs?: Record<string, EntityRef>;  // lv-<slug> only: reusable-vehicle name (from `reusable_vehicles`) → its Wikipedia ref. Shuttle orbiters resolve; Falcon cores have no article so are absent (shown as serial + count).
   pad_refs?: Record<string, EntityRef>;       // site-<slug> only: GCAT pad code (from `gcat_sites[].pads[].code`) → its Wikipedia ref, for the merged pad chart. Keyed across the whole range, so it survives the chart merging the GCAT sites away. The chart keeps the GCAT code as its label and uses this only for the link: a pad's Wikipedia title is often the parent complex's (Wallops' eight LA2 launcher rows are one article), and coverage outside en/de/ru is thin — `he` has none at all.
-  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name (feature members key on "<body id>:<feature_id>")
+  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name (feature members key on "<body id>:<feature_id>"); also covers `solar_members` on cat-planets
+  exoplanets?: { name?: string; description?: string; wikipedia?: { extract?: string; description?: string; url?: string } }; // cat-planets only: the label, description and Wikipedia text of `exoplanets_qid` in this language, for the Exoplanets tab
   probe_names?: Record<string, string>;       // `probes` entry Object.id → localized label, only where it differs from the global name
   body_names?: Record<string, string>;        // Object.id → localized body label: `feature_bodies` rows on ft-<slug>, `probe_targets` rows on cat-probes, and the members each `probes` entry names in `visits`
 }

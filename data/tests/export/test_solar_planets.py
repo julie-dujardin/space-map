@@ -5,7 +5,6 @@ import pytest
 from space_map_data.constants.planets.families import (
     EARTH_MASSES_PER_JUPITER,
     EARTH_RADII_PER_JUPITER,
-    ROOT_FAMILY,
 )
 from space_map_data.export.solar_planets import (
     PLANET_NAIF_IDS,
@@ -107,31 +106,19 @@ class TestFamilies:
 
     def test_families(self, records):
         assert _families(records) == {
-            "naif-199": [ROOT_FAMILY, "terrestrial-planet", "sub-earth"],
-            "naif-299": [ROOT_FAMILY, "terrestrial-planet", "sub-earth"],
-            "naif-399": [ROOT_FAMILY, "terrestrial-planet", "goldilocks-planet"],
-            "naif-499": [
-                ROOT_FAMILY,
-                "terrestrial-planet",
-                "sub-earth",
-                "goldilocks-planet",
-            ],
+            "naif-199": ["terrestrial-planet", "sub-earth"],
+            "naif-299": ["terrestrial-planet", "sub-earth"],
+            "naif-399": ["terrestrial-planet", "goldilocks-planet"],
+            "naif-499": ["terrestrial-planet", "sub-earth", "goldilocks-planet"],
             "naif-599": [
-                ROOT_FAMILY,
                 "giant-planet",
                 "gas-giant",
                 "cold-jupiter",
                 "jupiter-analogue",
             ],
-            "naif-699": [
-                ROOT_FAMILY,
-                "giant-planet",
-                "gas-giant",
-                "cold-jupiter",
-                "puffy-planet",
-            ],
-            "naif-799": [ROOT_FAMILY, "giant-planet", "ice-giant"],
-            "naif-899": [ROOT_FAMILY, "giant-planet", "ice-giant"],
+            "naif-699": ["giant-planet", "gas-giant", "cold-jupiter", "puffy-planet"],
+            "naif-799": ["giant-planet", "ice-giant"],
+            "naif-899": ["giant-planet", "ice-giant"],
         }
 
     def test_none_is_estimated(self, records):

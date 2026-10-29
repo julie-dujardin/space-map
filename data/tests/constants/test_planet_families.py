@@ -4,7 +4,6 @@ from space_map_data.constants.planets.families import (
     FAMILIES,
     PARENTS,
     PLANET_FAMILY_PAGES,
-    ROOT_FAMILY,
 )
 
 
@@ -20,40 +19,46 @@ def _ancestors(family: str) -> set[str]:
 
 
 class TestTree:
-    """Every family is in one tree below the root."""
+    """The families form a tree below the Planets page, with no root family."""
 
     def test_every_parent_is_a_family(self):
         for family, parents in PARENTS.items():
             assert family in FAMILIES
             assert set(parents) <= set(FAMILIES), family
 
-    def test_only_the_root_has_no_parent(self):
-        assert set(PARENTS) == set(FAMILIES) - {ROOT_FAMILY}
-
-    def test_the_root_is_above_every_other_family(self):
+    def test_no_family_is_its_own_ancestor(self):
         for family in FAMILIES:
-            if family != ROOT_FAMILY:
-                assert ROOT_FAMILY in _ancestors(family), family
-                assert family not in _ancestors(family), family
+            assert family not in _ancestors(family), family
+
+    def test_the_top_families(self):
+        assert [f for f in FAMILIES if f not in PARENTS] == [
+            "terrestrial-planet",
+            "super-earth",
+            "mini-neptune",
+            "super-puff",
+            "giant-planet",
+            "ultra-short-period-planet",
+            "circumbinary-planet",
+            "pulsar-planet",
+            "goldilocks-planet",
+        ]
 
     def test_parents(self):
         assert _ancestors("jupiter-analogue") == {
             "cold-jupiter",
             "gas-giant",
             "giant-planet",
-            ROOT_FAMILY,
         }
-        assert _ancestors("sub-earth") == {"terrestrial-planet", ROOT_FAMILY}
-        assert _ancestors("ice-giant") == {"giant-planet", ROOT_FAMILY}
-        assert _ancestors("super-earth") == {ROOT_FAMILY}
+        assert _ancestors("sub-earth") == {"terrestrial-planet"}
+        assert _ancestors("ice-giant") == {"giant-planet"}
+        assert _ancestors("super-earth") == set()
 
 
 class TestPages:
     """The QIDs and the order of the families."""
 
     def test_a_parent_comes_before_its_children(self):
-        """A planet's lists then start at the root and go down the tree."""
-        assert FAMILIES[0] == ROOT_FAMILY
+        """A planet's lists then go down the tree."""
         for family, parents in PARENTS.items():
             for parent in parents:
                 assert FAMILIES.index(parent) < FAMILIES.index(family), family
@@ -62,8 +67,11 @@ class TestPages:
         qids = [qid for qids in PLANET_FAMILY_PAGES.values() for qid in qids]
         assert len(qids) == len(set(qids))
 
-    def test_the_root_page_is_exoplanet(self):
-        assert PLANET_FAMILY_PAGES[ROOT_FAMILY] == ("Q44559",)
+    def test_no_page_is_on_exoplanet(self):
+        """The Planets page has the exoplanet text in a tab."""
+        assert "Q44559" not in {
+            q for qids in PLANET_FAMILY_PAGES.values() for q in qids
+        }
 
     def test_ice_giant(self):
         assert PLANET_FAMILY_PAGES["ice-giant"] == ("Q1319599",)

@@ -549,26 +549,26 @@ A planet:
 | `estimated` | list | values that a catalogue estimates (the archive's "Calculated Value", a mass–radius relation, exoplanet.eu's "Theoretical") |
 | `computed` | list | `period` or `semi_major_axis` from Kepler's third law, or `semi_major_axis` from an angular separation and the distance |
 | `limits` | list | `<name><` for an upper limit, `<name>>` for a lower limit |
-| `families` | list | the published families of the planet, as slugs in the order of `families` of `planets` in `metadata.json`, with their parents and the root (Families, below); empty when none |
+| `families` | list | the published families of the planet, as slugs in the order of `families` of `planets` in `metadata.json`, with their parents (Families, below); empty when none |
 | `families_estimated` | list | the families that need an estimate and are not in `families` |
 
 `values` has the columns of the planets table with a value, by these names and units: `discovery_method`, `discovery_year`, `discovery_facility`; `period` (d), `semi_major_axis` (AU), `eccentricity`, `inclination` (deg), `omega` (deg), `periastron_time` and `transit_time` (JD, as published, mostly BJD), `time_system` (the archive's system of the transit time: `BJD`, `BJD-TDB`, `HJD`, `JD`, …); `node` (deg), `node_inclination` (deg) and `node_solution` (Gaia's `nss_solution_type`); `mass` (Jupiter masses), `mass_kind` (`true`, `minimum`, `estimate`); `radius` (Jupiter radii); `equilibrium_temperature` (K), `insolation` (Earth's), `density` (g/cm³); `molecules` (a list); `star_mass` (solar), `star_radius` (solar), `star_teff` (K), `star_metallicity` (dex), the star of the fits; `binary_type` (`S-type` or `P-type`). A measured value `x` can have `x_error_upper` and `x_error_lower`, both positive. The defaults of `assumed` are in `values` too. `eccentricity` is as published, also when it is outside [0, 1).
 
 ### Families
 
-The export tags each planet with the planet families of `constants/planets/families.py`, from the planet's `values`, its flags and its host's `class`. A family adds its parents (a hot Jupiter is also `gas-giant` and `giant-planet`), and every family is below the root `classification` (exoplanet). A family is in one list only: `families` when the values that its rule reads are measured, else `families_estimated` when the rule needs an estimate. Only the class `planet` gets families: a brown dwarf or a sub-brown dwarf has empty lists.
+The export tags each planet with the planet families of `constants/planets/families.py`, from the planet's `values`, its flags and its host's `class`. A family adds its parents (a hot Jupiter is also `gas-giant` and `giant-planet`). There is no root family: the families without a parent are below the Planets category page (`cat-planets`, groups.md). A family is in one list only: `families` when the values that its rule reads are measured, else `families_estimated` when the rule needs an estimate. Only the class `planet` gets families: a brown dwarf or a sub-brown dwarf has empty lists.
 
 The rules, in Earth masses (M⊕) and radii (R⊕), with 1 MJ = 317.828 M⊕ and 1 RJ = 11.209 R⊕:
 
 | Family | Parent | Rule |
 |---|---|---|
-| `terrestrial-planet` | root | R ≤ 1.5 R⊕; when the radius does not decide, M < 2 M⊕ |
+| `terrestrial-planet` | — | R ≤ 1.5 R⊕; when the radius does not decide, M < 2 M⊕ |
 | `sub-earth` | `terrestrial-planet` | M < 1 M⊕ and R < 1 R⊕ |
 | `mega-earth` | `terrestrial-planet` | M ≥ 10 M⊕, 2.1 ≤ R ≤ 5 R⊕, density above Earth's (5.51 g/cm³) |
-| `super-earth` | root | 1.9 ≤ M ≤ 10 M⊕ and 1.25 ≤ R < 2 R⊕ |
-| `mini-neptune` | root | 2 ≤ R < 3.88 R⊕ (Neptune's radius) |
-| `super-puff` | root | M < 10 M⊕ and R > 3.88 R⊕ |
-| `giant-planet` | root | M ≥ 10 M⊕ and R ≥ 3.88 R⊕ |
+| `super-earth` | — | 1.9 ≤ M ≤ 10 M⊕ and 1.25 ≤ R < 2 R⊕ |
+| `mini-neptune` | — | 2 ≤ R < 3.88 R⊕ (Neptune's radius) |
+| `super-puff` | — | M < 10 M⊕ and R > 3.88 R⊕ |
+| `giant-planet` | — | M ≥ 10 M⊕ and R ≥ 3.88 R⊕ |
 | `ice-giant` | `giant-planet` | giant planet, more than half (to 99 %) of its mass heavier than helium; no catalogue gives this, so only the Solar System planets have it |
 | `super-neptune` | `giant-planet` | 20 ≤ M ≤ 100 M⊕ and 4 ≤ R ≤ 8 R⊕ |
 | `hot-neptune` | `giant-planet` | 10 M⊕ ≤ M < 0.25 MJ, 3.88 ≤ R < 8 R⊕, period under 10 days |
@@ -580,10 +580,10 @@ The rules, in Earth masses (M⊕) and radii (R⊕), with 1 MJ = 317.828 M⊕ and
 | `jupiter-analogue` | `cold-jupiter` | gas giant, M ≥ 0.3 MJ, semi-major axis 3 to 12 AU |
 | `eccentric-jupiter` | `gas-giant` | gas giant, eccentricity 0.1 or more |
 | `puffy-planet` | `gas-giant` | gas giant, density at most Saturn's (0.687 g/cm³) |
-| `ultra-short-period-planet` | root | period under 1 day |
-| `circumbinary-planet` | root | `binary_type` `P-type` |
-| `pulsar-planet` | root | the host's `class` is `pulsar` |
-| `goldilocks-planet` | root | `insolation` in the conservative habitable zone of Kopparapu et al. 2014 for the star's Teff (2,600 to 7,200 K) |
+| `ultra-short-period-planet` | — | period under 1 day |
+| `circumbinary-planet` | — | `binary_type` `P-type` |
+| `pulsar-planet` | — | the host's `class` is `pulsar` |
+| `goldilocks-planet` | — | `insolation` in the conservative habitable zone of Kopparapu et al. 2014 for the star's Teff (2,600 to 7,200 K) |
 
 The evidence:
 
@@ -726,7 +726,7 @@ The site's sitemap lists the page of every planet and of every planet host that 
     "units": { "position": "pc", "distance": "pc", "a": "AU", "angles": "deg", "n": "deg/day", "epoch": "JD TDB" },
     "elements_frame": "ecliptic and mean equinox of J2000, the planet around its host; obliquity 23.4392911 deg",
     "families": [
-      { "slug": "classification", "wikidata": ["Q44559"], "parents": [], "published": 6450, "estimated": 190 },
+      { "slug": "terrestrial-planet", "wikidata": ["Q128207"], "parents": [], "published": 1065, "estimated": 29 },
       { "slug": "hot-jupiter", "wikidata": ["Q382979"], "parents": ["gas-giant"], "published": 798, "estimated": 2 },
       "…"
     ],
@@ -746,7 +746,7 @@ The site's sitemap lists the page of every planet and of every planet host that 
 - `objects`: the census of the export for `/about/data` ([about-data.md](about-data.md)), by kind. An object's kind is its home table, so each ID counts once: `star` is a live ID of table 1, also a point that holds two or more stars, `star_system` one of table 3, and `planet` a row of the planets table. `size_bytes` holds the files of the kind: Point source, Binary orbit and the render tree for the stars, the planet files for the planets, and the Metadata and System tiles split between the stars and the star systems by their rows. The sky cultures, `metadata.json` and `families.json` are not counted. `sources` counts the objects that each source feeds with at least one value, most objects first. The source of a value is the source column of its group, with another pass of a catalogue as that catalogue (`gaia-dr3-named` is `gaia-dr3`; `simbad-hip` and `simbad-parallax` are `simbad`). A group of a star table that a pass carries for a catalogue of its own counts for that catalogue: `xgboost` for `andrae-2023`, `pastel` for `pastel-2020`, `apogee` for `apogee-dr17`, `lamost` for `lamost-dr10`, `gcvs` for `gcvs-5.1`, `spicy` for `spicy`, `xhip_metallicity` for `xhip`, `fidelity` for `rybizki-2022`, `orbit` and `masses` for `gaia-dr3-nss`. Wikidata is left out: every object with an item has an object entry, and the main export counts the items from the entries.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)): the strictest tier of the sources whose values the files hold. Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values. The star system catalogues reach Metadata (`system`, the classes and names), Point source (the system distance, `member`), System, the render tree and the planet files: the WDS and the MSC state no licence, so they are `non-commercial`, and El-Badry, Rix & Heintz 2021 is CC BY 4.0, though it repeats Gaia EDR3 values, which come from Gaia here. So all are `non-commercial`.
 - `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, GCVS 5.1, SPICY, Hipparcos I/311 and I/239, XHIP V/137D, the distance catalogues (Reylé et al. 2021, the UltracoolSheet, Hunt & Reffert 2024, the LMC and SMC distances of Pietrzyński et al. 2019 and Graczyk et al. 2020, Bailer-Jones et al. 2021), the star system catalogues (the Washington Double Star Catalog with the acknowledgement it asks for, Tokovinin's Multiple Star Catalogue, the wide binaries of El-Badry, Rix & Heintz 2021), one credit for the papers of the literature table (its `source` is the table in the repo; each star's object entry cites its own papers), the IAU Catalog of Star Names, Wikidata; with planets also the NASA Exoplanet Archive (its acknowledgement, and the DOI of Planetary Systems Composite Parameters, 10.26133/NEA13), exoplanet.eu (CC BY 4.0), the Open Exoplanet Catalogue (MIT) and the IAU's NameExoWorlds. The planet catalogues also fill the host rows of Point source and Metadata, so their credits are in this list. Each catalogue has one credit, and its `source` names it.
-- `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `families` lists the planet families in the order of the planet records' lists, as the star families are listed: `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on the root), `published` and `estimated` count the planets with the family in `families` and in `families_estimated`. `distribution` is `non-commercial`: the host positions come from Gaia DR3.
+- `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `families` lists the planet families in the order of the planet records' lists, as the star families are listed: `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on a family without a parent), `published` and `estimated` count the served planets with the family in `families` and in `families_estimated`. `distribution` is `non-commercial`: the host positions come from Gaia DR3.
 - `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
   - `licence`: the licence of the culture's data and illustrations as it states it (`applies_to` is `all`, `data` or `illustrations`; the files hold no illustrations yet), and the tier that this licence alone allows. A culture that states no licence has no parts and the tier `non-commercial`, with the flag `no-licence`. A statement that the ingest cannot read gives the tier `undecided`, which no client may serve.
   - `distribution`: the tier of the file, the strictest of the culture's licence and of Gaia DR3 (`non-commercial`), because the positions come from Gaia. `undecided` stays `undecided`.

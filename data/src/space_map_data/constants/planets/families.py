@@ -3,7 +3,8 @@ the rules that tag a planet.
 
 Only a planet of the IAU class `planet` gets a family. A family is published
 when the values its rule reads are measured, and estimated when the rule
-needs an estimate. Every family is below one root family, exoplanet.
+needs an estimate. A family without a parent is below the Planets category
+page, which lists every planet.
 
 The rules use Earth masses (M⊕), Earth radii (R⊕), days, AU and g/cm³. A
 range (lo, hi) holds lo <= x < hi. `_above(x)` as a bound includes x at the
@@ -17,7 +18,6 @@ import math
 # Page on the first QID. Mini-Neptune and sub-Neptune are one size class; the
 # mini-Neptune item has more articles.
 PLANET_FAMILY_PAGES: dict[str, tuple[str, ...]] = {
-    "classification": ("Q44559",),
     "terrestrial-planet": ("Q128207",),
     "sub-earth": ("Q15129745",),
     "mega-earth": ("Q17325117",),
@@ -47,12 +47,8 @@ FAMILIES: tuple[str, ...] = tuple(PLANET_FAMILY_PAGES)
 
 # The /g/ page of a family is /g/planet-<family>.
 FAMILY_SLUG_PREFIX = "planet-"
-# The root of the family tree: a planet with a family is in it. Its page is on
-# exoplanet, because Wikidata has no item for a planet classification.
-ROOT_FAMILY = "classification"
 
-# Each family adds these. The closure is transitive. A family without a parent
-# here gets the root.
+# Each family adds these. The closure is transitive.
 PARENTS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(("sub-earth", "mega-earth"), ("terrestrial-planet",)),
     **dict.fromkeys(
@@ -70,11 +66,6 @@ PARENTS: dict[str, tuple[str, ...]] = {
         ("gas-giant",),
     ),
     "jupiter-analogue": ("cold-jupiter",),
-}
-PARENTS |= {
-    family: (ROOT_FAMILY,)
-    for family in FAMILIES
-    if family not in PARENTS and family != ROOT_FAMILY
 }
 
 

@@ -3,7 +3,7 @@
 `families` lists the published families of a planet, `families_estimated`
 the families that need an estimate and are not published. Both list slugs in
 the order of `constants.planets.families.FAMILIES`, with the parents of each
-family and the root. The thresholds are in that constants module.
+family. The thresholds are in that constants module.
 
 Evidence:
 - A value is measured when it is not in `estimated` or `assumed`. A computed

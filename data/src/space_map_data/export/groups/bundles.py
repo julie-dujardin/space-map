@@ -15,6 +15,7 @@ import orjson
 
 from space_map_data.constants.categories import (
     CATEGORY_BY_SLUG,
+    CATEGORY_TAB_PAGES,
     DEBRIS_SLUG,
     SATELLITES_SLUG,
 )
@@ -422,6 +423,26 @@ def _build_global(
     if galleries:
         data["galleries"] = galleries
     return data
+
+
+def _tab_text(qid: str, wikidata_entities: WikidataEntityCache) -> dict[str, dict]:
+    """The name, description and Wikipedia text of a tab's item, by language,
+    as a group page has its own."""
+    wd = wikidata_entities.get_referenced(qid)
+    summaries = load_wikipedia_summaries_for_qid(qid)
+    summaries.update(load_wikipedia_sections_for_qid(qid))
+    out: dict[str, dict] = {}
+    for lang in LANGUAGES:
+        text: dict = {}
+        if wd and (name := entity_label(wd, lang)):
+            text["name"] = name
+        if wd and (description := wd["descriptions"].get(lang)):
+            text["description"] = description
+        if summary := summaries.get(lang):
+            text["wikipedia"] = summary.to_dict()
+        if text:
+            out[lang] = text
+    return out
 
 
 def _group_entity(group: Group, wikidata_entities: WikidataEntityCache):
@@ -940,6 +961,7 @@ def write_group_bundles(
     extra_stats: dict[str, GroupExtraStats] | None = None,
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
+    extra_member_lists: dict[str, dict[str, list[NotableObject]]] | None = None,
     extra_probes: dict[str, list[NotableObject]] | None = None,
     extra_chart_rows: dict[str, dict[str, list[dict]]] | None = None,
     extra_chart_qids: dict[str, dict[str, str]] | None = None,
@@ -965,6 +987,8 @@ def write_group_bundles(
     membership inverted index (orbit classes, small-body flags). ``extra_groups``
     are DB-derived groups (split-comet families) appended to the static
     registry, with their localized names in ``extra_group_names``.
+    ``extra_member_lists`` are lists of members beside ``notable_members``, by
+    slug and bundle field.
     """
     member_counts = _flatten_membership(membership_by_type)
     member_ids = _flatten_member_ids(membership_by_type)
@@ -1006,6 +1030,24 @@ def write_group_bundles(
             if members
             else None
         )
+        member_lists = {
+            name: (
+                listed,
+                notable_entries(
+                    listed,
+                    wikidata_entities,
+                    displacement_metadata,
+                    model_slugs,
+                    textured_ids,
+                    craft_models,
+                ),
+            )
+            for name, listed in (extra_member_lists or {}).get(group.slug, {}).items()
+        }
+        tabs = CATEGORY_TAB_PAGES.get(group.slug, {})
+        tab_texts = {
+            tab: _tab_text(qid, wikidata_entities) for tab, qid in tabs.items()
+        }
         probes = (extra_probes or {}).get(group.slug)
         probe_entries = (
             notable_entries(probes, wikidata_entities, craft_models=craft_models)
@@ -1058,6 +1100,10 @@ def write_group_bundles(
             galleries,
             (launch_site_stats or {}).get(group.slug),
         )
+        for name, (_, entries) in member_lists.items():
+            global_by_slug[group.slug][name] = entries
+        for tab, qid in tabs.items():
+            global_by_slug[group.slug][f"{tab}_qid"] = qid
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)
         display_name = (extra_group_names or {}).get(group.slug)
@@ -1087,6 +1133,10 @@ def write_group_bundles(
                 member_names.update(
                     notable_names(members, member_entries, lang, wikidata_entities)
                 )
+            for listed, entries in member_lists.values():
+                member_names.update(
+                    notable_names(listed, entries, lang, wikidata_entities)
+                )
             if member_names:
                 lang_data["notable_member_names"] = member_names
             if probes and probe_entries:
@@ -1095,12 +1145,19 @@ def write_group_bundles(
                 )
                 if probe_names:
                     lang_data["probe_names"] = probe_names
-            if members and member_entries:
-                member_descriptions = notable_descriptions(
-                    members, lang, wikidata_entities
+            member_descriptions = {}
+            for listed in (
+                *([members] if members and member_entries else []),
+                *(listed for listed, _ in member_lists.values()),
+            ):
+                member_descriptions.update(
+                    notable_descriptions(listed, lang, wikidata_entities)
                 )
-                if member_descriptions:
-                    lang_data["notable_member_descriptions"] = member_descriptions
+            if member_descriptions:
+                lang_data["notable_member_descriptions"] = member_descriptions
+            for tab, text in tab_texts.items():
+                if found := text.get(lang):
+                    lang_data[tab] = found
             # Only onto an entry that exists for other reasons (mirrors the
             # object writer); covers the group's own pictures and its member
             # shelves in one map, since both key by filename.

@@ -3,17 +3,16 @@
 import gzip
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
-from space_map_data.constants.planets import families as planet_constants
 from space_map_data.constants.planets.families import (
     FAMILIES,
     FAMILY_SLUG_PREFIX,
     PLANET_FAMILY_PAGES,
 )
 from space_map_data.constants.stars.families import STAR_FAMILY_PAGES
+from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.providers.wikidata.downloader import family_page_qids
 from space_map_data.export.extrasolar.build import export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader
@@ -25,7 +24,14 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.stats import GroupExtraStats
-from space_map_data.export.notable import notable_entries, notable_names
+from space_map_data.export.notable import (
+    NotableObject,
+    notable_entries,
+    notable_names,
+)
+from space_map_data.export.objects.wikipedia import WikipediaSummary
+from space_map_data.export.solar_planets import solar_planet_records
+from tests.export.test_solar_planets import ELEMENTS, GMS, RADII
 from tests.export.test_star_family_groups import _entities
 from tests.extrasolar.export_registry import planet, star, write_registry
 
@@ -57,22 +63,32 @@ class TestDownloader:
             for qids in pages.values():
                 assert set(qids) <= seeded
 
+    def test_the_exoplanets_tab_is_a_topic_page(self):
+        assert "Q44559" in topic_page_qids()
+
 
 class TestParents:
-    """The breadcrumb climbs the parent families."""
+    """The breadcrumb climbs the parent families, then the Planets page."""
 
     def test_parents(self):
         assert planet_family.PAGES.parent_slugs("planet-jupiter-analogue") == [
             "planet-cold-jupiter"
         ]
-        assert planet_family.PAGES.parent_slugs("planet-super-earth") == [
-            "planet-classification"
+        assert planet_family.PAGES.parent_slugs("planet-ice-giant") == [
+            "planet-giant-planet"
         ]
-        assert planet_family.PAGES.parent_slugs("planet-classification") == []
+        assert planet_family.PAGES.parent_slugs("planet-super-earth") == ["cat-planets"]
 
 
 def _read_bundle(path: Path) -> dict:
     return json.loads(gzip.decompress(path.read_bytes()))
+
+
+def _read_all(root: Path) -> dict:
+    found = {}
+    for path in root.glob("*.json.gz"):
+        found.update(_read_bundle(path))
+    return found
 
 
 def _with_qid(row: dict, qid: str) -> dict:
@@ -84,8 +100,27 @@ def _id(host: int, number: int) -> str:
     return f"x-{host}-b-{number}"
 
 
+def _body(object_id: str, qid: str, name: str) -> NotableObject:
+    return NotableObject(object_id, qid, name, None, None, mass_kg=1.0)
+
+
+# Earth and Jupiter, with test QIDs.
+SOLAR = planet_family.SolarPlanets(
+    [_body("naif-399", "Q399", "Earth"), _body("naif-599", "Q599", "Jupiter")],
+    solar_planet_records(RADII, GMS, ELEMENTS),
+)
+# Sitelinks of the test items: the Solar System planets have the most.
+SITELINKS = {
+    "Q1": (5, ["de"]),
+    "Q2": (90, []),
+    "Q3": (40, ["en"]),
+    "Q399": (0, ["en", *(f"x{n}" for n in range(300))]),
+    "Q599": (0, ["en", *(f"x{n}" for n in range(250))]),
+}
+
+
 class TestBuild:
-    """Counts and planets from the served planet files."""
+    """Counts and planets from the served planet files and the Solar System."""
 
     @pytest.fixture
     def served(self, tmp_path):
@@ -97,7 +132,9 @@ class TestBuild:
                 _with_qid(planet(0, 2, period=3.0), "Q2"),  # hot
                 _with_qid(planet(1, 1, period=3.0), "Q3"),  # hot
                 planet(1, 2, mass=None, radius=0.25, estimated=["radius"]),
-                planet(1, 3, period=50.0),  # warm
+                # warm, and a super-Jupiter by its minimum mass
+                planet(1, 3, period=50.0, mass=3.0, mass_kind="minimum"),
+                planet(1, 4, mass=30.0, **{"class": "brown dwarf"}),
             ],
         )
         out = tmp_path / "space-map-extrasolar"
@@ -106,44 +143,52 @@ class TestBuild:
 
     def test_counts_and_children(self, served):
         _, out = served
-        groups = planet_family.build_planet_family_groups(_entities({}), out)
+        groups = planet_family.build_planet_family_groups(_entities({}), SOLAR, out)
         assert set(groups.member_counts) == {f"planet-{f}" for f in FAMILIES}
-        assert groups.member_counts["planet-gas-giant"] == 4
-        assert groups.member_counts["planet-classification"] == 5
-        stats = groups.extra_stats["planet-classification"]
-        assert (stats.published_planet_count, stats.estimated_planet_count) == (4, 1)
+        assert groups.member_counts["planet-gas-giant"] == 5
+        stats = groups.extra_stats["planet-gas-giant"]
+        assert (stats.published_planet_count, stats.estimated_planet_count) == (5, 0)
         assert groups.member_counts["planet-mini-neptune"] == 1
+        assert groups.member_counts["planet-terrestrial-planet"] == 1
+        assert groups.member_counts["planet-ice-giant"] == 0
         assert groups.children["planet-gas-giant"] == [
             "planet-hot-jupiter",
             "planet-warm-jupiter",
+            "planet-cold-jupiter",
+            "planet-super-jupiter",
         ]
-        assert groups.children["planet-classification"] == [
+        assert groups.children["cat-planets"] == [
             "planet-giant-planet",
+            "planet-goldilocks-planet",
             "planet-mini-neptune",
+            "planet-terrestrial-planet",
         ]
-        assert "planet-cold-jupiter" not in groups.children["planet-gas-giant"]
 
     def test_planets_with_an_article_then_the_nearest(self, served):
         ids, out = served
-        entities = _entities({"Q1": (5, ["de"]), "Q2": (90, []), "Q3": (40, ["en"])})
-        groups = planet_family.build_planet_family_groups(entities, out)
+        entities = _entities(SITELINKS)
+        groups = planet_family.build_planet_family_groups(entities, SOLAR, out)
         gas = groups.notable_members["planet-gas-giant"]
         assert [m.object_id for m in gas] == [
+            "naif-599",
             _id(ids[1], 1),
             _id(ids[0], 1),
             _id(ids[0], 2),
             _id(ids[1], 3),
         ]
-        assert [m.sitelinks_count for m in gas] == [40, 5, None, None]
-        assert [m.wikidata_qid for m in gas] == ["Q3", "Q1", "Q2", None]
-        assert all(m.extrasolar for m in gas)
+        assert [m.sitelinks_count for m in gas] == [251, 40, 5, None, None]
+        assert [m.wikidata_qid for m in gas] == ["Q599", "Q3", "Q1", "Q2", None]
+        assert [m.extrasolar for m in gas] == [False, True, True, True, True]
+        assert gas[0].mass_kg == 1.0
         hot = groups.notable_members["planet-hot-jupiter"]
         assert [m.object_id for m in hot] == [_id(ids[1], 1), _id(ids[0], 2)]
-        assert "planet-classification" not in groups.notable_members
+        earth = groups.notable_members["planet-goldilocks-planet"]
+        assert [m.object_id for m in earth] == ["naif-399"]
         assert "planet-mini-neptune" not in groups.notable_members
 
         entries = notable_entries(gas, entities)
         assert [e["name"] for e in entries] == [
+            "Label Q599",
             "Planet 1 1",
             "Planet 0 1",
             "Planet 0 2",
@@ -158,7 +203,7 @@ class TestBuild:
         entities.get_listed_star.side_effect = lambda qid: (
             listed(qid) | {"labels": labels} if qid == "Q3" else listed(qid)
         )
-        groups = planet_family.build_planet_family_groups(entities, out)
+        groups = planet_family.build_planet_family_groups(entities, SOLAR, out)
         hot = groups.notable_members["planet-hot-jupiter"]
         entries = notable_entries(hot, entities)
         assert [e["name"] for e in entries] == ["Planet 1 1", "Planet 0 2"]
@@ -170,17 +215,28 @@ class TestBuild:
     def test_the_list_stops_at_its_size(self, served, monkeypatch):
         ids, out = served
         monkeypatch.setattr(planet_family, "NOTABLE_PLANETS", 2)
-        groups = planet_family.build_planet_family_groups(_entities({}), out)
+        groups = planet_family.build_planet_family_groups(_entities({}), SOLAR, out)
         gas = groups.notable_members["planet-gas-giant"]
-        assert [m.object_id for m in gas] == [_id(ids[0], 1), _id(ids[0], 2)]
+        assert [m.object_id for m in gas] == ["naif-599", _id(ids[0], 1)]
 
     def test_no_served_export(self, tmp_path):
+        """The Solar System planets still count and list."""
         groups = planet_family.build_planet_family_groups(
-            _entities({}), tmp_path / "none"
+            _entities({}), SOLAR, tmp_path / "none"
         )
-        assert groups.member_counts == {}
-        assert groups.notable_members == {}
-        assert groups.children == {}
+        assert groups.member_counts["planet-gas-giant"] == 1
+        assert groups.member_counts["planet-hot-jupiter"] == 0
+        assert [m.object_id for m in groups.notable_members["planet-gas-giant"]] == [
+            "naif-599"
+        ]
+        assert groups.children["cat-planets"] == [
+            "planet-giant-planet",
+            "planet-goldilocks-planet",
+            "planet-terrestrial-planet",
+        ]
+        assert groups.planets is not None
+        assert groups.planets.member_count == 2
+        assert groups.planets.stats.exoplanet_count == 0
         assert planet_family.served_planet_families_stamp(tmp_path / "none") is None
 
     def test_an_export_without_planet_families_is_refused(self, tmp_path):
@@ -188,7 +244,9 @@ class TestBuild:
         root.mkdir(parents=True)
         (root / "metadata.json").write_text(json.dumps({"planets": {"token": "0"}}))
         with pytest.raises(KeyError):
-            planet_family.build_planet_family_groups(_entities({}), tmp_path / "old")
+            planet_family.build_planet_family_groups(
+                _entities({}), SOLAR, tmp_path / "old"
+            )
         with pytest.raises(KeyError):
             planet_family.served_planet_families_stamp(tmp_path / "old")
 
@@ -201,43 +259,180 @@ class TestBuild:
         assert stamp["planets"] == reader.metadata["planets"]["token"]
 
 
+class TestPlanetsPage:
+    """The Planets page counts, lists, ranks and plots every planet."""
+
+    @pytest.fixture
+    def page(self, tmp_path):
+        built = write_registry(
+            tmp_path / "reg",
+            [star(10.0, 5.0, 50.0, name="Near")],
+            planets=[
+                _with_qid(planet(0, 1, radius=1.5), "Q1"),
+                planet(0, 2, mass=3.0, mass_kind="minimum", radius=2.0),
+                planet(0, 3, mass=12.0, radius=2.5, estimated=["radius"]),
+                planet(0, 4, mass=0.01, limits=["mass<"], semi_major_axis=None),
+                planet(0, 5, mass=30.0, **{"class": "brown dwarf"}),
+            ],
+        )
+        out = tmp_path / "space-map-extrasolar"
+        export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
+        groups = planet_family.build_planet_family_groups(
+            _entities(SITELINKS), SOLAR, out
+        )
+        assert groups.planets is not None
+        return built.ids, groups
+
+    def test_counts(self, page):
+        _, groups = page
+        planets = groups.planets
+        assert planets.member_count == 6
+        stats = planets.stats
+        assert (stats.solar_member_count, stats.exoplanet_count) == (2, 4)
+        assert (stats.published_planet_count, stats.estimated_planet_count) == (5, 0)
+        assert stats.planet_family_count == sum(
+            1 for n in groups.member_counts.values() if n
+        )
+
+    def test_the_solar_system_leads_the_list(self, page):
+        ids, groups = page
+        assert [m.object_id for m in groups.planets.notable_members] == [
+            "naif-399",
+            "naif-599",
+            _id(ids[0], 1),
+            _id(ids[0], 2),
+            _id(ids[0], 3),
+            _id(ids[0], 4),
+        ]
+        assert [m.object_id for m in groups.planets.solar_members] == [
+            "naif-399",
+            "naif-599",
+        ]
+
+    def test_largest_and_most_massive(self, page):
+        """The largest measured radius of a planet with a measured true mass;
+        a minimum mass counts for the most massive and says so."""
+        ids, groups = page
+        assert groups.planets.stats.largest_planet == {
+            "primary_type": "object",
+            "primary_id": _id(ids[0], 1),
+            "name": "Planet 0 1",
+            "radius_earth": 16.81,
+        }
+        assert groups.planets.stats.most_massive_planet == {
+            "primary_type": "object",
+            "primary_id": _id(ids[0], 3),
+            "name": "Planet 0 3",
+            "mass_earth": 3814.0,
+            "mass_kind": "true",
+        }
+
+    def test_plot(self, page):
+        _, groups = page
+        plot = groups.planets.plot
+        assert plot["solar"] == ["naif-399", "naif-599"]
+        assert plot["mass"] == [1.0, 317.8, 317.8, 953.5, 3814.0, None]
+        assert plot["mass_flag"] == [0, 0, 0, 1, 0, None]
+        assert plot["radius"] == [1.0, 11.21, 16.81, 22.42, 28.02, None]
+        assert plot["radius_flag"] == [0, 0, 0, 0, 2, None]
+        assert plot["semi_major_axis"] == [1.0, 5.203, 0.09, 0.09, 0.09, None]
+        assert plot["semi_major_axis_flag"] == [0, 0, 0, 0, 0, None]
+
+    def test_the_plot_file(self, page, tmp_path):
+        _, groups = page
+        planet_family.write_planet_plot(tmp_path, groups.planets.plot)
+        found = _read_bundle(tmp_path / "groups" / "__planet_plot__.json.gz")
+        assert found == groups.planets.plot
+
+
 class TestBundles:
-    """A page counts its planets and climbs to its parent family."""
+    """A family page climbs to its parent family or to the Planets page, and
+    the Planets page carries its Solar System planets and its tab text."""
 
     def test_bundle(self, tmp_path, monkeypatch: pytest.MonkeyPatch):
-        group = GROUP_BY_SLUG[f"{FAMILY_SLUG_PREFIX}hot-jupiter"]
-        root = GROUP_BY_SLUG[f"{FAMILY_SLUG_PREFIX}{planet_constants.ROOT_FAMILY}"]
-        monkeypatch.setattr(bundles, "GROUPS", (root, group))
+        slugs = (
+            "cat-solar-system",
+            "cat-planets",
+            "planet-super-earth",
+            "planet-hot-jupiter",
+        )
+        monkeypatch.setattr(bundles, "GROUPS", tuple(GROUP_BY_SLUG[s] for s in slugs))
         monkeypatch.setattr(bundles, "collect_group_images", lambda slug: None)
-        monkeypatch.setattr(bundles, "load_wikipedia_summaries_for_qid", lambda qid: {})
+        monkeypatch.setattr(
+            bundles,
+            "load_wikipedia_summaries_for_qid",
+            lambda qid: (
+                {"en": WikipediaSummary("Exoplanets are…", url="https://x")}
+                if qid == "Q44559"
+                else {}
+            ),
+        )
         monkeypatch.setattr(bundles, "load_wikipedia_sections_for_qid", lambda qid: {})
         (tmp_path / "groups").mkdir()
-        entities = MagicMock()
-        entities.get_referenced.return_value = None
+        exoplanet = {
+            "labels": {"en": "exoplanet", "de": "Exoplanet"},
+            "descriptions": {"en": "planet outside the Solar System"},
+            "aliases": {},
+            "claims": {},
+            "sitelinks": {},
+        }
+        entities = _entities({"Q399": (0, ["en"])})
+        entities.get_referenced.side_effect = lambda qid: (
+            exoplanet if qid == "Q44559" else None
+        )
+        earth = _body("naif-399", "Q399", "Earth")
 
         bundles.write_group_bundles(
             tmp_path,
             entities,
             {},
             {},
-            extra_member_counts={root.slug: 7, group.slug: 3},
+            extra_member_counts={"cat-planets": 7, "planet-hot-jupiter": 3},
+            extra_notable_members={"cat-planets": [earth]},
+            extra_member_lists={"cat-planets": {"solar_members": [earth]}},
             extra_stats={
-                group.slug: GroupExtraStats(
+                "cat-planets": GroupExtraStats(
+                    moon_total=3, solar_member_count=1, exoplanet_count=6
+                ),
+                "planet-hot-jupiter": GroupExtraStats(
                     published_planet_count=2, estimated_planet_count=1
-                )
+                ),
             },
+            child_slugs_by_group={
+                "cat-solar-system": ["cat-planets"],
+                "cat-planets": ["planet-hot-jupiter"],
+            },
+            child_counts_by_group={"cat-solar-system": {"cat-planets": 1}},
         )
 
         index = json.loads((tmp_path / "groups" / "__index__.json").read_bytes())
-        assert index == {
-            root.slug: {"type": "planet_family", "applies_to": "planet", "n": 7},
-            group.slug: {"type": "planet_family", "applies_to": "planet", "n": 3},
+        assert index["planet-hot-jupiter"] == {
+            "type": "planet_family",
+            "applies_to": "planet",
+            "n": 3,
         }
-        found = {}
-        for path in (tmp_path / "groups" / "__global__").glob("*.json.gz"):
-            found.update(_read_bundle(path))
-        page = found[group.slug]
-        assert page["parent_families"] == [f"{FAMILY_SLUG_PREFIX}gas-giant"]
+        assert index["cat-planets"]["n"] == 7
+        found = _read_all(tmp_path / "groups" / "__global__")
+        page = found["planet-hot-jupiter"]
+        assert page["parent_families"] == ["planet-gas-giant"]
         counts = page["published_planet_count"], page["estimated_planet_count"]
         assert counts == (2, 1)
-        assert "parent_families" not in found[root.slug]
+        assert found["planet-super-earth"]["parent_families"] == ["cat-planets"]
+        planets = found["cat-planets"]
+        assert [m["id"] for m in planets["solar_members"]] == ["naif-399"]
+        assert planets["solar_members"][0]["mass_kg"] == 1.0
+        assert planets["exoplanets_qid"] == "Q44559"
+        assert (planets["solar_member_count"], planets["exoplanet_count"]) == (1, 6)
+        assert planets["moon_total"] == 3
+        assert "parent_families" not in planets
+
+        en = _read_all(tmp_path / "groups" / "en")
+        assert en["cat-planets"]["exoplanets"] == {
+            "name": "exoplanet",
+            "description": "planet outside the Solar System",
+            "wikipedia": {"extract": "Exoplanets are…", "url": "https://x"},
+        }
+        tile = en["cat-solar-system"]["child_groups"]
+        assert [(c["primary_id"], c["n"]) for c in tile] == [("cat-planets", 1)]
+        de = _read_all(tmp_path / "groups" / "de")
+        assert de["cat-planets"]["exoplanets"] == {"name": "Exoplanet"}

@@ -108,8 +108,22 @@ class GroupExtraStats:
     estimated_star_count: int | None = None
     # Planet families: the planets that measured values put in the family,
     # and the others that need an estimate. member_count is their sum.
+    # Planets category: the planets with a published family, and the others
+    # with an estimated family.
     published_planet_count: int | None = None
     estimated_planet_count: int | None = None
+    # Planets category: its planets of the Solar System, and its exoplanets.
+    # member_count is their sum.
+    solar_member_count: int | None = None
+    exoplanet_count: int | None = None
+    # Planets category: the planet with the largest measured radius, as
+    # {primary_type, primary_id, name, radius_earth}.
+    largest_planet: dict | None = None
+    # Planets category: the planet with the largest measured mass, true or
+    # minimum, as {primary_type, primary_id, name, mass_earth, mass_kind}.
+    most_massive_planet: dict | None = None
+    # Planets category: the planet families that have planets.
+    planet_family_count: int | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None}

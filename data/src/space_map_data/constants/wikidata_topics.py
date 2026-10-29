@@ -11,6 +11,7 @@ from space_map_data.constants.atmosphere.wikidata import (
     ATMOSPHERE_PAGES,
     GAS_PAGES,
 )
+from space_map_data.constants.categories import CATEGORY_TAB_PAGES
 from space_map_data.constants.interior.wikidata import (
     ANALOGUE_PAGES,
     INTERIOR_CONCEPT_PAGES,
@@ -42,6 +43,11 @@ TOPIC_PAGE_TABLES: tuple[dict[str, tuple[str, ...]], ...] = (
     RING_CONCEPT_PAGES,
     MISC_PAGES,
     EXPLORATION_PAGES,
+    {
+        f"{slug} {tab}": (qid,)
+        for slug, tabs in CATEGORY_TAB_PAGES.items()
+        for tab, qid in tabs.items()
+    },
 )
 
 

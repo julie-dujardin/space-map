@@ -8,21 +8,26 @@ section or a broader article, Wikidata was searched for an item for the type
 itself. Labels, descriptions and the P31 and P279 claims were checked for each
 item.
 
-`data/src/space_map_data/constants/planets/families.py` holds 23 planet
-families, with the root `classification`, and their tree. Each family has a
-`/g/planet-<family>` group ([groups.md](export-format/groups.md)) on the first
-QID of its tuple.
+`data/src/space_map_data/constants/planets/families.py` holds 22 planet
+families and their tree. Each family has a `/g/planet-<family>` group
+([groups.md](export-format/groups.md)) on the first QID of its tuple.
 
 ## Root
 
-Wikidata has no item for a planet classification, as
-[stellar classification](https://www.wikidata.org/wiki/Q25377588) is for stars.
-The root takes [exoplanet](https://www.wikidata.org/wiki/Q44559), because
-[planet](https://www.wikidata.org/wiki/Q634) is the QID of the Planets category
-already. List of planet types (Q6633999) and Planetary classification
+The Planets category page, `cat-planets` on
+[planet](https://www.wikidata.org/wiki/Q634), is the root of the tree. The
+families without a parent are below it, and it counts every planet of the
+Solar System and every exoplanet of the IAU class `planet`. No family is the
+root. Wikidata has no item for a planet classification, as
+[stellar classification](https://www.wikidata.org/wiki/Q25377588) is for
+stars. List of planet types (Q6633999) and Planetary classification
 (Q111527403) are Wikimedia lists.
 [Sudarsky extrasolar planet classification](https://www.wikidata.org/wiki/Q778138)
 covers the cloud classes of gas giants only.
+
+[Exoplanet](https://www.wikidata.org/wiki/Q44559) is the text of the
+Exoplanets tab of `cat-planets` (`CATEGORY_TAB_PAGES` in
+`constants/categories.py`). It is no page's QID.
 
 ## Ice giant
 

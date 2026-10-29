@@ -6,7 +6,6 @@ from space_map_data.constants.planets.families import (
     EARTH_MASSES_PER_JUPITER,
     EARTH_RADII_PER_JUPITER,
     FAMILIES,
-    ROOT_FAMILY,
 )
 from space_map_data.export.extrasolar.planet_families import families_of, listed
 
@@ -52,16 +51,15 @@ class TestFamilies:
 
     def test_sub_earth(self):
         record = _planet(mass=0.5 * ME, radius=0.8 * RE)
-        assert _published(record) == {ROOT_FAMILY, "terrestrial-planet", "sub-earth"}
+        assert _published(record) == {"terrestrial-planet", "sub-earth"}
 
     def test_super_earth(self):
         record = _planet(mass=5 * ME, radius=1.8 * RE)
-        assert _published(record) == {ROOT_FAMILY, "super-earth"}
+        assert _published(record) == {"super-earth"}
 
     def test_a_small_super_earth_is_terrestrial(self):
         record = _planet(mass=2.5 * ME, radius=1.3 * RE)
         assert _published(record) == {
-            ROOT_FAMILY,
             "terrestrial-planet",
             "super-earth",
         }
@@ -69,8 +67,7 @@ class TestFamilies:
     def test_the_super_earth_bounds(self):
         """From 1.9 M⊕ and from 1.25 R⊕: an Earth twin is no super-Earth."""
         assert _published(_planet(mass=1.0 * ME, radius=1.0 * RE)) == {
-            ROOT_FAMILY,
-            "terrestrial-planet",
+            "terrestrial-planet"
         }
         assert "super-earth" not in _published(_planet(mass=1.85 * ME))
         assert "super-earth" in _published(_planet(mass=1.9 * ME))
@@ -80,28 +77,26 @@ class TestFamilies:
     def test_mega_earth(self):
         record = _planet(mass=20 * ME, radius=2.5 * RE)
         assert _published(record) == {
-            ROOT_FAMILY,
             "terrestrial-planet",
             "mega-earth",
             "mini-neptune",
         }
 
     def test_mini_neptune_by_radius_alone(self):
-        assert _published(_planet(radius=3 * RE)) == {ROOT_FAMILY, "mini-neptune"}
+        assert _published(_planet(radius=3 * RE)) == {"mini-neptune"}
 
     def test_a_mass_and_a_radius_must_agree(self):
         """GJ 1214 b: a super-Earth mass in a mini-Neptune radius."""
         record = _planet(mass=8 * ME, radius=2.7 * RE)
-        assert _published(record) == {ROOT_FAMILY, "mini-neptune"}
+        assert _published(record) == {"mini-neptune"}
 
     def test_super_puff(self):
         record = _planet(mass=5 * ME, radius=6 * RE)
-        assert _published(record) == {ROOT_FAMILY, "super-puff"}
+        assert _published(record) == {"super-puff"}
 
     def test_super_neptune_and_hot_neptune(self):
         record = _planet(mass=25 * ME, radius=5 * RE, period=3.0)
         assert _published(record) == {
-            ROOT_FAMILY,
             "giant-planet",
             "super-neptune",
             "hot-neptune",
@@ -110,7 +105,6 @@ class TestFamilies:
     def test_a_hot_puffy_super_jupiter(self):
         record = _planet(mass=2.5, radius=2.2, period=3.0, semi_major_axis=0.04)
         assert _published(record) == {
-            ROOT_FAMILY,
             "giant-planet",
             "gas-giant",
             "super-jupiter",
@@ -121,7 +115,6 @@ class TestFamilies:
     def test_warm_jupiter(self):
         record = _planet(mass=1.0, radius=1.0, period=50.0, semi_major_axis=0.3)
         assert _published(record) == {
-            ROOT_FAMILY,
             "giant-planet",
             "gas-giant",
             "warm-jupiter",
@@ -130,7 +123,6 @@ class TestFamilies:
     def test_an_eccentric_jupiter_analogue(self):
         record = _planet(mass=1.0, period=4000.0, semi_major_axis=5.0, eccentricity=0.2)
         assert _published(record) == {
-            ROOT_FAMILY,
             "giant-planet",
             "gas-giant",
             "cold-jupiter",
@@ -148,23 +140,22 @@ class TestFamilies:
         """A giant planet more than half and at most 99 % heavy elements by
         mass."""
         record = _planet(mass=15 * ME, radius=4 * RE, heavy_element_fraction=0.82)
-        assert _published(record) == {ROOT_FAMILY, "giant-planet", "ice-giant"}
+        assert _published(record) == {"giant-planet", "ice-giant"}
         record = _planet(mass=1.0, radius=1.0, heavy_element_fraction=0.07)
         assert "ice-giant" not in _published(record)
         record = _planet(mass=15 * ME, radius=4 * RE, heavy_element_fraction=1.0)
-        assert _published(record) == {ROOT_FAMILY, "giant-planet"}
+        assert _published(record) == {"giant-planet"}
 
     def test_ice_giant_is_unknown_without_a_composition(self):
         """No catalogue gives the heavy elements, so no exoplanet is one."""
         record = _planet(mass=15 * ME, radius=4 * RE)
-        assert families_of(record, STAR) == ([ROOT_FAMILY, "giant-planet"], [])
+        assert families_of(record, STAR) == (["giant-planet"], [])
         record = _planet(mass=15 * ME, radius=4 * RE, estimated=("radius",))
         assert "ice-giant" not in _estimated(record)
 
     def test_ultra_short_period(self):
         record = _planet(radius=1.3 * RE, period=0.5)
         assert _published(record) == {
-            ROOT_FAMILY,
             "terrestrial-planet",
             "super-earth",
             "ultra-short-period-planet",
@@ -188,13 +179,12 @@ class TestFamilies:
 
     def test_goldilocks_from_the_star_is_an_estimate(self):
         record = _planet(star_radius=1.0, star_teff=5772.0, semi_major_axis=1.0)
-        assert _estimated(record) == {ROOT_FAMILY, "goldilocks-planet"}
+        assert _estimated(record) == {"goldilocks-planet"}
 
     def test_goldilocks_from_the_host_radius(self):
         """HD 1461 d: no star radius in the planet's catalogue."""
         record = _planet(star_teff=5772.0, semi_major_axis=1.0)
         assert _estimated(record, STAR | {"radius": 1.0}) == {
-            ROOT_FAMILY,
             "goldilocks-planet",
         }
         assert families_of(record, STAR) == ([], [])
@@ -209,7 +199,6 @@ class TestFamilies:
         not hot, and 1 AU is not cold."""
         record = _planet(mass=1.0, period=10.0, semi_major_axis=1.0, eccentricity=0.1)
         assert _published(record) == {
-            ROOT_FAMILY,
             "giant-planet",
             "gas-giant",
             "warm-jupiter",
@@ -225,11 +214,11 @@ class TestEvidence:
 
     def test_an_estimated_radius(self):
         record = _planet(radius=3 * RE, estimated=("radius",))
-        assert families_of(record, STAR) == ([], [ROOT_FAMILY, "mini-neptune"])
+        assert families_of(record, STAR) == ([], ["mini-neptune"])
 
     def test_an_estimate_does_not_decide_beside_a_measured_value(self):
         record = _planet(mass=5 * ME, radius=1.5 * RE, estimated=("radius",))
-        assert _published(record) == {ROOT_FAMILY, "super-earth"}
+        assert _published(record) == {"super-earth"}
         assert _estimated(record) == set()
 
     @pytest.mark.parametrize(
@@ -238,24 +227,24 @@ class TestEvidence:
             pytest.param(
                 _planet(mass=5 * ME, mass_kind="minimum", radius=2.5 * RE, estimated=R),
                 [],
-                [ROOT_FAMILY, "super-earth"],
+                ["super-earth"],
                 id="KOBE-1 b",
             ),
             pytest.param(
                 _planet(mass=15 * ME, radius=3 * RE, estimated=R),
-                [ROOT_FAMILY, "giant-planet"],
+                ["giant-planet"],
                 [],
                 id="K2-111 c",
             ),
             pytest.param(
                 _planet(mass=5 * ME, radius=3 * RE, estimated=R),
-                [ROOT_FAMILY, "super-earth"],
+                ["super-earth"],
                 [],
                 id="GJ 876 d",
             ),
             pytest.param(
                 _planet(mass=5 * ME, radius=5 * RE, estimated=R),
-                [ROOT_FAMILY, "super-earth"],
+                ["super-earth"],
                 [],
                 id="61 Vir c",
             ),
@@ -263,7 +252,7 @@ class TestEvidence:
                 _planet(
                     mass=4.7, mass_kind="estimate", radius=1.2, estimated=("mass",)
                 ),
-                [ROOT_FAMILY, "giant-planet", "gas-giant"],
+                ["giant-planet", "gas-giant"],
                 [],
                 id="K2-371 b",
             ),
@@ -279,7 +268,6 @@ class TestEvidence:
         """51 Peg b: an estimated radius cannot make a puffy planet."""
         record = _planet(mass=0.46, radius=1.9, period=4.2, estimated=("radius",))
         assert _published(record) == {
-            ROOT_FAMILY,
             "giant-planet",
             "gas-giant",
             "hot-jupiter",
@@ -295,7 +283,6 @@ class TestEvidence:
     def test_a_minimum_mass_passes_at_least(self):
         record = _planet(mass=2.5, mass_kind="minimum", period=3.0)
         assert _published(record) == {
-            ROOT_FAMILY,
             "giant-planet",
             "gas-giant",
             "super-jupiter",
@@ -310,7 +297,7 @@ class TestEvidence:
         """Proxima Cen b: 1.07 M⊕ minimum mass in the habitable zone."""
         record = _planet(mass=1.07 * ME, mass_kind="minimum", insolation=0.65)
         assert families_of(record, STAR | {"teff": 3000.0}) == (
-            [ROOT_FAMILY, "goldilocks-planet"],
+            ["goldilocks-planet"],
             ["terrestrial-planet"],
         )
 
@@ -320,7 +307,7 @@ class TestEvidence:
 
     def test_an_upper_limit_that_settles(self):
         record = _planet(radius=1.2 * RE, limits=("radius<",))
-        assert _published(record) == {ROOT_FAMILY, "terrestrial-planet"}
+        assert _published(record) == {"terrestrial-planet"}
 
     def test_an_upper_limit_that_does_not_settle(self):
         record = _planet(mass=15 * ME, limits=("mass<",))
@@ -329,14 +316,13 @@ class TestEvidence:
     def test_terrestrial_by_mass_when_the_radius_does_not_settle_it(self):
         record = _planet(mass=1.95 * ME, radius=3 * RE, limits=("radius<",))
         assert _published(record) == {
-            ROOT_FAMILY,
             "terrestrial-planet",
             "super-earth",
         }
 
     def test_an_unsettled_limit_leaves_the_other_value(self):
         record = _planet(mass=15 * ME, radius=1.8 * RE, limits=("mass<",))
-        assert _published(record) == {ROOT_FAMILY, "super-earth"}
+        assert _published(record) == {"super-earth"}
 
     def test_a_lower_limit(self):
         record = _planet(mass=1.0, eccentricity=0.2, limits=("eccentricity>",))
@@ -348,7 +334,7 @@ class TestEvidence:
 
     def test_one_estimated_part_makes_the_family_estimated(self):
         record = _planet(mass=1.0, radius=1.0, period=3.0, estimated=("period",))
-        assert _published(record) == {ROOT_FAMILY, "giant-planet", "gas-giant"}
+        assert _published(record) == {"giant-planet", "gas-giant"}
         assert _estimated(record) == {"hot-jupiter"}
 
     def test_published_wins(self):
@@ -383,6 +369,6 @@ class TestListed:
             "estimated": 1,
         }
         assert by_slug["mini-neptune"]["wikidata"] == ["Q691537", "Q97359320"]
-        assert by_slug[ROOT_FAMILY]["parents"] == []
+        assert by_slug["super-earth"]["parents"] == []
         assert by_slug["ice-giant"]["parents"] == ["giant-planet"]
         assert by_slug["hot-jupiter"]["published"] == 0

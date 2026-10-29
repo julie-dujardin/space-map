@@ -201,7 +201,6 @@ class TestPlanetFiles:
         built, report, reader = _export(tmp_path, out, rows)
         ids = built.ids
         assert reader.planet(ids[0], 1)["families"] == [
-            "classification",
             "giant-planet",
             "gas-giant",
             "warm-jupiter",
@@ -210,7 +209,6 @@ class TestPlanetFiles:
         assert reader.planet(ids[0], 1)["families_estimated"] == []
         hot = reader.planet(ids[5], 1)
         assert hot["families"] == [
-            "classification",
             "giant-planet",
             "gas-giant",
             "hot-jupiter",
@@ -219,7 +217,7 @@ class TestPlanetFiles:
         assert dwarf["families"] == dwarf["families_estimated"] == []
         estimated = reader.planet(ids[5], 3)
         assert estimated["families"] == []
-        assert estimated["families_estimated"] == ["classification", "mini-neptune"]
+        assert estimated["families_estimated"] == ["mini-neptune"]
         assert report["planets"]["no family: brown dwarf"] == 1
 
     def test_metadata_lists_the_planet_families(self, tmp_path, out):
@@ -227,9 +225,9 @@ class TestPlanetFiles:
         listed = reader.metadata["planets"]["families"]
         assert [entry["slug"] for entry in listed] == list(PLANET_FAMILIES)
         counts = {entry["slug"]: entry for entry in listed}
-        assert counts["classification"] == {
-            "slug": "classification",
-            "wikidata": ["Q44559"],
+        assert counts["giant-planet"] == {
+            "slug": "giant-planet",
+            "wikidata": ["Q21857994"],
             "parents": [],
             "published": 6,
             "estimated": 0,
