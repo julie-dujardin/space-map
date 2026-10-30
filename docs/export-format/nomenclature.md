@@ -13,7 +13,12 @@ positions binary (both are written from one ordered feature list).
   (`feature_id` + center lat/lon + diameter + 2-letter IAU type code per
   record; see `data/src/space_map_data/export/nomenclature/format.py`).
 - `nomenclature/labels/{lang}/{body_id}.txt.gz` — one `\n`-separated display
-  name per record: the feature's Wikidata label in `lang`, else its IAU name.
+  name per record (`export/names.py`): in en, de, es, fr, it, pl and pt the
+  IAU name in the IAU's spelling with diacritics ("Aśvaghoṣa"); in ja, zh,
+  ru, ar and he the feature's Wikidata label in `lang` without a trailing
+  disambiguator ("エイトケン (クレーター)" → "エイトケン", also with
+  full-width "（…）") where it is in the script of that language, Latin
+  letters included ("メスティングA", "Liberalia 山"), else the IAU name.
 
 Features missing `object_id`, `center_lat`/`center_lon`, or `feature_type_code`
 are dropped at build time (with a single aggregate log line per cause). The
@@ -41,6 +46,9 @@ the bucket from a URL.
     parent_feature?: EntityRef;    // IAU satellite-feature parent (same body)
     satellite_features?: EntityRef[]; // inverse of parent_feature
     contains?: EntityRef[];        // inverse of the localized `inside_of`
+    // The three lists above name each feature by the global name of its page
+    // (`export/names.py`: the IAU spelling, "Aśvaghoṣa"); `feature_names` of
+    // the localized entry has the other languages.
     images?: ObjectImage[];        // P18 → 'photo', P242 → 'locator'; the feature's Images tab
     wikidata?: {
       length?: QuantityWithUnit;
@@ -55,16 +63,17 @@ the bucket from a URL.
 
 - `nomenclature/details/{lang}/{bucket}.json.gz` — per-language overlay; a
   feature appears here only when it has at least one localized field in that
-  language.
+  language, `feature_names` included.
 
   ```typescript
   interface FeatureLocalizedData {
     description?: string;
-    aliases?: string[];
+    aliases?: string[];            // the Wikidata label in `lang` that the IAU name replaces (en, de, es, fr, it, pl, pt; not the IAU name without case or a trailing "(…)"), then the Wikidata aliases, each without a trailing "(…)"; never the name in the labels file, and never an alias that contains that name as whole words, case-insensitive ("Cratere Tycho" for "Tycho")
     instance_of?: EntityRef[];     // resolved P31 refs
     named_after?: EntityRef[];     // resolved P138 refs
     part_of?: EntityRef[];         // resolved P361 refs
-    inside_of?: EntityRef[];       // containing feature(s): Wikidata P706/P361, else derived from bbox/radius geometry
+    inside_of?: EntityRef[];       // containing feature(s): Wikidata P706/P361, else derived from bbox/radius geometry. A feature or a body of the map has the name of its page in this language, and the features are sorted by it
+    feature_names?: Record<string, string>; // feature_id → name in this language of a feature that the global `parent_feature`, `satellite_features` or `contains` names, where it differs from the global name
     quadrangle?: EntityRef;        // IAU map quadrangle; links to Wikipedia when the quad has a QID
     wikipedia?: { extract?: string; description?: string; url?: string };
   }

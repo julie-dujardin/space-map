@@ -8,7 +8,8 @@ Source files (per body):
     v1/nomenclature/details/{lang}/{bucket}.json.gz — per-language details
                                                       (description, aliases, …)
 
-One document per feature, all language variants on the same document.
+One document per feature, all language variants on the same document. The
+names are those of the feature's page (`export.names`), from the labels files.
 """
 
 import gzip
@@ -153,9 +154,7 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             labels_by_lang[lang] = _read_labels(label_path, len(records))
 
         for i, (fid, lat, lon, dia_m, type_code) in enumerate(records):
-            # Canonical name = English label (writer falls back to IAU
-            # `Feature.name` when no Wikidata label exists, so en is always
-            # non-empty for a renderable feature).
+            # The English label is the IAU name (`export/names.py`).
             canonical = labels_by_lang["en"][i]
             doc: dict[str, Any] = {
                 "id": feature_pk(body_id, fid),
@@ -202,9 +201,13 @@ def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                 label = labels_by_lang[lang][i]
                 if label:
                     doc[f"name_{lang}"] = label
-                desc = (details_by_lang[lang].get(detail_key) or {}).get("description")
-                if desc:
+                detail = details_by_lang[lang].get(detail_key) or {}
+                if desc := detail.get("description"):
                     doc[f"description_{lang}"] = desc
+                # The label that the IAU name replaces is among them, so a
+                # reader still finds a feature by its name in their language.
+                if aliases := detail.get("aliases"):
+                    doc["feature"][f"aliases_{lang}"] = aliases
             yield doc
             total += 1
 

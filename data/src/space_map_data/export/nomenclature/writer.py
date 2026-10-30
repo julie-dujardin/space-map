@@ -3,12 +3,10 @@
 Marker tier (loaded eagerly when a body's surface comes into view):
 
     nomenclature/positions/{body_id}.bin.gz       — SMNF-format binary
-    nomenclature/labels/{lang}/{body_id}.txt.gz   — \\n-separated label per
-                                                    feature, ordered to match
-                                                    the positions binary. Each
-                                                    line is the Wikidata label
-                                                    in ``lang`` when present,
-                                                    falling back to ``Feature.name``.
+    nomenclature/labels/{lang}/{body_id}.txt.gz   — \\n-separated name per
+                                                    feature in ``lang``, ordered
+                                                    to match the positions
+                                                    binary (`names.feature_names`).
 
 Details tier (lazy, fetched on drawer open, hash-bucketed):
 
@@ -19,7 +17,10 @@ Details tier (lazy, fetched on drawer open, hash-bucketed):
                                                          parent_feature, …
     nomenclature/details/{lang}/{bucket}.json.gz       — localized description,
                                                          named_after / instance_of
-                                                         refs, wiki summary, …
+                                                         refs, wiki summary, the
+                                                         names of the features
+                                                         that the global lists
+                                                         name, …
 
 Bucket key = ``f"{object_id}:{feature_id}"`` so features on the same body
 cluster — fetching one feature's details warms the bundle for its siblings.
@@ -43,8 +44,15 @@ import orjson
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.nomenclature.quadrangles import QUADRANGLE_QIDS
-from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
+from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import collect_feature_images, localized_image_titles
+from space_map_data.export.names import (
+    Names,
+    ObjectNames,
+    feature_aliases,
+    feature_names,
+    overrides_in,
+)
 from space_map_data.export.nomenclature.format import (
     pack_header,
     pack_record,
@@ -236,40 +244,18 @@ def _build_positions(features: list[Feature]) -> bytes:
     return b"".join(parts)
 
 
-def feature_label(
-    feature: Feature,
-    lang: str,
-    wikidata_entities: WikidataEntityCache,
-) -> str:
-    """The name of a feature in *lang*: the IAU ``name`` in English, else the
-    Wikidata label in *lang*, else the IAU name.
-
-    The IAU is the naming authority, so its spelling is the English one;
-    Wikidata only supplies the other languages, where it has a native form
-    the gazetteer does not (a vandalised English label once shipped as
-    "Mare Tranquilliton").
-    """
-    if feature.wikidata_qid and lang != BASE_LOCALE:
-        wd = wikidata_entities.get_feature_entity(feature.wikidata_qid)
-        if wd is not None:
-            wd_label = wd["labels"].get(lang) or wd["labels"].get("mul")
-            if wd_label:
-                return wd_label
-    return feature.name
-
-
 def _build_labels(
     features: list[Feature],
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> bytes:
-    """Pack one :func:`feature_label` line per feature.
+    """Pack one name line per feature.
 
     Order matches :func:`_build_positions`, by contract — frontend joins by
     index (positions[i] ↔ label_lines[i]).
     """
     return "\n".join(
-        feature_label(f, lang, wikidata_entities) for f in features
+        feature_names(f, wikidata_entities).get(lang) for f in features
     ).encode("utf-8")
 
 
@@ -341,7 +327,7 @@ class FeatureDetailData:
 
 def build_feature_details(
     session: Session,
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     units: UnitConverter,
     *,
     body_filter: str | None = None,
@@ -362,6 +348,7 @@ def build_feature_details(
     (``{feature_id: {source_key: {container_fid, …}}}``) when supplied —
     diagnostics-only, the production export passes ``None``.
     """
+    wikidata_entities = names.entities
     out = FeatureDetailData()
 
     rows_q = session.query(Feature).filter(Feature.object_id.isnot(None))
@@ -370,7 +357,7 @@ def build_feature_details(
     rows = rows_q.order_by(Feature.object_id, Feature.feature_id).all()
 
     focus_resolver, feature_qid_to_id_per_body, name_lookup_per_body = (
-        _build_focus_indices(session, rows)
+        _build_focus_indices(session, rows, names)
     )
     container_candidates_per_body = _container_candidates_per_body(rows)
 
@@ -498,6 +485,7 @@ def build_feature_details(
             lang_entry = _build_detail_localized(
                 f,
                 lang,
+                body_names[f.feature_id],
                 wd,
                 extracted,
                 wikidata_entities,
@@ -526,31 +514,33 @@ def build_feature_details(
 
     _attach_inverse_lists(out, "satellite_features", sat_index, name_lookup_per_body)
     _attach_inverse_lists(out, "contains", contains_index, name_lookup_per_body)
+    _attach_feature_names(out, name_lookup_per_body)
     return out
 
 
 def _build_focus_indices(
     session: Session,
     rows: list[Feature],
-) -> tuple[FocusResolver, dict[str, dict[str, int]], dict[str, dict[int, str]]]:
+    names: ObjectNames,
+) -> tuple[FocusResolver, dict[str, dict[str, int]], dict[str, dict[int, Names]]]:
     """Build QID→body and per-body QID→feature maps used by focus resolution.
 
-    Also returns a per-body ``feature_id → name`` lookup, used downstream
+    Also returns a per-body ``feature_id → names`` lookup, used downstream
     when attaching inverse lists and building same-body EntityRefs.
     """
-    body_q = session.query(Object.id, Object.name, Object.wikidata_qid).filter(
+    body_q = session.query(Object.id, Object.wikidata_qid).filter(
         Object.wikidata_qid.isnot(None)
     )
-    body_by_qid: dict[str, tuple[str, str | None]] = {}
-    for object_id, name, qid in body_q:
-        body_by_qid.setdefault(qid, (object_id, name))
+    body_by_qid: dict[str, str] = {}
+    for object_id, qid in body_q:
+        body_by_qid.setdefault(qid, object_id)
 
     feature_qid_to_id_per_body: dict[str, dict[str, int]] = {}
-    feature_by_qid_per_body: dict[str, dict[str, tuple[int, str]]] = {}
-    name_lookup_per_body: dict[str, dict[int, str]] = {}
+    feature_by_qid_per_body: dict[str, dict[str, tuple[int, Names]]] = {}
+    name_lookup_per_body: dict[str, dict[int, Names]] = {}
     for f in rows:
         assert f.object_id is not None
-        canonical = f.unicode_name or f.name
+        canonical = feature_names(f, names.entities)
         name_lookup_per_body.setdefault(f.object_id, {})[f.feature_id] = canonical
         if f.wikidata_qid:
             feature_qid_to_id_per_body.setdefault(f.object_id, {})[f.wikidata_qid] = (
@@ -562,7 +552,7 @@ def _build_focus_indices(
             )
 
     return (
-        FocusResolver(body_by_qid, feature_by_qid_per_body),
+        FocusResolver(body_by_qid, feature_by_qid_per_body, names),
         feature_qid_to_id_per_body,
         name_lookup_per_body,
     )
@@ -572,7 +562,7 @@ def _attach_inverse_lists(
     out: FeatureDetailData,
     field: str,
     index: dict[tuple[str, int], set[int]],
-    name_lookup_per_body: dict[str, dict[int, str]],
+    name_lookup_per_body: dict[str, dict[int, Names]],
 ) -> None:
     """Attach a sorted EntityRef[] list under ``field`` to each parent's global entry.
 
@@ -583,16 +573,41 @@ def _attach_inverse_lists(
         names = name_lookup_per_body.get(body_id, {})
         sorted_children = sorted(
             (cid for cid in child_set if cid in names),
-            key=lambda cid: names[cid],
+            key=lambda cid: names[cid].name,
         )
         if not sorted_children:
             continue
         parent_key = feature_bucket_key(body_id, parent_fid)
         entry = out.global_data.setdefault(parent_key, {})
         entry[field] = [
-            make_feature_entityref(body_id, cid, names[cid]).to_dict()
+            make_feature_entityref(body_id, cid, names[cid].name).to_dict()
             for cid in sorted_children
         ]
+
+
+# The global fields that name other features of the same body.
+_FEATURE_REF_FIELDS = ("satellite_features", "contains")
+
+
+def _attach_feature_names(
+    out: FeatureDetailData, name_lookup_per_body: dict[str, dict[int, Names]]
+) -> None:
+    """Name the features that ``parent_feature``, ``satellite_features`` and
+    ``contains`` name, in each language: ``feature_names`` maps a feature_id
+    to its name where it differs from the global one. It can add a localized
+    entry."""
+    for key, entry in out.global_data.items():
+        body_id = key.partition(":")[0]
+        refs = [ref for field in _FEATURE_REF_FIELDS for ref in entry.get(field, ())]
+        if parent := entry.get("parent_feature"):
+            refs.append(parent)
+        if not refs:
+            continue
+        lookup = name_lookup_per_body[body_id]
+        linked = {ref["secondary_id"]: lookup[int(ref["secondary_id"])] for ref in refs}
+        for lang in LANGUAGES:
+            if found := overrides_in(linked, lang):
+                out.localized_data[lang].setdefault(key, {})["feature_names"] = found
 
 
 # -- Spatial containment (bbox + radius) -------------------------------------
@@ -791,7 +806,7 @@ def _build_detail_global(
     images: list[dict] | None,
     units: UnitConverter,
     wikidata_entities: WikidataEntityCache,
-    name_lookup_per_body: dict[str, dict[int, str]],
+    name_lookup_per_body: dict[str, dict[int, Names]],
 ) -> dict:
     """Build the per-language-independent payload for one feature."""
     data: dict = {}
@@ -808,12 +823,12 @@ def _build_detail_global(
             data["sitelinks_count"] = len(wd["sitelinks"])
     if feature.parent_feature_id is not None:
         assert feature.object_id is not None
-        parent_name = name_lookup_per_body.get(feature.object_id, {}).get(
+        parent = name_lookup_per_body.get(feature.object_id, {}).get(
             feature.parent_feature_id
         )
-        if parent_name is not None:
+        if parent is not None:
             data["parent_feature"] = make_feature_entityref(
-                feature.object_id, feature.parent_feature_id, parent_name
+                feature.object_id, feature.parent_feature_id, parent.name
             ).to_dict()
     if images:
         data["images"] = images
@@ -841,23 +856,26 @@ def _build_detail_global(
 def _build_detail_localized(
     feature: Feature,
     lang: str,
+    names: Names,
     wd: WikidataEntity | None,
     extracted: dict,
     wikidata_entities: WikidataEntityCache,
     wiki_summary: WikipediaSummary | None,
     focus_resolver: FocusResolver,
     inside_feature_ids: set[int],
-    body_name_lookup: dict[int, str],
+    body_name_lookup: dict[int, Names],
 ) -> dict:
-    """Build the per-language payload for one feature."""
+    """Build the per-language payload for one feature. Its aliases are the
+    label that its name replaces, then the Wikidata aliases
+    (`names.feature_aliases`)."""
     data: dict = {}
+    aliases = feature_aliases(names, lang, wd["aliases"].get(lang, ()) if wd else ())
+    if aliases:
+        data["aliases"] = aliases
     if wd is not None:
         desc = wd["descriptions"].get(lang)
         if desc:
             data["description"] = desc
-        aliases = wd["aliases"].get(lang)
-        if aliases:
-            data["aliases"] = aliases
 
         for claim in FEATURE_ENTITY_REF_CLAIMS:
             if claim.key in _SPATIAL_CLAIM_KEYS or claim.key not in extracted:
@@ -916,7 +934,7 @@ def _build_inside_of(
     wikidata_entities: WikidataEntityCache,
     focus_resolver: FocusResolver,
     inside_feature_ids: set[int],
-    body_name_lookup: dict[int, str],
+    body_name_lookup: dict[int, Names],
 ) -> list[dict]:
     """Merge Wikidata (P706/P361) + bbox-derived containers into one EntityRef[].
 
@@ -965,11 +983,13 @@ def _build_inside_of(
             if ref is not None:
                 _add(ref)
 
-    for fid in sorted(inside_feature_ids, key=lambda i: body_name_lookup.get(i, "")):
-        name = body_name_lookup.get(fid)
-        if name is None:
-            continue
-        _add(make_feature_entityref(feature.object_id, fid, name))
+    inside = {
+        fid: body_name_lookup[fid]
+        for fid in inside_feature_ids
+        if fid in body_name_lookup
+    }
+    for fid in sorted(inside, key=lambda i: inside[i].get(lang)):
+        _add(make_feature_entityref(feature.object_id, fid, inside[fid].get(lang)))
 
     return refs
 

@@ -10,6 +10,7 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_SLUG_PREFIX,
     launch_vehicle_slug_for_qid,
 )
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -70,45 +71,43 @@ class FocusResolver:
     """Resolve referenced QIDs to map focus targets (body or feature).
 
     Tries feature (same body) first, then any body — "most precise wins".
-    Display name comes from canonical project data, not the referenced
-    Wikidata entity, so it works even without a ``referenced/`` payload.
+    The target has the name of its own page in the language of the ref, so it
+    works even without a ``referenced/`` payload.
     """
 
     def __init__(
         self,
-        body_by_qid: dict[str, tuple[str, str | None]],
-        feature_by_qid_per_body: dict[str, dict[str, tuple[int, str]]],
+        body_by_qid: dict[str, str],
+        feature_by_qid_per_body: dict[str, dict[str, tuple[int, Names]]],
+        names: ObjectNames,
     ) -> None:
         self._body_by_qid = body_by_qid
         self._feature_by_qid_per_body = feature_by_qid_per_body
+        self._names = names
 
-    def resolve(self, qid: str, current_body_id: str) -> FocusTarget | None:
+    def resolve(self, qid: str, current_body_id: str, lang: str) -> FocusTarget | None:
         per_body = self._feature_by_qid_per_body.get(current_body_id)
         if per_body and qid in per_body:
-            feature_id, feature_name = per_body[qid]
+            feature_id, feature_names = per_body[qid]
             primary_type, primary_id = _split_object_id(current_body_id)
             return FocusTarget(
                 primary_type=primary_type,
                 primary_id=primary_id,
                 secondary_type="feature",
                 secondary_id=str(feature_id),
-                name=feature_name,
+                name=feature_names.get(lang),
             )
-        target = self._body_by_qid.get(qid)
-        if target:
-            object_id, body_name = target
-            if body_name is None:
-                # Body row has no usable name to display — skip.
-                return None
-            primary_type, primary_id = _split_object_id(object_id)
-            return FocusTarget(
-                primary_type=primary_type,
-                primary_id=primary_id,
-                secondary_type=None,
-                secondary_id=None,
-                name=body_name,
-            )
-        return None
+        object_id = self._body_by_qid.get(qid)
+        if object_id is None:
+            return None
+        primary_type, primary_id = _split_object_id(object_id)
+        return FocusTarget(
+            primary_type=primary_type,
+            primary_id=primary_id,
+            secondary_type=None,
+            secondary_id=None,
+            name=self._names.object(object_id).get(lang),
+        )
 
 
 def _split_object_id(object_id: str) -> tuple[str, str]:
@@ -401,7 +400,7 @@ def resolve_entity_ref(
     """
     focus = None
     if focus_resolver is not None and focus_body_id is not None:
-        focus = focus_resolver.resolve(qid, focus_body_id)
+        focus = focus_resolver.resolve(qid, focus_body_id, lang)
     if focus is not None:
         return EntityRef(
             name=focus.name,

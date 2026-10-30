@@ -7,9 +7,12 @@ from unittest.mock import MagicMock
 import orjson
 import pytest
 
+from space_map_data.export.names import Names, ObjectNames, feature_names
 from space_map_data.export.nomenclature.format import HEADER_SIZE, RECORD_SIZE
 from space_map_data.export.nomenclature.writer import (
     FeatureDetailData,
+    _attach_feature_names,
+    _build_detail_localized,
     _build_labels,
     _build_positions,
     build_nomenclature,
@@ -19,7 +22,7 @@ from space_map_data.export.nomenclature.writer import (
     write_nomenclature_labels,
     write_nomenclature_positions,
 )
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.feature import Feature
 
 
@@ -94,7 +97,7 @@ class TestBuildLabels:
         buf = _build_labels(feats, "en", _StubWikidata())
         assert buf.decode("utf-8").split("\n") == ["Tycho"]
 
-    def test_iau_name_in_english_wikidata_label_elsewhere(self):
+    def test_iau_name_in_latin_languages_own_script_label_elsewhere(self):
         feats = [
             _feat(feature_id=1, name="Abu Nuwas", wikidata_qid="Q1"),
             _feat(feature_id=2, name="Mare Tranquillitatis", wikidata_qid="Q2"),
@@ -104,31 +107,91 @@ class TestBuildLabels:
             {
                 "Q1": {"en": "Abu Nuwas (crater)", "ru": "Абу Нувас"},
                 # A vandalised English label must not reach the page.
-                "Q2": {"en": "Mare Tranquilliton", "ru": "Море Спокойствия"},
+                "Q2": {
+                    "en": "Mare Tranquilliton",
+                    "fr": "Mer de la Tranquillité",
+                    "ru": "Море Спокойствия",
+                },
                 # Q3 has no labels for either language.
                 "Q3": {},
             }
         )
-        assert _build_labels(feats, "en", wd).decode("utf-8").split("\n") == [
-            "Abu Nuwas",
-            "Mare Tranquillitatis",
-            "Mons Hadley",
-        ]
+        iau = ["Abu Nuwas", "Mare Tranquillitatis", "Mons Hadley"]
+        assert _build_labels(feats, "en", wd).decode("utf-8").split("\n") == iau
+        assert _build_labels(feats, "fr", wd).decode("utf-8").split("\n") == iau
         assert _build_labels(feats, "ru", wd).decode("utf-8").split("\n") == [
             "Абу Нувас",
             "Море Спокойствия",
             "Mons Hadley",
         ]
 
-    def test_ignores_unicode_name(self):
-        # Per design: labels file uses the raw IAU `name`, not `unicode_name`.
+    def test_takes_the_iau_spelling(self):
         feats = [_feat(name="Asvaghosa", unicode_name="Aśvaghosa", wikidata_qid=None)]
         assert (
-            _build_labels(feats, "en", _StubWikidata()).decode("utf-8") == "Asvaghosa"
+            _build_labels(feats, "en", _StubWikidata()).decode("utf-8") == "Aśvaghosa"
         )
 
     def test_empty_input_emits_empty_bytes(self):
         assert _build_labels([], "en", _StubWikidata()) == b""
+
+
+class TestDetailAliases:
+    """The localized aliases of a feature's details."""
+
+    @staticmethod
+    def _aliases(
+        lang: str,
+        name: str = "Mare Tranquillitatis",
+        labels: dict[str, str] | None = None,
+        aliases: dict[str, list[str]] | None = None,
+    ) -> list[str] | None:
+        if labels is None:
+            labels = {
+                "fr": "Mer de la Tranquillité",
+                "de": "Mare Tranquillitatis (Mond)",
+            }
+        if aliases is None:
+            aliases = {
+                "fr": ["mer de la Tranquillité", "Mare Tranquillitatis", "Statio"],
+                "de": ["Mare Tranquillitatis (Mond)"],
+            }
+        wd = WikidataEntity(
+            labels=labels, descriptions={}, aliases=aliases, claims={}, sitelinks={}
+        )
+        entities = _StubWikidata({"Q2": labels})
+        feature = _feat(name=name, wikidata_qid="Q2")
+        localized = _build_detail_localized(
+            feature,
+            lang,
+            feature_names(feature, entities),
+            wd,
+            {},
+            entities,
+            None,
+            MagicMock(),
+            set(),
+            {},
+        )
+        return localized.get("aliases")
+
+    def test_the_label_that_the_iau_name_replaces_comes_first(self):
+        # Each once in any case, and never the name of the page.
+        assert self._aliases("fr") == ["Mer de la Tranquillité", "Statio"]
+
+    def test_a_name_with_a_disambiguator_is_the_iau_name(self):
+        assert self._aliases("de") is None
+
+    def test_an_alias_that_contains_the_name_is_dropped(self):
+        aliases = {"it": ["Cratere Tycho", "cratere tycho B", "Tychonis", "Tyge"]}
+        # "Tycho B" names another crater, and "Tychonis" is another word.
+        assert self._aliases("it", "Tycho", {}, aliases) == ["Tychonis", "Tyge"]
+
+    def test_an_alias_contains_the_name_in_its_language(self):
+        labels = {"ja": "ティコ (クレーター)", "en": "Tycho crater"}
+        aliases = {"ja": ["ティコ・クレーター", "Tycho", "チコ（クレーター）"]}
+        assert self._aliases("ja", "Tycho", labels, aliases) == ["Tycho", "チコ"]
+        # The English label that the IAU name replaces contains it too.
+        assert self._aliases("en", "Tycho", labels, {}) is None
 
 
 class TestBuildNomenclature:
@@ -281,3 +344,62 @@ class TestWriteFeatureDetailBundles:
         for lang in ("ar", "en", "fr", "ja", "ru", "zh"):
             assert ns[lang] == 0
         assert not (tmp_path / "nomenclature" / "details").exists()
+
+
+class TestFeatureNames:
+    """The features that a feature's global lists name, in each language."""
+
+    def test_the_lists_are_named_where_a_language_differs(self):
+        out = FeatureDetailData()
+        out.global_data["naif-499:1"] = {
+            "parent_feature": {"name": "Olympus Mons", "secondary_id": "2"},
+            "contains": [{"name": "Karzok", "secondary_id": "3"}],
+        }
+        lookup = {
+            "naif-499": {
+                2: Names("Olympus Mons", {"ja": "オリンポス山"}),
+                3: Names("Karzok"),
+            }
+        }
+        _attach_feature_names(out, lookup)
+        assert out.localized_data["ja"]["naif-499:1"] == {
+            "feature_names": {"2": "オリンポス山"}
+        }
+        assert "naif-499:1" not in out.localized_data["fr"]
+
+
+class TestFocusResolver:
+    """A focus target has the name of its page in the language of the ref."""
+
+    def test_a_body_and_a_feature_are_named_in_the_language(self, session):
+        from space_map_data.export.objects.wikidata_claims import FocusResolver
+        from space_map_data.models.object import Object, ObjectType
+        from tests.conftest import EntityStub, labelled
+
+        session.add(
+            Object(
+                id="naif-499",
+                name="MARS",
+                object_type=ObjectType.planet,
+                wikidata_qid="Q111",
+            )
+        )
+        session.commit()
+        names = ObjectNames(
+            EntityStub({"Q111": labelled({"en": "Mars", "ja": "火星"})}), session
+        )
+        resolver = FocusResolver(
+            {"Q111": "naif-499"},
+            {"naif-499": {"Q2": (2, Names("Olympus Mons", {"ja": "オリンポス山"}))}},
+            names,
+        )
+        found = [
+            resolver.resolve("Q111", "naif-301", "ja"),
+            resolver.resolve("Q111", "naif-301", "fr"),
+            resolver.resolve("Q2", "naif-499", "ja"),
+        ]
+        assert [target.name if target else None for target in found] == [
+            "火星",
+            "Mars",
+            "オリンポス山",
+        ]

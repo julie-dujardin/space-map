@@ -1437,7 +1437,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         }
         with Session(engine) as session:
             feature_details = build_feature_details(
-                session, wikidata_entities, units, body_radii_km=body_radii_km
+                session, names, units, body_radii_km=body_radii_km
             )
         feature_bundle_ns = write_feature_detail_bundles(out_dir, feature_details)
         write_global_labels(
