@@ -129,6 +129,7 @@ ON_POINT = "an item on its point of several stars"
 WINS = "a: a star item wins its star over a system item"
 TIE = "a: of star items, the first claim, then the most articles wins"
 OUTRANKED = "a: outranked"
+FREED = "a: the winner goes to a node, so the next item about the star stays on it"
 TO_ROOT = "b: to the root"
 TO_NAMED = "b: to the node that its ids name"
 COMPONENT = "b: its label names a component, so it stays on its star"
@@ -143,6 +144,7 @@ CASES = (
     WINS,
     TIE,
     OUTRANKED,
+    FREED,
     TO_ROOT,
     TO_NAMED,
     COMPONENT,
@@ -167,11 +169,13 @@ def _about_star(reach: Reach) -> bool:
 def place(reaches: Iterable[Reach]) -> list[Placed]:
     """Where each item goes, by what it is about.
 
-    The items that reach one object rank by `_rank`. A star item that wins
-    stays, and so does an item of no known kind whose ids name no system.
-    Every other item goes on to the node that its ids name, else to the root
-    of its system. A node takes the best of the items that its ids name,
-    else the best of the items from below. These items stay where they are:
+    The items that reach one object rank by `_rank`. An item about the star
+    (a star item, or an item of no known kind whose ids name no system)
+    stays when it wins. When it loses to an item that goes on, it takes the
+    star if no better item stays there. Every other item goes on to the node
+    that its ids name, else to the root of its system. A node takes the best
+    of the items that its ids name, else the best of the items from below.
+    These items stay where they are:
     - the winner of a point of several stars; the loser goes to the root;
     - an item whose label names a component, when it wins its star;
     - on a star in no system, a mixed or system item that wins it, so the
@@ -188,6 +192,8 @@ def place(reaches: Iterable[Reach]) -> list[Placed]:
     own: dict[int, list[Reach]] = defaultdict(list)
     up: dict[int, list[Reach]] = defaultdict(list)
     taken: set[int] = set()
+    # The items that go back to their star after the nodes take their items.
+    back: list[Reach] = []
 
     def put(reach: Reach, node: int | None, case: str) -> None:
         placed[reach.item.qid] = Placed(reach.item.qid, node, case)
@@ -229,11 +235,10 @@ def place(reaches: Iterable[Reach]) -> list[Placed]:
             route(winner, True)
         for loser in losers:
             if _about_star(loser):
-                put(loser, None, OUTRANKED)
+                back.append(loser)
             else:
                 route(loser, False)
 
-    back: list[Reach] = []
     inner = sorted(n for n, found in own.items() if found[0].named_root != n)
     for node in inner:
         winner, *losers = sorted(own.pop(node), key=_rank)
@@ -255,7 +260,7 @@ def place(reaches: Iterable[Reach]) -> list[Placed]:
         elif reach.target in taken:
             put(reach, None, OUTRANKED)
         else:
-            put(reach, 0, TAKEN_MIXED)
+            put(reach, 0, FREED if _about_star(reach) else TAKEN_MIXED)
 
     # No id names the root of these, so they stay where their ids lead.
     held = {p.node or of[p.qid].point for p in placed.values() if p.node is not None}

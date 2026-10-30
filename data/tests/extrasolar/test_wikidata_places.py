@@ -342,6 +342,32 @@ class TestSystemItemsGoToTheirNode:
         }
 
 
+class TestTheWinnerLeaves:
+    """An item of no known kind whose ids name a node goes there and leaves
+    its star."""
+
+    def test_the_next_item_about_the_star_stays(self):
+        node = item("Q1", "One", 2)
+        star = item("Q2", "Two", 1)
+        assert where(
+            Reach(node, 100, HIP, named=8, named_root=8), Reach(star, 100, GAIA)
+        ) == {"Q1": (8, wikidata.TO_NAMED), "Q2": (0, wikidata.FREED)}
+
+    def test_the_winner_that_loses_its_node_comes_back(self):
+        node = item("Q1", "One", 2)
+        star = item("Q2", "Two", 1)
+        better = item("Q3", "Three", 9)
+        assert where(
+            Reach(node, 100, HIP, named=8, named_root=8),
+            Reach(star, 100, GAIA),
+            Reach(better, 200, HIP, named=8, named_root=8),
+        ) == {
+            "Q3": (8, wikidata.TO_NAMED),
+            "Q1": (0, wikidata.TAKEN_MIXED),
+            "Q2": (None, wikidata.OUTRANKED),
+        }
+
+
 class TestStarsInNoSystem:
     """(c) A system item on a star in no system stays on it until we hold
     its system; (d) a mixed one stays too."""
