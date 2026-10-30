@@ -16,7 +16,7 @@ import re
 import threading
 import unicodedata
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cache
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -125,6 +125,21 @@ def resolve_wikidata_qid(obj: Object) -> str | None:
     return obj.satcat.wikidata_qid
 
 
+def _without_disambiguators(obj: Object, names: Names) -> Names:
+    """``names`` with labels that have no disambiguator ("エリス (準惑星)" is
+    "エリス"). The parentheses of a comet or of a global name stay: they hold
+    a discoverer or a designation ("C/1997 J2 (Meunier-Dupouy)", "99677
+    (2002 JC15)"), which is the only difference between some objects."""
+    if obj.object_type == ObjectType.comet or "(" in names.name:
+        return names
+    langs = {
+        # Some labels are page titles: "أزور_(قمر_اصطناعي)".
+        lang: without_disambiguator(label).rstrip("_")
+        for lang, label in names.langs.items()
+    }
+    return replace(names, langs=langs)
+
+
 def object_names(
     obj: Object, entities: WikidataEntityCache, item: WikidataEntity | None = None
 ) -> Names:
@@ -146,15 +161,18 @@ def object_names(
     named_by = entities.get_referenced(NAME_ENTITIES.get(obj.id))
     item = named_by or item or entities.get_entity(resolve_wikidata_qid(obj))
     if not is_moon:
-        return entity_names(item, own_name(obj))
+        return _without_disambiguators(obj, entity_names(item, own_name(obj)))
 
     def name(lang: str) -> str | None:
         label = entity_label(item, lang)
         return label if is_iau_named(label, obj.provisional_designation) else None
 
-    return Names(
-        name(BASE_LOCALE) or own_name(obj),
-        {lang: label for lang in LANGUAGES if (label := name(lang))},
+    return _without_disambiguators(
+        obj,
+        Names(
+            name(BASE_LOCALE) or own_name(obj),
+            {lang: label for lang in LANGUAGES if (label := name(lang))},
+        ),
     )
 
 

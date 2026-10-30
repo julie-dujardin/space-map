@@ -164,6 +164,35 @@ class TestObjectNames:
         assert names.name == "Olympias"
         assert (names.get("fr"), names.get("ja")) == ("Olympias", "オリンピアス")
 
+    def test_a_label_loses_its_disambiguator(self):
+        obj = make_object(id="spkid-20136199", name="136199 Eris", wikidata_qid="Q1")
+        labels = {"en": "Eris", "ja": "エリス (準惑星)", "zh": "阋神星（矮行星）"}
+        names = object_names(obj, EntityStub({"Q1": labelled(labels)}))
+        assert (names.get("ja"), names.get("zh")) == ("エリス", "阋神星")
+
+    def test_a_label_that_is_a_page_title_loses_its_underscore(self):
+        obj = make_object(id="norad_satcat-4221", name="Azur", wikidata_qid="Q1")
+        labels = {"en": "Azur", "ar": "أزور_(قمر_اصطناعي)"}
+        names = object_names(obj, EntityStub({"Q1": labelled(labels)}))
+        assert names.get("ar") == "أزور"
+
+    def test_a_comet_keeps_its_parentheses(self):
+        obj = make_object(
+            id="spkid-1002449",
+            name="C/2007 E2",
+            object_type=ObjectType.comet,
+            wikidata_qid="Q1",
+        )
+        labels = {"en": "C/2007 E2", "ja": "ラヴジョイ彗星 (C/2007 E2)"}
+        names = object_names(obj, EntityStub({"Q1": labelled(labels)}))
+        assert names.get("ja") == "ラヴジョイ彗星 (C/2007 E2)"
+
+    def test_a_global_name_with_parentheses_keeps_them_in_every_language(self):
+        obj = make_object(id="spkid-20099677", name="X", wikidata_qid="Q1")
+        labels = {"en": "(99677) 2002 JC15", "ja": "99677 (2002 JC15)"}
+        names = object_names(obj, EntityStub({"Q1": labelled(labels)}))
+        assert names.get("ja") == "99677 (2002 JC15)"
+
     def test_an_item_in_hand_is_not_read_again(self):
         obj = make_object(id="naif-499", name="MARS", wikidata_qid="Q111")
         item = labelled({"en": "Mars", "ja": "火星"})

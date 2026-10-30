@@ -561,8 +561,11 @@ and map that names the object take its names from that rule. The global
   IAU form ("S/2019 S 37") in every language, not a Wikidata label: such a
   label is a description ("Moon of 38628 Huya") or a designation that can
   disagree with the DB. A moon with an IAU name takes no label that is a
-  designation ("S/2009 (317) 1" for Olympias). An object with no name at all
-  has its id.
+  designation ("S/2009 (317) 1" for Olympias). A label loses its
+  disambiguator ("エリス (準惑星)" is "エリス"), except for a comet or a global
+  name with parentheses: there they hold a discoverer or a designation
+  ("C/1997 J2 (Meunier-Dupouy)", "99677 (2002 JC15)"). An object with no name
+  at all has its id.
 - A planetary system barycenter (`naif-1` … `naif-9`) is the page of the whole
   system: "<planet> system" in each language, from the app's message
   `planetary_system_title` (`planetary_system_title_earth_moon` for `naif-3`).
