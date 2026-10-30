@@ -25,6 +25,7 @@ from space_map_data.extrasolar.sources.distances import REYLE_2021
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
+from space_map_data.extrasolar.systems import assemble, drawn
 from space_map_data.extrasolar.systems import ingest as systems_ingest
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.orbits import msc_orbits
@@ -683,6 +684,46 @@ class TestUnmintedKeys:
             rows = run.row_keys(GAIA_DR3.name)
             key = dict(zip(rows["catalogue_id"].to_pylist(), rows["key"].to_pylist()))
             assert run.unminted().tolist() == [key[str(GAIA["orbit"])]]
+
+
+class TestHeldStarOfANodeWithNoID:
+    """A held star with an ID whose node has none gets no System row: it
+    takes no other node's place."""
+
+    def test_no_row(self):
+        nodes = pa.Table.from_pylist(
+            [
+                {"node": 0, "root": 0, "depth": 0, "ra": 1.0, "dec": 1.0},
+                {"node": 500, "root": 500, "depth": 0, "ra": 2.0, "dec": 2.0},
+            ],
+            schema=assemble.NODES,
+        )
+        members = pa.Table.from_pylist(
+            [
+                {"node": 0, "kind": "entry", "member": 0},
+                {"node": 500, "kind": "entry", "member": 0},
+            ],
+            schema=assemble.MEMBERS,
+        )
+        held = pa.Table.from_pylist(
+            [
+                {"member": 0, "number": 1, "letter": "B"},
+                {"member": 1, "number": 2, "letter": "C"},
+            ],
+            schema=drawn.HELD_STARS,
+        )
+
+        def node_id(numbers: np.ndarray) -> np.ndarray:
+            return np.where(numbers == 2, 500, 0)
+
+        with_held, kinds = systems_ingest._with_held(
+            nodes, members, held, np.array([900, 901]), node_id
+        )
+        added = with_held.slice(nodes.num_rows).to_pylist()
+        assert [(r["node"], r["parent"], r["root"], r["ra"]) for r in added] == [
+            (901, 500, 500, 2.0)
+        ]
+        assert kinds["kind"].to_pylist() == ["entry", "held star"]
 
 
 class TestPointsWithNoClaim:

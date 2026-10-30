@@ -1227,6 +1227,7 @@ class SystemsExtension:
         held_ids = _ids_of(plan.held_labels, rows)
         held = plan.drawn.held if plan.drawn is not None else None
         with_held, members = _with_held(nodes, members, held, held_ids, node_id)
+        orphans = int((held_ids > 0).sum()) - (with_held.num_rows - nodes.num_rows)
         system = _system_patch(with_held, members)
         system, drawn_counts = self._drawn_columns(system, with_held, held_ids, node_id)
         metadata = _metadata_patch(with_held, points)
@@ -1259,6 +1260,7 @@ class SystemsExtension:
             "no id": int((node_ids == 0).sum() + (point_ids == 0).sum()),
             "held minted": int((~np.isin(minted_held, previous)).sum()),
             "held kept": int(np.isin(minted_held, previous).sum()),
+            "held stars whose node has no ID": orphans,
             **drawn_counts,
         }
         id_targets = [
@@ -1275,7 +1277,8 @@ class SystemsExtension:
             f"held star IDs: minted {counts['held minted']:,},"
             f" kept {counts['held kept']:,}; with no row"
             f" {int(plan.held_labels.null_count):,}, with no ID"
-            f" {int((held_ids == 0).sum()) - int(plan.held_labels.null_count):,}"
+            f" {int((held_ids == 0).sum()) - int(plan.held_labels.null_count):,},"
+            f" whose node has no ID {orphans:,}"
         )
         lines.append(
             f"System rows: {system.num_rows:,}; Metadata `system` on"
@@ -1352,10 +1355,13 @@ def _with_held(
     node_id: IdMap,
 ) -> tuple[pa.Table, pa.Table]:
     """The nodes with a row per held star that has an ID, and the members
-    with the kind and the ID of each such star."""
+    with the kind and the ID of each such star. A star whose node has no ID
+    has no row: no node row gives its root, depth and place."""
     if held is None or not (ids > 0).any():
         return nodes, members
-    keep = ids > 0
+    parents = node_id(held["number"].to_numpy())
+    keep = (ids > 0) & (parents > 0)
+    parents = parents[keep]
     rows = held["member"].to_numpy()[keep]
     kind = np.array(members["kind"].to_pylist(), object)
     kind[rows] = HELD
@@ -1367,7 +1373,6 @@ def _with_held(
     members = members.set_column(
         members.schema.get_field_index("member"), "member", pa.array(member)
     )
-    parents = node_id(held["number"].to_numpy()[keep])
     number = nodes["node"].to_numpy()
     order = np.argsort(number, kind="stable")
     at = pa.array(order[np.searchsorted(number[order], parents)])
