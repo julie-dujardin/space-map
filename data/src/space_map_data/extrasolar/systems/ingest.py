@@ -506,8 +506,11 @@ class Plan:
     rows: pa.Table
     # Planet record index → the label of its circumbinary host.
     hosts: dict[int, str]
-    # The claim of the resolved system of each SIMBAD system oid.
-    system_claims: dict[str, dict] = field(default_factory=dict)
+    # The claim that reaches each node, in the order of `node_numbers`, null
+    # for a node with no row.
+    node_claims: pa.Array = field(default_factory=lambda: pa.array([], CROSS_ID))
+    # The resolved node of each SIMBAD system oid.
+    simbad_nodes: dict[str, int] = field(default_factory=dict)
     # "<before> → <after>" of the merged class of each point that holds
     # several stars.
     classes: Counter = field(default_factory=Counter)
@@ -869,17 +872,33 @@ def pass_rows(
         for record in record_of.get((row["host"], row["designation"]), []):
             hosts[record] = label
     items = pc.list_flatten(claimed)
-    oids = items.filter(
-        pc.and_(
-            pc.equal(items.field("catalogue"), SYSTEM_CLAIMS),
-            pc.equal(items.field("release"), SIMBAD_OID[0]),
-        )
+    is_oid = pc.and_(
+        pc.equal(items.field("catalogue"), SYSTEM_CLAIMS),
+        pc.equal(items.field("release"), SIMBAD_OID[0]),
     )
-    system_claims = {item["catalogue_id"]: item for item in oids.to_pylist()}
+    owners = resolved_numbers[pc.list_parent_indices(claimed).to_numpy()]
+    simbad_nodes: dict[str, int] = {}
+    for oid, node in zip(
+        items.field("catalogue_id").filter(is_oid).to_pylist(),
+        owners[is_oid.to_numpy(zero_copy_only=False)].tolist(),
+    ):
+        simbad_nodes.setdefault(oid, node)
     classes = _class_changes(
         resolver.classes, point_rows["key"].to_numpy(), point_rows["class"]
     )
     order = np.argsort(numbers)
+    # The first claim of a resolved node, the one claim of a point.
+    claim_values = pa.concat_arrays(
+        [
+            pc.list_element(claimed, 0).cast(CROSS_ID),
+            pc.list_element(point_table["claims"], 0).cast(CROSS_ID),
+        ]
+    )
+    at = np.full(numbers.size, -1, np.int64)
+    at[np.r_[np.flatnonzero(resolved), np.flatnonzero(~resolved)[has]]] = np.arange(
+        len(claim_values)
+    )
+    at = at[order]
     return Plan(
         systems,
         numbers[order],
@@ -888,7 +907,8 @@ def pass_rows(
         point_labels,
         rows,
         hosts,
-        system_claims,
+        claim_values.take(pa.array(at, mask=at < 0)),
+        simbad_nodes,
         classes,
         counts,
         drawn,
@@ -1087,10 +1107,9 @@ class SystemsExtension:
     # The node on the sky of each drawn pair, by ID.
     _nodes: dict[int, float] = field(default_factory=dict)
 
-    def items_moved(self, moved: list[str]) -> None:
-        """Report the Wikidata items that go to a system, not to its star."""
-        self.lines.append(f"Wikidata items about a system: {len(moved):,}")
-        self.lines += [f"  {text}" for text in moved[:EXAMPLES]]
+    def items_placed(self, lines: list[str]) -> None:
+        """Report where the Wikidata items go."""
+        self.lines += lines
 
     def host(self, record: int) -> int:
         """The ID of the circumbinary host of a planet record, else 0."""

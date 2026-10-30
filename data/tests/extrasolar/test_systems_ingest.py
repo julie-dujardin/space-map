@@ -1,5 +1,6 @@
 """The star systems in a small ingest: passes, IDs, links and the report."""
 
+import copy
 import dataclasses
 from collections import Counter
 from collections.abc import Callable
@@ -10,6 +11,7 @@ import pyarrow.compute as pc
 import pytest
 
 from space_map_data.download.providers.stars import msc
+from space_map_data.download.providers.stars.wikidata_stars import StarItem
 from space_map_data.export.extrasolar import systems as export_systems
 from space_map_data.extrasolar import frame, sky
 from space_map_data.extrasolar.engine import IngestRun, Source
@@ -22,7 +24,7 @@ from space_map_data.extrasolar.sources import wikidata
 from space_map_data.extrasolar.sources.distances import REYLE_2021
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
-from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList, SimbadObject
+from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
 from space_map_data.extrasolar.systems import ingest as systems_ingest
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.orbits import msc_orbits
@@ -187,11 +189,14 @@ def ingest(
     simbad: dict | None = None,
     gaia: dict | None = None,
     passes: tuple[tuple[Source, Callable[[IngestRun], pa.Table]], ...] = (),
+    items: tuple[StarItem, ...] = (),
+    item_simbad: SimbadList | None = None,
     **more,
 ) -> tuple[systems_ingest.SystemsExtension, str]:
     """An ingest of `stars`, with a P-type planet of `host`, the SIMBAD rows
-    `simbad` (oid → ra, dec, V), the Gaia DR3 rows `gaia` and the rows of
-    `passes`. `more` goes to `inputs`."""
+    `simbad` (oid → ra, dec, V), the Gaia DR3 rows `gaia`, the rows of
+    `passes` and, after the systems, the Wikidata `items`. `item_simbad`
+    stands in for the SIMBAD list of the items. `more` goes to `inputs`."""
     with IngestRun.start(root, root / "backup") as run:
         if gaia:
             run.add(GAIA_DR3, [gaia_rows(run, gaia)])
@@ -218,6 +223,14 @@ def ingest(
         )
         found, index = inputs(planets, **more)
         extension = systems_ingest.add_systems(run, found, index, True)
+        if items:
+            positions = {hip: values[:2] for hip, values in stars.items()}
+            rows = wikidata.engine_rows(items, positions, {})
+            rows, lines = wikidata.attach(
+                rows, items, run, extension.plan, item_simbad or index.stars
+            )
+            extension.items_placed(lines)
+            run.add(wikidata.WIKIDATA, [rows])
         result = run.commit()
     return extension, result.report
 
@@ -895,46 +908,78 @@ class TestSystemKind:
         assert np.isfinite(score[2:]).all()
 
 
-class TestWikidataToSystems:
-    """An item that claims the HIP number of a system object names the system."""
+def star_item(
+    qid: str,
+    label: str,
+    hip: str,
+    articles: int = 1,
+    stars: tuple[str, ...] = ("Q523",),
+    systems: tuple[str, ...] = (),
+) -> StarItem:
+    """An item of one HIP number; Q523 is a star, Q50053 a binary star."""
+    return StarItem(
+        qid=qid,
+        gaia_dr3=(),
+        hip=(hip,),
+        hd=(),
+        label_en=label,
+        label_mul=None,
+        articles=articles,
+        classes=(*stars, *systems),
+        star_classes=stars,
+        system_classes=systems,
+    )
 
-    def test_route(self):
-        stars = SimbadList(
-            {
-                1: SimbadObject(1, "* alf Gem", 113.6, 31.9, hip="36850"),
-                2: SimbadObject(2, "* alf Gem A", 113.6, 31.9),
-                3: SimbadObject(3, "* alf Gem B", 113.6, 31.9, gaia="892"),
-                4: SimbadObject(4, "* bet Gem", 116.3, 28.0, hip="37826"),
-            },
-            {1: [2, 3]},
-            {},
-            frozenset({"**"}),
-            frozenset(),
+
+class TestWikidataItems:
+    """Star items stay on their stars, system items go to their nodes."""
+
+    ITEMS = (
+        star_item("Q2090157", "Alpha Centauri A", "71683", 9),
+        # A star of the same number with fewer articles.
+        star_item("Q901", "Rigil Kentaurus", "71683"),
+        # Its label names a component.
+        star_item("Q1052548", "Alpha Centauri B", "71681", 4, systems=("Q13890",)),
+        star_item("Q14266", "Proxima Centauri", "70890", 12),
+        # SIMBAD's system object of α Cen AB holds this number.
+        star_item("Q902", "Alpha Centauri AB", "71683", 7, (), ("Q50053",)),
+        # A pair point and a star of the MSC pair.
+        star_item("Q903", "HIP 1001", "1001", 1, ("Q523",), ("Q50053",)),
+        star_item("Q904", "MSC 00400+1000", "1002", 3, ("Q523",), ("Q50053",)),
+    )
+
+    @pytest.fixture
+    def registry(self, tmp_path):
+        _, index = inputs(PLANETS_INPUT.empty_table())
+        stars = copy.deepcopy(index.stars)
+        # α Cen's system object takes the number of α Cen A, as SIMBAD's
+        # Mizar takes the number of Mizar A.
+        stars.objects[1].hip = "71683"
+        root = tmp_path / "registry"
+        _, report = ingest(root, items=self.ITEMS, item_simbad=stars)
+        return Registry(root), report
+
+    def test_where_the_items_go(self, registry):
+        registry, report = registry
+        a, b, c, p1 = ids_of(registry, ["71683", "71681", "70890", "1001"])
+        system = {row["id"]: row for row in table(registry, SYSTEM.slug).to_pylist()}
+        pair = next(
+            row["id"]
+            for row in system.values()
+            if {m["id"] for m in row["members"]} == {a, b}
         )
-        rows = pa.table(
-            {
-                "catalogue_id": ["Q1", "Q2", "Q3"],
-                "claims": pa.array(
-                    [
-                        [dict(zip(CROSS_ID.names, ("hip", "2007", "36850")))],
-                        [dict(zip(CROSS_ID.names, ("hip", "2007", "37826")))],
-                        [dict(zip(CROSS_ID.names, ("gaia", "dr3", "892")))],
-                    ],
-                    pa.list_(CROSS_ID),
-                ),
-            }
+        msc_root = system[p1]["root"]
+        qids = ["Q2090157", "Q901", "Q1052548", "Q14266", "Q902", "Q903", "Q904"]
+        found = registry.lookup("wikidata", "qid", qids).tolist()
+        assert found == [a, 0, b, c, pair, p1, msc_root]
+        meta = {row["id"]: row for row in table(registry, METADATA.slug).to_pylist()}
+        assert meta[pair]["name"] == "Alpha Centauri AB"
+        assert "conflicts: 0" in report
+        assert (
+            "Wikidata items that reach an object: star 3, mixed 3, system 1" in report
         )
-        claim = dict(zip(CROSS_ID.names, ("star-system", "simbad", "1")))
-        routed, moved = wikidata.to_systems(rows, stars, {"1": claim})
-        claims = [
-            "/".join(c[0][name] for name in CROSS_ID.names)
-            for c in routed["claims"].to_pylist()
-        ]
-        assert claims == ["star-system/simbad/1", "hip/2007/37826", "gaia/dr3/892"]
-        assert moved == ["Q1 → * alf Gem"]
-        # A system that is no node of the ingest keeps nothing.
-        routed, moved = wikidata.to_systems(rows, stars, {})
-        assert moved == []
+        assert f"  {wikidata.TO_ROOT}: 1\n    Q904 MSC 00400+1000" in report
+        assert f"  {wikidata.OUTRANKED}: 1\n    Q901 Rigil Kentaurus" in report
 
 
 # Gaia DR3 points: ra, dec, G, parallax, fidelity. The first three hold two

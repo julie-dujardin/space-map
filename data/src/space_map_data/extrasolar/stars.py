@@ -195,9 +195,8 @@ def ingest(
     iau_rows = simbad.iau_rows(simbad_list, handed, simbad_rows)
     name_rows = names.engine_rows(positions, simbad=iau_rows)
     hd_positions = {**wikidata.hd_positions(stars), **wikidata.hd_positions(rough)}
-    item_rows = wikidata.engine_rows(
-        wikidata_stars.read_items(), positions, hd_positions
-    )
+    items = wikidata_stars.read_items()
+    item_rows = wikidata.engine_rows(items, positions, hd_positions)
     stars, rough = _keep(stars, ranges), _keep(rough, ranges)
     simbad_rows, name_rows = _keep(simbad_rows, ranges), _keep(name_rows, ranges)
     simbad_hip_rows = _keep(simbad_hip_rows, ranges)
@@ -271,10 +270,10 @@ def ingest(
         found = add_systems(run, inputs, index, complete)
         del inputs, index
         run.extend(exoplanets.PlanetsExtension(planets, found))
-        item_rows, moved = wikidata.to_systems(
-            item_rows, simbad_list, found.plan.system_claims
+        item_rows, lines = wikidata.attach(
+            item_rows, items, run, found.plan, simbad_list
         )
-        found.items_moved(moved)
+        found.items_placed(lines)
         # A source that is not permanent comes after the permanent sources.
         run.add(WIKIDATA, [item_rows], complete)
         result = run.commit()
