@@ -9,6 +9,7 @@ import {
 	CAT_MOONS,
 	CAT_OCEANS,
 	CAT_PLANETS,
+	CAT_STARS,
 	CAT_PROBES,
 	CAT_RADIATION,
 	CAT_RING_SYSTEMS,
@@ -92,6 +93,7 @@ export function satelliteCategoryLabel(cat: SatelliteCategory): string {
 const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_SOLAR_SYSTEM]: m.category_name_solar_system,
 	[CAT_SATELLITE_SYSTEMS]: m.category_name_satellite_systems,
+	[CAT_STARS]: m.category_name_stars,
 	[CAT_PLANETS]: m.category_name_planets,
 	[CAT_DWARF_PLANETS]: m.category_name_dwarf_planets,
 	[CAT_MOONS]: m.category_name_moons,
@@ -125,7 +127,7 @@ export function groupNameMessage(slug: string): string | undefined {
 }
 
 /** A star or planet family's name, or the slug before the export writes it.
- *  The parent of a top planet family is the Planets category. */
+ *  The parent of a top family is the Stars or the Planets category. */
 export function familyLabel(slug: string): string {
 	if (slug.startsWith(CATEGORY_SLUG_PREFIX)) return categoryLabel(slug);
 	return groupNameMessage(slug) ?? slug;

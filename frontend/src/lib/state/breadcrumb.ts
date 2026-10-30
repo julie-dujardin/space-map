@@ -18,6 +18,7 @@ import {
 	CAT_DWARF_PLANETS,
 	CAT_STRUCTURE_ACTIVITY,
 	CAT_PLANETS,
+	CAT_STARS,
 	CAT_PROBES,
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
@@ -124,8 +125,8 @@ export function parentCrumb(
 	if (focusable.kind === 'group') {
 		const slug = focusable.slug;
 		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
-			// Planets holds the exoplanets too, so it is a root of its own.
-			if (slug === CAT_SOLAR_SYSTEM || slug === CAT_PLANETS) return null;
+			// Planets and Stars reach beyond the Solar System, so each is a root.
+			if (slug === CAT_SOLAR_SYSTEM || slug === CAT_PLANETS || slug === CAT_STARS) return null;
 			// The Earth-orbiter collections' real parent is Earth, not the root.
 			if (slug === CAT_SATELLITES || slug === CAT_DEBRIS) {
 				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
@@ -141,8 +142,8 @@ export function parentCrumb(
 		// A split-comet family is always a comet, regardless of orbit class.
 		if (slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) return categoryCrumb(CAT_COMETS);
 		if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) return categoryCrumb(CAT_SURFACE_FEATURES);
-		// A family climbs to the first family that contains it. A top planet
-		// family climbs to the Planets page; stellar classification has no parent.
+		// A family climbs to the first family that contains it. A top family
+		// climbs to the Stars or the Planets page.
 		if (isFamilySlug(slug)) {
 			const parent = groupGlobal?.parent_families?.[0];
 			if (!parent) return null;

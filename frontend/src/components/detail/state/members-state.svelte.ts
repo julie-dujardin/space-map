@@ -134,7 +134,7 @@ export class MembersState {
 			d.groupDetail()?.global?.type === 'star_family' ||
 				d.groupDetail()?.global?.type === 'planet_family'
 		);
-		const bakedOnly = $derived(isFamily || d.cat().planets);
+		const bakedOnly = $derived(isFamily || d.cat().planets || d.cat().stars);
 		this.memberTotal = $derived(
 			d.isGroupMode()
 				? bakedOnly

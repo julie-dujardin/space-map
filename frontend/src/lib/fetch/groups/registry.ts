@@ -58,9 +58,6 @@ export const FEATURE_TYPE_SLUG_PREFIX = 'ft-';
 /** Mirrors ``FAMILY_SLUG_PREFIX`` in ``data/constants/stars/families.py``. */
 export const STAR_FAMILY_SLUG_PREFIX = 'star-';
 
-/** The page of ``ROOT_FAMILY`` in ``data/constants/stars/families.py``. */
-export const STAR_CLASSIFICATION = `${STAR_FAMILY_SLUG_PREFIX}classification`;
-
 /** Mirrors ``FAMILY_SLUG_PREFIX`` in ``data/constants/planets/families.py``. */
 export const PLANET_FAMILY_SLUG_PREFIX = 'planet-';
 
@@ -73,6 +70,7 @@ export function isFamilySlug(slug: string): boolean {
 export const CATEGORY_SLUG_PREFIX = 'cat-';
 export const CAT_SOLAR_SYSTEM = `${CATEGORY_SLUG_PREFIX}solar-system`;
 export const CAT_SATELLITE_SYSTEMS = `${CATEGORY_SLUG_PREFIX}satellite-systems`;
+export const CAT_STARS = `${CATEGORY_SLUG_PREFIX}stars`;
 export const CAT_PLANETS = `${CATEGORY_SLUG_PREFIX}planets`;
 export const CAT_DWARF_PLANETS = `${CATEGORY_SLUG_PREFIX}dwarf-planets`;
 export const CAT_MOONS = `${CATEGORY_SLUG_PREFIX}moons`;

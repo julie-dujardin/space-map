@@ -17,7 +17,6 @@
 		MAIN_GALLERY,
 		RINGS_GALLERY
 	} from '$lib/fetch/objects/galleries';
-	import { STAR_CLASSIFICATION } from '$lib/fetch/groups/registry';
 	import { imageHref, tabHref } from '$lib/state/focus-link';
 	import type { CategoryConfig } from '$lib/state/category-config';
 	import type { PositionedBody } from '$lib/types/objects';
@@ -67,9 +66,7 @@
 	let groupHeaderBadges = $derived.by(() => {
 		const g = load.groupDetail?.global;
 		if (!g) return undefined;
-		// The root of the star families is a category above them, not a family.
-		const isRoot = g.slug === STAR_CLASSIFICATION;
-		const out: string[] = [groupTypeLabel(isRoot ? 'category' : g.type)];
+		const out: string[] = [groupTypeLabel(g.type)];
 		for (const role of g.roles ?? []) out.push(organizationRoleLabel(role));
 		for (const c of g.categories ?? []) out.push(satelliteCategoryLabel(c));
 		return out;

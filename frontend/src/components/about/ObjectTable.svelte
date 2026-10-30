@@ -23,6 +23,7 @@
 		CAT_PROBES,
 		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
+		CAT_STARS,
 		CAT_SURFACE_FEATURES
 	} from '$lib/fetch/groups/registry';
 	import { groupHref } from '$lib/state/page-href';
@@ -39,6 +40,7 @@
 
 	// The category page of each kind that has one.
 	const CATEGORIES: Record<string, string> = {
+		star: CAT_STARS,
 		planet: CAT_PLANETS,
 		dwarf_planet: CAT_DWARF_PLANETS,
 		moon: CAT_MOONS,

@@ -12,6 +12,7 @@
 		CAT_DWARF_PLANETS,
 		CAT_MOONS,
 		CAT_PLANETS,
+		CAT_STARS,
 		CAT_PROBES,
 		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
@@ -31,6 +32,7 @@
 	import { isModifiedClick } from '$lib/modified-click';
 	import { formatDistance } from '$lib/format/distance';
 	import { EARTH_MASS_KG, formatMass, massComparison } from '$lib/format/mass';
+	import { SOLAR_RADIUS_KM } from '$lib/math/units';
 	import { EARTH_RADIUS_KM } from '$lib/math/units';
 	import { EARTH_ID } from '$lib/constants';
 	import { earthOceans, oceanVolume } from '../charts/OceanVolumeChart.svelte';
@@ -113,6 +115,38 @@
 		if (!n) return null;
 		if (n < 1e6) return { label, value: formatNumber(n) };
 		return { label, value: formatCompactNumber(n), tooltip: formatNumber(n) };
+	}
+
+	/** The Stars page: the share of stars with a family, catalogued or estimated. */
+	function classifiedShare(g: GlobalGroupData): Stat | null {
+		const published = g.published_star_count ?? 0;
+		const estimated = g.estimated_star_count ?? 0;
+		if (!g.member_count || published + estimated === 0) return null;
+		return {
+			label: m.group_stat_classified(),
+			value: formatShare((published + estimated) / g.member_count),
+			tooltip: m.tooltip_star_classified({
+				published: formatNumber(published),
+				estimated: formatNumber(estimated)
+			})
+		};
+	}
+
+	/** As `largestPlanet`, against the Sun. */
+	function largestStar(g: GlobalGroupData): Stat | null {
+		const largest = g.largest_star;
+		if (!largest || !appState) return null;
+		return {
+			label: m.group_stat_largest(),
+			// Compact, because the answer is billions of km and a card is a third
+			// of the drawer.
+			value: joinParts({
+				value: formatCompactNumber(2 * largest.radius_sun * SOLAR_RADIUS_KM),
+				unit: formatUnit('kilometre', true)
+			}),
+			tooltip: `${bodyName(largest)} — ${m.tooltip_star_vs_sun({ ratio: formatNumber(Math.round(largest.radius_sun)) })}`,
+			...planetLink(largest)
+		};
 	}
 
 	/** The share of a family's members that only an estimate puts there. */
@@ -446,6 +480,8 @@
 					largestBody(g),
 					count(m.group_stat_split_families(), g.child_group_count)
 				];
+			case CAT_STARS:
+				return [stars(m.group_stat_stars(), g.member_count), classifiedShare(g), largestStar(g)];
 			case CAT_PLANETS:
 				return planetsStats(g);
 			case CAT_DWARF_PLANETS:

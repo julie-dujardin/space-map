@@ -2,6 +2,7 @@
  *  table instead of a dozen scattered `slug === CAT_*` derivations. */
 
 import {
+	CAT_STARS,
 	CAT_PLANETS,
 	CAT_MOONS,
 	CAT_DWARF_PLANETS,
@@ -25,6 +26,8 @@ import type { Focusable } from '$lib/state/focusable';
 import type { DrawerTab } from '$lib/state/view';
 
 export interface CategoryConfig {
+	/** Every star. It lists the best-known ones and charts the families. */
+	stars: boolean;
 	/** Every planet, with a tab for the Solar System's eight and one for the
 	 *  exoplanets. */
 	planets: boolean;
@@ -70,6 +73,7 @@ export type PropertyKind =
 	| 'radiation';
 
 const NONE: CategoryConfig = {
+	stars: false,
 	planets: false,
 	moons: false,
 	dwarfPlanets: false,
@@ -86,6 +90,7 @@ const NONE: CategoryConfig = {
 
 const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	// The sibling links are the Solar System's, so they sit on its tab.
+	[CAT_STARS]: { stars: true },
 	[CAT_PLANETS]: { planets: true, lineup: true },
 	[CAT_MOONS]: { moons: true, lineup: true, crossRefs: true },
 	[CAT_RING_SYSTEMS]: { ringSystems: true, membersShownInFull: true },

@@ -12,6 +12,7 @@
 	import CountPerBodyChart from '../../charts/CountPerBodyChart.svelte';
 	import PlanetPlots from '../../charts/PlanetPlots.svelte';
 	import RingMassChart from '../../charts/RingMassChart.svelte';
+	import StarDiagram from '../../charts/StarDiagram.svelte';
 	import SolarSystemMassChart from '../../charts/SolarSystemMassChart.svelte';
 	import { propertyFigure } from './group-figures';
 	import { PROPERTY_CHART } from './property-charts';
@@ -114,6 +115,9 @@
 		localizedNames={memberNames}
 		{active}
 	/>
+{/if}
+{#if cat.stars}
+	<StarDiagram members={notableMembers ?? []} localizedNames={memberNames} {active} />
 {/if}
 {#if cat.solarSystem}
 	<SolarSystemMassChart />

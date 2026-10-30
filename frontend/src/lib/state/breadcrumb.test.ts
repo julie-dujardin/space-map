@@ -81,14 +81,18 @@ describe('parentCrumb: star families', () => {
 		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'star-horizontal-branch' });
 	});
 
-	it('has no crumb for the root family', () => {
+	it('climbs from a top family to the Stars page', () => {
 		const crumb = parentCrumb(
-			{ kind: 'group', slug: 'star-classification' },
+			{ kind: 'group', slug: 'star-giant' },
 			undefined,
 			null,
-			family()
+			family(['cat-stars'])
 		);
-		expect(crumb).toBeNull();
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-stars' });
+	});
+
+	it('has no crumb for the Stars page', () => {
+		expect(parentCrumb({ kind: 'group', slug: 'cat-stars' }, undefined, null, null)).toBeNull();
 	});
 });
 

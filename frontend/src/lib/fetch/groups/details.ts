@@ -103,12 +103,16 @@ export interface GlobalGroupData {
 	 *  `applies_to` can't say — satellites and debris share it. */
 	parent_category?: string;
 	/** Star and planet families only: the families that contain this one.
-	 *  The breadcrumb climbs to the first. A top planet family names
+	 *  The breadcrumb climbs to the first. A top family names `cat-stars` or
 	 *  `cat-planets` here. */
 	parent_families?: string[];
 	/** Star families only: the stars that only an estimate puts in the
 	 *  family, of `member_count`. */
 	estimated_star_count?: number;
+	/** The Stars page: the stars with a catalogued family. */
+	published_star_count?: number;
+	/** The Stars page: the star with an entry and the largest radius. */
+	largest_star?: { primary_id: string; name: string; radius_sun: number };
 	/** Planet families only: the planets whose family needs an estimated
 	 *  value, of `member_count`. */
 	estimated_planet_count?: number;
