@@ -340,6 +340,7 @@ def prepare(
     )
     joined = join_planets(cats, stars, systems, hub)
     records, excluded = _records(joined, stars, systems, read.orbits)
+    table.settle_letters(records)
 
     host_set = {record.star for record in records}
     systems.choose_keys(stars, host_set)
@@ -369,7 +370,9 @@ def prepare(
     claims: dict[int, tuple[str, str, str]] = {}
     by_hip = []
     for identity in host_identities:
-        if identity.hip and identity.gaia_dr3 in read.unpositionable:
+        if identity.listed:
+            claims[identity.index] = identity.listed
+        elif identity.hip and identity.gaia_dr3 in read.unpositionable:
             claims[identity.index] = (*hosts.HIP, str(identity.hip))
             by_hip.append(f"{identity.name}: HIP {identity.hip}")
     for member, twin in search.claims.items():
@@ -486,6 +489,7 @@ def _search_twins(
         for identity in stars.identities
         if not identity.gaia_dr3
         and not identity.hip
+        and not identity.listed
         and identity.index in with_planets
         and identity.index not in not_stars
         and hub.star_class(identity.oid) != simbad.PULSAR
@@ -828,12 +832,19 @@ class PlanetsExtension:
         for source, base in ((EU, ARCHIVE), (OEC, f"{ARCHIVE} + {EU}")):
             rules = ", ".join(
                 f"{rule} {join.counts[(source, rule)]:,}"
-                for rule in ("SIMBAD object", "letter", "period", "designation")
+                for rule in (
+                    "SIMBAD object",
+                    "letter",
+                    "period",
+                    "designation",
+                    "citation",
+                )
             )
             lines.append(
                 f"  {source} → {base}: {rules};"
                 f" unmatched {join.counts[(source, 'unmatched')]:,}"
             )
+        lines += _listed("rows on a host from a paper", join.listed, limit=None)
         lines += _listed("ambiguous (a tie between candidates)", join.ambiguous)
         lines += _listed("contested (two rows want one planet)", join.contested)
         lines += _listed(

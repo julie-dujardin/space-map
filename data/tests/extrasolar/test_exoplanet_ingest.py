@@ -15,13 +15,14 @@ from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
 from space_map_data.extrasolar.exoplanets.names import WgsnName
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sources import gaia, hipparcos
+from space_map_data.extrasolar.sources import gaia, hipparcos, simbad
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
     GAIA_DR3_NAMED,
     BestNeighbours,
 )
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
+from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
 from tests.extrasolar.conftest import (
     GAIA,
     META,
@@ -34,9 +35,12 @@ from tests.extrasolar.conftest import (
 from tests.extrasolar.exoplanet_files import Downloads, archive_planet, eu_planet
 from tests.extrasolar.test_gaia_orbits import build as build_orbits
 from tests.extrasolar.test_gaia_orbits import solution
+from tests.extrasolar.test_simbad import star as simbad_star
+from tests.extrasolar.test_simbad import write_simbad
 from tests.extrasolar.test_stars import fidelity, gaia_star, gaia_stars, hip_stars
 
 RA, DEC = centre(4_000_777)
+OEC_TABLE = ("open_exoplanet_catalogue", "systems")
 NO_NEIGHBOURS = BestNeighbours(np.zeros(0, np.int64), np.zeros(0, np.int64))
 # An orbit of the unpositionable host source 202.
 HOST_ORBITS = build_orbits([solution(202, "SB1")])
@@ -288,7 +292,7 @@ def downloads() -> Downloads:
     return files
 
 
-def gaia_pass() -> pa.Table:
+def gaia_pass(*more: dict) -> pa.Table:
     zeta = gaia_star(606, *ZETA, 11.0) | {
         "phot_bp_mean_mag": 11.4,
         "phot_rp_mean_mag": 10.6,
@@ -300,6 +304,7 @@ def gaia_pass() -> pa.Table:
             gaia_star(404, *DELTA_A, 10.0),
             gaia_star(505, *DELTA_B, 11.0),
             zeta,
+            *more,
         ]
     )
     return gaia.engine_rows(
@@ -307,14 +312,18 @@ def gaia_pass() -> pa.Table:
     )
 
 
-def ingest(root, backup, inputs, complete=True, systems=None):
+def ingest(
+    root, backup, inputs, complete=True, systems=None, stars=None, simbad_rows=None
+):
     with IngestRun.start(root, backup) as run:
         reader = gaia.GaiaReader(
             NO_NEIGHBOURS, orbits=HOST_ORBITS, golden_sample=HOST_GOLDEN_SAMPLE
         )
         read = exoplanets.read(reader, inputs)
-        run.add(GAIA_DR3, [gaia_pass()], complete)
+        run.add(GAIA_DR3, [gaia_pass() if stars is None else stars], complete)
         run.add(GAIA_DR3_NAMED, [read.gaia_rows], complete)
+        if simbad_rows is not None:
+            run.add(SIMBAD, [simbad_rows], complete)
         prepared = exoplanets.prepare(read, run, {}, inputs)
         exoplanets.add_passes(run, prepared, complete)
         run.extend(exoplanets.PlanetsExtension(prepared, systems))
@@ -510,6 +519,142 @@ class TestExoplanetIngest:
         assert (alpha, 2) not in planets
         assert again.entry["extensions"]["planets"]["retired"] == 1
         assert Registry(root).unreviewed() == []
+
+
+class TestHostsFromPapers:
+    """A host of `planet_hosts` keeps its one point through the engine."""
+
+    def simbad_rows(self, tmp_path):
+        # GJ 229 B: no Gaia DR3 id and no HIP number.
+        directory = write_simbad(
+            tmp_path / "simbad-stars",
+            [
+                simbad_star(
+                    864867,
+                    92.64434,
+                    -21.86984,
+                    "HD 42581B",
+                    otype="BD*",
+                    plx_value=173.19,
+                    plx_err=0.1,
+                )
+            ],
+        )
+        stars = SimbadList.read(directory)
+        return simbad.engine_rows(stars, stars.handed(), set(), {}, {})[0]
+
+    def gj_229_b(self, root, backup, tmp_path, name):
+        files = downloads()
+        # The rows name the primary, 8″ from B.
+        files.eu += [
+            eu_planet(
+                "GJ 229 Ba", "GJ 229", 92.64423, -21.86464, orbital_period="12.1346"
+            ),
+            eu_planet(
+                "GJ 229 Bb", "GJ 229", 92.64423, -21.86464, orbital_period="12.1346"
+            ),
+        ]
+        return ingest(
+            root,
+            backup,
+            files.write(tmp_path / name),
+            simbad_rows=self.simbad_rows(tmp_path / name),
+        )
+
+    def test_a_simbad_key_claims_its_point(self, root, backup, tmp_path):
+        result, _ = self.gj_229_b(root, backup, tmp_path, "one")
+        assert result.entry["counts"]["conflicts"] == 0
+        registry = Registry(root)
+        point = int(registry.lookup("simbad", "oid", ["864867"])[0])
+        assert point
+        assert int(registry.lookup(EU, "catalog", ["GJ 229 B"])[0]) == point
+        planets = table_rows(root, "planets").to_pylist()
+        rows = [p for p in planets if p["designation"].startswith("GJ 229 B")]
+        assert [(p["host"], p["number"]) for p in rows] == [(point, 1), (point, 2)]
+        assert [p["letter"] for p in rows] == [None, None]
+
+    def test_it_mints_no_second_star(self, root, backup, tmp_path):
+        self.gj_229_b(root, backup, tmp_path, "one")
+        rows = table_rows(root, "point-source").to_pylist()
+        near = [
+            row
+            for row in rows
+            if abs(row["ra"] - 92.6443) < 0.01 and abs(row["dec"] + 21.87) < 0.01
+        ]
+        assert [row["id"] for row in near] == [
+            int(Registry(root).lookup("simbad", "oid", ["864867"])[0])
+        ]
+
+    def test_the_point_keeps_simbads_astrometry(self, root, backup, tmp_path):
+        self.gj_229_b(root, backup, tmp_path, "one")
+        point = int(Registry(root).lookup("simbad", "oid", ["864867"])[0])
+        rows = table_rows(root, "point-source").to_pylist()
+        row = next(r for r in rows if r["id"] == point)
+        assert row["astrometry_source"] == "simbad"
+        assert row["parallax"] == pytest.approx(173.19)
+        assert row["ra"] == pytest.approx(92.64434)
+
+    def test_the_next_ingest_keeps_the_point(self, root, backup, tmp_path):
+        self.gj_229_b(root, backup, tmp_path, "one")
+        registry = Registry(root)
+        point = int(registry.lookup("simbad", "oid", ["864867"])[0])
+        result, _ = self.gj_229_b(root, backup, tmp_path, "two")
+        assert result.entry["counts"]["conflicts"] == 0
+        assert int(Registry(root).lookup(EU, "catalog", ["GJ 229 B"])[0]) == point
+        rows = table_rows(root, "planets").to_pylist()
+        assert sum(p["host"] == point for p in rows) == 2
+
+    def test_a_catalogue_star_keeps_its_values(self, root, backup, tmp_path):
+        files = downloads()
+        files.oec = [
+            """<system><name>GJ 229</name>
+            <rightascension>06 10 34.6</rightascension>
+            <declination>-21 51 52.7</declination><distance>5.75</distance>
+            <binary><star><name>GJ 229</name></star>
+            <star><name>GJ 229 B</name><spectraltype>T6</spectraltype></star>
+            </binary></system>"""
+        ]
+        files.simbad_names = [
+            (*OEC_TABLE, "star", "GJ 229 B", "GJ 229 B", "printed", "864867")
+        ]
+        files.simbad_basic = {"864867": ("HD 42581B", "BD*")}
+        files.eu.append(
+            eu_planet("GJ 229 Bb", "GJ 229", 92.64423, -21.86464, orbital_period="12")
+        )
+        result, _ = ingest(
+            root,
+            backup,
+            files.write(tmp_path / "one"),
+            simbad_rows=self.simbad_rows(tmp_path),
+        )
+        assert result.entry["counts"]["conflicts"] == 0
+        registry = Registry(root)
+        point = int(registry.lookup("simbad", "oid", ["864867"])[0])
+        assert int(registry.lookup(OEC, "systems", ["GJ 229 B"])[0]) == point
+        assert not registry.lookup(EU, "catalog", ["GJ 229 B"])[0]
+        rows = table_rows(root, "point-source").to_pylist()
+        row = next(r for r in rows if r["id"] == point)
+        assert row["host_star_source"] == OEC
+        assert row["host_spectral_type"] == "T6"
+        assert row["astrometry_source"] == "simbad"
+
+    def test_a_claim_reaches_a_star_far_from_the_row(self, root, backup, tmp_path):
+        files = downloads()
+        # The row has NLTT 730's star and position, on the other side of the sky.
+        files.eu.append(eu_planet("NLTT 31450 b", "NLTT 730", 3.77, 29.93))
+        dr3 = 1514394443389500288
+        stars = gaia_pass(gaia_star(dr3, 189.95550, 32.14722, 13.6))
+        result, _ = ingest(root, backup, files.write(tmp_path / "one"), stars=stars)
+        assert result.entry["counts"]["conflicts"] == 0
+        registry = Registry(root)
+        point = int(registry.lookup("gaia", "dr3", [str(dr3)])[0])
+        assert int(registry.lookup(EU, "catalog", ["NLTT 31450"])[0]) == point
+        # The old star has no planet left, so it has no row.
+        assert not registry.lookup(EU, "catalog", ["NLTT 730"])[0]
+        planets = table_rows(root, "planets").to_pylist()
+        assert [p["host"] for p in planets if p["designation"] == "NLTT 31450 b"] == [
+            point
+        ]
 
 
 class TestWgsnStarNames:

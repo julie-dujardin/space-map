@@ -26,14 +26,22 @@ Pairs join best score first, one-to-one, so two rows of one catalogue never
 become one planet. A row that ties between candidates stays unmatched, and
 so does a candidate that two rows want equally. A row whose candidate went
 to a better row tries its next candidate.
+
+A paper in `planet_hosts` comes before all of this: a row with a host from a
+paper stays out of the join, and a row that a paper names as another catalogue's
+planet joins that planet first. A row with no star joins its planet last, as
+that planet can come from a later catalogue.
 """
 
+import logging
+import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from space_map_data.extrasolar.exoplanets.catalogues import (
     ARCHIVE,
+    CATALOGUES,
     CONFIRMED,
     CONTROVERSIAL,
     EU,
@@ -50,6 +58,8 @@ from space_map_data.extrasolar.exoplanets.hosts import (
     component_letter,
 )
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
+
+logger = logging.getLogger(__name__)
 
 KEPT_STATUS = frozenset({CONFIRMED, CONTROVERSIAL})
 # Objects that orbit a planet or share its orbit are not planets of a star.
@@ -91,6 +101,9 @@ _PRIMARY = re.compile(r"(?:(?<=\s)|(?<=\)))(?:A|AB|\(AB\))\s?(?=[b-z]$)")
 CHECK_TOLERANCE = 0.05
 BY_OBJECT, BY_LETTER, BY_PERIOD = "SIMBAD object", "letter", "period"
 BY_DESIGNATION = "designation"
+BY_CITATION = "citation"
+# Above every score, so that the cited pair joins first.
+CITED = math.inf
 # Semi-major axes and masses of one planet differ by less than this, as a
 # fraction, where no catalogue gives a period.
 ORBIT_TOLERANCE = 0.1
@@ -128,6 +141,8 @@ class JoinResult:
     missed: list[str]
     # Unmatched planets with a sibling of the same letter on a shared host.
     same_letter: list[str] = field(default_factory=list)
+    # Rows with a host from a paper, and that host.
+    listed: list[str] = field(default_factory=list)
 
 
 def _value(planet: Planet, name: str) -> float | None:
@@ -262,8 +277,12 @@ def _match(
     by_key: dict[tuple[str, object], list[int]] = defaultdict(list)
     by_object: dict[str, list[int]] = defaultdict(list)
     by_name: dict[str, list[int]] = defaultdict(list)
+    by_row: dict[tuple[str, str], int] = {}
     for at, joined in enumerate(base):
         for planet in joined.rows.values():
+            if planet.listed:
+                continue
+            by_row[(planet.catalogue, planet.name)] = at
             for key in hosts.keys(planet):
                 by_key[key].append(at)
             oid = simbad.planet(planet.catalogue, planet.name)
@@ -273,6 +292,10 @@ def _match(
 
     pairs: list[tuple[float, int, int, str]] = []
     for index, row in enumerate(rows):
+        if row.same_as in by_row:
+            pairs.append((CITED, index, by_row[row.same_as], BY_CITATION))
+        elif row.same_as:
+            logger.warning("%s: no row %s %s", row.name, *row.same_as)
         candidates = {at for key in hosts.keys(row) for at in by_key.get(key, ())}
         oid = simbad.planet(row.catalogue, row.name)
         same = set(by_object.get(oid, ())) if oid else set()
@@ -375,6 +398,28 @@ def _days(planet: Planet) -> str:
     return "no period" if period is None else f"{period:g} d"
 
 
+def _join_starless(catalogues: list[Catalogue], result: JoinResult) -> None:
+    """Add each cited row with no star to the planet that it names."""
+    by_row = {
+        (planet.catalogue, planet.name): joined
+        for joined in result.planets
+        for planet in joined.rows.values()
+    }
+    for catalogue in catalogues:
+        for row in catalogue.planets:
+            if row.star or not row.same_as or row.status not in KEPT_STATUS:
+                continue
+            joined = by_row.get(row.same_as)
+            if joined is None:
+                logger.warning("%s: no row %s %s", row.name, *row.same_as)
+                continue
+            rows = joined.rows | {row.catalogue: row}
+            joined.rows = {c: rows[c] for c in CATALOGUES if c in rows}
+            joined.how[row.catalogue] = BY_CITATION
+            result.counts[(row.catalogue, "rows")] += 1
+            result.counts[(row.catalogue, BY_CITATION)] += 1
+
+
 def join_planets(
     catalogues: list[Catalogue], stars: Stars, systems: Systems, simbad: Simbad
 ) -> JoinResult:
@@ -404,14 +449,18 @@ def join_planets(
                 seen.add(name)
             else:
                 result.counts[(catalogue.name, reason)] += 1
-        rows = kept
-        result.counts[(catalogue.name, "rows")] += len(rows)
-        if not result.planets:
-            result.planets = [Joined({row.catalogue: row}) for row in rows]
-            continue
-        left = _match(result.planets, rows, hosts, simbad, result)
-        result.counts[(catalogue.name, "unmatched")] += len(left)
-        left_over += left
-        result.planets += [Joined({row.catalogue: row}) for row in left]
+        result.counts[(catalogue.name, "rows")] += len(kept)
+        rows = [row for row in kept if not row.listed]
+        listed = [row for row in kept if row.listed]
+        result.listed += [
+            f"{row.name} ({catalogue.name}): {row.star}" for row in listed
+        ]
+        left = rows
+        if result.planets:
+            left = _match(result.planets, rows, hosts, simbad, result)
+            result.counts[(catalogue.name, "unmatched")] += len(left)
+            left_over += left
+        result.planets += [Joined({row.catalogue: row}) for row in (*left, *listed)]
+    _join_starless(catalogues, result)
     result.missed, result.same_letter = _missed(result.planets, left_over, hosts)
     return result

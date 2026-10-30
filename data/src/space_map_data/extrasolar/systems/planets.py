@@ -128,7 +128,9 @@ def _identity_ids(identity: Identity) -> list[tuple[str, str, str]]:
     if identity.gaia_dr3:
         ids.append((*GAIA_DR3, str(identity.gaia_dr3)))
     for catalogue, star in identity.members.items():
-        ids.append((catalogue, RELEASE[catalogue], star.key))
+        # The key of a listed star is its Gaia DR3 id or SIMBAD object, above.
+        if not star.listed:
+            ids.append((catalogue, RELEASE[catalogue], star.key))
     if identity.hip:
         ids.append((*HIP, str(identity.hip)))
     return ids

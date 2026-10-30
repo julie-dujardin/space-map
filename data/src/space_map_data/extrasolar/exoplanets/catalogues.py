@@ -7,6 +7,8 @@ time is a Julian date: the readers add the offset of a shortened date.
 
 ω is the argument of periastron as each paper gives it. Some papers give the
 star's ω, which is the planet's plus 180°, and no catalogue says which.
+
+Each reader then applies the papers of `planet_hosts` to its rows.
 """
 
 import csv
@@ -19,6 +21,9 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from space_map_data.constants.stars import planet_hosts
+from space_map_data.constants.stars.literature import StarKey
+from space_map_data.constants.stars.planet_hosts import Host, HostStar, Join
 from space_map_data.download.providers.exoplanets import (
     exoplanet_eu,
     nasa_archive,
@@ -92,7 +97,7 @@ JD_RANGE = (2_400_000.0, 2_480_000.0)
 CALCULATED = "Calculated Value"
 # The planet letter after an optional component: `b`, `A b`, `Ab`, `(AB) b`.
 _LETTER = re.compile(r"(?:\s|^|\))(?:[A-D]{1,2}|\([A-D]+\))?\s?([b-z])$")
-# OEC and exoplanet.eu name some companions with a capital: `WD 0806-661 B`.
+# OEC names some companions with a capital: `WD 0806-661 B`.
 _CAPITAL_LETTER = re.compile(r"\s([B-Z])$")
 _GAIA = re.compile(r"Gaia DR([23]) (\d+)")
 _HIP = re.compile(r"HIP (\d+)\b")
@@ -150,6 +155,9 @@ class Star:
     spectral_type: str | None = None
     # Order of the star in its OEC system.
     order: int = 0
+    # The key and SIMBAD object of a star from `planet_hosts`.
+    listed: StarKey | None = None
+    oid: str | None = None
 
 
 @dataclass
@@ -175,6 +183,10 @@ class Planet:
     molecules: tuple[str, ...] = ()
     # The time system of the transit and periastron times, as published.
     time_system: str | None = None
+    # A paper gives its star, so it joins no other row.
+    listed: bool = False
+    # (catalogue, name) of the row that a paper shows is this planet.
+    same_as: tuple[str, str] | None = None
 
 
 @dataclass
@@ -182,6 +194,53 @@ class Catalogue:
     name: str
     stars: dict[str, Star]
     planets: list[Planet]
+
+
+def _listed_star(catalogue: str, host: HostStar) -> Star:
+    source, _, value = host.key
+    return Star(
+        catalogue=catalogue,
+        key=host.name,
+        name=host.name,
+        names=(host.name,),
+        ra=host.ra,
+        dec=host.dec,
+        gaia_dr3=int(value) if source == "gaia" else None,
+        oid=value if source == "simbad" else None,
+        listed=host.key,
+    )
+
+
+def apply_papers(
+    catalogue: Catalogue,
+    hosts: dict[tuple[str, str], Host] = planet_hosts.HOSTS,
+    joins: dict[tuple[str, str], Join] = planet_hosts.JOINS,
+) -> Catalogue:
+    """The catalogue with the corrections of `planet_hosts`."""
+    found = set()
+    for planet in catalogue.planets:
+        row = (catalogue.name, planet.name)
+        if row in joins:
+            planet.same_as = joins[row].row
+            found.add(row)
+        if row in hosts:
+            star = hosts[row].star
+            catalogue.stars.setdefault(star.name, _listed_star(catalogue.name, star))
+            planet.star = star.name
+            planet.letter = None
+            planet.listed = True
+            # These columns describe the star that the catalogue gave it.
+            planet.values = {
+                name: value
+                for name, value in planet.values.items()
+                if not name.startswith("star_")
+            }
+            found.add(row)
+    # A renamed row would silently go back to the catalogue's star.
+    for row in sorted((hosts.keys() | joins.keys()) - found):
+        if row[0] == catalogue.name:
+            logger.warning("planet_hosts names no row: %s %s", *row)
+    return catalogue
 
 
 def number(text: str | None) -> float | None:
@@ -371,7 +430,7 @@ def read_archive(path: Path = PSCOMPPARS) -> Catalogue:
             )
         )
     logger.info("archive: %d planets around %d stars", len(planets), len(stars))
-    return Catalogue(ARCHIVE, stars, planets)
+    return apply_papers(Catalogue(ARCHIVE, stars, planets))
 
 
 # exoplanet.eu
@@ -449,10 +508,11 @@ def read_eu(path: Path = EU_CATALOG) -> Catalogue:
     without_star = 0
     for row in sorted(_rows(path), key=lambda row: row["name"]):
         star_name = row["star_name"].strip()
-        if not star_name:
+        # Only a paper's join gives a row with no star a star.
+        if not star_name and (EU, row["name"].strip()) not in planet_hosts.JOINS:
             without_star += 1
             continue
-        if star_name not in stars:
+        if star_name and star_name not in stars:
             stars[star_name] = Star(
                 catalogue=EU,
                 key=star_name,
@@ -498,8 +558,8 @@ def read_eu(path: Path = EU_CATALOG) -> Catalogue:
                 name=name,
                 names=_unique([name, *_split(row["alternate_names"])]),
                 status=EU_STATUS.get(row["planet_status"], OTHER),
-                star=star_name,
-                letter=letter_of(name, capital=True),
+                star=star_name or None,
+                letter=letter_of(name),
                 method=method_of(row["detection_type"]),
                 year=int(year) if year else None,
                 values=values,
@@ -513,7 +573,7 @@ def read_eu(path: Path = EU_CATALOG) -> Catalogue:
         len(stars),
         without_star,
     )
-    return Catalogue(EU, stars, planets)
+    return apply_papers(Catalogue(EU, stars, planets))
 
 
 # The Open Exoplanet Catalogue
@@ -637,7 +697,7 @@ def read_oec(path: Path = OEC_SYSTEMS) -> Catalogue:
         len(stars),
         without_star,
     )
-    return Catalogue(OEC, stars, planets)
+    return apply_papers(Catalogue(OEC, stars, planets))
 
 
 def _oec_planets(

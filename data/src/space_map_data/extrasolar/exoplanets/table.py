@@ -454,6 +454,24 @@ def name_planet(record: Record, name: str) -> None:
     )
 
 
+def settle_letters(records: list[Record]) -> None:
+    """Give each letter of a star to one planet.
+
+    A letter goes to the first record that has it, in source order. A later
+    record takes another letter of its rows if one is free, else none, and
+    then keeps its catalogue name. So a page name points to one planet.
+    """
+    taken: dict[int, set[str]] = defaultdict(set)
+    for record in records:
+        letters = (row.letter for row in record.joined.rows.values() if row.letter)
+        letter = next(
+            (found for found in letters if found not in taken[record.star]), None
+        )
+        record.values["letter"] = letter
+        if letter:
+            taken[record.star].add(letter)
+
+
 def too_massive(record: Record) -> bool:
     """Above the 60 MJ that the scheme keeps. An upper limit does not count."""
     mass = record.get("mass")

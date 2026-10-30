@@ -26,6 +26,11 @@ Each catalogue gives one engine row per identity that hosts a planet. Every
 row of an identity claims the same id: its Gaia DR3 id, else its HIP number,
 else the row of the first catalogue. The first catalogue's row of an identity
 without either id matches by position, or mints a literature star.
+
+A star of `planet_hosts` joins by the Gaia DR3 id or SIMBAD object of its key.
+Its rows claim the key and carry no astrometry: they rank above SIMBAD's, and
+a catalogue's position of the star is the primary's. It has no values, so it
+gives a row only when no catalogue lists the star.
 """
 
 import csv
@@ -39,6 +44,7 @@ from pathlib import Path
 import numpy as np
 import pyarrow as pa
 
+from space_map_data.constants.stars.literature import StarKey
 from space_map_data.download.providers.exoplanets import gaia as gaia_provider
 from space_map_data.download.providers.exoplanets import names as provider_names
 from space_map_data.extrasolar.exoplanets.catalogues import (
@@ -108,10 +114,14 @@ class Identity:
     oid: str | None = None
     # The DR3 id came from a catalogue, not from SIMBAD or DR2.
     gaia_from_catalogue: bool = False
+    # The key of its `planet_hosts` entry.
+    listed: StarKey | None = None
 
     @property
     def first(self) -> Star:
-        return next(self.members[c] for c in CATALOGUES if c in self.members)
+        """The first catalogue's star, before a `planet_hosts` star."""
+        stars = [self.members[c] for c in CATALOGUES if c in self.members]
+        return next((star for star in stars if not star.listed), stars[0])
 
     @property
     def name(self) -> str:
@@ -181,7 +191,7 @@ def build_stars(
     overruled: list[str] = []
     for catalogue in catalogues:
         for star in catalogue.stars.values():
-            oid = simbad.star(catalogue.name, star.name)
+            oid = star.oid or simbad.star(catalogue.name, star.name)
             dr3 = star.gaia_dr3
             from_catalogue = dr3 is not None
             by_simbad = simbad.gaia_dr3.get(oid) if oid is not None else None
@@ -292,6 +302,7 @@ def build_stars(
         identity = identities[roots[root]]
         catalogue, star, oid, dr3, hip, from_catalogue = entries[i]
         of[(catalogue, star.key)] = identity.index
+        identity.listed = identity.listed or star.listed
         if catalogue in identity.members:
             duplicates.append(
                 f"{catalogue}: {star.name} is {identity.members[catalogue].name}"
@@ -476,6 +487,19 @@ def _error(star: Star, name: str) -> float | None:
     return max(e for e in (found.upper, found.lower) if e is not None)
 
 
+ASTROMETRY_FIELDS = (
+    "ra",
+    "dec",
+    "ra_error",
+    "dec_error",
+    "parallax",
+    "parallax_error",
+    "pmra",
+    "pmra_error",
+    "pmdec",
+    "pmdec_error",
+    "epoch",
+)
 HOST_STAR_FIELDS = (
     "host_teff",
     "host_radius",
@@ -514,6 +538,8 @@ def host_rows(
         if star is None or position is None:
             continue
         first = identity.first
+        if star.listed and star is not first:
+            continue
         claim = claims.get(identity.index) or _claim(identity, star)
         g = _value(first, "g_mag")
         matchable = g is not None and identity.index not in lensed
@@ -549,6 +575,8 @@ def host_rows(
                 "class": classes.get(identity.index, "star"),
             }
         )
+        if identity.listed:
+            rows[-1].update(dict.fromkeys(ASTROMETRY_FIELDS))
     return pa.Table.from_pylist(rows, schema=HOST_ROW_SCHEMA)
 
 
