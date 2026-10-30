@@ -82,11 +82,13 @@ def weight_scale(fit: MinnaertFit | LunarLambertFit) -> float:
     return float(np.dot(ours, theirs) / np.dot(ours, ours))
 
 
-@cache
 def lunar_weight_scale(object_id: str) -> float | None:
     """Factor on the lunar weight of McEwen for this body, to 3 decimals, or
     None for a body with no published fit."""
-    fit = DISK_PHOTOMETRY.get(object_id)
-    if fit is None:
-        return None
-    return round(weight_scale(fit), 3)
+    return _rounded_weight_scale(object_id) if object_id in DISK_PHOTOMETRY else None
+
+
+# Only a body with a fit gets a key. The export asks for every object.
+@cache
+def _rounded_weight_scale(object_id: str) -> float:
+    return round(weight_scale(DISK_PHOTOMETRY[object_id]), 3)

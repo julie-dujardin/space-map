@@ -23,11 +23,14 @@ from space_map_data.export.spacecraft import export_spacecraft_only
 from space_map_data.export.status import export_status_only
 from space_map_data.export.systems import export_systems_only
 from space_map_data.utils.db import engine_scope
+from space_map_data.utils.heap import limit_arenas
 from space_map_data.utils.mirror import sync_all
 from space_map_data.utils.paths import DATA_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
 
 
 def cli():
+    # Before the mirror sync and the zone exports start their threads.
+    limit_arenas(2)
     parser = argparse.ArgumentParser(
         description="Export space-map data to static files"
     )

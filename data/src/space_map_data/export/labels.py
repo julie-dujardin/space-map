@@ -50,24 +50,22 @@ def _promoted_ids(
     Moons resolve in a second pass against the finished set, so a satellite is
     promoted exactly where its host is — see :mod:`space_map_data.constants.promoted`.
     """
-    renderable = {
-        obj_id
-        for obj_id in all_global
-        if obj_id in rendered_ids or obj_id in cheb_covered_ids
-    }
-    promoted = {
-        obj_id
-        for obj_id in renderable
-        if all_global[obj_id].get("type") in PROMOTED_TYPES
-        or obj_id in PROMOTED_EXTRA_IDS
-        or obj_id in probe_ids
-    }
-    promoted |= {
-        obj_id
-        for obj_id in renderable - promoted
-        if all_global[obj_id].get("type") == ObjectType.moon
-        and moon_hosts.get(obj_id) in promoted
-    }
+    promoted: set[str] = set()
+    moons: list[str] = []
+    # items() decodes a copy. `all_global[id]` keeps the decoded dict in the map.
+    for obj_id, entry in all_global.items():
+        if obj_id not in rendered_ids and obj_id not in cheb_covered_ids:
+            continue
+        obj_type = entry.get("type")
+        if (
+            obj_type in PROMOTED_TYPES
+            or obj_id in PROMOTED_EXTRA_IDS
+            or obj_id in probe_ids
+        ):
+            promoted.add(obj_id)
+        elif obj_type == ObjectType.moon:
+            moons.append(obj_id)
+    promoted |= {obj_id for obj_id in moons if moon_hosts.get(obj_id) in promoted}
     return promoted
 
 

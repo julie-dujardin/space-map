@@ -357,24 +357,24 @@ def write_object_bundles(
 def _write_hashed_bundles(
     dir_path: Path, by_id: Mapping[str, dict], n_buckets: int
 ) -> None:
-    """Group by `hash(id) % n_buckets` and write one gzipped JSON per bucket.
+    """Write one gzipped JSON object for each bucket of `hash(id) % n_buckets`.
 
-    Splices the entries' JSON bytes straight into each bucket object so the
-    catalog is never decoded whole.
+    It builds one bucket at a time, and the entries stay JSON bytes.
+    The catalogue is too large to hold whole as dicts or as one JSON.
     """
-    if not isinstance(by_id, CompactMap):
-        compact = CompactMap()
-        compact.update(by_id)
-        by_id = compact
-    buckets: dict[int, list[bytes]] = {}
-    for obj_id, raw in by_id.raw_items():
-        buckets.setdefault(hash_bucket(obj_id, n_buckets), []).append(
-            orjson.dumps(obj_id) + b":" + raw
-        )
+    raw = (
+        by_id.raw
+        if isinstance(by_id, CompactMap)
+        else lambda obj_id: orjson.dumps(by_id[obj_id])
+    )
+    ids_by_bucket: dict[int, list[str]] = {}
+    for obj_id in by_id:
+        ids_by_bucket.setdefault(hash_bucket(obj_id, n_buckets), []).append(obj_id)
     dir_path.mkdir(parents=True, exist_ok=True)
-    for bucket, entries in buckets.items():
+    for bucket, ids in ids_by_bucket.items():
+        entries = b",".join(orjson.dumps(i) + b":" + raw(i) for i in ids)
         (dir_path / f"{bucket}.json.gz").write_bytes(
-            gzip.compress(b"{" + b",".join(entries) + b"}")
+            gzip.compress(b"{" + entries + b"}")
         )
 
 

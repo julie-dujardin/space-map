@@ -8,6 +8,7 @@ import orjson
 import pytest
 
 from space_map_data.export.objects import writer
+from space_map_data.export.objects.compact import CompactMap
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.writer import (
     K_GLOBAL,
@@ -166,6 +167,27 @@ class TestWriteObjectBundles:
         assert ns["fr"] == 1
         assert (tmp_path / "objects" / "en").exists()
         assert (tmp_path / "objects" / "fr").exists()
+
+    def test_bucket_file_is_its_entries_in_insertion_order(self, tmp_path):
+        compact = CompactMap()
+        for i in range(K_GLOBAL * 3):
+            compact[f"spkid-{i}"] = {"id": f"spkid-{i}", "n": i}
+        # A decoded entry goes out with its change.
+        compact["spkid-7"]["coverage"] = {"windows": [[1.5, None]]}
+        ns = write_object_bundles(tmp_path, compact, {})
+        out_dir = tmp_path / "objects" / "__global__"
+        assert sorted(f.name for f in out_dir.iterdir()) == sorted(
+            f"{bucket}.json.gz" for bucket in range(ns["global"])
+        )
+        for bucket in range(ns["global"]):
+            expected = {
+                obj_id: entry
+                for obj_id, entry in compact.items()
+                if hash_bucket(obj_id, ns["global"]) == bucket
+            }
+            assert (out_dir / f"{bucket}.json.gz").read_bytes() == gzip.compress(
+                orjson.dumps(expected)
+            )
 
     def test_empty_language_yields_zero_and_no_directory(self, tmp_path):
         ns = write_object_bundles(tmp_path, {}, {"ja": {}, "ru": {}})

@@ -319,3 +319,24 @@ class TestWriteGlobalLabels:
             "probe-49065984": ("VOYAGER 1 (-31)", ""),
             "probe-99999999": ("GENERIC (-99)", "m"),
         }
+
+    def test_promoted_set_leaves_the_other_entries_compact(self, tmp_path):
+        """The type check runs on all 1.6 M entries. A decoded dict kept for
+        each of them would hold gigabytes."""
+        all_objs = ChunkObjectData()
+        all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
+        all_objs.global_data["spkid-20012345"] = {
+            "type": ObjectType.asteroid,
+            "name": "Random",
+        }
+
+        write_global_labels(
+            tmp_path,
+            all_objs,
+            set(),
+            set(),
+            set(all_objs.global_data.keys()),
+            {},
+        )
+
+        assert isinstance(all_objs.global_data._data["spkid-20012345"], bytes)

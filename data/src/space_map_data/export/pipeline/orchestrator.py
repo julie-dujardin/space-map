@@ -167,7 +167,9 @@ from space_map_data.models.object import (
 )
 from space_map_data.models.object.sbdb import CometPrefix
 from space_map_data.probes.probe_id import load_registry
+from space_map_data.utils.commons_images import clear_metadata_cache
 from space_map_data.utils.convert import date_to_julian
+from space_map_data.utils.heap import release_free_memory
 from space_map_data.utils.paths import (
     DOWNLOAD_DIR,
     EXPORT_DIR,
@@ -1217,6 +1219,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             agg,
             tier_b_clean,
         )
+        # Only the Earth zone reads the CelesTrak days. Later steps read the
+        # metadata of far fewer images than the zones.
+        _celestrak_days = None
+        clear_metadata_cache()
+        release_free_memory("the zones")
 
         write_system_metadata(
             session,
@@ -1261,6 +1268,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         rendered_ids = (
             _load_rendered_ids(session, probe_coverage) if not tier_b_clean else set()
         )
+    # A connection keeps up to 256 MB of page cache from the zone scans.
+    engine.dispose()
 
     # Built once: the coverage windows must read the files this manifest lists.
     position_metadata = build_position_metadata(
@@ -1361,6 +1370,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             rendered_ids,
             moon_hosts,
         )
+        # Nothing below reads the object data, the feature details or the
+        # rendered ids.
+        agg.all_objects = ChunkObjectData()
+        del feature_details, rendered_ids
+        release_free_memory("the labels")
         write_messages(wikidata_entities, units.used_units)
         group_bundle_ns = run_groups_tier(
             engine,

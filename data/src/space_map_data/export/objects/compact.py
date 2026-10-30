@@ -11,13 +11,22 @@ from collections.abc import Iterator, MutableMapping
 import orjson
 
 
+def _encode(value: dict) -> bytes:
+    """JSON bytes of exact size.
+
+    The bytes from orjson keep about 4 KB of unused room. The copy holds only
+    the JSON.
+    """
+    return bytes(memoryview(orjson.dumps(value)))
+
+
 class CompactMap(MutableMapping[str, dict]):
     """``{id: dict}`` whose values live as JSON bytes.
 
     ``map[k]`` (and ``.get``) decode the entry and keep the decoded dict, so
     in-place mutation of the returned dict persists. ``items()`` and
     ``values()`` yield throwaway decoded copies: mutate ``map[k]`` instead of
-    the yielded dict. ``raw_items()`` hands the bundle writer the bytes.
+    the yielded dict. ``raw(k)`` hands the bundle writer the bytes.
     """
 
     __slots__ = ("_data",)
@@ -33,7 +42,7 @@ class CompactMap(MutableMapping[str, dict]):
         return value
 
     def __setitem__(self, key: str, value: dict) -> None:
-        self._data[key] = orjson.dumps(value)
+        self._data[key] = _encode(value)
 
     def __delitem__(self, key: str) -> None:
         del self._data[key]
@@ -61,7 +70,7 @@ class CompactMap(MutableMapping[str, dict]):
         else:
             super().update(other, **kwargs)
 
-    def raw_items(self) -> Iterator[tuple[str, bytes]]:
-        """Every entry as ``(id, JSON bytes)``, encoding the decoded ones."""
-        for key, value in self._data.items():
-            yield key, (value if isinstance(value, bytes) else orjson.dumps(value))
+    def raw(self, key: str) -> bytes:
+        """One entry as JSON bytes, encoding it again if it was decoded."""
+        value = self._data[key]
+        return value if isinstance(value, bytes) else orjson.dumps(value)
