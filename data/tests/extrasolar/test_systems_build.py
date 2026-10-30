@@ -792,7 +792,11 @@ def joined_groups_text() -> str:
     systems = joined_groups()
     return repr(
         [
-            sorted(value.items()) if isinstance(value, Counter) else value.to_pylist()
+            sorted(value.items())
+            if isinstance(value, Counter)
+            else value.tolist()
+            if isinstance(value, np.ndarray)
+            else value.to_pylist()
             for value in (getattr(systems, f.name) for f in fields(Systems))
         ]
     )

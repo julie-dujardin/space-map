@@ -93,6 +93,8 @@ ORBIT_SEPARATION = 2.0
 SAME_MAG = 1.0
 GAIA_MAG = 0.5
 STAR, SYSTEM = "star", "system"
+# An entry with an ID: a star with no point of its own (`drawn`).
+HELD = "held star"
 
 VALUES = pa.schema(
     [
@@ -123,9 +125,11 @@ NODES = pa.schema(
         ("stars", pa.int32()),
         ("class", pa.string()),
         ("primary", pa.int64()),
-        # J2016.0 ICRS of the primary point.
+        # J2016.0 ICRS of the primary point, and its distance in pc, else the
+        # system distance it takes.
         ("ra", pa.float64()),
         ("dec", pa.float64()),
+        ("distance", pa.float64()),
         ("label", pa.string()),
         ("catalogue_ids", pa.list_(CROSS_ID)),
         ("sources", pa.list_(pa.string())),
@@ -222,6 +226,8 @@ class Systems:
     names: pa.Table
     events: pa.Table
     counts: Counter
+    # The object of each Gaia DR3 orbit of `Inputs.orbits`, 0 for none.
+    orbit_keys: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
 
 
 @dataclass
@@ -730,6 +736,7 @@ class Assembler:
                 "primary": node.primary,
                 "ra": fact.ra if fact else None,
                 "dec": fact.dec if fact else None,
+                "distance": None,
                 "label": label,
                 "catalogue_ids": catalogue_ids,
                 "sources": sources,
@@ -976,6 +983,7 @@ class Assembler:
                         "primary": pa.array(lone["primary"]),
                         "ra": pa.array(lone["ra"], from_pandas=True),
                         "dec": pa.array(lone["dec"], from_pandas=True),
+                        "distance": pa.nulls(n, pa.float64()),
                         "label": pa.nulls(n, pa.string()),
                         "catalogue_ids": lone["ids"],
                         "sources": pa.ListArray.from_arrays(
@@ -991,6 +999,7 @@ class Assembler:
         tables.append(self._point_table())
         nodes = pa.concat_tables(tables)
         nodes = self._depths(nodes)
+        nodes = self._node_distances(nodes)
         nodes = nodes.take(pc.sort_indices(nodes["node"]))
         members = self._members_table()
         points = self._points_table(nodes, members)
@@ -1038,6 +1047,7 @@ class Assembler:
             names,
             events,
             self.counts,
+            self.p.orbit_keys,
         )
 
     def _point_table(self) -> pa.Table:
@@ -1070,6 +1080,7 @@ class Assembler:
                 "primary": pa.array(keys),
                 "ra": pa.array(self.facts.column("ra", keys), from_pandas=True),
                 "dec": pa.array(self.facts.column("dec", keys), from_pandas=True),
+                "distance": pa.nulls(n, pa.float64()),
                 "label": pa.nulls(n, pa.string()),
                 "catalogue_ids": pa.nulls(n, pa.list_(CROSS_ID)),
                 "sources": pa.array([[e] for e in evidence], pa.list_(pa.string())),
@@ -1098,6 +1109,19 @@ class Assembler:
             current[has] = parent[order[at]]
         return nodes.set_column(
             nodes.schema.get_field_index("depth"), "depth", pa.array(depth)
+        )
+
+    def _node_distances(self, nodes: pa.Table) -> pa.Table:
+        """The distance of each node's primary, else its system distance."""
+        primary = nodes["primary"].to_numpy()
+        distance = self.facts.column("distance", primary)
+        donated = {key: d for key, _, _, d in self.distances}
+        for at in np.flatnonzero(~np.isfinite(distance)).tolist():
+            distance[at] = donated.get(int(primary[at]), np.nan)
+        return nodes.set_column(
+            nodes.schema.get_field_index("distance"),
+            "distance",
+            pa.array(distance, pa.float64(), from_pandas=True),
         )
 
     def _members_table(self) -> pa.Table:

@@ -805,6 +805,70 @@ SYSTEM_MEMBER = pa.struct(
         pa.field("ids", pa.list_(CROSS_ID)),
     ]
 )
+# A source and its citation: a key of a paper table, a catalogue's reference
+# code, bibcode or note, or a Gaia DR3 solution id.
+REFERENCE = pa.struct(
+    [pa.field("source", pa.string()), pa.field("reference", pa.string())]
+)
+# The orbit of a pair: its second member about its first, ready to draw.
+# The scene's elements are on the ecliptic and equinox of J2000, as for the
+# planets: a in AU, angles in deg, the mean motion n in deg/d, the mean
+# anomaly ma at `epoch` (JD), and `phase`, where ma comes from: periastron,
+# eclipse, osculating or assumed. The sky's elements are on the plane of the
+# sky (`frame`): P in d, a in AU and arcsec, ω the second member's, Ω either
+# node where `node_ascending` is false, the periastron time in JD.
+# `barycentre` is the place of the barycentre on the line from the first
+# member to the second, as a share of their separation. With no mass ratio it
+# is 0 and `centre` is "primary": the first member stays at the centre. Each
+# element names its source. `assumed` and `computed` list the elements that a
+# rule fills or that other values give, as in the planets table.
+SYSTEM_ORBIT = pa.struct(
+    [
+        *_fields(pa.float64(), "a", "e", "i", "om", "w", "ma", "n", "epoch"),
+        pa.field("phase", pa.string()),
+        *_fields(
+            pa.float64(),
+            "period",
+            "semi_major_axis",
+            "semi_major_axis_arcsec",
+            "eccentricity",
+            "inclination",
+            "node",
+        ),
+        pa.field("node_ascending", pa.bool_()),
+        *_fields(pa.float64(), "arg_periastron", "periastron_time", "barycentre"),
+        *_fields(
+            pa.string(),
+            "centre",
+            "mass_ratio_source",
+            "period_source",
+            "semi_major_axis_source",
+            "eccentricity_source",
+            "inclination_source",
+            "node_source",
+            "arg_periastron_source",
+            "epoch_source",
+        ),
+        pa.field("assumed", pa.list_(pa.string())),
+        pa.field("computed", pa.list_(pa.string())),
+        pa.field("references", pa.list_(REFERENCE)),
+    ]
+)
+# The values of a held star, each with its source: solar masses, nominal
+# solar radii, K.
+SYSTEM_STAR = pa.struct(
+    [
+        pa.field("mass", pa.float32()),
+        pa.field("mass_source", pa.string()),
+        pa.field("radius", pa.float32()),
+        pa.field("radius_source", pa.string()),
+        pa.field("teff", pa.float32()),
+        pa.field("teff_source", pa.string()),
+        pa.field("spectral_type", pa.string()),
+        pa.field("spectral_type_source", pa.string()),
+        pa.field("references", pa.list_(REFERENCE)),
+    ]
+)
 # A node of a whole system, in the root's row.
 SYSTEM_NODE = pa.struct(
     [

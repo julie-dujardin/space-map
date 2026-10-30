@@ -1,0 +1,769 @@
+"""The stars that the nodes hold, and the orbits of the pairs.
+
+A held star is an entry of a node: a star with no point of its own, inside
+the node's point or known from a catalogue only. It is a held star, with an
+ID, when a source gives it a value of its own: a label, a mass, a radius, a
+Teff or a spectral type. Each value comes from the first source that has
+it: a paper, OEC, the entry's tree source, then the masses of its Gaia
+orbit.
+
+A pair is a node of two members. Its orbit is that of its second member
+about its first (`elements`). The orbit sources reach a pair so:
+- msc, orb6: the WDS id and the secondary's letters, which a member holds
+  as its WDS or MSC id `<WDS id> <letters>`; else a pair whose members have
+  the letters of the two sides, found by the primary's id or by the node's
+  own WDS or MSC id;
+- sbx: the same with its WDS alias and its component letters, else its
+  Gaia DR3, HIP and HD ids, which name the point that holds the pair;
+- literature and Gaia DR3: the point that holds the pair;
+- oec: the OEC ids of the binary's stars on the members, else the point
+  of one of its stars.
+An orbit whose secondary is the node's first member is turned round.
+
+Each element comes from the first orbit that has it: papers, the MSC, ORB6,
+SBX, OEC, then Gaia DR3, and inside a source the orbit with the most
+elements first. A measured e or ω goes before an assumed one. A node that
+may be either node is settled by an orbit whose ω is fixed: when the two ω
+are more than 90° apart, Ω and ω turn by 180°. The mass ratio comes from
+the papers' masses, then the K1 and K2 of the MSC and SBX, then the Gaia DR3
+masses, then OEC's.
+
+An orbit is drawn when it has P, a, i and, unless it is circular, ω. a in
+arcsec takes the node's distance, else Kepler's third law gives it from the
+masses. A circular orbit with no ω takes CIRCULAR_OMEGA, and an orbit with
+no epoch has its periastron at J2000, each named in `assumed`. With no Ω the
+node is assumed at the commit, as the planets' node (`assumed_node`).
+"""
+
+import logging
+import math
+import re
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+
+import numpy as np
+import pyarrow as pa
+import pyarrow.compute as pc
+
+from space_map_data.extrasolar import frame
+from space_map_data.extrasolar.exoplanets.catalogues import OEC
+from space_map_data.extrasolar.exoplanets.table import default_node
+from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
+from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
+from space_map_data.extrasolar.systems.elements import (
+    Elements,
+    catalogue_elements,
+    gaia_elements,
+)
+from space_map_data.extrasolar.systems.nodes import (
+    GAIA_DR3,
+    GAIA_ORBITS,
+    HD,
+    HIP,
+    MSC_ID,
+    WDS_ID,
+)
+from space_map_data.extrasolar.systems.orbits import (
+    LITERATURE,
+    MSC,
+    OEC_STAR,
+    ORB6,
+    ORBIT_SOURCES,
+    SBX,
+)
+from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.systems.resolve import Resolver
+from space_map_data.extrasolar.tables import REFERENCE, SYSTEM_STAR
+
+logger = logging.getLogger(__name__)
+
+# Papers first, Gaia DR3 last.
+DRAW_SOURCES = (*ORBIT_SOURCES, GAIA_ORBITS)
+MASS_RATIO_SOURCES = (LITERATURE, MSC, SBX, GAIA_ORBITS, OEC)
+# The sources whose K1 and K2 give the mass ratio.
+VELOCITY_SOURCES = frozenset({MSC, SBX})
+BARYCENTRE, PRIMARY = "barycentre", "primary"
+ASSUMED_PHASE = "assumed"
+ELEMENTS = (
+    "period",
+    "semi_major_axis",
+    "eccentricity",
+    "inclination",
+    "node",
+    "arg_periastron",
+    "epoch",
+)
+STAR_VALUES = ("mass", "radius", "teff", "spectral_type")
+# A component letter of the WDS and the MSC, and one at the end of a name.
+COMPONENT = re.compile(r"^[A-Z][a-z]?\d?$")
+NAME_LETTER = re.compile(r"\s(?P<letter>[A-Z][a-z]?\d?)$")
+# The ids of an SBX system that name a point.
+SBX_KEYS = (GAIA_DR3, HIP, HD)
+JULIAN_YEAR = 365.25
+
+PAIR_ORBITS = pa.schema(
+    [
+        ("number", pa.int64()),
+        ("ra", pa.float64()),
+        ("dec", pa.float64()),
+        ("period", pa.float64()),
+        ("semi_major_axis", pa.float64()),
+        ("semi_major_axis_arcsec", pa.float64()),
+        ("eccentricity", pa.float64()),
+        ("inclination", pa.float64()),
+        ("node", pa.float64()),
+        ("node_ascending", pa.bool_()),
+        ("arg_periastron", pa.float64()),
+        ("epoch", pa.float64()),
+        ("mean_anomaly", pa.float64()),
+        ("phase", pa.string()),
+        ("barycentre", pa.float64()),
+        ("mass_ratio_source", pa.string()),
+        *((f"{name}_source", pa.string()) for name in ELEMENTS),
+        ("assumed", pa.list_(pa.string())),
+        ("computed", pa.list_(pa.string())),
+        ("references", pa.list_(REFERENCE)),
+    ]
+)
+HELD_STARS = pa.schema(
+    [
+        # The row of the entry in `Systems.members`, and its node.
+        ("member", pa.int64()),
+        ("number", pa.int64()),
+        # Names the star in its node, for its claim.
+        ("tag", pa.string()),
+        ("letter", pa.string()),
+        *((f.name, f.type) for f in SYSTEM_STAR),
+    ]
+)
+
+
+@dataclass
+class Drawn:
+    held: pa.Table
+    orbits: pa.Table
+    counts: Counter = field(default_factory=Counter)
+
+
+@dataclass
+class _Pair:
+    first: int
+    second: int
+    orbits: list[Elements] = field(default_factory=list)
+    # The two stars of a paper or of OEC, first member first: source →
+    # (first, second), each with the keys of STAR_VALUES and `label`.
+    stars: dict[str, tuple[dict, dict]] = field(default_factory=dict)
+    reference: str | None = None
+
+
+def _angle(a: float, b: float) -> float:
+    return abs((a - b + 180.0) % 360.0 - 180.0)
+
+
+def _order(item: Elements) -> tuple:
+    return (
+        DRAW_SOURCES.index(item.source),
+        -item.drawn_elements(),
+        item.grade or 99,
+        item.row,
+    )
+
+
+def _star(row: dict) -> dict:
+    return {name: row[name] for name in (*STAR_VALUES, "label")}
+
+
+def _two(stars: list[dict]) -> tuple[dict, dict]:
+    """The first two stars of a binary."""
+    found = [_star(s) for s in stars[:2]]
+    found += [{}] * (2 - len(found))
+    return found[0], found[1]
+
+
+def _letter(text: str | None) -> str | None:
+    """The component letter of a label, or of a name that ends in one."""
+    if not text:
+        return None
+    if COMPONENT.match(text):
+        return text
+    found = NAME_LETTER.search(text)
+    return found["letter"] if found else None
+
+
+def _missing(values: dict) -> str | None:
+    """The first element that the orbit needs and lacks."""
+    if not values["period"] or values["period"] <= 0:
+        return "period"
+    if values["semi_major_axis"] is None:
+        return "semi-major axis"
+    if values["inclination"] is None:
+        return "inclination"
+    e = values["eccentricity"]
+    if e is None or not 0 <= e < 1:
+        return "eccentricity in [0, 1)"
+    if values["arg_periastron"] is None:
+        return "argument of periastron"
+    return None
+
+
+class Drawer:
+    """Matches the orbit sources to the pairs of `systems` and draws them."""
+
+    def __init__(self, systems: Systems, inputs: Inputs, resolver: Resolver) -> None:
+        self.systems = systems
+        self.inputs = inputs
+        self.resolver = resolver
+        self.counts: Counter = Counter()
+        nodes = systems.nodes.take(pc.sort_indices(systems.nodes["node"]))
+        self.number = nodes["node"].to_numpy()
+        self.ra = nodes["ra"].fill_null(np.nan).to_numpy()
+        self.dec = nodes["dec"].fill_null(np.nan).to_numpy()
+        self.distance = nodes["distance"].fill_null(np.nan).to_numpy()
+        self.member_node = systems.members["node"].to_numpy()
+        starts = np.searchsorted(self.member_node, self.number)
+        ends = np.searchsorted(self.member_node, self.number, "right")
+        self.first_member = dict(zip(self.number.tolist(), starts.tolist()))
+        two = np.flatnonzero(ends - starts == 2)
+        self.pairs = {
+            int(self.number[at]): _Pair(int(starts[at]), int(starts[at] + 1))
+            for at in two.tolist()
+        }
+        keys = nodes["key"].to_numpy()
+        self.point_node = {
+            int(key): int(number)
+            for key, number in zip(keys[two].tolist(), self.number[two].tolist())
+            if key
+        }
+        # The points that hold three or more stars.
+        self.other_points = set(keys[keys != 0].tolist()) - set(self.point_node)
+        self.by_component = self._member_ids((WDS_ID, MSC_ID))
+        self.by_node = self._node_ids(nodes)
+        self.by_oec = self._member_ids((OEC_STAR,))
+        self.oec_of = {row: name for name, row in self.by_oec.items()}
+        self.oec_stars: dict[str, dict] = {}
+        stars = inputs.catalogue_stars
+        if stars is not None:
+            for star in stars.filter(pc.equal(stars["source"], OEC)).to_pylist():
+                if star["label"]:
+                    self.oec_stars.setdefault(star["label"], _star(star))
+
+    def _member_ids(self, catalogues: tuple[tuple[str, str], ...]) -> dict[str, int]:
+        """The member row of each id of these catalogues on a member."""
+        ids = self.systems.members["ids"].combine_chunks()
+        flat = pc.list_flatten(ids)
+        hit = pa.array(np.zeros(len(flat), bool))
+        for catalogue, release in catalogues:
+            hit = pc.or_(
+                hit,
+                pc.and_(
+                    pc.equal(flat.field("catalogue"), catalogue),
+                    pc.equal(flat.field("release"), release),
+                ),
+            )
+        hit = hit.fill_null(False)
+        texts = flat.field("catalogue_id").filter(hit).to_pylist()
+        rows = pc.list_parent_indices(ids).filter(hit).to_pylist()
+        found: dict[str, int] = {}
+        for text, row in zip(texts, rows):
+            if found.setdefault(text, row) != row:
+                self.counts["member ids that two members hold"] += 1
+        return found
+
+    def _node_ids(self, nodes: pa.Table) -> dict[str, int]:
+        """The node of each of its WDS and MSC ids."""
+        ids = nodes["catalogue_ids"].combine_chunks()
+        flat = pc.list_flatten(ids)
+        hit = pc.or_(
+            pc.equal(flat.field("catalogue"), WDS_ID[0]),
+            pc.equal(flat.field("catalogue"), MSC_ID[0]),
+        ).fill_null(False)
+        texts = flat.field("catalogue_id").filter(hit).to_pylist()
+        rows = pc.list_parent_indices(ids).filter(hit).to_numpy()
+        found: dict[str, int] = {}
+        for text, number in zip(texts, self.number[rows].tolist()):
+            found.setdefault(text, number)
+        return found
+
+    def _letters(self, row: int) -> str | None:
+        members = self.systems.members
+        return _letter(members["letter"][row].as_py() or members["label"][row].as_py())
+
+    # Matching
+
+    def _add(self, number: int, item: Elements, flipped: bool) -> None:
+        self.pairs[number].orbits.append(item.flipped() if flipped else item)
+        self.counts[f"{item.source}: orbits on a pair"] += 1
+
+    def _on_component(self, item: Elements, text: str) -> bool:
+        """Put the orbit on the pair whose member has the id `text`. False
+        when no member has it."""
+        row = self.by_component.get(text)
+        if row is None:
+            return False
+        number = int(self.member_node[row])
+        pair = self.pairs.get(number)
+        if pair is None:
+            self.counts[f"{item.source}: orbits of a node that is no pair"] += 1
+        else:
+            self._add(number, item, row == pair.first)
+        return True
+
+    def _on_letters(
+        self, item: Elements, wds: str, primary: str | None, secondary: str
+    ) -> bool:
+        """Put the orbit on a pair whose members have the letters of its two
+        sides, reached by the primary's id or by the node's own id."""
+        if not primary:
+            return False
+        numbers = []
+        row = self.by_component.get(f"{wds} {primary}")
+        if row is not None:
+            numbers.append(int(self.member_node[row]))
+        for text in (f"{wds} {primary}{secondary}", wds):
+            if (number := self.by_node.get(text)) is not None:
+                numbers.append(number)
+        for number in numbers:
+            pair = self.pairs.get(number)
+            if pair is None:
+                continue
+            found = (self._letters(pair.first), self._letters(pair.second))
+            if found in ((primary, secondary), (secondary, primary)):
+                self._add(number, item, found[0] == secondary)
+                self.counts[f"{item.source}: orbits on a pair by its letters"] += 1
+                return True
+        return False
+
+    def _points(
+        self, wanted: list[tuple[int, tuple[str, str], str]]
+    ) -> tuple[dict[int, int], set[int]]:
+        """The pair of the point of each (index, catalogue, id), by index, and
+        the indexes whose point holds more than two stars."""
+        by_catalogue: dict[tuple[str, str], list[tuple[int, str]]] = defaultdict(list)
+        for index, catalogue, text in wanted:
+            by_catalogue[catalogue].append((index, text))
+        found: dict[int, int] = {}
+        larger: set[int] = set()
+        for catalogue, items in sorted(by_catalogue.items()):
+            texts = pa.array([text for _, text in items], pa.string())
+            keys = self.resolver.keys(*catalogue, texts)
+            for (index, _), key in zip(items, keys.tolist()):
+                number = self.point_node.get(int(key))
+                if number is not None:
+                    found.setdefault(index, number)
+                elif key in self.other_points:
+                    larger.add(index)
+        return found, larger
+
+    def match_catalogues(self) -> None:
+        table = self.inputs.catalogue_orbits
+        if table is None:
+            return
+        rows = table.to_pylist()
+        stars: dict[tuple[str, str | None], list[dict]] = defaultdict(list)
+        if self.inputs.catalogue_stars is not None:
+            for star in self.inputs.catalogue_stars.to_pylist():
+                stars[(star["source"], star["system"])].append(star)
+        wanted: list[tuple[int, tuple[str, str], str]] = []
+        items: dict[int, Elements] = {}
+        for at, row in enumerate(rows):
+            item = catalogue_elements(row)
+            source = row["source"]
+            if item is None:
+                self.counts[f"{source}: orbits with no period"] += 1
+                continue
+            items[at] = item
+            before = len(wanted)
+            ids = [
+                ((i["catalogue"], i["release"]), i["catalogue_id"])
+                for i in row["ids"] or []
+            ]
+            wds = [text for pair, text in ids if pair == WDS_ID]
+            letters = row["secondary"] if source in (MSC, ORB6, SBX) else None
+            if letters and wds and self._on_component(item, f"{wds[0]} {letters}"):
+                continue
+            if (
+                letters
+                and wds
+                and self._on_letters(item, wds[0], row["primary"], letters)
+            ):
+                continue
+            if source == SBX:
+                wanted += [(at, pair, text) for pair, text in ids if pair in SBX_KEYS]
+            elif source == LITERATURE:
+                wanted += [(at, pair, text) for pair, text in ids]
+            elif source == OEC:
+                binary = [
+                    s
+                    for s in stars[(OEC, row["system"])]
+                    if s["designation"] == row["designation"]
+                ]
+                if self._oec_members(item, binary):
+                    continue
+                wanted += [(at, OEC_STAR, s["label"]) for s in binary if s["label"]]
+            if len(wanted) == before:
+                self.counts[f"{source}: orbits of pairs in no tree"] += 1
+        found, larger = self._points(wanted)
+        for at in sorted({index for index, _, _ in wanted}):
+            item = items[at]
+            number = found.get(at)
+            if number is None:
+                where = "a node that is no pair" if at in larger else "pairs in no tree"
+                self.counts[f"{item.source}: orbits of {where}"] += 1
+                continue
+            self._add(number, item, False)
+            pair, row = self.pairs[number], rows[at]
+            if item.source == LITERATURE:
+                pair.stars[LITERATURE] = _two(stars[(LITERATURE, row["system"])])
+                pair.reference = row["reference"]
+            elif item.source == OEC:
+                binary = [
+                    s
+                    for s in stars[(OEC, row["system"])]
+                    if s["designation"] == row["designation"]
+                ]
+                pair.stars.setdefault(OEC, _two(binary))
+
+    def _oec_members(self, item: Elements, binary: list[dict]) -> bool:
+        """Put an OEC binary on the pair whose members are its two stars."""
+        rows = [self.by_oec.get(s["label"]) for s in binary if s["label"]]
+        if len(binary) != 2 or len(rows) != 2 or None in rows:
+            return False
+        first, second = rows
+        assert first is not None
+        number = int(self.member_node[first])
+        pair = self.pairs.get(number)
+        if pair is None or {first, second} != {pair.first, pair.second}:
+            return False
+        flipped = first == pair.second
+        self._add(number, item, flipped)
+        stars = _two(binary)
+        pair.stars[OEC] = (stars[1], stars[0]) if flipped else stars
+        return True
+
+    def match_gaia(self) -> None:
+        table = self.inputs.orbit_elements
+        keys = self.systems.orbit_keys
+        if table is None or not keys.size:
+            return
+        at = np.flatnonzero(np.isin(keys, np.array(list(self.point_node), np.int64)))
+        rows = table.take(pa.array(at)).to_pylist()
+        for index, key, row in zip(at.tolist(), keys[at].tolist(), rows):
+            item = gaia_elements(row, index)
+            if item is None:
+                continue
+            self._add(self.point_node[int(key)], item, False)
+            if row["nss_solution_type"] in ASTROMETRIC:
+                case = "a relative orbit" if item.a_au else "a photocentre only"
+                self.counts[f"Gaia DR3 astrometric orbits on a pair: {case}"] += 1
+
+    # Orbits
+
+    def orbit(self, number: int, pair: _Pair) -> dict | None:
+        """The PAIR_ORBITS row of a pair, None when it cannot be drawn."""
+        items = sorted(pair.orbits, key=_order)
+        at = int(np.searchsorted(self.number, number))
+        if not (math.isfinite(self.ra[at]) and math.isfinite(self.dec[at])):
+            self.counts["pairs with orbits and no position"] += 1
+            return None
+        distance = float(self.distance[at])
+        chosen: dict[str, Elements] = {}
+
+        def first(name: str, measured: bool = False) -> Elements | None:
+            return next(
+                (
+                    i
+                    for i in items
+                    if getattr(i, name) is not None
+                    and not (measured and name in i.assumed)
+                ),
+                None,
+            )
+
+        for name in ("period", "inclination", "node", "epoch"):
+            if (hit := first(name)) is not None:
+                chosen[name] = hit
+        for name in ("eccentricity", "arg_periastron"):
+            if (hit := first(name, measured=True) or first(name)) is not None:
+                chosen[name] = hit
+        values = {
+            name: getattr(chosen[name], name) if name in chosen else None
+            for name in ELEMENTS
+        }
+        assumed = [
+            name
+            for name in ("eccentricity", "arg_periastron")
+            if name in chosen and name in chosen[name].assumed
+        ]
+        if values["eccentricity"] and "arg_periastron" in assumed:
+            # A circular orbit's ω, which the measured e makes no ω.
+            values["arg_periastron"] = None
+        arcsec = None
+        for item in items:
+            a = item.a_au
+            if a is None and item.a_arcsec is not None and distance > 0:
+                a, arcsec = item.a_arcsec * distance, item.a_arcsec
+            if a is not None:
+                values["semi_major_axis"] = a
+                chosen["semi_major_axis"] = item
+                break
+        ratio, ratio_source, total, total_source = self._masses(pair, items)
+        computed = []
+        if values["semi_major_axis"] is None and total and values["period"]:
+            years = values["period"] / JULIAN_YEAR
+            values["semi_major_axis"] = (total * years * years) ** (1 / 3)
+            computed.append("semi_major_axis")
+        reason = _missing(values)
+        if reason:
+            self.counts[f"pairs with orbits and no {reason}"] += 1
+            return None
+        node = chosen.get("node")
+        ascending = node is not None and node.node_ascending
+        fixed = next((i for i in items if i.omega_fixed), None)
+        own = None if node is None else node.arg_periastron
+        if node is not None and not ascending and fixed and own is not None:
+            assert fixed.arg_periastron is not None and values["node"] is not None
+            # The node's own ω goes with it: far from the fixed ω, both turn.
+            if _angle(fixed.arg_periastron, own) > 90:
+                values["node"] = (values["node"] + 180) % 360
+                if chosen["arg_periastron"] is node:
+                    values["arg_periastron"] = (own + 180) % 360
+                self.counts["nodes turned by an orbit with a fixed ω"] += 1
+            else:
+                self.counts["nodes kept by an orbit with a fixed ω"] += 1
+            ascending = True
+        epoch = chosen.get("epoch")
+        if epoch is None:
+            values["epoch"], anomaly, phase = frame.J2000, 0.0, ASSUMED_PHASE
+            assumed.append("epoch")
+        else:
+            anomaly, phase = epoch.mean_anomaly, epoch.phase
+        if node is None:
+            assumed.append("node")
+        sources = {
+            f"{name}_source": chosen[name].source if name in chosen else None
+            for name in ELEMENTS
+        }
+        if computed:
+            sources["semi_major_axis_source"] = total_source
+        used = {item.source: item for item in chosen.values()}
+        references = [
+            {"source": source, "reference": used[source].reference}
+            for source in DRAW_SOURCES
+            if source in used and used[source].reference
+        ]
+        self.counts[f"pairs drawn, period from {chosen['period'].source}"] += 1
+        return {
+            "number": number,
+            "ra": float(self.ra[at]),
+            "dec": float(self.dec[at]),
+            **values,
+            "semi_major_axis_arcsec": arcsec,
+            "node_ascending": ascending,
+            "mean_anomaly": anomaly,
+            "phase": phase,
+            "barycentre": ratio,
+            "mass_ratio_source": ratio_source,
+            **sources,
+            "assumed": sorted(assumed),
+            "computed": computed,
+            "references": references,
+        }
+
+    def _masses(
+        self, pair: _Pair, items: list[Elements]
+    ) -> tuple[float | None, str | None, float | None, str | None]:
+        """The barycentre's share of the separation with its source, and the
+        total mass with its source."""
+        ratio = source = total = total_source = None
+        for name in MASS_RATIO_SOURCES:
+            m1 = m2 = None
+            if name in VELOCITY_SOURCES:
+                k = next(
+                    ((i.k1, i.k2) for i in items if i.source == name and i.k1 and i.k2),
+                    None,
+                )
+                if k is not None and k[0] and k[1] and ratio is None:
+                    ratio, source = k[0] / (k[0] + k[1]), name
+                continue
+            if name == GAIA_ORBITS:
+                hit = next(
+                    (i for i in items if i.source == name and i.mass1 and i.mass2),
+                    None,
+                )
+                if hit is not None:
+                    m1, m2 = hit.mass1, hit.mass2
+            elif name in pair.stars:
+                m1, m2 = (star.get("mass") for star in pair.stars[name])
+            if m1 and m2 and m1 > 0 and m2 > 0:
+                if ratio is None:
+                    ratio, source = m2 / (m1 + m2), name
+                if total is None:
+                    total, total_source = m1 + m2, name
+        return ratio, source, total, total_source
+
+    # Held stars
+
+    def held(self) -> pa.Table:
+        members = self.systems.members
+        kinds = members["kind"].to_numpy(zero_copy_only=False)
+        rows = np.flatnonzero(kinds == ENTRY)
+        part = members.take(pa.array(rows)).select(
+            ["node", "letter", "label", "source", "mass", "spectral_type"]
+        )
+        gaia = self._gaia_masses()
+        out: dict[str, list] = defaultdict(list)
+        tags: dict[int, set[str]] = defaultdict(set)
+        for row, entry in zip(rows.tolist(), part.to_pylist()):
+            values = self._values(row, entry, gaia)
+            if (
+                values["letter"] is None
+                and not entry["label"]
+                and not any(values[name] is not None for name in STAR_VALUES)
+            ):
+                self.counts["entries with no value of their own"] += 1
+                continue
+            number = entry["node"]
+            place = f"#{row - self.first_member[number] + 1}"
+            tag = entry["letter"] or entry["label"] or place
+            if tag in tags[number]:
+                tag = f"{tag} {place}"
+            tags[number].add(tag)
+            out["member"].append(row)
+            out["number"].append(number)
+            out["tag"].append(tag)
+            for name, value in values.items():
+                out[name].append(value)
+            self.counts[f"held stars of {entry['source'] or 'no source'} entries"] += 1
+            for source in {values[f"{n}_source"] for n in STAR_VALUES} - {
+                None,
+                entry["source"],
+            }:
+                self.counts[f"held stars with values from {source}"] += 1
+        return pa.table(
+            {name: out[name] for name in HELD_STARS.names}, schema=HELD_STARS
+        )
+
+    def _gaia_masses(self) -> dict[int, float]:
+        """The Gaia DR3 mass of each member of a pair with a Gaia orbit."""
+        found: dict[int, float] = {}
+        for pair in self.pairs.values():
+            hit = next((i for i in pair.orbits if i.source == GAIA_ORBITS), None)
+            if hit is None:
+                continue
+            for row, mass in ((pair.first, hit.mass1), (pair.second, hit.mass2)):
+                if mass is not None:
+                    found[row] = mass
+        return found
+
+    def _values(self, row: int, entry: dict, gaia: dict[int, float]) -> dict:
+        """The SYSTEM_STAR values of an entry, and its letter."""
+        pair = self.pairs.get(entry["node"])
+        given: list[tuple[str, dict]] = []
+        if pair is not None:
+            side = 0 if row == pair.first else 1
+            given += [
+                (source, pair.stars[source][side])
+                for source in (LITERATURE, OEC)
+                if source in pair.stars
+            ]
+        own = self.oec_stars.get(self.oec_of.get(row, ""))
+        if own is not None and all(source != OEC for source, _ in given):
+            given.append((OEC, own))
+        tree = {"mass": entry["mass"], "spectral_type": entry["spectral_type"]}
+        given.append((entry["source"], tree))
+        if row in gaia and entry["source"] != GAIA_ORBITS:
+            given.append((GAIA_ORBITS, {"mass": gaia[row]}))
+        values: dict = {}
+        for name in STAR_VALUES:
+            hit = next(
+                ((v[name], s) for s, v in given if v.get(name) is not None), None
+            )
+            values[name], values[f"{name}_source"] = hit or (None, None)
+        paper = pair is not None and LITERATURE in {
+            values[f"{name}_source"] for name in STAR_VALUES
+        }
+        values["references"] = (
+            [{"source": LITERATURE, "reference": pair.reference}]
+            if paper and pair is not None and pair.reference
+            else []
+        )
+        labels = [v.get("label") for _, v in given] + [entry["letter"], entry["label"]]
+        values["letter"] = next(
+            (found for text in labels if (found := _letter(text))), None
+        )
+        return values
+
+
+def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
+    """The held stars and the orbits of the pairs of `systems`."""
+    drawer = Drawer(systems, inputs, resolver)
+    drawer.counts["pairs"] = len(drawer.pairs)
+    drawer.match_catalogues()
+    drawer.match_gaia()
+    rows = []
+    for number, pair in sorted(drawer.pairs.items()):
+        if pair.orbits:
+            drawer.counts["pairs with orbits"] += 1
+            if (found := drawer.orbit(number, pair)) is not None:
+                rows.append(found)
+    orbits = pa.Table.from_pylist(rows, schema=PAIR_ORBITS)
+    held = drawer.held()
+    counts = drawer.counts
+    centred = orbits["barycentre"].is_valid().to_numpy(zero_copy_only=False)
+    counts["pairs drawn about their barycentre"] = int(centred.sum())
+    counts["pairs drawn about their primary"] = int((~centred).sum())
+    counts["pairs drawn with an assumed node"] = sum(
+        "node" in assumed for assumed in orbits["assumed"].to_pylist()
+    )
+    logger.info(
+        "systems: %d held stars, %d pairs drawn", held.num_rows, orbits.num_rows
+    )
+    return Drawn(held, orbits, counts)
+
+
+def assumed_node(root: int) -> float:
+    """The node of a pair that has none: the planets' assumed node of its
+    system, so a circumbinary planet and its pair share it."""
+    return default_node(root)
+
+
+def scene(row: dict, node: float) -> dict:
+    """The SYSTEM_ORBIT value of a PAIR_ORBITS row, with its node."""
+    direction = frame.direction(row["ra"], row["dec"])
+    i, om, w = frame.ecliptic_angles(
+        direction, row["inclination"], node, row["arg_periastron"]
+    )
+    n = 360.0 / row["period"]
+    ratio = row["barycentre"]
+    return {
+        "a": row["semi_major_axis"],
+        "e": row["eccentricity"],
+        "i": i,
+        "om": om,
+        "w": w,
+        "ma": row["mean_anomaly"],
+        "n": n,
+        "epoch": row["epoch"],
+        "phase": row["phase"],
+        **{
+            name: row[name]
+            for name in (
+                "period",
+                "semi_major_axis",
+                "semi_major_axis_arcsec",
+                "eccentricity",
+                "inclination",
+                "node_ascending",
+                "arg_periastron",
+                "mass_ratio_source",
+                *(f"{name}_source" for name in ELEMENTS),
+                "assumed",
+                "computed",
+                "references",
+            )
+        },
+        "node": node,
+        "periastron_time": row["epoch"] - row["mean_anomaly"] / n,
+        "barycentre": 0.0 if ratio is None else ratio,
+        "centre": PRIMARY if ratio is None else BARYCENTRE,
+    }

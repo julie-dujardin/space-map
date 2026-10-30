@@ -169,7 +169,7 @@ class TestGroupKind:
             assemble.NAMES,
         )
         empty = [schema.empty_table() for schema in tables]
-        systems = assemble.Systems(*empty, events, Counter())
+        systems = assemble.Systems(*empty, events, counts=Counter())
         lines = report_lines(systems)
         assert f"{GROUP_OBJECT}: 1 ({PRIMARY} 0, {BACKGROUND} 0, {COMBINED} 1)" in lines
         assert any(line.startswith(f"  {GROUP_OBJECT}: {COMBINED}: ") for line in lines)

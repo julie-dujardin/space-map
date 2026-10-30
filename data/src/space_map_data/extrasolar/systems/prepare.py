@@ -108,6 +108,12 @@ class Inputs:
     orbits: pa.Table | None = None
     # PLANETS_INPUT rows.
     planets: pa.Table | None = None
+    # For the orbits of the pairs only (`drawn`): the elements of the Gaia
+    # orbits (GAIA_ELEMENTS), one row per row of `orbits`, and the orbit
+    # sources in their normal form (ORBITS and COMPONENTS).
+    orbit_elements: pa.Table | None = None
+    catalogue_orbits: pa.Table | None = None
+    catalogue_stars: pa.Table | None = None
 
 
 def _rank(source: str) -> int:
