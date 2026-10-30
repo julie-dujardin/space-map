@@ -3,11 +3,7 @@
  * Deep Star Maps 2020 EXR (equatorial equirectangular, via py360convert),
  * tier auto-selected from `renderer.capabilities.maxTextureSize`.
  *
- * The SVS map is J2000 equatorial; the scene is J2000 ecliptic. The
- * analytical equinox/NCP rotation lands 180° off what the EXR delivers —
- * root cause unresolved. Corrected empirically with a 180° post-rotation
- * about scene-frame RA=18h, verified against Polaris, Sirius, and the
- * Magellanic Clouds.
+ * The SVS map is J2000 equatorial; the scene is J2000 ecliptic.
  */
 import {
 	CubeTexture,
@@ -28,7 +24,12 @@ import { currentRenderTier } from '$lib/scene/render-tier';
 const DEG2RAD = Math.PI / 180;
 const OBLIQUITY_RAD = EARTH_OBLIQUITY_DEG * DEG2RAD;
 
-/** Composed analytical + empirical rotation: `Rₓ(−π/2) · Rᵧ(π/2 − ε) · R_z(−π/2)`. */
+/**
+ * The shader must get `Rᵧ(π/2) · Rₓ(ε)`, but three.js converts
+ * `scene.backgroundRotation` to XYZ Euler angles and negates x for a cube
+ * texture. This value has x negated, so that three.js restores it. Without
+ * that, the sky turns 180° about RA 18h.
+ */
 export const SKYBOX_BASE_ROTATION = new Quaternion()
 	.setFromAxisAngle(new Vector3(0, 0, 1), -Math.PI / 2)
 	.premultiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2 - OBLIQUITY_RAD))
