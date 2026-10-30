@@ -302,9 +302,10 @@ The masses place the companion. With the mass fraction `μ = m2 / (m1 + m2)` and
 The star systems. A system is a tree, and each node of the tree has a row:
 
 - a **point** that holds two or more stars (Capella, Mizar A, a star with a Gaia DR3 orbit). It keeps the ID of its point, so its home table is 1, and bit 3 of its `mask` is set;
-- a **resolved system**, which has no point of its own (α Cen AB; α Cen itself is AB and Proxima). Its ID has home table 3 and the cell of its primary's J2016.0 position. It has no Point source row, so the render tree does not draw it: its stars are drawn.
+- a **resolved system**, which has no point of its own (α Cen AB; α Cen itself is AB and Proxima). Its ID has home table 3 and the cell of its primary's J2016.0 position. It has no Point source row, so the render tree does not draw it: its stars are drawn;
+- a **held star**, a star with no point of its own that has an ID (below). Its ID has home table 3 and the cell of its node's position, its `ra` and `dec` are its node's, and `stars` is 1.
 
-The members of a node are stars (points that hold one star, which have no System row), nodes, and entries. An entry is a star with no ID: a star inside its node's point (Capella Aa and Ab), or one that only a catalogue gives. One type covers every level: a binary is a system of two, and a pair inside a system is a node too. A system whose hierarchy no source gives is a flat list of members. A star is a member of one node at most, and every node but the root has one parent. The root's row holds the whole tree, so one record gives the system.
+The members of a node are stars (points that hold one star, which have no System row), nodes, held stars and entries. A held star and an entry are stars with no point of their own: a star inside its node's point (Capella Aa and Ab), or one that only a catalogue gives. A held star has an ID because a source names it (a component letter of the WDS or the MSC, a SIMBAD or planet-catalogue name) or because the orbit of its pair is drawn. An entry has no ID: the two stars of a Gaia DR3 orbit that is not drawn stay entries, with the masses of the orbit. The name of a held star is the one that SIMBAD or a planet catalogue gives it, unless that is the name of its pair or root, else its root's name and its letter ("Castor Ba"). A held star whose letter no source gives is A in its pair when it is the heavier star (the first member when the masses do not tell, the letter that the other member leaves when that one is A or B), else B, and takes its pair's name ("HD 1234 A"). One type covers every level: a binary is a system of two, and a pair inside a system is a node too. A system whose hierarchy no source gives is a flat list of members. A star is a member of one node at most, and every node but the root has one parent. The root's row holds the whole tree, so one record gives the system.
 
 The trees come from these sources, in source order: Tokovinin's Multiple Star Catalogue (MSC), SIMBAD's hierarchy of objects, the systems of the planet catalogues, the Washington Double Star Catalog (WDS) without the pairs that it notes as optical or bogus, the wide binaries of El-Badry, Rix & Heintz 2021 with a chance-alignment probability under 0.1, and the Gaia DR3 orbits of table 2. A member joins its star by a catalogue id (Gaia DR3 `source_id`, HIP, HD, SIMBAD oid, WDS id), else by position and magnitude, but never the star of a WDS node that holds it, or of a WDS component near it. A member that reaches no star is an entry. An entry is a star of its system when its separation from its primary and its position angle agree with that star's, or when its magnitude agrees and its separation agrees within the motion of an orbit. The best agreement wins, and the system lists the star once. A point holds several stars when it has a Gaia DR3 orbit whose companion is no planet that the planet catalogues give it (a period within 5%), when a catalogue lists a pair inside it, or when its SIMBAD type is one that only a close pair shows (`EB*`, `SB*` …) and no companion of it is a point of its own. An acceleration solution of Gaia without an orbit adds no member.
 
@@ -313,11 +314,11 @@ A member leaves its node when its parallax and its primary's clearly disagree: b
 | Column | Type | |
 |---|---|---|
 | `id` | id | |
-| `point` | bool | true for a point, false for a resolved system |
+| `point` | bool | true for a point, false for a resolved system or a held star |
 | `depth` | int16 | 0 at the root |
-| `stars` | int32 | the stars below the node: its member stars and entries, and those of its member nodes |
+| `stars` | int32 | the stars below the node: its member stars, held stars and entries, and those of its member nodes; 1 for a held star |
 | `ra`, `dec` | float64 | the ICRS position at J2016.0 of the node's primary point (deg) |
-| `label` | string | the component letters (`AB`, `Aab`), or the name that a source gives the pair |
+| `label` | string | the component letters (`AB`, `Aab`), or the name that a source gives the pair; a held star's letter |
 | `spectral_type` | string | the composite spectral type of the node's stars ("F5IV-V+DQZ") |
 | `evidence` | dict | a point: the source that shows that it holds several stars |
 | `sources` | list | the trees that list the node, first in source order: `msc`, `simbad`, `planet-catalogues`, `wds`, `el-badry-2021`, `gaia-dr3-orbits`, `simbad-type` (item column `sources.item`, dict) |
@@ -332,8 +333,8 @@ A member:
 
 | Field | Type | |
 |---|---|---|
-| `id` | id | the ID of the star or of the node; null for an entry |
-| `kind` | dict | `star`, `system` or `entry` |
+| `id` | id | the ID of the star, the node or the held star; null for an entry |
+| `kind` | dict | `star`, `system`, `held star` or `entry` |
 | `letter` | dict | its component letter (`A`, `Ba`) |
 | `inner` | string | for an entry inside a point, its letters within the point (`Ca` of `Cab`) |
 | `label` | string | a name that the source gives it |

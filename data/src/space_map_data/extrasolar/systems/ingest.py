@@ -957,7 +957,7 @@ def _held_rows(
     a star with no position.
 
     `labels` and `anchors` are those of the rows of `systems.nodes`. A held
-    star takes its root's name and its letter, and its node's position.
+    star takes its node's position and its name (`held_names`).
     """
     nodes = systems.nodes
     numbers = nodes["node"].to_numpy()
@@ -967,19 +967,7 @@ def _held_rows(
     dec = nodes["dec"].fill_null(np.nan).to_numpy()[at]
     valid = np.isfinite(ra) & np.isfinite(dec)
     counts["held stars with no position"] = int((~valid).sum())
-    roots = nodes["root"].to_numpy()[at]
-    keys = nodes["key"].to_numpy()
-    point_names = dict(
-        zip(systems.points["key"].to_pylist(), systems.points["name"].to_pylist())
-    )
-
-    def root_name(root: int) -> str | None:
-        found = names.get(root)
-        if found is None:
-            key = int(keys[order[np.searchsorted(numbers[order], root)]])
-            found = point_names.get(key) if key else None
-        return found
-
+    row_names = held_names(systems, held, names, counts)
     members = systems.members.take(pa.array(held["member"].to_numpy()))
     own_mag = pc.coalesce(members["g_mag"], members["v_mag"]).to_numpy(
         zero_copy_only=False
@@ -988,11 +976,9 @@ def _held_rows(
         zero_copy_only=False
     )
     sources = members["source"].to_pylist()
-    texts, claims, row_names, mags = [], [], [], []
+    texts, claims, mags = [], [], []
     seen: set[str] = set()
-    for row, (tag, letter, root) in enumerate(
-        zip(held["tag"].to_pylist(), held["letter"].to_pylist(), roots.tolist())
-    ):
+    for row, tag in enumerate(held["tag"].to_pylist()):
         texts.append(f"{labels[at[row]]} | {tag}")
         claim = anchors[at[row]]
         text = None if claim is None else f"{claim} {tag}"
@@ -1004,13 +990,8 @@ def _held_rows(
         claims.append(
             [dict(zip(CROSS_ID.names, (*HELD_CLAIM, text)))] if text else None
         )
-        name = root_name(root)
-        row_names.append(f"{name} {letter}" if name and letter else None)
         mag = own_mag[row]
         mags.append(mag if mag is not None and np.isfinite(mag) else primary_mag[row])
-    counts["held stars named by their root and letter"] = sum(
-        n is not None for n in row_names
-    )
     pick = pa.array(np.flatnonzero(valid))
     n = int(valid.sum())
     part = pa.table(
@@ -1037,6 +1018,58 @@ def _held_rows(
     labels_out = pc.if_else(pa.array(valid), pa.array(texts, pa.string()), None)
     counts["rows of held stars"] = n
     return part, labels_out
+
+
+def held_names(
+    systems: Systems, held: pa.Table, names: dict[int, str], counts: Counter
+) -> list[str | None]:
+    """The name of each held star (`drawn.HELD_STARS`).
+
+    It is the name that SIMBAD or a planet catalogue gives the star, unless
+    that is its pair's or its root's name, as a planet catalogue names the
+    primary. Else it is "<root name> <letter>": the letters of the WDS and the
+    MSC name the components of the whole system. A letter of its pair (A, B)
+    takes the pair's name. `names` are those of the resolved nodes
+    (`_node_names`); a point has the name of its object.
+    """
+    nodes = systems.nodes
+    order = np.argsort(nodes["node"].to_numpy(), kind="stable")
+    numbers = nodes["node"].to_numpy()[order]
+    keys = nodes["key"].to_numpy()[order]
+    roots = nodes["root"].to_numpy()[order]
+    point_names = dict(
+        zip(systems.points["key"].to_pylist(), systems.points["name"].to_pylist())
+    )
+
+    def node_name(number: int) -> str | None:
+        found = names.get(number)
+        if found is None:
+            key = int(keys[np.searchsorted(numbers, number)])
+            found = point_names.get(key) if key else None
+        return found
+
+    found: list[str | None] = []
+    for number, letter, by_pair, own in zip(
+        held["number"].to_pylist(),
+        held["letter"].to_pylist(),
+        held["pair_letter"].to_pylist(),
+        held["own_name"].to_pylist(),
+    ):
+        pair = node_name(number)
+        root = node_name(int(roots[np.searchsorted(numbers, number)]))
+        if own and own not in (pair, root):
+            found.append(own)
+            counts["held stars named by their source"] += 1
+            continue
+        prefix = (pair or root) if by_pair else (root or pair)
+        if prefix and letter:
+            found.append(f"{prefix} {letter}")
+            case = "their pair and A or B" if by_pair else "their root and letter"
+            counts[f"held stars named by {case}"] += 1
+        else:
+            found.append(None)
+            counts["held stars with no name"] += 1
+    return found
 
 
 def _id_texts(

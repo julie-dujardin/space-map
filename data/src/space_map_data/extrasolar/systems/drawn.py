@@ -2,10 +2,14 @@
 
 A held star is an entry of a node: a star with no point of its own, inside
 the node's point or known from a catalogue only. It is a held star, with an
-ID, when a source gives it a value of its own: a label, a mass, a radius, a
-Teff or a spectral type. Each value comes from the first source that has
-it: a paper, OEC, the entry's tree source, then the masses of its Gaia
-orbit.
+ID, when a source names it with a component letter or a name (the WDS, the
+MSC, SIMBAD, the planet catalogues, a paper), or when its pair is drawn: an
+ID is for a star that has a name or that we draw. An entry whose only values
+are the masses of its Gaia orbit stays an entry, and its pair keeps the
+masses. Each value comes from the first source that has it: a paper, OEC, the
+entry's tree source, then the masses of its Gaia orbit. Its letter is the
+source's. A held star of a pair with no letter takes A when it is the
+heavier star, else B, and the other letter when the other member has A or B.
 
 A pair is a node of two members. Its orbit is that of its second member
 about its first (`elements`). The orbit sources reach a pair so:
@@ -41,6 +45,7 @@ import logging
 import math
 import re
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -51,6 +56,7 @@ from space_map_data.extrasolar import frame
 from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
+from space_map_data.extrasolar.sources.simbad import star_name
 from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
 from space_map_data.extrasolar.systems.elements import (
     Elements,
@@ -63,6 +69,9 @@ from space_map_data.extrasolar.systems.nodes import (
     HD,
     HIP,
     MSC_ID,
+    PLANETS,
+    SIMBAD,
+    WDS,
     WDS_ID,
 )
 from space_map_data.extrasolar.systems.orbits import (
@@ -93,6 +102,9 @@ MASS_RATIO_SOURCES = (
     (MSC, MASSES),
 )
 TOTAL_MASS_SOURCES = (LITERATURE, GAIA_ORBITS, OEC)
+# The tree sources whose letter is a component label as it stands ("Aab").
+LETTER_SOURCES = frozenset({WDS, MSC})
+PAIR_LETTERS = ("A", "B")
 BARYCENTRE, PRIMARY = "barycentre", "primary"
 ASSUMED_PHASE = "assumed"
 ELEMENTS = (
@@ -105,9 +117,10 @@ ELEMENTS = (
     "epoch",
 )
 STAR_VALUES = ("mass", "radius", "teff", "spectral_type")
-# A component letter of the WDS and the MSC, and one at the end of a name.
+# A component letter of the WDS and the MSC, and one at the end of a name,
+# after a space or a number ("HD 27028A").
 COMPONENT = re.compile(r"^[A-Z][a-z]?\d?$")
-NAME_LETTER = re.compile(r"\s(?P<letter>[A-Z][a-z]?\d?)$")
+NAME_LETTER = re.compile(r"(?:\s|(?<=\d))(?P<letter>[A-Z][a-z]?\d?)$")
 # The ids of an SBX system that name a point.
 SBX_KEYS = (GAIA_DR3, HIP, HD)
 JULIAN_YEAR = 365.25
@@ -144,6 +157,10 @@ HELD_STARS = pa.schema(
         # Names the star in its node, for its claim.
         ("tag", pa.string()),
         ("letter", pa.string()),
+        # True when the letter is A or B of its pair, not a source's.
+        ("pair_letter", pa.bool_()),
+        # The name that SIMBAD or a planet catalogue gives the star.
+        ("own_name", pa.string()),
         *((f.name, f.type) for f in SYSTEM_STAR),
     ]
 )
@@ -202,6 +219,28 @@ def _letter(text: str | None) -> str | None:
         return text
     found = NAME_LETTER.search(text)
     return found["letter"] if found else None
+
+
+def _source_letter(entry: dict, labels: Iterable[str | None] = ()) -> str | None:
+    """The component letter that a source gives a member: one at the end of
+    one of `labels` or of its own letter or label, else its letter as the WDS
+    or the MSC gives it ("Aab", "S17")."""
+    texts = [*labels, entry["letter"], entry["label"]]
+    found = next((letter for text in texts if (letter := _letter(text))), None)
+    if found is None and entry["source"] in LETTER_SOURCES:
+        found = entry["letter"]
+    return found
+
+
+def _own_name(entry: dict) -> str | None:
+    """The name that SIMBAD or a planet catalogue gives an entry, spelled as
+    the name of a star."""
+    label = entry["label"]
+    if not label:
+        return None
+    if entry["source"] == SIMBAD:
+        return star_name([label], label)
+    return label if entry["source"] == PLANETS else None
 
 
 def _missing(values: dict) -> str | None:
@@ -689,7 +728,14 @@ class Drawer:
 
     # Held stars
 
-    def held(self) -> pa.Table:
+    def held(self, drawn: Iterable[int] = ()) -> pa.Table:
+        """The held stars: the entries that a source names, and the entries
+        of the pairs with these node numbers, which are drawn."""
+        in_drawn = {
+            row
+            for number in drawn
+            for row in (self.pairs[number].first, self.pairs[number].second)
+        }
         members = self.systems.members
         kinds = members["kind"].to_numpy(zero_copy_only=False)
         rows = np.flatnonzero(kinds == ENTRY)
@@ -701,12 +747,13 @@ class Drawer:
         tags: dict[int, set[str]] = defaultdict(set)
         for row, entry in zip(rows.tolist(), part.to_pylist()):
             values = self._values(row, entry, gaia)
-            if (
-                values["letter"] is None
-                and not entry["label"]
-                and not any(values[name] is not None for name in STAR_VALUES)
-            ):
-                self.counts["entries with no value of their own"] += 1
+            named = values["letter"] is not None or bool(entry["label"])
+            if not named and row not in in_drawn:
+                self.counts["entries that no source names, in no drawn pair"] += 1
+                if any(values[name] is not None for name in STAR_VALUES):
+                    self.counts[
+                        "entries that no source names, in no drawn pair, with values"
+                    ] += 1
                 continue
             number = entry["node"]
             place = f"#{row - self.first_member[number] + 1}"
@@ -717,17 +764,55 @@ class Drawer:
             out["member"].append(row)
             out["number"].append(number)
             out["tag"].append(tag)
+            out["pair_letter"].append(False)
+            out["own_name"].append(_own_name(entry))
             for name, value in values.items():
                 out[name].append(value)
             self.counts[f"held stars of {entry['source'] or 'no source'} entries"] += 1
+            self.counts[
+                "held stars that a source names"
+                if named
+                else "held stars that no source names, of drawn pairs"
+            ] += 1
+            if row in in_drawn:
+                self.counts["held stars of drawn pairs"] += 1
             for source in {values[f"{n}_source"] for n in STAR_VALUES} - {
                 None,
                 entry["source"],
             }:
                 self.counts[f"held stars with values from {source}"] += 1
+        self._pair_letters(out)
         return pa.table(
             {name: out[name] for name in HELD_STARS.names}, schema=HELD_STARS
         )
+
+    def _pair_letters(self, out: dict[str, list]) -> None:
+        """A or B for each held star of a pair that no source gives a letter:
+        A for the heavier star, else for the first member, and the other
+        letter when the other member has A or B."""
+        at = {row: i for i, row in enumerate(out["member"])}
+        given = list(out["letter"])
+        members = self.systems.members
+        for i, (row, number) in enumerate(zip(out["member"], out["number"])):
+            pair = self.pairs.get(number)
+            if given[i] is not None or pair is None:
+                continue
+            other = pair.second if row == pair.first else pair.first
+            if other in at:
+                theirs, their_mass = given[at[other]], out["mass"][at[other]]
+            else:
+                entry = members.slice(other, 1).to_pylist()[0]
+                theirs, their_mass = _source_letter(entry), entry["mass"]
+            mine = out["mass"][i]
+            if theirs in PAIR_LETTERS:
+                letter = PAIR_LETTERS[1 - PAIR_LETTERS.index(theirs)]
+            elif mine is not None and their_mass is not None and mine != their_mass:
+                letter = PAIR_LETTERS[0 if mine > their_mass else 1]
+            else:
+                letter = PAIR_LETTERS[0 if row == pair.first else 1]
+            out["letter"][i] = letter
+            out["pair_letter"][i] = True
+            self.counts["held stars with a letter of their pair"] += 1
 
     def _gaia_masses(self) -> dict[int, float]:
         """The Gaia DR3 mass of each member of a pair with a Gaia orbit."""
@@ -773,10 +858,7 @@ class Drawer:
             if paper and pair is not None and pair.reference
             else []
         )
-        labels = [v.get("label") for _, v in given] + [entry["letter"], entry["label"]]
-        values["letter"] = next(
-            (found for text in labels if (found := _letter(text))), None
-        )
+        values["letter"] = _source_letter(entry, [v.get("label") for _, v in given])
         return values
 
 
@@ -794,7 +876,7 @@ def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
             if (found := drawer.orbit(number, pair)) is not None:
                 rows.append(found)
     orbits = pa.Table.from_pylist(rows, schema=PAIR_ORBITS)
-    held = drawer.held()
+    held = drawer.held(orbits["number"].to_pylist())
     counts = drawer.counts
     centred = orbits["barycentre"].is_valid().to_numpy(zero_copy_only=False)
     counts["pairs drawn about their barycentre"] = int(centred.sum())

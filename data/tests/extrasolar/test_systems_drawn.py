@@ -2,6 +2,7 @@
 stars that the nodes hold."""
 
 from collections import Counter
+from collections.abc import Iterable
 
 import numpy as np
 import pyarrow as pa
@@ -13,6 +14,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.systems import assemble, drawn, elements, orbits
 from space_map_data.extrasolar.systems.assemble import Systems
+from space_map_data.extrasolar.systems.ingest import held_names
 from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
 from space_map_data.extrasolar.systems.prepare import Inputs
 from tests.extrasolar.systems_fakes import (
@@ -26,12 +28,14 @@ from tests.extrasolar.systems_fakes import (
 
 
 def _systems(
-    nodes: list[dict], members: list[dict], orbit_keys: tuple[int, ...] = ()
+    nodes: list[dict],
+    members: list[dict],
+    orbit_keys: tuple[int, ...] = (),
+    points: Iterable[dict] = (),
 ) -> Systems:
     empty = [
         schema.empty_table()
         for schema in (
-            assemble.POINTS,
             assemble.ABSORBED,
             assemble.DISTANCES,
             assemble.HOSTS,
@@ -43,6 +47,7 @@ def _systems(
     return Systems(
         pa.Table.from_pylist(nodes, schema=assemble.NODES),
         pa.Table.from_pylist(members, schema=assemble.MEMBERS),
+        pa.Table.from_pylist(list(points), schema=assemble.POINTS),
         *empty,
         Counter(),
         np.array(orbit_keys, np.int64),
@@ -112,6 +117,29 @@ def kepler_16() -> Systems:
                 ("Kepler-16", "A", 0.69),
                 ("Kepler-16 B", "", 0.2025),
             )
+        ],
+        orbit_keys=(20,),
+    )
+
+
+def gaia_pair(masses: tuple[float | None, float | None]) -> Systems:
+    """A point that holds two stars that only its Gaia orbit gives."""
+    return _systems(
+        [
+            {
+                "node": 1,
+                "key": 20,
+                "point": True,
+                "ra": 289.076,
+                "dec": 51.757,
+                "distance": 75.3,
+                "root": 1,
+                "depth": 0,
+            }
+        ],
+        [
+            {"node": 1, "kind": assemble.ENTRY, "source": GAIA_ORBITS, "mass": mass}
+            for mass in masses
         ],
         orbit_keys=(20,),
     )
@@ -382,30 +410,194 @@ class TestMassRatio:
         assert found.counts["msc: masses of pairs in no tree"] == 1
 
 
-class TestHeldStars:
-    """An entry with a value of its own is a held star."""
+def _entry(**values) -> dict:
+    return {"node": 1, "kind": assemble.ENTRY} | values
 
-    def test_a_letter_or_a_value(self):
-        systems = _systems(
-            [{"node": 1, "key": 30, "point": True, "ra": 1.0, "dec": 2.0}],
+
+def _held(
+    members: list[dict], drawn_pairs: tuple[int, ...] = ()
+) -> tuple[pa.Table, Counter]:
+    systems = _systems(
+        [{"node": 1, "key": 30, "point": True, "ra": 1.0, "dec": 2.0}], members
+    )
+    drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+    return drawer.held(drawn_pairs), drawer.counts
+
+
+class TestHeldStars:
+    """An entry that a source names, or a member of a drawn pair, is a held
+    star."""
+
+    def test_a_name_or_a_letter(self):
+        held, counts = _held(
             [
-                {"node": 1, "kind": assemble.ENTRY, "source": "gaia-dr3-orbits"},
+                _entry(source=GAIA_ORBITS),
+                _entry(source=GAIA_ORBITS, mass=0.5),
+                _entry(source="wds", letter="B", label="B"),
+                _entry(source="wds", letter="B", label="B"),
+                _entry(source="simbad", label="HD 27028A"),
+                _entry(
+                    source="planet-catalogues",
+                    letter="PSR B1620-26",
+                    label="PSR B1620-26",
+                ),
+            ]
+        )
+        rows = held.to_pylist()
+        assert [(h["member"], h["tag"], h["letter"], h["own_name"]) for h in rows] == [
+            (2, "B", "B", None),
+            (3, "B #4", "B", None),
+            (4, "HD 27028A", "A", "HD 27028A"),
+            (5, "PSR B1620-26", None, "PSR B1620-26"),
+        ]
+        assert not any(h["pair_letter"] for h in rows)
+        # The Gaia masses of an entry give it no ID.
+        assert counts["entries that no source names, in no drawn pair"] == 2
+        assert (
+            counts["entries that no source names, in no drawn pair, with values"] == 1
+        )
+        assert counts["held stars that a source names"] == 4
+
+    def test_a_simbad_name(self):
+        held, _ = _held([_entry(source="simbad", letter="A", label="* phi And A")])
+        assert held["own_name"].to_pylist() == ["Phi Andromedae A"]
+
+    def test_the_letters_of_the_wds_and_the_msc_as_they_stand(self):
+        held, _ = _held(
+            [
+                _entry(source="msc", letter="Aab", label="Aab"),
+                _entry(source="wds", letter="S17", label="S17"),
+            ]
+        )
+        assert held["letter"].to_pylist() == ["Aab", "S17"]
+
+    def test_a_drawn_pair_the_heavier_star_is_a(self):
+        members = [
+            _entry(source=GAIA_ORBITS, mass=0.5),
+            _entry(source=GAIA_ORBITS, mass=0.7),
+        ]
+        assert _held(members)[0].num_rows == 0
+        held, counts = _held(members, (1,))
+        assert held["letter"].to_pylist() == ["B", "A"]
+        assert held["pair_letter"].to_pylist() == [True, True]
+        assert counts["held stars that no source names, of drawn pairs"] == 2
+        assert counts["held stars of drawn pairs"] == 2
+        assert counts["held stars with a letter of their pair"] == 2
+
+    def test_with_no_masses_the_first_member_is_a(self):
+        held, _ = _held([_entry(source=GAIA_ORBITS), _entry(source=GAIA_ORBITS)], (1,))
+        assert held["letter"].to_pylist() == ["A", "B"]
+
+    def test_the_letter_that_the_other_member_leaves(self):
+        """A planet catalogue names the primary as the system, and gives B a
+        letter."""
+        held, _ = _held(
+            [
+                _entry(
+                    source="planet-catalogues",
+                    letter="K2-136",
+                    label="K2-136",
+                    mass=0.1,
+                ),
+                _entry(
+                    source="planet-catalogues",
+                    letter="K2-136 B",
+                    label="K2-136 B",
+                    mass=0.7,
+                ),
+            ]
+        )
+        rows = held.to_pylist()
+        assert [(h["letter"], h["pair_letter"], h["own_name"]) for h in rows] == [
+            ("A", True, "K2-136"),
+            ("B", False, "K2-136 B"),
+        ]
+
+    def test_a_star_beside_an_entry(self):
+        held, _ = _held(
+            [
                 {
                     "node": 1,
-                    "kind": assemble.ENTRY,
-                    "source": "gaia-dr3-orbits",
-                    "mass": 0.5,
+                    "kind": assemble.STAR,
+                    "key": 40,
+                    "letter": "A",
+                    "label": "A",
                 },
-                {"node": 1, "kind": assemble.ENTRY, "letter": "B", "label": "B"},
-                {"node": 1, "kind": assemble.ENTRY, "letter": "B", "label": "B"},
+                _entry(source=GAIA_ORBITS, mass=2.0),
+            ],
+            (1,),
+        )
+        assert held.to_pylist()[0]["letter"] == "B"
+
+    def test_the_stars_of_a_drawn_gaia_orbit(self):
+        elements_table = pa.Table.from_pylist([KEPLER_16_GAIA])
+        found = drawn.draw(
+            gaia_pair((0.67, 0.19)),
+            Inputs(orbit_elements=elements_table),
+            FakeResolver({}, []),
+        )
+        assert found.orbits.num_rows == 1
+        assert found.held["letter"].to_pylist() == ["A", "B"]
+
+    def test_a_gaia_orbit_that_is_not_drawn_holds_no_star(self):
+        orbit = KEPLER_16_GAIA | {"nss_solution_type": "SB1", "arg_periastron": 10.0}
+        found = drawn.draw(
+            gaia_pair((0.67, 0.19)),
+            Inputs(orbit_elements=pa.Table.from_pylist([orbit])),
+            FakeResolver({}, []),
+        )
+        assert found.orbits.num_rows == 0 and found.held.num_rows == 0
+
+
+class TestHeldNames:
+    """A held star's own name, else its root's name and its letter, else its
+    pair's name and A or B."""
+
+    def test_names(self):
+        held_columns = ("number", "letter", "pair_letter", "own_name")
+        systems = _systems(
+            [
+                # Castor, with B a point that holds Ba and Bb.
+                {"node": 1, "key": 0, "root": 1},
+                {"node": 2, "key": 50, "point": True, "root": 1},
+                # A point of a Gaia pair inside Castor, and one of its own.
+                {"node": 3, "key": 60, "point": True, "root": 1},
+                {"node": 4, "key": 70, "point": True, "root": 4},
+                # A point with no name.
+                {"node": 5, "key": 80, "point": True, "root": 5},
+            ],
+            [],
+            points=[
+                {"key": 50, "name": "Alpha Geminorum B"},
+                {"key": 60, "name": "HD 99"},
+                {"key": 70, "name": "K2-136"},
+                {"key": 80, "name": None},
             ],
         )
-        found = drawn.draw(systems, Inputs(), FakeResolver({}, []))
-        held = found.held.to_pylist()
-        assert [(h["member"], h["tag"], h["letter"]) for h in held] == [
-            (1, "#2", None),
-            (2, "B", "B"),
-            (3, "B #4", "B"),
+        rows = [
+            (2, "Ba", False, None),
+            (3, "A", True, None),
+            (4, "A", True, "K2-136"),
+            (4, "B", False, "K2-136 B"),
+            (4, "C", False, "PSR B1620-26"),
+            (5, "A", True, None),
         ]
-        assert held[0]["mass_source"] == "gaia-dr3-orbits"
-        assert found.counts["entries with no value of their own"] == 1
+        held = pa.Table.from_pylist(
+            [dict(zip(held_columns, row)) for row in rows],
+            schema=pa.schema([drawn.HELD_STARS.field(name) for name in held_columns]),
+        )
+        counts: Counter = Counter()
+        assert held_names(systems, held, {1: "Castor"}, counts) == [
+            "Castor Ba",
+            "HD 99 A",
+            "K2-136 A",
+            "K2-136 B",
+            "PSR B1620-26",
+            None,
+        ]
+        assert counts == {
+            "held stars named by their root and letter": 1,
+            "held stars named by their pair and A or B": 2,
+            "held stars named by their source": 2,
+            "held stars with no name": 1,
+        }
