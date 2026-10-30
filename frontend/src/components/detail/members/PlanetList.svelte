@@ -10,6 +10,7 @@
 	import { extrasolarObjectId, planetObjectId } from '$lib/fetch/extrasolar/ids';
 	import type { Planet, PlanetSystem } from '$lib/fetch/extrasolar/planets';
 	import { formatUnit, sigFigures } from '$lib/format/quantities';
+	import { localName } from '$lib/format/name';
 	import { formatDays } from '../sections/planet/planet-rows';
 	import { targetClick, targetHref, type LinkTarget } from '$lib/state/focus-link';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -55,10 +56,11 @@
 		{#each planets as planet (planet.number)}
 			{@const a = figure(planet, 'semi_major_axis')}
 			{@const period = figure(planet, 'period')}
+			{@const name = localName(planet)}
 			<MemberRow
-				name={planet.name}
+				{name}
 				tile={planet.letter ?? String(planet.number)}
-				{...link({ id: planetObjectId(planet.host, planet.number) }, planet.name)}
+				{...link({ id: planetObjectId(planet.host, planet.number) }, name)}
 				valuesClass="tabular-nums"
 			>
 				<span>
@@ -75,7 +77,7 @@
 {#snippet hostRows()}
 	<ul class="flex flex-col">
 		{#each others as host (host.id)}
-			{@const name = host.name ?? String(host.id)}
+			{@const name = localName(host) ?? String(host.id)}
 			<MemberRow {name} {...link({ id: extrasolarObjectId(host.id) }, name)}>
 				<span class="text-muted-foreground">
 					{m.exoplanet_planet_count({ count: host.planets.length })}

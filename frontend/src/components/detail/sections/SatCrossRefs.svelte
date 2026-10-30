@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import type {
-		EntityRef,
-		FragmentOf,
-		GlobalObjectData,
-		LocalizedObjectData
+	import {
+		localizeLink,
+		type EntityRef,
+		type FragmentOf,
+		type GlobalObjectData,
+		type LocalizedObjectData
 	} from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements, PositionedBody } from '$lib/types/objects';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -132,14 +133,15 @@
 	// What is carrying it. More specific than the mission it belongs to — and
 	// the two would say nearly the same thing — so it outranks the affiliation.
 	let carriedByRef = $derived.by<CrossRef | null>(() => {
-		const carrier = global?.carried_by;
+		const carrier = global?.carried_by && localizeLink(global.carried_by, localized);
 		if (!carrier) return null;
 		return { label: m.carried_by(), display: carrier.name, ref: fragmentRef(carrier) };
 	});
 
 	// What the craft belongs to: its mission, else the constellation it flies in.
 	let affiliationRef = $derived.by<CrossRef | null>(() => {
-		const mission = global?.mission ?? global?.part_of_mission;
+		const link = global?.mission ?? global?.part_of_mission;
+		const mission = link && localizeLink(link, localized);
 		if (mission) return { label: m.mission(), display: mission.name, ref: fragmentRef(mission) };
 		const con = localized?.constellation;
 		if (con) return { label: m.group_type_constellation(), display: con.name, ref: con };

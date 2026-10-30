@@ -14,7 +14,6 @@
 	import { COMPARABLES } from '$lib/compare/comparables';
 	import { rocketBySlug, rocketsCompareHref } from '$lib/compare/rockets';
 	import { bodyHref } from '$lib/state/page-href';
-	import type { LabelMap } from '$lib/fetch/position/labels';
 	import PageContents, { type ContentsEntry } from '../nav/PageContents.svelte';
 	import ObjectTable from './ObjectTable.svelte';
 	import {
@@ -40,11 +39,9 @@
 
 	interface Props {
 		data: AboutData;
-		/** Names in the language of the reader, by object id. */
-		labels: LabelMap;
 	}
 
-	let { data, labels }: Props = $props();
+	let { data }: Props = $props();
 
 	/** One row of a table. The meaning of its figures is that of the header
 	 *  above it. */
@@ -71,9 +68,9 @@
 		children?: Line[];
 	}
 
-	/** The name of a body in the language of the reader, else its English one. */
+	/** The name of a row in the language of the reader, else its global one. */
 	function named(id: string | undefined, fallback: string): string {
-		return (id && labels.get(id)?.name) || fallback;
+		return (id && data.names[getLocale()]?.[id]) || fallback;
 	}
 
 	const sum = $derived(totals(data));
@@ -118,7 +115,9 @@
 	};
 
 	function systemName(system: DataSystem): string {
-		return system.name === null ? m.credits_other_bodies() : named(system.primary_id, system.name);
+		return system.id === null || system.name === null
+			? m.credits_other_bodies()
+			: named(system.id, system.name);
 	}
 
 	function kindName(kind: string): string {

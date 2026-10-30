@@ -1273,6 +1273,7 @@
 					<ProbeTimeline
 						objectId={focusedProbeId}
 						name={appState.view.name || focusedProbeId}
+						localized={selectedBody?.data.hasLocalized}
 						{clock}
 					/>
 				</div>

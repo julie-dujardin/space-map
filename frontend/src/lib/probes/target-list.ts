@@ -36,6 +36,19 @@ export function targetObjectId(target: EntityRef): string | undefined {
 		: undefined;
 }
 
+/** `items` with each target under its name in the language of `linkNames`,
+ *  the `link_names` of the craft's localized entry. */
+export function localizeTargets(
+	items: readonly ProbeEvent[],
+	linkNames: Record<string, string> | undefined
+): ProbeEvent[] {
+	return items.map((event) => {
+		const id = event.target && targetObjectId(event.target);
+		const name = id && linkNames?.[id];
+		return name ? { ...event, target: { ...event.target!, name } } : event;
+	});
+}
+
 const ORBIT_CLOSERS = new Set(['orbit_departure', 'reentry', 'atmospheric_entry', 'landing']);
 
 function activityLines(events: ProbeEvent[]): ActivityLine[] {

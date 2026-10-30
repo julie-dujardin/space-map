@@ -63,6 +63,18 @@ describe('bodyDataFromGlobal', () => {
 		expect(row.visibleFromDays).toBeUndefined();
 	});
 
+	it('takes the name of the page, and none for an object whose only name is its id', () => {
+		const named = (global: string, localized?: string) =>
+			({
+				global: { name: global, type: 'moon', orbit: KEPLER, coverage: ALWAYS },
+				localized: localized === undefined ? null : { name: localized }
+			}) as unknown as ObjectDetailData;
+		expect(bodyDataFromGlobal('naif-610', named('Janus', 'Ianus'))!.name).toBe('Ianus');
+		expect(bodyDataFromGlobal('naif-610', named('Janus'))!.name).toBe('Janus');
+		expect(bodyDataFromGlobal('naif-55524', named('naif-55524'))!.name).toBeNull();
+		expect(pageOnlyBodyData('naif-55524', named('naif-55524'))!.name).toBeNull();
+	});
+
 	it('builds a row for a parabolic comet, which has no semi-major axis to give', () => {
 		const row = bodyDataFromGlobal(
 			'spkid-1000598',

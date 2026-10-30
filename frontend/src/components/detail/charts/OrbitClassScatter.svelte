@@ -11,6 +11,7 @@
 	import { scaleLinear, scaleLog } from 'd3-scale';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatNumber } from '$lib/format/quantities';
+	import { localName } from '$lib/format/name';
 	import {
 		ORBIT_ZONES,
 		PLANET_A_REFS,
@@ -350,7 +351,7 @@
 					{#each focusedDots as d (d.s.name + d.s.slug)}
 						<circle
 							role="img"
-							aria-label={d.s.name}
+							aria-label={localName(d.s)}
 							cx={d.px}
 							cy={d.py}
 							r={1.8}
@@ -362,7 +363,7 @@
 					{#each phaDots as d (d.s.name + d.s.slug)}
 						<circle
 							role="img"
-							aria-label={d.s.name}
+							aria-label={localName(d.s)}
 							cx={d.px}
 							cy={d.py}
 							r={2}
@@ -461,7 +462,7 @@
 					})}
 				</div>
 			{:else}
-				<div class="font-semibold">{tip.sample.name}</div>
+				<div class="font-semibold">{localName(tip.sample)}</div>
 				{@const tipT =
 					tip.sample.a != null && tip.sample.i != null
 						? tisserand(tip.sample.a, tip.sample.e, tip.sample.i)

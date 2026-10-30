@@ -197,19 +197,42 @@ describe('loadObjectSeo', () => {
 		});
 	});
 
-	it('names the page of a barycenter after the system of its primary', async () => {
+	it('names the page of a barycenter as the export does', async () => {
 		stubExport({
 			...EXPORT,
 			'/v1/objects/__global__/0.json.gz': () =>
-				gz({
-					'naif-5': { name: 'Jupiter Barycenter', type: 'barycenter' },
-					'naif-599': { name: 'Jupiter', type: 'planet' }
-				})
+				gz({ 'naif-5': { name: 'Jupiter system', type: 'barycenter' } })
 		});
 		expect(await loadObjectSeo('naif-5', request('/b/5'))).toMatchObject({
 			title: 'Jupiter system - Space Map',
 			canonical: `${ORIGIN}/b/5/Jupiter%20system`
 		});
+	});
+
+	it('names the host of a moon and the mission of a craft in the language', async () => {
+		stubExport({
+			...EXPORT,
+			'/v1/metadata.json': () => Response.json({ object_bundles: { global: 1, en: 1, fr: 1 } }),
+			'/v1/objects/__global__/0.json.gz': () =>
+				gz({
+					'naif-501': { name: 'Io', type: 'moon', parent_name: 'Jupiter' },
+					'probe-150': {
+						name: 'Huygens',
+						type: 'spacecraft',
+						part_of_mission: { name: 'Cassini–Huygens', primary_id: 'mission-cassini' }
+					}
+				}),
+			'/v1/objects/fr/0.json.gz': () =>
+				gz({
+					'naif-501': { parent_name: 'Jupiter (planète)' },
+					'probe-150': { link_names: { 'mission-cassini': 'Cassini-Huygens' } }
+				})
+		});
+		configureHost({ dataUrl: DATA, locale: () => 'fr' });
+		const io = await loadObjectSeo('naif-501', request('/b/501'));
+		expect(io?.description).toContain('Jupiter (planète)');
+		const huygens = await loadObjectSeo('probe-150', request('/o/probe-150'));
+		expect(huygens?.description).toContain('Cassini-Huygens');
 	});
 
 	it('is null for an object the export does not hold', async () => {
@@ -443,8 +466,19 @@ describe('loadPlanetSeo', () => {
 	const PULSAR: PlanetSystem = {
 		token: TOKEN,
 		system: 1091633172,
-		hosts: [{ ...ALPHA_CEN.hosts[0], id: 1091633172, name: 'PSR B0943+10', planets: [1, 2] }],
-		planets: [planet(1091633172, 1, null), planet(1091633172, 2, null)]
+		hosts: [
+			{
+				...ALPHA_CEN.hosts[0],
+				id: 1091633172,
+				name: 'PSR B0943+10',
+				names: { ru: 'PSR B0943+10 (пульсар)' },
+				planets: [1, 2]
+			}
+		],
+		planets: [
+			{ ...planet(1091633172, 1, null), names: { ru: 'PSR B0943+10 (пульсар) b' } },
+			planet(1091633172, 2, null)
+		]
 	};
 	const FILES: Record<string, unknown> = {
 		'planets/index.json.gz': INDEX,
@@ -488,6 +522,20 @@ describe('loadPlanetSeo', () => {
 		// The second star of a system file has pages of its own.
 		const toliman = await loadPlanetSeo(564339647, 1, planetRequest('/x/564339647/b/1'));
 		expect(toliman).toMatchObject({ seo: { title: 'Planet 564339647 1 - Space Map' } });
+	});
+
+	it('names the planet and its star in the language of the request', async () => {
+		stubPlanets();
+		configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'site-only', locale: () => 'ru' });
+		const page = await loadPlanetSeo(1091633172, 1, planetRequest('/x/1091633172/b/1'));
+		expect(page).toMatchObject({
+			kind: 'page',
+			seo: {
+				title: 'PSR B0943+10 (пульсар) b - Space Map',
+				canonical: `${ORIGIN}/x/1091633172/b/1/${encodeURIComponent('PSR B0943+10 (пульсар) b')}`
+			}
+		});
+		expect(page?.kind === 'page' && page.seo.description).toContain('PSR B0943+10 (пульсар)');
 	});
 
 	it("sends an alias number to its live planet's page, query and all", async () => {

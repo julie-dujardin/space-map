@@ -5,34 +5,17 @@
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import { fetchGroupIndex } from '$lib/fetch/groups/registry';
 import {
-	memberEntryKey,
+	localizeLink,
 	type NotableMemberEntry,
 	type ObjectDetailData
 } from '$lib/fetch/objects/object-data';
 import type { GroupDetailData } from '$lib/fetch/groups/details';
+import { systemMemberNames } from '../members/member-link';
 import type { AppState } from '$lib/state/app-state.svelte';
 import type { CategoryConfig } from '$lib/state/category-config';
 import { groupHref, tabHref } from '$lib/state/focus-link';
-import { targetVisits, type TargetVisit } from '$lib/probes/target-list';
+import { localizeTargets, targetVisits, type TargetVisit } from '$lib/probes/target-list';
 import * as m from '$lib/paraglide/messages.js';
-import { systemTitle } from '$lib/state/page-name';
-
-/** A planetary system's member is labelled by its primary; the page reads it
- *  as "<primary> system", the name its own page carries. Built over every
- *  entry, since English carries no localized map at all. */
-function systemNames(
-	members: NotableMemberEntry[] | undefined,
-	names: Record<string, string> | undefined,
-	cat: CategoryConfig
-): Record<string, string> | undefined {
-	if (!cat.satelliteSystems || !members) return names;
-	return Object.fromEntries(
-		members.map((mm) => {
-			const key = memberEntryKey(mm);
-			return [key, systemTitle(key, names?.[key] ?? mm.name)];
-		})
-	);
-}
 
 export interface MembersStateDeps {
 	isGroupMode: () => boolean;
@@ -133,11 +116,9 @@ export class MembersState {
 		);
 		this.memberNames = $derived(
 			d.isGroupMode()
-				? systemNames(
-						d.groupDetail()?.global?.notable_members,
-						d.groupDetail()?.localized?.notable_member_names,
-						d.cat()
-					)
+				? d.cat().satelliteSystems
+					? systemMemberNames(d.groupDetail()?.global?.notable_members, d.groupDetail()?.localized)
+					: d.groupDetail()?.localized?.notable_member_names
 				: this.satellitesGroup
 					? {
 							...d.data()?.localized?.notable_moon_names,
@@ -211,7 +192,10 @@ export class MembersState {
 		this.notableFragments = $derived(d.isGroupMode() ? undefined : d.data()?.global?.fragments);
 		this.fragmentNames = $derived(d.data()?.localized?.fragment_names);
 		this.fragmentTotal = $derived(d.data()?.global?.fragment_count ?? 0);
-		this.fragmentOf = $derived(d.isGroupMode() ? undefined : d.data()?.global?.fragment_of);
+		this.fragmentOf = $derived.by(() => {
+			const link = d.isGroupMode() ? undefined : d.data()?.global?.fragment_of;
+			return link && localizeLink(link, d.data()?.localized);
+		});
 		const hasFragments = $derived(!!this.notableFragments && this.notableFragments.length > 0);
 		this.showFragmentsTab = $derived(hasFragments && this.fragmentTotal > STRIP_CAPACITY);
 
@@ -219,13 +203,15 @@ export class MembersState {
 		const missionMemberNames = $derived(d.data()?.localized?.mission_member_names);
 		const missionMemberTotal = $derived(d.data()?.global?.mission_member_count ?? 0);
 		const hasMissionMembers = $derived(!!this.missionMembers && this.missionMembers.length > 0);
-		const seeAllMissionMembersHref = $derived.by(() => {
+		const missionLink = $derived.by(() => {
 			const link = d.data()?.global?.mission;
-			return link ? groupHref(d.appState(), link.primary_id, link.name) : undefined;
+			return link && localizeLink(link, d.data()?.localized);
 		});
+		const seeAllMissionMembersHref = $derived(
+			missionLink ? groupHref(d.appState(), missionLink.primary_id, missionLink.name) : undefined
+		);
 		const seeAllMissionMembers = () => {
-			const link = d.data()?.global?.mission;
-			if (link) d.appState()?.setGroup(link.primary_id, link.name);
+			if (missionLink) d.appState()?.setGroup(missionLink.primary_id, missionLink.name);
 		};
 
 		// A collection lists the probes sent to any of its members; a body lists
@@ -316,7 +302,11 @@ export class MembersState {
 		});
 
 		this.targetVisits = $derived(
-			d.isGroupMode() ? [] : targetVisits(d.data()?.global?.events?.items ?? [])
+			d.isGroupMode()
+				? []
+				: targetVisits(
+						localizeTargets(d.data()?.global?.events?.items ?? [], d.data()?.localized?.link_names)
+					)
 		);
 		this.targetsStrip = $derived.by(() => {
 			if (this.targetVisits.length === 0) return null;

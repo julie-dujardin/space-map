@@ -12,8 +12,10 @@ export interface SolarSystemMapObject {
 	/** Object.id — routing/focus id and localized-name key. */
 	id: string;
 	qid: string | null;
-	/** English fallback; overridden by the localized name where available. */
+	/** The global name of the body's page; `names` holds the other languages
+	 *  where they differ. Read with `localName`. */
 	name: string;
+	names?: Record<string, string>;
 	kind: 'star' | 'planet' | 'dwarf' | 'asteroid' | 'moon';
 	/** Semi-major axis [AU] — log x position (moons inherit their planet's). */
 	a: number;

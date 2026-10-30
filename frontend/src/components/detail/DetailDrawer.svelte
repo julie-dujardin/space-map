@@ -49,8 +49,6 @@
 	import { isLaunchSiteSlug } from '$lib/travel/launch-pad';
 	import { orbitZoneTarget } from '$lib/travel/orbit-zone-target';
 	import { parentCrumb, type Crumb } from '$lib/state/breadcrumb';
-	import { fetchPageName } from '$lib/state/page-name';
-	import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
 	import {
@@ -194,35 +192,8 @@
 		return () => window.removeEventListener('resize', update);
 	});
 
-	// The system file names a planet's star in English; its page, and so its
-	// label on the map, may go by another name in the reader's language.
-	let hostPage = $derived(
-		focusable.kind === 'planet' ? extrasolarObjectId(focusable.anchor.hostRecord.id) : null
-	);
-	let hostName = $state<{ id: string; name: string } | null>(null);
-	$effect(() => {
-		const id = hostPage;
-		if (id === null) return;
-		let live = true;
-		fetchPageName({ kind: 'body', id }).then(
-			(name) => {
-				if (live && name) hostName = { id, name };
-			},
-			() => {}
-		);
-		return () => {
-			live = false;
-		};
-	});
 	let crumb = $derived(
-		parentCrumb(
-			focusable,
-			ctx,
-			data,
-			groupDetail?.global ?? null,
-			surface.featureType,
-			hostName && hostName.id === hostPage ? hostName.name : null
-		)
+		parentCrumb(focusable, ctx, data, groupDetail?.global ?? null, surface.featureType)
 	);
 
 	let fallbackName = $derived(focusableFallbackName(focusable));
@@ -233,12 +204,7 @@
 		ctx: () => ctx
 	});
 
-	let resolvedName = $derived(
-		(planetarySystem.isSystemPage ? planetarySystem.systemName : undefined) ??
-			data?.localized?.name ??
-			data?.global?.name ??
-			fallbackName
-	);
+	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
 	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
 
 	// Flip to minimize well before the maximize target distance, so fly-to
@@ -498,7 +464,6 @@
 		{load}
 		{gallery}
 		{surface}
-		{members}
 		{lineup}
 		{planetarySystem}
 		{traverse}
@@ -571,7 +536,12 @@
 
 {#snippet solarSystemPanel()}
 	{#if planetsDetail?.global}
-		<SolarSystemPanel global={planetsDetail.global} {members} {lineup} />
+		<SolarSystemPanel
+			global={planetsDetail.global}
+			localized={planetsDetail.localized}
+			{members}
+			{lineup}
+		/>
 	{/if}
 {/snippet}
 

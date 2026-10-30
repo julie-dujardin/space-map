@@ -119,7 +119,12 @@
 	<SolarSystemMassChart />
 {/if}
 {#if moonCounts && moonCounts.length > 0}
-	<CountPerBodyChart entries={moonCounts} title={m.group_moons_per_planet()} tab="members" />
+	<CountPerBodyChart
+		entries={moonCounts}
+		title={m.group_moons_per_planet()}
+		tab="members"
+		names={groupDetail?.localized?.body_names}
+	/>
 {/if}
 {#if probeTargets && probeTargets.length > 0}
 	<CountPerBodyChart entries={probeTargets} title={m.group_targets_title()} names={targetNames} />

@@ -4,6 +4,7 @@
  * split every other drawer link does.
  */
 import { memberEntryKey, type NotableMemberEntry } from '$lib/fetch/objects/object-data';
+import type { LocalizedGroupData } from '$lib/fetch/groups/details';
 import { formatQuantity } from '$lib/format/quantities';
 
 /** The row's label: the locale's override, else the exported English name.
@@ -14,6 +15,28 @@ export function memberDisplayName(
 	localizedNames?: Record<string, string>
 ): string {
 	return localizedNames?.[memberEntryKey(entry)] ?? entry.name;
+}
+
+/** The members of the Satellite Systems page by the names of their own pages
+ *  ("Jupiter system"), as an override map over every entry: their `name` is
+ *  the planet's, which older clients read, and English has no localized map.
+ *  An export without system names leaves the planets' names. */
+export function systemMemberNames(
+	members: NotableMemberEntry[] | undefined,
+	localized: LocalizedGroupData | null | undefined
+): Record<string, string> | undefined {
+	if (!members) return localized?.notable_member_names;
+	return Object.fromEntries(
+		members.map((entry) => {
+			const key = memberEntryKey(entry);
+			const name =
+				localized?.member_system_names?.[key] ??
+				entry.system_name ??
+				localized?.notable_member_names?.[key] ??
+				entry.name;
+			return [key, name];
+		})
+	);
 }
 
 /** The right-hand column of a member row, as text. */

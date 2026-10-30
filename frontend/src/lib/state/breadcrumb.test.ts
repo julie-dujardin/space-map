@@ -4,7 +4,8 @@
  * climbs to the Surface Features category.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { configureHost } from '$lib/host';
 import { PROPERTY_COLLECTION_SLUGS } from './category-config';
 import { parentCrumb } from './breadcrumb';
 import {
@@ -17,6 +18,8 @@ import type { Focusable } from './focusable';
 import { ALPHA_CEN } from '$lib/scene/exoplanets/__fixtures__/system';
 
 const MOON = { data: { id: 'naif-301', name: 'Moon' } } as never;
+
+afterEach(() => configureHost({}));
 
 function featureFocusable(): Focusable {
 	return { kind: 'feature', body: MOON, feature: { featureId: 1 } as never };
@@ -173,5 +176,82 @@ describe('parentCrumb: planets of other stars', () => {
 			label: 'Star 564339647',
 			target: { kind: 'focus', id: 'x-564339647', name: 'Star 564339647' }
 		});
+	});
+
+	it("names the star as its system file does in the reader's language", () => {
+		configureHost({ locale: () => 'ru' });
+		const p = ALPHA_CEN.planets[0];
+		const anchor = {
+			host: p.host,
+			number: p.number,
+			system: ALPHA_CEN.system,
+			planet: p,
+			hostRecord: { ...ALPHA_CEN.hosts[0], names: { ru: 'Проксима Центавра' } }
+		};
+		const crumb = parentCrumb({ kind: 'planet', body: MOON, anchor }, undefined, null, null);
+		expect(crumb?.label).toBe('Проксима Центавра');
+	});
+});
+
+describe('parentCrumb: the pages a body links to', () => {
+	function body(id: string, objectType: ObjectType, parentId = ''): Focusable {
+		return { kind: 'body', body: { data: { id, name: id, objectType, parentId } } } as never;
+	}
+
+	it('climbs from a moon to the planet its bundle names, past the barycenter', () => {
+		const detail = {
+			global: { id: 'naif-501', name: 'Io', type: 'moon', parent_name: 'Jupiter' },
+			localized: { parent_name: 'Юпитер' }
+		} as never;
+		const crumb = parentCrumb(body('naif-501', ObjectType.MOON, 'naif-5'), undefined, detail, null);
+		expect(crumb).toEqual({
+			label: 'Юпитер',
+			target: { kind: 'focus', id: 'naif-599', name: 'Юпитер', tab: 'members' }
+		});
+	});
+
+	it('names the moon host by the body it links to while the bundle loads', () => {
+		const bodies: Record<string, { data: { id: string; name: string } }> = {
+			'naif-5': { data: { id: 'naif-5', name: 'Jupiter system' } },
+			'naif-599': { data: { id: 'naif-599', name: 'Jupiter' } }
+		};
+		const ctx = (ids: string[]) =>
+			({ getBody: (id: string) => (ids.includes(id) ? bodies[id] : undefined) }) as never;
+		const io = body('naif-501', ObjectType.MOON, 'naif-5');
+		expect(parentCrumb(io, ctx(['naif-5', 'naif-599']), null, null)?.target).toEqual({
+			kind: 'focus',
+			id: 'naif-599',
+			name: 'Jupiter',
+			tab: 'members'
+		});
+		// The planet is culled: the barycenter's name would label a link to the
+		// planet, so the crumb waits for the bundle.
+		expect(parentCrumb(io, ctx(['naif-5']), null, null)).toBeNull();
+	});
+
+	it('names a mission and a carrier by the names of their pages in the language', () => {
+		const mission = {
+			name: 'Cassini–Huygens',
+			primary_type: 'group',
+			primary_id: 'mission-cassini'
+		};
+		const carrier = { name: 'Cassini', primary_type: 'object', primary_id: 'probe-82' };
+		const probe = body('probe-150', ObjectType.SPACECRAFT);
+		const localized = { link_names: { 'mission-cassini': 'Кассини — Гюйгенс' } };
+		const inMission = parentCrumb(
+			probe,
+			undefined,
+			{ global: { part_of_mission: mission }, localized } as never,
+			null
+		);
+		expect(inMission?.label).toBe('Кассини — Гюйгенс');
+		const carried = parentCrumb(
+			probe,
+			undefined,
+			{ global: { carried_by: carrier, part_of_mission: mission }, localized } as never,
+			null
+		);
+		// No name of its own in the language: the global name of the link.
+		expect(carried?.label).toBe('Cassini');
 	});
 });

@@ -157,6 +157,7 @@ describe('totals', () => {
 		});
 		const data: AboutData = {
 			generated_at: '2026-10-13T18:00:00+00:00',
+			names: {},
 			worlds: 12,
 			objects: [
 				{ id: 'asteroid', count: 4, size_bytes: 300, localized: {}, sources: [] },

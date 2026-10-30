@@ -21,15 +21,6 @@ const DOMAIN: [number, number] = [0.3, 50];
 const TICKS = [0.3, 1, 3, 10, 30];
 export const SUN_COLOR = '#ffdd44';
 
-/** Strip a leading minor-planet designation ("50000 Quaoar" → "Quaoar") and
- *  tidy ALL-CAPS catalogue names. */
-export function displayName(name: string): string {
-	const stripped = name.replace(/^\d+\s+/, '');
-	if (stripped === stripped.toUpperCase() && /[A-Z]/.test(stripped))
-		return stripped.charAt(0) + stripped.slice(1).toLowerCase();
-	return stripped;
-}
-
 export function solarColor(o: { id: string; color?: string | null }): string {
 	return o.color || BODY_COLORS[o.id] || DEFAULT_BODY_COLOR;
 }

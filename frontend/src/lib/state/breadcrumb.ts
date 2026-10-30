@@ -4,9 +4,10 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
+import { localizeLink, type ObjectDetailData } from '$lib/fetch/objects/object-data';
+import { localName } from '$lib/format/name';
 import type { GlobalGroupData } from '$lib/fetch/groups/details';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType } from '$lib/types/objects';
 import { SSB_ID, dominantPlanetId } from '$lib/constants';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import {
@@ -39,18 +40,25 @@ import { UrlType, type DrawerTab } from './view';
  *  data/constants/earth_sats/featured.py. */
 const EARTH_ID = 'naif-399';
 
-/** A moon's real parent: the dominant planet (not its nameless barycenter),
- *  or the host body directly (e.g. the asteroid an asteroid-moon orbits). */
-export function parentPlanet(
+/** A moon's host page: the planet for a planet's moon (not the barycenter),
+ *  else the host body (the asteroid an asteroid moon orbits). The moon's
+ *  bundle names it; the resident body with that id names it while the bundle
+ *  loads, so the label and the link name one page. A host culled from the
+ *  scene keeps its link, so the crumb does not blink out. */
+export function moonHost(
 	ctx: ContextManager | undefined,
-	parentId: string
-): PositionedBody | undefined {
-	const planetId = dominantPlanetId(parentId);
-	if (planetId) {
-		const planet = ctx?.getBody(planetId);
-		if (planet) return planet;
-	}
-	return ctx?.getBody(parentId);
+	parentId: string,
+	detail: ObjectDetailData | null
+): { id: string; name: string | undefined } {
+	const id = dominantPlanetId(parentId) ?? parentId;
+	return {
+		id,
+		name:
+			detail?.localized?.parent_name ??
+			detail?.global?.parent_name ??
+			ctx?.getBody(id)?.data.name ??
+			undefined
+	};
 }
 
 export type CrumbTarget =
@@ -97,9 +105,7 @@ export function parentCrumb(
 	ctx: ContextManager | undefined,
 	detail: ObjectDetailData | null,
 	groupGlobal: GlobalGroupData | null,
-	featureType: { slug: string; label: string } | null = null,
-	/** A planet's star by the name of its own page, once that is read. */
-	hostName: string | null = null
+	featureType: { slug: string; label: string } | null = null
 ): Crumb | null {
 	// A surface feature climbs to its type's collection page; its host body is
 	// one of the two cross-ref tiles instead. Falls back to the body while the
@@ -165,7 +171,7 @@ export function parentCrumb(
 	if (focusable.kind === 'star') return null;
 	if (focusable.kind === 'planet') {
 		const host = focusable.anchor.hostRecord;
-		const name = hostName ?? host.name ?? String(host.id);
+		const name = localName(host) ?? String(host.id);
 		return { label: name, target: { kind: 'focus', id: extrasolarObjectId(host.id), name } };
 	}
 
@@ -186,25 +192,23 @@ export function parentCrumb(
 	if (data.objectType === ObjectType.BARYCENTER)
 		return categoryCrumb(data.id === SSB_ID ? CAT_SOLAR_SYSTEM : CAT_SATELLITE_SYSTEMS);
 
-	// Moon (planetary or small-body) → its parent (planet, not the barycenter;
+	// Moon (planetary or small-body) → its host (planet, not the barycenter;
 	// or the host asteroid). Must precede the URL-type branches: small-body
 	// moons carry spkid- ids and would otherwise resolve to an orbit-class zone.
-	// Prefer the resident body (localized name, barycenter→planet remap); fall
-	// back to the bundle's host name + raw parentId when the host has been
-	// culled from the scene, so the crumb doesn't blink out (focus reloads it).
 	if (data.objectType === ObjectType.MOON) {
-		const parent = parentPlanet(ctx, data.parentId);
-		const id = parent?.data.id ?? data.parentId;
-		const name = parent?.data.name ?? detail?.global?.parent_name;
+		const { id, name } = moonHost(ctx, data.parentId, detail);
 		// Land on the parent's Moons tab so the moon's siblings are in view. A
 		// moon the catalogue names no host for has nowhere to climb to.
 		return name && id ? { label: name, target: { kind: 'focus', id, name, tab: 'members' } } : null;
 	}
 
+	const localized = detail?.localized;
+
 	// Split-comet fragment → its parent comet, or the family group when the
 	// intact body isn't catalogued. Precedes the small-body branch: a fragment
 	// carries a spkid- id and would otherwise resolve to its orbit-class zone.
-	const fragmentOf = detail?.global?.fragment_of;
+	const fragmentOf =
+		detail?.global?.fragment_of && localizeLink(detail.global.fragment_of, localized);
 	if (fragmentOf) {
 		return fragmentOf.primary_type === 'group'
 			? {
@@ -225,7 +229,7 @@ export function parentCrumb(
 
 	// A carried craft → the carrier whose position it borrows (Huygens → the
 	// Cassini orbiter), not the mission that holds them both.
-	const carriedBy = detail?.global?.carried_by;
+	const carriedBy = detail?.global?.carried_by && localizeLink(detail.global.carried_by, localized);
 	if (carriedBy?.primary_type === 'object') {
 		return {
 			label: carriedBy.name,
@@ -235,7 +239,8 @@ export function parentCrumb(
 
 	// Probe in a mission → the mission group page (primary craft and members
 	// alike). Precedes the Probes-category fallback below.
-	const missionLink = detail?.global?.mission ?? detail?.global?.part_of_mission;
+	const mission = detail?.global?.mission ?? detail?.global?.part_of_mission;
+	const missionLink = mission && localizeLink(mission, localized);
 	if (missionLink) {
 		return {
 			label: missionLink.name,

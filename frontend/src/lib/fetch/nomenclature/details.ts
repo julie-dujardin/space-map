@@ -37,6 +37,8 @@ export interface FeatureGlobalData {
 	/** Spatial children — features physically inside this one
 	 *  (Wikidata P706 + bbox/radius derivation, minus SF children). */
 	contains?: EntityRef[];
+	// The three lists above name each feature by the global name of its page;
+	// `feature_names` of the localized entry has the other languages.
 	wikidata?: {
 		length?: QuantityWithUnit;
 		width?: QuantityWithUnit;
@@ -57,8 +59,13 @@ export interface FeatureLocalizedData {
 	instance_of?: EntityRef[];
 	named_after?: EntityRef[];
 	/** Spatial parents — features/bodies this one is inside (Wikidata P706 +
-	 *  P361 + bbox/radius derivation, minus its IAU SF parent). */
+	 *  P361 + bbox/radius derivation, minus its IAU SF parent), by the names
+	 *  of their pages in this language, sorted by them. */
 	inside_of?: EntityRef[];
+	/** Feature id → the name in this language of a feature that the global
+	 *  `parent_feature`, `satellite_features` or `contains` names, where it
+	 *  differs from the global name. Read with `localizeFeatures`. */
+	feature_names?: Record<string, string>;
 	/** IAU quadrangle this feature sits in. ``wikipedia`` is the sitelink
 	 *  for the loaded language when its QID is in
 	 *  ``constants/quadrangle_refs.py`` and the entity has been downloaded. */
@@ -73,6 +80,18 @@ export interface FeatureLocalizedData {
 }
 
 export type FeatureDetailData = BundlePair<FeatureGlobalData, FeatureLocalizedData>;
+
+/** The features of a global list, by their names in the language of
+ *  `localized`. */
+export function localizeFeatures(
+	refs: readonly EntityRef[],
+	localized: FeatureLocalizedData | null | undefined
+): EntityRef[] {
+	return refs.map((ref) => {
+		const name = ref.secondary_id && localized?.feature_names?.[ref.secondary_id];
+		return name ? { ...ref, name } : ref;
+	});
+}
 
 /** Bucket id = key under which the writer stored the per-feature entry. */
 export function featureBucketKey(bodyId: string, featureId: number): string {

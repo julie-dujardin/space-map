@@ -5,6 +5,7 @@
 import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
 import { FEATURE_TYPE_SLUG_PREFIX, isFamilySlug } from '$lib/fetch/groups/registry';
 import { categoryLabel, familyLabel } from '$lib/format/group';
+import { localName } from '$lib/format/name';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PlanetAnchor, PositionedBody } from '$lib/types/objects';
 import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
@@ -51,15 +52,15 @@ export function focusableKey(f: Focusable): string {
 	return f.body.data.id;
 }
 
-/** Header fallback while the detail bundle is loading. Nameless bodies show
- *  the bare catalog number, not the prefixed Object.id. Orbit-class and flag
- *  group labels are bundled, so those resolve without the detail fetch. */
+/** Header fallback while the detail bundle is loading. A body with no name
+ *  shows its id, as its page does. Orbit-class and flag group labels are
+ *  bundled, so those resolve without the detail fetch. */
 export function focusableFallbackName(f: Focusable): string {
 	if (f.kind === 'feature') return f.feature.name;
 	if (f.kind === 'group') return groupSlugLabel(f.slug);
 	if (f.kind === 'star') return f.record.metadata.name ?? String(f.record.id);
-	if (f.kind === 'planet') return f.anchor.planet.name;
-	return f.body.data.name ?? bodyIdNumber(f.body.data.id);
+	if (f.kind === 'planet') return localName(f.anchor.planet);
+	return f.body.data.name ?? f.body.data.id;
 }
 
 /** Bundled label for a group slug: orbit classes and NEO/PHA flags resolve
@@ -77,9 +78,4 @@ export function groupSlugLabel(slug: string): string {
 	}
 	if (isFamilySlug(slug)) return familyLabel(slug);
 	return categoryLabel(slug);
-}
-
-function bodyIdNumber(id: string): string {
-	const dash = id.indexOf('-');
-	return dash === -1 ? id : id.slice(dash + 1);
 }

@@ -66,7 +66,11 @@ export interface PlanetCrossId {
 
 export interface PlanetHost {
 	id: number;
+	/** The global name of the host's page; `names` holds the other languages
+	 *  where they differ. Read with `localName`. Null for a star system that
+	 *  the Metadata table names no name. */
 	name: string | null;
+	names: Record<string, string>;
 	name_source: string | null;
 	class: string | null;
 	cross_ids: PlanetCrossId[];
@@ -97,7 +101,11 @@ export interface Planet {
 	number: number;
 	/** The object bundles hold an entry for it, under its scene id. */
 	object: boolean;
+	/** The global name of the planet's page, with an entry or without one;
+	 *  `names` holds the other languages where they differ. Read with
+	 *  `localName`. `designation` keeps the catalogue name. */
 	name: string;
+	names: Record<string, string>;
 	name_source: string | null;
 	designation: string | null;
 	letter: string | null;

@@ -1,6 +1,6 @@
 /**
  * Per-language promoted-set fetcher. The map's keys are the auto-promote
- * set; values carry the display name and per-body flags.
+ * set; values carry the name of each body's page and per-body flags.
  *
  * Line format: `{id}\x1f{name}\x1f{flags}`. Flags is a single-character
  * set; `m` marks a body as *minor* (collapsed halo by default).
@@ -15,7 +15,8 @@ const US = '\x1f';
 
 export interface LabelEntry {
 	name: string;
-	/** True for designation-only moons — render as a collapsed halo by default. */
+	/** True for a moon with no IAU name and a minor probe: a collapsed halo by
+	 *  default. */
 	isMinor: boolean;
 }
 
@@ -29,10 +30,9 @@ export function parseLabels(text: string): Map<string, LabelEntry> {
 		if (sep1 === -1) continue; // malformed/blank line
 		const id = line.slice(0, sep1);
 		const rest = line.slice(sep1 + 1);
-		// Empty names (`{id}\x1f\x1f{flags}`) are kept on purpose: the exporter
-		// emits them for curated promoted bodies that have no Wikidata or DB
-		// name, and the renderer keys auto-promote on the map. Callers that
-		// read `name` should coalesce `''` → fallback themselves.
+		// An empty name (`{id}\x1f\x1f{flags}`) is an object whose only name is
+		// its id, which gets no label. It stays a key: the renderer keys
+		// auto-promote on the map. Callers that read `name` coalesce `''`.
 		const sep2 = rest.indexOf(US);
 		const name = sep2 === -1 ? rest : rest.slice(0, sep2);
 		const flags = sep2 === -1 ? '' : rest.slice(sep2 + 1);

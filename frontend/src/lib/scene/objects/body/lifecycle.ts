@@ -150,7 +150,7 @@ export function buildMajorBodies(
 
 		const variant = getLabelVariant(body);
 		const isLarge = hasLargeLabel(body);
-		// Curated frontend list ∪ data-driven `m` flag for designation-only moons.
+		// Curated frontend list ∪ data-driven `m` flag (moons with no IAU name).
 		const isMinor = isHalfPromoted || MINOR_PROMOTED_IDS.has(id) || body.data.isMinor === true;
 		const label = createLabel(
 			color,

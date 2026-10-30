@@ -2,7 +2,7 @@
 	import Link from './kit/Link.svelte';
 	import { getContext, untrack } from 'svelte';
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
-	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
+	import { localizeFeatures, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { formatDegrees, formatQuantity } from '$lib/format/quantities';
 	import { formatApprovalDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages.js';
@@ -32,6 +32,11 @@
 	let glb = $derived(detail?.global);
 	let wd = $derived(detail?.global?.wikidata);
 	let loc = $derived(detail?.localized);
+	let parentFeature = $derived(
+		glb?.parent_feature ? localizeFeatures([glb.parent_feature], loc) : []
+	);
+	let contains = $derived(localizeFeatures(glb?.contains ?? [], loc));
+	let satelliteFeatures = $derived(localizeFeatures(glb?.satellite_features ?? [], loc));
 
 	let diameterText = $derived.by(() => {
 		if (!feature.diameterM || feature.diameterM <= 0) return null;
@@ -182,9 +187,9 @@
 			<EntityLinks entities={loc.named_after} />
 		</Row>
 	{/if}
-	{#if glb?.parent_feature}
+	{#if parentFeature.length}
 		<Row label={m.feature_parent_feature()}>
-			<EntityLinks entities={[glb.parent_feature]} />
+			<EntityLinks entities={parentFeature} />
 		</Row>
 	{/if}
 	{#if loc?.quadrangle}
@@ -208,14 +213,14 @@
 			<EntityLinks entities={loc.inside_of} />
 		</Row>
 	{/if}
-	{#if glb?.contains?.length}
+	{#if contains.length}
 		<Row label={m.feature_contains()}>
-			<EntityLinks entities={glb.contains} />
+			<EntityLinks entities={contains} />
 		</Row>
 	{/if}
-	{#if glb?.satellite_features?.length}
+	{#if satelliteFeatures.length}
 		<Row label={m.feature_satellite_features()}>
-			<EntityLinks entities={glb.satellite_features} />
+			<EntityLinks entities={satelliteFeatures} />
 		</Row>
 	{/if}
 </Section>

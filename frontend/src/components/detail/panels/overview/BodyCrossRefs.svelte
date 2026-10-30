@@ -17,7 +17,7 @@
 	import type { Planet } from '$lib/fetch/extrasolar/planets';
 	import { CAT_SOLAR_SYSTEM, STAR_FAMILY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
-	import { parentPlanet } from '$lib/state/breadcrumb';
+	import { moonHost } from '$lib/state/breadcrumb';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import type { MembersState } from '../../state/members-state.svelte';
@@ -71,8 +71,10 @@
 	let isPlanetBody = $derived(body?.data.objectType === ObjectType.PLANET);
 	let isDwarfPlanetBody = $derived(body?.data.objectType === ObjectType.DWARF_PLANET);
 	let isMoonBody = $derived(body?.data.objectType === ObjectType.MOON);
-	// A moon's host planet (resolved past the nameless barycenter) for its tile.
-	let moonParent = $derived(isMoonBody && body ? parentPlanet(ctx, body.data.parentId) : undefined);
+	// A moon's host (the planet, past the barycenter) for its tile.
+	let moonParent = $derived(
+		isMoonBody && body ? moonHost(ctx, body.data.parentId, data) : undefined
+	);
 	let isStarBody = $derived(body?.data.objectType === ObjectType.STAR);
 	// A planetary barycenter stands for its whole system, so it cross-refs the
 	// primary and the moon list rather than the barycenter's own (empty) pages.
@@ -153,8 +155,8 @@
 	/>
 {:else if isMoonBody}
 	<MoonGroupLinks
-		parentId={moonParent?.data.id ?? body?.data.parentId}
-		parentName={moonParent?.data.name ?? data?.global?.parent_name}
+		parentId={moonParent?.id}
+		parentName={moonParent?.name}
 		systemId={planetarySystem.systemId ?? undefined}
 		system={planetarySystem.system ?? undefined}
 		systemName={planetarySystem.systemName}

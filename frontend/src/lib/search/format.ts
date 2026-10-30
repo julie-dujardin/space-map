@@ -7,6 +7,7 @@ import { categoryLabel, groupNameMessage } from '$lib/format/group';
 import {
 	localizedDescription,
 	localizedName,
+	planetHostName,
 	type GroupHit,
 	type SearchHit
 } from '$lib/search/client';
@@ -105,7 +106,10 @@ export function secondaryText(hit: SearchHit, resolve: HitLabelResolvers): strin
 	if (hit.kind === 'pad') return hit.site_name;
 	// A planet of another system names its star, a star of one its planets.
 	if (hit.kind === 'planet') {
-		return m.search_secondary_orbiting({ type: typeLabel(slug(hit.class)), parent: hit.host_name });
+		return m.search_secondary_orbiting({
+			type: typeLabel(slug(hit.class)),
+			parent: planetHostName(hit, getLocale())
+		});
 	}
 	if (hit.extrasolar) {
 		return m.search_secondary_planet_host({

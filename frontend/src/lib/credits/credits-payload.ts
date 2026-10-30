@@ -11,6 +11,7 @@ import type { CreditFields } from './imagery-layers';
  *  array it sits in — `textures`, `rings`, … — matching `export/credits.py`. */
 export interface BodyCredit {
 	body_id: string;
+	/** The global name of the body's page; `Credits.names` has the others. */
 	name: string;
 	source: string;
 	organisation: string;
@@ -27,6 +28,8 @@ export interface BodyCredit {
  */
 export interface SystemGroup {
 	id: string | null;
+	/** The global name of the primary planet's page; `Credits.names` has the
+	 *  others, by the system's `id`. */
 	name: string | null;
 	textures?: BodyCredit[];
 	rings?: BodyCredit[];
@@ -103,6 +106,10 @@ export const REFERENCE_SECTIONS = [
 ] as const satisfies readonly { key: ReferenceSection; label: () => string }[];
 
 export interface Credits extends Partial<Record<ReferenceSection, Reference[]>> {
+	/** Language → system `id` or `body_id` → its name in that language, where
+	 *  it differs from the global one. Optional: the app can deploy before the
+	 *  export that writes it, and then the global names show. */
+	names?: Record<string, Record<string, string>>;
 	systems: SystemGroup[];
 	ephemeris_archives: EphemerisArchive[];
 	models?: ModelCatalog[];

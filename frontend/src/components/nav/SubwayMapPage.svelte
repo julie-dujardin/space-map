@@ -31,7 +31,7 @@
 	import { DEFAULT_TRIP, serializeTripSuffix, type EndpointMode } from '$lib/travel/trip';
 	import { ensureVehicles, vehicleCatalogue } from '$lib/travel/vehicles';
 	import { canDepartFrom, EMPTY_MANIFEST, type Vehicle } from '$lib/math/travel';
-	import { systemTitle } from '$lib/state/page-name';
+	import { planetSystemId } from '$lib/constants';
 	import type { SubwayPageData } from '../../routes/nav/+page';
 
 	interface Props {
@@ -46,6 +46,13 @@
 
 	function name(id: string): string {
 		return names[id] ?? id;
+	}
+
+	/** A system of several bodies by the name of its page: a planet's is its
+	 *  barycenter's. */
+	function systemName(id: string): string {
+		const system = planetSystemId(id);
+		return (system && names[system]) || name(id);
 	}
 
 	// The catalogue is fetched here rather than in the loader: a link can name a
@@ -392,7 +399,7 @@
 							class="size-2.5 rounded-full"
 							style="background: {data.colors[labelId] ?? 'currentColor'}"
 						></span>
-						{system.members.length > 1 ? systemTitle(system.id, name(system.id)) : name(labelId)}
+						{system.members.length > 1 ? systemName(system.id) : name(labelId)}
 					</label>
 				</div>
 				{#if open && system.members.length > 1}

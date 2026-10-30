@@ -12,6 +12,7 @@ export function host(id: number, planets: number[]): PlanetHost {
 	return {
 		id,
 		name: `Star ${id}`,
+		names: {},
 		name_source: null,
 		class: 'star',
 		cross_ids: [],
@@ -61,6 +62,7 @@ export function planet(
 		number: n,
 		object: false,
 		name: `Planet ${hostId} ${n}`,
+		names: {},
 		name_source: null,
 		designation: null,
 		letter: null,

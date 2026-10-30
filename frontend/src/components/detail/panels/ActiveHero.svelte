@@ -27,7 +27,6 @@
 	import type { GalleryState } from '../state/gallery-state.svelte';
 	import type { SurfaceState } from '../state/surface-state.svelte';
 	import type { TraverseState } from '../state/traverse-state.svelte';
-	import type { MembersState } from '../state/members-state.svelte';
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
 	import type { PlanetarySystemState } from '../charts/planetary-system.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -41,7 +40,6 @@
 		gallery: GalleryState;
 		surface: SurfaceState;
 		traverse: TraverseState;
-		members: MembersState;
 		lineup: LineupHero;
 		planetarySystem: PlanetarySystemState;
 		/** Badges of a page that has no detail bundle to read them from. */
@@ -57,7 +55,6 @@
 		gallery,
 		surface,
 		traverse,
-		members,
 		lineup,
 		planetarySystem,
 		badges
@@ -117,7 +114,7 @@
 {/snippet}
 
 {#snippet solarSystemMapSnippet()}
-	<SolarSystemMap ariaLabel={fallbackName} localizedNames={members.memberNames} />
+	<SolarSystemMap ariaLabel={fallbackName} />
 {/snippet}
 
 {#snippet planetarySystemMapSnippet()}

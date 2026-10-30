@@ -64,9 +64,10 @@ export interface RideMarkers {
  * bolted on. Through the handover it has already let go — only the archive's
  * grid still points at the carrier, and that is not something to caption.
  *
- * `sceneName` names a craft the way its own label does, which is the name the
- * credit should repeat; the bundle's spelling ("Cassini Orbiter" against the
- * label's "Cassini") stands in only for a carrier that isn't in the scene.
+ * `sceneName` names a craft the way its own label does, in the reader's
+ * language, which is the name the credit should repeat. The global name of
+ * the bundle's link stands in only for a carrier that isn't in the scene: the
+ * boot waits on this bundle, and not on the localized one.
  */
 export function planRideMarkers(
 	rides: Iterable<Ride>,

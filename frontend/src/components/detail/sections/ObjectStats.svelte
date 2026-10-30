@@ -63,7 +63,7 @@
 	let isEarthSat = $derived(global?.celestrak?.orbit_center === 'earth');
 
 	// The body a moon's elements are measured from: its parent, with a system
-	// barycenter (no radius, no usable name) resolved to the dominant planet.
+	// barycenter (no radius) resolved to the dominant planet.
 	// Planets borrow their barycenter's heliocentric elements, so they stay on
 	// the Sun-relative branch.
 	let primary = $derived.by(() => {

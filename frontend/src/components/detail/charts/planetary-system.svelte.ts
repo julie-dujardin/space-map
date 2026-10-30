@@ -15,7 +15,6 @@ import { iauAngles } from '$lib/math/orientation';
 import { nutPrecFor } from '$lib/fetch/systems-global';
 import { dateToJD } from '$lib/time/jd';
 import { BODY_COLORS, DEFAULT_BODY_COLOR, dominantPlanetId } from '$lib/constants';
-import { systemTitle } from '$lib/state/page-name';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { resolveBodyColor } from '$lib/body-color';
 import { buildLineup, geometryFromMember } from './lineup';
@@ -142,8 +141,8 @@ export class PlanetarySystemState {
 	readonly systemId: string | null;
 	/** True only on the barycenter's own page, which the system map heroes. */
 	readonly isSystemPage: boolean;
-	/** "<primary> system" — the name the drawer titles this page with, in place
-	 *  of the SPICE "<primary> Barycenter" the 3D labels keep. */
+	/** The name of the barycenter's page ("Jupiter system"), as its label in
+	 *  the scene has it. */
 	readonly systemName: string | undefined;
 	/** Moons found per year in this system, for the discovery chart. Undefined
 	 *  where no moon carries a discovery year — the Moon has none. */
@@ -158,14 +157,13 @@ export class PlanetarySystemState {
 			const id = this.systemId;
 			return id ? (dominantPlanetId(id) ?? undefined) : undefined;
 		});
-		// Named off the primary's own bundle, so it does not wait on the moons the
-		// map needs — Mercury and Venus are systems too, they just have no moons.
+		// The barycenter is in the scene whenever its id is known: a planet or a
+		// moon resolves it off its resident parent.
 		this.systemName = $derived.by(() => {
-			const planetId = this.primaryId;
-			if (!planetId) return undefined;
-			const detail = this.#primary?.global?.id === planetId ? this.#primary : null;
-			const primary = detail?.localized?.name ?? detail?.global?.name;
-			return primary ? systemTitle(planetId, primary) : undefined;
+			void this.#version;
+			const id = this.systemId;
+			const name = id ? d.ctx()?.getBody(id)?.data.name : undefined;
+			return name || undefined;
 		});
 
 		this.system = $derived.by<PlanetarySystem | null>(() => {

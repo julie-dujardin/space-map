@@ -144,11 +144,18 @@
 			: m.model_provenance_lightcurve();
 	}
 
+	/** The observing spacecraft by its label, which is in the reader's
+	 *  language; the credit has its global name for a craft not in the scene. */
+	function missionName(mission: { id: string; name: string }): string {
+		return ctx.getBody(mission.id)?.data.name ?? mission.name;
+	}
+
 	// Deep-link to the observing spacecraft's page; the mesh isn't worth flying to.
-	function missionHref(id: string): string | undefined {
+	function missionHref(mission: { id: string; name: string }): string | undefined {
 		if (!appState) return undefined;
+		const { id } = mission;
 		return serializeUrl(
-			applyFocus(appState.view, { type: urlTypeFromId(id), id, name: bodyName(id) })
+			applyFocus(appState.view, { type: urlTypeFromId(id), id, name: missionName(mission) })
 		);
 	}
 
@@ -276,11 +283,11 @@
 								{provenanceLabel(focusedModel)}
 								{#if focusedModel.mission}
 									· <a
-										href={missionHref(focusedModel.mission.id)}
+										href={missionHref(focusedModel.mission)}
 										onclick={(e) =>
-											openMission(e, focusedModel.mission!.id, focusedModel.mission!.name)}
+											openMission(e, focusedModel.mission!.id, missionName(focusedModel.mission!))}
 										class="text-foreground hover:underline underline-offset-2"
-										>{focusedModel.mission.name}</a
+										>{missionName(focusedModel.mission)}</a
 									>
 								{/if}
 								{#if focusedModel.archive}

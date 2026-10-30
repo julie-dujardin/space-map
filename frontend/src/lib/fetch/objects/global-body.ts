@@ -38,6 +38,13 @@ function parseOrbitalSource(name: string | undefined): OrbitalSource {
 	return ORBIT_SOURCE_BY_NAME[name] ?? OrbitalSource.UNKNOWN;
 }
 
+/** The name of the object's page, as the labels file has it: null for an
+ *  object whose only name is its id, which gets no label. */
+function labelName(id: string, detail: ObjectDetailData): string | null {
+	const name = detail.localized?.name ?? detail.global?.name;
+	return name && name !== id ? name : null;
+}
+
 /** SGP4 rows (Earth satellites) are only good near their epoch, so they
  *  carry a validity window the propagation gate hides them outside of, until
  *  the real chunk overwrites it. Keplerian/parabolic orbits have no cutoff. */
@@ -90,22 +97,14 @@ export function bodyDataFromGlobal(id: string, detail: ObjectDetailData): BodyDa
 					revAtEpoch: orbit.rev_at_epoch ?? 0
 				}
 			: undefined;
-	const satrec = omm ? (buildSatrec(omm, global.name ?? undefined) ?? undefined) : undefined;
+	const satrec = omm ? (buildSatrec(omm, global.name) ?? undefined) : undefined;
 	// The row from a position file carries the launch or discovery gate. A
 	// body built from the bundle takes it from the start of its coverage.
 	const coverageStart = global.coverage?.windows[0]?.[0];
 
 	return {
 		id,
-		// Prefer the localized (Wikidata-resolved) long form so the 3D label matches
-		// what the element chunk would produce via resolve_name; global.name is the
-		// raw short form (e.g. CelesTrak "IRIDIUM 33 DEB") and only a last resort.
-		name:
-			detail.localized?.name ??
-			global.name ??
-			global.sbdb_primary_designation ??
-			global.provisional_designation ??
-			null,
+		name: labelName(id, detail),
 		objectType: parseObjectType(global.type),
 		parentId: orbit.parent_id,
 		radiusKm: global.sbdb?.diameter ? global.sbdb.diameter / 2 : NaN,
@@ -139,12 +138,7 @@ export function pageOnlyBodyData(id: string, detail: ObjectDetailData): BodyData
 	if (!global) return null;
 	return {
 		id,
-		name:
-			detail.localized?.name ??
-			global.name ??
-			global.sbdb_primary_designation ??
-			global.provisional_designation ??
-			null,
+		name: labelName(id, detail),
 		objectType: parseObjectType(global.type),
 		// The body it sits at or orbits, when the catalogue names one.
 		parentId: global.host_id ?? '',

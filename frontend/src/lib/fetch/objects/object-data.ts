@@ -147,6 +147,9 @@ export type ProbeVisitKind =
 export interface NotableMemberEntry {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */
 	name: string;
+	/** Satellite Systems only: the name of the system's page ("Jupiter
+	 *  system"). `name` there is the planet's, which older clients read. */
+	system_name?: string;
 	/** Full Object.id for focus/routing (e.g. "spkid-2000004", "naif-502").
 	 *  Absent when the entry is a group (see `group`). */
 	id?: string;
@@ -482,10 +485,11 @@ export interface ValueReference {
 export interface GlobalObjectData {
 	id: string;
 	type: string;
-	name?: string;
-	/** Host display name, present on moons only — lets the breadcrumb label the
-	 *  parent even when its body isn't resident in the scene (small-body hosts
-	 *  get culled by the streaming loader once focus moves on). */
+	/** The global name of the page; its id for an object with no name. */
+	name: string;
+	/** Moons only: the global name of the host's page, which for a planet's
+	 *  moon is the planet, not the barycenter. Names the host when its body is
+	 *  not in the scene. The localized entry has the other languages. */
 	parent_name?: string;
 	/** Moons: the measured surface colour, a hue at a luminance of the V-band
 	 *  geometric albedo. Small bodies carry theirs under `sbdb.color`. */
@@ -862,11 +866,22 @@ export interface GlobalObjectData {
 }
 
 export interface FragmentOf {
+	/** The global name of the linked page; `link_names` of the localized entry
+	 *  has the other languages. */
 	name: string;
 	primary_type: 'object' | 'group';
 	/** Parent Object.id ("object") or family group slug ("group"). */
 	primary_id: string;
 	thumbnail?: PickedThumbnail;
+}
+
+/** `link` under its name in the language of `localized`. */
+export function localizeLink<T extends { name: string; primary_id: string }>(
+	link: T,
+	localized: LocalizedObjectData | null | undefined
+): T {
+	const name = localized?.link_names?.[link.primary_id];
+	return name ? { ...link, name } : link;
 }
 
 /** Shape-model provenance denormalized onto a natural body's global bundle. */
@@ -1323,6 +1338,14 @@ export interface LocalizedObjectData {
 	/** Object.id → localized body label for the targets a system's probe rows
 	 *  name, only where it differs from the global name. */
 	body_names?: Record<string, string>;
+	/** Moons only: the host's name in this language, where it differs from the
+	 *  global `parent_name`. */
+	parent_name?: string;
+	/** The names in this language of the pages this page links to, where they
+	 *  differ from the `name` of the link in the global entry. Keyed by the
+	 *  page id of the link: the Object.id of an object, the slug of a group.
+	 *  Read with `localizeLink`, and an event target with `localizeTargets`. */
+	link_names?: Record<string, string>;
 }
 
 /** What a ring feature is, in nomenclature terms. `division` is the broad

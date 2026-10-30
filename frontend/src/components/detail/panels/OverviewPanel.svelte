@@ -246,7 +246,7 @@
 			</a>
 		{/if}
 		{#if isGroupMode && groupDetail?.global}
-			<GroupStatCards global={groupDetail.global} />
+			<GroupStatCards global={groupDetail.global} localized={groupDetail.localized} />
 		{:else if feature}
 			<FeatureStatCards {feature} detail={load.featureDetail} />
 		{:else if star}

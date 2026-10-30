@@ -65,10 +65,17 @@ export function naifId(objectId: string): number | null {
 }
 
 /** Barycenter → dominant planet id (`naif-{X}` → `naif-{X}99`, SPICE convention),
- *  or null if `id` isn't a barycenter. Barycenters carry no name/frame of their own. */
+ *  or null if `id` isn't a barycenter. Barycenters carry no frame of their own. */
 export function dominantPlanetId(id: string): string | null {
 	const m = /^naif-([1-9])$/.exec(id);
 	return m ? `naif-${m[1]}99` : null;
+}
+
+/** Dominant planet → its system barycenter (`naif-{X}99` → `naif-{X}`), or
+ *  null if `id` isn't the planet of a planetary system. */
+export function planetSystemId(id: string): string | null {
+	const m = /^naif-([1-9])99$/.exec(id);
+	return m ? `naif-${m[1]}` : null;
 }
 
 /**

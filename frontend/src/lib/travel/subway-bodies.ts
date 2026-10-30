@@ -17,7 +17,8 @@ import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import { GM_SUN_KM3_S2, type TravelBody } from '$lib/math/travel';
 import type { SubwayBodies, SubwayBody } from '$lib/math/travel/subway';
 import { AU_KM } from '$lib/math/units';
-import { BODY_COLORS, naifId, SUN_ID } from '$lib/constants';
+import { BODY_COLORS, naifId, planetSystemId, SUN_ID } from '$lib/constants';
+import { fetchLabels, type LabelMap } from '$lib/fetch/position/labels';
 import { resolveBodyColor } from '$lib/body-color';
 import { hasGround, maxRadiusKm, synchronousRadiusKm } from './orbits';
 import { resolveTripBodies } from './resolve';
@@ -202,6 +203,7 @@ export function fetchSubwayCatalogue(ids: readonly string[]): Promise<SubwayCata
 }
 
 async function buildSubwayCatalogue(ids: readonly string[]): Promise<SubwayCatalogue> {
+	const labels = fetchLabels().catch((): LabelMap => new Map());
 	await Promise.all([loadSystemsGlobal(), loadAtmospheres()]);
 	const rows = new Map<string, BodyData>();
 	let pending = [...new Set(ids)];
@@ -230,6 +232,14 @@ async function buildSubwayCatalogue(ids: readonly string[]): Promise<SubwayCatal
 		const row = rows.get(id);
 		names.set(id, detail?.localized?.name ?? detail?.global?.name ?? row?.name ?? id);
 		if (row) colors.set(id, resolveBodyColor(row));
+	}
+	// A planet heads the list of its system under the name of the system's
+	// page, which is its barycenter's label.
+	const systemNames = await labels;
+	for (const id of rows.keys()) {
+		const system = planetSystemId(id);
+		const name = system && systemNames.get(system)?.name;
+		if (name) names.set(system, name);
 	}
 	// The minimap knows sizes the bundles do not, for the far dwarfs.
 	const radii = new Map(

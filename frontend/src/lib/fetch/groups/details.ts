@@ -154,8 +154,8 @@ export interface GlobalGroupData {
 	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
 	discovery_histogram?: Record<string, number>;
 	/** Biggest member by diameter; absent when nothing has a measured size.
-	 *  `spkid` ids need the prefix; `object` ids are already whole (the
-	 *  solar-system categories, ranked from PCK radii rather than SBDB). */
+	 *  The export links the Object.id (`object`). A bare `spkid` needs the
+	 *  prefix: group bundles are unversioned, so a cached one can be older. */
 	largest_body?: {
 		name: string;
 		diameter_km: number;
@@ -294,9 +294,10 @@ export interface GlobalGroupData {
 	/** Oceans: the thickest one. Not what the chart ranks by — that is volume,
 	 *  which a large cold moon wins on area as much as on depth. */
 	deepest_ocean?: BodyRef & { thickness_km: number };
-	/** Volcanism: the bodies caught in the act, by name. A list because four is
-	 *  few enough that a reader wants to know which. */
-	erupting_now?: string[];
+	/** Volcanism: the bodies caught in the act, sorted by global name. A list
+	 *  because four is few enough that a reader wants to know which.
+	 *  `notable_member_names` names them in the language. */
+	erupting_now_refs?: BodyRef[];
 	/** Volcanism / Tidal heating: the body losing the most heat. Io on both. */
 	hottest_body?: BodyRef & { watts: number };
 	/** Volcanism: vents, edifices and thermal sources anyone has mapped. */
@@ -316,8 +317,9 @@ export interface GlobalGroupData {
 	/** Tidal heating: members whose heat budget the tide *is*. */
 	tide_dominant_count?: number;
 	/** Radiation: members a dosimeter has been landed on and read out as a dose
-	 *  to a body, by name. Three of seven, which is the page's first fact. */
-	radiation_measured?: string[];
+	 *  to a body, sorted by global name. Three of seven, which is the page's
+	 *  first fact. `notable_member_names` names them in the language. */
+	radiation_measured_refs?: BodyRef[];
 	/** Radiation: the least irradiated surface. The chart cannot show it — Venus
 	 *  is nine decades under the Moon, so its bar is zero pixels wide. */
 	quietest_surface?: BodyRef & { sv_per_day: number };
@@ -385,6 +387,9 @@ export interface LocalizedGroupData {
 	 *  pictures and its member shelves alike. */
 	image_titles?: Record<string, string>;
 	notable_member_names?: Record<string, string>;
+	/** Satellite Systems only: member id → the name of the system's page in
+	 *  this language, where it differs from `system_name`. */
+	member_system_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
 	notable_member_descriptions?: Record<string, string>;
 	/** Planets only: the text of the Exoplanets tab, from the item exoplanet. */
@@ -396,9 +401,14 @@ export interface LocalizedGroupData {
 	/** probe Object.id → localized label for `probes`, only where it differs. */
 	probe_names?: Record<string, string>;
 	/** Object.id → localized body label: the `feature_bodies` rows on an ft-
-	 *  page, `probe_targets` on the Probes category, and the targets each row
-	 *  of a collection's `probes` list names. */
+	 *  page, `moon_counts` on the Moons category, `probe_targets` on the Probes
+	 *  category, the body of `largest_body`, the planets of `largest_planet`
+	 *  and `most_massive_planet`, and the targets each row of a collection's
+	 *  `probes` list names. */
 	body_names?: Record<string, string>;
+	/** Feature-type pages: the name of `largest_feature` in this language,
+	 *  where it differs from the global one. */
+	largest_feature_name?: string;
 }
 
 export type GroupDetailData = BundlePair<GlobalGroupData, LocalizedGroupData>;

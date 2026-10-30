@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import { sortNames } from '$lib/format/name';
 	import * as m from '$lib/paraglide/messages.js';
 	import StatCardRow from './kit/StatCardRow.svelte';
 	import type { Stat } from './kit/StatCard.svelte';
-	import type { GlobalGroupData } from '$lib/fetch/groups/details';
+	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import {
 		CAT_ASTEROIDS,
 		CAT_COMETS,
@@ -49,10 +50,12 @@
 
 	interface Props {
 		global: GlobalGroupData | null;
+		/** Names the bodies the cards point at in the reader's language. */
+		localized: LocalizedGroupData | null;
 		/** The tab of the Planets page these cards head; the overview without it. */
 		tab?: 'solar-system' | 'exoplanets';
 	}
-	let { global, tab }: Props = $props();
+	let { global, localized, tab }: Props = $props();
 
 	// A row fits three cards. Four cards go in two rows of two. Each family
 	// below names three at most, in this order: how many, the extreme, how it
@@ -69,6 +72,20 @@
 		if (isModifiedClick(e) || !focusFeature) return;
 		e.preventDefault();
 		focusFeature(bodyId, featureId, name);
+	}
+
+	/** A body a card points at, by its name in the reader's language: the
+	 *  bundle names the members of the page, and the bodies of its charts and
+	 *  cards, by Object.id. */
+	function bodyName(ref: { name: string; primary_id: string }): string {
+		const id = ref.primary_id;
+		return localized?.body_names?.[id] ?? localized?.notable_member_names?.[id] ?? ref.name;
+	}
+
+	/** The names of `refs` in the reader's language, in its alphabetical order:
+	 *  the export sorts them by their global names. */
+	function nameList(refs: { name: string; primary_id: string }[]): string {
+		return sortNames(refs.map(bodyName)).join(', ');
 	}
 
 	function ofTotal(n: number, total: number): string | undefined {
@@ -150,20 +167,22 @@
 			largest.primary_type === 'object'
 				? largest.primary_id
 				: `${largest.primary_type}-${largest.primary_id}`;
+		const name = bodyName({ name: largest.name, primary_id: bodyId });
 		return {
 			label: m.group_stat_largest(),
 			value: formatQuantity({ value: largest.diameter_km, unit: 'kilometre' }, true),
-			tooltip: largest.name,
-			href: focusHref(appState, bodyId, largest.name),
-			onClick: focusClick(focusObject, bodyId, largest.name)
+			tooltip: name,
+			href: focusHref(appState, bodyId, name),
+			onClick: focusClick(focusObject, bodyId, name)
 		};
 	}
 
 	/** A planet's page, from a card about it. */
 	function planetLink(ref: { primary_id: string; name: string }) {
+		const name = bodyName(ref);
 		return {
-			href: focusHref(appState, ref.primary_id, ref.name),
-			onClick: focusClick(focusObject, ref.primary_id, ref.name)
+			href: focusHref(appState, ref.primary_id, name),
+			onClick: focusClick(focusObject, ref.primary_id, name)
 		};
 	}
 
@@ -178,7 +197,7 @@
 				{ value: 2 * largest.radius_earth * EARTH_RADIUS_KM, unit: 'kilometre' },
 				true
 			),
-			tooltip: vsEarth ? `${largest.name} — ${vsEarth}` : largest.name,
+			tooltip: vsEarth ? `${bodyName(largest)} — ${vsEarth}` : bodyName(largest),
 			...planetLink(largest)
 		};
 	}
@@ -189,7 +208,7 @@
 		if (!heaviest || !appState) return null;
 		const kg = heaviest.mass_earth * EARTH_MASS_KG;
 		const tooltip = [
-			heaviest.name,
+			bodyName(heaviest),
 			heaviest.mass_kind === 'minimum' ? m.planet_plot_legend_minimum() : undefined,
 			massComparison(kg)
 		].filter(Boolean);
@@ -216,6 +235,7 @@
 	function widestRings(g: GlobalGroupData): Stat | null {
 		const widest = g.widest_rings;
 		if (!widest || !appState) return null;
+		const name = bodyName(widest);
 		return {
 			label: m.group_stat_widest(),
 			// Compact, because the answer is millions of km wide and a card is a
@@ -224,9 +244,9 @@
 				value: formatCompactNumber(widest.span_km),
 				unit: formatUnit('kilometre', true)
 			}),
-			tooltip: `${m.tooltip_group_stat_widest()} — ${widest.name}`,
-			href: focusHref(appState, widest.primary_id, widest.name, 'rings'),
-			onClick: focusClick(focusObject, widest.primary_id, widest.name, { tab: 'rings' })
+			tooltip: `${m.tooltip_group_stat_widest()} — ${name}`,
+			href: focusHref(appState, widest.primary_id, name, 'rings'),
+			onClick: focusClick(focusObject, widest.primary_id, name, { tab: 'rings' })
 		};
 	}
 
@@ -240,12 +260,13 @@
 		lead?: string
 	): Stat | null {
 		if (!ref || !appState) return null;
+		const name = bodyName(ref);
 		return {
 			label,
 			value,
-			tooltip: lead ? `${lead} — ${ref.name}` : ref.name,
-			href: focusHref(appState, ref.primary_id, ref.name, tab),
-			onClick: focusClick(focusObject, ref.primary_id, ref.name, { tab })
+			tooltip: lead ? `${lead} — ${name}` : name,
+			href: focusHref(appState, ref.primary_id, name, tab),
+			onClick: focusClick(focusObject, ref.primary_id, name, { tab })
 		};
 	}
 
@@ -290,12 +311,12 @@
 	/** Caught in the act. The tooltip names them: four is few enough that a
 	 *  reader wants to know which, and the number alone invites the question. */
 	function eruptingNow(g: GlobalGroupData): Stat | null {
-		const erupting = g.erupting_now;
+		const erupting = g.erupting_now_refs;
 		if (!erupting?.length) return null;
 		return {
 			label: m.group_stat_erupting(),
 			value: formatNumber(erupting.length),
-			tooltip: erupting.join(', '),
+			tooltip: nameList(erupting),
 			dot: 'bg-emerald-400'
 		};
 	}
@@ -305,12 +326,12 @@
 	 *  and Earth are the only places a dosimeter has been read out as a dose to
 	 *  a body. Everything else here is a transport code. */
 	function radiationMeasured(g: GlobalGroupData): Stat | null {
-		const measured = g.radiation_measured;
+		const measured = g.radiation_measured_refs;
 		if (!measured?.length) return null;
 		return {
 			label: m.group_stat_radiation_measured(),
 			value: formatNumber(measured.length),
-			tooltip: measured.join(', ')
+			tooltip: nameList(measured)
 		};
 	}
 
@@ -363,14 +384,13 @@
 		if (!largest || !appState) return null;
 		const bodyId = `${largest.primary_type}-${largest.primary_id}`;
 		const featureId = parseInt(largest.secondary_id, 10);
+		const name = localized?.largest_feature_name ?? largest.name;
 		return {
 			label: m.group_stat_largest(),
 			value: formatQuantity({ value: largest.diameter_km, unit: 'kilometre' }, true),
-			tooltip: largest.name,
-			href: serializeUrl(
-				applyFeature(appState.view, { bodyId, featureId, featureName: largest.name })
-			),
-			onClick: (e) => openFeature(bodyId, featureId, largest.name, e)
+			tooltip: name,
+			href: serializeUrl(applyFeature(appState.view, { bodyId, featureId, featureName: name })),
+			onClick: (e) => openFeature(bodyId, featureId, name, e)
 		};
 	}
 

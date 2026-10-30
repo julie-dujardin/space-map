@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { configureHost } from '$lib/host';
 
 const { live, fetchObjectDetail } = vi.hoisted(() => ({
 	live: vi.fn(),
@@ -15,8 +16,11 @@ vi.mock('$lib/fetch/extrasolar/planets', async (importOriginal) => {
 		token: INDEX.token,
 		system: 1091633172,
 		hosts: [],
-		// Its first planet has an object entry.
-		planets: [{ ...planet(1091633172, 1, null), object: true }, planet(1091633172, 2, null)]
+		// Its first planet has an object entry, and a name of its own in Russian.
+		planets: [
+			{ ...planet(1091633172, 1, null), object: true, names: { ru: 'Пульсар b' } },
+			planet(1091633172, 2, null)
+		]
 	};
 	const files: Record<string, unknown> = {
 		'planets/index.json.gz': INDEX,
@@ -46,29 +50,20 @@ const pair = (global: string | undefined, localized?: string) => ({
 	localized: localized === undefined ? null : { name: localized }
 });
 
+afterEach(() => configureHost({}));
+
 describe('objectPageName', () => {
-	it('takes the localized name before the catalogue name', () => {
-		expect(objectPageName('spkid-20177049', pair('2003 EE16', '(177049) 2003 EE16'), null)).toBe(
-			'(177049) 2003 EE16'
-		);
-		expect(objectPageName('spkid-20177049', pair('2003 EE16'), null)).toBe('2003 EE16');
+	it('takes the localized name before the global one', () => {
+		expect(objectPageName(pair('2003 EE16', '(177049) 2003 EE16'))).toBe('(177049) 2003 EE16');
+		expect(objectPageName(pair('2003 EE16'))).toBe('2003 EE16');
 	});
 
 	it('is empty for an object the export gives no name', () => {
-		expect(objectPageName('norad_satcat-1', pair(undefined), null)).toBe('');
+		expect(objectPageName(pair(undefined))).toBe('');
 	});
 
-	it('names the page of a planetary barycenter after the system of its primary', () => {
-		expect(objectPageName('naif-5', pair('Jupiter Barycenter'), pair('Jupiter'))).toBe(
-			'Jupiter system'
-		);
-		expect(objectPageName('naif-3', pair('Earth-Moon Barycenter'), pair('Earth'))).toBe(
-			'Earth–Moon system'
-		);
-	});
-
-	it('keeps the own name of a barycenter whose primary has none', () => {
-		expect(objectPageName('naif-5', pair('Jupiter Barycenter'), null)).toBe('Jupiter Barycenter');
+	it('takes the name the export gives a planetary system', () => {
+		expect(objectPageName(pair('Jupiter system', 'Système de Jupiter'))).toBe('Système de Jupiter');
 	});
 });
 
@@ -119,14 +114,16 @@ describe('the name of a planet page', () => {
 		);
 	});
 
-	it("is the name of its object entry in the reader's language", async () => {
-		fetchObjectDetail.mockResolvedValue({ global: null, localized: { name: 'Пульсар b' } });
+	it("is the name its system file gives it in the reader's language", async () => {
+		fetchObjectDetail.mockClear();
+		configureHost({ locale: () => 'ru' });
 		expect(await fetchPageName({ kind: 'body', id: 'x-1091633172-b-1' })).toBe('Пульсар b');
-		expect(fetchObjectDetail).toHaveBeenCalledWith('x-1091633172-b-1', true, undefined, true);
-		fetchObjectDetail.mockRejectedValue(new Error('503'));
+		configureHost({ locale: () => 'de' });
 		expect(await fetchPageName({ kind: 'body', id: 'x-1091633172-b-1' })).toBe(
 			'Planet 1091633172 1'
 		);
+		// The system file names it in every language: its object entry is not read.
+		expect(fetchObjectDetail).not.toHaveBeenCalled();
 	});
 
 	it('is empty for a planet with no page', async () => {

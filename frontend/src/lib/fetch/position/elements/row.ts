@@ -31,8 +31,8 @@ import {
 
 /**
  * Resolve a label to a non-empty name or null. The labels file ships
- * `{id}\x1f\x1f` for promoted bodies with no Wikidata/DB name (the id still
- * needs to be a key so the renderer auto-promotes it); coalescing `''` to null
+ * `{id}\x1f\x1f` for an object whose only name is its id (the id still needs
+ * to be a key so the renderer auto-promotes it); coalescing `''` to null
  * keeps `body.data.name` truthy-or-null for downstream `?? fallback` chains.
  */
 export function pickLabel(labels: LabelMap, id: string): string | null {

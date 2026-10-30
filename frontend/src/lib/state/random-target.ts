@@ -42,6 +42,7 @@ import {
 	CAT_STRUCTURE_ACTIVITY
 } from '$lib/fetch/groups/registry';
 import { categoryLabel } from '$lib/format/group';
+import { localName } from '$lib/format/name';
 import { canBePlaced } from '$lib/fetch/coverage';
 import {
 	fetchObjectDetail,
@@ -212,7 +213,11 @@ async function randomExoplanet(): Promise<RandomTarget | null> {
 		const found = await planetCatalogue.planet(host.id, n).catch(() => null);
 		if (found?.planet.class !== 'planet') continue;
 		const { planet } = found;
-		return { kind: 'object', id: planetObjectId(planet.host, planet.number), name: planet.name };
+		return {
+			kind: 'object',
+			id: planetObjectId(planet.host, planet.number),
+			name: localName(planet)
+		};
 	}
 	return null;
 }

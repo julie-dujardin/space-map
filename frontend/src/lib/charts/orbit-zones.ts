@@ -24,7 +24,10 @@ export type ZonePoint = { x: number; y: number };
  *  `data/src/space_map_data/export/groups/small_body.py`. */
 export interface OrbitSample {
 	slug: string;
+	/** The global name of the body's page; `names` has the languages where it
+	 *  differs. */
 	name: string;
+	names?: Record<string, string>;
 	a: number | null;
 	e: number;
 	q: number;
@@ -36,7 +39,10 @@ export interface OrbitSample {
 /** Mirrors EarthOrbitSample in the export; `classes` lists every zone hit. */
 export interface EarthOrbitSample {
 	slug: string;
+	/** The global name of the satellite's page; `names` has the languages
+	 *  where it differs. */
 	name: string;
+	names?: Record<string, string>;
 	perigee_km: number;
 	apogee_km: number;
 	inclination_deg: number | null;

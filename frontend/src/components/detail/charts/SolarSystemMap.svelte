@@ -3,7 +3,8 @@
 	import { getContext, untrack } from 'svelte';
 	import SystemMap from './SystemMap.svelte';
 	import { siteMapText } from './system-map-text';
-	import { displayName, solarSystemModel } from '$lib/systemmap/solar';
+	import { solarSystemModel } from '$lib/systemmap/solar';
+	import { localName } from '$lib/format/name';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
@@ -15,11 +16,9 @@
 
 	interface Props {
 		ariaLabel: string;
-		/** Object.id → localized label, overriding the exported English name. */
-		localizedNames?: Record<string, string>;
 		variant?: 'hero' | 'background';
 	}
-	let { ariaLabel, localizedNames, variant = 'hero' }: Props = $props();
+	let { ariaLabel, variant = 'hero' }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -42,7 +41,7 @@
 
 	let model = $derived.by(() => {
 		if (!file) return null;
-		const name = (o: SolarSystemMapObject) => localizedNames?.[o.id] ?? displayName(o.name);
+		const name = (o: SolarSystemMapObject) => localName(o);
 		const sun = file.objects.find((o) => o.kind === 'star');
 		return solarSystemModel(file, {
 			text: siteMapText(),

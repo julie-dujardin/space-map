@@ -24,7 +24,6 @@
 
 import { error, redirect } from '@sveltejs/kit';
 import * as m from '$lib/paraglide/messages.js';
-import { dominantPlanetId } from '$lib/constants';
 import { getLocale } from '$lib/host';
 import { dataBase, imagesBase } from '$lib/fetch/data-base';
 import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/objects/images';
@@ -40,6 +39,7 @@ import {
 import { heroImage } from '$lib/fetch/objects/galleries';
 import { diameterKmFromH } from '$lib/math/h-magnitude';
 import { formatKm } from '$lib/format/distance';
+import { localName } from '$lib/format/name';
 import type {
 	EntityRef,
 	GlobalObjectData,
@@ -103,10 +103,13 @@ type SeoObjectGlobal = Pick<
 		NonNullable<GlobalObjectData['celestrak']>,
 		'object_type' | 'launch_date' | 'orbit_center'
 	>;
-	part_of_mission?: Pick<NonNullable<GlobalObjectData['part_of_mission']>, 'name'>;
-	mission?: Pick<NonNullable<GlobalObjectData['mission']>, 'name'>;
+	part_of_mission?: Pick<NonNullable<GlobalObjectData['part_of_mission']>, 'name' | 'primary_id'>;
+	mission?: Pick<NonNullable<GlobalObjectData['mission']>, 'name' | 'primary_id'>;
 };
-type SeoObjectLocalized = Pick<LocalizedObjectData, 'name' | 'description'> & {
+type SeoObjectLocalized = Pick<
+	LocalizedObjectData,
+	'name' | 'description' | 'parent_name' | 'link_names'
+> & {
 	discoverers?: Pick<EntityRef, 'name'>[];
 };
 type SeoGroupGlobal = { images?: SeoImage[]; galleries?: { images?: SeoImage[] }[] };
@@ -465,9 +468,12 @@ function smallBodyDescription(
 	return `${parts.join(', ')}.`;
 }
 
-function moonDescription(global: SeoObjectGlobal): string | null {
+function moonDescription(
+	global: SeoObjectGlobal,
+	localized: SeoObjectLocalized | null
+): string | null {
 	if (global.type !== 'moon') return null;
-	const parent = global.parent_name?.replace(/\s*Barycenter$/i, '').trim();
+	const parent = localized?.parent_name ?? global.parent_name;
 	const noun = parent ? m.seo_noun_moon_of({ parent }) : m.seo_noun_moon();
 	return global.discovery_year != null
 		? `${noun}, ${m.seo_attr_discovered({ year: String(global.discovery_year) })}.`
@@ -484,12 +490,16 @@ function satelliteDescription(global: SeoObjectGlobal): string | null {
 	return `${parts.join(', ')}.`;
 }
 
-function spacecraftDescription(global: SeoObjectGlobal): string | null {
+function spacecraftDescription(
+	global: SeoObjectGlobal,
+	localized: SeoObjectLocalized | null
+): string | null {
 	if (global.type !== 'spacecraft') return null;
 	const noun = m.seo_noun_spacecraft();
 	const year = yearOf(global.wikidata?.launch_date);
 	const parts = [year ? m.seo_lead_launched({ noun, year }) : noun];
-	const mission = global.part_of_mission?.name ?? global.mission?.name;
+	const link = global.part_of_mission ?? global.mission;
+	const mission = link && (localized?.link_names?.[link.primary_id] ?? link.name);
 	if (mission) parts.push(m.seo_attr_part_of_mission({ mission }));
 	return `${parts.join(', ')}.`;
 }
@@ -500,9 +510,9 @@ function dynamicObjectDescription(
 ): string | null {
 	return (
 		smallBodyDescription(global, localized) ??
-		moonDescription(global) ??
+		moonDescription(global, localized) ??
 		satelliteDescription(global) ??
-		spacecraftDescription(global)
+		spacecraftDescription(global, localized)
 	);
 }
 
@@ -589,32 +599,27 @@ function loadObjectPair(exp: SeoExport, fileId: string): Promise<ObjectPair> {
 	return loadSeoPair<GlobalObjectData, LocalizedObjectData>(exp, OBJECT_BUNDLES, fileId);
 }
 
-/** An object's subject from the bundles, with the pair of its primary when it
- *  is a planetary barycenter: that page is named off its primary. */
+/** An object's subject from the bundles. */
 async function exportObject(
 	fileId: string,
 	url: URL
-): Promise<[SeoSubject<GlobalObjectData, LocalizedObjectData>, ObjectPair | null]> {
+): Promise<SeoSubject<GlobalObjectData, LocalizedObjectData>> {
 	const exp = await openExport(url);
-	const own = await loadObjectPair(exp, fileId);
-	const planetId = dominantPlanetId(fileId);
-	const primary = own.global && planetId ? await loadObjectPair(exp, planetId) : null;
-	return [{ ...own, cards: exportCards(exp) }, primary];
+	return { ...(await loadObjectPair(exp, fileId)), cards: exportCards(exp) };
 }
 
 /** Build one object's meta. Null when the export holds no such object. */
 export async function loadObjectSeo(fileId: string, url: URL): Promise<SeoMeta | null> {
 	const page = await readSeoPage<SeoObjectGlobal, SeoObjectLocalized>(`o/${fileId}`);
-	// No barycenter has a record: the sitemap lists none.
-	const [own, primary]: [SeoSubject<SeoObjectGlobal, SeoObjectLocalized>, ObjectPair | null] = page
-		? [pageSubject(page, url), null]
+	const own: SeoSubject<SeoObjectGlobal, SeoObjectLocalized> = page
+		? pageSubject(page, url)
 		: await exportObject(fileId, url);
 	const { global, localized } = own;
 	// An object with no global entry is unknown, whatever a stray localized
 	// entry says.
 	if (!global) return null;
 
-	const name = objectPageName(fileId, own, primary);
+	const name = objectPageName(own);
 	const card = await resolveOgCard(
 		global.images,
 		describeObject(name, global, localized),
@@ -915,7 +920,7 @@ async function entrySubject(
 	url: URL
 ): Promise<SeoSubject<SeoObjectGlobal, SeoObjectLocalized>> {
 	const page = await readSeoPage<SeoObjectGlobal, SeoObjectLocalized>(`o/${fileId}`);
-	return page ? pageSubject(page, url) : (await exportObject(fileId, url))[0];
+	return page ? pageSubject(page, url) : exportObject(fileId, url);
 }
 
 /**
@@ -933,14 +938,18 @@ export async function loadPlanetSeo(
 	if (!found) return null;
 	const { planet, system } = found;
 	if (planet.host !== host || planet.number !== n) {
-		return aliasPage(absoluteHref(planetHref(planet.host, planet.number, planet.name), url), url);
+		return aliasPage(
+			absoluteHref(planetHref(planet.host, planet.number, localName(planet)), url),
+			url
+		);
 	}
-	const hostName = system.hosts.find((h) => h.id === planet.host)?.name ?? '';
+	const star = system.hosts.find((h) => h.id === planet.host);
+	const hostName = (star && localName(star)) ?? '';
 	// Wikidata describes nearly every planet as "extrasolar planet"; the
 	// sentence names its star.
 	const meta = await entryMeta(
 		planet.object ? planetObjectId(planet.host, planet.number) : null,
-		planet.name,
+		localName(planet),
 		(name) => m.seo_planet_description({ name, host: hostName }),
 		url,
 		false

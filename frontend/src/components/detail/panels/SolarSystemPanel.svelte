@@ -8,23 +8,24 @@
 	import MemberList from '../members/MemberList.svelte';
 	import PlanetMassChart from '../charts/PlanetMassChart.svelte';
 	import { categoryLabel } from '$lib/format/group';
-	import type { GlobalGroupData } from '$lib/fetch/groups/details';
+	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { MembersState } from '../state/members-state.svelte';
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
 
 	interface Props {
 		global: GlobalGroupData;
+		localized: LocalizedGroupData | null;
 		members: MembersState;
 		lineup: LineupHero;
 	}
 
-	let { global, members, lineup }: Props = $props();
+	let { global, localized, members, lineup }: Props = $props();
 
 	let planets = $derived(global.solar_members ?? []);
 </script>
 
 <div class="flex flex-col gap-4">
-	<GroupStatCards {global} tab="solar-system" />
+	<GroupStatCards {global} {localized} tab="solar-system" />
 	<CategoryCrossRefs slug={global.slug} />
 	{#if planets.length > 0}
 		<Section title={categoryLabel(global.slug)}>

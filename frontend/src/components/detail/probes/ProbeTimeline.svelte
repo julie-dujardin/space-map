@@ -14,6 +14,7 @@
 	import { fetchObjectDetail, type ProbeEvents } from '$lib/fetch/objects/object-data';
 	import type { Coverage } from '$lib/fetch/metadata';
 	import { coverageGaps, eventStripItems } from '$lib/probes/event-timeline';
+	import { localizeTargets } from '$lib/probes/target-list';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { stepEntryIndex } from '$lib/timeline/axis';
 	import { TripPlayback } from '$lib/travel/playback.svelte';
@@ -24,31 +25,41 @@
 		/** What to call it — the drawer's own display name, so the strip and the
 		 *  panel behind it agree. */
 		name: string;
+		/** Whether the probe has a localized bundle, as its body says. */
+		localized?: boolean;
 		clock: SimClock;
 	}
 
-	let { objectId, name, clock }: Props = $props();
+	let { objectId, name, localized = false, clock }: Props = $props();
 
 	let events = $state.raw<ProbeEvents | null>(null);
 	let coverage = $state.raw<Coverage | undefined>(undefined);
+	let linkNames = $state.raw<Record<string, string> | undefined>(undefined);
 
-	// The drawer has usually fetched this bundle already; the cache makes the
-	// second read free, and asking for it here keeps the strip standalone.
+	// The drawer has usually fetched these bundles already; the cache makes the
+	// second read free, and asking for them here keeps the strip standalone.
+	// The localized one names the targets in the reader's language. When it
+	// fails, the strip still shows, with the global names.
 	$effect(() => {
 		const id = objectId;
 		let cancelled = false;
-		fetchObjectDetail(id, false).then((detail) => {
-			if (cancelled) return;
-			events = detail.global?.events ?? null;
-			coverage = detail.global?.coverage;
-		});
+		fetchObjectDetail(id, localized)
+			.catch(() => fetchObjectDetail(id, false))
+			.then((detail) => {
+				if (cancelled) return;
+				events = detail.global?.events ?? null;
+				coverage = detail.global?.coverage;
+				linkNames = detail.localized?.link_names;
+			});
 		return () => {
 			cancelled = true;
 			events = null;
 		};
 	});
 
-	let items = $derived(events ? eventStripItems(events.items, coverage) : []);
+	let items = $derived(
+		events ? eventStripItems(localizeTargets(events.items, linkNames), coverage) : []
+	);
 	let gaps = $derived(
 		items.length ? coverageGaps(coverage, items[0].startJd, items[items.length - 1].endJd) : []
 	);

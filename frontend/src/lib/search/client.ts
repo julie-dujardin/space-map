@@ -75,6 +75,8 @@ export interface PlanetHit extends BaseHit {
 	number: number;
 	/** Scene id of the key star of its system file. */
 	system_id: string;
+	/** The global name of its star's page; `host_name_{lang}` has the others.
+	 *  Read with `planetHostName`. */
 	host_name: string;
 	designation: string | null;
 	/** planet | brown dwarf | sub-brown dwarf */
@@ -899,7 +901,7 @@ export async function fetchObjectNames(
 			for (const raw of moons.hits ?? []) {
 				const o = ((raw as RawHit).object ?? {}) as RawHit;
 				const host = o.moon_host as string | undefined;
-				const name = o.moon_host_name as string | undefined;
+				const name = (o[`moon_host_name_${locale}`] ?? o.moon_host_name) as string | undefined;
 				if (host && name) objectNameCache.set(`${locale}:${host}`, name);
 			}
 		}
@@ -932,6 +934,12 @@ function localizedField(
 /** Display name for a hit in the active locale, falling back to canonical. */
 export function localizedName(hit: SearchHit, locale: string): string {
 	return localizedField(hit, 'name', locale) ?? hit.name;
+}
+
+/** The name of a planet's star in `locale`, else its global one. */
+export function planetHostName(hit: PlanetHit, locale: string): string {
+	const v = (hit as PlanetHit & Record<string, unknown>)[`host_name_${locale}`];
+	return typeof v === 'string' && v ? v : hit.host_name;
 }
 
 /** Localized Wikidata description for a hit, or undefined. Falls back to

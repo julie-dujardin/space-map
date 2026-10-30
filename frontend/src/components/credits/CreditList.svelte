@@ -12,6 +12,7 @@
 	import { patchCredits, tileCredit } from '$lib/credits/tile-credit';
 	import PageContents, { type ContentsEntry } from '../nav/PageContents.svelte';
 	import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+	import { getLocale } from '$lib/host';
 
 	interface Props {
 		credits: Credits;
@@ -41,6 +42,11 @@
 
 	const collator = new Intl.Collator();
 
+	/** An entry by its name in the reader's language. */
+	function named<N extends string | null>(id: string | null, name: N): string | N {
+		return (id && credits.names?.[getLocale()]?.[id]) || name;
+	}
+
 	/** A map's own credit, then those of its tile pyramid and of the pyramid's
 	 *  patches, where they hold other works. */
 	function withTileCredits(credit: BodyCredit): BodyCredit[] {
@@ -69,7 +75,10 @@
 			if (byBody.size === 0) continue;
 			const rows: ImageryRow[] = [];
 			const bodies = [...byBody.values()].sort((a, b) =>
-				collator.compare(a[0].credit.name, b[0].credit.name)
+				collator.compare(
+					named(a[0].credit.body_id, a[0].credit.name),
+					named(b[0].credit.body_id, b[0].credit.name)
+				)
 			);
 			for (const items of bodies) {
 				const multi = items.length > 1;
@@ -78,7 +87,7 @@
 						// Body + layer isn't unique: one body can credit several sources
 						// for the same layer (e.g. Saturn's ring bundles).
 						key: `${credit.body_id}-${layer}-${i}`,
-						name: credit.name,
+						name: named(credit.body_id, credit.name),
 						qualifier: multi ? layerLabel(layer) : undefined,
 						source: credit.source,
 						organisation: credit.organisation,
@@ -87,7 +96,7 @@
 					});
 				}
 			}
-			out.push({ id: group.id, name: group.name, rows });
+			out.push({ id: group.id, name: named(group.id, group.name), rows });
 		}
 		return out;
 	});

@@ -44,7 +44,7 @@
 
 <div class="flex flex-col gap-4">
 	{#if detail.global}
-		<GroupStatCards global={detail.global} tab="exoplanets" />
+		<GroupStatCards global={detail.global} localized={detail.localized} tab="exoplanets" />
 	{/if}
 	<ObjectDescription extract={text?.extract} wikipediaUrl={text?.url} />
 	{#if exoplanets.length > 0}

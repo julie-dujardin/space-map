@@ -4,7 +4,14 @@ vi.mock('$env/dynamic/public', () => ({ env: {} }));
 
 import { env } from '$env/dynamic/public';
 import { configureHost } from '$lib/host';
-import { isExtrasolarHit, searchBodies, searchEndpoints, toHit } from './client';
+import {
+	isExtrasolarHit,
+	planetHostName,
+	searchBodies,
+	searchEndpoints,
+	toHit,
+	type PlanetHit
+} from './client';
 import { secondaryText } from './format';
 
 /** The search documents of the extrasolar export, as the index stores them. */
@@ -48,6 +55,15 @@ describe('extrasolar search hits', () => {
 		expect(secondaryText(hit, resolve)).toBe('planet of Proxima Centauri');
 		const dwarf = toHit({ ...PLANET, planet: { ...PLANET.planet, class: 'brown dwarf' } });
 		expect(secondaryText(dwarf, resolve)).toBe('brown dwarf of Proxima Centauri');
+	});
+
+	it("names a planet's star in the language of the reader, else by its global name", () => {
+		const hit = toHit({
+			...PLANET,
+			planet: { ...PLANET.planet, host_name_ru: 'Проксима Центавра' }
+		}) as PlanetHit;
+		expect(planetHostName(hit, 'ru')).toBe('Проксима Центавра');
+		expect(planetHostName(hit, 'de')).toBe('Proxima Centauri');
 	});
 
 	it('reads a host as an object of the catalogue, with its planets', () => {

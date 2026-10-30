@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProbeEvent } from '$lib/fetch/objects/object-data';
-import { targetVisits } from './target-list';
+import { localizeTargets, targetVisits } from './target-list';
 
 let jd = 2450000;
 function ev(partial: Partial<ProbeEvent> & { type: ProbeEvent['type']; date: string }): ProbeEvent {
@@ -65,5 +65,21 @@ describe('targetVisits', () => {
 		]);
 		expect(visits[0].activities).toHaveLength(1);
 		expect(visits[0].activities[0].dates).toBe('2024, 2026, 2029');
+	});
+});
+
+describe('localizeTargets', () => {
+	it('names a target with an object as the craft names it in the language', () => {
+		const items = localizeTargets(
+			[
+				ev({ type: 'flyby', date: '2017-09-22', target: earth }),
+				ev({ type: 'orbit_insertion', date: '2018-12-03', target: bennu }),
+				ev({ type: 'landing', date: '2018-10-03', target: { name: 'MASCOT' } }),
+				ev({ type: 'launch', date: '2016-09-08' })
+			],
+			{ 'naif-399': 'Terre' }
+		);
+		expect(items.map((e) => e.target?.name)).toEqual(['Terre', 'Bennu', 'MASCOT', undefined]);
+		expect(items[0].target?.primary_id).toBe('399');
 	});
 });

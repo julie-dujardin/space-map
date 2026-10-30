@@ -13,6 +13,7 @@ import type {
 	PlanetIndexHost,
 	PlanetSystem
 } from '$lib/fetch/extrasolar/planets';
+import { localName } from '$lib/format/name';
 import { JUPITER_RADIUS_KM } from '$lib/math/units';
 import { treeToScene } from '$lib/scene/starfield/tree';
 import { J2000_JD } from '$lib/time/jd';
@@ -89,7 +90,7 @@ function planetBody(
 	const parentId = extrasolarObjectId(planet.host);
 	const data: BodyData = {
 		id: planetObjectId(planet.host, planet.number),
-		name: planet.name,
+		name: localName(planet),
 		objectType: ObjectType.EXOPLANET,
 		parentId,
 		radiusKm: typeof radiusRj === 'number' && radiusRj > 0 ? radiusRj * JUPITER_RADIUS_KM : NaN,

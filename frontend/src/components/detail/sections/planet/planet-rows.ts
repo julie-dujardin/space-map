@@ -8,6 +8,7 @@
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import type { Planet } from '$lib/fetch/extrasolar/planets';
+import { localName } from '$lib/format/name';
 import type { EntityRef } from '$lib/fetch/objects/object-data';
 import {
 	earthRatio,
@@ -528,6 +529,7 @@ export function planetIdentifiers(planet: Planet): PlanetRow[] {
 export function planetAliases(planet: Planet): string[] {
 	const shown = new Set([
 		planet.name,
+		localName(planet),
 		planet.designation,
 		...planet.cross_ids.map((x) => x.catalogue_id)
 	]);

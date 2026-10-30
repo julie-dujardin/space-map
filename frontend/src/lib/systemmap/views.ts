@@ -12,6 +12,7 @@ import type {
 } from '$lib/fetch/groups/planetary-systems-map';
 import type { SolarSystemMapFile, SolarSystemMapObject } from '$lib/fetch/groups/solar-system-map';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+import { localName } from '$lib/format/name';
 import type { RingStripProfile } from '$lib/rings/strip';
 import type { MapBand, MapBody, MapLink, MapSatellite, MapText, SystemMapModel } from './model';
 import { planetarySystemModel, systemFromMapEntry, visibleRings } from './planetary';
@@ -19,7 +20,6 @@ import {
 	SOLAR_PX_PER_DEG,
 	SOLAR_PX_PER_KM,
 	SUN_COLOR,
-	displayName,
 	fileStacks,
 	solarColor,
 	solarSystemModel,
@@ -162,7 +162,7 @@ export function extraFromBundle(global: GlobalObjectData): ExtraBody | null {
 	const radii = global.radii;
 	return {
 		id: global.id,
-		name: displayName(global.name ?? global.id),
+		name: global.name,
 		moon,
 		aAu: a ?? 0,
 		tiltDeg: global.orbit?.i ?? 0,
@@ -206,14 +206,9 @@ class Scope {
 		return !this.options.bodies || this.options.bodies.has(id);
 	}
 
+	/** The page's name for `id`, else the export's, else the id. */
 	name(id: string, exported?: string): string {
-		return this.options.names[id] ?? (exported ? displayName(exported) : id);
-	}
-
-	/** The same for a name that is not the export's to tidy: the page's own,
-	 *  or one already tidied. */
-	named(id: string, name: string): string {
-		return this.options.names[id] ?? name;
+		return this.options.names[id] ?? exported ?? id;
 	}
 
 	link(target: SystemMapTarget): MapLink {
@@ -270,7 +265,7 @@ export function buildSolarView(
 	pick: (target: SystemMapTarget) => void
 ): BuiltView {
 	const scope = new Scope(data, options, pick);
-	const name = (o: SolarSystemMapObject) => scope.name(o.id, o.name);
+	const name = (o: SolarSystemMapObject) => scope.name(o.id, localName(o));
 	const listed = fileStacks(data.solar, name);
 	const stacks = new Map(
 		data.solar.objects.map((o) => [o.id, scope.stack(o.id, listed.get(o.id))])
@@ -362,7 +357,7 @@ export function buildZoneView(
 		.filter((o) => o.kind === 'dwarf' || o.kind === 'asteroid')
 		.map((o) => ({
 			id: o.id,
-			name: scope.name(o.id, o.name),
+			name: scope.name(o.id, localName(o)),
 			aAu: o.a,
 			tiltDeg: o.i,
 			radiusKm: o.diameter_km / 2,
@@ -373,7 +368,7 @@ export function buildZoneView(
 		// The axis is a logarithm of the orbit's size: a place given none, or a
 		// hyperbola's negative one, has nowhere on it.
 		if (!(extra.aAu > 0)) continue;
-		small.push({ ...extra, name: scope.named(extra.id, extra.name) });
+		small.push({ ...extra, name: scope.name(extra.id, extra.name) });
 	}
 
 	const bodies: MapBody[] = [];
@@ -395,7 +390,7 @@ export function buildZoneView(
 		const moons = extras
 			.filter((extra) => extra.moon && extra.parent === s.id && scope.has(extra.id))
 			.map((extra) => {
-				const name = scope.named(extra.id, extra.name);
+				const name = scope.name(extra.id, extra.name);
 				return { ...extra, name, link: scope.body(extra.id, name) };
 			});
 		if (!scope.has(s.id) && !moons.length) continue;
@@ -418,7 +413,7 @@ export function buildZoneView(
 		if (o.kind !== 'planet' || !within(o.a)) continue;
 		bodies.push({
 			id: o.id,
-			name: scope.name(o.id, o.name),
+			name: scope.name(o.id, localName(o)),
 			aKm: o.a * AU_KM,
 			tiltDeg: 0,
 			radiusKm: 0,
@@ -432,7 +427,7 @@ export function buildZoneView(
 		{
 			primary: {
 				id: sun.id,
-				name: scope.name(sun.id, sun.name),
+				name: scope.name(sun.id, localName(sun)),
 				// Its Solar System map size: at the small bodies' scale the Sun
 				// would be a wall with no limb to read it by.
 				radiusKm: ((sun.diameter_km / 2) * SOLAR_PX_PER_KM) / pxPerKm,

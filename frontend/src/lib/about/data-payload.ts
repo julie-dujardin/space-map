@@ -3,8 +3,6 @@
  * Mirror of `data/src/space_map_data/export/about_data.py`.
  */
 
-import type { LabelMap } from '$lib/fetch/position/labels';
-
 export type MapLayer = 'surface' | 'clouds' | 'night' | 'specular' | 'topography';
 
 /** Where a ring or a model comes from. */
@@ -98,6 +96,8 @@ export interface World {
 /** `id` and `name` are null for the bodies that belong to no planetary system. */
 export interface DataSystem {
 	id: string | null;
+	/** The global name of the page of its planet; `AboutData.names` has the
+	 *  others, by the system's `id`. */
 	name: string | null;
 	/** The planet that the system takes its name from. */
 	primary_id?: string;
@@ -210,6 +210,9 @@ export interface ObjectKind {
 
 export interface AboutData {
 	generated_at: string;
+	/** Language → row id (a system's `id`, an object id) → its name in that
+	 *  language, where it differs from the global `name` of the row. */
+	names: Record<string, Record<string, string>>;
 	/** Bodies with a map, a ring or a shape model. Shapes from light curves do
 	 *  not count. */
 	worlds: number;
@@ -218,13 +221,6 @@ export interface AboutData {
 	systems: DataSystem[];
 	rings: RingWorld[];
 	models: DataModels;
-}
-
-/** What the page loads: the report, and the names of its worlds in the
- *  language of the reader. */
-export interface DataPage {
-	data: AboutData;
-	labels: LabelMap;
 }
 
 /** What the row of a map states. Patches are rows of their own. */

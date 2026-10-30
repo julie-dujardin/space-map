@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { configureHost } from '$lib/host';
 import type { PlanetarySystemsMapFile } from '$lib/fetch/groups/planetary-systems-map';
 import type { SolarSystemMapFile, SolarSystemMapObject } from '$lib/fetch/groups/solar-system-map';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
@@ -36,6 +37,8 @@ const object = (
 	...more
 });
 
+afterEach(() => configureHost({}));
+
 const SOLAR: SolarSystemMapFile = {
 	objects: [
 		object('naif-10', 'Sun', 'star', 0, { diameter_km: 1_392_000 }),
@@ -46,7 +49,7 @@ const SOLAR: SolarSystemMapFile = {
 		object('naif-699', 'Saturn', 'planet', 9.56, { moon_count: 292 }),
 		object('naif-999', 'Pluto', 'dwarf', 39.6),
 		object('naif-2000001', 'Ceres', 'dwarf', 2.77),
-		object('spkid-20000004', '4 Vesta', 'asteroid', 2.36),
+		object('spkid-20000004', '4 Vesta', 'asteroid', 2.36, { names: { fr: '(4) Vesta' } }),
 		object('naif-301', 'Moon', 'moon', 1, { parent: 'naif-399', link_parent: false }),
 		object('naif-606', 'Titan', 'moon', 9.56, { parent: 'naif-699', link_parent: true })
 	],
@@ -145,6 +148,7 @@ describe('extraFromBundle', () => {
 	const bundle = (more: Partial<GlobalObjectData>) => ({
 		id: 'x',
 		type: 'asteroid_inner',
+		name: 'x',
 		...more
 	});
 
@@ -158,7 +162,7 @@ describe('extraFromBundle', () => {
 			})
 		);
 		expect(body).toMatchObject({
-			name: 'Bennu',
+			name: '101955 Bennu',
 			moon: false,
 			aAu: 1.13,
 			tiltDeg: 6,
@@ -271,7 +275,8 @@ describe('buildSolarView', () => {
 		]);
 	});
 
-	it("names from the host's list first, the export's tidied otherwise", () => {
+	it("names from the host's list first, the export's in the host's language otherwise", () => {
+		configureHost({ locale: () => 'fr' });
 		const view = buildSolarView(
 			data(),
 			options({ names: { 'naif-699': 'Saturne' } }),
@@ -280,7 +285,8 @@ describe('buildSolarView', () => {
 		);
 		const names = Object.fromEntries(view.targets.map((t) => ['id' in t ? t.id : t.zone, t.name]));
 		expect(names['naif-699']).toBe('Saturne');
-		expect(names['spkid-20000004']).toBe('Vesta');
+		expect(names['spkid-20000004']).toBe('(4) Vesta');
+		expect(names['naif-599']).toBe('Jupiter');
 	});
 });
 
