@@ -7,6 +7,7 @@ import pytest
 
 from space_map_data.export.extrasolar import planets
 from space_map_data.export.extrasolar.build import export_extrasolar
+from space_map_data.extrasolar.systems import drawn
 from space_map_data.search.indices import objects
 from space_map_data.search.indices.catalog import CATALOG_INDEX
 from space_map_data.search.indices.extrasolar import (
@@ -15,8 +16,18 @@ from space_map_data.search.indices.extrasolar import (
     host_document,
     planet_document,
 )
-from tests.extrasolar.export_registry import write_registry
+from tests.extrasolar.export_registry import Node, planet, write_registry
 from tests.extrasolar.test_export_planets import PLANETS, STARS
+from tests.extrasolar.test_export_systems import (
+    ALPHA_CEN,
+    KEPLER,
+    KEPLER_16,
+    KEPLER_PAIR,
+    KEPLER_STAR,
+    PAIR,
+    SYSTEMS,
+    _stars,
+)
 
 
 @pytest.fixture
@@ -230,6 +241,92 @@ class TestPlanetWithAnEntry:
         assert doc["sitelinks_count"] == 30
         assert doc["planet"]["aliases_en"] == ["Planet Lucky"]
         assert doc["planet"]["designation"] == "Planet 0 2"
+
+
+class TestSystems:
+    """The systems index of the export: Kepler-16, a point that hosts a
+    planet and holds A and B, and the pair of SYSTEMS with an orbit."""
+
+    @pytest.fixture
+    def kepler(self, tmp_path):
+        planets = [planet(KEPLER_STAR, 1, binary_type="P-type")]
+        orbit = drawn.scene(KEPLER_PAIR | {"ra": 120.0, "dec": -30.0}, 10.0)
+        pair = Node(SYSTEMS[PAIR].members, orbit=orbit, name="The Pair")
+        systems = [*SYSTEMS[:PAIR], pair, KEPLER_16]
+        built = write_registry(
+            tmp_path / "reg", _stars(), systems=systems, planets=planets
+        )
+        out = tmp_path / "out"
+        export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
+        return built, out
+
+    def test_a_system_and_its_held_stars(self, kepler):
+        built, out = kepler
+        docs = {doc["id"]: doc for doc in build_extrasolar_documents(out)}
+        point = f"x-{built.nodes[KEPLER]}"
+        # The host document, with the system's facts.
+        assert docs[point]["name"] == "Kepler-16"
+        assert docs[point]["object"] == {
+            "id": point,
+            "type": "binary_star",
+            "extrasolar": True,
+            "planets": 1,
+            "stars": 2,
+            "designations": [f"Gaia DR3 {built.ids[KEPLER_STAR] * 7}"],
+        }
+        held = f"x-{built.held[KEPLER, 'A']}"
+        assert docs[held] == {
+            "id": held,
+            "kind": "object",
+            "name": "Kepler-16 A",
+            "object": {
+                "id": held,
+                "type": "star",
+                "extrasolar": True,
+                "system_id": point,
+                "system_name": "Kepler-16",
+            },
+        }
+        assert docs[f"x-{built.held[KEPLER, 'B']}"]["name"] == "Kepler-16 B"
+        pair = docs[f"x-{built.nodes[PAIR]}"]
+        assert pair["name"] == "The Pair"
+        assert pair["object"]["type"] == "binary_star"
+        assert pair["object"]["stars"] == 2
+        assert f"x-{built.nodes[ALPHA_CEN]}" not in docs
+
+    def test_a_system_with_an_entry(self, kepler, tmp_path, monkeypatch):
+        """The pair has an entry with no description: main's document is
+        indexed, with the system facts."""
+        monkeypatch.setattr(objects, "LANGUAGES", ("en",))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        built, out = kepler
+        key = f"x-{built.nodes[PAIR]}"
+        bundles = {
+            "__global__": {key: {"id": key, "type": "binary_star", "name": "Pair"}},
+            "en": {key: {"aliases": ["The Pair"]}},
+        }
+        for tier, entries in bundles.items():
+            directory = tmp_path / "export" / "v1" / "objects" / tier
+            directory.mkdir(parents=True)
+            (directory / "0.json.gz").write_bytes(
+                gzip.compress(json.dumps(entries).encode())
+            )
+        docs = list(CATALOG_INDEX.build_documents(tmp_path / "export", out))
+        keys = [doc["id"] for doc in docs]
+        assert len(keys) == len(set(keys))
+        pair = dict(zip(keys, docs))[key]
+        assert pair["name"] == "Pair"
+        assert pair["object"]["stars"] == 2
+        assert pair["object"]["aliases_en"] == ["The Pair"]
+
+    def test_an_export_with_no_systems_index(self, exported):
+        _, out = exported
+        path = out / "v1" / "x" / "metadata.json"
+        metadata = json.loads(path.read_text())
+        del metadata["systems"]
+        path.write_text(json.dumps(metadata))
+        docs = list(build_extrasolar_documents(out))
+        assert {doc["kind"] for doc in docs} == {"object", "planet"}
 
 
 class TestDesignations:

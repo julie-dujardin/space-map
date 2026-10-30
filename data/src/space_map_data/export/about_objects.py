@@ -35,6 +35,7 @@ from space_map_data.export.extrasolar.census import (
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.objects.stars import PLANET_ID
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
+from space_map_data.export.objects.stars import TYPE as STAR_TYPE
 from space_map_data.export.position.format import (
     BODY_HEADER_SIZE,
     FORMAT_CHEBYSHEV,
@@ -104,14 +105,16 @@ def kind_of(object_type: str, satcat: bool) -> str:
     return object_type
 
 
-def catalogue_kind(object_id: str) -> str | None:
+def catalogue_kind(object_id: str, object_type: str) -> str | None:
     """The row of an entry of the extrasolar catalogue, by the home table of
-    its object as the census counts it. None for an object of the solar
-    system."""
+    its object as the census counts it: a held star, of type star, is a star.
+    None for an object of the solar system."""
     if not object_id.startswith(STAR_PREFIX):
         return None
     if PLANET_ID.match(object_id):
         return PLANET
+    if object_type == STAR_TYPE:
+        return STAR
     return KIND_OF_HOME[table_of(int(object_id.removeprefix(STAR_PREFIX)))]
 
 
@@ -278,7 +281,7 @@ def _scan_objects(objects_dir: Path, tally: _Tally) -> None:
         size, entries = _bundle(path)
         raw: Counter[str] = Counter()
         for object_id, entry in entries.items():
-            in_catalogue = catalogue_kind(object_id)
+            in_catalogue = catalogue_kind(object_id, entry["type"])
             kind = in_catalogue or kind_of(
                 entry["type"], object_id.startswith(_SATCAT_PREFIX)
             )

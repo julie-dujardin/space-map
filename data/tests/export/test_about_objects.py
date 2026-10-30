@@ -93,12 +93,15 @@ PLANET_ID = f"x-{STAR_ID}-b-1"
 
 class TestCatalogueKind:
     def test_by_home_table(self):
-        assert catalogue_kind(f"x-{STAR_ID}") == "star"
-        assert catalogue_kind(f"x-{SYSTEM_ID}") == "star_system"
-        assert catalogue_kind(PLANET_ID) == "planet"
+        assert catalogue_kind(f"x-{STAR_ID}", "binary_star") == "star"
+        assert catalogue_kind(f"x-{SYSTEM_ID}", "binary_star") == "star_system"
+        assert catalogue_kind(PLANET_ID, "exoplanet") == "planet"
+
+    def test_a_held_star_is_a_star(self):
+        assert catalogue_kind(f"x-{SYSTEM_ID}", "star") == "star"
 
     def test_solar_system(self):
-        assert catalogue_kind("naif-10") is None
+        assert catalogue_kind("naif-10", "planet") is None
 
 
 class TestHasOwnText:

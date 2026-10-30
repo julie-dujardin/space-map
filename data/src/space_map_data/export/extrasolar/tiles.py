@@ -118,6 +118,8 @@ type Listed = tuple[float, int, str | None]
 TILE_INFO = struct.Struct("<IBBxx")
 SPLIT_FILE = "split.bin.gz"
 EXAMPLES = 10
+# The Metadata columns that a unit returns for some IDs.
+NAME_COLUMNS = ["id", "name", "class"]
 
 
 def table_def(slug: str) -> TableDef:
@@ -337,6 +339,8 @@ class UnitJob:
     previous: Previous | None = None
     # More checks of the unit's rows.
     check: Callable[[pa.Table], Problems] | None = None
+    # Metadata only: the sorted IDs whose NAME_COLUMNS the unit returns.
+    names: np.ndarray | None = None
 
 
 @dataclass
@@ -370,6 +374,7 @@ class UnitResult:
     problems: Problems
     # Metadata only.
     family_stars: FamilyStars | None = None
+    names: pa.Table | None = None
 
 
 def _states_of(registry: Registry, ids: np.ndarray):
@@ -528,7 +533,9 @@ def build_unit(job: UnitJob) -> UnitResult:
         problems.update(job.check(rows))
     if job.previous is not None:
         problems.update(check_previous(registry, job.unit.regions, rows, job.previous))
-    family_stars = None
+    family_stars = names = None
+    if job.names is not None:
+        names = names_of(rows, job.names)
     if job.slug == METADATA.slug:
         rows, family_stars = with_families(registry, job.unit.regions, rows, problems)
 
@@ -548,7 +555,14 @@ def build_unit(job: UnitJob) -> UnitResult:
                 job.out, tile_path(job.slug, int(level), int(pixel)), payload
             )
         )
-    return UnitResult(files, rows.num_rows, dropped, problems, family_stars)
+    return UnitResult(files, rows.num_rows, dropped, problems, family_stars, names)
+
+
+def names_of(rows: pa.Table, ids: np.ndarray) -> pa.Table:
+    """NAME_COLUMNS of the live Metadata `rows` with one of `ids`."""
+    wanted = np.isin(rows["id"].to_numpy(), ids)
+    wanted &= rows["alias_target"].is_null().to_numpy(zero_copy_only=False)
+    return rows.filter(pa.array(wanted)).select(NAME_COLUMNS)
 
 
 def with_families(

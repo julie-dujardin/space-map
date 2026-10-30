@@ -23,6 +23,7 @@ v1/x/
   skycultures/{key}.json.gz              a sky culture: figures, members and star names
   planets/index.json.gz                  every planet host: its system, planet numbers, place and outer orbit
   planets/{key}.json.gz                  one planetary system: its hosts and planets, with orbits in the scene's frame
+  systems/index.json.gz                  the star systems that a page draws up close, with their held stars, for search
 ```
 
 Each `.bin.gz` file is gzip around one payload in the container format below. A `.json.gz` file is gzip around UTF-8 JSON. The server sends it as `application/octet-stream` with no `Content-Encoding`, and the client decodes it with `DecompressionStream('gzip')`. A client fetches each file as `{PUBLIC_EXTRASOLAR_URL}/v1/x/{path}?v={token}`, with the token of its table or tree.
@@ -710,6 +711,30 @@ The export refuses to publish when a planet number is given twice, when a host i
 
 The site's sitemap lists the page of every planet and of every planet host that this export serves, from the planet index and the system files: see [sitemap.md](sitemap.md). An alias number has no page in it.
 
+## Systems index (`systems`)
+
+`systems/index.json.gz` lists each root of a star system that holds a held star, a drawn orbit or a planet host: the systems that a page draws up close. Search makes an object document of each listed root that has a name, and of each held star in it, as it does of a planet host. A client can read it to list these systems.
+
+```json
+{
+  "token": "9a41…",
+  "systems": [
+    {
+      "id": 20657986,
+      "name": "Kepler-16",
+      "class": "binary star",
+      "stars": 2,
+      "held": [{ "id": 54212418, "name": "Kepler-16 A" }, { "id": 591083330, "name": "Kepler-16 B" }]
+    }
+  ]
+}
+```
+
+- `systems`: sorted by `id`, the root's ID. `name` and `class` are its Metadata `name` (null when it has none) and `class`; `stars` is its System `stars`.
+- `held`: the held stars of the system that have a name, sorted by ID.
+
+The token of `systems` is the SHA-256 of the file's path, a zero byte and the SHA-256 of its JSON with `token` set to 16 zeros, as for the planets.
+
 ## `metadata.json`
 
 ```json
@@ -812,6 +837,13 @@ The site's sitemap lists the page of every planet and of every planet host that 
     "frame": "ICRS equatorial axes, origin at the solar system barycentre, epoch J2016.0",
     "distribution": "non-commercial"
   },
+  "systems": {
+    "token": "9a41…",
+    "index": "systems/index.json.gz",
+    "systems": 35888,
+    "held": 70914,
+    "distribution": "non-commercial"
+  },
   "credits": [
     { "name": "Gaia Data Release 3", "organisation": "ESA/Gaia/DPAC", "source": "https://www.cosmos.esa.int/web/gaia/dr3", "license": "CC BY-NC 3.0 IGO", "attribution": "…", "citation": "…" },
     "…"
@@ -822,10 +854,11 @@ The site's sitemap lists the page of every planet and of every planet host that 
 - `tables`: keyed by slug. `number` is the table number in the IDs, null for Metadata. `max_rows` is the split threshold. `rows` counts the rows of all tiles.
 - `trees`: keyed by name; `mw` is the Milky Way.
 - `families`: the star families in bit order: entry `n` is bit `n` of the Metadata masks. `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on the root), `published` and `estimated` count the stars with the bit set in `families` and in `families_estimated`. The brightest stars of each family are in `families.json` (below).
-- `objects`: the census of the export for `/about/data` ([about-data.md](about-data.md)), by kind. An object's kind is its home table, so each ID counts once: `star` is a live ID of table 1, also a point that holds two or more stars, `star_system` one of table 3, and `planet` a row of the planets table. `size_bytes` holds the files of the kind: Point source, Binary orbit and the render tree for the stars, the planet files for the planets, and the Metadata and System tiles split between the stars and the star systems by their rows. The sky cultures, `metadata.json` and `families.json` are not counted. `sources` counts the objects that each source feeds with at least one value, most objects first. The source of a value is the source column of its group, with another pass of a catalogue as that catalogue (`gaia-dr3-named` is `gaia-dr3`; `simbad-hip` and `simbad-parallax` are `simbad`). A group of a star table that a pass carries for a catalogue of its own counts for that catalogue: `xgboost` for `andrae-2023`, `pastel` for `pastel-2020`, `apogee` for `apogee-dr17`, `lamost` for `lamost-dr10`, `gcvs` for `gcvs-5.1`, `spicy` for `spicy`, `xhip_metallicity` for `xhip`, `fidelity` for `rybizki-2022`, `orbit` and `masses` for `gaia-dr3-nss`. Wikidata is left out: every object with an item has an object entry, and the main export counts the items from the entries.
+- `objects`: the census of the export for `/about/data` ([about-data.md](about-data.md)), by kind. An object's kind is its home table, so each ID counts once: `star` is a live ID of table 1, also a point that holds two or more stars, or a held star; `star_system` another live ID of table 3; and `planet` a row of the planets table. `size_bytes` holds the files of the kind: Point source, Binary orbit and the render tree for the stars, the planet files for the planets, the systems index for the star systems, and the Metadata and System tiles split between the stars and the star systems by their rows. The sky cultures, `metadata.json` and `families.json` are not counted. `sources` counts the objects that each source feeds with at least one value, most objects first. The source of a value is the source column of its group, with another pass of a catalogue as that catalogue (`gaia-dr3-named` is `gaia-dr3`; `simbad-hip` and `simbad-parallax` are `simbad`). A group of a star table that a pass carries for a catalogue of its own counts for that catalogue: `xgboost` for `andrae-2023`, `pastel` for `pastel-2020`, `apogee` for `apogee-dr17`, `lamost` for `lamost-dr10`, `gcvs` for `gcvs-5.1`, `spicy` for `spicy`, `xhip_metallicity` for `xhip`, `fidelity` for `rybizki-2022`, `orbit` and `masses` for `gaia-dr3-nss`. Wikidata is left out: every object with an item has an object entry, and the main export counts the items from the entries.
 - `distribution`: who may serve the data, with the meaning that it has on a texture ([textures.md](textures.md)): the strictest tier of the sources whose values the files hold. Gaia DR3 is CC BY-NC 3.0 IGO, and every table and tree holds Gaia values. The star system catalogues reach Metadata (`system`, the classes and names), Point source (the system distance, `member`), System, the render tree and the planet files: the WDS and the MSC state no licence, so they are `non-commercial`, and El-Badry, Rix & Heintz 2021 is CC BY 4.0, though it repeats Gaia EDR3 values, which come from Gaia here. So all are `non-commercial`.
 - `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, GCVS 5.1, SPICY, the ATNF Pulsar Catalogue with the reference and URL that it asks for, Hipparcos I/311 and I/239, XHIP V/137D, the distance catalogues (Reylé et al. 2021, the UltracoolSheet, Hunt & Reffert 2024, the LMC and SMC distances of Pietrzyński et al. 2019 and Graczyk et al. 2020, Bailer-Jones et al. 2021), the star system catalogues (the Washington Double Star Catalog with the acknowledgement it asks for, Tokovinin's Multiple Star Catalogue, the wide binaries of El-Badry, Rix & Heintz 2021; the orbit catalogues ORB6, with the WDS acknowledgement, and SBX, CC BY 4.0), one credit for the papers of the literature table (its `source` is the table in the repo; each star's object entry cites its own papers), the IAU Catalog of Star Names, Wikidata; with planets also the NASA Exoplanet Archive (its acknowledgement, and the DOI of Planetary Systems Composite Parameters, 10.26133/NEA13), exoplanet.eu (CC BY 4.0), the Open Exoplanet Catalogue (MIT) and the IAU's NameExoWorlds. The planet catalogues also fill the host rows of Point source and Metadata, so their credits are in this list. Each catalogue has one credit, and its `source` names it.
 - `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `families` lists the planet families in the order of the planet records' lists, as the star families are listed: `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on a family without a parent), `published` and `estimated` count the served planets with the family in `families` and in `families_estimated`. `distribution` is `non-commercial`: the host positions come from Gaia DR3.
+- `systems`: the systems index. `index` is its path; `systems` and `held` count its systems and held stars.
 - `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
   - `licence`: the licence of the culture's data and illustrations as it states it (`applies_to` is `all`, `data` or `illustrations`; the files hold no illustrations yet), and the tier that this licence alone allows. A culture that states no licence has no parts and the tier `non-commercial`, with the flag `no-licence`. A statement that the ingest cannot read gives the tier `undecided`, which no client may serve.
   - `distribution`: the tier of the file, the strictest of the culture's licence and of Gaia DR3 (`non-commercial`), because the positions come from Gaia. `undecided` stays `undecided`.
@@ -867,6 +900,8 @@ The export of 2026-10-26 (a new registry, 180,980,643 IDs) adds both FLAME group
 Binary orbit tiles (`max_rows` 300), an estimate from the tile writer and the split rule over the 394,046 orbits of the positionable stars: 3,045 tiles, 118 MB, median 34 kB and 112 rows, p90 64 kB, max 111 kB.
 
 System tiles (`max_rows` 1,500), an estimate from the tile writer and the split rule over the 1,697,320 nodes of a dry run of the tree builder on registry ingest 1 (1,678,427 systems, 3,396,784 members): 2,385 tiles, 138 MB, median 51 kB and 624 rows, p90 94 kB, max 124 kB, about 82 B per row. That estimate is from before the held stars and the `distance`, `orbit` and `star` columns.
+
+The systems index, an estimate from a dry run of the tree builder (round 6, dry run 5): 35,888 roots with a held star or a drawn orbit, before the roots of planet hosts, and 70,914 named held stars.
 
 The sky cultures of registry ingest 4 (Stellarium at `0d956aa`, Bucur at `711e069`): 101 culture files (64 from Stellarium, 37 from Bucur) and the international names, 1.76 MB together. The median culture file is 3.7 kB; the largest are `chinese` (166 kB, 312 figures, 3,079 members) and `modern_chinese` (141 kB). 4,820 of the 4,864 stars of all cultures have a position.
 

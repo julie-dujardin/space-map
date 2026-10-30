@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pyarrow as pa
 
-from space_map_data.export.extrasolar import container, render, tiles
+from space_map_data.export.extrasolar import container, render, system_index, tiles
 from space_map_data.export.extrasolar.container import Container
 from space_map_data.export.extrasolar.planets import alias_key
 from space_map_data.export.extrasolar.tiles import Split
@@ -187,6 +187,12 @@ class ExportReader:
             return None
         planets = self.system(entry["system"])["planets"]
         return next(p for p in planets if (p["host"], p["number"]) == (host, number))
+
+    # The star systems
+
+    def system_index(self) -> dict:
+        section = self.metadata[system_index.SECTION]
+        return self.json_file(section["index"], system_index.SECTION)
 
     # The render tree
 

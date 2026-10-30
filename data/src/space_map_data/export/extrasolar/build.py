@@ -42,6 +42,7 @@ from functools import partial
 from pathlib import Path
 
 import numpy as np
+import pyarrow as pa
 
 from space_map_data.constants.stars.families import FAMILIES, PARENTS, STAR_FAMILY_PAGES
 from space_map_data.download.providers.stars import el_badry, msc, orb6, sbx, wds
@@ -53,6 +54,7 @@ from space_map_data.export.extrasolar import (
     planets,
     render,
     skycultures,
+    system_index,
     systems,
     tiles,
 )
@@ -485,11 +487,14 @@ def _build_tables(
     previous: Split | None,
     problems: Problems,
     refs: systems.Refs,
-) -> tuple[list[TableResult], tiles.FamilyStars]:
-    """The record tiles of every table, and the stars of each family. `refs`
-    are the IDs of the system trees, which the Metadata tiles check."""
+    named: np.ndarray,
+) -> tuple[list[TableResult], tiles.FamilyStars, pa.Table]:
+    """The record tiles of every table, the stars of each family, and the
+    names of the IDs `named`. `refs` are the IDs of the system trees, which
+    the Metadata tiles check."""
     results = []
     family_stars = tiles.FamilyStars(np.zeros((2, len(FAMILIES)), np.int64), {})
+    names = [METADATA.schema.empty_table().select(tiles.NAME_COLUMNS)]
     for table in (METADATA, *TABLES):
         slug = table.slug
         jobs = [(registry, slug, region) for region in range(REGION_COUNT)]
@@ -503,8 +508,12 @@ def _build_tables(
         )
         units = tiles.units(split)
         metadata = slug == METADATA.slug
+        regions = [unit.regions for unit in units]
         unit_refs = (
-            systems.refs_by_unit(refs, [unit.regions for unit in units])
+            systems.refs_by_unit(refs, regions) if metadata else [None] * len(units)
+        )
+        unit_names = (
+            system_index.ids_by_unit(named, regions)
             if metadata
             else [None] * len(units)
         )
@@ -518,8 +527,9 @@ def _build_tables(
                 if previous is None or not metadata
                 else Previous(layout.live, _previous_paths(previous, unit.regions)),
                 None if found is None else partial(systems.check_metadata, found),
+                ids,
             )
-            for unit, found in zip(units, unit_refs, strict=True)
+            for unit, found, ids in zip(units, unit_refs, unit_names, strict=True)
         ]
         built = _run(workers, tiles.build_unit, unit_jobs, f"{slug}: tiles")
         files = [split_file]
@@ -531,10 +541,12 @@ def _build_tables(
             problems.update(result.problems)
             if result.family_stars is not None:
                 family_stars = family_stars.merge(result.family_stars)
+            if result.names is not None:
+                names.append(result.names)
         if dropped:
             logger.warning("%s: %d aliases without a live end left out", slug, dropped)
         results.append(TableResult(slug, split, files, rows))
-    return results, family_stars
+    return results, family_stars, pa.concat_tables(names)
 
 
 @dataclass
@@ -638,6 +650,8 @@ def _metadata(
     cultures: skycultures.Result | None,
     planet_files: planets.Result | None,
     counted: census.Census,
+    index_entry: dict,
+    index_bytes: int,
 ) -> dict:
     tables_out = {}
     for result in tables_built:
@@ -701,6 +715,7 @@ def _metadata(
             {r.slug: sum(f.size for f in r.files) for r in tables_built},
             sum(f.size for f in tree.files),
             0 if planet_files is None else sum(f.size for f in planet_files.files),
+            index_bytes,
         ),
         "credits": list(CREDITS),
     }
@@ -715,6 +730,7 @@ def _metadata(
             "frame": FRAME,
             "distribution": DISTRIBUTION,
         }
+    metadata[system_index.SECTION] = {**index_entry, "distribution": DISTRIBUTION}
     return metadata
 
 
@@ -753,6 +769,9 @@ class Built:
     # The nodes, members and trees of the System table.
     systems: dict[str, int]
     family_stars: tiles.FamilyStars
+    index_file: Written
+    # The section of the system index in METADATA_FILE.
+    index_entry: dict
 
 
 def _refuse(problems: Problems) -> None:
@@ -786,10 +805,17 @@ def _export(
         # Before the tiles, which take the longest.
         _refuse(trees.check())
         refs = trees.refs()
+        planet_rows = planets.read_planets(registry)
+        planet_keys = (
+            np.zeros(0, np.int64)
+            if planet_rows is None
+            else np.unique(planet_rows["system"].to_numpy())
+        )
+        listed = system_index.listed(trees, planet_keys)
         del trees
         problems = Problems()
-        built, family_stars = _build_tables(
-            registry, layout, workers, previous, problems, refs
+        built, family_stars, names = _build_tables(
+            registry, layout, workers, previous, problems, refs, listed.ids
         )
         del refs
         _refuse(problems)
@@ -810,13 +836,19 @@ def _export(
         counted = census.census(
             registry,
             lambda task, jobs, label: _run(workers, task, jobs, label),
-            planets.read_planets(registry),
+            planet_rows,
         )
         for kind, entry in counted.objects.items():
             logger.info(
                 "census: %s %d, %d sources", kind, entry["count"], len(entry["sources"])
             )
         cultures = skycultures.build(registry, layout.staging, cultures_dir)
+        index_file, index_entry = system_index.write(listed, names, layout.staging)
+        logger.info(
+            "system index: %d systems, %d held stars",
+            index_entry["systems"],
+            index_entry["held"],
+        )
         groups = {result.slug: result.files for result in built}
         groups[render.TREE] = tree.files
         tokens = _patch(layout.staging, groups, workers)
@@ -824,6 +856,7 @@ def _export(
             tokens[skycultures.TABLE] = cultures.entry["token"]
         if planet_files is not None:
             tokens[planets.SECTION] = planet_files.entry["token"]
+        tokens[system_index.SECTION] = index_entry["token"]
         metadata = _metadata(
             registry,
             built,
@@ -833,6 +866,8 @@ def _export(
             cultures,
             planet_files,
             counted,
+            index_entry,
+            index_file.size,
         )
         (layout.staging / METADATA_FILE).write_text(
             json.dumps(metadata, indent=1) + "\n"
@@ -847,7 +882,15 @@ def _export(
                 shutil.rmtree(path)
         raise
     return Built(
-        built, tree, cultures, planet_files, tokens, system_counts, family_stars
+        built,
+        tree,
+        cultures,
+        planet_files,
+        tokens,
+        system_counts,
+        family_stars,
+        index_file,
+        index_entry,
     )
 
 
@@ -908,19 +951,25 @@ def export_extrasolar(
     report["planets"] = (
         {} if result.planet_files is None else dict(result.planet_files.counts)
     )
+    report["system_index"] = {
+        "systems": result.index_entry["systems"],
+        "held": result.index_entry["held"],
+        "bytes": result.index_file.size,
+    }
     report["files"] = (
         sum(len(r.files) for r in built)
         + len(tree.files)
         + len(culture_files)
         + len(planet_files)
-        # METADATA_FILE and FAMILIES_FILE.
-        + 2
+        # METADATA_FILE, FAMILIES_FILE and the system index.
+        + 3
     )
     report["bytes"] = (
         sum(f.size for r in built for f in r.files)
         + sum(f.size for f in tree.files)
         + sum(f.size for f in culture_files)
         + sum(f.size for f in planet_files)
+        + result.index_file.size
     )
     return report
 

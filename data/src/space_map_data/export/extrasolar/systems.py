@@ -84,6 +84,7 @@ class Systems:
     stars: np.ndarray
     label: np.ndarray
     has_tree: np.ndarray
+    has_orbit: np.ndarray
     # The node that lists each member.
     member_node: np.ndarray
     member_id: np.ndarray
@@ -120,6 +121,7 @@ class Systems:
             stars=counts(rows["stars"]),
             label=rows["label"].to_numpy(zero_copy_only=False),
             has_tree=rows["tree"].is_valid().to_numpy(zero_copy_only=False),
+            has_orbit=rows["orbit"].is_valid().to_numpy(zero_copy_only=False),
             member_node=member_node,
             member_id=_ids(members.field("id")),
             member_kind=_kinds(members.field("kind")),
@@ -325,11 +327,12 @@ ROW_FIELDS = (
     "stars",
     "label",
     "has_tree",
+    "has_orbit",
 )
 
 
-# The columns that the checks read.
-READ_COLUMNS = (*ROW_FIELDS[:-1], "members", "tree")
+# The columns that the checks and the index read.
+READ_COLUMNS = (*ROW_FIELDS[:-2], "members", "tree", "orbit")
 
 
 def read_region(job: tuple[Registry, int]) -> Systems | None:

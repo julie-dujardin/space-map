@@ -11,10 +11,11 @@ from space_map_data.extrasolar.registry import Registry
 from tests.extrasolar.export_registry import Built, Node, planet, star, write_registry
 
 
-def _registry(root) -> Built:
+def _registry(root, held: bool = False) -> Built:
     """A Gaia and Hipparcos star with a Gaia orbit, a Gaia star named from
     Wikidata, a SIMBAD star that is a point of two stars, the resolved pair
-    of the first two, and a planet of the first."""
+    of the first two, and a planet of the first. With `held`, the two stars
+    of the point are held stars."""
 
     def names(_systems, meta):
         meta[1] |= {"name_source": "wikidata"}
@@ -31,7 +32,10 @@ def _registry(root) -> Built:
         orbits={0: orbit | {"masses_source": "gaia-dr3"}},
         systems=[
             Node((("star", 0, "A"), ("star", 1, "B"))),
-            Node((("entry", None, "Aa"), ("entry", None, "Ab")), point=2),
+            Node(
+                (("held" if held else "entry", None, "Aa"), ("entry", None, "Ab")),
+                point=2,
+            ),
         ],
         # A host in a system has the file of its root.
         planets=[planet(0, 1, system=("node", 0))],
@@ -92,6 +96,15 @@ class TestCensus:
         assert objects["star_system"]["sources"] == {"star-systems": 1}
         assert objects["planet"]["sources"] == {"nasa-exoplanet-archive": 1}
 
+    def test_a_held_star_is_a_star(self, tmp_path):
+        built = _registry(tmp_path / "reg", held=True)
+        with Registry(built.root).reader() as registry:
+            counted = census.census(registry, _serial, read_planets(registry))
+        counts = {kind: entry["count"] for kind, entry in counted.objects.items()}
+        assert counts == {"star": 4, "star_system": 1, "planet": 1}
+        assert counted.rows["system", "star"] == 2
+        assert counted.objects["star"]["sources"]["star-systems"] == 2
+
 
 class TestServedCensus:
     def test_metadata_json_has_the_census_and_its_bytes(self, tmp_path):
@@ -124,7 +137,7 @@ class TestServedCensus:
             )
 
         # The pair is one of two System rows and one of four live IDs; the
-        # point's System row is that of a star.
+        # point's System row is that of a star. The systems index is theirs.
         assert objects["star_system"]["size_bytes"] == pytest.approx(
-            tree("system") / 2 + tree("metadata") / 4, abs=1
+            tree("system") / 2 + tree("metadata") / 4 + tree("systems"), abs=1
         )

@@ -13,6 +13,7 @@ from space_map_data.export.extrasolar import (
     citations,
     render,
     skycultures,
+    system_index,
     tiles,
 )
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
@@ -364,6 +365,44 @@ class TestPairOrbitsAndHeldStars:
             (held_a, "star", "A"),
             (built.held[KEPLER, "B"], "star", "B"),
         ]
+
+    def test_the_index_of_the_systems(self, exported):
+        built, reader, report = exported
+        section = reader.metadata["systems"]
+        assert section["index"] == system_index.INDEX_FILE
+        assert section["distribution"] == "non-commercial"
+        index = reader.system_index()
+        point = built.nodes[KEPLER]
+        assert index["systems"] == [
+            {
+                "id": point,
+                "name": "Kepler-16",
+                "class": "binary star",
+                "stars": 2,
+                "held": [
+                    {"id": built.held[KEPLER, "A"], "name": "Kepler-16 A"},
+                    {"id": built.held[KEPLER, "B"], "name": "Kepler-16 B"},
+                ],
+            }
+        ]
+        assert report["system_index"]["systems"] == section["systems"] == 1
+        assert report["system_index"]["held"] == section["held"] == 2
+
+    def test_planet_roots_and_orbit_roots_are_listed(self, tmp_path, out):
+        """α Cen, with a planet around Proxima, and the pair, with an orbit."""
+        orbit = drawn.scene(KEPLER_PAIR | {"ra": 120.0, "dec": -30.0}, 10.0)
+        pair = Node(SYSTEMS[PAIR].members, orbit=orbit)
+        systems = [*SYSTEMS[:PAIR], pair]
+        planets = [planet(2, 1, system=("node", ALPHA_CEN))]
+        built = _registry(tmp_path / "reg", systems=systems, planets=planets)
+        export_extrasolar(built.root, out, workers=1)
+        index = ExportReader(out / "v1" / "x").system_index()
+        assert [(s["id"], s["name"], s["held"]) for s in index["systems"]] == sorted(
+            [
+                (built.nodes[ALPHA_CEN], "Alpha Centauri", []),
+                (built.nodes[PAIR], f"System {PAIR}", []),
+            ]
+        )
 
 
 class TestTiers:

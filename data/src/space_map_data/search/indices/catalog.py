@@ -62,6 +62,7 @@ def _catalog_settings() -> dict[str, Any]:
             "object.magnitude",
             "object.inception",
             "object.extrasolar",
+            "object.system_id",
             "planet.host_id",
             "planet.system_id",
             "planet.class",

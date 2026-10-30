@@ -463,6 +463,7 @@ class TestExport:
             ("system", ("id",)),
             ("system", None),
             ("system", systems.READ_COLUMNS),
+            ("system", census.HELD_COLUMNS),
             *(
                 (table.slug, census.read_columns(table))
                 for table in (METADATA, POINT_SOURCE, BINARY_ORBIT, SYSTEM)

@@ -468,13 +468,6 @@ def planet_record(row: dict, host: dict) -> dict:
     return record
 
 
-def _payload(content: dict) -> bytes:
-    return (
-        json.dumps(content, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-        + "\n"
-    ).encode()
-
-
 def alias_key(number: tuple[int, int]) -> str:
     """The key of an alias number in the index: `<host>/<number>`."""
     return f"{number[0]}/{number[1]}"
@@ -691,14 +684,16 @@ def build(
     named_files = [(INDEX_FILE, index)] + [
         (system_path(key), content) for key, content in contents.items()
     ]
-    digests = [hashlib.sha256(_payload(c)).digest() for _, c in named_files]
+    digests = [
+        hashlib.sha256(container.json_payload(c)).digest() for _, c in named_files
+    ]
     token = container.token_of(
         [Written(path, digest, 0, 0) for (path, _), digest in zip(named_files, digests)]
     )
     written = []
     for (path, content), digest in zip(named_files, digests):
         content["token"] = token
-        data = gzip.compress(_payload(content), compresslevel=9, mtime=0)
+        data = gzip.compress(container.json_payload(content), compresslevel=9, mtime=0)
         target = out / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)

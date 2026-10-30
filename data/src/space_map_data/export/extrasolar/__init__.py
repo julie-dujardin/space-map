@@ -5,6 +5,7 @@ served files under `space-map-extrasolar/v1/x/`.
 - `tiles`: record tiles, the split tables and the checks on the rows.
 - `citations`: the works that the orbits and held stars of System cite.
 - `systems`: the checks of the star systems, their trees and Metadata links.
+- `system_index`: the systems and held stars that search finds.
 - `render`: the Milky Way render tree.
 - `skycultures`: the sky cultures, one file per culture.
 - `planets`: the planet index and one file per planetary system.

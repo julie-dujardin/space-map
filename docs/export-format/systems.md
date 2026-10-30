@@ -1,6 +1,6 @@
 # System files
 
-These are the files of the solar system's planetary systems. The star systems, with their held stars and the orbits of their pairs, are the System table of the extrasolar export: see [extrasolar.md](extrasolar.md), "System (table 3)".
+These are the files of the solar system's planetary systems. The star systems, with their held stars and the orbits of their pairs, are the System table of the extrasolar export: see [extrasolar.md](extrasolar.md), "System (table 3)" and "Systems index".
 
 ## Systems global (`systems/global.json`)
 

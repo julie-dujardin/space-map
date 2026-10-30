@@ -33,6 +33,7 @@ payload hash of the token leaves out, and the token is written in afterwards.
 
 import gzip
 import hashlib
+import json
 import struct
 import zlib
 from collections.abc import Mapping
@@ -361,6 +362,14 @@ def encode(
             out += buf
             out += b"\0" * _pad(len(buf))
     return bytes(out)
+
+
+def json_payload(content: dict) -> bytes:
+    """The bytes of a JSON file of the export, which its token hashes."""
+    return (
+        json.dumps(content, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        + "\n"
+    ).encode()
 
 
 def gzip_payload(payload: bytes, level: int = LEVEL) -> bytes:
