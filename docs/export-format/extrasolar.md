@@ -366,7 +366,7 @@ A held star has a Metadata row with its name, the class `star` and the `system` 
 - its root's name and its letter, when a source gives the letter: the letters of the WDS and the MSC name the components of the whole system ("Castor Ba"). A root that takes its primary's name drops the primary's component letter first ("HQ Tau Aa", not "HQ Tau A Aa");
 - else its pair's name and A or B ("Kepler-16 A", "HIP 14164 B"): A is the heavier star of the pair, B the other. With no masses, or equal ones, A is the first member. When the other member has the letter A or B, it takes the letter that is left.
 
-`star` holds its values. Each comes from the first source that has it: a paper (`literature`), OEC (`open-exoplanet-catalogue`), the tree source of the member, then the masses of its Gaia DR3 orbit (`gaia-dr3-orbits`).
+`star` holds its values. Each comes from the first source that has it: a paper (`literature`), OEC (`open-exoplanet-catalogue`), the tree source of the member, then the masses of its Gaia DR3 orbit (`gaia-dr3-orbits`). The two stars of a paper or of OEC go to the members by their letters; with no letters that agree, the paper's primary goes to the first member.
 
 | Field | Type | |
 |---|---|---|

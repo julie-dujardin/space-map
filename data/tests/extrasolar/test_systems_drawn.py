@@ -91,8 +91,13 @@ def alpha_cen(first: str = "A", second: str = "B") -> Systems:
     )
 
 
-def kepler_16() -> Systems:
-    """Kepler-16: a point that holds both stars, with its Gaia orbit."""
+def kepler_16(order: str = "AB") -> Systems:
+    """Kepler-16: a point that holds both stars, A first unless `order` is
+    "BA", with its Gaia orbit."""
+    stars = {
+        "A": ("Kepler-16", "A", 0.69),
+        "B": ("Kepler-16 B", "", 0.2025),
+    }
     return _systems(
         [
             {
@@ -116,10 +121,7 @@ def kepler_16() -> Systems:
                 "mass": mass,
                 "ids": _ids((OEC, "systems", f"{label} {suffix}".strip())),
             }
-            for label, suffix, mass in (
-                ("Kepler-16", "A", 0.69),
-                ("Kepler-16 B", "", 0.2025),
-            )
+            for label, suffix, mass in (stars[letter] for letter in order)
         ],
         orbit_keys=(20,),
     )
@@ -336,6 +338,25 @@ class TestPairs:
         assert a["references"] == [
             {"source": orbits.LITERATURE, "reference": "doyle_2011"}
         ]
+
+    def test_the_paper_goes_to_the_members_by_their_letters(self):
+        """Kepler-16 with B first: Doyle et al.'s orbit of B about A turns
+        round, and A's values go to A."""
+        literature, stars = orbits.read_literature()
+        found = drawn.draw(
+            kepler_16("BA"),
+            Inputs(catalogue_orbits=literature, catalogue_stars=stars),
+            FakeResolver({KEPLER_16: 20}, []),
+        )
+        (row,) = found.orbits.to_pylist()
+        # The paper's 263.464° is A's ω: B's about A is 83.464°, A's about B
+        # 263.464°.
+        assert row["arg_periastron"] == pytest.approx(263.464)
+        assert row["barycentre"] == pytest.approx(0.6897 / (0.6897 + 0.20255))
+        b, a = found.held.to_pylist()
+        assert (b["letter"], b["mass"]) == ("B", pytest.approx(0.20255))
+        assert (a["letter"], a["mass"]) == ("A", pytest.approx(0.6897))
+        assert found.counts["literature: orbits turned by the letters"] == 1
 
     def test_a_pair_with_no_node_takes_the_planets_node(self, alpha_cen_orbits):
         literature, stars = orbits.read_literature()

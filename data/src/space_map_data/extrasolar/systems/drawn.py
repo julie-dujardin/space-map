@@ -23,7 +23,10 @@ about its first (`elements`). The orbit sources reach a pair so:
 - literature and Gaia DR3: the point that holds the pair;
 - oec: the OEC ids of the binary's stars on the members, else the point
   of one of its stars.
-An orbit whose secondary is the node's first member is turned round.
+An orbit whose secondary is the node's first member is turned round. Through
+a point, the letters of the orbit's stars and of the members tell this, and
+the stars of a paper or of OEC go to the members by them. With no letters
+that agree, the orbit's primary is the first member.
 
 Each element comes from the first orbit that has it: papers, the MSC, ORB6,
 SBX, OEC, then Gaia DR3, and inside a source the orbit with the most
@@ -481,18 +484,37 @@ class Drawer:
                 where = "a node that is no pair" if at in larger else "pairs in no tree"
                 self.counts[f"{item.source}: orbits of {where}"] += 1
                 continue
-            self._add(number, item, False)
             pair, row = self.pairs[number], rows[at]
-            if item.source == LITERATURE:
-                pair.stars[LITERATURE] = _two(stars[(LITERATURE, row["system"])])
-                pair.reference = row["reference"]
-            elif item.source == OEC:
-                binary = [
+            two = _two(
+                [
                     s
-                    for s in stars[(OEC, row["system"])]
+                    for s in stars[(item.source, row["system"])]
                     if s["designation"] == row["designation"]
                 ]
-                pair.stars.setdefault(OEC, _two(binary))
+            )
+            labels = (row["primary"], row["secondary"])
+            if item.source == OEC:
+                labels = (two[0].get("label"), two[1].get("label"))
+            turned = self._turned(pair, labels)
+            self._add(number, item, turned)
+            if turned:
+                two = (two[1], two[0])
+                self.counts[f"{item.source}: orbits turned by the letters"] += 1
+            if item.source == LITERATURE:
+                pair.stars[LITERATURE] = two
+                pair.reference = row["reference"]
+            elif item.source == OEC:
+                pair.stars.setdefault(OEC, two)
+
+    def _turned(self, pair: _Pair, labels: tuple[str | None, str | None]) -> bool:
+        """Whether the secondary of an orbit whose two stars have these
+        labels is the pair's first member, by their letters. With no letters
+        that agree, its primary is the first member."""
+        first, second = self._letters(pair.first), self._letters(pair.second)
+        primary, secondary = (_letter(label) for label in labels)
+        return (secondary is not None and secondary == first) or (
+            primary is not None and primary == second
+        )
 
     def _oec_members(self, item: Elements, binary: list[dict]) -> bool:
         """Put an OEC binary on the pair whose members are its two stars."""
