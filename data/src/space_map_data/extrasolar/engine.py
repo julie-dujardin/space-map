@@ -62,8 +62,9 @@ their key ID, and commits them with the rest.
 import logging
 import shutil
 import subprocess
-from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections import defaultdict, deque
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -158,6 +159,11 @@ FLUSH_ROWS = 2_000_000
 # Rows of the regions kept in memory for lookups and matching, for the
 # registry and for the earlier passes each.
 CACHE_ROWS = 10_000_000
+# Threads that build the regions of a commit.
+COMMIT_THREADS = 8
+# Staged rows of the regions that the commit builds at one time. A row takes
+# about 4 KB at the peak of its region.
+COMMIT_ROWS = 4_000_000
 # Share of the live IDs that one ingest may retire unless told otherwise.
 MAX_RETIRED_SHARE = 0.01
 REPORT_EXAMPLES = 20
@@ -328,6 +334,15 @@ def _bools(table: pa.Table, name: str) -> np.ndarray:
     return table[name].fill_null(False).to_numpy()
 
 
+def _evict(cache: dict[int, tuple], rows: int) -> int:
+    """Drop the least recently used regions of `cache` until it holds at most
+    CACHE_ROWS rows, or one region. Returns the rows left."""
+    while rows > CACHE_ROWS and len(cache) > 1:
+        dropped = cache.pop(next(iter(cache)))
+        rows -= sum(part.num_rows for part in dropped if isinstance(part, pa.Table))
+    return rows
+
+
 def _candidates(table: pa.Table) -> pa.Table:
     """Match candidates from positions keyed by `key`, sorted by fine cell."""
     fine = sky.cells(floats(table, "ra"), floats(table, "dec"), sky.MATCH_LEVEL)
@@ -370,6 +385,8 @@ class PassState:
     complete: bool
     fields: list[pa.Field]
     regions: set[int] = field(default_factory=set)
+    # Staged rows by region.
+    staged: dict[int, int] = field(default_factory=lambda: defaultdict(int))
     batches: int = 0
     counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # Keys that a row of this pass took by a claim, with that row.
@@ -439,14 +456,51 @@ ROW_IDS = pa.schema([("catalogue_id", pa.string()), ("id", pa.int64())])
 
 
 @dataclass
+class _Built:
+    """What the commit of one region adds to the totals of the run."""
+
+    counts: dict[str, int]
+    retired: np.ndarray
+    # Source name → ROW_IDS, for the extensions.
+    row_ids: dict[str, pa.Table]
+
+
+def _in_order[T, R](
+    work: Callable[[T], R], items: Sequence[T], weights: Sequence[int]
+) -> Iterator[R]:
+    """Run `work` on each item on COMMIT_THREADS threads; give the results in
+    item order. The items in work weigh at most COMMIT_ROWS together, or one
+    item runs alone. A failed item stops the work."""
+    with ThreadPoolExecutor(COMMIT_THREADS) as pool:
+        running: dict[Future[R], int] = {}
+        ordered: deque[Future[R]] = deque()
+        for item, weight in zip(items, weights, strict=True):
+            while running and (
+                len(running) >= COMMIT_THREADS
+                or sum(running.values()) + weight > COMMIT_ROWS
+            ):
+                done, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in done:
+                    del running[future]
+                    future.result()
+            future = pool.submit(work, item)
+            running[future] = weight
+            ordered.append(future)
+            while ordered and ordered[0].done():
+                yield ordered.popleft().result()
+        while ordered:
+            yield ordered.popleft().result()
+
+
+@dataclass
 class _View:
     """What the registry and the earlier passes hold in some regions."""
 
-    # Sorted by order, so the last copy of a catalogue id is the latest.
+    # The xids of each region in turn, not sorted by order.
     xids: pa.Table
     # Keys whose ID is retired.
     dead: np.ndarray
-    # Sorted by cell.
+    # Sorted by cell. Empty for a source without a matcher.
     candidates: pa.Table
 
     def of(self, catalogue: str, release: str) -> pa.Table:
@@ -457,11 +511,20 @@ class _View:
             )
         )
 
+    def with_ids(self, catalogue_ids: pa.Array) -> _View:
+        """The view with only the xids of these catalogue ids, sorted by
+        order. A lookup of them gives the same result, faster."""
+        xids = self.xids.filter(
+            pc.is_in(self.xids["catalogue_id"], value_set=catalogue_ids)
+        )
+        xids = xids.take(pc.sort_indices(xids["order"]))
+        return _View(xids, self.dead, self.candidates)
+
     def lookup(
         self, catalogue: str, release: str, catalogue_ids: pa.Array
     ) -> tuple[np.ndarray, np.ndarray]:
         """(key, dead) of each catalogue id: key 0 where none or retired."""
-        xids = self.of(catalogue, release)
+        xids = self.with_ids(catalogue_ids).of(catalogue, release)
         n = len(catalogue_ids)
         if not xids.num_rows:
             return np.zeros(n, np.int64), np.zeros(n, bool)
@@ -470,9 +533,30 @@ class _View:
         dead = np.isin(keys, self.dead) & (keys != 0)
         return np.where(dead, 0, keys), dead
 
-    def holders(self, catalogue: str, release: str) -> np.ndarray:
-        """The keys that already hold an id of this catalogue release."""
-        return np.unique(self.of(catalogue, release)[KEY].to_numpy())
+    def with_keys(self, keys: np.ndarray) -> _View:
+        """The view with only the xids of these keys. `holds` of them gives
+        the same result, faster."""
+        wanted = pa.array(np.unique(keys), pa.int64())
+        found = pc.is_in(self.xids[KEY], value_set=wanted)
+        return _View(self.xids.filter(found), self.dead, self.candidates)
+
+    def holds(
+        self, catalogues: Iterable[tuple[str, str]], keys: np.ndarray
+    ) -> np.ndarray:
+        """Whether each key already holds an id of one of these catalogue
+        releases."""
+        xids = self.xids
+        hold = np.zeros(xids.num_rows, bool)
+        for catalogue, release in catalogues:
+            hold |= (
+                pc.and_(
+                    pc.equal(xids["catalogue"], catalogue),
+                    pc.equal(xids["release"], release),
+                )
+                .fill_null(False)
+                .to_numpy(zero_copy_only=False)
+            )
+        return np.isin(keys, xids[KEY].to_numpy()[hold])
 
     def catalogues(self, keys: list[int]) -> dict[int, set[tuple[str, str]]]:
         found: dict[int, set[tuple[str, str]]] = {key: set() for key in keys}
@@ -524,9 +608,9 @@ class IngestRun:
         self.conflicts: list[str] = []
         # The evidence of each join of two objects.
         self.joins: list[str] = []
-        self._cache: dict[int, tuple[pa.Table, pa.Table, np.ndarray]] = {}
+        self._cache: dict[int, tuple[pa.Table, pa.Table | None, np.ndarray]] = {}
         self._cache_rows = 0
-        self._run_cache: dict[int, tuple[pa.Table, pa.Table]] = {}
+        self._run_cache: dict[int, tuple[pa.Table, pa.Table | None]] = {}
         self._run_cache_rows = 0
         self._kept = _Kept({})
         self._roots: _Kept | None = None
@@ -718,10 +802,10 @@ class IngestRun:
     def _flush(self, state: PassState, buffered: dict[int, list[pa.Table]]) -> None:
         for region, parts in buffered.items():
             directory = self._pass_dir(state.number) / "in" / f"{region:03d}"
-            write_parquet(
-                pa.concat_tables(parts), directory / f"{state.batches:06d}.parquet"
-            )
+            rows = pa.concat_tables(parts)
+            write_parquet(rows, directory / f"{state.batches:06d}.parquet")
             state.regions.add(region)
+            state.staged[region] += rows.num_rows
         state.batches += 1
         buffered.clear()
 
@@ -765,38 +849,41 @@ class IngestRun:
     def _hood(self, region: int) -> list[int]:
         return [region, *sky.neighbour_regions(region)]
 
-    def _registry_region(self, region: int) -> tuple[pa.Table, pa.Table, np.ndarray]:
-        """The xids by live key, the candidates and the dead keys of a region."""
-        if region in self._cache:
-            self._cache[region] = self._cache.pop(region)
-            return self._cache[region]
-        registry = self.registry
-        states = registry.id_states([region])
-        xids = registry.read_xids(
-            region,
-            ["catalogue", "release", "catalogue_id", "id", "ingest"],
-            rebuild=True,
-        )
-        keys = registry.live_end(xids["id"].to_numpy())
-        view_xids = pa.table(
-            [
-                xids["catalogue"],
-                xids["release"],
-                xids["catalogue_id"],
-                pa.array(keys, pa.int64()),
-                xids["ingest"].cast(pa.int64()),
-            ],
-            schema=VIEW_XIDS,
-        )
-        positions = registry.positions(region, states)
-        candidates = _candidates(positions.rename_columns({"id": KEY}))
-        entry = (view_xids, candidates, self._dead(keys, region, states))
+    def _registry_region(
+        self, region: int, matching: bool
+    ) -> tuple[pa.Table, pa.Table | None, np.ndarray]:
+        """The xids by live key, the candidates and the dead keys of a region.
+        Without `matching`, the candidates can be None."""
+        entry = self._cache.pop(region, None)
+        if entry is None or (matching and entry[1] is None):
+            registry = self.registry
+            states = registry.id_states([region])
+            if entry is None:
+                xids = registry.read_xids(
+                    region,
+                    ["catalogue", "release", "catalogue_id", "id", "ingest"],
+                    rebuild=True,
+                )
+                keys = registry.live_end(xids["id"].to_numpy())
+                view_xids = pa.table(
+                    [
+                        xids["catalogue"],
+                        xids["release"],
+                        xids["catalogue_id"],
+                        pa.array(keys, pa.int64()),
+                        xids["ingest"].cast(pa.int64()),
+                    ],
+                    schema=VIEW_XIDS,
+                )
+                entry = (view_xids, None, self._dead(keys, region, states))
+                self._cache_rows += view_xids.num_rows
+            if matching:
+                positions = registry.positions(region, states)
+                candidates = _candidates(positions.rename_columns({"id": KEY}))
+                entry = (entry[0], candidates, entry[2])
+                self._cache_rows += candidates.num_rows
         self._cache[region] = entry
-        self._cache_rows += view_xids.num_rows + candidates.num_rows
-        while self._cache_rows > CACHE_ROWS and len(self._cache) > 1:
-            oldest = next(iter(self._cache))
-            dropped = self._cache.pop(oldest)
-            self._cache_rows -= dropped[0].num_rows + dropped[1].num_rows
+        self._cache_rows = _evict(self._cache, self._cache_rows)
         return entry
 
     def _dead(self, keys: np.ndarray, region: int, states: IdStates) -> np.ndarray:
@@ -808,42 +895,54 @@ class IngestRun:
             states = self.registry.id_states(regions)
         return keys[states.has_status(keys, RETIRED)]
 
-    def _run_region(self, state: PassState, region: int) -> tuple[pa.Table, pa.Table]:
-        """The xids and candidates of the earlier passes in a region."""
-        if region in self._run_cache:
-            self._run_cache[region] = self._run_cache.pop(region)
-            return self._run_cache[region]
-        xid_files, pending_files = [], []
-        for earlier in self.passes[: state.number]:
-            base = self._pass_dir(earlier.number)
-            xid_files += sorted((base / "xids" / f"{region:03d}").glob("*.parquet"))
-            pending_files += sorted(
-                (base / "pending" / f"{region:03d}").glob("*.parquet")
+    def _run_region(
+        self, state: PassState, region: int, matching: bool
+    ) -> tuple[pa.Table, pa.Table | None]:
+        """The xids and candidates of the earlier passes in a region. Without
+        `matching`, the candidates can be None."""
+        entry = self._run_cache.pop(region, None)
+        earlier = [self._pass_dir(p.number) for p in self.passes[: state.number]]
+        if entry is None:
+            files = [
+                path
+                for base in earlier
+                for path in sorted((base / "xids" / f"{region:03d}").glob("*.parquet"))
+            ]
+            xids = read_parquet(files, RUN_XIDS, VIEW_XIDS.names[:4])
+            xids = xids.append_column(
+                "order", pa.array(np.full(xids.num_rows, self.ingest), pa.int64())
             )
-        xids = read_parquet(xid_files, RUN_XIDS, VIEW_XIDS.names[:4])
-        xids = xids.append_column(
-            "order", pa.array(np.full(xids.num_rows, self.ingest), pa.int64())
-        )
-        pending = read_parquet(pending_files, PENDING)
-        entry = (xids, _candidates(pending))
+            entry = (xids, None)
+            self._run_cache_rows += xids.num_rows
+        if matching and entry[1] is None:
+            files = [
+                path
+                for base in earlier
+                for path in sorted(
+                    (base / "pending" / f"{region:03d}").glob("*.parquet")
+                )
+            ]
+            entry = (entry[0], _candidates(read_parquet(files, PENDING)))
+            self._run_cache_rows += entry[1].num_rows
         self._run_cache[region] = entry
-        self._run_cache_rows += xids.num_rows + entry[1].num_rows
-        while self._run_cache_rows > CACHE_ROWS and len(self._run_cache) > 1:
-            oldest = next(iter(self._run_cache))
-            dropped = self._run_cache.pop(oldest)
-            self._run_cache_rows -= dropped[0].num_rows + dropped[1].num_rows
+        self._run_cache_rows = _evict(self._run_cache, self._run_cache_rows)
         return entry
 
     def _view(self, state: PassState, regions: Iterable[int]) -> _View:
+        # Only a matcher reads the candidates.
+        matching = state.source.matcher is not None
         xids, candidates, dead = [], [], []
         for region in regions:
-            reg_xids, reg_candidates, reg_dead = self._registry_region(region)
-            run_xids, run_candidates = self._run_region(state, region)
+            reg_xids, reg_candidates, reg_dead = self._registry_region(region, matching)
+            run_xids, run_candidates = self._run_region(state, region, matching)
             xids += [reg_xids, run_xids]
-            candidates += [reg_candidates, run_candidates]
             dead.append(reg_dead)
+            if matching:
+                assert reg_candidates is not None and run_candidates is not None
+                candidates += [reg_candidates, run_candidates]
         all_xids = pa.concat_tables(xids)
-        all_xids = all_xids.take(pc.sort_indices(all_xids["order"]))
+        if not matching:
+            return _View(all_xids, np.concatenate(dead), CANDIDATES.empty_table())
         all_candidates = pa.concat_tables(candidates)
         all_candidates = all_candidates.take(pc.sort_indices(all_candidates["fine"]))
         return _View(all_xids, np.concatenate(dead), all_candidates)
@@ -1127,7 +1226,11 @@ class IngestRun:
             usable[lost] = False
 
         # No old link of a source that is not permanent holds.
-        holders = set(view.holders(*own).tolist()) if view is not None else set()
+        holders: set[int] = set()
+        if view is not None:
+            targets = np.unique(hit[hit != 0])
+            held = view.with_keys(targets).holds([own], targets)
+            holders = set(targets[held].tolist())
         starts = np.flatnonzero(np.r_[True, parent[1:] != parent[:-1]])
         ends = np.r_[starts[1:], parent.size]
         row_ids = rows["catalogue_id"].take(parent[starts]).to_pylist()
@@ -1210,6 +1313,8 @@ class IngestRun:
         claimed_id = flat.field("catalogue_id")
         hit = np.zeros(len(flat), np.int64)
         usable = claimed_id.is_valid().to_numpy(zero_copy_only=False)
+        if view is not None:
+            view = view.with_ids(claimed_id)
         for pair in sorted(set(zip(catalogue.to_pylist(), release.to_pylist()))):
             picked = np.flatnonzero(
                 pc.and_(pc.equal(catalogue, pair[0]), pc.equal(release, pair[1]))
@@ -1337,14 +1442,13 @@ class IngestRun:
         pair_cand = np.repeat(first, count) + offset
 
         keys = candidates[KEY].to_numpy()
-        excluded = np.concatenate(
-            [
-                view.holders(source.catalogue, source.release),
-                *(view.holders(*catalogue) for catalogue in source.claim_only),
-                np.array(list(state.claimed), np.int64),
-            ]
+        pair_keys = keys[pair_cand]
+        near = view.with_keys(pair_keys)
+        own = (source.catalogue, source.release)
+        keep = ~(
+            near.holds([own, *source.claim_only], pair_keys)
+            | np.isin(pair_keys, np.array(list(state.claimed), np.int64))
         )
-        keep = ~np.isin(keys[pair_cand], excluded)
         if misses is not None:
             missed_row = misses["row"].to_numpy()
             catalogues = misses["catalogue"].to_pylist()
@@ -1360,7 +1464,7 @@ class IngestRun:
                 # The claim names another object of that catalogue.
                 keep &= ~(
                     np.isin(free[pair_row], missed_row[picked])
-                    & np.isin(keys[pair_cand], view.holders(catalogue, release))
+                    & near.holds([(catalogue, release)], pair_keys)
                 )
         pair_row, pair_cand = pair_row[keep], pair_cand[keep]
         separation = sky.separation(
@@ -1591,10 +1695,26 @@ class IngestRun:
         joins = np.array(sorted(self.mintable_joins), np.int64)
         totals: dict[str, int] = defaultdict(int)
         retired: list[int] = []
-        for region in self._commit_regions():
-            self._build_region(
-                region, losers.get(region, []), joins, complete, totals, retired
-            )
+        # The commit reads no views. This frees their memory for the builds.
+        self._cache.clear()
+        self._cache_rows = 0
+        self._run_cache.clear()
+        self._run_cache_rows = 0
+        regions = self._commit_regions()
+        # The results go in region order, so the report and the extensions do
+        # not depend on the threads.
+        for built in _in_order(
+            lambda region: self._build_region(
+                region, losers.get(region, []), joins, complete
+            ),
+            regions,
+            [sum(s.staged.get(region, 0) for s in self.passes) for region in regions],
+        ):
+            for name, count in built.counts.items():
+                totals[name] += count
+            retired += built.retired.tolist()
+            for name, rows in built.row_ids.items():
+                self._row_ids[name].append(rows)
         if not complete and totals["without_data"]:
             logger.warning(
                 "partial ingest: %d live IDs have no row and are not retired",
@@ -2003,18 +2123,17 @@ class IngestRun:
         losers: list[tuple[int, int]],
         joins: np.ndarray,
         complete: bool,
-        totals: dict[str, int],
-        retired: list[int],
-    ) -> None:
+    ) -> _Built:
         """Mint, build the tables and write the segment of one region.
 
         `losers` are the merges of the region as (loser, survivor), sorted.
-        `joins` are the run keys that a minting row joined.
+        `joins` are the run keys that a minting row joined. It runs on a
+        thread beside other regions, so it changes nothing on the run.
         """
         records = self.registry.read_part("ids", region)
         states = IdStates.build(records)
         old_live = states.id[states.status == STATUS_CODES[LIVE]]
-        totals["live_before"] += old_live.size
+        counts = {"live_before": old_live.size}
 
         rows_of = self._region_rows(region)
         merged = self._merge_tables(rows_of)
@@ -2047,11 +2166,11 @@ class IngestRun:
         is_kept = kept == keys
         mintable = _bools(pending, "mintable") | np.isin(keys, joins)
         to_mint = is_kept & mintable & np.isin(keys, with_data)
-        totals["unminted"] += int((is_kept & ~to_mint).sum())
-        totals["absorbed"] += int((~is_kept & (kept > 0)).sum())
+        counts["unminted"] = int((is_kept & ~to_mint).sum())
+        counts["absorbed"] = int((~is_kept & (kept > 0)).sum())
         new = pending.filter(pa.array(to_mint))
         new_ids = self._serials(new, records)
-        totals["minted"] += new_ids.size
+        counts["minted"] = new_ids.size
 
         minted_keys = new[KEY].to_numpy()
         known = with_data[with_data > 0]
@@ -2063,13 +2182,13 @@ class IngestRun:
         def to_ids(keys: np.ndarray) -> np.ndarray:
             return map_sorted(final_keys, final_ids, keys, 0)
 
-        for name, rows in extension_rows.items():
-            self._row_ids[name].append(
-                pa.table(
-                    [rows["catalogue_id"], pa.array(to_ids(rows[KEY].to_numpy()))],
-                    schema=ROW_IDS,
-                )
+        row_ids = {
+            name: pa.table(
+                [rows["catalogue_id"], pa.array(to_ids(rows[KEY].to_numpy()))],
+                schema=ROW_IDS,
             )
+            for name, rows in extension_rows.items()
+        }
 
         out: dict[str, pa.Table] = {}
         for slug, rows in merged.items():
@@ -2091,9 +2210,8 @@ class IngestRun:
 
         loser_ids = np.array([loser for loser, _ in losers], np.int64)
         gone = old_live[~np.isin(old_live, live_ids) & ~np.isin(old_live, loser_ids)]
-        totals["without_data"] += gone.size
+        counts["without_data"] = gone.size
         retiring = gone if complete else np.zeros(0, np.int64)
-        retired += retiring.tolist()
 
         statuses = (
             [LIVE] * new_ids.size + [ALIAS] * len(losers) + [RETIRED] * retiring.size
@@ -2161,6 +2279,7 @@ class IngestRun:
                 path = region_file(self._table_dir(table), region)
                 rows = _with_computed(table, rows)
                 write_parquet(sort_by_cell(rows.cast(table.schema)), path, sync=True)
+        return _Built(counts, retiring, row_ids)
 
     def _run_xids(self, region: int) -> pa.Table:
         """The xids of the run whose kept key is in `region`."""
@@ -2182,9 +2301,10 @@ class IngestRun:
         """IDs of new objects: the next free serials, brightest first."""
         if not new.num_rows:
             return np.zeros(0, np.int64)
-        homes = np.array(
-            [self.sources[name].home for name in new["source"].to_pylist()], np.int64
-        )
+        names = list(self.sources)
+        homes = np.array([self.sources[name].home for name in names], np.int64)[
+            pc.index_in(new["source"], value_set=pa.array(names)).to_numpy()
+        ]
         cells = new["cell"].to_numpy()
         slot = (homes << CELL_BITS) | cells
         keyed = pa.table(

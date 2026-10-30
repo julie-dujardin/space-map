@@ -1,6 +1,10 @@
 import json
 import logging
 import sys
+import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
@@ -8,7 +12,7 @@ import pytest
 
 from space_map_data.extrasolar import __main__ as cli_module
 from space_map_data.extrasolar import engine, ids, sky
-from space_map_data.extrasolar.engine import IngestRun, Source
+from space_map_data.extrasolar.engine import ExtensionResult, IngestRun, Source
 from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from tests.extrasolar.conftest import (
@@ -687,6 +691,132 @@ class TestFailures:
         }
         cells = ids.cell_of(np.array(id_records["id"].to_pylist()))
         assert (np.diff(cells) >= 0).all()
+
+
+@dataclass
+class GaiaIds:
+    """An extension that keeps the IDs it gets and files them by host."""
+
+    name: str = "gaia-ids"
+    sources: tuple[str, ...] = (GAIA.name,)
+    seen: list | None = None
+
+    def build(self, registry, ids, ingest, complete) -> ExtensionResult:
+        self.seen = ids[GAIA.name].to_pylist()
+        rows = ids[GAIA.name].filter(pa.array(ids[GAIA.name]["id"].to_numpy() > 0))
+        return ExtensionResult(
+            parts={},
+            tables={"gaia-ids": rows.rename_columns(["gaia", "host"])},
+            key="host",
+            counts={"rows": rows.num_rows},
+            report="gaia ids\n",
+        )
+
+
+def without_dates(path: Path) -> bytes:
+    """The bytes of a commit file, without the date of the ingest."""
+    if path.name == "manifest.json":
+        manifest = json.loads(path.read_text())
+        for entry in manifest["ingests"]:
+            entry.pop("date")
+        manifest.pop("created", None)
+        return json.dumps(manifest).encode()
+    if path.name == "report.txt":
+        return path.read_bytes().split(b"\n", 1)[1]
+    return path.read_bytes()
+
+
+class TestCommitThreads:
+    """The commit builds regions on threads and keeps the serial result."""
+
+    def run_twice(self, root, backup) -> tuple[list[str], list[list]]:
+        """A first ingest, then one with merges and retired IDs, in 8 regions."""
+        cells = [CELL + n * (1 << sky.REGION_SHIFT) for n in range(8)]
+        gaia, hip, later_hip = [], [], []
+        for n, cell in enumerate(cells):
+            ra, dec = centre(cell)
+            far = offset(ra, dec, 30, 0)
+            gaia += [
+                {"id": 10 * n + 1, "ra": ra, "dec": dec, "mag": 3.0},
+                {"id": 10 * n + 2, "ra": far[0], "dec": far[1], "mag": 4.0},
+            ]
+            matched = offset(ra, dec, 0.3, 90)
+            alone = offset(ra, dec, 60, 180)
+            hip += [
+                {"id": 100 + n, "ra": matched[0], "dec": matched[1], "mag": 3.1},
+                {"id": 200 + n, "ra": alone[0], "dec": alone[1], "mag": 5.0},
+            ]
+            if n not in (2, 6):
+                later_hip += hip[-2:]
+            else:
+                later_hip += hip[-2:-1]
+        reports, seen = [], []
+        later_gaia = [dict(row) for row in gaia]
+        for n in (1, 5):
+            later_gaia[2 * n + 1]["claims"] = [claim("hip", "2007", 200 + n)]
+        for gaia_in, hip_in in ((gaia, hip), (later_gaia, later_hip)):
+            extension = GaiaIds()
+            with IngestRun.start(root, backup, (POINT,), META) as run:
+                run.add(GAIA, [gaia_rows(gaia_in)])
+                run.add(HIP, [hip_rows(hip_in)])
+                run.extend(extension)
+                result = run.commit(max_retired=2)
+            reports.append(result.report.split("\n", 1)[1])
+            seen.append(extension.seen)
+        assert result.entry["counts"]["merged"] == 2
+        assert result.entry["counts"]["retired"] == 2
+        return reports, seen
+
+    def test_threads_give_the_same_files_and_report(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(engine, "COMMIT_THREADS", 1)
+        serial = self.run_twice(tmp_path / "serial", tmp_path / "serial-backup")
+        # A region stages 3 or 4 rows, so 2 or 3 regions are in work at a time.
+        monkeypatch.setattr(engine, "COMMIT_THREADS", 4)
+        monkeypatch.setattr(engine, "COMMIT_ROWS", 11)
+        threaded = self.run_twice(tmp_path / "threads", tmp_path / "threads-backup")
+        assert threaded == serial
+        files = {
+            root: sorted(p.relative_to(root) for p in root.rglob("*") if p.is_file())
+            for root in (tmp_path / "serial", tmp_path / "threads")
+        }
+        assert files[tmp_path / "serial"] == files[tmp_path / "threads"]
+        for path in files[tmp_path / "serial"]:
+            assert without_dates(tmp_path / "serial" / path) == without_dates(
+                tmp_path / "threads" / path
+            ), path
+
+    def test_results_keep_the_order_and_the_row_bound(self, monkeypatch):
+        monkeypatch.setattr(engine, "COMMIT_THREADS", 4)
+        monkeypatch.setattr(engine, "COMMIT_ROWS", 10)
+        weights = [4, 4, 4, 12, 1, 1, 1, 1, 1, 1]
+        lock = threading.Lock()
+        load, running, most, over, ended = [0], [0], [0], [], []
+        second_ended = threading.Event()
+
+        def work(item: int) -> int:
+            with lock:
+                load[0] += weights[item]
+                running[0] += 1
+                most[0] = max(most[0], running[0])
+                # An item over the bound runs alone.
+                over.append(load[0] > max(10, weights[item]))
+            # The earlier items end last, and the first surely after the second.
+            if item == 0:
+                second_ended.wait(timeout=5)
+            time.sleep(0.005 * (len(weights) - item))
+            with lock:
+                load[0] -= weights[item]
+                running[0] -= 1
+                ended.append(item)
+            if item == 1:
+                second_ended.set()
+            return item
+
+        items = list(range(len(weights)))
+        assert list(engine._in_order(work, items, weights)) == items
+        assert ended.index(1) < ended.index(0)
+        assert not any(over)
+        assert 1 < most[0] <= 4
 
 
 NOTES = Source("notes", "notes", "1", home=1, permanent=False)
