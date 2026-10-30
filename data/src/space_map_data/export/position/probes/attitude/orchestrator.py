@@ -1,23 +1,23 @@
 """Probe attitude for the export: extract the changed shards, write chunks.
 
 The pipeline calls `write_attitude` between `write_probes` and
-`write_object_bundles`. For each mission with an `_attitude_index.json`:
+`write_object_bundles`. For each craft in an `_attitude_index.json`:
 1. Read the SEGMENT-level coverage of each CK, from the cache or a worker.
-   A mission whose CK segments are relative to a frame that needs positions
-   also furnishes its own SPKs everywhere after this.
-2. Plan the spin of each probe, keyed on its full kernel signature. Only a
+   The craft keeps the probes whose instruments its CKs carry, so a second
+   craft, a capsule or a lander of the mission gets no attitude that is not
+   its own. A craft whose CK segments are relative to a frame that needs
+   positions also furnishes its mission's SPKs everywhere after this.
+2. Read the SCLK rows, which sign each shard by the rows that reach it.
+3. Plan the spin of each probe, keyed on its full kernel signature. Only a
    spinner (Juno, HUYGENS) gets more than one span.
-3. Extract the 7-day shards whose signature changed (`shards.py`), on one
-   pool of workers across all missions, biggest task first.
-4. Join the shards of each probe. Write its chunks only when a shard changed
+4. Extract the 7-day shards whose signature changed (`shards.py`), on one
+   pool of workers across all craft, biggest task first.
+5. Join the shards of each probe. Write its chunks only when a shard changed
    or a chunk is missing. Put the manifest in the probe's `__global__` entry.
 
-Attitude depends only on kernels and the wire format, never on the DB. A
-probe referenced by several missions (Cassini under CASSINI and HUYGENS)
-belongs to the first mission in sorted order, because its chunk dir is keyed
-by probe id. Chunks live at `v1/attitude/<probe>/`, outside `position/`, so
-`remove_old_outputs` keeps them. The cache is in the metadata mirror
-(`cache.py`).
+Attitude depends only on kernels and the wire format, never on the DB. Chunks
+live at `v1/attitude/<probe>/`, outside `position/`, so `remove_old_outputs`
+keeps them. The cache is in the metadata mirror (`cache.py`).
 """
 
 import json
@@ -79,6 +79,7 @@ from .segments import (
 from .shards import (
     Coverage,
     Window,
+    clock_signature,
     covering_cks,
     digest,
     join_shards,
@@ -98,6 +99,7 @@ from .worker import (
     coverage_task,
     edge_task,
     fit_task,
+    sclk_task,
     shard_task,
     timeline_task,
 )
@@ -144,17 +146,25 @@ class _Probe:
 
 
 @dataclass
-class _Mission:
-    name: str
+class _Craft:
+    """One craft of a mission's attitude index, with its own frame, FK, SCLK
+    and CKs. Voyager and Viking have two."""
+
+    mission: str
     mission_dir: Path
     frame: str
     base: list[str]
+    # Every kernel that all shards sign. A shard signs only the SCLK rows that
+    # reach it, so the SCLK is apart.
     base_stamps: list[list]
+    sclk: str
+    sclk_stamp: list
     ck_names: list[str]
     ck_stamps: dict[str, dict | None]
     ck_sizes: dict[str, int]
     probes: list[_Probe]
     coverage: Coverage = field(default_factory=dict)
+    clock: np.ndarray = field(default_factory=lambda: np.empty((0, 3)))
     error: str | None = None
 
     def ck_paths(self, names: list[str]) -> list[str]:
@@ -183,125 +193,133 @@ def write_attitude(
     """
     if not MISSIONS_DIR.exists():
         return {}
-    missions = _load_missions(out_dir)
+    crafts = _load_crafts(out_dir)
     summary: dict[str, dict] = {}
     n_workers = max(1, min(_MAX_WORKERS, multiprocessing.cpu_count() // 2))
     with ProcessPoolExecutor(max_workers=n_workers) as ex:
         run = _Run(out_dir, ex, n_workers)
-        run.read_coverage(missions)
-        run.plan_spins(missions)
-        run.extract(missions, global_data, summary)
+        run.read_coverage(crafts)
+        run.read_clocks(crafts)
+        run.plan_spins(crafts)
+        run.extract(crafts, global_data, summary)
     logger.info("attitude: wrote chunks for %d probes", len(summary))
     return summary
 
 
-def _load_missions(out_dir: Path) -> list[_Mission]:
+def _load_crafts(out_dir: Path) -> list[_Craft]:
+    """One `_Craft` per craft of each index. Each lists every probe of its
+    mission until `read_coverage` keeps those its CKs carry."""
     registry = load_registry()
     probes_by_mission: dict[str, list[dict]] = {}
     for entry in registry:
-        for src in entry["kernel_sources"]:
-            probes_by_mission.setdefault(src["mission"], []).append(entry)
+        # A probe can list several NAIF IDs under one mission.
+        for mission in {src["mission"] for src in entry["kernel_sources"]}:
+            probes_by_mission.setdefault(mission, []).append(entry)
 
-    missions: list[_Mission] = []
-    claimed: set[int] = set()
+    crafts: list[_Craft] = []
     for index_path in sorted(MISSIONS_DIR.glob(f"*/{ATTITUDE_INDEX_NAME}")):
         mission_dir = index_path.parent
         name = mission_dir.name
-        matched = probes_by_mission.get(name, [])
-        if not matched:
+        entries = probes_by_mission.get(name, [])
+        if not entries:
             logger.info(
                 "attitude: mission %s has kernels but no registry probe references it",
                 name,
             )
             continue
-        entries: list[dict] = []
-        for entry in matched:
-            probe_id = entry["probe_id"]
-            if probe_id in claimed:
-                logger.info(
-                    "attitude: probe %d already claimed by an earlier mission, "
-                    "skipping under %s",
-                    probe_id,
-                    name,
-                )
-                continue
-            claimed.add(probe_id)
-            entries.append(entry)
-        # The probes stay claimed when the index is unreadable. Otherwise a
-        # later mission extracts them from its own CKs and prunes their shards.
         try:
             index = json.loads(index_path.read_text())
         except (OSError, json.JSONDecodeError) as exc:
             logger.error("attitude index %s unreadable: %s", index_path, exc)
             continue
-        probes: list[_Probe] = []
-        for entry in entries:
-            probe_id = entry["probe_id"]
-            naif = next(
-                src["naif_id"]
-                for src in entry["kernel_sources"]
-                if src["mission"] == name
-            )
-            probe_out = out_dir / "attitude" / str(probe_id)
-            meta_dir = mirror_path(probe_out)
-            probes.append(
-                _Probe(
-                    probe_id=probe_id,
-                    bus=naif * 1000,
-                    out_dir=probe_out,
-                    meta_dir=meta_dir,
-                    cache=load_probe_cache(meta_dir),
-                )
-            )
-        if not probes:
-            continue
-        base = [_LSK, _PCK, mission_dir / index["fk"], mission_dir / index["sclk"]]
-        cks = [mission_dir / ck for ck in index["ck_files"]]
-        stamps = content_stamps(base + cks)
-        mission = _Mission(
-            name=name,
-            mission_dir=mission_dir,
-            frame=index["frame_name"],
-            base=[str(p) for p in base],
-            base_stamps=[[_rel_key(p), stamps[p]] for p in base],
-            ck_names=list(index["ck_files"]),
-            ck_stamps={p.name: stamps[p] for p in cks},
-            ck_sizes={p.name: (stamps[p] or {}).get("size", 0) for p in cks},
-            probes=probes,
-        )
-        missing = [p.name for p in base + cks if stamps[p] is None]
-        if missing:
-            mission.error = f"missing kernels: {', '.join(missing[:3])}"
-        missions.append(mission)
-    return missions
+        for craft in index["spacecraft"]:
+            crafts.append(_load_craft(name, mission_dir, craft, entries, out_dir))
+    return crafts
 
 
-def _add_ephemerides(m: _Mission) -> None:
+def _load_craft(
+    name: str, mission_dir: Path, craft: dict, entries: list[dict], out_dir: Path
+) -> _Craft:
+    signed = [_LSK, _PCK, mission_dir / craft["fk"]]
+    sclk = mission_dir / craft["sclk"]
+    cks = [mission_dir / ck for ck in craft["ck_files"]]
+    stamps = content_stamps([*signed, sclk, *cks])
+    out = _Craft(
+        mission=name,
+        mission_dir=mission_dir,
+        frame=craft["frame_name"],
+        base=[str(p) for p in (*signed, sclk)],
+        base_stamps=[[_rel_key(p), stamps[p]] for p in signed],
+        sclk=str(sclk),
+        sclk_stamp=[_rel_key(sclk), stamps[sclk]],
+        ck_names=list(craft["ck_files"]),
+        ck_stamps={p.name: stamps[p] for p in cks},
+        ck_sizes={p.name: (stamps[p] or {}).get("size", 0) for p in cks},
+        probes=[_load_probe(entry, name, out_dir) for entry in entries],
+    )
+    missing = [p.name for p in (*signed, sclk, *cks) if stamps[p] is None]
+    if missing:
+        out.error = f"missing kernels: {', '.join(missing[:3])}"
+    return out
+
+
+def _load_probe(entry: dict, mission: str, out_dir: Path) -> _Probe:
+    naif = next(
+        src["naif_id"] for src in entry["kernel_sources"] if src["mission"] == mission
+    )
+    probe_out = out_dir / "attitude" / str(entry["probe_id"])
+    meta_dir = mirror_path(probe_out)
+    return _Probe(
+        probe_id=entry["probe_id"],
+        bus=naif * 1000,
+        out_dir=probe_out,
+        meta_dir=meta_dir,
+        cache=load_probe_cache(meta_dir),
+    )
+
+
+def _own_probes(c: _Craft) -> list[_Probe]:
+    """Set each probe's instruments. Returns those the craft's CKs carry."""
+    own: list[_Probe] = []
+    for p in c.probes:
+        p.instruments = probe_instruments(c.coverage, p.bus)
+        if p.instruments:
+            own.append(p)
+        else:
+            logger.info(
+                "attitude: the CKs of %s carry no instrument of probe %d",
+                c.frame,
+                p.probe_id,
+            )
+    return own
+
+
+def _add_ephemerides(c: _Craft) -> None:
     """Add the mission's own SPKs to its base kernels, for CK segments that
     are relative to a frame that needs positions."""
     try:
-        spks = kernels_from_index(m.mission_dir)
+        spks = kernels_from_index(c.mission_dir)
     except (OSError, json.JSONDecodeError) as exc:
-        logger.error("attitude: SPK index of %s unreadable: %s", m.name, exc)
-        m.error = "SPK index unreadable"
+        logger.error("attitude: SPK index of %s unreadable: %s", c.frame, exc)
+        c.error = "SPK index unreadable"
         return
     if not spks:
         logger.warning(
-            "attitude: %s has CK segments that need positions but no SPKs", m.name
+            "attitude: %s has CK segments that need positions but no SPKs", c.frame
         )
         return
     stamps = content_stamps(spks)
     missing = [p.name for p in spks if stamps[p] is None]
     if missing:
-        m.error = f"missing kernels: {', '.join(missing[:3])}"
+        c.error = f"missing kernels: {', '.join(missing[:3])}"
         return
     logger.info(
         "attitude: %s has CK segments that need positions; furnishing %d SPKs",
-        m.name,
+        c.frame,
         len(spks),
     )
-    m.base += [str(p) for p in spks]
-    m.base_stamps += [[_rel_key(p), stamps[p]] for p in spks]
+    c.base += [str(p) for p in spks]
+    c.base_stamps += [[_rel_key(p), stamps[p]] for p in spks]
 
 
 def _rel_key(path: Path) -> str:
@@ -337,108 +355,120 @@ class _Run:
                 out.append(exc)
         return out
 
-    def read_coverage(self, missions: list[_Mission]) -> None:
-        """Fill `mission.coverage`. Only CKs with a new stamp are read.
+    def read_coverage(self, crafts: list[_Craft]) -> None:
+        """Fill `craft.coverage`. Only CKs with a new stamp are read.
 
-        A CK that fails to read fails its mission for this run. Partial
+        A CK that fails to read fails its craft for this run. Partial
         coverage would plan too few shards and prune good ones.
         """
         attitude_meta = mirror_path(self.out_dir / "attitude")
         calls: list[tuple[Callable, tuple]] = []
-        owners: list[_Mission] = []
+        owners: list[_Craft] = []
         entries: dict[str, dict[str, dict]] = {}
         dirty: set[str] = set()
-        for m in missions:
-            if m.error:
+        for c in crafts:
+            if c.error:
                 continue
-            key = self._coverage_key(m)
-            cached = load_coverage(coverage_path(attitude_meta, m.name), key)
+            key = self._coverage_key(c)
+            cached = load_coverage(coverage_path(attitude_meta, c.frame), key)
             kept = {
                 name: cached[name]
-                for name in m.ck_names
-                if name in cached and cached[name]["stamp"] == m.ck_stamps[name]
+                for name in c.ck_names
+                if name in cached and cached[name]["stamp"] == c.ck_stamps[name]
             }
-            entries[m.name] = kept
-            missing = [name for name in m.ck_names if name not in kept]
+            entries[c.frame] = kept
+            missing = [name for name in c.ck_names if name not in kept]
             if missing or set(cached) != set(kept):
-                dirty.add(m.name)
+                dirty.add(c.frame)
             for i in range(0, len(missing), _COVERAGE_BATCH):
                 batch = missing[i : i + _COVERAGE_BATCH]
-                calls.append((coverage_task, (m.base, m.ck_paths(batch))))
-                owners.append(m)
+                calls.append((coverage_task, (c.base, c.ck_paths(batch))))
+                owners.append(c)
         if calls:
             logger.info(
                 "attitude: reading the coverage of %d CKs",
                 sum(len(args[1]) for _, args in calls),
             )
-        for m, res in zip(owners, self._gather(calls), strict=True):
+        for c, res in zip(owners, self._gather(calls), strict=True):
             if isinstance(res, Exception):
-                logger.error("attitude: coverage read failed for %s: %r", m.name, res)
-                m.error = "coverage read failed"
+                logger.error("attitude: coverage read failed for %s: %r", c.frame, res)
+                c.error = "coverage read failed"
                 continue
             for path, read in res.items():
                 name = Path(path).name
                 if isinstance(read, str):
                     logger.error("attitude: ckcov failed for %s: %s", path, read)
-                    m.error = "coverage read failed"
+                    c.error = "coverage read failed"
                     continue
-                entries[m.name][name] = {
-                    "stamp": m.ck_stamps[name],
+                entries[c.frame][name] = {
+                    "stamp": c.ck_stamps[name],
                     "cover": {
                         str(i): [list(w) for w in ws] for i, ws in read["cover"].items()
                     },
                     "ephemeris": read["ephemeris"],
                 }
-        for m in missions:
-            if m.name not in entries:
+        for c in crafts:
+            if c.frame not in entries:
                 continue
-            kept = entries[m.name]
-            if m.name in dirty:
+            kept = entries[c.frame]
+            if c.frame in dirty:
                 save_coverage(
-                    coverage_path(attitude_meta, m.name), self._coverage_key(m), kept
+                    coverage_path(attitude_meta, c.frame), self._coverage_key(c), kept
                 )
-            if m.error:
+            if c.error:
                 continue
-            m.coverage = {
+            c.coverage = {
                 name: {
                     int(i): [(w[0], w[1]) for w in ws]
                     for i, ws in kept[name]["cover"].items()
                 }
-                for name in m.ck_names
+                for name in c.ck_names
             }
-            if any(kept[name]["ephemeris"] for name in m.ck_names):
-                _add_ephemerides(m)
+            c.probes = _own_probes(c)
+            if any(kept[name]["ephemeris"] for name in c.ck_names):
+                _add_ephemerides(c)
+
+    def read_clocks(self, crafts: list[_Craft]) -> None:
+        """Fill `craft.clock`. A failed read fails the craft for this run."""
+        live = [c for c in crafts if c.live_probes()]
+        calls: list[tuple[Callable, tuple]] = [(sclk_task, (c.sclk,)) for c in live]
+        for c, res in zip(live, self._gather(calls), strict=True):
+            if isinstance(res, Exception):
+                logger.error("attitude: SCLK read failed for %s: %r", c.frame, res)
+                c.error = "SCLK read failed"
+            else:
+                c.clock = res
 
     @staticmethod
-    def _coverage_key(m: _Mission) -> dict:
+    def _coverage_key(c: _Craft) -> dict:
         # TDB coverage depends on the LSK, the SCLK and the clock map in the FK.
         return {
             "version": COVERAGE_VERSION,
-            "lsk": m.base_stamps[0][1],
-            "fk": m.base_stamps[2][1],
-            "sclk": m.base_stamps[3][1],
+            "lsk": c.base_stamps[0][1],
+            "fk": c.base_stamps[2][1],
+            "sclk": c.sclk_stamp[1],
         }
 
-    def plan_spins(self, missions: list[_Mission]) -> None:
+    def plan_spins(self, crafts: list[_Craft]) -> None:
         """Set each probe's span and spin segments, from the cache or the pool."""
-        todo: list[tuple[_Mission, _Probe]] = []
+        todo: list[tuple[_Craft, _Probe]] = []
         edge_calls: list[tuple[Callable, tuple]] = []
         edge_probes: list[_Probe] = []
-        for m in missions:
-            for p in m.live_probes():
-                p.instruments = probe_instruments(m.coverage, p.bus)
+        for c in crafts:
+            for p in c.live_probes():
                 p.probe_sig = {
                     "version": CACHE_VERSION,
-                    "frame": m.frame,
+                    "frame": c.frame,
                     "bus": p.bus,
                     "instruments": p.instruments,
                     "eps": DEFAULT_EPS_DEG,
-                    "kernels": m.base_stamps,
+                    "kernels": c.base_stamps,
                 }
                 p.full_sig = digest(
                     {
                         "probe": p.probe_sig,
-                        "cks": [[n, m.ck_stamps[n]] for n in m.ck_names],
+                        "sclk": c.sclk_stamp,
+                        "cks": [[n, c.ck_stamps[n]] for n in c.ck_names],
                         "spin": SPIN_VERSION,
                     }
                 )
@@ -449,13 +479,13 @@ class _Run:
                     )
                     p.segments = [_segment_from_json(s) for s in spin["segments"]]
                     continue
-                todo.append((m, p))
-                windows = probe_windows(m.coverage, m.ck_names, p.instruments)
+                todo.append((c, p))
+                windows = probe_windows(c.coverage, c.ck_names, p.instruments)
                 try:
                     p.span = span_edges(windows, _no_scan)
                 except _NeedsScan:
                     edge_calls.append(
-                        (edge_task, (m.base, m.ck_paths(m.ck_names), m.frame, windows))
+                        (edge_task, (c.base, c.ck_paths(c.ck_names), c.frame, windows))
                     )
                     edge_probes.append(p)
         if not todo:
@@ -469,17 +499,17 @@ class _Run:
 
         timeline_calls: list[tuple[Callable, tuple]] = []
         chunks: list[tuple[_Probe, np.ndarray]] = []
-        for m, p in todo:
+        for c, p in todo:
             if p.error or p.span is None:
                 continue
             ets = spin_timeline_ets(*p.span)
             # A short span has fewer probes than workers.
             for part in np.array_split(ets, min(self.n_workers, ets.size)):
                 cks = covering_cks(
-                    m.coverage, m.ck_names, float(part[0]), float(part[-1]) + OMEGA_DDT
+                    c.coverage, c.ck_names, float(part[0]), float(part[-1]) + OMEGA_DDT
                 )
                 timeline_calls.append(
-                    (timeline_task, (m.base, m.ck_paths(cks), m.frame, part))
+                    (timeline_task, (c.base, c.ck_paths(cks), c.frame, part))
                 )
                 chunks.append((p, part))
         omegas: dict[int, list] = {}
@@ -491,7 +521,7 @@ class _Run:
 
         fit_calls: list[tuple[Callable, tuple]] = []
         fit_probes: list[_Probe] = []
-        for m, p in todo:
+        for c, p in todo:
             if p.error:
                 continue
             if p.span is None:
@@ -505,9 +535,9 @@ class _Run:
                 (
                     fit_task,
                     (
-                        m.base,
-                        m.ck_paths(m.ck_names),
-                        m.frame,
+                        c.base,
+                        c.ck_paths(c.ck_names),
+                        c.frame,
                         p.span,
                         spin_timeline_ets(*p.span),
                         om,
@@ -523,7 +553,7 @@ class _Run:
             else:
                 p.segments = res
 
-        for m, p in todo:
+        for c, p in todo:
             if p.error:
                 continue
             if p.spinner:
@@ -548,18 +578,18 @@ class _Run:
 
     def extract(
         self,
-        missions: list[_Mission],
+        crafts: list[_Craft],
         global_data: MutableMapping[str, dict],
         summary: dict[str, dict],
     ) -> None:
         """Extract the stale shards, then finalize each probe when its last
         shard is in."""
-        tasks: list[tuple[float, ShardTask, _Mission]] = []
-        for m in missions:
-            tasks += self._mission_tasks(m)
+        tasks: list[tuple[float, ShardTask, _Craft]] = []
+        for c in crafts:
+            tasks += self._craft_tasks(c)
         total = sum(cost for cost, _, _ in tasks)
         target = max(_MIN_TASK_BYTES, total / (self.n_workers * _TASKS_PER_WORKER))
-        tasks = [sub for cost, task, m in tasks for sub in self._split(task, m, target)]
+        tasks = [sub for cost, task, c in tasks for sub in self._split(task, c, target)]
         tasks.sort(key=lambda t: t[0], reverse=True)
         if tasks:
             logger.info(
@@ -568,23 +598,23 @@ class _Run:
                 len(tasks),
                 self.n_workers,
             )
-        futures: dict[Future[ShardTaskResult], tuple[ShardTask, _Mission]] = {
-            self._submit(shard_task, task): (task, m) for _, task, m in tasks
+        futures: dict[Future[ShardTaskResult], tuple[ShardTask, _Craft]] = {
+            self._submit(shard_task, task): (task, c) for _, task, c in tasks
         }
-        for m in missions:
-            for p in m.probes:
+        for c in crafts:
+            for p in c.probes:
                 if p.pending == 0:
-                    _finalize(m, p, global_data, summary)
+                    _finalize(c, p, global_data, summary)
 
         bytes_read = 0
         for future in as_completed(futures):
-            task, m = futures[future]
-            by_id = {p.probe_id: p for p in m.probes}
+            task, c = futures[future]
+            by_id = {p.probe_id: p for p in c.probes}
             touched: set[int] = set()
             try:
                 result = future.result()
             except Exception as exc:
-                logger.error("attitude: mission %s task crashed: %r", m.name, exc)
+                logger.error("attitude: %s task crashed: %r", c.frame, exc)
                 for jobs in task.jobs.values():
                     for job in jobs:
                         p = by_id[job.probe_id]
@@ -606,27 +636,28 @@ class _Run:
                     p.kept_s += r.kept_s
             for probe_id in touched:
                 if by_id[probe_id].pending == 0:
-                    _finalize(m, by_id[probe_id], global_data, summary)
+                    _finalize(c, by_id[probe_id], global_data, summary)
         if tasks:
             logger.info("attitude: read %.1f GB of CKs", bytes_read / 1e9)
 
-    def _mission_tasks(self, m: _Mission) -> list[tuple[float, ShardTask, _Mission]]:
-        """Plan each probe's shards and group the stale ones of the mission
+    def _craft_tasks(self, c: _Craft) -> list[tuple[float, ShardTask, _Craft]]:
+        """Plan each probe's shards and group the stale ones of the craft
         into one task per run of consecutive shards."""
         jobs: dict[int, list[ShardJob]] = {}
         cks_by_k: dict[int, set[str]] = {}
-        for p in m.live_probes():
+        for p in c.live_probes():
             if p.span is None:
                 continue
-            plan = plan_shards(m.coverage, m.ck_names, p.instruments, p.span)
+            plan = plan_shards(c.coverage, c.ck_names, p.instruments, p.span)
             have = list_shards(p.meta_dir)
             segments = p.segments if p.spinner else None
             for k, names in plan.items():
                 spans = shard_spans(k, segments)
                 sig = shard_signature(
                     p.probe_sig,
-                    [[n, m.ck_stamps[n]] for n in names],
+                    [[n, c.ck_stamps[n]] for n in names],
                     None if segments is None else spans,
+                    clock_signature(c.clock, k),
                 )
                 p.planned[k] = sig
                 if shard_name(k, sig) in have:
@@ -635,9 +666,9 @@ class _Run:
                     ShardJob(
                         probe_id=p.probe_id,
                         k=k,
-                        frame=m.frame,
+                        frame=c.frame,
                         instruments=p.instruments,
-                        ck_paths=m.ck_paths(names),
+                        ck_paths=c.ck_paths(names),
                         spans=spans,
                         out_path=str(p.meta_dir / SHARD_DIR / shard_name(k, sig)),
                     )
@@ -646,27 +677,27 @@ class _Run:
                 p.pending += 1
         if not jobs:
             return []
-        order = {name: i for i, name in enumerate(m.ck_names)}
+        order = {name: i for i, name in enumerate(c.ck_names)}
         names_by_k = {k: sorted(v, key=order.__getitem__) for k, v in cks_by_k.items()}
-        out: list[tuple[float, ShardTask, _Mission]] = []
+        out: list[tuple[float, ShardTask, _Craft]] = []
         for run in split_runs(sorted(jobs), lambda k: 0.0, math.inf):
             names = sorted(
                 {n for k in run for n in names_by_k[k]}, key=order.__getitem__
             )
             task = ShardTask(
-                base=m.base,
-                ck_paths=m.ck_paths(names),
-                shards=[(k, m.ck_paths(names_by_k[k])) for k in run],
+                base=c.base,
+                ck_paths=c.ck_paths(names),
+                shards=[(k, c.ck_paths(names_by_k[k])) for k in run],
                 jobs={k: jobs[k] for k in run},
             )
-            out.append((self._task_cost(task, m), task, m))
+            out.append((self._task_cost(task, c), task, c))
         return out
 
     def _split(
-        self, task: ShardTask, m: _Mission, target: float
-    ) -> list[tuple[float, ShardTask, _Mission]]:
+        self, task: ShardTask, c: _Craft, target: float
+    ) -> list[tuple[float, ShardTask, _Craft]]:
         """Cut a run into tasks of about `target` cost."""
-        costs = self._shard_costs(task, m)
+        costs = self._shard_costs(task, c)
         runs = split_runs([k for k, _ in task.shards], costs.__getitem__, target)
         paths_by_k = dict(task.shards)
         order = {path: i for i, path in enumerate(task.ck_paths)}
@@ -681,50 +712,50 @@ class _Run:
                 shards=[(k, paths_by_k[k]) for k in run],
                 jobs={k: task.jobs[k] for k in run},
             )
-            out.append((self._task_cost(sub, m), sub, m))
+            out.append((self._task_cost(sub, c), sub, c))
         return out
 
-    def _task_cost(self, task: ShardTask, m: _Mission) -> float:
-        return sum(self._shard_costs(task, m).values())
+    def _task_cost(self, task: ShardTask, c: _Craft) -> float:
+        return sum(self._shard_costs(task, c).values())
 
     @staticmethod
-    def _shard_costs(task: ShardTask, m: _Mission) -> dict[int, float]:
+    def _shard_costs(task: ShardTask, c: _Craft) -> dict[int, float]:
         """NAS bytes of the CKs each shard adds to the previous one, plus CPU."""
         costs: dict[int, float] = {}
         previous: set[str] = set()
         for k, paths in task.shards:
             new = [p for p in paths if p not in previous]
             costs[k] = sum(
-                m.ck_sizes[Path(p).name] for p in new
+                c.ck_sizes[Path(p).name] for p in new
             ) + _SHARD_COST_BYTES * len(task.jobs[k])
             previous = set(paths)
         return costs
 
 
 def _finalize(
-    m: _Mission,
+    c: _Craft,
     p: _Probe,
     global_data: MutableMapping[str, dict],
     summary: dict[str, dict],
 ) -> None:
     """Write the probe's chunks when its shards changed, then inject its
     manifest and drop the shard files it no longer uses."""
-    error = m.error or p.error
+    error = c.error or p.error
     if error is not None:
         logger.warning(
-            "attitude: extraction failed for probe %s (mission %s): %s",
+            "attitude: extraction failed for probe %s (%s): %s",
             p.probe_id,
-            m.name,
+            c.frame,
             error,
         )
         return
     try:
-        manifest, cached = _settle_output(m, p)
+        manifest, cached = _settle_output(c, p)
     except Exception:
         logger.exception(
-            "attitude: chunk write failed for probe %d (mission %s)",
+            "attitude: chunk write failed for probe %d (%s)",
             p.probe_id,
-            m.name,
+            c.frame,
         )
         return
 
@@ -732,36 +763,41 @@ def _finalize(
         logger.info(
             "attitude: probe %d (%s): extracted %d of %d shards",
             p.probe_id,
-            m.name,
+            c.mission,
             p.extracted,
             len(p.planned),
         )
     if p.n_gaps:
         logger.warning(
-            "attitude: %s — %d gap probe(s) hit CK coverage holes (repeated last good)",
-            m.frame,
+            "attitude: %s — %d gap probe(s) hit CK coverage holes",
+            c.frame,
             p.n_gaps,
         )
     if p.claimed_s:
         logger.warning(
             "attitude: %s — CK windows claim %.1f d but only %.1f d resolve; "
             "shrunk to the valid runs",
-            m.frame,
+            c.frame,
             p.claimed_s / 86400.0,
             p.kept_s / 86400.0,
         )
     if manifest is None:
-        logger.info(
-            "attitude: no keyframes for probe %d (mission %s)", p.probe_id, m.name
+        # The CKs carry this probe's instruments, so a frame that resolves
+        # nowhere is the likely cause.
+        logger.warning(
+            "attitude: no keyframes for probe %d (mission %s, frame %s)",
+            p.probe_id,
+            c.mission,
+            c.frame,
         )
         return
     _inject_manifest(p.probe_id, manifest, global_data)
     summary[str(p.probe_id)] = _summary_entry(
-        m.name, manifest, cached=cached and not p.extracted
+        c.mission, manifest, cached=cached and not p.extracted
     )
 
 
-def _settle_output(m: _Mission, p: _Probe) -> tuple[dict | None, bool]:
+def _settle_output(c: _Craft, p: _Probe) -> tuple[dict | None, bool]:
     """The probe's manifest, and True when it comes from the cache.
 
     The chunks are written again when a planned shard changed or a chunk is
@@ -783,16 +819,14 @@ def _settle_output(m: _Mission, p: _Probe) -> tuple[dict | None, bool]:
     if cached:
         manifest = output["manifest"]
     else:
-        manifest = _write_output(m, p, planned)
+        manifest = _write_output(c, p, planned)
         p.cache["output"] = {"sig": output_sig, "manifest": manifest}
     _prune_shards(p, {shard_name(k, sig) for k, sig in planned})
     save_probe_cache(p.meta_dir, p.cache)
     return manifest, cached
 
 
-def _write_output(
-    m: _Mission, p: _Probe, planned: list[tuple[int, str]]
-) -> dict | None:
+def _write_output(c: _Craft, p: _Probe, planned: list[tuple[int, str]]) -> dict | None:
     """Join the planned shards and write the chunks. Returns the manifest, or
     None when there are no keyframes."""
     streams = join_shards(
@@ -810,7 +844,7 @@ def _write_output(
         coverage_start_jd=files[0].start_jd,
         coverage_end_jd=files[-1].end_jd,
     )
-    return manifest_entry(result, frame_name=m.frame)
+    return manifest_entry(result, frame_name=c.frame)
 
 
 def _load_planned_shard(

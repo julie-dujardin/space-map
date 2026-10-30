@@ -31,6 +31,13 @@ def _ids_cell():
     return spiceypy.support_types.SPICEINT_CELL(_IDS_CELL_SIZE)
 
 
+def craft_instruments(carried: set[int], bus: int) -> list[int]:
+    """The IDs in `carried` of the craft with bus instrument `bus`. A CK
+    instrument ID is the NAIF ID of its craft times 1000 plus an offset, so a
+    capsule or a lander finds none in its mission's CKs."""
+    return sorted(i for i in carried if int(i / 1000) * 1000 == bus)
+
+
 def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
     """Coverage intervals of `instr_id` in `ck_paths`, TDB, sorted and merged
     where they overlap.

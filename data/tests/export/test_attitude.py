@@ -222,7 +222,7 @@ class TestShardPlanning:
         plan = plan_shards(coverage, names, [-74999], (0.0, SHARD_S))
         assert list(plan) == [0]
 
-    def test_probe_instruments_falls_back_to_carried_ids(self) -> None:
+    def test_probe_instruments_falls_back_to_the_crafts_own_ids(self) -> None:
         from space_map_data.export.position.probes.attitude.shards import (
             probe_instruments,
         )
@@ -230,6 +230,19 @@ class TestShardPlanning:
         assert probe_instruments({"x": {-91000: [(0.0, 1.0)]}}, -91000) == [-91000]
         coverage = {"x": {-91002: [(0.0, 1.0)]}, "y": {-91001: [(0.0, 1.0)]}}
         assert probe_instruments(coverage, -91000) == [-91002, -91001]
+
+    def test_probe_instruments_leaves_out_what_another_craft_carries(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            probe_instruments,
+        )
+
+        window = [(0.0, 1.0)]
+        # The OSIRIS-REx bus and solar array gimbals, and its capsule -64090.
+        coverage = {"x": {-64000: window, -64012: window, -64022: window}}
+        assert probe_instruments(coverage, -64000) == [-64000]
+        assert probe_instruments(coverage, -64090000) == []
+        # A second craft of the mission, with a lower ID.
+        assert probe_instruments({"x": {-31000: window}}, -32000) == []
 
     def test_span_edges_scans_only_long_windows(self) -> None:
         from space_map_data.export.position.probes.attitude.shards import (
@@ -301,13 +314,13 @@ class TestShardSignature:
     """A shard signature changes only with the inputs of that shard."""
 
     @staticmethod
-    def _sig(stamps: dict, cks: list[str], spans=None, kernels="k1") -> str:
+    def _sig(stamps: dict, cks: list[str], spans=None, kernels="k1", clock="c") -> str:
         from space_map_data.export.position.probes.attitude.shards import (
             shard_signature,
         )
 
         probe = {"version": 4, "frame": "F", "bus": -74000, "kernels": kernels}
-        return shard_signature(probe, [[n, stamps[n]] for n in cks], spans)
+        return shard_signature(probe, [[n, stamps[n]] for n in cks], spans, clock)
 
     def test_changed_ck_changes_only_its_shards(self) -> None:
         old = {"a": {"digest": "1"}, "b": {"digest": "2"}}
@@ -317,6 +330,22 @@ class TestShardSignature:
         # Load order sets SPICE priority, so it is part of the signature.
         assert self._sig(old, ["a", "b"]) != self._sig(old, ["b", "a"])
         assert self._sig(old, ["a"]) != self._sig(old, ["a"], kernels="k2")
+        assert self._sig(old, ["a"]) != self._sig(old, ["a"], clock="c2")
+
+    def test_clock_signature_takes_the_rows_that_reach_the_shard(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            SHARD_S,
+            clock_signature,
+        )
+
+        old = np.array([[0.0, 0.0, 1.0], [10.0, 2.5 * SHARD_S, 1.0]])
+        # The new SCLK revises the last rate and adds a row.
+        new = np.array(
+            [[0.0, 0.0, 1.0], [10.0, 2.5 * SHARD_S, 1.1], [20.0, 4.5 * SHARD_S, 1.0]]
+        )
+        assert [
+            clock_signature(old, k) == clock_signature(new, k) for k in range(5)
+        ] == [True, True, False, False, False]
 
     def test_spinner_signature_uses_spans_clipped_to_the_shard(self) -> None:
         from space_map_data.export.position.probes.attitude.baseline import (
@@ -400,7 +429,7 @@ class TestAttitudeCache:
     """
 
     @staticmethod
-    def _mission(tmp_path, stamps: dict[str, str]):
+    def _mission(tmp_path, stamps: dict[str, str], sclk: str = "s"):
         from space_map_data.export.position.probes.attitude import orchestrator
         from space_map_data.export.position.probes.attitude.cache import (
             load_probe_cache,
@@ -416,12 +445,14 @@ class TestAttitudeCache:
             cache=load_probe_cache(probe_out),
         )
         names = list(stamps)
-        mission = orchestrator._Mission(
-            name="M",
+        mission = orchestrator._Craft(
+            mission="M",
             mission_dir=tmp_path / "M",
             frame="FRAME",
             base=["lsk", "pck", "fk", "sclk"],
-            base_stamps=[[n, {"size": 1, "digest": n}] for n in ("l", "p", "f", "s")],
+            base_stamps=[[n, {"size": 1, "digest": n}] for n in ("l", "p", "f")],
+            sclk="sclk",
+            sclk_stamp=[sclk, {"size": 1, "digest": sclk}],
             ck_names=names,
             ck_stamps={n: {"size": 1, "digest": d} for n, d in stamps.items()},
             ck_sizes=dict.fromkeys(names, 1),
@@ -440,6 +471,8 @@ class TestAttitudeCache:
         ephemeris: frozenset[str] = frozenset(),
         broken_shard_pool: bool = False,
         bases: list | None = None,
+        sclk: str = "s",
+        clock: tuple[tuple[float, float, float], ...] | None = ((0.0, 0.0, 1.0),),
     ):
         from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures.process import BrokenProcessPool
@@ -469,6 +502,11 @@ class TestAttitudeCache:
                 }
                 for p in ck_paths
             }
+
+        def fake_sclk(path):
+            if clock is None:
+                raise OSError("unreadable")
+            return np.array(clock)
 
         def fake_timeline(base, ck_paths, frame, ets):
             return [np.zeros(3) for _ in ets]
@@ -501,6 +539,7 @@ class TestAttitudeCache:
             return real_write(out_dir, segments)
 
         monkeypatch.setattr(orchestrator, "coverage_task", fake_coverage)
+        monkeypatch.setattr(orchestrator, "sclk_task", fake_sclk)
         monkeypatch.setattr(orchestrator, "timeline_task", fake_timeline)
         monkeypatch.setattr(orchestrator, "shard_task", fake_shard)
         monkeypatch.setattr(orchestrator, "write_chunks", counting_write)
@@ -512,12 +551,13 @@ class TestAttitudeCache:
             "content_stamps",
             lambda paths: {p: {"size": 1, "digest": p.name} for p in paths},
         )
-        out_dir, mission, probe = self._mission(tmp_path, stamps)
+        out_dir, mission, probe = self._mission(tmp_path, stamps, sclk)
         global_data: dict[str, dict] = {"probe-7": {}}
         summary: dict[str, dict] = {}
         with Pool(max_workers=2) as ex:
             run = orchestrator._Run(out_dir, ex, n_workers=2)
             run.read_coverage([mission])
+            run.read_clocks([mission])
             run.plan_spins([mission])
             run.extract([mission], global_data, summary)
         return global_data, summary, probe
@@ -552,13 +592,26 @@ class TestAttitudeCache:
         assert calls["writes"] == 1
         assert summary["7"]["cached"] is False
 
+    def test_new_sclk_extracts_only_the_shards_its_rows_reach(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from space_map_data.export.position.probes.attitude.shards import SHARD_S
+
+        stamps = {"0.bc": "a", "1.bc": "b", "2.bc": "c"}
+        self._run(monkeypatch, tmp_path, stamps, self._calls())
+        calls = self._calls()
+        clock = ((0.0, 0.0, 1.0), (10.0, 2.5 * SHARD_S, 1.0))
+        self._run(monkeypatch, tmp_path, stamps, calls, sclk="s2", clock=clock)
+        assert sorted(calls["shards"]) == [2, 3]
+        assert calls["writes"] == 1
+
     def test_ck_that_needs_positions_adds_the_mission_spks(
         self, monkeypatch, tmp_path
     ) -> None:
         bases: list = []
         stamps = {"0.bc": "a", "1.bc": "b"}
         _, _, plain = self._run(monkeypatch, tmp_path, stamps, self._calls())
-        assert len(plain.probe_sig["kernels"]) == 4
+        assert len(plain.probe_sig["kernels"]) == 3
         _, _, probe = self._run(
             monkeypatch,
             tmp_path / "eph",
@@ -568,8 +621,8 @@ class TestAttitudeCache:
             bases=bases,
         )
         spk = str(tmp_path / "eph" / "M" / "a.bsp")
-        assert probe.probe_sig["kernels"][:4] == plain.probe_sig["kernels"]
-        assert probe.probe_sig["kernels"][4][1] == {"size": 1, "digest": "a.bsp"}
+        assert probe.probe_sig["kernels"][:3] == plain.probe_sig["kernels"]
+        assert probe.probe_sig["kernels"][3][1] == {"size": 1, "digest": "a.bsp"}
         assert bases and all(base[-1] == spk for base in bases)
         assert set(probe.planned.values()).isdisjoint(plain.planned.values())
 
@@ -625,6 +678,24 @@ class TestAttitudeCache:
         assert sorted(calls["shards"]) == [1, 2]
         assert gd["probe-7"]["attitude"]["n_keyframes"] == 10
 
+    def test_failed_sclk_read_keeps_shards_and_chunks(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from space_map_data.export.position.probes.attitude.cache import list_shards
+
+        stamps = {"0.bc": "a", "1.bc": "b"}
+        self._run(monkeypatch, tmp_path, stamps, self._calls())
+        probe_dir = tmp_path / "export" / "attitude" / "7"
+        shards = list_shards(probe_dir)
+        chunks = sorted(probe_dir.glob("*.bin.gz"))
+        calls = self._calls()
+        gd, summary, _ = self._run(monkeypatch, tmp_path, stamps, calls, clock=None)
+        assert calls == {"coverage": 0, "shards": [], "writes": 0}
+        assert "attitude" not in gd["probe-7"]
+        assert summary == {}
+        assert list_shards(probe_dir) == shards
+        assert sorted(probe_dir.glob("*.bin.gz")) == chunks
+
     def test_broken_pool_keeps_shards_and_chunks(self, monkeypatch, tmp_path) -> None:
         from space_map_data.export.position.probes.attitude.cache import list_shards
 
@@ -662,35 +733,111 @@ class TestAttitudeCache:
         assert "attitude" in gd["probe-7"]
 
 
-def test_unreadable_index_keeps_its_probes(monkeypatch, tmp_path) -> None:
-    """A probe of a mission with an unreadable index does not fall to a later
-    mission that also lists it."""
-    import json
+class TestCraft:
+    """A mission index holds one entry per craft, and each probe takes its
+    attitude only from the craft whose CKs carry its instruments."""
 
-    from space_map_data.export.position.probes.attitude import orchestrator
+    @staticmethod
+    def _load(monkeypatch, tmp_path, indexes: dict[str, str], registry: list[dict]):
+        from space_map_data.export.position.probes.attitude import orchestrator
 
-    index_name = orchestrator.ATTITUDE_INDEX_NAME
-    for name in ("A", "B"):
-        (tmp_path / name).mkdir()
-    (tmp_path / "A" / index_name).write_text("{")
-    (tmp_path / "B" / index_name).write_text(
-        json.dumps({"fk": "f", "sclk": "s", "ck_files": ["0.bc"], "frame_name": "F"})
-    )
-    entry = {
-        "probe_id": 7,
-        "kernel_sources": [
-            {"mission": "A", "naif_id": -82},
-            {"mission": "B", "naif_id": -82},
-        ],
-    }
-    monkeypatch.setattr(orchestrator, "MISSIONS_DIR", tmp_path)
-    monkeypatch.setattr(orchestrator, "load_registry", lambda: [entry])
-    monkeypatch.setattr(
-        orchestrator,
-        "content_stamps",
-        lambda paths: {p: {"size": 1, "digest": "d"} for p in paths},
-    )
-    assert orchestrator._load_missions(tmp_path / "export") == []
+        for name, text in indexes.items():
+            (tmp_path / name).mkdir()
+            (tmp_path / name / orchestrator.ATTITUDE_INDEX_NAME).write_text(text)
+        monkeypatch.setattr(orchestrator, "MISSIONS_DIR", tmp_path)
+        monkeypatch.setattr(orchestrator, "load_registry", lambda: registry)
+        monkeypatch.setattr(
+            orchestrator,
+            "content_stamps",
+            lambda paths: {p: {"size": 1, "digest": p.name} for p in paths},
+        )
+        return orchestrator._load_crafts(tmp_path / "export")
+
+    @staticmethod
+    def _entry(probe_id: int, naif: int, mission: str = "M") -> dict:
+        return {
+            "probe_id": probe_id,
+            "kernel_sources": [{"mission": mission, "naif_id": naif}],
+        }
+
+    def test_each_craft_keeps_the_probes_its_cks_carry(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        import json
+        from concurrent.futures import ThreadPoolExecutor
+
+        from space_map_data.export.position.probes.attitude import orchestrator
+        from space_map_data.export.position.probes.attitude.cache import coverage_path
+
+        craft = [
+            {"frame_name": f, "fk": f"{f}.tf", "sclk": f"{f}.tsc", "ck_files": [ck]}
+            for f, ck in (("ONE", "1.bc"), ("TWO", "2.bc"))
+        ]
+        missions = self._load(
+            monkeypatch,
+            tmp_path,
+            {"M": json.dumps({"spacecraft": craft})},
+            # Two craft, and a lander with no CK.
+            [self._entry(1, -31), self._entry(2, -32), self._entry(3, -327)],
+        )
+        instruments = {"1.bc": -31000, "2.bc": -32000}
+
+        def fake_coverage(base, ck_paths):
+            return {
+                p: {
+                    "cover": {instruments[Path(p).name]: [(0.0, D)]},
+                    "ephemeris": False,
+                }
+                for p in ck_paths
+            }
+
+        monkeypatch.setattr(orchestrator, "coverage_task", fake_coverage)
+        out_dir = tmp_path / "export"
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            orchestrator._Run(out_dir, ex, n_workers=2).read_coverage(missions)
+        assert [[p.probe_id for p in m.probes] for m in missions] == [[1], [2]]
+        assert [m.frame for m in missions] == ["ONE", "TWO"]
+        assert missions[1].base[2:] == [
+            str(tmp_path / "M" / "TWO.tf"),
+            str(tmp_path / "M" / "TWO.tsc"),
+        ]
+        for m in missions:
+            assert coverage_path(out_dir / "attitude", m.frame).exists()
+
+    def test_unreadable_index_leaves_out_only_its_mission(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        import json
+
+        craft = {"frame_name": "F", "fk": "f", "sclk": "s", "ck_files": ["0.bc"]}
+        missions = self._load(
+            monkeypatch,
+            tmp_path,
+            {"A": "{", "B": json.dumps({"spacecraft": [craft]})},
+            [self._entry(7, -82, "A"), self._entry(8, -83, "B")],
+        )
+        assert [m.mission for m in missions] == ["B"]
+
+    def test_probe_with_two_ids_in_a_mission_is_one_probe(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        import json
+
+        craft = {"frame_name": "F", "fk": "f", "sclk": "s", "ck_files": ["0.bc"]}
+        entry = {
+            "probe_id": 7,
+            "kernel_sources": [
+                {"mission": "M", "naif_id": -102},
+                {"mission": "M", "naif_id": -101},
+            ],
+        }
+        missions = self._load(
+            monkeypatch,
+            tmp_path,
+            {"M": json.dumps({"spacecraft": [craft]})},
+            [entry],
+        )
+        assert [p.probe_id for p in missions[0].probes] == [7]
 
 
 def test_span_with_fewer_probes_than_workers_plans(monkeypatch, tmp_path) -> None:
@@ -709,6 +856,7 @@ def test_span_with_fewer_probes_than_workers_plans(monkeypatch, tmp_path) -> Non
     )
     out_dir, mission, probe = TestAttitudeCache._mission(tmp_path, {"0.bc": "a"})
     mission.coverage = {"0.bc": {-82000: [(100.0, 103.0)]}}
+    probe.instruments = [-82000]
     with ThreadPoolExecutor(max_workers=2) as ex:
         orchestrator._Run(out_dir, ex, n_workers=12).plan_spins([mission])
     assert probe.error is None
@@ -884,6 +1032,81 @@ def test_raw_span_refines_below_a_second_on_a_short_seed(monkeypatch) -> None:
     assert floors == {1.6: pytest.approx(0.4), 300.0: 1.0}
 
 
+class TestPointWindows:
+    """A lone CK record resolves only at its instant, and the sampler must
+    still keep it. The fake turns 0.5 mrad per second about Z."""
+
+    @staticmethod
+    def _spice(monkeypatch, resolves) -> None:
+        import spiceypy
+
+        def pxform(_from: str, _to: str, et: float) -> np.ndarray:
+            if not resolves(et):
+                raise spiceypy.exceptions.SpiceyError("gap")
+            half = 0.25e-3 * et
+            return np.array([math.cos(half), 0.0, 0.0, math.sin(half)])
+
+        monkeypatch.setattr(spiceypy, "pxform", pxform)
+        monkeypatch.setattr(spiceypy, "m2q", lambda q: q)
+
+    @staticmethod
+    def _keyframes(windows, end: float):
+        from space_map_data.export.position.probes.attitude import extractor
+        from space_map_data.export.position.probes.attitude.segments import (
+            SpinSegment,
+        )
+
+        return extractor._keyframe_segment(
+            "F", SpinSegment(0.0, end, None), windows, math.radians(0.1)
+        )
+
+    def test_point_windows_become_keyframes(self, monkeypatch) -> None:
+        points = [(120.0 * i, 120.0 * i) for i in range(1, 500)]
+        instants = {a for a, _ in points}
+        self._spice(monkeypatch, instants.__contains__)
+        ets, quats, n_samples, n_gaps = self._keyframes(points, 1e6)
+        assert n_samples == len(points)
+        assert n_gaps == 0
+        assert set(ets) <= instants
+        assert ets[0] == 120.0
+        # A steady turn is one geodesic, so the 90 degree cap sets the cuts.
+        assert ets[-1] == 120.0 * 499
+        assert 2 <= ets.size < len(points) / 10
+        assert quats.shape == (ets.size, 4)
+
+    def test_points_between_long_windows_stay_in_time_order(self, monkeypatch) -> None:
+        long_windows = [(0.0, 1000.0), (5000.0, 6000.0)]
+        points = [(2000.0, 2000.0), (3000.0, 3000.0), (4000.0, 4000.0)]
+        windows = sorted(long_windows + points)
+
+        def covered(et: float) -> bool:
+            return (0.0 <= et <= 1000.0 or 5000.0 <= et <= 6000.0) or et in {
+                a for a, _ in points
+            }
+
+        self._spice(monkeypatch, covered)
+        ets, _, _, n_gaps = self._keyframes(windows, 1e6)
+        assert n_gaps == 0
+        assert np.all(np.diff(ets) > 0)
+        assert {1000.0, 4000.0, 6000.0} <= set(ets)
+
+    def test_point_outside_the_span_is_left_out(self, monkeypatch) -> None:
+        self._spice(monkeypatch, lambda _: True)
+        ets, _, _, _ = self._keyframes([(10.0, 10.0), (20.0, 20.0), (50.0, 50.0)], 30.0)
+        assert list(ets) == [10.0, 20.0]
+
+    def test_instant_that_does_not_resolve_is_left_out_and_counted(
+        self, monkeypatch
+    ) -> None:
+        self._spice(monkeypatch, lambda et: et != 20.0)
+        ets, _, n_samples, n_gaps = self._keyframes(
+            [(10.0, 10.0), (20.0, 20.0), (30.0, 30.0)], 100.0
+        )
+        assert list(ets) == [10.0, 30.0]
+        assert n_samples == 2
+        assert n_gaps == 1
+
+
 class TestManifest:
     """The manifest a deployed frontend reads."""
 
@@ -938,6 +1161,70 @@ class TestManifest:
         )
         assert entry["baselines"] is None
         assert "baseline_index" not in entry["files"][0]
+
+
+def test_solar_orbiter_glob_drops_only_the_yearly_dumps() -> None:
+    import fnmatch
+    import re
+
+    from space_map_data.download.providers.spice.probes.attitude.patterns import (
+        patterns_for,
+    )
+
+    pattern = patterns_for("SOLAR-ORBITER")[0]
+
+    def kept(name: str) -> bool:
+        assert pattern.ck_exclude_regex is not None
+        return fnmatch.fnmatch(name, pattern.ck_glob) and not re.search(
+            pattern.ck_exclude_regex, name
+        )
+
+    prefix = "solo_ANC_soc-flown-att_"
+    for dates in (
+        "20200210T000000-20210101T111121",
+        "20210101T074827-20220101T175423",
+        "20250101T004750-20260101T152718",
+    ):
+        assert not kept(f"{prefix}{dates}_V01.bc")
+    for dates in (
+        "20200210-20200214",
+        "20201231T110809-20210101T111121",
+        # Starts with the yearly dump of 2021, but ends the same day.
+        "20210101T074827-20210101T212010",
+        "20261029T023859-20261030T080917",
+    ):
+        assert kept(f"{prefix}{dates}_V01.bc")
+    assert not kept(
+        "solo_ANC_soc-default-att-stp_20200210-20301120_434_V1_00591_V01.bc"
+    )
+
+
+def test_sclk_task_reads_rows_with_date_times(tmp_path) -> None:
+    from space_map_data.export.position.probes.attitude.worker import sclk_task
+
+    path = tmp_path / "step.tsc"
+    path.write_text(
+        """KPL/SCLK
+\\begindata
+SCLK_KERNEL_ID         = ( @2026-10-26/14:56:04.15 )
+SCLK_DATA_TYPE_91      = ( 1 )
+SCLK01_TIME_SYSTEM_91  = ( 2 )
+SCLK01_N_FIELDS_91     = ( 2 )
+SCLK01_MODULI_91       = ( 4294967296 65536 )
+SCLK01_OFFSETS_91      = ( 0 0 )
+SCLK01_OUTPUT_DELIM_91 = ( 1 )
+SCLK_PARTITION_START_91 = ( 0.0 )
+SCLK_PARTITION_END_91   = ( 2.0E+14 )
+SCLK01_COEFFICIENTS_91 = (
+   0.0        @01-JAN-2010-00:01:06.184  1.0
+   5.6623E+9  @02-JAN-2010-00:01:06.184  1.0000001 )
+\\begintext
+"""
+    )
+    rows = sclk_task(str(path))
+    assert rows.shape == (2, 3)
+    assert rows[1, 1] - rows[0, 1] == pytest.approx(D)
+    assert rows[1, 2] == pytest.approx(1.0000001)
 
 
 _TEST_FK = """\\begindata

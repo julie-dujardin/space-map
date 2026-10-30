@@ -17,6 +17,7 @@ from dataclasses import replace
 import numpy as np
 
 from .extractor import VALIDATE_SPAN_S
+from .sample import craft_instruments
 from .segments import SpinSegment
 
 SHARD_S = 7 * 86400.0
@@ -44,12 +45,14 @@ def digest(obj: object) -> str:
 
 
 def probe_instruments(coverage: Coverage, bus: int) -> list[int]:
-    """The bus instrument, or every other instrument the CKs carry when the
-    bus has no coverage. Some bus frames switch to a sub-instrument (Hera
-    uses -91002)."""
+    """The bus instrument, or the craft's other instruments when the bus has
+    no coverage. Some bus frames switch to a sub-instrument (Hera uses
+    -91002)."""
     if any(cover.get(bus) for cover in coverage.values()):
         return [bus]
-    return sorted({i for cover in coverage.values() for i in cover} - {bus})
+    return craft_instruments(
+        {i for cover in coverage.values() for i in cover} - {bus}, bus
+    )
 
 
 def probe_windows(
@@ -163,19 +166,35 @@ def segment_json(seg: SpinSegment) -> dict:
     }
 
 
+def clock_signature(rows: np.ndarray, k: int) -> str:
+    """Digest of the SCLK rows that reach shard k.
+
+    `rows` holds `(ticks, parallel time, rate)` rows. A new SCLK adds rows and
+    changes at most the rate of its last old row, so the shards before that
+    row keep their signature.
+    """
+    _, hi = shard_bounds(k)
+    return hashlib.blake2b(rows[rows[:, 1] <= hi].tobytes(), digest_size=10).hexdigest()
+
+
 def shard_signature(
-    probe_sig: dict, cks: list[list], spans: list[tuple[int, SpinSegment]] | None
+    probe_sig: dict,
+    cks: list[list],
+    spans: list[tuple[int, SpinSegment]] | None,
+    clock: str,
 ) -> str:
     """Digest of all inputs of one shard.
 
     `probe_sig` holds the inputs shared by all shards of a probe. `cks` is
     `[name, stamp]` for the shard's CKs in index order. `spans` is None for a
-    non-spinner, whose shards do not depend on the spin plan.
+    non-spinner, whose shards do not depend on the spin plan. `clock` is the
+    shard's `clock_signature`.
     """
     return digest(
         {
             "probe": probe_sig,
             "cks": cks,
+            "clock": clock,
             "spans": None
             if spans is None
             else [[i, segment_json(seg)] for i, seg in spans],

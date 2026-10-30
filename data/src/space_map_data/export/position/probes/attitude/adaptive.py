@@ -103,6 +103,28 @@ def adaptive_sample(
     return np.asarray(out_t), quats, gaps[0]
 
 
+def point_sample(
+    frame: str, ets: list[float], transform: Transform | None = None
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Sample the instants of point windows → `(ets, quats, n_gaps)`.
+
+    A point window resolves only at its one instant, so an instant that rounds
+    off its record is left out and counted: nothing nearby can stand in for it.
+    """
+    kept: list[float] = []
+    stream: list[np.ndarray] = []
+    for et in ets:
+        try:
+            q = spiceypy.m2q(spiceypy.pxform("J2000", frame, et))
+        except spiceypy.exceptions.SpiceyError:
+            continue
+        kept.append(et)
+        stream.append(transform(et, q) if transform else q)
+    quats = np.asarray(stream).reshape(-1, 4)
+    _canonicalise(quats)
+    return np.asarray(kept), quats, len(ets) - len(kept)
+
+
 def _canonicalise(quats: np.ndarray) -> None:
     """Flip each quaternion in place so adjacent samples differ by < 90°.
 

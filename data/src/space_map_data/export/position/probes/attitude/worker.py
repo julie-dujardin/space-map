@@ -25,6 +25,7 @@ from .shards import Window, shard_bounds, span_edges
 
 # NAS reads are fastest in large sequential blocks.
 _READ_BLOCK = 8 << 20
+_MAX_SCLK_CLOCKS = 16
 
 
 def _furnish(paths: list[str]) -> None:
@@ -53,6 +54,18 @@ def coverage_task(base: list[str], ck_paths: list[str]) -> dict[str, dict | str]
     finally:
         spiceypy.kclear()
     return out
+
+
+def sclk_task(path: str) -> np.ndarray:
+    """The `(ticks, parallel time, rate)` rows of an SCLK kernel. SPICE reads
+    them because some kernels give the times as dates."""
+    _furnish([path])
+    try:
+        names = sorted(spiceypy.gnpool("SCLK01_COEFFICIENTS_*", 0, _MAX_SCLK_CLOCKS))
+        rows = [spiceypy.gdpool(n, 0, spiceypy.dtpool(n)[0]) for n in names]
+    finally:
+        spiceypy.kclear()
+    return np.concatenate(rows).reshape(-1, 3)
 
 
 def edge_task(

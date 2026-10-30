@@ -9,6 +9,7 @@ cumulative *newly-downloaded* bytes exceed the cap (cached files are free).
 import fnmatch
 import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,10 +54,10 @@ def download_attitude_for(
 
     `max_new_bytes` caps newly-fetched CK bytes for the whole mission (shared
     across craft); once hit, the CK loop stops and writes the index for
-    whatever landed. FK/SCLK are uncapped (KB-MB scale). The index carries
-    top-level fields for the first craft plus a `spacecraft` array, so a
-    multi-craft mission round-trips on the single-craft index contract.
-    Never raises, so one uncurated or failed mission can't abort the batch.
+    whatever landed. FK/SCLK are uncapped (KB-MB scale). The export reads each
+    craft from the index's `spacecraft` array. The top-level fields repeat the
+    first craft for `attitude_benchmark.py`. Never raises, so one uncurated or
+    failed mission can't abort the batch.
     """
     patterns = patterns_for(source.mission)
     if not patterns:
@@ -86,6 +87,7 @@ def download_attitude_for(
             pattern.ck_glob,
             take_all=True,
             exclude_glob=pattern.ck_exclude_glob,
+            exclude_regex=pattern.ck_exclude_regex,
             max_new_bytes=remaining,
         )
         new_bytes += ck_new
@@ -250,6 +252,7 @@ def _download_matching(
     *,
     take_all: bool,
     exclude_glob: str | None = None,
+    exclude_regex: str | None = None,
     max_new_bytes: int | None = None,
 ) -> tuple[list[Path], int, bool]:
     """List `url`, download files matching `glob` into `dest_dir`.
@@ -273,6 +276,7 @@ def _download_matching(
         and not h.startswith(("http://", "https://"))
         and fnmatch.fnmatch(h, glob)
         and not (exclude_glob and fnmatch.fnmatch(h, exclude_glob))
+        and not (exclude_regex and re.search(exclude_regex, h))
     )
     if not matches:
         return [], 0, False

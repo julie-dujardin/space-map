@@ -7,9 +7,9 @@ Per probe, under `attitude/<probe>/`:
   The name holds the signature, so a file is never rewritten in place and a
   crash leaves only whole files.
 
-Per mission, `attitude/_coverage/<mission>.json` holds the SEGMENT-level
-coverage of each CK, and whether its segments need positions to resolve,
-keyed on its content stamp.
+Per craft, `attitude/_coverage/<frame>.json` holds the SEGMENT-level coverage
+of each CK, and whether its segments need positions to resolve, keyed on its
+content stamp.
 """
 
 import json
@@ -21,7 +21,7 @@ import numpy as np
 from space_map_data.export.sidecar_io import read_sidecar, write_atomic
 
 # The probe cache file and the shard signatures: a bump extracts every shard.
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 # The coverage entries: a bump reads every CK again.
 COVERAGE_VERSION = 5
 # The spin plan: a bump plans every probe again.
@@ -69,8 +69,8 @@ def load_shard(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return data["ets"], data["quats"], data["seg"]
 
 
-def coverage_path(attitude_meta_dir: Path, mission: str) -> Path:
-    return attitude_meta_dir / COVERAGE_DIR / f"{mission}.json"
+def coverage_path(attitude_meta_dir: Path, frame: str) -> Path:
+    return attitude_meta_dir / COVERAGE_DIR / f"{frame}.json"
 
 
 def load_coverage(path: Path, key: dict) -> dict[str, dict]:

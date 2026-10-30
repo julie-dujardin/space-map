@@ -9,6 +9,7 @@ baseline holds, its span is raw on a short seed step (`segments.py`).
 `manifest_entry` builds the dict for the probe's `__global__` bundle.
 """
 
+import itertools
 import logging
 import math
 from dataclasses import dataclass
@@ -17,10 +18,10 @@ from pathlib import Path
 import numpy as np
 import spiceypy
 
-from .adaptive import MIN_DT_S, SEED_DT_S, adaptive_sample
+from .adaptive import MIN_DT_S, SEED_DT_S, adaptive_sample, point_sample
 from .baseline import SpinBaseline
 from .keyframes import extract_keyframes
-from .sample import ck_instrument_ids, ck_windows
+from .sample import ck_instrument_ids, ck_windows, craft_instruments
 from .segments import SpinSegment, is_spin_plan, plan_segments
 from .writer import ChunkFile, write_chunks
 
@@ -42,6 +43,9 @@ TILE_S = 4 * 86400.0
 # every VALIDATE_STEP_S and shrunk to the runs that resolve.
 VALIDATE_SPAN_S = 10 * 86400.0
 VALIDATE_STEP_S = 3600.0
+# A window this short is a lone CK record, which resolves only at its instant.
+# OSIRIS-REx's bus is nothing else for weeks at a time.
+POINT_WINDOW_S = 1.0
 
 _J2000_JD = 2451545.0
 _S_PER_DAY = 86400.0
@@ -83,9 +87,10 @@ def extract_attitude(
     windows = ck_windows(ck_paths, bus_instr_id)
     if not windows:
         # Some missions' bus frame is a switch frame whose CK segments carry a
-        # sub-instrument ID, not `naif*1000` (Hera delegates to -91002) — union
-        # whatever instruments the (bus-only) curated files actually carry.
-        actual = sorted(ck_instrument_ids(ck_paths) - {bus_instr_id})
+        # sub-instrument ID, not `naif*1000` (Hera delegates to -91002).
+        actual = craft_instruments(
+            ck_instrument_ids(ck_paths) - {bus_instr_id}, bus_instr_id
+        )
         if actual:
             logger.info(
                 "attitude: no CK coverage for instrument %d; files carry %s — "
@@ -133,7 +138,7 @@ def extract_attitude(
         # CK gaps are normal for busy orbiters; one line per probe instead of
         # per-file to avoid spamming thousands of identical warnings.
         logger.warning(
-            "attitude: %s — %d gap probe(s) hit CK coverage holes (repeated last good)",
+            "attitude: %s — %d gap probe(s) hit CK coverage holes",
             frame_name,
             n_gaps,
         )
@@ -256,8 +261,8 @@ def extract_shard(
     """Keyframe the shard `[lo, hi]` of one probe.
 
     The caller furnishes the base kernels and at least `ck_paths`, the CKs
-    that cover the shard. `instruments` is the bus instrument, or the
-    instruments the mission's CKs carry when the bus has no coverage.
+    that cover the shard. `instruments` is the bus instrument, or the craft's
+    other instruments when the bus has no coverage.
     `spans` holds `(span index, span clipped to the shard)` pairs; a
     non-spinner gives one raw span.
     """
@@ -297,9 +302,10 @@ def _keyframe_segment(
 
     Each CK window is clipped to the span, then tiled to `TILE_S` so one
     call's sample stream stays bounded; `last_et` keeps keyframes
-    time-ascending and drops the duplicate sample at each tile boundary. The
-    span's endpoints are sampled in both adjacent spans' frames, so the
-    decoder never SLERPs across the baseline switch.
+    time-ascending and drops the duplicate sample at each tile boundary. A
+    run of point windows is one stream of their instants. The span's
+    endpoints are sampled in both adjacent spans' frames, so the decoder
+    never SLERPs across the baseline switch.
     """
     transform = seg.baseline.residual if seg.baseline else None
     ets_parts: list[np.ndarray] = []
@@ -307,35 +313,52 @@ def _keyframe_segment(
     last_et = -math.inf
     n_samples = 0
     n_gaps = 0
-    for win_start, win_end in windows:
-        start = max(win_start, seg.start_et, last_et)
-        end = min(win_end, seg.end_et)
-        while end - start > 1.0:
-            tile_end = min(end, start + TILE_S)
-            # A raw fast spin turns degrees per second and its CK records kink
-            # the rate, so its refinement floor scales with its seed step.
-            ets, stream, gaps = adaptive_sample(
-                frame_name,
-                start,
-                tile_end,
-                eps_rad,
-                seed_dt=seg.seed_dt,
-                min_dt=min(MIN_DT_S, seg.seed_dt / 4),
-                transform=transform,
-            )
-            n_samples += ets.size
-            n_gaps += gaps
-            keep = [
-                i for i in extract_keyframes(stream, ets, eps_rad) if ets[i] > last_et
+
+    def keep_keyframes(ets: np.ndarray, stream: np.ndarray) -> None:
+        nonlocal last_et, n_samples
+        n_samples += ets.size
+        keep = [i for i in extract_keyframes(stream, ets, eps_rad) if ets[i] > last_et]
+        if keep:
+            ets_parts.append(ets[keep])
+            quat_parts.append(stream[keep])
+            last_et = float(ets[keep[-1]])
+
+    for is_point, run in itertools.groupby(windows, key=_is_point):
+        if is_point:
+            instants = [
+                a for a, _ in run if max(seg.start_et, last_et) <= a <= seg.end_et
             ]
-            if keep:
-                ets_parts.append(ets[keep])
-                quat_parts.append(stream[keep])
-                last_et = float(ets[keep[-1]])
-            start = tile_end
+            ets, stream, gaps = point_sample(frame_name, instants, transform)
+            n_gaps += gaps
+            keep_keyframes(ets, stream)
+            continue
+        for win_start, win_end in run:
+            start = max(win_start, seg.start_et, last_et)
+            end = min(win_end, seg.end_et)
+            while end - start > POINT_WINDOW_S:
+                tile_end = min(end, start + TILE_S)
+                # A raw fast spin turns degrees per second and its CK records
+                # kink the rate, so its refinement floor scales with its seed
+                # step.
+                ets, stream, gaps = adaptive_sample(
+                    frame_name,
+                    start,
+                    tile_end,
+                    eps_rad,
+                    seed_dt=seg.seed_dt,
+                    min_dt=min(MIN_DT_S, seg.seed_dt / 4),
+                    transform=transform,
+                )
+                n_gaps += gaps
+                keep_keyframes(ets, stream)
+                start = tile_end
     if not quat_parts:
         return np.empty(0), np.empty((0, 4)), n_samples, n_gaps
     return np.concatenate(ets_parts), np.concatenate(quat_parts), n_samples, n_gaps
+
+
+def _is_point(window: tuple[float, float]) -> bool:
+    return window[1] - window[0] <= POINT_WINDOW_S
 
 
 def _baseline_json(seg: SpinSegment) -> dict:

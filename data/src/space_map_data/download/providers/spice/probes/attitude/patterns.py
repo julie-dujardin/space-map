@@ -9,7 +9,7 @@ match (NAIF version-numbered files sort correctly that way).
 
 `frame_name` is what's passed to `pxform("J2000", <frame>, et)`. NAIF
 convention is `<MISSION>_SPACECRAFT`, but some missions use their own
-(Cassini's `CASSINI_SC_COORD`, Solar Orbiter's `SOLO_PRF`).
+(Cassini's `CASSINI_SC_COORD`, Solar Orbiter's `SOLO_SRF`).
 
 `estimated_total_mib` orders the per-mission pass so small missions land
 first under a global cap; values are rough sweep-observed estimates, off by
@@ -49,6 +49,8 @@ class AttitudePattern:
     # both per-year files and huge cumulative-from-launch dumps that
     # share the same prefix; the latter are redundant and excluded here).
     ck_exclude_glob: str | None = None
+    # For an exclusion a glob can't state: two dates in a name must differ.
+    ck_exclude_regex: str | None = None
 
 
 # Per-mission glob conventions:
@@ -143,12 +145,16 @@ PATTERNS: dict[str, AttitudePattern | list[AttitudePattern]] = {
         estimated_total_mib=2_000,
     ),
     "SOLAR-ORBITER": AttitudePattern(
-        # `att-stp` = attitude step (per-period reconstructed). Skips `att-pred-stp`.
-        ck_glob="solo_ANC_soc-default-att-stp_*.bc",
+        # `flown-att` is the attitude flown. `default-att-stp` is the plan, which
+        # is more than 5 degrees from it about a quarter of the time. The yearly
+        # dumps repeat the short files, so a new one would only extract a year
+        # again.
+        ck_glob="solo_ANC_soc-flown-att_*.bc",
+        ck_exclude_regex=r"_(\d{4})0[12]\d\dT\d{6}-(?!\1)\d{4}0101T",
         fk_glob="solo_ANC_soc-sc-fk_V*.tf",
         sclk_glob="solo_ANC_soc-sclk_*.tsc",
-        frame_name="SOLO_PRF",
-        estimated_total_mib=8_000,
+        frame_name="SOLO_SRF",
+        estimated_total_mib=6_000,
     ),
     "SMAP": AttitudePattern(
         # `at` = attitude, versioned (`_vNN`) = pick latest revisions.
