@@ -14,6 +14,7 @@ import pyarrow.compute as pc
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.assemble import Systems
 from space_map_data.extrasolar.systems.build import build
+from space_map_data.extrasolar.systems.drawn import draw
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.nodes import (
     DUBIOUS,
@@ -40,6 +41,7 @@ from space_map_data.extrasolar.systems.simbad import read_simbad
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.systems_fakes import (
+    KEPLER_16_GAIA,
     FakeResolver,
     fact,
     msc_comp,
@@ -1720,6 +1722,20 @@ class TestUnverifiedInterior:
         assert points == [(80, 2, GAIA_ORBITS)]
         name = f"{WDS}: interiors of unverified members that give way"
         assert systems.counts[name] == 1
+
+    def test_the_orbit_of_a_planet_reaches_no_pair(self):
+        """The Gaia orbit is that of a listed planet: the WDS interior holds
+        the pair, and the orbit is not the pair's."""
+        inputs, resolver = self.inputs(None, True)
+        planet = {"host": 80, "number": 1, "designation": "HD 1 b", "period": 10.2}
+        systems = build(replace(inputs, planets=planets([planet])), resolver)
+        points = systems.nodes.filter(systems.nodes["point"]).to_pylist()
+        assert [(p["key"], p["evidence"]) for p in points] == [(80, WDS)]
+        assert systems.orbit_keys.tolist() == [0]
+        orbit = KEPLER_16_GAIA | {"nss_solution_type": "SB1", "period": 10.0}
+        elements = pa.Table.from_pylist([orbit])
+        found = draw(systems, replace(inputs, orbit_elements=elements), resolver)
+        assert f"{GAIA_ORBITS}: orbits on a pair" not in found.counts
 
     def test_a_close_type_wins(self):
         systems, points = self.point("EB*", False)

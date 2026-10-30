@@ -230,7 +230,8 @@ class Systems:
     names: pa.Table
     events: pa.Table
     counts: Counter
-    # The object of each Gaia DR3 orbit of `Inputs.orbits`, 0 for none.
+    # The object of each Gaia DR3 orbit of `Inputs.orbits`. It is 0 for none,
+    # and for an orbit of a planet or a companion under 13 MJ: no pair's.
     orbit_keys: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
 
 
@@ -1104,7 +1105,7 @@ class Assembler:
             names,
             events,
             self.counts,
-            self.p.orbit_keys,
+            np.where(self.p.orbit_kept, self.p.orbit_keys, 0),
         )
 
     def _point_table(self) -> pa.Table:
