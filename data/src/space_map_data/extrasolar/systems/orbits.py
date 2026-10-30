@@ -84,6 +84,8 @@ MSC_DAY_NUMBER = 10_000.0
 # The MSC's mass code of the minimum mass of an SB1 secondary. It is a lower
 # bound, so it gives no mass ratio.
 MSC_MINIMUM_MASS = "m"
+# The note of an MSC orbit that ORB6 gives (Readme, note 5 of orb.tsv).
+MSC_VB6 = "VB6"
 
 _MEASURED = (
     "period",
@@ -239,10 +241,14 @@ def msc_orbits(directory: Path = msc.OUT_DIR) -> pa.Table:
     A zero is unknown (Readme note 4), except an eccentricity. T has no unit
     code: a value of MSC_DAY_NUMBER or more is JD − 2,400,000, a smaller one
     a Julian year. The MSC copies each orbit with the angles of its own
-    source, so `arg_periastron_of` is null.
+    source, so `arg_periastron_of` is null. A visual orbit has an angular a,
+    also one too large to print, or is a copy of ORB6 (MSC_VB6), which can
+    leave a out. The other orbits come from velocities, eclipses or light
+    time, also those with an inclination.
     """
     out = _Rows(ORBITS, MSC)
     counts: Counter = Counter()
+    wide = msc.overflows(msc.ORB_FILE, "a", directory)
     for at, row in enumerate(msc.read_table(msc.ORB_FILE, directory).to_pylist()):
         wds_id = row["WDS"]
         primary, secondary = _sides(row["System"])
@@ -265,7 +271,7 @@ def msc_orbits(directory: Path = msc.OUT_DIR) -> pa.Table:
             )
         a, k1 = _known(row["a"]), _known(row["K1"])
         known = []
-        if a or _known(row["Incl"]):
+        if a or wide[at] or (row["Note"] or "").startswith(MSC_VB6):
             known.append(VISUAL_ORBIT)
         if k1:
             known.append(SPECTROSCOPIC_ORBIT)

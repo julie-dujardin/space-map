@@ -9,8 +9,8 @@ d, a in AU or arcsec, angles in degrees, epochs as JD. ω is the secondary's.
 Whose ω each source gives:
 - ORB6 and the visual orbits of the MSC: the secondary's, from the node as
   listed. The last WDS measures test it: 2,708 ORB6 orbits put the secondary
-  at the measured position angle, 158 at 180° from it. A visual orbit of the
-  MSC has an angular a, or is a copy of ORB6 (its note starts with VB6).
+  at the measured position angle, 158 at 180° from it. The MSC's `known`
+  tells its visual orbits (`orbits.msc_orbits`).
 - the other orbits of the MSC, from velocities, eclipses or light time, and
   SBX and the spectroscopic orbits of Gaia DR3: the primary's.
 - a paper: as its `arg_periastron_of` says. A paper that does not say gives
@@ -39,7 +39,7 @@ from space_map_data.download.providers.stars import orb6
 from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.frame import mean_anomaly_from_true
 from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC, ECLIPSING
-from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
+from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS, VISUAL_ORBIT
 from space_map_data.extrasolar.systems.orbits import (
     LITERATURE,
     MSC,
@@ -57,8 +57,6 @@ ASTRO_SPECTRO = "AstroSpectroSB1"
 IN_FRONT = 270.0
 # ω of a circular orbit, which draws the same for any value.
 CIRCULAR_OMEGA = 90.0
-# The note of an MSC orbit that ORB6 gives (Readme, note 5 of orb.tsv).
-MSC_VB6 = "VB6"
 ECLIPSE_EVENTS = frozenset({binaries.PRIMARY_ECLIPSE, binaries.CONJUNCTION, TRANSIT})
 # The columns of a Gaia DR3 orbit that `gaia_elements` reads.
 GAIA_ELEMENTS = (
@@ -192,13 +190,11 @@ def catalogue_elements(row: dict) -> Elements | None:
             omega = _turn(omega)
         fixed = True
     elif source == MSC:
-        if a_arcsec is None and not (row["reference"] or "").startswith(MSC_VB6):
-            # Not a visual orbit, even with the inclination of an eclipse.
+        if VISUAL_ORBIT not in (row["known"] or ()):
             omega, fixed = _turn(omega), True
-        elif row["k1"] is not None:
-            # A visual orbit with velocities gives the ascending node.
-            ascending = node is not None
-            fixed = ascending
+        if row["k1"] is not None and node is not None:
+            # Velocities tell which node is ascending.
+            ascending = fixed = True
     elif source == ORB6:
         grade = int(row["grade"]) if row["grade"] else 0
         fixed = ascending

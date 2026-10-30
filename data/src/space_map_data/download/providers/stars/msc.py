@@ -61,6 +61,8 @@ ROOT_PARENT = "*"
 TRAPEZIUM_PARENT = "t"
 # A pair that is optical or spurious. It is not in the hierarchy.
 REFUTED_PARENT = "X"
+# The first character of a number too large for its field.
+OVERFLOW = "*"
 
 # The tier that the terms allow; the extrasolar export takes the strictest.
 DISTRIBUTION = "non-commercial"
@@ -177,6 +179,15 @@ def read_table(name: str, directory: Path = OUT_DIR) -> pa.Table:
             for at, field in enumerate(fields)
         }
     )
+
+
+def overflows(name: str, label: str, directory: Path = OUT_DIR) -> list[bool]:
+    """Whether the number `label` of each row of a table is too large for its
+    field. The table prints it as asterisks, and `read_table` as null."""
+    readme = (directory / README_FILE).read_text(encoding="latin-1")
+    at = [field.label for field in byte_by_byte(readme, name)].index(label)
+    rows = _split((directory / name).read_bytes(), readme, name)
+    return [row[at].startswith(OVERFLOW) for row in rows]
 
 
 def _check_tarball(path: Path) -> None:

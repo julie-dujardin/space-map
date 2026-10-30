@@ -10,6 +10,7 @@ import pytest
 from space_map_data.constants.stars import binaries
 from space_map_data.extrasolar import frame
 from space_map_data.extrasolar.systems import elements, orbits
+from tests.download.orbit_catalogue_files import MSC_LINES
 from tests.extrasolar.systems_fakes import (
     KEPLER_16,
     KEPLER_16_GAIA,
@@ -21,6 +22,8 @@ from tests.extrasolar.systems_fakes import (
 # and the inclination of its eclipses; 16555-0820 Ba,Bb is a copy of ORB6.
 # Neither has an angular a.
 MSC_ECLIPSING = "00042-5055|Ab,Ac   |      0.5703|58354.2542| 0.001|  0.0000|  0.00|140.00| 87.96|135.10|172.85|    0.00| |d|2024A&A...686A..27R           "
+# 07346+3153 Ba,Bb has velocities and a node, and no a.
+MSC_COMBINED = "07346+3153|Ba,Bb   |      2.9284|56705.4940| 0.000|  0.0000|106.47|  0.00|110.55| 32.09|  0.00|    0.00| |d|2022ApJ...941....8T           "
 MSC_VB6 = "16555-0820|Ba,Bb   |      0.0081| 1998.2874| 0.021|  0.0000|  0.00|150.00|164.18|  0.00|  0.00|    0.00| |y|VB6_Sgr2000 Gl_644Ba,B Gr.8   "
 RR_CAE = "gaia/dr3/4788741548375134336"
 
@@ -122,6 +125,18 @@ class TestConventions:
         assert item.inclination == 87.96
         assert item.arg_periastron == pytest.approx(140.0 + 180)
         assert item.omega_fixed
+
+    def test_velocities_tell_the_ascending_node_with_no_a(self, tmp_path):
+        (item,) = _elements(msc_orbit_rows(tmp_path, MSC_COMBINED))
+        assert (item.node, item.node_ascending) == (106.47, True)
+
+    def test_proxima_has_a_visual_orbit_whose_a_is_too_large_to_print(self, tmp_path):
+        (item,) = _elements(
+            msc_orbit_rows(
+                tmp_path, next(line for line in MSC_LINES if "|AB,C" in line)
+            )
+        )
+        assert item.arg_periastron == 70.0 and not item.omega_fixed
 
     def test_a_copy_of_orb6_with_no_a_is_a_visual_orbit(self, tmp_path):
         (item,) = _elements(msc_orbit_rows(tmp_path, MSC_VB6))

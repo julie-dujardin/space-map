@@ -145,6 +145,8 @@ class TestMSC:
         proxima = next(r for r in rows if r["pair"] == "AB,C")
         assert (proxima["primary"], proxima["secondary"]) == ("AB", "C")
         assert (proxima["semi_major_axis"], proxima["node_component"]) == (None, "K")
+        # Its a is too large to print, so it is a visual orbit.
+        assert proxima["known"] == [VISUAL_ORBIT]
         assert next(r for r in rows if r["system"] == "12102+7721")["epoch"] is None
 
     def test_a_large_t_is_a_day_number_whatever_the_period_unit(self, rows):
