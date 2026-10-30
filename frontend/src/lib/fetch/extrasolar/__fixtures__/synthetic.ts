@@ -22,6 +22,8 @@ export const WITH_TABLE_2 = idOf(3, 1);
 /** A point that holds two stars, in the resolved system SYSTEM with SECOND. */
 export const BINARY = idOf(4, 1);
 export const SYSTEM = idOf(0, 3);
+/** A held star inside BINARY. */
+export const HELD = idOf(1, 3);
 
 export const TOKENS = {
 	metadata: 'a'.repeat(16),
@@ -64,6 +66,7 @@ interface MetaRow {
 	name?: string;
 	class?: string;
 	mask?: number;
+	system?: number;
 	alias?: number;
 	crossIds?: CrossId[];
 	object?: boolean;
@@ -97,6 +100,7 @@ function metadataTile(
 			col('class_source', 'dict', (r) => (r.alias ? null : 'gaia-dr3')),
 			col('cross_ids', 'cross_ids', (r) => (r.alias ? null : (r.crossIds ?? []))),
 			col('mask', 'uint32', (r) => r.mask ?? (r.alias ? 0 : 2)),
+			col('system', 'id', (r) => r.system ?? null),
 			...(objectColumn === 'object'
 				? [col('object', 'bool', (r) => (r.alias ? null : (r.object ?? false)))]
 				: objectColumn === 'object_file'
@@ -126,6 +130,125 @@ function dataTile(
 			...more
 		],
 		tileInfoBytes(0, 0, number)
+	);
+}
+
+/** The rows SYSTEM, HELD and BINARY. A value list follows the rows, or the
+ *  items of the list before it. */
+function systemTile(): Uint8Array {
+	const column = (name: string, type: ColumnSpec['type'], values: ColumnSpec['values']) => ({
+		name,
+		type,
+		values
+	});
+	return encode(
+		KIND_TILE,
+		TOKENS.systems,
+		3,
+		[
+			column('id', 'id', [SYSTEM, HELD, BINARY]),
+			column('point', 'bool', [false, false, true]),
+			column('depth', 'int16', [0, 2, 1]),
+			column('stars', 'int32', [3, 1, 2]),
+			column('ra', 'float64', [45, 45, 45]),
+			column('dec', 'float64', [30, 30, 30]),
+			column('label', 'string', ['AB', 'Aa', null]),
+			column('spectral_type', 'string', ['G2V+K1V', null, null]),
+			column('evidence', 'dict', [null, null, 'gaia-dr3-orbit']),
+			column('sources', 'list', [2, 0, 1]),
+			column('sources.item', 'dict', ['msc', 'wds', 'gaia-dr3-orbits']),
+			column('tree_source', 'dict', ['star-systems', 'star-systems', 'star-systems']),
+			column('parent', 'id', [null, BINARY, SYSTEM]),
+			column('root', 'id', [SYSTEM, SYSTEM, SYSTEM]),
+			column('primary', 'id', [BINARY, null, BINARY]),
+			column('distance', 'float64', [100, 100, 100]),
+			column('members', 'list', [2, 0, 2]),
+			column('members.id', 'id', [BINARY, SECOND, HELD, null]),
+			column('members.kind', 'dict', ['system', 'star', 'held star', 'entry']),
+			column('members.letter', 'dict', ['A', 'B', 'Aa', 'Ab']),
+			column('members.inner', 'string', [null, null, null, 'b']),
+			column('members.label', 'string', [null, 'Second', null, null]),
+			column('members.source', 'dict', ['msc', 'msc', 'msc', 'gaia-dr3-orbits']),
+			column('members.spectral_type', 'string', ['G2V', 'K1V', null, null]),
+			column('members.v_mag', 'float32', [1.5, null, null, null]),
+			column('members.g_mag', 'float32', [null, 2.5, null, null]),
+			column('members.mass', 'float32', [null, 0.5, null, 0.25]),
+			column('members.separation', 'float64', [null, 17.5, null, null]),
+			column('members.position_angle', 'float32', [null, 90, null, null]),
+			column('members.period', 'float64', [null, 29000, 40, 40]),
+			column('members.eccentricity', 'float32', [null, 0.5, null, null]),
+			column('members.semi_major_axis', 'float32', [null, 17.5, null, null]),
+			column('members.known', 'list', [0, 2, 1, 0]),
+			column('members.known.item', 'dict', ['visual', 'visual orbit', 'spectroscopic']),
+			column('members.ids', 'cross_ids', [
+				[],
+				[],
+				[],
+				[{ catalogue: 'gaia', release: 'dr3', catalogueId: '43' }]
+			]),
+			column('tree', 'list', [3, null, null]),
+			column('tree.id', 'id', [SYSTEM, HELD, BINARY]),
+			column('tree.parent', 'id', [null, BINARY, SYSTEM]),
+			column('tree.point', 'bool', [false, false, true]),
+			column('tree.stars', 'int32', [3, 1, 2]),
+			column('tree.class', 'dict', ['multiple star', 'star', 'binary star']),
+			column('tree.label', 'string', ['AB', 'Aa', null]),
+			column('orbit', 'list', [1, null, null]),
+			column('orbit.a', 'float64', [23.5]),
+			column('orbit.e', 'float64', [0.5]),
+			column('orbit.i', 'float64', [80]),
+			column('orbit.om', 'float64', [200]),
+			column('orbit.w', 'float64', [230]),
+			column('orbit.ma', 'float64', [10]),
+			column('orbit.n', 'float64', [0.01]),
+			column('orbit.epoch', 'float64', [2451545]),
+			column('orbit.phase', 'dict', ['periastron']),
+			column('orbit.period', 'float64', [29000]),
+			column('orbit.semi_major_axis', 'float64', [23.5]),
+			column('orbit.semi_major_axis_arcsec', 'float64', [null]),
+			column('orbit.eccentricity', 'float64', [0.5]),
+			column('orbit.inclination', 'float64', [79]),
+			column('orbit.node', 'float64', [205]),
+			column('orbit.node_ascending', 'bool', [false]),
+			column('orbit.arg_periastron', 'float64', [231]),
+			column('orbit.periastron_time', 'float64', [2435000]),
+			column('orbit.barycentre', 'float64', [0.45]),
+			column('orbit.centre', 'dict', ['barycentre']),
+			column('orbit.mass_ratio_source', 'dict', ['literature']),
+			column('orbit.period_source', 'dict', ['orb6']),
+			column('orbit.semi_major_axis_source', 'dict', ['gaia-dr3-orbits']),
+			column('orbit.eccentricity_source', 'dict', ['orb6']),
+			column('orbit.inclination_source', 'dict', ['orb6']),
+			column('orbit.node_source', 'dict', [null]),
+			column('orbit.arg_periastron_source', 'dict', ['orb6']),
+			column('orbit.epoch_source', 'dict', ['orb6']),
+			column('orbit.assumed', 'list', [1]),
+			column('orbit.assumed.item', 'dict', ['node']),
+			column('orbit.computed', 'list', [1]),
+			column('orbit.computed.item', 'dict', ['semi_major_axis']),
+			column('orbit.references', 'list', [2]),
+			column('orbit.references.source', 'dict', ['orb6', 'literature']),
+			column('orbit.references.reference', 'string', ['Msn2023', 'doyle2011']),
+			column('orbit.references.short', 'dict', [null, 'Doyle et al. 2011']),
+			column('orbit.references.title', 'dict', [null, 'A title']),
+			column('orbit.references.url', 'dict', [null, 'https://example.org/']),
+			column('star', 'list', [null, 1, null]),
+			column('star.mass', 'float32', [0.5]),
+			column('star.mass_source', 'dict', ['literature']),
+			column('star.radius', 'float32', [null]),
+			column('star.radius_source', 'dict', [null]),
+			column('star.teff', 'float32', [4500]),
+			column('star.teff_source', 'dict', ['open-exoplanet-catalogue']),
+			column('star.spectral_type', 'string', ['K1V']),
+			column('star.spectral_type_source', 'dict', ['msc']),
+			column('star.references', 'list', [1]),
+			column('star.references.source', 'dict', ['literature']),
+			column('star.references.reference', 'string', ['doyle2011']),
+			column('star.references.short', 'dict', ['Doyle et al. 2011']),
+			column('star.references.title', 'dict', ['A title']),
+			column('star.references.url', 'dict', ['https://example.org/'])
+		],
+		tileInfoBytes(0, 0, 3)
 	);
 }
 
@@ -168,11 +291,12 @@ export function syntheticExport(
 					],
 					object: true
 				},
-				{ id: SECOND },
+				{ id: SECOND, system: SYSTEM },
 				{ id: ALIAS, alias: STAR },
 				{ id: WITH_TABLE_2, mask: 2 | 4 },
-				{ id: BINARY, mask: 2 | 8, class: 'binary star' },
-				{ id: SYSTEM, mask: 8, name: 'Test System', class: 'multiple star' }
+				{ id: BINARY, mask: 2 | 8, class: 'binary star', system: SYSTEM },
+				{ id: SYSTEM, mask: 8, name: 'Test System', class: 'multiple star' },
+				{ id: HELD, mask: 8, name: 'Test System Aa', system: SYSTEM }
 			],
 			options.objectColumn
 		),
@@ -192,21 +316,7 @@ export function syntheticExport(
 				{ name: 'corr_vec', type: 'float32_list', values: [[0.5, NaN, -0.25]] }
 			]
 		),
-		'system/0/0.bin.gz': encode(
-			KIND_TILE,
-			TOKENS.systems,
-			2,
-			[
-				{ name: 'id', type: 'id', values: [SYSTEM, BINARY] },
-				{ name: 'point', type: 'bool', values: [false, true] },
-				{ name: 'primary', type: 'id', values: [BINARY, BINARY] },
-				{ name: 'members', type: 'list', values: [2, 2] },
-				{ name: 'members.id', type: 'id', values: [BINARY, SECOND, null, null] },
-				{ name: 'members.kind', type: 'dict', values: ['system', 'star', 'entry', 'entry'] },
-				{ name: 'members.letter', type: 'string', values: ['A', 'B', 'Aa', 'Ab'] }
-			],
-			tileInfoBytes(0, 0, 3)
-		)
+		'system/0/0.bin.gz': systemTile()
 	};
 	return { meta, payloads };
 }

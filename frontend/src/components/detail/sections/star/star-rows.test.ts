@@ -145,6 +145,7 @@ describe("a star's identifiers", () => {
 					}
 				],
 				mask: 2,
+				system: null,
 				families: 0n,
 				familiesEstimated: 0n,
 				spectralType: null,

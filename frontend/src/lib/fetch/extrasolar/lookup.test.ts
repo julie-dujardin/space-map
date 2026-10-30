@@ -131,6 +131,7 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		expect(homeRow(point.record)?.slug).toBe('point-source');
 		expect(hasDistance(point.record)).toBe(true);
 		expect(systemPrimary(point.record)).toBe(BINARY);
+		expect(point.record.metadata.system).toBe(SYSTEM);
 
 		const resolved = await lookup.lookup(SYSTEM);
 		expect(resolved.kind).toBe('live');
@@ -138,8 +139,9 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		const { record } = resolved;
 		expect(record.home).toBe('system');
 		expect(record.metadata.class).toBe('multiple star');
-		expect(hasDistance(record)).toBe(false);
+		expect(hasDistance(record)).toBe(true);
 		expect(systemPrimary(record)).toBe(BINARY);
+		expect(record.metadata.system).toBeNull();
 		const row = homeRow(record)!;
 		const [start, end] = row.container.list('members').items(row.row)!;
 		const ids = row.container.ids('members.id');

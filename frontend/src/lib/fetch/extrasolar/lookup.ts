@@ -38,6 +38,8 @@ export interface MetadataRow {
 	crossIds: CrossId[];
 	/** Bit n is set when data table n has a row for the ID. */
 	mask: number;
+	/** The root of the ID's star system; null for a root and for an ID in no system. */
+	system: number | null;
 	/** The published star families: bit n is entry n of `families` in
 	 *  `metadata.json`. 0 where the tile has no such column. */
 	families: bigint;
@@ -133,6 +135,11 @@ export class TableRow {
 		const c = this.container;
 		if (!c.has(name)) return null;
 		return c.float32List(name).get(this.row);
+	}
+
+	/** A `cross_ids` column; empty for a null row. */
+	crossIds(name: string): CrossId[] {
+		return this.container.crossIds(name).get(this.row) ?? [];
 	}
 }
 
@@ -392,6 +399,7 @@ export function readMetadataRow(c: Container, row: number): MetadataRow {
 		classSource: c.dict('class_source').get(row),
 		crossIds: c.crossIds('cross_ids').get(row) ?? [],
 		mask: c.uint32('mask')[row],
+		system: c.isValid('system', row) ? c.ids('system')[row] : null,
 		families: c.has('families') ? c.uint64('families')[row] : 0n,
 		familiesEstimated: c.has('families_estimated') ? c.uint64('families_estimated')[row] : 0n,
 		spectralType: c.strings('spectral_type').get(row),

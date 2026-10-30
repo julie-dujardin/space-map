@@ -14,7 +14,7 @@ const SLUG = 'point-source';
 const ORBIT_SLUG = 'binary-orbit';
 const TOKEN = 'b'.repeat(16);
 
-function tableRow(slug: string, number: number, columns: ColumnSpec[]): TableRow {
+export function tableRow(slug: string, number: number, columns: ColumnSpec[]): TableRow {
 	const bytes = encode(
 		KIND_TILE,
 		TOKEN,
@@ -52,6 +52,7 @@ export function pointSourceRecord(
 			classSource: null,
 			crossIds: [],
 			mask: orbit ? 6 : 2,
+			system: null,
 			families: 0n,
 			familiesEstimated: 0n,
 			spectralType: null,
@@ -81,6 +82,7 @@ export function resolvedSystemRecord(id: number, primary: number | null): Extras
 			classSource: null,
 			crossIds: [],
 			mask: 8,
+			system: null,
 			families: 0n,
 			familiesEstimated: 0n,
 			spectralType: null,

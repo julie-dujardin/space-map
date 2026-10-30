@@ -13,6 +13,8 @@ export interface ColumnSpec {
 	name: string;
 	type:
 		| 'bool'
+		| 'int16'
+		| 'int32'
 		| 'uint32'
 		| 'float32'
 		| 'float64'
@@ -30,6 +32,8 @@ export interface ColumnSpec {
 
 const CODES: Record<ColumnSpec['type'], number> = {
 	bool: 1,
+	int16: 3,
+	int32: 4,
 	uint32: 7,
 	float32: 8,
 	float64: 9,
@@ -83,6 +87,10 @@ function buffers(spec: ColumnSpec): Uint8Array[] {
 			return [Uint8Array.from(v.map((x) => (x ? 1 : 0)))];
 		case 'bits':
 			return [bitmap(v.map(Boolean))];
+		case 'int16':
+			return [new Uint8Array(Int16Array.from(v.map((x) => (x as number | null) ?? 0)).buffer)];
+		case 'int32':
+			return [new Uint8Array(Int32Array.from(v.map((x) => (x as number | null) ?? 0)).buffer)];
 		case 'uint32':
 			return [u32(v.map((x) => (x as number | null) ?? 0))];
 		case 'float32':
