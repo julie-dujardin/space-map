@@ -47,6 +47,9 @@ const CORE_AT_LIMIT = 0.06;
 /** Dot diameter (CSS px) of every star whose core is not yet full. */
 const DOT_PX = 2.5;
 const MAX_DOT_PX = 14;
+/** Rows a node hides at once (`uHidden`): exact stars past this draw twice. */
+export const HIDDEN_ROWS = 8;
+const HIDDEN_VECTORS = HIDDEN_ROWS / 4;
 
 /**
  * Built for each material, because the depth mode is set when three boots.
@@ -61,7 +64,7 @@ uniform float uFade;
 uniform float uFloor;
 uniform float uDistancePc;
 uniform vec3 uTint;
-uniform ivec4 uHidden;
+uniform ivec4 uHidden[${HIDDEN_VECTORS}];
 attribute float mag;
 attribute vec3 starColour;
 varying vec3 vColour;
@@ -73,7 +76,9 @@ void main() {
 	float pc = uDistancePc > 0.0 ? uDistancePc : length(mv.xyz) / ${PC_SCENE.toFixed(4)};
 	float m = mag + 5.0 * log2(max(pc, 1e-9)) * 0.30103 - 5.0;
 	float above = max(uLimit - m, uFloor);
-	if (above <= 0.0 || mv.z >= 0.0 || any(equal(ivec4(gl_VertexID), uHidden))) {
+	ivec4 vertex = ivec4(gl_VertexID);
+	bool hidden = ${Array.from({ length: HIDDEN_VECTORS }, (_, k) => `any(equal(vertex, uHidden[${k}]))`).join(' || ')};
+	if (above <= 0.0 || mv.z >= 0.0 || hidden) {
 		// Too faint, behind the camera, or drawn on its own: put it off screen.
 		gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 		gl_PointSize = 0.0;
@@ -147,7 +152,7 @@ export function makeStarMaterial(shared: StarUniforms, floor = NO_FLOOR): Shader
 			uDistancePc: { value: 0 },
 			uTint: { value: new Vector3(1, 1, 1) },
 			// Rows drawn on their own, -1 for none.
-			uHidden: { value: new Int32Array([-1, -1, -1, -1]) }
+			uHidden: { value: new Int32Array(HIDDEN_ROWS).fill(-1) }
 		},
 		vertexShader: starVertexShader(),
 		fragmentShader: FRAGMENT,

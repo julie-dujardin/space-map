@@ -183,6 +183,8 @@ describe.skipIf(!HAS_EXPORT)('a star from its record, against the render tree', 
 		).toBe(-1);
 		// Proxima's place with another magnitude is another star.
 		expect(findStarRow(node, { tree: place.tree, absMag: 3 })).toBe(-1);
+		// A star with no magnitude has no row, so Proxima's row is not its row.
+		expect(findStarRow(node, { tree: place.tree, absMag: null })).toBe(-1);
 	});
 
 	it('has no place for a Hipparcos star with a parallax under 5σ', async () => {

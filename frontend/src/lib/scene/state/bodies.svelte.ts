@@ -168,7 +168,8 @@ export class BodyIndex {
 		this.notifyBodiesAdded();
 	}
 
-	/** Keep these extrasolar objects past the LRU: the hosts of the planets drawn. */
+	/** Keep these extrasolar objects past the LRU: the hosts of the planets
+	 *  drawn and the stars of the focused star system. */
 	pinExtrasolar(ids: ReadonlySet<string>): void {
 		this.pinnedExtrasolar = ids;
 		this.trimExtrasolar();

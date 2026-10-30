@@ -1411,9 +1411,8 @@ export class SceneRenderer {
 		// The view cone the stars are culled to is this frame's.
 		this.camera.updateMatrixWorld();
 		const focusedStar = this.focusController.current;
-		this.starfield.setExactStars(
-			this.exoplanetSystems.exactStars(focusedStar, this.travelPath.endIds)
-		);
+		const exactStars = this.exoplanetSystems.exactStars(focusedStar, this.travelPath.endIds);
+		this.starfield.setExactStars(exactStars, this.exoplanetSystems.companions(exactStars));
 		this.starfield.update(
 			this.camera,
 			this.focus.focusTruePos,

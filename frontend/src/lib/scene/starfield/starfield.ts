@@ -118,8 +118,6 @@ export const STAR_RENDER_ORDER = -1;
 /** Pick ranges: a node's rows, and the point of each exact star. */
 const NODE_PICK_PREFIX = 'star:';
 const EXACT_PICK_PREFIX = 'star-exact:';
-/** Rows a node hides at once (`uHidden`): exact stars past this draw twice. */
-export const HIDDEN_ROWS = 4;
 
 export interface StarfieldBudget {
 	/** Stars drawn at once. */
@@ -281,14 +279,18 @@ export class StarfieldSystem {
 	}
 
 	/**
-	 * The stars to draw on their own: the focused one, and the hosts of the
-	 * planets drawn. Each draws at its record's place, which is exact where a
-	 * node's float32 row is not, whatever the drawn limit or the budget. Its
-	 * row in the tree draws nothing meanwhile, so it is never drawn twice.
+	 * The stars to draw on their own: `stars`, the focused one, the trip ends
+	 * and the hosts of the planets drawn, and `companions`, the other stars of
+	 * the focused system. Each draws at its record's place, which is exact where
+	 * a node's float32 row is not, whatever the drawn limit or the budget. Its
+	 * row in the tree draws nothing meanwhile, so it is never drawn twice. A
+	 * companion takes no floor: it shows the light its row would.
 	 */
-	setExactStars(stars: readonly StarAnchor[]): void {
+	setExactStars(stars: readonly StarAnchor[], companions: readonly StarAnchor[] = []): void {
 		const next = new Map<number, StarAnchor>();
-		for (const star of stars) if (star.tree && !next.has(star.id)) next.set(star.id, star);
+		for (const star of [...stars, ...companions]) {
+			if (star.tree && !next.has(star.id)) next.set(star.id, star);
+		}
 		let changed = false;
 		for (const [id, exact] of this.exact) {
 			if (next.has(id)) continue;
@@ -300,6 +302,11 @@ export class StarfieldSystem {
 			if (this.exact.has(id)) continue;
 			this.exact.set(id, this.makeExact(star));
 			changed = true;
+		}
+		const floored = new Set(stars.map((star) => star.id));
+		for (const [id, { points }] of this.exact) {
+			const { uFloor } = (points.material as ShaderMaterial).uniforms;
+			uFloor.value = floored.has(id) ? FOCUS_FLOOR_MAG : NO_FLOOR;
 		}
 		if (!changed) return;
 		for (const node of this.drawn) if (node.points) this.applyHidden(node);
@@ -980,7 +987,7 @@ export class StarfieldSystem {
 				row = findStarRow(node.data, star);
 				node.hidden.set(star.id, row);
 			}
-			if (row >= 0 && k < HIDDEN_ROWS) rows[k++] = row;
+			if (row >= 0 && k < rows.length) rows[k++] = row;
 		}
 	}
 
@@ -1024,14 +1031,15 @@ const ROW_MAG = 0.01;
 /**
  * The row of `star` in a node, or -1 when the node does not hold it. A row
  * is the star when its float32 offset is the record's place to within the
- * rounding, and its magnitude is the record's.
+ * rounding, and its magnitude is the record's. A star with no magnitude has
+ * no row, so a row at its place is a different star.
  */
 export function findStarRow(
 	data: { container: Container; info: NodeInfo },
 	star: Pick<StarAnchor, 'tree' | 'absMag'>
 ): number {
-	const tree = star.tree;
-	if (!tree) return -1;
+	const { tree, absMag } = star;
+	if (!tree || absMag === null) return -1;
 	const { centre, half } = data.info;
 	const ox = tree[0] - centre[0];
 	const oy = tree[1] - centre[1];
@@ -1052,7 +1060,7 @@ export function findStarRow(
 		const dy = Math.abs(y[i] - oy);
 		const dz = Math.abs(z[i] - oz);
 		if (dx > tx || dy > ty || dz > tz) continue;
-		if (star.absMag !== null && Math.abs(mag[i] - star.absMag) > ROW_MAG) continue;
+		if (Math.abs(mag[i] - absMag) > ROW_MAG) continue;
 		const distance = dx + dy + dz;
 		if (distance < bestDistance) {
 			best = i;

@@ -550,12 +550,14 @@ describe('the starfield walk', () => {
 				scene: [0, 0, 0],
 				tree: [C - 500, C - 500, C - 500],
 				absMag: 10,
+				point: 7,
 				colour: null,
 				radiusKm: null,
 				teff: null
 			}
 		]);
-		expect(hidden()).toMatchObject({ r: [-1, -1, -1, -1], r0: [0, -1, -1, -1] });
+		const none = new Array(8).fill(-1);
+		expect(hidden()).toMatchObject({ r: none, r0: [0, ...none.slice(1)] });
 		expect(points()).toHaveLength(1);
 		expect(points()[0].position.toArray()).toEqual([C - 500, C - 500, C - 500]);
 
@@ -567,16 +569,34 @@ describe('the starfield walk', () => {
 				scene: [0, 0, 0],
 				tree: [C - 500, C - 500, C - 500],
 				absMag: 3,
+				point: 8,
 				colour: null,
 				radiusKm: null,
 				teff: null
 			}
 		]);
-		expect(hidden()).toMatchObject({ r: [-1, -1, -1, -1], r0: [-1, -1, -1, -1] });
+		expect(hidden()).toMatchObject({ r: none, r0: none });
+		expect(points()).toHaveLength(1);
+
+		// A star with no magnitude has no row: a row at its place is a different star.
+		system.setExactStars([
+			{
+				id: 9,
+				record: null!,
+				scene: [0, 0, 0],
+				tree: [C - 500, C - 500, C - 500],
+				absMag: null,
+				point: 9,
+				colour: null,
+				radiusKm: null,
+				teff: null
+			}
+		]);
+		expect(hidden()).toMatchObject({ r: none, r0: none });
 		expect(points()).toHaveLength(1);
 
 		system.setExactStars([]);
-		expect(hidden()).toMatchObject({ r: [-1, -1, -1, -1], r0: [-1, -1, -1, -1] });
+		expect(hidden()).toMatchObject({ r: none, r0: none });
 		expect(points()).toHaveLength(0);
 	});
 
@@ -598,6 +618,7 @@ describe('the starfield walk', () => {
 			scene: [0, 0, 0],
 			tree: [C - 500, C - 500, C - 500],
 			absMag,
+			point: id,
 			colour: null,
 			radiusKm: null,
 			teff: null
@@ -609,7 +630,7 @@ describe('the starfield walk', () => {
 		const points = () =>
 			system.exactGroup.children.filter((c) => c.userData.exactStar !== undefined);
 		system.setExactStars([star(7, 10), star(8, 12), star(7, 10)]);
-		expect(r0()).toEqual([0, 2, -1, -1]);
+		expect(r0()).toEqual([0, 2, -1, -1, -1, -1, -1, -1]);
 		expect(points().map((p) => p.userData.exactStar)).toEqual([7, 8]);
 		const picks = system.pickDraws().filter((d) => d.points.userData.exactStar !== undefined);
 		expect(picks).toHaveLength(2);
@@ -617,9 +638,49 @@ describe('the starfield walk', () => {
 		expect(system.pickedStar(base)).toEqual({ id: 8 });
 
 		system.setExactStars([star(8, 12)]);
-		expect(r0()).toEqual([2, -1, -1, -1]);
+		expect(r0()).toEqual([2, -1, -1, -1, -1, -1, -1, -1]);
 		expect(points().map((p) => p.userData.exactStar)).toEqual([8]);
 		expect(system.pickedStar(base)).toEqual({ id: 8 });
+
+		const floor = (id: number) => {
+			const point = points().find((p) => p.userData.exactStar === id) as Points;
+			return (point.material as ShaderMaterial).uniforms.uFloor.value;
+		};
+		system.setExactStars([star(7, 10)], [star(8, 12), star(7, 10)]);
+		expect(points()).toHaveLength(2);
+		expect([floor(7), floor(8)]).toEqual([FOCUS_FLOOR_MAG, NO_FLOOR]);
+		system.setExactStars([star(8, 12)], [star(7, 10)]);
+		expect([floor(7), floor(8)]).toEqual([NO_FLOOR, FOCUS_FLOOR_MAG]);
+		system.dispose();
+	});
+
+	it('hides the row of each of eight exact stars, and no more', async () => {
+		buildTree(new Array(8).fill(10));
+		nodes.get('r0')!.mags = [20, 21, 22, 23, 24, 25, 26, 27, 28];
+		const { camera, focus } = setup();
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry()
+		);
+		await settle(system, camera, focus);
+		const star = (id: number, absMag: number): StarAnchor => ({
+			id,
+			record: null!,
+			scene: [0, 0, 0],
+			tree: [C - 500, C - 500, C - 500],
+			absMag,
+			point: id,
+			colour: null,
+			radiusKm: null,
+			teff: null
+		});
+		system.setExactStars([20, 21, 22, 23, 24, 25, 26, 27, 28].map((mag) => star(mag, mag)));
+		const node = system.drawnNodes().find((n) => n.name === 'r0')!;
+		const hidden = (node.points.material as ShaderMaterial).uniforms.uHidden.value;
+		expect([...hidden]).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
 		system.dispose();
 	});
 
@@ -644,6 +705,7 @@ describe('the starfield walk', () => {
 				scene: focus,
 				tree: [0.1, 0, 0],
 				absMag: 5,
+				point: 7,
 				colour: -0.12,
 				radiusKm,
 				teff: 3000
@@ -716,6 +778,7 @@ describe('the starfield walk', () => {
 					scene: [0, 0, 0],
 					tree: [0.1, 0, 0],
 					absMag: 5,
+					point: 7,
 					colour: 1,
 					radiusKm,
 					teff: 5000
@@ -826,6 +889,7 @@ describe('the starfield walk', () => {
 				scene: [0, 0, 0],
 				tree: [C - 500, C - 500, C - 500],
 				absMag: 10,
+				point: 7,
 				colour: null,
 				radiusKm: null,
 				teff: null
@@ -863,6 +927,7 @@ describe('the starfield walk', () => {
 				scene: null,
 				tree: null,
 				absMag: null,
+				point: 9,
 				colour: null,
 				radiusKm: null,
 				teff: null
@@ -937,6 +1002,7 @@ describe('picking a star', () => {
 				scene: [0, 0, 0],
 				tree: [C - 500, C - 500, C - 500],
 				absMag: 10,
+				point: 22137869,
 				colour: null,
 				radiusKm: null,
 				teff: null

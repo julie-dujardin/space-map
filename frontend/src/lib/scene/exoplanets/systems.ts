@@ -1,8 +1,9 @@
 /**
  * The planetary system the renderer draws, set once per frame: the system
  * of the focused star or planet. Each of its hosts draws by the pixel rule of
- * the solar system, with the halo, name and orbit line of each planet, and
- * the starfield draws the host at its exact place.
+ * the solar system, with the halo, name and orbit line of each planet. The
+ * starfield draws the host and the stars of the focused star system at their
+ * exact places.
  */
 
 import { ExtrasolarStaleError } from '$lib/fetch/extrasolar/files';
@@ -10,6 +11,7 @@ import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { PromotionRegistry } from '$lib/scene/focus/promotion';
+import { HIDDEN_ROWS } from '$lib/scene/starfield/material';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import {
 	isExoplanet,
@@ -18,9 +20,11 @@ import {
 	type StarAnchor
 } from '$lib/types/objects';
 import { SystemFades } from './fades';
+import { FocusedStarSystem } from './star-system';
 
-/** Stars the starfield draws at their exact place at once. */
-export const EXACT_STARS = 4;
+/** Stars the starfield draws at their exact place at once. A star past this
+ *  stays a row. */
+export const EXACT_STARS = HIDDEN_ROWS;
 /** The key of the index among the loads, which no host ID is. */
 const INDEX = 0;
 
@@ -41,6 +45,7 @@ export class ExoplanetSystems {
 	private readonly asked = new Set<number>();
 	/** Failed loads wait before they are asked for again. */
 	private readonly retries: RetryBackoff<number>;
+	private readonly starSystem: FocusedStarSystem;
 	/** Drawn hosts by camera distance, nearest first. */
 	private drawn: number[] = [];
 	private drawnKey = '';
@@ -52,6 +57,7 @@ export class ExoplanetSystems {
 		private readonly onChange: () => void
 	) {
 		this.retries = new RetryBackoff(onChange);
+		this.starSystem = new FocusedStarSystem(ctx, onChange);
 	}
 
 	/** True while a system fades in or out. */
@@ -60,10 +66,12 @@ export class ExoplanetSystems {
 	}
 
 	update(frame: SystemsFrame): void {
+		this.starSystem.update(frame.focused, frame.camera);
 		const store = this.ctx.exoplanets;
 		const star = this.starOf(frame.focused);
 		if (!store.index) {
 			if (star !== null) this.askIndex();
+			this.hold([]);
 			return;
 		}
 		this.fades ??= new SystemFades(store.index);
@@ -83,8 +91,14 @@ export class ExoplanetSystems {
 		this.ctx.visibility.systemShares = byId;
 
 		store.use(new Set(key === undefined ? [] : [key]));
-		this.ctx.bodies.pinExtrasolar(new Set([...hosts, ...this.drawn].map(extrasolarObjectId)));
+		this.hold([...hosts, ...this.drawn]);
 		this.syncBodies(frame.focused);
+	}
+
+	/** Keep the bodies of `hosts` and of the focused star system. */
+	private hold(hosts: readonly number[]): void {
+		const ids = [...hosts, ...this.starSystem.points];
+		this.ctx.bodies.pinExtrasolar(new Set(ids.map(extrasolarObjectId)));
 	}
 
 	/** The stars to draw at their exact place, in this order: the star of the
@@ -93,8 +107,10 @@ export class ExoplanetSystems {
 	 *  The ends are looked up on each call, because an end can stream in late. */
 	exactStars(focused: PositionedBody | undefined, endIds: readonly string[] = []): StarAnchor[] {
 		const out: StarAnchor[] = [];
-		const add = (star: StarAnchor | undefined) => {
-			if (star && out.length < EXACT_STARS && !out.some((s) => s.id === star.id)) out.push(star);
+		const add = (anchor: StarAnchor | undefined) => {
+			if (out.length === EXACT_STARS) return;
+			const star = anchor && this.pointStar(anchor);
+			if (star?.tree && !out.some((s) => s.id === star.id)) out.push(star);
 		};
 		const addStarOf = (body: PositionedBody | undefined) => {
 			if (body && isExtrasolar(body)) add(body.extrasolar);
@@ -104,6 +120,23 @@ export class ExoplanetSystems {
 		for (const id of endIds) addStarOf(this.ctx.getBody(id));
 		for (const host of this.drawn) add(this.ctx.getBody(extrasolarObjectId(host))?.extrasolar);
 		return out;
+	}
+
+	/** The other stars of the focused star system, nearest first, in the slots
+	 *  that `stars` leaves: a line or a planet needs its star exact more. */
+	companions(stars: readonly StarAnchor[]): StarAnchor[] {
+		const taken = new Set(stars.map((star) => star.id));
+		return this.starSystem.stars
+			.filter((star) => star.tree && !taken.has(star.id))
+			.slice(0, EXACT_STARS - stars.length);
+	}
+
+	/** The star that draws the light of `anchor`. A node and a held star have
+	 *  none of their own. */
+	private pointStar(anchor: StarAnchor): StarAnchor | undefined {
+		if (anchor.point === anchor.id) return anchor;
+		const next = this.ctx.getBody(extrasolarObjectId(anchor.point))?.extrasolar;
+		return next && this.pointStar(next);
 	}
 
 	/** The star that a focused star or planet belongs to. */

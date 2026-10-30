@@ -3,7 +3,7 @@ import { Container } from '$lib/fetch/extrasolar/container';
 import { TableRow, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import type { ExtrasolarTable } from '$lib/fetch/extrasolar/files';
 import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
-import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
+import { pointSourceRecord, tableRow } from '$lib/fetch/extrasolar/__fixtures__/record';
 import { makeStarBody } from './star-focus';
 
 function record(
@@ -68,6 +68,26 @@ describe('a focused binary star', () => {
 		const body = makeStarBody(pointSourceRecord(star, [], orbit('EclipsingBinary')));
 		expect(distance(body.extrasolar?.tree)).toBeCloseTo(100, 9);
 		expect(body.extrasolar?.absMag).toBeCloseTo(8 + 5 * Math.log10(10) - 10, 2);
+	});
+});
+
+describe('a focused object with no point', () => {
+	it('has the place of its System row, and no tree place or light', () => {
+		const row = tableRow('system', 3, [
+			{ name: 'ra', type: 'float64', values: [45] },
+			{ name: 'dec', type: 'float64', values: [30] },
+			{ name: 'distance', type: 'float64', values: [10] }
+		]);
+		const body = makeStarBody({
+			id: 7,
+			metadata: { name: 'Pair', class: 'binary star' } as ExtrasolarRecord['metadata'],
+			rows: new Map([['system', row]]),
+			home: 'system',
+			credits: []
+		});
+		expect(body.extrasolar?.scene).not.toBeNull();
+		expect(body.extrasolar?.tree).toBeNull();
+		expect(body.extrasolar?.absMag).toBeNull();
 	});
 });
 
