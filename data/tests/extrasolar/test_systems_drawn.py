@@ -398,6 +398,17 @@ class TestMassRatio:
         assert found.orbits.num_rows == 0
         assert found.counts["pairs with orbits and no semi-major axis"] == 1
 
+    def test_a_minimum_mass_keeps_the_primary_at_the_centre(self, orb6_only):
+        stars = msc_masses(("A", "B", 1.10, "v", 0.30, "m"))
+        found = drawn.draw(
+            alpha_cen(),
+            Inputs(catalogue_orbits=orb6_only, catalogue_stars=stars),
+            FakeResolver({}, []),
+        )
+        (row,) = found.orbits.to_pylist()
+        assert row["barycentre"] is None
+        assert "msc: masses on a pair" not in found.counts
+
     def test_masses_of_no_pair(self, orb6_only):
         stars = msc_masses(("Ba", "Bb", 0.5, "v", 0.4, "v"))
         found = drawn.draw(

@@ -81,6 +81,9 @@ B1900 = 2415020.31352
 SOLAR_RADIUS_AU = 695_700.0 / 149_597_870.7
 # MSC: a T of this size or more is JD − 2,400,000, else a Julian year.
 MSC_DAY_NUMBER = 10_000.0
+# The MSC's mass code of the minimum mass of an SB1 secondary. It is a lower
+# bound, so it gives no mass ratio.
+MSC_MINIMUM_MASS = "m"
 
 _MEASURED = (
     "period",
@@ -299,22 +302,25 @@ def msc_masses(pairs: list[dict]) -> pa.Table:
     primary first.
 
     A pair has rows only when both masses are known: a zero is unknown
-    (Readme note 4). A refuted or optical pair has none. `mass_method` is the
-    MSC's code: r published, v, k or a estimated from the absolute V or K
-    magnitude or the spectral type, s the sum of a subsystem, q from the
-    primary's mass and the mass ratio, m the minimum mass of the secondary
-    of an SB1.
+    (Readme note 4). A refuted or optical pair has none, and a pair with a
+    minimum mass (code m) has none. `mass_method` is the MSC's code: r
+    published, v, k or a estimated from the absolute V or K magnitude or the
+    spectral type, s the sum of a subsystem, q from the primary's mass and the
+    mass ratio.
     """
     out = _Rows(COMPONENTS, MSC)
     for at, row in enumerate(pairs):
         wds_id, primary, secondary = row["WDS"], row["Primary"], row["Secondary"]
         masses = _known(row["Mass1"]), _known(row["Mass2"])
+        codes = [(row[name] or "").strip() or None for name in ("MCode1", "MCode2")]
         if not (primary and secondary and all(masses)) or refuted(row):
+            continue
+        if MSC_MINIMUM_MASS in codes:
             continue
         ids = [(*WDS_ID, wds_id), (*MSC_ID, f"{wds_id} {secondary}")]
         for label, mass, code in (
-            (primary, masses[0], row["MCode1"]),
-            (secondary, masses[1], row["MCode2"]),
+            (primary, masses[0], codes[0]),
+            (secondary, masses[1], codes[1]),
         ):
             out.add(
                 ids,
@@ -325,7 +331,7 @@ def msc_masses(pairs: list[dict]) -> pa.Table:
                 row=at,
                 label=label,
                 **_value("mass", mass),
-                mass_method=(code or "").strip() or None,
+                mass_method=code,
             )
     return out.table()
 

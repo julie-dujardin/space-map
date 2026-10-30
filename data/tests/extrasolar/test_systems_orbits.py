@@ -73,7 +73,7 @@ class TestMSCMasses:
         }
 
     def test_a_pair_with_an_unknown_mass_or_refuted_has_none(self):
-        masses = {"Mass1": 1.0, "MCode1": "v", "Mass2": 0.5, "MCode2": "m"}
+        masses = {"Mass1": 1.0, "MCode1": "v", "Mass2": 0.5, "MCode2": "q"}
         rows = orbits.msc_masses(
             [
                 msc_pair("1", "A", "B", "*", **(masses | {"Mass2": 0.0})),
@@ -84,8 +84,22 @@ class TestMSCMasses:
         ).to_pylist()
         assert [(r["system"], r["mass_method"]) for r in rows] == [
             ("4", None),
-            ("4", "m"),
+            ("4", "q"),
         ]
+
+    def test_a_pair_with_a_minimum_mass_has_none(self):
+        """Code m is the minimum mass of an SB1 secondary: a lower bound."""
+        rows = orbits.msc_masses(
+            [
+                msc_pair(
+                    "1", "A", "B", "*", Mass1=1.0, MCode1="v", Mass2=0.2, MCode2="m"
+                ),
+                msc_pair(
+                    "2", "A", "B", "*", Mass1=1.0, MCode1="r", Mass2=0.8, MCode2="r"
+                ),
+            ]
+        ).to_pylist()
+        assert {r["system"] for r in rows} == {"2"}
 
 
 class TestMSC:
