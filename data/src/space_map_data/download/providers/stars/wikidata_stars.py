@@ -3,10 +3,9 @@
 An item is in the list when it carries a Gaia DR3 id (`P13228`), a Hipparcos
 or an HD number (`P528` with the catalogue in qualifier `P972`), and has an
 article in at least one of the site's languages. The list gives each item its
-ids, its WDS designations, its English and multilingual labels, its count of
-articles and its classes (`P31`). It also gives the classes that are a kind
-(`P279*`) of a star or of a star system, so the ingest can tell an item about
-a star from an item about a system.
+ids, its English and multilingual labels, its count of articles, and those of
+its classes (`P31`) that are a kind (`P279*`) of a star or of a star system.
+So the ingest can tell an item about a star from an item about a system.
 
 An item whose types (`P31/P279*`) reach a galaxy, a nebula, a cluster or
 another object that is not a star is not in the list, unless its types also
@@ -47,7 +46,6 @@ ITEMS_FILE = OUT_DIR / "items.tsv.gz"
 
 HIPPARCOS_QID = "Q537199"
 HENRY_DRAPER_QID = "Q111130"
-WDS_QID = "Q932275"
 SEPARATOR = "|"
 # Galaxy, nebula, planetary nebula, reflection nebula, star cluster, quasar,
 # active galactic nucleus, H II region, interstellar medium, galaxy cluster,
@@ -117,8 +115,6 @@ SELECT ?item
   (GROUP_CONCAT(DISTINCT ?hip_id; SEPARATOR="{SEPARATOR}") AS ?hip)
   (GROUP_CONCAT(DISTINCT ?hd_id; SEPARATOR="{SEPARATOR}") AS ?hd)
   (SAMPLE(?en) AS ?label_en) (SAMPLE(?mul) AS ?label_mul) (SAMPLE(?n) AS ?articles)
-  (GROUP_CONCAT(DISTINCT ?wds_id; SEPARATOR="{SEPARATOR}") AS ?wds)
-  (GROUP_CONCAT(DISTINCT STR(?class); SEPARATOR="{SEPARATOR}") AS ?classes)
   (GROUP_CONCAT(DISTINCT STR(?star_class); SEPARATOR="{SEPARATOR}") AS ?star_classes)
   (GROUP_CONCAT(DISTINCT STR(?system_class); SEPARATOR="{SEPARATOR}") AS ?system_classes)
 WHERE {{
@@ -134,11 +130,6 @@ WHERE {{
   }}
   OPTIONAL {{ ?item rdfs:label ?en . FILTER(LANG(?en) = "en") }}
   OPTIONAL {{ ?item rdfs:label ?mul . FILTER(LANG(?mul) = "mul") }}
-  OPTIONAL {{
-    ?item p:P528 ?s3 . ?s3 ps:P528 ?wds_id ; pq:P972 wd:{WDS_QID} .
-    {_not_deprecated("?s3")}
-  }}
-  OPTIONAL {{ ?item wdt:P31 ?class . }}
   OPTIONAL {{
     ?item wdt:P31 ?star_class . ?star_class wdt:P279* ?star_root .
     VALUES ?star_root {{ {_STAR_ROOTS} }}
@@ -157,8 +148,6 @@ COLUMNS = (
     "?label_en",
     "?label_mul",
     "?articles",
-    "?wds",
-    "?classes",
     "?star_classes",
     "?system_classes",
 )
@@ -196,11 +185,7 @@ class StarItem:
     label_mul: str | None
     # Articles in the site's languages.
     articles: int
-    # WDS designations without their prefix, such as "J07346+3153AB".
-    wds: tuple[str, ...] = ()
-    # The QIDs of its classes, and of those of them that are a kind of star
-    # or a kind of star system.
-    classes: tuple[str, ...] = ()
+    # The QIDs of its classes that are a kind of star or of star system.
     star_classes: tuple[str, ...] = ()
     system_classes: tuple[str, ...] = ()
 
@@ -252,19 +237,12 @@ def _numbers(
     return tuple(out)
 
 
-def _values(text: str | None, prefix: str = "") -> tuple[str, ...]:
-    """The values of a joined column without their prefix, each once."""
+def _qids(text: str | None) -> tuple[str, ...]:
+    """The QIDs of a joined column of entity IRIs, each once."""
     if not text:
         return ()
-    found = (
-        value.strip().removeprefix(prefix).strip() for value in text.split(SEPARATOR)
-    )
+    found = (value.strip().rsplit("/", 1)[-1] for value in text.split(SEPARATOR))
     return tuple(dict.fromkeys(value for value in found if value))
-
-
-def _qids(text: str | None) -> tuple[str, ...]:
-    """The QIDs of a joined column of entity IRIs."""
-    return tuple(value.rsplit("/", 1)[-1] for value in _values(text))
 
 
 def _gaia_ids(text: str | None, qid: str) -> tuple[str, ...]:
@@ -286,7 +264,7 @@ def read_items(path: Path = ITEMS_FILE) -> list[StarItem]:
     for line in lines[1:]:
         if not line:
             continue
-        item, gaia, hip, hd, en, mul, articles, wds, classes, stars, systems = map(
+        item, gaia, hip, hd, en, mul, articles, stars, systems = map(
             parse_term, line.split("\t")
         )
         if item is None or articles is None:
@@ -300,8 +278,6 @@ def read_items(path: Path = ITEMS_FILE) -> list[StarItem]:
                 label_en=en,
                 label_mul=mul,
                 articles=int(articles),
-                wds=_values(wds, "WDS"),
-                classes=_qids(classes),
                 star_classes=_qids(stars),
                 system_classes=_qids(systems),
             )

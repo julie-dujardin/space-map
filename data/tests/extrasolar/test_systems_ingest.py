@@ -967,7 +967,6 @@ def star_item(
         label_en=label,
         label_mul=None,
         articles=articles,
-        classes=(*stars, *systems),
         star_classes=stars,
         system_classes=systems,
     )

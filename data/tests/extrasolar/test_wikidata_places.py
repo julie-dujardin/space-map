@@ -36,9 +36,6 @@ SPECTROSCOPIC = "Q1993624"
 # Kinds of star and of star system.
 ECLIPSING = "Q1457376"
 ALGOL_TYPE = "Q24452"
-# Neither.
-NEAR_INFRARED = "Q67206785"
-ULTRAVIOLET = "Q71798788"
 
 HIP, GAIA, HD = range(3)
 
@@ -49,7 +46,6 @@ def item(
     articles: int = 1,
     stars: tuple[str, ...] = (),
     systems: tuple[str, ...] = (),
-    others: tuple[str, ...] = (),
     mul: str | None = None,
 ) -> StarItem:
     """An item with these classes: `stars` reach a star, `systems` a star
@@ -62,7 +58,6 @@ def item(
         label_en=label,
         label_mul=mul,
         articles=articles,
-        classes=tuple(dict.fromkeys((*stars, *systems, *others))),
         star_classes=stars,
         system_classes=systems,
     )
@@ -81,7 +76,6 @@ ALGOL = item(
     12,
     (ALGOL_TYPE, ECLIPSING),
     (ALGOL_TYPE, ECLIPSING, SPECTROSCOPIC, DOUBLE),
-    (NEAR_INFRARED, ULTRAVIOLET),
 )
 # A transit host that Wikidata types as an eclipsing binary.
 WASP_45 = item(
@@ -90,10 +84,10 @@ WASP_45 = item(
     1,
     (HIGH_PROPER_MOTION, ECLIPSING),
     (ECLIPSING,),
-    (NEAR_INFRARED,),
     mul="WASP-45",
 )
-ZETA_AQUARII = item("Q13252", "Zeta Aquarii", 8, others=(NEAR_INFRARED, ULTRAVIOLET))
+# Typed only with survey classes.
+ZETA_AQUARII = item("Q13252", "Zeta Aquarii", 8)
 TOLIMAN = item(
     "Q1052548",
     "Alpha Centauri B",
@@ -308,7 +302,6 @@ class TestSystemItemsGoToTheirNode:
             1,
             ("Q1392913", VARIABLE),
             (DOUBLE, "Q1392913"),
-            (NEAR_INFRARED, ULTRAVIOLET),
         )
         point = 18153924
         assert where(
@@ -381,7 +374,6 @@ class TestStarsInNoSystem:
             8,
             (STAR_CLASS,),
             (DOUBLE, OPTICAL_DOUBLE),
-            (NEAR_INFRARED, ULTRAVIOLET),
         )
         assert where(Reach(ain, 16864576, HIP)) == {
             "Q405857": (0, wikidata.ALONE_MIXED)
