@@ -8,6 +8,8 @@ export const SOLAR_RADIUS_KM = 695_700;
 export const JUPITER_RADIUS_KM = 71_492;
 /** Speed of light in km/s */
 export const SPEED_OF_LIGHT_KM_S = 299_792.458;
+/** IAU light-year: the distance light travels in a Julian year, km. */
+export const LIGHT_YEAR_KM = SPEED_OF_LIGHT_KM_S * 365.25 * 86_400;
 /** Mean obliquity of the ecliptic at J2000 (IAU 2006), in degrees. */
 export const EARTH_OBLIQUITY_DEG = 23.4392911;
 /**

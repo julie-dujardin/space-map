@@ -20,7 +20,8 @@ import {
 	circularSpeed,
 	injectionDv,
 	parkingRadiusKm,
-	periapsisSpeed
+	periapsisSpeed,
+	vInfInside
 } from './maneuvers';
 
 export interface SubwayBody {
@@ -104,13 +105,6 @@ export function stationId(kind: StationKind, bodyId: string): string {
 /** Speed on the ellipse between `r1Km` and `r2Km` where it crosses `rKm`. */
 function ellipseSpeed(mu: number, rKm: number, r1Km: number, r2Km: number): number {
 	return Math.sqrt(Math.max(0, mu * (2 / rKm - 2 / (r1Km + r2Km))));
-}
-
-/** Excess speed relative to a body on a circular orbit of radius `rKm` about a
- *  primary, for a craft passing that radius with excess speed `vInfKms`
- *  relative to the primary — tangentially, which is the cheapest meeting. */
-function vInfInside(vInfKms: number, primaryMu: number, rKm: number): number {
-	return Math.abs(periapsisSpeed(primaryMu, rKm, vInfKms) - circularSpeed(primaryMu, rKm));
 }
 
 /** Excess speed carried down `path` — a chain of bodies each going round the

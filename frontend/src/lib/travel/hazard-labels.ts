@@ -138,6 +138,19 @@ const HAZARD_TEXT: Record<HazardKind, HazardText> = {
 				high: ltrIsolate(span.high)
 			});
 		}
+	},
+	dust: {
+		name: m.feature_family_impact,
+		chip: (hazard) => significant(hazard.peak),
+		value: (hazard) => significant(hazard.peak),
+		detail: () => ''
+	},
+	// Placeholder until the panel layer writes the gas row.
+	gas: {
+		name: m.travel_hazard_radiation,
+		chip: (hazard) => formatSievert(hazard.peak),
+		value: (hazard) => formatSievert(hazard.peak),
+		detail: () => ''
 	}
 };
 

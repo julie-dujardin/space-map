@@ -28,6 +28,8 @@ export function routeLabel(profile: RouteOption): string {
 			return m.travel_profile_low_thrust();
 		case 'gravity-assist':
 			return m.travel_profile_gravity_assist();
+		case 'ballistic':
+			return m.travel_leg_cruise();
 	}
 }
 
@@ -43,5 +45,7 @@ export function familyLabel(family: RouteFamily): string {
 			return m.travel_family_brachistochrone();
 		case 'low-thrust':
 			return m.travel_profile_low_thrust();
+		case 'ballistic':
+			return m.travel_leg_cruise();
 	}
 }

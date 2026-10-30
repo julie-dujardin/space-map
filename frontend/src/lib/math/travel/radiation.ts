@@ -1,33 +1,31 @@
 /**
- * How much ionizing radiation a trajectory delivers. Two models that don't
- * resemble each other, because the subject doesn't.
+ * The dose of ionizing radiation on a trajectory. There are two models, because
+ * the two sources are not alike.
  *
- * Cosmic rays are everywhere and nearly constant, so a cruise dose is a rate
- * times a duration; the only interesting parts are how the rate climbs with
- * distance from the Sun and swings inversely with the solar cycle. Fitted at
- * Earth and in cruise, this model then reproduces the lunar surface to 7% and
- * Gale crater to 2% without having been shown either.
+ * - Cosmic rays are everywhere and almost constant, so a dose is a rate times a
+ *   time. The rate grows with the distance from the Sun and falls as the solar
+ *   cycle rises. The fit uses Earth and cruise data only, and it gives the lunar
+ *   surface to 7% and Gale crater to 2%.
+ * - On a fast craft the cosmic ray rate per ship second is the rate at rest
+ *   times a boost F(γ). The particles from ahead arrive faster and more often.
+ * - Trapped particles are round four planets only, and they are five orders of
+ *   magnitude worse. A Jupiter swing-by is cheap, so the planner offers it, and
+ *   its cost is dose, not Δv. The model is a profile of three parameters on two
+ *   anchors, good to a factor of four. That is enough, because a close pass
+ *   gives thousands of grays either way.
  *
- * Trapped particles exist only around four planets, five orders of magnitude
- * worse than anything else here. A Jupiter swing-by forces them in — cheap,
- * so the planner proposes it unprompted, and its cost isn't Δv. This model is
- * a three-parameter profile with two anchors, good to about a factor of four,
- * which is enough: any close pass answers "some thousands of grays" and the
- * conclusion doesn't move.
+ * The fit and the belt profiles mirror `constants/radiation/{field,belt_field}.py`,
+ * where they are fitted and checked against flown data. Keep the two in step by
+ * hand. The numbers change only when a paper changes.
  *
- * Both are mirrored from `constants/radiation/{field,belt_field}.py`, where
- * they're fitted and checked against flown measurements. Nothing here is
- * fitted; these are the results. Keep the two in step by hand — the numbers
- * are few and change when a paper does, not when code does.
- *
- * Solar particle events are in neither. Their fluence distribution is
- * lognormal, so an expected value is a bad summary of the hazard, and folding
- * one into a rate would bury what actually matters: the chance of catching an
- * August 1972 while out there.
+ * Solar particle events are in neither model. Their fluence is lognormal, so a
+ * mean is a bad summary. The risk is one large event during the trip, such as
+ * that of August 1972.
  */
 
 import { DAYS_PER_YEAR, J2000_JD } from '$lib/time/jd';
 import { SEC_PER_DAY } from './constants';
+import type { RapidityRate } from './interstellar';
 
 /** Decimal year, which is the clock the solar cycle is phased against. */
 export function decimalYearOf(jd: number): number {
@@ -81,6 +79,118 @@ export function openSkyFraction(bodyRadiusKm: number, distanceKm: number): numbe
 export function gcrDoseRateSvPerDay(jd: number, rAu: number): number {
 	return REFERENCE_DOSE_SV_PER_DAY * solarCycleFactor(decimalYearOf(jd)) * radialFactor(rAu);
 }
+
+/** The range of distances the radial gradient is fitted over, au. */
+const RADIAL_FIT_AU = { min: 1, max: 9.5 };
+
+/** Distance of the heliopause, au. Voyager 1 crossed it at 121.6 au and
+ *  Voyager 2 at 119.0 au. */
+export const HELIOPAUSE_AU = 120;
+
+/**
+ * Cosmic ray dose past the heliopause, as a multiple of the dose at 1 au at
+ * solar minimum. Mewaldt et al. 2005 (29th ICRC 2, 101), Table 1, extrapolated
+ * to φ = 0 gives 1.92. The force-field model on the local interstellar spectra
+ * of Corti et al. 2016 (ApJ 829, 8) gives 1.50 to 2.07. Cummings et al. 2016
+ * (ApJ 831, 18) find no gradient past the heliopause, so the rate is the same
+ * everywhere there.
+ */
+const INTERSTELLAR_DOSE_RATIO = 1.8;
+
+/** Cosmic ray dose equivalent past the heliopause at rest, Sv/day. The Sun does
+ *  not modulate the flux there. */
+export const INTERSTELLAR_DOSE_SV_PER_DAY =
+	REFERENCE_DOSE_SV_PER_DAY * Math.sqrt(SOLAR_CYCLE_RATIO) * INTERSTELLAR_DOSE_RATIO;
+
+/** Cosmic ray dose equivalent at rest at a point of a crossing between two
+ *  stars, Sv/day. Inside the heliopause the fit holds its value at the ends of
+ *  its range. */
+export function interstellarDoseRateSvPerDay(jd: number, rAu: number): number {
+	if (rAu >= HELIOPAUSE_AU) return INTERSTELLAR_DOSE_SV_PER_DAY;
+	const fitted = Math.min(Math.max(rAu, RADIAL_FIT_AU.min), RADIAL_FIT_AU.max);
+	return gcrDoseRateSvPerDay(jd, fitted);
+}
+
+/**
+ * The boost F against γ. F is the cosmic ray dose per ship second on a moving
+ * craft over the dose at rest. It is between γ and γ², because the slow
+ * particles of the rest frame arrive from ahead near c. It is the mean of
+ * protons and helium, each with the coefficient for its direction of arrival.
+ * It is the same quantity as the rate, a Q(L)-based dose equivalent. Past
+ * γ = 30 the last slope continues.
+ */
+const COSMIC_RAY_BOOST_TABLE: readonly (readonly [gamma: number, boost: number])[] = [
+	// Corti et al. 2016 (ApJ 829, 8) spectra; Sato et al. 2009 (PMB 54, 1997) and 2010 (PMB 55, 2235) coefficients.
+	[1, 1],
+	[1.02, 1.161],
+	[1.048, 1.332],
+	[1.1, 1.551],
+	[1.155, 1.662],
+	[1.25, 1.807],
+	[1.4, 2.093],
+	[1.667, 2.68],
+	[2.0, 3.435],
+	[2.294, 4.105],
+	[3.2, 6.177],
+	[5.0, 10.47],
+	[7.089, 15.69],
+	[10.0, 23.36],
+	[15.0, 37.66],
+	[22.4, 60.55],
+	[30.0, 85.47]
+];
+
+/** A point of the boost table against the rapidity φ. */
+interface BoostKnot {
+	phi: number;
+	boost: number;
+	/** Slope of ln F against φ up to the next point. The last point keeps the
+	 *  slope before it. */
+	slope: number;
+	/** The integral of F over φ from rest to this point. */
+	fromRest: number;
+}
+
+/** ln F is linear in φ between the points, so each step of the integral is exact. */
+const BOOST_KNOTS: readonly BoostKnot[] = (() => {
+	const points = COSMIC_RAY_BOOST_TABLE.map(([gamma, boost]) => ({
+		phi: Math.acosh(gamma),
+		boost
+	}));
+	const knots: BoostKnot[] = [];
+	for (let i = 0; i < points.length; i++) {
+		const { phi, boost } = points[i];
+		const [low, high] =
+			i + 1 < points.length ? [points[i], points[i + 1]] : [points[i - 1], points[i]];
+		const slope = Math.log(high.boost / low.boost) / (high.phi - low.phi);
+		const previous = knots[i - 1];
+		const fromRest = previous ? previous.fromRest + (boost - previous.boost) / previous.slope : 0;
+		knots.push({ phi, boost, slope, fromRest });
+	}
+	return knots;
+})();
+
+function boostKnotAt(phi: number): BoostKnot {
+	return BOOST_KNOTS.findLast((knot) => knot.phi <= phi) ?? BOOST_KNOTS[0];
+}
+
+/** The boost F at rapidity `phi`. */
+export function cosmicRayBoost(phi: number): number {
+	const knot = boostKnotAt(phi);
+	return knot.boost * Math.exp(knot.slope * (phi - knot.phi));
+}
+
+/** The integral of F over the rapidity from rest to `phi`. */
+export function cosmicRayBoostFromRest(phi: number): number {
+	const knot = boostKnotAt(phi);
+	return knot.fromRest + (knot.boost * Math.expm1(knot.slope * (phi - knot.phi))) / knot.slope;
+}
+
+/** The boost as a rate along a crossing. Its total is the ship time weighted by F, s. */
+export const COSMIC_RAY_BOOST: RapidityRate = {
+	at: cosmicRayBoost,
+	fromRest: cosmicRayBoostFromRest
+};
 
 // --- trapped particles -------------------------------------------------------
 

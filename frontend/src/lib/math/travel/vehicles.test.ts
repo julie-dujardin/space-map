@@ -12,7 +12,7 @@ import {
 	payloadForC3,
 	type Vehicle
 } from './vehicles';
-import { buildRoute } from './route';
+import { buildRoute, type Route } from './route';
 import { buildConstantThrustRoute } from './brachistochrone';
 import { nextTransferWindows, hohmannTransferDays } from './windows';
 import { EARTH, J2000, JUPITER, MARS } from './test-fixtures';
@@ -246,6 +246,19 @@ describe('checkFeasibility', () => {
 		const result = checkFeasibility(crewed, slow);
 		expect(result.status).toBe('ok');
 		expect(result.enduranceRatio).toBeGreaterThan(1);
+	});
+
+	it('judges the consumables on the ship clock', () => {
+		const slow = buildConstantThrustRoute(EARTH, MARS, J2000, 0.002, { departureMode: 'orbit' })!;
+		const days = slow.legs.reduce((sum, leg) => sum + leg.days, 0);
+		// Each leg takes half as long on the ship clock.
+		const fast: Route = {
+			...slow,
+			legs: slow.legs.map((leg) => ({ ...leg, shipDays: leg.days / 2 }))
+		};
+		const crewed: Vehicle = { ...TORCH, enduranceDays: { value: days * 0.75, source: 't' } };
+		expect(checkFeasibility(crewed, slow).enduranceRatio).toBeGreaterThan(1);
+		expect(checkFeasibility(crewed, fast).enduranceRatio).toBeUndefined();
 	});
 
 	it('flags a trip that outlasts the consumables without failing it', () => {

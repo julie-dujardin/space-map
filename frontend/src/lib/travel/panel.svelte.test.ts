@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { G0_M_S2 } from '$lib/math/travel/constants';
+import { G0_M_S2, GM_SUN_KM3_S2 } from '$lib/math/travel/constants';
+import { LIGHT_YEAR_KM } from '$lib/math/units';
+import { LAST_DATE_JD } from '$lib/time/jd';
 import { EARTH, J2000, JUPITER, MARS, SATURN } from '$lib/math/travel/test-fixtures';
 import {
 	arrivalCampaignDays,
@@ -7,16 +9,25 @@ import {
 	buildConstantThrustRoute,
 	buildTrajectoryPath,
 	routeEndJd,
+	type SystemEnd,
 	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
 import {
+	crossingDeadlineJd,
+	interstellarRequestKey,
 	solveRequestKey,
 	TravelPanelState,
 	type RefineEnd,
 	type SolveRequest
 } from './panel.svelte';
-import { DEFAULT_TRIP, type EndpointMode, type TripState } from './trip';
+import {
+	DEFAULT_TRIP,
+	parseTrip,
+	serializeTripSuffix,
+	type EndpointMode,
+	type TripState
+} from './trip';
 import type { TransferFrame } from './travel-body';
 
 /** A trip leaving one named way, every other term at its default. */
@@ -1084,16 +1095,352 @@ describe('TravelPanelState blocking', () => {
 });
 
 describe('TravelPanelState between two systems', () => {
-	it('drops every route and offers none, blocked or not', async () => {
+	const PROXIMA: SystemEnd = {
+		body: {
+			id: 'x-27424668',
+			mu: 0.122 * GM_SUN_KM3_S2,
+			muEstimated: true,
+			radiusKm: 100_000,
+			elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: J2000 }
+		},
+		starKm: [4.24 * LIGHT_YEAR_KM, 0, 0],
+		starMu: 0.122 * GM_SUN_KM3_S2,
+		atStar: true
+	};
+	const FROM_EARTH: SystemEnd = {
+		body: EARTH,
+		starKm: [0, 0, 0],
+		starMu: GM_SUN_KM3_S2,
+		atStar: false
+	};
+	const NOSTALGIA = {
+		id: 'nostalgia-for-infinity',
+		kind: 'fictional',
+		status: 'fictional',
+		unlimitedDv: true,
+		accelMs2: { value: G0_M_S2 }
+	} as unknown as Vehicle;
+	const STAGE = {
+		id: 'stage',
+		kind: 'fictional',
+		propulsion: 'nuclear',
+		status: 'concept',
+		dvKms: 30,
+		thrustN: { value: 250_000 },
+		dryMassKg: { value: 15_000 },
+		propellantMassKg: { value: 40_000 }
+	} as unknown as Vehicle;
+
+	/** A panel with `vehicle` chosen, leaving Earth orbit for a rendezvous with Proxima. */
+	function bound(vehicle: Vehicle | null): TravelPanelState {
+		const panel = new TravelPanelState();
+		panel.acceptVehicles(vehicle ? [vehicle] : []);
+		if (vehicle) panel.selectVehicle(vehicle.id);
+		panel.ends.origin.mode = 'low-orbit';
+		panel.ends.target.mode = 'rendezvous';
+		return panel;
+	}
+
+	function solveInterstellar(panel: TravelPanelState): void {
+		panel.solveInterstellar(panel.interstellarRequest(FROM_EARTH, PROXIMA, J2000));
+	}
+
+	it('asks for a craft before it offers anything', () => {
+		const panel = bound(null);
+		solveInterstellar(panel);
+		expect(panel.interstellarRefusal).toBe('no-craft');
+		expect(panel.status).toBe('empty');
+		expect(panel.offered).toEqual([]);
+	});
+
+	it('offers the held arcs of a torch craft, flat out first', () => {
+		const panel = bound(NOSTALGIA);
+		panel.coastFraction = 0.5;
+		solveInterstellar(panel);
+		expect(panel.status).toBe('ready');
+		expect(panel.offered.map((choice) => choice.profile)).toEqual([
+			'constant-thrust',
+			'constant-thrust-balanced',
+			'constant-thrust-efficient',
+			'constant-thrust-custom'
+		]);
+		const flatOut = panel.offered[0].route;
+		expect(flatOut.interstellar?.distanceKm).toBeCloseTo(4.24 * LIGHT_YEAR_KM, 0);
+		expect(panel.feasibility(flatOut)?.status).toBe('ok');
+	});
+
+	it('offers the coast of a craft with a Δv budget', () => {
+		const panel = bound(STAGE);
+		solveInterstellar(panel);
+		expect(panel.offered.map((choice) => choice.profile)).toEqual(['ballistic']);
+		const route = panel.offered[0].route;
+		expect(route.inSpaceDvKms).toBeCloseTo(30, 6);
+		expect(panel.feasibility(route)?.status).toBe('ok');
+	});
+
+	it('says why a craft cannot make the crossing', () => {
+		const panel = bound({ ...STAGE, dvKms: 5 });
+		solveInterstellar(panel);
+		expect(panel.interstellarRefusal).toBe('cannot-escape');
+		expect(panel.status).toBe('empty');
+	});
+
+	it('waits for the catalogue before it answers about a craft a link named', () => {
+		const panel = new TravelPanelState({
+			...DEFAULT_TRIP,
+			vehicleId: 'nostalgia-for-infinity',
+			profile: 'constant-thrust'
+		});
+		solveInterstellar(panel);
+		expect(panel.status).toBe('solving');
+		expect(panel.selectedProfile).toBe('constant-thrust');
+		panel.acceptVehicles([NOSTALGIA]);
+		solveInterstellar(panel);
+		expect(panel.selectedProfile).toBe('constant-thrust');
+		expect(panel.selected?.route.constantThrust).toBe(G0_M_S2);
+	});
+
+	it('leaves on the best date of one orbit now, and on the picked date otherwise', () => {
+		const now = bound(STAGE);
+		solveInterstellar(now);
+		const best = now.ballistic!;
+		expect(best.departJd).toBeGreaterThanOrEqual(J2000);
+		expect(best.departJd).toBeLessThan(J2000 + 366);
+
+		const picked = bound(STAGE);
+		picked.timeMode = 'depart';
+		picked.pickedJd = best.departJd;
+		solveInterstellar(picked);
+		expect(picked.ballistic!.departJd).toBe(best.departJd);
+		expect(picked.ballistic!.interstellar!.cruiseKms).toBeCloseTo(best.interstellar!.cruiseKms, 6);
+
+		// Half a year later the star is almost straight out from the Sun.
+		picked.pickedJd = best.departJd + 182;
+		solveInterstellar(picked);
+		expect(picked.ballistic).toBeNull();
+		expect(picked.interstellarRefusal).toBe('cannot-escape');
+	});
+
+	// The review's probe: about a third of the dates in a year cannot escape
+	// toward Proxima. Only "depart" holds the coast to one of them.
+	it('waits for the best date of one orbit under "arrive" as well', () => {
+		const refused: number[] = [];
+		for (let day = 0; day < 365; day += 5) {
+			const fixed = bound(STAGE);
+			fixed.timeMode = 'depart';
+			fixed.pickedJd = J2000 + day;
+			solveInterstellar(fixed);
+			if (fixed.interstellarRefusal === 'cannot-escape') refused.push(J2000 + day);
+		}
+		expect(refused.length).toBeGreaterThan(10);
+
+		for (const nowJd of refused) {
+			const panel = bound(STAGE);
+			panel.timeMode = 'arrive';
+			const deadlineJd = crossingDeadlineJd(panel.interstellarRequest(FROM_EARTH, PROXIMA, nowJd));
+			expect(deadlineJd).not.toBeNull();
+			panel.pickedJd = deadlineJd;
+			panel.solveInterstellar(panel.interstellarRequest(FROM_EARTH, PROXIMA, nowJd));
+			expect(panel.interstellarRefusal).toBeNull();
+			expect(panel.ballistic!.departJd).toBeGreaterThan(nowJd);
+		}
+	});
+
+	it('reports a coast that ends after the deadline as a missed deadline', () => {
+		const panel = bound(STAGE);
+		panel.timeMode = 'arrive';
+		panel.pickedJd = J2000 + 365;
+		solveInterstellar(panel);
+		expect(panel.offered).toEqual([]);
+		expect(panel.lateCrossing).toBe('ballistic');
+		expect(panel.missedDeadline).toBe(true);
+		expect(panel.crossingPastCalendar).toBe(false);
+	});
+
+	// No date a link can hold admits these, so moving the date does not help.
+	describe('says when the fastest crossing ends after the last date a link holds', () => {
+		const FAR: SystemEnd = { ...PROXIMA, starKm: [3_000 * LIGHT_YEAR_KM, 0, 0] };
+		const CRAWLER = {
+			...NOSTALGIA,
+			id: 'crawler',
+			accelMs2: { value: 1e-6, source: 'test' }
+		} as Vehicle;
+
+		it.each([
+			['a held drive', CRAWLER, 'torch'],
+			['a Δv budget', STAGE, 'ballistic']
+		])('of %s', (_, craft, late) => {
+			const panel = bound(craft);
+			panel.timeMode = 'arrive';
+			const request = () => panel.interstellarRequest(FROM_EARTH, FAR, J2000);
+			panel.pickedJd = crossingDeadlineJd(request());
+			expect(panel.pickedJd).toBe(LAST_DATE_JD);
+			panel.solveInterstellar(request());
+			expect(panel.lateCrossing).toBe(late);
+			expect(panel.crossingPastCalendar).toBe(true);
+			expect(panel.missedDeadline).toBe(true);
+
+			// The next trip asks again.
+			panel.pickedJd = J2000 + 365;
+			solveInterstellar(panel);
+			expect(panel.crossingPastCalendar).toBe(false);
+		});
+	});
+
+	// The reader can move the date, so "too late" is not "no route".
+	it('reports held arcs that all end after the deadline as a missed deadline', () => {
+		const panel = bound(NOSTALGIA);
+		panel.timeMode = 'arrive';
+		panel.pickedJd = J2000 + 365;
+		solveInterstellar(panel);
+		expect(panel.offered).toEqual([]);
+		expect(panel.lateCrossing).toBe('torch');
+		expect(panel.missedDeadline).toBe(true);
+	});
+
+	describe('opens "arrive by" on the end of the fastest crossing', () => {
+		it.each([
+			['a held drive', NOSTALGIA],
+			['a Δv budget', STAGE]
+		])('of %s, the first date with a route', (_, craft) => {
+			const panel = bound(craft);
+			panel.timeMode = 'arrive';
+			const deadlineJd = crossingDeadlineJd(panel.interstellarRequest(FROM_EARTH, PROXIMA, J2000))!;
+			panel.pickedJd = deadlineJd;
+			solveInterstellar(panel);
+			expect(panel.offered.length).toBeGreaterThan(0);
+
+			// A link keeps whole milliseconds, and the trip it carries still has the route.
+			const linked = parseTrip(new URLSearchParams(serializeTripSuffix(panel.trip)));
+			expect(linked.pickedJd).not.toBe(deadlineJd);
+			panel.pickedJd = linked.pickedJd;
+			solveInterstellar(panel);
+			expect(panel.offered.length).toBeGreaterThan(0);
+
+			panel.pickedJd = deadlineJd - 1;
+			solveInterstellar(panel);
+			expect(panel.offered).toEqual([]);
+			expect(panel.missedDeadline).toBe(true);
+		});
+
+		it('on the last date a link can hold when the crossing ends after it', () => {
+			const far: SystemEnd = { ...PROXIMA, starKm: [3_000 * LIGHT_YEAR_KM, 0, 0] };
+			const request = bound(STAGE).interstellarRequest(FROM_EARTH, far, J2000);
+			expect(crossingDeadlineJd(request)).toBe(LAST_DATE_JD);
+		});
+
+		it('nowhere when the craft has no route', () => {
+			expect(crossingDeadlineJd(bound(null).interstellarRequest(FROM_EARTH, PROXIMA, J2000))).toBe(
+				null
+			);
+			const weak = bound({ ...STAGE, dvKms: 5 });
+			expect(crossingDeadlineJd(weak.interstellarRequest(FROM_EARTH, PROXIMA, J2000))).toBeNull();
+		});
+	});
+
+	// Each of these moves a price. The elements do not: the scene rewrites them
+	// as its clock runs, and that is the same trip.
+	it('asks a new question of every term of an end but its elements', () => {
+		const panel = bound(STAGE);
+		const keyOf = (origin: SystemEnd, target: SystemEnd) =>
+			interstellarRequestKey(panel.interstellarRequest(origin, target, J2000));
+		const base = keyOf(FROM_EARTH, PROXIMA);
+		const atMoon: SystemEnd = { ...FROM_EARTH, wells: [{ mu: 398_600, radiusKm: 384_400 }] };
+		const moon = keyOf(atMoon, PROXIMA);
+
+		expect(moon).not.toBe(base);
+		for (const changed of [
+			keyOf(FROM_EARTH, { ...PROXIMA, starKm: [4.25 * LIGHT_YEAR_KM, 0, 0] }),
+			keyOf(FROM_EARTH, { ...PROXIMA, starMu: undefined }),
+			keyOf(FROM_EARTH, { ...PROXIMA, atStar: false }),
+			keyOf(FROM_EARTH, { ...PROXIMA, body: { ...PROXIMA.body, mu: 1e9 } }),
+			keyOf(FROM_EARTH, { ...PROXIMA, body: { ...PROXIMA.body, radiusKm: 50_000 } })
+		]) {
+			expect(changed).not.toBe(base);
+		}
+		expect(keyOf({ ...atMoon, wells: [{ mu: 398_600, radiusKm: 400_000 }] }, PROXIMA)).not.toBe(
+			moon
+		);
+		expect(keyOf({ ...atMoon, wells: [{ mu: 4_903, radiusKm: 384_400 }] }, PROXIMA)).not.toBe(moon);
+
+		const moved = { ...EARTH, elements: { ...EARTH.elements, ma: EARTH.elements.ma + 30 } };
+		expect(keyOf({ ...FROM_EARTH, body: moved }, PROXIMA)).toBe(base);
+	});
+
+	// A drag of the slider is one closed-form arc a frame, not a new trip.
+	describe('under the cruise slider', () => {
+		const keyOf = (panel: TravelPanelState) =>
+			interstellarRequestKey(panel.interstellarRequest(FROM_EARTH, PROXIMA, J2000));
+
+		it('moves the slider\u2019s arc alone', () => {
+			const panel = bound(NOSTALGIA);
+			solveInterstellar(panel);
+			const key = keyOf(panel);
+			const presets = panel.torchPresets;
+
+			panel.coastFraction = 0.5;
+			expect(keyOf(panel)).toBe(key);
+			panel.updateInterstellarCustom();
+			expect(panel.torchPresets).toBe(presets);
+
+			// The arc is the one a whole solve gives at that coast.
+			const solved = bound(NOSTALGIA);
+			solved.coastFraction = 0.5;
+			solveInterstellar(solved);
+			expect(panel.torchCustom!.route.tofDays).toBe(solved.torchCustom!.route.tofDays);
+		});
+
+		it('drops the slider\u2019s arc past the deadline, and the reader with it', () => {
+			const panel = bound(NOSTALGIA);
+			solveInterstellar(panel);
+			panel.timeMode = 'arrive';
+			panel.pickedJd = routeEndJd(panel.torchPresets[0].route) + 1;
+			solveInterstellar(panel);
+			panel.choose('constant-thrust-custom');
+
+			panel.coastFraction = 1;
+			panel.updateInterstellarCustom();
+			expect(panel.torchCustom).toBeNull();
+			expect(panel.selectedProfile).toBeNull();
+			expect(panel.offered.map((choice) => choice.profile)).toEqual(['constant-thrust']);
+		});
+
+		it('leaves the coast of a Δv budget alone', () => {
+			const panel = bound(STAGE);
+			solveInterstellar(panel);
+			const key = keyOf(panel);
+			const coast = panel.ballistic;
+
+			panel.coastFraction = 0.5;
+			expect(keyOf(panel)).toBe(key);
+			panel.updateInterstellarCustom();
+			expect(panel.ballistic).toBe(coast);
+			expect(panel.torchCustom).toBeNull();
+		});
+	});
+
+	it('drops the search of the trip before it', async () => {
 		const panel = new TravelPanelState();
 		await solveTrip(panel, EARTH, MARS, J2000);
 		expect(panel.offered.length).toBeGreaterThan(0);
 		panel.block('same-system');
-		panel.offerNone();
+		solveInterstellar(panel);
 		expect(panel.blocked).toBeNull();
-		expect(panel.status).toBe('empty');
-		expect(panel.offered).toEqual([]);
+		expect(panel.routes).toEqual([]);
 		expect(panel.grid).toBeNull();
 		expect(panel.pricedEnds).toBeNull();
+	});
+
+	it('drops the coast and the refusal when the next trip stays in one system', async () => {
+		const coasting = bound(STAGE);
+		solveInterstellar(coasting);
+		expect(coasting.ballistic).not.toBeNull();
+		await solveTrip(coasting, EARTH, MARS, J2000);
+		expect(coasting.offered.map((choice) => choice.profile)).not.toContain('ballistic');
+
+		const refused = bound({ ...STAGE, dvKms: 5 });
+		solveInterstellar(refused);
+		await solveTrip(refused, EARTH, MARS, J2000);
+		expect(refused.interstellarRefusal).toBeNull();
 	});
 });

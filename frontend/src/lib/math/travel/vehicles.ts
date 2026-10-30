@@ -11,7 +11,7 @@
 import { G0_M_S2 } from './constants';
 import type { LowThrustDrive } from './low-thrust';
 import type { DepartureMode } from './maneuvers';
-import { routeDurationDays, type Route } from './route';
+import { routeShipDays, type Route } from './route';
 
 export type PropulsionKind = 'chemical' | 'electric' | 'nuclear' | 'solar-sail' | 'fictional';
 export type VehicleKind = 'launcher' | 'probe' | 'crewed' | 'lander' | 'fictional';
@@ -349,9 +349,9 @@ export function checkManifest(vehicle: Vehicle, manifest: Manifest): ManifestFit
 /** Endurance and heat-shield notes, which qualify a pass rather than deny it. */
 function annotate(vehicle: Vehicle, route: Route, result: Feasibility): Feasibility {
 	const endurance = vehicle.enduranceDays?.value;
-	// Life support has to last the aerobraking too — the crew is still aboard for
-	// the months the orbit takes to come down.
-	const durationDays = routeDurationDays(route);
+	// Life support runs on the ship's clock, and the crew stays aboard through
+	// an aerobraking campaign.
+	const durationDays = routeShipDays(route);
 	if (endurance && durationDays > endurance) {
 		result.enduranceRatio = durationDays / endurance;
 	}

@@ -26,7 +26,8 @@ import {
 	extrasolarTravelBody,
 	massFromRadiusEarth,
 	radiusFromMassEarth,
-	resolveExtrasolarEnd
+	resolveExtrasolarEnd,
+	systemEndOf
 } from './extrasolar-end';
 import { orbitChoices, orbitFacts, hasGround } from './orbits';
 
@@ -184,6 +185,34 @@ describe('a star end', () => {
 			orbitChoices(travel, facts, role, { hasSurface: false, customAltKm: 500 }).map((c) => c.kind);
 		expect(kinds('target')).toEqual(['rendezvous', 'flyby']);
 		expect(kinds('origin')).toEqual(['rendezvous']);
+	});
+});
+
+describe('the end of a trip between two systems', () => {
+	const WELL = { mu: GM_EARTH, radiusKm: 384_400 };
+
+	it('keeps the wells of an end in the solar system, at the Sun', () => {
+		const moon = {
+			id: 'naif-301',
+			mu: 4902.8,
+			muEstimated: false,
+			radiusKm: 1737.4,
+			elements: { a: 1, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0.9856, epoch: 2451545 }
+		};
+		expect(systemEndOf(moon, null, [WELL])).toEqual({
+			body: moon,
+			starKm: [0, 0, 0],
+			starMu: GM_SUN_KM3_S2,
+			atStar: false,
+			wells: [WELL]
+		});
+	});
+
+	it('puts an end of another star in no well', () => {
+		const end = extrasolarEndOf(makeStarBody(starRecord()))!;
+		const star = systemEndOf(extrasolarTravelBody(end)!, end, [WELL]);
+		expect(star.wells).toEqual([]);
+		expect(star.atStar).toBe(true);
 	});
 });
 

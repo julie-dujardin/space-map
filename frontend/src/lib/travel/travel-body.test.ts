@@ -4,13 +4,15 @@ import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { elementsToState } from '$lib/math/travel';
+import { AU_KM } from '$lib/math/units';
 import {
 	heliocentricAncestor,
 	lookupIn,
 	systemOf,
 	toTravelBody,
 	transferCenterId,
-	transferPlan
+	transferPlan,
+	wellsAbove
 } from './travel-body';
 
 /** Minimal body row; only the fields the adapter reads are meaningful. */
@@ -512,5 +514,37 @@ describe('a trip to another star', () => {
 	it('measures an interstellar trip about the barycentre', () => {
 		const plan = transferPlan(earth, tauCeti, look);
 		expect(transferCenterId(plan, earth, tauCeti, look)).toBe('naif-0');
+	});
+});
+
+describe('wellsAbove', () => {
+	const bodies = solarSystem();
+	const look = lookupIn(bodies);
+	const wells = (id: string) => wellsAbove(bodies.get(id)!, look);
+
+	it('puts a planet in no well, whatever barycentre holds it', () => {
+		expect(wells('naif-399')).toEqual([]);
+		expect(wells('naif-599')).toEqual([]);
+		expect(wells('naif-5')).toEqual([]);
+	});
+
+	// systems-global holds no masses in tests, so each μ comes from the moon's own orbit.
+	it("puts a moon in its planet's well, at the radius of its own orbit", () => {
+		const [europa] = wells('naif-502')!;
+		expect(europa.mu / 1.26687e8).toBeCloseTo(1, 3);
+		expect(europa.radiusKm).toBeCloseTo(4.4858e-3 * AU_KM, 6);
+		const [moon] = wells('naif-301')!;
+		expect(moon.radiusKm).toBeCloseTo(2.57e-3 * AU_KM, 6);
+	});
+
+	it('lists the wells of a craft about a moon from the outermost in', () => {
+		const craft = body('probe-1', 'naif-301', { a: 2000 / AU_KM, n: 0 });
+		const [earth, moon] = wellsAbove(craft, look)!;
+		expect(earth.radiusKm).toBeCloseTo(2.57e-3 * AU_KM, 6);
+		expect(moon.radiusKm).toBeCloseTo(2000, 6);
+	});
+
+	it('has no answer for a chain it cannot walk', () => {
+		expect(wellsAbove(body('naif-9999', 'naif-8888'), look)).toBeNull();
 	});
 });

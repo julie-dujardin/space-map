@@ -1,29 +1,26 @@
 /**
- * Trajectory compute layer for the "go somewhere" feature. Pure: takes bodies
- * and dates, returns routes, no reach into fetch or scene layers.
+ * Trajectory compute layer for the trip planner. Pure: it takes bodies and
+ * dates and returns routes. It reads nothing from the fetch or scene layers.
  *
  * Main pipeline:
  *
  *   elements → state vectors → Lambert arc → v∞ at each end
- *            → departure/arrival manoeuvre costs → a route of priced legs
+ *            → departure and arrival costs → a route of priced legs
  *
- * topped by a porkchop sweep over departure date and cruise length, yielding
- * fast / balanced / efficient options. Three more route shapes beside it: a
- * held drive from departure to arrival for fictional ships without a Δv budget
- * (`brachistochrone`); two Lambert arcs patched by a third-body swing-by,
- * searched over years rather than one synodic period (`assist`); and, for
- * drives that can't burn at all, an ion-engine spiral out of one well and down
- * into the other, no Lambert arc or launch energy involved (`low-thrust`).
+ * A porkchop sweep over departure date and cruise length gives the fast,
+ * balanced and efficient routes. Other route shapes:
+ * - `brachistochrone`: a held drive for fictional ships with no Δv limit.
+ * - `assist`: two Lambert arcs joined by a swing-by past a third body.
+ * - `low-thrust`: a spiral out of one well and into the other.
+ * - `interstellar`: a straight crossing between two star systems.
  *
- * A route says what a trip costs, not where it goes — `path` re-derives the
- * arcs from the same inputs the route was priced from and walks them with
- * `propagate`, so geometry and ladder can't disagree because neither is stored.
+ * A route gives the cost of a trip, not its shape. `path` builds the arcs again
+ * from the inputs of the route, so the drawing and the costs always agree.
  *
- * Scope limits: transfers are patched-conic legs about one primary (a moon
- * needs its own leg from its planet), a swing-by route carries exactly one
- * pass, only the zero-revolution Lambert branch is solved, and the manoeuvre
- * model is published loss factors rather than an optimiser. See the constants
- * module for every approximation by name.
+ * Limits: each transfer is a patched conic about one primary, a swing-by route
+ * has one pass, and only the zero-revolution Lambert branch is solved. The
+ * manoeuvre costs use published loss factors, not an optimiser. The constants
+ * module names each approximation.
  */
 
 export { GM_SUN_KM3_S2, HILL_STABLE_FRACTION, PARKING_ALTITUDE_KM } from './constants';
@@ -66,7 +63,15 @@ export {
 	speedAtRadius
 } from './maneuvers';
 
-export type { OrbitChangeEnds, Route, RouteBase, RouteLeg, RouteOptions, LegKind } from './route';
+export type {
+	InterstellarCrossing,
+	OrbitChangeEnds,
+	Route,
+	RouteBase,
+	RouteLeg,
+	RouteOptions,
+	LegKind
+} from './route';
 export {
 	arrivalLegs,
 	buildRoute,
@@ -75,6 +80,7 @@ export {
 	orbitChangeEnds,
 	routeDurationDays,
 	routeEndJd,
+	routeShipDays,
 	SAME_RADIUS_KM
 } from './route';
 
@@ -94,6 +100,46 @@ export { buildTrajectoryPath } from './path';
 export type { ConstantThrustOptions } from './brachistochrone';
 export { buildConstantThrustRoute } from './brachistochrone';
 
+export type {
+	CrossingSweep,
+	InterstellarCruiseOptions,
+	InterstellarDrive,
+	InterstellarOptions,
+	InterstellarRefusal,
+	InterstellarTorchOptions,
+	RapidityRate,
+	SystemEnd,
+	Well
+} from './interstellar';
+export {
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
+	crossingElapsed,
+	crossingIntegral,
+	crossingSweep,
+	fastestCrossingEndJd,
+	interstellarDrive
+} from './interstellar';
+
+export {
+	DUST_MASS_KG_M3,
+	MEASURED_GRAIN_RADIUS_M,
+	grainMassKg,
+	grainsAbove,
+	largestGrainRadiusM
+} from './dust';
+
+export {
+	GAS_DOSE,
+	INTERSTELLAR_N_H_CM3,
+	gasKineticMeV,
+	hullDoseFromRest,
+	hullDosePerProton
+} from './gas';
+
+export type { RadiationShield } from './shield';
+export { CONCRETE_CAP_M, ISS_DOSE_SV_PER_DAY, radiationShield } from './shield';
+
 export type { LowThrustDrive, SpiralTransfer } from './low-thrust';
 export {
 	buildLowThrustRoute,
@@ -109,7 +155,10 @@ export {
 	BELT_PROFILES,
 	BELT_SHIELDING_FLOOR,
 	CANCER_RISK_PER_SV,
+	COSMIC_RAY_BOOST,
 	DEFAULT_SHIELDING_G_CM2,
+	HELIOPAUSE_AU,
+	INTERSTELLAR_DOSE_SV_PER_DAY,
 	JPL_SHELL_G_CM2,
 	LETHAL_DOSE_GY,
 	MODELLED_BELT_IDS,
@@ -118,8 +167,11 @@ export {
 	beltRateGyPerDay,
 	beltShieldingFactor,
 	cancerRiskFraction,
+	cosmicRayBoost,
+	cosmicRayBoostFromRest,
 	decimalYearOf,
 	gcrDoseRateSvPerDay,
+	interstellarDoseRateSvPerDay,
 	jovianBeltRateGyPerDay,
 	lethalDoseFraction,
 	openSkyFraction,

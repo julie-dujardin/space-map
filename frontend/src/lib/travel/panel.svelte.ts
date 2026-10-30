@@ -17,12 +17,16 @@
 import {
 	arrivalCampaignDays,
 	buildConstantThrustRoute,
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
 	buildLowThrustRoute,
 	buildRoute,
 	canDepartFrom,
 	checkFeasibility,
 	checkManifest,
 	constantThrustAccelMs2,
+	fastestCrossingEndJd,
+	interstellarDrive,
 	lowThrustDrive,
 	TravelSolver,
 	type AeroAssist,
@@ -30,6 +34,9 @@ import {
 	type DepartureMode,
 	type EndOrbit,
 	type Feasibility,
+	type InterstellarCruiseOptions,
+	type InterstellarDrive,
+	type InterstellarRefusal,
 	type Manifest,
 	type ManifestFit,
 	type PorkchopGrid,
@@ -37,12 +44,14 @@ import {
 	type Route,
 	type RouteChoice,
 	type RouteOptions,
+	type SystemEnd,
 	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
 import { untrack } from 'svelte';
+import { LAST_DATE_JD } from '$lib/time/jd';
 import { ensureVehicles, vehicleCatalogue } from './vehicles';
-import { earliestDepartJd, searchWindow } from './search-window';
+import { earliestDepartJd, searchWindow, tripDeadlineJd } from './search-window';
 import { listedTorchArcs, TORCH_PRESETS, type TorchArc } from './torch-arcs';
 import {
 	DEFAULT_TRIP,
@@ -197,6 +206,106 @@ export function solveRequestKey(request: SolveRequest): string {
 	].join('|');
 }
 
+/** One trip between two star systems. It runs no porkchop. Every route on
+ *  offer comes from the craft. The coast of the slider is not in it: a drag
+ *  must not solve the trip again. */
+export interface InterstellarRequest {
+	origin: SystemEnd;
+	target: SystemEnd;
+	/** The captured "now" the trip is planned from. */
+	nowJd: number;
+	terms: SolveTerms;
+	/** What the chosen craft flies, or why it flies nothing. Null while the
+	 *  catalogue is still loading. */
+	drive: InterstellarDrive | InterstellarRefusal | null;
+}
+
+/** What one end of a trip between two systems is worth to a request key:
+ *  everything about it that moves a price. The body's elements stay out, for
+ *  the reason `endKey` gives. A well's radius is rounded to the kilometre, as
+ *  an orbit is. */
+function systemEndKey(end: SystemEnd): string {
+	const { body, starKm, starMu, atStar, wells = [] } = end;
+	return [
+		endKey(body),
+		body.mu,
+		body.radiusKm,
+		starKm.join(','),
+		starMu ?? '',
+		atStar ? 'star' : '',
+		wells.map((well) => `${well.mu}@${Math.round(well.radiusKm)}`).join(',')
+	].join('/');
+}
+
+/** What a trip between two systems asks, as a string. The coast of the slider
+ *  is not in it, so a drag does not solve the trip again. */
+export function interstellarRequestKey(request: InterstellarRequest): string {
+	const { origin, target, nowJd, terms, drive } = request;
+	return [
+		systemEndKey(origin),
+		systemEndKey(target),
+		nowJd,
+		terms.timeMode,
+		terms.pickedJd ?? '',
+		terms.departureMode,
+		terms.arrivalMode,
+		terms.aero,
+		endTermsKey(terms),
+		JSON.stringify(drive)
+	].join('|');
+}
+
+/** Whether `route` is over by `deadlineJd`, campaign and all. True when there
+ *  is no deadline. */
+function overBy(route: Route, deadlineJd: number | undefined): boolean {
+	return deadlineJd === undefined || routeEndJd(route) <= deadlineJd;
+}
+
+/** Whether the fastest of `routes` ends after the last date a `Date` holds. */
+function endsPastCalendar(routes: readonly Route[]): boolean {
+	return Math.min(...routes.map(routeEndJd)) > LAST_DATE_JD;
+}
+
+/** One held arc of a trip between two systems at one point on the coast span. */
+function crossingTorch(
+	request: InterstellarRequest,
+	accelMs2: number,
+	coastFraction: number
+): Route | null {
+	const { origin, target, nowJd, terms } = request;
+	const departJd = earliestDepartJd(terms.timeMode, terms.pickedJd, nowJd);
+	return buildInterstellarTorchRoute(origin, target, departJd, accelMs2, {
+		...routeOptionsFrom(terms),
+		coastFraction
+	});
+}
+
+/** A minute past the end of a crossing. A link keeps whole milliseconds, so a
+ *  deadline on the exact end can come back from it too early. */
+const DEADLINE_SLACK_DAYS = 1 / 1440;
+
+/**
+ * The deadline that "arrive by" opens on for a trip between two systems, JD:
+ * the end of the fastest crossing from now, priced as the solve under 'arrive'
+ * prices it. An earlier one admits no route. A date that a `Date` cannot hold
+ * becomes the last one it can, because the link carries the deadline as a
+ * `Date`. Null when the craft flies no crossing.
+ */
+export function crossingDeadlineJd(request: InterstellarRequest): number | null {
+	const { origin, target, nowJd, terms, drive } = request;
+	if (drive === null || typeof drive === 'string') return null;
+	const options = crossingOptions({ ...terms, timeMode: 'arrive' });
+	const endJd = fastestCrossingEndJd(origin, target, nowJd, drive, options);
+	return endJd === null ? null : Math.min(endJd + DEADLINE_SLACK_DAYS, LAST_DATE_JD);
+}
+
+/** The terms a crossing is priced with. The reader picks the date a coast
+ *  leaves on under 'depart' only. Under every other mode it leaves on the best
+ *  date of one orbit, because no fixed date has to be kept. */
+function crossingOptions(terms: SolveTerms): InterstellarCruiseOptions {
+	return { ...routeOptionsFrom(terms), launchWindow: terms.timeMode !== 'depart' };
+}
+
 /** The terms a route is priced with, as the kernel takes them. The dates are
  *  left behind: they shape the window a search sweeps, not the arcs in it. */
 function routeOptionsFrom(terms: SolveTerms): RouteOptions {
@@ -349,15 +458,28 @@ export class TravelPanelState {
 	/** The arc the cruise slider asks for. Kept apart from the presets because it
 	 *  is solved on its own. A drag must not cost four solves a frame. */
 	torchCustom = $state<TorchArc | null>(null);
-	/** Set when arcs exist and all of them land after the deadline. None is
-	 *  offered. The reader still needs the slider to undo the coast. */
-	torchMissedDeadline = $state(false);
+	/** The craft's own crossing when one exists but every one ends after the
+	 *  deadline, so none is offered: the held arcs, or the coast between two
+	 *  systems. With held arcs the reader still needs the slider to undo the
+	 *  coast. */
+	lateCrossing = $state<'torch' | 'ballistic' | null>(null);
+	/** Set with `lateCrossing` when the fastest crossing between two systems ends
+	 *  after the last date a `Date` holds. No "arrive by" date can admit it then,
+	 *  so moving the date does not help. */
+	crossingPastCalendar = $state(false);
 	/** The spiral, when the chosen craft can't burn. Comes off the craft like
 	 *  the arc above, and for the same reason: the trajectory an ion drive flies
 	 *  is a fact about the drive, not an option the porkchop offers. Unlike the
 	 *  arc it does have a departure date to find — the phase has to close — but
 	 *  that's a bisection rather than a grid. */
 	spiral = $state<Route | null>(null);
+	/** The coast between two star systems, for a craft with a Δv budget. */
+	ballistic = $state<Route | null>(null);
+	/** Why a trip between two systems has no route for the chosen craft. */
+	interstellarRefusal = $state<InterstellarRefusal | null>(null);
+	/** The last trip between two systems that was solved, for the slider's arc.
+	 *  Not a rune: a new solve builds that arc itself. */
+	#crossing: InterstellarRequest | null = null;
 	/** The cheapest route that swings past a third body, when one was found.
 	 *  Held raw rather than filtered: whether it's worth offering is a
 	 *  comparison against the direct routes, which land on their own schedule.
@@ -651,6 +773,7 @@ export class TravelPanelState {
 		// Last among the arcs, like the hand-picked window among the transfers.
 		if (this.torchCustom) craftArc.push(this.torchCustom);
 		if (this.spiral) craftArc.push({ profile: 'low-thrust', route: this.spiral });
+		if (this.ballistic) craftArc.push({ profile: 'ballistic', route: this.ballistic });
 		const offered: OfferedRoute[] = [...craftArc, ...this.routes];
 		const assist = this.#assistWorthOffering();
 		if (assist) offered.push({ profile: 'gravity-assist', route: assist });
@@ -674,17 +797,12 @@ export class TravelPanelState {
 		return assist.totalDvKms <= cheapest - ASSIST_MIN_SAVING_KMS ? assist : null;
 	}
 
-	/** Set when transfers exist but none arrive by the date asked for. Worth
-	 *  telling apart from finding nothing at all: one says the pair can't be
-	 *  flown as described, the other only that the deadline is too soon — and
-	 *  a date is the one term of a trip the reader can move. */
+	/** Set when the search or the craft's own crossing found routes, but none of
+	 *  them arrives by the date asked for. That is not "no route": the reader
+	 *  can move the date. */
 	get missedDeadline(): boolean {
-		return (
-			this.timeMode === 'arrive' &&
-			this.pickedJd != null &&
-			this.routes.length === 0 &&
-			(this.grid?.solvedCount ?? 0) > 0
-		);
+		const found = (this.grid?.solvedCount ?? 0) > 0 || this.lateCrossing !== null;
+		return this.deadlineJd !== undefined && this.routes.length === 0 && found;
 	}
 
 	/** The trajectory being read, with the name it is listed under. */
@@ -808,14 +926,7 @@ export class TravelPanelState {
 	/** The date the trip has to be over by, or nothing when it sets no deadline.
 	 *  Over rather than landed at — see `DeadlineOptions`. */
 	get deadlineJd(): number | undefined {
-		return this.timeMode === 'arrive' && this.pickedJd != null ? this.pickedJd : undefined;
-	}
-
-	/** Whether `route` is finished by the deadline, campaign and all. True when
-	 *  the trip sets none. */
-	#meetsDeadline(route: Route): boolean {
-		const deadlineJd = this.deadlineJd;
-		return deadlineJd == null || routeEndJd(route) <= deadlineJd;
+		return tripDeadlineJd(this.timeMode, this.pickedJd);
 	}
 
 	#earliestDepartJd(nowJd: number): number {
@@ -891,11 +1002,11 @@ export class TravelPanelState {
 			}
 		}
 		const listed = listedTorchArcs(found);
-		const offered = listed.filter((arc) => this.#meetsDeadline(arc.route));
+		const deadlineJd = this.deadlineJd;
+		const offered = listed.filter((arc) => overBy(arc.route, deadlineJd));
 
 		this.torchPresets = offered;
-		// Only the coast can put a crossing past a deadline.
-		this.torchMissedDeadline = listed.length > 0 && offered.length === 0;
+		this.lateCrossing = listed.length > 0 && offered.length === 0 ? 'torch' : null;
 		// Never selected for the reader: a torch ship can fly the coasting
 		// routes too. But an arc no longer offered must release the panel.
 		const reading = this.selectedProfile;
@@ -926,7 +1037,7 @@ export class TravelPanelState {
 			accelMs2 > 0
 				? this.#buildTorch(origin, target, accelMs2, nowJd, frame, this.coastFraction)
 				: null;
-		const offered = route && this.#meetsDeadline(route);
+		const offered = route && overBy(route, this.deadlineJd);
 
 		this.torchCustom = offered ? { profile: 'constant-thrust-custom', route } : null;
 		// A coast past the deadline would leave the reader on a trajectory
@@ -973,7 +1084,7 @@ export class TravelPanelState {
 					systemPrimary: frame.systemPrimary
 				})
 			: null;
-		const offer = route !== null && this.#meetsDeadline(route) ? route : null;
+		const offer = route !== null && overBy(route, this.deadlineJd) ? route : null;
 		this.spiral = offer;
 		// Offered, never opened: an ion craft can be compared against the
 		// coasting routes, and choosing between them is a step no auto-selection
@@ -1106,7 +1217,9 @@ export class TravelPanelState {
 		// craft rather than the grid, so it can't retire a selection whose craft
 		// hasn't landed yet.
 		const fromCraft =
-			this.selectedProfile?.startsWith('constant-thrust') || this.selectedProfile === 'low-thrust';
+			this.selectedProfile?.startsWith('constant-thrust') ||
+			this.selectedProfile === 'low-thrust' ||
+			this.selectedProfile === 'ballistic';
 		if (fromCraft && !this.craftKnown) return;
 		if (
 			this.selectedProfile !== null &&
@@ -1127,12 +1240,91 @@ export class TravelPanelState {
 		this.status = 'blocked';
 	}
 
-	/** Offer no route and run no search. Nothing here prices a trip between two
-	 *  systems. */
-	offerNone(): void {
+	/** A trip between two star systems for this panel, as it stands. */
+	interstellarRequest(origin: SystemEnd, target: SystemEnd, nowJd: number): InterstellarRequest {
+		return {
+			origin,
+			target,
+			nowJd,
+			terms: this.solveTerms,
+			drive: this.craftKnown ? interstellarDrive(this.vehicle, this.payloadKg) : null
+		};
+	}
+
+	/**
+	 * Answer a trip between two star systems. A held drive gets the preset arcs
+	 * and the arc the coast slider asks for. A Δv budget gets the coast. Under
+	 * every mode but `depart`, the coast leaves on the best date of one orbit of
+	 * the origin about its star, which for a moon is the orbit of its planet.
+	 * Every route takes milliseconds, so this runs at once and in full.
+	 */
+	solveInterstellar(request: InterstellarRequest): void {
+		const { origin, target, nowJd, terms, drive } = request;
 		this.#clear();
 		this.blocked = null;
-		this.status = 'empty';
+		this.#crossing = request;
+		if (drive === null) {
+			this.status = 'solving';
+			return;
+		}
+		if (typeof drive === 'string') {
+			this.interstellarRefusal = drive;
+			this.status = 'empty';
+			this.#settleSelection();
+			return;
+		}
+
+		const deadlineJd = tripDeadlineJd(terms.timeMode, terms.pickedJd);
+		if (drive.kind === 'torch') {
+			const found: TorchArc[] = [];
+			for (const preset of TORCH_PRESETS) {
+				const route = crossingTorch(request, drive.accelMs2, preset.coastFraction);
+				if (route) found.push({ profile: preset.profile, route });
+			}
+			const listed = listedTorchArcs(found);
+			const offered = listed.filter((arc) => overBy(arc.route, deadlineJd));
+			this.torchPresets = offered;
+			if (listed.length > 0 && offered.length === 0) {
+				this.lateCrossing = 'torch';
+				this.crossingPastCalendar = endsPastCalendar(listed.map((arc) => arc.route));
+			}
+			this.updateInterstellarCustom();
+		} else {
+			const departJd = earliestDepartJd(terms.timeMode, terms.pickedJd, nowJd);
+			const coast = buildInterstellarCruiseRoute(
+				origin,
+				target,
+				departJd,
+				drive,
+				crossingOptions(terms)
+			);
+			if (typeof coast === 'string') this.interstellarRefusal = coast;
+			else if (coast && overBy(coast, deadlineJd)) this.ballistic = coast;
+			else if (coast) {
+				this.lateCrossing = 'ballistic';
+				this.crossingPastCalendar = endsPastCalendar([coast]);
+			}
+		}
+		this.status = this.offered.length > 0 ? 'ready' : 'empty';
+		this.#settleSelection();
+	}
+
+	/** Recompute the arc the cruise slider asks for on the last trip between two
+	 *  systems. Its own method for the reason `updateTorchCustom` is. */
+	updateInterstellarCustom(): void {
+		const request = this.#crossing;
+		const drive = request?.drive;
+		const accelMs2 = typeof drive === 'object' && drive?.kind === 'torch' ? drive.accelMs2 : null;
+		const route =
+			request && accelMs2 !== null ? crossingTorch(request, accelMs2, this.coastFraction) : null;
+		const terms = request?.terms;
+		const offered =
+			terms !== undefined &&
+			route !== null &&
+			overBy(route, tripDeadlineJd(terms.timeMode, terms.pickedJd));
+
+		this.torchCustom = offered ? { profile: 'constant-thrust-custom', route } : null;
+		if (!offered && this.selectedProfile === 'constant-thrust-custom') this.selectedProfile = null;
 	}
 
 	/** Drop every route and every search in flight. */
@@ -1143,15 +1335,22 @@ export class TravelPanelState {
 		this.custom = null;
 		this.torchPresets = [];
 		this.torchCustom = null;
-		this.torchMissedDeadline = false;
+		this.lateCrossing = null;
+		this.crossingPastCalendar = false;
 		this.spiral = null;
+		this.ballistic = null;
+		this.interstellarRefusal = null;
+		this.#crossing = null;
 		this.assist = null;
 		this.assistSearching = false;
 		this.#assistToken++;
 		this.#assistFor = null;
 		this.#pendingProfile = null;
-		this.#pricing = null;
-		this.pricedRevision = ++this.#revision;
+		// The count goes up only when priced ends are dropped.
+		if (untrack(() => this.#pricing) !== null) {
+			this.#pricing = null;
+			this.pricedRevision = ++this.#revision;
+		}
 	}
 
 	/**
@@ -1229,6 +1428,13 @@ export class TravelPanelState {
 		}
 
 		this.blocked = null;
+		// A trip inside one system has no coast between stars and no refusal.
+		// Its held arcs set their own late flag.
+		this.ballistic = null;
+		this.interstellarRefusal = null;
+		this.#crossing = null;
+		if (this.lateCrossing === 'ballistic') this.lateCrossing = null;
+		this.crossingPastCalendar = false;
 		this.status = 'solving';
 
 		const solveOptions = { ...options, ...routeOptionsFrom(terms) };

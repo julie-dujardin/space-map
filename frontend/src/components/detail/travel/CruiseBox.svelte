@@ -105,7 +105,7 @@
 				aria-label={m.travel_cruise_time()}
 			/>
 		</div>
-		{#if state.torchMissedDeadline}
+		{#if state.lateCrossing === 'torch'}
 			<p class="text-muted-foreground text-xs">{m.travel_cruise_missed()}</p>
 		{/if}
 	</div>

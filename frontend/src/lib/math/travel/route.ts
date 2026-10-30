@@ -116,12 +116,24 @@ export interface RouteLeg {
 	dvKms: number;
 	/** How long the leg takes, days. Burns are treated as instantaneous. */
 	days: number;
+	/** How long the leg takes on the ship's clock, days. Absent where it equals `days`. */
+	shipDays?: number;
 	/** Set when an atmosphere absorbed part of the leg rather than propellant. */
 	aerobraked?: boolean;
 	/** How far the plane turns, degrees — the turn legs only. */
 	turnDeg?: number;
 	/** Δv the atmosphere removed on this leg, km/s — the aero legs only. */
 	absorbedKms?: number;
+}
+
+/** What a crossing between two star systems adds to a route. */
+export interface InterstellarCrossing {
+	/** Distance between the two stars, km. */
+	distanceKm: number;
+	/** Speed against the stars on the coast, km/s. On a held arc this is the peak. */
+	cruiseKms: number;
+	/** Lorentz factor at that speed. */
+	gamma: number;
 }
 
 export interface Route {
@@ -198,6 +210,8 @@ export interface Route {
 	 * kind.
 	 */
 	flybys?: FlybyPass[];
+	/** Set on a route between two star systems. */
+	interstellar?: InterstellarCrossing;
 }
 
 export interface RouteOptions {
@@ -336,6 +350,12 @@ export function finishRoute(base: RouteBase, legs: RouteLeg[]): Route | null {
  */
 export function routeDurationDays(route: Route): number {
 	return route.legs.reduce((sum, leg) => sum + leg.days, 0);
+}
+
+/** Everything the trip takes on the ship's clock, days. Equal to
+ *  {@link routeDurationDays} unless a leg runs near the speed of light. */
+export function routeShipDays(route: Route): number {
+	return route.legs.reduce((sum, leg) => sum + (leg.shipDays ?? leg.days), 0);
 }
 
 /**

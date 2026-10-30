@@ -15,6 +15,11 @@ export const DAYS_PER_YEAR = 365.25;
 const JD_UNIX_EPOCH = 2440587.5;
 export const MS_PER_DAY = 86400000;
 
+/** The first and the last Julian Date that a `Date` holds. They are 10⁸ days
+ *  before and after the Unix epoch, in the years −271,821 and 275,760. */
+export const FIRST_DATE_JD = JD_UNIX_EPOCH - 1e8;
+export const LAST_DATE_JD = JD_UNIX_EPOCH + 1e8;
+
 /** Unix epoch milliseconds → Julian Date. */
 export function unixMsToJD(ms: number): number {
 	return ms / MS_PER_DAY + JD_UNIX_EPOCH;

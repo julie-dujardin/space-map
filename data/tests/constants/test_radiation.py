@@ -37,6 +37,7 @@ from space_map_data.constants.radiation.field import (
     BUILDUP_DEPTH_G_CM2,
     FIELD_SOURCES,
     FLOWN_ANCHORS,
+    INTERSTELLAR_SOURCES,
     MODELLED_CHECKS,
     MUON_CROSSOVER_G_CM2,
     PREDICTION,
@@ -90,6 +91,7 @@ def _source_keys() -> set[str]:
         keys |= {m.source for m in _measurements(belt)}
     keys.add(INTERPLANETARY_DOSE.sv_per_day.source)
     keys |= set(FIELD_SOURCES)
+    keys |= set(INTERSTELLAR_SOURCES)
     keys |= {a.source for a in FLOWN_ANCHORS.values()}
     keys |= {c.source for c in MODELLED_CHECKS.values()}
     keys |= set(BELT_FIELD_SOURCES)

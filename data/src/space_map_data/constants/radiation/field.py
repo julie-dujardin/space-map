@@ -73,6 +73,20 @@ _GRADIENT_SOURCE = "roussos_2020_gcr"
 REFERENCE_DOSE_SV_PER_DAY = 1.731e-3
 _REFERENCE_FITTED_TO = "guo_2021"
 
+# The works behind the route planner's cosmic ray dose past the heliopause:
+# the local interstellar spectra, the ratio of that dose to the dose at 1 au at
+# solar minimum, and the dose per particle that weighs the spectra seen from a
+# fast craft. Only the browser computes that dose. These keys give the works a
+# place on /credits. They are apart from `FIELD_SOURCES`, because no surface
+# dose uses this rate and so no body panel may credit these works.
+INTERSTELLAR_SOURCES: tuple[str, ...] = (
+    "mewaldt_2005",
+    "corti_2016",
+    "cummings_2016",
+    "sato_2009",
+    "sato_2010",
+)
+
 
 def solar_cycle_factor(decimal_year: float) -> float:
     """Dose multiplier against the cycle mean, peaking at solar minimum."""

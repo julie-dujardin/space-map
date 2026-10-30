@@ -69,7 +69,7 @@ function frameEnds(
  * and the solve stops closing. Wide enough to reach that for most pairs; the
  * arc just stops being offered beyond it.
  */
-const COAST_SPAN = 6;
+export const COAST_SPAN = 6;
 
 /**
  * How much of the crossing the primary may bend a coast out of, for trips

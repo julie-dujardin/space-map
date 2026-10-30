@@ -446,6 +446,8 @@ function buildCrossing(
 		samples = DEFAULT_SAMPLES
 	} = options;
 
+	// The ends of a crossing between stars are not on orbits about one primary.
+	if (route.interstellar) return null;
 	if (orbitChange) return orbitChangePath(departure, route, centerId, samples);
 	if (route.lowThrust) {
 		// A spiral inside one system is thousands of revolutions deep, which is a

@@ -3,13 +3,26 @@ import {
 	BELT_PROFILES,
 	beltPassDoseGy,
 	MODELLED_BELT_IDS,
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
 	buildRoute,
 	buildTrajectoryPath,
+	cosmicRayBoost,
 	DEFAULT_SHIELDING_G_CM2,
+	DUST_MASS_KG_M3,
+	grainMassKg,
+	INTERSTELLAR_DOSE_SV_PER_DAY,
+	largestGrainRadiusM,
+	MEASURED_GRAIN_RADIUS_M,
+	routeShipDays,
 	type Route,
+	type SystemEnd,
 	type TravelBody,
 	type Vehicle
 } from '$lib/math/travel';
+import { G0_M_S2, GM_SUN_KM3_S2 } from '$lib/math/travel/constants';
+import { LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
+import { signalDelaySeconds } from './arrival-stats';
 import { craftPositionAt } from '$lib/math/travel/path-sample';
 import { hohmannTransferDays, nextTransferWindows } from '$lib/math/travel/windows';
 import { findAssistRoute } from '$lib/math/travel/assist';
@@ -25,7 +38,13 @@ import {
 	SATURN,
 	VENUS
 } from '$lib/math/travel/test-fixtures';
-import { adjustForVehicle, routeHazards, type Hazard, type HazardKind } from './hazards';
+import {
+	adjustForVehicle,
+	crossingShield,
+	routeHazards,
+	type Hazard,
+	type HazardKind
+} from './hazards';
 import { equilibriumTempK, sunsAt } from './sunlight';
 
 const SUN = 'naif-10';
@@ -557,4 +576,225 @@ describe('belt crossings', () => {
 		const hazards = routeHazards(EARTH, MARS, transfer(EARTH, MARS), HELIOCENTRIC);
 		expect(of(hazards, 'belt-crossing')).toBeUndefined();
 	});
+});
+
+describe('a crossing between two stars', () => {
+	const PROXIMA: SystemEnd = {
+		body: {
+			id: 'x-27424668',
+			mu: 0.122 * GM_SUN_KM3_S2,
+			muEstimated: true,
+			radiusKm: 100_000,
+			elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: J2000 }
+		},
+		starKm: [4.24 * LIGHT_YEAR_KM, 0, 0],
+		starMu: 0.122 * GM_SUN_KM3_S2,
+		atStar: true
+	};
+	const FROM_EARTH: SystemEnd = {
+		body: EARTH,
+		starKm: [0, 0, 0],
+		starMu: GM_SUN_KM3_S2,
+		atStar: false
+	};
+	const torch = buildInterstellarTorchRoute(FROM_EARTH, PROXIMA, J2000, G0_M_S2, {
+		departureMode: 'orbit',
+		arrivalMode: 'rendezvous'
+	})!;
+	const coast = buildInterstellarCruiseRoute(
+		FROM_EARTH,
+		PROXIMA,
+		J2000,
+		{ kind: 'budget', dvKms: 20 },
+		{ departureMode: 'orbit', arrivalMode: 'flyby', launchWindow: true }
+	) as Route;
+	const context = { centerId: 'naif-0' } as const;
+
+	it('leaves out the hazards of the Sun', () => {
+		const kinds = routeHazards(EARTH, PROXIMA.body, torch, context).map((h) => h.kind);
+		expect(kinds).not.toContain('solar-heat');
+		expect(kinds).not.toContain('solar-power');
+		expect(kinds).not.toContain('conjunction');
+	});
+
+	it('counts the cosmic ray dose of a coast on the ship clock at the galactic rate', () => {
+		const dose = of(routeHazards(EARTH, PROXIMA.body, coast, context), 'radiation')!;
+		// At tens of km/s the boost is about one.
+		expect(dose.rateAtPeak! / INTERSTELLAR_DOSE_SV_PER_DAY).toBeGreaterThan(1);
+		expect(dose.rateAtPeak! / INTERSTELLAR_DOSE_SV_PER_DAY).toBeLessThan(1.001);
+		expect(dose.shipTime).toBe(true);
+		// The heliosphere is a very small part of the trip and its rate is lower.
+		const galactic = INTERSTELLAR_DOSE_SV_PER_DAY * routeShipDays(coast);
+		expect(dose.peak / galactic).toBeGreaterThan(0.97);
+		expect(dose.peak / galactic).toBeLessThan(1.001);
+	});
+
+	it('boosts the cosmic ray dose of a torch by F(γ) per ship day', () => {
+		const dose = of(routeHazards(EARTH, PROXIMA.body, torch, context), 'radiation')!;
+		const peakBoost = cosmicRayBoost(Math.acosh(torch.interstellar!.gamma));
+		expect(dose.rateAtPeak! / (INTERSTELLAR_DOSE_SV_PER_DAY * peakBoost)).toBeCloseTo(1, 12);
+		expect(peakBoost).toBeCloseTo(6.15, 1);
+		// The burns climb from F = 1, so the trip gets less than the peak boost.
+		const flat = INTERSTELLAR_DOSE_SV_PER_DAY * routeShipDays(torch);
+		expect(dose.peak / flat).toBeGreaterThan(2.5);
+		expect(dose.peak / flat).toBeLessThan(peakBoost);
+	});
+
+	it('has no gas row on a coast at tens of km/s', () => {
+		expect(of(routeHazards(EARTH, PROXIMA.body, coast, context), 'gas')).toBeUndefined();
+	});
+
+	it('shields a coast about as a craft at rest, the front as thick as the sides', () => {
+		const shield = crossingShield(coast)!;
+		expect(shield.frontIceM).toBeCloseTo(shield.sideIceM, 2);
+	});
+
+	it('gives the signal lag at arrival as the distance between the stars', () => {
+		const lag = routeHazards(EARTH, PROXIMA.body, torch, context).find(
+			(h) => h.kind === 'signal-lag'
+		)!;
+		const seconds = (4.24 * LIGHT_YEAR_KM) / SPEED_OF_LIGHT_KM_S;
+		expect(lag.peak).toBeCloseTo(seconds, 0);
+		expect(lag.severity).toBe('caution');
+		expect(lag.endJd).toBe(torch.arriveJd);
+		expect(lag.startJd).toBeGreaterThan(torch.departJd);
+		expect(signalDelaySeconds(EARTH, PROXIMA.body, torch)).toBeCloseTo(seconds, 0);
+	});
+
+	describe('dust', () => {
+		const C_M_S = SPEED_OF_LIGHT_KM_S * 1000;
+		const dustOf = (route: Route) =>
+			routeHazards(EARTH, PROXIMA.body, route, context).find((h) => h.kind === 'dust')!;
+
+		it('gives the largest grain expected to hit, at the peak speed', () => {
+			const dust = dustOf(torch);
+			const { radiusM, massKg, extrapolated } = dust.dust!;
+			expect(radiusM).toBe(largestGrainRadiusM(4.24 * LIGHT_YEAR_KM));
+			expect(massKg).toBe(grainMassKg(radiusM));
+			expect(extrapolated).toBe(radiusM > MEASURED_GRAIN_RADIUS_M);
+			const gamma = torch.interstellar!.gamma;
+			expect(dust.peak / ((gamma - 1) * massKg * C_M_S ** 2)).toBeCloseTo(1, 9);
+			// A grain of 57 µm at 0.95 c carries about half a gigajoule.
+			expect(dust.peak).toBeGreaterThan(3e8);
+			expect(dust.peak).toBeLessThan(6e8);
+			expect(dust.severity).toBe('notice');
+		});
+
+		it('sums the energy at the speed of each point of a held arc', () => {
+			// Flat out, the mean of γ − 1 over the two burns is half the peak.
+			const { gamma, distanceKm } = torch.interstellar!;
+			const sweptKgM2 = DUST_MASS_KG_M3 * distanceKm * 1000;
+			const expected = (sweptKgM2 * (gamma - 1) * C_M_S ** 2) / 2;
+			expect(dustOf(torch).dust!.energyJPerM2 / expected).toBeCloseTo(1, 9);
+			// Its marker is where the craft first has its peak speed.
+			expect(dustOf(torch).peakJd).toBeCloseTo((torch.departJd + torch.arriveJd) / 2, 6);
+		});
+
+		it('sums the energy of a coast at its one speed', () => {
+			const { gamma, distanceKm } = coast.interstellar!;
+			const sweptKgM2 = DUST_MASS_KG_M3 * distanceKm * 1000;
+			const dust = dustOf(coast);
+			expect(dust.dust!.energyJPerM2 / (sweptKgM2 * (gamma - 1) * C_M_S ** 2)).toBeCloseTo(1, 6);
+			expect(dust.peakJd).toBe(coast.departJd);
+			// At tens of km/s, the energy is the classical ½mv².
+			const speedMs = coast.interstellar!.cruiseKms * 1000;
+			expect(dust.peak / (0.5 * dust.dust!.massKg * speedMs ** 2)).toBeCloseTo(1, 6);
+		});
+	});
+});
+
+describe('the reference trips between the stars, at 0.13 H nuclei per cm³', () => {
+	const FROM_EARTH: SystemEnd = {
+		body: EARTH,
+		starKm: [0, 0, 0],
+		starMu: GM_SUN_KM3_S2,
+		atStar: false
+	};
+	const starAt = (ly: number): SystemEnd => ({
+		body: {
+			id: `x-${ly}`,
+			mu: GM_SUN_KM3_S2,
+			muEstimated: true,
+			radiusKm: 700_000,
+			elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: J2000 }
+		},
+		starKm: [ly * LIGHT_YEAR_KM, 0, 0],
+		starMu: GM_SUN_KM3_S2,
+		atStar: true
+	});
+	const hazardsOf = (g: number, ly: number) => {
+		const route = buildInterstellarTorchRoute(FROM_EARTH, starAt(ly), J2000, g * G0_M_S2, {
+			departureMode: 'orbit',
+			arrivalMode: 'rendezvous'
+		})!;
+		return { route, hazards: routeHazards(EARTH, starAt(ly).body, route, { centerId: 'naif-0' }) };
+	};
+
+	/**
+	 * The research gives the cosmic rays from a table of F with 60 points and the
+	 * galactic rate for the whole trip. The app has 17 points (up to 0.3% more) and
+	 * the fitted rate inside 120 au (up to 0.5% less), so the tolerance is 1%. The gas
+	 * rates are section D of the research, so the tolerance is 0.1%. Its gas totals
+	 * integrate a finer curve than the app's dose table, which the app integrates
+	 * exactly: up to 2% apart at these peaks. The dust is 0.52 of the values at n_H 0.25.
+	 * The front of the shield is the research's at each peak speed, in ice.
+	 */
+	const TRIPS = [
+		{
+			name: 'Nostalgia for Infinity, 1 g to Proxima',
+			g: 1,
+			ly: 4.25,
+			cosmicSv: 16.9,
+			gasSv: 7.6487e8,
+			gasSvPerDay: 1.767e6,
+			frontIceM: 29.78,
+			dustAtSunJPerM2: 3.331e10
+		},
+		{
+			name: 'the Hail Mary, 1.5 g to Tau Ceti',
+			g: 1.5,
+			ly: 11.9,
+			cosmicSv: 46.9,
+			gasSv: 2.6921e9,
+			gasSvPerDay: 7.078e6,
+			frontIceM: 31.6,
+			dustAtSunJPerM2: 3.918e11
+		},
+		{
+			name: 'the Rocinante, g/3 to Proxima',
+			g: 1 / 3,
+			ly: 4.25,
+			cosmicSv: 20.4,
+			gasSv: 6.204e8,
+			gasSvPerDay: 6.476e5,
+			frontIceM: 25.6,
+			dustAtSunJPerM2: 1.11e10
+		}
+	];
+
+	for (const trip of TRIPS) {
+		it(`gives ${trip.name} the doses of the research`, () => {
+			const { route, hazards } = hazardsOf(trip.g, trip.ly);
+			const cosmic = of(hazards, 'radiation')!;
+			expect(Math.abs(cosmic.peak / trip.cosmicSv - 1)).toBeLessThan(0.01);
+			expect(cosmic.severity).toBe('severe');
+
+			const gas = of(hazards, 'gas')!;
+			expect(Math.abs(gas.peak / trip.gasSv - 1)).toBeLessThan(0.02);
+			expect(Math.abs(gas.rateAtPeak! / trip.gasSvPerDay - 1)).toBeLessThan(1e-3);
+			expect(gas.severity).toBe('severe');
+			expect(gas.shipTime).toBe(true);
+			expect(gas.bands).toEqual([]);
+			expect(gas.startJd).toBe(route.departJd);
+			expect(gas.endJd).toBe(route.arriveJd);
+			// Its marker is where the craft first has its peak speed, as the dust's.
+			expect(gas.peakJd).toBe(of(hazards, 'dust')!.peakJd);
+			const shield = crossingShield(route)!;
+			expect(Math.abs(shield.frontIceM / trip.frontIceM - 1)).toBeLessThan(0.01);
+			expect(shield.sideIceM).toBeCloseTo(3.3, 1);
+
+			const dust = of(hazards, 'dust')!.dust!;
+			expect(Math.abs(dust.energyJPerM2 / (0.52 * trip.dustAtSunJPerM2) - 1)).toBeLessThan(1e-3);
+		});
+	}
 });

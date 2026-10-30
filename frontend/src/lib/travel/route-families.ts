@@ -1,17 +1,20 @@
 /**
  * The trajectories on offer, grouped by how the trip is flown.
  *
- * Four kinds of answer end up in one list — a window off the porkchop, a
- * swing-by, an arc held under thrust, a spiral out — and they aren't read
- * against each other: a spiral's four years and a Hohmann's nine months answer
- * different questions. Tabbing keeps each family's rows next to the ones
- * they're actually alternatives to.
+ * One list holds several kinds of answer: a window off the porkchop, a
+ * swing-by, a held arc, a spiral and a coast between stars. Each kind answers
+ * a different question, so each family has a tab of its own.
  */
 
 import type { OfferedRoute } from './panel.svelte';
 import type { RouteOption } from './trip';
 
-export type RouteFamily = 'transfer' | 'gravity-assist' | 'constant-thrust' | 'low-thrust';
+export type RouteFamily =
+	| 'transfer'
+	| 'gravity-assist'
+	| 'constant-thrust'
+	| 'low-thrust'
+	| 'ballistic';
 
 /** The three solver profiles and the hand-picked window are all one family: the
  *  same trajectory, read off the same field, at four points on it. The held arc
@@ -21,6 +24,7 @@ export function familyOf(profile: RouteOption): RouteFamily {
 	switch (profile) {
 		case 'low-thrust':
 		case 'gravity-assist':
+		case 'ballistic':
 			return profile;
 		default:
 			return 'transfer';

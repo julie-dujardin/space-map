@@ -15,16 +15,17 @@ import {
 	type TravelBody
 } from '$lib/math/travel';
 
-/** One-way light time between the two bodies at arrival, seconds. Uses the real
- *  positions on the arrival date, so a slow transfer landing with the pair on
- *  opposite sides of the Sun reports the longer delay it actually has. */
+/** One-way light time between the two ends at arrival, seconds. Inside the
+ *  solar system it uses the positions on the arrival date, because the Sun can
+ *  be between the two ends then. Between stars it is the distance between them. */
 export function signalDelaySeconds(
 	origin: TravelBody,
 	target: TravelBody,
-	arriveJd: number
+	route: Route
 ): number | null {
-	const from = elementsToState(origin.elements, arriveJd, travelConstants.GM_SUN_KM3_S2);
-	const to = elementsToState(target.elements, arriveJd, travelConstants.GM_SUN_KM3_S2);
+	if (route.interstellar) return route.interstellar.distanceKm / SPEED_OF_LIGHT_KM_S;
+	const from = elementsToState(origin.elements, route.arriveJd, travelConstants.GM_SUN_KM3_S2);
+	const to = elementsToState(target.elements, route.arriveJd, travelConstants.GM_SUN_KM3_S2);
 	if (!from || !to) return null;
 	const separation = norm(sub(to.r, from.r));
 	if (!Number.isFinite(separation)) return null;
@@ -34,16 +35,14 @@ export function signalDelaySeconds(
 /**
  * Δv to start the journey home, km/s.
  *
- * Approximate: prices leaving on a transfer needing the same excess speed the
- * arrival had, which is the right scale but not the true return window's cost
- * — solving that properly is a second porkchop, a separate trip rather than a
- * statistic.
+ * This is an estimate. It prices a departure at the same excess speed as the
+ * arrival. The true cost needs a second porkchop for the return window.
  *
- * A constant-thrust or low-thrust arc has no such window: its escape is the
- * same crossing flown backwards, so it is quoted as the whole outbound spend.
+ * A held arc, a spiral and a crossing between stars have no window. The return
+ * is the same trip flown back, so it costs the whole outbound spend.
  */
 export function returnDvKms(target: TravelBody, route: Route, orbit?: EndOrbit): number {
-	if (route.constantThrust || route.lowThrust) return route.inSpaceDvKms;
+	if (route.constantThrust || route.lowThrust || route.interstellar) return route.inSpaceDvKms;
 	const cost = departureCost(
 		target,
 		route.vInfArrKms,

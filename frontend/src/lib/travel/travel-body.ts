@@ -24,7 +24,13 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { getGmKm3s2, nutPrecFor } from '$lib/fetch/systems-global';
 import { bodyQuaternion, type NutPrec, type Orientation } from '$lib/math/orientation';
 import { dateToJD } from '$lib/time/jd';
-import { estimateMu, GM_SUN_KM3_S2, muFromElements, type TravelBody } from '$lib/math/travel';
+import {
+	estimateMu,
+	GM_SUN_KM3_S2,
+	muFromElements,
+	type TravelBody,
+	type Well
+} from '$lib/math/travel';
 import { AU_KM } from '$lib/math/units';
 import type { Vec3 } from '$lib/math/travel/vec3';
 
@@ -421,6 +427,24 @@ function ancestry(body: BodyData, lookup: BodyLookup): BodyData[] | null {
 	return null;
 }
 
+/**
+ * The wells between a body and the Sun, the outermost first: Earth's for the
+ * Moon, none for a planet. A barycentre is not a well, so each one is the body
+ * that `hillPrimaryOf` names. Null when the chain cannot be walked.
+ */
+export function wellsAbove(body: BodyData, lookup: BodyLookup): Well[] | null {
+	const chain = ancestry(body, lookup);
+	if (!chain) return null;
+	const wells: Well[] = [];
+	for (const link of chain) {
+		const primary = hillPrimaryOf(link);
+		if (primary === 'sun') continue;
+		const centreId = primary === null ? link.parentId : `naif-${primary}`;
+		wells.unshift({ mu: centralMuFor(centreId, link), radiusKm: link.a * AU_KM });
+	}
+	return wells;
+}
+
 /** Bodies already reported. The search exclusions ask about every body in the
  *  scene on every render, and the answer does not change between them. */
 const reportedUnwalkable = new Set<string>();
@@ -479,10 +503,9 @@ export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLoo
 	return { kind: 'sibling', centreId: centre, centralMu };
 }
 
-/** μ of the body a sibling pair both go round, km³/s². The measured GM when
- *  the export ships one — a barycentre resolves to a planet, which always has
- *  one — else Kepler's third law on the satellite's own orbit, covering a
- *  moon of an asteroid. */
+/** μ of the body that `satellite` goes round, km³/s². The measured GM when the
+ *  export has one, else Kepler's third law on the satellite's own orbit,
+ *  because a moon of an asteroid has no measured GM. */
 function centralMuFor(centreId: string, satellite: BodyData): number {
 	const id = naifId(centreId);
 	const measured = id === null ? undefined : getGmKm3s2(id);

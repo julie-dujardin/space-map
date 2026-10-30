@@ -75,18 +75,25 @@ export type TimeMode = 'now' | 'depart' | 'arrive';
 const TIME_MODES: readonly TimeMode[] = ['now', 'depart', 'arrive'];
 
 /**
- * What the route list can offer: the solver's three, a point read off the
- * porkchop by hand, the arcs a drive held all the way flies, the spiral a
- * drive too weak to burn flies, and a route swinging past a third body. Only
- * the first four are points on the porkchop — a spiral leaves when its phase
- * closes and a swing-by departs years outside the grid — so none of the rest
- * can be named by a `pick=` alone.
+ * What the route list can offer:
+ * - the three routes of the solver, and `custom`, a point picked off the porkchop;
+ * - the held arcs of a drive that burns all the way;
+ * - `low-thrust`, the spiral of a drive too weak to burn;
+ * - `gravity-assist`, a route past a third body;
+ * - `ballistic`, the coast between two star systems of a craft with a Δv budget.
  *
- * The held arc is four of them: how long the drive is off in the middle is
- * the same kind of choice a launch window is. `constant-thrust`, the flat-out
- * crossing, keeps its old spelling so old links still read.
+ * Only the first four are points on the porkchop, so only they can be named by
+ * a `pick=`. The held arc is four options, one for each place on the coast
+ * span. `constant-thrust` is the flat-out arc and keeps its old spelling, so
+ * old links still work.
  */
-export type RouteOption = RouteProfile | 'custom' | TorchOption | 'low-thrust' | 'gravity-assist';
+export type RouteOption =
+	| RouteProfile
+	| 'custom'
+	| TorchOption
+	| 'low-thrust'
+	| 'gravity-assist'
+	| 'ballistic';
 export type TorchOption =
 	| 'constant-thrust'
 	| 'constant-thrust-balanced'
@@ -102,7 +109,8 @@ const ROUTE_OPTIONS: readonly RouteOption[] = [
 	'constant-thrust-efficient',
 	'constant-thrust-custom',
 	'low-thrust',
-	'gravity-assist'
+	'gravity-assist',
+	'ballistic'
 ];
 
 /** A point read off the porkchop: the departure and the cruise it names. Priced

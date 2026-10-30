@@ -550,6 +550,13 @@ export function injectionDv(mu: number, rParkKm: number, vInfKms: number): numbe
 	return periapsisSpeed(mu, rParkKm, vInfKms) - circularSpeed(mu, rParkKm);
 }
 
+/** Excess speed relative to a body on a circular orbit of radius `rKm` about a
+ *  primary, for a craft passing that radius with excess speed `vInfKms`
+ *  relative to the primary — tangentially, which is the cheapest meeting. */
+export function vInfInside(vInfKms: number, primaryMu: number, rKm: number): number {
+	return Math.abs(periapsisSpeed(primaryMu, rKm, vInfKms) - circularSpeed(primaryMu, rKm));
+}
+
 /**
  * Δv to drop from an arrival hyperbola into a bound orbit with periapsis
  * `rPeriKm` and apoapsis `rApoKm`. Passing `rApoKm = rPeriKm` gives circular

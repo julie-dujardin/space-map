@@ -39,6 +39,7 @@
 		type EphemerisSamples,
 		type Route,
 		type TrajectoryFrame,
+		type SystemEnd,
 		type TrajectoryPath,
 		type TravelBody
 	} from '$lib/math/travel';
@@ -51,12 +52,16 @@
 		transferCenterId,
 		transferFrame,
 		transferPlan,
+		wellsAbove,
 		type TransferPlan
 	} from '$lib/travel/travel-body';
 	import {
+		crossingDeadlineJd,
+		interstellarRequestKey,
 		solveRequestKey,
 		TravelPanelState,
 		type BlockReason,
+		type InterstellarRequest,
 		type SolveRequest
 	} from '$lib/travel/panel.svelte';
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
@@ -70,7 +75,11 @@
 		type TripState
 	} from '$lib/travel/trip';
 	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
-	import { extrasolarTravelBody, type ExtrasolarEnd } from '$lib/travel/extrasolar-end';
+	import {
+		extrasolarTravelBody,
+		systemEndOf,
+		type ExtrasolarEnd
+	} from '$lib/travel/extrasolar-end';
 	import type { LaunchPad } from '$lib/travel/launch-pad';
 	import { surfaceSiteAt } from '$lib/travel/surface-site';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
@@ -396,6 +405,13 @@
 		return measured(body ? toTravelBody(body, lookup, detail, frame.orbit) : null);
 	}
 	let travel = $derived.by(() => ({ origin: travelOf('origin'), target: travelOf('target') }));
+
+	/** The kernel's view of one end on a trip between two systems. */
+	function systemEndFor(role: TripRole, view: TravelBody): SystemEnd {
+		const { body, extrasolar } = ends[role];
+		const wells = body ? wellsAbove(body, lookup) : null;
+		return systemEndOf(view, extrasolar, wells ?? []);
+	}
 
 	// The same two ends the routes were priced against. A body that does not
 	// keep still is re-described at the trip's own dates, so anything read back
@@ -740,11 +756,17 @@
 		return windows.length > 0 ? windows[0] : null;
 	});
 
-	// A deadline in the present admits nothing, so "arrive by" opens one slowest
-	// transfer out — the earliest date the trip could plausibly be held to.
+	// A deadline in the present admits nothing. In one system "arrive by" opens
+	// one slowest transfer out, so the search sees its whole window. Between two
+	// systems it opens on the end of the fastest crossing, the first date with a
+	// route.
 	function defaultPickedJd(mode: TimeMode): number {
 		const { origin, target } = travel;
-		if (mode !== 'arrive' || !origin || !target || interstellar) return nowJd;
+		if (mode !== 'arrive' || !origin || !target) return nowJd;
+		if (interstellar) {
+			const deadlineJd = 'interstellar' in job ? crossingDeadlineJd(job.interstellar) : null;
+			return deadlineJd ?? nowJd;
+		}
 		if (frame.orbitChange) {
 			// The half-ellipse between the two orbits is the slowest crossing here,
 			// and the only one a deadline has to admit.
@@ -792,15 +814,19 @@
 	 *  or the reason there is no question. An end that never resolved has no
 	 *  orbit to leave from. */
 	let job = $derived<
-		| { block: BlockReason }
-		| { interstellar: { origin: TravelBody; target: TravelBody } }
-		| { request: SolveRequest }
+		{ block: BlockReason } | { interstellar: InterstellarRequest } | { request: SolveRequest }
 	>(
 		block
 			? { block }
 			: travel.origin && travel.target
 				? interstellar
-					? { interstellar: { origin: travel.origin, target: travel.target } }
+					? {
+							interstellar: panel.interstellarRequest(
+								systemEndFor('origin', travel.origin),
+								systemEndFor('target', travel.target),
+								nowJd
+							)
+						}
 					: {
 							request: {
 								origin: travel.origin,
@@ -820,7 +846,7 @@
 		'block' in job
 			? `blocked|${job.block}`
 			: 'interstellar' in job
-				? `interstellar|${job.interstellar.origin.id}|${job.interstellar.target.id}`
+				? `interstellar|${interstellarRequestKey(job.interstellar)}`
 				: solveRequestKey(job.request)
 	);
 
@@ -828,7 +854,7 @@
 		void solveKey;
 		untrack(() => {
 			if ('block' in job) panel.block(job.block);
-			else if ('interstellar' in job) panel.offerNone();
+			else if ('interstellar' in job) panel.solveInterstellar(job.interstellar);
 			else void panel.solve(job.request, refineEnd);
 		});
 	});
@@ -845,7 +871,9 @@
 		const siteLats = [panel.ends.origin.siteLatDeg, panel.ends.target.siteLatDeg];
 		void payloadKg;
 		void siteLats;
-		if (block || interstellar || !from || !to) {
+		// A trip between two systems gets its arcs from its own solve.
+		if (interstellar) return;
+		if (block || !from || !to) {
 			panel.torchPresets = [];
 			panel.torchCustom = null;
 			panel.spiral = null;
@@ -856,13 +884,18 @@
 	});
 
 	// A fourth effect for the coast alone. It is the one input that moves under a
-	// drag, and a drag must not re-solve the presets on every frame.
+	// drag, and a drag must not solve the presets or the trip between two systems
+	// again on every frame.
 	$effect(() => {
-		const from = pathOrigin;
-		const to = pathTarget;
 		const coast = panel.coastFraction;
 		void coast;
-		if (block || interstellar || !from || !to) {
+		if (interstellar) {
+			panel.updateInterstellarCustom();
+			return;
+		}
+		const from = pathOrigin;
+		const to = pathTarget;
+		if (block || !from || !to) {
 			panel.torchCustom = null;
 			return;
 		}
@@ -1465,7 +1498,7 @@
 				</p>
 				<!-- A coast long enough to miss the deadline is what took the arc off the
 			     list, so the control that did it has to outlive the list. -->
-				{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
+				{#if panel.lateCrossing === 'torch'}<CruiseBox state={panel} />{/if}
 			{:else if panel.offered.length > 0}
 				<!-- Said above the list rather than instead of it: what is left when the
 			     search found nothing in time is a hand-picked point or a craft's own
@@ -1475,7 +1508,7 @@
 				{/if}
 				<!-- The arc is gone, so its tab is too, and the control that took it has
 			     nowhere left to live but over the list. -->
-				{#if panel.torchMissedDeadline}<CruiseBox state={panel} />{/if}
+				{#if panel.lateCrossing === 'torch'}<CruiseBox state={panel} />{/if}
 				<!-- One family of trajectory is on offer often enough — a chemical craft
 			     with no swing-by to be had — that a single tab would be a control
 			     with nothing to choose. -->

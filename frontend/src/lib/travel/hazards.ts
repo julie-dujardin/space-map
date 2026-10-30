@@ -20,20 +20,38 @@ import {
 	beltPassDoseGy,
 	buildTrajectoryPath,
 	CANCER_RISK_PER_SV,
+	COSMIC_RAY_BOOST,
+	cosmicRayBoost,
+	crossingElapsed,
+	crossingIntegral,
+	crossingSweep,
 	DEFAULT_SHIELDING_G_CM2,
+	DUST_MASS_KG_M3,
+	GAS_DOSE,
+	gasKineticMeV,
+	grainMassKg,
 	elementsToState,
 	gcrDoseRateSvPerDay,
+	HELIOPAUSE_AU,
+	INTERSTELLAR_DOSE_SV_PER_DAY,
+	interstellarDoseRateSvPerDay,
+	largestGrainRadiusM,
 	LETHAL_DOSE_GY,
+	MEASURED_GRAIN_RADIUS_M,
 	MODELLED_BELT_IDS,
 	norm,
+	radiationShield,
 	sub,
 	travelConstants,
+	type RadiationShield,
 	type Route,
 	type TravelBody,
 	type Vec3,
 	type Vehicle
 } from '$lib/math/travel';
+import { SEC_PER_DAY } from '$lib/math/travel/constants';
 import { crossingWindow } from '$lib/math/travel/path-sample';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { AU_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import { sunsAt } from './sunlight';
 
@@ -51,7 +69,11 @@ export type HazardKind =
 	/** Cosmic rays, accumulated over the whole crossing. */
 	| 'radiation'
 	/** A swing-by flown through a planet's trapped-particle belts. */
-	| 'belt-crossing';
+	| 'belt-crossing'
+	/** Interstellar dust grains that hit the craft on a crossing between two stars. */
+	| 'dust'
+	/** Interstellar gas that hits the craft as a beam on a crossing between two stars. */
+	| 'gas';
 
 export type HazardSeverity = 'notice' | 'caution' | 'severe';
 
@@ -75,19 +97,24 @@ export interface Hazard {
 	peakJd: number;
 	/** The figure the severity was read off, in the kind's own unit: multiples of
 	 *  Earth-orbit sunlight for heat, a fraction for power, degrees for a
-	 *  conjunction, seconds for the lag, km/s for an entry. */
+	 *  conjunction, seconds for the lag, km/s for an entry, joules of the largest
+	 *  grain for dust. */
 	peak: number;
 	/** Distance from the Sun at the peak, AU. Only on the kinds that are about one. */
 	auAtPeak?: number;
-	/** The rate behind an accumulated figure, per day. Only on `radiation`, whose
-	 *  `peak` is a trip integral — without this there's no way to say whether a
-	 *  sievert was collected in a fortnight or over nine years. */
+	/** The rate behind a trip total, per day. Only on `radiation` and `gas`, whose
+	 *  `peak` is a trip total. The same total in a fortnight and in nine years are
+	 *  different hazards. */
 	rateAtPeak?: number;
+	/** `rateAtPeak` is per day of ship time. Only on a crossing between two star systems. */
+	shipTime?: boolean;
 	/** The hazard is real and its size is unknown — a belt nobody has published a
 	 *  dose profile for. Distinct from a `peak` of zero, which would claim it's free. */
 	unpriced?: boolean;
 	/** The body a moment happens at. Only on the kinds that pick one out. */
 	bodyId?: string;
+	/** Only on `dust`. */
+	dust?: DustImpacts;
 	/** The stretch broken into the tiers actually in force along it, in flight
 	 *  order — what the map paints the arc with. Empty means nothing to paint.
 	 *
@@ -95,6 +122,19 @@ export interface Hazard {
 	 *  whole stretch is as bad as its worst point, reading a trip inside Venus's
 	 *  orbit as sunshade country before perihelion actually makes it so. */
 	bands: readonly HazardBand[];
+}
+
+/** The dust that hits one m² of frontal area over a crossing between two stars. */
+export interface DustImpacts {
+	/** Radius of the largest grain expected to hit, m. The expected number of
+	 *  hits by grains of this size or larger is one. */
+	radiusM: number;
+	/** Mass of that grain, kg. Its kinetic energy at the peak speed is `peak`. */
+	massKg: number;
+	/** True when that grain is larger than the grains that were measured. */
+	extrapolated: boolean;
+	/** Kinetic energy of all the grains that hit, at the speed at each point, J/m². */
+	energyJPerM2: number;
 }
 
 /** A hazard with its chip text already formatted, for the scene to show verbatim. */
@@ -211,6 +251,12 @@ const TRIP_DOSE_SV: Thresholds = {
 	caution: 0.25 / CANCER_RISK_PER_SV,
 	severe: 0.5 / CANCER_RISK_PER_SV
 };
+
+/**
+ * Kinetic energy of the largest grain expected to hit one m², J. Every
+ * crossing meets dust, so every crossing has the mildest tier.
+ */
+const DUST_GRAIN_J: Thresholds = { notice: 0 };
 
 /**
  * Absorbed dose of one belt pass, grays.
@@ -422,6 +468,7 @@ export function routeHazards(
 	route: Route,
 	context: HazardContext
 ): Hazard[] {
+	if (route.interstellar) return crossingHazards(route);
 	const hazards: Hazard[] = [];
 
 	const entry = aeroHazard(route);
@@ -476,7 +523,9 @@ const KIND_RANK: Record<HazardKind, number> = {
 	'signal-lag': 3,
 	aeroassist: 4,
 	radiation: 5,
-	'belt-crossing': 6
+	'belt-crossing': 6,
+	dust: 7,
+	gas: 8
 };
 
 /** Worst first, then by kind, then the one met first. */
@@ -635,6 +684,166 @@ function cruiseDose(samples: readonly Sample[]): {
 		sv += ((samples[i].doseSvPerDay + samples[i - 1].doseSvPerDay) / 2) * days;
 	}
 	return { sv, peakRate, peakJd };
+}
+
+/** Samples across the heliosphere at a solar-system end of a crossing between stars. */
+const HELIOSPHERE_SAMPLES = 32;
+
+/**
+ * What a crossing between two star systems puts the craft through. The
+ * hazards of the Sun are left out. They need an arc about the Sun, and a
+ * crossing between stars has none. The entry at the target stays.
+ */
+function crossingHazards(route: Route): Hazard[] {
+	const hazards: Hazard[] = [];
+	const entry = aeroHazard(route);
+	if (entry) hazards.push(entry);
+	const dose = crossingRadiation(route);
+	if (dose) hazards.push(dose);
+	const lag = crossingLag(route);
+	if (lag) hazards.push(lag);
+	const dust = crossingDust(route);
+	if (dust) hazards.push(dust);
+	const gas = crossingGas(route);
+	if (gas) hazards.push(gas);
+	return sortHazards(hazards);
+}
+
+/** When the craft is `distanceKm` from the origin's star, JD, and the ship time
+ *  until then, days. */
+function crossingAt(route: Route, distanceKm: number): { jd: number; shipDays: number } {
+	const elapsed = crossingElapsed(route, distanceKm)!;
+	return { jd: route.departJd + elapsed.days, shipDays: elapsed.shipDays };
+}
+
+/**
+ * Cosmic rays over a crossing between stars, per ship day, times the boost F(γ)
+ * of the speed at each point. Inside the heliopause at a solar-system end the
+ * rate at rest comes from the fit. Past it the galactic rate holds, also in the
+ * system of the other star.
+ */
+function crossingRadiation(route: Route): Hazard | null {
+	const crossing = route.interstellar!;
+	const totalKm = crossing.distanceKm;
+	const reachKm = Math.min(HELIOPAUSE_AU * AU_KM, totalKm / 2);
+	const outKm = isExtrasolarObjectId(route.departureId) ? 0 : reachKm;
+	const inKm = isExtrasolarObjectId(route.targetId) ? 0 : reachKm;
+	const boostedDays = (fromKm: number, toKm: number) =>
+		crossingIntegral(route, COSMIC_RAY_BOOST, fromKm, toKm)! / SEC_PER_DAY;
+
+	/** The dose across one end's heliosphere. `sunKm` is the distance from the
+	 *  Sun at a point of the crossing. */
+	const heliosphereSv = (fromKm: number, toKm: number, sunKm: (km: number) => number) => {
+		let sv = 0;
+		let previous: { km: number; rate: number } | null = null;
+		for (let i = 0; i <= HELIOSPHERE_SAMPLES; i++) {
+			const km = fromKm + ((toKm - fromKm) * i) / HELIOSPHERE_SAMPLES;
+			const rate = interstellarDoseRateSvPerDay(crossingAt(route, km).jd, sunKm(km) / AU_KM);
+			if (previous) sv += ((rate + previous.rate) / 2) * boostedDays(previous.km, km);
+			previous = { km, rate };
+		}
+		return sv;
+	};
+
+	let sv = 0;
+	if (outKm > 0) sv += heliosphereSv(0, outKm, (km) => km);
+	if (inKm > 0) sv += heliosphereSv(totalKm - inKm, totalKm, (km) => totalKm - km);
+	sv += INTERSTELLAR_DOSE_SV_PER_DAY * boostedDays(outKm, totalKm - inKm);
+
+	const severity = severityFor(sv, TRIP_DOSE_SV, 'rising');
+	if (!severity) return null;
+	return {
+		kind: 'radiation',
+		severity,
+		startJd: route.departJd,
+		endJd: route.arriveJd,
+		peakJd: crossingAt(route, outKm).jd,
+		peak: sv,
+		rateAtPeak: INTERSTELLAR_DOSE_SV_PER_DAY * cosmicRayBoost(Math.acosh(crossing.gamma)),
+		shipTime: true,
+		bands: []
+	};
+}
+
+/** The shield that brings a crossing between two stars down to the ISS
+ *  average, for its top speed. It is not on a hazard row: it covers the cosmic
+ *  rays and the gas, and either row can be below its notice threshold. Null
+ *  for a trip inside one system. */
+export function crossingShield(route: Route): RadiationShield | null {
+	const crossing = route.interstellar;
+	return crossing ? radiationShield(gasKineticMeV(Math.acosh(crossing.gamma))) : null;
+}
+
+/** Speed of light, m/s. */
+const C_M_S = SPEED_OF_LIGHT_KM_S * 1000;
+
+/**
+ * The dust a crossing between two stars sweeps up, per m² of frontal area. The
+ * largest grain is read at the peak speed, and the total at the speed of each
+ * point.
+ */
+function crossingDust(route: Route): Hazard | null {
+	const sweep = crossingSweep(route)!;
+	const radiusM = largestGrainRadiusM(route.interstellar!.distanceKm);
+	const massKg = grainMassKg(radiusM);
+	const energyJ = sweep.peakExcess * massKg * C_M_S * C_M_S;
+	const severity = severityFor(energyJ, DUST_GRAIN_J, 'rising');
+	if (!severity) return null;
+	return {
+		kind: 'dust',
+		severity,
+		startJd: route.departJd,
+		endJd: route.arriveJd,
+		peakJd: crossingAt(route, sweep.peakAtKm).jd,
+		peak: energyJ,
+		bands: [],
+		dust: {
+			radiusM,
+			massKg,
+			extrapolated: radiusM > MEASURED_GRAIN_RADIUS_M,
+			energyJPerM2: DUST_MASS_KG_M3 * C_M_S * C_M_S * sweep.excessKm * 1000
+		}
+	};
+}
+
+/**
+ * The interstellar gas a crossing between two stars sweeps up, behind the hull
+ * of the cosmic ray row. Below about 0.11 c the hull stops it, so a coast at
+ * tens of km/s has no row.
+ */
+function crossingGas(route: Route): Hazard | null {
+	const sv = crossingIntegral(route, GAS_DOSE)!;
+	const severity = severityFor(sv, TRIP_DOSE_SV, 'rising');
+	if (!severity) return null;
+	return {
+		kind: 'gas',
+		severity,
+		startJd: route.departJd,
+		endJd: route.arriveJd,
+		peakJd: crossingAt(route, crossingSweep(route)!.peakAtKm).jd,
+		peak: sv,
+		rateAtPeak: GAS_DOSE.at(Math.acosh(route.interstellar!.gamma)) * SEC_PER_DAY,
+		shipTime: true,
+		bands: []
+	};
+}
+
+/** Light time back to the origin's star. The stars do not move, so at arrival
+ *  it is the distance between them. */
+function crossingLag(route: Route): Hazard | null {
+	const peak = route.interstellar!.distanceKm / SPEED_OF_LIGHT_KM_S;
+	const severity = severityFor(peak, LAG_SECONDS, 'rising');
+	if (!severity) return null;
+	const start = crossingAt(route, mildest(LAG_SECONDS) * SPEED_OF_LIGHT_KM_S);
+	return {
+		kind: 'signal-lag',
+		severity,
+		startJd: start.jd,
+		endJd: route.arriveJd,
+		peakJd: route.arriveJd,
+		peak,
+		bands: []
+	};
 }
 
 /** Bodies with belts worth naming a pass through. Wider than the set with a

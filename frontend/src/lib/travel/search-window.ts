@@ -69,6 +69,14 @@ export function earliestDepartJd(
 	return timeMode === 'depart' && pickedJd != null ? pickedJd : nowJd;
 }
 
+/** The date a trip has to be over by: the chosen date under 'arrive', else none. */
+export function tripDeadlineJd(
+	timeMode: TimeMode,
+	pickedJd: number | null | undefined
+): number | undefined {
+	return timeMode === 'arrive' && pickedJd != null ? pickedJd : undefined;
+}
+
 export interface WindowRequest {
 	origin: TravelBody;
 	target: TravelBody;
@@ -111,7 +119,7 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
 	const primary = outbound ? origin : target;
 	const satellite = outbound ? target : origin;
 	const orbitDays = satellite.elements.n > 0 ? 360 / satellite.elements.n : MAX_SEARCH_DAYS;
-	const deadlineJd = timeMode === 'arrive' && pickedJd != null ? pickedJd : undefined;
+	const deadlineJd = tripDeadlineJd(timeMode, pickedJd);
 	const departFromJd = earliestDepartJd(timeMode, pickedJd, nowJd);
 	// Departures past the deadline are wasted rows, but a deadline inside the
 	// crossing is left to answer itself — the whole axis is one orbit of the
@@ -159,7 +167,7 @@ function orbitChangeWindow(request: WindowRequest): PorkchopOptions | null {
 	if (!ends) return null;
 
 	const departFromJd = earliestDepartJd(timeMode, pickedJd, nowJd);
-	const deadlineJd = timeMode === 'arrive' && pickedJd != null ? pickedJd : undefined;
+	const deadlineJd = tripDeadlineJd(timeMode, pickedJd);
 	const rNear = Math.min(ends.rFromKm, ends.rToKm);
 	const rFar = Math.max(ends.rFromKm, ends.rToKm);
 	// The builder ignores the cruise it is handed on a single burn, so one column
@@ -214,15 +222,14 @@ export function searchWindow(request: WindowRequest): PorkchopOptions | null {
 	let tofMaxDays = crossing * tofMaxFactor;
 	const departFromJd = earliestDepartJd(timeMode, pickedJd, nowJd);
 	let departToJd = departFromJd + span;
-	let deadlineJd: number | undefined;
-	if (timeMode === 'arrive' && pickedJd != null) {
-		deadlineJd = pickedJd;
+	const deadlineJd = tripDeadlineJd(timeMode, pickedJd);
+	if (deadlineJd !== undefined) {
 		// Point the grid at what could still land in time: the latest useful
 		// departure is the deadline minus the fastest cruise worth flying, and a
 		// cruise outlasting the deadline is a row nothing can use. Both apply only
 		// while they leave a grid to search — a deadline too close for the pair is
 		// answered by finding nothing, not by searching nothing.
-		const latestArriveJd = pickedJd - arrivalDays;
+		const latestArriveJd = deadlineJd - arrivalDays;
 		const latestDepartJd = latestArriveJd - tofMinDays;
 		const longestTofDays = latestArriveJd - departFromJd;
 		if (latestDepartJd > departFromJd && longestTofDays > tofMinDays) {

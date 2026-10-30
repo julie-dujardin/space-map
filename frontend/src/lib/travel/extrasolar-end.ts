@@ -22,7 +22,13 @@ import {
 } from '$lib/fetch/extrasolar/ids';
 import { extrasolarLookup, homeRow, systemPrimary } from '$lib/fetch/extrasolar/lookup';
 import { planetCatalogue, type Planet } from '$lib/fetch/extrasolar/planets';
-import { GM_SUN_KM3_S2, type TravelBody, type Vec3 } from '$lib/math/travel';
+import {
+	GM_SUN_KM3_S2,
+	type SystemEnd,
+	type TravelBody,
+	type Vec3,
+	type Well
+} from '$lib/math/travel';
 import { JUPITER_RADIUS_KM, SOLAR_RADIUS_KM } from '$lib/math/units';
 import { sceneToEcliptic } from '$lib/scene/extensions/camera';
 import { hostScene, makePlanetBodies } from '$lib/scene/exoplanets/bodies';
@@ -321,5 +327,23 @@ export function extrasolarTravelBody(end: ExtrasolarEnd): TravelBody | null {
 			? hillRadiusAboutKm(planet.elements, size.muKm3S2, star.muKm3S2 ?? undefined)
 			: undefined,
 		parentId: star.id
+	};
+}
+
+/** The kernel's view of an end on a trip between two systems. `extrasolar` is
+ *  null for an end in the solar system, whose star is taken to be at the
+ *  barycentre. `wells` are the wells of such an end below the Sun (see
+ *  `wellsAbove`). The catalogue has no moons of other stars. */
+export function systemEndOf(
+	body: TravelBody,
+	extrasolar: ExtrasolarEnd | null,
+	wells: readonly Well[]
+): SystemEnd {
+	return {
+		body,
+		starKm: extrasolar ? extrasolar.star.positionKm : [0, 0, 0],
+		starMu: extrasolar ? (extrasolar.star.muKm3S2 ?? undefined) : GM_SUN_KM3_S2,
+		atStar: systemOf(body.id) === body.id,
+		wells: extrasolar ? [] : wells
 	};
 }

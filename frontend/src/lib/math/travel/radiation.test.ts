@@ -13,13 +13,19 @@ import {
 	JPL_SHELL_G_CM2,
 	type BeltProfile,
 	BELT_PROFILES,
+	cosmicRayBoost,
+	cosmicRayBoostFromRest,
 	decimalYearOf,
 	gcrDoseRateSvPerDay,
+	HELIOPAUSE_AU,
+	INTERSTELLAR_DOSE_SV_PER_DAY,
+	interstellarDoseRateSvPerDay,
 	jovianBeltRateGyPerDay,
 	openSkyFraction,
 	radialFactor,
 	solarCycleFactor
 } from './radiation';
+import { DAYS_PER_YEAR, J2000_JD } from '$lib/time/jd';
 
 /**
  * Jupiter, and the two spacecraft that have flown through its belts and had
@@ -79,6 +85,105 @@ describe('cosmic rays in free space', () => {
 
 	it('puts J2000 at the year 2000', () => {
 		expect(decimalYearOf(2451545)).toBeCloseTo(2000, 6);
+	});
+});
+
+describe('cosmic rays between the stars', () => {
+	const minimumJd = J2000_JD + 19.96 * DAYS_PER_YEAR;
+
+	it('holds 1.8 times the rate at 1 au at solar minimum past the heliopause', () => {
+		expect(INTERSTELLAR_DOSE_SV_PER_DAY / gcrDoseRateSvPerDay(minimumJd, 1)).toBeCloseTo(1.8, 9);
+		expect(INTERSTELLAR_DOSE_SV_PER_DAY).toBeCloseTo(4.87e-3, 5);
+		// The Sun does not modulate the flux there.
+		const maximumJd = minimumJd + 5.5 * DAYS_PER_YEAR;
+		expect(interstellarDoseRateSvPerDay(maximumJd, HELIOPAUSE_AU)).toBe(
+			INTERSTELLAR_DOSE_SV_PER_DAY
+		);
+	});
+
+	it('holds the fit at the ends of its range inside the heliopause', () => {
+		expect(interstellarDoseRateSvPerDay(minimumJd, 60)).toBe(gcrDoseRateSvPerDay(minimumJd, 9.5));
+		expect(interstellarDoseRateSvPerDay(minimumJd, 0.3)).toBe(gcrDoseRateSvPerDay(minimumJd, 1));
+	});
+});
+
+describe('the boost of the cosmic ray dose on a fast craft', () => {
+	const TABLE: readonly (readonly [number, number])[] = [
+		[1, 1],
+		[1.02, 1.161],
+		[1.048, 1.332],
+		[1.1, 1.551],
+		[1.155, 1.662],
+		[1.25, 1.807],
+		[1.4, 2.093],
+		[1.667, 2.68],
+		[2.0, 3.435],
+		[2.294, 4.105],
+		[3.2, 6.177],
+		[5.0, 10.47],
+		[7.089, 15.69],
+		[10.0, 23.36],
+		[15.0, 37.66],
+		[22.4, 60.55],
+		[30.0, 85.47]
+	];
+	const boostAt = (gamma: number) => cosmicRayBoost(Math.acosh(gamma));
+
+	/** Rapidity at the end of a burn at `g` gravities over half of `ly`, flat out. */
+	function halfwayRapidity(g: number, ly: number): number {
+		const accel = g * 9.80665;
+		const halfM = (ly * 9.4607304725808e15) / 2;
+		return Math.acosh(1 + (accel * halfM) / 299_792_458 ** 2);
+	}
+
+	it('passes through the points of the table', () => {
+		for (const [gamma, boost] of TABLE) expect(boostAt(gamma)).toBeCloseTo(boost, 9);
+	});
+
+	it('is linear in ln F against the rapidity between the points', () => {
+		for (let i = 0; i + 1 < TABLE.length; i++) {
+			const [lowGamma, lowBoost] = TABLE[i];
+			const [highGamma, highBoost] = TABLE[i + 1];
+			const middle = (Math.acosh(lowGamma) + Math.acosh(highGamma)) / 2;
+			expect(cosmicRayBoost(middle)).toBeCloseTo(Math.sqrt(lowBoost * highBoost), 9);
+		}
+		// The peak of Nostalgia for Infinity, 1 g to Proxima.
+		expect(boostAt(3.193627)).toBeCloseTo(6.1623, 4);
+	});
+
+	it('continues the last slope past γ = 30', () => {
+		expect(boostAt(40)).toBeCloseTo(120.0, 3);
+	});
+
+	it('sums to the same total as a fine trapezoid of itself', () => {
+		for (const phi of [1e-4, 0.1, 1.1456, 1.8288, 3.0144, 4.5]) {
+			const steps = 20_000;
+			let sum = 0;
+			for (let i = 0; i < steps; i++) {
+				sum += (cosmicRayBoost((phi * i) / steps) + cosmicRayBoost((phi * (i + 1)) / steps)) / 2;
+			}
+			expect(cosmicRayBoostFromRest(phi) / ((sum * phi) / steps)).toBeCloseTo(1, 7);
+		}
+	});
+
+	it('agrees with the research over a burn of each reference trip', () => {
+		// The research integrates a table of 60 points. This one has 17, so it is up to 0.3% higher.
+		const cases = [
+			{ g: 1, ly: 4.25, research: 4.901196 },
+			{ g: 1.5, ly: 11.9, research: 20.414341 },
+			{ g: 1 / 3, ly: 4.25, research: 1.97589 }
+		];
+		for (const { g, ly, research } of cases) {
+			const ratio = cosmicRayBoostFromRest(halfwayRapidity(g, ly)) / research;
+			expect(Math.abs(ratio - 1)).toBeLessThan(0.005);
+		}
+	});
+
+	it('is about one at the heliopause on a 1 g burn, and at the speed of a coast', () => {
+		// 120 au at 1 g is about 0.06 c.
+		const heliopauseGamma = 1 + (9.80665 * 120 * 1.495978707e11) / 299_792_458 ** 2;
+		expect(boostAt(heliopauseGamma)).toBeCloseTo(1.048, 3);
+		expect(cosmicRayBoost(Math.atanh(50 / 299_792.458))).toBeCloseTo(1.0001, 4);
 	});
 });
 

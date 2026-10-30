@@ -9,6 +9,7 @@ import ShieldIcon from '@lucide/svelte/icons/shield';
 import RadiationIcon from '@lucide/svelte/icons/radiation';
 import OrbitIcon from '@lucide/svelte/icons/orbit';
 import DnaOffIcon from '@lucide/svelte/icons/dna-off';
+import SparklesIcon from '@lucide/svelte/icons/sparkles';
 import { lethalDoseFraction } from '$lib/math/travel';
 import type { Hazard, HazardKind, HazardSeverity } from '$lib/travel/hazards';
 
@@ -24,7 +25,10 @@ export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
 	radiation: RadiationIcon,
 	// Orbit icon, not the radiation trefoil: a belt is a ring around a planet you
 	// chose to pass, which the trefoil would just repeat from the row above.
-	'belt-crossing': OrbitIcon
+	'belt-crossing': OrbitIcon,
+	dust: SparklesIcon,
+	// Placeholder until the panel layer writes the gas row.
+	gas: RadiationIcon
 };
 
 /** Past which a belt pass stops being a crossing to survive and becomes a dose

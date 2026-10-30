@@ -182,6 +182,47 @@ RADIATION_SOURCES: dict[str, RadiationReference] = {
         "term that makes the outer system harsher than the inner one",
         "radial gradient",
     ),
+    "mewaldt_2005": RadiationReference(
+        "Mewaldt et al. 2005 (Proceedings of the 29th International Cosmic Ray "
+        "Conference, Pune, 2, 101)",
+        "https://izw1.caltech.edu/ACE/ASC/DATA/bibliography/ICRC2005/"
+        "usa-mewaldt-RA-abs1-sh35-oral.pdf",
+        "Cosmic ray dose equivalent in free space at three levels of solar "
+        "modulation, which extrapolated to no modulation gives the dose past "
+        "the heliopause",
+        "interstellar dose",
+    ),
+    "corti_2016": RadiationReference(
+        "Corti et al. 2016 (The Astrophysical Journal 829, 8)",
+        "https://doi.org/10.3847/0004-637X/829/1/8",
+        "The local interstellar spectra of protons and helium from Voyager 1 "
+        "and AMS-02, and how much the Sun takes out of them at solar minimum, "
+        "which bounds how much harsher the dose is outside the heliosphere",
+        "interstellar spectra",
+    ),
+    "cummings_2016": RadiationReference(
+        "Cummings et al. 2016 (The Astrophysical Journal 831, 18)",
+        "https://doi.org/10.3847/0004-637X/831/1/18",
+        "Voyager 1's finding that cosmic ray intensity does not change with "
+        "distance past the heliopause, so one dose rate holds for the whole "
+        "crossing between two stars",
+        "no gradient past the heliopause",
+    ),
+    "sato_2009": RadiationReference(
+        "Sato et al. 2009 (Physics in Medicine and Biology 54, 1997)",
+        "https://doi.org/10.1088/0031-9155/54/7/009",
+        "Dose per proton against energy, as a Q(L)-based dose equivalent, which "
+        "weighs the cosmic rays that a fast craft meets from ahead at higher "
+        "energies",
+        "dose per proton",
+    ),
+    "sato_2010": RadiationReference(
+        "Sato, Endo & Niita 2010 (Physics in Medicine and Biology 55, 2235)",
+        "https://doi.org/10.1088/0031-9155/55/8/008",
+        "Dose per helium nucleus against energy, the same quantity for the helium "
+        "of the cosmic rays",
+        "dose per helium nucleus",
+    ),
     "smart_shea_2005": RadiationReference(
         "Smart & Shea 2005 (Advances in Space Research 36, 2012)",
         "https://doi.org/10.1016/j.asr.2004.09.015",

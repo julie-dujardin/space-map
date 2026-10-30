@@ -178,7 +178,7 @@
 					}
 	]);
 
-	let delay = $derived(signalDelaySeconds(origin, target, route.arriveJd));
+	let delay = $derived(signalDelaySeconds(origin, target, route));
 
 	// A launcher's Δv ends at injection — arrival belongs to whatever it threw.
 	// An unpublished engine has no Δv to subtract either, a different silence
