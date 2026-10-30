@@ -43,7 +43,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 		root: new Group(),
 		group,
 		label,
-		labelHalo: { style: {} },
+		labelHalo: { style: {}, dataset: {} },
 		radiusScene: 1,
 		mesh: new Mesh(undefined, new ShaderMaterial({ uniforms: { uFade: { value: 1 } } })),
 		starPoint: starPoint
@@ -72,6 +72,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 			systemShareOf: () => 1,
 			starShareOf: () => 1,
 			systemShares: new Map(),
+			isPinned: () => false,
 			planetarySystemShare: () => 0,
 			focusedSystemId: null,
 			getPlanetVisibility: () => VISIBILITY.FULL,
@@ -88,7 +89,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 		bo,
 		ctx,
 		fades,
-		frame(radiusPx: number, dtMs: number) {
+		frame(radiusPx: number, dtMs: number, focusedId = 'body') {
 			bo.body.position![2] = -500 / radiusPx;
 			fades.beginFrame(dtMs);
 			updateBodyVisibility(
@@ -96,7 +97,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 				camera,
 				ctx,
 				[0, 0, 0],
-				'body',
+				focusedId,
 				false,
 				new Set(),
 				0,
@@ -168,6 +169,26 @@ describe('close-range halos and labels', () => {
 		frame(20, 100);
 		expect(bo.haloShare).toBe(1);
 		expect(bo.label!.visible).toBe(true);
+	});
+});
+
+describe('a star of another system', () => {
+	it('keeps its name in the sky of a system only while it is focused or pinned', () => {
+		const { bo, ctx, frame } = scene(ObjectType.EXTRASOLAR);
+		const vis = ctx.visibility as unknown as {
+			isPinned: () => boolean;
+			planetarySystemShare: () => number;
+		};
+		vis.planetarySystemShare = () => 1;
+		frame(5, 16, 'other');
+		expect(bo.group.visible).toBe(false);
+		vis.isPinned = () => true;
+		frame(5, 16, 'other');
+		expect(bo.group.visible).toBe(true);
+		expect(bo.label!.element.style.opacity).toBe('');
+		vis.isPinned = () => false;
+		frame(5, 16);
+		expect(bo.group.visible).toBe(true);
 	});
 });
 

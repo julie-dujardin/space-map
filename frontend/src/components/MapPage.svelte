@@ -388,6 +388,12 @@
 	// A star has a page here, so a click on one takes the focus. Not on a trip,
 	// which would take the star as its end.
 	$effect(() => map.setStarSelectEnabled(!isNav));
+	// The Sun's name stands for a solar system end from outside. A star or a
+	// planet of another system has only its own.
+	$effect(() => {
+		const ends = [navFrom, navTo].filter((id) => id !== null);
+		map.setTripPins(ends.filter(isExtrasolarObjectId));
+	});
 
 	// Group route wins over body focus: the camera may be parked on the anchor
 	// body. A trip owns the sidebar outright: the destination is focused, but

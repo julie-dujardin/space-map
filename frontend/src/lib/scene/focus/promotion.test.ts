@@ -289,6 +289,14 @@ describe('the bodies of a drawn planetary system', () => {
 		};
 	}
 
+	it('keeps a pinned planet that no drawn system holds', () => {
+		const h = harness();
+		h.registry.setPinned([B]);
+		expect(h.built()).toEqual(new Set([B]));
+		h.registry.syncSystemBodies([]);
+		expect(h.built()).toEqual(new Set([B]));
+	});
+
 	it('builds them, and takes down the ones that left', () => {
 		const h = harness();
 		h.registry.syncSystemBodies([...h.bodies.values()]);

@@ -328,9 +328,13 @@ export class VisibilityController {
 	}
 
 	/** The share of the planetary system that `body` is in: its star's for a
-	 *  planet of another star, else the Sun's. */
+	 *  planet of another star, else the Sun's. A pinned planet of another star
+	 *  shows without its system, as a focused star does: from outside, no other
+	 *  name marks it. */
 	systemShareOf(body: PositionedBody): number {
-		return isExoplanet(body) ? (this.systemShares.get(body.data.parentId) ?? 0) : this.systemShare;
+		if (!isExoplanet(body)) return this.systemShare;
+		const share = this.systemShares.get(body.data.parentId) ?? 0;
+		return this.pinned.has(body.data.id) ? Math.max(share, this.exactStarShare) : share;
 	}
 
 	/** The share of a star of another system that its halo and name show with.
@@ -351,7 +355,7 @@ export class VisibilityController {
 	/** {@link ratioVisibility}, except that a pinned body is never let drop out:
 	 *  neither its distance nor a hidden layer takes its halo and orbit away. */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
-		// Only the star is left: a pin does not keep a body either.
+		// Only the star is left: a pin does not keep a body of its system either.
 		if (this.systemShareOf(body) === 0 && body.data.objectType !== ObjectType.STAR) {
 			return VISIBILITY.HIDE;
 		}

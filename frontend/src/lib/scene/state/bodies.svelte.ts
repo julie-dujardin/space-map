@@ -165,6 +165,7 @@ export class BodyIndex {
 			this.extrasolar.set(id, body);
 		}
 		this.trimExtrasolar();
+		this.notifyBodiesAdded();
 	}
 
 	/** Keep these extrasolar objects past the LRU: the hosts of the planets drawn. */
@@ -191,7 +192,7 @@ export class BodyIndex {
 			adoptRow(held, body);
 			held.exoplanet = body.exoplanet;
 		}
-		this.dataVersion++;
+		this.notifyBodiesAdded();
 	}
 
 	/** Resolve the planet ID `aliasId` to the live planet `liveId`. */

@@ -1451,6 +1451,8 @@ export class SpaceMap {
 		hazards?: readonly LabelledHazard[],
 		steps?: readonly PathStep[]
 	): void;
+	// @internal
+	setTripPins(ids: readonly string[]): void;
 	// (undocumented)
 	setUserLocation(latitude: number, longitude: number): void;
 	// @internal

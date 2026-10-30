@@ -153,6 +153,27 @@ describe("another star's planetary system", () => {
 		expect(vname(vis.getPlanetVisibility(planet, 0.1 * AU_SCALE))).toBe('HIDE');
 	});
 
+	it('shows a pinned planet of another star without its system, as a focused star', () => {
+		const { vis } = buildScene();
+		const planet = mkBody({
+			id: 'x-27424668-b-1',
+			objectType: ObjectType.EXOPLANET,
+			parentId: 'x-27424668',
+			a: 0.0485
+		});
+		const far = 2e5 * AU_SCALE;
+		vis.exactStarShare = 0.5;
+		vis.setPinned([planet.data.id]);
+		expect(vis.systemShareOf(planet)).toBe(0.5);
+		expect(vname(vis.getPlanetVisibility(planet, far))).toBe('FULL');
+		// Its system can show it more than the stars do.
+		vis.systemShares = new Map([['x-27424668', 0.75]]);
+		expect(vis.systemShareOf(planet)).toBe(0.75);
+		vis.systemShares = new Map();
+		vis.setPinned([]);
+		expect(vname(vis.getPlanetVisibility(planet, far))).toBe('HIDE');
+	});
+
 	it('takes the distance tiers of a planet of the Sun', () => {
 		const { vis } = buildScene();
 		const a = 0.0485;

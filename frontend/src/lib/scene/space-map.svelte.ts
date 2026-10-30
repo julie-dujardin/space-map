@@ -374,6 +374,7 @@ export class SpaceMap {
 	/** Whether a click on a star takes the focus. A host's map has no page to
 	 *  open for a star, so it is off unless the app turns it on. */
 	private starSelectEnabled = false;
+	private tripPins: readonly string[] = [];
 	private limits: CameraLimits = {};
 	private initialFocusPending = true;
 	private pendingFocusId: string | null = null;
@@ -654,6 +655,7 @@ export class SpaceMap {
 		this.renderer = renderer;
 		this.applyGestures();
 		this.applyLimits();
+		renderer.setPinnedBodies(this.tripPins);
 		if (this.pendingFocusId !== null) {
 			renderer.focusOnBody(this.pendingFocusId);
 			this.pendingFocusId = null;
@@ -1216,6 +1218,13 @@ export class SpaceMap {
 	setStarSelectEnabled(enabled: boolean): void {
 		this.starSelectEnabled = enabled;
 		this.renderer?.setStarSelectEnabled(enabled);
+	}
+
+	/** @internal The bodies that the trip holds pinned. The page sets them
+	 *  before the renderer can be up. */
+	setTripPins(ids: readonly string[]): void {
+		this.tripPins = ids;
+		this.renderer?.setPinnedBodies(ids);
 	}
 
 	/** A wheel the page is to keep never reaches the orbit controls. It is not

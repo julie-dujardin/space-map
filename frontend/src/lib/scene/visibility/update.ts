@@ -363,6 +363,8 @@ export function updateBodyVisibility(
 		let isClose: boolean;
 		const isFocused = body.data.id === focusedBodyId;
 		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
+		// A star that the reader asked for keeps its halo and name in any sky.
+		const isHeldStar = isFocused || ctx.visibility.isPinned(body.data.id);
 		let zoneShare = 1;
 		let labelThresholdShare = 1;
 		let orbitThresholdShare = 1;
@@ -374,10 +376,10 @@ export function updateBodyVisibility(
 			// A host that is not the focus shows with its planetary system. Inside
 			// a system the other stars are its sky, with no halo or name, as the
 			// stars are in the solar system.
-			zoneShare = isFocused
+			zoneShare = isHeldStar
 				? 1
 				: (ctx.visibility.systemShares.get(body.data.id) ?? 1 - insideShare);
-			const visible = ctx.visibility.starShareOf(body.data.id, isFocused) > 0 && zoneShare > 0;
+			const visible = ctx.visibility.starShareOf(body.data.id, isHeldStar) > 0 && zoneShare > 0;
 			group.visible = visible;
 			isClose = false;
 			showLabel = visible;
@@ -534,7 +536,7 @@ export function updateBodyVisibility(
 		const labelShare = bo.starPoint
 			? 1
 			: isExtrasolar(body)
-				? ctx.visibility.starShareOf(body.data.id, isFocused) * zoneShare
+				? ctx.visibility.starShareOf(body.data.id, isHeldStar) * zoneShare
 				: ctx.visibility.systemShareOf(body) * zoneShare * labelThresholdShare;
 		if (bo.label) fadeLabel(bo.label, labelShare);
 		// The dot sits in the halo and fades with it.

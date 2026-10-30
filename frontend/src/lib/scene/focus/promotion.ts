@@ -220,14 +220,16 @@ export class PromotionRegistry {
 
 	/** Build the bodies of the drawn planetary systems, and take down the
 	 *  others built for a system. A focused body stays until it is cleared,
-	 *  as a focused star does. */
+	 *  as a focused star does, and a pinned body stays while its pin holds. */
 	syncSystemBodies(bodies: readonly PositionedBody[]): void {
 		const focusedId = this.deps.getFocusedId();
 		if (focusedId !== undefined && this.systemPromoted.delete(focusedId)) {
 			this.userPromoted.add(focusedId);
 		}
 		const wanted = new Set(bodies.map((b) => b.data.id));
-		const dropped = [...this.systemPromoted].filter((id) => !wanted.has(id));
+		const dropped = [...this.systemPromoted].filter(
+			(id) => !wanted.has(id) && !this.pinned.has(id)
+		);
 		this.tearDownBodies(dropped, this.systemPromoted);
 		let built = false;
 		for (const body of bodies) {

@@ -142,6 +142,23 @@ describe('BodyIndex, the stars and planets of other systems', () => {
 		expect(bodies.getBody(star(0).data.id)).toBeUndefined();
 	});
 
+	it('announces the stars and the planets it adds, so that a pin can build them', () => {
+		const bodies = new BodyIndex();
+		let added = 0;
+		bodies.onBodiesAdded(() => added++);
+		bodies.addExtrasolar(star(0));
+		expect(added).toBe(1);
+		bodies.addExoplanets([
+			mkBody({
+				id: 'x-27424668-b-1',
+				orbitalSource: OrbitalSource.UNKNOWN,
+				objectType: ObjectType.EXOPLANET,
+				parentId: 'x-27424668'
+			})
+		]);
+		expect(added).toBe(2);
+	});
+
 	it('holds planets apart from bodiesById, and refreshes one it holds', () => {
 		const bodies = new BodyIndex();
 		const planet = mkBody({
