@@ -60,6 +60,7 @@ from space_map_data.extrasolar.tables import (
     POINT_SOURCE,
     STAR_SYSTEMS,
     TABLES,
+    WIKIDATA_CATALOGUE_NUMBER,
 )
 from space_map_data.ingest import __main__ as ingest_cli
 from space_map_data.utils.paths import (
@@ -262,7 +263,8 @@ class TestTables:
     def test_the_sources_feed_their_groups(self):
         for table in (*TABLES, METADATA):
             for group in table.groups:
-                assert set(group.sources) <= {
+                places = {demotion.place for demotion in group.demoted}
+                assert set(group.sources) - places <= {
                     GAIA_DR3.name,
                     GAIA_DR3_NAMED.name,
                     HIPPARCOS.name,
@@ -281,6 +283,7 @@ class TestTables:
             STAR_SYSTEMS,
         )
         # A planet host shows the name that its planets' designations use.
+        # A catalogue number of Wikidata comes just before the Gaia id.
         assert METADATA.groups[0].sources == (
             IAU_WGSN.name,
             *(source.name for source in EXOPLANET_SOURCES),
@@ -289,6 +292,7 @@ class TestTables:
             SIMBAD.name,
             HIPPARCOS.name,
             HIPPARCOS_1997.name,
+            WIKIDATA_CATALOGUE_NUMBER,
             GAIA_DR3.name,
             GAIA_DR3_NAMED.name,
         )
@@ -964,15 +968,14 @@ class TestWikidata:
             ("Gliese 105", "Gliese 105"),
             ("CD Ceti", "CD Ceti"),
             ("Gaia BH1", "Gaia BH1"),
-            ("HD 19121", None),
-            ("HR 926", None),
-            ("HIP 17453", None),
-            ("BD +20°307", None),
-            ("BD+21 255", None),
-            ("2MASS J03140344+1603056", None),
-            ("2MASSW J0208183+254253", None),
-            ("TYC 1234-567-1", None),
+            ("HD 19121", "HD 19121"),
+            ("HR 926", "HR 926"),
+            ("HIP 17453", "HIP 17453"),
+            ("BD +20°307", "BD +20°307"),
+            ("2MASS 0532+8246", "2MASS 0532+8246"),
+            ("TYC 1234-567-1", "TYC 1234-567-1"),
             ("Gaia DR3 4472832130942575872", None),
+            ("Gaia EDR3 4472832130942575872", None),
             ("V* R Leo", None),
             ("** STF 123", None),
             (None, None),
@@ -980,6 +983,24 @@ class TestWikidata:
     )
     def test_label_name(self, label, expected):
         assert wikidata.label_name(item("Q1", label)) == expected
+
+    @pytest.mark.parametrize(
+        ("label", "expected"),
+        [
+            ("NAME Barnard's Star", "Barnard's Star"),
+            ("Gliese 105", "Gliese 105"),
+            ("Gaia BH1", "Gaia BH1"),
+            ("HD 19121", None),
+            ("HR 926", None),
+            ("BD +20°307", None),
+            ("2MASS J03140344+1603056", None),
+            ("2MASSW J0208183+254253", None),
+            ("Gaia DR3 4472832130942575872", None),
+            ("V* R Leo", None),
+        ],
+    )
+    def test_a_catalogue_number_is_no_name_in_a_language(self, label, expected):
+        assert wikidata.usable_name(label) == expected
 
     def test_the_multilingual_label_stands_in_for_english(self):
         named = dataclasses.replace(item("Q1", None), label_mul="Wolf 359")

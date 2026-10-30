@@ -793,6 +793,37 @@ class TestClassOrder:
         assert self.merged([("simbad", "star")]) == ("star", "simbad")
 
 
+class TestNameOrder:
+    """The IAU name, the exoplanet catalogues, then a Wikidata label. A
+    Wikidata label that is a catalogue number beats only the Gaia DR3 id."""
+
+    @staticmethod
+    def merged(rows: list[tuple[str, str]]) -> tuple[str, str]:
+        table = pa.table(
+            {
+                "id": pa.array([1] * len(rows), pa.int64()),
+                "source": [source for source, _ in rows],
+                "name": [name for _, name in rows],
+                "class": pa.nulls(len(rows), pa.string()),
+            }
+        )
+        (row,) = merge_by_source_order(METADATA, table).to_pylist()
+        return row["name"], row["name_source"]
+
+    def test_a_planet_host_keeps_the_name_of_its_catalogues(self):
+        rows = [("wikidata", "V471 Tauri"), ("nasa-exoplanet-archive", "V471 Tau")]
+        assert self.merged(rows) == ("V471 Tau", "nasa-exoplanet-archive")
+        rows = [("wikidata", "68 Cas"), ("simbad", "HD 4142")]
+        assert self.merged(rows) == ("68 Cas", "wikidata")
+
+    def test_a_catalogue_number_of_wikidata_beats_only_the_gaia_id(self):
+        gaia = ("gaia-dr3", "Gaia DR3 4472832130942575872")
+        for label in ("HD 33643", "BD+47 612", "2MASS J05321406+8246044"):
+            rows = [("wikidata", label), ("hipparcos-2007", "HIP 24323"), gaia]
+            assert self.merged(rows) == ("HIP 24323", "hipparcos-2007")
+            assert self.merged([("wikidata", label), gaia]) == (label, "wikidata")
+
+
 def system_primary_cell(row: dict) -> int:
     return int(sky.cells(np.array([row["ra"]]), np.array([row["dec"]]))[0])
 

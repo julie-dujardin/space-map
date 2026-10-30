@@ -13,7 +13,8 @@ item with the most articles keeps it, then the lowest QID. Readers look for
 that one. An item about a star system reaches the system (`to_systems`).
 
 Its English label (else its multilingual one) names the star unless it is a
-bare catalogue number or a SIMBAD identifier.
+Gaia id or a SIMBAD identifier. A label that is a catalogue number names it
+only where no other source but Gaia does (`METADATA`).
 """
 
 import logging
@@ -34,7 +35,7 @@ from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.sources.hipparcos import GAIA_DR3, HD
 from space_map_data.extrasolar.sources.names import HIP
 from space_map_data.extrasolar.sources.simbad import SimbadList
-from space_map_data.extrasolar.tables import CROSS_ID
+from space_map_data.extrasolar.tables import CATALOGUE_NUMBER, CROSS_ID
 
 logger = logging.getLogger(__name__)
 
@@ -44,30 +45,36 @@ WIKIDATA = Source(
 
 # The SIMBAD prefix of a name; the rest is the name.
 _SIMBAD_NAME = "NAME "
-# Other SIMBAD identifiers, in SIMBAD's own short forms.
+# Other SIMBAD identifiers, in SIMBAD's own short forms. They are SIMBAD's
+# syntax, not a name.
 _SIMBAD_IDENTIFIER = re.compile(r"^(V\*|\*\*|\*|Cl\*|\[)")
-# A catalogue number names nothing that the Hipparcos designation or the Gaia
-# id does not. Other catalogues (Gliese, Wolf, Kepler, variable stars) give
-# the names that people use.
-_CATALOGUE_NUMBER = re.compile(
-    r"^(HR|HDE?|HIP|HIC|SAO|PPM|BD|CD|CPD|TYC|UCAC\d|GSC\d?|IRAS|2MASS\w?"
-    r"|Gaia E?DR\d)\s*[-+]?[\dJ]"
-)
+# A Gaia id is the name of last resort, and the Gaia source gives it.
+_GAIA_ID = re.compile(r"^Gaia E?DR\d\s*\d")
+_CATALOGUE_NUMBER = re.compile(CATALOGUE_NUMBER)
 
 
-def usable_name(label: str | None) -> str | None:
-    """The label as a name, or None for a catalogue number."""
+def _designation(label: str | None) -> str | None:
+    """The label without its SIMBAD prefix, or None for a Gaia id or a SIMBAD
+    identifier."""
     if label is None:
         return None
     label = label.removeprefix(_SIMBAD_NAME).strip()
-    if not label or _SIMBAD_IDENTIFIER.match(label) or _CATALOGUE_NUMBER.match(label):
+    if not label or _SIMBAD_IDENTIFIER.match(label) or _GAIA_ID.match(label):
         return None
     return label
 
 
+def usable_name(label: str | None) -> str | None:
+    """The label as a name, or None for a catalogue number, a Gaia id or a
+    SIMBAD identifier."""
+    name = _designation(label)
+    return None if name is None or _CATALOGUE_NUMBER.match(name) else name
+
+
 def label_name(item: StarItem) -> str | None:
-    """The name that the item gives its star, or None."""
-    return usable_name(item.label_en or item.label_mul)
+    """The name that the item gives its star, a catalogue number included,
+    or None."""
+    return _designation(item.label_en or item.label_mul)
 
 
 def hd_positions(hipparcos_rows: pa.Table) -> dict[str, tuple[float, float]]:

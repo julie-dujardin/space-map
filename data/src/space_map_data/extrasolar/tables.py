@@ -25,6 +25,19 @@ SOURCE_COLUMN = "source"
 
 
 @dataclass(frozen=True)
+class Demotion:
+    """The values of one source that rank at another place in the source
+    order of a group, because they say less than its other values."""
+
+    source: str
+    # An RE2 pattern that these values of the group's first column match.
+    pattern: str
+    # The name in the group's sources at whose place they rank. No source
+    # has this name.
+    place: str
+
+
+@dataclass(frozen=True)
 class ColumnGroup:
     name: str
     columns: tuple[pa.Field, ...]
@@ -33,6 +46,7 @@ class ColumnGroup:
     # Values of the first column that say nothing specific. They rank after
     # every other value, then by source order.
     generic: frozenset[str] = frozenset()
+    demoted: tuple[Demotion, ...] = ()
 
     @property
     def source_column(self) -> str:
@@ -124,13 +138,26 @@ EXOPLANET_SOURCES = (
     "open-exoplanet-catalogue",
 )
 
-# The name is the IAU proper name. Else a planet host takes the name of its
-# exoplanet catalogues, because its planets' designations come from them.
-# Other stars take the Wikidata label, else a Bayer or Flamsteed designation,
-# a WR number, a GCVS name, an HD or HIP number, a SIMBAD NAME, SIMBAD's main
-# identifier or the Gaia DR3 number, in that order. Each source gives its best
-# one. SIMBAD comes before Hipparcos because it knows more designations. A
-# resolved system takes the Wikidata label, else the name of its trees.
+# A catalogue number names nothing that the Hipparcos designation or the Gaia
+# id does not. Other catalogues (Gliese, Wolf, Kepler, variable stars) give
+# the names that people use. An RE2 and Python pattern.
+CATALOGUE_NUMBER = (
+    r"^(HR|HDE?|HIP|HIC|SAO|PPM|BD|CD|CPD|TYC|UCAC\d|GSC\d?|IRAS|2MASS\w?)"
+    r"\s*[-+]?[\dJ]"
+)
+# The place of a Wikidata label that is a catalogue number.
+WIKIDATA_CATALOGUE_NUMBER = "wikidata-catalogue-number"
+
+# The name is the IAU proper name, because the IAU names the stars. Else a
+# planet host takes the name of its exoplanet catalogues, because its
+# planets' designations come from them. Other stars take the Wikidata label,
+# else a Bayer or Flamsteed designation, a WR number, a GCVS name, an HD or
+# HIP number, a SIMBAD NAME, SIMBAD's main identifier, a Wikidata label that
+# is a catalogue number or the Gaia DR3 number, in that order. Each source
+# gives its best one. SIMBAD comes before Hipparcos because it knows more
+# designations. A catalogue number from Wikidata ("2MASS J0532+8246") beats
+# only the Gaia DR3 number, which is the last resort. A resolved system takes
+# the Wikidata label, else the name of its trees.
 # A node of a star system is a "binary star" or a "multiple star", also when
 # a catalogue gives its point another class. Its members tell what its
 # objects are. Else the class is a specific class of any source: white dwarf,
@@ -150,8 +177,12 @@ METADATA = TableDef(
                 "simbad",
                 "hipparcos-2007",
                 "hipparcos-1997",
+                WIKIDATA_CATALOGUE_NUMBER,
                 "gaia-dr3",
                 "gaia-dr3-named",
+            ),
+            demoted=(
+                Demotion("wikidata", CATALOGUE_NUMBER, WIKIDATA_CATALOGUE_NUMBER),
             ),
         ),
         ColumnGroup(
@@ -829,7 +860,8 @@ def merge_by_source_order(table: TableDef, rows: pa.Table) -> pa.Table:
 
     `rows` has the columns `id`, `source` and every group column of `table`
     (null where a source has no value). A group's generic values rank after
-    its other values. An ID with no value in any group gets no row. The
+    its other values, and its demoted values at their place. An ID with no
+    value in any group gets no row. The
     result is sorted by cell, then ID, and has the group columns and source
     columns of `table.schema`; computed columns are left out.
     """
@@ -852,6 +884,14 @@ def merge_by_source_order(table: TableDef, rows: pa.Table) -> pa.Table:
         rank = np.full(rows.num_rows, last, np.int64)
         for position, name in enumerate(group.sources):
             rank[pc.equal(sources, name).to_numpy(zero_copy_only=False)] = position
+        for demotion in group.demoted:
+            matches = pc.and_(
+                pc.equal(sources, demotion.source),
+                pc.match_substring_regex(rows[group.names[0]], demotion.pattern),
+            ).fill_null(False)
+            rank[matches.to_numpy(zero_copy_only=False)] = group.sources.index(
+                demotion.place
+            )
         has = np.zeros(rows.num_rows, bool)
         for name in group.names:
             has |= rows[name].is_valid().to_numpy(zero_copy_only=False)
