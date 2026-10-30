@@ -134,7 +134,7 @@ TO_NAMED = "b: to the node that its ids name"
 COMPONENT = "b: its label names a component, so it stays on its star"
 TAKEN_MIXED = "b: the node has an item, so the mixed item stays on its star"
 TAKEN_SYSTEM = "b: the node has an item, so the system item is left off"
-ALONE_SYSTEM = "c: a system item on a star in no system is left off"
+ALONE_SYSTEM = "c: a system item on a star in no system stays on it"
 ALONE_MIXED = "d: a mixed item on a star in no system stays on it"
 INNER = "e: on an inner pair that its ids name, below a root with no item"
 CASES = (
@@ -174,8 +174,8 @@ def place(reaches: Iterable[Reach]) -> list[Placed]:
     else the best of the items from below. These items stay where they are:
     - the winner of a point of several stars; the loser goes to the root;
     - an item whose label names a component, when it wins its star;
-    - on a star in no system, a mixed item that wins it. A system item there
-      is left off.
+    - on a star in no system, a mixed or system item that wins it, so the
+      item of a system that we do not hold (Mira) stays until we hold it.
     An item that loses an inner node goes to the root. One that finds its
     node taken stays on its star when it is mixed and the star is free.
     """
@@ -208,10 +208,10 @@ def place(reaches: Iterable[Reach]) -> list[Placed]:
             put(reach, 0 if won else None, COMPONENT if won else OUTRANKED)
         elif reach.root:
             up[reach.root].append(reach)
-        elif kind(reach.item) == SYSTEM:
-            put(reach, None, ALONE_SYSTEM)
+        elif not won:
+            put(reach, None, OUTRANKED)
         else:
-            put(reach, 0 if won else None, ALONE_MIXED if won else OUTRANKED)
+            put(reach, 0, ALONE_SYSTEM if kind(reach.item) == SYSTEM else ALONE_MIXED)
 
     for found in on_target.values():
         found.sort(key=_rank)

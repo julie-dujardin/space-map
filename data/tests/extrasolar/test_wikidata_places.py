@@ -350,13 +350,28 @@ class TestSystemItemsGoToTheirNode:
 
 
 class TestStarsInNoSystem:
-    """(c) A system item on a star in no system is left off; (d) a mixed one
-    stays."""
+    """(c) A system item on a star in no system stays on it until we hold
+    its system; (d) a mixed one stays too."""
 
     def test_mira(self):
+        """Mira is typed only binary star, and we hold no Mira B."""
         mira = item("Q12965", "Mira", 12, systems=(BINARY,))
         assert where(Reach(mira, 21312666, HIP)) == {
-            "Q12965": (None, wikidata.ALONE_SYSTEM)
+            "Q12965": (0, wikidata.ALONE_SYSTEM)
+        }
+
+    def test_a_system_item_that_loses_the_star(self):
+        star = item("Q1", "Mira A", 1, (STAR_CLASS,))
+        mira = item("Q12965", "Mira", 12, systems=(BINARY,))
+        assert where(Reach(star, 21312666, HIP), Reach(mira, 21312666, GAIA)) == {
+            "Q1": (0, wikidata.WINS),
+            "Q12965": (None, wikidata.OUTRANKED),
+        }
+
+    def test_mira_goes_to_its_system_once_we_hold_it(self):
+        mira = item("Q12965", "Mira", 12, systems=(BINARY,))
+        assert where(Reach(mira, 21312666, HIP, root=600000000)) == {
+            "Q12965": (600000000, wikidata.TO_ROOT)
         }
 
     def test_ain(self):
