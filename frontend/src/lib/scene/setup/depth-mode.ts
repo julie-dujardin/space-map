@@ -21,6 +21,13 @@ export function ndcZVisible(z: number): boolean {
 	return reversed ? z >= 0 && z <= 1 : z >= -1 && z <= 1;
 }
 
+/** GLSL that holds a vertex past the far plane on it, behind everything else. */
+export function clampToFarGlsl(): string {
+	return reversed
+		? 'gl_Position.z = max(gl_Position.z, 0.0);'
+		: 'gl_Position.z = min(gl_Position.z, gl_Position.w);';
+}
+
 /** log2 of the smallest eye distance (scene units, ~1 mm) the logarithmic
  *  fallback resolves. */
 const LOG_DEPTH_FLOOR = -44;

@@ -18,7 +18,7 @@
 	const layerToggles: {
 		id: string;
 		label: () => string;
-		desc: () => string;
+		desc?: () => string;
 		checked: () => boolean;
 		set: (on: boolean) => void;
 		/** Whether the current view mode leaves the layer out whatever the switch says. */
@@ -51,6 +51,13 @@
 			desc: () => m.layers_panoramas_desc(),
 			checked: () => settings.showPanoramaTraces,
 			set: (on) => settings.setShowPanoramaTraces(on),
+			disabled: () => settings.viewMode === 'immersive'
+		},
+		{
+			id: 'constellations',
+			label: () => m.layers_constellations(),
+			checked: () => settings.showConstellations,
+			set: (on) => settings.setShowConstellations(on),
 			disabled: () => settings.viewMode === 'immersive'
 		}
 	];
@@ -103,7 +110,9 @@
 						<!-- The switch dims itself. -->
 						<div class="flex flex-col min-w-0 {disabled ? 'opacity-50' : ''}">
 							<span class="text-sm font-medium">{toggle.label()}</span>
-							<span class="text-xs text-muted-foreground">{toggle.desc()}</span>
+							{#if toggle.desc}
+								<span class="text-xs text-muted-foreground">{toggle.desc()}</span>
+							{/if}
 						</div>
 						<Switch checked={toggle.checked()} onCheckedChange={toggle.set} {disabled} />
 					</label>

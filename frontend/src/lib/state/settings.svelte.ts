@@ -42,6 +42,7 @@ interface SettingValues {
 	showHaloDebug: boolean;
 	showLightingTuner: boolean;
 	showClouds: boolean;
+	showConstellations: boolean;
 	showAtmospheres: boolean;
 	atmosphereQuality: AtmosphereQualityTier;
 	atmosphereAutoTier: ResolvedAtmosphereTier | null;
@@ -85,6 +86,7 @@ const SETTING_SPEC = {
 	showHaloDebug: { default: false, persist: true },
 	showLightingTuner: { default: false, persist: true },
 	showClouds: { default: true, persist: true },
+	showConstellations: { default: false, persist: true },
 	showAtmospheres: { default: true, persist: true },
 	atmosphereQuality: { default: 'auto', persist: true },
 	atmosphereAutoTier: { default: null, persist: true },
@@ -156,6 +158,7 @@ class SettingsState implements SceneSettings, SettingValues {
 	showHaloDebug = $state<boolean>(SETTING_SPEC.showHaloDebug.default);
 	showLightingTuner = $state<boolean>(SETTING_SPEC.showLightingTuner.default);
 	showClouds = $state<boolean>(SETTING_SPEC.showClouds.default);
+	showConstellations = $state<boolean>(SETTING_SPEC.showConstellations.default);
 	/** Per-body atmospheric-scattering shells (sky glow, sunset limb). */
 	showAtmospheres = $state<boolean>(SETTING_SPEC.showAtmospheres.default);
 	/** Shell quality tier; 'auto' resolves from device capability. */
@@ -264,6 +267,10 @@ class SettingsState implements SceneSettings, SettingValues {
 
 	setShowClouds(v: boolean) {
 		this.set('showClouds', v);
+	}
+
+	setShowConstellations(v: boolean) {
+		this.set('showConstellations', v);
 	}
 
 	setShowAtmospheres(v: boolean) {

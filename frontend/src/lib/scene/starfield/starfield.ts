@@ -114,7 +114,7 @@ const BOOT_GATE_MS = 10_000;
 /** A magnitude no star reaches, for an exact star with none. */
 const NO_MAGNITUDE = 99;
 /** First of the transparent objects, because the stars are behind everything. */
-const STAR_RENDER_ORDER = -1;
+export const STAR_RENDER_ORDER = -1;
 /** Pick ranges: a node's rows, and the point of each exact star. */
 const NODE_PICK_PREFIX = 'star:';
 const EXACT_PICK_PREFIX = 'star-exact:';

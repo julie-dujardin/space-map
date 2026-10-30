@@ -16,7 +16,7 @@ import {
 	Vector3,
 	type IUniform
 } from 'three';
-import { isReversedDepth } from '$lib/scene/setup/depth-mode';
+import { clampToFarGlsl, isReversedDepth } from '$lib/scene/setup/depth-mode';
 import { PC_SCENE } from './tree';
 
 /** Uniforms every node shares; a node adds its own fade. */
@@ -88,7 +88,7 @@ void main() {
 	vColour = starColour * uTint * core * fade * uGain;
 	gl_Position = projectionMatrix * mv;
 	// Past the far plane a star stays on it, behind everything else.
-	${isReversedDepth() ? 'gl_Position.z = max(gl_Position.z, 0.0);' : 'gl_Position.z = min(gl_Position.z, gl_Position.w);'}
+	${clampToFarGlsl()}
 	gl_PointSize = min(size, ${MAX_DOT_PX.toFixed(1)}) * uPixelRatio;
 }
 `;

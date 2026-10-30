@@ -61,6 +61,7 @@
 		return [
 			{ label: m.attribution_orbits(), names: chips.orbits },
 			{ label: m.attribution_imagery(), names: chips.imagery },
+			{ label: m.attribution_constellations(), names: chips.constellations },
 			{ label: m.attribution_stars(), names: chips.stars }
 		];
 	});

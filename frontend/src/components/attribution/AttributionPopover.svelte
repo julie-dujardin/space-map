@@ -264,6 +264,25 @@
 				</section>
 			{/if}
 
+			{#if ctx.credits.constellations.length > 0}
+				<section class="space-y-1">
+					{@render sectionHeader(m.attribution_constellations())}
+					<ul class="space-y-0.5">
+						{#each ctx.credits.constellations.map(localizedStarCredit) as credit (credit.source)}
+							<li>
+								{@render link(credit.source, credit.name, credit.organisation)}
+								{#if credit.authors}<span class="text-muted-foreground">
+										· {credit.authors.join(', ')}</span
+									>{/if}
+								{#if credit.license}<span class="text-muted-foreground">
+										· {credit.license}</span
+									>{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+
 			{#if focusedModel}
 				<section class="space-y-1">
 					{@render sectionHeader(m.attribution_section_models())}

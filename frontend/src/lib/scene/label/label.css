@@ -1,5 +1,16 @@
 /* Scene body labels (CSS2DObject) — created by label/factory.ts */
 
+.scene-constellation-label {
+	left: 0; /* see .scene-label */
+	pointer-events: none;
+	user-select: none;
+	white-space: nowrap;
+	color: #8fa3c4;
+	font-size: 12px;
+	letter-spacing: 0.04em;
+	text-shadow: 0 0 3px #000;
+}
+
 .scene-label {
 	display: block; /* the root is an <a>; keep block sizing (width/height below) */
 	position: relative;

@@ -293,6 +293,10 @@ const SETTING_SINKS: ReadonlyArray<(r: SceneRenderer, s: SceneSettings) => void>
 	(r, s) => r.setReducedMotion(s.resolvedReducedMotion),
 	(r, s) => r.setImmersive(s.viewMode === 'immersive'),
 	(r, s) => r.setHaloDebugVisible(s.showHaloDebug),
+	(r, s) => {
+		void s.showConstellations;
+		r.invalidate();
+	},
 	// A recalibration can move the render tier.
 	(r, s) => {
 		void s.atmosphereCalibration;

@@ -15,6 +15,7 @@ export interface SceneSettings {
 	resolvedReducedMotion: boolean;
 	viewMode: 'map' | 'immersive';
 	showClouds: boolean;
+	showConstellations: boolean;
 	showAtmospheres: boolean;
 	atmosphereQuality: AtmosphereQualityTier;
 	atmosphereAutoTier: ResolvedAtmosphereTier | null;
@@ -65,6 +66,7 @@ export function defaultSceneSettings(): SceneSettings {
 			typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
 		viewMode: 'map',
 		showClouds: true,
+		showConstellations: false,
 		showAtmospheres: true,
 		atmosphereQuality: 'auto',
 		atmosphereAutoTier: null,

@@ -58,6 +58,8 @@ export class CreditsStore {
 	skybox = $state<SkyboxCredit | null>(null);
 	/** The catalogues behind the starfield, set when its first stars draw. */
 	stars = $state.raw<readonly ExtrasolarCredit[]>([]);
+	/** The culture and catalogues behind the constellation lines, while they draw. */
+	constellations = $state.raw<readonly ExtrasolarCredit[]>([]);
 	/** Providers contributing to the loaded scene. Reassigned (not mutated) so
 	 *  `$derived` bar consumers recompute. `UNKNOWN` is never added — pre-v3
 	 *  chunks stay silent rather than showing a misleading label. */
@@ -114,6 +116,10 @@ export class CreditsStore {
 
 	setStars(credits: readonly ExtrasolarCredit[]): void {
 		if (this.stars.length === 0) this.stars = credits;
+	}
+
+	setConstellations(credits: readonly ExtrasolarCredit[]): void {
+		this.constellations = credits;
 	}
 
 	registerOrientation(credit: OrientationCredit): void {

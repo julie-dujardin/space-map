@@ -18,6 +18,7 @@ export interface CoreMessages {
 	attribution_orbits: () => string;
 	attribution_imagery: () => string;
 	attribution_stars: () => string;
+	attribution_constellations: () => string;
 	credits_see_all: () => string;
 	layer_surface: () => string;
 	layer_clouds: () => string;
@@ -95,6 +96,7 @@ const DEFAULT_HOST: Host = {
 		attribution_orbits: () => 'Orbits',
 		attribution_imagery: () => 'Imagery',
 		attribution_stars: () => 'Stars',
+		attribution_constellations: () => 'Constellations',
 		credits_see_all: () => 'See full credits',
 		layer_surface: () => 'Surface',
 		layer_clouds: () => 'Clouds',

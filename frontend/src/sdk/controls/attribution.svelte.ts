@@ -20,10 +20,12 @@ export class AttributionControl implements Control<SpaceMap> {
 		const orbits = group();
 		const imagery = group();
 		const stars = group();
+		const constellations = group();
 		root.append(
 			link(HOME_URL, 'spacemap', 'sm-attribution__home'),
 			orbits,
 			imagery,
+			constellations,
 			stars,
 			link(CREDITS_URL, host().messages.credits_see_all())
 		);
@@ -32,6 +34,7 @@ export class AttributionControl implements Control<SpaceMap> {
 				const chips = attributionChips(map.ctx);
 				fill(orbits, host().messages.attribution_orbits(), chips.orbits);
 				fill(imagery, host().messages.attribution_imagery(), chips.imagery);
+				fill(constellations, host().messages.attribution_constellations(), chips.constellations);
 				fill(stars, host().messages.attribution_stars(), chips.stars);
 			});
 		});

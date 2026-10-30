@@ -9,6 +9,7 @@
  * hear of it once, so the page can prompt a reload.
  */
 
+import type { ExtrasolarSkyCultures } from './skycultures';
 import { host, textureAllowed } from '$lib/host';
 import { gunzip, gunzipJson } from '$lib/fetch/gz';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
@@ -70,6 +71,7 @@ export interface ExtrasolarCredit {
 	license?: string;
 	attribution?: string;
 	citation?: string;
+	authors?: string[];
 }
 
 /** The planet files: the index and one file per planetary system. */
@@ -108,6 +110,8 @@ export interface ExtrasolarMetadata {
 	families?: ExtrasolarFamily[];
 	/** Absent when the export has no planets. */
 	planets?: ExtrasolarPlanets;
+	/** Absent when the export has no matched sky cultures. */
+	skycultures?: ExtrasolarSkyCultures;
 }
 
 /** A file whose header token is not the one `metadata.json` lists. */

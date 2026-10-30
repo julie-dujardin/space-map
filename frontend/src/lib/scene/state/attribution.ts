@@ -64,6 +64,8 @@ export interface AttributionChips {
 	imagery: string[];
 	/** The catalogues whose licence asks for credit, once stars have drawn. */
 	stars: string[];
+	/** Who drew the constellation lines and placed their stars, while they draw. */
+	constellations: string[];
 }
 
 /** Reads the credit stores' version counters, so a caller in a `$derived` or
@@ -91,5 +93,9 @@ export function attributionChips(
 
 	const stars = [...new Set(credits.stars.filter((c) => c.license).map((c) => c.organisation))];
 
-	return { orbits, imagery: [...organisations].sort(), stars };
+	const constellations = [
+		...new Set(credits.constellations.filter((c) => c.license).map((c) => c.organisation))
+	];
+
+	return { orbits, imagery: [...organisations].sort(), stars, constellations };
 }

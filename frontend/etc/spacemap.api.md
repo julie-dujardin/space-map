@@ -195,6 +195,8 @@ export type ControlPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom
 // @public
 export interface CoreMessages {
 	// (undocumented)
+	attribution_constellations: () => string;
+	// (undocumented)
 	attribution_imagery: () => string;
 	// (undocumented)
 	attribution_orbits: () => string;
@@ -1246,6 +1248,8 @@ export interface SceneSettings {
 	showAtmospheres: boolean;
 	// (undocumented)
 	showClouds: boolean;
+	// (undocumented)
+	showConstellations: boolean;
 	// (undocumented)
 	showDisplacement: boolean;
 	// (undocumented)

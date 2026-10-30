@@ -66,6 +66,7 @@ import {
 	starBudget,
 	type RenderTierPreset
 } from './render-tier';
+import { ConstellationSystem } from './constellations/constellations';
 import { StarfieldSystem } from './starfield/starfield';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { ExoplanetSystems } from '$lib/scene/exoplanets/systems';
@@ -257,6 +258,7 @@ export class SceneRenderer {
 	private pointClouds!: PointCloudSystem;
 	/** @internal The stars of the Milky Way render tree. */
 	readonly starfield: StarfieldSystem;
+	private readonly constellations: ConstellationSystem;
 	/** The planetary system of another star that draws. */
 	private readonly exoplanetSystems: ExoplanetSystems;
 	private systemData!: SystemDataLoader;
@@ -590,6 +592,12 @@ export class SceneRenderer {
 			starBudget(),
 			this.invalidate,
 			this.pointClouds.pickRegistry
+		);
+		this.constellations = new ConstellationSystem(
+			ctx,
+			this.scene,
+			SceneRenderer.MAP_LAYER,
+			this.invalidate
 		);
 
 		// OrbitControls — target always at origin
@@ -1414,6 +1422,12 @@ export class SceneRenderer {
 			nowMs,
 			this.viewportH
 		);
+		this.constellations.update(
+			this.camera,
+			this.focus.focusTruePos,
+			atmoState.skyboxIntensity,
+			nowMs
+		);
 		this.updateSky(atmoState.skyboxIntensity);
 		if (sunBo?.starPoint) {
 			this.starfield.updateLocalStar(sunBo.starPoint, focusedStar?.data.id === SUN_ID);
@@ -2219,6 +2233,7 @@ export class SceneRenderer {
 			this.ctx.visibility.fading ||
 			this.pointClouds.fading ||
 			this.exoplanetSystems.fading ||
+			this.constellations.fading ||
 			this.starfield.busy();
 		if (loading) return true;
 		if (this.covered) return false;
@@ -3138,6 +3153,7 @@ export class SceneRenderer {
 		// Worker pool + cloud buffers — the biggest per-navigation leak.
 		this.pointClouds.dispose();
 		this.starfield.dispose();
+		this.constellations.dispose();
 		// renderer.dispose() frees only its own caches, not our geometries/
 		// materials/textures. Env maps aren't scene children — dispose explicitly.
 		this.disposeScene(this.scene);
