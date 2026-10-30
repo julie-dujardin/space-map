@@ -571,8 +571,7 @@ class Assembler:
                 if member.kind == POINT:
                     add_key(member.key, member.value)
                 elif member.kind == GROUP:
-                    inner = self.groups[member.group]
-                    for key in sorted(inner.keys):
+                    for key in self._points_of(member.group):
                         add_key(key, member.value)
                 else:
                     members.append((ENTRY, 0, None, member.value, member.inner))
@@ -592,6 +591,16 @@ class Assembler:
         for key in rest:
             add_key(key, self._point_value(node, key))
         node.members = self._known_entries(node, members, listed)
+
+    def _points_of(self, group: int) -> list[int]:
+        """The points of a group in its source's order, so its primary is first."""
+        points = []
+        for member in self.groups[group].members:
+            if member.kind == POINT:
+                points.append(member.key)
+            elif member.kind == GROUP:
+                points += self._points_of(member.group)
+        return points
 
     def _known_entries(
         self,

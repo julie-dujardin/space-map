@@ -1461,6 +1461,71 @@ class TestGroupPrimary:
         assert out.counts[f"{WDS}: physical members that the parallaxes veto"] == 1
 
 
+class TestCrossedGroupOrder:
+    """WDS 14565+5923 ABCD: AC holds A and C, and B is measured from A.
+    SIMBAD's pair HD 132422 holds A and B, so it crosses AC, and AC leaves the
+    tree. The points of AC join ABCD in the WDS order. A stays the primary for
+    each order of the keys."""
+
+    def systems(self, a: int, b: int, c: int) -> Systems:
+        w = "14565+5923"
+        catalogue = wds_catalogue(
+            {
+                w: [
+                    wds_pair("A", "B", 2.9, notes="N W", mag1=8.26, mag2=10.32),
+                    wds_pair("A", "C", 999.9, notes="NVW", mag1=8.26, mag2=7.42),
+                    wds_pair("C", "D", 9999.999, notes="NVW", mag1=7.42, mag2=10.11),
+                ]
+            },
+            {(w, x): wds_component(at + 1) for at, x in enumerate("ABC")},
+        )
+        index = simbad_index(
+            [
+                simbad_object(10, "HD 132422", 224.123, 59.38, otype="**"),
+                simbad_object(11, "HD 132422A", 224.123, 59.38, v=8.26, gaia="1"),
+                simbad_object(12, "HD 132422B", 224.122, 59.379, v=10.32, gaia="2"),
+            ],
+            [(10, 11), (10, 12)],
+        )
+        resolver = FakeResolver(
+            {
+                ("gaia", "dr3", "1"): a,
+                ("gaia", "dr3", "2"): b,
+                ("gaia", "dr3", "3"): c,
+                ("simbad", "oid", "11"): a,
+                ("simbad", "oid", "12"): b,
+            },
+            [
+                fact(key, ra, dec, mag, parallax=7.0, pmra=-13.0, pmdec=5.0)
+                for key, ra, dec, mag in (
+                    (a, 224.123, 59.38, 8.1),
+                    (b, 224.123, 59.38 - 2.9 / 3600, 10.1),
+                    (c, 226.073, 59.535, 7.3),
+                )
+            ],
+        )
+        inputs = Inputs(
+            simbad=read_simbad(index.stars), simbad_index=index, wds=catalogue
+        )
+        return build(inputs, resolver)
+
+    def test_a_is_the_primary(self):
+        for a, b, c in ((19713758, 19713757, 19713532), (19713532, 19713533, 19713758)):
+            systems = self.systems(a, b, c)
+            assert shape(systems, c) == (
+                "multiple star",
+                4,
+                [c, ("binary star", 2, sorted([a, b])), "entry"],
+            )
+            root = systems.nodes.filter(pc.equal(systems.nodes["label"], "ABCD"))
+            assert root["primary"].to_pylist() == [a]
+            members = systems.members.filter(
+                pc.equal(systems.members["node"], root["node"][0])
+            )
+            assert members["kind"].to_pylist() == ["system", "star", "entry"]
+            assert members["key"].to_pylist()[1] == c
+
+
 class TestInnerSystemStays:
     """B holds Ba and Bb on one point. B is unverified and leaves AB, and its
     point keeps both stars (HD 104576 Aa, Ab)."""
