@@ -33,7 +33,7 @@
 						tab: t.tab
 					})
 				: t.kind === 'group'
-					? applyGroup(appState.view, t.slug, t.name)
+					? applyGroup(appState.view, t.slug, t.name, { tab: t.tab })
 					: t.kind === 'trip'
 						? { ...appState.view, trip: { ...appState.view.trip, profile: null } }
 						: applyTab(appState.view, t.tab);
@@ -53,7 +53,7 @@
 			focusObject(t.id, t.name, { moveCamera: t.moveCamera, tab: t.tab });
 		} else if (t.kind === 'group') {
 			e.preventDefault();
-			appState.setGroup(t.slug, t.name);
+			appState.setGroup(t.slug, t.name, { tab: t.tab });
 		} else if (t.kind === 'trip') {
 			e.preventDefault();
 			// The panel mirrors the trip's terms back out of the URL, so dropping the

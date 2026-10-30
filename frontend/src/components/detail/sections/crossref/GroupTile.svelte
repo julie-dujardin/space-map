@@ -5,6 +5,7 @@
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import { heroImage } from '$lib/fetch/objects/galleries';
+	import type { DrawerTab } from '$lib/state/view';
 	import CrossRefCard from './CrossRefCard.svelte';
 
 	interface Props {
@@ -16,10 +17,12 @@
 		label: string;
 		/** Custom background, rendered instead of the group's lead image. */
 		background?: Snippet;
+		/** The tab the group opens on; the overview without it. */
+		tab?: Exclude<DrawerTab, 'overview'>;
 		/** Extra classes, e.g. `col-span-2` to span a 2-col grid row. */
 		class?: string;
 	}
-	let { slug, name, label, background, class: className }: Props = $props();
+	let { slug, name, label, background, tab, class: className }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -31,8 +34,8 @@
 		const img = heroImage(detail.global);
 		return img ? pickImageUrl(img, 300) : undefined;
 	});
-	let href = $derived(groupHref(appState, slug, name));
-	let open = $derived(groupClick(appState, slug, name));
+	let href = $derived(groupHref(appState, slug, name, { tab }));
+	let open = $derived(groupClick(appState, slug, name, { tab }));
 </script>
 
 <CrossRefCard

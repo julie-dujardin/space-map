@@ -16,6 +16,11 @@ describe('geometryFromMember', () => {
 		// Pre-flag bundles omit the field — must stay undefined (probe as before).
 		expect(geometryFromMember(base)?.texture).toBeUndefined();
 	});
+
+	it('leaves out an exoplanet, which a list sizes', () => {
+		const planet = { name: 'HD 209458 b', id: 'x-20014192-b-1', diameter_km: 198700 };
+		expect(geometryFromMember(planet)).toBeNull();
+	});
 });
 
 describe('craftGeometryFromMember', () => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
 	import MemberRow, { memberFigures } from './MemberRow.svelte';
+	import { entryDiameterKm, formatDiameterKm, yearOf, type MemberFigures } from './member-link';
 	import { targetClick, targetHref } from '$lib/state/focus-link';
 
 	import * as m from '$lib/paraglide/messages.js';
@@ -85,11 +86,6 @@
 		return searchChildMembers(src.parentId, offset, limit, locale);
 	}
 
-	function yearOf(s?: string): string | undefined {
-		const y = s?.slice(0, 4);
-		return y && Number.isFinite(parseInt(y, 10)) ? y : undefined;
-	}
-
 	function fallbackRows(): Row[] {
 		return fallback
 			.filter((e) => e.id || e.group)
@@ -101,7 +97,7 @@
 					feature_id: e.feature_id,
 					name: localizedNames?.[key] ?? e.name,
 					thumbnail: e.thumbnail,
-					diameter_km: e.diameter_km,
+					diameter_km: entryDiameterKm(e),
 					year: yearOf(e.first_obs)
 				};
 			});
@@ -133,14 +129,23 @@
 
 	let rows = $state<Row[]>([]);
 
+	let figures = $derived(
+		rows.map(
+			(r): MemberFigures => ({
+				diameter: r.diameter_km == null ? undefined : formatDiameterKm(r.diameter_km),
+				year: r.year
+			})
+		)
+	);
+
 	/** Column labels for the stacked right-hand values, in render order. A
 	 *  group's rows can mix launches and discoveries (Starlink vs an asteroid
 	 *  family), so only a body's own moons get the specific "Discovery". */
 	let valueLabels = $derived.by(() => {
 		void getLocale();
 		const out: string[] = [];
-		if (rows.some((r) => r.diameter_km != null)) out.push(m.diameter());
-		if (rows.some((r) => r.year)) {
+		if (figures.some((f) => f.diameter)) out.push(m.diameter());
+		if (figures.some((f) => f.year)) {
 			out.push(source.kind === 'parent' ? m.discovery() : m.search_sort_date());
 		}
 		return out;
@@ -246,7 +251,7 @@
 		</div>
 	{/if}
 	<ul class="flex flex-col">
-		{#each rows as row (memberEntryKey(row))}
+		{#each rows as row, i (memberEntryKey(row))}
 			<MemberRow
 				name={row.name}
 				thumbnail={row.thumbnail}
@@ -258,7 +263,7 @@
 				onblur={() => onHoverFeature?.(null)}
 				valuesClass="tabular-nums"
 			>
-				{@render memberFigures(row)}
+				{@render memberFigures(figures[i], valueLabels.length > 0)}
 			</MemberRow>
 		{/each}
 	</ul>

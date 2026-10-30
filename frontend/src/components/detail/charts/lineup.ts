@@ -1,3 +1,4 @@
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 import type { ModelIndexEntry } from '$lib/fetch/models';
 import type { ModelBundleMeta } from '$lib/scene/objects/body/model';
@@ -18,12 +19,14 @@ export const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 
 /** The lineup geometry of a member. The size and flattening come from PCK
  *  `radii`, else the SBDB diameter, else the Wikidata radius. The tilt comes
  *  from the IAU `pole`. It also carries the render hints, the measured colour
- *  and albedo, and the law of the ground. `null` for a member with no size, so
- *  it also filters what the row can draw. */
+ *  and albedo, and the law of the ground. `null` for a member with no size or
+ *  for an exoplanet, so it also filters what the row can draw. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	// A surface feature isn't a body — its `id` is the host it sits on, so it
 	// would draw (and key) as a duplicate of that host's sphere.
 	if (m.feature_id != null) return null;
+	// An exoplanet has no surface map and no colour to draw.
+	if (isExtrasolarObjectId(m.id)) return null;
 	const geom: LineupGeometry = { radiusKm: 0 };
 	if (m.radii) {
 		const eq = Math.max(m.radii.a, m.radii.b, m.radii.c);

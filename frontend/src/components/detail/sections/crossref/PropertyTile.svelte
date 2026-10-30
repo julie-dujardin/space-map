@@ -18,6 +18,7 @@
 	import { formatCompactNumber, joinParts } from '$lib/format/quantities';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 	import { categoryConfig, PROPERTY_ACCENT } from '$lib/state/category-config';
+	import type { DrawerTab } from '$lib/state/view';
 	import * as m from '$lib/paraglide/messages.js';
 	import AtmosphereBandBar from '../../charts/AtmosphereBandBar.svelte';
 	import BodyCutaway from '../../charts/BodyCutaway.svelte';
@@ -34,9 +35,11 @@
 		/** Overrides the category label — the Solar System page's child list also
 		 *  carries orbit classes, which name themselves differently. */
 		name?: string;
+		/** The tab the page opens on; the overview without it. */
+		tab?: Exclude<DrawerTab, 'overview'>;
 		class?: string;
 	}
-	let { slug, shown = 4, n, name, class: className }: Props = $props();
+	let { slug, shown = 4, n, name, tab, class: className }: Props = $props();
 
 	/** The shell this page is about, or undefined for a slug that collects no
 	 *  property — then the tile keeps its lead image. */
@@ -109,6 +112,7 @@
 			? joinParts({ value: formatCompactNumber(total), unit: m.group_stat_members() })
 			: ''}
 		background={drawn ? drawings : undefined}
+		{tab}
 		class={className}
 	/>
 {/await}

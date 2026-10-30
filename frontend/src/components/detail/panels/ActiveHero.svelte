@@ -11,8 +11,13 @@
 	import SolarSystemMap from '../charts/SolarSystemMap.svelte';
 	import PlanetarySystemMap from '../charts/PlanetarySystemMap.svelte';
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
-	import { ATMOSPHERE_GALLERY, MAIN_GALLERY, RINGS_GALLERY } from '$lib/fetch/objects/galleries';
-	import { PLANET_CLASSIFICATION, STAR_CLASSIFICATION } from '$lib/fetch/groups/registry';
+	import {
+		ATMOSPHERE_GALLERY,
+		EXOPLANETS_GALLERY,
+		MAIN_GALLERY,
+		RINGS_GALLERY
+	} from '$lib/fetch/objects/galleries';
+	import { STAR_CLASSIFICATION } from '$lib/fetch/groups/registry';
 	import { imageHref, tabHref } from '$lib/state/focus-link';
 	import type { CategoryConfig } from '$lib/state/category-config';
 	import type { PositionedBody } from '$lib/types/objects';
@@ -65,9 +70,8 @@
 	let groupHeaderBadges = $derived.by(() => {
 		const g = load.groupDetail?.global;
 		if (!g) return undefined;
-		// The roots of the star and planet families are the categories above
-		// them, not families.
-		const isRoot = g.slug === STAR_CLASSIFICATION || g.slug === PLANET_CLASSIFICATION;
+		// The root of the star families is a category above them, not a family.
+		const isRoot = g.slug === STAR_CLASSIFICATION;
 		const out: string[] = [groupTypeLabel(isRoot ? 'category' : g.type)];
 		for (const role of g.roles ?? []) out.push(organizationRoleLabel(role));
 		for (const c of g.categories ?? []) out.push(satelliteCategoryLabel(c));
@@ -80,6 +84,8 @@
 	// than being one.
 	let heroes = $derived<Record<DrawerTab, Snippet | undefined>>({
 		overview: load.loadError ? undefined : objectHeaderHero,
+		'solar-system': lineup.solarLineup ? solarLineupHero : undefined,
+		exoplanets: gallery.exoplanetsGallery ? exoplanetsHero : undefined,
 		targets: undefined,
 		// A comet has no map to draw a traverse on, and the panel below it
 		// already pictures the panoramas.
@@ -183,6 +189,16 @@
 	{/if}
 {/snippet}
 
+{#snippet exoplanetsHero()}
+	{#if gallery.exoplanetsGallery}
+		<GalleryHero
+			images={gallery.exoplanetsGallery.images}
+			alt={m.tab_exoplanets()}
+			gallery={EXOPLANETS_GALLERY}
+		/>
+	{/if}
+{/snippet}
+
 <!-- The atmosphere as photographed, above the same atmosphere as a profile. -->
 {#snippet atmosphereHero()}
 	{#if gallery.atmosphereGallery}
@@ -190,6 +206,18 @@
 			images={gallery.atmosphereGallery.images}
 			alt={m.atmosphere()}
 			gallery={ATMOSPHERE_GALLERY}
+		/>
+	{/if}
+{/snippet}
+
+<!-- The Solar System's planets to scale, above what the tab says of them. -->
+{#snippet solarLineupHero()}
+	{#if lineup.solarLineup}
+		<BodyLineup
+			bodies={lineup.solarLineup.bodies}
+			ariaLabel={lineup.solarLineup.ariaLabel}
+			perPage={lineup.solarLineup.perPage}
+			compare
 		/>
 	{/if}
 {/snippet}

@@ -39,6 +39,7 @@ export const PROMOTABLE: readonly DrawerTab[] = ['images', 'probes'];
 export const SHELF_TABS: Record<string, Exclude<DrawerTab, 'overview'>> = {
 	rings: 'rings',
 	atmosphere: 'structure',
+	exoplanets: 'exoplanets',
 	interior: 'structure',
 	features: 'features',
 	moons: 'members'

@@ -457,14 +457,20 @@ export function applyGallery(current: MapViewState, key: string | null): MapView
 	};
 }
 
+/** How a group opens: `frame` parks the camera on the group's anchor, for a
+ *  caller about to fly there; `tab` opens a drawer tab other than the overview. */
+export interface GroupOpen {
+	frame?: boolean;
+	tab?: Exclude<DrawerTab, 'overview'>;
+}
+
 /** Next view when opening a group. Opening one moves no camera, so `id` stays
- *  on the body in view; `frame` parks it on the group's anchor instead, for a
- *  caller about to fly there. */
+ *  on the body in view unless `frame` is set. */
 export function applyGroup(
 	current: MapViewState,
 	slug: string,
 	name: string,
-	frame = false
+	{ frame = false, tab }: GroupOpen = {}
 ): MapViewState {
 	const anchor = frame ? groupAnchor(slug) : null;
 	return {
@@ -477,7 +483,7 @@ export function applyGroup(
 		groupSlug: slug,
 		name,
 		featureId: null,
-		tab: null
+		tab: tab ?? null
 	};
 }
 

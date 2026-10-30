@@ -1,9 +1,9 @@
 /**
  * The Images tab's shelves, in display order. A page's pictures come from
  * several selections, one per subject: the object's own (`images`), its ring
- * system (`ring_images`), and the pooled galleries the exporter attaches
- * (`galleries`). Assembles them into the ordered list the panel renders and
- * the `&gal=` URL indexes into.
+ * system (`ring_images`), the items its tabs are about (`tab_galleries`), and
+ * the pooled galleries the exporter attaches (`galleries`). Assembles them
+ * into the ordered list the panel renders and the `&gal=` URL indexes into.
  */
 
 import type { Snippet } from 'svelte';
@@ -20,6 +20,9 @@ export const ATMOSPHERE_GALLERY = 'atmosphere';
 export const MOONS_GALLERY = 'moons';
 /** URL token for the shelf pooled from its named surface features. */
 export const FEATURES_GALLERY = 'features';
+/** URL token for the Planets page's shelf of exoplanet pictures, linked from
+ *  its Exoplanets tab. */
+export const EXOPLANETS_GALLERY = 'exoplanets';
 
 export interface Gallery {
 	/** Stable URL token: a fixed name, or a member's Object.id. */
@@ -28,6 +31,9 @@ export interface Gallery {
 	images: ObjectImage[];
 	/** Object.id the whole shelf is about, linked under its title. */
 	subjectId?: string;
+	/** The shelf is the hero of its tab, so a link to the tab shows its first
+	 *  picture rather than the page's. */
+	tabHero?: boolean;
 }
 
 /**
@@ -67,6 +73,7 @@ export function imageCount(galleries: Gallery[]): number {
 export interface GallerySource {
 	images?: ObjectImage[];
 	ring_images?: ObjectImage[];
+	tab_galleries?: ImageGalleryData[];
 	galleries?: ImageGalleryData[];
 }
 
@@ -86,6 +93,7 @@ export function heroImage<I = ObjectImage>(
  *  aspect (a collection's members) has no tab to follow and trails behind. */
 const SHELF_ORDER = [
 	MAIN_GALLERY,
+	EXOPLANETS_GALLERY,
 	FEATURES_GALLERY,
 	ATMOSPHERE_GALLERY,
 	'interior',
@@ -120,6 +128,15 @@ export function buildGalleries(
 			key: RINGS_GALLERY,
 			title: shelfTitle?.(RINGS_GALLERY) ?? RINGS_GALLERY,
 			images: source.ring_images
+		});
+	}
+	for (const gallery of source.tab_galleries ?? []) {
+		if (!gallery.images?.length) continue;
+		out.push({
+			key: gallery.key,
+			title: shelfTitle?.(gallery.key) ?? gallery.key,
+			images: gallery.images,
+			tabHero: true
 		});
 	}
 	for (const gallery of source.galleries ?? []) {

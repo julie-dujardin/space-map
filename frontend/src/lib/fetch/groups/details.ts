@@ -103,7 +103,8 @@ export interface GlobalGroupData {
 	 *  `applies_to` can't say — satellites and debris share it. */
 	parent_category?: string;
 	/** Star and planet families only: the families that contain this one.
-	 *  The breadcrumb climbs to the first. */
+	 *  The breadcrumb climbs to the first. A top planet family names
+	 *  `cat-planets` here. */
 	parent_families?: string[];
 	/** Star families only: the stars that only an estimate puts in the
 	 *  family, of `member_count`. */
@@ -228,8 +229,23 @@ export interface GlobalGroupData {
 	/** Feature types: typical diameter of the landform, in km. Absent when too
 	 *  few members carry a measured one (albedo features). */
 	median_diameter_km?: number;
-	/** Planets / Dwarf planets categories: moons hosted across the category. */
+	/** Planets (the Solar System's only) / Dwarf planets categories: moons
+	 *  hosted across the category. */
 	moon_total?: number;
+	/** Planets only: the eight of the Solar System in heliocentric order, with
+	 *  the lineup fields. Their localized names are in `notable_member_names`. */
+	solar_members?: NotableMemberEntry[];
+	/** Planets only: 8. */
+	solar_member_count?: number;
+	/** Planets only: the exoplanets of the IAU class planet. */
+	exoplanet_count?: number;
+	/** Planets only: the largest measured radius of any planet. */
+	largest_planet?: PlanetRecord & { radius_earth: number };
+	/** Planets only: the largest measured mass of any planet. A minimum mass
+	 *  (m sin i) is a lower bound. */
+	most_massive_planet?: PlanetRecord & { mass_earth: number; mass_kind: 'true' | 'minimum' };
+	/** Planets only: planet families with at least one planet. */
+	planet_family_count?: number;
 	/** Moons category: distinct planet/dwarf hosts that have a moon. */
 	host_count?: number;
 	/** Categories that list child groups: Comets → split families, Probes →
@@ -312,6 +328,15 @@ export interface GlobalGroupData {
 	images?: ObjectImage[];
 	/** One shelf per notable member, keyed by its Object.id. */
 	galleries?: ImageGalleryData[];
+	/** One shelf per tab on another item, keyed by the tab; the tab's hero. */
+	tab_galleries?: ImageGalleryData[];
+}
+
+/** A planet a Planets stat card points at: `naif-<n>99` or `x-<host>-b-<n>`. */
+interface PlanetRecord {
+	primary_type: 'object';
+	primary_id: string;
+	name: string;
 }
 
 /** A stat card that points at one body. */
@@ -362,6 +387,12 @@ export interface LocalizedGroupData {
 	notable_member_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
 	notable_member_descriptions?: Record<string, string>;
+	/** Planets only: the text of the Exoplanets tab, from the item exoplanet. */
+	exoplanets?: {
+		name?: string;
+		description?: string;
+		wikipedia?: { extract?: string; description?: string; url?: string };
+	};
 	/** probe Object.id → localized label for `probes`, only where it differs. */
 	probe_names?: Record<string, string>;
 	/** Object.id → localized body label: the `feature_bodies` rows on an ft-

@@ -7,7 +7,11 @@
 import { describe, expect, it } from 'vitest';
 import { PROPERTY_COLLECTION_SLUGS } from './category-config';
 import { parentCrumb } from './breadcrumb';
-import { CAT_SATELLITE_SYSTEMS, CAT_SURFACE_FEATURES } from '$lib/fetch/groups/registry';
+import {
+	CAT_PLANETS,
+	CAT_SATELLITE_SYSTEMS,
+	CAT_SURFACE_FEATURES
+} from '$lib/fetch/groups/registry';
 import { ObjectType } from '$lib/types/objects';
 import type { Focusable } from './focusable';
 import { ALPHA_CEN } from '$lib/scene/exoplanets/__fixtures__/system';
@@ -92,6 +96,36 @@ describe('parentCrumb: planet families', () => {
 			parent_families: ['planet-cold-jupiter']
 		} as never);
 		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'planet-cold-jupiter' });
+	});
+
+	it('climbs from a top family to the Planets page, named as the category', () => {
+		const crumb = parentCrumb({ kind: 'group', slug: 'planet-giant-planet' }, undefined, null, {
+			slug: 'planet-giant-planet',
+			parent_families: [CAT_PLANETS]
+		} as never);
+		expect(crumb).toEqual({
+			label: 'Planets',
+			target: { kind: 'group', slug: CAT_PLANETS, name: 'Planets', tab: undefined }
+		});
+	});
+
+	it('has no crumb for the Planets page, which holds the exoplanets too', () => {
+		expect(parentCrumb({ kind: 'group', slug: CAT_PLANETS }, undefined, null, null)).toBeNull();
+	});
+});
+
+describe('parentCrumb: the planets of the Solar System', () => {
+	it('climbs from a planet to the Solar System tab of the Planets page', () => {
+		const jupiter = {
+			kind: 'body',
+			body: { data: { id: 'naif-599', name: 'Jupiter', objectType: ObjectType.PLANET } }
+		} as never;
+		expect(parentCrumb(jupiter, undefined, null, null)?.target).toEqual({
+			kind: 'group',
+			slug: CAT_PLANETS,
+			name: 'Planets',
+			tab: 'solar-system'
+		});
 	});
 });
 

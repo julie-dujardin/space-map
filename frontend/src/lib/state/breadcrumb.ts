@@ -30,7 +30,7 @@ import {
 } from '$lib/fetch/groups/registry';
 import { categoryLabel, familyLabel } from '$lib/format/group';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
-import { isPropertyCollection } from './category-config';
+import { isPropertyCollection, solarSystemTab } from './category-config';
 import type { Focusable } from './focusable';
 import { urlTypeFromId } from './url';
 import { UrlType, type DrawerTab } from './view';
@@ -61,7 +61,7 @@ export type CrumbTarget =
 			moveCamera?: boolean;
 			tab?: Exclude<DrawerTab, 'overview'>;
 	  }
-	| { kind: 'group'; slug: string; name: string }
+	| { kind: 'group'; slug: string; name: string; tab?: Exclude<DrawerTab, 'overview'> }
 	// Stays on this object and only changes tab — what a tab promoted out of the
 	// bar puts in the crumb slot to get back to the object it belongs to.
 	| { kind: 'tab'; tab: DrawerTab }
@@ -86,11 +86,10 @@ function classGroup(className: string): Crumb {
 	};
 }
 
-/** The Structure & Activity children, which climb to it rather than to the
- *  root — the way the ft- pages climb to Surface Features. */
-function categoryCrumb(slug: string): Crumb {
+/** A category page, opened on `tab` when one is given. */
+function categoryCrumb(slug: string, tab?: Exclude<DrawerTab, 'overview'>): Crumb {
 	const label = categoryLabel(slug);
-	return { label, target: { kind: 'group', slug, name: label } };
+	return { label, target: { kind: 'group', slug, name: label, tab } };
 }
 
 export function parentCrumb(
@@ -119,7 +118,8 @@ export function parentCrumb(
 	if (focusable.kind === 'group') {
 		const slug = focusable.slug;
 		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
-			if (slug === CAT_SOLAR_SYSTEM) return null;
+			// Planets holds the exoplanets too, so it is a root of its own.
+			if (slug === CAT_SOLAR_SYSTEM || slug === CAT_PLANETS) return null;
 			// The Earth-orbiter collections' real parent is Earth, not the root.
 			if (slug === CAT_SATELLITES || slug === CAT_DEBRIS) {
 				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
@@ -135,8 +135,8 @@ export function parentCrumb(
 		// A split-comet family is always a comet, regardless of orbit class.
 		if (slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) return categoryCrumb(CAT_COMETS);
 		if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) return categoryCrumb(CAT_SURFACE_FEATURES);
-		// A family climbs to the first family that contains it; the roots,
-		// stellar classification and exoplanet, have none.
+		// A family climbs to the first family that contains it. A top planet
+		// family climbs to the Planets page; stellar classification has no parent.
 		if (isFamilySlug(slug)) {
 			const parent = groupGlobal?.parent_families?.[0];
 			if (!parent) return null;
@@ -175,8 +175,9 @@ export function parentCrumb(
 	// reachable via the body page's cross-ref tile.
 	if (data.objectType === ObjectType.DWARF_PLANET) return categoryCrumb(CAT_DWARF_PLANETS);
 
-	// Planets → the Planets category; the Sun → the Solar System root.
-	if (data.objectType === ObjectType.PLANET) return categoryCrumb(CAT_PLANETS);
+	// Planets → the Solar System tab of Planets; the Sun → the Solar System root.
+	if (data.objectType === ObjectType.PLANET)
+		return categoryCrumb(CAT_PLANETS, solarSystemTab(CAT_PLANETS));
 	if (data.objectType === ObjectType.STAR) return categoryCrumb(CAT_SOLAR_SYSTEM);
 
 	// A planetary system → the collection of systems; its own primary is the

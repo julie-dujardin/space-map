@@ -116,6 +116,8 @@ export function featureIdOfRoute(segment: string): number | null {
  *  the URL codec both derive from. */
 export const DRAWER_TABS = [
 	'overview',
+	'solar-system',
+	'exoplanets',
 	'targets',
 	'traverse',
 	'images',

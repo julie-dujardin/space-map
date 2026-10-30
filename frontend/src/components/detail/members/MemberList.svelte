@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import MemberRow, { memberFigures } from './MemberRow.svelte';
-	import { memberDisplayName } from './member-link';
+	import { entryFigures, memberDisplayName } from './member-link';
 	import { targetClick, targetHref } from '$lib/state/focus-link';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
@@ -28,11 +28,8 @@
 
 	let nav = $derived({ appState, focusObject, focusFeature, moveCamera: focusMovesCamera });
 
-	/** Discovery year from the first_obs proxy (YYYY-MM-DD or YYYY). */
-	function discoveryYear(member: NotableMemberEntry): string | undefined {
-		const year = member.first_obs?.slice(0, 4);
-		return year && Number.isFinite(parseInt(year, 10)) ? year : undefined;
-	}
+	let figures = $derived(members.map((member) => entryFigures(member)));
+	let dash = $derived(figures.some((f) => f.diameter || f.year));
 
 	const KIND_LABEL: Record<ProbeVisitKind, () => string> = {
 		flyby: m.probe_kind_flyby,
@@ -57,8 +54,7 @@
 
 <div class="flex flex-col gap-1">
 	<ul class="flex flex-col">
-		{#each members as member (memberEntryKey(member))}
-			{@const year = discoveryYear(member)}
+		{#each members as member, i (memberEntryKey(member))}
 			{@const name = memberDisplayName(member, localizedNames)}
 			<MemberRow
 				{name}
@@ -79,7 +75,7 @@
 					<span>{KIND_LABEL[member.visit.kind]()}</span>
 					<span class="text-muted-foreground">{visitYears(member.visit)}</span>
 				{:else}
-					{@render memberFigures({ diameter_km: member.diameter_km, year })}
+					{@render memberFigures(figures[i], dash)}
 				{/if}
 			</MemberRow>
 		{/each}

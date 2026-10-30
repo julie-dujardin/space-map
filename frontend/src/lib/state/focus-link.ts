@@ -23,6 +23,7 @@ import {
 	applyTab,
 	serializeUrl,
 	urlTypeFromId,
+	type GroupOpen,
 	type NavEnd
 } from './url';
 
@@ -53,9 +54,9 @@ export function groupHref(
 	appState: AppState | undefined,
 	slug: string,
 	name: string,
-	frame = false
+	open?: GroupOpen
 ): string | undefined {
-	return appState ? serializeUrl(applyGroup(appState.view, slug, name, frame)) : undefined;
+	return appState ? serializeUrl(applyGroup(appState.view, slug, name, open)) : undefined;
 }
 
 /** The URL for the `/nav` trip planner; either end may be null. `terms` sets
@@ -132,12 +133,13 @@ export function focusClick(
 export function groupClick(
 	appState: AppState | undefined,
 	slug: string,
-	name: string
+	name: string,
+	open?: GroupOpen
 ): (e: MouseEvent) => void {
 	return (e) => {
 		if (isModifiedClick(e) || !appState) return;
 		e.preventDefault();
-		appState.setGroup(slug, name);
+		appState.setGroup(slug, name, open);
 	};
 }
 

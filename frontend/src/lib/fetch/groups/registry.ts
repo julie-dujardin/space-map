@@ -64,9 +64,6 @@ export const STAR_CLASSIFICATION = `${STAR_FAMILY_SLUG_PREFIX}classification`;
 /** Mirrors ``FAMILY_SLUG_PREFIX`` in ``data/constants/planets/families.py``. */
 export const PLANET_FAMILY_SLUG_PREFIX = 'planet-';
 
-/** The page of ``ROOT_FAMILY`` in ``data/constants/planets/families.py``. */
-export const PLANET_CLASSIFICATION = `${PLANET_FAMILY_SLUG_PREFIX}classification`;
-
 /** A star or planet family page. */
 export function isFamilySlug(slug: string): boolean {
 	return slug.startsWith(STAR_FAMILY_SLUG_PREFIX) || slug.startsWith(PLANET_FAMILY_SLUG_PREFIX);

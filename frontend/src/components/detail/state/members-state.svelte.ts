@@ -148,15 +148,15 @@ export class MembersState {
 		this.memberDescriptions = $derived(
 			d.isGroupMode() ? d.groupDetail()?.localized?.notable_member_descriptions : undefined
 		);
-		// Search does not index the families of stars and planets yet, so a
-		// family lists its baked members only.
+		// Search has no family members and no exoplanets. These pages list their baked members.
 		const isFamily = $derived(
 			d.groupDetail()?.global?.type === 'star_family' ||
 				d.groupDetail()?.global?.type === 'planet_family'
 		);
+		const bakedOnly = $derived(isFamily || d.cat().planets);
 		this.memberTotal = $derived(
 			d.isGroupMode()
-				? isFamily
+				? bakedOnly
 					? (this.notableMembers?.length ?? 0)
 					: (d.groupDetail()?.global?.member_count ?? 0)
 				: (d.data()?.global?.moon_count ?? 0) +
@@ -190,7 +190,7 @@ export class MembersState {
 		const hasMembers = $derived(!!this.notableMembers && this.notableMembers.length > 0);
 		// Tab only earns its place past the overview strip's capacity; ≤5 fit there.
 		// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
-		// Planet/dwarf lineups are their own complete member list, so they need none.
+		// A dwarf lineup is its own complete member list, so it needs none.
 		this.showMembersTab = $derived(
 			hasMembers &&
 				!this.satellitesGroup &&

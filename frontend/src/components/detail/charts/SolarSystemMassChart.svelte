@@ -4,6 +4,7 @@
 	import { MASS_RESERVOIRS, SUN_MASS_EARTHS, SUN_COLOR } from '$lib/data/solar-system-mass';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { solarSystemTab } from '$lib/state/category-config';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { asPercent, formatNumber, joinParts } from '$lib/format/quantities';
 	import { EARTH_MASS_KG, formatMass, formatMassRange, massComparison } from '$lib/format/mass';
@@ -75,14 +76,17 @@
 	// tight Gaussian ones would be a sub-pixel nub.
 	const MIN_INTERVAL_RATIO = 5;
 
+	// The planets' rows open the Planets page on its Solar System tab.
 	function zoneHref(slug: string, label: string): string | undefined {
-		return appState ? serializeUrl(applyGroup(appState.view, slug, label)) : undefined;
+		return appState
+			? serializeUrl(applyGroup(appState.view, slug, label, { tab: solarSystemTab(slug) }))
+			: undefined;
 	}
 	function openZone(slug: string, label: string) {
 		return (e: MouseEvent) => {
 			if (isModifiedClick(e) || !appState) return;
 			e.preventDefault();
-			appState.setGroup(slug, label);
+			appState.setGroup(slug, label, { tab: solarSystemTab(slug) });
 		};
 	}
 

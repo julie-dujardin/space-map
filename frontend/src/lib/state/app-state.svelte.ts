@@ -13,6 +13,7 @@ import {
 	parseUrl,
 	serializeUrl,
 	urlTypeFromId,
+	type GroupOpen,
 	type NavEnd
 } from './url';
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
@@ -168,9 +169,9 @@ export class AppState {
 	/** Open the /g/<slug> group view over the body in view. `frame` parks
 	 *  `view.id` on the group's anchor for a caller about to fly there, so
 	 *  Scene's onFocusChange guard takes the landing as intended rather than
-	 *  stomping groupSlug via setFocus. */
-	setGroup(slug: string, name: string, frame = false) {
-		this.view = applyGroup(this.view, slug, name, frame);
+	 *  stomping groupSlug via setFocus. `tab` opens on that drawer tab. */
+	setGroup(slug: string, name: string, open?: GroupOpen) {
+		this.view = applyGroup(this.view, slug, name, open);
 		this.pushNow();
 	}
 

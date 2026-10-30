@@ -288,7 +288,7 @@
 
 	// Open a /g/<slug> group view, framing its camera anchor at the default angle.
 	function openGroup(slug: string, name: string) {
-		appState.setGroup(slug, name, true);
+		appState.setGroup(slug, name, { frame: true });
 		// setGroup parked view.id/zoom on the group anchor; the default framing
 		// angle lands the camera there instead of the prior angle.
 		map.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);

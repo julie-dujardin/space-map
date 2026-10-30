@@ -62,6 +62,8 @@ export interface LineupHeroDeps {
 	 *  family's own rockets, which are bundles rather than members. */
 	launchVehicle: () => string | undefined;
 	notableMembers: () => NotableMemberEntry[] | undefined;
+	/** The Solar System's planets, on the Planets page. */
+	solarMembers: () => NotableMemberEntry[] | undefined;
 	/** The probes this page lists — a body's visitors, or a collection's. */
 	probes: () => NotableMemberEntry[] | undefined;
 	probeNames: () => Record<string, string> | undefined;
@@ -90,6 +92,8 @@ export class LineupHero {
 	// a real lineup, not a lone sphere. Mirrors DetailDrawer's showMembersTab.
 	readonly isMoonLineup: boolean;
 	readonly hero: LineupHeroSpec | null;
+	// The Solar System tab's hero on the Planets page: the eight planets.
+	readonly solarLineup: LineupHeroSpec | null;
 	// The probes tab's own hero: the craft that went there, to scale against each
 	// other. Independent of `hero` — an asteroid collection draws both.
 	readonly probeLineup: LineupHeroSpec | null;
@@ -156,7 +160,6 @@ export class LineupHero {
 		);
 
 		// Picks the collection page's lineup, or null to keep an image hero.
-		// Planets omit hover descriptions by design.
 		this.hero = $derived.by<LineupHeroSpec | null>(() => {
 			// Before the members: a family that has flown nothing yet still has
 			// its rocket to show.
@@ -166,11 +169,8 @@ export class LineupHero {
 			if (!members || members.length === 0) return null;
 			const names = d.memberNames();
 			const cat = d.cat();
-			if (cat.planets)
-				return {
-					bodies: buildLineup(members, geometryFromMember, { names }),
-					ariaLabel: m.type_planet()
-				};
+			// The planets' lineup is the Solar System tab's.
+			if (cat.planets) return null;
 			if (cat.moons)
 				return {
 					bodies: buildLineup(members, geometryFromMember, {
@@ -208,6 +208,16 @@ export class LineupHero {
 			return null;
 		});
 
+		// Planets omit hover descriptions by design.
+		this.solarLineup = $derived.by<LineupHeroSpec | null>(() => {
+			const members = d.solarMembers();
+			if (!d.cat().planets || !members?.length) return null;
+			return {
+				bodies: buildLineup(members, geometryFromMember, { names: d.memberNames() }),
+				ariaLabel: m.type_planet()
+			};
+		});
+
 		this.probeLineup = $derived.by<LineupHeroSpec | null>(() => {
 			const bodies = buildLineup(d.probes() ?? [], craftGeometryFromMember, {
 				names: d.probeNames()
@@ -218,9 +228,10 @@ export class LineupHero {
 
 		// Spheres where the members are bodies, meshes where they are craft. Two
 		// spheres are the least that compares; one craft already pictures the page.
+		// The Planets page draws its spheres on the Solar System tab already.
 		this.membersLineup = $derived.by<LineupHeroSpec | null>(() => {
 			const members = d.notableMembers();
-			if (!members || members.length === 0) return null;
+			if (!members || members.length === 0 || d.cat().planets) return null;
 			const spheres = buildLineup(members, geometryFromMember, {
 				names: d.memberNames(),
 				descriptions: d.memberDescriptions()
@@ -234,12 +245,10 @@ export class LineupHero {
 			return null;
 		});
 
-		// Every lineup this page draws: the collection hero and the row of spheres
-		// down in the members tab, which pick their members separately and are not
-		// always the same set. Both render real textures on real radii and owe the
-		// same credits, so the drawer credits the union of them.
+		// All lineups of the page owe the same credits, so the drawer credits their union.
 		const lineupBodies = $derived([
 			...(this.hero?.bodies ?? []),
+			...(this.solarLineup?.bodies ?? []),
 			...(this.membersLineup?.bodies ?? [])
 		]);
 
@@ -269,22 +278,24 @@ export class LineupHero {
 		// Metadata sources the lineup members draw on: radii/pole/mass ⇒ PCK (moon
 		// diameters are PCK mean radii too); radius fallback ⇒ Wikidata; small-body
 		// diameter/albedo/spectral data ⇒ SBDB.
-		const pckClaim = $derived(this.isMoonLineup || (d.notableMembers() ?? []).some(hasPckGeometry));
+		// The Solar System tab draws its own members, not the notable ones.
+		const creditMembers = $derived([
+			...(d.notableMembers() ?? []),
+			...(this.solarLineup ? (d.solarMembers() ?? []) : [])
+		]);
+		const pckClaim = $derived(this.isMoonLineup || creditMembers.some(hasPckGeometry));
 		const hasLineup = $derived(lineupBodies.length > 0);
 		this.pck = $derived(hasLineup && pckClaim);
-		this.lightcurvePole = $derived(hasLineup && (d.notableMembers() ?? []).some(hasLightcurvePole));
-		this.wikidata = $derived(
-			hasLineup && (d.notableMembers() ?? []).some((mm) => mm.radius_km != null)
-		);
+		this.lightcurvePole = $derived(hasLineup && creditMembers.some(hasLightcurvePole));
+		this.wikidata = $derived(hasLineup && creditMembers.some((mm) => mm.radius_km != null));
 		this.sbdb = $derived(hasLineup && isSmallBodyLineup);
-		this.shapeWorks = $derived(hasLineup ? measuredShapeWorks(d.notableMembers()) : []);
+		this.shapeWorks = $derived(hasLineup ? measuredShapeWorks(creditMembers) : []);
 
-		// A lineup drawn only in the members tab leaves the overview footer with
-		// nothing to credit — the spheres it credits are a tab away. A page whose
-		// hero is that same lineup still credits it on both.
-		const lineupInMembersTab = $derived(this.isMoonLineup || (!this.hero && !!this.membersLineup));
+		// The overview footer credits only a lineup that the overview draws.
+		const lineupOnTab = $derived(!!this.membersLineup || !!this.solarLineup);
+		const lineupOffOverview = $derived(this.isMoonLineup || (!this.hero && lineupOnTab));
 		this.overviewCredits = $derived(
-			lineupInMembersTab
+			lineupOffOverview
 				? {
 						pck: false,
 						lightcurvePole: false,

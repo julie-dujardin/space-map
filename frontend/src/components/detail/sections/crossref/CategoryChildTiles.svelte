@@ -10,6 +10,7 @@
 	import { CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { categoryLabel } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
+	import { solarSystemTab } from '$lib/state/category-config';
 	import PropertyTile from './PropertyTile.svelte';
 
 	interface Props {
@@ -49,6 +50,7 @@
 				name={childName(c)}
 				n={c.n}
 				shown={drawings(i)}
+				tab={solarSystemTab(c.primary_id ?? '')}
 				class={!wide && i === wideIndex ? 'col-span-2' : ''}
 			/>
 		{/each}

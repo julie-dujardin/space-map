@@ -286,9 +286,18 @@ describe('applyGroup', () => {
 	});
 
 	it('parks on the anchor when the caller is about to fly there', () => {
-		const view = applyGroup({ ...baseView, id: 'spkid-20000001' }, 'class-mba', 'Main belt', true);
+		const view = applyGroup({ ...baseView, id: 'spkid-20000001' }, 'class-mba', 'Main belt', {
+			frame: true
+		});
 		expect(view.id).toBe('naif-10');
 		expect(serializeUrl(view)).not.toContain('focus=');
+	});
+
+	it('opens on the tab it names, and on the overview without one', () => {
+		const view = applyGroup(baseView, 'cat-planets', 'Planets', { tab: 'solar-system' });
+		expect(view.tab).toBe('solar-system');
+		expect(serializeUrl(view)).toContain('&tab=solar-system');
+		expect(applyGroup({ ...baseView, tab: 'members' }, 'cat-moons', 'Moons').tab).toBeNull();
 	});
 });
 
@@ -331,6 +340,15 @@ describe('parseUrl on a group', () => {
 	it('does not read the name segment', () => {
 		open('http://x/g/cat-moons/Moons');
 		expect(parseUrl()!.name).toBe('');
+	});
+
+	it('reads the tabs of the Planets page from a deep link', () => {
+		open('http://x/g/cat-planets/Planets?tab=solar-system');
+		expect(parseUrl()!.tab).toBe('solar-system');
+		open('http://x/g/cat-planets/Planets?tab=exoplanets');
+		expect(parseUrl()!.tab).toBe('exoplanets');
+		open('http://x/g/cat-planets/Planets?tab=solar');
+		expect(parseUrl()!.tab).toBeNull();
 	});
 });
 

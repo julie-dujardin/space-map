@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { groupTypeLabel, categoryLabel } from '$lib/format/group';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
+	import { solarSystemTab } from '$lib/state/category-config';
 	import GroupTile from './GroupTile.svelte';
 	import SolarSystemMap from '../../charts/SolarSystemMap.svelte';
 
 	interface Props {
-		/** Category slug (`cat-…`) this tile links to. */
+		/** Category slug (`cat-…`) this tile links to. A page with a Solar
+		 *  System tab opens on that tab. */
 		slug: string;
 		/** Extra classes, e.g. `col-span-2` to span a 2-col grid row. */
 		class?: string;
@@ -22,6 +24,7 @@
 	{slug}
 	{name}
 	label={groupTypeLabel('category')}
+	tab={solarSystemTab(slug)}
 	class={className}
 	background={isSolarSystem ? solarSystemBg : undefined}
 />

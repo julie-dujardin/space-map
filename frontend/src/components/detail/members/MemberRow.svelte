@@ -4,7 +4,7 @@
   target list so the row look lives in one place.
 -->
 <script module lang="ts">
-	import { formatQuantity } from '$lib/format/quantities';
+	import type { MemberFigures } from './member-link';
 
 	export { memberFigures };
 </script>
@@ -42,16 +42,16 @@
 	}: Props = $props();
 </script>
 
-<!-- The plain member row's right-hand column. A row with neither figure keeps
-     the dash, so the column reads as a column rather than a gap. -->
-{#snippet memberFigures(row: { diameter_km?: number; year?: string })}
-	{#if row.diameter_km != null}
-		<span>{formatQuantity({ value: row.diameter_km, unit: 'kilometre' }, true)}</span>
+<!-- The right-hand column of a plain member row. With `dash`, a row with no
+     figure shows a dash. A list passes false when no row has a figure. -->
+{#snippet memberFigures(row: MemberFigures, dash: boolean)}
+	{#if row.diameter}
+		<span>{row.diameter}</span>
 	{/if}
 	{#if row.year}
 		<span class="text-muted-foreground">{row.year}</span>
 	{/if}
-	{#if row.diameter_km == null && !row.year}
+	{#if dash && !row.diameter && !row.year}
 		<span class="text-muted-foreground">–</span>
 	{/if}
 {/snippet}

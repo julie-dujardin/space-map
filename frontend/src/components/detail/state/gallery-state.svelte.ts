@@ -5,6 +5,7 @@
 import type { Snippet } from 'svelte';
 import {
 	ATMOSPHERE_GALLERY,
+	EXOPLANETS_GALLERY,
 	findGallery,
 	heroImage,
 	imageCount,
@@ -30,6 +31,7 @@ import * as m from '$lib/paraglide/messages.js';
 /** Titles for the shelves the exporter names by kind rather than by subject. */
 const SHELF_TITLES: Record<string, () => string> = {
 	[ATMOSPHERE_GALLERY]: m.atmosphere,
+	[EXOPLANETS_GALLERY]: m.tab_exoplanets,
 	interior: m.interior,
 	[FEATURES_GALLERY]: m.features_section,
 	[MOONS_GALLERY]: m.moons_section,
@@ -74,6 +76,8 @@ export class GalleryState {
 	// Structure tab's hero is the atmosphere shelf — what the cross-section
 	// plots is exactly what those photos show. Interior has no equivalent picture.
 	readonly atmosphereGallery: Gallery | undefined;
+	// The Exoplanets tab's hero: the exoplanet item's pictures.
+	readonly exoplanetsGallery: Gallery | undefined;
 	/** This page's own portrait, for a tile leading to another of its tabs. */
 	readonly pageHero: string | undefined;
 
@@ -126,6 +130,7 @@ export class GalleryState {
 				viewerIndex < this.viewerImages.length
 		);
 		this.atmosphereGallery = $derived(findGallery(this.galleries, ATMOSPHERE_GALLERY));
+		this.exoplanetsGallery = $derived(findGallery(this.galleries, EXOPLANETS_GALLERY));
 		this.pageHero = $derived.by(() => {
 			const image = heroImage(d.isGroupMode() ? d.groupDetail()?.global : d.data()?.global);
 			return image ? pickImageUrl(image, 300) : undefined;
@@ -188,7 +193,11 @@ export class GalleryState {
 		return {
 			label: d.tabLabels()[tab] ?? gallery.title,
 			kind: d.displayName(),
-			hero: drawn ? undefined : this.pageHero,
+			hero: drawn
+				? undefined
+				: gallery.tabHero
+					? pickImageUrl(gallery.images[0], 300)
+					: this.pageHero,
 			background: drawn,
 			href: tabHref(appState, tab),
 			open: () => appState.setTab(tab)

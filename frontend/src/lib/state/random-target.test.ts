@@ -2,8 +2,8 @@
  * The draw picks a kind of thing first, then descends one level at a time, so a
  * million-member zone is one choice among its siblings rather than the whole
  * draw. Collection pages are their own root slot, drawn flat off the group
- * index; the categories that only re-list bodies seen elsewhere are no slot at
- * all.
+ * index; the Planets slot draws an exoplanet off the planet index; the
+ * categories that only re-list bodies seen elsewhere are no slot at all.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,15 +40,26 @@ function detail(memberCount: number, children: string[] = [], name?: string): Gr
 }
 
 const groups: Record<string, GroupDetailData> = {
-	// Planets and Structure & Activity are listed by the root and dropped by the
-	// draw; Satellites and Debris are not listed and added by it.
+	// Structure & Activity is listed by the root and dropped by the draw;
+	// Satellites and Debris are not listed and added by it.
 	[CAT_SOLAR_SYSTEM]: detail(1592942, [
 		CAT_PLANETS,
 		CAT_MOONS,
 		CAT_ASTEROIDS,
 		CAT_STRUCTURE_ACTIVITY
 	]),
-	[CAT_PLANETS]: detail(8),
+	[CAT_PLANETS]: {
+		...detail(6782, ['planet-giant-planet']),
+		global: {
+			slug: CAT_PLANETS,
+			member_count: 6782,
+			solar_members: [
+				{ id: 'naif-399', name: 'Earth' },
+				{ id: 'naif-599', name: 'Jupiter' }
+			]
+		} as GroupDetailData['global']
+	},
+	'planet-giant-planet': detail(2715),
 	[CAT_MOONS]: detail(987),
 	[CAT_ASTEROIDS]: detail(1554068, ['class-MBA', 'class-TNO']),
 	'class-MBA': detail(1374806),
@@ -61,8 +72,8 @@ const groups: Record<string, GroupDetailData> = {
 
 /** Root slots, in the order the draw builds them: the collections slot, the
  *  drawing categories the root lists, then the two it doesn't. */
-const SLOTS = [0, 0.3, 0.5, 0.7, 0.9];
-const [COLLECTIONS, MOONS, ASTEROIDS, SATELLITES] = SLOTS;
+const SLOTS = [0, 0.2, 0.4, 0.55, 0.75, 0.9];
+const [COLLECTIONS, PLANETS, MOONS, ASTEROIDS, SATELLITES] = SLOTS;
 
 const INDEX = { [CAT_SOLAR_SYSTEM]: {}, [CAT_PLANETS]: {}, 'const-starlink': {} };
 
@@ -92,6 +103,22 @@ vi.mock('$lib/search/client', () => ({
 			hits: [{ kind: 'object', id, name: `member ${offset}` }],
 			estimatedTotalHits: 1000
 		} as GroupMemberPage);
+	}
+}));
+
+/** Two placed hosts with three planets, the second a brown dwarf, and one
+ *  host with no place. */
+const PLACED = 26297087;
+const UNPLACED = 20014192;
+let planetIndex: { file: { hosts: object[] } } | null = null;
+const planetClass: Record<string, string> = {};
+vi.mock('$lib/fetch/extrasolar/planets', () => ({
+	planetCatalogue: {
+		index: () => Promise.resolve(planetIndex),
+		planet: (host: number, n: number) =>
+			Promise.resolve({
+				planet: { host, number: n, name: `${host} ${n}`, class: planetClass[`${host}/${n}`] }
+			})
 	}
 }));
 
@@ -141,13 +168,27 @@ beforeEach(() => {
 	lastQuery = null;
 	memberIds = [];
 	indexDown = false;
+	planetIndex = {
+		file: {
+			hosts: [
+				{ id: UNPLACED, position: null, planets: [1] },
+				{ id: PLACED, position: [1, 2, 3], planets: [1, 2, 3] }
+			]
+		}
+	};
+	Object.assign(planetClass, {
+		[`${PLACED}/1`]: 'planet',
+		[`${PLACED}/2`]: 'brown dwarf',
+		[`${PLACED}/3`]: 'planet',
+		[`${UNPLACED}/1`]: 'planet'
+	});
 });
 afterEach(() => vi.restoreAllMocks());
 
 describe('randomTarget: the root slots', () => {
-	it('draws no bodies from the categories that only re-list them', async () => {
-		// Whichever slot comes up, none of them leads to the Planets page's members
-		// or to Structure & Activity — the bodies there have a home elsewhere.
+	it('asks search for no member of Planets or of Structure & Activity', async () => {
+		// The Planets slot draws off the planet index; Structure & Activity holds
+		// collections, which have their own slot.
 		for (const slot of SLOTS) {
 			store.clear();
 			draws(slot, 0.5);
@@ -219,8 +260,8 @@ describe('randomTarget: what the last draws already covered', () => {
 
 	it('strikes the recent categories off the root', async () => {
 		seedRecent({ categories: [CAT_MOONS] });
-		// With Moons struck off, the four remaining slots shift: 0.3 is Asteroids.
-		draws(0.3, 0, 0.5);
+		// With Moons struck off, the five remaining slots shift: 0.5 is Asteroids.
+		draws(0.5, 0, 0.5);
 		await randomTarget();
 		expect(lastQuery?.slug).toBe('class-MBA');
 	});
@@ -236,6 +277,38 @@ describe('randomTarget: what the last draws already covered', () => {
 		draws(MOONS, 0.5);
 		await randomTarget();
 		expect(recorded()).toEqual({ targets: ['naif-493'], categories: [CAT_MOONS] });
+	});
+});
+
+describe('randomTarget: the Planets slot', () => {
+	it('draws an exoplanet whose star has a place', async () => {
+		// Ticket 0 of the three placed planets is the first.
+		draws(PLANETS, 0);
+		await expect(randomTarget()).resolves.toEqual({
+			kind: 'object',
+			id: `x-${PLACED}-b-1`,
+			name: `${PLACED} 1`
+		});
+		expect(recorded().categories).toEqual([CAT_PLANETS]);
+		expect(lastQuery).toBeNull();
+	});
+
+	it('redraws a brown dwarf', async () => {
+		draws(PLANETS, 0.5, 0.9);
+		await expect(randomTarget()).resolves.toMatchObject({ id: `x-${PLACED}-b-3` });
+	});
+
+	// The families list only exoplanets, which the map places from the index.
+	it('draws a Solar System planet when no planets are served', async () => {
+		planetIndex = null;
+		draws(PLANETS, 0.5);
+		await expect(randomTarget()).resolves.toEqual({
+			kind: 'object',
+			id: 'naif-599',
+			name: 'Jupiter'
+		});
+		expect(recorded().categories).toEqual([CAT_PLANETS]);
+		expect(lastQuery).toBeNull();
 	});
 });
 
@@ -287,6 +360,12 @@ describe('randomTargetPath', () => {
 			randomTargetPath({ kind: 'feature', bodyId: 'naif-301', featureId: 12, name: 'Copernicus' })
 		).toBe(
 			'/[type]/[id]/f/[featureId]/[[name]] {"type":"b","id":"301","featureId":"12","name":"Copernicus"}'
+		);
+	});
+
+	it('routes an exoplanet to its planet page', () => {
+		expect(randomTargetPath({ kind: 'object', id: `x-${PLACED}-b-2`, name: 'HD 100546 c' })).toBe(
+			`/x/[id]/b/[n]/[[name]] {"id":"${PLACED}","n":"2","name":"HD%20100546%20c"}`
 		);
 	});
 

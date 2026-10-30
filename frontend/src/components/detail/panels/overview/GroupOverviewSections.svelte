@@ -10,7 +10,6 @@
 	import GroupProperties from '../../sections/GroupProperties.svelte';
 	import GroupOrbitMap from '../../charts/GroupOrbitMap.svelte';
 	import CountPerBodyChart from '../../charts/CountPerBodyChart.svelte';
-	import PlanetMassChart from '../../charts/PlanetMassChart.svelte';
 	import RingMassChart from '../../charts/RingMassChart.svelte';
 	import SolarSystemMassChart from '../../charts/SolarSystemMassChart.svelte';
 	import { propertyFigure } from './group-figures';
@@ -101,9 +100,6 @@
 		figure={(mm) => propertyFigure(mm, cat.property)}
 	/>
 	<chart.component members={notableMembers} localizedNames={memberNames} {...chart.extra?.()} />
-{/if}
-{#if cat.planets && notableMembers && notableMembers.length > 0}
-	<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
 {/if}
 {#if cat.solarSystem}
 	<SolarSystemMassChart />

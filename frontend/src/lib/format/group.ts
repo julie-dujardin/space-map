@@ -20,6 +20,7 @@ import {
 	CAT_TECTONICS,
 	CAT_TIDAL_HEATING,
 	CAT_VOLCANISM,
+	CATEGORY_SLUG_PREFIX,
 	type GroupType,
 	type OrganizationRole,
 	type SatelliteCategory
@@ -123,7 +124,9 @@ export function groupNameMessage(slug: string): string | undefined {
 	return messages[`group_name_${slug}`]?.();
 }
 
-/** A star or planet family's name; the slug before the export has written it. */
+/** A star or planet family's name, or the slug before the export writes it.
+ *  The parent of a top planet family is the Planets category. */
 export function familyLabel(slug: string): string {
+	if (slug.startsWith(CATEGORY_SLUG_PREFIX)) return categoryLabel(slug);
 	return groupNameMessage(slug) ?? slug;
 }

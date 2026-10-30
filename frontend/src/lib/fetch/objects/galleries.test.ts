@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildGalleries,
+	EXOPLANETS_GALLERY,
 	findGallery,
 	imageCount,
 	imageTitle,
@@ -77,6 +78,23 @@ describe('buildGalleries', () => {
 			'Moons'
 		);
 		expect(galleries.map((g) => g.key)).toEqual(['features', 'naif-502', 'naif-501']);
+	});
+
+	it("puts a tab's shelf behind the page's own pictures, as that tab's hero", () => {
+		const galleries = buildGalleries(
+			{
+				images: [image('a.jpg')],
+				galleries: [{ key: 'naif-599', subject: 'naif-599', images: [image('j.jpg')] }],
+				tab_galleries: [{ key: EXOPLANETS_GALLERY, images: [image('x.jpg')] }]
+			},
+			'Planets',
+			undefined,
+			(key) => (key === EXOPLANETS_GALLERY ? 'Exoplanets' : undefined)
+		);
+		expect(galleries.map((g) => g.key)).toEqual([MAIN_GALLERY, EXOPLANETS_GALLERY, 'naif-599']);
+		expect(galleries[1].title).toBe('Exoplanets');
+		expect(galleries[1].tabHero).toBe(true);
+		expect(galleries[2].tabHero).toBeUndefined();
 	});
 
 	it("names a member's shelf after the member, and links to it", () => {

@@ -186,6 +186,14 @@ export function planetCredits(planet: Planet, credits: readonly ExtrasolarCredit
 	return creditsOf(pages, credits);
 }
 
+/** The credits of the three planet catalogues, for a page about every planet. */
+export function planetCatalogueCredits(credits: readonly ExtrasolarCredit[]): StarCredit[] {
+	return creditsOf(
+		new Set<CreditPage>(['nasaExoplanetArchive', 'exoplanetEu', 'openExoplanetCatalogue']),
+		credits
+	);
+}
+
 /** The export's credits of these pages, in the order of CREDIT_PAGES. */
 function creditsOf(
 	pages: ReadonlySet<CreditPage | undefined>,

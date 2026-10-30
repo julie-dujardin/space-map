@@ -26,6 +26,8 @@
 	import OverviewPanel from './panels/OverviewPanel.svelte';
 	import ObjectActions from './panels/overview/ObjectActions.svelte';
 	import MembersPanel from './panels/MembersPanel.svelte';
+	import SolarSystemPanel from './panels/SolarSystemPanel.svelte';
+	import ExoplanetsPanel from './panels/ExoplanetsPanel.svelte';
 	import FeaturesPanel from './panels/FeaturesPanel.svelte';
 	import RingsPanel from './panels/RingsPanel.svelte';
 	import StructurePanel from './panels/StructurePanel.svelte';
@@ -255,6 +257,13 @@
 		void shareUrl(displayName);
 	}
 
+	// The Planets page has a tab for the Solar System's planets and one for the exoplanets.
+	let planetsDetail = $derived(cat.planets ? groupDetail : null);
+	let showSolarSystemTab = $derived(!!planetsDetail?.global?.solar_members?.length);
+	let showExoplanetsTab = $derived(
+		!!planetsDetail?.global?.exoplanet_count || !!planetsDetail?.localized?.exoplanets
+	);
+
 	// Members model: the shared members tab, fragments, mission craft and the
 	// overview strips they feed (see members-state.svelte.ts).
 	const members = new MembersState({
@@ -281,6 +290,7 @@
 				? (groupSlug ?? undefined)
 				: undefined,
 		notableMembers: () => members.notableMembers,
+		solarMembers: () => planetsDetail?.global?.solar_members,
 		probes: () => members.probes,
 		probeNames: () => members.probeNames,
 		memberNames: () => members.memberNames,
@@ -330,6 +340,12 @@
 	// stat card, the others in their own panel.
 	let tabTable = $derived<TabTable>({
 		overview: { label: m.tab_overview(), present: true, panel: overviewPanel },
+		'solar-system': {
+			label: m.tab_solar_system(),
+			present: showSolarSystemTab,
+			panel: solarSystemPanel
+		},
+		exoplanets: { label: m.tab_exoplanets(), present: showExoplanetsTab, panel: exoplanetsPanel },
 		targets: {
 			label: m.tab_targets(),
 			count: members.targetVisits.length,
@@ -549,6 +565,18 @@
 				: undefined}
 			onShare={handleShare}
 		/>
+	{/if}
+{/snippet}
+
+{#snippet solarSystemPanel()}
+	{#if planetsDetail?.global}
+		<SolarSystemPanel global={planetsDetail.global} {members} {lineup} />
+	{/if}
+{/snippet}
+
+{#snippet exoplanetsPanel()}
+	{#if planetsDetail}
+		<ExoplanetsPanel detail={planetsDetail} {members} />
 	{/if}
 {/snippet}
 

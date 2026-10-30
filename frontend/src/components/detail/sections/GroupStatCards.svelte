@@ -29,6 +29,8 @@
 	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { formatDistance } from '$lib/format/distance';
+	import { EARTH_MASS_KG, formatMass, massComparison } from '$lib/format/mass';
+	import { EARTH_RADIUS_KM } from '$lib/math/units';
 	import { EARTH_ID } from '$lib/constants';
 	import { earthOceans, oceanVolume } from '../charts/OceanVolumeChart.svelte';
 	import { fieldParts, powerParts } from '$lib/format/activity';
@@ -41,19 +43,22 @@
 		formatQuantity,
 		formatShare,
 		formatUnit,
+		earthRatio,
 		joinParts
 	} from '$lib/format/quantities';
 
 	interface Props {
 		global: GlobalGroupData | null;
+		/** The tab of the Planets page these cards head; the overview without it. */
+		tab?: 'solar-system' | 'exoplanets';
 	}
-	let { global }: Props = $props();
+	let { global, tab }: Props = $props();
 
-	// Three across is what the row fits; a fourth squeezes every value. Each
-	// family below names at most three, in slot order: how many, the extreme,
-	// how it changes. A family with nothing for a slot leaves it empty rather
-	// than reaching for a fact the charts and rows below already show.
-	const MAX_CARDS = 3;
+	// A row fits three cards. Four cards go in two rows of two. Each family
+	// below names three at most, in this order: how many, the extreme, how it
+	// changes. A family with nothing for a slot leaves the slot empty.
+	const MAX_CARDS = 4;
+	const ROW = 3;
 	// A hazardous share is a fraction of a percent — the bar would be a speck.
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -152,6 +157,60 @@
 			href: focusHref(appState, bodyId, largest.name),
 			onClick: focusClick(focusObject, bodyId, largest.name)
 		};
+	}
+
+	/** A planet's page, from a card about it. */
+	function planetLink(ref: { primary_id: string; name: string }) {
+		return {
+			href: focusHref(appState, ref.primary_id, ref.name),
+			onClick: focusClick(focusObject, ref.primary_id, ref.name)
+		};
+	}
+
+	/** The largest radius as a diameter in kilometres, as the site gives sizes. */
+	function largestPlanet(g: GlobalGroupData): Stat | null {
+		const largest = g.largest_planet;
+		if (!largest || !appState) return null;
+		const vsEarth = earthRatio(largest.radius_earth);
+		return {
+			label: m.group_stat_largest(),
+			value: formatQuantity(
+				{ value: 2 * largest.radius_earth * EARTH_RADIUS_KM, unit: 'kilometre' },
+				true
+			),
+			tooltip: vsEarth ? `${largest.name} — ${vsEarth}` : largest.name,
+			...planetLink(largest)
+		};
+	}
+
+	/** A minimum mass is a lower bound, and the tooltip says so. */
+	function mostMassivePlanet(g: GlobalGroupData): Stat | null {
+		const heaviest = g.most_massive_planet;
+		if (!heaviest || !appState) return null;
+		const kg = heaviest.mass_earth * EARTH_MASS_KG;
+		const tooltip = [
+			heaviest.name,
+			heaviest.mass_kind === 'minimum' ? m.planet_plot_legend_minimum() : undefined,
+			massComparison(kg)
+		].filter(Boolean);
+		return {
+			label: m.group_stat_most_massive(),
+			value: formatMass(kg),
+			tooltip: tooltip.join(' — '),
+			...planetLink(heaviest)
+		};
+	}
+
+	/** The Planets page: every planet on the overview, then a card set per tab. */
+	function planetsStats(g: GlobalGroupData): (Stat | null)[] {
+		if (tab === 'solar-system') return [largestBody(g), count(m.group_stat_moons(), g.moon_total)];
+		if (tab === 'exoplanets') return [count(m.group_stat_exoplanets(), g.exoplanet_count)];
+		return [
+			members(g, m.group_stat_planets()),
+			count(m.group_stat_families(), g.planet_family_count),
+			largestPlanet(g),
+			mostMassivePlanet(g)
+		];
 	}
 
 	function widestRings(g: GlobalGroupData): Stat | null {
@@ -368,6 +427,7 @@
 					count(m.group_stat_split_families(), g.child_group_count)
 				];
 			case CAT_PLANETS:
+				return planetsStats(g);
 			case CAT_DWARF_PLANETS:
 				return [largestBody(g), count(m.group_stat_moons(), g.moon_total)];
 			case CAT_MOONS:
@@ -526,6 +586,15 @@
 			.filter((s): s is Stat => s != null)
 			.slice(0, MAX_CARDS);
 	});
+	let rows = $derived(stats.length > ROW ? [stats.slice(0, 2), stats.slice(2)] : [stats]);
 </script>
 
-<StatCardRow {stats} size="lg" />
+{#if rows.length > 1}
+	<div class="flex flex-col gap-2">
+		{#each rows as row, i (i)}
+			<StatCardRow stats={row} size="lg" />
+		{/each}
+	</div>
+{:else}
+	<StatCardRow {stats} size="lg" />
+{/if}

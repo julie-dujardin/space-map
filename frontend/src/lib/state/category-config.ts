@@ -22,8 +22,11 @@ import {
 	CAT_RADIATION
 } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
+import type { DrawerTab } from '$lib/state/view';
 
 export interface CategoryConfig {
+	/** Every planet, with a tab for the Solar System's eight and one for the
+	 *  exoplanets. */
 	planets: boolean;
 	moons: boolean;
 	dwarfPlanets: boolean;
@@ -33,11 +36,12 @@ export interface CategoryConfig {
 	satelliteSystems: boolean;
 	/** Members are the ringed bodies, shown as tiles onto their Rings tab. */
 	ringSystems: boolean;
-	/** planets/moons/dwarf: hero is a sphere lineup, so no member strip. */
+	/** planets/moons/dwarf: the page draws its members as a sphere lineup, so
+	 *  no member strip. */
 	lineup: boolean;
-	/** The overview already shows every member — the lineup for planets and
-	 *  dwarfs, the tiles for ring systems — so a members tab would just repeat
-	 *  it. Moons show only the notable few, so they keep one. */
+	/** The overview shows every member, so the page has no members tab. The
+	 *  dwarf lineup and the ring system tiles do this. Moons and planets show
+	 *  only some members, so they keep the tab. */
 	membersShownInFull: boolean;
 	/** asteroids/comets: members route through the members tab, no overview strip. */
 	smallBody: boolean;
@@ -81,7 +85,8 @@ const NONE: CategoryConfig = {
 };
 
 const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
-	[CAT_PLANETS]: { planets: true, lineup: true, membersShownInFull: true, crossRefs: true },
+	// The sibling links are the Solar System's, so they sit on its tab.
+	[CAT_PLANETS]: { planets: true, lineup: true },
 	[CAT_MOONS]: { moons: true, lineup: true, crossRefs: true },
 	[CAT_RING_SYSTEMS]: { ringSystems: true, membersShownInFull: true },
 	[CAT_DWARF_PLANETS]: {
@@ -145,6 +150,12 @@ export const PROPERTY_ACCENT: Record<PropertyKind, ReadonlySet<string> | undefin
 export function categoryConfig(focusable: Focusable): CategoryConfig {
 	if (focusable.kind !== 'group') return NONE;
 	return CONFIG_BY_SLUG.get(focusable.slug) ?? NONE;
+}
+
+/** The tab that holds the Solar System's members of a page. A link from the
+ *  Solar System, or from one of its bodies, opens the page there. */
+export function solarSystemTab(slug: string): Exclude<DrawerTab, 'overview'> | undefined {
+	return CONFIG_BY_SLUG.get(slug)?.planets ? 'solar-system' : undefined;
 }
 
 /**

@@ -6,6 +6,8 @@ export const AU_KM = 149_597_870.7;
 export const SOLAR_RADIUS_KM = 695_700;
 /** Jupiter equatorial radius used by the exoplanet catalogue, in km. */
 export const JUPITER_RADIUS_KM = 71_492;
+/** IAU nominal Earth equatorial radius in km: the R⊕ of the planet catalogues. */
+export const EARTH_RADIUS_KM = 6_378.1;
 /** Speed of light in km/s */
 export const SPEED_OF_LIGHT_KM_S = 299_792.458;
 /** IAU light-year: the distance light travels in a Julian year, km. */

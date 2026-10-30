@@ -16,13 +16,15 @@
  * Whatever comes up has to be somewhere: an object the scene can't place is
  * redrawn, so the reader never lands on a page with an empty sky beside it.
  *
- * Planets, dwarf planets and ringed bodies are not slots: the planets are the
- * one thing already on screen, and a dwarf planet still comes up through its
- * orbit zone. Their pages stay drawable as collections.
+ * The Planets slot draws an exoplanet: the eight of the Solar System are the
+ * one thing already on screen. Dwarf planets and ringed bodies are not slots:
+ * a dwarf planet still comes up through its orbit zone. Their pages stay
+ * drawable as collections.
  */
 
-import { resolve } from '$app/paths';
 import { getLocale, type Locale } from '$lib/paraglide/runtime.js';
+import { planetCatalogue } from '$lib/fetch/extrasolar/planets';
+import { planetObjectId } from '$lib/fetch/extrasolar/ids';
 import {
 	fetchGroupDetail,
 	type ChildGroupEntry,
@@ -54,7 +56,7 @@ import {
 	type MemberHit
 } from '$lib/search/client';
 import { uniformRandomTarget } from './uniform-random-target';
-import { UrlType, urlTypeFromId, urlTypeToIdPrefix } from './view';
+import { bodyHref, featureHref, groupHref } from './page-href';
 
 /** Anything that can fill the sidebar: a collection page, a body, a landform. */
 export type RandomTarget =
@@ -69,12 +71,11 @@ const EXTRA_ROOT_CHILDREN = [CAT_SATELLITES, CAT_DEBRIS];
 
 /** Root slots that draw no bodies of their own.
  *
- *  Planets, systems and ring systems hold the same dozen bodies the map opens
- *  on; a dwarf planet is drawn as the small body it is, from its orbit zone.
+ *  Systems and ring systems hold the same dozen bodies the map opens on; a
+ *  dwarf planet is drawn as the small body it is, from its orbit zone.
  *  Structure & Activity holds nothing but collections, which have their own
- *  slot. All five pages stay reachable there. */
+ *  slot. All four pages stay reachable there. */
 const NON_DRAWING_CATEGORIES: readonly string[] = [
-	CAT_PLANETS,
 	CAT_SATELLITE_SYSTEMS,
 	CAT_DWARF_PLANETS,
 	CAT_RING_SYSTEMS,
@@ -174,7 +175,46 @@ async function walk(locale: Locale, skipCategories: string[]): Promise<Draw | nu
 		const page = await randomCollection(locale);
 		return page && { target: page, category: META_COLLECTIONS };
 	}
+	// The search index lists no exoplanet under the Planets page, so the slot
+	// draws from the planet index. With no planets served it draws one of the
+	// Solar System's: the families below list only exoplanets, which the map
+	// places from that same index.
+	if (slot.slug === CAT_PLANETS) {
+		const planet = (await randomExoplanet()) ?? (await randomSolarPlanet(locale));
+		if (planet) return { target: planet, category: CAT_PLANETS };
+	}
 	return descend(slot, locale);
+}
+
+/** One of the Solar System's planets, from the Planets page. */
+async function randomSolarPlanet(locale: Locale): Promise<RandomTarget | null> {
+	const detail = await fetchGroupDetail(CAT_PLANETS, locale).catch(() => null);
+	const planets = detail?.global?.solar_members ?? [];
+	if (!detail || planets.length === 0) return null;
+	return targetOfEntry(planets[randomIndex(planets.length)], detail);
+}
+
+/** One exoplanet of the IAU class planet, every planet of the index alike. A
+ *  planet whose star has no place, and a brown dwarf, are redrawn. */
+async function randomExoplanet(): Promise<RandomTarget | null> {
+	const index = await planetCatalogue.index().catch((e: unknown) => {
+		console.warn('[random] the planet index is unreachable — no exoplanet to draw.', e);
+		return null;
+	});
+	const hosts = (index?.file.hosts ?? []).filter((h) => h.position !== null);
+	const total = hosts.reduce((sum, h) => sum + h.planets.length, 0);
+	for (let attempt = 0; total > 0 && attempt < MEMBER_ATTEMPTS; attempt++) {
+		let ticket = randomIndex(total);
+		let i = 0;
+		while (ticket >= hosts[i].planets.length) ticket -= hosts[i++].planets.length;
+		const host = hosts[i];
+		const n = host.planets[ticket];
+		const found = await planetCatalogue.planet(host.id, n).catch(() => null);
+		if (found?.planet.class !== 'planet') continue;
+		const { planet } = found;
+		return { kind: 'object', id: planetObjectId(planet.host, planet.number), name: planet.name };
+	}
+	return null;
 }
 
 /** Any collection page, drawn flat off the group index — a category, an orbit
@@ -368,23 +408,7 @@ function rememberDraw(recent: RecentDraws, draw: Draw): void {
 /** The plain route path for a target — no `?at=` framing, the same as any
  *  fresh open. What `/random` redirects to. */
 export function randomTargetPath(target: RandomTarget): string {
-	if (target.kind === 'group') {
-		return resolve('/[type]/[id]/[[name]]', {
-			type: UrlType.Group,
-			id: target.slug,
-			name: encodeURIComponent(target.name)
-		});
-	}
-	const bodyId = target.kind === 'feature' ? target.bodyId : target.id;
-	const type = urlTypeFromId(bodyId);
-	const id = bodyId.slice(`${urlTypeToIdPrefix(type)}-`.length);
-	if (target.kind === 'feature') {
-		return resolve('/[type]/[id]/f/[featureId]/[[name]]', {
-			type,
-			id,
-			featureId: String(target.featureId),
-			name: encodeURIComponent(target.name)
-		});
-	}
-	return resolve('/[type]/[id]/[[name]]', { type, id, name: encodeURIComponent(target.name) });
+	if (target.kind === 'group') return groupHref(target.slug, target.name);
+	if (target.kind === 'feature') return featureHref(target.bodyId, target.featureId, target.name);
+	return bodyHref(target.id, target.name);
 }
