@@ -820,13 +820,14 @@ def _export(
         del refs
         _refuse(problems)
         tree = _build_tree(registry, layout, workers)
+        wikidata = WikidataEntityCache()
         planet_files = planets.build(
             registry,
             layout.staging,
             layout.scratch,
             lambda task, jobs, label: _run(workers, task, jobs, label),
             layout.live,
-            planet_host_pages(registry, WikidataEntityCache()),
+            planet_host_pages(registry, wikidata),
         )
         shutil.rmtree(layout.scratch)
         if planet_files is not None:
@@ -842,7 +843,7 @@ def _export(
             logger.info(
                 "census: %s %d, %d sources", kind, entry["count"], len(entry["sources"])
             )
-        cultures = skycultures.build(registry, layout.staging, cultures_dir)
+        cultures = skycultures.build(registry, layout.staging, wikidata, cultures_dir)
         index_file, index_entry = system_index.write(listed, names, layout.staging)
         logger.info(
             "system index: %d systems, %d held stars",

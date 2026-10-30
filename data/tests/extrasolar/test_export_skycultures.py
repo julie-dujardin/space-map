@@ -10,6 +10,7 @@ import pytest
 from space_map_data.export.extrasolar import render, skycultures
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import region_of
@@ -112,6 +113,15 @@ def write_cultures(directory: Path, ids: list[int], ingest: int = 1) -> Path:
     }
     (directory / "cultures.json").write_text(json.dumps(index))
     return directory
+
+
+iau_labels = skycultures.iau_labels
+
+
+@pytest.fixture(autouse=True)
+def _no_wikidata(monkeypatch):
+    """An export would read the real Wikidata items."""
+    monkeypatch.setattr(skycultures, "iau_labels", lambda _: {})
 
 
 @pytest.fixture
@@ -374,3 +384,75 @@ class TestCombined:
         assert skycultures.combined("open", NON_COMMERCIAL) == NON_COMMERCIAL
         assert skycultures.combined("site-only", NON_COMMERCIAL) == "site-only"
         assert skycultures.combined(UNDECIDED, NON_COMMERCIAL) == UNDECIDED
+
+
+IAU_LABELS = {"bootes": {"en": "Boötes", "fr": "Bouvier"}}
+
+
+class TestIauConstellations:
+    """The modern cultures name their figures as the IAU constellations."""
+
+    def _laid_out(self, key: str) -> dict:
+        culture = {
+            "constellations": [
+                {
+                    "id": f"CON {key} Boo",
+                    "lines": [[1, 2]],
+                    "common_name": {"native": "Boötes"},
+                },
+                {
+                    "id": f"CON {key} Xxx",
+                    "lines": [[3, 4]],
+                    "common_name": {"native": "Unknown"},
+                },
+            ],
+            "asterisms": [{"id": f"AST {key} Yyy", "lines": [[1, 3]]}],
+        }
+        content, _ = skycultures.layout(_record("stellarium", key, culture), IAU_LABELS)
+        return content
+
+    def test_a_modern_constellation_has_its_abbreviation_and_labels(self):
+        boo, *_ = self._laid_out("modern_iau")["figures"]
+        assert boo["iau"] == "Boo"
+        assert boo["labels"] == {"en": "Boötes", "fr": "Bouvier"}
+
+    def test_a_constellation_with_no_label_keeps_its_abbreviation(self):
+        _, unknown, _ = self._laid_out("modern_iau")["figures"]
+        assert unknown["iau"] == "Xxx"
+        assert "labels" not in unknown
+
+    def test_an_asterism_is_no_iau_constellation(self):
+        *_, asterism = self._laid_out("modern")["figures"]
+        assert "iau" not in asterism
+
+    def test_another_culture_gets_neither(self):
+        boo, *_ = self._laid_out("romanian")["figures"]
+        assert "iau" not in boo
+        assert "labels" not in boo
+
+    @pytest.mark.parametrize(
+        ("name", "slug"),
+        [("Boötes", "bootes"), ("Canes Venatici", "canes-venatici"), ("Ara", "ara")],
+    )
+    def test_each_form_of_latin_name_is_a_table_key(self, name, slug):
+        assert skycultures.iau_slug(name) == slug
+        assert slug in skycultures.MODERN_IAU_CONSTELLATIONS
+
+    def test_iau_labels_reads_each_site_language(self):
+        class Items(WikidataEntityCache):
+            def __init__(self) -> None:
+                pass
+
+            def get_referenced(self, qid):
+                if qid != skycultures.MODERN_IAU_CONSTELLATIONS["orion"][0]:
+                    return None
+                return {"labels": {"en": "Orion", "it": "Orione"}}
+
+        labels = iau_labels(Items())
+        assert list(labels) == ["orion"]
+        assert labels["orion"]["it"] == "Orione"
+        assert labels["orion"]["de"] == "Orion"
+
+    def test_each_iau_constellation_has_a_polish_name(self):
+        names = skycultures.POLISH_CONSTELLATION_NAMES
+        assert set(names) == set(skycultures.MODERN_IAU_CONSTELLATIONS)

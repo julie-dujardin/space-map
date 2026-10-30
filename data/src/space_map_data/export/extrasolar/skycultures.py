@@ -24,7 +24,8 @@ import hashlib
 import html
 import json
 import logging
-from collections.abc import Iterable
+import unicodedata
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -32,9 +33,15 @@ from urllib.parse import quote
 
 import numpy as np
 
+from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.stars.constellations import (
+    MODERN_IAU_CONSTELLATIONS,
+    POLISH_CONSTELLATION_NAMES,
+)
 from space_map_data.export.extrasolar import container, render
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.skyculture_authors import AUTHORS
+from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import region_of
@@ -46,6 +53,9 @@ logger = logging.getLogger(__name__)
 
 TABLE = "skycultures"
 STELLARIUM = "stellarium"
+# Their constellations are the 88 of the IAU; a figure ID ends in the
+# abbreviation and the source has no field for it.
+IAU_CULTURES = frozenset({"modern", "modern_iau", "modern_st"})
 # A Bucur culture is a copy of a Stellarium one when they share at least
 # SAME_SEGMENTS of their line segments (Jaccard), and the Stellarium one has
 # at least SAME_NAMES of the Bucur figure names.
@@ -233,7 +243,33 @@ def _names(names: Iterable[dict]) -> list[dict]:
     return out
 
 
-def _figure(figure: dict, kind: str, members: Members) -> dict:
+def iau_slug(name: str) -> str:
+    """The key in `MODERN_IAU_CONSTELLATIONS` of a Latin name ("Boötes")."""
+    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return plain.casefold().replace(" ", "-")
+
+
+def iau_labels(wikidata: WikidataEntityCache) -> dict[str, dict[str, str]]:
+    """The name of each IAU constellation in each site language, by slug."""
+    labels: dict[str, dict[str, str]] = {}
+    for slug, (qid,) in MODERN_IAU_CONSTELLATIONS.items():
+        entity = wikidata.get_referenced(qid)
+        if entity is None:
+            logger.warning("sky cultures: no Wikidata item %s for %s", qid, slug)
+            continue
+        found = {lang: entity_label(entity, lang) for lang in LANGUAGES}
+        found["pl"] = POLISH_CONSTELLATION_NAMES[slug]
+        labels[slug] = {lang: label for lang, label in found.items() if label}
+    return labels
+
+
+def _figure(
+    figure: dict,
+    kind: str,
+    members: Members,
+    labels: Mapping[str, dict[str, str]] | None,
+) -> dict:
+    """`labels` is given when the figure is an IAU constellation."""
     names = figure.get("names") or (
         [figure["common_name"]] if "common_name" in figure else []
     )
@@ -245,17 +281,24 @@ def _figure(figure: dict, kind: str, members: Members) -> dict:
         out["group"] = [members.add(point) for point in figure["group"]]
     if "IAU" in figure:
         out["iau"] = figure["IAU"]
+    if labels is not None:
+        out["iau"] = figure["id"].rsplit(" ", 1)[-1]
+        native = names[0].get("native", "") if names else ""
+        translated = labels.get(iau_slug(native))
+        if translated:
+            out["labels"] = translated
     if figure.get("is_ray_helper"):
         out["ray_helper"] = True
     return out
 
 
-def layout(record: dict) -> tuple[dict, Members]:
+def layout(record: dict, labels: Mapping[str, dict[str, str]]) -> tuple[dict, Members]:
     """The file content of a matched culture, without positions."""
     culture = record["culture"]
     members = Members()
+    iau = labels if record["key"] in IAU_CULTURES else None
     figures = [
-        _figure(figure, kind, members)
+        _figure(figure, kind, members, iau if kind == "constellation" else None)
         for key, kind in (
             ("constellations", "constellation"),
             ("asterisms", "asterism"),
@@ -386,7 +429,10 @@ def _entry(record: dict, content: dict, path: str) -> dict:
 
 
 def build(
-    registry: Registry, out: Path, cultures_dir: Path | None = None
+    registry: Registry,
+    out: Path,
+    wikidata: WikidataEntityCache,
+    cultures_dir: Path | None = None,
 ) -> Result | None:
     """Write the culture files below `out` with their token, or None with no input.
 
@@ -408,7 +454,8 @@ def build(
         (cultures_dir / "stellarium" / f"{COMMON_NAMES}.json").read_text()
     )
 
-    laid_out = [layout(record) for record in (*records, common)]
+    labels = iau_labels(wikidata)
+    laid_out = [layout(record, labels) for record in (*records, common)]
     ids = {id_ for _, members in laid_out for id_ in members.ids()}
     logger.info("sky cultures: positions of %d stars", len(ids))
     found = positions(registry, ids)
