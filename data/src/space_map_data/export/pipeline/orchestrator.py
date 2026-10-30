@@ -1174,6 +1174,16 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
 
     wikidata_entities = WikidataEntityCache()
     names = ObjectNames(wikidata_entities, names_session, star_objects, planet_objects)
+    # The lists and the search take a planet's or a host's name from the system
+    # files, the pages from `names`.
+    if stale := planet_pages.stale_names(names, star_objects, planet_objects):
+        logger.warning(
+            "The served extrasolar export names %d hosts and planets otherwise"
+            " than their pages now; run space-map-export --only extrasolar."
+            " For example: %s",
+            len(stale),
+            "; ".join(stale[:5]),
+        )
     units = UnitConverter(wikidata_entities)
     orientation = load_orientation(DOWNLOAD_DIR)
     radii = load_radii(DOWNLOAD_DIR)
@@ -1462,7 +1472,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         pages = write_sitemap(
             session,
             out_dir,
-            wikidata_entities,
+            names,
             bundle_ns,
             group_bundle_ns,
             star_objects,

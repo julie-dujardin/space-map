@@ -1085,8 +1085,8 @@ The global entry holds:
 
 - `id`, `type` (`star`; `binary_star` or `multiple_star` for a node of a star
   system whose Metadata class is `binary star` or `multiple star`; or
-  `exoplanet`), `name` (the name of its Metadata row,
-  or of its planets table row) and `cross_refs.wikidata_qid` when it has an
+  `exoplanet`), `name` (a star: the name of its Metadata row; a planet: its
+  global name, see "Names", as in its system file) and `cross_refs.wikidata_qid` when it has an
   item;
 - `sitelinks_count`, the item's sitelinks on all Wikimedia projects, as for a
   body;
@@ -1105,15 +1105,16 @@ The global entry holds:
   has the source `literature` in its `*_source` column; the star page cites
   the work beside it.
 
-The localized entry holds `name` where the item's label in that language is a
-name and differs from its English label, `description` and `aliases` from
-Wikidata (an alias without SIMBAD's `NAME`, `*`, `**`, `V*` or `Cl*`
-prefix), and `wikipedia`. A planet takes no `name` when it has an IAU name,
-which every language keeps, when the label does not end in the planet's
-letter (it names the star, or is a nickname), or when the label is one of its
-designations spelled another way ("Kepler-34b" for "Kepler-34 b", "Gliese"
-for "GJ"). The entry holds these
-references, as `EntityRef`:
+The localized entry holds `name` where the name in that language (see
+"Names") differs from the global `name`, which is also the `name` of the
+Metadata row of a star and of the system file record of a planet: the app
+falls back to it. It holds `description` and `wikipedia` from
+Wikidata, and `aliases`: the names that the page's name replaces (see
+"Names"), a planet's label in that language that is not one of its names or
+designations nor a name of its star (a nickname, "Osiris"), then the
+Wikidata aliases without SIMBAD's `NAME`, `*`, `**`, `V*` or `Cl*` prefix,
+each once as names compare (see "Names"). The entry holds these references,
+as `EntityRef`:
 
 - `instance_of` (P31), without the generic types, the survey detections
   ("infrared source") and the types of another kind of object ("exoplanet").

@@ -70,8 +70,10 @@ name, read from the files the app reads it from. The paths follow
 - planet hosts → `/x/<id>/<name>` — a host with an entry is listed as an
   object, under the name of its entry; for any other host `<name>` is its
   Metadata `name`, as in its system file;
-- planets → `/x/<host>/b/<number>/<name>` — `<name>` is the planet's `name` in
-  its system file. An alias number has no URL.
+- planets → `/x/<host>/b/<number>/<name>` — `<name>` is the global name of
+  the planet's page (`export/names.py`: its IAU name, else its host's page
+  name and its letter): of its entry, else its `name` in its system file,
+  which follows the same rule. An alias number has no URL.
 
 Every name is percent-encoded like `encodeURIComponent`. A page with no name
 has no name segment, and the writer warns about a group in that case: its page
@@ -105,7 +107,11 @@ assets. The other planets and the hosts with no entry have none:
 
 `global` holds the fields of the page's `__global__` bundle entry that
 `meta.ts` reads (its `Seo*` types), or is null when the bundles have no entry.
-`localized` holds the same for each language that has an entry. `images` keeps
+`localized` holds the same for each language that has an entry, with the
+host's name and the names of the links (`parent_name`, `link_names`) that
+`global.parent_name`, `mission` and `part_of_mission` name. `mission` and
+`part_of_mission` keep their `name` and `primary_id`, and `link_names` keeps
+only the names keyed by those `primary_id`s. `images` keeps
 only the first photo and the first logo of each of the `free` and `credit`
 tiers, which leaves the choice of the card image unchanged. `credits` holds the
 `license.name` and `artist` of each `credit` image, as its variants embed them,

@@ -18,7 +18,7 @@ from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.export import sitemap
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.groups.registry import GROUPS, GroupType
-from space_map_data.export.localization import MESSAGES_DIR
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.objects.stars import PlanetObject, StarObject
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.sitemap import (
@@ -39,7 +39,8 @@ from space_map_data.export.sitemap import (
 from space_map_data.extrasolar.registry import ALIAS
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from tests.conftest import make_object
+from space_map_data.utils.paths import MESSAGES_DIR
+from tests.conftest import EntityStub, labelled, make_object
 from tests.extrasolar.export_registry import write_registry
 from tests.extrasolar.test_export_planets import PLANETS, STARS
 
@@ -50,7 +51,7 @@ def _entities(sitelinks: dict[str, int]) -> MagicMock:
     def get_feature_entity(qid: str | None):
         if qid is None or qid not in sitelinks:
             return None
-        return {"sitelinks": {f"w{i}": "" for i in range(sitelinks[qid])}}
+        return {"labels": {}, "sitelinks": {f"w{i}": "" for i in range(sitelinks[qid])}}
 
     cache = MagicMock()
     cache.get_feature_entity.side_effect = get_feature_entity
@@ -309,12 +310,12 @@ class TestFeaturePaths:
         assert _feature_paths(session, _entities({})) == []
 
     def test_takes_the_name_of_the_label_file(self, session: Session):
-        """The page reads its name there, and that is the IAU ``name``."""
+        """The page reads its name there, the IAU spelling."""
         _feature(session, 3, name="Plante", unicode_name="Planté")
         session.flush()
 
         paths = _feature_paths(session, _entities({"Q3": SITELINKS_THRESHOLD}))
-        assert [path for _, path in paths] == ["/b/301/f/3/Plante"]
+        assert [path for _, path in paths] == ["/b/301/f/3/Plant%C3%A9"]
 
     def test_skips_features_with_no_host_body(self, session: Session):
         _feature(session, 4, object_id=None)
@@ -434,7 +435,7 @@ class TestWriteSitemap:
         sitemap.write_sitemap(
             session,
             tmp_path,
-            _entities({}),
+            ObjectNames(_entities({}), session),
             {BASE_LOCALE: 0, "global": 1},
             {BASE_LOCALE: 0},
             [],
@@ -476,7 +477,7 @@ class TestWriteSitemap:
         pages = sitemap.write_sitemap(
             session,
             tmp_path,
-            _entities({}),
+            ObjectNames(_entities({}), session),
             {BASE_LOCALE: 1, "fr": 1, "global": 1},
             {BASE_LOCALE: 0},
             [StarObject(n, f"S{n}", f"Q{n}") for n in (1, 2, 3)],
@@ -502,7 +503,7 @@ class TestWriteSitemap:
         pages = sitemap.write_sitemap(
             session,
             tmp_path,
-            _entities({}),
+            ObjectNames(_entities({}), session),
             {BASE_LOCALE: 1, "global": 0},
             {BASE_LOCALE: 0},
             [StarObject(7, "Sir", "Q7")],
@@ -529,7 +530,7 @@ class TestWriteSitemap:
         pages = sitemap.write_sitemap(
             session,
             tmp_path,
-            _entities({}),
+            ObjectNames(_entities({}), session),
             {BASE_LOCALE: 0, "global": 1},
             {BASE_LOCALE: 0},
             [StarObject(7, "Sir", "Q7")],
@@ -559,7 +560,7 @@ class TestPlanetPaths:
         planets = PlanetPages(
             [(5, 1, "HD 1 b"), (5, 2, "Lucky"), (6, 1, None)], {5: "HD 1", 6: None}
         )
-        assert _planet_paths(planets, {}) == [
+        assert _planet_paths(planets, {}, {}) == [
             "/x/5/HD%201",
             "/x/6",
             "/x/5/b/1/HD%201%20b",
@@ -570,7 +571,30 @@ class TestPlanetPaths:
     def test_leaves_out_a_host_with_an_entry(self):
         """The star's own path, with the name of its entry, lists it."""
         planets = PlanetPages([(5, 1, "Sirius b")], {5: "Sir"})
-        assert _planet_paths(planets, {"x-5": "/x/5/Sirius"}) == ["/x/5/b/1/Sirius%20b"]
+        paths = _planet_paths(planets, {"x-5": "/x/5/Sirius"}, {})
+        assert paths == ["/x/5/b/1/Sirius%20b"]
+
+    def test_names_a_planet_with_an_entry_as_its_page(
+        self, session: Session, tmp_path: Path
+    ):
+        """The name of its entry, its host's and its letter, not the name of
+        its system file."""
+        planets = PlanetPages([(7, 1, "CD Cet b")], {7: "CD Ceti"})
+        names = ObjectNames(EntityStub(), session)
+        sitemap.write_sitemap(
+            session,
+            tmp_path,
+            names,
+            {BASE_LOCALE: 0, "global": 0},
+            {BASE_LOCALE: 0},
+            [],
+            planets,
+            planets.served([PlanetObject(7, 1, "CD Cet b", "Q1", letter="b")]),
+        )
+        assert _locs(tmp_path) == [
+            f"{sitemap.SITE_ORIGIN}/x/7/CD%20Ceti",
+            f"{sitemap.SITE_ORIGIN}/x/7/b/1/CD%20Ceti%20b",
+        ]
 
 
 def _export_planets(registry_root: Path, out: Path) -> None:
@@ -584,12 +608,14 @@ class TestAvailablePlanetPages:
 
     def test_reads_each_planet_and_its_host_name(self, tmp_path: Path):
         """A host in another region than its system; a star with no planet is
-        no host."""
+        no host. A planet has the name of its page: its host's and its letter,
+        or its IAU name."""
         built = write_registry(tmp_path / "reg", STARS, planets=PLANETS)
         _export_planets(built.root, tmp_path / "out")
         ids = built.ids
 
         pages = available_planet_pages(tmp_path / "out")
+        hosts = {0: "Host A", 1: "Lit B", 2: "OGLE-1L", 3: "PSR 1", 4: "Host A B"}
         assert pages.planets == sorted(
             [
                 (ids[0], 1, "Host A b"),
@@ -600,18 +626,52 @@ class TestAvailablePlanetPages:
                 (ids[4], 1, "Host A B b"),
             ]
         )
-        assert pages.hosts == {
-            ids[0]: "Host A",
-            ids[1]: "Lit B",
-            ids[2]: "OGLE-1L",
-            ids[3]: "PSR 1",
-            ids[4]: "Host A B",
-        }
+        assert pages.hosts == {ids[index]: name for index, name in hosts.items()}
+        assert pages.iau_hosts == frozenset()
+        assert pages.served_names[f"x-{ids[0]}"] == Names("Host A")
+        assert pages.served_names[f"x-{ids[0]}-b-2"] == Names("Lucky")
 
-    def test_the_served_planets_with_an_entry(self):
-        pages = PlanetPages([(7, 1, "Sirius b"), (7, 2, None)], {7: "Sirius"})
+    def test_an_export_without_page_names_is_refused(self, tmp_path: Path):
+        """The lists and the search name a planet from its system file, so an
+        export from before `names` must run again before any other export."""
+        out = tmp_path / "out"
+        built = write_registry(tmp_path / "reg", STARS, planets=PLANETS)
+        _export_planets(built.root, out)
+        path = next((out / "v1" / "x" / "planets").glob("[0-9]*.json.gz"))
+        content = orjson.loads(gzip.decompress(path.read_bytes()))
+        for record in content["planets"]:
+            del record["names"]
+        path.write_bytes(gzip.compress(orjson.dumps(content)))
+        with pytest.raises(KeyError, match="--only extrasolar"):
+            available_planet_pages(out)
+
+    def test_the_served_planets_with_an_entry_and_their_host_names(self):
+        pages = PlanetPages(
+            [(7, 1, "Sirius b"), (7, 2, None)], {7: "Sirius"}, frozenset({7})
+        )
         objects = [PlanetObject(7, 2, "c", "Q1"), PlanetObject(7, 3, "d", "Q2")]
-        assert pages.served(objects) == [PlanetObject(7, 2, "c", "Q1")]
+        assert pages.served(objects) == [
+            PlanetObject(7, 2, "c", "Q1", host_name="Sirius", host_iau_named=True)
+        ]
+
+    def test_names_that_differ_from_the_pages_now_are_stale(self, session: Session):
+        """A Wikidata download after the extrasolar export gave the host a
+        name in Japanese, which its planet does not have yet."""
+        pages = PlanetPages(
+            [(7, 1, "Sirius b")],
+            {7: "Sirius"},
+            served_names={
+                "x-7": Names("Sirius", {"ja": "シリウス"}),
+                "x-7-b-1": Names("Sirius b"),
+            },
+        )
+        stars = [StarObject(7, "Sirius", "Q1")]
+        planets = pages.served([PlanetObject(7, 1, "Sirius b", "Q2", letter="b")])
+        sirius = labelled({"en": "Sirius", "ja": "シリウス"})
+        names = ObjectNames(EntityStub({"Q1": sirius}), session, stars, planets)
+        assert pages.stale_names(names, stars, planets) == [
+            "x-7-b-1 (ja): Sirius b → シリウス b"
+        ]
 
     def test_follows_the_served_export_not_the_registry(self, tmp_path: Path):
         """An export that refuses the registry leaves the served pages."""

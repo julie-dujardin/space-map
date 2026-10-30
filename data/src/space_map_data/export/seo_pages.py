@@ -18,7 +18,8 @@ import orjson
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from space_map_data.export.nomenclature.writer import feature_bucket_key, feature_label
+from space_map_data.export.names import ObjectNames, feature_names
+from space_map_data.export.nomenclature.writer import feature_bucket_key
 from space_map_data.export.objects.stars import available_extrasolar_objects
 from space_map_data.export.sitemap import (
     SitemapPages,
@@ -44,10 +45,18 @@ _OBJECT_GLOBAL: Spec = {
     "sbdb": ("class", "first_obs", "diameter", "H", "spec_B", "spec_T"),
     "wikidata": ("discovery_date", "launch_date"),
     "celestrak": ("object_type", "launch_date", "orbit_center"),
-    "part_of_mission": ("name",),
-    "mission": ("name",),
+    "part_of_mission": ("name", "primary_id"),
+    "mission": ("name", "primary_id"),
 }
-_OBJECT_LOCALIZED: Spec = {"name": None, "description": None, "discoverers": ("name",)}
+# The global fields whose page `link_names` names, by its primary_id.
+_LINKED = ("mission", "part_of_mission")
+_OBJECT_LOCALIZED: Spec = {
+    "name": None,
+    "description": None,
+    "discoverers": ("name",),
+    "parent_name": None,
+    "link_names": None,
+}
 _GROUP_LOCALIZED: Spec = {"name": None, "description": None}
 _FEATURE_GLOBAL: Spec = {"origin": None}
 _FEATURE_LOCALIZED: Spec = {"description": None}
@@ -156,6 +165,24 @@ def _by_key(localized: dict[str, dict[str, dict]], key: str) -> dict[str, dict]:
     return {lang: entries[key] for lang, entries in localized.items() if key in entries}
 
 
+def _link_names(projected: dict, localized: dict[str, dict]) -> dict[str, dict]:
+    """``localized`` with only the `link_names` of the links that the record
+    keeps."""
+    linked = {projected[key]["primary_id"] for key in _LINKED if key in projected}
+    out = {}
+    for lang, entry in localized.items():
+        entry = dict(entry)
+        names = {
+            key: name
+            for key, name in entry.pop("link_names", {}).items()
+            if key in linked
+        }
+        if names:
+            entry["link_names"] = names
+        out[lang] = entry
+    return out
+
+
 def _object_records(
     out_dir: Path,
     ids: Collection[str],
@@ -169,11 +196,12 @@ def _object_records(
         root / "__global__", buckets["global"], ids
     ).items():
         images = _card_images(entry.get("images"))
+        projected = _project(entry, _OBJECT_GLOBAL)
         yield (
             f"o/{obj_id}",
             {
-                "global": _with_images(_project(entry, _OBJECT_GLOBAL), images),
-                "localized": _by_key(localized, obj_id),
+                "global": _with_images(projected, images),
+                "localized": _link_names(projected, _by_key(localized, obj_id)),
                 "credits": credits.of(images),
             },
         )
@@ -231,7 +259,7 @@ def _feature_records(
                 "credits": credits.of(images),
                 # The line of the gazetteer's label file, which names the page.
                 "names": {
-                    lang: feature_label(feature, lang, wikidata_entities)
+                    lang: feature_names(feature, wikidata_entities).get(lang)
                     for lang in langs
                 },
             },
@@ -299,16 +327,17 @@ def export_seo_only(engine: Engine) -> None:
     wikidata_entities = WikidataEntityCache()
     stars, planets = available_extrasolar_objects()
     planet_pages = available_planet_pages()
+    served = planet_pages.served(planets)
     with Session(engine) as session:
         pages = write_sitemap(
             session,
             out_dir,
-            wikidata_entities,
+            ObjectNames(wikidata_entities, session, stars, served),
             metadata["object_bundles"],
             metadata["group_bundles"],
             stars,
             planet_pages,
-            planet_pages.served(planets),
+            served,
         )
         write_seo_pages(
             out_dir,

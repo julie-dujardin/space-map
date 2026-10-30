@@ -146,9 +146,16 @@ class TestStarEntries:
         entities = fake_entities(
             {
                 "Q1": entity(
-                    {"en": "Sirius", "fr": "Sirius", "ru": "Сириус", "ja": "HD 48915"},
+                    {
+                        "en": "Sirius",
+                        "fr": "Sirius",
+                        "ru": "Сириус",
+                        "ja": "HD 48915",
+                        "pl": "Syriusz",
+                        "de": "Sirius (Stern)",
+                    },
                     {"en": "brightest star in the night sky"},
-                    {"de": ["Hundsstern"]},
+                    {"de": ["Hundsstern"], "pl": ["syriusz", "Psia Gwiazda", "Sirius"]},
                     claims,
                 ),
                 # Wikidata calls Hamal by its Bayer designation.
@@ -161,7 +168,7 @@ class TestStarEntries:
         )
         found = star_entries(
             [
-                StarObject(22137869, "Sirius", "Q1"),
+                StarObject(22137869, "Sirius", "Q1", iau_named=True),
                 StarObject(5, "Hamal", "Q2"),
                 StarObject(6, "HD 7", "Q3"),
                 # A distance from a paper, and no Wikidata item.
@@ -236,7 +243,8 @@ class TestStarEntries:
         }
         # A link to a star with an entry takes the name of its page.
         assert localized["zh"]["x-22137869"]["part_of"] == [{**hamal, "name": "婁宿三"}]
-        # The same label as in English, or a catalogue number, is no name.
+        # The same label as in English is no name, and a Latin label does not
+        # replace an IAU name.
         assert "name" not in localized["fr"]["x-22137869"]
         assert "name" not in localized["ja"]["x-22137869"]
         assert localized["zh"]["x-5"] == {"name": "婁宿三"}
@@ -244,6 +252,14 @@ class TestStarEntries:
         # No entity downloaded, or no item: a global entry only.
         assert not any("x-6" in entries for entries in localized.values())
         assert not any("x-7" in entries for entries in localized.values())
+
+    def test_a_label_that_the_iau_name_replaces_is_an_alias(self, entries):
+        _, localized = entries
+        # First, and with the Wikidata aliases once in any case, without the
+        # page's name.
+        assert localized["pl"]["x-22137869"]["aliases"] == ["Syriusz", "Psia Gwiazda"]
+        # Without its disambiguator, the label is the IAU name.
+        assert localized["de"]["x-22137869"]["aliases"] == ["Hundsstern"]
 
     def test_references(self):
         assert star_references(StarObject(7, "η Carinae", "Q1", ETA_CAR)) == {
@@ -352,24 +368,32 @@ class TestPlanetEntries:
         assert "name" not in localized["ja"]["x-9-b-1"]
         assert "name" not in localized["ru"]["x-9-b-1"]
 
-    def test_a_designation_spelled_another_way_is_no_name(self, entries):
-        _, localized = entries
-        assert "x-4-b-2" not in localized["de"]
-        # Gliese numbers go by GJ too.
-        assert "x-4-b-2" not in localized["fr"]
-        assert localized["ja"]["x-4-b-2"] == {"name": "ケプラー34b"}
+    def test_a_planet_takes_its_hosts_name_and_its_letter(self, entries):
+        """A language has a name where it differs from the global one, which
+        is the `name` of the planet's system file record."""
+        global_data, localized = entries
+        assert global_data["x-4-b-2"]["name"] == "Kepler-34 AB b"
+        assert "x-4-b-2" not in localized["en"]
+        assert localized["ar"]["x-4-b-2"]["name"] == "كبلر-34 b"
+        # Its own label names it in no language.
+        assert "name" not in localized["ja"]["x-4-b-2"]
 
-    def test_a_name_ends_in_the_letter_of_the_planet(self, entries):
+    def test_the_catalogue_name_is_an_alias_of_another_name(self, entries):
         _, localized = entries
-        assert "x-4-b-2" not in localized["pt"]
-        assert "name" not in localized["ru"]["x-4-b-2"]
+        assert localized["ar"]["x-4-b-2"]["aliases"] == ["Kepler-34 b"]
+        # The same designation, with the pair's letters.
+        assert "x-4-b-2" not in localized["en"]
 
     def test_a_nickname_is_an_alias(self, entries):
         _, localized = entries
-        assert localized["ru"]["x-4-b-2"] == {"aliases": ["Осирис"]}
-        # A name of the star in a script that has no designation key.
-        assert "x-4-b-2" not in localized["ar"]
-        assert localized["he"]["x-4-b-2"] == {"aliases": ["קפלר-34 בי"]}
+        assert localized["ru"]["x-4-b-2"]["aliases"] == ["Осирис"]
+        assert localized["ja"]["x-4-b-2"]["aliases"] == ["ケプラー34b"]
+        # A name of the star in a script that has no designation key; the
+        # planet's own name in that script is no name of its page.
+        assert localized["he"]["x-4-b-2"] == {
+            "name": "קפלר-34 b",
+            "aliases": ["Kepler-34 b", "קפלר-34 בי"],
+        }
 
     def test_an_iau_named_planet_keeps_its_other_labels_as_aliases(self, entries):
         _, localized = entries
@@ -379,7 +403,9 @@ class TestPlanetEntries:
 
     def test_a_label_that_is_its_name_spelled_another_way_is_no_alias(self, entries):
         _, localized = entries
-        assert "x-4-b-2" not in localized["es"]
+        # Gliese numbers go by GJ too, and a label can name the star.
+        for lang in ("de", "es", "fr", "pt"):
+            assert "x-4-b-2" not in localized[lang]
         assert "aliases" not in localized["de"]["x-9-b-1"]
         assert "aliases" not in localized["es"]["x-9-b-1"]
 
@@ -588,7 +614,7 @@ class TestOnlyStarObjects:
         )
         monkeypatch.setattr(stars, "load_wikipedia_summaries_for_qid", lambda qid: {})
         monkeypatch.setattr(stars, "collect_star_images", lambda qid: None)
-        stars.export_star_objects_only(out)
+        stars.export_star_objects_only(out, tmp_path / "extrasolar")
         assert (
             bundle(out / "objects" / "__global__" / "0.json.gz")["x-7"]["name"]
             == "Vega"

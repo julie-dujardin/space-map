@@ -6,7 +6,6 @@ page's bundle entries: the Worker builds the page's meta from the record alone.
 
 import gzip
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import orjson
 
@@ -19,6 +18,7 @@ from space_map_data.export.seo_pages import (
 )
 from space_map_data.export.sitemap import SitemapPages
 from space_map_data.models.feature import Feature
+from tests.conftest import EntityStub
 
 
 def _write_bundles(bundle_dir: Path, n_buckets: int, entries: dict[str, dict]) -> None:
@@ -158,7 +158,7 @@ class TestWriteSeoPages:
                 features=[(tycho, "/b/301/f/7/Tycho")],
                 planets=("x-5-b-2",),
             ),
-            MagicMock(),
+            EntityStub(),
             {"global": 2, "en": 1, "fr": 1},
             {"global": 1},
             {"global": 1, "en": 1},
@@ -220,3 +220,56 @@ class TestWriteSeoPages:
 
         assert record["global"] == {"origin": "Tycho Brahe"}
         assert record["names"] == {"en": "Tycho", "fr": "Tycho"}
+
+
+class TestLinkNames:
+    """A record names the mission it links to in each language, and no other
+    link of the page."""
+
+    def test_keeps_the_names_of_the_record_links(self, tmp_path: Path):
+        mission = {
+            "name": "Hera",
+            "primary_type": "group",
+            "primary_id": "mission-hera",
+            "thumbnail": {"file": "Hera.jpg"},
+        }
+        _write_bundles(
+            tmp_path / "objects" / "__global__",
+            1,
+            {"probe-9": {"name": "Milani", "part_of_mission": mission}},
+        )
+        _write_bundles(
+            tmp_path / "objects" / "ja",
+            1,
+            {
+                "probe-9": {
+                    "name": "ミラニ",
+                    "link_names": {"mission-hera": "ヘラ", "probe-8": "ヘラ探査機"},
+                }
+            },
+        )
+        write_seo_pages(
+            tmp_path,
+            SitemapPages(
+                objects={"probe-9": "/o/probe-9/Milani"},
+                groups={},
+                features=[],
+                planets=(),
+            ),
+            EntityStub(),
+            {"global": 1, "ja": 1},
+            {"global": 1},
+            {"global": 1},
+        )
+        record = orjson.loads(
+            gzip.decompress((tmp_path / "seo" / "pages.json.gz").read_bytes())
+        )["o/probe-9"]
+
+        assert record["global"]["part_of_mission"] == {
+            "name": "Hera",
+            "primary_id": "mission-hera",
+        }
+        assert record["localized"]["ja"] == {
+            "name": "ミラニ",
+            "link_names": {"mission-hera": "ヘラ"},
+        }

@@ -19,8 +19,10 @@ for planets.
 import datetime
 import gzip
 import logging
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
+from dataclasses import replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import NamedTuple
 from urllib.parse import quote
 from xml.sax.saxutils import escape
@@ -31,14 +33,16 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import CATEGORY_SLUG_PREFIX
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS
-from space_map_data.constants.providers import BASE_LOCALE
+from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
-from space_map_data.export.localization import MESSAGES_DIR
-from space_map_data.export.nomenclature.writer import (
-    feature_label,
-    renderable_feature_filter,
+from space_map_data.export.names import (
+    Names,
+    ObjectNames,
+    feature_names,
+    served_host,
 )
+from space_map_data.export.nomenclature.writer import renderable_feature_filter
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.export.objects.stars import (
     PlanetObject,
@@ -49,7 +53,7 @@ from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import EXTRASOLAR_DIR, MESSAGES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +255,7 @@ def _feature_paths(
             continue
         path = _named(
             f"{base}/f/{feature.feature_id}",
-            feature_label(feature, BASE_LOCALE, wikidata_entities),
+            feature_names(feature, wikidata_entities).name,
         )
         paths.append((feature, path))
     if skipped:
@@ -324,16 +328,52 @@ def _urlset(paths: list[str], lastmod: str) -> bytes:
 
 
 class PlanetPages(NamedTuple):
-    """The served planets as (host, number, name), and the Metadata name of
-    each host."""
+    """The served planets as (host, number, name), the Metadata name of each
+    host, the hosts whose name is the IAU name, and the names of each host and
+    planet page in the system files, by page id."""
 
     planets: list[tuple[int, int, str | None]]
     hosts: dict[int, str | None]
+    iau_hosts: frozenset[int] = frozenset()
+    served_names: Mapping[str, Names] = MappingProxyType({})
+
+    def stale_names(
+        self,
+        names: ObjectNames,
+        stars: Iterable[StarObject],
+        planets: Iterable[PlanetObject],
+    ) -> list[str]:
+        """The hosts and the planets with an entry whose names in the system
+        files differ from the names that ``names`` gives them now, each as
+        "page id (language): served → now". A Wikidata download or a registry
+        ingest after the extrasolar export makes them differ."""
+        page_ids = [
+            entry.obj_id
+            for entry in (*stars, *planets)
+            if entry.obj_id in self.served_names
+        ]
+        out = []
+        for page_id in page_ids:
+            served, now = self.served_names[page_id], names.object(page_id)
+            for lang in LANGUAGES:
+                if (was := served.get(lang)) != (found := now.get(lang)):
+                    out.append(f"{page_id} ({lang}): {was} → {found}")
+                    break
+        return out
 
     def served(self, objects: Iterable[PlanetObject]) -> list[PlanetObject]:
-        """The planets of `objects` that have a page."""
+        """The planets of `objects` that have a page, each with the Metadata
+        name of its host, which names a planet (`names.planet_names`)."""
         pages = {(host, number) for host, number, _ in self.planets}
-        return [p for p in objects if (p.host, p.number) in pages]
+        return [
+            replace(
+                p,
+                host_name=self.hosts.get(p.host),
+                host_iau_named=p.host in self.iau_hosts,
+            )
+            for p in objects
+            if (p.host, p.number) in pages
+        ]
 
 
 def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages:
@@ -343,6 +383,10 @@ def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages
     The served files, not the registry: the extrasolar export refuses some
     registry changes, and the site has a page only for what it serves. An
     alias number has no page of its own.
+
+    Raises KeyError for an export whose system files have no page names
+    (`names`): the lists and the search name a planet from them, so that
+    export must run again first.
     """
     root = extrasolar_dir / "v1" / "x"
     if not (root / "metadata.json").exists():
@@ -354,19 +398,43 @@ def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages
         return PlanetPages([], {})
     planets: list[tuple[int, int, str | None]] = []
     hosts: dict[int, str | None] = {}
+    iau_hosts: set[int] = set()
+    served_names: dict[str, Names] = {}
     for key in sorted({host["system"] for host in reader.planet_index()["hosts"]}):
         system = reader.system(key)
-        hosts.update((h["id"], h["name"]) for h in system["hosts"] if h["planets"])
-        planets.extend((p["host"], p["number"], p["name"]) for p in system["planets"])
+        if not all("names" in r for r in (*system["hosts"], *system["planets"])):
+            raise KeyError(
+                f"planets/{key}: the served extrasolar export has no page names;"
+                " run space-map-export --only extrasolar"
+            )
+        for host in system["hosts"]:
+            if host["planets"]:
+                hosts[host["id"]] = host["name"]
+                page = served_host(host)
+                if page is not None and page.iau_named:
+                    iau_hosts.add(host["id"])
+            if host["name"] is not None:
+                page_id = f"{STAR_PREFIX}{host['id']}"
+                served_names[page_id] = Names(host["name"], host["names"])
+        for p in system["planets"]:
+            planets.append((p["host"], p["number"], p["name"]))
+            page_id = f"{STAR_PREFIX}{p['host']}-b-{p['number']}"
+            served_names[page_id] = Names(p["name"], p["names"])
     return PlanetPages(
-        sorted(planets, key=lambda p: p[:2]), dict(sorted(hosts.items()))
+        sorted(planets, key=lambda p: p[:2]),
+        dict(sorted(hosts.items())),
+        frozenset(iau_hosts),
+        served_names,
     )
 
 
-def _planet_paths(planets: PlanetPages, objects: dict[str, str]) -> list[str]:
+def _planet_paths(
+    planets: PlanetPages, objects: dict[str, str], entries: dict[tuple[int, int], str]
+) -> list[str]:
     """The canonical path of each planet host, then of each planet, with the
     name the app gives it: the host's entry name, else its Metadata name; the
-    planet's own name. A host with an entry is in ``objects`` already."""
+    planet's name in ``entries`` (its entry), else its system file name. A
+    host with an entry is in ``objects`` already."""
     hosts = [
         _named(f"/x/{host}", name)
         for host, name in planets.hosts.items()
@@ -378,14 +446,15 @@ def _planet_paths(planets: PlanetPages, objects: dict[str, str]) -> list[str]:
         len(hosts),
     )
     return hosts + [
-        _named(f"/x/{host}/b/{number}", name) for host, number, name in planets.planets
+        _named(f"/x/{host}/b/{number}", entries.get((host, number), name))
+        for host, number, name in planets.planets
     ]
 
 
 def write_sitemap(
     session: Session,
     out_dir: Path,
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     object_buckets: dict[str, int],
     group_buckets: dict[str, int],
     stars: list[StarObject],
@@ -412,14 +481,18 @@ def write_sitemap(
             {f"{STAR_PREFIX}{host}" for host in planets.hosts},
         ),
         groups=_group_paths(out_dir, group_buckets[BASE_LOCALE]),
-        features=_feature_paths(session, wikidata_entities),
+        features=_feature_paths(session, names.entities),
         planets=tuple(planet.obj_id for planet in planet_entries),
     )
     paths = [
         *pages.objects.values(),
         *pages.groups.values(),
         *(path for _, path in pages.features),
-        *_planet_paths(planets, pages.objects),
+        *_planet_paths(
+            planets,
+            pages.objects,
+            {(p.host, p.number): names.planet(p).name for p in planet_entries},
+        ),
     ]
     lastmod = datetime.date.today().isoformat()
     seo_dir = out_dir / "seo"
