@@ -25,6 +25,21 @@ def q_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     )
 
 
+def q_mul_rows(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """`q_mul` row by row over `(n, 4)` arrays. A `(4,)` operand broadcasts."""
+    w1, x1, y1, z1 = np.moveaxis(a, -1, 0)
+    w2, x2, y2, z2 = np.moveaxis(b, -1, 0)
+    return np.stack(
+        [
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        ],
+        axis=-1,
+    )
+
+
 def q_conj(q: np.ndarray) -> np.ndarray:
     """Conjugate (inverse for unit quaternions)."""
     return np.array([q[0], -q[1], -q[2], -q[3]])

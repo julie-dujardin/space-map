@@ -8,7 +8,8 @@ Per probe, under `attitude/<probe>/`:
   crash leaves only whole files.
 
 Per mission, `attitude/_coverage/<mission>.json` holds the SEGMENT-level
-coverage of each CK, keyed on its content stamp.
+coverage of each CK, and whether its segments need positions to resolve,
+keyed on its content stamp.
 """
 
 import json
@@ -19,7 +20,12 @@ import numpy as np
 
 from space_map_data.export.sidecar_io import read_sidecar, write_atomic
 
+# The probe cache file and the shard signatures: a bump extracts every shard.
 CACHE_VERSION = 4
+# The coverage entries: a bump reads every CK again.
+COVERAGE_VERSION = 5
+# The spin plan: a bump plans every probe again.
+SPIN_VERSION = 5
 CACHE_NAME = "_attitude_cache.json"
 SHARD_DIR = "shards"
 COVERAGE_DIR = "_coverage"
@@ -68,8 +74,8 @@ def coverage_path(attitude_meta_dir: Path, mission: str) -> Path:
 
 
 def load_coverage(path: Path, key: dict) -> dict[str, dict]:
-    """`{ck name: {"stamp", "cover"}}` when the file was written under `key`
-    (cache version and LSK, FK and SCLK stamps), else empty."""
+    """`{ck name: {"stamp", "cover", "ephemeris"}}` when the file was written
+    under `key` (coverage version and LSK, FK and SCLK stamps), else empty."""
     data = read_sidecar(path)
     if data is None or data.get("key") != key:
         return {}

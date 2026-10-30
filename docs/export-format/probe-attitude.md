@@ -55,12 +55,12 @@ interface ProbeAttitude {
   start_jd: number;       // coverage start (JD TDB)
   end_jd: number;         // coverage end (JD TDB)
   n_keyframes: number;    // total across all files
-  // Per-phase spin baselines (spin-stabilised craft, e.g. Juno), subtracted
-  // before encoding so the per-keyframe stream only carries the slow residual.
-  // null for a non-spinner (keyframes are raw J2000→body). A spinner that holds
-  // one rate has a single entry; one that steps rate across mission phases
-  // (Juno: 1↔2 RPM) has one per phase, and each file's `baseline_index` selects
-  // the span active over it.
+  // Spin baselines of a spin-stabilised craft (Juno, HUYGENS), one per span.
+  // The encoder subtracts the baseline, so the keyframes carry only the slow
+  // residual. Each file's `baseline_index` selects the span active over it.
+  // A span where no fixed rate holds has rate_rad_s 0, anchor [1, 0, 0, 0]
+  // and axis [0, 0, 1], so its keyframes are raw J2000→body.
+  // null for a non-spinner (keyframes are raw J2000→body).
   baselines: {
     kind: "spin";
     axis: [number, number, number];            // unit spin axis (J2000)

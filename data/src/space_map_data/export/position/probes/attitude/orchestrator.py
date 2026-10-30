@@ -3,8 +3,10 @@
 The pipeline calls `write_attitude` between `write_probes` and
 `write_object_bundles`. For each mission with an `_attitude_index.json`:
 1. Read the SEGMENT-level coverage of each CK, from the cache or a worker.
+   A mission whose CK segments are relative to a frame that needs positions
+   also furnishes its own SPKs everywhere after this.
 2. Plan the spin of each probe, keyed on its full kernel signature. Only a
-   spinner (Juno) gets more than one span.
+   spinner (Juno, HUYGENS) gets more than one span.
 3. Extract the 7-day shards whose signature changed (`shards.py`), on one
    pool of workers across all missions, biggest task first.
 4. Join the shards of each probe. Write its chunks only when a shard changed
@@ -39,6 +41,7 @@ from space_map_data.download.providers.spice.probes import MISSIONS_DIR
 from space_map_data.download.providers.spice.probes.attitude.ck_kernels import (
     ATTITUDE_INDEX_NAME,
 )
+from space_map_data.export.position.probes.kernels import kernels_from_index
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.utils.content_stamp import content_stamps
@@ -48,7 +51,9 @@ from .adaptive import SEED_DT_S
 from .baseline import SpinBaseline
 from .cache import (
     CACHE_VERSION,
+    COVERAGE_VERSION,
     SHARD_DIR,
+    SPIN_VERSION,
     coverage_path,
     list_shards,
     load_coverage,
@@ -64,7 +69,13 @@ from .extractor import (
     ExtractionResult,
     manifest_entry,
 )
-from .segments import OMEGA_DDT, SpinSegment, is_spinner, spin_timeline_ets
+from .segments import (
+    OMEGA_DDT,
+    SpinSegment,
+    is_spin_plan,
+    is_spinner,
+    spin_timeline_ets,
+)
 from .shards import (
     Coverage,
     Window,
@@ -129,7 +140,7 @@ class _Probe:
 
     @property
     def spinner(self) -> bool:
-        return any(seg.baseline is not None for seg in self.segments)
+        return is_spin_plan(self.segments)
 
 
 @dataclass
@@ -265,6 +276,34 @@ def _load_missions(out_dir: Path) -> list[_Mission]:
     return missions
 
 
+def _add_ephemerides(m: _Mission) -> None:
+    """Add the mission's own SPKs to its base kernels, for CK segments that
+    are relative to a frame that needs positions."""
+    try:
+        spks = kernels_from_index(m.mission_dir)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.error("attitude: SPK index of %s unreadable: %s", m.name, exc)
+        m.error = "SPK index unreadable"
+        return
+    if not spks:
+        logger.warning(
+            "attitude: %s has CK segments that need positions but no SPKs", m.name
+        )
+        return
+    stamps = content_stamps(spks)
+    missing = [p.name for p in spks if stamps[p] is None]
+    if missing:
+        m.error = f"missing kernels: {', '.join(missing[:3])}"
+        return
+    logger.info(
+        "attitude: %s has CK segments that need positions; furnishing %d SPKs",
+        m.name,
+        len(spks),
+    )
+    m.base += [str(p) for p in spks]
+    m.base_stamps += [[_rel_key(p), stamps[p]] for p in spks]
+
+
 def _rel_key(path: Path) -> str:
     try:
         return str(path.relative_to(DOWNLOAD_DIR))
@@ -337,15 +376,18 @@ class _Run:
                 logger.error("attitude: coverage read failed for %s: %r", m.name, res)
                 m.error = "coverage read failed"
                 continue
-            for path, cover in res.items():
+            for path, read in res.items():
                 name = Path(path).name
-                if isinstance(cover, str):
-                    logger.error("attitude: ckcov failed for %s: %s", path, cover)
+                if isinstance(read, str):
+                    logger.error("attitude: ckcov failed for %s: %s", path, read)
                     m.error = "coverage read failed"
                     continue
                 entries[m.name][name] = {
                     "stamp": m.ck_stamps[name],
-                    "cover": {str(i): [list(w) for w in ws] for i, ws in cover.items()},
+                    "cover": {
+                        str(i): [list(w) for w in ws] for i, ws in read["cover"].items()
+                    },
+                    "ephemeris": read["ephemeris"],
                 }
         for m in missions:
             if m.name not in entries:
@@ -364,12 +406,14 @@ class _Run:
                 }
                 for name in m.ck_names
             }
+            if any(kept[name]["ephemeris"] for name in m.ck_names):
+                _add_ephemerides(m)
 
     @staticmethod
     def _coverage_key(m: _Mission) -> dict:
         # TDB coverage depends on the LSK, the SCLK and the clock map in the FK.
         return {
-            "version": CACHE_VERSION,
+            "version": COVERAGE_VERSION,
             "lsk": m.base_stamps[0][1],
             "fk": m.base_stamps[2][1],
             "sclk": m.base_stamps[3][1],
@@ -395,6 +439,7 @@ class _Run:
                     {
                         "probe": p.probe_sig,
                         "cks": [[n, m.ck_stamps[n]] for n in m.ck_names],
+                        "spin": SPIN_VERSION,
                     }
                 )
                 spin = p.cache.get("spin")
@@ -428,7 +473,8 @@ class _Run:
             if p.error or p.span is None:
                 continue
             ets = spin_timeline_ets(*p.span)
-            for part in np.array_split(ets, self.n_workers):
+            # A short span has fewer probes than workers.
+            for part in np.array_split(ets, min(self.n_workers, ets.size)):
                 cks = covering_cks(
                     m.coverage, m.ck_names, float(part[0]), float(part[-1]) + OMEGA_DDT
                 )
@@ -482,7 +528,7 @@ class _Run:
                 continue
             if p.spinner:
                 logger.info(
-                    "attitude: probe %d spins: %d phases at %s RPM",
+                    "attitude: probe %d spins: %d spans at %s RPM",
                     p.probe_id,
                     len(p.segments),
                     ", ".join(_rpm(s) for s in p.segments),
@@ -490,7 +536,7 @@ class _Run:
                 if p.cache.get("spin") is not None:
                     logger.info(
                         "attitude: probe %d has a new spin plan. Each shard in a "
-                        "phase that changed extracts again.",
+                        "span that changed extracts again.",
                         p.probe_id,
                     )
             p.cache["spin"] = {
@@ -795,7 +841,7 @@ def _prune_shards(p: _Probe, keep: set[str]) -> None:
 
 def _rpm(seg: SpinSegment) -> str:
     if seg.baseline is None:
-        return "—"
+        return "raw"
     return f"{seg.baseline.rate_rad_s / (2 * math.pi) * 60:.1f}"
 
 
@@ -811,7 +857,7 @@ def _segment_from_json(data: dict) -> SpinSegment:
             t0=b["t0"],
         )
     )
-    return SpinSegment(data["start"], data["end"], baseline)
+    return SpinSegment(data["start"], data["end"], baseline, data["seed_dt"])
 
 
 def _inject_manifest(

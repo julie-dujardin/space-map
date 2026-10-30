@@ -3,8 +3,9 @@
 The caller furnishes SPICE. The export keyframes one 7-day shard at a time
 with `extract_shard`. `extract_attitude` keyframes a whole probe in one call
 and writes its chunks; the benchmark script uses it. A non-spinner is one raw
-span. A spinner (Juno) has one span per spin phase, each with its own
-baseline, so the adaptive sampler keyframes a slow residual (`segments.py`).
+span. A spinner (Juno, HUYGENS) has one span per stretch where a fixed-rate
+baseline holds, so the adaptive sampler keyframes a slow residual. Where no
+baseline holds, its span is raw on a short seed step (`segments.py`).
 `manifest_entry` builds the dict for the probe's `__global__` bundle.
 """
 
@@ -16,10 +17,11 @@ from pathlib import Path
 import numpy as np
 import spiceypy
 
-from .adaptive import SEED_DT_S, adaptive_sample
+from .adaptive import MIN_DT_S, SEED_DT_S, adaptive_sample
+from .baseline import SpinBaseline
 from .keyframes import extract_keyframes
 from .sample import ck_instrument_ids, ck_windows
-from .segments import SpinSegment, plan_segments
+from .segments import SpinSegment, is_spin_plan, plan_segments
 from .writer import ChunkFile, write_chunks
 
 logger = logging.getLogger(__name__)
@@ -310,8 +312,16 @@ def _keyframe_segment(
         end = min(win_end, seg.end_et)
         while end - start > 1.0:
             tile_end = min(end, start + TILE_S)
+            # A raw fast spin turns degrees per second and its CK records kink
+            # the rate, so its refinement floor scales with its seed step.
             ets, stream, gaps = adaptive_sample(
-                frame_name, start, tile_end, eps_rad, transform=transform
+                frame_name,
+                start,
+                tile_end,
+                eps_rad,
+                seed_dt=seg.seed_dt,
+                min_dt=min(MIN_DT_S, seg.seed_dt / 4),
+                transform=transform,
             )
             n_samples += ets.size
             n_gaps += gaps
@@ -329,9 +339,14 @@ def _keyframe_segment(
 
 
 def _baseline_json(seg: SpinSegment) -> dict:
-    """Serialise one span's baseline for the manifest `baselines` timeline."""
-    b = seg.baseline
-    assert b is not None
+    """Serialise one span's baseline for the manifest `baselines` timeline.
+
+    A raw span is a spin at rate 0 from the identity, so the deployed frontend
+    composes it to identity and reads its keyframes as they are.
+    """
+    b = seg.baseline or SpinBaseline(
+        np.array([0.0, 0.0, 1.0]), 0.0, np.array([1.0, 0.0, 0.0, 0.0]), seg.start_et
+    )
     return {
         "kind": "spin",
         "axis": [float(a) for a in b.axis],
@@ -364,9 +379,11 @@ def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
         }
 
     `baselines` is null for a non-spinner. For a spinner, each file's
-    `baseline_index` selects the active span to recompose against.
+    `baseline_index` selects the active span to recompose against. A raw span
+    of a spinner has `rate_rad_s` 0, `anchor` [1, 0, 0, 0] and `axis`
+    [0, 0, 1], so it composes to identity.
     """
-    spinning = any(seg.baseline is not None for seg in result.segments)
+    spinning = is_spin_plan(result.segments)
     baselines = [_baseline_json(seg) for seg in result.segments] if spinning else None
     files = []
     for f in result.files:

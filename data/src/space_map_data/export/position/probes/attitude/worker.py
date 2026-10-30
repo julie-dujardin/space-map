@@ -15,7 +15,7 @@ import spiceypy
 
 from .cache import save_shard
 from .extractor import extract_shard, scan_window_edge
-from .sample import ck_segment_coverage
+from .sample import ck_needs_ephemeris, ck_segment_coverage
 from .segments import (
     SpinSegment,
     segments_from_timeline,
@@ -34,14 +34,20 @@ def _furnish(paths: list[str]) -> None:
 
 
 def coverage_task(base: list[str], ck_paths: list[str]) -> dict[str, dict | str]:
-    """SEGMENT-level coverage of each CK, or the error text for an unreadable
-    one. `base` holds the base kernels, so the FK maps each CK to its SCLK."""
+    """`{"cover", "ephemeris"}` of each CK: its SEGMENT-level coverage and
+    whether it needs positions, or the error text for an unreadable one.
+    `base` holds the base kernels, so the FK maps each CK to its SCLK and
+    defines the frames its segments are relative to."""
     _furnish(base)
     out: dict[str, dict | str] = {}
     try:
         for path in ck_paths:
             try:
-                out[path] = ck_segment_coverage(path)
+                cover = ck_segment_coverage(path)
+                out[path] = {
+                    "cover": cover,
+                    "ephemeris": ck_needs_ephemeris(path, cover),
+                }
             except spiceypy.exceptions.SpiceyError as exc:
                 out[path] = str(exc)
     finally:

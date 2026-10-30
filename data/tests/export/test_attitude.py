@@ -3,11 +3,13 @@ baseline spin fit — all synthetic, no kernels needed. The cached-CK
 end-to-end smoke lives in `scripts/probe_orientation_smoke.py`.
 """
 
+import itertools
 import math
 import struct
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from space_map_data.export.position.probes.attitude.baseline import (
     fit_spin_baseline,
@@ -435,7 +437,9 @@ class TestAttitudeCache:
         calls: dict,
         *,
         unreadable: frozenset[str] = frozenset(),
+        ephemeris: frozenset[str] = frozenset(),
         broken_shard_pool: bool = False,
+        bases: list | None = None,
     ):
         from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures.process import BrokenProcessPool
@@ -457,7 +461,12 @@ class TestAttitudeCache:
         def fake_coverage(base, ck_paths):
             calls["coverage"] += len(ck_paths)
             return {
-                p: "unreadable" if Path(p).name in unreadable else {-82000: [week(p)]}
+                p: "unreadable"
+                if Path(p).name in unreadable
+                else {
+                    "cover": {-82000: [week(p)]},
+                    "ephemeris": Path(p).name in ephemeris,
+                }
                 for p in ck_paths
             }
 
@@ -465,6 +474,8 @@ class TestAttitudeCache:
             return [np.zeros(3) for _ in ets]
 
         def fake_shard(task):
+            if bases is not None:
+                bases.append(task.base)
             results = []
             for k, _paths in task.shards:
                 lo, hi = shard_bounds(k)
@@ -493,6 +504,14 @@ class TestAttitudeCache:
         monkeypatch.setattr(orchestrator, "timeline_task", fake_timeline)
         monkeypatch.setattr(orchestrator, "shard_task", fake_shard)
         monkeypatch.setattr(orchestrator, "write_chunks", counting_write)
+        monkeypatch.setattr(
+            orchestrator, "kernels_from_index", lambda mdir: [mdir / "a.bsp"]
+        )
+        monkeypatch.setattr(
+            orchestrator,
+            "content_stamps",
+            lambda paths: {p: {"size": 1, "digest": p.name} for p in paths},
+        )
         out_dir, mission, probe = self._mission(tmp_path, stamps)
         global_data: dict[str, dict] = {"probe-7": {}}
         summary: dict[str, dict] = {}
@@ -532,6 +551,27 @@ class TestAttitudeCache:
         assert sorted(calls["shards"]) == [1, 2]
         assert calls["writes"] == 1
         assert summary["7"]["cached"] is False
+
+    def test_ck_that_needs_positions_adds_the_mission_spks(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        bases: list = []
+        stamps = {"0.bc": "a", "1.bc": "b"}
+        _, _, plain = self._run(monkeypatch, tmp_path, stamps, self._calls())
+        assert len(plain.probe_sig["kernels"]) == 4
+        _, _, probe = self._run(
+            monkeypatch,
+            tmp_path / "eph",
+            stamps,
+            self._calls(),
+            ephemeris=frozenset({"1.bc"}),
+            bases=bases,
+        )
+        spk = str(tmp_path / "eph" / "M" / "a.bsp")
+        assert probe.probe_sig["kernels"][:4] == plain.probe_sig["kernels"]
+        assert probe.probe_sig["kernels"][4][1] == {"size": 1, "digest": "a.bsp"}
+        assert bases and all(base[-1] == spk for base in bases)
+        assert set(probe.planned.values()).isdisjoint(plain.planned.values())
 
     def test_missing_chunk_rewrites_chunks_only(self, monkeypatch, tmp_path) -> None:
         stamps = {"0.bc": "a"}
@@ -651,6 +691,328 @@ def test_unreadable_index_keeps_its_probes(monkeypatch, tmp_path) -> None:
         lambda paths: {p: {"size": 1, "digest": "d"} for p in paths},
     )
     assert orchestrator._load_missions(tmp_path / "export") == []
+
+
+def test_span_with_fewer_probes_than_workers_plans(monkeypatch, tmp_path) -> None:
+    """A span of a few seconds has fewer timeline probes than workers."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from space_map_data.export.position.probes.attitude import orchestrator
+    from space_map_data.export.position.probes.attitude.segments import (
+        SpinSegment,
+    )
+
+    monkeypatch.setattr(
+        orchestrator,
+        "timeline_task",
+        lambda base, ck_paths, frame, ets: [np.zeros(3) for _ in ets],
+    )
+    out_dir, mission, probe = TestAttitudeCache._mission(tmp_path, {"0.bc": "a"})
+    mission.coverage = {"0.bc": {-82000: [(100.0, 103.0)]}}
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        orchestrator._Run(out_dir, ex, n_workers=12).plan_spins([mission])
+    assert probe.error is None
+    assert probe.segments == [SpinSegment(100.0, 103.0, None)]
+
+
+def test_spin_timeline_keeps_earlier_probes_when_the_span_grows() -> None:
+    from space_map_data.export.position.probes.attitude.segments import (
+        SEG_MAX_PROBES,
+        spin_timeline_ets,
+    )
+
+    t0 = 123.4
+    week = spin_timeline_ets(t0, 400 * D)
+    grown = spin_timeline_ets(t0, 407 * D)
+    assert week[0] == grown[0] == t0
+    assert np.array_equal(grown[: week.size], week)
+    step = week[2] - week[1]
+    assert math.log2(step).is_integer()
+    assert np.all(week[1:] % step == 0) and np.all(np.diff(week) > 0)
+    assert SEG_MAX_PROBES / 2 <= week.size <= SEG_MAX_PROBES + 1
+
+
+RPM = 2 * math.pi / 60
+
+
+class TestSpinPlan:
+    """The planner on a synthetic spin about +Z, with SPICE faked."""
+
+    @staticmethod
+    def _plan(monkeypatch, phi, t1: float, t0: float = 0.0):
+        import spiceypy
+
+        from space_map_data.export.position.probes.attitude.adaptive import (
+            SEED_DT_S,
+        )
+        from space_map_data.export.position.probes.attitude.extractor import (
+            ALIAS_ANGLE_RAD,
+        )
+        from space_map_data.export.position.probes.attitude.segments import (
+            plan_segments,
+        )
+
+        def pxform(_from: str, _to: str, et: float) -> np.ndarray:
+            half = 0.5 * phi(et)
+            return np.array([math.cos(half), 0.0, 0.0, math.sin(half)])
+
+        monkeypatch.setattr(spiceypy, "pxform", pxform)
+        monkeypatch.setattr(spiceypy, "m2q", lambda q: q)
+        return plan_segments(
+            "F", t0, t1, alias_angle=ALIAS_ANGLE_RAD, seed_dt=SEED_DT_S
+        )
+
+    @staticmethod
+    def _assert_holds(phi, seg) -> None:
+        """The residual against the span's baseline turns at most 90° per
+        300 s anywhere in the span."""
+        b = seg.baseline
+        rate = b.rate_rad_s * float(np.sign(b.axis[2]))
+        for et in np.linspace(seg.start_et, seg.end_et - 300.0, 40):
+            turn = phi(et + 300.0) - phi(et) - rate * 300.0
+            assert abs(turn) <= math.pi / 2 + 1e-6
+
+    def test_drifting_spin_is_cut_where_its_baseline_stops_holding(
+        self, monkeypatch
+    ) -> None:
+        w0, accel = 2.2 * RPM, -0.4 * RPM / D
+
+        def phi(t: float) -> float:
+            return w0 * t + 0.5 * accel * t * t
+
+        segs = self._plan(monkeypatch, phi, D)
+        assert len(segs) > 4
+        assert all(s.baseline is not None and s.seed_dt == 300.0 for s in segs)
+        assert all(a.end_et == b.start_et for a, b in itertools.pairwise(segs))
+        for seg in segs:
+            self._assert_holds(phi, seg)
+
+    def test_more_data_keeps_the_earlier_spans(self, monkeypatch) -> None:
+        """A CK that adds a day after the span moves no earlier span edge or
+        baseline."""
+        w0, accel = 2.2 * RPM, -0.04 * RPM / D
+
+        def phi(t: float) -> float:
+            return w0 * t + 0.5 * accel * t * t
+
+        t0 = 1234.5
+        short = self._plan(monkeypatch, phi, 10 * D, t0)
+        grown = self._plan(monkeypatch, phi, 11 * D, t0)
+        assert len(grown) >= len(short) > 4
+        for a, b in zip(short, grown, strict=False):
+            assert (a.start_et, a.seed_dt) == (b.start_et, b.seed_dt)
+            assert a.baseline.rate_rad_s == b.baseline.rate_rad_s
+            assert np.array_equal(a.baseline.anchor, b.baseline.anchor)
+        ends = [s.end_et for s in grown[: len(short) - 1]]
+        assert [s.end_et for s in short[:-1]] == ends
+
+    def test_spin_step_keeps_one_span_per_phase(self, monkeypatch) -> None:
+        """A Juno spin change ramps for two minutes: one cut, no raw sliver."""
+        w1, w2, step_at, ramp = 1.0 * RPM, 2.0 * RPM, 20 * D, 120.0
+
+        def phi(t: float) -> float:
+            if t < step_at:
+                return w1 * t
+            u = min(t - step_at, ramp)
+            ramped = w1 * step_at + w1 * u + (w2 - w1) * u * u / (2 * ramp)
+            return ramped + w2 * max(0.0, t - step_at - ramp)
+
+        segs = self._plan(monkeypatch, phi, 40 * D)
+        assert [s.baseline is not None for s in segs] == [True, True]
+        assert step_at <= segs[1].start_et <= step_at + ramp
+        rates = [s.baseline.rate_rad_s / RPM for s in segs if s.baseline]
+        assert rates == pytest.approx([1.0, 2.0], abs=1e-3)
+
+    def test_fast_changing_spin_gets_a_raw_span(self, monkeypatch) -> None:
+        """A steady spin, then a rate that swings between 1 and 5 RPM every
+        ten minutes, like the HUYGENS descent."""
+        steady, period = 6 * 3600.0, 600.0
+
+        def phi(t: float) -> float:
+            if t < steady:
+                return 5 * RPM * t
+            u = t - steady
+            swing = (
+                2
+                * RPM
+                * period
+                / (2 * math.pi)
+                * (1 - math.cos(2 * math.pi * u / period))
+            )
+            return 5 * RPM * steady + 3 * RPM * u + swing
+
+        t1 = steady + 2 * 3600.0
+        segs = self._plan(monkeypatch, phi, t1)
+        *steady_spans, raw = segs
+        assert steady_spans and all(s.baseline is not None for s in steady_spans)
+        assert raw.baseline is None and raw.end_et == t1
+        assert steady - 600.0 <= raw.start_et <= steady
+        # The top rate is 5 RPM, so a seed step turns the craft 90°.
+        assert raw.seed_dt == pytest.approx(math.pi / 2 / (5 * RPM), rel=1e-3)
+
+    def test_spin_up_after_the_coverage_start_is_raw(self, monkeypatch) -> None:
+        """HUYGENS sits still on Cassini for the first minutes of its CK."""
+        spin_up = 200.0
+
+        def phi(t: float) -> float:
+            return 2 * RPM * max(0.0, t - spin_up)
+
+        segs = self._plan(monkeypatch, phi, D)
+        assert [s.baseline is not None for s in segs] == [False, True]
+        assert spin_up - 10.0 <= segs[0].end_et <= spin_up
+        assert segs[0].seed_dt == 300.0
+        assert segs[1].baseline.rate_rad_s / RPM == pytest.approx(2.0, rel=1e-4)
+
+
+def test_raw_span_refines_below_a_second_on_a_short_seed(monkeypatch) -> None:
+    """A raw fast spin gets a refinement floor of a quarter seed step; the
+    default seed step keeps the 1 s floor."""
+    from space_map_data.export.position.probes.attitude import extractor
+    from space_map_data.export.position.probes.attitude.segments import (
+        SpinSegment,
+    )
+
+    floors: dict[float, float] = {}
+
+    def fake_sample(frame, t0, t1, eps, *, seed_dt, min_dt, transform):
+        floors[seed_dt] = min_dt
+        return np.array([t0, t1]), np.tile(_IDENTITY, (2, 1)), 0
+
+    monkeypatch.setattr(extractor, "adaptive_sample", fake_sample)
+    for seg in (SpinSegment(0.0, 100.0, None, 1.6), SpinSegment(0.0, 100.0, None)):
+        extractor._keyframe_segment("F", seg, [(0.0, 100.0)], 1e-3)
+    assert floors == {1.6: pytest.approx(0.4), 300.0: 1.0}
+
+
+class TestManifest:
+    """The manifest a deployed frontend reads."""
+
+    def test_raw_span_of_a_spinner_is_a_zero_rate_baseline(self) -> None:
+        from space_map_data.export.position.probes.attitude.baseline import (
+            SpinBaseline,
+        )
+        from space_map_data.export.position.probes.attitude.extractor import (
+            ExtractionResult,
+            manifest_entry,
+        )
+        from space_map_data.export.position.probes.attitude.segments import (
+            SpinSegment,
+        )
+        from space_map_data.export.position.probes.attitude.writer import ChunkFile
+
+        spin = SpinBaseline(np.array([0.0, 0.0, 1.0]), 0.2, _IDENTITY.copy(), 0.0)
+        segments = [SpinSegment(0.0, D, spin), SpinSegment(D, 2 * D, None, 1.7)]
+        files = [
+            ChunkFile("0.bin.gz", 2451545.0, 2451546.0, 10, 0),
+            ChunkFile("1.bin.gz", 2451546.0, 2451547.0, 10, 1),
+        ]
+        entry = manifest_entry(
+            ExtractionResult(20, files, segments, 2451545.0, 2451547.0), frame_name="F"
+        )
+        raw = entry["baselines"][1]
+        assert raw["kind"] == "spin" and raw["rate_rad_s"] == 0.0
+        assert raw["anchor"] == [1.0, 0.0, 0.0, 0.0]
+        assert math.isclose(float(np.linalg.norm(raw["axis"])), 1.0)
+        assert (raw["start_jd"], raw["end_jd"]) == (2451546.0, 2451547.0)
+        assert [f["baseline_index"] for f in entry["files"]] == [0, 1]
+        # Composed the way the frontend does it, the raw span is identity.
+        composed = SpinBaseline(
+            np.array(raw["axis"]), raw["rate_rad_s"], np.array(raw["anchor"]), 0.0
+        ).compose(1e6)
+        assert np.allclose(composed, _IDENTITY)
+
+    def test_non_spinner_has_no_baselines(self) -> None:
+        from space_map_data.export.position.probes.attitude.extractor import (
+            ExtractionResult,
+            manifest_entry,
+        )
+        from space_map_data.export.position.probes.attitude.segments import (
+            SpinSegment,
+        )
+        from space_map_data.export.position.probes.attitude.writer import ChunkFile
+
+        files = [ChunkFile("0.bin.gz", 2451545.0, 2451546.0, 10, 0)]
+        entry = manifest_entry(
+            ExtractionResult(10, files, [SpinSegment(0.0, D, None)], 0.0, 1.0),
+            frame_name="F",
+        )
+        assert entry["baselines"] is None
+        assert "baseline_index" not in entry["files"][0]
+
+
+_TEST_FK = """\\begindata
+FRAME_TEST_NADIR = -999001
+FRAME_-999001_NAME = 'TEST_NADIR'
+FRAME_-999001_CLASS = 5
+FRAME_-999001_CLASS_ID = -999001
+FRAME_-999001_CENTER = 399
+FRAME_-999001_RELATIVE = 'J2000'
+FRAME_-999001_DEF_STYLE = 'PARAMETERIZED'
+FRAME_-999001_FAMILY = 'TWO-VECTOR'
+FRAME_-999001_PRI_AXIS = 'Z'
+FRAME_-999001_PRI_VECTOR_DEF = 'OBSERVER_TARGET_POSITION'
+FRAME_-999001_PRI_OBSERVER = 'EARTH'
+FRAME_-999001_PRI_TARGET = 'MOON'
+FRAME_-999001_PRI_ABCORR = 'NONE'
+FRAME_-999001_SEC_AXIS = 'X'
+FRAME_-999001_SEC_VECTOR_DEF = 'CONSTANT'
+FRAME_-999001_SEC_SPEC = 'RECTANGULAR'
+FRAME_-999001_SEC_VECTOR = ( 1, 0, 0 )
+FRAME_-999001_SEC_FRAME = 'J2000'
+FRAME_-999001_SEC_ABCORR = 'NONE'
+FRAME_TEST_OF_DATE = -999002
+FRAME_-999002_NAME = 'TEST_OF_DATE'
+FRAME_-999002_CLASS = 5
+FRAME_-999002_CLASS_ID = -999002
+FRAME_-999002_CENTER = 399
+FRAME_-999002_RELATIVE = 'J2000'
+FRAME_-999002_DEF_STYLE = 'PARAMETERIZED'
+FRAME_-999002_FAMILY = 'MEAN_EQUATOR_AND_EQUINOX_OF_DATE'
+FRAME_-999002_PREC_MODEL = 'EARTH_IAU_1976'
+FRAME_-999002_ROTATION_STATE = 'ROTATING'
+\\begintext
+"""
+
+
+def test_ck_needs_ephemeris_only_for_frames_that_need_positions(tmp_path) -> None:
+    """A CK relative to a frame that points at the Moon needs SPKs. One
+    relative to J2000, or to a dynamic frame of date like MRO's, does not."""
+    import spiceypy
+
+    from space_map_data.export.position.probes.attitude.sample import (
+        ck_needs_ephemeris,
+    )
+
+    fk = tmp_path / "test.tf"
+    fk.write_text(_TEST_FK)
+    spiceypy.kclear()
+    try:
+        spiceypy.furnsh(str(fk))
+        needs = {}
+        for ref in ("TEST_NADIR", "TEST_OF_DATE", "J2000"):
+            path = tmp_path / f"{ref}.bc"
+            handle = spiceypy.ckopn(str(path), "test", 0)
+            ticks = np.array([0.0, 10.0])
+            spiceypy.ckw03(
+                handle,
+                0.0,
+                10.0,
+                -999000,
+                ref,
+                False,
+                "seg",
+                2,
+                ticks,
+                np.tile(_IDENTITY, (2, 1)),
+                np.zeros((2, 3)),
+                1,
+                [0.0],
+            )
+            spiceypy.ckcls(handle)
+            needs[ref] = ck_needs_ephemeris(str(path), {-999000: [(0.0, 10.0)]})
+    finally:
+        spiceypy.kclear()
+    assert needs == {"TEST_NADIR": True, "TEST_OF_DATE": False, "J2000": False}
 
 
 def test_enforce_min_span_drops_slivers() -> None:

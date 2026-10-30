@@ -108,6 +108,37 @@ def ck_segment_coverage(path: str) -> dict[int, list[tuple[float, float]]]:
     return out
 
 
+def ck_needs_ephemeris(path: str, cover: dict[int, list[tuple[float, float]]]) -> bool:
+    """True when a segment of the CK is relative to a frame that resolves only
+    with positions. HUYGENS gives its descent relative to a frame that points
+    at Titan, so it resolves only with the mission's SPKs.
+
+    `cover` is the CK's `ck_segment_coverage`. Each reference frame is tried
+    from J2000 at the start of its instrument's coverage, with no SPK loaded.
+    A frame that resolves, or fails for any other reason, needs no SPK.
+    """
+    handle = spiceypy.dafopr(path)
+    pairs: set[tuple[int, int]] = set()
+    try:
+        spiceypy.dafbfs(handle)
+        while spiceypy.daffna():
+            _, ints = spiceypy.dafus(spiceypy.dafgs(), 2, 6)
+            pairs.add((int(ints[0]), int(ints[1])))
+    finally:
+        spiceypy.dafcls(handle)
+    for instr, ref in pairs:
+        name = spiceypy.frmnam(ref)
+        if not name or not cover.get(instr):
+            continue
+        try:
+            spiceypy.pxform("J2000", name, cover[instr][0][0])
+        except spiceypy.exceptions.SpiceyError as exc:
+            # SPKSFS is the SPK search; it fails this way when no SPK is loaded.
+            if exc.short == "SPICE(NOLOADEDFILES)" and exc.traceback.endswith("SPKSFS"):
+                return True
+    return False
+
+
 def sample_truth(frame: str, ets: np.ndarray) -> np.ndarray:
     """Sample `pxform("J2000", frame, et)` → quaternion for each `et`.
     Sign-canonicalised against the previous sample (adjacent quats differ

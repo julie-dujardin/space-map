@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 
 import numpy as np
 
@@ -139,7 +140,7 @@ def shard_spans(
     if segments is None:
         return [(0, SpinSegment(lo, hi, None))]
     return [
-        (i, SpinSegment(max(seg.start_et, lo), min(seg.end_et, hi), seg.baseline))
+        (i, replace(seg, start_et=max(seg.start_et, lo), end_et=min(seg.end_et, hi)))
         for i, seg in enumerate(segments)
         if seg.start_et < hi and seg.end_et > lo
     ]
@@ -150,6 +151,7 @@ def segment_json(seg: SpinSegment) -> dict:
     return {
         "start": seg.start_et,
         "end": seg.end_et,
+        "seed_dt": seg.seed_dt,
         "baseline": None
         if b is None
         else {
