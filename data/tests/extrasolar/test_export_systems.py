@@ -79,12 +79,14 @@ def _registry(path, systems=SYSTEMS, **kwargs):
 
 
 def _registry_rows(root) -> dict[int, dict]:
+    """The System rows of the registry, with the columns that the tiles hold."""
     with Registry(root).reader() as registry:
         parts = [
             registry.read_table(SYSTEM.slug, region)
             for region in registry.table_regions(SYSTEM.slug)
         ]
     rows = pa.concat_tables([part for part in parts if part is not None])
+    rows = rows.drop_columns([c for c in rows.column_names if c in tiles.NOT_IN_TILES])
     return {row["id"]: row for row in rows.to_pylist()}
 
 
@@ -139,6 +141,7 @@ class TestSystemTiles:
             "member stars": 5,
             "member nodes": 1,
             "entries": 2,
+            "held stars": 0,
             "deepest": 1,
             "largest system": 2,
         }
@@ -181,7 +184,8 @@ class TestSystemTiles:
         root = tmp_path / "registry"
         ingest(root)
         report = export_extrasolar(root, out, workers=1)
-        assert report["systems"]["nodes"] == 5
+        assert report["systems"]["nodes"] == 7
+        assert report["systems"]["held stars"] == 2
         reader = ExportReader(out / "v1" / "x")
         for node_id, row in _registry_rows(root).items():
             found = reader.lookup(str(node_id))
