@@ -5,6 +5,7 @@ end-to-end smoke lives in `scripts/probe_orientation_smoke.py`.
 
 import math
 import struct
+from pathlib import Path
 
 import numpy as np
 
@@ -390,87 +391,266 @@ class TestJoinShards:
 
 
 class TestAttitudeCache:
-    """Per-probe incremental cache: an unchanged probe skips re-extraction and
-    re-injects its manifest; a kernel change re-extracts."""
+    """The run extracts only stale shards and writes chunks only when needed.
+
+    The worker tasks are fakes that need no SPICE. Each CK covers one week
+    with a fixed offset from the shard grid.
+    """
 
     @staticmethod
-    def _fake_result(probe_out_dir):
-        """Stub an `extract_attitude` that writes one chunk + returns its result."""
-        from space_map_data.export.position.probes.attitude.extractor import (
-            ExtractionResult,
-        )
-        from space_map_data.export.position.probes.attitude.writer import ChunkFile
-
-        probe_out_dir.mkdir(parents=True, exist_ok=True)
-        (probe_out_dir / "0.bin.gz").write_bytes(b"chunk")
-        return ExtractionResult(
-            n_keyframes=10,
-            files=[
-                ChunkFile(
-                    name="0.bin.gz",
-                    start_jd=2454046.5,
-                    end_jd=2454047.5,
-                    n_keyframes=10,
-                    baseline_index=0,
-                )
-            ],
-            segments=[],
-            coverage_start_jd=2454046.5,
-            coverage_end_jd=2454047.5,
-        )
-
-    def _run(self, monkeypatch, out_dir, stamps, calls):
+    def _mission(tmp_path, stamps: dict[str, str]):
         from space_map_data.export.position.probes.attitude import orchestrator
+        from space_map_data.export.position.probes.attitude.cache import (
+            load_probe_cache,
+        )
 
-        def fake_extract(probe_out_dir, ck_paths, bus_instr_id, frame_name):
-            calls.append(bus_instr_id)
-            return self._fake_result(probe_out_dir)
+        out_dir = tmp_path / "export"
+        probe_out = out_dir / "attitude" / "7"
+        probe = orchestrator._Probe(
+            probe_id=7,
+            bus=-82000,
+            out_dir=probe_out,
+            meta_dir=probe_out,
+            cache=load_probe_cache(probe_out),
+        )
+        names = list(stamps)
+        mission = orchestrator._Mission(
+            name="M",
+            mission_dir=tmp_path / "M",
+            frame="FRAME",
+            base=["lsk", "pck", "fk", "sclk"],
+            base_stamps=[[n, {"size": 1, "digest": n}] for n in ("l", "p", "f", "s")],
+            ck_names=names,
+            ck_stamps={n: {"size": 1, "digest": d} for n, d in stamps.items()},
+            ck_sizes=dict.fromkeys(names, 1),
+            probes=[probe],
+        )
+        return out_dir, mission, probe
 
-        monkeypatch.setattr(orchestrator, "extract_attitude", fake_extract)
+    def _run(
+        self,
+        monkeypatch,
+        tmp_path,
+        stamps: dict[str, str],
+        calls: dict,
+        *,
+        unreadable: frozenset[str] = frozenset(),
+        broken_shard_pool: bool = False,
+    ):
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures.process import BrokenProcessPool
+
+        from space_map_data.export.position.probes.attitude import orchestrator, writer
+        from space_map_data.export.position.probes.attitude.cache import save_shard
+        from space_map_data.export.position.probes.attitude.shards import (
+            shard_bounds,
+        )
+        from space_map_data.export.position.probes.attitude.worker import (
+            ShardResult,
+            ShardTaskResult,
+        )
+
+        def week(path: str) -> tuple[float, float]:
+            i = int(path.rsplit("/", 1)[1].split(".")[0])
+            return (i * 7 + 3) * D, ((i + 1) * 7 + 3) * D
+
+        def fake_coverage(base, ck_paths):
+            calls["coverage"] += len(ck_paths)
+            return {
+                p: "unreadable" if Path(p).name in unreadable else {-82000: [week(p)]}
+                for p in ck_paths
+            }
+
+        def fake_timeline(base, ck_paths, frame, ets):
+            return [np.zeros(3) for _ in ets]
+
+        def fake_shard(task):
+            results = []
+            for k, _paths in task.shards:
+                lo, hi = shard_bounds(k)
+                for job in task.jobs[k]:
+                    calls["shards"].append(k)
+                    ets = np.linspace(lo, hi, 4)
+                    quats = np.tile([1.0, 0.0, 0.0, 0.0], (4, 1))
+                    seg = np.zeros(4, dtype=np.int16)
+                    save_shard(Path(job.out_path), ets, quats, seg)
+                    results.append(ShardResult(job.probe_id, k, 4, 0, 0.0, 0.0, None))
+            return ShardTaskResult(results, 0, 0.0)
+
+        class Pool(ThreadPoolExecutor):
+            def submit(self, fn, /, *args, **kwargs):
+                if broken_shard_pool and fn is fake_shard:
+                    raise BrokenProcessPool("a worker died")
+                return super().submit(fn, *args, **kwargs)
+
+        real_write = writer.write_chunks
+
+        def counting_write(out_dir, segments):
+            calls["writes"] += 1
+            return real_write(out_dir, segments)
+
+        monkeypatch.setattr(orchestrator, "coverage_task", fake_coverage)
+        monkeypatch.setattr(orchestrator, "timeline_task", fake_timeline)
+        monkeypatch.setattr(orchestrator, "shard_task", fake_shard)
+        monkeypatch.setattr(orchestrator, "write_chunks", counting_write)
+        out_dir, mission, probe = self._mission(tmp_path, stamps)
         global_data: dict[str, dict] = {"probe-7": {}}
         summary: dict[str, dict] = {}
-        job = orchestrator._plan_probe(
-            out_dir,
-            {"probe_id": 7, "kernel_sources": [{"mission": "M", "naif_id": -82}]},
-            "M",
-            {"frame_name": "FRAME"},
-            stamps,
-            global_data,
-            summary,
-        )
-        if job is not None:
-            res = orchestrator._extract_probe(out_dir, "FRAME", ["/ck/a.bc"], job)
-            orchestrator._apply_result("M", res, global_data, summary)
-        return global_data, summary
+        with Pool(max_workers=2) as ex:
+            run = orchestrator._Run(out_dir, ex, n_workers=2)
+            run.read_coverage([mission])
+            run.plan_spins([mission])
+            run.extract([mission], global_data, summary)
+        return global_data, summary, probe
 
-    def test_second_run_skips_extraction(self, monkeypatch, tmp_path) -> None:
-        calls: list[int] = []
-        stamps = {"ck/a.bc": {"size": 2, "digest": "aa"}}
-        gd1, _s1 = self._run(monkeypatch, tmp_path, stamps, calls)
-        gd2, s2 = self._run(monkeypatch, tmp_path, stamps, calls)
-        assert len(calls) == 1  # second run served from cache
+    @staticmethod
+    def _calls() -> dict:
+        return {"coverage": 0, "shards": [], "writes": 0}
+
+    def test_second_run_extracts_nothing(self, monkeypatch, tmp_path) -> None:
+        stamps = {"0.bc": "a", "1.bc": "b", "2.bc": "c"}
+        first = self._calls()
+        gd1, s1, _ = self._run(monkeypatch, tmp_path, stamps, first)
+        assert sorted(first["shards"]) == [0, 1, 2, 3]
+        assert first["coverage"] == 3
+        assert s1["7"]["cached"] is False
+        second = self._calls()
+        gd2, s2, _ = self._run(monkeypatch, tmp_path, stamps, second)
+        assert second == {"coverage": 0, "shards": [], "writes": 0}
         assert s2["7"]["cached"] is True
-        # Manifest re-injected on the cache hit even though nothing re-extracted.
         assert gd1["probe-7"]["attitude"] == gd2["probe-7"]["attitude"]
-        assert gd2["probe-7"]["attitude"]["n_keyframes"] == 10
+        # Four shards of four keyframes, less the three shared edge samples.
+        assert gd2["probe-7"]["attitude"]["n_keyframes"] == 13
 
-    def test_kernel_change_reextracts(self, monkeypatch, tmp_path) -> None:
-        calls: list[int] = []
-        self._run(
-            monkeypatch, tmp_path, {"ck/a.bc": {"size": 2, "digest": "aa"}}, calls
+    def test_changed_ck_extracts_only_its_shards(self, monkeypatch, tmp_path) -> None:
+        self._run(monkeypatch, tmp_path, {"0.bc": "a", "1.bc": "b"}, self._calls())
+        calls = self._calls()
+        _, summary, _ = self._run(
+            monkeypatch, tmp_path, {"0.bc": "a", "1.bc": "B"}, calls
         )
-        self._run(
-            monkeypatch, tmp_path, {"ck/a.bc": {"size": 2, "digest": "bb"}}, calls
-        )
-        assert len(calls) == 2  # changed stamp invalidated the cache
+        assert calls["coverage"] == 1
+        assert sorted(calls["shards"]) == [1, 2]
+        assert calls["writes"] == 1
+        assert summary["7"]["cached"] is False
 
-    def test_missing_chunk_invalidates_cache(self, monkeypatch, tmp_path) -> None:
-        calls: list[int] = []
-        stamps = {"ck/a.bc": {"size": 2, "digest": "aa"}}
+    def test_missing_chunk_rewrites_chunks_only(self, monkeypatch, tmp_path) -> None:
+        stamps = {"0.bc": "a"}
+        self._run(monkeypatch, tmp_path, stamps, self._calls())
+        (tmp_path / "export" / "attitude" / "7" / "0.bin.gz").unlink()
+        calls = self._calls()
         self._run(monkeypatch, tmp_path, stamps, calls)
-        (tmp_path / "attitude" / "7" / "0.bin.gz").unlink()
-        self._run(monkeypatch, tmp_path, stamps, calls)
-        assert len(calls) == 2  # vanished chunk forces a rebuild
+        assert calls["shards"] == []
+        assert calls["writes"] == 1
+        assert (tmp_path / "export" / "attitude" / "7" / "0.bin.gz").exists()
+
+    def test_dropped_ck_prunes_its_shards(self, monkeypatch, tmp_path) -> None:
+        from space_map_data.export.position.probes.attitude.cache import list_shards
+
+        self._run(monkeypatch, tmp_path, {"0.bc": "a", "1.bc": "b"}, self._calls())
+        calls = self._calls()
+        _, _, probe = self._run(monkeypatch, tmp_path, {"0.bc": "a"}, calls)
+        assert calls["shards"] == [1]
+        assert sorted(int(n.split("-")[0]) for n in list_shards(probe.meta_dir)) == [
+            0,
+            1,
+        ]
+
+    def test_failed_coverage_read_keeps_shards_and_chunks(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from space_map_data.export.position.probes.attitude.cache import list_shards
+
+        self._run(monkeypatch, tmp_path, {"0.bc": "a", "1.bc": "b"}, self._calls())
+        probe_dir = tmp_path / "export" / "attitude" / "7"
+        shards = list_shards(probe_dir)
+        chunks = sorted(probe_dir.glob("*.bin.gz"))
+        stamps = {"0.bc": "a", "1.bc": "B"}
+        calls = self._calls()
+        gd, summary, _ = self._run(
+            monkeypatch,
+            tmp_path,
+            stamps,
+            calls,
+            unreadable=frozenset({"1.bc"}),
+        )
+        assert calls == {"coverage": 1, "shards": [], "writes": 0}
+        assert "attitude" not in gd["probe-7"]
+        assert summary == {}
+        assert list_shards(probe_dir) == shards
+        assert sorted(probe_dir.glob("*.bin.gz")) == chunks
+        # The CK reads again and only its shards extract.
+        calls = self._calls()
+        gd, _, _ = self._run(monkeypatch, tmp_path, stamps, calls)
+        assert calls["coverage"] == 1
+        assert sorted(calls["shards"]) == [1, 2]
+        assert gd["probe-7"]["attitude"]["n_keyframes"] == 10
+
+    def test_broken_pool_keeps_shards_and_chunks(self, monkeypatch, tmp_path) -> None:
+        from space_map_data.export.position.probes.attitude.cache import list_shards
+
+        self._run(monkeypatch, tmp_path, {"0.bc": "a", "1.bc": "b"}, self._calls())
+        probe_dir = tmp_path / "export" / "attitude" / "7"
+        shards = list_shards(probe_dir)
+        calls = self._calls()
+        gd, summary, _ = self._run(
+            monkeypatch,
+            tmp_path,
+            {"0.bc": "a", "1.bc": "B"},
+            calls,
+            broken_shard_pool=True,
+        )
+        assert calls["writes"] == 0
+        assert "attitude" not in gd["probe-7"]
+        assert summary == {}
+        assert list_shards(probe_dir) == shards
+
+    def test_unreadable_shard_is_extracted_again(self, monkeypatch, tmp_path) -> None:
+        from space_map_data.export.position.probes.attitude.cache import list_shards
+
+        stamps = {"0.bc": "a"}
+        self._run(monkeypatch, tmp_path, stamps, self._calls())
+        probe_dir = tmp_path / "export" / "attitude" / "7"
+        bad = min(list_shards(probe_dir))
+        (probe_dir / "shards" / bad).write_bytes(b"")
+        (probe_dir / "0.bin.gz").unlink()
+        _, summary, _ = self._run(monkeypatch, tmp_path, stamps, self._calls())
+        assert summary == {}
+        assert bad not in list_shards(probe_dir)
+        calls = self._calls()
+        gd, _, _ = self._run(monkeypatch, tmp_path, stamps, calls)
+        assert calls["shards"] == [int(bad.split("-")[0])]
+        assert "attitude" in gd["probe-7"]
+
+
+def test_unreadable_index_keeps_its_probes(monkeypatch, tmp_path) -> None:
+    """A probe of a mission with an unreadable index does not fall to a later
+    mission that also lists it."""
+    import json
+
+    from space_map_data.export.position.probes.attitude import orchestrator
+
+    index_name = orchestrator.ATTITUDE_INDEX_NAME
+    for name in ("A", "B"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "A" / index_name).write_text("{")
+    (tmp_path / "B" / index_name).write_text(
+        json.dumps({"fk": "f", "sclk": "s", "ck_files": ["0.bc"], "frame_name": "F"})
+    )
+    entry = {
+        "probe_id": 7,
+        "kernel_sources": [
+            {"mission": "A", "naif_id": -82},
+            {"mission": "B", "naif_id": -82},
+        ],
+    }
+    monkeypatch.setattr(orchestrator, "MISSIONS_DIR", tmp_path)
+    monkeypatch.setattr(orchestrator, "load_registry", lambda: [entry])
+    monkeypatch.setattr(
+        orchestrator,
+        "content_stamps",
+        lambda paths: {p: {"size": 1, "digest": "d"} for p in paths},
+    )
+    assert orchestrator._load_missions(tmp_path / "export") == []
 
 
 def test_enforce_min_span_drops_slivers() -> None:
