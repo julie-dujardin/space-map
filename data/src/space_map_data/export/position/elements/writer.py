@@ -34,6 +34,7 @@ from space_map_data.export.position.format import (
 from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit_cached
 from space_map_data.export.position.origin import visible_from_days
 from space_map_data.models.object import Object, OrbitalSource
+from space_map_data.models.object.sbdb import SBDB
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,22 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
         daily = getattr(o, "_daily_kepler", None)
         return daily[attr] if daily is not None else None
     if src == OrbitalSource.sbdb:
-        return getattr(o.sbdb, attr, None) if o.sbdb is not None else None
+        return _sbdb_attr(o.sbdb, attr) if o.sbdb is not None else None
     if src in MOON_ORBIT_ATTR:
         return moon_orbit_cached(o, src).get(attr)
     if src == OrbitalSource.spice:
         return getattr(o.horizons, attr, None) if o.horizons is not None else None
     return None
+
+
+def _sbdb_attr(sbdb: SBDB, attr: str) -> float | None:
+    value = getattr(sbdb, attr, None)
+    n, epoch, tp = sbdb.n, sbdb.epoch, sbdb.tp
+    # SBDB gives no mean anomaly for a circular orbit. The time of perihelion
+    # gives it.
+    if attr == "ma" and value is None and n and epoch and tp:
+        return (n * (epoch - tp)) % 360.0
+    return value
 
 
 def _drift_rate(o: Object, attr: str, file_source: OrbitalSource) -> float | None:

@@ -8,6 +8,7 @@ import pytest
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.elements.writer import (
+    _float_value,
     _parse_numeric_id,
     write_elements,
     write_parabolic_elements,
@@ -60,6 +61,34 @@ class TestParseNumericId:
     def test_unknown_id_type_returns_sentinel(self):
         obj = make_object(id="unknown-123")
         assert _parse_numeric_id(obj) == MISSING_INT32
+
+
+class TestSbdbMeanAnomaly:
+    """A row without a mean anomaly gets it from the time of perihelion."""
+
+    @staticmethod
+    def _object(**elements) -> Object:
+        obj = make_object(
+            id="spkid-50137782",
+            object_type=ObjectType.asteroid_tno,
+            spkid=50137782,
+            orbital_source=OrbitalSource.sbdb,
+        )
+        obj.sbdb = SBDB(spkid="50137782", object_id=obj.id, **elements)
+        return obj
+
+    def test_from_the_time_of_perihelion(self):
+        # As 2002 PD153: a circular orbit with tp and no ma.
+        obj = self._object(epoch=2452500.5, n=0.0031, tp=2452400.5, condition_code="9")
+        assert _float_value(obj, "ma", OrbitalSource.sbdb) == pytest.approx(0.31)
+
+    def test_the_catalogue_value_wins(self):
+        obj = self._object(epoch=2452500.5, n=0.0031, tp=2452400.5, ma=12.0)
+        assert _float_value(obj, "ma", OrbitalSource.sbdb) == 12.0
+
+    def test_without_tp_it_stays_missing(self):
+        obj = self._object(epoch=2452500.5, n=0.0031, condition_code="9")
+        assert math.isnan(_float_value(obj, "ma", OrbitalSource.sbdb))
 
 
 def _read_header(
