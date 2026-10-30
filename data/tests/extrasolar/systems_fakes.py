@@ -2,15 +2,27 @@
 
 from collections import Counter
 from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pyarrow as pa
 
+from space_map_data.download.providers.stars import msc, orb6, sbx
 from space_map_data.extrasolar.sources.simbad import SimbadList, SimbadObject
+from space_map_data.extrasolar.systems import orbits
 from space_map_data.extrasolar.systems import wds as wds_source
 from space_map_data.extrasolar.systems.resolve import FACTS
 from space_map_data.extrasolar.systems.simbad import SimbadIndex
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
+from tests.download.orbit_catalogue_files import (
+    MSC_LINES,
+    MSC_ORB_README,
+    ORB6_LINES,
+    SBX_ALIAS,
+    SBX_ORBITS,
+    SBX_SYSTEMS,
+)
 
 
 class FakeResolver:
@@ -240,3 +252,52 @@ def wds_component(
         "pmdec": None,
         "source_id": source_id,
     }
+
+
+KEPLER_16 = ("gaia", "dr3", "2133476355197071616")
+# The Gaia DR3 AstroSpectroSB1 orbit of Kepler-16 and its masses.
+KEPLER_16_GAIA: dict[str, Any] = {
+    "solution_id": 4338096422163308546,
+    "nss_solution_type": "AstroSpectroSB1",
+    "period": 41.101635778608454,
+    "t_periastron": 19.559,
+    "eccentricity": 0.22660081,
+    "arg_periastron": None,
+    "inclination": None,
+    "a_thiele_innes": -0.08021833,
+    "b_thiele_innes": -0.05619175,
+    "f_thiele_innes": 0.60016268,
+    "g_thiele_innes": 0.08003139,
+    "c_thiele_innes": -0.04790195,
+    "h_thiele_innes": -0.00602591,
+    "parallax_nss": 13.19352913,
+    "semi_amplitude_primary": None,
+    "semi_amplitude_secondary": None,
+    "m1": 0.6708555,
+    "m2": 0.18759406,
+    "fluxratio": 0.00931033,
+}
+ALPHA_CEN_DISTANCE = 1.3384
+
+
+def catalogue_orbits(folder: Path) -> pa.Table:
+    """ORBITS of α Cen in the MSC, ORB6 and SBX, and the paper table."""
+    (folder / msc.README_FILE).write_text(MSC_ORB_README, encoding="latin-1")
+    (folder / msc.ORB_FILE).write_text("\n".join(MSC_LINES) + "\n", encoding="latin-1")
+    path = folder / orb6.ORBITS_FILE
+    path.write_text("\n".join(ORB6_LINES) + "\n", encoding="latin-1")
+    for name, text in (
+        (sbx.ORBITS, SBX_ORBITS),
+        (sbx.SYSTEMS, SBX_SYSTEMS),
+        (sbx.ALIAS, SBX_ALIAS),
+    ):
+        (folder / f"{name}.csv").write_text(text)
+    literature, _ = orbits.read_literature()
+    return pa.concat_tables(
+        [
+            literature,
+            orbits.msc_orbits(folder),
+            orbits.orb6_orbits(path),
+            orbits.sbx_orbits(folder),
+        ]
+    )
