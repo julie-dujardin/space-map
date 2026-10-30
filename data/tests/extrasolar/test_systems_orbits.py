@@ -25,6 +25,8 @@ from tests.download.orbit_catalogue_files import (
 from tests.extrasolar.systems_fakes import msc_pair
 
 YEAR, BESSELIAN = orbits.JULIAN_YEAR, orbits.TROPICAL_YEAR
+# ORB6 turned the published node of 21094-7310 AB by 180° (flag q).
+ORB6_TURNED = "210922.44-731022.6 21094-7310 I   379AB      .     200525 104440   5.8    8.6       5.332   y   0.003      0.1905 a  0.0013   93.0      1.0     14.3   q   0.4     2017.424   y   0.005    0.631    0.002    358.5   q  0.8    2000 2022 2 n Tok2023b wds21094-7310b.png"
 
 
 def ids(row: dict) -> set[tuple[str, str, str]]:
@@ -187,6 +189,14 @@ class TestORB6:
         assert rows["GHE   7 Aa,Ab"]["epoch"] == pytest.approx(
             orbits.julian_year_jd(2017.32)
         )
+
+    def test_a_node_that_orb6_turned_is_ascending(self, tmp_path):
+        path = tmp_path / orb6.ORBITS_FILE
+        lines = [*ORB6_LINES[:3], ORB6_TURNED]
+        path.write_text("\n".join(lines) + "\n", encoding="latin-1")
+        (row,) = orbits.orb6_orbits(path).to_pylist()
+        assert (row["node"], row["node_ascending"]) == (14.3, True)
+        assert row["arg_periastron"] == 358.5
 
     def test_an_astrometric_orbit_has_no_side(self, rows):
         astrometric = rows["MCA  30 Aa"]

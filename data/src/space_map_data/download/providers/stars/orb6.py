@@ -54,7 +54,7 @@ AXIS_ARCSEC = {"a": 1.0, "m": 1e-3, "M": 60.0, "u": 1e-6}
 TIME_UNITS = {"c", "d", "m", "y", "j"}
 # Ω is an identified ascending node.
 ASCENDING_NODE = "*"
-# Ω or ω was turned by 180°.
+# Ω or ω was turned by 180°. A node so turned is the ascending node.
 FLIPPED = "q"
 # Grades 1 (definitive) to 5 (indeterminate); 7 incomplete elements; 8 an
 # interferometric orbit from visibilities; 9 an astrometric orbit.

@@ -360,6 +360,9 @@ def orb6_orbits(path: Path = orb6.OUT_DIR / orb6.ORBITS_FILE) -> pa.Table:
     ORB6 does not say whose ω it gives. A visual orbit is that of the
     secondary about the primary, so `arg_periastron_of` is SECONDARY. An
     astrometric orbit (grade 9) is that of the photocentre, and has none.
+    The node is ascending when ORB6 flags it so: `*` for an identified
+    ascending node, `q` for one that ORB6 turned by 180° from the published
+    node (orb6format.txt, field 15).
     """
     out = _Rows(ORBITS, ORB6)
     counts: Counter = Counter()
@@ -424,7 +427,7 @@ def orb6_orbits(path: Path = orb6.OUT_DIR / orb6.ORBITS_FILE) -> pa.Table:
             arg_periastron_of=None if astrometric else binaries.SECONDARY,
             node_ascending=None
             if row["node"] is None
-            else row["node_flag"] == orb6.ASCENDING_NODE,
+            else row["node_flag"] in (orb6.ASCENDING_NODE, orb6.FLIPPED),
             equinox=row["equinox"],
             grade=None if row["grade"] is None else str(row["grade"]),
             reference=row["reference"],
