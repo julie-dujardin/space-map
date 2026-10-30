@@ -8,16 +8,18 @@ Source files, in the extrasolar export (`space-map-extrasolar/v1/x/`):
     systems/index.json.gz       the star systems that a page draws up close, with their held stars
 
 A host is an object document with the ID `x-<id>`, which the app routes as
-any star of the catalogue. So is a star system of the systems index, and a
-held star in it: a star with no point of its own ("Kepler-16 A"), with the ID
-and name of its system. A host or a system with an entry has main's object
-document under that ID, with or without a description, so it gets the planet
-and system facts on that document instead: a second document with the same
-ID replaces the first, and main's has the localized names, the image and the
-sitelinks. A planet is a document of its own kind, keyed as its page is:
-`x-<host>-b-<n>`. A planet with an entry takes the descriptions and aliases,
-the sitelinks and the thumbnail of main's document of that entry, which is
-not indexed on its own.
+any star of the catalogue. A host with an entry has main's object document
+under that ID, with or without a description, so it gets the planet facts on
+that document instead: a second document with the same ID replaces the first,
+and main's has the localized names, the image and the sitelinks. A planet is
+a document of its own kind, keyed as its page is: `x-<host>-b-<n>`. A planet
+with an entry takes the descriptions and aliases, the sitelinks and the
+thumbnail of main's document of that entry, which is not indexed on its own.
+
+A star system or a held star ("Kepler-16 A") of the systems index makes no
+document. It is in search only when main indexes its entry, which needs a
+Wikipedia extract, as a star's does. That document then takes its count of
+stars, or the ID and name of the held star's system.
 
 The names are those of the pages (`export.names`), from the `name` and
 `names` of the system files: `name` and `name_{lang}`, and for a planet
@@ -32,18 +34,12 @@ from pathlib import Path
 from typing import Any
 
 from space_map_data.export.objects.stars import PLANET_ID
-from space_map_data.extrasolar.systems.assemble import BINARY, MULTIPLE
 
 from .base import extrasolar_pk, planet_pk
 from .objects import build_object_documents
 
 logger = logging.getLogger(__name__)
 
-# The type of a held star's document, as of a star's.
-HELD_TYPE = "star"
-# The fields of a system or held star document that another document with
-# its ID takes.
-SYSTEM_FACTS = ("stars", "system_id", "system_name")
 # Catalogues whose catalogue id is a name of the star. The archive's are
 # numbers such as `2.58355`.
 NAME_CATALOGUES = frozenset({"iau", "exoplanet-eu", "open-exoplanet-catalogue"})
@@ -124,42 +120,6 @@ def planet_document(planet: dict, system: int, host: dict) -> dict[str, Any]:
     } | {f"name_{lang}": n for lang, n in planet["names"].items()}
 
 
-def system_document(system: dict) -> dict[str, Any]:
-    """The document of a star system of the systems index.
-
-    A system whose Metadata row has no class takes the class of a node by
-    its count of stars, so the app knows it as a star system.
-    """
-    found = system["class"] or (BINARY if system["stars"] == 2 else MULTIPLE)
-    return {
-        "id": extrasolar_pk(system["id"]),
-        "kind": "object",
-        "name": system["name"],
-        "object": {
-            "id": extrasolar_pk(system["id"]),
-            "type": found.replace(" ", "_"),
-            "extrasolar": True,
-            "stars": system["stars"],
-        },
-    }
-
-
-def held_document(held: dict, system: dict) -> dict[str, Any]:
-    """The document of a held star of the systems index, in `system`."""
-    return {
-        "id": extrasolar_pk(held["id"]),
-        "kind": "object",
-        "name": held["name"],
-        "object": {
-            "id": extrasolar_pk(held["id"]),
-            "type": HELD_TYPE,
-            "extrasolar": True,
-            "system_id": extrasolar_pk(system["id"]),
-            "system_name": system["name"],
-        },
-    }
-
-
 # Root fields of an object document that a planet document takes from it.
 _ENTRY_FIELDS = ("sitelinks_count", "thumbnail")
 _ENTRY_PREFIXES = ("description_",)
@@ -187,11 +147,11 @@ def _add_planet_facts(obj: dict[str, Any], host: dict[str, Any]) -> None:
         obj["designations"] = found + names
 
 
-def _add_system_facts(obj: dict[str, Any], system: dict[str, Any]) -> None:
-    """Put the system facts of the object `system` of the systems index on
-    the object `obj` of another document with its ID. Its type stays."""
+def _add_system_facts(obj: dict[str, Any], facts: dict[str, Any]) -> None:
+    """Put the facts of a system or held star on the object `obj` of the
+    document with its ID. Its type stays."""
     obj["extrasolar"] = True
-    obj.update({key: system[key] for key in SYSTEM_FACTS if key in system})
+    obj.update(facts)
 
 
 def build_extrasolar_documents(
@@ -201,15 +161,14 @@ def build_extrasolar_documents(
     and planet documents of the extrasolar export. A host with an object
     document gets its planet facts there and no document of its own. A planet
     with an entry gets the descriptions, aliases, sitelinks and thumbnail of
-    the entry on its own document."""
+    the entry on its own document. A system or held star with an indexed
+    document gets its facts there."""
     hosts, planets = _read_documents(extrasolar_dir)
-    systems = _read_systems(extrasolar_dir)
+    systems = _read_system_facts(extrasolar_dir)
     objects = (
         ()
         if export_dir is None
-        else build_object_documents(
-            export_dir, set(hosts) | set(planets) | set(systems)
-        )
+        else build_object_documents(export_dir, set(hosts) | set(planets))
     )
     merged = 0
     entries = 0
@@ -224,9 +183,8 @@ def build_extrasolar_documents(
         if host is not None:
             _add_planet_facts(doc["object"], host["object"])
             merged += 1
-        system = systems.pop(doc["id"], None)
-        if system is not None:
-            _add_system_facts(doc["object"], system["object"])
+        if (facts := systems.get(doc["id"])) is not None:
+            _add_system_facts(doc["object"], facts)
             merged += 1
         yield doc
     logger.info(
@@ -236,10 +194,9 @@ def build_extrasolar_documents(
         entries,
     )
     for key, host in hosts.items():
-        if (system := systems.pop(key, None)) is not None:
-            _add_system_facts(host["object"], system["object"])
+        if (facts := systems.get(key)) is not None:
+            _add_system_facts(host["object"], facts)
         yield host
-    yield from systems.values()
     yield from planets.values()
 
 
@@ -274,9 +231,9 @@ def _read_documents(
     return hosts, planets
 
 
-def _read_systems(extrasolar_dir: Path) -> dict[str, dict[str, Any]]:
-    """The documents of the systems index, by ID: each named system and each
-    named held star."""
+def _read_system_facts(extrasolar_dir: Path) -> dict[str, dict[str, Any]]:
+    """The facts of each named system and each held star of the systems
+    index, by ID."""
     root = extrasolar_dir / "v1" / "x"
     metadata_path = root / "metadata.json"
     if not metadata_path.exists():
@@ -286,13 +243,14 @@ def _read_systems(extrasolar_dir: Path) -> dict[str, dict[str, Any]]:
         logger.warning("The extrasolar export at %s has no systems index", root)
         return {}
     index = _read(root, section["index"], section["token"])
-    docs: dict[str, dict[str, Any]] = {}
+    facts: dict[str, dict[str, Any]] = {}
     for system in index["systems"]:
+        key = extrasolar_pk(system["id"])
         if system["name"]:
-            doc = system_document(system)
-            docs[doc["id"]] = doc
+            facts[key] = {"stars": system["stars"]}
         for held in system["held"]:
-            doc = held_document(held, system)
-            docs[doc["id"]] = doc
-    logger.info("Indexing %d star systems and held stars", len(docs))
-    return docs
+            facts[extrasolar_pk(held["id"])] = {
+                "system_id": key,
+                "system_name": system["name"],
+            }
+    return facts

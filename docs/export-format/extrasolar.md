@@ -23,7 +23,7 @@ v1/x/
   skycultures/{key}.json.gz              a sky culture: figures, members and star names
   planets/index.json.gz                  every planet host: its system, planet numbers, place and outer orbit
   planets/{key}.json.gz                  one planetary system: its hosts and planets, with orbits in the scene's frame
-  systems/index.json.gz                  the star systems that a page draws up close, with their held stars, for search
+  systems/index.json.gz                  the star systems that a page draws up close, with their held stars
 ```
 
 Each `.bin.gz` file is gzip around one payload in the container format below. A `.json.gz` file is gzip around UTF-8 JSON. The server sends it as `application/octet-stream` with no `Content-Encoding`, and the client decodes it with `DecompressionStream('gzip')`. A client fetches each file as `{PUBLIC_EXTRASOLAR_URL}/v1/x/{path}?v={token}`, with the token of its table or tree.
@@ -717,7 +717,7 @@ The site's sitemap lists the page of every planet and of every planet host that 
 
 ## Systems index (`systems`)
 
-`systems/index.json.gz` lists each root of a star system that holds a held star, a drawn orbit or a planet host: the systems that a page draws up close. Search makes an object document of each listed root that has a name, and of each held star in it, as it does of a planet host. A client can read it to list these systems.
+`systems/index.json.gz` lists each root of a star system that holds a held star, a drawn orbit or a planet host: the systems that a page draws up close. Search makes no document from it: a root or held star is in search only when its object entry has a Wikipedia extract, as a star's is, and that document then takes the facts of the index. A client can read it to list these systems.
 
 ```json
 {

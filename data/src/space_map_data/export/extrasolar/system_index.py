@@ -1,10 +1,11 @@
-"""The index of the star systems that search finds, and of their held stars.
+"""The index of the star systems that a page draws up close, and of their
+held stars.
 
 `systems/index.json.gz` lists each root that holds a held star, a drawn
 orbit or a planet host: its ID, name, class, star count and its named held
-stars. These are the systems that a page draws up close. Search makes an
-object document of each root and of each held star in it
-(`search.indices.extrasolar`), as it does of a planet host.
+stars. Search puts these facts on the document of a root or held star that it
+indexes, which needs a Wikipedia extract (`search.indices.extrasolar`); the
+index makes no document.
 
 The names and classes come from the Metadata rows, which the Metadata tiles
 read (`tiles.UnitJob.names`). The file has the token of its section in its
