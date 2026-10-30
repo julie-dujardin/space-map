@@ -15,7 +15,8 @@ the id is known.
 import re
 import threading
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections import Counter
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import cache
 from typing import TYPE_CHECKING, NamedTuple
@@ -32,6 +33,7 @@ from space_map_data.export.wikidata import (
     clean_label,
     entity_label,
 )
+from space_map_data.extrasolar.exoplanets.catalogues import CONTROVERSIAL
 from space_map_data.extrasolar.exoplanets.join import designation_key
 from space_map_data.extrasolar.exoplanets.table import IAU_NAMES
 from space_map_data.extrasolar.sources.names import IAU_WGSN
@@ -395,11 +397,30 @@ class CataloguePlanet(NamedTuple):
     name: str
     letter: str | None
     iau_named: bool
+    # True when a catalogue calls it unconfirmed.
+    controversial: bool
+    # True when another planet of its host has its letter.
+    letter_repeated: bool
 
     @classmethod
-    def of(cls, row: Mapping) -> CataloguePlanet:
-        """The planet of a planets table row."""
-        return cls(row["name"], row["letter"], row["name_source"] == IAU_NAMES)
+    def of(cls, row: Mapping, repeated: Collection[tuple[int, str]]) -> CataloguePlanet:
+        """The planet of a planets table row. ``repeated`` is the
+        `repeated_letters` of the whole table."""
+        return cls(
+            row["name"],
+            row["letter"],
+            row["name_source"] == IAU_NAMES,
+            row["status"] == CONTROVERSIAL,
+            (row["host"], row["letter"]) in repeated,
+        )
+
+
+def repeated_letters(rows: Iterable[Mapping]) -> frozenset[tuple[int, str]]:
+    """The (host, letter) pairs that more than one planets table row has. Give
+    it every row of a host, also the rows that keep another name, because a
+    letter beside such a planet is repeated too."""
+    found = Counter((row["host"], row["letter"]) for row in rows if row["letter"])
+    return frozenset(key for key, count in found.items() if count > 1)
 
 
 class PlanetHost(NamedTuple):
@@ -430,7 +451,7 @@ def unlisted_host(planet: PlanetObject) -> PlanetHost | None:
 
 
 def planet_prefix(host: PlanetHost) -> Names | None:
-    """The names that a planet without an IAU name takes before its letter:
+    """The names that a planet named after its host takes before its letter:
     the names of its host's page, also for a host with an IAU name ("Titawin
     e"). None keeps the catalogue name of the planet."""
     return host.names
@@ -439,21 +460,42 @@ def planet_prefix(host: PlanetHost) -> Names | None:
 def planet_names(
     planet: CataloguePlanet | PlanetObject, host: PlanetHost | None
 ) -> Names:
-    """The names of a planet, from the page of its host.
+    """The names of a planet, from the page of its host. The first rule that
+    applies gives them:
 
-    A planet with an IAU name keeps it in every language, because the IAU
-    names the planets of NameExoWorlds. Another planet takes the name of its
-    host's page and its letter (`planet_prefix`), so that it reads as its star
-    does in each language ("Proxima Centauri b"). Its catalogue name stays as
-    an alias. A planet with no letter or no host name keeps its catalogue
-    name. Every planet takes its names here: the system files, the object
-    entries and the lists.
+    1. An IAU name stays in every language, also on a controversial planet,
+       because the IAU names the planets of NameExoWorlds.
+    2. A controversial planet keeps its catalogue name in every language. The
+       name is the claim of that catalogue, and the planet has no agreed
+       letter. Its form after its host stays as an alias, so that a search
+       for "Tau Ceti e" finds "tau Cet e".
+    3. A planet whose letter another planet of its host has keeps its
+       catalogue name in every language, because a page name points to one
+       page.
+    4. Any other planet takes the name of its host's page and its letter
+       (`planet_prefix`), so that it reads as its star does in each language
+       ("Proxima Centauri b"). Its catalogue name stays as an alias. With no
+       letter or no host name, it keeps its catalogue name.
+
+    Every planet takes its names here: the system files, the object entries
+    and the lists.
     """
     prefix = planet_prefix(host) if host is not None else None
-    if planet.iau_named or not planet.letter or prefix is None:
+    if planet.iau_named or planet.letter_repeated or not planet.letter or not prefix:
         return Names(planet.name)
     name = f"{prefix.name} {planet.letter}"
     langs = {lang: f"{label} {planet.letter}" for lang, label in prefix.langs.items()}
+    if planet.controversial:
+        return Names(
+            planet.name,
+            {},
+            {
+                lang: (alias,)
+                for lang in LANGUAGES
+                if (alias := langs.get(lang, name)) != planet.name
+                and not _one_designation(alias, planet.name)
+            },
+        )
     return Names(
         name,
         langs,

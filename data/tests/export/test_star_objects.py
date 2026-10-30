@@ -551,13 +551,33 @@ class TestReadPlanetObjects:
                     aliases=["Dimidium", "51 Peg b"],
                     cross_ids=[archive, item],
                 ),
-                planet(0, 2),
+                planet(0, 2, letter="c"),
             ],
         )
         assert read_extrasolar_objects(built.root)[1] == [
             PlanetObject(
                 built.ids[0], 1, "Dimidium", "Q1", ("51 Peg b", "Dimidium"), "b", True
             )
+        ]
+
+    def test_a_status_and_a_repeated_letter(self, tmp_path):
+        """A planet with no entry counts too: its letter is on another page."""
+        item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q1"}
+        built = write_registry(
+            tmp_path / "registry",
+            [star(10, 20, 50, name="GJ 229")],
+            planets=[
+                planet(0, 1, status="controversial", cross_ids=[item]),
+                planet(0, 2, letter="c", cross_ids=[item]),
+                planet(0, 3, letter="c"),
+                planet(0, 4, letter="d", cross_ids=[item]),
+            ],
+        )
+        entries = read_extrasolar_objects(built.root)[1]
+        assert [(p.number, p.controversial, p.letter_repeated) for p in entries] == [
+            (1, True, False),
+            (2, False, True),
+            (4, False, False),
         ]
 
 

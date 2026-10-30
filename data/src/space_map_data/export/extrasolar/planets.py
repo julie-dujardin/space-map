@@ -44,6 +44,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.export.extrasolar import (
     container,
     orbits,
@@ -57,6 +58,7 @@ from space_map_data.export.names import (
     CataloguePlanet,
     Names,
     planet_names,
+    repeated_letters,
     served_host,
 )
 from space_map_data.extrasolar import frame
@@ -594,6 +596,7 @@ def build(
         1 for alias, end in aliases.items() if alias[0] != end[0]
     )
 
+    repeated = repeated_letters(rows)
     planets_of: dict[int, list[dict]] = defaultdict(list)
     published: Counter = Counter()
     estimated: Counter = Counter()
@@ -602,11 +605,14 @@ def build(
         if host is None:
             continue
         record = planet_record(row, host)
-        _name(
-            record,
-            planet_names(
-                CataloguePlanet.of(row), served_host(host, host_pages.get(row["host"]))
-            ),
+        names = planet_names(
+            CataloguePlanet.of(row, repeated),
+            served_host(host, host_pages.get(row["host"])),
+        )
+        _name(record, names)
+        # The search of a planet with no entry reads this list.
+        record["aliases"] = list(
+            dict.fromkeys([*record["aliases"], *names.aliases.get(BASE_LOCALE, ())])
         )
         planets_of[row["system"]].append(record)
         published.update(record["families"])

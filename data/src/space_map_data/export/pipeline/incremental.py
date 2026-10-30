@@ -72,7 +72,7 @@ logger = logging.getLogger(__name__)
 
 # Bump to invalidate all tier-B outputs (bundle/label/feature/message shape
 # changes that no input fingerprint captures).
-TIER_B_VERSION = 17
+TIER_B_VERSION = 18
 
 _TIER_B_META = "tier_b.meta.json"
 _CHEB_META = "position/chebyshev.meta.json"
@@ -141,7 +141,8 @@ def tier_b_fingerprint(
     - `stars`: the star entries, which each registry ingest links again, and
       the works that the literature table cites for them.
     - `planets`: the planet entries, which each registry ingest links again,
-      and the names of their hosts, which name them.
+      and what names them: their status, their repeated letters and the names
+      of their hosts.
     - `star_families`: the family counts, the family lists and the Metadata
       tiles of the served extrasolar export, which the star family pages
       read.
@@ -182,6 +183,8 @@ def tier_b_fingerprint(
                     planet.designations,
                     planet.letter,
                     planet.iau_named,
+                    planet.controversial,
+                    planet.letter_repeated,
                     planet.host_name,
                     planet.host_iau_named,
                 )

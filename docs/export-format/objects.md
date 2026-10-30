@@ -580,15 +580,21 @@ and map that names the object take its names from that rule. The global
   hold Latin letters ("きりん座BE星"), but no letter of a third script ("りゅう
   座σ星"). In en, de, es, fr, it, pl and pt, a label that the IAU name
   replaces is an alias in that language ("Beteigeuze" in de).
-- A planet with an IAU name (NameExoWorlds) keeps it in every language.
-  Another planet takes the name of its host's page in each language and its
-  letter ("Proxima Centauri b"), also when the host has an IAU name ("Titawin
-  e"). The host's page is its entry, else its Metadata name in the served
-  extrasolar export. The planet's catalogue name is an alias in each language
-  whose name is not that designation spelled another way. A planet with no
-  letter keeps its catalogue name. The rule names every planet, with an entry
-  or without one: the system files of the extrasolar export carry the same
-  names ([extrasolar.md](extrasolar.md)).
+- A planet with an IAU name (NameExoWorlds) keeps it in every language, also
+  when it is controversial. Another controversial planet keeps its catalogue
+  name in every language: the name is the claim of that catalogue, and the
+  planet has no agreed letter. Its form after its host stays as an alias. A
+  planet whose letter another planet of its
+  host has keeps its catalogue name in every language, because a page name
+  points to one page. Every planet of the host counts ("GJ 229 Bb" beside the
+  controversial "GJ 229 b"). Any other planet takes the name of its host's
+  page in each language and its letter ("Proxima Centauri b"), also when the
+  host has an IAU name ("Titawin e"). The host's page is its entry, else its
+  Metadata name in the served extrasolar export. The planet's catalogue name
+  is an alias in each language whose name is not that designation spelled
+  another way. A planet with no letter keeps its catalogue name. The rule
+  names every planet, with an entry or without one: the system files of the
+  extrasolar export carry the same names ([extrasolar.md](extrasolar.md)).
 - A surface feature takes the IAU name in en, de, es, fr, it, pl and pt, in
   the IAU's spelling with diacritics. In ja, zh, ru, ar and he it takes its
   Wikidata label where it is in the script of that language, Latin letters

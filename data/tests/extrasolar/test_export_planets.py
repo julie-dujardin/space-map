@@ -83,6 +83,7 @@ PLANETS = [
         2,
         name="Lucky",
         name_source="iau-nameexoworlds",
+        letter="c",
         aliases=["Lucky", "Planet 0 2"],
         discovery_method="Imaging",
         semi_major_axis=30.0,
@@ -194,7 +195,7 @@ class TestPlanetFiles:
         assert report["planets"]["planets with an object entry"] == 1
 
     def test_every_planet_has_the_names_of_its_page(self, tmp_path, out, monkeypatch):
-        """A planet without an IAU name takes the name of its host's page and
+        """A planet named after its host takes the name of its host's page and
         its letter, with an entry or without one (`names.planet_names`). The
         host's page has the names of its entry, else its Metadata name.
         `names` holds the name in each language where it is not `name`."""
@@ -229,6 +230,65 @@ class TestPlanetFiles:
         assert names(1, 1) == ("Lit B b", {}, "Planet 1 1")
         host = reader.system(ids[0])["hosts"][0]
         assert (host["name"], host["names"]) == ("Host A", {"ja": "ホストA星"})
+
+    def _named_on(self, tmp_path, out, monkeypatch, rows: list[dict]) -> dict:
+        """The (name, names, aliases) of each planet of star 0, by number, in
+        the system file of a host with a name in ja."""
+        entities = _StarStub({"Q10": labelled({"en": "Host A", "ja": "ホストA星"})})
+        monkeypatch.setattr(build, "WikidataEntityCache", lambda: entities)
+        stars = [STARS[0] | {"_qid": "Q10"}, *STARS[1:]]
+        built = write_registry(tmp_path / "reg", stars, planets=rows)
+        export_extrasolar(built.root, out, workers=1)
+        planets = ExportReader(out / "v1" / "x").system(built.ids[0])["planets"]
+        return {p["number"]: (p["name"], p["names"], p["aliases"]) for p in planets}
+
+    def test_a_controversial_planet_keeps_its_catalogue_name(
+        self, tmp_path, out, monkeypatch
+    ):
+        rows = [
+            planet(
+                0,
+                1,
+                status="controversial",
+                letter="e",
+                name="Tau Cet e",
+                designation="Tau Cet e",
+                aliases=["Tau Cet e", "HD 10700 e"],
+            ),
+            planet(
+                0,
+                2,
+                status="controversial",
+                letter="c",
+                name="Dagon",
+                name_source="iau-nameexoworlds",
+                aliases=["Dagon", "Planet 0 2"],
+            ),
+            planet(0, 3, letter="d"),
+        ]
+        found = self._named_on(tmp_path, out, monkeypatch, rows)
+        assert found[1] == ("Tau Cet e", {}, ["Tau Cet e", "HD 10700 e", "Host A e"])
+        assert found[2][:2] == ("Dagon", {})
+        assert found[3][:2] == ("Host A d", {"ja": "ホストA星 d"})
+
+    def test_a_repeated_letter_keeps_the_catalogue_names(
+        self, tmp_path, out, monkeypatch
+    ):
+        rows = [
+            planet(
+                0, 1, name="GJ 229 b", designation="GJ 229 b", status="controversial"
+            ),
+            planet(0, 2, name="GJ 229 Bb", designation="GJ 229 Bb"),
+            planet(0, 3, name="X c", designation="X c", letter="c"),
+            planet(0, 4, name="Y c", designation="Y c", letter="c"),
+        ]
+        found = self._named_on(tmp_path, out, monkeypatch, rows)
+        assert {n: f[:2] for n, f in found.items()} == {
+            1: ("GJ 229 b", {}),
+            2: ("GJ 229 Bb", {}),
+            3: ("X c", {}),
+            4: ("Y c", {}),
+        }
 
     def test_the_families_of_a_planet(self, tmp_path, out):
         rows = [

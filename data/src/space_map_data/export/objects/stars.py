@@ -21,7 +21,7 @@ import logging
 import re
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +42,7 @@ from space_map_data.export.names import (
     is_latin,
     page_aliases,
     planet_names,
+    repeated_letters,
     same_designation,
     star_label,
     star_names,
@@ -142,6 +143,11 @@ class PlanetObject:
     designations: tuple[str, ...] = ()
     letter: str | None = None
     iau_named: bool = False
+    # True when a catalogue calls it unconfirmed.
+    controversial: bool = False
+    # True when another planet of its host, with an entry or without one, has
+    # its letter.
+    letter_repeated: bool = False
     # The Metadata name of its host in the served files, which names the
     # host's page when the host has no entry, and whether it is an IAU name.
     host_name: str | None = None
@@ -229,18 +235,23 @@ def _planet_objects(registry: Registry) -> list[PlanetObject]:
         "letter",
         "aliases",
         "cross_ids",
+        "status",
     ]
     rows = table.select(columns).to_pylist()
-    return [planet for row in rows if (planet := planet_object(row))]
+    repeated = repeated_letters(rows)
+    return [planet for row in rows if (planet := planet_object(row, repeated))]
 
 
-def planet_object(row: Mapping) -> PlanetObject | None:
-    """The entry of a planets table row, None without an item."""
+def planet_object(
+    row: Mapping, repeated: Collection[tuple[int, str]]
+) -> PlanetObject | None:
+    """The entry of a planets table row, None without an item. ``repeated`` is
+    the `repeated_letters` of the whole table."""
     qid = planet_qid(row["cross_ids"])
     if qid is None:
         return None
     names = (row["designation"], *(row["aliases"] or ()))
-    catalogue = CataloguePlanet.of(row)
+    catalogue = CataloguePlanet.of(row, repeated)
     return PlanetObject(
         row["host"],
         row["number"],
@@ -249,6 +260,8 @@ def planet_object(row: Mapping) -> PlanetObject | None:
         tuple(dict.fromkeys(n for n in names if n)),
         catalogue.letter,
         catalogue.iau_named,
+        catalogue.controversial,
+        catalogue.letter_repeated,
     )
 
 

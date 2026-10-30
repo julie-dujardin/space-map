@@ -1,11 +1,12 @@
 """Tests for the tier-B fingerprint of the incremental export."""
 
 from collections.abc import Callable
+from dataclasses import replace
 
 import pytest
 from sqlalchemy.orm import Session
 
-from space_map_data.export.objects.stars import StarObject
+from space_map_data.export.objects.stars import PlanetObject, StarObject
 from space_map_data.export.pipeline import incremental
 
 
@@ -22,7 +23,9 @@ def fingerprint(monkeypatch, session: Session) -> Callable[..., dict]:
     monkeypatch.setattr(incremental, "_source_stamp", lambda path: None)
     monkeypatch.setattr(incremental, "_file_stamp", lambda path: None)
     monkeypatch.setattr(incremental, "read_ingest_stamp", lambda session: None)
-    return lambda stars=(): incremental.tier_b_fingerprint(session, stars, [])
+    return lambda stars=(), planets=(): incremental.tier_b_fingerprint(
+        session, stars, planets
+    )
 
 
 class TestTierBFingerprint:
@@ -38,3 +41,9 @@ class TestTierBFingerprint:
         star = StarObject(1, "Tislit", "Q1")
         named = StarObject(1, "Tislit", "Q1", iau_named=True)
         assert fingerprint([star]) != fingerprint([named])
+
+    @pytest.mark.parametrize("field", ["controversial", "letter_repeated"])
+    def test_what_names_a_planet_is_stamped(self, fingerprint, field):
+        planet = PlanetObject(1, 1, "GJ 229 b", "Q1", letter="b")
+        named = replace(planet, **{field: True})
+        assert fingerprint(planets=[planet]) != fingerprint(planets=[named])

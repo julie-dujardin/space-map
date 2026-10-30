@@ -71,9 +71,10 @@ name, read from the files the app reads it from. The paths follow
   object, under the name of its entry; for any other host `<name>` is its
   Metadata `name`, as in its system file;
 - planets → `/x/<host>/b/<number>/<name>` — `<name>` is the global name of
-  the planet's page (`export/names.py`: its IAU name, else its host's page
-  name and its letter): of its entry, else its `name` in its system file,
-  which follows the same rule. An alias number has no URL.
+  the planet's page (`export/names.py`: its IAU name, else its catalogue name
+  when it is controversial or another planet of its host has its letter, else
+  its host's page name and its letter): of its entry, else its `name` in its
+  system file, which follows the same rule. An alias number has no URL.
 
 Every name is percent-encoded like `encodeURIComponent`. A page with no name
 has no name segment, and the writer warns about a group in that case: its page

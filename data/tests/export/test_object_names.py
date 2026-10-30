@@ -17,11 +17,16 @@ from space_map_data.export.names import (
     object_names,
     page_aliases,
     planet_names,
+    repeated_letters,
     served_host,
     star_names,
     system_names,
 )
-from space_map_data.export.objects.stars import PlanetObject, StarObject
+from space_map_data.export.objects.stars import (
+    PlanetObject,
+    StarObject,
+    planet_object,
+)
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
 from tests.conftest import EntityStub, labelled, make_object
@@ -410,12 +415,25 @@ def _planet(**overrides) -> PlanetObject:
     return replace(planet, **overrides)
 
 
+def _row(name: str, letter: str | None = "b", **overrides) -> dict:
+    """A planets table row of host 1."""
+    return {
+        "host": 1,
+        "name": name,
+        "letter": letter,
+        "name_source": "nasa-exoplanet-archive",
+        "status": "confirmed",
+    } | overrides
+
+
 # The page of Proxima Centauri.
 PROXIMA = PlanetHost(Names("Proxima Centauri", {"ja": "プロキシマ・ケンタウリ"}))
+GJ_229 = PlanetHost(Names("Gliese 229", {"ja": "グリーゼ229"}))
 
 
 class TestPlanetNames:
-    """An IAU name, else the name of the host's page and the letter."""
+    """An IAU name, else the catalogue name of a controversial planet or of a
+    repeated letter, else the name of the host's page and the letter."""
 
     def test_a_planet_takes_its_hosts_name_and_its_letter(self):
         names = planet_names(_planet(), PROXIMA)
@@ -454,13 +472,8 @@ class TestPlanetNames:
     def test_a_planet_without_an_entry_is_named_from_its_row(self):
         """The system files name every planet by the same rule, from its
         planets table row and its host's Metadata row."""
-        row = {
-            "name": "GJ 1002 b",
-            "letter": "b",
-            "name_source": "nasa-exoplanet-archive",
-        }
         host = served_host({"name": "Gliese 1002", "name_source": "wikidata"})
-        names = planet_names(CataloguePlanet.of(row), host)
+        names = planet_names(CataloguePlanet.of(_row("GJ 1002 b"), ()), host)
         assert names.name == "Gliese 1002 b"
         assert names.aliases == {}
 
@@ -471,10 +484,113 @@ class TestPlanetNames:
         assert served_host(record) == PlanetHost(Names("Proxima Cen"), iau_named=True)
 
     def test_a_host_record_with_no_name_names_no_planet(self):
-        row = {"name": "GJ 1002 b", "letter": "b", "name_source": "exoplanet-eu"}
+        row = _row("GJ 1002 b", name_source="exoplanet-eu")
         host = served_host({"name": None, "name_source": None})
         assert host is None
-        assert planet_names(CataloguePlanet.of(row), host) == Names("GJ 1002 b")
+        assert planet_names(CataloguePlanet.of(row, ()), host) == Names("GJ 1002 b")
+
+    def test_a_controversial_planet_keeps_its_catalogue_name(self):
+        """The name is the catalogue's claim, so no language composes another."""
+        planet = _planet(controversial=True)
+        names = planet_names(planet, PROXIMA)
+        assert (names.name, names.langs) == ("Proxima Cen b", {})
+        assert names.get("ja") == "Proxima Cen b"
+
+    def test_a_controversial_planet_keeps_its_host_form_as_an_alias(self):
+        """A search for the form after the host still finds it."""
+        names = planet_names(_planet(controversial=True), PROXIMA)
+        assert names.aliases["en"] == ("Proxima Centauri b",)
+        assert names.aliases["ja"] == (f"{PROXIMA.names.get('ja')} b",)
+
+    def test_a_controversial_planet_with_an_iau_name_keeps_it(self):
+        """Dagon, Orbitar and Tondra stay."""
+        planet = _planet(name="Dagon", iau_named=True, controversial=True)
+        names = planet_names(planet, PROXIMA)
+        assert names == Names("Dagon")
+        assert names.get("ja") == "Dagon"
+
+    def test_two_planets_with_one_letter_keep_their_catalogue_names(self):
+        rows = [_row("Kapteyn c", "c"), _row("Kapteyn's Star c", "c")]
+        repeated = repeated_letters(rows)
+        names = [
+            planet_names(CataloguePlanet.of(row, repeated), PROXIMA) for row in rows
+        ]
+        assert names == [Names("Kapteyn c"), Names("Kapteyn's Star c")]
+        assert names[0].get("ja") == "Kapteyn c"
+
+    def test_a_repeated_letter_beside_a_controversial_planet(self):
+        """GJ 229 Bb shares its letter with a planet that keeps its name
+        anyway, and the two pages still need two names."""
+        rows = [
+            _row("GJ 229 b", status="controversial"),
+            _row("GJ 229 Bb", name_source="exoplanet-eu"),
+        ]
+        repeated = repeated_letters(rows)
+        disputed, confirmed = (CataloguePlanet.of(row, repeated) for row in rows)
+        assert (disputed.controversial, disputed.letter_repeated) == (True, True)
+        assert (confirmed.controversial, confirmed.letter_repeated) == (False, True)
+        assert planet_names(disputed, GJ_229) == Names("GJ 229 b")
+        assert planet_names(confirmed, GJ_229) == Names("GJ 229 Bb")
+
+    def test_an_iau_name_beside_a_repeated_letter_stays(self):
+        rows = [
+            _row("Sancho", "e", name_source="iau-nameexoworlds"),
+            _row("mu Ara e", "e"),
+        ]
+        repeated = repeated_letters(rows)
+        iau_named, catalogued = (
+            planet_names(CataloguePlanet.of(row, repeated), PROXIMA) for row in rows
+        )
+        assert (iau_named, catalogued) == (Names("Sancho"), Names("mu Ara e"))
+
+    def test_a_catalogue_name_is_no_alias_of_its_own_page(self):
+        names = planet_names(_planet(controversial=True), PROXIMA)
+        others = ["Proxima Cen b", "GJ 551 b"]
+        assert "Proxima Cen b" not in page_aliases(names, "ja", others)
+
+    def test_the_entry_and_the_system_file_give_one_name(self):
+        """An object entry reads the same row as the system file."""
+        item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q1"}
+        rows = [
+            _row("GJ 229 b", status="controversial"),
+            _row("GJ 229 Bb"),
+            _row("GJ 229 c", "c"),
+        ]
+        repeated = repeated_letters(rows)
+        for number, row in enumerate(rows, 1):
+            entry = planet_object(
+                row
+                | {
+                    "number": number,
+                    "designation": row["name"],
+                    "aliases": None,
+                    "cross_ids": [item],
+                },
+                repeated,
+            )
+            assert entry is not None
+            assert planet_names(entry, GJ_229) == planet_names(
+                CataloguePlanet.of(row, repeated), GJ_229
+            )
+
+
+class TestRepeatedLetters:
+    """The letters that more than one planet of a host has."""
+
+    def test_a_letter_counts_per_host(self):
+        rows = [_row("A b"), _row("B b", host=2), _row("C b", host=2), _row("A c", "c")]
+        assert repeated_letters(rows) == {(2, "b")}
+
+    def test_a_planet_with_no_letter_repeats_nothing(self):
+        assert repeated_letters([_row("KOI-1", None), _row("KOI-2", None)]) == set()
+
+    def test_a_planet_that_keeps_another_name_counts(self):
+        rows = [
+            _row("Sancho", name_source="iau-nameexoworlds"),
+            _row("X b", status="controversial"),
+            _row("Y b"),
+        ]
+        assert repeated_letters(rows) == {(1, "b")}
 
 
 class TestLookups:
