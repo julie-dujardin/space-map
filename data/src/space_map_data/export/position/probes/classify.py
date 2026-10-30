@@ -1,8 +1,9 @@
-"""Pass 1 of the probes exporter: classify per-probe coverage in parallel.
+"""Pass 1 of the probes exporter: classify per-probe coverage.
 
-Per-probe furnish + `inception_et` + `classify_trace`, parallelised across
-processes. The main process owns `probe_id_cache` and plan construction so
-deterministic probe-ID assignment is preserved.
+A worker process furnishes the probe's kernels and runs `inception_et` and
+`classify_trace`. `classify_cache` keeps each result, so only probes with
+changed inputs go to the workers. The main process assigns probe IDs and
+builds the plans.
 """
 
 import logging
@@ -16,6 +17,7 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import ID_TYPE_ORDINAL
+from space_map_data.export.position.probes import classify_cache
 from space_map_data.export.position.probes.kernels import enumerate_probes
 from space_map_data.export.position.probes.plan import (
     ChunkContribution,
@@ -58,21 +60,21 @@ def _classify_worker(
     kernel_paths: list[str],
     naif_id: int,
 ) -> dict:
-    """Per-probe classification in a worker process. Returns a serialisable
-    dict — the main process owns `probe_id_cache` and plan construction.
+    """Classify one probe in a worker process.
 
     Statuses:
-      * `no_coverage` — no SPK covers this naif_id
-      * `ok` — payload includes `inception_et`, flying-phase zone `intervals`
-        (zone_key, start_et, end_et), and `landed_phases` (body_naif,
-        start_et, end_et). Either list may be empty.
+      * `no_coverage`: no SPK covers this naif_id.
+      * `ok`: the result has `inception_et`, the flying zone `intervals`
+        (zone_key, start_et, end_et) and the `landed_phases` (body_naif,
+        start_et, end_et). Either list can be empty.
 
-    Mission kernels furnish here and unload in `finally`, on top of the
-    generic kernels furnished once in `_classify_worker_init`.
+    All mission kernels unload at the end, also after a failed furnish. A
+    kernel left loaded changes the results of the next probes in the worker,
+    and `classify_cache` keeps those results.
     """
-    for k in kernel_paths:
-        spiceypy.furnsh(k)
     try:
+        for k in kernel_paths:
+            spiceypy.furnsh(k)
         intervals = coverage_intervals(naif_id, kernel_paths)
         t0 = inception_et(naif_id, kernel_paths, intervals)
         if t0 is None:
@@ -135,166 +137,178 @@ def classify_pass(
     generic_spk_paths: list[Path],
     start_jd: float,
 ) -> tuple[list[ProbePlan], dict[str, dict[int, list[ProbePlan]]]]:
-    """Pass 1: per-probe furnish + classify, parallelised across processes.
+    """Pass 1: classify every probe, then assign probe IDs and build plans.
 
-    SPICE state is per-process, so each worker gets its own kernel pool with
-    no GIL bottleneck on the spkpos loop. `probe_id` assignment runs
-    serially in the main process, since the registry is mutated as probes
-    are registered and allocation order must match the deterministic
-    `(inception_mjd, naif_id)` policy in `probes.probe_id.assign`.
-
-    Furnish order: mission kernels (in worker) before the pre-furnished
-    generic SPKs, so modern planetary ephemerides win over any bundled
-    inside a mission kernel.
+    Cache misses run in worker processes, because SPICE state is per process.
+    Each worker furnishes the generic kernels once, then each probe's mission
+    kernels on top. The main process assigns `probe_id`s in `enumerate_probes`
+    order, because `probes.probe_id.assign` mutates the registry.
     """
     probes_raw = enumerate_probes()
     n_probes = len(probes_raw)
-    n_workers = max(1, min(8, multiprocessing.cpu_count() // 2))
+
+    # LSK first so SPK Type 10 (SGP4) probes, such as HST's hst_edited.bsp,
+    # can convert TLE epochs to ET. PCK for the body-fixed frames of landed
+    # detection. Generic SPKs for the planet ephemerides.
+    init_paths = lsk_pck_paths + generic_spk_paths
+    signatures = classify_cache.build_signatures(probes_raw, init_paths)
+    results: dict[tuple[str, int], dict] = {}
+    misses: list[int] = []
+    for i, (mdir, _, naif_id) in enumerate(probes_raw):
+        cached = classify_cache.load(mdir.name, naif_id, signatures[i])
+        if cached is None:
+            misses.append(i)
+        else:
+            results[(mdir.name, naif_id)] = cached
+    n_workers = max(1, min(8, multiprocessing.cpu_count() // 2, len(misses)))
     logger.info(
-        "Probes export: %d spacecraft to classify across %d workers",
+        "Probes export: %d spacecraft, %d cached, %d to classify across %d workers",
         n_probes,
+        n_probes - len(misses),
+        len(misses),
         n_workers,
     )
+
+    if misses:
+        with ProcessPoolExecutor(
+            max_workers=n_workers,
+            initializer=_classify_worker_init,
+            initargs=([str(p) for p in init_paths],),
+        ) as ex:
+            futures = {}
+            for i in misses:
+                mdir, kernels, naif_id = probes_raw[i]
+                kpaths = [str(k) for k in kernels]
+                fut = ex.submit(_classify_worker, mdir.name, kpaths, naif_id)
+                futures[fut] = i
+            for fut in tqdm(
+                as_completed(futures),
+                total=len(futures),
+                desc="Classifying probes",
+                unit="probe",
+            ):
+                i = futures[fut]
+                mdir, _, naif_id = probes_raw[i]
+                try:
+                    result = fut.result()
+                except Exception:
+                    logger.exception(
+                        "[%d/%d] classify worker failed for %s naif=%d",
+                        i + 1,
+                        n_probes,
+                        mdir.name,
+                        naif_id,
+                    )
+                    continue
+                classify_cache.save(mdir.name, naif_id, signatures[i], result)
+                results[(mdir.name, naif_id)] = result
+    classify_cache.prune({(mdir.name, naif_id) for mdir, _, naif_id in probes_raw})
 
     plans: list[ProbePlan] = []
     chunk_index: dict[str, dict[int, list[ProbePlan]]] = defaultdict(
         lambda: defaultdict(list)
     )
     traverses = load_traverses()
+    for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
+        result = results.get((mdir.name, naif_id))
+        if result is None:
+            continue
+        if result["status"] == "no_coverage":
+            logger.warning("no coverage for %s/%d", mdir.name, naif_id)
+            continue
 
-    # LSK first so SPK Type 10 (SGP4) probes — HST's hst_edited.bsp uses
-    # this format — can convert TLE epochs to ET; PCK for body-fixed-frame
-    # lookups in landed detection; generic SPKs for planet ephemerides.
-    init_paths = [str(p) for p in (lsk_pck_paths + generic_spk_paths)]
-    with ProcessPoolExecutor(
-        max_workers=n_workers,
-        initializer=_classify_worker_init,
-        initargs=(init_paths,),
-    ) as ex:
-        futures = {}
-        for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
-            kpaths = [str(k) for k in kernels]
-            fut = ex.submit(_classify_worker, mdir.name, kpaths, naif_id)
-            futures[fut] = (i, mdir, kernels, naif_id)
-
-        for fut in tqdm(
-            as_completed(futures),
-            total=n_probes,
-            desc="Classifying probes",
-            unit="probe",
-        ):
-            i, mdir, kernels, naif_id = futures[fut]
-            try:
-                result = fut.result()
-            except Exception:
-                logger.exception(
-                    "[%d/%d] classify worker failed for %s naif=%d",
-                    i,
-                    n_probes,
-                    mdir.name,
-                    naif_id,
-                )
-                continue
-
-            if result["status"] == "no_coverage":
-                logger.warning("no coverage for %s/%d", mdir.name, naif_id)
-                continue
-
-            t0 = result["inception_et"]
-            rec = assign(
-                mission=mdir.name,
-                naif_id=naif_id,
-                inception_mjd=et_to_mjd(t0),
-                registry=probe_registry,
-                source_index=probe_source_index,
-            )
-            probe_id = rec.probe_id
-            if probe_id not in metas_by_probe_id:
-                logger.warning(
-                    "no Object row for probe_id=%d (mission=%s naif=%d); "
-                    "run ingest first",
-                    probe_id,
-                    mdir.name,
-                    naif_id,
-                )
-                continue
-
-            landed_phases = result.get("landed_phases", [])
-            plan = ProbePlan(
-                probe_id=probe_id,
-                naif_id=naif_id,
-                kernels=kernels,
-                system_intervals=_compute_system_intervals(
-                    result["intervals"], landed_phases
-                ),
-            )
-            for zone_key, iv_start, iv_end in result["intervals"]:
-                zone = ZONES_BY_KEY[zone_key]
-                for chunk_idx, c_start, c_end in chunk_aligned_range(
-                    zone.chunk_days,
-                    zone.kepler_subchunk_days,
-                    iv_start,
-                    iv_end,
-                    start_jd,
-                ):
-                    plan.contributions.append(
-                        ChunkContribution(zone_key, chunk_idx, c_start, c_end)
-                    )
-                    chunk_index[zone_key][chunk_idx].append(plan)
-            # Landed phases — each gets one trailing `METHOD_LANDED` record
-            # per streaming chunk it overlaps. Routes to the body's parent
-            # planet zone (Mars 499 → mars zone, Titan 606 → saturn, …).
-            # A traverse on the same body replaces the kernel's surface position.
-            for body_naif, ph_start, ph_end in landed_phases:
-                zone = zone_for_landed_body(int(body_naif))
-                if zone is None:
-                    logger.warning(
-                        "no zone mapping for landed body %d on probe %s/%d; "
-                        "phase %.0f→%.0f dropped",
-                        body_naif,
-                        mdir.name,
-                        naif_id,
-                        ph_start,
-                        ph_end,
-                    )
-                    continue
-                traverse = traverses.get(probe_id)
-                if traverse is not None and traverse.body_naif != int(body_naif):
-                    traverse = None
-                for chunk_idx, c_start, c_end in landed_chunk_range(
-                    zone.chunk_days, ph_start, ph_end, start_jd
-                ):
-                    site, waypoints = (
-                        traverse.in_window(c_start, c_end)
-                        if traverse is not None
-                        else (None, ())
-                    )
-                    contrib = ChunkContribution(
-                        zone_key=zone.key,
-                        chunk_idx=chunk_idx,
-                        c_start_et=c_start,
-                        c_end_et=c_end,
-                        kind="landed",
-                        landed_body_id_value=int(body_naif),
-                        landed_body_id_type=_NAIF_ORDINAL,
-                        site_lat_lng=site,
-                        waypoints=waypoints,
-                    )
-                    plan.contributions.append(contrib)
-                    chunk_index[zone.key][chunk_idx].append(plan)
-            plans.append(plan)
-            logger.debug(
-                "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches, "
-                "%d landed phases)",
-                i,
-                n_probes,
+        t0 = result["inception_et"]
+        rec = assign(
+            mission=mdir.name,
+            naif_id=naif_id,
+            inception_mjd=et_to_mjd(t0),
+            registry=probe_registry,
+            source_index=probe_source_index,
+        )
+        probe_id = rec.probe_id
+        if probe_id not in metas_by_probe_id:
+            logger.warning(
+                "no Object row for probe_id=%d (mission=%s naif=%d); run ingest first",
+                probe_id,
                 mdir.name,
                 naif_id,
-                probe_id,
-                len(result["intervals"]),
-                len(plan.contributions),
-                len(landed_phases),
             )
+            continue
+
+        landed_phases = result.get("landed_phases", [])
+        plan = ProbePlan(
+            probe_id=probe_id,
+            naif_id=naif_id,
+            kernels=kernels,
+            system_intervals=_compute_system_intervals(
+                result["intervals"], landed_phases
+            ),
+        )
+        for zone_key, iv_start, iv_end in result["intervals"]:
+            zone = ZONES_BY_KEY[zone_key]
+            for chunk_idx, c_start, c_end in chunk_aligned_range(
+                zone.chunk_days,
+                zone.kepler_subchunk_days,
+                iv_start,
+                iv_end,
+                start_jd,
+            ):
+                plan.contributions.append(
+                    ChunkContribution(zone_key, chunk_idx, c_start, c_end)
+                )
+                chunk_index[zone_key][chunk_idx].append(plan)
+        # One landed record per chunk that the phase overlaps, in the zone of
+        # the body's planet. A traverse on that body replaces the kernel position.
+        for body_naif, ph_start, ph_end in landed_phases:
+            zone = zone_for_landed_body(int(body_naif))
+            if zone is None:
+                logger.warning(
+                    "no zone mapping for landed body %d on probe %s/%d; "
+                    "phase %.0f→%.0f dropped",
+                    body_naif,
+                    mdir.name,
+                    naif_id,
+                    ph_start,
+                    ph_end,
+                )
+                continue
+            traverse = traverses.get(probe_id)
+            if traverse is not None and traverse.body_naif != int(body_naif):
+                traverse = None
+            for chunk_idx, c_start, c_end in landed_chunk_range(
+                zone.chunk_days, ph_start, ph_end, start_jd
+            ):
+                site, waypoints = (
+                    traverse.in_window(c_start, c_end)
+                    if traverse is not None
+                    else (None, ())
+                )
+                contrib = ChunkContribution(
+                    zone_key=zone.key,
+                    chunk_idx=chunk_idx,
+                    c_start_et=c_start,
+                    c_end_et=c_end,
+                    kind="landed",
+                    landed_body_id_value=int(body_naif),
+                    landed_body_id_type=_NAIF_ORDINAL,
+                    site_lat_lng=site,
+                    waypoints=waypoints,
+                )
+                plan.contributions.append(contrib)
+                chunk_index[zone.key][chunk_idx].append(plan)
+        plans.append(plan)
+        logger.debug(
+            "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches, "
+            "%d landed phases)",
+            i,
+            n_probes,
+            mdir.name,
+            naif_id,
+            probe_id,
+            len(result["intervals"]),
+            len(plan.contributions),
+            len(landed_phases),
+        )
 
     logger.info("Classified %d probes into plans", len(plans))
     return plans, chunk_index

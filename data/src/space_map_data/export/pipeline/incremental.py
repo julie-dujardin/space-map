@@ -46,6 +46,10 @@ from space_map_data.export.position.elements.spacetrack_source import (
 )
 from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.position.layout import position_zone_dir
+from space_map_data.export.position.probes.classify_cache import CLASSIFY_VERSION
+from space_map_data.export.position.probes.sidecar import (
+    FIT_VERSION as PROBES_FIT_VERSION,
+)
 from space_map_data.export.position.probes.sidecar import (
     LANDED_VERSION as PROBES_LANDED_VERSION,
 )
@@ -369,7 +373,8 @@ def write_chebyshev_meta(
 
 def probes_signature() -> dict:
     """Inputs of the probes pass: kernels, events, traverses, fit-center
-    candidates, registry, and the pack and landed versions a code change bumps.
+    candidates, registry, and the pack, landed, classify and fit versions that
+    a code change bumps.
 
     Same tier-B caveat as chebyshev: probe Object rows and has_localized
     bits are covered by the tier-B gate.
@@ -379,6 +384,8 @@ def probes_signature() -> dict:
         "binary_version": BINARY_VERSION,
         "pack_version": PROBES_PACK_VERSION,
         "landed_version": PROBES_LANDED_VERSION,
+        "classify_version": CLASSIFY_VERSION,
+        "fit_version": PROBES_FIT_VERSION,
         "kernels": kernels_digest(),
         "events": _tree_digest(SOURCES_POSITION_DIR / "probe-events", "*.json"),
         "traverses": _tree_digest(derived / "traverses", "*.json"),

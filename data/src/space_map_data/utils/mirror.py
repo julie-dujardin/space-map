@@ -31,7 +31,10 @@ MIRROR_DIR = CACHE_DIR / "mirror"
 _NETWORK_FS = frozenset(
     {"nfs", "nfs4", "cifs", "smb3", "fuse.sshfs", "fuse.rclone", "9p", "afs"}
 )
-_COPY_THREADS = 32
+# NAS calls wait on latency, so scans and copies run on many threads.
+_THREADS = 32
+# Files per stat task. The task overhead then stays small on a local tree.
+_STAT_BATCH = 256
 
 Selector = Callable[[Path], bool]
 
@@ -103,13 +106,14 @@ def sync_tree(rel: str, select: Selector | None = None) -> None:
     stale = [r for r in dst if r not in src]
     for r in stale:
         (dst_root / r).unlink(missing_ok=True)
+    # Before the copies, so a file can take the place of an emptied directory.
+    for r in stale:
+        _prune_empty(dst_root / r, dst_root)
     dirs = {(dst_root / r).parent for r in changed}
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
-    with ThreadPoolExecutor(_COPY_THREADS) as ex:
+    with ThreadPoolExecutor(_THREADS) as ex:
         list(ex.map(lambda r: _copy(src_root / r, dst_root / r, src[r]), changed))
-    for r in stale:
-        _prune_empty(dst_root / r, dst_root)
     dst_root.mkdir(parents=True, exist_ok=True)
     logger.info(
         "mirror: %s — %d files, %d copied, %d removed in %.1fs",
@@ -123,23 +127,57 @@ def sync_tree(rel: str, select: Selector | None = None) -> None:
 
 
 def _scan(root: Path, select: Selector | None) -> dict[Path, tuple[int, int]]:
-    """{relative path: (size, mtime_ns)} for every selected file under root."""
+    """{relative path: (size, mtime_ns)} for every selected file under root.
+
+    Each file stat is a NAS round trip, and most files are in a few large
+    directories. So the stats of a level run in batches on the pool.
+    """
     out: dict[Path, tuple[int, int]] = {}
-    stack = [root]
-    while stack:
-        d = stack.pop()
-        with os.scandir(d) as it:
-            for e in it:
-                if e.is_dir(follow_symlinks=False):
-                    stack.append(Path(e.path))
-                    continue
-                if not e.is_file(follow_symlinks=False):
-                    continue
-                rel = Path(e.path).relative_to(root)
-                if select is not None and not select(rel):
-                    continue
-                st = e.stat(follow_symlinks=False)
-                out[rel] = (st.st_size, st.st_mtime_ns)
+    level = [root]
+    with ThreadPoolExecutor(_THREADS) as ex:
+        while level:
+            files: list[tuple[Path, os.DirEntry[str]]] = []
+            next_level: list[Path] = []
+            for dir_files, subdirs in ex.map(
+                lambda d: _list_dir(d, root, select), level
+            ):
+                files.extend(dir_files)
+                next_level.extend(subdirs)
+            batches = [
+                files[i : i + _STAT_BATCH] for i in range(0, len(files), _STAT_BATCH)
+            ]
+            for stamps in ex.map(_stamps, batches):
+                out.update(stamps)
+            level = next_level
+    return out
+
+
+def _list_dir(
+    d: Path, root: Path, select: Selector | None
+) -> tuple[list[tuple[Path, os.DirEntry[str]]], list[Path]]:
+    """The selected files of one directory, not stat'd yet, and its subdirectories."""
+    files: list[tuple[Path, os.DirEntry[str]]] = []
+    subdirs: list[Path] = []
+    with os.scandir(d) as it:
+        for e in it:
+            if e.is_dir(follow_symlinks=False):
+                subdirs.append(Path(e.path))
+                continue
+            if not e.is_file(follow_symlinks=False):
+                continue
+            rel = Path(e.path).relative_to(root)
+            if select is None or select(rel):
+                files.append((rel, e))
+    return files, subdirs
+
+
+def _stamps(
+    batch: list[tuple[Path, os.DirEntry[str]]],
+) -> dict[Path, tuple[int, int]]:
+    out: dict[Path, tuple[int, int]] = {}
+    for rel, e in batch:
+        st = e.stat(follow_symlinks=False)
+        out[rel] = (st.st_size, st.st_mtime_ns)
     return out
 
 

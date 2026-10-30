@@ -58,7 +58,9 @@ KIND_SPLIT = 2
 KIND_NODE = 3
 KIND_IDS = 4
 
-LEVEL = 9
+# Level 6 compresses about 6 times faster than level 9. The files are 0.4%
+# larger.
+LEVEL = 6
 # Gzip header with mtime 0 and no file name, so the bytes are deterministic.
 GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff"
 # Not the last block, stored, 32 bytes.
