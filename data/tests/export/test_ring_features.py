@@ -4,13 +4,18 @@ import pytest
 
 from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.rings.wikidata import RING_SYSTEM_PAGES
+from space_map_data.export.names import Names
 from space_map_data.export.objects.rings import (
+    RingMoon,
     feature_qids,
     ring_features_block,
     ring_sources_block,
 )
 
-MOON_IDS = {"naif-699/Pan": "naif-618", "naif-699/Daphnis": "naif-635"}
+MOON_IDS = {
+    "naif-699/Pan": RingMoon("naif-618", Names("Pan")),
+    "naif-699/Daphnis": RingMoon("naif-635", Names("Daphnis")),
+}
 
 
 @pytest.fixture(scope="module")

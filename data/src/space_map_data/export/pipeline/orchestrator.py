@@ -33,6 +33,7 @@ from space_map_data.export.in_place import content_token, refresh_versions
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
 from space_map_data.export.manual import inject_manual_objects
+from space_map_data.export.names import SYSTEM_PRIMARIES, Names, ObjectNames
 from space_map_data.export.nomenclature.quadrangles import (
     build_quadrangle_texts,
     build_quadrangles,
@@ -65,7 +66,7 @@ from space_map_data.export.objects.probe_targets import (
     attach_probe_targets,
     attach_system_probes,
 )
-from space_map_data.export.objects.rings import load_ring_moon_ids
+from space_map_data.export.objects.rings import RingMoon, load_ring_moons
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.stars import (
     available_extrasolar_objects,
@@ -166,6 +167,7 @@ from space_map_data.models.object import (
     SBDBMoon,
 )
 from space_map_data.models.object.sbdb import CometPrefix
+from space_map_data.probes.attachments import resolve_attachments
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.utils.commons_images import clear_metadata_cache
 from space_map_data.utils.convert import date_to_julian
@@ -817,21 +819,57 @@ def _load_moon_hosts(session: Session) -> dict[str, str]:
     }
 
 
-def _load_moon_parent_names(
-    session: Session, moon_hosts: dict[str, str]
-) -> dict[str, str]:
-    """Map each moon-host Object.id to its display name.
+def _moon_host_names(
+    names: ObjectNames, moon_hosts: Mapping[str, str]
+) -> dict[str, Names]:
+    """The names of each moon host, by the moon's parent Object.id.
 
-    Shipped in moon bundles (orbit.parent_name) so the frontend breadcrumb can
-    name the host even when the host body isn't resident in the scene — small-
-    body hosts get culled by the streaming loader once focus moves on.
+    A moon of a planet has the system barycenter as parent and the planet as
+    host. The moon bundles carry the name, so a page can name the host when
+    the host is not in the scene.
     """
-    rows = (
-        session.query(Object.id, Object.name)
-        .filter(Object.id.in_(set(moon_hosts.values())), Object.name.is_not(None))
-        .all()
-    )
-    return {oid: name for oid, name in rows}
+    hosts = {
+        parent_id: SYSTEM_PRIMARIES.get(parent_id, parent_id)
+        for parent_id in set(moon_hosts.values())
+    }
+    found = names.objects(hosts.values())
+    return {
+        parent_id: found[host] for parent_id, host in hosts.items() if host in found
+    }
+
+
+def _page_links(
+    session: Session,
+    names: ObjectNames,
+    model_sources: Mapping[str, dict],
+    probe_names: Mapping[int, Names],
+    ring_moons: Mapping[str, RingMoon],
+) -> dict[str, dict[str, Names]]:
+    """For each object page, the names of the pages it links to by name, by
+    page id: the craft that carries a probe, the craft that observed a shape
+    model, and the moons of a ring catalogue.
+
+    Built before the object data, so that a page with no other localized text
+    gets a localized entry for them.
+    """
+    links: dict[str, dict[str, Names]] = defaultdict(dict)
+    for attachment in resolve_attachments():
+        carrier_id = f"probe-{attachment.carrier_probe_id}"
+        if (carrier := names.find(carrier_id)) is not None:
+            links[f"probe-{attachment.probe_id}"][carrier_id] = carrier
+    observed = {
+        slug: block["mission"]["primary_id"]
+        for slug, block in model_sources.items()
+        if "mission" in block
+    }
+    for object_id, slug in session.query(Object.id, Object.model_name).filter(
+        Object.model_name.in_(observed)
+    ):
+        craft_id = observed[slug]
+        links[object_id][craft_id] = probe_names[int(craft_id.removeprefix("probe-"))]
+    for key, moon in ring_moons.items():
+        links[key.partition("/")[0]][moon.id] = moon.names
+    return links
 
 
 def _load_nasa_science_urls() -> dict[str, str]:
@@ -1080,6 +1118,12 @@ def export_probes_only(engine: Engine) -> None:
 
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     """Run the full export pipeline."""
+    # ObjectNames reads objects by id until the run ends.
+    with Session(engine) as names_session:
+        _export(engine, names_session, limit_per_zone)
+
+
+def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None:
     t0 = time.monotonic()
     out_dir = EXPORT_DIR / "v1"
     # One read for the star and planet entries and the sitemap. A registry that
@@ -1092,7 +1136,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         precheck_tables(session)
         nomenclature_by_body = build_nomenclature(session)
         moon_hosts = _load_moon_hosts(session)
-        moon_parent_names = _load_moon_parent_names(session, moon_hosts)
         tier_b_fp = incremental.tier_b_fingerprint(
             session, star_objects, planet_objects
         )
@@ -1113,6 +1156,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     remove_old_outputs(out_dir, keep_object_outputs=tier_b_clean)
 
     wikidata_entities = WikidataEntityCache()
+    names = ObjectNames(wikidata_entities, names_session, star_objects, planet_objects)
     units = UnitConverter(wikidata_entities)
     orientation = load_orientation(DOWNLOAD_DIR)
     radii = load_radii(DOWNLOAD_DIR)
@@ -1132,17 +1176,19 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     # {object_id: slug} for shape-model bundles — lets notable-member lineups
     # render the real mesh instead of a sphere (spacecraft bundles excluded).
     model_slugs = shape_model_slugs(model_metadata)
+    probe_names = {entry["probe_id"]: names.probe(entry) for entry in load_registry()}
     # {slug: provenance block} for the detail sources section.
-    model_sources = build_model_sources(
-        model_metadata,
-        {e["probe_id"]: e["name"] for e in load_registry() if e.get("name")},
-    )
+    model_sources = build_model_sources(model_metadata, probe_names)
+    with Session(engine) as session:
+        ring_moons = load_ring_moons(session, names)
+        page_links = _page_links(session, names, model_sources, probe_names, ring_moons)
     probe_kernel_sources = load_probe_kernel_sources()
     probe_ephemeris_accuracy = load_probe_ephemeris_accuracy()
     probe_position_sources = load_probe_position_sources()
 
     ctx = ObjectDataContext(
         wikidata_entities=wikidata_entities,
+        names=names,
         units=units,
         nasa_science_urls=_load_nasa_science_urls(),
         orientation=orientation,
@@ -1158,10 +1204,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         probe_ephemeris_accuracy=probe_ephemeris_accuracy,
         probe_position_sources=probe_position_sources,
         nomenclature_body_ids=set(nomenclature_by_body.keys()),
-        parent_names=moon_parent_names,
+        parent_names=_moon_host_names(names, moon_hosts),
+        page_links=page_links,
         taxonomy=load_taxonomy(session),
         moon_sources=load_moon_sources(session, units),
-        ring_moon_ids=load_ring_moon_ids(session),
+        ring_moons=ring_moons,
         ring_metadata=ring_metadata,
         planet_families=page_families(
             solar_planet_records(radii, gms, load_planet_elements(DOWNLOAD_DIR))
@@ -1241,6 +1288,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
         write_credits(
             session,
+            names,
             out_dir,
             texture_metadata,
             ring_metadata,
@@ -1303,7 +1351,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 displacement_metadata,
                 model_slugs,
             )
-            attach_featured_satellites(session, agg.all_objects, wikidata_entities)
+            attach_featured_satellites(session, agg.all_objects, names)
             attach_comet_fragments(session, agg.all_objects, wikidata_entities)
             # {object_id: mesh + real length} for spacecraft, which the probe
             # lists below put on their entries so a probe lineup can draw them.
@@ -1320,7 +1368,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             attach_system_probes(
                 session, agg.all_objects, wikidata_entities, craft_models
             )
-        attach_probe_events(agg.all_objects)
+        attach_probe_events(agg.all_objects, names)
         # Pools the moon and feature lists the two passes above just wrote.
         attach_galleries(agg.all_objects)
         # Attitude extraction runs after probe positions are written but before
@@ -1415,6 +1463,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     with Session(engine) as session:
         write_about_data(
             session,
+            names,
             out_dir,
             radii,
             texture_metadata,

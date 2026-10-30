@@ -4,10 +4,14 @@ import json
 from pathlib import Path
 
 import pytest
+from sqlalchemy.orm import Session
 
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.objects.probe_events import attach_probe_events
 from space_map_data.export.objects.writer import ChunkObjectData
+from space_map_data.models.object import Object, ObjectType
 from space_map_data.probes import events
+from tests.conftest import EntityStub, labelled
 
 
 def _chunk(object_ids: list[str]) -> ChunkObjectData:
@@ -16,6 +20,16 @@ def _chunk(object_ids: list[str]) -> ChunkObjectData:
     for oid in object_ids:
         chunk.global_data[oid] = {"id": oid}
     return chunk
+
+
+def _names(session: Session, objects: dict[str, str]) -> ObjectNames:
+    """Names from a database with an object of each name, by id."""
+    session.add_all(
+        Object(id=oid, name=name, object_type=ObjectType.planet)
+        for oid, name in objects.items()
+    )
+    session.commit()
+    return ObjectNames(EntityStub(), session)
 
 
 @pytest.fixture
@@ -34,7 +48,7 @@ def _write(root: Path, probes: list[dict]) -> None:
     )
 
 
-def test_events_ride_the_probe_bundle(events_root: Path) -> None:
+def test_events_ride_the_probe_bundle(events_root: Path, session: Session) -> None:
     _write(
         events_root,
         [
@@ -59,7 +73,7 @@ def test_events_ride_the_probe_bundle(events_root: Path) -> None:
         ],
     )
     chunk = _chunk(["probe-1234"])
-    attach_probe_events(chunk)
+    attach_probe_events(chunk, _names(session, {}))
 
     block = chunk.global_data["probe-1234"]["events"]
     assert block["status"] == {"where": "heliocentric", "alive": False, "lost": True}
@@ -74,7 +88,9 @@ def test_events_ride_the_probe_bundle(events_root: Path) -> None:
     assert "description" not in launch
 
 
-def test_a_landing_site_carries_its_heading(events_root: Path) -> None:
+def test_a_landing_site_carries_its_heading(
+    events_root: Path, session: Session
+) -> None:
     _write(
         events_root,
         [
@@ -97,7 +113,7 @@ def test_a_landing_site_carries_its_heading(events_root: Path) -> None:
         ],
     )
     chunk = _chunk(["probe-1234"])
-    attach_probe_events(chunk)
+    attach_probe_events(chunk, _names(session, {}))
 
     (landing,) = chunk.global_data["probe-1234"]["events"]["items"]
     assert landing["site"] == {
@@ -120,7 +136,11 @@ def test_a_landing_site_carries_its_heading(events_root: Path) -> None:
     ],
 )
 def test_target_links_where_the_object_exists(
-    events_root: Path, target: dict, object_id: str | None, linked: bool
+    events_root: Path,
+    session: Session,
+    target: dict,
+    object_id: str | None,
+    linked: bool,
 ) -> None:
     _write(
         events_root,
@@ -139,7 +159,9 @@ def test_target_links_where_the_object_exists(
         ],
     )
     chunk = _chunk(["probe-1234"] + ([object_id] if object_id else []))
-    attach_probe_events(chunk)
+    attach_probe_events(
+        chunk, _names(session, {object_id: target["name"]} if object_id else {})
+    )
 
     ref = chunk.global_data["probe-1234"]["events"]["items"][0]["target"]
     assert ref["name"] == target["name"]
@@ -150,7 +172,9 @@ def test_target_links_where_the_object_exists(
         assert "primary_id" not in ref
 
 
-def test_target_the_export_left_out_is_not_linked(events_root: Path) -> None:
+def test_target_the_export_left_out_is_not_linked(
+    events_root: Path, session: Session
+) -> None:
     """A body the export doesn't carry can't be focused, so the name ships alone."""
     _write(
         events_root,
@@ -169,16 +193,61 @@ def test_target_the_export_left_out_is_not_linked(events_root: Path) -> None:
         ],
     )
     chunk = _chunk(["probe-1234"])
-    attach_probe_events(chunk)
+    attach_probe_events(chunk, _names(session, {}))
     assert (
         "primary_id"
         not in chunk.global_data["probe-1234"]["events"]["items"][0]["target"]
     )
 
 
-def test_probe_without_a_bundle_is_skipped(events_root: Path) -> None:
+def test_probe_without_a_bundle_is_skipped(events_root: Path, session: Session) -> None:
     """Most curated craft have no trajectory and so no object of their own."""
     _write(events_root, [{"probe_id": 1234, "name": "Test Probe"}])
     chunk = _chunk(["probe-9999"])
-    attach_probe_events(chunk)
+    attach_probe_events(chunk, _names(session, {}))
     assert "events" not in chunk.global_data["probe-9999"]
+
+
+def test_a_linked_target_has_the_names_of_its_page(
+    events_root: Path, session: Session
+) -> None:
+    """The link takes the page's global name, and the probe's localized
+    entries name the page in their language."""
+    _write(
+        events_root,
+        [
+            {
+                "probe_id": 1234,
+                "name": "Test Probe",
+                "events": [
+                    {
+                        "type": "flyby",
+                        "date": "2005-11-19",
+                        "target": {"naif": 299, "name": "VENUS"},
+                    }
+                ],
+            }
+        ],
+    )
+    session.add(
+        Object(
+            id="naif-299",
+            name="Venus",
+            object_type=ObjectType.planet,
+            wikidata_qid="Q313",
+        )
+    )
+    session.commit()
+    names = ObjectNames(
+        EntityStub({"Q313": labelled({"en": "Venus", "ja": "金星"})}), session
+    )
+    chunk = _chunk(["probe-1234", "naif-299"])
+    chunk.localized_data["ja"]["probe-1234"] = {"name": "テスト"}
+    attach_probe_events(chunk, names)
+
+    ref = chunk.global_data["probe-1234"]["events"]["items"][0]["target"]
+    assert ref["name"] == "Venus"
+    assert chunk.localized_data["ja"]["probe-1234"]["link_names"] == {
+        "naif-299": "金星"
+    }
+    assert "probe-1234" not in chunk.localized_data["fr"]

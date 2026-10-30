@@ -21,7 +21,6 @@ from pathlib import Path
 import orjson
 
 from space_map_data.constants.measured_shapes import measured_shape_references
-from space_map_data.constants.object_names import NAME_ENTITIES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.stars import families as star_rules
 from space_map_data.export.disk_photometry import lunar_weight_scale
@@ -30,7 +29,12 @@ from space_map_data.export.ephemeris import (
     ephemeris_archive_for,
 )
 from space_map_data.export.images import collect_object_images
-from space_map_data.export.names import resolve_wikidata_qid
+from space_map_data.export.names import (
+    Names,
+    ObjectNames,
+    overrides_in,
+    resolve_wikidata_qid,
+)
 from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
 from space_map_data.export.objects.celestrak import (
@@ -46,6 +50,7 @@ from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.radiation import radiation_block
 from space_map_data.export.objects.rings import (
+    RingMoon,
     ring_feature_localized,
     ring_features_block,
     ring_images_block,
@@ -92,8 +97,6 @@ from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
     active_statements,
-    clean_label,
-    entity_label,
 )
 from space_map_data.extrasolar.families import most_specific, of_spectral_type
 from space_map_data.models.object import (
@@ -103,6 +106,7 @@ from space_map_data.models.object import (
     OrbitalSource,
 )
 from space_map_data.models.object.sbdb import OrbitClass
+from space_map_data.utils.designations import is_iau_named
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +230,7 @@ class ChunkObjectData:
 
 def build_chunk_object_data(
     objects: list[Object],
+    names: ObjectNames,
     wikidata_entities: WikidataEntityCache,
     chunk_entities: dict[str, WikidataEntity | None],
     units: UnitConverter,
@@ -243,9 +248,10 @@ def build_chunk_object_data(
     probe_ephemeris_accuracy: dict[int, float],
     probe_position_sources: dict[int, list[dict]],
     nomenclature_body_ids: set[str],
-    parent_names: dict[str, str],
+    parent_names: Mapping[str, Names],
+    page_links: Mapping[str, Mapping[str, Names]],
     taxonomy: dict,
-    ring_moon_ids: dict[str, str],
+    ring_moons: Mapping[str, RingMoon],
     ring_metadata: dict[str, list[dict]],
     moon_sources: MoonSourceBlocks,
     planet_families: dict[str, list[str]],
@@ -274,8 +280,17 @@ def build_chunk_object_data(
         drop_covered_qids(extracted, covered_authoritative_qids(sat), obj.id)
         merge_operator_qids(extracted, sat)
 
+        obj_names = names.of(obj, wd)
+        parent = (
+            parent_names.get(obj.parent_id)
+            if obj.object_type == ObjectType.moon and obj.parent_id is not None
+            else None
+        )
+        links = page_links.get(obj.id, {})
         out.global_data[obj.id] = _build_global(
             obj,
+            obj_names,
+            parent,
             extracted,
             wikidata_entities,
             units,
@@ -293,9 +308,8 @@ def build_chunk_object_data(
             probe_ephemeris_accuracy,
             probe_position_sources,
             nomenclature_body_ids,
-            parent_names,
             taxonomy,
-            ring_moon_ids,
+            ring_moons,
             ring_metadata,
             moon_sources,
             planet_families,
@@ -307,7 +321,15 @@ def build_chunk_object_data(
         for lang in LANGUAGES:
             wiki_summary = wiki_summaries.get(lang)
             lang_data = _build_localized(
-                obj, lang, wikidata_entities, wd, extracted, wiki_summary
+                obj,
+                obj_names,
+                parent,
+                links,
+                lang,
+                wikidata_entities,
+                wd,
+                extracted,
+                wiki_summary,
             )
             if lang_data:
                 out.localized_data[lang][obj.id] = lang_data
@@ -315,6 +337,18 @@ def build_chunk_object_data(
         out.has_localized[obj.id] = any_localized
 
     return out
+
+
+def add_link_names(
+    chunk: ChunkObjectData, obj_id: str, links: Mapping[str, Names]
+) -> None:
+    """Add the names of pages that ``obj_id`` links to, by page id, to its
+    localized entries. A pass after the object data adds to the existing
+    entries only, because the binary chunk holds the `has_localized` bit."""
+    for lang in LANGUAGES:
+        entry = chunk.localized_data[lang].get(obj_id)
+        if entry is not None and (found := overrides_in(links, lang)):
+            entry.setdefault("link_names", {}).update(found)
 
 
 def write_object_bundles(
@@ -415,12 +449,12 @@ def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
 
 def build_model_sources(
     model_metadata: dict[str, dict],
-    probe_names: dict[int, str],
+    probe_names: Mapping[int, Names],
 ) -> dict[str, dict]:
     """Map shape-model slug → compact provenance block for the detail drawer.
 
     Keyed by slug to match ``model_name``; spacecraft bundles are excluded —
-    natural bodies only.
+    natural bodies only. ``probe_names`` names each probe of the registry.
     """
     out: dict[str, dict] = {}
     for slug, meta in model_metadata.items():
@@ -440,10 +474,10 @@ def build_model_sources(
             block["archive_url"] = meta["archive_url"]
         probe_id = meta.get("probe_id")
         if probe_id is not None:
-            name = probe_names.get(int(probe_id))
-            if name:
+            craft = probe_names.get(int(probe_id))
+            if craft is not None:
                 block["mission"] = {
-                    "name": name,
+                    "name": craft.name,
                     "primary_type": "object",
                     "primary_id": f"probe-{int(probe_id)}",
                 }
@@ -492,6 +526,8 @@ def _wikidata_readings(
 
 def _build_global(
     obj: Object,
+    names: Names,
+    parent: Names | None,
     extracted: dict,
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
@@ -509,9 +545,8 @@ def _build_global(
     probe_ephemeris_accuracy: dict[int, float],
     probe_position_sources: dict[int, list[dict]],
     nomenclature_body_ids: set[str],
-    parent_names: dict[str, str],
     taxonomy: dict,
-    ring_moon_ids: dict[str, str],
+    ring_moons: Mapping[str, RingMoon],
     ring_metadata: dict[str, list[dict]],
     moon_sources: MoonSourceBlocks,
     planet_families: dict[str, list[str]],
@@ -559,14 +594,10 @@ def _build_global(
             logger.warning("Ring metadata missing for %s; skipping bundles", obj.id)
     if obj.id in nomenclature_body_ids:
         data["has_nomenclature"] = True
-    if obj.name is not None:
-        data["name"] = clean_label(obj.name)
-    # Host name for moons — top-level so position-less moonlets carry it too,
-    # and the breadcrumb can label the parent even after it's culled from scene.
-    if obj.object_type == ObjectType.moon and obj.parent_id is not None:
-        parent_name = parent_names.get(obj.parent_id)
-        if parent_name:
-            data["parent_name"] = parent_name
+    data["name"] = names.name
+    # Top level, so a moon with no position names its host too.
+    if parent is not None:
+        data["parent_name"] = parent.name
     # Surface colour of a moon, albedo of a planet or a moon. Small bodies
     # have their colour in `sbdb`.
     if obj.object_type in (ObjectType.planet, ObjectType.moon):
@@ -594,6 +625,9 @@ def _build_global(
         data["sbdb_primary_designation"] = obj.mpc_designation
     if obj.provisional_designation is not None:
         data["provisional_designation"] = obj.provisional_designation
+    # The page name of a moon can be a Wikidata label, so it cannot tell.
+    if obj.object_type == ObjectType.moon:
+        data["iau_named"] = is_iau_named(obj.name, obj.provisional_designation)
 
     # Wikidata notability signal — search ranks "show all group members" by it.
     if obj.sitelinks_count:
@@ -705,7 +739,7 @@ def _build_global(
 
     # Named rings, gaps and ringlets: what the ring system *is*, next to the
     # render bundles in systems/{bary}.json that say what it looks like.
-    ring_features = ring_features_block(obj.id, ring_moon_ids)
+    ring_features = ring_features_block(obj.id, ring_moons)
     if ring_features:
         data["ring_features"] = ring_features
         data["ring_sources"] = ring_sources_block(obj.id)
@@ -789,21 +823,26 @@ def _build_global(
 
 def _build_localized(
     obj: Object,
+    names: Names,
+    parent: Names | None,
+    links: Mapping[str, Names],
     lang: str,
     wikidata_entities: WikidataEntityCache,
     wd: WikidataEntity | None,
     extracted: dict,
     wiki_summary: WikipediaSummary | None,
 ) -> dict:
-    """Build the per-language JSON dict for an object."""
+    """Build the per-language JSON dict for an object. ``parent`` names the
+    host of a moon; ``links`` names the pages it links to, by page id."""
     data: dict = {}
+    if name := names.langs.get(lang):
+        data["name"] = name
+    if parent is not None and (name := parent.get(lang)) != parent.name:
+        data["parent_name"] = name
+    if link_names := overrides_in(links, lang):
+        data["link_names"] = link_names
 
     if wd:
-        # No obj.name fallback: that's already in the global file.
-        named_by = wikidata_entities.get_referenced(NAME_ENTITIES.get(obj.id)) or wd
-        if name := entity_label(named_by, lang):
-            data["name"] = name
-
         desc = wd["descriptions"].get(lang)
         if desc:
             data["description"] = desc

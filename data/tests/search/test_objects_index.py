@@ -131,6 +131,33 @@ class TestLoadEarthMembership:
         assert _load_earth_membership(tmp_path) == {}
 
 
+class TestMoons:
+    """A moon's IAU flag is the DB's status in its bundle, not a rule on its
+    page name."""
+
+    def test_the_flag_comes_from_the_bundle(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en",))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        moon = {"type": "moon", "orbit": {"parent_id": "naif-6"}}
+        entries = {
+            "naif-635": moon | {"id": "naif-635", "name": "Daphnis", "iau_named": True},
+            # A Wikidata label with no year in it, on a moon with no name.
+            "naif-65067": moon
+            | {"id": "naif-65067", "name": "Moon of Saturn", "iau_named": False},
+        }
+        directory = tmp_path / "v1" / "objects" / "__global__"
+        directory.mkdir(parents=True)
+        (directory / "0.json.gz").write_bytes(
+            gzip.compress(json.dumps(entries).encode())
+        )
+        docs = {
+            doc["object"]["id"]: doc["object"]
+            for doc in objects.build_object_documents(tmp_path)
+        }
+        assert docs["naif-635"]["iau_named"] is True
+        assert docs["naif-65067"]["iau_named"] is False
+
+
 class TestExtrasolarStars:
     """A star of the extrasolar catalogue is a document when its entry in the
     base locale has a Wikipedia extract, or when it hosts planets."""

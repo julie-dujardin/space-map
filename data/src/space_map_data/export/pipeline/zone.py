@@ -8,8 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from space_map_data.export.earth_sat_filter import is_docked
-from space_map_data.export.names import resolve_wikidata_qid
+from space_map_data.export.names import Names, ObjectNames, resolve_wikidata_qid
 from space_map_data.export.objects.moon_sources import MoonSourceBlocks
+from space_map_data.export.objects.rings import RingMoon
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_chunk_object_data,
@@ -52,6 +53,7 @@ class ObjectDataContext:
     """
 
     wikidata_entities: WikidataEntityCache
+    names: ObjectNames
     units: UnitConverter
     nasa_science_urls: dict[str, str]
     orientation: dict[int, dict]
@@ -71,16 +73,16 @@ class ObjectDataContext:
     # probe_id -> cited works of the traverse that places the craft.
     probe_position_sources: dict[int, list[dict]]
     nomenclature_body_ids: set[str]
-    # parent Object.id -> display name, for moons whose parent may live in
-    # another chunk (lets the frontend breadcrumb name the host without the
-    # parent body being resident in the scene).
-    parent_names: dict[str, str]
+    # The names of each moon host, by the moon's parent Object.id.
+    parent_names: Mapping[str, Names]
+    # Object.id -> the names of the pages it links to by name, by page id.
+    page_links: Mapping[str, Mapping[str, Names]]
     # Object.id -> (class, complex, scheme, albedo) from SsODNet, for the
     # asteroids whose interior is estimated from a spectrum.
     taxonomy: dict[str, tuple[str | None, str | None, str | None, float | None]]
-    # "{host}/{moon name}" -> Object.id, for the moons a ring catalogue row
+    # "{host}/{moon name}" -> the moon, for the moons a ring catalogue row
     # names as shepherd, source or embedded (Pan in the Encke Gap).
-    ring_moon_ids: dict[str, str]
+    ring_moons: Mapping[str, RingMoon]
     # Object.id -> render bundles, inner to outer. Only bodies outside a
     # planetary system read it here; the giants get theirs from their
     # system's metadata file instead.
@@ -143,6 +145,7 @@ def build_zone_object_data(
     """
     return build_chunk_object_data(
         objects,
+        ctx.names,
         ctx.wikidata_entities,
         _entities_for(objects, ctx.wikidata_entities),
         ctx.units,
@@ -161,9 +164,10 @@ def build_zone_object_data(
         probe_position_sources=ctx.probe_position_sources,
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,
+        page_links=ctx.page_links,
         taxonomy=ctx.taxonomy,
         moon_sources=ctx.moon_sources,
-        ring_moon_ids=ctx.ring_moon_ids,
+        ring_moons=ctx.ring_moons,
         ring_metadata=ctx.ring_metadata,
         planet_families=ctx.planet_families,
     )

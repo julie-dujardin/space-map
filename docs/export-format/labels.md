@@ -12,10 +12,13 @@ get a label rendered on first paint without waiting for the user to interact:
 The frontend fetches one of these on app start (and on locale change) and uses
 its keys as the authoritative promoted set — there's no separate frontend list.
 
-Format: gzipped UTF-8, one `{id}\x1f{name}` line per object (`\x1f` = ASCII
-Unit Separator). Name fallback per (object, lang): localized Wikidata label →
-English Wikidata label → DB `name` → empty (the frontend then falls back to
-the id).
+Format: gzipped UTF-8, one `{id}\x1f{name}\x1f{flags}` line per object
+(`\x1f` = ASCII Unit Separator). The name is the one of the object's page in
+the language (`export/names.py`): the localized `name` of its bundle entry,
+else its global `name`. It is empty for an object whose only name is its id
+(two moons with no name and no designation). The only flag is `m` (minor: a collapsed halo that
+expands on hover), for a moon with no IAU name, in every language, and for a
+probe outside the curated list.
 
 Localized detail bundles for clicked objects are still fetched on demand (see
 [Object detail files](objects.md)) and are gated on the

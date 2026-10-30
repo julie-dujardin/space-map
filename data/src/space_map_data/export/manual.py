@@ -8,6 +8,7 @@ They have no DB row or position chunk, so we fold them into ``global_data``/
 import logging
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.names import manual_names
 from space_map_data.export.objects.interior import interior_from_mapping
 from space_map_data.export.objects.wikidata_claims import (
     INSTANCE_OF_IGNORED,
@@ -18,7 +19,6 @@ from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.utils.manual_overlay import (
     manual_object_instance_of,
-    manual_object_labels,
     read_manual_objects,
 )
 
@@ -83,20 +83,19 @@ def inject_manual_objects(
     for entry in entries:
         obj_id = entry["id"]
         qid = entry.get("wikidata_qid")
-        labels = manual_object_labels(qid) if qid else {}
+        names = manual_names(entry)
         summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
         instance_qids = (
             [q for q in manual_object_instance_of(qid) if q not in INSTANCE_OF_IGNORED]
             if qid
             else []
         )
-        name = labels.get("en") or entry.get("name") or obj_id
-        data.global_data[obj_id] = _global(entry, name)
+        data.global_data[obj_id] = _global(entry, names.name)
         any_localized = False
         for lang in LANGUAGES:
             block: dict = {}
-            if lang in labels:
-                block["name"] = labels[lang]
+            if name := names.langs.get(lang):
+                block["name"] = name
             summary = summaries.get(lang)
             if summary:
                 # `description` backs the search field; `wikipedia` the drawer.

@@ -21,8 +21,9 @@ from space_map_data.export.about_data import (
     shape_row,
     tier_rows,
 )
+from space_map_data.export.names import ObjectNames
 from space_map_data.models.object import ObjectType
-from tests.conftest import make_object
+from tests.conftest import EntityStub, labelled, make_object
 
 MARS_KM = 3396.19
 
@@ -406,7 +407,7 @@ class TestCraftGroups:
             _craft("voyager", "probe"),
             _craft("ace", "probe"),
         ]
-        groups = craft_groups(session, metas)
+        groups = craft_groups(session, metas, {}, ObjectNames(EntityStub(), session))
         assert [
             (group["kind"], [m["slug"] for m in group["models"]]) for group in groups
         ] == [
@@ -428,10 +429,17 @@ class TestCraftGroups:
             ]
         )
         session.commit()
-        (group,) = craft_groups(session, [_craft("voyager"), _craft("ace")])
+        named = {}
+        (group,) = craft_groups(
+            session,
+            [_craft("voyager"), _craft("ace")],
+            named,
+            ObjectNames(EntityStub(), session),
+        )
         ace, voyager = group["models"]
         assert ace["object"] == {"id": "probe-3", "name": "ACE"}
         assert voyager["objects"] == 2
+        assert set(named) == {"probe-3"}
 
 
 class TestBuild:
@@ -452,6 +460,7 @@ class TestBuild:
     ) -> dict:
         return build_about_data(
             session,
+            ObjectNames(EntityStub(), session),
             tmp_path,
             radii,
             textures,
@@ -584,3 +593,50 @@ class TestBuild:
         payload = self._build(session, tmp_path, {}, {}, {}, {"ace": _craft("ace")})
         assert "lightcurve" not in payload["models"]
         assert payload["rings"] == []
+
+
+class TestNames:
+    """The rows have the English names of the pages, and `names` the others."""
+
+    def test_the_other_languages_are_in_names(self, session, tmp_path):
+        session.add_all(
+            [
+                make_object(
+                    id="naif-4",
+                    name="Mars Barycenter",
+                    naif_id=4,
+                    object_type=ObjectType.barycenter,
+                    parent_id="naif-0",
+                ),
+                make_object(
+                    id="naif-499",
+                    name="MARS",
+                    naif_id=499,
+                    parent_id="naif-4",
+                    wikidata_qid="Q111",
+                ),
+            ]
+        )
+        session.commit()
+        names = ObjectNames(
+            EntityStub({"Q111": labelled({"en": "Mars", "ja": "火星"})}), session
+        )
+        payload = build_about_data(
+            session,
+            names,
+            tmp_path,
+            {},
+            {"naif-499": TestBuild._texture("naif-499")},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+            tmp_path / "space-map-extrasolar",
+        )
+        (system,) = payload["systems"]
+        assert (system["name"], system["worlds"][0]["name"]) == ("Mars", "Mars")
+        assert payload["names"]["ja"] == {"naif-4": "火星", "naif-499": "火星"}
+        assert "fr" not in payload["names"]

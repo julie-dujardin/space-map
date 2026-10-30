@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
 from space_map_data.export.about_objects import object_rows
+from space_map_data.export.names import Names, ObjectNames, by_language
 from space_map_data.export.system_groups import (
-    body_name,
     load_system_lookup,
     resolve_system_id,
 )
@@ -37,6 +37,7 @@ from space_map_data.export.systems import (
     load_texture_metadata,
     ring_block,
 )
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
 from space_map_data.ingest.providers.textures.tiles import HEIGHT_LEVELS
 from space_map_data.models.object import Object
@@ -353,7 +354,7 @@ def shape_row(meta: dict) -> dict:
 
 def craft_row(meta: dict, objects: list[tuple[str, str]]) -> dict:
     """One model of a craft or of another object. ``objects`` are the ids and
-    names of the objects that the map draws with it."""
+    English names of the objects that the map draws with it."""
     row: dict = {"slug": meta["slug"], "tiers": model_tiers(meta)}
     if (extent := meta["exports"]["high"].get("scale_meters")) is not None:
         row["extent_m"] = extent
@@ -384,22 +385,27 @@ def lightcurve_block(metas: list[dict]) -> dict:
     }
 
 
-def craft_groups(session: Session, metas: list[dict]) -> list[dict]:
+def craft_groups(
+    session: Session, metas: list[dict], named: dict[str, Names], names: ObjectNames
+) -> list[dict]:
     """The models that are not shapes of worlds, by kind. A model lists the
-    objects whose ``model_name`` is its slug."""
+    objects whose ``model_name`` is its slug. Adds their names to ``named``."""
     slugs = [meta["slug"] for meta in metas]
-    drawn: dict[str, list[tuple[str, str]]] = {}
-    rows = session.query(Object.id, Object.name, Object.model_name).filter(
+    rows = session.query(Object.id, Object.model_name).filter(
         Object.model_name.in_(slugs)
     )
-    for object_id, name, slug in rows:
-        drawn.setdefault(slug, []).append((object_id, name or object_id))
+    by_slug = {object_id: slug for object_id, slug in rows}
+    found = names.objects(by_slug)
+    drawn: dict[str, list[tuple[str, str]]] = {}
+    for object_id, slug in by_slug.items():
+        drawn.setdefault(slug, []).append((object_id, found[object_id].name))
 
     by_kind: dict[str, list[dict]] = {}
     for meta in sorted(metas, key=lambda meta: meta["slug"]):
-        by_kind.setdefault(meta["kind"], []).append(
-            craft_row(meta, sorted(drawn.get(meta["slug"], [])))
-        )
+        objects = sorted(drawn.get(meta["slug"], []))
+        if len(objects) == 1:
+            named[objects[0][0]] = found[objects[0][0]]
+        by_kind.setdefault(meta["kind"], []).append(craft_row(meta, objects))
     kinds = sorted(
         by_kind,
         key=lambda kind: (
@@ -410,23 +416,29 @@ def craft_groups(session: Session, metas: list[dict]) -> list[dict]:
     return [{"kind": kind, "models": by_kind[kind]} for kind in kinds]
 
 
-def _world_order(obj: Object) -> tuple:
+def _world_order(obj: Object, name: str) -> tuple:
     """The primary of a system first, then its moons in the order of their
     numbers. Bodies with no number go by name."""
     naif = obj.naif_id
     primary = naif is not None and naif % 100 == 99 and naif < 1000
-    return (not primary, naif is None, naif or 0, body_name(obj).lower())
+    return (not primary, naif is None, naif or 0, name.lower())
 
 
 def _placed(
-    session: Session, body_ids: set[str], lookup: tuple
+    session: Session,
+    body_ids: set[str],
+    lookup: tuple,
+    named: dict[str, Names],
+    names: ObjectNames,
 ) -> list[tuple[Object, str | None]]:
     """The objects of ``body_ids`` in the order of the page, each with the id
-    of its system: Mercury to Pluto, then the bodies that belong to none."""
+    of its system: Mercury to Pluto, then the bodies that belong to none. Adds
+    their names to ``named``."""
     bary_by_id, child_to_bary, _, system_order = lookup
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     for body_id in sorted(body_ids - {obj.id for obj in objects}):
         logger.warning("Metadata for %s has no matching Object row", body_id)
+    named.update((obj.id, names.of(obj)) for obj in objects)
     placed = [
         (obj, resolve_system_id(obj, bary_by_id, child_to_bary)) for obj in objects
     ]
@@ -435,17 +447,20 @@ def _placed(
         key=lambda item: (
             item[1] is None,
             system_order.get(item[1], 0),
-            _world_order(item[0]),
+            _world_order(item[0], named[item[0].id].name),
         ),
     )
 
 
 def _world_rows(
-    placed: list[tuple[Object, str | None]], field: str, rows: dict[str, list[dict]]
+    placed: list[tuple[Object, str | None]],
+    field: str,
+    rows: dict[str, list[dict]],
+    named: dict[str, Names],
 ) -> list[dict]:
     """The worlds that have ``rows``, in the order of the page."""
     return [
-        {"id": obj.id, "name": body_name(obj), field: rows[obj.id]}
+        {"id": obj.id, "name": named[obj.id].name, field: rows[obj.id]}
         for obj, _ in placed
         if obj.id in rows
     ]
@@ -453,6 +468,7 @@ def _world_rows(
 
 def build_about_data(
     session: Session,
+    names: ObjectNames,
     out_dir: Path,
     radii: dict[int, dict],
     textures: dict[str, dict],
@@ -468,7 +484,8 @@ def build_about_data(
     """The payload. The objects are one row for each kind, with the
     extrasolar export below `extrasolar_dir`.
     The maps are grouped by planetary system. The rings and the shape models
-    are lists of worlds in the same order."""
+    are lists of worlds in the same order. The rows have the English names of
+    the pages (`export.names`), and `names` holds the other languages."""
     layers = (textures, alternates, clouds, night, specular, displacement)
     mapped = set().union(*layers)
     lightcurve = []
@@ -482,9 +499,10 @@ def build_about_data(
         else:
             shapes.setdefault(meta["object_id"], []).append(shape_row(meta))
 
-    lookup = load_system_lookup(session)
+    lookup = load_system_lookup(session, names)
     _, _, system_names, system_order = lookup
-    placed = _placed(session, mapped | set(rings) | set(shapes), lookup)
+    named: dict[str, Names] = {}
+    placed = _placed(session, mapped | set(rings) | set(shapes), lookup, named, names)
 
     grouped: dict[str | None, list[dict]] = {}
     for obj, system_id in placed:
@@ -494,7 +512,7 @@ def build_about_data(
         radius_km = equator_radius_km(triaxial) if triaxial else None
         if radius_km is None:
             logger.warning("No radius for %s: its maps get no ground scale", obj.id)
-        world: dict = {"id": obj.id, "name": body_name(obj)}
+        world: dict = {"id": obj.id, "name": named[obj.id].name}
         if radius_km is not None:
             world["radius_km"] = _figures(radius_km, 6)
         if has_no_surface(obj.id):
@@ -502,10 +520,11 @@ def build_about_data(
         world["maps"] = world_maps(obj.id, radius_km, out_dir, *layers)
         grouped.setdefault(system_id, []).append(world)
 
+    named.update((sys_id, system_names[sys_id]) for sys_id in grouped if sys_id)
     systems: list[dict] = [
         {
             "id": sys_id,
-            "name": system_names[sys_id],
+            "name": system_names[sys_id].name,
             # The planet the system takes its name from: naif-X99 for naif-X.
             "primary_id": f"naif-{system_order[sys_id] * 100 + 99}",
             "worlds": worlds,
@@ -517,8 +536,8 @@ def build_about_data(
         systems.append({"id": None, "name": None, "worlds": grouped[None]})
 
     model_block: dict = {
-        "worlds": _world_rows(placed, "models", shapes),
-        "craft": craft_groups(session, craft),
+        "worlds": _world_rows(placed, "models", shapes, named),
+        "craft": craft_groups(session, craft, named, names),
     }
     if lightcurve:
         model_block["lightcurve"] = lightcurve_block(lightcurve)
@@ -536,13 +555,16 @@ def build_about_data(
                 body_id: [ring_row(meta) for meta in metas]
                 for body_id, metas in rings.items()
             },
+            named,
         ),
         "models": model_block,
+        "names": by_language(named),
     }
 
 
 def write_about_data(
     session: Session,
+    names: ObjectNames,
     out_dir: Path,
     radii: dict[int, dict],
     textures: dict[str, dict],
@@ -558,6 +580,7 @@ def write_about_data(
     t0 = time.monotonic()
     payload = build_about_data(
         session,
+        names,
         out_dir,
         radii,
         textures,
@@ -600,6 +623,7 @@ def export_about_data_only(engine) -> None:
     with Session(engine) as session:
         write_about_data(
             session,
+            ObjectNames(WikidataEntityCache(), session),
             out_dir,
             load_radii(DOWNLOAD_DIR),
             load_texture_metadata(out_dir),

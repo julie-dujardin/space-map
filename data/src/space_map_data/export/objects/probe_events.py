@@ -12,7 +12,8 @@ Each event gets a ``jd`` beside its ``date`` so the drawer can seek the clock
 without re-parsing reduced-precision ISO, and ``precision`` so it can print
 "1965" as a year rather than as New Year's Day. ``target`` becomes a link
 when the body or craft it names has an object bundle of its own, and stays a
-bare name otherwise — MASCOT and Juventas have no row to point at.
+bare name otherwise — MASCOT and Juventas have no row to point at. A link
+takes the names of the target's page.
 
 The curators' ``description`` prose is working notes and never ships; the
 type labels are message keys the frontend owns.
@@ -22,8 +23,9 @@ import functools
 import logging
 
 from space_map_data.export.images import collect_object_images, pick_thumbnail
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.objects.wikidata_claims import EntityRef
-from space_map_data.export.objects.writer import ChunkObjectData
+from space_map_data.export.objects.writer import ChunkObjectData, add_link_names
 from space_map_data.probes.events import (
     EventTarget,
     ProbeEvent,
@@ -52,20 +54,26 @@ def _target_thumbnail(object_id: str) -> dict | None:
     return pick_thumbnail(collect_object_images(object_id))
 
 
-def _target_dict(target: EventTarget, known_ids: set[str]) -> dict:
+def _target_dict(
+    target: EventTarget, known_ids: set[str], links: dict[str, Names]
+) -> dict:
     """The event's subject: a focus link where one resolves, else the name.
-    Linked targets carry the same card ``thumbnail`` the notable strips use."""
+    Linked targets carry the same card ``thumbnail`` the notable strips use.
+    ``links`` holds the names of the linked targets, by Object.id."""
     object_id = _target_object_id(target, known_ids)
     if object_id is None:
         return {"name": target.name}
     prefix, _, value = object_id.partition("-")
-    out = EntityRef(name=target.name, primary_type=prefix, primary_id=value).to_dict()
+    name = links[object_id].name
+    out = EntityRef(name=name, primary_type=prefix, primary_id=value).to_dict()
     if thumbnail := _target_thumbnail(object_id):
         out["thumbnail"] = thumbnail
     return out
 
 
-def _event_dict(event: ProbeEvent, known_ids: set[str]) -> dict:
+def _event_dict(
+    event: ProbeEvent, known_ids: set[str], links: dict[str, Names]
+) -> dict:
     out: dict = {
         "type": event.type,
         "date": event.date,
@@ -82,7 +90,7 @@ def _event_dict(event: ProbeEvent, known_ids: set[str]) -> dict:
     if event.failed:
         out["failed"] = True
     if event.target is not None:
-        out["target"] = _target_dict(event.target, known_ids)
+        out["target"] = _target_dict(event.target, known_ids, links)
     for key in ("purpose", "outcome", "intentional"):
         value = getattr(event, key)
         if value is not None:
@@ -110,9 +118,10 @@ def _status_dict(status: ProbeStatus) -> dict:
     return out
 
 
-def attach_probe_events(chunk: ChunkObjectData) -> None:
-    """Inject ``events`` onto every probe bundle the curated files cover.
-    Mutates ``chunk`` in place."""
+def attach_probe_events(chunk: ChunkObjectData, names: ObjectNames) -> None:
+    """Inject ``events`` onto every probe bundle the curated files cover, and
+    the names of the targets they link to onto its localized entries. Mutates
+    ``chunk`` in place."""
     known_ids = set(chunk.global_data)
     attached = 0
     total = 0
@@ -124,8 +133,15 @@ def attach_probe_events(chunk: ChunkObjectData) -> None:
             continue
         if not probe.events:
             continue
-        items = [_event_dict(e, known_ids) for e in probe.events]
+        links = {
+            object_id: names.object(object_id)
+            for e in probe.events
+            if e.target is not None
+            and (object_id := _target_object_id(e.target, known_ids)) is not None
+        }
+        items = [_event_dict(e, known_ids, links) for e in probe.events]
         entry["events"] = {"status": _status_dict(probe.status), "items": items}
+        add_link_names(chunk, f"probe-{probe.probe_id}", links)
         attached += 1
         total += len(items)
     logger.info(

@@ -31,8 +31,8 @@ parameters, and Wikidata quantities:
 interface GlobalObjectData {
   id: string;
   type: string;                       // ObjectType name
-  name?: string;
-  parent_name?: string;               // host display name; moons only — lets the breadcrumb label the parent when its body isn't resident in the scene
+  name: string;                       // the global (English) name, from `export/names.py` (see "Names" below)
+  parent_name?: string;               // moons only: the global name of the host's page (`export/names.py`). The host of a planet's moon is the planet, not the system barycenter that is its parent. Lets the breadcrumb name the host when it is not in the scene. Other languages: LocalizedObjectData.parent_name
   color?: string;                     // moons only — #rrggbb surface colour: a measured hue at a luminance of `geometric_albedo` (see "Surface colour" below). Absent on planets and on moons with no known albedo. Small bodies carry theirs under `sbdb.color`. Absent → frontend generic tint
   color_method?: "spectrum" | "albedo"; // moons only — source of the hue (present iff color is): TCT measured reflectance, else neutral
   geometric_albedo?: number;          // planets and moons — V-band geometric albedo at phase 0; can be above 1 (Enceladus 1.375). A planet has it and no `color`. Small bodies carry theirs under `sbdb`
@@ -56,7 +56,7 @@ interface GlobalObjectData {
     author?: string;                  // who derived the shape ("Vernazza et al. (2021)"), when that isn't the archive under another name. DAMIT distributes other people's inversions, so its bundles name the paper's authors; a mission bundle whose credit repeats its archive omits this
     archive?: string;                 // archive the mesh came from (free text, e.g. "PDS SBN (NEAR)")
     archive_url?: string;
-    mission?: { name: string; primary_type: "object"; primary_id: string }; // observing spacecraft (mission shapes only); primary_id is "probe-<id>"
+    mission?: { name: string; primary_type: "object"; primary_id: string }; // observing spacecraft (mission shapes only); primary_id is "probe-<id>"; `name` is the global name of the craft's page, other languages in LocalizedObjectData.link_names
   };
   render_quality?: "high" | "medium" | "low"; // best-available-asset render tier: high = faithful 3D model (spacecraft/mission/radar), map texture, or procedural star surface; medium = lightcurve-inversion convex hull only; low = size-only sphere/ellipsoid (PCK radii or SBDB diameter). Absent → no known physical extent, halo/point at best
   atmosphere?: {                      // cited atmospheric facts for the ~24 bodies with a measured envelope (see below)
@@ -221,7 +221,7 @@ interface GlobalObjectData {
     inclination_deg?: number;
     designation?: string;             // provisional designation still in use ("1986 U2R")
     particles?: "dense" | "dusty";    // macroscopic (back-scatter bright) vs µm dust (forward-scatter bright)
-    moons?: Array<{ name: string; id?: string }>; // shepherds, embedded and source moons; `id` absent when the moon isn't in the export
+    moons?: Array<{ name: string; id?: string }>; // shepherds, embedded and source moons; `id` absent when the moon isn't in the export. With an `id`, `name` is the global name of the moon's page (other languages in LocalizedObjectData.link_names); without, the PDS table's name
     wikidata_qid?: string;
     note?: string;                    // the PDS table's own description, English, language-independent
   }>;
@@ -290,6 +290,7 @@ interface GlobalObjectData {
     description?: string;
   };
   provisional_designation?: string;
+  iau_named?: boolean;                // moons only: true when the DB names the moon, false when it has only a designation. The page name cannot tell: it can be a Wikidata label
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   sitelinks_count?: number;           // Wikidata sitelink count; notability rank (omitted when 0)
   discovery_year?: number;            // natural moons only, from the JPL satellite-discovery table
@@ -465,6 +466,18 @@ interface GlobalObjectData {
   mission_members?: NotableEntry[];
   mission_member_count?: number;
   part_of_mission?: { name: string; primary_type: "group"; primary_id: string };
+
+  // A craft that rides another one over part of its life (Huygens on
+  // Cassini): the carrier, with the global name of its page. Other
+  // languages: LocalizedObjectData.link_names.
+  carried_by?: { name: string; primary_type: "object"; primary_id: string };
+
+  // Probes only: the curated mission events. An event's `target` is a link
+  // `{name, primary_type, primary_id}` (the id split at its first "-") when
+  // the body or craft has an object entry, with the global name of its page,
+  // else `{name}` with the name of the events file. Other languages of a
+  // link: LocalizedObjectData.link_names, keyed by the Object.id.
+  events?: { status: object; items: object[] };
 
   // Every probe whose curated events target this body, latest arrival first.
   // Each row carries `first_obs` (the probe's launch date) and a `visit`:
@@ -1119,8 +1132,12 @@ an escape trajectory) and when the object has no SATCAT row.
 
 Per-language bundles. `bucket = sha256(id)[:4] % N_{lang}` where `N_{lang}`
 is that language's count in `metadata.object_bundles`. An object appears in
-the language's bundle only when Wikidata/Wikipedia data exists for that
-language. The binary `has_localized` column/byte tells the frontend whether
+the language's bundle only when it has text in that language: Wikidata or
+Wikipedia data, or a name in that language of its host or of a page it links
+to (`parent_name`, `link_names`). The link names of the `events` targets go
+only onto an entry that exists for other reasons, as the passes after the
+object data do (`mission_member_names`, `probe_names`, …). The binary
+`has_localized` column/byte tells the frontend whether
 *any* language has data, gating the fetch attempt; on a 404 (locale has no
 bundle for this object) the frontend gives up — there is no English fallback
 tier.
@@ -1130,7 +1147,7 @@ references link to Wikipedia where available.
 
 ```typescript
 interface LocalizedObjectData {
-  name?: string;          // Wikidata label in the target lang, falling back to English. Omitted if no Wikidata entity.
+  name?: string;          // the name in the target lang, from `export/names.py` (see "Names" below). Omitted when the language has none of its own.
   description?: string;
   aliases?: string[];
   instance_of?: EntityRef[];
@@ -1183,6 +1200,16 @@ interface LocalizedObjectData {
   mission_member_names?: Record<string, string>; // mission-member Object.id → localized label, only where it differs from the global name
   probe_names?: Record<string, string>;        // probe Object.id → localized label, only where it differs from the global name
   body_names?: Record<string, string>;         // Object.id → localized label for the bodies a system's probe rows name in `visits`
+  parent_name?: string;   // moons only: the host's name in this language, where it differs from the global `parent_name`
+  // The pages that this page links to by name, keyed by the page id of the
+  // link: the Object.id of an object, the slug of a group. Each value is the
+  // name in this language where it differs from the `name` of the link in
+  // the global entry. Covers `fragment_of`, `mission`, `part_of_mission`,
+  // `carried_by`, `model_source.mission`, the moons of `ring_features` and
+  // the targets of `events`. A key can have no link on the page (a carried
+  // craft whose own record covers its ride); a consumer reads only the keys
+  // of the links it shows.
+  link_names?: Record<string, string>;
 }
 
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }

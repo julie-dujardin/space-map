@@ -5,7 +5,10 @@ Source files:
     v1/objects/__global__/{bucket}.json.gz   — language-independent fields
     v1/objects/{lang}/{bucket}.json.gz       — per-language name/description/aliases
 
-One document per object, all language variants on the same document.
+One document per object, all language variants on the same document. The
+names are those of the object's page (`export.names`): `name` and
+`name_{lang}`. A moon carries the names of its host too: `moon_host_name` and
+`moon_host_name_{lang}`, from the bundles' `parent_name`.
 
 Filter: skip minor asteroids that have no notable Wikidata signal. ~1.2M of
 the 1.5M global entries are bare SBDB designations like "2018 XY" whose only
@@ -36,12 +39,9 @@ from space_map_data.constants.categories import (
 )
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.export.images import pick_thumbnail
+from space_map_data.export.names import SYSTEM_PRIMARIES
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.export.objects.stars import has_description
-from space_map_data.utils.designations import (
-    format_provisional_designation,
-    is_iau_named,
-)
 from space_map_data.utils.manual_overlay import read_manual_aliases
 
 from .base import object_pk
@@ -68,19 +68,6 @@ _ALWAYS_INDEX = frozenset(
         "undocumented",
     }
 )
-
-# Show "moon of Saturn", not "moon of Saturn Barycenter".
-_PLANET_BY_BARYCENTER = {
-    "naif-1": "naif-199",
-    "naif-2": "naif-299",
-    "naif-3": "naif-399",
-    "naif-4": "naif-499",
-    "naif-5": "naif-599",
-    "naif-6": "naif-699",
-    "naif-7": "naif-799",
-    "naif-8": "naif-899",
-    "naif-9": "naif-999",
-}
 
 # The eight planets. A moon of one of these is a planetary satellite, named by
 # the IAU's WGPSN; everything else orbits a minor planet — dwarf planets
@@ -242,20 +229,6 @@ def _inception(g: dict[str, Any]) -> int | None:
     return None
 
 
-def _display_name(g: dict[str, Any], obj_id: str, otype: str) -> str:
-    """Searchable name. Unnamed moons — 267 of them — carry only a NAIF
-    provisional designation, so fall back to that in its IAU spelling rather
-    than to a bare object id."""
-    name = g.get("name")
-    if otype == "moon":
-        formatted = format_provisional_designation(
-            name or g.get("provisional_designation")
-        )
-        if formatted:
-            return formatted
-    return name or obj_id
-
-
 def build_object_documents(
     export_dir: Path, keep: Collection[str] = frozenset()
 ) -> Iterator[dict[str, Any]]:
@@ -315,7 +288,8 @@ def build_object_documents(
 
             parent_id = (g.get("orbit") or {}).get("parent_id")
             if parent_id:
-                obj["parent_id"] = _PLANET_BY_BARYCENTER.get(parent_id, parent_id)
+                # The host of a planet's moon is the planet, not the barycenter.
+                obj["parent_id"] = SYSTEM_PRIMARIES.get(parent_id, parent_id)
 
             designations = _designations(g)
             if designations:
@@ -352,14 +326,10 @@ def build_object_documents(
                     )
                 # Fallback label for the host-body filter leaves: most minor
                 # planets with a moon are too obscure to be indexed themselves,
-                # so their own document can't supply a name. Barycenter names
-                # are skipped — the host id resolves to the planet.
-                host_name = g.get("parent_name")
-                if host_name and not host_name.endswith("Barycenter"):
+                # so their own document can't supply a name.
+                if host_name := g.get("parent_name"):
                     obj["moon_host_name"] = host_name
-                obj["iau_named"] = is_iau_named(
-                    g.get("name"), g.get("provisional_designation")
-                )
+                obj["iau_named"] = bool(g.get("iau_named"))
                 if obj["iau_named"]:
                     named_moons += 1
             if groups:
@@ -377,7 +347,7 @@ def build_object_documents(
             doc: dict[str, Any] = {
                 "id": object_pk(obj_id),
                 "kind": "object",
-                "name": _display_name(g, obj_id, otype),
+                "name": g["name"],
                 "object": obj,
             }
 
@@ -401,6 +371,8 @@ def build_object_documents(
                 name = entry.get("name")
                 if name:
                     doc[f"name_{lang}"] = name
+                if host_name := entry.get("parent_name"):
+                    obj[f"moon_host_name_{lang}"] = host_name
                 aliases = entry.get("aliases")
                 if aliases:
                     obj[f"aliases_{lang}"] = aliases

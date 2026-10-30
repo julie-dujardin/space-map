@@ -26,12 +26,8 @@ from space_map_data.export.images import (
     collect_object_images,
     pick_thumbnail,
 )
+from space_map_data.export.names import Names, ObjectNames, entity_names
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import (
-    WikidataEntity,
-    WikidataEntityCache,
-    entity_label,
-)
 from space_map_data.models.object.main import Object, ObjectType
 
 logger = logging.getLogger(__name__)
@@ -42,30 +38,16 @@ _SAT_TYPES = (ObjectType.spacecraft,)
 _CONSTELLATION_QID = {c.slug: c.wikidata_qid for c in CONSTELLATIONS}
 
 
-def _en_name(entity: WikidataEntity | None, fallback: str) -> str:
-    """English Wikidata label, else the DB/slug fallback."""
-    return entity_label(entity, "en") or fallback
-
-
-def _localized(
-    entity: WikidataEntity | None,
-    en_name: str,
-    out: dict[str, dict[str, str]],
-    key: str,
-) -> None:
-    """Record per-language label overrides (keyed by id/slug) where they differ."""
-    if entity is None:
-        return
-    for lang in LANGUAGES:
-        label = entity_label(entity, lang)
-        if label and label != en_name:
-            out[lang][key] = label
+def _localized(found: Names, out: dict[str, dict[str, str]], key: str) -> None:
+    """Record the names (keyed by id/slug) that differ from the global one."""
+    for lang, name in found.overrides().items():
+        out[lang][key] = name
 
 
 def attach_featured_satellites(
     session: Session,
     chunk: ChunkObjectData,
-    wikidata_entities: WikidataEntityCache,
+    object_names: ObjectNames,
 ) -> None:
     """Inject ``notable_satellites`` + ``satellite_count`` + ``satellites_group``
     into Earth's global bundle (and localized name overrides), mutating
@@ -87,35 +69,30 @@ def attach_featured_satellites(
     for feat in FEATURED_EARTH_SATELLITES:
         entry: dict
         if feat.object_id is not None:
-            row = (
-                session.query(Object.wikidata_qid, Object.name)
-                .filter(Object.id == feat.object_id)
-                .first()
-            )
-            if row is None:
+            found = object_names.find(feat.object_id)
+            if found is None:
                 logger.warning(
                     "Featured satellite %s not found; skipping", feat.object_id
                 )
                 continue
-            qid, fallback = row
-            entity = wikidata_entities.get_entity(qid)
-            name = _en_name(entity, fallback)
-            entry = {"name": name, "id": feat.object_id}
+            entry = {"name": found.name, "id": feat.object_id}
             thumbnail = pick_thumbnail(collect_object_images(feat.object_id))
             if thumbnail:
                 entry["thumbnail"] = thumbnail
-            _localized(entity, name, names, feat.object_id)
+            _localized(found, names, feat.object_id)
         else:
             slug = feat.constellation_slug
             assert slug is not None
             group_slug = f"{CONSTELLATION_SLUG_PREFIX}{slug}"
-            entity = wikidata_entities.get_referenced(_CONSTELLATION_QID.get(slug))
-            name = _en_name(entity, slug)
-            entry = {"name": name, "group": group_slug}
+            found = entity_names(
+                object_names.entities.get_referenced(_CONSTELLATION_QID.get(slug)),
+                slug,
+            )
+            entry = {"name": found.name, "group": group_slug}
             thumbnail = pick_thumbnail(collect_group_images(group_slug))
             if thumbnail:
                 entry["thumbnail"] = thumbnail
-            _localized(entity, name, names, group_slug)
+            _localized(found, names, group_slug)
         entries.append(entry)
 
     if not entries:

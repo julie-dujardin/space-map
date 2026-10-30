@@ -9,6 +9,11 @@ The export makes the file from the metadata that ingest writes: `textures/{id}/m
 ```typescript
 interface AboutData {
   generated_at: string;            // ISO 8601 UTC
+  // Each `name` below is the global (English) name of the page of the object
+  // (`export/names.py`); a system's is that of its planet. `names` has the
+  // other languages: language → id of the row → its name, only where it
+  // differs from the row's `name`.
+  names: Record<string, Record<string, string>>;
   worlds: number;                  // bodies with a map, a ring or a shape model; shapes from light curves do not count
   objects: ObjectKind[];           // the kinds in the order of the page
   rings: Array<{ id: string; name: string; rings: Ring[] }>;   // worlds in the order of the page, bundles innermost first
@@ -26,7 +31,7 @@ interface AboutData {
   systems: Array<{                 // the maps
     id: string | null;             // system barycentre, "naif-4"; null for the bodies in no planetary system
     name: string | null;           // English name of the planet of the system
-    primary_id?: string;           // that planet, "naif-499"; the page takes its name in the reader's language from the labels
+    primary_id?: string;           // that planet, "naif-499"
     worlds: Array<{
       id: string;                  // object id
       name: string;                // English name

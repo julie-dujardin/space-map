@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.planet_family import served_planet_families_stamp
 from space_map_data.export.groups.star_family import served_families_stamp
+from space_map_data.export.names import system_titles
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
 )
@@ -71,7 +72,7 @@ logger = logging.getLogger(__name__)
 
 # Bump to invalidate all tier-B outputs (bundle/label/feature/message shape
 # changes that no input fingerprint captures).
-TIER_B_VERSION = 15
+TIER_B_VERSION = 16
 
 _TIER_B_META = "tier_b.meta.json"
 _CHEB_META = "position/chebyshev.meta.json"
@@ -135,9 +136,12 @@ def tier_b_fingerprint(
       moons chart and the planet families of the Solar System read.
     - `position_sources`: what the traverses add to the bundles. A route that
       only grows rewrites none.
+    - `system_titles`: the app's titles of a planetary system, which name the
+      barycenters.
     - `stars`: the star entries, which each registry ingest links again, and
       the works that the literature table cites for them.
-    - `planets`: the planet entries, which each registry ingest links again.
+    - `planets`: the planet entries, which each registry ingest links again,
+      and the names of their hosts, which name them.
     - `star_families`: the family counts, the family lists and the Metadata
       tiles of the served extrasolar export, which the star family pages
       read.
@@ -162,9 +166,10 @@ def tier_b_fingerprint(
             str(probe_id): works
             for probe_id, works in sorted(load_probe_position_sources().items())
         },
+        "system_titles": _digest(system_titles()),
         "stars": _digest(
             [
-                (star.id, star.qid, star.name, star_references(star))
+                (star.id, star.qid, star.name, star.iau_named, star_references(star))
                 for star in star_objects
             ]
         ),
@@ -177,6 +182,8 @@ def tier_b_fingerprint(
                     planet.designations,
                     planet.letter,
                     planet.iau_named,
+                    planet.host_name,
+                    planet.host_iau_named,
                 )
                 for planet in planet_objects
             ]

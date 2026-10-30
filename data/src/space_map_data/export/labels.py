@@ -6,10 +6,11 @@ paint (planets, dwarf planets, stars, barycenters, Lagrange points, curated
 extras, every high-accuracy probe, and the moons of any of them).
 
 Format: gzipped UTF-8, one ``{id}\\x1f{name}\\x1f{flags}`` line per object.
-The only flag is ``m`` for *minor* (collapsed halo, expands on hover), set
-for moons with no real name and for probes outside the curated flagship
-list. The frontend fetches one file at app start and uses its keys as the
-authoritative promoted set.
+The name is the one of the object's page in the language (`export.names`).
+It is empty for an object whose only name is its id. The only flag is ``m``
+for *minor* (collapsed halo, expands on hover), set for moons with no IAU
+name and for probes outside the curated flagship list. The frontend fetches
+one file at app start and uses its keys as the authoritative promoted set.
 """
 
 import gzip
@@ -20,9 +21,8 @@ from pathlib import Path
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import clean_label
 from space_map_data.models.object import ObjectType
-from space_map_data.utils.designations import format_provisional_designation
+from space_map_data.utils.designations import is_iau_named
 
 logger = logging.getLogger(__name__)
 
@@ -74,25 +74,16 @@ def _resolve_label(
 ) -> tuple[str, str]:
     """Return ``(name, flags)`` for one (object, lang) pair.
 
-    Name precedence: localized Wikidata label → DB ``name`` → provisional
-    designation → empty string. Flags is ``"m"`` (collapsed halo) when the
-    name is a moon's provisional designation, or the object is a non-
-    flagship probe — keeps unnamed moons and minor probes from crowding
-    the map at first paint.
+    The name is the localized one of the object's page, else its global one.
+    An object whose only name is its id gets no label. Flags is ``"m"``
+    (collapsed halo) for a moon with no IAU name and for a non-flagship
+    probe. It keeps them from crowding the map at first paint.
     """
-    loc_name = loc.get("name") if loc else None
-    db_name = clean_label(glob["name"]) if glob.get("name") else None
-    raw_designation = glob.get("provisional_designation")
-    designation = format_provisional_designation(raw_designation)
-    # A DB name that is just the designation reads better in the IAU spelling.
-    if db_name and db_name == raw_designation:
-        db_name = designation
-    name = loc_name or db_name or designation or ""
-    is_minor_moon = (
-        glob.get("type") == ObjectType.moon
-        and not loc_name
-        and (not db_name or db_name == designation)
-        and bool(designation)
+    name = (loc or {}).get("name") or glob["name"]
+    if name == obj_id:
+        name = ""
+    is_minor_moon = glob.get("type") == ObjectType.moon and not is_iau_named(
+        glob["name"], glob.get("provisional_designation")
     )
     is_minor_probe = obj_id in probe_ids and obj_id not in PROMOTED_EXTRA_IDS
     return name, "m" if (is_minor_moon or is_minor_probe) else ""

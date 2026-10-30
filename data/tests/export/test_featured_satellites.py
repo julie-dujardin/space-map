@@ -3,6 +3,7 @@
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import SATELLITES_SLUG
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.objects import satellites
 from space_map_data.export.objects.satellites import (
     EARTH_ID,
@@ -87,7 +88,7 @@ def test_attaches_objects_and_constellation(session: Session, monkeypatch) -> No
         }
     )
     chunk = _empty_chunk()
-    attach_featured_satellites(session, chunk, cache)
+    attach_featured_satellites(session, chunk, ObjectNames(cache, session))
 
     g = chunk.global_data[EARTH_ID]
     assert g["satellites_group"] == SATELLITES_SLUG
@@ -106,5 +107,5 @@ def test_attaches_objects_and_constellation(session: Session, monkeypatch) -> No
 
 def test_skips_when_earth_bundle_missing(session: Session) -> None:
     chunk = ChunkObjectData()  # no Earth bundle
-    attach_featured_satellites(session, chunk, _StubCache({}))
+    attach_featured_satellites(session, chunk, ObjectNames(_StubCache({}), session))
     assert EARTH_ID not in chunk.global_data

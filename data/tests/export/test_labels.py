@@ -82,18 +82,6 @@ class TestWriteGlobalLabels:
         # No localized override for English → fall through to global obj.name
         assert _parse(tmp_path / "labels" / "en.gz")["naif-399"] == "Earth"
 
-    def test_empty_name_when_neither_localized_nor_global_has_one(self, tmp_path):
-        all_objs = ChunkObjectData()
-        # The id must still appear for the frontend's auto-promote set; empty
-        # coalesces to null, and the drawer falls back to loading → id.
-        all_objs.global_data["probe-49065984"] = {"type": ObjectType.spacecraft}
-
-        write_global_labels(
-            tmp_path, all_objs, set(), set(), set(all_objs.global_data.keys()), {}
-        )
-
-        assert _parse(tmp_path / "labels" / "en.gz") == {"probe-49065984": ""}
-
     def test_chebyshev_covered_bodies_are_auto_promoted(self, tmp_path):
         """DE441 perturber asteroids aren't in PROMOTED_EXTRA_IDS but render as
         individual meshes, so they need labels too."""
@@ -114,37 +102,9 @@ class TestWriteGlobalLabels:
 
         assert _parse(tmp_path / "labels" / "en.gz") == {"spkid-20000052": "52 Europa"}
 
-    def test_falls_back_to_provisional_designation(self, tmp_path):
-        """SPICE-only minor moons have no Wikidata name but do carry a
-        provisional designation — the last fallback, flagged minor so the
-        frontend collapses its halo."""
-        all_objs = ChunkObjectData()
-        all_objs.global_data["naif-599"] = {
-            "type": ObjectType.planet,
-            "name": "Jupiter",
-        }
-        all_objs.global_data["naif-551"] = {
-            "type": ObjectType.moon,
-            "provisional_designation": "2010J1",
-        }
-
-        write_global_labels(
-            tmp_path,
-            all_objs,
-            set(),
-            set(),
-            set(all_objs.global_data.keys()),
-            {"naif-551": "naif-599"},
-        )
-
-        assert _parse_with_flags(tmp_path / "labels" / "en.gz")["naif-551"] == (
-            "2010J1",
-            "m",
-        )
-
     def test_minor_flag_only_set_for_designation_only_moons(self, tmp_path):
-        """Only moons whose label fell back to the designation get ``m``;
-        named moons and moons with a Wikidata localized name stay unflagged."""
+        """Only moons with no IAU name get ``m``, in every language. The page
+        of an unnamed moon has its designation as its name."""
         all_objs = ChunkObjectData()
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
         all_objs.global_data["naif-599"] = {
@@ -158,17 +118,19 @@ class TestWriteGlobalLabels:
             "name": "Moon",
             "provisional_designation": "S0001",
         }
-        # Moon with Wikidata localized name overriding the designation → not minor
+        # Moon named after its designation was given → not minor
         all_objs.global_data["naif-557"] = {
             "type": ObjectType.moon,
+            "name": "Eirene",
             "provisional_designation": "S2003J5",
         }
-        all_objs.localized_data["en"]["naif-557"] = {"name": "Eirene"}
-        # Designation-only moon → minor
+        # Designation-only moon, its name in the IAU form → minor
         all_objs.global_data["naif-65289"] = {
             "type": ObjectType.moon,
+            "name": "S/2020 S 48",
             "provisional_designation": "S2020 S48",
         }
+        all_objs.localized_data["ja"]["naif-65289"] = {"name": "S/2020 S 48"}
         # Name filled from the designation by SPICE bodc2n — still designation-only, flag it too.
         all_objs.global_data["naif-55533"] = {
             "type": ObjectType.moon,
@@ -191,19 +153,47 @@ class TestWriteGlobalLabels:
         )
 
         moons = {"naif-301", "naif-557", "naif-65289", "naif-55533"}
-        flags = {
-            obj_id: f
-            for obj_id, (_, f) in _parse_with_flags(
-                tmp_path / "labels" / "en.gz"
-            ).items()
-            if obj_id in moons
+        for lang in ("en", "ja"):
+            flags = {
+                obj_id: f
+                for obj_id, (_, f) in _parse_with_flags(
+                    tmp_path / "labels" / f"{lang}.gz"
+                ).items()
+                if obj_id in moons
+            }
+            assert flags == {
+                "naif-301": "",
+                "naif-557": "",
+                "naif-65289": "m",
+                "naif-55533": "m",
+            }
+        assert _parse(tmp_path / "labels" / "ja.gz")["naif-65289"] == "S/2020 S 48"
+
+    def test_an_object_named_only_by_its_id_has_no_label(self, tmp_path):
+        """A moon with no name and no designation is promoted with its host,
+        but its id is no name to show."""
+        all_objs = ChunkObjectData()
+        all_objs.global_data["naif-599"] = {
+            "type": ObjectType.planet,
+            "name": "Jupiter",
         }
-        assert flags == {
-            "naif-301": "",
-            "naif-557": "",
-            "naif-65289": "m",
-            "naif-55533": "m",
+        all_objs.global_data["naif-55524"] = {
+            "type": ObjectType.moon,
+            "name": "naif-55524",
         }
+
+        write_global_labels(
+            tmp_path,
+            all_objs,
+            set(),
+            set(),
+            set(all_objs.global_data.keys()),
+            {"naif-55524": "naif-599"},
+        )
+
+        for lang in ("en", "ja"):
+            labels = _parse(tmp_path / "labels" / f"{lang}.gz")
+            assert labels["naif-55524"] == ""
 
     def test_moon_is_promoted_only_where_its_host_is(self, tmp_path):
         """A small-body satellite sits at its host's heliocentric position, so

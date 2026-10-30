@@ -6,12 +6,16 @@ without walking per-system or per-body files.
 
 ```typescript
 interface Credits {
+  // The names of the entries in the other languages: language → entry id
+  // (a system's `id`, an entry's `body_id`) → its name in that language, only
+  // where it differs from the entry's `name`.
+  names: Record<string, Record<string, string>>;
   systems: Array<{
     id: string | null;           // barycenter object ID ("naif-3", …) or null for the standalone bucket
-    name: string | null;         // primary-planet name ("Earth", "Jupiter", …); null for standalones
+    name: string | null;         // global name of the primary planet's page ("Earth", "Jupiter", …); null for standalones
     textures?: Array<{
       body_id: string;           // e.g. "naif-399"
-      name: string;              // English display name; localisation is deferred
+      name: string;              // global (English) name of the body's page (`export/names.py`); other languages in `names`
       source: string;            // attribution source URL
       organisation: string;      // short label, deduplicable (e.g. "NASA", "USGS")
       license?: string;          // Wikimedia-style short license ("Public domain", "CC BY 4.0", …) when known

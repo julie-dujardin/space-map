@@ -25,9 +25,9 @@ from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
 from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
+from space_map_data.export.names import Names, ObjectNames, by_language
 from space_map_data.export.objects.sources import Reference
 from space_map_data.export.system_groups import (
-    body_name,
     load_system_lookup,
     resolve_system_id,
 )
@@ -43,6 +43,7 @@ from space_map_data.export.systems import (
     texture_attribution,
     tiles_block,
 )
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.ingest.providers.models.config import (
     MODEL_CATALOGS,
     MODEL_CONTRIBUTOR_PAGES,
@@ -294,6 +295,7 @@ def _merge_ring_sources(body_id: str, name: str, metas: list[dict]) -> list[dict
 
 def write_credits(
     session: Session,
+    names: ObjectNames,
     out_dir: Path,
     texture_metadata: dict[str, dict],
     ring_metadata: dict[str, list[dict]],
@@ -309,7 +311,9 @@ def write_credits(
     Groups bodies by host planetary system so the frontend renders sections
     instead of a flat list; a final null-id group collects standalones
     (sun-orbiting asteroids and dwarf planets). The skybox has no host body,
-    so it rides at the top level alongside `systems`.
+    so it rides at the top level alongside `systems`. The entries have the
+    English names of the pages (`export.names`), and `names` holds the other
+    languages.
     """
     # Model metadata is keyed by slug, not object_id, so it's excluded from
     # the body_ids set (it would just produce empty rows on the DB lookup).
@@ -324,9 +328,10 @@ def write_credits(
     )
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
+    named: dict[str, Names] = {obj.id: names.of(obj) for obj in objects}
 
     bary_by_id, child_to_bary, system_name_by_id, system_order_by_id = (
-        load_system_lookup(session)
+        load_system_lookup(session, names)
     )
 
     textures_grouped: dict[str | None, list[dict]] = {}
@@ -343,7 +348,7 @@ def write_credits(
             continue
         entry = {
             "body_id": body_id,
-            "name": body_name(obj),
+            "name": named[body_id].name,
             **texture_attribution(meta),
         }
         sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
@@ -367,7 +372,7 @@ def write_credits(
             )
             continue
         sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        for entry in _merge_ring_sources(body_id, body_name(obj), metas):
+        for entry in _merge_ring_sources(body_id, named[body_id].name, metas):
             rings_grouped.setdefault(sys_id, []).append(entry)
 
     clouds_grouped: dict[str | None, list[dict]] = {}
@@ -381,7 +386,7 @@ def write_credits(
             continue
         sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         clouds_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, body_name(obj), meta)
+            _sibling_credit_entry(body_id, named[body_id].name, meta)
         )
 
     night_grouped: dict[str | None, list[dict]] = {}
@@ -395,7 +400,7 @@ def write_credits(
             continue
         sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         night_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, body_name(obj), meta)
+            _sibling_credit_entry(body_id, named[body_id].name, meta)
         )
 
     specular_grouped: dict[str | None, list[dict]] = {}
@@ -409,7 +414,7 @@ def write_credits(
             continue
         sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
         specular_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, body_name(obj), meta)
+            _sibling_credit_entry(body_id, named[body_id].name, meta)
         )
 
     displacement_grouped: dict[str | None, list[dict]] = {}
@@ -422,7 +427,7 @@ def write_credits(
             )
             continue
         sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        entry = _sibling_credit_entry(body_id, body_name(obj), meta)
+        entry = _sibling_credit_entry(body_id, named[body_id].name, meta)
         if meta.get("tiles") is not None:
             entry["tiles"] = tiles_block(meta["tiles"])
         displacement_grouped.setdefault(sys_id, []).append(entry)
@@ -454,10 +459,8 @@ def write_credits(
         (s for s in sys_ids if s is not None),
         key=lambda s: system_order_by_id.get(s, 9999),
     ):
-        bucket: dict = {
-            "id": sys_id,
-            "name": system_name_by_id.get(sys_id, sys_id),
-        }
+        named[sys_id] = system_name_by_id[sys_id]
+        bucket: dict = {"id": sys_id, "name": named[sys_id].name}
         if sys_id in textures_grouped:
             bucket["textures"] = textures_grouped[sys_id]
         if sys_id in rings_grouped:
@@ -507,6 +510,7 @@ def write_credits(
 
     payload: dict = {
         "systems": systems_out,
+        "names": by_language(named),
         "ephemeris_archives": EPHEMERIS_ARCHIVES,
         "atmosphere_references": references["atmosphere"],
         "spacecraft_references": references["spacecraft"],
@@ -555,6 +559,7 @@ def export_credits_only(engine) -> None:
     with Session(engine) as session:
         write_credits(
             session,
+            ObjectNames(WikidataEntityCache(), session),
             out_dir,
             load_texture_metadata(out_dir),
             load_ring_metadata(out_dir),

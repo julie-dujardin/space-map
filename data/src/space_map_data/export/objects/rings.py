@@ -14,8 +14,9 @@ English article, while French and Italian cover nearly the full set.
 """
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from functools import cache
+from typing import NamedTuple
 
 from sqlalchemy.orm import Session, aliased
 
@@ -32,6 +33,7 @@ from space_map_data.constants.rings.wikidata import (
     RING_SYSTEM_PAGES,
 )
 from space_map_data.export.images import collect_ring_images
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.objects.wikipedia import load_wikipedia_summaries_for_qid
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
@@ -49,8 +51,15 @@ def _summaries(qid: str):
     return load_wikipedia_summaries_for_qid(qid)
 
 
-def load_ring_moon_ids(session: Session) -> dict[str, str]:
-    """Object id per moon named in the catalogue, keyed "{host}/{moon name}".
+class RingMoon(NamedTuple):
+    """A moon that the ring catalogue names: its Object.id and its names."""
+
+    id: str
+    names: Names
+
+
+def load_ring_moons(session: Session, names: ObjectNames) -> dict[str, RingMoon]:
+    """Each moon named in the catalogue, keyed "{host}/{moon name}".
 
     Scoped to the host's own system so the lookup can't match a same-named
     asteroid (4450 Pan vs Saturn's Pan). Only a barycentre parent is followed
@@ -81,7 +90,9 @@ def load_ring_moon_ids(session: Session) -> dict[str, str]:
         .all()
     )
     found = {
-        f"{hosts[parent]}/{name}": obj_id for obj_id, name, parent in rows if parent
+        f"{hosts[parent]}/{name}": RingMoon(obj_id, names.object(obj_id))
+        for obj_id, name, parent in rows
+        if parent
     }
     if missing := sorted(f"{b}/{m}" for b, m in wanted if f"{b}/{m}" not in found):
         logger.warning(
@@ -108,7 +119,7 @@ def _optical_depth(feature: CatalogFeature) -> dict | None:
 
 
 def _feature_entry(
-    body_id: str, feature: CatalogFeature, moon_ids: dict[str, str]
+    body_id: str, feature: CatalogFeature, moons: Mapping[str, RingMoon]
 ) -> dict:
     entry: dict = {"name": feature.name, "kind": feature.kind}
     if feature.parent:
@@ -133,8 +144,8 @@ def _feature_entry(
         entry["particles"] = feature.particles
     if feature.moons:
         entry["moons"] = [
-            {"name": moon, "id": moon_ids[key]}
-            if (key := f"{body_id}/{moon}") in moon_ids
+            {"name": found.names.name, "id": found.id}
+            if (found := moons.get(f"{body_id}/{moon}"))
             else {"name": moon}
             for moon in feature.moons
         ]
@@ -146,14 +157,14 @@ def _feature_entry(
 
 
 def ring_features_block(
-    body_id: str, moon_ids: dict[str, str]
+    body_id: str, moons: Mapping[str, RingMoon]
 ) -> dict[str, dict] | None:
     """The body's catalogue rows, keyed by slug so lookups match the localized
     map, and emitted in the catalogue's radial order."""
     catalog = RING_CATALOGS.get(body_id)
     if catalog is None:
         return None
-    return {f.slug: _feature_entry(body_id, f, moon_ids) for f in catalog.features}
+    return {f.slug: _feature_entry(body_id, f, moons) for f in catalog.features}
 
 
 def ring_mass_block(body_id: str) -> dict | None:

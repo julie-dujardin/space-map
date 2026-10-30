@@ -7,12 +7,14 @@ from unittest.mock import MagicMock
 import orjson
 import pytest
 
+from space_map_data.export.names import Names
 from space_map_data.export.objects import writer
 from space_map_data.export.objects.compact import CompactMap
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.writer import (
     K_GLOBAL,
     K_LOCALIZED,
+    _build_localized,
     _iso_currency_code,
     build_model_sources,
     hash_bucket,
@@ -22,7 +24,7 @@ from space_map_data.export.objects.writer import (
 )
 from space_map_data.models.object import ModelProvenance, ObjectType
 from space_map_data.models.object.sbdb import SBDB
-from tests.conftest import make_object
+from tests.conftest import EntityStub, make_object
 
 
 def _entity_snak(qid: str) -> dict:
@@ -325,6 +327,48 @@ class TestBuildModelSources:
         out = build_model_sources({"cassini": {"provenance": "spacecraft"}}, {})
         assert out == {}
 
+    def test_the_observing_craft_has_the_name_of_its_page(self):
+        out = build_model_sources(
+            {"eros": {"kind": "shape_model", "provenance": "missions", "probe_id": 7}},
+            {7: Names("NEAR Shoemaker", {"ja": "ニア・シューメーカー"})},
+        )
+        assert out["eros"]["mission"] == {
+            "name": "NEAR Shoemaker",
+            "primary_type": "object",
+            "primary_id": "probe-7",
+        }
+
+
+class TestLinkNames:
+    """A page names its host and the pages it links to in each language."""
+
+    def _localized(self, lang: str) -> dict:
+        obj = make_object(
+            id="naif-653", object_type=ObjectType.moon, parent_id="naif-6"
+        )
+        return _build_localized(
+            obj,
+            Names("Aegaeon"),
+            Names("Saturn", {"ja": "土星"}),
+            {
+                "probe-1": Names("Cassini", {"ja": "カッシーニ"}),
+                "naif-618": Names("Pan"),
+            },
+            lang,
+            EntityStub(),
+            None,
+            {},
+            None,
+        )
+
+    def test_a_language_with_its_own_names_gets_them(self):
+        localized = self._localized("ja")
+        assert localized["parent_name"] == "土星"
+        assert localized["link_names"] == {"probe-1": "カッシーニ"}
+
+    def test_a_language_with_none_gets_nothing(self):
+        assert self._localized("fr") == {}
+
 
 class TestRadiiBlock:
     """Which table a body's ellipsoid was read off, so the sidebar credits it."""
@@ -371,15 +415,16 @@ class TestPlanetFamilies:
             "probe_kernel_sources",
             "probe_ephemeris_accuracy",
             "probe_position_sources",
-            "parent_names",
             "taxonomy",
-            "ring_moon_ids",
+            "ring_moons",
             "ring_metadata",
             "moon_sources",
         )
         empty: dict = {name: {} for name in names}
         return writer._build_global(
             obj,
+            Names(obj.name),
+            None,
             {},
             entities,
             MagicMock(),
@@ -401,3 +446,17 @@ class TestPlanetFamilies:
         moon = make_object(id="naif-301", name="Moon", object_type=ObjectType.moon)
         data = self._global(moon, {"naif-399": ["terrestrial-planet"]})
         assert "planet_families" not in data
+
+    def test_a_moon_carries_whether_the_db_names_it(self):
+        """The page name of a moon can be a Wikidata label, so search reads
+        the DB's status here."""
+        named = make_object(id="naif-301", name="Moon", object_type=ObjectType.moon)
+        unnamed = make_object(
+            id="naif-65194",
+            name="S2019_S37",
+            object_type=ObjectType.moon,
+            provisional_designation="S2019_S37",
+        )
+        assert self._global(named, {})["iau_named"] is True
+        assert self._global(unnamed, {})["iau_named"] is False
+        assert "iau_named" not in self._global(make_object(), {})

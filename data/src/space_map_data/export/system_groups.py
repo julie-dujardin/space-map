@@ -3,6 +3,7 @@ each body."""
 
 from sqlalchemy.orm import Session
 
+from space_map_data.export.names import SYSTEM_PRIMARIES, Names, ObjectNames
 from space_map_data.models.object import Object, ObjectType
 
 # The Solar System barycentre and the Sun. A body with one of them as parent
@@ -10,20 +11,16 @@ from space_map_data.models.object import Object, ObjectType
 _TOP_LEVEL_NAIF_IDS = {0, 10}
 
 
-def body_name(obj: Object) -> str:
-    """English display name. An unnamed body goes by its designation, then by
-    its id."""
-    return obj.name or obj.mpc_designation or obj.provisional_designation or obj.id
-
-
 def load_system_lookup(
-    session: Session,
-) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, int]]:
+    session: Session, names: ObjectNames
+) -> tuple[dict[str, str], dict[str, str], dict[str, Names], dict[str, int]]:
     """The maps that put a body in its system.
 
     Returns ``(bary_by_id, child_to_bary, system_name_by_id, system_order_by_id)``:
     the ids of the system barycentres, the barycentre of each of their
-    children, the name of each system and its place from Mercury to Pluto.
+    children, the names of the planet of each system and its place from
+    Mercury to Pluto. A system with no planet row, or a barycentre that is no
+    planet's, takes the barycentre's own names.
     """
     top_level_ids = [f"naif-{n}" for n in _TOP_LEVEL_NAIF_IDS]
     barycenters = (
@@ -49,22 +46,11 @@ def load_system_lookup(
         for child in children:
             child_to_bary[child.id] = bary.id
 
-    # A system takes the name of its planet: naif-X99 for barycentre naif-X.
-    system_name_by_id: dict[str, str] = {}
-    primary_naif_ids = [
-        (b.naif_id or 0) * 100 + 99 for b in barycenters if b.naif_id is not None
-    ]
-    primaries = session.query(Object).filter(Object.naif_id.in_(primary_naif_ids)).all()
-    primary_by_naif = {p.naif_id: p for p in primaries}
-    for bary in barycenters:
-        if bary.naif_id is None:
-            continue
-        primary = primary_by_naif.get(bary.naif_id * 100 + 99)
-        if primary and primary.name:
-            system_name_by_id[bary.id] = primary.name
-        else:
-            name = bary.name or bary.id
-            system_name_by_id[bary.id] = name.replace(" Barycenter", "").strip()
+    system_name_by_id: dict[str, Names] = {}
+    for bary_id in bary_by_id:
+        primary = SYSTEM_PRIMARIES.get(bary_id)
+        found = names.find(primary) if primary is not None else None
+        system_name_by_id[bary_id] = found or names.object(bary_id)
 
     return bary_by_id, child_to_bary, system_name_by_id, system_order_by_id
 
