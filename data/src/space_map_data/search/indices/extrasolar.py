@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from space_map_data.export.objects.stars import PLANET_ID
+from space_map_data.extrasolar.systems.assemble import BINARY, MULTIPLE
 
 from .base import extrasolar_pk, planet_pk
 from .objects import build_object_documents
@@ -124,14 +125,19 @@ def planet_document(planet: dict, system: int, host: dict) -> dict[str, Any]:
 
 
 def system_document(system: dict) -> dict[str, Any]:
-    """The document of a star system of the systems index."""
+    """The document of a star system of the systems index.
+
+    A system whose Metadata row has no class takes the class of a node by
+    its count of stars, so the app knows it as a star system.
+    """
+    found = system["class"] or (BINARY if system["stars"] == 2 else MULTIPLE)
     return {
         "id": extrasolar_pk(system["id"]),
         "kind": "object",
         "name": system["name"],
         "object": {
             "id": extrasolar_pk(system["id"]),
-            "type": system["class"].replace(" ", "_"),
+            "type": found.replace(" ", "_"),
             "extrasolar": True,
             "stars": system["stars"],
         },

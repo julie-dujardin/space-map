@@ -15,6 +15,7 @@ from space_map_data.search.indices.extrasolar import (
     designations,
     host_document,
     planet_document,
+    system_document,
 )
 from tests.extrasolar.export_registry import Node, planet, write_registry
 from tests.extrasolar.test_export_planets import PLANETS, STARS
@@ -318,6 +319,14 @@ class TestSystems:
         assert pair["name"] == "Pair"
         assert pair["object"]["stars"] == 2
         assert pair["object"]["aliases_en"] == ["The Pair"]
+
+    @pytest.mark.parametrize(
+        ("stars", "expected"), [(2, "binary_star"), (3, "multiple_star")]
+    )
+    def test_a_system_with_no_class(self, stars, expected):
+        """Its Metadata row has a name and no class."""
+        system = {"id": 7, "name": "Pair", "class": None, "stars": stars, "held": []}
+        assert system_document(system)["object"]["type"] == expected
 
     def test_an_export_with_no_systems_index(self, exported):
         _, out = exported
