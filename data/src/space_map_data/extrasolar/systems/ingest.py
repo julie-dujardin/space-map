@@ -137,7 +137,8 @@ SYSTEMS = Source(
 # catalogue of the id as the release. So the row of an object never reaches a
 # system through the object's own id. A system with no catalogue id claims
 # its primary's id and its nesting rank among the systems of that primary. A
-# held star claims the anchor of its node (`_anchors`) and its tag.
+# held star claims the anchor of its node (`_anchors`) and its tag
+# (`drawn._tag`).
 SYSTEM_CLAIMS = "star-system"
 PRIMARY_CLAIM = (SYSTEM_CLAIMS, "primary")
 HELD_CLAIM = (SYSTEM_CLAIMS, "member")
@@ -977,10 +978,13 @@ def _held_rows(
     counts: Counter,
 ) -> tuple[pa.Table, pa.Array]:
     """The rows of the held stars, and the label of the row of each, null for
-    a star with no position.
+    a star with no row.
 
     `labels` and `anchors` are those of the rows of `systems.nodes`. A held
-    star takes its node's position and its name (`held_names`).
+    star takes its node's position and its name (`held_names`), and claims
+    its node's anchor and its tag. A row with no claim of its own would take
+    a new ID in each ingest. So a star with no anchor or tag, or whose claim
+    another held star makes too, has no row.
     """
     nodes = systems.nodes
     numbers = nodes["node"].to_numpy()
@@ -988,8 +992,18 @@ def _held_rows(
     at = order[np.searchsorted(numbers[order], held["number"].to_numpy())]
     ra = nodes["ra"].fill_null(np.nan).to_numpy()[at]
     dec = nodes["dec"].fill_null(np.nan).to_numpy()[at]
-    valid = np.isfinite(ra) & np.isfinite(dec)
-    counts["held stars with no position"] = int((~valid).sum())
+    claims = [
+        None if anchors[node] is None or tag is None else f"{anchors[node]} {tag}"
+        for node, tag in zip(at.tolist(), held["tag"].to_pylist())
+    ]
+    made = Counter(claims)
+    shared = np.array([c is not None and made[c] > 1 for c in claims], bool)
+    claimed = np.array([c is not None for c in claims], bool) & ~shared
+    located = np.isfinite(ra) & np.isfinite(dec)
+    valid = located & claimed
+    counts["held stars with no position"] = int((~located).sum())
+    counts["held stars with nothing to claim"] = int((~claimed & ~shared).sum())
+    counts["held stars whose claim another held star makes"] = int(shared.sum())
     row_names = held_names(systems, held, names, counts)
     members = systems.members.take(pa.array(held["member"].to_numpy()))
     own_mag = pc.coalesce(members["g_mag"], members["v_mag"]).to_numpy(
@@ -999,29 +1013,27 @@ def _held_rows(
         zero_copy_only=False
     )
     sources = members["source"].to_pylist()
-    texts, claims, mags = [], [], []
-    seen: set[str] = set()
-    for row, tag in enumerate(held["tag"].to_pylist()):
-        texts.append(f"{labels[at[row]]} | {tag}")
-        claim = anchors[at[row]]
-        text = None if claim is None else f"{claim} {tag}"
-        if text in seen:
-            counts["held stars whose claim another held star makes"] += 1
-            text = None
-        if text:
-            seen.add(text)
-        claims.append(
-            [dict(zip(CROSS_ID.names, (*HELD_CLAIM, text)))] if text else None
-        )
-        mag = own_mag[row]
-        mags.append(mag if mag is not None and np.isfinite(mag) else primary_mag[row])
+    texts = [
+        f"{labels[node]} | {tag}"
+        for node, tag in zip(at.tolist(), held["tag"].to_pylist())
+    ]
+    mags = [
+        mag if mag is not None and np.isfinite(mag) else primary
+        for mag, primary in zip(own_mag.tolist(), primary_mag.tolist())
+    ]
     pick = pa.array(np.flatnonzero(valid))
     n = int(valid.sum())
     part = pa.table(
         {
             "catalogue_id": pa.array(texts, pa.string()).take(pick),
             "mint": pa.array(np.ones(n, bool)),
-            "claims": pa.array(claims, pa.list_(CROSS_ID)).take(pick),
+            "claims": pa.array(
+                [
+                    [dict(zip(CROSS_ID.names, (*HELD_CLAIM, claims[row])))]
+                    for row in np.flatnonzero(valid).tolist()
+                ],
+                pa.list_(CROSS_ID),
+            ),
             "name": pa.array(row_names, pa.string()).take(pick),
             "class": pa.array([HELD_CLASS] * n, pa.string()),
             "match_ra": pa.array(ra[valid]),

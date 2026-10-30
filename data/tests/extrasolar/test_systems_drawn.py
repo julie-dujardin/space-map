@@ -14,9 +14,14 @@ from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.systems import assemble, drawn, elements, orbits
 from space_map_data.extrasolar.systems.assemble import Systems
-from space_map_data.extrasolar.systems.ingest import _node_names, held_names
+from space_map_data.extrasolar.systems.ingest import (
+    _held_rows,
+    _node_names,
+    held_names,
+)
 from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
 from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.tables import CROSS_ID
 from tests.download.orbit_catalogue_files import MSC_LINES
 from tests.extrasolar.systems_fakes import (
     ALPHA_CEN_DISTANCE,
@@ -520,7 +525,7 @@ class TestHeldStars:
         rows = held.to_pylist()
         assert [(h["member"], h["tag"], h["letter"], h["own_name"]) for h in rows] == [
             (2, "B", "B", None),
-            (3, "B #4", "B", None),
+            (3, "B", "B", None),
             (4, "HD 27028A", "A", "HD 27028A"),
             (5, "PSR B1620-26", None, "PSR B1620-26"),
         ]
@@ -531,6 +536,19 @@ class TestHeldStars:
             counts["entries that no source names, in no drawn pair, with values"] == 1
         )
         assert counts["held stars that a source names"] == 4
+
+    def test_tags_that_stay_the_same_in_each_ingest(self):
+        """The stars of a Gaia orbit by their sides, in either order. Nothing
+        names an El-Badry entry: it has no tag."""
+        members = [
+            _entry(source=GAIA_ORBITS, mass=0.5, known=["spectroscopic orbit"]),
+            _entry(source=GAIA_ORBITS, mass=0.7),
+        ]
+        held, _ = _held(members, (1,))
+        assert held["tag"].to_pylist() == ["secondary", "primary"]
+        held, counts = _held([_entry(source="el-badry-2021")] * 2, (1,))
+        assert held["tag"].to_pylist() == [None, None]
+        assert counts["held stars that nothing of their own names"] == 2
 
     def test_a_simbad_name(self):
         held, _ = _held([_entry(source="simbad", letter="A", label="* phi And A")])
@@ -621,6 +639,51 @@ class TestHeldStars:
             FakeResolver({}, []),
         )
         assert found.orbits.num_rows == 0 and found.held.num_rows == 0
+
+
+class TestHeldClaims:
+    """A held star claims its node's anchor and its tag. One with no claim of
+    its own has no row, as it would take a new ID in each ingest."""
+
+    def test_rows(self):
+        systems = _systems(
+            [
+                {"node": n, "key": k, "point": True, "ra": 1.0, "dec": 2.0}
+                | {"root": n, "depth": 0, "primary": k}
+                for n, k in ((1, 30), (2, 40))
+            ],
+            [_entry(), _entry(), _entry(), _entry(), _entry(node=2)],
+        )
+        columns = ("member", "number", "tag", "letter", "pair_letter")
+        rows = [
+            (0, 1, "A", "A", False),
+            # Two stars B in one node.
+            (1, 1, "B", "B", False),
+            (2, 1, "B", "B", False),
+            # Nothing of its own names it.
+            (3, 1, None, "C", True),
+            # Its node has nothing to claim.
+            (4, 2, "A", "A", False),
+        ]
+        held = pa.Table.from_pylist(
+            [dict(zip(columns, row)) for row in rows], schema=drawn.HELD_STARS
+        )
+        counts: Counter = Counter()
+        part, labels = _held_rows(
+            systems,
+            held,
+            {},
+            np.array(["p30", "p40"], object),
+            np.array(["gaia/dr3/30", None], object),
+            lambda keys, name: pa.nulls(len(keys), pa.float32()),
+            counts,
+        )
+        claim = ("star-system", "member", "gaia/dr3/30 A")
+        assert part["claims"].to_pylist() == [[dict(zip(CROSS_ID.names, claim))]]
+        assert part["mint"].to_pylist() == [True]
+        assert labels.to_pylist() == ["p30 | A", None, None, None, None]
+        assert counts["held stars whose claim another held star makes"] == 2
+        assert counts["held stars with nothing to claim"] == 2
 
 
 class TestHeldNames:

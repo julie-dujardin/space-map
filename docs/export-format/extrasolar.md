@@ -360,7 +360,11 @@ A node of the tree has `id`, `parent` (null at the root), `point`, `stars` and `
 
 #### Held stars
 
-A held star has a Metadata row with its name, the class `star` and the `system` of its root, and a System row, its home: no Point source row. Its page places it at its System row's `ra`, `dec` and `distance`, those of its node. Its names, in this order:
+A held star has a Metadata row with its name, the class `star` and the `system` of its root, and a System row, its home: no Point source row. Its page places it at its System row's `ra`, `dec` and `distance`, those of its node.
+
+A held star keeps its ID from ingest to ingest by its claim: its node, and what of its own names it in the node. That is its letter or label, else its side of its Gaia DR3 orbit, else the letter of a paper or of OEC. A star that nothing of its own names, or whose claim another held star makes too, gets no ID and stays an entry.
+
+Its names, in this order:
 
 - the name that SIMBAD or a planet catalogue gives it, unless that is the name of its pair or of its root;
 - its root's name and its letter, when a source gives the letter: the letters of the WDS and the MSC name the components of the whole system ("Castor Ba"). A root that takes its primary's name drops the primary's component letter first ("HQ Tau Aa", not "HQ Tau A Aa");

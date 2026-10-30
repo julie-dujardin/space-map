@@ -110,6 +110,8 @@ TOTAL_MASS_SOURCES = (LITERATURE, GAIA_ORBITS, OEC)
 LETTER_SOURCES = frozenset({WDS, MSC})
 PAIR_LETTERS = ("A", "B")
 BARYCENTRE, PRIMARY = "barycentre", "primary"
+# The tags of the two stars of a Gaia DR3 orbit.
+GAIA_SIDES = ("primary", "secondary")
 ASSUMED_PHASE = "assumed"
 ELEMENTS = (
     "period",
@@ -158,7 +160,8 @@ HELD_STARS = pa.schema(
         # The row of the entry in `Systems.members`, and its node.
         ("member", pa.int64()),
         ("number", pa.int64()),
-        # Names the star in its node, for its claim.
+        # Names the star in its node, for its claim (`_tag`). Null when
+        # nothing of its own names it.
         ("tag", pa.string()),
         ("letter", pa.string()),
         # True when the letter is A or B of its pair, not a source's.
@@ -236,6 +239,19 @@ def _source_letter(entry: dict, labels: Iterable[str | None] = ()) -> str | None
     return found
 
 
+def _tag(entry: dict, letter: str | None) -> str | None:
+    """What names a held star in its node, the same in each ingest: its own
+    letter or label, else its side of its Gaia DR3 orbit, else the letter of
+    a paper or of OEC (`letter`). None when nothing does: its place among
+    the members can change."""
+    if entry["letter"] or entry["label"]:
+        return entry["letter"] or entry["label"]
+    if entry["source"] == GAIA_ORBITS:
+        # Only the companion has the kind of the orbit (`assemble`).
+        return GAIA_SIDES[entry["known"] is not None]
+    return letter
+
+
 def _own_name(entry: dict) -> str | None:
     """The name that SIMBAD or a planet catalogue gives an entry, spelled as
     the name of a star."""
@@ -279,7 +295,6 @@ class Drawer:
         self.member_node = systems.members["node"].to_numpy()
         starts = np.searchsorted(self.member_node, self.number)
         ends = np.searchsorted(self.member_node, self.number, "right")
-        self.first_member = dict(zip(self.number.tolist(), starts.tolist()))
         two = np.flatnonzero(ends - starts == 2)
         self.pairs = {
             int(self.number[at]): _Pair(int(starts[at]), int(starts[at] + 1))
@@ -765,11 +780,10 @@ class Drawer:
         kinds = members["kind"].to_numpy(zero_copy_only=False)
         rows = np.flatnonzero(kinds == ENTRY)
         part = members.take(pa.array(rows)).select(
-            ["node", "letter", "label", "source", "mass", "spectral_type"]
+            ["node", "letter", "label", "source", "mass", "spectral_type", "known"]
         )
         gaia = self._gaia_masses()
         out: dict[str, list] = defaultdict(list)
-        tags: dict[int, set[str]] = defaultdict(set)
         for row, entry in zip(rows.tolist(), part.to_pylist()):
             values = self._values(row, entry, gaia)
             named = values["letter"] is not None or bool(entry["label"])
@@ -780,14 +794,11 @@ class Drawer:
                         "entries that no source names, in no drawn pair, with values"
                     ] += 1
                 continue
-            number = entry["node"]
-            place = f"#{row - self.first_member[number] + 1}"
-            tag = entry["letter"] or entry["label"] or place
-            if tag in tags[number]:
-                tag = f"{tag} {place}"
-            tags[number].add(tag)
+            tag = _tag(entry, values["letter"])
+            if tag is None:
+                self.counts["held stars that nothing of their own names"] += 1
             out["member"].append(row)
-            out["number"].append(number)
+            out["number"].append(entry["node"])
             out["tag"].append(tag)
             out["pair_letter"].append(False)
             out["own_name"].append(_own_name(entry))
