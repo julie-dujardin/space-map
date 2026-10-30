@@ -14,7 +14,14 @@ from tests.extrasolar.systems_fakes import (
     KEPLER_16,
     KEPLER_16_GAIA,
     catalogue_orbits,
+    msc_orbit_rows,
 )
+
+# Rows of the MSC's orb.tsv, as published. 00042-5055 Ab,Ac has velocities
+# and the inclination of its eclipses; 16555-0820 Ba,Bb is a copy of ORB6.
+# Neither has an angular a.
+MSC_ECLIPSING = "00042-5055|Ab,Ac   |      0.5703|58354.2542| 0.001|  0.0000|  0.00|140.00| 87.96|135.10|172.85|    0.00| |d|2024A&A...686A..27R           "
+MSC_VB6 = "16555-0820|Ba,Bb   |      0.0081| 1998.2874| 0.021|  0.0000|  0.00|150.00|164.18|  0.00|  0.00|    0.00| |y|VB6_Sgr2000 Gl_644Ba,B Gr.8   "
 
 
 def _angle(a: float, b: float) -> float:
@@ -107,6 +114,17 @@ class TestConventions:
         mean = item.mean_anomaly + 360 * (when - epoch) / period
         nu = _kepler(mean % 360, _known(item.eccentricity))
         assert _angle(_known(item.arg_periastron) + nu, 270.0) < 0.5
+
+    def test_an_msc_orbit_with_no_angular_a_gives_the_primarys_omega(self, tmp_path):
+        """An inclination does not make it a visual orbit."""
+        (item,) = _elements(msc_orbit_rows(tmp_path, MSC_ECLIPSING))
+        assert item.inclination == 87.96
+        assert item.arg_periastron == pytest.approx(140.0 + 180)
+        assert item.omega_fixed
+
+    def test_a_copy_of_orb6_with_no_a_is_a_visual_orbit(self, tmp_path):
+        (item,) = _elements(msc_orbit_rows(tmp_path, MSC_VB6))
+        assert item.arg_periastron == 150.0 and not item.omega_fixed
 
     def test_a_secondary_omega_of_a_paper_stays(self):
         literature, _ = orbits.read_literature()

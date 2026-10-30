@@ -280,6 +280,13 @@ KEPLER_16_GAIA: dict[str, Any] = {
 ALPHA_CEN_DISTANCE = 1.3384
 
 
+def msc_orbit_rows(folder: Path, *lines: str) -> pa.Table:
+    """ORBITS of these lines of the MSC's orb.tsv."""
+    (folder / msc.README_FILE).write_text(MSC_ORB_README, encoding="latin-1")
+    (folder / msc.ORB_FILE).write_text("\n".join(lines) + "\n", encoding="latin-1")
+    return orbits.msc_orbits(folder)
+
+
 def catalogue_orbits(folder: Path) -> pa.Table:
     """ORBITS of α Cen in the MSC, ORB6 and SBX, and the paper table."""
     (folder / msc.README_FILE).write_text(MSC_ORB_README, encoding="latin-1")
