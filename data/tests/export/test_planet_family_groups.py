@@ -133,12 +133,12 @@ class TestBuild:
             [star(10.0, 5.0, 50.0, name="Near"), star(11.0, 5.0, 5.0, name="Far")],
             planets=[
                 _with_qid(planet(0, 1), "Q1"),  # warm
-                _with_qid(planet(0, 2, period=3.0), "Q2"),  # hot
+                _with_qid(planet(0, 2, period=3.0, letter="c"), "Q2"),  # hot
                 _with_qid(planet(1, 1, period=3.0), "Q3"),  # hot
-                planet(1, 2, mass=None, radius=0.25, estimated=["radius"]),
+                planet(1, 2, mass=None, radius=0.25, estimated=["radius"], letter="c"),
                 # warm, and a super-Jupiter by its minimum mass
-                planet(1, 3, period=50.0, mass=3.0, mass_kind="minimum"),
-                planet(1, 4, mass=30.0, **{"class": "brown dwarf"}),
+                planet(1, 3, period=50.0, mass=3.0, mass_kind="minimum", letter="d"),
+                planet(1, 4, mass=30.0, letter="e", **{"class": "brown dwarf"}),
             ],
         )
         out = tmp_path / "space-map-extrasolar"
@@ -190,13 +190,15 @@ class TestBuild:
         assert [m.object_id for m in earth] == ["naif-399"]
         assert "planet-mini-neptune" not in groups.notable_members
 
+        # Every planet takes its host's name and its letter, with an entry or
+        # without one.
         entries = notable_entries(gas, entities)
         assert [e["name"] for e in entries] == [
             "Label Q599",
-            "Planet 1 1",
-            "Planet 0 1",
-            "Planet 0 2",
-            "Planet 1 3",
+            "Far b",
+            "Near b",
+            "Near c",
+            "Far d",
         ]
 
     def test_a_planet_is_listed_by_its_page_names(self, served):
@@ -210,7 +212,7 @@ class TestBuild:
         groups = planet_family.build_planet_family_groups(entities, SOLAR, out)
         hot = groups.notable_members["planet-hot-jupiter"]
         entries = notable_entries(hot, entities)
-        assert [e["name"] for e in entries] == ["Planet 1 1", "Planet 0 2"]
+        assert [e["name"] for e in entries] == ["Far b", "Near c"]
         # A nickname is an alias of the page, not its name.
         key = _id(ids[1], 1)
         assert notable_names(hot, entries, "de", entities) == {key: "Zeta b"}
@@ -279,6 +281,7 @@ class TestPlanetsPage:
                     mass=3.0,
                     mass_kind="minimum",
                     radius=2.0,
+                    letter="c",
                     **_errors("radius", 0.5),
                 ),
                 planet(
@@ -287,10 +290,13 @@ class TestPlanetsPage:
                     mass=12.0,
                     radius=2.5,
                     estimated=["radius"],
+                    letter="d",
                     **_errors("mass", 0.6),
                 ),
-                planet(0, 4, mass=0.01, limits=["mass<"], semi_major_axis=None),
-                planet(0, 5, mass=30.0, **{"class": "brown dwarf"}),
+                planet(
+                    0, 4, mass=0.01, limits=["mass<"], semi_major_axis=None, letter="e"
+                ),
+                planet(0, 5, mass=30.0, letter="f", **{"class": "brown dwarf"}),
             ],
         )
         out = tmp_path / "space-map-extrasolar"
@@ -354,13 +360,13 @@ class TestPlanetsPage:
         assert groups.planets.stats.largest_planet == {
             "primary_type": "object",
             "primary_id": _id(ids[0], 1),
-            "name": "Planet 0 1",
+            "name": "Near b",
             "radius_earth": 16.81,
         }
         assert groups.planets.stats.most_massive_planet == {
             "primary_type": "object",
             "primary_id": _id(ids[0], 3),
-            "name": "Planet 0 3",
+            "name": "Near d",
             "mass_earth": 3814.0,
             "mass_kind": "true",
         }

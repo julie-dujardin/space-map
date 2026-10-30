@@ -63,6 +63,8 @@ from space_map_data.export.extrasolar.tiles import (
     Split,
     UnitJob,
 )
+from space_map_data.export.objects.stars import planet_host_pages
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
 from space_map_data.extrasolar.store import fsync_dir
@@ -779,6 +781,7 @@ def _export(
             layout.scratch,
             lambda task, jobs, label: _run(workers, task, jobs, label),
             layout.live,
+            planet_host_pages(registry, WikidataEntityCache()),
         )
         shutil.rmtree(layout.scratch)
         if planet_files is not None:

@@ -514,7 +514,8 @@ A host:
 | Field | | |
 |-------|-|-|
 | `id` | number | extrasolar ID |
-| `name`, `name_source` | string | the Metadata name and its source |
+| `name`, `name_source` | string | the Metadata name and its source. It is the global name of the host's page (`export/names.py`) |
+| `names` | object | the name of the host's page in each language where it differs from `name`, by language code: the Wikidata labels of a star with an object entry; else empty. A client shows `names[lang]`, else `name` |
 | `class` | string | the Metadata class: `star`, `brown dwarf`, `white dwarf`, `pulsar`, or `binary star` and `multiple star` for a node of a star system |
 | `cross_ids` | list | the Metadata cross-ids, each `{catalogue, release, catalogue_id}` |
 | `planets` | list | its live numbers; empty for a key with no planets |
@@ -536,7 +537,9 @@ A planet:
 |-------|-|-|
 | `host`, `number` | number | its page `/x/{host}/b/{number}` |
 | `object` | bool | true when the site's object bundles hold an entry `x-{host}-b-{number}` for the planet ([objects.md](objects.md)): when it has a `wikidata/qid` id |
-| `name`, `name_source` | string | the IAU name (`iau-nameexoworlds`), else the designation and its catalogue |
+| `name` | string | the global name of the planet's page (`export/names.py`), with an object entry or without one: the IAU name (`iau-nameexoworlds`), else the global name of its host's page and its letter (`Proxima Centauri b` for `Proxima Cen b`). A planet with no letter keeps its catalogue name. `designation` keeps the catalogue name |
+| `name_source` | string | the source of the planets table name: `iau-nameexoworlds`, else the catalogue of the designation |
+| `names` | object | the name of the planet's page in each language where it differs from `name`, by language code: the host's name in that language and the letter. An IAU name has none. A client shows `names[lang]`, else `name` |
 | `designation` | string | the archive's name, else exoplanet.eu's, else OEC's |
 | `letter` | string | `b`, `c`, … or null |
 | `aliases` | list | the IAU name and every catalogue name of the planet |

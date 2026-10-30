@@ -591,7 +591,14 @@ class TestAvailablePlanetPages:
 
         pages = available_planet_pages(tmp_path / "out")
         assert pages.planets == sorted(
-            (ids[p["_host"]], p["number"], p["name"]) for p in PLANETS
+            [
+                (ids[0], 1, "Host A b"),
+                (ids[0], 2, "Lucky"),
+                (ids[1], 1, "Lit B b"),
+                (ids[2], 1, "OGLE-1L b"),
+                (ids[3], 1, "PSR 1 b"),
+                (ids[4], 1, "Host A B b"),
+            ]
         )
         assert pages.hosts == {
             ids[0]: "Host A",

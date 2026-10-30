@@ -17,9 +17,11 @@ from space_map_data.export.extrasolar.build import (
     export_extrasolar_only,
 )
 from space_map_data.export.extrasolar.reader import ExportReader, TokenMismatch
+from space_map_data.export.wikidata import StarEntity
 from space_map_data.extrasolar.exoplanets.catalogues import EU
 from space_map_data.extrasolar.registry import ALIAS, RETIRED, Registry
 from space_map_data.utils.paths import EXTRASOLAR_DIR
+from tests.conftest import EntityStub, labelled
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.exoplanet_files import eu_planet
 from tests.extrasolar.export_registry import planet, star, write_registry
@@ -190,6 +192,43 @@ class TestPlanetFiles:
         assert reader.planet(built.ids[0], 1)["object"] is False
         assert reader.planet(built.ids[0], 2)["object"] is True
         assert report["planets"]["planets with an object entry"] == 1
+
+    def test_every_planet_has_the_names_of_its_page(self, tmp_path, out, monkeypatch):
+        """A planet without an IAU name takes the name of its host's page and
+        its letter, with an entry or without one (`names.planet_names`). The
+        host's page has the names of its entry, else its Metadata name.
+        `names` holds the name in each language where it is not `name`."""
+        item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q1"}
+        rows = [
+            row | {"cross_ids": [*row["cross_ids"], item]}
+            if (row["_host"], row["number"]) == (0, 1)
+            else row
+            for row in PLANETS
+        ]
+        stars = [STARS[0] | {"_qid": "Q10"}, *STARS[1:]]
+        entities = _StarStub(
+            {
+                "Q1": labelled({"en": "Planet Zero b", "ja": "惑星ゼロ b"}),
+                "Q10": labelled({"en": "Host A", "ja": "ホストA星"}),
+            }
+        )
+        monkeypatch.setattr(build, "WikidataEntityCache", lambda: entities)
+        built = write_registry(tmp_path / "reg", stars, planets=rows)
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        ids = built.ids
+
+        def names(host: int, number: int) -> tuple[str, dict, str]:
+            found = reader.planet(ids[host], number)
+            assert found is not None
+            return found["name"], found["names"], found["designation"]
+
+        # The planet's own labels name it in no language.
+        assert names(0, 1) == ("Host A b", {"ja": "ホストA星 b"}, "Planet 0 1")
+        assert names(0, 2) == ("Lucky", {}, "Planet 0 2")
+        assert names(1, 1) == ("Lit B b", {}, "Planet 1 1")
+        host = reader.system(ids[0])["hosts"][0]
+        assert (host["name"], host["names"]) == ("Host A", {"ja": "ホストA星"})
 
     def test_the_families_of_a_planet(self, tmp_path, out):
         rows = [
@@ -543,3 +582,11 @@ class TestHostMerge:
         ]
         assert literature not in reader.planet_hosts()
         assert twin in reader.planet_hosts()
+
+
+class _StarStub(EntityStub):
+    """An entity cache that finds the given entities as star entities."""
+
+    def get_star_entity(self, qid):
+        entity = self.get_entity(qid)
+        return StarEntity(entity, 0) if entity else None

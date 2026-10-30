@@ -35,6 +35,7 @@ from space_map_data.constants.stars.literature import DISTANCES, REFERENCES, Sta
 from space_map_data.export.extrasolar.planets import read_planets
 from space_map_data.export.images import collect_star_images
 from space_map_data.export.in_place import refresh_versions
+from space_map_data.export.names import Names, star_names
 from space_map_data.export.objects.wikidata_claims import (
     STAR_ENTITY_REF_CLAIMS,
     STAR_GLOBAL_CLAIMS,
@@ -242,6 +243,29 @@ def planet_object(row: Mapping) -> PlanetObject | None:
         row["letter"],
         row["name_source"] == IAU_NAMES,
     )
+
+
+def _star_entity(
+    entities: WikidataEntityCache, qid: str | None
+) -> WikidataEntity | None:
+    found = entities.get_star_entity(qid)
+    return found.entity if found else None
+
+
+def planet_host_pages(
+    registry: Registry, entities: WikidataEntityCache
+) -> dict[int, Names]:
+    """The names of the stars with an entry that host a planet or key a
+    planet system, by ID, for the planet files of the extrasolar export."""
+    table = read_planets(registry)
+    if table is None:
+        return {}
+    keys = set(table["host"].to_pylist()) | set(table["system"].to_pylist())
+    return {
+        star.id: star_names(star, _star_entity(entities, star.qid))
+        for star in _star_objects(registry)
+        if star.id in keys
+    }
 
 
 def read_extrasolar_objects(

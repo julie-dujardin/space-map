@@ -12,9 +12,13 @@ under that ID, with or without a description, so it gets the planet facts on
 that document instead: a second document with the same ID replaces the
 first, and main's has the localized names, the image and the sitelinks. A
 planet is a document of its own kind, keyed as its page is: `x-<host>-b-<n>`.
-A planet with an entry takes the localized names, descriptions and aliases,
-the sitelinks and the thumbnail of main's document of that entry, which is
-not indexed on its own.
+A planet with an entry takes the descriptions and aliases, the sitelinks and
+the thumbnail of main's document of that entry, which is not indexed on its
+own.
+
+The names are those of the pages (`export.names`), from the `name` and
+`names` of the system files: `name` and `name_{lang}`, and for a planet
+`host_name` and `host_name_{lang}`.
 """
 
 import gzip
@@ -82,16 +86,16 @@ def host_document(host: dict) -> dict[str, Any]:
         "kind": "object",
         "name": host["name"],
         "object": obj,
-    }
+    } | {f"name_{lang}": n for lang, n in host["names"].items()}
 
 
-def planet_document(planet: dict, system: int, host_name: str) -> dict[str, Any]:
+def planet_document(planet: dict, system: int, host: dict) -> dict[str, Any]:
     values = planet["values"]
     fields: dict[str, Any] = {
         "host_id": f"x-{planet['host']}",
         "number": planet["number"],
         "system_id": f"x-{system}",
-        "host_name": host_name,
+        "host_name": host["name"],
         "designation": planet["designation"],
         "class": planet["class"],
         "status": planet["status"],
@@ -102,17 +106,18 @@ def planet_document(planet: dict, system: int, host_name: str) -> dict[str, Any]
     for name in ("discovery_year", "discovery_method"):
         if name in values:
             fields[name] = values[name]
+    fields |= {f"host_name_{lang}": n for lang, n in host["names"].items()}
     return {
         "id": planet_pk(planet["host"], planet["number"]),
         "kind": "planet",
         "name": planet["name"],
         "planet": fields,
-    }
+    } | {f"name_{lang}": n for lang, n in planet["names"].items()}
 
 
 # Root fields of an object document that a planet document takes from it.
 _ENTRY_FIELDS = ("sitelinks_count", "thumbnail")
-_ENTRY_PREFIXES = ("name_", "description_")
+_ENTRY_PREFIXES = ("description_",)
 
 
 def _add_entry(planet: dict[str, Any], doc: dict[str, Any]) -> None:
@@ -142,8 +147,9 @@ def build_extrasolar_documents(
 ) -> Iterator[dict[str, Any]]:
     """The object documents of the main export in `export_dir`, then the host
     and planet documents of the extrasolar export. A host with an object
-    document gets its planet facts there and no document of its own; a planet
-    with an entry gets the entry's names on its own document."""
+    document gets its planet facts there and no document of its own. A planet
+    with an entry gets the descriptions, aliases, sitelinks and thumbnail of
+    the entry on its own document."""
     hosts, planets = _read_documents(extrasolar_dir)
     objects = (
         ()
@@ -193,13 +199,13 @@ def _read_documents(
     planets: dict[str, dict[str, Any]] = {}
     for key in sorted({host["system"] for host in index["hosts"]}):
         system = _read(root, section["system"].replace("{key}", str(key)), token)
-        names = {host["id"]: host["name"] for host in system["hosts"]}
+        by_id = {host["id"]: host for host in system["hosts"]}
         for host in system["hosts"]:
             if host["planets"]:
                 doc = host_document(host)
                 hosts[doc["id"]] = doc
         for planet in system["planets"]:
-            doc = planet_document(planet, key, names[planet["host"]])
+            doc = planet_document(planet, key, by_id[planet["host"]])
             planets[doc["id"]] = doc
     logger.info("Indexing %d planets and %d host stars", len(planets), len(hosts))
     return hosts, planets

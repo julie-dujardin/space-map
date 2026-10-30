@@ -79,7 +79,8 @@ def cli():
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
-    # It reads only the registry, so it needs no mirror and no DB.
+    # It reads the registry and the star items of the Wikidata cache in place,
+    # and no DB.
     if args.only == "extrasolar":
         export_extrasolar_only(args.workers, args.registry_root, args.extrasolar_root)
         return

@@ -11,7 +11,8 @@ Files, JSON in gzip:
   which can be on another host when the old host merged;
 - planets/{system}.json.gz: the hosts and the planets of one system, with
   each planet's orbit in the scene's frame (`orbits`), its catalogue values
-  and its families (`families`, `families_estimated`).
+  and its families (`families`, `families_estimated`). A host and a planet
+  have the names of their pages (`name`, `names`, from `export.names`).
 
 Every file has the token of the section in its `token` field. The token
 hashes each file with 16 zeros in that field, as for the sky cultures.
@@ -35,7 +36,7 @@ import json
 import logging
 import math
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,6 +53,12 @@ from space_map_data.export.extrasolar import (
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.systems import SYSTEM_BIT
 from space_map_data.export.extrasolar.tiles import Problems
+from space_map_data.export.names import (
+    CataloguePlanet,
+    Names,
+    planet_names,
+    served_host,
+)
 from space_map_data.extrasolar.exoplanets import numbering
 from space_map_data.extrasolar.exoplanets.ingest import hosts_with_several_systems
 from space_map_data.extrasolar.exoplanets.table import SCHEMA, SLUG
@@ -156,6 +163,13 @@ CREDITS = (
 )
 
 type Runner = Callable[[Callable, list, str], list]
+
+
+def _name(record: dict, names: Names) -> None:
+    """Give a host or a planet record the names of its page: the global name
+    in `name`, and in `names` the name in each language where it differs."""
+    record["name"] = names.name
+    record["names"] = names.overrides()
 
 
 def system_path(key: int | str) -> str:
@@ -513,13 +527,19 @@ class Result:
 
 
 def build(
-    registry: Registry, out: Path, scratch: Path, run: Runner, live: Path
+    registry: Registry,
+    out: Path,
+    scratch: Path,
+    run: Runner,
+    live: Path,
+    host_pages: Mapping[int, Names],
 ) -> Result | None:
     """Write the planet files below `out`, or None when the registry has no
     planets table.
 
     `scratch` holds the render rows of the tree build, `run` maps a task over
-    jobs in the export's workers, and `live` is the served `v1/x/`.
+    jobs in the export's workers, `live` is the served `v1/x/`, and
+    `host_pages` names the hosts with an entry, by ID.
     """
     table = read_planets(registry)
     if table is None:
@@ -588,6 +608,12 @@ def build(
         if host is None:
             continue
         record = planet_record(row, host)
+        _name(
+            record,
+            planet_names(
+                CataloguePlanet.of(row), served_host(host, host_pages.get(row["host"]))
+            ),
+        )
         planets_of[row["system"]].append(record)
         published.update(record["families"])
         estimated.update(record["families_estimated"])
@@ -631,6 +657,10 @@ def build(
                 if "semi_major_axis" in p["values"]
             ]
             host = dict(hosts[id_])
+            if (page := served_host(host, host_pages.get(id_))) is not None:
+                _name(host, page.names)
+            else:
+                host["names"] = {}
             host["planets"] = [p["number"] for p in mine]
             system_hosts.append(host)
             counts[f"host placed by {host['placement']}"] += 1

@@ -12,6 +12,8 @@ from space_map_data.search.indices.catalog import CATALOG_INDEX
 from space_map_data.search.indices.extrasolar import (
     build_extrasolar_documents,
     designations,
+    host_document,
+    planet_document,
 )
 from tests.extrasolar.export_registry import write_registry
 from tests.extrasolar.test_export_planets import PLANETS, STARS
@@ -221,8 +223,9 @@ class TestPlanetWithAnEntry:
         assert gone not in keys
         doc = dict(zip(keys, docs))[lucky]
         assert doc["kind"] == "planet"
+        # The names come from the system file, which has them for every planet.
         assert doc["name"] == "Lucky"
-        assert doc["name_ru"] == "Счастливая"
+        assert "name_ru" not in doc
         assert doc["description_en"] == "a planet"
         assert doc["sitelinks_count"] == 30
         assert doc["planet"]["aliases_en"] == ["Planet Lucky"]
@@ -251,3 +254,43 @@ class TestDesignations:
             ],
         }
         assert designations(host) == ["sig Per", "Gaia DR3 42", "HIP 7", "HD 9", "Name"]
+
+
+class TestNames:
+    """The names of the pages, from the `names` of the system file."""
+
+    @staticmethod
+    def _host() -> dict:
+        return {
+            "id": 7,
+            "class": "star",
+            "planets": [1],
+            "name": "alf Cen",
+            "names": {"ja": "ケンタウルス座α星"},
+            "catalogue_name": None,
+            "cross_ids": [],
+        }
+
+    def test_a_host_has_the_names_of_its_page(self):
+        doc = host_document(self._host())
+        assert doc["name"] == "alf Cen"
+        assert doc["name_ja"] == "ケンタウルス座α星"
+
+    def test_a_planet_has_the_names_of_its_page_and_of_its_host(self):
+        planet = {
+            "host": 7,
+            "number": 1,
+            "name": "alf Cen b",
+            "names": {"ja": "ケンタウルス座α星 b"},
+            "designation": "alf Cen b",
+            "class": "planet",
+            "status": "confirmed",
+            "aliases": [],
+            "values": {},
+        }
+        doc = planet_document(planet, 7, self._host())
+        assert doc["name"] == "alf Cen b"
+        assert doc["name_ja"] == "ケンタウルス座α星 b"
+        assert "name_fr" not in doc
+        assert doc["planet"]["host_name"] == "alf Cen"
+        assert doc["planet"]["host_name_ja"] == "ケンタウルス座α星"
