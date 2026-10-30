@@ -208,8 +208,9 @@ REFERENCES: dict[str, Reference] = {
 }
 
 BINARIES: dict[StarKey, Binary] = {
-    # Kepler-16. Table 1 (an image in the arXiv copy). Osculating Jacobian
-    # elements at BJD 2,455,212.12316. The paper gives no Teff of B.
+    # Kepler-16. Table 1 of the published version: medians, with the 15.85%
+    # and 84.15% levels as errors. Osculating Jacobian elements at
+    # BJD 2,455,212.12316. The paper gives no Teff of B.
     ("gaia", "dr3", "2133476355197071616"): Binary(
         reference="doyle_2011",
         period=Value(41.079220, 0.000078, 0.000077),
@@ -629,6 +630,8 @@ BINARIES: dict[StarKey, Binary] = {
     ),
     # FL Lyr. Tables VII, IX (solution 4) and XVII. The orbit is taken as
     # circular. The paper gives a sin i, not a, and log Teff, not Teff.
+    # Kozyreva et al. 2015 is not used: its Kepler elements are only a
+    # template for eclipse timing, with no errors, masses, a or Teff.
     ("gaia", "dr3", "2130371574879626112"): Binary(
         reference="popper_1986",
         period=Value(2.1781542, 0.0000003),
@@ -772,8 +775,9 @@ BINARIES: dict[StarKey, Binary] = {
     ),
     # Kepler-451, an sdB (A) and an M dwarf. The ephemeris of Table 3 (from
     # primary minima) and Table 2, the PHOEBE Legacy column, which has the
-    # errors. The masses and a are fixed from Østensen et al. 2010, and so is
-    # Teff of A. The orbit is circular.
+    # errors. The masses, a and Teff of A are fixed from Østensen et al. 2010.
+    # Baran et al. 2015 is not used: it fits only P and T0, and takes i from
+    # Østensen et al. 2010. The orbit is circular.
     ("gaia", "dr3", "2080063931448749824"): Binary(
         reference="esmer_2022",
         period=Value(0.125765285, 0.000000001),
