@@ -513,7 +513,7 @@ def _build_tables(
             systems.refs_by_unit(refs, regions) if metadata else [None] * len(units)
         )
         unit_names = (
-            system_index.ids_by_unit(named, regions)
+            [named[at] for at in systems.unit_positions(named, regions)]
             if metadata
             else [None] * len(units)
         )

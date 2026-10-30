@@ -23,8 +23,6 @@ import pyarrow as pa
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.systems import HELD, Systems
-from space_map_data.extrasolar.ids import CELL_MASK
-from space_map_data.extrasolar.sky import region_of
 from space_map_data.utils.arrays import find_sorted
 
 SECTION = "systems"
@@ -65,12 +63,6 @@ def listed(systems: Systems, planet_keys: np.ndarray) -> Listed:
         held_ids[order],
         held_roots[order],
     )
-
-
-def ids_by_unit(ids: np.ndarray, units: list[tuple[int, ...]]) -> list[np.ndarray]:
-    """The IDs of each unit, a run of regions, sorted."""
-    regions = region_of(ids & CELL_MASK)
-    return [ids[(regions >= unit[0]) & (regions <= unit[-1])] for unit in units]
 
 
 def write(listed: Listed, names: pa.Table, out: Path) -> tuple[Written, dict]:

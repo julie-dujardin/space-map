@@ -18,10 +18,15 @@ from space_map_data.export.extrasolar import (
 )
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
-from space_map_data.export.extrasolar.systems import Refs, check_metadata
-from space_map_data.extrasolar.ids import cell_of, table_of
+from space_map_data.export.extrasolar.systems import (
+    Refs,
+    check_metadata,
+    refs_by_unit,
+    unit_positions,
+)
+from space_map_data.extrasolar.ids import cell_of, encode, table_of
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sky import region_of
+from space_map_data.extrasolar.sky import region_cells, region_of
 from space_map_data.extrasolar.systems import drawn
 from space_map_data.extrasolar.tables import METADATA, SYSTEM, SYSTEM_TABLE, TABLES
 from tests.extrasolar.export_registry import (
@@ -545,6 +550,32 @@ class TestMetadataCheck:
             "7",
             "9",
         ]
+
+
+class TestUnits:
+    """The Metadata units take the refs and the names of their regions."""
+
+    REGIONS = (5, 0, 2, 5, 7, 1)
+    UNITS = ((0, 1), (2,), (3, 4), (5, 6, 7))
+
+    def ids(self) -> np.ndarray:
+        return np.array(
+            [encode(n + 1, 1, region_cells(r)[0]) for n, r in enumerate(self.REGIONS)]
+        )
+
+    def test_the_positions_of_each_run_of_regions(self):
+        found = unit_positions(self.ids(), list(self.UNITS))
+        assert [at.tolist() for at in found] == [[1, 5], [2], [], [0, 3, 4]]
+
+    def test_the_refs_of_each_unit(self):
+        ids = self.ids()
+        refs = Refs(ids, np.arange(6), np.array([True, False] * 3))
+        found = refs_by_unit(refs, list(self.UNITS))
+        assert [part.id.tolist() for part in found] == [
+            ids[at].tolist() for at in ([1, 5], [2], [], [0, 3, 4])
+        ]
+        assert found[3].system.tolist() == [0, 3, 4]
+        assert found[3].node.tolist() == [True, False, True]
 
 
 class TestPlanetFiles:

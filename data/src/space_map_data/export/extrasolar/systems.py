@@ -352,17 +352,22 @@ class Refs:
     node: np.ndarray
 
 
+def unit_positions(ids: np.ndarray, units: list[tuple[int, ...]]) -> list[np.ndarray]:
+    """The positions in `ids` of the IDs of each unit, a run of regions, in
+    order."""
+    regions = region_of(ids & CELL_MASK)
+    order = np.argsort(regions, kind="stable")
+    starts = np.searchsorted(regions[order], [unit[0] for unit in units])
+    ends = np.searchsorted(regions[order], [unit[-1] + 1 for unit in units])
+    return [np.sort(order[start:end]) for start, end in zip(starts, ends)]
+
+
 def refs_by_unit(refs: Refs, units: list[tuple[int, ...]]) -> list[Refs]:
     """The refs of each unit, a run of regions."""
-    regions = region_of(refs.id & CELL_MASK)
-    order = np.argsort(regions, kind="stable")
-    regions = regions[order]
-    out = []
-    for unit in units:
-        start, end = np.searchsorted(regions, [unit[0], unit[-1] + 1])
-        part = np.sort(order[start:end])
-        out.append(Refs(refs.id[part], refs.system[part], refs.node[part]))
-    return out
+    return [
+        Refs(refs.id[at], refs.system[at], refs.node[at])
+        for at in unit_positions(refs.id, units)
+    ]
 
 
 def check_metadata(refs: Refs, rows: pa.Table) -> Problems:
