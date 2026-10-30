@@ -43,6 +43,10 @@ from space_map_data.utils.paths import SOURCES_EXOPLANETS_DIR
 
 logger = logging.getLogger(__name__)
 
+# TODO: let every SIMBAD download use either CDS or the Harvard mirror
+# (https://simbad.cfa.harvard.edu/simbad/sim-tap/sync), so that a CDS outage
+# does not stop them. The mirror does not take uploads, so it needs the names
+# as plain lists of about 100 per query.
 TAP_URL = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
 OUT_DIR = SOURCES_EXOPLANETS_DIR / "simbad"
 IDS_FILE = "ids.csv"
