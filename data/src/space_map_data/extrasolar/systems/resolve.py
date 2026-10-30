@@ -12,12 +12,14 @@ ID.
 The candidates of a node are the objects that its ids reach, best first:
 1. its own SIMBAD object;
 2. the SIMBAD component that one of its other ids names (a row with no
-   listed children), since SIMBAD lists the components of close pairs where
+   listed children). SIMBAD lists the components of close pairs, where
    Hipparcos and HD have one entry for both;
 3. its Gaia DR3 id, its rows in the planet catalogues, its HIP and HD
    numbers;
 4. the links that the builder makes itself: a component of the same WDS id
    and letter in another source, a match by position.
+In one rank, the object that more of the node's ids reach comes first, so one
+wrong id loses to the others. Then the lower key comes first.
 """
 
 import math
@@ -250,8 +252,10 @@ def candidates(
     resolver: Resolver,
     index: SimbadIndex,
     links: dict[tuple[str, str, str], tuple[int, int]],
-) -> list[list[list[tuple[int, int]]]]:
-    """For each table and row, its (key, rank) candidates, best first.
+) -> tuple[list[list[list[tuple[int, int]]]], list[dict[tuple[int, int], int]]]:
+    """For each table and row, its (key, rank) candidates, best first. For
+    each table, how many ids of a row reach a key, by (row, key), where more
+    than one.
 
     `links` gives the (key, rank) of the ids that the builder linked.
     """
@@ -270,26 +274,49 @@ def candidates(
                 wanted[SIMBAD_OID].update(str(oid) for oid in oids)
     keys = resolve_ids(resolver, wanted)
     out = []
+    reaches = []
     for table, (rows, catalogue, release, value) in zip(tables, flats):
-        found: list[list[tuple[int, int]]] = [[] for _ in range(table.num_rows)]
+        # (key, rank, the index of the id that reaches it)
+        found: list[list[tuple[int, int, int]]] = [[] for _ in range(table.num_rows)]
         source = table["source"][0].as_py() if table.num_rows else None
-        for row, c, r, v in zip(
-            rows.tolist(), catalogue.to_pylist(), release.to_pylist(), value.to_pylist()
+        for at, (row, c, r, v) in enumerate(
+            zip(
+                rows.tolist(),
+                catalogue.to_pylist(),
+                release.to_pylist(),
+                value.to_pylist(),
+            )
         ):
             if (key := keys.get((c, r, v))) and (c, r) in RANKS:
-                found[row].append((key, RANKS[(c, r)]))
+                found[row].append((key, RANKS[(c, r)], at))
             if source != SIMBAD and (c, r) in SIMBAD_CATALOGUES:
                 for oid in via_simbad.get((c, r, v), []):
                     if key := keys.get((*SIMBAD_OID, str(oid))):
-                        found[row].append((key, SIMBAD_PATH))
+                        found[row].append((key, SIMBAD_PATH, at))
             if link := links.get((c, r, v)):
-                found[row].append(link)
-        out.append([_best_first(items) for items in found])
-    return out
+                found[row].append((*link, at))
+        best = []
+        reach: dict[tuple[int, int], int] = {}
+        for row, items in enumerate(found):
+            ordered, counts = _best_first(items)
+            best.append(ordered)
+            reach.update(((row, key), n) for key, n in counts.items() if n > 1)
+        out.append(best)
+        reaches.append(reach)
+    return out, reaches
 
 
-def _best_first(items: list[tuple[int, int]]) -> list[tuple[int, int]]:
+def _best_first(
+    items: list[tuple[int, int, int]],
+) -> tuple[list[tuple[int, int]], dict[int, int]]:
+    """Each key once at its best rank, best first, and how many ids reach it."""
     best: dict[int, int] = {}
-    for key, rank in items:
+    reached_by: dict[int, set[int]] = defaultdict(set)
+    for key, rank, at in items:
         best[key] = min(rank, best.get(key, rank))
-    return sorted(best.items(), key=lambda item: (item[1], item[0]))
+        reached_by[key].add(at)
+    counts = {key: len(found) for key, found in reached_by.items()}
+    ordered = sorted(
+        best.items(), key=lambda item: (item[1], -counts[item[0]], item[0])
+    )
+    return ordered, counts

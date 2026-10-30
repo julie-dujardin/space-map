@@ -1526,6 +1526,115 @@ class TestCrossedGroupOrder:
             assert members["key"].to_pylist()[1] == c
 
 
+class TestOneWrongId:
+    """One id of an MSC component reaches a wrong star through SIMBAD. The
+    other ids reach the right star through SIMBAD. The star that more of the
+    ids reach wins, for each order of the keys."""
+
+    def systems(
+        self, comp: dict, objects: list, ids: dict, rows: list[dict]
+    ) -> Systems:
+        w = comp["WDS"]
+        inputs = Inputs(
+            msc=msc_nodes(
+                [comp, msc_comp(w, "B")],
+                [msc_pair(w, "A", "B", "*", Sep=22.0, Sunit='"')],
+                [],
+            ),
+            simbad_index=simbad_index(objects),
+        )
+        return build(inputs, FakeResolver(ids, rows))
+
+    def events(self, systems: Systems) -> list[str]:
+        events = systems.events.filter(
+            pc.equal(systems.events["kind"], "ids reach two objects")
+        )
+        return events["text"].to_pylist()
+
+    def test_59_aur(self):
+        """MSC gives 59 Aur the GCVS name of QX Aur, a Mira 9° away."""
+        w = "06530+3852"
+        comp = msc_comp(
+            w, "A", HIP=33041, HD=50018, Id="ADS_5534A. HR_2539, 59_Aur, V*_QX_Aur"
+        )
+        objects = [
+            simbad_object(
+                918209,
+                "* 59 Aur",
+                103.256,
+                38.869,
+                v=6.14,
+                hip="33041",
+                hd="50018",
+                identifiers=("HR 2539",),
+            ),
+            simbad_object(
+                397430,
+                "V* QX Aur",
+                104.288,
+                47.589,
+                otype="Mi*",
+                identifiers=("V* QX Aur",),
+            ),
+        ]
+        for right, wrong in ((18494922, 18557114), (18557114, 18494922)):
+            ids = {
+                ("hip", "2007", "33041"): right,
+                ("hd", "1949", "50018"): right,
+                ("simbad", "oid", "918209"): right,
+                ("simbad", "oid", "397430"): wrong,
+            }
+            rows = [
+                fact(right, 103.256, 38.869, 6.0),
+                fact(wrong, 104.288, 47.589, 9.0),
+            ]
+            systems = self.systems(comp, objects, ids, rows)
+            assert shape(systems, right) == ("binary star", 2, [right, "entry"])
+            assert self.events(systems) == [
+                f"msc {w} A: {right} (by SIMBAD, 3 ids) over {wrong} (by SIMBAD, 1 id)"
+            ]
+
+    def test_37_com(self):
+        """MSC gives 37 Com HIP 62462, which is G 149-9, 4° away."""
+        w = "13003+3047"
+        comp = msc_comp(
+            w,
+            "A",
+            HIP=62462,
+            HD=112989,
+            Id="BD+31_2434, ADS_8731, HR_4924, *37_Com, LU_Com",
+        )
+        objects = [
+            simbad_object(
+                1,
+                "* 37 Com",
+                195.069,
+                30.785,
+                v=4.9,
+                hip="63462",
+                hd="112989",
+                identifiers=("HR 4924",),
+            ),
+            simbad_object(2, "G 149-9", 192.010, 27.762, v=12.0, hip="62462"),
+        ]
+        for right, wrong in ((19441586, 23983862), (23983862, 19441586)):
+            ids = {
+                ("hip", "2007", "62462"): wrong,
+                ("hd", "1949", "112989"): right,
+                ("simbad", "oid", "1"): right,
+                ("simbad", "oid", "2"): wrong,
+            }
+            rows = [
+                fact(right, 195.069, 30.785, 4.7),
+                fact(wrong, 192.01, 27.762, 11.8),
+            ]
+            systems = self.systems(comp, objects, ids, rows)
+            assert shape(systems, right) == ("binary star", 2, [right, "entry"])
+            assert self.events(systems) == [
+                f"msc {w} A: {right} (by SIMBAD, 2 ids) over {wrong} (by SIMBAD, 1 id)"
+            ]
+
+
 class TestInnerSystemStays:
     """B holds Ba and Bb on one point. B is unverified and leaves AB, and its
     point keeps both stars (HD 104576 Aa, Ab)."""

@@ -367,8 +367,9 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
                 dropped.setdefault(key, names[row])
 
     by_source = {table["source"][0].as_py(): table for table in trees}
-    found_lists = candidates(trees, resolver, index, {})
+    found_lists, reach_lists = candidates(trees, resolver, index, {})
     found = dict(zip(by_source, found_lists))
+    reach = dict(zip(by_source, reach_lists))
     _add_links(
         trees, found, letter_links(by_source.get(MSC), by_source.get(WDS), found)
     )
@@ -429,6 +430,7 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
             reduced,
             dropped_keys,
             _close_pairs(orbit_keys[orbit_kept], close_keys),
+            reach[source],
         ).run()
         block += VALUE_BLOCK
     remap = _absorptions(reduced)
@@ -476,8 +478,9 @@ def _add_links(
         ):
             link = links.get((c, r, v))
             if link and all(key != link[0] for key, _ in found[source][row]):
+                # A stable sort by rank keeps the order in each rank.
                 found[source][row] = sorted(
-                    [*found[source][row], link], key=lambda item: (item[1], item[0])
+                    [*found[source][row], link], key=lambda item: item[1]
                 )
 
 

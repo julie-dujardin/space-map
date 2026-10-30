@@ -246,7 +246,8 @@ class TreeReducer:
     `candidates` holds the (key, rank) candidates of each row, best first.
     `offset` turns a row of the source into a global value row. `close` are
     the points that a close pair can hold, as a Gaia DR3 orbit or a SIMBAD
-    type shows.
+    type shows. `reach` gives how many ids of a row reach a key, by (row,
+    key), where more than one.
     """
 
     def __init__(
@@ -259,6 +260,7 @@ class TreeReducer:
         out: Reduced,
         dropped: frozenset[int] = frozenset(),
         close: frozenset[int] = frozenset(),
+        reach: dict[tuple[int, int], int] | None = None,
     ) -> None:
         self.source = table["source"][0].as_py() if table.num_rows else ""
         self.rank = rank
@@ -268,6 +270,7 @@ class TreeReducer:
         self.dropped = dropped
         self.close = close
         self.candidates = candidates
+        self.reach = reach or {}
         self.system = table["system"].to_pylist()
         self.label = table["label"].to_pylist()
         self.parent = table["parent"].to_numpy()
@@ -317,13 +320,17 @@ class TreeReducer:
                         return other
             self._event(
                 "ids reach two objects",
-                f"{self._name(row)}: {keys[0]} ({HOW[found[0][1]]}) over"
-                f" {keys[1]} ({HOW[found[1][1]]})",
+                f"{self._name(row)}: {self._reached(row, *found[0])} over"
+                f" {self._reached(row, *found[1])}",
                 out,
             )
         if not self.children[row]:
             out.counts[f"{self.source}: members {HOW[found[0][1]]}"] += 1
         return found[0][0]
+
+    def _reached(self, row: int, key: int, rank: int) -> str:
+        ids = self.reach.get((row, key), 1)
+        return f"{key} ({HOW[rank]}, {ids} {'id' if ids == 1 else 'ids'})"
 
     def _holds(self, holder: Fact | None, inside: Fact | None) -> bool:
         """Whether the point `holder` holds the light of `inside`."""
