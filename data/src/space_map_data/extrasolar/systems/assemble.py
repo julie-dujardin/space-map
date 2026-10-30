@@ -559,10 +559,9 @@ class Assembler:
         def add_key(key: int, value: int) -> None:
             child = child_of(key)
             if child is not None and len(child.members) == 1:
-                # A node that holds one member is that member.
+                # A node that holds one member is that member, all of it.
                 if key not in covered:
-                    kind, point, inner, own, _ = child.members[0]
-                    members.append((kind, point, inner, own, None))
+                    members.append(child.members[0])
                 covered.update(child.keys)
             elif child is not None:
                 if not any(m[2] is child for m in members):

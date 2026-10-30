@@ -6,13 +6,14 @@ import sys
 from collections import Counter
 from dataclasses import fields, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.systems.assemble import Systems
+from space_map_data.extrasolar.systems.assemble import Assembler, Systems, _Node
 from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.drawn import draw
 from space_map_data.extrasolar.systems.msc import msc_nodes
@@ -33,7 +34,16 @@ from space_map_data.extrasolar.systems.nodes import (
 from space_map_data.extrasolar.systems.pairs import PAIRS, el_badry_pairs, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
 from space_map_data.extrasolar.systems.prepare import Inputs, vetoed_pairs
-from space_map_data.extrasolar.systems.reduce import Interior, Reduced, TreeReducer
+from space_map_data.extrasolar.systems.reduce import (
+    ENTRY,
+    GROUP,
+    POINT,
+    Group,
+    Interior,
+    Member,
+    Reduced,
+    TreeReducer,
+)
 from space_map_data.extrasolar.systems.registry import registry_orbits
 from space_map_data.extrasolar.systems.report import report_lines, tree_lines
 from space_map_data.extrasolar.systems.resolve import FACTS, Facts
@@ -1885,6 +1895,45 @@ class TestOneStarOfTwoSources:
             [701, ("multiple star", 3, [("point", 700, 2), "entry"])],
         )
         assert "entries that a point of the system holds" not in systems.counts
+
+
+class TestOneMemberNode:
+    """A node that holds one member is that member, with all its fields. No
+    tree gives a node one entry and no point, so `_known_entries` leaves
+    only the entry here."""
+
+    def test_the_member_keeps_its_inner_label(self, monkeypatch):
+        assembler = object.__new__(Assembler)
+        prepared = SimpleNamespace(origin=np.array([0, 1]))
+        monkeypatch.setattr(assembler, "p", prepared, raising=False)
+        assembler.groups = [
+            Group(
+                MSC,
+                0,
+                "1",
+                0,
+                frozenset({7, 8}),
+                [Member(POINT, key=8, value=1), Member(GROUP, group=1, value=2)],
+            ),
+            Group(
+                MSC,
+                0,
+                "1",
+                2,
+                frozenset({7}),
+                [Member(POINT, key=7, value=3), Member(ENTRY, value=4, inner="Ca")],
+            ),
+        ]
+        child = _Node(frozenset({7}), [1])
+        root = _Node(frozenset({7, 8}), [0], children=[child])
+        child.parent = root
+
+        def entries_only(node: _Node, members: list, listed: dict) -> list:
+            return [m for m in members if m[0] == ENTRY] if node is child else members
+
+        monkeypatch.setattr(assembler, "_known_entries", entries_only)
+        assembler._order(root, {})
+        assert (ENTRY, 0, None, 4, "Ca") in root.members
 
 
 class TestEntryIsAPoint:
