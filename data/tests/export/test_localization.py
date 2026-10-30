@@ -125,6 +125,13 @@ class TestMergeIntoFile:
             "group_name_foo" not in fr
         )  # identical to en → falls back at compile time
 
+    def test_override_identical_to_base_survives_repeated_runs(self, msg_dir):
+        key = "unit_symbol_kilometre"
+        (msg_dir / "ja.json").write_bytes(orjson.dumps({key: "km"}))
+        for _ in range(3):
+            _merge_into_file("ja", {key: "粁"}, {key}, ("unit_symbol_",), {key: "km"})
+            assert self._read(msg_dir, "ja") == {key: "km"}
+
     def test_manual_keys_untouched(self, msg_dir):
         prefixes = ("property_name_",)
         (msg_dir / "fr.json").write_bytes(orjson.dumps({"tab_images": "Images"}))

@@ -319,7 +319,7 @@ def _merge_all_locales(
 
     Base locale defines which keys are still live; anything else belongs to
     a removed group/unit/property. It also seeds the values other locales
-    are compared against — an identical translation is dropped so
+    are compared against — a new translation identical to it is left out so
     Paraglide's fallback serves it instead.
     """
     live_keys = set(collect(BASE_LOCALE))
@@ -369,8 +369,10 @@ def _merge_into_file(
 
     Existing translations win — generated values only fill gaps. *prefixes*
     scopes what this run manages: only those keys are pruned against
-    *live_keys*. When *base_values* is given, a generated value identical to
-    the base locale is omitted so Paraglide's fallback serves it instead.
+    *live_keys*. When *base_values* is given, a new value identical to the
+    base locale is omitted so Paraglide's fallback serves it instead. A value
+    already on file stays even then: it may be a hand fix (ja "km" over
+    Wikidata's "粁"), and dropping it would let the next run fill the gap.
     """
     msg_file = MESSAGES_DIR / f"{lang}.json"
     existing = orjson.loads(msg_file.read_bytes()) if msg_file.exists() else {}
@@ -397,7 +399,11 @@ def _merge_into_file(
 
     generated = {**carried, **fresh, **kept}
     redundant = (
-        {k for k, v in generated.items() if base_values.get(k) == v}
+        {
+            k
+            for k, v in generated.items()
+            if k not in existing and base_values.get(k) == v
+        }
         if base_values is not None
         else set()
     )
