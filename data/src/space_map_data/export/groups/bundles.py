@@ -508,6 +508,38 @@ def _fallback_group_name(group: Group) -> str | None:
     return None
 
 
+def _group_name(
+    group: Group,
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+    display_name: str | None = None,
+) -> str | None:
+    """The name of a group's page in ``lang``. Its chips on other pages show
+    the same name. None where the frontend names the group."""
+    # Categories carry a hand-set plural name (the Wikidata label is singular
+    # and lower-case, e.g. "planet").
+    if group.type is GroupType.CATEGORY:
+        if spec := CATEGORY_BY_SLUG.get(group.slug):
+            return spec.name
+    # Orbit classes take their names from the frontend's i18n, not the
+    # Wikidata label (IMB/MBA/OMB → "asteroid belt"; EL1/EL2 → bare "L1"/"L2").
+    elif (
+        group.wikidata_qid
+        and group.type is not GroupType.ORBIT_CLASS
+        and group.slug not in _LAGRANGE_CLASS_SLUGS
+        and (name := entity_label(_group_entity(group, wikidata_entities), lang))
+    ):
+        if group.type in CAPITALIZED_LABEL_TYPES:
+            name = name[:1].upper() + name[1:]
+        return name
+    # A split-comet family has no label of its own: the catalogue name of the
+    # comet is the reliable one.
+    if group.type is GroupType.SPLIT_COMET and display_name:
+        return display_name
+    # The curated constant, so that no page or chip shows the raw slug.
+    return _fallback_group_name(group)
+
+
 def _build_localized(
     group: Group,
     lang: str,
@@ -526,39 +558,12 @@ def _build_localized(
     chart_qids: dict[str, str] | None = None,
 ) -> dict:
     data: dict = {}
-    # Categories carry a hand-set plural name (the Wikidata label is singular
-    # and lower-case, e.g. "planet"); the description still comes from Wikidata.
-    if group.type is GroupType.CATEGORY:
-        spec = CATEGORY_BY_SLUG.get(group.slug)
-        if spec:
-            data["name"] = spec.name
-    # Split-comet families have no Wikidata label of their own — the catalog
-    # name of the comet (passed in) is the reliable display name.
-    elif group.type is GroupType.SPLIT_COMET and display_name:
-        data["name"] = display_name
+    if name := _group_name(group, lang, wikidata_entities, display_name):
+        data["name"] = name
     if group.wikidata_qid:
         wd = _group_entity(group, wikidata_entities)
-        if wd:
-            # Orbit classes name from frontend i18n, not the Wikidata label
-            # (IMB/MBA/OMB → "asteroid belt"; EL1/EL2 → bare "L1"/"L2").
-            if (
-                group.type not in (GroupType.CATEGORY, GroupType.ORBIT_CLASS)
-                and group.slug not in _LAGRANGE_CLASS_SLUGS
-            ):
-                name = entity_label(wd, lang)
-                if name:
-                    if group.type in CAPITALIZED_LABEL_TYPES:
-                        name = name[:1].upper() + name[1:]
-                    data["name"] = name
-            desc = wd["descriptions"].get(lang)
-            if desc:
-                data["description"] = desc
-    # No Wikidata label (QID-less or entity not downloaded) — fall back to the
-    # curated constant name so search/drawer never show the raw slug.
-    if "name" not in data:
-        fallback = _fallback_group_name(group)
-        if fallback:
-            data["name"] = fallback
+        if wd and (desc := wd["descriptions"].get(lang)):
+            data["description"] = desc
     summary = wiki_summaries.get(lang)
     if summary:
         data["wikipedia"] = summary.to_dict()
@@ -706,21 +711,7 @@ def _child_group_refs(
         child = GROUP_BY_SLUG.get(slug)
         if child is None:
             continue
-        if child.type is GroupType.CATEGORY:
-            spec = CATEGORY_BY_SLUG.get(slug)
-            name = spec.name if spec else slug
-        else:
-            name = slug
-            if child.wikidata_qid:
-                ref = resolve_entity_ref(child.wikidata_qid, lang, wikidata_entities)
-                if ref is not None and ref.name:
-                    name = ref.name
-                    if child.type in CAPITALIZED_LABEL_TYPES:
-                        name = name[:1].upper() + name[1:]
-            else:
-                # QID-less children (7 buses, 4 feature types) carry no Wikidata
-                # label; the curated constant beats the raw slug.
-                name = _fallback_group_name(child) or slug
+        name = _group_name(child, lang, wikidata_entities) or slug
         n = member_counts.get(slug, 0)
         if child_counts is not None and slug in child_counts:
             n = child_counts[slug]
@@ -815,10 +806,11 @@ def _constellation_refs(
         else:
             primary_id = f"{CONSTELLATION_SLUG_PREFIX}{spec.slug}"
             name, qid = spec.slug, spec.wikidata_qid
-        if qid:
-            ref = resolve_entity_ref(qid, lang, wikidata_entities)
-            if ref is not None and ref.name:
-                name = ref.name
+        if group := GROUP_BY_SLUG.get(primary_id):
+            name = _group_name(group, lang, wikidata_entities) or name
+        # The space stations have no page of their own.
+        elif qid:
+            name = entity_label(wikidata_entities.get_referenced(qid), lang) or name
         out.append(
             {
                 "n": n,

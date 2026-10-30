@@ -17,7 +17,11 @@ from space_map_data.constants.earth_sats.satcat import (
     OrbitType,
     SatcatObjectType,
 )
-from space_map_data.export.groups.bundles import _category_parent, _constellation_refs
+from space_map_data.export.groups.bundles import (
+    _category_parent,
+    _child_group_refs,
+    _constellation_refs,
+)
 from space_map_data.export.groups.earth_sat import build_earth_orbit_classes
 from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
@@ -228,6 +232,23 @@ class TestConstellationRefs:
             assert ref["primary_id"] in GROUP_BY_SLUG, ref
 
 
+class TestRefNames:
+    """A ref to a group page carries the page's own name, also where the
+    page's item has no label in the language."""
+
+    def test_constellation_ref_falls_back_to_english(self):
+        starlink = GROUP_BY_SLUG[f"{CONSTELLATION_SLUG_PREFIX}starlink"]
+        cache = _LabelCache({starlink.wikidata_qid: "Starlink"})
+        refs = _constellation_refs({"starlink": 12221}, "ar", cache)
+        assert refs[0]["name"] == "Starlink"
+
+    def test_child_chip_falls_back_to_english(self):
+        family = GROUP_BY_SLUG["planet-goldilocks-planet"]
+        cache = _LabelCache({family.wikidata_qid: "Goldilocks planet"})
+        refs = _child_group_refs([family.slug], "ar", cache, {family.slug: 217})
+        assert refs[0]["name"] == "Goldilocks planet"
+
+
 class _EmptyCache(WikidataEntityCache):
     """Wikidata cache stub: no entities, so refs fall back to their slug name."""
 
@@ -239,3 +260,16 @@ class _EmptyCache(WikidataEntityCache):
 
     def get_referenced(self, qid):
         return None
+
+
+class _LabelCache(_EmptyCache):
+    """Wikidata cache stub: entities with an English label only."""
+
+    def __init__(self, labels: dict[str | None, str]) -> None:
+        self._labels = labels
+
+    def get_referenced(self, qid):
+        label = self._labels.get(qid)
+        if label is None:
+            return None
+        return {"labels": {"en": label}, "descriptions": {}, "aliases": {}}
