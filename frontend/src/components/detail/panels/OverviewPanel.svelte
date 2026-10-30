@@ -39,7 +39,7 @@
 		planetStats
 	} from '../sections/planet/planet-rows';
 	import PlanetList from '../members/PlanetList.svelte';
-	import { planetCredits, starCredits } from '$lib/credits/star-sources';
+	import { planetCatalogueCredits, planetCredits, starCredits } from '$lib/credits/star-sources';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 	import { fetchExtrasolarMetadata, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 	import { planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
@@ -64,6 +64,8 @@
 		/** The map's page for this object, where the panel is open somewhere
 		 *  else and the map is a place to go rather than the ground underneath. */
 		mapHref?: string;
+		/** The overview is the tab in view. Its charts load their data then. */
+		active?: boolean;
 		/** The object's action row, headed up by the drawer that knows what the
 		 *  page can do with it. Absent on a collection. */
 		actions?: Snippet;
@@ -87,6 +89,7 @@
 		parentBody,
 		planetarySystem,
 		mapHref,
+		active = true,
 		actions,
 		star = null,
 		planet = null
@@ -100,7 +103,7 @@
 	let linkAliases = $derived(star ? starAliases(star) : planet ? planetAliases(planet.planet) : []);
 
 	// A star's system file lists its planets. The export metadata names the
-	// catalogues behind a planet.
+	// catalogues behind a planet, and behind the charts of the Planets page.
 	let hostSystem = $state.raw<PlanetSystem | null>(null);
 	let exportCredits = $state.raw<readonly ExtrasolarCredit[]>([]);
 	$effect(() => {
@@ -120,8 +123,10 @@
 		};
 	});
 	$effect(() => {
+		const isPlanet = !!planet;
+		const isPlanetsPage = cat.planets;
 		exportCredits = [];
-		if (!planet) return;
+		if (!isPlanet && !isPlanetsPage) return;
 		let current = true;
 		untrack(fetchExtrasolarMetadata).then(
 			(meta) => {
@@ -206,6 +211,7 @@
 		// the papers its object entry cites; a planet's from those its file names.
 		if (star) out.push(...starCredits(star, data?.global?.references));
 		if (planet) out.push(...planetCredits(planet.planet, exportCredits));
+		if (cat.planets) out.push(...planetCatalogueCredits(exportCredits));
 		if (cat.solarSystem)
 			out.push({
 				key: MASS_INVENTORY_URL,
@@ -322,7 +328,7 @@
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />
 		{:else if groupSlug !== null}
-			<GroupOverviewSections slug={groupSlug} {cat} {groupDetail} {members} />
+			<GroupOverviewSections slug={groupSlug} {cat} {groupDetail} {members} {active} />
 		{/if}
 		<ObjectLinks
 			global={data?.global ?? null}

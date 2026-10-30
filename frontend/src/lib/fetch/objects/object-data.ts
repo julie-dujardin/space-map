@@ -499,6 +499,9 @@ export interface GlobalObjectData {
 	lunar_weight_scale?: number;
 	/** The Sun only: its most specific star families. */
 	star_families?: string[];
+	/** The eight planets only: their most specific planet families, as the
+	 *  exoplanet rules give them. */
+	planet_families?: string[];
 	/** True when this body has IAU planetary nomenclature features exported.
 	 *  Gates the per-body fetch of `v1/nomenclature/{positions,__global__}/{id}.*`. */
 	has_nomenclature?: true;

@@ -3,7 +3,11 @@
  * trees of `metadata.json`.
  */
 
-import { PLANET_FAMILY_SLUG_PREFIX, STAR_FAMILY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import {
+	PLANET_FAMILY_SLUG_PREFIX,
+	STAR_FAMILY_SLUG_PREFIX,
+	type GroupIndex
+} from '$lib/fetch/groups/registry';
 import type { ExtrasolarFamily } from './files';
 
 export type FamilyType = 'star_family' | 'planet_family';
@@ -19,6 +23,11 @@ export interface FamilyLink {
 	slug: string;
 	/** True when only an estimate puts the object in it. */
 	estimated: boolean;
+}
+
+/** Fewer members first: the rarer family says more about the object. */
+function rarestFirst(members: (slug: string) => number): (a: string, b: string) => number {
+	return (a, b) => members(a) - members(b) || a.localeCompare(b);
 }
 
 /** The families whose bits the star mask `mask` sets. */
@@ -50,10 +59,28 @@ export function familyLinks(
 	const pick = (slugs: readonly string[], contained: Set<string>, isEstimate: boolean) =>
 		slugs
 			.filter((slug) => !contained.has(slug))
-			.sort((a, b) => members(a) - members(b) || a.localeCompare(b))
+			.sort(rarestFirst(members))
 			.map((slug) => ({ type, slug: `${SLUG_PREFIX[type]}${slug}`, estimated: isEstimate }));
 	return [
 		...pick(published, parentsOf(published), false),
 		...pick(estimated, parentsOf([...published, ...estimated]), true)
 	];
+}
+
+/**
+ * The family tiles of a Solar System planet, by the rule of `familyLinks`.
+ * Its bundle names only its most specific families. The group index counts
+ * their members, with the Solar System planets. A family with no page is left
+ * out.
+ */
+export function solarPlanetFamilyLinks(
+	families: readonly string[],
+	index: GroupIndex
+): FamilyLink[] {
+	const slugs = families
+		.map((family) => `${PLANET_FAMILY_SLUG_PREFIX}${family}`)
+		.filter((slug) => index[slug]);
+	return slugs
+		.sort(rarestFirst((slug) => index[slug].n))
+		.map((slug) => ({ type: 'planet_family', slug, estimated: false }));
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { familiesOf, familyLinks } from './families';
+import { familiesOf, familyLinks, solarPlanetFamilyLinks } from './families';
 import type { ExtrasolarFamily } from './files';
 
 function family(slug: string, parents: string[], stars: number): ExtrasolarFamily {
@@ -79,5 +79,24 @@ describe('familyLinks', () => {
 	it('gives nothing without the tree', () => {
 		const old = FAMILIES.map((entry) => ({ ...entry, parents: undefined }));
 		expect(familyLinks('star_family', ['classification', 'giant'], [], old)).toEqual([]);
+	});
+});
+
+describe('solarPlanetFamilyLinks', () => {
+	const index = {
+		'planet-terrestrial-planet': { type: 'planet_family', applies_to: 'planet', n: 1098 },
+		'planet-goldilocks-planet': { type: 'planet_family', applies_to: 'planet', n: 217 }
+	} as const;
+
+	it('puts the family with fewer planets first', () => {
+		const links = solarPlanetFamilyLinks(['terrestrial-planet', 'goldilocks-planet'], index);
+		expect(links).toEqual([
+			{ type: 'planet_family', slug: 'planet-goldilocks-planet', estimated: false },
+			{ type: 'planet_family', slug: 'planet-terrestrial-planet', estimated: false }
+		]);
+	});
+
+	it('leaves out a family with no page', () => {
+		expect(solarPlanetFamilyLinks(['ice-giant'], index)).toEqual([]);
 	});
 });

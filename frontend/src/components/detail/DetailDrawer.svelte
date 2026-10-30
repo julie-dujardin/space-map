@@ -546,6 +546,7 @@
 		{parentBody}
 		{planetarySystem}
 		{mapHref}
+		active={activeTab === 'overview'}
 		actions={showActions ? objectActions : undefined}
 		{star}
 		{planet}

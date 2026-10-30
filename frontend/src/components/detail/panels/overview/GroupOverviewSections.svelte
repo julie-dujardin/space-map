@@ -10,6 +10,7 @@
 	import GroupProperties from '../../sections/GroupProperties.svelte';
 	import GroupOrbitMap from '../../charts/GroupOrbitMap.svelte';
 	import CountPerBodyChart from '../../charts/CountPerBodyChart.svelte';
+	import PlanetPlots from '../../charts/PlanetPlots.svelte';
 	import RingMassChart from '../../charts/RingMassChart.svelte';
 	import SolarSystemMassChart from '../../charts/SolarSystemMassChart.svelte';
 	import { propertyFigure } from './group-figures';
@@ -31,9 +32,11 @@
 		cat: CategoryConfig;
 		groupDetail: GroupDetailData | null;
 		members: MembersState;
+		/** The overview is the tab in view. */
+		active: boolean;
 	}
 
-	let { slug, cat, groupDetail, members }: Props = $props();
+	let { slug, cat, groupDetail, members, active }: Props = $props();
 
 	let notableMembers = $derived(members.notableMembers);
 	let memberNames = $derived(members.memberNames);
@@ -101,6 +104,17 @@
 	/>
 	<chart.component members={notableMembers} localizedNames={memberNames} {...chart.extra?.()} />
 {/if}
+{#if cat.planets}
+	<!-- The planet families, then where every planet lies by mass. -->
+	{#if visibleChildGroups.length}
+		<ChildGroups childGroups={visibleChildGroups} />
+	{/if}
+	<PlanetPlots
+		solarMembers={groupDetail?.global?.solar_members ?? []}
+		localizedNames={memberNames}
+		{active}
+	/>
+{/if}
 {#if cat.solarSystem}
 	<SolarSystemMassChart />
 {/if}
@@ -113,7 +127,7 @@
 {#if categoryPlot && groupDetail?.global}
 	<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
 {/if}
-{#if visibleChildGroups.length && !cat.solarSystem}
+{#if visibleChildGroups.length && !cat.solarSystem && !cat.planets}
 	<!-- Surface Features groups its 57 type chips by landform family. -->
 	{#if featureFamilies}
 		<FeatureTypeFamilies families={featureFamilies} childGroups={visibleChildGroups} />

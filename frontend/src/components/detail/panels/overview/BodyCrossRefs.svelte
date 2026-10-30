@@ -139,6 +139,7 @@
 	/>
 {:else if isPlanetBody}
 	<PlanetGroupLinks
+		families={data?.global?.planet_families}
 		systemId={planetarySystem.systemId ?? undefined}
 		system={planetarySystem.system ?? undefined}
 		systemName={planetarySystem.systemName}

@@ -412,7 +412,8 @@ export function powerOfTen(value: number, digits = 2): number {
 		: exponent;
 }
 
-function superscript(exponent: number): string {
+/** An exponent in superscript digits: "⁻⁶". */
+export function superscript(exponent: number): string {
 	const digits = [...String(Math.abs(exponent))].map((d) => SUPERSCRIPTS[Number(d)]).join('');
 	return `${exponent < 0 ? '⁻' : ''}${digits}`;
 }
