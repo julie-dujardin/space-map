@@ -13,6 +13,9 @@ from space_map_data.download.providers.stars.wikidata_stars import (
     ITEMS_QUERY,
     NOT_STAR_QIDS,
     STAR_QIDS,
+    STAR_ROOT_QIDS,
+    SYSTEM_ROOT_QIDS,
+    WDS_QID,
     StarItem,
     WikidataStarsDownloader,
     parse_term,
@@ -20,14 +23,24 @@ from space_map_data.download.providers.stars.wikidata_stars import (
 )
 
 HEADER = "\t".join(wikidata_stars.COLUMNS)
+ENTITY = "http://www.wikidata.org/entity/"
+# The classes and WDS designations of Proxima and of Algol, as QLever gives
+# them.
 ROWS = [
     (
         '<http://www.wikidata.org/entity/Q14266>\t"5853498713190525696"\t"HIP 70890"\t\t'
-        '"Proxima Centauri"@en\t"Proxima Centauri"@mul\t12'
+        '"Proxima Centauri"@en\t"Proxima Centauri"@mul\t12\t"WDS J14396-6050C"'
+        f'\t"{ENTITY}Q5893|{ENTITY}Q285400"\t"{ENTITY}Q285400|{ENTITY}Q5893"\t'
     ),
     (
         '<http://www.wikidata.org/entity/Q1146698>\t"4375233191015944192|4375236218971926400"'
-        '\t"HIP 85295"\t"HD 157881"\t"Gliese 673"@en\t\t7'
+        '\t"HIP 85295"\t"HD 157881"\t"Gliese 673"@en\t\t7\t\t\t\t'
+    ),
+    (
+        '<http://www.wikidata.org/entity/Q13080>\t\t"HIP 14576"\t"HD 19356"\t"Algol"@en\t\t12'
+        '\t"WDS J03082+4057A|WDS J03082+4057Aa,Ab"'
+        f'\t"{ENTITY}Q13890|{ENTITY}Q24452|{ENTITY}Q1993624"\t"{ENTITY}Q24452"'
+        f'\t"{ENTITY}Q1993624|{ENTITY}Q24452|{ENTITY}Q13890"'
     ),
 ]
 ITEMS = "\n".join([HEADER, *ROWS]) + "\n"
@@ -89,6 +102,9 @@ class TestReadItems:
                 label_en="Proxima Centauri",
                 label_mul="Proxima Centauri",
                 articles=12,
+                wds=("J14396-6050C",),
+                classes=("Q5893", "Q285400"),
+                star_classes=("Q285400", "Q5893"),
             ),
             StarItem(
                 qid="Q1146698",
@@ -99,8 +115,21 @@ class TestReadItems:
                 label_mul=None,
                 articles=7,
             ),
+            StarItem(
+                qid="Q13080",
+                gaia_dr3=(),
+                hip=("14576",),
+                hd=("19356",),
+                label_en="Algol",
+                label_mul=None,
+                articles=12,
+                wds=("J03082+4057A", "J03082+4057Aa,Ab"),
+                classes=("Q13890", "Q24452", "Q1993624"),
+                star_classes=("Q24452",),
+                system_classes=("Q1993624", "Q24452", "Q13890"),
+            ),
         ]
-        assert wikidata_stars.star_qids(path) == {"Q14266", "Q1146698"}
+        assert wikidata_stars.star_qids(path) == {"Q14266", "Q1146698", "Q13080"}
 
     @pytest.mark.parametrize(
         ("hd", "expected"),
@@ -116,7 +145,9 @@ class TestReadItems:
     )
     def test_the_component_a_of_an_hd_number(self, tmp_path, hd, expected):
         path = tmp_path / "items.tsv.gz"
-        row = f'<http://www.wikidata.org/entity/Q3409>\t\t"HIP 7A"\t{hd}\t\t\t12'
+        row = (
+            f'<http://www.wikidata.org/entity/Q3409>\t\t"HIP 7A"\t{hd}\t\t\t12\t\t\t\t'
+        )
         path.write_bytes(gzip.compress(f"{HEADER}\n{row}\n".encode()))
         (found,) = read_items(path)
         assert (found.hd, found.hip) == (expected, ())
@@ -126,7 +157,7 @@ class TestReadItems:
         path = tmp_path / "items.tsv.gz"
         row = (
             "<http://www.wikidata.org/entity/Q14266>"
-            '\t"6917529027641081856|5853498713190525696"\t\t\t\t\t12'
+            '\t"6917529027641081856|5853498713190525696"\t\t\t\t\t12\t\t\t\t'
         )
         path.write_bytes(gzip.compress(f"{HEADER}\n{row}\n".encode()))
         (found,) = read_items(path)
@@ -144,7 +175,9 @@ class TestReadItems:
 
 
 class TestQuery:
-    """The list and its count leave out the same objects that are not stars."""
+    """The list and its count leave out the same objects that are not stars.
+    The list gives the WDS designations, the classes and the classes that
+    are a kind of star or of star system."""
 
     def test_both_queries_filter_by_type(self):
         for query in (ITEMS_QUERY, COUNT_QUERY):
@@ -152,28 +185,37 @@ class TestQuery:
             for qid in (*NOT_STAR_QIDS, *STAR_QIDS):
                 assert f"wd:{qid} " in query
 
+    def test_the_list_gives_the_classes_and_their_kinds(self):
+        assert f"pq:P972 wd:{WDS_QID} ." in ITEMS_QUERY
+        assert "?item wdt:P31 ?class ." in ITEMS_QUERY
+        for qid in (*STAR_ROOT_QIDS, *SYSTEM_ROOT_QIDS):
+            assert f"wd:{qid} " in ITEMS_QUERY
+        assert "?star_class wdt:P279* ?star_root" in ITEMS_QUERY
+        assert "?system_class wdt:P279* ?system_root" in ITEMS_QUERY
+        assert "wdt:P31 ?class" not in COUNT_QUERY
+
 
 class TestDownloader:
     """The count check and the floor from the previous download."""
 
     def test_writes_the_items(self, tmp_path, monkeypatch):
-        _downloader(tmp_path, monkeypatch, 2).download()
-        assert len(read_items(tmp_path / "items.tsv.gz")) == 2
+        _downloader(tmp_path, monkeypatch, 3).download()
+        assert len(read_items(tmp_path / "items.tsv.gz")) == 3
         metadata = json.loads((tmp_path / "metadata.json").read_text())
-        assert metadata["record_count"] == 2
+        assert metadata["record_count"] == 3
 
     def test_a_short_answer_fails(self, tmp_path, monkeypatch):
-        with pytest.raises(DownloadError, match="returned 2 items and counts 3"):
-            _downloader(tmp_path, monkeypatch, 3).download()
+        with pytest.raises(DownloadError, match="returned 3 items and counts 4"):
+            _downloader(tmp_path, monkeypatch, 4).download()
         assert not (tmp_path / "items.tsv.gz").exists()
 
     def test_a_bad_answer_fails_and_leaves_no_part(self, tmp_path, monkeypatch):
         items = ITEMS.replace('"Gliese 673"@en', '"Gliese 673')
         with pytest.raises(DownloadError, match="unterminated"):
-            _downloader(tmp_path, monkeypatch, 2, items).download()
+            _downloader(tmp_path, monkeypatch, 3, items).download()
         assert list(tmp_path.glob("items.tsv.gz*")) == []
 
     def test_a_large_loss_fails(self, tmp_path, monkeypatch):
         (tmp_path / "metadata.json").write_text(json.dumps({"record_count": 100}))
         with pytest.raises(DownloadError, match="at least 95"):
-            _downloader(tmp_path, monkeypatch, 2).download()
+            _downloader(tmp_path, monkeypatch, 3).download()
